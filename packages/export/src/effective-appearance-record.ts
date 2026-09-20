@@ -4,11 +4,9 @@
 import { asSourceBytes, parseStepValue, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { EffectiveEntityIndex } from './effective-index.js';
-import { serializeEntityArgs } from './attribute-real-slots.js';
-import { applyOverlayEntityOverrides } from './step-overlay-attribute-overrides.js';
 import { applySourceLineMutations } from './step-attribute-mutations.js';
-import { readStepSlots, splitTopLevelStepArguments } from './step-argument-parser.js';
-import { retypeArgTokens } from './retype.js';
+import { readStepSlots } from './step-argument-parser.js';
+import { effectiveCreatedRecord } from './effective-source-record.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
 
 /** Compose the existing STEP writers; never invent a second override policy. */
@@ -19,19 +17,13 @@ export function effectiveAppearanceRecord(
   if (!record) throw new Error('Missing IFC entity during appearance cleanup; resources were retained.');
   const schema = (store.schemaVersion as IfcSchemaVersion) || 'IFC4';
   const named = new Map(view.getAttributeMutationsForEntity(id).map(({ name, value }) => [name, value]));
-  const created = view.getNewEntity(id);
-  if (created) {
-    const retype = view.getEntityTypeMutation(id);
-    const type = retype?.newType ?? created.type;
-    let args = serializeEntityArgs(created.type, created.attributes, schema);
-    if (retype) {
-      const slots = splitTopLevelStepArguments(args);
-      if (slots === null) throw new Error('Invalid authored IFC entity during appearance cleanup; resources were retained.');
-      args = retypeArgTokens(slots, created.type, type, retype.predefinedType, schema).tokens.join(',');
-    }
-    args = applyOverlayEntityOverrides(args, type, named, view.getPositionalMutationsForEntity(id), schema);
-    return `#${id}=${type.toUpperCase()}(${args});`;
+  let createdRecord: { type: string; text: string } | null;
+  try {
+    createdRecord = effectiveCreatedRecord(view, id, store.schemaVersion);
+  } catch {
+    throw new Error('Invalid authored IFC entity during appearance cleanup; resources were retained.');
   }
+  if (createdRecord) return createdRecord.text;
   const source = asSourceBytes(store.source);
   const original = source.decodeUtf8(record.byteOffset, record.byteOffset + record.byteLength);
   const result = applySourceLineMutations(view, id, original, record.type, named, schema, true);

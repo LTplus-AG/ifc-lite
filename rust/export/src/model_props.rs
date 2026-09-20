@@ -80,14 +80,11 @@ const COMMON_ATTRIBUTES: [&str; 7] = [
 ///
 /// `raw_type_name` is the STEP keyword as written in the file (e.g.
 /// `"IFCDOORSTYLE"`), used ONLY to look up a legacy (IFC2X3/IFC4,
-/// removed-by-IFC4X3) entity's own attribute names (#4203) — `entity`'s own
-/// `ifc_type` field is decoded via a bare `IfcType::from_str` and is
-/// `Unknown` for exactly those entities, which used to make this function
-/// return an empty `Vec` for every legacy class, silently (the class still
-/// got a row — `model.rs` resolves the DISPLAY type legacy-aware — it just
-/// lost its own-class attributes). `ifc_type` is the caller's already
-/// legacy-aware-resolved type (`model.rs`'s `ty` / `cand.ifc_type`), used for
-/// every name the generated enum recognises, unchanged from before.
+/// removed-by-IFC4X3) entity's own attribute names (#4203). Those names now
+/// have exact enum variants, but their positional metadata remains specific to
+/// the older schema and therefore comes from the legacy table rather than the
+/// canonical IFC4X3 variant metadata. `ifc_type` is the caller's already
+/// legacy-aware processing type (`model.rs`'s `ty` / `cand.ifc_type`).
 ///
 /// Values reuse [`render_value`], so a rendered attribute reads the same as a
 /// property with the same underlying type, and anything it declines (entity

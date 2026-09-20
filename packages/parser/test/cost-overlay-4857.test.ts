@@ -86,6 +86,7 @@ function overlay(parts: Partial<CostMutationOverlay>): CostMutationOverlay {
     isDeleted: () => false,
     retypes: () => new Map(),
     effectiveRecord: (_id, text) => ({ text, notWritten: [] }),
+    created: () => [],
     ...parts,
   };
 }
@@ -217,11 +218,72 @@ describe('cost read model observes pending loaded-model mutations (#4857)', () =
       .toEqual([expect.objectContaining({ expressId: 20, Severity: 'warning' })]);
   });
 
+  it('lists an overlay-created entity once when its effective class is also retyped', () => {
+    const graph = extractCostOnDemand(buildStoreFromStep(FIXTURE), {
+      overlay: overlay({
+        retypes: () => new Map([[60, 'IfcCostItem']]),
+        created: () => [{
+          expressId: 60,
+          type: 'IFCCOSTITEM',
+          text: "#60=IFCCOSTITEM('created-gid-0000000001',$,'Created item',$,$,$,.NOTDEFINED.,$,$);",
+          notWritten: ['CostQuantities = "bad" is not a number and the slot is REAL-typed'],
+        }],
+      }),
+    });
+    expect(graph.CostItems.filter(item => item.expressId === 60)).toHaveLength(1);
+    expect(graph.Diagnostics).toContainEqual(expect.objectContaining({
+      Code: 'PENDING_EDIT_NOT_APPLIED', expressId: 60, Severity: 'warning',
+    }));
+  });
+
+  it('reads the GlobalId of an overlay-created product assigned to a cost item (#4857 review)', () => {
+    const graph = extractCostOnDemand(buildStoreFromStep(FIXTURE), {
+      overlay: overlay({
+        created: () => [
+          {
+            expressId: 60,
+            type: 'IFCCOSTITEM',
+            text: "#60=IFCCOSTITEM('created-item-gid-00001',$,'Created item',$,$,$,.NOTDEFINED.,$,$);",
+          },
+          {
+            expressId: 61,
+            type: 'IFCWALL',
+            text: "#61=IFCWALL('created-wall-gid-00001',$,'Created wall',$,$,$,$,$);",
+          },
+          {
+            expressId: 62,
+            type: 'IFCRELASSIGNSTOCONTROL',
+            text: "#62=IFCRELASSIGNSTOCONTROL('created-rel-gid-000001',$,$,$,(#61),$,#60);",
+          },
+        ],
+      }),
+    });
+
+    expect(itemById(graph, 60)?.productExpressIds).toEqual([61]);
+    expect(itemById(graph, 60)?.productGlobalIds).toEqual(['created-wall-gid-00001']);
+  });
+
   it('an overlay that touches nothing returns the same graph as no overlay at all', () => {
     const plain = extractCostOnDemand(buildStoreFromStep(FIXTURE));
     const overlaid = extractCostOnDemand(buildStoreFromStep(FIXTURE), {
       overlay: overlay({}),
     });
     expect(JSON.stringify(overlaid)).toBe(JSON.stringify(plain));
+  });
+
+  // #4857 PR A review: an older/third-party overlay has no created() member.
+  it('an overlay missing created() at runtime (an older/third-party implementation) degrades to no created entities, not a throw', () => {
+    const legacyOverlay: CostMutationOverlay = {
+      isDeleted: () => false,
+      retypes: () => new Map(),
+      effectiveRecord: (_id: number, text: string) => ({ text, notWritten: [] }),
+      // `created` deliberately absent.
+    };
+    expect(() => extractCostOnDemand(buildStoreFromStep(FIXTURE), { overlay: legacyOverlay })).not.toThrow();
+    const withLegacyOverlay = extractCostOnDemand(buildStoreFromStep(FIXTURE), { overlay: legacyOverlay });
+    const withNoOverlay = extractCostOnDemand(buildStoreFromStep(FIXTURE));
+    // No overlay-created entities to add, and nothing else touched — reads
+    // exactly like the unoverlaid graph.
+    expect(JSON.stringify(withLegacyOverlay)).toBe(JSON.stringify(withNoOverlay));
   });
 });

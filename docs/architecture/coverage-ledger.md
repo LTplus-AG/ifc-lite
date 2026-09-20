@@ -23,7 +23,7 @@ Columns:
 
 | Entity | Registry | Retained | Relationships | Geometry | Creatable | Writable | Convertible | Fixture |
 |---|---|---|---|---|---|---|---|---|
-| Ifc2DCompositeCurve | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| Ifc2DCompositeCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcAbsorbedDoseMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcAccelerationMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcActionRequest | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -35,21 +35,21 @@ Columns:
 | IfcAirToAirHeatRecoveryType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcAlarmType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcAmountOfSubstanceMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcAngularDimension | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcAngularDimension | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcAngularVelocityMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcAnnotation | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
-| IfcAnnotationCurveOccurrence | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcAnnotationCurveOccurrence | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcAnnotationFillArea | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
-| IfcAnnotationFillAreaOccurrence | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcAnnotationSurface | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcAnnotationSurfaceOccurrence | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcAnnotationSymbolOccurrence | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcAnnotationTextOccurrence | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcAnnotationFillAreaOccurrence | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcAnnotationSurface | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcAnnotationSurfaceOccurrence | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcAnnotationSymbolOccurrence | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcAnnotationTextOccurrence | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcApplication | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
-| IfcAppliedValueRelationship | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcAppliedValueRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcApproval | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcApprovalActorRelationship | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcApprovalPropertyRelationship | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcApprovalActorRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcApprovalPropertyRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcApprovalRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcArbitraryClosedProfileDef | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcArbitraryOpenProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -62,7 +62,7 @@ Columns:
 | IfcAxis2Placement3D | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcBeam | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcBeamType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcBezierCurve | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcBezierCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcBlobTexture | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBlock | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBoilerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -85,12 +85,12 @@ Columns:
 | IfcCableCarrierFittingType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCableCarrierSegmentType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCableSegmentType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcCalendarDate | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcCalendarDate | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcCartesianPoint | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcCartesianTransformationOperator2D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcCartesianTransformationOperator2DnonUniform | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcCartesianTransformationOperator2DnonUniform | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCartesianTransformationOperator3D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
-| IfcCartesianTransformationOperator3DnonUniform | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcCartesianTransformationOperator3DnonUniform | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCenterLineProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcChamferEdgeFeature | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcChillerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -98,10 +98,10 @@ Columns:
 | IfcCircleHollowProfileDef | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcCircleProfileDef | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcClassification | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcClassificationItem | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcClassificationItemRelationship | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcClassificationNotation | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcClassificationNotationFacet | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcClassificationItem | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcClassificationItemRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcClassificationNotation | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcClassificationNotationFacet | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcClassificationReference | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcClosedShell | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcCoilType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -116,17 +116,17 @@ Columns:
 | IfcCompoundPlaneAngleMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCompressorType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCondenserType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcCondition | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcConditionCriterion | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcCondition | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcConditionCriterion | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcConnectedFaceSet | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcConnectionCurveGeometry | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcConnectionPointEccentricity | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcConnectionPointGeometry | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcConnectionPortGeometry | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcConnectionPortGeometry | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcConnectionSurfaceGeometry | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcConstraintAggregationRelationship | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcConstraintClassificationRelationship | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcConstraintRelationship | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcConstraintAggregationRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcConstraintClassificationRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcConstraintRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcConstructionEquipmentResource | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcConstructionMaterialResource | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcConstructionProductResource | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -136,15 +136,15 @@ Columns:
 | IfcConversionBasedUnit | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcCooledBeamType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCoolingTowerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcCoordinatedUniversalTimeOffset | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcCoordinatedUniversalTimeOffset | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcCostItem | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCostSchedule | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCostValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCountMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCovering | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCoveringType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcCraneRailAShapeProfileDef | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcCraneRailFShapeProfileDef | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcCraneRailAShapeProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcCraneRailFShapeProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcCrewResource | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCsgSolid | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCShapeProfileDef | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
@@ -158,22 +158,22 @@ Columns:
 | IfcCurveStyleFontAndScaling | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCurveStyleFontPattern | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDamperType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcDateAndTime | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcDateAndTime | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcDayInMonthNumber | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDaylightSavingHour | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcDefinedSymbol | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcDefinedSymbol | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcDerivedProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDerivedUnit | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcDerivedUnitElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcDescriptiveMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcDiameterDimension | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcDiameterDimension | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcDimensionalExponents | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
-| IfcDimensionCalloutRelationship | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcDimensionCalloutRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcDimensionCount | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcDimensionCurve | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcDimensionCurveDirectedCallout | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcDimensionCurveTerminator | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcDimensionPair | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcDimensionCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcDimensionCurveDirectedCallout | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcDimensionCurveTerminator | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcDimensionPair | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcDirection | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcDiscreteAccessory | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDiscreteAccessoryType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -184,7 +184,7 @@ Columns:
 | IfcDistributionElementType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDistributionFlowElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDistributionPort | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcDocumentElectronicFormat | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcDocumentElectronicFormat | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcDocumentInformation | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDocumentInformationRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDocumentReference | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -193,11 +193,11 @@ Columns:
 | IfcDoorPanelProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDoorStyle | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDoseEquivalentMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcDraughtingCallout | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcDraughtingCalloutRelationship | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcDraughtingCallout | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcDraughtingCalloutRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcDraughtingPreDefinedColour | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDraughtingPreDefinedCurveFont | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcDraughtingPreDefinedTextFont | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcDraughtingPreDefinedTextFont | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcDuctFittingType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDuctSegmentType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDuctSilencerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -205,8 +205,8 @@ Columns:
 | IfcEdge | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | — |
 | IfcEdgeCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcEdgeLoop | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcElectricalBaseProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcElectricalCircuit | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcElectricalBaseProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcElectricalCircuit | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcElectricalElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcElectricApplianceType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcElectricCapacitanceMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -216,7 +216,7 @@ Columns:
 | IfcElectricDistributionPoint | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcElectricFlowStorageDeviceType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcElectricGeneratorType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcElectricHeaterType | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcElectricHeaterType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcElectricMotorType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcElectricResistanceMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcElectricTimeControlType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -227,16 +227,16 @@ Columns:
 | IfcEllipseProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcEnergyConversionDevice | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcEnergyMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcEnergyProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcEnvironmentalImpactValue | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcEnergyProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcEnvironmentalImpactValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcEquipmentElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcEquipmentStandard | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcEquipmentStandard | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcEvaporativeCoolerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcEvaporatorType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcExtendedMaterialProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcExtendedMaterialProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcExternallyDefinedHatchStyle | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcExternallyDefinedSurfaceStyle | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcExternallyDefinedSymbol | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcExternallyDefinedSymbol | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcExternallyDefinedTextFont | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcExtrudedAreaSolid | ✅ | ✅ | — | ✅ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcFace | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
@@ -253,7 +253,7 @@ Columns:
 | IfcFillAreaStyle | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcFillAreaStyleHatching | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcFillAreaStyleTiles | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcFillAreaStyleTileSymbolWithStyle | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcFillAreaStyleTileSymbolWithStyle | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcFilterType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcFireSuppressionTerminalType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcFlowController | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -265,21 +265,21 @@ Columns:
 | IfcFlowStorageDevice | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcFlowTerminal | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcFlowTreatmentDevice | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcFluidFlowProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcFluidFlowProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcFontStyle | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcFontVariant | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcFontWeight | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcFooting | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcForceMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcFrequencyMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcFuelProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcFuelProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcFurnishingElement | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcFurnishingElementType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcFurnitureStandard | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcFurnitureStandard | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcFurnitureType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcGasTerminalType | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcGeneralMaterialProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcGeneralProfileProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcGasTerminalType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcGeneralMaterialProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcGeneralProfileProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcGeometricCurveSet | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcGeometricRepresentationContext | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcGeometricRepresentationSubContext | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
@@ -295,7 +295,7 @@ Columns:
 | IfcHeatingValueMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcHourInDay | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcHumidifierType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcHygroscopicMaterialProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcHygroscopicMaterialProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcIdentifier | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcIlluminanceMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcImageTexture | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -325,13 +325,13 @@ Columns:
 | IfcLightSourcePositional | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcLightSourceSpot | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcLine | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/swept_disk_composite_arc_crankbar.ifc |
-| IfcLinearDimension | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcLinearDimension | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcLinearForceMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcLinearMomentMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcLinearStiffnessMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcLinearVelocityMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcLocalPlacement | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
-| IfcLocalTime | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcLocalTime | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcLogical | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcLoop | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcLShapeProfileDef | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
@@ -353,11 +353,11 @@ Columns:
 | IfcMaterialLayerSetUsage | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcMaterialList | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcMeasureWithUnit | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
-| IfcMechanicalConcreteMaterialProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcMechanicalConcreteMaterialProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcMechanicalFastener | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcMechanicalFastenerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcMechanicalMaterialProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcMechanicalSteelMaterialProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcMechanicalMaterialProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcMechanicalSteelMaterialProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcMember | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcMemberType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcMetric | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -373,7 +373,7 @@ Columns:
 | IfcMonetaryUnit | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcMonthInYearNumber | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcMotorConnectionType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcMove | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcMove | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcNormalisedRatioMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcNullStyle | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcNumericMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -381,11 +381,11 @@ Columns:
 | IfcOccupant | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcOffsetCurve2D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcOffsetCurve3D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcOneDirectionRepeatFactor | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcOneDirectionRepeatFactor | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcOpeningElement | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcOpenShell | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcOpticalMaterialProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcOrderAction | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcOpticalMaterialProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcOrderAction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcOrganization | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcOrganizationRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcOrientedEdge | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -421,9 +421,9 @@ Columns:
 | IfcPositiveRatioMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcPostalAddress | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcPowerMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcPreDefinedDimensionSymbol | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcPreDefinedPointMarkerSymbol | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcPreDefinedTerminatorSymbol | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcPreDefinedDimensionSymbol | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcPreDefinedPointMarkerSymbol | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcPreDefinedTerminatorSymbol | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcPresentableText | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcPresentationLayerAssignment | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcPresentationLayerWithStyle | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -432,14 +432,14 @@ Columns:
 | IfcProcedure | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcProductDefinitionShape | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcProductRepresentation | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcProductsOfCombustionProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcProductsOfCombustionProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcProject | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
-| IfcProjectionCurve | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcProjectionCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcProjectionElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcProjectOrder | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcProjectOrderRecord | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcProjectOrderRecord | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcPropertyBoundedValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcPropertyConstraintRelationship | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcPropertyConstraintRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcPropertyDependencyRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcPropertyEnumeratedValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcPropertyEnumeration | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -458,50 +458,50 @@ Columns:
 | IfcQuantityVolume | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcQuantityWeight | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRadioActivityMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRadiusDimension | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRadiusDimension | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRailing | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcRailingType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRamp | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcRampFlight | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRampFlightType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRatioMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRationalBezierCurve | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRationalBezierCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcReal | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRectangleHollowProfileDef | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc |
 | IfcRectangleProfileDef | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcRectangularPyramid | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRectangularTrimmedSurface | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcReferencesValueDocument | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcReferencesValueDocument | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRegularTimeSeries | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcReinforcementBarProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcReinforcementDefinitionProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcReinforcingBar | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/swept_disk_composite_arc_crankbar.ifc |
 | IfcReinforcingMesh | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAggregates | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
-| IfcRelAssignsTasks | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelAssignsTasks | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelAssignsToActor | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssignsToControl | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcRelAssignsToGroup | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssignsToProcess | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcRelAssignsToProduct | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelAssignsToProjectOrder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelAssignsToProjectOrder | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelAssignsToResource | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssociates | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelAssociatesAppliedValue | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelAssociatesAppliedValue | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelAssociatesApproval | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssociatesClassification | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssociatesConstraint | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssociatesDocument | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssociatesLibrary | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssociatesMaterial | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
-| IfcRelAssociatesProfileProperties | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcRelaxation | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelAssociatesProfileProperties | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelaxation | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelConnectsElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsPathElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsPorts | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsPortToElement | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsStructuralActivity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelConnectsStructuralElement | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelConnectsStructuralElement | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelConnectsStructuralMember | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsWithEccentricity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsWithRealizingElements | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -512,13 +512,13 @@ Columns:
 | IfcRelDefinesByType | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelFillsElement | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcRelFlowControlElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelInteractionRequirements | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelInteractionRequirements | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelNests | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
-| IfcRelOccupiesSpaces | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcRelOverridesProperties | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelOccupiesSpaces | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelOverridesProperties | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelProjectsElement | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelReferencedInSpatialStructure | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
-| IfcRelSchedulesCostItems | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelSchedulesCostItems | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelSequence | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcRelServicesBuildings | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelSpaceBoundary | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
@@ -527,7 +527,7 @@ Columns:
 | IfcRepresentationContext | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRepresentationMap | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcRevolvedAreaSolid | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRibPlateProfileProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRibPlateProfileProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRightCircularCone | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRightCircularCylinder | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRoof | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
@@ -537,7 +537,7 @@ Columns:
 | IfcRoundedEdgeFeature | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRoundedRectangleProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcSanitaryTerminalType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcScheduleTimeControl | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcScheduleTimeControl | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcSecondInMinute | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcSectionalAreaIntegralMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcSectionedSpine | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -545,8 +545,8 @@ Columns:
 | IfcSectionProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcSectionReinforcementProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcSensorType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcServiceLife | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcServiceLifeFactor | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcServiceLife | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcServiceLifeFactor | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcShapeAspect | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcShapeRepresentation | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcShearModulusMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -559,12 +559,12 @@ Columns:
 | IfcSolidAngleMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcSoundPowerMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcSoundPressureMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcSoundProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcSoundValue | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcSoundProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcSoundValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcSpace | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcSpaceHeaterType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcSpaceProgram | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcSpaceThermalLoadProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcSpaceProgram | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcSpaceThermalLoadProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcSpaceType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcSpecificHeatCapacityMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcSpecularExponent | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -584,7 +584,7 @@ Columns:
 | IfcStructuralLoadLinearForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadPlanarForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadSingleDisplacement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcStructuralLoadSingleDisplacementDistortion | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcStructuralLoadSingleDisplacementDistortion | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadSingleForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadSingleForceWarping | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadTemperature | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -593,13 +593,13 @@ Columns:
 | IfcStructuralPointAction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralPointConnection | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralPointReaction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcStructuralProfileProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcStructuralProfileProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcStructuralResultGroup | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcStructuralSteelProfileProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcStructuralSteelProfileProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcStructuralSurfaceConnection | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralSurfaceMember | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralSurfaceMemberVarying | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcStructuredDimensionCallout | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcStructuredDimensionCallout | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcStyledItem | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcStyledRepresentation | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcSubContractResource | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -615,7 +615,7 @@ Columns:
 | IfcSurfaceStyleWithTextures | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcSweptDiskSolid | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/swept_disk_composite_arc_crankbar.ifc |
 | IfcSwitchingDeviceType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcSymbolStyle | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcSymbolStyle | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcSystem | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcSystemFurnitureElementType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTable | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -626,7 +626,7 @@ Columns:
 | IfcTemperatureGradientMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTendon | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTendonAnchor | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcTerminatorSymbol | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcTerminatorSymbol | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcText | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTextAlignment | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTextDecoration | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -637,7 +637,7 @@ Columns:
 | IfcTextStyleFontModel | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTextStyleForDefinedFont | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTextStyleTextModel | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcTextStyleWithBoxCharacteristics | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcTextStyleWithBoxCharacteristics | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcTextTransformation | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTextureCoordinateGenerator | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTextureMap | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -645,13 +645,13 @@ Columns:
 | IfcThermalAdmittanceMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcThermalConductivityMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcThermalExpansionCoefficientMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcThermalMaterialProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcThermalMaterialProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcThermalResistanceMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcThermalTransmittanceMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcThermodynamicTemperatureMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTimeMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcTimeSeriesReferenceRelationship | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcTimeSeriesSchedule | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcTimeSeriesReferenceRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcTimeSeriesSchedule | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcTimeSeriesValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTimeStamp | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTopologyRepresentation | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -663,7 +663,7 @@ Columns:
 | IfcTrimmedCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/swept_disk_composite_arc_crankbar.ifc |
 | IfcTShapeProfileDef | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcTubeBundleType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcTwoDirectionRepeatFactor | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcTwoDirectionRepeatFactor | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcTypeObject | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTypeProduct | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcUnitaryEquipmentType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -673,7 +673,7 @@ Columns:
 | IfcVaporPermeabilityMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcVector | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/swept_disk_composite_arc_crankbar.ifc |
 | IfcVertex | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcVertexBasedTextureMap | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcVertexBasedTextureMap | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcVertexLoop | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcVertexPoint | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcVibrationIsolatorType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -687,7 +687,7 @@ Columns:
 | IfcWarpingConstantMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcWarpingMomentMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcWasteTerminalType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcWaterProperties | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcWaterProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcWindow | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcWindowLiningProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcWindowPanelProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -723,13 +723,13 @@ Columns:
 | IfcAlarm | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcAlarmType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcAlignment | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
-| IfcAlignment2DHorizontal | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
-| IfcAlignment2DHorizontalSegment | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
-| IfcAlignment2DVerSegCircularArc | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
-| IfcAlignment2DVerSegLine | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
-| IfcAlignment2DVerSegParabolicArc | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
-| IfcAlignment2DVertical | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
-| IfcAlignmentCurve | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
+| IfcAlignment2DHorizontal | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
+| IfcAlignment2DHorizontalSegment | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
+| IfcAlignment2DVerSegCircularArc | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
+| IfcAlignment2DVerSegLine | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
+| IfcAlignment2DVerSegParabolicArc | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
+| IfcAlignment2DVertical | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
+| IfcAlignmentCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
 | IfcAmountOfSubstanceMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcAngularVelocityMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcAnnotation | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
@@ -794,9 +794,9 @@ Columns:
 | IfcCartesianPointList2D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcCartesianPointList3D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcCartesianTransformationOperator2D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcCartesianTransformationOperator2DnonUniform | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcCartesianTransformationOperator2DnonUniform | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcCartesianTransformationOperator3D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
-| IfcCartesianTransformationOperator3DnonUniform | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | rust/geometry/tests/fixtures/issue_1985_metre_submm_scale.ifc |
+| IfcCartesianTransformationOperator3DnonUniform | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | rust/geometry/tests/fixtures/issue_1985_metre_submm_scale.ifc |
 | IfcCenterLineProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcChiller | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcChillerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
@@ -805,7 +805,7 @@ Columns:
 | IfcCircle | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcCircleHollowProfileDef | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | rust/geometry/tests/fixtures/issue_1985_mapping_origin.ifc |
 | IfcCircleProfileDef | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | rust/geometry/tests/fixtures/issue_1985_metre_submm_scale.ifc |
-| IfcCircularArcSegment2D | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
+| IfcCircularArcSegment2D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
 | IfcCivilElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcCivilElementType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcClassification | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
@@ -854,9 +854,9 @@ Columns:
 | IfcCooledBeamType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcCoolingTower | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcCoolingTowerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcCostItem | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcCostSchedule | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcCostValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcCostItem | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcCostSchedule | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcCostValue | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcCountMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcCovering | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcCoveringType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
@@ -890,7 +890,7 @@ Columns:
 | IfcDirection | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcDiscreteAccessory | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcDiscreteAccessoryType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcDistanceExpression | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
+| IfcDistanceExpression | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
 | IfcDistributionChamberElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcDistributionChamberElementType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcDistributionCircuit | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
@@ -1073,7 +1073,7 @@ Columns:
 | IfcLinearStiffnessMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcLinearVelocityMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcLineIndex | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
-| IfcLineSegment2D | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
+| IfcLineSegment2D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
 | IfcLocalPlacement | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcLogical | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcLoop | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
@@ -1142,7 +1142,7 @@ Columns:
 | IfcOpenShell | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcOrganization | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
 | IfcOrganizationRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcOrientationExpression | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
+| IfcOrientationExpression | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
 | IfcOrientedEdge | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcOuterBoundaryCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcOutlet | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
@@ -1218,12 +1218,12 @@ Columns:
 | IfcProxy | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:❌ | — |
 | IfcPump | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcPumpType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcQuantityArea | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
-| IfcQuantityCount | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcQuantityLength | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
-| IfcQuantityTime | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcQuantityVolume | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
-| IfcQuantityWeight | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcQuantityArea | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
+| IfcQuantityCount | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcQuantityLength | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
+| IfcQuantityTime | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcQuantityVolume | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
+| IfcQuantityWeight | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRadioActivityMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRailing | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/infra-bridge.ifc |
 | IfcRailingType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/infra-bridge.ifc |
@@ -1291,7 +1291,7 @@ Columns:
 | IfcRelSpaceBoundary1stLevel | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcRelSpaceBoundary2ndLevel | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcRelVoidsElement | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
-| IfcReparametrisedCompositeCurveSegment | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
+| IfcReparametrisedCompositeCurveSegment | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcRepresentationMap | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcResourceApprovalRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcResourceConstraintRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
@@ -1368,7 +1368,7 @@ Columns:
 | IfcStructuralLoadLinearForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralLoadPlanarForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralLoadSingleDisplacement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcStructuralLoadSingleDisplacementDistortion | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcStructuralLoadSingleDisplacementDistortion | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralLoadSingleForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralLoadSingleForceWarping | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralLoadTemperature | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
@@ -1453,7 +1453,7 @@ Columns:
 | IfcTorqueMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcTransformer | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcTransformerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcTransitionCurveSegment2D | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
+| IfcTransitionCurveSegment2D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
 | IfcTransportElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcTransportElementType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcTrapeziumProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
@@ -1613,9 +1613,9 @@ Columns:
 | IfcCartesianPointList2D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
 | IfcCartesianPointList3D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
 | IfcCartesianTransformationOperator2D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcCartesianTransformationOperator2DnonUniform | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcCartesianTransformationOperator2DnonUniform | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCartesianTransformationOperator3D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
-| IfcCartesianTransformationOperator3DnonUniform | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcCartesianTransformationOperator3DnonUniform | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCenterLineProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcChiller | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcChillerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -1675,9 +1675,9 @@ Columns:
 | IfcCoolingTower | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCoolingTowerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCosineSpiral | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcCostItem | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcCostSchedule | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcCostValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcCostItem | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
+| IfcCostSchedule | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
+| IfcCostValue | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcCountMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCourse | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCourseType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
@@ -1714,7 +1714,7 @@ Columns:
 | IfcDimensionalExponents | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_1485_duct_elbow_surface_curve_swept.ifc |
 | IfcDimensionCount | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDirection | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
-| IfcDirectrixDerivedReferenceSweptAreaSolid | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcDirectrixDerivedReferenceSweptAreaSolid | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcDiscreteAccessory | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDiscreteAccessoryType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDistributionBoard | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -1965,7 +1965,7 @@ Columns:
 | IfcMetric | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcMirroredProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcMobileTelecommunicationsAppliance | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcMobileTelecommunicationsApplianceType | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcMobileTelecommunicationsApplianceType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcModulusOfElasticityMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcModulusOfLinearSubgradeReactionMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcModulusOfRotationalSubgradeReactionMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -2071,13 +2071,13 @@ Columns:
 | IfcProtectiveDeviceType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcPump | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcPumpType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcQuantityArea | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcQuantityCount | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcQuantityLength | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcQuantityNumber | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcQuantityTime | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcQuantityVolume | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcQuantityWeight | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcQuantityArea | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
+| IfcQuantityCount | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
+| IfcQuantityLength | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
+| IfcQuantityNumber | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:❌ | — |
+| IfcQuantityTime | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
+| IfcQuantityVolume | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
+| IfcQuantityWeight | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcRadioActivityMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRail | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRailing | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
@@ -2153,7 +2153,7 @@ Columns:
 | IfcRelSpaceBoundary1stLevel | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelSpaceBoundary2ndLevel | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelVoidsElement | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc |
-| IfcReparametrisedCompositeCurveSegment | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcReparametrisedCompositeCurveSegment | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRepresentationMap | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
 | IfcResourceApprovalRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcResourceConstraintRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -2241,7 +2241,7 @@ Columns:
 | IfcStructuralLoadLinearForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadPlanarForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadSingleDisplacement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcStructuralLoadSingleDisplacementDistortion | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcStructuralLoadSingleDisplacementDistortion | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadSingleForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadSingleForceWarping | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadTemperature | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |

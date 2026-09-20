@@ -19,7 +19,8 @@ import assert from 'node:assert';
 
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData } from '@ifc-lite/geometry';
-import type { ModelGeoref } from './federationAlign.js';
+import type { ModelSpatialPlacement } from './federationAlign.js';
+import { spatialReferenceFromIfc } from '../../lib/geo/ifc-spatial-reference.js';
 import {
   capturePreAlignment,
   realignFederationModels,
@@ -41,22 +42,14 @@ function coordinateInfo(over?: Partial<CoordinateInfo>): CoordinateInfo {
 function georef(
   conversion: Partial<MapConversion>,
   crsName = 'EPSG:2056',
-): Omit<ModelGeoref, 'coordinateInfo'> {
+): Omit<ModelSpatialPlacement, 'coordinateInfo'> {
+  const mapConversion = {
+    id: 1, sourceCRS: 2, targetCRS: 3, eastings: 0, northings: 0,
+    orthogonalHeight: 0, xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1, ...conversion,
+  } as MapConversion;
   return {
-    mapConversion: {
-      id: 1,
-      sourceCRS: 2,
-      targetCRS: 3,
-      eastings: 0,
-      northings: 0,
-      orthogonalHeight: 0,
-      xAxisAbscissa: 1,
-      xAxisOrdinate: 0,
-      scale: 1,
-      ...conversion,
-    },
-    projectedCRS: { id: 4, name: crsName, mapUnitScale: 1 } as ProjectedCRS,
-    lengthUnitScale: 1,
+    spatialReference: spatialReferenceFromIfc({ mapConversion,
+      projectedCRS: { id: 4, name: crsName, mapUnitScale: 1 } as ProjectedCRS, lengthUnitScale: 1 }),
   };
 }
 
@@ -106,13 +99,13 @@ function boxMesh(
 
 interface TestModel extends RealignableModel {
   /** The model's own georef, minus the coordinateInfo the resolver supplies. */
-  ownGeoref: Omit<ModelGeoref, 'coordinateInfo'>;
+  ownGeoref: Omit<ModelSpatialPlacement, 'coordinateInfo'>;
 }
 
 function model(
   meshes: MeshData[],
   info: CoordinateInfo,
-  ownGeoref: Omit<ModelGeoref, 'coordinateInfo'>,
+  ownGeoref: Omit<ModelSpatialPlacement, 'coordinateInfo'>,
   instanced?: Map<number, EntityWorldAabb>,
 ): TestModel {
   const geometryResult: GeometryResult = {
@@ -131,7 +124,7 @@ function model(
  * the model's geometry carries AT THE MOMENT OF THE CALL. That last part is
  * what makes reading the anchor's frame before restoring it observable.
  */
-function resolveGeoref(_modelId: string, m: TestModel): ModelGeoref {
+function resolveGeoref(_modelId: string, m: TestModel): ModelSpatialPlacement {
   return { ...m.ownGeoref, coordinateInfo: m.geometryResult?.coordinateInfo };
 }
 

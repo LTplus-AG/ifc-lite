@@ -138,6 +138,25 @@ function validateRteSourcePoint(point: WorldPoint): void {
   for (let axis = 0; axis < 3; axis++) splitFloat64ForRte(point[axis]);
 }
 
+function packDrawableDelta(
+  origin: WorldPoint,
+  cameraWorld: WorldPoint,
+  out: Float32Array,
+  floatOffset: number,
+): void {
+  validateRteSourcePoint(origin);
+  const delta: [number, number, number] = [0, 0, 0];
+  for (let axis = 0; axis < 3; axis++) {
+    delta[axis] = origin[axis] - cameraWorld[axis];
+    if (!Number.isFinite(delta[axis]) || Math.abs(delta[axis]) > MAX_RTE_EYE_RELATIVE_METRES) {
+      throw new RangeError(
+        `RTE drawable origin exceeds the ±${MAX_RTE_EYE_RELATIVE_METRES} m camera-relative envelope on axis ${axis}.`,
+      );
+    }
+  }
+  packRteOrigin(delta, out, floatOffset);
+}
+
 /**
  * Pack an f64 world origin as two vec4<f32>s at `floatOffset`.  The empty w
  * lanes are explicitly cleared so a reused uniform scratch buffer cannot
@@ -224,6 +243,15 @@ export class RelativeToEyeFrame {
   }
 
   /**
+   * Capture immutable frame inputs before queuing asynchronous GPU work.
+   * A later camera update mutates this frame but cannot rewrite the captured
+   * camera origin or matrix used to decode that work's readback.
+   */
+  snapshot(): RelativeToEyeSnapshot {
+    return new RelativeToEyeSnapshot(this.renderEpoch, this.cameraWorld, this.viewProj);
+  }
+
+  /**
    * Pack the translation-free `viewProj`, matching `RteFrameUniform` in WGSL.
    * The camera stays CPU f64 only; each drawable supplies its already-split
    * f64 camera-relative delta through the separate per-draw uniform.
@@ -243,17 +271,7 @@ export class RelativeToEyeFrame {
   packDrawableOrigin(origin: WorldPoint, out: Float32Array, floatOffset = 0): void {
     // Validate the original source origin before subtraction: a camera at the
     // boundary could otherwise make an out-of-range drawable look harmless.
-    validateRteSourcePoint(origin);
-    const delta: [number, number, number] = [0, 0, 0];
-    for (let axis = 0; axis < 3; axis++) {
-      delta[axis] = origin[axis] - this.cameraWorld[axis];
-      if (!Number.isFinite(delta[axis]) || Math.abs(delta[axis]) > MAX_RTE_EYE_RELATIVE_METRES) {
-        throw new RangeError(
-          `RTE drawable origin exceeds the ±${MAX_RTE_EYE_RELATIVE_METRES} m camera-relative envelope on axis ${axis}.`,
-        );
-      }
-    }
-    packRteOrigin(delta, out, floatOffset);
+    packDrawableDelta(origin, this.cameraWorld, out, floatOffset);
   }
 
   /**
@@ -262,6 +280,41 @@ export class RelativeToEyeFrame {
    * callers that are not writing a GPU uniform should retain all source
    * precision.
    */
+  worldToRelative(world: WorldPoint): [number, number, number] {
+    return [
+      world[0] - this.cameraWorld[0],
+      world[1] - this.cameraWorld[1],
+      world[2] - this.cameraWorld[2],
+    ];
+  }
+}
+
+/** An immutable RTE frame captured for one render submission/readback. */
+export class RelativeToEyeSnapshot {
+  private readonly cameraWorld: readonly [number, number, number];
+  private readonly viewProj: Mat4;
+
+  constructor(
+    readonly renderEpoch: number,
+    cameraWorld: WorldPoint,
+    viewProj: Mat4,
+  ) {
+    this.cameraWorld = [...cameraWorld];
+    this.viewProj = { m: new Float32Array(viewProj.m) };
+  }
+
+  getCameraWorld(): [number, number, number] {
+    return [...this.cameraWorld];
+  }
+
+  getViewProjection(): Mat4 {
+    return { m: new Float32Array(this.viewProj.m) };
+  }
+
+  packDrawableOrigin(origin: WorldPoint, out: Float32Array, floatOffset = 0): void {
+    packDrawableDelta(origin, this.cameraWorld, out, floatOffset);
+  }
+
   worldToRelative(world: WorldPoint): [number, number, number] {
     return [
       world[0] - this.cameraWorld[0],

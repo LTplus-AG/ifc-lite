@@ -56,6 +56,26 @@ describe('relative-to-eye packing (#5049)', () => {
     camera.setPosition(5_000_001, 0, 10);
     assert.equal(first.getRenderEpoch(), epoch + 1, 'an accepted camera update advances the snapshot');
   });
+
+  it('captures immutable camera-relative inputs for asynchronous GPU readback', () => {
+    const frame = new RelativeToEyeFrame();
+    frame.update(
+      { x: 5_000_000.25, y: 0, z: 0 },
+      MathUtils.identity(),
+      MathUtils.identity(),
+    );
+    const snapshot = frame.snapshot();
+    const packed = new Float32Array(RTE_ORIGIN_FLOATS);
+    snapshot.packDrawableOrigin([5_000_000.5, 0, 0], packed);
+    frame.update(
+      { x: 5_000_100.25, y: 0, z: 0 },
+      MathUtils.identity(),
+      MathUtils.identity(),
+    );
+    assert.equal(snapshot.renderEpoch, 1);
+    assert.deepStrictEqual(snapshot.getCameraWorld(), [5_000_000.25, 0, 0]);
+    assert.equal(rteRelativePositionF32([0, 0, 0], packed)[0], 0.25);
+  });
   it('retains a centimetre-sized local vertex at a multi-million-metre offset', () => {
     const drawable = packDrawableDelta([5_000_000, -3_000_000, 2_000_000], [5_000_000, -3_000_000, 2_000_000]);
 

@@ -111,6 +111,18 @@ describe('LandXML source overlay rendering (#5042)', () => {
     );
   });
 
+  it('uses precomputed cross-CRS render points without rewriting authored LandXML coordinates (#5048)', () => {
+    const source = line('reprojected');
+    source.renderedPoints = [[101, 202, 303], [104, 205, 306]];
+    const model = landXmlModel('cross-crs', source, { x: 9_999, y: 9_999, z: 9_999 });
+    useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
+    let vertices = new Float32Array();
+    function Probe() { vertices = useLandXmlOverlayLines(); return null; }
+    render(<Probe />);
+    assert.deepEqual([...vertices], [101, 202, 303, 104, 205, 306]);
+    assert.deepEqual(source.points, [[10, 20, 30], [40, 50, 60]], 'inspection retains authored coordinates');
+  });
+
   it('does not lift a two-dimensional source list to an invented elevation', () => {
     const model = landXmlModel('two-dimensional', line('flat', 2));
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: { modelId: model.id, sourceId: 'flat' } });

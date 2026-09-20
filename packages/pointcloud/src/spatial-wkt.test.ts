@@ -19,5 +19,7 @@ describe('WKT spatial metadata (#5048)', () => {
   it('does not fabricate axes or units when WKT leaves them absent', () => {
     expect(extractWktSpatialMetadata('PROJCS["grid",AUTHORITY["EPSG","2056"]]'))
       .toEqual({ horizontalId: 'EPSG:2056' });
+    expect(extractWktSpatialMetadata('PROJCS["grid",LENGTHUNIT["foot",0.3048],AUTHORITY["EPSG","2236"]]'))
+      .toEqual({ horizontalId: 'EPSG:2236', horizontalUnitToMetres: 0.3048 });
   });
 });

@@ -91,7 +91,9 @@ export function extractWktSpatialMetadata(wkt: string): WktSpatialMetadata {
   const vertical = nodeEpsg(verticalNode);
   const axes = coordinateAxes(horizontalNode, verticalNode);
   const horizontalUnitToMetres = lengthUnitToMetres(horizontalNode);
-  const verticalUnitToMetres = lengthUnitToMetres(verticalNode ?? horizontalNode);
+  // A horizontal-only WKT says nothing about a separate height datum/unit.
+  // Do not promote its projected unit into vertical metadata by assumption.
+  const verticalUnitToMetres = lengthUnitToMetres(verticalNode);
   return {
     ...(horizontal ? { horizontalId: horizontal } : {}),
     ...(vertical ? { verticalId: vertical } : {}),

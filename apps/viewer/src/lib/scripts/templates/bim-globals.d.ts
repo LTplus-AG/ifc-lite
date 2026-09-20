@@ -586,8 +586,8 @@ declare namespace BimCost {
     Value: number;
   }
 
-  /** IfcArithmeticOperatorEnum. */
-  export type CostArithmeticOperator = 'ADD' | 'DIVIDE' | 'MULTIPLY' | 'SUBTRACT';
+  /** IfcArithmeticOperatorEnum (MODULO is accepted only when the target schema is IFC4X3). */
+  export type CostArithmeticOperator = 'ADD' | 'DIVIDE' | 'MODULO' | 'MULTIPLY' | 'SUBTRACT';
 
   /** The IfcPhysicalSimpleQuantity subtypes a cost item can take quantities from. */
   export type CostQuantityKind =

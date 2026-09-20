@@ -51,6 +51,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, 'fetch-fixtures.mjs');
+const DOWNLOAD_URL = join(HERE, 'download-url.mjs');
 const VALIDATOR = join(HERE, 'manifest-validation.mjs');
 
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
@@ -74,6 +75,7 @@ function makeRoot(opts) {
   mkdirSync(scriptDir, { recursive: true });
   mkdirSync(modelsDir, { recursive: true });
   copyFileSync(SCRIPT, join(scriptDir, 'fetch-fixtures.mjs'));
+  copyFileSync(DOWNLOAD_URL, join(scriptDir, 'download-url.mjs'));
   copyFileSync(VALIDATOR, join(scriptDir, 'manifest-validation.mjs'));
 
   // Canonical contents for every manifested fixture. The manifest records the

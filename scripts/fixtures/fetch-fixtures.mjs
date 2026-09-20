@@ -26,6 +26,7 @@ import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSyn
 import { dirname, relative, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { fixtureDownloadUrl } from './download-url.mjs';
 import { validateManifest } from './manifest-validation.mjs';
 
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -190,7 +191,7 @@ async function fetchOne(entry) {
       // mid-download stall so the retry loop can move on instead of hanging.
       // AbortError/TimeoutError isn't a 4xx, so it flows through the normal
       // (retryable) path below.
-      const res = await fetch(`${baseUrl}/${entry.sha256}`, {
+      const res = await fetch(fixtureDownloadUrl(baseUrl, entry), {
         redirect: 'follow',
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });

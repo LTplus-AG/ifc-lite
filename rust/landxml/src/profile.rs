@@ -85,6 +85,7 @@ pub enum LandXmlProfileEvaluationError {
     MissingTangentPvi,
     InvalidCurveDeclaration,
     InconsistentCircularCurve,
+    NonFiniteEvaluation,
 }
 
 impl fmt::Display for LandXmlProfileEvaluationError {
@@ -95,6 +96,7 @@ impl fmt::Display for LandXmlProfileEvaluationError {
             Self::InconsistentCircularCurve => {
                 "circular curve radius, length, and tangent grades disagree"
             }
+            Self::NonFiniteEvaluation => "vertical alignment produces a non-finite elevation",
         })
     }
 }

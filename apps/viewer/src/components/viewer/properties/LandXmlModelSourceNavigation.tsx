@@ -36,7 +36,7 @@ function sourceRecordAt(document: LandXmlTinDocument, itemIndex: number): Naviga
   if (crossSection) return { label: `Cross section ${crossSection.ordinal}`, sourceId: crossSection.sourceId, detail: `sta ${crossSection.station}` };
   index -= document.crossSections.length;
   const crossSectionSurface = document.crossSectionSurfaces[index];
-  if (crossSectionSurface) return { label: `Cross-section surface: ${crossSectionSurface.name ?? crossSectionSurface.ordinal}`, sourceId: crossSectionSurface.sourceId, detail: crossSectionSurface.kind };
+  if (crossSectionSurface) return { label: `Cross-section surface: ${crossSectionSurface.name?.trim() || crossSectionSurface.sourceId}`, sourceId: crossSectionSurface.sourceId, detail: crossSectionSurface.kind };
   index -= document.crossSectionSurfaces.length;
   const roadway = document.roadways[index];
   if (roadway) return { label: `Roadway: ${roadway.name}`, sourceId: roadway.sourceId };

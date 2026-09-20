@@ -119,55 +119,77 @@ export interface LandXmlPickFederation {
   findModelForGlobalId(globalId: number): string | null;
 }
 
-/** Resolve source data without relying on a renderer or IFC identifier. */
-export function findLandXmlSourceRecord(document: LandXmlTinDocument, sourceId: string): LandXmlSourceRecord | null {
-  const alignment = document.alignments.find((candidate) => candidate.sourceId === sourceId);
-  if (alignment) return { kind: 'alignment', alignment };
+interface LandXmlSourceRecordIndex {
+  roots: Map<string, LandXmlSourceRecord>;
+  records: Map<string, LandXmlSourceRecord>;
+  complete: boolean;
+}
+
+const sourceRecordIndexes = new WeakMap<LandXmlTinDocument, LandXmlSourceRecordIndex>();
+
+function sourceRecordIndex(document: LandXmlTinDocument): LandXmlSourceRecordIndex {
+  const existing = sourceRecordIndexes.get(document);
+  if (existing) return existing;
+  const index: LandXmlSourceRecordIndex = { roots: new Map(), records: new Map(), complete: false };
+  for (const alignment of document.alignments) index.roots.set(alignment.sourceId, { kind: 'alignment', alignment });
+  for (const profile of document.profiles) index.roots.set(profile.sourceId, { kind: 'profile', profile });
+  for (const crossSection of document.crossSections) index.roots.set(crossSection.sourceId, { kind: 'cross-section', crossSection });
+  for (const crossSectionSurface of document.crossSectionSurfaces) index.roots.set(crossSectionSurface.sourceId, { kind: 'cross-section-surface', crossSectionSurface });
+  for (const roadway of document.roadways) index.roots.set(roadway.sourceId, { kind: 'roadway', roadway });
+  for (const extension of document.preservedOnlyExtensions) index.roots.set(extension.sourceId, { kind: 'preserved-extension', extension });
+  for (const surface of document.surfaces) index.roots.set(surface.sourceId, { kind: 'surface', surface });
+  sourceRecordIndexes.set(document, index);
+  return index;
+}
+
+/** Build the bounded source-ID lookup once at ingest; later selection is O(1). */
+export function indexLandXmlSourceRecords(document: LandXmlTinDocument): void {
+  const index = sourceRecordIndex(document);
+  if (index.complete) return;
+  for (const [sourceId, record] of index.roots) index.records.set(sourceId, record);
   for (const profile of document.profiles) {
-    if (profile.sourceId === sourceId) return { kind: 'profile', profile };
-    const point = profile.pvis.find((candidate) => candidate.sourceId === sourceId);
-    if (point) return { kind: 'profile-point', profile, point };
-    const curve = profile.verticalCurves.find((candidate) => candidate.sourceId === sourceId);
-    if (curve) return { kind: 'vertical-curve', profile, curve };
+    for (const point of profile.pvis) index.records.set(point.sourceId, { kind: 'profile-point', profile, point });
+    for (const curve of profile.verticalCurves) index.records.set(curve.sourceId, { kind: 'vertical-curve', profile, curve });
     for (const gradeLine of profile.gradeLines) {
-      if (gradeLine.sourceId === sourceId) return { kind: 'grade-line', profile, gradeLine };
-      const gradePoint = gradeLine.points.find((candidate) => candidate.sourceId === sourceId);
-      if (gradePoint) return { kind: 'grade-line-point', profile, gradeLine, point: gradePoint };
+      index.records.set(gradeLine.sourceId, { kind: 'grade-line', profile, gradeLine });
+      for (const point of gradeLine.points) index.records.set(point.sourceId, { kind: 'grade-line-point', profile, gradeLine, point });
     }
   }
-  const crossSection = document.crossSections.find((candidate) => candidate.sourceId === sourceId);
-  if (crossSection) return { kind: 'cross-section', crossSection };
   for (const crossSectionSurface of document.crossSectionSurfaces) {
-    if (crossSectionSurface.sourceId === sourceId) return { kind: 'cross-section-surface', crossSectionSurface };
-    const point = crossSectionSurface.points.find((candidate) => candidate.sourceId === sourceId);
-    if (point) return { kind: 'cross-section-point', crossSectionSurface, point };
+    for (const point of crossSectionSurface.points) index.records.set(point.sourceId, { kind: 'cross-section-point', crossSectionSurface, point });
     for (const segment of crossSectionSurface.segments) {
-      if (segment.sourceId === sourceId) return { kind: 'cross-section-segment', crossSectionSurface, segment };
-      const segmentPoint = segment.points.find((candidate) => candidate.sourceId === sourceId);
-      if (segmentPoint) return { kind: 'cross-section-point', crossSectionSurface, point: segmentPoint };
+      index.records.set(segment.sourceId, { kind: 'cross-section-segment', crossSectionSurface, segment });
+      for (const point of segment.points) index.records.set(point.sourceId, { kind: 'cross-section-point', crossSectionSurface, point });
     }
   }
-  const roadway = document.roadways.find((candidate) => candidate.sourceId === sourceId);
-  if (roadway) return { kind: 'roadway', roadway };
-  const extension = document.preservedOnlyExtensions.find((candidate) => candidate.sourceId === sourceId);
-  if (extension) return { kind: 'preserved-extension', extension };
   for (const surface of document.surfaces) {
-    if (surface.sourceId === sourceId) return { kind: 'surface', surface };
-    const point = surface.points.find((candidate) => candidate.sourceId === sourceId);
-    if (point) return { kind: 'point', surface, point };
-    const sourceDataPoint = surface.sourceDataPoints.find((candidate) => candidate.sourceId === sourceId);
-    if (sourceDataPoint) return { kind: 'source-data-point', surface, point: sourceDataPoint };
-    const faceIndex = surface.faceSourceIds.indexOf(sourceId);
-    const pointIds = faceIndex >= 0 ? surface.faces[faceIndex] : undefined;
-    if (pointIds) return { kind: 'face', surface, pointIds };
+    for (const point of surface.points) index.records.set(point.sourceId, { kind: 'point', surface, point });
+    for (const point of surface.sourceDataPoints) index.records.set(point.sourceId, { kind: 'source-data-point', surface, point });
+    for (const [faceIndex, faceSourceId] of surface.faceSourceIds.entries()) {
+      const pointIds = surface.faces[faceIndex];
+      if (pointIds) index.records.set(faceSourceId, { kind: 'face', surface, pointIds });
+    }
     for (const [kind, lines] of [
       ['boundary', surface.boundaries], ['breakline', surface.breaklines], ['contour', surface.contours],
     ] as const) {
-      const line = lines.find((candidate) => candidate.sourceId === sourceId);
-      if (line) return { kind, surface, line };
+      for (const line of lines) index.records.set(line.sourceId, { kind, surface, line });
     }
   }
-  return null;
+  index.complete = true;
+}
+
+/** Release a document's index when a host explicitly discards its source model. */
+export function clearLandXmlSourceRecordIndex(document: LandXmlTinDocument): void {
+  sourceRecordIndexes.delete(document);
+}
+
+/** Resolve source data without walking retained geometry on every selection. */
+export function findLandXmlSourceRecord(document: LandXmlTinDocument, sourceId: string): LandXmlSourceRecord | null {
+  const index = sourceRecordIndex(document);
+  const root = index.roots.get(sourceId);
+  if (root) return root;
+  indexLandXmlSourceRecords(document);
+  return index.records.get(sourceId) ?? null;
 }
 
 /** Federation-safe semantic lookup. Source IDs are document-local by design. */

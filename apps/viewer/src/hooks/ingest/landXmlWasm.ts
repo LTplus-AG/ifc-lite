@@ -6,6 +6,7 @@
 
 import init, { IfcAPI } from '@ifc-lite/wasm';
 import type { LandXmlSourceBuffer } from './landXmlIngest.js';
+import { indexLandXmlSourceRecords } from './landXmlSemantics.js';
 import type {
   LandXmlAlignment, LandXmlCapabilityDiagnostic, LandXmlCrossSection, LandXmlCrossSectionPoint,
   LandXmlCrossSectionSurface, LandXmlGradeLine, LandXmlPolyline, LandXmlPreservedOnlyExtension,
@@ -234,7 +235,7 @@ export function readLandXmlTinDocument(value: unknown): LandXmlTinDocument {
     if (kind !== 'corridor' && kind !== 'string_line') throw new Error(`LandXML WASM returned an invalid preserved-only extension ${index} kind`);
     return { sourceId: string(source.source_id, `preserved-only extension ${index} source id`), parentSourceId: nullableString(source.parent_source_id, `preserved-only extension ${index} parent`), localName: string(source.local_name, `preserved-only extension ${index} local name`), sourcePath: string(source.source_path, `preserved-only extension ${index} path`), kind };
   });
-  return {
+  const document: LandXmlTinDocument = {
     format: string(raw.format, 'format') === 'landxml' ? 'landxml' : (() => { throw new Error('LandXML WASM returned an invalid format'); })(),
     schema: string(raw.schema, 'schema') === 'LandXML-1.2' ? 'LandXML-1.2' : (() => { throw new Error('LandXML WASM returned an invalid schema'); })(),
     capabilities: {
@@ -268,6 +269,8 @@ export function readLandXmlTinDocument(value: unknown): LandXmlTinDocument {
     preservedOnlyExtensions,
     rendering: { meshProvenance: [], surfaceCounts: [] },
   };
+  indexLandXmlSourceRecords(document);
+  return document;
 }
 
 /** Parse original XML bytes using an API already owned by the calling realm. */

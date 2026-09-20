@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { FederationRegistry } from '@ifc-lite/renderer';
-import { findLandXmlModelSourceRecord, landXmlPickSourceRef, landXmlPickSourceRefFromFederation, type LandXmlTinDocument } from './landXmlSemantics.js';
+import { findLandXmlModelSourceRecord, findLandXmlSourceRecord, landXmlPickSourceRef, landXmlPickSourceRefFromFederation, type LandXmlProfile, type LandXmlTinDocument } from './landXmlSemantics.js';
 
 function document(sourceId: string, meshExpressId = 1): LandXmlTinDocument {
   return {
@@ -82,5 +82,21 @@ describe('LandXML semantic selection (#5042)', () => {
       new Map([['terrain', { landXmlDocument: source }]]),
       { modelId: 'terrain', sourceId: 'landxml:profile:1:grade:1:point:1' },
     )?.kind, 'grade-line-point');
+  });
+
+  it('opens a root roadway without touching unrelated profile child collections (#5045)', () => {
+    const source = document('landxml:surface:1:face:1');
+    let childReads = 0;
+    const pvis: LandXmlProfile['pvis'] = new Proxy(
+      Array.from({ length: 100_000 }, (_, index) => ({ sourceId: `pvi-${index}`, station: index, elevation: index })),
+      { get(target, property, receiver) {
+        if (property === 'length' || (typeof property === 'string' && /^\d+$/.test(property))) childReads += 1;
+        return Reflect.get(target, property, receiver);
+      } },
+    );
+    source.profiles.push({ sourceId: 'profile', parentAlignmentSourceId: 'alignment', ordinal: 1, name: 'design', kind: 'design', pvis, verticalCurves: [], gradeLines: [] });
+    source.roadways.push({ sourceId: 'roadway', ordinal: 1, name: 'Route', alignmentRefs: [], alignmentSourceIds: [], surfaceRefs: [], surfaceSourceIds: [], gradeModelRefs: [] });
+    assert.equal(findLandXmlSourceRecord(source, 'roadway')?.kind, 'roadway');
+    assert.equal(childReads, 0, 'root selection must not scan prior profile PVIs');
   });
 });

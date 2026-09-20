@@ -1260,3 +1260,37 @@ fn issue_5045_circular_curves_use_tangent_bounds_and_reject_inconsistent_inputs(
         Err(LandXmlProfileEvaluationError::InconsistentCircularCurve),
     );
 }
+
+#[test]
+fn issue_5045_refuses_nonfinite_profile_results_and_invalid_curve_extents(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use ifc_lite_landxml::LandXmlProfileEvaluationError;
+
+    let source = |profile: &str| {
+        format!(
+            r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="A" length="100" staStart="0"><Profile><ProfAlign name="design">{profile}</ProfAlign></Profile></Alignment></Alignments></LandXML>"#,
+        )
+    };
+    let overflow = parse(source("<PVI>0 -1e308</PVI><PVI>1 1e308</PVI>").as_bytes())?;
+    assert_eq!(
+        overflow.profiles[0].evaluate_elevation_at(0.5),
+        Err(LandXmlProfileEvaluationError::NonFiniteEvaluation),
+        "finite source values must never leak an infinite elevation",
+    );
+    let overlapping = parse(source("<PVI>0 0</PVI><ParaCurve length=\"80\">40 4</ParaCurve><ParaCurve length=\"80\">60 0</ParaCurve><PVI>100 4</PVI>").as_bytes())?;
+    assert_eq!(
+        overlapping.profiles[0].evaluate_elevation_at(80.0),
+        Err(LandXmlProfileEvaluationError::InvalidCurveDeclaration),
+        "overlapping vertical-curve extents are not a continuous alignment",
+    );
+    let overlong = parse(
+        source("<PVI>0 0</PVI><ParaCurve length=\"1000\">50 5</ParaCurve><PVI>100 0</PVI>")
+            .as_bytes(),
+    )?;
+    assert_eq!(
+        overlong.profiles[0].evaluate_elevation_at(-100.0),
+        Err(LandXmlProfileEvaluationError::InvalidCurveDeclaration),
+        "curve extents must stay between their adjacent tangent PVIs",
+    );
+    Ok(())
+}

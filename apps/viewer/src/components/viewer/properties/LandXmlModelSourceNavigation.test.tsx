@@ -57,4 +57,14 @@ describe('LandXmlModelSourceNavigation (#5045)', () => {
     assert.ok([...ui.querySelectorAll('button')].some((button) => button.textContent?.includes('Profile: profile 101')));
     cleanup();
   });
+
+  it('labels an unnamed design cross-section surface with its retained source ID', () => {
+    const document = profilesOnlyDocument();
+    document.crossSectionSurfaces = [{
+      sourceId: 'section-surface', parentCrossSectionSourceId: 'section', kind: 'design', name: null, segments: [], points: [],
+    }];
+    const ui = render(<LandXmlModelSourceNavigation modelId="profiles" document={document} selected={null} onSelect={() => {}} />);
+    assert.ok([...ui.querySelectorAll('button')].some((button) => button.textContent?.includes('Cross-section surface: section-surface')));
+    cleanup();
+  });
 });

@@ -1809,6 +1809,25 @@ mod tests {
              compare and it must stay silent rather than invent one: {:?}",
             d.regressed
         );
+
+        // The mirror of the case above: the FAILED alternate pass is on the RUN
+        // side instead of the golden's. The magnitude clause is gated on
+        // `if let (Some(ga), Some(ra)) = (g.alt, r.alt)`, which is symmetric in
+        // which side is `None`, so this direction must stay just as silent —
+        // pinned separately because a pattern match failing open in one
+        // position and not the other is exactly the kind of asymmetry a single
+        // direction cannot catch.
+        let g_had_alt = HostRow { alt: Some(6), ..row("a.ifc", 1, 8, 800) };
+        let r_lost_alt = HostRow { alt: None, ..row("a.ifc", 1, 8, 800) };
+        let d = diff(&[g_had_alt], &[r_lost_alt], &swept(&["a.ifc"]));
+        assert!(
+            d.regressed.is_empty(),
+            "golden and run are both diverged already (golden via alt=6 != open=8, run via \
+             the failed pass counting as diverged in its own right) and nothing else about \
+             the row moved, so this pair is clean: the magnitude clause has no `Some` on the \
+             run side to compare against and must stay silent rather than invent one: {:?}",
+            d.regressed
+        );
     }
 
     #[test]

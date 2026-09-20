@@ -143,6 +143,7 @@ const SKIP_DIRS = new Set(['local']);
 // .ifczip: zip container fixtures (textured models ship images as siblings
 // of the .ifc inside the archive, #1781).
 const FIXTURE_EXT = /\.(ifc|ifcx|ifczip|xml|landxml)$/i;
+const LANDXML_EXT = /\.(xml|landxml)$/i;
 
 const LFS_RE = /^version https:\/\/git-lfs\.github\.com\/spec\/v1\noid sha256:([a-f0-9]{64})\nsize (\d+)\n?$/;
 
@@ -221,17 +222,17 @@ const previousEntries = new Map(
   Array.isArray(previousManifest?.files) ? previousManifest.files.map((entry) => [entry.path, entry]) : [],
 );
 
-function retainV2Provenance(entry) {
-  if (header.version !== 2) return entry;
+function retainLandXmlProvenance(entry) {
+  if (!LANDXML_EXT.test(entry.path)) return entry;
   const previous = previousEntries.get(entry.path);
-  // Regeneration is allowed to retain reviewed v2 metadata only when it still
-  // describes the exact byte sequence. A new or altered file must be reviewed
-  // and inserted into the v2 manifest first; otherwise this command could turn
-  // a deliberate rights gate into a silent public-upload candidate.
+  // LandXML metadata is reviewed per entry so the historic v1 IFC catalogue
+  // does not have to be mechanically reclassified before a new producer
+  // fixture can be accepted. Regeneration may retain it only while it still
+  // describes the exact byte sequence.
   if (!previous || previous.sha256 !== entry.sha256 || previous.size !== entry.size) {
     throw new Error(
-      `refusing to add or alter ${entry.path} in manifest v2 without reviewed provenance. ` +
-        'Add a complete v2 entry (including provenance, producer, LandXML metadata, and feature inventory) ' +
+      `refusing to add or alter ${entry.path} without reviewed LandXML provenance. ` +
+        'Add a complete reviewed entry (including provenance, producer, LandXML metadata, and feature inventory) ' +
         'to tests/models/manifest.json before regenerating.',
     );
   }
@@ -246,7 +247,7 @@ function retainV2Provenance(entry) {
 
 const out = {
   ...header,
-  files: files.map(({ source: _src, ...rest }) => retainV2Provenance(rest)),
+  files: files.map(({ source: _src, ...rest }) => retainLandXmlProvenance(rest)),
 };
 
 assertValidManifest(out);

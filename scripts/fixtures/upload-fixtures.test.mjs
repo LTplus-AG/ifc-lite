@@ -36,7 +36,7 @@ test('uploader refuses an unreviewed v2 fixture before invoking GitHub', () => {
       encoding: 'utf8',
     });
     assert.equal(result.status, 2, `${result.stdout}${result.stderr}`);
-    assert.match(`${result.stdout}${result.stderr}`, /files\[0\]\.provenance: is required/);
+    assert.match(`${result.stdout}${result.stderr}`, /files\[0\]\.provenance: is required for a reviewed LandXML fixture/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

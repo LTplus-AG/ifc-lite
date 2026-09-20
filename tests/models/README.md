@@ -12,8 +12,9 @@ records:
 - size in bytes.
 
 Manifest v1 remains the catalogue for the existing historical IFC corpus.
-Manifest v2 adds reviewed provenance for new producer fixtures; tools accept
-both versions so that a rights review cannot be bypassed by a bulk migration.
+Reviewed LandXML provenance is per entry, so a new producer fixture cannot
+bypass review by retaining the legacy root version. Manifest v2 is also
+accepted and may contain both historical IFC rows and reviewed LandXML rows.
 
 ## Quick start
 
@@ -122,10 +123,11 @@ the on-disk file matches the manifest's `sha256`, it's left alone. This means:
 `tests/models/local/` is explicitly **never** managed by the manifest — it's
 reserved for private fixtures contributors keep on their own machine.
 
-## Manifest v2: reviewed producer provenance
+## Reviewed LandXML producer provenance
 
-Use manifest v2 for a newly approved LandXML producer fixture. Each entry adds
-the following fields beside `path`, `sha256`, and `size`:
+Every LandXML entry (`.xml` or `.landxml`) must add the following fields beside
+`path`, `sha256`, and `size`. Historical non-LandXML rows may remain minimal,
+whether the root manifest is v1 or v2:
 
 - `provenance.source`: immutable commit-pinned blob URL, 40-character commit,
   source-byte SHA-256, and the fetch date;
@@ -138,14 +140,14 @@ the following fields beside `path`, `sha256`, and `size`:
 - `feature_inventory`: feature/capability pairs using `rendered`,
   `preserved-only`, `unsupported`, or `refused`.
 
-The validator requires an immutable HTTPS source URL containing the recorded
-commit. For unmodified fixtures its source SHA-256 must equal the released
-asset SHA-256. `pnpm fixtures`, `pnpm fixtures:check`, and
-`pnpm fixtures:upload` reject malformed v2 entries before downloading or
+The validator requires an immutable GitHub HTTPS blob URL whose commit path
+segment exactly equals the recorded commit. For unmodified fixtures its source
+SHA-256 must equal the released asset SHA-256. `pnpm fixtures`, `pnpm fixtures:check`, and
+`pnpm fixtures:upload` reject malformed LandXML entries before downloading or
 publishing anything.
 
-`pnpm fixtures:manifest` preserves a v2 entry's reviewed metadata only while
-its path, byte size, and SHA-256 are unchanged. To add or alter a v2 fixture,
+`pnpm fixtures:manifest` preserves a LandXML entry's reviewed metadata only while
+its path, byte size, and SHA-256 are unchanged. To add or alter a LandXML fixture,
 first add its complete reviewed entry to `manifest.json`, then regenerate and
 upload. This deliberately fails closed: regeneration must never erase
 attribution or convert an unreviewed local file into a public release asset.
@@ -155,7 +157,7 @@ attribution or convert an unreviewed local file into a public release asset.
 The following are candidate rows, not release assets yet. Their repository-root
 licenses are CC-BY-4.0 and the raw bytes below were checked at the pinned
 commits on 2026-09-20. When adding one, copy its attribution requirements into
-the v2 entry; do not substitute a branch URL or silently normalize the XML.
+the reviewed LandXML entry; do not substitute a branch URL or silently normalize the XML.
 
 | Source and coverage | Source SHA-256 | Bytes |
 | --- | --- | ---: |

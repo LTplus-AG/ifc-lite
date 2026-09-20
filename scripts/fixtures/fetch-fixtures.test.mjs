@@ -153,6 +153,15 @@ function check(root, ...paths) {
   return { status: res.status, out: `${res.stdout}${res.stderr}` };
 }
 
+function checkWithEnv(root, env, ...paths) {
+  const res = spawnSync(
+    process.execPath,
+    [join(root, 'scripts', 'fixtures', 'fetch-fixtures.mjs'), '--check', ...paths],
+    { encoding: 'utf8', env: { ...process.env, ...env } },
+  );
+  return { status: res.status, out: `${res.stdout}${res.stderr}` };
+}
+
 /** Assert non-zero exit and that every fragment appears in the output. */
 function assertRed({ status, out }, ...fragments) {
   assert.notEqual(status, 0, `expected a non-zero exit, got ${status}. Output:\n${out}`);
@@ -281,6 +290,25 @@ test('a scoped check over known paths passes', () => {
   }
 });
 
+test('a v1 IFC manifest may rely on an environment-provided base URL', () => {
+  const bytes = Buffer.from('legacy IFC fixture');
+  const path = 'legacy/wall.ifc';
+  const root = makeRoot({
+    fixtures: [],
+    onDisk: { [path]: bytes },
+    manifest: {
+      version: 1,
+      files: [{ path, sha256: sha256(bytes), size: bytes.length }],
+    },
+  });
+  try {
+    const r = checkWithEnv(root, { IFC_LITE_FIXTURE_BASE_URL: 'https://mirror.example.invalid/fixtures' });
+    assert.equal(r.status, 0, r.out);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('a complete manifest v2 with immutable provenance passes', () => {
   const path = 'landxml/road.xml';
   const bytes = Buffer.from('LandXML fixture');
@@ -303,6 +331,52 @@ test('a complete manifest v2 with immutable provenance passes', () => {
   }
 });
 
+test('a v2 manifest accepts a legacy IFC row alongside a reviewed LandXML row', () => {
+  const path = 'landxml/road.xml';
+  const landXml = Buffer.from('LandXML fixture');
+  const legacyPath = 'legacy/wall.ifc';
+  const legacy = Buffer.from('legacy IFC fixture');
+  const root = makeRoot({
+    fixtures: [],
+    onDisk: { [path]: landXml, [legacyPath]: legacy },
+    manifest: {
+      version: 2,
+      base_url: 'https://example.invalid/fixtures',
+      release_tag: 'fixtures-v2',
+      files: [
+        { path: legacyPath, sha256: sha256(legacy), size: legacy.length },
+        v2Entry(path, landXml),
+      ],
+    },
+  });
+  try {
+    const r = check(root);
+    assert.equal(r.status, 0, r.out);
+    assert.ok(r.out.includes('all 2 fixtures present and verified'), r.out);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a v1 LandXML row without reviewed provenance is rejected before fetch', () => {
+  const path = 'landxml/road.xml';
+  const bytes = Buffer.from('LandXML fixture');
+  const root = makeRoot({
+    fixtures: [],
+    onDisk: { [path]: bytes },
+    manifest: {
+      version: 1,
+      base_url: 'https://example.invalid/fixtures',
+      files: [{ path, sha256: sha256(bytes), size: bytes.length }],
+    },
+  });
+  try {
+    assertRed(check(root), 'files[0].provenance', 'reviewed LandXML fixture');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('manifest v2 refuses a mutable or incomplete provenance row before fetch', () => {
   const path = 'landxml/road.xml';
   const bytes = Buffer.from('LandXML fixture');
@@ -319,7 +393,28 @@ test('manifest v2 refuses a mutable or incomplete provenance row before fetch', 
     },
   });
   try {
-    assertRed(check(root), 'provenance.source.blob_url', 'immutable source');
+    assertRed(check(root), 'provenance.source.blob_url', 'pinned https://github.com');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('manifest provenance rejects a commit-looking query on a mutable URL', () => {
+  const path = 'landxml/road.xml';
+  const bytes = Buffer.from('LandXML fixture');
+  const entry = v2Entry(path, bytes);
+  entry.provenance.source.blob_url += '?ref=0123456789abcdef0123456789abcdef01234567';
+  const root = makeRoot({
+    fixtures: [],
+    onDisk: { [path]: bytes },
+    manifest: {
+      version: 1,
+      base_url: 'https://example.invalid/fixtures',
+      files: [entry],
+    },
+  });
+  try {
+    assertRed(check(root), 'provenance.source.blob_url', 'pinned https://github.com');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -49,7 +49,7 @@ function reviewedEntry(path, bytes) {
   };
 }
 
-function makeRoot(bytes) {
+function makeRoot(bytes, version = 2) {
   const root = mkdtempSync(join(tmpdir(), 'fixbuild-'));
   const scriptsDir = join(root, 'scripts', 'fixtures');
   const modelsDir = join(root, 'tests', 'models');
@@ -62,7 +62,7 @@ function makeRoot(bytes) {
   const entry = reviewedEntry(path, bytes);
   writeFileSync(
     join(modelsDir, 'manifest.json'),
-    JSON.stringify({ version: 2, release_tag: 'fixtures-v2', base_url: 'https://example.invalid/fixtures', files: [entry] }),
+    JSON.stringify({ version, release_tag: 'fixtures-v2', base_url: 'https://example.invalid/fixtures', files: [entry] }),
   );
   return { root, path, entry };
 }
@@ -87,11 +87,41 @@ test('v2 regeneration preserves reviewed LandXML provenance byte-for-byte', () =
   }
 });
 
+test('v1 regeneration preserves a reviewed LandXML row beside legacy fixtures', () => {
+  const bytes = Buffer.from('<LandXML version="1.2"/>\n');
+  const { root, entry } = makeRoot(bytes, 1);
+  try {
+    const result = build(root);
+    assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
+    const manifest = JSON.parse(readFileSync(join(root, 'tests', 'models', 'manifest.json'), 'utf8'));
+    assert.equal(manifest.version, 1);
+    assert.deepEqual(manifest.files, [entry]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('v2 regeneration refuses altered bytes until their provenance is reviewed', () => {
   const bytes = Buffer.from('<LandXML version="1.2"/>\n');
   const { root, path } = makeRoot(bytes);
   try {
     writeFileSync(join(root, 'tests', 'models', path), '<LandXML version="1.1"/>\n');
+    const result = build(root);
+    assert.notEqual(result.status, 0, `${result.stdout}${result.stderr}`);
+    assert.match(`${result.stdout}${result.stderr}`, /refusing to add or alter landxml\/road\.xml/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('v1 regeneration refuses a new LandXML file without reviewed provenance', () => {
+  const bytes = Buffer.from('<LandXML version="1.2"/>\n');
+  const { root } = makeRoot(bytes, 1);
+  try {
+    writeFileSync(
+      join(root, 'tests', 'models', 'manifest.json'),
+      JSON.stringify({ version: 1, base_url: 'https://example.invalid/fixtures', files: [] }),
+    );
     const result = build(root);
     assert.notEqual(result.status, 0, `${result.stdout}${result.stderr}`);
     assert.match(`${result.stdout}${result.stderr}`, /refusing to add or alter landxml\/road\.xml/);

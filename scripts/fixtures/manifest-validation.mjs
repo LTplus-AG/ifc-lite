@@ -12,6 +12,7 @@ const CAPABILITY_STATES = new Set(['rendered', 'preserved-only', 'unsupported', 
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const isText = (value) => typeof value === 'string' && value.trim().length > 0;
+const isLandXmlPath = (value) => typeof value === 'string' && /\.(xml|landxml)$/i.test(value);
 
 function invalid(errors, where, message) {
   errors.push(`${where}: ${message}`);
@@ -36,10 +37,44 @@ function requireUrl(value, where, errors) {
   }
 }
 
-function validateV2Entry(entry, index, errors) {
+/**
+ * Source fixtures accepted for the public corpus must name the exact GitHub
+ * blob they were reviewed from. Merely putting a commit-looking value in a
+ * query parameter does not make a branch URL immutable.
+ */
+function requirePinnedGitHubBlobUrl(value, commit, where, errors) {
+  requireUrl(value, where, errors);
+  if (!isText(value)) return;
+
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return;
+  }
+  const match = /^\/([^/]+)\/([^/]+)\/blob\/([a-f0-9]{40})\/(.+)$/.exec(url.pathname);
+  if (
+    url.protocol !== 'https:' ||
+    url.hostname !== 'github.com' ||
+    url.username ||
+    url.password ||
+    url.port ||
+    url.search ||
+    url.hash ||
+    !match
+  ) {
+    invalid(errors, where, 'must be a pinned https://github.com/<owner>/<repo>/blob/<40-char-commit>/<path> URL');
+    return;
+  }
+  if (!isText(commit) || match[3] !== commit) {
+    invalid(errors, where, 'commit path segment must equal provenance.source.commit (immutable source)');
+  }
+}
+
+function validateReviewedLandXmlEntry(entry, index, errors) {
   const where = `files[${index}]`;
   if (!isObject(entry.provenance)) {
-    invalid(errors, `${where}.provenance`, 'is required for manifest v2');
+    invalid(errors, `${where}.provenance`, 'is required for a reviewed LandXML fixture');
     return;
   }
   const { provenance } = entry;
@@ -47,13 +82,10 @@ function validateV2Entry(entry, index, errors) {
     invalid(errors, `${where}.provenance.source`, 'is required');
   } else {
     const source = provenance.source;
-    requireUrl(source.blob_url, `${where}.provenance.source.blob_url`, errors);
     if (!isText(source.commit) || !COMMIT_RE.test(source.commit)) {
       invalid(errors, `${where}.provenance.source.commit`, 'must be a 40-character lowercase Git commit');
     }
-    if (isText(source.blob_url) && isText(source.commit) && !source.blob_url.includes(source.commit)) {
-      invalid(errors, `${where}.provenance.source.blob_url`, 'must include provenance.source.commit (immutable source)');
-    }
+    requirePinnedGitHubBlobUrl(source.blob_url, source.commit, `${where}.provenance.source.blob_url`, errors);
     if (!isText(source.sha256) || !SHA256_RE.test(source.sha256)) {
       invalid(errors, `${where}.provenance.source.sha256`, 'must be a lowercase SHA-256');
     }
@@ -84,14 +116,14 @@ function validateV2Entry(entry, index, errors) {
     invalid(errors, `${where}.provenance.no_customer_data`, 'must be true after a provenance review');
   }
   if (!isObject(entry.producer)) {
-    invalid(errors, `${where}.producer`, 'is required for manifest v2');
+    invalid(errors, `${where}.producer`, 'is required for a reviewed LandXML fixture');
   } else {
     requireText(entry.producer.name, `${where}.producer.name`, errors);
     requireText(entry.producer.version, `${where}.producer.version`, errors);
     requireText(entry.producer.export_settings, `${where}.producer.export_settings`, errors);
   }
   if (!isObject(entry.landxml)) {
-    invalid(errors, `${where}.landxml`, 'is required for manifest v2');
+    invalid(errors, `${where}.landxml`, 'is required for a reviewed LandXML fixture');
   } else {
     for (const field of ['schema', 'namespace', 'units', 'crs']) {
       requireText(entry.landxml[field], `${where}.landxml.${field}`, errors);
@@ -127,8 +159,14 @@ export function validateManifest(manifest) {
   // v1 fetchers historically did not require a release tag when a caller
   // supplied a base URL. Retain that compatibility; v2 needs the tag as part
   // of its reproducible release provenance.
-  if (manifest.version === 2) requireText(manifest.release_tag, 'manifest.release_tag', errors);
-  requireUrl(manifest.base_url, 'manifest.base_url', errors);
+  if (manifest.version === 2) {
+    requireText(manifest.release_tag, 'manifest.release_tag', errors);
+    requireUrl(manifest.base_url, 'manifest.base_url', errors);
+  } else if (manifest.base_url !== undefined) {
+    // v1 accepted an environment-provided mirror with no catalogue base URL;
+    // retain that contract for existing IFC-only corpora.
+    requireText(manifest.base_url, 'manifest.base_url', errors);
+  }
   if (!Array.isArray(manifest.files)) {
     invalid(errors, 'manifest.files', 'must be an array');
     return errors;
@@ -146,7 +184,10 @@ export function validateManifest(manifest) {
     if (!Number.isSafeInteger(entry.size) || entry.size < 0) {
       invalid(errors, `${where}.size`, 'must be a non-negative safe integer');
     }
-    if (manifest.version === 2) validateV2Entry(entry, index, errors);
+    // The root manifest remains v1 while the historical IFC catalogue awaits
+    // its own rights review. LandXML files are reviewed per entry, so adding
+    // one cannot bypass provenance simply by retaining a v1 root header.
+    if (isLandXmlPath(entry.path)) validateReviewedLandXmlEntry(entry, index, errors);
   });
   return errors;
 }

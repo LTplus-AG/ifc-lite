@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use super::Parser;
+use super::{Code, Parser};
 use crate::{
     xml::{error, Result},
-    LandXmlCancellation, LandXmlDiagnosticCode as Code,
+    LandXmlCancellation, LandXmlCapabilityDiagnostic,
 };
 
 impl Parser<'_> {
@@ -52,6 +52,23 @@ impl Parser<'_> {
                 "character reference limit exceeded",
             ));
         }
+        Ok(())
+    }
+
+    /// Diagnostics are source output too: do not let a malformed grade line
+    /// create an unbounded allocation while reporting every missing value.
+    pub(super) fn record_capability_diagnostic(
+        &mut self,
+        diagnostic: LandXmlCapabilityDiagnostic,
+    ) -> Result<()> {
+        self.check_cancel_and_work(1)?;
+        if self.capability_diagnostics.len() >= self.limits.max_capability_diagnostics {
+            return Err(error(
+                Code::LimitExceeded,
+                "capability diagnostic limit exceeded",
+            ));
+        }
+        self.capability_diagnostics.push(diagnostic);
         Ok(())
     }
 }

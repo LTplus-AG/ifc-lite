@@ -6,6 +6,7 @@
 
 mod dispatch;
 mod finish;
+mod guards;
 mod start;
 mod values;
 
@@ -19,7 +20,7 @@ pub(super) struct AlignmentBuilder {
     pub(super) ordinal: usize,
     pub(super) name: String,
     pub(super) length: f64,
-    pub(super) station_start: f64,
+    pub(super) sta_start: f64,
     pub(super) profile_source_ids: Vec<LandXmlSourceId>,
     pub(super) cross_section_source_ids: Vec<LandXmlSourceId>,
 }

@@ -130,14 +130,11 @@ impl Parser<'_> {
             "Roadway" if self.is_path(&["LandXML", "Roadways", "Roadway"]) => {
                 self.start_roadway(attributes)
             }
-            "CoordGeom" if self.is_path(&["LandXML", "Alignments", "Alignment", "CoordGeom"]) => {
-                self.record_preserved_only(local, LandXmlPreservedOnlyExtensionKind::StringLine)
-            }
-            _ if self.frames.len() >= 2
-                && self.frames[self.frames.len() - 2].target
-                && self.frames[self.frames.len() - 2].local == "Roadway" =>
-            {
+            "Corridor" => {
                 self.record_preserved_only(local, LandXmlPreservedOnlyExtensionKind::Corridor)
+            }
+            "StringLine" => {
+                self.record_preserved_only(local, LandXmlPreservedOnlyExtensionKind::StringLine)
             }
             _ => Ok(()),
         }
@@ -194,7 +191,9 @@ impl Parser<'_> {
                 }
             }
         }
-        self.capability_diagnostics.extend(diagnostics);
+        for diagnostic in diagnostics {
+            self.record_capability_diagnostic(diagnostic)?;
+        }
         Ok(())
     }
 
@@ -245,12 +244,8 @@ impl Parser<'_> {
                 self.finish_pair_list(&text, target)?;
                 Ok(true)
             }
-            Capture::CrossSectionPoint {
-                text,
-                alignment_ref,
-                ..
-            } => {
-                self.finish_cross_section_point(&text, alignment_ref)?;
+            Capture::CrossSectionPoint { text, point, .. } => {
+                self.finish_cross_section_point(&text, point)?;
                 Ok(true)
             }
             capture => {
@@ -285,7 +280,21 @@ impl Parser<'_> {
                 source_path: self.path(),
                 kind,
             });
-        self.capability_diagnostics.push(LandXmlCapabilityDiagnostic { code: match kind { LandXmlPreservedOnlyExtensionKind::Corridor => LandXmlCapabilityDiagnosticCode::UnsupportedCorridorExtension, LandXmlPreservedOnlyExtensionKind::StringLine => LandXmlCapabilityDiagnosticCode::UnsupportedStringLineExtension }, source_id: Some(source_id), source_path: self.path(), message: format!("{local_name} is retained as source-only; no corridor/stringline geometry is generated") });
+        self.record_capability_diagnostic(LandXmlCapabilityDiagnostic {
+            code: match kind {
+                LandXmlPreservedOnlyExtensionKind::Corridor => {
+                    LandXmlCapabilityDiagnosticCode::UnsupportedCorridorExtension
+                }
+                LandXmlPreservedOnlyExtensionKind::StringLine => {
+                    LandXmlCapabilityDiagnosticCode::UnsupportedStringLineExtension
+                }
+            },
+            source_id: Some(source_id),
+            source_path: self.path(),
+            message: format!(
+                "{local_name} is retained as source-only; no corridor/stringline geometry is generated"
+            ),
+        })?;
         Ok(())
     }
 }

@@ -18,6 +18,27 @@ pub(super) fn finite_attr(attributes: &Attributes, name: &str, context: &str) ->
         })
 }
 
+pub(super) fn optional_finite_attr(
+    attributes: &Attributes,
+    name: &str,
+    context: &str,
+) -> Result<Option<f64>> {
+    attr(attributes, name)
+        .map(|value| {
+            value
+                .parse::<f64>()
+                .ok()
+                .filter(|value| value.is_finite())
+                .ok_or_else(|| {
+                    error(
+                        Code::InvalidSemantic,
+                        format!("{context} has invalid {name}"),
+                    )
+                })
+        })
+        .transpose()
+}
+
 pub(super) fn station_elevation(text: &str, context: &str) -> Result<(f64, Option<f64>)> {
     let mut values = text.split_ascii_whitespace();
     let station = finite(values.next(), context, "station/offset")?;
@@ -50,6 +71,17 @@ pub(super) fn station_elevations(text: &str, context: &str) -> Result<Vec<(f64, 
         return Err(error(Code::InvalidSemantic, format!("{context} is empty")));
     }
     Ok(result)
+}
+
+/// Count pairs before allocating their parsed representation.  The parser has
+/// historically retained a trailing missing elevation as a capability gap, so
+/// an odd coordinate count deliberately reserves the final partial pair too.
+pub(super) fn station_elevation_count(text: &str, context: &str) -> Result<usize> {
+    let values = text.split_ascii_whitespace().count();
+    if values == 0 {
+        return Err(error(Code::InvalidSemantic, format!("{context} is empty")));
+    }
+    Ok(values.div_ceil(2))
 }
 
 pub(super) fn references_attr(attributes: &Attributes, name: &str) -> Vec<String> {

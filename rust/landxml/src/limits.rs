@@ -73,6 +73,8 @@ pub struct LandXmlLimits {
     pub max_roadways: usize,
     /// Maximum bounded preserved-only corridor/stringline extension roots.
     pub max_preserved_only_extensions: usize,
+    /// Maximum capability records retained while parsing incomplete source data.
+    pub max_capability_diagnostics: usize,
     pub max_work: usize,
 }
 
@@ -100,6 +102,7 @@ impl Default for LandXmlLimits {
             max_cross_section_points: 20_000_000,
             max_roadways: 100_000,
             max_preserved_only_extensions: 1_000_000,
+            max_capability_diagnostics: 1_000_000,
             max_work: 100_000_000,
         }
     }

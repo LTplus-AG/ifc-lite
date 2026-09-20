@@ -4,9 +4,9 @@
 
 use ifc_lite_landxml::{
     classify_landxml_version, parse_landxml_tin_with_cancel, LandXmlCancellation,
-    LandXmlCancellationFlag, LandXmlCapabilityDiagnosticCode, LandXmlDiagnosticCode, LandXmlLimits,
-    LandXmlProfileKind, LandXmlVersionCapability, LandXmlVerticalCurveKind, LANDXML_10_NAMESPACE,
-    LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
+    LandXmlCancellationFlag, LandXmlCapabilityDiagnosticCode, LandXmlCrossSectionPointDataFormat,
+    LandXmlDiagnosticCode, LandXmlLimits, LandXmlProfileKind, LandXmlVersionCapability,
+    LandXmlVerticalCurveKind, LANDXML_10_NAMESPACE, LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -40,6 +40,20 @@ fn document(surface_name: &str) -> Vec<u8> {
 fn road_document() -> Vec<u8> {
     format!(
         r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="terrain"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces><Alignments><Alignment name="A" length="300" staStart="100"><CoordGeom/><Profile><ProfAlign name="design"><PVI>100 20</PVI><ParaCurve length="40">140 21</ParaCurve><CircCurve length="30" radius="250">180 23</CircCurve><UnsymParaCurve lengthIn="10" lengthOut="20">220 24</UnsymParaCurve></ProfAlign><ProfSurf name="ground"><PntList2D>100 19 150 20</PntList2D><PntList2D>200 22 250 23</PntList2D></ProfSurf><ProfSurf name="survey"><PntList2D>100 18 300 25</PntList2D></ProfSurf></Profile><CrossSects><CrossSect sta="140"><CrossSectSurf name="existing"><PntList2D>-5 19 0 20 5 19</PntList2D><PntList2D>10 18 15 17</PntList2D></CrossSectSurf><DesignCrossSectSurf name="pavement"><CrossSectPnt alignRef="A">-4 20</CrossSectPnt><CrossSectPnt>4 20.5</CrossSectPnt></DesignCrossSectSurf></CrossSect></CrossSects></Alignment></Alignments><Roadways><Roadway name="Route 1" alignmentRefs="A missing" surfaceRefs="terrain absent" gradeModelRefs="grade"/><Roadway name="Route 2" alignmentRefs="A"><Lanes/></Roadway></Roadways></LandXML>"#
+    )
+    .into_bytes()
+}
+
+fn cross_section_document(points: &str) -> Vec<u8> {
+    format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="A" length="300" staStart="100"><CoordGeom/><CrossSects><CrossSect sta="140"><DesignCrossSectSurf name="pavement">{points}</DesignCrossSectSurf></CrossSect></CrossSects></Alignment></Alignments></LandXML>"#
+    )
+    .into_bytes()
+}
+
+fn extension_document() -> Vec<u8> {
+    format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" xmlns:ext="urn:vendor" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="A" length="1" staStart="0"><CoordGeom/></Alignment></Alignments><Roadways><Roadway name="Route" alignmentRefs="A"><Lanes/><ext:Corridor/><ext:StringLine/></Roadway></Roadways></LandXML>"#
     )
     .into_bytes()
 }
@@ -699,8 +713,12 @@ fn preserves_distinct_profiles_curves_sections_and_roadway_associations(
     assert_eq!(parsed.alignments.len(), 1);
     let alignment = &parsed.alignments[0];
     assert_eq!(alignment.name, "A");
-    assert_eq!(alignment.station_start, 100.0);
-    assert_eq!(alignment.profile_source_ids.len(), 3);
+    assert_eq!(alignment.sta_start, 100.0);
+    assert_eq!(
+        alignment.profile_source_ids.len(),
+        3,
+        "multiple profiles stay attached to one alignment"
+    );
     assert_eq!(parsed.profiles.len(), 3);
     assert_eq!(parsed.profiles[0].kind, LandXmlProfileKind::Design);
     assert_eq!(parsed.profiles[1].kind, LandXmlProfileKind::Sampled);
@@ -731,8 +749,15 @@ fn preserves_distinct_profiles_curves_sections_and_roadway_associations(
         alignment.source_id
     );
     assert_eq!(parsed.cross_section_surfaces.len(), 2);
-    assert_eq!(parsed.cross_section_surfaces[0].segments.len(), 2);
-    assert_eq!(parsed.cross_section_surfaces[1].points[0].offset, -4.0);
+    assert_eq!(
+        parsed.cross_section_surfaces[0].segments.len(),
+        2,
+        "section gaps remain split"
+    );
+    assert_eq!(
+        parsed.cross_section_surfaces[1].points[0].offset,
+        Some(-4.0)
+    );
     assert_eq!(
         parsed.cross_section_surfaces[1].points[0].elevation,
         Some(20.0)
@@ -754,10 +779,17 @@ fn preserves_distinct_profiles_curves_sections_and_roadway_associations(
         .capability_diagnostics
         .iter()
         .any(|diagnostic| diagnostic.code == LandXmlCapabilityDiagnosticCode::MissingReference));
-    assert_eq!(parsed.preserved_only_extensions.len(), 2);
-    assert!(parsed.capability_diagnostics.iter().any(|diagnostic| {
-        diagnostic.code == LandXmlCapabilityDiagnosticCode::SectionDiscontinuity
-    }));
+    assert!(
+        parsed.preserved_only_extensions.is_empty(),
+        "core CoordGeom and ordinary Roadway children are not corridor/stringline extensions"
+    );
+    assert!(
+        parsed
+            .capability_diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code
+                == LandXmlCapabilityDiagnosticCode::SectionDiscontinuity)
+    );
     Ok(())
 }
 
@@ -824,10 +856,6 @@ fn applies_profile_section_and_roadway_limits_before_output_growth() {
             max_roadways: 1,
             ..LandXmlLimits::default()
         },
-        LandXmlLimits {
-            max_preserved_only_extensions: 0,
-            ..LandXmlLimits::default()
-        },
     ] {
         assert_eq!(
             parse_landxml_tin_with_cancel(&road_document(), &limits, None)
@@ -836,4 +864,155 @@ fn applies_profile_section_and_roadway_limits_before_output_growth() {
             LandXmlDiagnosticCode::LimitExceeded
         );
     }
+}
+
+#[test]
+fn issue_5045_cross_section_point_retains_slope_references_and_coordinate_precedence(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed = parse(&cross_section_document(
+        r#"<CrossSectPnt dataFormat="Slope Distance" pntRef="survey-1" alignRef="A" alignRefStation="123.5" planFeatureRef="pf-1" planFeatureRefStation="124" parcelRef="parcel-1" parcelRefStation="125">0.035 12</CrossSectPnt><CrossSectPnt pntRef="survey-only" alignRef="A" alignRefStation="126"/><CrossSectPnt pntRef="fallback">-4 20</CrossSectPnt>"#,
+    ))?;
+    let points = &parsed.cross_section_surfaces[0].points;
+    let slope = &points[0];
+    assert_eq!(
+        slope.data_format,
+        LandXmlCrossSectionPointDataFormat::SlopeDistance
+    );
+    assert_eq!(slope.slope, Some(0.035));
+    assert_eq!(slope.distance, Some(12.0));
+    assert_eq!(slope.offset, None);
+    assert_eq!(slope.align_ref_station, Some(123.5));
+    assert_eq!(
+        slope.alignment_source_id,
+        Some(parsed.alignments[0].source_id.clone())
+    );
+    assert_eq!(slope.plan_feature_ref.as_deref(), Some("pf-1"));
+    assert_eq!(slope.plan_feature_ref_station, Some(124.0));
+    assert_eq!(slope.parcel_ref.as_deref(), Some("parcel-1"));
+    assert_eq!(slope.parcel_ref_station, Some(125.0));
+
+    let reference_only = &points[1];
+    assert_eq!(reference_only.pnt_ref.as_deref(), Some("survey-only"));
+    assert_eq!(reference_only.offset, None);
+    assert_eq!(reference_only.elevation, None);
+    assert_eq!(reference_only.align_ref_station, Some(126.0));
+
+    let coordinates_win = &points[2];
+    assert_eq!(coordinates_win.pnt_ref.as_deref(), Some("fallback"));
+    assert_eq!(coordinates_win.offset, Some(-4.0));
+    assert_eq!(coordinates_win.elevation, Some(20.0));
+    assert!(parsed.capability_diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == LandXmlCapabilityDiagnosticCode::UnsupportedSlopeDistance
+    }));
+    assert!(parsed.capability_diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == LandXmlCapabilityDiagnosticCode::UnresolvedPointReference
+            && diagnostic.source_id == Some(reference_only.source_id.clone())
+    }));
+    assert!(parsed.capability_diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == LandXmlCapabilityDiagnosticCode::UnsupportedPlanFeatureReference
+    }));
+    assert!(parsed.capability_diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == LandXmlCapabilityDiagnosticCode::UnsupportedParcelReference
+    }));
+    assert!(!parsed.capability_diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == LandXmlCapabilityDiagnosticCode::MissingElevation
+            && diagnostic.source_id == Some(reference_only.source_id.clone())
+    }));
+    Ok(())
+}
+
+#[test]
+fn issue_5045_only_actual_corridor_and_stringline_extensions_are_preserved(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed = parse(&extension_document())?;
+    assert_eq!(parsed.preserved_only_extensions.len(), 2);
+    assert_eq!(
+        parsed.preserved_only_extensions[0].kind,
+        ifc_lite_landxml::LandXmlPreservedOnlyExtensionKind::Corridor
+    );
+    assert_eq!(
+        parsed.preserved_only_extensions[1].kind,
+        ifc_lite_landxml::LandXmlPreservedOnlyExtensionKind::StringLine
+    );
+    assert!(parsed
+        .preserved_only_extensions
+        .iter()
+        .all(|extension| extension.local_name != "CoordGeom" && extension.local_name != "Lanes"));
+    let limits = LandXmlLimits {
+        max_preserved_only_extensions: 0,
+        ..LandXmlLimits::default()
+    };
+    assert_eq!(
+        parse_landxml_tin_with_cancel(&extension_document(), &limits, None)
+            .unwrap_err()
+            .code,
+        LandXmlDiagnosticCode::LimitExceeded
+    );
+    Ok(())
+}
+
+#[test]
+fn issue_5045_preflights_profile_and_section_point_counts_before_point_vectors_grow() {
+    let profile = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="A" length="1" staStart="0"><Profile><ProfSurf name="ground"><PntList2D>0 0 1 1</PntList2D></ProfSurf></Profile></Alignment></Alignments></LandXML>"#
+    );
+    let profile_limits = LandXmlLimits {
+        max_profile_points: 1,
+        ..LandXmlLimits::default()
+    };
+    assert_eq!(
+        parse_landxml_tin_with_cancel(profile.as_bytes(), &profile_limits, None)
+            .unwrap_err()
+            .code,
+        LandXmlDiagnosticCode::LimitExceeded
+    );
+    let section_limits = LandXmlLimits {
+        max_cross_section_points: 1,
+        ..LandXmlLimits::default()
+    };
+    assert_eq!(
+        parse_landxml_tin_with_cancel(
+            &cross_section_document(
+                "<CrossSectPnt>0 0</CrossSectPnt><CrossSectPnt>1 1</CrossSectPnt>"
+            ),
+            &section_limits,
+            None,
+        )
+        .unwrap_err()
+        .code,
+        LandXmlDiagnosticCode::LimitExceeded
+    );
+}
+
+#[test]
+fn issue_5045_bounds_and_cancels_missing_grade_diagnostics() {
+    let source = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="A" length="1" staStart="0"><Profile><ProfSurf name="ground"><PntList2D>{}</PntList2D></ProfSurf></Profile></Alignment></Alignments></LandXML>"#,
+        "0"
+    );
+    let limits = LandXmlLimits {
+        max_capability_diagnostics: 0,
+        ..LandXmlLimits::default()
+    };
+    assert_eq!(
+        parse_landxml_tin_with_cancel(source.as_bytes(), &limits, None)
+            .unwrap_err()
+            .code,
+        LandXmlDiagnosticCode::LimitExceeded
+    );
+    let cancellable_source = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="A" length="1" staStart="0"><Profile><ProfAlign name="design">{}</ProfAlign></Profile></Alignment></Alignments></LandXML>"#,
+        "<PVI>0</PVI>".repeat(2_000)
+    );
+    let cancellation = CancelsAfterPolls::new(20);
+    assert_eq!(
+        parse_landxml_tin_with_cancel(
+            cancellable_source.as_bytes(),
+            &LandXmlLimits::default(),
+            Some(&cancellation)
+        )
+        .unwrap_err()
+        .code,
+        LandXmlDiagnosticCode::Cancelled
+    );
 }

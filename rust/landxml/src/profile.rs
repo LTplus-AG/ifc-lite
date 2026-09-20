@@ -18,7 +18,8 @@ pub struct LandXmlAlignment {
     pub ordinal: usize,
     pub name: String,
     pub length: f64,
-    pub station_start: f64,
+    /// Exact LandXML `staStart`, named to match the alignment source model.
+    pub sta_start: f64,
     pub profile_source_ids: Vec<LandXmlSourceId>,
     pub cross_section_source_ids: Vec<LandXmlSourceId>,
 }
@@ -125,15 +126,36 @@ pub struct LandXmlCrossSectionSegment {
     pub points: Vec<LandXmlCrossSectionPoint>,
 }
 
-/// A signed offset/elevation point from a cross-section source.
+/// The coordinate convention authored by a `CrossSectPnt`.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LandXmlCrossSectionPointDataFormat {
+    OffsetElevation,
+    SlopeDistance,
+}
+
+/// A cross-section point as authored, including its optional source references.
+///
+/// LandXML `PointType` permits a `pntRef` with no coordinates.  When both are
+/// present, the coordinates are authoritative (per the schema documentation)
+/// and the reference is retained as provenance rather than substituted.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LandXmlCrossSectionPoint {
     pub source_id: LandXmlSourceId,
-    pub offset: f64,
+    pub data_format: LandXmlCrossSectionPointDataFormat,
+    pub offset: Option<f64>,
     /// Missing source elevations stay observable instead of becoming zero.
     pub elevation: Option<f64>,
+    pub slope: Option<f64>,
+    pub distance: Option<f64>,
+    pub pnt_ref: Option<String>,
     pub alignment_ref: Option<String>,
+    pub align_ref_station: Option<f64>,
     pub alignment_source_id: Option<LandXmlSourceId>,
+    pub plan_feature_ref: Option<String>,
+    pub plan_feature_ref_station: Option<f64>,
+    pub parcel_ref: Option<String>,
+    pub parcel_ref_station: Option<f64>,
 }
 
 /// A roadway's named source associations; it does not claim corridor geometry.
@@ -164,6 +186,10 @@ pub struct LandXmlCapabilityDiagnostic {
 pub enum LandXmlCapabilityDiagnosticCode {
     MissingElevation,
     MissingReference,
+    UnresolvedPointReference,
+    UnsupportedPlanFeatureReference,
+    UnsupportedParcelReference,
+    UnsupportedSlopeDistance,
     SectionDiscontinuity,
     UnsupportedCorridorExtension,
     UnsupportedStringLineExtension,

@@ -42,7 +42,7 @@ pub(crate) enum Capture {
     CrossSectionPoint {
         depth: usize,
         text: String,
-        alignment_ref: Option<String>,
+        point: CrossSectionPointCapture,
     },
 }
 
@@ -51,6 +51,17 @@ pub(crate) enum PolylineCategory {
     Boundary,
     Breakline,
     Contour,
+}
+
+pub(crate) struct CrossSectionPointCapture {
+    pub(crate) data_format: crate::LandXmlCrossSectionPointDataFormat,
+    pub(crate) pnt_ref: Option<String>,
+    pub(crate) alignment_ref: Option<String>,
+    pub(crate) align_ref_station: Option<f64>,
+    pub(crate) plan_feature_ref: Option<String>,
+    pub(crate) plan_feature_ref_station: Option<f64>,
+    pub(crate) parcel_ref: Option<String>,
+    pub(crate) parcel_ref_station: Option<f64>,
 }
 
 pub(crate) struct ProfileCurveCapture {

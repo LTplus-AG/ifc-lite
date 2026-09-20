@@ -29,9 +29,9 @@ pub use parser::{
 };
 pub use profile::{
     LandXmlAlignment, LandXmlCapabilityDiagnostic, LandXmlCapabilityDiagnosticCode,
-    LandXmlCrossSection, LandXmlCrossSectionPoint, LandXmlCrossSectionSegment,
-    LandXmlCrossSectionSurface, LandXmlCrossSectionSurfaceKind, LandXmlGradeLine,
-    LandXmlPreservedOnlyExtension, LandXmlPreservedOnlyExtensionKind, LandXmlProfile,
-    LandXmlProfileKind, LandXmlProfilePoint, LandXmlRoadway, LandXmlVerticalCurve,
+    LandXmlCrossSection, LandXmlCrossSectionPoint, LandXmlCrossSectionPointDataFormat,
+    LandXmlCrossSectionSegment, LandXmlCrossSectionSurface, LandXmlCrossSectionSurfaceKind,
+    LandXmlGradeLine, LandXmlPreservedOnlyExtension, LandXmlPreservedOnlyExtensionKind,
+    LandXmlProfile, LandXmlProfileKind, LandXmlProfilePoint, LandXmlRoadway, LandXmlVerticalCurve,
     LandXmlVerticalCurveKind,
 };

@@ -3,13 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use crate::{
+    capture::CrossSectionPointCapture,
     xml::{attr, error, required, Attributes, Result},
-    LandXmlCapabilityDiagnostic, LandXmlCapabilityDiagnosticCode, LandXmlCrossSectionSurfaceKind,
-    LandXmlProfileKind, LandXmlRoadway, LandXmlSourceId, LandXmlVerticalCurveKind,
+    LandXmlCapabilityDiagnostic, LandXmlCapabilityDiagnosticCode,
+    LandXmlCrossSectionPointDataFormat, LandXmlCrossSectionSurfaceKind, LandXmlProfileKind,
+    LandXmlRoadway, LandXmlSourceId, LandXmlVerticalCurveKind,
 };
 
 use super::super::{Capture, Code, PairListTarget, Parser, ProfileCurveCapture};
-use super::values::{finite_attr, references_attr};
+use super::values::{finite_attr, optional_finite_attr, references_attr};
 use super::{AlignmentBuilder, CrossSectionBuilder, CrossSectionSurfaceBuilder, ProfileBuilder};
 
 impl Parser<'_> {
@@ -23,7 +25,7 @@ impl Parser<'_> {
             source_id: LandXmlSourceId(format!("landxml:alignment:{ordinal}:{name}")),
             ordinal,
             length: finite_attr(attributes, "length", "Alignment")?,
-            station_start: finite_attr(attributes, "staStart", "Alignment")?,
+            sta_start: finite_attr(attributes, "staStart", "Alignment")?,
             name,
             profile_source_ids: Vec::new(),
             cross_section_source_ids: Vec::new(),
@@ -178,10 +180,42 @@ impl Parser<'_> {
     }
 
     pub(super) fn start_cross_section_point(&mut self, attributes: &Attributes) -> Result<()> {
+        self.reserve_cross_section_points(1)?;
+        let data_format = match attr(attributes, "dataFormat").unwrap_or("Offset Elevation") {
+            "Offset Elevation" => LandXmlCrossSectionPointDataFormat::OffsetElevation,
+            "Slope Distance" => LandXmlCrossSectionPointDataFormat::SlopeDistance,
+            _ => {
+                return Err(error(
+                    Code::InvalidSemantic,
+                    "CrossSectPnt has unsupported dataFormat",
+                ));
+            }
+        };
         self.capture = Some(Capture::CrossSectionPoint {
             depth: self.frames.len(),
             text: String::new(),
-            alignment_ref: attr(attributes, "alignRef").map(str::to_owned),
+            point: CrossSectionPointCapture {
+                data_format,
+                pnt_ref: attr(attributes, "pntRef").map(str::to_owned),
+                alignment_ref: attr(attributes, "alignRef").map(str::to_owned),
+                align_ref_station: optional_finite_attr(
+                    attributes,
+                    "alignRefStation",
+                    "CrossSectPnt",
+                )?,
+                plan_feature_ref: attr(attributes, "planFeatureRef").map(str::to_owned),
+                plan_feature_ref_station: optional_finite_attr(
+                    attributes,
+                    "planFeatureRefStation",
+                    "CrossSectPnt",
+                )?,
+                parcel_ref: attr(attributes, "parcelRef").map(str::to_owned),
+                parcel_ref_station: optional_finite_attr(
+                    attributes,
+                    "parcelRefStation",
+                    "CrossSectPnt",
+                )?,
+            },
         });
         Ok(())
     }
@@ -195,13 +229,12 @@ impl Parser<'_> {
         let alignment_refs = references_attr(attributes, "alignmentRefs");
         let source_id = LandXmlSourceId(format!("landxml:roadway:{ordinal}:{name}"));
         if alignment_refs.is_empty() {
-            self.capability_diagnostics
-                .push(LandXmlCapabilityDiagnostic {
-                    code: LandXmlCapabilityDiagnosticCode::MissingReference,
-                    source_id: Some(source_id.clone()),
-                    source_path: "LandXML/Roadways/Roadway/@alignmentRefs".to_owned(),
-                    message: "Roadway has no alignmentRefs association".to_owned(),
-                });
+            self.record_capability_diagnostic(LandXmlCapabilityDiagnostic {
+                code: LandXmlCapabilityDiagnosticCode::MissingReference,
+                source_id: Some(source_id.clone()),
+                source_path: "LandXML/Roadways/Roadway/@alignmentRefs".to_owned(),
+                message: "Roadway has no alignmentRefs association".to_owned(),
+            })?;
         }
         self.active_roadway_source_id = Some(source_id.clone());
         self.roadways.push(LandXmlRoadway {

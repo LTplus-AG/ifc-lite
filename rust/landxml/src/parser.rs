@@ -10,11 +10,9 @@ use crate::{
         attr, attributes, character_references, error, normalize_encoding, required, split_name,
         Result,
     },
-    LandXmlAlignment, LandXmlCancellation, LandXmlCapabilities, LandXmlCapabilityDiagnostic,
-    LandXmlCrossSection, LandXmlCrossSectionSurface, LandXmlDiagnosticCode as Code,
-    LandXmlExtension, LandXmlLimits, LandXmlPoint, LandXmlPolyline, LandXmlPreservedOnlyExtension,
-    LandXmlProfile, LandXmlRenderState, LandXmlRoadway, LandXmlSourceId, LandXmlSurface,
-    LandXmlSurfaceKind, LandXmlTinDocument, LandXmlUnits,
+    LandXmlCancellation, LandXmlCapabilities, LandXmlDiagnosticCode as Code, LandXmlExtension,
+    LandXmlLimits, LandXmlPoint, LandXmlPolyline, LandXmlRenderState, LandXmlSourceId,
+    LandXmlSurface, LandXmlSurfaceKind, LandXmlTinDocument,
 };
 use quick_xml::{
     events::{BytesStart, Event},
@@ -29,45 +27,8 @@ mod state;
 mod text;
 mod version;
 
-use profiles::{AlignmentBuilder, CrossSectionBuilder, CrossSectionSurfaceBuilder, ProfileBuilder};
-use state::{retained_properties, Frame, SurfaceBuilder};
+use state::{retained_properties, Frame, Parser, SurfaceBuilder};
 pub use version::*;
-struct Parser<'a> {
-    limits: &'a LandXmlLimits,
-    cancelled: Option<&'a dyn LandXmlCancellation>,
-    work: usize,
-    character_references: usize,
-    references: usize,
-    surfaces_seen: usize,
-    points_seen: usize,
-    faces_seen: usize,
-    frames: Vec<Frame>,
-    units: Option<LandXmlUnits>,
-    surface: Option<SurfaceBuilder>,
-    capture: Option<Capture>,
-    surfaces: Vec<LandXmlSurface>,
-    extensions: Vec<LandXmlExtension>,
-    warnings: Vec<String>,
-    surface_ordinal: usize,
-    version: String,
-    root_seen: bool,
-    root_closed: bool,
-    profile_points_seen: usize,
-    vertical_curves_seen: usize,
-    cross_section_points_seen: usize,
-    alignment: Option<AlignmentBuilder>,
-    profile: Option<ProfileBuilder>,
-    cross_section: Option<CrossSectionBuilder>,
-    cross_section_surface: Option<CrossSectionSurfaceBuilder>,
-    alignments: Vec<LandXmlAlignment>,
-    profiles: Vec<LandXmlProfile>,
-    cross_sections: Vec<LandXmlCrossSection>,
-    cross_section_surfaces: Vec<LandXmlCrossSectionSurface>,
-    roadways: Vec<LandXmlRoadway>,
-    capability_diagnostics: Vec<LandXmlCapabilityDiagnostic>,
-    preserved_only_extensions: Vec<LandXmlPreservedOnlyExtension>,
-    active_roadway_source_id: Option<LandXmlSourceId>,
-}
 
 /// Parse exact LandXML 1.2 TIN semantics with default resource limits.
 pub fn parse_landxml_tin(input: &[u8]) -> Result<LandXmlTinDocument> {
@@ -258,6 +219,17 @@ impl Parser<'_> {
             namespaces: inherited,
         });
         if !target {
+            if local == "Corridor" {
+                self.record_preserved_only(
+                    local,
+                    crate::LandXmlPreservedOnlyExtensionKind::Corridor,
+                )?;
+            } else if local == "StringLine" {
+                self.record_preserved_only(
+                    local,
+                    crate::LandXmlPreservedOnlyExtensionKind::StringLine,
+                )?;
+            }
             return Ok(());
         }
         match local {

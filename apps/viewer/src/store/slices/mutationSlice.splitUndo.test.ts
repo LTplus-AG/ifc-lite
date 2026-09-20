@@ -114,6 +114,10 @@ describe('undoing a wall split (#4925)', () => {
   beforeEach(seed);
 
   it('removes both halves from the scene + geometryResult, restores the source, and redo reverses it', () => {
+    const mirroredRemovals: Array<[string, number]> = [];
+    useViewerStore.setState({
+      mirrorEntityRemove: (modelId, entityId) => { mirroredRemovals.push([modelId, entityId]); },
+    });
     const s = useViewerStore.getState();
 
     const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.25, Height: 2.8 });
@@ -166,10 +170,13 @@ describe('undoing a wall split (#4925)', () => {
     assert.deepEqual(meshedIds(), [sourceId, left.expressId, right.expressId].sort((a, b) => a - b),
       'redo #2: both halves back, source still present (its delete not yet redone)');
 
+    const removalsBeforeDeleteRedo = mirroredRemovals.length;
     useViewerStore.getState().redo(MODEL_ID);
     assertTriangleInvariant('after redo #3 (source deleted again)');
     assert.deepEqual(meshedIds(), [left.expressId, right.expressId].sort((a, b) => a - b),
       'redo #3: back to the fully-split state — source gone, both halves present');
+    assert.deepEqual(mirroredRemovals.slice(removalsBeforeDeleteRedo), [[MODEL_ID, sourceId]],
+      'redoing DELETE_ENTITY mirrors the tombstone to collaboration peers');
     assert.equal(useViewerStore.getState().canRedo(MODEL_ID), false, 'redo stack drained');
   });
 });

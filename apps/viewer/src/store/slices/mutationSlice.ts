@@ -48,6 +48,7 @@ import { toGlobalIdFromModels } from '../globalId.js';
 import { meshesForOwningModel } from '../owningModelMeshes.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
+import { createCostUndoMutations, mirrorCreateEntityRedo, mirrorSourceEntityRestore, type CostUndoMethods } from './mutation-cost-undo.js';
 import { stashAndPruneEntityMesh, restoreStashedEntityMesh, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
 import { pruneMutationHistory } from './mutation-history-prune.js';
@@ -198,7 +199,7 @@ export interface GeorefMutationData {
   mapConversion?: Partial<MapConversion>;
 }
 
-export interface MutationSlice {
+export interface MutationSlice extends CostUndoMethods {
   // State
   /** Mutation views per model */
   mutationViews: Map<string, MutablePropertyView>;
@@ -646,12 +647,8 @@ export interface MutationSlice {
     storeyExpressId: number,
     params: MemberInStoreParams
   ) => { expressId: number } | { error: string };
-  /**
-   * Auto-generate IfcSpace volumes for every enclosed area formed by
-   * the storey's walls (existing + overlay). When `dryRun: true` the
-   * detection runs but no IfcSpace is emitted — useful for live UI
-   * previews.
-   */
+  /** Auto-generate IfcSpace volumes for every enclosed area formed by the storey's walls
+   *  (existing + overlay). `dryRun: true` detects without emitting — for live UI previews. */
   generateSpacesFromWalls: (
     modelId: string,
     storeyExpressId: number,
@@ -1105,6 +1102,7 @@ export const createMutationSlice: StateCreator<
   mutationVersion: 0,
   georefMutations: new Map(),
 
+  ...createCostUndoMutations(set),
   // Georeferencing Mutations
   setGeorefField: (modelId, entity, field, value, oldValue) => {
     get().setGeorefFields(modelId, entity, [{ field, value, oldValue }]);
@@ -2800,17 +2798,18 @@ export const createMutationSlice: StateCreator<
       // The view's `deleteEntity` returns false if it's already gone, which
       // is fine for redo to re-establish.
       view.deleteEntity(mutation.entityId);
+      get().mirrorEntityRemove(modelId, mutation.entityId);
       // Also remove the created mesh from the scene + geometryResult (#4925).
       stashAndPruneEntityMesh(get, set, modelId, mutation.entityId);
     } else if (mutation.type === 'DELETE_ENTITY') {
-      // Undo of a delete: restore tombstone for source entity, OR replay
-      // the stashed NewEntity record for an overlay-only entity.
+      // Restore a source tombstone or replay an overlay-only entity.
       const stashKey = `${modelId}:${mutation.entityId}`;
       const stashed = get().removedNewEntities.get(stashKey);
       if (stashed) {
-        view.restoreNewEntity(stashed);
+        view.restoreNewEntity(stashed); mirrorCreateEntityRedo(get(), modelId, stashed, get().removedMeshes.get(stashKey)?.meshes[0] ?? null);
       } else {
         view.restoreFromTombstone(mutation.entityId);
+        mirrorSourceEntityRestore(get(), modelId, mutation.entityId, get().removedMeshes.get(stashKey)?.meshes[0] ?? null);
       }
       // Re-insert the mesh removeEntity stashed when it pruned geometryResult (#4925).
       restoreStashedEntityMesh(get, set, modelId, mutation.entityId);
@@ -2966,12 +2965,11 @@ export const createMutationSlice: StateCreator<
         );
       }
     } else if (mutation.type === 'CREATE_ENTITY') {
-      // Redo of a create: replay from the stashed NewEntity. Symmetrical to
-      // DELETE_ENTITY's undo — same map, same key.
       const stashKey = `${modelId}:${mutation.entityId}`;
       const stashed = get().removedNewEntities.get(stashKey);
       if (stashed) {
         view.restoreNewEntity(stashed);
+        mirrorCreateEntityRedo(get(), modelId, stashed, get().removedMeshes.get(stashKey)?.meshes[0] ?? null);
       } else {
         // Source-buffer entities have no stash; the editor's deleteEntity
         // call simply re-tombstoned them — which is exactly what we want
@@ -2994,6 +2992,7 @@ export const createMutationSlice: StateCreator<
         });
       }
       view.deleteEntity(mutation.entityId);
+      get().mirrorEntityRemove(modelId, mutation.entityId);
       // Drop the mesh back out, inverse of the undo handler's restore (#4925).
       stashAndPruneEntityMesh(get, set, modelId, mutation.entityId);
       // Re-hide the mesh — symmetric with the menu's delete handler

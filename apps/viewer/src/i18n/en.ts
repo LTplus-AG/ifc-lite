@@ -23,6 +23,7 @@ import { mcpEn } from './catalogues/mcp.en';
 import { mcpPlaygroundEn } from './catalogues/mcp-playground.en';
 import { measureEn } from './catalogues/measure.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
+import { relationshipCardEn } from './catalogues/relationship-card.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
 import { scheduleEn } from './catalogues/schedule.en';
 import { sectionToolEn } from './catalogues/section-tool.en';
@@ -45,6 +46,7 @@ export const en = {
   ...section2dEn,
   ...costPanelEn,
   ...ribbonToolbarEn,
+  ...relationshipCardEn,
   ...mainToolbarEn,
   ...propertyEditorEn,
   ...sharedCommandsEn,

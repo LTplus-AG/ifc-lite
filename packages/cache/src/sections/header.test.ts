@@ -77,8 +77,9 @@ describe('writeHeader', () => {
     // shadowed-rel-ids trailer (#3782); update this literal only alongside a
     // types.ts ledger entry.
     // v19 adds canonical appearance provenance and a shared source-index pool;
-    // v20 appends exact WASM RTC-frame provenance to CoordinateInfo.
-    expect(view.getUint16(4, true)).toBe(20);
+    // v20 appends exact WASM RTC-frame provenance to CoordinateInfo; v21
+    // invalidates graphs built before exact relationship coverage (#4205).
+    expect(view.getUint16(4, true)).toBe(21);
   });
 
   it('writes each section-table entry field at its documented byte offset within the 16-byte entry', () => {

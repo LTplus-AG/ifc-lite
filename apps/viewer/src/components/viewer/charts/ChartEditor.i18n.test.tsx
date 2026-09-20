@@ -22,7 +22,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import type { ChartDataset, ChartScope, ChartSource, ChartSpec } from '@ifc-lite/charts';
+import type { ChartDataset, ChartSource, ChartSpec } from '@ifc-lite/charts';
 import { render, cleanup } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { chartsEn } from '@/i18n/catalogues/charts.en';

@@ -7,6 +7,7 @@ import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'reac
 import type { PanelImperativeHandle } from 'react-resizable-panels';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n';
+import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 import { MainToolbar } from './MainToolbar';
 import { MobileToolbar } from './MobileToolbar';
 import { RibbonToolbar } from './ribbon/RibbonToolbar';
@@ -51,6 +52,11 @@ import { useBottomPanelFlags } from '@/hooks/useBottomPanelFlags';
 import { getPanelDef } from '@/lib/panels/registry';
 import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
 import { usePanelControls } from '@/hooks/usePanelControls';
+
+/** Technical query flag, not translated prose — kept as a plain constant
+ *  (like `PatternHint.tsx`'s `PATTERN_EXAMPLE`) so it can sit inside the
+ *  styled `<code>` element `styleInterpolatedValues` substitutes in below. */
+const SAFE_MODE_QUERY_FLAG = '?safe=0';
 
 export function ViewerLayout() {
   const { t } = useTranslation();
@@ -292,7 +298,11 @@ export function ViewerLayout() {
         {safeMode && (
           <div className="flex items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1 text-[11px] text-amber-700 dark:text-amber-300">
             <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
-            <span>{t('shellChrome.layout.safeModeNotice', { flag: '?safe=0' })}</span>
+            <span>
+              {styleInterpolatedValues(t, 'shellChrome.layout.safeModeNotice', [
+                ['flag', <code key="flag" className="font-mono">{SAFE_MODE_QUERY_FLAG}</code>],
+              ])}
+            </span>
           </div>
         )}
         {/* Keyboard Shortcuts Dialog */}
@@ -422,11 +432,7 @@ export function ViewerLayout() {
                 floating host and the pop-out windows render from. */}
             {!rightPanelCollapsed && (
               <MobileBottomSheet
-                title={
-                  mobileSheet.kind === 'extension' ? (activeAnalysisExtension?.label ?? t('shellChrome.layout.analysisFallback'))
-                  : mobileSheet.kind === 'addElement' ? t('shellChrome.layout.addElementLabel')
-                  : getPanelDef(mobileSheet.id)?.title ?? t('shellChrome.layout.informationFallback')
-                }
+                title={mobileSheet.kind === 'extension' ? (activeAnalysisExtension?.label ?? t('shellChrome.layout.analysisFallback')) : mobileSheet.kind === 'addElement' ? t('shellChrome.layout.addElementLabel') : getPanelDef(mobileSheet.id)?.title ?? t('shellChrome.layout.informationFallback')}
                 bottomInset={bottomViewportInset}
                 onClose={() => {
                   setRightPanelCollapsed(true);
@@ -458,10 +464,7 @@ export function ViewerLayout() {
               <div className="absolute top-4 left-4 flex flex-col gap-2.5 z-20">
                 <button
                   className="flex flex-col items-center gap-1 group touch-manipulation"
-                  onClick={() => {
-                    setRightPanelCollapsed(true);
-                    setLeftPanelCollapsed(false);
-                  }}
+                  onClick={() => { setRightPanelCollapsed(true); setLeftPanelCollapsed(false); }}
                   aria-label={t('shellChrome.layout.openHierarchyAriaLabel')}
                 >
                   <span className="grid place-items-center min-h-[44px] min-w-[44px] bg-background/90 backdrop-blur-sm border border-border rounded-md group-active:bg-foreground group-active:text-background transition-colors">
@@ -471,10 +474,7 @@ export function ViewerLayout() {
                 </button>
                 <button
                   className="flex flex-col items-center gap-1 group touch-manipulation"
-                  onClick={() => {
-                    setLeftPanelCollapsed(true);
-                    setRightPanelCollapsed(false);
-                  }}
+                  onClick={() => { setLeftPanelCollapsed(true); setRightPanelCollapsed(false); }}
                   aria-label={t('shellChrome.layout.openPropertiesAriaLabel')}
                 >
                   <span className="grid place-items-center min-h-[44px] min-w-[44px] bg-background/90 backdrop-blur-sm border border-border rounded-md group-active:bg-foreground group-active:text-background transition-colors">

@@ -323,7 +323,7 @@ fn orient_and_trim_edge_polyline(
         Some(ws) => {
             let d_first = (pts.first().unwrap() - ws).norm_squared();
             let d_last = (pts.last().unwrap() - ws).norm_squared();
-            if d_last < d_first {
+            if d_last < d_first || (d_last == d_first && !curve_forward) {
                 pts.reverse();
             }
         }

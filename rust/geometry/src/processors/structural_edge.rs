@@ -156,13 +156,9 @@ fn ribbon_mesh(points: &[Point3<f64>]) -> Mesh {
     let mut normals = Vec::with_capacity(span_count);
     for span in 0..span_count {
         let direction = points[(span + 1) % points.len()] - points[span];
-        let length = direction.norm();
-        // Exact-zero check: identical authored points subtract to bit-exact
-        // zero at every coordinate scale; genuinely tiny edges remain valid.
-        if length == 0.0 {
-            continue;
-        }
-        let direction = direction / length;
+        let Some(direction) = stable_unit_direction(direction) else {
+            return Mesh::new();
+        };
         let (right, normal) = transported_frame(direction, rights.last(), normals.last());
         rights.push(right);
         normals.push(normal);
@@ -182,6 +178,23 @@ fn ribbon_mesh(points: &[Point3<f64>]) -> Mesh {
         mesh.add_triangle(base, next + 1, next);
     }
     mesh
+}
+
+fn stable_unit_direction(direction: Vector3<f64>) -> Option<Vector3<f64>> {
+    // Scaling by the largest component before taking the norm avoids both
+    // squaring underflow for subnormal/tiny spans and overflow for huge ones.
+    // Consecutive exact duplicates were removed above, so zero is genuinely
+    // degenerate; returning None keeps the frame arrays aligned with spans.
+    let scale = direction
+        .x
+        .abs()
+        .max(direction.y.abs())
+        .max(direction.z.abs());
+    if scale == 0.0 || !scale.is_finite() {
+        return None;
+    }
+    let scaled = direction / scale;
+    Some(scaled / scaled.norm())
 }
 
 fn transported_frame(
@@ -310,64 +323,5 @@ fn resolve_vertex_point(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn face_normal(mesh: &Mesh, triangle: usize) -> Vector3<f64> {
-        let vertex = |index: u32| {
-            let base = index as usize * 3;
-            Vector3::new(
-                mesh.positions[base] as f64,
-                mesh.positions[base + 1] as f64,
-                mesh.positions[base + 2] as f64,
-            )
-        };
-        let base = triangle * 3;
-        let a = vertex(mesh.indices[base]);
-        let b = vertex(mesh.indices[base + 1]);
-        let c = vertex(mesh.indices[base + 2]);
-        (b - a).cross(&(c - a)).normalize()
-    }
-
-    #[test]
-    fn obtuse_bend_parallel_transports_one_surface_normal() {
-        let mesh = ribbon_mesh(&[
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(1.0, 0.0, 0.0),
-            Point3::new(0.0, 0.25, 0.0),
-        ]);
-
-        assert_eq!(mesh.indices.len(), 12);
-        for triangle in 0..4 {
-            assert!(
-                face_normal(&mesh, triangle).z > 1.0 - 1e-6,
-                "triangle {triangle} twisted across the obtuse bend"
-            );
-        }
-        for normal in mesh.normals.chunks_exact(3) {
-            assert!(normal[2] > 1.0 - 1e-6, "normal flipped: {normal:?}");
-        }
-    }
-
-    #[test]
-    fn closed_ribbon_reuses_the_first_pair_at_the_seam() {
-        let mesh = ribbon_mesh(&[
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(1.0, 0.0, 0.0),
-            Point3::new(1.0, 1.0, 0.0),
-            Point3::new(0.0, 1.0, 0.0),
-            Point3::new(0.0, 0.0, 0.0),
-        ]);
-
-        assert_eq!(
-            mesh.positions.len(),
-            8 * 3,
-            "the closing point must share pair 0/1"
-        );
-        assert_eq!(mesh.indices.len(), 4 * 6);
-        assert_eq!(&mesh.indices[18..], &[6, 7, 1, 6, 1, 0]);
-        for triangle in 0..8 {
-            assert!(face_normal(&mesh, triangle).z > 1.0 - 1e-6);
-        }
-    }
-}
+#[path = "structural_edge_tests.rs"]
+mod tests;

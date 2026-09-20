@@ -8,6 +8,11 @@
 //! the weld takes its whole group back to the sequential loop.
 
 use super::*;
+
+/// rvt01 #10191 replay; declared here so the production module list stays
+/// untouched and the revert oracle can remove only the behavioural hunk.
+#[path = "rvt01_10191_tests.rs"]
+mod rvt01_10191;
 use crate::csg::take_csg_census;
 
 /// A through-Y box opening `[min, max]` subdivided `levels` times, so each

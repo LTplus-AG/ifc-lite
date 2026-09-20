@@ -9,6 +9,7 @@ import { messageOf } from '@/lib/load-errors';
 import { Button } from '@/components/ui/button';
 import { capturedScreenRegion } from './capture-screen-region';
 import { NO_MARKERS, PreviewMarkers, useLocalPreviewRenderer, type PreviewMarker } from './local-preview-renderer';
+import { useTranslation } from '@/i18n';
 
 const NO_PARTS: readonly MeshData[] = [];
 /** How a region gesture was made, so a face-selection host can add, remove or toggle (#4404). */
@@ -29,6 +30,7 @@ export function AppearanceMeshPreview({ mesh, assetId, additionalMeshes = NO_PAR
   /** Face-selection mode: the whole surface stays visible, select mode is sticky, a click toggles one triangle. */
   faceSelection?: FaceSelectionMode;
 }) {
+  const { t } = useTranslation();
   const bitmap = useRef<ImageBitmap | null>(null);
   /** The image lease for the current scene; released whenever that scene's view is discarded. */
   const owner = useRef<{ kind: 'draft'; id: string } | null>(null);
@@ -90,12 +92,12 @@ export function AppearanceMeshPreview({ mesh, assetId, additionalMeshes = NO_PAR
   }
   useEffect(() => { draw(); }, [triangles, selecting, faceSelection]);
   return <div className="space-y-2">
-    {preview.failed && <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={preview.reload}>Reload preview</Button>}
+    {preview.failed && <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={preview.reload}>{t('appearance.meshPreview.reload')}</Button>}
     {regionControls && <div className="flex gap-2"><Button type="button" size="sm" variant={selecting ? 'secondary' : 'outline'} aria-pressed={selecting}
-      disabled={disabled} onClick={() => { setSelecting(value => !value); setBox(null); }}>{faceSelection ? 'Pick faces' : 'Select region'}</Button>
-      <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => onRegion(Array.from({ length: mesh.indices.length / 3 }, (_, i) => i), { kind: 'marquee', subtract: false })}>{faceSelection ? 'All faces' : 'Entire surface'}</Button></div>}
+      disabled={disabled} onClick={() => { setSelecting(value => !value); setBox(null); }}>{faceSelection ? t('appearance.meshPreview.pickFaces') : t('appearance.meshPreview.selectRegion')}</Button>
+      <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => onRegion(Array.from({ length: mesh.indices.length / 3 }, (_, i) => i), { kind: 'marquee', subtract: false })}>{faceSelection ? t('appearance.meshPreview.allFaces') : t('appearance.meshPreview.entireSurface')}</Button></div>}
     <div className="relative overflow-hidden rounded border">
-      <canvas ref={preview.canvas} aria-label={canvasLabel ?? 'Captured surface preview'} className="h-64 w-full touch-none" onContextMenu={event => event.preventDefault()}
+      <canvas ref={preview.canvas} aria-label={canvasLabel ?? t('appearance.meshPreview.canvasAriaLabel')} className="h-64 w-full touch-none" onContextMenu={event => event.preventDefault()}
         onPointerDown={preview.beginGesture}
         onPointerMove={event => {
           const live = preview.currentGesture(event); if (!live) return;
@@ -121,7 +123,7 @@ export function AppearanceMeshPreview({ mesh, assetId, additionalMeshes = NO_PAR
       {box && <div className="pointer-events-none absolute border border-primary bg-primary/15" style={{ left: box.x, top: box.y, width: box.width, height: box.height }} />}
     </div>
     <p className="text-[11px] text-muted-foreground">{instruction ?? (faceSelection
-      ? (selecting ? 'Drag a rectangle to add whole faces by their centres, or click one face to toggle it. Hold Alt to remove.' : 'Drag to orbit. Scroll to zoom. Turn on Pick faces to restrict the image to part of this surface.')
-      : (selecting ? 'Drag a rectangle. Whole triangles are selected by their centres, through the surface.' : 'Drag to orbit. Scroll to zoom. Select region to keep part of this surface.'))}</p>
+      ? (selecting ? t('appearance.meshPreview.instructionFaceSelecting') : t('appearance.meshPreview.instructionFaceIdle'))
+      : (selecting ? t('appearance.meshPreview.instructionRegionSelecting') : t('appearance.meshPreview.instructionRegionIdle')))}</p>
   </div>;
 }

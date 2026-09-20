@@ -6,6 +6,9 @@ import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-l
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { addElementEn } from './catalogues/add-element.en';
 import { chartsEn } from './catalogues/charts.en';
+import { appearancePanelEn } from './catalogues/appearance-panel.en';
+import { appearancePickersEn } from './catalogues/appearance-pickers.en';
+import { appearanceWorkflowsEn } from './catalogues/appearance-workflows.en';
 import { clashGroupsEn } from './catalogues/clash-groups.en';
 import { bulkPropertyEditorEn } from './catalogues/bulk-property-editor.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
@@ -75,6 +78,9 @@ export const en = {
   ...hierarchyEn,
   ...propertiesEn,
   ...structuralPropertiesEn,
+  ...appearancePanelEn,
+  ...appearancePickersEn,
+  ...appearanceWorkflowsEn,
   ...compareKeyPropertyEn,
   ...extensionsFlavorsEn,
   ...extensionsPanelsEn,

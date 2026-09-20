@@ -17,6 +17,7 @@ import { focusedClashOrbitPivot, sceneAnchorOrbitPivot } from './orbitPivot.js';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
+import { resolve as translate } from '@/i18n/registry';
 
 /** Locked gesture mode for 2-finger interactions */
 type TwoFingerGesture = 'none' | 'pinch' | 'pan';
@@ -284,7 +285,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
             const message = viewportFacePickError(pickViewportAppearanceFace(
               renderer.raycastScene(x, y, getPickOptions())?.intersection ?? null,
             ));
-            if (message) toast.error(message);
+            if (message) toast.error(translate(message));
           } else if (tool === 'select') {
             markTouchSelection(canvas, x, y);
             await selectViewportTarget({ canvas, renderer, x, y, getTool: () => activeToolRef.current,

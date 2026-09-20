@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { Intersection } from '@ifc-lite/renderer';
+import type { TranslationKey } from '@/i18n';
 
 export interface ViewportFacePickTarget {
   globalId: number;
@@ -41,10 +42,10 @@ export function pickViewportAppearanceFace(hit: Intersection | null): ViewportFa
   return 'picked';
 }
 
-export function viewportFacePickError(result: ViewportFacePickResult): string | undefined {
-  if (result === 'miss') return 'No visible surface under the pointer.';
-  if (result === 'different-surface') return 'Pick a face on the object open in the face editor.';
-  if (result === 'ambiguous') return 'This rendered face has no exact source identity. Reload the model and try again.';
-  if (result === 'busy') return 'Wait for the current appearance preview to finish.';
+export function viewportFacePickError(result: ViewportFacePickResult): TranslationKey | undefined {
+  if (result === 'miss') return 'appearance.facePicker.error.miss';
+  if (result === 'different-surface') return 'appearance.facePicker.error.differentSurface';
+  if (result === 'ambiguous') return 'appearance.facePicker.error.ambiguous';
+  if (result === 'busy') return 'appearance.facePicker.error.busy';
   return undefined;
 }

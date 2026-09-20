@@ -7,11 +7,12 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { render, cleanup } from '@/test/render';
+import { registerLocale, setLocale } from '@/i18n';
 import { fixtureModel } from '@/test/store-fixture';
 import { emptyPlacementState } from '@/lib/model-placement/state';
 import { AppearanceCapturePanel } from './AppearanceCapturePanel';
 import type { MeshData } from '@ifc-lite/geometry';
-afterEach(cleanup);
+afterEach(() => { cleanup(); setLocale('en'); });
 test('removing the pinned captured surface never silently substitutes another loaded object (#4380)', () => {
   const mesh: MeshData = {expressId:1,positions:new Float32Array([0,0,0,1,0,0,0,1,0]),normals:new Float32Array(9),indices:new Uint32Array([0,1,2]),uvs:new Float32Array([0,0,1,0,0,1]),color:[1,1,1,1],textureRef:{textureId:1,url:'missing.png',repeatS:false,repeatT:false}};
   const bounds={min:{x:0,y:0,z:0},max:{x:1,y:1,z:0}};
@@ -38,4 +39,29 @@ test('capture panel exposes source upload and blank destination actions in the f
   assert.equal(ui.querySelector<HTMLInputElement>('input[aria-label="Add scan files"]')?.accept,
     '.glb,.gltf,.bin,.png,.jpg,.jpeg,.ifc,.ifczip');
   assert.match(ui.textContent ?? '', /glTF bundle/);
+});
+
+test('over-limit triangle count follows a live active-locale switch (#4918)', () => {
+  const mesh: MeshData = {
+    expressId: 1,
+    positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+    normals: new Float32Array(9),
+    indices: new Uint32Array((200_000 + 1) * 3),
+    uvs: new Float32Array([0, 0, 1, 0, 0, 1]),
+    color: [1, 1, 1, 1],
+    textureRef: { textureId: 1, url: 'missing.png', repeatS: false, repeatT: false },
+  };
+  const bounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } };
+  const model = {
+    ...fixtureModel('large'),
+    geometryResult: { meshes: [mesh], totalTriangles: 200_001, totalVertices: 3,
+      coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false } },
+  };
+  useViewerStore.setState({ models: new Map([['large', model]]), selectedEntityId: 1,
+    activeModelId: 'large', modelPlacement: emptyPlacementState(), collabRoomId: null, mutationViews: new Map() });
+  registerLocale('ar-EG-x-capture-count', {});
+  const ui = render(<AppearanceCapturePanel />);
+  assert.match(ui.textContent ?? '', /200,001 triangles/);
+  act(() => setLocale('ar-EG-x-capture-count'));
+  assert.match(ui.textContent ?? '', new RegExp(`${new Intl.NumberFormat('ar-EG-x-capture-count').format(200_001)} triangles`));
 });

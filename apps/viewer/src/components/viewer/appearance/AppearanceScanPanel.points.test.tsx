@@ -24,9 +24,10 @@ import type { AppearanceWorkerRequest } from '@/lib/appearance/planner-types';
 import type { ScanCorrespondence, ScanRegistrationRequest } from '@/lib/appearance/scan/types';
 import type { MeshTransferRequest } from '@/lib/appearance/scan/transfer-types';
 import { AppearanceScanPanel } from './AppearanceScanPanel';
+import { registerLocale, setLocale } from '@/i18n';
 
 const initial = useViewerStore.getState();
-afterEach(() => { cleanup(); mock.restoreAll(); clearAllPointCloudScanCaches(); useViewerStore.setState(initial); });
+afterEach(() => { cleanup(); mock.restoreAll(); clearAllPointCloudScanCaches(); useViewerStore.setState(initial); setLocale('en'); });
 const HANDLE = 41;
 
 /** A streamed point cloud as the ingest leaves it: a finished reservoir keyed by
@@ -157,10 +158,14 @@ test('the workbench lists the point cloud and mounts the point preview through t
   mock.method(Renderer.prototype, 'endPointCloudStream', () => { stream.ended++; });
   mock.method(Renderer.prototype, 'fitToView', () => {});
   mock.method(Renderer.prototype, 'render', () => {});
+  registerLocale('scan-options-test', {
+    'appearance.scan.pointCloudSource': 'PSEUDO {model}: {retained}/{seen}',
+  });
+  setLocale('scan-options-test');
   const ui = render(<AppearanceScanPanel />);
   const select = ui.querySelector('select')!;
   assert.equal(select.value, 'scan:points');
-  assert.match(select.options[1].textContent!, /Point cloud \(8 of 8 points retained\)/);
+  assert.equal(select.options[1].textContent, 'PSEUDO scan: 8/8');
   for (let i = 0; i < 100 && !ui.querySelector('canvas'); i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
   const canvas = ui.querySelector('canvas');
   assert.ok(canvas, 'point preview mounted');

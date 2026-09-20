@@ -205,6 +205,21 @@ export type ScalarValue = string | number | boolean | null;
  * Not `MutablePropertyView.removeAttributeMutation`: that discards the
  * pending edit and falls back to the room model's last full-reconstruct
  * value, a stale PRIOR value, not "absent".
+ *
+ * Refuses a write to a locally tombstoned entity, mirroring the inbound
+ * create path's own `!view.isDeleted(currentOwner)` guard
+ * (`remote-entity-create.ts`). Without this, `setPositionalAttribute` records
+ * the write in `positionalAttrMutations` and `mutationHistory` regardless of
+ * tombstone state — `effective-changes.ts` filters it out of the derived
+ * change list at read time via `snapshot.tombstones.has(c.entityId)`, but
+ * that is a read-time suppression, not a purge. The record survives, so
+ * `restoreFromTombstone` (undo of the local delete) makes it effective again:
+ * undoing a delete would resurrect the entity carrying a peer's value in a
+ * slot the local user never edited. `setPositionalAttribute` itself is not
+ * the right place for this check — `StoreEditor`/authoring paths and
+ * undo/redo replay of `UPDATE_POSITIONAL_ATTRIBUTE` mutations
+ * (`mutationSlice.ts`) call it unconditionally and do not expect a tombstone
+ * to block them.
  */
 export function applyRemoteAttribute(
   view: MutablePropertyView,
@@ -213,6 +228,7 @@ export function applyRemoteAttribute(
   attrName: string,
   value: unknown,
 ): string | null {
+  if (view.isDeleted(entityId)) return `entity ${entityId} is locally deleted`;
   const plainName = attrName.startsWith('bsi::ifc::prop::')
     ? attrName.slice('bsi::ifc::prop::'.length)
     : attrName;

@@ -19,8 +19,10 @@ import { ChevronsUpDown, SquareStack, X } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { useFloorplanView } from '@/hooks/useFloorplanView';
+import { useTranslation } from '@/i18n';
 
 export function LevelDisplayIndicator() {
+  const { t } = useTranslation();
   const mode = useViewerStore((s) => s.levelDisplayMode);
   const explodedGap = useViewerStore((s) => s.explodedGap);
   const activeStorey = useViewerStore((s) => s.activeStorey);
@@ -34,8 +36,8 @@ export function LevelDisplayIndicator() {
     : undefined;
   const label =
     mode === 'exploded'
-      ? `Exploded · ${explodedGap} m gap`
-      : `Solo · ${soloName ?? 'storey'}`;
+      ? t('levelDisplayIndicator.explodedLabel', { gap: explodedGap })
+      : t('levelDisplayIndicator.soloLabel', { name: soloName ?? t('levelDisplayIndicator.storeyFallback') });
 
   return (
     <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 rounded-md border border-purple-300/60 bg-background/90 px-2 py-1 text-xs font-medium text-foreground shadow-sm backdrop-blur dark:border-purple-500/40">
@@ -44,8 +46,8 @@ export function LevelDisplayIndicator() {
       <button
         type="button"
         onClick={() => applyLevelDisplayMode('stacked')}
-        title="Back to stacked"
-        aria-label="Back to stacked view"
+        title={t('levelDisplayIndicator.backToStackedTitle')}
+        aria-label={t('levelDisplayIndicator.backToStackedAriaLabel')}
         className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
       >
         <X className="h-3 w-3" />

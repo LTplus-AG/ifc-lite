@@ -40,6 +40,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import type { CollabRole } from '@/store/slices/collabSlice';
 import { buildShareUrl, mintRoomId, mintRoomToken, parseRoleFromToken } from '@/lib/collab/share-link';
 import { describeSeedPhase, isCollabSeedInFlight } from '@/lib/collab/seed-phase';
@@ -51,13 +52,14 @@ interface ShareDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const ROLE_OPTIONS: ReadonlyArray<{ role: CollabRole; label: string; hint: string }> = [
-  { role: 'viewer', label: 'View', hint: 'See the model, cursors, and comments' },
-  { role: 'commenter', label: 'Comment', hint: 'Also add issues and markups' },
-  { role: 'editor', label: 'Edit', hint: 'Also change properties and geometry' },
+const ROLE_OPTIONS: ReadonlyArray<{ role: CollabRole; labelKey: TranslationKey; hintKey: TranslationKey }> = [
+  { role: 'viewer', labelKey: 'shareDialog.role.viewer.label', hintKey: 'shareDialog.role.viewer.hint' },
+  { role: 'commenter', labelKey: 'shareDialog.role.commenter.label', hintKey: 'shareDialog.role.commenter.hint' },
+  { role: 'editor', labelKey: 'shareDialog.role.editor.label', hintKey: 'shareDialog.role.editor.hint' },
 ];
 
 export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
+  const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const collabRoomId = useViewerStore((s) => s.collabRoomId);
@@ -133,7 +135,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   // Once the room exists its contents are what the seed put there: show that
   // count, not the radio's current value.
   const sharedModelCount = collabRoomId ? collabRoomModels.size : scope === 'all' ? seedableCount : 1;
-  const title = scopeIsChoice && sharedModelCount > 1 ? `Share ${sharedModelCount} models` : `Share “${modelName}”`;
+  const title = scopeIsChoice && sharedModelCount > 1 ? t('shareDialog.titleMulti', { count: sharedModelCount }) : t('shareDialog.titleSingle', { model: modelName });
 
   // 1. Ensure a room: the creator mints an admin token (first-touch) and joins
   // with it, seeding the model, so it's authorized to mint role-scoped share
@@ -175,12 +177,12 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
         // attempt ref blocks a retry until it is re-opened — so say exactly
         // that instead of sitting on "Creating room…" forever.
         if (useViewerStore.getState().collabRoomId !== roomId) {
-          setNotice('No room was created. Close and reopen this dialog to try again.');
+          setNotice(t('shareDialog.roomCreationFailed'));
         }
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error('[collab] room creation failed:', err);
-        setNotice('Link creation failed. Check the connection and try again.');
+        setNotice(t('shareDialog.linkCreationFailed'));
       } finally {
         setCreating(false);
       }
@@ -200,10 +202,10 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
       if (fallback) {
         setLink(fallback.url);
         if (fallback.role) setRole(fallback.role);
-        setNotice('You joined via an invite - sharing it forwards the same access. Only the room admin can mint new links.');
+        setNotice(t('shareDialog.joinedViaInvite'));
       } else {
         setLink('');
-        setNotice('Only the room admin can create invite links for this room.');
+        setNotice(t('shareDialog.onlyAdminCanCreate'));
       }
       return;
     }
@@ -230,10 +232,10 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
         if (!cancelled) {
           if (fallback) {
             setLink(fallback.url);
-            setNotice('Could not mint a fresh link - reusing your current invite (same access).');
+            setNotice(t('shareDialog.mintFailedReusing'));
           } else {
             setLink('');
-            setNotice('Link creation failed. Check the connection and try again.');
+            setNotice(t('shareDialog.linkCreationFailed'));
           }
         }
       } finally {
@@ -263,12 +265,12 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   const waiting = awaitingScope || (creating && !collabRoomId) || seedInFlight || minting;
   const seedLabel = describeSeedPhase(seedPhase, seedProgress);
   const linkFieldText = awaitingScope
-    ? 'Choose what to share, then create the link'
+    ? t('shareDialog.linkField.awaitingScope')
     : seedInFlight
-      ? 'Link is ready once the upload finishes…'
+      ? t('shareDialog.linkField.seedInFlight')
       : creating && !collabRoomId
-        ? 'Creating room…'
-        : 'Generating link…';
+        ? t('shareDialog.linkField.creatingRoom')
+        : t('shareDialog.linkField.generating');
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -279,13 +281,13 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
             {title}
           </DialogTitle>
           <DialogDescription>
-            Anyone with the link can join — no account needed.
+            {t('shareDialog.description')}
           </DialogDescription>
         </DialogHeader>
 
         {!hasModel ? (
           <p className="text-sm text-muted-foreground">
-            Load a model first, then share it.
+            {t('shareDialog.loadModelFirst')}
           </p>
         ) : (
           <div className="flex flex-col gap-4">
@@ -302,8 +304,8 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
               />
             )}
             <div className="flex flex-col gap-2">
-              <Label>Anyone with the link can</Label>
-              <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Access level">
+              <Label>{t('shareDialog.anyoneCanLabel')}</Label>
+              <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label={t('shareDialog.accessLevelAriaLabel')}>
                 {ROLE_OPTIONS.map((opt) => (
                   <Button
                     key={opt.role}
@@ -317,18 +319,16 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
                     disabled={isJoiner}
                     onClick={() => setRole(opt.role)}
                   >
-                    {opt.label}
+                    {t(opt.labelKey)}
                   </Button>
                 ))}
               </div>
-              <p className="text-xs text-muted-foreground">
-                {ROLE_OPTIONS.find((o) => o.role === role)?.hint}
-              </p>
+              <p className="text-xs text-muted-foreground">{t(ROLE_OPTIONS.find((o) => o.role === role)?.hintKey ?? 'shareDialog.role.viewer.hint')}</p>
             </div>
 
             <div className="flex items-end gap-2">
               <div className="flex flex-1 flex-col gap-1">
-                <Label htmlFor="share-link">Link</Label>
+                <Label htmlFor="share-link">{t('shareDialog.linkLabel')}</Label>
                 <Input
                   id="share-link"
                   readOnly
@@ -338,7 +338,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
               </div>
               <Button type="button" onClick={handleCopy} disabled={waiting || !link} className="gap-1.5">
                 {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-                {copied ? 'Copied' : 'Copy'}
+                {copied ? t('shareDialog.copied') : t('shareDialog.copy')}
               </Button>
             </div>
             {seedInFlight && seedLabel && (
@@ -360,10 +360,10 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
 
             <div className="flex flex-col gap-1.5">
               <Label className="flex items-center gap-1.5">
-                <Users className="size-3.5" /> Live now
+                <Users className="size-3.5" /> {t('shareDialog.liveNow')}
               </Label>
               <div className="flex flex-wrap items-center gap-2">
-                <PeerChip color={collabIdentity.color} name={`${collabIdentity.name} (you)`} />
+                <PeerChip color={collabIdentity.color} name={t('shareDialog.youSuffix', { name: collabIdentity.name })} />
                 {collabPeers
                   // A peer's awareness state can arrive before its `user` is
                   // populated (the identity patch flushes async). Skip those
@@ -374,14 +374,14 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
                     <PeerChip
                       key={peer.user.id}
                       color={peer.user.color ?? '#888'}
-                      name={peer.user.name ?? 'Guest'}
+                      name={peer.user.name ?? t('shareDialog.guestName')}
                     />
                   ))}
               </div>
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Link expires in 7 days. Anyone with it gets <strong>{role}</strong> access.
+              {t('shareDialog.linkExpiryNotice', { role: t(ROLE_OPTIONS.find((o) => o.role === role)?.labelKey ?? 'shareDialog.role.viewer.label') })}
             </p>
           </div>
         )}

@@ -18,6 +18,7 @@
 import { useMemo } from 'react';
 import { lasClassificationName } from '@ifc-lite/pointcloud';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import {
   ALL_POINT_CLOUD_CLASSES_VISIBLE,
   isPointCloudClassVisible,
@@ -49,6 +50,7 @@ const CLASS_COLORS: ReadonlyMap<number, [number, number, number]> = new Map([
 const DEFAULT_CLASS_COLOR: [number, number, number] = [0.65, 0.65, 0.65];
 
 export function PointCloudClasses() {
+  const { t } = useTranslation();
   const mask = useViewerStore((s) => s.pointCloudClassMask);
   const countsByAsset = useViewerStore((s) => s.pointCloudClassCounts);
   const toggle = useViewerStore((s) => s.togglePointCloudClass);
@@ -79,13 +81,13 @@ export function PointCloudClasses() {
   return (
     <details className="flex flex-col gap-0.5">
       <summary className="text-[9px] uppercase text-muted-foreground tracking-wider cursor-pointer select-none">
-        Classes {!allOn && (
-          <span className="text-[9px] normal-case text-amber-500"> · {visibleCount} of {present.length} visible</span>
+        {t('pointCloudClasses.summaryLabel')} {!allOn && (
+          <span className="text-[9px] normal-case text-amber-500"> · {t('pointCloudClasses.visibleCount', { visible: visibleCount, total: present.length })}</span>
         )}
       </summary>
       {present.length === 0 ? (
         <span className="text-[10px] text-muted-foreground px-1 py-0.5 leading-tight">
-          No classification data in the loaded scans.
+          {t('pointCloudClasses.emptyState')}
         </span>
       ) : (
         <div className="flex flex-col gap-0.5 mt-1 max-h-40 overflow-y-auto pr-1">
@@ -95,7 +97,7 @@ export function PointCloudClasses() {
               onClick={() => setMask([...ALL_POINT_CLOUD_CLASSES_VISIBLE])}
               className="text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted px-1 py-0.5 rounded text-left"
             >
-              Show all
+              {t('pointCloudClasses.showAll')}
             </button>
           )}
           {present.map(({ classId, count }) => {
@@ -111,7 +113,7 @@ export function PointCloudClasses() {
                   checked={visible}
                   onChange={() => toggle(classId)}
                   className="accent-teal-600"
-                  aria-label={`Toggle ${label} (class ${classId})`}
+                  aria-label={t('pointCloudClasses.toggleAriaLabel', { label, classId })}
                 />
                 <span
                   className="inline-block h-3 w-3 rounded-sm shrink-0 border border-foreground/10"

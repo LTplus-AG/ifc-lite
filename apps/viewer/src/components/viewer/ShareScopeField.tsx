@@ -16,6 +16,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { useTranslation } from '@/i18n';
 import type { ShareScope } from '@/lib/collab/share-scope';
 
 interface ShareScopeFieldProps {
@@ -48,22 +49,23 @@ export function ShareScopeField({
   activeModelName,
   roomModelCount,
 }: ShareScopeFieldProps) {
+  const { t } = useTranslation();
   const partial = seedableCount !== loadedCount;
   const allLabel = partial
-    ? `All ${seedableCount} of ${loadedCount} loaded models`
-    : `All ${loadedCount} loaded models`;
+    ? t('shareScopeField.allPartial', { seedable: seedableCount, loaded: loadedCount })
+    : t('shareScopeField.allFull', { loaded: loadedCount });
   const caption =
     roomModelCount !== null
-      ? `This room carries ${roomModelCount} model${roomModelCount === 1 ? '' : 's'}.`
+      ? t('shareScopeField.roomCarries', { count: roomModelCount })
       : scope === 'all'
         ? partial
-          ? `${seedableCount} of ${loadedCount} loaded models can be shared, each as its own model; a GLB, a point cloud or a model still loading has nothing to put in a room.`
-          : 'Every loaded model is shared as its own model, so recipients see the whole workspace.'
-        : `Only “${activeModelName}” is shared; the other loaded models stay private.`;
+          ? t('shareScopeField.partialCanBeShared', { seedable: seedableCount, loaded: loadedCount })
+          : t('shareScopeField.allShared')
+        : t('shareScopeField.onlyActiveShared', { model: activeModelName });
   return (
     <div className="flex flex-col gap-2">
-      <Label>Share</Label>
-      <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Share scope">
+      <Label>{t('shareScopeField.shareLabel')}</Label>
+      <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t('shareScopeField.scopeAriaLabel')}>
         <Button
           type="button"
           role="radio"
@@ -74,7 +76,7 @@ export function ShareScopeField({
           disabled={!editable}
           onClick={() => onScopeChange('active')}
         >
-          Active model only
+          {t('shareScopeField.activeOnly')}
         </Button>
         <Button
           type="button"
@@ -91,7 +93,7 @@ export function ShareScopeField({
       <p className="text-xs text-muted-foreground">{caption}</p>
       {editable && (
         <Button type="button" size="sm" className="self-start" onClick={onConfirm}>
-          Create link
+          {t('shareScopeField.createLink')}
         </Button>
       )}
     </div>

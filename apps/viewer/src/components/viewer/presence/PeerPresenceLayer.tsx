@@ -18,6 +18,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
+import { resolve } from '@/i18n/registry';
 import type { PresenceState } from '@ifc-lite/collab';
 
 /** `collabPeers` entries carry the awareness clientId (attached in collabSlice). */
@@ -35,10 +37,13 @@ interface ProjectedCursor {
   opacity: number;
 }
 
-function peerLabel(peer: PresenceState): string {
-  const name = peer.user?.name ?? 'Guest';
+/** A plain function, not a component — it cannot call `useTranslation()` —
+ *  so it resolves directly against the locale registry, the same
+ *  `t: typeof resolve = resolve` shape `bulk-property-value.ts` uses. */
+function peerLabel(peer: PresenceState, t: typeof resolve = resolve): string {
+  const name = peer.user?.name ?? t('peerPresenceLayer.guestName');
   // Surface the peer's active tool ("Anna — measuring") like the demo overlay.
-  return peer.tool && peer.tool !== 'select' ? `${name} — ${peer.tool}` : name;
+  return peer.tool && peer.tool !== 'select' ? t('peerPresenceLayer.nameWithTool', { name, tool: peer.tool }) : name;
 }
 
 function peerOpacity(peer: PresenceState, now: number): number {
@@ -49,6 +54,7 @@ function peerOpacity(peer: PresenceState, now: number): number {
 }
 
 export function PeerPresenceLayer() {
+  const { t } = useTranslation();
   const peers = useViewerStore((s) => s.collabPeers) as unknown as PeerPresence[];
   const sessionActive = useViewerStore((s) => s.collabSession !== null);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
@@ -82,12 +88,17 @@ export function PeerPresenceLayer() {
           clientId: peer.clientId,
           screen,
           color: peer.user?.color ?? '#5b8def',
-          label: peerLabel(peer),
+          label: peerLabel(peer, t),
           opacity: peerOpacity(peer, now),
         });
       }
       const serialized = next
-        .map((c) => `${c.clientId}:${c.screen.x | 0}:${c.screen.y | 0}:${c.opacity.toFixed(2)}`)
+        // `label` is included so a live locale switch (#4918: `peerLabel` now
+        // routes through `t()`) is detected even when a peer's position and
+        // opacity haven't moved — otherwise the dedup check below would skip
+        // `setCursors` and leave the previous locale's label on screen until
+        // the peer's cursor next moves.
+        .map((c) => `${c.clientId}:${c.screen.x | 0}:${c.screen.y | 0}:${c.opacity.toFixed(2)}:${c.label}`)
         .join(',');
       if (serialized !== lastSerialized) {
         lastSerialized = serialized;
@@ -104,7 +115,7 @@ export function PeerPresenceLayer() {
   if (cursors.length === 0) return null;
 
   return (
-    <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-label="Collaborator cursors">
+    <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-label={t('peerPresenceLayer.cursorsAriaLabel')}>
       {cursors.map((c) => (
         <div
           key={c.clientId}

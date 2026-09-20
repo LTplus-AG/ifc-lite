@@ -38,6 +38,7 @@ import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { evaluateWhen, parseWhen, type CommandContribution, type ResolvedContextMenuContribution } from '@ifc-lite/extensions';
 import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
 import { describeRunCommandError } from '@/services/extensions/runtime-errors';
+import { useTranslation } from '@/i18n';
 
 export function EntityContextMenu() {
   const contextMenu = useViewerStore((s) => s.contextMenu);
@@ -507,16 +508,15 @@ interface MenuItemProps {
  * the chip arrows let the user "see and pick" in one motion.
  */
 function DuplicateRow({ onDuplicate }: { onDuplicate: (dir: DuplicateDirection) => void }) {
+  const { t } = useTranslation();
   return (
     <div className="px-3 py-1.5 flex items-center gap-2 hover:bg-muted/40">
       <button
-        type="button"
-        onClick={() => onDuplicate('+X')}
+        type="button" onClick={() => onDuplicate('+X')}
         className="flex items-center gap-2 text-sm text-left flex-1 min-w-0 hover:text-foreground"
-        title="Duplicate one bbox-width along +X (default)"
+        title={t('entityContextMenu.duplicateDefaultTitle')}
       >
-        <CopyPlus className="h-4 w-4 text-muted-foreground" />
-        <span>Duplicate</span>
+        <CopyPlus className="h-4 w-4 text-muted-foreground" /><span>{t('entityContextMenu.duplicateLabel')}</span>
         <span className="ml-auto text-[10px] font-mono text-muted-foreground">⌘D</span>
       </button>
       <div className="flex items-center gap-0.5 shrink-0 border-l border-border/60 pl-2">

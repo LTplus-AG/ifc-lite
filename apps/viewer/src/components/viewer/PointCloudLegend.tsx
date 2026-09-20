@@ -14,6 +14,7 @@
  */
 
 import type { PointColorModeUi } from '@/store/slices/pointCloudSlice';
+import { useTranslation } from '@/i18n';
 
 const HEIGHT_GRADIENT =
   'linear-gradient(to right, '
@@ -28,18 +29,19 @@ export interface PointCloudLegendProps {
 }
 
 export function PointCloudLegend({ colorMode }: PointCloudLegendProps) {
+  const { t } = useTranslation();
   if (colorMode === 'intensity') {
     return (
       <div className="flex flex-col gap-0.5 mt-1">
-        <span className="text-[9px] uppercase text-muted-foreground tracking-wider">Intensity</span>
+        <span className="text-[9px] uppercase text-muted-foreground tracking-wider">{t('pointCloudLegend.intensityLabel')}</span>
         <div
           className="h-2 rounded-sm border border-foreground/10"
           style={{ background: 'linear-gradient(to right, rgb(0,0,0), rgb(255,255,255))' }}
-          aria-label="Intensity ramp from low (black) to high (white)"
+          aria-label={t('pointCloudLegend.intensityRampAriaLabel')}
         />
         <div className="flex justify-between text-[9px] text-muted-foreground">
-          <span>low</span>
-          <span>high</span>
+          <span>{t('pointCloudLegend.low')}</span>
+          <span>{t('pointCloudLegend.high')}</span>
         </div>
       </div>
     );
@@ -48,15 +50,15 @@ export function PointCloudLegend({ colorMode }: PointCloudLegendProps) {
   if (colorMode === 'height') {
     return (
       <div className="flex flex-col gap-0.5 mt-1">
-        <span className="text-[9px] uppercase text-muted-foreground tracking-wider">Height (Y-up)</span>
+        <span className="text-[9px] uppercase text-muted-foreground tracking-wider">{t('pointCloudLegend.heightLabel')}</span>
         <div
           className="h-2 rounded-sm border border-foreground/10"
           style={{ background: HEIGHT_GRADIENT }}
-          aria-label="Height ramp from low (blue) to high (red)"
+          aria-label={t('pointCloudLegend.heightRampAriaLabel')}
         />
         <div className="flex justify-between text-[9px] text-muted-foreground">
-          <span>low</span>
-          <span>high</span>
+          <span>{t('pointCloudLegend.low')}</span>
+          <span>{t('pointCloudLegend.high')}</span>
         </div>
       </div>
     );

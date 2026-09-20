@@ -25,9 +25,24 @@ import { act } from 'react';
 import { advance, cleanup, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { TranslationValue } from '@/i18n/types';
-import { viewportLightingEn } from '@/i18n/catalogues/viewport-lighting.en';
+import type { viewportLightingEn as ViewportLightingEnType } from '@/i18n/catalogues/viewport-lighting.en';
 import { useViewerStore } from '@/store';
 import { ViewportContainer } from './ViewportContainer.js';
+
+// Dynamic + try/catch (not a static import): a revert of this slice's
+// production change deletes viewport-lighting.en.ts entirely, and a static
+// import would fail the whole test FILE to load (ERR_MODULE_NOT_FOUND)
+// rather than let the assertions below fail on their own merits — see
+// WebGpuTroubleshooting.i18n.test.tsx for the same pattern.
+let viewportLightingEnLoaded: typeof ViewportLightingEnType | undefined;
+try {
+  ({ viewportLightingEn: viewportLightingEnLoaded } = await import(
+    '@/i18n/catalogues/viewport-lighting.en'
+  ));
+} catch {
+  viewportLightingEnLoaded = undefined;
+}
+const viewportLightingEn = viewportLightingEnLoaded ?? ({} as typeof ViewportLightingEnType);
 
 type Key = keyof typeof viewportLightingEn;
 

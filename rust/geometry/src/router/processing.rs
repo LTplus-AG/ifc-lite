@@ -33,6 +33,35 @@ use std::sync::Arc;
 // walk the same chain; the constant's own docs say why they must agree.
 use ifc_lite_core::MAX_MAPPED_ITEM_DEPTH;
 
+fn mesh_bounds(mesh: &Mesh) -> [f32; 6] {
+    let mut bounds = [
+        f32::INFINITY,
+        f32::INFINITY,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+        f32::NEG_INFINITY,
+        f32::NEG_INFINITY,
+    ];
+    for point in mesh.positions.chunks_exact(3) {
+        for axis in 0..3 {
+            bounds[axis] = bounds[axis].min(point[axis]);
+            bounds[axis + 3] = bounds[axis + 3].max(point[axis]);
+        }
+    }
+    bounds
+}
+
+fn union_bounds(accumulator: &mut Option<[f32; 6]>, incoming: [f32; 6]) {
+    if let Some(bounds) = accumulator {
+        for axis in 0..3 {
+            bounds[axis] = bounds[axis].min(incoming[axis]);
+            bounds[axis + 3] = bounds[axis + 3].max(incoming[axis + 3]);
+        }
+    } else {
+        *accumulator = Some(incoming);
+    }
+}
+
 impl GeometryRouter {
     /// Process building element (IfcWall, IfcBeam, etc.) into mesh
     /// Follows the representation chain:
@@ -88,6 +117,7 @@ impl GeometryRouter {
 
         // Process all representations and merge meshes
         let mut combined_mesh = Mesh::new();
+        let mut captured_local_bounds: Option<[f32; 6]> = None;
 
         // Instancing: an element is cleanly shareable only when its whole body is
         // exactly ONE representation item that itself carried instance metadata
@@ -120,6 +150,10 @@ impl GeometryRouter {
                 } else {
                     self.process_representation_item(&item, decoder)?
                 };
+                if !mesh.positions.is_empty() {
+                    let bounds = mesh.local_bounds.unwrap_or_else(|| mesh_bounds(&mesh));
+                    union_bounds(&mut captured_local_bounds, bounds);
+                }
                 if instancing_enabled() && !mesh.positions.is_empty() {
                     instanceable_item_count += 1;
                     single_instance_meta = if instanceable_item_count == 1 {
@@ -137,6 +171,7 @@ impl GeometryRouter {
         if instancing_enabled() {
             combined_mesh.instance_meta = single_instance_meta;
         }
+        combined_mesh.local_bounds = captured_local_bounds;
 
         // Source-triangle hygiene before placement (rigid transforms preserve
         // degeneracy, while the element-local frame retains more f32 precision).
@@ -636,8 +671,7 @@ impl GeometryRouter {
         if !matches!(
             item.ifc_type,
             IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace
-        ) || self.processors.has_override(item.ifc_type)
-            || !self.has_rtc_offset()
+        ) || !self.has_rtc_offset()
             || !self.representation_item_uses_raw_large_coordinates(item, decoder)
         {
             return Ok(None);
@@ -656,11 +690,47 @@ impl GeometryRouter {
             rtc_object_meters.y / self.unit_scale,
             rtc_object_meters.z / self.unit_scale,
         );
-        let processor = crate::processors::IfcFaceSurfaceProcessor::new();
-        let mut mesh =
-            processor.process_with_rtc(item, decoder, self.tessellation_quality, rtc_file_units)?;
+        let has_override = self.processors.has_override(item.ifc_type);
+        let result = if has_override {
+            self.processors
+                .get(&item.ifc_type, self.schema)
+                .expect("registered override remains available")
+                .process(item, decoder, self.schema, self.tessellation_quality)
+        } else {
+            crate::processors::IfcFaceSurfaceProcessor::new().process_with_rtc(
+                item,
+                decoder,
+                self.tessellation_quality,
+                rtc_file_units,
+            )
+        };
+        if crate::processors::take_curve_capped() {
+            self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
+        }
+        let mut mesh = result?;
         mesh.validate_indices();
         self.scale_mesh(&mut mesh);
+        if mesh.positions.is_empty() {
+            return Ok(Some(mesh));
+        }
+        if has_override {
+            mesh.local_bounds = Some(mesh_bounds(&mesh));
+            for position in mesh.positions.chunks_exact_mut(3) {
+                position[0] = (position[0] as f64 - rtc_object_meters.x) as f32;
+                position[1] = (position[1] as f64 - rtc_object_meters.y) as f32;
+                position[2] = (position[2] as f64 - rtc_object_meters.z) as f32;
+            }
+            mesh.rtc_applied = true;
+        } else {
+            let mut bounds = mesh_bounds(&mesh);
+            bounds[0] = (bounds[0] as f64 + rtc_object_meters.x) as f32;
+            bounds[1] = (bounds[1] as f64 + rtc_object_meters.y) as f32;
+            bounds[2] = (bounds[2] as f64 + rtc_object_meters.z) as f32;
+            bounds[3] = (bounds[3] as f64 + rtc_object_meters.x) as f32;
+            bounds[4] = (bounds[4] as f64 + rtc_object_meters.y) as f32;
+            bounds[5] = (bounds[5] as f64 + rtc_object_meters.z) as f32;
+            mesh.local_bounds = Some(bounds);
+        }
         Ok(Some(mesh))
     }
 

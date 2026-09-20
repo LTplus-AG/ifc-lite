@@ -299,6 +299,34 @@ fn structural_edge_loop_surface_rebases_before_f32_conversion() {
 }
 
 #[test]
+fn structural_face_rtc_path_drains_curve_cap_diagnostics() {
+    let source = edge_loop_surface_member().replace(
+        "#13=IFCLINE(#1,#20);",
+        "#13=IFCBSPLINECURVEWITHKNOTS(999999,(#1,#2,#3),.UNSPECIFIED.,.F.,.F.,(3,3),(0.,1.));",
+    );
+    let mut decoder = EntityDecoder::new(&source);
+    let entity = decoder.decode_by_id(55).unwrap();
+    let router = GeometryRouter::with_rtc((5_000_000.0, 5_000_000.0, 0.0));
+    let _ = router.process_element(&entity, &mut decoder).unwrap();
+
+    let diagnostics = router.take_unsupported_items();
+    assert_eq!(
+        diagnostics.get("IfcBSplineCurveWithKnots"),
+        Some(&1),
+        "the direct element-aware RTC path must report its own capped curve"
+    );
+
+    let plain_source = surface_member(true, false);
+    let mut plain_decoder = EntityDecoder::new(&plain_source);
+    let plain = plain_decoder.decode_by_id(18).unwrap();
+    let _ = router.process_element(&plain, &mut plain_decoder).unwrap();
+    assert!(
+        router.take_unsupported_items().is_empty(),
+        "the cap flag must not leak to the next item on this worker"
+    );
+}
+
+#[test]
 fn structural_topology_participates_in_mixed_rtc_sampling() {
     let near_body = "#100=IFCCARTESIANPOINT((0.,0.,0.));#101=IFCPOLYLOOP((#100,#100,#100));\
          #102=IFCFACEOUTERBOUND(#101,.T.);#103=IFCFACE((#102));\
@@ -352,6 +380,12 @@ fn rotated_structural_surface_rebases_in_world_frame() {
     assert_eq!((min_x, max_x), (-0.125, 0.0));
     assert_eq!((min_y, max_y), (0.0, 0.125));
     assert!((signed_xy_area(&mesh) - 0.015625).abs() < 1e-9);
+    let local_bounds = mesh.local_bounds.expect("local bounds captured");
+    assert_eq!(
+        &local_bounds[..3],
+        &[5_000_000.0, 5_000_000.0, 0.0],
+        "RTC rendering must not move the public bounds out of object space"
+    );
 }
 
 struct RegisteredFace;
@@ -366,8 +400,15 @@ impl GeometryProcessor for RegisteredFace {
     ) -> Result<Mesh> {
         let mut mesh = Mesh::new();
         mesh.positions = vec![
-            5_000_000.0, 5_000_000.0, 0.0, 5_000_001.0, 5_000_000.0, 0.0, 5_000_000.0,
-            5_000_001.0, 0.0,
+            5_000_000.0,
+            5_000_000.0,
+            0.0,
+            5_000_001.0,
+            5_000_000.0,
+            0.0,
+            5_000_000.0,
+            5_000_001.0,
+            0.0,
         ];
         mesh.indices = vec![0, 1, 2];
         Ok(mesh)
@@ -379,23 +420,35 @@ impl GeometryProcessor for RegisteredFace {
 }
 
 #[test]
-fn structural_face_rtc_path_honors_registered_processor() {
-    let source = surface_member(true, false)
-        .replace("(0.,0.,0.)", "(5000000.,5000000.,0.)")
-        .replace("(10.,0.,0.)", "(5000001.,5000000.,0.)")
-        .replace("(10.,10.,0.)", "(5000001.,5000001.,0.)")
-        .replace("(0.,10.,0.)", "(5000000.,5000001.,0.)");
+fn structural_face_rtc_path_honors_registered_processor_in_element_frame() {
+    let source = format!(
+        "{}{}",
+        surface_member(true, false)
+            .replace("(0.,0.,0.)", "(5000000.,5000000.,0.)")
+            .replace("(10.,0.,0.)", "(5000001.,5000000.,0.)")
+            .replace("(10.,10.,0.)", "(5000001.,5000001.,0.)")
+            .replace("(0.,10.,0.)", "(5000000.,5000001.,0.)")
+            .replace("$,$,#17", "$,#33,#17"),
+        "#30=IFCCARTESIANPOINT((0.,0.,0.));#31=IFCDIRECTION((0.,0.,1.));\
+         #32=IFCDIRECTION((0.,1.,0.));#34=IFCAXIS2PLACEMENT3D(#30,#31,#32);\
+         #33=IFCLOCALPLACEMENT($,#34);"
+    );
     let mut decoder = EntityDecoder::new(&source);
     let entity = decoder.decode_by_id(18).unwrap();
-    let mut router = GeometryRouter::with_rtc((5_000_000.0, 5_000_000.0, 0.0));
+    let mut router = GeometryRouter::with_rtc((-5_000_000.0, 5_000_000.0, 0.0));
     router.register(Box::new(RegisteredFace));
     let mesh = router.process_element(&entity, &mut decoder).unwrap();
 
     assert_eq!(
         mesh.positions,
-        vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+        vec![0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0, 0.0]
     );
     assert_eq!(mesh.indices, vec![0, 1, 2]);
+    assert_eq!(
+        mesh.local_bounds,
+        Some([5_000_000.0, 5_000_000.0, 0.0, 5_000_001.0, 5_000_001.0, 0.0,]),
+        "local bounds stay in the original pre-RTC object frame"
+    );
 }
 
 #[test]

@@ -75,6 +75,27 @@ fn moderate_degree_with_real_knots_completes_fast() {
     );
 }
 
+#[test]
+fn failed_hole_triangulation_never_falls_back_to_a_filled_outer_fan() {
+    let outer = vec![
+        nalgebra::Point2::new(0.0, 0.0),
+        nalgebra::Point2::new(10.0, 0.0),
+        nalgebra::Point2::new(10.0, 10.0),
+        nalgebra::Point2::new(0.0, 10.0),
+    ];
+    let holes = vec![vec![
+        nalgebra::Point2::new(f64::NAN, 4.0),
+        nalgebra::Point2::new(6.0, 4.0),
+        nalgebra::Point2::new(6.0, 6.0),
+    ]];
+
+    let error = triangulate_planar_indices(&outer, &holes, outer.len()).unwrap_err();
+    assert!(
+        error.to_string().contains("triangulation with holes failed"),
+        "a failed holed face must be rejected instead of filling the opening: {error}"
+    );
+}
+
 /// Baseline: a legitimate (degree=2, 9 control points) surface still
 /// tessellates, proving the #4901 bounds don't touch real output.
 #[test]

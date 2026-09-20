@@ -51,9 +51,12 @@ describe('ClashRevisionCompareDialog.warningLines', () => {
     });
     const lines = warningLines(cmp);
     assert.equal(lines.length, 3);
-    assert.match(lines[0], /rule-a/);
-    assert.match(lines[1], /rule-b/);
-    assert.match(lines[2], /mep\.ifc/);
+    assert.equal(lines[0].labelKey, 'clashTools.revisionCompare.skippedRules');
+    assert.match(String(lines[0].params?.ids), /rule-a/);
+    assert.equal(lines[1].labelKey, 'clashTools.revisionCompare.noMatchRules');
+    assert.match(String(lines[1].params?.ids), /rule-b/);
+    assert.equal(lines[2].labelKey, 'clashTools.revisionCompare.missingModels');
+    assert.match(String(lines[2].params?.names), /mep\.ifc/);
   });
 
   /**
@@ -71,6 +74,6 @@ describe('ClashRevisionCompareDialog.warningLines', () => {
     const cmp = comparison({ unretested: [emptyClash] });
     const lines = warningLines(cmp);
     assert.equal(lines.length, 1);
-    assert.match(lines[0], /element/i);
+    assert.equal(lines[0].labelKey, 'clashTools.revisionCompare.unretestedGeneric');
   });
 });

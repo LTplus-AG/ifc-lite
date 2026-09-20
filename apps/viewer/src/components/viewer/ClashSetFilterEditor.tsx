@@ -17,6 +17,7 @@
 import { useCallback } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from '@/i18n';
 import { useFilterRuleOptions } from '@/hooks/useFilterRuleOptions';
 import type { FilterRule } from '@/lib/search/filter-rules';
 import { unreadableRuleCount, type ClashSetFilter } from '@/lib/clash/set-filter';
@@ -33,6 +34,7 @@ export interface ClashSetFilterEditorProps {
 }
 
 export function ClashSetFilterEditor({ label, filter, onChange }: ClashSetFilterEditorProps) {
+  const { t } = useTranslation();
   const rules = filter?.rules ?? NO_RULES;
   const combinator = filter?.combinator ?? 'AND';
   const unreadable = unreadableRuleCount(filter);
@@ -69,18 +71,16 @@ export function ClashSetFilterEditor({ label, filter, onChange }: ClashSetFilter
             size="sm"
             className="h-7 gap-1 text-[11px] text-muted-foreground"
             onClick={() => commit([])}
-            title="Remove every rule and go back to the type selector"
+            title={t('clashTools.setFilter.clearTooltip')}
           >
-            <Trash2 className="h-3 w-3" /> Clear
+            <Trash2 className="h-3 w-3" /> {t('clashTools.setFilter.clearLabel')}
           </Button>
         )}
       </div>
 
       {unreadable > 0 && (
         <p role="alert" data-clash-filter-unreadable className="text-[10px] leading-snug text-amber-700 dark:text-amber-400">
-          {unreadable === 1 ? 'One rule in this filter' : `${unreadable} rules in this filter`} cannot be read by this
-          version (saved by a newer version, or malformed). Runs using it are refused; any edit here discards
-          {unreadable === 1 ? ' that rule' : ' those rules'}.
+          {t('clashTools.setFilter.unreadableWarning', { count: unreadable })}
         </p>
       )}
 
@@ -96,7 +96,7 @@ export function ClashSetFilterEditor({ label, filter, onChange }: ClashSetFilter
 
       {rules.length > 0 && (
         <p className="text-[10px] text-muted-foreground leading-snug">
-          This filter defines {label.toLowerCase()}; its type selector above is ignored while it has rules.
+          {t('clashTools.setFilter.definedByFilter', { label: label.toLowerCase() })}
         </p>
       )}
     </div>

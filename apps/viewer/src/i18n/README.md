@@ -331,6 +331,31 @@ loaded or imported BCF project. `bcfHelpers.tsx`'s `TOPIC_TYPES`/
 exported BCF files, not display-only labels, so translating them would
 desync the on-screen text from the round-tripped data.
 
+The clash-tools catalogue (#4918 slice: clashrest, `clash-tools.en.ts`,
+prefix `clashTools.<file>.*`) covers the seven clash-feature files the
+`ClashPanel.tsx` and `clash-groups.en.ts` slices left uncovered:
+`ClashExportActions.tsx` (the export button cluster: BCF-topic and CSV
+buttons and their toasts), `ClashModelTagNotice.tsx` (the stale-tags
+banner), `ClashBcfExportDialog.tsx` (the "Export to BCF" grouping/severity/
+snapshot dialog), `ClashRevisionCompareDialog.tsx` (baseline save and
+compare-across-revisions, including its exported `warningLines()` — moved
+from returning plain strings to `TranslatableMessage`s, the same
+`labelKey`-plus-`params` shape `resolveValidationTarget.ts` established, so
+a locale switch retranslates its banner lines too), `ClashRuleDraftEditor.tsx`
+and `ClashSetFilterEditor.tsx` (the add/edit-rule form and its per-side
+advanced filter), and `ClashSettingsDialog.tsx` (the Detection/Rules
+settings dialog, including its own `SettingRow` label/hint pairs, which sit
+outside the ending gate's own attribute list but are real chrome text).
+Severity labels (`Critical`/`Major`/`Minor`/`Info`) in `ClashBcfExportDialog.tsx`'s
+`SEVERITIES` table and `ClashSettingsDialog.tsx`'s `SEVERITY` table reuse
+the existing `clashPanel.severity.*` keys via a `labelKey` field rather than
+duplicating them, the same data-table-plus-`labelKey` pattern `clash-panel.en.ts`'s
+own `SEVERITY`/`REVIEW_STATUS` tables use. IFC class-selector examples
+(`IfcWall`, `*`) stay literal per the house rule; a composite selector
+pattern like `IfcPipe*` or `IfcWall|IfcSlab` is still catalogued so the
+gate treats it consistently, with translators expected to leave the value
+unchanged.
+
 The Layers panel catalogue (#4918 layers slice, `layers-panel.en.ts`, keys
 prefixed `layersPanel.<component>.*`) covers the layer-stack panel's own
 chrome across `LayersPanel.tsx` (empty-state hero, per-stratum row, author

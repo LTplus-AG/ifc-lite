@@ -256,7 +256,11 @@ export class Renderer {
     };
     private pointCloudRenderer: PointCloudRenderer | null = null;
     private pointCloudStreamEpoch = 0;
-    private pointCloudStreamEpochs = new WeakMap<PointCloudAssetHandle, number>();
+    /** Handle id → stream epoch. Keyed by id, not handle identity: callers
+     * legitimately rebuild `{ id }` for cleanup (usePointCloudLifecycle), and
+     * ids restart at 1 on every replacement renderer, so the map is cleared
+     * whenever the epoch advances. */
+    private pointCloudStreamEpochs = new Map<number, number>();
     /** Set true at the end of the LATEST `init()`; gates `whenReady()` and
      * `isReady()`. Revoked synchronously by `init()` and by `destroy()`, and
      * overridden (not cleared) by a device loss — see `deviceLost`, which the
@@ -573,7 +577,7 @@ export class Renderer {
         initializingDevice.onDeviceLost((info) => {
             // Ignore a delayed loss from a wrapper recovery already replaced.
             if (this.device !== initializingDevice) return;
-            this.handleDeviceLost(info);
+            this.handleDeviceLost(info, { fromDevicePromise: true });
         });
         await initializingDevice.init(this.canvas);
 
@@ -818,7 +822,19 @@ export class Renderer {
         });
     }
 
-    private handleDeviceLost(info: { message: string; reason: string }): void {
+    /**
+     * `fromDevicePromise` marks the `device.lost` signal of the CURRENT device
+     * (the subscriber already filters replaced wrappers). Only that signal may
+     * advance `deviceLossSequence` while a loss is latched: a late upload
+     * rejection or frame exception from the device already recorded as lost
+     * is a duplicate report, and counting it would make an in-flight recovery
+     * read its own replacement as lost and abort a successful rebuild.
+     */
+    private handleDeviceLost(
+        info: { message: string; reason: string },
+        options: { fromDevicePromise?: boolean } = {},
+    ): void {
+        if (this.deviceLost && !options.fromDevicePromise) return;
         this.deviceLossSequence++;
         if (this.deviceLost) return;
         this.deviceLost = true;
@@ -1014,13 +1030,13 @@ export class Renderer {
             throw new Error('Renderer not initialized. Call init() first.');
         }
         const handle = this.pointCloudRenderer.beginAsset(meta);
-        this.pointCloudStreamEpochs.set(handle, this.pointCloudStreamEpoch);
+        this.pointCloudStreamEpochs.set(handle.id, this.pointCloudStreamEpoch);
         return handle;
     }
 
     private currentPointCloudStreamRenderer(handle: PointCloudAssetHandle): PointCloudRenderer {
         if (this.deviceLost || !this.pointCloudRenderer
-            || this.pointCloudStreamEpochs.get(handle) !== this.pointCloudStreamEpoch) throw rendererDeviceLostError();
+            || this.pointCloudStreamEpochs.get(handle.id) !== this.pointCloudStreamEpoch) throw rendererDeviceLostError();
         return this.pointCloudRenderer;
     }
 
@@ -1040,7 +1056,8 @@ export class Renderer {
     }
 
     removePointCloudAsset(handle: PointCloudAssetHandle): void {
-        if (this.pointCloudStreamEpochs.get(handle) !== this.pointCloudStreamEpoch) return;
+        if (this.pointCloudStreamEpochs.get(handle.id) !== this.pointCloudStreamEpoch) return;
+        this.pointCloudStreamEpochs.delete(handle.id);
         this.pointCloudRenderer?.removeAsset(handle);
         // Bounds may have shrunk — recompute from scratch so fit-to-view
         // and section-plane sliders see fresh extents.
@@ -3701,6 +3718,7 @@ export class Renderer {
 
         // Point cloud GPU resources
         this.pointCloudStreamEpoch++;
+        this.pointCloudStreamEpochs.clear();
         this.pointCloudRenderer?.clear();
         this.pointCloudRenderer = null;
 

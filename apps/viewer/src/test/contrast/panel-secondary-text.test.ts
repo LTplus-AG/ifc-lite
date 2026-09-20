@@ -285,7 +285,7 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
     {
       name: 'RoomPanel "Got an invite?" hint',
       file: ROOM_PANEL,
-      anchor: 'Create a room\n        </Button>\n        <p ',
+      anchor: "{t('zonesPanel.roomPanel.createRoomButton')}\n        </Button>\n        <p ",
       surface: 'bg-background',
     },
     {

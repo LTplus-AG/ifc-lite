@@ -59,6 +59,7 @@ import { splitToolEn } from './catalogues/split-tool.en';
 import { structuralPropertiesEn } from './catalogues/structural-properties.en';
 import { webgpuTroubleshootingEn } from './catalogues/webgpu-troubleshooting.en';
 import { scriptPanelEn } from './catalogues/script-panel.en';
+import { zonesPanelEn } from './catalogues/zones-panel.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
@@ -117,6 +118,7 @@ export const en = {
   ...repositionPanelEn,
   ...webgpuTroubleshootingEn,
   ...scriptPanelEn,
+  ...zonesPanelEn,
   ...dataConnectorEn,
   ...geometryExportDialogsEn,
 } as const;

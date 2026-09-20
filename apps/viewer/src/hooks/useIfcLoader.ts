@@ -798,7 +798,12 @@ export function useIfcLoader() {
         // metres by spec (ASTM E2807) and PCD/PLY/PTS/XYZ have no format
         // convention so metres is the documented assumption here too.
         const sourceUnit: PointCloudSourceUnit = format === 'las' || format === 'laz' ? 'mapUnit' : 'metre';
-        let { sourceSpatialReference, alignment } = await preparePointCloudSpatialLoad(file, format, sourceUnit);
+        let { sourceSpatialReference, alignment } = await preparePointCloudSpatialLoad(
+          file, format, sourceUnit, () => loadSessionRef.current === currentSession,
+        );
+        // Never publish a decoded source reference, alignment availability, or
+        // metadata-refusal toast after its owning load has been superseded.
+        if (loadSessionRef.current !== currentSession) return;
         const setAlignmentAvailable = useViewerStore.getState().setPointCloudAlignmentAvailable;
         const alignmentEnabled = useViewerStore.getState().pointCloudAlignmentEnabled;
         const ingest = ingestPointCloud({
@@ -918,6 +923,10 @@ export function useIfcLoader() {
           pointCloudHandleId: ingest.rendererHandle.id, loadPath: 'point-cloud',
           ...(sourceSpatialReference ? { spatialReference: sourceSpatialReference } : {}),
         });
+        // finalizeModel may await federated alignment. Its completion belongs
+        // to this session only; do not publish completion telemetry/UI state
+        // into a newer load after that await.
+        if (loadSessionRef.current !== currentSession) return;
         void identifyLoadedPlacementSource(modelId, file);
         setProgress({ phase: 'Complete', percent: 100 });
         // Snapshot: points, not meshes - the ingest GeometryResult's zero

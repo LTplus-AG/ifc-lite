@@ -102,15 +102,20 @@ export function spatialMetadataFromE57Xml(xml: string): SourceSpatialMetadata {
  * federation resolver refuses any cross/manual operation rather than guessing.
  */
 export function spatialReferenceFromSourceMetadata(metadata: SourceSpatialMetadata): ModelSpatialReference {
+  // CRS metadata describes where authored coordinates belong, not necessarily
+  // the frame emitted by an importer. LandXML geometry is already converted to
+  // viewer East/Up/South metres and the E57 decoder is metre-native by spec.
+  // Applying WKT axes or feet a second time silently moves those meshes.
+  const nativeLasFrame = metadata.format === 'las' || metadata.format === 'laz';
   return {
     // LAS stores X/Y/Z in the native CRS coordinate order. Retain every WKT
     // axis and unit declaration instead of treating a foot-based north/east
     // grid as the viewer's metre east/up/south frame. Older metadata records
     // have no WKT frame, so use LAS's documented X=east, Y=north, Z=up order.
     source: {
-      axes: metadata.axes ?? ['east', 'north', 'up'],
-      horizontalUnitToMetres: metadata.horizontalUnitToMetres ?? 1,
-      verticalUnitToMetres: metadata.verticalUnitToMetres ?? 1,
+      axes: nativeLasFrame ? metadata.axes ?? ['east', 'north', 'up'] : ['east', 'up', 'south'],
+      horizontalUnitToMetres: nativeLasFrame ? metadata.horizontalUnitToMetres ?? 1 : 1,
+      verticalUnitToMetres: nativeLasFrame ? metadata.verticalUnitToMetres ?? 1 : 1,
     },
     ...(metadata.horizontalId ? { horizontal: { id: metadata.horizontalId, provenance: { source: metadata.provenance } } } : {}),
     ...(metadata.verticalId ? { vertical: { id: metadata.verticalId, provenance: { source: metadata.provenance } } } : {}),

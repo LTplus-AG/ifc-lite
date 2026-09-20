@@ -84,6 +84,24 @@ describe('non-IFC source spatial metadata (#5048)', () => {
     });
   });
 
+  it('keeps LandXML and metre-native E57 geometry in their emitted viewer frame (#5048)', () => {
+    const declared = {
+      horizontalId: 'EPSG:2236', verticalId: 'EPSG:6360',
+      axes: ['north', 'east', 'up'] as const,
+      horizontalUnitToMetres: 0.3048006096012192,
+      verticalUnitToMetres: 0.3048,
+      provenance: 'declared WKT',
+    };
+    for (const format of ['landxml', 'e57'] as const) {
+      const reference = spatialReferenceFromSourceMetadata({ format, ...declared });
+      assert.deepEqual(reference.source, {
+        axes: ['east', 'up', 'south'], horizontalUnitToMetres: 1, verticalUnitToMetres: 1,
+      });
+      assert.equal(reference.horizontal?.id, 'EPSG:2236');
+      assert.equal(reference.vertical?.id, 'EPSG:6360');
+    }
+  });
+
   it('makes missing vertical metadata explicit-unknown so federation cannot carry height through', () => {
     const reference = spatialReferenceFromSourceMetadata({ format: 'las', horizontalId: 'EPSG:2056', provenance: 'LAS VLR 2112' });
     assert.equal(reference.confidence, 'unknown');

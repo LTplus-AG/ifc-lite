@@ -35,6 +35,9 @@ import { withModelRotationsUnbaked } from '../components/viewer/useModelRotation
 import { convergeFederationRtcFrame } from './ingest/federationRtcRebase.js';
 import { toast } from '../components/ui/toast.js';
 import { acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
+import { getGlobalRenderer } from './useBCF.js';
+import { realignPointCloudsToAnchor } from './ingest/pointCloudAlignmentRealign.js';
+import { hasRegisteredPointCloudAlignment } from './ingest/pointCloudAlignment.js';
 
 /**
  * Extended data store type for IFCX (IFC5) files.
@@ -225,7 +228,14 @@ export function useIfcFederation(
     if (allModels.length === 0) { toast.info('No models loaded — nothing to re-align.'); return; }
 
     const referenceSelection = findReferenceSpatialModel();
-    if (!referenceSelection) { toast.error('Cannot re-align: no model with valid georeferencing.'); return; }
+    if (!referenceSelection) {
+      // The mesh operation cannot proceed, but scans still need their native
+      // matrices restored when the final georeferenced anchor disappeared.
+      realignPointCloudsToAnchor(getGlobalRenderer(), null);
+      useViewerStore.getState().setPointCloudAlignmentAvailable(hasRegisteredPointCloudAlignment());
+      toast.error('Cannot re-align: no model with valid georeferencing.');
+      return;
+    }
 
     // Snapshot georef edits once for the whole pass. Cross-CRS projection
     // awaits can race new edits; re-reading here would mix coordinate frames
@@ -285,6 +295,12 @@ export function useIfcFederation(
       }
     }
 
+    // Scans are independent renderer assets, so federation mesh realignment
+    // does not touch them. Recompute every registered scan in the same anchor
+    // transition, including the null-anchor path which restores native input.
+    realignPointCloudsToAnchor(getGlobalRenderer(), findReferenceSpatialModel()?.placement ?? null);
+    useViewerStore.getState().setPointCloudAlignmentAvailable(hasRegisteredPointCloudAlignment());
+
     if (!frameCommitted) return; // Surviving geometry still needed the invalidation above.
     const messageParts: string[] = [];
     if (counts.aligned > 0) messageParts.push(`${counts.aligned} aligned`);
@@ -316,6 +332,11 @@ export function useIfcFederation(
       setIfcDataStore(null);
       setGeometryResult(null);
     }
+    // Model removal can remove the anchor or leave no valid anchor at all.
+    // Restore/recompute scans immediately rather than retaining stale GPU
+    // matrices until a later manual re-alignment.
+    realignPointCloudsToAnchor(getGlobalRenderer(), findReferenceSpatialModel()?.placement ?? null);
+    useViewerStore.getState().setPointCloudAlignmentAvailable(hasRegisteredPointCloudAlignment());
   }, [storeRemoveModel, setIfcDataStore, setGeometryResult]);
 
   /**

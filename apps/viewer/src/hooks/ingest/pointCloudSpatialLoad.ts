@@ -45,12 +45,16 @@ export async function preparePointCloudSpatialLoad(
   file: Blob,
   format: PointCloudFormat,
   sourceUnit: PointCloudSourceUnit,
+  isCurrent: () => boolean = () => true,
 ): Promise<{ sourceSpatialReference?: ModelSpatialReference; alignment?: PointCloudAlignmentTransform }> {
   const sourceSpatialReference = format === 'las' || format === 'laz'
     ? await spatialReferenceFromLasBlob(file, format)
     : format === 'e57'
       ? pointCloudSpatialReferenceFromMetadata(format, await inspectE57SpatialMetadata(file))
       : undefined;
+  // Metadata inspection can outlive a cancelled/superseded load. Do not read
+  // the current federation or publish a refusal toast for that old request.
+  if (!isCurrent()) return {};
   const reference = findReferenceSpatialModel();
   const sameFrame = sourceSpatialReference && reference
     && sourceSpatialReference.horizontal?.id === reference.placement.spatialReference.horizontal?.id
@@ -58,7 +62,7 @@ export async function preparePointCloudSpatialLoad(
   const alignment = sameFrame && reference
     ? computePointCloudAlignment(reference.placement, sourceUnit, sourceSpatialReference) ?? undefined
     : undefined;
-  if (reference && !sameFrame && (format === 'las' || format === 'laz' || format === 'e57')) {
+  if (isCurrent() && reference && !sameFrame && (format === 'las' || format === 'laz' || format === 'e57')) {
     toast.info(`${format.toUpperCase()} CRS is missing or differs from the federation anchor; automatic placement was refused.`);
   }
   return { sourceSpatialReference, alignment };

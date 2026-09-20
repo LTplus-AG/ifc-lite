@@ -18,6 +18,24 @@ export interface FederatedSpatialFinalizeResult {
   federationAlignmentStatus: FederatedModel['federationAlignmentStatus'];
 }
 
+/** Keep the index-aligned restore baseline in lock-step with reframe clipping. */
+function retainSnapshotMeshes(
+  snapshot: PreAlignmentSnapshot | undefined,
+  beforeReframe: GeometryResult['meshes'],
+  retained: GeometryResult['meshes'],
+): PreAlignmentSnapshot | undefined {
+  if (!snapshot || beforeReframe.length === retained.length) return snapshot;
+  const live = new Set(retained);
+  const keep = (_: unknown, index: number) => index >= beforeReframe.length || live.has(beforeReframe[index]);
+  return {
+    ...snapshot,
+    positions: snapshot.positions.filter(keep),
+    normals: snapshot.normals.filter(keep),
+    origins: snapshot.origins.filter(keep),
+    geometryAabbs: snapshot.geometryAabbs.filter(keep),
+  };
+}
+
 /** Apply the one source-neutral placement path before IDs become globally visible. */
 export async function finalizeFederatedSpatialPlacement(options: {
   dataStore: IfcDataStore;
@@ -61,7 +79,13 @@ export async function finalizeFederatedSpatialPlacement(options: {
     const renderFrame = reference?.coordinateInfo
       ?? federationFrameInfo(useViewerStore.getState().models.values());
     if (renderFrame) {
+      const meshesBeforeReframe = options.geometry.meshes.slice();
       const warnings = reframeLandXmlGeometry(options.geometry, options.landXmlDocument, renderFrame);
+      // `reframeLandXmlGeometry` may clip components. The baseline captured
+      // before spatial alignment is index-addressed, so retain exactly the
+      // slots for surviving mesh objects; otherwise the next anchor switch
+      // restores mesh N from dropped mesh N-1.
+      preAlignment = retainSnapshotMeshes(preAlignment, meshesBeforeReframe, options.geometry.meshes);
       for (const warning of warnings) toast.info(warning);
     }
   }

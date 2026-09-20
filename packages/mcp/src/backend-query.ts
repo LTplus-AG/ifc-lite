@@ -126,15 +126,18 @@ export function createQueryAdapter(
     if (!pending) return data;
     const overrides = pending.attributes(expressId);
     const positional = pending.positionalAttributes(expressId);
-    if (overrides.size === 0 && positional.size === 0) return data;
+    if (overrides.size === 0 && positional.size === 0 && !pending.effectiveType(expressId)) return data;
     const next = {
       ...data,
       name: overrides.get('Name') ?? data.name,
       description: overrides.get('Description') ?? data.description,
       objectType: overrides.get('ObjectType') ?? data.objectType,
     };
-    const exactType = store.entities.getTypeName(expressId) || data.type;
+    // Positional slots are named by the effective class (a queued retype wins).
+    const effectiveType = pending.effectiveType(expressId);
+    const exactType = effectiveType ?? (store.entities.getTypeName(expressId) || data.type);
     const names = attributeNamesForSchema(exactType, store.schemaVersion);
+    if (effectiveType && names.length > 0 && !names.includes('ObjectType')) next.objectType = '';
     for (const [index, value] of positional) {
       const authored = authoredValue(value);
       const isUnset = value == null || (typeof value === 'string' && ['', '$', '*'].includes(value.trim()));

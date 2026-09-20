@@ -2,14 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
+import { isQueryableObjectType } from '@ifc-lite/parser';
 
-export function isProductType(type: string): boolean {
-  if (IfcTypeEnumFromString(type) === IfcTypeEnum.Unknown) return false;
-  const upper = type.toUpperCase();
-  return !upper.startsWith('IFCREL')
-    && !upper.startsWith('IFCPROPERTY')
-    && !upper.startsWith('IFCQUANTITY')
-    && upper !== 'IFCELEMENTQUANTITY'
-    && !upper.endsWith('TYPE');
-}
+/** The same object-type oracle the CLI and MCP backends use: every
+ * `IfcObjectDefinition` subclass that is not a type object, so a no-type
+ * `query.entities()` scan does not drop classes outside the render enum
+ * (IfcTendonAnchor, IfcFastener, IfcCableCarrierSegment, …). */
+export const isProductType = isQueryableObjectType;

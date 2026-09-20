@@ -150,4 +150,19 @@ describe('created entities are filtered and read by their effective class (#5009
     expect(data?.name).toBe('Authored');
     expect(data?.description).toBe('Desc');
   });
+
+  it("names a parsed entity's positional slots by its effective class after a retype", async () => {
+    const store = await loadIfcFile(SAMPLE_IFC);
+    const backend = new HeadlessBackend(store, 'building-architecture.ifc');
+    const [wall] = backend.query.entities({ types: ['IfcWall'] });
+    const view = (backend as unknown as { getOrCreateMutationView(): MutablePropertyView }).getOrCreateMutationView();
+    // IfcWall → IfcRelAggregates: slot 4 becomes RelatingObject, so a positional
+    // write there is a relationship endpoint, not ObjectType.
+    view.setEntityType(wall.ref.expressId, 'IfcRelAggregates');
+    view.setPositionalAttribute(wall.ref.expressId, 4, '#1');
+    const data = backend.query.entityData(wall.ref);
+    expect(data?.type).toBe('IfcRelAggregates');
+    // The effective class has no ObjectType slot, so the saved file will not carry one.
+    expect(data?.objectType).toBe('');
+  });
 });

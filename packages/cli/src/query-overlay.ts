@@ -75,8 +75,13 @@ export function applyParsedEntityOverrides(
   data: EntityData,
 ): EntityData {
   if (!view) return data;
-  const names = getAttributeNamesForSchema(type, schemaVersion);
-  const next = { ...data, type: effectiveEntityType(view, expressId) ?? data.type };
+  const effectiveType = effectiveEntityType(view, expressId);
+  // Positional slots are named by the effective class, as export lays them out.
+  const names = getAttributeNamesForSchema(effectiveType ?? type, schemaVersion);
+  const next = { ...data, type: effectiveType ?? data.type };
+  // A retype re-lays the record out by name: a header slot the effective
+  // class does not declare is gone from the saved file, so it is gone here.
+  if (effectiveType && names.length > 0 && !names.includes('ObjectType')) next.objectType = '';
   const apply = (name: string, value: unknown): void => {
     const text = scalarAttr(value);
     switch (name) {

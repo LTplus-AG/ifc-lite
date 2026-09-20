@@ -40,6 +40,13 @@ function makeStore(dataStore: IfcDataStore): StoreApi {
     mutationViews,
     getMutationView: (modelId: string) => mutationViews.get(modelId) ?? null,
     registerMutationView: (modelId: string, view: MutablePropertyView) => { mutationViews.set(modelId, view); },
+    // Off-session collab gate + room lookup the store adapter consults (#5008).
+    canCollabEdit: () => true,
+    collabRoomId: null,
+    collabRoomModels: new Map(),
+    mirrorEntityCreate: () => {},
+    mirrorEntityRemove: () => {},
+    mirrorAttributeEdit: () => {},
   };
   return {
     getState: () => state,
@@ -130,7 +137,8 @@ test('viewer exact relationship queries fold authored records and endpoint overr
   assert.deepEqual(query.relationships(host).voids.map(entity => entity.id), [7]);
   assert.equal(query.relationships(host).relations?.filter(edge =>
     edge.relationshipType === 'IfcRelVoidsElement' && edge.entity.id === 7).length, 2);
-  writes.removeEntity(duplicateVoid);
+  // The ref addEntity returned carries the mutation-view alias; removeEntity must accept it.
+  assert.equal(writes.removeEntity(duplicateVoid), true);
   writes.removeEntity({ modelId: 'default', expressId: 9 });
   assert.deepEqual(query.relationships(host).voids, []);
   writes.removeEntity(host);

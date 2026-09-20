@@ -1,0 +1,589 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * The Lens panel reads the i18n catalogue (#4918 slice: viewer-panels),
+ * covering `LensPanel.tsx` (see `lens-panel.en.ts`'s own docblock for the
+ * exact surface).
+ *
+ * Same oracle as `ClashPanel.i18n.test.tsx`/`Measure.i18n.test.tsx`: a
+ * pseudo-locale maps every `lensPanel.*` key to a marked copy of its
+ * English text, the panel (or an exported sub-component, for states the
+ * top-level panel cannot reach directly — `RuleEditor`/`AutoColorEditor`
+ * are exported for exactly this) is driven through the states that surface
+ * as much of the catalogue as feasible, the locale is switched live, and
+ * every marked string that was visible in English must reappear marked.
+ * `LensPanel` uses plain HTML `title`/`aria-label` attributes (no Radix
+ * tooltip), so no focus-walk is needed to reach them.
+ */
+import '@/test/setup-dom.js';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
+import assert from 'node:assert/strict';
+import { act } from 'react';
+import { cleanup, render } from '@/test/render.js';
+import { registerLocale, setLocale, type Catalogue } from '@/i18n';
+import type { lensPanelEn as LensPanelEnType } from '@/i18n/catalogues/lens-panel.en';
+import type { TranslationValue } from '@/i18n/types';
+import { useViewerStore } from '@/store';
+import type { Lens, LensRule, AutoColorLegendEntry } from '@/store/slices/lensSlice';
+import { LensPanel, RuleEditor, AutoColorEditor } from './LensPanel.js';
+
+// Guarded dynamic import (#4918 revert-oracle, same pattern as
+// ClashPanel.i18n.test.tsx): reverting production hunks treats this
+// brand-new catalogue as a deletion, and a static
+// `import { lensPanelEn } from '...'` would then fail this file's whole
+// LOAD — which the oracle reports as INCONCLUSIVE-by-load-failure rather
+// than a red assertion. A guarded dynamic import turns a missing catalogue
+// into a clean `describe.skip` instead, so the revert witness comes from
+// the real assertions below.
+let lensPanelEnLoaded: typeof LensPanelEnType | undefined;
+try {
+  ({ lensPanelEn: lensPanelEnLoaded } = await import('@/i18n/catalogues/lens-panel.en'));
+} catch {
+  lensPanelEnLoaded = undefined;
+}
+const HAS_CATALOGUE = lensPanelEnLoaded !== undefined;
+const lensPanelEn: typeof LensPanelEnType = lensPanelEnLoaded ?? ({} as typeof LensPanelEnType);
+
+type LensPanelKey = keyof typeof lensPanelEn;
+const KEYS = Object.keys(lensPanelEn) as LensPanelKey[];
+
+function addReadable(root: ParentNode, out: Set<string>): void {
+  root.querySelectorAll('*').forEach((element) => {
+    const label = element.getAttribute('aria-label');
+    if (label) out.add(label);
+    const title = element.getAttribute('title');
+    if (title) out.add(title);
+    const placeholder = element.getAttribute('placeholder');
+    if (placeholder) out.add(placeholder);
+    const ownText = [...element.childNodes]
+      .filter((node) => node.nodeType === node.TEXT_NODE)
+      .map((node) => node.textContent ?? '')
+      .join('')
+      .trim();
+    if (ownText) out.add(ownText);
+  });
+}
+
+function chromeStrings(container: HTMLElement): Set<string> {
+  const out = new Set<string>();
+  addReadable(container, out);
+  return out;
+}
+
+/** Key-specific pseudo translation; keeps every `{placeholder}` and plural category. */
+function markValue(key: LensPanelKey, value: TranslationValue): TranslationValue {
+  if (typeof value === 'string') return `⟦${key}|${value}⟧`;
+  const wrapped: Record<string, string> = {};
+  for (const [category, text] of Object.entries(value)) wrapped[category] = `⟦${key}|${text}⟧`;
+  return wrapped as TranslationValue;
+}
+const PSEUDO: Catalogue = Object.fromEntries(KEYS.map((key) => [key, markValue(key, lensPanelEn[key])])) as Catalogue;
+const PSEUDO_LOCALE = 'lens-panel-pseudo';
+
+function expectedMarked(key: LensPanelKey, params: Record<string, string | number> = {}): string {
+  const value = lensPanelEn[key];
+  const template = typeof value === 'string'
+    ? value
+    : (typeof params.count === 'number'
+      ? (value as Record<string, string>)[new Intl.PluralRules('en').select(params.count)] ?? value.other
+      : value.other);
+  const interpolated = template.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, (whole, name: string) =>
+    Object.hasOwn(params, name) ? String(params[name]) : whole);
+  return `⟦${key}|${interpolated}⟧`;
+}
+
+function assertMarked(after: Set<string>, key: LensPanelKey, params: Record<string, string | number> = {}): void {
+  const expected = expectedMarked(key, params);
+  const found = [...after].some((s) => s.includes(expected));
+  assert.ok(found, `${key}: expected marked+interpolated text not found anywhere: ${expected}`);
+}
+
+const noop = () => {};
+
+function ifcRule(overrides: Partial<LensRule> = {}): LensRule {
+  return {
+    id: 'rule-ifc',
+    name: 'Walls',
+    enabled: true,
+    criteria: { type: 'ifcType', ifcType: 'IfcWall' },
+    action: 'colorize',
+    color: '#e53935',
+    ...overrides,
+  };
+}
+
+function ruleLens(rules: LensRule[]): Lens {
+  return { id: 'lens-rules', name: 'My Rule Lens', rules };
+}
+
+function autoColorLens(): Lens {
+  return {
+    id: 'lens-auto',
+    name: 'Color by Material',
+    rules: [],
+    autoColor: { source: 'material' },
+  };
+}
+
+const AUTOCOLOR_LEGEND: AutoColorLegendEntry[] = [
+  { id: 'v1', name: 'Concrete', color: '#e53935', count: 12 },
+  { id: 'v2', name: 'Steel', color: '#1e88e5', count: 3 },
+];
+
+const RESET = {
+  savedLenses: [] as Lens[],
+  activeLensId: null,
+  lensColorMap: new Map(),
+  lensHiddenIds: new Set<number>(),
+  lensRuleIsolation: null,
+  lensRuleCounts: new Map(),
+  lensAutoColorLegend: [] as AutoColorLegendEntry[],
+  discoveredLensData: null,
+  models: new Map(),
+} as Partial<ReturnType<typeof useViewerStore.getState>>;
+
+beforeEach(() => {
+  setLocale('en');
+  useViewerStore.setState(RESET);
+});
+
+afterEach(() => {
+  cleanup();
+  setLocale('en');
+  useViewerStore.setState(RESET);
+});
+
+describe('Lens panel localization (#4918)', { skip: !HAS_CATALOGUE && 'lens-panel.en.ts catalogue module not present (revert-oracle probe)' }, () => {
+  it('empty panel: header, new-lens buttons, "click a lens to activate" footer, close', () => {
+    const container = render(<LensPanel onClose={() => {}} />);
+    const english = chromeStrings(container);
+    for (const key of [
+      'lensPanel.title', 'lensPanel.exportTooltip', 'lensPanel.importTooltip',
+      'lensPanel.closeAriaLabel', 'lensPanel.newRuleLensButton', 'lensPanel.newAutoColorLensButton',
+      'lensPanel.footer.clickToActivate',
+    ] as LensPanelKey[]) {
+      assert.ok(english.has(lensPanelEn[key] as string), `expected "${lensPanelEn[key]}" (${key}) visible before switching locale`);
+    }
+
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = chromeStrings(container);
+    for (const key of [
+      'lensPanel.title', 'lensPanel.exportTooltip', 'lensPanel.importTooltip',
+      'lensPanel.closeAriaLabel', 'lensPanel.newRuleLensButton', 'lensPanel.newAutoColorLensButton',
+      'lensPanel.footer.clickToActivate',
+    ] as LensPanelKey[]) {
+      assertMarked(after, key);
+    }
+  });
+
+  it('footer status: active lens with hidden ids interpolates colored + hidden counts', () => {
+    useViewerStore.setState({
+      savedLenses: [ruleLens([ifcRule()])],
+      activeLensId: 'lens-rules',
+      lensColorMap: new Map([[1, '#e53935']]),
+      lensHiddenIds: new Set([1, 2]),
+    });
+    const container = render(<LensPanel />);
+    const english = chromeStrings(container);
+    assert.ok([...english].some((s) => s.includes('1 colored') && s.includes('2 hidden')), 'expected the active footer to interpolate colored+hidden counts');
+
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = chromeStrings(container);
+    assertMarked(after, 'lensPanel.footer.hiddenCount', { count: 2 });
+    assertMarked(after, 'lensPanel.footer.active', { colored: 1, hidden: expectedMarked('lensPanel.footer.hiddenCount', { count: 2 }) });
+  });
+
+  it('footer status: active lens with nothing hidden shows "ghosted"', () => {
+    useViewerStore.setState({
+      savedLenses: [ruleLens([ifcRule()])],
+      activeLensId: 'lens-rules',
+      lensColorMap: new Map([[1, '#e53935']]),
+      lensHiddenIds: new Set(),
+    });
+    const container = render(<LensPanel />);
+    const english = chromeStrings(container);
+    assert.ok([...english].some((s) => s.includes('ghosted')));
+
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = chromeStrings(container);
+    assertMarked(after, 'lensPanel.footer.ghosted');
+  });
+
+  it('rule-based lens card: active with two rules (one empty), isolate tooltip, isolated badge, rule count', () => {
+    const rules = [
+      ifcRule({ id: 'r1', name: 'Walls', color: '#e53935' }),
+      ifcRule({ id: 'r2', name: 'Doors', color: '#1e88e5', criteria: { type: 'ifcType', ifcType: 'IfcDoor' } }),
+    ];
+    useViewerStore.setState({
+      savedLenses: [ruleLens(rules)],
+      activeLensId: 'lens-rules',
+      lensRuleCounts: new Map([['r1', 5], ['r2', 0]]),
+      lensRuleIsolation: { ruleId: 'r1', entityIds: [1, 2, 3] },
+    });
+    const container = render(<LensPanel />);
+    const english = chromeStrings(container);
+    assert.ok(english.has(lensPanelEn['lensPanel.ruleRow.isolateTooltip'] as string));
+    assert.ok(english.has(lensPanelEn['lensPanel.ruleRow.emptyTooltip'] as string));
+    assert.ok(english.has(lensPanelEn['lensPanel.isolatedBadge'] as string));
+    assert.ok([...english].some((s) => s.includes('2 rules')));
+    assert.ok(english.has(lensPanelEn['lensPanel.card.editTooltip'] as string));
+    assert.ok(english.has(lensPanelEn['lensPanel.card.deleteTooltip'] as string));
+
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = chromeStrings(container);
+    assertMarked(after, 'lensPanel.ruleRow.isolateTooltip');
+    assertMarked(after, 'lensPanel.ruleRow.emptyTooltip');
+    assertMarked(after, 'lensPanel.isolatedBadge');
+    assertMarked(after, 'lensPanel.card.ruleCount', { count: 2 });
+    assertMarked(after, 'lensPanel.card.editTooltip');
+    assertMarked(after, 'lensPanel.card.deleteTooltip');
+  });
+
+  it('auto-color lens card: active shows legend rows, isolate tooltip, sort control, and legend count', () => {
+    useViewerStore.setState({
+      savedLenses: [autoColorLens()],
+      activeLensId: 'lens-auto',
+      lensAutoColorLegend: AUTOCOLOR_LEGEND,
+    });
+    const container = render(<LensPanel />);
+    const english = chromeStrings(container);
+    assert.ok(english.has(lensPanelEn['lensPanel.autoColorRow.isolateTooltip'] as string));
+    assert.ok(english.has(lensPanelEn['lensPanel.card.sortLegendTooltip'] as string));
+    assert.ok([...english].some((s) => s.includes('2 values')));
+
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = chromeStrings(container);
+    assertMarked(after, 'lensPanel.autoColorRow.isolateTooltip');
+    assertMarked(after, 'lensPanel.card.sortLegendTooltip');
+    assertMarked(after, 'lensPanel.card.legendValuesCount', { count: 2 });
+  });
+
+  it('auto-color lens card: inactive shows its source-type badge instead of the legend', () => {
+    useViewerStore.setState({
+      savedLenses: [autoColorLens()],
+      activeLensId: null,
+    });
+    const container = render(<LensPanel />);
+    const english = chromeStrings(container);
+    assert.ok(english.has(lensPanelEn['lensPanel.type.material'] as string), 'inactive auto-color card should show its source type label');
+
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = chromeStrings(container);
+    assertMarked(after, 'lensPanel.type.material');
+  });
+
+  it('duplicate-into-editable-copy tooltip differs for a builtin lens', () => {
+    useViewerStore.setState({ savedLenses: [{ ...ruleLens([ifcRule()]), builtin: true }] });
+    const container = render(<LensPanel />);
+    const english = chromeStrings(container);
+    assert.ok(english.has(lensPanelEn['lensPanel.card.duplicateBuiltinTooltip'] as string));
+
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = chromeStrings(container);
+    assertMarked(after, 'lensPanel.card.duplicateBuiltinTooltip');
+  });
+
+  it('rule editor (ifcType): criteria-type options, class placeholder, duplicate/remove tooltips, reorder controls, action select', () => {
+    // The IFC class picker (`SearchableSelect`) only renders its `placeholder`
+    // prop as visible text when the value is empty — a chosen value displays
+    // itself instead (see `SearchableSelect.tsx`'s `{value ? display(value) :
+    // placeholder}`). An empty `ifcType` is what actually surfaces "Class...".
+    const container = render(
+      <RuleEditor
+        rule={ifcRule({ criteria: { type: 'ifcType', ifcType: '' } })}
+        index={0}
+        onChange={mock.fn()}
+        onRemove={noop}
+        onDuplicate={noop}
+        discovered={null}
+        onRequestDiscovery={noop}
+        onMove={mock.fn<(from: number, to: number) => void>()}
+      />,
+    );
+    const english = chromeStrings(container);
+    for (const key of [
+      'lensPanel.type.ifcType', 'lensPanel.type.attribute', 'lensPanel.type.property', 'lensPanel.type.quantity',
+      'lensPanel.type.classification', 'lensPanel.type.material', 'lensPanel.type.model', 'lensPanel.type.group',
+      'lensPanel.ruleEditor.classPlaceholder', 'lensPanel.ruleEditor.duplicateTooltip', 'lensPanel.ruleEditor.removeTooltip',
+      'lensPanel.ruleEditor.reorderAriaLabel', 'lensPanel.ruleEditor.reorderTooltip', 'lensPanel.ruleEditor.criteriaTypeAriaLabel',
+      'lensPanel.action.colorize', 'lensPanel.action.transparent', 'lensPanel.action.hide',
+    ] as LensPanelKey[]) {
+      assert.ok(english.has(lensPanelEn[key] as string), `expected "${lensPanelEn[key]}" (${key}) visible`);
+    }
+
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = chromeStrings(container);
+    for (const key of [
+      'lensPanel.type.ifcType', 'lensPanel.type.attribute', 'lensPanel.type.property', 'lensPanel.type.quantity',
+      'lensPanel.type.classification', 'lensPanel.type.material', 'lensPanel.type.model', 'lensPanel.type.group',
+      'lensPanel.ruleEditor.classPlaceholder', 'lensPanel.ruleEditor.duplicateTooltip', 'lensPanel.ruleEditor.removeTooltip',
+      'lensPanel.ruleEditor.reorderAriaLabel', 'lensPanel.ruleEditor.reorderTooltip', 'lensPanel.ruleEditor.criteriaTypeAriaLabel',
+      'lensPanel.action.colorize', 'lensPanel.action.transparent', 'lensPanel.action.hide',
+    ] as LensPanelKey[]) {
+      assertMarked(after, key);
+    }
+  });
+
+  it('rule editor (attribute): value placeholder and operator labels (Exists/Equals/Contains/Not Equal)', () => {
+    const rule = ifcRule({ criteria: { type: 'attribute', attributeName: 'Name', operator: 'contains', attributeValue: '' } });
+    const container = render(
+      <RuleEditor rule={rule} index={0} onChange={mock.fn()} onRemove={noop} onDuplicate={noop} discovered={null} onRequestDiscovery={noop} />,
+    );
+    const english = chromeStrings(container);
+    for (const key of [
+      'lensPanel.ruleEditor.attributeValuePlaceholder', 'lensPanel.operator.exists', 'lensPanel.operator.equals',
+      'lensPanel.operator.contains', 'lensPanel.operator.notEqual', 'lensPanel.operator.gt', 'lensPanel.operator.gte',
+      'lensPanel.operator.lt', 'lensPanel.operator.lte',
+    ] as LensPanelKey[]) {
+      assert.ok(english.has(lensPanelEn[key] as string), `expected "${lensPanelEn[key]}" (${key}) visible`);
+    }
+
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = chromeStrings(container);
+    for (const key of [
+      'lensPanel.ruleEditor.attributeValuePlaceholder', 'lensPanel.operator.exists', 'lensPanel.operator.equals',
+      'lensPanel.operator.contains', 'lensPanel.operator.notEqual',
+    ] as LensPanelKey[]) {
+      assertMarked(after, key);
+    }
+  });
+
+  it('rule editor (property/quantity/classification): full-width set/name/system/code placeholders and value placeholder', () => {
+    const propertyRule = ifcRule({
+      criteria: { type: 'property', propertySet: '', propertyName: '', operator: 'gte', propertyValue: '10' },
+    });
+    const container = render(
+      <RuleEditor rule={propertyRule} index={0} onChange={mock.fn()} onRemove={noop} onDuplicate={noop} discovered={null} onRequestDiscovery={noop} />,
+    );
+    const english = chromeStrings(container);
+    for (const key of [
+      'lensPanel.ruleEditor.propertySetPlaceholder', 'lensPanel.ruleEditor.propertyNamePlaceholder', 'lensPanel.ruleEditor.valuePlaceholder',
+    ] as LensPanelKey[]) {
+      assert.ok(english.has(lensPanelEn[key] as string), `expected "${lensPanelEn[key]}" (${key}) visible`);
+    }
+
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = chromeStrings(container);
+    for (const key of [
+      'lensPanel.ruleEditor.propertySetPlaceholder', 'lensPanel.ruleEditor.propertyNamePlaceholder', 'lensPanel.ruleEditor.valuePlaceholder',
+    ] as LensPanelKey[]) {
+      assertMarked(after, key);
+    }
+    cleanup();
+    act(() => setLocale('en'));
+
+    const quantityRule = ifcRule({ criteria: { type: 'quantity', quantitySet: '', quantityName: '', operator: 'exists' } });
+    const container2 = render(
+      <RuleEditor rule={quantityRule} index={0} onChange={mock.fn()} onRemove={noop} onDuplicate={noop} discovered={null} onRequestDiscovery={noop} />,
+    );
+    assert.ok(chromeStrings(container2).has(lensPanelEn['lensPanel.ruleEditor.quantitySetPlaceholder'] as string));
+    assert.ok(chromeStrings(container2).has(lensPanelEn['lensPanel.ruleEditor.quantityNamePlaceholder'] as string));
+    act(() => setLocale(PSEUDO_LOCALE));
+    assertMarked(chromeStrings(container2), 'lensPanel.ruleEditor.quantitySetPlaceholder');
+    assertMarked(chromeStrings(container2), 'lensPanel.ruleEditor.quantityNamePlaceholder');
+    cleanup();
+    act(() => setLocale('en'));
+
+    const classificationRule = ifcRule({ criteria: { type: 'classification', classificationSystem: '', classificationCode: '' } });
+    const container3 = render(
+      <RuleEditor rule={classificationRule} index={0} onChange={mock.fn()} onRemove={noop} onDuplicate={noop} discovered={null} onRequestDiscovery={noop} />,
+    );
+    assert.ok(chromeStrings(container3).has(lensPanelEn['lensPanel.ruleEditor.classificationSystemPlaceholder'] as string));
+    assert.ok(chromeStrings(container3).has(lensPanelEn['lensPanel.ruleEditor.classificationCodePlaceholder'] as string));
+    act(() => setLocale(PSEUDO_LOCALE));
+    assertMarked(chromeStrings(container3), 'lensPanel.ruleEditor.classificationSystemPlaceholder');
+    assertMarked(chromeStrings(container3), 'lensPanel.ruleEditor.classificationCodePlaceholder');
+  });
+
+  it('rule editor (material/group/model): placeholders and the no-models / fallback-name / picker states', () => {
+    const materialRule = ifcRule({ criteria: { type: 'material', materialName: '' } });
+    const container = render(
+      <RuleEditor rule={materialRule} index={0} onChange={mock.fn()} onRemove={noop} onDuplicate={noop} discovered={null} onRequestDiscovery={noop} />,
+    );
+    assert.ok(chromeStrings(container).has(lensPanelEn['lensPanel.ruleEditor.materialPlaceholder'] as string));
+    act(() => setLocale(PSEUDO_LOCALE));
+    assertMarked(chromeStrings(container), 'lensPanel.ruleEditor.materialPlaceholder');
+    cleanup();
+    act(() => setLocale('en'));
+
+    const groupRule = ifcRule({ criteria: { type: 'group', groupName: '' } });
+    const container2 = render(
+      <RuleEditor rule={groupRule} index={0} onChange={mock.fn()} onRemove={noop} onDuplicate={noop} discovered={null} onRequestDiscovery={noop} />,
+    );
+    assert.ok(chromeStrings(container2).has(lensPanelEn['lensPanel.ruleEditor.groupPlaceholder'] as string));
+    act(() => setLocale(PSEUDO_LOCALE));
+    assertMarked(chromeStrings(container2), 'lensPanel.ruleEditor.groupPlaceholder');
+    cleanup();
+    act(() => setLocale('en'));
+
+    // No models loaded.
+    useViewerStore.setState({ models: new Map() });
+    const modelRule = ifcRule({ criteria: { type: 'model', modelId: '' } });
+    const container3 = render(
+      <RuleEditor rule={modelRule} index={0} onChange={mock.fn()} onRemove={noop} onDuplicate={noop} discovered={null} onRequestDiscovery={noop} />,
+    );
+    assert.ok(chromeStrings(container3).has(lensPanelEn['lensPanel.ruleEditor.noModelsLoaded'] as string));
+    act(() => setLocale(PSEUDO_LOCALE));
+    assertMarked(chromeStrings(container3), 'lensPanel.ruleEditor.noModelsLoaded');
+    cleanup();
+    act(() => setLocale('en'));
+
+    // Two models loaded: a <select> with the "Model..." placeholder option.
+    useViewerStore.setState({ models: new Map([['m1', { id: 'm1', name: 'Building A' }], ['m2', { id: 'm2', name: 'Building B' }]]) as never });
+    const container4 = render(
+      <RuleEditor rule={modelRule} index={0} onChange={mock.fn()} onRemove={noop} onDuplicate={noop} discovered={null} onRequestDiscovery={noop} />,
+    );
+    assert.ok(chromeStrings(container4).has(lensPanelEn['lensPanel.ruleEditor.modelSelectPlaceholder'] as string));
+    act(() => setLocale(PSEUDO_LOCALE));
+    assertMarked(chromeStrings(container4), 'lensPanel.ruleEditor.modelSelectPlaceholder');
+  });
+
+  it('rule editor: compound criteria aria-label and read-only tooltip', () => {
+    const compound = ifcRule({
+      criteria: {
+        type: 'and',
+        conditions: [
+          { type: 'ifcType', ifcType: 'IfcWall' },
+          { type: 'material', materialName: 'Concrete' },
+        ],
+      } as never,
+    });
+    const container = render(
+      <RuleEditor rule={compound} index={0} onChange={mock.fn()} onRemove={noop} onDuplicate={noop} discovered={null} onRequestDiscovery={noop} />,
+    );
+    const english = chromeStrings(container);
+    assert.ok(english.has(lensPanelEn['lensPanel.ruleEditor.compoundTypeAriaLabel'] as string));
+    assert.ok(english.has(lensPanelEn['lensPanel.ruleEditor.compoundReadOnlyTooltip'] as string));
+
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = chromeStrings(container);
+    assertMarked(after, 'lensPanel.ruleEditor.compoundTypeAriaLabel');
+    assertMarked(after, 'lensPanel.ruleEditor.compoundReadOnlyTooltip');
+  });
+
+  it('auto-color editor: field labels, source options, select placeholders, and the "Show unclassified" toggle', () => {
+    const container = render(
+      <AutoColorEditor
+        initial={{ name: 'Color by System', autoColor: { source: 'classification', psetName: '' } }}
+        onSave={noop}
+        onCancel={noop}
+        discovered={null}
+        onRequestDiscovery={noop}
+      />,
+    );
+    const english = chromeStrings(container);
+    for (const key of [
+      'lensPanel.autoColor.namePlaceholder', 'lensPanel.autoColor.byDistinctValues', 'lensPanel.autoColor.sourceLabel',
+      'lensPanel.autoColor.systemLabel', 'lensPanel.autoColor.selectSystemPlaceholder', 'lensPanel.autoColor.showUnclassified',
+      'lensPanel.editor.save', 'lensPanel.editor.cancel',
+    ] as LensPanelKey[]) {
+      assert.ok(english.has(lensPanelEn[key] as string), `expected "${lensPanelEn[key]}" (${key}) visible`);
+    }
+
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = chromeStrings(container);
+    for (const key of [
+      'lensPanel.autoColor.namePlaceholder', 'lensPanel.autoColor.byDistinctValues', 'lensPanel.autoColor.sourceLabel',
+      'lensPanel.autoColor.systemLabel', 'lensPanel.autoColor.selectSystemPlaceholder', 'lensPanel.autoColor.showUnclassified',
+      'lensPanel.editor.save', 'lensPanel.editor.cancel',
+    ] as LensPanelKey[]) {
+      assertMarked(after, key);
+    }
+  });
+
+  it('auto-color editor: attribute source shows "Name" label, "Select..." option, and property/quantity select placeholders', () => {
+    const container = render(
+      <AutoColorEditor
+        initial={{ name: '', autoColor: { source: 'attribute', propertyName: '' } }}
+        onSave={noop}
+        onCancel={noop}
+        discovered={null}
+        onRequestDiscovery={noop}
+      />,
+    );
+    const english = chromeStrings(container);
+    assert.ok(english.has(lensPanelEn['lensPanel.autoColor.nameLabel'] as string));
+    assert.ok(english.has(lensPanelEn['lensPanel.autoColor.selectPlaceholderOption'] as string));
+
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    assertMarked(chromeStrings(container), 'lensPanel.autoColor.nameLabel');
+    assertMarked(chromeStrings(container), 'lensPanel.autoColor.selectPlaceholderOption');
+    cleanup();
+    act(() => setLocale('en'));
+
+    const container2 = render(
+      <AutoColorEditor
+        initial={{ name: '', autoColor: { source: 'property', psetName: '', propertyName: '' } }}
+        onSave={noop}
+        onCancel={noop}
+        discovered={null}
+        onRequestDiscovery={noop}
+      />,
+    );
+    assert.ok(chromeStrings(container2).has(lensPanelEn['lensPanel.autoColor.psetLabel'] as string));
+    assert.ok(chromeStrings(container2).has(lensPanelEn['lensPanel.autoColor.selectPropertySetPlaceholder'] as string));
+    assert.ok(chromeStrings(container2).has(lensPanelEn['lensPanel.autoColor.selectPropertyPlaceholder'] as string));
+    act(() => setLocale(PSEUDO_LOCALE));
+    assertMarked(chromeStrings(container2), 'lensPanel.autoColor.psetLabel');
+    assertMarked(chromeStrings(container2), 'lensPanel.autoColor.selectPropertySetPlaceholder');
+    assertMarked(chromeStrings(container2), 'lensPanel.autoColor.selectPropertyPlaceholder');
+    cleanup();
+    act(() => setLocale('en'));
+
+    const container3 = render(
+      <AutoColorEditor
+        initial={{ name: '', autoColor: { source: 'quantity', psetName: '', propertyName: '' } }}
+        onSave={noop}
+        onCancel={noop}
+        discovered={null}
+        onRequestDiscovery={noop}
+      />,
+    );
+    assert.ok(chromeStrings(container3).has(lensPanelEn['lensPanel.autoColor.qsetLabel'] as string));
+    assert.ok(chromeStrings(container3).has(lensPanelEn['lensPanel.autoColor.selectQuantitySetPlaceholder'] as string));
+    assert.ok(chromeStrings(container3).has(lensPanelEn['lensPanel.autoColor.selectQuantityPlaceholder'] as string));
+    act(() => setLocale(PSEUDO_LOCALE));
+    assertMarked(chromeStrings(container3), 'lensPanel.autoColor.qsetLabel');
+    assertMarked(chromeStrings(container3), 'lensPanel.autoColor.selectQuantitySetPlaceholder');
+    assertMarked(chromeStrings(container3), 'lensPanel.autoColor.selectQuantityPlaceholder');
+  });
+
+  it('lens editor (rule authoring): name placeholder and "Add Rule" button', () => {
+    useViewerStore.setState({
+      savedLenses: [],
+    });
+    const container = render(<LensPanel />);
+    const newRuleLensButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes(lensPanelEn['lensPanel.newRuleLensButton'] as string));
+    assert.ok(newRuleLensButton, 'New Rule Lens button not found');
+    act(() => newRuleLensButton!.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
+
+    const english = chromeStrings(container);
+    assert.ok(english.has(lensPanelEn['lensPanel.editor.namePlaceholder'] as string));
+    assert.ok(english.has(lensPanelEn['lensPanel.editor.addRule'] as string));
+    assert.ok(english.has(lensPanelEn['lensPanel.editor.save'] as string));
+    assert.ok(english.has(lensPanelEn['lensPanel.editor.cancel'] as string));
+
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = chromeStrings(container);
+    assertMarked(after, 'lensPanel.editor.namePlaceholder');
+    assertMarked(after, 'lensPanel.editor.addRule');
+    assertMarked(after, 'lensPanel.editor.save');
+    assertMarked(after, 'lensPanel.editor.cancel');
+  });
+});

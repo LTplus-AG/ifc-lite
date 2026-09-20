@@ -29,6 +29,7 @@ import { idsPanelEn } from './catalogues/ids-panel.en';
 import { layersPanelEn } from './catalogues/layers-panel.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
 import { propertyEditorEn } from './catalogues/property-editor.en';
+import { repositionPanelEn } from './catalogues/reposition-panel.en';
 import { listsEn } from './catalogues/lists.en';
 import { mcpEn } from './catalogues/mcp.en';
 import { mcpPlaygroundEn } from './catalogues/mcp-playground.en';
@@ -99,6 +100,7 @@ export const en = {
   ...layersPanelEn,
   ...searchModalEn,
   ...searchFiltersEn,
+  ...repositionPanelEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

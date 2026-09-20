@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useRef, type PointerEvent } from 'react';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
 import { modelCenter } from '@/lib/model-placement/scene';
 import { addTranslation, constrainTranslation, orthogonalAxis, toRenderTranslation, type Translation, type MoveConstraint } from '@/lib/model-placement/translation';
@@ -15,6 +16,7 @@ interface Drag { start: ScreenVector; basis: DragBasis; before: Translation; con
 /** Uses the existing gizmo's projection callback and camera tick subscription.
  * All pointer samples preview against the starting displacement; Apply makes one command. */
 export function PlacementGizmo({ disabled, onError }: { disabled: boolean; onError: (message: string) => void }) {
+  const { t } = useTranslation();
   const preview = useViewerStore((state) => state.modelPlacement.preview);
   const project = useViewerStore((state) => state.cameraCallbacks.projectToScreen);
   const viewpoint = useViewerStore((state) => state.cameraCallbacks.getViewpoint);
@@ -70,22 +72,22 @@ export function PlacementGizmo({ disabled, onError }: { disabled: boolean; onErr
   };
   const handlers = { onPointerMove: move, onPointerUp: (event: PointerEvent<SVGElement>) => end(event),
     onPointerCancel: (event: PointerEvent<SVGElement>) => end(event, true), onLostPointerCapture: () => { drag.current = null; } };
-  return <svg aria-label="Model movement handles" className="absolute inset-0 w-full h-full pointer-events-none z-30" style={{ overflow: 'visible' }}>
+  return <svg aria-label={t('repositionPanel.gizmo.handlesAriaLabel')} className="absolute inset-0 w-full h-full pointer-events-none z-30" style={{ overflow: 'visible' }}>
     {([[0, 1], [0, 2], [1, 2]] as const).map((axes) => {
       const a = tips[axes[0]], b = tips[axes[1]];
       if (!a || !b || !dragTranslation(axes.map((axis) => ({ axis, screen: vectors[axis]! })), { x: 0, y: 0 })) return null;
       const points = [[0.2, 0.2], [0.4, 0.2], [0.4, 0.4], [0.2, 0.4]].map(([u, v]) =>
         `${origin.x + (a.x - origin.x) * u + (b.x - origin.x) * v},${origin.y + (a.y - origin.y) * u + (b.y - origin.y) * v}`).join(' ');
       const name = axes.map((axis) => AXES[axis]).join('').toUpperCase();
-      return <polygon key={name} aria-label={`Drag ${name} plane`} points={points} fill="#14b8a655" stroke="#14b8a6"
+      return <polygon key={name} aria-label={t('repositionPanel.gizmo.dragPlaneAriaLabel', { plane: name })} points={points} fill="#14b8a655" stroke="#14b8a6"
         style={{ pointerEvents: 'auto', cursor: 'grab' }} onPointerDown={(event) => start(axes, event)} {...handlers} />;
     })}
     {tips.map((tip, axis) => tip && <g key={axis}>
       <line x1={origin.x} y1={origin.y} x2={tip.x} y2={tip.y} stroke={COLORS[axis]} strokeWidth={3} />
-      <circle aria-label={`Drag ${AXES[axis].toUpperCase()} axis`} cx={tip.x} cy={tip.y} r={8} fill={COLORS[axis]}
+      <circle aria-label={t('repositionPanel.gizmo.dragAxisAriaLabel', { axis: AXES[axis].toUpperCase() })} cx={tip.x} cy={tip.y} r={8} fill={COLORS[axis]}
         style={{ pointerEvents: 'auto', cursor: 'grab' }} onPointerDown={(event) => start([axis as 0 | 1 | 2], event)} {...handlers} />
       <text x={tip.x + 10} y={tip.y} fill={COLORS[axis]}>{AXES[axis].toUpperCase()}</text>
     </g>)}
-    <text x={origin.x + 12} y={origin.y + 24} fill="currentColor" className="text-xs">{Math.hypot(...preview.delta).toFixed(4)} m</text>
+    <text x={origin.x + 12} y={origin.y + 24} fill="currentColor" className="text-xs">{t('repositionPanel.gizmo.deltaLabel', { distance: Math.hypot(...preview.delta).toFixed(4) })}</text>
   </svg>;
 }

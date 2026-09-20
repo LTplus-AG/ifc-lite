@@ -3,12 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useState } from 'react';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { makePlacementManifest, parsePlacementManifest, type PlacementManifest } from '@/lib/model-placement/manifest';
 import { placementFrameKey } from '@/lib/model-placement/persistence';
 
 /** Imported files are validated before offering an explicit instance mapping. */
 export function PlacementFiles() {
+  const { t } = useTranslation();
   const models = useViewerStore((state) => state.models);
   const [manifest, setManifest] = useState<PlacementManifest | null>(null);
   const [bindings, setBindings] = useState(new Map<string, string>());
@@ -26,34 +28,34 @@ export function PlacementFiles() {
           ? model.sourceContentHash === entry.sourceContentHash : id === entry.instanceId);
         if (matches.length === 1) next.set(entry.instanceId, matches[0][0]);
       }
-      setBindings(next); setManifest(document); setError(''); setStatus('Review the model mapping, then import positions.');
+      setBindings(next); setManifest(document); setError(''); setStatus(t('repositionPanel.files.statusReviewMapping'));
     } catch (err) { setStatus(''); setError(err instanceof Error ? err.message : String(err)); setManifest(null); }
   };
-  return <details className="border-t pt-2"><summary>Save or restore placements</summary>
-    <p>Positions are saved in this browser for matching source files. Export a placement file to transfer them. Original model files stay unchanged.</p>
+  return <details className="border-t pt-2"><summary>{t('repositionPanel.files.summary')}</summary>
+    <p>{t('repositionPanel.files.intro')}</p>
     <button className="border px-2 py-1" onClick={() => {
       const state = useViewerStore.getState();
       const value = makePlacementManifest(state.models, state.modelPlacement.placements, placementFrameKey(state));
       downloadBlob(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }), `${sanitizeFilename('model-placements')}.json`);
-    }}>Export placements</button>
-    <label className="block">Open placement file<input aria-label="Open placement file" type="file" accept=".json,application/json"
+    }}>{t('repositionPanel.files.exportButton')}</button>
+    <label className="block">{t('repositionPanel.files.openLabel')}<input aria-label={t('repositionPanel.files.openLabel')} type="file" accept=".json,application/json"
       onChange={(event) => { const file = event.target.files?.[0]; if (file) void read(file); event.target.value = ''; }} /></label>
-    {manifest && <fieldset><legend>Match saved instances to loaded models</legend>
+    {manifest && <fieldset><legend>{t('repositionPanel.files.matchLegend')}</legend>
       {manifest.models.map((entry) => <label className="block" key={entry.instanceId}>{entry.instanceId}
-        <select aria-label={`Bind ${entry.instanceId}`} value={bindings.get(entry.instanceId) ?? ''} className="border w-full bg-transparent"
+        <select aria-label={t('repositionPanel.files.bindAriaLabel', { instance: entry.instanceId })} value={bindings.get(entry.instanceId) ?? ''} className="border w-full bg-transparent"
           onChange={(event) => setBindings((prior) => new Map(prior).set(entry.instanceId, event.target.value))}>
-          <option value="">Choose matching source</option>
+          <option value="">{t('repositionPanel.files.chooseSourceOption')}</option>
           {[...models].filter(([, model]) => entry.sourceContentHash === null || entry.sourceContentHash === model.sourceContentHash)
             .map(([id, model]) => <option key={id} value={id}>{model.name} ({id})</option>)}
         </select></label>)}
-      <p>Import changes positions as one undoable operation. Current position locks are preserved.</p>
+      <p>{t('repositionPanel.files.importNote')}</p>
       <button className="border px-2 py-1" onClick={() => {
         try {
           if (manifest.models.some((entry) => !bindings.get(entry.instanceId))) throw new Error('Map every saved instance before importing.');
           useViewerStore.getState().importModelPlacements(manifest, bindings);
-          setManifest(null); setError(''); setStatus('Placements imported. Undo placement restores the previous placements.');
+          setManifest(null); setError(''); setStatus(t('repositionPanel.files.statusImported'));
         } catch (err) { setStatus(''); setError(err instanceof Error ? err.message : String(err)); }
-      }}>Import positions</button>
+      }}>{t('repositionPanel.files.importButton')}</button>
     </fieldset>}
     {status && <p role="status">{status}</p>}{error && <p role="alert">{error}</p>}
   </details>;

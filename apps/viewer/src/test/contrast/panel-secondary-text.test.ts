@@ -160,7 +160,7 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
     {
       name: 'PropertiesPanel "Size" value',
       file: PROPERTIES_PANEL,
-      anchor: '-wider w-[34px] shrink-0 pt-px">Size</span>\n                    <span ',
+      anchor: "-wider w-[34px] shrink-0 pt-px\">{t('properties.panel.sizeLabel')}</span>\n                    <span ",
       surface: PROPERTIES_PANEL_SURFACE,
     },
     {

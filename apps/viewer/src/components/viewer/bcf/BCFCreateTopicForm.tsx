@@ -74,13 +74,18 @@ export function BCFCreateTopicForm({
   initialTitle = '',
   initialDescription = '',
   initialTopic = null,
-  heading = 'New Topic',
-  submitLabel = 'Create Topic',
+  heading,
+  submitLabel,
   snapshot,
   onCaptureSnapshot,
   capturingSnapshot = false,
 }: BCFCreateTopicFormProps) {
   const { t } = useTranslation();
+  // Callers (BCFPanel) may pass a translated override for editing; the
+  // create-form default is resolved here rather than baked into the prop
+  // default so it re-translates on a live locale switch too.
+  const effectiveHeading = heading ?? t('bcf.createForm.newTopicHeading');
+  const effectiveSubmitLabel = submitLabel ?? t('bcf.createForm.createTopicSubmitLabel');
   // Keep the original ISO due date so an edit that doesn't touch the date can
   // round-trip it intact (the date input only sees YYYY-MM-DD). (#1461)
   const initialDueDate = initialTopic?.dueDate;
@@ -131,7 +136,7 @@ export function BCFCreateTopicForm({
   return (
     <form onSubmit={handleSubmit} className="p-3 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-medium">{heading}</h3>
+        <h3 className="font-medium">{effectiveHeading}</h3>
         <Button variant="ghost" size="sm" type="button" aria-label={t('bcf.shared.close')} onClick={onCancel}>
           <X className="h-4 w-4" />
         </Button>
@@ -283,7 +288,7 @@ export function BCFCreateTopicForm({
           {t('bcf.shared.cancel')}
         </Button>
         <Button type="submit" disabled={!title.trim()}>
-          {submitLabel}
+          {effectiveSubmitLabel}
         </Button>
       </div>
     </form>

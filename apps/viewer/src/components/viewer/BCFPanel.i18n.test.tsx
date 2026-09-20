@@ -113,4 +113,24 @@ describe('BCFPanel localization (#4918)', () => {
     });
     assert.match(document.body.textContent ?? '', /⟦Set Author Email⟧/);
   });
+
+  it('translates the edit-topic form heading and submit label the panel passes as overrides (review #5055)', () => {
+    assert.ok(bcfEn, 'bcf.en.ts catalogue must exist');
+    const topic = useViewerStore.getState().bcfProject!.topics.values().next().value!;
+    act(() => useViewerStore.setState({ activeTopicId: topic.guid }));
+    const container = renderPanel();
+    registerLocale('bcf-panel-edit-form-pseudo', pseudoLocale());
+    act(() => setLocale('bcf-panel-edit-form-pseudo'));
+
+    const editButton = [...container.querySelectorAll('button')].find(
+      (b) => b.getAttribute('aria-label') === marked(CATALOGUE['bcf.topicDetail.editTopic'] as string),
+    );
+    assert.ok(editButton, 'expected an Edit topic button');
+    act(() => {
+      editButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    assert.match(container.textContent ?? '', new RegExp(marked(CATALOGUE['bcf.createForm.editTopicHeading'] as string)));
+    assert.match(container.textContent ?? '', new RegExp(marked(CATALOGUE['bcf.createForm.saveChangesSubmitLabel'] as string)));
+  });
 });

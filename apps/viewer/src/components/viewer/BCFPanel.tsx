@@ -480,8 +480,8 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
               onCancel={() => setShowEditForm(false)}
               author={bcfAuthor}
               initialTopic={activeTopic}
-              heading="Edit Topic"
-              submitLabel="Save Changes"
+              heading={t('bcf.createForm.editTopicHeading')}
+              submitLabel={t('bcf.createForm.saveChangesSubmitLabel')}
             />
           </div>
         ) : activeTopic ? (

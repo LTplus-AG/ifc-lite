@@ -196,7 +196,7 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
         toast.info(
           t('bcf.serverDialog.syncWarnings', {
             count: result.project.topics.size,
-            skipped: result.warnings.length,
+            itemsSkipped: t('bcf.serverDialog.itemsSkipped', { count: result.warnings.length }),
           }),
         );
       } else {

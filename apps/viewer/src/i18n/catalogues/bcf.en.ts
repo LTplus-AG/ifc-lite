@@ -42,6 +42,10 @@ export const bcfEn = {
   'bcf.viewpointCapture.capture2d': 'Capture 2D',
 
   // BCFCreateTopicForm.tsx
+  'bcf.createForm.newTopicHeading': 'New Topic',
+  'bcf.createForm.createTopicSubmitLabel': 'Create Topic',
+  'bcf.createForm.editTopicHeading': 'Edit Topic',
+  'bcf.createForm.saveChangesSubmitLabel': 'Save Changes',
   'bcf.createForm.titleLabel': 'Title *',
   'bcf.createForm.titlePlaceholder': 'Brief description of the topic',
   'bcf.createForm.descriptionLabel': 'Description',
@@ -109,8 +113,18 @@ export const bcfEn = {
   'bcf.serverDialog.disconnect': 'Disconnect',
   'bcf.serverDialog.replaceAndLoad': 'Replace and load',
   'bcf.serverDialog.loadTopics': 'Load topics',
-  'bcf.serverDialog.syncWarnings': 'Loaded {count} topics ({skipped} items skipped — see console)',
-  'bcf.serverDialog.syncSuccess': 'Loaded {count} topics from the BCF server',
+  'bcf.serverDialog.itemsSkipped': {
+    one: '{count} item skipped',
+    other: '{count} items skipped',
+  },
+  'bcf.serverDialog.syncWarnings': {
+    one: 'Loaded {count} topic ({itemsSkipped} — see console)',
+    other: 'Loaded {count} topics ({itemsSkipped} — see console)',
+  },
+  'bcf.serverDialog.syncSuccess': {
+    one: 'Loaded {count} topic from the BCF server',
+    other: 'Loaded {count} topics from the BCF server',
+  },
 
   // BCFTopicDetail.tsx
   'bcf.topicDetail.zoomToTopicAria': 'Zoom to topic',

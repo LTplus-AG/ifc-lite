@@ -957,6 +957,35 @@ fn attribute_export_preserves_transitional_ifc4_metadata() {
     assert_eq!(attributes[0].value, "alignment-tag");
 }
 
+/// #4996 review: IFC4.1/4.2 `IfcAlignment` carried `Axis` at slot 7 ahead of
+/// `PredefinedType`; the IFC4X3 layout dropped `Axis`, and the bundled IFC4
+/// registry never had the class, so without an explicit transitional layout
+/// the slot-8 enum was silently dropped.
+#[test]
+fn attribute_export_preserves_transitional_ifc4_alignment_layout() {
+    for schema in ["IFC4X1", "IFC4X2"] {
+        let entity = DecodedEntity::new(
+            1,
+            IfcType::from_str("IFCALIGNMENT"),
+            vec![
+                ifc_lite_core::AttributeValue::Null,
+                ifc_lite_core::AttributeValue::Null,
+                ifc_lite_core::AttributeValue::Null,
+                ifc_lite_core::AttributeValue::Null,
+                ifc_lite_core::AttributeValue::Null,
+                ifc_lite_core::AttributeValue::Null,
+                ifc_lite_core::AttributeValue::Null,
+                ifc_lite_core::AttributeValue::EntityRef(7),
+                ifc_lite_core::AttributeValue::Enum("USERDEFINED".to_string()),
+            ],
+        );
+        let attributes = render_attributes(&entity, "IFCALIGNMENT", Some(schema));
+        let names: Vec<_> = attributes.iter().map(|value| value.name.as_str()).collect();
+        assert_eq!(names, vec!["PredefinedType"], "{schema}: Axis is a reference (omitted), PredefinedType is slot 8");
+        assert_eq!(attributes[0].value, "USERDEFINED");
+    }
+}
+
 /// #4203: IFC4.1 and IFC4.2 retained ordinary IFC4 entities, so those common
 /// entities keep their IFC4 slots even though neither transitional registry is
 /// bundled independently.

@@ -72,9 +72,15 @@ const COMMON_ATTRIBUTES: [&str; 7] = [
 ];
 
 /// IFC4.2 added the facility/bridge spatial classes before IFC4.3 added
-/// `IfcFacilityPart.UsageType`. Keep the released IFC4.2 positional surface
-/// explicit so the later canonical registry cannot shift `PredefinedType`.
+/// `IfcFacilityPart.UsageType`, and IFC4.1/4.2 `IfcAlignment` still carried
+/// `Axis` at slot 7 ahead of `PredefinedType` (the IFC4X3 layout dropped
+/// `Axis`). Keep the released transitional positional surfaces explicit so
+/// the later canonical registry cannot shift `PredefinedType`.
 fn ifc4x2_infrastructure_attribute_names(raw_type_name: &str) -> Option<&'static [&'static str]> {
+    const ALIGNMENT: &[&str] = &[
+        "GlobalId", "OwnerHistory", "Name", "Description", "ObjectType", "ObjectPlacement",
+        "Representation", "Axis", "PredefinedType",
+    ];
     const FACILITY: &[&str] = &[
         "GlobalId", "OwnerHistory", "Name", "Description", "ObjectType", "ObjectPlacement",
         "Representation", "LongName", "CompositionType",
@@ -83,7 +89,9 @@ fn ifc4x2_infrastructure_attribute_names(raw_type_name: &str) -> Option<&'static
         "GlobalId", "OwnerHistory", "Name", "Description", "ObjectType", "ObjectPlacement",
         "Representation", "LongName", "CompositionType", "PredefinedType",
     ];
-    if raw_type_name.eq_ignore_ascii_case("IFCFACILITY")
+    if raw_type_name.eq_ignore_ascii_case("IFCALIGNMENT") {
+        Some(ALIGNMENT)
+    } else if raw_type_name.eq_ignore_ascii_case("IFCFACILITY")
         || raw_type_name.eq_ignore_ascii_case("IFCFACILITYPART")
     {
         Some(FACILITY)
@@ -127,9 +135,9 @@ pub(super) fn render_attributes(
                 .or_else(|| {
                     super::uses_ifc4_attribute_layout(schema)
                         .then(|| {
-                            (schema.eq_ignore_ascii_case("IFC4X2"))
-                                .then(|| ifc4x2_infrastructure_attribute_names(raw_type_name))
-                                .flatten()
+                            // Transitional (IFC4.1/4.2) layouts first: they are the
+                            // only source for classes the bundled IFC4 EXPRESS lacks.
+                            ifc4x2_infrastructure_attribute_names(raw_type_name)
                                 .or_else(|| ifc_lite_core::attribute_names_for_schema("IFC4", raw_type_name))
                                 .or_else(|| ifc_lite_core::legacy_attribute_names(raw_type_name))
                         })

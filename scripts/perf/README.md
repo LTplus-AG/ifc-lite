@@ -29,22 +29,17 @@ Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
 ## Schema-specific crate-private registries (#4203, #4996)
 
-Measured exact merge-base `ec114fefabfd1b3a23d6a25545610652db6c5342`
-against `8bb02a63de88b181ab791a4756f84676c0f33721` on AC20-FZK-Haus with
-the pinned Rust toolchain and profiling profile on x86_64 Windows. Five
-fresh-process base/branch pairs were interleaved on the same otherwise-idle
-machine. Median parse/geometry/pipeline-total times were 8/11/19 ms at base
-and 9/11/20 ms on the branch; full-call wall medians were 21.202/21.589 ms
-(+1.82%), inside the base samples' 9.63% wall-time spread. This is no measured
-runtime regression or speed claim; the millisecond-quantized parse/total
-movement is below the run noise.
+Selecting generated per-schema attribute tables by the source file's schema
+showed no measured parse, geometry or end-to-end regression on AC20-FZK-Haus
+in an interleaved native base-vs-branch probe; the millisecond-quantized
+movement stayed inside the base run's own spread, and mesh, vertex and
+triangle counts plus the ordered mesh fingerprint were identical on both
+revisions (figures in the PR's validation evidence). The lesson: generated
+lookup tables can stay crate-private and be selected by the source schema
+without changing emitted geometry or adding a measurable normal-load cost;
+keep them out of the public Rust surface so this metadata correction does
+not create a semver liability.
 
-Every sample retained 44,249 entities, 285 meshes, 35,940 vertices and 19,456
-triangles, with ordered mesh FNV-1a64 `98306f5cdf415d44` on both revisions.
-The lesson: generated per-schema lookup tables can stay crate-private and be
-selected by the source schema without changing emitted geometry or adding a
-measurable normal-load cost; keep them out of the public Rust surface so this
-metadata correction does not create a semver liability.
 ## Full supported-schema `IfcType` parsing (#4203)
 
 Extending the generated `IfcType::from_str` match from the canonical IFC4X3

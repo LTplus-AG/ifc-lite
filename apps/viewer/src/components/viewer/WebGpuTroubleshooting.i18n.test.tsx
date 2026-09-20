@@ -23,12 +23,27 @@ import { act } from 'react';
 import { cleanup, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { resolve } from '@/i18n/registry';
-import { webgpuTroubleshootingEn } from '@/i18n/catalogues/webgpu-troubleshooting.en';
+import type { webgpuTroubleshootingEn as WebgpuTroubleshootingEnType } from '@/i18n/catalogues/webgpu-troubleshooting.en';
 import {
   WebGpuDisabledCaption,
   WebGpuTroubleshootingDetails,
   webGpuBannerBlurb,
 } from './WebGpuTroubleshooting.js';
+
+// Dynamic + try/catch (not a static import): a revert of this slice's
+// production change deletes webgpu-troubleshooting.en.ts entirely, and a
+// static import would fail the whole test FILE to load
+// (ERR_MODULE_NOT_FOUND) rather than let the assertions below fail on
+// their own merits — see PropertyEditor.i18n.test.tsx for the same pattern.
+let webgpuTroubleshootingEnLoaded: typeof WebgpuTroubleshootingEnType | undefined;
+try {
+  ({ webgpuTroubleshootingEn: webgpuTroubleshootingEnLoaded } = await import(
+    '@/i18n/catalogues/webgpu-troubleshooting.en'
+  ));
+} catch {
+  webgpuTroubleshootingEnLoaded = undefined;
+}
+const webgpuTroubleshootingEn = webgpuTroubleshootingEnLoaded ?? ({} as typeof WebgpuTroubleshootingEnType);
 
 type Key = keyof typeof webgpuTroubleshootingEn;
 const ALL_KEYS = Object.keys(webgpuTroubleshootingEn) as Key[];

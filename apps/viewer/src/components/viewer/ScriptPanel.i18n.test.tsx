@@ -31,10 +31,23 @@ import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider.js';
 import type { ExtensionHostService } from '@/services/extensions/host.js';
 import { cleanup, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
-import { scriptPanelEn } from '@/i18n/catalogues/script-panel.en';
+import type { scriptPanelEn as ScriptPanelEnType } from '@/i18n/catalogues/script-panel.en';
 import { useViewerStore } from '@/store';
 import type { SavedScript } from '@/lib/scripts/persistence.js';
 import { ScriptPanel } from './ScriptPanel.js';
+
+// Dynamic + try/catch (not a static import): a revert of this slice's
+// production change deletes script-panel.en.ts entirely, and a static
+// import would fail the whole test FILE to load (ERR_MODULE_NOT_FOUND)
+// rather than let the assertions below fail on their own merits — see
+// PropertyEditor.i18n.test.tsx for the same pattern.
+let scriptPanelEnLoaded: typeof ScriptPanelEnType | undefined;
+try {
+  ({ scriptPanelEn: scriptPanelEnLoaded } = await import('@/i18n/catalogues/script-panel.en'));
+} catch {
+  scriptPanelEnLoaded = undefined;
+}
+const scriptPanelEn = scriptPanelEnLoaded ?? ({} as typeof ScriptPanelEnType);
 
 type Key = keyof typeof scriptPanelEn;
 const ALL_KEYS = Object.keys(scriptPanelEn) as Key[];

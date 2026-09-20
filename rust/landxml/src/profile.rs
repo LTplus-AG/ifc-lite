@@ -8,6 +8,7 @@
 //! They do not imply a sampled mesh, a corridor solid, or a generated road.
 
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 use crate::LandXmlSourceId;
 
@@ -74,6 +75,32 @@ pub enum LandXmlVerticalCurveKind {
     Circular,
 }
 
+/// Why a design profile cannot be evaluated at a requested station.
+///
+/// The source records are deliberately preserved even when an evaluator cannot
+/// prove the required tangent data.  In particular, this is preferable to
+/// drawing a plausible-looking grade from a lone PVI.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum LandXmlProfileEvaluationError {
+    MissingTangentPvi,
+    InvalidCurveDeclaration,
+    InconsistentCircularCurve,
+}
+
+impl fmt::Display for LandXmlProfileEvaluationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::MissingTangentPvi => "vertical curve requires finite PVIs on both tangents",
+            Self::InvalidCurveDeclaration => "vertical curve has an invalid length or radius",
+            Self::InconsistentCircularCurve => {
+                "circular curve radius, length, and tangent grades disagree"
+            }
+        })
+    }
+}
+
+impl std::error::Error for LandXmlProfileEvaluationError {}
+
 /// A vertical curve anchored at its authored point of vertical intersection.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LandXmlVerticalCurve {
@@ -86,6 +113,156 @@ pub struct LandXmlVerticalCurve {
     pub length_in: Option<f64>,
     pub length_out: Option<f64>,
     pub radius: Option<f64>,
+}
+
+impl LandXmlProfile {
+    /// Evaluate a proposed profile at an authored station.
+    ///
+    /// This is intentionally only available for `ProfAlign`: sampled
+    /// `ProfSurf` grade lines retain discontinuities and must not be bridged.
+    /// A curve's text coordinate is its PVI.  Its incoming/outgoing tangents
+    /// come from the adjacent finite PVIs, as prescribed by LandXML's vertical
+    /// alignment representation.  `None` means the station lies outside the
+    /// available source extent; an error means the source advertises a curve
+    /// whose required tangent geometry is absent or contradictory.
+    pub fn evaluate_elevation_at(
+        &self,
+        station: f64,
+    ) -> Result<Option<f64>, LandXmlProfileEvaluationError> {
+        if self.kind != LandXmlProfileKind::Design || !station.is_finite() {
+            return Ok(None);
+        }
+        for curve in &self.vertical_curves {
+            let Some(index) = self
+                .pvis
+                .iter()
+                .position(|pvi| pvi.station == curve.station && pvi.elevation == curve.elevation)
+            else {
+                return Err(LandXmlProfileEvaluationError::MissingTangentPvi);
+            };
+            let Some((before, pvi, after)) = self
+                .pvis
+                .get(index.checked_sub(1).unwrap_or(usize::MAX))
+                .zip(self.pvis.get(index))
+                .zip(self.pvis.get(index + 1))
+                .map(|((before, pvi), after)| (before, pvi, after))
+            else {
+                return Err(LandXmlProfileEvaluationError::MissingTangentPvi);
+            };
+            let (Some(before_elevation), Some(pvi_elevation), Some(after_elevation)) =
+                (before.elevation, pvi.elevation, after.elevation)
+            else {
+                return Err(LandXmlProfileEvaluationError::MissingTangentPvi);
+            };
+            let incoming_run = pvi.station - before.station;
+            let outgoing_run = after.station - pvi.station;
+            if incoming_run <= 0.0 || outgoing_run <= 0.0 {
+                return Err(LandXmlProfileEvaluationError::InvalidCurveDeclaration);
+            }
+            let incoming_grade = (pvi_elevation - before_elevation) / incoming_run;
+            let outgoing_grade = (after_elevation - pvi_elevation) / outgoing_run;
+            let (length_in, length_out) = match curve.kind {
+                LandXmlVerticalCurveKind::Parabolic | LandXmlVerticalCurveKind::Circular => {
+                    let Some(length) = curve.length.filter(|value| *value > 0.0) else {
+                        return Err(LandXmlProfileEvaluationError::InvalidCurveDeclaration);
+                    };
+                    (length / 2.0, length / 2.0)
+                }
+                LandXmlVerticalCurveKind::UnsymmetricalParabolic => {
+                    let (Some(length_in), Some(length_out)) = (curve.length_in, curve.length_out)
+                    else {
+                        return Err(LandXmlProfileEvaluationError::InvalidCurveDeclaration);
+                    };
+                    if length_in <= 0.0 || length_out <= 0.0 {
+                        return Err(LandXmlProfileEvaluationError::InvalidCurveDeclaration);
+                    }
+                    (length_in, length_out)
+                }
+            };
+            let start = pvi.station - length_in;
+            let end = pvi.station + length_out;
+            if station < start || station > end {
+                continue;
+            }
+            let x = station - start;
+            let start_elevation = pvi_elevation - incoming_grade * length_in;
+            let total = length_in + length_out;
+            return match curve.kind {
+                LandXmlVerticalCurveKind::Parabolic => Ok(Some(
+                    start_elevation
+                        + incoming_grade * x
+                        + (outgoing_grade - incoming_grade) * x * x / (2.0 * total),
+                )),
+                LandXmlVerticalCurveKind::UnsymmetricalParabolic => {
+                    // A single quadratic cannot have its tangent intersection
+                    // away from the midpoint.  LandXML's asymmetric form is
+                    // therefore two parabolic halves joined at the PVI; each
+                    // half uses the same constant rate of grade change.
+                    let rate = (outgoing_grade - incoming_grade) / total;
+                    if x <= length_in {
+                        Ok(Some(
+                            start_elevation + incoming_grade * x + rate * x * x / 2.0,
+                        ))
+                    } else {
+                        let at_pvi = start_elevation
+                            + incoming_grade * length_in
+                            + rate * length_in * length_in / 2.0;
+                        let pvi_grade = incoming_grade + rate * length_in;
+                        let local = x - length_in;
+                        Ok(Some(
+                            at_pvi + pvi_grade * local + rate * local * local / 2.0,
+                        ))
+                    }
+                }
+                LandXmlVerticalCurveKind::Circular => {
+                    let Some(radius) = curve.radius.filter(|value| *value > 0.0) else {
+                        return Err(LandXmlProfileEvaluationError::InvalidCurveDeclaration);
+                    };
+                    let theta_in = incoming_grade.atan();
+                    let theta_out = outgoing_grade.atan();
+                    let sine_in = theta_in.sin();
+                    let sine_out = theta_out.sin();
+                    let change = sine_out - sine_in;
+                    if change.abs() <= f64::EPSILON {
+                        return Ok(Some(start_elevation + incoming_grade * x));
+                    }
+                    let curvature = change.signum() / radius;
+                    if (change - curvature * total).abs() > 1.0e-8_f64.max(total * 1.0e-8) {
+                        return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
+                    }
+                    let sine = sine_in + curvature * x;
+                    if sine.abs() > 1.0 + 1.0e-12 {
+                        return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
+                    }
+                    Ok(Some(
+                        start_elevation
+                            + ((1.0 - sine_in * sine_in).sqrt()
+                                - (1.0 - sine * sine).max(0.0).sqrt())
+                                / curvature,
+                    ))
+                }
+            };
+        }
+        for pair in self.pvis.windows(2) {
+            let (left, right) = (&pair[0], &pair[1]);
+            if station < left.station || station > right.station {
+                continue;
+            }
+            let (Some(left_elevation), Some(right_elevation)) = (left.elevation, right.elevation)
+            else {
+                return Ok(None);
+            };
+            let run = right.station - left.station;
+            if run <= 0.0 {
+                return Err(LandXmlProfileEvaluationError::InvalidCurveDeclaration);
+            }
+            return Ok(Some(
+                left_elevation
+                    + (station - left.station) * (right_elevation - left_elevation) / run,
+            ));
+        }
+        Ok(None)
+    }
 }
 
 /// A sampled cross-section at one station on its parent alignment.
@@ -186,6 +363,8 @@ pub struct LandXmlCapabilityDiagnostic {
 pub enum LandXmlCapabilityDiagnosticCode {
     MissingElevation,
     MissingReference,
+    AmbiguousReference,
+    UnsupportedGradeModelReference,
     UnresolvedPointReference,
     UnsupportedPlanFeatureReference,
     UnsupportedParcelReference,

@@ -23,7 +23,13 @@ function recordName(record: LandXmlSourceRecord): string {
     case 'point': return record.point.id;
     case 'source-data-point': return `Source point ${record.point.ordinal}`;
     case 'face': return record.pointIds.join(', ');
-    default: return record.line.name ?? record.line.sourceId;
+    case 'boundary': case 'breakline': case 'contour': return record.line.name ?? record.line.sourceId;
+    case 'alignment': return record.alignment.name;
+    case 'profile': return record.profile.name;
+    case 'cross-section': return `Cross section ${record.crossSection.ordinal}`;
+    case 'cross-section-surface': return record.crossSectionSurface.name ?? record.crossSectionSurface.sourceId;
+    case 'roadway': return record.roadway.name;
+    case 'preserved-extension': return record.extension.localName;
   }
 }
 
@@ -33,7 +39,13 @@ function recordPath(record: LandXmlSourceRecord): string {
     case 'point': return `${record.surface.sourcePath}/Definition/Pnts/P[@id="${record.point.id}"]`;
     case 'face': return `${record.surface.sourcePath}/Definition/Faces/F`;
     case 'source-data-point': return record.point.sourcePath;
-    default: return record.line.sourcePath;
+    case 'boundary': case 'breakline': case 'contour': return record.line.sourcePath;
+    case 'alignment': return record.alignment.sourceId;
+    case 'profile': return record.profile.sourceId;
+    case 'cross-section': return record.crossSection.sourceId;
+    case 'cross-section-surface': return record.crossSectionSurface.sourceId;
+    case 'roadway': return record.roadway.sourceId;
+    case 'preserved-extension': return record.extension.sourcePath;
   }
 }
 
@@ -87,6 +99,15 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
 
   if (!record) return null;
   const document = models.get(selected.modelId)?.landXmlDocument;
+  if (!('surface' in record)) {
+    return <div className="h-full overflow-auto border-l-2 border-zinc-200 bg-white p-4 text-xs dark:border-zinc-800 dark:bg-black" data-landxml-source-inspector>
+      <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">{t('properties.landXmlSource.heading')}</p>
+      <h3 className="mt-2 truncate text-sm font-bold uppercase tracking-tight text-zinc-900 dark:text-zinc-100">{recordName(record)}</h3>
+      <p className="mt-1 break-all font-mono text-xs text-zinc-500">{recordPath(record)}</p>
+      <p className="mt-3"><span className="font-semibold">{t('properties.landXmlSource.kind')}:</span> {record.kind}</p>
+      <pre className="mt-3 overflow-auto rounded bg-zinc-50 p-2 text-[10px] dark:bg-zinc-900">{JSON.stringify(record, null, 2)}</pre>
+    </div>;
+  }
   const sourceCount = document?.rendering.surfaceCounts.find((counts) => counts.surfaceSourceId === record.surface.sourceId);
   const pages = Math.ceil(navigationCount(record.surface) / NAVIGATION_PAGE_SIZE);
   const page = Math.min(navigationPage, pages - 1);

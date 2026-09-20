@@ -1016,3 +1016,101 @@ fn issue_5045_bounds_and_cancels_missing_grade_diagnostics() {
         LandXmlDiagnosticCode::Cancelled
     );
 }
+
+#[test]
+fn issue_5045_charges_roadway_and_section_reference_attributes() {
+    let roadway = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Roadways><Roadway name="route" alignmentRefs="a" surfaceRefs="ground" gradeModelRefs="grade"/></Roadways></LandXML>"#
+    );
+    let limits = LandXmlLimits {
+        max_references: 2,
+        ..LandXmlLimits::default()
+    };
+    assert_eq!(
+        parse_landxml_tin_with_cancel(roadway.as_bytes(), &limits, None)
+            .unwrap_err()
+            .code,
+        LandXmlDiagnosticCode::LimitExceeded
+    );
+    let section =
+        cross_section_document(r#"<CrossSectPnt pntRef="p" alignRef="A">0 1</CrossSectPnt>"#);
+    let limits = LandXmlLimits {
+        max_references: 1,
+        ..LandXmlLimits::default()
+    };
+    assert_eq!(
+        parse_landxml_tin_with_cancel(&section, &limits, None)
+            .unwrap_err()
+            .code,
+        LandXmlDiagnosticCode::LimitExceeded
+    );
+}
+
+#[test]
+fn issue_5045_evaluates_grade_parabolic_and_circular_vertical_geometry() {
+    use ifc_lite_landxml::{
+        LandXmlProfile, LandXmlProfilePoint, LandXmlSourceId, LandXmlVerticalCurve,
+    };
+
+    let points = |outgoing_elevation| {
+        vec![
+            LandXmlProfilePoint {
+                source_id: LandXmlSourceId("before".to_owned()),
+                station: 0.0,
+                elevation: Some(0.0),
+            },
+            LandXmlProfilePoint {
+                source_id: LandXmlSourceId("pvi".to_owned()),
+                station: 50.0,
+                elevation: Some(0.0),
+            },
+            LandXmlProfilePoint {
+                source_id: LandXmlSourceId("after".to_owned()),
+                station: 100.0,
+                elevation: Some(outgoing_elevation),
+            },
+        ]
+    };
+    let profile = |kind, radius, outgoing_elevation| LandXmlProfile {
+        source_id: LandXmlSourceId("profile".to_owned()),
+        parent_alignment_source_id: LandXmlSourceId("alignment".to_owned()),
+        ordinal: 1,
+        name: "design".to_owned(),
+        kind: LandXmlProfileKind::Design,
+        pvis: points(outgoing_elevation),
+        grade_lines: Vec::new(),
+        vertical_curves: vec![LandXmlVerticalCurve {
+            source_id: LandXmlSourceId("curve".to_owned()),
+            parent_profile_source_id: LandXmlSourceId("profile".to_owned()),
+            kind,
+            station: 50.0,
+            elevation: Some(0.0),
+            length: Some(20.0),
+            length_in: None,
+            length_out: None,
+            radius,
+        }],
+    };
+
+    let parabolic = profile(LandXmlVerticalCurveKind::Parabolic, None, 20.0);
+    assert_eq!(
+        parabolic.evaluate_elevation_at(20.0).unwrap(),
+        Some(0.0),
+        "plain PVI grade is linear away from the curve"
+    );
+    assert!((parabolic.evaluate_elevation_at(50.0).unwrap().unwrap() - 1.0).abs() < 1.0e-12);
+
+    // Independent circular probe: y(x) = R - sqrt(R² - x²) for an
+    // initially level 100 m-radius curve.  The next PVI supplies tan(theta).
+    let circular = profile(
+        LandXmlVerticalCurveKind::Circular,
+        Some(100.0),
+        10.0 / 0.96_f64.sqrt(),
+    );
+    let expected = 100.0 - 9_900.0_f64.sqrt();
+    let actual = circular.evaluate_elevation_at(50.0).unwrap().unwrap();
+    assert!(
+        (actual - expected).abs() < 1.0e-10,
+        "actual={actual}, expected={expected}"
+    );
+}

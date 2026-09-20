@@ -35,13 +35,7 @@ impl Parser<'_> {
                 if self.faces_seen >= self.limits.max_faces {
                     return Err(error(Code::LimitExceeded, "face limit exceeded"));
                 }
-                self.references = self
-                    .references
-                    .checked_add(3)
-                    .ok_or_else(|| error(Code::LimitExceeded, "reference limit exceeded"))?;
-                if self.references > self.limits.max_references {
-                    return Err(error(Code::LimitExceeded, "reference limit exceeded"));
-                }
+                self.reserve_references(3)?;
                 let references = references(&text)?;
                 let surface = self
                     .surface

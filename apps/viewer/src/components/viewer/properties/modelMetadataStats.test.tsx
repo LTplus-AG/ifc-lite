@@ -168,7 +168,7 @@ describe('ModelMetadataPanel — Elements with Geometry', () => {
         points: [], sourceDataPoints: [], faces: [], faceSourceIds: [], faceVisibility: [], hiddenFaceCount: 0,
         boundaries: [], breaklines: [], contours: [],
       }],
-      extensions: [], warnings: [], rendering: { meshProvenance: [], surfaceCounts: [{
+      extensions: [], warnings: [], alignments: [], profiles: [], crossSections: [], crossSectionSurfaces: [], roadways: [], capabilityDiagnostics: [], preservedOnlyExtensions: [], rendering: { meshProvenance: [], surfaceCounts: [{
         surfaceSourceId: 'volume-surface', sourcePoints: 0, sourceFaces: 0, hiddenFaces: 0,
         renderedFaces: 0, droppedDegenerateFaces: 0, droppedPrecisionFaces: 0, droppedReframeFaces: 0,
       }] },

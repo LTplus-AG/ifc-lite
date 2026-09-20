@@ -32,6 +32,6 @@ pub use profile::{
     LandXmlCrossSection, LandXmlCrossSectionPoint, LandXmlCrossSectionPointDataFormat,
     LandXmlCrossSectionSegment, LandXmlCrossSectionSurface, LandXmlCrossSectionSurfaceKind,
     LandXmlGradeLine, LandXmlPreservedOnlyExtension, LandXmlPreservedOnlyExtensionKind,
-    LandXmlProfile, LandXmlProfileKind, LandXmlProfilePoint, LandXmlRoadway, LandXmlVerticalCurve,
-    LandXmlVerticalCurveKind,
+    LandXmlProfile, LandXmlProfileEvaluationError, LandXmlProfileKind, LandXmlProfilePoint,
+    LandXmlRoadway, LandXmlVerticalCurve, LandXmlVerticalCurveKind,
 };

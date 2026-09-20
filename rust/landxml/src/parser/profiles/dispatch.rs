@@ -141,56 +141,98 @@ impl Parser<'_> {
     }
 
     pub(in super::super) fn finish_road_semantics(&mut self) -> Result<()> {
-        let alignment_ids: HashMap<String, LandXmlSourceId> = self
-            .alignments
-            .iter()
-            .map(|value| (value.name.clone(), value.source_id.clone()))
-            .collect();
-        let surface_ids: HashMap<String, LandXmlSourceId> = self
-            .surfaces
-            .iter()
-            .map(|value| (value.name.clone(), value.source_id.clone()))
-            .collect();
+        // These maps are bounded by the record limits, but finalization still
+        // polls cancellation and charges every allocation-sized insertion.
+        let mut alignment_ids: HashMap<String, Vec<LandXmlSourceId>> =
+            HashMap::with_capacity(self.alignments.len());
+        for index in 0..self.alignments.len() {
+            self.check_cancel_and_work(1)?;
+            let alignment = &self.alignments[index];
+            alignment_ids
+                .entry(alignment.name.clone())
+                .or_default()
+                .push(alignment.source_id.clone());
+        }
+        let mut surface_ids: HashMap<String, Vec<LandXmlSourceId>> =
+            HashMap::with_capacity(self.surfaces.len());
+        for index in 0..self.surfaces.len() {
+            self.check_cancel_and_work(1)?;
+            let surface = &self.surfaces[index];
+            surface_ids
+                .entry(surface.name.clone())
+                .or_default()
+                .push(surface.source_id.clone());
+        }
         let mut diagnostics = Vec::new();
-        for roadway in &mut self.roadways {
+        // Temporarily move these bounded collections out so each inner loop
+        // can poll the parser cancellation hook without aliasing its output.
+        let mut roadways = std::mem::take(&mut self.roadways);
+        for roadway in &mut roadways {
             for reference in &roadway.alignment_refs {
-                if let Some(source_id) = alignment_ids.get(reference) {
-                    roadway.alignment_source_ids.push(source_id.clone());
-                } else {
-                    diagnostics.push(missing_reference(
+                self.check_cancel_and_work(1)?;
+                match unique_reference(&alignment_ids, reference) {
+                    Ok(source_id) => roadway.alignment_source_ids.push(source_id),
+                    Err(ReferenceResolution::Missing) => diagnostics.push(missing_reference(
                         &roadway.source_id,
                         "LandXML/Roadways/Roadway/@alignmentRefs",
                         "Roadway",
                         "Alignment",
                         reference,
-                    ));
+                    )),
+                    Err(ReferenceResolution::Ambiguous) => diagnostics.push(ambiguous_reference(
+                        &roadway.source_id,
+                        "LandXML/Roadways/Roadway/@alignmentRefs",
+                        "Roadway",
+                        "Alignment",
+                        reference,
+                    )),
                 }
             }
             for reference in &roadway.surface_refs {
-                if let Some(source_id) = surface_ids.get(reference) {
-                    roadway.surface_source_ids.push(source_id.clone());
-                } else {
-                    diagnostics.push(missing_reference(
+                self.check_cancel_and_work(1)?;
+                match unique_reference(&surface_ids, reference) {
+                    Ok(source_id) => roadway.surface_source_ids.push(source_id),
+                    Err(ReferenceResolution::Missing) => diagnostics.push(missing_reference(
                         &roadway.source_id,
                         "LandXML/Roadways/Roadway/@surfaceRefs",
                         "Roadway",
                         "Surface",
                         reference,
-                    ));
+                    )),
+                    Err(ReferenceResolution::Ambiguous) => diagnostics.push(ambiguous_reference(
+                        &roadway.source_id,
+                        "LandXML/Roadways/Roadway/@surfaceRefs",
+                        "Roadway",
+                        "Surface",
+                        reference,
+                    )),
                 }
             }
+            for reference in &roadway.grade_model_refs {
+                self.check_cancel_and_work(1)?;
+                diagnostics.push(LandXmlCapabilityDiagnostic {
+                    code: LandXmlCapabilityDiagnosticCode::UnsupportedGradeModelReference,
+                    source_id: Some(roadway.source_id.clone()),
+                    source_path: "LandXML/Roadways/Roadway/@gradeModelRefs".to_owned(),
+                    message: format!("Roadway retains GradeModel reference \"{reference}\"; GradeModel source records are not supported"),
+                });
+            }
         }
-        for surface in &mut self.cross_section_surfaces {
+        self.roadways = roadways;
+        let mut cross_section_surfaces = std::mem::take(&mut self.cross_section_surfaces);
+        for surface in &mut cross_section_surfaces {
             for point in &mut surface.points {
+                self.check_cancel_and_work(1)?;
                 if let Some(reference) = &point.alignment_ref {
-                    if let Some(source_id) = alignment_ids.get(reference) {
-                        point.alignment_source_id = Some(source_id.clone());
-                    } else {
-                        diagnostics.push(missing_reference(&point.source_id, "LandXML/Alignments/Alignment/CrossSects/CrossSect/DesignCrossSectSurf/CrossSectPnt/@alignRef", "CrossSectPnt", "Alignment", reference));
-                    }
+                    match unique_reference(&alignment_ids, reference) {
+                    Ok(source_id) => point.alignment_source_id = Some(source_id),
+                    Err(ReferenceResolution::Missing) => diagnostics.push(missing_reference(&point.source_id, "LandXML/Alignments/Alignment/CrossSects/CrossSect/DesignCrossSectSurf/CrossSectPnt/@alignRef", "CrossSectPnt", "Alignment", reference)),
+                    Err(ReferenceResolution::Ambiguous) => diagnostics.push(ambiguous_reference(&point.source_id, "LandXML/Alignments/Alignment/CrossSects/CrossSect/DesignCrossSectSurf/CrossSectPnt/@alignRef", "CrossSectPnt", "Alignment", reference)),
+                }
                 }
             }
         }
+        self.cross_section_surfaces = cross_section_surfaces;
         for diagnostic in diagnostics {
             self.record_capability_diagnostic(diagnostic)?;
         }
@@ -299,6 +341,22 @@ impl Parser<'_> {
     }
 }
 
+enum ReferenceResolution {
+    Missing,
+    Ambiguous,
+}
+
+fn unique_reference(
+    source_ids: &HashMap<String, Vec<LandXmlSourceId>>,
+    reference: &str,
+) -> std::result::Result<LandXmlSourceId, ReferenceResolution> {
+    match source_ids.get(reference).map(Vec::as_slice) {
+        Some([source_id]) => Ok(source_id.clone()),
+        Some(_) => Err(ReferenceResolution::Ambiguous),
+        None => Err(ReferenceResolution::Missing),
+    }
+}
+
 fn missing_reference(
     source_id: &LandXmlSourceId,
     source_path: &str,
@@ -311,5 +369,20 @@ fn missing_reference(
         source_id: Some(source_id.clone()),
         source_path: source_path.to_owned(),
         message: format!("{source_kind} references unknown {reference_kind} \"{reference}\""),
+    }
+}
+
+fn ambiguous_reference(
+    source_id: &LandXmlSourceId,
+    source_path: &str,
+    source_kind: &str,
+    reference_kind: &str,
+    reference: &str,
+) -> LandXmlCapabilityDiagnostic {
+    LandXmlCapabilityDiagnostic {
+        code: LandXmlCapabilityDiagnosticCode::AmbiguousReference,
+        source_id: Some(source_id.clone()),
+        source_path: source_path.to_owned(),
+        message: format!("{source_kind} references ambiguous {reference_kind} \"{reference}\""),
     }
 }

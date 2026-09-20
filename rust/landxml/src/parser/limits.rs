@@ -55,6 +55,21 @@ impl Parser<'_> {
         Ok(())
     }
 
+    /// Account for every retained source reference before allocating its
+    /// strings. Faces, roadway associations, and cross-section reference
+    /// attributes all share the same adversarial-input budget.
+    pub(super) fn reserve_references(&mut self, added: usize) -> Result<()> {
+        self.check_cancel_and_work(added)?;
+        self.references = self
+            .references
+            .checked_add(added)
+            .ok_or_else(|| error(Code::LimitExceeded, "reference limit exceeded"))?;
+        if self.references > self.limits.max_references {
+            return Err(error(Code::LimitExceeded, "reference limit exceeded"));
+        }
+        Ok(())
+    }
+
     /// Diagnostics are source output too: do not let a malformed grade line
     /// create an unbounded allocation while reporting every missing value.
     pub(super) fn record_capability_diagnostic(

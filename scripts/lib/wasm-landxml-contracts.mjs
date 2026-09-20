@@ -17,6 +17,14 @@ const XML_WITHOUT_UNITS = `<?xml version="1.0" encoding="UTF-8"?>
   <Surfaces><Surface name="preserved"><Definition surfType="VOLUME"/></Surface></Surfaces>
 </LandXML>`;
 
+const XML_WITH_PROFILE_REVIEW = `<?xml version="1.0" encoding="UTF-8"?>
+<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+  <Units><Metric linearUnit="meter"/></Units>
+  <Surfaces><Surface name="ground"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces>
+  <Alignments><Alignment name="A" length="100" staStart="0"><Profile><ProfAlign name="design"><PVI>0 0</PVI><ParaCurve length="20">50 5</ParaCurve><PVI>100 10</PVI></ProfAlign><ProfSurf name="survey"><PntList2D>0 0 25 2</PntList2D></ProfSurf></Profile><CrossSects><CrossSect sta="50"><DesignCrossSectSurf><CrossSectPnt alignRef="A">-2 4</CrossSectPnt></DesignCrossSectSurf></CrossSect></CrossSects></Alignment></Alignments>
+  <Roadways><Roadway name="route" alignmentRefs="A" surfaceRefs="ground" gradeModelRefs="unavailable"/></Roadways>
+</LandXML>`;
+
 function utf16Le(text) {
   const output = new Uint8Array(2 + text.length * 2);
   output.set([0xff, 0xfe]);
@@ -52,6 +60,20 @@ export function runLandXmlContracts(api, test) {
       () => api.parseLandXmlTinBytes(new TextEncoder().encode(XML.replace('linearUnit="meter"', 'linearUnit="bogus"'))),
       /LXML009: unsupported LandXML unit/,
     );
+  });
+
+  test('LandXML raw-byte parser exposes profile review semantics through WASM', () => {
+    const document = api.parseLandXmlTinBytes(new TextEncoder().encode(XML_WITH_PROFILE_REVIEW));
+    assert.equal(document.alignments[0].name, 'A');
+    assert.deepEqual(document.alignments[0].profile_source_ids, [document.profiles[0].source_id, document.profiles[1].source_id]);
+    assert.equal(document.profiles[0].kind, 'design');
+    assert.equal(document.profiles[0].vertical_curves[0].kind, 'parabolic');
+    assert.equal(document.profiles[1].grade_lines[0].points[1].elevation, 2);
+    assert.equal(document.cross_sections[0].parent_alignment_source_id, document.alignments[0].source_id);
+    assert.equal(document.cross_section_surfaces[0].points[0].alignment_source_id, document.alignments[0].source_id);
+    assert.deepEqual(document.roadways[0].alignment_source_ids, [document.alignments[0].source_id]);
+    assert.deepEqual(document.roadways[0].surface_source_ids, [document.surfaces[0].source_id]);
+    assert.ok(document.capability_diagnostics.some((diagnostic) => diagnostic.code === 'unsupported_grade_model_reference'));
   });
 }
 

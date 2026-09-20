@@ -90,6 +90,14 @@ pub(super) fn references_attr(attributes: &Attributes, name: &str) -> Vec<String
         .unwrap_or_default()
 }
 
+/// Count a whitespace-separated reference attribute before allocating its
+/// retained strings.  Callers must reserve the shared reference budget first.
+pub(super) fn reference_count_attr(attributes: &Attributes, name: &str) -> usize {
+    attr(attributes, name)
+        .map(|value| value.split_ascii_whitespace().count())
+        .unwrap_or(0)
+}
+
 fn finite(value: Option<&str>, context: &str, coordinate: &str) -> Result<f64> {
     value
         .and_then(|value| value.parse::<f64>().ok())

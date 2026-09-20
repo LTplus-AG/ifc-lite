@@ -11,7 +11,7 @@ use crate::{
 };
 
 use super::super::{Capture, Code, PairListTarget, Parser, ProfileCurveCapture};
-use super::values::{finite_attr, optional_finite_attr, references_attr};
+use super::values::{finite_attr, optional_finite_attr, reference_count_attr, references_attr};
 use super::{AlignmentBuilder, CrossSectionBuilder, CrossSectionSurfaceBuilder, ProfileBuilder};
 
 impl Parser<'_> {
@@ -181,6 +181,11 @@ impl Parser<'_> {
 
     pub(super) fn start_cross_section_point(&mut self, attributes: &Attributes) -> Result<()> {
         self.reserve_cross_section_points(1)?;
+        let reference_count = ["pntRef", "alignRef", "planFeatureRef", "parcelRef"]
+            .into_iter()
+            .filter(|name| attr(attributes, name).is_some())
+            .count();
+        self.reserve_references(reference_count)?;
         let data_format = match attr(attributes, "dataFormat").unwrap_or("Offset Elevation") {
             "Offset Elevation" => LandXmlCrossSectionPointDataFormat::OffsetElevation,
             "Slope Distance" => LandXmlCrossSectionPointDataFormat::SlopeDistance,
@@ -226,7 +231,14 @@ impl Parser<'_> {
         }
         let ordinal = self.roadways.len() + 1;
         let name = required(attributes, "name", "Roadway")?.to_owned();
+        self.reserve_references(
+            reference_count_attr(attributes, "alignmentRefs")
+                + reference_count_attr(attributes, "surfaceRefs")
+                + reference_count_attr(attributes, "gradeModelRefs"),
+        )?;
         let alignment_refs = references_attr(attributes, "alignmentRefs");
+        let surface_refs = references_attr(attributes, "surfaceRefs");
+        let grade_model_refs = references_attr(attributes, "gradeModelRefs");
         let source_id = LandXmlSourceId(format!("landxml:roadway:{ordinal}:{name}"));
         if alignment_refs.is_empty() {
             self.record_capability_diagnostic(LandXmlCapabilityDiagnostic {
@@ -243,9 +255,9 @@ impl Parser<'_> {
             name,
             alignment_refs,
             alignment_source_ids: Vec::new(),
-            surface_refs: references_attr(attributes, "surfaceRefs"),
+            surface_refs,
             surface_source_ids: Vec::new(),
-            grade_model_refs: references_attr(attributes, "gradeModelRefs"),
+            grade_model_refs,
         });
         Ok(())
     }

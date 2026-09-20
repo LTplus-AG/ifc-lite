@@ -126,7 +126,9 @@ function surface(value: unknown): LandXmlTinSurface {
 }
 
 function nullableString(value: unknown, context: string): string | null {
-  return value === null ? null : string(value, context);
+  // `serde_wasm_bindgen` omits `None` struct fields rather than always
+  // materialising them as JavaScript `null`.
+  return value === null || value === undefined ? null : string(value, context);
 }
 
 function polylines(value: unknown, context: string): LandXmlPolyline[] {
@@ -156,7 +158,7 @@ function polylines(value: unknown, context: string): LandXmlPolyline[] {
 /** Convert the owned wasm-bindgen serialization into the viewer's TS shape. */
 export function readLandXmlTinDocument(value: unknown): LandXmlTinDocument {
   const raw = record(value, 'document');
-  const units = raw.units === null ? null : record(raw.units, 'units');
+  const units = raw.units === null || raw.units === undefined ? null : record(raw.units, 'units');
   const capabilities = record(raw.capabilities, 'capabilities');
   return {
     format: string(raw.format, 'format') === 'landxml' ? 'landxml' : (() => { throw new Error('LandXML WASM returned an invalid format'); })(),

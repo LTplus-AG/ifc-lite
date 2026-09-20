@@ -99,7 +99,7 @@ describe('LandXML content dispatch (#5041)', () => {
 });
 
 describe('LandXML 1.2 TIN ingest (#4937)', () => {
-  it('parses schema point order and ignores invisible/non-TIN faces', async () => {
+  it('parses schema point order while retaining hidden faces and non-TIN surfaces', async () => {
     const parsed = await parseDocument(LANDXML);
     assert.equal(parsed.version, '1.2');
     assert.equal(parsed.surfaces.length, 2);
@@ -108,7 +108,9 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.deepEqual(parsed.surfaces[0].points[0], {
       sourceId: 'landxml:surface:1:point:10', id: '10', northing: 5_000_000, easting: 2_600_000, elevation: 100,
     });
-    assert.deepEqual(parsed.surfaces[0].faces, [['10', '20', '30']]);
+    assert.deepEqual(parsed.surfaces[0].faces, [['10', '20', '30'], ['20', '40', '30']]);
+    assert.deepEqual(parsed.surfaces[0].faceVisibility, [true, false]);
+    assert.equal(parsed.surfaces[0].hiddenFaceCount, 1);
     assert.equal(parsed.surfaces[1].kind, 'grid');
     assert.equal(parsed.surfaces[1].renderState, 'preserved_only');
     assert.match(parsed.warnings[0], /Unsupported Grid/);
@@ -351,7 +353,8 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
       .replace('<P id="10">', '<P id="+0010">')
       .replace('<F>10 20 30</F>', '<F>00010 +20 030</F>'));
     assert.equal(parsed.surfaces[0].points[0].id, '10');
-    assert.deepEqual(parsed.surfaces[0].faces, [['10', '20', '30']]);
+    assert.deepEqual(parsed.surfaces[0].faces, [['10', '20', '30'], ['20', '40', '30']]);
+    assert.deepEqual(parsed.surfaces[0].faceVisibility, [true, false]);
   });
 
   it('ignores extension elements that reuse LandXML local names', async () => {
@@ -362,7 +365,9 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
       </ext:Surface></Surfaces>`,
     );
     const parsed = await parseDocument(withExtensionSurface);
-    assert.deepEqual(parsed.surfaces.map((surface) => surface.name), ['Existing Ground']);
+    assert.deepEqual(parsed.surfaces.map((surface) => surface.name), ['Existing Ground', 'Unsupported Grid']);
+    assert.equal(parsed.surfaces.some((surface) => surface.name === 'Not terrain'), false);
+    assert.equal(parsed.extensions.some((extension) => extension.namespace === 'urn:vendor-extension' && extension.localName === 'Surface'), true);
   });
 
   it('preserves the stable namespace diagnostic', async () => {

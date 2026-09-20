@@ -57,6 +57,7 @@ import { sharedCommandsEn } from './catalogues/shared-commands.en';
 import { sourcesEn } from './catalogues/sources.en';
 import { toursEn } from './catalogues/tours.en';
 import { viewerShellEn } from './catalogues/viewer-shell.en';
+import { viewportLightingEn } from './catalogues/viewport-lighting.en';
 import { spaceSketchEn } from './catalogues/space-sketch.en';
 import { splitToolEn } from './catalogues/split-tool.en';
 import { structuralPropertiesEn } from './catalogues/structural-properties.en';
@@ -125,6 +126,7 @@ export const en = {
   ...zonesPanelEn,
   ...dataConnectorEn,
   ...geometryExportDialogsEn,
+  ...viewportLightingEn,
   ...miscPanelsAEn,
   ...sheetsPdfEn,
 } as const;

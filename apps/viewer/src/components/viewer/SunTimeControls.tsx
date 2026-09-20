@@ -17,6 +17,7 @@ import { useViewerStore } from '@/store';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
 import { formatHourOfDay, SUN_DAY_START, SUN_DAY_END } from '@/lib/sun-time-of-day';
+import { useTranslation } from '@/i18n';
 
 export function SunTimeControls() {
   const enabled = useViewerStore((s) => s.envSunTimeEnabled);
@@ -24,17 +25,18 @@ export function SunTimeControls() {
   const time = useViewerStore((s) => s.envSunTime);
   const setTime = useViewerStore((s) => s.setEnvSunTime);
   const solarActive = useViewerStore((s) => s.solarEnabled);
+  const { t } = useTranslation();
 
   return (
     <div className="flex flex-col gap-1 pt-2 border-t">
       <div className="flex items-center justify-between gap-2">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Time of day
+          {t('viewportLighting.sunTimeControls.title')}
         </span>
         <Switch
           checked={enabled}
           onCheckedChange={setEnabled}
-          aria-label="Toggle manual time-of-day sun"
+          aria-label={t('viewportLighting.sunTimeControls.toggleAria')}
         />
       </div>
 
@@ -42,11 +44,11 @@ export function SunTimeControls() {
         <>
           <label className="flex flex-col gap-0.5">
             <span className="flex justify-between text-[9px] uppercase tracking-wider text-muted-foreground">
-              <span>Sun time</span>
+              <span>{t('viewportLighting.sunTimeControls.sunTimeLabel')}</span>
               <button
                 type="button"
                 onClick={() => setTime(13)}
-                title="Reset to early afternoon"
+                title={t('viewportLighting.sunTimeControls.resetTitle')}
                 className={cn('tabular-nums transition-colors', Math.abs(time - 13) > 1e-3 && 'text-foreground hover:text-teal-600')}
               >
                 {formatHourOfDay(time)}
@@ -64,7 +66,7 @@ export function SunTimeControls() {
           </label>
           {solarActive && (
             <span className="text-[9px] text-muted-foreground">
-              Overridden by the georeferenced sun study.
+              {t('viewportLighting.sunTimeControls.overriddenHint')}
             </span>
           )}
         </>

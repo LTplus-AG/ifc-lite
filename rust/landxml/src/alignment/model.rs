@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::LandXmlSourceId;
+use crate::{LandXmlSourceId, LandXmlUnits};
 
 /// A LandXML plan coordinate in its declared `northing easting [elevation]`
 /// order. It is never silently swapped into a renderer axis convention.
@@ -191,6 +191,10 @@ pub struct LandXmlAlignment {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LandXmlAlignmentDocument {
+    /// LandXML's declared linear/elevation units. Alignment geometry remains
+    /// authored-value data; a format-neutral georeferencing adapter owns any
+    /// coordinate conversion.
+    pub units: Option<LandXmlUnits>,
     pub alignments: Vec<LandXmlAlignment>,
     pub warnings: Vec<String>,
 }

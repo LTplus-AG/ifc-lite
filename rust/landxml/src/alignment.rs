@@ -4,8 +4,14 @@
 
 //! LandXML horizontal alignment semantics and deterministic numeric probes.
 
+mod inspection;
 mod model;
 mod numeric;
+mod parser;
 
+pub use inspection::LandXmlCantProbe;
 pub use model::*;
 pub use numeric::{LandXmlAlignmentProbe, LandXmlNumericDiagnostic, LandXmlStationMapping};
+pub use parser::{
+    parse_landxml_alignments, parse_landxml_alignments_with_cancel, LandXmlAlignmentLimits,
+};

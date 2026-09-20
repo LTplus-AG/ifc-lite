@@ -121,6 +121,24 @@ describe('LandXML source overlay rendering (#5042)', () => {
     assert.equal(vertices.length, 0, 'unsafe segments are refused rather than quantized into f32');
   });
 
+  it('keeps overlays aligned with committed and preview model translations', () => {
+    const model = landXmlModel('moved-terrain', line('boundary'));
+    useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
+    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    function Probe() { vertices = useLandXmlOverlayLines(); return null; }
+    render(<Probe />);
+
+    act(() => {
+      const state = useViewerStore.getState();
+      state.openReposition([model.id]);
+      state.previewModelTranslation([5, 6, 7]);
+    });
+    assert.deepEqual([...vertices], [25, 37, -16, 55, 67, -46]);
+
+    act(() => useViewerStore.getState().applyModelTranslation());
+    assert.deepEqual([...vertices], [25, 37, -16, 55, 67, -46]);
+  });
+
   it('clears source selection on model switch and unload', () => {
     const one = landXmlModel('one', line('one'));
     const two = landXmlModel('two', line('two'));

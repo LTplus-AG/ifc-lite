@@ -7,6 +7,8 @@ import type { Renderer } from '@ifc-lite/renderer';
 import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import { useViewerStore } from '../store/index.js';
 import { boundsFitRenderFrame } from './ingest/landXmlRenderFrame.js';
+import { displayedTranslation } from '@/lib/model-placement/state';
+import { toRenderTranslation } from '@/lib/model-placement/translation';
 
 /**
  * Adapt authored 3D LandXML boundary/breakline/contour coordinates into the
@@ -16,6 +18,7 @@ import { boundsFitRenderFrame } from './ingest/landXmlRenderFrame.js';
 export function useLandXmlOverlayLines(): Float32Array {
   const models = useViewerStore((state) => state.models);
   const selectedSource = useViewerStore((state) => state.selectedLandXmlSource);
+  const placement = useViewerStore((state) => state.modelPlacement);
   return useMemo(() => {
     const vertices: number[] = [];
     for (const model of models.values()) {
@@ -25,6 +28,7 @@ export function useLandXmlOverlayLines(): Float32Array {
       const units = document?.units;
       if (!document || !frame || !units) continue;
       const offset = totalYupOffset(frame);
+      const translation = toRenderTranslation(displayedTranslation(placement, model.id));
       for (const surface of document.surfaces) {
         for (const line of [...surface.boundaries, ...surface.breaklines, ...surface.contours]) {
           // A source-list selection is deliberately a filter, not an IFC pick:
@@ -38,14 +42,14 @@ export function useLandXmlOverlayLines(): Float32Array {
             const [northA, eastA, elevationA] = line.points[index - 1];
             const [northB, eastB, elevationB] = line.points[index];
             const a = {
-              x: eastA * units.linearScaleToMeters - offset.x,
-              y: elevationA * units.elevationScaleToMeters - offset.y,
-              z: -northA * units.linearScaleToMeters - offset.z,
+              x: eastA * units.linearScaleToMeters - offset.x + translation[0],
+              y: elevationA * units.elevationScaleToMeters - offset.y + translation[1],
+              z: -northA * units.linearScaleToMeters - offset.z + translation[2],
             };
             const b = {
-              x: eastB * units.linearScaleToMeters - offset.x,
-              y: elevationB * units.elevationScaleToMeters - offset.y,
-              z: -northB * units.linearScaleToMeters - offset.z,
+              x: eastB * units.linearScaleToMeters - offset.x + translation[0],
+              y: elevationB * units.elevationScaleToMeters - offset.y + translation[1],
+              z: -northB * units.linearScaleToMeters - offset.z + translation[2],
             };
             if (!boundsFitRenderFrame({
               min: { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), z: Math.min(a.z, b.z) },
@@ -57,7 +61,7 @@ export function useLandXmlOverlayLines(): Float32Array {
       }
     }
     return new Float32Array(vertices);
-  }, [models, selectedSource]);
+  }, [models, selectedSource, placement]);
 }
 
 /** Keep the renderer's terrain channel synchronized with authored LandXML lines. */

@@ -162,6 +162,22 @@ describe('viewer tools on a device that refuses WebGL (#2412)', () => {
     assert.equal(opened, 0, 'must not re-open a panel that can only paint its fallback');
   });
 
+  it('returns the active-locale WebGL refusal to the chat agent', async () => {
+    latchNoWebgl();
+    const translated = 'TRANSLATED terminal WebGL refusal';
+    const ctx: DispatchContext = {
+      viewer: fakeViewer({ loaded: false, webglUnavailable: true }),
+      translate: (key) => key === 'mcp.playgroundDispatcher.webglUnavailable'
+        ? translated
+        : `translated:${key}`,
+    };
+
+    const result = await dispatch(model, 'viewer_open', {}, ctx);
+
+    assert.equal(result.text, translated);
+    assert.equal(result.textKey, 'mcp.playgroundDispatcher.webglUnavailable');
+  });
+
   it('answers viewer_status terminally instead of "mounted but no geometry yet"', async () => {
     latchNoWebgl();
     const ctx: DispatchContext = { viewer: fakeViewer({ loaded: false, webglUnavailable: true }) };
@@ -197,9 +213,28 @@ describe('viewer tools on a device that refuses WebGL (#2412)', () => {
       const res = await dispatch(model, tool, { type: 'IfcWall', color: '#ff0000', property: 'Name' }, ctx);
       assert.equal(res.isError, true, `${tool} must fail`);
       assert.equal(res.errorCode, ToolErrorCode.UNSUPPORTED_OPERATION, `${tool} error code`);
+      assert.equal(res.textKey, 'mcp.playgroundDispatcher.webglUnavailable', `${tool} live text key`);
+      assert.equal(res.hintKey, 'mcp.playgroundDispatcher.webglUnavailableHint', `${tool} live hint key`);
       assertTerminal(res.text, tool);
       assert.equal(res.text.includes('viewer_open'), false, `${tool} must not point back at viewer_open`);
     }
+  });
+
+  it('keeps the live translation keys when the locale changes before an action rejection settles', async () => {
+    latchNoWebgl();
+    let locale = 'old';
+    const ctx: DispatchContext = {
+      viewer: fakeViewer({ loaded: false, webglUnavailable: true }),
+      translate: (key) => `${locale}:${key}`,
+    };
+
+    const pending = dispatch(model, 'viewer_isolate', { type: 'IfcWall' }, ctx);
+    locale = 'new';
+    const result = await pending;
+
+    assert.equal(result.text, 'old:mcp.playgroundDispatcher.webglUnavailable');
+    assert.equal(result.textKey, 'mcp.playgroundDispatcher.webglUnavailable');
+    assert.equal(result.hintKey, 'mcp.playgroundDispatcher.webglUnavailableHint');
   });
 
   it('refuses viewer_wait_for_selection immediately instead of blocking on a canvas nobody can click', async () => {

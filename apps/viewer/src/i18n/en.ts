@@ -20,6 +20,8 @@ import { idsPanelEn } from './catalogues/ids-panel.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
 import { propertyEditorEn } from './catalogues/property-editor.en';
 import { listsEn } from './catalogues/lists.en';
+import { mcpEn } from './catalogues/mcp.en';
+import { mcpPlaygroundEn } from './catalogues/mcp-playground.en';
 import { measureEn } from './catalogues/measure.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
 import { propertiesEn } from './catalogues/properties.en';
@@ -28,6 +30,9 @@ import { scheduleEn } from './catalogues/schedule.en';
 import { sectionToolEn } from './catalogues/section-tool.en';
 import { section2dEn } from './catalogues/section-2d.en';
 import { sharedCommandsEn } from './catalogues/shared-commands.en';
+import { sourcesEn } from './catalogues/sources.en';
+import { toursEn } from './catalogues/tours.en';
+import { viewerShellEn } from './catalogues/viewer-shell.en';
 import { spaceSketchEn } from './catalogues/space-sketch.en';
 import { splitToolEn } from './catalogues/split-tool.en';
 import { structuralPropertiesEn } from './catalogues/structural-properties.en';
@@ -53,6 +58,11 @@ export const en = {
   ...listsEn,
   ...clashGroupsEn,
   ...scheduleEn,
+  ...mcpEn,
+  ...mcpPlaygroundEn,
+  ...sourcesEn,
+  ...toursEn,
+  ...viewerShellEn,
   ...measureEn,
   ...spaceSketchEn,
   ...splitToolEn,

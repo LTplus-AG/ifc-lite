@@ -26,9 +26,11 @@ import * as collab from '@ifc-lite/collab';
 import type { ModelSlotRef } from '@ifc-lite/collab';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { readGeometrySeedMarker } from './geometry-seed-signal.js';
 import type { CollabSeedInput } from './owner-seed.js';
 import { roomSlotRef } from './model-slot-ref.js';
+import { attributeNamesForStore } from './schema-attribute-names.js';
 import { joiner, localIdOf, ownerShare, texturePixel, type RoomDoc } from '../../test/collab-room-harness.js';
 
 const WALL_GUID = '0aBcDeFgHiJkLmNoPqRsT1';
@@ -195,6 +197,7 @@ describe('room seed + reconstruct: two copies of one file (#4444)', () => {
     assert.equal(publishes.count, 1);
     const before = new Map(Array.from(store.state().models, ([id, m]) => [id, m.idOffset]));
     collab.setAttribute(doc, `/m1/${WALL_GUID}`, 'bsi::ifc::prop::Name', 'Renamed in copy B');
+    collab.setAttribute(doc, `/m1/${WALL_GUID}`, 'bsi::ifc::prop::Tag', 'peer-tag');
     await reconstructor.reconstruct();
     const s = store.state();
     assert.equal(s.models.size, 2);
@@ -204,8 +207,63 @@ describe('room seed + reconstruct: two copies of one file (#4444)', () => {
     for (const [id, offset] of before) assert.equal(s.models.get(id)?.idOffset, offset, `${id} keeps its range`);
     const b = s.models.get('room:r1:m1')!;
     assert.equal(b.ifcDataStore?.entities.getName(localIdOf(b, `/m1/${WALL_GUID}`)), 'Renamed in copy B');
+    const bStore = b.ifcDataStore!;
+    const bWall = localIdOf(b, `/m1/${WALL_GUID}`);
+    const tagIndex = attributeNamesForStore(bStore, 'IfcWallStandardCase').indexOf('Tag');
+    assert.equal(bStore.getEntity(bWall)?.attributes[tagIndex], 'peer-tag', 'generic attributes survive reconstruction');
     const a = s.models.get('room:r1:m0')!;
     assert.equal(a.ifcDataStore?.entities.getName(localIdOf(a, `/m0/${WALL_GUID}`)), 'Wall-A', 'copy A is untouched');
+    reconstructor.teardown();
+  });
+
+  it('queues a fresh snapshot when a reconstruction is requested in flight', async () => {
+    let releaseFirstParse: (() => void) | undefined;
+    let firstParseStarted: (() => void) | undefined;
+    const firstParse = new Promise<void>((resolve) => { firstParseStarted = resolve; });
+    const parseGate = new Promise<void>((resolve) => { releaseFirstParse = resolve; });
+    const { reconstructor, store } = joiner(doc, blobStore, 'r1', {
+      beforeParse: async (call) => {
+        if (call !== 1) return;
+        firstParseStarted?.();
+        await parseGate;
+      },
+    });
+
+    const pending = reconstructor.reconstruct();
+    await firstParse;
+    collab.setAttribute(doc, `/m1/${WALL_GUID}`, 'bsi::ifc::prop::Name', 'Arrived during parse');
+    await reconstructor.reconstruct();
+    releaseFirstParse?.();
+    await pending;
+
+    const model = store.state().models.get('room:r1:m1')!;
+    assert.equal(
+      model.ifcDataStore?.entities.getName(localIdOf(model, `/m1/${WALL_GUID}`)),
+      'Arrived during parse',
+      'the queued pass installs a snapshot captured after the concurrent update',
+    );
+    reconstructor.teardown();
+  });
+
+  it('discards the old numeric-id mutation view before a dense id is reassigned (#5008)', async () => {
+    const { reconstructor, store } = joiner(doc, blobStore, 'r1');
+    await reconstructor.reconstruct();
+    const modelId = 'room:r1:m0';
+    const before = store.state().models.get(modelId)!;
+    const oldStoreyId = localIdOf(before, `/m0/${STOREY_GUID}`);
+    const oldWallId = localIdOf(before, `/m0/${WALL_GUID}`);
+    assert.notEqual(oldStoreyId, oldWallId);
+
+    const staleView = new MutablePropertyView(before.ifcDataStore!.properties, modelId);
+    staleView.setPositionalAttribute(oldWallId, 2, 'stale-wall-name');
+    store.get().mutationViews.set(modelId, staleView);
+    assert.equal(collab.deleteEntity(doc, `/m0/${WALL_GUID}`), true);
+
+    await reconstructor.reconstruct();
+    const after = store.state().models.get(modelId)!;
+    assert.equal(localIdOf(after, `/m0/${STOREY_GUID}`), oldWallId, 'the survivor takes the deleted dense id');
+    assert.equal(store.state().mutationViews.has(modelId), false, 'the old id-keyed overlay cannot follow it');
+    assert.notEqual(after.ifcDataStore!.getEntity(oldWallId)?.attributes[2], 'stale-wall-name');
     reconstructor.teardown();
   });
 });

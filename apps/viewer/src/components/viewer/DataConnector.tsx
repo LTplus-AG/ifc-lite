@@ -739,10 +739,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                   <p className="text-xs text-muted-foreground">
                     {parsedRows.length > 0
                       ? t('dataConnector.rowsParsedCount', localeCount(locale, parsedRows.length))
-                      : t(
-                          'dataConnector.sampleRowsCount',
-                          localeCount(locale, csvColumns[0]?.sampleValues.length || 0)
-                        )}
+                      : t('dataConnector.sampleRowsCount', localeCount(locale, csvColumns[0]?.sampleValues.length || 0))}
                   </p>
                 </div>
 
@@ -783,9 +780,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                               {col.name}
                               {col.sampleValues[0] && (
                                 <span className="ml-2 text-muted-foreground">
-                                  {t('dataConnector.columnSampleHint', {
-                                    sample: col.sampleValues[0].slice(0, 20),
-                                  })}
+                                  {t('dataConnector.columnSampleHint', { sample: col.sampleValues[0].slice(0, 20) })}
                                 </span>
                               )}
                             </SelectItem>
@@ -798,9 +793,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                   {matchType === 'property' && (
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label className="text-xs text-muted-foreground">
-                          {t('dataConnector.propertySetFieldLabel')}
-                        </Label>
+                        <Label className="text-xs text-muted-foreground">{t('dataConnector.propertySetFieldLabel')}</Label>
                         <Input
                           value={matchPset}
                           onChange={(e) => setMatchPset(e.target.value)}
@@ -808,9 +801,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-xs text-muted-foreground">
-                          {t('dataConnector.propertyNameFieldLabel')}
-                        </Label>
+                        <Label className="text-xs text-muted-foreground">{t('dataConnector.propertyNameFieldLabel')}</Label>
                         <Input
                           value={matchProp}
                           onChange={(e) => setMatchProp(e.target.value)}
@@ -947,19 +938,11 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                     <Eye className="h-4 w-4" />
                     <AlertTitle>{t('dataConnector.matchResultsTitle')}</AlertTitle>
                     <AlertDescription className="flex flex-wrap items-center gap-2">
-                      <Badge variant="default">
-                        {t('dataConnector.matchedCount', localeCount(locale, matchStats.matched))}
-                      </Badge>
-                      <Badge variant="secondary">
-                        {t('dataConnector.unmatchedCount', localeCount(locale, matchStats.unmatched))}
-                      </Badge>
-                      <Badge variant="outline">
-                        {t('dataConnector.highConfidenceCount', localeCount(locale, matchStats.highConfidence))}
-                      </Badge>
+                      <Badge variant="default">{t('dataConnector.matchedCount', localeCount(locale, matchStats.matched))}</Badge>
+                      <Badge variant="secondary">{t('dataConnector.unmatchedCount', localeCount(locale, matchStats.unmatched))}</Badge>
+                      <Badge variant="outline">{t('dataConnector.highConfidenceCount', localeCount(locale, matchStats.highConfidence))}</Badge>
                       {matchStats.multiMatch > 0 && (
-                        <Badge variant="destructive">
-                          {t('dataConnector.multiMatchCount', localeCount(locale, matchStats.multiMatch))}
-                        </Badge>
+                        <Badge variant="destructive">{t('dataConnector.multiMatchCount', localeCount(locale, matchStats.multiMatch))}</Badge>
                       )}
                     </AlertDescription>
                   </Alert>
@@ -987,25 +970,16 @@ export function DataConnector({ trigger }: DataConnectorProps) {
 
                 {/* Import Stats */}
                 {importStats && (
-                  <Alert
-                    variant={importStats.errors.length === 0 ? 'default' : 'destructive'}
-                  >
+                  <Alert variant={importStats.errors.length === 0 ? 'default' : 'destructive'}>
                     <Check className="h-4 w-4" />
                     <AlertTitle>{t('dataConnector.importCompleteTitle')}</AlertTitle>
                     <AlertDescription>
                       <div className="flex flex-wrap items-center gap-2 mt-1">
                         <Badge variant="default">
-                          {t(
-                            'dataConnector.propertiesUpdatedCount',
-                            localeCount(locale, importStats.mutationsCreated)
-                          )}
+                          {t('dataConnector.propertiesUpdatedCount', localeCount(locale, importStats.mutationsCreated))}
                         </Badge>
-                        <Badge variant="secondary">
-                          {t('dataConnector.rowsMatchedCount', localeCount(locale, importStats.matchedRows))}
-                        </Badge>
-                        <Badge variant="outline">
-                          {t('dataConnector.rowsUnmatchedCount', localeCount(locale, importStats.unmatchedRows))}
-                        </Badge>
+                        <Badge variant="secondary">{t('dataConnector.rowsMatchedCount', localeCount(locale, importStats.matchedRows))}</Badge>
+                        <Badge variant="outline">{t('dataConnector.rowsUnmatchedCount', localeCount(locale, importStats.unmatchedRows))}</Badge>
                       </div>
                       {importStats.warnings.length > 0 && (
                         <div className="mt-2 text-xs text-amber-600">

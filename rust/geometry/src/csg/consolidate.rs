@@ -725,6 +725,11 @@ mod tests {
                 Point3::new(0.5, 5.0e-6, 0.0),
             ],
         );
+        assert_eq!(
+            candidate.triangle_count(),
+            5,
+            "the long-edge sliver must reach canonical altitude cleanup"
+        );
         assert!(count_open_boundary_edges_at(&candidate, 1.0e4) > 0);
 
         let accepted = complete_conformed_candidate(candidate, true, true)

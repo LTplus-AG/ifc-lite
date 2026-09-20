@@ -33,8 +33,10 @@ test('reviewed, unmodified LandXML fixtures fetch their commit-pinned source byt
 });
 
 test('modified, unhashed, and non-LandXML fixtures stay on the content-addressed release', () => {
+  const modified = reviewedEntry();
+  modified.provenance.modification.status = 'modified';
   assert.equal(
-    fixtureDownloadUrl(BASE_URL, reviewedEntry({ provenance: { modification: { status: 'modified' } } })),
+    fixtureDownloadUrl(BASE_URL, modified),
     `${BASE_URL}/${SHA256}`,
   );
   assert.equal(

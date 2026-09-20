@@ -293,6 +293,41 @@ describe('Appearance panel localization (#4918 slice 4)', () => {
     assert.match(partial.textContent ?? '', /\[few omissions ٣; many paths ١١\]/);
   });
 
+  catalogueIt('formats the exact-verdict, omission-row and invisible-item counts with the active locale\'s digits (#4918)', () => {
+    // A non-Latin-digit locale (Arabic-Indic digits) with no catalogue
+    // override for these keys: `t` falls back to the English templates, but
+    // the raw `convertiblePaths`/`visibleCount`/invisible-count numbers must
+    // still be displayed through `formatLocaleNumber(locale, …)`, not
+    // interpolated as bare JS numbers (Latin digits) regardless of locale.
+    registerLocale('ar-SA-x-pdf-digits', {});
+    act(() => setLocale('ar-SA-x-pdf-digits'));
+
+    const exact = render(<PdfFidelityReportView report={{
+      sha256: 'digits-exact', algorithm: 'ifclite-pdf-fidelity-v1', rasterOnly: false, exact: true, convertiblePaths: 3,
+      omittedPaints: 0, summary: [], omissions: [], omissionsTruncated: false,
+    }} userUnit={1} />);
+    assert.match(exact.textContent ?? '', /٣/, 'exact-verdict path count must render Arabic-Indic digits');
+    assert.doesNotMatch(exact.textContent ?? '', /\b3\b/, 'exact-verdict path count must not render a bare Latin digit');
+
+    const partial = render(<PdfFidelityReportView report={{
+      sha256: 'digits-partial', algorithm: 'ifclite-pdf-fidelity-v1', rasterOnly: false, exact: false,
+      convertiblePaths: 5, omittedPaints: 12,
+      summary: [{ kind: 'text', count: 15, visibleCount: 12, bboxPdf: null }],
+      omissions: [], omissionsTruncated: false,
+    }} userUnit={1} />);
+    // The partial-conversion summary sentence intentionally falls back to
+    // one whole English unit (via `resolveEnglish`) when the active locale
+    // has no override for this key, so it is excluded from this check; only
+    // OmissionRow's item count (visibleCount) and the invisible-items note
+    // (15 - 12 = 3) are this fix's scope.
+    const row = partial.querySelector('li');
+    assert.match(row?.textContent ?? '', /١٢/, 'omission-row item count must render Arabic-Indic digits');
+    assert.doesNotMatch(row?.textContent ?? '', /\b12\b/, 'omission-row item count must not render bare Latin digits');
+    const invisibleNote = [...partial.querySelectorAll('p')].find((p) => /further item/.test(p.textContent ?? ''));
+    assert.match(invisibleNote?.textContent ?? '', /٣/, 'invisible-item note count must render Arabic-Indic digits');
+    assert.doesNotMatch(invisibleNote?.textContent ?? '', /\b3\b/, 'invisible-item note count must not render a bare Latin digit');
+  });
+
   catalogueIt('interpolates a plural (face-mask member count style) and a named-param message', () => {
     registerLocale('pseudo-interp', {
       'appearance.scopeFields.affectedCount': { one: '[{count} one]', other: '[{count} many]' },

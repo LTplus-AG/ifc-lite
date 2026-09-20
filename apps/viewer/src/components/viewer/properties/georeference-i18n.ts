@@ -20,11 +20,11 @@ export function localizedApproxDistance(t: Translate, locale: string, metres: nu
 export function localizedScaleOverride(t: Translate, locale: string, found: DoubleGeoreference): string | null {
   const names = [...(found.scaleForExport !== null ? ['Scale'] : []), ...found.factorsForExport];
   if (names.length === 0) return null;
-  const params = { fields: formatLocaleList(locale, names) };
+  const params = { count: names.length, fields: formatLocaleList(locale, names) };
   if (found.scaleForExport !== null) {
-    return t(names.length === 1 ? 'properties.georef.scaleOverrideReasonOne' : 'properties.georef.scaleOverrideReasonOther', params);
+    return t('properties.georef.scaleOverrideReason', params);
   }
-  return t(names.length === 1 ? 'properties.georef.scaleOverrideOne' : 'properties.georef.scaleOverrideOther', params);
+  return t('properties.georef.scaleOverride', params);
 }
 
 export function localizedRawValuesNote(t: Translate, locale: string, found: DoubleGeoreference): string {
@@ -36,14 +36,10 @@ export function localizedRawValuesNote(t: Translate, locale: string, found: Doub
       : [t('properties.georef.correctionScale', { value: trimFloat(found.scaleForExport) })]),
   ];
   const params = {
+    count: found.factorsForExport.length,
     edits: formatLocaleList(locale, edits),
     factors: formatLocaleList(locale, found.factorsForExport),
   };
   if (found.factorsForExport.length === 0) return t('properties.georef.rawValuesCorrection', params);
-  return t(
-    found.factorsForExport.length === 1
-      ? 'properties.georef.rawValuesCorrectionFactorOne'
-      : 'properties.georef.rawValuesCorrectionFactorOther',
-    params,
-  );
+  return t('properties.georef.rawValuesCorrectionFactor', params);
 }

@@ -49,9 +49,13 @@ function regionParameters(box: PdfPageRect, userUnit: number): TranslationParame
   return { x0: point(box[0]), x1: point(box[2]), y0: point(box[1]), y1: point(box[3]) };
 }
 function OmissionRow({ entry, userUnit }: { entry: PdfOmissionSummary; userUnit: number }) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const keys = ownValue(ROW_KEYS, entry.kind);
-  const params = { count: entry.visibleCount, ...(entry.bboxPdf ? regionParameters(entry.bboxPdf, userUnit) : {}) };
+  const params = {
+    count: entry.visibleCount,
+    itemCount: formatLocaleNumber(locale, entry.visibleCount),
+    ...(entry.bboxPdf ? regionParameters(entry.bboxPdf, userUnit) : {}),
+  };
   if (keys) return <li>{t(entry.bboxPdf ? keys.region : keys.simple, params)}</li>;
   if (entry.kind.startsWith('unsupported:')) {
     return <li>{t(entry.bboxPdf ? 'appearance.pdfFidelity.row.unsupportedRegion' : 'appearance.pdfFidelity.row.unsupported', {
@@ -69,7 +73,9 @@ export function PdfFidelityReportView({ report, userUnit }: { report: PdfFidelit
     return <p role="alert" className="text-[11px] text-destructive">{t('appearance.pdfFidelity.rasterOnlyNotice')}</p>;
   }
   if (report.exact) {
-    return <p role="status" className="text-[11px] text-green-700 dark:text-green-400">{t('appearance.pdfFidelity.exactSummary', { count: report.convertiblePaths })}</p>;
+    return <p role="status" className="text-[11px] text-green-700 dark:text-green-400">{t('appearance.pdfFidelity.exactSummary', {
+      count: report.convertiblePaths, pathCount: formatLocaleNumber(locale, report.convertiblePaths),
+    })}</p>;
   }
   const visible = report.summary.filter(entry => entry.visibleCount > 0);
   const invisible = report.summary.reduce((count, entry) => count + entry.count - entry.visibleCount, 0);
@@ -90,7 +96,9 @@ export function PdfFidelityReportView({ report, userUnit }: { report: PdfFidelit
   return <div role="status" className="space-y-1 text-[11px]">
     <p className="text-amber-700 dark:text-amber-400">{summary}</p>
     <ul className="list-disc pl-4" aria-label={t('appearance.pdfFidelity.omissionsAriaLabel')}>{visible.map(entry => <OmissionRow key={entry.kind} entry={entry} userUnit={userUnit} />)}</ul>
-    {invisible > 0 && <p className="text-muted-foreground">{t('appearance.pdfFidelity.invisibleItemsNote', { count: invisible })}</p>}
+    {invisible > 0 && <p className="text-muted-foreground">{t('appearance.pdfFidelity.invisibleItemsNote', {
+      count: invisible, itemCount: formatLocaleNumber(locale, invisible),
+    })}</p>}
     {report.omissionsTruncated && <p className="text-muted-foreground">{t('appearance.pdfFidelity.truncatedNote')}</p>}
   </div>;
 }

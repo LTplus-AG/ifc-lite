@@ -3701,8 +3701,7 @@ export class Renderer {
         this.referenceImages.destroy();
 
         // Point cloud GPU resources
-        this.pointCloudStreamEpoch++; this.pointCloudStreamEpochs.clear();
-        this.pointCloudRenderer?.clear();
+        this.pointCloudStreamEpoch++; this.pointCloudStreamEpochs.clear(); this.pointCloudRenderer?.clear();
         this.pointCloudRenderer = null;
 
         // BIM ↔ scan deviation pipeline + cached BVH GPU buffers.

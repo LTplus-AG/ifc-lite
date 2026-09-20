@@ -663,6 +663,32 @@ the ending gate does not see it as an unconverted JSX literal, the same
 reasoning the geometry-export and webgpu-troubleshooting catalogues document
 for a technical string a translator is expected to leave unchanged.
 
+The sheet/title-block and PDF-view catalogue (#4918 sheets/PDF slice,
+`sheets-pdf.en.ts`) covers five files behind one `sheetsPdf.*` namespace,
+split by owning surface: `TitleBlockEditor.tsx` (`sheetsPdf.titleBlock.*`,
+the field-editor dialog's standard/custom-field forms, logo upload, and
+revision history), `SheetSetupPanel.tsx` (`sheetsPdf.sheetSetup.*`, the
+paper/frame/scale/title-block/scale-bar sections and the saved-templates
+list — its `FRAME_STYLE_OPTIONS`/`TITLE_BLOCK_LAYOUT_OPTIONS` tables moved
+to the same data-table-plus-`labelKey` pattern `sectionConstants.ts`'s
+`AXIS_INFO` uses), and the to-scale 3D-view PDF export dialog's three files
+(`sheetsPdf.pdfView.*`): `PdfViewExportDialog.tsx`, its appearance controls
+`PdfViewAppearanceSection.tsx`, and its page-size/oversize/projection
+notices `PdfViewPageNotices.tsx`. `describeShadingResolution` (a plain
+function, not a component) takes the same `t: typeof resolve = resolve`
+default-parameter shape `bulk-property-value.ts` and
+`WebGpuTroubleshooting.tsx` use. Several readouts in `SheetSetupPanel.tsx`
+and `PdfViewPageNotices.tsx` were fixed-fragment concatenations (e.g.
+`'Estimated page: ' + width + ' x ' + height + ...`); each became one
+complete message per branch (fits an ISO sheet / does not / not available
+yet) rather than assembled from translated pieces, the same reasoning the
+layers and clash-tools catalogues already document for a multi-clause
+status line. Title-block field VALUES the user types, field LABELS (preset
+data from `@ifc-lite/drawing-2d` or a user-chosen custom label), revision
+author/date/description content, saved-template NAMES, and paper size
+NAMES/millimetre/dpi figures remain model or unit/symbol content per the
+house rule and stay out of the catalogue — only interpolated as params.
+
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for
 hardcoded JSX text, `{'…'}`-wrapped JSX-expression string literals, and

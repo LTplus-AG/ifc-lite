@@ -28,6 +28,7 @@ import {
   type FramingBounds,
 } from './camera-framing.js';
 import { presetViewTarget, resolvePresetBounds } from './camera-preset-view.js';
+import { applyImmediateCameraPose } from './camera-animation-immediate.js';
 
 /**
  * Manages camera animations: tweened transitions between positions,
@@ -287,10 +288,9 @@ export class CameraAnimator {
     this.animateToWithUp(fit.position, fit.target, fit.up, 300);
   }
 
-  /**
-   * Animate camera to position and target
-   */
+  /** Animate camera to position and target. */
   async animateTo(endPos: Vec3, endTarget: Vec3, duration = 500, endOrthoSize?: number): Promise<void> {
+    if (duration <= 0) { this.reset(); applyImmediateCameraPose(this.state, endPos, endTarget, null, endOrthoSize, this.updateMatrices); return; }
     this.animationStartPos = { ...this.state.camera.position };
     this.animationStartTarget = { ...this.state.camera.target };
     this.animationEndPos = endPos;
@@ -321,10 +321,9 @@ export class CameraAnimator {
     });
   }
 
-  /**
-   * Animate camera to position, target, and up vector (for orthogonal preset views)
-   */
+  /** Animate camera to position, target, and up vector (for orthogonal preset views). */
   async animateToWithUp(endPos: Vec3, endTarget: Vec3, endUp: Vec3, duration = 500): Promise<void> {
+    if (duration <= 0) { this.reset(); applyImmediateCameraPose(this.state, endPos, endTarget, endUp, undefined, this.updateMatrices); return; }
     // Clear all velocities to prevent inertia from interfering with animation
     this.velocity.orbit.x = 0;
     this.velocity.orbit.y = 0;
@@ -357,9 +356,7 @@ export class CameraAnimator {
     });
   }
 
-  /**
-   * Easing function: easeOutCubic
-   */
+  /** Easing function: easeOutCubic. */
   private easeOutCubic(t: number): number {
     return 1 - Math.pow(1 - t, 3);
   }

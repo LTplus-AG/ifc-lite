@@ -23,6 +23,24 @@ fn member(edge_start: &str, edge_end: &str, rep_type: &str) -> String {
     )
 }
 
+fn curved_member(orientation: bool) -> String {
+    let oriented = if orientation {
+        "#9=IFCORIENTEDEDGE(*,*,#8,.T.);"
+    } else {
+        "#9=IFCORIENTEDEDGE(*,*,#8,.F.);"
+    };
+    format!(
+        "#1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCVERTEXPOINT(#1);\
+         #3=IFCCARTESIANPOINT((10.,0.,0.));#4=IFCVERTEXPOINT(#3);\
+         #5=IFCCARTESIANPOINT((5.,5.,0.));\
+         #6=IFCPOLYLINE((#1,#5,#3));\
+         #8=IFCEDGECURVE(#2,#4,#6,.T.);{oriented}\
+         #10=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#9));\
+         #11=IFCPRODUCTDEFINITIONSHAPE($,$,(#10));\
+         #12=IFCSTRUCTURALCURVEMEMBER('0000000000000000000000',$,'Curved member',$,$,$,#11,.RIGID_JOINED_MEMBER.,$);"
+    )
+}
+
 fn midpoints(mesh: &crate::Mesh) -> ([f64; 3], [f64; 3]) {
     let p = |i: usize| {
         let b = i * 3;
@@ -188,4 +206,77 @@ fn zero_length_edge_meshes_empty_instead_of_producing_nan_geometry() {
         mesh.is_empty(),
         "a zero-length edge has no direction to build a ribbon from"
     );
+}
+
+#[test]
+fn edge_curve_uses_its_authored_geometry_instead_of_collapsing_to_a_chord() {
+    let source = curved_member(true).replace("(#9)", "(#8)");
+    let mut decoder = EntityDecoder::new(&source);
+    let router = GeometryRouter::new();
+    let entity = decoder.decode_by_id(12).unwrap();
+
+    let mesh = router.process_element(&entity, &mut decoder).unwrap();
+    assert_eq!(
+        mesh.indices.len(),
+        12,
+        "the two authored polyline spans each need a ribbon quad"
+    );
+    assert_eq!(
+        mesh.positions.len(),
+        6 * 3,
+        "the two spans must share one vertex pair at their bend"
+    );
+    assert!(
+        mesh.positions
+            .chunks_exact(3)
+            .any(|point| (point[1] - 5.0).abs() < 0.2),
+        "the intermediate authored point must survive; a straight endpoint chord would stay at y=0"
+    );
+}
+
+#[test]
+fn oriented_edge_reverses_the_underlying_curve_walk() {
+    let source = curved_member(false);
+    let mut decoder = EntityDecoder::new(&source);
+    let router = GeometryRouter::new();
+    let entity = decoder.decode_by_id(12).unwrap();
+
+    let mesh = router.process_element(&entity, &mut decoder).unwrap();
+    assert_eq!(mesh.indices.len(), 12);
+    let (first, _) = midpoints(&mesh);
+    assert!(
+        (first[0] - 10.0).abs() < 1e-6,
+        "Orientation=.F. must begin at EdgeEnd: {first:?}"
+    );
+}
+
+#[test]
+fn bent_edge_is_one_continuous_indexed_ribbon() {
+    let source = curved_member(true).replace("(#9)", "(#8)");
+    let mut decoder = EntityDecoder::new(&source);
+    let router = GeometryRouter::new();
+    let entity = decoder.decode_by_id(12).unwrap();
+
+    let mesh = router.process_element(&entity, &mut decoder).unwrap();
+    assert_eq!(mesh.positions.len(), 6 * 3);
+    assert_eq!(mesh.indices, vec![0, 1, 3, 0, 3, 2, 2, 3, 5, 2, 5, 4]);
+    let bend = midpoints(&mesh).1;
+    assert!(
+        (bend[0] - 5.0).abs() < 1e-6 && (bend[1] - 5.0).abs() < 1e-6,
+        "the shared indexed join must remain centred on the authored bend: {bend:?}"
+    );
+}
+
+#[test]
+fn oriented_edge_cycle_fails_loudly_instead_of_recursing() {
+    let source = "#9=IFCORIENTEDEDGE(*,*,#9,.T.);\
+        #10=IFCTOPOLOGYREPRESENTATION($,'Reference','Edge',(#9));\
+        #11=IFCPRODUCTDEFINITIONSHAPE($,$,(#10));\
+        #12=IFCSTRUCTURALCURVEMEMBER('0000000000000000000000',$,'Cyclic member',$,$,$,#11,.RIGID_JOINED_MEMBER.,$);";
+    let mut decoder = EntityDecoder::new(source);
+    let router = GeometryRouter::new();
+    let entity = decoder.decode_by_id(12).unwrap();
+
+    let error = router.process_element(&entity, &mut decoder).unwrap_err();
+    assert!(error.to_string().contains("cycle"), "{error}");
 }

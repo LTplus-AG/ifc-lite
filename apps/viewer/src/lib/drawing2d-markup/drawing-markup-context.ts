@@ -18,7 +18,7 @@
  * Two entry points, not one, because restore-on-load runs unconditionally
  * on every model mount (`useDrawingMarkupRestoreOnLoad`) while save only
  * runs from an explicit button click. `StoreEditor`'s constructor walks
- * `store.entityIndex.byId` (`computeMaxExistingId`) — real parsed models
+ * `store.entityIndex.byId` (`highestExistingExpressId`) — real parsed models
  * always have this, but the read-only path must not require it: several
  * existing component tests seed a deliberately partial `IfcDataStore` stub
  * (only the fields THAT test needs) as `activeModelId`'s model, and

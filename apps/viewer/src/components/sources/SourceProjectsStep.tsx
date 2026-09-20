@@ -8,6 +8,7 @@ import { usePagedList } from './usePagedList';
 import { SourceEntityList, LoadMoreRow } from './SourceEntityList';
 import { Input } from '@/components/ui/input';
 import { Folder, Search } from 'lucide-react';
+import { useTranslation } from '@/i18n';
 
 interface SourceProjectsStepProps {
   provider: FileSourceProvider;
@@ -24,6 +25,7 @@ interface SourceProjectsStepProps {
  * the list is labelled as non-exhaustive.
  */
 export function SourceProjectsStep({ provider, ctx, onError, onSelect }: SourceProjectsStepProps) {
+  const { t } = useTranslation();
   const discoverableOnly = provider.manifest.capabilities.projectsAreDiscoverableOnly === true;
   const [query, setQuery] = useState('');
   // The fetcher reads the query from a ref so submitting a new search only
@@ -69,8 +71,8 @@ export function SourceProjectsStep({ provider, ctx, onError, onSelect }: SourceP
             />
             <Input
               className="h-8 pl-7 text-sm"
-              placeholder="Search projects…"
-              aria-label="Search projects"
+              placeholder={t('sources.sourceProjectsStep.searchPlaceholder')}
+              aria-label={t('sources.sourceProjectsStep.searchAriaLabel')}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -79,7 +81,7 @@ export function SourceProjectsStep({ provider, ctx, onError, onSelect }: SourceP
             />
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            This provider cannot list every project — search to find more.
+            {t('sources.sourceProjectsStep.discoverableHint')}
           </p>
         </div>
       )}
@@ -89,7 +91,11 @@ export function SourceProjectsStep({ provider, ctx, onError, onSelect }: SourceP
           items={paged.items}
           loading={paged.loading}
           icon={Folder}
-          emptyLabel={discoverableOnly ? 'No projects found — try a search' : 'No projects found'}
+          emptyLabel={
+            discoverableOnly
+              ? t('sources.sourceProjectsStep.emptyDiscoverable')
+              : t('sources.sourceProjectsStep.emptyDefault')
+          }
           onSelect={onSelect}
         />
         <LoadMoreRow
@@ -99,7 +105,7 @@ export function SourceProjectsStep({ provider, ctx, onError, onSelect }: SourceP
             onError(null);
             paged.loadMore();
           }}
-          label="Load more projects"
+          label={t('sources.sourceProjectsStep.loadMoreProjects')}
         />
       </div>
     </div>

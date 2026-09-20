@@ -6,6 +6,7 @@ import { useId } from 'react';
 import { Camera, ScanLine } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
+import { useTranslation } from '@/i18n';
 
 interface BCFViewpointCaptureButtonsProps {
   onCapture3D: () => void;
@@ -20,6 +21,7 @@ export function BCFViewpointCaptureButtons({
   onCapture2D,
   capture2DBlockReason,
 }: BCFViewpointCaptureButtonsProps): React.ReactElement {
+  const { t } = useTranslation();
   const blocked = capture2DBlockReason !== null;
   const reasonId = useId();
   return (
@@ -28,20 +30,20 @@ export function BCFViewpointCaptureButtons({
       <div className="flex flex-wrap items-center gap-1">
         <Button variant="outline" size="sm" onClick={onCapture3D} {...tourAnchor(TOUR_ANCHORS.bcfCaptureViewpoint)}>
           <Camera className="h-3 w-3 mr-1" />
-          Capture 3D
+          {t('bcf.viewpointCapture.capture3d')}
         </Button>
         {/* A disabled Button has pointer-events-none, so the hover title lives on the wrapper. */}
-        <span className="inline-flex" title={capture2DBlockReason ?? 'Attach the visible annotated 2D section'}>
+        <span className="inline-flex" title={capture2DBlockReason ?? t('bcf.viewpointCapture.capture2dDefaultTitle')}>
           <Button
             variant="outline"
             size="sm"
             onClick={onCapture2D}
             disabled={blocked}
-            aria-label="Capture current 2D section as viewpoint"
+            aria-label={t('bcf.viewpointCapture.capture2dAria')}
             aria-describedby={blocked ? reasonId : undefined}
           >
             <ScanLine className="h-3 w-3 mr-1" />
-            Capture 2D
+            {t('bcf.viewpointCapture.capture2d')}
           </Button>
         </span>
       </div>

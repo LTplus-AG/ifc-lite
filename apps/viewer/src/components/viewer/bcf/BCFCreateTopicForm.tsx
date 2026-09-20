@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { BCFTopic } from '@ifc-lite/bcf';
+import { useTranslation } from '@/i18n';
 import { TOPIC_TYPES, TOPIC_STATUSES, PRIORITIES } from './bcfHelpers';
 
 // ============================================================================
@@ -73,12 +74,18 @@ export function BCFCreateTopicForm({
   initialTitle = '',
   initialDescription = '',
   initialTopic = null,
-  heading = 'New Topic',
-  submitLabel = 'Create Topic',
+  heading,
+  submitLabel,
   snapshot,
   onCaptureSnapshot,
   capturingSnapshot = false,
 }: BCFCreateTopicFormProps) {
+  const { t } = useTranslation();
+  // Callers (BCFPanel) may pass a translated override for editing; the
+  // create-form default is resolved here rather than baked into the prop
+  // default so it re-translates on a live locale switch too.
+  const effectiveHeading = heading ?? t('bcf.createForm.newTopicHeading');
+  const effectiveSubmitLabel = submitLabel ?? t('bcf.createForm.createTopicSubmitLabel');
   // Keep the original ISO due date so an edit that doesn't touch the date can
   // round-trip it intact (the date input only sees YYYY-MM-DD). (#1461)
   const initialDueDate = initialTopic?.dueDate;
@@ -129,30 +136,30 @@ export function BCFCreateTopicForm({
   return (
     <form onSubmit={handleSubmit} className="p-3 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-medium">{heading}</h3>
-        <Button variant="ghost" size="sm" type="button" aria-label="Close" onClick={onCancel}>
+        <h3 className="font-medium">{effectiveHeading}</h3>
+        <Button variant="ghost" size="sm" type="button" aria-label={t('bcf.shared.close')} onClick={onCancel}>
           <X className="h-4 w-4" />
         </Button>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="title">Title *</Label>
+        <Label htmlFor="title">{t('bcf.createForm.titleLabel')}</Label>
         <Input
           id="title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Brief description of the topic"
+          placeholder={t('bcf.createForm.titlePlaceholder')}
           required
         />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="description">Description</Label>
+        <Label htmlFor="description">{t('bcf.createForm.descriptionLabel')}</Label>
         <textarea
           id="description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Detailed description (optional)"
+          placeholder={t('bcf.createForm.descriptionPlaceholder')}
           className="w-full min-h-[80px] px-3 py-2 text-sm rounded-md border border-input bg-background"
         />
       </div>
@@ -168,7 +175,7 @@ export function BCFCreateTopicForm({
                 onChange={(e) => setIncludeSnapshot(e.target.checked)}
               />
               <Camera className="h-3.5 w-3.5" />
-              Attach snapshot
+              {t('bcf.createForm.attachSnapshot')}
             </Label>
             {includeSnapshot && (
               <Button
@@ -180,7 +187,7 @@ export function BCFCreateTopicForm({
                 disabled={capturingSnapshot}
               >
                 {capturingSnapshot ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                Recapture
+                {t('bcf.createForm.recapture')}
               </Button>
             )}
           </div>
@@ -189,11 +196,11 @@ export function BCFCreateTopicForm({
               {capturingSnapshot && !snapshot ? (
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               ) : snapshot ? (
-                <img src={snapshot} alt="Viewpoint snapshot" className="w-full h-full object-contain" />
+                <img src={snapshot} alt={t('bcf.createForm.snapshotAlt')} className="w-full h-full object-contain" />
               ) : (
                 <div className="flex flex-col items-center gap-1 text-muted-foreground text-xs">
                   <ImageOff className="h-5 w-5" />
-                  No snapshot captured
+                  {t('bcf.createForm.noSnapshot')}
                 </div>
               )}
             </div>
@@ -203,7 +210,7 @@ export function BCFCreateTopicForm({
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
-          <Label>Type</Label>
+          <Label>{t('bcf.createForm.typeLabel')}</Label>
           <Select value={topicType} onValueChange={setTopicType}>
             <SelectTrigger>
               <SelectValue />
@@ -219,7 +226,7 @@ export function BCFCreateTopicForm({
         </div>
 
         <div className="space-y-2">
-          <Label>Status</Label>
+          <Label>{t('bcf.createForm.statusLabel')}</Label>
           <Select value={topicStatus} onValueChange={setTopicStatus}>
             <SelectTrigger>
               <SelectValue />
@@ -235,7 +242,7 @@ export function BCFCreateTopicForm({
         </div>
 
         <div className="space-y-2">
-          <Label>Priority</Label>
+          <Label>{t('bcf.createForm.priorityLabel')}</Label>
           <Select value={priority} onValueChange={setPriority}>
             <SelectTrigger>
               <SelectValue />
@@ -251,37 +258,37 @@ export function BCFCreateTopicForm({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="dueDate">Due date</Label>
+          <Label htmlFor="dueDate">{t('bcf.createForm.dueDateLabel')}</Label>
           <Input id="dueDate" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
         </div>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="assignedTo">Assignee</Label>
+        <Label htmlFor="assignedTo">{t('bcf.createForm.assigneeLabel')}</Label>
         <Input
           id="assignedTo"
           value={assignedTo}
           onChange={(e) => setAssignedTo(e.target.value)}
-          placeholder="name@example.com"
+          placeholder={t('bcf.createForm.assigneePlaceholder')}
         />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="labels">Labels</Label>
+        <Label htmlFor="labels">{t('bcf.createForm.labelsLabel')}</Label>
         <Input
           id="labels"
           value={labels}
           onChange={(e) => setLabels(e.target.value)}
-          placeholder="Comma-separated (e.g. architecture, urgent)"
+          placeholder={t('bcf.createForm.labelsPlaceholder')}
         />
       </div>
 
       <div className="flex gap-2 justify-end pt-2">
         <Button variant="outline" type="button" onClick={onCancel}>
-          Cancel
+          {t('bcf.shared.cancel')}
         </Button>
         <Button type="submit" disabled={!title.trim()}>
-          {submitLabel}
+          {effectiveSubmitLabel}
         </Button>
       </div>
     </form>

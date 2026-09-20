@@ -15,6 +15,8 @@
 pub enum SchemaVersion {
     Ifc2x3,
     Ifc4,
+    Ifc4x1,
+    Ifc4x2,
     Ifc4x3,
 }
 
@@ -40,6 +42,10 @@ impl SchemaVersion {
         let upper = label.trim().to_ascii_uppercase();
         if is_schema_family(&upper, "IFC4X3") {
             Some(Self::Ifc4x3)
+        } else if is_schema_family(&upper, "IFC4X2") {
+            Some(Self::Ifc4x2)
+        } else if is_schema_family(&upper, "IFC4X1") {
+            Some(Self::Ifc4x1)
         } else if is_schema_family(&upper, "IFC4") {
             Some(Self::Ifc4)
         } else if is_schema_family(&upper, "IFC2X3") {
@@ -56,6 +62,8 @@ impl SchemaVersion {
         match self {
             Self::Ifc2x3 => attribute_names_ifc2x3(entity_name),
             Self::Ifc4 => attribute_names_ifc4(entity_name),
+            Self::Ifc4x1 => attribute_names_ifc4x1(entity_name),
+            Self::Ifc4x2 => attribute_names_ifc4x2(entity_name),
             Self::Ifc4x3 => attribute_names_ifc4x3(entity_name),
         }
     }
@@ -66,6 +74,8 @@ impl SchemaVersion {
         match self {
             Self::Ifc2x3 => entity_info_ifc2x3(entity_name),
             Self::Ifc4 => entity_info_ifc4(entity_name),
+            Self::Ifc4x1 => entity_info_ifc4x1(entity_name),
+            Self::Ifc4x2 => entity_info_ifc4x2(entity_name),
             Self::Ifc4x3 => entity_info_ifc4x3(entity_name),
         }
     }
@@ -138,6 +148,50 @@ fn attribute_names_ifc4(name: &str) -> Option<&'static [&'static str]> {
 fn entity_info_ifc4(name: &str) -> Option<SchemaEntityInfo> {
     let ty = super::ifc4::IfcType::from_str(name);
     if matches!(ty, super::ifc4::IfcType::Unknown(_)) {
+        None
+    } else {
+        Some(SchemaEntityInfo {
+            name: ty.as_str(),
+            parent: ty.parent().map(|parent| parent.as_str()),
+            is_abstract: ty.is_abstract(),
+        })
+    }
+}
+
+fn attribute_names_ifc4x1(name: &str) -> Option<&'static [&'static str]> {
+    let ty = super::ifc4x1::IfcType::from_str(name);
+    if matches!(ty, super::ifc4x1::IfcType::Unknown(_)) {
+        None
+    } else {
+        Some(ty.attribute_names())
+    }
+}
+
+fn entity_info_ifc4x1(name: &str) -> Option<SchemaEntityInfo> {
+    let ty = super::ifc4x1::IfcType::from_str(name);
+    if matches!(ty, super::ifc4x1::IfcType::Unknown(_)) {
+        None
+    } else {
+        Some(SchemaEntityInfo {
+            name: ty.as_str(),
+            parent: ty.parent().map(|parent| parent.as_str()),
+            is_abstract: ty.is_abstract(),
+        })
+    }
+}
+
+fn attribute_names_ifc4x2(name: &str) -> Option<&'static [&'static str]> {
+    let ty = super::ifc4x2::IfcType::from_str(name);
+    if matches!(ty, super::ifc4x2::IfcType::Unknown(_)) {
+        None
+    } else {
+        Some(ty.attribute_names())
+    }
+}
+
+fn entity_info_ifc4x2(name: &str) -> Option<SchemaEntityInfo> {
+    let ty = super::ifc4x2::IfcType::from_str(name);
+    if matches!(ty, super::ifc4x2::IfcType::Unknown(_)) {
         None
     } else {
         Some(SchemaEntityInfo {

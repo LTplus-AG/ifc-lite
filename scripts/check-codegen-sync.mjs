@@ -266,6 +266,8 @@ export function runAllTargets(root) {
     const rustSchemaInputs = [
       ['IFC2X3_TC1.exp', 'ifc2x3'],
       ['IFC4_ADD2_TC1.exp', 'ifc4'],
+      ['IFC4X1.exp', 'ifc4x1'],
+      ['IFC4X2.exp', 'ifc4x2'],
     ];
     for (const [schemaFile, registry] of rustSchemaInputs) {
       const out = join(tmp, `rust-${registry}`);

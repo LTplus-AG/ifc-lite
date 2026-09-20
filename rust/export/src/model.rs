@@ -36,13 +36,6 @@ use inherit::merge_inherited;
 mod types;
 pub use types::{EntityRow, ExportModel, PropValue, PropertySet, QuantitySet, QuantityValue};
 
-/// IFC4.1 and IFC4.2 are transitional declarations whose ordinary entity
-/// layouts remain IFC4-compatible. Neither has a complete bundled EXPRESS
-/// registry, so attribute export deliberately uses the pinned IFC4 layout.
-fn uses_ifc4_attribute_layout(schema: &str) -> bool {
-    schema.eq_ignore_ascii_case("IFC4X1") || schema.eq_ignore_ascii_case("IFC4X2")
-}
-
 /// Build the export model from raw IFC/STEP bytes.
 ///
 /// Collects every row into an [`ExportModel`]. This is fine for normal models,
@@ -150,11 +143,8 @@ pub fn stream_export_model_with_options(
     // export must fail closed rather than assign IFC4 names to unknown slots.
     let source_schema = declared_schemas(content).into_iter().find(|schema| {
         // IfcProject exists in every bundled registry, so this is a schema
-        // recognition probe rather than an entity-specific fallback. IFC4X1
-        // and IFC4X2 are the explicitly supported transitional declarations;
-        // their entity-level fallback remains in `render_attributes`.
-        uses_ifc4_attribute_layout(schema)
-            || ifc_lite_core::attribute_names_for_schema(schema, "IFCPROJECT").is_some()
+        // recognition probe rather than an entity-specific fallback.
+        ifc_lite_core::attribute_names_for_schema(schema, "IFCPROJECT").is_some()
     });
     // Property resolution memoizes the shared `IfcPropertySet`/leaf entities for
     // speed. Cap that cache so it can't grow without bound across millions of

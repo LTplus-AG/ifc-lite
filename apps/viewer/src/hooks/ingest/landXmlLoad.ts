@@ -118,7 +118,9 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
   options.setProgress({ phase: 'Parsing LandXML TIN surfaces', percent: 10 });
   options.setGeometryStreamingActive(false);
   try {
-    const result = await parseLandXmlViewerModelAsync(options.buffer);
+    const result = await parseLandXmlViewerModelAsync(options.buffer, options.isCurrent);
+    // The browser worker is terminated within the cancellation polling bound;
+    // this guard also prevents a racing stale reply from mutating model state.
     if (!options.isCurrent()) return;
     const frame = options.targetKind === 'federated'
       ? federationFrameInfo(useViewerStore.getState().models.values())

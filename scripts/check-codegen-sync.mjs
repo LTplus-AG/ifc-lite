@@ -50,6 +50,10 @@
  *      upstream/SchemaInfo.*.g.cs`, via `generate-ifc-schema.ts` then
  *      `emit-entity-names.ts` (the second script reads the first's output,
  *      so both run against the same temp tree in sequence)
+ *   7. `rust/core/src/generated/{schema,type_ids}.rs` <- IFC4X3 plus the
+ *      production IFC4 and IFC2X3 supplements (#4203/#5054). These two files
+ *      sit beside, rather than inside, the crate-private registries in (1),
+ *      so they need their own comparison.
  *
  * (1)-(3) need `packages/codegen`'s `dist/cli.js` built (plain `tsc`, no
  * runtime dependency on `@ifc-lite/data` — the package imports it only
@@ -113,6 +117,7 @@ import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { checkCanonicalRustCodegen } from './lib/check-canonical-rust-codegen.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
@@ -173,18 +178,40 @@ export function buildCodegen(root) {
 }
 
 /** Run the built codegen CLI against `schemaPath`, writing into `outDir`. */
-export function runCodegenCli(root, schemaPath, outDir, rustDir) {
+export function runCodegenCli(root, schemaPath, outDir, rustDir, options = {}) {
   const cliPath = join(root, 'packages/codegen/dist/cli.js');
   if (!existsSync(cliPath)) {
     throw new Error(`packages/codegen/dist/cli.js not found after build — cannot regenerate ${schemaPath}`);
   }
   const args = [cliPath, schemaPath, '-o', outDir];
-  if (rustDir) args.push('--rust', '--rust-dir', rustDir, '--rust-crate-private');
+  if (rustDir) {
+    args.push('--rust', '--rust-dir', rustDir);
+    if (options.cratePrivate) args.push('--rust-crate-private');
+    if (options.supplementalSchemas?.length) {
+      args.push('--rust-supplemental-schema', ...options.supplementalSchemas);
+    }
+  }
   execFileSync(process.execPath, args, {
     cwd: root,
     stdio: 'pipe',
     encoding: 'utf8',
   });
+  if (rustDir && !options.cratePrivate) {
+    // Canonical core artifacts are committed after rustfmt. Apply that same
+    // deterministic final generation step before byte comparison; comparing
+    // pre-format text would report formatting noise, while normalising either
+    // side would let a hand edit through (#5054).
+    const generatedFiles = ['schema.rs', 'type_ids.rs']
+      .map((file) => join(rustDir, file))
+      .filter(existsSync);
+    if (generatedFiles.length > 0) {
+      execFileSync('rustfmt', ['+stable', ...generatedFiles], {
+        cwd: root,
+        stdio: 'pipe',
+        encoding: 'utf8',
+      });
+    }
+  }
 }
 
 /**
@@ -243,12 +270,14 @@ export function runAllTargets(root) {
     for (const [schemaFile, registry] of rustSchemaInputs) {
       const out = join(tmp, `rust-${registry}`);
       const rustOut = join(rustRegistryOut, registry);
-      runCodegenCli(root, join(root, 'packages/codegen/schemas', schemaFile), out, rustOut);
+      runCodegenCli(root, join(root, 'packages/codegen/schemas', schemaFile), out, rustOut, { cratePrivate: true });
       results.push({
         name: `rust/core/src/generated/${registry} (generated from ${schemaFile})`,
         ...diffDirs(rustOut, join(root, 'rust/core/src/generated', registry)),
       });
     }
+
+    results.push(...checkCanonicalRustCodegen({ root, tmp, runCodegenCli }));
 
     results.push({
       name: 'packages/codegen/generated/ifc4',

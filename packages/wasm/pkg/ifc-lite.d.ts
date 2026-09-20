@@ -655,6 +655,13 @@ export class IfcAPI {
      */
     parseGridLinesInFrame(content: string, frame: RtcFrame): Float32Array;
     /**
+     * Parse a LandXML 1.2 TIN document from its original bytes.
+     *
+     * The object is an owned serialization of the semantic document. Errors
+     * deliberately use `LandXmlError::Display`, including its stable LXML code.
+     */
+    parseLandXmlTinBytes(data: Uint8Array): any;
+    /**
      * Parse IFC file and extract symbolic representations (Plan,
      * Annotation, FootPrint, Axis). These are 2D curves used for
      * architectural drawings instead of sectioning 3D geometry.
@@ -2184,6 +2191,7 @@ export interface InitOutput {
     readonly ifcapi_parseGridAxesInFrame: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_parseGridLines: (a: number, b: number, c: number) => number;
     readonly ifcapi_parseGridLinesInFrame: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly ifcapi_parseLandXmlTinBytes: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_parseSymbolicRepresentations: (a: number, b: number, c: number) => number;
     readonly ifcapi_parseSymbolicRepresentationsInFrame: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_planAnnotationPlane: (a: number, b: number, c: number, d: number, e: number, f: number) => void;

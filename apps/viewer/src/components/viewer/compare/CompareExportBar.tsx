@@ -17,6 +17,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import type { CompareResult } from '@/store/slices/compareSlice';
@@ -37,6 +38,7 @@ interface CompareExportBarProps {
 }
 
 export function CompareExportBar({ result, reportable }: CompareExportBarProps) {
+  const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const excludedTypes = useViewerStore((s) => s.compareExcludedTypes);
   const acceptedAll = useViewerStore((s) => s.compareAcceptedIdentity);
@@ -79,8 +81,12 @@ export function CompareExportBar({ result, reportable }: CompareExportBarProps) 
     const refused = useViewerStore.getState().acceptCompareIdentity(result, read.entries);
     setMessage(
       refused.length > 0
-        ? `Imported ${read.entries.length - refused.length} of ${read.entries.length} entries; ${refused.length} collide with pairs already accepted.`
-        : `Imported ${read.entries.length} identity entries.`,
+        ? t('comparePanel.exportBar.importedPartial', {
+            imported: read.entries.length - refused.length,
+            total: read.entries.length,
+            refused: refused.length,
+          })
+        : t('comparePanel.exportBar.importedAll', { count: read.entries.length }),
     );
   };
 
@@ -89,7 +95,7 @@ export function CompareExportBar({ result, reportable }: CompareExportBarProps) 
       {reportable && (
         <div className="flex items-center gap-2 px-3 py-2">
           <Download className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <span className="text-muted-foreground">Download report</span>
+          <span className="text-muted-foreground">{t('comparePanel.exportBar.downloadReportLabel')}</span>
           <div className="ml-auto flex items-center gap-1">
             <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => downloadReport('csv')}>
               CSV
@@ -101,24 +107,24 @@ export function CompareExportBar({ result, reportable }: CompareExportBarProps) 
         </div>
       )}
       <div className="flex items-center gap-2 px-3 py-2">
-        <span className="text-muted-foreground" title="Identity map: the pairs you accepted. Lineage: identity, splits, merges and accepted replacements.">
-          Identity {accepted.length > 0 ? `(${accepted.length})` : ''}
+        <span className="text-muted-foreground" title={t('comparePanel.exportBar.identityTooltip')}>
+          {t('comparePanel.exportBar.identityLabel')} {accepted.length > 0 ? `(${accepted.length})` : ''}
         </span>
         <div className="ml-auto flex items-center gap-1">
           <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => void downloadSidecar('identity-map')}>
-            Export map
+            {t('comparePanel.exportBar.exportMapButton')}
           </Button>
           <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => void downloadSidecar('lineage')}>
-            Export lineage
+            {t('comparePanel.exportBar.exportLineageButton')}
           </Button>
           <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => fileInput.current?.click()}>
-            Import map
+            {t('comparePanel.exportBar.importMapButton')}
           </Button>
           <input
             ref={fileInput}
             type="file"
             accept=".json,application/json"
-            aria-label="Import identity map"
+            aria-label={t('comparePanel.exportBar.importAriaLabel')}
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];

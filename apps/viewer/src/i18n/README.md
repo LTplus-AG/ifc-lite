@@ -630,6 +630,39 @@ interpolation params rather than translated. A thrown `Error`'s own
 exception) is likewise interpolated as a parameter, never translated
 itself — it is engine content, not UI chrome.
 
+The Info dialog catalogue (#4918 slice: keyboard shortcuts,
+`keyboard-shortcuts.en.ts`) covers `KeyboardShortcutsDialog.tsx` in full —
+exported under that legacy name though it renders all four Info tabs, not
+only Shortcuts: the header (title, MCP cross-link CTA) and footer
+("Press ? to toggle this panel"), the tab strip, the About tab (the
+privacy disclosure's intro/WASM link/verification line, the app name,
+version, homepage/docs/GitHub/report-issue links, license, and the
+package-count disclosure), the What's New tab (the current-version banner,
+per-release version/viewer-badge/change-count, and the Feature/Fix/Perf
+legend), and the Shortcuts tab's own "Learn more" row. Shortcut CATEGORY
+names, DESCRIPTIONS, and key-combination glyphs (`⌘`, `Ctrl`, `⇧`) come
+from `KEYBOARD_SHORTCUTS` (`@/hooks/keyboard-shortcuts-list`) and stay out
+of the catalogue as model content, same reasoning as every other data
+table in this sweep; the `F12` key name in the privacy disclosure is
+likewise routed through `t()` without translation, the same house rule
+that keeps `GlobalId` and IFC EXPRESS names spelled exactly while still
+satisfying the ending gate. `LearnTab.tsx` (the fourth tab) has its own
+catalogue outside this slice.
+
+The drawing-underlay catalogue (#4918 slice: keyboard shortcuts + drawing
+underlay, `drawing-underlay.en.ts`, prefix `drawingUnderlay.*`) covers two
+siblings under one namespace because they are the same 2D-drawing-overlay
+feature: `settings.*` is `DrawingSettingsPanel.tsx`'s graphic-override
+presets and custom-rule editor, and `dxf.*` is `DxfUnderlayPanel.tsx`'s
+imported-DXF reference-underlay manager (issue #1782/#1929/#2043),
+including its per-layer hide/show titles, the warnings/skipped-entities
+disclosures, the opacity control, and the tri-state "Align to model
+georeference" toggle and its auto/on/off hint text. IFC class NAMES
+(`COMMON_IFC_TYPES`), the line-weight preset table, and DXF layer/file
+NAMES from the imported drawing remain model or registry runtime data and
+stay out of the catalogue; the `mm` unit suffix is routed through `t()`
+without translation, same reasoning as the `F12` key name above.
+
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for
 hardcoded JSX text, `{'…'}`-wrapped JSX-expression string literals, and

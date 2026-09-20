@@ -22,6 +22,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { KEYBOARD_SHORTCUTS } from '@/hooks/keyboard-shortcuts-list';
 import { LearnTab } from '@/components/tours/LearnTab';
 import { navigateToPath } from '@/services/app-navigation';
+import { useTranslation } from '@/i18n';
 
 const GITHUB_URL = 'https://github.com/LTplus-AG/ifc-lite';
 
@@ -53,7 +54,7 @@ const TYPE_CONFIG = {
 } as const;
 
 function PrivacyBanner() {
-  const [expanded, setExpanded] = useState(false);
+  const { t } = useTranslation(); const [expanded, setExpanded] = useState(false);
 
   return (
     <div className="pt-2 border-t">
@@ -62,7 +63,7 @@ function PrivacyBanner() {
         className="flex items-center gap-2 w-full rounded-md bg-emerald-500/10 px-2.5 py-1.5 text-left transition-colors hover:bg-emerald-500/15"
       >
         <ShieldCheck className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-        <span className="text-xs font-medium">Your IFC data never leaves your device.</span>
+        <span className="text-xs font-medium">{t('keyboardShortcuts.privacy.banner')}</span>
         {expanded ? (
           <ChevronDown className="h-3 w-3 ml-auto shrink-0 text-muted-foreground" />
         ) : (
@@ -72,19 +73,19 @@ function PrivacyBanner() {
       {expanded && (
         <div className="mt-1.5 ml-1 space-y-1 text-xs text-muted-foreground">
           <p>
-            All files are processed locally in the browser with{' '}
+            {t('keyboardShortcuts.privacy.intro')}{' '}
             <a
               href="https://webassembly.org/"
               target="_blank"
               rel="noopener noreferrer"
               className="underline hover:text-foreground transition-colors"
             >
-              WebAssembly (WASM)
+              {t('keyboardShortcuts.privacy.wasmLink')}
             </a>
-            {' '}&ndash; no server upload, near-native speed.
+            {' '}{t('keyboardShortcuts.privacy.outro')}
           </p>
           <p className="text-[11px] italic">
-            Verify: press <kbd className="px-1 py-0.5 bg-muted rounded border font-mono text-[10px]">F12</kbd> &rarr; Network tab &rarr; no IFC data transmitted.
+            {t('keyboardShortcuts.privacy.verifyIntro')} <kbd className="px-1 py-0.5 bg-muted rounded border font-mono text-[10px]">{t('keyboardShortcuts.privacy.verifyKey')}</kbd> {t('keyboardShortcuts.privacy.verifyOutro')}
           </p>
         </div>
       )}
@@ -93,17 +94,15 @@ function PrivacyBanner() {
 }
 
 function AboutTab() {
-  const [showPackages, setShowPackages] = useState(false);
+  const { t } = useTranslation(); const [showPackages, setShowPackages] = useState(false);
   const packageVersions = typeof __PACKAGE_VERSIONS__ !== 'undefined' ? __PACKAGE_VERSIONS__ : [];
 
   return (
     <div className="space-y-3">
       {/* Header */}
       <div className="text-center pb-2 border-b">
-        <h3 className="text-xl font-bold">ifc-lite</h3>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          v{__APP_VERSION__} &middot; {formatBuildDate(__BUILD_DATE__)}
-        </p>
+        <h3 className="text-xl font-bold">{t('keyboardShortcuts.about.appName')}</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">{t('keyboardShortcuts.about.versionLabel', { version: __APP_VERSION__ })} &middot; {formatBuildDate(__BUILD_DATE__)}</p>
       </div>
 
       {/* Links */}
@@ -114,7 +113,7 @@ function AboutTab() {
           rel="noopener noreferrer"
           className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
         >
-          ifclite.dev
+          {t('keyboardShortcuts.about.homepageLink')}
           <ExternalLink className="h-3 w-3" />
         </a>
         <a
@@ -123,7 +122,7 @@ function AboutTab() {
           rel="noopener noreferrer"
           className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
         >
-          Docs
+          {t('keyboardShortcuts.about.docsLink')}
           <ExternalLink className="h-3 w-3" />
         </a>
         <a
@@ -133,7 +132,7 @@ function AboutTab() {
           className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
         >
           <GithubIcon className="h-3.5 w-3.5" />
-          GitHub
+          {t('keyboardShortcuts.about.githubLink')}
         </a>
         <a
           href={`${GITHUB_URL}/issues`}
@@ -141,10 +140,10 @@ function AboutTab() {
           rel="noopener noreferrer"
           className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
         >
-          Report issue
+          {t('keyboardShortcuts.about.reportIssueLink')}
           <ExternalLink className="h-3 w-3" />
         </a>
-        <span className="text-muted-foreground">MPL-2.0</span>
+        <span className="text-muted-foreground">{t('keyboardShortcuts.about.license')}</span>
       </div>
 
       {/* Feature chips */}
@@ -181,7 +180,7 @@ function AboutTab() {
               <ChevronRight className="h-3 w-3" />
             )}
             <Package className="h-3 w-3" />
-            {packageVersions.length} packages
+            {t('keyboardShortcuts.about.packagesCount', { count: packageVersions.length })}
           </button>
           {showPackages && (
             <div className="rounded-md border bg-muted/30 p-2 mt-1.5 max-h-48 overflow-y-auto">
@@ -254,7 +253,7 @@ function buildTimeline(
 }
 
 function WhatsNewTab() {
-  const packageChangelogs = __RELEASE_HISTORY__;
+  const { t } = useTranslation(); const packageChangelogs = __RELEASE_HISTORY__;
   const viewerVersion = __APP_VERSION__;
   const [expandedVersions, setExpandedVersions] = useState<Set<string>>(() => new Set());
 
@@ -282,7 +281,7 @@ function WhatsNewTab() {
   if (timeline.length === 0) {
     return (
       <div className="text-center py-8 text-sm text-muted-foreground">
-        No release history available.
+        {t('keyboardShortcuts.whatsNew.empty')}
       </div>
     );
   }
@@ -295,10 +294,10 @@ function WhatsNewTab() {
           item 2. */}
       <div className="flex items-baseline justify-between gap-2 border-b border-border/60 pb-2 mb-1">
         <span className="text-sm font-semibold">
-          You&rsquo;re on viewer v{viewerVersion}
+          {t('keyboardShortcuts.whatsNew.currentVersion', { version: viewerVersion })}
         </span>
         <span className="text-[11px] text-muted-foreground shrink-0">
-          rows below are per-package releases
+          {t('keyboardShortcuts.whatsNew.perPackageHint')}
         </span>
       </div>
       {timeline.map((release) => {
@@ -315,14 +314,14 @@ function WhatsNewTab() {
               ) : (
                 <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
               )}
-              <span className="text-sm font-semibold">v{release.version}</span>
+              <span className="text-sm font-semibold">{t('keyboardShortcuts.whatsNew.releaseVersionLabel', { version: release.version })}</span>
               {release.isViewerVersion && (
                 <span className="px-1.5 py-0.5 text-[10px] font-medium bg-sky-500/15 text-sky-600 dark:text-sky-400 rounded">
-                  viewer
+                  {t('keyboardShortcuts.whatsNew.viewerBadge')}
                 </span>
               )}
               <span className="text-xs text-muted-foreground ml-auto">
-                {totalHighlights} change{totalHighlights !== 1 ? 's' : ''}
+                {t('keyboardShortcuts.whatsNew.changeCount', { count: totalHighlights })}
               </span>
             </button>
             {isExpanded && (
@@ -357,13 +356,13 @@ function WhatsNewTab() {
       {/* Legend */}
       <div className="pt-3 border-t flex items-center justify-center gap-4 text-[11px] text-muted-foreground">
         <span className="flex items-center gap-1">
-          <Plus className="h-3 w-3 text-emerald-500" /> Feature
+          <Plus className="h-3 w-3 text-emerald-500" /> {t('keyboardShortcuts.whatsNew.legendFeature')}
         </span>
         <span className="flex items-center gap-1">
-          <Wrench className="h-3 w-3 text-amber-500" /> Fix
+          <Wrench className="h-3 w-3 text-amber-500" /> {t('keyboardShortcuts.whatsNew.legendFix')}
         </span>
         <span className="flex items-center gap-1">
-          <Zap className="h-3 w-3 text-blue-500" /> Perf
+          <Zap className="h-3 w-3 text-blue-500" /> {t('keyboardShortcuts.whatsNew.legendPerf')}
         </span>
       </div>
     </div>
@@ -371,7 +370,7 @@ function WhatsNewTab() {
 }
 
 function ShortcutsTab() {
-  // Group shortcuts by category
+  const { t } = useTranslation(); // Group shortcuts by category
   const grouped = KEYBOARD_SHORTCUTS.reduce(
     (acc, shortcut) => {
       if (!acc[shortcut.category]) {
@@ -389,14 +388,14 @@ function ShortcutsTab() {
           docs. Sits above the shortcut groups so it's the first thing users hunting
           for help see, without crowding the keyboard reference itself. */}
       <div className="rounded border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-        <span className="font-medium text-foreground">Learn more:</span>
+        <span className="font-medium text-foreground">{t('keyboardShortcuts.shortcuts.learnMore')}</span>
         <a
           href="https://ifclite.dev"
           target="_blank"
           rel="noopener noreferrer"
           className="ml-2 underline-offset-2 hover:underline hover:text-primary transition-colors"
         >
-          ifclite.dev
+          {t('keyboardShortcuts.shortcuts.homepageLink')}
         </a>
         <span className="mx-1.5 opacity-40">·</span>
         <a
@@ -405,7 +404,7 @@ function ShortcutsTab() {
           rel="noopener noreferrer"
           className="underline-offset-2 hover:underline hover:text-primary transition-colors"
         >
-          docs
+          {t('keyboardShortcuts.shortcuts.docsLink')}
         </a>
       </div>
       {Object.entries(grouped).map(([category, shortcuts]) => (
@@ -433,7 +432,7 @@ function ShortcutsTab() {
 }
 
 export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialogProps) {
-  // Close on escape
+  const { t } = useTranslation(); // Close on escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && open) {
@@ -453,16 +452,16 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
             it's a discoverable "what else can this do?" affordance
             without crowding the modeling toolbar. */}
         <div className="flex items-center justify-between gap-2 p-4 border-b">
-          <h2 className="text-lg font-semibold shrink-0">Info</h2>
+          <h2 className="text-lg font-semibold shrink-0">{t('keyboardShortcuts.header.title')}</h2>
           <div className="flex items-center gap-1 min-w-0">
             <button
               type="button"
               onClick={() => { onClose(); navigateToPath('/mcp'); }}
               className="group inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 hover:bg-primary/10 hover:border-primary/50 transition-colors px-3 py-1.5 text-xs font-medium text-primary"
-              aria-label="Open ifc-lite MCP — drive ifc-lite from any LLM"
+              aria-label={t('keyboardShortcuts.header.mcpAriaLabel')}
             >
               <Sparkles className="h-3.5 w-3.5 group-hover:rotate-12 transition-transform" />
-              <span className="whitespace-nowrap">Drive from any LLM</span>
+              <span className="whitespace-nowrap">{t('keyboardShortcuts.header.mcpCta')}</span>
               <ExternalLink className="h-3 w-3 opacity-60" />
             </button>
             <Button variant="ghost" size="icon-sm" onClick={onClose}>
@@ -479,19 +478,19 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
             <TabsList className="w-full">
               <TabsTrigger value="about" className="flex-1 gap-1.5 data-[state=active]:bg-background data-[state=active]:text-foreground">
                 <Info className="h-3.5 w-3.5" />
-                About
+                {t('keyboardShortcuts.tabs.about')}
               </TabsTrigger>
               <TabsTrigger value="whatsnew" className="flex-1 gap-1.5 data-[state=active]:bg-background data-[state=active]:text-foreground">
                 <Sparkles className="h-3.5 w-3.5" />
-                What's New
+                {t('keyboardShortcuts.tabs.whatsNew')}
               </TabsTrigger>
               <TabsTrigger value="shortcuts" className="flex-1 gap-1.5 data-[state=active]:bg-background data-[state=active]:text-foreground">
                 <Keyboard className="h-3.5 w-3.5" />
-                Shortcuts
+                {t('keyboardShortcuts.tabs.shortcuts')}
               </TabsTrigger>
               <TabsTrigger value="learn" className="flex-1 gap-1.5 data-[state=active]:bg-background data-[state=active]:text-foreground">
                 <GraduationCap className="h-3.5 w-3.5" />
-                Learn
+                {t('keyboardShortcuts.tabs.learn')}
               </TabsTrigger>
             </TabsList>
           </div>
@@ -516,11 +515,11 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
         {/* Footer */}
         <div className="p-4 border-t text-center">
           <span className="text-xs text-muted-foreground">
-            Press{' '}
+            {t('keyboardShortcuts.footer.pressPrefix')}{' '}
             <kbd className="px-1 py-0.5 bg-muted rounded border font-mono text-xs">
               ?
             </kbd>{' '}
-            to toggle this panel
+            {t('keyboardShortcuts.footer.toggleSuffix')}
           </span>
         </div>
       </div>

@@ -707,13 +707,8 @@ export function useIfcLoader() {
       const acquired: AcquiredBuffer = pointCloudFormat
         ? { buffer: headBuf, view: new Uint8Array(headBuf), isShared: false }
         : await acquireFileBuffer(file);
-      // `buffer` retains its previous semantics (ArrayBuffer-shaped) for
-      // every downstream consumer. When `acquired.isShared` is true the
-      // backing store is a SharedArrayBuffer; downstream code only ever
-      // reads bytes via `new Uint8Array(buffer)` / `new DataView(buffer)`,
-      // both of which work on either backing store. The TS cast is purely
-      // type-system: the runtime is identical.
-      let buffer = acquired.buffer as ArrayBuffer;
+      // LandXML preserves SAB to its decoder; legacy APIs below require ArrayBuffer.
+      let buffer: ArrayBuffer | SharedArrayBuffer = acquired.buffer;
       const fileReadMs = performance.now() - fileReadStart;
       console.log(
         `[useIfc] File: ${file.name}, size: ${fileSizeMB.toFixed(2)}MB` +
@@ -731,20 +726,22 @@ export function useIfcLoader() {
       // consumes the now-unwrapped `buffer`.
       let textureBitmaps: TextureBitmapStore | null = null;
       if (!pointCloudFormat && !landXmlFile) {
-        const zipContents = await unwrapIfcZipWithResources(buffer);
+        // Preserve ArrayBuffer zero-copy; copy SAB at this legacy API boundary.
+        const zipInput = buffer instanceof ArrayBuffer ? buffer : buffer.slice(0);
+        const zipContents = await unwrapIfcZipWithResources(zipInput);
         buffer = zipContents.model;
         // Retain original archive paths/encoded bytes alongside shared bitmaps.
         appearanceLoad = modelAppearanceAssets.begin(modelId);
         textureBitmaps = await appearanceLoad.decode(zipContents);
       }
 
-      const loadedBufferByteLength = buffer.byteLength, sourceKeyFingerprint = computeSourceFingerprint(buffer);
+      const loadedBufferByteLength = buffer.byteLength, sourceKeyFingerprint = computeSourceFingerprint(new Uint8Array(buffer));
       const modelSourceIdentity = `${file.name}:${sourceKeyFingerprint.hex}`;
       const placementIdentity = pointCloudFormat ? undefined : await placementSourceIdentity(file, () => loadSessionRef.current !== currentSession);
       if (loadSessionRef.current !== currentSession) return;
       if (target.kind === 'primary') updateModel(modelId, { sourceFingerprint: modelSourceIdentity, sourceContentHash: placementIdentity });
       // Resolve model formats from the full buffer; point clouds were resolved from the head slice above.
-      const format = landXmlFile ? 'landxml' : pointCloudFormat ?? detectFormat(buffer);
+      const format = landXmlFile ? 'landxml' : pointCloudFormat ?? detectFormat(buffer instanceof ArrayBuffer ? buffer : buffer.slice(0));
 
       if (format === 'landxml') {
         await loadLandXmlModel({ buffer, fileSizeMB, targetKind: target.kind, totalStartTime, wasHidden: wasHidden(),
@@ -754,6 +751,9 @@ export function useIfcLoader() {
         });
         return;
       }
+
+      // All remaining format loaders have ArrayBuffer-only contracts.
+      buffer = buffer instanceof ArrayBuffer ? buffer : buffer.slice(0);
 
       // LAS / LAZ point clouds: stream chunks straight to the renderer.
       // No on-disk cache, no server upload — the data goes worker → GPU.

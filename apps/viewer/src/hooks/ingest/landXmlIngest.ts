@@ -5,6 +5,9 @@
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { createCoordinateInfo, createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
 import { parseLandXmlTin, type LandXmlTinSurface } from './landXmlTin.js';
+import { boundsFitRenderFrame, MAX_RENDER_FRAME_ORIGIN_METRES } from './landXmlRenderFrame.js';
+
+export type LandXmlSourceBuffer = ArrayBuffer | SharedArrayBuffer;
 
 export interface LandXmlGeometryPayload {
   geometryResult: GeometryResult;
@@ -12,9 +15,6 @@ export interface LandXmlGeometryPayload {
   warnings: string[];
   surfaceNames: string[];
 }
-
-/** f32 keeps ~0.06 m at 1,000 km; beyond that a shared render frame cannot place metre-scale detail. */
-const MAX_RENDER_FRAME_ORIGIN_METRES = 1_000_000;
 
 export function isLandXmlFileName(name: string): boolean {
   return name.toLowerCase().endsWith('.xml');
@@ -80,8 +80,18 @@ function xmlEncoding(bytes: Uint8Array): string {
   return /<\?xml\s[^>]*encoding\s*=\s*(['"])([^'"]+)\1/i.exec(declaration)?.[2] || 'utf-8';
 }
 
-function decodeXml(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
+/**
+ * Browser TextDecoder rejects SAB-backed bytes as a Spectre mitigation. Copy
+ * once before both encoding sniffing and decoding; ordinary ArrayBuffers keep
+ * their zero-copy view.
+ */
+function decodeBytes(buffer: LandXmlSourceBuffer): Uint8Array<ArrayBuffer> {
+  if (buffer instanceof ArrayBuffer) return new Uint8Array(buffer);
+  return new Uint8Array(new Uint8Array(buffer));
+}
+
+function decodeXml(buffer: LandXmlSourceBuffer): string {
+  const bytes = decodeBytes(buffer);
   const encoding = xmlEncoding(bytes);
   try {
     return new TextDecoder(encoding, { fatal: true }).decode(bytes);
@@ -266,11 +276,11 @@ function mergeBounds(target: Bounds3D, source: Bounds3D): void {
 /**
  * Pick the one render frame every uploaded component shares. Components sit
  * on their own f64 origins, but the vertex shader evaluates `model * local`
- * in f32, so a component whose origin lies 1,000 km from the frame centre
- * already loses ~0.06 m and one hundreds of megametres away collapses
+ * in f32, so a component whose full extent lies 1,000 km from the frame
+ * centre already loses ~0.06 m and one hundreds of megametres away collapses
  * outright. The frame is centred on the component with the most faces; any
- * component the frame cannot place precisely is dropped with a warning
- * rather than drawn wrong.
+ * component the frame cannot place precisely is dropped with a warning rather
+ * than drawn wrong.
  */
 function placeComponentsInRenderFrame(
   components: SurfaceComponent[],
@@ -307,19 +317,19 @@ function placeComponentsInRenderFrame(
       origin[1] - originShift.y,
       origin[2] - originShift.z,
     ];
-    if (shifted.some((axis) => Math.abs(axis) > MAX_RENDER_FRAME_ORIGIN_METRES)) continue;
+    if (!boundsFitRenderFrame(component.bounds, originShift)) continue;
     component.mesh.origin = shifted;
     placed.push(component);
     mergeBounds(bounds, component.bounds);
   }
   if (placed.length < components.length) {
-    warnings.push(`Skipped ${components.length - placed.length} surface component(s) more than ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km from the model centre because the render frame cannot place them precisely`);
+    warnings.push(`Skipped ${components.length - placed.length} surface component(s) whose full bounds exceed ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km from the model render frame because they cannot be placed precisely`);
   }
   return { placed, bounds, originShift, hasLargeCoordinates };
 }
 
 /** Parse LandXML 1.2 TIN surfaces into the viewer's canonical mesh payload. */
-export function parseLandXmlGeometry(buffer: ArrayBuffer): LandXmlGeometryPayload {
+export function parseLandXmlGeometry(buffer: LandXmlSourceBuffer): LandXmlGeometryPayload {
   const parsed = parseLandXmlTin(decodeXml(buffer));
   const warnings = [...parsed.warnings];
   const components: SurfaceComponent[] = [];
@@ -366,6 +376,9 @@ export function parseLandXmlGeometry(buffer: ArrayBuffer): LandXmlGeometryPayloa
   if (components.length === 0) throw new Error('LandXML document contains no non-degenerate TIN faces');
 
   const { placed, bounds, originShift, hasLargeCoordinates } = placeComponentsInRenderFrame(components, warnings);
+  if (placed.length === 0) {
+    throw new Error(`LandXML document has no surface components within the ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km render-frame limit`);
+  }
   const meshes = placed.map((component, index) => ({ ...component.mesh, expressId: index + 1 }));
   const surfaceNames = [...new Set(placed.map((component) => component.surfaceName))];
   const stats = meshes.reduce((total, mesh) => ({

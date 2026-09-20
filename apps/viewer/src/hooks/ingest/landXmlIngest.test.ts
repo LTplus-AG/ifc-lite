@@ -53,6 +53,29 @@ function utf16LeBytes(text: string): ArrayBuffer {
   return bytes.buffer;
 }
 
+function sharedBytes(buffer: ArrayBuffer): SharedArrayBuffer {
+  const shared = new SharedArrayBuffer(buffer.byteLength);
+  new Uint8Array(shared).set(new Uint8Array(buffer));
+  return shared;
+}
+
+/** Make Node reproduce the browser policy that rejects SAB TextDecoder input. */
+function rejectSharedTextDecoderInput(): () => void {
+  const realDecode = TextDecoder.prototype.decode;
+  TextDecoder.prototype.decode = function (
+    this: TextDecoder,
+    input?: AllowSharedBufferSource,
+    options?: TextDecodeOptions,
+  ): string {
+    const backing = ArrayBuffer.isView(input) ? input.buffer : input;
+    if (backing instanceof SharedArrayBuffer) {
+      throw new TypeError('TextDecoder.decode: cannot decode SharedArrayBuffer');
+    }
+    return realDecode.call(this, input, options);
+  };
+  return () => { TextDecoder.prototype.decode = realDecode; };
+}
+
 describe('LandXML 1.2 TIN ingest (#4937)', () => {
   it('parses schema point order and ignores invisible/non-TIN faces', () => {
     const parsed = parseLandXmlTin(LANDXML);
@@ -227,6 +250,19 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     const result = parseLandXmlViewerModel(utf16LeBytes(utf16));
     assert.equal(result.geometryResult.totalTriangles, 1);
     assert.deepEqual(result.surfaceNames, ['Existing Ground']);
+  });
+
+  it('copies SAB input once before encoding detection and decoding, including UTF-16', () => {
+    const restore = rejectSharedTextDecoderInput();
+    try {
+      const utf8 = parseLandXmlViewerModel(sharedBytes(bytes(LANDXML)));
+      const utf16 = parseLandXmlViewerModel(sharedBytes(utf16LeBytes(LANDXML.replace('encoding="UTF-8"', 'encoding="UTF-16"'))));
+      assert.equal(utf8.geometryResult.totalTriangles, 1);
+      assert.equal(utf16.geometryResult.totalTriangles, 1);
+      assert.deepEqual(utf16.surfaceNames, ['Existing Ground']);
+    } finally {
+      restore();
+    }
   });
 
   it('applies the declared horizontal and elevation units independently', () => {

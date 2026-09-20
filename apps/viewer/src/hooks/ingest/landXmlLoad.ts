@@ -6,12 +6,15 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { federationFrameInfo, totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import { captureModelLoaded, snapshotFromGeometry } from '../../utils/loadTelemetry.js';
+import { createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
 import { toast } from '../../components/ui/toast.js';
 import { useViewerStore } from '../../store/index.js';
 import { parseLandXmlViewerModelAsync, type LandXmlViewerModel } from './landXmlViewerModel.js';
+import type { LandXmlSourceBuffer } from './landXmlIngest.js';
+import { MAX_RENDER_FRAME_ORIGIN_METRES, meshFitsRenderFrame, meshRenderFrameBounds } from './landXmlRenderFrame.js';
 
 interface LandXmlLoadOptions {
-  buffer: ArrayBuffer;
+  buffer: LandXmlSourceBuffer;
   fileSizeMB: number;
   targetKind: 'primary' | 'federated';
   totalStartTime: number;
@@ -40,8 +43,53 @@ function shiftBounds(
   };
 }
 
+function mergeBounds(target: Bounds3D, source: Bounds3D): void {
+  target.min.x = Math.min(target.min.x, source.min.x);
+  target.min.y = Math.min(target.min.y, source.min.y);
+  target.min.z = Math.min(target.min.z, source.min.z);
+  target.max.x = Math.max(target.max.x, source.max.x);
+  target.max.y = Math.max(target.max.y, source.max.y);
+  target.max.z = Math.max(target.max.z, source.max.z);
+}
+
+/** Recompute counts and frame metadata from the meshes that survived reframing. */
+function updateRetainedGeometry(geometry: GeometryResult, frame: CoordinateInfo): void {
+  const bounds = createEmptyBounds();
+  let totalVertices = 0;
+  let totalTriangles = 0;
+  for (const mesh of geometry.meshes) {
+    const meshBounds = meshRenderFrameBounds(mesh);
+    if (meshBounds === null) throw new Error('LandXML retained a mesh without finite render-frame bounds');
+    mergeBounds(bounds, meshBounds);
+    totalVertices += mesh.positions.length / 3;
+    totalTriangles += mesh.indices.length / 3;
+  }
+  const targetOffset = totalYupOffset(frame);
+  const originShift = frame.originShift ?? { x: 0, y: 0, z: 0 };
+  const worldBounds = shiftBounds(bounds, { x: -targetOffset.x, y: -targetOffset.y, z: -targetOffset.z });
+  const rtcYup = {
+    x: targetOffset.x - originShift.x,
+    y: targetOffset.y - originShift.y,
+    z: targetOffset.z - originShift.z,
+  };
+  geometry.totalVertices = totalVertices;
+  geometry.totalTriangles = totalTriangles;
+  geometry.coordinateInfo = {
+    ...geometry.coordinateInfo,
+    originShift: { ...originShift },
+    originalBounds: shiftBounds(worldBounds, rtcYup),
+    shiftedBounds: bounds,
+    hasLargeCoordinates: Math.max(
+      Math.abs(worldBounds.min.x), Math.abs(worldBounds.min.y), Math.abs(worldBounds.min.z),
+      Math.abs(worldBounds.max.x), Math.abs(worldBounds.max.y), Math.abs(worldBounds.max.z),
+    ) > 10_000,
+    wasmRtcOffset: frame.wasmRtcOffset ? { ...frame.wasmRtcOffset } : undefined,
+    wasmRtcFrame: frame.wasmRtcFrame ? { ...frame.wasmRtcFrame } : undefined,
+  };
+}
+
 /** Move parsed LandXML into the federation's already-published render frame. */
-export function reframeLandXmlGeometry(geometry: GeometryResult, frame: CoordinateInfo): void {
+export function reframeLandXmlGeometry(geometry: GeometryResult, frame: CoordinateInfo): string[] {
   const ownOffset = totalYupOffset(geometry.coordinateInfo);
   const targetOffset = totalYupOffset(frame);
   const delta = {
@@ -53,21 +101,16 @@ export function reframeLandXmlGeometry(geometry: GeometryResult, frame: Coordina
     const origin = mesh.origin ?? [0, 0, 0];
     mesh.origin = [origin[0] + delta.x, origin[1] + delta.y, origin[2] + delta.z];
   }
-  const worldBounds = geometry.coordinateInfo.originalBounds;
-  const shift = frame.originShift ?? { x: 0, y: 0, z: 0 };
-  const rtcYup = {
-    x: targetOffset.x - shift.x,
-    y: targetOffset.y - shift.y,
-    z: targetOffset.z - shift.z,
-  };
-  geometry.coordinateInfo = {
-    ...geometry.coordinateInfo,
-    originShift: { ...frame.originShift },
-    originalBounds: shiftBounds(worldBounds, rtcYup),
-    shiftedBounds: shiftBounds(worldBounds, targetOffset),
-    wasmRtcOffset: frame.wasmRtcOffset ? { ...frame.wasmRtcOffset } : undefined,
-    wasmRtcFrame: frame.wasmRtcFrame ? { ...frame.wasmRtcFrame } : undefined,
-  };
+  const retained = geometry.meshes.filter(meshFitsRenderFrame);
+  const skipped = geometry.meshes.length - retained.length;
+  if (retained.length === 0) {
+    throw new Error(`LandXML model cannot be federated: every surface component exceeds the ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km shared render-frame limit`);
+  }
+  geometry.meshes = retained;
+  updateRetainedGeometry(geometry, frame);
+  return skipped === 0
+    ? []
+    : [`Skipped ${skipped} LandXML surface component(s) whose full bounds exceed ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km from the shared federation render frame`];
 }
 
 /** Own the format-specific branch while `loadFile` retains lifecycle ownership. */
@@ -80,7 +123,7 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
     const frame = options.targetKind === 'federated'
       ? federationFrameInfo(useViewerStore.getState().models.values())
       : null;
-    if (frame) reframeLandXmlGeometry(result.geometryResult, frame);
+    if (frame) result.warnings.push(...reframeLandXmlGeometry(result.geometryResult, frame));
     if (options.targetKind === 'primary') options.onPrimary(result);
     await options.finalize(result.dataStore, result.geometryResult, result.schemaVersion, { loadPath: 'landxml' });
     if (!options.isCurrent()) return;

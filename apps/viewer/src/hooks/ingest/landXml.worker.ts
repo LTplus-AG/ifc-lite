@@ -2,14 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { parseLandXmlGeometry, type LandXmlGeometryPayload } from './landXmlIngest.js';
+import { parseLandXmlGeometry, type LandXmlGeometryPayload, type LandXmlSourceBuffer } from './landXmlIngest.js';
 
 const workerScope = self as unknown as {
-  onmessage: ((event: MessageEvent<ArrayBuffer>) => void) | null;
+  onmessage: ((event: MessageEvent<LandXmlSourceBuffer>) => void) | null;
   postMessage(message: unknown, transfer?: Transferable[]): void;
 };
 
-workerScope.onmessage = (event: MessageEvent<ArrayBuffer>): void => {
+workerScope.onmessage = (event: MessageEvent<LandXmlSourceBuffer>): void => {
   try {
     const payload = parseLandXmlGeometry(event.data);
     const transfer: Transferable[] = [];

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
-import { parseLandXmlGeometry, type LandXmlGeometryPayload } from './landXmlIngest.js';
+import { parseLandXmlGeometry, type LandXmlGeometryPayload, type LandXmlSourceBuffer } from './landXmlIngest.js';
 
 export interface LandXmlViewerModel extends LandXmlGeometryPayload {
   dataStore: IfcDataStore;
@@ -23,7 +23,7 @@ function attachSyntheticStore(payload: LandXmlGeometryPayload, fileSize: number)
   };
 }
 
-export function parseLandXmlViewerModel(buffer: ArrayBuffer): LandXmlViewerModel {
+export function parseLandXmlViewerModel(buffer: LandXmlSourceBuffer): LandXmlViewerModel {
   return attachSyntheticStore(parseLandXmlGeometry(buffer), buffer.byteLength);
 }
 
@@ -31,7 +31,7 @@ export function parseLandXmlViewerModel(buffer: ArrayBuffer): LandXmlViewerModel
  * Parse off the UI thread in browsers. Node-based tests and non-window hosts
  * use the same synchronous implementation directly.
  */
-export function parseLandXmlViewerModelAsync(buffer: ArrayBuffer): Promise<LandXmlViewerModel> {
+export function parseLandXmlViewerModelAsync(buffer: LandXmlSourceBuffer): Promise<LandXmlViewerModel> {
   if (typeof Worker === 'undefined') return Promise.resolve(parseLandXmlViewerModel(buffer));
   const fileSize = buffer.byteLength;
   return new Promise((resolve, reject) => {

@@ -17,16 +17,17 @@ import { Loader2, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import type { DiffScope } from '@ifc-lite/diff';
 import type { DuplicateAuthoredKeyInfo } from '@/lib/compare/authoredKeys';
 import { CompareBlacklist } from './CompareBlacklist';
 import { CompareKeyProperty } from './CompareKeyProperty';
 import type { ChangedTypeCount } from './changeRow';
 
-const SCOPES: { id: DiffScope; label: string }[] = [
-  { id: 'both', label: 'Both' },
-  { id: 'data', label: 'Data' },
-  { id: 'geometry', label: 'Geometry' },
+const SCOPES: { id: DiffScope; labelKey: TranslationKey }[] = [
+  { id: 'both', labelKey: 'comparePanel.runControls.scopeBoth' },
+  { id: 'data', labelKey: 'comparePanel.runControls.scopeData' },
+  { id: 'geometry', labelKey: 'comparePanel.runControls.scopeGeometry' },
 ];
 
 interface CompareRunControlsProps {
@@ -88,13 +89,14 @@ export function CompareRunControls({
   onRemoveExcludedType,
   onClearExcludedTypes,
 }: CompareRunControlsProps) {
+  const { t } = useTranslation();
   return (
     <div className="p-3 space-y-3 border-b border-border">
       <div
         className="grid grid-cols-[1.25rem_1fr] items-center gap-x-2 gap-y-2 text-xs"
         {...tourAnchor(TOUR_ANCHORS.compareAb)}
       >
-        <span className="text-muted-foreground">A</span>
+        <span className="text-muted-foreground">{t('comparePanel.runControls.baseLabel')}</span>
         <select
           value={baseModelId ?? ''}
           onChange={(e) => onBaseModelId(e.target.value)}
@@ -104,7 +106,7 @@ export function CompareRunControls({
             <option key={m.id} value={m.id}>{m.name}</option>
           ))}
         </select>
-        <span className="text-muted-foreground">B</span>
+        <span className="text-muted-foreground">{t('comparePanel.runControls.headLabel')}</span>
         <select
           value={headModelId ?? ''}
           onChange={(e) => onHeadModelId(e.target.value)}
@@ -117,7 +119,7 @@ export function CompareRunControls({
       </div>
 
       {baseModelId === headModelId && (
-        <p className="text-xs text-[#e0af68]">Pick two different models.</p>
+        <p className="text-xs text-[#e0af68]">{t('comparePanel.runControls.pickDifferentModels')}</p>
       )}
 
       <div className="flex flex-wrap items-center gap-2">
@@ -131,7 +133,7 @@ export function CompareRunControls({
                 scope === s.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
               )}
             >
-              {s.label}
+              {t(s.labelKey)}
             </button>
           ))}
         </div>
@@ -141,7 +143,7 @@ export function CompareRunControls({
             checked={showUnchanged}
             onChange={(e) => onShowUnchanged(e.target.checked)}
           />
-          Show unchanged
+          {t('comparePanel.runControls.showUnchanged')}
         </label>
       </div>
 
@@ -157,9 +159,9 @@ export function CompareRunControls({
           onChange={(e) => onMatchByContent(e.target.checked)}
         />
         <span>
-          Match re-exported elements by content
+          {t('comparePanel.runControls.matchByContentLabel')}
           <span className="block text-[10px] opacity-70">
-            Re-pairs elements whose GlobalId changed but whose content did not.
+            {t('comparePanel.runControls.matchByContentHint')}
           </span>
         </span>
       </label>
@@ -182,7 +184,7 @@ export function CompareRunControls({
         {...tourAnchor(TOUR_ANCHORS.compareRun)}
       >
         {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-        {running ? 'Comparing…' : 'Run comparison'}
+        {running ? t('comparePanel.runControls.comparing') : t('comparePanel.runControls.runComparison')}
       </Button>
 
       {error && <p className="text-xs text-[#f7768e]">{error}</p>}
@@ -190,13 +192,8 @@ export function CompareRunControls({
       {geometryUnavailable && scope !== 'data' && (
         <p className="text-xs text-[#e0af68]">
           {placementOnlyGeometry
-            ? 'Neither model has mesh geometry fingerprints (loaded outside ' +
-              'the WASM mesh path), so SHAPE changes can’t be detected. ' +
-              'Placement-driven moves and data changes are still compared.'
-            : 'One model has no geometry fingerprints (loaded outside the ' +
-              'WASM mesh path), so geometry changes can’t be detected. Data ' +
-              'changes are still accurate — switch to the Data scope for ' +
-              'reliable results.'}
+            ? t('comparePanel.runControls.geometryUnavailablePlacementOnly')
+            : t('comparePanel.runControls.geometryUnavailableFull')}
         </p>
       )}
 

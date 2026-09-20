@@ -14,6 +14,7 @@ import { GitCompareArrows, X, Trash2, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
+import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { useCompare } from '@/hooks/useCompare';
 import { useCompareOverlay } from '@/hooks/useCompareOverlay';
@@ -44,6 +45,7 @@ function renderRef(entry: DiffEntry<CompareRef>): CompareRef | undefined {
 }
 
 export function ComparePanel({ onClose }: ComparePanelProps) {
+  const { t } = useTranslation();
   useCompareOverlay();
 
   const models = useViewerStore((s) => s.models);
@@ -206,15 +208,15 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
       {/* Header */}
       <div className="flex items-center gap-2 p-3 border-b border-border">
         <GitCompareArrows className="h-4 w-4 text-primary shrink-0" />
-        <span className="text-sm font-semibold tracking-tight min-w-0">Compare models</span>
+        <span className="text-sm font-semibold tracking-tight min-w-0">{t('comparePanel.panel.title')}</span>
         <div className="ml-auto flex items-center gap-1 shrink-0">
           {result && !bcfComposing && (
-            <Button variant="ghost" size="icon" className="h-7 w-7" title="Clear results" onClick={clearCompare}>
+            <Button variant="ghost" size="icon" className="h-7 w-7" title={t('comparePanel.panel.clearResultsTitle')} onClick={clearCompare}>
               <Trash2 className="h-4 w-4" />
             </Button>
           )}
           {onClose && (
-            <Button variant="ghost" size="icon" className="h-7 w-7" title="Close" onClick={onClose}>
+            <Button variant="ghost" size="icon" className="h-7 w-7" title={t('comparePanel.panel.closeTitle')} onClick={onClose}>
               <X className="h-4 w-4" />
             </Button>
           )}
@@ -223,8 +225,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
 
       {modelList.length < 2 ? (
         <div className="p-4 text-sm text-muted-foreground">
-          Load a second model to compare. Open two IFC files (federation), then pick
-          version A and version B here.
+          {t('comparePanel.panel.loadSecondModel')}
         </div>
       ) : (
         <>
@@ -278,27 +279,27 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                   {...tourAnchor(TOUR_ANCHORS.compareCounts)}
                 >
                   <CountBadge
-                    label="Changed"
+                    label={t('comparePanel.resultsList.stateChanged')}
                     value={split?.products.modified ?? counts.modified}
                     color={COMPARE_COLORS.modified}
                     hint={typeObjectHint(split?.typeObjects.modified ?? 0)}
                   />
                   <CountBadge
-                    label="Added"
+                    label={t('comparePanel.resultsList.stateAdded')}
                     value={split?.products.added ?? counts.added}
                     color={COMPARE_COLORS.added}
                     hint={typeObjectHint(split?.typeObjects.added ?? 0)}
                   />
                   <CountBadge
-                    label="Deleted"
+                    label={t('comparePanel.resultsList.stateDeleted')}
                     value={split?.products.deleted ?? counts.deleted}
                     color={COMPARE_COLORS.deleted}
                     hint={typeObjectHint(split?.typeObjects.deleted ?? 0)}
                   />
                   {contentMatchingRan(result?.diff.contentMatches) && (
-                    <CountBadge label="Matched" value={matchCounts.matchedElements} color={COMPARE_COLORS.matched} />
+                    <CountBadge label={t('comparePanel.matchGroups.matchedLabel')} value={matchCounts.matchedElements} color={COMPARE_COLORS.matched} />
                   )}
-                  <CountBadge label="Unchanged" value={counts.unchanged} color={COMPARE_COLORS.unchanged} />
+                  <CountBadge label={t('comparePanel.panel.countUnchanged')} value={counts.unchanged} color={COMPARE_COLORS.unchanged} />
                 </div>
               )}
 
@@ -342,11 +343,11 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                 type="button"
                 onClick={() => bcf.setFormOpen(false)}
                 className="flex items-center text-muted-foreground hover:text-foreground transition-colors shrink-0"
-                title="Back to changes"
+                title={t('comparePanel.panel.backToChangesTitle')}
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <span className="text-muted-foreground shrink-0">Topic for</span>
+              <span className="text-muted-foreground shrink-0">{t('comparePanel.panel.topicFor')}</span>
               <span className="font-medium truncate min-w-0">{selectedRow.name || selectedRow.ifcType}</span>
               <span className="ml-auto text-[10px] text-muted-foreground shrink-0">
                 {selectedRow.ifcType.replace(/^Ifc/, '')}

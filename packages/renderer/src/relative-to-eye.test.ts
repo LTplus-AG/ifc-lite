@@ -51,6 +51,10 @@ describe('relative-to-eye packing (#5049)', () => {
     const second = camera.getRelativeToEyeFrame();
     assert.strictEqual(first, second);
     assert.deepStrictEqual(first.getCameraWorld(), [5_000_000, 0, 10]);
+    const epoch = first.getRenderEpoch();
+    assert.equal(second.getRenderEpoch(), epoch, 'reads are snapshot-stable');
+    camera.setPosition(5_000_001, 0, 10);
+    assert.equal(first.getRenderEpoch(), epoch + 1, 'an accepted camera update advances the snapshot');
   });
   it('retains a centimetre-sized local vertex at a multi-million-metre offset', () => {
     const drawable = packDrawableDelta([5_000_000, -3_000_000, 2_000_000], [5_000_000, -3_000_000, 2_000_000]);

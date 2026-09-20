@@ -198,12 +198,14 @@ export function translationFreeViewProjection(projection: Mat4, view: Mat4): Mat
 export class RelativeToEyeFrame {
   private cameraWorld: [number, number, number] = [0, 0, 0];
   private viewProj: Mat4 = MathUtils.identity();
+  private renderEpoch = 0;
 
   /** Update the frame from the f64 camera pose and the normal camera matrices. */
   update(camera: Vec3, projection: Mat4, view: Mat4): void {
     this.cameraWorld = [camera.x, camera.y, camera.z];
     validateRteSourcePoint(this.cameraWorld);
     this.viewProj = translationFreeViewProjection(projection, view);
+    this.renderEpoch++;
   }
 
   /** f64 source camera position; copied so an external caller cannot mutate it. */
@@ -214,6 +216,11 @@ export class RelativeToEyeFrame {
   /** The projection to use after WGSL has made a vertex relative to this eye. */
   getViewProjection(): Mat4 {
     return this.viewProj;
+  }
+
+  /** Monotonic snapshot identity for asynchronous GPU work and readback. */
+  getRenderEpoch(): number {
+    return this.renderEpoch;
   }
 
   /**

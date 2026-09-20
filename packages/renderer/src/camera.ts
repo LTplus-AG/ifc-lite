@@ -63,7 +63,7 @@ export class Camera {
     // sub-system drives the matrices through, and routing it via the private
     // method would add a hop to it. Depth is therefore unchanged from before
     // the extraction (closure → one call), and the callee is monomorphic.
-    const updateMatrices = () => updateCameraMatrices(this.state);
+    const updateMatrices = () => this.updateMatrices();
     this.controls = new CameraControls(this.state, updateMatrices);
     this.projection = new CameraProjection(this.state, updateMatrices);
     this.animator = new CameraAnimator(this.state, updateMatrices, this.controls, this.projection);
@@ -77,6 +77,7 @@ export class Camera {
    */
   private updateMatrices(): void {
     updateCameraMatrices(this.state);
+    this.relativeToEyeFrame.update(this.state.camera.position, this.state.projMatrix, this.state.viewMatrix);
   }
 
   /**
@@ -374,7 +375,6 @@ export class Camera {
    * must use this instead of deriving a second camera rebase.
    */
   getRelativeToEyeFrame(): RelativeToEyeFrame {
-    this.relativeToEyeFrame.update(this.state.camera.position, this.state.projMatrix, this.state.viewMatrix);
     return this.relativeToEyeFrame;
   }
 

@@ -28,3 +28,55 @@ fn unknown_keywords_keep_their_owned_label_through_record_recovery() {
         "IFC_VENDOR_WIDGET"
     );
 }
+
+#[test]
+fn classification_is_case_insensitive_across_the_generated_catalog() {
+    for name in crate::generated::IFC_TYPES.iter().map(IfcType::as_str) {
+        let expected = geometry_flags_by_name(name);
+        assert_eq!(
+            geometry_flags_by_name(&name.to_ascii_lowercase()),
+            expected,
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn representative_geometry_categories_and_spatial_exclusions_stay_distinct() {
+    for name in [
+        "IFCWALL",
+        "IFCBEAM",
+        "IFCCHILLER",
+        "IFCPAVEMENT",
+        "IFCREINFORCEDSOIL",
+    ] {
+        assert!(has_geometry_by_name(name), "{name}");
+    }
+    for name in [
+        "IFCPROJECT",
+        "IFCMATERIAL",
+        "IFCBUILDINGSTOREY",
+        "IFCFACILITY",
+        "IFCROAD",
+    ] {
+        assert!(!has_geometry_by_name(name), "{name}");
+    }
+}
+
+#[test]
+fn simple_geometry_categories_remain_explicit() {
+    for name in ["IFCWALL", "IFCSLAB", "IFCBEAM", "IFCCOLUMN"] {
+        assert!(is_simple_geometry_type(name), "{name}");
+    }
+    for name in ["IFCDOOR", "IFCWINDOW", "IFCFLOWSEGMENT", "IFCSPACE"] {
+        assert!(!is_simple_geometry_type(name), "{name}");
+    }
+}
+
+#[test]
+fn unknown_keywords_use_fallbacks_without_growing_the_catalog_cache() {
+    let before = classifications().len();
+    assert!(has_geometry_by_name("IFCREINFORCINGVENDOREXTENSION"));
+    assert!(!has_geometry_by_name("IFCVENDORGEOMETRY"));
+    assert_eq!(classifications().len(), before);
+}

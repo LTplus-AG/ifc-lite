@@ -8,6 +8,31 @@
 use super::*;
 use std::sync::Arc;
 
+/// #4203: bounded exporter strata are geometry-bearing product aliases, but
+/// retain their exact owned keyword instead of being remapped to an EXPRESS
+/// neighbour. The ordinary vendor-unknown direction must remain closed.
+#[test]
+fn exporter_stratum_aliases_emit_exact_rows_but_vendor_unknowns_do_not() {
+    for &alias in ifc_lite_core::EXPORTER_STRATUM_ALIASES {
+        let ifc = format!("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4X3'));\nENDSEC;\nDATA;\n#1={alias}('0$ScRe4drECQ4DMSqUjd6d',$,'Stratum',$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;");
+        let mut rows = Vec::new();
+        stream_export_model(ifc.as_bytes(), |row| rows.push(row));
+        let row = rows
+            .iter()
+            .find(|row| row.express_id == 1)
+            .unwrap_or_else(|| panic!("{alias} must produce a product row"));
+        assert_eq!(row.ifc_type, alias, "{alias} must retain its exact label");
+    }
+
+    let vendor = b"ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4X3'));\nENDSEC;\nDATA;\n#1=IFCVENDORSTRATUM('0$ScRe4drECQ4DMSqUjd6d',$,'Vendor',$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;";
+    let mut rows = Vec::new();
+    stream_export_model(vendor, |row| rows.push(row));
+    assert!(
+        rows.is_empty(),
+        "unsupported vendor keywords must not become products"
+    );
+}
+
 /// #1518: a buildingSMART annex-E showcase file declares its geometry ONLY on
 /// an `IfcBoilerType` (an IfcTypeProduct, not an IfcProduct). #957 Route B
 /// meshes it under the type's expressId; the attribute pass must now emit a
@@ -34,7 +59,10 @@ fn type_only_geometry_emits_attribute_row() {
 
     // build == stream still holds with type rows present.
     let collected = build_export_model(&bytes).entities;
-    assert_eq!(collected, rows, "build and stream must agree with type rows");
+    assert_eq!(
+        collected, rows,
+        "build and stream must agree with type rows"
+    );
 }
 
 /// The adversarial join test: EVERY mesh the geometry pass tags as
@@ -69,10 +97,16 @@ fn type_product_meshes_all_have_rows() {
         let mut rows = Vec::new();
         stream_export_model(&bytes, |r| rows.push(r));
         for (id, ty) in &type_meshes {
-            let row = rows.iter().find(|r| r.express_id == *id).unwrap_or_else(|| {
-                panic!("{rel}: meshed type-product #{id} ({ty}) has no attribute row")
-            });
-            assert_eq!(&row.ifc_type, ty, "{rel}: #{id} row type must match its mesh");
+            let row = rows
+                .iter()
+                .find(|r| r.express_id == *id)
+                .unwrap_or_else(|| {
+                    panic!("{rel}: meshed type-product #{id} ({ty}) has no attribute row")
+                });
+            assert_eq!(
+                &row.ifc_type, ty,
+                "{rel}: #{id} row type must match its mesh"
+            );
         }
     }
 }
@@ -80,16 +114,27 @@ fn type_product_meshes_all_have_rows() {
 #[test]
 fn duplex_model_has_products_and_psets() {
     let model = build_export_model(&fixture_or_skip!("ara3d/duplex.ifc"));
-    assert!(model.entities.len() > 50, "expected many products, got {}", model.entities.len());
+    assert!(
+        model.entities.len() > 50,
+        "expected many products, got {}",
+        model.entities.len()
+    );
 
     // Every row carries a GlobalId + type.
     for e in &model.entities {
         assert!(!e.ifc_type.is_empty());
     }
-    assert!(model.entities.iter().any(|e| e.global_id.is_some()), "some GlobalIds");
+    assert!(
+        model.entities.iter().any(|e| e.global_id.is_some()),
+        "some GlobalIds"
+    );
 
     // At least one element carries property sets with named single values.
-    let with_psets = model.entities.iter().filter(|e| !e.property_sets.is_empty()).count();
+    let with_psets = model
+        .entities
+        .iter()
+        .filter(|e| !e.property_sets.is_empty())
+        .count();
     assert!(with_psets > 0, "expected elements with property sets");
     let any_prop = model
         .entities
@@ -112,7 +157,10 @@ fn stream_matches_build_row_for_row() {
     let mut streamed = Vec::new();
     stream_export_model(&bytes, |r| streamed.push(r));
     assert!(!streamed.is_empty(), "expected products");
-    assert_eq!(collected, streamed, "stream and collect must agree row-for-row");
+    assert_eq!(
+        collected, streamed,
+        "stream and collect must agree row-for-row"
+    );
 }
 
 #[test]
@@ -127,7 +175,10 @@ fn stream_with_index_matches_plain() {
     let mut shared = Vec::new();
     stream_export_model_with_index(&bytes, &idx, |r| shared.push(r));
     assert!(!plain.is_empty(), "expected products");
-    assert_eq!(plain, shared, "injected-index rows must match self-indexed rows");
+    assert_eq!(
+        plain, shared,
+        "injected-index rows must match self-indexed rows"
+    );
 }
 
 #[test]
@@ -147,9 +198,17 @@ fn fmt_num_is_clean() {
 fn fmt_num_round_trips_small_and_precise_values() {
     for v in [2.5e-7, 1234.56789012, 1e-12, -3.0e-9, 0.1 + 0.2] {
         let s = fmt_num(v);
-        assert_eq!(s.parse::<f64>().ok(), Some(v), "fmt_num({v:?}) = {s:?} must parse back to {v:?}");
+        assert_eq!(
+            s.parse::<f64>().ok(),
+            Some(v),
+            "fmt_num({v:?}) = {s:?} must parse back to {v:?}"
+        );
     }
-    assert_ne!(fmt_num(2.5e-7), "0", "a small nonzero must not collapse to zero");
+    assert_ne!(
+        fmt_num(2.5e-7),
+        "0",
+        "a small nonzero must not collapse to zero"
+    );
     assert_eq!(fmt_num(1234.56789012), "1234.56789012");
 }
 
@@ -401,7 +460,10 @@ fn the_placement_chain_composes_parent_then_local() {
 
     let opts = ModelOptions::default().with_placements(true);
     let rows = rows_with(&content, &opts);
-    let t = row_named(&rows, "W").placement.expect("placed").translation();
+    let t = row_named(&rows, "W")
+        .placement
+        .expect("placed")
+        .translation();
 
     let close = |a: f64, b: f64| (a - b).abs() < 1e-9;
     assert!(
@@ -435,11 +497,19 @@ fn the_callback_receives_the_entity_each_row_was_built_from() {
     let mut seen = Vec::new();
     stream_export_model_with_options(bytes, &index, &ModelOptions::default(), |row, entity| {
         let entity = entity.expect("an IfcProduct row has an occurrence entity");
-        assert_eq!(entity.id, row.express_id, "the row's own entity, not another");
+        assert_eq!(
+            entity.id, row.express_id,
+            "the row's own entity, not another"
+        );
         // Attribute 2 is Name for every rooted entity. A consumer should reach
         // it through `IfcType::attribute_index("Name")` rather than a literal;
         // this asserts the entity arrives, which is what the argument is for.
-        seen.push(entity.get(2).and_then(|a| a.as_string()).map(str::to_string));
+        seen.push(
+            entity
+                .get(2)
+                .and_then(|a| a.as_string())
+                .map(str::to_string),
+        );
     });
     assert_eq!(seen, vec![Some("W".to_string()), Some("U".to_string())]);
 }
@@ -510,7 +580,11 @@ fn a_type_without_geometry_never_gets_a_row_of_its_own() {
     assert!(
         !model.entities.iter().any(|r| r.ifc_type.ends_with("Type")),
         "expected no type row, got {:?}",
-        model.entities.iter().map(|r| &r.ifc_type).collect::<Vec<_>>()
+        model
+            .entities
+            .iter()
+            .map(|r| &r.ifc_type)
+            .collect::<Vec<_>>()
     );
 }
 
@@ -596,7 +670,10 @@ fn quantity_sets_inherit_from_the_type_too() {
     );
 
     let off = wall_row(&ifc, &ModelOptions::default());
-    assert!(off.quantity_sets.is_empty(), "unreachable without the option");
+    assert!(
+        off.quantity_sets.is_empty(),
+        "unreachable without the option"
+    );
 
     let opts = ModelOptions::default().with_inherit_type_properties(true);
     let on = wall_row(&ifc, &opts);
@@ -685,7 +762,13 @@ fn type_specific_attributes_are_rendered_by_schema_name() {
 
     // The row's own fields are not repeated here, and neither are the
     // reference-valued attributes, which would render as dangling ids.
-    for skipped in ["GlobalId", "Name", "Description", "ObjectType", "OwnerHistory"] {
+    for skipped in [
+        "GlobalId",
+        "Name",
+        "Description",
+        "ObjectType",
+        "OwnerHistory",
+    ] {
         assert!(
             !bar.attributes.iter().any(|a| a.name == skipped),
             "{skipped} must not be duplicated into attributes"
@@ -798,7 +881,10 @@ END-ISO-10303-21;
         .iter()
         .filter(|m| m.express_id == 43)
         .count();
-    assert_eq!(meshed, 1, "the geometry pass must mesh the IfcDoorStyle's orphan map");
+    assert_eq!(
+        meshed, 1,
+        "the geometry pass must mesh the IfcDoorStyle's orphan map"
+    );
 
     let mut rows = Vec::new();
     stream_export_model(ifc.as_bytes(), |r| rows.push(r));
@@ -909,7 +995,11 @@ fn attribute_export_uses_the_source_schema_for_a_shared_entity() {
 
     let ifc2x3 = rows("IFC2X3", "'legacy-tag'");
     let ifc4 = rows("IFC4", "'ifc4-tag',.NOTDEFINED.");
-    let ifc2x3_names: Vec<&str> = ifc2x3[0].attributes.iter().map(|p| p.name.as_str()).collect();
+    let ifc2x3_names: Vec<&str> = ifc2x3[0]
+        .attributes
+        .iter()
+        .map(|p| p.name.as_str())
+        .collect();
     let ifc4_names: Vec<&str> = ifc4[0].attributes.iter().map(|p| p.name.as_str()).collect();
 
     assert_eq!(ifc2x3_names, vec!["Tag"]);
@@ -931,7 +1021,11 @@ ENDSEC;
 END-ISO-10303-21;
 ";
     let rows = rows_with(ifc, &ModelOptions::default().with_attributes(true));
-    let names: Vec<_> = rows[0].attributes.iter().map(|value| value.name.as_str()).collect();
+    let names: Vec<_> = rows[0]
+        .attributes
+        .iter()
+        .map(|value| value.name.as_str())
+        .collect();
 
     assert_eq!(names, vec!["Tag", "PredefinedType"]);
 }
@@ -981,7 +1075,11 @@ fn attribute_export_preserves_transitional_ifc4_alignment_layout() {
         );
         let attributes = render_attributes(&entity, "IFCALIGNMENT", Some(schema));
         let names: Vec<_> = attributes.iter().map(|value| value.name.as_str()).collect();
-        assert_eq!(names, vec!["PredefinedType"], "{schema}: Axis is a reference (omitted), PredefinedType is slot 8");
+        assert_eq!(
+            names,
+            vec!["PredefinedType"],
+            "{schema}: Axis is a reference (omitted), PredefinedType is slot 8"
+        );
         assert_eq!(attributes[0].value, "USERDEFINED");
     }
 }
@@ -992,16 +1090,22 @@ fn attribute_export_preserves_transitional_ifc4_alignment_layout() {
 #[test]
 fn attribute_export_uses_ifc4_layout_for_transitional_ifc4_entities() {
     for schema in ["IFC4X1", "IFC4X2"] {
-        let ifc = format!("ISO-10303-21;
+        let ifc = format!(
+            "ISO-10303-21;
 HEADER;
 FILE_SCHEMA(('{schema}'));
 ENDSEC;
 DATA;
 #1=IFCWALL('wall-guid',$,'Wall',$,$,$,$,'wall-tag',.NOTDEFINED.);
 ENDSEC;
-END-ISO-10303-21;");
+END-ISO-10303-21;"
+        );
         let rows = rows_with(&ifc, &ModelOptions::default().with_attributes(true));
-        let names: Vec<_> = rows[0].attributes.iter().map(|value| value.name.as_str()).collect();
+        let names: Vec<_> = rows[0]
+            .attributes
+            .iter()
+            .map(|value| value.name.as_str())
+            .collect();
 
         assert_eq!(names, vec!["Tag", "PredefinedType"], "{schema}");
     }
@@ -1012,24 +1116,32 @@ END-ISO-10303-21;");
 #[test]
 fn attribute_export_preserves_ifc4x2_bridge_slots() {
     for entity in ["IFCBRIDGE", "IFCBRIDGEPART"] {
-        let ifc = format!("ISO-10303-21;
+        let ifc = format!(
+            "ISO-10303-21;
 HEADER;
 FILE_SCHEMA(('IFC4X2'));
 ENDSEC;
 DATA;
 #1={entity}('bridge-guid',$,'Bridge',$,$,$,$,'Long bridge',.ELEMENT.,.GIRDER.);
 ENDSEC;
-END-ISO-10303-21;");
+END-ISO-10303-21;"
+        );
         let rows = rows_with(&ifc, &ModelOptions::default().with_attributes(true));
-        let attributes: Vec<_> = rows[0].attributes.iter()
+        let attributes: Vec<_> = rows[0]
+            .attributes
+            .iter()
             .map(|value| (value.name.as_str(), value.value.as_str()))
             .collect();
 
-        assert_eq!(attributes, vec![
-            ("LongName", "Long bridge"),
-            ("CompositionType", "ELEMENT"),
-            ("PredefinedType", "GIRDER"),
-        ], "{entity}");
+        assert_eq!(
+            attributes,
+            vec![
+                ("LongName", "Long bridge"),
+                ("CompositionType", "ELEMENT"),
+                ("PredefinedType", "GIRDER"),
+            ],
+            "{entity}"
+        );
     }
 }
 
@@ -1083,10 +1195,7 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;
 ";
-    let rows = rows_with(
-        ifc,
-        &ModelOptions::default().with_attributes(true),
-    );
+    let rows = rows_with(ifc, &ModelOptions::default().with_attributes(true));
 
     assert_eq!(rows.len(), 1);
     assert!(rows[0].attributes.is_empty());
@@ -1126,13 +1235,22 @@ END-ISO-10303-21;
     let opts = ModelOptions::default().with_attributes(true);
     let rows = rows_with(&ifc, &opts);
 
-    let upper = rows.iter().find(|r| r.express_id == 10).expect("uppercase row");
-    let lower = rows.iter().find(|r| r.express_id == 20).expect("lowercase row");
+    let upper = rows
+        .iter()
+        .find(|r| r.express_id == 10)
+        .expect("uppercase row");
+    let lower = rows
+        .iter()
+        .find(|r| r.express_id == 20)
+        .expect("lowercase row");
 
     // The DISPLAY type already normalised before this fix -- pin that it
     // still does, so this test isolates the ATTRIBUTE-NAME divergence.
     assert_eq!(upper.ifc_type, "IfcProxy");
-    assert_eq!(lower.ifc_type, "IfcProxy", "display type already normalises case");
+    assert_eq!(
+        lower.ifc_type, "IfcProxy",
+        "display type already normalises case"
+    );
 
     let upper_names: Vec<&str> = upper.attributes.iter().map(|p| p.name.as_str()).collect();
     let lower_names: Vec<&str> = lower.attributes.iter().map(|p| p.name.as_str()).collect();
@@ -1149,8 +1267,16 @@ END-ISO-10303-21;
          resolved base-type names (Tag, PredefinedType)"
     );
 
-    let upper_tag = upper.attributes.iter().find(|p| p.name == "Tag").expect("Tag present");
-    let lower_tag = lower.attributes.iter().find(|p| p.name == "Tag").expect("Tag present");
+    let upper_tag = upper
+        .attributes
+        .iter()
+        .find(|p| p.name == "Tag")
+        .expect("Tag present");
+    let lower_tag = lower
+        .attributes
+        .iter()
+        .find(|p| p.name == "Tag")
+        .expect("Tag present");
     assert_eq!(upper_tag.value, "TAG10");
     assert_eq!(
         lower_tag.value, "TAG20",
@@ -1163,5 +1289,8 @@ END-ISO-10303-21;
 /// Modern entities use their generated schema attributes directly.
 #[test]
 fn a_modern_entity_uses_generated_schema_attributes() {
-    assert_eq!(ifc_lite_core::IfcType::IfcWall.attribute_names()[0], "GlobalId");
+    assert_eq!(
+        ifc_lite_core::IfcType::IfcWall.attribute_names()[0],
+        "GlobalId"
+    );
 }

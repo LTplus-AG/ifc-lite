@@ -30,6 +30,14 @@ export { MergedExporter, type MergeModelInput, type MergeExportOptions, type Mer
 export { collectReferencedEntityIds, getVisibleEntityIds } from './reference-collector.js';
 export { collectStyleEntities } from './style-closure.js';
 export { convertEntityType, convertStepLine, needsConversion, describeConversion, type IfcSchemaVersion } from './schema-converter.js';
+export {
+  analyzeConversionLoss,
+  classifyEntityTypeConversion,
+  type ConversionLossReport,
+  type ConversionLossEntry,
+  type EntityConversionInfo,
+  type EntityConversionKind,
+} from './schema-conversion-loss-report.js';
 export { Ifc5Exporter, type Ifc5ExportOptions, type Ifc5ExportResult } from './ifc5-exporter.js';
 export { IFC5_KNOWN_PROP_NAMES, stripNodePathPrefix } from './ifc5-export-helpers.js';
 

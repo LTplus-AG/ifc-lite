@@ -150,7 +150,7 @@ describe('real codegen generator — determinism', { skip: !existsSync(join(ROOT
 });
 
 describe('real repo — runAllTargets (#4202: IFC2X3 joins IFC4/IFC4X3)', { skip: !existsSync(join(ROOT, 'packages/codegen/schemas/IFC2X3_TC1.exp')) ? 'no IFC2X3 schema on disk' : false }, () => {
-  test('names an ifc2x3 target and it passes against a clean checkout', () => {
+  test('names every bundled Rust schema target and it passes against a clean checkout', () => {
     const results = runAllTargets(ROOT);
     const names = results.map((r) => r.name);
     assert.ok(
@@ -161,6 +161,12 @@ describe('real repo — runAllTargets (#4202: IFC2X3 joins IFC4/IFC4X3)', { skip
       names.some((n) => n.includes('ifc2x3') && n.startsWith('packages/parser')),
       `expected a packages/parser/src/generated/ifc2x3 target, got: ${names.join(', ')}`,
     );
+    for (const schema of ['ifc2x3', 'ifc4', 'ifc4x1', 'ifc4x2']) {
+      assert.ok(
+        names.some((n) => n.includes(`/generated/${schema} `)),
+        `expected a Rust registry target for ${schema}, got: ${names.join(', ')}`,
+      );
+    }
     for (const file of ['schema.rs', 'type_ids.rs']) {
       assert.ok(
         names.includes(`rust/core/src/generated/${file} (canonical IFC4X3 type universe)`),

@@ -16,6 +16,15 @@ impl Parser<'_> {
         let name = start.name();
         let (_, local, prefix) = split_name(name.as_ref(), self.limits.xml.max_name_bytes)?;
         let (attributes, namespaces, references) = attributes(start, &self.limits.xml)?;
+        if attr(&attributes, "pntRef").is_some() {
+            self.references = self
+                .references
+                .checked_add(1)
+                .ok_or_else(|| error(Code::LimitExceeded, "reference limit exceeded"))?;
+            if self.references > self.limits.xml.max_references {
+                return Err(error(Code::LimitExceeded, "reference limit exceeded"));
+            }
+        }
         self.check(attributes.len())?;
         self.characters = self
             .characters
@@ -116,7 +125,7 @@ impl Parser<'_> {
             });
             return Ok(());
         }
-        if local == "PlanFeature" {
+        if self.path(&["LandXML", "PlanFeatures", "PlanFeature"]) {
             self.begin_feature(attributes)?;
             return Ok(());
         }
@@ -141,8 +150,15 @@ impl Parser<'_> {
             self.add_property(&attributes)?;
             return Ok(());
         }
-        if self.geometry.is_none() && local == "Title" && !self.active.is_empty() {
+        if self.geometry.is_none()
+            && local == "Title"
+            && matches!(self.active.last(), Some(Active::Parcel(_)))
+        {
+            if attr(&attributes, "name").is_none() {
+                return Err(error(Code::InvalidSemantic, "Parcel Title requires name"));
+            }
             self.capture = Some(Capture::Title {
+                attributes,
                 depth: self.frames.len(),
                 text: String::new(),
             });

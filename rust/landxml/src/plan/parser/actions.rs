@@ -20,7 +20,6 @@ impl Parser<'_> {
             name: attr(&attributes, "name").map(str::to_owned),
             code: attr(&attributes, "code").map(str::to_owned),
             description: attr(&attributes, "desc").map(str::to_owned),
-            title: None,
             properties: properties(&attributes),
             geometry: Vec::new(),
             locations: Vec::new(),
@@ -39,6 +38,7 @@ impl Parser<'_> {
             name: attr(&attributes, "name").map(str::to_owned),
             code: attr(&attributes, "code").map(str::to_owned),
             description: attr(&attributes, "desc").map(str::to_owned),
+            title: None,
             declared_area: optional_finite(&attributes, "area", "Parcel")?,
             declared_perimeter: optional_finite(&attributes, "perimeter", "Parcel")?,
             declared_area_unit: attr(&attributes, "areaUnit").map(str::to_owned),
@@ -217,9 +217,9 @@ impl Parser<'_> {
                 }
                 geometry.intermediate_points.extend(points);
             }
-            Capture::Title { text, .. } => {
-                if let Some(Active::Feature(feature)) = self.active.last_mut() {
-                    feature.title = Some(text.trim().to_owned());
+            Capture::Title { attributes, .. } => {
+                if let Some(Active::Parcel(parcel)) = self.active.last_mut() {
+                    parcel.title = attr(&attributes, "name").map(str::to_owned);
                 }
             }
         }

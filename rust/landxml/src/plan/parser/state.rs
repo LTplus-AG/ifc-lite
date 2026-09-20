@@ -40,6 +40,7 @@ pub(super) enum Capture {
         text: String,
     },
     Title {
+        attributes: Attributes,
         depth: usize,
         text: String,
     },

@@ -33,14 +33,15 @@ pub(super) fn segments_intersect(
             return Ok(true);
         }
         for (other_index, right) in previous.iter().chain(segments.iter()).enumerate() {
+            budget.check()?;
             let own_segment = other_index >= previous.len();
             let local_index = other_index.saturating_sub(previous.len());
             if own_segment
                 && (local_index == index
                     || local_index.abs_diff(index) == 1
-                    || (index == 0 && local_index + 1 == segments.len()))
+                    || (index == 0 && local_index + 1 == segments.len())
+                    || (local_index == 0 && index + 1 == segments.len()))
             {
-                budget.check()?;
                 continue;
             }
             if intersects(*left, *right) {

@@ -71,17 +71,21 @@ impl LandXmlPlanDocument {
                     .map(|monument| monument.source_id.clone()),
             )
             .chain(self.plan_features.iter().flat_map(|feature| {
-                feature
-                    .geometry
-                    .iter()
-                    .map(|geometry| geometry.source_id.clone())
+                std::iter::once(feature.source_id.clone()).chain(
+                    feature
+                        .geometry
+                        .iter()
+                        .map(|geometry| geometry.source_id.clone()),
+                )
             }))
             .chain(self.parcels.iter().flat_map(|parcel| {
-                parcel
-                    .loops
-                    .iter()
-                    .flatten()
-                    .map(|geometry| geometry.source_id.clone())
+                std::iter::once(parcel.source_id.clone()).chain(
+                    parcel
+                        .loops
+                        .iter()
+                        .flatten()
+                        .map(|geometry| geometry.source_id.clone()),
+                )
             }))
             .collect();
         source_ids
@@ -113,36 +117,35 @@ impl LandXmlPlanDocument {
         visited: &mut Vec<usize>,
         budget: usize,
     ) -> Option<LandXmlPlanPoint> {
-        if budget == 0 {
-            return None;
+        let mut next_scope = scope_id.cloned();
+        let mut next_reference = reference;
+        let mut remaining = budget;
+        while remaining > 0 {
+            let mut candidates =
+                self.cogo_points
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, point)| {
+                        (next_scope
+                            .as_ref()
+                            .is_none_or(|scope| point.scope_id == *scope)
+                            && point_matches(point, next_reference))
+                        .then_some(index)
+                    });
+            let index = candidates.next()?;
+            if candidates.next().is_some() || visited.contains(&index) {
+                return None;
+            }
+            visited.push(index);
+            let point = &self.cogo_points[index];
+            if let Some(value) = point.point {
+                return Some(value);
+            }
+            next_scope = Some(point.scope_id.clone());
+            next_reference = point.pnt_ref.as_deref()?;
+            remaining -= 1;
         }
-        let candidates: Vec<usize> = self
-            .cogo_points
-            .iter()
-            .enumerate()
-            .filter_map(|(index, point)| {
-                (scope_id.is_none_or(|scope| point.scope_id == *scope)
-                    && point_matches(point, reference))
-                .then_some(index)
-            })
-            .collect();
-        if candidates.len() != 1 {
-            return None;
-        }
-        let index = candidates[0];
-        if visited.contains(&index) {
-            return None;
-        }
-        visited.push(index);
-        let point = &self.cogo_points[index];
-        point.point.or_else(|| {
-            self.resolve_reference(
-                Some(&point.scope_id),
-                point.pnt_ref.as_deref()?,
-                visited,
-                budget - 1,
-            )
-        })
+        None
     }
 
     /// Resolve a monument's direct coordinate or its scoped `pntRef`.
@@ -214,7 +217,10 @@ impl LandXmlPlanDocument {
                 .units
                 .as_ref()
                 .map(|units| perimeter * units.linear_scale_to_meters),
-            area_in_square_meters: self.area_scale_to_square_meters.map(|scale| area * scale),
+            area_in_square_meters: self
+                .units
+                .as_ref()
+                .map(|units| area * units.linear_scale_to_meters.powi(2)),
         })
     }
 }
@@ -248,11 +254,11 @@ fn probe_loop(
     // A full curve/curve intersection solver belongs in the future renderer
     // adapter. Until then, only a single analytic arc plus its closing chord
     // receives a fill-capable probe; richer curved loops stay preserved-only.
-    if geometry.len() > 2
-        && geometry
-            .iter()
-            .any(|item| item.kind == super::LandXmlGeometryKind::Curve)
-    {
+    let curve_count = geometry
+        .iter()
+        .filter(|item| item.kind == super::LandXmlGeometryKind::Curve)
+        .count();
+    if curve_count > 1 || (curve_count == 1 && geometry.len() > 2) {
         return Ok(None);
     }
     let mut segments = Vec::with_capacity(geometry.len());

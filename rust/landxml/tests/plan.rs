@@ -177,6 +177,46 @@ fn issue_5046_preserves_open_and_self_intersecting_parcels_without_fills() {
 }
 
 #[test]
+fn issue_5046_accepts_simple_square_and_uses_linear_units_for_geometric_area() {
+    let square = parse(&document(
+        r#"<Parcels><Parcel name="square"><CoordGeom>
+        <Line><Start>0 0</Start><End>10 0</End></Line>
+        <Line><Start>10 0</Start><End>10 10</End></Line>
+        <Line><Start>10 10</Start><End>0 10</End></Line>
+        <Line><Start>0 10</Start><End>0 0</End></Line>
+        </CoordGeom></Parcel></Parcels>"#,
+    ));
+    assert_eq!(
+        square.probe_parcel(&square.parcels[0]).state,
+        LandXmlParcelState::Analytic
+    );
+
+    let metric = parse(&format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter" areaUnit="hectare"/></Units><Parcels><Parcel><CoordGeom><Curve rot="ccw" radius="1"><Start>1 0</Start><Center>0 0</Center><End>-1 0</End></Curve><Line><Start>-1 0</Start><End>1 0</End></Line></CoordGeom></Parcel></Parcels></LandXML>"#,
+    ));
+    let area = metric
+        .probe_parcel(&metric.parcels[0])
+        .area_in_square_meters
+        .expect("area");
+    assert!((area - std::f64::consts::PI / 2.0).abs() < 1e-12);
+}
+
+#[test]
+fn issue_5046_charges_pntref_against_the_shared_reference_limit() {
+    let source = document(
+        r#"<CgPoints><CgPoint name="one">0 0</CgPoint></CgPoints><PlanFeatures><PlanFeature><CoordGeom><Line><Start pntRef="one"/><End>1 1</End></Line></CoordGeom></PlanFeature></PlanFeatures>"#,
+    );
+    let mut limits = LandXmlPlanLimits::default();
+    limits.xml.max_references = 0;
+    assert_eq!(
+        parse_landxml_plan_with_cancel(source.as_bytes(), &limits, None)
+            .unwrap_err()
+            .code,
+        LandXmlDiagnosticCode::LimitExceeded
+    );
+}
+
+#[test]
 fn issue_5046_refuses_record_growth_and_honors_cancellation() {
     let source = document("<CgPoints><CgPoint name=\"one\">0 0</CgPoint><CgPoint name=\"two\">1 1</CgPoint></CgPoints>");
     let limits = LandXmlPlanLimits {
@@ -220,10 +260,11 @@ fn issue_5046_refuses_record_growth_and_honors_cancellation() {
 fn issue_5046_keeps_schema_valid_title_property_location_and_cogo_aliases() {
     let parsed = parse(&document(
         r#"<Survey><CgPoints><CgPoint name="origin">1 2 3</CgPoint><CgPoint name="alias" pntRef="origin"/></CgPoints></Survey>
-        <PlanFeatures><PlanFeature name="road"><Title>Road centre</Title><Property label="phase" value="design"/><Feature><Location pntRef="alias">99 100</Location></Feature><CoordGeom><IrregularLine><Start pntRef="alias"/><PntList2D>2 2 3 2</PntList2D><End>4 2</End></IrregularLine></CoordGeom></PlanFeature></PlanFeatures>"#,
+        <PlanFeatures><PlanFeature name="road"><Property label="phase" value="design"/><Feature><Location pntRef="alias">99 100</Location></Feature><CoordGeom><IrregularLine><Start pntRef="alias"/><PntList2D>2 2 3 2</PntList2D><End>4 2</End></IrregularLine></CoordGeom></PlanFeature></PlanFeatures>
+        <Parcels><Parcel name="lot"><Title name="DEED-123" titleType="freehold"/></Parcel></Parcels>"#,
     ));
     let feature = &parsed.plan_features[0];
-    assert_eq!(feature.title.as_deref(), Some("Road centre"));
+    assert_eq!(parsed.parcels[0].title.as_deref(), Some("DEED-123"));
     assert_eq!(
         feature.properties.get("phase").map(String::as_str),
         Some("design")
@@ -248,7 +289,7 @@ fn issue_5046_keeps_schema_valid_title_property_location_and_cogo_aliases() {
             .northing,
         99.0
     );
-    assert_eq!(parsed.source_batches(1).len(), 3);
+    assert_eq!(parsed.source_batches(1).len(), 5);
 }
 
 #[test]

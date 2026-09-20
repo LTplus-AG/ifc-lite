@@ -15,6 +15,7 @@ import type { StructuralBackendMethods } from './structural-types.js';
 import type { ScheduleBackendMethods } from './schedule-types.js';
 import type { CostBackendMethods } from './cost-types.js';
 import type { SpacesBackendMethods, StyleBackendMethods } from './backend-extension-types.js';
+import type { CostStoreBackendMethods } from './store-cost-types.js';
 
 // ============================================================================
 // Entity References
@@ -609,7 +610,7 @@ export interface AddMemberInStoreParams {
   Tag?: string;
 }
 
-export interface StoreBackendMethods {
+export interface StoreBackendMethods extends CostStoreBackendMethods {
   addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef;
   removeEntity(ref: EntityRef): boolean;
   setPositionalAttribute(ref: EntityRef, index: number, value: unknown): void;

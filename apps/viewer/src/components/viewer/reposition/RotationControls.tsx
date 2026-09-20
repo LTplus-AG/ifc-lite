@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useCallback, useEffect, useState } from 'react';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import { parseRotationDegrees, radiansToDegrees, isZeroRotation, type ModelRotation } from '@/lib/model-placement/rotation';
 import { addTranslation, finiteTranslation, type Translation } from '@/lib/model-placement/translation';
@@ -36,6 +37,7 @@ function defaultPivot(modelId: string): Translation {
 /** Rotation is entered as a value, not dragged, so it has no preview stage:
  * baking a heading costs a pass over the model's vertices. */
 export function RotationControls({ selected, onError }: { selected: readonly string[]; onError: (message: string) => void }) {
+  const { t } = useTranslation();
   const placement = useViewerStore((s) => s.modelPlacement);
   const models = useViewerStore((s) => s.models);
   const primary = selected[0];
@@ -74,34 +76,33 @@ export function RotationControls({ selected, onError }: { selected: readonly str
   // instead of offering a control that can only fail.
   const refusal = rotationRefusal({ models }, selected);
   if (refusal) {
-    return <fieldset className="space-y-1 border-t pt-2"><legend className="font-medium">Rotate</legend>
+    return <fieldset className="space-y-1 border-t pt-2"><legend className="font-medium">{t('repositionPanel.rotation.legend')}</legend>
       <p className="text-zinc-500">{refusal}</p></fieldset>;
   }
   return <fieldset className="space-y-1 border-t pt-2">
-    <legend className="font-medium">Rotate</legend>
-    <p className="text-zinc-500">About the vertical axis only, counter-clockwise seen from above.
-      Applied to the model before the placement offset above. A previewed move that has not been
-      applied yet is committed together with the heading.</p>
-    <label className="block">Heading
-      <input aria-label="Rotation angle in degrees" className="border w-24 bg-transparent p-1 ml-2 font-mono"
+    <legend className="font-medium">{t('repositionPanel.rotation.legend')}</legend>
+    <p className="text-zinc-500">{t('repositionPanel.rotation.description')}</p>
+    <label className="block">{t('repositionPanel.rotation.headingLabel')}
+      <input aria-label={t('repositionPanel.rotation.angleAriaLabel')} className="border w-24 bg-transparent p-1 ml-2 font-mono"
         value={degrees} onChange={(event) => setDegrees(event.target.value)}
         onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); applyRotation(degrees, pivot); } }} /> °
     </label>
-    <div className="grid grid-cols-2 gap-1">{AXES.map((axis, index) => <label key={axis}>Pivot {axis}
-      <input aria-label={`Rotation pivot ${axis}`} className="border w-full bg-transparent p-1 font-mono"
+    <div className="grid grid-cols-2 gap-1">{AXES.map((axis, index) => <label key={axis}>{t('repositionPanel.rotation.pivotAxisLabel', { axis })}
+      <input aria-label={t('repositionPanel.rotation.pivotAxisAriaLabel', { axis })} className="border w-full bg-transparent p-1 font-mono"
         value={pivot[index]} onChange={(event) => setPivot((previous) =>
           (index === 0 ? [event.target.value, previous[1]] : [previous[0], event.target.value]))}
         onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); applyRotation(degrees, pivot); } }} /></label>)}
     </div>
-    <p className="text-zinc-500">Pivot is one workspace point in metres for every selected model; elevation does not
-      affect a vertical-axis turn. It defaults to the model&apos;s bounds centre and moves with the model afterwards.</p>
+    <p className="text-zinc-500">{t('repositionPanel.rotation.pivotNote')}</p>
     <div className="flex flex-wrap gap-1">
-      <button className={button} onClick={() => applyRotation(degrees, pivot)}>Apply rotation</button>
-      <button className={button} onClick={() => applyRotation('0', pivot)}>Clear rotation</button>
+      <button className={button} onClick={() => applyRotation(degrees, pivot)}>{t('repositionPanel.rotation.applyButton')}</button>
+      <button className={button} onClick={() => applyRotation('0', pivot)}>{t('repositionPanel.rotation.clearButton')}</button>
     </div>
-    {selected.map((id) => <p key={id} className="font-mono truncate">{models.get(id)?.name}:
-      {' '}{radiansToDegrees(placementFor(placement, id).rotation.angle).toFixed(3)}° about
-      {' '}{workspacePivot(placementFor(placement, id).rotation, displayedTranslation(placement, id)).slice(0, 2)
-        .map((value) => value.toFixed(3)).join(', ')}</p>)}
+    {selected.map((id) => <p key={id} className="font-mono truncate">{t('repositionPanel.rotation.summaryRow', {
+      name: models.get(id)?.name ?? '',
+      degrees: radiansToDegrees(placementFor(placement, id).rotation.angle).toFixed(3),
+      pivot: workspacePivot(placementFor(placement, id).rotation, displayedTranslation(placement, id)).slice(0, 2)
+        .map((value) => value.toFixed(3)).join(', '),
+    })}</p>)}
   </fieldset>;
 }

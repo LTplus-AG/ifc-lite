@@ -4,7 +4,6 @@
 
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { createCoordinateInfo, createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
-import { parseLandXmlTin, type LandXmlTinSurface } from './landXmlTin.js';
 import { boundsFitRenderFrame, MAX_RENDER_FRAME_ORIGIN_METRES } from './landXmlRenderFrame.js';
 
 export type LandXmlSourceBuffer = ArrayBuffer | SharedArrayBuffer;
@@ -16,8 +15,24 @@ export interface LandXmlGeometryPayload {
   surfaceNames: string[];
 }
 
-export function isLandXmlFileName(name: string): boolean {
-  return name.toLowerCase().endsWith('.xml');
+/** Semantic source records produced by the bounded Rust LandXML parser. */
+export interface LandXmlTinSurface {
+  sourceId: string;
+  name: string;
+  points: Array<{ id: string; northing: number; easting: number; elevation: number }>;
+  faces: Array<readonly [string, string, string]>;
+}
+
+export interface LandXmlTinDocument {
+  version: string;
+  units: {
+    linearUnit: string;
+    elevationUnit: string;
+    linearScaleToMeters: number;
+    elevationScaleToMeters: number;
+  };
+  surfaces: LandXmlTinSurface[];
+  warnings: string[];
 }
 
 interface WorldPoint {
@@ -63,42 +78,6 @@ export function connectedFaceComponents(
     components.push(component);
   }
   return components;
-}
-
-function xmlEncoding(bytes: Uint8Array): string {
-  if (bytes[0] === 0xfe && bytes[1] === 0xff) return 'utf-16be';
-  if (bytes[0] === 0xff && bytes[1] === 0xfe) return 'utf-16le';
-  if (bytes[0] === 0x00 && bytes[1] === 0x3c && bytes[2] === 0x00 && bytes[3] === 0x3f) {
-    return 'utf-16be';
-  }
-  if (bytes[0] === 0x3c && bytes[1] === 0x00 && bytes[2] === 0x3f && bytes[3] === 0x00) {
-    return 'utf-16le';
-  }
-  const declaration = Array.from(bytes.subarray(0, 256), (byte) => (
-    byte < 0x80 ? String.fromCharCode(byte) : ' '
-  )).join('');
-  return /<\?xml\s[^>]*encoding\s*=\s*(['"])([^'"]+)\1/i.exec(declaration)?.[2] || 'utf-8';
-}
-
-/**
- * Browser TextDecoder rejects SAB-backed bytes as a Spectre mitigation. Copy
- * once before both encoding sniffing and decoding; ordinary ArrayBuffers keep
- * their zero-copy view.
- */
-function decodeBytes(buffer: LandXmlSourceBuffer): Uint8Array<ArrayBuffer> {
-  if (buffer instanceof ArrayBuffer) return new Uint8Array(buffer);
-  return new Uint8Array(new Uint8Array(buffer));
-}
-
-function decodeXml(buffer: LandXmlSourceBuffer): string {
-  const bytes = decodeBytes(buffer);
-  const encoding = xmlEncoding(bytes);
-  try {
-    return new TextDecoder(encoding, { fatal: true }).decode(bytes);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Cannot decode LandXML as ${encoding}: ${message}`);
-  }
 }
 
 function buildSurfaceMesh(
@@ -328,9 +307,8 @@ function placeComponentsInRenderFrame(
   return { placed, bounds, originShift, hasLargeCoordinates };
 }
 
-/** Parse LandXML 1.2 TIN surfaces into the viewer's canonical mesh payload. */
-export function parseLandXmlGeometry(buffer: LandXmlSourceBuffer): LandXmlGeometryPayload {
-  const parsed = parseLandXmlTin(decodeXml(buffer));
+/** Adapt Rust-parsed LandXML 1.2 TIN semantics into the viewer's mesh payload. */
+export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometryPayload {
   const warnings = [...parsed.warnings];
   const components: SurfaceComponent[] = [];
   for (const surface of parsed.surfaces) {

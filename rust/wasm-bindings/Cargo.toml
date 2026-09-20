@@ -51,6 +51,7 @@ ifc-lite-processing = { version = "16.2.0", path = "../processing" }
 ifc-lite-clash = { version = "16.2.0", path = "../clash" }
 # Domain-format exporters (HBJSON, OBJ, glTF/GLB, CSV, JSON, JSON-LD, STEP, IFC5, Merged).
 ifc-lite-export = { version = "16.2.0", path = "../export" }
+ifc-lite-landxml.workspace = true
 js-sys = "=0.3.103"
 rayon = "1.10"
 # `ifc-lite-geometry` uses rayon `par_iter` (e.g. FacetedBrep

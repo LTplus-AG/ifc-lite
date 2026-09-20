@@ -215,7 +215,7 @@ describe('overlay batches stay depth-coincident with their base batches (#4832)'
     assert.strictEqual(scene.getBatchedMeshes().length, 2, 'a later safe append still succeeds');
   });
 
-  it('preserves every separately framed piece instead of silently dropping one (#5010)', () => {
+  it('keeps a legacy representative while precise paths retain every framed piece (#5010)', () => {
     const scene = new Scene();
     const { device } = fakeDevice();
     scene.appendToBatches([
@@ -225,8 +225,9 @@ describe('overlay batches stay depth-coincident with their base batches (#4832)'
 
     const pieces = scene.getMeshDataPieces(9)!;
     assert.strictEqual(pieces.length, 2, 'precision routing made two source frames');
-    assert.strictEqual(scene.getMeshData(9), undefined,
-      'the singular accessor refuses an unrepresentable Float32 merge');
+    const representative = scene.getMeshData(9)!;
+    assert.equal(representative.indices.length, 6, 'legacy singular access retains both triangles');
+    assert.equal(representative.origin, undefined, 'cross-bucket representative claims no invented precision frame');
     assert.equal(scene.raycast({ x: 0.2, y: 0.2, z: 2 }, { x: 0, y: 0, z: -1 })?.expressId, 9);
     assert.equal(scene.raycast({ x: 800_000_000.2, y: 0.2, z: 2 }, { x: 0, y: 0, z: -1 })?.expressId, 9,
       'the distant triangle remains available to the real CPU raycast');

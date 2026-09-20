@@ -672,7 +672,6 @@ export class Scene {
         lastDrawnFrame: this.lastDrawnFrame.get(b.id) ?? -1,
       });
     }
-
     const evictKeys = selectEvictions(shells, residentBytes, budget, this.residencyFrame);
     let evictedBytes = 0;
     for (const key of evictKeys) {
@@ -694,7 +693,6 @@ export class Scene {
       bucket.vertexBytes = 0;
       this.coldBuckets.add(key);
     }
-
     if (residentBytes - evictedBytes > budget && !this.hostOverBudgetWarned) {
       this.hostOverBudgetWarned = true;
       console.warn(
@@ -1002,17 +1000,18 @@ export class Scene {
       // Fall through to the normal multi-piece merge below
     }
 
-    // A singular result needs one real batch frame.  Separate precision
-    // buckets cannot be represented faithfully in one Float32Array, so make
-    // callers opt into the lossless pieces accessor instead of dropping one.
+    // A cross-bucket singular result keeps the historical representative merge
+    // (all triangles, no provenance); precise callers use the pieces accessor.
     const firstOrigin = pieces[0].origin;
     const firstSource = this.derivedMeshProvenance.placedSourceFor(pieces[0], this.modelTranslations);
     const firstBucket = this.meshDataBucket.get(firstSource);
     const sameBucket = pieces.every(piece => this.meshDataBucket.get(this.derivedMeshProvenance.placedSourceFor(piece, this.modelTranslations)) === firstBucket);
     const sameFrame = pieces.every(piece => piece.origin?.[0] === firstOrigin?.[0]
       && piece.origin?.[1] === firstOrigin?.[1] && piece.origin?.[2] === firstOrigin?.[2]);
-    if (!sameBucket || (!firstBucket && !sameFrame)) return undefined;
-    const mergedOrigin: [number, number, number] = firstBucket?.batchedMesh?.origin ?? firstBucket?.frameOrigin ?? firstOrigin ?? [0, 0, 0];
+    const precisionPlaceable = sameBucket || (!firstBucket && sameFrame);
+    const mergedOrigin = precisionPlaceable
+      ? firstBucket?.batchedMesh?.origin ?? firstBucket?.frameOrigin ?? firstOrigin ?? [0, 0, 0]
+      : undefined;
     // Check if all pieces have the same color (within tolerance)
     // This handles multi-material elements like windows (frame vs glass)
     const firstColor = pieces[0].color;
@@ -1050,14 +1049,15 @@ export class Scene {
     let idxOffset = 0;
     let vertexOffset = 0;
     for (const piece of pieces) {
-      // Rebase local coordinates into the proven-safe batch frame (#5010).
-      const ox = (piece.origin?.[0] ?? 0) - mergedOrigin?.[0];
-      const oy = (piece.origin?.[1] ?? 0) - mergedOrigin?.[1];
-      const oz = (piece.origin?.[2] ?? 0) - mergedOrigin?.[2];
-      for (let i = 0; i < piece.positions.length; i += 3) {
-        mergedPositions[posOffset + i] = piece.positions[i] + ox;
-        mergedPositions[posOffset + i + 1] = piece.positions[i + 1] + oy;
-        mergedPositions[posOffset + i + 2] = piece.positions[i + 2] + oz;
+      if (mergedOrigin) {
+        const ox = (piece.origin?.[0] ?? 0) - mergedOrigin[0], oy = (piece.origin?.[1] ?? 0) - mergedOrigin[1], oz = (piece.origin?.[2] ?? 0) - mergedOrigin[2];
+        for (let i = 0; i < piece.positions.length; i += 3) {
+          mergedPositions[posOffset + i] = piece.positions[i] + ox;
+          mergedPositions[posOffset + i + 1] = piece.positions[i + 1] + oy;
+          mergedPositions[posOffset + i + 2] = piece.positions[i + 2] + oz;
+        }
+      } else {
+        mergedPositions.set(piece.positions, posOffset);
       }
       mergedNormals.set(piece.normals, posOffset);
       // Copy indices with offset
@@ -1079,12 +1079,12 @@ export class Scene {
       indices: mergedIndices,
       color: firstColor,
       ifcType: pieces[0].ifcType,
-      origin: mergedOrigin,
+      ...(mergedOrigin ? { origin: mergedOrigin } : {}),
     };
     // The common frame is explicit above.  Keep a source only when every part
     // belongs to the same live bucket; an arbitrary source would give a merged
     // result the wrong quantization/frame after a re-batch.
-    if (firstBucket) {
+    if (firstBucket && precisionPlaceable) {
       this.derivedMeshProvenance.remember(merged, firstSource);
     }
     return merged;

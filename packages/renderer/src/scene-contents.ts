@@ -89,8 +89,6 @@ export interface SceneContents {
    * correct (mirrors `Scene.getMeshData`).
    * `getMeshDataPieces` returns every piece; reach for this one when a
    * caller is written against one representative mesh per entity (#4357).
-   * Returns `undefined` rather than silently dropping geometry when pieces
-   * occupy separate precision frames; use `getMeshDataPieces` for that case.
    */
   getMeshData(expressId: number, modelIndex?: number): MeshData | undefined;
   /**

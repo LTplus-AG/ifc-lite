@@ -32,6 +32,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import type { ScheduleTaskInfo } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_IDENTIFICATION_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE, EXPRESS_PREDEFINED_TYPE_ATTRIBUTE } from './express-labels';
 
 /** IfcTaskTypeEnum values — same list as the Generate dialog. */
@@ -49,7 +50,7 @@ interface TaskEditCardProps {
 }
 
 export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEditCardProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   // Pull the current task + sibling store actions in a single selector so
   // re-renders stay predictable.
   const {
@@ -292,7 +293,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
           <div className="grid gap-2 rounded border border-border/60 p-2">
             <div className="flex items-center justify-between">
               <Label className="text-[11px]">{t('properties.taskEdit.productsLabel')}</Label>
-              <span className="text-[11px] font-mono text-muted-foreground">{t('properties.taskEdit.productsAssignedCount', { count: task.productExpressIds.length })}</span>
+              <span className="text-[11px] font-mono text-muted-foreground">{t('properties.taskEdit.productsAssignedCount', { countDisplay: formatLocaleNumber(locale, task.productExpressIds.length) })}</span>
             </div>
             <div className="grid grid-cols-2 gap-1.5">
               <Tooltip>
@@ -305,11 +306,11 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
                     className="gap-1 h-7 text-xs"
                   >
                     <Plus className="h-3 w-3" />
-                    {viewport3DCount > 0 ? t('properties.taskEdit.addButtonWithCount', { count: viewport3DCount }) : t('properties.taskEdit.addButton')}
+                    {viewport3DCount > 0 ? t('properties.taskEdit.addButtonWithCount', { countDisplay: formatLocaleNumber(locale, viewport3DCount) }) : t('properties.taskEdit.addButton')}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {viewport3DCount > 0 ? t('properties.taskEdit.addTooltipWithCount', { count: viewport3DCount }) : t('properties.taskEdit.addTooltipEmpty')}
+                  {viewport3DCount > 0 ? t('properties.taskEdit.addTooltipWithCount', { count: viewport3DCount, countDisplay: formatLocaleNumber(locale, viewport3DCount) }) : t('properties.taskEdit.addTooltipEmpty')}
                 </TooltipContent>
               </Tooltip>
               <Tooltip>
@@ -322,7 +323,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
                     className="gap-1 h-7 text-xs"
                   >
                     <Minus className="h-3 w-3" />
-                    {viewport3DCount > 0 ? t('properties.taskEdit.removeButtonWithCount', { count: viewport3DCount }) : t('properties.taskEdit.removeButton')}
+                    {viewport3DCount > 0 ? t('properties.taskEdit.removeButtonWithCount', { countDisplay: formatLocaleNumber(locale, viewport3DCount) }) : t('properties.taskEdit.removeButton')}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -379,7 +380,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
             ) : (
               <>
                 <span className="text-[11px] text-muted-foreground">
-                  {task.childGlobalIds.length > 0 ? t('properties.taskEdit.confirmDeleteWithDescendants', { count: task.childGlobalIds.length }) : t('properties.taskEdit.confirmDelete')}
+                  {task.childGlobalIds.length > 0 ? t('properties.taskEdit.confirmDeleteWithDescendants', { count: task.childGlobalIds.length, countDisplay: formatLocaleNumber(locale, task.childGlobalIds.length) }) : t('properties.taskEdit.confirmDelete')}
                 </span>
                 <Button
                   size="sm"

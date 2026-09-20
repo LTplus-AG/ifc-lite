@@ -244,6 +244,17 @@ fn cancels_mid_normalization_of_a_large_utf8_source() {
 }
 
 #[test]
+fn rejects_a_continuation_byte_run_at_a_utf8_chunk_boundary() {
+    // The normalizer must not rewind an entire 4 KiB chunk and then retry the
+    // same empty slice forever when untrusted input is all continuation bytes.
+    let input = vec![0x80; 4 * 1024 + 1];
+    assert_eq!(
+        parse(&input).unwrap_err().code,
+        LandXmlDiagnosticCode::InvalidXml
+    );
+}
+
+#[test]
 fn cancels_mid_preflight_scan_of_a_large_utf16_source() {
     // UTF-16 decoding consumes eight 4 KiB raw chunks first. The next poll is
     // the scanner's initial guard and the following one is inside its long

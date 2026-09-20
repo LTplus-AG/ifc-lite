@@ -185,10 +185,16 @@ fn decode_utf8(input: &[u8], poller: &mut CancellationPoller<'_>) -> Result<Vec<
     let mut index = 0;
     while index < input.len() {
         let mut end = (index + CANCELLATION_POLL_BYTES).min(input.len());
-        while end < input.len() && (input[end] & 0b1100_0000) == 0b1000_0000 {
+        while end > index && end < input.len() && (input[end] & 0b1100_0000) == 0b1000_0000 {
             end -= 1;
         }
-        debug_assert!(end > index, "a UTF-8 code point is at most four bytes");
+        // A valid chunk always starts on a code-point boundary, so rewinding
+        // cannot consume the whole chunk. If it does, the input starts with
+        // (or contains a run of) continuation bytes. Refuse it rather than
+        // validating an empty slice and retrying the same index forever.
+        if end == index {
+            return Err(error(Code::InvalidXml, "input is not valid UTF-8"));
+        }
         let chunk = &input[index..end];
         std::str::from_utf8(chunk)
             .map_err(|_| error(Code::InvalidXml, "input is not valid UTF-8"))?;

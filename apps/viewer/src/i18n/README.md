@@ -194,6 +194,26 @@ The existing `IDSAuditSummary`, correction, report-export, and BCF-export
 dialogs remain separate follow-up surfaces. IDS document titles/descriptions,
 specification names, entity names/types/GlobalIds, requirement descriptions,
 and failure details remain model/document content supplied by the IDS engine.
+The clash-detection catalogue (#4918 viewer-panels slice) covers
+`ClashPanel.tsx`: the header and help disclosure, the detection controls
+(mode/tol/gap, run buttons, live progress), the result-summary toolbar
+(group-by/sort, review-status filters, on-select focus mode, bulk actions),
+the on-demand intersection-solid status line, the user's own exclusion list,
+every empty/no-match/no-comparison state, and the per-row exclusion and
+review-comment controls (`ClashExclusionActions`, `ExcludeAnyButton`,
+`ClashReviewControls`). The `Critical`/`Major`/`Minor`/`Info` severity labels,
+the three review-status labels, and the three sort-option labels moved to
+the same data-table-plus-`labelKey` pattern `sectionConstants.ts`'s
+`AXIS_INFO` and slice 2's command registries use. Deliberately out of scope:
+`describeClash()`'s plain-language finding description is reused verbatim as
+a BCF topic's persisted description in `createBcfTopic` — it is exported
+CONTENT, not pure view chrome, and translating only the on-screen call site
+while the BCF-exported copy stayed English would read as two languages for
+one sentence depending on where it landed. The same reasoning keeps the BCF
+topic `title`/`description` strings and the `'Clash report'` project name
+untranslated. IFC class tags (`clash.a.tag`/`clash.b.tag`) and exclusion-rule
+labels are model content throughout.
+
 The stable model-resolution errors `resolveValidationTarget.ts` can return
 ("Model … is not loaded", "The selected model has no parsed IFC data to
 validate", "No IFC model loaded") are catalogued too: that pure function

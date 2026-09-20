@@ -163,7 +163,7 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
     {
       name: 'ClashPanel active detection-mode label',
       file: CLASH_PANEL,
-      anchor: '5 w-3.5" />}\n              <span>Detection</span>\n              <span ',
+      anchor: "5 w-3.5\" />}\n              <span>{t('clashPanel.detectionSectionLabel')}</span>\n              <span ",
       surface: 'bg-background',
     },
     {

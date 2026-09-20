@@ -6,6 +6,7 @@ import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-l
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { addElementEn } from './catalogues/add-element.en';
 import { chartsEn } from './catalogues/charts.en';
+import { clashPanelEn } from './catalogues/clash-panel.en';
 import { appearancePanelEn } from './catalogues/appearance-panel.en';
 import { appearancePickersEn } from './catalogues/appearance-pickers.en';
 import { appearanceWorkflowsEn } from './catalogues/appearance-workflows.en';
@@ -87,6 +88,7 @@ export const en = {
   ...extensionsFlavorsEn,
   ...extensionsPanelsEn,
   ...idsPanelEn,
+  ...clashPanelEn,
   ...bcfEn,
   ...layersPanelEn,
 } as const;

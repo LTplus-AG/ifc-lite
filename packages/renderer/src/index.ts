@@ -256,10 +256,7 @@ export class Renderer {
     };
     private pointCloudRenderer: PointCloudRenderer | null = null;
     private pointCloudStreamEpoch = 0;
-    /** Handle id → stream epoch. Keyed by id, not handle identity: callers
-     * legitimately rebuild `{ id }` for cleanup (usePointCloudLifecycle), and
-     * ids restart at 1 on every replacement renderer, so the map is cleared
-     * whenever the epoch advances. */
+    /** Handle id → stream epoch (by id: cleanup rebuilds `{ id }`; cleared per epoch since ids restart). */
     private pointCloudStreamEpochs = new Map<number, number>();
     /** Set true at the end of the LATEST `init()`; gates `whenReady()` and
      * `isReady()`. Revoked synchronously by `init()` and by `destroy()`, and
@@ -822,18 +819,10 @@ export class Renderer {
         });
     }
 
-    /**
-     * `fromDevicePromise` marks the `device.lost` signal of the CURRENT device
-     * (the subscriber already filters replaced wrappers). Only that signal may
-     * advance `deviceLossSequence` while a loss is latched: a late upload
-     * rejection or frame exception from the device already recorded as lost
-     * is a duplicate report, and counting it would make an in-flight recovery
-     * read its own replacement as lost and abort a successful rebuild.
-     */
-    private handleDeviceLost(
-        info: { message: string; reason: string },
-        options: { fromDevicePromise?: boolean } = {},
-    ): void {
+    /** Only the current device's `device.lost` signal (`fromDevicePromise`) may advance
+     * `deviceLossSequence` while a loss is latched: a late upload rejection or frame
+     * exception from the dead device is a duplicate, not a loss of the replacement. */
+    private handleDeviceLost(info: { message: string; reason: string }, options: { fromDevicePromise?: boolean } = {}): void {
         if (this.deviceLost && !options.fromDevicePromise) return;
         this.deviceLossSequence++;
         if (this.deviceLost) return;

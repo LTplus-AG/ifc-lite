@@ -256,8 +256,7 @@ export class Renderer {
     };
     private pointCloudRenderer: PointCloudRenderer | null = null;
     private pointCloudStreamEpoch = 0;
-    /** Handle id → stream epoch (by id: cleanup rebuilds `{ id }`; cleared per epoch since ids restart). */
-    private pointCloudStreamEpochs = new Map<number, number>();
+    private pointCloudStreamEpochs = new Map<number, number>(); // handle id → epoch; cleanup rebuilds `{ id }`, cleared per epoch
     /** Set true at the end of the LATEST `init()`; gates `whenReady()` and
      * `isReady()`. Revoked synchronously by `init()` and by `destroy()`, and
      * overridden (not cleared) by a device loss — see `deviceLost`, which the
@@ -819,13 +818,10 @@ export class Renderer {
         });
     }
 
-    /** Only the current device's `device.lost` signal (`fromDevicePromise`) may advance
-     * `deviceLossSequence` while a loss is latched: a late upload rejection or frame
-     * exception from the dead device is a duplicate, not a loss of the replacement. */
     private handleDeviceLost(info: { message: string; reason: string }, options: { fromDevicePromise?: boolean } = {}): void {
-        if (this.deviceLost && !options.fromDevicePromise) return;
+        // Latched: only the current device's `device.lost` signal is a replacement loss; anything else is a duplicate report.
+        if (this.deviceLost) { if (options.fromDevicePromise) this.deviceLossSequence++; return; }
         this.deviceLossSequence++;
-        if (this.deviceLost) return;
         this.deviceLost = true;
         this.recovery.lostReferenceImages = this.referenceImages.hasImages();
         this.referenceImages.destroy();
@@ -1045,8 +1041,7 @@ export class Renderer {
     }
 
     removePointCloudAsset(handle: PointCloudAssetHandle): void {
-        if (this.pointCloudStreamEpochs.get(handle.id) !== this.pointCloudStreamEpoch) return;
-        this.pointCloudStreamEpochs.delete(handle.id);
+        if (!this.pointCloudStreamEpochs.delete(handle.id)) return;
         this.pointCloudRenderer?.removeAsset(handle);
         // Bounds may have shrunk — recompute from scratch so fit-to-view
         // and section-plane sliders see fresh extents.
@@ -3706,8 +3701,7 @@ export class Renderer {
         this.referenceImages.destroy();
 
         // Point cloud GPU resources
-        this.pointCloudStreamEpoch++;
-        this.pointCloudStreamEpochs.clear();
+        this.pointCloudStreamEpoch++; this.pointCloudStreamEpochs.clear();
         this.pointCloudRenderer?.clear();
         this.pointCloudRenderer = null;
 

@@ -29,6 +29,7 @@ mod export_step;
 mod extract_profiles;
 mod gpu_meshes;
 mod grid_lines;
+mod landxml;
 mod mesh_outline;
 mod overlay_frame;
 mod parsing;

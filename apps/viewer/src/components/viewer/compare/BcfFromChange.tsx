@@ -11,6 +11,7 @@
 import { useMemo } from 'react';
 import { MessageSquarePlus, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useTranslation } from '@/i18n';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import type { ChangeDetail } from '@/lib/compare/describeChange';
 import { BCFCreateTopicForm } from '../bcf/BCFCreateTopicForm';
@@ -48,15 +49,16 @@ export function BcfFromChange({
   onCaptureSnapshot,
   capturingSnapshot,
 }: BcfFromChangeProps) {
+  const { t } = useTranslation();
   const prefill = useMemo(() => bcfTextFromChange(row, detail), [row, detail]);
 
   if (createdTitle) {
     return (
       <div className="border-t border-border shrink-0 px-3 py-2.5 flex items-center gap-2 text-xs">
         <CheckCircle2 className="h-4 w-4 text-[#9ece6a] shrink-0" />
-        <span className="min-w-0 truncate">BCF topic created: “{createdTitle}”</span>
+        <span className="min-w-0 truncate">{t('comparePanel.bcfFromChange.created', { title: createdTitle })}</span>
         <Button variant="outline" size="sm" className="ml-auto h-7 px-2 text-xs shrink-0" onClick={onOpenBcfPanel}>
-          Open BCF
+          {t('comparePanel.bcfFromChange.openBcf')}
         </Button>
       </div>
     );
@@ -86,7 +88,7 @@ export function BcfFromChange({
     <div className="border-t border-border shrink-0 px-3 py-2.5">
       <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" onClick={onStart}>
         <MessageSquarePlus className="h-3.5 w-3.5" />
-        Create BCF topic
+        {t('comparePanel.bcfFromChange.createButton')}
       </Button>
     </div>
   );

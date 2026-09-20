@@ -17,6 +17,7 @@ import { chatEn } from './catalogues/chat.en';
 import { chatByokEn } from './catalogues/chat-byok.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
+import { comparePanelEn } from './catalogues/compare-panel.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
 import { extensionsFlavorsEn } from './catalogues/extensions-flavors.en';
 import { extensionsPanelsEn } from './catalogues/extensions-panels.en';
@@ -90,6 +91,7 @@ export const en = {
   ...appearancePickersEn,
   ...appearanceWorkflowsEn,
   ...compareKeyPropertyEn,
+  ...comparePanelEn,
   ...extensionsFlavorsEn,
   ...extensionsPanelsEn,
   ...idsPanelEn,

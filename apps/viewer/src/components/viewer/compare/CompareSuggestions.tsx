@@ -26,6 +26,7 @@ import { useState } from 'react';
 import { TriangleAlert, MousePointerClick } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 import { rgbaCss, type RGBA } from '@/lib/compare/overlay';
 import { pairIsOpen, type SuggestionCandidate, type SuggestionDecisions, type SuggestionRow } from '@/lib/compare/suggestions';
 import { MAX_ROWS_PER_GROUP } from './changeRow';
@@ -61,6 +62,7 @@ function SuggestionActions({
   onAccept,
   onReject,
 }: Pick<CompareSuggestionsProps, 'decisions' | 'onAccept' | 'onReject'> & { row: SuggestionRow }) {
+  const { t } = useTranslation();
   const [base, setBase] = useState(row.bases[0]?.key ?? '');
   const [here, setHere] = useState(row.heads[0]?.key ?? '');
   if (row.bases.length === 0 || row.heads.length === 0) return null;
@@ -71,16 +73,16 @@ function SuggestionActions({
       {picker && (
         <>
           <select
-            aria-label="Candidate in A"
+            aria-label={t('comparePanel.suggestions.candidateAAriaLabel')}
             className="h-6 max-w-[45%] truncate rounded border border-border bg-background text-[10px]"
             value={base}
             onChange={(e) => setBase(e.target.value)}
           >
             {row.bases.map((c) => <option key={c.key} value={c.key}>{candidateLabel(c)}</option>)}
           </select>
-          <span className="text-[10px] text-muted-foreground">is</span>
+          <span className="text-[10px] text-muted-foreground">{t('comparePanel.suggestions.isConnector')}</span>
           <select
-            aria-label="Candidate in B"
+            aria-label={t('comparePanel.suggestions.candidateBAriaLabel')}
             className="h-6 max-w-[45%] truncate rounded border border-border bg-background text-[10px]"
             value={here}
             onChange={(e) => setHere(e.target.value)}
@@ -90,7 +92,7 @@ function SuggestionActions({
         </>
       )}
       <div className="ml-auto flex items-center gap-1">
-        {!open && <span className="text-[10px] text-muted-foreground">decided</span>}
+        {!open && <span className="text-[10px] text-muted-foreground">{t('comparePanel.suggestions.decidedLabel')}</span>}
         <Button
           variant="outline"
           size="sm"
@@ -98,7 +100,7 @@ function SuggestionActions({
           disabled={!open}
           onClick={() => onAccept({ row, base, here })}
         >
-          Accept
+          {t('comparePanel.suggestions.acceptButton')}
         </Button>
         <Button
           variant="ghost"
@@ -107,7 +109,7 @@ function SuggestionActions({
           disabled={!open}
           onClick={() => onReject({ row, base, here })}
         >
-          Not the same
+          {t('comparePanel.suggestions.notSameButton')}
         </Button>
       </div>
     </div>
@@ -123,6 +125,7 @@ export function CompareSuggestions({
   onAccept,
   onReject,
 }: CompareSuggestionsProps) {
+  const { t } = useTranslation();
   if (rows.length === 0) return null;
   // Same display cap as every other section (see `MAX_ROWS_PER_GROUP`): the
   // header count and the header's select-all keep the FULL set.
@@ -133,11 +136,11 @@ export function CompareSuggestions({
       <button
         type="button"
         onClick={() => onFocusGroup(rows)}
-        title="Select every suggested element in 3D"
+        title={t('comparePanel.suggestions.selectAllTitle')}
         className="group w-full flex items-center gap-1.5 px-1 py-1 text-xs font-medium rounded hover:bg-muted transition-colors"
       >
         <TriangleAlert className="h-3.5 w-3.5" style={{ color: rgbaCss(SUGGESTION_COLOR) }} />
-        <span>Suggestions</span>
+        <span>{t('comparePanel.suggestions.sectionLabel')}</span>
         <span className="text-muted-foreground">({rows.length})</span>
         <MousePointerClick className="h-3 w-3 ml-auto opacity-0 group-hover:opacity-60 transition-opacity" />
       </button>
@@ -152,8 +155,8 @@ export function CompareSuggestions({
               <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ backgroundColor: rgbaCss(SUGGESTION_COLOR) }} />
               <span className="min-w-0 flex-1 truncate text-xs">{row.name || row.ifcType}</span>
               {row.crossClass && (
-                <span className="shrink-0 rounded border border-border px-1 text-[9px] text-muted-foreground" title="The IFC class changed on the way">
-                  class changed
+                <span className="shrink-0 rounded border border-border px-1 text-[9px] text-muted-foreground" title={t('comparePanel.suggestions.classChangedTitle')}>
+                  {t('comparePanel.suggestions.classChangedLabel')}
                 </span>
               )}
               <span className="shrink-0 text-[10px] text-muted-foreground">{row.evidence}</span>
@@ -168,7 +171,7 @@ export function CompareSuggestions({
         ))}
         {truncated > 0 && (
           <p className="px-2 py-1 text-[10px] text-muted-foreground">
-            +{truncated} more not shown
+            {t('comparePanel.moreNotShown', { count: truncated })}
           </p>
         )}
       </div>

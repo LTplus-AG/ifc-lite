@@ -3,7 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
-import { parseLandXmlGeometry, type LandXmlGeometryPayload, type LandXmlSourceBuffer } from './landXmlIngest.js';
+import type { LandXmlGeometryPayload, LandXmlSourceBuffer } from './landXmlIngest.js';
+import { parseLandXmlGeometry } from './landXmlIngest.js';
+import { parseLandXmlTinInCurrentRealm } from './landXmlWasm.js';
 
 export interface LandXmlViewerModel extends LandXmlGeometryPayload {
   dataStore: IfcDataStore;
@@ -23,33 +25,53 @@ function attachSyntheticStore(payload: LandXmlGeometryPayload, fileSize: number)
   };
 }
 
-export function parseLandXmlViewerModel(buffer: LandXmlSourceBuffer): LandXmlViewerModel {
-  return attachSyntheticStore(parseLandXmlGeometry(buffer), buffer.byteLength);
-}
-
 /**
- * Parse off the UI thread in browsers. Node-based tests and non-window hosts
- * use the same synchronous implementation directly.
+ * Parse off the UI thread in browsers. Worker-less hosts use the same WASM
+ * parser in their own realm, so there is no DOM/TypeScript parser fallback.
  */
-export function parseLandXmlViewerModelAsync(buffer: LandXmlSourceBuffer): Promise<LandXmlViewerModel> {
-  if (typeof Worker === 'undefined') return Promise.resolve(parseLandXmlViewerModel(buffer));
+export function parseLandXmlViewerModelAsync(
+  buffer: LandXmlSourceBuffer,
+  isCurrent: () => boolean = () => true,
+): Promise<LandXmlViewerModel> {
+  if (typeof Worker === 'undefined') {
+    if (!isCurrent()) return Promise.reject(new Error('LandXML parsing cancelled'));
+    return parseLandXmlTinInCurrentRealm(buffer).then((parsed) => {
+      if (!isCurrent()) throw new Error('LandXML parsing cancelled');
+      return attachSyntheticStore(parseLandXmlGeometry(parsed), buffer.byteLength);
+    });
+  }
   const fileSize = buffer.byteLength;
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./landXml.worker.ts', import.meta.url), { type: 'module' });
-    const finish = (): void => worker.terminate();
+    let finished = false;
+    let cancellationPoll: ReturnType<typeof setInterval> | undefined;
+    const finish = (): boolean => {
+      if (finished) return false;
+      finished = true;
+      if (cancellationPoll !== undefined) clearInterval(cancellationPoll);
+      worker.terminate();
+      return true;
+    };
+    cancellationPoll = setInterval(() => {
+      if (isCurrent()) return;
+      if (finish()) reject(new Error('LandXML parsing cancelled'));
+    }, 25);
     worker.onmessage = (event: MessageEvent<
       | { ok: true; payload: LandXmlGeometryPayload }
       | { ok: false; error: string }
     >) => {
-      finish();
+      if (!finish()) return;
       if (event.data.ok) resolve(attachSyntheticStore(event.data.payload, fileSize));
       else reject(new Error(event.data.error));
     };
     worker.onerror = (event) => {
-      finish();
-      reject(new Error(event.message || 'LandXML worker failed'));
+      if (finish()) reject(new Error(event.message || 'LandXML worker failed'));
     };
     const transferable = typeof SharedArrayBuffer === 'undefined' || !(buffer instanceof SharedArrayBuffer);
+    if (!isCurrent()) {
+      if (finish()) reject(new Error('LandXML parsing cancelled'));
+      return;
+    }
     worker.postMessage(buffer, transferable ? [buffer] : []);
   });
 }

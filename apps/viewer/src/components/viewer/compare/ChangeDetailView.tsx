@@ -10,11 +10,13 @@
 import { PencilLine } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
+import { useTranslation } from '@/i18n';
 import type { ChangeDetail, FieldDelta } from '@/lib/compare/describeChange';
 import type { GeometrySummary } from '@/lib/compare/geometrySummary';
 import type { CompareRow } from './changeRow';
 
 export function ChangeDetailView({ row, detail }: { row: CompareRow; detail: ChangeDetail }) {
+  const { t } = useTranslation();
   return (
     <div className="border-t border-border shrink-0 max-h-[42%] overflow-auto" {...tourAnchor(TOUR_ANCHORS.compareDetail)}>
       <div className="px-3 pt-2.5 pb-1.5 flex items-center gap-1.5 sticky top-0 bg-background">
@@ -25,14 +27,16 @@ export function ChangeDetailView({ row, detail }: { row: CompareRow; detail: Cha
       <div className="px-3 pb-3 space-y-2.5 text-xs">
         {detail.geometry && (
           <div className="space-y-1">
-            <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Geometry</div>
+            <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+              {t('comparePanel.changeDetail.geometryLabel')}
+            </div>
             <GeometryDetail summary={detail.geometry} />
           </div>
         )}
         {detail.data.length > 0 ? (
           <div className="space-y-1">
             <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-              Data <span className="text-muted-foreground">({detail.data.length})</span>
+              {t('comparePanel.changeDetail.dataLabel')} <span className="text-muted-foreground">({detail.data.length})</span>
             </div>
             <div className="space-y-1">
               {detail.data.map((d, i) => <FieldDeltaRow key={i} delta={d} />)}
@@ -40,10 +44,10 @@ export function ChangeDetailView({ row, detail }: { row: CompareRow; detail: Cha
           </div>
         ) : detail.dataOnlyGeometric ? (
           <div className="text-[11px] text-muted-foreground italic">
-            Data fingerprint differs but no field-level change could be pinpointed.
+            {t('comparePanel.changeDetail.dataFingerprintOnly')}
           </div>
         ) : !detail.geometry ? (
-          <div className="text-[11px] text-muted-foreground italic">No field-level detail available.</div>
+          <div className="text-[11px] text-muted-foreground italic">{t('comparePanel.changeDetail.noFieldDetail')}</div>
         ) : null}
       </div>
     </div>
@@ -51,32 +55,42 @@ export function ChangeDetailView({ row, detail }: { row: CompareRow; detail: Cha
 }
 
 function GeometryDetail({ summary }: { summary: GeometrySummary }) {
+  const { t } = useTranslation();
   const moved = summary.movedDistance > 0;
   const fmt = (n: number) => (Math.abs(n) < 1e-3 ? '0' : n.toFixed(Math.abs(n) >= 1 ? 2 : 3));
   const signed = (n: number) => (n > 0 ? `+${fmt(n)}` : fmt(n));
-  const headline = summary.reshaped ? (moved ? 'Reshaped + moved' : 'Reshaped') : moved ? 'Moved' : 'Geometry changed';
+  const headline = summary.reshaped
+    ? moved
+      ? t('comparePanel.changeDetail.headlineReshapedMoved')
+      : t('comparePanel.changeDetail.headlineReshaped')
+    : moved
+      ? t('comparePanel.changeDetail.headlineMoved')
+      : t('comparePanel.changeDetail.headlineGeometryChanged');
   return (
     <div className="rounded border border-border/60 px-2 py-1.5 space-y-0.5">
       <div className="font-medium">{headline}</div>
       {moved && (
         <div className="text-muted-foreground tabular-nums">
-          {fmt(summary.movedDistance)} m
-          <span className="text-muted-foreground">
-            {' '}(Δx {fmt(summary.delta.x)}, Δy {fmt(summary.delta.y)}, Δz {fmt(summary.delta.z)})
-          </span>
+          {t('comparePanel.changeDetail.movedLine', {
+            distance: fmt(summary.movedDistance),
+            dx: fmt(summary.delta.x),
+            dy: fmt(summary.delta.y),
+            dz: fmt(summary.delta.z),
+          })}
         </div>
       )}
       {summary.reshaped && (
         <div className="text-muted-foreground tabular-nums">
-          size{' '}
-          <span className="text-muted-foreground">
-            (Δx {signed(summary.sizeDelta.x)}, Δy {signed(summary.sizeDelta.y)}, Δz {signed(summary.sizeDelta.z)}) m
-          </span>
+          {t('comparePanel.changeDetail.sizeLine', {
+            dx: signed(summary.sizeDelta.x),
+            dy: signed(summary.sizeDelta.y),
+            dz: signed(summary.sizeDelta.z),
+          })}
         </div>
       )}
       {!moved && !summary.reshaped && (
         <div className="text-muted-foreground text-[11px]">
-          Shape hash differs but the element’s position and size are unchanged.
+          {t('comparePanel.changeDetail.unchangedShapeHash')}
         </div>
       )}
     </div>

@@ -186,6 +186,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   const mergedLandXml = exportScope === 'merged'
     && Array.from(models.values()).some((model) => model.sourceSchema === 'LandXML-1.2');
   const canExportIfc = !selectedLandXml && !mergedLandXml;
+  const exportAllowed = canExportIfc || changesOnly;
   const portableRoomStore = selectedModel?.ifcDataStore
     && canExportRoomAsStep(selectedModel.ifcDataStore, selectedRoomView)
     ? roomSymbolicSource(selectedModel.ifcDataStore)?.dataStore
@@ -330,7 +331,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   const handleExport = useCallback(async () => {
     if (!schema) return;
     if (exportScope === 'single' && !selectedModel) return;
-    if (selectedLandXml || mergedLandXml) {
+    if (!exportAllowed) {
       const message = t('exportDialog.landXml.error');
       setExportResult({ success: false, message });
       toast.error(message);
@@ -586,7 +587,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         });
       }
     }
-  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo, selectedLandXml, mergedLandXml, t]);
+  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo, exportAllowed, t]);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -666,7 +667,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           )}
 
           {/* Schema selector — this drives the output format */}
-          {!canExportIfc && (
+          {!exportAllowed && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>{t('exportDialog.landXml.title')}</AlertTitle>
@@ -818,7 +819,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           <Button variant="outline" onClick={() => setOpen(false)}>
             {t('exportDialog.cancelButton')}
           </Button>
-          <Button onClick={handleExport} disabled={isExporting || !selectedModel || !schema || !canExportIfc}>
+          <Button onClick={handleExport} disabled={isExporting || !selectedModel || !schema || !exportAllowed}>
             {isExporting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />

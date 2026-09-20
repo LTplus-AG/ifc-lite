@@ -50,6 +50,22 @@ describe('ExportDialog LandXML source fidelity (#5042)', () => {
     assert.equal(exportButton().disabled, true, 'a LandXML source has no IFC export action');
   });
 
+  it('keeps the non-IFC JSON mutation-delta export available', () => {
+    const terrain = landXmlModel('survey.xml');
+    useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
+    render(<ExportDialog />);
+    openDialog();
+
+    const label = [...document.querySelectorAll('label')]
+      .find((candidate) => candidate.textContent?.trim() === 'Changes Only');
+    const toggle = label?.parentElement?.parentElement?.querySelector('button[role="switch"]');
+    assert.ok(toggle, 'changes-only switch is available for a LandXML source');
+    click(toggle);
+
+    assert.doesNotMatch(document.body.textContent ?? '', /LandXML cannot be exported as IFC/);
+    assert.equal(exportButton().disabled, false, 'source-independent mutation JSON remains exportable');
+  });
+
   it('refuses merged IFC export when any participating model is LandXML', () => {
     const authored = fixtureModel('building.ifc');
     authored.schemaVersion = 'IFC4';

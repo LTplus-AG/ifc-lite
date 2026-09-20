@@ -1,6 +1,6 @@
 ---
 "@ifc-lite/wasm": minor
-"@ifc-lite/renderer": minor
+"@ifc-lite/renderer": major
 "@ifc-lite/viewer": major
 ---
 

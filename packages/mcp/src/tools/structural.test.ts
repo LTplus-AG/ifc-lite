@@ -12,6 +12,7 @@ import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER, ty
 import { fullScope } from '../auth/scope.js';
 import { buildDefaultToolRegistry } from './index.js';
 import { structuralTools } from './structural.js';
+import type { TextContent } from '../protocol/index.js';
 
 const path = fileURLToPath(new URL('../../../../tests/models/ifcopenshell/structural_analysis_curve.ifc', import.meta.url));
 const available = existsSync(path);
@@ -49,6 +50,8 @@ describe('#4206 MCP structural tools', () => {
     expect(data.members.length).toBe(3);
     expect(data.connections.length).toBe(4);
     expect(data.activities.length).toBe(10);
-    expect(result.content?.[0]?.text).toContain("model 'structural-model'");
+    const block = result.content?.[0];
+    expect(block?.type).toBe('text');
+    expect((block as TextContent | undefined)?.text).toContain("model 'structural-model'");
   });
 });

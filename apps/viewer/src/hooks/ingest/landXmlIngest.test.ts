@@ -116,6 +116,18 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.match(parsed.warnings[0], /Unsupported Grid/);
   });
 
+  it('retains COGO and analytic plan records from the canonical WASM document (#5046)', async () => {
+    const parsed = await parseDocument(LANDXML.replace(
+      '</Surfaces>',
+      `</Surfaces><CgPoints><CgPoint name="control">5000000 2600000 100</CgPoint></CgPoints>
+      <PlanFeatures><PlanFeature name="right-of-way"><CoordGeom><Line><Start pntRef="control"/><End>5000010 2600010 102</End></Line></CoordGeom></PlanFeature></PlanFeatures>
+      <Parcels><Parcel name="lot"><CoordGeom><Line><Start pntRef="control"/><End>5000010 2600010</End></Line></CoordGeom></Parcel></Parcels>`,
+    ));
+    assert.equal(parsed.plan?.cogoPoints[0].name, 'control');
+    assert.equal(parsed.plan?.planFeatures[0].geometry[0].kind, 'line');
+    assert.equal(parsed.plan?.parcels[0].name, 'lot');
+  });
+
   it('keeps source selection stable after geometry is partitioned (#5042)', async () => {
     const parsed = await parseDocument(LANDXML.replace(
       '</Faces>',

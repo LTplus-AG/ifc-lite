@@ -19,7 +19,7 @@ impl LandXmlPlanDocument {
         match location {
             LandXmlPlanPointLocation::Coordinates { point, .. } => Some(*point),
             LandXmlPlanPointLocation::PointReference { pnt_ref } => self
-                .resolve_reference(scope_id, pnt_ref, self.cogo_points.len(), None)
+                .resolve_reference(scope_id, pnt_ref, self.cogo_points().len(), None)
                 .ok()
                 .flatten(),
         }
@@ -35,7 +35,7 @@ impl LandXmlPlanDocument {
         match location {
             LandXmlPlanPointLocation::Coordinates { point, .. } => Ok(Some(*point)),
             LandXmlPlanPointLocation::PointReference { pnt_ref } => {
-                self.resolve_reference(scope_id, pnt_ref, self.cogo_points.len(), cancelled)
+                self.resolve_reference(scope_id, pnt_ref, self.cogo_points().len(), cancelled)
             }
         }
     }
@@ -74,7 +74,7 @@ impl LandXmlPlanDocument {
             if !seen.insert(index) {
                 return Ok(None);
             }
-            let Some(point) = self.cogo_points.get(index) else {
+            let Some(point) = self.cogo_points().get(index) else {
                 return Ok(None);
             };
             if let Some(value) = point.point {
@@ -102,7 +102,7 @@ impl LandXmlPlanDocument {
                 let index = self.reference_index_with(|| budget.check())?;
                 let mut next_scope = scope_id.cloned();
                 let mut next_reference = pnt_ref.as_str();
-                let mut remaining = self.cogo_points.len();
+                let mut remaining = self.cogo_points().len();
                 let mut seen = HashSet::new();
                 while remaining > 0 {
                     budget.check()?;
@@ -114,7 +114,7 @@ impl LandXmlPlanDocument {
                     if !seen.insert(index) {
                         return Ok(None);
                     }
-                    let Some(point) = self.cogo_points.get(index) else {
+                    let Some(point) = self.cogo_points().get(index) else {
                         return Ok(None);
                     };
                     if point.point.is_some() {
@@ -141,7 +141,8 @@ impl LandXmlPlanDocument {
         check: impl FnMut() -> std::result::Result<(), E>,
     ) -> std::result::Result<Ref<'_, LandXmlPlanReferenceIndex>, E> {
         if self.reference_index.borrow().is_none() {
-            let rebuilt = LandXmlPlanReferenceIndex::from_points_checked(&self.cogo_points, check)?;
+            let rebuilt =
+                LandXmlPlanReferenceIndex::from_points_checked(self.cogo_points(), check)?;
             *self.reference_index.borrow_mut() = Some(rebuilt);
         }
         Ok(Ref::map(self.reference_index.borrow(), |index| {
@@ -157,53 +158,22 @@ impl LandXmlPlanDocument {
         scope_id: Option<&crate::LandXmlSourceId>,
         reference: &str,
     ) -> Option<usize> {
-        let target = match scope_id {
-            Some(scope) => index.scoped.get(&(scope.clone(), reference.to_owned())),
-            None => index.global.get(reference),
-        };
+        let scoped_target =
+            scope_id.and_then(|scope| index.scoped.get(&(scope.clone(), reference.to_owned())));
+        let target = scoped_target.or_else(|| index.global.get(reference));
         if let Some(Some(target)) = target {
             if self
-                .cogo_points
+                .cogo_points()
                 .get(target.index)
                 .is_some_and(|point| point.source_id == target.source_id)
             {
                 return Some(target.index);
             }
         }
-        if let Some(found) = self.scan_authored_reference(scope_id, reference) {
-            return found;
-        }
-        reference.parse::<usize>().ok().and_then(|ordinal| {
-            (ordinal != 0).then(|| {
-                self.cogo_points.iter().position(|point| {
-                    point.ordinal == ordinal
-                        && scope_id.is_none_or(|scope| point.scope_id == *scope)
-                })
-            })?
-        })
-    }
-
-    fn scan_authored_reference(
-        &self,
-        scope_id: Option<&crate::LandXmlSourceId>,
-        reference: &str,
-    ) -> Option<Option<usize>> {
-        let mut match_index = None;
-        for (index, point) in self.cogo_points.iter().enumerate() {
-            if !scope_id.is_none_or(|scope| point.scope_id == *scope) {
-                continue;
-            }
-            let matches = point.source_id.0 == reference
-                || point.name.as_deref() == Some(reference)
-                || point
-                    .properties
-                    .get("oID")
-                    .is_some_and(|oid| oid == reference);
-            if matches && match_index.replace(index).is_some() {
-                return Some(None);
-            }
-        }
-        match_index.map(Some)
+        // A complete index is immutable with respect to public document
+        // state. Do not fall back to an O(n) scan: it both bypasses the
+        // ambiguity rules and makes missing references uninterruptible.
+        None
     }
 
     /// Resolve a monument's direct coordinate or its scoped `pntRef`.

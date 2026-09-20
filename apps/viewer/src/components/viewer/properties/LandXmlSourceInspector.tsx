@@ -37,6 +37,11 @@ function recordName(record: LandXmlSourceRecord): string {
     case 'cross-section-point': return `Cross-section point ${record.point.sourceId}`;
     case 'roadway': return record.roadway.name;
     case 'preserved-extension': return record.extension.localName;
+    case 'cogo-point': return record.point.name ?? record.point.sourceId;
+    case 'monument': return record.monument.name ?? record.monument.sourceId;
+    case 'plan-feature': return record.feature.name ?? record.feature.sourceId;
+    case 'parcel': return record.parcel.name ?? record.parcel.sourceId;
+    case 'plan-geometry': return `${record.geometry.kind} ${record.geometry.ordinal}`;
   }
 }
 
@@ -59,6 +64,11 @@ function recordPath(record: LandXmlSourceRecord): string {
     case 'cross-section-point': return record.point.sourceId;
     case 'roadway': return record.roadway.sourceId;
     case 'preserved-extension': return record.extension.sourcePath;
+    case 'cogo-point': return record.point.sourceId;
+    case 'monument': return record.monument.sourceId;
+    case 'plan-feature': return record.feature.sourceId;
+    case 'parcel': return record.parcel.sourceId;
+    case 'plan-geometry': return record.geometry.sourceId;
   }
 }
 
@@ -100,6 +110,27 @@ function surfacePropertyRows(properties: Record<string, string>): Array<readonly
   return Object.entries(properties).sort(([left], [right]) => left.localeCompare(right));
 }
 
+function terrainRecord(record: LandXmlSourceRecord): record is Extract<LandXmlSourceRecord, { surface: unknown }> {
+  return 'surface' in record;
+}
+
+type PlanRecord = Extract<LandXmlSourceRecord, { kind: 'cogo-point' | 'monument' | 'plan-feature' | 'parcel' | 'plan-geometry' }>;
+
+function planRecord(record: LandXmlSourceRecord): record is PlanRecord {
+  return record.kind === 'cogo-point' || record.kind === 'monument' || record.kind === 'plan-feature'
+    || record.kind === 'parcel' || record.kind === 'plan-geometry';
+}
+
+function planProperties(record: PlanRecord): Record<string, string> {
+  switch (record.kind) {
+    case 'cogo-point': return record.point.properties;
+    case 'monument': return record.monument.properties;
+    case 'plan-feature': return record.feature.properties;
+    case 'parcel': return record.parcel.properties;
+    case 'plan-geometry': return record.geometry.properties;
+  }
+}
+
 /** Inspect retained LandXML source records without pretending they are IFC entities. */
 export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSourceInspectorProps) {
   const { t } = useTranslation();
@@ -113,7 +144,8 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
 
   if (!record) return null;
   const document = models.get(selected.modelId)?.landXmlDocument;
-  if (!('surface' in record)) {
+  const terrain = terrainRecord(record);
+  if (!terrain && !planRecord(record)) {
     const count = semanticNavigationCount(record);
     const pages = Math.max(1, Math.ceil(count / NAVIGATION_PAGE_SIZE));
     const page = Math.min(navigationPage, pages - 1);
@@ -151,16 +183,15 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
       </dl>
     </div>;
   }
-  const sourceCount = document?.rendering.surfaceCounts.find((counts) => counts.surfaceSourceId === record.surface.sourceId);
-  const pages = Math.ceil(navigationCount(record.surface) / NAVIGATION_PAGE_SIZE);
+  const sourceCount = terrain ? document?.rendering.surfaceCounts.find((counts) => counts.surfaceSourceId === record.surface.sourceId) : undefined;
+  const pages = terrain ? Math.ceil(navigationCount(record.surface) / NAVIGATION_PAGE_SIZE) : 0;
   const page = Math.min(navigationPage, pages - 1);
-  const firstItem = page * NAVIGATION_PAGE_SIZE;
-  const navigation = Array.from(
-    { length: Math.min(NAVIGATION_PAGE_SIZE, navigationCount(record.surface) - firstItem) },
-    (_, index) => navigationAt(record.surface, firstItem + index),
-  );
-  const properties = surfacePropertyRows(record.surface.properties);
-  const definitionProperties = surfacePropertyRows(record.surface.definitionProperties);
+  const navigation = terrain ? Array.from(
+    { length: Math.min(NAVIGATION_PAGE_SIZE, navigationCount(record.surface) - page * NAVIGATION_PAGE_SIZE) },
+    (_, index) => navigationAt(record.surface, page * NAVIGATION_PAGE_SIZE + index),
+  ) : [];
+  const properties = surfacePropertyRows(terrain ? record.surface.properties : planProperties(record));
+  const definitionProperties = surfacePropertyRows(terrain ? record.surface.definitionProperties : {});
   return (
     <div className="h-full overflow-auto border-l-2 border-zinc-200 bg-white dark:border-zinc-800 dark:bg-black" data-landxml-source-inspector>
       <div className="space-y-2 border-b-2 border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-black">
@@ -173,7 +204,7 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
           {t('properties.landXmlSource.pickLimitation')}
         </p>
       )}
-      <div className="border-b border-zinc-200 dark:border-zinc-800">
+      {terrain && <div className="border-b border-zinc-200 dark:border-zinc-800">
         <p className="px-4 pt-3 text-xs font-bold uppercase tracking-wide text-zinc-500">{t('properties.landXmlSource.navigation')}</p>
         <div className="divide-y divide-zinc-100 py-2 dark:divide-zinc-900">
           {navigation.map((item) => (
@@ -194,18 +225,20 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
             <button type="button" disabled={page + 1 >= pages} onClick={() => setNavigationPage(page + 1)}>{t('properties.landXmlSource.next')}</button>
           </div>
         )}
-      </div>
+      </div>}
       <div className="space-y-2 p-4 text-xs text-zinc-700 dark:text-zinc-300">
         <p><span className="font-semibold">{t('properties.landXmlSource.kind')}:</span> {record.kind}</p>
-        <p><span className="font-semibold">{t('properties.landXmlSource.renderState')}:</span> {record.surface.renderState}</p>
+        {terrain && <p><span className="font-semibold">{t('properties.landXmlSource.renderState')}:</span> {record.surface.renderState}</p>}
         {document && <p><span className="font-semibold">{t('properties.landXmlSource.capabilities')}:</span> {JSON.stringify(document.capabilities)}</p>}
         {sourceCount && <p><span className="font-semibold">{t('properties.landXmlSource.counts')}:</span> {t('properties.landXmlSource.countsValue', { ...sourceCount })}</p>}
         {record.kind === 'face' && <p><span className="font-semibold">{t('properties.landXmlSource.facePoints')}:</span> {record.pointIds.join(', ')}</p>}
         {record.kind === 'point' && <p><span className="font-semibold">{t('properties.landXmlSource.pointCoordinates')}:</span> {record.point.northing}, {record.point.easting}, {record.point.elevation}</p>}
         {record.kind === 'source-data-point' && <p><span className="font-semibold">{t('properties.landXmlSource.pointCoordinates')}:</span> {record.point.coordinates.join(', ')}</p>}
-        {record.kind !== 'surface' && record.kind !== 'face' && record.kind !== 'point' && record.kind !== 'source-data-point' && (
+        {(record.kind === 'boundary' || record.kind === 'breakline' || record.kind === 'contour') && (
           <p><span className="font-semibold">{t('properties.landXmlSource.points')}:</span> {record.line.points.length}</p>
         )}
+        {record.kind === 'cogo-point' && record.point.point && <p><span className="font-semibold">{t('properties.landXmlSource.pointCoordinates')}:</span> {record.point.point.northing}, {record.point.point.easting}, {record.point.point.elevation ?? ''}</p>}
+        {record.kind === 'monument' && record.monument.point && <p><span className="font-semibold">{t('properties.landXmlSource.pointCoordinates')}:</span> {record.monument.point.northing}, {record.monument.point.easting}, {record.monument.point.elevation ?? ''}</p>}
       </div>
       <SourceProperties title={t('properties.landXmlSource.surfaceProperties')} rows={properties} empty={t('properties.landXmlSource.noProperties')} />
       <SourceProperties title={t('properties.landXmlSource.definitionProperties')} rows={definitionProperties} empty={t('properties.landXmlSource.noProperties')} />

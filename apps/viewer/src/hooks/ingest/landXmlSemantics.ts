@@ -35,6 +35,39 @@ export interface LandXmlTinSurface {
   contours: LandXmlPolyline[];
 }
 
+export interface LandXmlPlanPoint { northing: number; easting: number; elevation: number | null }
+export type LandXmlPlanPointLocation =
+  | { kind: 'coordinates'; point: LandXmlPlanPoint; pntRef: string | null }
+  | { kind: 'point_reference'; pntRef: string };
+export interface LandXmlCgPoint {
+  sourceId: string; scopeId: string; ordinal: number; name: string | null; code: string | null;
+  description: string | null; point: LandXmlPlanPoint | null; pntRef: string | null; properties: Record<string, string>;
+}
+export interface LandXmlMonument {
+  sourceId: string; pointScopeId: string | null; ordinal: number; name: string | null; code: string | null;
+  description: string | null; pntRef: string | null; point: LandXmlPlanPoint | null; properties: Record<string, string>;
+}
+export interface LandXmlPlanGeometry {
+  sourceId: string; ordinal: number; kind: 'line' | 'curve' | 'irregular_line'; pointScopeId: string | null;
+  start: LandXmlPlanPointLocation; end: LandXmlPlanPointLocation; center: LandXmlPlanPointLocation | null;
+  pi: LandXmlPlanPointLocation | null; intermediatePoints: LandXmlPlanPoint[]; rotation: string | null;
+  radius: number | null; declaredLength: number | null; properties: Record<string, string>;
+}
+export interface LandXmlPlanFeature {
+  sourceId: string; ordinal: number; name: string | null; code: string | null; description: string | null;
+  properties: Record<string, string>; locations: LandXmlPlanPointLocation[]; geometry: LandXmlPlanGeometry[];
+}
+export interface LandXmlParcel {
+  sourceId: string; ordinal: number; name: string | null; code: string | null; description: string | null;
+  title: string | null; declaredArea: number | null; declaredPerimeter: number | null; declaredAreaUnit: string | null;
+  properties: Record<string, string>; loops: LandXmlPlanGeometry[][]; preservationReason: string | null;
+}
+export interface LandXmlPlanDocument {
+  version: string; areaUnit: string | null; areaScaleToSquareMeters: number | null;
+  cogoPoints: LandXmlCgPoint[]; monuments: LandXmlMonument[]; planFeatures: LandXmlPlanFeature[];
+  parcels: LandXmlParcel[]; warnings: string[];
+}
+
 export interface LandXmlTinDocument {
   /** The source format, never an IFC schema alias. */
   format: 'landxml';
@@ -57,6 +90,8 @@ export interface LandXmlTinDocument {
   roadways: LandXmlRoadway[];
   capabilityDiagnostics: LandXmlCapabilityDiagnostic[];
   preservedOnlyExtensions: LandXmlPreservedOnlyExtension[];
+  /** Non-terrain semantics from the same canonical Rust/WASM document. */
+  plan?: LandXmlPlanDocument;
   rendering: { meshProvenance: LandXmlMeshProvenance[]; surfaceCounts: LandXmlSurfaceCounts[] };
 }
 
@@ -109,7 +144,12 @@ export type LandXmlSourceRecord =
   | { kind: 'cross-section-segment'; crossSectionSurface: LandXmlCrossSectionSurface; segment: LandXmlCrossSectionSegment }
   | { kind: 'cross-section-point'; crossSectionSurface: LandXmlCrossSectionSurface; point: LandXmlCrossSectionPoint }
   | { kind: 'roadway'; roadway: LandXmlRoadway }
-  | { kind: 'preserved-extension'; extension: LandXmlPreservedOnlyExtension };
+  | { kind: 'preserved-extension'; extension: LandXmlPreservedOnlyExtension }
+  | { kind: 'cogo-point'; point: LandXmlCgPoint }
+  | { kind: 'monument'; monument: LandXmlMonument }
+  | { kind: 'plan-feature'; feature: LandXmlPlanFeature }
+  | { kind: 'parcel'; parcel: LandXmlParcel }
+  | { kind: 'plan-geometry'; geometry: LandXmlPlanGeometry };
 
 export interface LandXmlSourceModel { landXmlDocument?: LandXmlTinDocument }
 
@@ -137,6 +177,10 @@ function sourceRecordIndex(document: LandXmlTinDocument): LandXmlSourceRecordInd
   for (const crossSectionSurface of document.crossSectionSurfaces) index.roots.set(crossSectionSurface.sourceId, { kind: 'cross-section-surface', crossSectionSurface });
   for (const roadway of document.roadways) index.roots.set(roadway.sourceId, { kind: 'roadway', roadway });
   for (const extension of document.preservedOnlyExtensions) index.roots.set(extension.sourceId, { kind: 'preserved-extension', extension });
+  for (const point of document.plan?.cogoPoints ?? []) index.roots.set(point.sourceId, { kind: 'cogo-point', point });
+  for (const monument of document.plan?.monuments ?? []) index.roots.set(monument.sourceId, { kind: 'monument', monument });
+  for (const feature of document.plan?.planFeatures ?? []) index.roots.set(feature.sourceId, { kind: 'plan-feature', feature });
+  for (const parcel of document.plan?.parcels ?? []) index.roots.set(parcel.sourceId, { kind: 'parcel', parcel });
   for (const surface of document.surfaces) index.roots.set(surface.sourceId, { kind: 'surface', surface });
   sourceRecordIndexes.set(document, index);
   return index;
@@ -175,6 +219,14 @@ export function indexLandXmlSourceRecords(document: LandXmlTinDocument): void {
       for (const line of lines) index.records.set(line.sourceId, { kind, surface, line });
     }
   }
+  for (const feature of document.plan?.planFeatures ?? []) {
+    for (const geometry of feature.geometry) index.records.set(geometry.sourceId, { kind: 'plan-geometry', geometry });
+  }
+  for (const parcel of document.plan?.parcels ?? []) {
+    for (const loop of parcel.loops) {
+      for (const geometry of loop) index.records.set(geometry.sourceId, { kind: 'plan-geometry', geometry });
+    }
+  }
   index.complete = true;
 }
 
@@ -190,6 +242,31 @@ export function findLandXmlSourceRecord(document: LandXmlTinDocument, sourceId: 
   if (root) return root;
   indexLandXmlSourceRecords(document);
   return index.records.get(sourceId) ?? null;
+}
+
+/**
+ * Return one bounded page of top-level plan records. Geometry remains nested
+ * beneath its feature or parcel, so opening the source navigator never
+ * materializes a second array proportional to every analytic primitive.
+ */
+export function landXmlPlanSourcePage(
+  document: LandXmlTinDocument,
+  offset: number,
+  limit: number,
+): { total: number; sourceIds: string[] } {
+  const plan = document.plan;
+  if (!plan || limit <= 0) return { total: 0, sourceIds: [] };
+  const records = [plan.cogoPoints, plan.monuments, plan.planFeatures, plan.parcels] as const;
+  const total = records.reduce((count, group) => count + group.length, 0);
+  let index = 0;
+  const sourceIds: string[] = [];
+  for (const group of records) {
+    for (const record of group) {
+      if (index >= offset && sourceIds.length < limit) sourceIds.push(record.sourceId);
+      index++;
+    }
+  }
+  return { total, sourceIds };
 }
 
 /** Federation-safe semantic lookup. Source IDs are document-local by design. */

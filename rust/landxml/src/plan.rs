@@ -18,3 +18,23 @@ pub use model::{
     LandXmlPlanPoint, LandXmlPlanPointLocation, LandXmlPlanSourceBatch,
 };
 pub use parser::{parse_landxml_plan, parse_landxml_plan_with_cancel, LandXmlPlanLimits};
+
+/// The durable LandXML source document joins terrain and plan semantics from
+/// the same original byte stream. It deliberately does not create IFC or a
+/// renderer-specific representation; the canonical loader owns that step.
+#[derive(Clone, Debug, serde::Deserialize, PartialEq, serde::Serialize)]
+pub struct LandXmlDocument {
+    #[serde(flatten)]
+    pub terrain: crate::LandXmlTinDocument,
+    pub plan: LandXmlPlanDocument,
+}
+
+/// Parse all supported LandXML 1.2 semantic families from one source buffer.
+pub fn parse_landxml_document(
+    input: &[u8],
+) -> std::result::Result<LandXmlDocument, crate::LandXmlError> {
+    Ok(LandXmlDocument {
+        terrain: crate::parse_landxml_tin(input)?,
+        plan: parse_landxml_plan(input)?,
+    })
+}

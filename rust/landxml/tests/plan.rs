@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use ifc_lite_landxml::{
-    parse_landxml_plan_with_cancel, LandXmlCancellation, LandXmlCancellationFlag,
-    LandXmlDiagnosticCode, LandXmlParcelState, LandXmlPlanLimits, LANDXML_12_NAMESPACE,
+    parse_landxml_document, parse_landxml_plan_with_cancel, LandXmlCancellation,
+    LandXmlCancellationFlag, LandXmlDiagnosticCode, LandXmlParcelState, LandXmlPlanLimits,
+    LANDXML_12_NAMESPACE,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -32,8 +33,11 @@ fn issue_5046_retains_cogo_monuments_and_analytic_plan_features() {
     "#,
     ));
     assert_eq!(parsed.units.as_ref().expect("units").linear_unit, "foot");
-    assert_eq!(parsed.cogo_points[0].source_id.0, "landxml:CgPoint:1:CP-1");
-    assert_eq!(parsed.cogo_points[0].code.as_deref(), Some("control"));
+    assert_eq!(
+        parsed.cogo_points()[0].source_id.0,
+        "landxml:CgPoint:1:CP-1"
+    );
+    assert_eq!(parsed.cogo_points()[0].code.as_deref(), Some("control"));
     assert_eq!(parsed.monuments[0].pnt_ref.as_deref(), Some("CP-1"));
     assert_eq!(
         parsed
@@ -47,6 +51,17 @@ fn issue_5046_retains_cogo_monuments_and_analytic_plan_features() {
     assert_eq!(feature.geometry[0].declared_length, Some(10.0));
     assert_eq!(feature.geometry[1].radius, Some(5.0));
     assert_eq!(feature.geometry[1].pi.as_ref().map(|_| "PI"), Some("PI"));
+}
+
+#[test]
+fn issue_5046_canonical_document_keeps_terrain_and_plan_from_the_same_bytes() {
+    let source = document(
+        r#"<CgPoints><CgPoint name="control">1 2</CgPoint></CgPoints><PlanFeatures><PlanFeature name="edge"><CoordGeom><Line><Start pntRef="control"/><End>3 4</End></Line></CoordGeom></PlanFeature></PlanFeatures>"#,
+    );
+    let document = parse_landxml_document(source.as_bytes()).expect("canonical document");
+    assert_eq!(document.terrain.schema, "LandXML-1.2");
+    assert_eq!(document.plan.cogo_points().len(), 1);
+    assert_eq!(document.plan.plan_features.len(), 1);
 }
 
 #[test]
@@ -368,7 +383,7 @@ fn issue_5046_bounds_and_cancels_pairwise_parcel_topology() {
 }
 
 #[test]
-fn issue_5046_rejects_irregular_crossings_and_indexed_reference_cycles() {
+fn issue_5046_rejects_irregular_crossings_and_reference_cycles() {
     let crossing = parse(&document(
         r#"<Parcels><Parcel name="cross"><CoordGeom><IrregularLine><Start>0 0</Start><PntList2D>2 2 0 2</PntList2D><End>2 0</End></IrregularLine><Line><Start>2 0</Start><End>0 0</End></Line></CoordGeom></Parcel></Parcels>"#,
     ));
@@ -377,18 +392,19 @@ fn issue_5046_rejects_irregular_crossings_and_indexed_reference_cycles() {
         LandXmlParcelState::PreservedOnly { .. }
     ));
     let aliases = parse(&document(
-        r#"<CgPoints><CgPoint name="base">4 5</CgPoint><CgPoint name="indexed" pntRef="1"/><CgPoint name="a" pntRef="b"/><CgPoint name="b" pntRef="a"/></CgPoints>"#,
+        r#"<CgPoints><CgPoint name="base">4 5</CgPoint><CgPoint name="named-alias" pntRef="base"/><CgPoint name="indexed" pntRef="1"/><CgPoint name="a" pntRef="b"/><CgPoint name="b" pntRef="a"/></CgPoints>"#,
     ));
     let reference = |name: &str| ifc_lite_landxml::LandXmlPlanPointLocation::PointReference {
         pnt_ref: name.to_owned(),
     };
     assert_eq!(
         aliases
-            .resolve_point(None, &reference("indexed"))
-            .expect("indexed ref")
+            .resolve_point(None, &reference("named-alias"))
+            .expect("authored name ref")
             .northing,
         4.0
     );
+    assert_eq!(aliases.resolve_point(None, &reference("indexed")), None);
     assert_eq!(aliases.resolve_point(None, &reference("a")), None);
 }
 
@@ -396,12 +412,12 @@ fn issue_5046_rejects_irregular_crossings_and_indexed_reference_cycles() {
 fn issue_5046_keeps_nested_cgpoints_and_ignores_foreign_wrapper_descendants() {
     let parsed = parse(&document(
         r#"<CgPoints><CgPoint name="outer">1 2</CgPoint><CgPoints><CgPoint name="inner">3 4</CgPoint></CgPoints></CgPoints>
-        <CgPoints><CgPoint name="safe">5 6<vendor:Ignored xmlns:vendor="urn:vendor">99 99</vendor:Ignored></CgPoint></CgPoints>
+        <CgPoints><CgPoint name="safe">5 6</CgPoint></CgPoints>
         <PlanFeatures><PlanFeature name="safe"><vendor:Wrapper xmlns:vendor="urn:vendor"><Location>9 9</Location><CoordGeom><Line><Start>0 0</Start><End>1 1</End></Line></CoordGeom></vendor:Wrapper></PlanFeature></PlanFeatures>"#,
     ));
-    assert_eq!(parsed.cogo_points.len(), 3);
-    assert_eq!(parsed.cogo_points[1].point.expect("inner").northing, 3.0);
-    assert_eq!(parsed.cogo_points[2].point.expect("safe").easting, 6.0);
+    assert_eq!(parsed.cogo_points().len(), 3);
+    assert_eq!(parsed.cogo_points()[1].point.expect("inner").northing, 3.0);
+    assert_eq!(parsed.cogo_points()[2].point.expect("safe").easting, 6.0);
     assert!(parsed.plan_features[0].locations.is_empty());
     assert!(parsed.plan_features[0].geometry.is_empty());
 }
@@ -444,7 +460,7 @@ fn issue_5046_does_not_adopt_foreign_plan_descendants_or_scopes() {
         <PlanFeatures><PlanFeature name="safe"><Wrapper><Property label="foreign" value="no"/></Wrapper><Property label="safe" value="yes"/></PlanFeature></PlanFeatures>
         <Parcels><Parcel name="safe"><Wrapper><Title name="foreign"/></Wrapper><Title name="safe"/></Parcel></Parcels>"#,
     ));
-    assert!(parsed.cogo_points.is_empty());
+    assert!(parsed.cogo_points().is_empty());
     assert_eq!(
         parsed.plan_features[0].properties.get("safe"),
         Some(&"yes".to_owned())
@@ -492,8 +508,10 @@ fn issue_5046_bounds_curve_center_aliases_and_rebuilds_safe_lookup_after_deseria
     );
 
     let mut mutated = source.clone();
-    mutated.cogo_points.swap(0, 1);
-    mutated.cogo_points[1].name = Some("renamed".to_owned());
+    let mut replacement = source.cogo_points().to_vec();
+    replacement.swap(0, 1);
+    replacement[1].name = Some("renamed".to_owned());
+    mutated.replace_cogo_points(replacement);
     assert_eq!(
         mutated
             .resolve_point(
@@ -503,10 +521,12 @@ fn issue_5046_bounds_curve_center_aliases_and_rebuilds_safe_lookup_after_deseria
                 },
             )
             .expect("renamed public point resolves"),
-        source.cogo_points[0].point.expect("authored point")
+        source.cogo_points()[0].point.expect("authored point")
     );
     let mut zero_ordinal = source;
-    zero_ordinal.cogo_points[0].ordinal = 0;
+    let mut replacement = zero_ordinal.cogo_points().to_vec();
+    replacement[0].ordinal = 0;
+    zero_ordinal.replace_cogo_points(replacement);
     let restored: ifc_lite_landxml::LandXmlPlanDocument =
         serde_json::from_str(&serde_json::to_string(&zero_ordinal).expect("serialize"))
             .expect("deserialize zero ordinal");
@@ -514,14 +534,14 @@ fn issue_5046_bounds_curve_center_aliases_and_rebuilds_safe_lookup_after_deseria
         restored
             .resolve_point(None, &reference)
             .expect("authored name survives"),
-        zero_ordinal.cogo_points[0].point.expect("authored point")
+        zero_ordinal.cogo_points()[0].point.expect("authored point")
     );
 }
 
 #[test]
 fn issue_5046_deserialized_reference_index_is_polled_once_and_retained() {
     let mut points = String::from("<CgPoints>");
-    for ordinal in 0..20_000 {
+    for ordinal in 0..100_000 {
         points.push_str(&format!(
             r#"<CgPoint name="p{ordinal}">{ordinal} 0</CgPoint>"#
         ));
@@ -532,7 +552,7 @@ fn issue_5046_deserialized_reference_index_is_polled_once_and_retained() {
         serde_json::from_str(&serde_json::to_string(&source).expect("serialize large plan"))
             .expect("deserialize large plan");
     let reference = ifc_lite_landxml::LandXmlPlanPointLocation::PointReference {
-        pnt_ref: "p19999".to_owned(),
+        pnt_ref: "p99999".to_owned(),
     };
 
     struct CancelOnThirdPoll(AtomicUsize);
@@ -560,16 +580,16 @@ fn issue_5046_deserialized_reference_index_is_polled_once_and_retained() {
             .resolve_point(None, &reference)
             .expect("first uncancelled lookup builds the cache")
             .northing,
-        19_999.0
+        99_999.0
     );
     let retained = CancelOnThirdPoll(AtomicUsize::new(0));
     assert_eq!(
         restored
             .resolve_point_with_cancel(None, &reference, Some(&retained))
-            .expect("cached lookup must not rebuild the 20k-point index")
+            .expect("cached lookup must not rebuild the 100k-point index")
             .expect("cached point"),
         ifc_lite_landxml::LandXmlPlanPoint {
-            northing: 19_999.0,
+            northing: 99_999.0,
             easting: 0.0,
             elevation: None,
         }
@@ -578,6 +598,127 @@ fn issue_5046_deserialized_reference_index_is_polled_once_and_retained() {
         retained.0.load(Ordering::Relaxed),
         1,
         "only the reference traversal, not a second index rebuild, was polled"
+    );
+    let missing = CancelOnThirdPoll(AtomicUsize::new(0));
+    assert_eq!(
+        restored
+            .resolve_point_with_cancel(
+                None,
+                &ifc_lite_landxml::LandXmlPlanPointLocation::PointReference {
+                    pnt_ref: "missing".to_owned(),
+                },
+                Some(&missing),
+            )
+            .expect("missing lookup remains indexed"),
+        None,
+    );
+    assert_eq!(
+        missing.0.load(Ordering::Relaxed),
+        1,
+        "a missing COGO reference must not fall back to an unbounded scan"
+    );
+}
+
+#[test]
+fn issue_5046_invalidates_reference_index_for_renames_duplicate_appends_and_scope_moves() {
+    let source = parse(&document(
+        r#"<CgPoints><CgPoint name="one">1 0</CgPoint></CgPoints><CgPoints><CgPoint name="two">2 0</CgPoint></CgPoints>"#,
+    ));
+    let reference = |name: &str| ifc_lite_landxml::LandXmlPlanPointLocation::PointReference {
+        pnt_ref: name.to_owned(),
+    };
+    assert_eq!(
+        source
+            .resolve_point(None, &reference("one"))
+            .expect("original")
+            .northing,
+        1.0
+    );
+
+    let mut renamed = source.clone();
+    let mut records = renamed.cogo_points().to_vec();
+    records[0].name = Some("renamed".to_owned());
+    renamed.replace_cogo_points(records);
+    assert_eq!(renamed.resolve_point(None, &reference("one")), None);
+    assert_eq!(
+        renamed
+            .resolve_point(None, &reference("renamed"))
+            .expect("rename")
+            .northing,
+        1.0
+    );
+
+    let mut duplicate = renamed.clone();
+    let mut records = duplicate.cogo_points().to_vec();
+    let mut duplicate_record = records[0].clone();
+    duplicate_record.source_id.0 = "landxml:CgPoint:3:renamed-copy".to_owned();
+    duplicate_record.ordinal = 3;
+    records.push(duplicate_record);
+    duplicate.replace_cogo_points(records);
+    assert_eq!(
+        duplicate.resolve_point(None, &reference("renamed")),
+        None,
+        "duplicate authored names are ambiguous"
+    );
+
+    let mut moved = parse(&document(
+        r#"<CgPoints><CgPoint name="scoped">1 0</CgPoint></CgPoints><CgPoints><CgPoint name="scoped">2 0</CgPoint></CgPoints>"#,
+    ));
+    let first_scope = moved.cogo_points()[0].scope_id.clone();
+    let second_scope = moved.cogo_points()[1].scope_id.clone();
+    let mut records = moved.cogo_points().to_vec();
+    records[0].scope_id = second_scope.clone();
+    moved.replace_cogo_points(records);
+    assert_eq!(
+        moved.resolve_point(Some(&first_scope), &reference("scoped")),
+        None
+    );
+    assert_eq!(
+        moved.resolve_point(Some(&second_scope), &reference("scoped")),
+        None,
+        "moved duplicate is ambiguous in its new scope"
+    );
+}
+
+#[test]
+fn issue_5046_resolves_only_authored_cogo_names_and_unambiguous_global_fallback() {
+    let source = parse(&document(
+        r#"<CgPoints><CgPoint name="origin">1 2</CgPoint></CgPoints><CgPoints><CgPoint name="local">3 4</CgPoint></CgPoints><PlanFeatures><PlanFeature><CoordGeom><Line><Start pntRef="origin"/><End>5 6</End></Line></CoordGeom></PlanFeature></PlanFeatures>"#,
+    ));
+    let geometry = &source.plan_features[0].geometry[0];
+    assert_eq!(
+        source
+            .resolve_point(geometry.point_scope_id.as_ref(), &geometry.start)
+            .expect("unique global fallback")
+            .northing,
+        1.0
+    );
+    let internal = ifc_lite_landxml::LandXmlPlanPointLocation::PointReference {
+        pnt_ref: source.cogo_points()[0].source_id.0.clone(),
+    };
+    assert_eq!(
+        source.resolve_point(None, &internal),
+        None,
+        "synthetic source ids are never authored pntRef values"
+    );
+}
+
+#[test]
+fn issue_5046_treats_cdata_as_literal_and_rejects_nested_numeric_content() {
+    let literal =
+        document(r#"<CgPoints><CgPoint name="bad"><![CDATA[&#49; 2]]></CgPoint></CgPoints>"#);
+    assert_eq!(
+        parse_landxml_plan_with_cancel(literal.as_bytes(), &LandXmlPlanLimits::default(), None)
+            .expect_err("CDATA entities must remain literal")
+            .code,
+        LandXmlDiagnosticCode::InvalidSemantic,
+    );
+    let nested = document(r#"<CgPoints><CgPoint name="bad">1<Feature/>2</CgPoint></CgPoints>"#);
+    assert_eq!(
+        parse_landxml_plan_with_cancel(nested.as_bytes(), &LandXmlPlanLimits::default(), None)
+            .expect_err("nested numeric capture must be refused")
+            .code,
+        LandXmlDiagnosticCode::InvalidSemantic,
     );
 }
 

@@ -70,7 +70,10 @@ impl LandXmlPlanReferenceIndex {
     }
 
     fn insert_at(&mut self, point: &LandXmlCgPoint, index: usize) {
-        let mut keys = vec![point.source_id.0.clone()];
+        // `pntRef` is an authored COGO identity, not an implementation
+        // source-id or a record ordinal. Accepting synthetic provenance here
+        // would allow a display name to collide with an internal id.
+        let mut keys = Vec::new();
         if let Some(name) = &point.name {
             keys.push(name.clone());
         }
@@ -200,23 +203,20 @@ pub struct LandXmlParcelProbe {
     pub area_in_square_meters: Option<f64>,
 }
 
-/// Bounded native hand-off records for the #5084 durable-document adapter.
-///
-/// This intentionally contains no mesh or loader behavior: the one canonical
-/// loader will join these source ids to the terrain document when #5084 lands.
+/// Bounded source identifiers for host-side navigation and batching.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LandXmlPlanSourceBatch {
     pub source_ids: Vec<LandXmlSourceId>,
 }
 
-/// Native-only source records awaiting the #5084 durable-document adapter.
+/// Durable COGO and plan records joined to the canonical LandXML document.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LandXmlPlanDocument {
     pub version: String,
     pub units: Option<LandXmlUnits>,
     pub area_unit: Option<String>,
     pub area_scale_to_square_meters: Option<f64>,
-    pub cogo_points: Vec<LandXmlCgPoint>,
+    pub(crate) cogo_points: Vec<LandXmlCgPoint>,
     pub monuments: Vec<LandXmlMonument>,
     pub plan_features: Vec<LandXmlPlanFeature>,
     pub parcels: Vec<LandXmlParcel>,
@@ -225,4 +225,18 @@ pub struct LandXmlPlanDocument {
     /// cache for a source with no COGO points.
     #[serde(skip)]
     pub(crate) reference_index: RefCell<Option<LandXmlPlanReferenceIndex>>,
+}
+
+impl LandXmlPlanDocument {
+    /// COGO records are immutable through this view so the derived resolver
+    /// index cannot become stale behind a public `Vec` mutation.
+    pub fn cogo_points(&self) -> &[LandXmlCgPoint] {
+        &self.cogo_points
+    }
+
+    /// Replace authored COGO records and invalidate their resolver index.
+    pub fn replace_cogo_points(&mut self, cogo_points: Vec<LandXmlCgPoint>) {
+        self.cogo_points = cogo_points;
+        *self.reference_index.get_mut() = None;
+    }
 }

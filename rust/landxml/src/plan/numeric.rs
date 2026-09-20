@@ -54,7 +54,7 @@ impl LandXmlPlanDocument {
             return Vec::new();
         }
         let source_ids = self
-            .cogo_points
+            .cogo_points()
             .iter()
             .map(|point| point.source_id.clone())
             .chain(

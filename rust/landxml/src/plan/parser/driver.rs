@@ -10,6 +10,16 @@ use super::*;
 
 impl Parser<'_> {
     pub(super) fn start(&mut self, start: &BytesStart<'_>) -> Result<()> {
+        if self
+            .capture
+            .as_ref()
+            .is_some_and(|capture| capture.depth() < self.frames.len().saturating_add(1))
+        {
+            return Err(error(
+                Code::InvalidSemantic,
+                "numeric LandXML capture cannot contain nested elements",
+            ));
+        }
         if self.frames.len() >= self.limits.xml.max_depth {
             return Err(error(Code::LimitExceeded, "XML depth limit exceeded"));
         }
@@ -289,7 +299,10 @@ impl Parser<'_> {
         self.check(bytes.len())?;
         let value =
             std::str::from_utf8(bytes).map_err(|_| error(Code::InvalidXml, "text is not UTF-8"))?;
-        if self.frames.is_empty() && !value.trim().is_empty() {
+        if self.frames.is_empty() {
+            if value.bytes().all(is_xml_s) {
+                return Ok(());
+            }
             return Err(error(Code::InvalidXml, "text outside LandXML root"));
         }
         self.characters = self
@@ -321,4 +334,41 @@ impl Parser<'_> {
         }
         Ok(())
     }
+
+    pub(super) fn cdata(&mut self, bytes: &[u8]) -> Result<()> {
+        if bytes.len() > self.limits.xml.max_text_bytes {
+            return Err(error(Code::LimitExceeded, "text limit exceeded"));
+        }
+        self.check(bytes.len())?;
+        let value =
+            std::str::from_utf8(bytes).map_err(|_| error(Code::InvalidXml, "text is not UTF-8"))?;
+        if self.frames.is_empty() {
+            return Err(error(Code::InvalidXml, "CDATA outside LandXML root"));
+        }
+        self.capture_literal_text(value)
+    }
+
+    fn capture_literal_text(&mut self, text: &str) -> Result<()> {
+        if let Some(capture) = &mut self.capture {
+            if capture.depth() != self.frames.len() {
+                return Ok(());
+            }
+            let target = match capture {
+                Capture::CgPoint { text, .. }
+                | Capture::Monument { text, .. }
+                | Capture::Point { text, .. }
+                | Capture::PointList { text, .. }
+                | Capture::Title { text, .. } => text,
+            };
+            if target.len() + text.len() > self.limits.xml.max_text_bytes {
+                return Err(error(Code::LimitExceeded, "captured text limit exceeded"));
+            }
+            target.push_str(text);
+        }
+        Ok(())
+    }
+}
+
+fn is_xml_s(byte: u8) -> bool {
+    matches!(byte, b' ' | b'\t' | b'\r' | b'\n')
 }

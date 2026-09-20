@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { FederationRegistry } from '@ifc-lite/renderer';
-import { findLandXmlModelSourceRecord, findLandXmlSourceRecord, landXmlPickSourceRef, landXmlPickSourceRefFromFederation, type LandXmlProfile, type LandXmlTinDocument } from './landXmlSemantics.js';
+import { findLandXmlModelSourceRecord, findLandXmlSourceRecord, landXmlPickSourceRef, landXmlPickSourceRefFromFederation, landXmlPlanSourcePage, type LandXmlProfile, type LandXmlTinDocument } from './landXmlSemantics.js';
 
 function document(sourceId: string, meshExpressId = 1): LandXmlTinDocument {
   return {
@@ -98,5 +98,18 @@ describe('LandXML semantic selection (#5042)', () => {
     source.roadways.push({ sourceId: 'roadway', ordinal: 1, name: 'Route', alignmentRefs: [], alignmentSourceIds: [], surfaceRefs: [], surfaceSourceIds: [], gradeModelRefs: [] });
     assert.equal(findLandXmlSourceRecord(source, 'roadway')?.kind, 'roadway');
     assert.equal(childReads, 0, 'root selection must not scan prior profile PVIs');
+  });
+
+  it('keeps COGO/plan selection federated and pages source records without expanding geometry (#5046)', () => {
+    const terrain = document('landxml:surface:1:face:1');
+    terrain.plan = {
+      version: '1.2', areaUnit: null, areaScaleToSquareMeters: null, warnings: [],
+      cogoPoints: [{ sourceId: 'landxml:CgPoint:1:control', scopeId: 'landxml:CgPoints:1', ordinal: 1, name: 'control', code: null, description: null, point: { northing: 1, easting: 2, elevation: null }, pntRef: null, properties: {} }],
+      monuments: [], planFeatures: [{ sourceId: 'landxml:PlanFeature:1:road', ordinal: 1, name: 'road', code: null, description: null, properties: {}, locations: [], geometry: [] }], parcels: [],
+    };
+    const models = new Map([['terrain', { landXmlDocument: terrain }]]);
+    assert.equal(findLandXmlModelSourceRecord(models, { modelId: 'terrain', sourceId: 'landxml:CgPoint:1:control' })?.kind, 'cogo-point');
+    assert.deepEqual(landXmlPlanSourcePage(terrain, 0, 1), { total: 2, sourceIds: ['landxml:CgPoint:1:control'] });
+    assert.deepEqual(landXmlPlanSourcePage(terrain, 1, 1), { total: 2, sourceIds: ['landxml:PlanFeature:1:road'] });
   });
 });

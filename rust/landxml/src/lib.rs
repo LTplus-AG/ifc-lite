@@ -39,8 +39,8 @@ pub use profile::{
     LandXmlRoadway, LandXmlVerticalCurve, LandXmlVerticalCurveKind,
 };
 pub use plan::{
-    parse_landxml_plan, parse_landxml_plan_with_cancel, LandXmlCgPoint, LandXmlGeometryKind,
-    LandXmlMonument, LandXmlParcel, LandXmlParcelProbe, LandXmlParcelState, LandXmlPlanDocument,
-    LandXmlPlanFeature, LandXmlPlanGeometry, LandXmlPlanLimits, LandXmlPlanPoint,
-    LandXmlPlanPointLocation, LandXmlPlanSourceBatch,
+    parse_landxml_document, parse_landxml_plan, parse_landxml_plan_with_cancel, LandXmlCgPoint,
+    LandXmlDocument, LandXmlGeometryKind, LandXmlMonument, LandXmlParcel, LandXmlParcelProbe,
+    LandXmlParcelState, LandXmlPlanDocument, LandXmlPlanFeature, LandXmlPlanGeometry,
+    LandXmlPlanLimits, LandXmlPlanPoint, LandXmlPlanPointLocation, LandXmlPlanSourceBatch,
 };

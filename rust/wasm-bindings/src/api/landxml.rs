@@ -34,7 +34,21 @@ export interface LandXmlTinDocumentJs {
   cross_sections: LandXmlCrossSectionJs[]; cross_section_surfaces: LandXmlCrossSectionSurfaceJs[];
   roadways: LandXmlRoadwayJs[]; capability_diagnostics: LandXmlCapabilityDiagnosticJs[];
   preserved_only_extensions: LandXmlPreservedOnlyExtensionJs[];
+  /** COGO, parcel and plan-feature records from the same source bytes. */
+  plan: LandXmlPlanDocumentJs;
 }
+export interface LandXmlPlanDocumentJs {
+  version: string; area_unit?: string; area_scale_to_square_meters?: number;
+  cogo_points: LandXmlCgPointJs[]; monuments: LandXmlMonumentJs[];
+  plan_features: LandXmlPlanFeatureJs[]; parcels: LandXmlParcelJs[]; warnings: string[];
+}
+export interface LandXmlPlanPointJs { northing: number; easting: number; elevation?: number; }
+export interface LandXmlCgPointJs { source_id: string; scope_id: string; ordinal: number; name?: string; code?: string; description?: string; point?: LandXmlPlanPointJs; pnt_ref?: string; properties: Record<string, string>; }
+export interface LandXmlMonumentJs { source_id: string; point_scope_id?: string; ordinal: number; name?: string; code?: string; description?: string; pnt_ref?: string; point?: LandXmlPlanPointJs; properties: Record<string, string>; }
+export interface LandXmlPlanFeatureJs { source_id: string; ordinal: number; name?: string; code?: string; description?: string; properties: Record<string, string>; locations: LandXmlPlanPointLocationJs[]; geometry: LandXmlPlanGeometryJs[]; }
+export interface LandXmlParcelJs { source_id: string; ordinal: number; name?: string; code?: string; description?: string; title?: string; declared_area?: number; declared_perimeter?: number; declared_area_unit?: string; properties: Record<string, string>; loops: LandXmlPlanGeometryJs[][]; preservation_reason?: string; }
+export interface LandXmlPlanGeometryJs { source_id: string; ordinal: number; kind: "line" | "curve" | "irregular_line"; point_scope_id?: string; start: LandXmlPlanPointLocationJs; end: LandXmlPlanPointLocationJs; center?: LandXmlPlanPointLocationJs; pi?: LandXmlPlanPointLocationJs; intermediate_points: LandXmlPlanPointJs[]; rotation?: string; radius?: number; declared_length?: number; properties: Record<string, string>; }
+export type LandXmlPlanPointLocationJs = { kind: "coordinates"; point: LandXmlPlanPointJs; pnt_ref?: string } | { kind: "point_reference"; pnt_ref: string };
 export interface LandXmlSurfaceJs {
   source_id: string; ordinal: number; source_path: string;
   properties: Record<string, string>; definition_properties: Record<string, string>;
@@ -71,7 +85,7 @@ impl IfcAPI {
     /// deliberately use `LandXmlError::Display`, including its stable LXML code.
     #[wasm_bindgen(js_name = parseLandXmlTinBytes)]
     pub fn parse_landxml_tin_bytes(&self, data: &[u8]) -> Result<LandXmlTinDocumentJs, JsValue> {
-        let document = ifc_lite_landxml::parse_landxml_tin(data)
+        let document = ifc_lite_landxml::parse_landxml_document(data)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
         document

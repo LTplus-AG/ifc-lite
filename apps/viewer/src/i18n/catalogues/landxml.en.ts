@@ -10,6 +10,7 @@ export const landXmlEn = {
   'properties.modelMetadata.sourcePoints': 'Source Points',
   'properties.modelMetadata.sourceOverlays': 'Source Overlays',
   'properties.modelMetadata.sourceSurfaceRecords': 'Source Surfaces',
+  'properties.modelMetadata.sourcePlanRecords': 'COGO and Plan Records',
   'properties.modelMetadata.noSourceOverlays': 'No boundary, breakline or contour records.',
   'properties.landXmlSource.heading': 'LandXML Source',
   'properties.landXmlSource.navigation': 'Source Navigation',

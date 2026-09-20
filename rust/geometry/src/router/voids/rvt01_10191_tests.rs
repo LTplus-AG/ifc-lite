@@ -139,22 +139,34 @@ fn rvt01_panel_10191_stays_closed_with_a_near_normal_authored_cutter_3977() {
             },
         ),
     ];
-    let context = VoidContext {
-        merged_openings: openings.clone(),
-        openings,
-        param: None,
-        bool2d: None,
+    let cut = |openings: Vec<OpeningType>| {
+        let context = VoidContext {
+            merged_openings: openings.clone(),
+            openings,
+            param: None,
+            bool2d: None,
+        };
+        let bounds = world_host_bounds(&host);
+        GeometryRouter::new().apply_void_context_inner(host.clone(), &context, 10191, bounds, true)
     };
-    let bounds = world_host_bounds(&host);
     let host_volume = mesh_signed_volume(&host).abs();
-    let output = GeometryRouter::new().apply_void_context_inner(host, &context, 10191, bounds, true);
+    let wide_only = mesh_signed_volume(&cut(vec![openings[0].clone()])).abs();
+    let output = cut(openings);
+    let both = mesh_signed_volume(&output).abs();
     assert!(
         mesh_is_closed_exact(&output),
         "the panel must stay watertight after both through-cuts ({} tris)",
         output.triangle_count()
     );
+    assert!(wide_only < host_volume - 1.0e-6, "the wide opening must cut the panel");
+    // The near-normal pin is 11 x 20 mm through a 12 mm panel (~2.6e-6 m^3),
+    // below the default `MIN_OPENING_VOLUME` (1e-4), so at this quality it is
+    // deliberately not cut. Pin that separately: the defect was never the
+    // missing pin, it was the pin's near-axis depth tearing the panel around
+    // the wide opening it shares the local frame with.
+    let pin = wide_only - both;
     assert!(
-        mesh_signed_volume(&output).abs() < host_volume - 1.0e-6,
-        "both openings must actually cut the panel"
+        pin.abs() < 1.0e-9,
+        "a sub-threshold pin must not change the cut volume; removed {pin}"
     );
 }

@@ -21,7 +21,23 @@ import { resolve } from '@/i18n/registry';
 import { en } from '@/i18n/en';
 import type { TranslationParameters, TranslationValue, PluralTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
+import type { PresenceState } from '@ifc-lite/collab';
 import { RoomPanel } from './RoomPanel.js';
+
+// `clientId` is not part of the static `PresenceState` shape — it is
+// stitched on at runtime by `collabSlice.ts`'s `remotePeers` from the
+// awareness map's own key — but `RoomPanel.tsx` reads it back via the same
+// `(p as { clientId?: number })` cast the component itself uses, so this
+// fixture needs it too to reach the `onKick` (Remove) control.
+const PEER_WITH_CLIENT_ID: PresenceState & { clientId: number } = {
+  user: { id: 'peer-1', name: 'Peer One', color: '#f00' },
+  selection: ['a', 'b'],
+  status: 'active',
+  lastUpdate: 0,
+  role: 'editor',
+  camera: { position: { x: 0, y: 0, z: 0 }, target: { x: 0, y: 0, z: 0 }, fov: 50 },
+  clientId: 7,
+};
 
 const CATALOGUE: Catalogue = Object.fromEntries(
   Object.entries(en).filter(([key]) => key.startsWith('zonesPanel.roomPanel.')),
@@ -195,17 +211,7 @@ describe('RoomPanel localization (#4918)', () => {
       collabRoomId: 'room-1',
       collabStatus: 'connected',
       collabRole: 'admin',
-      collabPeers: [
-        {
-          user: { id: 'peer-1', name: 'Peer One', color: '#f00' },
-          selection: ['a', 'b'],
-          status: 'active',
-          lastUpdate: 0,
-          role: 'editor',
-          clientId: 7,
-          camera: { position: { x: 0, y: 0, z: 0 }, target: { x: 0, y: 0, z: 0 }, fov: 50 },
-        },
-      ],
+      collabPeers: [PEER_WITH_CLIENT_ID],
     });
     const container = render(<RoomPanel onClose={() => {}} />);
     const englishDom = readableStrings(container);

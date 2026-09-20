@@ -6,6 +6,7 @@ use super::{
     LandXmlParcel, LandXmlParcelProbe, LandXmlParcelState, LandXmlPlanDocument,
     LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlPlanPointLocation,
 };
+use std::collections::{HashMap, HashSet};
 
 mod topology;
 use topology::{geometry_edges, segments_intersect};
@@ -42,16 +43,6 @@ impl TopologyBudget<'_> {
         }
         Ok(())
     }
-}
-
-fn point_matches(point: &super::LandXmlCgPoint, reference: &str) -> bool {
-    point.name.as_deref() == Some(reference)
-        || point
-            .properties
-            .get("oID")
-            .is_some_and(|id| id == reference)
-        || point.ordinal.to_string() == reference
-        || point.source_id.0 == reference
 }
 
 impl LandXmlPlanDocument {
@@ -115,7 +106,7 @@ impl LandXmlPlanDocument {
         match location {
             LandXmlPlanPointLocation::Coordinates { point, .. } => Some(*point),
             LandXmlPlanPointLocation::PointReference { pnt_ref } => {
-                self.resolve_reference(scope_id, pnt_ref, &mut Vec::new(), self.cogo_points.len())
+                self.resolve_reference(scope_id, pnt_ref, self.cogo_points.len())
             }
         }
     }
@@ -124,29 +115,43 @@ impl LandXmlPlanDocument {
         &self,
         scope_id: Option<&crate::LandXmlSourceId>,
         reference: &str,
-        visited: &mut Vec<usize>,
         budget: usize,
     ) -> Option<LandXmlPlanPoint> {
+        let mut scoped: HashMap<(crate::LandXmlSourceId, String), Option<usize>> = HashMap::new();
+        let mut global: HashMap<String, Option<usize>> = HashMap::new();
+        for (index, point) in self.cogo_points.iter().enumerate() {
+            let mut keys = vec![point.ordinal.to_string(), point.source_id.0.clone()];
+            if let Some(name) = &point.name {
+                keys.push(name.clone());
+            }
+            if let Some(oid) = point.properties.get("oID") {
+                keys.push(oid.clone());
+            }
+            keys.sort();
+            keys.dedup();
+            for key in keys {
+                scoped
+                    .entry((point.scope_id.clone(), key.clone()))
+                    .and_modify(|slot| *slot = None)
+                    .or_insert(Some(index));
+                global
+                    .entry(key)
+                    .and_modify(|slot| *slot = None)
+                    .or_insert(Some(index));
+            }
+        }
         let mut next_scope = scope_id.cloned();
         let mut next_reference = reference;
         let mut remaining = budget;
+        let mut seen = HashSet::new();
         while remaining > 0 {
-            let mut candidates =
-                self.cogo_points
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, point)| {
-                        (next_scope
-                            .as_ref()
-                            .is_none_or(|scope| point.scope_id == *scope)
-                            && point_matches(point, next_reference))
-                        .then_some(index)
-                    });
-            let index = candidates.next()?;
-            if candidates.next().is_some() || visited.contains(&index) {
+            let index = match &next_scope {
+                Some(scope) => *scoped.get(&(scope.clone(), next_reference.to_owned()))?,
+                None => *global.get(next_reference)?,
+            }?;
+            if !seen.insert(index) {
                 return None;
             }
-            visited.push(index);
             let point = &self.cogo_points[index];
             if let Some(value) = point.point {
                 return Some(value);

@@ -24,6 +24,7 @@ impl Parser<'_> {
             geometry: Vec::new(),
             locations: Vec::new(),
         }));
+        self.active_depths.push(self.frames.len());
         Ok(())
     }
     pub(super) fn begin_parcel(&mut self, attributes: Attributes) -> Result<()> {
@@ -46,6 +47,7 @@ impl Parser<'_> {
             loops: Vec::new(),
             preservation_reason: None,
         }));
+        self.active_depths.push(self.frames.len());
         Ok(())
     }
     pub(super) fn begin_geometry(&mut self, local: &str, attributes: Attributes) -> Result<()> {
@@ -283,6 +285,7 @@ impl Parser<'_> {
         Ok(())
     }
     pub(super) fn finish_active(&mut self) -> Result<()> {
+        self.active_depths.pop();
         match self
             .active
             .pop()

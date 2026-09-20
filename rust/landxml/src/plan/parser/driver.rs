@@ -96,7 +96,9 @@ impl Parser<'_> {
                 .or(Some(declared_units.linear_scale_to_meters.powi(2)));
             self.units = Some(declared_units);
         }
-        if local == "CgPoints" {
+        let legal_cg_points =
+            self.path(&["LandXML", "CgPoints"]) || self.path(&["LandXML", "Survey", "CgPoints"]);
+        if legal_cg_points {
             self.scope_ordinal += 1;
             let scope = LandXmlSourceId(format!("landxml:CgPoints:{}", self.scope_ordinal));
             self.reference_scope = Some(scope.clone());
@@ -104,11 +106,9 @@ impl Parser<'_> {
         }
         if local == "CgPoint"
             && self
-                .frames
-                .iter()
-                .rev()
-                .nth(1)
-                .is_some_and(|frame| frame.target && frame.local == "CgPoints")
+                .scope_stack
+                .last()
+                .is_some_and(|(depth, _)| *depth + 1 == self.frames.len())
         {
             self.capture = Some(Capture::CgPoint {
                 attributes,
@@ -235,7 +235,12 @@ impl Parser<'_> {
         {
             self.finish_geometry()?;
         }
-        if frame.target && matches!(frame.local.as_str(), "PlanFeature" | "Parcel") {
+        if frame.target
+            && self
+                .active_depths
+                .last()
+                .is_some_and(|depth| *depth == self.frames.len())
+        {
             self.finish_active()?;
         }
         if frame.target && frame.local == "CgPoints" {

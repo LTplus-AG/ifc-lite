@@ -17,6 +17,7 @@
 import { describe, expect, it } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { loadIfcFile } from './loader.js';
 import { HeadlessBackend } from './headless-backend.js';
 
@@ -100,5 +101,31 @@ describe('foldQueuedRelated / refIds — #3502', () => {
 
     const forward = backend.query.related(parent.ref, 'IfcRelAggregates', 'forward');
     expect(forward.some((r) => r.expressId === child.ref.expressId)).toBe(true);
+  });
+});
+
+describe('relationship rows name a retyped endpoint by its effective class (#5009 review)', () => {
+  it('reports the queued setEntityType class on parsed and rebuilt rows alike', async () => {
+    const store = await loadIfcFile(SAMPLE_IFC);
+    const backend = new HeadlessBackend(store, 'building-architecture.ifc');
+    const [parent, child] = backend.query.entities({ types: ['IfcWall'] });
+
+    // A rebuilt (queued) edge and a parsed edge to the same retyped endpoint.
+    backend.store.addEntity('default', {
+      type: 'IfcRelAggregates',
+      attributes: ["'3N1x3zzzzzzzzzzzzzzzzz'", null, null, null, `#${parent.ref.expressId}`, [`#${child.ref.expressId}`]],
+    });
+    const view = (backend as unknown as { mutationView: MutablePropertyView }).mutationView;
+    view.setEntityType(child.ref.expressId, 'IfcColumn');
+
+    expect(backend.query.entityData(child.ref)?.type).toBe('IfcColumn');
+    const rows = backend.query.relationships(parent.ref).relations ?? [];
+    const queued = rows.filter((row) => row.entity.id === child.ref.expressId);
+    expect(queued.length).toBeGreaterThan(0);
+    for (const row of queued) expect(row.entity.type).toBe('IfcColumn');
+
+    const parsed = backend.query.relationships(child.ref).relations ?? [];
+    const storey = parsed.find((row) => row.relationshipType.toUpperCase() === 'IFCRELCONTAINEDINSPATIALSTRUCTURE');
+    expect(storey?.entity.type).toBe('IfcBuildingStorey');
   });
 });

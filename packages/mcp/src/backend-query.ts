@@ -104,7 +104,10 @@ export function createQueryAdapter(
     const pending = overlay();
     if (pending?.deleted.has(ref.expressId)) return null;
     const created = pending?.createdEntity(ref.expressId);
-    if (created) return createdEntityData(created, ref, store);
+    if (created) {
+      const data = createdEntityData(created, ref, store);
+      return { ...data, type: pending?.effectiveType(ref.expressId) ?? data.type };
+    }
     if (!store.entityIndex.byId.has(ref.expressId)) return null;
     const node = new EntityNode(store, ref.expressId);
     const type = node.type;
@@ -113,7 +116,7 @@ export function createQueryAdapter(
       ref,
       globalId: node.globalId,
       name: node.name,
-      type,
+      type: pending?.effectiveType(ref.expressId) ?? type,
       description: node.description,
       objectType: node.objectType,
     }, pending, ref.expressId);

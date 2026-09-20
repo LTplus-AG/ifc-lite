@@ -18,7 +18,7 @@
 
 import type { EntityData, EntityRef, PropertySetData, QuantitySetData } from '@ifc-lite/sdk';
 import type { MutablePropertyView, NewEntity } from '@ifc-lite/mutations';
-import { getAttributeNamesForSchema } from '@ifc-lite/parser';
+import { getAttributeNamesForSchema, normalizeIfcTypeName } from '@ifc-lite/parser';
 
 function scalarAttr(value: unknown): string {
   if (typeof value !== 'string') return '';
@@ -63,6 +63,12 @@ function effectiveCreatedEntity(
   return { ...entity, attributes };
 }
 
+/** The class a queued `setEntityType` gives the entity, in `IfcWall` spelling. */
+export function effectiveEntityType(view: MutablePropertyView, expressId: number): string | null {
+  const retype = view.getEntityTypeMutation(expressId)?.newType;
+  return retype ? normalizeIfcTypeName(retype) : null;
+}
+
 /** Apply the export's named-then-positional precedence to parsed root fields. */
 export function applyParsedEntityOverrides(
   view: MutablePropertyView | null,
@@ -73,7 +79,7 @@ export function applyParsedEntityOverrides(
 ): EntityData {
   if (!view) return data;
   const names = getAttributeNamesForSchema(type, schemaVersion);
-  const next = { ...data };
+  const next = { ...data, type: effectiveEntityType(view, expressId) ?? data.type };
   const apply = (name: string, value: unknown): void => {
     const text = scalarAttr(value);
     switch (name) {
@@ -103,7 +109,9 @@ export function overlayEntityData(
   if (!view) return undefined;
   if (view.isDeleted(ref.expressId)) return null;
   const created = view.getNewEntity(ref.expressId);
-  return created ? createdEntityData(effectiveCreatedEntity(view, created, schemaVersion), ref.modelId) : undefined;
+  if (!created) return undefined;
+  const data = createdEntityData(effectiveCreatedEntity(view, created, schemaVersion), ref.modelId);
+  return { ...data, type: effectiveEntityType(view, ref.expressId) ?? data.type };
 }
 
 /** This session's overlay-only entities matching an `entities()` query's type criteria. */

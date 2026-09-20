@@ -41,6 +41,26 @@ function refIds(value: unknown): number[] {
   return Array.isArray(value) ? value.flatMap(refIds) : [];
 }
 
+/**
+ * The authored attributes in the effective class's layout. A retype re-lays
+ * them out by attribute NAME, as `retypeArgTokens` does on export: a slot the
+ * target class does not share is unset, never the value that happened to sit
+ * at the same index. Without a resolvable source layout export keeps the
+ * list verbatim (keyword-only swap), and so does this.
+ */
+function retypedAttributes(
+  entity: IfcEntity,
+  effectiveType: string,
+  targetNames: readonly string[],
+  schemaVersion: IfcDataStore['schemaVersion'],
+): unknown[] {
+  if (effectiveType.toUpperCase() === entity.type.toUpperCase()) return [...entity.attributes];
+  const sourceNames = getAttributeNamesForSchema(entity.type, schemaVersion);
+  if (sourceNames.length === 0) return [...entity.attributes];
+  const byName = new Map(sourceNames.map((name, index) => [name, entity.attributes[index]]));
+  return targetNames.map((name) => byName.get(name) ?? null);
+}
+
 function resolveRelationship(
   store: IfcDataStore,
   entity: IfcEntity,
@@ -50,7 +70,7 @@ function resolveRelationship(
   if (!effectiveType.toUpperCase().startsWith('IFCREL') || overlay.isDeleted(entity.expressId)) return null;
   const names = getAttributeNamesForSchema(effectiveType, store.schemaVersion);
   if (names.length === 0) return null;
-  const attributes: unknown[] = [...entity.attributes];
+  const attributes = retypedAttributes(entity, effectiveType, names, store.schemaVersion);
   const named = new Map(overlay.namedAttributes(entity.expressId));
   const positional = new Map(overlay.positionalAttributes(entity.expressId));
   // Match both STEP export pipelines: named edits resolve first, then a

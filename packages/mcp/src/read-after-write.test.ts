@@ -72,6 +72,7 @@ interface EntityShape {
   globalId: string;
   name: string;
   type: string;
+  description?: string;
   attributes?: Array<{ name: string; value: string | number | boolean }>;
   properties?: Array<{ name: string; properties: Array<{ name: string; value: unknown }> }>;
   pendingMutations?: number;
@@ -247,6 +248,28 @@ describe('get_entity after an edit', () => {
     // entity is not really there.
     expect(entity.attributes?.find((a) => a.name === 'GlobalId')?.value).toBe(guid('WALC'));
     expect(entity.attributes?.find((a) => a.name === 'Tag')?.value).toBe('tagC');
+  }, 30_000);
+});
+
+describe('get_entity on a created entity that was then edited', () => {
+  it('returns the edited attributes, agreeing with entities() and attributes() (#5009 review)', async () => {
+    await session();
+    const created = await structured<{ expressId: number }>('entity_create', {
+      type: 'IfcWall',
+      attributes: [`'${guid('WALD')}'`, null, "'untitled'", null, null, '#40', null, "'tagD'", null],
+    });
+    await call('entity_set_attribute', { express_id: created.expressId, attribute: 'Name', value: 'Wall D' });
+    await call('entity_set_attribute', { express_id: created.expressId, attribute: 'Description', value: 'Edited after create' });
+
+    const entity = await structured<EntityShape>('get_entity', {
+      global_id: guid('WALD'), include: ['attributes'],
+    });
+    expect(entity.name).toBe('Wall D');
+    expect(entity.description).toBe('Edited after create');
+    expect(entity.attributes?.find((a) => a.name === 'Name')?.value).toBe('Wall D');
+    expect(entity.attributes?.find((a) => a.name === 'Description')?.value).toBe('Edited after create');
+    const walls = await structured<QueryShape>('query_entities', { type: 'IfcWall' });
+    expect(walls.entities.find((w) => w.globalId === guid('WALD'))?.name).toBe('Wall D');
   }, 30_000);
 });
 

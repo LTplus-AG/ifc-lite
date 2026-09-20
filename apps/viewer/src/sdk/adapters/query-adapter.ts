@@ -30,6 +30,7 @@ import {
   expandTypes,
   QUERY_REL_TYPE_MAP,
   getAttributeNamesForSchema,
+  normalizeIfcTypeName,
 } from '@ifc-lite/parser';
 import { applyAttributeMutationsToEntityData, getMutationViewForModel, mergeAttributeMutations } from './mutation-view.js';
 import { effectiveMutationRelationships, foldMutationRelated } from './query-overlay-relations.js';
@@ -76,7 +77,9 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
           ? trimmed.slice(1, -1).replace(/''/g, "'")
           : trimmed;
       };
-      return { ref, globalId: text('GlobalId'), name: text('Name'), type: created.type,
+      const retype = view.getEntityTypeMutation(ref.expressId)?.newType;
+      return { ref, globalId: text('GlobalId'), name: text('Name'),
+        type: retype ? normalizeIfcTypeName(retype) : created.type,
         description: text('Description'), objectType: text('ObjectType') };
     }
     const node = new EntityNode(model.ifcDataStore, ref.expressId);

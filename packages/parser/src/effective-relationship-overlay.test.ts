@@ -134,6 +134,41 @@ describe('effective relationship overlay (#5009)', () => {
     }]);
   });
 
+  it('re-lays authored slots out by name when a relationship is retyped (#5009 review)', async () => {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer as ArrayBuffer);
+    // IfcRelAggregates(…, RelatingObject=#2, RelatedObjects=(#3)) retyped to
+    // IfcRelDefinesByType(…, RelatedObjects, RelatingType): export carries
+    // RelatedObjects over by name and leaves RelatingType unset, so a positional
+    // read would invent a reversed edge #2 <- (#3) that the saved file never has.
+    const unset = resolveEffectiveRelationshipOverlay(store, {
+      createdEntities: () => [],
+      mutatedEntityIds: () => [5],
+      namedAttributes: () => [],
+      positionalAttributes: () => [],
+      entityType: () => 'IfcRelDefinesByType',
+      isDeleted: () => false,
+    });
+    expect(unset.supersededSourceIds).toEqual(new Set([5]));
+    expect(effectiveRelationshipEdges(unset, () => false, 2)).toEqual([]);
+    expect(effectiveRelationshipEdges(unset, () => false, 3)).toEqual([]);
+
+    const typed = resolveEffectiveRelationshipOverlay(store, {
+      createdEntities: () => [],
+      mutatedEntityIds: () => [5],
+      namedAttributes: () => [['RelatingType', '#4']],
+      positionalAttributes: () => [],
+      entityType: () => 'IfcRelDefinesByType',
+      isDeleted: () => false,
+    });
+    expect(effectiveRelationshipEdges(typed, () => false, 4, 'IfcRelDefinesByType')).toEqual([{
+      relationshipId: 5,
+      relationshipType: 'IfcRelDefinesByType',
+      direction: 'forward',
+      targetId: 3,
+    }]);
+    expect(effectiveRelationshipEdges(typed, () => false, 2)).toEqual([]);
+  });
+
   it('includes a parsed non-relationship retyped into a relationship (#5009 review)', async () => {
     const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer as ArrayBuffer);
     const overlay = resolveEffectiveRelationshipOverlay(store, {

@@ -37,6 +37,7 @@ import {
   resolveEffectiveRelationshipOverlay,
   type EffectiveRelationshipOverlay,
   type IfcDataStore,
+  normalizeIfcTypeName,
 } from '@ifc-lite/parser';
 import type { LoadedModel } from './context.js';
 /** An entity that exists only in the overlay (`entity_create`). */
@@ -92,6 +93,11 @@ export interface PendingOverlay {
   /** Any queued entity by expressId, GlobalId-bearing or not. Null when the id
    *  is not one this session created. */
   createdEntity(expressId: number): CreatedEntity | null;
+  /** The class a queued `setEntityType` gives the entity (`IfcWall` spelling),
+   *  or null when it keeps its authored class. Every read that names an
+   *  entity's type must go through this, or it disagrees with what export
+   *  writes (#5009 review). */
+  effectiveType(expressId: number): string | null;
   attributes(expressId: number): AttributeOverrides;
   positionalAttributes(expressId: number): ReadonlyMap<number, unknown>;
   /** Every entity with a queued attribute write, keyed by expressId. For loops
@@ -199,6 +205,11 @@ class ViewOverlay implements PendingOverlay {
     // here made every `entityData` call O(number of queued creates).
     const raw = this.view.getNewEntity(expressId);
     return raw ? this.effectiveCreatedEntity(raw) : null;
+  }
+
+  effectiveType(expressId: number): string | null {
+    const retype = this.view.getEntityTypeMutation(expressId)?.newType;
+    return retype ? normalizeIfcTypeName(retype) : null;
   }
 
   attributes(expressId: number): AttributeOverrides {

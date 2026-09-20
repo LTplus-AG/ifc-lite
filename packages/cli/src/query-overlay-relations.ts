@@ -43,8 +43,7 @@ export function foldQueuedRelationshipData(
     const key = `${edge.direction}:${edge.relationshipId}:${edge.entity.id}`;
     if (seen.has(key)) return [];
     seen.add(key);
-    const type = view.getEntityTypeMutation(edge.entity.id)?.newType ?? edge.entity.type;
-    return [{ ...edge, entity: { id: edge.entity.id, name: target.name || undefined, type } }];
+    return [{ ...edge, entity: { id: edge.entity.id, name: target.name || undefined, type: target.type } }];
   });
   for (const edge of effectiveRelationshipEdges(overlay, id => view.isDeleted(id), ref.expressId)) {
     const key = `${edge.direction}:${edge.relationshipId}:${edge.targetId}`;

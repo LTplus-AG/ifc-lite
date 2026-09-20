@@ -24,7 +24,7 @@ export function foldRelationshipRows(
     const key = `${edge.direction}:${edge.relationshipId}:${edge.entity.id}`;
     if (seen.has(key)) return [];
     seen.add(key);
-    return [{ ...edge, entity: { id: edge.entity.id, name: target.name || undefined, type: edge.entity.type } }];
+    return [{ ...edge, entity: { id: edge.entity.id, name: target.name || undefined, type: target.type } }];
   });
   for (const edge of pending.relationshipEdges(ref.expressId)) {
     const key = `${edge.direction}:${edge.relationshipId}:${edge.targetId}`;

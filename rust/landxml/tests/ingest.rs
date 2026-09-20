@@ -4,8 +4,9 @@
 
 use ifc_lite_landxml::{
     classify_landxml_version, parse_landxml_tin_with_cancel, LandXmlCancellation,
-    LandXmlCancellationFlag, LandXmlDiagnosticCode, LandXmlLimits, LandXmlVersionCapability,
-    LANDXML_10_NAMESPACE, LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
+    LandXmlCancellationFlag, LandXmlCapabilityDiagnosticCode, LandXmlDiagnosticCode, LandXmlLimits,
+    LandXmlProfileKind, LandXmlVersionCapability, LandXmlVerticalCurveKind, LANDXML_10_NAMESPACE,
+    LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -34,6 +35,13 @@ impl LandXmlCancellation for CancelsAfterPolls {
 
 fn document(surface_name: &str) -> Vec<u8> {
     format!(r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="{surface_name}"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces></LandXML>"#).into_bytes()
+}
+
+fn road_document() -> Vec<u8> {
+    format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="terrain"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces><Alignments><Alignment name="A" length="300" staStart="100"><CoordGeom/><Profile><ProfAlign name="design"><PVI>100 20</PVI><ParaCurve length="40">140 21</ParaCurve><CircCurve length="30" radius="250">180 23</CircCurve><UnsymParaCurve lengthIn="10" lengthOut="20">220 24</UnsymParaCurve></ProfAlign><ProfSurf name="ground"><PntList2D>100 19 150 20</PntList2D><PntList2D>200 22 250 23</PntList2D></ProfSurf><ProfSurf name="survey"><PntList2D>100 18 300 25</PntList2D></ProfSurf></Profile><CrossSects><CrossSect sta="140"><CrossSectSurf name="existing"><PntList2D>-5 19 0 20 5 19</PntList2D><PntList2D>10 18 15 17</PntList2D></CrossSectSurf><DesignCrossSectSurf name="pavement"><CrossSectPnt alignRef="A">-4 20</CrossSectPnt><CrossSectPnt>4 20.5</CrossSectPnt></DesignCrossSectSurf></CrossSect></CrossSects></Alignment></Alignments><Roadways><Roadway name="Route 1" alignmentRefs="A missing" surfaceRefs="terrain absent" gradeModelRefs="grade"/><Roadway name="Route 2" alignmentRefs="A"><Lanes/></Roadway></Roadways></LandXML>"#
+    )
+    .into_bytes()
 }
 
 fn utf16_document(little_endian: bool) -> Vec<u8> {
@@ -680,6 +688,152 @@ fn issue_5042_rejects_empty_or_whitespace_only_documents() {
         assert_eq!(
             parse(input).unwrap_err().code,
             LandXmlDiagnosticCode::InvalidXml
+        );
+    }
+}
+
+#[test]
+fn preserves_distinct_profiles_curves_sections_and_roadway_associations(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed = parse(&road_document())?;
+    assert_eq!(parsed.alignments.len(), 1);
+    let alignment = &parsed.alignments[0];
+    assert_eq!(alignment.name, "A");
+    assert_eq!(alignment.station_start, 100.0);
+    assert_eq!(alignment.profile_source_ids.len(), 3);
+    assert_eq!(parsed.profiles.len(), 3);
+    assert_eq!(parsed.profiles[0].kind, LandXmlProfileKind::Design);
+    assert_eq!(parsed.profiles[1].kind, LandXmlProfileKind::Sampled);
+    assert_eq!(parsed.profiles[2].kind, LandXmlProfileKind::Sampled);
+    assert_eq!(parsed.profiles[0].pvis.len(), 4);
+    assert_eq!(parsed.profiles[0].vertical_curves.len(), 3);
+    assert_eq!(
+        parsed.profiles[0].vertical_curves[0].kind,
+        LandXmlVerticalCurveKind::Parabolic
+    );
+    assert_eq!(parsed.profiles[0].vertical_curves[0].station, 140.0);
+    assert_eq!(parsed.profiles[0].vertical_curves[0].length, Some(40.0));
+    assert_eq!(
+        parsed.profiles[0].vertical_curves[1].kind,
+        LandXmlVerticalCurveKind::Circular
+    );
+    assert_eq!(parsed.profiles[0].vertical_curves[1].radius, Some(250.0));
+    assert_eq!(
+        parsed.profiles[0].vertical_curves[2].kind,
+        LandXmlVerticalCurveKind::UnsymmetricalParabolic
+    );
+    assert_eq!(parsed.profiles[0].vertical_curves[2].length_in, Some(10.0));
+    assert_eq!(parsed.profiles[1].grade_lines.len(), 2);
+    assert_eq!(parsed.cross_sections.len(), 1);
+    assert_eq!(parsed.cross_sections[0].station, 140.0);
+    assert_eq!(
+        parsed.cross_sections[0].parent_alignment_source_id,
+        alignment.source_id
+    );
+    assert_eq!(parsed.cross_section_surfaces.len(), 2);
+    assert_eq!(parsed.cross_section_surfaces[0].segments.len(), 2);
+    assert_eq!(parsed.cross_section_surfaces[1].points[0].offset, -4.0);
+    assert_eq!(
+        parsed.cross_section_surfaces[1].points[0].elevation,
+        Some(20.0)
+    );
+    assert_eq!(
+        parsed.cross_section_surfaces[1].points[0].alignment_source_id,
+        Some(alignment.source_id.clone())
+    );
+    assert_eq!(parsed.roadways.len(), 2);
+    assert_eq!(
+        parsed.roadways[0].alignment_source_ids,
+        vec![alignment.source_id.clone()]
+    );
+    assert_eq!(
+        parsed.roadways[0].surface_source_ids,
+        vec![parsed.surfaces[0].source_id.clone()]
+    );
+    assert!(parsed
+        .capability_diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == LandXmlCapabilityDiagnosticCode::MissingReference));
+    assert_eq!(parsed.preserved_only_extensions.len(), 2);
+    assert!(parsed.capability_diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == LandXmlCapabilityDiagnosticCode::SectionDiscontinuity
+    }));
+    Ok(())
+}
+
+#[test]
+fn records_missing_elevation_without_fabricating_zero() -> Result<(), Box<dyn std::error::Error>> {
+    let source = String::from_utf8(road_document())?
+        .replace("<PVI>100 20</PVI>", "<PVI>100</PVI>")
+        .replace(
+            "<CrossSectPnt alignRef=\"A\">-4 20</CrossSectPnt>",
+            "<CrossSectPnt alignRef=\"A\">-4</CrossSectPnt>",
+        );
+    let parsed = parse(source.as_bytes())?;
+    assert_eq!(parsed.profiles[0].pvis[0].elevation, None);
+    assert_eq!(parsed.cross_section_surfaces[1].points[0].elevation, None);
+    assert_eq!(
+        parsed
+            .capability_diagnostics
+            .iter()
+            .filter(
+                |diagnostic| diagnostic.code == LandXmlCapabilityDiagnosticCode::MissingElevation
+            )
+            .count(),
+        2
+    );
+    Ok(())
+}
+
+#[test]
+fn preserves_profile_review_data_when_no_tin_surface_is_present(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = String::from_utf8(road_document())?;
+    let without_tin = source.replace(
+        "<Surfaces><Surface name=\"terrain\"><Definition surfType=\"TIN\"><Pnts><P id=\"1\">0 0 0</P><P id=\"2\">0 1 0</P><P id=\"3\">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces>",
+        "",
+    );
+    let parsed = parse(without_tin.as_bytes())?;
+    assert!(parsed.surfaces.is_empty());
+    assert_eq!(parsed.profiles.len(), 3);
+    assert_eq!(parsed.cross_sections.len(), 1);
+    assert_eq!(parsed.roadways.len(), 2);
+    Ok(())
+}
+
+#[test]
+fn applies_profile_section_and_roadway_limits_before_output_growth() {
+    for limits in [
+        LandXmlLimits {
+            max_profiles: 0,
+            ..LandXmlLimits::default()
+        },
+        LandXmlLimits {
+            max_vertical_curves: 0,
+            ..LandXmlLimits::default()
+        },
+        LandXmlLimits {
+            max_cross_sections: 0,
+            ..LandXmlLimits::default()
+        },
+        LandXmlLimits {
+            max_cross_section_points: 1,
+            ..LandXmlLimits::default()
+        },
+        LandXmlLimits {
+            max_roadways: 1,
+            ..LandXmlLimits::default()
+        },
+        LandXmlLimits {
+            max_preserved_only_extensions: 0,
+            ..LandXmlLimits::default()
+        },
+    ] {
+        assert_eq!(
+            parse_landxml_tin_with_cancel(&road_document(), &limits, None)
+                .unwrap_err()
+                .code,
+            LandXmlDiagnosticCode::LimitExceeded
         );
     }
 }

@@ -5,6 +5,14 @@
 use super::*;
 
 impl Parser<'_> {
+    pub(super) fn path(&self) -> String {
+        self.frames
+            .iter()
+            .map(|frame| frame.local.as_str())
+            .collect::<Vec<_>>()
+            .join("/")
+    }
+
     pub(super) fn source_data_point_dimension(&self) -> Option<u8> {
         if self.frames.iter().any(|frame| !frame.target) {
             return None;

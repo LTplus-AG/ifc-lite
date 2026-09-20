@@ -13,6 +13,7 @@ mod limits;
 mod model;
 mod parser;
 mod preflight;
+mod profile;
 mod semantics;
 mod xml;
 
@@ -25,4 +26,12 @@ pub use model::{
 pub use parser::{
     classify_landxml_version, parse_landxml_tin, parse_landxml_tin_with_cancel,
     LANDXML_10_NAMESPACE, LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
+};
+pub use profile::{
+    LandXmlAlignment, LandXmlCapabilityDiagnostic, LandXmlCapabilityDiagnosticCode,
+    LandXmlCrossSection, LandXmlCrossSectionPoint, LandXmlCrossSectionSegment,
+    LandXmlCrossSectionSurface, LandXmlCrossSectionSurfaceKind, LandXmlGradeLine,
+    LandXmlPreservedOnlyExtension, LandXmlPreservedOnlyExtensionKind, LandXmlProfile,
+    LandXmlProfileKind, LandXmlProfilePoint, LandXmlRoadway, LandXmlVerticalCurve,
+    LandXmlVerticalCurveKind,
 };

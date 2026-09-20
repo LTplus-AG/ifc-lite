@@ -113,6 +113,7 @@ impl Parser<'_> {
                 self.extensions.len(),
             ));
         }
+        self.finish_road_semantics()?;
         Ok(LandXmlTinDocument {
             format: "landxml".to_owned(),
             schema: "LandXML-1.2".to_owned(),
@@ -133,6 +134,13 @@ impl Parser<'_> {
             surfaces: self.surfaces,
             extensions: self.extensions,
             warnings: self.warnings,
+            alignments: self.alignments,
+            profiles: self.profiles,
+            cross_sections: self.cross_sections,
+            cross_section_surfaces: self.cross_section_surfaces,
+            roadways: self.roadways,
+            capability_diagnostics: self.capability_diagnostics,
+            preserved_only_extensions: self.preserved_only_extensions,
         })
     }
 }

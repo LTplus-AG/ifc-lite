@@ -666,7 +666,7 @@ export function MeasureOverlay() {
               <span>{t('measure.geo.easting')} {liveEnh.e}</span>
               <span className="ml-2">{t('measure.geo.northing')} {liveEnh.n}</span>
               <span className="ml-2">{t('measure.geo.height')} {liveEnh.h}</span>
-              <span className="ml-2 text-muted-foreground">m</span>
+              <span className="ml-2 text-muted-foreground">{t('measure.geo.unitMeters')}</span>
             </div>
           </div>
           <div className="font-mono text-[9px] text-muted-foreground mt-0.5 pl-5">

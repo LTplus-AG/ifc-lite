@@ -196,7 +196,7 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
     {
       name: 'MeasurePanel projected-CRS name',
       file: MEASURE_PANEL,
-      anchor: 'reground">m</span>\n            </div>\n          </div>\n          <div ',
+      anchor: "reground\">{t('measure.geo.unitMeters')}</span>\n            </div>\n          </div>\n          <div ",
       // MeasurePanel's real panel surface is `bg-background/95 backdrop-blur-sm`,
       // floating translucent over the live 3D viewport. #4825's harness
       // extension (`measureTextContrastOnSurface`'s `backdropClassName`)
@@ -273,7 +273,7 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
     {
       name: 'EntityContextMenu "⌘D" duplicate shortcut',
       file: ENTITY_CONTEXT_MENU,
-      anchor: '<span>Duplicate</span>\n        <span ',
+      anchor: "<span>{t('entityContextMenu.duplicateLabel')}</span>\n        <span ",
       surface: 'bg-popover',
     },
     {

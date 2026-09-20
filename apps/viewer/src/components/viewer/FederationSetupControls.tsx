@@ -29,6 +29,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
+import { useTranslation } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 import { useFederationSetup } from '@/hooks/useFederationSetup';
 import {
   parseFederationSetupFile,
@@ -40,20 +42,21 @@ import { ModelTagsCommand } from './ModelTagsCommand';
 const EVENT_SAVE = 'ifc-lite:save-federation-setup';
 const EVENT_OPEN = 'ifc-lite:open-federation-setup';
 
-function confidenceBadge(match: FederationSetupSlotMatch): { label: string; icon: typeof Check; tone: string } {
+function confidenceBadge(match: FederationSetupSlotMatch): { labelKey: TranslationKey; icon: typeof Check; tone: string } {
   switch (match.confidence) {
     case 'content':
-      return { label: 'Matched', icon: Check, tone: 'text-emerald-600 dark:text-emerald-400' };
+      return { labelKey: 'federationSetupControls.confidence.content', icon: Check, tone: 'text-emerald-600 dark:text-emerald-400' };
     case 'name-size':
-      return { label: 'Matched (by name)', icon: Check, tone: 'text-emerald-600 dark:text-emerald-400' };
+      return { labelKey: 'federationSetupControls.confidence.nameSize', icon: Check, tone: 'text-emerald-600 dark:text-emerald-400' };
     case 'name-only':
-      return { label: 'Same name, different file', icon: FileWarning, tone: 'text-amber-600 dark:text-amber-400' };
+      return { labelKey: 'federationSetupControls.confidence.nameOnly', icon: FileWarning, tone: 'text-amber-600 dark:text-amber-400' };
     case 'none':
-      return { label: 'Missing', icon: AlertTriangle, tone: 'text-red-600 dark:text-red-400' };
+      return { labelKey: 'federationSetupControls.confidence.none', icon: AlertTriangle, tone: 'text-red-600 dark:text-red-400' };
   }
 }
 
 export function FederationSetupControls() {
+  const { t } = useTranslation();
   const { exportFederationSetup, matchFederationSetup, applyFederationSetup } = useFederationSetup();
 
   const setupFileInputRef = useRef<HTMLInputElement>(null);
@@ -151,9 +154,9 @@ export function FederationSetupControls() {
       <Dialog open={matches !== null} onOpenChange={(open) => { if (!open) closeReview(); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reopen federation setup</DialogTitle>
+            <DialogTitle>{t('federationSetupControls.reopenTitle')}</DialogTitle>
             <DialogDescription>
-              Review how each saved model slot matched your local files before restoring.
+              {t('federationSetupControls.reopenDescription')}
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-80 overflow-y-auto space-y-1">
@@ -169,19 +172,19 @@ export function FederationSetupControls() {
                   <span className="truncate flex-1">{match.slot.name}</span>
                   <span className={`inline-flex items-center gap-1 text-xs ${badge.tone}`}>
                     <Icon className="h-3.5 w-3.5" />
-                    {badge.label}
+                    {t(badge.labelKey)}
                   </span>
                 </div>
               );
             })}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={closeReview} disabled={applying}>Cancel</Button>
+            <Button variant="outline" onClick={closeReview} disabled={applying}>{t('federationSetupControls.cancel')}</Button>
             <Button
               onClick={handleApply}
               disabled={applying || !matches?.some((m) => m.file !== null)}
             >
-              {applying ? 'Restoring…' : 'Restore federation'}
+              {applying ? t('federationSetupControls.restoringButton') : t('federationSetupControls.restoreButton')}
             </Button>
           </DialogFooter>
         </DialogContent>

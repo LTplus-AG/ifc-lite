@@ -213,6 +213,7 @@ const NOT_RENDERED_IN_THIS_STATE: MeasureKey[] = [
   'measure.geo.easting',
   'measure.geo.northing',
   'measure.geo.height',
+  'measure.geo.unitMeters',
   'measure.readout.live',
   'measure.readout.last',
   'measure.point.rowMap',

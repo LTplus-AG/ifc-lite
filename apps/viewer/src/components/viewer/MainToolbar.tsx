@@ -723,7 +723,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         <TooltipContent>
           {canEditInSession ? (
             <>
-              {editEnabled ? t('mainToolbar.editModeExitTooltip') : t('mainToolbar.editModeEnterTooltip')} <span className="opacity-50">E</span>
+              {editEnabled ? t('mainToolbar.editModeExitTooltip') : t('mainToolbar.editModeEnterTooltip')} <span className="opacity-50">{t('mainToolbar.editModeShortcutHint')}</span>
             </>
           ) : (
             t('mainToolbar.editModeLocked')

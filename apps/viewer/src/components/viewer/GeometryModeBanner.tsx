@@ -20,6 +20,7 @@ import { Zap, RefreshCw, X } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 
 export interface GeometryModeBannerProps {
   /**
@@ -30,6 +31,7 @@ export interface GeometryModeBannerProps {
 }
 
 export function GeometryModeBanner({ onReload }: GeometryModeBannerProps) {
+  const { t } = useTranslation();
   const pending = useViewerStore((s) => s.geometryModePendingReload);
   const mode = useViewerStore((s) => s.geometryMode);
   const reason = useViewerStore((s) => s.geometryReloadReason);
@@ -67,13 +69,13 @@ export function GeometryModeBanner({ onReload }: GeometryModeBannerProps) {
         <div className="flex flex-col leading-tight min-w-0">
           <span className="text-xs font-semibold text-foreground">
             {reason === 'tier'
-              ? 'Detail pin removed'
+              ? t('geometryModeBanner.detailPinRemoved')
               : mode === 'fast'
-                ? 'Fast geometry enabled'
-                : 'Exact geometry enabled'}
+                ? t('geometryModeBanner.fastEnabled')
+                : t('geometryModeBanner.exactEnabled')}
           </span>
           <span className="text-[11px] text-muted-foreground truncate">
-            Reload model to apply the new setting.
+            {t('geometryModeBanner.reloadHint')}
           </span>
         </div>
         <div className="flex items-center gap-1.5 ml-2">
@@ -84,14 +86,14 @@ export function GeometryModeBanner({ onReload }: GeometryModeBannerProps) {
             onClick={handleReload}
           >
             <RefreshCw className="h-3.5 w-3.5" />
-            Reload
+            {t('geometryModeBanner.reloadButton')}
           </Button>
           <Button
             size="icon-sm"
             variant="ghost"
             className="h-7 w-7"
             onClick={dismiss}
-            aria-label="Dismiss reload reminder"
+            aria-label={t('geometryModeBanner.dismissAriaLabel')}
           >
             <X className="h-3.5 w-3.5" />
           </Button>

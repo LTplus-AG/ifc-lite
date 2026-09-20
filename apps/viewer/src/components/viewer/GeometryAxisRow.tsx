@@ -11,6 +11,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useTranslation } from '@/i18n';
 
 interface AxisRowProps {
   label: string;
@@ -21,6 +22,7 @@ interface AxisRowProps {
 }
 
 export function GeometryAxisRow({ label, value, onChange, onNudgeMinus, onNudgePlus }: AxisRowProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-1">
       <span className="w-4 text-[11px] font-mono text-purple-700 dark:text-purple-400">{label}</span>
@@ -29,7 +31,7 @@ export function GeometryAxisRow({ label, value, onChange, onNudgeMinus, onNudgeP
         size="icon-xs"
         className="h-6 w-6 text-purple-600"
         onClick={onNudgeMinus}
-        aria-label={`Decrease ${label}`}
+        aria-label={t('geometryAxisRow.decreaseAriaLabel', { label })}
       >
         −
       </Button>
@@ -45,7 +47,7 @@ export function GeometryAxisRow({ label, value, onChange, onNudgeMinus, onNudgeP
         size="icon-xs"
         className="h-6 w-6 text-purple-600"
         onClick={onNudgePlus}
-        aria-label={`Increase ${label}`}
+        aria-label={t('geometryAxisRow.increaseAriaLabel', { label })}
       >
         +
       </Button>

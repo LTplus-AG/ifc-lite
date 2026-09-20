@@ -59,7 +59,10 @@ options menus' own labels, tool buttons, the selection action cluster, and
 the meta cluster (theme, info). It deliberately does not cover the shared
 command surfaces the ribbon also renders — camera commands, the export menu,
 workspace-panel toggle lists, and the class-visibility body — those are
-slice 2 of the #4918 sweep.
+slice 2 of the #4918 sweep. The #4918 grab-bag slice added one more key,
+`mainToolbar.editModeShortcutHint` ('E'): the bare keyboard-shortcut letter
+next to the Edit-mode toggle trips the gate the same way the Measure
+catalogue's bare "m" unit symbol does (see below).
 
 The shared-commands catalogue (#4918 slice 2) covers the command lists both
 `MainToolbar` and the ribbon render from: the export registry
@@ -91,7 +94,11 @@ The Measure tool catalogue (#4918 slice 6, tools) covers `MeasurePanel.tsx`,
 and the shared georeferenced readout `measure-modes/geo-readout.tsx`
 (`measure.en.ts`). Measurement unit *symbols* (`m`, `m²`, `mm`, `°`) stay
 literal in these files by this slice's own scope, distinct from the gate's
-allowlist. The Space Sketch tool catalogue (`space-sketch.en.ts`) covers
+allowlist — except the bare "m" JSX text node next to the live geo readout,
+which trips the gate despite the symbol allowlist (a single ASCII letter with
+no modifier glyph isn't a recognized cluster) and was keyed as
+`measure.geo.unitMeters` by the #4918 grab-bag slice, filling in a key this
+slice had reserved with a comment but left unadded. The Space Sketch tool catalogue (`space-sketch.en.ts`) covers
 `SpaceSketchOverlay.tsx` and its `space-sketch/` popovers, canvas, and
 reopen pill. The wall-split tool catalogue (`split-tool.en.ts`) covers
 `SplitNumericInput.tsx` and `SplitOverlay.tsx`. `SectionPanel.tsx`'s one
@@ -629,6 +636,44 @@ interpolation params rather than translated. A thrown `Error`'s own
 `.message` (surfaced from the wasm geometry engine or an unexpected
 exception) is likewise interpolated as a parameter, never translated
 itself — it is engine content, not UI chrome.
+
+The grab-bag catalogue (#4918 final wave, `misc-panels-b.en.ts`, one key
+prefix per component) covers the last group of small standalone files the
+sweep's earlier slices left uncovered: `PointCloudPanel.tsx`,
+`PointCloudClasses.tsx`, and `PointCloudLegend.tsx` (the point-cloud
+rendering controls, per-ASPRS-class visibility list, and intensity/height
+ramp legends — the `COLOR_MODES`/`SIZE_MODES` tables moved to the same
+`labelKey`/`hintKey`-per-row pattern `sectionConstants.ts`'s `AXIS_INFO`
+uses); `ModelTagRuleEditor.tsx` (the shared `modelTag` chip rule editor,
+whose fragmented unresolved-tag warning became one templated plural
+message); `FederationSetupControls.tsx` (the save/reopen federation-setup
+dialog, including its `confidenceBadge()` match-confidence table);
+`ShareDialog.tsx` and `ShareScopeField.tsx` (the accountless link-sharing
+dialog and its multi-model scope picker, including the `ROLE_OPTIONS` table
+and every derived caption/notice the dialog renders); `LoadReportPanel.tsx`
+(the per-model geometry load-warning report, including its `statusLabel()`
+table and per-entity summary line); `GeometryModeBanner.tsx` (the
+reload-to-apply Fast/Exact geometry banner); `FilterRuleControls.tsx` (the
+shared AND/OR combinator toggle and "Add rule" menu); `GeometryAxisRow.tsx`
+(the Geometry edit card's X/Y/Z nudge row); `LevelDisplayIndicator.tsx` (the
+Exploded/Solo viewport chip); `TextAnnotationEditor.tsx` (the 2D-drawing
+text annotation inline editor); `presence/PeerPresenceLayer.tsx` (the live
+collaborator-cursor DOM overlay); `BottomStrip.tsx`'s detach grip;
+`SaveMarkupToModelButton.tsx` and `ExportChangesButton.tsx` (the two
+dedicated export-adjacent toolbar buttons); and `SearchableSelect.tsx` (the
+searchable dropdown `LensPanel`'s editors use). `EntityContextMenu.tsx`
+contributes only its default-direction duplicate row's own literal text —
+the rest of that menu's per-action `label` props are plain JSX attributes
+the gate below does not police and remain out of this slice's scope, same
+reasoning the main-toolbar and shared-commands catalogues already document
+for labels owned by shared command surfaces. Toast/console messages that
+never reach the DOM (`FederationSetupControls.tsx`'s and
+`ExportChangesButton.tsx`'s `toast.*` calls, `SaveMarkupToModelButton.tsx`'s
+`refusalText()`) are deliberately left English, same reasoning several
+earlier slices already document for copy that is not on-screen chrome.
+Point-cloud ASPRS CLASS names (`lasClassificationName()`) are model content
+loaded from the scan and stay out of the catalogue, same house rule as an
+IFC class/property/tag NAME anywhere else in this sweep.
 
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for

@@ -12,6 +12,7 @@ mod capture;
 mod limits;
 mod model;
 mod parser;
+mod preflight;
 mod semantics;
 mod xml;
 

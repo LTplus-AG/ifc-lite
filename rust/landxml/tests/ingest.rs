@@ -3,10 +3,34 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use ifc_lite_landxml::{
-    classify_landxml_version, parse_landxml_tin_with_cancel, LandXmlCancellationFlag,
-    LandXmlDiagnosticCode, LandXmlLimits, LandXmlVersionCapability, LANDXML_10_NAMESPACE,
-    LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
+    classify_landxml_version, parse_landxml_tin_with_cancel, LandXmlCancellation,
+    LandXmlCancellationFlag, LandXmlDiagnosticCode, LandXmlLimits, LandXmlVersionCapability,
+    LANDXML_10_NAMESPACE, LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
 };
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+struct CancelsAfterPolls {
+    cancel_after: usize,
+    polls: AtomicUsize,
+}
+
+impl CancelsAfterPolls {
+    fn new(cancel_after: usize) -> Self {
+        Self {
+            cancel_after,
+            polls: AtomicUsize::new(0),
+        }
+    }
+    fn polls(&self) -> usize {
+        self.polls.load(Ordering::Relaxed)
+    }
+}
+
+impl LandXmlCancellation for CancelsAfterPolls {
+    fn is_cancelled(&self) -> bool {
+        self.polls.fetch_add(1, Ordering::Relaxed) >= self.cancel_after
+    }
+}
 
 fn document(surface_name: &str) -> Vec<u8> {
     format!(r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="{surface_name}"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces></LandXML>"#).into_bytes()
@@ -30,6 +54,19 @@ fn utf16_document(little_endian: bool) -> Vec<u8> {
         bytes.extend(pair);
     }
     bytes
+}
+
+fn utf16_le(text: &str) -> Vec<u8> {
+    let mut bytes = vec![0xff, 0xfe];
+    for unit in text.encode_utf16() {
+        bytes.extend(unit.to_le_bytes());
+    }
+    bytes
+}
+
+fn padded_document(padding_bytes: usize) -> String {
+    let document = String::from_utf8(document("grade")).expect("fixture is UTF-8");
+    format!("<!--{}-->{document}", "x".repeat(padding_bytes))
 }
 
 fn parse(
@@ -185,6 +222,41 @@ fn enforces_limits_and_cancellation() {
             .code,
         LandXmlDiagnosticCode::Cancelled
     );
+}
+
+#[test]
+fn cancels_mid_normalization_of_a_large_utf8_source() {
+    // The cancellation fires on the fourth poll: after three full 4 KiB
+    // chunks, while the UTF-8 normalizer is still copying/validating input.
+    let cancelled = CancelsAfterPolls::new(3);
+    let input = padded_document(32 * 1024);
+    assert_eq!(
+        parse_landxml_tin_with_cancel(
+            input.as_bytes(),
+            &LandXmlLimits::default(),
+            Some(&cancelled)
+        )
+        .unwrap_err()
+        .code,
+        LandXmlDiagnosticCode::Cancelled
+    );
+    assert_eq!(cancelled.polls(), 4);
+}
+
+#[test]
+fn cancels_mid_preflight_scan_of_a_large_utf16_source() {
+    // UTF-16 decoding consumes eight 4 KiB raw chunks first. The next poll is
+    // the scanner's initial guard and the following one is inside its long
+    // comment, proving that pre-quick-xml scanning is also interruptible.
+    let cancelled = CancelsAfterPolls::new(10);
+    let input = utf16_le(&padded_document(16 * 1024));
+    assert_eq!(
+        parse_landxml_tin_with_cancel(&input, &LandXmlLimits::default(), Some(&cancelled))
+            .unwrap_err()
+            .code,
+        LandXmlDiagnosticCode::Cancelled
+    );
+    assert_eq!(cancelled.polls(), 11);
 }
 
 #[test]

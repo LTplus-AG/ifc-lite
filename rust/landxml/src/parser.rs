@@ -11,6 +11,7 @@ use quick_xml::{
 
 use crate::{
     capture::Capture,
+    preflight::preflight_xml_tokens,
     semantics::{positive_id, references, triple, units},
     xml::{
         attr, attributes, character_references, error, normalize_encoding, required, split_name,
@@ -85,7 +86,8 @@ pub fn parse_landxml_tin_with_cancel(
     if input.len() > limits.max_bytes {
         return Err(error(Code::InputTooLarge, "input exceeds byte limit"));
     }
-    let input = normalize_encoding(input, limits)?;
+    let input = normalize_encoding(input, limits, cancelled)?;
+    preflight_xml_tokens(&input, limits, cancelled)?;
     let mut parser = Parser {
         limits,
         cancelled,

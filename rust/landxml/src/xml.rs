@@ -6,11 +6,56 @@ use std::{collections::HashMap, str};
 
 use quick_xml::events::BytesStart;
 
-use crate::{LandXmlDiagnosticCode as Code, LandXmlError, LandXmlLimits};
+use crate::{LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlError, LandXmlLimits};
 
 pub(crate) type Result<T> = std::result::Result<T, LandXmlError>;
 pub(crate) type Attributes = Vec<(String, String)>;
 pub(crate) type Namespaces = HashMap<String, String>;
+
+/// Maximum raw bytes processed between cooperative cancellation checks.
+///
+/// Normalization and the preflight scanner use this bound before quick-xml is
+/// invoked. The scanner also refuses a token larger than its documented
+/// semantic limit, so quick-xml never gets an unbounded single token to scan.
+pub(crate) const CANCELLATION_POLL_BYTES: usize = 4 * 1024;
+
+pub(crate) struct CancellationPoller<'a> {
+    cancelled: Option<&'a dyn LandXmlCancellation>,
+    since_check: usize,
+}
+
+impl<'a> CancellationPoller<'a> {
+    pub(crate) fn new(cancelled: Option<&'a dyn LandXmlCancellation>) -> Self {
+        Self {
+            cancelled,
+            since_check: 0,
+        }
+    }
+
+    pub(crate) fn check(&mut self) -> Result<()> {
+        if self
+            .cancelled
+            .is_some_and(LandXmlCancellation::is_cancelled)
+        {
+            return Err(error(Code::Cancelled, "ingestion cancelled"));
+        }
+        self.since_check = 0;
+        Ok(())
+    }
+
+    pub(crate) fn processed(&mut self, mut bytes: usize) -> Result<()> {
+        while bytes > 0 {
+            let until_check = CANCELLATION_POLL_BYTES - self.since_check;
+            let processed = bytes.min(until_check);
+            self.since_check += processed;
+            bytes -= processed;
+            if self.since_check == CANCELLATION_POLL_BYTES {
+                self.check()?;
+            }
+        }
+        Ok(())
+    }
+}
 
 pub(crate) fn attributes(
     start: &BytesStart<'_>,
@@ -97,7 +142,13 @@ pub(crate) fn unescape(value: &str) -> Result<String> {
 ///
 /// LandXML ingestion deliberately accepts only UTF-8 and UTF-16. The input and
 /// normalized output stay bounded by `max_bytes` and its UTF-16 expansion bound.
-pub(crate) fn normalize_encoding(input: &[u8], limits: &LandXmlLimits) -> Result<Vec<u8>> {
+pub(crate) fn normalize_encoding(
+    input: &[u8],
+    limits: &LandXmlLimits,
+    cancelled: Option<&dyn LandXmlCancellation>,
+) -> Result<Vec<u8>> {
+    let mut poller = CancellationPoller::new(cancelled);
+    poller.check()?;
     let (encoding, payload) = match input {
         [0xef, 0xbb, 0xbf, rest @ ..] => (Encoding::Utf8, rest),
         [0xff, 0xfe, rest @ ..] => (Encoding::Utf16Le, rest),
@@ -107,11 +158,8 @@ pub(crate) fn normalize_encoding(input: &[u8], limits: &LandXmlLimits) -> Result
         _ => (Encoding::Utf8, input),
     };
     let normalized = match encoding {
-        Encoding::Utf8 => str::from_utf8(payload)
-            .map_err(|_| error(Code::InvalidXml, "input is not valid UTF-8"))?
-            .as_bytes()
-            .to_vec(),
-        Encoding::Utf16Le | Encoding::Utf16Be => decode_utf16(payload, encoding)?,
+        Encoding::Utf8 => decode_utf8(payload, &mut poller)?,
+        Encoding::Utf16Le | Encoding::Utf16Be => decode_utf16(payload, encoding, &mut poller)?,
     };
     let max_normalized = limits
         .max_bytes
@@ -132,22 +180,72 @@ enum Encoding {
     Utf16Be,
 }
 
-fn decode_utf16(input: &[u8], encoding: Encoding) -> Result<Vec<u8>> {
-    let chunks = input.chunks_exact(2);
-    if !chunks.remainder().is_empty() {
+fn decode_utf8(input: &[u8], poller: &mut CancellationPoller<'_>) -> Result<Vec<u8>> {
+    let mut output = Vec::with_capacity(input.len());
+    let mut index = 0;
+    while index < input.len() {
+        let mut end = (index + CANCELLATION_POLL_BYTES).min(input.len());
+        while end < input.len() && (input[end] & 0b1100_0000) == 0b1000_0000 {
+            end -= 1;
+        }
+        debug_assert!(end > index, "a UTF-8 code point is at most four bytes");
+        let chunk = &input[index..end];
+        std::str::from_utf8(chunk)
+            .map_err(|_| error(Code::InvalidXml, "input is not valid UTF-8"))?;
+        output.extend_from_slice(chunk);
+        poller.processed(chunk.len())?;
+        index = end;
+    }
+    Ok(output)
+}
+
+fn decode_utf16(
+    input: &[u8],
+    encoding: Encoding,
+    poller: &mut CancellationPoller<'_>,
+) -> Result<Vec<u8>> {
+    if !input.len().is_multiple_of(2) {
         return Err(error(
             Code::InvalidXml,
             "UTF-16 input has an odd byte length",
         ));
     }
-    let units = chunks.map(|pair| match encoding {
-        Encoding::Utf16Le => u16::from_le_bytes([pair[0], pair[1]]),
-        Encoding::Utf16Be => u16::from_be_bytes([pair[0], pair[1]]),
+    let mut output = String::new();
+    let mut index = 0;
+    while index < input.len() {
+        let unit = utf16_unit(input, index, encoding);
+        index += 2;
+        poller.processed(2)?;
+        let scalar = match unit {
+            0xd800..=0xdbff => {
+                if index == input.len() {
+                    return Err(error(Code::InvalidXml, "input is not valid UTF-16"));
+                }
+                let low = utf16_unit(input, index, encoding);
+                index += 2;
+                poller.processed(2)?;
+                if !(0xdc00..=0xdfff).contains(&low) {
+                    return Err(error(Code::InvalidXml, "input is not valid UTF-16"));
+                }
+                0x1_0000 + (u32::from(unit - 0xd800) << 10) + u32::from(low - 0xdc00)
+            }
+            0xdc00..=0xdfff => return Err(error(Code::InvalidXml, "input is not valid UTF-16")),
+            unit => u32::from(unit),
+        };
+        let character = char::from_u32(scalar)
+            .ok_or_else(|| error(Code::InvalidXml, "input is not valid UTF-16"))?;
+        output.push(character);
+    }
+    Ok(output.into_bytes())
+}
+
+fn utf16_unit(input: &[u8], index: usize, encoding: Encoding) -> u16 {
+    let pair = [input[index], input[index + 1]];
+    match encoding {
+        Encoding::Utf16Le => u16::from_le_bytes(pair),
+        Encoding::Utf16Be => u16::from_be_bytes(pair),
         Encoding::Utf8 => unreachable!("UTF-8 does not use UTF-16 decoding"),
-    });
-    String::from_utf16(&units.collect::<Vec<_>>())
-        .map(|value| value.into_bytes())
-        .map_err(|_| error(Code::InvalidXml, "input is not valid UTF-16"))
+    }
 }
 
 fn check_declared_encoding(input: &[u8], detected: Encoding) -> Result<()> {

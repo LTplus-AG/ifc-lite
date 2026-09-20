@@ -378,6 +378,22 @@ the secondary count in a message (the `{warnings}` clause in
 catalogue's `checkEvidence.summary` already accepts for a message with two
 independent counts.
 
+The model-reposition catalogue (#4918 slice, `reposition-panel.en.ts`,
+prefix `repositionPanel.*`) covers the `reposition/` directory:
+`RepositionPanel.tsx` (the floating panel's header, moving/reference model
+pickers, framing shortcuts, point-picking prompts, constraint/input-mode
+controls, the move-dimensions readout, and the apply/undo/redo/reset
+actions), `RotationControls.tsx` (the heading and pivot fields, their
+guidance text, and the per-model rotation summary), `PlacementGizmo.tsx`
+(the drag-handle SVG's aria-labels and its live delta readout),
+`PlacementFiles.tsx` (the save/restore-placements disclosure and its
+instance-mapping fieldset), and `StaleMeasurementBadge.tsx` (the single
+stale-measurement indicator). Model NAMES stay as interpolation params;
+the hover-target kind (vertex/edge/face/point/origin/bounds) and the
+source/target pick role are internal enums whose display words moved to
+the same data-table `labelKey` pattern `sectionConstants.ts`'s
+`AXIS_INFO` and slice 2's command registries use.
+
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for
 hardcoded JSX text, `{'…'}`-wrapped JSX-expression string literals, and

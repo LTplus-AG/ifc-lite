@@ -20,10 +20,12 @@
 import { Scissors } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { useZoneApportionment, straddlerIdsFor } from '@/hooks/useZoneApportionment';
 import { coverageOf, validEntry, type ZoneSet } from '@/lib/zones';
 
 export function ZoneApportionSummary({ zoneSet }: { zoneSet: ZoneSet }) {
+  const { t } = useTranslation();
   const cache = useViewerStore((s) => s.zoneApportionment);
   const assignments = useViewerStore((s) => s.zoneAssignments);
   const { computeSet } = useZoneApportionment();
@@ -43,8 +45,8 @@ export function ZoneApportionSummary({ zoneSet }: { zoneSet: ZoneSet }) {
         className="h-6 w-full text-[11px]"
         disabled={straddlers === 0}
         title={straddlers === 0
-          ? 'No element crosses a boundary in this set, so there is nothing to split'
-          : `Split the volume of ${straddlers} straddling element(s) across this set's zones`}
+          ? t('zonesPanel.apportionSummary.noStraddlersTitle')
+          : t('zonesPanel.apportionSummary.splitTitle', { count: straddlers })}
         // One SYNCHRONOUS pass (~50 us per element, ~11 ms over 241 straddlers).
         // There was a `running` flag with a spinner here; it could never be
         // seen. React batches the set-true and set-false inside one handler, so
@@ -55,17 +57,26 @@ export function ZoneApportionSummary({ zoneSet }: { zoneSet: ZoneSet }) {
         onClick={() => computeSet(zoneSet)}
       >
         <Scissors className="h-3 w-3 mr-1" />
-        Split volumes ({straddlers} straddler{straddlers === 1 ? '' : 's'})
+        {t('zonesPanel.apportionSummary.splitVolumesButton', { count: straddlers })}
       </Button>
       {entry && (
         <p className="text-[10px] text-muted-foreground leading-snug">
-          {coverage.apportioned.toLocaleString()} split in {entry.elapsedMs.toFixed(0)} ms
-          {coverage.unprovedSolid > 0 && ` · ${coverage.unprovedSolid} skipped (mesh not a proven closed solid)`}
-          {coverage.noGeometry > 0 && ` · ${coverage.noGeometry} skipped (no geometry loaded)`}
+          {t('zonesPanel.apportionSummary.splitSummary', {
+            count: coverage.apportioned.toLocaleString(),
+            ms: entry.elapsedMs.toFixed(0),
+          })}
+          {coverage.unprovedSolid > 0 && (
+            <> · {t('zonesPanel.apportionSummary.unprovedSolidClause', { count: coverage.unprovedSolid })}</>
+          )}
+          {coverage.noGeometry > 0 && (
+            <> · {t('zonesPanel.apportionSummary.noGeometryClause', { count: coverage.noGeometry })}</>
+          )}
           {/* Its own clause, not folded into "not a proven closed solid": the
               kernel DID prove these, and the fix is to re-anchor the federation
               rather than to look at the element's geometry. */}
-          {coverage.rescaledByAlignment > 0 && ` · ${coverage.rescaledByAlignment} skipped (model rescaled by federation alignment)`}
+          {coverage.rescaledByAlignment > 0 && (
+            <> · {t('zonesPanel.apportionSummary.rescaledClause', { count: coverage.rescaledByAlignment })}</>
+          )}
         </p>
       )}
     </div>

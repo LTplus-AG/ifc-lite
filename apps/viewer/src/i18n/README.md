@@ -524,6 +524,28 @@ all three files' INNER content (the extracted property/quantity cards, the
 tree row/node chrome) was already covered by an earlier slice; this slice
 covers the panel/dialog SHELL around them.
 
+The zones/rooms catalogue (#4918 zones slice, `zones-panel.en.ts`, prefix
+`zonesPanel.*`) covers five files: `ZonesPanel.tsx` (author + manage location
+zones, issue #1810), its straddler-volume companions
+`ZoneApportionSummary.tsx` and `ZoneVolumeBreakdown.tsx` (issue #2508), the
+export/write-back surface `ZoneWriteBackControl.tsx`, and — grouped into this
+slice for its file-count rather than its topic — `RoomPanel.tsx`, the
+collaboration room roster ("room" there means a live collab session, not an
+IFC spatial room). Zone NAMES the user assigns, generated-set default names
+(`'Untitled set'`, `'Storeys'`) that become renamable data the instant they
+are created, and export file names remain runtime content and stay out of
+the catalogue. `RoomPanel.tsx`'s `STATUS_META`/`SEEDING_META` (connection dot)
+and `ROLE_META` (collab role badge) moved to the same data-table-plus-
+`labelKey` pattern `sectionConstants.ts`'s `AXIS_INFO` and the clash-panel
+severity/review-status tables use; `ZonesPanel.tsx`'s `ZoneRow` Center/Size
+field-label tuples moved to arrays of translation keys for the same reason.
+Multi-clause status lines built from independent optional counts (the
+apportionment coverage footer, the geometry-export success toast) render
+each clause as its own translated span/branch joined by a plain, letter-free
+' · ' separator rather than concatenating translated fragments in code, the
+same reasoning `ClashRevisionCompareDialog.tsx`'s `warningLines()` and the
+layers catalogue's `checkEvidence.summary` already document.
+
 The Data Connector catalogue (#4918 slice, `data-connector.en.ts`, prefix
 `dataConnector.*`) covers `DataConnector.tsx`'s own chrome: the trigger
 button, the dialog header and step indicator, the target-model and

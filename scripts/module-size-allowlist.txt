@@ -70,7 +70,7 @@
   1098 apps/viewer/src/components/viewer/CesiumPlacementEditor.tsx
   1720 apps/viewer/src/components/viewer/ChatPanel.tsx
   1303 apps/viewer/src/components/viewer/ClashPanel.tsx
-  1059 apps/viewer/src/components/viewer/DataConnector.tsx
+  1053 apps/viewer/src/components/viewer/DataConnector.tsx
   1752 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
    536 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
    426 apps/viewer/src/components/viewer/DxfUnderlayPanel.tsx

@@ -498,11 +498,12 @@ describe('Properties panel localization (#4918 slice 4)', () => {
 
   catalogueIt('an unchanged edit never rewrites a georeference number, whatever its precision (#4918 review)', () => {
     // A value with more fractional digits than any display format keeps
-    // (0.1234567890123456789) must survive open + Enter untouched: the commit
-    // recognises the seeded buffer and does not re-parse a rounded string.
+    // (17 significant digits, the most a double can carry) must survive
+    // open + Enter untouched: the commit recognises the seeded buffer and
+    // does not re-parse a rounded string.
     registerLocale('de-DE', {});
     act(() => setLocale('de-DE'));
-    const exact = 0.1234567890123456789;
+    const exact = 0.12345678901234568;
     const container = render(
       <GeoreferencingPanel
         georef={{ hasGeoreference: true, mapConversion: { ...MAP_CONVERSION, scale: exact }, projectedCRS: PROJECTED_CRS, source: 'mapConversion' }}

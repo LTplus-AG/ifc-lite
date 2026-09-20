@@ -52,8 +52,21 @@ export function splitTopLevelAttributes(attrsRaw: string): string[] | null {
  * freshly minted GlobalId — losing the door/window's own identity, Name
  * and property-set associations even though IFC2X3 has a real (if
  * differently shaped) representation for it.
+ *
+ * `IFCSTRUCTURALCURVEACTION`/`IFCSTRUCTURALSURFACEACTION` are added for the
+ * same reason (#4206): each shares `GlobalId` through `DestabilizingLoad`
+ * with its IFC2X3 `IfcStructuralLinearAction`/`PlanarAction` target, but
+ * IFC2X3 inserts an optional `CausedBy` before `ProjectedOrTrue` where IFC4
+ * instead appends `PredefinedType`, so neither list is a positional prefix
+ * of the other verified case by case (see the entries in `IFC4_TO_IFC2X3`
+ * in `schema-converter.ts`).
  */
-export const BY_NAME_ATTR_REMAP_TYPES = new Set(['IFCDOORTYPE', 'IFCWINDOWTYPE']);
+export const BY_NAME_ATTR_REMAP_TYPES = new Set([
+  'IFCDOORTYPE',
+  'IFCWINDOWTYPE',
+  'IFCSTRUCTURALCURVEACTION',
+  'IFCSTRUCTURALSURFACEACTION',
+]);
 
 /**
  * Reconcile a renamed entity's attribute list by matching attribute NAMES

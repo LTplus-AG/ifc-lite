@@ -12,7 +12,7 @@
 import { writeFile } from 'node:fs/promises';
 import { loadIfcFile } from '../loader.js';
 import { getFlag, hasFlag, fatal, printJson } from '../output.js';
-import { exportToStep } from '@ifc-lite/export';
+import { exportToStep, analyzeConversionLoss, type IfcSchemaVersion } from '@ifc-lite/export';
 
 const VALID_SCHEMAS = ['IFC2X3', 'IFC4', 'IFC4X3', 'IFC5'];
 
@@ -33,13 +33,28 @@ export async function convertCommand(args: string[]): Promise<void> {
 
   process.stderr.write(`Loading ${filePath}...\n`);
   const store = await loadIfcFile(filePath);
-  const sourceSchema = store.schemaVersion ?? 'IFC4';
+  const sourceSchema = (store.schemaVersion ?? 'IFC4') as IfcSchemaVersion;
+  const targetSchemaVersion = targetSchema.toUpperCase() as IfcSchemaVersion;
 
-  process.stderr.write(`Converting ${sourceSchema} → ${targetSchema.toUpperCase()}...\n`);
+  process.stderr.write(`Converting ${sourceSchema} → ${targetSchemaVersion}...\n`);
 
-  const content = exportToStep(store, {
-    schema: targetSchema.toUpperCase() as 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5',
-  });
+  // Computed before attempting the export (#4206): a store-level classification
+  // of what every entity TYPE present will become, so a type this schema pair
+  // cannot represent at all is reported by name and express id instead of
+  // surfacing as an uncaught exception from the middle of `exportToStep` —
+  // `analyzeConversionLoss` never throws and always covers the whole file.
+  const lossReport = analyzeConversionLoss(store, sourceSchema, targetSchemaVersion);
+  for (const line of lossReport.describe()) process.stderr.write(`  ${line}\n`);
+
+  if (lossReport.hasBlocking) {
+    fatal(
+      `Cannot convert ${filePath} to ${targetSchemaVersion}: it contains entity types with no ${targetSchemaVersion} ` +
+      'representation that are not IfcRoot subtypes, so they can neither be dropped nor replaced with a placeholder ' +
+      '(see the entries logged above). Remove them before targeting this schema.',
+    );
+  }
+
+  const content = exportToStep(store, { schema: targetSchemaVersion });
 
   await writeFile(outPath, content, 'utf-8');
 
@@ -47,10 +62,18 @@ export async function convertCommand(args: string[]): Promise<void> {
     printJson({
       file: outPath,
       sourceSchema,
-      targetSchema: targetSchema.toUpperCase(),
+      targetSchema: targetSchemaVersion,
       fileSize: Buffer.byteLength(content, 'utf-8'),
+      lossReport: lossReport.entries.map((e) => ({
+        type: e.sourceType,
+        targetType: e.targetType,
+        kind: e.kind,
+        count: e.count,
+        expressIds: e.expressIds,
+        droppedAttributes: e.droppedAttributes,
+      })),
     });
   } else {
-    process.stderr.write(`Converted to ${outPath} (${targetSchema.toUpperCase()})\n`);
+    process.stderr.write(`Converted to ${outPath} (${targetSchemaVersion})\n`);
   }
 }

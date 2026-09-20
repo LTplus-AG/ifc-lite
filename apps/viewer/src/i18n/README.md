@@ -203,6 +203,22 @@ stores that value verbatim in `idsError`; `IDSPanel.tsx`'s error banner is the
 one place that resolves it with `t()`, at render time, so it retranslates on
 a live locale switch like every other catalogued string here (#5030).
 
+The document-panel catalogue (#4918 doc slice, `document.en.ts`) started as
+#4993's `document-menu.en.ts` (the document menu's rename/duplicate/delete/
+export/import actions) plus #4940's `document.en.ts` (the chart/image width
+picker and the spacer block, added to `BlockEditor.tsx` alongside those
+features). This slice extends the same `document.*` namespace with every
+remaining literal in the three files the earlier slices left uncovered:
+`BlockEditor.tsx`'s own chrome (the block-kind badge, the text/image/chart/
+topic field groups, and the move/remove controls), `DocumentPanel.tsx`'s own
+chrome (the document/page-size/orientation selects, the "Add block" menu,
+the export button and its pluralized result toast, the unsaved-document
+warning, and the empty-blocks state), and `DocumentPreview.tsx`'s empty-state
+and unresolved-topic messages. Block and document CONTENT — typed template
+text, a chart's own title, a BCF topic's own title, image data, a document's
+own name — stays out of the catalogue as model/user data, same reasoning as
+every other panel in this sweep.
+
 The schedule/Gantt-panel chrome catalogue (#4918 slice 6, schedule) covers
 `GanttToolbar.tsx`, `GanttEmptyState.tsx`, `AnimationSettingsPopover.tsx`,
 `GenerateScheduleDialog.tsx`, `HeightStrategyPanel.tsx`,

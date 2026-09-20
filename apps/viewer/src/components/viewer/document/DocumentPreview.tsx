@@ -11,6 +11,7 @@
 import { useMemo, useState } from 'react';
 import { renderChartSvg, type Aggregation } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
+import { useTranslation } from '@/i18n';
 import { renderTemplate, type BindingContext } from '@/lib/document/bindings';
 import { REPORT_THEME } from '@/lib/export/report/generate-report-pdf';
 import { topicLines, topicSnapshotDataUrl } from '@/lib/document/generate-document-pdf';
@@ -81,13 +82,14 @@ function ResolvedText({ text, bindings }: { text: string; bindings: BindingConte
 }
 
 function ChartSvg({ aggregation, message, width, height }: { aggregation: Aggregation | null; message: string | undefined; width: number; height: number }) {
+  const { t } = useTranslation();
   const svg = useMemo(() => (aggregation && aggregation.categories.length > 0
     ? renderChartSvg({ aggregation, width, height, theme: REPORT_THEME, showTitle: false, print: true })
     : null), [aggregation, width, height]);
   if (!svg) {
     return (
       <div className="flex items-center justify-center rounded border border-dashed border-neutral-300 px-3 text-center text-xs text-neutral-500" style={{ height: Math.max(48, height) }} data-chart-empty>
-        {message ?? 'No data for this chart.'}
+        {message ?? t('document.preview.chartEmpty')}
       </div>
     );
   }
@@ -106,9 +108,10 @@ function PreviewImage({ dataUrl, alt, height, contentWidth }: { dataUrl: string;
 }
 
 function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth, scale, pageHeight }: { block: DocumentBlock; bindings: BindingContext; aggregation: Aggregation | null; chartMessage: string | undefined; topic: BCFTopic | undefined; contentWidth: number; scale: number; pageHeight: number }) {
+  const { t } = useTranslation();
   switch (block.kind) {
     case 'text':
-      return <div className={TEXT_CLASS[block.style]} data-block-text>{block.text.trim() ? <ResolvedText text={block.text} bindings={bindings} /> : <span className={DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}>(empty)</span>}</div>;
+      return <div className={TEXT_CLASS[block.style]} data-block-text>{block.text.trim() ? <ResolvedText text={block.text} bindings={bindings} /> : <span className={DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}>{t('document.preview.textEmpty')}</span>}</div>;
     case 'image': {
       const justify = block.align === 'left' ? 'justify-start' : block.align === 'right' ? 'justify-end' : 'justify-center';
       return (
@@ -116,7 +119,7 @@ function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth
           <div className={`flex w-full ${justify}`}>
             {block.dataUrl
               ? <PreviewImage key={block.dataUrl} dataUrl={block.dataUrl} alt={block.caption ?? ''} height={block.height * scale} contentWidth={contentWidth} />
-              : <div className="flex items-center justify-center rounded border border-dashed border-neutral-300 px-3 text-xs text-neutral-500" style={{ height: block.height * scale, minWidth: 80 }}>No image yet</div>}
+              : <div className="flex items-center justify-center rounded border border-dashed border-neutral-300 px-3 text-xs text-neutral-500" style={{ height: block.height * scale, minWidth: 80 }}>{t('document.preview.imageEmpty')}</div>}
           </div>
           {block.caption && <figcaption className="text-[10px] text-neutral-500">{block.caption}</figcaption>}
         </figure>
@@ -152,7 +155,7 @@ function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth
       // does (review finding). A negative margin cancels the container's second gap.
       return <div style={{ height: block.height * scale, marginBottom: '-0.625rem' }} data-block-spacer />;
     case 'topic': {
-      if (!topic) return <div className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900" data-unresolved>BCF topic {block.guid} is not among the loaded topics.</div>;
+      if (!topic) return <div className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900" data-unresolved>{t('document.preview.topicNotLoaded', { guid: block.guid })}</div>;
       const snapshot = block.snapshot ? topicSnapshotDataUrl(topic) : null;
       return (
         <div className="flex gap-3">
@@ -168,6 +171,7 @@ function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth
 }
 
 export function DocumentPreview({ document, bindings, aggregations, chartMessages, topics, selectedBlockId, onSelectBlock }: DocumentPreviewProps) {
+  const { t } = useTranslation();
   const size = pageBox(document.page);
   // The sheet scales to the panel; block content is laid out at this width.
   const width = 560;
@@ -200,7 +204,7 @@ export function DocumentPreview({ document, bindings, aggregations, chartMessage
               ? <div key={group[0].id} className="grid grid-cols-2 gap-3" data-preview-row>{wrap(group[0])}{wrap(group[1])}</div>
               : wrap(group);
           })}
-          {document.blocks.length === 0 && <div className={`text-xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>An empty page — add a block on the left.</div>}
+          {document.blocks.length === 0 && <div className={`text-xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>{t('document.preview.emptyPage')}</div>}
         </div>
       </div>
     </div>

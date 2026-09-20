@@ -16,10 +16,9 @@ function sameDeclaredFrame(
   source: ModelSpatialReference | undefined,
   target: ModelSpatialReference,
 ): boolean {
-  return source?.horizontal?.id === target.horizontal?.id
-    && source?.vertical?.id === target.vertical?.id
-    && source.horizontal !== undefined
-    && source.vertical !== undefined;
+  if (!source?.horizontal || !source.vertical) return false;
+  return source.horizontal.id === target.horizontal?.id
+    && source.vertical.id === target.vertical?.id;
 }
 
 /**

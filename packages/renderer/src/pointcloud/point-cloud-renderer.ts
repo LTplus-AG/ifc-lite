@@ -30,6 +30,7 @@ import {
   type PointCloudNodeMeta,
 } from './point-cloud-node.js';
 import type { PointCloudSpatialIndex } from './point-cloud-spatial-index.js';
+import { buildPickNodeSources, resolvePickedAsset } from './point-cloud-pick-sources.js';
 import { buildRayQuerySources } from './point-cloud-ray-transform.js';
 import {
   normalizeClassMask,
@@ -428,12 +429,7 @@ export class PointCloudRenderer {
    * Returns null when the sample doesn't match any asset's expressId.
    */
   resolvePick(expressId: number): { handle: PointCloudAssetHandle; meta: PointCloudNodeMeta } | null {
-    for (const [id, node] of this.nodes.entries()) {
-      if ((node.meta.expressId >>> 0) === (expressId >>> 0)) {
-        return { handle: { id }, meta: node.meta };
-      }
-    }
-    return null;
+    return resolvePickedAsset(this.nodes.entries(), expressId);
   }
 
   /** Picker snapshot includes the exact model matrix used by visible splats. */
@@ -443,17 +439,7 @@ export class PointCloudRenderer {
     model?: Float32Array;
     chunks: Array<{ vertexBuffer: GPUBuffer; pointCount: number }>;
   }> {
-    const out: Array<{ expressId: number; modelIndex?: number; model?: Float32Array; chunks: Array<{ vertexBuffer: GPUBuffer; pointCount: number }> }> = [];
-    for (const node of this.nodes.values()) {
-      if (node.pointCount === 0) continue;
-      out.push({
-        expressId: node.meta.expressId,
-        modelIndex: node.meta.modelIndex,
-        model: node.model,
-        chunks: node.chunks.map((c) => ({ vertexBuffer: c.vertexBuffer, pointCount: c.pointCount })),
-      });
-    }
-    return out;
+    return buildPickNodeSources(this.nodes.values());
   }
 
   /**

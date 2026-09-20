@@ -94,7 +94,7 @@
    886 apps/viewer/src/components/viewer/properties/LocationMap.tsx
    417 apps/viewer/src/components/viewer/properties/MaterialTotalsPanel.tsx
    510 apps/viewer/src/components/viewer/properties/TaskEditCard.tsx
-  2187 apps/viewer/src/components/viewer/PropertiesPanel.tsx
+  2182 apps/viewer/src/components/viewer/PropertiesPanel.tsx
   1729 apps/viewer/src/components/viewer/PropertyEditor.tsx
    539 apps/viewer/src/components/viewer/schedule/AnimationSettingsPopover.tsx
    425 apps/viewer/src/components/viewer/schedule/GanttToolbar.tsx
@@ -139,6 +139,7 @@
    436 apps/viewer/src/hooks/useIfcServer.ts
    445 apps/viewer/src/hooks/useKeyboardShortcuts.ts
    467 apps/viewer/src/hooks/useSymbolicAnnotations.ts
+   453 apps/viewer/src/i18n/catalogues/properties.en.ts
    633 apps/viewer/src/lib/analytics-scrub.ts
    627 apps/viewer/src/lib/clash/persistence.ts
    436 apps/viewer/src/lib/compare/worldPlacement.ts

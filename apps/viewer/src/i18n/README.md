@@ -122,7 +122,13 @@ per-row tag strip and its tag editor dialog (`ModelRowTags`,
 (`HierarchySortControl`, whose `SORT_OPTIONS` table carries `labelKey`s the
 same way `camera-commands.ts` does), and the Building Storeys display
 controls (`StoreyDisplayControls`). Row NAMES, TYPE NAMES and TAG NAMES are
-model content, not literals, and stay out of the catalogue.
+model content, not literals, and stay out of the catalogue. The same
+catalogue's `hierarchy.panel.*` keys (#4918 slice: panel outer chrome) cover
+`HierarchyPanel.tsx`'s own shell around that tree: the loading/no-model
+empty states, the search field, the grouping-mode tab strip and Groups
+sub-filter chips, the section header per grouping mode, the storey/class-
+filter/type-isolation footer chips and their clear controls, and the
+resize-divider hint.
 
 The properties catalogue (#4918 slice 4) covers the Properties panel's own
 chrome: the entity header actions, the assembly/spatial-location badges,
@@ -135,7 +141,14 @@ surfaces, and the Gantt task edit card. IFC EXPRESS attribute names
 `Description`, …) rendered as `GeorefRow`/`MaterialRow` labels keep the
 house rule's exact schema spelling and stay out of the catalogue, same as
 property/pset/material/classification/schedule NAMES and VALUES, which are
-model content.
+model content. The same catalogue's `properties.panel.*` keys (#4918 slice:
+panel outer chrome) cover `PropertiesPanel.tsx`'s own chrome that is not one
+of those extracted cards: the empty state, the entity header's merge-layers
+badge and world-coordinates disclosure, the IFC Attributes / Structure /
+Zones collapsible sections and their inline attribute editor, the
+Properties/Quantities/bSDD/Raw STEP tabs and each tab's empty state, the
+occurrence/type/material property section labels, and the unified-storey
+multi-entity view.
 
 The appearance-panel catalogue (#4918 slice 4, split across
 `appearance-panel.en.ts`, `appearance-workflows.en.ts`, and
@@ -173,7 +186,13 @@ per-row tag strip and its tag editor dialog (`ModelRowTags`,
 (`HierarchySortControl`, whose `SORT_OPTIONS` table carries `labelKey`s the
 same way `camera-commands.ts` does), and the Building Storeys display
 controls (`StoreyDisplayControls`). Row NAMES, TYPE NAMES and TAG NAMES are
-model content, not literals, and stay out of the catalogue.
+model content, not literals, and stay out of the catalogue. The same
+catalogue's `hierarchy.panel.*` keys (#4918 slice: panel outer chrome) cover
+`HierarchyPanel.tsx`'s own shell around that tree: the loading/no-model
+empty states, the search field, the grouping-mode tab strip and Groups
+sub-filter chips, the section header per grouping mode, the storey/class-
+filter/type-isolation footer chips and their clear controls, and the
+resize-divider hint.
 
 The properties catalogue (#4918 slice 4) covers the Properties panel's own
 chrome: the entity header actions, the assembly/spatial-location badges,
@@ -186,7 +205,14 @@ surfaces, and the Gantt task edit card. IFC EXPRESS attribute names
 `Description`, …) rendered as `GeorefRow`/`MaterialRow` labels keep the
 house rule's exact schema spelling and stay out of the catalogue, same as
 property/pset/material/classification/schedule NAMES and VALUES, which are
-model content.
+model content. The same catalogue's `properties.panel.*` keys (#4918 slice:
+panel outer chrome) cover `PropertiesPanel.tsx`'s own chrome that is not one
+of those extracted cards: the empty state, the entity header's merge-layers
+badge and world-coordinates disclosure, the IFC Attributes / Structure /
+Zones collapsible sections and their inline attribute editor, the
+Properties/Quantities/bSDD/Raw STEP tabs and each tab's empty state, the
+occurrence/type/material property section labels, and the unified-storey
+multi-entity view.
 The IDS-panel catalogue (#4918 viewer-panels slice) covers `IDSPanel.tsx` and
 the extracted validation progress, result-summary, filtering, isolation,
 focus, specification, requirement, and entity chrome (`ids-panel.en.ts`). A
@@ -493,6 +519,21 @@ the hover-target kind (vertex/edge/face/point/origin/bounds) and the
 source/target pick role are internal enums whose display words moved to
 the same data-table `labelKey` pattern `sectionConstants.ts`'s
 `AXIS_INFO` and slice 2's command registries use.
+
+The export-dialog catalogue (#4918 slice: export/panel outer chrome,
+`export-dialog.en.ts`) covers `ExportDialog.tsx`'s own chrome: the trigger
+button, the dialog title/description, the scope/mixed-units/model/schema
+selectors, the schema-conversion warning, the output indicator, every
+option switch and its hint text (visible-only, include-geometry,
+apply-property-changes, changes-only, IFC5-only-known-properties), the
+pending-changes banner, the export-progress readout, the success/error
+result banner, and the footer cancel/export controls. Schema version codes
+(`IFC2X3`, `IFC4`, …) and file extensions remain exact identifiers and
+stay out of the catalogue. This is a sibling to `PropertiesPanel.tsx`'s and
+`HierarchyPanel.tsx`'s own `*.panel.*` outer-chrome keys documented above —
+all three files' INNER content (the extracted property/quantity cards, the
+tree row/node chrome) was already covered by an earlier slice; this slice
+covers the panel/dialog SHELL around them.
 
 The WebGPU-troubleshooting catalogue (#4918 slice: webgpu/script,
 `webgpu-troubleshooting.en.ts`) covers `WebGpuTroubleshooting.tsx` in full:

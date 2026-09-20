@@ -22,6 +22,7 @@ import { commandPaletteEn } from './catalogues/command-palette.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
 import { comparePanelEn } from './catalogues/compare-panel.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
+import { exportDialogEn } from './catalogues/export-dialog.en';
 import { dataConnectorEn } from './catalogues/data-connector.en';
 import { extensionsFlavorsEn } from './catalogues/extensions-flavors.en';
 import { extensionsPanelsEn } from './catalogues/extensions-panels.en';
@@ -116,6 +117,7 @@ export const en = {
   ...searchModalEn,
   ...searchFiltersEn,
   ...repositionPanelEn,
+  ...exportDialogEn,
   ...webgpuTroubleshootingEn,
   ...scriptPanelEn,
   ...zonesPanelEn,

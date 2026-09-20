@@ -75,6 +75,42 @@ fn moderate_degree_with_real_knots_completes_fast() {
     );
 }
 
+/// #4206 regression: a hole ring with a non-finite vertex must make the
+/// WHOLE planar face fail, never silently fall back to the no-hole fan
+/// (which would fill in the authored opening). `1.0E400` is a legal STEP
+/// `REAL` literal — `lexical_core` parses an out-of-range exponent to
+/// `f64::INFINITY` rather than erroring the entity — so a corrupt or
+/// hostile file can genuinely produce this without any test-only hook.
+///
+/// Entered through the stable, unchanged-signature `process_planar_face`
+/// seam (not the private `triangulate_planar_indices` helper it delegates
+/// to) so that reverting the fix is observed as a failing ASSERTION (the
+/// pre-fix code returns `Ok` with the hole silently filled in) rather than
+/// a compile error: `triangulate_planar_indices` did not exist before this
+/// change, so a unit test that named it directly could never survive a
+/// production revert to prove the regression.
+#[test]
+fn failed_hole_triangulation_never_falls_back_to_a_filled_outer_fan() {
+    let content = "\
+#1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCCARTESIANPOINT((10.,0.,0.));\
+#3=IFCCARTESIANPOINT((10.,10.,0.));#4=IFCCARTESIANPOINT((0.,10.,0.));\
+#5=IFCPOLYLOOP((#1,#2,#3,#4));#6=IFCFACEOUTERBOUND(#5,.T.);\
+#7=IFCCARTESIANPOINT((4.,4.,0.));#8=IFCCARTESIANPOINT((1.0E400,4.,0.));\
+#9=IFCCARTESIANPOINT((6.,6.,0.));#10=IFCPOLYLOOP((#7,#8,#9));\
+#11=IFCFACEBOUND(#10,.T.);\
+#12=IFCAXIS2PLACEMENT3D(#1,$,$);#13=IFCPLANE(#12);\
+#14=IFCFACESURFACE((#6,#11),#13,.T.);";
+    let mut decoder = EntityDecoder::new(content);
+    let face = decoder.decode_by_id(14).unwrap();
+
+    let error =
+        process_planar_face(&face, &mut decoder, TessellationQuality::Medium).unwrap_err();
+    assert!(
+        error.to_string().contains("triangulation with holes failed"),
+        "a failed holed face must be rejected instead of filling the opening: {error}"
+    );
+}
+
 /// Baseline: a legitimate (degree=2, 9 control points) surface still
 /// tessellates, proving the #4901 bounds don't touch real output.
 #[test]

@@ -654,6 +654,11 @@
       "size": 14810
     },
     {
+      "path": "ifcopenshell/generated_structural_surface_member.ifc",
+      "sha256": "6bd71081d0ea360535c16040b8ccd0a944f1df925e05b26b12ed0216403ddbae",
+      "size": 1643
+    },
+    {
       "path": "ifcopenshell/generated_structural_edge_curve.ifc",
       "sha256": "1b62e23aa9d099688c89d1c0cb1c5d7be40d3ceac52b48f543298b8af1290b70",
       "size": 1516

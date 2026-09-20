@@ -19,6 +19,8 @@ export interface RelationshipOverlayReader {
   mutatedEntityIds(): Iterable<number>;
   namedAttributes(expressId: number): Iterable<readonly [string, unknown]>;
   positionalAttributes(expressId: number): Iterable<readonly [number, IfcAttributeValue]>;
+  /** Effective class after a queued `setEntityType`, when present. */
+  entityType?(expressId: number): string | undefined;
   isDeleted(expressId: number): boolean;
 }
 
@@ -44,8 +46,9 @@ function resolveRelationship(
   entity: IfcEntity,
   overlay: RelationshipOverlayReader,
 ): EffectiveRelationship | null {
-  if (!entity.type.toUpperCase().startsWith('IFCREL') || overlay.isDeleted(entity.expressId)) return null;
-  const names = getAttributeNamesForSchema(entity.type, store.schemaVersion);
+  const effectiveType = overlay.entityType?.(entity.expressId) ?? entity.type;
+  if (!effectiveType.toUpperCase().startsWith('IFCREL') || overlay.isDeleted(entity.expressId)) return null;
+  const names = getAttributeNamesForSchema(effectiveType, store.schemaVersion);
   if (names.length === 0) return null;
   const attributes: unknown[] = [...entity.attributes];
   const named = new Map(overlay.namedAttributes(entity.expressId));
@@ -59,14 +62,14 @@ function resolveRelationship(
   }
   for (const [index, value] of positional) attributes[index] = value;
 
-  const plan = getRelationshipSlotPlan(entity.type.toUpperCase(), store.schemaVersion);
+  const plan = getRelationshipSlotPlan(effectiveType.toUpperCase(), store.schemaVersion);
   if (!plan) return null;
   const relating = refIds(attributes[4 + plan.relating.index]);
   const related = refIds(attributes[4 + plan.related.index]);
   if (!relating.length || !related.length) return null;
   return {
     relationshipId: entity.expressId,
-    relationshipType: normalizeIfcTypeName(entity.type),
+    relationshipType: normalizeIfcTypeName(effectiveType),
     relating,
     related,
   };

@@ -16,6 +16,7 @@ function effective(store: IfcDataStore, view: MutablePropertyView) {
     mutatedEntityIds: () => view.getMutations().map(mutation => mutation.entityId),
     namedAttributes: id => view.getAttributeMutationsForEntity(id).map(({ name, value }) => [name, value] as const),
     positionalAttributes: id => view.getPositionalMutationsForEntity(id) ?? [],
+    entityType: id => view.getEntityTypeMutation(id)?.newType,
     isDeleted: id => view.isDeleted(id),
   });
 }

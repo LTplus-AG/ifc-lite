@@ -169,7 +169,6 @@ export function createQueryAdapter(
     const overrides = pending.attributes(expressId);
     const positional = pending.positionalAttributes(expressId);
     if (overrides.size === 0 && positional.size === 0) return data;
-    // Other authored fields reach callers through `attributes()` below.
     const next = {
       ...data,
       name: overrides.get('Name') ?? data.name,
@@ -180,14 +179,15 @@ export function createQueryAdapter(
     const names = attributeNamesForSchema(exactType, store.schemaVersion);
     for (const [index, value] of positional) {
       const authored = authoredValue(value);
-      if (typeof authored !== 'string') continue;
-      if (names[index] === 'Name') next.name = authored;
-      else if (names[index] === 'Description') next.description = authored;
-      else if (names[index] === 'ObjectType') next.objectType = authored;
+      const isUnset = value == null || (typeof value === 'string' && ['', '$', '*'].includes(value.trim()));
+      const text = typeof authored === 'string' ? authored : isUnset ? '' : null;
+      if (text === null) continue;
+      if (names[index] === 'Name') next.name = text;
+      else if (names[index] === 'Description') next.description = text;
+      else if (names[index] === 'ObjectType') next.objectType = text;
     }
     return next;
   }
-
   function properties(ref: EntityRef, captured?: PendingOverlay | null): PropertySetData[] {
     // `captured` lets a caller that already has the overlay pass it in rather
     // than have it rebuilt per entity — the filter loop in `entities()` runs

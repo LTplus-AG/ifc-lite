@@ -917,6 +917,12 @@ describe('containment over queued relationships', () => {
       candidate.relationshipId === 45 && candidate.entity.id === 41);
     expect(edge?.entity.name).toBe('Positional Level');
     expect(model.bim.entity({ modelId: 'm', expressId: 41 })?.name).toBe('Positional Level');
+
+    model.bim.store.setPositionalAttribute({ modelId: 'm', expressId: 41 }, 2, '$');
+    const cleared = model.bim.relationships(wall).relations?.find((candidate) =>
+      candidate.relationshipId === 45 && candidate.entity.id === 41);
+    expect(cleared?.entity.name).toBeUndefined();
+    expect(model.bim.entity({ modelId: 'm', expressId: 41 })?.name).toBe('');
   }, 30_000);
 
   it('reports a queued exact relationship row and removes it after deletion', async () => {

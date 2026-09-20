@@ -113,4 +113,24 @@ describe('effective relationship overlay (#5009)', () => {
       targetId: 4,
     }]);
   });
+
+  it('classifies a parsed relationship by its queued effective type (#5009 review)', async () => {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer as ArrayBuffer);
+    const overlay = resolveEffectiveRelationshipOverlay(store, {
+      createdEntities: () => [],
+      mutatedEntityIds: () => [5],
+      namedAttributes: () => [],
+      positionalAttributes: () => [],
+      entityType: () => 'IfcRelNests',
+      isDeleted: () => false,
+    });
+
+    expect(effectiveRelationshipEdges(overlay, () => false, 2, 'IfcRelAggregates')).toEqual([]);
+    expect(effectiveRelationshipEdges(overlay, () => false, 2, 'IfcRelNests')).toEqual([{
+      relationshipId: 5,
+      relationshipType: 'IfcRelNests',
+      direction: 'forward',
+      targetId: 3,
+    }]);
+  });
 });

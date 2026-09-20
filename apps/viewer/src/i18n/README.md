@@ -372,6 +372,30 @@ sibling to the unrelated `merge-layers-banner.en.ts` (the multilayer-wall
 geometry-merge setting's reload banner), not the same feature under a new
 name.
 
+The Lens panel catalogue (#4918 viewer-panels slice, `lens-panel.en.ts`,
+prefix `lensPanel.*`) covers `LensPanel.tsx`'s own chrome: the header
+(export/import/clear/close) and footer status line, the rule list
+(`RuleRow`'s isolate tooltip and isolated badge) and its editor
+(`RuleEditor`'s criteria-type/operator/action selects, per-type
+placeholders, duplicate/remove/reorder controls, and the compound-criteria
+read-only state), the auto-color editor (`AutoColorEditor`'s source/pset/
+property fields and the "Show unclassified" toggle), and the read-only
+lens card (`LensCard`'s edit/delete/duplicate tooltips, rule count, and
+auto-color legend with its sort control). The rule-criteria-type and
+auto-color-source display table and the operator table moved to the same
+data-table-plus-`labelKey` pattern the clash-panel catalogue's `SEVERITY`/
+`REVIEW_STATUS` tables use, relocated into a new sibling module
+(`lens-editor-labels.ts`) to keep `LensPanel.tsx` under its module-size
+budget rather than growing it further. The `'New Rule'` default rule name
+and the `'Color by '` auto-color name prefix stay English: both are
+equality-checked sentinels the component uses to detect an unrenamed
+default before substituting a localized type label, and translating the
+sentinel itself would desync it from the literal compared against on a
+non-English locale — the same reasoning that keeps `bcfHelpers.tsx`'s
+`TOPIC_TYPES` field values untranslated. IFC class names and property/
+quantity/classification/material/model/zone NAMES and VALUES discovered
+from the loaded model remain runtime data throughout.
+
 The Search Modal / Search Inline catalogue (#4918 search-modal slice) covers
 the SearchModal family and the always-visible toolbar field: the dialog
 shell (`SearchModal.tsx`), the Search tab's chip filters, result list and

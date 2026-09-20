@@ -5,14 +5,16 @@
 /**
  * `UsdExportDialog.tsx` reads the geometry-export-dialogs catalogue (#4918
  * slice: geometry export, `geometryExport.usd.*`). Same oracle shape as
- * `GLBExportDialog.i18n.test.tsx`: a pseudo-locale marks every
- * `geometryExport.*` key, the dialog is opened with no models loaded, the
- * locale is switched live, and every marked string visible in English must
- * reappear marked. `blurb`'s USD-attribute interpolation params (`upAxis`,
+ * `GLBExportDialog.i18n.test.tsx`, including inlining the expected
+ * key/English-text pairs instead of importing the catalogue module at
+ * runtime — see that file's docblock for why (the catalogue is new in this
+ * slice, so reverting production deletes it, and a guarded import here
+ * would let the revert-oracle see a skipped suite instead of a real
+ * failure). `blurb`'s USD-attribute interpolation params (`upAxis`,
  * `metersPerUnit`, `xform`, `usdGeomMesh`, `usdPreviewSurface`,
  * `purposeGuide`) are technical identifiers the caller supplies verbatim,
  * not translated text, so this test only asserts the surrounding narrative
- * key itself is marked, not the literal param values.
+ * keys are marked, not the literal param values.
  */
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -20,31 +22,33 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
-import type { TranslationValue } from '@/i18n/types';
-import type { geometryExportDialogsEn as GeometryExportEnType } from '@/i18n/catalogues/geometry-export-dialogs.en';
 import { useViewerStore } from '@/store';
 import { UsdExportDialog } from './UsdExportDialog.js';
 
-let catalogueLoaded: typeof GeometryExportEnType | undefined;
-try {
-  ({ geometryExportDialogsEn: catalogueLoaded } = await import('@/i18n/catalogues/geometry-export-dialogs.en'));
-} catch {
-  catalogueLoaded = undefined;
-}
-const HAS_CATALOGUE = catalogueLoaded !== undefined;
-const CATALOGUE: typeof GeometryExportEnType = catalogueLoaded ?? ({} as typeof GeometryExportEnType);
+const STRINGS: Record<string, string> = {
+  'geometryExport.usd.triggerButton': 'Export USD',
+  'geometryExport.usd.dialogTitle': 'Export USD (OpenUSD)',
+  'geometryExport.usd.outputLabel': 'Output',
+  'geometryExport.usd.outputFormat': 'OpenUSD Stage',
+  'geometryExport.usd.fileExtension': '.usda',
+  'geometryExport.usd.noSourceTitle': 'No source available',
+  'geometryExport.usd.noSourceDescription':
+    'USD export needs the original IFC file. Re-open the model from disk to enable it.',
+  'geometryExport.usd.cancelButton': 'Cancel',
+  'geometryExport.usd.exportButton': 'Export',
+};
 
-type GeomKey = keyof typeof CATALOGUE;
-
-function markValue(key: string, value: TranslationValue): TranslationValue {
-  if (typeof value === 'string') return `⟦${key}|${value}⟧`;
-  const wrapped: Record<string, string> = {};
-  for (const [category, text] of Object.entries(value)) wrapped[category] = `⟦${key}|${text}⟧`;
-  return wrapped as TranslationValue;
-}
-const PSEUDO: Catalogue = Object.fromEntries(
-  Object.keys(CATALOGUE).map((key) => [key, markValue(key, CATALOGUE[key as GeomKey])]),
-);
+// dialogDescription and blurb both carry `{param}` interpolation, so the
+// pseudo-oracle only needs their key prefixes marked, not an exact-text
+// match — asserted separately below via `startsWith` on the prefix.
+const PSEUDO: Catalogue = {
+  ...Object.fromEntries(Object.entries(STRINGS).map(([key, text]) => [key, `⟦${key}|${text}⟧`])),
+  // These two carry `{param}` interpolation (a literal `.usda` extension, and
+  // USD scene-description attribute names) — keep the placeholders live so
+  // `resolve()` still fills them, just mark the template itself.
+  'geometryExport.usd.dialogDescription': '⟦geometryExport.usd.dialogDescription|A real Z-up OpenUSD ASCII ({usdaExt}) stage for usdview / Blender / Omniverse⟧',
+  'geometryExport.usd.blurb': '⟦geometryExport.usd.blurb|Emits a Z-up USD stage ({upAxis}, {metersPerUnit}) mirroring the IFC spatial hierarchy as {xform} prims, with {usdGeomMesh} geometry, {usdPreviewSurface} materials, and IFC metadata as custom attributes.⟧',
+};
 const PSEUDO_LOCALE = 'usd-export-pseudo';
 
 function readable(): Set<string> {
@@ -69,7 +73,7 @@ function readable(): Set<string> {
 function openDialog(): void {
   render(<UsdExportDialog />);
   const trigger = [...document.body.querySelectorAll('button')].find((b) =>
-    b.textContent?.includes(CATALOGUE['geometryExport.usd.triggerButton'] as string),
+    b.textContent?.includes(STRINGS['geometryExport.usd.triggerButton']),
   );
   assert.ok(trigger, 'export trigger button not found');
   click(trigger!);
@@ -88,46 +92,26 @@ afterEach(() => {
   useViewerStore.setState(RESET);
 });
 
-describe(
-  'UsdExportDialog localization (#4918)',
-  { skip: !HAS_CATALOGUE && 'geometry-export-dialogs.en.ts catalogue module not present (revert-oracle probe)' },
-  () => {
-    it('static dialog chrome: title, description, output, no-source state, and footer', () => {
-      openDialog();
-      const english = readable();
-      registerLocale(PSEUDO_LOCALE, PSEUDO);
-      act(() => setLocale(PSEUDO_LOCALE));
-      const after = readable();
+describe('UsdExportDialog localization (#4918)', () => {
+  it('static dialog chrome: title, description, output, no-source state, and footer', () => {
+    openDialog();
+    const english = readable();
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = readable();
 
-      const keys: GeomKey[] = [
-        'geometryExport.usd.triggerButton',
-        'geometryExport.usd.dialogTitle',
-        'geometryExport.usd.outputLabel',
-        'geometryExport.usd.outputFormat',
-        'geometryExport.usd.fileExtension',
-        'geometryExport.usd.noSourceTitle',
-        'geometryExport.usd.noSourceDescription',
-        'geometryExport.usd.cancelButton',
-        'geometryExport.usd.exportButton',
-      ];
-      for (const key of keys) {
-        const text = CATALOGUE[key] as string;
-        assert.ok(english.has(text), `${key}: "${text}" expected visible in English before switching locale`);
-        assert.ok(after.has(`⟦${key}|${text}⟧`), `${key}: must be translated, marked text not found`);
-      }
+    for (const [key, text] of Object.entries(STRINGS)) {
+      assert.ok(english.has(text), `${key}: "${text}" expected visible in English before switching locale`);
+      assert.ok(after.has(`⟦${key}|${text}⟧`), `${key}: must be translated, marked text not found`);
+    }
 
-      // dialogDescription and blurb carry interpolation params (the literal
-      // ".usda" extension and USD scene-description attribute names) — assert
-      // the surrounding translated text is marked without pinning the exact
-      // literal params.
-      assert.ok(
-        [...after].some((s) => s.startsWith('⟦geometryExport.usd.dialogDescription|')),
-        'geometryExport.usd.dialogDescription: must be translated, marked text not found',
-      );
-      assert.ok(
-        [...after].some((s) => s.startsWith('⟦geometryExport.usd.blurb|')),
-        'geometryExport.usd.blurb: must be translated, marked text not found',
-      );
-    });
-  },
-);
+    assert.ok(
+      [...after].some((s) => s.startsWith('⟦geometryExport.usd.dialogDescription|')),
+      'geometryExport.usd.dialogDescription: must be translated, marked text not found',
+    );
+    assert.ok(
+      [...after].some((s) => s.startsWith('⟦geometryExport.usd.blurb|')),
+      'geometryExport.usd.blurb: must be translated, marked text not found',
+    );
+  });
+});

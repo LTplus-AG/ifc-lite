@@ -5,11 +5,22 @@
 /**
  * `GLBExportDialog.tsx` reads the geometry-export-dialogs catalogue (#4918
  * slice: geometry export, `geometryExport.glb.*`). Same oracle shape as the
- * rest of the sweep: a pseudo-locale marks every `geometryExport.*` key, the
- * dialog is opened with no models loaded (so no export ever actually runs —
- * the wasm geometry engine isn't available in this Node test environment),
- * the locale is switched live, and every marked string visible in English
- * must reappear marked.
+ * rest of the sweep: a pseudo-locale marks every asserted key, the dialog is
+ * opened with no models loaded (so no export ever actually runs — the wasm
+ * geometry engine isn't available in this Node test environment), the
+ * locale is switched live, and every marked string visible in English must
+ * reappear marked.
+ *
+ * The expected key/English-text pairs below are inlined rather than read
+ * from the catalogue module at runtime (#4918 revert-oracle): the catalogue
+ * is a brand-new file this slice adds, so reverting just the production
+ * hunks deletes it outright — an import of it here would throw, and a
+ * guarded try/catch around that import (skipping the suite when the module
+ * is absent) would make the oracle see zero collected tests on revert
+ * instead of a real failure. Inlining the expected strings means a
+ * reverted `GLBExportDialog.tsx` (back to hardcoded text, no `t()` calls)
+ * still renders the same English copy, but switching locale no longer marks
+ * it — the assertion fails for real.
  */
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -17,34 +28,37 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
-import type { TranslationValue } from '@/i18n/types';
-import type { geometryExportDialogsEn as GeometryExportEnType } from '@/i18n/catalogues/geometry-export-dialogs.en';
 import { useViewerStore } from '@/store';
 import { GLBExportDialog } from './GLBExportDialog.js';
 
-// Guarded dynamic import (#4918 revert-oracle): a reverted/missing catalogue
-// module must fail this test's real assertions rather than be skipped —
-// `describe.skip` here would leave the oracle observing zero collected
-// tests and reading INCONCLUSIVE instead of a real regression.
-let catalogueLoaded: typeof GeometryExportEnType | undefined;
-try {
-  ({ geometryExportDialogsEn: catalogueLoaded } = await import('@/i18n/catalogues/geometry-export-dialogs.en'));
-} catch {
-  catalogueLoaded = undefined;
-}
-const HAS_CATALOGUE = catalogueLoaded !== undefined;
-const CATALOGUE: typeof GeometryExportEnType = catalogueLoaded ?? ({} as typeof GeometryExportEnType);
+const STRINGS: Record<string, string> = {
+  'geometryExport.glb.triggerButton': 'Export GLB',
+  'geometryExport.glb.dialogTitle': 'Export GLB File',
+  'geometryExport.glb.dialogDescription':
+    'Export model geometry as binary glTF, including its current workspace placement',
+  'geometryExport.glb.colorSourceLabel': 'Colour Source',
+  // colorSourceRendering is the default-selected value, surfaced through
+  // Select's trigger; colorSourceShading lives only inside the closed
+  // Radix Select's portal-rendered content and isn't in the DOM until
+  // the trigger is opened, so it is intentionally not asserted here.
+  'geometryExport.glb.colorSourceRendering': 'Rendering (apparent colour)',
+  'geometryExport.glb.colorSourceRenderingHint':
+    'Uses IfcSurfaceStyleRendering.DiffuseColour when authored, otherwise SurfaceColour. Matches most IFC viewers.',
+  'geometryExport.glb.outputLabel': 'Output',
+  'geometryExport.glb.outputFormat': 'glTF Binary',
+  'geometryExport.glb.fileExtension': '.glb',
+  'geometryExport.glb.visibleOnlyLabel': 'Export Visible Only',
+  'geometryExport.glb.visibleOnlyHint': 'Skip entities currently hidden or outside the isolation set',
+  'geometryExport.glb.includeMetadataLabel': 'Include Metadata',
+  'geometryExport.glb.includeMetadataHint': 'Embed expressId / modelIndex on each node and totals on the asset',
+  'geometryExport.glb.litLabel': 'Lit Materials',
+  'geometryExport.glb.litHint': 'Shade from normals in other viewers. Off = flat apparent colour (unlit)',
+  'geometryExport.glb.cancelButton': 'Cancel',
+  'geometryExport.glb.exportButton': 'Export',
+};
 
-type GeomKey = keyof typeof CATALOGUE;
-
-function markValue(key: string, value: TranslationValue): TranslationValue {
-  if (typeof value === 'string') return `⟦${key}|${value}⟧`;
-  const wrapped: Record<string, string> = {};
-  for (const [category, text] of Object.entries(value)) wrapped[category] = `⟦${key}|${text}⟧`;
-  return wrapped as TranslationValue;
-}
 const PSEUDO: Catalogue = Object.fromEntries(
-  Object.keys(CATALOGUE).map((key) => [key, markValue(key, CATALOGUE[key as GeomKey])]),
+  Object.entries(STRINGS).map(([key, text]) => [key, `⟦${key}|${text}⟧`]),
 );
 const PSEUDO_LOCALE = 'glb-export-pseudo';
 
@@ -70,7 +84,7 @@ function readable(): Set<string> {
 function openDialog(): void {
   render(<GLBExportDialog />);
   const trigger = [...document.body.querySelectorAll('button')].find((b) =>
-    b.textContent?.includes(CATALOGUE['geometryExport.glb.triggerButton'] as string),
+    b.textContent?.includes(STRINGS['geometryExport.glb.triggerButton']),
   );
   assert.ok(trigger, 'export trigger button not found');
   click(trigger!);
@@ -92,45 +106,17 @@ afterEach(() => {
   useViewerStore.setState(RESET);
 });
 
-describe(
-  'GLBExportDialog localization (#4918)',
-  { skip: !HAS_CATALOGUE && 'geometry-export-dialogs.en.ts catalogue module not present (revert-oracle probe)' },
-  () => {
-    it('static dialog chrome: title, description, field labels, hints, and footer', () => {
-      openDialog();
-      const english = readable();
-      registerLocale(PSEUDO_LOCALE, PSEUDO);
-      act(() => setLocale(PSEUDO_LOCALE));
-      const after = readable();
+describe('GLBExportDialog localization (#4918)', () => {
+  it('static dialog chrome: title, description, field labels, hints, and footer', () => {
+    openDialog();
+    const english = readable();
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = readable();
 
-      const keys: GeomKey[] = [
-        'geometryExport.glb.triggerButton',
-        'geometryExport.glb.dialogTitle',
-        'geometryExport.glb.dialogDescription',
-        'geometryExport.glb.colorSourceLabel',
-        // colorSourceRendering is the default-selected value, surfaced through
-        // Select's trigger; colorSourceShading lives only inside the closed
-        // Radix Select's portal-rendered content and isn't in the DOM until
-        // the trigger is opened, so it is intentionally not asserted here.
-        'geometryExport.glb.colorSourceRendering',
-        'geometryExport.glb.colorSourceRenderingHint',
-        'geometryExport.glb.outputLabel',
-        'geometryExport.glb.outputFormat',
-        'geometryExport.glb.fileExtension',
-        'geometryExport.glb.visibleOnlyLabel',
-        'geometryExport.glb.visibleOnlyHint',
-        'geometryExport.glb.includeMetadataLabel',
-        'geometryExport.glb.includeMetadataHint',
-        'geometryExport.glb.litLabel',
-        'geometryExport.glb.litHint',
-        'geometryExport.glb.cancelButton',
-        'geometryExport.glb.exportButton',
-      ];
-      for (const key of keys) {
-        const text = CATALOGUE[key] as string;
-        assert.ok(english.has(text), `${key}: "${text}" expected visible in English before switching locale`);
-        assert.ok(after.has(`⟦${key}|${text}⟧`), `${key}: must be translated, marked text not found`);
-      }
-    });
-  },
-);
+    for (const [key, text] of Object.entries(STRINGS)) {
+      assert.ok(english.has(text), `${key}: "${text}" expected visible in English before switching locale`);
+      assert.ok(after.has(`⟦${key}|${text}⟧`), `${key}: must be translated, marked text not found`);
+    }
+  });
+});

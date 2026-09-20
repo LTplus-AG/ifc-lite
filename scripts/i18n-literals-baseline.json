@@ -34,7 +34,6 @@
   "apps/viewer/src/components/viewer/presence/PeerPresenceLayer.tsx": 1,
   "apps/viewer/src/components/viewer/SaveMarkupToModelButton.tsx": 1,
   "apps/viewer/src/components/viewer/ScanSectionPanel.tsx": 16,
-  "apps/viewer/src/components/viewer/ScriptPanel.tsx": 45,
   "apps/viewer/src/components/viewer/SearchableSelect.tsx": 3,
   "apps/viewer/src/components/viewer/ShadowControls.tsx": 7,
   "apps/viewer/src/components/viewer/ShareDialog.tsx": 10,
@@ -54,6 +53,5 @@
   "apps/viewer/src/components/viewer/ViewerLayout.tsx": 13,
   "apps/viewer/src/components/viewer/Viewport.tsx": 2,
   "apps/viewer/src/components/viewer/ViewportContainer.tsx": 32,
-  "apps/viewer/src/components/viewer/ViewportOverlays.tsx": 11,
-  "apps/viewer/src/components/viewer/WebGpuTroubleshooting.tsx": 48
+  "apps/viewer/src/components/viewer/ViewportOverlays.tsx": 11
 }

@@ -546,6 +546,7 @@ test('the real ignore file is translatable -- the exclusion cannot go silently e
   assert.ok(matchesAny('node_modules', globs));
   assert.ok(matchesAny('packages/cli/dist/loader.js', globs));
   assert.ok(matchesAny('tests/models/ara3d/duplex.ifc', globs));
+  assert.ok(matchesAny('tests/models/landxml/producers/alignment.xml', globs));
   // And the committed inputs under the same roots must SURVIVE it.
   assert.equal(matchesAny('tests/models/manifest.json', globs), false);
   assert.equal(matchesAny('packages/data/src/step-serializers.ts', globs), false);
@@ -573,9 +574,9 @@ test('an installed node_modules does not change the verdict -- the live #3314 CI
   rmSync(root, { recursive: true, force: true });
 });
 
-test('a warmed fixture cache does not change the verdict either', () => {
+test('a warmed IFC and LandXML fixture cache does not change the verdict either', () => {
   // `tests/models` holds two COMMITTED files and, after the fixture step runs,
-  // several hundred fetched `.ifc` files that git ignores. The walk is asked
+  // several hundred fetched model files that git ignores. The walk is asked
   // about the directory (which is a real input -- `manifest.json` lives there),
   // so the exclusion has to hold on the walk's CHILDREN, not only on the node
   // it was asked about.
@@ -586,6 +587,11 @@ test('a warmed fixture cache does not change the verdict either', () => {
   mkdirSync(join(root, 'tests/models/ara3d'), { recursive: true });
   writeFileSync(join(root, 'tests/models/ara3d/duplex.ifc'), 'ISO-10303-21;\n');
   writeFileSync(join(root, 'tests/models/AB22.ifc'), 'ISO-10303-21;\n');
+  mkdirSync(join(root, 'tests/models/landxml/producers'), { recursive: true });
+  writeFileSync(
+    join(root, 'tests/models/landxml/producers/alignment.xml'),
+    '<LandXML version="1.2"/>\n',
+  );
   const after = run(root);
 
   assert.equal(after.status, before.status, after.out);

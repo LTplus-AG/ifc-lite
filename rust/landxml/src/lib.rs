@@ -12,6 +12,7 @@ mod capture;
 mod limits;
 mod model;
 mod parser;
+mod plan;
 mod preflight;
 mod profile;
 mod profile_circular;
@@ -36,4 +37,10 @@ pub use profile::{
     LandXmlGradeLine, LandXmlPreservedOnlyExtension, LandXmlPreservedOnlyExtensionKind,
     LandXmlProfile, LandXmlProfileEvaluationError, LandXmlProfileKind, LandXmlProfilePoint,
     LandXmlRoadway, LandXmlVerticalCurve, LandXmlVerticalCurveKind,
+};
+pub use plan::{
+    parse_landxml_plan, parse_landxml_plan_with_cancel, LandXmlCgPoint, LandXmlGeometryKind,
+    LandXmlMonument, LandXmlParcel, LandXmlParcelProbe, LandXmlParcelState, LandXmlPlanDocument,
+    LandXmlPlanFeature, LandXmlPlanGeometry, LandXmlPlanLimits, LandXmlPlanPoint,
+    LandXmlPlanPointLocation,
 };

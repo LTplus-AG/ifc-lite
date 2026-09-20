@@ -129,7 +129,32 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.ok(Number.isFinite(result.geometryResult.coordinateInfo.shiftedBounds.max.x));
   });
 
-  it('preserves distant disconnected components with separate local origins', () => {
+  it('keeps disconnected components the shared render frame can place on their own local origins', () => {
+    const withNearbySmallFace = LANDXML
+      .replace(
+        '</Pnts>',
+        `<P id="50">5100000 2700000 100</P>
+         <P id="51">5100000 2700001 100</P>
+         <P id="52">5100001 2700000 100</P></Pnts>`,
+      )
+      .replace('</Faces>', '<F>50 51 52</F></Faces>');
+    const result = parseLandXmlViewerModel(bytes(withNearbySmallFace));
+    assert.equal(result.geometryResult.meshes.length, 2);
+    assert.equal(result.geometryResult.totalVertices, 6);
+    assert.equal(result.geometryResult.totalTriangles, 2);
+    const { originShift } = result.geometryResult.coordinateInfo;
+    assert.deepEqual(originShift, { x: 2_600_005, y: 101, z: -5_000_005 }, 'the frame is centred on the dominant component');
+    assert.deepEqual(result.geometryResult.meshes[0].origin, [0, 0, 0]);
+    assert.deepEqual(result.geometryResult.meshes[1].origin, [
+      2_700_000.5 - originShift.x,
+      100 - originShift.y,
+      -5_100_000.5 - originShift.z,
+    ]);
+    assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 2_700_001);
+    assert.equal(result.warnings.some((warning) => /degenerate face|render frame/.test(warning)), false);
+  });
+
+  it('skips a disconnected component the shared render frame cannot place precisely', () => {
     const withDistantSmallFace = LANDXML
       .replace(
         '</Pnts>',
@@ -139,22 +164,12 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
       )
       .replace('</Faces>', '<F>50 51 52</F></Faces>');
     const result = parseLandXmlViewerModel(bytes(withDistantSmallFace));
-    assert.equal(result.geometryResult.meshes.length, 2);
-    assert.equal(result.geometryResult.totalVertices, 6);
-    assert.equal(result.geometryResult.totalTriangles, 2);
-    const { originShift } = result.geometryResult.coordinateInfo;
-    assert.deepEqual(result.geometryResult.meshes[0].origin, [
-      2_600_005 - originShift.x,
-      101 - originShift.y,
-      -5_000_005 - originShift.z,
-    ]);
-    assert.deepEqual(result.geometryResult.meshes[1].origin, [
-      800_000_000.5 - originShift.x,
-      700_000_000 - originShift.y,
-      -900_000_000.5 - originShift.z,
-    ]);
-    assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 800_000_001);
-    assert.equal(result.warnings.some((warning) => /degenerate face/.test(warning)), false);
+    assert.equal(result.geometryResult.meshes.length, 1);
+    assert.equal(result.geometryResult.totalTriangles, 1);
+    assert.deepEqual(result.geometryResult.meshes[0].origin, [0, 0, 0]);
+    assert.deepEqual(result.geometryResult.coordinateInfo.originShift, { x: 2_600_005, y: 101, z: -5_000_005 });
+    assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 2_600_010, 'skipped components do not stretch the frame bounds');
+    assert.ok(result.warnings.some((warning) => /Skipped 1 surface component\(s\) more than 1000 km/.test(warning)));
   });
 
   it('removes the survey translation before GPU upload and retains it as frame metadata', () => {
@@ -190,8 +205,11 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
       )
       .replace('</Faces>', '<F>50 51 52</F><F>30 50 60</F></Faces>');
     const result = parseLandXmlViewerModel(bytes(connectedAcrossSurveyRange));
-    assert.equal(result.geometryResult.totalTriangles, 3, 'no valid face is discarded during local-frame recovery');
-    assert.equal(result.warnings.some((warning) => /degenerate face|render precision/.test(warning)), false);
+    assert.equal(result.warnings.some((warning) => /degenerate face|render precision/.test(warning)), false, 'no face is lost to local-frame recovery');
+    // Local-frame recovery keeps every face representable, but the pieces end
+    // up 900 Mm apart: only the ones the shared render frame can place stay.
+    assert.equal(result.geometryResult.totalTriangles, 2, 'the dominant piece anchors the render frame');
+    assert.ok(result.warnings.some((warning) => /Skipped 1 surface component\(s\) more than 1000 km/.test(warning)));
   });
 
   it('walks a high-valence face fan without rescanning its shared point adjacency (#4937)', () => {

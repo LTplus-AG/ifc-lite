@@ -2180,9 +2180,9 @@ export class Scene {
       // at destroyed GPU resources (use-after-free on the next bucket-driven
       // access). `previous` is null for the freshly built buckets and, for a
       // carried COLD bucket a re-grouped meshData landed in, the shell that the
-      // restored `batchedMeshes` still holds — which must be put back, not
-      // nulled.
-      const createdOwned: Array<{ bucket: BatchBucket; previous: BatchedMesh | null; batch: BatchedMesh }> = [];
+      // restored `batchedMeshes` still holds — put back, not nulled.
+      type Owned = { bucket: BatchBucket; previous: BatchedMesh | null; previousFrameOrigin?: [number, number, number]; batch: BatchedMesh };
+      const createdOwned: Owned[] = [];
       let carriedCold: Array<[string, BatchBucket]> = [];
       let pendingKeys: string[] = [];
       let keyIdx = 0;
@@ -2193,10 +2193,14 @@ export class Scene {
         // are what the restored arrays point back at). Iterating the owned
         // pairs rather than `newBatches` also skips the carried cold shells
         // appended just before the swap, which this attempt did not create.
-        for (const { bucket, previous, batch } of createdOwned) {
+        for (const { bucket, previous, previousFrameOrigin, batch } of createdOwned) {
           // Repair the owner BEFORE the free, so no bucket is ever observable
-          // holding a destroyed batch.
-          if (bucket.batchedMesh === batch) bucket.batchedMesh = previous;
+          // holding a destroyed batch; its frame origin (what a later
+          // createBatchedMesh seeds from) must describe the restored batch.
+          if (bucket.batchedMesh === batch) {
+            bucket.batchedMesh = previous;
+            bucket.frameOrigin = previousFrameOrigin;
+          }
           if (!oldBatchSet.has(batch) && !fragmentSet.has(batch)) {
             destroyGpuResources(batch);
           }
@@ -2218,10 +2222,11 @@ export class Scene {
             }
             const color = bucket.meshData[0].color;
             const previous = bucket.batchedMesh;
+            const previousFrameOrigin = bucket.frameOrigin;
             const batchedMesh = scene.createBatchedMesh(bucket.meshData, color, device, pipeline, key);
             bucket.batchedMesh = batchedMesh;
             bucket.frameOrigin = batchedMesh.origin;
-            createdOwned.push({ bucket, previous, batch: batchedMesh });
+            createdOwned.push({ bucket, previous, previousFrameOrigin, batch: batchedMesh });
             newBatches.push(batchedMesh);
 
             // Check time budget — yield if exceeded

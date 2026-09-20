@@ -13,6 +13,9 @@ export interface LandXmlGeometryPayload {
   surfaceNames: string[];
 }
 
+/** f32 keeps ~0.06 m at 1,000 km; beyond that a shared render frame cannot place metre-scale detail. */
+const MAX_RENDER_FRAME_ORIGIN_METRES = 1_000_000;
+
 export function isLandXmlFileName(name: string): boolean {
   return name.toLowerCase().endsWith('.xml');
 }
@@ -245,13 +248,81 @@ function buildSurfaceMesh(
   };
 }
 
+interface SurfaceComponent {
+  mesh: MeshData;
+  bounds: Bounds3D;
+  surfaceName: string;
+}
+
+function mergeBounds(target: Bounds3D, source: Bounds3D): void {
+  target.min.x = Math.min(target.min.x, source.min.x);
+  target.min.y = Math.min(target.min.y, source.min.y);
+  target.min.z = Math.min(target.min.z, source.min.z);
+  target.max.x = Math.max(target.max.x, source.max.x);
+  target.max.y = Math.max(target.max.y, source.max.y);
+  target.max.z = Math.max(target.max.z, source.max.z);
+}
+
+/**
+ * Pick the one render frame every uploaded component shares. Components sit
+ * on their own f64 origins, but the vertex shader evaluates `model * local`
+ * in f32, so a component whose origin lies 1,000 km from the frame centre
+ * already loses ~0.06 m and one hundreds of megametres away collapses
+ * outright. The frame is centred on the component with the most faces; any
+ * component the frame cannot place precisely is dropped with a warning
+ * rather than drawn wrong.
+ */
+function placeComponentsInRenderFrame(
+  components: SurfaceComponent[],
+  warnings: string[],
+): { placed: SurfaceComponent[]; bounds: Bounds3D; originShift: WorldPoint; hasLargeCoordinates: boolean } {
+  const sourceBounds = createEmptyBounds();
+  for (const component of components) mergeBounds(sourceBounds, component.bounds);
+  const maxAbs = Math.max(
+    Math.abs(sourceBounds.min.x), Math.abs(sourceBounds.min.y), Math.abs(sourceBounds.min.z),
+    Math.abs(sourceBounds.max.x), Math.abs(sourceBounds.max.y), Math.abs(sourceBounds.max.z),
+  );
+  const hasLargeCoordinates = maxAbs > 10_000;
+  if (!hasLargeCoordinates) {
+    return { placed: components, bounds: sourceBounds, originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates };
+  }
+  const dominant = components.reduce((best, component) => (
+    component.mesh.indices.length > best.mesh.indices.length ? component : best
+  ));
+  const originShift = {
+    x: (dominant.bounds.min.x + dominant.bounds.max.x) / 2,
+    y: (dominant.bounds.min.y + dominant.bounds.max.y) / 2,
+    z: (dominant.bounds.min.z + dominant.bounds.max.z) / 2,
+  };
+  const placed: SurfaceComponent[] = [];
+  const bounds = createEmptyBounds();
+  for (const component of components) {
+    // Mesh positions are already local to their f64 origin, so moving the
+    // origin keeps their precision while removing the survey-scale f32 model
+    // translation. coordinateInfo records the removed Y-up offset so
+    // measurements, federation and exports recover world space.
+    const origin = component.mesh.origin ?? [0, 0, 0];
+    const shifted: [number, number, number] = [
+      origin[0] - originShift.x,
+      origin[1] - originShift.y,
+      origin[2] - originShift.z,
+    ];
+    if (shifted.some((axis) => Math.abs(axis) > MAX_RENDER_FRAME_ORIGIN_METRES)) continue;
+    component.mesh.origin = shifted;
+    placed.push(component);
+    mergeBounds(bounds, component.bounds);
+  }
+  if (placed.length < components.length) {
+    warnings.push(`Skipped ${components.length - placed.length} surface component(s) more than ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km from the model centre because the render frame cannot place them precisely`);
+  }
+  return { placed, bounds, originShift, hasLargeCoordinates };
+}
+
 /** Parse LandXML 1.2 TIN surfaces into the viewer's canonical mesh payload. */
 export function parseLandXmlGeometry(buffer: ArrayBuffer): LandXmlGeometryPayload {
   const parsed = parseLandXmlTin(decodeXml(buffer));
   const warnings = [...parsed.warnings];
-  const meshes: MeshData[] = [];
-  const surfaceNames: string[] = [];
-  const bounds = createEmptyBounds();
+  const components: SurfaceComponent[] = [];
   for (const surface of parsed.surfaces) {
     let renderedComponents = 0;
     let degenerateFaces = 0;
@@ -262,22 +333,14 @@ export function parseLandXmlGeometry(buffer: ArrayBuffer): LandXmlGeometryPayloa
         const currentFaces = pending.pop()!;
         const result = buildSurfaceMesh(
           { ...surface, faces: currentFaces },
-          meshes.length + 1,
+          components.length + 1,
           parsed.units.linearScaleToMeters,
           parsed.units.elevationScaleToMeters,
         );
         degenerateFaces += result.degenerateFaces;
-        if (result.mesh) {
+        if (result.mesh && result.bounds) {
           renderedComponents++;
-          meshes.push(result.mesh);
-        }
-        if (result.bounds) {
-          bounds.min.x = Math.min(bounds.min.x, result.bounds.min.x);
-          bounds.min.y = Math.min(bounds.min.y, result.bounds.min.y);
-          bounds.min.z = Math.min(bounds.min.z, result.bounds.min.z);
-          bounds.max.x = Math.max(bounds.max.x, result.bounds.max.x);
-          bounds.max.y = Math.max(bounds.max.y, result.bounds.max.y);
-          bounds.max.z = Math.max(bounds.max.z, result.bounds.max.z);
+          components.push({ mesh: result.mesh, bounds: result.bounds, surfaceName: surface.name });
         }
         if (result.unrenderedFaces.length === 0) continue;
         if (result.unrenderedFaces.length < currentFaces.length) {
@@ -298,43 +361,17 @@ export function parseLandXmlGeometry(buffer: ArrayBuffer): LandXmlGeometryPayloa
     }
     if (renderedComponents === 0) {
       warnings.push(`Skipped surface "${surface.name}" because it has no non-degenerate faces`);
-      continue;
     }
-    surfaceNames.push(surface.name);
   }
-  if (meshes.length === 0) throw new Error('LandXML document contains no non-degenerate TIN faces');
+  if (components.length === 0) throw new Error('LandXML document contains no non-degenerate TIN faces');
 
+  const { placed, bounds, originShift, hasLargeCoordinates } = placeComponentsInRenderFrame(components, warnings);
+  const meshes = placed.map((component, index) => ({ ...component.mesh, expressId: index + 1 }));
+  const surfaceNames = [...new Set(placed.map((component) => component.surfaceName))];
   const stats = meshes.reduce((total, mesh) => ({
     totalVertices: total.totalVertices + mesh.positions.length / 3,
     totalTriangles: total.totalTriangles + mesh.indices.length / 3,
   }), { totalVertices: 0, totalTriangles: 0 });
-  const maxAbs = Math.max(
-    Math.abs(bounds.min.x), Math.abs(bounds.min.y), Math.abs(bounds.min.z),
-    Math.abs(bounds.max.x), Math.abs(bounds.max.y), Math.abs(bounds.max.z),
-  );
-  const hasLargeCoordinates = maxAbs > 10_000;
-  const originShift = hasLargeCoordinates
-    ? {
-      x: (bounds.min.x + bounds.max.x) / 2,
-      y: (bounds.min.y + bounds.max.y) / 2,
-      z: (bounds.min.z + bounds.max.z) / 2,
-    }
-    : { x: 0, y: 0, z: 0 };
-  if (hasLargeCoordinates) {
-    // Keep every uploaded batch in the same camera-safe render frame. Mesh
-    // positions are already local to their f64 origin, so moving the origins
-    // retains their precision while avoiding a survey-scale f32 model
-    // translation in the vertex shader. coordinateInfo records the removed
-    // Y-up offset so measurements, federation and exports recover world space.
-    for (const mesh of meshes) {
-      const origin = mesh.origin ?? [0, 0, 0];
-      mesh.origin = [
-        origin[0] - originShift.x,
-        origin[1] - originShift.y,
-        origin[2] - originShift.z,
-      ];
-    }
-  }
   return {
     geometryResult: {
       meshes,

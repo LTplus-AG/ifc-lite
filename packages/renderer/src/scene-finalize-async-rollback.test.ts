@@ -134,6 +134,42 @@ describe('Scene.finalizeStreamingAsync — GPU-failure rollback', () => {
     assert.strictEqual(oldBatch.vertexBuffer.destroyed, 0);
   });
 
+  it('restores a carried cold bucket frameOrigin together with its shell when a later chunk throws', async () => {
+    const scene = new Scene();
+    scene['streamingFragments'] = [fakeBatch(1)];
+    scene['batchedMeshes'] = [];
+    seedTwoBuckets(scene);
+    // keyA is a sealed cold shell whose frame is pinned; the re-group step
+    // routes the streamed meshData for keyB into it, so the rebuild displaces
+    // the shell (and its frame origin) on that bucket.
+    const shellOrigin: [number, number, number] = [10, 20, 30];
+    const shell = { ...fakeBatch(2), origin: shellOrigin } as unknown as BatchedMesh;
+    const cold = scene['buckets'].get('keyA')!;
+    cold.meshData = [];
+    cold.batchedMesh = shell;
+    cold.frameOrigin = shellOrigin;
+    scene['coldBuckets'].add('keyA');
+    scene['bucketBaseKey'] = () => 'keyA';
+
+    let calls = 0;
+    scene['createBatchedMesh'] = () => {
+      calls++;
+      if (calls === 1) return { ...fakeBatch(100), origin: [1e9, 2e9, 3e9] } as unknown as BatchedMesh;
+      throw new RangeError('createBuffer failed (GPU OOM)');
+    };
+    // Force a second chunk so the throw is a later continuation.
+    scene['buckets'].set('keyC', { key: 'keyC', meshData: [fakeMeshData([0, 0, 1, 1])], batchedMesh: null, vertexBytes: 0 });
+    const baseKey = scene['bucketBaseKey'];
+    scene['bucketBaseKey'] = (md: MeshData) => (md.color[2] === 1 ? 'keyC' : baseKey(md));
+
+    await assert.rejects(() => scene.finalizeStreamingAsync(device, pipeline, 0));
+
+    // The shell is what the restored `batchedMeshes` still reference, so its
+    // frame must describe it again — not the failed batch's origin.
+    assert.strictEqual(cold.batchedMesh, shell);
+    assert.strictEqual(cold.frameOrigin, shellOrigin);
+  });
+
   it('keeps cached partial batches alive when a later chunk throws', async () => {
     const scene = new Scene();
     const partial = fakeBatch(9);

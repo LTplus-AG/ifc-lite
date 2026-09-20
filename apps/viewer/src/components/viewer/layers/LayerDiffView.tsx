@@ -12,6 +12,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StackDiff } from '@ifc-lite/merge';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import type { LayerStackEntry } from '@/store/slices/layerStackSlice';
 import { pathTail } from '@/lib/layers/stack';
@@ -25,20 +27,20 @@ interface DiffRow {
   components: string[];
 }
 
-const KIND_META: Record<ChangeKind, { dot: string; label: string; chip: string }> = {
+const KIND_META: Record<ChangeKind, { dot: string; countKey: TranslationKey; chip: string }> = {
   added: {
     dot: 'bg-emerald-500',
-    label: 'added',
+    countKey: 'layersPanel.diffView.countAdded',
     chip: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
   },
   modified: {
     dot: 'bg-amber-500',
-    label: 'modified',
+    countKey: 'layersPanel.diffView.countModified',
     chip: 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-300',
   },
   deleted: {
     dot: 'bg-red-500',
-    label: 'deleted',
+    countKey: 'layersPanel.diffView.countDeleted',
     chip: 'border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-300',
   },
 };
@@ -52,6 +54,7 @@ function componentLabel(key: string): string {
 const ROW_LIMIT = 200;
 
 export function LayerDiffView({ entry, diff }: { entry: LayerStackEntry; diff: StackDiff }) {
+  const { t } = useTranslation();
   const [kindFilter, setKindFilter] = useState<ChangeKind | null>(null);
   const [ghosting, setGhosting] = useState(false);
   // The exact Set THIS view installed — the ghost channel is shared with
@@ -131,7 +134,7 @@ export function LayerDiffView({ entry, diff }: { entry: LayerStackEntry; diff: S
     >
       <div className="flex items-center justify-between gap-2 pb-1.5">
         <span className="truncate text-[11px] font-medium" title={entry.name}>
-          Changes by {entry.name}
+          {t('layersPanel.diffView.title', { name: entry.name })}
         </span>
         <button
           type="button"
@@ -144,7 +147,7 @@ export function LayerDiffView({ entry, diff }: { entry: LayerStackEntry; diff: S
           }`}
         >
           <Ghost className="size-2.5" aria-hidden />
-          {ghosting ? 'Ghosting others' : 'Ghost others'}
+          {t(ghosting ? 'layersPanel.diffView.ghostingOn' : 'layersPanel.diffView.ghostingOff')}
         </button>
       </div>
       <div className="flex items-center gap-1 pb-1.5">
@@ -161,14 +164,14 @@ export function LayerDiffView({ entry, diff }: { entry: LayerStackEntry; diff: S
                 active ? m.chip : 'border-border text-muted-foreground hover:bg-muted/60'
               }`}
             >
-              {count} {m.label}
+              {t(m.countKey, { count })}
             </button>
           );
         })}
       </div>
       {visible.length === 0 ? (
         <p className="py-2 text-center text-[11px] text-muted-foreground">
-          This layer changes nothing on top of the stack below it.
+          {t('layersPanel.diffView.emptyState')}
         </p>
       ) : (
         <div className="flex flex-col">
@@ -196,7 +199,7 @@ export function LayerDiffView({ entry, diff }: { entry: LayerStackEntry; diff: S
           })}
           {visible.length > ROW_LIMIT && (
             <p className="px-1 py-1 text-[10px] text-muted-foreground">
-              Showing {ROW_LIMIT} of {visible.length} changes.
+              {t('layersPanel.diffView.showingCount', { shown: ROW_LIMIT, total: visible.length })}
             </p>
           )}
         </div>

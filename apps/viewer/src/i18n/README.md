@@ -630,6 +630,33 @@ interpolation params rather than translated. A thrown `Error`'s own
 exception) is likewise interpolated as a parameter, never translated
 itself — it is engine content, not UI chrome.
 
+The Cesium / geo-basemap catalogue (#4918 slice: cesiumgeo, `cesium-geo.en.ts`)
+covers the geospatial-basemap feature area's five files:
+`CesiumPlacementEditor.tsx` (the drag-to-move georeference gizmo and its
+floating panel — header, delta readouts, the map-absolute guard warning,
+the nudge/height/rotate control clusters, and the apply/reset actions),
+`CustomBasemapEditor.tsx` and `CustomTilesetEditor.tsx` (the custom XYZ-tile
+and 3D-Tiles input surfaces under the Sun & Sky panel's Base map selector,
+including their third-party-privacy disclosures), `CesiumOverlay.tsx` (the
+globe's own loading/error/basemap-warning banners), and `AxisHelper.tsx`
+(the 3D axis-triad labels). `Eastings`, `Northings`, and `OrthogonalHeight`
+are exact `IfcMapConversion` EXPRESS attribute names used as bare field
+labels — the same house rule `GeoreferencingPanel.tsx`'s `GeorefRow` labels
+already follow — and stay literal wherever a label uses them bare; a full
+sentence that happens to mention one (the drag-gizmo's tooltip titles, the
+panel's own usage hint) is still one catalogued message. `Delta E/N/Z/R`
+and `XAxis angle` are UI-chosen abbreviations rather than schema spelling,
+so they are catalogued. The nudge-button glyphs (`N+`, `E-`, `Z+`, `R-`, …)
+and the axis-triad's `X`/`Y`/`Z` letters are catalogued too even though a
+translator is expected to leave them unchanged, the same reasoning the
+WebGPU-troubleshooting catalogue documents for browser flag names. The
+`Remove` button shared verbatim by the basemap and tileset editors uses one
+`cesiumGeo.shared.removeButton` key rather than two copies, the same
+pattern the BCF-panel catalogue's `bcf.shared.*` prefix uses. A saved
+basemap/tileset URL is runtime data; the example URLs shown as field
+placeholders are this slice's own copy and are catalogued like any other
+placeholder.
+
 The viewport/lighting catalogue (#4918 slice: viewport/lighting,
 `viewport-lighting.en.ts`) covers the 3D-viewport chrome and the Sun & Sky
 lighting controls across seven files: `ViewportContainer.tsx` (the no-model

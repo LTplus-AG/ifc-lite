@@ -8,6 +8,7 @@ import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 
 import { toast } from '@/components/ui/toast';
+import { useTranslation } from '@/i18n';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import {
   closestYOnVerticalLineFromRay,
@@ -207,6 +208,7 @@ export function CesiumPlacementEditor({
   lengthUnitScale = 1,
   storeyElevations,
 }: CesiumPlacementEditorProps) {
+  const { t } = useTranslation();
   const editMode = useViewerStore((s) => s.cesiumPlacementEditMode);
   const draftModelId = useViewerStore((s) => s.cesiumPlacementDraftModelId);
   const draft = useViewerStore((s) => s.cesiumPlacementDraft);
@@ -604,8 +606,8 @@ export function CesiumPlacementEditor({
       { field: 'xAxisOrdinate', value: activeDraft.xAxisOrdinate, oldValue: baseMapConversion.xAxisOrdinate ?? 0 },
     ]);
     resetDraft();
-    toast.success('Georeference placement updated');
-  }, [activeDraft, baseMapConversion, dirty, modelId, resetDraft, setGeorefFields]);
+    toast.success(t('cesiumGeo.placement.toastApplied'));
+  }, [activeDraft, baseMapConversion, dirty, modelId, resetDraft, setGeorefFields, t]);
 
   const nudge = useCallback((eastDelta: number, northDelta: number) => {
     updateDraft({
@@ -697,7 +699,7 @@ export function CesiumPlacementEditor({
             opacity="0.92"
             pointerEvents="none"
           >
-            <title>Drag to move Eastings/Northings</title>
+            <title>{t('cesiumGeo.placement.dragPlaneTitle')}</title>
           </polygon>
           <line
             x1={xAxisStart.x}
@@ -729,7 +731,7 @@ export function CesiumPlacementEditor({
             fontWeight="700"
             pointerEvents="none"
           >
-            DRAG XY
+            {t('cesiumGeo.placement.dragXYLabel')}
           </text>
           <line
             x1={projection.center.x}
@@ -751,7 +753,7 @@ export function CesiumPlacementEditor({
             cursor="grab"
             pointerEvents="none"
           >
-            <title>Drag to change OrthogonalHeight</title>
+            <title>{t('cesiumGeo.placement.dragHeightTitle')}</title>
           </circle>
           <circle
             cx={projection.center.x}
@@ -766,7 +768,7 @@ export function CesiumPlacementEditor({
 
       <button
         type="button"
-        aria-label="Drag Eastings and Northings"
+        aria-label={t('cesiumGeo.placement.dragPlaneAriaLabel')}
         className="absolute z-[21] cursor-grab bg-transparent active:cursor-grabbing"
         style={{
           left: minPlaneX - hitPadding,
@@ -781,7 +783,7 @@ export function CesiumPlacementEditor({
       />
       <button
         type="button"
-        aria-label="Drag OrthogonalHeight"
+        aria-label={t('cesiumGeo.placement.dragHeightAriaLabel')}
         className="absolute z-[22] cursor-grab rounded-full bg-transparent active:cursor-grabbing"
         style={{
           left: projection.heightTip.x - 18,
@@ -840,18 +842,18 @@ export function CesiumPlacementEditor({
           onPointerUp={handlePanelHeaderPointerUp}
           onPointerCancel={handlePanelHeaderPointerUp}
           role="toolbar"
-          aria-label="Move georeference panel header"
+          aria-label={t('cesiumGeo.placement.headerAriaLabel')}
         >
           <GripVertical className="h-3.5 w-3.5 text-zinc-400 dark:text-zinc-600" aria-hidden />
           <Move className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden />
           <span className="text-[11px] font-bold uppercase tracking-[0.18em]">
-            Move Georef
+            {t('cesiumGeo.placement.headerTitle')}
           </span>
           {dirty && (
             <span
               className="h-1.5 w-1.5 bg-amber-500"
-              title="Unsaved changes"
-              aria-label="Unsaved changes"
+              title={t('cesiumGeo.placement.unsavedChanges')}
+              aria-label={t('cesiumGeo.placement.unsavedChanges')}
             />
           )}
           <div className="ml-auto flex items-center gap-0.5">
@@ -863,7 +865,7 @@ export function CesiumPlacementEditor({
                 'inline-flex h-6 w-6 items-center justify-center border border-transparent',
                 'hover:bg-zinc-200 dark:hover:bg-zinc-800',
               )}
-              aria-label={panelCollapsed ? 'Expand panel' : 'Collapse panel'}
+              aria-label={t(panelCollapsed ? 'cesiumGeo.placement.expandPanel' : 'cesiumGeo.placement.collapsePanel')}
               aria-expanded={!panelCollapsed}
             >
               <ChevronDown
@@ -881,7 +883,7 @@ export function CesiumPlacementEditor({
                 'inline-flex h-6 w-6 items-center justify-center border border-transparent',
                 'hover:bg-zinc-200 dark:hover:bg-zinc-800',
               )}
-              aria-label="Close georeference move mode"
+              aria-label={t('cesiumGeo.placement.closeAriaLabel')}
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -892,22 +894,22 @@ export function CesiumPlacementEditor({
           <div className="p-3 text-[10px]">
             <div className="grid grid-cols-4 gap-1 border-b border-zinc-200 dark:border-zinc-800 pb-2">
               <Metric
-                label="Delta E"
+                label={t('cesiumGeo.placement.deltaELabel')}
                 value={formatSigned(deltaE, mapUnitSuffix)}
                 accent="text-emerald-700 dark:text-emerald-300"
               />
               <Metric
-                label="Delta N"
+                label={t('cesiumGeo.placement.deltaNLabel')}
                 value={formatSigned(deltaN, mapUnitSuffix)}
                 accent="text-emerald-700 dark:text-emerald-300"
               />
               <Metric
-                label="Delta Z"
+                label={t('cesiumGeo.placement.deltaZLabel')}
                 value={formatSigned(deltaH, mapUnitSuffix)}
                 accent="text-amber-700 dark:text-amber-300"
               />
               <Metric
-                label="Delta R"
+                label={t('cesiumGeo.placement.deltaRLabel')}
                 value={formatSigned(deltaAngle, 'deg')}
                 accent="text-fuchsia-700 dark:text-fuchsia-300"
               />
@@ -919,17 +921,13 @@ export function CesiumPlacementEditor({
                 role="status"
                 className="mt-2 border border-amber-500 bg-amber-50 dark:bg-amber-950/40 px-2 py-1.5 text-[9px] leading-snug text-amber-800 dark:text-amber-300"
               >
-                This model&apos;s geometry already sits at its declared map
-                anchor. Small XY drags inside ~10 km of the anchor have no
-                visible effect (the guard keeps neutralising it) — use the
-                map-pick tool to relocate it in one step instead.
+                {t('cesiumGeo.placement.mapAbsoluteWarning')}
               </div>
             )}
 
             <div className="mt-2 space-y-1">
               <div className="pb-1 text-[9px] leading-snug text-zinc-500 dark:text-zinc-400">
-                Drag the pad on the model to move Eastings/Northings. Drag the
-                knob to change height.
+                {t('cesiumGeo.placement.dragHint')}
               </div>
               <PreviewRow
                 label="Eastings"
@@ -943,65 +941,65 @@ export function CesiumPlacementEditor({
                 label="OrthogonalHeight"
                 value={`${activeDraft.orthogonalHeight.toFixed(2)} ${mapUnitSuffix}`}
               />
-              <PreviewRow label="XAxis angle" value={`${activeAngle.toFixed(2)} deg`} />
+              <PreviewRow label={t('cesiumGeo.placement.xAxisAngleLabel')} value={`${activeAngle.toFixed(2)} deg`} />
             </div>
 
             <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-1 text-[9px]">
               <span className="text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
-                Nudge 1 m
+                {t('cesiumGeo.placement.nudgeOneMeter')}
               </span>
-              <NudgeButton onClick={() => nudge(0, nudgeStep)} aria-label="Nudge north">
-                N+
+              <NudgeButton onClick={() => nudge(0, nudgeStep)} aria-label={t('cesiumGeo.placement.nudgeNorthAriaLabel')}>
+                {t('cesiumGeo.placement.nudgeNorthLabel')}
               </NudgeButton>
               <span />
-              <NudgeButton onClick={() => nudge(-nudgeStep, 0)} aria-label="Nudge west">
-                E-
+              <NudgeButton onClick={() => nudge(-nudgeStep, 0)} aria-label={t('cesiumGeo.placement.nudgeWestAriaLabel')}>
+                {t('cesiumGeo.placement.nudgeWestLabel')}
               </NudgeButton>
-              <NudgeButton onClick={() => nudge(nudgeStep, 0)} aria-label="Nudge east">
-                E+
+              <NudgeButton onClick={() => nudge(nudgeStep, 0)} aria-label={t('cesiumGeo.placement.nudgeEastAriaLabel')}>
+                {t('cesiumGeo.placement.nudgeEastLabel')}
               </NudgeButton>
-              <NudgeButton onClick={() => nudge(0, -nudgeStep)} aria-label="Nudge south">
-                N-
+              <NudgeButton onClick={() => nudge(0, -nudgeStep)} aria-label={t('cesiumGeo.placement.nudgeSouthAriaLabel')}>
+                {t('cesiumGeo.placement.nudgeSouthLabel')}
               </NudgeButton>
             </div>
 
             <div className="mt-2 flex items-center gap-1 text-[9px]">
               <span className="mr-auto text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
-                Height
+                {t('cesiumGeo.placement.heightLabel')}
               </span>
               <NudgeButton
                 onClick={() => nudgeHeight(-nudgeStep)}
                 tone="amber"
-                aria-label="Nudge height down"
+                aria-label={t('cesiumGeo.placement.nudgeHeightDownAriaLabel')}
               >
-                Z-
+                {t('cesiumGeo.placement.nudgeHeightDownLabel')}
               </NudgeButton>
               <NudgeButton
                 onClick={() => nudgeHeight(nudgeStep)}
                 tone="amber"
-                aria-label="Nudge height up"
+                aria-label={t('cesiumGeo.placement.nudgeHeightUpAriaLabel')}
               >
-                Z+
+                {t('cesiumGeo.placement.nudgeHeightUpLabel')}
               </NudgeButton>
             </div>
 
             <div className="mt-2 flex items-center gap-1 text-[9px]">
               <span className="mr-auto text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
-                Rotate
+                {t('cesiumGeo.placement.rotateLabel')}
               </span>
               <NudgeButton
                 onClick={() => nudgeRotation(-1)}
                 tone="fuchsia"
-                aria-label="Rotate negative one degree"
+                aria-label={t('cesiumGeo.placement.rotateNegAriaLabel')}
               >
-                R-
+                {t('cesiumGeo.placement.rotateNegLabel')}
               </NudgeButton>
               <NudgeButton
                 onClick={() => nudgeRotation(1)}
                 tone="fuchsia"
-                aria-label="Rotate positive one degree"
+                aria-label={t('cesiumGeo.placement.rotatePosAriaLabel')}
               >
-                R+
+                {t('cesiumGeo.placement.rotatePosLabel')}
               </NudgeButton>
             </div>
 
@@ -1018,7 +1016,7 @@ export function CesiumPlacementEditor({
                 )}
               >
                 <Check className="h-3 w-3" />
-                Set as georeference
+                {t('cesiumGeo.placement.applyButton')}
               </button>
               <button
                 type="button"
@@ -1032,7 +1030,7 @@ export function CesiumPlacementEditor({
                 )}
               >
                 <RotateCcw className="h-3 w-3" />
-                Reset
+                {t('cesiumGeo.placement.resetButton')}
               </button>
             </div>
           </div>

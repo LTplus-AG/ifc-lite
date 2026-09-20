@@ -145,7 +145,10 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
     {
       name: 'ChatPanel "⌘L" shortcut hint',
       file: CHAT_PANEL,
-      anchor: 'd">Shift+Enter new line</span>\n          )}\n          <span ',
+      // Localized (#4918 chat slice): the hint's own text moved into
+      // `t('chat.panel.shiftEnterHint')`, so the anchor keys off that call
+      // instead of the English literal it used to inline.
+      anchor: "shiftEnterHint')}</span>\n          )}\n          <span ",
       surface: 'bg-background',
     },
     {

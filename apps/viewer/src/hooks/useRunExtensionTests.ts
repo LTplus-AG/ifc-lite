@@ -15,7 +15,8 @@
 import { useCallback, useState } from 'react';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { toast } from '@/components/ui/toast';
-import * as toastText from '@/components/extensions/toast-helpers';
+import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
 export interface RunExtensionTestsApi {
   runTests(id: string): void;
@@ -24,6 +25,7 @@ export interface RunExtensionTestsApi {
 
 export function useRunExtensionTests(): RunExtensionTestsApi {
   const host = useExtensionHost();
+  const { t, locale } = useTranslation();
   const [running, setRunning] = useState<ReadonlySet<string>>(new Set());
 
   const runTests = useCallback(
@@ -34,21 +36,34 @@ export function useRunExtensionTests(): RunExtensionTestsApi {
         next.add(id);
         return next;
       });
-      toast.info(`Running tests for ${id}…`);
+      toast.info(t('extensionsFlavors.extensionsPanel.toast.testsRunning', { id }));
       host.runTests(id)
         .then((summary) => {
           if (summary.results.length === 0) {
-            toast.info(toastText.testsNotDeclared(id));
+            toast.info(t('extensionsFlavors.extensionsPanel.toast.testsNotDeclared', { id }));
           } else if (summary.failed === 0) {
-            toast.success(toastText.testsPassed(id, summary.passed, summary.results.length));
+            toast.success(t('extensionsFlavors.extensionsPanel.toast.testsPassed', {
+              id,
+              count: summary.results.length,
+              passed: formatLocaleNumber(locale, summary.passed),
+              total: formatLocaleNumber(locale, summary.results.length),
+            }));
           } else {
             const firstError = summary.results.find((r) => !r.passed)?.error ?? 'see console';
-            toast.error(toastText.testsFailed(id, summary.failed, firstError));
+            toast.error(t('extensionsFlavors.extensionsPanel.toast.testsFailed', {
+              id,
+              count: summary.failed,
+              failed: formatLocaleNumber(locale, summary.failed),
+              error: firstError,
+            }));
             console.warn('[ext-host] test failures:', summary);
           }
         })
         .catch((err) => {
-          toast.error(toastText.failed(`Tests for ${id}`, err));
+          toast.error(t('extensionsFlavors.extensionsPanel.toast.testsRunFailed', {
+            id,
+            error: err instanceof Error ? err.message : String(err),
+          }));
         })
         .finally(() => {
           setRunning((prev) => {
@@ -58,7 +73,7 @@ export function useRunExtensionTests(): RunExtensionTestsApi {
           });
         });
     },
-    [host, running],
+    [host, locale, running, t],
   );
 
   const isRunning = useCallback((id: string) => running.has(id), [running]);

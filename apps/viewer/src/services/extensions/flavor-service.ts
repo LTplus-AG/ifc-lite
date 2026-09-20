@@ -30,6 +30,10 @@ import {
   type UnpackedFlavor,
 } from '@ifc-lite/extensions';
 import { IdbFlavorStorage } from './idb-flavor-storage.js';
+import {
+  DEFAULT_FLAVOR_DESCRIPTION,
+  DEFAULT_FLAVOR_NAME,
+} from './default-flavor-metadata.js';
 
 export interface FlavorServiceOptions {
   storage?: FlavorStorage;
@@ -164,8 +168,8 @@ export class FlavorService {
     const flavor: Flavor = {
       schemaVersion: 1,
       id,
-      name: 'Default',
-      description: 'Baseline flavor — no extensions, no overrides.',
+      name: DEFAULT_FLAVOR_NAME,
+      description: DEFAULT_FLAVOR_DESCRIPTION,
       createdAt: now,
       updatedAt: now,
       extensions: [],

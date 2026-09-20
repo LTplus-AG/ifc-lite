@@ -10,18 +10,21 @@ use quick_xml::{
 };
 
 use crate::{
-    capture::Capture,
+    capture::{Capture, PolylineCategory},
     preflight::preflight_xml_tokens,
     semantics::{positive_id, references, triple, units},
     xml::{
         attr, attributes, character_references, error, normalize_encoding, required, split_name,
         unescape, Result,
     },
-    LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlLimits, LandXmlPoint,
-    LandXmlSourceId, LandXmlSurface, LandXmlTinDocument, LandXmlUnits,
+    LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlExtension, LandXmlLimits,
+    LandXmlPoint, LandXmlPolyline, LandXmlRenderState, LandXmlSourceId, LandXmlSurface,
+    LandXmlSurfaceKind, LandXmlTinDocument, LandXmlUnits,
 };
 
+mod capture;
 mod finalize;
+mod path;
 
 pub const LANDXML_10_NAMESPACE: &str = "http://www.landxml.org/schema/LandXML-1.0";
 pub const LANDXML_11_NAMESPACE: &str = "http://www.landxml.org/schema/LandXML-1.1";
@@ -51,10 +54,14 @@ struct Frame {
 }
 struct SurfaceBuilder {
     name: String,
-    tin: bool,
+    kind: LandXmlSurfaceKind,
     points: Vec<LandXmlPoint>,
     ids: HashSet<String>,
     faces: Vec<[String; 3]>,
+    hidden_face_count: usize,
+    boundaries: Vec<LandXmlPolyline>,
+    breaklines: Vec<LandXmlPolyline>,
+    contours: Vec<LandXmlPolyline>,
 }
 struct Parser<'a> {
     limits: &'a LandXmlLimits,
@@ -70,6 +77,7 @@ struct Parser<'a> {
     surface: Option<SurfaceBuilder>,
     capture: Option<Capture>,
     surfaces: Vec<LandXmlSurface>,
+    extensions: Vec<LandXmlExtension>,
     warnings: Vec<String>,
     surface_ordinal: usize,
 }
@@ -104,6 +112,7 @@ pub fn parse_landxml_tin_with_cancel(
         surface: None,
         capture: None,
         surfaces: Vec::new(),
+        extensions: Vec::new(),
         warnings: Vec::new(),
         surface_ordinal: 0,
     };
@@ -216,6 +225,25 @@ impl Parser<'_> {
             }
         }
         let target = namespace == Some(LANDXML_12_NAMESPACE);
+        // Record one root per unknown extension subtree.  This preserves the
+        // producer-visible shape without recursively copying unbounded vendor
+        // payloads, and never mistakes an extension's `Surface` for LandXML.
+        let extension_root = !target
+            && !self.frames.is_empty()
+            && self.frames.last().is_some_and(|frame| frame.target);
+        if extension_root {
+            if self.extensions.len() >= self.limits.max_extensions {
+                return Err(error(
+                    Code::LimitExceeded,
+                    "extension record limit exceeded",
+                ));
+            }
+            self.extensions.push(LandXmlExtension {
+                namespace: namespace.unwrap_or("").to_owned(),
+                local_name: local.to_owned(),
+                path: self.path_with(local),
+            });
+        }
         self.frames.push(Frame {
             local: local.to_owned(),
             target,
@@ -232,15 +260,27 @@ impl Parser<'_> {
                 self.surfaces_seen += 1;
                 self.surface = Some(SurfaceBuilder {
                     name: required(&attributes, "name", "Surface")?.to_owned(),
-                    tin: false,
+                    kind: LandXmlSurfaceKind::Other,
                     points: Vec::new(),
                     ids: HashSet::new(),
                     faces: Vec::new(),
+                    hidden_face_count: 0,
+                    boundaries: Vec::new(),
+                    breaklines: Vec::new(),
+                    contours: Vec::new(),
                 })
             }
             "Definition" if self.is_path(&["LandXML", "Surfaces", "Surface", "Definition"]) => {
                 if let Some(surface) = &mut self.surface {
-                    surface.tin = attr(&attributes, "surfType") == Some("TIN");
+                    surface.kind = match attr(&attributes, "surfType")
+                        .map(str::to_ascii_uppercase)
+                        .as_deref()
+                    {
+                        Some("TIN") => LandXmlSurfaceKind::Tin,
+                        Some("GRID") => LandXmlSurfaceKind::Grid,
+                        Some("VOLUME") => LandXmlSurfaceKind::Volume,
+                        _ => LandXmlSurfaceKind::Other,
+                    };
                 }
             }
             "Metric" | "Imperial" if self.is_path(&["LandXML", "Units", local]) => {
@@ -253,7 +293,10 @@ impl Parser<'_> {
                 self.units = Some(units(&attributes)?)
             }
             "P" if self.is_path(&["LandXML", "Surfaces", "Surface", "Definition", "Pnts", "P"])
-                && self.surface.as_ref().is_some_and(|surface| surface.tin) =>
+                && self
+                    .surface
+                    .as_ref()
+                    .is_some_and(|surface| surface.kind == LandXmlSurfaceKind::Tin) =>
             {
                 self.capture = Some(Capture::Point {
                     id: positive_id(required(&attributes, "id", "point")?)?,
@@ -268,12 +311,24 @@ impl Parser<'_> {
                 "Definition",
                 "Faces",
                 "F",
-            ]) && self.surface.as_ref().is_some_and(|surface| surface.tin) =>
+            ]) && self
+                .surface
+                .as_ref()
+                .is_some_and(|surface| surface.kind == LandXmlSurfaceKind::Tin) =>
             {
                 self.capture = Some(Capture::Face {
                     depth: self.frames.len(),
                     text: String::new(),
                     hidden: matches!(attr(&attributes, "i"), Some("1" | "true")),
+                })
+            }
+            "PntList3D" if self.overlay_category().is_some() => {
+                self.capture = Some(Capture::Polyline {
+                    depth: self.frames.len(),
+                    text: String::new(),
+                    category: self.overlay_category().expect("guarded above"),
+                    name: None,
+                    kind: None,
                 })
             }
             _ => {}
@@ -318,55 +373,14 @@ impl Parser<'_> {
         let text = unescape(text)?;
         if let Some(capture) = &mut self.capture {
             let target = match capture {
-                Capture::Point { text, .. } | Capture::Face { text, .. } => text,
+                Capture::Point { text, .. }
+                | Capture::Face { text, .. }
+                | Capture::Polyline { text, .. } => text,
             };
             if target.len() + text.len() > self.limits.max_text_bytes {
                 return Err(error(Code::LimitExceeded, "captured text limit exceeded"));
             }
             target.push_str(&text);
-        }
-        Ok(())
-    }
-
-    fn finish_capture(&mut self) -> Result<()> {
-        let capture = self.capture.take().expect("capture checked");
-        let surface = self
-            .surface
-            .as_mut()
-            .ok_or_else(|| error(Code::InvalidSemantic, "geometry outside Surface"))?;
-        match capture {
-            Capture::Point { id, text, .. } => {
-                if self.points_seen >= self.limits.max_points {
-                    return Err(error(Code::LimitExceeded, "point limit exceeded"));
-                }
-                if !surface.ids.insert(id.clone()) {
-                    return Err(error(Code::InvalidSemantic, "duplicate point id"));
-                }
-                let values = triple(&text, "point")?;
-                surface.points.push(LandXmlPoint {
-                    id,
-                    northing: values[0],
-                    easting: values[1],
-                    elevation: values[2],
-                });
-                self.points_seen += 1;
-            }
-            Capture::Face { text, hidden, .. } if !hidden => {
-                if self.faces_seen >= self.limits.max_faces {
-                    return Err(error(Code::LimitExceeded, "face limit exceeded"));
-                }
-                self.references = self
-                    .references
-                    .checked_add(3)
-                    .ok_or_else(|| error(Code::LimitExceeded, "reference limit exceeded"))?;
-                if self.references > self.limits.max_references {
-                    return Err(error(Code::LimitExceeded, "reference limit exceeded"));
-                }
-                let refs = references(&text)?;
-                surface.faces.push(refs);
-                self.faces_seen += 1;
-            }
-            Capture::Face { .. } => {}
         }
         Ok(())
     }

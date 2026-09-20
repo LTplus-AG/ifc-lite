@@ -32,7 +32,9 @@ pub(crate) enum PolylineCategory {
 impl Capture {
     pub(crate) fn depth(&self) -> usize {
         match self {
-            Self::Point { depth, .. } | Self::Face { depth, .. } | Self::Polyline { depth, .. } => *depth,
+            Self::Point { depth, .. } | Self::Face { depth, .. } | Self::Polyline { depth, .. } => {
+                *depth
+            }
         }
     }
 }

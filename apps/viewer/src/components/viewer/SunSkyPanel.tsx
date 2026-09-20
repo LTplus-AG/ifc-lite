@@ -33,6 +33,8 @@ import { LightingTrimControls } from './LightingTrimControls';
 import { ShadowControls } from './ShadowControls';
 import { SunTimeControls } from './SunTimeControls';
 import { posthog } from '@/lib/analytics';
+import { useTranslation } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 import {
   solarDisplayOffsetMinutes,
   toSolarDateInputValue,
@@ -41,17 +43,18 @@ import {
   formatSolarTime,
 } from '@/lib/solar-time';
 
-const CONTEXT_SOURCES: Array<{ value: CesiumDataSource; label: string; hint: string }> = [
-  { value: 'osm-map', label: 'OSM Map', hint: 'Plain OpenStreetMap tiles — a simple flat base map' },
-  { value: 'osm-buildings', label: 'OSM Buildings', hint: 'Extruded footprints over the satellite base map' },
-  { value: 'google-photorealistic', label: 'Photorealistic', hint: 'Google 3D Tiles — textured real-world context' },
-  { value: 'custom', label: 'Custom (XYZ)', hint: 'Your own XYZ/TMS tile URL template' },
-  { value: 'custom-3dtiles', label: 'Custom (3D Tiles)', hint: 'Your own 3D Tiles tileset URL (1.0 or 1.1)' },
+/** `labelKey`/`hintKey` data table (`sectionConstants.ts`'s `AXIS_INFO` pattern). */
+const CONTEXT_SOURCES: Array<{ value: CesiumDataSource; labelKey: TranslationKey; hintKey: TranslationKey }> = [
+  { value: 'osm-map', labelKey: 'viewportLighting.sunSkyPanel.cesium.contextSources.osmMap.label', hintKey: 'viewportLighting.sunSkyPanel.cesium.contextSources.osmMap.hint' },
+  { value: 'osm-buildings', labelKey: 'viewportLighting.sunSkyPanel.cesium.contextSources.osmBuildings.label', hintKey: 'viewportLighting.sunSkyPanel.cesium.contextSources.osmBuildings.hint' },
+  { value: 'google-photorealistic', labelKey: 'viewportLighting.sunSkyPanel.cesium.contextSources.photorealistic.label', hintKey: 'viewportLighting.sunSkyPanel.cesium.contextSources.photorealistic.hint' },
+  { value: 'custom', labelKey: 'viewportLighting.sunSkyPanel.cesium.contextSources.custom.label', hintKey: 'viewportLighting.sunSkyPanel.cesium.contextSources.custom.hint' },
+  { value: 'custom-3dtiles', labelKey: 'viewportLighting.sunSkyPanel.cesium.contextSources.custom3dTiles.label', hintKey: 'viewportLighting.sunSkyPanel.cesium.contextSources.custom3dTiles.hint' },
 ];
 
-const SWEEP_MODES: Array<{ value: SolarSweepMode; label: string; hint: string }> = [
-  { value: 'day', label: 'Day', hint: 'Sweep the time of day' },
-  { value: 'year', label: 'Year', hint: 'Sweep the date across the year' },
+const SWEEP_MODES: Array<{ value: SolarSweepMode; labelKey: TranslationKey; hintKey: TranslationKey }> = [
+  { value: 'day', labelKey: 'viewportLighting.sunSkyPanel.sunStudy.sweepModes.day.label', hintKey: 'viewportLighting.sunSkyPanel.sunStudy.sweepModes.day.hint' },
+  { value: 'year', labelKey: 'viewportLighting.sunSkyPanel.sunStudy.sweepModes.year.label', hintKey: 'viewportLighting.sunSkyPanel.sunStudy.sweepModes.year.hint' },
 ];
 
 export function SunSkyPanel() {
@@ -92,14 +95,19 @@ export function SunSkyPanel() {
   // (a conditional hook is React error #310).
   const panelRef = useRef<HTMLDivElement>(null);
   const drag = useDraggablePanel(panelRef);
+  const { t } = useTranslation();
 
   if (!open) return null;
 
   const offsetMin = solarDisplayOffsetMinutes(useLocalTime, sunInfo?.longitude);
   const minutes = solarMinutesOfDay(dateMs, offsetMin);
-  const tzLabel = useLocalTime
-    ? `Site${sunInfo ? ` (UTC${offsetMin >= 0 ? '+' : '−'}${Math.abs(offsetMin / 60).toFixed(1)})` : ''}`
-    : 'UTC';
+  // `{offset}` is a formatted `UTC±H.h` string built here, not translated text.
+  const utcOffset = `UTC${offsetMin >= 0 ? '+' : '−'}${Math.abs(offsetMin / 60).toFixed(1)}`;
+  const tzLabel = !useLocalTime
+    ? t('viewportLighting.sunSkyPanel.sunStudy.timezone.utc')
+    : sunInfo
+      ? t('viewportLighting.sunSkyPanel.sunStudy.timezone.siteWithOffset', { offset: utcOffset })
+      : t('viewportLighting.sunSkyPanel.sunStudy.timezone.site');
 
   return (
     <div
@@ -112,7 +120,7 @@ export function SunSkyPanel() {
       <div className="flex items-center gap-1.5">
         <span
           onMouseDown={drag.onDragStart}
-          title="Drag to move"
+          title={t('viewportLighting.sunSkyPanel.header.dragTitle')}
           className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground"
         >
           <GripVertical className="h-3.5 w-3.5" />
@@ -123,9 +131,7 @@ export function SunSkyPanel() {
           aria-expanded={!collapsed}
           className="flex-1 flex items-center justify-between gap-2 text-left"
         >
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Sun &amp; Sky
-          </span>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('viewportLighting.sunSkyPanel.header.title')}</span>
           <span className="text-muted-foreground">
             {collapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
           </span>
@@ -143,13 +149,13 @@ export function SunSkyPanel() {
             <>
               <div className="flex items-center gap-1">
                 <ToggleChip
-                  label="Sky"
+                  label={t('viewportLighting.sunSkyPanel.cesium.skyToggleLabel')}
                   active={skyEnabled}
                   onClick={() => setSkyEnabled(!skyEnabled)}
-                  title="Sky, sun disc and haze in the world context — also drives lighting"
+                  title={t('viewportLighting.sunSkyPanel.cesium.skyToggleTitle')}
                 />
                 <span className="flex-1 px-1 text-[9px] leading-tight text-muted-foreground">
-                  Lighting follows the sun &amp; atmosphere
+                  {t('viewportLighting.sunSkyPanel.cesium.lightingHint')}
                 </span>
               </div>
               {/* Base map — pick the real-world backdrop. Photorealistic can
@@ -157,16 +163,16 @@ export function SunSkyPanel() {
                   alternative (#1744). Lives here (not just in the sun study)
                   so the choice is available whenever the world context is on. */}
               <label className="flex flex-col gap-0.5">
-                <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Base map</span>
+                <span className="text-[9px] uppercase tracking-wider text-muted-foreground">{t('viewportLighting.sunSkyPanel.cesium.baseMapLabel')}</span>
                 <select
-                  aria-label="World context base map"
+                  aria-label={t('viewportLighting.sunSkyPanel.cesium.baseMapAria')}
                   value={dataSource}
                   onChange={(e) => setDataSource(e.target.value as CesiumDataSource)}
-                  title={CONTEXT_SOURCES.find((s) => s.value === dataSource)?.hint}
+                  title={t(CONTEXT_SOURCES.find((s) => s.value === dataSource)?.hintKey ?? 'viewportLighting.sunSkyPanel.cesium.contextSources.osmMap.hint')}
                   className="w-full bg-muted/40 rounded px-1.5 py-1 border text-foreground text-[10px]"
                 >
                   {CONTEXT_SOURCES.map((src) => (
-                    <option key={src.value} value={src.value}>{src.label}</option>
+                    <option key={src.value} value={src.value}>{t(src.labelKey)}</option>
                   ))}
                 </select>
               </label>
@@ -175,9 +181,9 @@ export function SunSkyPanel() {
             </>
           ) : (
             <label className="flex flex-col gap-0.5">
-              <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Environment</span>
+              <span className="text-[9px] uppercase tracking-wider text-muted-foreground">{t('viewportLighting.sunSkyPanel.standalone.environmentLabel')}</span>
               <select
-                aria-label="Environment preset"
+                aria-label={t('viewportLighting.sunSkyPanel.standalone.environmentAria')}
                 value={preset}
                 onChange={(e) => { if (isLightingPresetId(e.target.value)) setPreset(e.target.value); }}
                 title={LIGHTING_PRESETS[preset].hint}
@@ -185,7 +191,7 @@ export function SunSkyPanel() {
               >
                 {LIGHTING_PRESET_ORDER.map((id) => (
                   <option key={id} value={id}>
-                    {LIGHTING_PRESETS[id].label}{id === 'default' ? ' (no sky)' : ''}
+                    {LIGHTING_PRESETS[id].label}{id === 'default' ? t('viewportLighting.sunSkyPanel.standalone.noSkySuffix') : ''}
                   </option>
                 ))}
               </select>
@@ -208,9 +214,7 @@ export function SunSkyPanel() {
           {cesiumAvailable && (
             <>
               <div className="flex items-center justify-between gap-2 pt-2 border-t">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Sun study
-                </span>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('viewportLighting.sunSkyPanel.sunStudy.title')}</span>
                 <button
                   type="button"
                   aria-pressed={solarEnabled}
@@ -232,7 +236,7 @@ export function SunSkyPanel() {
                     solarEnabled ? 'bg-amber-500 text-zinc-950' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                   )}
                 >
-                  {solarEnabled ? 'On' : 'Off'}
+                  {solarEnabled ? t('viewportLighting.sunSkyPanel.sunStudy.on') : t('viewportLighting.sunSkyPanel.sunStudy.off')}
                 </button>
               </div>
 
@@ -244,11 +248,11 @@ export function SunSkyPanel() {
                         input in a label would forward tz clicks to the date picker. */}
                     <div className="flex flex-col gap-0.5 flex-1">
                       <span className="flex justify-between text-[9px] uppercase tracking-wider text-muted-foreground">
-                        <span>Date</span>
+                        <span>{t('viewportLighting.sunSkyPanel.sunStudy.dateLabel')}</span>
                         <button
                           type="button"
                           onClick={() => setUseLocalTime(!useLocalTime)}
-                          title="Toggle UTC / local solar time (from site longitude)"
+                          title={t('viewportLighting.sunSkyPanel.sunStudy.timezoneToggleTitle')}
                           className="hover:text-foreground transition-colors"
                         >
                           {tzLabel}
@@ -256,7 +260,7 @@ export function SunSkyPanel() {
                       </span>
                       <input
                         type="date"
-                        aria-label="Sun study date"
+                        aria-label={t('viewportLighting.sunSkyPanel.sunStudy.dateAria')}
                         value={toSolarDateInputValue(dateMs, offsetMin)}
                         onChange={(e) => setDateMs(composeSolarMs(e.target.value, minutes, offsetMin))}
                         className="w-full bg-muted/40 rounded px-1.5 py-1 border text-foreground"
@@ -265,7 +269,7 @@ export function SunSkyPanel() {
                     <button
                       type="button"
                       onClick={togglePlaying}
-                      aria-label={playing ? 'Pause sweep' : 'Play sweep'}
+                      aria-label={playing ? t('viewportLighting.sunSkyPanel.sunStudy.pauseAria') : t('viewportLighting.sunSkyPanel.sunStudy.playAria')}
                       aria-pressed={playing}
                       className={cn(
                         'h-[26px] w-[26px] flex items-center justify-center rounded transition-colors shrink-0',
@@ -279,7 +283,7 @@ export function SunSkyPanel() {
                   {/* Time of day */}
                   <label className="flex flex-col gap-0.5">
                     <span className="flex justify-between text-[9px] uppercase tracking-wider text-muted-foreground">
-                      <span>Time</span>
+                      <span>{t('viewportLighting.sunSkyPanel.sunStudy.timeLabel')}</span>
                       <span className="tabular-nums text-foreground">{formatSolarTime(dateMs, offsetMin)}</span>
                     </span>
                     <input
@@ -299,7 +303,7 @@ export function SunSkyPanel() {
                       <button
                         key={m.value}
                         type="button"
-                        title={m.hint}
+                        title={t(m.hintKey)}
                         aria-pressed={sweepMode === m.value}
                         onClick={() => setSweepMode(m.value)}
                         className={cn(
@@ -309,7 +313,7 @@ export function SunSkyPanel() {
                             : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                         )}
                       >
-                        {m.label}
+                        {t(m.labelKey)}
                       </button>
                     ))}
                   </div>
@@ -319,8 +323,8 @@ export function SunSkyPanel() {
                       on), so the sun study only adds its dome/shadow toggles. */}
                   {cesiumEnabled ? (
                     <div className="flex gap-1">
-                      <ToggleChip className="flex-1" label="Dome" active={showSunPath} onClick={() => setShowSunPath(!showSunPath)} />
-                      <ToggleChip className="flex-1" label="Shadows" active={showShadows} onClick={() => setShowShadows(!showShadows)} />
+                      <ToggleChip className="flex-1" label={t('viewportLighting.sunSkyPanel.sunStudy.domeToggle')} active={showSunPath} onClick={() => setShowSunPath(!showSunPath)} />
+                      <ToggleChip className="flex-1" label={t('viewportLighting.sunSkyPanel.sunStudy.shadowsToggle')} active={showShadows} onClick={() => setShowShadows(!showShadows)} />
                     </div>
                   ) : (
                     <button
@@ -328,28 +332,25 @@ export function SunSkyPanel() {
                       onClick={() => setCesiumEnabled(true)}
                       className="text-left text-[9px] leading-snug text-muted-foreground hover:text-foreground transition-colors"
                     >
-                      The sun lights the model directly; for the sun-path dome and
-                      real cast shadows, click to enable the 3D world context.
+                      {t('viewportLighting.sunSkyPanel.sunStudy.enableWorldContextHint')}
                     </button>
                   )}
 
                   {!sunInfo && (
                     <p className="text-[9px] leading-snug text-amber-600 dark:text-amber-500">
-                      Site location unavailable — the model's projected CRS
-                      could not be resolved, so the real sun position can't be
-                      computed.
+                      {t('viewportLighting.sunSkyPanel.sunStudy.noSiteWarning')}
                     </p>
                   )}
 
                   {/* Readout */}
                   <div className="mt-1 pt-2 border-t grid grid-cols-2 gap-x-2 gap-y-0.5 tabular-nums">
-                    <Readout label="Azimuth" value={sunInfo ? `${sunInfo.azimuth.toFixed(1)}°` : '—'} />
-                    <Readout label="Altitude" value={sunInfo ? `${sunInfo.altitude.toFixed(1)}°` : '—'} />
-                    <Readout label="Sunrise" value={formatSolarTime(sunInfo?.sunriseMs ?? null, offsetMin)} />
-                    <Readout label="Sunset" value={formatSolarTime(sunInfo?.sunsetMs ?? null, offsetMin)} />
-                    <Readout label="Noon" value={formatSolarTime(sunInfo?.solarNoonMs ?? null, offsetMin)} />
+                    <Readout label={t('viewportLighting.sunSkyPanel.sunStudy.readout.azimuth')} value={sunInfo ? `${sunInfo.azimuth.toFixed(1)}°` : '—'} />
+                    <Readout label={t('viewportLighting.sunSkyPanel.sunStudy.readout.altitude')} value={sunInfo ? `${sunInfo.altitude.toFixed(1)}°` : '—'} />
+                    <Readout label={t('viewportLighting.sunSkyPanel.sunStudy.readout.sunrise')} value={formatSolarTime(sunInfo?.sunriseMs ?? null, offsetMin)} />
+                    <Readout label={t('viewportLighting.sunSkyPanel.sunStudy.readout.sunset')} value={formatSolarTime(sunInfo?.sunsetMs ?? null, offsetMin)} />
+                    <Readout label={t('viewportLighting.sunSkyPanel.sunStudy.readout.noon')} value={formatSolarTime(sunInfo?.solarNoonMs ?? null, offsetMin)} />
                     <Readout
-                      label="Site"
+                      label={t('viewportLighting.sunSkyPanel.sunStudy.readout.site')}
                       value={sunInfo ? `${sunInfo.latitude.toFixed(2)}, ${sunInfo.longitude.toFixed(2)}` : '—'}
                     />
                   </div>

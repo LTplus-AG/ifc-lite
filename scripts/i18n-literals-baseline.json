@@ -11,7 +11,6 @@
   "apps/viewer/src/components/viewer/ExportChangesButton.tsx": 1,
   "apps/viewer/src/components/viewer/FederationSetupControls.tsx": 5,
   "apps/viewer/src/components/viewer/FilterRuleControls.tsx": 2,
-  "apps/viewer/src/components/viewer/FlySpeedIndicator.tsx": 1,
   "apps/viewer/src/components/viewer/GeometryAxisRow.tsx": 2,
   "apps/viewer/src/components/viewer/GeometryModeBanner.tsx": 6,
   "apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx": 37,
@@ -25,14 +24,8 @@
   "apps/viewer/src/components/viewer/presence/PeerPresenceLayer.tsx": 1,
   "apps/viewer/src/components/viewer/SaveMarkupToModelButton.tsx": 1,
   "apps/viewer/src/components/viewer/SearchableSelect.tsx": 3,
-  "apps/viewer/src/components/viewer/ShadowControls.tsx": 7,
   "apps/viewer/src/components/viewer/ShareDialog.tsx": 10,
   "apps/viewer/src/components/viewer/ShareScopeField.tsx": 4,
-  "apps/viewer/src/components/viewer/SunSkyPanel.tsx": 20,
-  "apps/viewer/src/components/viewer/SunTimeControls.tsx": 5,
   "apps/viewer/src/components/viewer/TextAnnotationEditor.tsx": 2,
-  "apps/viewer/src/components/viewer/tools/MeasurePanel.tsx": 1,
-  "apps/viewer/src/components/viewer/Viewport.tsx": 2,
-  "apps/viewer/src/components/viewer/ViewportContainer.tsx": 32,
-  "apps/viewer/src/components/viewer/ViewportOverlays.tsx": 11
+  "apps/viewer/src/components/viewer/tools/MeasurePanel.tsx": 1
 }

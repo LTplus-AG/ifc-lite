@@ -11,6 +11,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { flySpeedStore } from './flySpeedStore.js';
 import { FLY_SPEED_LEVELS } from './flyNavigation.js';
+import { useTranslation } from '@/i18n';
 
 /** How long the readout lingers after a speed change once fly mode has ended. */
 const LINGER_MS = 1200;
@@ -18,6 +19,7 @@ const LINGER_MS = 1200;
 export function FlySpeedIndicator() {
   const { level, active, changedAt } = useSyncExternalStore(flySpeedStore.subscribe, flySpeedStore.get);
   const [lingering, setLingering] = useState(false);
+  const { t } = useTranslation();
 
   useEffect(() => {
     const remaining = changedAt + LINGER_MS - performance.now();
@@ -36,7 +38,7 @@ export function FlySpeedIndicator() {
       role="status"
       aria-live="polite"
     >
-      Fly speed {level + 1}/{FLY_SPEED_LEVELS.length}
+      {t('viewportLighting.flySpeed.label', { level: level + 1, total: FLY_SPEED_LEVELS.length })}
       <span className="ml-1.5 tabular-nums text-muted-foreground">×{multiplier}</span>
     </div>
   );

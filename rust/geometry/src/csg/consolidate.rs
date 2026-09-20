@@ -300,6 +300,7 @@ impl ClippingProcessor {
                 u_axis,
                 v_axis,
                 raw: Vec::new(),
+                raw_conformed: None,
                 regions: Vec::new(),
             };
 
@@ -408,12 +409,26 @@ impl ClippingProcessor {
                 // to triangulate is skipped, and if it was its own closed component
                 // the remainder still balances — so a watertight-LOOKING candidate
                 // can be missing a whole surface. Reject unless every region landed.
+                let raw_conformed = plans.iter().any(|plan| plan.raw_conformed.is_some());
                 let (candidate, complete) = emit_plans(&mut plans, true);
-                if complete
-                    && !candidate.is_empty()
-                    && count_open_boundary_edges_at(&candidate, 1.0e4) == 0
+                if let Some(candidate) =
+                    complete_conformed_candidate(candidate, complete, raw_conformed)
                 {
                     output = candidate;
+                } else if raw_conformed {
+                    // Preserve the established region-only conform when a new raw
+                    // split does not pair exactly. This is the #3913 N-ary sweep
+                    // safety valve: raw additions may improve the 0.1 mm metric
+                    // while introducing an exact-coordinate tear.
+                    for plan in &mut plans {
+                        plan.raw_conformed = None;
+                    }
+                    let (candidate, complete) = emit_plans(&mut plans, true);
+                    if let Some(candidate) =
+                        complete_conformed_candidate(candidate, complete, false)
+                    {
+                        output = candidate;
+                    }
                 }
             }
         }
@@ -491,9 +506,57 @@ impl ClippingProcessor {
     }
 }
 
+/// Apply the same mesh hygiene as the router before judging the all-or-nothing
+/// conform candidate. Triangulation can emit sub-grid collinear slivers beside
+/// an otherwise paired seam; they are not geometry and must not make a closed
+/// candidate look open at the acceptance bar.
+fn complete_conformed_candidate(
+    mut candidate: Mesh,
+    complete: bool,
+    require_exact: bool,
+) -> Option<Mesh> {
+    candidate.clean_degenerate();
+    (complete
+        && !candidate.is_empty()
+        && count_open_boundary_edges_at(&candidate, 1.0e4) == 0
+        && (!require_exact || count_open_boundary_edges_exact(&candidate) == 0))
+        .then_some(candidate)
+}
+
+fn count_open_boundary_edges_exact(mesh: &Mesh) -> usize {
+    let mut vertices: rustc_hash::FxHashMap<[u32; 3], u32> = Default::default();
+    let mut id_of = |index: usize| -> u32 {
+        let base = index * 3;
+        let key = [
+            mesh.positions[base].to_bits(),
+            mesh.positions[base + 1].to_bits(),
+            mesh.positions[base + 2].to_bits(),
+        ];
+        let next = vertices.len() as u32;
+        *vertices.entry(key).or_insert(next)
+    };
+    let mut balance: rustc_hash::FxHashMap<(u32, u32), i32> = Default::default();
+    for triangle in mesh.indices.chunks_exact(3) {
+        let ids = [
+            id_of(triangle[0] as usize),
+            id_of(triangle[1] as usize),
+            id_of(triangle[2] as usize),
+        ];
+        for (a, b) in [(ids[0], ids[1]), (ids[1], ids[2]), (ids[2], ids[0])] {
+            let (edge, sign) = if a < b { ((a, b), 1) } else { ((b, a), -1) };
+            *balance.entry(edge).or_default() += sign;
+        }
+    }
+    balance.values().filter(|&&value| value != 0).count()
+}
+
 #[cfg(test)]
 #[path = "consolidate_threshold_tests.rs"]
 mod threshold_tests;
+
+#[cfg(test)]
+#[path = "consolidate_3977_tests.rs"]
+mod issue_3977_tests;
 
 #[cfg(test)]
 mod tests {

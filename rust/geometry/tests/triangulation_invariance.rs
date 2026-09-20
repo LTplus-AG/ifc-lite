@@ -1502,8 +1502,8 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 (11477, 33, 33, 159, 18),
                 (11690, 19, 19, 139, 19),
                 (31156, 0, 0, 208, 0),
-                (17553, 7, 9, 165, 0),
-                (17615, 3, 3, 103, 3),
+                (17553, 0, 2, 214, 0),
+                (17615, 0, 0, 252, 0),
                 (25914, 28, 31, 84, 28),
                 (26610, 0, 0, 84, 0),
             ][..],
@@ -1539,7 +1539,7 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 } else {
                     (stats.open, stats.strict, mesh.triangle_count()) != (open, strict, tris)
                 } {
-                    failures.push((id, alt, stats.open, mesh.triangle_count()));
+                    failures.push((id, alt, stats.open, stats.strict, mesh.triangle_count()));
                 }
             }
         }

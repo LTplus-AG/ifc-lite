@@ -21,9 +21,11 @@
 //! Split out of `consolidate.rs` to keep both files under the module-size ratchet.
 
 mod emit;
+mod raw;
 mod snap;
 
 pub(super) use emit::emit_plans;
+use raw::conform_raw_triangles;
 use snap::snap_near_duplicates;
 
 use crate::mesh::Mesh;
@@ -220,6 +222,9 @@ pub(super) struct PlanBucket {
     pub(super) u_axis: Vector3<f64>,
     pub(super) v_axis: Vector3<f64>,
     pub(super) raw: Vec<[Point3<f64>; 3]>,
+    /// Conformed copies of `raw` singleton/fallback triangles. `None` keeps the
+    /// baseline byte-identical when no peer seam vertex touches a raw edge.
+    pub(super) raw_conformed: Option<Vec<[Point3<f64>; 3]>>,
     pub(super) regions: Vec<PlanRegion>,
 }
 
@@ -249,9 +254,11 @@ pub(super) fn build_seam_map(plans: &[PlanBucket]) -> SeamMap {
     seam
 }
 
-/// Phase B — for every bucket, insert into its rings the seam vertices that some
-/// OTHER bucket kept, that lie on THIS bucket's plane, and that fall strictly inside
-/// one of its ring edges. Returns whether any ring changed.
+/// Phase B — for every bucket, insert into its regions and raw fallback triangles
+/// the seam vertices that land on this bucket's plane and strictly inside one of
+/// its edges. Simplified regions retain the original cross-bucket asymmetry rule;
+/// raw triangles also conform to sibling corners in their own fallback bucket.
+/// Returns whether any ring or raw triangle changed.
 ///
 /// The plane test is the strong filter — only positions landing exactly on this
 /// bucket's plane survive it — so the per-bucket scan of `seam` stays cheap. That
@@ -260,10 +267,20 @@ pub(super) fn build_seam_map(plans: &[PlanBucket]) -> SeamMap {
 pub(super) fn conform_plans(plans: &mut [PlanBucket], seam: &SeamMap) -> bool {
     let mut changed = false;
     for plan in plans.iter_mut() {
-        if plan.regions.is_empty() {
+        if plan.regions.is_empty() && plan.raw.is_empty() {
             continue;
         }
         let (mut minx, mut miny, mut maxx, mut maxy) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        for tri in &plan.raw {
+            for p in tri {
+                let d = *p - plan.origin;
+                let (x, y) = (d.dot(&plan.u_axis), d.dot(&plan.v_axis));
+                minx = minx.min(x);
+                miny = miny.min(y);
+                maxx = maxx.max(x);
+                maxy = maxy.max(y);
+            }
+        }
         for r in &plan.regions {
             for p in r.outer.iter().chain(r.holes.iter().flatten()) {
                 minx = minx.min(p.x);
@@ -277,6 +294,14 @@ pub(super) fn conform_plans(plans: &mut [PlanBucket], seam: &SeamMap) -> bool {
         // seam map — O(buckets x seam), which on a 300-bucket host was the bulk of a
         // +61% geometry regression on ISSUE_129.
         let (mut lo, mut hi) = ([f64::MAX; 3], [f64::MIN; 3]);
+        for tri in &plan.raw {
+            for p in tri {
+                for k in 0..3 {
+                    lo[k] = lo[k].min(p[k]);
+                    hi[k] = hi[k].max(p[k]);
+                }
+            }
+        }
         for r in &plan.regions {
             for p in r.outer.iter().chain(r.holes.iter().flatten()) {
                 let w = plan.origin + plan.u_axis * p.x + plan.v_axis * p.y;
@@ -287,12 +312,9 @@ pub(super) fn conform_plans(plans: &mut [PlanBucket], seam: &SeamMap) -> bool {
             }
         }
         let mut cands: Vec<nalgebra::Point2<f64>> = Vec::new();
+        let mut raw_cands: Vec<nalgebra::Point2<f64>> = Vec::new();
         let (klo, khi) = seam_bounds(lo, hi);
         for sv in seam.range(klo..=khi).map(|(_, v)| v) {
-            // "kept by some bucket OTHER than this one" — the asymmetry signal.
-            if sv.buckets < 2 && sv.first == plan.bid {
-                continue;
-            }
             let d = sv.pos - plan.origin;
             if plan.normal.dot(&d).abs() > 1.0e-5 {
                 continue;
@@ -305,7 +327,21 @@ pub(super) fn conform_plans(plans: &mut [PlanBucket], seam: &SeamMap) -> bool {
             {
                 continue;
             }
-            cands.push(nalgebra::Point2::new(x, y));
+            let candidate = nalgebra::Point2::new(x, y);
+            if !plan.raw.is_empty() {
+                // A union-collapse fallback can leave several triangles in one
+                // raw bucket. Their own hard corners must split sibling edges;
+                // there is no neighbouring bucket to provide the asymmetry signal.
+                raw_cands.push(candidate);
+            }
+            // "kept by some bucket OTHER than this one" — the asymmetry signal
+            // remains mandatory for simplified union regions.
+            if sv.buckets >= 2 || sv.first != plan.bid {
+                cands.push(candidate);
+            }
+        }
+        if conform_raw_triangles(plan, &raw_cands) {
+            changed = true;
         }
         if cands.is_empty() {
             continue;
@@ -360,41 +396,5 @@ pub(super) fn conform_plans(plans: &mut [PlanBucket], seam: &SeamMap) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn conform_ring_inserts_only_interior_on_edge_candidates() {
-        use nalgebra::Point2;
-        let square = vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(2.0, 0.0),
-            Point2::new(2.0, 2.0),
-            Point2::new(0.0, 2.0),
-        ];
-        // A peer's seam vertex at the middle of the bottom edge — the chorded-seam
-        // case — goes in, in edge order.
-        let mut ring = square.clone();
-        assert!(conform_ring(&mut ring, &[Point2::new(1.0, 0.0)]));
-        assert_eq!(ring.len(), 5);
-        assert_eq!(ring[1], Point2::new(1.0, 0.0));
-        // Off the boundary (interior), past the boundary, and AT a corner: all no-ops.
-        for q in [
-            Point2::new(1.0, 1.0),
-            Point2::new(3.0, 0.0),
-            Point2::new(2.0, 0.0),
-        ] {
-            let mut ring = square.clone();
-            assert!(!conform_ring(&mut ring, &[q]), "wrongly inserted {q:?}");
-            assert_eq!(ring.len(), 4);
-        }
-        // Two candidates 0.05 mm apart (adjacent quantisation cells) must not both
-        // land — the pair would be a sub-weld needle that gets dropped again.
-        let mut ring = square.clone();
-        assert!(conform_ring(
-            &mut ring,
-            &[Point2::new(1.0, 0.0), Point2::new(1.000_05, 0.0)]
-        ));
-        assert_eq!(ring.len(), 5);
-    }
-}
+#[path = "conform_tests.rs"]
+mod tests;

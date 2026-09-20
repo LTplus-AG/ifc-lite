@@ -31,6 +31,7 @@ import { documentMenuEn } from './catalogues/document-menu.en';
 import { hierarchyEn } from './catalogues/hierarchy.en';
 import { idsPanelEn } from './catalogues/ids-panel.en';
 import { layersPanelEn } from './catalogues/layers-panel.en';
+import { lensPanelEn } from './catalogues/lens-panel.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
 import { propertyEditorEn } from './catalogues/property-editor.en';
 import { repositionPanelEn } from './catalogues/reposition-panel.en';
@@ -106,6 +107,7 @@ export const en = {
   ...clashToolsEn,
   ...bcfEn,
   ...layersPanelEn,
+  ...lensPanelEn,
   ...searchModalEn,
   ...searchFiltersEn,
   ...repositionPanelEn,

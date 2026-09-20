@@ -31,7 +31,6 @@
   "apps/viewer/src/components/viewer/IDSReportExportButton.tsx": 8,
   "apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx": 37,
   "apps/viewer/src/components/viewer/KmzExportDialog.tsx": 21,
-  "apps/viewer/src/components/viewer/LensPanel.tsx": 69,
   "apps/viewer/src/components/viewer/LevelDisplayIndicator.tsx": 2,
   "apps/viewer/src/components/viewer/LoadReportPanel.tsx": 8,
   "apps/viewer/src/components/viewer/MainToolbar.tsx": 1,

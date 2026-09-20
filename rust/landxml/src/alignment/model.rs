@@ -100,6 +100,8 @@ pub enum LandXmlAlignmentPrimitive {
     IrregularLine(LandXmlIrregularLine),
     Curve(LandXmlCurve),
     Spiral(LandXmlSpiral),
+    /// Preserved in geometric order but deliberately unavailable to evaluation.
+    UnsupportedSpiral(LandXmlSpiral),
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -126,6 +128,21 @@ pub struct LandXmlCantStation {
     pub applied_cant: f64,
     pub equilibrium_cant: Option<f64>,
     pub curvature: LandXmlRotation,
+    pub cant_deficiency: Option<f64>,
+    pub cant_excess: Option<f64>,
+    pub rate_of_change_of_applied_cant_over_time: Option<f64>,
+    pub rate_of_change_of_applied_cant_over_length: Option<f64>,
+    pub rate_of_change_of_cant_deficiency_over_time: Option<f64>,
+    pub cant_gradient: Option<f64>,
+    pub speed: Option<f64>,
+    pub transition_type: Option<String>,
+    pub adverse: Option<bool>,
+}
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct LandXmlSpeedStation {
+    pub source_id: LandXmlSourceId,
+    pub station: f64,
+    pub speed: f64,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -134,7 +151,10 @@ pub struct LandXmlCant {
     pub name: String,
     pub gauge: f64,
     pub rotation_point: Option<String>,
+    pub equilibrium_constant: Option<f64>,
+    pub applied_cant_constant: Option<f64>,
     pub stations: Vec<LandXmlCantStation>,
+    pub speed_stations: Vec<LandXmlSpeedStation>,
 }
 
 /// The exact named events in LandXML `Superelevation`.
@@ -155,7 +175,8 @@ pub enum LandXmlSuperelevationEventKind {
 pub struct LandXmlSuperelevationEvent {
     pub source_id: LandXmlSourceId,
     pub kind: LandXmlSuperelevationEventKind,
-    pub value: String,
+    /// `None` retains an explicitly nil/empty schema event.
+    pub value: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -167,10 +188,11 @@ pub struct LandXmlSuperelevation {
 }
 
 /// A transition retained but intentionally unavailable to numeric probing.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LandXmlUnsupportedTransition {
     pub source_id: LandXmlSourceId,
     pub spi_type: String,
+    pub spiral: LandXmlSpiral,
     pub reason: String,
 }
 

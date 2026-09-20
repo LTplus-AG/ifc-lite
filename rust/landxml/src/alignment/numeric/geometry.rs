@@ -20,6 +20,7 @@ pub(super) fn segment_length(segment: &LandXmlAlignmentSegment) -> Result<f64> {
         }
         LandXmlAlignmentPrimitive::Curve(value) => curve_geometry(&segment.source_id, value)?.2,
         LandXmlAlignmentPrimitive::Spiral(value) => value.declared_length,
+        LandXmlAlignmentPrimitive::UnsupportedSpiral(value) => value.declared_length,
     };
     valid_length(&segment.source_id, length)
 }
@@ -40,6 +41,11 @@ pub(super) fn evaluate_segment(
         LandXmlAlignmentPrimitive::Spiral(value) => {
             evaluate_clothoid(&segment.source_id, value, distance)
         }
+        LandXmlAlignmentPrimitive::UnsupportedSpiral(_) => Err(diagnostic(
+            &segment.source_id,
+            "LXMLA209",
+            "transition is retained but not numerically supported",
+        )),
     }
 }
 fn evaluate_line(

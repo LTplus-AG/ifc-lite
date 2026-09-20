@@ -124,10 +124,16 @@ impl AlignmentBuilder {
                     declared_length: length,
                 };
                 if spi_type != "clothoid" {
-                    self.alignment.unsupported_transitions.push(LandXmlUnsupportedTransition { source_id, spi_type, reason: "LandXML transition type is retained but this numeric foundation supports clothoid only".to_owned() });
-                    return Ok(());
+                    self.alignment.unsupported_transitions.push(LandXmlUnsupportedTransition { source_id: source_id.clone(), spi_type, spiral: spiral.clone(), reason: "LandXML transition type is retained but this numeric foundation supports clothoid only".to_owned() });
+                    let retained = self
+                        .alignment
+                        .unsupported_transitions
+                        .last()
+                        .expect("just pushed");
+                    LandXmlAlignmentPrimitive::UnsupportedSpiral(retained.spiral.clone())
+                } else {
+                    LandXmlAlignmentPrimitive::Spiral(spiral)
                 }
-                LandXmlAlignmentPrimitive::Spiral(spiral)
             }
         };
         self.alignment.segments.push(LandXmlAlignmentSegment {
@@ -230,7 +236,11 @@ impl CantBuilder {
 }
 
 impl SuperelevationBuilder {
-    pub(super) fn push_event(&mut self, kind: LandXmlSuperelevationEventKind, value: String) {
+    pub(super) fn push_event(
+        &mut self,
+        kind: LandXmlSuperelevationEventKind,
+        value: Option<String>,
+    ) {
         let ordinal = self.superelevation.events.len() + 1;
         self.superelevation.events.push(LandXmlSuperelevationEvent {
             source_id: LandXmlSourceId(format!(

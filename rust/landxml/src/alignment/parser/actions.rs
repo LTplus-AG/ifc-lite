@@ -4,8 +4,8 @@
 
 use super::super::{
     LandXmlAlignment, LandXmlCant, LandXmlCantStation, LandXmlPlanPoint, LandXmlPointLocation,
-    LandXmlRadius, LandXmlRotation, LandXmlStationEquation, LandXmlSuperelevation,
-    LandXmlSuperelevationEventKind,
+    LandXmlRadius, LandXmlRotation, LandXmlSpeedStation, LandXmlStationEquation,
+    LandXmlSuperelevation, LandXmlSuperelevationEventKind,
 };
 use super::state::{
     invalid, limit, AlignmentBuilder, CantBuilder, SegmentBuilder, SuperelevationBuilder,
@@ -148,7 +148,10 @@ impl Parser<'_> {
                 name: required(attrs, "name", "Cant")?.to_owned(),
                 gauge: finite_attr(attrs, "gauge", "Cant")?,
                 rotation_point: attr(attrs, "rotationPoint").map(str::to_owned),
+                equilibrium_constant: optional_finite_attr(attrs, "equilibriumConstant", "Cant")?,
+                applied_cant_constant: optional_finite_attr(attrs, "appliedCantConstant", "Cant")?,
                 stations: Vec::new(),
+                speed_stations: Vec::new(),
             },
         });
         Ok(())
@@ -175,7 +178,51 @@ impl Parser<'_> {
             applied_cant: finite_attr(attrs, "appliedCant", "CantStation")?,
             equilibrium_cant: optional_finite_attr(attrs, "equilibriumCant", "CantStation")?,
             curvature: rotation(required(attrs, "curvature", "CantStation")?)?,
+            cant_deficiency: optional_finite_attr(attrs, "cantDeficiency", "CantStation")?,
+            cant_excess: optional_finite_attr(attrs, "cantExcess", "CantStation")?,
+            rate_of_change_of_applied_cant_over_time: optional_finite_attr(
+                attrs,
+                "rateOfChangeOfAppliedCantOverTime",
+                "CantStation",
+            )?,
+            rate_of_change_of_applied_cant_over_length: optional_finite_attr(
+                attrs,
+                "rateOfChangeOfAppliedCantOverLength",
+                "CantStation",
+            )?,
+            rate_of_change_of_cant_deficiency_over_time: optional_finite_attr(
+                attrs,
+                "rateOfChangeOfCantDeficiencyOverTime",
+                "CantStation",
+            )?,
+            cant_gradient: optional_finite_attr(attrs, "cantGradient", "CantStation")?,
+            speed: optional_finite_attr(attrs, "speed", "CantStation")?,
+            transition_type: attr(attrs, "transitionType").map(str::to_owned),
+            adverse: attr(attrs, "adverse")
+                .map(|value| match value {
+                    "true" => Ok(true),
+                    "false" => Ok(false),
+                    _ => Err(invalid("CantStation adverse must be true or false")),
+                })
+                .transpose()?,
         })
+    }
+
+    pub(super) fn push_speed_station(&mut self, attrs: &Attributes) -> Result<()> {
+        let cant = self
+            .alignment
+            .as_mut()
+            .ok_or_else(|| invalid("SpeedStation outside Alignment"))?
+            .cant
+            .as_mut()
+            .ok_or_else(|| invalid("SpeedStation outside Cant"))?;
+        let ordinal = cant.cant.speed_stations.len() + 1;
+        cant.cant.speed_stations.push(LandXmlSpeedStation {
+            source_id: LandXmlSourceId(format!("{}:speed:{ordinal}", cant.cant.source_id.0)),
+            station: finite_attr(attrs, "station", "SpeedStation")?,
+            speed: finite_attr(attrs, "speed", "SpeedStation")?,
+        });
+        Ok(())
     }
 
     pub(super) fn begin_superelevation(&mut self, attrs: &Attributes) -> Result<()> {
@@ -208,6 +255,11 @@ impl Parser<'_> {
             .ok_or_else(|| invalid("missing capture"))?;
         match &capture {
             Capture::Point { pnt_ref: None, .. } => self.reserve_alignment_points(1)?,
+            Capture::Point {
+                pnt_ref: Some(_),
+                text,
+                ..
+            } if !text.trim().is_empty() => self.reserve_alignment_points(1)?,
             Capture::PointList {
                 dimension, text, ..
             } => {
@@ -234,7 +286,17 @@ impl Parser<'_> {
                 ..
             } => {
                 if !text.trim().is_empty() {
-                    return Err(invalid("point must use coordinates or pntRef, not both"));
+                    let point = plan_point(&text)?;
+                    if local == "__alignment_start" {
+                        alignment.alignment.start =
+                            Some(LandXmlPointLocation::Coordinates { point });
+                        return Ok(());
+                    }
+                    return alignment
+                        .segment
+                        .as_mut()
+                        .ok_or_else(|| invalid("point outside primitive"))?
+                        .set_point(&local, LandXmlPointLocation::Coordinates { point });
                 }
                 if local == "__alignment_start" {
                     alignment.alignment.start =
@@ -284,10 +346,7 @@ impl Parser<'_> {
                 }
                 self.superelevation_events_seen += 1;
                 let value = text.trim();
-                if value.is_empty() {
-                    return Err(invalid("Superelevation event is empty"));
-                }
-                super_elevation.push_event(kind, value.to_owned());
+                super_elevation.push_event(kind, (!value.is_empty()).then(|| value.to_owned()));
                 Ok(())
             }
         }

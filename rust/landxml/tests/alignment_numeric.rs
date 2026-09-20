@@ -59,7 +59,7 @@ fn issue_5044_line_has_endpoint_interior_tangent_and_source_id_probe() {
         interior.segment_source_id.0,
         "landxml:alignment:1:segment:1"
     );
-    assert_eq!((interior.northing, interior.easting), (5.0, -2.0));
+    assert_eq!((interior.northing, interior.easting), (5.0, 2.0));
     assert_eq!(
         (interior.tangent_northing, interior.tangent_easting),
         (1.0, 0.0)
@@ -227,6 +227,38 @@ fn issue_5044_station_equations_keep_gaps_and_duplicate_labels_explicit() {
 }
 
 #[test]
+fn issue_5044_decreasing_station_equation_maps_forward_and_inverse() {
+    let line = LandXmlAlignmentSegment {
+        source_id: id("line"),
+        ordinal: 1,
+        primitive: LandXmlAlignmentPrimitive::Line(LandXmlLine {
+            start: point(0.0, 0.0),
+            end: point(100.0, 0.0),
+            declared_length: Some(100.0),
+        }),
+    };
+    let mut alignment = alignment(vec![line], 100.0);
+    alignment.station_equations = vec![LandXmlStationEquation {
+        source_id: id("eq"),
+        sta_internal: 150.0,
+        sta_ahead: 500.0,
+        sta_back: Some(150.0),
+        sta_increment: Some("decreasing".to_owned()),
+    }];
+    assert_eq!(
+        alignment
+            .station_at_distance(60.0)
+            .expect("forward")
+            .displayed_ahead,
+        490.0
+    );
+    assert_eq!(
+        alignment.distances_for_station(490.0).expect("inverse"),
+        vec![60.0]
+    );
+}
+
+#[test]
 fn issue_5044_non_clothoid_transition_is_never_coerced_to_a_line() {
     let spiral = LandXmlAlignmentSegment {
         source_id: id("landxml:alignment:1:segment:unsupported"),
@@ -269,6 +301,9 @@ fn issue_5044_cant_and_superelevation_are_inspectable_by_internal_station() {
         name: "rail".to_owned(),
         gauge: 1.435,
         rotation_point: None,
+        equilibrium_constant: None,
+        applied_cant_constant: None,
+        speed_stations: Vec::new(),
         stations: vec![
             LandXmlCantStation {
                 source_id: id("cant:1"),
@@ -276,6 +311,15 @@ fn issue_5044_cant_and_superelevation_are_inspectable_by_internal_station() {
                 applied_cant: 20.0,
                 equilibrium_cant: None,
                 curvature: LandXmlRotation::CounterClockwise,
+                cant_deficiency: None,
+                cant_excess: None,
+                rate_of_change_of_applied_cant_over_time: None,
+                rate_of_change_of_applied_cant_over_length: None,
+                rate_of_change_of_cant_deficiency_over_time: None,
+                cant_gradient: None,
+                speed: None,
+                transition_type: None,
+                adverse: None,
             },
             LandXmlCantStation {
                 source_id: id("cant:2"),
@@ -283,6 +327,15 @@ fn issue_5044_cant_and_superelevation_are_inspectable_by_internal_station() {
                 applied_cant: 30.0,
                 equilibrium_cant: None,
                 curvature: LandXmlRotation::CounterClockwise,
+                cant_deficiency: None,
+                cant_excess: None,
+                rate_of_change_of_applied_cant_over_time: None,
+                rate_of_change_of_applied_cant_over_length: None,
+                rate_of_change_of_cant_deficiency_over_time: None,
+                cant_gradient: None,
+                speed: None,
+                transition_type: None,
+                adverse: None,
             },
         ],
     });
@@ -293,7 +346,7 @@ fn issue_5044_cant_and_superelevation_are_inspectable_by_internal_station() {
         events: vec![LandXmlSuperelevationEvent {
             source_id: id("se:1:event:1"),
             kind: LandXmlSuperelevationEventKind::FullSuperelev,
-            value: "0.06".to_owned(),
+            value: Some("0.06".to_owned()),
         }],
     }];
     let cant = alignment
@@ -305,7 +358,7 @@ fn issue_5044_cant_and_superelevation_are_inspectable_by_internal_station() {
     let superelevations = alignment
         .superelevations_at_distance(15.0)
         .expect("super probe");
-    assert_eq!(superelevations[0].events[0].value, "0.06");
+    assert_eq!(superelevations[0].events[0].value.as_deref(), Some("0.06"));
     assert!(alignment
         .superelevations_at_distance(40.0)
         .expect("outside range")

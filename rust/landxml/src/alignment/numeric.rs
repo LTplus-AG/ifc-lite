@@ -81,15 +81,19 @@ impl LandXmlAlignment {
         );
         boundaries.push(self.sta_start + self.length);
         let mut out = Vec::new();
+        let mut direction = 1.0;
         for (index, window) in boundaries.windows(2).enumerate() {
             let display_start = if index == 0 {
                 self.sta_start
             } else {
                 self.station_equations[index - 1].sta_ahead
             };
-            let candidate = window[0] + (station - display_start);
+            let candidate = window[0] + (station - display_start) / direction;
             if candidate >= window[0] - EPSILON && candidate <= window[1] + EPSILON {
                 out.push((candidate - self.sta_start).clamp(0.0, self.length));
+            }
+            if let Some(equation) = self.station_equations.get(index) {
+                direction = equation_direction(equation);
             }
         }
         out.sort_by(f64::total_cmp);
@@ -117,8 +121,10 @@ impl LandXmlAlignment {
             segment_source_id: segment.source_id.clone(),
             geometric_distance: distance.clamp(0.0, self.length),
             station,
-            northing: point.northing + tangent.1 * offset_right,
-            easting: point.easting - tangent.0 * offset_right,
+            // LandXML coordinates are Northing/Easting; right of travel is
+            // clockwise in the conventional Easting/Northing plane.
+            northing: point.northing - tangent.1 * offset_right,
+            easting: point.easting + tangent.0 * offset_right,
             tangent_northing: tangent.0,
             tangent_easting: tangent.1,
         })
@@ -167,6 +173,7 @@ fn station_mapping(
 ) -> Result<LandXmlStationMapping> {
     let mut previous_internal = sta_start;
     let mut displayed = sta_start;
+    let mut direction = 1.0;
     for equation in equations {
         if !equation.sta_internal.is_finite()
             || equation.sta_internal <= previous_internal + EPSILON
@@ -178,7 +185,7 @@ fn station_mapping(
             ));
         }
         if internal < equation.sta_internal - EPSILON {
-            let value = displayed + (internal - previous_internal);
+            let value = displayed + direction * (internal - previous_internal);
             return Ok(LandXmlStationMapping {
                 geometric_distance: internal - sta_start,
                 displayed_back: value,
@@ -191,21 +198,29 @@ fn station_mapping(
                 geometric_distance: internal - sta_start,
                 displayed_back: equation
                     .sta_back
-                    .unwrap_or(displayed + (internal - previous_internal)),
+                    .unwrap_or(displayed + direction * (internal - previous_internal)),
                 displayed_ahead: equation.sta_ahead,
                 is_equation_boundary: true,
             });
         }
         previous_internal = equation.sta_internal;
         displayed = equation.sta_ahead;
+        direction = equation_direction(equation);
     }
-    let value = displayed + (internal - previous_internal);
+    let value = displayed + direction * (internal - previous_internal);
     Ok(LandXmlStationMapping {
         geometric_distance: internal - sta_start,
         displayed_back: value,
         displayed_ahead: value,
         is_equation_boundary: false,
     })
+}
+fn equation_direction(equation: &LandXmlStationEquation) -> f64 {
+    if equation.sta_increment.as_deref() == Some("decreasing") {
+        -1.0
+    } else {
+        1.0
+    }
 }
 pub(super) fn diagnostic(
     source_id: &LandXmlSourceId,

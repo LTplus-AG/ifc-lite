@@ -109,6 +109,9 @@ impl Parser<'_> {
         if self.is_alignment_path(&["Cant", "CantStation"]) {
             return self.push_cant_station(attrs);
         }
+        if self.is_alignment_path(&["Cant", "SpeedStation"]) {
+            return self.push_speed_station(attrs);
+        }
         if self.is_alignment_path(&["Superelevation"]) {
             return self.begin_superelevation(attrs);
         }

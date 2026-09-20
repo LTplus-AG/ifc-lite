@@ -38,8 +38,8 @@ fn issue_5044_parses_exact_alignment_semantics_without_rendering_identity() {
     assert_eq!(alignment.source_id.0, "landxml:alignment:1:Main Road");
     assert_eq!(
         alignment.segments.len(),
-        4,
-        "Line, Curve, clothoid Spiral, IrregularLine"
+        5,
+        "unsupported Spiral retains its source span"
     );
     assert_eq!(
         alignment.segments[1].source_id.0,
@@ -55,7 +55,7 @@ fn issue_5044_parses_exact_alignment_semantics_without_rendering_identity() {
         superelevation.events[1].kind,
         LandXmlSuperelevationEventKind::FullSuperelev
     );
-    assert_eq!(superelevation.events[1].value, "0.06");
+    assert_eq!(superelevation.events[1].value.as_deref(), Some("0.06"));
     match alignment.start.as_ref().expect("alignment start") {
         LandXmlPointLocation::Coordinates { point } => assert_eq!(
             (point.northing, point.easting, point.elevation),
@@ -86,6 +86,35 @@ fn issue_5044_preserves_pnt_ref_instead_of_inventing_a_coordinate() {
         ),
         _ => panic!("expected line"),
     }
+}
+
+#[test]
+fn issue_5044_point_coordinates_take_precedence_and_nil_superelevation_is_retained() {
+    let xml = XML
+        .replace(
+            "<Start>1000 2000</Start><End>1010 2000</End>",
+            "<Start pntRef=\"CG-1\">1000 2000</Start><End>1010 2000</End>",
+        )
+        .replace("<BeginRunoutSta>110</BeginRunoutSta>", "<BeginRunoutSta/>");
+    let document = parse_landxml_alignments_with_cancel(
+        xml.as_bytes(),
+        &LandXmlAlignmentLimits::default(),
+        None,
+    )
+    .expect("parse mixed PointType");
+    match &document.alignments[0].segments[0].primitive {
+        ifc_lite_landxml::alignment::LandXmlAlignmentPrimitive::Line(line) => match line.start {
+            LandXmlPointLocation::Coordinates { point } => {
+                assert_eq!((point.northing, point.easting), (1000.0, 2000.0))
+            }
+            _ => panic!("coordinates win"),
+        },
+        _ => panic!("line"),
+    }
+    assert_eq!(
+        document.alignments[0].superelevations[0].events[0].value,
+        None
+    );
 }
 
 #[test]

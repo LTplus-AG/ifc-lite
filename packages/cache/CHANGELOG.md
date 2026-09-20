@@ -1,5 +1,14 @@
 # @ifc-lite/cache
 
+## 3.5.1
+
+### Patch Changes
+
+- [#5009](https://github.com/LTplus-AG/ifc-lite/pull/5009) [`d38af5a`](https://github.com/LTplus-AG/ifc-lite/commit/d38af5afd36f12329fe6f33bf905d28fca65ba43) Thanks [@louistrue](https://github.com/louistrue)! - Index every schema-resolvable `IfcRelationship` subtype as an exact typed edge, expose exact inbound/outbound relationship rows through the SDK, MCP, and viewer, and allow `related()` queries for every indexed `IfcRel*` name. Bump the cache format so graphs cached before the expanded indexing are reparsed instead of silently omitting the new edge buckets. `@ifc-lite/parser` also exports `resolveEffectiveEntityRecord`, the one place a read model folds a queued retype (name-based re-layout), named and positional edits into an entity record exactly as export writes it; the CLI, MCP and viewer read surfaces use it.
+- Updated dependencies [[`d38af5a`](https://github.com/LTplus-AG/ifc-lite/commit/d38af5afd36f12329fe6f33bf905d28fca65ba43), [`e2ca87d`](https://github.com/LTplus-AG/ifc-lite/commit/e2ca87d9b8f25be2ffeabd5843cbadc4154471c0), [`e1ace4f`](https://github.com/LTplus-AG/ifc-lite/commit/e1ace4f05a45a252d502bf72a506336185d2b157), [`ab8380e`](https://github.com/LTplus-AG/ifc-lite/commit/ab8380e6b9edf1ca1f05abf343ae6040ac8aee77), [`e211790`](https://github.com/LTplus-AG/ifc-lite/commit/e211790ff4d7070d908fb519652158089652dd9c)]:
+  - @ifc-lite/data@5.0.0
+  - @ifc-lite/geometry@7.4.0
+
 ## 3.5.0
 
 ### Minor Changes

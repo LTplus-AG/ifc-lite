@@ -14,7 +14,7 @@ import type { ChartSpec } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import { resolveGlobalId, useViewerStore } from '@/store';
 import { readImageFile } from '@/lib/document/persistence';
 import { FIELD_SUGGESTIONS } from '@/lib/document/presets';
@@ -34,7 +34,13 @@ export interface BlockEditorProps {
   onRemove: () => void;
 }
 
-const KIND_LABEL: Record<DocumentBlock['kind'], string> = { text: 'Text', image: 'Image', chart: 'Chart', topic: 'BCF topic', spacer: 'Spacer' };
+const KIND_LABEL_KEY = {
+  text: 'document.block.kindText',
+  image: 'document.block.kindImage',
+  chart: 'document.block.kindChart',
+  topic: 'document.block.kindTopic',
+  spacer: 'document.block.kindSpacer',
+} as const satisfies Record<DocumentBlock['kind'], TranslationKey>;
 const field = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs';
 
 /** Chart and image blocks share this "two-up" width picker (#4940). */
@@ -125,14 +131,14 @@ function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings:
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
-        <label className="inline-flex items-center gap-1 whitespace-nowrap text-muted-foreground">Style
-          <select className={field} value={block.style} onChange={(e) => onChange({ ...block, style: e.target.value as TextBlock['style'] })} aria-label="Text style">
-            <option value="title">Title</option><option value="heading">Heading</option><option value="subheading">{t('document.block.textStyleSubheading')}</option>
-            <option value="body">Body</option><option value="small">{t('document.block.textStyleSmall')}</option><option value="caption">{t('document.block.textStyleCaption')}</option>
+        <label className="inline-flex items-center gap-1 whitespace-nowrap text-muted-foreground">{t('document.block.styleLabel')}
+          <select className={field} value={block.style} onChange={(e) => onChange({ ...block, style: e.target.value as TextBlock['style'] })} aria-label={t('document.block.textStyleAriaLabel')}>
+            <option value="title">{t('document.block.textStyleTitle')}</option><option value="heading">{t('document.block.textStyleHeading')}</option><option value="subheading">{t('document.block.textStyleSubheading')}</option>
+            <option value="body">{t('document.block.textStyleBody')}</option><option value="small">{t('document.block.textStyleSmall')}</option><option value="caption">{t('document.block.textStyleCaption')}</option>
           </select>
         </label>
-        <label className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-muted-foreground">Insert field
-          <select className={`${field} max-w-[190px]`} value="" onChange={(e) => { if (e.target.value) insert(e.target.value); }} aria-label="Insert field" title="Insert a {path} that reads the model">
+        <label className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-muted-foreground">{t('document.block.insertFieldLabel')}
+          <select className={`${field} max-w-[190px]`} value="" onChange={(e) => { if (e.target.value) insert(e.target.value); }} aria-label={t('document.block.insertFieldLabel')} title={t('document.block.insertFieldTitle')}>
             <option value="">…</option>
             {options.map((o) => <option key={o.path} value={o.path}>{o.label}</option>)}
           </select>
@@ -144,8 +150,8 @@ function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings:
         value={block.text}
         rows={block.style === 'body' ? 4 : 2}
         onChange={(e) => onChange({ ...block, text: e.target.value })}
-        aria-label="Block text"
-        placeholder="Text; {IfcProject.Name} reads the model"
+        aria-label={t('document.block.textAriaLabel')}
+        placeholder={t('document.block.textPlaceholder')}
       />
     </>
   );
@@ -160,7 +166,7 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, onC
     try {
       onChange({ ...block, dataUrl: await readImageFile(file) });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not read the image');
+      toast.error(err instanceof Error ? err.message : t('document.block.imageReadError'));
     } finally {
       setBusy(false);
     }
@@ -169,12 +175,12 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, onC
   return (
     <div className="flex flex-col gap-1.5 rounded-md border border-border bg-card p-2 text-xs" data-block-editor={block.id} data-block-kind={block.kind}>
       <div className="flex items-center gap-1">
-        <span className="font-medium">{KIND_LABEL[block.kind]}</span>
+        <span className="font-medium">{t(KIND_LABEL_KEY[block.kind])}</span>
         <span className="text-muted-foreground">#{index + 1}</span>
         <span className="flex-1" />
-        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={index === 0} onClick={() => onMove(-1)} aria-label="Move block up"><ArrowUp className="h-3.5 w-3.5" /></Button>
-        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={index === count - 1} onClick={() => onMove(1)} aria-label="Move block down"><ArrowDown className="h-3.5 w-3.5" /></Button>
-        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onRemove} aria-label="Remove block"><X className="h-3.5 w-3.5" /></Button>
+        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={index === 0} onClick={() => onMove(-1)} aria-label={t('document.block.moveUpAriaLabel')}><ArrowUp className="h-3.5 w-3.5" /></Button>
+        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={index === count - 1} onClick={() => onMove(1)} aria-label={t('document.block.moveDownAriaLabel')}><ArrowDown className="h-3.5 w-3.5" /></Button>
+        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onRemove} aria-label={t('document.block.removeAriaLabel')}><X className="h-3.5 w-3.5" /></Button>
       </div>
 
       {block.kind === 'text' && <TextEditor block={block} bindings={bindings} onChange={onChange} />}
@@ -182,22 +188,22 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, onC
       {block.kind === 'image' && (
         <>
           <div className="flex items-center gap-2">
-            {block.dataUrl ? <img src={block.dataUrl} alt="" className="h-10 rounded border border-border object-contain" /> : <span className="text-muted-foreground">No image yet</span>}
+            {block.dataUrl ? <img src={block.dataUrl} alt="" className="h-10 rounded border border-border object-contain" /> : <span className="text-muted-foreground">{t('document.block.imageEmpty')}</span>}
             <label className="cursor-pointer rounded border border-border px-2 py-0.5 hover:bg-accent">
-              {busy ? 'Reading…' : 'Choose PNG / JPEG…'}
+              {busy ? t('document.block.imageReading') : t('document.block.imageChoosePrompt')}
               <input type="file" accept="image/png,image/jpeg" className="hidden" data-image-input onChange={(e) => { void pickImage(e.target.files?.[0]); e.target.value = ''; }} />
             </label>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <label className="inline-flex items-center gap-1 text-muted-foreground">Height (pt)
-              <input type="number" min={20} max={600} className={`${field} w-16`} value={block.height} onChange={(e) => onChange({ ...block, height: Math.max(20, Number(e.target.value) || 20) })} aria-label="Image height" />
+            <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.heightPtLabel')}
+              <input type="number" min={20} max={600} className={`${field} w-16`} value={block.height} onChange={(e) => onChange({ ...block, height: Math.max(20, Number(e.target.value) || 20) })} aria-label={t('document.block.imageHeightAriaLabel')} />
             </label>
-            <label className="inline-flex items-center gap-1 text-muted-foreground">Align
-              <select className={field} value={block.align} onChange={(e) => onChange({ ...block, align: e.target.value as 'left' | 'center' | 'right' })} aria-label="Image alignment">
-                <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
+            <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.alignLabel')}
+              <select className={field} value={block.align} onChange={(e) => onChange({ ...block, align: e.target.value as 'left' | 'center' | 'right' })} aria-label={t('document.block.imageAlignAriaLabel')}>
+                <option value="left">{t('document.block.alignLeft')}</option><option value="center">{t('document.block.alignCenter')}</option><option value="right">{t('document.block.alignRight')}</option>
               </select>
             </label>
-            <input className={`${field} flex-1`} value={block.caption ?? ''} placeholder="Caption" onChange={(e) => onChange({ ...block, caption: e.target.value || undefined })} aria-label="Image caption" />
+            <input className={`${field} flex-1`} value={block.caption ?? ''} placeholder={t('document.block.captionPlaceholder')} onChange={(e) => onChange({ ...block, caption: e.target.value || undefined })} aria-label={t('document.block.imageCaptionAriaLabel')} />
             <WidthEditor width={block.width} onChange={(width) => onChange({ ...block, width })} />
           </div>
         </>
@@ -205,7 +211,7 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, onC
 
       {block.kind === 'chart' && (
         <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex min-w-0 flex-1 items-center gap-1 text-muted-foreground">Chart
+          <label className="inline-flex min-w-0 flex-1 items-center gap-1 text-muted-foreground">{t('document.block.kindChart')}
             <select
               className={`${field} min-w-0 flex-1`}
               value=""
@@ -213,15 +219,15 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, onC
                 const pick = charts[Number(e.target.value)];
                 if (pick) onChange({ ...block, chart: { ...pick.chart, id: block.chart.id } });
               }}
-              aria-label="Chart from a dashboard"
-              title="Copy a chart from one of the saved dashboards"
+              aria-label={t('document.block.chartSelectAriaLabel')}
+              title={t('document.block.chartSelectTitle')}
             >
-              <option value="">{block.chart.title} — replace with…</option>
+              <option value="">{t('document.block.chartReplaceOption', { title: block.chart.title })}</option>
               {charts.map((c, i) => <option key={`${c.dashboard}:${c.chart.id}`} value={i}>{c.dashboard} › {c.chart.title}</option>)}
             </select>
           </label>
           <label className="inline-flex items-center gap-1 text-muted-foreground">
-            <input type="checkbox" checked={block.snapshot} onChange={(e) => onChange({ ...block, snapshot: e.target.checked })} className="accent-[#7aa2f7]" /> 3D snapshot
+            <input type="checkbox" checked={block.snapshot} onChange={(e) => onChange({ ...block, snapshot: e.target.checked })} className="accent-[#7aa2f7]" /> {t('document.block.chartSnapshotLabel')}
           </label>
           <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.heightPtLabel')}
             <ClampedHeightInput
@@ -246,14 +252,14 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, onC
 
       {block.kind === 'topic' && (
         <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex min-w-0 flex-1 items-center gap-1 text-muted-foreground">Topic
-            <select className={`${field} min-w-0 flex-1`} value={block.guid} onChange={(e) => onChange({ ...block, guid: e.target.value })} aria-label="BCF topic">
-              {!topics.has(block.guid) && <option value={block.guid}>{block.guid ? `${block.guid} (not loaded)` : 'Pick a topic…'}</option>}
-              {[...topics.values()].map((t) => <option key={t.guid} value={t.guid}>{t.title}</option>)}
+          <label className="inline-flex min-w-0 flex-1 items-center gap-1 text-muted-foreground">{t('document.block.topicSourceLabel')}
+            <select className={`${field} min-w-0 flex-1`} value={block.guid} onChange={(e) => onChange({ ...block, guid: e.target.value })} aria-label={t('document.block.kindTopic')}>
+              {!topics.has(block.guid) && <option value={block.guid}>{block.guid ? t('document.block.topicNotLoaded', { guid: block.guid }) : t('document.block.pickTopicOption')}</option>}
+              {[...topics.values()].map((topic) => <option key={topic.guid} value={topic.guid}>{topic.title}</option>)}
             </select>
           </label>
           <label className="inline-flex items-center gap-1 text-muted-foreground">
-            <input type="checkbox" checked={block.snapshot} onChange={(e) => onChange({ ...block, snapshot: e.target.checked })} className="accent-[#7aa2f7]" /> Viewpoint snapshot
+            <input type="checkbox" checked={block.snapshot} onChange={(e) => onChange({ ...block, snapshot: e.target.checked })} className="accent-[#7aa2f7]" /> {t('document.block.topicSnapshotLabel')}
           </label>
         </div>
       )}

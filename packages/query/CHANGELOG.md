@@ -1,5 +1,18 @@
 # @ifc-lite/query
 
+## 2.5.0
+
+### Minor Changes
+
+- [#4984](https://github.com/LTplus-AG/ifc-lite/pull/4984) [`873a648`](https://github.com/LTplus-AG/ifc-lite/commit/873a6481af34f1a494e9667ab1f77c3328125077) Thanks [@louistrue](https://github.com/louistrue)! - Export `trimSelectorWhitespace` (`selector/tokenize.ts`): trims only the six characters the selector tokenizer treats as whitespace (space, tab, LF, CR, FF, VT), unlike `String.trim()` which also strips U+00A0 (no-break space) — a character the tokenizer reads as ordinary word content. Used by the chart source filter ([#4946](https://github.com/LTplus-AG/ifc-lite/issues/4946)) so a selector carrying an NBSP is never silently rewritten before it reaches the parser.
+
+### Patch Changes
+
+- Updated dependencies [[`d38af5a`](https://github.com/LTplus-AG/ifc-lite/commit/d38af5afd36f12329fe6f33bf905d28fca65ba43), [`0100a54`](https://github.com/LTplus-AG/ifc-lite/commit/0100a544d0446d2f19b5f76f37d6dc45d31da837), [`e2ca87d`](https://github.com/LTplus-AG/ifc-lite/commit/e2ca87d9b8f25be2ffeabd5843cbadc4154471c0), [`e1ace4f`](https://github.com/LTplus-AG/ifc-lite/commit/e1ace4f05a45a252d502bf72a506336185d2b157), [`ab8380e`](https://github.com/LTplus-AG/ifc-lite/commit/ab8380e6b9edf1ca1f05abf343ae6040ac8aee77), [`794986e`](https://github.com/LTplus-AG/ifc-lite/commit/794986e8fa5acec057429b49302274ac8046eefe), [`65ea107`](https://github.com/LTplus-AG/ifc-lite/commit/65ea107b83e3d543b410721c74195562ca50bcca), [`ec114fe`](https://github.com/LTplus-AG/ifc-lite/commit/ec114fefabfd1b3a23d6a25545610652db6c5342), [`e211790`](https://github.com/LTplus-AG/ifc-lite/commit/e211790ff4d7070d908fb519652158089652dd9c)]:
+  - @ifc-lite/data@5.0.0
+  - @ifc-lite/parser@8.0.0
+  - @ifc-lite/geometry@7.4.0
+
 ## 2.4.2
 
 ### Patch Changes

@@ -1,5 +1,33 @@
 # @ifc-lite/viewer-embed
 
+## 1.15.8
+
+### Patch Changes
+
+- Updated dependencies [[`faadbb4`](https://github.com/LTplus-AG/ifc-lite/commit/faadbb409bc67bb5ace32757db050dd0ed83814f), [`873a648`](https://github.com/LTplus-AG/ifc-lite/commit/873a6481af34f1a494e9667ab1f77c3328125077), [`873a648`](https://github.com/LTplus-AG/ifc-lite/commit/873a6481af34f1a494e9667ab1f77c3328125077), [`7556ce5`](https://github.com/LTplus-AG/ifc-lite/commit/7556ce5bb330ae37d089226f28e5c3049346c0a7), [`531246a`](https://github.com/LTplus-AG/ifc-lite/commit/531246a1a9f53ea6b66f7f1d140c7df268adc242), [`d38af5a`](https://github.com/LTplus-AG/ifc-lite/commit/d38af5afd36f12329fe6f33bf905d28fca65ba43), [`b399a49`](https://github.com/LTplus-AG/ifc-lite/commit/b399a49cbccc0456eae50cc50521674336632d1a), [`0100a54`](https://github.com/LTplus-AG/ifc-lite/commit/0100a544d0446d2f19b5f76f37d6dc45d31da837), [`55d4354`](https://github.com/LTplus-AG/ifc-lite/commit/55d43541c7dfce6006d391a5034169ea54014d5f), [`dce19f5`](https://github.com/LTplus-AG/ifc-lite/commit/dce19f57399b9e75901fa5c4283adf781681301e), [`0e8a421`](https://github.com/LTplus-AG/ifc-lite/commit/0e8a4217514dcfacc7c488a230de244288428e1b), [`86dafce`](https://github.com/LTplus-AG/ifc-lite/commit/86dafced6e166889514a8514a23419659d0e7ce6), [`55d4354`](https://github.com/LTplus-AG/ifc-lite/commit/55d43541c7dfce6006d391a5034169ea54014d5f), [`1e2e444`](https://github.com/LTplus-AG/ifc-lite/commit/1e2e444a4991b16a448355ac6b494da42339ffd0), [`e9c6eb9`](https://github.com/LTplus-AG/ifc-lite/commit/e9c6eb9a8385629a05219e682650a4289b7be0fa), [`e2ca87d`](https://github.com/LTplus-AG/ifc-lite/commit/e2ca87d9b8f25be2ffeabd5843cbadc4154471c0), [`c230e9a`](https://github.com/LTplus-AG/ifc-lite/commit/c230e9a40b5d56a4e1149f3c7f14bac71cd19de7), [`e1ace4f`](https://github.com/LTplus-AG/ifc-lite/commit/e1ace4f05a45a252d502bf72a506336185d2b157), [`9c41278`](https://github.com/LTplus-AG/ifc-lite/commit/9c412786c4fa21f4ace497e7408bad7d742bdf24), [`ab8380e`](https://github.com/LTplus-AG/ifc-lite/commit/ab8380e6b9edf1ca1f05abf343ae6040ac8aee77), [`bab4e30`](https://github.com/LTplus-AG/ifc-lite/commit/bab4e30f438ac0bb585ea00a62a1a98a8221bede), [`427e886`](https://github.com/LTplus-AG/ifc-lite/commit/427e88664b021125bc7f9c07fe1f57f209410ad6), [`794986e`](https://github.com/LTplus-AG/ifc-lite/commit/794986e8fa5acec057429b49302274ac8046eefe), [`6a5f3f2`](https://github.com/LTplus-AG/ifc-lite/commit/6a5f3f2ae703ce170b890f85535af846251d3ab7), [`24b2416`](https://github.com/LTplus-AG/ifc-lite/commit/24b24167e7213ed8f8c8d92211ec38c7221b9a11), [`65ea107`](https://github.com/LTplus-AG/ifc-lite/commit/65ea107b83e3d543b410721c74195562ca50bcca), [`47f39b8`](https://github.com/LTplus-AG/ifc-lite/commit/47f39b850e2a1d0ebb2fd8654839f917620f3542), [`0a62c19`](https://github.com/LTplus-AG/ifc-lite/commit/0a62c196a05fb47fc2bf6c0c083ea32ed20dd1d8), [`873a648`](https://github.com/LTplus-AG/ifc-lite/commit/873a6481af34f1a494e9667ab1f77c3328125077), [`ec114fe`](https://github.com/LTplus-AG/ifc-lite/commit/ec114fefabfd1b3a23d6a25545610652db6c5342), [`bcff7f6`](https://github.com/LTplus-AG/ifc-lite/commit/bcff7f669b26dfb5b89865e8c6e3db83cc01aa74), [`6e28171`](https://github.com/LTplus-AG/ifc-lite/commit/6e28171ea15c1b9863e617b729921a38ac6c55d9), [`bd1e3f1`](https://github.com/LTplus-AG/ifc-lite/commit/bd1e3f109c403e0a072f8c5cb561f8bab54cb1d7), [`62a57f7`](https://github.com/LTplus-AG/ifc-lite/commit/62a57f7e991202500b2e9c3d553376f9c45fd2c5), [`19af4c9`](https://github.com/LTplus-AG/ifc-lite/commit/19af4c9b5529a9052daf8a023ebe4e5144b9db2f), [`6e283f0`](https://github.com/LTplus-AG/ifc-lite/commit/6e283f0fb187195aae76097dd4ee1660a20ae325), [`e30b86c`](https://github.com/LTplus-AG/ifc-lite/commit/e30b86cacf142c64a3bdbf310861ac7bf12a3f1b), [`3a47a0c`](https://github.com/LTplus-AG/ifc-lite/commit/3a47a0c2bb70966741882f8a0bae996823b9881f), [`e211790`](https://github.com/LTplus-AG/ifc-lite/commit/e211790ff4d7070d908fb519652158089652dd9c), [`50c23d4`](https://github.com/LTplus-AG/ifc-lite/commit/50c23d4321252a2fafff41e085e64e351c2cdb31), [`fc72af0`](https://github.com/LTplus-AG/ifc-lite/commit/fc72af07fab21f0359002346ae5be60e085b8a41)]:
+  - @ifc-lite/wasm@9.2.0
+  - @ifc-lite/query@2.5.0
+  - @ifc-lite/charts@0.4.0
+  - @ifc-lite/mcp@0.18.0
+  - @ifc-lite/data@5.0.0
+  - @ifc-lite/parser@8.0.0
+  - @ifc-lite/sdk@6.4.0
+  - @ifc-lite/cache@3.5.1
+  - @ifc-lite/extensions@0.8.0
+  - @ifc-lite/export@4.5.0
+  - @ifc-lite/create@2.7.0
+  - @ifc-lite/mutations@2.5.0
+  - @ifc-lite/sandbox@2.6.0
+  - @ifc-lite/renderer@3.2.0
+  - @ifc-lite/geometry@7.4.0
+  - @ifc-lite/diff@0.9.0
+  - @ifc-lite/collab@0.8.1
+  - @ifc-lite/ids@1.17.4
+  - @ifc-lite/ifcx@4.1.2
+  - @ifc-lite/lists@2.2.5
+  - @ifc-lite/clash@2.3.1
+  - @ifc-lite/merge@0.4.6
+
 ## 1.15.7
 
 ### Patch Changes

@@ -478,23 +478,23 @@ Columns:
 | IfcReinforcingBar | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/swept_disk_composite_arc_crankbar.ifc |
 | IfcReinforcingMesh | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAggregates | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
-| IfcRelAssignsTasks | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelAssignsTasks | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelAssignsToActor | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssignsToControl | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcRelAssignsToGroup | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssignsToProcess | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcRelAssignsToProduct | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelAssignsToProjectOrder | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelAssignsToProjectOrder | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelAssignsToResource | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssociates | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelAssociatesAppliedValue | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelAssociatesAppliedValue | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelAssociatesApproval | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssociatesClassification | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssociatesConstraint | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssociatesDocument | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssociatesLibrary | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssociatesMaterial | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
-| IfcRelAssociatesProfileProperties | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelAssociatesProfileProperties | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelaxation | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelConnectsElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsPathElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -504,7 +504,7 @@ Columns:
 | IfcRelConnectsStructuralElement | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelConnectsStructuralMember | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsWithEccentricity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelConnectsWithRealizingElements | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelConnectsWithRealizingElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelContainedInSpatialStructure | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcRelCoversBldgElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelCoversSpaces | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -512,13 +512,13 @@ Columns:
 | IfcRelDefinesByType | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelFillsElement | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcRelFlowControlElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelInteractionRequirements | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelInteractionRequirements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelNests | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
-| IfcRelOccupiesSpaces | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcRelOverridesProperties | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelOccupiesSpaces | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelOverridesProperties | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelProjectsElement | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelReferencedInSpatialStructure | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
-| IfcRelSchedulesCostItems | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelSchedulesCostItems | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelSequence | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcRelServicesBuildings | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelSpaceBoundary | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
@@ -1270,14 +1270,14 @@ Columns:
 | IfcRelConnectsStructuralActivity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelConnectsStructuralMember | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelConnectsWithEccentricity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcRelConnectsWithRealizingElements | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcRelConnectsWithRealizingElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelContainedInSpatialStructure | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcRelCoversBldgElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelCoversSpaces | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelDeclares | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
-| IfcRelDefinesByObject | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
+| IfcRelDefinesByObject | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcRelDefinesByProperties | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
-| IfcRelDefinesByTemplate | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
+| IfcRelDefinesByTemplate | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcRelDefinesByType | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcRelFillsElement | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcRelFlowControlElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
@@ -1288,8 +1288,8 @@ Columns:
 | IfcRelSequence | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelServicesBuildings | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelSpaceBoundary | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcRelSpaceBoundary1stLevel | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
-| IfcRelSpaceBoundary2ndLevel | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
+| IfcRelSpaceBoundary1stLevel | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
+| IfcRelSpaceBoundary2ndLevel | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcRelVoidsElement | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcReparametrisedCompositeCurveSegment | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcRepresentationMap | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
@@ -2123,7 +2123,7 @@ Columns:
 | IfcRelAssociatesDocument | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssociatesLibrary | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssociatesMaterial | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
-| IfcRelAssociatesProfileDef | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
+| IfcRelAssociatesProfileDef | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelConnectsElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
 | IfcRelConnectsPathElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsPorts | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -2131,14 +2131,14 @@ Columns:
 | IfcRelConnectsStructuralActivity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsStructuralMember | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsWithEccentricity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelConnectsWithRealizingElements | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelConnectsWithRealizingElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelContainedInSpatialStructure | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
 | IfcRelCoversBldgElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelCoversSpaces | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelDeclares | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
-| IfcRelDefinesByObject | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelDefinesByObject | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelDefinesByProperties | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
-| IfcRelDefinesByTemplate | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelDefinesByTemplate | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelDefinesByType | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
 | IfcRelFillsElement | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcRelFlowControlElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -2150,8 +2150,8 @@ Columns:
 | IfcRelSequence | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcRelServicesBuildings | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelSpaceBoundary | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
-| IfcRelSpaceBoundary1stLevel | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelSpaceBoundary2ndLevel | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelSpaceBoundary1stLevel | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelSpaceBoundary2ndLevel | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelVoidsElement | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc |
 | IfcReparametrisedCompositeCurveSegment | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRepresentationMap | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |

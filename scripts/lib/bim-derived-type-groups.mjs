@@ -21,4 +21,9 @@ export const BIM_DERIVED_TYPE_GROUPS = [
       'CostItemParams', 'CostValueParams', 'CostQuantityParams',
     ],
   },
+  {
+    title: 'SDK relationship types', namespace: 'BimSdk',
+    sources: ['packages/sdk/src/types.ts'],
+    roots: ['EntityRelationshipsData'],
+  },
 ];

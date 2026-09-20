@@ -7,11 +7,16 @@ import { evaluateCompatibility, findAffected } from './sdk-version.js';
 
 describe('sdk-version', () => {
   it('passes a >= range that still matches', () => {
-    expect(evaluateCompatibility('x', '>=2.0.0', '2.5.0').status).toBe('compatible');
+    const result = evaluateCompatibility('x', '>=2.0.0', '2.5.0');
+    expect(result.status).toBe('compatible');
+    expect(result.reasonCode).toBe('range-match');
+    expect(result.reason).toContain('still matches SDK');
   });
 
   it('flags a >= range that no longer matches', () => {
-    expect(evaluateCompatibility('x', '>=3.0.0', '2.5.0').status).toBe('outdated');
+    const result = evaluateCompatibility('x', '>=3.0.0', '2.5.0');
+    expect(result.status).toBe('outdated');
+    expect(result.reasonCode).toBe('range-mismatch');
   });
 
   it('accepts caret ranges within the same major', () => {
@@ -40,11 +45,15 @@ describe('sdk-version', () => {
   });
 
   it('marks unparseable ranges as permissive', () => {
-    expect(evaluateCompatibility('x', 'totally garbage', '2.5.0').status).toBe('permissive');
+    const result = evaluateCompatibility('x', 'totally garbage', '2.5.0');
+    expect(result.status).toBe('permissive');
+    expect(result.reasonCode).toBe('unsupported-range');
   });
 
   it('marks unparseable SDK versions as permissive', () => {
-    expect(evaluateCompatibility('x', '>=2.0.0', 'nope').status).toBe('permissive');
+    const result = evaluateCompatibility('x', '>=2.0.0', 'nope');
+    expect(result.status).toBe('permissive');
+    expect(result.reasonCode).toBe('invalid-sdk-version');
   });
 
   it('AND comparators within one range all have to satisfy', () => {

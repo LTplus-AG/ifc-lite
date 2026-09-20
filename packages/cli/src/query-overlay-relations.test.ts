@@ -17,6 +17,7 @@
 import { describe, expect, it } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { loadIfcFile } from './loader.js';
 import { HeadlessBackend } from './headless-backend.js';
 
@@ -100,5 +101,68 @@ describe('foldQueuedRelated / refIds — #3502', () => {
 
     const forward = backend.query.related(parent.ref, 'IfcRelAggregates', 'forward');
     expect(forward.some((r) => r.expressId === child.ref.expressId)).toBe(true);
+  });
+});
+
+describe('relationship rows name a retyped endpoint by its effective class (#5009 review)', () => {
+  it('reports the queued setEntityType class on parsed and rebuilt rows alike', async () => {
+    const store = await loadIfcFile(SAMPLE_IFC);
+    const backend = new HeadlessBackend(store, 'building-architecture.ifc');
+    const [parent, child] = backend.query.entities({ types: ['IfcWall'] });
+
+    // A rebuilt (queued) edge and a parsed edge to the same retyped endpoint.
+    backend.store.addEntity('default', {
+      type: 'IfcRelAggregates',
+      attributes: ["'3N1x3zzzzzzzzzzzzzzzzz'", null, null, null, `#${parent.ref.expressId}`, [`#${child.ref.expressId}`]],
+    });
+    const view = (backend as unknown as { mutationView: MutablePropertyView }).mutationView;
+    view.setEntityType(child.ref.expressId, 'IfcColumn');
+
+    expect(backend.query.entityData(child.ref)?.type).toBe('IfcColumn');
+    const rows = backend.query.relationships(parent.ref).relations ?? [];
+    const queued = rows.filter((row) => row.entity.id === child.ref.expressId);
+    expect(queued.length).toBeGreaterThan(0);
+    for (const row of queued) expect(row.entity.type).toBe('IfcColumn');
+
+    const parsed = backend.query.relationships(child.ref).relations ?? [];
+    const storey = parsed.find((row) => row.relationshipType.toUpperCase() === 'IFCRELCONTAINEDINSPATIALSTRUCTURE');
+    expect(storey?.entity.type).toBe('IfcBuildingStorey');
+  });
+});
+
+describe('created entities are filtered and read by their effective class (#5009 review)', () => {
+  it('moves a retyped created wall into the IfcColumn query and out of the IfcWall query', async () => {
+    const store = await loadIfcFile(SAMPLE_IFC);
+    const backend = new HeadlessBackend(store, 'building-architecture.ifc');
+    const created = backend.store.addEntity('default', {
+      type: 'IfcWall',
+      attributes: ["'3N1x3yyyyyyyyyyyyyyyyy'", null, "'Authored'", "'Desc'", null, null, null, "'tag'", null],
+    });
+    const view = (backend as unknown as { mutationView: MutablePropertyView }).mutationView;
+    view.setEntityType(created.expressId, 'IfcColumn');
+
+    const columns = backend.query.entities({ types: ['IfcColumn'] }).map((entity) => entity.ref.expressId);
+    const walls = backend.query.entities({ types: ['IfcWall'] }).map((entity) => entity.ref.expressId);
+    expect(columns).toContain(created.expressId);
+    expect(walls).not.toContain(created.expressId);
+    const data = backend.query.entityData(created);
+    expect(data?.type).toBe('IfcColumn');
+    expect(data?.name).toBe('Authored');
+    expect(data?.description).toBe('Desc');
+  });
+
+  it("names a parsed entity's positional slots by its effective class after a retype", async () => {
+    const store = await loadIfcFile(SAMPLE_IFC);
+    const backend = new HeadlessBackend(store, 'building-architecture.ifc');
+    const [wall] = backend.query.entities({ types: ['IfcWall'] });
+    const view = (backend as unknown as { getOrCreateMutationView(): MutablePropertyView }).getOrCreateMutationView();
+    // IfcWall → IfcRelAggregates: slot 4 becomes RelatingObject, so a positional
+    // write there is a relationship endpoint, not ObjectType.
+    view.setEntityType(wall.ref.expressId, 'IfcRelAggregates');
+    view.setPositionalAttribute(wall.ref.expressId, 4, '#1');
+    const data = backend.query.entityData(wall.ref);
+    expect(data?.type).toBe('IfcRelAggregates');
+    // The effective class has no ObjectType slot, so the saved file will not carry one.
+    expect(data?.objectType).toBe('');
   });
 });

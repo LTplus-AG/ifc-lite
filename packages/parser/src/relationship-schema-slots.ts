@@ -14,10 +14,11 @@
  * at all (the hand-written gate sets in `columnar-parser-indexes.ts`).
  *
  * This module derives the same information from the codegen-generated
- * schema registries instead: every EXPRESS `IfcRelationship` subtype names
- * its two graph-relevant attributes `RelatingX` (a single reference) and
- * `RelatedY` (a single reference or a list) — a convention the schema
- * itself enforces, not a coincidence to hardcode around. Walking
+ * schema registries instead: EXPRESS `IfcRelationship` subtypes normally
+ * name their two graph-relevant attributes `RelatingX` (a single reference)
+ * and `RelatedY` (a single reference or a list). IFC2X3 IfcRelCoversSpaces
+ * predates that naming pair but still declares two ordered reference slots,
+ * which the same schema walk can derive. Walking
  * `allAttributes` (root → leaf, the same order the STEP file writes them
  * in) and picking out the first `Relating*`/`Related*` attribute whose
  * EXPRESS type is an entity or a select (never an enum or a defined
@@ -125,8 +126,8 @@ function computeSlotPlan(registry: SchemaRegistry, entityName: string): Relation
     const allAttrs = meta?.allAttributes;
     if (!allAttrs || allAttrs.length <= ROOT_ATTR_COUNT) return undefined;
 
-    let relating: RelationshipSlot | undefined;
-    let related: RelationshipSlot | undefined;
+    const relatingCandidates: RelationshipSlot[] = [];
+    const relatedCandidates: RelationshipSlot[] = [];
     for (let i = ROOT_ATTR_COUNT; i < allAttrs.length; i++) {
         const attr = allAttrs[i];
         if (!isReferenceType(registry, attr.type)) continue;
@@ -134,8 +135,17 @@ function computeSlotPlan(registry: SchemaRegistry, entityName: string): Relation
             index: i - ROOT_ATTR_COUNT,
             isList: attr.isList || attr.isSet || attr.isArray || resolvesToAggregate(registry, attr.type),
         };
-        if (!relating && attr.name.startsWith('Relating')) relating = slot;
-        else if (!related && attr.name.startsWith('Related')) related = slot;
+        if (attr.name.startsWith('Relating')) relatingCandidates.push(slot);
+        else if (attr.name.startsWith('Related')) relatedCandidates.push(slot);
+    }
+    let relating = relatingCandidates[0];
+    let related = relatedCandidates[0];
+    // IFC2X3 IfcRelCoversSpaces predates the Relating*/Related* naming pair:
+    // its two endpoints are RelatedSpace (single) and RelatedCoverings (set).
+    // Derive that exceptional shape from the schema's two reference slots,
+    // without a relationship-name table.
+    if (!relating && relatedCandidates.length >= 2) {
+        [relating, related] = relatedCandidates;
     }
     if (!relating || !related) return undefined;
     return { relating, related };
@@ -147,23 +157,29 @@ const PLAN_CACHE = new Map<string, RelationshipSlotPlan | undefined>();
  * The relating/related attribute slots for a STEP relationship keyword
  * (e.g. `'IFCRELASSIGNSTOACTOR'`), or `undefined` if the type is unknown to
  * every bundled schema, or is an `IfcRelationship` subtype whose layout
- * this convention-based walk cannot resolve (none of the 46 IFC4/IFC4X3
- * concrete subtypes as of writing fall into that second case — see
- * `relationship-schema-slots.test.ts`).
+ * this convention-based walk cannot resolve (only the non-binary, concrete
+ * IFC2X3 base IfcRelAssociates — see `relationship-schema-slots.test.ts`).
  */
-export function getRelationshipSlotPlan(typeUpper: string): RelationshipSlotPlan | undefined {
-    const cached = PLAN_CACHE.get(typeUpper);
-    if (cached !== undefined || PLAN_CACHE.has(typeUpper)) return cached;
+export function getRelationshipSlotPlan(
+    typeUpper: string,
+    schemaVersion?: SchemaVersionWithRegistry | string,
+): RelationshipSlotPlan | undefined {
+    const cacheKey = `${schemaVersion ?? '*'}:${typeUpper}`;
+    const cached = PLAN_CACHE.get(cacheKey);
+    if (cached !== undefined || PLAN_CACHE.has(cacheKey)) return cached;
 
     let plan: RelationshipSlotPlan | undefined;
-    for (const version of VERSIONS) {
+    const versions = VERSIONS.includes(schemaVersion as SchemaVersionWithRegistry)
+        ? [schemaVersion as SchemaVersionWithRegistry]
+        : VERSIONS;
+    for (const version of versions) {
         const registry = getSchemaRegistryForVersion(version);
         const canonical = Object.keys(registry.entities).find(n => n.toUpperCase() === typeUpper);
         if (!canonical) continue;
         plan = computeSlotPlan(registry, canonical);
         if (plan) break;
     }
-    PLAN_CACHE.set(typeUpper, plan);
+    PLAN_CACHE.set(cacheKey, plan);
     return plan;
 }
 

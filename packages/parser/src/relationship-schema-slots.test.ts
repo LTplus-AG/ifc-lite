@@ -49,6 +49,14 @@ describe('relationship-schema-slots (#4205)', () => {
     expect(plan).toEqual({ relating: { index: 0, isList: false }, related: { index: 1, isList: true } });
   });
 
+  it('derives the IFC2X3 IfcRelCoversSpaces endpoint names from that schema', () => {
+    expect(getRelationshipSlotPlan('IFCRELCOVERSSPACES', 'IFC2X3')).toEqual({
+      relating: { index: 0, isList: false },
+      related: { index: 1, isList: true },
+    });
+    expect(getRelationshipSlotPlan('IFCRELPOSITIONS', 'IFC2X3')).toBeUndefined();
+  });
+
   it('resolves the structural connection slots and keeps the IFC2X3-only class version-scoped', () => {
     for (const type of [
       'IFCRELCONNECTSSTRUCTURALACTIVITY',
@@ -102,6 +110,18 @@ describe('relationship-schema-slots (#4205)', () => {
       ], type).toEqual([property, association, hierarchy]);
       expect(getRelationshipSlotPlan(type), type).toBeDefined();
     }
+  });
+
+  it('maps every concrete relationship whose schema declares a binary edge (#4205)', () => {
+    const resolvable = [...getAllConcreteRelationshipTypes()]
+      .filter(type => getRelationshipSlotPlan(type) !== undefined)
+      .sort();
+    expect(Object.keys(REL_TYPE_MAP).sort()).toEqual(resolvable);
+    // IFC2X3 alone permits instantiating the base IfcRelAssociates, which has
+    // RelatedObjects but no Relating* attribute and therefore is not a binary
+    // graph edge. Keep the exception singular and explicit.
+    expect([...getAllConcreteRelationshipTypes()].filter(type => !getRelationshipSlotPlan(type)))
+      .toEqual(['IFCRELASSOCIATES']);
   });
 
   it('excludes abstract IfcRelationship supertypes from the GATE', () => {

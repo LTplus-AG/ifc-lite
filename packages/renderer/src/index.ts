@@ -185,6 +185,13 @@ import { XRayAlpha, XRayEpochTracker, type AlphaBatchLike } from './xray-alpha.j
 import { PartialBatchRequests } from './partial-batch-requests.js';
 import { colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { PointCloudRenderer, type PointCloudAssetHandle, type ResolvedPointCloudRenderOptions } from './pointcloud/point-cloud-renderer.js';
+import {
+    appendPointCloudChunk as appendPointCloudChunkImpl,
+    beginPointCloudStream as beginPointCloudStreamImpl,
+    endPointCloudStream as endPointCloudStreamImpl,
+    removePointCloudAsset as removePointCloudAssetImpl,
+    type PointCloudStreamHost,
+} from './pointcloud/point-cloud-stream-lifecycle.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { DeviationComputer, type DeviationComputeOptions, type DeviationComputeResult } from './deviation/deviation-computer.js';
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
@@ -257,6 +264,7 @@ export class Renderer {
     private pointCloudRenderer: PointCloudRenderer | null = null;
     private pointCloudStreamEpoch = 0;
     private pointCloudStreamEpochs = new Map<number, number>(); // handle id → epoch; cleanup rebuilds `{ id }`, cleared per epoch
+    private pointCloudNextHandleId = 1; // watermark carried across teardown() so a replacement never reissues an id
     /** Set true at the end of the LATEST `init()`; gates `whenReady()` and
      * `isReady()`. Revoked synchronously by `init()` and by `destroy()`, and
      * overridden (not cleared) by a device loss — see `deviceLost`, which the
@@ -632,6 +640,7 @@ export class Renderer {
             this.device.getFormat(),
             'depth24plus-stencil8',
             this.pipeline.getSampleCount(),
+            this.pointCloudNextHandleId,
         );
         // Compute pipeline for the BIM↔scan deviation heatmap. Lazily
         // owns the per-triangle BVH GPU buffers; idle until the first
@@ -1010,42 +1019,22 @@ export class Renderer {
      * chunks will arrive (currently a no-op but kept for symmetry).
      */
     beginPointCloudStream(meta: { expressId: number; ifcType?: string; modelIndex?: number }): PointCloudAssetHandle {
-        if (this.deviceLost) throw rendererDeviceLostError();
-        if (!this.pointCloudRenderer) {
-            throw new Error('Renderer not initialized. Call init() first.');
-        }
-        const handle = this.pointCloudRenderer.beginAsset(meta);
-        this.pointCloudStreamEpochs.set(handle.id, this.pointCloudStreamEpoch);
-        return handle;
-    }
-
-    private currentPointCloudStreamRenderer(handle: PointCloudAssetHandle): PointCloudRenderer {
-        if (this.deviceLost || !this.pointCloudRenderer
-            || this.pointCloudStreamEpochs.get(handle.id) !== this.pointCloudStreamEpoch) throw rendererDeviceLostError();
-        return this.pointCloudRenderer;
+        return beginPointCloudStreamImpl(this as unknown as PointCloudStreamHost, meta);
     }
 
     appendPointCloudChunk(
         handle: PointCloudAssetHandle,
         chunk: import('./pointcloud/point-cloud-node.js').PointCloudChunkInput,
     ): void {
-        this.currentPointCloudStreamRenderer(handle).appendChunk(handle, chunk);
-        this.modelBoundsTracker.expandForPointClouds();
-        this.camera.setSceneBounds(this.modelBounds);
-        this.requestRender();
+        appendPointCloudChunkImpl(this as unknown as PointCloudStreamHost, handle, chunk);
     }
 
     endPointCloudStream(handle: PointCloudAssetHandle): void {
-        this.currentPointCloudStreamRenderer(handle).endAsset(handle);
-        this.requestRender();
+        endPointCloudStreamImpl(this as unknown as PointCloudStreamHost, handle);
     }
 
     removePointCloudAsset(handle: PointCloudAssetHandle): void {
-        if (!this.pointCloudStreamEpochs.delete(handle.id)) return;
-        this.pointCloudRenderer?.removeAsset(handle);
-        // Bounds may have shrunk — recompute from scratch so fit-to-view
-        // and section-plane sliders see fresh extents.
-        this.refreshPlacementBounds();
+        removePointCloudAssetImpl(this as unknown as PointCloudStreamHost, handle);
     }
 
     /**
@@ -3701,6 +3690,7 @@ export class Renderer {
         this.referenceImages.destroy();
 
         // Point cloud GPU resources
+        this.pointCloudNextHandleId = this.pointCloudRenderer?.handleIds?.current() ?? this.pointCloudNextHandleId;
         this.pointCloudStreamEpoch++; this.pointCloudStreamEpochs.clear(); this.pointCloudRenderer?.clear();
         this.pointCloudRenderer = null;
 

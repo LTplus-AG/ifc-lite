@@ -110,3 +110,43 @@ fn ring_noise_needs_both_hairline_and_a_small_share_of_the_plane_4698() {
     assert!(ring_is_noise(&rect(5.0e-5, 5.0e-5), 2.5e-9, 1.0));
     assert!(!ring_is_noise(&rect(5.0e-2, 5.0e-2), 2.5e-3, 0.001));
 }
+
+#[test]
+fn raw_singleton_edge_conforms_to_two_non_coplanar_peers_3977() {
+    // A valid synthetic closed shell whose target face keeps A-B whole while
+    // its two differently-planed neighbours meet that edge at M. Because the
+    // peer faces are non-coplanar singletons, M cannot disappear in a planar
+    // union; the raw target must become an insertion target for the shell to
+    // be topologically closed.
+    let (a, b, d, m, c1, c2) = (
+        Point3::new(0.0, 0.0, 0.0),
+        Point3::new(2.0, 0.0, 0.0),
+        Point3::new(0.0, 0.0, 2.0),
+        Point3::new(1.0, 0.0, 0.0),
+        Point3::new(0.0, 1.0, 0.0),
+        Point3::new(2.0, 1.0, 0.5),
+    );
+    let mut input = Mesh::new();
+    for face in [
+        [a, b, d],
+        [m, a, c1],
+        [b, m, c2],
+        [d, c1, a],
+        [d, m, c1],
+        [d, c2, m],
+        [d, b, c2],
+    ] {
+        let normal = (face[1] - face[0])
+            .cross(&(face[2] - face[0]))
+            .normalize();
+        emit_triangle(&mut input, &face, &normal);
+    }
+    assert!(count_open_boundary_edges_at(&input, 1.0e4) > 0);
+
+    let output = ClippingProcessor::consolidate_coplanar(input);
+    assert_eq!(
+        count_open_boundary_edges_at(&output, 1.0e7),
+        0,
+        "the long raw edge must split at the non-coplanar peers' midpoint"
+    );
+}

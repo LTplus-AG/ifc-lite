@@ -243,6 +243,22 @@ root, and `ui/` (a companion slice covers `extensions/**`):
 - `viewer-shell.en.ts` covers the components root's `ChunkErrorBoundary`
   fallback and the shared `ui/dialog.tsx` primitive's sr-only close label.
 
+The Layers panel catalogue (#4918 layers slice, `layers-panel.en.ts`, keys
+prefixed `layersPanel.<component>.*`) covers the layer-stack panel's own
+chrome across `LayersPanel.tsx` (empty-state hero, per-stratum row, author
+badges), `LayerDraftSection.tsx` (pending-edit publish flow, including its
+toasts), `LayerMergeSection.tsx` (candidate/target pickers, preview status,
+bulk and per-conflict resolution controls), `LayerReviewSection.tsx`
+(registry-review comments), `LayerProvenanceDetail.tsx` (the manifest
+detail view and its check list), `LayerCheckEvidence.tsx` (fetched IDS
+report summary), and `LayerDiffView.tsx` (the per-layer stack diff). Layer
+NAMES, tag NAMES, content-address digests, ref/file names, and IFC
+GlobalIds/composition paths are model or registry runtime data and stay out
+of the catalogue — only the chrome around them is translated. This is a
+sibling to the unrelated `merge-layers-banner.en.ts` (the multilayer-wall
+geometry-merge setting's reload banner), not the same feature under a new
+name.
+
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for
 hardcoded JSX text, `{'…'}`-wrapped JSX-expression string literals, and

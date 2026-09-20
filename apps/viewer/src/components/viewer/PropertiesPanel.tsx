@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useTranslation } from '@/i18n';
 import {
   Copy,
   Check,
@@ -107,6 +108,7 @@ function mergePropertySetLists(base: DisplayPropertySet[], incoming: DisplayProp
   return merged;
 }
 export function PropertiesPanel() {
+  const { t } = useTranslation();
   // Display-unit converter overrides (issue #1573 proposal 2) — read once
   // here and threaded to every PropertySetCard/QuantitySetCard render site
   // below, plus the secondary EntityDataSection component.
@@ -1279,15 +1281,15 @@ export function PropertiesPanel() {
     return (
       <div {...tourAnchor(TOUR_ANCHORS.propertiesPanel)} className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
         <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
-          <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">Inspector</h2>
+          <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">{t('properties.panel.title')}</h2>
         </div>
         <div className="flex-1 flex flex-col items-center justify-center text-center p-6 bg-white dark:bg-black">
           <div className="w-16 h-16 border-2 border-dashed border-zinc-300 dark:border-zinc-800 flex items-center justify-center mb-4 bg-zinc-100 dark:bg-zinc-950">
             <MousePointer2 className="h-8 w-8 text-zinc-400 dark:text-zinc-500" />
           </div>
-          <p className="font-bold uppercase text-zinc-900 dark:text-zinc-100 mb-2">No Selection</p>
+          <p className="font-bold uppercase text-zinc-900 dark:text-zinc-100 mb-2">{t('properties.panel.emptyTitle')}</p>
           <p className="text-xs font-mono text-zinc-500 dark:text-zinc-400 max-w-[150px]">
-            {models.size > 1 ? 'Select a model or element to view details' : 'Select an element to view details'}
+            {models.size > 1 ? t('properties.panel.emptyHintMultiModel') : t('properties.panel.emptyHintSingleModel')}
           </p>
         </div>
       </div>
@@ -1328,11 +1330,11 @@ export function PropertiesPanel() {
                       className="shrink-0 rounded-sm px-1.5 py-0 text-[9px] font-semibold uppercase tracking-wider gap-1 leading-none h-[18px] mt-0.5"
                     >
                       <Layers2 className="h-2.5 w-2.5" />
-                      Layers merged
+                      {t('properties.panel.layersMergedBadge')}
                     </Badge>
                   </TooltipTrigger>
                   <TooltipContent>
-                    Multilayer wall parts have been merged into the parent solid.
+                    {t('properties.panel.layersMergedTooltip')}
                   </TooltipContent>
                 </Tooltip>
               )}
@@ -1340,9 +1342,9 @@ export function PropertiesPanel() {
             <p className="text-xs font-mono text-zinc-500 dark:text-zinc-400">{entityType}</p>
             {/* Show associated type entity for occurrences */}
             {!renderedIsTypeEntity && renderedTypeProperties && (
-              <p className="text-[11px] font-mono text-indigo-500 dark:text-indigo-400 truncate" title={`${activeDataStore?.entities.getTypeName(renderedTypeProperties.typeId) || 'Type'}: ${renderedTypeProperties.typeName}`}>
+              <p className="text-[11px] font-mono text-indigo-500 dark:text-indigo-400 truncate" title={`${activeDataStore?.entities.getTypeName(renderedTypeProperties.typeId) || t('properties.panel.associatedTypeFallback')}: ${renderedTypeProperties.typeName}`}>
                 <Building2 className="inline h-3 w-3 mr-1 -mt-0.5" />
-                {activeDataStore?.entities.getTypeName(renderedTypeProperties.typeId) || 'Type'}: {renderedTypeProperties.typeName}
+                {activeDataStore?.entities.getTypeName(renderedTypeProperties.typeId) || t('properties.panel.associatedTypeFallback')}: {renderedTypeProperties.typeName}
               </p>
             )}
           </div>
@@ -1395,7 +1397,7 @@ export function PropertiesPanel() {
           <Collapsible open={coordOpen} onOpenChange={setCoordOpen}>
             <CollapsibleTrigger className="flex items-center gap-2 w-full text-xs border border-teal-500/30 px-2 py-1.5 text-teal-800 dark:text-teal-400 min-w-0 text-left group/coord">
               <Crosshair className="h-3.5 w-3.5 shrink-0" />
-              <span className="font-bold uppercase tracking-wide shrink-0">World</span>
+              <span className="font-bold uppercase tracking-wide shrink-0">{t('properties.panel.worldCoordinates')}</span>
               {!coordOpen && (
                 <>
                   {entityCoordinates && (
@@ -1408,7 +1410,7 @@ export function PropertiesPanel() {
                   {renderedGeoref?.projectedCRS?.name && (
                     <span className="font-mono text-[9px] text-teal-500/60 shrink-0">{renderedGeoref.projectedCRS.name}</span>
                   )}
-                  <span className="text-[9px] text-teal-500/0 group-hover/coord:text-teal-500/40 transition-colors shrink-0">details</span>
+                  <span className="text-[9px] text-teal-500/0 group-hover/coord:text-teal-500/40 transition-colors shrink-0">{t('properties.panel.worldCoordinatesDetails')}</span>
                 </>
               )}
             </CollapsibleTrigger>
@@ -1439,9 +1441,13 @@ export function PropertiesPanel() {
                     onCopy={copyCoords}
                   />
                   <div className="flex items-start gap-1.5">
-                    <span className="text-[9px] font-medium text-muted-foreground uppercase tracking-wider w-[34px] shrink-0 pt-px">Size</span>
+                    <span className="text-[9px] font-medium text-muted-foreground uppercase tracking-wider w-[34px] shrink-0 pt-px">{t('properties.panel.sizeLabel')}</span>
                     <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
-                      {(entityCoordinates.local.max.x - entityCoordinates.local.min.x).toFixed(2)} x {(entityCoordinates.local.max.y - entityCoordinates.local.min.y).toFixed(2)} x {(entityCoordinates.local.max.z - entityCoordinates.local.min.z).toFixed(2)}
+                      {t('properties.panel.sizeDisplay', {
+                        x: (entityCoordinates.local.max.x - entityCoordinates.local.min.x).toFixed(2),
+                        y: (entityCoordinates.local.max.y - entityCoordinates.local.min.y).toFixed(2),
+                        z: (entityCoordinates.local.max.z - entityCoordinates.local.min.z).toFixed(2),
+                      })}
                     </span>
                   </div>
                 </div>
@@ -1473,7 +1479,7 @@ export function PropertiesPanel() {
         <Collapsible defaultOpen className="border-b">
           <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 hover:bg-muted/50 text-left">
             <Tag className="h-4 w-4 text-muted-foreground" />
-            <span className="font-medium text-sm">Attributes</span>
+            <span className="font-medium text-sm">{t('properties.panel.attributesHeading')}</span>
             {editMode && <PenLine className="h-3 w-3 text-purple-500 ml-1" />}
             <span className="text-xs text-muted-foreground ml-auto">{renderedAttributes.length}</span>
           </CollapsibleTrigger>
@@ -1508,7 +1514,7 @@ export function PropertiesPanel() {
         <Collapsible defaultOpen className="border-b">
           <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 hover:bg-muted/50 text-left">
             <Layers className="h-4 w-4 text-emerald-600" />
-            <span className="font-medium text-sm">Structure</span>
+            <span className="font-medium text-sm">{t('properties.panel.structureHeading')}</span>
             <span className="text-xs text-muted-foreground ml-auto">{renderedSpatialContainment.length}</span>
           </CollapsibleTrigger>
           <CollapsibleContent>
@@ -1531,7 +1537,7 @@ export function PropertiesPanel() {
         <Collapsible defaultOpen className="border-b">
           <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 hover:bg-muted/50 text-left">
             <Box className="h-4 w-4 text-amber-600" />
-            <span className="font-medium text-sm">Zones</span>
+            <span className="font-medium text-sm">{t('properties.panel.zonesHeading')}</span>
             <span className="text-xs text-muted-foreground ml-auto">{zoneMembership.length}</span>
           </CollapsibleTrigger>
           <CollapsibleContent>
@@ -1570,31 +1576,31 @@ export function PropertiesPanel() {
         <TabsList className="properties-tabs-list w-full shrink-0">
           <TabsTrigger
             value="properties"
-            title="Properties"
+            title={t('properties.panel.tab.properties')}
             className="properties-tab-trigger flex-1 min-w-0 uppercase text-[11px] tracking-wide"
           >
             <FileText className="h-3 w-3 shrink-0 panel-compact-icon" />
-            <span className="panel-compact-text">Properties</span>
+            <span className="panel-compact-text">{t('properties.panel.tab.properties')}</span>
           </TabsTrigger>
           <TabsTrigger
             value="quantities"
-            title="Quantities"
+            title={t('properties.panel.tab.quantities')}
             className="properties-tab-trigger flex-1 min-w-0 uppercase text-[11px] tracking-wide"
           >
             <Calculator className="h-3 w-3 shrink-0 panel-compact-icon" />
-            <span className="panel-compact-text">Quantities</span>
+            <span className="panel-compact-text">{t('properties.panel.tab.quantities')}</span>
           </TabsTrigger>
           <TabsTrigger
             value="bsdd"
-            title="bSDD"
+            title={t('properties.panel.tab.bsdd')}
             className="properties-tab-trigger flex-1 min-w-0 uppercase text-[11px] tracking-wide"
           >
             <Tag className="h-3 w-3 shrink-0 panel-compact-icon" />
-            <span className="panel-compact-text">bSDD</span>
+            <span className="panel-compact-text">{t('properties.panel.tab.bsdd')}</span>
           </TabsTrigger>
           <TabsTrigger
             value="raw-step"
-            title="Raw STEP — developer view of positional arguments"
+            title={t('properties.panel.tab.rawStepTitle')}
             className="properties-tab-trigger raw-step-tab-trigger shrink-0 grow-0 px-2 font-mono"
           >
             {/* Bracket glyphs read as "code" without an icon dependency,
@@ -1602,7 +1608,7 @@ export function PropertiesPanel() {
                 primary tabs to keep their text visible at the default
                 panel size. */}
             <span aria-hidden className="text-[10px] leading-none tracking-tight">&lt;/&gt;</span>
-            <span className="sr-only">Raw STEP</span>
+            <span className="sr-only">{t('properties.panel.tab.rawStepLabel')}</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1643,7 +1649,7 @@ export function PropertiesPanel() {
               && renderedDocuments.length === 0
               && !renderedEntityRelationships
               && !hasScheduleForSelection && !hasStructuralForSelection ? (
-              <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">No property sets</p>
+              <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noPropertySets')}</p>
             ) : (
               <div className="space-y-3 w-full overflow-hidden">
                 {/* Occurrence/Type Properties (based on whether entity itself is a type) */}
@@ -1654,9 +1660,9 @@ export function PropertiesPanel() {
                         {renderedIsTypeEntity ? (
                           <>
                             <Building2 className="h-3 w-3 shrink-0 text-indigo-500" />
-                            Type Properties:
+                            {t('properties.panel.typePropertiesHeading')}
                           </>
-                        ) : 'Occurrence Properties:'}
+                        ) : t('properties.panel.occurrencePropertiesHeading')}
                       </div>
                     )}
                     {renderedOccurrenceProperties.map((pset: PropertySet, index: number) => (
@@ -1684,7 +1690,7 @@ export function PropertiesPanel() {
                     )}
                     <div className="flex items-center gap-2 px-1 pb-0.5 text-[11px] text-indigo-600/70 dark:text-indigo-400/60 uppercase tracking-wider font-semibold">
                       <Building2 className="h-3 w-3 shrink-0" />
-                      <span className="truncate">Type Properties ({renderedTypeProperties.typeName})</span>
+                      <span className="truncate">{t('properties.panel.typePropertiesGroupHeading', { typeName: renderedTypeProperties.typeName })}</span>
                     </div>
                     {renderedInheritedTypeProperties.map((pset: PropertySet, index: number) => (
                       <PropertySetCard
@@ -1739,7 +1745,7 @@ export function PropertiesPanel() {
                       <div key={`matpset-${group.materialId}`} className="space-y-3">
                         <div className="flex items-center gap-2 px-1 pb-0.5 text-[11px] text-amber-600/70 dark:text-amber-400/60 uppercase tracking-wider font-semibold">
                           <Layers className="h-3 w-3 shrink-0" />
-                          <span className="truncate">Material Properties ({group.materialName})</span>
+                          <span className="truncate">{t('properties.panel.materialPropertiesGroupHeading', { materialName: group.materialName })}</span>
                         </div>
                         {group.psets.map((pset, index) => (
                           <PropertySetCard
@@ -1816,7 +1822,7 @@ export function PropertiesPanel() {
 
           <TabsContent value="quantities" className="m-0 p-3 overflow-hidden">
             {renderedQuantities.length === 0 ? (
-              <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">No quantities</p>
+              <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noQuantities')}</p>
             ) : (
               <div className="space-y-3 w-full overflow-hidden">
                 {renderedQuantities.map((qset: QuantitySet, index: number) => (
@@ -1852,7 +1858,7 @@ export function PropertiesPanel() {
               />
             ) : (
               <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">
-                Select an entity to inspect raw STEP arguments
+                {t('properties.panel.selectEntityForRawStep')}
               </p>
             )}
           </TabsContent>
@@ -1874,6 +1880,7 @@ function AttributeEditorField({
   attrName: string;
   currentValue: string;
 }) {
+  const { t } = useTranslation();
   const setAttribute = useViewerStore((s) => s.setAttribute);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
   const [editing, setEditing] = useState(false);
@@ -1930,7 +1937,7 @@ function AttributeEditorField({
         title={currentValue}
         onClick={() => setEditing(true)}
       >
-        {currentValue || <span className="text-zinc-400 italic">empty</span>}
+        {currentValue || <span className="text-zinc-400 italic">{t('properties.panel.attributeEditor.emptyValue')}</span>}
       </span>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -1943,7 +1950,7 @@ function AttributeEditorField({
             <PenLine className="h-3 w-3 text-purple-500" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="left">Edit attribute</TooltipContent>
+        <TooltipContent side="left">{t('properties.panel.attributeEditor.editTooltip')}</TooltipContent>
       </Tooltip>
     </div>
   );
@@ -1959,6 +1966,7 @@ function MultiEntityPanel({
   models: Map<string, FederatedModel>;
   ifcDataStore: IfcDataStore | null;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
       {/* Header */}
@@ -1966,10 +1974,10 @@ function MultiEntityPanel({
         <div className="flex items-center gap-2">
           <Layers className="h-4 w-4 text-emerald-600" />
           <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">
-            Unified Storey
+            {t('properties.panel.multiEntity.heading')}
           </h2>
           <span className="text-[10px] font-mono bg-emerald-100 dark:bg-emerald-900 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-            {entities.length} models
+            {t('properties.panel.multiEntity.modelCount', { count: entities.length })}
           </span>
           {/* Display-unit converter (issue #1573 proposal 2) — one control
               for the whole stacked list below, not per-entity section. */}
@@ -2009,6 +2017,7 @@ function EntityDataSection({
   ifcDataStore: IfcDataStore | null;
   showModelName: boolean;
 }) {
+  const { t } = useTranslation();
   // Get the appropriate data store and query
   const { dataStore, model } = useMemo(() => {
     if (entityRef.modelId !== 'legacy') {
@@ -2096,7 +2105,7 @@ function EntityDataSection({
   if (!entityNode) {
     return (
       <div className="p-4 text-center text-zinc-500 text-sm">
-        Unable to load entity data
+        {t('properties.panel.multiEntity.loadFailed')}
       </div>
     );
   }
@@ -2118,7 +2127,10 @@ function EntityDataSection({
           </div>
           {elevationInfo !== null && (
             <span className="text-[10px] font-mono bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400">
-              {elevationInfo >= 0 ? '+' : ''}{elevationInfo.toFixed(2)}m
+              {t('properties.panel.multiEntity.elevationMeters', {
+                sign: elevationInfo >= 0 ? '+' : '',
+                value: elevationInfo.toFixed(2),
+              })}
             </span>
           )}
         </div>
@@ -2129,7 +2141,7 @@ function EntityDataSection({
         <Collapsible defaultOpen className="border-b border-zinc-200 dark:border-zinc-800">
           <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-left text-xs">
             <Tag className="h-3 w-3 text-zinc-400" />
-            <span className="font-medium">Attributes</span>
+            <span className="font-medium">{t('properties.panel.multiEntity.attributesHeading')}</span>
             <span className="text-[10px] text-zinc-400 ml-auto">{attributes.length}</span>
           </CollapsibleTrigger>
           <CollapsibleContent>
@@ -2152,8 +2164,8 @@ function EntityDataSection({
         <Collapsible defaultOpen className="border-b border-zinc-200 dark:border-zinc-800">
           <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-left text-xs">
             <FileText className="h-3 w-3 text-zinc-400" />
-            <span className="font-medium">Properties</span>
-            <span className="text-[10px] text-zinc-400 ml-auto">{properties.length} sets</span>
+            <span className="font-medium">{t('properties.panel.multiEntity.propertiesHeading')}</span>
+            <span className="text-[10px] text-zinc-400 ml-auto">{t('properties.panel.multiEntity.propertySetsCount', { count: properties.length })}</span>
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="p-2 pt-0 space-y-2">
@@ -2170,8 +2182,8 @@ function EntityDataSection({
         <Collapsible defaultOpen className="border-b border-zinc-200 dark:border-zinc-800">
           <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-left text-xs">
             <Calculator className="h-3 w-3 text-zinc-400" />
-            <span className="font-medium">Quantities</span>
-            <span className="text-[10px] text-zinc-400 ml-auto">{quantities.length} sets</span>
+            <span className="font-medium">{t('properties.panel.multiEntity.quantitiesHeading')}</span>
+            <span className="text-[10px] text-zinc-400 ml-auto">{t('properties.panel.multiEntity.quantitySetsCount', { count: quantities.length })}</span>
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="p-2 pt-0 space-y-2">

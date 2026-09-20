@@ -10,6 +10,13 @@ import type { TranslationValue } from '../types';
  * chips, tag editor, per-row tag strip), the sort control, and the Building
  * Storeys display controls. Row NAMES, TYPE NAMES and TAG NAMES are model
  * content, not literals — only the chrome around them is catalogued here.
+ *
+ * `hierarchy.panel.*` (#4918 slice: panel outer chrome) extends this same
+ * catalogue with `HierarchyPanel.tsx`'s OWN chrome — the panel shell around
+ * the tree/node rows above: the loading/no-model empty states, the search
+ * placeholder, the grouping-mode tab strip and Groups sub-filter chips, the
+ * section headers per grouping mode, the storey/class-filter/type-isolation
+ * footer chips and their clear controls, and the resize-divider hint.
  */
 export const hierarchyEn = {
   // HierarchyNode: model-header row
@@ -123,4 +130,43 @@ export const hierarchyEn = {
   'hierarchy.storeyControls.soloHintWithStorey': 'Showing only {name} · click another storey to switch, or click it again for all',
   'hierarchy.storeyControls.soloHintNoStorey': 'Click a storey below to show only it',
   'hierarchy.storeyControls.stackedHintClickStorey': 'Click a storey below to show only that level',
+
+  // HierarchyPanel: header / empty states
+  'hierarchy.panel.title': 'Hierarchy',
+  'hierarchy.panel.noModelTitle': 'No Model',
+  'hierarchy.panel.noModelHint': 'Structure will appear here when loaded',
+  'hierarchy.panel.searchPlaceholder': 'Search...',
+
+  // HierarchyPanel: grouping-mode tab strip
+  'hierarchy.panel.grouping.spatial': 'Spatial',
+  'hierarchy.panel.grouping.class': 'Class',
+  'hierarchy.panel.grouping.type': 'Type',
+  'hierarchy.panel.grouping.materialsTooltip': 'Materials',
+  'hierarchy.panel.grouping.material': 'Material',
+  'hierarchy.panel.grouping.groupsTooltip': 'Groups, systems and zones',
+  'hierarchy.panel.grouping.groups': 'Groups',
+
+  // HierarchyPanel: Groups-tab sub-filter chips
+  'hierarchy.panel.groupFilter.all': 'All',
+  'hierarchy.panel.groupFilter.systems': 'Systems',
+  'hierarchy.panel.groupFilter.zones': 'Zones',
+  'hierarchy.panel.groupFilter.other': 'Other',
+
+  // HierarchyPanel: section headers per grouping mode
+  'hierarchy.panel.sectionTitle.spatial': 'Hierarchy',
+  'hierarchy.panel.sectionTitle.byClass': 'By Class',
+  'hierarchy.panel.sectionTitle.byMaterial': 'By Material',
+  'hierarchy.panel.sectionTitle.byGroup': 'By Group',
+  'hierarchy.panel.sectionTitle.byType': 'By Type',
+  'hierarchy.panel.buildingStoreysTitle': 'Building Storeys',
+
+  // HierarchyPanel: footer filter chips + resize/status hints
+  'hierarchy.panel.storeyCount': { one: '{count} Storey', other: '{count} Storeys' },
+  'hierarchy.panel.clearStoreyFilterAriaLabel': 'Clear storey filter',
+  'hierarchy.panel.clearClassFilterAriaLabel': 'Clear class filter',
+  'hierarchy.panel.clearTypeFilterAriaLabel': 'Clear type filter',
+  'hierarchy.panel.escHint': 'ESC',
+  'hierarchy.panel.clearAllButton': 'Clear all',
+  'hierarchy.panel.modelsFooterHint': '{count} models · Drag divider to resize',
+  'hierarchy.panel.clickToFilterHint': 'Click to filter · Ctrl toggle',
 } as const satisfies Record<string, TranslationValue>;

@@ -55,6 +55,7 @@ import {
 } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { useViewerStore, countGeneratedTasks } from '@/store';
+import { useTranslation } from '@/i18n';
 import { resolveExportVisibility } from '@/store/exportVisibility';
 import { posthog } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
@@ -81,6 +82,7 @@ interface ExportDialogProps {
   trigger?: React.ReactNode;
 }
 export function ExportDialog({ trigger }: ExportDialogProps) {
+  const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const dirtyModels = useViewerStore((s) => s.dirtyModels);
@@ -609,7 +611,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         {trigger || (
           <Button variant="outline" size="sm">
             <Download className="h-4 w-4 mr-2" />
-            Export IFC
+            {t('exportDialog.trigger')}
           </Button>
         )}
       </DialogTrigger>
@@ -617,10 +619,10 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Download className="h-5 w-5" />
-            Export IFC File
+            {t('exportDialog.title')}
           </DialogTitle>
           <DialogDescription>
-            {isIfc5 && !changesOnly ? 'Export model data and geometry, including current workspace placement' : 'Export authored model coordinates and property modifications. Workspace repositioning is saved separately.'}
+            {isIfc5 && !changesOnly ? t('exportDialog.description.ifc5') : t('exportDialog.description.default')}
           </DialogDescription>
         </DialogHeader>
 
@@ -628,14 +630,14 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           {/* Scope selector (only for STEP schemas with multiple models) */}
           {!isIfc5 && !changesOnly && modelList.length > 1 && (
             <div className="flex items-center gap-4">
-              <Label className="w-32">Scope</Label>
+              <Label className="w-32">{t('exportDialog.scopeLabel')}</Label>
               <Select value={exportScope} onValueChange={(v) => setExportScope(v as ExportScope)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="single">Single Model</SelectItem>
-                  <SelectItem value="merged">Merged (All Models)</SelectItem>
+                  <SelectItem value="single">{t('exportDialog.scope.single')}</SelectItem>
+                  <SelectItem value="merged">{t('exportDialog.scope.merged')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -644,15 +646,15 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           {/* Mixed-unit handling — only meaningful for a merged export */}
           {!isIfc5 && !changesOnly && exportScope === 'merged' && modelList.length > 1 && (
             <div className="flex items-center gap-4">
-              <Label className="w-32">Mixed units</Label>
+              <Label className="w-32">{t('exportDialog.mixedUnitsLabel')}</Label>
               <Select value={unitReconciliation} onValueChange={(v) => setUnitReconciliation(v as typeof unitReconciliation)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="auto">Keep each unit (separate projects)</SelectItem>
-                  <SelectItem value="normalize">Normalize to first model</SelectItem>
-                  <SelectItem value="assume-shared">Assume shared unit</SelectItem>
+                  <SelectItem value="auto">{t('exportDialog.unitReconciliation.auto')}</SelectItem>
+                  <SelectItem value="normalize">{t('exportDialog.unitReconciliation.normalize')}</SelectItem>
+                  <SelectItem value="assume-shared">{t('exportDialog.unitReconciliation.assumeShared')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -661,10 +663,10 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           {/* Model selector (only for single-model export) */}
           {exportScope === 'single' && (
           <div className="flex items-center gap-4">
-            <Label className="w-32">Model</Label>
+            <Label className="w-32">{t('exportDialog.modelLabel')}</Label>
             <Select value={selectedModelId} onValueChange={setSelectedModelId}>
               <SelectTrigger>
-                <SelectValue placeholder="Select model" />
+                <SelectValue placeholder={t('exportDialog.selectModelPlaceholder')} />
               </SelectTrigger>
               <SelectContent>
                 {modelList.map((m) => {
@@ -682,7 +684,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
 
           {/* Schema selector — this drives the output format */}
           <div className="flex items-center gap-4">
-            <Label className="w-32">Schema</Label>
+            <Label className="w-32">{t('exportDialog.schemaLabel')}</Label>
             <Select value={schema} onValueChange={(v) => setSchema(v as SchemaVersion)}>
               <SelectTrigger>
                 <SelectValue />
@@ -690,8 +692,8 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
               <SelectContent>
                 {(['IFC2X3', 'IFC4', 'IFC4X3', 'IFC5'] as const).map((v) => (
                   <SelectItem key={v} value={v}>
-                    {v === 'IFC5' ? 'IFC5 (Alpha)' : v}
-                    {v === sourceSchema ? ' (current)' : ''}
+                    {v === 'IFC5' ? t('exportDialog.schemaOption.ifc5Alpha') : v}
+                    {v === sourceSchema ? t('exportDialog.currentSchemaSuffix') : ''}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -707,20 +709,21 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
                 <ArrowDown className="h-4 w-4" />
               )}
               <AlertTitle>
-                Schema {schemaConversion === 'upgrade' ? 'Upgrade' : 'Downgrade'}
+                {schemaConversion === 'upgrade' ? t('exportDialog.schemaUpgradeTitle') : t('exportDialog.schemaDowngradeTitle')}
               </AlertTitle>
               <AlertDescription>
-                Converting from {sourceSchema} to {schema}.
+                {t('exportDialog.conversionSummary', { source: sourceSchema, target: schema })}
+                {' '}
                 {schemaConversion === 'downgrade'
-                  ? ' Some data may be lost in the conversion to an older schema.'
-                  : ' Entity types will be mapped to the newer schema.'}
+                  ? t('exportDialog.schemaDowngradeNote')
+                  : t('exportDialog.schemaUpgradeNote')}
               </AlertDescription>
             </Alert>
           )}
 
           {/* Output format indicator */}
           <div className="flex items-center gap-4">
-            <Label className="w-32 text-muted-foreground">Output</Label>
+            <Label className="w-32 text-muted-foreground">{t('exportDialog.outputLabel')}</Label>
             <Badge variant="secondary">{outputInfo.label}</Badge>
             <span className="text-xs text-muted-foreground">{outputInfo.ext}</span>
           </div>
@@ -728,22 +731,22 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           {/* Options */}
           <div className="flex items-center justify-between">
             <div>
-              <Label>Export Visible Only</Label>
-              <p className="text-xs text-muted-foreground">Only include entities currently visible in the 3D view</p>
+              <Label>{t('exportDialog.visibleOnlyLabel')}</Label>
+              <p className="text-xs text-muted-foreground">{t('exportDialog.visibleOnlyHint')}</p>
             </div>
             <Switch checked={visibleOnly} onCheckedChange={setVisibleOnly} />
           </div>
 
           {!changesOnly && exportScope === 'single' && (
             <div className="flex items-center justify-between">
-              <Label>Include Geometry</Label>
+              <Label>{t('exportDialog.includeGeometryLabel')}</Label>
               <Switch checked={includeGeometry} onCheckedChange={setIncludeGeometry} />
             </div>
           )}
 
           {(exportScope === 'single' || exportScope === 'merged') && (
             <div className="flex items-center justify-between">
-              <Label>Apply Property Changes</Label>
+              <Label>{t('exportDialog.applyMutationsLabel')}</Label>
               <Switch checked={applyMutations} onCheckedChange={setApplyMutations} />
             </div>
           )}
@@ -751,9 +754,9 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           {exportScope === 'single' && (
             <div className="flex items-center justify-between">
               <div>
-                <Label>Changes Only</Label>
+                <Label>{t('exportDialog.changesOnlyLabel')}</Label>
                 <p className="text-xs text-muted-foreground">
-                  {isIfc5 ? 'Export as IFCX overlay with mutations only' : 'Export mutations as JSON delta'}
+                  {isIfc5 ? t('exportDialog.changesOnlyHint.ifc5') : t('exportDialog.changesOnlyHint.default')}
                 </p>
               </div>
               <Switch checked={changesOnly} onCheckedChange={setChangesOnly} />
@@ -764,9 +767,9 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           {isIfc5 && hasFilterableProperties && (
             <div className="flex items-center justify-between">
               <div>
-                <Label>Only Known IFC5 Properties</Label>
+                <Label>{t('exportDialog.onlyKnownPropertiesLabel')}</Label>
                 <p className="text-xs text-muted-foreground">
-                  Skip properties without an official IFC5 schema (avoids viewer warnings)
+                  {t('exportDialog.onlyKnownPropertiesHint')}
                 </p>
               </div>
               <Switch checked={onlyKnownProperties} onCheckedChange={setOnlyKnownProperties} />
@@ -777,9 +780,9 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           {modifiedCount > 0 && (
             <Alert>
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Pending Changes</AlertTitle>
+              <AlertTitle>{t('exportDialog.pendingChangesTitle')}</AlertTitle>
               <AlertDescription>
-                {modifiedCount} entities have been modified
+                {t('exportDialog.pendingChangesDescription', { count: modifiedCount, countDisplay: modifiedCount })}
               </AlertDescription>
             </Alert>
           )}
@@ -793,7 +796,10 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
                   {exportProgress.phase}
                 </span>
                 <span>
-                  {exportProgress.entitiesProcessed.toLocaleString()} / {exportProgress.entitiesTotal.toLocaleString()} entities
+                  {t('exportDialog.progressCount', {
+                    processed: exportProgress.entitiesProcessed.toLocaleString(),
+                    total: exportProgress.entitiesTotal.toLocaleString(),
+                  })}
                 </span>
               </div>
               <Progress value={exportProgress.percent * 100} />
@@ -808,7 +814,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
               ) : (
                 <AlertCircle className="h-4 w-4" />
               )}
-              <AlertTitle>{exportResult.success ? 'Success' : 'Error'}</AlertTitle>
+              <AlertTitle>{exportResult.success ? t('exportDialog.resultSuccessTitle') : t('exportDialog.resultErrorTitle')}</AlertTitle>
               <AlertDescription>{exportResult.message}</AlertDescription>
             </Alert>
           )}
@@ -826,18 +832,18 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
+            {t('exportDialog.cancelButton')}
           </Button>
           <Button onClick={handleExport} disabled={isExporting || !selectedModel || !schema}>
             {isExporting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Exporting...
+                {t('exportDialog.exportingLabel')}
               </>
             ) : (
               <>
                 <Download className="h-4 w-4 mr-2" />
-                Export
+                {t('exportDialog.exportButton')}
               </>
             )}
           </Button>

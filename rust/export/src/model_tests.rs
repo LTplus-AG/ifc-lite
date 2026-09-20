@@ -765,7 +765,7 @@ fn inheritance_survives_the_streaming_path_identically() {
 ///
 /// `IfcDoorStyle` is an `IfcTypeProduct` in IFC2X3, so a real IFC2X3 file can
 /// hang its door geometry off one. Both this pass and the geometry pass gated
-/// on a bare `IfcType::from_str`, which answers `Unknown` for it, so BOTH
+/// on a bare `IfcType::from_str`, which answered `Unknown` for it, so BOTH
 /// dropped it and the join was vacuously satisfied by rendering nothing. Now
 /// that both resolve legacy-aware they must still agree: a mesh and a row, or
 /// neither.
@@ -817,9 +817,10 @@ END-ISO-10303-21;
 /// #4203: an `IfcType`-resolvable-only attribute export left legacy
 /// (IFC2X3/IFC4, removed-by-IFC4X3) entities with an EMPTY `attributes` list,
 /// even for names `legacy_entities.rs` already resolves to a base type for
-/// geometry/rootedness purposes — `entity.ifc_type` is decoded via a bare
-/// `IfcType::from_str`, which is `Unknown` for these, and
-/// `Unknown::attribute_names()` is `&[]`.
+/// geometry/rootedness purposes — `entity.ifc_type` was decoded via a bare
+/// `IfcType::from_str`, which was `Unknown` for these, and
+/// `Unknown::attribute_names()` is `&[]`. Exact variants now exist, but their
+/// attribute names still must come from the older schema's table.
 ///
 /// `IFCDOORSTYLE`'s OWN declared attributes end `…, OperationType,
 /// ConstructionType, ParameterTakesPrecedence, Sizeable` — different names,
@@ -864,8 +865,7 @@ END-ISO-10303-21;
     let names: Vec<&str> = row.attributes.iter().map(|p| p.name.as_str()).collect();
     assert!(
         !names.is_empty(),
-        "IFCDOORSTYLE's own attributes must not be dropped just because \
-         IfcType::from_str(\"IFCDOORSTYLE\") is Unknown"
+        "IFCDOORSTYLE's own attributes must come from its older-schema table"
     );
     assert!(
         names.contains(&"OperationType"),

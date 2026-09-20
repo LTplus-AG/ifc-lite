@@ -54,6 +54,17 @@ const schema = parseExpressSchema(SCHEMA_SRC);
 const rust = generateRust(schema);
 const cratePrivateRust = generateRust(schema, true);
 
+const LEGACY_SCHEMA_SRC = `
+  SCHEMA TEST_LEGACY;
+
+  ENTITY IfcLegacyDoorStyle
+    SUBTYPE OF (IfcRoot);
+    LegacyOperation : OPTIONAL STRING;
+  END_ENTITY;
+
+  END_SCHEMA;
+`;
+
 describe('generateRust — type_ids.rs', () => {
   it('emits SCREAMING_CASE constants, not the PascalCase entity name', () => {
     expect(rust.typeIds).toContain(`pub const IFCWALL: u32 = ${crc32('IfcWall')};`);
@@ -132,6 +143,32 @@ describe('generateRust — crate-private registries', () => {
     expect(cratePrivateRust.schema).toContain(
       '#![allow(dead_code, clippy::enum_variant_names)] // Full EXPRESS names are required; registry consumers currently use only name lookup and attribute slots.',
     );
+  });
+describe('generateRust — supported schema type universe (#4203)', () => {
+  const legacySchema = parseExpressSchema(LEGACY_SCHEMA_SRC);
+  const universeRust = generateRust(schema, [legacySchema]);
+
+  it('resolves an entity that exists only in a supplemental schema by exact name', () => {
+    expect(universeRust.schema).toContain('    IfcLegacyDoorStyle,\n');
+    expect(universeRust.schema).toContain(
+      '"IFCLEGACYDOORSTYLE" => Self::IfcLegacyDoorStyle,'
+    );
+    expect(universeRust.schema).toContain(
+      'Self::IfcLegacyDoorStyle => "IfcLegacyDoorStyle",'
+    );
+  });
+
+  it('does not borrow version-specific attribute positions from another schema', () => {
+    expect(universeRust.schema).toContain('Self::IfcLegacyDoorStyle => &[],');
+    expect(universeRust.schema).not.toContain(
+      'Self::IfcLegacyDoorStyle => &["GlobalId", "LegacyOperation"]'
+    );
+  });
+
+  it('keeps the canonical per-schema catalog scoped to the canonical schema', () => {
+    const all = universeRust.schema.slice(universeRust.schema.indexOf('pub static ALL:'));
+    expect(all).toContain('IfcType::IfcWall,');
+    expect(all).not.toContain('IfcType::IfcLegacyDoorStyle,');
   });
 });
 

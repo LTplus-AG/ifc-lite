@@ -9,6 +9,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generateFromSchema } from '../src/generator.js';
@@ -118,5 +119,47 @@ describe('generateFromSchema — crate-private Rust output (#4203)', () => {
 
     execFileSync('rustc', [probe, '--edition=2021', '-o', executable]);
     execFileSync(executable);
+describe('generateFromSchema — supplemental Rust schemas (#4203)', () => {
+  it('does not read Rust-only supplemental paths for a TypeScript-only generation', () => {
+    const outputDir = mkdtempSync(join(tmpdir(), 'ifc-codegen-4203-ts-only-'));
+    try {
+      expect(() =>
+        generateFromSchema('SCHEMA TEST; END_SCHEMA;', outputDir, {
+          rust: false,
+          rustSupplementalSchemaPaths: [join(outputDir, 'does-not-exist.exp')],
+          skipCollisionCheck: true,
+        }),
+      ).not.toThrow();
+    } finally {
+      rmSync(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it('emits IFC4X1 entities without promoting non-entities', () => {
+    const outputDir = mkdtempSync(join(tmpdir(), 'ifc-codegen-4203-ifc4x1-'));
+    try {
+      generateFromSchema(
+        'SCHEMA TEST; ENTITY IfcRoot; END_ENTITY; END_SCHEMA;',
+        outputDir,
+        { rust: true, skipCollisionCheck: true },
+      );
+      const generatedSchema = readFileSync(join(outputDir, 'rust', 'schema.rs'), 'utf8');
+      // @source-text-assertion-ok asserts on the real generator's emitted artifact, not unexecuted production source
+      expect(generatedSchema).toContain('    IfcAlignmentCurve,');
+      // @source-text-assertion-ok asserts on the real generator's emitted artifact, not unexecuted production source
+      expect(generatedSchema).toContain(
+        'Self::IfcAlignmentCurve => Some(Self::IfcBoundedCurve),',
+      );
+      // @source-text-assertion-ok asserts on the real generator's emitted artifact, not unexecuted production source
+      expect(generatedSchema).toContain('Self::IfcAlignmentCurve => &[],');
+      // @source-text-assertion-ok asserts on the real generator's emitted artifact, not unexecuted production source
+      expect(generatedSchema).not.toContain('    IfcLengthMeasure,');
+      // @source-text-assertion-ok asserts on the real generator's emitted artifact, not unexecuted production source
+      expect(generatedSchema).not.toContain('    IfcBinary,');
+      // @source-text-assertion-ok asserts on the real generator's emitted artifact, not unexecuted production source
+      expect(generatedSchema).not.toContain('    IfcPropertySetDefinitionSet,');
+    } finally {
+      rmSync(outputDir, { recursive: true, force: true });
+    }
   });
 });

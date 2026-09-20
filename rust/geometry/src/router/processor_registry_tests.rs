@@ -70,6 +70,7 @@ fn issue_3987_default_dispatch_preserves_every_advertised_subtype() {
         Box::new(ShellBasedSurfaceModelProcessor::new()), Box::new(FaceBasedSurfaceModelProcessor::new()),
         Box::new(BlockProcessor::new()), Box::new(SphereProcessor::new()),
         Box::new(CsgSolidProcessor::new()), Box::new(IfcAlignmentProcessor::new()),
+        Box::new(IfcEdgeProcessor::new()),
     ];
     let router = GeometryRouter::new();
     for processor in references {

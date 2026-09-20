@@ -48,7 +48,15 @@ import {
 // fails the assertions below for the right reason.
 import * as mutationBridge from './mutation-bridge.js';
 const { applyRemoteAttribute } = mutationBridge;
-import { pathForEntity, pathForGuid, registerEntityMaps, registerEntityPath, registerStoreSlot } from './entity-paths.js';
+import {
+  entityForPath,
+  pathForEntity,
+  pathForGuid,
+  registerEntityMaps,
+  registerEntityPath,
+  registerStoreSlot,
+  unregisterEntityPath,
+} from './entity-paths.js';
 
 /**
  * `yjs` is a transitive dependency (via `@ifc-lite/collab`), not a direct
@@ -105,7 +113,10 @@ function fakeSession(doc: ReturnType<typeof createCollabDoc>): CollabSession {
 
 /** A store with no STEP index — placement paths come from the injected maps. */
 function fakeStore(idToPath: Map<number, string>): IfcDataStore {
-  const store = {} as IfcDataStore;
+  const store = {
+    schemaVersion: 'IFC4',
+    entities: { getTypeName: () => 'Unknown' },
+  } as unknown as IfcDataStore;
   const pathToId = new Map<string, number>();
   for (const [id, path] of idToPath) pathToId.set(path, id);
   registerEntityMaps(store, idToPath, pathToId);
@@ -137,6 +148,17 @@ describe('mutation-bridge entity-map registration', () => {
     teardown();
     assert.strictEqual(handlers.calls.length, 1, 'registerEntityPath must make the path resolvable inbound (entityForPath)');
     assert.deepEqual(handlers.calls[0], { fn: 'onAttribute', args: [MODEL, 42, 'bsi::ifc::prop::Name', 'New Wall'] });
+  });
+
+  it('does not remove a reverse path that was rebound to a live entity', () => {
+    const store = fakeStore(new Map());
+    registerEntityPath(store, 41, '/shared');
+    registerEntityPath(store, 42, '/shared');
+
+    unregisterEntityPath(store, 41);
+
+    assert.strictEqual(entityForPath(store, '/shared'), 42);
+    assert.strictEqual(pathForEntity(store, 42), '/shared');
   });
 });
 
@@ -239,18 +261,29 @@ describe('mutation-bridge property/attribute/delete (outbound)', () => {
     assert.strictEqual(getAttribute(doc, '/wallA', 'bsi::ifc::prop::Name'), 'Wall-A');
   });
 
-  it('mirrorAttribute collapses a list/ref value to its stable JSON string form (toScalar)', () => {
+  it('mirrorAttribute preserves a structured list/ref value', () => {
     const doc = createCollabDoc();
     createEntity(doc, '/wallA', { ifcClass: 'IfcWall' });
     const store = fakeStore(new Map([[1, '/wallA']]));
 
     mirrorAttribute(api, fakeSession(doc), store, 1, 'bsi::ifc::prop::Layers', ['a', 'b', 3]);
 
-    // Pinned against the literal JSON string, not just "truthy" — toScalar's
-    // array branch must specifically produce `JSON.stringify`, not the
-    // generic `String(value)` fallback (which would yield "a,b,3" and lose
-    // round-trip fidelity through the CRDT's flat-attribute wire shape).
-    assert.strictEqual(getAttribute(doc, '/wallA', 'bsi::ifc::prop::Layers'), '["a","b",3]');
+    assert.deepEqual(getAttribute(doc, '/wallA', 'bsi::ifc::prop::Layers'), ['a', 'b', 3]);
+  });
+
+  it('mirrorAttribute writes schema reference slots as recipient-stable room paths (#5008)', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, '/relationship', { ifcClass: 'IfcApprovalRelationship' });
+    createEntity(doc, '/target', { ifcClass: 'IfcApproval' });
+    const store = fakeStore(new Map([[1, '/relationship'], [4, '/target']]));
+    store.schemaVersion = 'IFC2X3';
+    store.entities.getTypeName = id => id === 1 ? 'IfcApprovalRelationship' : 'IfcApproval';
+
+    mirrorAttribute(api, fakeSession(doc), store, 1, 'bsi::ifc::prop::RelatedApproval', '#4');
+
+    assert.deepEqual(getAttribute(doc, '/relationship', 'bsi::ifc::prop::RelatedApproval'), {
+      'ifc-lite::entityPath': '/target',
+    });
   });
 
   it('mirrorAttribute no-ops when the entity is not in the doc', () => {
@@ -315,11 +348,49 @@ function recordingHandlers(): RemoteApplyHandlers & {
     onAttribute: (...args) => calls.push({ fn: 'onAttribute', args }),
     onPlacement: (...args) => calls.push({ fn: 'onPlacement', args }),
     onEntityDelete: (...args) => calls.push({ fn: 'onEntityDelete', args }),
+    onEntityCreate: (target, path, ifcClass, attributes, sourceExpressId) => calls.push({
+      fn: 'onEntityCreate',
+      args: [target.modelId, path, ifcClass, attributes, ...(sourceExpressId === undefined ? [] : [sourceExpressId])],
+    }),
     onPsetDelete: (...args) => calls.push({ fn: 'onPsetDelete', args }),
   };
 }
 
 describe('mutation-bridge attachRemoteApply (inbound)', () => {
+  it('dispatches a remote entity add with its structured initial attributes', () => {
+    const doc = createCollabDoc();
+    const store = fakeStore(new Map());
+    const handlers = recordingHandlers();
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
+    applyAsRemoteEdit(doc, (remote) => createEntity(remote, '/point', {
+      ifcClass: 'IfcCartesianPoint',
+      attributes: { 'bsi::ifc::prop::Coordinates': [1, 2, 3] },
+    }));
+    teardown();
+    assert.deepEqual(handlers.calls, [{
+      fn: 'onEntityCreate',
+      args: [MODEL, '/point', 'IfcCartesianPoint', { 'bsi::ifc::prop::Coordinates': [1, 2, 3] }],
+    }]);
+  });
+
+  it('dispatches explicit source identity metadata independently of the room path', () => {
+    const doc = createCollabDoc();
+    const store = fakeStore(new Map());
+    const handlers = recordingHandlers();
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
+    applyAsRemoteEdit(doc, (remote) => createEntity(remote, '/user-chosen-path', {
+      ifcClass: 'IfcCartesianPoint',
+      attributes: { 'bsi::ifc::prop::Coordinates': [1, 2, 3] },
+      meta: { 'ifc-lite::sourceExpressId': 42 },
+    }));
+    teardown();
+    assert.deepEqual(handlers.calls, [{
+      fn: 'onEntityCreate',
+      args: [MODEL, '/user-chosen-path', 'IfcCartesianPoint', {
+        'bsi::ifc::prop::Coordinates': [1, 2, 3],
+      }, 42],
+    }]);
+  });
   it('dispatches a remote pset property write to onProperty (pset already exists)', () => {
     const doc = createCollabDoc();
     createEntity(doc, '/wallA', { ifcClass: 'IfcWall' });
@@ -507,13 +578,31 @@ describe('mutation-bridge attachRemoteApply (inbound)', () => {
     });
   });
 
+  it('preserves a structured remote positional value for schema-aware application (#5008)', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, '/pointA', { ifcClass: 'IfcCartesianPoint' });
+    const store = fakeStore(new Map([[7, '/pointA']]));
+    const handlers = recordingHandlers();
+    const teardown = attachRemoteApply(api, fakeSession(doc), () => ({ modelId: MODEL, store }), handlers);
+    const coordinates = [1, 2, 3];
+
+    applyAsRemoteEdit(doc, (remote) => {
+      setAttribute(remote, '/pointA', 'bsi::ifc::prop::Coordinates', coordinates);
+    });
+
+    teardown();
+    assert.deepEqual(handlers.calls, [{
+      fn: 'onAttribute',
+      args: [MODEL, 7, 'bsi::ifc::prop::Coordinates', coordinates],
+    }]);
+  });
+
   it('drops a remote flat attribute DELETE — no onAttribute call, and no delete handler exists to call instead', () => {
     // There is no `onAttributeDelete` in RemoteApplyHandlers: attribute deletes
     // are intentionally dropped until a full reconstruct picks them up. Without
     // the `change.action === 'delete'` guard, the deleted key's value reads
-    // back as `undefined` from Yjs, and `toScalar` stringifies that to the
-    // literal string "undefined" — which `collabSlice`'s onAttribute handler
-    // would then WRITE as the attribute's new local value, corrupting it
+    // back as `undefined` from Yjs, which `collabSlice`'s onAttribute handler
+    // could then WRITE as the attribute's new local value, corrupting it
     // instead of leaving it alone.
     const doc = createCollabDoc();
     createEntity(doc, '/wallA', { ifcClass: 'IfcWall' });
@@ -673,11 +762,11 @@ describe('mutation-bridge model slots (#4444)', () => {
  */
 describe('applyRemoteAttribute (#4931 collab null handling, type-aware)', () => {
   /** A minimal real IfcDataStore from one STEP entity line (mirrors packages/export's own tests). */
-  function buildDataStore(id: number, type: string, text: string): IfcDataStore {
+  function buildDataStore(id: number, type: string, text: string, schemaVersion: 'IFC2X3' | 'IFC4' = 'IFC4'): IfcDataStore {
     const encoded = new TextEncoder().encode(text);
     return {
       fileSize: encoded.byteLength,
-      schemaVersion: 'IFC4',
+      schemaVersion,
       entityCount: 1,
       parseTime: 0,
       source: encoded,
@@ -692,7 +781,7 @@ describe('applyRemoteAttribute (#4931 collab null handling, type-aware)', () => 
   function exportedLine(dataStore: IfcDataStore, apply: (view: MutablePropertyView) => void): string {
     const view = new MutablePropertyView(null, 'room-model');
     apply(view);
-    const result = new StepExporter(dataStore, view).export({ schema: 'IFC4', applyMutations: true });
+    const result = new StepExporter(dataStore, view).export({ schema: dataStore.schemaVersion as 'IFC2X3' | 'IFC4', applyMutations: true });
     const text = new TextDecoder().decode(result.content);
     const line = text.split('\n').find((l) => l.startsWith('#1='));
     if (!line) throw new Error('exported #1 entity line not found');
@@ -738,10 +827,34 @@ describe('applyRemoteAttribute (#4931 collab null handling, type-aware)', () => 
     assert.strictEqual(line, '#1=IFCMAPCONVERSION(#2,#3,10.,20.,30.,1.,0.,2.25);');
   });
 
-  it('a name that does not resolve to a known root-attribute slot is skipped, not guessed at', () => {
+  it('a prefixed root attribute name resolves and a remote null clears it', () => {
     const dataStore = buildDataStore(1, 'IfcWall', "#1=IFCWALL('gid',$,'Old Name','Old Description',$,$,$,$,$);");
     const line = exportedLine(dataStore, (view) => applyRemoteAttribute(view, dataStore, 1, 'bsi::ifc::prop::Description', null));
-    assert.strictEqual(line, "#1=IFCWALL('gid',$,'Old Name','Old Description',$,$,$,$,$);", 'unresolved name: no edit landed, source line unchanged');
+    assert.strictEqual(line, "#1=IFCWALL('gid',$,'Old Name',$,$,$,$,$,$);");
+  });
+
+  it('resolves inbound positional slots from the room schema (#5008)', () => {
+    const dataStore = buildDataStore(
+      1, 'IfcApprovalRelationship', '#1=IFCAPPROVALRELATIONSHIP(#2,#3);', 'IFC2X3',
+    );
+    const line = exportedLine(dataStore, (view) => applyRemoteAttribute(
+      view, dataStore, 1, 'bsi::ifc::prop::RelatedApproval', '#9',
+    ));
+    assert.strictEqual(line, '#1=IFCAPPROVALRELATIONSHIP(#9,#3);');
+  });
+
+  it('reports a rejected inbound room reference instead of silently accepting it', () => {
+    const dataStore = buildDataStore(
+      1, 'IfcApprovalRelationship', '#1=IFCAPPROVALRELATIONSHIP(#2,#3);', 'IFC2X3',
+    );
+    const view = new MutablePropertyView(null, 'room-model');
+
+    const reason = applyRemoteAttribute(
+      view, dataStore, 1, 'RelatedApproval', { 'ifc-lite::entityPath': '/missing' },
+    );
+
+    assert.strictEqual(reason, 'unresolved room reference: /missing');
+    assert.strictEqual(view.getMutations().length, 0);
   });
 
   it('attachRemoteApply delivers the peer\'s CRDT null through onAttribute unchanged, ready for applyRemoteAttribute', () => {

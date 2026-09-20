@@ -125,3 +125,12 @@ export function registerEntityPath(store: IfcDataStore, expressId: number, path:
   maps.toPath.set(expressId, path);
   maps.toExpressId.set(path, expressId);
 }
+
+export function unregisterEntityPath(store: IfcDataStore, expressId: number): void {
+  const maps = entityMaps(store);
+  const path = maps.toPath.get(expressId);
+  maps.toPath.delete(expressId);
+  // A path can be rebound while a stale expressId still retains its forward
+  // entry. Never let cleanup of that stale owner erase the live reverse map.
+  if (path && maps.toExpressId.get(path) === expressId) maps.toExpressId.delete(path);
+}

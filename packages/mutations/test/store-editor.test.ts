@@ -27,6 +27,14 @@ function makeStore(maxId: number, deferredIds?: number[]): MutationStoreShape {
 }
 
 describe('StoreEditor', () => {
+  it('exposes the loaded model schema without guessing one', () => {
+    const store = { ...makeStore(1), schemaVersion: 'IFC4X3' };
+    const editor = new StoreEditor(store, new MutablePropertyView(null, 'm1'));
+    expect(editor.getSchemaVersion()).toBe('IFC4X3');
+    expect(new StoreEditor(makeStore(1), new MutablePropertyView(null, 'm2')).getSchemaVersion())
+      .toBeUndefined();
+  });
+
   it('addEntity allocates an expressId above the existing watermark', () => {
     const store = makeStore(10);
     const view = new MutablePropertyView(null, 'm1');
@@ -41,6 +49,19 @@ describe('StoreEditor', () => {
 
     expect(editor.getNewEntities()).toHaveLength(1);
     expect(editor.getNewEntity(11)?.attributes).toEqual(['.AREA.', null, '#34', 0.6, 0.4]);
+  });
+
+  // Regression: #5008 — a reconstructed collab-room (IFCX) store keeps
+  // `entityIndex.byId` empty; its entities exist only in the entity table.
+  it('addEntity allocates above entity-table ids when byId is empty', () => {
+    const store: MutationStoreShape = {
+      entityIndex: { byId: new Map() },
+      entities: { expressId: new Uint32Array([1, 2, 3, 0, 7]) },
+    };
+    const view = new MutablePropertyView(null, 'room');
+    const editor = new StoreEditor(store, view);
+
+    expect(editor.addEntity('IFCWALL', ['0000000000000000000009']).expressId).toBe(8);
   });
 
   // Regression: github.com/LTplus-AG/ifc-lite/issues/1110 (PR review)
@@ -257,5 +278,15 @@ describe('StoreEditor', () => {
     } finally {
       setEntityTypeNormalizer(null);
     }
+  });
+
+  it('getEntityType ignores orphan retypes and normalizes source/deferred types (#4857)', () => {
+    const store = makeStore(2, [8]);
+    const view = new MutablePropertyView(null, 'm1');
+    view.setEntityType(999, 'IfcColumn');
+    const editor = new StoreEditor(store, view);
+    expect(editor.getEntityType(999)).toBeUndefined();
+    expect(editor.getEntityType(1)).toBe('IfcWall');
+    expect(editor.getEntityType(8)).toBe('IfcPropertySingleValue');
   });
 });

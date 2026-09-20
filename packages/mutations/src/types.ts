@@ -307,6 +307,8 @@ export interface MutationEntityByIdIndex {
  * Minimal `IfcDataStore` shape consumed by `StoreEditor`.
  */
 export interface MutationStoreShape {
+  /** IFC schema identifier of the loaded model, when the source provides it. */
+  schemaVersion?: string;
   entityIndex: {
     byId: MutationEntityByIdIndex;
   };
@@ -319,6 +321,14 @@ export interface MutationStoreShape {
    * emits both. See @ifc-lite/export `getCompleteEntityIndex`.
    */
   deferredEntityIndex?: MutationEntityByIdIndex;
+  /**
+   * The columnar entity table. IFCX-origin and reconstructed collab-room
+   * stores leave `entityIndex.byId` empty and carry their membership only
+   * here, so the overlay id allocator must clear these ids too — otherwise
+   * the first overlay entity is handed express id 1, which the base store
+   * already owns (#5008).
+   */
+  entities?: { expressId: ArrayLike<number> };
 }
 
 /**

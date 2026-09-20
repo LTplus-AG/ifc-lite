@@ -58,7 +58,7 @@
    431 apps/viewer/src/components/extensions/FlavorDialog.tsx
    428 apps/viewer/src/components/extensions/widget/WidgetRenderer.tsx
    665 apps/viewer/src/components/mcp/data.ts
-  1318 apps/viewer/src/components/mcp/McpLanding.tsx
+  1317 apps/viewer/src/components/mcp/McpLanding.tsx
    525 apps/viewer/src/components/mcp/McpPlayground.tsx
   2090 apps/viewer/src/components/mcp/playground-dispatcher.ts
   1187 apps/viewer/src/components/mcp/PlaygroundChat.tsx
@@ -66,7 +66,7 @@
    508 apps/viewer/src/components/viewer/BasketPresentationDock.tsx
    428 apps/viewer/src/components/viewer/bcf/BCFTopicDetail.tsx
    541 apps/viewer/src/components/viewer/BCFPanel.tsx
-  1061 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
+  1028 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
    486 apps/viewer/src/components/viewer/CesiumOverlay.tsx
   1098 apps/viewer/src/components/viewer/CesiumPlacementEditor.tsx
    418 apps/viewer/src/components/viewer/chat/ExecutableCodeBlock.tsx
@@ -82,7 +82,6 @@
   1381 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
    406 apps/viewer/src/components/viewer/hierarchy/useHierarchyTree.ts
   1147 apps/viewer/src/components/viewer/HierarchyPanel.tsx
-  1119 apps/viewer/src/components/viewer/IDSPanel.tsx
    569 apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx
    534 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
   1709 apps/viewer/src/components/viewer/LensPanel.tsx
@@ -131,7 +130,7 @@
    525 apps/viewer/src/hooks/ingest/pointCloudIngest.ts
    461 apps/viewer/src/hooks/useAnnotation2D.ts
    764 apps/viewer/src/hooks/useBCF.ts
-  1358 apps/viewer/src/hooks/useClash.ts
+  1357 apps/viewer/src/hooks/useClash.ts
    472 apps/viewer/src/hooks/useCompare.ts
   1353 apps/viewer/src/hooks/useDrawingExport.ts
   1041 apps/viewer/src/hooks/useDrawingGeneration.ts
@@ -306,7 +305,7 @@
    529 packages/query/src/duckdb-integration.ts
    583 packages/renderer/src/camera-controls.ts
    684 packages/renderer/src/camera.ts
-  3732 packages/renderer/src/index.ts
+  3730 packages/renderer/src/index.ts
    756 packages/renderer/src/picker.ts
    952 packages/renderer/src/pipeline.ts
    475 packages/renderer/src/pointcloud/point-cloud-renderer.ts
@@ -314,7 +313,7 @@
    467 packages/renderer/src/raycast-engine.ts
    401 packages/renderer/src/render-section-plane.ts
    462 packages/renderer/src/scene-raycaster.ts
-  4234 packages/renderer/src/scene.ts
+  4229 packages/renderer/src/scene.ts
    639 packages/renderer/src/section-2d-overlay.ts
    514 packages/renderer/src/section-plane.ts
    639 packages/renderer/src/shaders/main.wgsl.ts

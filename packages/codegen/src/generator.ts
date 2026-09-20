@@ -12,6 +12,7 @@
  * - Rust types and type IDs
  */
 
+import { ENTITIES_IFC4, IFC_DATA_TYPES } from '@ifc-lite/data';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, isAbsolute } from 'node:path';
 import { parseExpressSchema, type ExpressSchema } from './express-parser.js';
@@ -20,6 +21,7 @@ import { generateTypeIds } from './type-ids-generator.js';
 import { generateSerializers } from './serialization-generator.js';
 import { generateRust, type RustGeneratedCode } from './rust-generator.js';
 import { findCollisions } from './crc32.js';
+import { entityCatalogSchema } from './rust-schema-queries.js';
 
 export interface FullGeneratedCode extends GeneratedCode {
   typeIds: string;
@@ -33,6 +35,8 @@ export interface GeneratorOptions {
   rustDir?: string;
   /** Keep generated Rust types visible only inside their consuming crate. */
   rustCratePrivate?: boolean;
+  /** Additional EXPRESS files whose entity names extend the Rust IfcType universe. */
+  rustSupplementalSchemaPaths?: string[];
   /** Skip type ID collision check */
   skipCollisionCheck?: boolean;
 }
@@ -68,6 +72,14 @@ export function generateFromSchema(
 
   console.log('📖 Parsing EXPRESS schema...');
   const schema = parseExpressSchema(schemaContent);
+  const rustSupplementalSchemas = options.rust
+    ? [
+        ...(options.rustSupplementalSchemaPaths ?? []).map((path) =>
+          parseExpressSchema(readFileSync(path, 'utf-8').replace(/\r\n?/g, '\n'))
+        ),
+        entityCatalogSchema('IFC4_FAMILY', ENTITIES_IFC4, IFC_DATA_TYPES),
+      ]
+    : [];
 
   console.log(`✓ Parsed ${schema.name}`);
   console.log(`  - ${schema.entities.length} entities`);
@@ -78,8 +90,17 @@ export function generateFromSchema(
   // Check for CRC32 collisions
   if (!options.skipCollisionCheck) {
     console.log('\n🔍 Checking for CRC32 collisions...');
-    const entityNames = schema.entities.map((e) => e.name);
-    const collisions = findCollisions(entityNames);
+    const entityNames = [...schema.entities];
+    const knownNames = new Set(entityNames.map((entity) => entity.name.toUpperCase()));
+    for (const supplemental of rustSupplementalSchemas) {
+      for (const entity of supplemental.entities) {
+        if (!knownNames.has(entity.name.toUpperCase())) {
+          entityNames.push(entity);
+          knownNames.add(entity.name.toUpperCase());
+        }
+      }
+    }
+    const collisions = findCollisions(entityNames.map((entity) => entity.name));
     if (collisions.size > 0) {
       console.warn('⚠️  CRC32 collisions detected:');
       for (const [hash, names] of collisions) {
@@ -147,7 +168,7 @@ export * from './serializers.js';
   // Generate Rust code if requested
   if (options.rust) {
     console.log('\n🦀 Generating Rust code...');
-    const rustCode = generateRust(schema, options.rustCratePrivate);
+    const rustCode = generateRust(schema, rustSupplementalSchemas, options.rustCratePrivate);
     // Use absolute path directly, or join relative path with outputDir
     const rustDir = options.rustDir
       ? isAbsolute(options.rustDir)

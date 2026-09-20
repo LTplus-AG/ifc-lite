@@ -56,6 +56,13 @@ export {
 export { addRoofToStore, type RoofInStoreParams, type RoofRectangleParams, type RoofPolygonParams, type RoofBuildResult } from './in-store/roof.js';
 export { addPlateToStore, type PlateInStoreParams, type PlateRectangleParams, type PlatePolygonParams, type PlateBuildResult } from './in-store/plate.js';
 export { addMemberToStore, type MemberInStoreParams, type MemberBuildResult } from './in-store/member.js';
+export {
+  addCostScheduleToStore, addCostItemToStore, addCostValueToStore, addCostQuantityToStore,
+  nestCostItemsInStore, assignCostItemsToScheduleInStore, assignObjectsToCostItemInStore,
+  attachCostValuesToItemInStore,
+  type CostAnchor, type ExistingRelatedList,
+} from './in-store/cost.js';
+export { removeCostEntityInStore, type CostRemovalReferrers } from './in-store/cost-removal.js';
 export { resolveSpatialAnchor } from './in-store/resolve-anchor.js';
 export { toNativeLength, fromNativeLength } from './in-store/anchor.js';
 export type { SpatialAnchor } from './in-store/anchor.js';

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { TranslatableMessage } from '@/i18n';
 
 /** Minimal shape the resolver needs from a federated model. */
 export interface ValidationTargetModel {
@@ -27,7 +28,16 @@ export interface ResolveValidationTargetInput {
 
 export type ResolveValidationTargetResult =
   | { modelId: string; dataStore: IfcDataStore }
-  | { error: string };
+  | { error: TranslatableMessage };
+
+/**
+ * `idsError` (store + `useIDS.ts`) carries either a plain caught-exception
+ * message (arbitrary runtime text, not catalogued) or one of this resolver's
+ * stable, catalogued errors (`labelKey` + params). Only the render site
+ * (`IDSPanel.tsx`'s error banner) resolves the latter via `t()` — never here,
+ * never in the store (#5030).
+ */
+export type IdsErrorState = string | TranslatableMessage;
 
 /**
  * Resolve which model to validate and the data store to validate against.
@@ -51,10 +61,10 @@ export function resolveValidationTarget(
   if (targetModelId != null) {
     const model = models.get(targetModelId);
     if (!model) {
-      return { error: `Model "${targetModelId}" is not loaded` };
+      return { error: { labelKey: 'idsPanel.error.modelNotLoaded', params: { modelId: targetModelId } } };
     }
     if (!model.ifcDataStore) {
-      return { error: 'The selected model has no parsed IFC data to validate' };
+      return { error: { labelKey: 'idsPanel.error.modelNoData' } };
     }
     return { modelId: targetModelId, dataStore: model.ifcDataStore };
   }
@@ -76,5 +86,5 @@ export function resolveValidationTarget(
     return { modelId: '__legacy__', dataStore: legacyDataStore };
   }
 
-  return { error: 'No IFC model loaded' };
+  return { error: { labelKey: 'idsPanel.error.noModelLoaded' } };
 }

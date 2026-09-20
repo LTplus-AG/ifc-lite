@@ -45,6 +45,16 @@ The lesson: generated per-schema lookup tables can stay crate-private and be
 selected by the source schema without changing emitted geometry or adding a
 measurable normal-load cost; keep them out of the public Rust surface so this
 metadata correction does not create a semver liability.
+## Full supported-schema `IfcType` parsing (#4203)
+
+Extending the generated `IfcType::from_str` match from the canonical IFC4X3
+catalog to the distinct names in every supported schema showed no parse or
+end-to-end load regression on AC20-FZK-Haus in an interleaved native A/B probe.
+The ordered mesh fingerprint and mesh, vertex, and triangle counts were
+identical. This qualifies the ordinary IFC4 load path, not the cost of parsing
+a legacy-only entity mix. The lesson is that generated exact-name match arms
+can preserve the hot parser's performance, but a larger enum still needs an
+end-to-end parser probe rather than an assumption based on lookup complexity.
 
 ## Bounded quick-metadata tree and reachable placement (#4689, #4743)
 
@@ -1774,3 +1784,73 @@ AND a breadth cap must bound the same quantity the hot loop actually multiplies
 out to (samples x grid, not grid alone), or a real fixture proves the guess
 wrong. Always run the correctness harness against a fixture that exercises the
 lever before trusting a calibrated constant.
+
+## Wall-local vertical opening classification (#3977)
+
+Exact-source native `perf_probe` comparison of base `6304b8ebc` and branch
+`89b93e364` used five balanced, interleaved fresh-process rounds per fixture.
+Median parse / geometry / total milliseconds were 8 / 11 / 19 -> 8 / 10 / 19
+on AC20-FZK-Haus and 26 / 929 / 955 -> 28 / 930 / 958 on CSG-heavy ISSUE_129.
+The heavy Holter control was deliberately included because the classifier runs
+once per opening: its medians were 407 / 741 / 1,160 -> 403 / 752 / 1,155 ms.
+Holter's geometry samples were noisy on both sides (base 455-774 ms, branch
+430-775 ms), so the 1.5% geometry-median difference is not a regression signal;
+its total median improved 0.4%. Every round retained identical output counts:
+AC20 285 meshes / 35,940 vertices / 19,456 triangles / 0 failures, ISSUE_129
+1,402 / 219,848 / 135,737 / 41, and Holter 109,514 / 4,502,946 / 2,882,383 /
+0. Verdict: no material full-load regression and no performance claim.
+
+The source-matched browser worker-pool control compared the same base with
+`cb7557caa` in five interleaved fresh-Chromium-process pairs per fixture. The
+observed metadata-plus-render median was 479 -> 483 ms on AC20 (+0.8%, below
+the base's 7% spread), 1,862 -> 1,860 ms on ISSUE_129 (-0.1%, below 5%), and
+5,114 -> 5,084 ms on Holter (-0.6%, below 17%). First geometry, first visible,
+stream completion, spatial readiness, metadata completion, and the legacy app
+total likewise stayed inside their respective noise floors. Every round kept
+the same total mesh count between revisions. This qualifies the actual browser
+worker path as well as the native phase split; it does not qualify search,
+cache-tail memory, properties, picking, or Firefox.
+
+The lesson is to scope authored-depth preservation to the vertical-depth
+selector itself. Applying it to the established horizontal-depth route changed
+real heavy-model cuts even though small synthetic cases remained green; the
+heavy census caught that overreach, and restoring the old horizontal route
+removed every branch-caused census delta.
+
+## Structural curved/oriented edge rendering, no reach into either fixture (#4206, #5020)
+
+Native `perf_probe` comparison of base `0e8a42175` (merge-base with `origin/main`)
+and branch `9a469537b` (this PR merged onto that base), five balanced,
+interleaved fresh-process rounds per fixture, `--iters 5 --json --fingerprint`.
+Neither in-tree fixture instantiates a standalone `IfcEdge`/`IfcEdgeCurve`/
+`IfcOrientedEdge` as a geometry item, so `IfcEdgeProcessor::process` (the only
+code this PR touches) never runs on them: this is an isolation check, not a
+speedup claim, and the ordered mesh FNV was byte-identical on every one of the
+25 runs per fixture per side.
+
+AC20-FZK-Haus: median parse/geometry/total (best-of-5) 8/7/15 ms (base) vs
+8/7/16 ms (branch); median full-pipeline wall 18.0 ms (base, spread 16.8-22.4)
+vs 18.3 ms (branch, spread 17.1-26.2) — branch sits inside the base's own
+spread. Output identical both sides: 285 meshes / 35,940 vertices / 19,456
+triangles / 0 CSG failures, fingerprint `25ac885b6ff4ad00` on all 50 runs.
+
+`C20-Institute-Var-2.ifc` (10.3 MB, 147,712 entities): median parse/geometry/
+total 44/47/92 ms (base, total spread 89-104) vs 48/51/102 ms (branch, total
+spread 86-133); median full-pipeline wall 111.5 ms (base, spread 103.2-145.3)
+vs 121.4 ms (branch, spread 98.4-191.9). The branch's one high outlier (a
+133 ms total / 191.9 ms wall round, immediately following an unusually fast
+89 ms base round in the same interleaved pair) drove most of the median gap;
+excluding it drops the branch median to within 4% of base. Both branch median
+figures fall inside the base's own measured range, so this is noise from a
+10 MB/147k-entity file's larger absolute jitter budget, not a signal: output
+was identical on every round, 2,668 meshes / 83,310 vertices / 51,682 triangles
+/ 0 CSG failures, fingerprint `3616a1e7d01c6950` on all 50 runs.
+
+Verdict: no measurable full-load regression on either fixture, and none
+expected — the new ribbon-mesh path only activates for a structural curve
+member's raw edge entities, which neither architectural fixture contains.
+Lesson: for a processor gated on IFC types absent from the standard perf
+corpus, the correct "perf verdict" is an isolation proof (identical mesh
+counts and fingerprint, timing inside noise) rather than a speedup or
+regression claim — don't force a delta narrative onto a lever that has no
+reach into the fixtures the ledger already tracks.

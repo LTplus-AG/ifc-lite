@@ -19,6 +19,7 @@ import type { RenderDegradationInfo } from '@ifc-lite/renderer';
 import { posthog } from '@/lib/analytics';
 import { scrubEvent } from '@/lib/analytics-scrub.js';
 import { toast } from '@/components/ui/toast';
+import { useViewerStore } from '@/store';
 import {
   reportDeviceLost,
   reportPersistentRenderDegradation,
@@ -72,7 +73,7 @@ describe('reportDeviceLost', () => {
     );
   });
 
-  it('reports once per session, not once per listener call', () => {
+  it('reports once per loss episode, not once per listener call', () => {
     // A device can announce its death more than once (the sync throw latch AND
     // the async device.lost promise, on browsers that eventually resolve it),
     // and the component can remount. The user must not be toasted twice.
@@ -225,12 +226,26 @@ describe('reportDeviceLost tells the USER, not only error tracking', () => {
       const text = String(errorToast.mock.calls[0].arguments[0]);
       assert.match(text, /reload/i, 'the toast must name the only action that restores rendering');
       assert.match(text, /graphics device/i, 'and name the cause, not just "something went wrong"');
+      assert.doesNotMatch(text, /automatic recovery/i, 'a host with no recovery API must not claim recovery started');
     } finally {
       errorToast.mock.restore();
     }
   });
 
-  it('does not toast a second time — the session latch covers the UI too', async () => {
+  it('says automatic recovery started only when the renderer supports it', async () => {
+    await flushDynamicImport();
+    const errorToast = mock.method(toast, 'error', () => 0);
+    try {
+      reportDeviceLost({ message: SAFARI_LOST, reason: 'render-exception' }, undefined, true);
+      await flushDynamicImport();
+
+      assert.match(String(errorToast.mock.calls[0].arguments[0]), /automatic recovery is starting/i);
+    } finally {
+      errorToast.mock.restore();
+    }
+  });
+
+  it('does not toast a second time in one loss episode', async () => {
     // A device can announce its death twice (the sync throw AND the async
     // device.lost promise), and the Viewport can remount. Neither may re-toast.
     // Drain toasts still in flight from EARLIER tests in this file first — the
@@ -378,6 +393,69 @@ describe('subscribeViewportHealth wires every way the view can stop', () => {
     h.listeners.deviceLost[0]({ message: SAFARI_LOST, reason: 'render-exception' });
     assert.equal(captures.length, 2);
     assert.equal(captures[1].props?.context, 'device_lost');
+  });
+
+  it('starts a fresh recovery for a later replacement-device loss', async () => {
+    const h = makeSource();
+    let recoveries = 0;
+    h.source.recoverDevice = async () => {
+      recoveries++;
+      return { ok: true, omissions: [] };
+    };
+    subscribeViewportHealth(h.source);
+
+    h.listeners.deviceLost[0]({ message: SAFARI_LOST, reason: 'unknown' });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    h.listeners.deviceLost[0]({ message: 'replacement lost', reason: 'unknown' });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    assert.equal(recoveries, 2);
+    assert.equal(captures.length, 2, 'each recovered device starts a new reportable loss episode');
+  });
+
+  it('cancels an active point-cloud ingest before starting recovery', async () => {
+    const h = makeSource();
+    const order: string[] = [];
+    useViewerStore.setState({
+      activeStreamCanceller: () => { order.push('cancel'); },
+    });
+    h.source.recoverDevice = async () => {
+      order.push('recover');
+      return { ok: true, omissions: ['point-clouds'] };
+    };
+    const unsubscribe = subscribeViewportHealth(h.source);
+    try {
+      h.listeners.deviceLost[0]({ message: SAFARI_LOST, reason: 'unknown' });
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      assert.deepStrictEqual(order, ['cancel', 'recover']);
+      assert.strictEqual(useViewerStore.getState().activeStreamCanceller, null);
+    } finally {
+      unsubscribe();
+      useViewerStore.getState().setActiveStreamCanceller(null);
+    }
+  });
+
+  it('invalidates deviation results when recovery omits point clouds (#4885)', async () => {
+    const h = makeSource();
+    h.source.recoverDevice = async () => ({ ok: true, omissions: ['point-clouds'] });
+    useViewerStore.setState({
+      models: new Map([['scan', { id: 'scan', pointCloudHandleId: 7 } as never]]),
+      pointCloudDeviationComputed: true,
+      pointCloudAssetCount: 1,
+    });
+    const unsubscribe = subscribeViewportHealth(h.source);
+    try {
+      h.listeners.deviceLost[0]({ message: SAFARI_LOST, reason: 'unknown' });
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      const state = useViewerStore.getState();
+      assert.strictEqual(state.models.get('scan')?.pointCloudHandleId, undefined);
+      assert.strictEqual(state.pointCloudDeviationComputed, false);
+      assert.strictEqual(state.pointCloudAssetCount, 0);
+    } finally {
+      unsubscribe();
+      useViewerStore.setState({ models: new Map(), pointCloudDeviationComputed: false, pointCloudAssetCount: 0 });
+    }
   });
 
   it('a context builder that throws costs the enrichment, never the base report', () => {

@@ -309,19 +309,19 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
     {
       name: 'compare/ChangeDetailView data-count parenthetical',
       file: CHANGE_DETAIL_VIEW,
-      anchor: 'Data <span ',
+      anchor: "{t('comparePanel.changeDetail.dataLabel')} <span ",
       surface: 'bg-background',
     },
     {
       name: 'compare/ChangeDetailView moved-delta detail',
       file: CHANGE_DETAIL_VIEW,
-      anchor: "{fmt(summary.movedDistance)} m\n          <span ",
+      anchor: "{moved && (\n        <div ",
       surface: 'bg-background',
     },
     {
       name: 'compare/ChangeDetailView reshaped-delta detail',
       file: CHANGE_DETAIL_VIEW,
-      anchor: "size{' '}\n          <span ",
+      anchor: "{summary.reshaped && (\n        <div ",
       surface: 'bg-background',
     },
     {

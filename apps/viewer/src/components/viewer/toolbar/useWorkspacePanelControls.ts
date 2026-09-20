@@ -255,6 +255,7 @@ export function useWorkspacePanelControls() {
     if (sidebarActivePanel === 'zones') panels.add('zones');
     if (sidebarActivePanel === 'appearance') panels.add('appearance');
     if (sidebarActivePanel === 'loadReport') panels.add('loadReport');
+    if (sidebarActivePanel === 'cost') panels.add('cost');
     if (analysisExtensionState.activeId) panels.add(analysisExtensionState.activeId);
     return panels;
   }, [
@@ -298,6 +299,7 @@ export function useWorkspacePanelControls() {
     if (activeWorkspacePanels.has('zones')) return 'Location Zones';
     if (activeWorkspacePanels.has('appearance')) return 'Appearance';
     if (activeWorkspacePanels.has('loadReport')) return 'Load Report';
+    if (activeWorkspacePanels.has('cost')) return 'Cost';
     return activeAnalysisExtension?.label ?? 'Analysis';
   }, [activeAnalysisExtension?.label, activeWorkspacePanels]);
 

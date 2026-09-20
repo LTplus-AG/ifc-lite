@@ -65,7 +65,7 @@ import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeVi
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
-import { Filter, Upload, Pencil, DraftingCompass, Box, Cloud } from 'lucide-react';
+import { Filter, Upload, Pencil, DraftingCompass, Box, Cloud, FileWarning, Coins } from 'lucide-react';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
@@ -617,6 +617,25 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           >
             <Box className="h-4 w-4 mr-2" />
             {t('mainToolbar.locationZones')}
+          </DropdownMenuCheckboxItem>
+          {/* Per-model load report (#3927): reachable from a toolbar for the
+              first time — it shipped ribbon-only, the ActivityBar rail was
+              classic's only entry point. */}
+          <DropdownMenuCheckboxItem
+            checked={activeWorkspacePanels.has('loadReport')}
+            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('loadReport')}
+          >
+            <FileWarning className="h-4 w-4 mr-2" />
+            {t('mainToolbar.loadReport')}
+          </DropdownMenuCheckboxItem>
+          {/* IFC 5D cost inspector (#4858): reachable from a toolbar for the
+              first time — the ActivityBar rail was its only entry point. */}
+          <DropdownMenuCheckboxItem
+            checked={activeWorkspacePanels.has('cost')}
+            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('cost')}
+          >
+            <Coins className="h-4 w-4 mr-2" />
+            {t('mainToolbar.cost')}
           </DropdownMenuCheckboxItem>
           {collabEnabled && (
             <DropdownMenuCheckboxItem

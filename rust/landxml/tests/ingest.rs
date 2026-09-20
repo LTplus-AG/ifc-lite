@@ -1047,6 +1047,27 @@ fn issue_5045_charges_roadway_and_section_reference_attributes() {
 }
 
 #[test]
+fn issue_5045_refuses_roadway_diagnostics_at_the_configured_low_budget() {
+    let source = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Roadways><Roadway name="route" alignmentRefs="missing-a missing-b" surfaceRefs="missing-s" gradeModelRefs="missing-grade"/></Roadways></LandXML>"#
+    );
+    for max_capability_diagnostics in [0, 1] {
+        let cancellation = CancelsAfterPolls::new(200);
+        let limits = LandXmlLimits {
+            max_capability_diagnostics,
+            ..LandXmlLimits::default()
+        };
+        assert_eq!(
+            parse_landxml_tin_with_cancel(source.as_bytes(), &limits, Some(&cancellation))
+                .unwrap_err()
+                .code,
+            LandXmlDiagnosticCode::LimitExceeded,
+            "diagnostic budget {max_capability_diagnostics} must reject while finalizing the first excess reference"
+        );
+    }
+}
+
+#[test]
 fn issue_5045_evaluates_grade_parabolic_and_circular_vertical_geometry() {
     use ifc_lite_landxml::{
         LandXmlProfile, LandXmlProfilePoint, LandXmlSourceId, LandXmlVerticalCurve,
@@ -1100,17 +1121,142 @@ fn issue_5045_evaluates_grade_parabolic_and_circular_vertical_geometry() {
     );
     assert!((parabolic.evaluate_elevation_at(50.0).unwrap().unwrap() - 1.0).abs() < 1.0e-12);
 
-    // Independent circular probe: y(x) = R - sqrt(R² - x²) for an
-    // initially level 100 m-radius curve.  The next PVI supplies tan(theta).
+    // Independent circular probe from a circle tangent to both PVI lines.
+    // The PVI lies off the midpoint for the grade change; the evaluator must
+    // derive those tangent bounds instead of assuming 10 m either side.
     let circular = profile(
         LandXmlVerticalCurveKind::Circular,
         Some(100.0),
         10.0 / 0.96_f64.sqrt(),
     );
-    let expected = 100.0 - 9_900.0_f64.sqrt();
+    let outgoing_grade = 10.0 / (50.0 * 0.96_f64.sqrt());
+    let tangent_start = (100.0 - 9_600.0_f64.sqrt() - outgoing_grade * 20.0) / outgoing_grade;
+    let local_station = -tangent_start;
+    let expected = 100.0 - (10_000.0 - local_station * local_station).sqrt();
     let actual = circular.evaluate_elevation_at(50.0).unwrap().unwrap();
     assert!(
         (actual - expected).abs() < 1.0e-10,
         "actual={actual}, expected={expected}"
+    );
+}
+
+#[test]
+fn issue_5045_unsymmetrical_parabolas_preserve_both_tangents_and_c1_join() {
+    use ifc_lite_landxml::{
+        LandXmlProfile, LandXmlProfilePoint, LandXmlSourceId, LandXmlVerticalCurve,
+    };
+
+    let profile = |pvi_elevation, after_elevation| LandXmlProfile {
+        source_id: LandXmlSourceId("profile".to_owned()),
+        parent_alignment_source_id: LandXmlSourceId("alignment".to_owned()),
+        ordinal: 1,
+        name: "design".to_owned(),
+        kind: LandXmlProfileKind::Design,
+        pvis: vec![
+            LandXmlProfilePoint {
+                source_id: LandXmlSourceId("before".to_owned()),
+                station: 0.0,
+                elevation: Some(0.0),
+            },
+            LandXmlProfilePoint {
+                source_id: LandXmlSourceId("pvi".to_owned()),
+                station: 50.0,
+                elevation: Some(pvi_elevation),
+            },
+            LandXmlProfilePoint {
+                source_id: LandXmlSourceId("after".to_owned()),
+                station: 100.0,
+                elevation: Some(after_elevation),
+            },
+        ],
+        grade_lines: Vec::new(),
+        vertical_curves: vec![LandXmlVerticalCurve {
+            source_id: LandXmlSourceId("curve".to_owned()),
+            parent_profile_source_id: LandXmlSourceId("profile".to_owned()),
+            kind: LandXmlVerticalCurveKind::UnsymmetricalParabolic,
+            station: 50.0,
+            elevation: Some(pvi_elevation),
+            length: None,
+            length_in: Some(20.0),
+            length_out: Some(40.0),
+            radius: None,
+        }],
+    };
+    for (pvi_elevation, after_elevation, incoming_grade, outgoing_grade) in
+        [(5.0, 0.0, 0.1, -0.1), (-5.0, 0.0, -0.1, 0.1)]
+    {
+        let curve = profile(pvi_elevation, after_elevation);
+        let elevation = |station| curve.evaluate_elevation_at(station).unwrap().unwrap();
+        assert!((elevation(30.0) - (pvi_elevation - incoming_grade * 20.0)).abs() < 1.0e-12);
+        assert!((elevation(90.0) - (pvi_elevation + outgoing_grade * 40.0)).abs() < 1.0e-12);
+        let epsilon = 1.0e-5;
+        let left_slope = (elevation(50.0) - elevation(50.0 - epsilon)) / epsilon;
+        let right_slope = (elevation(50.0 + epsilon) - elevation(50.0)) / epsilon;
+        assert!((left_slope - right_slope).abs() < 1.0e-7);
+        let start_slope = (elevation(30.0 + epsilon) - elevation(30.0)) / epsilon;
+        let end_slope = (elevation(90.0) - elevation(90.0 - epsilon)) / epsilon;
+        assert!((start_slope - incoming_grade).abs() < 1.0e-7);
+        assert!((end_slope - outgoing_grade).abs() < 1.0e-7);
+    }
+}
+
+#[test]
+fn issue_5045_circular_curves_use_tangent_bounds_and_reject_inconsistent_inputs() {
+    use ifc_lite_landxml::{
+        LandXmlProfile, LandXmlProfileEvaluationError, LandXmlProfilePoint, LandXmlSourceId,
+        LandXmlVerticalCurve,
+    };
+
+    let circular = |length, radius| LandXmlProfile {
+        source_id: LandXmlSourceId("profile".to_owned()),
+        parent_alignment_source_id: LandXmlSourceId("alignment".to_owned()),
+        ordinal: 1,
+        name: "design".to_owned(),
+        kind: LandXmlProfileKind::Design,
+        pvis: vec![
+            LandXmlProfilePoint {
+                source_id: LandXmlSourceId("before".to_owned()),
+                station: 0.0,
+                elevation: Some(0.0),
+            },
+            LandXmlProfilePoint {
+                source_id: LandXmlSourceId("pvi".to_owned()),
+                station: 50.0,
+                elevation: Some(0.0),
+            },
+            LandXmlProfilePoint {
+                source_id: LandXmlSourceId("after".to_owned()),
+                station: 100.0,
+                elevation: Some(10.0 / 0.96_f64.sqrt()),
+            },
+        ],
+        grade_lines: Vec::new(),
+        vertical_curves: vec![LandXmlVerticalCurve {
+            source_id: LandXmlSourceId("curve".to_owned()),
+            parent_profile_source_id: LandXmlSourceId("profile".to_owned()),
+            kind: LandXmlVerticalCurveKind::Circular,
+            station: 50.0,
+            elevation: Some(0.0),
+            length: Some(length),
+            length_in: None,
+            length_out: None,
+            radius: Some(radius),
+        }],
+    };
+    let curve = circular(20.0, 100.0);
+    let elevation = |station| curve.evaluate_elevation_at(station).unwrap().unwrap();
+    let outgoing_grade = 10.0 / (50.0 * 0.96_f64.sqrt());
+    let start = 50.0 + ((100.0 - 9_600.0_f64.sqrt() - outgoing_grade * 20.0) / outgoing_grade);
+    let end = start + 20.0;
+    assert!(elevation(start).abs() < 1.0e-10);
+    assert!((elevation(end) - outgoing_grade * (end - 50.0)).abs() < 1.0e-10);
+    let epsilon = 1.0e-5;
+    let start_slope = (elevation(start + epsilon) - elevation(start)) / epsilon;
+    let end_slope = (elevation(end) - elevation(end - epsilon)) / epsilon;
+    assert!(start_slope.abs() < 1.0e-7);
+    assert!((end_slope - outgoing_grade).abs() < 1.0e-7);
+    assert_eq!(
+        circular(19.0, 100.0).evaluate_elevation_at(50.0),
+        Err(LandXmlProfileEvaluationError::InconsistentCircularCurve),
     );
 }

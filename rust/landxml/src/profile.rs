@@ -162,7 +162,7 @@ impl LandXmlProfile {
             let incoming_grade = (pvi_elevation - before_elevation) / incoming_run;
             let outgoing_grade = (after_elevation - pvi_elevation) / outgoing_run;
             let (length_in, length_out) = match curve.kind {
-                LandXmlVerticalCurveKind::Parabolic | LandXmlVerticalCurveKind::Circular => {
+                LandXmlVerticalCurveKind::Parabolic => {
                     let Some(length) = curve.length.filter(|value| *value > 0.0) else {
                         return Err(LandXmlProfileEvaluationError::InvalidCurveDeclaration);
                     };
@@ -178,43 +178,65 @@ impl LandXmlProfile {
                     }
                     (length_in, length_out)
                 }
+                // A circular curve's declared `length` is its station span,
+                // not two equal tangent lengths about the PVI.  Its tangent
+                // intersection is generally off the midpoint when the grades
+                // differ.  The exact bounds are derived below from the
+                // declared radius and both tangent grades.
+                LandXmlVerticalCurveKind::Circular => (0.0, 0.0),
             };
-            let start = pvi.station - length_in;
-            let end = pvi.station + length_out;
-            if station < start || station > end {
-                continue;
-            }
-            let x = station - start;
-            let start_elevation = pvi_elevation - incoming_grade * length_in;
-            let total = length_in + length_out;
             return match curve.kind {
-                LandXmlVerticalCurveKind::Parabolic => Ok(Some(
-                    start_elevation
-                        + incoming_grade * x
-                        + (outgoing_grade - incoming_grade) * x * x / (2.0 * total),
-                )),
+                LandXmlVerticalCurveKind::Parabolic => {
+                    let start = pvi.station - length_in;
+                    let end = pvi.station + length_out;
+                    if station < start || station > end {
+                        continue;
+                    }
+                    let x = station - start;
+                    let start_elevation = pvi_elevation - incoming_grade * length_in;
+                    let total = length_in + length_out;
+                    Ok(Some(
+                        start_elevation
+                            + incoming_grade * x
+                            + (outgoing_grade - incoming_grade) * x * x / (2.0 * total),
+                    ))
+                }
                 LandXmlVerticalCurveKind::UnsymmetricalParabolic => {
-                    // A single quadratic cannot have its tangent intersection
-                    // away from the midpoint.  LandXML's asymmetric form is
-                    // therefore two parabolic halves joined at the PVI; each
-                    // half uses the same constant rate of grade change.
-                    let rate = (outgoing_grade - incoming_grade) / total;
+                    let start = pvi.station - length_in;
+                    let end = pvi.station + length_out;
+                    if station < start || station > end {
+                        continue;
+                    }
+                    let start_elevation = pvi_elevation - incoming_grade * length_in;
+                    let total = length_in + length_out;
+                    let change = outgoing_grade - incoming_grade;
+                    // The two legs meet at the PVI station, but the PVI is
+                    // the tangent intersection, not a point on the curve.
+                    // Solving both tangent endpoints and C1 continuity gives
+                    // distinct rates for unequal legs.  Reusing one global
+                    // quadratic leaves one tangent endpoint discontinuous.
+                    let incoming_rate = change * length_out / (length_in * total);
+                    let outgoing_rate = change * length_in / (length_out * total);
+                    let x = station - start;
                     if x <= length_in {
                         Ok(Some(
-                            start_elevation + incoming_grade * x + rate * x * x / 2.0,
+                            start_elevation + incoming_grade * x + incoming_rate * x * x / 2.0,
                         ))
                     } else {
                         let at_pvi = start_elevation
                             + incoming_grade * length_in
-                            + rate * length_in * length_in / 2.0;
-                        let pvi_grade = incoming_grade + rate * length_in;
+                            + incoming_rate * length_in * length_in / 2.0;
+                        let pvi_grade = incoming_grade + incoming_rate * length_in;
                         let local = x - length_in;
                         Ok(Some(
-                            at_pvi + pvi_grade * local + rate * local * local / 2.0,
+                            at_pvi + pvi_grade * local + outgoing_rate * local * local / 2.0,
                         ))
                     }
                 }
                 LandXmlVerticalCurveKind::Circular => {
+                    let Some(total) = curve.length.filter(|value| *value > 0.0) else {
+                        return Err(LandXmlProfileEvaluationError::InvalidCurveDeclaration);
+                    };
                     let Some(radius) = curve.radius.filter(|value| *value > 0.0) else {
                         return Err(LandXmlProfileEvaluationError::InvalidCurveDeclaration);
                     };
@@ -224,12 +246,31 @@ impl LandXmlProfile {
                     let sine_out = theta_out.sin();
                     let change = sine_out - sine_in;
                     if change.abs() <= f64::EPSILON {
-                        return Ok(Some(start_elevation + incoming_grade * x));
+                        return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
                     }
                     let curvature = change.signum() / radius;
                     if (change - curvature * total).abs() > 1.0e-8_f64.max(total * 1.0e-8) {
                         return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
                     }
+                    let rise = ((1.0 - sine_in * sine_in).sqrt()
+                        - (1.0 - sine_out * sine_out).sqrt())
+                        / curvature;
+                    let grade_change = outgoing_grade - incoming_grade;
+                    if grade_change.abs() <= f64::EPSILON {
+                        return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
+                    }
+                    let start_relative_to_pvi = (rise - outgoing_grade * total) / grade_change;
+                    let end_relative_to_pvi = start_relative_to_pvi + total;
+                    if start_relative_to_pvi >= 0.0 || end_relative_to_pvi <= 0.0 {
+                        return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
+                    }
+                    let start = pvi.station + start_relative_to_pvi;
+                    let end = pvi.station + end_relative_to_pvi;
+                    if station < start || station > end {
+                        continue;
+                    }
+                    let x = station - start;
+                    let start_elevation = pvi_elevation + incoming_grade * start_relative_to_pvi;
                     let sine = sine_in + curvature * x;
                     if sine.abs() > 1.0 + 1.0e-12 {
                         return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);

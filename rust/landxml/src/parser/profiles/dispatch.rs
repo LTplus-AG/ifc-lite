@@ -163,80 +163,91 @@ impl Parser<'_> {
                 .or_default()
                 .push(surface.source_id.clone());
         }
-        let mut diagnostics = Vec::new();
         // Temporarily move these bounded collections out so each inner loop
         // can poll the parser cancellation hook without aliasing its output.
         let mut roadways = std::mem::take(&mut self.roadways);
-        for roadway in &mut roadways {
-            for reference in &roadway.alignment_refs {
-                self.check_cancel_and_work(1)?;
-                match unique_reference(&alignment_ids, reference) {
-                    Ok(source_id) => roadway.alignment_source_ids.push(source_id),
-                    Err(ReferenceResolution::Missing) => diagnostics.push(missing_reference(
-                        &roadway.source_id,
-                        "LandXML/Roadways/Roadway/@alignmentRefs",
-                        "Roadway",
-                        "Alignment",
-                        reference,
-                    )),
-                    Err(ReferenceResolution::Ambiguous) => diagnostics.push(ambiguous_reference(
-                        &roadway.source_id,
-                        "LandXML/Roadways/Roadway/@alignmentRefs",
-                        "Roadway",
-                        "Alignment",
-                        reference,
-                    )),
-                }
-            }
-            for reference in &roadway.surface_refs {
-                self.check_cancel_and_work(1)?;
-                match unique_reference(&surface_ids, reference) {
-                    Ok(source_id) => roadway.surface_source_ids.push(source_id),
-                    Err(ReferenceResolution::Missing) => diagnostics.push(missing_reference(
-                        &roadway.source_id,
-                        "LandXML/Roadways/Roadway/@surfaceRefs",
-                        "Roadway",
-                        "Surface",
-                        reference,
-                    )),
-                    Err(ReferenceResolution::Ambiguous) => diagnostics.push(ambiguous_reference(
-                        &roadway.source_id,
-                        "LandXML/Roadways/Roadway/@surfaceRefs",
-                        "Roadway",
-                        "Surface",
-                        reference,
-                    )),
-                }
-            }
-            for reference in &roadway.grade_model_refs {
-                self.check_cancel_and_work(1)?;
-                diagnostics.push(LandXmlCapabilityDiagnostic {
-                    code: LandXmlCapabilityDiagnosticCode::UnsupportedGradeModelReference,
-                    source_id: Some(roadway.source_id.clone()),
-                    source_path: "LandXML/Roadways/Roadway/@gradeModelRefs".to_owned(),
-                    message: format!("Roadway retains GradeModel reference \"{reference}\"; GradeModel source records are not supported"),
-                });
-            }
-        }
-        self.roadways = roadways;
         let mut cross_section_surfaces = std::mem::take(&mut self.cross_section_surfaces);
-        for surface in &mut cross_section_surfaces {
-            for point in &mut surface.points {
-                self.check_cancel_and_work(1)?;
-                if let Some(reference) = &point.alignment_ref {
+        let result = (|| -> Result<()> {
+            for roadway in &mut roadways {
+                for reference in &roadway.alignment_refs {
+                    self.check_cancel_and_work(1)?;
                     match unique_reference(&alignment_ids, reference) {
-                    Ok(source_id) => point.alignment_source_id = Some(source_id),
-                    Err(ReferenceResolution::Missing) => diagnostics.push(missing_reference(&point.source_id, "LandXML/Alignments/Alignment/CrossSects/CrossSect/DesignCrossSectSurf/CrossSectPnt/@alignRef", "CrossSectPnt", "Alignment", reference)),
-                    Err(ReferenceResolution::Ambiguous) => diagnostics.push(ambiguous_reference(&point.source_id, "LandXML/Alignments/Alignment/CrossSects/CrossSect/DesignCrossSectSurf/CrossSectPnt/@alignRef", "CrossSectPnt", "Alignment", reference)),
+                        Ok(source_id) => roadway.alignment_source_ids.push(source_id),
+                        Err(ReferenceResolution::Missing) => {
+                            self.record_capability_diagnostic(missing_reference(
+                                &roadway.source_id,
+                                "LandXML/Roadways/Roadway/@alignmentRefs",
+                                "Roadway",
+                                "Alignment",
+                                reference,
+                            ))?
+                        }
+                        Err(ReferenceResolution::Ambiguous) => {
+                            self.record_capability_diagnostic(ambiguous_reference(
+                                &roadway.source_id,
+                                "LandXML/Roadways/Roadway/@alignmentRefs",
+                                "Roadway",
+                                "Alignment",
+                                reference,
+                            ))?
+                        }
+                    }
                 }
+                for reference in &roadway.surface_refs {
+                    self.check_cancel_and_work(1)?;
+                    match unique_reference(&surface_ids, reference) {
+                        Ok(source_id) => roadway.surface_source_ids.push(source_id),
+                        Err(ReferenceResolution::Missing) => {
+                            self.record_capability_diagnostic(missing_reference(
+                                &roadway.source_id,
+                                "LandXML/Roadways/Roadway/@surfaceRefs",
+                                "Roadway",
+                                "Surface",
+                                reference,
+                            ))?
+                        }
+                        Err(ReferenceResolution::Ambiguous) => {
+                            self.record_capability_diagnostic(ambiguous_reference(
+                                &roadway.source_id,
+                                "LandXML/Roadways/Roadway/@surfaceRefs",
+                                "Roadway",
+                                "Surface",
+                                reference,
+                            ))?
+                        }
+                    }
+                }
+                for reference in &roadway.grade_model_refs {
+                    self.check_cancel_and_work(1)?;
+                    self.record_capability_diagnostic(LandXmlCapabilityDiagnostic {
+                        code: LandXmlCapabilityDiagnosticCode::UnsupportedGradeModelReference,
+                        source_id: Some(roadway.source_id.clone()),
+                        source_path: "LandXML/Roadways/Roadway/@gradeModelRefs".to_owned(),
+                        message: format!("Roadway retains GradeModel reference \"{reference}\"; GradeModel source records are not supported"),
+                    })?;
                 }
             }
-        }
+            for surface in &mut cross_section_surfaces {
+                for point in &mut surface.points {
+                    self.check_cancel_and_work(1)?;
+                    if let Some(reference) = &point.alignment_ref {
+                        match unique_reference(&alignment_ids, reference) {
+                            Ok(source_id) => point.alignment_source_id = Some(source_id),
+                            Err(ReferenceResolution::Missing) => self.record_capability_diagnostic(
+                                missing_reference(&point.source_id, "LandXML/Alignments/Alignment/CrossSects/CrossSect/DesignCrossSectSurf/CrossSectPnt/@alignRef", "CrossSectPnt", "Alignment", reference),
+                            )?,
+                            Err(ReferenceResolution::Ambiguous) => self.record_capability_diagnostic(
+                                ambiguous_reference(&point.source_id, "LandXML/Alignments/Alignment/CrossSects/CrossSect/DesignCrossSectSurf/CrossSectPnt/@alignRef", "CrossSectPnt", "Alignment", reference),
+                            )?,
+                        }
+                    }
+                }
+            }
+            Ok(())
+        })();
+        self.roadways = roadways;
         self.cross_section_surfaces = cross_section_surfaces;
-        for diagnostic in diagnostics {
-            self.record_capability_diagnostic(diagnostic)?;
-        }
-        Ok(())
+        result
     }
 
     pub(in super::super) fn finish_road_element(&mut self) -> Result<()> {

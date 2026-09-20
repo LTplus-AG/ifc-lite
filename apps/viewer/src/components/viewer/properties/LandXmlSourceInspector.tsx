@@ -87,6 +87,47 @@ function surfacePropertyRows(properties: Record<string, string>): Array<readonly
   return Object.entries(properties).sort(([left], [right]) => left.localeCompare(right));
 }
 
+type SemanticRow = { label: string; value: string; sourceId?: string };
+
+/** Small, explicit review fields keep source inspection useful without serializing retained geometry. */
+function semanticRows(record: Exclude<LandXmlSourceRecord, { kind: 'surface' | 'point' | 'source-data-point' | 'face' | 'boundary' | 'breakline' | 'contour' }>): SemanticRow[] {
+  switch (record.kind) {
+    case 'alignment': return [
+      { label: 'Length', value: String(record.alignment.length) },
+      { label: 'Start station', value: String(record.alignment.staStart) },
+      ...record.alignment.profileSourceIds.map((sourceId) => ({ label: 'Profile', value: sourceId, sourceId })),
+      ...record.alignment.crossSectionSourceIds.map((sourceId) => ({ label: 'Cross section', value: sourceId, sourceId })),
+    ];
+    case 'profile': return [
+      { label: 'Profile kind', value: record.profile.kind },
+      { label: 'Parent alignment', value: record.profile.parentAlignmentSourceId, sourceId: record.profile.parentAlignmentSourceId },
+      { label: 'PVIs', value: String(record.profile.pvis.length) },
+      { label: 'Vertical curves', value: String(record.profile.verticalCurves.length) },
+      { label: 'Sampled grade lines', value: String(record.profile.gradeLines.length) },
+    ];
+    case 'cross-section': return [
+      { label: 'Station', value: String(record.crossSection.station) },
+      { label: 'Parent alignment', value: record.crossSection.parentAlignmentSourceId, sourceId: record.crossSection.parentAlignmentSourceId },
+      ...record.crossSection.surfaceSourceIds.map((sourceId) => ({ label: 'Cross-section surface', value: sourceId, sourceId })),
+    ];
+    case 'cross-section-surface': return [
+      { label: 'Surface kind', value: record.crossSectionSurface.kind },
+      { label: 'Parent cross section', value: record.crossSectionSurface.parentCrossSectionSourceId, sourceId: record.crossSectionSurface.parentCrossSectionSourceId },
+      { label: 'Segments', value: String(record.crossSectionSurface.segments.length) },
+      { label: 'Points', value: String(record.crossSectionSurface.points.length) },
+    ];
+    case 'roadway': return [
+      ...record.roadway.alignmentSourceIds.map((sourceId) => ({ label: 'Alignment', value: sourceId, sourceId })),
+      ...record.roadway.surfaceSourceIds.map((sourceId) => ({ label: 'Terrain surface', value: sourceId, sourceId })),
+      ...record.roadway.gradeModelRefs.map((reference) => ({ label: 'Unsupported GradeModel reference', value: reference })),
+    ];
+    case 'preserved-extension': return [
+      { label: 'Extension kind', value: record.extension.kind },
+      ...(record.extension.parentSourceId ? [{ label: 'Parent source', value: record.extension.parentSourceId, sourceId: record.extension.parentSourceId }] : []),
+    ];
+  }
+}
+
 /** Inspect retained LandXML source records without pretending they are IFC entities. */
 export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSourceInspectorProps) {
   const { t } = useTranslation();
@@ -101,12 +142,18 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
   if (!record) return null;
   const document = models.get(selected.modelId)?.landXmlDocument;
   if (!('surface' in record)) {
+    const rows = semanticRows(record);
     return <div className="h-full overflow-auto border-l-2 border-zinc-200 bg-white p-4 text-xs dark:border-zinc-800 dark:bg-black" data-landxml-source-inspector>
       <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">{t('properties.landXmlSource.heading')}</p>
       <h3 className="mt-2 truncate text-sm font-bold uppercase tracking-tight text-zinc-900 dark:text-zinc-100">{recordName(record)}</h3>
       <p className="mt-1 break-all font-mono text-xs text-zinc-500">{recordPath(record)}</p>
       <p className="mt-3"><span className="font-semibold">{t('properties.landXmlSource.kind')}:</span> {record.kind}</p>
-      <pre className="mt-3 overflow-auto rounded bg-zinc-50 p-2 text-[10px] dark:bg-zinc-900">{JSON.stringify(record, null, 2)}</pre>
+      <dl className="mt-3 space-y-2">
+        {rows.map((row, index) => <div key={`${row.label}:${row.value}:${index}`} className="flex gap-2">
+          <dt className="shrink-0 font-semibold text-zinc-500">{row.label}</dt>
+          <dd className="min-w-0 break-all">{row.sourceId ? <button type="button" className="text-left text-primary underline" onClick={() => onSelect({ modelId: selected.modelId, sourceId: row.sourceId! })}>{row.value}</button> : row.value}</dd>
+        </div>)}
+      </dl>
     </div>;
   }
   const sourceCount = document?.rendering.surfaceCounts.find((counts) => counts.surfaceSourceId === record.surface.sourceId);

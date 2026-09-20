@@ -67,4 +67,24 @@ describe('LandXmlSourceInspector (#5042)', () => {
     assert.ok([...ui.querySelectorAll('button')].some((button) => button.textContent === 'Point: P100'));
     cleanup();
   });
+
+  it('inspects profile links as bounded review fields rather than serialized source JSON', () => {
+    const profileDocument = {
+      ...document(),
+      profiles: [{ sourceId: 'profile', parentAlignmentSourceId: 'alignment', ordinal: 1, name: 'design', kind: 'design' as const, pvis: [], verticalCurves: [], gradeLines: [] }],
+    };
+    const selected: string[] = [];
+    const ui = render(<LandXmlSourceInspector
+      models={new Map([['terrain', { landXmlDocument: profileDocument }]])}
+      selected={{ modelId: 'terrain', sourceId: 'profile' }}
+      onSelect={(ref) => selected.push(`${ref.modelId}:${ref.sourceId}`)}
+    />);
+    assert.match(ui.textContent ?? '', /Parent alignment/);
+    assert.equal(ui.querySelector('pre'), null);
+    const parent = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'alignment');
+    assert.ok(parent);
+    click(parent);
+    assert.deepEqual(selected, ['terrain:alignment']);
+    cleanup();
+  });
 });

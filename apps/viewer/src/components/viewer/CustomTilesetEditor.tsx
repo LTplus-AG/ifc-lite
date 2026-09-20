@@ -15,12 +15,14 @@
 
 import { useState } from 'react';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { validateTilesetUrl } from '@/lib/geo/custom-3dtiles';
 
 const FIELD_CLASS = 'w-full bg-muted/40 rounded px-1.5 py-1 border text-foreground text-[10px]';
 const LABEL_CLASS = 'text-[9px] uppercase tracking-wider text-muted-foreground';
 
 export function CustomTilesetEditor() {
+  const { t } = useTranslation();
   const stored = useViewerStore((s) => s.cesiumCustomTilesetUrl);
   const saveUrl = useViewerStore((s) => s.setCesiumCustomTilesetUrl);
 
@@ -45,12 +47,12 @@ export function CustomTilesetEditor() {
   return (
     <div className="flex flex-col gap-1 pt-1 border-t">
       <label className="flex flex-col gap-0.5">
-        <span className={LABEL_CLASS}>3D Tiles URL</span>
+        <span className={LABEL_CLASS}>{t('cesiumGeo.tileset.urlLabel')}</span>
         <input
-          aria-label="3D Tiles URL"
+          aria-label={t('cesiumGeo.tileset.urlLabel')}
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://example.org/tileset.json"
+          placeholder={t('cesiumGeo.tileset.urlPlaceholder')}
           spellCheck={false}
           className={FIELD_CLASS}
         />
@@ -59,7 +61,7 @@ export function CustomTilesetEditor() {
       {/* Privacy, same disclosure as the XYZ basemap: a custom tileset sends
           the viewport to a third party on every pan. */}
       <p className="text-[9px] leading-tight text-muted-foreground">
-        The tileset is requested straight from this server, so it sees where you pan and zoom.
+        {t('cesiumGeo.tileset.privacyNote')}
       </p>
 
       <div className="flex items-center gap-1">
@@ -68,7 +70,7 @@ export function CustomTilesetEditor() {
           onClick={onSave}
           className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase bg-primary text-primary-foreground"
         >
-          Save tileset
+          {t('cesiumGeo.tileset.saveButton')}
         </button>
         {stored && (
           <button
@@ -76,7 +78,7 @@ export function CustomTilesetEditor() {
             onClick={onRemove}
             className="px-2 py-0.5 rounded text-[10px] uppercase text-muted-foreground hover:bg-muted hover:text-foreground"
           >
-            Remove
+            {t('cesiumGeo.shared.removeButton')}
           </button>
         )}
       </div>

@@ -65,9 +65,7 @@ fn evaluate_irregular(
     value: &LandXmlIrregularLine,
     distance: f64,
 ) -> Result<(LandXmlPlanPoint, (f64, f64))> {
-    let mut points = vec![coordinates(id, &value.start)?];
-    points.extend(value.points.iter().copied());
-    points.push(coordinates(id, &value.end)?);
+    let points = irregular_vertices(id, value)?;
     let mut remaining = distance;
     for pair in points.windows(2) {
         let length = distance_between(pair[0], pair[1]);
@@ -90,14 +88,14 @@ fn evaluate_curve(
     let (start_angle, signed_sweep, length, center, radius) = curve_geometry(id, value)?;
     let angle = start_angle + signed_sweep * (distance / length).clamp(0.0, 1.0);
     let point = LandXmlPlanPoint {
-        northing: center.northing + radius * angle.cos(),
-        easting: center.easting + radius * angle.sin(),
+        northing: center.northing + radius * angle.sin(),
+        easting: center.easting + radius * angle.cos(),
         elevation: None,
     };
     let sign = signed_sweep.signum();
     Ok((
         point,
-        normalize((-sign * angle.sin(), sign * angle.cos()), id)?,
+        normalize((sign * angle.cos(), -sign * angle.sin()), id)?,
     ))
 }
 fn evaluate_clothoid(
@@ -114,6 +112,7 @@ fn evaluate_clothoid(
     }
     let start = coordinates(id, &value.start)?;
     let end = coordinates(id, &value.end)?;
+    let pi = coordinates(id, &value.pi)?;
     let length = valid_length(id, value.declared_length)?;
     let (k0, k1) = (
         curvature(id, value.radius_start)?,
@@ -121,25 +120,34 @@ fn evaluate_clothoid(
     );
     let signed = value.rotation.sign();
     let local_end = clothoid_integral(length, length, signed * k0, signed * k1)?;
-    let heading = (end.easting - start.easting).atan2(end.northing - start.northing)
+    // Work in conventional (Easting, Northing) coordinates. LandXML text is
+    // N/E ordered, but that ordering must not mirror curve handedness.
+    let heading = (end.northing - start.northing).atan2(end.easting - start.easting)
         - local_end.1.atan2(local_end.0);
+    let computed_end = transform_local(start, local_end, heading);
+    let tolerance = geometry_tolerance(length);
+    if distance_between(computed_end, end) > tolerance {
+        return Err(diagnostic(
+            id,
+            "LXMLA216",
+            "clothoid endpoint is inconsistent with length and radii",
+        ));
+    }
+    let end_theta = heading + signed * (k0 * length + 0.5 * (k1 - k0) * length);
+    if tangent_line_distance(start, pi, heading) > tolerance
+        || tangent_line_distance(end, pi, end_theta) > tolerance
+    {
+        return Err(diagnostic(
+            id,
+            "LXMLA217",
+            "clothoid PI is inconsistent with endpoint tangents",
+        ));
+    }
     let d = distance.clamp(0.0, length);
     let local = clothoid_integral(d, length, signed * k0, signed * k1)?;
-    let (sin, cos) = heading.sin_cos();
-    let point = LandXmlPlanPoint {
-        northing: start.northing + local.0 * cos - local.1 * sin,
-        easting: start.easting + local.0 * sin + local.1 * cos,
-        elevation: None,
-    };
+    let point = transform_local(start, local, heading);
     let theta = heading + signed * (k0 * d + 0.5 * (k1 - k0) * d * d / length);
-    Ok((
-        if (length - d).abs() <= EPSILON {
-            end
-        } else {
-            point
-        },
-        (theta.cos(), theta.sin()),
-    ))
+    Ok((point, (theta.sin(), theta.cos())))
 }
 fn curve_geometry(
     id: &LandXmlSourceId,
@@ -159,8 +167,8 @@ fn curve_geometry(
             "curve radius and endpoints are inconsistent",
         ));
     }
-    let start_angle = (start.easting - center.easting).atan2(start.northing - center.northing);
-    let end_angle = (end.easting - center.easting).atan2(end.northing - center.northing);
+    let start_angle = (start.northing - center.northing).atan2(start.easting - center.easting);
+    let end_angle = (end.northing - center.northing).atan2(end.easting - center.easting);
     let sweep = sweep(start_angle, end_angle, value.rotation);
     let length = valid_length(id, value.declared_length.unwrap_or(radius * sweep.abs()))?;
     Ok((start_angle, sweep, length, center, radius))
@@ -175,9 +183,7 @@ fn line_length(id: &LandXmlSourceId, value: &LandXmlLine) -> Result<f64> {
     )
 }
 fn irregular_length(id: &LandXmlSourceId, value: &LandXmlIrregularLine) -> Result<f64> {
-    let mut points = vec![coordinates(id, &value.start)?];
-    points.extend(value.points.iter().copied());
-    points.push(coordinates(id, &value.end)?);
+    let points = irregular_vertices(id, value)?;
     valid_length(
         id,
         value.declared_length.unwrap_or_else(|| {
@@ -187,6 +193,46 @@ fn irregular_length(id: &LandXmlSourceId, value: &LandXmlIrregularLine) -> Resul
                 .sum()
         }),
     )
+}
+fn irregular_vertices(
+    id: &LandXmlSourceId,
+    value: &LandXmlIrregularLine,
+) -> Result<Vec<LandXmlPlanPoint>> {
+    let start = coordinates(id, &value.start)?;
+    let end = coordinates(id, &value.end)?;
+    let mut interior = value.points.clone();
+    if interior
+        .first()
+        .is_some_and(|point| distance_between(*point, start) <= EPSILON)
+    {
+        interior.remove(0);
+    }
+    if interior
+        .last()
+        .is_some_and(|point| distance_between(*point, end) <= EPSILON)
+    {
+        interior.pop();
+    }
+    let mut vertices = Vec::with_capacity(interior.len() + 2);
+    vertices.push(start);
+    vertices.extend(interior);
+    vertices.push(end);
+    Ok(vertices)
+}
+fn transform_local(start: LandXmlPlanPoint, local: (f64, f64), heading: f64) -> LandXmlPlanPoint {
+    let (sin, cos) = heading.sin_cos();
+    LandXmlPlanPoint {
+        northing: start.northing + local.0 * sin + local.1 * cos,
+        easting: start.easting + local.0 * cos - local.1 * sin,
+        elevation: None,
+    }
+}
+fn tangent_line_distance(origin: LandXmlPlanPoint, point: LandXmlPlanPoint, heading: f64) -> f64 {
+    let (sin, cos) = heading.sin_cos();
+    ((point.northing - origin.northing) * cos - (point.easting - origin.easting) * sin).abs()
+}
+fn geometry_tolerance(length: f64) -> f64 {
+    (length * 1e-6).max(1e-6)
 }
 fn coordinates(id: &LandXmlSourceId, value: &LandXmlPointLocation) -> Result<LandXmlPlanPoint> {
     match value {

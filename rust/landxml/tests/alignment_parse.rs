@@ -20,8 +20,9 @@ const XML: &str = r#"<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" 
 <IrregularLine length="20"><Start>1095 2030</Start><End>1105 2040</End><PntList2D>1095 2030 1095 2040 1105 2040</PntList2D></IrregularLine>
 <Spiral spiType="bloss" radiusStart="INF" radiusEnd="50" rot="ccw" length="5"><Start>1105 2040</Start><PI>1107 2040</PI><End>1110 2040</End></Spiral>
 </CoordGeom>
+<AlignPIs><AlignPI>1005 2005</AlignPI><AlignPI pntRef="CG-PI-2"/></AlignPIs>
 <StaEquation staInternal="150" staBack="150" staAhead="200" staIncrement="increasing"/>
-<Cant name="Rail" gauge="1.435" rotationPoint="center"><CantStation station="110" appliedCant="20" equilibriumCant="22" curvature="ccw"/><CantStation station="120" appliedCant="30" curvature="ccw"/></Cant>
+<Cant name="Rail" gauge="1.435" rotationPoint="center" equilibriumConstant="11" appliedCantConstant="12"><CantStation station="110" appliedCant="20" equilibriumCant="22" curvature="ccw" cantDeficiency="2" cantExcess="3" rateOfChangeOfAppliedCantOverTime="4" rateOfChangeOfAppliedCantOverLength="5" rateOfChangeOfCantDeficiencyOverTime="6" cantGradient="7" speed="8" transitionType="linear" adverse="true"/><CantStation station="120" appliedCant="30" curvature="ccw"/><SpeedStation station="125" speed="90"/></Cant>
 <Superelevation staStart="110" staEnd="130"><BeginRunoutSta>110</BeginRunoutSta><FullSuperelev>0.06</FullSuperelev><AdverseSE>non-adverse</AdverseSE></Superelevation>
 </Alignment></Alignments></LandXML>"#;
 
@@ -48,8 +49,40 @@ fn issue_5044_parses_exact_alignment_semantics_without_rendering_identity() {
     assert_eq!(alignment.unsupported_transitions.len(), 1);
     assert_eq!(alignment.unsupported_transitions[0].spi_type, "bloss");
     assert_eq!(alignment.station_equations[0].sta_ahead, 200.0);
+    assert_eq!(alignment.align_pis.len(), 2);
+    assert_eq!(
+        alignment.align_pis[0].source_id.0,
+        "landxml:alignment:1:Main Road:align-pi:1"
+    );
+    assert_eq!(
+        alignment.align_pis[1].location,
+        LandXmlPointLocation::PointReference {
+            pnt_ref: "CG-PI-2".to_owned()
+        }
+    );
     let cant = alignment.cant.as_ref().expect("cant");
     assert_eq!(cant.stations[1].applied_cant, 30.0);
+    assert_eq!(cant.equilibrium_constant, Some(11.0));
+    assert_eq!(cant.applied_cant_constant, Some(12.0));
+    assert_eq!(cant.speed_stations[0].speed, 90.0);
+    assert_eq!(cant.stations[0].cant_deficiency, Some(2.0));
+    assert_eq!(cant.stations[0].cant_excess, Some(3.0));
+    assert_eq!(
+        cant.stations[0].rate_of_change_of_applied_cant_over_time,
+        Some(4.0)
+    );
+    assert_eq!(
+        cant.stations[0].rate_of_change_of_applied_cant_over_length,
+        Some(5.0)
+    );
+    assert_eq!(
+        cant.stations[0].rate_of_change_of_cant_deficiency_over_time,
+        Some(6.0)
+    );
+    assert_eq!(cant.stations[0].cant_gradient, Some(7.0));
+    assert_eq!(cant.stations[0].speed, Some(8.0));
+    assert_eq!(cant.stations[0].transition_type.as_deref(), Some("linear"));
+    assert_eq!(cant.stations[0].adverse, Some(true));
     let superelevation = &alignment.superelevations[0];
     assert_eq!(
         superelevation.events[1].kind,
@@ -158,4 +191,27 @@ fn issue_5044_refuses_unknown_transition_without_rewriting_its_type() {
         "landxml:alignment:1:Main Road:segment:5"
     );
     assert!(transition.reason.contains("clothoid"));
+}
+
+#[test]
+fn issue_5044_requires_target_namespace_on_every_primitive_frame() {
+    let xml = XML
+        .replace(
+            "version=\"1.2\">",
+            "version=\"1.2\" xmlns:vendor=\"urn:vendor\">",
+        )
+        .replace("<Line length=\"10\">", "<vendor:Line length=\"10\">")
+        .replace("</Line>", "</vendor:Line>");
+    let document = parse_landxml_alignments_with_cancel(
+        xml.as_bytes(),
+        &LandXmlAlignmentLimits::default(),
+        None,
+    )
+    .expect("vendor primitive is ignored rather than interpreted as LandXML");
+    let alignment = &document.alignments[0];
+    assert_eq!(alignment.segments.len(), 4);
+    assert!(matches!(
+        alignment.segments[0].primitive,
+        ifc_lite_landxml::alignment::LandXmlAlignmentPrimitive::Curve(_)
+    ));
 }

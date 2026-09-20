@@ -3,10 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::super::{
-    LandXmlAlignment, LandXmlAlignmentPrimitive, LandXmlAlignmentSegment, LandXmlCant,
-    LandXmlCantStation, LandXmlCurve, LandXmlIrregularLine, LandXmlLine, LandXmlPlanPoint,
-    LandXmlPointLocation, LandXmlRadius, LandXmlRotation, LandXmlSpiral, LandXmlSuperelevation,
-    LandXmlSuperelevationEvent, LandXmlSuperelevationEventKind, LandXmlUnsupportedTransition,
+    LandXmlAlignment, LandXmlAlignmentPi, LandXmlAlignmentPrimitive, LandXmlAlignmentSegment,
+    LandXmlCant, LandXmlCantStation, LandXmlCurve, LandXmlIrregularLine, LandXmlLine,
+    LandXmlPlanPoint, LandXmlPointLocation, LandXmlRadius, LandXmlRotation, LandXmlSpiral,
+    LandXmlSuperelevation, LandXmlSuperelevationEvent, LandXmlSuperelevationEventKind,
+    LandXmlUnsupportedTransition,
 };
 use crate::{xml::Result, LandXmlDiagnosticCode as Code, LandXmlError, LandXmlSourceId};
 
@@ -59,6 +60,18 @@ pub(super) struct SuperelevationBuilder {
 }
 
 impl AlignmentBuilder {
+    pub(super) fn push_align_pi(&mut self, location: LandXmlPointLocation) -> Result<()> {
+        let ordinal = self.alignment.align_pis.len() + 1;
+        self.alignment.align_pis.push(LandXmlAlignmentPi {
+            source_id: LandXmlSourceId(format!(
+                "{}:align-pi:{ordinal}",
+                self.alignment.source_id.0
+            )),
+            location,
+        });
+        Ok(())
+    }
+
     pub(super) fn push_segment(&mut self) -> Result<()> {
         let ordinal = self.alignment.segments.len() + 1;
         let source_id =
@@ -150,8 +163,8 @@ impl AlignmentBuilder {
             .take()
             .ok_or_else(|| invalid("missing Cant"))?
             .cant;
-        if cant.stations.is_empty() {
-            return Err(invalid("Cant requires at least one CantStation"));
+        if cant.stations.is_empty() && cant.speed_stations.is_empty() {
+            return Err(invalid("Cant requires a CantStation or SpeedStation"));
         }
         if self.alignment.cant.replace(cant).is_some() {
             return Err(invalid("Alignment may contain at most one Cant"));

@@ -115,6 +115,15 @@ impl Parser<'_> {
         if self.is_alignment_path(&["Superelevation"]) {
             return self.begin_superelevation(attrs);
         }
+        if self.is_alignment_path(&["AlignPIs", "AlignPI"]) {
+            self.capture = Some(Capture::Point {
+                local: "__align_pi".to_owned(),
+                depth: self.frames.len(),
+                pnt_ref: attr(attrs, "pntRef").map(str::to_owned),
+                text: String::new(),
+            });
+            return Ok(());
+        }
         if let Some(kind) = superelevation_event(local) {
             if self.is_alignment_path(&["Superelevation", local]) {
                 self.capture = Some(Capture::Superelevation {
@@ -275,6 +284,7 @@ impl Parser<'_> {
                 self.frames[4].local.as_str(),
                 "Line" | "IrregularLine" | "Curve" | "Spiral"
             )
+            && self.frames[4].target
             && self.frames[5].target
     }
 }

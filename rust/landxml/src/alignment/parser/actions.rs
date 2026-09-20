@@ -2,10 +2,14 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+mod values;
+
+pub(super) use values::superelevation_event;
+use values::{finite_attr, optional_finite_attr, plan_point, point_list, radius, rotation};
+
 use super::super::{
-    LandXmlAlignment, LandXmlCant, LandXmlCantStation, LandXmlPlanPoint, LandXmlPointLocation,
-    LandXmlRadius, LandXmlRotation, LandXmlSpeedStation, LandXmlStationEquation,
-    LandXmlSuperelevation, LandXmlSuperelevationEventKind,
+    LandXmlAlignment, LandXmlCant, LandXmlCantStation, LandXmlPointLocation, LandXmlSpeedStation,
+    LandXmlStationEquation, LandXmlSuperelevation,
 };
 use super::state::{
     invalid, limit, AlignmentBuilder, CantBuilder, SegmentBuilder, SuperelevationBuilder,
@@ -36,6 +40,7 @@ impl Parser<'_> {
                 length,
                 sta_start,
                 start: None,
+                align_pis: Vec::new(),
                 segments: Vec::new(),
                 station_equations: Vec::new(),
                 cant: None,
@@ -292,6 +297,10 @@ impl Parser<'_> {
                             Some(LandXmlPointLocation::Coordinates { point });
                         return Ok(());
                     }
+                    if local == "__align_pi" {
+                        return alignment
+                            .push_align_pi(LandXmlPointLocation::Coordinates { point });
+                    }
                     return alignment
                         .segment
                         .as_mut()
@@ -302,6 +311,10 @@ impl Parser<'_> {
                     alignment.alignment.start =
                         Some(LandXmlPointLocation::PointReference { pnt_ref });
                     return Ok(());
+                }
+                if local == "__align_pi" {
+                    return alignment
+                        .push_align_pi(LandXmlPointLocation::PointReference { pnt_ref });
                 }
                 alignment
                     .segment
@@ -319,6 +332,9 @@ impl Parser<'_> {
                 if local == "__alignment_start" {
                     alignment.alignment.start = Some(LandXmlPointLocation::Coordinates { point });
                     return Ok(());
+                }
+                if local == "__align_pi" {
+                    return alignment.push_align_pi(LandXmlPointLocation::Coordinates { point });
                 }
                 alignment
                     .segment
@@ -351,101 +367,4 @@ impl Parser<'_> {
             }
         }
     }
-}
-
-pub(super) fn superelevation_event(local: &str) -> Option<LandXmlSuperelevationEventKind> {
-    Some(match local {
-        "BeginRunoutSta" => LandXmlSuperelevationEventKind::BeginRunoutSta,
-        "BeginRunoffSta" => LandXmlSuperelevationEventKind::BeginRunoffSta,
-        "FullSuperSta" => LandXmlSuperelevationEventKind::FullSuperSta,
-        "FullSuperelev" => LandXmlSuperelevationEventKind::FullSuperelev,
-        "RunoffSta" => LandXmlSuperelevationEventKind::RunoffSta,
-        "StartofRunoutSta" => LandXmlSuperelevationEventKind::StartofRunoutSta,
-        "EndofRunoutSta" => LandXmlSuperelevationEventKind::EndofRunoutSta,
-        "AdverseSE" => LandXmlSuperelevationEventKind::AdverseSE,
-        _ => return None,
-    })
-}
-
-fn finite_attr(attrs: &Attributes, name: &str, context: &str) -> Result<f64> {
-    finite(required(attrs, name, context)?, context)
-}
-fn optional_finite_attr(attrs: &Attributes, name: &str, context: &str) -> Result<Option<f64>> {
-    attr(attrs, name)
-        .map(|value| finite(value, context))
-        .transpose()
-}
-fn finite(value: &str, context: &str) -> Result<f64> {
-    let parsed = value
-        .parse::<f64>()
-        .map_err(|_| invalid(format!("{context} has invalid numeric value")))?;
-    if parsed.is_finite() {
-        Ok(parsed)
-    } else {
-        Err(invalid(format!(
-            "{context} requires a finite numeric value"
-        )))
-    }
-}
-fn radius(value: &str) -> Result<LandXmlRadius> {
-    if value == "INF" {
-        return Ok(LandXmlRadius::Infinite);
-    }
-    let value = finite(value, "Spiral radius")?;
-    if value > 0.0 {
-        Ok(LandXmlRadius::Finite(value))
-    } else {
-        Err(invalid("Spiral radius must be positive or INF"))
-    }
-}
-fn rotation(value: &str) -> Result<LandXmlRotation> {
-    match value {
-        "cw" => Ok(LandXmlRotation::Clockwise),
-        "ccw" => Ok(LandXmlRotation::CounterClockwise),
-        _ => Err(invalid("rotation must be cw or ccw")),
-    }
-}
-fn plan_point(text: &str) -> Result<LandXmlPlanPoint> {
-    let values: Vec<f64> = text
-        .split_ascii_whitespace()
-        .map(|value| finite(value, "coordinate"))
-        .collect::<Result<_>>()?;
-    let elevation = match values.as_slice() {
-        [northing, easting] => {
-            return Ok(LandXmlPlanPoint {
-                northing: *northing,
-                easting: *easting,
-                elevation: None,
-            })
-        }
-        [northing, easting, elevation] => Some((*northing, *easting, *elevation)),
-        _ => None,
-    };
-    elevation.map_or_else(
-        || Err(invalid("coordinate requires northing easting [elevation]")),
-        |(northing, easting, elevation)| {
-            Ok(LandXmlPlanPoint {
-                northing,
-                easting,
-                elevation: Some(elevation),
-            })
-        },
-    )
-}
-fn point_list(text: &str, dimension: usize) -> Result<Vec<LandXmlPlanPoint>> {
-    let values: Vec<f64> = text
-        .split_ascii_whitespace()
-        .map(|value| finite(value, "PntList coordinate"))
-        .collect::<Result<_>>()?;
-    if values.len() < dimension * 2 || !values.len().is_multiple_of(dimension) {
-        return Err(invalid("PntList has an invalid coordinate count"));
-    }
-    Ok(values
-        .chunks_exact(dimension)
-        .map(|value| LandXmlPlanPoint {
-            northing: value[0],
-            easting: value[1],
-            elevation: if dimension == 3 { Some(value[2]) } else { None },
-        })
-        .collect())
 }

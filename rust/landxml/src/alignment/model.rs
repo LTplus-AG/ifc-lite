@@ -26,6 +26,14 @@ pub enum LandXmlPointLocation {
     PointReference { pnt_ref: String },
 }
 
+/// One authored `AlignPIs/AlignPI` location, preserved independently from
+/// primitive PI leaves and with a stable source identity.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct LandXmlAlignmentPi {
+    pub source_id: LandXmlSourceId,
+    pub location: LandXmlPointLocation,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LandXmlRotation {
@@ -204,6 +212,9 @@ pub struct LandXmlAlignment {
     pub length: f64,
     pub sta_start: f64,
     pub start: Option<LandXmlPointLocation>,
+    /// Authored `AlignPIs` leaves. They are an explicit source capability,
+    /// not inferred from primitive `PI` leaves or reconstructed geometry.
+    pub align_pis: Vec<LandXmlAlignmentPi>,
     pub segments: Vec<LandXmlAlignmentSegment>,
     pub station_equations: Vec<LandXmlStationEquation>,
     pub cant: Option<LandXmlCant>,

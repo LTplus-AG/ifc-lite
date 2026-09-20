@@ -32,6 +32,7 @@ fn alignment(segments: Vec<LandXmlAlignmentSegment>, length: f64) -> LandXmlAlig
         length,
         sta_start: 100.0,
         start: None,
+        align_pis: Vec::new(),
         segments,
         station_equations: Vec::new(),
         cant: None,
@@ -85,7 +86,7 @@ fn issue_5044_arc_has_independent_interior_and_tangent_probe() {
             center: point(0.0, 0.0),
             end: point(0.0, 10.0),
             pi: Some(point(10.0, 10.0)),
-            rotation: LandXmlRotation::CounterClockwise,
+            rotation: LandXmlRotation::Clockwise,
             radius: Some(10.0),
             declared_length: Some(quarter),
         }),
@@ -102,6 +103,11 @@ fn issue_5044_arc_has_independent_interior_and_tangent_probe() {
         .probe_at_distance(quarter, 0.0)
         .expect("arc endpoint");
     assert!((end.northing - 0.0).abs() < 1e-9 && (end.easting - 10.0).abs() < 1e-9);
+    let start_right = alignment
+        .probe_at_distance(0.0, 2.0)
+        .expect("right offset follows N/E handedness");
+    assert!((start_right.northing - 8.0).abs() < 1e-12);
+    assert!(start_right.easting.abs() < 1e-12);
 }
 
 #[test]
@@ -112,12 +118,24 @@ fn issue_5044_irregular_line_preserves_intermediate_vertices() {
         primitive: LandXmlAlignmentPrimitive::IrregularLine(LandXmlIrregularLine {
             start: point(0.0, 0.0),
             end: point(10.0, 10.0),
-            points: vec![LandXmlPlanPoint {
-                northing: 0.0,
-                easting: 10.0,
-                elevation: None,
-            }],
-            declared_length: Some(20.0),
+            points: vec![
+                LandXmlPlanPoint {
+                    northing: 0.0,
+                    easting: 0.0,
+                    elevation: None,
+                },
+                LandXmlPlanPoint {
+                    northing: 0.0,
+                    easting: 10.0,
+                    elevation: None,
+                },
+                LandXmlPlanPoint {
+                    northing: 10.0,
+                    easting: 10.0,
+                    elevation: None,
+                },
+            ],
+            declared_length: None,
         }),
     };
     let alignment = alignment(vec![irregular], 20.0);
@@ -129,6 +147,10 @@ fn issue_5044_irregular_line_preserves_intermediate_vertices() {
         (interior.tangent_northing, interior.tangent_easting),
         (1.0, 0.0)
     );
+    let start = alignment
+        .probe_at_distance(0.0, 0.0)
+        .expect("schema PntList endpoints are de-duplicated");
+    assert_eq!((start.northing, start.easting), (0.0, 0.0));
     let endpoint = alignment
         .probe_at_distance(20.0, 0.0)
         .expect("irregular endpoint");
@@ -140,17 +162,19 @@ fn issue_5044_irregular_line_preserves_intermediate_vertices() {
 }
 
 #[test]
-fn issue_5044_clothoid_endpoint_and_interior_probes_are_deterministic() {
+fn issue_5044_clothoid_uses_validated_pi_and_independent_numeric_oracle() {
     let spiral = LandXmlAlignmentSegment {
         source_id: id("landxml:alignment:1:segment:spiral"),
         ordinal: 1,
         primitive: LandXmlAlignmentPrimitive::Spiral(LandXmlSpiral {
             start: point(0.0, 0.0),
-            pi: point(40.0, 5.0),
-            end: point(99.0, 12.0),
+            // These values are independently integrated from
+            // theta(s) = 0.0001 * s^2, in conventional E/N axes.
+            pi: point(0.0, 70.530_325_240_5),
+            end: point(31.026_830_172_3, 90.452_423_790_0),
             spi_type: "clothoid".to_owned(),
             radius_start: LandXmlRadius::Infinite,
-            radius_end: LandXmlRadius::Finite(200.0),
+            radius_end: LandXmlRadius::Finite(50.0),
             rotation: LandXmlRotation::CounterClockwise,
             declared_length: 100.0,
         }),
@@ -162,13 +186,60 @@ fn issue_5044_clothoid_endpoint_and_interior_probes_are_deterministic() {
     let second = alignment
         .probe_at_distance(50.0, 0.0)
         .expect("repeat spiral interior");
-    assert_eq!(first, second);
+    assert_eq!(first, second, "deterministic quadrature");
+    assert!((first.northing - 4.148_102_426_85).abs() < 1e-8);
+    assert!((first.easting - 49.688_402_921_5).abs() < 1e-8);
+    assert!((first.tangent_northing - 0.247_403_959_25).abs() < 1e-9);
+    assert!((first.tangent_easting - 0.968_912_421_71).abs() < 1e-9);
     let end = alignment
         .probe_at_distance(100.0, 0.0)
         .expect("spiral endpoint");
-    assert_eq!((end.northing, end.easting), (99.0, 12.0));
+    assert!((end.northing - 31.026_830_172_3).abs() < 1e-8);
+    assert!((end.easting - 90.452_423_790_0).abs() < 1e-8);
     assert!((first.tangent_northing.hypot(first.tangent_easting) - 1.0).abs() < 1e-12);
     assert!((end.tangent_northing.hypot(end.tangent_easting) - 1.0).abs() < 1e-12);
+}
+
+#[test]
+fn issue_5044_clothoid_refuses_invented_endpoint_or_pi_tangent() {
+    let valid = LandXmlSpiral {
+        start: point(0.0, 0.0),
+        pi: point(0.0, 70.530_325_240_5),
+        end: point(31.026_830_172_3, 90.452_423_790_0),
+        spi_type: "clothoid".to_owned(),
+        radius_start: LandXmlRadius::Infinite,
+        radius_end: LandXmlRadius::Finite(50.0),
+        rotation: LandXmlRotation::CounterClockwise,
+        declared_length: 100.0,
+    };
+    let endpoint_error = alignment(
+        vec![LandXmlAlignmentSegment {
+            source_id: id("bad-end"),
+            ordinal: 1,
+            primitive: LandXmlAlignmentPrimitive::Spiral(LandXmlSpiral {
+                end: point(31.026_830_172_3, 91.452_423_790_0),
+                ..valid.clone()
+            }),
+        }],
+        100.0,
+    )
+    .probe_at_distance(100.0, 0.0)
+    .expect_err("endpoint substitution is forbidden");
+    assert_eq!(endpoint_error.code, "LXMLA216");
+    let pi_error = alignment(
+        vec![LandXmlAlignmentSegment {
+            source_id: id("bad-pi"),
+            ordinal: 1,
+            primitive: LandXmlAlignmentPrimitive::Spiral(LandXmlSpiral {
+                pi: point(1.0, 70.530_325_240_5),
+                ..valid
+            }),
+        }],
+        100.0,
+    )
+    .probe_at_distance(100.0, 0.0)
+    .expect_err("PI must remain on both endpoint tangents");
+    assert_eq!(pi_error.code, "LXMLA217");
 }
 
 #[test]
@@ -282,6 +353,53 @@ fn issue_5044_non_clothoid_transition_is_never_coerced_to_a_line() {
             .code,
         "LXMLA209"
     );
+}
+
+#[test]
+fn issue_5044_unsupported_transition_keeps_its_span_and_source_identity() {
+    let line = |source_id: &str, start: f64, end: f64| LandXmlAlignmentSegment {
+        source_id: id(source_id),
+        ordinal: 1,
+        primitive: LandXmlAlignmentPrimitive::Line(LandXmlLine {
+            start: point(start, 0.0),
+            end: point(end, 0.0),
+            declared_length: Some(end - start),
+        }),
+    };
+    let unsupported = LandXmlAlignmentSegment {
+        source_id: id("transition"),
+        ordinal: 2,
+        primitive: LandXmlAlignmentPrimitive::UnsupportedSpiral(LandXmlSpiral {
+            start: point(10.0, 0.0),
+            pi: point(15.0, 0.0),
+            end: point(20.0, 0.0),
+            spi_type: "bloss".to_owned(),
+            radius_start: LandXmlRadius::Infinite,
+            radius_end: LandXmlRadius::Finite(50.0),
+            rotation: LandXmlRotation::CounterClockwise,
+            declared_length: 10.0,
+        }),
+    };
+    let alignment = alignment(
+        vec![
+            line("before", 0.0, 10.0),
+            unsupported,
+            line("after", 20.0, 30.0),
+        ],
+        30.0,
+    );
+    assert_eq!(
+        alignment
+            .probe_at_distance(15.0, 0.0)
+            .expect_err("unsupported span")
+            .code,
+        "LXMLA209"
+    );
+    let after = alignment
+        .probe_at_distance(25.0, 0.0)
+        .expect("post-span line");
+    assert_eq!(after.segment_source_id, id("after"));
+    assert_eq!((after.northing, after.easting), (25.0, 0.0));
 }
 
 #[test]

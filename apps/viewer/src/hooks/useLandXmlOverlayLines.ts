@@ -18,6 +18,7 @@ export function useLandXmlOverlayLines(): Float32Array {
   return useMemo(() => {
     const vertices: number[] = [];
     for (const model of models.values()) {
+      if (!model.visible) continue;
       const document = model.landXmlDocument;
       const frame = model.geometryResult?.coordinateInfo;
       const units = document?.units;

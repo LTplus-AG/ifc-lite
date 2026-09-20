@@ -109,7 +109,7 @@ export const createSelectionSlice: StateCreator<SelectionSlice, [], [], Selectio
     selectionRevision: state.selectionRevision + 1,
     // Clear model selection when an entity is selected (but not when clearing selection)
     selectedModelId: selectedEntityId !== null ? null : state.selectedModelId,
-    selectedLandXmlSource: selectedEntityId !== null ? null : state.selectedLandXmlSource,
+    selectedLandXmlSource: null,
   })),
 
   toggleStoreySelection: (id) => set((state) => {

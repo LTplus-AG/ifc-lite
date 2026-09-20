@@ -98,6 +98,18 @@ describe('LandXML source overlay rendering (#5042)', () => {
     assert.equal(vertices.length, 0, 'a PntList2D stays inspectable but has no fabricated 3D overlay');
   });
 
+  it('removes overlays with federated model visibility', () => {
+    const model = landXmlModel('hidden-terrain', line('boundary'));
+    useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
+    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    function Probe() { vertices = useLandXmlOverlayLines(); return null; }
+    render(<Probe />);
+    assert.ok(vertices.length > 0);
+
+    act(() => useViewerStore.getState().setModelVisibility(model.id, false));
+    assert.equal(vertices.length, 0, 'hidden models cannot retain source overlays');
+  });
+
   it('clears source selection on model switch and unload', () => {
     const one = landXmlModel('one', line('one'));
     const two = landXmlModel('two', line('two'));

@@ -139,6 +139,16 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.equal(result.semanticDocument.surfaces[0].renderState, 'preserved_only');
   });
 
+  it('preserves an empty or fully hidden TIN without requiring render units (#5042)', async () => {
+    const hiddenWithoutUnits = LANDXML
+      .replace(/\s*<Units>[\s\S]*?<\/Units>/, '')
+      .replace('<F>10 20 30</F>', '<F i="true">10 20 30</F>');
+    const result = await parseViewer(bytes(hiddenWithoutUnits));
+    assert.equal(result.geometryResult.meshes.length, 0);
+    assert.equal(result.semanticDocument.rendering.surfaceCounts[0].hiddenFaces, 2);
+    assert.equal(result.semanticDocument.rendering.surfaceCounts[0].renderedFaces, 0);
+  });
+
   it('produces a rebased Y-up render mesh without losing survey coordinates', async () => {
     const result = await parseViewer(bytes(LANDXML));
     assert.equal(result.geometryResult.meshes.length, 1);
@@ -243,6 +253,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.deepEqual(result.geometryResult.coordinateInfo.originShift, { x: 2_600_005, y: 101, z: -5_000_005 });
     assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 2_600_010, 'skipped components do not stretch the frame bounds');
     assert.ok(result.warnings.some((warning) => /Skipped 1 surface component\(s\) whose full Y-up bounds exceed 1000 km/.test(warning)));
+    assert.equal(result.semanticDocument.rendering.surfaceCounts[0].droppedReframeFaces, 1);
   });
 
   it('removes the survey translation before GPU upload and retains it as frame metadata', async () => {

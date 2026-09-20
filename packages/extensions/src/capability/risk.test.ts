@@ -14,7 +14,10 @@ function p(raw: string) {
 
 describe('computeRisk', () => {
   it('green: model.read', () => {
-    expect(computeRisk(p('model.read')).tier).toBe('green');
+    const risk = computeRisk(p('model.read'));
+    expect(risk.tier).toBe('green');
+    expect(risk.capabilityId).toBe('model.read');
+    expect(risk.reasonCode).toBe('catalogue');
   });
 
   it('green: viewer.colorize', () => {
@@ -42,7 +45,10 @@ describe('computeRisk', () => {
   });
 
   it('yellow: network.fetch with single host', () => {
-    expect(computeRisk(p('network.fetch:bsdd.example.com')).tier).toBe('yellow');
+    const risk = computeRisk(p('network.fetch:bsdd.example.com'));
+    expect(risk.tier).toBe('yellow');
+    expect(risk.reasonCode).toBe('specific-network-host');
+    expect(risk.description).toContain('restricted to a specific host');
   });
 
   it('red: network.fetch with wildcard host', () => {
@@ -60,6 +66,8 @@ describe('computeRisk', () => {
       action: 'doesnotexist',
     });
     expect(r.tier).toBe('red');
+    expect(r.capabilityId).toBe('model.doesnotexist');
+    expect(r.reasonCode).toBe('unknown-capability');
   });
 
   it('includes the target in description', () => {
@@ -76,7 +84,22 @@ describe('computeRisk', () => {
     // requiresTarget scope/action.
     const r = computeRisk(p('command.invoke'));
     expect(r.tier).toBe('red');
+    expect(r.reasonCode).toBe('missing-required-target');
     expect(r.description).toContain('Missing required target');
+  });
+
+  it('reports stable wildcard reason codes while retaining English diagnostics', () => {
+    const universal = computeRisk(p('network.fetch:*'));
+    const hostPattern = computeRisk(p('network.fetch:*.example.com'));
+    const targetPattern = computeRisk(p('viewer.colorize:IfcW*'));
+
+    expect(universal.reasonCode).toBe('universal-wildcard-target');
+    expect(universal.description).toContain('Universal wildcard target');
+    expect(hostPattern.reasonCode).toBe('host-pattern-wildcard');
+    expect(hostPattern.description).toContain('Host pattern contains a wildcard');
+    expect(targetPattern.tier).toBe('yellow');
+    expect(targetPattern.reasonCode).toBe('target-pattern-wildcard');
+    expect(targetPattern.description).toContain('risk is elevated');
   });
 
   it('red: model.mutate with no target is treated as universal (same rule)', () => {

@@ -46,6 +46,10 @@ export function useCostModels(): CostModelEntry[] {
   // empty `models` Map; `getAllModelEntries` (the same compat layer the
   // `bim.cost` adapter resolves ids through) surfaces it as one entry.
   const legacyDataStore = useViewerStore((s) => s.ifcDataStore);
+  // Loaded-model cost authoring mutates the existing MutablePropertyView; it
+  // does not replace `models` or `ifcDataStore`. Observe the store's canonical
+  // mutation revision so an already-open panel re-reads that live overlay.
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const backend = useCostBackend();
 
   return useMemo(() => {
@@ -68,5 +72,5 @@ export function useCostModels(): CostModelEntry[] {
       }
     }
     return entries;
-  }, [models, legacyDataStore, backend]);
+  }, [models, legacyDataStore, backend, mutationVersion]);
 }

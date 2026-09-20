@@ -366,6 +366,7 @@ declare namespace BimClash {
 // the engine's own text, not a copy maintained in the generator:
 //   packages/sdk/src/cost-types.ts
 //   packages/sdk/src/types.ts
+//   packages/create/src/types-cost.ts
 
 declare namespace BimCost {
   export interface CostGraphData {
@@ -420,6 +421,92 @@ declare namespace BimCost {
     Diagnostics: CostDiagnosticData[];
   }
 
+  /** IfcCostSchedule (IfcControl). */
+  export interface CostScheduleParams {
+    Name: string;
+    Description?: string;
+    ObjectType?: string;
+    Identification?: string;
+    PredefinedType?: CostSchedulePredefinedType;
+    Status?: string;
+    /** IfcDateTime, e.g. '2026-03-01T09:00:00'. */
+    SubmittedOn?: string;
+    /** IfcDateTime. */
+    UpdateDate?: string;
+  }
+
+  /** IfcCostItem. */
+  export interface CostItemParams {
+    Name: string;
+    Description?: string;
+    ObjectType?: string;
+    Identification?: string;
+    PredefinedType?: CostItemPredefinedType;
+    /**
+     * expressIds of IfcCostValue / IfcAppliedValue entities, in the order they
+     * must appear. Absent (undefined) writes `$`; an empty array is rejected.
+     */
+    CostValues?: number[];
+    /**
+     * expressIds of IfcPhysicalQuantity entities, in order. Absent writes `$`;
+     * an empty array is rejected.
+     */
+    CostQuantities?: number[];
+  }
+
+  /**
+   * IfcCostValue.
+   *
+   * `AppliedValue` and `Components` are NOT interchangeable and this builder
+   * never derives one from the other: a value that carried a literal
+   * `AppliedValue` in the source is written with that literal and no
+   * `Components`, and a value that was the sum of its `Components` is written
+   * with `Components` and an absent `AppliedValue`. Normalising either way would
+   * change what the file says about where the number came from.
+   */
+  export interface CostValueParams {
+    Name?: string;
+    Description?: string;
+    /** Literal typed value, written as a named SELECT branch. */
+    AppliedValue?: CostTypedValue;
+    /**
+     * expressId of an IfcMeasureWithUnit, the entity branch of
+     * IfcAppliedValueSelect. Mutually exclusive with `AppliedValue`.
+     */
+    AppliedValueRef?: number;
+    /**
+     * expressId of an IfcMeasureWithUnit giving the basis this rate is quoted
+     * per — a rate "per 100 m²" has a UnitBasis of 100 SQUARE_METRE. It is a
+     * divisor, not a label: dropping or inventing it moves the amount by whole
+     * orders of magnitude.
+     */
+    UnitBasis?: number;
+    /** IfcDate. */
+    ApplicableDate?: string;
+    /** IfcDate. */
+    FixedUntilDate?: string;
+    Category?: string;
+    Condition?: string;
+    ArithmeticOperator?: CostArithmeticOperator;
+    /**
+     * expressIds of the IfcAppliedValue / IfcCostValue entities this value is
+     * computed from, in order. Absent writes `$`; an empty array is rejected.
+     * Repeating an expressId shares that entity rather than copying it.
+     */
+    Components?: number[];
+  }
+
+  /** IfcPhysicalSimpleQuantity, as referenced from IfcCostItem.CostQuantities. */
+  export interface CostQuantityParams {
+    Kind: CostQuantityKind;
+    Name: string;
+    Value: number;
+    Description?: string;
+    /** expressId of the unit entity this quantity is measured in. */
+    Unit?: number;
+    Formula?: string;
+  }
+
   export type CostSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
 
   export interface CostQuantityData {
@@ -470,6 +557,30 @@ declare namespace BimCost {
     | { Kind: 'Reference'; ref: EntityRef }
     | { Kind: 'Unsupported'; Raw: unknown; InvalidNumber?: boolean };
 
+  /** IfcCostScheduleTypeEnum (IFC4 / IFC4X3). */
+  export type CostSchedulePredefinedType =
+    | 'BUDGET' | 'COSTPLAN' | 'ESTIMATE' | 'TENDER'
+    | 'PRICEDBILLOFQUANTITIES' | 'UNPRICEDBILLOFQUANTITIES' | 'SCHEDULEOFRATES'
+    | 'USERDEFINED' | 'NOTDEFINED';
+
+  /** IfcCostItemTypeEnum (IFC4 / IFC4X3). */
+  export type CostItemPredefinedType = 'USERDEFINED' | 'NOTDEFINED';
+
+  /** A typed IFC measure: the SELECT branch plus its numeric value. */
+  export interface CostTypedValue {
+    Type: CostMeasureType;
+    Value: number;
+  }
+
+  /** IfcArithmeticOperatorEnum (MODULO is accepted only when the target schema is IFC4X3). */
+  export type CostArithmeticOperator = 'ADD' | 'DIVIDE' | 'MODULO' | 'MULTIPLY' | 'SUBTRACT';
+
+  /** The IfcPhysicalSimpleQuantity subtypes a cost item can take quantities from. */
+  export type CostQuantityKind =
+    | 'IfcQuantityLength' | 'IfcQuantityArea' | 'IfcQuantityVolume'
+    | 'IfcQuantityWeight' | 'IfcQuantityTime' | 'IfcQuantityCount'
+    | 'IfcQuantityNumber';
+
   export type CostRelationshipType =
     | 'IfcRelAssignsToControl' | 'IfcRelAssignsToProduct' | 'IfcRelAssignsToProcess'
     | 'IfcRelNests' | 'IfcRelDeclares' | 'IfcRelAssociatesAppliedValue'
@@ -481,6 +592,22 @@ declare namespace BimCost {
     | 'MISSING_VALUE' | 'INVALID_NUMBER' | 'UNSUPPORTED_APPLIED_VALUE' | 'UNSUPPORTED_CONDITION'
     | 'UNSUPPORTED_UNIT' | 'INCOMPATIBLE_UNIT' | 'MISSING_CURRENCY' | 'MIXED_CURRENCY'
     | 'DIVISION_BY_ZERO' | 'PENDING_EDIT_NOT_APPLIED';
+
+  /**
+   * The SELECT branch names this builder will write for a typed IFC value.
+   *
+   * `IfcCostValue.AppliedValue` is an `IfcAppliedValueSelect` and
+   * `IfcMeasureWithUnit.ValueComponent` is an `IfcValue` — both SELECTs, so STEP
+   * requires the branch to be named: `IFCMONETARYMEASURE(12.5)`, never a bare
+   * `12.5`. A bare number parses but resolves to a different SELECT branch (or
+   * to none), which is why the branch is part of the parameter rather than
+   * inferred from the number.
+   */
+  export type CostMeasureType =
+    | 'IfcMonetaryMeasure'
+    | 'IfcAreaMeasure' | 'IfcVolumeMeasure' | 'IfcLengthMeasure'
+    | 'IfcMassMeasure' | 'IfcTimeMeasure' | 'IfcCountMeasure'
+    | 'IfcNumericMeasure' | 'IfcRatioMeasure' | 'IfcReal' | 'IfcInteger';
 }
 
 // ── SDK relationship types ────────────────────────────────────────────
@@ -677,6 +804,24 @@ declare const bim: {
     addPlate(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
     /** Add an IfcMember (generic structural — brace, post, strut) from Start to End with a rectangular cross-section. */
     addMember(modelId: string, storeyExpressId: number, params: { Start: [number, number, number]; End: [number, number, number]; Width: number; Height: number; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
+    /** Add an IfcCostSchedule to a parsed model. */
+    addCostSchedule(modelId: string, params: BimCost.CostScheduleParams): { modelId: string; expressId: number };
+    /** Add an IfcCostItem to a parsed model. */
+    addCostItem(modelId: string, params: BimCost.CostItemParams): { modelId: string; expressId: number };
+    /** Add an IfcCostValue to a parsed model. */
+    addCostValue(modelId: string, params: BimCost.CostValueParams): { modelId: string; expressId: number };
+    /** Add an IfcCostQuantity to a parsed model. */
+    addCostQuantity(modelId: string, params: BimCost.CostQuantityParams): { modelId: string; expressId: number };
+    /** Create or update the loaded-model cost relationship for nestCostItems. */
+    nestCostItems(modelId: string, parentExpressId: number, childExpressIds: number[]): { modelId: string; expressId: number };
+    /** Create or update the loaded-model cost relationship for assignCostItemsToSchedule. */
+    assignCostItemsToSchedule(modelId: string, scheduleExpressId: number, itemExpressIds: number[]): { modelId: string; expressId: number };
+    /** Create or update the loaded-model cost relationship for assignToCostItem. */
+    assignToCostItem(modelId: string, costItemExpressId: number, objectExpressIds: number[]): { modelId: string; expressId: number };
+    /** Replace an IfcCostItem CostValues list; pass [] to clear it. */
+    setCostItemValues(modelId: string, itemExpressId: number, valueExpressIds: number[]): void;
+    /** Safely remove an IfcCostSchedule, IfcCostItem, or IfcCostValue from a parsed model. */
+    removeCostEntity(modelId: string, expressId: number, options?: { detach?: boolean }): void;
   };
   /** Lens visualization */
   lens: {

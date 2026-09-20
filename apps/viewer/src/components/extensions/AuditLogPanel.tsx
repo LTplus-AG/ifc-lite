@@ -28,23 +28,30 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { downloadFile } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
+import { useTranslation, type TranslationKey, type UseTranslationResult } from '@/i18n';
+import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 import { HelpHint } from './HelpHint';
+import { formatExtensionDate } from './localized-date';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 
-const KIND_LABELS: Record<AuditEventKind, string> = {
-  install: 'Install',
-  uninstall: 'Uninstall',
-  update: 'Update',
-  enable: 'Enable',
-  disable: 'Disable',
-  capability_grant: 'Granted',
-  capability_revoke: 'Revoked',
-  activate: 'Activate',
-  deactivate: 'Deactivate',
-  mutation_summary: 'Mutations',
-  network_fetch: 'Fetch',
-  unhealthy: 'Unhealthy',
-  killed: 'Killed',
-};
+/** Maps each event kind to its catalogue key — same data-table pattern
+ *  `shared-commands.en.ts`'s export/camera registries use: the record
+ *  carries keys, renderers call `t(...)`. */
+const KIND_LABEL_KEYS: Record<AuditEventKind, TranslationKey> = {
+  install: 'extensionsPanels.auditLogPanel.kind.install',
+  uninstall: 'extensionsPanels.auditLogPanel.kind.uninstall',
+  update: 'extensionsPanels.auditLogPanel.kind.update',
+  enable: 'extensionsPanels.auditLogPanel.kind.enable',
+  disable: 'extensionsPanels.auditLogPanel.kind.disable',
+  capability_grant: 'extensionsPanels.auditLogPanel.kind.capability_grant',
+  capability_revoke: 'extensionsPanels.auditLogPanel.kind.capability_revoke',
+  activate: 'extensionsPanels.auditLogPanel.kind.activate',
+  deactivate: 'extensionsPanels.auditLogPanel.kind.deactivate',
+  mutation_summary: 'extensionsPanels.auditLogPanel.kind.mutation_summary',
+  network_fetch: 'extensionsPanels.auditLogPanel.kind.network_fetch',
+  unhealthy: 'extensionsPanels.auditLogPanel.kind.unhealthy',
+  killed: 'extensionsPanels.auditLogPanel.kind.killed',
+} as const;
 
 const KIND_TONES: Record<AuditEventKind, string> = {
   install: 'text-emerald-600 dark:text-emerald-400',
@@ -70,6 +77,7 @@ interface AuditLogPanelProps {
 }
 
 export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
+  const { t, locale } = useTranslation();
   const host = useExtensionHost();
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [filter, setFilter] = useState<AuditEventKind | 'all'>('all');
@@ -98,11 +106,11 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
   const handleExport = () => {
     const json = host.audit.exportJson();
     downloadFile(json, `ifclite-audit-${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
-    toast.success('Audit log exported.');
+    toast.success(t('extensionsPanels.auditLogPanel.exportToast'));
   };
 
   const handleClear = () => {
-    if (!confirm('Clear the audit log? This cannot be undone.')) return;
+    if (!confirm(t('extensionsPanels.auditLogPanel.clearConfirm'))) return;
     host.audit.clear();
     // Wipe the IDB mirror too — otherwise reload resurrects what the
     // user just asked to forget.
@@ -110,7 +118,7 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
       console.warn('[AuditLogPanel] clear persisted audit failed:', err);
     });
     setEvents([]);
-    toast.success('Audit log cleared.');
+    toast.success(t('extensionsPanels.auditLogPanel.clearToast'));
   };
 
   return (
@@ -118,35 +126,35 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-2">
           <FileText className="h-4 w-4" />
-          <h2 className="text-sm font-semibold">Audit Log</h2>
+          <h2 className="text-sm font-semibold">{t('extensionsPanels.auditLogPanel.title')}</h2>
           <span className="text-[11px] text-muted-foreground">
-            {filtered.length} of {events.length} events
+            {t('extensionsPanels.auditLogPanel.eventCount', {
+              count: events.length,
+              filtered: formatLocaleNumber(locale, filtered.length),
+              total: formatLocaleNumber(locale, events.length),
+            })}
           </span>
-          <HelpHint label="Audit log">
+          <HelpHint label={t('extensionsPanels.auditLogPanel.helpLabel')}>
+            <p>{t('extensionsPanels.auditLogPanel.helpIntro')}</p>
+            <p>{t('extensionsPanels.auditLogPanel.helpPersistence')}</p>
             <p>
-              Append-only ledger of every extension lifecycle event:
-              install, update, enable, disable, activate, capability
-              grant/revoke, runtime failures.
+              {styleInterpolatedValues(t, 'extensionsPanels.auditLogPanel.helpExport', [
+                ['export', <strong key="export">{t('extensionsPanels.auditLogPanel.exportButton')}</strong>],
+              ])}
             </p>
-            <p>
-              Persists in IndexedDB across reloads. Filter by event
-              kind via the chips below; when multiple extensions are
-              installed, a second chip row scopes by extension id.
-            </p>
-            <p><strong>Export</strong> downloads a JSON snapshot.</p>
           </HelpHint>
         </div>
         <div className="flex items-center gap-1">
-          <Button size="sm" variant="ghost" onClick={handleExport} aria-label="Export audit log">
+          <Button size="sm" variant="ghost" onClick={handleExport} aria-label={t('extensionsPanels.auditLogPanel.exportAriaLabel')}>
             <Download className="mr-1 h-3.5 w-3.5" />
-            Export
+            {t('extensionsPanels.auditLogPanel.exportButton')}
           </Button>
-          <Button size="sm" variant="ghost" onClick={handleClear} aria-label="Clear audit log">
+          <Button size="sm" variant="ghost" onClick={handleClear} aria-label={t('extensionsPanels.auditLogPanel.clearAriaLabel')}>
             <Trash2 className="mr-1 h-3.5 w-3.5" />
-            Clear
+            {t('extensionsPanels.auditLogPanel.clearButton')}
           </Button>
           {onClose && (
-            <Button size="icon" variant="ghost" onClick={onClose} aria-label="Close audit log">
+            <Button size="icon" variant="ghost" onClick={onClose} aria-label={t('extensionsPanels.auditLogPanel.closeAriaLabel')}>
               <X className="h-3.5 w-3.5" />
             </Button>
           )}
@@ -155,11 +163,11 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
 
       <div className="flex items-center gap-1 border-b px-4 py-2 overflow-x-auto">
         <Filter className="h-3 w-3 text-muted-foreground shrink-0" />
-        <FilterChip label="All" active={filter === 'all'} onClick={() => setFilter('all')} />
-        {(Object.keys(KIND_LABELS) as AuditEventKind[]).map((k) => (
+        <FilterChip label={t('extensionsPanels.auditLogPanel.filterAll')} active={filter === 'all'} onClick={() => setFilter('all')} />
+        {(Object.keys(KIND_LABEL_KEYS) as AuditEventKind[]).map((k) => (
           <FilterChip
             key={k}
-            label={KIND_LABELS[k]}
+            label={t(KIND_LABEL_KEYS[k])}
             active={filter === k}
             onClick={() => setFilter(k)}
           />
@@ -171,9 +179,9 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
           Lets the user narrow "show only events for this extension". */}
       {!extensionId && distinctExtensionIds.length > 1 && (
         <div className="flex items-center gap-1 border-b px-4 py-2 overflow-x-auto">
-          <span className="text-[10px] text-muted-foreground shrink-0">Extension:</span>
+          <span className="text-[10px] text-muted-foreground shrink-0">{t('extensionsPanels.auditLogPanel.extensionFilterLabel')}</span>
           <FilterChip
-            label="All"
+            label={t('extensionsPanels.auditLogPanel.filterAll')}
             active={extensionFilter === undefined}
             onClick={() => setExtensionFilter(undefined)}
           />
@@ -191,22 +199,19 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
       <ScrollArea className="flex-1">
         {filtered.length === 0 ? (
           <div className="px-6 py-12 text-center text-sm text-muted-foreground">
-            No events yet. Audit entries appear here when extensions are installed,
-            updated, enabled, disabled, or uninstalled.
+            {t('extensionsPanels.auditLogPanel.emptyState')}
           </div>
         ) : (
           <ul className="divide-y">
             {filtered.slice().reverse().map((event) => (
               <li key={event.seq} className="flex items-start gap-3 px-4 py-2.5 text-xs">
                 <span className={`shrink-0 font-medium ${KIND_TONES[event.kind]}`}>
-                  {KIND_LABELS[event.kind]}
+                  {t(KIND_LABEL_KEYS[event.kind])}
                 </span>
                 <div className="flex-1 min-w-0">
                   <div className="font-mono text-[11px] break-all">{event.extensionId}</div>
                   <div className="text-[10px] text-muted-foreground">
-                    {new Date(event.ts).toLocaleString()}
-                    {event.version ? ` · v${event.version}` : ''}
-                    {extraDetail(event)}
+                    {auditMetadata(event, t, locale)}
                   </div>
                 </div>
               </li>
@@ -234,20 +239,40 @@ function FilterChip({ label, active, onClick }: { label: string; active: boolean
   );
 }
 
-function extraDetail(event: AuditEvent): string {
+function auditMetadata(event: AuditEvent, t: UseTranslationResult['t'], locale: string): string {
+  const date = formatExtensionDate(event.ts, locale);
+  const detail = extraDetail(event, t, locale);
+  if (event.version && detail) {
+    return t('extensionsPanels.auditLogPanel.metadataVersionDetail', { date, version: event.version, detail });
+  }
+  if (event.version) return t('extensionsPanels.auditLogPanel.metadataVersion', { date, version: event.version });
+  if (detail) return t('extensionsPanels.auditLogPanel.metadataDetail', { date, detail });
+  return t('extensionsPanels.auditLogPanel.metadataDate', { date });
+}
+
+function extraDetail(event: AuditEvent, t: UseTranslationResult['t'], locale: string): string {
   switch (event.kind) {
     case 'install':
     case 'update':
       return event.grantedCapabilities
-        ? ` · ${event.grantedCapabilities.length} capability ${event.grantedCapabilities.length === 1 ? 'grant' : 'grants'}`
+        ? t('extensionsPanels.auditLogPanel.capabilityGrants', {
+            count: event.grantedCapabilities.length,
+            countDisplay: formatLocaleNumber(locale, event.grantedCapabilities.length),
+          })
         : '';
     case 'mutation_summary':
-      return ` · ${event.entityCount} entities`;
+      return t('extensionsPanels.auditLogPanel.mutationEntities', {
+        count: event.entityCount,
+        countDisplay: formatLocaleNumber(locale, event.entityCount),
+      });
     case 'network_fetch':
-      return ` · ${event.host} (${event.bytes} bytes)`;
+      return t('extensionsPanels.auditLogPanel.networkFetch', {
+        host: event.host,
+        bytes: formatLocaleNumber(locale, event.bytes),
+      });
     case 'unhealthy':
     case 'killed':
-      return ` · ${event.reason}`;
+      return t('extensionsPanels.auditLogPanel.reasonSuffix', { reason: event.reason });
     default:
       return '';
   }

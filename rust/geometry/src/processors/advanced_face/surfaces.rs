@@ -10,10 +10,11 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 
 use super::super::helpers::get_axis2_placement_transform_by_id;
+use super::bounds::extract_face_bounds;
 use super::bspline::tessellate_bspline_surface;
 use super::bspline_budget::{MAX_BSPLINE_DEGREE, MAX_BSPLINE_SURFACE_SAMPLE_WORK};
 use super::bspline_parse::{parse_control_points, parse_knot_vectors};
-use super::edge_loop::{extract_edge_loop_points, extract_edge_loop_points_for_bounds};
+use super::edge_loop::extract_edge_loop_points_for_bounds;
 
 /// Process a planar or boundary-represented face.
 ///
@@ -35,66 +36,21 @@ pub(super) fn process_planar_face(
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
 ) -> Result<(Vec<f32>, Vec<u32>)> {
-    use crate::triangulation::{project_to_2d_with_basis, triangulate_polygon_with_holes};
-    use ifc_lite_core::IfcType;
+    process_planar_face_rebased(face, decoder, quality, None)
+}
 
-    let bounds_attr = face
-        .get(0)
-        .ok_or_else(|| Error::geometry("AdvancedFace missing Bounds".to_string()))?;
-    let bounds = bounds_attr
-        .as_list()
-        .ok_or_else(|| Error::geometry("Expected bounds list".to_string()))?;
-
-    // Collect (points, is_outer, orientation) per bound. Orientation is
-    // attribute 1 of IfcFaceBound; when .F., the loop must be reversed.
-    let mut outer_points: Option<Vec<Point3<f64>>> = None;
-    let mut hole_points: Vec<Vec<Point3<f64>>> = Vec::new();
-
-    for bound in bounds {
-        let Some(bound_id) = bound.as_entity_ref() else {
-            continue;
-        };
-        let bound_entity = decoder.decode_by_id(bound_id)?;
-
-        let loop_attr = bound_entity
-            .get(0)
-            .ok_or_else(|| Error::geometry("FaceBound missing Bound".to_string()))?;
-        let loop_entity = decoder
-            .resolve_ref(loop_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve loop".to_string()))?;
-        if !loop_entity.ifc_type.as_str().eq_ignore_ascii_case("IFCEDGELOOP") {
-            continue;
-        }
-
-        let mut points = extract_edge_loop_points(&loop_entity, decoder, quality);
-        if points.len() < 3 {
-            continue;
-        }
-        let orientation = bound_entity
-            .get(1)
-            .and_then(|a| a.as_enum())
-            .map(|e| e == "T" || e == "TRUE")
-            .unwrap_or(true);
-        if !orientation {
-            points.reverse();
-        }
-
-        let is_outer = bound_entity.ifc_type == IfcType::IfcFaceOuterBound;
-        if is_outer || outer_points.is_none() {
-            if is_outer {
-                if let Some(prev_outer) = outer_points.take() {
-                    hole_points.push(prev_outer);
-                }
-            }
-            outer_points = Some(points);
-        } else {
-            hole_points.push(points);
-        }
-    }
-
-    let Some(outer) = outer_points else {
+pub(super) fn process_planar_face_rebased(
+    face: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
+    rtc_file_units: Option<(f64, f64, f64)>,
+) -> Result<(Vec<f32>, Vec<u32>)> {
+    use crate::triangulation::project_to_2d_with_basis;
+    let bounds = extract_face_bounds(face, decoder, quality)?;
+    let Some(outer) = bounds.outer else {
         return Ok((Vec::new(), Vec::new()));
     };
+    let hole_points = bounds.holes;
 
     let normal = calculate_polygon_normal(&outer);
     let (outer_2d, u_axis, v_axis, origin) = project_to_2d(&outer, &normal);
@@ -104,29 +60,43 @@ pub(super) fn process_planar_face(
         .collect();
 
     let mut positions = Vec::with_capacity((outer.len() + hole_points.iter().map(|h| h.len()).sum::<usize>()) * 3);
+    let rtc = rtc_file_units.unwrap_or((0.0, 0.0, 0.0));
     for p in outer.iter().chain(hole_points.iter().flat_map(|h| h.iter())) {
-        positions.push(p.x as f32);
-        positions.push(p.y as f32);
-        positions.push(p.z as f32);
+        positions.push((p.x - rtc.0) as f32);
+        positions.push((p.y - rtc.1) as f32);
+        positions.push((p.z - rtc.2) as f32);
     }
 
-    let indices = match triangulate_polygon_with_holes(&outer_2d, &holes_2d) {
-        Ok(idx) => idx.into_iter().map(|i| i as u32).collect(),
-        Err(_) => {
-            // Outer-only fan fallback. Drops holes — same behaviour as the
-            // pre-fix code on a no-hole face, so worst case matches the old
-            // legacy path rather than emitting nothing.
-            let mut idx = Vec::with_capacity((outer.len() - 2) * 3);
-            for i in 1..outer.len() - 1 {
+    let indices = triangulate_planar_indices(&outer_2d, &holes_2d, outer.len())?;
+
+    Ok((positions, indices))
+}
+
+fn triangulate_planar_indices(
+    outer_2d: &[nalgebra::Point2<f64>],
+    holes_2d: &[Vec<nalgebra::Point2<f64>>],
+    outer_len: usize,
+) -> Result<Vec<u32>> {
+    use crate::triangulation::triangulate_polygon_with_holes;
+
+    match triangulate_polygon_with_holes(outer_2d, holes_2d) {
+        Ok(idx) => Ok(idx.into_iter().map(|i| i as u32).collect()),
+        Err(_) if holes_2d.is_empty() => {
+            // Preserve the historical no-hole fallback. It is never valid
+            // when holes exist: filling only the outer fan would silently
+            // close authored openings.
+            let mut idx = Vec::with_capacity((outer_len - 2) * 3);
+            for i in 1..outer_len - 1 {
                 idx.push(0u32);
                 idx.push(i as u32);
                 idx.push(i as u32 + 1);
             }
-            idx
+            Ok(idx)
         }
-    };
-
-    Ok((positions, indices))
+        Err(error) => Err(Error::geometry(format!(
+            "planar face triangulation with holes failed: {error}"
+        ))),
+    }
 }
 
 /// Process a B-spline surface face.

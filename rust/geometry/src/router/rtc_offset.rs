@@ -9,6 +9,8 @@ use super::GeometryRouter;
 use crate::coord_is_large;
 use ifc_lite_core::{geometry_flags_by_name, DecodedEntity, EntityDecoder, IfcType, RtcVerdict};
 
+mod raw_coordinate;
+
 /// Whether a near-origin element with this `RepresentationType` may cast a
 /// "no-shift" `(0,0,0)` RTC vote when the vertex probe can't cheaply read a
 /// coordinate. This is [`is_body_representation`](super::is_body_representation)
@@ -134,12 +136,12 @@ impl GeometryRouter {
         Some((tx, ty, tz))
     }
 
-    /// True when the element carries at least one RTC-votable body shape
-    /// representation (see [`is_rtc_votable_representation`]), as opposed to
-    /// only curve/axis/footprint reps (e.g. an IfcAlignmentSegment) OR a
-    /// `Surface3D` rep whose coordinates the vertex probe cannot read. Used to
-    /// decide whether an origin-placed element with no cheaply-samplable vertex
-    /// may still cast a "no shift" (0,0,0) vote during RTC detection.
+    /// True when the element carries at least one RTC-votable body shape or
+    /// structural Face topology representation, as opposed to only
+    /// curve/axis/footprint reps (e.g. an IfcAlignmentSegment) OR a `Surface3D`
+    /// rep whose coordinates the vertex probe cannot read. Used to decide
+    /// whether an origin-placed element with no cheaply-samplable vertex may
+    /// still cast a "no shift" (0,0,0) vote during RTC detection.
     ///
     /// NOTE: this uses [`is_rtc_votable_representation`], NOT
     /// [`is_body_representation`](super::is_body_representation) — the two
@@ -169,10 +171,13 @@ impl GeometryRouter {
             return false;
         };
         reps.iter().any(|sr| {
-            sr.ifc_type == IfcType::IfcShapeRepresentation
-                && super::effective_element_rep_type(entity, sr)
-                    .map(is_rtc_votable_representation)
-                    .unwrap_or(false)
+            super::effective_element_rep_type(entity, sr).is_some_and(|rep_type| {
+                (sr.ifc_type == IfcType::IfcShapeRepresentation
+                    && is_rtc_votable_representation(rep_type))
+                    || (sr.ifc_type == IfcType::IfcTopologyRepresentation
+                        && rep_type == "Face"
+                        && super::structural::accepts(entity, rep_type))
+            })
         })
     }
 
@@ -206,10 +211,7 @@ impl GeometryRouter {
         let reps_attr = rep.get(2)?;
         let reps = decoder.resolve_ref_list(reps_attr).ok()?;
 
-        for shape_rep in &reps {
-            if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {
-                continue;
-            }
+        for shape_rep in super::meshed_representations(entity, &reps) {
             // attr 3 = Items (list of geometry items)
             let items = match shape_rep.get(3).and_then(|a| a.as_list()) {
                 Some(list) => list,
@@ -272,6 +274,13 @@ impl GeometryRouter {
                         }
                     }
 
+                    // ── Structural topology path ──
+                    IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace => {
+                        if let Some(pt) = self.face_first_vertex(&item, decoder) {
+                            return Some(pt);
+                        }
+                    }
+
                     _ => continue,
                 }
             }
@@ -300,6 +309,14 @@ impl GeometryRouter {
         let faces = shell.get(0)?.as_list()?;
         let face_id = faces.first()?.as_entity_ref()?;
         let face = decoder.decode_by_id(face_id).ok()?;
+        self.face_first_vertex(&face, decoder)
+    }
+
+    fn face_first_vertex(
+        &self,
+        face: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Option<(f64, f64, f64)> {
         let bounds = face.get(0)?.as_list()?;
         let bound_id = bounds.first()?.as_entity_ref()?;
         let bound = decoder.decode_by_id(bound_id).ok()?;
@@ -316,6 +333,18 @@ impl GeometryRouter {
             let polygon = loop_entity.get(0)?.as_list()?;
             let pt_id = polygon.first()?.as_entity_ref()?;
             return decoder.get_cartesian_point_fast(pt_id);
+        }
+        if loop_entity.ifc_type == IfcType::IfcEdgeLoop {
+            let edge_id = loop_entity.get(0)?.as_list()?.first()?.as_entity_ref()?;
+            let oriented = decoder.decode_by_id(edge_id).ok()?;
+            let edge = oriented
+                .get(2)
+                .and_then(|attr| decoder.resolve_ref(attr).ok().flatten())?;
+            let vertex = edge
+                .get(0)
+                .and_then(|attr| decoder.resolve_ref(attr).ok().flatten())?;
+            let point_id = vertex.get_ref(0)?;
+            return decoder.get_cartesian_point_fast(point_id);
         }
         None
     }
@@ -335,49 +364,6 @@ impl GeometryRouter {
         let y = first_triple.get(1)?.as_float()?;
         let z = first_triple.get(2)?.as_float()?;
         Some((x, y, z))
-    }
-
-    fn raw_coordinate_is_large(&self, point: (f64, f64, f64)) -> bool {
-        let s = self.unit_scale;
-        coord_is_large((point.0 * s, point.1 * s, point.2 * s))
-    }
-
-    pub(super) fn representation_item_uses_raw_large_coordinates(
-        &self,
-        item: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> bool {
-        let first_vertex = match item.ifc_type {
-            IfcType::IfcFacetedBrep | IfcType::IfcFacetedBrepWithVoids => {
-                self.brep_first_vertex(item, decoder)
-            }
-            IfcType::IfcTriangulatedFaceSet
-            | IfcType::IfcTriangulatedIrregularNetwork
-            | IfcType::IfcPolygonalFaceSet => self.tessellated_first_vertex(item, decoder),
-            IfcType::IfcFaceBasedSurfaceModel | IfcType::IfcShellBasedSurfaceModel => {
-                let Some(shells_attr) = item.get(0) else {
-                    return false;
-                };
-                let Some(shells) = shells_attr.as_list() else {
-                    return false;
-                };
-                let Some(shell_ref) = shells.first() else {
-                    return false;
-                };
-                let Some(shell_id) = shell_ref.as_entity_ref() else {
-                    return false;
-                };
-                match decoder.decode_by_id(shell_id) {
-                    Ok(shell) => self.shell_first_vertex(&shell, decoder),
-                    Err(_) => None,
-                }
-            }
-            _ => None,
-        };
-
-        first_vertex
-            .map(|point| self.raw_coordinate_is_large(point))
-            .unwrap_or(false)
     }
 
     /// [`Self::detect_rtc_offset_for_file`]'s window with no placement-bounds

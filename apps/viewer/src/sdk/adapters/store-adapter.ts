@@ -49,8 +49,10 @@ import type {
   EntityRef,
   StoreBackendMethods,
 } from '@ifc-lite/sdk';
+import { createCostStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import type { StoreApi } from './types.js';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
+import { createCostAdapter } from './cost-adapter.js';
 import { getMutationViewForModel, getOrCreateMutationView, isLegacyMutationRef, normalizeMutationModelId } from './mutation-view.js';
 import { attributeNamesForStore, referenceAttributeSlotsForStore } from '@/lib/collab/schema-attribute-names.js';
 import { encodeRoomAttributeValue, referencedExpressIds } from '@/lib/collab/entity-reference-wire.js';
@@ -62,6 +64,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
   // One StoreEditor per (modelId, MutablePropertyView) pair. Editors are
   // cheap, but caching avoids re-scanning the entity index on every call.
   const editors = new WeakMap<object, StoreEditor>();
+  const costAdapter = createCostAdapter(store);
   function resolveDataStore(modelId: string) {
     const state = store.getState();
     // The refs this adapter hands out carry the mutation-view alias
@@ -312,5 +315,47 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       return buildElement('addMember', modelId, storeyExpressId,
         (editor, anchor) => addMemberToStore(editor, anchor, params as MemberInStoreParams).memberId);
     },
+    ...withCostMutationNotifications(createCostStoreBackend((modelId: string | undefined) => {
+      const requested = modelId ?? '';
+      const editor = getEditor(requested);
+      const dataStore = resolveDataStore(requested);
+      if (!editor || !dataStore) throw new Error(`bim.store: no model loaded for id "${modelId}"`);
+      const ownerHistoryId = resolveLiveOwnerHistoryId(dataStore, editor);
+      const normalized = normalizeMutationModelId(store.getState(), requested);
+      const mutationView = store.getState().getMutationView(normalized);
+      if (!mutationView) throw new Error(`bim.store: no mutation view for model id "${modelId}"`);
+      return { modelId: requested, store: dataStore, editor, mutationView, ownerHistoryId };
+    }, costAdapter, modelId => markCostModelDirty(store, modelId)), store),
   };
+}
+
+/**
+ * Relationship methods notify through `createCostStoreBackend` only when they
+ * actually changed the overlay. The four create methods always change it, so
+ * wrap those here as well. Bumping the viewer's existing mutation revision is
+ * what makes an already-open Cost panel re-read the mutation-aware graph.
+ */
+function withCostMutationNotifications(
+  methods: ReturnType<typeof createCostStoreBackend>,
+  store: StoreApi,
+): ReturnType<typeof createCostStoreBackend> {
+  const notifyAfter = <Args extends unknown[]>(
+    method: (...args: Args) => EntityRef,
+  ) => (...args: Args): EntityRef => {
+    const result = method(...args);
+    markCostModelDirty(store, result.modelId);
+    return result;
+  };
+  return {
+    ...methods,
+    addCostSchedule: notifyAfter(methods.addCostSchedule),
+    addCostItem: notifyAfter(methods.addCostItem),
+    addCostValue: notifyAfter(methods.addCostValue),
+    addCostQuantity: notifyAfter(methods.addCostQuantity),
+  };
+}
+
+function markCostModelDirty(store: StoreApi, modelId: string): void {
+  const state = store.getState();
+  state.markModelsDirty([normalizeMutationModelId(state, modelId)]);
 }

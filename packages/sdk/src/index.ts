@@ -243,6 +243,9 @@ export { StructuralNamespace } from './namespaces/structural.js';
 export { CostNamespace } from './namespaces/cost.js';
 export { createCostBackend } from './cost-backend.js';
 export type { CostModelResolver, ResolvedCostModel } from './cost-backend.js';
+export { createCostStoreBackend, resolveLiveOwnerHistoryId } from './cost-store-backend.js';
+export type { CostStoreModelResolution, CostStoreModelResolver } from './cost-store-backend.js';
+export type { CostStoreBackendMethods } from './store-cost-types.js';
 
 // Clash — geometric interference detection over caller-provided ClashElement[]
 export { ClashNamespace } from './namespaces/clash.js';

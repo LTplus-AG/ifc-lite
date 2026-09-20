@@ -4,9 +4,11 @@
 
 The renderer has one camera-owned relative-to-eye (RTE) frame. World/source
 coordinates remain JavaScript f64 values on the CPU. At a GPU boundary an
-origin is split into `high` and `low` f32 vec4 lanes; a shader first subtracts
-the drawable and camera high lanes, then their low lanes, and only then adds a
-local vertex. The camera view-projection carries orientation and projection,
+f64 `(drawable origin - camera origin)` delta is split into `high` and `low`
+f32 vec4 lanes; a shader evaluates `(local + deltaHigh) + deltaLow`. It never
+subtracts independently rounded camera and drawable lanes. The per-draw delta
+is therefore camera-dependent and must be regenerated whenever the frame
+camera changes. The camera view-projection carries orientation and projection,
 but no camera/world translation.
 
 `packages/renderer/src/relative-to-eye.ts` and
@@ -29,13 +31,15 @@ local axes within `8192 m` for the normal precision target (one f32 ULP is at
 most 0.9765625 mm there).
 
 The geometric comparison tolerance for a migrated GPU path is
-`max(0.001 m, 2 * f32Ulp(maxAbsEyeRelativeAxis))`, where the eye-relative axis
-includes local position plus high/low origin delta. This deliberately budgets
-split-origin rounding and the final f32 eye-relative addition; CPU source-space
+`max(0.001 m, 2 * f32Ulp(maxAbsEyeRelativeAxis)) + 0.5 *
+f32Ulp(maxAbsSourceLocalAxis)`. The first term budgets f64 delta splitting and
+the two final f32 additions; the second separately states the error already
+present when source-local geometry was uploaded as Float32. CPU source-space
 ray, snap and measurement results remain f64 and use their existing
 operation-specific tolerances. At the `1e6 m` emergency envelope the allowed
-GPU geometric error is consequently 0.125 m, so an oversized batch is valid
-but must be partitioned before it can be used for precision-sensitive snapping.
+GPU geometric error is consequently about 0.15625 m for a maximally large
+local vertex, so an oversized batch is valid but must be partitioned before it
+can be used for precision-sensitive snapping.
 Screen-space agreement is at most 0.5 physical pixel for colour/overlay edges
 and at most 1 physical pixel for asynchronous ID/depth picking, measured at
 the active drawing-buffer resolution.
@@ -60,7 +64,7 @@ implementation PR.
 | Family | Current absolute boundary | RTE completion criterion |
 | --- | --- | --- |
 | Camera matrices, projection and frustum | `camera-matrices.ts`, `camera-projection.ts`, `index.ts` | Maintain f64 camera/target state; issue the translation-free matrix only to GPU consumers. CPU projection/unprojection obtains the same frame explicitly rather than silently reusing absolute `viewProj`. |
-| Flat, quantized, textured and hydrated mesh draws | `index.ts`, `pipeline.ts`, `main.wgsl.ts`, `textured.wgsl.ts`, `scene-batch-*`, `scene-derived-mesh-provenance.ts` | All use one frame uniform plus a packed drawable origin. Shared-origin partitioning preserves source/model/geometry-item provenance; local vertex buffers and quantized dequantization stay local. Fragment `worldPos`, section planes and crop boxes use the same relative frame. |
+| Flat, quantized, textured and hydrated mesh draws | `index.ts`, `pipeline.ts`, `main.wgsl.ts`, `textured.wgsl.ts`, `scene-batch-*`, `scene-derived-mesh-provenance.ts` | All use one frame uniform plus a camera-dependent packed drawable-origin delta. Shared-origin partitioning preserves source/model/geometry-item provenance; local vertex buffers and quantized dequantization stay local. Repack or reframe before every draw after a camera change. Fragment `worldPos`, section planes and crop boxes use the same relative frame. |
 | GPU instancing | `instanced-render.ts`, `main.wgsl.ts`, `picker.ts`, `shadow.wgsl.ts` | Remove national-grid translation from the f32 occurrence matrix; supply an origin per occurrence or a verified shared origin. The colour, picker and shadow records must have one identical layout, preserving canonical placed Y-up metres with scale then rotation then translation. |
 | Shadows | `shadow-pass.ts`, `shadow-occluders.ts`, `shadow-light-matrix.ts`, `shadow.wgsl.ts` | Rebase the light transform around the f64 camera/drawable frame rather than reintroducing an absolute f32 translation. Section/crop, height ranges, culling and shadow fit use the same source-space inputs and shadows agree with clipped colour geometry. |
 | GPU picker and rectangle selection | `picker.ts`, `pick-uniforms.ts`, `pick-resolve.ts`, `scene-rect-select.ts` | Pick rasterization and depth unprojection use the RTE frame. Capture the view/projection, camera and drawable origins plus a render epoch before asynchronous readback; reject stale samples. The decoded hit returns source f64 coordinates; no absolute f32 round trip is permitted. |
@@ -81,9 +85,11 @@ implementation PR.
    identity rules while their model placements are RTE packed.
 5. A real WebGPU compute/readback witness executes the helper with local axes
    at `±1e3`, `±1e4` and `±1e6`, on both sides of f32 exponent boundaries and
-   with a remote camera/common source translation. It also pins camera
-   `10,000,000`, drawable `11,000,000.025`, local `-1,000,000` to the expected
-   `0.02500000037252903`; the old association returns zero.
+   with a remote camera/common source translation. Its accepted cancellation
+   witness pins camera `10,000,000`, drawable `10,999,999.975`, local
+   `-1,000,000` to `-0.02500000037252903`; the old association returns zero.
+   The positive `11,000,000.025` version remains a documented *out-of-envelope*
+   diagnostic, because its delta is `1,000,000.025 m`.
 
 The LandXML safety refusal remains until all four cases cover the real renderer
 paths above. It is intentionally out of scope for the foundation commit.

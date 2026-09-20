@@ -33,15 +33,20 @@ function close(actual: number, expected: number, tolerance = 1e-7): void {
   assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} != ${expected} ± ${tolerance}`);
 }
 
+function packDrawableDelta(drawable: readonly [number, number, number], camera: readonly [number, number, number]): Float32Array {
+  const packed = new Float32Array(RTE_ORIGIN_FLOATS);
+  packRteOrigin([
+    drawable[0] - camera[0], drawable[1] - camera[1], drawable[2] - camera[2],
+  ], packed);
+  return packed;
+}
+
 describe('relative-to-eye packing (#5049)', () => {
   it('retains a centimetre-sized local vertex at a multi-million-metre offset', () => {
-    const camera = new Float32Array(RTE_ORIGIN_FLOATS);
-    const drawable = new Float32Array(RTE_ORIGIN_FLOATS);
-    packRteOrigin([5_000_000, -3_000_000, 2_000_000], camera);
-    packRteOrigin([5_000_000, -3_000_000, 2_000_000], drawable);
+    const drawable = packDrawableDelta([5_000_000, -3_000_000, 2_000_000], [5_000_000, -3_000_000, 2_000_000]);
 
     const local: [number, number, number] = [0.025, -0.0125, 0.03125];
-    const relative = rteRelativePositionF32(local, drawable, camera);
+    const relative = rteRelativePositionF32(local, drawable);
 
     // This is the exact failure RTE prevents: the f32 upload of the absolute
     // coordinate has no room left for 2.5 cm at a five-million-metre offset.
@@ -52,38 +57,29 @@ describe('relative-to-eye packing (#5049)', () => {
   });
 
   it('cancels neighbouring high lanes before adding the low residual', () => {
-    const camera = new Float32Array(RTE_ORIGIN_FLOATS);
-    const drawable = new Float32Array(RTE_ORIGIN_FLOATS);
     const cameraWorld: [number, number, number] = [5_000_000.25, 4_000_000.125, -6_000_000.5];
     const drawableWorld: [number, number, number] = [5_000_000.75, 3_999_999.875, -5_999_999.75];
-    packRteOrigin(cameraWorld, camera);
-    packRteOrigin(drawableWorld, drawable);
+    const drawable = packDrawableDelta(drawableWorld, cameraWorld);
 
-    const got = rteRelativePositionF32([0.125, -0.25, 0.0625], drawable, camera);
+    const got = rteRelativePositionF32([0.125, -0.25, 0.0625], drawable);
     close(got[0], 0.625);
     close(got[1], -0.5);
     close(got[2], 0.8125);
   });
 
   it('uses cancellation-first arithmetic across local template extents', () => {
-    const camera = new Float32Array(RTE_ORIGIN_FLOATS);
-    const drawable = new Float32Array(RTE_ORIGIN_FLOATS);
     // High lanes differ by 1 m while the low lanes contain a 25 cm residual.
-    packRteOrigin([4_194_304.25, 0, 0], camera); // 2^22: an f32 ULP boundary
-    packRteOrigin([4_194_305.5, 0, 0], drawable);
+    const drawable = packDrawableDelta([4_194_305.5, 0, 0], [4_194_304.25, 0, 0]); // 2^22 boundary
     for (const local of [-1_000_000, -10_000, -1_000, 1_000, 10_000, 1_000_000]) {
       const expected = Math.fround(Math.fround(Math.fround(local) + 1) + 0.25);
-      assert.equal(rteRelativePositionF32([local, 0, 0], drawable, camera)[0], expected, `local ${local}`);
+      assert.equal(rteRelativePositionF32([local, 0, 0], drawable)[0], expected, `local ${local}`);
     }
   });
 
   it('retains the low origin after a million-metre local/high cancellation', () => {
     const witness = (cameraX: number): number => {
-      const camera = new Float32Array(RTE_ORIGIN_FLOATS);
-      const drawable = new Float32Array(RTE_ORIGIN_FLOATS);
-      packRteOrigin([cameraX, 0, 0], camera);
-      packRteOrigin([cameraX + 1_000_000.025, 0, 0], drawable);
-      return rteRelativePositionF32([-1_000_000, 0, 0], drawable, camera)[0];
+      const drawable = packDrawableDelta([cameraX + 1_000_000.025, 0, 0], [cameraX, 0, 0]);
+      return rteRelativePositionF32([-1_000_000, 0, 0], drawable)[0];
     };
     // The old `local + (highDelta + lowDelta)` association returns zero: the
     // 2.5 cm low lane disappears when joined to a 1,000,000 m high delta.
@@ -91,14 +87,19 @@ describe('relative-to-eye packing (#5049)', () => {
     assert.equal(witness(8_388_608), 0.02500000037252903, 'same witness across an f32 exponent boundary');
   });
 
+  it('forms the drawable-camera delta in f64 before splitting in-envelope origins', () => {
+    const delta = packDrawableDelta([1_000_000, 0, 0], [0.025, 0, 0]);
+    assert.equal(rteRelativePositionF32([-1_000_000, 0, 0], delta)[0], -0.02500000037252903);
+  });
+
   it('survives f32 high-lane exponent boundaries and common source translations', () => {
     const local: [number, number, number] = [12.5, -0.125, 0.03125];
     const relativeFor = (translation: number): [number, number, number] => {
-      const camera = new Float32Array(RTE_ORIGIN_FLOATS);
-      const drawable = new Float32Array(RTE_ORIGIN_FLOATS);
-      packRteOrigin([translation + 4_194_303.75, translation - 4_194_304.25, translation + 8_388_608.5], camera);
-      packRteOrigin([translation + 4_194_304.25, translation - 4_194_304.75, translation + 8_388_609.25], drawable);
-      return rteRelativePositionF32(local, drawable, camera);
+      const drawable = packDrawableDelta(
+        [translation + 4_194_304.25, translation - 4_194_304.75, translation + 8_388_609.25],
+        [translation + 4_194_303.75, translation - 4_194_304.25, translation + 8_388_608.5],
+      );
+      return rteRelativePositionF32(local, drawable);
     };
     const nearby = relativeFor(0);
     const remote = relativeFor(10_000_000);
@@ -160,10 +161,10 @@ describe('relative-to-eye packing (#5049)', () => {
     assertRteUniformAbi();
     assert.deepStrictEqual(reflectRteUniformStruct(relativeToEyeWgsl, 'RteFrameUniform'), RTE_UNIFORM_LAYOUT.frame);
     assert.throws(() => assertRteUniformAbi(relativeToEyeWgsl.replace(
-      'cameraHigh: vec4<f32>,', 'padding: vec4<f32>,\n  cameraHigh: vec4<f32>,',
+      'drawableDeltaHigh: vec4<f32>,', 'padding: vec4<f32>,\n  drawableDeltaHigh: vec4<f32>,',
     )), /does not match/);
     assert.throws(() => assertRteUniformAbi(relativeToEyeWgsl.replace(
-      'cameraHigh: vec4<f32>,\n  cameraLow', 'cameraLow: vec4<f32>,\n  cameraHigh',
+      'drawableDeltaHigh: vec4<f32>,\n  drawableDeltaLow', 'drawableDeltaLow: vec4<f32>,\n  drawableDeltaHigh',
     )), /does not match/);
     const mutatedArithmetic = relativeToEyeWgsl.replace('(local + highDelta) + lowDelta', 'local + (highDelta + lowDelta)');
     assert.throws(() => assertRteUniformAbi(mutatedArithmetic), /must evaluate/);
@@ -181,7 +182,9 @@ describe('relative-to-eye packing (#5049)', () => {
     const frameData = new Float32Array(RTE_FRAME_FLOATS);
     const drawableData = new Float32Array(RTE_ORIGIN_FLOATS);
     frame.packUniforms(frameData);
-    frame.packDrawableOrigin([11_000_000.025, -4_194_304.75, 8_388_609.25], drawableData);
+    // This stays within the ±1,000,000 m accepted delta envelope. The prior
+    // positive witness (11,000,000.025) is intentionally outside it.
+    frame.packDrawableOrigin([10_999_999.975, -4_194_304.75, 8_388_609.25], drawableData);
     const frameBuffer = device.createBuffer({ size: frameData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const drawableBuffer = device.createBuffer({ size: drawableData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const resultBuffer = device.createBuffer({ size: 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
@@ -208,9 +211,26 @@ describe('relative-to-eye packing (#5049)', () => {
       device.queue.submit([encoder.finish()]);
       await readback.mapAsync(GPUMapMode.READ);
       const got = new Float32Array(readback.getMappedRange().slice(0));
-      const expected = rteRelativePositionF32([-1_000_000, -0.25, 0.0625], drawableData, frameData.subarray(16, 24));
+      const expected = rteRelativePositionF32([-1_000_000, -0.25, 0.0625], drawableData);
       assert.deepStrictEqual(Array.from(got), [...expected, 1]);
-      assert.equal(got[0], 0.02500000037252903, 'the GPU witness must reject the old association');
+      assert.equal(got[0], -0.02500000037252903, 'the GPU witness must reject the old association');
+      readback.unmap();
+
+      // Repeat the exact association witness over the 2^23 high-lane boundary.
+      const boundaryEye = { x: 8_388_608, y: eye.y, z: eye.z };
+      frame.update(boundaryEye, MathUtils.identity(), MathUtils.lookAt(boundaryEye, { ...boundaryEye, z: boundaryEye.z - 1 }, { x: 0, y: 1, z: 0 }));
+      frame.packUniforms(frameData);
+      frame.packDrawableOrigin([9_388_607.975, -4_194_304.75, 8_388_609.25], drawableData);
+      device.queue.writeBuffer(frameBuffer, 0, frameData);
+      device.queue.writeBuffer(drawableBuffer, 0, drawableData);
+      const boundaryEncoder = device.createCommandEncoder();
+      const boundaryPass = boundaryEncoder.beginComputePass();
+      boundaryPass.setPipeline(pipeline); boundaryPass.setBindGroup(0, bindGroup); boundaryPass.dispatchWorkgroups(1); boundaryPass.end();
+      boundaryEncoder.copyBufferToBuffer(resultBuffer, 0, readback, 0, 16);
+      device.queue.submit([boundaryEncoder.finish()]);
+      await readback.mapAsync(GPUMapMode.READ);
+      const boundaryGot = new Float32Array(readback.getMappedRange().slice(0));
+      assert.equal(boundaryGot[0], -0.02500000037252903, 'the exponent-boundary GPU witness must retain the low delta');
       readback.unmap();
     } finally {
       frameBuffer.destroy(); drawableBuffer.destroy(); resultBuffer.destroy(); readback.destroy();

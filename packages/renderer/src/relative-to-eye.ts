@@ -11,13 +11,12 @@
  * bit is much larger than an edge or a cursor snap tolerance.  The only
  * f32 conversion allowed at the render boundary is therefore this split:
  *
- *   world = high + low
- *   eyeRelative = local + (drawable.high - camera.high)
- *                       + (drawable.low  - camera.low)
+ *   drawableMinusCamera = deltaHigh + deltaLow
+ *   eyeRelative = (local + deltaHigh) + deltaLow
  *
- * High values are rounded independently before subtraction.  Nearby large
- * origins consequently cancel before the small residual is added, instead of
- * first adding a small local vertex to a multi-million-metre number.
+ * The delta is formed in CPU f64 before either lane is rounded. This avoids
+ * losing a source residual when two independently rounded large origins are
+ * subtracted in f32.
  *
  * This module deliberately owns both the CPU packing layout and the matching
  * WGSL declarations (in `shaders/relative-to-eye.wgsl.ts`).  Pass migrations
@@ -58,8 +57,8 @@ export const RTE_UNIFORM_LAYOUT = {
     { name: 'cameraLow', type: 'vec4<f32>', byteOffset: 80, byteSize: 16 },
   ] as const satisfies readonly UniformFieldLayout[],
   drawable: [
-    { name: 'drawableHigh', type: 'vec4<f32>', byteOffset: 0, byteSize: 16 },
-    { name: 'drawableLow', type: 'vec4<f32>', byteOffset: 16, byteSize: 16 },
+    { name: 'drawableDeltaHigh', type: 'vec4<f32>', byteOffset: 0, byteSize: 16 },
+    { name: 'drawableDeltaLow', type: 'vec4<f32>', byteOffset: 16, byteSize: 16 },
   ] as const satisfies readonly UniformFieldLayout[],
 } as const;
 
@@ -190,8 +189,8 @@ export function translationFreeViewProjection(projection: Mat4, view: Mat4): Mat
 /**
  * The one camera-owned RTE frame.  It carries f64 camera source coordinates,
  * their high/low GPU representation, and a view-projection that consumes
- * eye-relative positions.  It intentionally has no model/drawable state:
- * that state is packed per draw through `packDrawableOrigin`.
+ * eye-relative positions. It intentionally has no model/drawable state: each
+ * draw packs an f64 camera-relative delta through `packDrawableOrigin`.
  */
 export class RelativeToEyeFrame {
   private readonly cameraPacked = new Float32Array(RTE_ORIGIN_FLOATS);
@@ -228,17 +227,22 @@ export class RelativeToEyeFrame {
     out.set(this.cameraPacked, floatOffset + RTE_UNIFORM_LAYOUT.frame[1].byteOffset / 4);
   }
 
-  /** Pack a drawable's f64 world origin into the matching per-draw layout. */
+  /**
+   * Pack a drawable's f64 camera-relative origin into the per-draw layout.
+   * The GPU must never subtract independently rounded absolute origins again.
+   * This payload is camera-dependent and is invalid after any camera reframe.
+   */
   packDrawableOrigin(origin: WorldPoint, out: Float32Array, floatOffset = 0): void {
+    const delta: [number, number, number] = [0, 0, 0];
     for (let axis = 0; axis < 3; axis++) {
-      const relative = origin[axis] - this.cameraWorld[axis];
-      if (!Number.isFinite(relative) || Math.abs(relative) > MAX_RTE_EYE_RELATIVE_METRES) {
+      delta[axis] = origin[axis] - this.cameraWorld[axis];
+      if (!Number.isFinite(delta[axis]) || Math.abs(delta[axis]) > MAX_RTE_EYE_RELATIVE_METRES) {
         throw new RangeError(
           `RTE drawable origin exceeds the ±${MAX_RTE_EYE_RELATIVE_METRES} m camera-relative envelope on axis ${axis}.`,
         );
       }
     }
-    packRteOrigin(origin, out, floatOffset);
+    packRteOrigin(delta, out, floatOffset);
   }
 
   /**
@@ -263,16 +267,15 @@ export class RelativeToEyeFrame {
  */
 export function rteRelativePositionF32(
   local: WorldPoint,
-  drawablePacked: Float32Array,
-  cameraPacked: Float32Array,
+  drawableDeltaPacked: Float32Array,
 ): [number, number, number] {
-  if (drawablePacked.length < RTE_ORIGIN_FLOATS || cameraPacked.length < RTE_ORIGIN_FLOATS) {
-    throw new RangeError('RTE relative position requires two packed origins.');
+  if (drawableDeltaPacked.length < RTE_ORIGIN_FLOATS) {
+    throw new RangeError('RTE relative position requires one packed drawable-camera delta.');
   }
   const result: [number, number, number] = [0, 0, 0];
   for (let axis = 0; axis < 3; axis++) {
-    const highDelta = Math.fround(drawablePacked[axis] - cameraPacked[axis]);
-    const lowDelta = Math.fround(drawablePacked[axis + 4] - cameraPacked[axis + 4]);
+    const highDelta = drawableDeltaPacked[axis];
+    const lowDelta = drawableDeltaPacked[axis + 4];
     // Match WGSL exactly: a local template may span kilometres, so folding
     // low into high before adding local can lose the low residual.
     result[axis] = Math.fround(Math.fround(Math.fround(local[axis]) + highDelta) + lowDelta);

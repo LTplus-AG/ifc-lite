@@ -381,7 +381,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              {t('shareDialog.linkExpiryNotice', { role })}
+              {t('shareDialog.linkExpiryNotice', { role: t(ROLE_OPTIONS.find((o) => o.role === role)?.labelKey ?? 'shareDialog.role.viewer.label') })}
             </p>
           </div>
         )}

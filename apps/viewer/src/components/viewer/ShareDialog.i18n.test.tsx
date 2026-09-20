@@ -76,7 +76,9 @@ it('renders the joined-room chrome (role picker, link box, live peers) in Englis
   assert.ok(document.body.textContent?.includes('Link'));
   assert.ok(document.body.textContent?.includes('Only the room admin can create invite links for this room.'));
   assert.ok(document.body.textContent?.includes('Live now'));
-  assert.ok(document.body.textContent?.includes('Link expires in 7 days. Anyone with it gets editor access.'));
+  // `role` defaults to 'editor'; the notice shows its translated label ('Edit'),
+  // not the raw enum value (#4918 review finding).
+  assert.ok(document.body.textContent?.includes('Link expires in 7 days. Anyone with it gets Edit access.'));
 });
 
 it('translates a role label and the joined-room notice, while an untranslated key falls back to English (#4918)', () => {

@@ -93,7 +93,12 @@ export function PeerPresenceLayer() {
         });
       }
       const serialized = next
-        .map((c) => `${c.clientId}:${c.screen.x | 0}:${c.screen.y | 0}:${c.opacity.toFixed(2)}`)
+        // `label` is included so a live locale switch (#4918: `peerLabel` now
+        // routes through `t()`) is detected even when a peer's position and
+        // opacity haven't moved — otherwise the dedup check below would skip
+        // `setCursors` and leave the previous locale's label on screen until
+        // the peer's cursor next moves.
+        .map((c) => `${c.clientId}:${c.screen.x | 0}:${c.screen.y | 0}:${c.opacity.toFixed(2)}:${c.label}`)
         .join(',');
       if (serialized !== lastSerialized) {
         lastSerialized = serialized;

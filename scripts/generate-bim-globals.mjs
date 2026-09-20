@@ -27,11 +27,11 @@
  *
  * Types the schema names rather than spells out are EXTRACTED from their
  * defining sources here (see `derivedTypeLines` and `BIM_DERIVED_TYPE_GROUPS`):
- * the `BimClash.*` clash-engine types and `BimCost.*` SDK types. The sandbox
- * `console` is likewise derived. Transcribing any of them would put a
+ * the `BimClash.*` clash-engine types and `BimCost.*` / `BimSdk.*` SDK types.
+ * The sandbox `console` is likewise derived. Transcribing any of them would put a
  * hand-maintained copy of another package's
  * types in the one script whose whole purpose is to stop such copies rotting
- * (#2422). Because both are derived, a change upstream turns the `--check`
+ * (#2422). Because they are derived, a change upstream turns the `--check`
  * gate red exactly as a schema change does.
  *
  * Modes (mirrors scripts/generate-server-attr-indices.mjs UX):
@@ -396,21 +396,7 @@ const lines = [
   '  confidentiality?: string;',
   '}',
   '',
-  '/**',
-  ' * The related OBJECTS of an entity\'s structural relationships, never the',
-  ' * `IfcRel*` entities: `voids` holds the `IfcOpeningElement`s that void this',
-  ' * element, `fills` the `IfcOpeningElement` it fills, `groups` the `IfcZone` /',
-  ' * `IfcGroup` / `IfcSystem` it belongs to, `connections` the elements it is',
-  ' * joined to. The names are not EXPRESS names on purpose — IFC\'s own names',
-  ' * for these traversals are inverse attributes holding the `IfcRel*` entity,',
-  ' * which is not what these arrays contain (#2422).',
-  ' */',
-  'interface BimRelationships {',
-  '  voids: Array<{ id: number; name?: string; type: string }>;',
-  '  fills: Array<{ id: number; name?: string; type: string }>;',
-  '  groups: Array<{ id: number; name?: string }>;',
-  '  connections: Array<{ id: number; name?: string; type: string }>;',
-  '}',
+  'type BimRelationships = BimSdk.EntityRelationshipsData;',
   '',
   'interface BimModelInfo {',
   '  id: string;',

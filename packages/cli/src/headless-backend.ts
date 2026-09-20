@@ -77,6 +77,7 @@ import {
   extractTypePropertiesOnDemand,
   extractDocumentsOnDemand,
   extractRelationshipsOnDemand,
+  extractExactRelatedIds,
   expandTypes,
   QUERY_REL_TYPE_MAP,
   isQueryableObjectType,
@@ -84,10 +85,9 @@ import {
 import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { createStructuralAdapter } from './headless-backend-structural.js';
 import { createScheduleAdapter } from './headless-backend-schedule.js';
-import { edgeSurvives } from '@ifc-lite/data';
 import { exportHbjson, exportDfjson } from './energy-export.js';
-import { foldQueuedRelated } from './query-overlay-relations.js';
-import { overlayEntityData, overlayProperties, overlayQuantities, foldNewEntities } from './query-overlay.js';
+import { foldQueuedRelated, foldQueuedRelationshipData, supersededRelationshipIds } from './query-overlay-relations.js';
+import { applyParsedEntityOverrides, overlayEntityData, overlayProperties, overlayQuantities, foldNewEntities } from './query-overlay.js';
 
 // `expandTypes` used to be defined here; it now comes from `@ifc-lite/parser`,
 // shared with the other query backends (see `query-backend-maps.ts`). Re-exported
@@ -270,20 +270,20 @@ export class HeadlessBackend implements BimBackend {
     const getMutationView = () => this.mutationView;
 
     function getEntityData(ref: EntityRef): EntityData | null {
-      const overlay = overlayEntityData(getMutationView(), ref);
+      const overlay = overlayEntityData(getMutationView(), ref, store.schemaVersion);
       if (overlay !== undefined) return overlay;
       if (!store.entityIndex.byId.has(ref.expressId)) return null; // not parsed either
       const node = new EntityNode(store, ref.expressId);
       const type = node.type;
       if (!type || type === 'Unknown') return null;
-      return {
+      return applyParsedEntityOverrides(getMutationView(), ref.expressId, type, store.schemaVersion, {
         ref,
         globalId: node.globalId,
         name: node.name,
         type,
         description: node.description,
         objectType: node.objectType,
-      };
+      });
     }
 
     function getProperties(ref: EntityRef): PropertySetData[] {
@@ -349,7 +349,9 @@ export class HeadlessBackend implements BimBackend {
             objectType: node.objectType,
           });
         }
-        if (view) results.push(...foldNewEntities(view, descriptor.types, (t) => expandTypes(t, store.schemaVersion), isProductType, MODEL_ID));
+        if (view) results.push(...foldNewEntities(
+          view, descriptor.types, (t) => expandTypes(t, store.schemaVersion), isProductType, MODEL_ID, store.schemaVersion,
+        ));
         let filtered = results;
         if (descriptor.filters && descriptor.filters.length > 0) {
           const propsCache = new Map<number, PropertySetData[]>();
@@ -445,7 +447,10 @@ export class HeadlessBackend implements BimBackend {
         return extractDocumentsOnDemand(store, ref.expressId);
       },
       relationships(ref: EntityRef): EntityRelationshipsData {
-        return extractRelationshipsOnDemand(store, ref.expressId);
+        const result = extractRelationshipsOnDemand(store, ref.expressId);
+        const view = getMutationView();
+        if (!view) return result;
+        return foldQueuedRelationshipData(store, view, result, ref, getEntityData);
       },
       // Folds queued `IfcRel…` creates in (query-overlay-relations.ts, mirrors #2014).
       related(ref: EntityRef, relType: string, direction: 'forward' | 'inverse'): EntityRef[] {
@@ -453,7 +458,6 @@ export class HeadlessBackend implements BimBackend {
         if (relEnum === undefined) return [];
         const view = getMutationView();
         if (view?.isDeleted(ref.expressId)) return []; // deleted relates to nothing
-        const half = direction === 'forward' ? store.relationships.forward : store.relationships.inverse;
         const out: number[] = [];
         const seen = new Set<number>();
         const take = (id: number): void => {
@@ -461,16 +465,10 @@ export class HeadlessBackend implements BimBackend {
           seen.add(id);
           out.push(id);
         };
-        // Two `IfcRel*` instances can name the same triple; the graph keeps
-        // only one as `relationshipId` and folds the rest into
-        // `shadowedRelationshipIds` (#3760). `edgeSurvives` (shared with the
-        // MCP backend, #3782 review) treats the connection as alive as long
-        // as any one of them still exists.
-        const isDeleted = view ? (id: number) => view.isDeleted(id) : () => false;
-        for (const edge of half.getEdges(ref.expressId, relEnum)) {
-          if (edgeSurvives(edge, isDeleted)) take(edge.target);
-        }
-        if (view) for (const t of foldQueuedRelated(view.getNewEntities(), (id) => view.isDeleted(id), relType, direction, ref.expressId)) take(t);
+        const superseded = view ? supersededRelationshipIds(store, view) : new Set<number>();
+        const isDeleted = view ? (id: number) => view.isDeleted(id) || superseded.has(id) : () => false;
+        for (const id of extractExactRelatedIds(store, ref.expressId, relType, direction, isDeleted)) take(id);
+        if (view) for (const t of foldQueuedRelated(store, view, relType, direction, ref.expressId)) take(t);
         return out.map((expressId: number) => ({ modelId: ref.modelId, expressId }));
       },
     };

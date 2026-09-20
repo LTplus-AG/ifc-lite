@@ -42,6 +42,8 @@ export const mainToolbarEn = {
   'mainToolbar.cloudSources': 'Cloud Sources',
   'mainToolbar.layerStack': 'Layer Stack',
   'mainToolbar.locationZones': 'Location Zones',
+  'mainToolbar.loadReport': 'Load Report',
+  'mainToolbar.cost': 'Cost',
   'mainToolbar.collaborationRoom': 'Collaboration Room',
   'mainToolbar.analysisExtensions': 'Analysis extensions',
 

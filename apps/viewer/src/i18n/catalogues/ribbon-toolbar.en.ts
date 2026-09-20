@@ -136,6 +136,8 @@ export const ribbonToolbarEn = {
   'ribbon.analyze.loadReport': 'Load Report',
   'ribbon.analyze.loadReportTooltip': 'Per-model load report and geometry warnings',
   'ribbon.analyze.dataGroup': 'Data',
+  'ribbon.analyze.cost': 'Cost',
+  'ribbon.analyze.costTooltip': 'IFC 5D cost inspector',
   'ribbon.analyze.lists': 'Lists',
   'ribbon.analyze.listsTooltip': 'Entity lists',
   'ribbon.analyze.schedule': 'Schedule',

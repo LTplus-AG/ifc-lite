@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 export { useTranslation } from './useTranslation';
+export type { UseTranslationResult } from './useTranslation';
 export { registerLocale, setLocale, getLocale } from './registry';
 export { formatLocaleNumber, localeCount, parseLocaleNumber } from './intlFormat';
 export type { TranslationKey } from './en';

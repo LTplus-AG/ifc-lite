@@ -7,6 +7,7 @@ import type { FileSourceProvider, SourceIdentity } from '@ifc-lite/plugin-api';
 import type { SourceHost } from '@/services/sources/source-host';
 import { loadResolvedSourcePrefs } from '@/lib/sources/preferences';
 import { clearSourceCatalogCache, syncSourceCatalogCacheOwner } from '@/lib/sources/persistence';
+import type { LiveTranslationMessage } from '@/i18n/live-message';
 
 export type SourceAuthStatus =
   /** Provider does not use interactive auth. */
@@ -21,8 +22,8 @@ export type SourceAuthStatus =
 export interface SourceAuthState {
   readonly status: SourceAuthStatus;
   readonly identity: SourceIdentity | null;
-  /** A gentle prompt ("Please sign in again."), never a hard error. */
-  readonly notice: string | null;
+  /** An authored prompt key or a provider-owned runtime diagnostic. */
+  readonly notice: LiveTranslationMessage | null;
   readonly signIn: () => void;
   readonly signOut: () => void;
 }
@@ -38,7 +39,7 @@ export function useSourceAuth(provider: FileSourceProvider, sourceHost: SourceHo
   const interactive = provider.manifest.auth === 'interactive' && provider.auth !== undefined;
   const [status, setStatus] = useState<SourceAuthStatus>(interactive ? 'restoring' : 'not-interactive');
   const [identity, setIdentity] = useState<SourceIdentity | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<LiveTranslationMessage | null>(null);
 
   useEffect(() => {
     if (!interactive) return;
@@ -68,7 +69,7 @@ export function useSourceAuth(provider: FileSourceProvider, sourceHost: SourceHo
         syncSourceCatalogCacheOwner(provider.manifest.name, null);
         setIdentity(null);
         setStatus('signed-out');
-        setNotice('Your session expired. Please sign in again.');
+        setNotice({ key: 'sources.sourceProviderRow.sessionExpired' });
       });
 
     return () => {
@@ -96,7 +97,11 @@ export function useSourceAuth(provider: FileSourceProvider, sourceHost: SourceHo
         syncSourceCatalogCacheOwner(provider.manifest.name, null);
         setIdentity(null);
         setStatus('signed-out');
-        setNotice(err instanceof Error ? err.message : 'Sign-in failed. Please try again.');
+        setNotice(
+          err instanceof Error
+            ? { text: err.message }
+            : { key: 'sources.sourceProviderRow.signInFailed' },
+        );
       });
   }, [provider, sourceHost]);
 

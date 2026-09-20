@@ -254,6 +254,20 @@ export class QueryNamespace {
     return result;
   }
 
+  private decompositionRefs(ref: EntityRef, direction: 'forward' | 'inverse'): EntityRef[] {
+    const result: EntityRef[] = [];
+    const seen = new Set<string>();
+    for (const relType of ['IfcRelAggregates', 'IfcRelNests']) {
+      for (const related of this.backend.query.related(ref, relType, direction)) {
+        const key = `${related.modelId}:${related.expressId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push(related);
+      }
+    }
+    return result;
+  }
+
   /** IfcRelContainedInSpatialStructure (inverse) — what spatial element contains this entity */
   containedIn(ref: EntityRef): EntityData | null {
     const refs = this.backend.query.related(ref, 'IfcRelContainedInSpatialStructure', 'inverse');
@@ -266,16 +280,21 @@ export class QueryNamespace {
     return this.related(ref, 'IfcRelContainedInSpatialStructure', 'forward');
   }
 
-  /** IfcRelAggregates (inverse) — the whole that this entity is a part of */
+  /** IfcRelAggregates / IfcRelNests (inverse) — the whole that this entity is a part of */
   decomposedBy(ref: EntityRef): EntityData | null {
-    const refs = this.backend.query.related(ref, 'IfcRelAggregates', 'inverse');
+    const refs = this.decompositionRefs(ref, 'inverse');
     if (refs.length === 0) return null;
     return this.backend.query.entityData(refs[0]);
   }
 
-  /** IfcRelAggregates (forward) — parts that this entity aggregates */
+  /** IfcRelAggregates / IfcRelNests (forward) — parts of this entity */
   decomposes(ref: EntityRef): EntityData[] {
-    return this.related(ref, 'IfcRelAggregates', 'forward');
+    const result: EntityData[] = [];
+    for (const related of this.decompositionRefs(ref, 'forward')) {
+      const data = this.backend.query.entityData(related);
+      if (data) result.push(data);
+    }
+    return result;
   }
 
   /** Navigate up to the building storey */

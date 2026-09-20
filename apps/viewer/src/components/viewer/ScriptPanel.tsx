@@ -640,10 +640,7 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
         <PromoteToolDialog
           open={promoteOpen}
           source={editorContent}
-          initialName={
-            savedScripts.find((s) => s.id === activeScriptId)?.name
-            ?? 'My tool'
-          }
+          initialName={savedScripts.find((s) => s.id === activeScriptId)?.name}
           onClose={() => setPromoteOpen(false)}
         />
       )}

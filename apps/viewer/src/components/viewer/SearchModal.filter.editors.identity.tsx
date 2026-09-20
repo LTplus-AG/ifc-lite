@@ -11,6 +11,7 @@
  */
 
 import { Input } from '@/components/ui/input';
+import { useTranslation } from '@/i18n';
 import type { FilterRule, SetOp } from '@/lib/search/filter-rules';
 import { OpDropdown, SET_OPS, VALUE_OPS } from './SearchModal.filter.editors.shared';
 
@@ -27,6 +28,7 @@ export function GlobalIdEditor({
   op: SetOp;
   onChange: (values: string[], op: SetOp) => void;
 }) {
+  const { t } = useTranslation();
   const text = values.join(', ');
   const setFromText = (raw: string) =>
     onChange(raw.split(',').map((s) => s.trim()).filter((s) => s.length > 0), op);
@@ -34,7 +36,7 @@ export function GlobalIdEditor({
     <>
       <OpDropdown ops={SET_OPS} value={op} onChange={(next) => onChange(values, next)} />
       <Input
-        placeholder="e.g. 325Q7Fhnf67OZC$$r43uzK"
+        placeholder={t('searchModal.filterEditors.globalIdPlaceholder')}
         value={text}
         onChange={(e) => setFromText(e.target.value)}
         className="h-7 w-64 text-xs font-mono"
@@ -50,11 +52,12 @@ export function AttributeEditor({
   rule: Extract<FilterRule, { kind: 'attribute' }>;
   onChange: (next: FilterRule) => void;
 }) {
+  const { t } = useTranslation();
   const valueless = rule.op === 'isSet' || rule.op === 'isNotSet';
   return (
     <>
       <Input
-        placeholder="Description, ObjectType, Tag, …"
+        placeholder={t('searchModal.filterEditors.attributeNamePlaceholder')}
         value={rule.name}
         onChange={(e) => onChange({ ...rule, name: e.target.value })}
         className="h-7 w-40 text-xs font-mono"
@@ -62,7 +65,7 @@ export function AttributeEditor({
       <OpDropdown ops={VALUE_OPS} value={rule.op} onChange={(next) => onChange({ ...rule, op: next })} />
       {!valueless && (
         <Input
-          placeholder="value"
+          placeholder={t('searchModal.filterEditors.valuePlaceholder')}
           value={rule.value}
           onChange={(e) => onChange({ ...rule, value: e.target.value, valueKind: undefined })}
           className="h-7 w-44 text-xs font-mono"

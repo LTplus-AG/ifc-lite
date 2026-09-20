@@ -27,6 +27,7 @@ import {
   type StringOp,
 } from '@/lib/search/filter-rules';
 import { ComboInput } from '@/components/ui/combo-input';
+import { useTranslation } from '@/i18n';
 import { propValueKey, type FilterValueSchema } from '@/lib/search/filter-schema';
 import { RULE_KIND_LABEL } from './filter-rule-labels';
 import { GlobalIdEditor, AttributeEditor } from './SearchModal.filter.editors.identity';
@@ -61,6 +62,7 @@ export interface RuleRowProps {
 }
 
 export function RuleRow({ rule, modelOptions, tagOptions, ifcTypeOptions, storeyOptions, psetQto, valueSchema, onChange, onRemove }: RuleRowProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded border border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-950">
       <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
@@ -176,7 +178,7 @@ export function RuleRow({ rule, modelOptions, tagOptions, ifcTypeOptions, storey
       <button
         type="button"
         onClick={onRemove}
-        aria-label="Remove rule"
+        aria-label={t('searchModal.filterEditors.removeRuleAriaLabel')}
         className="ml-auto rounded p-1 text-muted-foreground hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
       >
         <Trash2 className="h-3 w-3" />
@@ -195,6 +197,7 @@ interface SetRuleEditorProps {
 }
 
 function SetRuleEditor({ values, op, options, onChange }: SetRuleEditorProps) {
+  const { t } = useTranslation();
   const toggle = (v: string) => {
     const next = values.includes(v) ? values.filter((x) => x !== v) : [...values, v];
     onChange(next, op);
@@ -205,13 +208,15 @@ function SetRuleEditor({ values, op, options, onChange }: SetRuleEditorProps) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm" className="h-7 gap-1 text-xs font-mono">
-            {values.length === 0 ? 'Pick values…' : `${values.length} selected`}
+            {values.length === 0
+              ? t('searchModal.filterEditors.pickValues')
+              : t('searchModal.filterEditors.selectedCount', { count: values.length })}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
           {options.length === 0 && (
             <DropdownMenuItem disabled className="text-muted-foreground italic">
-              No options available — load a model first.
+              {t('searchModal.filterEditors.noOptionsAvailable')}
             </DropdownMenuItem>
           )}
           {options.map((o) => (
@@ -242,7 +247,7 @@ function SetRuleEditor({ values, op, options, onChange }: SetRuleEditorProps) {
               {v}
               <button
                 type="button"
-                aria-label={`Remove ${v}`}
+                aria-label={t('searchModal.filterEditors.removeValueAriaLabel', { value: v })}
                 onClick={() => toggle(v)}
                 className="text-muted-foreground hover:text-foreground"
               >
@@ -267,6 +272,7 @@ function PredefinedTypeEditor({
   options: ReadonlyArray<string>;
   onChange: (values: string[], op: SetOp) => void;
 }) {
+  const { t } = useTranslation();
   // Free-text comma input is always available so ANY token can be entered:
   // discovery only samples a bounded slice of entities, so a valid value may
   // not be in `options`. When values ARE discovered, an extra "Pick" dropdown
@@ -280,7 +286,7 @@ function PredefinedTypeEditor({
     <>
       <OpDropdown ops={SET_OPS} value={op} onChange={(next) => onChange(values, next)} />
       <Input
-        placeholder="e.g. SOLIDWALL, PARTITIONING"
+        placeholder={t('searchModal.filterEditors.predefinedTypePlaceholder')}
         value={text}
         onChange={(e) => setFromText(e.target.value)}
         className="h-7 w-56 text-xs font-mono"
@@ -289,7 +295,7 @@ function PredefinedTypeEditor({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="h-7 gap-1 text-xs font-mono">
-              Pick
+              {t('searchModal.filterEditors.pick')}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
@@ -325,11 +331,12 @@ function NameEditor({
   value: string;
   onChange: (op: StringOp, value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       <OpDropdown ops={STRING_OPS} value={op} onChange={(next) => onChange(next, value)} />
       <Input
-        placeholder="text"
+        placeholder={t('searchModal.filterEditors.textPlaceholder')}
         value={value}
         onChange={(e) => onChange(op, e.target.value)}
         className="h-7 w-56 text-xs font-mono"
@@ -346,6 +353,7 @@ interface PropertyEditorProps {
 }
 
 function PropertyEditor({ rule, psetQto, valueSchema, onChange }: PropertyEditorProps) {
+  const { t } = useTranslation();
   const psetNames = useMemo(() => (psetQto ? psetQto.psets.map(([n]) => n) : []), [psetQto]);
   const propNames = useMemo(() => {
     if (!psetQto) return [];
@@ -362,7 +370,7 @@ function PropertyEditor({ rule, psetQto, valueSchema, onChange }: PropertyEditor
   return (
     <>
       <ComboInput
-        placeholder="Pset_… (e.g. Pset_WallCommon)"
+        placeholder={t('searchModal.filterEditors.psetNamePlaceholder')}
         value={rule.setName}
         options={psetNames}
         className="h-7 w-52 text-xs font-mono"
@@ -370,7 +378,7 @@ function PropertyEditor({ rule, psetQto, valueSchema, onChange }: PropertyEditor
       />
       <span className="text-muted-foreground">.</span>
       <ComboInput
-        placeholder="prop name"
+        placeholder={t('searchModal.filterEditors.propertyNamePlaceholder')}
         value={rule.propertyName}
         options={propNames}
         className="h-7 w-44 text-xs font-mono"
@@ -379,7 +387,7 @@ function PropertyEditor({ rule, psetQto, valueSchema, onChange }: PropertyEditor
       <OpDropdown ops={VALUE_OPS} value={rule.op} onChange={(next) => onChange({ ...rule, op: next })} />
       {!valueless && (
         <ComboInput
-          placeholder="value"
+          placeholder={t('searchModal.filterEditors.valuePlaceholder')}
           value={rule.value}
           options={valueOptions}
           className="h-7 w-44 text-xs font-mono"
@@ -397,6 +405,7 @@ interface QuantityEditorProps {
 }
 
 function QuantityEditor({ rule, psetQto, onChange }: QuantityEditorProps) {
+  const { t } = useTranslation();
   const qsetNames = useMemo(() => (psetQto ? psetQto.qtos.map(([n]) => n) : []), [psetQto]);
   const qtyNames = useMemo(() => {
     if (!psetQto) return [];
@@ -407,7 +416,7 @@ function QuantityEditor({ rule, psetQto, onChange }: QuantityEditorProps) {
   return (
     <>
       <ComboInput
-        placeholder="Qto_… (e.g. Qto_WallBaseQuantities)"
+        placeholder={t('searchModal.filterEditors.qsetNamePlaceholder')}
         value={rule.setName}
         options={qsetNames}
         className="h-7 w-56 text-xs font-mono"
@@ -415,7 +424,7 @@ function QuantityEditor({ rule, psetQto, onChange }: QuantityEditorProps) {
       />
       <span className="text-muted-foreground">.</span>
       <ComboInput
-        placeholder="quantity name"
+        placeholder={t('searchModal.filterEditors.quantityNamePlaceholder')}
         value={rule.quantityName}
         options={qtyNames}
         className="h-7 w-44 text-xs font-mono"
@@ -424,7 +433,7 @@ function QuantityEditor({ rule, psetQto, onChange }: QuantityEditorProps) {
       <OpDropdown ops={NUMERIC_OPS} value={rule.op} onChange={(next) => onChange({ ...rule, op: next })} />
       <Input
         type="number"
-        placeholder="value"
+        placeholder={t('searchModal.filterEditors.valuePlaceholder')}
         value={rule.value}
         onChange={(e) => onChange({ ...rule, value: Number.parseFloat(e.target.value) || 0 })}
         className="h-7 w-32 text-xs font-mono"
@@ -444,11 +453,12 @@ function MaterialEditor({
   options: ReadonlyArray<string>;
   onChange: (op: StringOp, value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       <OpDropdown ops={STRING_OPS} value={op} onChange={(next) => onChange(next, value)} />
       <ComboInput
-        placeholder="material name (e.g. Concrete)"
+        placeholder={t('searchModal.filterEditors.materialNamePlaceholder')}
         value={value}
         options={options}
         className="h-7 w-56 text-xs font-mono"
@@ -467,15 +477,16 @@ function ClassificationEditor({
   valueSchema: FilterValueSchema | null;
   onChange: (next: FilterRule) => void;
 }) {
+  const { t } = useTranslation();
   const valueless = rule.op === 'isSet' || rule.op === 'isNotSet';
   return (
     <>
       <ComboInput
-        placeholder="system (optional)"
+        placeholder={t('searchModal.filterEditors.classificationSystemPlaceholder')}
         value={rule.system ?? ''}
         options={valueSchema?.classificationSystems ?? NO_OPTIONS}
         className="h-7 w-40 text-xs font-mono"
-        aria-label="Classification system — leave blank for any"
+        aria-label={t('searchModal.filterEditors.classificationSystemAriaLabel')}
         onChange={(v) => onChange(Rule.classification(v, rule.op, rule.value))}
       />
       <OpDropdown
@@ -485,7 +496,7 @@ function ClassificationEditor({
       />
       {!valueless && (
         <ComboInput
-          placeholder="code or name"
+          placeholder={t('searchModal.filterEditors.classificationValuePlaceholder')}
           value={rule.value}
           options={valueSchema?.classifications ?? NO_OPTIONS}
           className="h-7 w-44 text-xs font-mono"

@@ -64,7 +64,9 @@ describe('LandXML semantic selection (#5042)', () => {
     const source = document('landxml:surface:1:face:1');
     source.profiles.push({
       sourceId: 'landxml:profile:1:1:design:route', parentAlignmentSourceId: 'landxml:alignment:1:route', ordinal: 1,
-      name: 'route', kind: 'design', pvis: [], verticalCurves: [], gradeLines: [],
+      name: 'route', kind: 'design', pvis: [{ sourceId: 'landxml:profile:1:pvi:1', station: 10, elevation: 2 }],
+      verticalCurves: [{ sourceId: 'landxml:profile:1:curve:1', parentProfileSourceId: 'landxml:profile:1:1:design:route', kind: 'parabolic', station: 10, elevation: 2, length: 20, lengthIn: null, lengthOut: null, radius: null }],
+      gradeLines: [{ sourceId: 'landxml:profile:1:grade:1', parentProfileSourceId: 'landxml:profile:1:1:design:route', ordinal: 1, points: [{ sourceId: 'landxml:profile:1:grade:1:point:1', station: 10, elevation: 2 }] }],
     });
     const record = findLandXmlModelSourceRecord(
       new Map([['terrain', { landXmlDocument: source }]]),
@@ -72,5 +74,13 @@ describe('LandXML semantic selection (#5042)', () => {
     );
     assert.equal(record?.kind, 'profile');
     if (record?.kind === 'profile') assert.equal(record.profile.parentAlignmentSourceId, 'landxml:alignment:1:route');
+    assert.equal(findLandXmlModelSourceRecord(
+      new Map([['terrain', { landXmlDocument: source }]]),
+      { modelId: 'terrain', sourceId: 'landxml:profile:1:curve:1' },
+    )?.kind, 'vertical-curve');
+    assert.equal(findLandXmlModelSourceRecord(
+      new Map([['terrain', { landXmlDocument: source }]]),
+      { modelId: 'terrain', sourceId: 'landxml:profile:1:grade:1:point:1' },
+    )?.kind, 'grade-line-point');
   });
 });

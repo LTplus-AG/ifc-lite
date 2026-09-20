@@ -100,8 +100,14 @@ export type LandXmlSourceRecord =
   | { kind: 'boundary' | 'breakline' | 'contour'; surface: LandXmlTinSurface; line: LandXmlPolyline }
   | { kind: 'alignment'; alignment: LandXmlAlignment }
   | { kind: 'profile'; profile: LandXmlProfile }
+  | { kind: 'profile-point'; profile: LandXmlProfile; point: LandXmlProfilePoint }
+  | { kind: 'vertical-curve'; profile: LandXmlProfile; curve: LandXmlVerticalCurve }
+  | { kind: 'grade-line'; profile: LandXmlProfile; gradeLine: LandXmlGradeLine }
+  | { kind: 'grade-line-point'; profile: LandXmlProfile; gradeLine: LandXmlGradeLine; point: LandXmlProfilePoint }
   | { kind: 'cross-section'; crossSection: LandXmlCrossSection }
   | { kind: 'cross-section-surface'; crossSectionSurface: LandXmlCrossSectionSurface }
+  | { kind: 'cross-section-segment'; crossSectionSurface: LandXmlCrossSectionSurface; segment: LandXmlCrossSectionSegment }
+  | { kind: 'cross-section-point'; crossSectionSurface: LandXmlCrossSectionSurface; point: LandXmlCrossSectionPoint }
   | { kind: 'roadway'; roadway: LandXmlRoadway }
   | { kind: 'preserved-extension'; extension: LandXmlPreservedOnlyExtension };
 
@@ -117,12 +123,30 @@ export interface LandXmlPickFederation {
 export function findLandXmlSourceRecord(document: LandXmlTinDocument, sourceId: string): LandXmlSourceRecord | null {
   const alignment = document.alignments.find((candidate) => candidate.sourceId === sourceId);
   if (alignment) return { kind: 'alignment', alignment };
-  const profile = document.profiles.find((candidate) => candidate.sourceId === sourceId);
-  if (profile) return { kind: 'profile', profile };
+  for (const profile of document.profiles) {
+    if (profile.sourceId === sourceId) return { kind: 'profile', profile };
+    const point = profile.pvis.find((candidate) => candidate.sourceId === sourceId);
+    if (point) return { kind: 'profile-point', profile, point };
+    const curve = profile.verticalCurves.find((candidate) => candidate.sourceId === sourceId);
+    if (curve) return { kind: 'vertical-curve', profile, curve };
+    for (const gradeLine of profile.gradeLines) {
+      if (gradeLine.sourceId === sourceId) return { kind: 'grade-line', profile, gradeLine };
+      const gradePoint = gradeLine.points.find((candidate) => candidate.sourceId === sourceId);
+      if (gradePoint) return { kind: 'grade-line-point', profile, gradeLine, point: gradePoint };
+    }
+  }
   const crossSection = document.crossSections.find((candidate) => candidate.sourceId === sourceId);
   if (crossSection) return { kind: 'cross-section', crossSection };
-  const crossSectionSurface = document.crossSectionSurfaces.find((candidate) => candidate.sourceId === sourceId);
-  if (crossSectionSurface) return { kind: 'cross-section-surface', crossSectionSurface };
+  for (const crossSectionSurface of document.crossSectionSurfaces) {
+    if (crossSectionSurface.sourceId === sourceId) return { kind: 'cross-section-surface', crossSectionSurface };
+    const point = crossSectionSurface.points.find((candidate) => candidate.sourceId === sourceId);
+    if (point) return { kind: 'cross-section-point', crossSectionSurface, point };
+    for (const segment of crossSectionSurface.segments) {
+      if (segment.sourceId === sourceId) return { kind: 'cross-section-segment', crossSectionSurface, segment };
+      const segmentPoint = segment.points.find((candidate) => candidate.sourceId === sourceId);
+      if (segmentPoint) return { kind: 'cross-section-point', crossSectionSurface, point: segmentPoint };
+    }
+  }
   const roadway = document.roadways.find((candidate) => candidate.sourceId === sourceId);
   if (roadway) return { kind: 'roadway', roadway };
   const extension = document.preservedOnlyExtensions.find((candidate) => candidate.sourceId === sourceId);

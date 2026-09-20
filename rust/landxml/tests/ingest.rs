@@ -75,7 +75,7 @@ fn requires_exact_namespace_and_version() {
         parse(valid.replace(" version=\"1.2\"", "").as_bytes())
             .unwrap_err()
             .code,
-        LandXmlDiagnosticCode::InvalidSemantic
+        LandXmlDiagnosticCode::UnsupportedVersion
     );
 }
 
@@ -103,6 +103,17 @@ fn refuses_dtd_and_entity_expansion_before_xml_parse() {
             .code,
         LandXmlDiagnosticCode::LimitExceeded
     );
+}
+
+#[test]
+fn allows_dtd_words_inside_comments_and_cdata() -> Result<(), Box<dyn std::error::Error>> {
+    let valid = String::from_utf8(document("grade")).expect("fixture is UTF-8");
+    let input = valid.replace(
+        "<Units>",
+        "<!-- literal <!DOCTYPE LandXML> is not a declaration --><![CDATA[<!ENTITY safe 'text'>]]><Units>",
+    );
+    assert_eq!(parse(input.as_bytes())?.surfaces[0].name, "grade");
+    Ok(())
 }
 
 #[test]
@@ -204,4 +215,17 @@ fn ignores_same_namespace_geometry_outside_tin_structure() -> Result<(), Box<dyn
     );
     assert_eq!(parse(xml.as_bytes())?.surfaces[0].name, "right");
     Ok(())
+}
+
+#[test]
+fn rejects_repeated_or_mixed_unit_declarations() {
+    let valid = String::from_utf8(document("grade")).expect("fixture is UTF-8");
+    let mixed = valid.replace(
+        "<Metric linearUnit=\"meter\"/>",
+        "<Metric linearUnit=\"meter\"/><Imperial linearUnit=\"foot\"/>",
+    );
+    assert_eq!(
+        parse(mixed.as_bytes()).unwrap_err().code,
+        LandXmlDiagnosticCode::InvalidSemantic
+    );
 }

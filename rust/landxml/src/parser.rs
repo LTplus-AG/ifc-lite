@@ -13,8 +13,8 @@ use crate::{
     capture::Capture,
     semantics::{positive_id, references, triple, units},
     xml::{
-        attr, attributes, character_references, error, normalize_encoding,
-        refuse_markup_declarations, required, split_name, unescape, Result,
+        attr, attributes, character_references, error, normalize_encoding, required, split_name,
+        unescape, Result,
     },
     LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlLimits, LandXmlPoint,
     LandXmlSourceId, LandXmlSurface, LandXmlTinDocument, LandXmlUnits,
@@ -65,7 +65,6 @@ pub fn parse_landxml_tin_with_cancel(
         return Err(error(Code::InputTooLarge, "input exceeds byte limit"));
     }
     let input = normalize_encoding(input, limits)?;
-    refuse_markup_declarations(&input)?;
     let mut parser = Parser {
         limits,
         cancelled,
@@ -166,11 +165,10 @@ impl Parser<'_> {
                     "root namespace is not LandXML 1.2",
                 ));
             }
-            let version = required(&attributes, "version", "LandXML")?;
-            if version != "1.2" {
+            if attr(&attributes, "version") != Some("1.2") {
                 return Err(error(
                     Code::UnsupportedVersion,
-                    "LandXML version must be 1.2",
+                    "LandXML version must explicitly be 1.2",
                 ));
             }
         }
@@ -199,6 +197,12 @@ impl Parser<'_> {
                 }
             }
             "Metric" | "Imperial" if self.is_path(&["LandXML", "Units", local]) => {
+                if self.units.is_some() {
+                    return Err(error(
+                        Code::InvalidSemantic,
+                        "LandXML may declare units only once",
+                    ));
+                }
                 self.units = Some(units(&attributes)?)
             }
             "P" if self.is_path(&["LandXML", "Surfaces", "Surface", "Definition", "Pnts", "P"])

@@ -83,22 +83,6 @@ pub(crate) fn utf8<'a>(bytes: &'a [u8], max: usize, context: &str) -> Result<&'a
         .map_err(|_| error(Code::InvalidXml, format!("invalid UTF-8 {context}")))
 }
 
-pub(crate) fn refuse_markup_declarations(input: &[u8]) -> Result<()> {
-    let dtd = input
-        .windows(9)
-        .any(|window| window.eq_ignore_ascii_case(b"<!doctype"))
-        || input
-            .windows(8)
-            .any(|window| window.eq_ignore_ascii_case(b"<!entity"));
-    if dtd {
-        return Err(error(
-            Code::DtdForbidden,
-            "DTD and entity declarations are not allowed",
-        ));
-    }
-    Ok(())
-}
-
 pub(crate) fn character_references(value: &str) -> usize {
     value.bytes().filter(|byte| *byte == b'&').count()
 }

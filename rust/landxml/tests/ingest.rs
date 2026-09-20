@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use ifc_lite_landxml::{
-    parse_landxml_tin_with_cancel, LandXmlCancellationFlag, LandXmlDiagnosticCode, LandXmlLimits,
-    LANDXML_12_NAMESPACE,
+    classify_landxml_version, parse_landxml_tin_with_cancel, LandXmlCancellationFlag,
+    LandXmlDiagnosticCode, LandXmlLimits, LandXmlVersionCapability, LANDXML_10_NAMESPACE,
+    LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
 };
 
 fn document(surface_name: &str) -> Vec<u8> {
@@ -77,6 +78,43 @@ fn requires_exact_namespace_and_version() {
             .code,
         LandXmlDiagnosticCode::UnsupportedVersion
     );
+}
+
+#[test]
+fn classifies_known_versions_but_keeps_12_as_the_only_ingest_capability() {
+    assert_eq!(
+        classify_landxml_version(Some(LANDXML_10_NAMESPACE), Some("1.0")),
+        LandXmlVersionCapability::LandXml10Unsupported
+    );
+    assert_eq!(
+        classify_landxml_version(Some(LANDXML_11_NAMESPACE), Some("1.1")),
+        LandXmlVersionCapability::LandXml11Unsupported
+    );
+    assert_eq!(
+        classify_landxml_version(Some(LANDXML_12_NAMESPACE), Some("1.2")),
+        LandXmlVersionCapability::LandXml12Tin
+    );
+    assert_eq!(
+        classify_landxml_version(Some(LANDXML_12_NAMESPACE), Some("1.1")),
+        LandXmlVersionCapability::LandXml12VersionMismatch
+    );
+    assert_eq!(
+        classify_landxml_version(Some("urn:vendor"), Some("1.2")),
+        LandXmlVersionCapability::NotLandXml
+    );
+    assert!(LandXmlVersionCapability::LandXml12Tin.supports_tin_ingestion());
+    assert!(!LandXmlVersionCapability::LandXml11Unsupported.supports_tin_ingestion());
+
+    for (namespace, version) in [(LANDXML_10_NAMESPACE, "1.0"), (LANDXML_11_NAMESPACE, "1.1")] {
+        let input = String::from_utf8(document("grade"))
+            .expect("fixture is UTF-8")
+            .replace(LANDXML_12_NAMESPACE, namespace)
+            .replace("version=\"1.2\"", &format!("version=\"{version}\""));
+        assert_eq!(
+            parse(input.as_bytes()).unwrap_err().code,
+            LandXmlDiagnosticCode::UnsupportedVersion
+        );
+    }
 }
 
 #[test]
@@ -178,6 +216,10 @@ fn applies_structural_and_semantic_resource_limits() {
             ..LandXmlLimits::default()
         },
         LandXmlLimits {
+            max_surfaces: 0,
+            ..LandXmlLimits::default()
+        },
+        LandXmlLimits {
             max_faces: 0,
             ..LandXmlLimits::default()
         },
@@ -195,6 +237,39 @@ fn applies_structural_and_semantic_resource_limits() {
             error.code,
             LandXmlDiagnosticCode::InputTooLarge | LandXmlDiagnosticCode::LimitExceeded
         ));
+    }
+}
+
+#[test]
+fn applies_record_limits_across_all_surfaces_before_output_growth() {
+    let valid = String::from_utf8(document("first")).expect("fixture is UTF-8");
+    let second = valid
+        .split_once("<Surfaces>")
+        .and_then(|(_, remainder)| remainder.split_once("</Surfaces>"))
+        .map(|(surface, _)| surface.replace("name=\"first\"", "name=\"second\""))
+        .expect("fixture has one Surfaces container");
+    let two_surfaces = valid.replace("</Surfaces>", &format!("{second}</Surfaces>"));
+
+    for limits in [
+        LandXmlLimits {
+            max_surfaces: 1,
+            ..LandXmlLimits::default()
+        },
+        LandXmlLimits {
+            max_points: 5,
+            ..LandXmlLimits::default()
+        },
+        LandXmlLimits {
+            max_faces: 1,
+            ..LandXmlLimits::default()
+        },
+    ] {
+        assert_eq!(
+            parse_landxml_tin_with_cancel(two_surfaces.as_bytes(), &limits, None)
+                .unwrap_err()
+                .code,
+            LandXmlDiagnosticCode::LimitExceeded
+        );
     }
 }
 

@@ -18,6 +18,9 @@ mod xml;
 pub use limits::{LandXmlCancellation, LandXmlCancellationFlag, LandXmlLimits};
 pub use model::{
     LandXmlDiagnosticCode, LandXmlError, LandXmlPoint, LandXmlSourceId, LandXmlSurface,
-    LandXmlTinDocument, LandXmlUnits,
+    LandXmlTinDocument, LandXmlUnits, LandXmlVersionCapability,
 };
-pub use parser::{parse_landxml_tin, parse_landxml_tin_with_cancel, LANDXML_12_NAMESPACE};
+pub use parser::{
+    classify_landxml_version, parse_landxml_tin, parse_landxml_tin_with_cancel,
+    LANDXML_10_NAMESPACE, LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
+};

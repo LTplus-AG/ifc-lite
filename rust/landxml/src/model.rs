@@ -59,6 +59,28 @@ impl fmt::Display for LandXmlError {
 
 impl std::error::Error for LandXmlError {}
 
+/// Capability selected from the root LandXML namespace and version attribute.
+///
+/// The parser deliberately supports TIN ingestion for 1.2 only. Earlier
+/// versions remain explicit states instead of being misclassified as arbitrary
+/// XML, so callers can show an actionable refusal and add a future adapter
+/// without changing classification semantics.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LandXmlVersionCapability {
+    NotLandXml,
+    LandXml10Unsupported,
+    LandXml11Unsupported,
+    LandXml12Tin,
+    LandXml12VersionMismatch,
+}
+
+impl LandXmlVersionCapability {
+    pub const fn supports_tin_ingestion(self) -> bool {
+        matches!(self, Self::LandXml12Tin)
+    }
+}
+
 /// Deterministic source identifier; it is not derived from any output mesh.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(transparent)]

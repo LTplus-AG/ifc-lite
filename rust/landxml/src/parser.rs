@@ -20,7 +20,25 @@ use crate::{
     LandXmlSourceId, LandXmlSurface, LandXmlTinDocument, LandXmlUnits,
 };
 
+pub const LANDXML_10_NAMESPACE: &str = "http://www.landxml.org/schema/LandXML-1.0";
+pub const LANDXML_11_NAMESPACE: &str = "http://www.landxml.org/schema/LandXML-1.1";
 pub const LANDXML_12_NAMESPACE: &str = "http://www.landxml.org/schema/LandXML-1.2";
+
+/// Classify known LandXML roots without relaxing the strict 1.2 ingest policy.
+pub fn classify_landxml_version(
+    namespace: Option<&str>,
+    version: Option<&str>,
+) -> crate::LandXmlVersionCapability {
+    use crate::LandXmlVersionCapability as Capability;
+
+    match namespace {
+        Some(LANDXML_10_NAMESPACE) => Capability::LandXml10Unsupported,
+        Some(LANDXML_11_NAMESPACE) => Capability::LandXml11Unsupported,
+        Some(LANDXML_12_NAMESPACE) if version == Some("1.2") => Capability::LandXml12Tin,
+        Some(LANDXML_12_NAMESPACE) => Capability::LandXml12VersionMismatch,
+        _ => Capability::NotLandXml,
+    }
+}
 
 #[derive(Clone)]
 struct Frame {
@@ -41,6 +59,9 @@ struct Parser<'a> {
     work: usize,
     character_references: usize,
     references: usize,
+    surfaces_seen: usize,
+    points_seen: usize,
+    faces_seen: usize,
     frames: Vec<Frame>,
     units: Option<LandXmlUnits>,
     surface: Option<SurfaceBuilder>,
@@ -71,6 +92,9 @@ pub fn parse_landxml_tin_with_cancel(
         work: 0,
         character_references: 0,
         references: 0,
+        surfaces_seen: 0,
+        points_seen: 0,
+        faces_seen: 0,
         frames: Vec::new(),
         units: None,
         surface: None,
@@ -159,17 +183,32 @@ impl Parser<'_> {
             if local != "LandXML" {
                 return Err(error(Code::InvalidSemantic, "root element is not LandXML"));
             }
-            if namespace != Some(LANDXML_12_NAMESPACE) {
-                return Err(error(
-                    Code::UnsupportedNamespace,
-                    "root namespace is not LandXML 1.2",
-                ));
-            }
-            if attr(&attributes, "version") != Some("1.2") {
-                return Err(error(
-                    Code::UnsupportedVersion,
-                    "LandXML version must explicitly be 1.2",
-                ));
+            match classify_landxml_version(namespace, attr(&attributes, "version")) {
+                crate::LandXmlVersionCapability::LandXml12Tin => {}
+                crate::LandXmlVersionCapability::LandXml10Unsupported => {
+                    return Err(error(
+                        Code::UnsupportedVersion,
+                        "LandXML 1.0 is recognized but TIN ingestion supports 1.2 only",
+                    ));
+                }
+                crate::LandXmlVersionCapability::LandXml11Unsupported => {
+                    return Err(error(
+                        Code::UnsupportedVersion,
+                        "LandXML 1.1 is recognized but TIN ingestion supports 1.2 only",
+                    ));
+                }
+                crate::LandXmlVersionCapability::LandXml12VersionMismatch => {
+                    return Err(error(
+                        Code::UnsupportedVersion,
+                        "LandXML 1.2 namespace requires an explicit version=\"1.2\"",
+                    ));
+                }
+                crate::LandXmlVersionCapability::NotLandXml => {
+                    return Err(error(
+                        Code::UnsupportedNamespace,
+                        "root namespace is not a recognized LandXML namespace",
+                    ));
+                }
             }
         }
         let target = namespace == Some(LANDXML_12_NAMESPACE);
@@ -183,6 +222,10 @@ impl Parser<'_> {
         }
         match local {
             "Surface" if self.is_path(&["LandXML", "Surfaces", "Surface"]) => {
+                if self.surfaces_seen >= self.limits.max_surfaces {
+                    return Err(error(Code::LimitExceeded, "surface limit exceeded"));
+                }
+                self.surfaces_seen += 1;
                 self.surface = Some(SurfaceBuilder {
                     name: required(&attributes, "name", "Surface")?.to_owned(),
                     tin: false,
@@ -289,7 +332,7 @@ impl Parser<'_> {
             .ok_or_else(|| error(Code::InvalidSemantic, "geometry outside Surface"))?;
         match capture {
             Capture::Point { id, text, .. } => {
-                if surface.points.len() >= self.limits.max_points {
+                if self.points_seen >= self.limits.max_points {
                     return Err(error(Code::LimitExceeded, "point limit exceeded"));
                 }
                 if !surface.ids.insert(id.clone()) {
@@ -302,9 +345,10 @@ impl Parser<'_> {
                     easting: values[1],
                     elevation: values[2],
                 });
+                self.points_seen += 1;
             }
             Capture::Face { text, hidden, .. } if !hidden => {
-                if surface.faces.len() >= self.limits.max_faces {
+                if self.faces_seen >= self.limits.max_faces {
                     return Err(error(Code::LimitExceeded, "face limit exceeded"));
                 }
                 self.references = self
@@ -316,6 +360,7 @@ impl Parser<'_> {
                 }
                 let refs = references(&text)?;
                 surface.faces.push(refs);
+                self.faces_seen += 1;
             }
             Capture::Face { .. } => {}
         }

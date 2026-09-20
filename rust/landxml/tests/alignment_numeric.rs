@@ -111,6 +111,69 @@ fn issue_5044_arc_has_independent_interior_and_tangent_probe() {
 }
 
 #[test]
+fn issue_5044_full_circle_and_radius_validation_do_not_invent_geometry() {
+    let circle = LandXmlAlignmentSegment {
+        source_id: id("circle"),
+        ordinal: 1,
+        primitive: LandXmlAlignmentPrimitive::Curve(LandXmlCurve {
+            start: point(10.0, 0.0),
+            center: point(0.0, 0.0),
+            end: point(10.0, 0.0),
+            pi: None,
+            rotation: LandXmlRotation::CounterClockwise,
+            radius: Some(10.0),
+            declared_length: Some(std::f64::consts::TAU * 10.0),
+        }),
+    };
+    let circle_alignment = alignment(vec![circle], std::f64::consts::TAU * 10.0);
+    let opposite = circle_alignment
+        .probe_at_distance(std::f64::consts::PI * 10.0, 0.0)
+        .expect("full-circle opposite point");
+    assert!((opposite.northing + 10.0).abs() < 1e-9);
+    assert!(opposite.easting.abs() < 1e-9);
+    let inconsistent = LandXmlAlignmentSegment {
+        source_id: id("bad-radius"),
+        ordinal: 1,
+        primitive: LandXmlAlignmentPrimitive::Curve(LandXmlCurve {
+            start: point(20.0, 0.0),
+            center: point(0.0, 0.0),
+            end: point(0.0, 10.0),
+            pi: None,
+            rotation: LandXmlRotation::CounterClockwise,
+            radius: Some(10.0),
+            declared_length: None,
+        }),
+    };
+    assert_eq!(
+        alignment(vec![inconsistent], 1.0)
+            .probe_at_distance(0.0, 0.0)
+            .expect_err("inconsistent start radius")
+            .code,
+        "LXMLA210"
+    );
+}
+
+#[test]
+fn issue_5044_line_refuses_declared_length_that_disagrees_with_endpoints() {
+    let line = LandXmlAlignmentSegment {
+        source_id: id("bad-line"),
+        ordinal: 1,
+        primitive: LandXmlAlignmentPrimitive::Line(LandXmlLine {
+            start: point(0.0, 0.0),
+            end: point(10.0, 0.0),
+            declared_length: Some(5.0),
+        }),
+    };
+    assert_eq!(
+        alignment(vec![line], 5.0)
+            .probe_at_distance(5.0, 0.0)
+            .expect_err("inconsistent line")
+            .code,
+        "LXMLA218"
+    );
+}
+
+#[test]
 fn issue_5044_irregular_line_preserves_intermediate_vertices() {
     let irregular = LandXmlAlignmentSegment {
         source_id: id("landxml:alignment:1:segment:irregular"),
@@ -119,6 +182,11 @@ fn issue_5044_irregular_line_preserves_intermediate_vertices() {
             start: point(0.0, 0.0),
             end: point(10.0, 10.0),
             points: vec![
+                LandXmlPlanPoint {
+                    northing: 0.0,
+                    easting: 0.0,
+                    elevation: None,
+                },
                 LandXmlPlanPoint {
                     northing: 0.0,
                     easting: 0.0,
@@ -294,6 +362,48 @@ fn issue_5044_station_equations_keep_gaps_and_duplicate_labels_explicit() {
             .expect_err("ambiguous label")
             .code,
         "LXMLA205"
+    );
+}
+
+#[test]
+fn issue_5044_station_equations_allow_start_and_refuse_out_of_range_boundaries() {
+    let line = LandXmlAlignmentSegment {
+        source_id: id("line"),
+        ordinal: 1,
+        primitive: LandXmlAlignmentPrimitive::Line(LandXmlLine {
+            start: point(0.0, 0.0),
+            end: point(100.0, 0.0),
+            declared_length: Some(100.0),
+        }),
+    };
+    let mut at_start = alignment(vec![line.clone()], 100.0);
+    at_start.station_equations = vec![LandXmlStationEquation {
+        source_id: id("eq:start"),
+        sta_internal: 100.0,
+        sta_ahead: 500.0,
+        sta_back: Some(100.0),
+        sta_increment: Some("increasing".to_owned()),
+    }];
+    assert!(
+        at_start
+            .station_at_distance(0.0)
+            .expect("start equation")
+            .is_equation_boundary
+    );
+    let mut out_of_range = alignment(vec![line], 100.0);
+    out_of_range.station_equations = vec![LandXmlStationEquation {
+        source_id: id("eq:outside"),
+        sta_internal: 250.0,
+        sta_ahead: 225.0,
+        sta_back: None,
+        sta_increment: Some("increasing".to_owned()),
+    }];
+    assert_eq!(
+        out_of_range
+            .distances_for_station(225.0)
+            .expect_err("out-of-range equation")
+            .code,
+        "LXMLA207"
     );
 }
 

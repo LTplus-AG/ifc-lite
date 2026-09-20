@@ -157,9 +157,12 @@ fn curve_geometry(
     let end = coordinates(id, &value.end)?;
     let center = coordinates(id, &value.center)?;
     let radius = value.radius.unwrap_or(distance_between(start, center));
+    let start_radius = distance_between(start, center);
+    let end_radius = distance_between(end, center);
     if !radius.is_finite()
         || radius <= EPSILON
-        || (distance_between(end, center) - radius).abs() > radius * 1e-7
+        || (start_radius - radius).abs() > radius * 1e-7
+        || (end_radius - radius).abs() > radius * 1e-7
     {
         return Err(diagnostic(
             id,
@@ -169,18 +172,25 @@ fn curve_geometry(
     }
     let start_angle = (start.northing - center.northing).atan2(start.easting - center.easting);
     let end_angle = (end.northing - center.northing).atan2(end.easting - center.easting);
-    let sweep = sweep(start_angle, end_angle, value.rotation);
+    let sweep = if distance_between(start, end) <= geometry_tolerance(radius) {
+        value.rotation.sign() * std::f64::consts::TAU
+    } else {
+        sweep(start_angle, end_angle, value.rotation)
+    };
     let length = valid_length(id, value.declared_length.unwrap_or(radius * sweep.abs()))?;
     Ok((start_angle, sweep, length, center, radius))
 }
 fn line_length(id: &LandXmlSourceId, value: &LandXmlLine) -> Result<f64> {
-    valid_length(
-        id,
-        value.declared_length.unwrap_or(distance_between(
-            coordinates(id, &value.start)?,
-            coordinates(id, &value.end)?,
-        )),
-    )
+    let chord = distance_between(coordinates(id, &value.start)?, coordinates(id, &value.end)?);
+    let length = valid_length(id, value.declared_length.unwrap_or(chord))?;
+    if (length - chord).abs() > geometry_tolerance(length.max(chord)) {
+        return Err(diagnostic(
+            id,
+            "LXMLA218",
+            "line endpoints are inconsistent with declared length",
+        ));
+    }
+    Ok(length)
 }
 fn irregular_length(id: &LandXmlSourceId, value: &LandXmlIrregularLine) -> Result<f64> {
     let points = irregular_vertices(id, value)?;
@@ -201,13 +211,13 @@ fn irregular_vertices(
     let start = coordinates(id, &value.start)?;
     let end = coordinates(id, &value.end)?;
     let mut interior = value.points.clone();
-    if interior
+    while interior
         .first()
         .is_some_and(|point| distance_between(*point, start) <= EPSILON)
     {
         interior.remove(0);
     }
-    if interior
+    while interior
         .last()
         .is_some_and(|point| distance_between(*point, end) <= EPSILON)
     {
@@ -215,8 +225,20 @@ fn irregular_vertices(
     }
     let mut vertices = Vec::with_capacity(interior.len() + 2);
     vertices.push(start);
-    vertices.extend(interior);
-    vertices.push(end);
+    for point in interior {
+        if vertices
+            .last()
+            .is_none_or(|previous| distance_between(*previous, point) > EPSILON)
+        {
+            vertices.push(point);
+        }
+    }
+    if vertices
+        .last()
+        .is_none_or(|previous| distance_between(*previous, end) > EPSILON)
+    {
+        vertices.push(end);
+    }
     Ok(vertices)
 }
 fn transform_local(start: LandXmlPlanPoint, local: (f64, f64), heading: f64) -> LandXmlPlanPoint {

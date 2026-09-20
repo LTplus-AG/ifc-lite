@@ -57,6 +57,7 @@ impl LandXmlAlignment {
                 "geometric distance is outside the alignment",
             ));
         }
+        validate_station_equations(self)?;
         station_mapping(
             &self.source_id,
             self.sta_start,
@@ -73,6 +74,7 @@ impl LandXmlAlignment {
                 "station must be finite",
             ));
         }
+        validate_station_equations(self)?;
         let mut boundaries = vec![self.sta_start];
         boundaries.extend(
             self.station_equations
@@ -174,9 +176,10 @@ fn station_mapping(
     let mut previous_internal = sta_start;
     let mut displayed = sta_start;
     let mut direction = 1.0;
-    for equation in equations {
+    for (index, equation) in equations.iter().enumerate() {
         if !equation.sta_internal.is_finite()
-            || equation.sta_internal <= previous_internal + EPSILON
+            || (index == 0 && equation.sta_internal < previous_internal - EPSILON)
+            || (index > 0 && equation.sta_internal <= previous_internal + EPSILON)
         {
             return Err(diagnostic(
                 source_id,
@@ -214,6 +217,25 @@ fn station_mapping(
         displayed_ahead: value,
         is_equation_boundary: false,
     })
+}
+fn validate_station_equations(alignment: &LandXmlAlignment) -> Result<()> {
+    let end = alignment.sta_start + alignment.length;
+    let mut previous = alignment.sta_start;
+    for (index, equation) in alignment.station_equations.iter().enumerate() {
+        if !equation.sta_internal.is_finite()
+            || equation.sta_internal > end + EPSILON
+            || (index == 0 && equation.sta_internal < previous - EPSILON)
+            || (index > 0 && equation.sta_internal <= previous + EPSILON)
+        {
+            return Err(diagnostic(
+                &alignment.source_id,
+                "LXMLA207",
+                "station equations must lie on the alignment and be strictly ordered",
+            ));
+        }
+        previous = equation.sta_internal;
+    }
+    Ok(())
 }
 fn equation_direction(equation: &LandXmlStationEquation) -> f64 {
     if equation.sta_increment.as_deref() == Some("decreasing") {

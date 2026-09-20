@@ -32,8 +32,8 @@ import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import type { MutablePropertyView, NewEntity } from '@ifc-lite/mutations';
 import {
   getInheritanceChainAcrossSchemas,
-  getAttributeNamesForSchema,
   effectiveRelationshipEdges,
+  resolveEffectiveEntityRecord,
   resolveEffectiveRelationshipOverlay,
   type EffectiveRelationshipOverlay,
   type IfcDataStore,
@@ -169,18 +169,14 @@ class ViewOverlay implements PendingOverlay {
     return this.tombstones;
   }
 
+  /** The created entity as export writes it: effective class, name-relaid attributes, edits applied. */
   private effectiveCreatedEntity(entity: NewEntity): CreatedEntity {
-    const attributes = [...entity.attributes];
-    const names = getAttributeNamesForSchema(entity.type, this.store.schemaVersion);
-    const named = new Map(this.view.getAttributeMutationsForEntity(entity.expressId)
-      .map(({ name, value }) => [name, value]));
-    const positional = this.view.getPositionalMutationsForEntity(entity.expressId) ?? new Map();
-    for (const [name, value] of named) {
-      const index = names.indexOf(name);
-      if (index >= 0) attributes[index] = value;
-    }
-    for (const [index, value] of positional) attributes[index] = value;
-    return toCreatedEntity({ ...entity, attributes });
+    const record = resolveEffectiveEntityRecord(entity, {
+      retype: this.view.getEntityTypeMutation(entity.expressId)?.newType,
+      named: this.view.getAttributeMutationsForEntity(entity.expressId).map(({ name, value }) => [name, value] as const),
+      positional: this.view.getPositionalMutationsForEntity(entity.expressId) ?? [],
+    }, this.store.schemaVersion);
+    return toCreatedEntity({ ...entity, type: record.type, attributes: record.attributes as NewEntity['attributes'] });
   }
 
   get createdAll(): readonly CreatedEntity[] {

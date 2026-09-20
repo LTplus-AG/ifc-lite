@@ -24,7 +24,9 @@ export function foldRelationshipRows(
     const key = `${edge.direction}:${edge.relationshipId}:${edge.entity.id}`;
     if (seen.has(key)) return [];
     seen.add(key);
-    return [{ ...edge, entity: { id: edge.entity.id, name: target.name || undefined, type: target.type } }];
+    // Parsed rows carry the exact subtype (IfcDoorStandardCase); only a queued retype replaces it.
+    const type = pending.effectiveType(edge.entity.id) ?? edge.entity.type;
+    return [{ ...edge, entity: { id: edge.entity.id, name: target.name || undefined, type } }];
   });
   for (const edge of pending.relationshipEdges(ref.expressId)) {
     const key = `${edge.direction}:${edge.relationshipId}:${edge.targetId}`;

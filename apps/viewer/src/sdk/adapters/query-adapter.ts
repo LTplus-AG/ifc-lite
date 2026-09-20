@@ -29,8 +29,7 @@ import {
   extractExactRelatedIds,
   expandTypes,
   QUERY_REL_TYPE_MAP,
-  getAttributeNamesForSchema,
-  normalizeIfcTypeName,
+  resolveEffectiveEntityRecord,
 } from '@ifc-lite/parser';
 import { applyAttributeMutationsToEntityData, getMutationViewForModel, mergeAttributeMutations } from './mutation-view.js';
 import { effectiveMutationRelationships, foldMutationRelated } from './query-overlay-relations.js';
@@ -62,13 +61,12 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
     if (view?.isDeleted(ref.expressId)) return null;
     const created = view?.getNewEntity(ref.expressId);
     if (created && view) {
-      const names = getAttributeNamesForSchema(created.type, model.ifcDataStore.schemaVersion);
-      const attributes: unknown[] = [...created.attributes];
-      for (const { name, value } of view.getAttributeMutationsForEntity(ref.expressId)) {
-        const index = names.indexOf(name);
-        if (index >= 0) attributes[index] = value;
-      }
-      for (const [index, value] of view.getPositionalMutationsForEntity(ref.expressId) ?? []) attributes[index] = value;
+      // Effective class + name-relaid attributes, exactly as export writes them.
+      const { type, attributes, names } = resolveEffectiveEntityRecord(created, {
+        retype: view.getEntityTypeMutation(ref.expressId)?.newType,
+        named: view.getAttributeMutationsForEntity(ref.expressId).map(({ name, value }) => [name, value] as const),
+        positional: view.getPositionalMutationsForEntity(ref.expressId) ?? [],
+      }, model.ifcDataStore.schemaVersion);
       const text = (name: string): string => {
         const value = attributes[names.indexOf(name)];
         if (typeof value !== 'string' || value === '$' || value === '*') return '';
@@ -77,9 +75,7 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
           ? trimmed.slice(1, -1).replace(/''/g, "'")
           : trimmed;
       };
-      const retype = view.getEntityTypeMutation(ref.expressId)?.newType;
-      return { ref, globalId: text('GlobalId'), name: text('Name'),
-        type: retype ? normalizeIfcTypeName(retype) : created.type,
+      return { ref, globalId: text('GlobalId'), name: text('Name'), type,
         description: text('Description'), objectType: text('ObjectType') };
     }
     const node = new EntityNode(model.ifcDataStore, ref.expressId);

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { extractRelationshipsOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { extractRelationshipsOnDemand, normalizeIfcTypeName, type IfcDataStore } from '@ifc-lite/parser';
 import type { EntityData, EntityRef, EntityRelationshipsData } from '@ifc-lite/sdk';
 import { effectiveMutationRelationships, foldMutationRelationshipEdges } from './query-overlay-relations.js';
 
@@ -25,7 +25,10 @@ export function foldRelationshipData(
     const key = `${edge.direction}:${edge.relationshipId}:${edge.entity.id}`;
     if (seen.has(key)) return [];
     seen.add(key);
-    return [{ ...edge, entity: { id: edge.entity.id, name: target.name || undefined, type: target.type } }];
+    // Parsed rows carry the exact subtype (IfcDoorStandardCase); only a queued retype replaces it.
+    const retype = view.getEntityTypeMutation(edge.entity.id)?.newType;
+    const type = retype ? normalizeIfcTypeName(retype) : edge.entity.type;
+    return [{ ...edge, entity: { id: edge.entity.id, name: target.name || undefined, type } }];
   });
   for (const edge of foldMutationRelationshipEdges(dataStore, view, ref.expressId)) {
     const key = `${edge.direction}:${edge.relationshipId}:${edge.targetId}`;

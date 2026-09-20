@@ -129,3 +129,25 @@ describe('relationship rows name a retyped endpoint by its effective class (#500
     expect(storey?.entity.type).toBe('IfcBuildingStorey');
   });
 });
+
+describe('created entities are filtered and read by their effective class (#5009 review)', () => {
+  it('moves a retyped created wall into the IfcColumn query and out of the IfcWall query', async () => {
+    const store = await loadIfcFile(SAMPLE_IFC);
+    const backend = new HeadlessBackend(store, 'building-architecture.ifc');
+    const created = backend.store.addEntity('default', {
+      type: 'IfcWall',
+      attributes: ["'3N1x3yyyyyyyyyyyyyyyyy'", null, "'Authored'", "'Desc'", null, null, null, "'tag'", null],
+    });
+    const view = (backend as unknown as { mutationView: MutablePropertyView }).mutationView;
+    view.setEntityType(created.expressId, 'IfcColumn');
+
+    const columns = backend.query.entities({ types: ['IfcColumn'] }).map((entity) => entity.ref.expressId);
+    const walls = backend.query.entities({ types: ['IfcWall'] }).map((entity) => entity.ref.expressId);
+    expect(columns).toContain(created.expressId);
+    expect(walls).not.toContain(created.expressId);
+    const data = backend.query.entityData(created);
+    expect(data?.type).toBe('IfcColumn');
+    expect(data?.name).toBe('Authored');
+    expect(data?.description).toBe('Desc');
+  });
+});

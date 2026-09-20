@@ -9,6 +9,7 @@ import {
   type IfcDataStore,
 } from '@ifc-lite/parser';
 import type { EntityData, EntityRef, EntityRelationshipsData } from '@ifc-lite/sdk';
+import { effectiveEntityType } from './query-overlay.js';
 
 function effective(store: IfcDataStore, view: MutablePropertyView) {
   return resolveEffectiveRelationshipOverlay(store, {
@@ -43,7 +44,9 @@ export function foldQueuedRelationshipData(
     const key = `${edge.direction}:${edge.relationshipId}:${edge.entity.id}`;
     if (seen.has(key)) return [];
     seen.add(key);
-    return [{ ...edge, entity: { id: edge.entity.id, name: target.name || undefined, type: target.type } }];
+    // Parsed rows carry the exact subtype (IfcDoorStandardCase); only a queued retype replaces it.
+    const type = effectiveEntityType(view, edge.entity.id) ?? edge.entity.type;
+    return [{ ...edge, entity: { id: edge.entity.id, name: target.name || undefined, type } }];
   });
   for (const edge of effectiveRelationshipEdges(overlay, id => view.isDeleted(id), ref.expressId)) {
     const key = `${edge.direction}:${edge.relationshipId}:${edge.targetId}`;

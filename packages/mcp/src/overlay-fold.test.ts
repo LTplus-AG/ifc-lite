@@ -153,6 +153,7 @@ describe('foldRelationshipRows', () => {
       deleted: new Set<number>(),
       supersededRelationshipIds: new Set<number>(),
       relationshipEdges: () => [],
+      effectiveType: () => null,
     } as unknown as PendingOverlay;
     const result = {
       voids: [], fills: [], groups: [], connections: [],

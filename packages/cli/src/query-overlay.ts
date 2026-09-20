@@ -18,7 +18,7 @@
 
 import type { EntityData, EntityRef, PropertySetData, QuantitySetData } from '@ifc-lite/sdk';
 import type { MutablePropertyView, NewEntity } from '@ifc-lite/mutations';
-import { getAttributeNamesForSchema, normalizeIfcTypeName } from '@ifc-lite/parser';
+import { getAttributeNamesForSchema, normalizeIfcTypeName, resolveEffectiveEntityRecord } from '@ifc-lite/parser';
 
 function scalarAttr(value: unknown): string {
   if (typeof value !== 'string') return '';
@@ -46,21 +46,18 @@ function createdEntityData(entity: Pick<NewEntity, 'expressId' | 'type' | 'attri
   };
 }
 
+/** The created entity as export writes it: effective class, name-relaid attributes, edits applied. */
 function effectiveCreatedEntity(
   view: MutablePropertyView,
   entity: NewEntity,
   schemaVersion: string,
 ): NewEntity {
-  const attributes = [...entity.attributes];
-  const names = getAttributeNamesForSchema(entity.type, schemaVersion);
-  const named = new Map(view.getAttributeMutationsForEntity(entity.expressId).map(({ name, value }) => [name, value]));
-  const positional = view.getPositionalMutationsForEntity(entity.expressId) ?? new Map();
-  for (const [name, value] of named) {
-    const index = names.indexOf(name);
-    if (index >= 0) attributes[index] = value;
-  }
-  for (const [index, value] of positional) attributes[index] = value;
-  return { ...entity, attributes };
+  const record = resolveEffectiveEntityRecord(entity, {
+    retype: view.getEntityTypeMutation(entity.expressId)?.newType,
+    named: view.getAttributeMutationsForEntity(entity.expressId).map(({ name, value }) => [name, value] as const),
+    positional: view.getPositionalMutationsForEntity(entity.expressId) ?? [],
+  }, schemaVersion);
+  return { ...entity, type: record.type, attributes: record.attributes as NewEntity['attributes'] };
 }
 
 /** The class a queued `setEntityType` gives the entity, in `IfcWall` spelling. */
@@ -110,8 +107,7 @@ export function overlayEntityData(
   if (view.isDeleted(ref.expressId)) return null;
   const created = view.getNewEntity(ref.expressId);
   if (!created) return undefined;
-  const data = createdEntityData(effectiveCreatedEntity(view, created, schemaVersion), ref.modelId);
-  return { ...data, type: effectiveEntityType(view, ref.expressId) ?? data.type };
+  return createdEntityData(effectiveCreatedEntity(view, created, schemaVersion), ref.modelId);
 }
 
 /** This session's overlay-only entities matching an `entities()` query's type criteria. */
@@ -127,9 +123,10 @@ export function foldNewEntities(
   const out: EntityData[] = [];
   for (const created of view.getNewEntities()) {
     if (view.isDeleted(created.expressId)) continue;
-    const upperType = created.type.toUpperCase();
+    const effective = effectiveCreatedEntity(view, created, schemaVersion);
+    const upperType = effective.type.toUpperCase();
     const matches = wantedTypes ? wantedTypes.has(upperType) : isProductType(upperType);
-    if (matches) out.push(createdEntityData(effectiveCreatedEntity(view, created, schemaVersion), modelId));
+    if (matches) out.push(createdEntityData(effective, modelId));
   }
   return out;
 }

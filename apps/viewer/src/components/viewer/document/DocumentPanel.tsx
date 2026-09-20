@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
+import { localeCount } from '@/i18n/intlFormat';
 import { posthog } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
@@ -51,7 +52,7 @@ export function ensureActiveDocument(): void {
 }
 
 export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const documents = useViewerStore((s) => s.documents);
   const activeDocumentId = useViewerStore((s) => s.activeDocumentId);
   const upsertDocument = useViewerStore((s) => s.upsertDocument);
@@ -73,8 +74,8 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
     if (saved) { persistWarned.current = false; return; }
     if (persistWarned.current) return;
     persistWarned.current = true;
-    toast.error('The document could not be saved in this browser (storage blocked or full). Export it as a template before you reload.');
-  }, []);
+    toast.error(t('document.panel.unsavedWarning'));
+  }, [t]);
   const upsert = useCallback((next: DocumentSpec) => warnUnsaved(upsertDocument(next)), [upsertDocument, warnUnsaved]);
   const remove = useCallback((id: string) => warnUnsaved(deleteDocument(id)), [deleteDocument, warnUnsaved]);
   const update = upsert;
@@ -110,20 +111,23 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
       // Counts only — never the document's text or name.
       posthog.capture('export_completed', { format: 'pdf', surface: 'document', page_count: result.pages, block_count: document.blocks.length, unresolved_count: result.unresolved.length });
       const problems = [
-        result.unresolved.length > 0 ? `${result.unresolved.length} binding${result.unresolved.length === 1 ? '' : 's'} unresolved` : '',
-        result.missingTopics.length > 0 ? `${result.missingTopics.length} topic${result.missingTopics.length === 1 ? '' : 's'} not loaded` : '',
-        result.snapshotFailures.length > 0 ? `${result.snapshotFailures.length} snapshot${result.snapshotFailures.length === 1 ? '' : 's'} unavailable` : '',
-        result.imageFailures.length > 0 ? `${result.imageFailures.length} image${result.imageFailures.length === 1 ? '' : 's'} unavailable` : '',
+        result.unresolved.length > 0 ? t('document.panel.problemUnresolved', localeCount(locale, result.unresolved.length)) : '',
+        result.missingTopics.length > 0 ? t('document.panel.problemMissingTopics', localeCount(locale, result.missingTopics.length)) : '',
+        result.snapshotFailures.length > 0 ? t('document.panel.problemSnapshotFailures', localeCount(locale, result.snapshotFailures.length)) : '',
+        result.imageFailures.length > 0 ? t('document.panel.problemImageFailures', localeCount(locale, result.imageFailures.length)) : '',
       ].filter(Boolean);
-      toast.success(`Document exported: ${result.pages} page${result.pages === 1 ? '' : 's'}${problems.length > 0 ? ` (${problems.join(', ')})` : ''}`);
+      const pages = localeCount(locale, result.pages);
+      toast.success(problems.length > 0
+        ? t('document.panel.exportSuccessWithProblems', { ...pages, problems: problems.join(', ') })
+        : t('document.panel.exportSuccess', pages));
     } catch (err) {
       console.error('[Documents] export failed', err);
-      toast.error(err instanceof Error ? `Document export failed: ${err.message}` : 'Document export failed');
+      toast.error(err instanceof Error ? t('document.panel.exportFailedWithMessage', { message: err.message }) : t('document.panel.exportFailedGeneric'));
     } finally {
       snapshot?.restore();
       setBusy(false);
     }
-  }, [document, data, pdfSeams]);
+  }, [document, data, pdfSeams, t, locale]);
 
   const select = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5';
 
@@ -144,7 +148,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
               setActiveDocumentId(e.target.value);
             }
           }}
-          aria-label="Document"
+          aria-label={t('document.panel.selectAriaLabel')}
         >
           {documents.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           <optgroup label="New from preset">
@@ -152,34 +156,34 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
           </optgroup>
         </select>
         <DocumentMenu document={document} onUpsert={upsert} onDelete={remove} onActivate={setActiveDocumentId} />
-        <label className="inline-flex items-center gap-1 text-muted-foreground">Page
-          <select className={select} value={document?.page.size ?? 'A4'} disabled={!document} onChange={(e) => document && update({ ...document, page: { ...document.page, size: e.target.value as ReportPageSetup['size'] } })} aria-label="Page size">
-            <option value="A4">A4</option><option value="A3">A3</option>
+        <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.panel.pageLabel')}
+          <select className={select} value={document?.page.size ?? 'A4'} disabled={!document} onChange={(e) => document && update({ ...document, page: { ...document.page, size: e.target.value as ReportPageSetup['size'] } })} aria-label={t('document.panel.pageSizeAriaLabel')}>
+            <option value="A4">{t('document.panel.pageSizeA4')}</option><option value="A3">{t('document.panel.pageSizeA3')}</option>
           </select>
-          <select className={select} value={document?.page.orientation ?? 'portrait'} disabled={!document} onChange={(e) => document && update({ ...document, page: { ...document.page, orientation: e.target.value as ReportPageSetup['orientation'] } })} aria-label="Orientation">
-            <option value="portrait">Portrait</option><option value="landscape">Landscape</option>
+          <select className={select} value={document?.page.orientation ?? 'portrait'} disabled={!document} onChange={(e) => document && update({ ...document, page: { ...document.page, orientation: e.target.value as ReportPageSetup['orientation'] } })} aria-label={t('document.panel.orientationAriaLabel')}>
+            <option value="portrait">{t('document.panel.orientationPortrait')}</option><option value="landscape">{t('document.panel.orientationLandscape')}</option>
           </select>
         </label>
         <span className="flex-1" />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={!document} title="Add a block to the page">
-              <Plus className="mr-1 h-3.5 w-3.5" />Add block
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={!document} title={t('document.addBlock.buttonTitle')}>
+              <Plus className="mr-1 h-3.5 w-3.5" />{t('document.addBlock.button')}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44 text-xs">
-            <DropdownMenuItem onSelect={() => addBlock('text')}>Text with fields</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => addBlock('image')}>Image / logo</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => addBlock('chart')}>Chart</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => addBlock('topic')} disabled={data.topics.size === 0} title={data.topics.size === 0 ? 'No BCF topics loaded' : undefined}>BCF topic</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => addBlock('text')}>{t('document.addBlock.text')}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => addBlock('image')}>{t('document.addBlock.image')}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => addBlock('chart')}>{t('document.addBlock.chart')}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => addBlock('topic')} disabled={data.topics.size === 0} title={data.topics.size === 0 ? t('document.addBlock.topicDisabledTitle') : undefined}>{t('document.addBlock.topic')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('spacer')}>{t('document.addBlock.spacer')}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={busy || !document || document.blocks.length === 0} onClick={() => void exportPdf()} title="Print this page to a PDF" data-document-export>
-          <FileText className="mr-1 h-3.5 w-3.5" />{busy ? 'Exporting…' : 'Export PDF'}
+        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={busy || !document || document.blocks.length === 0} onClick={() => void exportPdf()} title={t('document.panel.exportTitle')} data-document-export>
+          <FileText className="mr-1 h-3.5 w-3.5" />{busy ? t('document.panel.exportBusy') : t('document.panel.exportIdle')}
         </Button>
         {onClose && (
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onClose} aria-label="Close document panel">
+          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onClose} aria-label={t('document.panel.closeAriaLabel')}>
             <X className="h-3.5 w-3.5" />
           </Button>
         )}
@@ -209,7 +213,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
                 />
               </div>
             ))}
-            {document.blocks.length === 0 && <div className="p-2 text-muted-foreground">No blocks yet — "Add block" above.</div>}
+            {document.blocks.length === 0 && <div className="p-2 text-muted-foreground">{t('document.panel.emptyBlocks')}</div>}
           </div>
           <div className="min-w-0 flex-1 overflow-auto bg-muted/40">
             <DocumentPreview document={document} bindings={data.bindings} aggregations={data.aggregations} chartMessages={data.chartMessages} topics={data.topics} selectedBlockId={selectedBlockId} onSelectBlock={setSelectedBlockId} />

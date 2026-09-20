@@ -17,6 +17,7 @@ import {
 } from './dragOverlayState';
 import { ViewportOverlays } from './ViewportOverlays';
 import { WebGpuDisabledCaption, WebGpuTroubleshootingDetails, webGpuBannerBlurb } from './WebGpuTroubleshooting';
+import { useTranslation } from '@/i18n';
 import { MergeLayersBanner } from './MergeLayersBanner';
 import { GeometryModeBanner } from './GeometryModeBanner';
 import { LevelDisplayIndicator } from './LevelDisplayIndicator';
@@ -102,6 +103,11 @@ export function ViewportContainer() {
   const [showTroubleshooting, setShowTroubleshooting] = useState(false);
   const [recentFiles, setRecentFiles] = useState<RecentFileEntry[]>([]);
   const webgpu = useWebGPU();
+  // `webGpuBannerBlurb` is a plain function, not a component — pass this
+  // component's own `t` so the banner headline re-renders on a live locale
+  // switch instead of reading the registry's non-reactive `resolve` default
+  // (review on #5086).
+  const { t: translateWebGpuBanner } = useTranslation();
 
   const viewerStoreApi = getViewerStoreApi();
   const viewportStoreState = useSyncExternalStore(
@@ -971,7 +977,7 @@ export function ViewportContainer() {
                     WebGPU Not Available
                   </h3>
                   <p className="font-mono text-sm text-[#a9b1d6] leading-relaxed">
-                    {webGpuBannerBlurb(webgpu.category)}
+                    {webGpuBannerBlurb(webgpu.category, translateWebGpuBanner)}
                     {webgpu.reason && (
                       <span className="block mt-1 text-[#565f89]">
                         {webgpu.reason}

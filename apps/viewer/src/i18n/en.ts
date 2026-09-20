@@ -57,6 +57,8 @@ import { viewerShellEn } from './catalogues/viewer-shell.en';
 import { spaceSketchEn } from './catalogues/space-sketch.en';
 import { splitToolEn } from './catalogues/split-tool.en';
 import { structuralPropertiesEn } from './catalogues/structural-properties.en';
+import { webgpuTroubleshootingEn } from './catalogues/webgpu-troubleshooting.en';
+import { scriptPanelEn } from './catalogues/script-panel.en';
 import { zonesPanelEn } from './catalogues/zones-panel.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
@@ -114,6 +116,8 @@ export const en = {
   ...searchModalEn,
   ...searchFiltersEn,
   ...repositionPanelEn,
+  ...webgpuTroubleshootingEn,
+  ...scriptPanelEn,
   ...zonesPanelEn,
   ...dataConnectorEn,
   ...geometryExportDialogsEn,

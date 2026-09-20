@@ -58,6 +58,7 @@ import { sheetsPdfEn } from './catalogues/sheets-pdf.en';
 import { searchModalEn } from './catalogues/search-modal.en';
 import { searchFiltersEn } from './catalogues/search-filters.en';
 import { sharedCommandsEn } from './catalogues/shared-commands.en';
+import { shellChromeEn } from './catalogues/shell-chrome.en';
 import { sourcesEn } from './catalogues/sources.en';
 import { toursEn } from './catalogues/tours.en';
 import { viewerShellEn } from './catalogues/viewer-shell.en';
@@ -99,6 +100,7 @@ export const en = {
   ...sourcesEn,
   ...toursEn,
   ...viewerShellEn,
+  ...shellChromeEn,
   ...measureEn,
   ...spaceSketchEn,
   ...splitToolEn,

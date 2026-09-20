@@ -6,6 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import type { PanelImperativeHandle } from 'react-resizable-panels';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { useTranslation } from '@/i18n';
+import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 import { MainToolbar } from './MainToolbar';
 import { MobileToolbar } from './MobileToolbar';
 import { RibbonToolbar } from './ribbon/RibbonToolbar';
@@ -51,7 +53,13 @@ import { getPanelDef } from '@/lib/panels/registry';
 import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
 import { usePanelControls } from '@/hooks/usePanelControls';
 
+/** Technical query flag, not translated prose — kept as a plain constant
+ *  (like `PatternHint.tsx`'s `PATTERN_EXAMPLE`) so it can sit inside the
+ *  styled `<code>` element `styleInterpolatedValues` substitutes in below. */
+const SAFE_MODE_QUERY_FLAG = '?safe=0';
+
 export function ViewerLayout() {
+  const { t } = useTranslation();
   useSearchIndex();
   // Initialize keyboard shortcuts
   useKeyboardShortcuts();
@@ -291,9 +299,9 @@ export function ViewerLayout() {
           <div className="flex items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1 text-[11px] text-amber-700 dark:text-amber-300">
             <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
             <span>
-              Safe mode: extensions and the active flavor are not loaded for this
-              session. Append <code className="font-mono">?safe=0</code> or reload
-              without the flag to resume.
+              {styleInterpolatedValues(t, 'shellChrome.layout.safeModeNotice', [
+                ['flag', <code key="flag" className="font-mono">{SAFE_MODE_QUERY_FLAG}</code>],
+              ])}
             </span>
           </div>
         )}
@@ -409,7 +417,7 @@ export function ViewerLayout() {
             {/* Mobile Bottom Sheet - Hierarchy */}
             {!leftPanelCollapsed && (
               <MobileBottomSheet
-                title="Hierarchy"
+                title={t('shellChrome.layout.hierarchyLabel')}
                 bottomInset={bottomViewportInset}
                 onClose={() => setLeftPanelCollapsed(true)}
               >
@@ -424,11 +432,7 @@ export function ViewerLayout() {
                 floating host and the pop-out windows render from. */}
             {!rightPanelCollapsed && (
               <MobileBottomSheet
-                title={
-                  mobileSheet.kind === 'extension' ? (activeAnalysisExtension?.label ?? 'Analysis')
-                  : mobileSheet.kind === 'addElement' ? 'Add element'
-                  : getPanelDef(mobileSheet.id)?.title ?? 'Information'
-                }
+                title={mobileSheet.kind === 'extension' ? (activeAnalysisExtension?.label ?? t('shellChrome.layout.analysisFallback')) : mobileSheet.kind === 'addElement' ? t('shellChrome.layout.addElementLabel') : getPanelDef(mobileSheet.id)?.title ?? t('shellChrome.layout.informationFallback')}
                 bottomInset={bottomViewportInset}
                 onClose={() => {
                   setRightPanelCollapsed(true);
@@ -460,29 +464,23 @@ export function ViewerLayout() {
               <div className="absolute top-4 left-4 flex flex-col gap-2.5 z-20">
                 <button
                   className="flex flex-col items-center gap-1 group touch-manipulation"
-                  onClick={() => {
-                    setRightPanelCollapsed(true);
-                    setLeftPanelCollapsed(false);
-                  }}
-                  aria-label="Open Hierarchy"
+                  onClick={() => { setRightPanelCollapsed(true); setLeftPanelCollapsed(false); }}
+                  aria-label={t('shellChrome.layout.openHierarchyAriaLabel')}
                 >
                   <span className="grid place-items-center min-h-[44px] min-w-[44px] bg-background/90 backdrop-blur-sm border border-border rounded-md group-active:bg-foreground group-active:text-background transition-colors">
                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h10M4 18h7" /></svg>
                   </span>
-                  <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground leading-none">Hierarchy</span>
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground leading-none">{t('shellChrome.layout.hierarchyLabel')}</span>
                 </button>
                 <button
                   className="flex flex-col items-center gap-1 group touch-manipulation"
-                  onClick={() => {
-                    setLeftPanelCollapsed(true);
-                    setRightPanelCollapsed(false);
-                  }}
-                  aria-label="Open Properties"
+                  onClick={() => { setLeftPanelCollapsed(true); setRightPanelCollapsed(false); }}
+                  aria-label={t('shellChrome.layout.openPropertiesAriaLabel')}
                 >
                   <span className="grid place-items-center min-h-[44px] min-w-[44px] bg-background/90 backdrop-blur-sm border border-border rounded-md group-active:bg-foreground group-active:text-background transition-colors">
                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
                   </span>
-                  <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground leading-none">Properties</span>
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground leading-none">{t('shellChrome.layout.propertiesLabel')}</span>
                 </button>
               </div>
             )}
@@ -549,6 +547,7 @@ function MobileBottomSheet({
   bottomInset: number;
   children: ReactNode;
 }) {
+  const { t } = useTranslation();
   const sheetRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startY: number; startT: number; startHeight: number; active: boolean }>({
     startY: 0,
@@ -660,7 +659,7 @@ function MobileBottomSheet({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         role="button"
-        aria-label="Drag to resize or dismiss"
+        aria-label={t('shellChrome.layout.dragToResizeAriaLabel')}
       >
         <div className="w-10 h-1.5 rounded-full bg-muted-foreground/40" />
       </div>
@@ -669,7 +668,7 @@ function MobileBottomSheet({
         <button
           className="p-2 -mr-2 hover:bg-muted rounded-full active:bg-muted/80 touch-manipulation"
           onClick={onClose}
-          aria-label="Close"
+          aria-label={t('viewerShell.dialog.close')}
         >
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

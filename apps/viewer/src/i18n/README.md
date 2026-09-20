@@ -323,6 +323,27 @@ root, and `ui/` (a companion slice covers `extensions/**`):
 - `viewer-shell.en.ts` covers the components root's `ChunkErrorBoundary`
   fallback and the shared `ui/dialog.tsx` primitive's sr-only close label.
 
+The sidebar/shell-chrome catalogue (#4918 slice, `shell-chrome.en.ts`,
+prefixed `shellChrome.<component>.*` with a small `shellChrome.shared.*` for
+strings genuinely reused across two of these files) is a sibling to
+`viewer-shell.en.ts` — kept in its own file under a distinct prefix purely to
+avoid any key collision, not because the scope differs. It covers the
+unified sidebar's activity rail and its customize popover
+(`ActivityBar.tsx`, `CustomizeSidebar.tsx`), the docked-pane host and its
+resize handle and split controls (`SidebarDock.tsx`, `SidebarPanelHost.tsx`),
+the floating/edge-snapped panel window and the popped-out OS/PiP window
+chrome (`FloatingPanel.tsx`, `PanelWindowHost.tsx`), `ViewerLayout.tsx`'s own
+top-level chrome (the safe-mode banner and the mobile bottom-sheet host's
+floating Hierarchy/Properties buttons), `StatusBar.tsx`, and
+`MobileToolbar.tsx`. Panel NAMES/TITLES sourced from the panels registry
+(`@/lib/panels/registry`, outside this slice) are runtime data passed as
+`{title}` interpolation params, same reasoning as every other slice treating
+a registry-owned label as data rather than UI copy owned by the component
+that renders it. `FPS`/`WebGPU` and the `ifclite.dev` link text are routed
+through `t()` so the ending gate does not see them as untranslated JSX
+literals, same reasoning the WebGPU-troubleshooting catalogue documents for
+technical strings a translator is expected to leave unchanged.
+
 The chat catalogue (#4918 chat slice, `chat.en.ts`) covers `ChatPanel.tsx`'s
 own chrome (header controls, the BYOK-needed banner, clear-confirmation
 dialog, empty-state hint, post-authoring install CTA, attachment/usage

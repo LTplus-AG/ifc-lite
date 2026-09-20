@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { WORKSPACE_PANELS, getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
 import { isCollabEnabled } from '@/lib/collab/config';
@@ -42,14 +43,16 @@ import { pendingCompositionMutations } from '@/lib/layers/pending';
 import { activityAnchor, tourAnchor } from '@/lib/tours/anchors';
 import { CustomizeSidebar } from './CustomizeSidebar';
 
-/** Alt+N hint per panel, by registry index (frozen since #1200): 1-9, then 0.
- *  Only the first ten registry entries get a shortcut; later additions (e.g.
- *  Hierarchy, #1267) have none, so the map is limited to the first ten. */
-const ALT_LABEL = new Map<WorkspacePanelId, string>(
-  WORKSPACE_PANELS.slice(0, 10).map((p, i) => [p.id, i < 9 ? `Alt+${i + 1}` : 'Alt+0']),
+/** Alt+N shortcut KEY per panel, by registry index (frozen since #1200): 1-9,
+ *  then 0. Only the first ten registry entries get a shortcut; later
+ *  additions (e.g. Hierarchy, #1267) have none, so the map is limited to the
+ *  first ten. The label itself ('Alt+{key}') is composed at render time. */
+const ALT_KEY = new Map<WorkspacePanelId, string>(
+  WORKSPACE_PANELS.slice(0, 10).map((p, i) => [p.id, i < 9 ? String(i + 1) : '0']),
 );
 
 export function ActivityBar() {
+  const { t } = useTranslation();
   const order = useViewerStore((s) => s.sidebarOrder);
   const hiddenIds = useViewerStore((s) => s.sidebarHiddenIds);
   const mode = useViewerStore((s) => s.sidebarMode);
@@ -130,8 +133,12 @@ export function ActivityBar() {
           // explicitly. In customize mode the action is "hide" (only shown
           // panels render here now, #1263).
           const ariaLabel = customizing
-            ? `${def.title}, activate to hide from the sidebar`
-            : `${def.title}${loc === 'floating' ? ' (floating)' : loc === 'popped' ? ' (popped out)' : ''}`;
+            ? t('shellChrome.activityBar.iconAriaLabelHide', { title: def.title })
+            : loc === 'floating'
+              ? t('shellChrome.activityBar.iconAriaLabelFloating', { title: def.title })
+              : loc === 'popped'
+                ? t('shellChrome.activityBar.iconAriaLabelPopped', { title: def.title })
+                : def.title;
 
           return (
             <div key={id} className="contents">
@@ -199,9 +206,20 @@ export function ActivityBar() {
                 <TooltipContent side="left">
                   {def.title}
                   <span className="text-muted-foreground">
-                    {customizing
-                      ? ' · click to hide'
-                      : `${ALT_LABEL.get(id) ? ` · ${ALT_LABEL.get(id)}` : ''}${loc === 'floating' ? ' · floating' : loc === 'popped' ? ' · popped out' : ''}`}
+                    {customizing ? (
+                      ` · ${t('shellChrome.activityBar.clickToHideHint')}`
+                    ) : (
+                      <>
+                        {ALT_KEY.get(id)
+                          ? ` · ${t('shellChrome.activityBar.altShortcutHint', { key: ALT_KEY.get(id)! })}`
+                          : ''}
+                        {loc === 'floating'
+                          ? ` · ${t('shellChrome.activityBar.floatingHint')}`
+                          : loc === 'popped'
+                            ? ` · ${t('shellChrome.activityBar.poppedHint')}`
+                            : ''}
+                      </>
+                    )}
                   </span>
                 </TooltipContent>
               </Tooltip>
@@ -217,7 +235,7 @@ export function ActivityBar() {
             <button
               type="button"
               data-sidebar-customize-toggle
-              aria-label={customizing ? 'Done customizing' : 'Customize sidebar'}
+              aria-label={t(customizing ? 'shellChrome.shared.doneCustomizing' : 'shellChrome.shared.customizeSidebar')}
               aria-pressed={customizing}
               onClick={() => setSidebarCustomizing(!customizing)}
               className={cn(
@@ -228,11 +246,13 @@ export function ActivityBar() {
               <SlidersHorizontal className="h-4 w-4" />
             </button>
           </TooltipTrigger>
-          <TooltipContent side="left">{customizing ? 'Done customizing' : 'Customize sidebar'}</TooltipContent>
+          <TooltipContent side="left">
+            {t(customizing ? 'shellChrome.shared.doneCustomizing' : 'shellChrome.shared.customizeSidebar')}
+          </TooltipContent>
         </Tooltip>
 
         <FooterButton
-          label={mode === 'collapsed' ? 'Expand sidebar' : 'Collapse to icons'}
+          label={t(mode === 'collapsed' ? 'shellChrome.activityBar.expandSidebar' : 'shellChrome.shared.collapseToIcons')}
           onClick={() => setSidebarMode(mode === 'collapsed' ? 'expanded' : 'collapsed')}
         >
           {mode === 'collapsed' ? <PanelRightOpen className="h-4 w-4" /> : <PanelRightClose className="h-4 w-4" />}
@@ -244,19 +264,19 @@ export function ActivityBar() {
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  aria-label="Sidebar options"
+                  aria-label={t('shellChrome.activityBar.sidebarOptions')}
                   className="h-9 w-9 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                 >
                   <EllipsisVertical className="h-4 w-4" />
                 </button>
               </DropdownMenuTrigger>
             </TooltipTrigger>
-            <TooltipContent side="left">Sidebar options</TooltipContent>
+            <TooltipContent side="left">{t('shellChrome.activityBar.sidebarOptions')}</TooltipContent>
           </Tooltip>
           <DropdownMenuContent side="left" align="end" className="w-52">
             <DropdownMenuItem onSelect={() => setSidebarCustomizing(true)} className="gap-2">
               <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
-              Customize panels…
+              {t('shellChrome.activityBar.customizePanelsMenuItem')}
             </DropdownMenuItem>
             {hiddenIds.length > 0 && (
               <DropdownMenuItem
@@ -264,22 +284,22 @@ export function ActivityBar() {
                 className="gap-2"
               >
                 <Eye className="h-4 w-4 text-muted-foreground" />
-                Show all panels ({hiddenIds.length} hidden)
+                {t('shellChrome.activityBar.showAllPanels', { count: hiddenIds.length })}
               </DropdownMenuItem>
             )}
             <DropdownMenuItem onSelect={() => resetLayout()} className="gap-2">
               <RotateCcw className="h-4 w-4 text-muted-foreground" />
-              Reset layout
+              {t('shellChrome.activityBar.resetLayoutMenuItem')}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             {/* Keyboard-accessible detach (the grip drag is mouse-only). */}
             <DropdownMenuItem onSelect={() => floatPanel(activePanel)} className="gap-2">
               <SquareArrowOutUpRight className="h-4 w-4 text-muted-foreground" />
-              Float current panel
+              {t('shellChrome.activityBar.floatCurrentPanel')}
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => popOutPanel(activePanel)} className="gap-2">
               <MonitorUp className="h-4 w-4 text-muted-foreground" />
-              Pop out to another screen
+              {t('shellChrome.activityBar.popOutToAnotherScreen')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

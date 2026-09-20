@@ -1,11 +1,1 @@
-{
-  "apps/viewer/src/components/viewer/dock/FloatingPanel.tsx": 3,
-  "apps/viewer/src/components/viewer/dock/PanelWindowHost.tsx": 5,
-  "apps/viewer/src/components/viewer/MobileToolbar.tsx": 12,
-  "apps/viewer/src/components/viewer/sidebar/ActivityBar.tsx": 13,
-  "apps/viewer/src/components/viewer/sidebar/CustomizeSidebar.tsx": 17,
-  "apps/viewer/src/components/viewer/sidebar/SidebarDock.tsx": 1,
-  "apps/viewer/src/components/viewer/sidebar/SidebarPanelHost.tsx": 9,
-  "apps/viewer/src/components/viewer/StatusBar.tsx": 13,
-  "apps/viewer/src/components/viewer/ViewerLayout.tsx": 13
-}
+{}

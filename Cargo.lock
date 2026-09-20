@@ -1555,6 +1555,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ifc-lite-landxml"
+version = "16.2.0"
+dependencies = [
+ "quick-xml",
+ "serde",
+]
+
+[[package]]
 name = "ifc-lite-processing"
 version = "16.2.0"
 dependencies = [
@@ -1617,6 +1625,7 @@ dependencies = [
  "ifc-lite-core",
  "ifc-lite-export",
  "ifc-lite-geometry",
+ "ifc-lite-landxml",
  "ifc-lite-processing",
  "js-sys",
  "memchr",
@@ -2311,6 +2320,15 @@ name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
+
+[[package]]
+name = "quick-xml"
+version = "0.38.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b66c2058c55a409d601666cffe35f04333cf1013010882cec174a7467cd4e21c"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "quote"

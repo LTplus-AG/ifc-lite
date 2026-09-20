@@ -9,6 +9,10 @@ import {
   type DeviceLossContext,
   type DeviceLossContextSource,
 } from './device-loss-context.js';
+import { startDeviceLossRecovery, type DeviceRecoverySource } from './device-loss-recovery.js';
+import { reportDeviceRecovery } from './device-loss-recovery-report.js';
+import { useViewerStore } from '@/store';
+export { modelsWithoutOmittedPointCloudHandles } from './device-loss-recovery-report.js';
 
 /**
  * What the user and error tracking are told when the GPU device dies.
@@ -66,8 +70,9 @@ function deviceLostFingerprint(reason: string): string {
   return `ifc-lite:device_lost:${bucket}`;
 }
 
-// Session-scoped latch. Module state is deliberate: the loss is a property of
-// the device, not of a component instance, so a remount must not re-toast.
+// Loss-episode latch. Module state is deliberate: a component remount must not
+// re-toast the same lost device. Successful recovery re-arms it because the
+// replacement device can independently be lost later in the same session.
 let reported = false;
 // The same, for the neighbouring "degraded and never recovered" signal. A
 // separate latch: the two are different failures and one must not mute the
@@ -81,13 +86,14 @@ export function resetDeviceLossReportForTests(): void {
 }
 
 /**
- * Report a GPU device loss to the user and to error tracking, once per
- * session. Never throws: it runs from a renderer callback whose other
+ * Report a GPU device loss to the user and to error tracking, once per loss
+ * episode. Never throws: it runs from a renderer callback whose other
  * listeners must still fire.
  */
 export function reportDeviceLost(
   info: { message: string; reason: string },
   context?: DeviceLossContext,
+  recoveryAvailable = false,
 ): void {
   if (reported) return;
   reported = true;
@@ -154,7 +160,9 @@ export function reportDeviceLost(
   void import('@/components/ui/toast').then((m) => {
     m.toast.error(
       'The graphics device was lost, so the 3D view has stopped drawing. ' +
-      'Reload the page to restore rendering.',
+      (recoveryAvailable
+        ? 'Automatic recovery is starting; reload the page if it does not return.'
+        : 'Reload the page to restore rendering.'),
     );
   }).catch((err) => {
     // Best-effort: a failed toast must never mask the device loss itself. But
@@ -263,6 +271,7 @@ export function reportPersistentRenderDegradation(
 export interface ViewportHealthSource extends DeviceLossContextSource {
   onDeviceLost(listener: (info: { message: string; reason: string }) => void): () => void;
   onPersistentRenderDegradation(listener: (info: RenderDegradationInfo) => void): () => void;
+  recoverDevice?: DeviceRecoverySource['recoverDevice'];
 }
 
 /**
@@ -306,18 +315,47 @@ export function subscribeViewportHealth(
   renderer: ViewportHealthSource,
   buildContext: (source: DeviceLossContextSource) => DeviceLossContext = buildDeviceLossContext,
 ): () => void {
+  let recovery: ReturnType<typeof startDeviceLossRecovery> | null = null;
   const unsubscribes = [
     // The context is built AT LOSS TIME, inside the listener, not at subscribe
     // time: `ms_since_last_frame`, `gpu_resident_mb` and the last-load fields
     // must describe the moment the device died, not the Viewport mount.
-    renderer.onDeviceLost((info) =>
-      reportDeviceLost(info, buildContextSafely(buildContext, renderer)),
-    ),
+    renderer.onDeviceLost((info) => {
+      const store = useViewerStore.getState();
+      const cancelStream = store.activeStreamCanceller;
+      if (cancelStream) {
+        // A streamed scan does not publish its model handle until `done`.
+        // Cancel before recovery tears down the old point-cloud renderer so
+        // that late completion cannot publish a handle for a vanished asset.
+        store.setActiveStreamCanceller(null);
+        try {
+          cancelStream();
+        } catch (error) {
+          console.warn('[Viewport] failed to cancel point-cloud ingest during device loss:', error);
+        }
+      }
+      reportDeviceLost(info, buildContextSafely(buildContext, renderer), Boolean(renderer.recoverDevice));
+      if (!recovery && renderer.recoverDevice) {
+        const run = startDeviceLossRecovery(
+          { recoverDevice: () => renderer.recoverDevice!() },
+          {
+            recovered: (result) => reportDeviceRecovery(result, () => { reported = false; }),
+            failed: (result) => reportDeviceRecovery(result, () => { reported = false; }),
+          },
+        );
+        recovery = run;
+        const clearRecovery = () => {
+          if (recovery === run) recovery = null;
+        };
+        void run.promise.then(clearRecovery, clearRecovery);
+      }
+    }),
     renderer.onPersistentRenderDegradation((info) =>
       reportPersistentRenderDegradation(info, buildContextSafely(buildContext, renderer)),
     ),
   ];
   return () => {
+    recovery?.cancel();
     for (const unsubscribe of unsubscribes) unsubscribe();
   };
 }

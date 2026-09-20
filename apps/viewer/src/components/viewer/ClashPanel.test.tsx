@@ -227,10 +227,16 @@ describe('ClashPanel surfaces the existing clash grouping as coordination issues
     const groupHeaders = container.querySelectorAll('button[aria-expanded][aria-label]');
     assert.equal(groupHeaders.length, 1, 'the emptied cluster must not render a group row either');
 
-    // The header count next to "Issues" must say 1, not 2. (Adjacent spans mean
-    // `textContent` has no space between the number and the word, e.g. "1issue".)
-    const text = container.textContent ?? '';
-    assert.ok(/(?:^|[^0-9])1\s*issue/i.test(text), `expected the header to read "1 issue"; got: ${text}`);
-    assert.ok(!/(?:^|[^0-9])2\s*issues?/i.test(text), `header must not also claim 2 issues; got: ${text}`);
+    // Scope this to the summary description. The manual Groups toggle also
+    // renders its numeric count immediately before the summary in DOM text,
+    // so scanning the whole panel can concatenate `1` + `1 issue` as `11
+    // issue` even though the visible layout separates them.
+    const summary = [...container.querySelectorAll('span')]
+      .map((span) => span.textContent ?? '')
+      .find((text) => /\bissues?\b/i.test(text));
+    assert.ok(summary && /(?:^|[^0-9])1\s*issue/i.test(summary),
+      `expected the summary to read "1 issue"; got: ${summary ?? '<missing>'}`);
+    assert.ok(!/(?:^|[^0-9])2\s*issues?/i.test(summary),
+      `summary must not also claim 2 issues; got: ${summary}`);
   });
 });

@@ -9,6 +9,7 @@ import { chartsEn } from './catalogues/charts.en';
 import { appearancePanelEn } from './catalogues/appearance-panel.en';
 import { appearancePickersEn } from './catalogues/appearance-pickers.en';
 import { appearanceWorkflowsEn } from './catalogues/appearance-workflows.en';
+import { clashGroupsEn } from './catalogues/clash-groups.en';
 import { bulkPropertyEditorEn } from './catalogues/bulk-property-editor.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
@@ -52,6 +53,7 @@ export const en = {
   ...filterGroupsEn,
   ...chartsEn,
   ...listsEn,
+  ...clashGroupsEn,
   ...scheduleEn,
   ...measureEn,
   ...spaceSketchEn,

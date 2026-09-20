@@ -41,6 +41,10 @@ export class SymbolicOverlays {
 
     constructor(private readonly host: SymbolicOverlayHost) {}
 
+    hasGeometry(): boolean {
+        return (this.fillPipeline?.hasGeometry() ?? false) || (this.textPipeline?.hasGeometry() ?? false);
+    }
+
     /**
      * Share the device + presentation format AND the MSAA sample count +
      * objectId attachment shape with the rest of the renderer so these

@@ -5,6 +5,7 @@
 import {
   getAttributeNamesAcrossSchemas,
   getSchemaRegistryForVersion,
+  resolveEntityNameAlias,
   type IfcDataStore,
   type SchemaRegistry,
   type SchemaVersionWithRegistry,
@@ -29,10 +30,12 @@ function referenceType(registry: SchemaRegistry, type: string, seen = new Set<st
   return Boolean(members?.length) && members.some(member => referenceType(registry, member, new Set(seen)));
 }
 
-function referenceSlots(registry: SchemaRegistry, type: string, names: readonly string[]): boolean[] {
-  const upper = type.toUpperCase();
-  const entity = Object.values(registry.entities).find(candidate => candidate.name.toUpperCase() === upper);
-  if (!entity) return names.map(() => false);
+function referenceSlots(registry: SchemaRegistry, type: string, names: readonly string[]): boolean[] | null {
+  // Same alias resolution as `getAttributeNamesAcrossSchemas`, so a folded
+  // leaf (IfcSolidStratum → IfcGeotechnicalStratum) keeps its reference slots.
+  const candidates = new Set([type.toUpperCase(), resolveEntityNameAlias(type).toUpperCase()]);
+  const entity = Object.values(registry.entities).find(candidate => candidates.has(candidate.name.toUpperCase()));
+  if (!entity) return null;
   const byName = new Map(entity.allAttributes?.map(attribute => [attribute.name, attribute.type]) ?? []);
   return names.map(name => {
     const declaredType = byName.get(name);
@@ -40,15 +43,19 @@ function referenceSlots(registry: SchemaRegistry, type: string, names: readonly 
   });
 }
 
-/** Slots whose EXPRESS declaration admits an entity-reference branch. */
+/** Slots whose EXPRESS declaration admits an entity-reference branch. A class the
+ * store's own schema does not declare (an IFC5 store, or a cross-schema alias such
+ * as IFC4X3 `IfcSolidStratum` in an IFC4 file) takes its attribute names from every
+ * bundled schema, so its reference metadata must come from the same schemas —
+ * never an all-false row that would serialize `#123` as plain data. */
 export function referenceAttributeSlotsForStore(store: IfcDataStore, type: string): boolean[] {
   const names = attributeNamesForStore(store, type);
-  if (store.schemaVersion === 'IFC5') {
-    const perRegistry = REGISTRY_VERSIONS.map(version => referenceSlots(
-      getSchemaRegistryForVersion(version), type, names,
-    ));
-    return names.map((_, index) => perRegistry.some(slots => slots[index]));
-  }
-  const registry = getSchemaRegistryForVersion(store.schemaVersion as SchemaVersionWithRegistry);
-  return referenceSlots(registry, type, names);
+  const own = store.schemaVersion === 'IFC5'
+    ? null
+    : referenceSlots(getSchemaRegistryForVersion(store.schemaVersion as SchemaVersionWithRegistry), type, names);
+  if (own) return own;
+  const perRegistry = REGISTRY_VERSIONS
+    .map(version => referenceSlots(getSchemaRegistryForVersion(version), type, names))
+    .filter((slots): slots is boolean[] => slots !== null);
+  return names.map((_, index) => perRegistry.some(slots => slots[index]));
 }

@@ -597,13 +597,22 @@ impl GeometryRouter {
         let extend_backward = extend_backward + coplanarity_pad;
         let extend_forward = extend_forward + coplanarity_pad;
 
-        // Extend opening bounds along the extrusion direction
-        let extended_min = open_min - extrusion_direction * extend_backward;
-        let extended_max = open_max + extrusion_direction * extend_forward;
-
-        // Create new AABB that encompasses both original opening and extended points
-        // This ensures we don't shrink the opening in other dimensions
-        let all_points = [open_min, open_max, extended_min, extended_max];
+        // Translate the whole opening AABB toward both projection extremes.
+        // Using only `open_min - direction` and `open_max + direction` assumes
+        // every direction component is positive: an antiparallel local-frame
+        // cutter would move those two corners inward and never extend. The
+        // translated min/max pairs make this invariant under `direction ->
+        // -direction`, including mixed-sign diagonal axes.
+        let backward = -extrusion_direction * extend_backward;
+        let forward = extrusion_direction * extend_forward;
+        let all_points = [
+            open_min,
+            open_max,
+            open_min + backward,
+            open_max + backward,
+            open_min + forward,
+            open_max + forward,
+        ];
 
         let new_min = Point3::new(
             all_points.iter().map(|p| p.x).fold(f64::INFINITY, f64::min),

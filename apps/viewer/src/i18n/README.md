@@ -675,6 +675,94 @@ Point-cloud ASPRS CLASS names (`lasClassificationName()`) are model content
 loaded from the scan and stay out of the catalogue, same house rule as an
 IFC class/property/tag NAME anywhere else in this sweep.
 
+The viewport/lighting catalogue (#4918 slice: viewport/lighting,
+`viewport-lighting.en.ts`) covers the 3D-viewport chrome and the Sun & Sky
+lighting controls across seven files: `ViewportContainer.tsx` (the no-model
+welcome/empty state, its WebGPU-unavailable banner, and the loaded-model
+"Add Model" drop overlay), `ViewportOverlays.tsx` (the mobile touch-nav
+cluster, the selected-storey count, and the per-model basepoint toggle),
+`Viewport.tsx`'s own renderer-init failure fallback, `FlySpeedIndicator.tsx`'s
+fly-mode HUD, and the Sun & Sky panel's own chrome plus its two sub-panels
+(`SunSkyPanel.tsx`, `ShadowControls.tsx`, `SunTimeControls.tsx`).
+`SunSkyPanel.tsx`'s `CONTEXT_SOURCES`/`SWEEP_MODES` select-option tables
+moved their `label`/`hint` fields to `labelKey`/`hintKey`, the same
+data-table-plus-`labelKey` pattern `sectionConstants.ts`'s `AXIS_INFO` and
+this sweep's other select tables use — component `label` props are not
+policed by the ending gate below, but leaving those two dropdowns hardcoded
+while the rest of the panel translated would read as two languages in one
+panel. `ShadowControls.tsx`'s `resolutionLabel` takes the same non-hook
+`t: typeof resolve = resolve` default parameter `bulk-property-value.ts`
+already uses, since it is a plain formatting function, not a component. The
+pluralized "Drop to federate with N existing model(s)" and "N storeys"
+states are single templated messages selected by count, never assembled
+fragments, the same reasoning this sweep's other counted states already
+document. `ViewportContainer.tsx`'s inline `<style>{`@keyframes…`}`</style>`
+CSS moved to a module-level `FLOAT_SLOW_KEYFRAMES` constant — plain CSS, not
+translatable prose, but the AST gate cannot tell a keyframe declaration from
+JSX text sitting in a `{'…'}` child position, so it stayed a false positive
+until moved out of that position entirely. A selected storey's own NAME, and
+a loaded model's own displayed name, remain runtime content and stay out of
+the catalogue.
+
+The grab-bag catalogue (#4918 slice: standalone panels, part 1,
+`misc-panels-a.en.ts`) bundles five otherwise-unrelated one-off dialogs/panels
+under their own key prefixes purely for PR-count efficiency:
+`BasketPresentationDock.tsx` (`basketPresentationDock.*`, the pinboard
+"Presentation" dock's header, source/visibility/save/play-all controls, the
+saved-view strip, and the resize handle), `DeviationPanel.tsx`
+(`deviationPanel.*`, the BIM/scan deviation heatmap's compute button, stats
+line, range slider, and legend, plus its `setError` messages), the pre-export
+`ExportChangesReviewDialog.tsx` (`exportChangesReviewDialog.*`, the summary
+line and the per-change-kind/value-fallback labels `describeChangeKind` and
+`describeEntity` now resolve rather than returning bare English strings — the
+former threads the component's own `t` since it runs at render time inside
+`groups.map`, the latter takes an optional non-hook translator like
+`webGpuBannerBlurb` since it runs once inside `buildReviewGroups`, outside any
+component), `ScanSectionPanel.tsx` (`scanSectionPanel.*`, the point-cloud scan
+overlay's toggle, thickness/opacity sliders, and status footnote), and
+`SpaceMousePanel.tsx` (`spaceMousePanel.*`, the 3Dconnexion device panel's
+connect/disconnect, sensitivity, and diagnostics readout). Several
+counted-fragment JSX expressions were combined into single templated messages
+per the house rule against fragmenting a translated message — the basket
+dock's `{count} in basket`, the deviation stats line, the SpaceMouse
+diagnostics report line — rather than left split across raw JSX text and a
+bare unit suffix; `spaceMousePanel.layoutLine` and
+`exportChangesReviewDialog.changesSummary` instead nest a second `t()` call
+for a sub-label (the layout source, the model count) inside their own
+template, the same shape `RoomPanel.tsx`'s `statusRoom` already uses.
+`spaceMousePanel.headerLabel` / `deviceNameFallback` / `connectButton` keep
+the literal English word `SpaceMouse` as their catalogue value — a device
+name, not translated prose, per the house rule — routed through `t()` only so
+the ending gate does not see it as an unconverted JSX literal, the same
+reasoning the geometry-export and webgpu-troubleshooting catalogues document
+for a technical string a translator is expected to leave unchanged.
+
+The sheet/title-block and PDF-view catalogue (#4918 sheets/PDF slice,
+`sheets-pdf.en.ts`) covers five files behind one `sheetsPdf.*` namespace,
+split by owning surface: `TitleBlockEditor.tsx` (`sheetsPdf.titleBlock.*`,
+the field-editor dialog's standard/custom-field forms, logo upload, and
+revision history), `SheetSetupPanel.tsx` (`sheetsPdf.sheetSetup.*`, the
+paper/frame/scale/title-block/scale-bar sections and the saved-templates
+list — its `FRAME_STYLE_OPTIONS`/`TITLE_BLOCK_LAYOUT_OPTIONS` tables moved
+to the same data-table-plus-`labelKey` pattern `sectionConstants.ts`'s
+`AXIS_INFO` uses), and the to-scale 3D-view PDF export dialog's three files
+(`sheetsPdf.pdfView.*`): `PdfViewExportDialog.tsx`, its appearance controls
+`PdfViewAppearanceSection.tsx`, and its page-size/oversize/projection
+notices `PdfViewPageNotices.tsx`. `describeShadingResolution` (a plain
+function, not a component) takes the same `t: typeof resolve = resolve`
+default-parameter shape `bulk-property-value.ts` and
+`WebGpuTroubleshooting.tsx` use. Several readouts in `SheetSetupPanel.tsx`
+and `PdfViewPageNotices.tsx` were fixed-fragment concatenations (e.g.
+`'Estimated page: ' + width + ' x ' + height + ...`); each became one
+complete message per branch (fits an ISO sheet / does not / not available
+yet) rather than assembled from translated pieces, the same reasoning the
+layers and clash-tools catalogues already document for a multi-clause
+status line. Title-block field VALUES the user types, field LABELS (preset
+data from `@ifc-lite/drawing-2d` or a user-chosen custom label), revision
+author/date/description content, saved-template NAMES, and paper size
+NAMES/millimetre/dpi figures remain model or unit/symbol content per the
+house rule and stay out of the catalogue — only interpolated as params.
+
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for
 hardcoded JSX text, `{'…'}`-wrapped JSX-expression string literals, and

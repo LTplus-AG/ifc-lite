@@ -44,18 +44,21 @@ import { mcpPlaygroundEn } from './catalogues/mcp-playground.en';
 import { measureEn } from './catalogues/measure.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
 import { miscPanelsBEn } from './catalogues/misc-panels-b.en';
+import { miscPanelsAEn } from './catalogues/misc-panels-a.en';
 import { propertiesEn } from './catalogues/properties.en';
 import { relationshipCardEn } from './catalogues/relationship-card.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
 import { scheduleEn } from './catalogues/schedule.en';
 import { sectionToolEn } from './catalogues/section-tool.en';
 import { section2dEn } from './catalogues/section-2d.en';
+import { sheetsPdfEn } from './catalogues/sheets-pdf.en';
 import { searchModalEn } from './catalogues/search-modal.en';
 import { searchFiltersEn } from './catalogues/search-filters.en';
 import { sharedCommandsEn } from './catalogues/shared-commands.en';
 import { sourcesEn } from './catalogues/sources.en';
 import { toursEn } from './catalogues/tours.en';
 import { viewerShellEn } from './catalogues/viewer-shell.en';
+import { viewportLightingEn } from './catalogues/viewport-lighting.en';
 import { spaceSketchEn } from './catalogues/space-sketch.en';
 import { splitToolEn } from './catalogues/split-tool.en';
 import { structuralPropertiesEn } from './catalogues/structural-properties.en';
@@ -125,6 +128,9 @@ export const en = {
   ...dataConnectorEn,
   ...geometryExportDialogsEn,
   ...miscPanelsBEn,
+  ...viewportLightingEn,
+  ...miscPanelsAEn,
+  ...sheetsPdfEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

@@ -39,6 +39,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useTranslation } from '@/i18n';
+import { resolve } from '@/i18n/registry';
 import {
   MAX_SHADING_DIMENSION_PX,
   MAX_SHADING_PIXELS,
@@ -73,10 +75,16 @@ export interface PdfViewAppearanceSectionProps {
  * so the number shown is the number the sheet gets. `fitRasterPixels` throws on
  * a non-positive size rather than inventing a grid, so the guard below is a
  * precondition check and not a swallowed failure.
+ *
+ * A plain function, not a component — it cannot call `useTranslation()` — so
+ * it resolves directly against the locale registry via `resolve`
+ * (`@/i18n/registry`), the same `t: typeof resolve = resolve` default-
+ * parameter shape `bulk-property-value.ts` and `WebGpuTroubleshooting.tsx` use.
  */
 export function describeShadingResolution(
   drawingWidthMm: number | null,
   drawingHeightMm: number | null,
+  t: typeof resolve = resolve,
 ): string | null {
   if (
     drawingWidthMm === null || drawingHeightMm === null ||
@@ -93,11 +101,8 @@ export function describeShadingResolution(
     MAX_SHADING_DIMENSION_PX,
   );
   const dpi = Math.round(fit.effectiveDpi);
-  if (!fit.capped) return `Shading resolution: ${dpi} dpi.`;
-  return (
-    `Shading resolution: ${dpi} dpi (reduced from ${VIEW_PDF_SHADING_DPI} to keep the ` +
-    'image within memory limits). Line work stays vector and exact.'
-  );
+  if (!fit.capped) return t('sheetsPdf.pdfView.shadingResolution', { dpi });
+  return t('sheetsPdf.pdfView.shadingResolutionCapped', { dpi, maxDpi: VIEW_PDF_SHADING_DPI });
 }
 
 export function PdfViewAppearanceSection({
@@ -111,17 +116,18 @@ export function PdfViewAppearanceSection({
   drawingWidthMm,
   drawingHeightMm,
 }: PdfViewAppearanceSectionProps) {
+  const { t } = useTranslation();
   const shaded = renderMode === 'shaded';
   const resolution = useMemo(
-    () => (shaded ? describeShadingResolution(drawingWidthMm, drawingHeightMm) : null),
-    [shaded, drawingWidthMm, drawingHeightMm],
+    () => (shaded ? describeShadingResolution(drawingWidthMm, drawingHeightMm, t) : null),
+    [shaded, drawingWidthMm, drawingHeightMm, t],
   );
 
   return (
     <>
       <div className="flex items-center gap-4">
         <Label className="w-24" htmlFor="pdf-view-render-mode">
-          Appearance
+          {t('sheetsPdf.pdfView.appearanceLabel')}
         </Label>
         <Select
           value={renderMode}
@@ -131,23 +137,20 @@ export function PdfViewAppearanceSection({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="shaded">Shaded surfaces</SelectItem>
-            <SelectItem value="lines">Line work only</SelectItem>
+            <SelectItem value="shaded">{t('sheetsPdf.pdfView.shadedOption')}</SelectItem>
+            <SelectItem value="lines">{t('sheetsPdf.pdfView.lineWorkOption')}</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
       <p className="text-xs text-muted-foreground" data-testid="pdf-view-appearance-note">
-        {shaded
-          ? 'Surfaces print in their model colours, shaded the way the 3D viewport shows them. ' +
-            'The line work on top stays vector, so the sheet is still measurable.'
-          : 'Monochrome line work only. No fills, materials, textures or point clouds.'}
+        {t(shaded ? 'sheetsPdf.pdfView.appearanceNoteShaded' : 'sheetsPdf.pdfView.appearanceNoteLineWork')}
         {resolution ? ` ${resolution}` : ''}
       </p>
 
       <div className="flex items-center justify-between gap-4">
         <Label className="text-sm font-normal" htmlFor="pdf-view-hidden-edges">
-          Show hidden edges as dashed lines
+          {t('sheetsPdf.pdfView.hiddenEdgesLabel')}
         </Label>
         <Switch
           id="pdf-view-hidden-edges"
@@ -158,15 +161,13 @@ export function PdfViewAppearanceSection({
       </div>
       <p className="text-xs text-muted-foreground">
         {shaded
-          ? 'Hidden edges apply to the line work mode. The shaded image already hides occluded surfaces.'
-          : showHiddenEdges
-            ? 'Edges behind other geometry print as dashed lines.'
-            : 'Only edges you can actually see are printed.'}
+          ? t('sheetsPdf.pdfView.hiddenEdgesNoteShaded')
+          : t(showHiddenEdges ? 'sheetsPdf.pdfView.hiddenEdgesNoteOn' : 'sheetsPdf.pdfView.hiddenEdgesNoteOff')}
       </p>
 
       <div className="flex items-center justify-between gap-4">
         <Label className="text-sm font-normal" htmlFor="pdf-view-scale-stamp">
-          Print a scale bar and the scale on the sheet
+          {t('sheetsPdf.pdfView.scaleStampLabel')}
         </Label>
         <Switch
           id="pdf-view-scale-stamp"
@@ -176,12 +177,8 @@ export function PdfViewAppearanceSection({
       </div>
       <p className="text-xs text-muted-foreground" data-testid="pdf-view-scale-stamp-note">
         {showScaleStamp
-          ? `A scale bar and the text "Scale ${scaleLabel ?? '1:N'}" print in a band below the ` +
-            'drawing, which makes the page slightly taller. The bar is drawn to scale, so it ' +
-            'stays correct on a photocopy that the printed ratio no longer describes.'
-          : 'The sheet carries no scale of its own. Only do this if it goes into a title block ' +
-            'that states the scale, because a print nobody can check invites measuring it at ' +
-            'the wrong one.'}
+          ? t('sheetsPdf.pdfView.scaleStampNoteOn', { scaleLabel: scaleLabel ?? '1:N' })
+          : t('sheetsPdf.pdfView.scaleStampNoteOff')}
       </p>
     </>
   );

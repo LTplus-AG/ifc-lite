@@ -25,6 +25,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import type { TitleBlockField, RevisionEntry } from '@ifc-lite/drawing-2d';
 
 interface TitleBlockEditorProps {
@@ -59,6 +60,7 @@ const STANDARD_FIELD_IDS = [
 ];
 
 export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps): React.ReactElement {
+  const { t } = useTranslation();
   const activeSheet = useViewerStore((s) => s.activeSheet);
   const updateTitleBlockField = useViewerStore((s) => s.updateTitleBlockField);
   const addTitleBlockField = useViewerStore((s) => s.addTitleBlockField);
@@ -175,14 +177,14 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit Title Block</DialogTitle>
+          <DialogTitle>{t('sheetsPdf.titleBlock.dialogTitle')}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6">
           {/* Standard Fields */}
           <div className="space-y-3">
             <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-              Standard Fields
+              {t('sheetsPdf.titleBlock.standardFieldsHeading')}
             </h3>
             <div className="grid gap-3">
               {fieldGroups.standard.map((field) => (
@@ -194,7 +196,7 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
                   <Input
                     value={field.value}
                     onChange={(e) => handleFieldChange(field.id, e.target.value)}
-                    placeholder={`Enter ${field.label.toLowerCase()}...`}
+                    placeholder={t('sheetsPdf.titleBlock.fieldPlaceholder', { label: field.label.toLowerCase() })}
                     className="h-8"
                     disabled={!field.editable}
                   />
@@ -207,15 +209,11 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                Custom Fields
+                {t('sheetsPdf.titleBlock.customFieldsHeading')}
               </h3>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowNewFieldForm(true)}
-              >
+              <Button variant="outline" size="sm" onClick={() => setShowNewFieldForm(true)}>
                 <Plus className="h-4 w-4 mr-1" />
-                Add Field
+                {t('sheetsPdf.titleBlock.addFieldButton')}
               </Button>
             </div>
 
@@ -224,12 +222,12 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
                 <Input
                   value={newFieldLabel}
                   onChange={(e) => setNewFieldLabel(e.target.value)}
-                  placeholder="Field label..."
+                  placeholder={t('sheetsPdf.titleBlock.fieldLabelPlaceholder')}
                   className="h-8 flex-1"
                   autoFocus
                 />
                 <Button size="sm" onClick={handleAddField} disabled={!newFieldLabel.trim()}>
-                  Add
+                  {t('sheetsPdf.titleBlock.addButton')}
                 </Button>
                 <Button
                   size="sm"
@@ -239,14 +237,14 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
                     setNewFieldLabel('');
                   }}
                 >
-                  Cancel
+                  {t('sheetsPdf.titleBlock.cancel')}
                 </Button>
               </div>
             )}
 
             {fieldGroups.custom.length === 0 && !showNewFieldForm ? (
               <div className="text-sm text-muted-foreground text-center py-4">
-                No custom fields yet
+                {t('sheetsPdf.titleBlock.noCustomFields')}
               </div>
             ) : (
               <div className="grid gap-2">
@@ -257,7 +255,7 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
                       <Input
                         value={field.value}
                         onChange={(e) => handleFieldChange(field.id, e.target.value)}
-                        placeholder={`Enter ${field.label.toLowerCase()}...`}
+                        placeholder={t('sheetsPdf.titleBlock.fieldPlaceholder', { label: field.label.toLowerCase() })}
                         className="h-8"
                       />
                     </div>
@@ -278,7 +276,7 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
           {/* Logo */}
           <div className="space-y-3">
             <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-              Company Logo
+              {t('sheetsPdf.titleBlock.companyLogoHeading')}
             </h3>
             <div className="flex items-center gap-4">
               {activeSheet.titleBlock.logo ? (
@@ -286,7 +284,7 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
                   <div className="w-16 h-10 bg-muted rounded flex items-center justify-center overflow-hidden">
                     <img
                       src={activeSheet.titleBlock.logo.source}
-                      alt="Logo"
+                      alt={t('sheetsPdf.titleBlock.logoAlt')}
                       className="max-w-full max-h-full object-contain"
                     />
                   </div>
@@ -295,7 +293,7 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
                     size="sm"
                     onClick={() => setTitleBlockLogo(null)}
                   >
-                    Remove
+                    {t('sheetsPdf.titleBlock.removeLogo')}
                   </Button>
                 </div>
               ) : (
@@ -309,11 +307,11 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
                     />
                     <div className="flex items-center gap-2 px-3 py-2 border rounded-md text-sm hover:bg-muted/50 transition-colors">
                       <Upload className="h-4 w-4" />
-                      Upload Logo
+                      {t('sheetsPdf.titleBlock.uploadLogo')}
                     </div>
                   </label>
                   <span className="text-xs text-muted-foreground">
-                    PNG, JPG, or SVG
+                    {t('sheetsPdf.titleBlock.logoFormats')}
                   </span>
                 </div>
               )}
@@ -324,7 +322,7 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                Revision History
+                {t('sheetsPdf.titleBlock.revisionHistoryHeading')}
               </h3>
               <Button
                 variant="outline"
@@ -332,7 +330,7 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
                 onClick={() => setShowRevisionForm(true)}
               >
                 <Plus className="h-4 w-4 mr-1" />
-                Add Revision
+                {t('sheetsPdf.titleBlock.addRevisionButton')}
               </Button>
             </div>
 
@@ -340,45 +338,45 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
               <div className="p-3 bg-muted/30 rounded-lg space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs">Rev #</Label>
+                    <Label className="text-xs">{t('sheetsPdf.titleBlock.revisionNumberLabel')}</Label>
                     <Input
                       value={newRevision.revision}
                       onChange={(e) => setNewRevision(prev => ({ ...prev, revision: e.target.value }))}
-                      placeholder="A, B, 01..."
+                      placeholder={t('sheetsPdf.titleBlock.revisionNumberPlaceholder')}
                       className="h-8 mt-1"
                     />
                   </div>
                   <div>
-                    <Label className="text-xs">Date</Label>
+                    <Label className="text-xs">{t('sheetsPdf.titleBlock.dateLabel')}</Label>
                     <Input
                       value={newRevision.date}
                       onChange={(e) => setNewRevision(prev => ({ ...prev, date: e.target.value }))}
-                      placeholder="2024-01-15"
+                      placeholder={t('sheetsPdf.titleBlock.datePlaceholder')}
                       className="h-8 mt-1"
                     />
                   </div>
                 </div>
                 <div>
-                  <Label className="text-xs">Description</Label>
+                  <Label className="text-xs">{t('sheetsPdf.titleBlock.descriptionLabel')}</Label>
                   <Input
                     value={newRevision.description}
                     onChange={(e) => setNewRevision(prev => ({ ...prev, description: e.target.value }))}
-                    placeholder="Description of changes..."
+                    placeholder={t('sheetsPdf.titleBlock.descriptionPlaceholder')}
                     className="h-8 mt-1"
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">Author</Label>
+                  <Label className="text-xs">{t('sheetsPdf.titleBlock.authorLabel')}</Label>
                   <Input
                     value={newRevision.author}
                     onChange={(e) => setNewRevision(prev => ({ ...prev, author: e.target.value }))}
-                    placeholder="Initials..."
+                    placeholder={t('sheetsPdf.titleBlock.authorPlaceholder')}
                     className="h-8 mt-1"
                   />
                 </div>
                 <div className="flex gap-2 pt-2">
                   <Button size="sm" onClick={handleAddRevision} disabled={!newRevision.revision || !newRevision.description}>
-                    Add Revision
+                    {t('sheetsPdf.titleBlock.addRevisionButton')}
                   </Button>
                   <Button
                     size="sm"
@@ -388,7 +386,7 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
                       setNewRevision({ revision: '', date: new Date().toLocaleDateString(), description: '', author: '' });
                     }}
                   >
-                    Cancel
+                    {t('sheetsPdf.titleBlock.cancel')}
                   </Button>
                 </div>
               </div>
@@ -396,7 +394,7 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
 
             {activeSheet.revisions.length === 0 && !showRevisionForm ? (
               <div className="text-sm text-muted-foreground text-center py-4">
-                No revisions yet
+                {t('sheetsPdf.titleBlock.noRevisions')}
               </div>
             ) : (
               <div className="space-y-1">
@@ -409,7 +407,7 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
                       <span className="font-mono font-bold">{rev.revision}</span>
                       <span className="text-muted-foreground">{rev.date}</span>
                       <span className="truncate">{rev.description}</span>
-                      {rev.author && <span className="text-muted-foreground">by {rev.author}</span>}
+                      {rev.author && <span className="text-muted-foreground">{t('sheetsPdf.titleBlock.byAuthor', { author: rev.author })}</span>}
                     </div>
                     <Button
                       variant="ghost"
@@ -428,7 +426,7 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Done
+            {t('sheetsPdf.titleBlock.done')}
           </Button>
         </DialogFooter>
       </DialogContent>

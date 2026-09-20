@@ -87,7 +87,7 @@
    548 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
   1139 apps/viewer/src/components/viewer/MainToolbar.tsx
    715 apps/viewer/src/components/viewer/measureHandlers.ts
-   407 apps/viewer/src/components/viewer/PdfViewExportDialog.tsx
+   404 apps/viewer/src/components/viewer/PdfViewExportDialog.tsx
    572 apps/viewer/src/components/viewer/properties/BsddCard.tsx
    418 apps/viewer/src/components/viewer/properties/EpsgLookupDialog.tsx
    985 apps/viewer/src/components/viewer/properties/GeoreferencingPanel.tsx
@@ -108,8 +108,8 @@
    404 apps/viewer/src/components/viewer/SearchModal.text.tsx
   1348 apps/viewer/src/components/viewer/Section2DPanel.tsx
   1134 apps/viewer/src/components/viewer/selectionHandlers.ts
-   502 apps/viewer/src/components/viewer/SheetSetupPanel.tsx
-   437 apps/viewer/src/components/viewer/TitleBlockEditor.tsx
+   493 apps/viewer/src/components/viewer/SheetSetupPanel.tsx
+   435 apps/viewer/src/components/viewer/TitleBlockEditor.tsx
    581 apps/viewer/src/components/viewer/tools/AddElementOverlay.tsx
    501 apps/viewer/src/components/viewer/tools/measure-modes/radius.ts
    867 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
@@ -121,7 +121,7 @@
    916 apps/viewer/src/components/viewer/useMouseControls.ts
    684 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1815 apps/viewer/src/components/viewer/Viewport.tsx
-  1382 apps/viewer/src/components/viewer/ViewportContainer.tsx
+  1349 apps/viewer/src/components/viewer/ViewportContainer.tsx
    508 apps/viewer/src/components/viewer/ZonesPanel.tsx
    862 apps/viewer/src/hooks/ids/idsExportService.ts
    598 apps/viewer/src/hooks/ingest/federationAlign.ts
@@ -246,7 +246,7 @@
   1589 packages/export/src/merged-exporter.ts
    616 packages/export/src/parquet-exporter.ts
    976 packages/export/src/reference-collector.ts
-   487 packages/export/src/schema-converter.ts
+   507 packages/export/src/schema-converter.ts
    437 packages/extensions/src/testing/runner.ts
    612 packages/geometry/src/coordinate-handler.ts
   1695 packages/geometry/src/geometry-parallel.ts

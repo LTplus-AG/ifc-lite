@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Activity, ChevronDown, ChevronUp, Copy, GripVertical, Unplug } from 'lucide-react';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { useDraggablePanel } from '@/hooks/useDraggablePanel';
 import { cn } from '@/lib/utils';
 import { AXIS_FULL_SCALE, SENSITIVITY } from '@/lib/spacemouse/constants';
@@ -44,6 +45,7 @@ function AxisBar({ label, value }: { label: string; value: number }) {
 }
 
 export function SpaceMousePanel() {
+  const { t } = useTranslation();
   const open = useViewerStore((s) => s.spaceMousePanelOpen);
 
   const supported = useViewerStore((s) => s.spaceMouseSupported);
@@ -104,7 +106,7 @@ export function SpaceMousePanel() {
       <div className="flex items-center gap-1.5">
         <span
           onMouseDown={drag.onDragStart}
-          title="Drag to move"
+          title={t('spaceMousePanel.dragToMoveTitle')}
           className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground"
         >
           <GripVertical className="h-3.5 w-3.5" />
@@ -116,7 +118,7 @@ export function SpaceMousePanel() {
           className="flex-1 flex items-center justify-between gap-2 text-left"
         >
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            SpaceMouse
+            {t('spaceMousePanel.headerLabel')}
           </span>
           <span className="text-muted-foreground">
             {collapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
@@ -128,23 +130,22 @@ export function SpaceMousePanel() {
         <>
           {!supported ? (
             <p className="text-[9px] leading-snug text-muted-foreground">
-              This browser has no WebHID support. Use a Chromium-based browser
-              (Chrome or Edge) to navigate with a 3D mouse.
+              {t('spaceMousePanel.noWebHidMessage')}
             </p>
           ) : connected ? (
             <div className="flex items-center justify-between gap-2">
               <span className="min-w-0 truncate text-[10px] text-foreground" title={deviceName ?? undefined}>
                 <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-teal-500 align-middle" />
-                {deviceName ?? 'SpaceMouse'}
+                {deviceName ?? t('spaceMousePanel.deviceNameFallback')}
               </span>
               <button
                 type="button"
                 onClick={() => disconnect?.()}
-                title="Disconnect the device"
+                title={t('spaceMousePanel.disconnectTitle')}
                 className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
                 <Unplug className="h-3 w-3" />
-                Disconnect
+                {t('spaceMousePanel.disconnectButton')}
               </button>
             </div>
           ) : (
@@ -154,7 +155,7 @@ export function SpaceMousePanel() {
               disabled={!connect}
               className="w-full rounded bg-teal-600 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-white transition-colors hover:bg-teal-500 disabled:opacity-50"
             >
-              Connect SpaceMouse
+              {t('spaceMousePanel.connectButton')}
             </button>
           )}
 
@@ -166,17 +167,17 @@ export function SpaceMousePanel() {
             <>
               <label className="flex flex-col gap-0.5">
                 <span className="flex justify-between text-[9px] uppercase tracking-wider text-muted-foreground">
-                  <span>Sensitivity</span>
+                  <span>{t('spaceMousePanel.sensitivityLabel')}</span>
                   <button
                     type="button"
                     onClick={() => setSensitivity(SENSITIVITY.default)}
-                    title="Reset sensitivity"
+                    title={t('spaceMousePanel.resetSensitivityTitle')}
                     className={cn(
                       'tabular-nums transition-colors',
                       sensitivity !== SENSITIVITY.default && 'text-foreground hover:text-teal-600',
                     )}
                   >
-                    {sensitivity.toFixed(1)}x
+                    {t('spaceMousePanel.sensitivityValue', { value: sensitivity.toFixed(1) })}
                   </button>
                 </span>
                 <input
@@ -191,10 +192,7 @@ export function SpaceMousePanel() {
               </label>
 
               <p className="text-[9px] leading-snug text-muted-foreground">
-                Slide the cap to pan, push or pull it to zoom, twist and tilt
-                to orbit. The device buttons fit the view. If the 3Dconnexion
-                driver is running it may hold the device; quit it before
-                connecting here.
+                {t('spaceMousePanel.guidanceMessage')}
               </p>
 
               {connected && getDiagnostics && (
@@ -206,7 +204,7 @@ export function SpaceMousePanel() {
                     className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
                   >
                     <Activity className="h-3 w-3" />
-                    Diagnostics
+                    {t('spaceMousePanel.diagnosticsLabel')}
                     {diagOpen ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
                   </button>
 
@@ -220,16 +218,23 @@ export function SpaceMousePanel() {
 
                       <div className="font-mono text-[8px] leading-snug text-muted-foreground">
                         <div>
-                          layout: {diag.layoutSource === 'descriptor'
-                            ? `descriptor (${diag.layoutAxes} axes)`
-                            : 'built-in fallback'}
+                          {t('spaceMousePanel.layoutLine', {
+                            value: diag.layoutSource === 'descriptor'
+                              ? t('spaceMousePanel.layoutDescriptor', { axes: diag.layoutAxes })
+                              : t('spaceMousePanel.layoutBuiltIn'),
+                          })}
                         </div>
                         {diag.reports.length === 0 ? (
-                          <div>no reports received yet, move the cap</div>
+                          <div>{t('spaceMousePanel.noReportsMessage')}</div>
                         ) : (
                           diag.reports.map((r) => (
                             <div key={r.reportId} className="truncate" title={r.lastBytesHex}>
-                              report {r.reportId}: {r.count}x {r.byteLength}B [{r.lastBytesHex}]
+                              {t('spaceMousePanel.reportLine', {
+                                id: r.reportId,
+                                count: r.count,
+                                bytes: r.byteLength,
+                                hex: r.lastBytesHex,
+                              })}
                             </div>
                           ))
                         )}
@@ -241,12 +246,14 @@ export function SpaceMousePanel() {
                         className="flex items-center justify-center gap-1 rounded border px-1.5 py-1 text-[9px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                       >
                         <Copy className="h-2.5 w-2.5" />
-                        {copyState === 'copied' ? 'Copied' : copyState === 'failed' ? 'Copy failed, try again' : 'Copy device report'}
+                        {copyState === 'copied'
+                          ? t('spaceMousePanel.copiedLabel')
+                          : copyState === 'failed'
+                            ? t('spaceMousePanel.copyFailedLabel')
+                            : t('spaceMousePanel.copyDeviceReportLabel')}
                       </button>
                       <p className="text-[8px] leading-snug text-muted-foreground">
-                        If motion is wrong or dead for your device, copy this
-                        report and paste it into a GitHub issue so the axis
-                        layout can be fixed for your model.
+                        {t('spaceMousePanel.reportHintMessage')}
                       </p>
                     </>
                   )}

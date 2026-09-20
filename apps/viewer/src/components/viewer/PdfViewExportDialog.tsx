@@ -55,6 +55,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { formatScaleFactorLabel, formatSheetScaleLabel } from '@ifc-lite/drawing-2d';
@@ -105,6 +106,7 @@ function formatMm(value: number): string {
 }
 
 export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDialogProps) {
+  const { t } = useTranslation();
   // Subscribed purely so the readout recomputes when the view changes; the
   // values themselves are read back off `getState()` inside the memo, which
   // keeps this component from restating the shape of half the store.
@@ -218,7 +220,7 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
   const handleExport = useCallback(async () => {
     if (!source || !camera || scaleFactor === null) return;
     setIsExporting(true);
-    setPhase('Preparing');
+    setPhase(t('sheetsPdf.pdfView.exportPhasePreparing'));
     try {
       // Loaded on demand: the orchestrator pulls in the whole 2D drawing
       // pipeline (cutter, edge extractor, hidden-line raster) plus jsPDF behind
@@ -240,9 +242,7 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
         includeScaleStamp: showScaleStamp,
         onProgress: (stage) => setPhase(viewPdfPhaseLabel(stage)),
       });
-      const message =
-        `Exported 1:${formatScaleFactorLabel(scaleFactor)} PDF, ` +
-        `page ${formatMm(result.page.widthMm)} x ${formatMm(result.page.heightMm)} mm`;
+      const message = t('sheetsPdf.pdfView.exportSuccessToast', { scale: formatScaleFactorLabel(scaleFactor), width: formatMm(result.page.widthMm), height: formatMm(result.page.heightMm) });
       toast.success(message);
       posthog.capture('export_completed', {
         format: 'pdf-3d-view',
@@ -260,7 +260,9 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
     } catch (err) {
       console.error('PDF view export failed:', err);
       toast.error(
-        err instanceof Error ? `PDF export failed: ${err.message}` : 'PDF export failed.',
+        err instanceof Error
+          ? t('sheetsPdf.pdfView.exportFailedWithMessage', { message: err.message })
+          : t('sheetsPdf.pdfView.exportFailedGeneric'),
       );
     } finally {
       setIsExporting(false);
@@ -276,8 +278,8 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
   }, [source, camera, scaleFactor, showHiddenEdges, renderMode, showScaleStamp, exportViewPdf]);
 
   const displayedLabel = displayedScale
-    ? `As displayed (about 1:${formatScaleFactorLabel(displayedScale)})`
-    : 'As displayed (not available)';
+    ? t('sheetsPdf.pdfView.displayedScaleOption', { scale: formatScaleFactorLabel(displayedScale) })
+    : t('sheetsPdf.pdfView.displayedScaleUnavailable');
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -285,7 +287,7 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
         {trigger || (
           <Button variant="outline" size="sm">
             <FileText className="h-4 w-4 mr-2" />
-            Export PDF
+            {t('sheetsPdf.pdfView.exportPdfButton')}
           </Button>
         )}
       </DialogTrigger>
@@ -293,20 +295,15 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            Export PDF (to-scale 3D view)
+            {t('sheetsPdf.pdfView.dialogTitle')}
           </DialogTitle>
-          <DialogDescription>
-            Saves everything currently visible, projected along your current view
-            direction at an exact scale. Shaded surfaces are embedded as an image placed
-            at exact size; all line work stays vector, so measurements taken off the
-            print are correct.
-          </DialogDescription>
+          <DialogDescription>{t('sheetsPdf.pdfView.dialogDescription')}</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
           <div className="flex items-center gap-4">
             <Label className="w-24" htmlFor="pdf-view-scale">
-              Scale
+              {t('sheetsPdf.pdfView.scaleLabel')}
             </Label>
             <Select value={scaleChoice} onValueChange={setScaleChoice}>
               <SelectTrigger id="pdf-view-scale">
@@ -319,7 +316,7 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
                     {`1:${preset}`}
                   </SelectItem>
                 ))}
-                <SelectItem value="custom">Custom</SelectItem>
+                <SelectItem value="custom">{t('sheetsPdf.pdfView.customOption')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -347,7 +344,7 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
                 />
                 {!customScaleValid && (
                   <p id="pdf-view-custom-scale-error" className="text-xs text-destructive">
-                    Enter a whole number greater than zero, for example 75.
+                    {t('sheetsPdf.pdfView.customScaleError')}
                   </p>
                 )}
               </div>
@@ -378,25 +375,25 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
 
           {source?.sectionEnabled && (
             <p className="text-xs text-muted-foreground">
-              The active section cut is applied. Cut edges print with a heavy line weight.
+              {t('sheetsPdf.pdfView.sectionCutNote')}
             </p>
           )}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
+            {t('sheetsPdf.pdfView.cancelButton')}
           </Button>
           <Button onClick={() => { void handleExport(); }} disabled={!canExport}>
             {isExporting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                {phase ? `${phase}...` : 'Exporting...'}
+                {phase ? `${phase}...` : t('sheetsPdf.pdfView.exportingLabel')}
               </>
             ) : (
               <>
                 <FileText className="h-4 w-4 mr-2" />
-                Export
+                {t('sheetsPdf.pdfView.exportButton')}
               </>
             )}
           </Button>

@@ -73,6 +73,26 @@ const IFC4_TO_IFC2X3: Map<string, string> = new Map([
   // (schema-converter-attr-remap.ts) also reconciles them by name.
   ['IFCDOORTYPE', 'IFCDOORSTYLE'],
   ['IFCWINDOWTYPE', 'IFCWINDOWSTYLE'],
+  // Structural analysis domain (#4206): IfcStructuralLoadCase, IfcStructuralCurveAction
+  // and IfcStructuralSurfaceAction are all IfcRoot subtypes with a real IFC2X3
+  // target under a DIFFERENT name. Left unmapped, `resolveUnrepresentedEntity`
+  // silently replaced every one with an IFCPROXY — losing the GlobalId, the
+  // applied load reference and the load/action classification even though
+  // IFC2X3 has a real (if differently shaped) target for each.
+  // IfcStructuralLoadCase(IFC4) has no IFC2X3 counterpart of its own name;
+  // IFC2X3 folds load cases into `IfcStructuralLoadGroup` with
+  // `PredefinedType=.LOAD_CASE.` and no `SelfWeightCoefficients` slot — a
+  // strict attribute-name prefix, so the trim path below reconciles it
+  // without help from `BY_NAME_ATTR_REMAP_TYPES`.
+  ['IFCSTRUCTURALLOADCASE', 'IFCSTRUCTURALLOADGROUP'],
+  // IfcStructuralCurveAction/SurfaceAction(IFC4) rename to
+  // IfcStructuralLinearAction/PlanarAction(IFC2X3): both carry the same
+  // attributes through `GlobalOrLocal`/`DestabilizingLoad`, but IFC2X3 then
+  // inserts an optional `CausedBy` before `ProjectedOrTrue` where IFC4
+  // appends `PredefinedType` instead, so neither list is a positional prefix
+  // of the other — `BY_NAME_ATTR_REMAP_TYPES` reconciles both by name.
+  ['IFCSTRUCTURALCURVEACTION', 'IFCSTRUCTURALLINEARACTION'],
+  ['IFCSTRUCTURALSURFACEACTION', 'IFCSTRUCTURALPLANARACTION'],
   // IFC4X3 spatial structure → IFC2X3 equivalents
   ['IFCFACILITY', 'IFCBUILDING'],
   ['IFCFACILITYPART', 'IFCBUILDINGSTOREY'],
@@ -220,7 +240,7 @@ function chainMaps(
 // the full inherited+direct positional list (verified to match STEP counts:
 // IfcWall 8→9, IfcDoor 10→13, IfcMaterial 1→3, …).
 const ATTR_NAME_TABLES = new Map<IfcSchemaVersion, Map<string, readonly string[]>>();
-function attrNameTable(schema: IfcSchemaVersion): Map<string, readonly string[]> | null {
+export function attrNameTable(schema: IfcSchemaVersion): Map<string, readonly string[]> | null {
   let table = ATTR_NAME_TABLES.get(schema);
   if (table) return table;
   let entities: readonly IfcEntityInfo[] | null = null;
@@ -244,7 +264,7 @@ function attrNameTable(schema: IfcSchemaVersion): Map<string, readonly string[]>
  *
  * Callers pass the shorter schema's list first, whichever direction they run in.
  */
-function isStrictAttrPrefix(shorter: readonly string[], longer: readonly string[]): boolean {
+export function isStrictAttrPrefix(shorter: readonly string[], longer: readonly string[]): boolean {
   if (shorter.length >= longer.length) return false;
   for (let i = 0; i < shorter.length; i++) {
     if (shorter[i] !== longer[i]) return false;
@@ -413,7 +433,7 @@ function convertRecord(
  * Alignment entities are valid in IFC4X3 and IFC5, so they are only skipped
  * when targeting older schemas (IFC2X3, IFC4).
  */
-function shouldSkipEntity(entityType: string, toSchema: IfcSchemaVersion): boolean {
+export function shouldSkipEntity(entityType: string, toSchema: IfcSchemaVersion): boolean {
   // Alignment entities are native to IFC4X3 and IFC5 — preserve them
   if (toSchema === 'IFC4X3' || toSchema === 'IFC5') {
     return false;

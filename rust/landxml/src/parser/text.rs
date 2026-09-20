@@ -8,21 +8,52 @@ use super::*;
 
 impl Parser<'_> {
     pub(super) fn text(&mut self, bytes: &[u8]) -> Result<()> {
+        let raw = self.utf8_text(bytes)?;
+        // XML character references are syntax in text nodes, but outside the
+        // document element XML permits only literal XML S bytes.  Check the
+        // raw event before expansion so `&#32;` cannot impersonate padding.
+        self.check_character_references(character_references(raw))?;
+        if self.frames.is_empty() {
+            return self.outside_root_text(raw, false);
+        }
+        self.capture_text(&crate::xml::unescape(raw)?)
+    }
+
+    pub(super) fn cdata(&mut self, bytes: &[u8]) -> Result<()> {
+        let literal = self.utf8_text(bytes)?;
+        // CDATA is literal character data: entity-looking sequences must not
+        // be expanded before the numeric capture parser sees them.
+        if self.frames.is_empty() {
+            return self.outside_root_text(literal, true);
+        }
+        self.capture_text(literal)
+    }
+
+    fn utf8_text<'text>(&mut self, bytes: &'text [u8]) -> Result<&'text str> {
         if bytes.len() > self.limits.max_text_bytes {
             return Err(error(Code::LimitExceeded, "text limit exceeded"));
         }
         self.check_cancel_and_work(bytes.len())?;
-        let text =
-            std::str::from_utf8(bytes).map_err(|_| error(Code::InvalidXml, "text is not UTF-8"))?;
-        self.check_character_references(character_references(text))?;
-        let text = crate::xml::unescape(text)?;
-        if self.frames.is_empty() && !text.trim().is_empty() {
-            let location = if self.root_closed { "after" } else { "before" };
-            return Err(error(
-                Code::InvalidXml,
-                format!("LandXML document has non-whitespace content {location} its root element"),
-            ));
+        std::str::from_utf8(bytes).map_err(|_| error(Code::InvalidXml, "text is not UTF-8"))
+    }
+
+    fn outside_root_text(&self, raw: &str, cdata: bool) -> Result<()> {
+        if !cdata && raw.bytes().all(is_xml_s) {
+            return Ok(());
         }
+        let location = if self.root_closed { "after" } else { "before" };
+        let kind = if cdata {
+            "CDATA"
+        } else {
+            "non-whitespace content"
+        };
+        Err(error(
+            Code::InvalidXml,
+            format!("LandXML document has {kind} {location} its root element"),
+        ))
+    }
+
+    fn capture_text(&mut self, text: &str) -> Result<()> {
         if self
             .capture
             .as_ref()
@@ -38,8 +69,12 @@ impl Parser<'_> {
             if target.len() + text.len() > self.limits.max_text_bytes {
                 return Err(error(Code::LimitExceeded, "captured text limit exceeded"));
             }
-            target.push_str(&text);
+            target.push_str(text);
         }
         Ok(())
     }
+}
+
+fn is_xml_s(byte: u8) -> bool {
+    matches!(byte, b' ' | b'\t' | b'\r' | b'\n')
 }

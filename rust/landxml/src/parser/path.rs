@@ -31,17 +31,17 @@ impl Parser<'_> {
 
     /// Path of a just-opened coordinate-list capture.  The opening frame is
     /// already present, so appending `local` would duplicate its leaf. Keep a
-    /// sibling ordinal on that leaf to distinguish repeated authored lists.
+    /// sibling ordinal on every non-root segment so repeated authored parent
+    /// containers cannot collide with one another.
     pub(super) fn capture_path(&self) -> String {
-        let last = self.frames.len().saturating_sub(1);
         self.frames
             .iter()
             .enumerate()
             .map(|(index, frame)| {
-                if index == last {
-                    format!("{}[{}]", frame.local, frame.sibling_ordinal)
-                } else {
+                if index == 0 {
                     frame.local.clone()
+                } else {
+                    format!("{}[{}]", frame.local, frame.sibling_ordinal)
                 }
             })
             .collect::<Vec<_>>()

@@ -342,18 +342,37 @@ fn allows_an_xml_stylesheet_processing_instruction_before_the_root() {
 #[test]
 fn issue_5084_refuses_multiple_roots_and_non_whitespace_outside_the_root() {
     let valid = String::from_utf8(document("grade")).expect("fixture is UTF-8");
-    for input in [
+    for (index, input) in [
         format!("{valid}{valid}"),
         format!("outside-before{valid}"),
         format!("{valid}outside-after"),
-    ] {
-        assert_eq!(
-            parse(input.as_bytes()).unwrap_err().code,
-            LandXmlDiagnosticCode::InvalidXml
-        );
+        format!("\u{a0}{valid}"),
+        format!("&#32;{valid}"),
+        format!("{valid}<![CDATA[ ]]>"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let error = parse(input.as_bytes()).expect_err(&format!("input {index}: {input}"));
+        assert_eq!(error.code, LandXmlDiagnosticCode::InvalidXml);
     }
     let misc = format!(" \n<?xml-stylesheet type=\"text/xsl\" href=\"terrain.xsl\"?>{valid}<!-- legal misc after root --><?post-root ok?>\t");
     assert_eq!(parse(misc.as_bytes()).unwrap().surfaces.len(), 1);
+}
+
+#[test]
+fn issue_5084_keeps_cdata_literal_in_numeric_captures() {
+    let valid = String::from_utf8(document("grade")).expect("fixture is UTF-8");
+    let literal_reference = valid.replace(
+        r#"<P id="1">0 0 0</P>"#,
+        r#"<P id="1"><![CDATA[&#49; 2 3]]></P>"#,
+    );
+    // Treating CDATA as ordinary text would expand `&#49;` and incorrectly
+    // accept this as coordinates. CDATA itself is intentionally literal.
+    assert_eq!(
+        parse(literal_reference.as_bytes()).unwrap_err().code,
+        LandXmlDiagnosticCode::InvalidSemantic,
+    );
 }
 
 #[test]
@@ -406,23 +425,40 @@ fn issue_5084_refuses_foreign_descendant_text_for_point_and_face_captures() {
 }
 
 #[test]
-fn issue_5084_coordinate_list_paths_do_not_duplicate_leaves_and_keep_sibling_ordinals(
+fn issue_5084_coordinate_list_paths_include_every_sibling_ancestor(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let xml = format!(
-        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Surfaces><Surface name="survey"><Definition surfType="VOLUME"/><SourceData><DataPoints><PntList3D>0 0 0</PntList3D><PntList3D>1 1 1</PntList3D></DataPoints></SourceData></Surface></Surfaces></LandXML>"#
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Surfaces><Surface name="first"><Definition surfType="VOLUME"/><SourceData><DataPoints><PntList3D>0 0 0</PntList3D><PntList3D>1 1 1</PntList3D></DataPoints><Boundaries><Boundary><PntList3D>0 0 0 1 1 1</PntList3D></Boundary></Boundaries><Boundaries><Boundary><PntList3D>2 2 2 3 3 3</PntList3D></Boundary></Boundaries></SourceData><SourceData><DataPoints><PntList3D>2 2 2</PntList3D></DataPoints></SourceData></Surface><Surface name="second"><Definition surfType="VOLUME"/><SourceData><DataPoints><PntList3D>3 3 3</PntList3D></DataPoints></SourceData></Surface></Surfaces></LandXML>"#
     );
     let parsed = parse(xml.as_bytes())?;
-    let paths: Vec<&str> = parsed.surfaces[0]
+    let source_paths: Vec<&str> = parsed.surfaces[0]
         .source_data_points
         .iter()
         .map(|point| point.source_path.as_str())
         .collect();
     assert_eq!(
-        paths,
+        source_paths,
         vec![
-            "LandXML/Surfaces/Surface/SourceData/DataPoints/PntList3D[1]",
-            "LandXML/Surfaces/Surface/SourceData/DataPoints/PntList3D[2]",
+            "LandXML/Surfaces[1]/Surface[1]/SourceData[1]/DataPoints[1]/PntList3D[1]",
+            "LandXML/Surfaces[1]/Surface[1]/SourceData[1]/DataPoints[1]/PntList3D[2]",
+            "LandXML/Surfaces[1]/Surface[1]/SourceData[2]/DataPoints[1]/PntList3D[1]",
         ],
+    );
+    let boundary_paths: Vec<&str> = parsed.surfaces[0]
+        .boundaries
+        .iter()
+        .map(|line| line.source_path.as_str())
+        .collect();
+    assert_eq!(
+        boundary_paths,
+        vec![
+            "LandXML/Surfaces[1]/Surface[1]/SourceData[1]/Boundaries[1]/Boundary[1]/PntList3D[1]",
+            "LandXML/Surfaces[1]/Surface[1]/SourceData[1]/Boundaries[2]/Boundary[1]/PntList3D[1]",
+        ],
+    );
+    assert_eq!(
+        parsed.surfaces[1].source_data_points[0].source_path,
+        "LandXML/Surfaces[1]/Surface[2]/SourceData[1]/DataPoints[1]/PntList3D[1]",
     );
     Ok(())
 }

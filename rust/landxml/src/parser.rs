@@ -103,7 +103,7 @@ pub fn parse_landxml_tin_with_cancel(
             }
             Event::End(end) => parser.end(Some(end.name().as_ref()))?,
             Event::Text(text) => parser.text(text.as_ref())?,
-            Event::CData(text) => parser.text(text.as_ref())?,
+            Event::CData(text) => parser.cdata(text.as_ref())?,
             Event::DocType(_) => return Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
             Event::Eof => break,
             _ => {}

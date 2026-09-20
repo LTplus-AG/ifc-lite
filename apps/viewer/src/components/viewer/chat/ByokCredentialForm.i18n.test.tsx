@@ -37,12 +37,12 @@ const CATALOGUE = chatByokEn ?? ({} as typeof ChatByokEnType);
 
 const marked = (text: string): string => `⟦${text}⟧`;
 
+// chat-byok.en.ts carries no plural entries (unlike chat.en.ts's sibling
+// attachmentRows count), so every value here is a plain string.
 function pseudoLocale(): Catalogue {
   const catalogue: Record<string, TranslationValue> = {};
   for (const [key, value] of Object.entries(CATALOGUE)) {
-    catalogue[key] = typeof value === 'string'
-      ? marked(value)
-      : { one: marked(value.one), other: marked(value.other) };
+    catalogue[key] = marked(value);
   }
   return catalogue;
 }

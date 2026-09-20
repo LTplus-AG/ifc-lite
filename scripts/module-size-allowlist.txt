@@ -82,7 +82,6 @@
   1381 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
    406 apps/viewer/src/components/viewer/hierarchy/useHierarchyTree.ts
   1147 apps/viewer/src/components/viewer/HierarchyPanel.tsx
-  1119 apps/viewer/src/components/viewer/IDSPanel.tsx
    569 apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx
    534 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
   1709 apps/viewer/src/components/viewer/LensPanel.tsx

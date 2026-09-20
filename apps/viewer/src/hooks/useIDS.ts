@@ -39,7 +39,7 @@ import { runIdsBcfExport } from './ids/idsBcfExport';
 import { createDataAccessor } from './ids/idsDataAccessor';
 import { snapshotPropertyOverlay } from '@/lib/ids/property-overlay-snapshot';
 import { canUseIdsWorker } from './ids/canUseIdsWorker';
-import { resolveValidationTarget } from './ids/resolveValidationTarget';
+import { resolveValidationTarget, type IdsErrorState } from './ids/resolveValidationTarget';
 import { runValidationInWorker } from './ids/idsWorkerClient';
 import {
   DEFAULT_FAILED_COLOR,
@@ -89,8 +89,9 @@ export interface UseIDSResult {
   loading: boolean;
   /** Validation progress */
   progress: ValidationProgress | null;
-  /** Error message */
-  error: string | null;
+  /** Error message: a plain caught-exception string, or a stable, catalogued
+   * `resolveValidationTarget.ts` error the render site translates via `t()`. */
+  error: IdsErrorState | null;
   /** Current locale */
   locale: SupportedLocale;
   /** Panel visibility */

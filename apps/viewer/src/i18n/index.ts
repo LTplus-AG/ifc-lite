@@ -6,4 +6,4 @@ export { useTranslation } from './useTranslation';
 export { registerLocale, setLocale, getLocale } from './registry';
 export type { TranslationKey } from './en';
 export type { Locale, Catalogue } from './registry';
-export type { PluralCategory, PluralTranslation, TranslationParameter, TranslationParameters, TranslationValue } from './types';
+export type { PluralCategory, PluralTranslation, TranslatableMessage, TranslationParameter, TranslationParameters, TranslationValue } from './types';

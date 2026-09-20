@@ -27,6 +27,19 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Schema-specific crate-private registries (#4203, #4996)
+
+Selecting generated per-schema attribute tables by the source file's schema
+showed no measured parse, geometry or end-to-end regression on AC20-FZK-Haus
+in an interleaved native base-vs-branch probe; the millisecond-quantized
+movement stayed inside the base run's own spread, and mesh, vertex and
+triangle counts plus the ordered mesh fingerprint were identical on both
+revisions (figures in the PR's validation evidence). The lesson: generated
+lookup tables can stay crate-private and be selected by the source schema
+without changing emitted geometry or adding a measurable normal-load cost;
+keep them out of the public Rust surface so this metadata correction does
+not create a semver liability.
+
 ## Structural surface members through the face/surface machinery (#4206, #5026)
 
 Measured exact merge-base `6500376a2` against the #5026 head on

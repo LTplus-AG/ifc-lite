@@ -32,6 +32,7 @@
     "StepListItems": "struct {  }",
     "StreamConfig": "struct { only_types: Option<Vec<IfcType>>; progress_interval: usize; skip_types: Vec<IfcType> }",
     "Token": "enum { Derived; EntityRef(u32); Enum(&'a [u8]); Float(f64); Integer(i64); List(Vec<Token<'a>>); Null; String(&'a [u8]); TypedValue(&'a [u8], Vec<Token<'a>>) }",
+    "attribute_names_for_schema": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "build_entity_index": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "decode_ifc_string": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "entity_count": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",

@@ -17,6 +17,8 @@ use ifc_lite_processing::element::{plan_type_geometry, TypeGeometryMode};
 use ifc_lite_processing::prepass::{resolve_unit_scales, UnitScales};
 use rustc_hash::FxHashSet;
 
+use crate::source_header::declared_schemas;
+
 #[path = "model_options.rs"]
 mod options;
 pub use options::{ModelOptions, Placement};
@@ -33,6 +35,13 @@ use inherit::merge_inherited;
 #[path = "model_types.rs"]
 mod types;
 pub use types::{EntityRow, ExportModel, PropValue, PropertySet, QuantitySet, QuantityValue};
+
+/// IFC4.1 and IFC4.2 are transitional declarations whose ordinary entity
+/// layouts remain IFC4-compatible. Neither has a complete bundled EXPRESS
+/// registry, so attribute export deliberately uses the pinned IFC4 layout.
+fn uses_ifc4_attribute_layout(schema: &str) -> bool {
+    schema.eq_ignore_ascii_case("IFC4X1") || schema.eq_ignore_ascii_case("IFC4X2")
+}
 
 /// Build the export model from raw IFC/STEP bytes.
 ///
@@ -136,6 +145,17 @@ pub fn stream_export_model_with_options(
     opts: &ModelOptions,
     mut f: impl FnMut(EntityRow, Option<&DecodedEntity>),
 ) -> UnitScales {
+    // Attribute positions are schema-specific. Unlike STEP re-export, where
+    // IFC4 is an established fallback for a missing declaration, attribute
+    // export must fail closed rather than assign IFC4 names to unknown slots.
+    let source_schema = declared_schemas(content).into_iter().find(|schema| {
+        // IfcProject exists in every bundled registry, so this is a schema
+        // recognition probe rather than an entity-specific fallback. IFC4X1
+        // and IFC4X2 are the explicitly supported transitional declarations;
+        // their entity-level fallback remains in `render_attributes`.
+        uses_ifc4_attribute_layout(schema)
+            || ifc_lite_core::attribute_names_for_schema(schema, "IFCPROJECT").is_some()
+    });
     // Property resolution memoizes the shared `IfcPropertySet`/leaf entities for
     // speed. Cap that cache so it can't grow without bound across millions of
     // products; clearing only forces a re-decode of a shared set, never affects
@@ -366,7 +386,7 @@ pub fn stream_export_model_with_options(
             property_sets,
             quantity_sets,
             attributes: if opts.attributes {
-                render_attributes(&entity, type_name, ty)
+                render_attributes(&entity, type_name, source_schema.as_deref())
             } else {
                 Vec::new()
             },
@@ -417,31 +437,24 @@ pub fn stream_export_model_with_options(
             global_id: cand.global_id.clone(),
             name: cand.name.clone(),
             description: cand.description.clone(),
-            // IfcTypeObject has no ObjectType attribute (attr 4 is
-            // ApplicableOccurrence); leave unset rather than mislabel it.
+            // IfcTypeObject attr 4 is ApplicableOccurrence, not ObjectType.
             object_type: None,
-            // It is meshed by construction (RepresentationMaps present).
             has_geometry: true,
-            // A type object has no ObjectPlacement — it is not an occurrence.
             placement: None,
             property_sets,
             quantity_sets,
-            // Pass 3 assembles this row from the pass-1 scan and does not hold
-            // the type entity, so this costs one decode. Worth it: the option
-            // promises attributes on every row, and a type carries the ones a
-            // consumer wants (`IfcDoorType.PredefinedType`). The count is
-            // bounded by orphan-geometry types, which is a handful per file.
+            // Pass 3 has no type handle, so honouring the attributes option
+            // costs one decode per rare orphan-geometry type.
             attributes: if opts.attributes {
                 decoder
                     .decode_by_id(cand.express_id)
                     .ok()
-                    .map(|t| render_attributes(&t, &cand.type_name, cand.ifc_type))
+                    .map(|t| render_attributes(&t, &cand.type_name, source_schema.as_deref()))
                     .unwrap_or_default()
             } else {
                 Vec::new()
             },
         }, None);
-
         if decoder.cache_size() > PSET_CACHE_CAP {
             decoder.clear_entity_cache();
         }

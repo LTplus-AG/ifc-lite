@@ -33,6 +33,17 @@ use std::sync::Arc;
 // walk the same chain; the constant's own docs say why they must agree.
 use ifc_lite_core::MAX_MAPPED_ITEM_DEPTH;
 
+/// The nearest f32 that does not shrink the interval: rounds a minimum down
+/// and a maximum up, so an f32 box always encloses the f64 geometry.
+fn enclosing_f32(value: f64, is_min: bool) -> f32 {
+    let rounded = value as f32;
+    match (is_min, (rounded as f64).partial_cmp(&value)) {
+        (true, Some(std::cmp::Ordering::Greater)) => rounded.next_down(),
+        (false, Some(std::cmp::Ordering::Less)) => rounded.next_up(),
+        _ => rounded,
+    }
+}
+
 fn mesh_bounds(mesh: &Mesh) -> [f32; 6] {
     let mut bounds = [
         f32::INFINITY,
@@ -722,13 +733,24 @@ impl GeometryRouter {
             }
             mesh.rtc_applied = true;
         } else {
-            let mut bounds = mesh_bounds(&mesh);
-            bounds[0] = (bounds[0] as f64 + rtc_object_meters.x) as f32;
-            bounds[1] = (bounds[1] as f64 + rtc_object_meters.y) as f32;
-            bounds[2] = (bounds[2] as f64 + rtc_object_meters.z) as f32;
-            bounds[3] = (bounds[3] as f64 + rtc_object_meters.x) as f32;
-            bounds[4] = (bounds[4] as f64 + rtc_object_meters.y) as f32;
-            bounds[5] = (bounds[5] as f64 + rtc_object_meters.z) as f32;
+            // Public bounds stay in the pre-RTC object frame (the contract
+            // `local_to_world` pairs with), reconstituted from the rebased
+            // f32 positions in f64 and then rounded OUTWARD to the enclosing
+            // f32 box: at a 5,000,000 m offset the f32 ULP is 0.5 m, so a
+            // 0.125 m face would otherwise round both faces onto one value
+            // and publish a zero extent (#5026 review).
+            let rebased = mesh_bounds(&mesh);
+            let offset = [rtc_object_meters.x, rtc_object_meters.y, rtc_object_meters.z];
+            let mut bounds = [0.0f32; 6];
+            for axis in 0..3 {
+                let min = rebased[axis] as f64 + offset[axis];
+                let max = rebased[axis + 3] as f64 + offset[axis];
+                bounds[axis] = enclosing_f32(min, true);
+                bounds[axis + 3] = enclosing_f32(max, false);
+                if max > min && bounds[axis + 3] <= bounds[axis] {
+                    bounds[axis + 3] = bounds[axis].next_up();
+                }
+            }
             mesh.local_bounds = Some(bounds);
         }
         Ok(Some(mesh))

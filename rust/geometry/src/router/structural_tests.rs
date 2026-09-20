@@ -386,6 +386,22 @@ fn rotated_structural_surface_rebases_in_world_frame() {
         &[5_000_000.0, 5_000_000.0, 0.0],
         "RTC rendering must not move the public bounds out of object space"
     );
+    // The f32 ULP at 5,000,000 m is 0.5 m, so the 0.125 m face cannot be
+    // represented exactly; the published box must still ENCLOSE it rather
+    // than collapse to a zero extent (#5026 review). Both maxima round up to
+    // the next representable f32 above the minimum.
+    for axis in 0..2 {
+        assert!(
+            local_bounds[axis + 3] > local_bounds[axis],
+            "axis {axis} extent collapsed: {local_bounds:?}"
+        );
+        assert!(
+            (local_bounds[axis + 3] as f64) >= 5_000_000.125
+                && (local_bounds[axis + 3] as f64) <= 5_000_000.5,
+            "axis {axis} maximum must be the enclosing f32: {local_bounds:?}"
+        );
+    }
+    assert_eq!((local_bounds[2], local_bounds[5]), (0.0, 0.0));
 }
 
 struct RegisteredFace;

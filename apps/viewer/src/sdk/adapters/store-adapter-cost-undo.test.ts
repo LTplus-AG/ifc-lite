@@ -16,6 +16,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { StoreApi } from './types.js';
 import { createStoreAdapter } from './store-adapter.js';
+import { pathForGuid, registerEntityPath, registerStoreSlot, unregisterEntityPath } from '@/lib/collab/entity-paths.js';
 
 const STEP = [
   'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');",
@@ -41,10 +42,17 @@ async function makeStore(canCollabEdit: () => boolean = () => true, legacy = fal
   const relationshipMutationCalls: string[] = [];
   const mirrorCalls: Array<{ kind: string; entityId: number; detail?: string; roomKey?: string }> = [];
   const model = { id: 'm', name: 't.ifc', ifcDataStore: dataStore, schemaVersion: 'IFC4', fileSize: bytes.byteLength, loadedAt: 0, idOffset: 0, maxExpressId: 100 };
+  // Mirroring runs only for a model shared in a live room (#5008): register
+  // the model under a slot and let the create spy bind the room path, as the
+  // real collab slice does.
+  const roomModelId = legacy ? '__legacy__' : 'm';
+  registerStoreSlot(dataStore, { slotId: 'm0', pathPrefix: '/m0' });
   const state = {
     activeModelId: legacy ? null : 'm',
     ifcDataStore: legacy ? dataStore : null,
     models: legacy ? new Map() : new Map([['m', model]]),
+    collabRoomId: 'room',
+    collabRoomModels: new Map([[roomModelId, { slotId: 'm0', pathPrefix: '/m0' }]]),
     getMutationView: (id: string) => mutationViews.get(id) ?? null,
     registerMutationView: (id: string, view: MutablePropertyView) => { mutationViews.set(id, view); },
     pushCreateEntityUndo: (modelId: string, entityId: number, ifcType: string) => {
@@ -54,12 +62,14 @@ async function makeStore(canCollabEdit: () => boolean = () => true, legacy = fal
     canCollabEdit,
     mirrorEntityCreate: (_modelId: string, entityId: number, ifcType: string, roomKey: string) => {
       mirrorCalls.push({ kind: 'create', entityId, detail: ifcType, roomKey });
+      registerEntityPath(dataStore, entityId, pathForGuid(dataStore, roomKey));
     },
     mirrorAttributeEdit: (_modelId: string, entityId: number, name: string) => {
-      mirrorCalls.push({ kind: 'attribute', entityId, detail: name });
+      mirrorCalls.push({ kind: 'attribute', entityId, detail: name.replace('bsi::ifc::prop::', '') });
     },
     mirrorEntityRemove: (_modelId: string, entityId: number) => {
       mirrorCalls.push({ kind: 'remove', entityId });
+      unregisterEntityPath(dataStore, entityId);
     },
   };
   const store = { getState: () => state, subscribe: () => () => {} } as unknown as StoreApi;
@@ -114,8 +124,8 @@ describe('#4857 store-adapter cost authoring pushes CREATE_ENTITY undo', () => {
     assert.equal(firstRef.expressId, secondRef.expressId, 'independent peers allocate the same local id');
     const firstKey = first.mirrorCalls.find(call => call.kind === 'create')?.roomKey;
     const secondKey = second.mirrorCalls.find(call => call.kind === 'create')?.roomKey;
-    assert.match(firstKey ?? '', /^ifc-lite-cost-/);
-    assert.match(secondKey ?? '', /^ifc-lite-cost-/);
+    assert.match(firstKey ?? '', /^ifc-lite-store-/);
+    assert.match(secondKey ?? '', /^ifc-lite-store-/);
     assert.notEqual(firstKey, secondKey, 'room identity must not derive from the colliding local id');
   });
 

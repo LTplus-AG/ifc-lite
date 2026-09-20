@@ -85,8 +85,9 @@ function mirrorCostOverlayDelta(
  * and collaboration room observe it. The four CREATE calls push the same
  * undo/redo/dirty/version-bump tail `addColumn`/etc. push
  * (`pushCreateEntityUndo`, mutation-cost-undo.ts). The other five rewrite or
- * remove EXISTING relationships rather than creating one entity, so they mark
- * dirty and clear the undo/redo stacks (`markCostRelationshipMutation`).
+ * remove EXISTING relationships rather than creating one entity; the backend
+ * marks dirty and clears the undo/redo stacks (`markCostRelationshipMutation`)
+ * only when a call actually changed the overlay.
  */
 export function withCostMutationTracking(
   methods: CostMethods,
@@ -121,8 +122,9 @@ export function withCostMutationTracking(
   };
   const create = <A extends [string, ...unknown[]]>(ifcType: string, fn: (...args: A) => EntityRef) =>
     tracked(fn, (_modelId, ref: EntityRef) => store.getState().pushCreateEntityUndo(ref.modelId, ref.expressId, ifcType));
-  const relationship = <A extends [string, ...unknown[]], R>(fn: (...args: A) => R) =>
-    tracked(fn, (modelId) => store.getState().markCostRelationshipMutation(modelId));
+  // The backend itself reports a relationship rewrite (`markCostRelationshipMutation`)
+  // only when the overlay actually changed; the wrapper only mirrors.
+  const relationship = <A extends [string, ...unknown[]], R>(fn: (...args: A) => R) => tracked(fn, () => {});
   return {
     ...methods,
     addCostSchedule: create('IFCCOSTSCHEDULE', methods.addCostSchedule),

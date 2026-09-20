@@ -1103,7 +1103,6 @@ export const createMutationSlice: StateCreator<
   georefMutations: new Map(),
 
   ...createCostUndoMutations(set),
-
   // Georeferencing Mutations
   setGeorefField: (modelId, entity, field, value, oldValue) => {
     get().setGeorefFields(modelId, entity, [{ field, value, oldValue }]);
@@ -2966,7 +2965,6 @@ export const createMutationSlice: StateCreator<
         );
       }
     } else if (mutation.type === 'CREATE_ENTITY') {
-      // Redo of a create: replay from the stashed NewEntity, symmetrical to DELETE_ENTITY's undo.
       const stashKey = `${modelId}:${mutation.entityId}`;
       const stashed = get().removedNewEntities.get(stashKey);
       if (stashed) {

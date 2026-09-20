@@ -2499,12 +2499,32 @@ mod tests {
         }
         // Guard against the loop vacuously skipping everything.
         assert!(checked > vs.len(), "only {checked} clean pairs of {}", vs.len() * vs.len());
-        assert_eq!(checked, 63648, "clean pairs swept");
+        // #5060 moved this. The new magnitude clause in `classify` (`if let
+        // (Some(ga), Some(ra)) = (g.alt, r.alt) { if r.diverged() && g.diverged()
+        // && ra > ga { ... } }`) routes 7,200 pairs that used to be clean
+        // (`checked`) into `requires_bless` instead: every pair where BOTH
+        // `open` values are held equal or improved, `g`/`r` are already
+        // `diverged()` (i.e. `alt` disagrees with `open` on both sides, which
+        // `variants()`'s `alt in [None, Some(0), Some(3), Some(9)]` makes true
+        // for 2 of the 4 `alt` values at each `open`), and `r.alt > g.alt`.
+        // 63648 - 7200 = 56448, the value CI observed on run 35511977165.
+        assert_eq!(checked, 56448, "clean pairs swept");
         // The two counts the comment above quotes, asserted rather than
         // recorded. The gap between them is the whole reason
         // `shrank_while_healing` exists, so it must not drift unnoticed.
+        //
+        // `detected` (`shrank_while_healing`) is untouched by #5060: it is
+        // tallied from `c.retessellated` alone, above the `requires_bless`
+        // skip, and the new `alt` clause only ever appends to `c.worse_counts`.
         assert_eq!(detected, 135680, "pairs DETECTED as a re-tessellation");
-        assert_eq!(landed, 4368, "pairs that LAND in the retessellated bucket");
+        // `landed` DOES move, for the same #5060 reason, and was not reached by
+        // CI run 35511977165 because Rust aborts a test at its first failing
+        // assertion and `checked` (above) failed first. A worsened count
+        // outranks a re-tessellation verdict (see the `diff` routing comment
+        // above), so any pair that used to land in `retessellated` and now also
+        // trips the new `alt` clause is re-routed to `regressed` instead, and
+        // no longer counted here. 4368 - 384 = 3984.
+        assert_eq!(landed, 3984, "pairs that LAND in the retessellated bucket");
     }
 
     #[test]

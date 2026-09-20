@@ -44,6 +44,8 @@ import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
 import { scheduleEn } from './catalogues/schedule.en';
 import { sectionToolEn } from './catalogues/section-tool.en';
 import { section2dEn } from './catalogues/section-2d.en';
+import { searchModalEn } from './catalogues/search-modal.en';
+import { searchFiltersEn } from './catalogues/search-filters.en';
 import { sharedCommandsEn } from './catalogues/shared-commands.en';
 import { sourcesEn } from './catalogues/sources.en';
 import { toursEn } from './catalogues/tours.en';
@@ -102,6 +104,8 @@ export const en = {
   ...clashPanelEn,
   ...bcfEn,
   ...layersPanelEn,
+  ...searchModalEn,
+  ...searchFiltersEn,
   ...repositionPanelEn,
 } as const;
 

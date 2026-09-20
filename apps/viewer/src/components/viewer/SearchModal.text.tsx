@@ -21,18 +21,19 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import type { SearchResult } from '@/lib/search/tier0-scan';
 import type { SearchFieldFilter } from '@/store/slices/searchSlice';
 
 const ROW_HEIGHT = 36;
 
-const FIELD_FILTERS: { value: SearchFieldFilter; label: string }[] = [
-  { value: 'all', label: 'All' },
-  { value: 'name', label: 'Name' },
-  { value: 'type', label: 'Type' },
-  { value: 'globalId', label: 'GUID' },
-  { value: 'description', label: 'Description' },
-  { value: 'objectType', label: 'ObjectType' },
+const FIELD_FILTERS: { value: SearchFieldFilter; labelKey: TranslationKey }[] = [
+  { value: 'all', labelKey: 'searchModal.text.fieldAll' },
+  { value: 'name', labelKey: 'searchModal.text.fieldName' },
+  { value: 'type', labelKey: 'searchModal.text.fieldType' },
+  { value: 'globalId', labelKey: 'searchModal.text.fieldGuid' },
+  { value: 'description', labelKey: 'searchModal.text.fieldDescription' },
+  { value: 'objectType', labelKey: 'searchModal.text.fieldObjectType' },
 ];
 
 export interface SearchModalTextProps {
@@ -45,6 +46,7 @@ export interface SearchModalTextProps {
 }
 
 export function SearchModalText({ results, availableModelIds, onClose }: SearchModalTextProps) {
+  const { t } = useTranslation();
   const {
     searchFieldFilter,
     searchModelFilter,
@@ -201,7 +203,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
       {/* ── Chip filters ── */}
       <div className="flex flex-wrap items-center gap-1.5 border-b px-4 py-2 text-xs">
         <Filter className="h-3 w-3 text-muted-foreground" />
-        <span className="mr-1 text-muted-foreground">Field:</span>
+        <span className="mr-1 text-muted-foreground">{t('searchModal.text.fieldLabel')}</span>
         {FIELD_FILTERS.map((f) => (
           <button
             key={f.value}
@@ -214,13 +216,13 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
                 : 'border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800',
             )}
           >
-            {f.label}
+            {t(f.labelKey)}
           </button>
         ))}
         {hasModelChips && (
           <>
             <span className="mx-2 h-4 w-px bg-zinc-300 dark:bg-zinc-700" />
-            <span className="mr-1 text-muted-foreground">Models:</span>
+            <span className="mr-1 text-muted-foreground">{t('searchModal.text.modelsLabel')}</span>
             {availableModelIds.map((id) => {
               const included = searchModelFilter === null || searchModelFilter.has(id);
               const model = models.get(id);
@@ -248,7 +250,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
                 onClick={clearSearchModelFilter}
                 className="ml-1 text-[10px] text-muted-foreground underline hover:text-foreground"
               >
-                reset
+                {t('searchModal.text.resetModelFilter')}
               </button>
             )}
           </>
@@ -260,7 +262,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
         ref={scrollRef}
         className="flex-1 min-h-0 overflow-y-auto"
         role="listbox"
-        aria-label="Search results"
+        aria-label={t('searchModal.text.resultsAriaLabel')}
         tabIndex={0}
         onKeyDown={(e) => {
           if (filtered.length === 0) return;
@@ -284,9 +286,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
       >
         {filtered.length === 0 ? (
           <div className="px-4 py-8 text-center text-xs text-muted-foreground">
-            {results.length === 0
-              ? 'Start typing to search — GlobalIds, names, IFC types, descriptions.'
-              : 'No results match the active filters. Clear chips to widen the search.'}
+            {t(results.length === 0 ? 'searchModal.text.emptyPrompt' : 'searchModal.text.noMatches')}
           </div>
         ) : (
           <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
@@ -323,14 +323,14 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
                     checked={isChecked}
                     onClick={(e) => e.stopPropagation()}
                     onChange={() => toggleAdditive(r)}
-                    aria-label={`Toggle ${r.name || r.globalId} in selection`}
+                    aria-label={t('searchModal.text.toggleRowAriaLabel', { name: r.name || r.globalId })}
                     className="shrink-0 cursor-pointer"
                   />
                   <Badge variant="secondary" className="shrink-0 font-mono text-[10px] uppercase">
                     {r.typeName}
                   </Badge>
                   <span className="min-w-0 flex-1 truncate font-medium">
-                    {r.name || <span className="italic text-muted-foreground">unnamed</span>}
+                    {r.name || <span className="italic text-muted-foreground">{t('searchModal.text.unnamed')}</span>}
                   </span>
                   {r.globalId && (
                     <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
@@ -355,12 +355,12 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
       {/* ── Footer: counts + batch actions ── */}
       <div className="flex flex-wrap items-center gap-2 border-t px-4 py-2 text-xs">
         <span className="text-muted-foreground">
-          {filtered.length} result{filtered.length === 1 ? '' : 's'}
+          {t('searchModal.text.resultCount', { count: filtered.length })}
           {filtered.length !== results.length && (
-            <span className="ml-1 opacity-70">(of {results.length})</span>
+            <span className="ml-1 opacity-70">{t('searchModal.text.ofTotal', { total: results.length })}</span>
           )}
           {multiCount > 0 && (
-            <span className="ml-2 font-medium text-foreground">· {multiCount} selected</span>
+            <span className="ml-2 font-medium text-foreground">{t('searchModal.text.selectedCount', { count: multiCount })}</span>
           )}
         </span>
         <div className="ml-auto flex items-center gap-1.5">
@@ -369,33 +369,33 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
             size="sm"
             onClick={frame}
             disabled={!cameraCallbacks.frameSelection}
-            title="Frame primary selection"
+            title={t('searchModal.text.frameTitle')}
             className="h-7 gap-1 text-xs"
           >
             <Crosshair className="h-3 w-3" />
-            Frame
+            {t('searchModal.text.frameLabel')}
           </Button>
           <Button
             variant="ghost"
             size="sm"
             onClick={selectAll}
             disabled={filtered.length === 0}
-            title={`Add all ${filtered.length} results to multi-selection`}
+            title={t('searchModal.text.selectAllTitle', { count: filtered.length })}
             className="h-7 gap-1 text-xs"
           >
             <ListChecks className="h-3 w-3" />
-            Select all
+            {t('searchModal.text.selectAllLabel')}
           </Button>
           <Button
             variant="ghost"
             size="sm"
             onClick={clearEntitySelection}
             disabled={multiCount === 0}
-            title="Clear multi-selection"
+            title={t('searchModal.text.clearSelectionTitle')}
             className="h-7 gap-1 text-xs"
           >
             <SquareX className="h-3 w-3" />
-            Clear
+            {t('searchModal.text.clearSelectionLabel')}
           </Button>
         </div>
       </div>

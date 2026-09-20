@@ -23,7 +23,6 @@ import { useTranslation } from '@/i18n';
 import { describeSelectorParseError, SelectorFeedbackList, type SelectorFeedback } from './SearchModal.filter.feedback';
 
 export const DOCS_URL = 'https://ifclite.dev/docs/guide/selector-syntax/';
-const PLACEHOLDER = 'IfcWall, Pset_WallCommon.FireRating=/REI.*/';
 
 /**
  * The active model's IFC schema version, which is what decides how far a class
@@ -60,7 +59,7 @@ export function SearchModalFilterSelector() {
     if (readGroups.length === 0) {
       setFeedback({
         tone: 'error',
-        lines: ['Nothing in this selector maps to a filter rule yet:', ...unsupported],
+        lines: [t('searchModal.filterSelector.nothingMapped'), ...unsupported],
       });
       return;
     }
@@ -68,7 +67,7 @@ export function SearchModalFilterSelector() {
     setSearchFilter({ groups: readGroups, limit });
     setFeedback(
       unsupported.length > 0
-        ? { tone: 'warning', lines: ['Applied without these parts:', ...unsupported] }
+        ? { tone: 'warning', lines: [t('searchModal.filterSelector.appliedWithoutParts'), ...unsupported] }
         : null,
     );
   }, [limit, schemaVersion, setSearchFilter, text]);
@@ -87,8 +86,8 @@ export function SearchModalFilterSelector() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') apply(); }}
-          placeholder={PLACEHOLDER}
-          aria-label="Selector syntax"
+          placeholder={t('searchModal.filterSelector.placeholder')}
+          aria-label={t('searchModal.filterSelector.inputAriaLabel')}
           spellCheck={false}
           className="h-7 flex-1 font-mono text-xs"
         />
@@ -99,16 +98,16 @@ export function SearchModalFilterSelector() {
           onClick={apply}
           disabled={text.trim().length === 0}
           className="h-7 gap-1 text-[11px]"
-          title="Replace the rules below with this selector"
+          title={t('searchModal.filterSelector.applyTitle')}
         >
-          <Wand2 className="h-3 w-3" /> Apply
+          <Wand2 className="h-3 w-3" /> {t('searchModal.filterSelector.apply')}
         </Button>
         <a
           href={DOCS_URL}
           target="_blank"
           rel="noreferrer"
-          aria-label="Selector syntax reference"
-          title="Selector syntax reference"
+          aria-label={t('searchModal.filterSelector.docsAriaLabel')}
+          title={t('searchModal.filterSelector.docsAriaLabel')}
           className="text-muted-foreground hover:text-foreground"
         >
           <HelpCircle className="h-3.5 w-3.5" />

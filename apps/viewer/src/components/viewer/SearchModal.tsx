@@ -28,6 +28,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { runTier0Scan, type SearchResult, type ScanModel } from '@/lib/search/tier0-scan';
 import { queryTier1Indexes, type Tier1Index } from '@/lib/search/tier1-index';
 import { pushRecentSearch } from '@/lib/search/recent-searches';
@@ -41,6 +42,7 @@ const RESULT_LIMIT_MODAL = 5000;
 const DEBOUNCE_MS = 80;
 
 export function SearchModal() {
+  const { t } = useTranslation();
   const {
     searchQuery,
     searchModalOpen,
@@ -192,7 +194,7 @@ export function SearchModal() {
         className="max-w-4xl h-[80vh] p-0 gap-0 flex flex-col"
         onEscapeKeyDown={close}
       >
-        <DialogTitle className="sr-only">Advanced Search</DialogTitle>
+        <DialogTitle className="sr-only">{t('searchModal.shell.title')}</DialogTitle>
         <Tabs
           value={searchModalTab}
           onValueChange={(v) => setSearchModalTab(v as typeof searchModalTab)}
@@ -202,16 +204,16 @@ export function SearchModal() {
             <TabsList>
               <TabsTrigger value="search">
                 <Search className="h-3.5 w-3.5 mr-1.5" />
-                Search
+                {t('searchModal.shell.searchTab')}
               </TabsTrigger>
               <TabsTrigger value="filter">
                 <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" />
-                Filter
+                {t('searchModal.shell.filterTab')}
               </TabsTrigger>
             </TabsList>
             <div className="text-[11px] text-muted-foreground">
-              <kbd className="rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-[10px] dark:border-zinc-700 dark:bg-zinc-900">Esc</kbd>
-              <span className="ml-1">close</span>
+              <kbd className="rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-[10px] dark:border-zinc-700 dark:bg-zinc-900">{t('searchModal.shell.escKey')}</kbd>
+              <span className="ml-1">{t('searchModal.shell.closeHint')}</span>
             </div>
           </div>
           <TabsContent value="search" className="flex-1 min-h-0 mt-0 flex flex-col">
@@ -219,12 +221,12 @@ export function SearchModal() {
               <Input
                 ref={inputRef}
                 type="text"
-                placeholder="Search GUID, name, type, description, objectType…"
+                placeholder={t('searchModal.shell.searchPlaceholder')}
                 value={searchQuery}
                 leftIcon={<Search className="h-4 w-4" />}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="h-10 text-sm"
-                aria-label="Advanced search query"
+                aria-label={t('searchModal.shell.searchAriaLabel')}
               />
             </div>
             <SearchModalText

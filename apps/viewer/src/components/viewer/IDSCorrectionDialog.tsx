@@ -17,6 +17,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { AlertCircle, Check, Loader2, Wrench } from 'lucide-react';
+import { useTranslation } from '@/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -117,6 +118,7 @@ export function IDSCorrectionDialog({
   modelId,
   onRevalidate,
 }: IDSCorrectionDialogProps) {
+  const { t } = useTranslation();
   const models = useIfc().models;
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
   const getMutationView = useViewerStore((s) => s.getMutationView);
@@ -168,7 +170,7 @@ export function IDSCorrectionDialog({
       .map((e) => e.expressId)
       .filter((id) => effectiveSelection.has(id));
     if (ids.length === 0) {
-      setApplyError('Select at least one failed entity to correct.');
+      setApplyError(t('idsPanel.correction.selectAtLeastOne'));
       return;
     }
 
@@ -249,6 +251,7 @@ export function IDSCorrectionDialog({
     registerMutationView,
     setStoreProperty,
     onRevalidate,
+    t,
   ]);
 
   const appliedCount = results?.filter((r) => r.applied).length ?? 0;
@@ -266,29 +269,28 @@ export function IDSCorrectionDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Wrench className="h-5 w-5" />
-            Correct Property Requirement
+            {t('idsPanel.correction.title')}
           </DialogTitle>
           <DialogDescription>
-            Set an explicit value for the failed entities you choose. This writes through the
-            same edit path as the Properties panel and is undoable (Ctrl/Cmd+Z).
+            {t('idsPanel.correction.description')}
           </DialogDescription>
         </DialogHeader>
 
         {!activeRequirement || !dataStore ? (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Nothing to correct</AlertTitle>
+            <AlertTitle>{t('idsPanel.correction.nothingToCorrect')}</AlertTitle>
             <AlertDescription>
               {!dataStore
-                ? 'The validated model has no parsed data to edit.'
-                : 'No requirement in this specification is a correctable scalar property requirement (exact property-set and property name).'}
+                ? t('idsPanel.correction.noParsedData')
+                : t('idsPanel.correction.noCorrectableRequirement')}
             </AlertDescription>
           </Alert>
         ) : (
           <div className="flex-1 min-h-0 flex flex-col gap-4 overflow-hidden">
             {correctable.length > 1 && (
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Requirement</Label>
+                <Label className="text-xs text-muted-foreground">{t('idsPanel.correction.requirement')}</Label>
                 <select
                   className="w-full rounded border border-border bg-transparent px-2 py-1 text-sm"
                   value={activeRequirement.requirementId}
@@ -308,21 +310,21 @@ export function IDSCorrectionDialog({
             )}
 
             <div className="text-sm text-muted-foreground">
-              Target: <span className="font-medium text-foreground">{activeRequirement.target.psetName}.{activeRequirement.target.propName}</span>
+              {t('idsPanel.correction.target')} <span className="font-medium text-foreground">{activeRequirement.target.psetName}.{activeRequirement.target.propName}</span>
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">New value</Label>
+              <Label className="text-xs text-muted-foreground">{t('idsPanel.correction.newValue')}</Label>
               <Input
                 value={rawValue}
                 onChange={(e) => setRawValue(e.target.value)}
-                placeholder="e.g. F90"
+                placeholder={t('idsPanel.correction.newValuePlaceholder')}
               />
             </div>
 
             <div className="space-y-1 flex-1 min-h-0 flex flex-col">
               <Label className="text-xs text-muted-foreground">
-                Failed entities ({effectiveSelection.size} of {failedEntities.length} selected)
+                {t('idsPanel.correction.failedEntitiesLabel', { selected: effectiveSelection.size, total: failedEntities.length })}
               </Label>
               <ScrollArea className="border rounded-md flex-1 min-h-0 max-h-48">
                 <div className="divide-y">
@@ -343,7 +345,7 @@ export function IDSCorrectionDialog({
                         </span>
                         {result && (
                           result.applied
-                            ? <Check className="h-3.5 w-3.5 text-green-600 shrink-0" aria-label="Applied" />
+                            ? <Check className="h-3.5 w-3.5 text-green-600 shrink-0" aria-label={t('idsPanel.correction.applied')} />
                             : <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" aria-label={result.error} />
                         )}
                       </label>
@@ -363,9 +365,9 @@ export function IDSCorrectionDialog({
             {results && (
               <Alert variant={failedCount === 0 ? 'default' : 'destructive'}>
                 {failedCount === 0 ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-                <AlertTitle>{failedCount === 0 ? 'Correction applied' : 'Some corrections did not apply'}</AlertTitle>
+                <AlertTitle>{failedCount === 0 ? t('idsPanel.correction.appliedTitle') : t('idsPanel.correction.someFailedTitle')}</AlertTitle>
                 <AlertDescription>
-                  {appliedCount} applied{failedCount > 0 && `, ${failedCount} failed`} — validation has been rerun.
+                  {failedCount > 0 ? t('idsPanel.correction.summaryWithFailed', { appliedCount, failedCount }) : t('idsPanel.correction.summary', { appliedCount })}
                   {failedCount > 0 && (
                     <ul className="mt-1 list-disc list-inside">
                       {results.filter((r) => !r.applied).map((r) => (
@@ -380,13 +382,13 @@ export function IDSCorrectionDialog({
         )}
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{t('idsPanel.correction.close')}</Button>
           <Button
             onClick={() => { void handleApply(); }}
             disabled={!activeRequirement || !dataStore || applying || rawValue.trim().length === 0 || effectiveSelection.size === 0}
           >
             {applying ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wrench className="h-4 w-4 mr-2" />}
-            Apply to {effectiveSelection.size} {effectiveSelection.size === 1 ? 'entity' : 'entities'}
+            {t('idsPanel.correction.applyTo', { count: effectiveSelection.size })}
           </Button>
         </DialogFooter>
       </DialogContent>

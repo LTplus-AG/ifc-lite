@@ -52,14 +52,15 @@ function recordPath(record: LandXmlSourceRecord): string {
 const NAVIGATION_PAGE_SIZE = 100;
 
 type NavigationItem = { label: string; sourceId: string };
+type LandXmlSurfaceRecord = Extract<LandXmlSourceRecord, { kind: 'surface' }>['surface'];
 
-function navigationCount(surface: LandXmlSourceRecord['surface']): number {
+function navigationCount(surface: LandXmlSurfaceRecord): number {
   return 1 + surface.points.length + surface.sourceDataPoints.length + surface.faceSourceIds.length
     + surface.boundaries.length + surface.breaklines.length + surface.contours.length;
 }
 
 /** Materialize one page only: survey surfaces may contain millions of points. */
-function navigationAt(surface: LandXmlSourceRecord['surface'], itemIndex: number): NavigationItem {
+function navigationAt(surface: LandXmlSurfaceRecord, itemIndex: number): NavigationItem {
   if (itemIndex === 0) return { label: `Surface: ${surface.name}`, sourceId: surface.sourceId };
   let index = itemIndex - 1;
   const point = surface.points[index];

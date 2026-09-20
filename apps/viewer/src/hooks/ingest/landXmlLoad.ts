@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
+import type { CoordinateInfo, GeometryResult, ModelSpatialReference } from '@ifc-lite/geometry';
 import { federationFrameInfo, totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import { captureModelLoaded, snapshotFromGeometry } from '../../utils/loadTelemetry.js';
 import { createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
@@ -29,7 +29,12 @@ interface LandXmlLoadOptions {
     dataStore: IfcDataStore,
     geometry: GeometryResult,
     schemaVersion: 'IFC4',
-    patch: { loadPath: 'landxml'; landXmlDocument?: LandXmlTinDocument; sourceSchema?: 'LandXML-1.2' },
+    patch: {
+      loadPath: 'landxml';
+      landXmlDocument?: LandXmlTinDocument;
+      sourceSchema?: 'LandXML-1.2';
+      spatialReference?: ModelSpatialReference;
+    },
   ): Promise<void>;
   onError(message: string): void;
 }
@@ -162,7 +167,10 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
     if (frame) result.warnings.push(...reframeLandXmlGeometry(result.geometryResult, result.semanticDocument, frame));
     if (options.targetKind === 'primary') options.onPrimary(result);
     await options.finalize(result.dataStore, result.geometryResult, result.schemaVersion, {
-      loadPath: 'landxml', landXmlDocument: result.semanticDocument, sourceSchema: result.semanticDocument.schema,
+      loadPath: 'landxml',
+      landXmlDocument: result.semanticDocument,
+      sourceSchema: result.semanticDocument.schema,
+      ...(result.spatialReference ? { spatialReference: result.spatialReference } : {}),
     });
     if (!options.isCurrent()) return;
     for (const warning of result.warnings) toast.info(warning);

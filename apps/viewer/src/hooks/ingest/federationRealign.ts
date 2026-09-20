@@ -235,15 +235,16 @@ export async function realignFederationModels<M extends RealignableModel>(
     });
   }
 
-  // The frame the rest of the federation lands in is the anchor's
-  // `coordinateInfo` as it stands AFTER the restore. Everything else in a
-  // The neutral spatial reference comes from the source adapter and the user's
-  // georef edits, which a restore cannot touch
-  // (`getEffectiveGeoreference` passes `coordinateInfo` straight through), so
-  // re-pointing that one field is exactly what re-extracting would produce.
-  const anchorGeoref: ModelSpatialPlacement = anchorGeometry
-    ? { ...params.anchorGeoref, coordinateInfo: anchorGeometry.coordinateInfo }
+  // Re-extract AFTER restoring the anchor. This is not equivalent to replacing
+  // just `coordinateInfo`: the IFC adapter's map-absolute guard derives its
+  // local operation from that frame, so keeping the operation captured before
+  // restore can align A→B→A through B's neutralised conversion.
+  const anchorGeoref = anchorModel
+    ? resolveGeoref(anchorModelId, anchorModel)
     : params.anchorGeoref;
+  if (!anchorGeoref) {
+    throw new Error('Cannot re-align federation: the restored anchor no longer has a valid spatial reference');
+  }
 
   for (const [modelId, model] of models) {
     if (modelId === anchorModelId) continue;

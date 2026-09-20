@@ -21,6 +21,7 @@ import {
   type DecodedPointChunk,
   type StreamPointCloudOptions,
   type StreamHandle,
+  type PointSourceSpatialMetadata,
 } from '@ifc-lite/pointcloud';
 import type { CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
 import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
@@ -111,6 +112,8 @@ export interface PointCloudIngestOptions {
   maxScanCachePoints?: number;
   /** Progress callback shared with the existing UI. */
   onProgress?: (progress: { phase: string; percent: number }) => void;
+  /** Source-declared CRS metadata, delivered before the first GPU chunk. */
+  onSpatialMetadata?: (metadata: PointSourceSpatialMetadata | undefined) => void;
   /** Notified with +1 when streaming starts and -1 if it errors. */
   onAssetCountDelta?: (delta: number) => void;
   /**
@@ -384,6 +387,7 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
       createSource: opts.createSource,
       autoOrigin: true,
       onOpen: (info) => {
+        opts.onSpatialMetadata?.(info.spatialMetadata);
         if (info.originOffset) { retargetPointCloudDecodeOrigin(opts.renderer, handle, info.originOffset); setPointCloudScanCacheOrigin(handle.id, info.originOffset); }
         opts.onProgress?.({
           phase: info.stride > 1

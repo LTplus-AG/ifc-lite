@@ -49,6 +49,7 @@ import { BlobByteSource } from './blob-source.js';
 import type {
   DownsampleHint,
   PointSourceInfo,
+  PointSourceSpatialMetadata,
   StreamingPointSource,
 } from './types.js';
 
@@ -97,6 +98,7 @@ export class E57StreamingSource implements StreamingPointSource {
   private hasColor = false;
   private hasIntensity = false;
   private hasClassification = false;
+  private spatialMetadata?: PointSourceSpatialMetadata;
 
   // Streaming cursor.
   private scanIdx = 0;
@@ -150,6 +152,7 @@ export class E57StreamingSource implements StreamingPointSource {
     );
     abortIfAborted(signal);
     const xmlText = new TextDecoder().decode(xmlLogical);
+    this.spatialMetadata = spatialMetadataFromE57Xml(xmlText);
     const entries = parseE57Xml(xmlText);
     if (entries.length === 0) {
       throw new Error('E57: file contains no Data3D scans');
@@ -378,8 +381,40 @@ export class E57StreamingSource implements StreamingPointSource {
       hasClassification: this.hasClassification,
       hasIntensity: this.hasIntensity,
       label: this.label,
+      ...(this.spatialMetadata ? { spatialMetadata: this.spatialMetadata } : {}),
     };
   }
+}
+
+/**
+ * Read only the E57 file header and CRC-paged XML section to discover declared
+ * CRS metadata before a caller chooses a decode origin. This deliberately
+ * shares `readLogicalRange` with the streaming source: metadata inspection is
+ * not a second decoder and never reads point packets.
+ */
+export async function inspectE57SpatialMetadata(blob: Blob, signal?: AbortSignal): Promise<PointSourceSpatialMetadata | undefined> {
+  const bytes = new BlobByteSource(blob);
+  abortIfAborted(signal);
+  const headerBytes = await bytes.read(0, 64);
+  abortIfAborted(signal);
+  const header = parseE57FileHeader(headerBytes);
+  if (header.pageSize <= 4) throw new Error(`E57: invalid pageSize ${header.pageSize}`);
+  const xmlLogical = await readLogicalRange(bytes, header.xmlLogicalOffset, header.xmlLogicalLength, header.pageSize, signal);
+  abortIfAborted(signal);
+  return spatialMetadataFromE57Xml(new TextDecoder().decode(xmlLogical));
+}
+
+/** Extract only explicit EPSG IDs from E57's source-owned WKT metadata. */
+function spatialMetadataFromE57Xml(xml: string): PointSourceSpatialMetadata | undefined {
+  const text = /<\s*(?:\w+:)?coordinateMetadata\b[^>]*>([\s\S]*?)<\/\s*(?:\w+:)?coordinateMetadata\s*>/i.exec(xml)?.[1];
+  if (!text) return undefined;
+  const epsg = /EPSG[^0-9]{0,12}(\d+)/i.exec(text)?.[1];
+  const vertical = /(?:VERT(?:ICAL)?CRS|vertical(?:Datum|Crs)?)[\s\S]*?EPSG[^0-9]{0,12}(\d+)/i.exec(text)?.[1];
+  return {
+    ...(epsg ? { horizontalId: `EPSG:${epsg}` } : {}),
+    ...(vertical ? { verticalId: `EPSG:${vertical}` } : {}),
+    provenance: 'E57 coordinateMetadata',
+  };
 }
 
 /**
@@ -395,7 +430,9 @@ async function readLogicalRange(
   logStart: number,
   logLength: number,
   pageSize: number,
+  signal?: AbortSignal,
 ): Promise<Uint8Array> {
+  abortIfAborted(signal);
   if (logLength <= 0) return new Uint8Array(0);
   const payloadPerPage = pageSize - 4;
   const firstPage = Math.floor(logStart / payloadPerPage);
@@ -406,6 +443,7 @@ async function readLogicalRange(
   const lastPage = Math.floor((logEnd - 1) / payloadPerPage);
   const physicalEnd = (lastPage + 1) * pageSize; // exclusive; read() clamps to size
   const physical = await src.read(physicalStart, physicalEnd);
+  abortIfAborted(signal);
   if (physical.length === 0) return new Uint8Array(0);
   // `physical` starts on a page boundary, so stripPageCrc treats byte 0
   // as a page start correctly. A clamped (EOF) tail is handled by

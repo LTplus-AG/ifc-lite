@@ -459,7 +459,7 @@ export interface CameraCallbacks {
 // ============================================================================
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData } from '@ifc-lite/geometry';
+import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData, ModelSpatialReference } from '@ifc-lite/geometry';
 import type { ModelLoadReportFields } from '../lib/loadReport'; // #3927 load report
 /**
  * Compound identifier for entities across multiple models.
@@ -563,6 +563,8 @@ export interface FederatedModel extends ModelLoadReportFields {
   sourceSchema?: 'LandXML-1.2';
   /** Pre-tessellated geometry (with globalIds, not original expressIds) */
   geometryResult: GeometryResult | null;
+  /** Format-neutral declared source frame for non-IFC geometry (LandXML/scans). */
+  spatialReference?: ModelSpatialReference;
   /** Model-level visibility toggle */
   visible: boolean;
   /** UI collapse state in hierarchy panel */

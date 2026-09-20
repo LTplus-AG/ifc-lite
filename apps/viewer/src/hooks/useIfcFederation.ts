@@ -240,8 +240,10 @@ export function useIfcFederation(
       anchorModelId: referenceSelection.modelId,
       anchorGeoref: referenceSelection.placement,
       resolveGeoref: (modelId, model) => (
-        model.ifcDataStore && model.geometryResult
-          ? extractModelSpatialPlacement(
+        model.geometryResult && model.spatialReference
+          ? { spatialReference: model.spatialReference, coordinateInfo: model.geometryResult.coordinateInfo }
+          : model.ifcDataStore && model.geometryResult
+            ? extractModelSpatialPlacement(
             model.ifcDataStore,
             model.geometryResult.coordinateInfo,
             georefMutations.get(modelId),
@@ -291,9 +293,9 @@ export function useIfcFederation(
     if (counts.failed > 0) messageParts.push(`${counts.failed} failed`);
     const summary = messageParts.length > 0 ? messageParts.join(', ') : 'no changes needed';
     if (counts.failed > 0) {
-      toast.error(`Federation re-aligned against "${anchorGeoref.projectedCRS.name}": ${summary}.`);
+      toast.error(`Federation re-aligned against "${anchorGeoref.spatialReference.horizontal?.id ?? 'unknown CRS'}": ${summary}.`);
     } else {
-      toast.success(`Federation re-aligned against "${anchorGeoref.projectedCRS.name}": ${summary}.`);
+      toast.success(`Federation re-aligned against "${anchorGeoref.spatialReference.horizontal?.id ?? 'unknown CRS'}": ${summary}.`);
     }
   }, []);
 

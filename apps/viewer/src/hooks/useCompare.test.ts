@@ -102,7 +102,7 @@ describe('why the content version belongs in that key', () => {
       spatialReference: spatialReferenceFromIfc({ mapConversion: {
         id: 1, sourceCRS: 2, targetCRS: 3, eastings, northings: 0, orthogonalHeight: 0,
         xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1,
-      } as MapConversion, projectedCRS: { id: 4, name: 'EPSG:2056', mapUnitScale: 1 } as ProjectedCRS, lengthUnitScale: 1 }),
+      } as MapConversion, projectedCRS: { id: 4, name: 'EPSG:2056', verticalDatum: 'EPSG:5729', mapUnitScale: 1 } as ProjectedCRS, lengthUnitScale: 1 }),
     };
   }
 

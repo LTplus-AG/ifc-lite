@@ -262,10 +262,13 @@ export function projectedToLocalViewer(
   const south = (axis.b * de - axis.a * dn) / operation.scaleY;
   const y = (point[2] - operation.orthogonalHeight) / operation.scaleZ;
   const source = viewerToSource(reference.source, [x, y, south]);
-  const sourceOffset = viewerToSource(reference.source, [frameOffset.x, frameOffset.y, frameOffset.z]);
-  if (!source || !sourceOffset) return null;
+  if (!source) return null;
+  // Frame offsets live in the reference's NATIVE source coordinates, just as
+  // the point this function returns does. Treating the offset as viewer axes
+  // and converting it a second time happened to work for IFC's viewer-shaped
+  // metre frame, but corrupts a feet/North-East-Down adapter's inverse.
   const result: readonly [number, number, number] = [
-    source[0] - sourceOffset[0], source[1] - sourceOffset[1], source[2] - sourceOffset[2],
+    source[0] - frameOffset.x, source[1] - frameOffset.y, source[2] - frameOffset.z,
   ];
   return finite(result) ? result : null;
 }
@@ -300,23 +303,40 @@ export function resolveSpatialPlacement(
     targetOffset.x, targetOffset.y, targetOffset.z,
   ])) return { ok: false, refusal: 'invalid-axis-or-unit' };
 
-  // Derive columns from the public f64 map/inverse functions. This retains the
-  // deliberately asymmetric South axis and makes the transform independently
-  // checkable against point conversion without duplicating formulae.
+  // The origin goes through the public f64 map/inverse functions because it
+  // contains both map and frame offsets. The linear columns must NOT be
+  // derived by subtracting two ~million-metre projected points: that loses
+  // meaningful sub-millimetre precision before the target inverse sees them.
+  // Compose just the linear map terms below, then convert the target viewer
+  // deltas back to its native axes/units. This retains the deliberately
+  // asymmetric South axis without finite-differencing large coordinates.
   const origin = localViewerToProjected(source, [0, 0, 0], sourceOffset);
-  const x = localViewerToProjected(source, [1, 0, 0], sourceOffset);
-  const y = localViewerToProjected(source, [0, 1, 0], sourceOffset);
-  const z = localViewerToProjected(source, [0, 0, 1], sourceOffset);
-  if (!origin || !x || !y || !z) return { ok: false, refusal: 'non-invertible-transform' };
+  if (!origin) return { ok: false, refusal: 'non-invertible-transform' };
   const p0 = projectedToLocalViewer(target, origin, targetOffset);
-  const px = projectedToLocalViewer(target, x, targetOffset);
-  const py = projectedToLocalViewer(target, y, targetOffset);
-  const pz = projectedToLocalViewer(target, z, targetOffset);
-  if (!p0 || !px || !py || !pz) return { ok: false, refusal: 'non-invertible-transform' };
+  if (!p0) return { ok: false, refusal: 'non-invertible-transform' };
+
+  const sourceToTargetDelta = (sourceNative: readonly [number, number, number]): readonly [number, number, number] | null => {
+    const sourceViewer = sourceToViewer(source.source, sourceNative);
+    if (!sourceViewer) return null;
+    const [east, up, south] = sourceViewer;
+    const deltaEast = sourceOperation.scaleX * sourceAxis.a * east + sourceOperation.scaleY * sourceAxis.b * south;
+    const deltaNorth = sourceOperation.scaleX * sourceAxis.b * east - sourceOperation.scaleY * sourceAxis.a * south;
+    const deltaHeight = sourceOperation.scaleZ * up;
+    const targetViewer: readonly [number, number, number] = [
+      (targetAxis.a * deltaEast + targetAxis.b * deltaNorth) / targetOperation.scaleX,
+      deltaHeight / targetOperation.scaleZ,
+      (targetAxis.b * deltaEast - targetAxis.a * deltaNorth) / targetOperation.scaleY,
+    ];
+    return viewerToSource(target.source, targetViewer);
+  };
+  const px = sourceToTargetDelta([1, 0, 0]);
+  const py = sourceToTargetDelta([0, 1, 0]);
+  const pz = sourceToTargetDelta([0, 0, 1]);
+  if (!px || !py || !pz) return { ok: false, refusal: 'non-invertible-transform' };
   const transform: SpatialAffineTransform = {
-    m00: px[0] - p0[0], m01: py[0] - p0[0], m02: pz[0] - p0[0], tx: p0[0],
-    m10: px[1] - p0[1], m11: py[1] - p0[1], m12: pz[1] - p0[1], ty: p0[1],
-    m20: px[2] - p0[2], m21: py[2] - p0[2], m22: pz[2] - p0[2], tz: p0[2],
+    m00: px[0], m01: py[0], m02: pz[0], tx: p0[0],
+    m10: px[1], m11: py[1], m12: pz[1], ty: p0[1],
+    m20: px[2], m21: py[2], m22: pz[2], tz: p0[2],
   };
   if (!finite(Object.values(transform))) return { ok: false, refusal: 'non-invertible-transform' };
   const identity = Math.abs(transform.m00 - 1) < 1e-12 && Math.abs(transform.m11 - 1) < 1e-12

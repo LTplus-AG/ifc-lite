@@ -38,6 +38,7 @@ import {
   type GeometryDiagnostics,
   type SkippedHungElements,
   type StallPhaseHandle,
+  type ModelSpatialReference,
   DEFAULT_HUNG_JOB_TIMEOUT_MS,
 } from '@ifc-lite/geometry';
 import { resolveResourceRetryTier } from '../lib/resource-retry.js';
@@ -71,6 +72,8 @@ import {
   type GeometryProcessorDisposer,
 } from './ingest/geometryHandleDisposal.js';
 import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIngest.js';
+import { inspectE57SpatialMetadata } from '@ifc-lite/pointcloud';
+import { spatialReferenceFromLasBlob, spatialReferenceFromSourceMetadata } from './ingest/sourceSpatialReference.js';
 import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
 import { getGlobalRenderer } from './useBCF.js';
 import { extractModelSpatialPlacement, alignGeometryToReference, findReferenceSpatialModel } from './ingest/federationAlign.js';
@@ -498,7 +501,7 @@ export function useIfcLoader() {
         dataStore: IfcDataStore | null,
         geometryResult: GeometryResult | null,
         schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5',
-        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number; landXmlDocument?: import('./ingest/landXmlSemantics.js').LandXmlTinDocument; sourceSchema?: 'LandXML-1.2' } & Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>, // #3927, per-call-site like buildModelLoadReportPatch's doc explains
+        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number; landXmlDocument?: import('./ingest/landXmlSemantics.js').LandXmlTinDocument; sourceSchema?: 'LandXML-1.2'; spatialReference?: ModelSpatialReference } & Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>, // #3927, per-call-site like buildModelLoadReportPatch's doc explains
         // GPU-instancing shard bytes (#1912), forwarded explicitly rather than
         // closed over: the WASM streaming section's `allInstancedShards` is
         // declared ~800 lines below this closure, so a plain closure read would
@@ -540,7 +543,9 @@ export function useIfcLoader() {
           // the store, exactly as the former addModel finalize did).
           const referencePlacement = findReferenceSpatialModel()?.placement ?? null;
           const parsedGeorefMutations = useViewerStore.getState().georefMutations.get(modelId);
-          const parsedPlacement = extractModelSpatialPlacement(dataStore, geometryResult.coordinateInfo, parsedGeorefMutations);
+          const parsedPlacement = patch?.spatialReference
+            ? { spatialReference: patch.spatialReference, coordinateInfo: geometryResult.coordinateInfo }
+            : extractModelSpatialPlacement(dataStore, geometryResult.coordinateInfo, parsedGeorefMutations);
           // The snapshot `realignFederation` later restores from. Captured by
           // the same function that restores it (ingest/federationRealign.ts) so
           // the two cannot cover different fields — #1891's world boxes are
@@ -643,6 +648,7 @@ export function useIfcLoader() {
             idOffset,
             maxExpressId,
             pointCloudHandleId: patch?.pointCloudHandleId,
+            ...(patch?.spatialReference ? { spatialReference: patch.spatialReference } : {}),
             preAlignment,
             federationAlignmentStatus,
             ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
@@ -684,6 +690,7 @@ export function useIfcLoader() {
           cacheState: patch?.cacheState ?? 'none',
           loadError: patch?.loadError ?? null,
           pointCloudHandleId: patch?.pointCloudHandleId,
+          ...(patch?.spatialReference ? { spatialReference: patch.spatialReference } : {}),
           ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
         });
       };
@@ -820,8 +827,32 @@ export function useIfcLoader() {
         // metres by spec (ASTM E2807) and PCD/PLY/PTS/XYZ have no format
         // convention so metres is the documented assumption here too.
         const sourceUnit: PointCloudSourceUnit = format === 'las' || format === 'laz' ? 'mapUnit' : 'metre';
+        let sourceSpatialReference = format === 'las' || format === 'laz'
+          ? await spatialReferenceFromLasBlob(file, format)
+          : format === 'e57'
+            ? await inspectE57SpatialMetadata(file).then((metadata) => (
+              metadata?.horizontalId && metadata.verticalId
+                ? spatialReferenceFromSourceMetadata({
+                  format: 'e57', horizontalId: metadata.horizontalId,
+                  verticalId: metadata.verticalId, provenance: metadata.provenance,
+                })
+                : undefined
+            ))
+            : undefined;
         const reference = findReferenceSpatialModel();
-        const alignment = reference ? computePointCloudAlignment(reference.placement, sourceUnit) : null;
+        // A scan without declared horizontal+vertical CRS is not silently
+        // assumed to share the IFC anchor. Cross-CRS scan reprojection is
+        // nonlinear and cannot be expressed by the current GPU affine, so it
+        // is explicitly left raw for manual placement rather than approximated.
+        const sameDeclaredFrame = sourceSpatialReference && reference
+          && sourceSpatialReference.horizontal?.id === reference.placement.spatialReference.horizontal?.id
+          && sourceSpatialReference.vertical?.id === reference.placement.spatialReference.vertical?.id;
+        const alignment = sameDeclaredFrame && reference
+          ? computePointCloudAlignment(reference.placement, sourceUnit)
+          : null;
+        if (reference && !sameDeclaredFrame && (format === 'las' || format === 'laz' || format === 'e57')) {
+          toast.info(`${format.toUpperCase()} CRS is missing or differs from the federation anchor; automatic placement was refused.`);
+        }
         const setAlignmentAvailable = useViewerStore.getState().setPointCloudAlignmentAvailable;
         const alignmentEnabled = useViewerStore.getState().pointCloudAlignmentEnabled;
         const ingest = ingestPointCloud({
@@ -834,6 +865,16 @@ export function useIfcLoader() {
           onAssetCountDelta: incCount,
           alignment: alignment ?? undefined,
           alignmentEnabled,
+          onSpatialMetadata: (metadata) => {
+            if ((format !== 'las' && format !== 'laz' && format !== 'e57')
+              || !metadata?.horizontalId || !metadata.verticalId) return;
+            sourceSpatialReference = spatialReferenceFromSourceMetadata({
+              format: format === 'e57' ? 'e57' : format === 'laz' ? 'laz' : 'las',
+              horizontalId: metadata.horizontalId,
+              verticalId: metadata.verticalId,
+              provenance: metadata.provenance,
+            });
+          },
           // Session-guard the histogram writes: a superseded stream
           // keeps publishing periodic counts until `done` settles, and
           // an unguarded write would repopulate phantom classes after
@@ -935,6 +976,7 @@ export function useIfcLoader() {
         }
         await finalizeModel(ingest.dataStore, ingest.geometryResult, ingest.schemaVersion, {
           pointCloudHandleId: ingest.rendererHandle.id, loadPath: 'point-cloud',
+          ...(sourceSpatialReference ? { spatialReference: sourceSpatialReference } : {}),
         });
         void identifyLoadedPlacementSource(modelId, file);
         setProgress({ phase: 'Complete', percent: 100 });

@@ -37,18 +37,19 @@ function mapConversion(over: Partial<MapConversion>): MapConversion {
   };
 }
 
-function projectedCrs(name: string): ProjectedCRS {
-  return { id: 4, name, mapUnitScale: 1 } as ProjectedCRS;
+function projectedCrs(name: string, verticalDatum: string | null = 'EPSG:5729'): ProjectedCRS {
+  return { id: 4, name, ...(verticalDatum ? { verticalDatum } : {}), mapUnitScale: 1 } as ProjectedCRS;
 }
 
 function georef(
   conversion: Partial<MapConversion>,
   crsName = 'EPSG:2056',
   coordinateInfo?: CoordinateInfo,
+  verticalDatum: string | null = 'EPSG:5729',
 ): ModelSpatialPlacement {
   return {
     spatialReference: spatialReferenceFromIfc({
-      mapConversion: mapConversion(conversion), projectedCRS: projectedCrs(crsName), lengthUnitScale: 1, coordinateInfo,
+      mapConversion: mapConversion(conversion), projectedCRS: projectedCrs(crsName, verticalDatum), lengthUnitScale: 1, coordinateInfo,
     }),
     ...(coordinateInfo ? { coordinateInfo } : {}),
   };
@@ -158,7 +159,10 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
     );
     assert.equal(status, 'same-crs');
 
-    assert.ok(Math.abs(mesh.positions[0] - 2500) < 1e-3, 'vertex must have moved +2500 in X');
+    assert.ok(Math.abs((mesh.origin?.[0] ?? 0) + mesh.positions[0] - 2500) < 1e-3,
+      'vertex must have moved +2500 in X without folding the translation into f32 positions');
+    assert.ok(Math.abs(mesh.origin?.[0] ?? 0) > 1_000,
+      'a large alignment translation must remain in the mesh local origin');
     assertBoxClose(mesh.geometryAabb, { min: [2500, 0, 0], max: [2501, 2, 3] }, 1e-3, 'translated');
   });
 
@@ -467,6 +471,21 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
     assert.deepEqual(mesh.geometryAabb, { min: [0, 0, 0], max: [3e8, 1, 1] });
   });
 
+  it('rolls back every same-CRS mesh when a later mesh has an invalid vertex (#5048)', async () => {
+    const first = boxMesh(30, [1, 2, 3], [2, 3, 4]);
+    const second = boxMesh(31, [5, 6, 7], [6, 7, 8]);
+    second.positions[0] = Number.NaN;
+    const geom = geometry([first, second]);
+    const firstBefore = new Float32Array(first.positions);
+    const secondBefore = new Float32Array(second.positions);
+    const frameBefore = structuredClone(geom.coordinateInfo);
+
+    assert.equal(await alignGeometryToReference(geom, georef({ eastings: 2500 }), georef({})), 'failed');
+    assert.deepEqual(first.positions, firstBefore, 'first staged mesh must not be partially published');
+    assert.deepEqual(second.positions, secondBefore, 'invalid source mesh remains exactly as loaded');
+    assert.deepEqual(geom.coordinateInfo, frameBefore, 'dependent frame metadata rolls back too');
+  });
+
   it('carries the box across a cross-CRS reprojection', async () => {
     const mesh = boxMesh(17, [0, 0, 0], [1, 1, 1]);
     const geom = geometry([mesh]);
@@ -503,6 +522,27 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
 
     assert.equal(status, 'reprojected');
     assert.equal(geom.coordinateInfo.wasmRtcFrame, undefined);
+  });
+
+  it('refuses unknown or mismatched vertical frames without baking a partial placement (#5048)', async () => {
+    const original = new Float32Array([1, 2, 3]);
+    const unknown = geometry([{
+      ...boxMesh(28, [1, 2, 3], [1, 2, 3]), positions: new Float32Array(original),
+    }]);
+    assert.equal(
+      await alignGeometryToReference(unknown, georef({}, 'EPSG:2056', undefined, null), georef({})),
+      'failed',
+    );
+    assert.deepEqual(unknown.meshes[0].positions, original, 'unknown vertical datum must not move geometry');
+
+    const mismatch = geometry([{
+      ...boxMesh(29, [1, 2, 3], [1, 2, 3]), positions: new Float32Array(original),
+    }]);
+    assert.equal(
+      await alignGeometryToReference(mismatch, georef({}, 'EPSG:32632', undefined, 'EPSG:5703'), georef({}, 'EPSG:32633')),
+      'failed',
+    );
+    assert.deepEqual(mismatch.meshes[0].positions, original, 'mismatched cross-CRS vertical datum must not move geometry');
   });
 });
 

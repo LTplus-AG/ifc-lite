@@ -71,6 +71,24 @@ describe('format-neutral spatial placement (#5048)', () => {
       .toEqual([30 / 0.3048, 20 / 0.3048, 10 / 0.3048]);
   });
 
+  it('round-trips native non-metre axes with a nonzero native frame offset (#5048)', () => {
+    const source = reference({
+      source: { axes: ['north', 'east', 'down'], horizontalUnitToMetres: 0.3048, verticalUnitToMetres: 0.3048 },
+      localToProjected: { ...reference().localToProjected!, xAxisAbscissa: 1, xAxisOrdinate: 0 },
+    });
+    // Both the input point and the offset are North/East/Down FEET. This is
+    // deliberately unlike IFC's East/Up/South metre adapter, where applying
+    // a viewer-axis conversion to the offset is accidentally invisible.
+    const nativePoint: [number, number, number] = [750, 1_200, -80];
+    const nativeOffset = { x: 500, y: 900, z: -30 };
+    const projected = localViewerToProjected(source, nativePoint, nativeOffset);
+    expect(projected).not.toBeNull();
+    const restored = projectedToLocalViewer(source, projected!, nativeOffset);
+    expect(restored?.[0]).toBeCloseTo(nativePoint[0], 9);
+    expect(restored?.[1]).toBeCloseTo(nativePoint[1], 9);
+    expect(restored?.[2]).toBeCloseTo(nativePoint[2], 9);
+  });
+
   it('rejects malformed units and incomplete source axes rather than guessing', () => {
     expect(resolveSpatialPlacement(reference({ localToProjected: { ...reference().localToProjected!, xAxisAbscissa: 0, xAxisOrdinate: 0 } }), reference()))
       .toMatchObject({ ok: false, refusal: 'invalid-axis-or-unit' });

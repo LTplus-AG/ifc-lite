@@ -24,7 +24,7 @@ import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from
 import { ifcToViewerAxes } from './coordinate-frame';
 
 export { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
-import { resolvePrecisionDef } from './precision-grids';
+import { PRECISION_GRIDS, resolvePrecisionDef } from './precision-grids';
 
 export interface LatLon {
   lat: number;
@@ -33,6 +33,14 @@ export interface LatLon {
 
 // Cache resolved projection definitions (from any source).
 const projDefCache = new Map<string, string | null>();
+// Definitions that were made usable by injecting a Bursa-Wolf approximation
+// after their exact browser grid was unavailable. Map display may opt into
+// these; federation placement must name that compromise explicitly.
+const approximateProjectionCodes = new Set<string>();
+// A browser cannot make a horizontal datum operation from a required grid when
+// it has neither that grid nor a documented replacement.  Keep the display
+// definition separately, but never let placement silently use it.
+const refusedProjectionCodes = new Set<string>();
 const approxDatumWarningCache = new Set<string>();
 // Track datums where the bundled proj4 lacked any datum-shift parameters and we
 // couldn't supply a fallback — surfaced via diagnostics, warned once per datum.
@@ -206,8 +214,14 @@ export function sanitizeProj4(def: string, code?: string | null, datumName?: str
   const hasNadgrids = def.includes('+nadgrids') && !def.includes('+nadgrids=@null');
   const hasTowgs84 = /\+towgs84=/.test(def);
 
-  // A datum shift is already present — keep it; only drop an unusable grid ref.
-  if (hasTowgs84) return hasNadgrids ? stripNadgrids(def) : def;
+  // An embedded Helmert is an explicit approximation only when it replaces a
+  // required grid.  The old code stripped the grid and then represented this
+  // result as an ordinary definition, allowing federation to claim exact CRS
+  // placement while silently losing metres of accuracy.
+  if (hasTowgs84) {
+    if (hasNadgrids && code) approximateProjectionCodes.add(code);
+    return hasNadgrids ? stripNadgrids(def) : def;
+  }
 
   const datumKey = datumName?.trim().toLowerCase() ?? '';
   const towgs84 = datumKey ? DATUM_TOWGS84[datumKey] : undefined;
@@ -226,6 +240,7 @@ export function sanitizeProj4(def: string, code?: string | null, datumName?: str
         + 'DATUM_TOWGS84 in apps/viewer/src/lib/geo/reproject.ts.',
       );
     }
+    if (hasNadgrids && code) refusedProjectionCodes.add(code);
     return hasNadgrids ? stripNadgrids(def) : def;
   }
 
@@ -243,6 +258,7 @@ export function sanitizeProj4(def: string, code?: string | null, datumName?: str
     );
   }
 
+  if (code) approximateProjectionCodes.add(code);
   return `${hasNadgrids ? stripNadgrids(def) : def.replace(/\s+/g, ' ').trim()} ${towgs84}`;
 }
 
@@ -280,7 +296,11 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
   let code = extractEpsgCode(crs);
 
   // 1. Check cache
-  if (code && projDefCache.has(code)) {
+  // A cached approximate/refused fallback is not terminal for a CRS with a
+  // precision grid: a later online attempt may populate the grid cache. Exact
+  // cached definitions remain fast and deterministic.
+  if (code && projDefCache.has(code)
+    && (!PRECISION_GRIDS[code] || (!approximateProjectionCodes.has(code) && !refusedProjectionCodes.has(code)))) {
     return projDefCache.get(code) ?? null;
   }
 
@@ -293,6 +313,8 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
     try {
       const precisionDef = await resolvePrecisionDef(code);
       if (precisionDef) {
+        approximateProjectionCodes.delete(code);
+        refusedProjectionCodes.delete(code);
         projDefCache.set(code, precisionDef);
         return precisionDef;
       }
@@ -391,9 +413,49 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
  * an explicit `EPSG:<code>` identifier is accepted here, so a display label
  * can never turn into a placement decision by accident.
  */
-export async function resolveProjectionId(id: string): Promise<string | null> {
-  if (!/^EPSG:\d+$/i.test(id.trim())) return null;
-  return resolveProjection({ id: 0, name: id.trim() });
+export interface ResolveProjectionIdOptions {
+  /** Permit a documented browser approximation when its exact datum grid is unavailable. */
+  allowApproximate?: boolean;
+}
+
+export type ProjectionOperation =
+  | { kind: 'exact'; definition: string; provenance: 'cached-grid' | 'bundled' | 'network' }
+  | { kind: 'approximate'; definition: string; provenance: 'helmert-fallback' }
+  | { kind: 'refused'; reason: 'required-grid-unavailable' | 'approximation-not-authorized' | 'unresolvable' };
+
+/**
+ * Resolve a placement operation with its accuracy provenance.  Unlike map
+ * display, federation has no safe implicit approximation: callers must opt in
+ * to the documented Helmert fallback, and a grid with no fallback is refused.
+ */
+export async function resolveProjectionOperation(
+  id: string,
+  options: ResolveProjectionIdOptions = {},
+): Promise<ProjectionOperation> {
+  if (!/^EPSG:\d+$/i.test(id.trim())) return { kind: 'refused', reason: 'unresolvable' };
+  const canonical = id.trim().toUpperCase();
+  const code = canonical.slice('EPSG:'.length);
+  const definition = await resolveProjection({ id: 0, name: canonical });
+  if (!definition) return { kind: 'refused', reason: 'unresolvable' };
+  if (refusedProjectionCodes.has(code)) return { kind: 'refused', reason: 'required-grid-unavailable' };
+  if (approximateProjectionCodes.has(code)) {
+    return options.allowApproximate
+      ? { kind: 'approximate', definition, provenance: 'helmert-fallback' }
+      : { kind: 'refused', reason: 'approximation-not-authorized' };
+  }
+  return {
+    kind: 'exact',
+    definition,
+    provenance: definition.includes('+nadgrids=') ? 'cached-grid' : 'bundled',
+  };
+}
+
+export async function resolveProjectionId(
+  id: string,
+  options: ResolveProjectionIdOptions = {},
+): Promise<string | null> {
+  const operation = await resolveProjectionOperation(id, options);
+  return operation.kind === 'refused' ? null : operation.definition;
 }
 
 /**

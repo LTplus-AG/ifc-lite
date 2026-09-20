@@ -57,7 +57,7 @@
  * `IfcMapConversion`/`IfcProjectedCRS` pair on its own. `finalizeModel`
  * merges the dataStore's (here: absent) georeference with
  * `useViewerStore`'s per-model `georefMutations` map
- * (`extractModelGeoref(dataStore, coordinateInfo, georefMutations.get(modelId))`),
+ * (`extractModelSpatialPlacement(dataStore, coordinateInfo, georefMutations.get(modelId))`),
  * and `mergeProjectedCRS`/`mergeMapConversion`
  * (`lib/geo/effective-georef.ts`) build a complete `ProjectedCRS`/
  * `MapConversion` from the mutation alone when the dataStore has none. This

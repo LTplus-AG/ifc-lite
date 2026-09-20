@@ -192,6 +192,17 @@ fn allows_dtd_words_inside_comments_and_cdata() -> Result<(), Box<dyn std::error
 }
 
 #[test]
+fn allows_an_xml_stylesheet_processing_instruction_before_the_root() {
+    let valid = String::from_utf8(document("grade")).expect("fixture is UTF-8");
+    let input = valid.replacen(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+        "<?xml-stylesheet type=\"text/xsl\" href=\"terrain.xsl\"?>",
+        1,
+    );
+    assert_eq!(parse(input.as_bytes()).unwrap().surfaces.len(), 1);
+}
+
+#[test]
 fn parses_utf16_le_and_be_raw_bytes() -> Result<(), Box<dyn std::error::Error>> {
     for little_endian in [true, false] {
         let parsed = parse(&utf16_document(little_endian))?;

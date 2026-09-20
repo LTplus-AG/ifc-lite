@@ -259,7 +259,11 @@ fn check_declared_encoding(input: &[u8], detected: Encoding) -> Result<()> {
     let declaration = input
         .get(..input.len().min(DECLARATION_LIMIT))
         .and_then(|prefix| str::from_utf8(prefix).ok())
-        .filter(|prefix| prefix.starts_with("<?xml"));
+        .filter(|prefix| {
+            prefix
+                .strip_prefix("<?xml")
+                .is_some_and(|rest| rest.as_bytes().first().is_some_and(u8::is_ascii_whitespace))
+        });
     let Some(declaration) = declaration else {
         return Ok(());
     };

@@ -92,6 +92,24 @@ ${typeUniverse.map((e) => canonicalNames.has(e.name)
     pub fn attribute_index(&self, name: &str) -> Option<usize> {
         self.attribute_names().iter().position(|n| *n == name)
     }
+
+    /// Whether ${schema.name} itself declares this class.
+    ///
+    /// The enum is one exact-name universe across every supported release;
+    /// a variant that only a supplemental (older) schema declares keeps its
+    /// name but carries no positional metadata here (its
+    /// \`attribute_names()\` is empty). A per-schema registry that must fail
+    /// closed for a class the declared FILE_SCHEMA does not know consults
+    /// this rather than the emptiness of the attribute list, which a genuine
+    /// zero-attribute class shares (#4203).
+    pub fn declared_by_canonical_schema(&self) -> bool {
+        ${typeUniverse.some((e) => !canonicalNames.has(e.name))
+          ? `!matches!(
+            self,
+            ${typeUniverse.filter((e) => !canonicalNames.has(e.name)).map((e) => `Self::${e.name}`).join(' | ')} | Self::Unknown(_)
+        )`
+          : '!matches!(self, Self::Unknown(_))'}
+    }
 }
 
 /// Every entity type this schema defines, in declaration order.

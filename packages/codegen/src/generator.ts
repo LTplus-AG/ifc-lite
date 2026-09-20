@@ -77,7 +77,11 @@ export function generateFromSchema(
         ...(options.rustSupplementalSchemaPaths ?? []).map((path) =>
           parseExpressSchema(readFileSync(path, 'utf-8').replace(/\r\n?/g, '\n'))
         ),
-        entityCatalogSchema('IFC4_FAMILY', ENTITIES_IFC4, IFC_DATA_TYPES),
+        // The IFC4-family catalog widens the CANONICAL exact-name universe
+        // (#4203); a crate-private per-schema registry is exactly its own
+        // schema and must not be widened, or `attribute_names_for_schema`
+        // could answer for a class the declared FILE_SCHEMA never knew.
+        ...(options.rustCratePrivate ? [] : [entityCatalogSchema('IFC4_FAMILY', ENTITIES_IFC4, IFC_DATA_TYPES)]),
       ]
     : [];
 

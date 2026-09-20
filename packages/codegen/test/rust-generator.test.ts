@@ -52,7 +52,7 @@ const SCHEMA_SRC = `
 
 const schema = parseExpressSchema(SCHEMA_SRC);
 const rust = generateRust(schema);
-const cratePrivateRust = generateRust(schema, true);
+const cratePrivateRust = generateRust(schema, [], true);
 
 const LEGACY_SCHEMA_SRC = `
   SCHEMA TEST_LEGACY;
@@ -144,6 +144,8 @@ describe('generateRust — crate-private registries', () => {
       '#![allow(dead_code, clippy::enum_variant_names)] // Full EXPRESS names are required; registry consumers currently use only name lookup and attribute slots.',
     );
   });
+});
+
 describe('generateRust — supported schema type universe (#4203)', () => {
   const legacySchema = parseExpressSchema(LEGACY_SCHEMA_SRC);
   const universeRust = generateRust(schema, [legacySchema]);

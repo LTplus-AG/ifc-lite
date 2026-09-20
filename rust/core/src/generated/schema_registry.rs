@@ -90,11 +90,15 @@ fn attribute_names_ifc4(name: &str) -> Option<&'static [&'static str]> {
 }
 
 fn attribute_names_ifc4x3(name: &str) -> Option<&'static [&'static str]> {
+    // The canonical enum is the whole supported-schema universe (#4203): a
+    // legacy class such as IfcDoorStyle resolves to an exact variant there,
+    // but IFC4X3 does not declare it, so this registry must still answer
+    // `None` rather than lend it an empty (or borrowed) slot layout.
     let ty = super::schema::IfcType::from_str(name);
-    if matches!(ty, super::schema::IfcType::Unknown(_)) {
-        None
-    } else {
+    if ty.declared_by_canonical_schema() {
         Some(ty.attribute_names())
+    } else {
+        None
     }
 }
 

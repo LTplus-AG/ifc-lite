@@ -8,8 +8,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generateFromSchema } from '../src/generator.js';
@@ -119,6 +118,9 @@ describe('generateFromSchema — crate-private Rust output (#4203)', () => {
 
     execFileSync('rustc', [probe, '--edition=2021', '-o', executable]);
     execFileSync(executable);
+  });
+});
+
 describe('generateFromSchema — supplemental Rust schemas (#4203)', () => {
   it('does not read Rust-only supplemental paths for a TypeScript-only generation', () => {
     const outputDir = mkdtempSync(join(tmpdir(), 'ifc-codegen-4203-ts-only-'));

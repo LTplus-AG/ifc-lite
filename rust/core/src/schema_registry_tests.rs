@@ -66,8 +66,11 @@ fn legacy_wrapper_preserves_its_old_non_modern_contract() {
 #[test]
 fn canonical_ifc4x3_type_lookup_is_unchanged_by_registry_modules() {
     assert_eq!(IfcType::from_str("IFCWALL"), IfcType::IfcWall);
-    assert!(matches!(
-        IfcType::from_str("IFCDOORSTYLE"),
-        IfcType::Unknown(_)
-    ));
+    // Since the exact-name universe landed, a legacy keyword keeps its name
+    // through the canonical enum instead of collapsing to a hash — but the
+    // canonical schema itself still does not declare it.
+    let door_style = IfcType::from_str("IFCDOORSTYLE");
+    assert!(!matches!(door_style, IfcType::Unknown(_)));
+    assert!(!door_style.declared_by_canonical_schema());
+    assert!(IfcType::IfcWall.declared_by_canonical_schema());
 }

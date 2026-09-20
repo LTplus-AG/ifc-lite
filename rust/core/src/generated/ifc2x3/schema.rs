@@ -14,7 +14,7 @@ use std::fmt;
 
 /// IFC Entity Types
 ///
-/// All 653 entity types from the IFC2X3 schema.
+/// All 653 entity types from the supported schema universe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum IfcType {
     // Spatial Structure
@@ -5469,6 +5469,19 @@ impl IfcType {
     /// spelling is the only one that resolves.
     pub fn attribute_index(&self, name: &str) -> Option<usize> {
         self.attribute_names().iter().position(|n| *n == name)
+    }
+
+    /// Whether IFC2X3 itself declares this class.
+    ///
+    /// The enum is one exact-name universe across every supported release;
+    /// a variant that only a supplemental (older) schema declares keeps its
+    /// name but carries no positional metadata here (its
+    /// `attribute_names()` is empty). A per-schema registry that must fail
+    /// closed for a class the declared FILE_SCHEMA does not know consults
+    /// this rather than the emptiness of the attribute list, which a genuine
+    /// zero-attribute class shares (#4203).
+    pub fn declared_by_canonical_schema(&self) -> bool {
+        !matches!(self, Self::Unknown(_))
     }
 }
 

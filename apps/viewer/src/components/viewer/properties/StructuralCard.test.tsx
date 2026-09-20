@@ -250,6 +250,8 @@ describe('StructuralCard synthetic boundary-condition invariants', () => {
     const text = render(<StructuralCard structuralData={data} selectedExpressId={10} selectedGlobalId="member" />);
     assert.match(text, /\[fixed ١\].*\[elastic ١\].*\[free ١\]/);
     assert.ok(text.includes('[no components]'));
+    assert.ok(text.includes('Connections (١)'));
+    assert.ok(text.includes('Applied loads (٢)'));
     assert.ok(text.includes('[at ١٫٥: [ForceX=١٬٢٣٤٫٥]]'));
     assert.ok(text.includes('[drop budget]'));
     assert.ok(!text.includes('DOF fixed'));

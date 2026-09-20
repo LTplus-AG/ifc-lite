@@ -19,7 +19,7 @@
 import { useMemo } from 'react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Boxes, Anchor, ArrowDownToLine, TriangleAlert } from 'lucide-react';
-import { formatLocaleNumber, useTranslation, type TranslationKey } from '@/i18n';
+import { formatLocaleNumber, localeCount, useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleList } from '@/i18n/intlFormat';
 import { EXPRESS_PREDEFINED_TYPE_ATTRIBUTE, EXPRESS_THICKNESS_ATTRIBUTE } from './express-labels';
 import type {
@@ -44,7 +44,7 @@ export function StructuralCard({
   selectedExpressId,
   selectedGlobalId,
 }: StructuralCardProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const member = useMemo(
     () => findMember(structuralData, selectedExpressId, selectedGlobalId),
     [structuralData, selectedExpressId, selectedGlobalId],
@@ -136,7 +136,7 @@ export function StructuralCard({
               <div className="flex items-center gap-1.5 mb-1.5 text-violet-700 dark:text-violet-400">
                 <Anchor className="h-3 w-3 shrink-0" />
                 <span className="font-semibold text-[11px]">
-                  {t('properties.structural.connections', { count: connections.length })}
+                  {t('properties.structural.connections', localeCount(locale, connections.length))}
                 </span>
               </div>
               <div className="space-y-1.5 ml-1">
@@ -152,7 +152,7 @@ export function StructuralCard({
               <div className="flex items-center gap-1.5 mb-1.5 text-violet-700 dark:text-violet-400">
                 <ArrowDownToLine className="h-3 w-3 shrink-0" />
                 <span className="font-semibold text-[11px]">
-                  {t('properties.structural.appliedLoads', { count: activities.length })}
+                  {t('properties.structural.appliedLoads', localeCount(locale, activities.length))}
                 </span>
               </div>
               <div className="space-y-1.5 ml-1">

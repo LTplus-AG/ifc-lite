@@ -104,6 +104,9 @@ impl Parser<'_> {
     }
 
     pub(super) fn finish(mut self) -> Result<LandXmlTinDocument> {
+        if self.version.is_empty() {
+            return Err(error(Code::InvalidXml, "LandXML document is empty"));
+        }
         if !self.extensions.is_empty() {
             self.warnings.push(format!(
                 "Preserved {} unknown vendor extension root(s) as source metadata",

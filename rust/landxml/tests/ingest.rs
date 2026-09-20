@@ -220,7 +220,10 @@ fn bounds_source_data_and_overlay_vertices_with_the_global_point_limit() {
     for max_points in [1, 2, 3] {
         let error = parse_landxml_tin_with_cancel(
             xml.as_bytes(),
-            &LandXmlLimits { max_points, ..LandXmlLimits::default() },
+            &LandXmlLimits {
+                max_points,
+                ..LandXmlLimits::default()
+            },
             None,
         )
         .unwrap_err();
@@ -531,4 +534,14 @@ fn rejects_repeated_or_mixed_unit_declarations() {
         parse(mixed.as_bytes()).unwrap_err().code,
         LandXmlDiagnosticCode::InvalidSemantic
     );
+}
+
+#[test]
+fn issue_5042_rejects_empty_or_whitespace_only_documents() {
+    for input in [b"".as_slice(), b" \n\t".as_slice()] {
+        assert_eq!(
+            parse(input).unwrap_err().code,
+            LandXmlDiagnosticCode::InvalidXml
+        );
+    }
 }

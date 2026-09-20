@@ -138,7 +138,10 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     adapter.setPositionalAttribute(created, 2, 'Renamed');
     assert.equal(adapter.removeEntity(created), true);
 
-    assert.deepEqual(calls.find(call => call.kind === 'create')?.args.slice(0, 4), [
+    const createArgs = calls.find(call => call.kind === 'create')?.args ?? [];
+    // The class spelling depends on whether the SDK's type normaliser is
+    // installed (it is in the app); the mirrored identity must not.
+    assert.deepEqual([createArgs[0], createArgs[1], String(createArgs[2]).toUpperCase(), createArgs[3]], [
       MODEL, created.expressId, 'IFCWALL', '0created000000000000000',
     ]);
     assert.equal(

@@ -136,19 +136,12 @@ impl Parser<'_> {
             return Ok(());
         }
         let nested_parcel = local == "Parcel"
-            && self
-                .frames
-                .iter()
-                .rev()
-                .nth(1)
-                .is_some_and(|frame| frame.target && frame.local == "Parcels")
-            && self
-                .frames
-                .iter()
-                .rev()
-                .nth(2)
-                .is_some_and(|frame| frame.target && frame.local == "Parcel")
-            && matches!(self.active.last(), Some(Active::Parcel(_)));
+            && matches!(self.active.last(), Some(Active::Parcel(_)))
+            && self.active_depths.last().is_some_and(|depth| {
+                self.frames.len() == *depth + 2
+                    && self.frames[*depth].target
+                    && self.frames[*depth].local == "Parcels"
+            });
         if self.path(&["LandXML", "Parcels", "Parcel"]) || nested_parcel {
             self.begin_parcel(attributes)?;
             return Ok(());

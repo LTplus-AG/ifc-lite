@@ -142,20 +142,53 @@ impl LandXmlPlanDocument {
         scope_id: Option<&crate::LandXmlSourceId>,
         reference: &str,
     ) -> Option<usize> {
-        if let Ok(ordinal) = reference.parse::<usize>() {
-            return self.cogo_points.iter().position(|point| {
-                point.ordinal == ordinal && scope_id.is_none_or(|scope| point.scope_id == *scope)
-            });
-        }
         let target = match scope_id {
-            Some(scope) => index.scoped.get(&(scope.clone(), reference.to_owned()))?,
-            None => index.global.get(reference)?,
+            Some(scope) => index.scoped.get(&(scope.clone(), reference.to_owned())),
+            None => index.global.get(reference),
+        };
+        if let Some(Some(target)) = target {
+            if self
+                .cogo_points
+                .get(target.index)
+                .is_some_and(|point| point.source_id == target.source_id)
+            {
+                return Some(target.index);
+            }
         }
-        .as_ref()?;
-        self.cogo_points
-            .get(target.index)
-            .filter(|point| point.source_id == target.source_id)
-            .map(|_| target.index)
+        if let Some(found) = self.scan_authored_reference(scope_id, reference) {
+            return found;
+        }
+        reference.parse::<usize>().ok().and_then(|ordinal| {
+            (ordinal != 0).then(|| {
+                self.cogo_points.iter().position(|point| {
+                    point.ordinal == ordinal
+                        && scope_id.is_none_or(|scope| point.scope_id == *scope)
+                })
+            })?
+        })
+    }
+
+    fn scan_authored_reference(
+        &self,
+        scope_id: Option<&crate::LandXmlSourceId>,
+        reference: &str,
+    ) -> Option<Option<usize>> {
+        let mut match_index = None;
+        for (index, point) in self.cogo_points.iter().enumerate() {
+            if !scope_id.is_none_or(|scope| point.scope_id == *scope) {
+                continue;
+            }
+            let matches = point.source_id.0 == reference
+                || point.name.as_deref() == Some(reference)
+                || point
+                    .properties
+                    .get("oID")
+                    .is_some_and(|oid| oid == reference);
+            if matches && match_index.replace(index).is_some() {
+                return Some(None);
+            }
+        }
+        match_index.map(Some)
     }
 
     /// Resolve a monument's direct coordinate or its scoped `pntRef`.

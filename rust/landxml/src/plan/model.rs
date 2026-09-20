@@ -63,7 +63,11 @@ pub(crate) struct ReferenceTarget {
 
 impl LandXmlPlanReferenceIndex {
     pub(crate) fn insert(&mut self, point: &LandXmlCgPoint) {
-        let mut keys = vec![point.ordinal.to_string(), point.source_id.0.clone()];
+        self.insert_at(point, point.ordinal.saturating_sub(1));
+    }
+
+    fn insert_at(&mut self, point: &LandXmlCgPoint, index: usize) {
+        let mut keys = vec![point.source_id.0.clone()];
         if let Some(name) = &point.name {
             keys.push(name.clone());
         }
@@ -73,7 +77,7 @@ impl LandXmlPlanReferenceIndex {
         keys.sort();
         keys.dedup();
         let target = ReferenceTarget {
-            index: point.ordinal - 1,
+            index,
             source_id: point.source_id.clone(),
         };
         for key in keys {
@@ -94,8 +98,8 @@ impl LandXmlPlanReferenceIndex {
 
     pub(crate) fn from_points(points: &[LandXmlCgPoint]) -> Self {
         let mut index = Self::default();
-        for point in points {
-            index.insert(point);
+        for (position, point) in points.iter().enumerate() {
+            index.insert_at(point, position);
         }
         index
     }

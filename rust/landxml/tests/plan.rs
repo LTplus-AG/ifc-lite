@@ -475,23 +475,55 @@ fn issue_5046_bounds_curve_center_aliases_and_rebuilds_safe_lookup_after_deseria
     );
 
     let source = parse(&document(
-        r#"<CgPoints><CgPoint name="2">9 9</CgPoint><CgPoint name="base">1 2</CgPoint><CgPoint name="alias" pntRef="2"/></CgPoints>"#,
+        r#"<CgPoints><CgPoint name="2">9 9</CgPoint><CgPoint name="3">1 2</CgPoint><CgPoint name="alias-two" pntRef="2"/><CgPoint name="alias-three" pntRef="3"/></CgPoints>"#,
     ));
     let restored: ifc_lite_landxml::LandXmlPlanDocument =
         serde_json::from_str(&serde_json::to_string(&source).expect("serialize"))
             .expect("deserialize plan records");
     let reference = ifc_lite_landxml::LandXmlPlanPointLocation::PointReference {
-        pnt_ref: "alias".to_owned(),
+        pnt_ref: "alias-two".to_owned(),
     };
     assert_eq!(
         restored
             .resolve_point(None, &reference)
             .expect("alias resolves")
             .northing,
-        1.0
+        9.0
     );
 
-    let mut mutated = source;
-    mutated.cogo_points.clear();
-    assert_eq!(mutated.resolve_point(None, &reference), None);
+    let mut mutated = source.clone();
+    mutated.cogo_points.swap(0, 1);
+    mutated.cogo_points[1].name = Some("renamed".to_owned());
+    assert_eq!(
+        mutated
+            .resolve_point(
+                None,
+                &ifc_lite_landxml::LandXmlPlanPointLocation::PointReference {
+                    pnt_ref: "renamed".to_owned(),
+                },
+            )
+            .expect("renamed public point resolves"),
+        source.cogo_points[0].point.expect("authored point")
+    );
+    let mut zero_ordinal = source;
+    zero_ordinal.cogo_points[0].ordinal = 0;
+    let restored: ifc_lite_landxml::LandXmlPlanDocument =
+        serde_json::from_str(&serde_json::to_string(&zero_ordinal).expect("serialize"))
+            .expect("deserialize zero ordinal");
+    assert_eq!(
+        restored
+            .resolve_point(None, &reference)
+            .expect("authored name survives"),
+        zero_ordinal.cogo_points[0].point.expect("authored point")
+    );
+}
+
+#[test]
+fn issue_5046_does_not_adopt_nested_parcels_through_foreign_wrappers() {
+    let parsed = parse(&document(
+        r#"<Parcels><Parcel name="safe"><vendor:Wrapper xmlns:vendor="urn:vendor"><Parcels><Parcel name="foreign"/></Parcels></vendor:Wrapper><Parcels><Parcel name="inner"/></Parcels></Parcel></Parcels>"#,
+    ));
+    assert_eq!(parsed.parcels.len(), 2);
+    assert_eq!(parsed.parcels[0].name.as_deref(), Some("inner"));
+    assert_eq!(parsed.parcels[1].name.as_deref(), Some("safe"));
 }

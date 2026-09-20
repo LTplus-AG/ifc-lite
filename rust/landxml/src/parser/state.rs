@@ -10,6 +10,10 @@ use crate::{xml::Attributes, LandXmlPoint, LandXmlPolyline, LandXmlSurfaceKind};
 pub(super) struct Frame {
     pub(super) local: String,
     pub(super) target: bool,
+    /// One-based among same-name, same-namespace siblings. Source list paths
+    /// retain this instead of repeating their leaf name (#5084).
+    pub(super) sibling_ordinal: usize,
+    pub(super) child_ordinals: HashMap<(bool, String), usize>,
     pub(super) overlay_name: Option<String>,
     pub(super) overlay_kind: Option<String>,
     pub(super) overlay_properties: crate::LandXmlProperties,

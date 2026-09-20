@@ -6,6 +6,9 @@ use super::*;
 
 impl Parser<'_> {
     pub(super) fn source_data_point_dimension(&self) -> Option<u8> {
+        if self.frames.iter().any(|frame| !frame.target) {
+            return None;
+        }
         let path: Vec<&str> = self
             .frames
             .iter()
@@ -26,7 +29,29 @@ impl Parser<'_> {
             .join("/")
     }
 
+    /// Path of a just-opened coordinate-list capture.  The opening frame is
+    /// already present, so appending `local` would duplicate its leaf. Keep a
+    /// sibling ordinal on that leaf to distinguish repeated authored lists.
+    pub(super) fn capture_path(&self) -> String {
+        let last = self.frames.len().saturating_sub(1);
+        self.frames
+            .iter()
+            .enumerate()
+            .map(|(index, frame)| {
+                if index == last {
+                    format!("{}[{}]", frame.local, frame.sibling_ordinal)
+                } else {
+                    frame.local.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("/")
+    }
+
     pub(super) fn overlay_category(&self) -> Option<PolylineCategory> {
+        if self.frames.iter().any(|frame| !frame.target) {
+            return None;
+        }
         let path: Vec<&str> = self
             .frames
             .iter()

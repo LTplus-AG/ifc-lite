@@ -340,6 +340,94 @@ fn allows_an_xml_stylesheet_processing_instruction_before_the_root() {
 }
 
 #[test]
+fn issue_5084_refuses_multiple_roots_and_non_whitespace_outside_the_root() {
+    let valid = String::from_utf8(document("grade")).expect("fixture is UTF-8");
+    for input in [
+        format!("{valid}{valid}"),
+        format!("outside-before{valid}"),
+        format!("{valid}outside-after"),
+    ] {
+        assert_eq!(
+            parse(input.as_bytes()).unwrap_err().code,
+            LandXmlDiagnosticCode::InvalidXml
+        );
+    }
+    let misc = format!(" \n<?xml-stylesheet type=\"text/xsl\" href=\"terrain.xsl\"?>{valid}<!-- legal misc after root --><?post-root ok?>\t");
+    assert_eq!(parse(misc.as_bytes()).unwrap().surfaces.len(), 1);
+}
+
+#[test]
+fn issue_5084_ignores_foreign_ancestors_with_landxml_named_coordinate_lists(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let xml = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" xmlns:v="urn:vendor" version="1.2"><Surfaces><Surface name="survey"><Definition surfType="VOLUME"/><v:SourceData><DataPoints><PntList3D>0 0 0 1 1 1</PntList3D><PntList2D>2 2 3 3</PntList2D></DataPoints><Boundaries><Boundary><PntList3D>0 0 0 1 1 1</PntList3D></Boundary></Boundaries><Breaklines><Breakline><PntList2D>0 0 1 1</PntList2D></Breakline></Breaklines><Contours><Contour><PntList3D>0 0 0 1 1 1</PntList3D></Contour></Contours></v:SourceData></Surface></Surfaces></LandXML>"#
+    );
+    let parsed = parse(xml.as_bytes())?;
+    let surface = &parsed.surfaces[0];
+    assert!(
+        surface.source_data_points.is_empty(),
+        "foreign SourceData must not supply PntList3D or PntList2D"
+    );
+    assert!(
+        surface.boundaries.is_empty(),
+        "foreign Boundaries must not become terrain rings"
+    );
+    assert!(
+        surface.breaklines.is_empty(),
+        "foreign Breaklines must not become terrain lines"
+    );
+    assert!(
+        surface.contours.is_empty(),
+        "foreign Contours must not become terrain contours"
+    );
+    Ok(())
+}
+
+#[test]
+fn issue_5084_refuses_foreign_descendant_text_for_point_and_face_captures() {
+    let point_from_foreign_descendant = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" xmlns:v="urn:vendor" version="1.2"><Surfaces><Surface name="survey"><Definition surfType="TIN"><Pnts><P id="1"><v:coords>0 0 0</v:coords></P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces></LandXML>"#
+    );
+    assert_eq!(
+        parse(point_from_foreign_descendant.as_bytes())
+            .unwrap_err()
+            .code,
+        LandXmlDiagnosticCode::InvalidSemantic,
+    );
+    let face_from_foreign_descendant = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" xmlns:v="urn:vendor" version="1.2"><Surfaces><Surface name="survey"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F><v:refs>1 2 3</v:refs></F></Faces></Definition></Surface></Surfaces></LandXML>"#
+    );
+    assert_eq!(
+        parse(face_from_foreign_descendant.as_bytes())
+            .unwrap_err()
+            .code,
+        LandXmlDiagnosticCode::InvalidSemantic,
+    );
+}
+
+#[test]
+fn issue_5084_coordinate_list_paths_do_not_duplicate_leaves_and_keep_sibling_ordinals(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let xml = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Surfaces><Surface name="survey"><Definition surfType="VOLUME"/><SourceData><DataPoints><PntList3D>0 0 0</PntList3D><PntList3D>1 1 1</PntList3D></DataPoints></SourceData></Surface></Surfaces></LandXML>"#
+    );
+    let parsed = parse(xml.as_bytes())?;
+    let paths: Vec<&str> = parsed.surfaces[0]
+        .source_data_points
+        .iter()
+        .map(|point| point.source_path.as_str())
+        .collect();
+    assert_eq!(
+        paths,
+        vec![
+            "LandXML/Surfaces/Surface/SourceData/DataPoints/PntList3D[1]",
+            "LandXML/Surfaces/Surface/SourceData/DataPoints/PntList3D[2]",
+        ],
+    );
+    Ok(())
+}
+
+#[test]
 fn parses_utf16_le_and_be_raw_bytes() -> Result<(), Box<dyn std::error::Error>> {
     for little_endian in [true, false] {
         let parsed = parse(&utf16_document(little_endian))?;

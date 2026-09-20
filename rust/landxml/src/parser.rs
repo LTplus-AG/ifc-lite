@@ -8,7 +8,7 @@ use crate::{
     semantics::{positive_id, references, triple, units},
     xml::{
         attr, attributes, character_references, error, normalize_encoding, required, split_name,
-        unescape, Result,
+        Result,
     },
     LandXmlCancellation, LandXmlCapabilities, LandXmlDiagnosticCode as Code, LandXmlExtension,
     LandXmlLimits, LandXmlPoint, LandXmlPolyline, LandXmlRenderState, LandXmlSourceId,
@@ -23,6 +23,7 @@ mod finalize;
 mod limits;
 mod path;
 mod state;
+mod text;
 mod version;
 
 use state::{retained_properties, Frame, SurfaceBuilder};
@@ -45,6 +46,8 @@ struct Parser<'a> {
     warnings: Vec<String>,
     surface_ordinal: usize,
     version: String,
+    root_seen: bool,
+    root_closed: bool,
 }
 
 /// Parse exact LandXML 1.2 TIN semantics with default resource limits.
@@ -81,6 +84,8 @@ pub fn parse_landxml_tin_with_cancel(
         warnings: Vec::new(),
         surface_ordinal: 0,
         version: String::new(),
+        root_seen: false,
+        root_closed: false,
     };
     let mut reader = Reader::from_reader(input.as_slice());
     reader.config_mut().trim_text(false);
@@ -130,6 +135,13 @@ impl Parser<'_> {
         inherited.extend(namespaces);
         let namespace = inherited.get(prefix).map(String::as_str);
         if self.frames.is_empty() {
+            if self.root_seen {
+                return Err(error(
+                    Code::InvalidXml,
+                    "LandXML document has multiple root elements",
+                ));
+            }
+            self.root_seen = true;
             if local != "LandXML" {
                 return Err(error(Code::InvalidSemantic, "root element is not LandXML"));
             }
@@ -163,6 +175,14 @@ impl Parser<'_> {
             self.version = required(&attributes, "version", "LandXML")?.to_owned();
         }
         let target = namespace == Some(LANDXML_12_NAMESPACE);
+        let sibling_ordinal = self.frames.last_mut().map_or(1, |parent| {
+            let ordinal = parent
+                .child_ordinals
+                .entry((target, local.to_owned()))
+                .or_insert(0);
+            *ordinal += 1;
+            *ordinal
+        });
         // Record one root per unknown extension subtree.  This preserves the
         // producer-visible shape without recursively copying unbounded vendor
         // payloads, and never mistakes an extension's `Surface` for LandXML.
@@ -185,6 +205,8 @@ impl Parser<'_> {
         self.frames.push(Frame {
             local: local.to_owned(),
             target,
+            sibling_ordinal,
+            child_ordinals: std::collections::HashMap::new(),
             overlay_name: matches!(local, "Boundary" | "Breakline" | "Contour")
                 .then(|| attr(&attributes, "name").map(str::to_owned))
                 .flatten(),
@@ -283,7 +305,7 @@ impl Parser<'_> {
                 self.capture = Some(Capture::SourcePoints {
                     depth: self.frames.len(),
                     text: String::new(),
-                    source_path: self.path_with(local),
+                    source_path: self.capture_path(),
                     coordinate_dimension: self
                         .source_data_point_dimension()
                         .expect("guarded above"),
@@ -300,7 +322,7 @@ impl Parser<'_> {
                     properties: overlay.map_or_else(crate::LandXmlProperties::new, |frame| {
                         frame.overlay_properties.clone()
                     }),
-                    source_path: self.path_with(local),
+                    source_path: self.capture_path(),
                     coordinate_dimension: if local == "PntList3D" { 3 } else { 2 },
                 })
             }
@@ -331,30 +353,10 @@ impl Parser<'_> {
         if self.is_path(&["LandXML", "Surfaces", "Surface"]) {
             self.finish_surface()?;
         }
+        let closes_root = self.frames.len() == 1;
         self.frames.pop();
-        Ok(())
-    }
-
-    fn text(&mut self, bytes: &[u8]) -> Result<()> {
-        if bytes.len() > self.limits.max_text_bytes {
-            return Err(error(Code::LimitExceeded, "text limit exceeded"));
-        }
-        self.check_cancel_and_work(bytes.len())?;
-        let text =
-            std::str::from_utf8(bytes).map_err(|_| error(Code::InvalidXml, "text is not UTF-8"))?;
-        self.check_character_references(character_references(text))?;
-        let text = unescape(text)?;
-        if let Some(capture) = &mut self.capture {
-            let target = match capture {
-                Capture::Point { text, .. }
-                | Capture::Face { text, .. }
-                | Capture::SourcePoints { text, .. }
-                | Capture::Polyline { text, .. } => text,
-            };
-            if target.len() + text.len() > self.limits.max_text_bytes {
-                return Err(error(Code::LimitExceeded, "captured text limit exceeded"));
-            }
-            target.push_str(&text);
+        if closes_root {
+            self.root_closed = true;
         }
         Ok(())
     }

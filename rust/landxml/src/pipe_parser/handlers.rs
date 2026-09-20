@@ -3,8 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::{
-    xml::{attr, Attributes, Result},
-    LandXmlDiagnosticCode as Code, LandXmlPipeProperties, LandXmlSourceId,
+    xml::{attr, error, Attributes, Result},
+    LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlPipeProperties, LandXmlSourceId,
 };
 
 use super::{
@@ -16,6 +16,37 @@ use super::{
 };
 
 impl PipeParser<'_> {
+    pub(super) fn check_cancel_and_work(&mut self, added: usize) -> Result<()> {
+        if self
+            .cancelled
+            .is_some_and(LandXmlCancellation::is_cancelled)
+        {
+            return Err(error(Code::Cancelled, "ingestion cancelled"));
+        }
+        self.work = self
+            .work
+            .checked_add(added)
+            .ok_or_else(|| error(Code::LimitExceeded, "work limit exceeded"))?;
+        if self.work > self.limits.max_work {
+            return Err(error(Code::LimitExceeded, "work limit exceeded"));
+        }
+        Ok(())
+    }
+
+    pub(super) fn check_character_references(&mut self, added: usize) -> Result<()> {
+        self.character_references = self
+            .character_references
+            .checked_add(added)
+            .ok_or_else(|| error(Code::LimitExceeded, "character reference limit exceeded"))?;
+        if self.character_references > self.limits.max_character_references {
+            return Err(error(
+                Code::LimitExceeded,
+                "character reference limit exceeded",
+            ));
+        }
+        Ok(())
+    }
+
     pub(super) fn reserve(value: &mut usize, maximum: usize, label: &str) -> Result<()> {
         *value = value.checked_add(1).ok_or_else(|| {
             crate::xml::error(Code::LimitExceeded, format!("{label} limit exceeded"))
@@ -208,6 +239,11 @@ impl PipeParser<'_> {
 
     pub(super) fn finish_center(&mut self) -> Result<()> {
         let capture = self.capture.take().expect("center capture checked");
+        Self::reserve(
+            &mut self.points_seen,
+            self.limits.max_points,
+            "pipe Center point",
+        )?;
         match capture.owner {
             CaptureOwner::Structure => {
                 self.structure

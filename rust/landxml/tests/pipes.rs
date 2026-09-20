@@ -310,4 +310,48 @@ fn issue_5047_refuses_nested_center_text_empty_flows_and_nonfinite_scaled_measur
         .refusals
         .iter()
         .any(|item| item.message.contains("scaled measurement")));
+
+    let inverted_overflow = document(
+        r#"<Metric linearUnit="meter" elevationUnit="kilometer"/>"#,
+        r#"<Pipe name="P-1" refStart="MH-1" refEnd="MH-2"><CircPipe diameter="1"/></Pipe>"#,
+    )
+    .replace("elev=\"9.5\"", "elev=\"1e308\"");
+    let parsed = parse_landxml_pipe_networks(inverted_overflow.as_bytes())
+        .expect("an overflowing invert is refused locally");
+    assert!(parsed.networks[0].structures[0].inverts.is_empty());
+    assert!(parsed
+        .refusals
+        .iter()
+        .any(|item| item.message.contains("scaled measurement")));
+}
+
+#[test]
+fn issue_5047_rejects_invalid_network_types_and_honors_zero_center_limit() {
+    let source = document(
+        r#"<Metric linearUnit="meter"/>"#,
+        r#"<Pipe name="P-1" refStart="MH-1" refEnd="MH-2"><CircPipe diameter="1"/></Pipe>"#,
+    );
+    assert_eq!(
+        parse_landxml_pipe_networks(
+            source
+                .replace("pipeNetType=\"storm\"", "pipeNetType=\"bogus\"")
+                .as_bytes()
+        )
+        .expect_err("the schema enumeration is exact")
+        .code,
+        LandXmlDiagnosticCode::InvalidSemantic
+    );
+    assert_eq!(
+        parse_landxml_pipe_networks_with_cancel(
+            source.as_bytes(),
+            &LandXmlLimits {
+                max_points: 0,
+                ..LandXmlLimits::default()
+            },
+            None,
+        )
+        .expect_err("zero is a real point limit")
+        .code,
+        LandXmlDiagnosticCode::LimitExceeded
+    );
 }

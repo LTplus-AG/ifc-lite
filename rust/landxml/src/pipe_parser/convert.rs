@@ -281,11 +281,12 @@ pub(super) fn elevation(
     units: &LandXmlPipeUnits,
 ) -> Result<LandXmlPipeMeasure, String> {
     let value = optional_number(Some(value), "elevation")?.expect("value is supplied");
-    Ok(LandXmlPipeMeasure {
+    measure(
         value,
-        unit: units.elevation_unit.clone(),
-        meters: value * units.elevation_scale_to_meters,
-    })
+        &units.elevation_unit,
+        units.elevation_scale_to_meters,
+        false,
+    )
 }
 
 pub(super) fn required_measure(

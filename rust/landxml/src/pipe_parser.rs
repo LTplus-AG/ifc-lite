@@ -2,13 +2,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use std::collections::HashMap;
-
-use quick_xml::{
-    events::{BytesStart, Event},
-    Reader,
-};
-
 use crate::{
     classify_landxml_version,
     preflight::preflight_xml_tokens,
@@ -19,16 +12,18 @@ use crate::{
     LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlLimits, LandXmlPipeNetworkDocument,
     LandXmlPipeRefusal, LandXmlSourceId, LANDXML_12_NAMESPACE,
 };
-
+use quick_xml::{
+    events::{BytesStart, Event},
+    Reader,
+};
 use state::{
     properties, Frame, NetworkBuilder, PipeBuilder, PositionCapture, RawUnits, StructureBuilder,
 };
-
+use std::collections::HashMap;
 mod convert;
 mod finalize;
 mod handlers;
 mod state;
-
 struct PipeParser<'a> {
     limits: &'a LandXmlLimits,
     cancelled: Option<&'a dyn LandXmlCancellation>,
@@ -50,6 +45,7 @@ struct PipeParser<'a> {
     pipes_seen: usize,
     inverts_seen: usize,
     flows_seen: usize,
+    points_seen: usize,
     references_seen: usize,
     pipe_network_collections: usize,
     network_ordinal: usize,
@@ -59,7 +55,6 @@ struct PipeParser<'a> {
 pub fn parse_landxml_pipe_networks(input: &[u8]) -> Result<LandXmlPipeNetworkDocument> {
     parse_landxml_pipe_networks_with_cancel(input, &LandXmlLimits::default(), None)
 }
-
 /// Parse exact LandXML 1.2 pipe networks with host limits and cancellation.
 pub fn parse_landxml_pipe_networks_with_cancel(
     input: &[u8],
@@ -92,6 +87,7 @@ pub fn parse_landxml_pipe_networks_with_cancel(
         pipes_seen: 0,
         inverts_seen: 0,
         flows_seen: 0,
+        points_seen: 0,
         references_seen: 0,
         pipe_network_collections: 0,
         network_ordinal: 0,
@@ -126,37 +122,6 @@ pub fn parse_landxml_pipe_networks_with_cancel(
 }
 
 impl PipeParser<'_> {
-    fn check_cancel_and_work(&mut self, added: usize) -> Result<()> {
-        if self
-            .cancelled
-            .is_some_and(LandXmlCancellation::is_cancelled)
-        {
-            return Err(error(Code::Cancelled, "ingestion cancelled"));
-        }
-        self.work = self
-            .work
-            .checked_add(added)
-            .ok_or_else(|| error(Code::LimitExceeded, "work limit exceeded"))?;
-        if self.work > self.limits.max_work {
-            return Err(error(Code::LimitExceeded, "work limit exceeded"));
-        }
-        Ok(())
-    }
-
-    fn check_character_references(&mut self, added: usize) -> Result<()> {
-        self.character_references = self
-            .character_references
-            .checked_add(added)
-            .ok_or_else(|| error(Code::LimitExceeded, "character reference limit exceeded"))?;
-        if self.character_references > self.limits.max_character_references {
-            return Err(error(
-                Code::LimitExceeded,
-                "character reference limit exceeded",
-            ));
-        }
-        Ok(())
-    }
-
     fn start(&mut self, start: &BytesStart<'_>) -> Result<()> {
         if self.frames.len() >= self.limits.max_depth {
             return Err(error(Code::LimitExceeded, "XML depth limit exceeded"));
@@ -221,6 +186,15 @@ impl PipeParser<'_> {
                     "pipe network",
                 )?;
                 self.network_ordinal += 1;
+                if !matches!(
+                    attr(&attributes, "pipeNetType"),
+                    Some("water" | "storm" | "sanitary" | "other")
+                ) {
+                    return Err(error(
+                        Code::InvalidSemantic,
+                        "PipeNetwork has invalid pipeNetType",
+                    ));
+                }
                 let source_path = format!(
                     "LandXML/PipeNetworks[{}]/PipeNetwork[{}]",
                     self.pipe_network_collections, self.network_ordinal

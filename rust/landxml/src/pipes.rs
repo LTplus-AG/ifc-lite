@@ -228,32 +228,39 @@ impl LandXmlPipeNetworkDocument {
         if max_records == 0 {
             return Vec::new();
         }
-        let source_ids = self
-            .networks
-            .iter()
-            .flat_map(|network| {
-                std::iter::once(network.source_id.clone())
-                    .chain(network.structures.iter().flat_map(|structure| {
-                        std::iter::once(structure.source_id.clone())
-                            .chain(
-                                structure
-                                    .inverts
-                                    .iter()
-                                    .map(|invert| invert.source_id.clone()),
-                            )
-                            .chain(structure.flow.iter().map(|flow| flow.source_id.clone()))
-                    }))
-                    .chain(network.pipes.iter().flat_map(|pipe| {
-                        std::iter::once(pipe.source_id.clone())
-                            .chain(pipe.flow.iter().map(|flow| flow.source_id.clone()))
-                    }))
-            })
-            .collect::<Vec<_>>();
-        source_ids
-            .chunks(max_records)
-            .map(|source_ids| LandXmlPipeSourceBatch {
-                source_ids: source_ids.to_vec(),
-            })
-            .collect()
+        let source_ids = self.networks.iter().flat_map(|network| {
+            std::iter::once(network.source_id.clone())
+                .chain(network.structures.iter().flat_map(|structure| {
+                    std::iter::once(structure.source_id.clone())
+                        .chain(
+                            structure
+                                .inverts
+                                .iter()
+                                .map(|invert| invert.source_id.clone()),
+                        )
+                        .chain(structure.flow.iter().map(|flow| flow.source_id.clone()))
+                }))
+                .chain(network.pipes.iter().flat_map(|pipe| {
+                    std::iter::once(pipe.source_id.clone())
+                        .chain(pipe.flow.iter().map(|flow| flow.source_id.clone()))
+                }))
+        });
+        let mut batches = Vec::new();
+        let mut current = Vec::new();
+        for source_id in source_ids {
+            current.push(source_id);
+            if current.len() == max_records {
+                batches.push(LandXmlPipeSourceBatch {
+                    source_ids: current,
+                });
+                current = Vec::new();
+            }
+        }
+        if !current.is_empty() {
+            batches.push(LandXmlPipeSourceBatch {
+                source_ids: current,
+            });
+        }
+        batches
     }
 }

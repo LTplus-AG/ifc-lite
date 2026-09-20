@@ -191,7 +191,7 @@ export function SpecificationCard({
                 ))}
                 {filteredEntities.length > 100 && (
                   <div className="p-2 text-xs text-muted-foreground text-center">
-                    {t('idsPanel.showingEntities', { shown: formatLocaleNumber(locale, 100), total: formatLocaleNumber(locale, filteredEntities.length) })}
+                    {t('idsPanel.showingEntities', { count: filteredEntities.length, shown: formatLocaleNumber(locale, 100), total: formatLocaleNumber(locale, filteredEntities.length) })}
                   </div>
                 )}
               </div>

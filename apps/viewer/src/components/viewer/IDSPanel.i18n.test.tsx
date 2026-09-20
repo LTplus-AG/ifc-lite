@@ -12,6 +12,7 @@ import { en } from '@/i18n/en';
 import { useViewerStore } from '@/store';
 import type { IDSDocument, IDSRequirement, IDSRequirementResult, IDSValidationReport } from '@ifc-lite/ids';
 import { IDSPanel } from './IDSPanel.js';
+import { IDSValidationProgress } from './IDSPanelStates.js';
 
 const initial = useViewerStore.getState();
 
@@ -103,6 +104,52 @@ afterEach(() => {
 });
 
 describe('IDSPanel localization (#4918)', () => {
+  it('passes raw IDS totals to plural selection (#5030)', () => {
+    registerLocale('ru-x-ids-counts', {
+      'idsPanel.specificationsPassed': { one: 'SPECS ONE', other: 'SPECS OTHER' },
+      'idsPanel.checkingEntities': { one: 'CHECK ONE', other: 'CHECK OTHER' },
+      'idsPanel.scanningCandidates': { one: 'SCAN ONE', other: 'SCAN OTHER' },
+      'idsPanel.showingEntities': { one: 'SHOW ONE', other: 'SHOW OTHER' },
+    });
+    setLocale('ru-x-ids-counts');
+
+    const progress = {
+      phase: 'validating' as const,
+      specificationIndex: 0,
+      totalSpecifications: 1,
+      entitiesProcessed: 1,
+      totalEntities: 1,
+      percentage: 100,
+    };
+    assert.match(render(<IDSValidationProgress progress={progress} />).textContent ?? '', /CHECK ONE/);
+    cleanup();
+    assert.match(render(<IDSValidationProgress progress={{ ...progress, phase: 'filtering' }} />).textContent ?? '', /SCAN ONE/);
+    cleanup();
+
+    const entity = reportFixture.specificationResults[0].entityResults[0];
+    const entityResults = Array.from({ length: 101 }, (_, index) => ({
+      ...entity,
+      expressId: index + 1,
+    }));
+    useViewerStore.setState({
+      idsDocument: documentFixture,
+      idsValidationReport: {
+        ...reportFixture,
+        specificationResults: [{ ...reportFixture.specificationResults[0], entityResults }],
+      },
+      idsAuditReport: null,
+      idsError: null,
+      idsLoading: false,
+      idsProgress: null,
+    });
+    const ui = render(<IDSPanel />);
+    assert.match(ui.textContent ?? '', /SPECS ONE/);
+    const card = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Wall requirements'));
+    assert.ok(card);
+    click(card!);
+    assert.match(ui.textContent ?? '', /SHOW ONE/, 'Russian 101 selects one only when the raw total is present');
+  });
+
   it('keeps entity selection and detail disclosure as separate keyboard-focusable controls', () => {
     useViewerStore.setState({
       idsDocument: documentFixture,

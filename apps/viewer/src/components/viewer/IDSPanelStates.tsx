@@ -24,9 +24,9 @@ export function IDSValidationProgress({ progress }: { progress: NonNullable<UseI
         total: formatLocaleNumber(locale, progress.totalSpecifications),
       });
   const detail = progress.phase === 'validating' && progress.totalEntities > 0
-    ? t('idsPanel.checkingEntities', { processed: formatLocaleNumber(locale, progress.entitiesProcessed), total: formatLocaleNumber(locale, progress.totalEntities) })
+    ? t('idsPanel.checkingEntities', { count: progress.totalEntities, processed: formatLocaleNumber(locale, progress.entitiesProcessed), total: formatLocaleNumber(locale, progress.totalEntities) })
     : progress.phase === 'filtering' && progress.totalEntities > 0
-      ? t('idsPanel.scanningCandidates', { processed: formatLocaleNumber(locale, progress.entitiesProcessed), total: formatLocaleNumber(locale, progress.totalEntities) })
+      ? t('idsPanel.scanningCandidates', { count: progress.totalEntities, processed: formatLocaleNumber(locale, progress.entitiesProcessed), total: formatLocaleNumber(locale, progress.totalEntities) })
       : progress.phase === 'filtering' ? t('idsPanel.findingApplicable') : null;
   return (
     <div className="p-3 border-b">

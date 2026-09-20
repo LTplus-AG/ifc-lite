@@ -118,6 +118,7 @@ export function IDSPanelResults({
             <StatusIcon status={report.summary.failedSpecifications > 0 ? 'fail' : 'pass'} />
             <span className="font-medium text-sm">
               {t('idsPanel.specificationsPassed', {
+                count: report.summary.totalSpecifications,
                 passed: formatLocaleNumber(locale, report.summary.passedSpecifications),
                 total: formatLocaleNumber(locale, report.summary.totalSpecifications),
               })}

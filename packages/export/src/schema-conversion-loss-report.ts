@@ -27,7 +27,6 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
 import {
   convertEntityType,
   attrNameTable,
@@ -45,8 +44,14 @@ export type EntityConversionKind =
   /** Different type name (or the same name, source-schema attrs trimmed/padded),
    *  every source attribute has a same-named home in the target. */
   | 'renamed'
-  /** Renamed or reconciled, but at least one source attribute has no home in
-   *  the target schema's shape for this type — see `droppedAttributes`. */
+  /** Reconciled with SOME loss. Usually at least one source attribute has no
+   *  home in the target schema's shape for this type (see
+   *  `droppedAttributes`) — but a same-named type whose attribute lists are
+   *  reordered rather than appended/removed (neither a strict prefix of the
+   *  other, and not in `BY_NAME_ATTR_REMAP_TYPES`) is also `lossy` with an
+   *  EMPTY `droppedAttributes`: every name still exists in the target, but
+   *  `convertRecord` leaves the positional values untouched under the new
+   *  shape, so they land in the wrong slots rather than disappearing. */
   | 'lossy'
   /** No representation at all in the target schema. The type IS an IfcRoot
    *  subtype, so every instance becomes a generic IFCPROXY: its own semantic
@@ -68,12 +73,6 @@ export interface EntityConversionInfo {
   droppedAttributes: readonly string[];
 }
 
-const ENTITY_TABLES: Record<Exclude<IfcSchemaVersion, 'IFC5'>, readonly IfcEntityInfo[]> = {
-  IFC2X3: ENTITIES_IFC2X3,
-  IFC4: ENTITIES_IFC4,
-  IFC4X3: ENTITIES_IFC4X3,
-};
-
 /**
  * Classify what converting entities of `entityType` from `fromSchema` to
  * `toSchema` will do, mirroring `schema-converter.ts`'s `convertRecord`
@@ -89,12 +88,16 @@ export function classifyEntityTypeConversion(
   if (fromSchema === toSchema) return { targetType: upper, kind: 'identity', droppedAttributes: [] };
 
   const newType = convertEntityType(upper, fromSchema, toSchema);
+  const srcAttrs = attrNameTable(fromSchema)?.get(upper);
   if (shouldSkipEntity(newType, toSchema)) {
-    return { targetType: 'IFCPROXY', kind: 'proxied', droppedAttributes: [] };
+    // Same "every attribute is gone" reasoning as the other proxied branch
+    // below — an IFCPROXY carries none of the source type's own attributes.
+    // `srcAttrs` is undefined only for a source schema with no generated
+    // table (IFC5); there is nothing to name in that case either.
+    return { targetType: 'IFCPROXY', kind: 'proxied', droppedAttributes: srcAttrs ?? [] };
   }
 
   const targetTable = attrNameTable(toSchema);
-  const srcAttrs = attrNameTable(fromSchema)?.get(upper);
   const tgtAttrs = targetTable?.get(newType);
 
   if (srcAttrs && targetTable && !tgtAttrs) {
@@ -202,7 +205,7 @@ export function analyzeConversionLoss(
   toSchema: IfcSchemaVersion,
 ): ConversionLossReport {
   const entries: ConversionLossEntry[] = [];
-  if (fromSchema !== toSchema && ENTITY_TABLES[fromSchema as Exclude<IfcSchemaVersion, 'IFC5'>]) {
+  if (fromSchema !== toSchema) {
     for (const [sourceType, expressIds] of store.entityIndex.byType) {
       if (expressIds.length === 0) continue;
       const info = classifyEntityTypeConversion(sourceType, fromSchema, toSchema);

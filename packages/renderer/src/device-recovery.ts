@@ -4,6 +4,7 @@
 
 import { WebGPUDevice } from './device.js';
 import type { RenderPipeline } from './pipeline.js';
+import type { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import type { Scene } from './scene.js';
 
 /** GPU-only content that cannot be reconstructed after a device loss. */
@@ -36,7 +37,7 @@ export interface RendererRecoveryHost {
   pipeline: RenderPipeline | null;
   scene: Scene;
   overlays: { recoveryOmissions(): DeviceRecoveryOmission[] };
-  pointCloudRenderer: { hasAssets(): boolean } | null;
+  pointCloudRenderer: Pick<PointCloudRenderer, 'hasAssets' | 'getOptions' | 'setOptions'> | null;
   recovery: {
     inFlight: Promise<DeviceRecoveryResult> | null;
     lostReferenceImages: boolean;
@@ -115,6 +116,12 @@ async function recoverRendererDeviceOnce(
   for (const omission of host.overlays.recoveryOmissions()) host.recovery.omissions.add(omission);
   if (host.recovery.lostReferenceImages) host.recovery.omissions.add('reference-images');
   if (host.pointCloudRenderer?.hasAssets()) host.recovery.omissions.add('point-clouds');
+  // Assets are GPU-only and intentionally omitted, but their presentation is
+  // durable UI state. The replacement renderer must receive the old options
+  // before the viewer re-uploads its CPU-backed IFCx point clouds; its sync
+  // effect depends on preference values and will not rerun merely because the
+  // renderer instance changed.
+  const pointCloudOptions = host.pointCloudRenderer?.getOptions();
 
   let phase: 'device' | 'scene' = 'scene';
   try {
@@ -123,6 +130,7 @@ async function recoverRendererDeviceOnce(
     host.device = new WebGPUDevice();
     phase = 'device';
     await host.initOnce(generation, { clearDeviceLost: false, publishReady: false });
+    if (pointCloudOptions) host.pointCloudRenderer?.setOptions(pointCloudOptions);
     if (generation !== host.initGeneration || host.destroyed) {
       // A newer public init/destroy owns the next lifecycle. Recovery already
       // discarded the old scene's GPU handles, and teardown(false) would also

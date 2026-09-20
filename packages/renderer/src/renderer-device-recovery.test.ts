@@ -103,7 +103,11 @@ describe('Renderer.recoverDevice (#4885)', () => {
   it('reports transient GPU-only content as explicit omissions', async () => {
     const renderer = lostRenderer();
     renderer['recovery'].lostReferenceImages = true;
-    renderer['pointCloudRenderer'] = { hasAssets: () => true } as never;
+    renderer['pointCloudRenderer'] = {
+      hasAssets: () => true,
+      getOptions: () => ({}),
+      setOptions: () => {},
+    } as never;
     renderer['overlays']['recoveryOmissions'] = () => ['line-overlays', 'symbolic-overlays'];
     assert.deepStrictEqual(await renderer.recoverDevice(), {
       ok: true,
@@ -111,10 +115,49 @@ describe('Renderer.recoverDevice (#4885)', () => {
     });
   });
 
+  it('replays point-cloud presentation options onto the replacement renderer (#4885)', async () => {
+    const renderer = lostRenderer();
+    const options = {
+      colorMode: 'deviation' as const,
+      fixedColor: [0.1, 0.2, 0.3, 0.4] as [number, number, number, number],
+      pointSize: 9,
+      sizeMode: 'fixed-px' as const,
+      worldRadius: 0.125,
+      roundShape: false,
+      classMask: new Uint32Array([0x0000ffff, 0, 1, 2, 3, 4, 5, 6]),
+      previewStride: 8,
+      deviationRange: { centerOffset: -0.02, halfRange: 0.25 },
+    };
+    renderer['pointCloudRenderer'] = {
+      hasAssets: () => true,
+      getOptions: () => options,
+      setOptions: () => {},
+    } as never;
+    let replacementOptions: typeof options | undefined;
+    renderer['initOnce'] = async () => {
+      renderer['pipeline'] = {} as never;
+      const device = renderer['device'] as unknown as { device: GPUDevice; context: GPUCanvasContext };
+      device.device = {} as GPUDevice;
+      device.context = {} as GPUCanvasContext;
+      renderer['pointCloudRenderer'] = {
+        hasAssets: () => false,
+        getOptions: () => options,
+        setOptions: (next: typeof options) => { replacementOptions = next; },
+      } as never;
+    };
+
+    assert.deepStrictEqual(await renderer.recoverDevice(), { ok: true, omissions: ['point-clouds'] });
+    assert.deepStrictEqual(replacementOptions, options);
+  });
+
   it('preserves omissions when a failed replacement is retried (#4885)', async () => {
     const renderer = lostRenderer();
     let assetsPresent = true;
-    renderer['pointCloudRenderer'] = { hasAssets: () => assetsPresent } as never;
+    renderer['pointCloudRenderer'] = {
+      hasAssets: () => assetsPresent,
+      getOptions: () => ({}),
+      setOptions: () => {},
+    } as never;
     renderer['initOnce'] = async () => { assetsPresent = false; throw new Error('first replacement failed'); };
     const error = mock.method(console, 'error', () => undefined);
     try {

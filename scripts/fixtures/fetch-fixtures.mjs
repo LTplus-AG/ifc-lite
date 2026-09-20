@@ -26,6 +26,7 @@ import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSyn
 import { dirname, relative, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { validateManifest } from './manifest-validation.mjs';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const MODELS_DIR = resolve(ROOT, 'tests/models');
@@ -76,12 +77,9 @@ if (!manifest || typeof manifest !== 'object') {
   console.error(`error: ${MANIFEST_PATH} is not a JSON object`);
   process.exit(2);
 }
-if (manifest.version !== 1) {
-  console.error(`error: unsupported manifest.version ${manifest.version}`);
-  process.exit(2);
-}
-if (!Array.isArray(manifest.files)) {
-  console.error(`error: ${MANIFEST_PATH} is missing a "files" array`);
+const manifestErrors = validateManifest(manifest);
+if (manifestErrors.length) {
+  for (const error of manifestErrors) console.error(`error: ${MANIFEST_PATH}: ${error}`);
   process.exit(2);
 }
 // An empty corpus would make --check succeed vacuously ("all 0 fixtures

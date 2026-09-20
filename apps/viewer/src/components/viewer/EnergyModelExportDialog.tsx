@@ -49,6 +49,8 @@ import { StepExporter } from '@ifc-lite/export';
 import { ensureModelExportReady } from '@/services/desktop-export';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { resolveEnergyExportMutationSource } from './energy-export-source';
+import { useTranslation } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 
 type EnergyFormat = 'hbjson' | 'dfjson';
 
@@ -56,21 +58,19 @@ const FORMATS: Record<EnergyFormat, {
   label: string;
   tool: string;
   ext: string;
-  blurb: string;
+  blurbKey: TranslationKey;
 }> = {
   hbjson: {
     label: 'HBJSON',
     tool: 'Honeybee',
     ext: 'hbjson',
-    blurb:
-      'Full energy and daylight model. Builds watertight rooms from IfcSpace volumes, places windows and doors as apertures, emits railings as shades, and maps material layer sets to constructions.',
+    blurbKey: 'geometryExport.energy.hbjsonBlurb',
   },
   dfjson: {
     label: 'DFJSON',
     tool: 'Dragonfly',
     ext: 'dfjson',
-    blurb:
-      'Extruded Room2D floor plates plus floor-to-ceiling heights, grouped into stories. The simpler target for models with mostly vertical walls (recommended by Ladybug Tools for that case).',
+    blurbKey: 'geometryExport.energy.dfjsonBlurb',
   },
 };
 
@@ -79,6 +79,7 @@ interface EnergyModelExportDialogProps {
 }
 
 export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProps) {
+  const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const getMutationView = useViewerStore((s) => s.getMutationView);
 
@@ -121,7 +122,7 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
       const modelId = selectedModel.id;
       const exportDataStore = await ensureModelExportReady(modelId);
       if (!exportDataStore) {
-        throw new Error('Model data is unavailable for export');
+        throw new Error(t('geometryExport.energy.modelDataUnavailableError'));
       }
       // Serialize the CURRENT model (with mutations applied) to IFC bytes so
       // in-app edits — e.g. spaces created by the Space Sketch tool — are in
@@ -164,22 +165,22 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
           if (format === 'hbjson') {
             const result = processor.exportHbjsonWithStats(content, baseName);
             if (result === null) {
-              throw new Error('Geometry engine unavailable');
+              throw new Error(t('geometryExport.shared.geometryEngineUnavailableError'));
             }
             const { content: hbjson, stats } = result;
             // The HBJSON exporter returns empty output when the model has no
             // IfcSpace volumes.
             if (hbjson.length === 0) {
-              throw new Error('No IfcSpace volumes found in the model to export');
+              throw new Error(t('geometryExport.energy.noIfcSpaceError'));
             }
             if (stats.skipped > 0) {
-              hbjsonSkipNote = ` — ${stats.skipped} of ${stats.spaces} IfcSpace skipped as degenerate`;
+              hbjsonSkipNote = t('geometryExport.energy.skipNote', { skipped: stats.skipped, total: stats.spaces });
             }
             return hbjson;
           }
           const dfjson = processor.exportDfjson(content, baseName);
           if (dfjson === null) {
-            throw new Error('Geometry engine unavailable');
+            throw new Error(t('geometryExport.shared.geometryEngineUnavailableError'));
           }
           // export_dfjson always returns a complete Model JSON, even with zero
           // spaces (empty `buildings`), so an emptiness check on the string can
@@ -193,7 +194,7 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
             0,
           );
           if (roomCount === 0) {
-            throw new Error('No IfcSpace volumes found in the model to export');
+            throw new Error(t('geometryExport.energy.noIfcSpaceError'));
           }
           return dfjson;
         } finally {
@@ -223,7 +224,7 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
         // rather than emit a structurally valid but empty energy model.
         if (!exportDataStore.source || exportDataStore.source.byteLength === 0) {
           throw new Error(
-            `${FORMATS[format].label} export needs the source IFC bytes, which this model did not retain.`,
+            t('geometryExport.energy.sourceBytesMissingError', { formatLabel: FORMATS[format].label }),
           );
         }
         // `IfcDataStore.source` is an accessor that may be block-compressed
@@ -236,18 +237,25 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
       const blob = new Blob([out as BlobPart], { type: 'application/json' });
       downloadBlob(blob, `${sanitizeFilename(baseName, { fallback: 'model' })}.${spec.ext}`);
 
-      const msg = `Exported ${spec.label} (${(blob.size / 1024).toFixed(0)} KB)${hbjsonSkipNote}`;
+      const msg = t('geometryExport.energy.exportedMessage', {
+        formatLabel: spec.label,
+        sizeKb: (blob.size / 1024).toFixed(0),
+        skipNote: hbjsonSkipNote,
+      });
       setExportResult({ success: true, message: msg });
       toast.success(msg);
     } catch (err) {
       console.error(`${spec.label} export failed:`, err);
-      const errMsg = `${spec.label} export failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
+      const errMsg = t('geometryExport.energy.failedMessage', {
+        formatLabel: spec.label,
+        reason: err instanceof Error ? err.message : t('geometryExport.shared.unknownError'),
+      });
       setExportResult({ success: false, message: errMsg });
       toast.error(errMsg);
     } finally {
       setIsExporting(false);
     }
-  }, [selectedModel, format, getMutationView]);
+  }, [selectedModel, format, getMutationView, t]);
 
   const spec = FORMATS[format];
 
@@ -271,7 +279,7 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
         {trigger || (
           <Button variant="outline" size="sm">
             <Download className="h-4 w-4 mr-2" />
-            Energy Model
+            {t('geometryExport.energy.triggerButton')}
           </Button>
         )}
       </DialogTrigger>
@@ -279,17 +287,17 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Download className="h-5 w-5" />
-            Export Energy Model
+            {t('geometryExport.energy.dialogTitle')}
           </DialogTitle>
           <DialogDescription>
-            Ladybug Tools model for energy and daylight analysis
+            {t('geometryExport.energy.dialogDescription')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
           {/* Format selector — segmented control */}
           <div className="flex items-center gap-4">
-            <Label className="w-32">Format</Label>
+            <Label className="w-32">{t('geometryExport.energy.formatLabel')}</Label>
             <div className="inline-flex rounded-md border p-0.5">
               {(Object.keys(FORMATS) as EnergyFormat[]).map((f) => (
                 <button
@@ -310,10 +318,10 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
           {/* Model selector — only shown when multiple are loaded */}
           {modelList.length > 1 && (
             <div className="flex items-center gap-4">
-              <Label className="w-32">Model</Label>
+              <Label className="w-32">{t('geometryExport.energy.modelLabel')}</Label>
               <Select value={selectedModelId} onValueChange={setSelectedModelId} disabled={isExporting}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select model" />
+                  <SelectValue placeholder={t('geometryExport.energy.selectModelPlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
                   {modelList.map((m) => {
@@ -333,19 +341,19 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
 
           {/* Output indicator + per-format description */}
           <div className="flex items-center gap-4">
-            <Label className="w-32 text-muted-foreground">Output</Label>
-            <span className="text-sm">{spec.tool} model</span>
+            <Label className="w-32 text-muted-foreground">{t('geometryExport.energy.outputLabel')}</Label>
+            <span className="text-sm">{t('geometryExport.energy.outputModel', { tool: spec.tool })}</span>
             <span className="text-xs text-muted-foreground">.{spec.ext}</span>
           </div>
 
-          <p className="text-xs text-muted-foreground">{spec.blurb}</p>
+          <p className="text-xs text-muted-foreground">{t(spec.blurbKey)}</p>
 
           {!selectedModel && (
             <Alert>
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>No model loaded</AlertTitle>
+              <AlertTitle>{t('geometryExport.energy.noModelTitle')}</AlertTitle>
               <AlertDescription>
-                Load an IFC model to export an energy model.
+                {t('geometryExport.energy.noModelDescription')}
               </AlertDescription>
             </Alert>
           )}
@@ -357,7 +365,7 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
               ) : (
                 <AlertCircle className="h-4 w-4" />
               )}
-              <AlertTitle>{exportResult.success ? 'Success' : 'Error'}</AlertTitle>
+              <AlertTitle>{exportResult.success ? t('geometryExport.energy.successTitle') : t('geometryExport.energy.errorTitle')}</AlertTitle>
               <AlertDescription>{exportResult.message}</AlertDescription>
             </Alert>
           )}
@@ -365,18 +373,18 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
 
         <DialogFooter>
           <Button variant="outline" disabled={isExporting} onClick={() => setOpen(false)}>
-            Cancel
+            {t('geometryExport.energy.cancelButton')}
           </Button>
           <Button onClick={handleExport} disabled={isExporting || !selectedModel}>
             {isExporting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Exporting...
+                {t('geometryExport.energy.exportingButton')}
               </>
             ) : (
               <>
                 <Download className="h-4 w-4 mr-2" />
-                Export {spec.label}
+                {t('geometryExport.energy.exportButton', { formatLabel: spec.label })}
               </>
             )}
           </Button>

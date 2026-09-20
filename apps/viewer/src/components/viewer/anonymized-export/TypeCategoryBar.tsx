@@ -34,8 +34,9 @@ export function TypeCategoryBar({ categories, onToggle }: TypeCategoryBarProps) 
           {heading}
         </div>
         <div className="text-[11px] text-muted-foreground">
-          {excludedCount > 0 ? t('anonymizedExport.typeCategoryBar.blockedCountPrefix', { count: excludedCount }) : ''}
-          {t('anonymizedExport.typeCategoryBar.clickToBlockHint')}
+          {excludedCount > 0
+            ? t('anonymizedExport.typeCategoryBar.blockedClickToBlockHint', { count: excludedCount })
+            : t('anonymizedExport.typeCategoryBar.clickToBlockHint')}
         </div>
       </div>
       <div className="flex flex-wrap gap-1.5" role="group" aria-label={heading}>

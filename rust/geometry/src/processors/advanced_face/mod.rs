@@ -16,7 +16,7 @@ mod bspline_budget;
 mod bspline_parse;
 mod conics;
 mod curves;
-mod edge_loop;
+pub(super) mod edge_loop;
 mod polyline;
 mod revolution;
 mod surfaces;

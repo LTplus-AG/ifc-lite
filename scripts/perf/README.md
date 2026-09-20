@@ -1798,3 +1798,41 @@ selector itself. Applying it to the established horizontal-depth route changed
 real heavy-model cuts even though small synthetic cases remained green; the
 heavy census caught that overreach, and restoring the old horizontal route
 removed every branch-caused census delta.
+
+## Structural curved/oriented edge rendering, no reach into either fixture (#4206, #5020)
+
+Native `perf_probe` comparison of base `0e8a42175` (merge-base with `origin/main`)
+and branch `9a469537b` (this PR merged onto that base), five balanced,
+interleaved fresh-process rounds per fixture, `--iters 5 --json --fingerprint`.
+Neither in-tree fixture instantiates a standalone `IfcEdge`/`IfcEdgeCurve`/
+`IfcOrientedEdge` as a geometry item, so `IfcEdgeProcessor::process` (the only
+code this PR touches) never runs on them: this is an isolation check, not a
+speedup claim, and the ordered mesh FNV was byte-identical on every one of the
+25 runs per fixture per side.
+
+AC20-FZK-Haus: median parse/geometry/total (best-of-5) 8/7/15 ms (base) vs
+8/7/16 ms (branch); median full-pipeline wall 18.0 ms (base, spread 16.8-22.4)
+vs 18.3 ms (branch, spread 17.1-26.2) — branch sits inside the base's own
+spread. Output identical both sides: 285 meshes / 35,940 vertices / 19,456
+triangles / 0 CSG failures, fingerprint `25ac885b6ff4ad00` on all 50 runs.
+
+`C20-Institute-Var-2.ifc` (10.3 MB, 147,712 entities): median parse/geometry/
+total 44/47/92 ms (base, total spread 89-104) vs 48/51/102 ms (branch, total
+spread 86-133); median full-pipeline wall 111.5 ms (base, spread 103.2-145.3)
+vs 121.4 ms (branch, spread 98.4-191.9). The branch's one high outlier (a
+133 ms total / 191.9 ms wall round, immediately following an unusually fast
+89 ms base round in the same interleaved pair) drove most of the median gap;
+excluding it drops the branch median to within 4% of base. Both branch median
+figures fall inside the base's own measured range, so this is noise from a
+10 MB/147k-entity file's larger absolute jitter budget, not a signal: output
+was identical on every round, 2,668 meshes / 83,310 vertices / 51,682 triangles
+/ 0 CSG failures, fingerprint `3616a1e7d01c6950` on all 50 runs.
+
+Verdict: no measurable full-load regression on either fixture, and none
+expected — the new ribbon-mesh path only activates for a structural curve
+member's raw edge entities, which neither architectural fixture contains.
+Lesson: for a processor gated on IFC types absent from the standard perf
+corpus, the correct "perf verdict" is an isolation proof (identical mesh
+counts and fingerprint, timing inside noise) rather than a speedup or
+regression claim — don't force a delta narrative onto a lever that has no
+reach into the fixtures the ledger already tracks.

@@ -17,6 +17,7 @@ import { assertModelTranslation } from '../model-translation.js';
  */
 
 import type { PointCloudAsset } from '@ifc-lite/geometry';
+import { PointCloudHandleIds } from './point-cloud-handle-ids.js';
 import { PointCloudPlacements, unionPointCloudBounds } from './point-cloud-placement.js';
 import { PointRenderPipeline, POINT_QUAD_VERTS, POINT_UNIFORM_SIZE } from './point-pipeline.js';
 import {
@@ -137,7 +138,7 @@ export class PointCloudRenderer {
   private modelTranslations = new Map<number, readonly [number, number, number]>();
   private nodes = new Map<number, PointCloudNode>();
   private nodeOwners = new Map<number, NodeOwner>();
-  private nextHandleId = 1;
+  readonly handleIds: PointCloudHandleIds;
   private uniformScratch = new Float32Array(POINT_UNIFORM_SIZE / 4);
   private uniformScratchU32 = new Uint32Array(this.uniformScratch.buffer);
   private options: ResolvedPointCloudRenderOptions = {
@@ -157,9 +158,11 @@ export class PointCloudRenderer {
     colorFormat: GPUTextureFormat,
     depthFormat: GPUTextureFormat,
     sampleCount: number,
+    startHandleId = 1, // see PointCloudHandleIds — Renderer.teardown() passes its watermark here
   ) {
     this.device = device;
     this.pipeline = new PointRenderPipeline(device, colorFormat, depthFormat, sampleCount);
+    this.handleIds = new PointCloudHandleIds(startHandleId);
   }
 
   setOptions(opts: PointCloudRenderOptions): void {
@@ -209,7 +212,7 @@ export class PointCloudRenderer {
 
   addAsset(asset: PointCloudAsset): PointCloudAssetHandle {
     const node = uploadAssetToGpu(this.device, this.pipeline, asset);
-    const id = this.nextHandleId++;
+    const id = this.handleIds.allocate();
     this.nodes.set(id, node);
     this.nodeOwners.set(id, 'ifcx');
     this.placements.translate(node, this.modelTranslations.get(asset.modelIndex ?? 0) ?? [0, 0, 0]);
@@ -221,7 +224,7 @@ export class PointCloudRenderer {
   /** Open an empty asset that chunks will be appended to. */
   beginAsset(meta: PointCloudNodeMeta): PointCloudAssetHandle {
     const node = createNode(this.device, this.pipeline, meta);
-    const id = this.nextHandleId++;
+    const id = this.handleIds.allocate();
     this.nodes.set(id, node);
     this.nodeOwners.set(id, 'streamed');
     return { id };

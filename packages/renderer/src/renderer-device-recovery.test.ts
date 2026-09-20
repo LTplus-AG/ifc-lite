@@ -61,6 +61,45 @@ describe('Renderer.recoverDevice (#4885)', () => {
     assert.strictEqual(replacementRemovals, 0, 'stale cleanup must not remove a replacement asset with the same id');
   });
 
+  /**
+   * A minimal stand-in for the real `PointCloudRenderer`, tracking just
+   * enough state (an id counter seeded from `startId`, and the ids it has
+   * handed out) to exercise `Renderer.teardown()`'s watermark hand-off.
+   */
+  function fakePointCloudRenderer(startId: number, removed: number[]) {
+    let nextId = startId;
+    return {
+      beginAsset: () => ({ id: nextId++ }),
+      removeAsset: (handle: { id: number }) => { removed.push(handle.id); },
+      clear: () => {},
+      handleIds: { current: () => nextId },
+    } as never;
+  }
+
+  it('does not delete a replacement asset that would have reused the id of a torn-down stream', () => {
+    const renderer = new Renderer(canvas());
+    const removed: number[] = [];
+    renderer['pointCloudRenderer'] = fakePointCloudRenderer(1, removed);
+    renderer['refreshPlacementBounds'] = () => {};
+    const staleHandle = renderer.beginPointCloudStream({ expressId: 7 });
+    renderer['teardown'](false);
+    // `teardown()` reads the outgoing instance's watermark into
+    // `pointCloudNextHandleId`; the real replacement `PointCloudRenderer`
+    // constructor receives it as `startHandleId` so ids are never reissued
+    // across a teardown — without that, a fresh instance restarts its own
+    // `nextHandleId` at 1 and collides with the torn-down stream's handle.
+    renderer['pointCloudRenderer'] = fakePointCloudRenderer(renderer['pointCloudNextHandleId'], removed);
+    const liveHandle = renderer.beginPointCloudStream({ expressId: 9 });
+    assert.notStrictEqual(liveHandle.id, staleHandle.id, 'the watermark hand-off must prevent id reuse across a teardown');
+
+    // The original stream's worker errors late and cleans up with its stale closure handle.
+    renderer.removePointCloudAsset(staleHandle);
+    assert.deepStrictEqual(removed, [], 'a stale-epoch removal must not touch the live replacement asset');
+
+    renderer.removePointCloudAsset(liveHandle);
+    assert.deepStrictEqual(removed, [liveHandle.id], 'removing the live handle in its own epoch must still work');
+  });
+
   it('removes a live point-cloud asset through a rebuilt { id } handle (#4885 review)', () => {
     const renderer = new Renderer(canvas());
     let removed: number[] = [];

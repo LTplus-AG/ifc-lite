@@ -257,6 +257,7 @@ export class Renderer {
     private pointCloudRenderer: PointCloudRenderer | null = null;
     private pointCloudStreamEpoch = 0;
     private pointCloudStreamEpochs = new Map<number, number>(); // handle id → epoch; cleanup rebuilds `{ id }`, cleared per epoch
+    private pointCloudNextHandleId = 1; // watermark carried across teardown() so a replacement never reissues an id
     /** Set true at the end of the LATEST `init()`; gates `whenReady()` and
      * `isReady()`. Revoked synchronously by `init()` and by `destroy()`, and
      * overridden (not cleared) by a device loss — see `deviceLost`, which the
@@ -632,6 +633,7 @@ export class Renderer {
             this.device.getFormat(),
             'depth24plus-stencil8',
             this.pipeline.getSampleCount(),
+            this.pointCloudNextHandleId,
         );
         // Compute pipeline for the BIM↔scan deviation heatmap. Lazily
         // owns the per-triangle BVH GPU buffers; idle until the first
@@ -3701,6 +3703,7 @@ export class Renderer {
         this.referenceImages.destroy();
 
         // Point cloud GPU resources
+        this.pointCloudNextHandleId = this.pointCloudRenderer?.handleIds?.current() ?? this.pointCloudNextHandleId;
         this.pointCloudStreamEpoch++; this.pointCloudStreamEpochs.clear(); this.pointCloudRenderer?.clear();
         this.pointCloudRenderer = null;
 

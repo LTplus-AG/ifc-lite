@@ -215,11 +215,22 @@ occurrence/type/material property section labels, and the unified-storey
 multi-entity view.
 The IDS-panel catalogue (#4918 viewer-panels slice) covers `IDSPanel.tsx` and
 the extracted validation progress, result-summary, filtering, isolation,
-focus, specification, requirement, and entity chrome (`ids-panel.en.ts`).
-The existing `IDSAuditSummary`, correction, report-export, and BCF-export
-dialogs remain separate follow-up surfaces. IDS document titles/descriptions,
-specification names, entity names/types/GlobalIds, requirement descriptions,
-and failure details remain model/document content supplied by the IDS engine.
+focus, specification, requirement, and entity chrome (`ids-panel.en.ts`). A
+follow-up slice extended the same `idsPanel.*` catalogue to its four sibling
+surfaces: `IDSCorrectionDialog.tsx` (the scalar-property correction dialog —
+title, description, the "nothing to correct" alert, the requirement/value
+form, the failed-entities list, and the applied/failed result summary),
+`IDSExportDialog.tsx` (the BCF export settings dialog — topic-grouping
+options and their hint text, the four toggle switches, and progress/footer
+controls), `IDSAuditSummary.tsx` (the auditing/clean-document states, the
+counts-strip severity words moved to a `labelKey`/`pluralLabelKey` pair on
+`SEVERITY_TOKENS` the same way `sectionConstants.ts`'s `AXIS_INFO` does, the
+filter tabs, and the issue-row "path"/"facet" field labels), and
+`IDSReportExportButton.tsx` (the format dropdown's own labels, moved to a
+`FORMAT_LABEL_KEYS` map with the same pattern, its aria-label, and the
+export-format tooltip). IDS document titles/descriptions, specification
+names, entity names/types/GlobalIds, requirement descriptions, and failure
+details remain model/document content supplied by the IDS engine.
 The clash-detection catalogue (#4918 viewer-panels slice) covers
 `ClashPanel.tsx`: the header and help disclosure, the detection controls
 (mode/tol/gap, run buttons, live progress), the result-summary toolbar

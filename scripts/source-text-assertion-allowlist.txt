@@ -62,7 +62,6 @@ packages/create-ifc-lite/test/config-fixers.test.ts                         # as
 # count, so treat it as a size hint for whoever converts the file, not a fact.
 scripts/check-clash-degenerate-reason-parity.test.mjs  # 14 hits
 scripts/check-collab-room-model-target.test.mjs  # 6 hits
-scripts/check-legacy-entity-coverage.test.mjs  # 35 hits
 scripts/check-module-size.test.mjs  # 56 hits
 scripts/check-server-bin-targets.test.mjs  # 16 hits
 scripts/ci-wasm-prebuilt-eligible.test.mjs  # 1 hit

@@ -173,7 +173,7 @@ fn a_span_past_the_content_is_an_unnamed_record_not_a_panic() {
         .collect();
     assert_eq!(
         labelled,
-        vec![ifc_lite_core::legacy_aware_ifc_type("")],
+        vec![ifc_lite_core::ifc_type_from_keyword("")],
         "a job whose span lies outside the content carries the empty keyword's type"
     );
 }
@@ -297,9 +297,8 @@ fn sharded_column_discovery_labels_a_legacy_type_candidate_with_its_base_type() 
         .collect();
     assert_eq!(
         labelled,
-        vec![ifc_lite_core::IfcType::IfcDoorType],
-        "the sharded walk must carry legacy IfcDoorStyle as processing type \
-         IfcDoorType, not expose its exact schema variant or drop it; \
+        vec![ifc_lite_core::IfcType::IfcDoorStyle],
+        "the sharded walk must preserve the exact IfcDoorStyle variant; \
          type_candidate_spans = {:?}",
         discovery.type_candidate_spans
     );
@@ -348,9 +347,8 @@ fn sharded_column_discovery_labels_a_legacy_geometry_job_with_its_base_type() {
         .collect();
     assert_eq!(
         labelled,
-        vec![ifc_lite_core::IfcType::IfcBeam],
-        "the sharded walk must label legacy IFCBEAMSTANDARDCASE as processing \
-         type IfcBeam, agreeing with the gate that admitted it; buffered_jobs = {:?}",
+        vec![ifc_lite_core::IfcType::IfcBeamStandardCase],
+        "the sharded walk must preserve the exact IFCBEAMSTANDARDCASE type; buffered_jobs = {:?}",
         discovery.buffered_jobs
     );
 }

@@ -417,7 +417,7 @@ fn type_name_normalization_preserves_catalog_and_unknown_unicode_3987() {
     // Supported legacy schema spellings now preserve their exact variant;
     // synthetic extension spellings remain Unknown and are handled by the
     // legacy-aware classification wrapper.
-    for &name in crate::legacy_entities::LEGACY_ENTITY_NAMES {
+    for &name in crate::EXPORTER_STRATUM_ALIASES {
         let upper = name.to_uppercase();
         let expected = IfcType::from_str(name);
         if matches!(

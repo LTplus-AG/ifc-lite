@@ -807,8 +807,8 @@ END-ISO-10303-21;
         .find(|r| r.express_id == 43)
         .expect("the meshed IfcDoorStyle must get an attribute row, not an orphan GLB node");
     assert_eq!(
-        row.ifc_type, "IfcDoorType",
-        "the row carries the legacy-resolved name, matching the mesh's ifcType"
+        row.ifc_type, "IfcDoorStyle",
+        "the row preserves the exact schema name, matching the mesh's ifcType"
     );
     assert_eq!(row.global_id.as_deref(), Some("2n5ASfQfT84eP9h$zLLJ4A"));
     assert_eq!(row.name.as_deref(), Some("Door"));
@@ -860,7 +860,7 @@ END-ISO-10303-21;
         .iter()
         .find(|r| r.express_id == 43)
         .expect("the meshed IfcDoorStyle must get an attribute row");
-    assert_eq!(row.ifc_type, "IfcDoorType");
+    assert_eq!(row.ifc_type, "IfcDoorStyle");
 
     let names: Vec<&str> = row.attributes.iter().map(|p| p.name.as_str()).collect();
     assert!(
@@ -1131,8 +1131,8 @@ END-ISO-10303-21;
 
     // The DISPLAY type already normalised before this fix -- pin that it
     // still does, so this test isolates the ATTRIBUTE-NAME divergence.
-    assert_eq!(upper.ifc_type, "IfcBuildingElementProxy");
-    assert_eq!(lower.ifc_type, "IfcBuildingElementProxy", "display type already normalises case");
+    assert_eq!(upper.ifc_type, "IfcProxy");
+    assert_eq!(lower.ifc_type, "IfcProxy", "display type already normalises case");
 
     let upper_names: Vec<&str> = upper.attributes.iter().map(|p| p.name.as_str()).collect();
     let lower_names: Vec<&str> = lower.attributes.iter().map(|p| p.name.as_str()).collect();
@@ -1160,14 +1160,8 @@ END-ISO-10303-21;
     );
 }
 
-/// Non-legacy entities are unaffected by the case normalisation added to
-/// `legacy_attribute_names`: a modern name is never a key in the generated
-/// `LEGACY_ATTRIBUTE_NAMES` table (any case), so the lookup returns `None`
-/// either way and `render_attributes` falls back to `ifc_type.attribute_names()`
-/// exactly as before this fix.
+/// Modern entities use their generated schema attributes directly.
 #[test]
-fn a_non_legacy_entity_is_unaffected_by_legacy_name_case_normalisation() {
-    assert_eq!(ifc_lite_core::legacy_attribute_names("IFCWALL"), None);
-    assert_eq!(ifc_lite_core::legacy_attribute_names("ifcwall"), None);
-    assert_eq!(ifc_lite_core::legacy_attribute_names("IfcWall"), None);
+fn a_modern_entity_uses_generated_schema_attributes() {
+    assert_eq!(ifc_lite_core::IfcType::IfcWall.attribute_names()[0], "GlobalId");
 }

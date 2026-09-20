@@ -166,7 +166,7 @@ pub(super) fn discover_from_columns(
                 // but change the established processing type. Use the same
                 // resolver on both sides of the gate (#3179, #4203).
                 d.buffered_jobs
-                    .push((id, start, end, ifc_lite_core::legacy_aware_ifc_type(kw)));
+                    .push((id, start, end, ifc_lite_core::ifc_type_from_keyword(kw)));
                 d.total_jobs += 1;
             }
         }

@@ -21,7 +21,7 @@
 //! and `is_simple_geometry_type` are all on the hot path during scene
 //! construction, where the same ~50–100 distinct type names are queried
 //! millions of times per file. An immutable, schema-derived table memoises
-//! all modern and legacy names without taking a read-lock for each entity.
+//! all generated names and bounded exporter aliases without taking a read-lock for each entity.
 //! Unknown names use the same predicates without entering a growing cache.
 
 use std::sync::OnceLock;
@@ -29,16 +29,12 @@ use std::sync::OnceLock;
 use rustc_hash::FxHashMap;
 
 use crate::generated::IfcType;
-use crate::legacy_entities::get_legacy_entity_info;
 
 /// Normalise to uppercase ASCII without allocating when the input is already
 /// uppercase (the common case — STEP type tokens are emitted uppercase).
 ///
-/// `pub(crate)`, not private: [`crate::legacy_entities::legacy_attribute_names`]
-/// reuses this exact helper (rather than a second normalisation) so it cannot
-/// diverge on case handling from [`legacy_aware_ifc_type`] again (#4203
-/// follow-up: a lowercase keyword used to match this file's resolver but miss
-/// that lookup's case-sensitive scan, mislabeling attributes under the base type's names).
+/// `pub(crate)` so record-level parsing and keyword resolution share one exact
+/// normalisation rule.
 pub(crate) fn normalise_uppercase(type_name: &str) -> std::borrow::Cow<'_, str> {
     if type_name.bytes().any(|b| b.is_ascii_lowercase()) {
         std::borrow::Cow::Owned(type_name.to_ascii_uppercase())
@@ -60,13 +56,22 @@ struct TypeClassification {
 fn classifications() -> &'static FxHashMap<&'static str, TypeClassification> {
     static TABLE: OnceLock<FxHashMap<&'static str, TypeClassification>> = OnceLock::new();
     TABLE.get_or_init(|| {
-        crate::generated::IFC_TYPES.iter().map(IfcType::as_str)
-            .chain(crate::legacy_entities::LEGACY_ENTITY_NAMES.iter().copied())
-            .map(|name| (name, TypeClassification {
-                has_geometry: compute_has_geometry(name),
-                representationless_spatial: compute_is_representationless_spatial_container(name),
-                simple_geometry: compute_is_simple(name),
-            }))
+        crate::generated::IFC_TYPES
+            .iter()
+            .map(IfcType::as_str)
+            .chain(crate::EXPORTER_STRATUM_ALIASES.iter().copied())
+            .map(|name| {
+                (
+                    name,
+                    TypeClassification {
+                        has_geometry: compute_has_geometry(name),
+                        representationless_spatial: compute_is_representationless_spatial_container(
+                            name,
+                        ),
+                        simple_geometry: compute_is_simple(name),
+                    },
+                )
+            })
             .collect()
     })
 }
@@ -83,19 +88,15 @@ fn classifications() -> &'static FxHashMap<&'static str, TypeClassification> {
 ///    `IfcBuilding` (and any concrete subtype of those) are intentionally
 ///    kept — they have boundary representations the renderer consumes. See
 ///    [`is_non_geometric_spatial`] for how that exempt set is maintained.
-/// 2. Legacy IFC2x3 / removed-in-IFC4x3 names that are absent from the
-///    canonical IFC4X3 catalog (e.g. `IFCSLABELEMENTEDCASE`,
-///    `IFCBUILDINGELEMENT`, `IFCPROXY`, `IFCEQUIPMENTELEMENT`,
-///    `IFCELECTRICDISTRIBUTIONPOINT`) resolve through
-///    `legacy_entities::get_legacy_entity_info`, which carries the established
-///    processing type and a `has_geometry` flag. Supplemental exact enum
-///    variants preserve their names independently.
+/// 2. The only non-EXPRESS compatibility spellings are the documented exporter
+///    stratum aliases.
 /// 3. Reinforcement variants not covered above fall back to a substring
 ///    match (`REINFORCING…` / `REINFORCED…`).
 pub fn has_geometry_by_name(type_name: &str) -> bool {
     let upper = normalise_uppercase(type_name);
     classifications().get(upper.as_ref()).map_or_else(
-        || compute_has_geometry(upper.as_ref()), |class| class.has_geometry,
+        || compute_has_geometry(upper.as_ref()),
+        |class| class.has_geometry,
     )
 }
 
@@ -109,15 +110,18 @@ pub fn geometry_flags_by_name(type_name: &str) -> (bool, bool) {
         || {
             let geometry = compute_has_geometry(upper.as_ref());
             // These predicates are disjoint, including legacy and unknown names.
-            (geometry, !geometry && compute_is_representationless_spatial_container(upper.as_ref()))
+            (
+                geometry,
+                !geometry && compute_is_representationless_spatial_container(upper.as_ref()),
+            )
         },
         |class| (class.has_geometry, class.representationless_spatial),
     )
 }
 
 fn compute_has_geometry(upper: &str) -> bool {
-    if let Some(info) = get_legacy_entity_info(upper) {
-        return info.has_geometry;
+    if crate::is_exporter_stratum_alias(upper) {
+        return true;
     }
 
     let t = IfcType::from_str(upper);
@@ -203,9 +207,7 @@ pub fn is_representationless_spatial_container_by_name(type_name: &str) -> bool 
 }
 
 fn compute_is_representationless_spatial_container(upper: &str) -> bool {
-    if get_legacy_entity_info(upper).is_some() {
-        // Legacy/removed entities resolve their own `has_geometry` flag and
-        // are never part of this modern-schema-only exception path.
+    if crate::is_exporter_stratum_alias(upper) {
         return false;
     }
     let t = IfcType::from_str(upper);
@@ -227,7 +229,8 @@ fn compute_is_representationless_spatial_container(upper: &str) -> bool {
 pub fn is_simple_geometry_type(type_name: &str) -> bool {
     let upper = normalise_uppercase(type_name);
     classifications().get(upper.as_ref()).map_or_else(
-        || compute_is_simple(upper.as_ref()), |class| class.simple_geometry,
+        || compute_is_simple(upper.as_ref()),
+        |class| class.simple_geometry,
     )
 }
 
@@ -238,12 +241,9 @@ pub fn is_simple_geometry_type(type_name: &str) -> bool {
 /// `IfcType::from_str`; otherwise it disagrees with the geometry pass (which meshes
 /// legacy entities), leaving a rendered node with no attribute row — the
 /// geometry/attribute product-set divergence (#1496).
-pub fn legacy_aware_ifc_type(type_name: &str) -> IfcType {
+pub fn ifc_type_from_keyword(type_name: &str) -> IfcType {
     let upper = normalise_uppercase(type_name);
-    match get_legacy_entity_info(upper.as_ref()) {
-        Some(info) => info.base_type,
-        None => IfcType::from_str(upper.as_ref()),
-    }
+    IfcType::from_str(upper.as_ref())
 }
 
 /// The `IfcTypeProduct` subtype a STEP keyword names, **legacy-aware**, or
@@ -266,10 +266,12 @@ pub fn legacy_aware_ifc_type(type_name: &str) -> IfcType {
 ///
 /// `type_name` is the raw STEP keyword as the scanner read it, in whatever case the file wrote it.
 pub fn type_product_ifc_type(type_name: &str) -> Option<IfcType> {
-    if !crate::parser::keyword_ends_with(type_name, "TYPE") && !crate::parser::keyword_ends_with(type_name, "STYLE") {
+    if !crate::parser::keyword_ends_with(type_name, "TYPE")
+        && !crate::parser::keyword_ends_with(type_name, "STYLE")
+    {
         return None;
     }
-    let ty = legacy_aware_ifc_type(type_name);
+    let ty = ifc_type_from_keyword(type_name);
     ty.is_subtype_of(IfcType::IfcTypeProduct).then_some(ty)
 }
 
@@ -290,25 +292,22 @@ pub fn type_product_ifc_type(type_name: &str) -> Option<IfcType> {
 /// every legacy keyword reached the browser labelled `"Unknown"` while the
 /// native pipeline, which still has the keyword in hand, labelled it correctly
 /// (#3179).
-pub fn legacy_aware_ifc_type_from_record(decoded: IfcType, record: &[u8]) -> IfcType {
+pub fn ifc_type_from_record(decoded: IfcType, record: &[u8]) -> IfcType {
     // #4203: supported legacy schema names now have exact enum variants. Keep
     // this helper's classification contract stable: native callers already
     // map these names through legacy_aware_ifc_type, and the browser must not
     // diverge merely because the decoder can finally preserve the exact name.
-    if let Some(info) = get_legacy_entity_info(decoded.as_str()) {
-        return info.base_type;
-    }
     if !matches!(decoded, IfcType::Unknown(_)) {
         return decoded;
     }
     match crate::fast_parse::extract_entity_type_name(record) {
-        Some(name) => legacy_aware_ifc_type(name),
+        Some(name) => ifc_type_from_keyword(name),
         None => decoded,
     }
 }
 
 fn compute_is_simple(upper: &str) -> bool {
-    let t = legacy_aware_ifc_type(upper);
+    let t = ifc_type_from_keyword(upper);
 
     // Anything not in the modern schema defaults to "simple" priority,
     // matching the original blacklist's "anything else is simple" behaviour.

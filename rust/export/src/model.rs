@@ -308,7 +308,7 @@ pub fn stream_export_model_with_options(
         // `from_str`) resolves removed/renamed keywords (IFCPROXY, IFCSOLIDSTRATUM,
         // …) to their modern base type, matching what the geometry pass meshes —
         // otherwise those products render as GLB nodes with no attribute row (#1496).
-        let ty = ifc_lite_core::legacy_aware_ifc_type(type_name);
+        let ty = ifc_lite_core::ifc_type_from_keyword(type_name);
         if !ty.is_subtype_of(IfcType::IfcProduct) {
             continue;
         }

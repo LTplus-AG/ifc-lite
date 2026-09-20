@@ -13,7 +13,7 @@
 //! never reaches them either — their `RepresentationMaps` geometry is silently
 //! dropped from every path.
 
-use ifc_lite_core::{has_geometry_by_name, legacy_aware_ifc_type, IfcType};
+use ifc_lite_core::{has_geometry_by_name, ifc_type_from_keyword, IfcType};
 use ifc_lite_processing::{
     classify_type_name, process_geometry, PREPASS_CLASS_FLAG_TYPE_CANDIDATE,
 };
@@ -81,7 +81,7 @@ fn legacy_type_keywords_set_the_shard_type_candidate_flag() {
             PREPASS_CLASS_FLAG_TYPE_CANDIDATE,
             "{name} resolves to {:?}, an IfcTypeProduct subtype, so the sharded scan \
              must flag it as a type-geometry candidate",
-            legacy_aware_ifc_type(name)
+            ifc_type_from_keyword(name)
         );
     }
 }
@@ -108,18 +108,18 @@ fn legacy_type_keywords_set_the_shard_type_candidate_flag() {
 #[test]
 fn exact_legacy_type_candidates_are_never_also_geometry_jobs() {
     let exact_legacy = [
-        ("IFCDOORSTYLE", IfcType::IfcDoorType),
-        ("IFCWINDOWSTYLE", IfcType::IfcWindowType),
-        ("IFCBUILDINGELEMENTTYPE", IfcType::IfcBuiltElementType),
+        ("IFCDOORSTYLE", IfcType::IfcDoorStyle),
+        ("IFCWINDOWSTYLE", IfcType::IfcWindowStyle),
+        ("IFCBUILDINGELEMENTTYPE", IfcType::IfcBuildingElementType),
     ];
     for (name, expected) in exact_legacy {
-        assert_eq!(legacy_aware_ifc_type(name), expected, "{name}");
+        assert_eq!(ifc_type_from_keyword(name), expected, "{name}");
         assert!(
             IfcType::from_str(name).is_subtype_of(IfcType::IfcTypeProduct),
             "{name} must retain its exact generated inheritance"
         );
         assert!(
-            legacy_aware_ifc_type(name).is_subtype_of(IfcType::IfcTypeProduct),
+            ifc_type_from_keyword(name).is_subtype_of(IfcType::IfcTypeProduct),
             "{name} must be admitted by the legacy-aware resolver"
         );
         assert!(

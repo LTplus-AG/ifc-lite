@@ -6,7 +6,7 @@
 /**
  * Regression harness for scripts/generate-coverage-ledger.mjs.
  *
- * Method matches scripts/check-legacy-entity-coverage.test.mjs: copy the REAL
+ * Copies the REAL
  * source files this generator reads into a temp tree, run the UNMODIFIED
  * generator against it via `--root`, and assert exit code / output. Two
  * shapes are covered: (1) a source mutated to zero matches must make the
@@ -28,7 +28,7 @@ import { fileURLToPath } from 'node:url';
 const SCRIPTS = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SCRIPTS, '..');
 const GENERATOR = join(SCRIPTS, 'generate-coverage-ledger.mjs');
-const HELPER = join(SCRIPTS, 'check-legacy-entity-coverage.mjs');
+const HELPER = join(SCRIPTS, 'lib/entity-table.mjs');
 const SCHEMA_NAMES_HELPER = join(SCRIPTS, 'lib/rust-schema-names.mjs');
 const CREATABLE_HELPER = join(SCRIPTS, 'coverage-ledger-creatable.mjs');
 
@@ -37,7 +37,6 @@ const SOURCE_RELS = [
   'packages/data/src/ifc-schema/generated/entities-ifc4.ts',
   'packages/data/src/ifc-schema/generated/entities-ifc4x3.ts',
   'rust/core/src/generated/schema.rs',
-  'rust/core/src/legacy_entities.rs',
   'packages/data/src/relationship-type.ts',
   'rust/geometry/src/router/processor_registry.rs',
   'packages/create/src/ifc-creator.ts',
@@ -137,8 +136,8 @@ function runOn(overrides = {}, generatorSrc = realGeneratorSrc) {
     // next to a copy of the generator itself so `--root` doesn't have to
     // fight import resolution.
     mkdirSync(join(dir, 'scripts'), { recursive: true });
-    writeFileSync(join(dir, 'scripts', 'check-legacy-entity-coverage.mjs'), readFileSync(HELPER, 'utf8'));
     mkdirSync(join(dir, 'scripts', 'lib'), { recursive: true });
+    writeFileSync(join(dir, 'scripts', 'lib/entity-table.mjs'), readFileSync(HELPER, 'utf8'));
     writeFileSync(
       join(dir, 'scripts', 'lib/rust-schema-names.mjs'),
       readFileSync(SCHEMA_NAMES_HELPER, 'utf8'),
@@ -350,14 +349,6 @@ test('vacuity guard: emptied schema.rs from_str arms fails loudly', () => {
   assert.match(log, /retained\(IFC4X3 from_str arms\)/); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
 });
 
-test('vacuity guard: emptied legacy_entities.rs match arms fails loudly', () => {
-  const rel = 'rust/core/src/legacy_entities.rs';
-  const src = real.get(rel);
-  assert.ok(/"(IFC[A-Z0-9]+)"\s*=>\s*Some\(/.test(src), 'test anchor drifted — no legacy match arms found'); // @source-text-assertion-ok mutation anchor guard, not a subject assertion
-  const { status, log } = runOn({ [rel]: '// no match arms here' });
-  assert.equal(status, 1);
-  assert.match(log, /retained\(legacy_entities\.rs arms\)/); // @source-text-assertion-ok asserts on the real generator's spawned output/emitted ledger, not on unexecuted source text
-});
 
 test('vacuity guard: emptied ifc-creator.ts this.line calls fails loudly', () => {
   const rel = 'packages/create/src/ifc-creator.ts';

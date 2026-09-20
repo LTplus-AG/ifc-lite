@@ -61,23 +61,25 @@ impl GeometryRouter {
         // branches below only start mutating it in their own loops — so this is
         // exactly the object-space extent `transform` is about to bake into
         // world space. A single extra min/max pass, no allocation.
-        mesh.local_bounds = if mesh.positions.is_empty() {
-            None
-        } else {
-            let mut min = [f32::INFINITY; 3];
-            let mut max = [f32::NEG_INFINITY; 3];
-            for chunk in mesh.positions.chunks_exact(3) {
-                for k in 0..3 {
-                    if chunk[k] < min[k] {
-                        min[k] = chunk[k];
-                    }
-                    if chunk[k] > max[k] {
-                        max[k] = chunk[k];
+        mesh.local_bounds = mesh.local_bounds.or_else(|| {
+            if mesh.positions.is_empty() {
+                None
+            } else {
+                let mut min = [f32::INFINITY; 3];
+                let mut max = [f32::NEG_INFINITY; 3];
+                for chunk in mesh.positions.chunks_exact(3) {
+                    for k in 0..3 {
+                        if chunk[k] < min[k] {
+                            min[k] = chunk[k];
+                        }
+                        if chunk[k] > max[k] {
+                            max[k] = chunk[k];
+                        }
                     }
                 }
+                Some([min[0], min[1], min[2], max[0], max[1], max[2]])
             }
-            Some([min[0], min[1], min[2], max[0], max[1], max[2]])
-        };
+        });
         mesh.local_to_world = Some(super::mat4_to_row_major(transform));
 
         let rtc = self.rtc_offset;

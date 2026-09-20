@@ -4,9 +4,10 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseLandXmlViewerModel } from './landXmlViewerModel.js';
-import { parseLandXmlTin } from './landXmlTin.js';
+import { parseLandXmlViewerModelAsync } from './landXmlViewerModel.js';
 import { connectedFaceComponents } from './landXmlIngest.js';
+import { isLandXmlContent } from './landXmlSniff.js';
+import { parseLandXmlTinInCurrentRealm } from './landXmlWasm.js';
 
 const LANDXML = `<?xml version="1.0" encoding="UTF-8"?>
 <LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
@@ -59,29 +60,50 @@ function sharedBytes(buffer: ArrayBuffer): SharedArrayBuffer {
   return shared;
 }
 
-/** Make Node reproduce the browser policy that rejects SAB TextDecoder input. */
-function rejectSharedTextDecoderInput(): () => void {
-  const realDecode = TextDecoder.prototype.decode;
-  TextDecoder.prototype.decode = function (
-    this: TextDecoder,
-    input?: AllowSharedBufferSource,
-    options?: TextDecodeOptions,
-  ): string {
-    const backing = ArrayBuffer.isView(input) ? input.buffer : input;
-    if (backing instanceof SharedArrayBuffer) {
-      throw new TypeError('TextDecoder.decode: cannot decode SharedArrayBuffer');
-    }
-    return realDecode.call(this, input, options);
-  };
-  return () => { TextDecoder.prototype.decode = realDecode; };
-}
+const parseDocument = (text: string) => parseLandXmlTinInCurrentRealm(bytes(text));
+const parseViewer = (buffer: ArrayBuffer | SharedArrayBuffer) => parseLandXmlViewerModelAsync(buffer);
+
+describe('LandXML content dispatch (#5041)', () => {
+  it('recognizes default and prefixed roots without claiming generic XML', () => {
+    assert.equal(isLandXmlContent(new Uint8Array(bytes(LANDXML))), true);
+    const prefixed = LANDXML
+      .replace('<LandXML xmlns=', '<lx:LandXML xmlns:lx=')
+      .replace('</LandXML>', '</lx:LandXML>');
+    assert.equal(isLandXmlContent(new Uint8Array(bytes(prefixed))), true);
+    assert.equal(isLandXmlContent(new TextEncoder().encode(
+      '<?xml version="1.0"?><ids xmlns="http://standards.buildingsmart.org/IDS"/>',
+    )), false);
+    assert.equal(isLandXmlContent(new TextEncoder().encode(
+      '<ifcXML xmlns="http://www.buildingsmart-tech.org/ifcXML/IFC4/final"/>',
+    )), false);
+  });
+
+  it('recognizes UTF-16 LandXML and rejects a spoofed nested element', () => {
+    assert.equal(isLandXmlContent(new Uint8Array(utf16LeBytes(LANDXML))), true);
+    assert.equal(isLandXmlContent(new Uint8Array(utf16LeBytes(LANDXML)).subarray(2)), true);
+    assert.equal(isLandXmlContent(new TextEncoder().encode(
+      `<document><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2"/></document>`,
+    )), false);
+  });
+
+  it('finds the root after a legal prolog longer than the old 4 KiB head slice', () => {
+    const longProlog = `<!--${'x'.repeat(8 * 1024)}-->\n${LANDXML}`;
+    assert.equal(isLandXmlContent(new TextEncoder().encode(longProlog)), true);
+  });
+
+  it('finds the namespace after a quoted greater-than sign in the root tag', () => {
+    const quoted = LANDXML.replace('<LandXML ', '<LandXML note="a > b" ');
+    assert.equal(isLandXmlContent(new TextEncoder().encode(quoted)), true);
+  });
+});
 
 describe('LandXML 1.2 TIN ingest (#4937)', () => {
-  it('parses schema point order and ignores invisible/non-TIN faces', () => {
-    const parsed = parseLandXmlTin(LANDXML);
+  it('parses schema point order and ignores invisible/non-TIN faces', async () => {
+    const parsed = await parseDocument(LANDXML);
     assert.equal(parsed.version, '1.2');
     assert.equal(parsed.surfaces.length, 1);
     assert.equal(parsed.surfaces[0].name, 'Existing Ground');
+    assert.equal(parsed.surfaces[0].sourceId, 'landxml:surface:1:Existing Ground');
     assert.deepEqual(parsed.surfaces[0].points[0], {
       id: '10', northing: 5_000_000, easting: 2_600_000, elevation: 100,
     });
@@ -89,8 +111,8 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.match(parsed.warnings[0], /Unsupported Grid/);
   });
 
-  it('produces a rebased Y-up render mesh without losing survey coordinates', () => {
-    const result = parseLandXmlViewerModel(bytes(LANDXML));
+  it('produces a rebased Y-up render mesh without losing survey coordinates', async () => {
+    const result = await parseViewer(bytes(LANDXML));
     assert.equal(result.geometryResult.meshes.length, 1);
     assert.equal(result.geometryResult.totalTriangles, 1);
     assert.equal(result.geometryResult.totalVertices, 3);
@@ -117,18 +139,18 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.z, -5_000_000);
   });
 
-  it('excludes points unused by visible faces from vertex and camera bounds', () => {
+  it('excludes points unused by visible faces from vertex and camera bounds', async () => {
     const withOutlier = LANDXML.replace(
       '</Pnts>',
       '<P id="99">900000000 800000000 700000000</P></Pnts>',
     );
-    const result = parseLandXmlViewerModel(bytes(withOutlier));
+    const result = await parseViewer(bytes(withOutlier));
     assert.equal(result.geometryResult.totalVertices, 3);
     assert.deepEqual(result.geometryResult.meshes[0].origin, [0, 0, 0]);
     assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 2_600_010);
   });
 
-  it('excludes distant points referenced only by a rejected degenerate face', () => {
+  it('excludes distant points referenced only by a rejected degenerate face', async () => {
     const withDegenerateOutlier = LANDXML
       .replace(
         '</Pnts>',
@@ -137,22 +159,22 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
          <P id="52">900000002 800000002 700000002</P></Pnts>`,
       )
       .replace('</Faces>', '<F>50 51 52</F></Faces>');
-    const result = parseLandXmlViewerModel(bytes(withDegenerateOutlier));
+    const result = await parseViewer(bytes(withDegenerateOutlier));
     assert.equal(result.geometryResult.totalVertices, 3);
     assert.equal(result.geometryResult.totalTriangles, 1);
     assert.deepEqual(result.geometryResult.meshes[0].origin, [0, 0, 0]);
     assert.ok(result.warnings.some((warning) => /Skipped 1 degenerate face/.test(warning)));
   });
 
-  it('preserves finite world bounds for a valid surface wider than 20 km', () => {
+  it('preserves finite world bounds for a valid surface wider than 20 km', async () => {
     const wide = LANDXML.replaceAll('2600010', '2630000');
-    const result = parseLandXmlViewerModel(bytes(wide));
+    const result = await parseViewer(bytes(wide));
     assert.equal(result.geometryResult.coordinateInfo.originalBounds.min.x, 2_600_000);
     assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 2_630_000);
     assert.ok(Number.isFinite(result.geometryResult.coordinateInfo.shiftedBounds.max.x));
   });
 
-  it('keeps disconnected components the shared render frame can place on their own local origins', () => {
+  it('keeps disconnected components the shared render frame can place on their own local origins', async () => {
     const withNearbySmallFace = LANDXML
       .replace(
         '</Pnts>',
@@ -161,7 +183,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
          <P id="52">5100001 2700000 100</P></Pnts>`,
       )
       .replace('</Faces>', '<F>50 51 52</F></Faces>');
-    const result = parseLandXmlViewerModel(bytes(withNearbySmallFace));
+    const result = await parseViewer(bytes(withNearbySmallFace));
     assert.equal(result.geometryResult.meshes.length, 2);
     assert.equal(result.geometryResult.totalVertices, 6);
     assert.equal(result.geometryResult.totalTriangles, 2);
@@ -177,7 +199,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.equal(result.warnings.some((warning) => /degenerate face|render frame/.test(warning)), false);
   });
 
-  it('skips a disconnected component the shared render frame cannot place precisely', () => {
+  it('skips a disconnected component the shared render frame cannot place precisely', async () => {
     const withDistantSmallFace = LANDXML
       .replace(
         '</Pnts>',
@@ -186,7 +208,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
          <P id="52">900000001 800000000 700000000</P></Pnts>`,
       )
       .replace('</Faces>', '<F>50 51 52</F></Faces>');
-    const result = parseLandXmlViewerModel(bytes(withDistantSmallFace));
+    const result = await parseViewer(bytes(withDistantSmallFace));
     assert.equal(result.geometryResult.meshes.length, 1);
     assert.equal(result.geometryResult.totalTriangles, 1);
     assert.deepEqual(result.geometryResult.meshes[0].origin, [0, 0, 0]);
@@ -195,13 +217,13 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.ok(result.warnings.some((warning) => /Skipped 1 surface component\(s\) whose full Y-up bounds exceed 1000 km/.test(warning)));
   });
 
-  it('removes the survey translation before GPU upload and retains it as frame metadata', () => {
+  it('removes the survey translation before GPU upload and retains it as frame metadata', async () => {
     const surveyOnly = LANDXML
       .replaceAll('5000000', '900000000')
       .replaceAll('5000010', '900000001')
       .replaceAll('2600000', '800000000')
       .replaceAll('2600010', '800000001');
-    const result = parseLandXmlViewerModel(bytes(surveyOnly));
+    const result = await parseViewer(bytes(surveyOnly));
     const mesh = result.geometryResult.meshes[0];
     const info = result.geometryResult.coordinateInfo;
 
@@ -217,7 +239,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     });
   });
 
-  it('rejects a connected component whose full Y-up bounds exceed one f32 frame', () => {
+  it('rejects a connected component whose full Y-up bounds exceed one f32 frame', async () => {
     const connectedAcrossSurveyRange = LANDXML
       .replace(
         '</Pnts>',
@@ -227,8 +249,8 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
          <P id="60">900001000 800001000 700000100</P></Pnts>`,
       )
       .replace('</Faces>', '<F>50 51 52</F><F>30 50 60</F></Faces>');
-    assert.throws(
-      () => parseLandXmlViewerModel(bytes(connectedAcrossSurveyRange)),
+    await assert.rejects(
+      parseViewer(bytes(connectedAcrossSurveyRange)),
       /no surface components whose full Y-up bounds fit within the 1000 km render-frame limit/,
       'a connected component cannot be partially registered after its full extent exceeds one f32 frame',
     );
@@ -244,123 +266,118 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.equal(components[0].length, faceCount);
   });
 
-  it('decodes XML-required UTF-16 input before parsing', () => {
+  it('passes raw XML-required UTF-16 input to the Rust parser', async () => {
     const utf16 = LANDXML.replace('encoding="UTF-8"', 'encoding="UTF-16"');
-    const result = parseLandXmlViewerModel(utf16LeBytes(utf16));
+    const result = await parseViewer(utf16LeBytes(utf16));
     assert.equal(result.geometryResult.totalTriangles, 1);
     assert.deepEqual(result.surfaceNames, ['Existing Ground']);
   });
 
-  it('copies SAB input once before encoding detection and decoding, including UTF-16', () => {
-    const restore = rejectSharedTextDecoderInput();
-    try {
-      const utf8 = parseLandXmlViewerModel(sharedBytes(bytes(LANDXML)));
-      const utf16 = parseLandXmlViewerModel(sharedBytes(utf16LeBytes(LANDXML.replace('encoding="UTF-8"', 'encoding="UTF-16"'))));
-      assert.equal(utf8.geometryResult.totalTriangles, 1);
-      assert.equal(utf16.geometryResult.totalTriangles, 1);
-      assert.deepEqual(utf16.surfaceNames, ['Existing Ground']);
-    } finally {
-      restore();
-    }
+  it('passes SAB-backed UTF-8 and UTF-16 bytes without TextDecoder', async () => {
+    const utf8 = await parseViewer(sharedBytes(bytes(LANDXML)));
+    const utf16 = await parseViewer(sharedBytes(utf16LeBytes(LANDXML.replace('encoding="UTF-8"', 'encoding="UTF-16"'))));
+    assert.equal(utf8.geometryResult.totalTriangles, 1);
+    assert.equal(utf16.geometryResult.totalTriangles, 1);
+    assert.deepEqual(utf16.surfaceNames, ['Existing Ground']);
   });
 
-  it('applies the declared horizontal and elevation units independently', () => {
+  it('applies the declared horizontal and elevation units independently', async () => {
     const imperial = LANDXML
       .replace('<Metric areaUnit="squareMeter" linearUnit="meter" volumeUnit="cubicMeter"\n      temperatureUnit="celsius" pressureUnit="milliBars" elevationUnit="meter"/>',
         '<Imperial areaUnit="squareFoot" linearUnit="USSurveyFoot" volumeUnit="cubicFeet" temperatureUnit="fahrenheit" pressureUnit="inchHG" elevationUnit="feet"/>')
       .replaceAll('5000000', '0').replaceAll('2600000', '0').replaceAll('2600010', '10')
       .replaceAll('5000010', '10');
-    const result = parseLandXmlViewerModel(bytes(imperial));
+    const result = await parseViewer(bytes(imperial));
     const info = result.geometryResult.coordinateInfo.originalBounds;
     assert.ok(Math.abs(info.max.x - (10 * 1200 / 3937)) < 1e-6);
     assert.ok(Math.abs(info.max.y - (102 * 0.3048)) < 1e-5);
   });
 
-  it('uses the declared linear unit for elevations when elevationUnit is omitted', () => {
+  it('uses the declared linear unit for elevations when elevationUnit is omitted', async () => {
     const imperial = LANDXML
       .replace('<Metric areaUnit="squareMeter" linearUnit="meter" volumeUnit="cubicMeter"\n      temperatureUnit="celsius" pressureUnit="milliBars" elevationUnit="meter"/>',
         '<Imperial areaUnit="squareFoot" linearUnit="foot" volumeUnit="cubicFeet" temperatureUnit="fahrenheit" pressureUnit="inchHG"/>')
       .replace('<P id="10">5000000 2600000 100</P>', '<P id="10">0 0 3</P>')
       .replace('<P id="20">5000000 2600010 100</P>', '<P id="20">0 3 3</P>')
       .replace('<P id="30">5000010 2600000 102</P>', '<P id="30">3 0 6</P>');
-    const result = parseLandXmlViewerModel(bytes(imperial));
+    const result = await parseViewer(bytes(imperial));
     const info = result.geometryResult.coordinateInfo.originalBounds;
     assert.ok(Math.abs(info.max.y - 1.8288) < 1e-12, 'elevation uses the same foot scale as X/Z');
   });
 
-  it('rejects prototype property names as unsupported units', () => {
+  it('preserves the stable Rust error code for unsupported units', async () => {
     const inheritedUnit = LANDXML.replace('linearUnit="meter"', 'linearUnit="constructor"');
-    assert.throws(
-      () => parseLandXmlViewerModel(bytes(inheritedUnit)),
-      /Unsupported LandXML linear unit: constructor/,
+    await assert.rejects(
+      parseViewer(bytes(inheritedUnit)),
+      /LXML009: unsupported LandXML unit/,
     );
   });
 
-  it('rejects a face whose point identity cannot be resolved', () => {
-    assert.throws(
-      () => parseLandXmlTin(LANDXML.replace('<F>10 20 30</F>', '<F>10 20 999</F>')),
-      /unknown point 999/,
+  it('preserves the stable Rust error code for an unknown face point', async () => {
+    await assert.rejects(
+      parseDocument(LANDXML.replace('<F>10 20 30</F>', '<F>10 20 999</F>')),
+      /LXML009: face references unknown point/,
     );
   });
 
-  it('resolves positive-integer point ids by XML Schema value, not spelling', () => {
-    const parsed = parseLandXmlTin(LANDXML
+  it('resolves positive-integer point ids by XML Schema value, not spelling', async () => {
+    const parsed = await parseDocument(LANDXML
       .replace('<P id="10">', '<P id="+0010">')
       .replace('<F>10 20 30</F>', '<F>00010 +20 030</F>'));
     assert.equal(parsed.surfaces[0].points[0].id, '10');
     assert.deepEqual(parsed.surfaces[0].faces, [['10', '20', '30']]);
   });
 
-  it('ignores extension elements that reuse LandXML local names', () => {
+  it('ignores extension elements that reuse LandXML local names', async () => {
     const withExtensionSurface = LANDXML.replace(
       '</Surfaces>',
       `<ext:Surface xmlns:ext="urn:vendor-extension" name="Not terrain">
         <ext:Definition surfType="TIN"/>
       </ext:Surface></Surfaces>`,
     );
-    const parsed = parseLandXmlTin(withExtensionSurface);
+    const parsed = await parseDocument(withExtensionSurface);
     assert.deepEqual(parsed.surfaces.map((surface) => surface.name), ['Existing Ground']);
   });
 
-  it('rejects a non-LandXML namespace even when the root spoofs version 1.2', () => {
-    assert.throws(
-      () => parseLandXmlTin(LANDXML.replace(
+  it('preserves the stable namespace diagnostic', async () => {
+    await assert.rejects(
+      parseDocument(LANDXML.replace(
         'http://www.landxml.org/schema/LandXML-1.2',
         'urn:not-landxml',
       )),
-      /Unsupported LandXML namespace/,
+      /LXML007: root namespace is not a recognized LandXML namespace/,
     );
   });
 
-  it('rejects a LandXML 1.1 namespace even when the version attribute says 1.2', () => {
-    assert.throws(
-      () => parseLandXmlTin(LANDXML.replace(
+  it('rejects a LandXML 1.1 namespace even when the version attribute says 1.2', async () => {
+    await assert.rejects(
+      parseDocument(LANDXML.replace(
         'http://www.landxml.org/schema/LandXML-1.2',
         'http://www.landxml.org/schema/LandXML-1.1',
       )),
-      /Unsupported LandXML namespace/,
+      /LXML008: LandXML 1.1 is recognized but TIN ingestion supports 1.2 only/,
     );
   });
 
-  it('requires the exact LandXML 1.2 namespace', () => {
-    assert.throws(
-      () => parseLandXmlTin(LANDXML.replace(
+  it('requires the exact LandXML 1.2 namespace', async () => {
+    await assert.rejects(
+      parseDocument(LANDXML.replace(
         'http://www.landxml.org/schema/LandXML-1.2',
         'urn:vendor:LandXML-1.2',
       )),
-      /Unsupported LandXML namespace/,
+      /LXML007: root namespace is not a recognized LandXML namespace/,
     );
-    assert.throws(
-      () => parseLandXmlTin(LANDXML.replace(
+    await assert.rejects(
+      parseDocument(LANDXML.replace(
         ' xmlns="http://www.landxml.org/schema/LandXML-1.2"',
         '',
       )),
-      /Unsupported LandXML namespace: missing/,
+      /LXML007: root namespace is not a recognized LandXML namespace/,
     );
   });
 
-  it('parses without the window-only DOMParser global used by the browser main thread', () => {
+  it('parses without the window-only DOMParser global used by the browser main thread', async () => {
     assert.equal(globalThis.DOMParser, undefined);
-    assert.equal(parseLandXmlTin(LANDXML).surfaces[0].name, 'Existing Ground');
+    assert.equal((await parseDocument(LANDXML)).surfaces[0].name, 'Existing Ground');
   });
 });

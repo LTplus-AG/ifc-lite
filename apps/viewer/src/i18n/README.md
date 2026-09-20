@@ -371,6 +371,42 @@ non-English locale — the same reasoning that keeps `bcfHelpers.tsx`'s
 quantity/classification/material/model/zone NAMES and VALUES discovered
 from the loaded model remain runtime data throughout.
 
+The Compare panel catalogue (#4918 compare slice, `compare-panel.en.ts`,
+keys prefixed `comparePanel.<component>.*`) covers `ComparePanel.tsx`'s own
+header/empty-state/BCF-compose-strip chrome and its `compare/` components:
+the run controls and ignored-classes picker (`CompareRunControls`,
+`CompareBlacklist`), the results list and its Matched/Suggestions sections
+(`CompareResultsList`, `CompareMatchGroups`, `CompareSuggestions`), the
+"what changed" detail (`ChangeDetailView`, whose delta lines were combined
+into single complete messages per the house rule against fragmenting a
+translated message rather than left split across a unit suffix and three
+axis labels), the download strip (`CompareExportBar`, including its
+"identity entries imported" status text), and the "raise a BCF topic from
+this change" affordance (`BcfFromChange`). The `+N more not shown` overflow
+notice is one shared key used by all three list sections. This is a sibling
+to the unrelated `compare-key-property.en.ts` (the authored-key picker
+feature), not the same catalogue renamed. Element/type NAMES, IFC class
+tags, and `bcfTextFromChange`'s BCF topic title/description stay literal —
+the latter is persisted verbatim into an exported BCF topic, the same
+reasoning the BCF-panel and clash-panel catalogues already document for
+text that doubles as exported content.
+
+The model-reposition catalogue (#4918 slice, `reposition-panel.en.ts`,
+prefix `repositionPanel.*`) covers the `reposition/` directory:
+`RepositionPanel.tsx` (the floating panel's header, moving/reference model
+pickers, framing shortcuts, point-picking prompts, constraint/input-mode
+controls, the move-dimensions readout, and the apply/undo/redo/reset
+actions), `RotationControls.tsx` (the heading and pivot fields, their
+guidance text, and the per-model rotation summary), `PlacementGizmo.tsx`
+(the drag-handle SVG's aria-labels and its live delta readout),
+`PlacementFiles.tsx` (the save/restore-placements disclosure and its
+instance-mapping fieldset), and `StaleMeasurementBadge.tsx` (the single
+stale-measurement indicator). Model NAMES stay as interpolation params;
+the hover-target kind (vertex/edge/face/point/origin/bounds) and the
+source/target pick role are internal enums whose display words moved to
+the same data-table `labelKey` pattern `sectionConstants.ts`'s
+`AXIS_INFO` and slice 2's command registries use.
+
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for
 hardcoded JSX text, `{'…'}`-wrapped JSX-expression string literals, and

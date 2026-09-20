@@ -161,6 +161,12 @@ describe('real repo — runAllTargets (#4202: IFC2X3 joins IFC4/IFC4X3)', { skip
       names.some((n) => n.includes('ifc2x3') && n.startsWith('packages/parser')),
       `expected a packages/parser/src/generated/ifc2x3 target, got: ${names.join(', ')}`,
     );
+    for (const file of ['schema.rs', 'type_ids.rs']) {
+      assert.ok(
+        names.includes(`rust/core/src/generated/${file} (canonical IFC4X3 type universe)`),
+        `expected the canonical Rust ${file} freshness target, got: ${names.join(', ')}`,
+      );
+    }
     for (const r of results) {
       assert.equal(r.ok, true, `${r.name} unexpectedly stale: ${JSON.stringify(r)}`);
     }

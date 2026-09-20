@@ -17,6 +17,7 @@ import { chatEn } from './catalogues/chat.en';
 import { chatByokEn } from './catalogues/chat-byok.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
+import { comparePanelEn } from './catalogues/compare-panel.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
 import { extensionsFlavorsEn } from './catalogues/extensions-flavors.en';
 import { extensionsPanelsEn } from './catalogues/extensions-panels.en';
@@ -30,6 +31,7 @@ import { layersPanelEn } from './catalogues/layers-panel.en';
 import { lensPanelEn } from './catalogues/lens-panel.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
 import { propertyEditorEn } from './catalogues/property-editor.en';
+import { repositionPanelEn } from './catalogues/reposition-panel.en';
 import { listsEn } from './catalogues/lists.en';
 import { mcpEn } from './catalogues/mcp.en';
 import { mcpPlaygroundEn } from './catalogues/mcp-playground.en';
@@ -88,6 +90,7 @@ export const en = {
   ...appearancePickersEn,
   ...appearanceWorkflowsEn,
   ...compareKeyPropertyEn,
+  ...comparePanelEn,
   ...extensionsFlavorsEn,
   ...extensionsPanelsEn,
   ...idsPanelEn,
@@ -97,6 +100,7 @@ export const en = {
   ...bcfEn,
   ...layersPanelEn,
   ...lensPanelEn,
+  ...repositionPanelEn,
 } as const;
 
 export type TranslationKey = keyof typeof en;

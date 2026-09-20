@@ -59,8 +59,8 @@ export const anonymizedExportEn = {
 
   // TypeCategoryBar
   'anonymizedExport.typeCategoryBar.heading': 'Categories in export',
-  'anonymizedExport.typeCategoryBar.blockedCountPrefix': '{count} blocked · ',
   'anonymizedExport.typeCategoryBar.clickToBlockHint': 'click a category to block it',
+  'anonymizedExport.typeCategoryBar.blockedClickToBlockHint': '{count} blocked · click a category to block it',
   'anonymizedExport.typeCategoryBar.unblockAriaLabel': 'Unblock {typeName}',
   'anonymizedExport.typeCategoryBar.blockAriaLabel': 'Block {typeName}',
   'anonymizedExport.typeCategoryBar.alwaysIncludedTitle': 'Always included (selection or spatial chain)',

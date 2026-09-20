@@ -36,6 +36,7 @@ import { GeometryAxisRow } from './GeometryAxisRow';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 
 interface GeometryEditCardProps {
   modelId: string;
@@ -72,6 +73,7 @@ function useEntityCoordinates(
 const STEP_PRESETS = [0.1, 0.5, 1];
 
 export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEditCardProps) {
+  const { t } = useTranslation();
   const setEntityPosition = useViewerStore((s) => s.setEntityPosition);
   const translateEntity = useViewerStore((s) => s.translateEntity);
   const rotateEntity = useViewerStore((s) => s.rotateEntity);
@@ -109,16 +111,16 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
   const applyAbsolute = useCallback(() => {
     const parsed: [number, number, number] = [parseFloat(x), parseFloat(y), parseFloat(z)];
     if (parsed.some((n) => !Number.isFinite(n))) {
-      toast.error('Enter numeric X, Y, Z coordinates');
+      toast.error(t('geometryExport.editCard.enterNumericError'));
       return;
     }
     const result = setEntityPosition(modelId, entityId, parsed);
     if (!result.ok) {
-      toast.error(`Couldn't move: ${result.reason}`);
+      toast.error(t('geometryExport.editCard.moveFailedError', { reason: result.reason }));
       return;
     }
-    toast.success(`Moved to (${parsed.map((n) => n.toFixed(2)).join(', ')})`);
-  }, [modelId, entityId, x, y, z, setEntityPosition]);
+    toast.success(t('geometryExport.editCard.movedSuccess', { coordinates: parsed.map((n) => n.toFixed(2)).join(', ') }));
+  }, [modelId, entityId, x, y, z, setEntityPosition, t]);
 
   const nudge = useCallback(
     (axis: 0 | 1 | 2, sign: 1 | -1) => {
@@ -126,11 +128,11 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
       delta[axis] = sign * step;
       const result = translateEntity(modelId, entityId, delta);
       if (!result.ok) {
-        toast.error(`Couldn't move: ${result.reason}`);
+        toast.error(t('geometryExport.editCard.moveFailedError', { reason: result.reason }));
         return;
       }
     },
-    [modelId, entityId, step, translateEntity],
+    [modelId, entityId, step, translateEntity, t],
   );
 
   // Live rotation read — re-pulls after each mutation so the angle
@@ -146,10 +148,10 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
     (deltaDeg: number) => {
       const result = rotateEntity(modelId, entityId, (deltaDeg * Math.PI) / 180);
       if (!result.ok) {
-        toast.error(`Couldn't rotate: ${result.reason}`);
+        toast.error(t('geometryExport.editCard.rotateFailedError', { reason: result.reason }));
       }
     },
-    [modelId, entityId, rotateEntity],
+    [modelId, entityId, rotateEntity, t],
   );
 
   // Resolve whether the selected entity can be split. Three paths:
@@ -191,25 +193,25 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
   const onDuplicate = useCallback(() => {
     const result = duplicateEntity(modelId, entityId);
     if ('error' in result) {
-      toast.error(`Couldn't duplicate: ${result.error}`);
+      toast.error(t('geometryExport.editCard.duplicateFailedError', { reason: result.error }));
       return;
     }
-    toast.success(`Duplicated to #${result.expressId}`);
+    toast.success(t('geometryExport.editCard.duplicatedSuccess', { expressId: result.expressId }));
     // Select the duplicate so the user can immediately move it. The
     // action already returns the federated globalId so we don't have
     // to recompute it.
     setSelectedEntityId(result.globalId);
-  }, [modelId, entityId, duplicateEntity, setSelectedEntityId]);
+  }, [modelId, entityId, duplicateEntity, setSelectedEntityId, t]);
 
   const onDelete = useCallback(() => {
     const ok = removeEntity(modelId, entityId);
     if (!ok) {
-      toast.error("Couldn't delete entity");
+      toast.error(t('geometryExport.editCard.deleteFailedError'));
       return;
     }
-    toast.success(`${entityLabel ?? `#${entityId}`} deleted — undo to restore`);
+    toast.success(t('geometryExport.editCard.deletedSuccess', { entityLabel: entityLabel ?? `#${entityId}` }));
     setSelectedEntityId(null);
-  }, [modelId, entityId, entityLabel, removeEntity, setSelectedEntityId]);
+  }, [modelId, entityId, entityLabel, removeEntity, setSelectedEntityId, t]);
 
   return (
     <div className="border border-purple-200 dark:border-purple-900/40 bg-purple-50/40 dark:bg-purple-950/20">
@@ -220,7 +222,7 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
         aria-expanded={expanded}
       >
         <MoveIcon className="h-3.5 w-3.5 shrink-0" />
-        <span className="flex-1">Geometry</span>
+        <span className="flex-1">{t('geometryExport.editCard.header')}</span>
         {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
       </button>
 
@@ -229,43 +231,41 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
           {/* Position — XYZ inputs + ±step nudges */}
           <div className="space-y-1">
             <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-purple-700/80 dark:text-purple-400/80">
-              <span>Storey-local position (IFC Z-up)</span>
+              <span>{t('geometryExport.editCard.positionSectionLabel')}</span>
               <select
                 value={step}
                 onChange={(e) => setStep(parseFloat(e.target.value))}
                 className="bg-transparent border border-purple-300 dark:border-purple-700 px-1 py-0.5 text-[10px] focus:outline-none focus:ring-1 focus:ring-purple-500"
-                aria-label="Nudge step in metres"
+                aria-label={t('geometryExport.editCard.nudgeStepAriaLabel')}
                 disabled={!movable}
               >
                 {STEP_PRESETS.map((s) => (
-                  <option key={s} value={s}>±{s} m</option>
+                  <option key={s} value={s}>{t('geometryExport.editCard.nudgeStepOption', { step: s })}</option>
                 ))}
               </select>
             </div>
             {!movable ? (
               <p className="text-[11px] text-purple-700/70 dark:text-purple-400/70">
-                Entity has a non-standard placement (mapped representation
-                or 2D-only). Move isn't supported directly — Duplicate and
-                Delete still work.
+                {t('geometryExport.editCard.nonStandardPlacementHint')}
               </p>
             ) : (
               <>
                 <GeometryAxisRow
-                  label="X"
+                  label={t('geometryExport.editCard.axisX')}
                   value={x}
                   onChange={setX}
                   onNudgeMinus={() => nudge(0, -1)}
                   onNudgePlus={() => nudge(0, 1)}
                 />
                 <GeometryAxisRow
-                  label="Y"
+                  label={t('geometryExport.editCard.axisY')}
                   value={y}
                   onChange={setY}
                   onNudgeMinus={() => nudge(1, -1)}
                   onNudgePlus={() => nudge(1, 1)}
                 />
                 <GeometryAxisRow
-                  label="Z"
+                  label={t('geometryExport.editCard.axisZ')}
                   value={z}
                   onChange={setZ}
                   onNudgeMinus={() => nudge(2, -1)}
@@ -277,7 +277,7 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
                   className="w-full h-7 text-xs border-purple-300 dark:border-purple-700"
                   onClick={applyAbsolute}
                 >
-                  Apply XYZ
+                  {t('geometryExport.editCard.applyXyzButton')}
                 </Button>
               </>
             )}
@@ -290,7 +290,9 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
             <div className="flex items-center gap-1 pt-1 border-t border-purple-200/60 dark:border-purple-900/40">
               <RotateCw className="h-3 w-3 shrink-0 text-purple-700 dark:text-purple-400" />
               <span className="text-[11px] font-mono text-purple-800 dark:text-purple-300 flex-1">
-                yaw {yawDegrees !== null ? `${yawDegrees.toFixed(1)}°` : '—'}
+                {yawDegrees !== null
+                  ? t('geometryExport.editCard.yawReadout', { degrees: yawDegrees.toFixed(1) })
+                  : t('geometryExport.editCard.yawReadoutEmpty')}
               </span>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -299,12 +301,12 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
                     size="icon-xs"
                     className="h-6 w-6 text-purple-700"
                     onClick={() => rotateBy(-15)}
-                    aria-label="Rotate −15°"
+                    aria-label={t('geometryExport.editCard.rotateMinus15AriaLabel')}
                   >
                     ⟲
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Rotate −15° (Shift+R)</TooltipContent>
+                <TooltipContent>{t('geometryExport.editCard.rotateMinus15Tooltip')}</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -313,12 +315,12 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
                     size="icon-xs"
                     className="h-6 w-6 text-purple-700"
                     onClick={() => rotateBy(15)}
-                    aria-label="Rotate +15°"
+                    aria-label={t('geometryExport.editCard.rotatePlus15AriaLabel')}
                   >
                     ⟳
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Rotate +15° (R)</TooltipContent>
+                <TooltipContent>{t('geometryExport.editCard.rotatePlus15Tooltip')}</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -327,12 +329,12 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
                     size="icon-xs"
                     className="h-6 w-6 text-purple-700"
                     onClick={() => rotateBy(90)}
-                    aria-label="Rotate +90°"
+                    aria-label={t('geometryExport.editCard.rotatePlus90AriaLabel')}
                   >
                     90
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Rotate +90°</TooltipContent>
+                <TooltipContent>{t('geometryExport.editCard.rotatePlus90Tooltip')}</TooltipContent>
               </Tooltip>
             </div>
           )}
@@ -351,10 +353,10 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
                     className="h-7 flex-1 text-xs"
                     onClick={onSplit}
                   >
-                    <KnifeIcon className="h-3 w-3 mr-1" /> Split
+                    <KnifeIcon className="h-3 w-3 mr-1" /> {t('geometryExport.editCard.splitButton')}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Click on this wall to split it (K)</TooltipContent>
+                <TooltipContent>{t('geometryExport.editCard.splitTooltip')}</TooltipContent>
               </Tooltip>
             )}
             <Tooltip>
@@ -365,10 +367,10 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
                   className="h-7 flex-1 text-xs"
                   onClick={onDuplicate}
                 >
-                  <Copy className="h-3 w-3 mr-1" /> Duplicate
+                  <Copy className="h-3 w-3 mr-1" /> {t('geometryExport.editCard.duplicateButton')}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Clone the entity along its first axis</TooltipContent>
+              <TooltipContent>{t('geometryExport.editCard.duplicateTooltip')}</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -378,10 +380,10 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
                   className="h-7 flex-1 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
                   onClick={onDelete}
                 >
-                  <Trash2 className="h-3 w-3 mr-1" /> Delete
+                  <Trash2 className="h-3 w-3 mr-1" /> {t('geometryExport.editCard.deleteButton')}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Tombstone the entity — undo to restore</TooltipContent>
+              <TooltipContent>{t('geometryExport.editCard.deleteTooltip')}</TooltipContent>
             </Tooltip>
           </div>
         </div>

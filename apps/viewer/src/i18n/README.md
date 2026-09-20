@@ -494,6 +494,30 @@ source/target pick role are internal enums whose display words moved to
 the same data-table `labelKey` pattern `sectionConstants.ts`'s
 `AXIS_INFO` and slice 2's command registries use.
 
+The geometry-export dialogs catalogue (#4918 slice: geometry export,
+`geometry-export-dialogs.en.ts`, sub-namespaced `geometryExport.glb.*` /
+`geometryExport.kmz.*` / `geometryExport.usd.*` / `geometryExport.energy.*` /
+`geometryExport.editCard.*` in one file to keep the five owning components'
+own PR small) covers `GLBExportDialog.tsx`, `KmzExportDialog.tsx`,
+`UsdExportDialog.tsx`, `EnergyModelExportDialog.tsx`, and the Properties
+panel's inline `GeometryEditCard.tsx` — grouped into the same file as the
+four export dialogs purely because it is a small slice sibling, not because
+it shares any export machinery with them. A `geometryExport.shared.*`
+prefix holds the handful of strings identical across dialogs (the
+`'Current Model'` fallback display name, the `'Unknown error'` fallback
+reason, and the `'Geometry engine unavailable'` wasm-boundary error) rather
+than duplicating each per sub-namespace. File format names (GLB, glTF, KMZ,
+COLLADA, USD, USDA, OpenUSD, HBJSON, DFJSON, Honeybee, Dragonfly, Ladybug
+Tools), IFC EXPRESS names (`IfcSurfaceStyleRendering`, `DiffuseColour`,
+`SurfaceColour`, `IfcMapConversion`, `IfcSpace`, `OrthogonalHeight`), USD
+scene-description attribute literals (`upAxis`, `metersPerUnit`, `Xform`,
+`UsdGeomMesh`, `UsdPreviewSurface`, `purpose = "guide"`), and axis/unit
+symbols (X, Y, Z, m, °) stay literal per the house rule, passed as
+interpolation params rather than translated. A thrown `Error`'s own
+`.message` (surfaced from the wasm geometry engine or an unexpected
+exception) is likewise interpolated as a parameter, never translated
+itself — it is engine content, not UI chrome.
+
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for
 hardcoded JSX text, `{'…'}`-wrapped JSX-expression string literals, and

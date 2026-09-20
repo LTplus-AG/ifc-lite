@@ -434,7 +434,7 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
     assertBoxClose(mesh.geometryAabb, worldBoundsOfPositions([mesh], [0, 0, 0]), 1e-3, 're-aligned');
   });
 
-  it('drops the box of an entity only half of which could be reprojected', async () => {
+  it('keeps every vertex in its source frame when any cross-CRS reprojection fails (#5048)', async () => {
     // proj4 answers `Infinity` — it does not throw — for a point outside the
     // target projection's domain, and it answers per POINT. An outlying vertex
     // therefore stays in the SOURCE frame while its neighbours move, leaving
@@ -460,13 +460,10 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
       georef({ eastings: 500_000, northings: 5_000_000 }, 'EPSG:32632'),
       georef({ eastings: 300_000, northings: 5_000_000 }, 'EPSG:32633'),
     );
-    // The alignment itself still succeeds — most vertices moved, and that
-    // best-effort behaviour predates the box.
-    assert.equal(status, 'reprojected');
-    assert.equal(mesh.positions[24], 3e8, 'fixture must actually leave one vertex behind');
-    assert.ok(mesh.positions[0] < -1e5, 'fixture must actually reproject the others');
-
-    assert.equal(mesh.geometryAabb, undefined, 'a two-frame mesh must not carry a box');
+    assert.equal(status, 'failed');
+    assert.equal(mesh.positions[24], 3e8, 'fixture must actually include an unprojectable vertex');
+    assert.equal(mesh.positions[0], 0, 'a partial result must not publish a second frame');
+    assert.deepEqual(mesh.geometryAabb, { min: [0, 0, 0], max: [3e8, 1, 1] });
   });
 
   it('carries the box across a cross-CRS reprojection', async () => {

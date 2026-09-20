@@ -348,6 +348,18 @@ async function alignGeometryAcrossCrs(
   source: ModelGeoref,
   reference: ModelGeoref,
 ): Promise<boolean> {
+  // Reprojection is all-or-nothing.  Publishing a mesh with even one source
+  // vertex left in its old CRS creates geometry that no later re-alignment can
+  // repair: its pre-alignment snapshot contains one object in two frames.
+  // Keep the originals until every vertex has a target coordinate.
+  const originalPositions = geometry.meshes.map((mesh) => new Float32Array(mesh.positions));
+  const originalOrigins = geometry.meshes.map((mesh) => mesh.origin ? [...mesh.origin] as [number, number, number] : undefined);
+  const restoreSourceFrame = () => {
+    for (let index = 0; index < geometry.meshes.length; index++) {
+      geometry.meshes[index].positions = originalPositions[index];
+      geometry.meshes[index].origin = originalOrigins[index];
+    }
+  };
   const sourceProjDef = await resolveProjection(source.projectedCRS);
   const refProjDef = await resolveProjection(reference.projectedCRS);
   if (!sourceProjDef || !refProjDef) return false;
@@ -479,10 +491,21 @@ async function alignGeometryAcrossCrs(
   }
 
   if (!found) {
+    restoreSourceFrame();
     console.warn(
       `[ifc-lite] Cross-CRS alignment failed: ${projFailures}/${attempts} `
       + `vertex transforms failed for ${source.projectedCRS.name} → ${reference.projectedCRS.name}; `
       + 'no vertices were successfully reprojected. Leaving geometry untouched.',
+      firstProjError,
+    );
+    return false;
+  }
+
+  if (projFailures > 0) {
+    restoreSourceFrame();
+    console.warn(
+      `[ifc-lite] Cross-CRS alignment refused: ${projFailures}/${attempts} vertex transforms failed; `
+      + 'the model remains wholly in its source frame.',
       firstProjError,
     );
     return false;
@@ -511,14 +534,6 @@ async function alignGeometryAcrossCrs(
     buildingRotation: reference.coordinateInfo?.buildingRotation,
   };
 
-  if (projFailures > 0) {
-    console.warn(
-      `[ifc-lite] Cross-CRS alignment: ${projFailures}/${attempts} vertex transforms `
-      + `failed from ${source.projectedCRS.name} to ${reference.projectedCRS.name}. `
-      + 'Those vertices are left at their original positions.',
-      firstProjError,
-    );
-  }
   return true;
 }
 

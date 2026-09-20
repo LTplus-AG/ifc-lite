@@ -386,6 +386,17 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
 }
 
 /**
+ * Resolve an adapter-supplied canonical CRS identifier.  Federation uses this
+ * entry point rather than reconstructing an IFC-shaped `ProjectedCRS`: only
+ * an explicit `EPSG:<code>` identifier is accepted here, so a display label
+ * can never turn into a placement decision by accident.
+ */
+export async function resolveProjectionId(id: string): Promise<string | null> {
+  if (!/^EPSG:\d+$/i.test(id.trim())) return null;
+  return resolveProjection({ id: 0, name: id.trim() });
+}
+
+/**
  * Compute the model center in the projected CRS (easting, northing).
  *
  * The coordinate pipeline is:

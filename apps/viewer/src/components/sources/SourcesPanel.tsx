@@ -15,6 +15,8 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { AlertCircle, Cloud, X } from 'lucide-react';
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
+import type { TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { loadResolvedSourcePrefs, saveSourcePrefs } from '@/lib/sources/preferences';
 import { sanitizeFilename } from '@/lib/export/download';
@@ -28,16 +30,23 @@ interface SourcesPanelProps {
 type Translate = ReturnType<typeof useTranslation>['t'];
 
 /** Build one complete, locale-orderable source revision notice. */
-export function revisionSyncMessage(t: Translate, changed: number, deleted: number): string {
+const REVISION_BOTH_KEYS: Record<Intl.LDMLPluralRule, TranslationKey> = {
+  zero: 'sources.sourcesPanel.revisionChangedZeroDeleted',
+  one: 'sources.sourcesPanel.revisionChangedOneDeleted',
+  two: 'sources.sourcesPanel.revisionChangedTwoDeleted',
+  few: 'sources.sourcesPanel.revisionChangedFewDeleted',
+  many: 'sources.sourcesPanel.revisionChangedManyDeleted',
+  other: 'sources.sourcesPanel.revisionChangedOtherDeleted',
+};
+
+export function revisionSyncMessage(t: Translate, locale: string, changed: number, deleted: number): string {
   if (changed > 0 && deleted > 0) {
-    const key = changed === 1
-      ? deleted === 1
-        ? 'sources.sourcesPanel.revisionChangedOneDeletedOne'
-        : 'sources.sourcesPanel.revisionChangedOneDeletedMany'
-      : deleted === 1
-        ? 'sources.sourcesPanel.revisionChangedManyDeletedOne'
-        : 'sources.sourcesPanel.revisionChangedManyDeletedMany';
-    return t(key, { changed, deleted });
+    const category = new Intl.PluralRules(locale).select(changed);
+    return t(REVISION_BOTH_KEYS[category], {
+      count: deleted,
+      changed: formatLocaleNumber(locale, changed),
+      deleted: formatLocaleNumber(locale, deleted),
+    });
   }
   if (changed > 0) {
     return t('sources.sourcesPanel.revisionChangedOnly', { count: changed });
@@ -50,7 +59,8 @@ export function revisionSyncMessage(t: Translate, changed: number, deleted: numb
 
 export function RegistrationFailureMessage({ provider, reason }: { provider: string; reason: string }) {
   const { t } = useTranslation();
-  const marker = '\uE000provider\uE001';
+  let marker = '\uE000provider\uE001';
+  while (reason.includes(marker)) marker += '\uE002';
   const message = t('sources.sourcesPanel.failedToRegister', { provider: marker, reason });
   const segments = message.split(marker);
   if (segments.length === 1) return message;
@@ -65,7 +75,7 @@ interface SourceDownloadSelection {
 }
 
 export function SourcesPanel({ onClose }: SourcesPanelProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const sourceHost = useSourceHost();
   const providers = useMemo(() => sourceHost.list(), [sourceHost]);
   const registrationFailures = useMemo(
@@ -127,7 +137,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
         if (controller.signal.aborted || updates.length === 0) return;
         const deleted = updates.filter((u) => u.event.deleted).length;
         const changed = updates.length - deleted;
-        toast.info(revisionSyncMessage(t, changed, deleted));
+        toast.info(revisionSyncMessage(t, locale, changed, deleted));
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;

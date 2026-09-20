@@ -298,7 +298,7 @@ export const PlaygroundViewer = forwardRef<ViewerController, PlaygroundViewerPro
         >
           {phase === 'processing' && (
             <span>
-              <span className="inline-block animate-pulse">●</span> {phaseMsgText || t('mcp.playgroundViewer.preparing')}
+              <span className="inline-block animate-pulse">●</span> {phaseMsg === null ? t('mcp.playgroundViewer.preparing') : phaseMsgText}
             </span>
           )}
           {phase === 'error' && <span>⚠ {phaseMsgText}</span>}

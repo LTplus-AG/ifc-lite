@@ -734,7 +734,7 @@ export function ToolCallView({ call, showDownload = true }: { call: ChatToolCall
               >
                 {call.result.textKey ? t(call.result.textKey) : call.result.text}
               </pre>
-              {call.result.hint && (
+              {(call.result.hint || call.result.hintKey) && (
                 <p className="mt-1.5 text-[10.5px] italic text-white/50">
                   {call.result.hintKey ? t(call.result.hintKey) : call.result.hint}
                 </p>

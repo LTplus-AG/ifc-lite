@@ -915,4 +915,11 @@ describe('SourcesPanel chrome localization', () => {
       ['my-provider', 'my-provider'],
     );
   });
+
+  it('does not interpret provider-marker text inside a diagnostic reason', () => {
+    const reason = 'literal \uE000provider\uE001 from upstream';
+    const container = render(<RegistrationFailureMessage provider="my-provider" reason={reason} />);
+    assert.equal(container.textContent, `my-provider failed to register: ${reason}`);
+    assert.equal(container.querySelectorAll('.font-medium').length, 1);
+  });
 });

@@ -131,14 +131,12 @@ export const sourcesEn = {
     one: '{count} source file is gone upstream — use Sync to update.',
     other: '{count} source files are gone upstream — use Sync to update.',
   },
-  'sources.sourcesPanel.revisionChangedOneDeletedOne':
-    '{changed} loaded model has a newer revision and {deleted} source file is gone upstream — use Sync to update.',
-  'sources.sourcesPanel.revisionChangedOneDeletedMany':
-    '{changed} loaded model has a newer revision and {deleted} source files are gone upstream — use Sync to update.',
-  'sources.sourcesPanel.revisionChangedManyDeletedOne':
-    '{changed} loaded models have newer revisions and {deleted} source file is gone upstream — use Sync to update.',
-  'sources.sourcesPanel.revisionChangedManyDeletedMany':
-    '{changed} loaded models have newer revisions and {deleted} source files are gone upstream — use Sync to update.',
+  'sources.sourcesPanel.revisionChangedZeroDeleted': { one: '{changed} loaded models have newer revisions and {deleted} source file is gone upstream — use Sync to update.', other: '{changed} loaded models have newer revisions and {deleted} source files are gone upstream — use Sync to update.' },
+  'sources.sourcesPanel.revisionChangedOneDeleted': { one: '{changed} loaded model has a newer revision and {deleted} source file is gone upstream — use Sync to update.', other: '{changed} loaded model has a newer revision and {deleted} source files are gone upstream — use Sync to update.' },
+  'sources.sourcesPanel.revisionChangedTwoDeleted': { one: '{changed} loaded models have newer revisions and {deleted} source file is gone upstream — use Sync to update.', other: '{changed} loaded models have newer revisions and {deleted} source files are gone upstream — use Sync to update.' },
+  'sources.sourcesPanel.revisionChangedFewDeleted': { one: '{changed} loaded models have newer revisions and {deleted} source file is gone upstream — use Sync to update.', other: '{changed} loaded models have newer revisions and {deleted} source files are gone upstream — use Sync to update.' },
+  'sources.sourcesPanel.revisionChangedManyDeleted': { one: '{changed} loaded models have newer revisions and {deleted} source file is gone upstream — use Sync to update.', other: '{changed} loaded models have newer revisions and {deleted} source files are gone upstream — use Sync to update.' },
+  'sources.sourcesPanel.revisionChangedOtherDeleted': { one: '{changed} loaded models have newer revisions and {deleted} source file is gone upstream — use Sync to update.', other: '{changed} loaded models have newer revisions and {deleted} source files are gone upstream — use Sync to update.' },
   'sources.sourcesPanel.downloadFailedWithMessage': '{name}: {message}',
   'sources.sourcesPanel.downloadFailedGeneric': 'Failed to download {name} from {title}',
 } as const satisfies Record<string, TranslationValue>;

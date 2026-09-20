@@ -22,30 +22,38 @@ describe('revisionSyncMessage', () => {
       return key;
     };
 
-    revisionSyncMessage(t, 1, 0);
-    revisionSyncMessage(t, 0, 2);
-    revisionSyncMessage(t, 1, 1);
-    revisionSyncMessage(t, 1, 2);
-    revisionSyncMessage(t, 2, 1);
-    revisionSyncMessage(t, 2, 2);
+    revisionSyncMessage(t, 'en', 1, 0);
+    revisionSyncMessage(t, 'en', 0, 2);
+    revisionSyncMessage(t, 'en', 1, 1);
+    revisionSyncMessage(t, 'en', 1, 2);
+    revisionSyncMessage(t, 'en', 2, 1);
+    revisionSyncMessage(t, 'en', 2, 2);
 
     assert.deepEqual(seen.map(([key]) => key), [
       'sources.sourcesPanel.revisionChangedOnly',
       'sources.sourcesPanel.revisionDeletedOnly',
-      'sources.sourcesPanel.revisionChangedOneDeletedOne',
-      'sources.sourcesPanel.revisionChangedOneDeletedMany',
-      'sources.sourcesPanel.revisionChangedManyDeletedOne',
-      'sources.sourcesPanel.revisionChangedManyDeletedMany',
+      'sources.sourcesPanel.revisionChangedOneDeleted',
+      'sources.sourcesPanel.revisionChangedOneDeleted',
+      'sources.sourcesPanel.revisionChangedOtherDeleted',
+      'sources.sourcesPanel.revisionChangedOtherDeleted',
     ]);
-    assert.deepEqual(seen[5]?.[1], { changed: 2, deleted: 2 });
+    assert.deepEqual(seen[5]?.[1], { count: 2, changed: '2', deleted: '2' });
   });
 
   it('lets a locale reorder both combined facts and punctuation', () => {
     const t = (key: TranslationKey, params?: TranslationParameters) =>
-      key === 'sources.sourcesPanel.revisionChangedManyDeletedOne'
+      key === 'sources.sourcesPanel.revisionChangedOtherDeleted'
         ? `deleted=${params?.deleted} / changed=${params?.changed}`
         : key;
 
-    assert.equal(revisionSyncMessage(t, 3, 1), 'deleted=1 / changed=3');
+    assert.equal(revisionSyncMessage(t, 'en', 3, 1), 'deleted=1 / changed=3');
+  });
+
+  it('uses the active locale plural category for each side of a combined notice', () => {
+    const seen: Array<[TranslationKey, TranslationParameters | undefined]> = [];
+    const t = (key: TranslationKey, params?: TranslationParameters) => { seen.push([key, params]); return key; };
+    revisionSyncMessage(t, 'ru', 21, 2);
+    assert.equal(seen[0]?.[0], 'sources.sourcesPanel.revisionChangedOneDeleted');
+    assert.equal(seen[0]?.[1]?.count, 2);
   });
 });

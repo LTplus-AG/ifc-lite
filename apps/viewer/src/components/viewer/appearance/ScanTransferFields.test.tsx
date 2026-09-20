@@ -9,6 +9,7 @@ import { useViewerStore } from '@/store';
 import { fixtureModel } from '@/test/store-fixture';
 import { cleanup, render, type } from '@/test/render';
 import { registerLocale, setLocale } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { emptyPlacementState } from '@/lib/model-placement/state';
 import type { MeshTransferPlan } from '@/lib/appearance/scan/transfer-types';
 import type { ScanRegistrationReport } from '@/lib/appearance/scan/types';
@@ -50,7 +51,7 @@ test('coverage report names samples refused behind the surface beside the other 
     items: [{ ...counts, productId: 10, geometryItemId: 3 }], exclusions: [], diagnostics: [] });
   const report = ui.querySelector('[aria-label="Scan transfer coverage"]');
   assert.ok(report);
-  const n = (value: number) => value.toLocaleString();
+  const n = (value: number) => formatLocaleNumber('en', value); // the ACTIVE locale, not the machine's
   assert.ok(report.textContent!.includes(`Unknown: 0 too far · ${n(4212)} incompatible normals · 38 ambiguous · 748 behind the surface.`), report.textContent!);
   assert.ok(report.textContent!.includes(`${n(3426)} observed samples of ${n(8424)}.`));
   assert.ok(!report.textContent!.includes('too sparse') && !report.textContent!.includes('orientation'), 'mesh sources report no point-only reasons');
@@ -63,7 +64,7 @@ test('point sources expose their fit controls and report sparse samples and the 
   const { registration } = { registration: (JSON.parse(readFileSync(new URL('../../../../../../docs/architecture/evidence/scan-alignment-workbench/good.json', import.meta.url), 'utf8')) as { result: { report: ScanRegistrationReport } }).result.report };
   const ui = mount({ preparedSha256: 'prepared', source: { kind: 'points', orientation: 'target-referenced', pointCount: 465029 }, budget: { workUsed: 43537518, workLimit: 128_000_000 }, registrationSha256: 'registration', registration, applicable: true, coverage: counts,
     items: [{ ...counts, productId: 216, geometryItemId: 3 }], exclusions: [], diagnostics: [] }, true);
-  const n = (value: number) => value.toLocaleString();
+  const n = (value: number) => formatLocaleNumber('en', value); // the ACTIVE locale, not the machine's
   const inputs = pointLabels.map(pointLabel => ui.querySelector<HTMLInputElement>(`input[aria-label="${pointLabel}"]`));
   assert.ok(inputs.every(Boolean), 'all four point fit controls are offered');
   assert.equal(inputs[0]!.value, String(read!.settings.neighborhoodRadiusMetres));

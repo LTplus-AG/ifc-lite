@@ -32,6 +32,7 @@ import {
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
+import { useTranslation } from '@/i18n';
 import type { BcfProjectDto, BcfSyncProgress } from '@ifc-lite/bcf-api';
 import {
   clearBcfServerConfig,
@@ -49,6 +50,7 @@ interface BCFServerDialogProps {
 }
 
 export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
+  const { t } = useTranslation();
   const setBcfProject = useViewerStore((s) => s.setBcfProject);
   const setBcfAuthor = useViewerStore((s) => s.setBcfAuthor);
   const setBcfError = useViewerStore((s) => s.setBcfError);
@@ -192,10 +194,13 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
       if (result.warnings.length > 0) {
         console.warn('[bcf-server] sync warnings:', result.warnings);
         toast.info(
-          `Loaded ${result.project.topics.size} topics (${result.warnings.length} items skipped — see console)`,
+          t('bcf.serverDialog.syncWarnings', {
+            count: result.project.topics.size,
+            skipped: result.warnings.length,
+          }),
         );
       } else {
-        toast.success(`Loaded ${result.project.topics.size} topics from the BCF server`);
+        toast.success(t('bcf.serverDialog.syncSuccess', { count: result.project.topics.size }));
       }
       onOpenChange(false);
     } catch (err) {
@@ -215,7 +220,7 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>BCF Server</DialogTitle>
+          <DialogTitle>{t('bcf.serverDialog.title')}</DialogTitle>
         </DialogHeader>
 
         {/* DialogContent is a grid; without min-w-0 this grid item sizes to
@@ -234,20 +239,20 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
                 <span
                   className="min-w-0 truncate"
-                  title={`Signed in as ${config.userId} · ${config.serverUrl}`}
+                  title={t('bcf.serverDialog.signedInAs', { user: config.userId, server: config.serverUrl })}
                 >
-                  Signed in as {config.userId} · {config.serverUrl}
+                  {t('bcf.serverDialog.signedInAs', { user: config.userId, server: config.serverUrl })}
                 </span>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label id="bcf-server-project-label">Project</Label>
+                <Label id="bcf-server-project-label">{t('bcf.serverDialog.projectLabel')}</Label>
                 {projects === null ? (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading projects…
+                    {t('bcf.serverDialog.loadingProjects')}
                   </div>
                 ) : projects.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No projects available.</p>
+                  <p className="text-sm text-muted-foreground">{t('bcf.serverDialog.noProjects')}</p>
                 ) : (
                   <Select
                     value={selectedProjectId === '' ? undefined : selectedProjectId}
@@ -257,7 +262,7 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
                     }}
                   >
                     <SelectTrigger aria-labelledby="bcf-server-project-label">
-                      <SelectValue placeholder="Select a project…" />
+                      <SelectValue placeholder={t('bcf.serverDialog.selectProjectPlaceholder')} />
                     </SelectTrigger>
                     <SelectContent>
                       {projects.map((project) => (
@@ -272,14 +277,18 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
               {progress && (
                 <p className="text-xs text-muted-foreground" role="status">
                   {progress.phase === 'topics'
-                    ? `Fetching topics… ${progress.loaded}`
-                    : `Loading topic details… ${progress.loaded}${progress.total ? ` / ${progress.total}` : ''}`}
+                    ? t('bcf.serverDialog.fetchingTopics', { loaded: progress.loaded })
+                    : progress.total
+                      ? t('bcf.serverDialog.loadingTopicDetailsWithTotal', {
+                          loaded: progress.loaded,
+                          total: progress.total,
+                        })
+                      : t('bcf.serverDialog.loadingTopicDetails', { loaded: progress.loaded })}
                 </p>
               )}
               {replaceCount !== null && (
                 <div className="rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
-                  Loading will replace the {replaceCount} topic{replaceCount === 1 ? '' : 's'}{' '}
-                  currently in the BCF panel. Export them first if they are not saved anywhere.
+                  {t('bcf.serverDialog.replaceWarning', { count: replaceCount })}
                 </div>
               )}
               {error && (
@@ -301,7 +310,7 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
               disabled={busy}
             >
               <LogOut className="mr-2 h-4 w-4" />
-              Disconnect
+              {t('bcf.serverDialog.disconnect')}
             </Button>
             <Button
               onClick={() => void handlePull()}
@@ -312,7 +321,7 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
               ) : (
                 <CloudDownload className="mr-2 h-4 w-4" />
               )}
-              {replaceCount !== null ? 'Replace and load' : 'Load topics'}
+              {replaceCount !== null ? t('bcf.serverDialog.replaceAndLoad') : t('bcf.serverDialog.loadTopics')}
             </Button>
           </DialogFooter>
         )}

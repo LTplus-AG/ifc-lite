@@ -28,6 +28,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
+import { useTranslation } from '@/i18n';
 import type { BCFTopic, BCFViewpoint } from '@ifc-lite/bcf';
 import {
   readBCF,
@@ -53,6 +54,7 @@ interface BCFPanelProps {
 }
 
 export function BCFPanel({ onClose }: BCFPanelProps) {
+  const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Store state
   const bcfProject = useViewerStore((s) => s.bcfProject);
@@ -161,7 +163,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
       warnIfNoModelLoaded(useViewerStore.getState().models.size);
     } catch (error) {
       console.error('Failed to import BCF:', error);
-      setBcfError(error instanceof Error ? error.message : 'Failed to import BCF file');
+      setBcfError(error instanceof Error ? error.message : t('bcf.panel.importError'));
     } finally {
       setBcfLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -174,10 +176,10 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
 
   const importFromDialog = useCallback(async (): Promise<boolean> => {
     const file = await openGenericFileDialog({
-      title: 'Import BCF File',
+      title: t('bcf.panel.importDialogTitle'),
       filters: [
-        { name: 'BCF Files', extensions: ['bcfzip', 'bcf'] },
-        { name: 'All Files', extensions: ['*'] },
+        { name: t('bcf.panel.bcfFilterName'), extensions: ['bcfzip', 'bcf'] },
+        { name: t('bcf.panel.allFilesFilterName'), extensions: ['*'] },
       ],
     });
     if (file) {
@@ -208,7 +210,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
       posthog.capture('bcf_exported', { topic_count: bcfProject.topics.size });
     } catch (error) {
       console.error('Failed to export BCF:', error);
-      setBcfError(error instanceof Error ? error.message : 'Failed to export BCF file');
+      setBcfError(error instanceof Error ? error.message : t('bcf.panel.exportError'));
     } finally {
       setBcfLoading(false);
     }
@@ -263,7 +265,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
         });
       }
       const topic = createBCFTopic({
-        title: data.title || 'Untitled',
+        title: data.title || t('bcf.panel.untitledTopic'),
         description: data.description,
         author: bcfAuthor,
         topicType: data.topicType,
@@ -354,7 +356,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
     (data: Partial<BCFTopic>) => {
       if (!activeTopicId) return;
       updateTopic(activeTopicId, {
-        title: data.title?.trim() || activeTopic?.title || 'Untitled',
+        title: data.title?.trim() || activeTopic?.title || t('bcf.panel.untitledTopic'),
         description: data.description,
         topicType: data.topicType,
         topicStatus: data.topicStatus,
@@ -391,7 +393,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <div className="flex items-center gap-2">
           <MessageSquare className="h-4 w-4" />
-          <h2 className="font-medium text-sm">BCF Topics</h2>
+          <h2 className="font-medium text-sm">{t('bcf.panel.title')}</h2>
           {topics.length > 0 && (
             <Badge variant="secondary" className="text-xs">
               {topics.length}
@@ -411,7 +413,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
             size="icon"
             className="h-7 w-7"
             onClick={() => { void handleImportClick(); }}
-            title="Import BCF"
+            title={t('bcf.panel.importTitle')}
           >
             <Download className="h-4 w-4" />
           </Button>
@@ -421,7 +423,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
             className="h-7 w-7"
             onClick={handleExport}
             disabled={!bcfProject || topics.length === 0}
-            title="Export BCF"
+            title={t('bcf.panel.exportTitle')}
             {...tourAnchor(TOUR_ANCHORS.bcfExport)}
           >
             <Upload className="h-4 w-4" />
@@ -432,7 +434,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
             size="icon"
             className="h-7 w-7"
             onClick={toggleBcfOverlay}
-            title={bcfOverlayVisible ? 'Hide 3D markers' : 'Show 3D markers'}
+            title={bcfOverlayVisible ? t('bcf.panel.hideMarkers') : t('bcf.panel.showMarkers')}
           >
             <MapPin className="h-4 w-4" />
           </Button>
@@ -444,11 +446,11 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
               setTempAuthor(bcfAuthor);
               setShowAuthorDialog(true);
             }}
-            title="Set author"
+            title={t('bcf.panel.setAuthorTitle')}
           >
             <User className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Close" onClick={onClose}>
+          <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={t('bcf.shared.close')} onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -517,19 +519,19 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
         {showAuthorDialog && (
           <div className="absolute inset-0 bg-background/90 flex items-center justify-center p-4">
             <div className="bg-card border rounded-lg p-4 w-full max-w-xs">
-              <h4 className="font-medium mb-3">Set Author Email</h4>
+              <h4 className="font-medium mb-3">{t('bcf.panel.setAuthorHeading')}</h4>
               <Input
                 value={tempAuthor}
                 onChange={(e) => setTempAuthor(e.target.value)}
-                placeholder="your@email.com"
+                placeholder={t('bcf.shared.emailPlaceholder')}
                 className="mb-4"
               />
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" size="sm" onClick={() => setShowAuthorDialog(false)}>
-                  Cancel
+                  {t('bcf.shared.cancel')}
                 </Button>
                 <Button size="sm" onClick={handleSaveAuthor}>
-                  Save
+                  {t('bcf.shared.save')}
                 </Button>
               </div>
             </div>

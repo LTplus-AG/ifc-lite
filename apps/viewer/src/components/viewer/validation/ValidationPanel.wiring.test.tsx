@@ -1,0 +1,181 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * `ValidationPanel` end-to-end wiring (#5138 plan §9 PR 4):
+ *
+ * - the "IDS validation" entry card mounts the existing, unmodified
+ *   `IDSPanel` (its own empty state renders through `ValidationPanel`);
+ * - the "Information validation" entry opens a real `.rules.json` file
+ *   through the real file-input path, runs it with the real
+ *   `runRuleSet` engine against a real parsed IFC model, and lands a
+ *   `source.kind: 'rules'` report in the store that the generalised
+ *   `IDSPanelResults`/`SpecificationCard` render.
+ *
+ * Both walls in the fixture share the same `Name` on purpose, so the
+ * two-rule fixture exercises an `element` requirement (FireRating set/not
+ * set) AND a `unique` requirement (one duplicate group) in the same run —
+ * the results state this test checks is driven by a report the engine
+ * actually produced, not a hand-built fixture.
+ */
+
+import '@/test/setup-dom.js';
+import { afterEach, describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { act } from 'react';
+import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { cleanup, click, render } from '@/test/render.js';
+import { useViewerStore, type FederatedModel } from '@/store';
+import { ValidationPanel } from './ValidationPanel.js';
+
+const WALLS_IFC = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1= IFCPROJECT('0Proj000000000000000001',$,'Proj',$,$,$,$,(#20),#30);
+#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);
+#21= IFCAXIS2PLACEMENT3D(#22,$,$);
+#22= IFCCARTESIANPOINT((0.,0.,0.));
+#30= IFCUNITASSIGNMENT((#31));
+#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#40= IFCLOCALPLACEMENT($,#21);
+#401= IFCWALL('0WallA0000000000000001A',$,'Wall',$,$,#40,$,'tag',$);
+#410= IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('2HR'),$);
+#412= IFCPROPERTYSET('0Pset00000000000000412A',$,'Pset_WallCommon',$,(#410));
+#413= IFCRELDEFINESBYPROPERTIES('0Rel00000000000000413A',$,$,$,(#401),#412);
+#402= IFCWALL('0WallB0000000000000002A',$,'Wall',$,$,#40,$,'tag',$);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+const RULE_SET_JSON = JSON.stringify({
+  version: 1,
+  name: 'Wiring fixture',
+  rules: [
+    {
+      id: 'r1',
+      name: 'Fire rating set',
+      applicability: { groups: [{ rules: [{ kind: 'ifcType', values: ['IfcWall'], op: 'in' }], combinator: 'AND' }], authoredAs: 'chips' },
+      requirement: {
+        kind: 'element',
+        block: { groups: [{ rules: [{ kind: 'property', setName: 'Pset_WallCommon', propertyName: 'FireRating', op: 'isSet', value: '' }], combinator: 'AND' }], authoredAs: 'chips' },
+      },
+    },
+    {
+      id: 'r2',
+      name: 'Unique name',
+      applicability: { groups: [{ rules: [{ kind: 'ifcType', values: ['IfcWall'], op: 'in' }], combinator: 'AND' }], authoredAs: 'chips' },
+      requirement: { kind: 'unique', subject: { kind: 'attribute', name: 'Name' } },
+    },
+  ],
+});
+
+async function parseWalls(): Promise<IfcDataStore> {
+  const bytes = new TextEncoder().encode(WALLS_IFC);
+  return new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+}
+
+function federatedModel(id: string, store: IfcDataStore): FederatedModel {
+  return {
+    id, name: `${id}.ifc`, ifcDataStore: store, geometryResult: null, visible: true,
+    collapsed: false, schemaVersion: 'IFC4', loadedAt: 0, fileSize: 0, idOffset: 0, maxExpressId: 10000,
+  } as unknown as FederatedModel;
+}
+
+function ruleSetFile(): File {
+  return new File([RULE_SET_JSON], 'fixture.rules.json', { type: 'application/json' });
+}
+
+async function selectFile(input: HTMLInputElement, file: File): Promise<void> {
+  Object.defineProperty(input, 'files', { value: [file], configurable: true });
+  await act(async () => {
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
+/** Poll `condition` until true or a generous timeout — the engine run is a
+ *  real async `runRuleSet` over the parsed store, not something a single
+ *  microtask flush settles. */
+async function waitFor(condition: () => boolean, timeoutMs = 5000): Promise<void> {
+  const start = Date.now();
+  while (!condition()) {
+    if (Date.now() - start > timeoutMs) throw new Error('waitFor: condition never became true');
+    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  }
+}
+
+const initial = useViewerStore.getState();
+
+afterEach(() => {
+  cleanup();
+  useViewerStore.setState({
+    ...initial,
+    models: new Map(),
+    idsDocument: null,
+    idsValidationReport: null,
+    validationSource: null,
+    idsAuditReport: null,
+    idsError: null,
+    idsLoading: false,
+    idsProgress: null,
+  });
+});
+
+describe('ValidationPanel wiring (#5138)', () => {
+  it('the IDS validation entry card mounts the existing IDSPanel empty state', () => {
+    const ui = render(<ValidationPanel />);
+    const entry = ui.querySelector('[data-testid="validation-entry-ids"]');
+    assert.ok(entry, 'expected the IDS validation entry card');
+    click(entry as Element);
+    assert.match(ui.textContent ?? '', /No IDS Loaded/);
+    assert.match(ui.textContent ?? '', /IDS Validation/);
+  });
+
+  it('opening and running a real two-rule rule set lands a source.kind: "rules" report the panel renders', async () => {
+    const store = await parseWalls();
+    useViewerStore.setState({ models: new Map([['m1', federatedModel('m1', store)]]) });
+
+    const ui = render(<ValidationPanel />);
+    const fileInput = ui.querySelector('input[type="file"]');
+    assert.ok(fileInput, 'expected the "Open .rules.json" hidden file input');
+    await selectFile(fileInput as HTMLInputElement, ruleSetFile());
+
+    // Authoring state: the Run button is enabled once the 2-rule file loads.
+    await waitFor(() => {
+      const run = [...ui.querySelectorAll('button')].find((b) => b.textContent === 'Run');
+      return run !== undefined && !run.disabled;
+    });
+    const runButton = [...ui.querySelectorAll('button')].find((b) => b.textContent === 'Run');
+    assert.ok(runButton);
+    click(runButton!);
+
+    await waitFor(() => useViewerStore.getState().idsValidationReport !== null);
+
+    const report = useViewerStore.getState().idsValidationReport;
+    assert.ok(report);
+    assert.strictEqual(report!.source.kind, 'rules');
+    assert.strictEqual(report!.specificationResults.length, 2);
+
+    const text = ui.textContent ?? '';
+    assert.match(text, /Fire rating set/);
+    assert.match(text, /Unique name/);
+    // Rule 1: 2 applicable walls, 1 passes (FireRating set), 1 fails.
+    const rule1 = report!.specificationResults.find((r) => r.specification.name === 'Fire rating set');
+    assert.ok(rule1);
+    assert.strictEqual(rule1!.applicableCount, 2);
+    assert.strictEqual(rule1!.passedCount, 1);
+    assert.strictEqual(rule1!.failedCount, 1);
+    // Rule 2: both walls share Name -> one duplicate SetResult.
+    const rule2 = report!.specificationResults.find((r) => r.specification.name === 'Unique name');
+    assert.ok(rule2);
+    assert.strictEqual(rule2!.setResults?.length, 1);
+    assert.strictEqual(rule2!.setResults?.[0]?.passed, false);
+
+    // "Edit rules" is offered from the results state, keeping the report.
+    assert.match(text, /Edit rules/);
+  });
+});

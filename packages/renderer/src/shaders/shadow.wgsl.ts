@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { relativeToEyeWgsl } from './relative-to-eye.wgsl.js';
+
 /**
  * Sun shadow-map depth pre-pass shaders (issue #2670, Phase 2).
  *
@@ -32,6 +34,7 @@
  * shader stage.
  */
 export const shadowShaderSource = `
+        ${relativeToEyeWgsl}
         struct Light {
           lightViewProj: mat4x4<f32>,
           cameraHigh: vec4<f32>,
@@ -97,7 +100,7 @@ export const shadowShaderSource = `
         @vertex
         fn vs_shadow_flat(input: FlatIn) -> ShadowOut {
           let linear = (draw.model * vec4<f32>(input.position, 0.0)).xyz;
-          return emit(vec4<f32>((linear + draw.originHigh.xyz) + draw.originLow.xyz, 1.0));
+          return emit(rteWorldPosition(linear, RteDrawableUniform(draw.originHigh, draw.originLow)));
         }
 
         @vertex
@@ -105,7 +108,7 @@ export const shadowShaderSource = `
           let p = draw.quantParams.xyz
             + vec3<f32>(f32(input.q.x), f32(input.q.y), f32(input.q.z)) * draw.quantParams.w;
           let linear = (draw.model * vec4<f32>(p, 0.0)).xyz;
-          return emit(vec4<f32>((linear + draw.originHigh.xyz) + draw.originLow.xyz, 1.0));
+          return emit(rteWorldPosition(linear, RteDrawableUniform(draw.originHigh, draw.originLow)));
         }
 
         @vertex
@@ -127,13 +130,15 @@ export const shadowShaderSource = `
           let linear = (instMat * vec4<f32>(input.position, 0.0)).xyz;
           let highDelta = inst.anchorHigh.xyz - light.cameraHigh.xyz;
           let lowDelta = inst.anchorLow.xyz - light.cameraLow.xyz;
-          return emit(vec4<f32>((linear + highDelta) + lowDelta, 1.0));
+          return emit(rteWorldPosition(linear, RteDrawableUniform(
+            vec4<f32>(highDelta, 0.0), vec4<f32>(lowDelta, 0.0),
+          )));
         }
 
         @vertex
         fn vs_shadow_textured(input: FlatIn) -> ShadowOut {
           let linear = (draw.model * vec4<f32>(input.position, 0.0)).xyz;
-          return emit(vec4<f32>((linear + draw.originHigh.xyz) + draw.originLow.xyz, 1.0));
+          return emit(rteWorldPosition(linear, RteDrawableUniform(draw.originHigh, draw.originLow)));
         }
 
         // Clipped variant: discard before the depth write, so a clipped-away

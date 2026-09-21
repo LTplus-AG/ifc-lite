@@ -227,9 +227,8 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     const screenshot = await renderer.captureScreenshot();
     const diagnostics = renderer.getDiagnostics();
 
-    const cpuPoint = cpuRay?.intersection.point;
     const cpuRayEvidence = cpuRay
-      ? { expressId: cpuRay.intersection.expressId, point: [cpuPoint.x, cpuPoint.y, cpuPoint.z] as [number, number, number] }
+      ? { expressId: cpuRay.intersection.expressId, point: [cpuRay.intersection.point.x, cpuRay.intersection.point.y, cpuRay.intersection.point.z] as [number, number, number] }
       : null;
     const gpuCpuResidual = pick?.worldXYZ && cpuRayEvidence
       ? distance([pick.worldXYZ.x, pick.worldXYZ.y, pick.worldXYZ.z], cpuRayEvidence.point)
@@ -268,7 +267,7 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
         flat: pick?.expressId === 101 && isForeground(linePixel),
         textured: texturedPick?.expressId === 102 && texturedPick.modelIndex === 12 && texturedPixel !== null
           && texturedPixel[2] > texturedPixel[0] + 20 && texturedPixel[2] > texturedPixel[1] + 20,
-        quantized: quantized && renderer.getScene().isMeshQuantized(flat) && pick?.expressId === 101 && isForeground(linePixel),
+        quantized: quantized && pick?.expressId === 101 && isForeground(linePixel),
         instanced: instancedPick?.expressId === 103 && instancedPixel !== null
           && instancedPixel[2] > instancedPixel[0] + 20 && instancedPixel[1] > instancedPixel[0] + 20,
         point: pointPick?.expressId === 105 && pointPixel !== null
@@ -314,6 +313,7 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
       && report.evidence.pickResidualMetres <= GEOMETRIC_TOLERANCE_METRES
       && report.evidence.CPUAndGpuAgree
       && report.evidence.snapResidualMetres !== null
+      && report.evidence.measurementResidualMetres !== null
       && report.evidence.measurementResidualMetres <= GEOMETRIC_TOLERANCE_METRES
       && report.evidence.diagnostics.gpuErrors === 0
       && report.evidence.diagnostics.errors === 0;

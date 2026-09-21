@@ -55,8 +55,8 @@ import { ifcToViewerAxes } from '@/lib/geo/coordinate-frame';
 import {
   dxfUnderlayToWorldLines3D as toWorldLines3D,
   dxfUnderlayToWorldLines3DAnchored as toWorldLines3DAnchored,
-  type AnchoredDxfLines3D,
 } from './dxfUnderlayWorldLines.js';
+import type { RendererLineVertices } from '@/lib/renderer/line-overlay-rte';
 export type { AnchoredDxfLines3D } from './dxfUnderlayWorldLines.js';
 
 export interface DxfUnderlayRenderLine {
@@ -389,6 +389,6 @@ export function dxfUnderlayToWorldLines3DAnchored(
   elevationRenderY: number,
   mapToWorld: (p: Point2D) => Point2D = (p) => p,
   georeferenceAvailable = false,
-): AnchoredDxfLines3D | null {
+): RendererLineVertices | null {
   return toWorldLines3DAnchored(entry, shift, elevationRenderY, mapToWorld, resolveEffectiveGeoreferenced(entry, georeferenceAvailable));
 }

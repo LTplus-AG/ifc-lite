@@ -372,8 +372,25 @@ describe('dxfUnderlayToWorldLines3D (issue #2043)', () => {
     } as unknown as DxfUnderlayState;
     const result = dxfUnderlayToWorldLines3DAnchored(e, { x: 0, y: 0 }, 0);
     assert.ok(result, 'the segment should produce an anchored line payload');
-    assert.deepEqual(result!.origin, [5_000_000.015625, 0, 0]);
-    assert.ok(Math.abs(result!.localVertices[3] - 0.01) < 1e-8, `DXF local residual became ${result!.localVertices[3]}`);
+    assert.ok(!(result instanceof Float32Array) && 'localVertices' in result, 'the short segment needs one local RTE partition');
+    if (!result || result instanceof Float32Array || !('localVertices' in result)) return;
+    assert.deepEqual(result.origin, [5_000_000.015625, 0, 0]);
+    assert.ok(Math.abs(result.localVertices[3] - 0.01) < 1e-8, `DXF local residual became ${result.localVertices[3]}`);
+  });
+
+  it('partitions a 9km DXF path at 5,000 km instead of uploading one invalid local frame (#5049)', () => {
+    const e = {
+      name: 'survey.dxf', visible3D: true, opacity: 1, georeferenced: false,
+      placement: { offsetX: 5_000_000.125, offsetY: 0, rotationDeg: 0, scale: 1 },
+      layerVisibility: {}, underlay: { layers: [{ name: '0', visible: true, paths: [{ points: [{ x: 0, y: 0 }, { x: 9_000, y: 0 }], closed: false }] }] },
+    } as unknown as DxfUnderlayState;
+    const result = dxfUnderlayToWorldLines3DAnchored(e, { x: 0, y: 0 }, 0);
+    assert.ok(Array.isArray(result), 'a 9km segment needs two independently anchored renderer draws');
+    if (!Array.isArray(result)) return;
+    assert.equal(result.length, 2);
+    assert.equal(result[0].origin[0], 5_000_000.125);
+    assert.equal(result[1].origin[0], 5_004_500.125);
+    assert.ok(result.every((partition) => partition.localVertices.every((coordinate) => Math.abs(coordinate) <= 8_192)));
   });
   const entry = (paths: DxfUnderlayState['underlay']['layers'][number]['paths']): DxfUnderlayState => ({
     id: 'u1',

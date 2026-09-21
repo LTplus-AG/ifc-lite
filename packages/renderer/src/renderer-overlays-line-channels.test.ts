@@ -46,6 +46,7 @@ function makeHarness(): Harness {
     const host: OverlayHost = {
         getModelBounds: () => null,
         expandModelBoundsWithFlatVertices: (positions) => { expanded.push(positions); },
+        expandModelBoundsWithAnchoredLineVertices: (positions) => { expanded.push(positions); },
         syncCameraSceneBounds: () => { syncs++; },
         requestRender: () => { renders++; },
     };

@@ -10,6 +10,7 @@ import {
   SECTION_2D_UNIFORM_SLOTS,
   SECTION_2D_UNIFORM_SLOT_COUNT,
   SECTION_2D_UNIFORM_SLOT_INDEX,
+  SECTION_2D_MAX_LINE_PARTITIONS,
 } from './shaders/section-2d-overlay.wgsl.js';
 
 // WebGPU enum globals referenced by the renderer's bind-group visibility and
@@ -335,7 +336,7 @@ describe('Section2DOverlayRenderer: dispose releases EVERY family (#1277 leak)',
 });
 
 describe('SECTION_2D_UNIFORM_SLOT_INDEX (#3342)', () => {
-  it('is dense: values are exactly {0, ..., SECTION_2D_UNIFORM_SLOT_COUNT - 1}, no gaps or duplicates', () => {
+  it('reserves non-overlapping partition ranges inside the shared buffer', () => {
     // SECTION_2D_UNIFORM_SLOT_COUNT is *derived* from this index
     // (Object.keys(...).length), so comparing the two against each other
     // would hold by construction no matter what the index contains — it
@@ -344,10 +345,13 @@ describe('SECTION_2D_UNIFORM_SLOT_INDEX (#3342)', () => {
     // the buffer is sized for `count` slots but a draw addresses a slot
     // beyond it. Pin density instead: every slot value 0..COUNT-1 must be
     // used exactly once.
-    const values = Object.values(SECTION_2D_UNIFORM_SLOT_INDEX);
-    const sorted = [...values].sort((a, b) => a - b);
-    const expected = Array.from({ length: SECTION_2D_UNIFORM_SLOT_COUNT }, (_, i) => i);
-    assert.deepStrictEqual(sorted, expected, 'slot values must be exactly 0..COUNT-1 with no gaps or duplicates');
+    const starts = Object.values(SECTION_2D_UNIFORM_SLOT_INDEX).sort((a, b) => a - b);
+    assert.equal(starts[0], 0, 'the section cap owns the first record');
+    assert.equal(starts[1], 1, 'line partitions begin after the cap record');
+    for (let index = 2; index < starts.length; index++) {
+      assert.equal(starts[index] - starts[index - 1], SECTION_2D_MAX_LINE_PARTITIONS);
+    }
+    assert.equal(SECTION_2D_UNIFORM_SLOT_COUNT, 1 + (starts.length - 1) * SECTION_2D_MAX_LINE_PARTITIONS);
   });
 });
 
@@ -434,15 +438,18 @@ describe('Section2DOverlayRenderer: shared uniform buffer', () => {
     assert.strictEqual(u[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh + 3], 1);
   });
 
-  it('refuses one over-wide anchored line overlay instead of losing local precision (#5049)', () => {
-    const { renderer } = newRenderer();
-    assert.throws(
-      () => renderer.setLineOverlay('annotation', {
-        localVertices: new Float32Array([0, 0, 0, 8_192.1, 0, 0]),
-        origin: [5_000_000.015625, 0, 0],
-      }),
-      /partition the line overlay into smaller anchored batches/,
-    );
+  it('draws independently anchored partitions instead of dropping a >8km overlay (#5049)', () => {
+    const { renderer, writes } = newRenderer();
+    renderer.setLineOverlay('annotation', [
+      { localVertices: new Float32Array([0, 0, 0, 4_500, 0, 0]), origin: [5_000_000.015625, 0, 0] },
+      { localVertices: new Float32Array([0, 0, 0, 4_500, 0, 0]), origin: [5_004_500.015625, 0, 0] },
+    ]);
+    const { pass, calls } = makePass();
+    renderer.drawLineOverlay(pass, new Float32Array(16), 'annotation', new Float32Array(16), [5_000_000, 0, 0]);
+    assert.deepStrictEqual(calls.filter((call) => call.startsWith('draw:')), ['draw:2', 'draw:2']);
+    const deltas = writes.slice(-2).map((write) => write.data[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh] + write.data[SECTION_2D_UNIFORM_SLOTS.originDeltaLow]);
+    assert.ok(Math.abs(deltas[0] - 0.015625) < 1e-7);
+    assert.ok(Math.abs(deltas[1] - 4_500.015625) < 1e-4);
   });
 
   it('places the cap style at the capFill / capStroke / params slots', () => {
@@ -596,19 +603,20 @@ describe('Section2DOverlayRenderer: one uniform record per draw (#2456)', () => 
     // One uniform write per draw site: the cap (which its fill and outline
     // share by design) plus the six families.
     const uniformOffsets = writes.slice(uniformWritesBefore).map((w) => w.offset);
-    assert.strictEqual(uniformOffsets.length, SECTION_2D_UNIFORM_SLOT_COUNT);
+    const drawSites = FAMILIES.length + 1;
+    assert.strictEqual(uniformOffsets.length, drawSites);
     assert.strictEqual(
       new Set(uniformOffsets).size,
-      SECTION_2D_UNIFORM_SLOT_COUNT,
+      drawSites,
       `the seven draw sites must not share a record; offsets were ${JSON.stringify(uniformOffsets)}`,
     );
 
     // …and every bound record must be one that was actually written for it.
     // 8 binds: cap fill + cap outline (same slot) + six families.
-    assert.strictEqual(binds.length, SECTION_2D_UNIFORM_SLOT_COUNT + 1);
+    assert.strictEqual(binds.length, drawSites + 1);
     assert.strictEqual(
       new Set(binds).size,
-      SECTION_2D_UNIFORM_SLOT_COUNT,
+      drawSites,
       'the cap fill and outline share slot 0; the six families do not share anything',
     );
     for (const offset of binds) {

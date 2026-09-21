@@ -20,6 +20,7 @@ import {
   SYMBOLIC_TEXT_WGSL,
 } from './shaders/symbolic-overlay.wgsl.js';
 import { PIPELINE_CONSTANTS } from './constants.js';
+import { packRteDrawableDelta } from './relative-to-eye.js';
 import { parseBoxAlignment, triangulateFillTo } from './symbolic-overlay-geometry.js';
 export { parseBoxAlignment } from './symbolic-overlay-geometry.js';
 
@@ -266,7 +267,7 @@ export class SymbolicFillPipeline {
       const uniform = new Float32Array(40); uniform.set(viewProj);
       if (partition.origin && rteViewProj && camera) {
         uniform.set(rteViewProj, 16);
-        for (let axis = 0; axis < 3; axis++) { const delta = partition.origin[axis] - camera[axis]; const high = Math.fround(delta); uniform[32 + axis] = high; uniform[36 + axis] = Math.fround(delta - high); }
+        packRteDrawableDelta(partition.origin, camera, uniform, 32);
         uniform[35] = 1;
       }
       this.device.queue.writeBuffer(partition.uniformBuffer, 0, uniform);

@@ -22,10 +22,12 @@
 
 import {
   SECTION_2D_UNIFORM_FLOATS,
+  SECTION_2D_MAX_LINE_PARTITIONS,
   SECTION_2D_UNIFORM_SLOTS,
 } from './shaders/section-2d-overlay.wgsl.js';
 import {
   MAX_RTE_LOCAL_METRES,
+  packRteDrawableDelta,
   splitFloat64ForRte,
 } from './relative-to-eye.js';
 
@@ -45,13 +47,21 @@ export interface AnchoredLineVertices {
   origin: readonly [number, number, number];
 }
 
+/** Multiple independent RTE anchors for one logical overlay channel. */
+export type PartitionedLineVertices = readonly AnchoredLineVertices[];
+export type LineVertices = Float32Array | AnchoredLineVertices | PartitionedLineVertices;
+
+export function lineVertexFloatCount(vertices: LineVertices): number {
+  if (vertices instanceof Float32Array) return vertices.length;
+  if ('localVertices' in vertices) return vertices.localVertices.length;
+  return vertices.reduce((count, partition) => count + partition.localVertices.length, 0);
+}
+
 /** Minimum floats for one line segment: two 3-float vertices. */
 const FLOATS_PER_SEGMENT = 6;
 
 export class WorldLineBuffer {
-  private buffer: GPUBuffer | null = null;
-  private count = 0;
-  private anchor: readonly [number, number, number] | null = null;
+  private partitions: Array<{ buffer: GPUBuffer; count: number; anchor: readonly [number, number, number] | null }> = [];
 
   /**
    * @param uniformSlot Index of this family's record in the shared uniform
@@ -79,11 +89,17 @@ export class WorldLineBuffer {
    * float from a flattener should cost the caller the incomplete tail segment,
    * not the entire grid / DXF / annotation layer.
    */
-  upload(device: GPUDevice, vertices: Float32Array | AnchoredLineVertices): void {
+  upload(device: GPUDevice, vertices: LineVertices): void {
     this.clear();
-    const anchor = vertices instanceof Float32Array ? null : vertices.origin;
-    const source = vertices instanceof Float32Array ? vertices : vertices.localVertices;
-    if (anchor) {
+    const inputs = vertices instanceof Float32Array ? [{ localVertices: vertices, origin: null }] : Array.isArray(vertices)
+      ? vertices : [vertices];
+    if (inputs.length > SECTION_2D_MAX_LINE_PARTITIONS) {
+      throw new RangeError(`RTE line overlay has ${inputs.length} anchors; at most ${SECTION_2D_MAX_LINE_PARTITIONS} partitions fit in one render pass.`);
+    }
+    for (const input of inputs) {
+      const anchor = input.origin;
+      const source = input.localVertices;
+      if (anchor) {
       for (let axis = 0; axis < 3; axis++) splitFloat64ForRte(anchor[axis]);
       for (let index = 0; index < source.length; index++) {
         const coordinate = source[index];
@@ -93,37 +109,29 @@ export class WorldLineBuffer {
           );
         }
       }
+      }
+      const usableFloats = Math.floor(source.length / FLOATS_PER_SEGMENT) * FLOATS_PER_SEGMENT;
+      if (usableFloats === 0) continue;
+      const data = usableFloats === source.length ? source : source.subarray(0, usableFloats);
+      const buffer = device.createBuffer({ size: data.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
+      device.queue.writeBuffer(buffer, 0, data);
+      this.partitions.push({ buffer, count: usableFloats / 3, anchor });
     }
-    const usableFloats = Math.floor(source.length / FLOATS_PER_SEGMENT) * FLOATS_PER_SEGMENT;
-    if (usableFloats === 0) return;
-
-    const data = usableFloats === source.length ? source : source.subarray(0, usableFloats);
-    this.buffer = device.createBuffer({
-      size: data.byteLength,
-      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-    });
-    device.queue.writeBuffer(this.buffer, 0, data);
-    this.count = usableFloats / 3;
-    this.anchor = anchor;
   }
 
   /** Destroy the buffer and reset the count. Safe to call repeatedly. */
   clear(): void {
-    if (this.buffer) {
-      this.buffer.destroy();
-      this.buffer = null;
-    }
-    this.count = 0;
-    this.anchor = null;
+    for (const partition of this.partitions) partition.buffer.destroy();
+    this.partitions = [];
   }
 
   has(): boolean {
-    return this.count > 0;
+    return this.partitions.length > 0;
   }
 
   /** Vertex count, for tests and for the caller's own bookkeeping. */
   get vertexCount(): number {
-    return this.count;
+    return this.partitions.reduce((count, partition) => count + partition.count, 0);
   }
 
   /**
@@ -145,28 +153,22 @@ export class WorldLineBuffer {
     rteViewProj?: Float32Array,
     camera?: readonly [number, number, number],
   ): void {
-    if (!this.buffer || this.count === 0) return;
-
-    const byteOffset = this.uniformSlot * resources.uniformStride;
-    const uniforms = new Float32Array(SECTION_2D_UNIFORM_FLOATS);
-    uniforms.set(viewProj, SECTION_2D_UNIFORM_SLOTS.viewProj);
-    if (this.anchor && rteViewProj && camera) {
-      uniforms.set(rteViewProj, SECTION_2D_UNIFORM_SLOTS.rteViewProj);
-      for (let axis = 0; axis < 3; axis++) {
-        const delta = this.anchor[axis] - camera[axis];
-        const high = Math.fround(delta);
-        uniforms[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh + axis] = high;
-        uniforms[SECTION_2D_UNIFORM_SLOTS.originDeltaLow + axis] = Math.fround(delta - high);
+    for (let index = 0; index < this.partitions.length; index++) {
+      const partition = this.partitions[index];
+      const byteOffset = (this.uniformSlot + index) * resources.uniformStride;
+      const uniforms = new Float32Array(SECTION_2D_UNIFORM_FLOATS);
+      uniforms.set(viewProj, SECTION_2D_UNIFORM_SLOTS.viewProj);
+      if (partition.anchor && rteViewProj && camera) {
+        uniforms.set(rteViewProj, SECTION_2D_UNIFORM_SLOTS.rteViewProj);
+        packRteDrawableDelta(partition.anchor, camera, uniforms, SECTION_2D_UNIFORM_SLOTS.originDeltaHigh);
+        uniforms[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh + 3] = 1;
       }
-      uniforms[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh + 3] = 1;
+      uniforms.set(color, SECTION_2D_UNIFORM_SLOTS.lineColor);
+      resources.device.queue.writeBuffer(resources.uniformBuffer, byteOffset, uniforms);
+      pass.setPipeline(resources.pipeline);
+      pass.setBindGroup(0, resources.bindGroup, [byteOffset]);
+      pass.setVertexBuffer(0, partition.buffer);
+      pass.draw(partition.count);
     }
-    // planeOffset stays 0 — vertices are already in world space.
-    uniforms.set(color, SECTION_2D_UNIFORM_SLOTS.lineColor);
-    resources.device.queue.writeBuffer(resources.uniformBuffer, byteOffset, uniforms);
-
-    pass.setPipeline(resources.pipeline);
-    pass.setBindGroup(0, resources.bindGroup, [byteOffset]);
-    pass.setVertexBuffer(0, this.buffer);
-    pass.draw(this.count);
   }
 }

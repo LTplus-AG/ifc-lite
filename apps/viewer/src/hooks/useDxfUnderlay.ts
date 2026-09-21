@@ -27,7 +27,7 @@
 import { useMemo } from 'react';
 import type { Point2D } from '@ifc-lite/drawing-2d';
 import type { GeometryResult } from '@ifc-lite/geometry';
-import type { AnchoredDxfLines3D } from './dxfUnderlayWorldLines';
+import type { RendererLineVertices } from '@/lib/renderer/line-overlay-rte';
 import { useViewerStore } from '@/store';
 import { buildDxfMapToWorldTransform, resolveDxfExportGeoreference } from './dxfExportGeoref';
 import {
@@ -125,7 +125,7 @@ export function useDxfUnderlaysForDrawing(params: {
  * alignment 3D overlay is always-eligible (`useAlignmentLines3D`); grid 3D
  * lines are drawn by `useSymbolicAnnotations` instead (issue #3368).
  */
-export type DxfLines3D = Float32Array | AnchoredDxfLines3D;
+export type DxfLines3D = RendererLineVertices;
 
 export function useDxfUnderlays3DLines(
   coordinateInfo: GeometryResult['coordinateInfo'] | undefined,
@@ -149,24 +149,13 @@ export function useDxfUnderlays3DLines(
     if (visible.length === 0) return EMPTY_LINES_3D;
     const shift = dxfWorldShift(coordinateInfo);
     const elevationRenderY = dxfElevationRenderY(coordinateInfo);
-    const arrays = visible.map((u) =>
+    const payloads = visible.map((u) =>
       dxfUnderlayToWorldLines3DAnchored(u, shift, elevationRenderY, mapToWorld, georeferenceAvailable),
-    ).filter((value): value is AnchoredDxfLines3D => value !== null);
-    let total = 0;
-    for (const a of arrays) total += a.localVertices.length;
-    if (total === 0) return EMPTY_LINES_3D;
-    if (arrays.length === 1) return arrays[0];
-    const origin = arrays[0].origin;
-    const merged = new Float32Array(total);
-    let offset = 0;
-    for (const a of arrays) {
-      for (let index = 0; index < a.localVertices.length; index += 3) {
-        merged[offset + index] = a.localVertices[index] + (a.origin[0] - origin[0]);
-        merged[offset + index + 1] = a.localVertices[index + 1] + (a.origin[1] - origin[1]);
-        merged[offset + index + 2] = a.localVertices[index + 2] + (a.origin[2] - origin[2]);
-      }
-      offset += a.localVertices.length;
-    }
-    return { localVertices: merged, origin };
+    ).filter((value): value is RendererLineVertices => value !== null);
+    const partitions = payloads.flatMap((payload) => payload instanceof Float32Array
+      ? []
+      : 'localVertices' in payload ? [payload] : payload);
+    if (partitions.length === 0) return EMPTY_LINES_3D;
+    return partitions.length === 1 ? partitions[0] : partitions;
   }, [dxfUnderlays, coordinateInfo, mapToWorld, georeferenceAvailable]);
 }

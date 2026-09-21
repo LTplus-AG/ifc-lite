@@ -5,7 +5,7 @@
 /** RTE-safe 3D DXF line construction, kept separate from 2D drawing mapping. */
 
 import { applyDxfPlacement, type Point2D } from '@ifc-lite/drawing-2d';
-import type { AnchoredRendererLineVertices } from '@/lib/renderer/line-overlay-rte';
+import { anchorWorldLineVertices, type AnchoredRendererLineVertices, type RendererLineVertices } from '@/lib/renderer/line-overlay-rte';
 import type { DxfUnderlayState } from '@/store/slices/drawing2DSlice';
 
 export type AnchoredDxfLines3D = AnchoredRendererLineVertices;
@@ -36,15 +36,8 @@ export function dxfUnderlayToWorldLines3D(entry: DxfUnderlayState, shift: { x: n
   return new Float32Array(worldLineNumbers(entry, shift, elevation, mapToWorld, georeferenced));
 }
 
-export function dxfUnderlayToWorldLines3DAnchored(entry: DxfUnderlayState, shift: { x: number; y: number }, elevation: number, mapToWorld: (p: Point2D) => Point2D, georeferenced: boolean): AnchoredDxfLines3D | null {
+export function dxfUnderlayToWorldLines3DAnchored(entry: DxfUnderlayState, shift: { x: number; y: number }, elevation: number, mapToWorld: (p: Point2D) => Point2D, georeferenced: boolean): RendererLineVertices | null {
   const world = worldLineNumbers(entry, shift, elevation, mapToWorld, georeferenced);
   if (world.length === 0) return null;
-  const origin: [number, number, number] = [world[0], world[1], world[2]];
-  const localVertices = new Float32Array(world.length);
-  for (let index = 0; index < world.length; index += 3) {
-    localVertices[index] = world[index] - origin[0];
-    localVertices[index + 1] = world[index + 1] - origin[1];
-    localVertices[index + 2] = world[index + 2] - origin[2];
-  }
-  return { localVertices, origin };
+  return anchorWorldLineVertices(world);
 }

@@ -9,6 +9,7 @@
  */
 import { MESH_FLAG_RTE_DRAWABLE } from '../mesh-rte-uniforms.js';
 import { mainRteWgsl, mainShadowWgsl } from './main-rte-shadow.wgsl.js';
+import { relativeToEyeWgsl } from './relative-to-eye.wgsl.js';
 
 export const mainShaderSource = `
         struct Uniforms {
@@ -30,6 +31,7 @@ export const mainShaderSource = `
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
         const RTE_DRAWABLE_FLAG: u32 = ${MESH_FLAG_RTE_DRAWABLE}u;
+        ${relativeToEyeWgsl}
         ${mainRteWgsl}
         // Shared group(1) lighting; packing matches packEnvironmentUniforms().
         struct Environment {

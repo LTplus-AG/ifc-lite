@@ -19,6 +19,7 @@ import {
   writePickUniforms,
 } from './picker-rte-uniforms.js';
 import { isReadbackAbort, releaseReadbacks } from './picker-readbacks.js';
+import { relativeToEyeWgsl } from './shaders/relative-to-eye.wgsl.js';
 
 /** Point-pick sizing parameters forwarded to the GPU pipeline. */
 export interface PointPickSizing {
@@ -95,6 +96,7 @@ export class Picker {
     // Create picker shader that uses storage buffer for per-object expressId
     const shaderModule = this.device.createShaderModule({
       code: `
+        ${relativeToEyeWgsl}
         struct Uniforms {
           viewProj: mat4x4<f32>, // translation-free RTE projection
           model: mat4x4<f32>,    // linear transform; translation lives in originHigh/Low
@@ -123,7 +125,7 @@ export class Picker {
         fn vs_main(input: VertexInput, @builtin(instance_index) instanceIndex: u32) -> VertexOutput {
           var output: VertexOutput;
           let linear = (uniforms.model * vec4<f32>(input.position, 0.0)).xyz;
-          let relative = (linear + uniforms.originHigh.xyz) + uniforms.originLow.xyz;
+          let relative = rteWorldPosition(linear, RteDrawableUniform(uniforms.originHigh, uniforms.originLow)).xyz;
           output.position = uniforms.viewProj * vec4<f32>(relative, 1.0);
           output.worldPos = relative;
           // Look up expressId from storage buffer using instance index
@@ -216,6 +218,7 @@ export class Picker {
     // storage buffer — the id rides the instance buffer per occurrence.
     const instancedPickModule = this.device.createShaderModule({
       code: `
+        ${relativeToEyeWgsl}
         struct Uniforms {
           viewProj: mat4x4<f32>,
           clipBoxMin: vec4<f32>,   // xyz = min corner (world), w = pad
@@ -250,7 +253,7 @@ export class Picker {
           let linear = (m * vec4<f32>(input.position, 0.0)).xyz;
           let highDelta = inst.anchorHigh.xyz - uniforms.cameraHigh.xyz;
           let lowDelta = inst.anchorLow.xyz - uniforms.cameraLow.xyz;
-          let relative = (linear + highDelta) + lowDelta;
+          let relative = rteWorldPosition(linear, RteDrawableUniform(vec4<f32>(highDelta, 0.0), vec4<f32>(lowDelta, 0.0))).xyz;
           output.position = uniforms.viewProj * vec4<f32>(relative, 1.0);
           output.worldPos = relative;
           // bit 30 = instanced marker; express id in the low 30 bits.

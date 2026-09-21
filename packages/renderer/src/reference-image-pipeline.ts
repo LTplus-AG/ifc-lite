@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { PIPELINE_CONSTANTS } from './constants.js';
+import { packRteDrawableDelta } from './relative-to-eye.js';
 import type { ReferenceImageInput } from './reference-image-types.js';
 
 const REFERENCE_UNIFORM_FLOATS = 48;
@@ -105,12 +106,7 @@ export class ReferenceImagePipeline {
           for (let row = 0; row < 4; row++) data[32 + row] = viewProj[row]*origin[0]+viewProj[4+row]*origin[1]+viewProj[8+row]*origin[2]+viewProj[12+row];
           if (rteViewProj && rteCamera) {
             data.set(rteViewProj, 16);
-            for (let axis = 0; axis < 3; axis++) {
-              const delta = origin[axis] - rteCamera[axis];
-              const high = Math.fround(delta);
-              data[36 + axis] = high;
-              data[40 + axis] = Math.fround(delta - high);
-            }
+            packRteDrawableDelta(origin, rteCamera, data, 36);
             data[39] = 1;
           }
           data[44] = input.opacity;

@@ -7,12 +7,18 @@
 export const mainRteWgsl = `
         fn rtePosition(local: vec3<f32>) -> vec4<f32> {
           let linear = (uniforms.model * vec4<f32>(local, 0.0)).xyz;
-          return vec4<f32>((linear + uniforms.drawableDeltaHigh.xyz) + uniforms.drawableDeltaLow.xyz, 1.0);
+          return rteWorldPosition(linear, RteDrawableUniform(
+            uniforms.drawableDeltaHigh,
+            uniforms.drawableDeltaLow,
+          ));
         }
         fn rteInstancePosition(local: vec3<f32>, anchorHigh: vec3<f32>, anchorLow: vec3<f32>) -> vec4<f32> {
           let highDelta = anchorHigh - uniforms.rteCameraHigh.xyz;
           let lowDelta = anchorLow - uniforms.rteCameraLow.xyz;
-          return vec4<f32>((local + highDelta) + lowDelta, 1.0);
+          return rteWorldPosition(local, RteDrawableUniform(
+            vec4<f32>(highDelta, 0.0),
+            vec4<f32>(lowDelta, 0.0),
+          ));
         }`;
 
 export const mainShadowWgsl = `

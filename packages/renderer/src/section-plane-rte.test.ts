@@ -11,7 +11,7 @@ import {
   SECTION_PLANE_UNIFORM_SLOTS,
   SectionPlaneRenderer,
 } from './section-plane.js';
-import { SECTION_2D_UNIFORM_SLOTS } from './shaders/section-2d-overlay.wgsl.js';
+import { SECTION_2D_UNIFORM_SLOT_COUNT, SECTION_2D_UNIFORM_SLOTS } from './shaders/section-2d-overlay.wgsl.js';
 
 // Node has no WebGPU globals; the renderers only use these numeric flags when
 // allocating their buffers in this production-path packing test.
@@ -105,7 +105,7 @@ describe('section preview and cap use the same f64 RTE plane at survey coordinat
         spacingPx: 8, angleRad: 0, widthPx: 1, secondaryAngleRad: 0,
       },
     });
-    const capUniforms = lastWrite(capGpu.writes, 256 * 7);
+    const capUniforms = lastWrite(capGpu.writes, 256 * SECTION_2D_UNIFORM_SLOT_COUNT);
     const capPosition = rteRelativePositionF32(
       [0, 0, 0],
       capUniforms.subarray(SECTION_2D_UNIFORM_SLOTS.originDeltaHigh),

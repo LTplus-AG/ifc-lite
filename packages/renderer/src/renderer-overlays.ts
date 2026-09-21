@@ -59,7 +59,7 @@ import { drawSectionOverlays, type ModelBounds } from './render-section-draw.js'
 import type { RelativeToEyeFrame } from './relative-to-eye.js';
 import type { RenderOptions } from './types.js';
 import type { DeviceRecoveryOmission } from './device-recovery.js';
-import type { AnchoredLineVertices } from './section-2d-line-buffer.js';
+import { lineVertexFloatCount, type LineVertices } from './section-2d-line-buffer.js';
 
 /**
  * The slice of `Renderer` the overlays need. Deliberately narrow:
@@ -71,6 +71,12 @@ export interface OverlayHost {
     getModelBounds(): ModelBounds | null;
     /** Grow (or seed) the model AABB from a flat `[x,y,z,...]` buffer. */
     expandModelBoundsWithFlatVertices(positions: Float32Array, stride: number): void;
+    /** Fold f32-local overlay vertices through their source f64 anchor. */
+    expandModelBoundsWithAnchoredLineVertices(
+        positions: Float32Array,
+        origin: readonly [number, number, number],
+        stride: number,
+    ): void;
     /** Push the current model AABB to the camera's near/far fit. */
     syncCameraSceneBounds(): void;
     /** Mark the viewport dirty for the next animation frame. */
@@ -309,15 +315,23 @@ export class RendererOverlays {
     }
 
     /** See `Renderer.setLineOverlay` for the published contract. */
-    setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | AnchoredLineVertices | null): void {
+    setLineOverlay(channel: LineOverlayChannel, vertices: LineVertices | null): void {
         if (!this.section2DOverlayRenderer) return;
         this.section2DOverlayRenderer.setLineOverlay(channel, vertices);
-        if (vertices instanceof Float32Array && CHANNEL_EXPANDS_MODEL_BOUNDS[channel]) {
+        if (CHANNEL_EXPANDS_MODEL_BOUNDS[channel] && vertices) {
             // Mirrors the point-cloud upload path (`addPointClouds`,
             // `setPointClouds`): without `syncCameraSceneBounds` the frustum
             // excludes the cluster and it is clipped away even when the camera
             // points straight at it. See CHANNEL_EXPANDS_MODEL_BOUNDS.
-            this.host.expandModelBoundsWithFlatVertices(vertices, 3);
+            if (vertices instanceof Float32Array) {
+                this.host.expandModelBoundsWithFlatVertices(vertices, 3);
+            } else if ('localVertices' in vertices) {
+                this.host.expandModelBoundsWithAnchoredLineVertices(vertices.localVertices, vertices.origin, 3);
+            } else {
+                for (const partition of vertices) {
+                    this.host.expandModelBoundsWithAnchoredLineVertices(partition.localVertices, partition.origin, 3);
+                }
+            }
             this.host.syncCameraSceneBounds();
         }
         // Rendering is dirty-flag gated (#2442): a channel that changed has to
@@ -347,10 +361,10 @@ export class RendererOverlays {
      * clash-box line buffer, so only one of this / setClashOverlapBox shows.
      */
     setClashContactLines(
-        lines: { vertices: Float32Array | AnchoredLineVertices; color: [number, number, number, number] } | null,
+        lines: { vertices: LineVertices; color: [number, number, number, number] } | null,
     ): void {
         if (!this.section2DOverlayRenderer) return;
-        if (!lines || (lines.vertices instanceof Float32Array ? lines.vertices.length : lines.vertices.localVertices.length) === 0) {
+        if (!lines || lineVertexFloatCount(lines.vertices) === 0) {
             this.section2DOverlayRenderer.clearClashBoxLines3D();
             this.host.requestRender();
             return;

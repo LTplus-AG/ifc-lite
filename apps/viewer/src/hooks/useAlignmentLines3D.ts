@@ -29,14 +29,12 @@ import { hasEntityType } from './has-entity-type.js';
 import { getWholeSourceForWorker, parseOverlayLines } from '@/lib/overlay-parse';
 import { overlayRtcContextFor } from '@/lib/overlay-parse/rtc-context';
 import type { RtcFrame } from '@ifc-lite/geometry';
-import type { AnchoredRendererLineVertices } from '@/lib/renderer/line-overlay-rte';
+import { anchorWorldLineVertices, type RendererLineVertices } from '@/lib/renderer/line-overlay-rte';
 
 const EMPTY_F32 = new Float32Array(0);
 
-/** Renderer-owned local line payload. */
-export type AnchoredAlignmentLines = AnchoredRendererLineVertices;
-
-export type AlignmentLines3D = Float32Array | AnchoredAlignmentLines;
+/** Renderer-owned local line payload, partitioned when a span exceeds 8,192m. */
+export type AlignmentLines3D = RendererLineVertices;
 
 // ─── Shared parse cache ──────────────────────────────────────────────────────
 // One WASM walk per source/frame pair; cached so compatible re-renders and
@@ -160,15 +158,16 @@ export function useAlignmentLines3D(): AlignmentLines3D {
     // placement residual survives the line upload. A camera cannot render
     // arbitrarily separated sources in one RTE frame, and the renderer
     // deliberately rejects such an invalid frame.
-    const origin = [...arrays[0].delta] as [number, number, number];
-    const merged = new Float32Array(total);
-    let offset = 0;
+    const world: number[] = [];
     for (const { vertices, delta } of arrays) {
       for (let i = 0; i < vertices.length; i++) {
-        merged[offset + i] = vertices[i] + delta[i % 3] - origin[i % 3];
+        world.push(vertices[i] + delta[i % 3]);
       }
-      offset += vertices.length;
     }
-    return { localVertices: merged, origin };
+    const directLocal = world.every((coordinate) => Math.abs(coordinate) <= 8_192)
+      && world.every((coordinate, index) => index % 6 < 3
+        || Math.abs(coordinate - world[index - 3]) <= 8_192);
+    if (directLocal) return new Float32Array(world);
+    return anchorWorldLineVertices(world);
   }, [stores, version, placement]);
 }

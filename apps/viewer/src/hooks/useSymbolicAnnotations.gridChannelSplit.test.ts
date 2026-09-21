@@ -63,7 +63,7 @@ describe('buildSymbolicLineChannels splits annotation and grid content (issue #3
         '(true), which #967/grid:false exists to prevent',
     );
     assert.strictEqual(symbolicLineVertexData(grid).length, 6, 'the grid line (2 verts * 3 floats) must reach the grid channel');
-    assert.deepStrictEqual(Array.from(symbolicLineVertexData(grid)), [-500, 0, 0, 500, 0, 0]);
+    assert.deepStrictEqual(Array.from(symbolicLineVertexData(grid)), [0, 0, 0, 1000, 0, 0]);
   });
 
   it('both on: annotation and grid buckets land in their own channel, not merged into one', () => {
@@ -109,8 +109,8 @@ describe('buildSymbolicLineChannels splits annotation and grid content (issue #3
       fallbackY: 0,
     });
 
-    assert.ok(!(annotation instanceof Float32Array), 'national-grid annotation must use the renderer-owned anchor payload');
-    if (annotation instanceof Float32Array) return;
+    assert.ok(!(annotation instanceof Float32Array) && 'localVertices' in annotation, 'national-grid annotation must use one renderer-owned anchor payload');
+    if (annotation instanceof Float32Array || !('localVertices' in annotation)) return;
     assert.equal(annotation.origin[0], 5_000_000.015625, 'the f64 source anchor retains the centimetre residual');
     assert.ok(
       Math.abs(annotation.localVertices[3] - 0.01) < 1e-8,

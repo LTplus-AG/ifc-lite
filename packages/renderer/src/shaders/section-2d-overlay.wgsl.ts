@@ -75,19 +75,22 @@ export const SECTION_2D_UNIFORM_BYTES = SECTION_2D_UNIFORM_FLOATS * 4;
  * site (rather than a bump allocator) needs no per-frame reset hook: each site
  * draws at most once per pass.
  */
+/** Max independently-anchored line partitions per channel in one pass. */
+export const SECTION_2D_MAX_LINE_PARTITIONS = 32;
+
 export const SECTION_2D_UNIFORM_SLOT_INDEX = {
   /** The section cut cap: fill + outline, which share one record by design. */
   sectionCut: 0,
   annotation: 1,
-  alignment: 2,
-  grid: 3,
-  dxf: 4,
-  terrain: 5,
-  clashBox: 6,
+  alignment: 1 + SECTION_2D_MAX_LINE_PARTITIONS,
+  grid: 1 + SECTION_2D_MAX_LINE_PARTITIONS * 2,
+  dxf: 1 + SECTION_2D_MAX_LINE_PARTITIONS * 3,
+  terrain: 1 + SECTION_2D_MAX_LINE_PARTITIONS * 4,
+  clashBox: 1 + SECTION_2D_MAX_LINE_PARTITIONS * 5,
 } as const;
 
-/** How many uniform records the shared buffer holds — one per entry above. */
-export const SECTION_2D_UNIFORM_SLOT_COUNT = Object.keys(SECTION_2D_UNIFORM_SLOT_INDEX).length;
+/** One cap record plus a partition range for every line family. */
+export const SECTION_2D_UNIFORM_SLOT_COUNT = 1 + SECTION_2D_MAX_LINE_PARTITIONS * 6;
 
 /**
  * Byte stride between uniform slots for `device`.

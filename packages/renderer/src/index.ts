@@ -244,6 +244,8 @@ export class Renderer {
         getModelBounds: () => this.getModelBounds(),
         expandModelBoundsWithFlatVertices: (positions, stride) =>
             this.modelBoundsTracker.expandWithFlatVertices(positions, stride),
+        expandModelBoundsWithAnchoredLineVertices: (positions, origin, stride) =>
+            this.modelBoundsTracker.expandWithAnchoredVertices(positions, origin, stride),
         syncCameraSceneBounds: () => {
             if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
         },
@@ -3476,7 +3478,7 @@ export class Renderer {
      * extent", NOT "is it behind a visibility toggle" — annotations sit behind
      * `ifcAnnotationsVisible` too.
      */
-    setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | { localVertices: Float32Array; origin: [number, number, number] } | null): void {
+    setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | { localVertices: Float32Array; origin: [number, number, number] } | readonly { localVertices: Float32Array; origin: [number, number, number] }[] | null): void {
         this.overlays.setLineOverlay(channel, vertices);
     }
 
@@ -3500,7 +3502,7 @@ export class Renderer {
      * buffer, so only one of this / setClashOverlapBox is shown at a time.
      */
     setClashContactLines(
-        lines: { vertices: Float32Array | { localVertices: Float32Array; origin: [number, number, number] }; color: [number, number, number, number] } | null,
+        lines: { vertices: Float32Array | { localVertices: Float32Array; origin: [number, number, number] } | readonly { localVertices: Float32Array; origin: [number, number, number] }[]; color: [number, number, number, number] } | null,
     ): void {
         this.overlays.setClashContactLines(lines);
     }

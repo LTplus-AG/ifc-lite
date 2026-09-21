@@ -150,6 +150,7 @@ describe('the overlay facade still routes its draw pass to it (#2451 review)', (
         const host: OverlayHost = {
             getModelBounds: () => BOUNDS,
             expandModelBoundsWithFlatVertices: () => { /* unused */ },
+            expandModelBoundsWithAnchoredLineVertices: () => { /* unused */ },
             syncCameraSceneBounds: () => { /* unused */ },
             requestRender: () => { /* unused */ },
         };

@@ -5,7 +5,7 @@
 /** Dynamic uniform writers for production RTE object picking. */
 
 import { packPickClip, packPickUniforms } from './pick-uniforms.js';
-import type { RelativeToEyeSnapshot } from './relative-to-eye.js';
+import { packRteOrigin, type RelativeToEyeSnapshot } from './relative-to-eye.js';
 import { packRteClipBox, rtePlaneDistance } from './rte-clip-space.js';
 import type { Mesh, PickClipState } from './types.js';
 
@@ -57,11 +57,7 @@ export function writeInstancedPickUniforms(
   const camera = snapshot.getCameraWorld();
   packRteClipBox(clip?.clipBox, camera, scratch, 16);
   if (clip?.sectionPlane) scratch[27] = rtePlaneDistance(clip.sectionPlane.distance, clip.sectionPlane.normal, camera);
-  for (let axis = 0; axis < 3; axis++) {
-    const high = Math.fround(camera[axis]);
-    scratch[32 + axis] = high;
-    scratch[36 + axis] = Math.fround(camera[axis] - high);
-  }
+  packRteOrigin(camera, scratch, 32);
   scratch[35] = 0; scratch[39] = 0;
   device.queue.writeBuffer(buffer, 0, scratch);
 }

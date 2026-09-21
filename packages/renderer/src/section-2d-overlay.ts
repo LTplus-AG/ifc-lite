@@ -47,6 +47,7 @@ import {
   WorldLineBuffer,
   type SectionLinePipelineResources,
   type AnchoredLineVertices,
+  type LineVertices,
 } from './section-2d-line-buffer.js';
 import {
   LINE_OVERLAY_CHANNELS,
@@ -414,7 +415,7 @@ export class Section2DOverlayRenderer {
    * leaves every other channel exactly as it was — that independence is the
    * whole point of having channels rather than one merged buffer.
    */
-  setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | AnchoredLineVertices | null): void {
+  setLineOverlay(channel: LineOverlayChannel, vertices: LineVertices | null): void {
     if (vertices === null) {
       // Deliberately no `init()`: clearing destroys a buffer that only an
       // upload could have created, so a clear before first use must not be
@@ -457,7 +458,7 @@ export class Section2DOverlayRenderer {
    * world space (12 AABB edges = 24 vertices). Separate buffer + colour from the
    * other overlays. Pass an empty array to clear. (#1277)
    */
-  uploadClashBoxLines3D(vertices: Float32Array | AnchoredLineVertices): void {
+  uploadClashBoxLines3D(vertices: LineVertices): void {
     this.init();
     this.clashBoxLines.upload(this.device, vertices);
   }

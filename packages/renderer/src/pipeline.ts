@@ -645,13 +645,7 @@ export class RenderPipeline {
         this.device.queue.writeBuffer(this.uniformBuffer, 0, buffer);
     }
 
-    /**
-     * Write a raw 84-float (336-byte) uniform block into the SHARED uniform
-     * buffer, whose bind group is `getBindGroup()`. Used by the GPU-instancing
-     * pass, which reuses the frame's viewProj + section + flags from the
-     * renderer's prebuilt template (model + baseColor are unused — vs_instanced
-     * takes the transform + colour per-occurrence from the instance buffer).
-     */
+    /** Write the raw 84-float RTE uniform for instancing; model/colour come from its instance buffer. */
     /**
      * Create-and-VALIDATE the quantized pipeline variants. Uses
      * createRenderPipelineAsync so WebGPU's asynchronous validation completes

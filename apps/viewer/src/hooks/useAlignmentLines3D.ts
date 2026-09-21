@@ -29,21 +29,14 @@ import { hasEntityType } from './has-entity-type.js';
 import { getWholeSourceForWorker, parseOverlayLines } from '@/lib/overlay-parse';
 import { overlayRtcContextFor } from '@/lib/overlay-parse/rtc-context';
 import type { RtcFrame } from '@ifc-lite/geometry';
+import type { AnchoredRendererLineVertices } from '@/lib/renderer/line-overlay-rte';
 
 const EMPTY_F32 = new Float32Array(0);
 
-/** Renderer-compatible local line buffer. Kept structural to avoid making the
- * viewer import a renderer implementation module just for a public payload. */
-export interface AnchoredAlignmentLines {
-  localVertices: Float32Array;
-  origin: [number, number, number];
-}
+/** Renderer-owned local line payload. */
+export type AnchoredAlignmentLines = AnchoredRendererLineVertices;
 
 export type AlignmentLines3D = Float32Array | AnchoredAlignmentLines;
-
-/** Keep ordinary building-scale output byte-compatible; national-grid offsets
- * are uploaded as local vertices plus an f64 anchor. */
-const RTE_ANCHOR_THRESHOLD_METRES = 100_000;
 
 // ─── Shared parse cache ──────────────────────────────────────────────────────
 // One WASM walk per source/frame pair; cached so compatible re-renders and
@@ -161,32 +154,13 @@ export function useAlignmentLines3D(): AlignmentLines3D {
       }
     }
     if (total === 0) return EMPTY_F32;
-    const needsAnchor = arrays.some(({ delta }) => delta.some((value) => Math.abs(value) >= RTE_ANCHOR_THRESHOLD_METRES));
-    if (!needsAnchor) {
-      if (arrays.length === 1) {
-        const { vertices, delta } = arrays[0];
-        return delta.some((value) => value !== 0) ? vertices.map((value, index) => value + delta[index % 3]) : vertices;
-      }
-      const merged = new Float32Array(total);
-      let offset = 0;
-      for (const { vertices, delta } of arrays) {
-        if (delta.some((value) => value !== 0)) {
-          for (let i = 0; i < vertices.length; i++) merged[offset + i] = vertices[i] + delta[i % 3];
-        } else {
-          merged.set(vertices, offset);
-        }
-        offset += vertices.length;
-      }
-      return merged;
-    }
-
-    // Anchor all source frames before Float32 materialisation. The first
-    // translated source defines the common local frame; source deltas are
-    // subtracted in f64 so a 15.625 mm placement residual survives the line
-    // upload. A camera cannot render arbitrarily separated sources in one RTE
-    // frame, and the renderer deliberately rejects such an invalid frame.
-    const anchorSource = arrays.find(({ delta }) => delta.some((value) => Math.abs(value) >= RTE_ANCHOR_THRESHOLD_METRES));
-    const origin = [...(anchorSource?.delta ?? arrays[0].delta)] as [number, number, number];
+    // Anchor all source frames before Float32 materialisation. A conditional
+    // world-f32 fast path would reintroduce a precision cliff above the 8,192m
+    // normal-site envelope. Source deltas are subtracted in f64 so a 15.625 mm
+    // placement residual survives the line upload. A camera cannot render
+    // arbitrarily separated sources in one RTE frame, and the renderer
+    // deliberately rejects such an invalid frame.
+    const origin = [...arrays[0].delta] as [number, number, number];
     const merged = new Float32Array(total);
     let offset = 0;
     for (const { vertices, delta } of arrays) {

@@ -60,7 +60,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSymbolicLineChannels } from './symbolic-line-channels.js';
+import { buildSymbolicLineChannels, symbolicLineVertexData, type SymbolicLineVertices } from './symbolic-line-channels.js';
 import { buildSymbolicRichChannels } from './symbolic-rich-channels.js';
 import {
   buildParseResult,
@@ -143,9 +143,10 @@ const BAND_OVER_FALLBACK = { clipEnabled: true, clipPos: FALLBACK_Y, clipDepth: 
 const GRID_ONLY = { enabled: false, effectiveGridEnabled: true, fallbackY: FALLBACK_Y };
 
 /** Every x coordinate in a flat `[x, y, z, …]` line list. */
-function xs(buffer: Float32Array): number[] {
+function xs(buffer: SymbolicLineVertices): number[] {
+  const data = symbolicLineVertexData(buffer);
   const out: number[] = [];
-  for (let i = 0; i < buffer.length; i += 3) out.push(buffer[i]);
+  for (let i = 0; i < data.length; i += 3) out.push(data[i]);
   return out;
 }
 

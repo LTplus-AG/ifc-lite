@@ -17,13 +17,19 @@
  */
 
 import { debugEnabled, type ParseResult } from '../lib/overlay-parse/symbolic-parse.js';
+import {
+  anchorWorldLineVertices,
+  rendererLineVertexData,
+  type RendererLineVertices,
+} from '../lib/renderer/line-overlay-rte.js';
 import { liftTo3DLineList, resolveBucketY } from './useSymbolicAnnotations.js';
 
-const EMPTY_F32 = new Float32Array(0);
+/** The renderer-owned RTE line contract, or legacy world-f32 for normal sites. */
+export type SymbolicLineVertices = RendererLineVertices;
 
 export interface SymbolicLineChannels {
-  annotation: Float32Array;
-  grid: Float32Array;
+  annotation: SymbolicLineVertices;
+  grid: SymbolicLineVertices;
 }
 
 /** One store's parsed buckets + hide predicate — no React/WASM dependency,
@@ -41,6 +47,22 @@ interface SymbolicLineChannelsParams {
   clipPos: number;
   clipDepth: number;
   fallbackY: number;
+}
+
+/**
+ * Materialise a symbolic line channel in its own RTE frame. `liftTo3DLineList`
+ * deliberately writes JS numbers, so a national-grid translation retains its
+ * f64 centimetre residual until this boundary. Always anchoring also avoids a
+ * hidden precision cliff for ordinary sites between 8,192 m and a larger
+ * arbitrary threshold.
+ */
+function lineVerticesForRenderer(vertices: number[]): SymbolicLineVertices {
+  return anchorWorldLineVertices(vertices);
+}
+
+/** Return the local float data for inspection and legacy empty checks. */
+export function symbolicLineVertexData(vertices: SymbolicLineVertices): Float32Array {
+  return rendererLineVertexData(vertices);
 }
 
 /** Pure merge of every store's annotation/grid buckets into two flat 3D
@@ -94,7 +116,7 @@ export function buildSymbolicLineChannels(
     );
   }
   return {
-    annotation: annotationVerts.length === 0 ? EMPTY_F32 : new Float32Array(annotationVerts),
-    grid: gridVerts.length === 0 ? EMPTY_F32 : new Float32Array(gridVerts),
+    annotation: lineVerticesForRenderer(annotationVerts),
+    grid: lineVerticesForRenderer(gridVerts),
   };
 }

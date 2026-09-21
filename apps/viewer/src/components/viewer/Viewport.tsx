@@ -64,6 +64,7 @@ import { useRenderUpdates } from './useRenderUpdates.js';
 import {
   useSymbolicAnnotations,
   useSymbolicAnnotationsRichData,
+  symbolicLineVertexData,
   type SectionClipForGrid,
 } from '../../hooks/useSymbolicAnnotations.js';
 import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
@@ -71,6 +72,7 @@ import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
 import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
 import { subscribeViewportHealth } from './device-loss-report.js';
 import { runGpuUpload } from './gpu-upload-guard.js';
+import { anchorWorldLineVertices } from '@/lib/renderer/line-overlay-rte';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -595,7 +597,7 @@ export function Viewport({
     if (!renderer) return;
     if (showClashRegionBox && clashContactLines && clashContactLines.vertices.length > 0) {
       renderer.setClashContactLines({
-        vertices: new Float32Array(clashContactLines.vertices),
+        vertices: anchorWorldLineVertices(clashContactLines.vertices),
         color: clashContactLines.color,
       });
     } else if (showClashRegionBox && clashOverlapBox) {
@@ -1461,7 +1463,7 @@ export function Viewport({
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
     const v = symbolicLineChannels.annotation;
-    renderer.setLineOverlay('annotation', v.length === 0 ? null : v);
+    renderer.setLineOverlay('annotation', symbolicLineVertexData(v).length === 0 ? null : v);
   }, [symbolicLineChannels.annotation, isInitialized]);
 
   // IfcAlignment centerlines render as thin lines (not a ribbon mesh), always
@@ -1494,7 +1496,7 @@ export function Viewport({
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
     const v = symbolicLineChannels.grid;
-    renderer.setLineOverlay('grid', !ifcGridVisible || v.length === 0 ? null : v);
+    renderer.setLineOverlay('grid', !ifcGridVisible || symbolicLineVertexData(v).length === 0 ? null : v);
   }, [symbolicLineChannels.grid, ifcGridVisible, isInitialized]);
 
   // DXF reference-layer line paths in the 3D viewport (issue #2043,

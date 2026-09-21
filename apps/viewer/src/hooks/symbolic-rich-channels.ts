@@ -77,6 +77,8 @@ export interface AnnotationFill3D {
   points: Float32Array;
   holesOffsets: Uint32Array;
   worldY: number;
+  /** f64 anchor when this fill came from a placed source-local ring. */
+  origin?: [number, number, number];
   color: [number, number, number, number];
   hatching?: AnnotationFill2D['hatching'];
   /** False for grid bubble fills. See [`AnnotationText3D.definesExtent`] (#3359). */
@@ -162,9 +164,10 @@ export function buildSymbolicRichChannels(
       // omitted, and only for an exact owner/item match in this model.
       if (f.geometryItemId !== undefined && isMeshedFill?.(f.ownerId, f.geometryItemId)) return;
       fills.push({
-        points: f.points,
+        points: f.rteLocalPoints ?? f.points,
         holesOffsets: f.holesOffsets,
-        worldY: y,
+        worldY: f.rteOrigin ? y - f.rteOrigin[1] : y,
+        origin: f.rteOrigin,
         color: f.color,
         hatching: f.hatching,
         definesExtent,

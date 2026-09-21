@@ -35,6 +35,7 @@ import { __setOverlayWorkerFactoryForTest } from '@/lib/overlay-parse/index.js';
 import { createEmptyFlatSymbolic, type FlatSymbolic } from '@/lib/overlay-parse/symbolic-flat.js';
 import { __resetSymbolicAnnotationsCacheForTests } from './symbolic-parse-cache.js';
 import {
+  symbolicLineVertexData,
   useSymbolicAnnotations,
   useSymbolicAnnotationsRichData,
 } from './useSymbolicAnnotations.js';
@@ -141,8 +142,8 @@ async function sample(hideTypes: string[]): Promise<Sample> {
     const lines = useSymbolicAnnotations({ enabled: true, gridEnabled: true });
     const rich = useSymbolicAnnotationsRichData({ enabled: true, gridEnabled: true });
     latest = {
-      annotationVerts: lines.annotation.length,
-      gridVerts: lines.grid.length,
+      annotationVerts: symbolicLineVertexData(lines.annotation).length,
+      gridVerts: symbolicLineVertexData(lines.grid).length,
       texts: rich.texts.map((t) => t.content),
     };
     return null;

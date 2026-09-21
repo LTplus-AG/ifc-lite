@@ -50,6 +50,7 @@
 
 import { applyDxfPlacement, type DxfPlacement, type Point2D } from '@ifc-lite/drawing-2d';
 import type { GeometryResult } from '@ifc-lite/geometry';
+import type { AnchoredRendererLineVertices } from '@/lib/renderer/line-overlay-rte';
 import type { DxfUnderlayState } from '@/store/slices/drawing2DSlice';
 import { ifcToViewerAxes } from '@/lib/geo/coordinate-frame';
 
@@ -372,11 +373,8 @@ export function dxfUnderlayToWorldLines3D(
   return new Float32Array(dxfUnderlayWorldLineNumbers(entry, shift, elevationRenderY, mapToWorld, georeferenceAvailable));
 }
 
-/** Local f32 vertices plus the exact source-world anchor for RTE drawing. */
-export interface AnchoredDxfLines3D {
-  localVertices: Float32Array;
-  origin: [number, number, number];
-}
+/** Local f32 vertices plus the exact source-world renderer anchor for RTE drawing. */
+export type AnchoredDxfLines3D = AnchoredRendererLineVertices;
 
 /**
  * Build one DXF underlay directly into a local frame. Both DXF paths share

@@ -24,6 +24,10 @@ import {
   SECTION_2D_UNIFORM_FLOATS,
   SECTION_2D_UNIFORM_SLOTS,
 } from './shaders/section-2d-overlay.wgsl.js';
+import {
+  MAX_RTE_LOCAL_METRES,
+  splitFloat64ForRte,
+} from './relative-to-eye.js';
 
 /** Shared GPU resources a {@link WorldLineBuffer} borrows for the duration of a draw. */
 export interface SectionLinePipelineResources {
@@ -79,6 +83,17 @@ export class WorldLineBuffer {
     this.clear();
     const anchor = vertices instanceof Float32Array ? null : vertices.origin;
     const source = vertices instanceof Float32Array ? vertices : vertices.localVertices;
+    if (anchor) {
+      for (let axis = 0; axis < 3; axis++) splitFloat64ForRte(anchor[axis]);
+      for (let index = 0; index < source.length; index++) {
+        const coordinate = source[index];
+        if (!Number.isFinite(coordinate) || Math.abs(coordinate) > MAX_RTE_LOCAL_METRES) {
+          throw new RangeError(
+            `RTE local line coordinate ${coordinate} exceeds the ±${MAX_RTE_LOCAL_METRES} m precision envelope; partition the line overlay into smaller anchored batches.`,
+          );
+        }
+      }
+    }
     const usableFloats = Math.floor(source.length / FLOATS_PER_SEGMENT) * FLOATS_PER_SEGMENT;
     if (usableFloats === 0) return;
 

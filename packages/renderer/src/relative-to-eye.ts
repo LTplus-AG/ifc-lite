@@ -41,6 +41,13 @@ export const RTE_FRAME_FLOATS = 16;
 export const MAX_RTE_SOURCE_ABS_METRES = 1_000_000_000;
 /** Largest source-origin delta accepted by a single camera RTE frame. */
 export const MAX_RTE_EYE_RELATIVE_METRES = 1_000_000;
+/**
+ * Largest local-coordinate magnitude accepted for a precision-sensitive
+ * drawable. At 8,192 m an f32 ULP remains below one millimetre; larger
+ * extents must be partitioned into separate anchors rather than silently
+ * turning centimetre geometry into coarse local floats.
+ */
+export const MAX_RTE_LOCAL_METRES = 8_192;
 
 interface UniformFieldLayout {
   name: string;

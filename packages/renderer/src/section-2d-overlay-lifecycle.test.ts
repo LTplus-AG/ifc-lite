@@ -434,6 +434,17 @@ describe('Section2DOverlayRenderer: shared uniform buffer', () => {
     assert.strictEqual(u[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh + 3], 1);
   });
 
+  it('refuses one over-wide anchored line overlay instead of losing local precision (#5049)', () => {
+    const { renderer } = newRenderer();
+    assert.throws(
+      () => renderer.setLineOverlay('annotation', {
+        localVertices: new Float32Array([0, 0, 0, 8_192.1, 0, 0]),
+        origin: [5_000_000.015625, 0, 0],
+      }),
+      /partition the line overlay into smaller anchored batches/,
+    );
+  });
+
   it('places the cap style at the capFill / capStroke / params slots', () => {
     const { renderer, writes } = newRenderer();
     renderer.uploadDrawing(

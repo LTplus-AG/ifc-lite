@@ -72,10 +72,16 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
     await assert.rejects(commitTexturedProduct('annotation', asset.id, { ...native, objectId: native.annotationId }, containerId, failingRenderer, captureAppearanceSource(view)), /injected GPU/);
     assert.equal(view.getNewEntities().length, 0);
     assert.equal(view.peekNextExpressId(), allocationBefore);
+    assert.throws(
+      () => federationRegistry.toGlobalId('annotation', native.annotationId),
+      /not published/,
+      'a detached GPU preparation must not publish its provisional overlay IDs',
+    );
     assert.equal(useViewerStore.getState().undoStacks.get('annotation')?.length ?? 0, 0);
     assert.equal(modelAppearanceAssets.exportResources('annotation').resources.size, 0);
     const result = await commitTexturedProduct('annotation', asset.id, { ...native, objectId: native.annotationId }, containerId, renderer, captureAppearanceSource(view));
     assert.equal(result.expressId, native.annotationId);
+    assert.equal(federationRegistry.toGlobalId('annotation', native.annotationId), result.globalId);
     assert.equal(useViewerStore.getState().resolveGlobalIdFromModels(result.globalId)?.expressId, native.annotationId);
     assert.equal(meshes.size, 1);
     const hierarchy = data.spatialHierarchy;

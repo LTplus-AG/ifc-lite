@@ -7,7 +7,10 @@ import { nativeMeshFrame } from './native-mesh-frame';
 import type { AuthoredProductPlan, AuthoredProductMesh } from './authored-product-types';
 
 /** Keep local f32 vertices local; reconstruct native RTC + origin in f64 once. */
-export function authoredProductMesh(state: ViewerState, modelId: string, plan: AuthoredProductPlan, mesh: AuthoredProductMesh, bitmap?: ImageBitmap): MeshData {
+export function authoredProductMesh(
+  state: ViewerState, modelId: string, plan: AuthoredProductPlan, mesh: AuthoredProductMesh,
+  bitmap?: ImageBitmap, toGlobalId: (expressId: number) => number = expressId => state.toGlobalId(modelId, expressId),
+): MeshData {
   const vertices = mesh.positions.length / 3;
   if (!vertices || !Number.isInteger(vertices) || mesh.normals.length !== mesh.positions.length
     || !mesh.indices.length || mesh.indices.length % 3 || mesh.indices.some(index => !Number.isInteger(index) || index < 0 || index >= vertices)
@@ -17,12 +20,12 @@ export function authoredProductMesh(state: ViewerState, modelId: string, plan: A
     || !Number.isSafeInteger(mesh.geometry_item_id) || mesh.geometry_item_id <= 0
     || (!!mesh.texture !== !!bitmap) || (!!mesh.texture !== !!mesh.uvs?.length)) throw new Error('Invalid native annotation geometry.');
   const indices = new Uint32Array(mesh.indices);
-  return { expressId: state.toGlobalId(modelId, plan.objectId),
-    geometryItemId: state.toGlobalId(modelId, mesh.geometry_item_id),
+  return { expressId: toGlobalId(plan.objectId),
+    geometryItemId: toGlobalId(mesh.geometry_item_id),
     ...nativeMeshFrame(state, modelId, mesh.positions, mesh.normals, mesh.origin ?? [0, 0, 0], plan.rtcOffset), indices,
     color: [...mesh.color],
     appearanceSource: { kind: 'canonical-item', indices, sourceIndices: indices },
     ...(mesh.texture ? { uvs: new Float32Array(mesh.uvs!), textureBitmap: bitmap,
-    textureRef: { textureId: state.toGlobalId(modelId, mesh.texture.texture_id), url: mesh.texture.url,
+    textureRef: { textureId: toGlobalId(mesh.texture.texture_id), url: mesh.texture.url,
       repeatS: mesh.texture.repeat_s, repeatT: mesh.texture.repeat_t } } : {}) };
 }

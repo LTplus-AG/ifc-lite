@@ -143,6 +143,27 @@ export class FederationRegistry {
   }
 
   /**
+   * Resolve an owned overlay range while it is still detached from its
+   * mutation transaction. This validates the exact range that will be
+   * publishable, but deliberately does not make it pickable or owned yet.
+   * Callers must publish it only after the backing records commit.
+   */
+  previewOverlayGlobalId(modelId: string, start: number, end: number, expressId: number): number {
+    const range = this.modelRanges.get(modelId);
+    if (!range) throw new Error(`[FederationRegistry] Cannot preview unknown model ${modelId}`);
+    const overlayEnd = range.reservedMaxExpressId + OVERLAY_ID_HEADROOM;
+    if (!Number.isInteger(start) || !Number.isInteger(end) || !Number.isInteger(expressId)
+      || start < range.reservedMaxExpressId + 1 || end < start || end > overlayEnd
+      || expressId < start || expressId > end) {
+      throw new Error(`[FederationRegistry] Invalid overlay preview ${start}..${end} for ${modelId}`);
+    }
+    if (start !== range.maxExpressId + 1) {
+      throw new Error(`[FederationRegistry] Overlay preview for ${modelId} must extend published ownership contiguously`);
+    }
+    return range.offset + expressId;
+  }
+
+  /**
    * Unregister a model (when removed from viewer)
    * Note: The offset space is NOT reclaimed to avoid invalidating any
    * existing references (selections, undo stack, etc.)

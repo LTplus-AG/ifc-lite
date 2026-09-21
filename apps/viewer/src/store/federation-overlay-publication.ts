@@ -9,6 +9,7 @@ interface OverlayPublicationRegistry {
   getGlobalIdRange(modelId: string): { start: number; end: number } | null;
   getOffset(modelId: string): number | null;
   publishOverlayRange(modelId: string, start: number, end: number): void;
+  previewOverlayGlobalId(modelId: string, start: number, end: number, expressId: number): number;
 }
 
 interface OverlayPublicationModel {
@@ -68,4 +69,29 @@ export function toPublishedGlobalId(
     registry.publishOverlayRange(modelId, nextLocalId, expressId);
     return registry.toGlobalId(modelId, expressId);
   }
+}
+
+/**
+ * Convert an exact detached creation batch for temporary GPU staging. The
+ * registry remains unpublished until the prepared mutation transaction has
+ * committed its records, so a failed GPU preparation cannot burn ownership.
+ */
+export function previewPreparedOverlayGlobalId(
+  registry: OverlayPublicationRegistry,
+  models: ReadonlyMap<string, OverlayPublicationModel>,
+  modelId: string,
+  created: readonly { expressId: number }[],
+  expressId: number,
+): number {
+  const model = models.get(modelId);
+  const start = created[0]?.expressId;
+  const end = created.at(-1)?.expressId;
+  if (model === undefined || !Number.isSafeInteger(expressId) || !Number.isSafeInteger(start)
+    || !Number.isSafeInteger(end) || start <= model.maxExpressId || expressId < start || expressId > end) {
+    throw new Error('Invalid detached overlay range.');
+  }
+  for (let index = 0; index < created.length; index++) {
+    if (created[index].expressId !== start + index) throw new Error('Detached overlay IDs must be contiguous and source ordered.');
+  }
+  return registry.previewOverlayGlobalId(modelId, start, end, expressId);
 }

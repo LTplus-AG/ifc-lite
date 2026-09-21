@@ -96,6 +96,22 @@ describe('FederationRegistry - toGlobalId / fromGlobalId round-trip', () => {
     assert.throws(() => reg.publishRange('landxml', 3, 3), /Invalid published range/);
   });
 
+  it('previews only the exact next overlay range without publishing ownership', () => {
+    const reg = new FederationRegistry();
+    reg.registerModel('editable', 3);
+    const otherOffset = reg.registerModel('other', 3);
+
+    assert.equal(reg.previewOverlayGlobalId('editable', 4, 6, 6), 6);
+    assert.equal(reg.fromGlobalId(6), null, 'a GPU staging preview must not make an ID pickable');
+    assert.throws(() => reg.toGlobalId('editable', 6), /not published/);
+    assert.deepEqual(reg.fromGlobalId(otherOffset + 2), { modelId: 'other', expressId: 2 });
+    assert.throws(
+      () => reg.previewOverlayGlobalId('editable', 5, 6, 6),
+      /contiguously/,
+      'a preview may not skip a strict ownership hole',
+    );
+  });
+
   it('removal and reload burn only the removed reservation and preserve survivors', () => {
     const reg = new FederationRegistry();
     reg.reserveModel('first', 4);

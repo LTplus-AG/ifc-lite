@@ -8,7 +8,11 @@
 
 use std::{fs, io::ErrorKind, path::PathBuf};
 
-use ifc_lite_landxml::{parse_landxml_tin, LandXmlDiagnosticCode, LANDXML_12_NAMESPACE};
+use ifc_lite_landxml::{
+    alignment::parse_landxml_alignments_optional, parse_landxml_document, parse_landxml_tin,
+    LandXmlDiagnosticCode, LandXmlLimits, LandXmlStreamSummary, LandXmlTinStreamSession,
+    LANDXML_12_NAMESPACE, MAX_LANDXML_STREAM_DRAIN_BYTES,
+};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -52,6 +56,45 @@ fn contains_ascii(bytes: &[u8], needle: &str) -> bool {
         .any(|window| window == needle.as_bytes())
 }
 
+/// Exercise the bounded production stream with intentionally uneven input
+/// chunks. Draining before every advance is part of the stream's real credit
+/// contract, so this proves producer source records do not only survive the
+/// convenient whole-buffer adapter.
+fn streamed_summary(bytes: &[u8]) -> LandXmlStreamSummary {
+    let mut session =
+        LandXmlTinStreamSession::new(LandXmlLimits::default()).expect("stream session");
+    let mut start = 0;
+    for end in [1, 17, 89, 211, bytes.len()] {
+        let end = end.min(bytes.len());
+        if start == end {
+            continue;
+        }
+        while session.output_pending() {
+            let events = session
+                .drain(MAX_LANDXML_STREAM_DRAIN_BYTES)
+                .expect("stream output credit");
+            assert!(
+                !events.is_empty(),
+                "pending stream output must consume credit"
+            );
+        }
+        session
+            .advance(&bytes[start..end])
+            .expect("stream source chunk");
+        start = end;
+    }
+    while session.output_pending() {
+        let events = session
+            .drain(MAX_LANDXML_STREAM_DRAIN_BYTES)
+            .expect("stream output credit");
+        assert!(
+            !events.is_empty(),
+            "pending stream output must consume credit"
+        );
+    }
+    session.finish().expect("stream finalization")
+}
+
 #[test]
 fn issue_5051_bonsai_control_landxml_matches_independent_projected_points() {
     let root = "landxml/federation/bonsai-topo-control-v1";
@@ -63,8 +106,14 @@ fn issue_5051_bonsai_control_landxml_matches_independent_projected_points() {
     };
     let control: FederationControl =
         serde_json::from_slice(&control_bytes).expect("control metadata must be valid JSON");
-    assert!(control.synthetic, "the public control set must stay synthetic");
-    assert!(!control.customer_data, "customer data must never enter this corpus");
+    assert!(
+        control.synthetic,
+        "the public control set must stay synthetic"
+    );
+    assert!(
+        !control.customer_data,
+        "customer data must never enter this corpus"
+    );
 
     let document = ifc_lite_landxml::parse_landxml_document(&landxml_bytes)
         .expect("the rights-clear LandXML control terrain must parse canonically");
@@ -83,7 +132,11 @@ fn issue_5051_bonsai_control_landxml_matches_independent_projected_points() {
             .find(|point| point.name.as_deref() == Some(control_point.id.as_str()))
             .unwrap_or_else(|| panic!("missing control point {}", control_point.id));
         let actual = point.point.expect("control CgPoint must carry coordinates");
-        let authored = [actual.easting, actual.northing, actual.elevation.unwrap_or_default()];
+        let authored = [
+            actual.easting,
+            actual.northing,
+            actual.elevation.unwrap_or_default(),
+        ];
         for (actual, expected) in authored.into_iter().zip(control_point.projected) {
             assert!(
                 (actual - expected).abs() <= control.tolerance_metres,
@@ -95,22 +148,30 @@ fn issue_5051_bonsai_control_landxml_matches_independent_projected_points() {
 }
 
 #[test]
-fn issue_5051_canonical_producers_refuse_non_tin_exports_without_inventing_geometry() {
+fn issue_5051_aplitop_and_openroads_preserve_alignment_profiles_in_document_and_stream() {
     let cases = [
         (
             "landxml/producers/aplitop-mdt-8.0-alignment.xml",
             "MDT",
             "8.0",
             "meter",
+            1.0,
+            "Horizontal",
+            0.0,
+            507.067,
         ),
         (
             "landxml/producers/bentley-openroads-designer-10.09-us-survey-foot-alignment.xml",
             "OpenRoads Designer",
             "10.09.00.91",
             "USSurveyFoot",
+            1200.0 / 3937.0,
+            "PR_Twin_Branch_section",
+            2103.7205600000002,
+            2796.6790253265699,
         ),
     ];
-    for (path, application, version, unit) in cases {
+    for (path, application, version, unit, scale_to_meters, name, sta_start, length) in cases {
         let Some(bytes) = fixture(path) else {
             continue;
         };
@@ -129,10 +190,51 @@ fn issue_5051_canonical_producers_refuse_non_tin_exports_without_inventing_geome
             contains_ascii(&bytes, &format!(r#"linearUnit="{unit}""#)),
             "{path} must retain its declared unit token"
         );
-        let document = parse_landxml_tin(&bytes)
-            .expect("canonical LandXML remains a valid durable source record without terrain");
-        assert!(document.surfaces.is_empty(), "{path}: no TIN may be fabricated");
-        assert!(!document.capabilities.renderable_tin, "{path}");
+        let document = parse_landxml_document(&bytes)
+            .expect("canonical document must preserve the licensed producer source");
+        let alignment_document = parse_landxml_alignments_optional(&bytes)
+            .expect("canonical alignment document must preserve the licensed producer source");
+        let stream = streamed_summary(&bytes);
+
+        assert!(
+            document.terrain.surfaces.is_empty(),
+            "{path}: no TIN may be fabricated"
+        );
+        assert!(!document.terrain.capabilities.renderable_tin, "{path}");
+        let units = document
+            .terrain
+            .units
+            .as_ref()
+            .expect("producer declares linear units");
+        assert_eq!(units.linear_unit, unit, "{path}");
+        assert!(
+            (units.linear_scale_to_meters - scale_to_meters).abs() < 1e-12,
+            "{path}: declared unit scale changed"
+        );
+        let terrain_alignment = document.terrain.alignments.first().expect("alignment");
+        assert_eq!(terrain_alignment.name, name, "{path}");
+        assert!(
+            (terrain_alignment.sta_start - sta_start).abs() < 1e-9,
+            "{path}"
+        );
+        assert!((terrain_alignment.length - length).abs() < 1e-9, "{path}");
+        assert_eq!(document.terrain.profiles.len(), 1, "{path}");
+        let alignment = alignment_document
+            .alignments
+            .first()
+            .expect("alignment record");
+        assert_eq!(alignment.name, name, "{path}");
+        assert!(
+            !alignment.segments.is_empty(),
+            "{path}: horizontal primitives must remain source records"
+        );
+        assert!(
+            !document.terrain.profiles[0].pvis.is_empty(),
+            "{path}: vertical profile points must remain source records"
+        );
+        assert_eq!(stream.horizontal_alignments, 1, "{path}");
+        assert_eq!(stream.metadata.terrain, document.terrain, "{path}");
+        assert_eq!(stream.metadata.alignments, alignment_document, "{path}");
     }
 }
 
@@ -146,17 +248,31 @@ fn issue_5051_civil3d_2020_international_foot_tin_preserves_source_and_definitio
     assert!(contains_ascii(&bytes, r#"version="2020""#));
     assert!(contains_ascii(&bytes, r#"linearUnit="foot""#));
     let document = parse_landxml_tin(&bytes).expect("Civil 3D LandXML 1.2 TIN must parse");
-    let surface = document.surfaces.first().expect("Civil 3D source must retain its surface");
-    assert!(!surface.points.is_empty(), "Pnts must not be fabricated away");
-    assert!(!surface.faces.is_empty(), "Faces must not be fabricated away");
+    let surface = document
+        .surfaces
+        .first()
+        .expect("Civil 3D source must retain its surface");
+    assert!(
+        !surface.points.is_empty(),
+        "Pnts must not be fabricated away"
+    );
+    assert!(
+        !surface.faces.is_empty(),
+        "Faces must not be fabricated away"
+    );
     assert!(
         !surface.breaklines.is_empty(),
         "SourceData Breaklines must remain available to downstream tools"
     );
-    let units = document.units.expect("Civil 3D source declares Imperial units");
+    let units = document
+        .units
+        .expect("Civil 3D source declares Imperial units");
     assert_eq!(units.linear_unit, "foot");
     assert_eq!(units.linear_scale_to_meters, 0.3048);
-    assert!(document.capabilities.renderable_tin, "the recorded TIN must remain renderable");
+    assert!(
+        document.capabilities.renderable_tin,
+        "the recorded TIN must remain renderable"
+    );
 }
 
 #[test]

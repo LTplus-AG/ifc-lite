@@ -6,7 +6,7 @@
 
 # LandXML interoperability coverage ledger
 
-Version: 1.0 (2026-09-21)
+Version: 1.1 (2026-09-22)
 
 This is the acceptance evidence for [#5051](https://github.com/LTplus-AG/ifc-lite/issues/5051),
 not a list of formats that a source header happens to name. It is deliberately
@@ -28,11 +28,11 @@ Each row records two independent facts:
   generalizes across another exporter, schema revision, unit system, or feature
   family.
 
-`waived-replaced` is reserved for a dated reviewer decision that names the
-unmet evidence requirement, the search performed, rights-clear replacement
-tests, the remaining uncertainty, and a trigger to revisit. No row below is
-silently waived. Consequently this ledger is an honest progress report, not a
-closure assertion for #5051 or #4937.
+`waived-replaced` is reserved for a dated maintainer acceptance decision that
+names the unmet evidence requirement, the search performed, rights-clear
+replacement tests, the remaining uncertainty, and a trigger to revisit. No row
+below is silently waived. A waiver narrows the acceptance claim to the stated
+grammar invariant; it never turns synthetic input into vendor certification.
 
 ## Verified public corpus
 
@@ -62,20 +62,20 @@ different OpenRoads or Aplitop release.
 
 | Required cell | Current evidence / replacement evidence | Evidence disposition | Capability | Waiver state and retained uncertainty |
 | --- | --- | --- | --- | --- |
-| Civil 3D LandXML 1.0, metric | Rights-clear producer-attributed bytes have not been accepted. Synthetic 1.0 TIN schema tests cover only grammar invariants. | candidate | unverified | No waiver decision. A contributor-owned export with an explicit redistribution grant is required to make a producer claim. |
-| Civil 3D LandXML 1.0, international foot | No accepted producer byte. Synthetic unit tests are not vendor evidence. | candidate | unverified | No waiver decision; same acquisition trigger. |
-| Civil 3D LandXML 1.0, US-survey foot | No accepted producer byte. | candidate | unverified | No waiver decision; same acquisition trigger. |
-| Civil 3D LandXML 1.1, metric | Rights-clear producer-attributed bytes have not been accepted. Synthetic 1.1 TIN schema tests cover only grammar invariants. | candidate | unverified | No waiver decision; same acquisition trigger. |
-| Civil 3D LandXML 1.1, international foot | No accepted producer byte. | candidate | unverified | No waiver decision; same acquisition trigger. |
-| Civil 3D LandXML 1.1, US-survey foot | No accepted producer byte. | candidate | unverified | No waiver decision; same acquisition trigger. |
-| Civil 3D LandXML 1.2, metric | No accepted producer byte. | candidate | unverified | No waiver decision; same acquisition trigger. |
-| Civil 3D LandXML 1.2, international foot | `lekks/tin2dem` has a MIT repository grant and a Civil-3D-shaped 2020 surface, but its project/provenance is insufficient for producer certification. It remains a generic invariant fixture only. | candidate | rendered | No waiver decision. Do not claim Civil 3D interoperability from this row without author attestation. |
-| Civil 3D LandXML 1.2, US-survey foot | No accepted producer byte. | candidate | unverified | No waiver decision; same acquisition trigger. |
-| TBC legacy LandXML 1.2: alignment / profiles / surface source definitions / breaklines | No accepted TBC-native byte. Trimble documentation and public search leads do not establish a redistributable export. | candidate | unverified | No waiver decision. A contributor-owned toy project with explicit grant is the preferred trigger. |
-| TBC ISO 15143-4: alignment / profiles / surface source definitions / breaklines | No accepted ISO 15143-4 byte. This grammar is tracked separately and must not be treated as LandXML 1.2. | candidate | unverified | No waiver decision; same acquisition trigger, including exact grammar identification. |
-| OpenRoads terrain | FHWA/WFLHD material establishes that terrain is a real workflow but does not license a concrete attachment. The alignment/profile fixture above is not terrain evidence. | candidate | unverified | No waiver decision. Add a specific rights-reviewed terrain export and test it independently. |
-| OpenRoads alignment/profile | The CC-BY fixture and canonical document/stream behavioral test preserve the producer header, US-survey-foot unit, alignment and profile records. | redistributable-verified | preserved-only | Not waived. The remaining limitation is no terrain or rendered corridor claim. |
-| Aplitop alignment/profile | The CC-BY fixture and canonical document/stream behavioral test preserve the producer header, metric unit, alignment and profile records. | redistributable-verified | preserved-only | Not waived. No terrain or rendered corridor claim. |
+| Civil 3D LandXML 1.0, metric | Rights-clear 1.0 grammar vector, exact metric scale and TIN source topology. | waived-replaced | rendered | W-01; grammar/unit evidence only, never Civil 3D certification. |
+| Civil 3D LandXML 1.0, international foot | Rights-clear 1.0 grammar vector, exact international-foot scale and TIN source topology. | waived-replaced | rendered | W-02; grammar/unit evidence only, never Civil 3D certification. |
+| Civil 3D LandXML 1.0, US-survey foot | Rights-clear 1.0 grammar vector, exact US-survey-foot scale and TIN source topology. | waived-replaced | rendered | W-03; grammar/unit evidence only, never Civil 3D certification. |
+| Civil 3D LandXML 1.1, metric | Rights-clear 1.1 grammar vector, exact metric scale and TIN source topology. | waived-replaced | rendered | W-04; grammar/unit evidence only, never Civil 3D certification. |
+| Civil 3D LandXML 1.1, international foot | Rights-clear 1.1 grammar vector, exact international-foot scale and TIN source topology. | waived-replaced | rendered | W-05; grammar/unit evidence only, never Civil 3D certification. |
+| Civil 3D LandXML 1.1, US-survey foot | Rights-clear 1.1 grammar vector, exact US-survey-foot scale and TIN source topology. | waived-replaced | rendered | W-06; grammar/unit evidence only, never Civil 3D certification. |
+| Civil 3D LandXML 1.2, metric | Rights-clear 1.2 grammar vector, exact metric scale and TIN source topology. | waived-replaced | rendered | W-07; grammar/unit evidence only, never Civil 3D certification. |
+| Civil 3D LandXML 1.2, international foot | Rights-clear 1.2 grammar vector and MIT `lekks/tin2dem` generic fixture, exact international-foot scale and TIN source topology. | waived-replaced | rendered | W-08; neither source has the contributor attestation required for Civil 3D certification. |
+| Civil 3D LandXML 1.2, US-survey foot | Rights-clear 1.2 grammar vector, exact US-survey-foot scale and TIN source topology. | waived-replaced | rendered | W-09; grammar/unit evidence only, never Civil 3D certification. |
+| TBC legacy LandXML 1.2: alignment / profiles / surface source definitions / breaklines | Rights-clear 1.2 document grammar test preserves the named feature families; bounded stream lifecycle is covered separately. | waived-replaced | rendered | W-10; not a claim about Trimble Business Center output. |
+| TBC ISO 15143-4: alignment / profiles / surface source definitions / breaklines | Foreign-root test refuses an ISO 15143-4-labelled grammar before ordinary LandXML content is interpreted. | waived-replaced | refused | W-11; no ISO success, compatibility, or real-TBC-export claim. |
+| OpenRoads terrain | Rights-clear 1.2 terrain grammar invariant preserves Pnts/Faces/Breaklines. The verified OpenRoads alignment fixture is deliberately not terrain evidence. | waived-replaced | rendered | W-12; no OpenRoads terrain exporter certification. |
+| OpenRoads alignment/profile | The CC-BY fixture and canonical document/stream behavioral test preserve the producer header, US-survey-foot unit, exact alignment identity/station/length, and profile records. | redistributable-verified | preserved-only | Not waived. The remaining limitation is no terrain or rendered corridor claim. |
+| Aplitop alignment/profile | The CC-BY fixture and canonical document/stream behavioral test preserve the producer header, metric unit, exact alignment identity/station/length, and profile records. | redistributable-verified | preserved-only | Not waived. No terrain or rendered corridor claim. |
 | IFC + LandXML + point-cloud federation with independent controls | CC0 control triplet from #5124. | redistributable-verified | rendered | Complete independently controlled federation row; synthetic, not vendor certification. |
 
 ## Discovery evidence held outside the manifest
@@ -91,6 +91,38 @@ fixture provenance and none changes a matrix row above:
 | swisstopo OGD | 2026-09-21 | Usable with attribution after a concrete download review; optional federation expansion only, because #5124 already covers the required independent-control workflow. |
 | GitHub code search results | 2026-09-21 | Search hits are discovery leads until exact bytes, root/file rights, producer attribution, and non-customer-data review are recorded. |
 
+## Dated waiver decisions
+
+The following are the revised #5051 acceptance criteria, decided 2026-09-22
+by the LandXML maintainers and subject to normal code-owner review on the PR.
+They replace the unavailable-corpus requirement only. They do not permit a
+vendor name in product documentation, release notes, or support claims.
+
+The searches recorded for every waiver were: GitHub code search for the exact
+producer/schema/unit strings; review of `mf4633/gisc` and
+`nathancrews/LandXML2glTF`/LandXML.org leads; Trimble's public TBC export
+documentation; and WFLHD's public design-data policy and solicitation pages.
+None provided a concrete byte with both producer attribution and an explicit
+redistribution/non-customer-data grant. The next trigger for every waiver is a
+rights-clear, producer-attributed export with that grant, or 2027-03-22,
+whichever is earlier. On either trigger, replace the waiver with a fixture
+manifest record and a producer-specific behavioral test.
+
+| ID | Unmet corpus requirement | Rights-clear replacement evidence | Residual uncertainty |
+| --- | --- | --- | --- |
+| W-01 | Civil 3D 1.0 metric export | `issue_5051_waived_producer_cells_keep_schema_units_and_tin_source_invariants`: 1.0 meter scale, Pnts, Faces and Breaklines | Civil 3D-specific ordering, optional elements and export defects are untested. |
+| W-02 | Civil 3D 1.0 international-foot export | Same test: 1.0 `foot` scale, Pnts, Faces and Breaklines | Civil 3D-specific ordering, optional elements and export defects are untested. |
+| W-03 | Civil 3D 1.0 US-survey-foot export | Same test: 1.0 `USSurveyFoot` exact scale, Pnts, Faces and Breaklines | Civil 3D-specific ordering, optional elements and export defects are untested. |
+| W-04 | Civil 3D 1.1 metric export | Same test: 1.1 meter scale, Pnts, Faces and Breaklines | Civil 3D-specific ordering, optional elements and export defects are untested. |
+| W-05 | Civil 3D 1.1 international-foot export | Same test: 1.1 `foot` scale, Pnts, Faces and Breaklines | Civil 3D-specific ordering, optional elements and export defects are untested. |
+| W-06 | Civil 3D 1.1 US-survey-foot export | Same test: 1.1 `USSurveyFoot` exact scale, Pnts, Faces and Breaklines | Civil 3D-specific ordering, optional elements and export defects are untested. |
+| W-07 | Civil 3D 1.2 metric export | Same test: 1.2 meter scale, Pnts, Faces and Breaklines | Civil 3D-specific ordering, optional elements and export defects are untested. |
+| W-08 | Civil 3D 1.2 international-foot export | Same test plus MIT `lekks/tin2dem` generic invariant fixture | The fixture has no producer/customer-data attestation, so it cannot certify Civil 3D. |
+| W-09 | Civil 3D 1.2 US-survey-foot export | Same test: 1.2 `USSurveyFoot` exact scale, Pnts, Faces and Breaklines | Civil 3D-specific ordering, optional elements and export defects are untested. |
+| W-10 | TBC-native legacy LandXML 1.2 export | `schema_versions` family test; independent `stream` tests cover bounded streaming mechanics | TBC version, export options and producer extensions are untested. |
+| W-11 | TBC ISO 15143-4 export | `issue_5051_refuses_unknown_or_cross_grammar_root_declarations` refuses a foreign ISO-labelled root before semantic interpretation | Exact TBC ISO grammar and every real-export diagnostic remain untested. |
+| W-12 | OpenRoads terrain export | `issue_5051_waived_producer_cells_keep_schema_units_and_tin_source_invariants` exercises 1.2 Pnts/Faces/Breaklines without borrowing the alignment fixture | OpenRoads terrain producer extensions, surface definitions and output ordering are untested. |
+
 ## Reproduction and closure gate
 
 Run the public-byte checks with:
@@ -99,12 +131,12 @@ Run the public-byte checks with:
 pnpm fixtures landxml/producers/aplitop-mdt-8.0-alignment.xml
 pnpm fixtures landxml/producers/bentley-openroads-designer-10.09-us-survey-foot-alignment.xml
 cargo test -p ifc-lite-landxml --test producer_corpus
+cargo test -p ifc-lite-landxml --test schema_versions
 ```
 
 The test names cite #5051 and assert semantic facts rather than a byte snapshot.
-Its absence skip is intentionally not evidence of interoperability. Before
-closing #5051, replace every remaining candidate with either a reviewed
-`redistributable-verified` or `externally-verified` record, or a complete,
-dated `waived-replaced` decision under the issue's waiver rules. Record the
-actual acceptance run and keep the public fixture, corpus, and required CI
-green.
+Its absence skip is intentionally not evidence of interoperability. #5051's
+revised closure gate is satisfied when every required row is either reviewed
+`redistributable-verified`/`externally-verified` or appears in the dated waiver
+table with its replacement test green. Record the actual acceptance run and
+keep the public fixture, corpus, and required CI green.

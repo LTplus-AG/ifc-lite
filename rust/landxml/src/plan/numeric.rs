@@ -289,6 +289,20 @@ fn probe_parcel_with_work<W: ParcelProbeWork>(
     if let Some(reason) = &parcel.preservation_reason {
         return Ok(preserved(parcel, reason));
     }
+    // Curve edges are sampled only to reject self-intersection within the one
+    // supported arc-plus-chord loop. Those chords are not an exact predicate
+    // for crossings against another loop, so never fabricate a filled parcel
+    // from multi-loop curve topology. A future analytic line/arc and arc/arc
+    // intersection kernel may relax this deliberately conservative boundary.
+    if parcel.loops.len() > 1
+        && parcel
+            .loops
+            .iter()
+            .flatten()
+            .any(|geometry| geometry.kind == super::LandXmlGeometryKind::Curve)
+    {
+        return Ok(preserved(parcel, "multi-loop boundary with curves"));
+    }
     let mut perimeter = 0.0;
     let mut twice_area = 0.0;
     let mut all_segments = Vec::new();

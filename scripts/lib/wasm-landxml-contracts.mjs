@@ -87,6 +87,17 @@ function topologyLimitParcelXml() {
   return `<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><CgPoints><CgPoint name="safe">2 3</CgPoint></CgPoints><Monuments><Monument pntRef="safe"/></Monuments><Parcels>${regularLineParcel(701, 'over-limit')}<Parcel name="safe"><CoordGeom><Line><Start pntRef="safe"/><End>3 3</End></Line><Line><Start>3 3</Start><End>2 4</End></Line><Line><Start>2 4</Start><End pntRef="safe"/></Line></CoordGeom></Parcel></Parcels></LandXML>`;
 }
 
+function curvedMultiLoopParcelXml(triangle) {
+  return `<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><Parcels><Parcel name="curved-multi"><CoordGeom><Curve rot="ccw" radius="1"><Start>0 1</Start><Center>0 0</Center><End>0 -1</End></Curve><Line><Start>0 -1</Start><End>0 1</End></Line></CoordGeom><CoordGeom>${triangle}</CoordGeom></Parcel></Parcels></LandXML>`;
+}
+
+const CURVE_MULTI_LOOP_CASES = [
+  ['crossing', '<Line><Start>0.04895800097771826 0.9986005979070239</Start><End>0.0490774878622835 0.9989952152964134</End></Line><Line><Start>0.0490774878622835 0.9989952152964134</Start><End>0.04915772011680819 0.9985907863348819</End></Line><Line><Start>0.04915772011680819 0.9985907863348819</Start><End>0.04895800097771826 0.9986005979070239</End></Line>'],
+  ['near-miss', '<Line><Start>0.1 1.1</Start><End>0.2 1.1</End></Line><Line><Start>0.2 1.1</Start><End>0.15 1.2</End></Line><Line><Start>0.15 1.2</Start><End>0.1 1.1</End></Line>'],
+  ['tangent', '<Line><Start>0 1</Start><End>0.1 1.1</End></Line><Line><Start>0.1 1.1</Start><End>-0.1 1.1</End></Line><Line><Start>-0.1 1.1</Start><End>0 1</End></Line>'],
+  ['disjoint', '<Line><Start>2 2</Start><End>3 2</End></Line><Line><Start>3 2</Start><End>2 3</End></Line><Line><Start>2 3</Start><End>2 2</End></Line>'],
+];
+
 function utf16Le(text) {
   const output = new Uint8Array(2 + text.length * 2);
   output.set([0xff, 0xfe]);
@@ -194,6 +205,15 @@ export function runLandXmlContracts(api, test) {
       { kind: 'preserved_only', reason: 'parcel topology work limit exceeded' },
       { kind: 'analytic' },
     ]);
+  });
+
+  test('LandXML real-WASM conservatively preserves multi-loop curve topology (#5046)', () => {
+    for (const [name, triangle] of CURVE_MULTI_LOOP_CASES) {
+      const document = api.parseLandXmlTinBytes(new TextEncoder().encode(curvedMultiLoopParcelXml(triangle)));
+      assert.deepEqual(document.plan.parcel_probes[0].state, {
+        kind: 'preserved_only', reason: 'multi-loop boundary with curves',
+      }, `${name} cannot be inferred from sampled curve chords`);
+    }
   });
 
   test('LandXML raw-byte parser preserves stable diagnostics', () => {

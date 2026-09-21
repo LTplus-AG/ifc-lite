@@ -54,6 +54,15 @@ fn regular_line_parcel(edges: usize, name: &str) -> String {
     format!("<Parcel name=\"{name}\"><CoordGeom>{lines}</CoordGeom></Parcel>")
 }
 
+fn curved_multi_loop_parcel(triangle: &str) -> String {
+    format!(
+        r#"<Parcel name="curved-multi"><CoordGeom>
+          <Curve rot="ccw" radius="1"><Start>0 1</Start><Center>0 0</Center><End>0 -1</End></Curve>
+          <Line><Start>0 -1</Start><End>0 1</End></Line>
+        </CoordGeom><CoordGeom>{triangle}</CoordGeom></Parcel>"#
+    )
+}
+
 #[test]
 fn issue_5046_retains_cogo_monuments_and_analytic_plan_features() {
     let parsed = parse(&document(
@@ -813,6 +822,52 @@ fn issue_5046_bulk_topology_limit_preserves_one_parcel_without_starving_siblings
             .easting,
         3.0
     );
+}
+
+#[test]
+fn issue_5046_never_fabricates_multi_loop_curve_topology_from_sampled_chords() {
+    // The first triangle crosses the circular arc twice between its sampled
+    // chord vertices. The near miss, tangent and disjoint cases exercise the
+    // same conservative contract until analytic inter-loop curve predicates
+    // exist: all remain source-preserved, while the single-loop arc test above
+    // continues to prove the supported exact arc-plus-chord measurement.
+    let cases = [
+        (
+            "crossing",
+            r#"<Line><Start>0.04895800097771826 0.9986005979070239</Start><End>0.0490774878622835 0.9989952152964134</End></Line><Line><Start>0.0490774878622835 0.9989952152964134</Start><End>0.04915772011680819 0.9985907863348819</End></Line><Line><Start>0.04915772011680819 0.9985907863348819</Start><End>0.04895800097771826 0.9986005979070239</End></Line>"#,
+        ),
+        (
+            "near-miss",
+            r#"<Line><Start>0.1 1.1</Start><End>0.2 1.1</End></Line><Line><Start>0.2 1.1</Start><End>0.15 1.2</End></Line><Line><Start>0.15 1.2</Start><End>0.1 1.1</End></Line>"#,
+        ),
+        (
+            "tangent",
+            r#"<Line><Start>0 1</Start><End>0.1 1.1</End></Line><Line><Start>0.1 1.1</Start><End>-0.1 1.1</End></Line><Line><Start>-0.1 1.1</Start><End>0 1</End></Line>"#,
+        ),
+        (
+            "disjoint",
+            r#"<Line><Start>2 2</Start><End>3 2</End></Line><Line><Start>3 2</Start><End>2 3</End></Line><Line><Start>2 3</Start><End>2 2</End></Line>"#,
+        ),
+    ];
+    for (name, triangle) in cases {
+        let parsed = parse(&document(&format!(
+            "<Parcels>{}</Parcels>",
+            curved_multi_loop_parcel(triangle)
+        )));
+        let mut resolver = LandXmlPlanResolver::new(&parsed, 10_000);
+        let probe = parsed
+            .probe_parcels_with_resolver(&parsed.parcels, &mut resolver)
+            .expect("conservative curve handling is a record-level result")
+            .pop()
+            .expect("one parcel");
+        assert_eq!(
+            probe.state,
+            LandXmlParcelState::PreservedOnly {
+                reason: "multi-loop boundary with curves".to_owned(),
+            },
+            "{name} multi-loop curve case"
+        );
+    }
 }
 
 #[test]

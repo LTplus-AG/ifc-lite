@@ -35,7 +35,7 @@ function reqResult(
   overrides: Partial<IDSRequirementResult> = {}
 ): IDSRequirementResult {
   return {
-    requirement,
+    requirement: { ...requirement, label: `Checks ${requirement.id}` },
     status,
     facetType: 'attribute',
     checkedDescription: `Checks ${requirement.id}`,

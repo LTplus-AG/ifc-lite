@@ -11,7 +11,7 @@
  * coherent module on its own rather than 230 lines inline in the hook.
  */
 
-import type { IDSValidationReport } from '@ifc-lite/ids';
+import type { ValidationReport } from '@ifc-lite/ids';
 import type { EntityBoundsInput, IDSBCFExportOptions } from '@ifc-lite/bcf';
 import { createBCFFromIDSReport, writeBCF } from '@ifc-lite/bcf';
 import type { GeometryResult } from '@ifc-lite/geometry';
@@ -25,7 +25,7 @@ import type { IDSBCFExportSettings, IDSExportProgress } from '@/components/viewe
 const SNAPSHOT_CLEAR_COLOR: [number, number, number, number] = [0.102, 0.106, 0.149, 1];
 
 export interface RunIdsBcfExportParams {
-  report: IDSValidationReport;
+  report: ValidationReport;
   settings: IDSBCFExportSettings;
   models: Map<string, FederatedModel>;
   /** The legacy single-model geometry result, read via a ref in the caller. */
@@ -232,9 +232,14 @@ export async function runIdsBcfExport({
   // Phase 3: Build BCF project
   setBcfExportProgress({ phase: 'writing', current: 0, total: 1, message: 'Building BCF project...' });
 
+  // Rule-set reports (#5138, PR 3 onward) have no `IDSDocument` to read a
+  // title/author from; `createBCFFromIDSReport` — and set-result-as-topic
+  // rendering for them — stay IDS-only for now (PR 4).
+  const document = report.source.kind === 'ids' ? report.source.document : null;
+
   const exportOptions: IDSBCFExportOptions = {
-    author: bcfAuthor || report.document.info.author || 'ids-validator@ifc-lite',
-    projectName: `IDS Report - ${report.document.info.title}`,
+    author: bcfAuthor || document?.info.author || 'ids-validator@ifc-lite',
+    projectName: `IDS Report - ${document?.info.title ?? 'Untitled'}`,
     topicGrouping,
     includePassingEntities,
     entityBounds,
@@ -243,8 +248,8 @@ export async function runIdsBcfExport({
 
   const bcfProject = createBCFFromIDSReport(
     {
-      title: report.document.info.title,
-      description: report.document.info.description,
+      title: document?.info.title ?? 'Validation Report',
+      description: document?.info.description,
       specificationResults: report.specificationResults,
     },
     exportOptions,

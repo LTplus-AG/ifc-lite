@@ -45,7 +45,20 @@ export type {
   IDSEnumerationConstraint,
   IDSBoundsConstraint,
 
-  // Validation results
+  // Validation results — generalised report (issue #5138)
+  ValidationSource,
+  SpecificationSummary,
+  RequirementSummary,
+  CheckKind,
+  FailureReasonCode,
+  SetResult,
+  RequirementResult,
+  EntityResult,
+  SpecificationResult,
+  ValidationReport,
+  ValidationModelInfo,
+
+  // Validation results — IDS-specific narrowings
   IDSValidationReport,
   IDSModelInfo,
   IDSValidationSummary,
@@ -96,6 +109,9 @@ export { flattenMaterials } from './bridge/materials.js';
 // ============================================================================
 
 export { validateIDS } from './validation/validator.js';
+
+// Runtime narrowing for the generalised report (#5138) — see report-guards.ts.
+export { isIDSValidationReport } from './report-guards.js';
 
 // ============================================================================
 // Facets

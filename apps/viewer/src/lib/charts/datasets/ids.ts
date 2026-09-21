@@ -18,6 +18,12 @@ export const IDS_COLUMNS = {
   entityType: 'EntityType',
   failedFacet: 'FailedFacet',
   model: 'Model',
+  // Additive columns (#5138 §7) — IDS rows carry the failed requirement's
+  // label / failure text / a literal 'ids'; the rule-set engine (PR 3
+  // onward) populates the same columns from `SetResult`/`FailureReasonCode`.
+  requirement: 'Requirement',
+  reason: 'Reason',
+  source: 'Source',
 } as const;
 
 export const IDS_DATASET_COLUMNS: ChartDatasetColumn[] = [
@@ -26,6 +32,9 @@ export const IDS_DATASET_COLUMNS: ChartDatasetColumn[] = [
   { id: IDS_COLUMNS.entityType, label: 'Entity type', kind: 'category' },
   { id: IDS_COLUMNS.failedFacet, label: 'Failing facet', kind: 'category' },
   { id: IDS_COLUMNS.model, label: 'Model', kind: 'category' },
+  { id: IDS_COLUMNS.requirement, label: 'Requirement', kind: 'category' },
+  { id: IDS_COLUMNS.reason, label: 'Reason', kind: 'category' },
+  { id: IDS_COLUMNS.source, label: 'Source', kind: 'category' },
 ];
 
 export type IdsDatasetState = Pick<ViewerState, 'idsValidationReport' | 'models' | 'activeModelId'>;
@@ -47,6 +56,9 @@ export function buildIdsDataset(state: IdsDatasetState): ChartDataset {
             entity.entityType,
             failed?.facetType ?? '',
             state.models.get(modelId)?.name ?? modelId,
+            failed?.requirement.label ?? '',
+            failed?.failureReason ?? '',
+            report.source.kind,
           ],
         });
       }

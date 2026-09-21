@@ -487,8 +487,8 @@ END-ISO-10303-21;`;
   it('ids and compare: rows carry the renderer id of the entity the result names', () => {
     useViewerStore.setState({
       idsValidationReport: {
-        document: { info: { title: 't' }, specifications: [] },
-        modelInfo: { modelId: 'mini.ifc', schema: 'IFC4' },
+        source: { kind: 'ids', document: { info: { title: 't' }, specifications: [] } },
+        modelInfo: [{ modelId: 'mini.ifc', schema: 'IFC4' }],
         timestamp: new Date(0),
         summary: { totalSpecifications: 1, totalEntitiesChecked: 2, totalEntitiesPassed: 1, totalEntitiesFailed: 1, overallPassRate: 0.5 },
         specificationResults: [{
@@ -496,7 +496,7 @@ END-ISO-10303-21;`;
           status: 'fail', applicableCount: 2, passedCount: 1, failedCount: 1, passRate: 0.5,
           entityResults: [
             { expressId: 41, modelId: 'legacy', entityType: 'IfcWall', passed: true, requirementResults: [] },
-            { expressId: 42, modelId: 'legacy', entityType: 'IfcBeam', passed: false, requirementResults: [{ requirement: { type: 'property', instructions: '' }, status: 'fail', facetType: 'property', checkedDescription: '' }] },
+            { expressId: 42, modelId: 'legacy', entityType: 'IfcBeam', passed: false, requirementResults: [{ requirement: { type: 'property', instructions: '', label: 'FireRating is set' }, status: 'fail', facetType: 'property', checkedDescription: '', failureReason: 'FireRating is not set' }] },
           ],
         }],
       } as unknown as NonNullable<ReturnType<typeof useViewerStore.getState>['idsValidationReport']>,
@@ -505,6 +505,14 @@ END-ISO-10303-21;`;
     const icol = (id: string) => ids.columns.findIndex((c) => c.id === id);
     assert.deepEqual(ids.rows.map((r) => [Array.from(r.ids)[0], r.values[icol(IDS_COLUMNS.result)], r.values[icol(IDS_COLUMNS.failedFacet)]]), [[GID(41), 'pass', ''], [GID(42), 'fail', 'property']]);
     assert.equal(ids.rows[0].values[icol(IDS_COLUMNS.model)], 'mini.ifc');
+
+    // #5138 §7: additive Requirement/Reason/Source columns. The passing
+    // entity has no failed requirement, so Requirement/Reason are empty;
+    // Source is 'ids' for every row regardless of pass/fail.
+    assert.deepEqual(
+      ids.rows.map((r) => [r.values[icol(IDS_COLUMNS.requirement)], r.values[icol(IDS_COLUMNS.reason)], r.values[icol(IDS_COLUMNS.source)]]),
+      [['', '', 'ids'], ['FireRating is set', 'FireRating is not set', 'ids']],
+    );
 
     useViewerStore.setState({
       compareRunSeq: 3,

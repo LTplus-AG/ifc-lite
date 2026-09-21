@@ -22,7 +22,10 @@ const UNIQUE_SCOPES = new Set(['perModel', 'federation']);
  *  issue's nine operators, per-element only. `model`/`modelTag`/`storey`/
  *  `globalId`/`elevation` scope WHICH elements to check, they are not
  *  themselves checkable facts, so they belong in `applicability` only. */
-const ELEMENT_REQUIREMENT_KINDS: ReadonlySet<FilterRule['kind']> = new Set([
+/** Exported so the rule editor (#5138 PR 5, `validation/RuleBlockEditor.tsx`)
+ *  can restrict its "Add rule" menu to exactly what this parser accepts —
+ *  one list, not a second copy that could drift. */
+export const ELEMENT_REQUIREMENT_KINDS: ReadonlySet<FilterRule['kind']> = new Set([
   'property', 'quantity', 'attribute', 'name', 'material', 'classification',
   'type', 'parent', 'predefinedType', 'ifcType',
 ]);

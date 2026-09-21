@@ -2,8 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { IfcParser } from '@ifc-lite/parser';
 import { validateIDS } from './validator.js';
 import { parseIDS } from '../parser/xml-parser.js';
+import { createDataAccessor } from '../bridge/data-accessor.js';
 import { createMockAccessor } from '../facets/test-helpers.js';
 import type {
   IDSDocument,
@@ -711,5 +713,52 @@ describe('validateIDS — unparseable bounds facet (issue #4231)', () => {
     expect(result.failureReason).toBe(
       'Attribute "Name" value "0" does not match expected between 10 and 20'
     );
+  });
+});
+
+// ============================================================================
+// Generalised report shape (#5138 §5) — through a real parsed store, not
+// the mock accessor: proves the wiring `validator.ts` now writes
+// (`source`/`modelInfo` array) end to end, not just against a hand-built
+// IDSRequirement/IDSSpecification fixture.
+// ============================================================================
+
+const WALL_IFC = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCWALL('0Wall00000000000000001',$,'Wall_001',$,$,$,$,$,$);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+describe('validateIDS — generalised report shape', () => {
+  it('an IDS run reports source.kind "ids" (carrying the validated document) and exactly one modelInfo entry', async () => {
+    const store = await new IfcParser().parseColumnar(
+      new TextEncoder().encode(WALL_IFC).buffer as ArrayBuffer,
+    );
+    const accessor = createDataAccessor(store);
+    const spec = makeSpec({
+      requirements: [
+        { id: 'req-0', facet: { type: 'attribute', name: sv('Name') }, optionality: 'required' },
+      ],
+    });
+    const document = makeDoc([spec]);
+
+    const report = await validateIDS(document, accessor, {
+      modelId: 'wall-fixture', schemaVersion: 'IFC4', entityCount: store.entityCount,
+    });
+
+    expect(report.source.kind).toBe('ids');
+    expect(report.source.kind === 'ids' && report.source.document).toBe(document);
+    expect(report.modelInfo.length).toBe(1);
+    expect(report.modelInfo[0]).toEqual({
+      modelId: 'wall-fixture', schemaVersion: 'IFC4', entityCount: store.entityCount,
+    });
+    expect(report.specificationResults[0].applicableCount).toBe(1);
+    expect(report.specificationResults[0].status).toBe('pass');
   });
 });

@@ -3120,7 +3120,12 @@ export class Renderer {
             // Section-plane gizmo, 2D section cap and every standalone 3D
             // overlay (annotation / alignment / grid / DXF / clash / symbolic
             // text). One draw call into the pass — see RendererOverlays.draw().
-            this.referenceImages.draw(pass, viewProj);
+            this.referenceImages.draw(
+                pass,
+                viewProj,
+                relativeToEyeFrame.getViewProjection().m,
+                relativeToEyeFrame.getCameraWorld(),
+            );
             this.overlays.draw(pass, {
                 options,
                 viewProj,

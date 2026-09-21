@@ -50,6 +50,10 @@ export const viewportLightingEn = {
   'viewportLighting.container.emptyState.driveWithLlm': 'Drive with any LLM',
   'viewportLighting.container.emptyState.footerCaption': 'new untitled project · or LLM via MCP',
   'viewportLighting.container.emptyState.recentFiles.heading': 'Recent Files',
+  // Privacy footnote (#5119): the visible line itself is the shared
+  // `keyboardShortcuts.privacy.banner` key; this is only the tooltip on the
+  // click-through to the About tab where the WASM/F12 detail lives.
+  'viewportLighting.container.emptyState.privacyDetailsHint': 'How your data stays on your device',
   'viewportLighting.container.emptyState.layersPromo.badge': 'New',
   'viewportLighting.container.emptyState.layersPromo.title': 'Layers',
   'viewportLighting.container.emptyState.layersPromo.description':

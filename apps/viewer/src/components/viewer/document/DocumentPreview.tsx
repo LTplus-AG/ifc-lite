@@ -18,7 +18,9 @@ import { topicLines, topicSnapshotDataUrl } from '@/lib/document/generate-docume
 import { pageBox } from '@/lib/export/report/compose';
 import { documentChartSizing } from '@/lib/document/compose';
 import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type DocumentBlock, type DocumentSpec, type TextBlock } from '@/lib/document/types';
+import type { TableState } from '@/lib/document/resolve-table';
 import { DOCUMENT_PREVIEW_MUTED_TEXT_CLASS, DOCUMENT_PREVIEW_PAPER_CLASS } from './preview-theme';
+import { TablePreview } from './TablePreview';
 
 export interface DocumentPreviewProps {
   document: DocumentSpec;
@@ -28,6 +30,8 @@ export interface DocumentPreviewProps {
    *  still resolving or was refused — shown instead of "No data". */
   chartMessages: Map<string, string>;
   topics: Map<string, BCFTopic>;
+  /** Table block id → its list run (#5142). Optional so callers without table blocks need not build one. */
+  tables?: ReadonlyMap<string, TableState>;
   selectedBlockId: string | null;
   onSelectBlock: (id: string) => void;
 }
@@ -107,7 +111,7 @@ function PreviewImage({ dataUrl, alt, height, contentWidth }: { dataUrl: string;
   }} />;
 }
 
-function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth, scale, pageHeight }: { block: DocumentBlock; bindings: BindingContext; aggregation: Aggregation | null; chartMessage: string | undefined; topic: BCFTopic | undefined; contentWidth: number; scale: number; pageHeight: number }) {
+function Block({ block, bindings, aggregation, chartMessage, topic, table, contentWidth, scale, pageHeight }: { block: DocumentBlock; bindings: BindingContext; aggregation: Aggregation | null; chartMessage: string | undefined; topic: BCFTopic | undefined; table: TableState | undefined; contentWidth: number; scale: number; pageHeight: number }) {
   const { t } = useTranslation();
   switch (block.kind) {
     case 'text':
@@ -154,6 +158,8 @@ function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth
       // spacer effectively double-counted one, pushing everything after it lower than the PDF
       // does (review finding). A negative margin cancels the container's second gap.
       return <div style={{ height: block.height * scale, marginBottom: '-0.625rem' }} data-block-spacer />;
+    case 'table':
+      return <TablePreview block={block} state={table} />;
     case 'topic': {
       if (!topic) return <div className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900" data-unresolved>{t('document.preview.topicNotLoaded', { guid: block.guid })}</div>;
       const snapshot = block.snapshot ? topicSnapshotDataUrl(topic) : null;
@@ -170,7 +176,7 @@ function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth
   }
 }
 
-export function DocumentPreview({ document, bindings, aggregations, chartMessages, topics, selectedBlockId, onSelectBlock }: DocumentPreviewProps) {
+export function DocumentPreview({ document, bindings, aggregations, chartMessages, topics, tables, selectedBlockId, onSelectBlock }: DocumentPreviewProps) {
   const { t } = useTranslation();
   const size = pageBox(document.page);
   // The sheet scales to the panel; block content is laid out at this width.
@@ -197,7 +203,7 @@ export function DocumentPreview({ document, bindings, aggregations, chartMessage
                 onClick={() => onSelectBlock(block.id)}
                 data-preview-block={block.id}
               >
-                <Block block={block} bindings={bindings} aggregation={aggregations.get(block.id) ?? null} chartMessage={chartMessages.get(block.id)} topic={block.kind === 'topic' ? topics.get(block.guid) : undefined} contentWidth={Array.isArray(group) ? (contentWidth - 12) / 2 : contentWidth} scale={scale} pageHeight={size.h} />
+                <Block block={block} bindings={bindings} aggregation={aggregations.get(block.id) ?? null} chartMessage={chartMessages.get(block.id)} topic={block.kind === 'topic' ? topics.get(block.guid) : undefined} table={tables?.get(block.id)} contentWidth={Array.isArray(group) ? (contentWidth - 12) / 2 : contentWidth} scale={scale} pageHeight={size.h} />
               </div>
             );
             return Array.isArray(group)

@@ -41,8 +41,7 @@ impl IfcAPI {
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         let alignments = ifc_lite_landxml::alignment::parse_landxml_alignments_optional(data)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        let (alignment_render_spans, alignment_render_refusals, alignment_render_truncated) =
-            alignment_render_data(&alignments);
+        let alignment_render = ifc_lite_landxml::alignment::alignment_render_data(&alignments);
         let tin = LandXmlDocumentJs {
             terrain: &parsed.terrain,
             plan: plan_adapter(&parsed.plan)
@@ -51,9 +50,9 @@ impl IfcAPI {
         let document = LandXmlSourceDocument {
             tin,
             alignments,
-            alignment_render_spans,
-            alignment_render_refusals,
-            alignment_render_truncated,
+            alignment_render_spans: alignment_render.spans,
+            alignment_render_refusals: alignment_render.refusals,
+            alignment_render_truncated: alignment_render.truncated,
         };
         let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
         document
@@ -94,8 +93,7 @@ impl IfcAPI {
                 None,
             )
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        let (alignment_render_spans, alignment_render_refusals, alignment_render_truncated) =
-            alignment_render_data(&alignments);
+        let alignment_render = ifc_lite_landxml::alignment::alignment_render_data(&alignments);
         let tin = LandXmlDocumentJs {
             terrain: &terrain,
             plan: plan_adapter(&plan).map_err(|error| JsValue::from_str(&error.to_string()))?,
@@ -103,9 +101,9 @@ impl IfcAPI {
         let document = LandXmlSourceDocument {
             tin,
             alignments,
-            alignment_render_spans,
-            alignment_render_refusals,
-            alignment_render_truncated,
+            alignment_render_spans: alignment_render.spans,
+            alignment_render_refusals: alignment_render.refusals,
+            alignment_render_truncated: alignment_render.truncated,
         };
         let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
         document

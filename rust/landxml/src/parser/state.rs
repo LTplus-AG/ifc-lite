@@ -8,8 +8,8 @@ use crate::{
     capture::Capture, xml::Attributes, LandXmlAlignment, LandXmlCancellation,
     LandXmlCapabilityDiagnostic, LandXmlCoordinateSystem, LandXmlCrossSection,
     LandXmlCrossSectionSurface, LandXmlExtension, LandXmlLimits, LandXmlPoint, LandXmlPolyline,
-    LandXmlPreservedOnlyExtension, LandXmlProfile, LandXmlRoadway, LandXmlSourceId, LandXmlSurface,
-    LandXmlSurfaceKind, LandXmlUnits,
+    LandXmlPreservedOnlyExtension, LandXmlProfile, LandXmlRenderState, LandXmlRoadway,
+    LandXmlSourceId, LandXmlSurface, LandXmlSurfaceKind, LandXmlUnits,
 };
 
 use super::profiles::{
@@ -41,6 +41,10 @@ pub(crate) struct Parser<'a> {
     /// surfaces. Roadway finalization needs names, but must not force a second
     /// full copy of every terrain record into the parser.
     pub(super) drained_surface_refs: Vec<(String, LandXmlSourceId)>,
+    /// Capability facts survive surface draining so final metadata remains
+    /// equivalent to a complete-input document without retaining surface data.
+    pub(super) drained_renderable_surfaces: usize,
+    pub(super) drained_preserved_surfaces: usize,
     pub(super) extensions: Vec<LandXmlExtension>,
     pub(super) warnings: Vec<String>,
     pub(super) surface_ordinal: usize,
@@ -85,6 +89,8 @@ impl<'a> Parser<'a> {
             capture: None,
             surfaces: Vec::new(),
             drained_surface_refs: Vec::new(),
+            drained_renderable_surfaces: 0,
+            drained_preserved_surfaces: 0,
             extensions: Vec::new(),
             warnings: Vec::new(),
             surface_ordinal: 0,
@@ -108,6 +114,14 @@ impl<'a> Parser<'a> {
 
     pub(crate) fn take_surfaces(&mut self) -> Vec<LandXmlSurface> {
         let surfaces = std::mem::take(&mut self.surfaces);
+        self.drained_renderable_surfaces += surfaces
+            .iter()
+            .filter(|surface| surface.render_state == LandXmlRenderState::Rendered)
+            .count();
+        self.drained_preserved_surfaces += surfaces
+            .iter()
+            .filter(|surface| surface.render_state != LandXmlRenderState::Rendered)
+            .count();
         self.drained_surface_refs.extend(
             surfaces
                 .iter()

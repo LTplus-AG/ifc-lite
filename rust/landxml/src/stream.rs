@@ -13,8 +13,8 @@ use crate::{
 };
 use decoder::Decoder;
 pub use event::{
-    LandXmlStreamEvent, LandXmlStreamHeader, LandXmlStreamSummary, LandXmlSurfaceComponent,
-    LandXmlSurfaceFragment,
+    LandXmlStreamEvent, LandXmlStreamHeader, LandXmlStreamMetadata, LandXmlStreamSummary,
+    LandXmlSurfaceComponent, LandXmlSurfaceFragment,
 };
 use quick_xml::{events::Event, Reader};
 use std::{collections::VecDeque, io::BufReader};
@@ -143,7 +143,7 @@ impl LandXmlTinStreamSession {
             .header()
             .ok_or_else(|| error(Code::InvalidSemantic, "LandXML units were not declared"))?;
         self.closed = true;
-        self.parser.take().expect("open parser").finish()?;
+        let mut terrain = self.parser.take().expect("open parser").finish()?;
         let plan = self.plan.take().expect("open plan parser");
         if plan.has_open_frames() {
             return Err(error(Code::InvalidXml, "unclosed plan XML element"));
@@ -154,11 +154,25 @@ impl LandXmlTinStreamSession {
             return Err(error(Code::InvalidXml, "unclosed alignment XML element"));
         }
         let alignment = alignment.finish()?;
+        let alignment_render = crate::alignment::alignment_render_data(&alignment);
         let pipe = self.pipe.take().expect("open pipe parser");
         if pipe.has_open_frames() {
             return Err(error(Code::InvalidXml, "unclosed pipe XML element"));
         }
         let pipe = pipe.finish_stream()?;
+        let pipe_networks = pipe.networks.len();
+        let pipe_structures = pipe
+            .networks
+            .iter()
+            .map(|network| network.structures.len())
+            .sum();
+        let pipes = pipe
+            .networks
+            .iter()
+            .map(|network| network.pipes.len())
+            .sum();
+        let pipe_refusals = pipe.refusals.len();
+        terrain.pipe_networks = Some(pipe);
         Ok(LandXmlStreamSummary {
             header,
             surfaces_drained: self.surfaces_drained,
@@ -167,18 +181,16 @@ impl LandXmlTinStreamSession {
             plan_cogo_points: plan.cogo_points.len(),
             plan_parcels: plan.parcels.len(),
             horizontal_alignments: alignment.alignments.len(),
-            pipe_networks: pipe.networks.len(),
-            pipe_structures: pipe
-                .networks
-                .iter()
-                .map(|network| network.structures.len())
-                .sum(),
-            pipes: pipe
-                .networks
-                .iter()
-                .map(|network| network.pipes.len())
-                .sum(),
-            pipe_refusals: pipe.refusals.len(),
+            pipe_networks,
+            pipe_structures,
+            pipes,
+            pipe_refusals,
+            metadata: LandXmlStreamMetadata {
+                terrain,
+                plan,
+                alignments: alignment,
+                alignment_render,
+            },
         })
     }
 

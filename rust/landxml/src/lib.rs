@@ -62,7 +62,7 @@ pub use profile::{
     LandXmlRoadway, LandXmlVerticalCurve, LandXmlVerticalCurveKind,
 };
 pub use stream::{
-    LandXmlStreamEvent, LandXmlStreamHeader, LandXmlStreamSummary, LandXmlSurfaceComponent,
-    LandXmlSurfaceFragment, LandXmlTinStreamSession, MAX_LANDXML_STREAM_DRAIN_BYTES,
-    MAX_LANDXML_STREAM_INPUT_CHUNK_BYTES,
+    LandXmlStreamEvent, LandXmlStreamHeader, LandXmlStreamMetadata, LandXmlStreamSummary,
+    LandXmlSurfaceComponent, LandXmlSurfaceFragment, LandXmlTinStreamSession,
+    MAX_LANDXML_STREAM_DRAIN_BYTES, MAX_LANDXML_STREAM_INPUT_CHUNK_BYTES,
 };

@@ -3,10 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use ifc_lite_landxml::{
-    alignment::parse_landxml_alignments_optional, parse_landxml_pipe_networks, parse_landxml_plan,
-    parse_landxml_tin, parse_landxml_tin_with_cancel, LandXmlDiagnosticCode, LandXmlError,
-    LandXmlLimits, LandXmlStreamEvent, LandXmlStreamSummary, LandXmlSurfaceComponent,
-    LandXmlTinStreamSession, MAX_LANDXML_STREAM_DRAIN_BYTES,
+    alignment::parse_landxml_alignments_optional, parse_landxml_document,
+    parse_landxml_pipe_networks, parse_landxml_plan, parse_landxml_tin,
+    parse_landxml_tin_with_cancel, LandXmlDiagnosticCode, LandXmlError, LandXmlLimits,
+    LandXmlStreamEvent, LandXmlStreamSummary, LandXmlSurfaceComponent, LandXmlTinStreamSession,
+    MAX_LANDXML_STREAM_DRAIN_BYTES,
 };
 
 const XML: &str = r#"<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces></LandXML>"#;
@@ -191,6 +192,31 @@ fn issue_5050_all_family_stream_matches_direct_semantic_totals() {
             .map(|network| network.pipes.len())
             .sum::<usize>()
     );
+}
+
+#[test]
+fn issue_5050_stream_finalizes_non_surface_metadata_without_a_second_source_scan() {
+    let xml = landxml(&format!(
+        r#"<Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces><CgPoints><CgPoint name="control">0 0 0</CgPoint></CgPoints><Alignments><Alignment name="a" length="1" staStart="0"><CoordGeom><Curve rot="cw" radius="1"><Start>0 0</Start><Center>0 1</Center><End>1 1</End></Curve></CoordGeom></Alignment></Alignments>{PIPE_NETWORK}"#
+    ));
+    let direct = parse_landxml_document(xml.as_bytes()).expect("direct source document");
+    let direct_alignments =
+        parse_landxml_alignments_optional(xml.as_bytes()).expect("direct alignment document");
+    let summary = summary_after_byte_cuts(xml.as_bytes()).expect("stream source document");
+    let mut expected_terrain = direct.terrain;
+    let source_id = expected_terrain.surfaces[0].source_id.0.clone();
+    expected_terrain.surfaces.clear();
+    assert_eq!(summary.metadata.terrain, expected_terrain);
+    assert_eq!(summary.metadata.plan, direct.plan);
+    assert_eq!(summary.metadata.alignments, direct_alignments);
+    assert_eq!(
+        summary.metadata.alignment_render,
+        ifc_lite_landxml::alignment::alignment_render_data(&summary.metadata.alignments)
+    );
+    let events = drive(xml.as_bytes(), std::iter::empty());
+    assert!(events.iter().any(
+        |event| matches!(event, LandXmlStreamEvent::Surface(fragment) if fragment.source_id == source_id)
+    ));
 }
 
 #[test]

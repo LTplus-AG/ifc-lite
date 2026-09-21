@@ -161,15 +161,17 @@ impl Parser<'_> {
             format: "landxml".to_owned(),
             schema: "LandXML-1.2".to_owned(),
             capabilities: LandXmlCapabilities {
-                renderable_tin: self
-                    .surfaces
-                    .iter()
-                    .any(|surface| surface.render_state == LandXmlRenderState::Rendered),
-                preserved_only_surfaces: self
-                    .surfaces
-                    .iter()
-                    .filter(|surface| surface.render_state != LandXmlRenderState::Rendered)
-                    .count(),
+                renderable_tin: self.drained_renderable_surfaces > 0
+                    || self
+                        .surfaces
+                        .iter()
+                        .any(|surface| surface.render_state == LandXmlRenderState::Rendered),
+                preserved_only_surfaces: self.drained_preserved_surfaces
+                    + self
+                        .surfaces
+                        .iter()
+                        .filter(|surface| surface.render_state != LandXmlRenderState::Rendered)
+                        .count(),
                 unknown_extensions: self.extensions.len(),
             },
             version: self.version,

@@ -8,6 +8,7 @@ mod inspection;
 mod model;
 mod numeric;
 pub(crate) mod parser;
+mod render_data;
 
 pub use inspection::LandXmlCantProbe;
 pub use model::*;
@@ -19,4 +20,7 @@ pub use parser::{
     parse_landxml_alignments, parse_landxml_alignments_optional,
     parse_landxml_alignments_optional_with_cancel, parse_landxml_alignments_with_cancel,
     LandXmlAlignmentLimits,
+};
+pub use render_data::{
+    alignment_render_data, LandXmlAlignmentRenderData, LandXmlAlignmentRenderRefusal,
 };

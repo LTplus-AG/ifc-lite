@@ -4,7 +4,10 @@
 
 //! Public, renderer-independent stream records.
 
-use crate::LandXmlUnits;
+use crate::{
+    alignment::{LandXmlAlignmentDocument, LandXmlAlignmentRenderData},
+    LandXmlPlanDocument, LandXmlTinDocument, LandXmlUnits,
+};
 use serde::Serialize;
 
 #[derive(Clone, Debug, Serialize)]
@@ -43,6 +46,17 @@ pub enum LandXmlStreamEvent {
     Surface(LandXmlSurfaceFragment),
 }
 
+/// Complete non-surface semantics finalized from the same event-driven
+/// parsers. `terrain.surfaces` is empty because complete surfaces were already
+/// emitted as bounded fragments with stable source identities.
+#[derive(Clone, Debug, Serialize)]
+pub struct LandXmlStreamMetadata {
+    pub terrain: LandXmlTinDocument,
+    pub plan: LandXmlPlanDocument,
+    pub alignments: LandXmlAlignmentDocument,
+    pub alignment_render: LandXmlAlignmentRenderData,
+}
+
 /// Deliberately not a fake complete document: surface data is drained before
 /// finalization and the summary owns only bounded counters and header facts.
 #[derive(Clone, Debug, Serialize)]
@@ -60,4 +74,5 @@ pub struct LandXmlStreamSummary {
     pub pipe_structures: usize,
     pub pipes: usize,
     pub pipe_refusals: usize,
+    pub metadata: LandXmlStreamMetadata,
 }

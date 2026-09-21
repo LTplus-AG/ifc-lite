@@ -17,15 +17,16 @@ use super::advanced_face::{parse_rational_weights, process_advanced_face, proces
 /// face, #5053) is skipped rather than aborting the whole solid, mirroring
 /// `FaceBasedSurfaceModelProcessor::process` in `brep/surface_model.rs`.
 /// `allow`: `diag_debug!` no-ops without a tracing subscriber (wasm
-/// release), leaving both params unused there.
+/// release), leaving both params unused there. No legacy `eprintln!`
+/// fallback: this is a recovery path, not an anomaly, so it must stay
+/// silent on stderr in normal (non-`observability`) builds — see the
+/// `diag_debug!` docs on passing an empty `else {}` to compile out
+/// entirely.
 #[allow(unused_variables)]
 fn trace_capped_advanced_brep_face(face_id: u32, error: &Error) {
     crate::diag::diag_debug!(
         { face_id, error = %error, "skipping unsupported advanced face in advanced_brep" }
-        else {
-            #[cfg(debug_assertions)]
-            eprintln!("[ifc-lite] Skipping unsupported advanced face #{face_id} in advanced_brep: {error}");
-        }
+        else {}
     );
 }
 

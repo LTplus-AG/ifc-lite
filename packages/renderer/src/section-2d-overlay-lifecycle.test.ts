@@ -423,6 +423,24 @@ describe('Section2DOverlayRenderer: shared uniform buffer', () => {
     assert.strictEqual(u[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh + 3], 1);
   });
 
+  it('restores a rebased cap anchor for a legacy world-space projection (#5152)', () => {
+    const { renderer, writes } = newRenderer();
+    const anchor = 5_000_000.255;
+    renderer.uploadDrawing(TRIANGLE, [], 'side', anchor);
+    const { pass } = makePass();
+
+    // No RTE frame: callers using the legacy world-space matrix still need
+    // the locally uploaded cap vertices returned to their source position.
+    renderer.draw(pass, { ...OPTIONS, viewProj: new Float32Array(16).fill(7) });
+
+    const u = lastWrite(writes);
+    const S = SECTION_2D_UNIFORM_SLOTS;
+    assert.equal(u[S.planeOffset], Math.fround(anchor), 'legacy world projection receives the cap anchor');
+    assert.deepEqual(Array.from(u.slice(S.planeOffset + 1, S.planeOffset + 4)), [0, 0, 0]);
+    assert.equal(u[S.originDeltaHigh + 3], 0, 'legacy projection must not select the RTE transform');
+    assert.deepEqual(Array.from(u.slice(S.viewProj, S.viewProj + 16)), new Array(16).fill(7));
+  });
+
   it('keeps the focused clash wireframe in the same anchored RTE frame (#5049)', () => {
     const { renderer, writes } = newRenderer();
     const eye = [5_000_000.25, 20, -4] as const;

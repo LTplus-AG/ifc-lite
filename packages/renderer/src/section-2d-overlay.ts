@@ -519,16 +519,27 @@ export class Section2DOverlayRenderer {
     // `fillPipeline` above. There is no stencil test; the fill is restricted
     // to the actual cap polygons by the triangle-plane intersection geometry
     // `SectionCutter` produces, not by a stencil gate.
-    const offset: [number, number, number] = [0, 0, 0];
+    // Cap vertices are stored relative to capAnchor so that the RTE path can
+    // retain their small in-plane residuals. The legacy view-projection path
+    // still transforms world coordinates, however, so it must add that anchor
+    // back through planeOffset. Leaving it zero placed every rebased legacy
+    // cap around the world origin. Do not combine the two: RTE adds this same
+    // anchor as an f64 split drawable delta below.
+    const capAnchor = this.capAnchor;
+    const rteViewProj = options.rteViewProj;
+    const rteCamera = options.rteCamera;
+    const offset: [number, number, number] = capAnchor === null || (rteViewProj !== undefined && rteCamera !== undefined)
+      ? [0, 0, 0]
+      : capAnchor;
 
     // Update uniforms. Field offsets come from SECTION_2D_UNIFORM_SLOTS, which
     // sits next to the WGSL struct it describes.
     const S = SECTION_2D_UNIFORM_SLOTS;
     const uniforms = new Float32Array(SECTION_2D_UNIFORM_FLOATS);
     uniforms.set(viewProj, S.viewProj);
-    if (this.capAnchor && options.rteViewProj && options.rteCamera) {
-      uniforms.set(options.rteViewProj, S.rteViewProj);
-      packRteDrawableDelta(this.capAnchor, options.rteCamera, uniforms, S.originDeltaHigh);
+    if (capAnchor !== null && rteViewProj !== undefined && rteCamera !== undefined) {
+      uniforms.set(rteViewProj, S.rteViewProj);
+      packRteDrawableDelta(capAnchor, rteCamera, uniforms, S.originDeltaHigh);
       uniforms[S.originDeltaHigh + 3] = 1;
     }
     uniforms.set(this.overlayLineColor, S.lineColor); // section-cut outline colour

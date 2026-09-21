@@ -5,11 +5,12 @@
 mod decoder;
 mod event;
 mod fragments;
+mod output;
 mod token;
 
 use crate::{
     parser::Parser, preflight::max_markup_bytes, xml::error, LandXmlDiagnosticCode as Code,
-    LandXmlError, LandXmlLimits, LandXmlSurface,
+    LandXmlError, LandXmlLimits,
 };
 use decoder::Decoder;
 pub use event::{
@@ -22,6 +23,16 @@ use token::{TokenFeed, TokenKind};
 
 pub const MAX_LANDXML_STREAM_INPUT_CHUNK_BYTES: usize = 1024 * 1024;
 pub const MAX_LANDXML_STREAM_DRAIN_BYTES: usize = 1024 * 1024;
+/// The host must return transport credit by draining before more XML is read.
+pub const MAX_LANDXML_STREAM_QUEUED_BYTES: usize = 512 * 1024;
+pub const MAX_LANDXML_STREAM_QUEUED_EVENTS: usize = 4;
+/// Maximum serialized event retained while reserving queue headroom.
+pub const MAX_LANDXML_STREAM_EVENT_BYTES: usize = 192 * 1024;
+
+struct QueuedEvent {
+    event: LandXmlStreamEvent,
+    serialized_bytes: usize,
+}
 
 pub struct LandXmlTinStreamSession {
     parser: Option<Parser<'static>>,
@@ -35,7 +46,10 @@ pub struct LandXmlTinStreamSession {
     kind: TokenKind,
     max_text_bytes: usize,
     max_markup_bytes: usize,
-    queue: VecDeque<LandXmlStreamEvent>,
+    queue: VecDeque<QueuedEvent>,
+    queued_bytes: usize,
+    pending_surface: Option<fragments::SurfaceCursor>,
+    pending_input: VecDeque<u8>,
     header_emitted: bool,
     surfaces_drained: usize,
     renderable_surfaces: usize,
@@ -71,6 +85,9 @@ impl LandXmlTinStreamSession {
             max_text_bytes: limits.max_text_bytes,
             max_markup_bytes: max_markup_bytes(&limits)?,
             queue: VecDeque::new(),
+            queued_bytes: 0,
+            pending_surface: None,
+            pending_input: VecDeque::new(),
             header_emitted: false,
             surfaces_drained: 0,
             renderable_surfaces: 0,
@@ -89,9 +106,14 @@ impl LandXmlTinStreamSession {
         if chunk.len() > MAX_LANDXML_STREAM_INPUT_CHUNK_BYTES {
             return Err(error(Code::InputTooLarge, "input chunk exceeds byte limit"));
         }
-        for byte in self.decoder.push(chunk)? {
-            self.push_normalized(byte)?;
+        if self.output_pending() {
+            return Err(error(
+                Code::LimitExceeded,
+                "stream output must be drained before advancing input",
+            ));
         }
+        self.pending_input.extend(self.decoder.push(chunk)?);
+        self.consume_pending_input()?;
         Ok(())
     }
 
@@ -101,15 +123,8 @@ impl LandXmlTinStreamSession {
         }
         let mut bytes = 0usize;
         let mut events = Vec::new();
-        while let Some(event) = self.queue.front() {
-            let size = serde_json::to_vec(event)
-                .map_err(|value| {
-                    error(
-                        Code::InvalidSemantic,
-                        format!("stream serialization failed: {value}"),
-                    )
-                })?
-                .len();
+        while let Some(queued) = self.queue.front() {
+            let size = queued.serialized_bytes;
             if size > max_bytes {
                 return Err(error(
                     Code::LimitExceeded,
@@ -120,8 +135,11 @@ impl LandXmlTinStreamSession {
                 break;
             }
             bytes += size;
-            events.push(self.queue.pop_front().expect("front checked"));
+            let queued = self.queue.pop_front().expect("front checked");
+            self.queued_bytes -= queued.serialized_bytes;
+            events.push(queued.event);
         }
+        self.resume_after_drain()?;
         Ok(events)
     }
 
@@ -133,6 +151,12 @@ impl LandXmlTinStreamSession {
             ));
         }
         self.decoder.finish()?;
+        if self.output_pending() || !self.pending_input.is_empty() {
+            return Err(error(
+                Code::LimitExceeded,
+                "stream output must be drained before finalization",
+            ));
+        }
         if !self.token.is_empty() {
             self.emit_token()?;
         }
@@ -197,6 +221,9 @@ impl LandXmlTinStreamSession {
     pub fn abort(&mut self) {
         self.token.clear();
         self.queue.clear();
+        self.queued_bytes = 0;
+        self.pending_surface.take();
+        self.pending_input.clear();
         self.parser.take();
         self.plan.take();
         self.alignment.take();
@@ -211,6 +238,36 @@ impl LandXmlTinStreamSession {
     }
     fn parser(&mut self) -> &mut Parser<'static> {
         self.parser.as_mut().expect("open stream parser")
+    }
+
+    /// Whether the caller must grant output credit with [`Self::drain`].
+    pub fn output_pending(&self) -> bool {
+        !self.queue.is_empty() || self.pending_surface.is_some()
+    }
+
+    /// Exact JSON transport bytes currently retained for a credited consumer.
+    pub fn queued_bytes(&self) -> usize {
+        self.queued_bytes
+    }
+
+    /// Number of complete transport records currently retained for a consumer.
+    pub fn queued_events(&self) -> usize {
+        self.queue.len()
+    }
+
+    fn consume_pending_input(&mut self) -> Result<(), LandXmlError> {
+        while !self.output_pending() {
+            let Some(byte) = self.pending_input.pop_front() else {
+                return Ok(());
+            };
+            self.push_normalized(byte)?;
+        }
+        Ok(())
+    }
+
+    fn resume_after_drain(&mut self) -> Result<(), LandXmlError> {
+        self.flush_pending_surface()?;
+        self.consume_pending_input()
     }
 
     fn push_normalized(&mut self, byte: u8) -> Result<(), LandXmlError> {
@@ -313,29 +370,6 @@ impl LandXmlTinStreamSession {
             break;
         }
         self.emit_header_and_surfaces()
-    }
-
-    fn emit_header_and_surfaces(&mut self) -> Result<(), LandXmlError> {
-        if !self.header_emitted {
-            if let Some(header) = self.header() {
-                self.queue.push_back(LandXmlStreamEvent::Header(header));
-                self.header_emitted = true;
-            }
-        }
-        for surface in self.parser().take_surfaces() {
-            self.enqueue_surface(surface)?;
-        }
-        Ok(())
-    }
-
-    fn enqueue_surface(&mut self, surface: LandXmlSurface) -> Result<(), LandXmlError> {
-        self.surfaces_drained += 1;
-        if surface.render_state == crate::LandXmlRenderState::Rendered {
-            self.renderable_surfaces += 1;
-        } else {
-            self.preserved_surfaces += 1;
-        }
-        fragments::enqueue_surface(&mut self.queue, surface)
     }
 }
 

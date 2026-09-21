@@ -7,7 +7,8 @@ use ifc_lite_landxml::{
     parse_landxml_pipe_networks, parse_landxml_plan, parse_landxml_tin,
     parse_landxml_tin_with_cancel, LandXmlDiagnosticCode, LandXmlError, LandXmlLimits,
     LandXmlStreamEvent, LandXmlStreamSummary, LandXmlSurfaceComponent, LandXmlTinStreamSession,
-    MAX_LANDXML_STREAM_DRAIN_BYTES,
+    MAX_LANDXML_STREAM_DRAIN_BYTES, MAX_LANDXML_STREAM_EVENT_BYTES,
+    MAX_LANDXML_STREAM_QUEUED_BYTES, MAX_LANDXML_STREAM_QUEUED_EVENTS,
 };
 
 const XML: &str = r#"<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces></LandXML>"#;
@@ -17,30 +18,36 @@ fn drive(bytes: &[u8], cuts: impl Iterator<Item = usize>) -> Vec<LandXmlStreamEv
     let mut start = 0;
     let mut output = Vec::new();
     for end in cuts {
-        session.advance(&bytes[start..end]).expect("advance");
-        output.extend(
-            session
-                .drain(MAX_LANDXML_STREAM_DRAIN_BYTES)
-                .expect("drain"),
-        );
+        advance_and_drain(&mut session, &bytes[start..end], &mut output);
         start = end;
     }
     if start < bytes.len() {
-        session.advance(&bytes[start..]).expect("tail");
-        output.extend(
-            session
-                .drain(MAX_LANDXML_STREAM_DRAIN_BYTES)
-                .expect("drain tail"),
-        );
+        advance_and_drain(&mut session, &bytes[start..], &mut output);
     }
     let summary = session.finish().expect("finish");
     assert_eq!(summary.surfaces_drained, 1);
-    output.extend(
-        session
-            .drain(MAX_LANDXML_STREAM_DRAIN_BYTES)
-            .expect("final drain"),
-    );
+    drain_until_idle(&mut session, &mut output);
     output
+}
+
+fn advance_and_drain(
+    session: &mut LandXmlTinStreamSession,
+    chunk: &[u8],
+    output: &mut Vec<LandXmlStreamEvent>,
+) {
+    drain_until_idle(session, output);
+    session.advance(chunk).expect("advance");
+    drain_until_idle(session, output);
+}
+
+fn drain_until_idle(session: &mut LandXmlTinStreamSession, output: &mut Vec<LandXmlStreamEvent>) {
+    while session.output_pending() {
+        let events = session
+            .drain(MAX_LANDXML_STREAM_DRAIN_BYTES)
+            .expect("drain");
+        assert!(!events.is_empty(), "pending output must consume credit");
+        output.extend(events);
+    }
 }
 
 fn summary_after_byte_cuts(bytes: &[u8]) -> Result<LandXmlStreamSummary, LandXmlError> {
@@ -52,10 +59,26 @@ fn summary_after_byte_cuts_with_limits(
     limits: LandXmlLimits,
 ) -> Result<LandXmlStreamSummary, LandXmlError> {
     let mut session = LandXmlTinStreamSession::new(limits)?;
+    let mut ignored = Vec::new();
     for byte in bytes {
+        drain_until_idle_result(&mut session, &mut ignored)?;
         session.advance(std::slice::from_ref(byte))?;
+        drain_until_idle_result(&mut session, &mut ignored)?;
     }
+    drain_until_idle_result(&mut session, &mut ignored)?;
     session.finish()
+}
+
+fn drain_until_idle_result(
+    session: &mut LandXmlTinStreamSession,
+    output: &mut Vec<LandXmlStreamEvent>,
+) -> Result<(), LandXmlError> {
+    while session.output_pending() {
+        let events = session.drain(MAX_LANDXML_STREAM_DRAIN_BYTES)?;
+        assert!(!events.is_empty(), "pending output must consume credit");
+        output.extend(events);
+    }
+    Ok(())
 }
 
 const PIPE_NETWORK: &str = r#"<PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>0 1 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="P" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks>"#;
@@ -109,6 +132,57 @@ fn issue_5050_large_single_surface_is_fragmented_not_rejected() {
 }
 
 #[test]
+fn issue_5050_stream_requires_credit_and_never_retains_unbounded_transport() {
+    let points = (1..=30_000)
+        .map(|id| format!("<P id=\"{id}\">{id} {id} 0</P>"))
+        .collect::<String>();
+    let xml = format!("<LandXML xmlns=\"http://www.landxml.org/schema/LandXML-1.2\" version=\"1.2\"><Units><Metric linearUnit=\"meter\"/></Units><Surfaces><Surface name=\"large\"><Definition surfType=\"TIN\"><Pnts>{points}</Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces></LandXML>");
+    let mut session = LandXmlTinStreamSession::new(LandXmlLimits::default()).expect("session");
+    session.advance(xml.as_bytes()).expect("initial input");
+    assert!(
+        session.output_pending(),
+        "units header grants the first credit stop"
+    );
+    assert_eq!(
+        session
+            .advance(&[])
+            .expect_err("no source past missing credit")
+            .code,
+        LandXmlDiagnosticCode::LimitExceeded
+    );
+
+    let mut fragments = 0;
+    let mut peak_events = 0;
+    while session.output_pending() {
+        assert!(session.queued_bytes() <= MAX_LANDXML_STREAM_QUEUED_BYTES);
+        assert!(session.queued_events() <= MAX_LANDXML_STREAM_QUEUED_EVENTS);
+        peak_events = peak_events.max(session.queued_events());
+        let events = session
+            .drain(MAX_LANDXML_STREAM_DRAIN_BYTES)
+            .expect("credit drain");
+        assert!(
+            !events.is_empty(),
+            "every pending state returns credited data"
+        );
+        assert!(events.iter().all(|event| {
+            serde_json::to_vec(event)
+                .expect("serialize bounded event")
+                .len()
+                <= MAX_LANDXML_STREAM_EVENT_BYTES
+        }));
+        fragments += events.len();
+    }
+    assert_eq!(peak_events, MAX_LANDXML_STREAM_QUEUED_EVENTS);
+    assert!(
+        fragments > 4,
+        "large surface needed repeated credited drains"
+    );
+    session
+        .finish()
+        .expect("complete after all credit is returned");
+}
+
+#[test]
 fn issue_5050_keeps_security_refusal_precedence_at_chunk_boundaries() {
     let mut session = LandXmlTinStreamSession::new(LandXmlLimits::default()).expect("session");
     let error = session
@@ -125,11 +199,11 @@ fn issue_5050_mixed_plan_and_alignment_fanout_matches_direct_family_counts() {
     let direct_alignment =
         ifc_lite_landxml::alignment::parse_landxml_alignments_optional(xml).expect("alignment");
     let mut session = LandXmlTinStreamSession::new(LandXmlLimits::default()).expect("session");
+    let mut ignored = Vec::new();
     for byte in xml {
-        session
-            .advance(std::slice::from_ref(byte))
-            .expect("byte advance");
+        advance_and_drain(&mut session, std::slice::from_ref(byte), &mut ignored);
     }
+    drain_until_idle(&mut session, &mut ignored);
     let summary = session.finish().expect("finish");
     assert_eq!(summary.plan_cogo_points, direct_plan.cogo_points().len());
     assert_eq!(

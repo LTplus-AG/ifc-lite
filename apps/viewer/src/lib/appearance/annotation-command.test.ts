@@ -39,6 +39,7 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
   const api = new IfcAPI();
   const oldDecode = globalThis.createImageBitmap;
   globalThis.createImageBitmap = (async () => ({ width: 1, height: 1, close() {} })) as typeof createImageBitmap;
+  let unsubscribe: (() => void) | undefined;
   try {
     const data = await new IfcParser().parseColumnar(source.buffer as ArrayBuffer);
     data.spatialHierarchy = rebuildSpatialHierarchy(data.entities, data.relationships);
@@ -60,6 +61,17 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
       Name: 'Registered plan', imageUri: asset.exportName,
       frame: { origin: [2, 3, 4], axisU: [1, 0, 0], axisV: [0, 0, 1], sizeMetres: [2, 1] },
     })))) as AnnotationPlanePlan;
+    let publishedRows = [...native.plan.created], observerChecks = 0;
+    unsubscribe = useViewerStore.subscribe((current, previous) => {
+      const undoCount = current.undoStacks.get('annotation')?.length ?? 0;
+      if (undoCount <= (previous.undoStacks.get('annotation')?.length ?? 0)) return;
+      for (const row of publishedRows) {
+        assert.equal(current.toGlobalId('annotation', row.expressId), idOffset + row.expressId,
+          'history observers see every committed annotation row as federation-owned');
+        assert.equal(federationRegistry.toGlobalId('annotation', row.expressId), idOffset + row.expressId);
+      }
+      observerChecks++;
+    });
     const meshes = new Map<number, MeshData>();
     // GPU transport only is substituted; native rows, mutation history and export are real.
     const renderer = { prepareAuthoredOwner(parts: readonly MeshData[]) {
@@ -151,6 +163,7 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
     })))) as AnnotationPlanePlan;
     assert.equal(nextNative.plan.created[0]?.expressId, native.plan.created.at(-1)!.expressId + 1,
       'the second real-WASM plan starts after the first containment row');
+    publishedRows = [...publishedRows, ...nextNative.plan.created];
     const second = await commitTexturedProduct('annotation', asset.id, { ...nextNative, objectId: nextNative.annotationId }, containerId, renderer, captureAppearanceSource(view));
     for (const row of [...native.plan.created, ...nextNative.plan.created]) {
       assert.equal(federationRegistry.toGlobalId('annotation', row.expressId), idOffset + row.expressId,
@@ -165,7 +178,8 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
     useViewerStore.getState().redo('annotation');
     assert.equal(meshes.size, 2);
     assert.equal(view.getNewEntity(second.expressId)?.expressId, second.expressId);
-  } finally { api.free(); globalThis.createImageBitmap = oldDecode; }
+    assert.ok(observerChecks >= 2, 'both authored commits notified observers only after their full batches were published');
+  } finally { unsubscribe?.(); api.free(); globalThis.createImageBitmap = oldDecode; }
 });
 
 test('reference frame preserves all four corners and rejects a warped quad (#4308)', () => {

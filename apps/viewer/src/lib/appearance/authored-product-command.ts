@@ -144,12 +144,12 @@ export async function commitAuthoredProduct(modelId: string, assetIds: readonly 
     });
     gpu.commit(); installed = true; captureRendered();
     membership(true); hierarchyInstalled = true;
-    record(next);
-    // This is deliberately last: every mutable/GPU/history operation has
-    // succeeded, and preview validation already proved this exact envelope is
-    // the registry's next contiguous range. No rolled-back command burns IDs.
+    // Publish before the synchronous history notification. Subscribers must
+    // never observe a visible authored model with only a prefix of its batch
+    // owned by federation, and failures before this point still roll back.
     publishPreparedOverlayRange(federationRegistry, state.models, state.mutationViews, modelId, applied.created);
     published = true;
+    record(next);
     return { expressId: native.objectId, globalId };
   } catch (error) {
     if (!published) {

@@ -45,7 +45,20 @@ export type {
   IDSEnumerationConstraint,
   IDSBoundsConstraint,
 
-  // Validation results
+  // Validation results — generalised report (issue #5138)
+  ValidationSource,
+  SpecificationSummary,
+  RequirementSummary,
+  CheckKind,
+  FailureReasonCode,
+  SetResult,
+  RequirementResult,
+  EntityResult,
+  SpecificationResult,
+  ValidationReport,
+  ValidationModelInfo,
+
+  // Validation results — IDS-specific narrowings
   IDSValidationReport,
   IDSModelInfo,
   IDSValidationSummary,

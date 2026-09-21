@@ -24,7 +24,8 @@
 #   * otherwise they are generated only when the PostHog CLI keys are present
 #     AND /proc/meminfo reports at least `VERCEL_SOURCEMAPS_MIN_RAM_MB`, so an
 #     Enhanced (16 GB) builder gets symbolicated traces back automatically and
-#     the basic 8 GB one gets a build that finishes.
+#     the basic 8 GB one gets a build that finishes. Unknown memory (no
+#     readable meminfo) fails safe to off.
 # A deploy that finishes minified beats one that never finishes.
 
 # 12 GB: comfortably above the 8 GB basic builder (which Linux reports as
@@ -74,7 +75,16 @@ configure_vercel_sourcemaps() {
   fi
 
   ram="$(vercel_sourcemaps_ram_mb)"
-  if [ -n "$ram" ] && [ "$ram" -gt 0 ] 2>/dev/null && [ "$ram" -lt "$VERCEL_SOURCEMAPS_MIN_RAM_MB" ]; then
+  case "$ram" in
+    ''|*[!0-9]*|0)
+      # Unknown memory cannot prove the machine large, so it fails safe: the
+      # OOM is the failure mode this rule exists to prevent, and
+      # VERCEL_SOURCEMAPS=1 is the way to insist.
+      echo "🗺️  Source maps disabled: this builder's memory is unknown (no readable meminfo). Set VERCEL_SOURCEMAPS=1 to force them."
+      return 1
+      ;;
+  esac
+  if [ "$ram" -lt "$VERCEL_SOURCEMAPS_MIN_RAM_MB" ]; then
     echo "🗺️  Source maps disabled on this ${ram} MB builder (below ${VERCEL_SOURCEMAPS_MIN_RAM_MB} MB): generating them OOM-killed the bundle at \"rendering chunks\" (#5132). Traces stay minified until the build machine is larger or VERCEL_SOURCEMAPS=1 forces them."
     return 1
   fi

@@ -53,7 +53,7 @@ other contributions.
 | `statusBar.left` `statusBar.right` | Status bar segments | Status text + actions |
 | `exportMenu` | "Export" dropdown items | Exporters |
 | `lensLibrary` | Available lens presets in lens panel | Lens evaluators |
-| `idsRules.custom` | Custom IDS rules in IDS panel | IDS validators |
+| `idsRules.custom` | Custom IDS rules in Data validation panel | IDS validators |
 | `keybindings` | (no UI; affects key dispatch) | Keybinding rules |
 | `onboarding.tips` (future) | Tip carousel on empty state | Tip cards (Phase 3) |
 

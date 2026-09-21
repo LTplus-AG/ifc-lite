@@ -121,7 +121,7 @@ Use `auditIDSStructure(idsDocument)` to audit an already-parsed document.
 
 ## Viewer Integration
 
-In the IFClite viewer, IDS validation is integrated through the IDS panel:
+In the IFClite viewer, IDS validation is integrated through the Data validation panel's IDS validation entry:
 
 1. **Load IDS** - Drag and drop an `.ids` XML file
 2. **Run Validation** - Click validate to check the loaded model(s) against IDS rules

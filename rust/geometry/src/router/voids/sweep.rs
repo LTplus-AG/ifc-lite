@@ -260,9 +260,20 @@ pub(super) fn drop_faces_outside_host(result: Mesh, original_host: &Mesh) -> Mes
         // its centroid inside while a far vertex hangs ~1 m out, so (a) alone
         // misses it. The 1 mm clearance keeps host-surface vertices (distance
         // ~0) and corner-grazing parity noise safe.
+        //
+        // (a) carries the SAME clearance (#5127). A flush cap grazing the host
+        // by a few µm leaves a sub-0.1 mm sliver strip along the host's edge,
+        // with both ±50 µm probes outside the reference solid — and that strip
+        // is a connected part of a closed skin, not a shard: dropping it tore
+        // ISSUE_068 #1401204 (0 -> 6 open edges) on a host whose result was
+        // exactly watertight before the sweep. A shard is far from the host
+        // by construction (the #1788 cap fragments sit ~1 m off the wall
+        // plane), so a centroid within 1 mm of the reference surface is never
+        // one. Parity noise at a corner is bounded the same way (b) bounds it.
         const VERTEX_CLEARANCE: f64 = 1.0e-3;
         let centroid_out = !point_inside_mesh(reference_host, centroid + off)
-            && !point_inside_mesh(reference_host, centroid - off);
+            && !point_inside_mesh(reference_host, centroid - off)
+            && point_mesh_distance_exceeds(reference_host, &centroid, VERTEX_CLEARANCE);
         let vertex_out = [a, b, c].iter().any(|&v| {
             !point_inside_mesh(reference_host, v)
                 && point_mesh_distance_exceeds(reference_host, &v, VERTEX_CLEARANCE)

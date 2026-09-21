@@ -116,7 +116,7 @@ export async function checkUnique(
     }
     await maybeYieldChunk(i + 1, applicable.length, ruleIndex, signal, onProgress);
   }
-  finalProgress(applicable.length, ruleIndex, onProgress);
+  finalProgress(applicable.length, ruleIndex, signal, onProgress);
 
   const dupGroups: { value: string; members: { el: FilteredElement; value: string }[] }[] = [];
   for (const scoped of buckets.values()) {
@@ -304,7 +304,7 @@ export async function checkAggregate(
     }
     await maybeYieldChunk(i + 1, applicable.length, ruleIndex, signal, onProgress);
   }
-  finalProgress(applicable.length, ruleIndex, onProgress);
+  finalProgress(applicable.length, ruleIndex, signal, onProgress);
 
   const setResults: SetResult[] = [];
   for (const acc of groups.values()) {

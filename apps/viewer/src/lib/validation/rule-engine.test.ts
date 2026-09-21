@@ -185,6 +185,55 @@ describe('runRuleSet — element requirement, nine issue operators (#5138)', () 
     assert.match(entityByName(spec, 'Wall A').requirementResults[0].expectedValue ?? '', />=\s*0\.25.*<=\s*0\.35/);
   });
 
+  it('the gte+lte fold only applies in an AND group — in OR the two rules stay independent alternatives (review)', async () => {
+    // Same pair as the "between" test above (Width gte 0.25, lte 0.35), but
+    // combinator: 'OR'. Wall B's Width is 0.2 — fails gte 0.25, but on its
+    // own satisfies lte 0.35, so an OR group must pass it (0.2 is not being
+    // asked to sit BETWEEN the bounds, it only has to clear one). Folding
+    // this into a single `between` check (as the AND case correctly does)
+    // would wrongly require BOTH and fail it.
+    const store = await parseWalls();
+    const orRule: InformationRule = {
+      id: 'r1', name: 'or-pair',
+      applicability: wallApplicability(),
+      requirement: {
+        kind: 'element',
+        block: {
+          groups: [{
+            rules: [
+              Rule.quantity('Qto_WallBaseQuantities', 'Width', 'gte', 0.25),
+              Rule.quantity('Qto_WallBaseQuantities', 'Width', 'lte', 0.35),
+            ],
+            combinator: 'OR',
+          }],
+          authoredAs: 'chips',
+        },
+      },
+    };
+    const orReport = await run(store, { version: 1, name: 'test', rules: [orRule] });
+    assert.equal(entityByName(orReport.specificationResults[0], 'Wall B').passed, true, '0.2 satisfies lte 0.35 on its own in an OR group');
+
+    const andRule: InformationRule = {
+      id: 'r1', name: 'and-pair',
+      applicability: wallApplicability(),
+      requirement: {
+        kind: 'element',
+        block: {
+          groups: [{
+            rules: [
+              Rule.quantity('Qto_WallBaseQuantities', 'Width', 'gte', 0.25),
+              Rule.quantity('Qto_WallBaseQuantities', 'Width', 'lte', 0.35),
+            ],
+            combinator: 'AND',
+          }],
+          authoredAs: 'chips',
+        },
+      },
+    };
+    const andReport = await run(store, { version: 1, name: 'test', rules: [andRule] });
+    assert.equal(entityByName(andReport.specificationResults[0], 'Wall B').passed, false, 'the same pair in an AND group folds to between and fails (0.2 < 0.25)');
+  });
+
   it('notNumeric: a numeric op against the non-numeric FireRating string', async () => {
     const store = await parseWalls();
     const report = await run(store, elementRuleSet(Rule.property('Pset_WallCommon', 'FireRating', 'gt', '5')));

@@ -155,7 +155,7 @@ async function runElementRequirement(
     if (store) out.push(checkElementForEntity(ruleId, block, el, store, opts));
     await maybeYieldChunk(i + 1, applicable.length, ruleIndex, signal, onProgress);
   }
-  finalProgress(applicable.length, ruleIndex, onProgress);
+  finalProgress(applicable.length, ruleIndex, signal, onProgress);
   return out;
 }
 

@@ -19,7 +19,7 @@ import { largestBucketIds } from '../charts/buckets.js';
 import { generateDocumentPdf, topicLines, type DocumentPdfSeams } from './generate-document-pdf.js';
 import { parseDocumentFile } from './persistence.js';
 import { blankDocument, coverSheetDocument } from './presets.js';
-import { DOCUMENT_VERSION, validateDocumentSpec, type DocumentSpec, type ListTableSource, type TableBlock, type ValidationTableSource } from './types.js';
+import { DOCUMENT_VERSION, validateDocumentSpec, type DocumentSpec, type ListTableSource, type TableBlock } from './types.js';
 import { elementsDataset } from '@ifc-lite/charts';
 import { IfcTypeEnum } from '@ifc-lite/data';
 import type { ListDefinition } from '@ifc-lite/lists';
@@ -572,7 +572,7 @@ describe('validation-results table source (#5138)', () => {
         summary: { totalSpecifications: 1, passedSpecifications: 0, failedSpecifications: 1, totalEntitiesChecked: 120, totalEntitiesPassed: 0, totalEntitiesFailed: 120, overallPassRate: 0 },
         specificationResults: [{ specification: { id: 's1', name: 'Walls have FireRating' }, status: 'fail' as const, applicableCount: 120, passedCount: 0, failedCount: 120, passRate: 0, entityResults }],
       };
-      const source: ValidationTableSource = { kind: 'validation', rows: 'failed', columns: ['rule', 'result', 'name', 'reason'] };
+      const source = { kind: 'validation' as const, rows: 'failed' as const, columns: ['rule', 'result', 'name', 'reason'] as const };
       const modelName = (id: string): string => (id === 'm1' ? 'tower.ifc' : id);
       const state = validationTableExports.resolveValidationTableState!(source, report, modelName);
 
@@ -591,7 +591,7 @@ describe('validation-results table source (#5138)', () => {
     'a stale ruleId and an absent report each print their own placeholder — never a crash',
     { skip: !validationTableExports.resolveValidationTableState && 'resolveValidationTableState is not exported (production reverted)' },
     async () => {
-      const source: ValidationTableSource = { kind: 'validation', ruleId: 'gone', rows: 'failed', columns: ['rule'] };
+      const source = { kind: 'validation' as const, ruleId: 'gone', rows: 'failed' as const, columns: ['rule'] as const };
       const modelName = (id: string): string => id;
       const absentState = validationTableExports.resolveValidationTableState!(source, null, modelName);
       const doc = docWith([{ kind: 'table', id: 'vt1', source }]);

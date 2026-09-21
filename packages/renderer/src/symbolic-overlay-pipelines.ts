@@ -20,7 +20,8 @@ import {
   SYMBOLIC_TEXT_WGSL,
 } from './shaders/symbolic-overlay.wgsl.js';
 import { PIPELINE_CONSTANTS } from './constants.js';
-import { triangulateRings, type Pt } from './fill-triangulate.js';
+import { parseBoxAlignment, triangulateFillTo } from './symbolic-overlay-geometry.js';
+export { parseBoxAlignment } from './symbolic-overlay-geometry.js';
 
 const FILL_VERTEX_STRIDE_BYTES = (3 + 4) * 4; // pos.xyz + color.rgba, 4 bytes each
 const TEXT_INSTANCE_STRIDE_BYTES = (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1 + 4 + 1 + 4 + 4) * 4;
@@ -721,95 +722,5 @@ export class SymbolicTextPipeline {
     this.pipeline = null;
     this.instanceCount = 0;
     this.uploadedAtlasVersion = -1;
-  }
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-/**
- * IFC BoxAlignment → normalized offsets in [-1, 0] for vertical and
- * horizontal axes. Returned offset is multiplied by the relevant span.
- *
- * The EXPRESS WHERE rule (`IfcBoxAlignment.WR1`, `IFC4_ADD2_TC1.exp`) pins
- * the exact 9-value enum: 'top-left', 'top-middle', 'top-right',
- * 'middle-left', 'center', 'middle-right', 'bottom-left', 'bottom-middle',
- * 'bottom-right'. Note the row/column asymmetry the spec itself bakes in:
- * the ROW qualifier is top/middle/bottom, the COLUMN qualifier is
- * left/middle/right — so "middle" means vertical-center as the first token
- * ("middle-left") but horizontal-center as the second token ("top-middle",
- * "bottom-middle"). A plain `includes('middle')` cannot tell those apart —
- * it used to read "bottom-middle" as vertical=middle (wrong: it's the
- * bottom row) and every "*-middle" as horizontal=left (wrong: it's the
- * middle column). Splitting on the hyphen resolves the ambiguity: the
- * first token decides vertical, the second decides horizontal, matching
- * the row-then-column order every compound value in the enum uses.
- *
- * Vertical comes from the first token, horizontal from the second, or from
- * the whole string for a single-token value like "center": top 0, middle
- * -0.5, bottom -1 (the IFC default) vertically; left 0 (the IFC default),
- * middle/center -0.5, right -1 horizontally. Unknown or empty falls back to
- * ("bottom", "left"). The if/else below is the same table, which is why this
- * is prose: the file sits exactly on its module-size budget, and two
- * documented public fields cost the four lines this paragraph gives back.
- */
-export function parseBoxAlignment(s: string): { horizontal: number; vertical: number } {
-  const norm = s.toLowerCase().trim();
-  if (norm === '') return { horizontal: 0, vertical: -1 };
-
-  const parts = norm.split('-');
-  const verticalToken = parts.length >= 2 ? parts[0] : norm;
-  const horizontalToken = parts.length >= 2 ? parts[1] : norm;
-
-  let vertical: number;
-  if (verticalToken.includes('top')) vertical = 0;
-  else if (verticalToken.includes('middle') || verticalToken.includes('center')) vertical = -0.5;
-  else vertical = -1;
-
-  let horizontal: number;
-  if (horizontalToken.includes('right')) horizontal = -1;
-  else if (horizontalToken.includes('middle') || horizontalToken.includes('center')) horizontal = -0.5;
-  else horizontal = 0;
-
-  return { horizontal, vertical };
-}
-
-/**
- * Triangulate a fill region (outer bound plus inner bounds) and append every
- * output triangle to `stream` as 3 x (x, y, z, r, g, b, a) entries, matching
- * the fill pipeline's vertex layout.
- *
- * `holesOffsets` splits the flat `points` buffer into rings; rings with fewer
- * than 3 vertices are dropped. Which of those rings are filled and which are
- * voids is decided by nesting, not by position, so an inner bound that itself
- * contains an island fills that island (see `fill-triangulate.ts`).
- */
-function triangulateFillTo(stream: number[], fill: SymbolicFillInput): void {
-  const { points, holesOffsets, worldY, color } = fill;
-  if (points.length < 6) return;
-
-  // Convert the flat ring buffer into rings of {x, z} (Y is constant).
-  const totalVerts = points.length / 2;
-  const ringStarts: number[] = [0, ...Array.from(holesOffsets), totalVerts];
-  if (ringStarts.length < 2) return;
-
-  const rings: Pt[][] = [];
-  for (let r = 0; r < ringStarts.length - 1; r++) {
-    const start = ringStarts[r];
-    const end = ringStarts[r + 1];
-    if (end - start < 3) continue;
-    const ring: Pt[] = [];
-    for (let v = start; v < end; v++) {
-      ring.push({ x: points[v * 2], z: points[v * 2 + 1] });
-    }
-    rings.push(ring);
-  }
-  if (rings.length === 0) return;
-
-  const { points: verts, triangles } = triangulateRings(rings);
-  for (const tri of triangles) {
-    for (const idx of tri) {
-      const v = verts[idx];
-      stream.push(v.x, worldY, v.z, color[0], color[1], color[2], color[3]);
-    }
   }
 }

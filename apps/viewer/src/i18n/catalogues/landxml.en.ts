@@ -47,7 +47,7 @@ export const landXmlEn = {
   'properties.landXmlSource.parcelTitle': 'Title: {title}',
   'properties.landXmlSource.parcelStatus': 'Status: {status}',
   'properties.landXmlSource.parcelReason': 'Reason: {reason}',
-  'properties.landXmlSource.parcelProbe': 'Probe: perimeter {perimeter}, declared area {declaredArea} {declaredAreaUnit}, area {areaSquareMeters} m²',
+  'properties.landXmlSource.parcelProbe': 'Probe: perimeter {perimeter}, computed area {computedArea} {declaredAreaUnit}, area {areaSquareMeters} m²',
   'properties.landXmlSource.geometryEndpoints': 'Endpoints: {start} → {end}',
   'properties.landXmlSource.curveDetail': 'Curve: {rotation}, radius {radius}, center {center}, PI {pi}',
   'properties.landXmlSource.unresolved': 'unresolved',

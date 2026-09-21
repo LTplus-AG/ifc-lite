@@ -142,7 +142,9 @@ function planNavigation(record: LandXmlSourceRecord, offset: number, t: Translat
 }
 
 function pointText(point: { northing: number; easting: number; elevation: number | null }): string {
-  return `${point.northing}, ${point.easting}, ${point.elevation ?? ''}`;
+  return point.elevation === null
+    ? `${point.northing}, ${point.easting}`
+    : `${point.northing}, ${point.easting}, ${point.elevation}`;
 }
 
 /** Inspect retained LandXML source records without pretending they are IFC entities. */
@@ -274,7 +276,7 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
           {probe?.state.kind === 'preserved_only' && <p>{t('properties.landXmlSource.parcelReason', { reason: probe.state.reason })}</p>}
           {probe?.state.kind === 'analytic' && <p>{t('properties.landXmlSource.parcelProbe', {
             perimeter: probe.perimeterInDeclaredLinearUnits ?? '',
-            declaredArea: probe.areaInDeclaredSquareUnits ?? '',
+            computedArea: probe.areaInDeclaredSquareUnits ?? '',
             declaredAreaUnit: record.parcel.declaredAreaUnit ?? document?.plan?.areaUnit ?? 'coordinate²',
             areaSquareMeters: probe.areaInSquareMeters ?? '',
           })}</p>}

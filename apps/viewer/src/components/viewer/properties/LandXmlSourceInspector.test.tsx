@@ -163,7 +163,7 @@ describe('LandXmlSourceInspector (#5042)', () => {
     const parcel = render(<LandXmlSourceInspector models={models} selected={{ modelId: 'plan', sourceId: 'parcel' }} onSelect={() => {}} />);
     assert.match(parcel.textContent ?? '', /DEED-123/);
     assert.match(parcel.textContent ?? '', /Status: analytic/);
-    assert.match(parcel.textContent ?? '', /Probe: perimeter 5.14, declared area 1.57 squareMeter/);
+    assert.match(parcel.textContent ?? '', /Probe: perimeter 5.14, computed area 1.57 squareMeter/);
     assert.ok([...parcel.querySelectorAll('button')].some((button) => button.textContent === 'Geometry parcel-curve'));
     cleanup();
 
@@ -172,12 +172,12 @@ describe('LandXmlSourceInspector (#5042)', () => {
     if (!mixedParcel) throw new Error('parcel fixture is required');
     mixedParcel.declaredAreaUnit = 'squareFoot';
     const mixed = render(<LandXmlSourceInspector models={new Map([['plan', { landXmlDocument: mixedUnits }]])} selected={{ modelId: 'plan', sourceId: 'parcel' }} onSelect={() => {}} />);
-    assert.match(mixed.textContent ?? '', /declared area 1.57 squareFoot/);
+    assert.match(mixed.textContent ?? '', /computed area 1.57 squareFoot/);
     cleanup();
 
     const curve = render(<LandXmlSourceInspector models={models} selected={{ modelId: 'plan', sourceId: 'parcel-curve' }} onSelect={() => {}} />);
-    assert.match(curve.textContent ?? '', /Endpoints: 0, 1,/);
-    assert.match(curve.textContent ?? '', /Curve: ccw, radius 1, center 0, 0,/);
+    assert.match(curve.textContent ?? '', /Endpoints: 0, 1 → 0, -1/);
+    assert.match(curve.textContent ?? '', /Curve: ccw, radius 1, center 0, 0, PI none/);
     cleanup();
 
     const monument = render(<LandXmlSourceInspector models={models} selected={{ modelId: 'plan', sourceId: 'monument' }} onSelect={() => {}} />);

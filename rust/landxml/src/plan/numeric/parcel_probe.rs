@@ -148,7 +148,7 @@ impl LandXmlPlanDocument {
             let mut work = BulkParcelProbe::new(resolver, max_topology_work);
             match probe_parcel_with_work(self, parcel, &mut work) {
                 Ok(probe) => probes.push(probe),
-                Err(error) if work.topology_exhausted => {
+                Err(_) if work.topology_exhausted => {
                     probes.push(preserved(parcel, "parcel topology work limit exceeded"));
                 }
                 // Resolver limits and cancellation are document-level states:

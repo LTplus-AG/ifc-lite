@@ -109,6 +109,7 @@ async fn test_state(label: &str) -> AppState {
         cache,
         config: Arc::new(Config::from_env()),
         admission: test_admission(8),
+        data_model_in_flight: Arc::new(crate::in_flight::InFlightKeys::default()),
     }
 }
 

@@ -127,7 +127,7 @@ console.log(`From cache: ${result.stats.from_cache}`);
 |----------|--------|-------------|
 | `/api/v1/parse` | POST | Full parse, JSON response |
 | `/api/v1/parse/parquet` | POST | Full parse, Parquet response (~15x smaller) |
-| `/api/v1/parse/parquet/optimized` | POST | Optimized Parquet (~50x smaller); `?sha256=` replays a cache hit with no upload |
+| `/api/v1/parse/parquet/optimized` | POST | Optimized Parquet (~50x smaller); also produces the data model, like `/parse/parquet`; `?sha256=` replays a cache hit with no upload |
 | `/api/v1/parse/stream` | POST | Streaming JSON (SSE) |
 | `/api/v1/parse/parquet-stream` | POST | Streaming Parquet (SSE); `?sha256=` replays a cache hit with no upload |
 | `/api/v1/parse/metadata` | POST | Quick metadata only (no geometry) |
@@ -154,7 +154,7 @@ JSON/SSE endpoints it's on `metadata`; for the Parquet endpoints it's in the
 | `/api/v1/cache/geometry/{hash}` | GET | Fetch cached geometry (no upload) |
 | `/api/v1/cache/{key}` | GET | Retrieve a cached JSON result (404, not 500, for a key whose entry is not JSON — e.g. a binary Parquet body) |
 | `/api/v1/cache/{hash}` | DELETE | Evict all cached representations for a 64-character source-file SHA-256 hash |
-| `/api/v1/parse/data-model/{key}` | GET | Fetch cached data model |
+| `/api/v1/parse/data-model/{key}` | GET | Fetch cached data model (200 hit; 202 a fill is running right now for this key; 404 nothing cached and nothing filling it) |
 | `/api/v1/parse/symbolic/{key}` | GET | Fetch 2D symbol data (`IfcAnnotation` + `IfcGrid`) as JSON |
 
 ### Utility Endpoints
@@ -387,15 +387,24 @@ returns a `ParseResponse`; it is not the retrieval path for Parquet geometry.
 
 #### Fetching Data Model
 
-Properties and spatial hierarchy are computed in parallel and cached:
+Properties and spatial hierarchy are computed in parallel and cached. Both
+`/parse/parquet` and `/parse/parquet/optimized` write the data model
+synchronously, BEFORE their response goes out, so a fetch right after either
+one returns is already a hit; only the streaming route (`/parse/parquet-stream`)
+fills it in the background after its `complete` event, which is the one case
+`GET /api/v1/parse/data-model/{key}` answers `202` for (a fill genuinely
+running for that key — keep polling). Everything else is `404`: no data model
+was ever written for that key and none is in flight, so a client should stop
+polling rather than retry forever. `fetchDataModel` treats `404` as terminal:
 
 ```typescript
 import { decodeDataModel } from '@ifc-lite/server-client';
 
 const result = await client.parseParquet(file);
 
-// Data model might still be processing
-// Use polling to wait for it
+// After parseParquet/parseParquetOptimized this is already cached; after the
+// streaming route it may still be 202 for a moment, so fetchDataModel polls
+// on 202 and gives up on 404.
 const dataModel = await client.fetchDataModel(result.cache_key);
 
 if (dataModel) {
@@ -650,10 +659,16 @@ Cache keys are derived from file content:
 # payload is quantized and deduplicated, so a hit on one route must never
 # satisfy the other. Both pairs are built from the same geometry pipeline, so
 # a bump of -parquet-v5 almost always needs a bump of -parquet-optimized-v2.
+# It shares the flat route's -datamodel-v6 above rather than having a data
+# model of its own: since #5129 this route writes one too, gated on
+# has_current_data_model before a replay (the same #3869 rule the flat route
+# already applied, now also checked by the ?sha256= probe below) so a hit
+# warmed before that change re-parses instead of replaying a geometry-only
+# entry with no data model behind it.
 # The optimized key ignores parquet_layout: this route has only ever emitted
 # one payload shape, so there is no second namespace to select between.
 {SHA256}-{filter}-parquet-optimized-v2          # Optimized geometry
-{SHA256}-{filter}-parquet-optimized-metadata-v2 # Optimized metadata header
+{SHA256}-{filter}-parquet-optimized-metadata-v3 # Optimized metadata header (v3: gained data_model_stats, #5129)
 ```
 
 The two geometry keys are LAYOUTS, not versions: they coexist, and a request

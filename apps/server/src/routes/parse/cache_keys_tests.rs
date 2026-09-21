@@ -418,7 +418,7 @@ fn optimized_parquet_keys_are_a_distinct_namespace_from_the_flat_route() {
     );
     assert_eq!(
         parquet_optimized_metadata_cache_key(&seed),
-        format!("{seed}-parquet-optimized-metadata-v2")
+        format!("{seed}-parquet-optimized-metadata-v3")
     );
 
     // Neither optimized key may equal, or be a prefix-shadow of, the flat pair.

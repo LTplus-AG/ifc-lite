@@ -232,7 +232,7 @@ export function useIfcFederation(
     // A model rotation must never be inside a `preAlignment` snapshot, so every
     // model stays un-rotated for the whole pass; the declared headings are
     // re-applied once on top of the new alignment (`useModelRotationSync`).
-    const { counts, anchorGeoref, movedModelIds } = await withModelRotationsUnbaked(() => realignFederationModels({
+    const { counts, anchorGeoref, movedModelIds, stale } = await withModelRotationsUnbaked(() => realignFederationModels({
       models: () => Array.from(useViewerStore.getState().models.entries()) as Array<[string, FederatedModel]>,
       getModel: (modelId) => useViewerStore.getState().models.get(modelId),
       anchorModelId: referenceSelection.modelId,
@@ -251,7 +251,7 @@ export function useIfcFederation(
       updateModel: state.updateModel,
       isCurrent: () => realignSession === realignSessionRef.current,
     }));
-    if (realignSession !== realignSessionRef.current) return;
+    if (stale || realignSession !== realignSessionRef.current) return; // Stale rollback must not publish frame/index/scan work.
     // Manual offsets remain explicit workspace vectors after re-alignment.
     // Picked anchors were cancelled above; exchange files must name the new frame.
     const frameCommitted = commitRealignmentFrame(state.models, anchorGeoref);

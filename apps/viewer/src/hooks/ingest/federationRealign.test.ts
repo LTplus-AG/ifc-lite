@@ -100,6 +100,9 @@ function boxMesh(
 interface TestModel extends RealignableModel {
   /** The model's own georef, minus the coordinateInfo the resolver supplies. */
   ownGeoref: Omit<ModelSpatialPlacement, 'coordinateInfo'>;
+  /** Display-only fields prove immutable record replacement retains geometry. */
+  name?: string;
+  visible?: boolean;
 }
 
 function model(
@@ -671,6 +674,118 @@ describe('realignFederationModels — switching the anchor back restores it (#20
       'rollback must retain the replacement geometry rather than restoring old B');
     assert.equal(replacement.preAlignment, undefined,
       'rollback must retain the replacement\'s own baseline rather than installing old B\'s snapshot');
+  });
+
+  it('restores shared geometry after an immutable visibility/rename replacement during a CRS await (#5048)', async () => {
+    const x = model([boxMesh(94, [0, 0, 0])], coordinateInfo(), georef({ eastings: 0 }));
+    const b = model([boxMesh(95, [1, 0, 0])], coordinateInfo(), georef({ eastings: 100 }));
+    const models = new Map<string, TestModel>([['X', x], ['B', b]]);
+    const before = new Float32Array(b.geometryResult!.meshes[0].positions);
+    const updateImmutable = (modelId: string, patch: Partial<RealignableModel>) => {
+      const previous = models.get(modelId);
+      if (previous) models.set(modelId, { ...previous, ...patch });
+    };
+    let renamed = false;
+    const resolveWithRename = (modelId: string, candidate: TestModel): ModelSpatialPlacement | null => {
+      if (modelId === 'B' && !renamed) {
+        renamed = true;
+        queueMicrotask(() => {
+          const current = models.get('B');
+          if (current) {
+            models.set('B', { ...current, visible: false, name: 'renamed while aligning' });
+          }
+        });
+      }
+      return resolveGeoref(modelId, candidate);
+    };
+    const stale = await realignFederationModels<TestModel>({
+      models: () => Array.from(models.entries()) as Array<[string, TestModel]>,
+      getModel: (modelId) => models.get(modelId),
+      anchorModelId: 'X', anchorGeoref: resolveGeoref('X', x),
+      resolveGeoref: resolveWithRename, updateModel: updateImmutable,
+    });
+
+    const replacement = models.get('B')!;
+    assert.equal(stale.stale, true, 'a replacement record invalidates the in-flight pass');
+    assert.equal(replacement.name, 'renamed while aligning');
+    assert.equal(replacement.visible, false);
+    assertBytesEqual(replacement.geometryResult!.meshes[0].positions, before,
+      'the replacement still owns B\'s mutated geometry, so stale rollback must restore it');
+
+    const fresh = await realignFederationModels<TestModel>({
+      models: () => Array.from(models.entries()) as Array<[string, TestModel]>,
+      getModel: (modelId) => models.get(modelId),
+      anchorModelId: 'X', anchorGeoref: resolveGeoref('X', x),
+      resolveGeoref, updateModel: updateImmutable,
+    });
+    assert.equal(fresh.stale, false);
+    assert.equal(worldPositionsOf(models.get('B')!.geometryResult!.meshes[0])[0], 101,
+      'the next pass starts from B\'s source geometry, rather than double-aligning the abandoned bake');
+  });
+
+  it('rolls back when the anchor is replaced during another model\'s CRS await (#5048)', async () => {
+    const x = model([boxMesh(96, [0, 0, 0])], coordinateInfo(), georef({ eastings: 0 }));
+    const b = model([boxMesh(97, [1, 0, 0])], coordinateInfo(), georef({ eastings: 100 }, 'EPSG:4326'));
+    const models = new Map<string, TestModel>([['X', x], ['B', b]]);
+    const beforeB = new Float32Array(b.geometryResult!.meshes[0].positions);
+    const updateImmutable = (modelId: string, patch: Partial<RealignableModel>) => {
+      const previous = models.get(modelId);
+      if (previous) models.set(modelId, { ...previous, ...patch });
+    };
+    let replaced = false;
+    const resolveWithAnchorReplacement = (modelId: string, candidate: TestModel): ModelSpatialPlacement | null => {
+      if (modelId === 'B' && !replaced) {
+        replaced = true;
+        queueMicrotask(() => {
+          models.set('X', model([boxMesh(98, [7000, 0, 0])], coordinateInfo(), georef({ eastings: 7000 })));
+        });
+      }
+      return resolveGeoref(modelId, candidate);
+    };
+
+    const result = await realignFederationModels<TestModel>({
+      models: () => Array.from(models.entries()) as Array<[string, TestModel]>,
+      getModel: (modelId) => models.get(modelId),
+      anchorModelId: 'X', anchorGeoref: resolveGeoref('X', x),
+      resolveGeoref: resolveWithAnchorReplacement, updateModel: updateImmutable,
+    });
+
+    assert.equal(result.stale, true, 'the pass cannot publish against the replaced anchor');
+    assert.equal(worldPositionsOf(models.get('X')!.geometryResult!.meshes[0])[0], 7000,
+      'rollback must not overwrite the new anchor geometry');
+    assertBytesEqual(models.get('B')!.geometryResult!.meshes[0].positions, beforeB,
+      'the non-anchor bake is rolled back when its destination anchor changed');
+  });
+
+  it('rolls back when the anchor is removed during another model\'s CRS await (#5048)', async () => {
+    const x = model([boxMesh(99, [0, 0, 0])], coordinateInfo(), georef({ eastings: 0 }));
+    const b = model([boxMesh(100, [1, 0, 0])], coordinateInfo(), georef({ eastings: 100 }, 'EPSG:4326'));
+    const models = new Map<string, TestModel>([['X', x], ['B', b]]);
+    const beforeB = new Float32Array(b.geometryResult!.meshes[0].positions);
+    const updateImmutable = (modelId: string, patch: Partial<RealignableModel>) => {
+      const previous = models.get(modelId);
+      if (previous) models.set(modelId, { ...previous, ...patch });
+    };
+    let removed = false;
+    const resolveWithAnchorRemoval = (modelId: string, candidate: TestModel): ModelSpatialPlacement | null => {
+      if (modelId === 'B' && !removed) {
+        removed = true;
+        queueMicrotask(() => models.delete('X'));
+      }
+      return resolveGeoref(modelId, candidate);
+    };
+
+    const result = await realignFederationModels<TestModel>({
+      models: () => Array.from(models.entries()) as Array<[string, TestModel]>,
+      getModel: (modelId) => models.get(modelId),
+      anchorModelId: 'X', anchorGeoref: resolveGeoref('X', x),
+      resolveGeoref: resolveWithAnchorRemoval, updateModel: updateImmutable,
+    });
+
+    assert.equal(result.stale, true, 'the pass cannot publish against a removed anchor');
+    assert.equal(models.has('X'), false, 'rollback must not resurrect the removed anchor');
+    assertBytesEqual(models.get('B')!.geometryResult!.meshes[0].positions, beforeB,
+      'the non-anchor bake is rolled back when its destination anchor disappears');
   });
 });
 

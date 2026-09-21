@@ -36,8 +36,8 @@
 
 import type { FederatedModel, PreAlignmentSnapshot } from '../../store/index.js';
 import type { ModelSpatialReference } from '@ifc-lite/geometry';
-import { growPreAlignment } from '../../store/slices/data-mesh-prealign.js';
 import { alignGeometryToReference, type ModelSpatialPlacement } from './federationAlign.js';
+import { capturePreAlignment, restorePreAlignment } from './federationPreAlignment.js';
 import { canonicalRendererPlacement } from './federationCanonicalReference.js';
 import {
   applyLandXmlRenderedLineUpdates,
@@ -47,7 +47,7 @@ import {
 } from './landXmlSpatialLines.js';
 import type { LandXmlTinDocument } from './landXmlSemantics.js';
 
-type AlignableGeometry = NonNullable<FederatedModel['geometryResult']>;
+export { capturePreAlignment, restorePreAlignment } from './federationPreAlignment.js';
 
 /** The part of a federated model this module reads and writes. */
 export interface RealignableModel {
@@ -56,101 +56,6 @@ export interface RealignableModel {
   federationAlignmentStatus?: FederatedModel['federationAlignmentStatus'];
   spatialReference?: ModelSpatialReference;
   landXmlDocument?: LandXmlTinDocument;
-}
-
-/**
- * Snapshot a geometry result's current state as its pre-alignment state.
- *
- * The snapshot owns everything it can be asked to put back: positions, normals
- * and origins are copied, the coordinate frame is deep-copied, and the
- * instanced-box Map is copied. The only things shared with the live geometry
- * are the world-box OBJECTS, which is sound because alignment replaces boxes
- * rather than mutating them — pinned by `federationAlign.test.ts`.
- *
- * The rule is that a snapshot and the geometry it came from are never one
- * value. Otherwise an in-place edit of the live geometry silently rewrites the
- * baseline, the restore becomes a no-op, and no assertion comparing the two can
- * see it.
- *
- * The per-mesh arrays are built by `growPreAlignment` (starting from an empty
- * snapshot) rather than a second `.map()` here: it is the same operation —
- * "add one baseline entry per mesh, index-aligned" — that `appendGeometryBatch`
- * needs when a mesh lands on a model that already has a snapshot (#4970), and
- * a snapshot built by two different code paths is exactly the kind of drift
- * this module's header warns about.
- */
-export function capturePreAlignment(geometry: AlignableGeometry): PreAlignmentSnapshot {
-  // Deep-copied, and by `structuredClone` rather than by hand: the frame is
-  // nested three levels (`originalBounds.min.x`), so neither a spread nor a
-  // spread-plus-one-level-of-bounds reaches the corners, and a hand-written
-  // copy would silently stop covering a field added later. Holding the live
-  // object instead would let anything that edits it in place (useIfcLoader
-  // touches this same field on the streaming path) rewrite the baseline,
-  // which turns the restore into a no-op that cannot be detected, because
-  // the snapshot and the geometry would be one value.
-  return growPreAlignment(
-    {
-      positions: [],
-      normals: [],
-      origins: [],
-      geometryAabbs: [],
-      coordinateInfo: structuredClone(geometry.coordinateInfo),
-      // The Map is copied so the snapshot owns its own entry set. The boxes
-      // inside stay shared, at the same depth as the per-mesh `geometryAabbs`
-      // above: alignment REPLACES box objects rather than mutating them,
-      // which is pinned by `federationAlign.test.ts`.
-      instancedGeometryAabbs: geometry.instancedGeometryAabbs
-        ? new Map(geometry.instancedGeometryAabbs)
-        : undefined,
-    },
-    geometry.meshes,
-  );
-}
-
-/**
- * Put a geometry result back exactly as the snapshot found it, undoing whatever
- * alignment baked into it.
- *
- * Normals are restored because alignment rotates them in place, so repeated
- * re-bakes would compound the rotation and drift the shading. The world boxes
- * are restored because alignment re-frames them too: re-aligning an already
- * aligned box while the vertices restart from the snapshot leaves the box in a
- * frame of its own, and compare then reports a plausible wrong distance (#2005).
- *
- * A mesh whose snapshot slot holds no box LOSES its box rather than keeping the
- * aligned one: an unknown pre-alignment box is the engine's documented "no box"
- * state (compare degrades to a bare `moved`), whereas a kept one asserts a
- * position in the previous anchor's frame.
- */
-export function restorePreAlignment(
-  geometry: AlignableGeometry,
-  snapshot: PreAlignmentSnapshot,
-): void {
-  const meshes = geometry.meshes;
-  const restoreCount = Math.min(meshes.length, snapshot.positions.length);
-  for (let i = 0; i < restoreCount; i += 1) {
-    meshes[i].positions = new Float32Array(snapshot.positions[i]);
-    const normals = snapshot.normals[i];
-    if (normals) meshes[i].normals = new Float32Array(normals);
-    // The origin the alignment folded in and zeroed. Absent stays absent: a
-    // mesh that never had one must not gain a [0,0,0] the renderer would then
-    // treat as a local frame.
-    const origin = snapshot.origins[i];
-    if (origin) meshes[i].origin = [...origin];
-    else delete meshes[i].origin;
-    const box = snapshot.geometryAabbs[i];
-    if (box) meshes[i].geometryAabb = box;
-    else delete meshes[i].geometryAabb;
-  }
-  // Copies out, for the mirror of the reason the capture copies in: hand the
-  // geometry the snapshot's own objects and the next in-place edit of the live
-  // frame rewrites the baseline the NEXT restore reads. The spread this
-  // replaced looked deep enough and was not — it copied the two bounds objects
-  // but left their `min`/`max` shared.
-  geometry.coordinateInfo = structuredClone(snapshot.coordinateInfo);
-  geometry.instancedGeometryAabbs = snapshot.instancedGeometryAabbs
-    ? new Map(snapshot.instancedGeometryAabbs)
-    : undefined;
 }
 
 /** How each model fared, for the caller's summary toast. */
@@ -248,14 +153,36 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
   const isCurrent = params.isCurrent ?? (() => true);
   const counts: RealignCounts = { aligned: 0, reprojected: 0, skipped: 0, failed: 0 };
   const movedModelIds: string[] = [];
+  // `updateModel` replaces Zustand records, while deliberately retaining the
+  // mutable geometry object. Keep those two ownership questions separate:
+  // record identity fences publication, but a stale transaction must still
+  // restore geometry that an innocuous visibility/name patch continues to
+  // share (#5048).
   const expectedModels = new Map(models);
   const currentModel = (modelId: string): M | undefined => params.getModel?.(modelId);
+  const currentEntries = (): ReadonlyArray<readonly [string, M]> | undefined => (
+    typeof params.models === 'function' ? params.models() : undefined
+  );
   const isLive = (modelId: string): boolean => {
     if (!params.getModel) return true;
     return currentModel(modelId) === expectedModels.get(modelId);
   };
+  const transactionIsLive = (): boolean => {
+    if (!isCurrent()) return false;
+    const entries = currentEntries();
+    if (entries) {
+      if (entries.length !== expectedModels.size) return false;
+      for (const [modelId, model] of entries) {
+        if (expectedModels.get(modelId) !== model) return false;
+      }
+    }
+    for (const [modelId, expected] of expectedModels) {
+      if (params.getModel && currentModel(modelId) !== expected) return false;
+    }
+    return true;
+  };
   const commit = (modelId: string, patch: Partial<RealignableModel>): boolean => {
-    if (!isLive(modelId)) return false;
+    if (!transactionIsLive() || !isLive(modelId)) return false;
     updateModel(modelId, patch);
     // A normal Zustand patch makes the next expected record identity.
     if (params.getModel) {
@@ -266,19 +193,30 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
     return true;
   };
   const before = new Map(models.map(([modelId, model]) => [modelId, {
+    geometryOwner: model.geometryResult,
     geometry: model.geometryResult ? capturePreAlignment(model.geometryResult) : undefined,
     preAlignment: model.preAlignment,
     federationAlignmentStatus: model.federationAlignmentStatus,
   }]));
   const landXmlUpdates: LandXmlRenderedLineUpdate[][] = [];
   const rollback = () => {
-    for (const [modelId, model] of models) {
+    for (const [modelId] of models) {
       const saved = before.get(modelId);
       if (!saved) continue;
-      // Rollback must not overwrite a replacement/removal after an await.
-      if (!isLive(modelId)) continue;
-      if (model.geometryResult && saved.geometry) restorePreAlignment(model.geometryResult, saved.geometry);
-      commit(modelId, {
+      const live = currentModel(modelId);
+      // An immutable display-only update replaces the record but intentionally
+      // shares its geometry. That geometry was mutated in place before the
+      // stale fence fired, so restore it through the replacement record. A
+      // true replacement owns another geometry object and must be untouched.
+      if (params.getModel && live?.geometryResult !== saved.geometryOwner) continue;
+      const geometry = live?.geometryResult ?? saved.geometryOwner;
+      if (geometry && saved.geometry) restorePreAlignment(geometry, saved.geometry);
+      if (params.getModel && !live) continue;
+      // Do not use `commit`: a stale transaction is expected to fail its
+      // record-identity fence. `updateModel` merges these lifecycle fields
+      // into a harmless immutable replacement without overwriting its name,
+      // visibility, or other caller-owned fields.
+      updateModel(modelId, {
         preAlignment: saved.preAlignment,
         federationAlignmentStatus: saved.federationAlignmentStatus,
       });
@@ -294,7 +232,7 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
     const anchorModel = models.find(([modelId]) => modelId === anchorModelId)?.[1];
     const anchorGeometry = anchorModel?.geometryResult;
     if (anchorModel) {
-      if (!isLive(anchorModelId)) return stale();
+      if (!transactionIsLive() || !isLive(anchorModelId)) return stale();
       if (anchorGeometry) {
         const snapshot = anchorModel.preAlignment;
         if (snapshot) {
@@ -328,7 +266,7 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
 
     for (const [modelId, model] of models) {
       if (modelId === anchorModelId) continue;
-      if (!isLive(modelId)) return stale();
+      if (!transactionIsLive() || !isLive(modelId)) return stale();
       const geometry = model.geometryResult;
       if (!geometry) {
       // Say so, rather than leaving the badge from the PREVIOUS anchor. A model
@@ -362,12 +300,12 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
         if (restoredFromSnapshot) movedModelIds.push(modelId);
         counts.skipped += 1;
         if (model.landXmlDocument) landXmlUpdates.push(clearLandXmlRenderedLineUpdates(model.landXmlDocument));
-        if (!isCurrent()) return stale();
+        if (!transactionIsLive()) return stale();
         continue;
       }
 
       const status = await alignGeometryToReference(geometry, georef, anchorGeoref);
-      if (!isLive(modelId)) return stale();
+      if (!transactionIsLive() || !isLive(modelId)) return stale();
       if (!commit(modelId, {
         preAlignment: snapshot,
         federationAlignmentStatus: status,
@@ -383,13 +321,14 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
         landXmlUpdates.push(await buildLandXmlRenderedLineUpdates(
           model.landXmlDocument, source, anchorGeoref.spatialReference, anchorGeoref.coordinateInfo,
         ));
+        if (!transactionIsLive()) return stale();
       } else if (model.landXmlDocument) {
         landXmlUpdates.push(clearLandXmlRenderedLineUpdates(model.landXmlDocument));
       }
-      if (!isCurrent()) return stale();
+      if (!transactionIsLive()) return stale();
     }
 
-    if (!isCurrent()) return stale();
+    if (!transactionIsLive()) return stale();
     for (const updates of landXmlUpdates) applyLandXmlRenderedLineUpdates(updates);
     return { counts, anchorGeoref, movedModelIds, stale: false };
   } catch (error) {

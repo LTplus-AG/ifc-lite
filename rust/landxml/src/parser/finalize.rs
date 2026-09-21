@@ -41,8 +41,14 @@ impl Parser<'_> {
         // A refusal is source-preserving: do not retain a partial collection
         // of synthetic vertices while marking the source preserved-only.
         let source_surface = surface.clone();
-        let terrain_diagnostic =
-            crate::terrain::adapt_faceless_tin(&mut surface, self.limits, self.cancelled)?;
+        let terrain_diagnostic = crate::terrain::adapt_faceless_tin(
+            &mut surface,
+            self.limits,
+            self.cancelled,
+            &mut self.faces_seen,
+            &mut self.references,
+            &mut self.work,
+        )?;
         if terrain_diagnostic.is_some() {
             surface = source_surface;
         }
@@ -127,6 +133,7 @@ impl Parser<'_> {
             topology_origin,
             terrain_diagnostic,
             points: surface.points,
+            canonical_vertices: surface.canonical_vertices,
             source_data_points: surface.source_data_points,
             faces: surface.faces,
             face_source_ids,

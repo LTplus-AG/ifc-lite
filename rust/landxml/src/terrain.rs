@@ -2,23 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-//! Conservative LandXML-to-PSLG adaptation for faceless TIN surfaces.
-
+use crate::terrain_validation::validate_split_elevations;
 use crate::{
-    xml::error, LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlError, LandXmlLimits,
-    LandXmlPoint, LandXmlPolyline, LandXmlSourceId, LandXmlSurfaceKind, LandXmlTerrainDiagnostic,
-    LandXmlTerrainDiagnosticCode as TerrainCode,
+    xml::error, LandXmlCancellation, LandXmlCanonicalVertex, LandXmlDiagnosticCode as Code,
+    LandXmlError, LandXmlLimits, LandXmlPoint, LandXmlPolyline, LandXmlSourceId,
+    LandXmlSurfaceKind, LandXmlTerrainDiagnostic, LandXmlTerrainDiagnosticCode as TerrainCode,
 };
 use ifc_lite_geometry::{triangulate_terrain_pslg, TerrainCdtError};
 use std::collections::BTreeMap;
-
-#[derive(Clone)]
 struct Vertex {
     id: String,
     northing: f64,
     easting: f64,
+    elevation: f64,
+    contributors: Vec<LandXmlSourceId>,
 }
-
 struct CandidateVertex {
     northing: f64,
     easting: f64,
@@ -47,6 +45,7 @@ fn add_vertex(
     locations: &mut BTreeMap<(u64, u64), (usize, f64)>,
     surface: &mut super::parser::state::SurfaceBuilder,
     candidate: CandidateVertex,
+    retain_point: bool,
 ) -> Result<usize, LandXmlTerrainDiagnostic> {
     let key = (bits(candidate.northing), bits(candidate.easting));
     if let Some(&(index, known_elevation)) = locations.get(&key) {
@@ -56,6 +55,18 @@ fn add_vertex(
                 "coincident terrain vertices have conflicting elevations",
             ));
         }
+        vertices[index]
+            .contributors
+            .push(candidate.source_id.clone());
+        if retain_point {
+            surface.points.push(LandXmlPoint {
+                source_id: candidate.source_id,
+                id: candidate.id,
+                northing: candidate.northing,
+                easting: candidate.easting,
+                elevation: candidate.elevation,
+            });
+        }
         return Ok(index);
     }
     let index = vertices.len();
@@ -64,15 +75,19 @@ fn add_vertex(
         id: candidate.id.clone(),
         northing: candidate.northing,
         easting: candidate.easting,
+        elevation: candidate.elevation,
+        contributors: vec![candidate.source_id.clone()],
     });
     surface.ids.insert(candidate.id.clone());
-    surface.points.push(LandXmlPoint {
-        source_id: candidate.source_id,
-        id: candidate.id,
-        northing: candidate.northing,
-        easting: candidate.easting,
-        elevation: candidate.elevation,
-    });
+    if retain_point {
+        surface.points.push(LandXmlPoint {
+            source_id: candidate.source_id,
+            id: candidate.id,
+            northing: candidate.northing,
+            easting: candidate.easting,
+            elevation: candidate.elevation,
+        });
+    }
     Ok(index)
 }
 
@@ -111,6 +126,7 @@ fn line_vertices(
                 id,
                 source_id: line.point_source_ids[ordinal].clone(),
             },
+            true,
         )?);
     }
     Ok(indexes)
@@ -158,14 +174,16 @@ pub(super) fn adapt_faceless_tin(
     surface: &mut super::parser::state::SurfaceBuilder,
     limits: &LandXmlLimits,
     cancelled: Option<&dyn LandXmlCancellation>,
+    faces_seen: &mut usize,
+    references_seen: &mut usize,
+    work_seen: &mut usize,
 ) -> Result<Option<LandXmlTerrainDiagnostic>, LandXmlError> {
     if surface.kind != LandXmlSurfaceKind::Tin || !surface.faces.is_empty() {
         return Ok(None);
     }
     let mut vertices = Vec::new();
     let mut locations = BTreeMap::new();
-    let authored = std::mem::take(&mut surface.points);
-    for point in authored {
+    for point in surface.points.clone() {
         if let Err(value) = add_vertex(
             &mut vertices,
             &mut locations,
@@ -177,6 +195,7 @@ pub(super) fn adapt_faceless_tin(
                 id: point.id,
                 source_id: point.source_id,
             },
+            false,
         ) {
             return Ok(Some(value));
         }
@@ -194,6 +213,7 @@ pub(super) fn adapt_faceless_tin(
                     id: format!("terrain:{}", point.source_id.0),
                     source_id: point.source_id,
                 },
+                false,
             ) {
                 return Ok(Some(value));
             }
@@ -261,12 +281,37 @@ pub(super) fn adapt_faceless_tin(
         }
         segments.extend(line.windows(2).map(|pair| (pair[0], pair[1])));
     }
-    let work = vertices.len().saturating_mul(segments.len());
-    if work > limits.max_work {
+    let split_work = vertices.len().saturating_mul(segments.len());
+    let intersection_work = segments
+        .len()
+        .saturating_mul(segments.len().saturating_sub(1))
+        / 2;
+    let cdt_work = vertices.len().saturating_mul(vertices.len());
+    let total_work = split_work
+        .saturating_add(intersection_work)
+        .saturating_add(cdt_work);
+    if work_seen
+        .checked_add(total_work)
+        .is_none_or(|work| work > limits.max_work)
+    {
         return Ok(Some(diagnostic(
             TerrainCode::WorkLimitExceeded,
             "terrain constraint work limit exceeded",
         )));
+    }
+    *work_seen += total_work;
+    if cancelled.is_some_and(LandXmlCancellation::is_cancelled) {
+        return Err(error(
+            Code::Cancelled,
+            "LandXML terrain triangulation cancelled",
+        ));
+    }
+    let vertex_elevations: Vec<_> = vertices
+        .iter()
+        .map(|vertex| (vertex.northing, vertex.easting, vertex.elevation))
+        .collect();
+    if let Err(value) = validate_split_elevations(&vertex_elevations, &segments) {
+        return Ok(Some(value));
     }
     let points: Vec<[f64; 2]> = vertices
         .iter()
@@ -287,7 +332,14 @@ pub(super) fn adapt_faceless_tin(
             )))
         }
     };
+    let mut generated_faces = Vec::new();
     for triangle in mesh.indices.chunks_exact(3) {
+        if cancelled.is_some_and(LandXmlCancellation::is_cancelled) {
+            return Err(error(
+                Code::Cancelled,
+                "LandXML terrain triangulation cancelled",
+            ));
+        }
         let [a, b, c] = [triangle[0], triangle[1], triangle[2]];
         let centroid = [
             (points[a][0] + points[b][0] + points[c][0]) / 3.0,
@@ -302,18 +354,46 @@ pub(super) fn adapt_faceless_tin(
         {
             continue;
         }
-        surface.faces.push([
+        generated_faces.push([
             vertices[a].id.clone(),
             vertices[b].id.clone(),
             vertices[c].id.clone(),
         ]);
-        surface.face_visibility.push(true);
     }
-    if surface.faces.is_empty() {
+    if generated_faces.is_empty() {
         return Ok(Some(diagnostic(
             TerrainCode::DegenerateConstraints,
             "constraints enclose no terrain area",
         )));
     }
+    let generated_references = generated_faces.len().saturating_mul(3);
+    if faces_seen
+        .checked_add(generated_faces.len())
+        .is_none_or(|faces| faces > limits.max_faces)
+    {
+        return Err(error(Code::LimitExceeded, "face limit exceeded"));
+    }
+    if references_seen
+        .checked_add(generated_references)
+        .is_none_or(|references| references > limits.max_references)
+    {
+        return Err(error(Code::LimitExceeded, "reference limit exceeded"));
+    }
+    *faces_seen += generated_faces.len();
+    *references_seen += generated_references;
+    surface
+        .face_visibility
+        .extend(std::iter::repeat_n(true, generated_faces.len()));
+    surface.faces.extend(generated_faces);
+    surface.canonical_vertices = vertices
+        .into_iter()
+        .map(|vertex| LandXmlCanonicalVertex {
+            id: vertex.id,
+            northing: vertex.northing,
+            easting: vertex.easting,
+            elevation: vertex.elevation,
+            contributor_source_ids: vertex.contributors,
+        })
+        .collect();
     Ok(None)
 }

@@ -55,19 +55,11 @@ pub fn triangulate_terrain_pslg(
             return Err(TerrainCdtError::InvalidInput);
         }
     }
+    // Validate the producer's graph before the collinear-vertex split.  Doing
+    // this afterwards silently normalises repeated/overlapping source edges
+    // into a harmless-looking deduplicated edge set.
+    validate_original_segments(points, segments)?;
     let segments = split_segments_at_vertices(points, segments);
-    for (left, &(a, b)) in segments.iter().enumerate() {
-        for &(c, d) in &segments[..left] {
-            if a != c
-                && a != d
-                && b != c
-                && b != d
-                && segments_intersect(points[a], points[b], points[c], points[d])
-            {
-                return Err(TerrainCdtError::IntersectingConstraints);
-            }
-        }
-    }
     let source: Vec<Point2<f64>> = points
         .iter()
         .map(|point| Point2::new(point[0], point[1]))
@@ -79,6 +71,57 @@ pub fn triangulate_terrain_pslg(
         points: output.into_iter().map(|point| [point.x, point.y]).collect(),
         indices,
     })
+}
+
+fn validate_original_segments(
+    points: &[[f64; 2]],
+    segments: &[(usize, usize)],
+) -> Result<(), TerrainCdtError> {
+    for (left, &(a, b)) in segments.iter().enumerate() {
+        for &(c, d) in &segments[..left] {
+            if !segments_intersect(points[a], points[b], points[c], points[d]) {
+                continue;
+            }
+            // A common authored vertex, or a single endpoint landing on a
+            // different segment, is a legitimate PSLG junction: the latter
+            // is split below.  All other contacts (proper crossings,
+            // repeated edges, and collinear overlap) are ambiguous source
+            // constraints.
+            let shared = [a, b]
+                .into_iter()
+                .filter(|vertex| *vertex == c || *vertex == d)
+                .count();
+            if shared == 0 {
+                let endpoint_contacts = [a, b]
+                    .into_iter()
+                    .filter(|vertex| on_segment(points[c], points[d], points[*vertex]))
+                    .count()
+                    + [c, d]
+                        .into_iter()
+                        .filter(|vertex| on_segment(points[a], points[b], points[*vertex]))
+                        .count();
+                if endpoint_contacts == 1 {
+                    continue;
+                }
+                return Err(TerrainCdtError::IntersectingConstraints);
+            }
+            if shared != 1 {
+                return Err(TerrainCdtError::IntersectingConstraints);
+            }
+            let shared_vertex = [a, b]
+                .into_iter()
+                .find(|vertex| *vertex == c || *vertex == d)
+                .expect("one shared vertex checked above");
+            let ab_other = if a == shared_vertex { b } else { a };
+            let cd_other = if c == shared_vertex { d } else { c };
+            if on_segment(points[a], points[b], points[cd_other])
+                || on_segment(points[c], points[d], points[ab_other])
+            {
+                return Err(TerrainCdtError::IntersectingConstraints);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn split_segments_at_vertices(
@@ -139,3 +182,7 @@ fn segments_intersect(a: [f64; 2], b: [f64; 2], c: [f64; 2], d: [f64; 2]) -> boo
         || cd_a == 0 && on_segment(c, d, a)
         || cd_b == 0 && on_segment(c, d, b)
 }
+
+#[cfg(test)]
+#[path = "terrain_cdt_tests.rs"]
+mod terrain_cdt_tests;

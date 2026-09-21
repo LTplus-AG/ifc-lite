@@ -33,11 +33,12 @@ export interface LandXmlSurfaceJs {
     render_state: "rendered" | "preserved_only" | "unsupported";
     topology_origin: "authored_faces" | "constrained_triangulation" | "preserved_only";
     terrain_diagnostic?: { code: "missing_outer_boundary" | "unsupported_boundary_semantics" | "unsupported_breakline_semantics" | "missing_elevation" | "conflicting_elevation" | "intersecting_constraints" | "degenerate_constraints" | "work_limit_exceeded" | "cancelled"; message: string };
-    points: LandXmlPointJs[]; source_data_points: LandXmlSourcePointJs[];
+    points: LandXmlPointJs[]; canonical_vertices: LandXmlCanonicalVertexJs[]; source_data_points: LandXmlSourcePointJs[];
     faces: [string, string, string][]; face_source_ids: string[]; face_visibility: boolean[];
     hidden_face_count: number; boundaries: LandXmlPolylineJs[]; breaklines: LandXmlPolylineJs[]; contours: LandXmlPolylineJs[];
 }
 export interface LandXmlPointJs { source_id: string; id: string; northing: number; easting: number; elevation: number; }
+export interface LandXmlCanonicalVertexJs { id: string; northing: number; easting: number; elevation: number; contributor_source_ids: string[]; }
 export interface LandXmlSourcePointJs { source_id: string; ordinal: number; source_path: string; coordinate_dimension: 2 | 3; coordinates: number[]; }
 /** serde_wasm_bindgen omits absent Rust Option fields rather than serializing null. */
 export interface LandXmlPolylineJs { source_id: string; ordinal: number; name?: string; kind?: string; source_path: string; properties: Record<string, string>; coordinate_dimension: 2 | 3; points: number[][]; point_source_ids: string[]; }

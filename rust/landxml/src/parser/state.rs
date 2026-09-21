@@ -71,6 +71,7 @@ pub(crate) struct SurfaceBuilder {
     pub(crate) name: String,
     pub(crate) kind: LandXmlSurfaceKind,
     pub(crate) points: Vec<LandXmlPoint>,
+    pub(crate) canonical_vertices: Vec<crate::LandXmlCanonicalVertex>,
     pub(crate) source_data_points: Vec<crate::LandXmlSourcePoint>,
     pub(crate) ids: HashSet<String>,
     pub(crate) faces: Vec<[String; 3]>,

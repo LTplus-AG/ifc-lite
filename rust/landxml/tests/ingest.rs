@@ -26,7 +26,7 @@ fn faceless_tin(boundaries: &str, breaklines: &str, faces: &str) -> String {
 fn issue_5043_triangulates_faceless_tin_with_holes_breaklines_and_triangle_provenance(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let boundaries = r#"<Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></Boundary><Boundary bndType="hole"><PntList3D>4 4 0 4 6 0 6 6 0 6 4 0</PntList3D></Boundary></Boundaries>"#;
-    let breaklines = r#"<Breaklines><Breakline brkType="standard"><PntList3D>0 2 1 10 2 1</PntList3D></Breakline></Breaklines>"#;
+    let breaklines = r#"<Breaklines><Breakline brkType="standard"><PntList3D>0 2 0 10 2 0</PntList3D></Breakline></Breaklines>"#;
     let parsed = parse(faceless_tin(boundaries, breaklines, "").as_bytes())?;
     let surface = &parsed.surfaces[0];
     assert_eq!(
@@ -161,6 +161,96 @@ fn issue_5043_never_retriangulates_authored_faces_and_bounds_faceless_work(
         Some(LandXmlTerrainDiagnosticCode::WorkLimitExceeded)
     );
     Ok(())
+}
+
+#[test]
+fn issue_5043_refuses_collinear_elevation_conflicts_and_overlapping_breaklines(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let outer = r#"<Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></Boundary></Boundaries>"#;
+    let inconsistent = r#"<Breaklines><Breakline brkType="standard"><PntList3D>0 5 1 10 5 1</PntList3D></Breakline></Breaklines>"#;
+    let parsed = parse(faceless_tin(outer, inconsistent, "").as_bytes())?;
+    assert_eq!(
+        parsed.surfaces[0]
+            .terrain_diagnostic
+            .as_ref()
+            .map(|value| value.code),
+        Some(LandXmlTerrainDiagnosticCode::ConflictingElevation)
+    );
+    let repeated = r#"<Breaklines><Breakline brkType="standard"><PntList3D>0 3 0 10 3 0</PntList3D></Breakline><Breakline brkType="standard"><PntList3D>10 3 0 0 3 0</PntList3D></Breakline></Breaklines>"#;
+    let parsed = parse(faceless_tin(outer, repeated, "").as_bytes())?;
+    assert_eq!(
+        parsed.surfaces[0]
+            .terrain_diagnostic
+            .as_ref()
+            .map(|value| value.code),
+        Some(LandXmlTerrainDiagnosticCode::IntersectingConstraints)
+    );
+    Ok(())
+}
+
+#[test]
+fn issue_5043_keeps_coincident_source_records_and_maps_them_to_one_vertex(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 0 0</P><P id="3">0 10 0</P><P id="4">10 10 0</P><P id="5">10 0 0</P></Pnts><Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></Boundary></Boundaries></Definition></Surface></Surfaces></LandXML>"#
+    );
+    let parsed = parse(source.as_bytes())?;
+    let surface = &parsed.surfaces[0];
+    assert!(surface.points.iter().any(|point| point.id == "1"));
+    assert!(surface.points.iter().any(|point| point.id == "2"));
+    let canonical = surface
+        .canonical_vertices
+        .iter()
+        .find(|vertex| vertex.northing == 0.0 && vertex.easting == 0.0)
+        .expect("coincident source vertex maps to a canonical vertex");
+    assert!(canonical
+        .contributor_source_ids
+        .iter()
+        .any(|id| id.0.ends_with(":point:1")));
+    assert!(canonical
+        .contributor_source_ids
+        .iter()
+        .any(|id| id.0.ends_with(":point:2")));
+    Ok(())
+}
+
+#[test]
+fn issue_5043_enforces_document_wide_generated_face_and_reference_limits() {
+    let outer = r#"<Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></Boundary></Boundaries>"#;
+    let source = faceless_tin(outer, "", "");
+    for limits in [
+        LandXmlLimits {
+            max_faces: 0,
+            ..LandXmlLimits::default()
+        },
+        LandXmlLimits {
+            max_references: 5,
+            ..LandXmlLimits::default()
+        },
+    ] {
+        assert_eq!(
+            parse_landxml_tin_with_cancel(source.as_bytes(), &limits, None)
+                .unwrap_err()
+                .code,
+            LandXmlDiagnosticCode::LimitExceeded
+        );
+    }
+    let surface_xml = source
+        .split("<Surfaces>")
+        .nth(1)
+        .and_then(|value| value.split("</Surfaces>").next())
+        .expect("surface XML");
+    let twice = source.replacen(surface_xml, &format!("{surface_xml}{surface_xml}"), 1);
+    let limits = LandXmlLimits {
+        max_faces: 3,
+        ..LandXmlLimits::default()
+    };
+    assert_eq!(
+        parse_landxml_tin_with_cancel(twice.as_bytes(), &limits, None)
+            .unwrap_err()
+            .code,
+        LandXmlDiagnosticCode::LimitExceeded
+    );
 }
 
 impl CancelsAfterPolls {

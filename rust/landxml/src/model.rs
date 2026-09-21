@@ -98,6 +98,21 @@ pub struct LandXmlPoint {
     pub elevation: f64,
 }
 
+/// One canonical planar vertex used by generated constrained terrain.
+///
+/// The source records remain in [`LandXmlSurface::points`] (and their original
+/// overlay/source-data collections).  This mapping records which of those
+/// records collapsed to the one planar vertex used by generated faces without
+/// discarding a producer's duplicate identifiers.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct LandXmlCanonicalVertex {
+    pub id: String,
+    pub northing: f64,
+    pub easting: f64,
+    pub elevation: f64,
+    pub contributor_source_ids: Vec<LandXmlSourceId>,
+}
+
 /// Coordinates from `Surface/SourceData/DataPoints`, separate from face ids.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LandXmlSourcePoint {
@@ -225,6 +240,9 @@ pub struct LandXmlSurface {
     /// guessed into unconstrained terrain.
     pub terrain_diagnostic: Option<LandXmlTerrainDiagnostic>,
     pub points: Vec<LandXmlPoint>,
+    /// Canonical vertices used only when `topology_origin` is
+    /// `constrained_triangulation`; source point records are never replaced.
+    pub canonical_vertices: Vec<LandXmlCanonicalVertex>,
     pub source_data_points: Vec<LandXmlSourcePoint>,
     pub faces: Vec<[String; 3]>,
     /// Mirrors `faces` by ordinal.  A face's identity remains stable when an

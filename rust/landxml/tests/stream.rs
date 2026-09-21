@@ -184,6 +184,70 @@ fn issue_5050_stream_requires_credit_and_never_retains_unbounded_transport() {
 }
 
 #[test]
+fn issue_5050_huge_plan_end_stays_credited_and_abandonment_releases_it() {
+    let points = (1..=12_000)
+        .map(|ordinal| format!("<CgPoint name=\"p{ordinal}\">{ordinal} 0 0</CgPoint>"))
+        .collect::<String>();
+    let xml = landxml(&format!("<CgPoints>{points}</CgPoints>"));
+    let mut session = LandXmlTinStreamSession::new(LandXmlLimits::default()).expect("session");
+    session.advance(xml.as_bytes()).expect("source input");
+    while session.output_pending() {
+        session
+            .drain(MAX_LANDXML_STREAM_DRAIN_BYTES)
+            .expect("source credit");
+    }
+    session.finish_cursor().expect("metadata cursor");
+    let mut peak_queued = 0;
+    let mut saw_derived = false;
+    let mut end_bytes = None;
+    while session.output_pending() {
+        peak_queued = peak_queued.max(session.queued_bytes());
+        assert!(session.queued_bytes() <= MAX_LANDXML_STREAM_QUEUED_BYTES);
+        let events = session.drain(512 * 1024).expect("exact host credit");
+        let emitted = events
+            .iter()
+            .map(|event| serde_json::to_vec(event).expect("event JSON").len())
+            .sum::<usize>();
+        assert!(emitted <= 512 * 1024, "one drain cannot exceed host credit");
+        for event in events {
+            if let LandXmlStreamEvent::Metadata(metadata) = event {
+                match metadata {
+                    LandXmlMetadataStreamEvent::Record(LandXmlMetadataRecord::PlanSourceBatch(
+                        _,
+                    )) => saw_derived = true,
+                    LandXmlMetadataStreamEvent::End(_) => {
+                        end_bytes = Some(serde_json::to_vec(&metadata).expect("End JSON").len())
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    assert!(peak_queued > 0 && saw_derived);
+    assert!(
+        end_bytes.expect("End emitted") < 1024,
+        "End is counters-only"
+    );
+
+    let mut abandoned = LandXmlTinStreamSession::new(LandXmlLimits::default()).expect("session");
+    abandoned.advance(xml.as_bytes()).expect("source input");
+    while abandoned.output_pending() {
+        abandoned
+            .drain(MAX_LANDXML_STREAM_DRAIN_BYTES)
+            .expect("source credit");
+    }
+    abandoned.finish_cursor().expect("metadata cursor");
+    assert!(
+        abandoned.output_pending(),
+        "large plan owns cursor records before the next credit"
+    );
+    abandoned.abort();
+    assert!(!abandoned.output_pending());
+    assert_eq!(abandoned.queued_bytes(), 0);
+    assert_eq!(abandoned.queued_events(), 0);
+}
+
+#[test]
 fn issue_5050_stream_refuses_surface_records_at_configured_retention_quotas() {
     let point_limited = landxml(
         r#"<Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces>"#,

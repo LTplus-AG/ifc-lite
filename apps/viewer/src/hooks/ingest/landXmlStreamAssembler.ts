@@ -227,15 +227,19 @@ export interface LandXmlAssembledSourceDocument {
 
 /**
  * Reassembles the renderer-independent stream wire without reparsing source
- * bytes. Surfaces are yielded immediately and are also retained for the
- * compatibility semantic document returned at metadata End.
+ * bytes. Surfaces are yielded immediately; their references are moved once
+ * into the semantic document when the metadata header arrives.
  */
 export class LandXmlStreamDocumentAssembler {
   private readonly surface = new LandXmlSurfaceFragmentAssembler();
   private readonly surfaces: LandXmlAssembledSurface[] = [];
   private terrain: Record<string, unknown> | null = null;
+  private plan: Record<string, unknown> | null = null;
   private alignments: Record<string, unknown> | null = null;
   private pipeNetworks: Record<string, unknown> | null = null;
+  private readonly alignmentRenderSpans: unknown[] = [];
+  private readonly alignmentRenderRefusals: unknown[] = [];
+  private alignmentRenderTruncated = false;
   private completed = false;
 
   get pendingSurfaceBytes(): number { return this.surface.pendingBytes; }
@@ -266,6 +270,8 @@ export class LandXmlStreamDocumentAssembler {
       if (this.terrain !== null || this.completed) throw new Error('LandXML stream emitted multiple metadata headers');
       this.terrain = { ...object(envelope.terrain, 'terrain metadata header') };
       values(this.terrain, 'surfaces').push(...this.surfaces);
+      this.surfaces.length = 0;
+      this.plan = { ...object(envelope.plan, 'plan metadata header') };
       this.alignments = { ...object(envelope.alignments, 'alignment metadata header') };
       this.pipeNetworks = { ...object(envelope.pipe_networks, 'pipe metadata header') };
       return { surface: null, document: null };
@@ -278,16 +284,16 @@ export class LandXmlStreamDocumentAssembler {
     if (this.surface.hasPendingSurface) throw new Error('LandXML stream ended with an incomplete surface');
     const terrain = this.terrain;
     const alignments = this.alignments;
+    const plan = this.plan;
     const pipeNetworks = this.pipeNetworks;
-    if (terrain === null || alignments === null || pipeNetworks === null) throw new Error('LandXML stream ended before its metadata header');
+    if (terrain === null || plan === null || alignments === null || pipeNetworks === null) throw new Error('LandXML stream ended before its metadata header');
     terrain.pipe_networks = pipeNetworks;
-    const adapter = object(envelope.metadata_adapter, 'metadata End adapter');
     const document = {
-      tin: { ...terrain, plan: adapter.plan },
+      tin: { ...terrain, plan },
       alignments,
-      alignment_render_spans: adapter.alignment_render_spans,
-      alignment_render_refusals: adapter.alignment_render_refusals,
-      alignment_render_truncated: adapter.alignment_render_truncated,
+      alignment_render_spans: this.alignmentRenderSpans,
+      alignment_render_refusals: this.alignmentRenderRefusals,
+      alignment_render_truncated: this.alignmentRenderTruncated,
     };
     this.completed = true;
     return { surface: null, document };
@@ -297,16 +303,21 @@ export class LandXmlStreamDocumentAssembler {
     this.surface.abort();
     this.surfaces.length = 0;
     this.terrain = null;
+    this.plan = null;
     this.alignments = null;
     this.pipeNetworks = null;
+    this.alignmentRenderSpans.length = 0;
+    this.alignmentRenderRefusals.length = 0;
+    this.alignmentRenderTruncated = false;
     this.completed = true;
   }
 
   private pushMetadataRecord(kind: string, value: unknown): void {
     const terrain = this.terrain;
+    const plan = this.plan;
     const alignments = this.alignments;
     const pipeNetworks = this.pipeNetworks;
-    if (terrain === null || alignments === null || pipeNetworks === null || this.completed) {
+    if (terrain === null || plan === null || alignments === null || pipeNetworks === null || this.completed) {
       throw new Error('LandXML metadata record arrived outside a cursor session');
     }
     const terrainFields: Readonly<Record<string, string>> = {
@@ -326,6 +337,16 @@ export class LandXmlStreamDocumentAssembler {
       values(pipeNetworks, pipeFields[kind]!).push(value);
       return;
     }
+    const planFields: Readonly<Record<string, string>> = {
+      plan_cogo_point: 'cogo_points', plan_monument: 'monuments', plan_feature: 'plan_features',
+      plan_parcel: 'parcels', plan_warning: 'warnings', plan_source_batch: 'source_batches',
+      plan_parcel_probe: 'parcel_probes', plan_resolved_monument: 'resolved_monuments',
+      plan_resolved_geometry: 'resolved_geometry',
+    };
+    if (kind in planFields) {
+      values(plan, planFields[kind]!).push(value);
+      return;
+    }
     if (kind === 'horizontal_alignment') {
       values(alignments, 'alignments').push(value);
       return;
@@ -334,9 +355,19 @@ export class LandXmlStreamDocumentAssembler {
       values(alignments, 'warnings').push(value);
       return;
     }
-    // Plan records were folded into the bounded End adapter, where the
-    // canonical resolver and parcel probes run exactly once.
-    if (kind.startsWith('plan_')) return;
+    if (kind === 'alignment_render_span') {
+      this.alignmentRenderSpans.push(value);
+      return;
+    }
+    if (kind === 'alignment_render_refusal') {
+      this.alignmentRenderRefusals.push(value);
+      return;
+    }
+    if (kind === 'alignment_render_truncated') {
+      if (typeof value !== 'boolean') throw new Error('LandXML stream emitted an invalid alignment render truncation flag');
+      this.alignmentRenderTruncated = value;
+      return;
+    }
     throw new Error(`LandXML stream emitted an unknown metadata record ${kind}`);
   }
 }

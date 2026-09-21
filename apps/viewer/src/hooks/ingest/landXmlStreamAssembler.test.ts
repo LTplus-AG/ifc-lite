@@ -50,7 +50,7 @@ describe('LandXML streamed surface assembly (#5050)', () => {
     assert.equal(assembler.pendingBytes, 0);
   });
 
-  it('keeps streamed surfaces until the adapter-complete metadata End arrives', () => {
+  it('moves streamed records into credited metadata and keeps End payload-free', () => {
     const assembler = new LandXmlStreamDocumentAssembler();
     const start = {
       kind: 'surface', source_id: 'surface-1', component: 'start', sequence: 0, continued: false,
@@ -65,16 +65,19 @@ describe('LandXML streamed surface assembly (#5050)', () => {
     };
     const header = assembler.push({
       kind: 'metadata', metadata_kind: 'header', stream: {}, terrain,
-      plan: {}, alignments: { alignments: [], warnings: [] }, pipe_networks: { collections: [], features: [], networks: [], refusals: [] },
+      plan: { cogo_points: [], monuments: [], plan_features: [], parcels: [], warnings: [], source_batches: [], parcel_probes: [], resolved_monuments: [], resolved_geometry: [] },
+      alignments: { alignments: [], warnings: [] }, pipe_networks: { collections: [], features: [], networks: [], refusals: [] },
     });
     assert.equal(header.document, null);
     assembler.push({ kind: 'metadata', metadata_kind: 'record', record: 'terrain_warning', value: 'kept' });
+    assembler.push({ kind: 'metadata', metadata_kind: 'record', record: 'plan_source_batch', value: { source_ids: ['p-1'] } });
+    assembler.push({ kind: 'metadata', metadata_kind: 'record', record: 'alignment_render_truncated', value: true });
     const complete = assembler.push({
       kind: 'metadata', metadata_kind: 'end',
-      metadata_adapter: { plan: { cogo_points: [] }, alignment_render_spans: [], alignment_render_refusals: [], alignment_render_truncated: false },
     }).document;
     assert.equal((complete?.tin.surfaces as unknown[]).length, 1);
     assert.deepEqual(complete?.tin.warnings, ['kept']);
-    assert.deepEqual(complete?.tin.plan, { cogo_points: [] });
+    assert.deepEqual((complete?.tin.plan as { source_batches: unknown[] }).source_batches, [{ source_ids: ['p-1'] }]);
+    assert.equal(complete?.alignment_render_truncated, true);
   });
 });

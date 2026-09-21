@@ -13,8 +13,8 @@ use crate::{
     LandXmlCrossSection, LandXmlCrossSectionSurface, LandXmlExtension, LandXmlMonument,
     LandXmlParcel, LandXmlPipeFeature, LandXmlPipeNetwork, LandXmlPipeNetworkCollection,
     LandXmlPipeNetworkDocument, LandXmlPipeRefusal, LandXmlPlanDocument, LandXmlPlanFeature,
-    LandXmlPreservedOnlyExtension, LandXmlProfile, LandXmlRoadway, LandXmlTinDocument,
-    LandXmlUnits,
+    LandXmlPlanPoint, LandXmlPlanSourceBatch, LandXmlPreservedOnlyExtension, LandXmlProfile,
+    LandXmlRoadway, LandXmlTinDocument, LandXmlUnits,
 };
 use serde::Serialize;
 
@@ -86,12 +86,46 @@ pub enum LandXmlMetadataRecord {
     PlanFeature(LandXmlPlanFeature),
     PlanParcel(LandXmlParcel),
     PlanWarning(String),
+    /// Renderer-independent derived plan partitions.  These are ordinary
+    /// credited records rather than an unbounded compatibility payload on End.
+    PlanSourceBatch(LandXmlPlanSourceBatch),
+    PlanParcelProbe(LandXmlPlanParcelProbe),
+    PlanResolvedMonument(LandXmlPlanResolvedMonument),
+    PlanResolvedGeometry(LandXmlPlanResolvedGeometry),
+    AlignmentRenderSpan(crate::alignment::LandXmlAlignmentRenderSpan),
+    AlignmentRenderRefusal(crate::alignment::LandXmlAlignmentRenderRefusal),
+    AlignmentRenderTruncated(bool),
     HorizontalAlignment(LandXmlHorizontalAlignment),
     HorizontalAlignmentWarning(String),
     PipeCollection(LandXmlPipeNetworkCollection),
     PipeFeature(LandXmlPipeFeature),
     PipeNetwork(LandXmlPipeNetwork),
     PipeRefusal(LandXmlPipeRefusal),
+}
+
+/// One parcel probe paired with the authored parcel provenance it describes.
+#[derive(Clone, Debug, Serialize)]
+pub struct LandXmlPlanParcelProbe {
+    pub source_id: crate::LandXmlSourceId,
+    #[serde(flatten)]
+    pub probe: crate::LandXmlParcelProbe,
+}
+
+/// A single monument's canonical resolved position, if one exists.
+#[derive(Clone, Debug, Serialize)]
+pub struct LandXmlPlanResolvedMonument {
+    pub source_id: crate::LandXmlSourceId,
+    pub point: Option<LandXmlPlanPoint>,
+}
+
+/// Canonical endpoint resolution for one authored plan geometry record.
+#[derive(Clone, Debug, Serialize)]
+pub struct LandXmlPlanResolvedGeometry {
+    pub source_id: crate::LandXmlSourceId,
+    pub start: Option<LandXmlPlanPoint>,
+    pub end: Option<LandXmlPlanPoint>,
+    pub center: Option<LandXmlPlanPoint>,
+    pub pi: Option<LandXmlPlanPoint>,
 }
 
 /// Counters emitted after every move-owned metadata record.

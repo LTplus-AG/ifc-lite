@@ -307,7 +307,9 @@ pub(crate) struct MetadataCursor {
     header: Option<LandXmlMetadataStreamHeader>,
     terrain: TerrainStreamParts,
     plan: PlanStreamParts,
+    plan_derived: std::collections::VecDeque<LandXmlMetadataRecord>,
     alignment: AlignmentStreamParts,
+    alignment_derived: std::collections::VecDeque<LandXmlMetadataRecord>,
     pipe: PipeStreamParts,
     end: Option<LandXmlMetadataStreamEnd>,
 }
@@ -317,7 +319,9 @@ impl MetadataCursor {
         header: LandXmlStreamHeader,
         mut terrain: TerrainStreamParts,
         mut plan: PlanStreamParts,
+        plan_derived: std::collections::VecDeque<LandXmlMetadataRecord>,
         mut alignment: AlignmentStreamParts,
+        alignment_derived: std::collections::VecDeque<LandXmlMetadataRecord>,
         mut pipe: PipeStreamParts,
         end: LandXmlMetadataStreamEnd,
     ) -> Self {
@@ -331,7 +335,9 @@ impl MetadataCursor {
             }),
             terrain,
             plan,
+            plan_derived,
             alignment,
+            alignment_derived,
             pipe,
             end: Some(end),
         }
@@ -352,8 +358,18 @@ impl MetadataCursor {
                     .map(LandXmlMetadataStreamEvent::Record)
             })
             .or_else(|| {
+                self.plan_derived
+                    .pop_front()
+                    .map(LandXmlMetadataStreamEvent::Record)
+            })
+            .or_else(|| {
                 self.alignment
                     .next_record()
+                    .map(LandXmlMetadataStreamEvent::Record)
+            })
+            .or_else(|| {
+                self.alignment_derived
+                    .pop_front()
                     .map(LandXmlMetadataStreamEvent::Record)
             })
             .or_else(|| {
@@ -428,6 +444,16 @@ impl MetadataReassembler {
             LandXmlMetadataRecord::PlanFeature(value) => header.plan.plan_features.push(value),
             LandXmlMetadataRecord::PlanParcel(value) => header.plan.parcels.push(value),
             LandXmlMetadataRecord::PlanWarning(value) => header.plan.warnings.push(value),
+            // These cursor-only conveniences are already represented by the
+            // owned plan records above. Legacy callers deliberately rebuild
+            // only the semantic summary, not its WASM presentation adapter.
+            LandXmlMetadataRecord::PlanSourceBatch(_)
+            | LandXmlMetadataRecord::PlanParcelProbe(_)
+            | LandXmlMetadataRecord::PlanResolvedMonument(_)
+            | LandXmlMetadataRecord::PlanResolvedGeometry(_)
+            | LandXmlMetadataRecord::AlignmentRenderSpan(_)
+            | LandXmlMetadataRecord::AlignmentRenderRefusal(_)
+            | LandXmlMetadataRecord::AlignmentRenderTruncated(_) => {}
             LandXmlMetadataRecord::HorizontalAlignment(value) => {
                 header.alignments.alignments.push(value)
             }

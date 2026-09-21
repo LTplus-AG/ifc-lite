@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 mod decoder;
+mod derived;
 mod event;
 mod fragments;
 pub(crate) mod metadata;
@@ -14,6 +15,7 @@ use crate::{
     LandXmlError, LandXmlLimits,
 };
 use decoder::Decoder;
+use derived::{alignment_derived_records, plan_derived_records};
 pub use event::{
     LandXmlMetadataRecord, LandXmlMetadataStreamEnd, LandXmlMetadataStreamEvent,
     LandXmlMetadataStreamHeader, LandXmlStreamEvent, LandXmlStreamHeader, LandXmlStreamMetadata,
@@ -206,6 +208,7 @@ impl LandXmlTinStreamSession {
             return Err(error(Code::InvalidXml, "unclosed alignment XML element"));
         }
         let alignment = alignment.finish()?;
+        let alignment_derived = alignment_derived_records(&alignment);
         let pipe = self.pipe.take().expect("open pipe parser");
         if pipe.has_open_frames() {
             return Err(error(Code::InvalidXml, "unclosed pipe XML element"));
@@ -235,11 +238,14 @@ impl LandXmlTinStreamSession {
             pipes,
             pipe_refusals,
         };
+        let plan_derived = plan_derived_records(&plan)?;
         self.metadata_cursor = Some(metadata::MetadataCursor::new(
             header,
             terrain.into_stream_parts(),
             plan.into_stream_parts(),
+            plan_derived,
             alignment.into_stream_parts(),
+            alignment_derived,
             pipe.into_stream_parts(),
             end,
         ));

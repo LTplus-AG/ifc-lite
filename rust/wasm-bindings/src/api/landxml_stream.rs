@@ -8,18 +8,9 @@ use super::IfcAPI;
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
-#[derive(Serialize)]
-struct MetadataCursorAdapter<'a> {
-    plan: super::landxml::endpoints::LandXmlPlanDocumentJs<'a>,
-    alignment_render_spans: &'a [ifc_lite_landxml::alignment::LandXmlAlignmentRenderSpan],
-    alignment_render_refusals: &'a [ifc_lite_landxml::alignment::LandXmlAlignmentRenderRefusal],
-    alignment_render_truncated: bool,
-}
-
 #[wasm_bindgen]
 pub struct LandXmlTinStreamSession {
     stream: Option<ifc_lite_landxml::LandXmlTinStreamSession>,
-    metadata: ifc_lite_landxml::LandXmlMetadataStreamAssembler,
 }
 
 fn limits(max_bytes: u32) -> Result<ifc_lite_landxml::LandXmlLimits, ()> {
@@ -59,47 +50,10 @@ impl LandXmlTinStreamSession {
             .ok_or_else(|| JsValue::from_str("LandXML stream session is closed"))?
             .drain(max_bytes as usize)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        let mut encoded = Vec::with_capacity(events.len());
-        for event in events {
-            let mut value = serde_json::to_value(&event).map_err(|error| {
-                JsValue::from_str(&format!(
-                    "LandXML stream event serialization failed: {error}"
-                ))
-            })?;
-            if let ifc_lite_landxml::LandXmlStreamEvent::Metadata(metadata) = event {
-                let is_end = matches!(
-                    metadata,
-                    ifc_lite_landxml::LandXmlMetadataStreamEvent::End(_)
-                );
-                self.metadata
-                    .push(metadata)
-                    .map_err(|error| JsValue::from_str(&error.to_string()))?;
-                if is_end {
-                    let summary = std::mem::take(&mut self.metadata)
-                        .finish()
-                        .map_err(|error| JsValue::from_str(&error.to_string()))?;
-                    let plan = super::landxml::endpoints::plan_adapter(&summary.metadata.plan)
-                        .map_err(|error| JsValue::from_str(&error.to_string()))?;
-                    let adapter = MetadataCursorAdapter {
-                        plan,
-                        alignment_render_spans: &summary.metadata.alignment_render.spans,
-                        alignment_render_refusals: &summary.metadata.alignment_render.refusals,
-                        alignment_render_truncated: summary.metadata.alignment_render.truncated,
-                    };
-                    let adapter = serde_json::to_value(adapter).map_err(|error| {
-                        JsValue::from_str(&format!(
-                            "LandXML metadata adapter serialization failed: {error}"
-                        ))
-                    })?;
-                    value
-                        .as_object_mut()
-                        .ok_or_else(|| JsValue::from_str("LandXML stream event was not an object"))?
-                        .insert("metadata_adapter".to_owned(), adapter);
-                }
-            }
-            encoded.push(value);
-        }
-        json(encoded, "stream event")
+        // Every event was admitted by the core's 512 KiB credited queue. Do
+        // not reassemble metadata here: End must remain a bounded counter
+        // record, not a second complete plan document.
+        json(events, "stream event")
     }
 
     pub fn header(&self) -> Result<JsValue, JsValue> {
@@ -166,7 +120,6 @@ impl LandXmlTinStreamSession {
         if let Some(mut stream) = self.stream.take() {
             stream.abort();
         }
-        self.metadata = ifc_lite_landxml::LandXmlMetadataStreamAssembler::default();
     }
 }
 
@@ -186,7 +139,6 @@ impl IfcAPI {
                 )?)
                 .map_err(|error| JsValue::from_str(&error.to_string()))?,
             ),
-            metadata: ifc_lite_landxml::LandXmlMetadataStreamAssembler::default(),
         })
     }
 }
@@ -194,7 +146,6 @@ impl IfcAPI {
 #[cfg(test)]
 mod tests {
     use super::limits;
-    use crate::api::landxml::endpoints::plan_adapter;
 
     const XML: &[u8] = br#"<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><CgPoints><CgPoint name="control">0 0 0</CgPoint></CgPoints><Parcels><Parcel name="lot"><CoordGeom><Line><Start pntRef="control"/><End>0 1 0</End></Line></CoordGeom></Parcel></Parcels></LandXML>"#;
 
@@ -205,11 +156,7 @@ mod tests {
     }
 
     #[test]
-    fn issue_5050_cursor_end_uses_the_same_complete_plan_adapter_as_direct_ingestion() {
-        let direct = ifc_lite_landxml::parse_landxml_document(XML).expect("direct source");
-        let expected = serde_json::to_value(plan_adapter(&direct.plan).expect("direct adapter"))
-            .expect("direct JSON");
-
+    fn issue_5050_cursor_core_emits_derived_plan_records_before_bounded_end() {
         let mut stream = ifc_lite_landxml::LandXmlTinStreamSession::new(
             ifc_lite_landxml::LandXmlLimits::default(),
         )
@@ -221,21 +168,36 @@ mod tests {
                 .expect("source header credit");
         }
         stream.finish_cursor().expect("metadata cursor");
-        let mut assembler = ifc_lite_landxml::LandXmlMetadataStreamAssembler::default();
+        let mut saw_derived = false;
+        let mut end_bytes = 0;
         while stream.output_pending() {
             for event in stream
                 .drain(ifc_lite_landxml::MAX_LANDXML_STREAM_DRAIN_BYTES)
                 .expect("metadata credit")
             {
                 if let ifc_lite_landxml::LandXmlStreamEvent::Metadata(event) = event {
-                    assembler.push(event).expect("metadata event");
+                    match event {
+                        ifc_lite_landxml::LandXmlMetadataStreamEvent::Record(
+                            ifc_lite_landxml::LandXmlMetadataRecord::PlanResolvedGeometry(_)
+                            | ifc_lite_landxml::LandXmlMetadataRecord::PlanResolvedMonument(_)
+                            | ifc_lite_landxml::LandXmlMetadataRecord::PlanParcelProbe(_)
+                            | ifc_lite_landxml::LandXmlMetadataRecord::PlanSourceBatch(_),
+                        ) => saw_derived = true,
+                        ifc_lite_landxml::LandXmlMetadataStreamEvent::End(_) => {
+                            end_bytes = serde_json::to_vec(&event).expect("end JSON").len();
+                        }
+                        _ => {}
+                    }
                 }
             }
         }
-        let summary = assembler.finish().expect("metadata summary");
-        let actual =
-            serde_json::to_value(plan_adapter(&summary.metadata.plan).expect("cursor-end adapter"))
-                .expect("cursor JSON");
-        assert_eq!(actual, expected);
+        assert!(
+            saw_derived,
+            "derived plan output must receive normal cursor credit"
+        );
+        assert!(
+            end_bytes < 1024,
+            "End must be counters, never a full plan adapter"
+        );
     }
 }

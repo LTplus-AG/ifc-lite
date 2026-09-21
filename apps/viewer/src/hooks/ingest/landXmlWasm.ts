@@ -8,45 +8,19 @@ import { IfcAPI } from '@ifc-lite/wasm';
 import type { LandXmlSourceBuffer } from './landXmlIngest.js';
 import { initLandXmlWasm } from './landXmlWasmInit.js';
 import { pipeNetworks } from './landXmlPipeWasm.js';
-import { indexLandXmlPlanRecords, indexLandXmlSourceRecords } from './landXmlSemantics.js';
+import { decodeLandXmlAlignment } from './landXmlAlignmentDocumentWasm.js';
+import { decodeLandXmlPlan, decodeLandXmlPlanPoint } from './landXmlPlanWasm.js';
+import { clearLandXmlSourceRecordIndex, indexLandXmlSourceRecords } from './landXmlSemantics.js';
+import {
+  array, finite, nullableFinite, nullableString, properties, record, string, strings,
+} from './landXmlWasmDecode.js';
 import type {
-  LandXmlAlignment, LandXmlCapabilityDiagnostic, LandXmlCrossSection, LandXmlCrossSectionPoint,
+  LandXmlAlignment,
+  LandXmlCapabilityDiagnostic, LandXmlCrossSection, LandXmlCrossSectionPoint,
   LandXmlCrossSectionSurface, LandXmlGradeLine, LandXmlPolyline, LandXmlPreservedOnlyExtension,
   LandXmlProfile, LandXmlProfilePoint, LandXmlRoadway, LandXmlTinDocument, LandXmlTinSurface,
-  LandXmlVerticalCurve,
-  LandXmlCgPoint, LandXmlMonument, LandXmlParcel, LandXmlPlanDocument, LandXmlPlanFeature,
-  LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlPlanPointLocation,
-  LandXmlParcelProbe, LandXmlResolvedGeometry, LandXmlResolvedMonument,
+  LandXmlVerticalCurve, LandXmlPlanPoint,
 } from './landXmlSemantics.js';
-
-function record(value: unknown, context: string): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error(`LandXML WASM returned an invalid ${context}`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function string(value: unknown, context: string): string {
-  if (typeof value !== 'string') throw new Error(`LandXML WASM returned an invalid ${context}`);
-  return value;
-}
-
-function finite(value: unknown, context: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(`LandXML WASM returned an invalid ${context}`);
-  }
-  return value;
-}
-
-function array(value: unknown, context: string): unknown[] {
-  if (!Array.isArray(value)) throw new Error(`LandXML WASM returned an invalid ${context}`);
-  return value;
-}
-
-function properties(value: unknown, context: string): Record<string, string> {
-  const raw = record(value, context);
-  return Object.fromEntries(Object.entries(raw).map(([name, property]) => [name, string(property, `${context} ${name}`)]));
-}
 
 function surfaceKind(value: unknown): LandXmlTinSurface['kind'] {
   const kind = string(value, 'surface kind');
@@ -60,6 +34,12 @@ function renderState(value: unknown): LandXmlTinSurface['renderState'] {
   throw new Error('LandXML WASM returned an invalid surface render state');
 }
 
+function topologyOrigin(value: unknown): NonNullable<LandXmlTinSurface['topologyOrigin']> {
+  const origin = string(value, 'terrain topology origin');
+  if (origin === 'authored_faces' || origin === 'constrained_triangulation' || origin === 'preserved_only') return origin;
+  throw new Error('LandXML WASM returned an invalid terrain topology origin');
+}
+
 function surface(value: unknown): LandXmlTinSurface {
   const raw = record(value, 'surface');
   return {
@@ -71,6 +51,11 @@ function surface(value: unknown): LandXmlTinSurface {
     name: string(raw.name, 'surface name'),
     kind: surfaceKind(raw.kind),
     renderState: renderState(raw.render_state),
+    topologyOrigin: raw.topology_origin === undefined ? undefined : topologyOrigin(raw.topology_origin),
+    terrainDiagnostic: raw.terrain_diagnostic === undefined || raw.terrain_diagnostic === null ? null : (() => {
+      const diagnostic = record(raw.terrain_diagnostic, 'terrain diagnostic');
+      return { code: string(diagnostic.code, 'terrain diagnostic code'), message: string(diagnostic.message, 'terrain diagnostic message') };
+    })(),
     points: array(raw.points, 'surface points').map((point, index) => {
       const parsed = record(point, `point ${index}`);
       return {
@@ -79,6 +64,16 @@ function surface(value: unknown): LandXmlTinSurface {
         northing: finite(parsed.northing, `point ${index} northing`),
         easting: finite(parsed.easting, `point ${index} easting`),
         elevation: finite(parsed.elevation, `point ${index} elevation`),
+      };
+    }),
+    canonicalVertices: raw.canonical_vertices === undefined ? undefined : array(raw.canonical_vertices, 'canonical terrain vertices').map((vertex, index) => {
+      const parsed = record(vertex, `canonical terrain vertex ${index}`);
+      return {
+        id: string(parsed.id, `canonical terrain vertex ${index} id`),
+        northing: finite(parsed.northing, `canonical terrain vertex ${index} northing`),
+        easting: finite(parsed.easting, `canonical terrain vertex ${index} easting`),
+        elevation: finite(parsed.elevation, `canonical terrain vertex ${index} elevation`),
+        contributorSourceIds: strings(parsed.contributor_source_ids, `canonical terrain vertex ${index} contributor source ids`),
       };
     }),
     sourceDataPoints: array(raw.source_data_points, 'source data points').map((point, index) => {
@@ -107,20 +102,6 @@ function surface(value: unknown): LandXmlTinSurface {
     breaklines: polylines(raw.breaklines, 'breaklines'),
     contours: polylines(raw.contours, 'contours'),
   };
-}
-
-function nullableString(value: unknown, context: string): string | null {
-  // `serde_wasm_bindgen` omits `None` struct fields rather than always
-  // materialising them as JavaScript `null`.
-  return value === null || value === undefined ? null : string(value, context);
-}
-
-function nullableFinite(value: unknown, context: string): number | null {
-  return value === null || value === undefined ? null : finite(value, context);
-}
-
-function strings(value: unknown, context: string): string[] {
-  return array(value, context).map((entry, index) => string(entry, `${context} ${index}`));
 }
 
 function profilePoint(value: unknown, context: string): LandXmlProfilePoint {
@@ -152,133 +133,6 @@ function crossSectionPoint(value: unknown, context: string): LandXmlCrossSection
   return { sourceId: string(raw.source_id, `${context} source id`), dataFormat, offset: nullableFinite(raw.offset, `${context} offset`), elevation: nullableFinite(raw.elevation, `${context} elevation`), slope: nullableFinite(raw.slope, `${context} slope`), distance: nullableFinite(raw.distance, `${context} distance`), pntRef: nullableString(raw.pnt_ref, `${context} pntRef`), alignmentRef: nullableString(raw.alignment_ref, `${context} alignment ref`), alignRefStation: nullableFinite(raw.align_ref_station, `${context} alignment ref station`), alignmentSourceId: nullableString(raw.alignment_source_id, `${context} alignment source id`), planFeatureRef: nullableString(raw.plan_feature_ref, `${context} plan feature ref`), planFeatureRefStation: nullableFinite(raw.plan_feature_ref_station, `${context} plan feature station`), parcelRef: nullableString(raw.parcel_ref, `${context} parcel ref`), parcelRefStation: nullableFinite(raw.parcel_ref_station, `${context} parcel station`) };
 }
 
-function planPoint(value: unknown, context: string): LandXmlPlanPoint {
-  const raw = record(value, context);
-  return {
-    northing: finite(raw.northing, `${context} northing`),
-    easting: finite(raw.easting, `${context} easting`),
-    elevation: nullableFinite(raw.elevation, `${context} elevation`),
-  };
-}
-
-function planLocation(value: unknown, context: string): LandXmlPlanPointLocation {
-  const raw = record(value, context);
-  const kind = string(raw.kind, `${context} kind`);
-  if (kind === 'coordinates') {
-    return { kind, point: planPoint(raw.point, `${context} point`), pntRef: nullableString(raw.pnt_ref, `${context} pntRef`) };
-  }
-  if (kind === 'point_reference') return { kind, pntRef: string(raw.pnt_ref, `${context} pntRef`) };
-  throw new Error(`LandXML WASM returned an invalid ${context} kind`);
-}
-
-function planGeometry(value: unknown, context: string): LandXmlPlanGeometry {
-  const raw = record(value, context);
-  const kind = string(raw.kind, `${context} kind`);
-  if (kind !== 'line' && kind !== 'curve' && kind !== 'irregular_line') {
-    throw new Error(`LandXML WASM returned an invalid ${context} kind`);
-  }
-  return {
-    sourceId: string(raw.source_id, `${context} source id`), ordinal: finite(raw.ordinal, `${context} ordinal`), kind,
-    pointScopeId: nullableString(raw.point_scope_id, `${context} scope id`),
-    start: planLocation(raw.start, `${context} start`), end: planLocation(raw.end, `${context} end`),
-    center: raw.center === null || raw.center === undefined ? null : planLocation(raw.center, `${context} center`),
-    pi: raw.pi === null || raw.pi === undefined ? null : planLocation(raw.pi, `${context} PI`),
-    intermediatePoints: array(raw.intermediate_points, `${context} intermediate points`).map((point, index) => planPoint(point, `${context} intermediate point ${index}`)),
-    rotation: nullableString(raw.rotation, `${context} rotation`), radius: nullableFinite(raw.radius, `${context} radius`),
-    declaredLength: nullableFinite(raw.declared_length, `${context} declared length`), properties: properties(raw.properties, `${context} properties`),
-  };
-}
-
-function plan(value: unknown): LandXmlPlanDocument {
-  const raw = record(value, 'plan');
-  const cogoPoints: LandXmlCgPoint[] = array(raw.cogo_points, 'COGO points').map((point, index) => {
-    const parsed = record(point, `COGO point ${index}`);
-    return {
-      sourceId: string(parsed.source_id, `COGO point ${index} source id`), scopeId: string(parsed.scope_id, `COGO point ${index} scope id`),
-      ordinal: finite(parsed.ordinal, `COGO point ${index} ordinal`), name: nullableString(parsed.name, `COGO point ${index} name`),
-      code: nullableString(parsed.code, `COGO point ${index} code`), description: nullableString(parsed.description, `COGO point ${index} description`),
-      point: parsed.point === null || parsed.point === undefined ? null : planPoint(parsed.point, `COGO point ${index} coordinates`),
-      pntRef: nullableString(parsed.pnt_ref, `COGO point ${index} pntRef`), properties: properties(parsed.properties, `COGO point ${index} properties`),
-    };
-  });
-  const monuments: LandXmlMonument[] = array(raw.monuments, 'monuments').map((monument, index) => {
-    const parsed = record(monument, `monument ${index}`);
-    return {
-      sourceId: string(parsed.source_id, `monument ${index} source id`), pointScopeId: nullableString(parsed.point_scope_id, `monument ${index} scope id`),
-      ordinal: finite(parsed.ordinal, `monument ${index} ordinal`), name: nullableString(parsed.name, `monument ${index} name`), code: nullableString(parsed.code, `monument ${index} code`),
-      description: nullableString(parsed.description, `monument ${index} description`), pntRef: nullableString(parsed.pnt_ref, `monument ${index} pntRef`),
-      point: parsed.point === null || parsed.point === undefined ? null : planPoint(parsed.point, `monument ${index} point`), properties: properties(parsed.properties, `monument ${index} properties`),
-    };
-  });
-  const features: LandXmlPlanFeature[] = array(raw.plan_features, 'plan features').map((feature, index) => {
-    const parsed = record(feature, `plan feature ${index}`);
-    return {
-      sourceId: string(parsed.source_id, `plan feature ${index} source id`), ordinal: finite(parsed.ordinal, `plan feature ${index} ordinal`),
-      name: nullableString(parsed.name, `plan feature ${index} name`), code: nullableString(parsed.code, `plan feature ${index} code`), description: nullableString(parsed.description, `plan feature ${index} description`),
-      properties: properties(parsed.properties, `plan feature ${index} properties`),
-      locations: array(parsed.locations, `plan feature ${index} locations`).map((location, item) => planLocation(location, `plan feature ${index} location ${item}`)),
-      geometry: array(parsed.geometry, `plan feature ${index} geometry`).map((geometry, item) => planGeometry(geometry, `plan feature ${index} geometry ${item}`)),
-    };
-  });
-  const parcels: LandXmlParcel[] = array(raw.parcels, 'parcels').map((parcel, index) => {
-    const parsed = record(parcel, `parcel ${index}`);
-    const loops = array(parsed.loops, `parcel ${index} loops`).map((loop, loopIndex) => array(loop, `parcel ${index} loop ${loopIndex}`).map((geometry, item) => planGeometry(geometry, `parcel ${index} loop ${loopIndex} geometry ${item}`)));
-    let geometryOffset = 0;
-    const loopOffsets = loops.map((loop) => {
-      const offset = geometryOffset;
-      geometryOffset += loop.length;
-      return offset;
-    });
-    return {
-      sourceId: string(parsed.source_id, `parcel ${index} source id`), ordinal: finite(parsed.ordinal, `parcel ${index} ordinal`), name: nullableString(parsed.name, `parcel ${index} name`), code: nullableString(parsed.code, `parcel ${index} code`), description: nullableString(parsed.description, `parcel ${index} description`), title: nullableString(parsed.title, `parcel ${index} title`),
-      declaredArea: nullableFinite(parsed.declared_area, `parcel ${index} area`), declaredPerimeter: nullableFinite(parsed.declared_perimeter, `parcel ${index} perimeter`), declaredAreaUnit: nullableString(parsed.declared_area_unit, `parcel ${index} area unit`), properties: properties(parsed.properties, `parcel ${index} properties`),
-      loops, loopOffsets,
-      preservationReason: nullableString(parsed.preservation_reason, `parcel ${index} preservation reason`),
-    };
-  });
-  const parcelProbes: LandXmlParcelProbe[] = array(raw.parcel_probes, 'parcel probes').map((probe, index) => {
-    const parsed = record(probe, `parcel probe ${index}`);
-    const state = record(parsed.state, `parcel probe ${index} state`);
-    const kind = string(state.kind, `parcel probe ${index} state kind`);
-    if (kind !== 'analytic' && kind !== 'preserved_only') throw new Error(`LandXML WASM returned an invalid parcel probe ${index} state`);
-    return {
-      sourceId: string(parsed.source_id, `parcel probe ${index} source id`),
-      state: kind === 'analytic' ? { kind } : { kind, reason: string(state.reason, `parcel probe ${index} reason`) },
-      perimeterInDeclaredLinearUnits: nullableFinite(parsed.perimeter_in_declared_linear_units, `parcel probe ${index} perimeter`),
-      areaInDeclaredSquareUnits: nullableFinite(parsed.area_in_declared_square_units, `parcel probe ${index} area`),
-      declaredArea: nullableFinite(parsed.declared_area, `parcel probe ${index} declared area`),
-      declaredPerimeter: nullableFinite(parsed.declared_perimeter, `parcel probe ${index} declared perimeter`),
-      perimeterInMeters: nullableFinite(parsed.perimeter_in_meters, `parcel probe ${index} metre perimeter`),
-      areaInSquareMeters: nullableFinite(parsed.area_in_square_meters, `parcel probe ${index} square metre area`),
-    };
-  });
-  const resolvedMonuments: LandXmlResolvedMonument[] = array(raw.resolved_monuments, 'resolved monuments').map((monument, index) => {
-    const parsed = record(monument, `resolved monument ${index}`);
-    return { sourceId: string(parsed.source_id, `resolved monument ${index} source id`), point: parsed.point === null || parsed.point === undefined ? null : planPoint(parsed.point, `resolved monument ${index} point`) };
-  });
-  const resolvedGeometry: LandXmlResolvedGeometry[] = array(raw.resolved_geometry, 'resolved geometry').map((geometry, index) => {
-    const parsed = record(geometry, `resolved geometry ${index}`);
-    const resolved = (field: 'start' | 'end' | 'center' | 'pi'): LandXmlPlanPoint | null => parsed[field] === null || parsed[field] === undefined ? null : planPoint(parsed[field], `resolved geometry ${index} ${field}`);
-    return { sourceId: string(parsed.source_id, `resolved geometry ${index} source id`), start: resolved('start'), end: resolved('end'), center: resolved('center'), pi: resolved('pi') };
-  });
-  const result: LandXmlPlanDocument = {
-    version: string(raw.version, 'plan version'), areaUnit: nullableString(raw.area_unit, 'plan area unit'), areaScaleToSquareMeters: nullableFinite(raw.area_scale_to_square_meters, 'plan area scale'),
-    cogoPoints, monuments, planFeatures: features, parcels,
-    warnings: array(raw.warnings, 'plan warnings').map((warning, index) => string(warning, `plan warning ${index}`)),
-    sourceBatches: array(raw.source_batches, 'plan source batches').map((batch, index) => {
-      const parsed = record(batch, `plan source batch ${index}`);
-      return { sourceIds: array(parsed.source_ids, `plan source batch ${index} source ids`).map((sourceId, item) => string(sourceId, `plan source batch ${index} source id ${item}`)) };
-    }),
-    parcelProbes, resolvedMonuments, resolvedGeometry,
-  };
-  return {
-    ...result,
-    sourceRecords: indexLandXmlPlanRecords(result),
-    parcelProbesBySource: new Map(parcelProbes.map((probe) => [probe.sourceId, probe])),
-    resolvedMonumentsBySource: new Map(resolvedMonuments.map((monument) => [monument.sourceId, monument])),
-    resolvedGeometryBySource: new Map(resolvedGeometry.map((geometry) => [geometry.sourceId, geometry])),
-  };
-}
 
 function polylines(value: unknown, context: string): LandXmlPolyline[] {
   return array(value, context).map((line, index) => {
@@ -311,7 +165,7 @@ export function readLandXmlTinDocument(value: unknown): LandXmlTinDocument {
   const capabilities = record(raw.capabilities, 'capabilities');
   const alignments: LandXmlAlignment[] = array(raw.alignments, 'alignments').map((alignment, index) => {
     const source = record(alignment, `alignment ${index}`);
-    return { sourceId: string(source.source_id, `alignment ${index} source id`), ordinal: finite(source.ordinal, `alignment ${index} ordinal`), name: string(source.name, `alignment ${index} name`), length: finite(source.length, `alignment ${index} length`), staStart: finite(source.sta_start, `alignment ${index} staStart`), profileSourceIds: strings(source.profile_source_ids, `alignment ${index} profile ids`), crossSectionSourceIds: strings(source.cross_section_source_ids, `alignment ${index} cross section ids`) };
+    return { sourceId: string(source.source_id, `alignment ${index} source id`), ordinal: finite(source.ordinal, `alignment ${index} ordinal`), name: string(source.name, `alignment ${index} name`), length: finite(source.length, `alignment ${index} length`), staStart: finite(source.sta_start, `alignment ${index} staStart`), profileSourceIds: strings(source.profile_source_ids, `alignment ${index} profile ids`), crossSectionSourceIds: strings(source.cross_section_source_ids, `alignment ${index} cross section ids`), segments: [], cantStations: [], superelevations: [], unsupportedTransitions: [] };
   });
   const crossSections: LandXmlCrossSection[] = array(raw.cross_sections, 'cross sections').map((section, index) => {
     const source = record(section, `cross section ${index}`);
@@ -373,11 +227,41 @@ export function readLandXmlTinDocument(value: unknown): LandXmlTinDocument {
     roadways,
     capabilityDiagnostics,
     preservedOnlyExtensions,
-    plan: plan(raw.plan),
+    plan: decodeLandXmlPlan(raw.plan),
     pipeNetworks: pipeNetworks(raw.pipe_networks),
     rendering: { meshProvenance: [], surfaceCounts: [] },
   };
   indexLandXmlSourceRecords(document);
+  return document;
+}
+
+/** Read the one WASM source document used for terrain-only, alignment-only, and mixed files. */
+export function readLandXmlSourceDocument(value: unknown): LandXmlTinDocument {
+  const raw = record(value, 'source document');
+  const document = readLandXmlTinDocument(raw.tin);
+  const alignmentDocument = record(raw.alignments, 'alignment document');
+  clearLandXmlSourceRecordIndex(document);
+  document.alignments = array(alignmentDocument.alignments, 'alignments')
+    .map((value, index) => decodeLandXmlAlignment(value, index, document.alignments[index]));
+  const renderPoints = new Map<string, LandXmlPlanPoint[]>();
+  for (const [index, value] of array(raw.alignment_render_spans ?? [], 'alignment render spans').entries()) {
+    const span = record(value, `alignment render span ${index}`);
+    renderPoints.set(
+      string(span.source_id, `alignment render span ${index} source id`),
+      array(span.points, `alignment render span ${index} points`)
+        .map((point, pointIndex) => decodeLandXmlPlanPoint(point, `alignment render span ${index} point ${pointIndex}`)),
+    );
+  }
+  for (const alignment of document.alignments) for (const segment of alignment.segments) {
+    const points = renderPoints.get(segment.sourceId);
+    if (points) segment.renderPoints = points;
+  }
+  document.warnings.push(...array(alignmentDocument.warnings, 'alignment warnings').map((warning, index) => string(warning, `alignment warning ${index}`)));
+  for (const [index, value] of array(raw.alignment_render_refusals ?? [], 'alignment render refusals').entries()) {
+    const refusal = record(value, `alignment render refusal ${index}`);
+    document.warnings.push(`${string(refusal.source_id, `alignment render refusal ${index} source id`)}: ${string(refusal.message, `alignment render refusal ${index} message`)}`);
+  }
+  if (raw.alignment_render_truncated === true) document.warnings.push('LandXML alignment overlay sampling stopped at its bounded render budget.');
   return document;
 }
 
@@ -386,12 +270,27 @@ export function parseLandXmlTinWithApi(api: IfcAPI, buffer: LandXmlSourceBuffer)
   return readLandXmlTinDocument(api.parseLandXmlTinBytes(new Uint8Array(buffer)));
 }
 
+/** Parse every supported source family through one typed WASM operation. */
+export function parseLandXmlSourceWithApi(api: IfcAPI, buffer: LandXmlSourceBuffer): LandXmlTinDocument {
+  return readLandXmlSourceDocument(api.parseLandXmlSourceBytes(new Uint8Array(buffer)));
+}
+
 /** Worker-less hosts use the same raw-byte WASM parser, not a TS fallback. */
 export async function parseLandXmlTinInCurrentRealm(buffer: LandXmlSourceBuffer): Promise<LandXmlTinDocument> {
   await initLandXmlWasm();
   const api = new IfcAPI();
   try {
     return parseLandXmlTinWithApi(api, buffer);
+  } finally {
+    api.free();
+  }
+}
+
+export async function parseLandXmlSourceInCurrentRealm(buffer: LandXmlSourceBuffer): Promise<LandXmlTinDocument> {
+  await initLandXmlWasm();
+  const api = new IfcAPI();
+  try {
+    return parseLandXmlSourceWithApi(api, buffer);
   } finally {
     api.free();
   }

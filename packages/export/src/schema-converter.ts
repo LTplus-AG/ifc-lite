@@ -27,6 +27,9 @@ import { resolveUnrepresentedEntity } from './schema-untranslatable.js';
 import { BY_NAME_ATTR_REMAP_TYPES, remapRenamedAttributesByName } from './schema-converter-attr-remap.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
+import { referencesAnyExpressId } from './step-ref-scan.js';
+
+export { computeWithheldRefIds } from './schema-untranslatable.js';
 
 export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
 
@@ -300,7 +303,14 @@ function requireTopLevelAttributes(attrsRaw: string): string[] {
  *   history they reuse (#4686) and collects what they could not settle.
  *   Omitted, a throwaway stands in, so the generated table's own defaults are
  *   still written but the OwnerHistory reuse and both counts are lost.
- * @returns Converted line (entities without valid target representation become IFCPROXY placeholders)
+ * @param withheldRefIds - Express ids this export is OMITTING outright
+ *   ({@link computeWithheldRefIds}, #4206) — a record whose attributes name
+ *   one is redirected to the same "no representation" resolution as its own
+ *   unmapped type would get, so it cannot ship a now-dangling `#N`.
+ * @returns Converted line (entities without valid target representation become
+ *   IFCPROXY placeholders), or `null` when this record itself is one of the
+ *   narrow set `resolveUnrepresentedEntity` can safely OMIT rather than throw
+ *   for — the caller must not write a `null` result.
  */
 export function convertStepLine(
   line: string,
@@ -308,9 +318,11 @@ export function convertStepLine(
   toSchema: IfcSchemaVersion,
   random?: RandomSource,
   slots?: Ifc2x3SlotFill,
-): string {
+  withheldRefIds?: ReadonlySet<number>,
+): string | null {
   if (fromSchema === toSchema) return line;
-  const converted = convertRecord(line, fromSchema, toSchema, random);
+  const converted = convertRecord(line, fromSchema, toSchema, random, withheldRefIds);
+  if (converted === null) return null;
   return toSchema === 'IFC2X3' ? (slots ?? new Ifc2x3SlotFill()).apply(converted) : converted;
 }
 
@@ -321,7 +333,8 @@ function convertRecord(
   fromSchema: IfcSchemaVersion,
   toSchema: IfcSchemaVersion,
   random?: RandomSource,
-): string {
+  withheldRefIds?: ReadonlySet<number>,
+): string | null {
   // Parse: #ID=TYPE(attrs);  — tolerate whitespace around `=` and before the
   // type (some exporters, e.g. Tekla, write `#34498= IFCOPENINGELEMENT(...)`).
   // Without this those lines passed through unconverted, so neither type renames
@@ -340,6 +353,16 @@ function convertRecord(
 
   // Convert entity type
   const newType = convertEntityType(entityType, fromSchema, toSchema);
+
+  // A record whose attribute list references an id this export is OMITTING
+  // (`withheldRefIds`, #4206) cannot carry that reference forward, no matter
+  // how cleanly this record's OWN type would otherwise convert — a renamed
+  // record left pointing at a `#N` with no line is worse than an honest
+  // proxy. Checked before `shouldSkipEntity` and the attribute-table lookup
+  // below so it wins over both.
+  if (withheldRefIds && withheldRefIds.size > 0 && referencesAnyExpressId(attrsRaw, withheldRefIds)) {
+    return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
+  }
 
   // Replace entities that have no valid representation in the target schema
   // with IFCPROXY placeholders to preserve EXPRESS IDs and prevent dangling references
@@ -404,7 +427,7 @@ function convertRecord(
   // attribute mismatch, handled below) has no representation in `toSchema` at
   // all — see `resolveUnrepresentedEntity` for why it can't just pass through.
   if (srcAttrs && targetTable && !tgtAttrs) {
-    return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random);
+    return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
   }
   if (srcAttrs && tgtAttrs) {
     if (isStrictAttrPrefix(tgtAttrs, srcAttrs)) {

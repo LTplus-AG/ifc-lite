@@ -7,6 +7,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { render, click, cleanup } from '@/test/render.js';
 import { LandXmlSourceInspector } from './LandXmlSourceInspector.js';
+import { LandXmlModelSourceNavigation } from './LandXmlModelSourceNavigation.js';
+import { parseAlignmentProbeInputs, superelevationEventPage } from './LandXmlAlignmentSourceInspector.js';
 import type { LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics';
 
 function document(pointCount = 1): LandXmlTinDocument {
@@ -37,6 +39,13 @@ function document(pointCount = 1): LandXmlTinDocument {
     rendering: { meshProvenance: [], surfaceCounts: [{ surfaceSourceId: 'surface', sourcePoints: pointCount, sourceFaces: 1, hiddenFaces: 0, renderedFaces: 1, droppedDegenerateFaces: 2, droppedPrecisionFaces: 3, droppedReframeFaces: 4 }] },
   };
 }
+
+describe('LandXML alignment probe input', () => {
+  it('distinguishes a missing displayed station from an explicit zero (#5044)', () => {
+    assert.equal(parseAlignmentProbeInputs('station', '0', '', '0'), null);
+    assert.deepEqual(parseAlignmentProbeInputs('station', '0', '0', '0'), { value: 0, offsetRight: 0 });
+  });
+});
 
 function pipeDocument(): LandXmlTinDocument {
   const result = document();
@@ -91,6 +100,40 @@ describe('LandXmlSourceInspector (#5042)', () => {
     assert.ok(next);
     click(next);
     assert.ok([...ui.querySelectorAll('button')].some((button) => button.textContent === 'Point: P100'));
+    cleanup();
+  });
+
+  it('navigates an explicitly refused transition and displays its refusal (#5044)', () => {
+    const source = document();
+    source.alignments = [{ sourceId: 'alignment', ordinal: 1, name: 'Main', length: 10, staStart: 0,
+      profileSourceIds: [], crossSectionSourceIds: [],
+      segments: [{ sourceId: 'transition', ordinal: 1, primitive: { kind: 'unsupported_spiral', start: { kind: 'coordinates', point: { northing: 0, easting: 0, elevation: null } }, pi: { kind: 'coordinates', point: { northing: 5, easting: 5, elevation: null } }, end: { kind: 'coordinates', point: { northing: 10, easting: 0, elevation: null } }, spiType: 'bloss', declaredLength: 10 } }],
+      cantStations: [], superelevations: [], unsupportedTransitions: [{ sourceId: 'transition:refusal', sourceSourceId: 'transition', spiType: 'bloss', reason: 'retained but unsupported' }] }];
+    const selected: string[] = [];
+    const ui = render(<LandXmlSourceInspector models={new Map([['alignment-model', { landXmlDocument: source }]])} selected={{ modelId: 'alignment-model', sourceId: 'alignment' }} onSelect={(ref) => selected.push(ref.sourceId)} />);
+    assert.match(ui.textContent ?? '', /Refused bloss/);
+    const refusal = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Refused bloss'));
+    assert.ok(refusal);
+    click(refusal);
+    assert.deepEqual(selected, ['transition:refusal']);
+    cleanup();
+  });
+
+  it('paginates alignment spans and the refusal without mounting every record (#5044)', () => {
+    const source = document();
+    const primitive = { kind: 'line' as const, start: { kind: 'coordinates' as const, point: { northing: 0, easting: 0, elevation: null } }, end: { kind: 'coordinates' as const, point: { northing: 10, easting: 0, elevation: null } }, declaredLength: 10 };
+    source.alignments = [{ sourceId: 'alignment', ordinal: 1, name: 'Main', length: 990, staStart: 0,
+      profileSourceIds: [], crossSectionSourceIds: [],
+      segments: Array.from({ length: 99 }, (_, index) => ({ sourceId: `segment-${index + 1}`, ordinal: index + 1, primitive })),
+      cantStations: [], superelevations: [], unsupportedTransitions: [{ sourceId: 'segment-99:refusal', sourceSourceId: 'segment-99', spiType: 'bloss', reason: 'retained but unsupported' }] }];
+    const props = { modelId: 'alignment-model', document: source, selected: null, onSelect: () => {} };
+    const ui = render(<LandXmlModelSourceNavigation {...props} />);
+    const alignmentRows = [...ui.querySelectorAll('button')].filter((button) => /^(Alignment:|Segment |Refused )/.test(button.textContent ?? ''));
+    assert.equal(alignmentRows.length, 100, 'only one bounded page of alignment rows is mounted');
+    const next = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Next');
+    assert.ok(next);
+    click(next);
+    assert.ok([...ui.querySelectorAll('button')].some((button) => button.textContent?.includes('Refused bloss')), 'the final refusal occupies its own navigable page');
     cleanup();
   });
 
@@ -216,5 +259,23 @@ describe('LandXmlSourceInspector (#5042)', () => {
     assert.match(collection.textContent ?? '', /root linear unit: meter/);
     assert.match(collection.textContent ?? '', /collection/);
     cleanup();
+  });
+
+  it('pages hostile superelevation event sets without materializing a UI-sized result (#5044)', () => {
+    const events = Array.from({ length: 10_000 }, (_, index) => ({ sourceId: `event-${index}`, kind: 'full_superelev', value: `${index}` }));
+    const first = superelevationEventPage([{ sourceId: 'super', staStart: null, staEnd: null, events }], 0);
+    const last = superelevationEventPage([{ sourceId: 'super', staStart: null, staEnd: null, events }], 9_900);
+    assert.equal(first.total, 10_000);
+    assert.equal(first.items.length, 100);
+    assert.equal(last.items.length, 100);
+    assert.equal(last.items[99].sourceId, 'event-9999');
+  });
+
+  it('clamps a stale superelevation page when a new probe has fewer applicable events (#5044)', () => {
+    const page = superelevationEventPage([{ sourceId: 'later', staStart: 5, staEnd: 5, events: [
+      { sourceId: 'only-event', kind: 'full_superelev', value: '0.04' },
+    ] }], 100);
+    assert.equal(page.total, 1);
+    assert.deepEqual(page.items.map((event) => event.sourceId), ['only-event']);
   });
 });

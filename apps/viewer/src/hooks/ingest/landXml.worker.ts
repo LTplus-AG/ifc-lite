@@ -4,7 +4,7 @@
 
 import init, { IfcAPI } from '@ifc-lite/wasm';
 import { parseLandXmlGeometry, type LandXmlGeometryPayload, type LandXmlSourceBuffer } from './landXmlIngest.js';
-import { parseLandXmlTinWithApi } from './landXmlWasm.js';
+import { parseLandXmlSourceWithApi } from './landXmlWasm.js';
 
 const workerScope = self as unknown as {
   onmessage: ((event: MessageEvent<LandXmlSourceBuffer>) => void) | null;
@@ -19,7 +19,7 @@ workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer>): Promis
     const api = new IfcAPI();
     let payload: LandXmlGeometryPayload;
     try {
-      payload = parseLandXmlGeometry(parseLandXmlTinWithApi(api, event.data));
+      payload = parseLandXmlGeometry(parseLandXmlSourceWithApi(api, event.data));
     } finally {
       api.free();
     }

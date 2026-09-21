@@ -83,8 +83,14 @@ async function load(page: Page, file: string | { name: string; mimeType: string;
   // E2E_GPU_STRICT=0 mode already skips GPU assertions for — not a viewer
   // regression — so skip with the evidence attached rather than fail. A
   // strict run (real GPU) still fails here.
+  //
+  // Judged over EVERYTHING this test's pages logged, not only this load's
+  // window: the trace on #5147 showed the device dying during the PREVIOUS
+  // load (the scan), which settled anyway, and the app tree unmounting on it;
+  // this load then timed out on an empty #root with an empty window of its
+  // own, so the documented skip never fired and the flake read as a failure.
   const softwareDeviceLost = outcome === 'device-lost'
-    || [...loadConsole, ...loadPageErrors].some((line) => DEVICE_LOST_CONSOLE.test(line));
+    || [...consoleLines, ...pageErrorLines].some((line) => DEVICE_LOST_CONSOLE.test(line));
   if (softwareDeviceLost && process.env.E2E_GPU_STRICT === '0') {
     console.warn(`[e2e] E2E_GPU_STRICT=0 — skipping: software-GPU device lost during load(${name}, ${count})`);
     test.skip(true, `hosted software-GPU device lost during load(${name}, ${count}): ${detail}`);
@@ -164,6 +170,11 @@ for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan,
     // fresh viewer and the scan first; reloading a live GPU page tests teardown
     // timing instead of federation load order.
     const scan = { name: 'known-offset.xyz', mimeType: 'text/plain', buffer: await deriveDiagnosticScan(context, errors) };
+    // The seed page is closed now and logged its own `[WebGPU] Device lost:
+    // Device was destroyed` on the way out; the device-loss verdict in load()
+    // must only ever see what the page under test logs.
+    consoleLines = [];
+    pageErrorLines = [];
     await page.goto('/');
     await load(page, scan, 1);
     await load(page, IFC, 2);

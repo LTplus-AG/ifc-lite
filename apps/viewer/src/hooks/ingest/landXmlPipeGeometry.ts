@@ -115,11 +115,14 @@ export function buildLandXmlPipeComponents(document: LandXmlPipeNetworkDocument 
   for (const refusal of document.refusals) {
     if (knownPipeIds.has(refusal.sourceId) && !pipeRefusals.has(refusal.sourceId)) pipeRefusals.set(refusal.sourceId, refusal.message);
   }
-  const refuse = (pipe: LandXmlPipe, reason: string): void => { if (warnings.length < MAX_PIPE_WARNINGS) warnings.push(`Skipped LandXML pipe ${pipe.name} (${pipe.sourceId}): ${reason}`); };
+  const refuse = (pipe: LandXmlPipe, reason: string): void => { if (warnings.length < MAX_PIPE_WARNINGS - 1) warnings.push(`Skipped LandXML pipe ${pipe.name} (${pipe.sourceId}): ${reason}`); };
   for (const network of document.networks) {
     const structures = new Map(network.structures.map((structure) => [structure.sourceId, structure]));
     for (const pipe of network.pipes) {
-      if (components.length >= MAX_PIPE_MESHES) return { components, warnings };
+      if (components.length >= MAX_PIPE_MESHES) {
+        warnings.push(`Stopped LandXML pipe rendering after ${MAX_PIPE_MESHES} meshes; additional pipe meshes were omitted`);
+        return { components, warnings };
+      }
       const sourceRefusal = pipeRefusals.get(pipe.sourceId);
       if (sourceRefusal) { refuse(pipe, `source semantic refusal: ${sourceRefusal}`); continue; }
       const shape = section(pipe.part);

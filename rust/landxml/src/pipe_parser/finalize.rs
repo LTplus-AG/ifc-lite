@@ -314,6 +314,8 @@ impl PipeParser<'_> {
         if self.refusals.len() >= self.limits.max_pipe_refusals {
             return Err(error(Code::LimitExceeded, "pipe refusal limit exceeded"));
         }
+        self.refusal_keys
+            .insert((source_id.clone(), message.to_owned()));
         self.refusals.push(crate::LandXmlPipeRefusal {
             source_id,
             source_path,

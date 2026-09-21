@@ -78,12 +78,12 @@ impl PipeParser<'_> {
             }
         }
         let mut accepted: Vec<LandXmlPipeInvert> = Vec::new();
+        let mut seen: HashMap<(LandXmlSourceId, String), f64> = HashMap::new();
         for invert in inverts {
-            if let Some(existing) = accepted.iter().find(|existing| {
-                existing.pipe_source_id == invert.pipe_source_id
-                    && existing.flow_direction == invert.flow_direction
-            }) {
-                if elevations_match(existing.elevation.meters, invert.elevation.meters) {
+            self.check_cancel_and_work(1)?;
+            let key = (invert.pipe_source_id.clone(), invert.flow_direction.clone());
+            if let Some(existing) = seen.get(&key).copied() {
+                if elevations_match(existing, invert.elevation.meters) {
                     continue;
                 }
                 self.refuse_pipe_once(
@@ -94,6 +94,8 @@ impl PipeParser<'_> {
                         .clone(),
                     "conflicting authored endpoint Invert elevations",
                 )?;
+            } else {
+                seen.insert(key, invert.elevation.meters);
             }
             accepted.push(invert);
         }
@@ -137,9 +139,8 @@ impl PipeParser<'_> {
         message: &str,
     ) -> Result<()> {
         if self
-            .refusals
-            .iter()
-            .any(|refusal| refusal.source_id == source_id && refusal.message == message)
+            .refusal_keys
+            .contains(&(source_id.clone(), message.to_owned()))
         {
             return Ok(());
         }

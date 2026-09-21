@@ -6,7 +6,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseLandXmlViewerModelAsync } from './landXmlViewerModel.js';
 import { connectedFaceComponents } from './landXmlIngest.js';
-import { findLandXmlSourceRecord } from './landXmlSemantics.js';
+import { buildLandXmlPipeComponents } from './landXmlPipeGeometry.js';
+import { findLandXmlSourceRecord, type LandXmlPipeNetworkDocument } from './landXmlSemantics.js';
 import { isLandXmlContent } from './landXmlSniff.js';
 import { parseLandXmlTinInCurrentRealm } from './landXmlWasm.js';
 
@@ -79,6 +80,42 @@ function worldCoordinate(value: number, origin: readonly number[] | undefined, a
   if (offset === undefined) throw new Error(`mesh origin is missing axis ${axis}`);
   return value + offset;
 }
+
+it('reports pipe mesh truncation even after ordinary warning capacity is exhausted (#5047)', () => {
+  const units = {
+    linearUnit: 'meter', elevationUnit: 'meter', diameterUnit: 'meter', widthUnit: 'meter', heightUnit: 'meter', flowUnit: null,
+    linearScaleToMeters: 1, elevationScaleToMeters: 1, diameterScaleToMeters: 1, widthScaleToMeters: 1, heightScaleToMeters: 1,
+  };
+  const elevation = { value: 0, unit: 'meter', meters: 0 };
+  const structure = (sourceId: string, easting: number) => ({
+    sourceId, sourcePath: sourceId, name: sourceId, properties: {}, units,
+    center: { northing: 0, easting, northingMeters: 0, eastingMeters: easting, elevation },
+    part: { kind: 'circular' as const, properties: {}, diameter: { value: 1, unit: 'meter', meters: 1 }, material: null },
+    rimElevation: null, sumpElevation: null, inverts: [], flow: null,
+  });
+  const pipe = (index: number) => ({
+    sourceId: `pipe-${index}`, sourcePath: `/pipe-${index}`, name: `pipe-${index}`, properties: {}, units,
+    connectivity: { startStructureSourceId: 'start', endStructureSourceId: 'end' },
+    part: { kind: 'circular' as const, properties: {}, diameter: { value: 1, unit: 'meter', meters: 1 }, material: null },
+    geometry: { kind: 'straight' as const, point: null }, length: null, flow: null,
+  });
+  const validPipes = Array.from({ length: 10_001 }, (_, index) => pipe(index));
+  const refusedPipes = Array.from({ length: 1_000 }, (_, index) => pipe(20_000 + index));
+  const document: LandXmlPipeNetworkDocument = {
+    version: '1.2', rootUnits: units, collections: [], features: [],
+    networks: [{
+      sourceId: 'network', sourcePath: '/network', name: 'network', pipeNetworkType: '', properties: {},
+      structureUnits: units, pipeUnits: units, structures: [structure('start', 0), structure('end', 1)],
+      pipes: [...refusedPipes, ...validPipes], features: [],
+    }],
+    refusals: refusedPipes.map((candidate) => ({ sourceId: candidate.sourceId, sourcePath: candidate.sourcePath, code: 'invalid_semantic', message: 'refused' })),
+  };
+
+  const result = buildLandXmlPipeComponents(document, 1);
+  assert.equal(result.components.length, 10_000);
+  assert.equal(result.warnings.length, 1_000);
+  assert.match(result.warnings.at(-1) ?? '', /Stopped LandXML pipe rendering after 10000 meshes/);
+});
 
 describe('LandXML content dispatch (#5041)', () => {
   it('recognizes default and prefixed roots without claiming generic XML', () => {

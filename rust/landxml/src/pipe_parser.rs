@@ -17,7 +17,7 @@ use state::{
     properties, FeatureBuilder, Frame, NetworkBuilder, PipeBuilder, PositionCapture, RawUnits,
     StructureBuilder,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 mod convert;
 mod driver;
 mod features;
@@ -45,6 +45,7 @@ struct PipeParser<'a> {
     features: Vec<crate::LandXmlPipeFeature>,
     pending_networks: Vec<NetworkBuilder>,
     refusals: Vec<LandXmlPipeRefusal>,
+    refusal_keys: HashSet<(LandXmlSourceId, String)>,
     pipe_networks_seen: usize,
     structures_seen: usize,
     pipes_seen: usize,
@@ -91,6 +92,7 @@ pub fn parse_landxml_pipe_networks_with_cancel(
         features: Vec::new(),
         pending_networks: Vec::new(),
         refusals: Vec::new(),
+        refusal_keys: HashSet::new(),
         pipe_networks_seen: 0,
         structures_seen: 0,
         pipes_seen: 0,
@@ -182,9 +184,9 @@ impl PipeParser<'_> {
         });
         if let Some(capture) = self.capture.as_mut() {
             if self.frames.len() > capture.depth {
-                capture.invalid_reason.get_or_insert_with(|| {
-                    "Center must contain direct coordinates".to_owned()
-                });
+                capture
+                    .invalid_reason
+                    .get_or_insert_with(|| "Center must contain direct coordinates".to_owned());
             }
         }
         if !target {
@@ -250,7 +252,10 @@ impl PipeParser<'_> {
             }
             "Feature" if self.feature_owner().is_some() => {
                 let (owner_source_id, owner_path) = self.feature_owner().expect("checked owner");
-                let ordinal = self.feature_ordinals.entry(owner_source_id.clone()).or_insert(0);
+                let ordinal = self
+                    .feature_ordinals
+                    .entry(owner_source_id.clone())
+                    .or_insert(0);
                 *ordinal += 1;
                 let ordinal = *ordinal;
                 self.features_open.push(FeatureBuilder {

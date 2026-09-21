@@ -9,7 +9,6 @@ import {
   type LandXmlSourceModel,
   type LandXmlSourceRecord,
   type LandXmlSourceRef,
-  type LandXmlTinSurface,
 } from '@/hooks/ingest/landXmlSemantics';
 import { semanticDetailRows, semanticNavigationAt, semanticNavigationCount } from './landXmlSemanticInspection.js';
 
@@ -158,7 +157,7 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
         <p><span className="font-semibold">{t('properties.landXmlSource.kind')}:</span> {record.kind}</p>
         {engineeringRows(record, document?.pipeNetworks?.rootUnits?.linearUnit).map(([name, value]) => <p key={name}><span className="font-semibold">{name}:</span> {value}</p>)}
       </div>
-      <SourceProperties title={t('properties.landXmlSource.surfaceProperties')} rows={surfacePropertyRows(properties)} empty={t('properties.landXmlSource.noProperties')} />
+      <SourceProperties title={t('properties.landXmlSource.properties')} rows={surfacePropertyRows(properties)} empty={t('properties.landXmlSource.noProperties')} />
     </div>;
   }
   if (!('surface' in record)) {

@@ -32,6 +32,7 @@ export const landXmlEn = {
   'properties.landXmlSource.counts': 'Source/render counts',
   'properties.landXmlSource.countsValue': '{sourcePoints} source points, {sourceFaces} source faces, {renderedFaces} rendered, {droppedDegenerateFaces} degenerate, {droppedPrecisionFaces} precision, {droppedReframeFaces} frame-rejected',
   'properties.landXmlSource.surfaceProperties': 'Surface Properties',
+  'properties.landXmlSource.properties': 'Properties',
   'properties.landXmlSource.definitionProperties': 'Definition Properties',
   'properties.landXmlSource.noProperties': 'No retained properties.',
 } as const satisfies Record<string, TranslationValue>;

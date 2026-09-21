@@ -3552,7 +3552,7 @@ export class Renderer {
      * buffer, so only one of this / setClashOverlapBox is shown at a time.
      */
     setClashContactLines(
-        lines: { vertices: Float32Array; color: [number, number, number, number] } | null,
+        lines: { vertices: Float32Array | { localVertices: Float32Array; origin: [number, number, number] }; color: [number, number, number, number] } | null,
     ): void {
         this.overlays.setClashContactLines(lines);
     }

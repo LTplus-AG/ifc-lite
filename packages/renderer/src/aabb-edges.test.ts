@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { aabbEdgeLineList } from './aabb-edges.js';
+import { aabbEdgeLineList, anchoredAabbEdgeLineList } from './aabb-edges.js';
 
 describe('aabbEdgeLineList (#1277 clash overlap box)', () => {
   it('emits 12 edges (24 vertices, 72 floats)', () => {
@@ -30,5 +30,18 @@ describe('aabbEdgeLineList (#1277 clash overlap box)', () => {
       const dz = v[e + 2] !== v[e + 5] ? 1 : 0;
       assert.equal(dx + dy + dz, 1, 'a box edge changes exactly one axis');
     }
+  });
+
+  it('keeps a centimetre clash box local at a 5,000-km origin (#5049)', () => {
+    const edges = anchoredAabbEdgeLineList(
+      [5_000_000.015625, 20, -4],
+      [5_000_000.025625, 20.02, -3.99],
+    );
+    assert.deepEqual(edges.origin, [5_000_000.015625, 20, -4]);
+    assert.equal(edges.localVertices.length, 72);
+    assert.ok(
+      Math.abs(edges.localVertices[3] - 0.01) < 1e-8,
+      `local 1-cm extent became ${edges.localVertices[3]}`,
+    );
   });
 });

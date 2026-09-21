@@ -419,6 +419,21 @@ describe('Section2DOverlayRenderer: shared uniform buffer', () => {
     assert.strictEqual(u[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh + 3], 1);
   });
 
+  it('keeps the focused clash wireframe in the same anchored RTE frame (#5049)', () => {
+    const { renderer, writes } = newRenderer();
+    const eye = [5_000_000.25, 20, -4] as const;
+    renderer.uploadClashBoxLines3D({
+      localVertices: new Float32Array([0, 0, 0, 0.01, 0, 0]),
+      origin: [5_000_000.255, 20, -4],
+    });
+    const { pass } = makePass();
+    renderer.drawClashBoxLines3D(pass, new Float32Array(16), new Float32Array(16), eye);
+    const u = lastWrite(writes);
+    const delta = u[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh] + u[SECTION_2D_UNIFORM_SLOTS.originDeltaLow];
+    assert.ok(Math.abs(delta - 0.005) < 1e-7, `clash wireframe residual became ${delta}`);
+    assert.strictEqual(u[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh + 3], 1);
+  });
+
   it('places the cap style at the capFill / capStroke / params slots', () => {
     const { renderer, writes } = newRenderer();
     renderer.uploadDrawing(

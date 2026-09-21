@@ -53,7 +53,7 @@ import {
 import { SymbolicOverlays } from './renderer-symbolic-overlays.js';
 import type { SymbolicFillInput, SymbolicTextInput } from './symbolic-overlay-pipelines.js';
 import { ClashSolidPipeline, type ClashSolidInput } from './clash-solid-pipeline.js';
-import { aabbEdgeLineList } from './aabb-edges.js';
+import { anchoredAabbEdgeLineList } from './aabb-edges.js';
 import { projectedBoundsRange } from './render-section-plane.js';
 import { drawSectionOverlays, type ModelBounds } from './render-section-draw.js';
 import type { RenderOptions } from './types.js';
@@ -202,7 +202,7 @@ export class RendererOverlays {
                 }
             }
             if (overlay.hasClashBoxLines3D()) {
-                overlay.drawClashBoxLines3D(pass, viewProj);
+                overlay.drawClashBoxLines3D(pass, viewProj, ctx.rteViewProj, ctx.rteCamera);
             }
         }
         // Drawn after the box/contact lines and — crucially — after every
@@ -334,7 +334,7 @@ export class RendererOverlays {
             return;
         }
         this.section2DOverlayRenderer.setClashBoxLineColor(box.color);
-        this.section2DOverlayRenderer.uploadClashBoxLines3D(aabbEdgeLineList(box.min, box.max));
+        this.section2DOverlayRenderer.uploadClashBoxLines3D(anchoredAabbEdgeLineList(box.min, box.max));
         this.host.requestRender();
     }
 
@@ -343,10 +343,10 @@ export class RendererOverlays {
      * clash-box line buffer, so only one of this / setClashOverlapBox shows.
      */
     setClashContactLines(
-        lines: { vertices: Float32Array; color: [number, number, number, number] } | null,
+        lines: { vertices: Float32Array | AnchoredLineVertices; color: [number, number, number, number] } | null,
     ): void {
         if (!this.section2DOverlayRenderer) return;
-        if (!lines || lines.vertices.length === 0) {
+        if (!lines || (lines.vertices instanceof Float32Array ? lines.vertices.length : lines.vertices.localVertices.length) === 0) {
             this.section2DOverlayRenderer.clearClashBoxLines3D();
             this.host.requestRender();
             return;

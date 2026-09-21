@@ -500,7 +500,7 @@ export class Section2DOverlayRenderer {
    * world space (12 AABB edges = 24 vertices). Separate buffer + colour from the
    * other overlays. Pass an empty array to clear. (#1277)
    */
-  uploadClashBoxLines3D(vertices: Float32Array): void {
+  uploadClashBoxLines3D(vertices: Float32Array | AnchoredLineVertices): void {
     this.init();
     this.clashBoxLines.upload(this.device, vertices);
   }
@@ -514,11 +514,16 @@ export class Section2DOverlayRenderer {
   }
 
   /** Draw the clash-overlap box in its own colour. Same line pipeline. (#1277) */
-  drawClashBoxLines3D(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
+  drawClashBoxLines3D(
+    pass: GPURenderPassEncoder,
+    viewProj: Float32Array,
+    rteViewProj?: Float32Array,
+    camera?: readonly [number, number, number],
+  ): void {
     this.init();
     const resources = this.lineResources();
     if (!resources) return;
-    this.clashBoxLines.draw(pass, resources, viewProj, this.clashBoxLineColor);
+    this.clashBoxLines.draw(pass, resources, viewProj, this.clashBoxLineColor, rteViewProj, camera);
   }
 
   /**

@@ -47,7 +47,8 @@ it('omits only the exact meshed owner/item from 3D while retaining all 2D fills 
 
 it('forwards a placed fill through the renderer f64 anchor contract (#5049)', () => {
   const cached = parsed();
-  const fill = cached.looseFills[0];
+  const fill = cached.looseFills[0] ?? [...cached.byStorey.values()].flatMap((bucket) => bucket.fills)[0];
+  assert.ok(fill, 'fixture must expose a fill in one symbolic bucket');
   fill.rteLocalPoints = new Float32Array([0, 0, 0.01, 0, 0, 0.01]);
   fill.rteOrigin = [5_000_000.015625, 20, -4];
   const result = buildSymbolicRichChannels([{ cached }], params);

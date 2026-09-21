@@ -414,7 +414,7 @@ fn optimized_parquet_keys_are_a_distinct_namespace_from_the_flat_route() {
 
     assert_eq!(
         parquet_optimized_cache_key(&seed),
-        format!("{seed}-parquet-optimized-v1")
+        format!("{seed}-parquet-optimized-v2")
     );
     assert_eq!(
         parquet_optimized_metadata_cache_key(&seed),

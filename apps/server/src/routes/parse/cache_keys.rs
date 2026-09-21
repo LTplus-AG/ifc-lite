@@ -187,8 +187,14 @@ pub(crate) fn parquet_metadata_cache_key(
 /// `-parquet-v7` almost always needs a bump here too. Otherwise a warm cache
 /// replays a pre-change blob that the decoder reads cleanly, and the change is
 /// silently absent.
+///
+/// `v2` with #5130: `MeshGeometryKey` gained `normals_hash`. The pipeline
+/// derives normals from positions and indices, so no optimized payload is
+/// expected to change -- bumped under this key's own rule (every change to
+/// the dedup behind the payload) rather than on that invariant, at the cost
+/// of one re-parse per warm file.
 pub(crate) fn parquet_optimized_cache_key(cache_key: &str) -> String {
-    format!("{cache_key}-parquet-optimized-v1")
+    format!("{cache_key}-parquet-optimized-v2")
 }
 
 /// Build the optimized-Parquet metadata cache key for a given file cache key.

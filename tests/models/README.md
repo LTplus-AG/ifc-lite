@@ -172,6 +172,7 @@ and cannot close #4937. Fetch the relevant byte with `pnpm fixtures <path>`.
 | [Aplitop MDT 8.0 alignment/profile](https://github.com/bSI-InfraRoom/IFC-infra-unit-test/blob/bc13603cc4899084edbf9f1d9151443a7fb4cf0e/Alignment-Aplitop-1/UT-Alignment-Aplitop-1.xml) | `895b0932fcc887685eb766f9be47bf3fb21be716c47bf8071494af321be7ac16` | 5,491 |
 | [OpenRoads Designer 10.09 US-survey-foot alignment/profile](https://github.com/bSI-InfraRoom/IFC-infra-unit-test/blob/bc13603cc4899084edbf9f1d9151443a7fb4cf0e/Alignment-INDOT/PR_Twin_Branch_section_alignment.xml) | `57b37fdb3d63a1cfebd2af14646c60f78d566b2908b21b91ea5d411f7eb50740` | 2,487 |
 | [Trimble Novapoint 21.354 drainage PipeNetworks, EPSG:3878](https://github.com/bSI-InfraRoom/IFC-infra-unit-test/blob/bc13603cc4899084edbf9f1d9151443a7fb4cf0e/DrainageSystem-1/DrainageSystem-1-1.xml) | `bf13d686b9ce69a83d52d5f7ae8afb0746f1b0c4b43ca94a46f59c7725bc7de6` | 13,446 |
+| [bonsai-topo control-v1 LandXML terrain/CgPoints, EPSG:3006 + EPSG:5613](https://github.com/louistrue/openBIM-surveyor/blob/db5d60f98daf7937529e49dd6463ef2566da7e97/fixtures/ifc-lite-control/terrain.xml) | `e0d3c11ce5ea61e98482f6b22b051da91cfc3abcf5e75989f9110f700323ea10` | 1,766 |
 
 The applicable license evidence is the pinned
 [InfraModel LICENCE](https://github.com/buildingSMART-Finland/InfraModel/blob/eb2720b8b909d44f18ee4f84acfb113322405a87/LICENCE)
@@ -183,9 +184,12 @@ InfraModel namespace rows are refused rather than partially interpreted.
 This does not certify successful alignment, terrain, CgPoints, or PipeNetworks
 interchange.
 
-Civil 3D 1.0/1.1/1.2 (including international-foot), a TBC-native export, and
-an IFC + LandXML + point-cloud CRS federation set with independent control
-points remain held. The public RustedGeom examples cannot become vendor
+The CC0 `bonsai-topo-control-v1` catalogue group supplies an IFC4X3 terrain,
+LandXML 1.2 TIN/CgPoints, XYZ survey and five independently stated projected
+controls at 1 mm tolerance. Its three model files must still pass the viewer's
+canonical multi-model load path before the controlled-federation acceptance row
+is considered proven. Civil 3D 1.0/1.1/1.2 (including international-foot) and
+a TBC-native export remain held. The public RustedGeom examples cannot become vendor
 conformance evidence without an author/rights-holder attestation; no customer
 or forum upload may substitute for that grant.
 

@@ -758,6 +758,61 @@
       "feature_inventory": [{ "feature": "PipeNetworks, Structs, and Pipes", "expected_capability": "refused" }]
     },
     {
+      "path": "landxml/federation/bonsai-topo-control-v1/control.json",
+      "sha256": "d74b3009094c5c7a20455eff3c8a55eeb46f719884c9a2a026e98f0d95c625d7",
+      "size": 812,
+      "provenance": {
+        "source": { "blob_url": "https://github.com/louistrue/openBIM-surveyor/blob/db5d60f98daf7937529e49dd6463ef2566da7e97/fixtures/ifc-lite-control/control.json", "commit": "db5d60f98daf7937529e49dd6463ef2566da7e97", "sha256": "d74b3009094c5c7a20455eff3c8a55eeb46f719884c9a2a026e98f0d95c625d7", "fetched_at": "2026-09-21" },
+        "license": { "spdx": "CC0-1.0", "url": "https://creativecommons.org/publicdomain/zero/1.0/", "attribution": "openBIM-surveyor synthetic ifc-lite control fixture" },
+        "modification": { "status": "unmodified" },
+        "no_customer_data": true
+      },
+      "producer": { "name": "bonsai-topo", "version": "control-v1", "export_settings": "independently stated synthetic federation controls" },
+      "feature_inventory": [{ "feature": "five IFC, LandXML, and XYZ control correspondences", "expected_capability": "rendered" }]
+    },
+    {
+      "path": "landxml/federation/bonsai-topo-control-v1/terrain.ifc",
+      "sha256": "7053713e2ec0cf052b576126b675daa1c9614f2bd3ed90b33984ad9c9b26da47",
+      "size": 1471,
+      "provenance": {
+        "source": { "blob_url": "https://github.com/louistrue/openBIM-surveyor/blob/db5d60f98daf7937529e49dd6463ef2566da7e97/fixtures/ifc-lite-control/terrain.ifc", "commit": "db5d60f98daf7937529e49dd6463ef2566da7e97", "sha256": "7053713e2ec0cf052b576126b675daa1c9614f2bd3ed90b33984ad9c9b26da47", "fetched_at": "2026-09-21" },
+        "license": { "spdx": "CC0-1.0", "url": "https://creativecommons.org/publicdomain/zero/1.0/", "attribution": "openBIM-surveyor synthetic ifc-lite control fixture" },
+        "modification": { "status": "unmodified" },
+        "no_customer_data": true
+      },
+      "producer": { "name": "bonsai-topo", "version": "control-v1", "export_settings": "IFC4X3 terrain with IfcMapConversion" },
+      "format": { "schema": "IFC4X3_ADD2", "units": "metre", "crs": "EPSG:3006; vertical EPSG:5613" },
+      "feature_inventory": [{ "feature": "IfcTriangulatedFaceSet and IfcMapConversion", "expected_capability": "rendered" }]
+    },
+    {
+      "path": "landxml/federation/bonsai-topo-control-v1/terrain.xml",
+      "sha256": "e0d3c11ce5ea61e98482f6b22b051da91cfc3abcf5e75989f9110f700323ea10",
+      "size": 1766,
+      "provenance": {
+        "source": { "blob_url": "https://github.com/louistrue/openBIM-surveyor/blob/db5d60f98daf7937529e49dd6463ef2566da7e97/fixtures/ifc-lite-control/terrain.xml", "commit": "db5d60f98daf7937529e49dd6463ef2566da7e97", "sha256": "e0d3c11ce5ea61e98482f6b22b051da91cfc3abcf5e75989f9110f700323ea10", "fetched_at": "2026-09-21" },
+        "license": { "spdx": "CC0-1.0", "url": "https://creativecommons.org/publicdomain/zero/1.0/", "attribution": "openBIM-surveyor synthetic ifc-lite control fixture" },
+        "modification": { "status": "unmodified" },
+        "no_customer_data": true
+      },
+      "producer": { "name": "bonsai-topo", "version": "control-v1", "export_settings": "LandXML 1.2 TIN and CgPoint export" },
+      "landxml": { "schema": "LandXML 1.2", "namespace": "http://www.landxml.org/schema/LandXML-1.2", "units": "metric (meter)", "crs": "EPSG:3006; vertical EPSG:5613" },
+      "feature_inventory": [{ "feature": "TIN surface and independent CgPoint controls", "expected_capability": "rendered" }]
+    },
+    {
+      "path": "landxml/federation/bonsai-topo-control-v1/survey.xyz",
+      "sha256": "7785254ab17d4c64b9678a4b1b9a83a7be78fdec7c1c7fc6190008a78aebf9d5",
+      "size": 208,
+      "provenance": {
+        "source": { "blob_url": "https://github.com/louistrue/openBIM-surveyor/blob/db5d60f98daf7937529e49dd6463ef2566da7e97/fixtures/ifc-lite-control/survey.xyz", "commit": "db5d60f98daf7937529e49dd6463ef2566da7e97", "sha256": "7785254ab17d4c64b9678a4b1b9a83a7be78fdec7c1c7fc6190008a78aebf9d5", "fetched_at": "2026-09-21" },
+        "license": { "spdx": "CC0-1.0", "url": "https://creativecommons.org/publicdomain/zero/1.0/", "attribution": "openBIM-surveyor synthetic ifc-lite control fixture" },
+        "modification": { "status": "unmodified" },
+        "no_customer_data": true
+      },
+      "producer": { "name": "bonsai-topo", "version": "control-v1", "export_settings": "XYZ RGB survey control export" },
+      "format": { "schema": "XYZ RGB", "units": "metre", "crs": "EPSG:3006; vertical EPSG:5613" },
+      "feature_inventory": [{ "feature": "five coloured survey control points", "expected_capability": "rendered" }]
+    },
+    {
       "path": "issues/1007_roof_brep_opening_winding.ifc",
       "sha256": "1740106fe498b12e36b09a4d752d4de538559fbbfadb5aa339e3150ffaf19592",
       "size": 129717

@@ -14,6 +14,8 @@ import assert from 'node:assert';
 import { writePointCloudUniforms, type PointUniformInputs } from './pointcloud/point-cloud-uniforms.js';
 import { POINT_UNIFORM_SIZE } from './pointcloud/point-pipeline.js';
 import type { PointCloudNode } from './pointcloud/point-cloud-node.js';
+import { RelativeToEyeFrame, rteRelativePositionF32 } from './relative-to-eye.js';
+import { MathUtils } from './math.js';
 
 function makeDevice(): GPUDevice {
   return {
@@ -21,9 +23,12 @@ function makeDevice(): GPUDevice {
   } as unknown as GPUDevice;
 }
 
-function makeInputs(): PointUniformInputs {
+function makeInputs(camera = { x: 0, y: 0, z: 0 }): PointUniformInputs {
+  const relativeToEyeFrame = new RelativeToEyeFrame();
+  relativeToEyeFrame.update(camera, MathUtils.identity(), MathUtils.identity());
   return {
     viewProj: new Float32Array(16),
+    relativeToEyeFrame,
     fixedColor: [1, 1, 1, 1],
     colorMode: 'rgb',
     sizeMode: 'fixed-px',
@@ -57,7 +62,7 @@ describe('writePointCloudUniforms model-matrix packing (issue #1804)', () => {
     assert.deepStrictEqual(Array.from(scratch.subarray(16, 32)), expected);
   });
 
-  it('writes an arbitrary node.model verbatim into floats 16..31', () => {
+  it('keeps model translation out of f32 and splits it against the RTE camera (#5049)', () => {
     const scratch = new Float32Array(POINT_UNIFORM_SIZE / 4);
     const scratchU32 = new Uint32Array(scratch.buffer);
     const model = new Float32Array([
@@ -70,11 +75,37 @@ describe('writePointCloudUniforms model-matrix packing (issue #1804)', () => {
       meta: { expressId: 1 },
       uniformBuffer: {} as GPUBuffer,
       model,
+      rteOrigin: [5_000_000.015625, 20, 30],
     } as unknown as PointCloudNode;
 
-    writePointCloudUniforms(makeDevice(), scratch, scratchU32, node, makeInputs());
+    writePointCloudUniforms(makeDevice(), scratch, scratchU32, node, makeInputs({ x: 5_000_000, y: 0, z: 0 }));
 
-    assert.deepStrictEqual(Array.from(scratch.subarray(16, 32)), Array.from(model));
+    assert.deepStrictEqual(Array.from(scratch.subarray(16, 32)), [
+      2, 0, 0, 0, 0, 3, 0, 0, 0, 0, 4, 0, 0, 0, 0, 1,
+    ]);
+    assert.equal(rteRelativePositionF32([0, 0, 0], scratch.subarray(32, 40))[0], 0.015625);
+  });
+
+  it('keeps 5,000-km crop centimetre residuals in the point RTE frame (#5049)', () => {
+    const scratch = new Float32Array(POINT_UNIFORM_SIZE / 4);
+    const scratchU32 = new Uint32Array(scratch.buffer);
+    const node = {
+      meta: { expressId: 1 }, uniformBuffer: {} as GPUBuffer,
+      model: MathUtils.identity().m,
+      rteOrigin: [5_000_000.25, 20, -4],
+    } as unknown as PointCloudNode;
+    const inputs = makeInputs({ x: 5_000_000.25, y: 20, z: -4 });
+    inputs.clipBox = {
+      enabled: true,
+      min: [5_000_000.255, 19.99, -4.01],
+      max: [5_000_000.275, 20.01, -3.99],
+    };
+
+    writePointCloudUniforms(makeDevice(), scratch, scratchU32, node, inputs);
+
+    assert.equal(scratchU32[59], 1, 'point shader receives crop enabled bit');
+    assert.ok(Math.abs(scratch[76] - 0.005) < 1e-7, `lost crop min residual: ${scratch[76]}`);
+    assert.ok(Math.abs(scratch[80] - 0.025) < 1e-7, `lost crop max residual: ${scratch[80]}`);
   });
 
   it('ignores a malformed (wrong-length) node.model and falls back to identity', () => {

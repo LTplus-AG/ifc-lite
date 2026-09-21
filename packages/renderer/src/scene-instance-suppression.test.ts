@@ -74,7 +74,7 @@ describe('occurrence appearance resource lifetime (#4404)', () => {
 
   it('retains translations and rolls back failed GPU suppression without consuming ownership', () => {
     const { scene, flags, fail } = fixture();
-    const before = scene.getInstancedMeshDataPieces(41)![0].positions;
+    const before = scene.getInstancedMeshDataPieces(41)![0];
     const lease = scene.retainInstancedOccurrence(41, 3);
     fail(); assert.throws(() => lease.setSuppressed(true), /GPU upload failure/);
     assert.equal(flags(0), 0); assert.equal(lease.valid, true);
@@ -87,8 +87,12 @@ describe('occurrence appearance resource lifetime (#4404)', () => {
     assert.equal(scene.getEntityBoundingBox(41), null);
     assert.deepEqual(scene.getAllMeshDataExpressIds(), [42]);
     lease.release();
-    const after = scene.getInstancedMeshDataPieces(41)![0].positions;
-    for (let i = 0; i < before.length; i++) assert.equal(after[i], before[i] + (i % 3 === 0 ? 5 : 0));
+    const after = scene.getInstancedMeshDataPieces(41)![0];
+    // CPU materialization keeps the transformed template local; placement
+    // updates live in its f64-capable origin instead of being added into the
+    // Float32 vertex stream.
+    assert.deepEqual(after.positions, before.positions);
+    assert.equal(after.origin?.[0], (before.origin?.[0] ?? 0) + 5);
   });
 
   for (const failedWrite of [0, 1]) it(`rolls back reset at GPU write ${failedWrite} and permits retry`, () => {

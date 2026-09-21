@@ -19,6 +19,35 @@ import { packClipBox } from './clip-box.js';
 import type { PickClipState } from './types.js';
 
 /**
+ * Write only the clip portion of a picker uniform. `floatOffset` is the
+ * clip-box-min lane; keeping this separate lets RTE draw records prepend their
+ * own projection/model fields without reimplementing clip flag semantics.
+ */
+export function packPickClip(
+  clip: PickClipState | null | undefined,
+  out: Float32Array,
+  outFlags: Uint32Array,
+  floatOffset = 16,
+): void {
+  let flags = packClipBox(clip?.clipBox, out, floatOffset);
+  const sp = clip?.sectionPlane;
+  if (sp) {
+    out[floatOffset + 8] = sp.normal[0];
+    out[floatOffset + 9] = sp.normal[1];
+    out[floatOffset + 10] = sp.normal[2];
+    out[floatOffset + 11] = sp.distance;
+    flags |= 1;
+    if (sp.flipped) flags |= 2;
+  } else {
+    out.fill(0, floatOffset + 8, floatOffset + 12);
+  }
+  outFlags[0] = flags;
+  outFlags[1] = 0;
+  outFlags[2] = 0;
+  outFlags[3] = 0;
+}
+
+/**
  * Write the picker uniform block into `out` (>= 32 floats) and `outFlags` (a
  * Uint32 view of the same buffer at float lane 28 / byte 112). `clip` is the
  * section plane + crop box the last render applied; an absent section / box
@@ -31,24 +60,5 @@ export function packPickUniforms(
   outFlags: Uint32Array,
 ): void {
   out.set(viewProj.subarray(0, 16), 0);
-  // clip box min/max at lanes 16-23; returns the clip-box enable bit (4) or 0.
-  let flags = packClipBox(clip?.clipBox, out, 16);
-  const sp = clip?.sectionPlane;
-  if (sp) {
-    out[24] = sp.normal[0];
-    out[25] = sp.normal[1];
-    out[26] = sp.normal[2];
-    out[27] = sp.distance;
-    flags |= 1; // sectionEnabled
-    if (sp.flipped) flags |= 2; // flipped
-  } else {
-    out[24] = 0;
-    out[25] = 0;
-    out[26] = 0;
-    out[27] = 0;
-  }
-  outFlags[0] = flags;
-  outFlags[1] = 0;
-  outFlags[2] = 0;
-  outFlags[3] = 0;
+  packPickClip(clip, out, outFlags);
 }

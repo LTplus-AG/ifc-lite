@@ -10,6 +10,7 @@ import {
   SECTION_2D_UNIFORM_SLOTS,
   SECTION_2D_UNIFORM_SLOT_COUNT,
   SECTION_2D_UNIFORM_SLOT_INDEX,
+  SECTION_2D_MAX_LINE_PARTITIONS,
 } from './shaders/section-2d-overlay.wgsl.js';
 
 // WebGPU enum globals referenced by the renderer's bind-group visibility and
@@ -335,7 +336,7 @@ describe('Section2DOverlayRenderer: dispose releases EVERY family (#1277 leak)',
 });
 
 describe('SECTION_2D_UNIFORM_SLOT_INDEX (#3342)', () => {
-  it('is dense: values are exactly {0, ..., SECTION_2D_UNIFORM_SLOT_COUNT - 1}, no gaps or duplicates', () => {
+  it('reserves non-overlapping partition ranges inside the shared buffer', () => {
     // SECTION_2D_UNIFORM_SLOT_COUNT is *derived* from this index
     // (Object.keys(...).length), so comparing the two against each other
     // would hold by construction no matter what the index contains — it
@@ -344,10 +345,13 @@ describe('SECTION_2D_UNIFORM_SLOT_INDEX (#3342)', () => {
     // the buffer is sized for `count` slots but a draw addresses a slot
     // beyond it. Pin density instead: every slot value 0..COUNT-1 must be
     // used exactly once.
-    const values = Object.values(SECTION_2D_UNIFORM_SLOT_INDEX);
-    const sorted = [...values].sort((a, b) => a - b);
-    const expected = Array.from({ length: SECTION_2D_UNIFORM_SLOT_COUNT }, (_, i) => i);
-    assert.deepStrictEqual(sorted, expected, 'slot values must be exactly 0..COUNT-1 with no gaps or duplicates');
+    const starts = Object.values(SECTION_2D_UNIFORM_SLOT_INDEX).sort((a, b) => a - b);
+    assert.equal(starts[0], 0, 'the section cap owns the first record');
+    assert.equal(starts[1], 1, 'line partitions begin after the cap record');
+    for (let index = 2; index < starts.length; index++) {
+      assert.equal(starts[index] - starts[index - 1], SECTION_2D_MAX_LINE_PARTITIONS);
+    }
+    assert.equal(SECTION_2D_UNIFORM_SLOT_COUNT, 1 + (starts.length - 1) * SECTION_2D_MAX_LINE_PARTITIONS);
   });
 });
 
@@ -396,6 +400,74 @@ describe('Section2DOverlayRenderer: shared uniform buffer', () => {
       [0, 0, 0, 0],
     );
     assert.deepStrictEqual(Array.from(u.slice(0, 16)), new Array(16).fill(7));
+  });
+
+  it('keeps centimetre residuals at 5,000 km for anchored lines and section caps (#5049)', () => {
+    const { renderer, writes } = newRenderer();
+    const eye = [5_000_000.25, 20, -4] as const;
+    const rte = new Float32Array(16).fill(3);
+    renderer.setLineOverlay('annotation', {
+      localVertices: new Float32Array([0.01, 0, 0, 0.02, 0, 0]),
+      origin: [5_000_000.255, 20, -4],
+    });
+    const { pass } = makePass();
+    renderer.drawLineOverlay(pass, new Float32Array(16), 'annotation', rte, eye);
+    let u = lastWrite(writes);
+    assert.ok(Math.abs(u[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh] + u[SECTION_2D_UNIFORM_SLOTS.originDeltaLow] - 0.005) < 1e-7);
+    assert.strictEqual(u[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh + 3], 1);
+
+    renderer.uploadDrawing(TRIANGLE, [], 'side', 5_000_000.255);
+    renderer.draw(pass, { ...OPTIONS, viewProj: new Float32Array(16), rteViewProj: rte, rteCamera: eye, showFills: true, showOutlines: true, capStyle: CAP_STYLE });
+    u = lastWrite(writes);
+    assert.ok(Math.abs(u[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh] + u[SECTION_2D_UNIFORM_SLOTS.originDeltaLow] - 0.005) < 1e-7);
+    assert.strictEqual(u[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh + 3], 1);
+  });
+
+  it('restores a rebased cap anchor for a legacy world-space projection (#5152)', () => {
+    const { renderer, writes } = newRenderer();
+    const anchor = 5_000_000.255;
+    renderer.uploadDrawing(TRIANGLE, [], 'side', anchor);
+    const { pass } = makePass();
+
+    // No RTE frame: callers using the legacy world-space matrix still need
+    // the locally uploaded cap vertices returned to their source position.
+    renderer.draw(pass, { ...OPTIONS, viewProj: new Float32Array(16).fill(7) });
+
+    const u = lastWrite(writes);
+    const S = SECTION_2D_UNIFORM_SLOTS;
+    assert.equal(u[S.planeOffset], Math.fround(anchor), 'legacy world projection receives the cap anchor');
+    assert.deepEqual(Array.from(u.slice(S.planeOffset + 1, S.planeOffset + 4)), [0, 0, 0]);
+    assert.equal(u[S.originDeltaHigh + 3], 0, 'legacy projection must not select the RTE transform');
+    assert.deepEqual(Array.from(u.slice(S.viewProj, S.viewProj + 16)), new Array(16).fill(7));
+  });
+
+  it('keeps the focused clash wireframe in the same anchored RTE frame (#5049)', () => {
+    const { renderer, writes } = newRenderer();
+    const eye = [5_000_000.25, 20, -4] as const;
+    renderer.uploadClashBoxLines3D({
+      localVertices: new Float32Array([0, 0, 0, 0.01, 0, 0]),
+      origin: [5_000_000.255, 20, -4],
+    });
+    const { pass } = makePass();
+    renderer.drawClashBoxLines3D(pass, new Float32Array(16), new Float32Array(16), eye);
+    const u = lastWrite(writes);
+    const delta = u[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh] + u[SECTION_2D_UNIFORM_SLOTS.originDeltaLow];
+    assert.ok(Math.abs(delta - 0.005) < 1e-7, `clash wireframe residual became ${delta}`);
+    assert.strictEqual(u[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh + 3], 1);
+  });
+
+  it('draws independently anchored partitions instead of dropping a >8km overlay (#5049)', () => {
+    const { renderer, writes } = newRenderer();
+    renderer.setLineOverlay('annotation', [
+      { localVertices: new Float32Array([0, 0, 0, 4_500, 0, 0]), origin: [5_000_000.015625, 0, 0] },
+      { localVertices: new Float32Array([0, 0, 0, 4_500, 0, 0]), origin: [5_004_500.015625, 0, 0] },
+    ]);
+    const { pass, calls } = makePass();
+    renderer.drawLineOverlay(pass, new Float32Array(16), 'annotation', new Float32Array(16), [5_000_000, 0, 0]);
+    assert.deepStrictEqual(calls.filter((call) => call.startsWith('draw:')), ['draw:2', 'draw:2']);
+    const deltas = writes.slice(-2).map((write) => write.data[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh] + write.data[SECTION_2D_UNIFORM_SLOTS.originDeltaLow]);
+    assert.ok(Math.abs(deltas[0] - 0.015625) < 1e-7);
+    assert.ok(Math.abs(deltas[1] - 4_500.015625) < 1e-4);
   });
 
   it('places the cap style at the capFill / capStroke / params slots', () => {
@@ -549,24 +621,40 @@ describe('Section2DOverlayRenderer: one uniform record per draw (#2456)', () => 
     // One uniform write per draw site: the cap (which its fill and outline
     // share by design) plus the six families.
     const uniformOffsets = writes.slice(uniformWritesBefore).map((w) => w.offset);
-    assert.strictEqual(uniformOffsets.length, SECTION_2D_UNIFORM_SLOT_COUNT);
+    const drawSites = FAMILIES.length + 1;
+    assert.strictEqual(uniformOffsets.length, drawSites);
     assert.strictEqual(
       new Set(uniformOffsets).size,
-      SECTION_2D_UNIFORM_SLOT_COUNT,
+      drawSites,
       `the seven draw sites must not share a record; offsets were ${JSON.stringify(uniformOffsets)}`,
     );
 
     // …and every bound record must be one that was actually written for it.
     // 8 binds: cap fill + cap outline (same slot) + six families.
-    assert.strictEqual(binds.length, SECTION_2D_UNIFORM_SLOT_COUNT + 1);
+    assert.strictEqual(binds.length, drawSites + 1);
     assert.strictEqual(
       new Set(binds).size,
-      SECTION_2D_UNIFORM_SLOT_COUNT,
+      drawSites,
       'the cap fill and outline share slot 0; the six families do not share anything',
     );
     for (const offset of binds) {
       assert.ok(uniformOffsets.includes(offset), `nothing was written to bound offset ${offset}`);
     }
+  });
+
+  it('draws more than 32 independently anchored line partitions safely (#5049)', () => {
+    const { renderer, writes } = newRenderer();
+    const partitions = Array.from({ length: 40 }, (_, index) => ({
+      origin: [index * 25_000, 0, 0] as [number, number, number],
+      localVertices: new Float32Array([0, 0, 0, 1, 0, 0]),
+    }));
+    renderer.setLineOverlay('grid', partitions);
+    const { pass, calls, binds } = makePass();
+    const before = writes.length;
+    renderer.drawLineOverlay(pass, new Float32Array(16), 'grid', new Float32Array(16), [0, 0, 0]);
+    assert.equal(calls.filter((call) => call === 'draw:2').length, 40);
+    assert.equal(new Set(binds).size, 40, 'each partition receives an immutable uniform record');
+    assert.equal(writes.slice(before).length, 40);
   });
 
   it('the clash box colour cannot reach the other families', () => {
@@ -642,7 +730,7 @@ describe('Section2DOverlayRenderer: one uniform record per draw (#2456)', () => 
     renderer.drawClashBoxLines3D(pass, new Float32Array(16).fill(0));
 
     const offsets = writes.slice(before).map((w) => w.offset);
-    const stride = 192; // ceil(160 / 64) * 64
+    const stride = 256; // ceil(256 / 64) * 64
     for (const o of offsets) {
       assert.strictEqual(o % 64, 0, `offset ${o} is not 64-byte aligned`);
     }

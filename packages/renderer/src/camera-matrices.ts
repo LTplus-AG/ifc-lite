@@ -21,9 +21,21 @@
  * and the ortho branch already returned a fresh `{near, far}` per frame.
  */
 
-import { MathUtils } from './math.js';
+import { MathUtils, viewBasis } from './math.js';
+import { MAX_RTE_SOURCE_ABS_METRES, type RelativeToEyeFrame } from './relative-to-eye.js';
 import type { CameraInternalState } from './camera-state.js';
 import { DEFAULT_ORTHO_SIZE, usableOrthoSize } from './camera-guards.js';
+
+/** Mirror lookAt's effective eye without rewriting the caller's malformed pose. */
+export function updateCameraRelativeFrame(state: CameraInternalState, frame: RelativeToEyeFrame): void {
+  const eye = viewBasis(state.camera.position, state.camera.target, state.camera.up).eye;
+  if ([eye.x, eye.y, eye.z].some(value => !Number.isFinite(value) || Math.abs(value) > MAX_RTE_SOURCE_ABS_METRES)
+    || !state.projMatrix.m.every(Number.isFinite) || !state.viewMatrix.m.every(Number.isFinite)) {
+    frame.invalidate();
+    return;
+  }
+  frame.update(eye, state.projMatrix, state.viewMatrix);
+}
 
 export function updateCameraMatrices(state: CameraInternalState): void {
   const dx = state.camera.position.x - state.camera.target.x;

@@ -6,6 +6,7 @@ import type { Mesh } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { BoundingBox } from './scene-raycaster.js';
 import { worldAabbFromPieces } from './scene-geometry.js';
+import { writeInstanceAnchor } from './instanced-render.js';
 
 type Offset = readonly [number, number, number];
 type Drawable = { origin?: [number, number, number]; bounds?: Bounds };
@@ -65,7 +66,17 @@ export class ModelTranslations {
   private yaws = new Map<number, ModelYaw>();
   private meshes = new WeakMap<MeshData, MeshPlacement>();
   private batches = new WeakMap<Drawable, BatchPlacement>();
-  private instances = new WeakMap<ArrayBuffer, { base: Float64Array; written: Float32Array; offset: Offset; yaw: ModelYaw | null }>();
+  private instances = new WeakMap<ArrayBuffer, {
+    base: Float64Array;
+    written: Float32Array;
+    /** Immutable f64 decode anchor, plus the last f64 value this placement wrote.
+     * They let a model move preserve centimetre residuals which the V1 matrix
+     * cannot represent at national-grid magnitudes. */
+    anchorBase?: Float64Array;
+    writtenAnchors?: Float64Array;
+    offset: Offset;
+    yaw: ModelYaw | null;
+  }>();
   private releasedBounds = new WeakMap<BoundingBox, Bounds>();
   private releasedEntities = new Map<number, Map<number, BoundingBox>>();
 
@@ -261,7 +272,13 @@ export class ModelTranslations {
    * undoing the OLD yaw that was in effect when it was written — a
    * non-translation edit into bytes 0..47 cannot be folded this way and is a
    * STOP condition (see plan #4890 §5). */
-  placeInstances(data: ArrayBuffer, modelIndex: number, stride: number): boolean {
+  placeInstances(
+    data: ArrayBuffer,
+    modelIndex: number,
+    stride: number,
+    canonicalAnchors?: Float64Array,
+    canonicalMatrixTranslations?: Float32Array,
+  ): boolean {
     const delta = this.get(modelIndex), yaw = this.getYaw(modelIndex), count = data.byteLength / stride;
     const view = new DataView(data);
     let entry = this.instances.get(data);
@@ -271,7 +288,17 @@ export class ModelTranslations {
         const j = i * 12 + c * 3 + a;
         base[j] = written[j] = view.getFloat32(i * stride + c * 16 + a * 4, true);
       }
-      entry = { base, written, offset: ZERO, yaw: null };
+      const anchorsUsable = canonicalAnchors?.length === count * 3;
+      entry = {
+        base,
+        written,
+        ...(anchorsUsable ? {
+          anchorBase: canonicalAnchors.slice(),
+          writtenAnchors: canonicalAnchors.slice(),
+        } : {}),
+        offset: ZERO,
+        yaw: null,
+      };
       this.instances.set(data, entry);
     }
     if (entry.offset.every((value, i) => value === delta[i]) && yawEqual(entry.yaw, yaw)) return false;
@@ -313,6 +340,41 @@ export class ModelTranslations {
       view.setFloat32(tByte, ttx, true);
       view.setFloat32(tByte + 4, tty, true);
       view.setFloat32(tByte + 8, ttz, true);
+      const anchorOffset = i * 3;
+      const anchorBase = entry.anchorBase, writtenAnchors = entry.writtenAnchors;
+      const canPlaceAnchor = anchorBase && writtenAnchors && canonicalAnchors
+        && canonicalMatrixTranslations && canonicalAnchors.length === count * 3
+        && canonicalMatrixTranslations.length === count * 3;
+      if (canPlaceAnchor) {
+        // Fold an entity-local translation edit into the f64 baseline exactly
+        // like the V1 matrix path above. This is essential after a snap/gizmo
+        // move: subsequent model placement must preserve its source residual,
+        // not revert to the decoded anchor.
+        const anchorDiffX = canonicalAnchors[anchorOffset] - writtenAnchors[anchorOffset];
+        const anchorDiffY = canonicalAnchors[anchorOffset + 1] - writtenAnchors[anchorOffset + 1];
+        const anchorDiffZ = canonicalAnchors[anchorOffset + 2] - writtenAnchors[anchorOffset + 2];
+        anchorBase[anchorOffset] += anchorDiffX * oldCos - anchorDiffZ * oldSin;
+        anchorBase[anchorOffset + 1] += anchorDiffY;
+        anchorBase[anchorOffset + 2] += anchorDiffX * oldSin + anchorDiffZ * oldCos;
+        const anchorDx = anchorBase[anchorOffset] - newPx;
+        const anchorDz = anchorBase[anchorOffset + 2] - newPz;
+        const ax = (yaw ? newPx + anchorDx * newCos + anchorDz * newSin : anchorBase[anchorOffset]) + delta[0];
+        const ay = anchorBase[anchorOffset + 1] + delta[1];
+        const az = (yaw ? newPz - anchorDx * newSin + anchorDz * newCos : anchorBase[anchorOffset + 2]) + delta[2];
+        canonicalAnchors[anchorOffset] = ax;
+        canonicalAnchors[anchorOffset + 1] = ay;
+        canonicalAnchors[anchorOffset + 2] = az;
+        canonicalMatrixTranslations[anchorOffset] = ttx;
+        canonicalMatrixTranslations[anchorOffset + 1] = tty;
+        canonicalMatrixTranslations[anchorOffset + 2] = ttz;
+        writtenAnchors[anchorOffset] = ax;
+        writtenAnchors[anchorOffset + 1] = ay;
+        writtenAnchors[anchorOffset + 2] = az;
+        if (stride >= 120) writeInstanceAnchor(view, i * stride, [ax, ay, az]);
+      } else if (stride >= 120) {
+        // Legacy V1 callers have no canonical source anchors to preserve.
+        writeInstanceAnchor(view, i * stride, [ttx, tty, ttz]);
+      }
       entry.written[b0 + 9] = ttx; entry.written[b0 + 10] = tty; entry.written[b0 + 11] = ttz;
     }
     entry.offset = delta;

@@ -94,6 +94,7 @@ export function collectLandXmlOverlaySpans(state: Pick<ViewerState, 'models' | '
   return spans;
 }
 
-export function overlaySpanVertices(spans: readonly LandXmlOverlaySpan[]): Float32Array {
-  return new Float32Array(spans.flatMap((span) => [span.a.x, span.a.y, span.a.z, span.b.x, span.b.y, span.b.z]));
+/** Keep world coordinates as f64 until the shared line RTE boundary. */
+export function overlaySpanVertices(spans: readonly LandXmlOverlaySpan[]): number[] {
+  return spans.flatMap((span) => [span.a.x, span.a.y, span.a.z, span.b.x, span.b.y, span.b.z]);
 }

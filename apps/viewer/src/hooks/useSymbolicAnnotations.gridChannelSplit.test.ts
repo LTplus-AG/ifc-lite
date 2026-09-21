@@ -22,10 +22,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  buildSymbolicLineChannels,
-  type SymbolicLineChannelsEntry,
-} from './useSymbolicAnnotations.js';
+import { buildSymbolicLineChannels, symbolicLineVertexData, type SymbolicLineChannelsEntry } from './symbolic-line-channels.js';
 import { createEmptyParseResult, type AnnotationsForStorey } from '../lib/overlay-parse/symbolic-parse.js';
 
 function gridOnlyEntry(): SymbolicLineChannelsEntry {
@@ -59,14 +56,14 @@ describe('buildSymbolicLineChannels splits annotation and grid content (issue #3
     });
 
     assert.strictEqual(
-      annotation.length,
+      symbolicLineVertexData(annotation).length,
       0,
       'a grid-only buffer must not reach the annotation channel — it would ' +
         "carry only grid geometry into `CHANNEL_EXPANDS_MODEL_BOUNDS.annotation` " +
         '(true), which #967/grid:false exists to prevent',
     );
-    assert.strictEqual(grid.length, 6, 'the grid line (2 verts * 3 floats) must reach the grid channel');
-    assert.deepStrictEqual(Array.from(grid), [-500, 0, 0, 500, 0, 0]);
+    assert.strictEqual(symbolicLineVertexData(grid).length, 6, 'the grid line (2 verts * 3 floats) must reach the grid channel');
+    assert.deepStrictEqual(Array.from(symbolicLineVertexData(grid)), [0, 0, 0, 1000, 0, 0]);
   });
 
   it('both on: annotation and grid buckets land in their own channel, not merged into one', () => {
@@ -89,8 +86,35 @@ describe('buildSymbolicLineChannels splits annotation and grid content (issue #3
       fallbackY: 0,
     });
 
-    assert.strictEqual(annotation.length, 6, 'annotation channel carries only the annotation line');
-    assert.strictEqual(grid.length, 6, 'grid channel carries only the grid line');
-    assert.notDeepStrictEqual(Array.from(annotation), Array.from(grid));
+    assert.strictEqual(symbolicLineVertexData(annotation).length, 6, 'annotation channel carries only the annotation line');
+    assert.strictEqual(symbolicLineVertexData(grid).length, 6, 'grid channel carries only the grid line');
+    assert.notDeepStrictEqual(Array.from(symbolicLineVertexData(annotation)), Array.from(symbolicLineVertexData(grid)));
+  });
+
+  it('keeps a 5,000-km placement residual local until the renderer RTE upload (#5049)', () => {
+    const cached = createEmptyParseResult();
+    cached.loose.push({
+      line: {
+        start: { x: 5_000_000.015625, y: 0 },
+        end: { x: 5_000_000.025625, y: 0 },
+      },
+      category: 'annotation',
+    });
+    const { annotation } = buildSymbolicLineChannels([{ cached }], {
+      enabled: true,
+      effectiveGridEnabled: false,
+      clipEnabled: false,
+      clipPos: 0,
+      clipDepth: 0,
+      fallbackY: 0,
+    });
+
+    assert.ok(!(annotation instanceof Float32Array) && 'localVertices' in annotation, 'national-grid annotation must use one renderer-owned anchor payload');
+    if (annotation instanceof Float32Array || !('localVertices' in annotation)) return;
+    assert.equal(annotation.origin[0], 5_000_000.015625, 'the f64 source anchor retains the centimetre residual');
+    assert.ok(
+      Math.abs(annotation.localVertices[3] - 0.01) < 1e-8,
+      'the second endpoint remains a 1-cm local delta, not f32-rounded world space',
+    );
   });
 });

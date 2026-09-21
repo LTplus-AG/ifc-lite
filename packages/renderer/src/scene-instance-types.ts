@@ -12,6 +12,8 @@ export interface InstancedTemplateGPU {
   indexCount: number;
   instanceBuffer: GPUBuffer;
   instanceCount: number;
+  /** Canonical f64 Y-up drawable origins, xyz for each GPU record. */
+  canonicalAnchors: Float64Array;
   /** Union of the occurrences' world AABBs (null when no occurrence has a
    *  finite box — such templates are never culled). Same tuple layout as
    *  BatchedMesh.bounds so the render loop's frustum test is shared. */
@@ -52,7 +54,11 @@ export interface InstancedTemplateCpu {
   positions: Float32Array;
   normals: Float32Array;
   indices: Uint32Array;
-  instanceData: ArrayBuffer; // packed 88-byte instance records (mat4 at +0, col-major)
+  instanceData: ArrayBuffer; // packed 120-byte V2 records (V1 mat4 at +0, split anchor at +88)
+  /** Canonical f64 occurrence anchors (xyz per record). These are deliberately
+   * CPU-side until the V2 GPU instance ABI is enabled. */
+  canonicalAnchors: Float64Array;
+  canonicalMatrixTranslations: Float32Array;
   localMin: [number, number, number];
   localMax: [number, number, number];
 }

@@ -29,8 +29,12 @@ import { hasEntityType } from './has-entity-type.js';
 import { getWholeSourceForWorker, parseOverlayLines } from '@/lib/overlay-parse';
 import { overlayRtcContextFor } from '@/lib/overlay-parse/rtc-context';
 import type { RtcFrame } from '@ifc-lite/geometry';
+import { anchorWorldLineVertices, type RendererLineVertices } from '@/lib/renderer/line-overlay-rte';
 
 const EMPTY_F32 = new Float32Array(0);
+
+/** Renderer-owned local line payload, partitioned when a span exceeds 8,192m. */
+export type AlignmentLines3D = RendererLineVertices;
 
 // ─── Shared parse cache ──────────────────────────────────────────────────────
 // One WASM walk per source/frame pair; cached so compatible re-renders and
@@ -116,7 +120,7 @@ function useActiveStores(): { id: string; store: IfcDataStore }[] {
  * RTC-subtracted, metres). Returns a stable empty array when no model carries
  * an alignment. Always parses (no toggle) — see the file header.
  */
-export function useAlignmentLines3D(): Float32Array {
+export function useAlignmentLines3D(): AlignmentLines3D {
   const stores = useActiveStores();
   const placement = useViewerStore((state) => state.modelPlacement);
   const [version, setVersion] = useState(0);
@@ -132,7 +136,7 @@ export function useAlignmentLines3D(): Float32Array {
 
   return useMemo(() => {
     void version; // depend on parse-completion ticks
-    const arrays: Float32Array[] = [];
+    const arrays: { vertices: Float32Array; delta: [number, number, number] }[] = [];
     let total = 0;
     for (const { id, store } of stores) {
       const rtc = overlayRtcContextFor(store);
@@ -143,18 +147,27 @@ export function useAlignmentLines3D(): Float32Array {
       const cached = PARSE_CACHE.get(key);
       if (cached && cached.length > 0) {
         const delta = toRenderTranslation(displayedTranslation(placement, id));
-        arrays.push(delta.some((value) => value !== 0) ? cached.map((value, index) => value + delta[index % 3]) : cached);
+        arrays.push({ vertices: cached, delta });
         total += cached.length;
       }
     }
     if (total === 0) return EMPTY_F32;
-    if (arrays.length === 1) return arrays[0];
-    const merged = new Float32Array(total);
-    let offset = 0;
-    for (const a of arrays) {
-      merged.set(a, offset);
-      offset += a.length;
+    // Anchor all source frames before Float32 materialisation. A conditional
+    // world-f32 fast path would reintroduce a precision cliff above the 8,192m
+    // normal-site envelope. Source deltas are subtracted in f64 so a 15.625 mm
+    // placement residual survives the line upload. A camera cannot render
+    // arbitrarily separated sources in one RTE frame, and the renderer
+    // deliberately rejects such an invalid frame.
+    const world: number[] = [];
+    for (const { vertices, delta } of arrays) {
+      for (let i = 0; i < vertices.length; i++) {
+        world.push(vertices[i] + delta[i % 3]);
+      }
     }
-    return merged;
+    const directLocal = world.every((coordinate) => Math.abs(coordinate) <= 8_192)
+      && world.every((coordinate, index) => index % 6 < 3
+        || Math.abs(coordinate - world[index - 3]) <= 8_192);
+    if (directLocal) return new Float32Array(world);
+    return anchorWorldLineVertices(world);
   }, [stores, version, placement]);
 }

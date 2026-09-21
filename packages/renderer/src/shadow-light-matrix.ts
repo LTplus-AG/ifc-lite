@@ -71,6 +71,18 @@ export interface SunLightFit {
 
 const DEFAULT_SUN: Vec3 = { x: 0, y: 1, z: 0 };
 
+/** A coarse site-wide map must not lift receivers beyond local BIM geometry. */
+export const MAX_SHADOW_NORMAL_BIAS_METRES = 0.25;
+
+/**
+ * Scales normal bias with the shadow-map texel at ordinary resolutions while
+ * bounding the coarse whole-site fallback in real-world metres.
+ */
+export function resolveShadowNormalBiasMetres(texelWorld: number, pcfRadius: number): number {
+  if (!Number.isFinite(texelWorld) || !Number.isFinite(pcfRadius)) return 0;
+  return Math.min(Math.max(texelWorld, 0) * (2 + Math.max(pcfRadius, 0)), MAX_SHADOW_NORMAL_BIAS_METRES);
+}
+
 /** Unit sun direction, falling back to straight down-up for unusable input. */
 function resolveSun(dir: readonly [number, number, number]): Vec3 {
   const x = dir[0], y = dir[1], z = dir[2];
@@ -278,4 +290,3 @@ export function cameraFrustumFocusCorners(p: CameraFrustumParams): Vec3[] | null
   }
   return out;
 }
-

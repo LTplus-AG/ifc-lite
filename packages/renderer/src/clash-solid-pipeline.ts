@@ -26,13 +26,19 @@
 
 import { SYMBOLIC_FILL_WGSL } from './shaders/symbolic-overlay.wgsl.js';
 import { PIPELINE_CONSTANTS } from './constants.js';
+import { packRteDrawableDelta } from './relative-to-eye.js';
 
 const VERTEX_STRIDE_BYTES = (3 + 4) * 4; // pos.xyz + color.rgba, 4 bytes each
 
 /** One flat opaque colour for the whole solid — BIMcollab-style, not per-triangle. */
 export interface ClashSolidInput {
-  /** World-space vertex positions, flat `[x, y, z, …]`. */
+  /**
+   * World-space vertex positions, flat `[x, y, z, …]`; when `origin` is
+   * supplied these are local to that canonical f64 anchor instead.
+   */
   positions: Float32Array | Float64Array;
+  /** Opt-in f64 anchor for local vertices. Float64 world positions auto-anchor. */
+  origin?: [number, number, number];
   /** Triangle indices into `positions / 3`. */
   indices: Uint32Array;
   /** Straight-alpha RGBA in [0..1]. Alpha 1 renders fully opaque. */
@@ -44,7 +50,10 @@ export interface ClashSolidInput {
  * pos+color-per-vertex stream `SYMBOLIC_FILL_WGSL` expects, matching
  * `triangulateFillTo`'s non-indexed triangle-list convention.
  */
-export function expandTriangles(input: ClashSolidInput): Float32Array {
+export function expandTriangles(
+  input: ClashSolidInput,
+  origin?: readonly [number, number, number],
+): Float32Array {
   const { positions, indices, color } = input;
   const triCount = Math.floor(indices.length / 3);
   const out = new Float32Array(triCount * 3 * 7);
@@ -52,9 +61,9 @@ export function expandTriangles(input: ClashSolidInput): Float32Array {
   for (let t = 0; t < triCount; t += 1) {
     for (let k = 0; k < 3; k += 1) {
       const vi = indices[t * 3 + k] * 3;
-      out[w++] = positions[vi];
-      out[w++] = positions[vi + 1];
-      out[w++] = positions[vi + 2];
+      out[w++] = positions[vi] - (origin?.[0] ?? 0);
+      out[w++] = positions[vi + 1] - (origin?.[1] ?? 0);
+      out[w++] = positions[vi + 2] - (origin?.[2] ?? 0);
       out[w++] = color[0];
       out[w++] = color[1];
       out[w++] = color[2];
@@ -74,6 +83,7 @@ export class ClashSolidPipeline {
   private bindGroup: GPUBindGroup | null = null;
   private vertexBuffer: GPUBuffer | null = null;
   private vertexCount = 0;
+  private origin: [number, number, number] | undefined;
 
   constructor(device: GPUDevice, presentationFormat: GPUTextureFormat, sampleCount: number = 1) {
     this.device = device;
@@ -153,7 +163,8 @@ export class ClashSolidPipeline {
 
     this.uniformBuffer = this.device.createBuffer({
       label: 'clash-solid-camera',
-      size: 64,
+      // SYMBOLIC_FILL_WGSL: global/RTE matrices plus split eye-relative origin.
+      size: 160,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -173,10 +184,21 @@ export class ClashSolidPipeline {
       this.vertexBuffer = null;
     }
     this.vertexCount = 0;
+    this.origin = undefined;
 
     if (!input || input.indices.length === 0) return;
 
-    const data = expandTriangles(input);
+    // The on-demand WASM intersection path returns canonical Float64 world
+    // coordinates. Anchor it automatically; a Float32 world stream stays on
+    // the legacy route unless its producer explicitly provides an origin.
+    const autoOrigin = !input.origin && input.positions instanceof Float64Array && input.positions.length >= 3
+      ? [input.positions[0], input.positions[1], input.positions[2]] as [number, number, number]
+      : undefined;
+    // Explicit origins mean the producer has already supplied local vertices.
+    // Only auto-anchored Float64 *world* positions are rebased here; subtracting
+    // an explicit origin again displaces the solid by an entire national-grid
+    // coordinate.
+    const data = expandTriangles(input, autoOrigin);
     if (data.length === 0) return;
 
     this.vertexBuffer = this.device.createBuffer({
@@ -186,16 +208,29 @@ export class ClashSolidPipeline {
     });
     this.device.queue.writeBuffer(this.vertexBuffer, 0, data);
     this.vertexCount = data.length / (VERTEX_STRIDE_BYTES / 4);
+    this.origin = input.origin ?? autoOrigin;
   }
 
   hasGeometry(): boolean {
     return this.vertexCount > 0;
   }
 
-  render(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
+  render(
+    pass: GPURenderPassEncoder,
+    viewProj: Float32Array,
+    rteViewProj?: Float32Array,
+    rteCamera?: readonly [number, number, number],
+  ): void {
     if (!this.pipeline || !this.uniformBuffer || !this.bindGroup || !this.vertexBuffer) return;
     if (this.vertexCount === 0) return;
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, viewProj);
+    const uniform = new Float32Array(40);
+    uniform.set(viewProj, 0);
+    if (this.origin && rteViewProj && rteCamera) {
+      uniform.set(rteViewProj, 16);
+      packRteDrawableDelta(this.origin, rteCamera, uniform, 32);
+      uniform[35] = 1;
+    }
+    this.device.queue.writeBuffer(this.uniformBuffer, 0, uniform);
     pass.setPipeline(this.pipeline);
     pass.setBindGroup(0, this.bindGroup);
     pass.setVertexBuffer(0, this.vertexBuffer);
@@ -211,5 +246,6 @@ export class ClashSolidPipeline {
     this.bindGroupLayout = null;
     this.pipeline = null;
     this.vertexCount = 0;
+    this.origin = undefined;
   }
 }

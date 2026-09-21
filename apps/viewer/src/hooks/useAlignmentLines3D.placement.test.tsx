@@ -12,6 +12,7 @@ import { useViewerStore } from '@/store';
 import { emptyPlacementState } from '@/lib/model-placement/state';
 import { __setOverlayWorkerFactoryForTest } from '@/lib/overlay-parse';
 import { useAlignmentLines3D } from './useAlignmentLines3D';
+import { rendererLineVertexData } from '@/lib/renderer/line-overlay-rte';
 
 it('moves each alignment instance without mutating the shared parsed centerline (#4226)', async () => {
   const vertices = new Float32Array([1, 2, 3, 4, 5, 6]); let parses = 0;
@@ -21,14 +22,23 @@ it('moves each alignment instance without mutating the shared parsed centerline 
   const store = fixtureDataStore([{ expressId: 1, type: 'IfcAlignment' }]);
   store.source = contiguousSourceBytes(new TextEncoder().encode('alignment placement fixture #4226'));
   useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('a'), ifcDataStore: store }, { ...fixtureModel('b'), ifcDataStore: store }), modelPlacement: emptyPlacementState() });
-  function Lines() { return <output>{JSON.stringify(Array.from(useAlignmentLines3D()))}</output>; }
+  function Lines() {
+    const lines = useAlignmentLines3D();
+    return <output>{JSON.stringify(lines instanceof Float32Array
+      ? { kind: 'flat', vertices: Array.from(lines) }
+      : { kind: 'anchored', vertices: Array.from(rendererLineVertexData(lines)) })}</output>;
+  }
   try {
     const ui = render(<Lines />); await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    assert.deepEqual(JSON.parse(ui.textContent!), [...vertices, ...vertices]);
+    assert.deepEqual(JSON.parse(ui.textContent!), { kind: 'flat', vertices: [...vertices, ...vertices] });
     act(() => { const s = useViewerStore.getState(); s.openReposition(['b']); s.previewModelTranslation([10, 20, 30]); });
-    assert.deepEqual(JSON.parse(ui.textContent!), [1, 2, 3, 4, 5, 6, 11, 32, -17, 14, 35, -14]);
+    assert.deepEqual(JSON.parse(ui.textContent!), { kind: 'flat', vertices: [1, 2, 3, 4, 5, 6, 11, 32, -17, 14, 35, -14] });
     act(() => useViewerStore.getState().closeReposition());
-    assert.deepEqual(JSON.parse(ui.textContent!), [...vertices, ...vertices]);
+    assert.deepEqual(JSON.parse(ui.textContent!), { kind: 'flat', vertices: [...vertices, ...vertices] });
+    act(() => { const s = useViewerStore.getState(); s.openReposition(['b']); s.previewModelTranslation([5_000_000.015625, 0, 0]); });
+    const anchored = JSON.parse(ui.textContent!);
+    assert.equal(anchored.kind, 'anchored');
+    assert.equal(anchored.vertices[6], 0, 'the translated alignment starts a new local RTE partition instead of narrowing a grid coordinate');
     assert.deepEqual(Array.from(vertices), [1, 2, 3, 4, 5, 6]); assert.equal(parses, 1);
   } finally { cleanup(); __setOverlayWorkerFactoryForTest(previous); }
 });

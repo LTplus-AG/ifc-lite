@@ -187,6 +187,7 @@ nav:
     - Geometry Pipeline: architecture/geometry-pipeline.md
     - Coverage Ledger: architecture/coverage-ledger.md
     - Rendering Pipeline: architecture/rendering-pipeline.md
+    - Relative-to-Eye Rendering: architecture/renderer-relative-to-eye.md
     - Coordinate Handling: architecture/coordinate-handling.md
     - Federation: architecture/federation.md
     - Collaboration: architecture/collaboration.md

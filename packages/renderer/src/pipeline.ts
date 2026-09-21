@@ -10,6 +10,7 @@ import { WebGPUDevice } from './device.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
 import { texturedShaderSource } from './shaders/textured.wgsl.js';
 import { packClipBox } from './clip-box.js';
+import { MESH_FLAGS_BYTE_OFFSET, MESH_UNIFORM_BYTES, MESH_UNIFORM_FLOATS } from './mesh-rte-uniforms.js';
 import {
     ENVIRONMENT_UNIFORM_SIZE,
     packEnvironmentUniforms,
@@ -127,7 +128,7 @@ export class RenderPipeline {
         // Create uniform buffer for camera matrices, PBR material, section plane + clip box
         // Layout: viewProj (64 bytes) + model (64 bytes) + baseColor (16 bytes) + metallicRoughness (8 bytes) +
         //         sectionPlane (16 bytes: vec3 normal + float distance) + flags (16 bytes) +
-        //         clipBoxMin (16 bytes) + clipBoxMax (16 bytes) = 224 bytes
+        //         clipBoxMin/max + quant params + appended RTE frame/origin = 336 bytes
         // WebGPU requires uniform buffers to be aligned to 16 bytes
         this.uniformBuffer = this.device.createBuffer({
             size: this.getUniformBufferSize(), // keep in lockstep with the WGSL Uniforms struct
@@ -279,7 +280,7 @@ export class RenderPipeline {
                     ],
                 },
                 {
-                    arrayStride: 88, // mat4(64) + entityId(4) + rgba(16) + flags(4) — INSTANCE_STRIDE_BYTES
+                    arrayStride: 120, // V2: V1 record (88) + anchor high/low vec4s
                     stepMode: 'instance',
                     attributes: [
                         { shaderLocation: 3, offset: 0, format: 'float32x4' }, // instMat col0
@@ -289,6 +290,8 @@ export class RenderPipeline {
                         { shaderLocation: 7, offset: 64, format: 'uint32' }, // entityId
                         { shaderLocation: 8, offset: 68, format: 'float32x4' }, // rgba
                         { shaderLocation: 9, offset: 84, format: 'uint32' }, // flags (bit 0 = selected, bit 1 = hidden)
+                        { shaderLocation: 10, offset: 88, format: 'float32x4' }, // anchor high
+                        { shaderLocation: 11, offset: 104, format: 'float32x4' }, // anchor low
                     ],
                 },
             ],
@@ -541,11 +544,11 @@ export class RenderPipeline {
                             { shaderLocation: 0, offset: 0, format: 'float32x3' },
                             { shaderLocation: 1, offset: 12, format: 'float32x3' },
                             { shaderLocation: 2, offset: 24, format: 'uint32' },
-                            // uv at @location(10): main.wgsl's vs_instanced/InstanceInput
-                            // occupy vertex-input @location 3..9 in this derived module,
+                            // uv at @location(12): main.wgsl's vs_instanced/InstanceInput
+                            // occupy vertex-input @location 3..11 in this derived module,
                             // so the textured uv lane moves clear of them (see
                             // textured.wgsl.ts). Byte offset (28) is unchanged.
-                            { shaderLocation: 10, offset: 28, format: 'float32x2' },
+                            { shaderLocation: 12, offset: 28, format: 'float32x2' },
                         ],
                     },
                 ],
@@ -563,7 +566,6 @@ export class RenderPipeline {
             },
             multisample: { count: this.sampleCount },
         } as GPURenderPipelineDescriptor);
-
         // Create bind group using the explicit bind group layout
         this.bindGroup = this.device.createBindGroup({
             layout: this.bindGroupLayout,
@@ -590,9 +592,9 @@ export class RenderPipeline {
     ): void {
         // Create buffer with proper alignment:
         // viewProj (16) + model (16) + baseColor (4) + metallicRoughness (2) + padding (2)
-        // + sectionPlane (4) + flags (4 u32) + clipBoxMin (4) + clipBoxMax (4) = 56 floats = 224 bytes
-        const buffer = new Float32Array(56);
-        const flagBuffer = new Uint32Array(buffer.buffer, 176, 4); // flags at byte 176
+        // + sectionPlane/flags/clip (16) + quant(4) + RTE frame/origin/camera(32) = 92 floats.
+        const buffer = new Float32Array(MESH_UNIFORM_FLOATS);
+        const flagBuffer = new Uint32Array(buffer.buffer, MESH_FLAGS_BYTE_OFFSET, 4); // flags at byte 176
 
         // viewProj: mat4x4<f32> at offset 0 (16 floats)
         buffer.set(viewProj, 0);
@@ -642,13 +644,7 @@ export class RenderPipeline {
         this.device.queue.writeBuffer(this.uniformBuffer, 0, buffer);
     }
 
-    /**
-     * Write a raw 56-float (224-byte) uniform block into the SHARED uniform
-     * buffer, whose bind group is `getBindGroup()`. Used by the GPU-instancing
-     * pass, which reuses the frame's viewProj + section + flags from the
-     * renderer's prebuilt template (model + baseColor are unused — vs_instanced
-     * takes the transform + colour per-occurrence from the instance buffer).
-     */
+    /** Write the raw 84-float RTE uniform for instancing; model/colour come from its instance buffer. */
     /**
      * Create-and-VALIDATE the quantized pipeline variants. Uses
      * createRenderPipelineAsync so WebGPU's asynchronous validation completes
@@ -687,10 +683,10 @@ export class RenderPipeline {
         // pass, bit 3 = transparent instanced sub-pass (the shader routes per-instance
         // opacity off these).
         if (extraFlagsX !== 0) {
-            const baseFlagsX = new Uint32Array(data.buffer, data.byteOffset + 176, 1)[0];
+            const baseFlagsX = new Uint32Array(data.buffer, data.byteOffset + MESH_FLAGS_BYTE_OFFSET, 1)[0];
             this.device.queue.writeBuffer(
                 this.uniformBuffer,
-                176,
+                MESH_FLAGS_BYTE_OFFSET,
                 new Uint32Array([baseFlagsX | extraFlagsX]),
             );
         }
@@ -923,10 +919,10 @@ export class RenderPipeline {
     }
 
     getUniformBufferSize(): number {
-        // 60 floats * 4 bytes: section plane + clip box + quantParams
-        // (issue #1682 phase 6). Must match the WGSL Uniforms struct and the
+        // 92 floats * 4 bytes: legacy material/clip/quant fields plus appended
+        // RTE view-projection and drawable high/low lanes. Must match WGSL and
         // renderer's uniformScratch length.
-        return 240;
+        return MESH_UNIFORM_BYTES;
     }
 
     private destroyed = false;

@@ -302,6 +302,7 @@ function restoreInstancedTemplates(host: SceneRecoveryHost, device: GPUDevice): 
       host.instancedTemplates[slot] = {
         modelIndex: cpu.modelIndex, vertexBuffer, indexBuffer, indexCount: cpu.indices.length,
         instanceBuffer, instanceCount: cpu.instanceData.byteLength / INSTANCE_STRIDE_BYTES,
+        canonicalAnchors: cpu.canonicalAnchors,
         bounds: null, maxOccRadius: 0, selectedCount: 0,
       };
     } catch (error) {

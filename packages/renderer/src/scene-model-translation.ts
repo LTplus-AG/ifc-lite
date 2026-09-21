@@ -10,7 +10,13 @@ import { foldOccurrenceWorldBox, INSTANCE_STRIDE_BYTES } from './instanced-rende
 import { worldAabbFromPieces } from './scene-geometry.js';
 
 type Triple = [number, number, number];
-interface CpuTemplate { instanceData: ArrayBuffer; localMin: Triple; localMax: Triple }
+interface CpuTemplate {
+  instanceData: ArrayBuffer;
+  canonicalAnchors: Float64Array;
+  canonicalMatrixTranslations: Float32Array;
+  localMin: Triple;
+  localMax: Triple;
+}
 interface TranslationScene {
   translations: ModelTranslations;
   pieces: Map<number, MeshData[]>;
@@ -76,7 +82,13 @@ export function placeSceneInstances(scene: TranslationScene, modelIndex: number)
   for (let i = 0; i < scene.templates.length; i++) {
     const gpu = scene.templates[i], cpu = scene.cpu[i];
     if (!gpu || !cpu || gpu.modelIndex !== modelIndex) continue;
-    if (scene.translations.placeInstances(cpu.instanceData, modelIndex, INSTANCE_STRIDE_BYTES)) {
+    if (scene.translations.placeInstances(
+      cpu.instanceData,
+      modelIndex,
+      INSTANCE_STRIDE_BYTES,
+      cpu.canonicalAnchors,
+      cpu.canonicalMatrixTranslations,
+    )) {
       scene.device?.queue.writeBuffer(gpu.instanceBuffer, 0, cpu.instanceData);
     }
     gpu.bounds = null;

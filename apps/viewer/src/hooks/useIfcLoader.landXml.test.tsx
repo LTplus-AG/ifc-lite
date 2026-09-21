@@ -183,7 +183,7 @@ describe('useIfcLoader LandXML route (#4937)', () => {
     [0, 2_000_000, 'near model first'],
     [2_000_000, 0, 'distant model first'],
   ] as const) {
-    it(`refuses a compact LandXML model outside the established federation frame (${order})`, async () => {
+    it(`refuses a compact LandXML model outside the established federation frame (${order}, #5049)`, async () => {
       await act(async () => hookApi!.loadFile(
         landXmlFile(`anchor-${primaryOffset}.xml`, primaryOffset),
         { kind: 'primary' },
@@ -197,14 +197,14 @@ describe('useIfcLoader LandXML route (#4937)', () => {
       ));
 
       const state = useViewerStore.getState();
-      assert.equal(state.models.size, 1, 'a refused federated terrain is never partially registered');
+      assert.equal(state.models.size, 1, 'the remote component must not join a frame more than 1,000 km away');
       assert.equal(state.models.get(anchor.id), anchor, 'the established model remains unchanged');
-      assert.equal(state.models.has('outside-frame'), false);
-      assert.match(state.error ?? '', /every surface component's full Y-up bounds exceed the 1000 km shared render-frame limit/);
+      assert.equal(state.models.get('outside-frame'), undefined);
+      assert.match(state.error ?? '', /cannot be federated|shared render-frame envelope/);
     });
   }
 
-  it('warns and recomputes metadata when only some reframed components fit', async () => {
+  it('retains only the in-frame component with accurate LandXML provenance (#5049)', async () => {
     await act(async () => hookApi!.loadFile(landXmlFile('anchor.xml', 0), { kind: 'primary' }));
     const messages: string[] = [];
     const originalInfo = toast.info;
@@ -223,16 +223,15 @@ describe('useIfcLoader LandXML route (#4937)', () => {
     assert.equal(model.geometryResult.meshes.length, 1);
     assert.equal(model.geometryResult.totalVertices, 3);
     assert.equal(model.geometryResult.totalTriangles, 1);
+    assert.ok(model.geometryResult.coordinateInfo.originalBounds.max.x > 900_000,
+      'the retained in-frame source bounds remain represented through mesh anchors');
     assert.ok(model.geometryResult.coordinateInfo.originalBounds.max.x < 1_000_000,
-      'discarded bounds must not survive in the registered model metadata');
-    assert.ok(model.geometryResult.coordinateInfo.shiftedBounds.max.x < 1_000_000,
-      'the camera-fit bounds must describe only the retained component');
+      'the refused remote component must not leak into retained bounds');
     const retainedCounts = model.landXmlDocument?.rendering.surfaceCounts;
     assert.ok(retainedCounts);
-    assert.deepEqual(retainedCounts.map((counts) => counts.renderedFaces), [1, 0],
-      'source inspection counts describe only mesh components that survived federation framing');
-    assert.deepEqual(retainedCounts.map((counts) => counts.droppedReframeFaces), [0, 1],
-      'the dropped source face remains accounted for as a frame rejection, not rendered geometry');
-    assert.ok(messages.some((warning) => /Skipped 1 LandXML surface component.*full Y-up bounds/.test(warning)));
+    assert.deepEqual(retainedCounts.map((counts) => counts.renderedFaces), [1, 0]);
+    assert.deepEqual(retainedCounts.map((counts) => counts.droppedReframeFaces), [0, 1]);
+    assert.deepEqual(model.landXmlDocument?.rendering.meshProvenance.map((mesh) => mesh.surfaceSourceId), [retainedCounts[0]!.surfaceSourceId]);
+    assert.equal(messages.some((warning) => /Skipped 1 LandXML surface component/.test(warning)), true);
   });
 });

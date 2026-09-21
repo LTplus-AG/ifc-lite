@@ -15,7 +15,7 @@ export class PointCloudPlacements {
   private entry(node: PointCloudNode): Placement {
     let entry = this.placements.get(node);
     if (!entry) {
-      entry = { baseline: new Float64Array(node.model ?? IDENTITY), translation: [0, 0, 0] };
+      entry = { baseline: new Float64Array(node.placement ?? node.model ?? IDENTITY), translation: [0, 0, 0] };
       this.placements.set(node, entry);
     }
     return entry;
@@ -45,16 +45,32 @@ export class PointCloudPlacements {
     this.matrix({ ...this.entry(node), translation });
   }
 
-  private apply(node: PointCloudNode, entry: Placement): void { node.model = this.matrix(entry); }
+  private apply(node: PointCloudNode, entry: Placement): void {
+    const matrix = this.matrix(entry);
+    // This is the sole canonical placement. CPU callers must never recover a
+    // source coordinate from `node.model`: at 5,000 km that f32 translation
+    // rounds a 2.5 cm residual away before snap/measurement sees it.
+    node.placement = matrix;
+    node.rteOrigin = [matrix[12], matrix[13], matrix[14]];
+    // The legacy CPU picker accepts an f32 matrix. Rendering consumes the
+    // exact `rteOrigin` above, so this narrowing cannot erase visible detail.
+    node.model = new Float32Array(matrix);
+  }
 
-  private matrix(entry: Placement): Float32Array {
-    const matrix = new Float32Array(entry.baseline);
+  private matrix(entry: Placement): Float64Array {
+    // Preserve map-grid translations until the RTE render boundary. Narrowing
+    // this matrix here loses centimetres before the high/low split can help.
+    const matrix = new Float64Array(entry.baseline);
     for (let axis = 0; axis < 3; axis++) {
       // Sum in f64 FIRST. Narrowing the baseline at map magnitude would lose
       // the millimetres before a coarse move can bring the cloud near zero.
       matrix[12 + axis] = entry.baseline[12 + axis] + entry.translation[axis];
     }
-    if (!matrix.every(Number.isFinite)) throw new Error('Pointcloud placement exceeds the renderable coordinate range.');
+    // The legacy picker still holds a Float32 matrix. Keep its established
+    // finite-range guard while preserving finite f64 residuals for RTE.
+    if (!matrix.every(Number.isFinite) || !new Float32Array(matrix).every(Number.isFinite)) {
+      throw new Error('Pointcloud placement exceeds the renderable coordinate range.');
+    }
     return matrix;
   }
 }
@@ -65,7 +81,7 @@ export function unionPointCloudBounds(nodes: Iterable<PointCloudNode | undefined
   const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
   for (const node of nodes) {
     if (!node || node.pointCount === 0) continue;
-    const bounds = transformAabb(node.bounds, node.model);
+    const bounds = transformAabb(node.bounds, node.placement ?? node.model);
     if (![...bounds.min, ...bounds.max].every(Number.isFinite)) continue;
     for (let axis = 0; axis < 3; axis++) {
       min[axis] = Math.min(min[axis], bounds.min[axis]);

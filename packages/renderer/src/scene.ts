@@ -29,7 +29,7 @@ import {
   raycastTriangles,
   rayIntersectsBox,
 } from './scene-raycaster.js';
-import { selectBoundingBoxesInRect } from './scene-rect-select.js';
+import { selectBoundingBoxesInRect, type RectangleRteFrame } from './scene-rect-select.js';
 import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, destroyGpuResources, topologySafeBatchOrigin } from './scene-geometry.js';
 import { resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
@@ -43,6 +43,7 @@ import { selectEvictions, type ResidencyShell, type ColdGeometryProvider } from 
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 import { translateSceneModel, rotateSceneModelInstances, releaseInstanceVertices, refreshTexturedBounds } from './scene-model-translation.js';
 import { ModelTranslations, type ModelYaw } from './model-translation.js';
+import { unionInstancedWorldAabb as unionInstanceBounds } from './scene-instance-bounds.js';
 import { DerivedMeshProvenance } from './scene-derived-mesh-provenance.js';
 import { rebuildSceneBatches } from './scene-batch-rebuild.js';
 import {
@@ -61,6 +62,7 @@ import {
   INSTANCE_FLAG_SELECTED,
   INSTANCE_FLAG_HIDDEN,
 } from './instanced-render.js';
+import { translateInstanceRecord } from './scene-instance-translation.js';
 import { discardSceneGpuResourcesForRecovery, prepareSceneDeviceRecovery, repartitionHydratedRecoveryBucket, restoreSceneGpuResourcesAfterRecovery, type SceneDeviceRecoveryPreparation, type SceneRecoveryHost } from './scene-device-recovery.js';
 
 /** Consolidated per-bucket state — replaces six separate tracking maps. */
@@ -1616,21 +1618,16 @@ export class Scene {
     for (const occ of occurrences) {
       const cpu = this.instancedTemplateCpu[occ.templateIndex];
       if (!cpu) continue;
-      // Column-major mat4: the translation column is floats 12,13,14, i.e. bytes
-      // +48/+52/+56 of the occurrence's record (matches unionInstancedWorldAabb).
-      const dv = new DataView(cpu.instanceData);
       const b = occ.byteOffset;
-      const tx = dv.getFloat32(b + 48, true) + dx;
-      const ty = dv.getFloat32(b + 52, true) + dy;
-      const tz = dv.getFloat32(b + 56, true) + dz;
-      dv.setFloat32(b + 48, tx, true);
-      dv.setFloat32(b + 52, ty, true);
-      dv.setFloat32(b + 56, tz, true);
+      const translated = translateInstanceRecord(cpu, b, [dx, dy, dz]);
       // Push only the 12 translation bytes to the GPU buffer (in place). Guarded
       // on the cached device so CPU-only tests still exercise the matrix math.
       if (device) {
         const gpu = this.instancedTemplates[occ.templateIndex]?.instanceBuffer;
-        if (gpu) device.queue.writeBuffer(gpu, b + 48, new Float32Array([tx, ty, tz]));
+        if (gpu) {
+          device.queue.writeBuffer(gpu, b + 48, translated.translation);
+          if (translated.legacyAnchors) device.queue.writeBuffer(gpu, b + 88, translated.legacyAnchors);
+        }
       }
       moved = true;
     }
@@ -3141,7 +3138,13 @@ export class Scene {
 
       // instanceBuffer is already the interleaved mat4 + entityId + rgba block
       // (INSTANCE_STRIDE_BYTES per occurrence) from prepareInstancedRender.
-      this.modelTranslations.placeInstances(t.instanceBuffer, modelIndex, INSTANCE_STRIDE_BYTES);
+      this.modelTranslations.placeInstances(
+        t.instanceBuffer,
+        modelIndex,
+        INSTANCE_STRIDE_BYTES,
+        t.canonicalAnchors,
+        t.canonicalMatrixTranslations,
+      );
       const instSize = t.instanceCount * INSTANCE_STRIDE_BYTES;
       const instanceBuffer = device.createBuffer({
         size: instSize,
@@ -3162,6 +3165,7 @@ export class Scene {
         indexCount: t.indices.length,
         instanceBuffer,
         instanceCount: t.instanceCount,
+        canonicalAnchors: t.canonicalAnchors,
         bounds: null,
         maxOccRadius: 0,
         selectedCount: 0,
@@ -3186,6 +3190,8 @@ export class Scene {
         normals: t.normals,
         indices: t.indices,
         instanceData: t.instanceBuffer,
+        canonicalAnchors: t.canonicalAnchors,
+        canonicalMatrixTranslations: t.canonicalMatrixTranslations,
         localMin: [lmnx, lmny, lmnz],
         localMax: [lmxx, lmxy, lmxz],
       };
@@ -3257,52 +3263,13 @@ export class Scene {
     this.instancedVisibilityDirty = true;
     this.instancedGhostDirty = true;
   }
-
-  /** Transform a template's local AABB by an occurrence's column-major mat4 (read
-   *  from the packed instance record at `matOffset`) and union the world box into
-   *  boundingBoxes[eid]. Returns the occurrence's world box so the caller can also
-   *  fold it into the template's cull metadata. */
-  private unionInstancedWorldAabb(
-    eid: number,
-    dv: DataView,
-    matOffset: number,
-    lmnx: number, lmny: number, lmnz: number,
-    lmxx: number, lmxy: number, lmxz: number,
-  ): { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number } {
-    const m0 = dv.getFloat32(matOffset + 0, true), m1 = dv.getFloat32(matOffset + 4, true), m2 = dv.getFloat32(matOffset + 8, true);
-    const m4 = dv.getFloat32(matOffset + 16, true), m5 = dv.getFloat32(matOffset + 20, true), m6 = dv.getFloat32(matOffset + 24, true);
-    const m8 = dv.getFloat32(matOffset + 32, true), m9 = dv.getFloat32(matOffset + 36, true), m10 = dv.getFloat32(matOffset + 40, true);
-    const m12 = dv.getFloat32(matOffset + 48, true), m13 = dv.getFloat32(matOffset + 52, true), m14 = dv.getFloat32(matOffset + 56, true);
-    let minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-    for (let c = 0; c < 8; c++) {
-      const x = (c & 1) ? lmxx : lmnx, y = (c & 2) ? lmxy : lmny, z = (c & 4) ? lmxz : lmnz;
-      const wx = m0 * x + m4 * y + m8 * z + m12;
-      const wy = m1 * x + m5 * y + m9 * z + m13;
-      const wz = m2 * x + m6 * y + m10 * z + m14;
-      if (wx < minX) minX = wx; if (wy < minY) minY = wy; if (wz < minZ) minZ = wz;
-      if (wx > maxX) maxX = wx; if (wy > maxY) maxY = wy; if (wz > maxZ) maxZ = wz;
-    }
-    const existing = this.boundingBoxes.get(eid);
-    if (existing) {
-      existing.min.x = Math.min(existing.min.x, minX);
-      existing.min.y = Math.min(existing.min.y, minY);
-      existing.min.z = Math.min(existing.min.z, minZ);
-      existing.max.x = Math.max(existing.max.x, maxX);
-      existing.max.y = Math.max(existing.max.y, maxY);
-      existing.max.z = Math.max(existing.max.z, maxZ);
-    } else {
-      this.boundingBoxes.set(eid, { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } });
-    }
-    return { minX, minY, minZ, maxX, maxY, maxZ };
+  private unionInstancedWorldAabb(eid: number, dv: DataView, matOffset: number, lmnx: number, lmny: number, lmnz: number, lmxx: number, lmxy: number, lmxz: number): { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number } {
+    return unionInstanceBounds(this.boundingBoxes, eid, dv, matOffset, lmnx, lmny, lmnz, lmxx, lmxy, lmxz);
   }
-
-  /** True if `expressId` is a GPU-instanced occurrence (lives only in the instanced
-   *  shard, not the flat meshDataMap). CPU consumers use this to decide whether to
-   *  fall back to the instanced accessors below. */
+  /** True when `expressId` has a GPU-instanced occurrence. */
   isInstancedEntity(expressId: number): boolean {
     return this.instancedEntityMap.has(expressId);
   }
-
   /** Retain one model-owned occurrence for reversible appearance replacement. */
   retainInstancedOccurrence(expressId: number, modelIndex: number) {
     const occurrences = this.instancedEntityMap.get(expressId);
@@ -4196,6 +4163,7 @@ export class Scene {
     hiddenIds?: Set<number>,
     isolatedIds?: Set<number> | null,
     clip?: PickClipState | null,
+    rte?: RectangleRteFrame | null,
   ): Set<number> {
     // After release the cache is already the complete set; before it, boxes are
     // computed lazily, so make sure every entity that still has mesh data has
@@ -4224,6 +4192,7 @@ export class Scene {
       hiddenIds,
       isolatedIds,
       clip,
+      rte,
     );
   }
 }

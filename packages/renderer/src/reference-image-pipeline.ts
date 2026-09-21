@@ -2,17 +2,30 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { PIPELINE_CONSTANTS } from './constants.js';
+import { packRteDrawableDelta } from './relative-to-eye.js';
 import type { ReferenceImageInput } from './reference-image-types.js';
 
+const REFERENCE_UNIFORM_FLOATS = 48;
+
 const SHADER = `
-struct Uniforms { viewProj: mat4x4<f32>, clipOrigin: vec4<f32>, settings: vec4<f32> }
+struct Uniforms {
+  viewProj: mat4x4<f32>,
+  rteViewProj: mat4x4<f32>,
+  clipOrigin: vec4<f32>,
+  originHigh: vec4<f32>,
+  originLow: vec4<f32>,
+  settings: vec4<f32>,
+}
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var raster: texture_2d<f32>;
 @group(0) @binding(2) var rasterSampler: sampler;
 struct Vertex { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32> }
 @vertex fn vs(@location(0) position: vec3<f32>, @location(1) uv: vec2<f32>) -> Vertex {
   var out: Vertex;
-  out.position = u.viewProj * vec4<f32>(position, 0.0) + u.clipOrigin;
+  let global = u.viewProj * vec4<f32>(position, 0.0) + u.clipOrigin;
+  let relative = position + u.originHigh.xyz + u.originLow.xyz;
+  let rte = u.rteViewProj * vec4<f32>(relative, 1.0);
+  out.position = select(global, rte, u.originHigh.w == 1.0);
   out.uv = uv; return out;
 }
 @fragment fn fs(v: Vertex) -> @location(0) vec4<f32> {
@@ -24,7 +37,12 @@ struct Vertex { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f3
 
 export interface ReferenceGpuImage {
   input: ReferenceImageInput;
-  draw(pass: GPURenderPassEncoder, viewProj: Float32Array): void;
+  draw(
+    pass: GPURenderPassEncoder,
+    viewProj: Float32Array,
+    rteViewProj?: Float32Array,
+    rteCamera?: readonly [number, number, number],
+  ): void;
   destroy(): void;
 }
 
@@ -73,19 +91,25 @@ export class ReferenceImagePipeline {
       const buffer = device.createBuffer({ size: vertices.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
       resources.push(buffer);
       device.queue.writeBuffer(buffer, 0, vertices);
-      const uniform = device.createBuffer({ size: 96, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+      const uniform = device.createBuffer({ size: REFERENCE_UNIFORM_FLOATS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
       resources.push(uniform);
       const bind = device.createBindGroup({ layout: this.pipeline.getBindGroupLayout(0), entries: [
         { binding: 0, resource: { buffer: uniform } }, { binding: 1, resource: texture.createView() }, { binding: 2, resource: this.sampler },
       ] });
-      const data = new Float32Array(24);
+      const data = new Float32Array(REFERENCE_UNIFORM_FLOATS);
       let destroyed = false;
       return { input,
-        draw: (pass, viewProj) => {
+        draw: (pass, viewProj, rteViewProj, rteCamera) => {
           if (destroyed || !input.visible || input.opacity === 0) return;
+          data.fill(0);
           data.set(viewProj, 0);
-          for (let row = 0; row < 4; row++) data[16+row] = viewProj[row]*origin[0]+viewProj[4+row]*origin[1]+viewProj[8+row]*origin[2]+viewProj[12+row];
-          data[20] = input.opacity;
+          for (let row = 0; row < 4; row++) data[32 + row] = viewProj[row]*origin[0]+viewProj[4+row]*origin[1]+viewProj[8+row]*origin[2]+viewProj[12+row];
+          if (rteViewProj && rteCamera) {
+            data.set(rteViewProj, 16);
+            packRteDrawableDelta(origin, rteCamera, data, 36);
+            data[39] = 1;
+          }
+          data[44] = input.opacity;
           device.queue.writeBuffer(uniform, 0, data);
           pass.setPipeline(this.pipeline); pass.setBindGroup(0, bind); pass.setVertexBuffer(0, buffer); pass.draw(6);
         },

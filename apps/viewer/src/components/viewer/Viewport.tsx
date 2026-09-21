@@ -61,6 +61,7 @@ import {
   useSymbolicAnnotationsRichData,
   type SectionClipForGrid,
 } from '../../hooks/useSymbolicAnnotations.js';
+import { symbolicLineVertexData } from '../../hooks/symbolic-line-channels.js';
 import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
 import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
 import { useLandXmlRendererOverlay } from '../../hooks/useLandXmlOverlayLines.js';
@@ -68,6 +69,7 @@ import { selectLandXmlViewportPick } from './landXmlViewportSelection.js';
 import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
 import { subscribeViewportHealth } from './device-loss-report.js';
 import { runGpuUpload } from './gpu-upload-guard.js';
+import { anchorWorldLineVertices, rendererLineVertexData } from '@/lib/renderer/line-overlay-rte';
 import { useTranslation } from '@/i18n';
 
 interface ViewportProps {
@@ -595,7 +597,7 @@ export function Viewport({
     if (!renderer) return;
     if (showClashRegionBox && clashContactLines && clashContactLines.vertices.length > 0) {
       renderer.setClashContactLines({
-        vertices: new Float32Array(clashContactLines.vertices),
+        vertices: anchorWorldLineVertices(clashContactLines.vertices),
         color: clashContactLines.color,
       });
     } else if (showClashRegionBox && clashOverlapBox) {
@@ -1461,7 +1463,7 @@ export function Viewport({
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
     const v = symbolicLineChannels.annotation;
-    renderer.setLineOverlay('annotation', v.length === 0 ? null : v);
+    renderer.setLineOverlay('annotation', symbolicLineVertexData(v).length === 0 ? null : v);
   }, [symbolicLineChannels.annotation, isInitialized]);
 
   // IfcAlignment centerlines render as thin lines (not a ribbon mesh), always
@@ -1471,10 +1473,8 @@ export function Viewport({
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
-    renderer.setLineOverlay(
-      'alignment',
-      alignmentVertices3D.length === 0 ? null : alignmentVertices3D,
-    );
+    const empty = rendererLineVertexData(alignmentVertices3D).length === 0;
+    renderer.setLineOverlay('alignment', empty ? null : alignmentVertices3D);
   }, [alignmentVertices3D, isInitialized]);
 
   // Structural-grid (IfcGridAxis) lines draw ONLY from `useSymbolicAnnotations`
@@ -1490,7 +1490,7 @@ export function Viewport({
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
     const v = symbolicLineChannels.grid;
-    renderer.setLineOverlay('grid', !ifcGridVisible || v.length === 0 ? null : v);
+    renderer.setLineOverlay('grid', !ifcGridVisible || symbolicLineVertexData(v).length === 0 ? null : v);
   }, [symbolicLineChannels.grid, ifcGridVisible, isInitialized]);
 
   // DXF reference-layer line paths in the 3D viewport (issue #2043,

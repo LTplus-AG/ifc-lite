@@ -38,6 +38,7 @@ import {
   useSymbolicAnnotations,
   useSymbolicAnnotationsRichData,
 } from './useSymbolicAnnotations.js';
+import { symbolicLineVertexData } from './symbolic-line-channels.js';
 
 /**
  * The class names come FROM the channel table, never retyped. The first
@@ -141,8 +142,8 @@ async function sample(hideTypes: string[]): Promise<Sample> {
     const lines = useSymbolicAnnotations({ enabled: true, gridEnabled: true });
     const rich = useSymbolicAnnotationsRichData({ enabled: true, gridEnabled: true });
     latest = {
-      annotationVerts: lines.annotation.length,
-      gridVerts: lines.grid.length,
+      annotationVerts: symbolicLineVertexData(lines.annotation).length,
+      gridVerts: symbolicLineVertexData(lines.grid).length,
       texts: rich.texts.map((t) => t.content),
     };
     return null;

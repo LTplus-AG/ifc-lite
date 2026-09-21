@@ -47,6 +47,7 @@ async fn test_state(label: &str, metrics_enabled: bool) -> AppState {
         cache,
         config: Arc::new(config),
         admission: test_admission(4),
+        data_model_in_flight: Arc::new(crate::in_flight::InFlightKeys::default()),
     }
 }
 

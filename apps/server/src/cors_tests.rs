@@ -57,6 +57,7 @@ async fn state_with_origins(label: &str, origins: &[&str]) -> AppState {
                 shed_pct: 0,
             },
         )),
+        data_model_in_flight: Arc::new(crate::in_flight::InFlightKeys::default()),
     }
 }
 

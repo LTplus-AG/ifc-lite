@@ -21,16 +21,26 @@ use axum::{
 /// GET /api/v1/parse/data-model/:cache_key
 ///
 /// Fetch the data model for a previously parsed file.
-/// Returns the data model Parquet data if available (may still be processing).
 ///
 /// Response:
 /// - 200: Data model Parquet binary
-/// - 202: Data model still processing (client should retry)
-/// - 404: Cache key not found
+/// - 202: A fill IS running for this key right now (client should retry)
+/// - 404: Nothing cached for this key and nothing filling it (issue #5129:
+///   `/parse/parquet/optimized` never triggers a data-model write, so before
+///   this a client that called only that route polled 202 forever -- the
+///   response read as "still processing" for a key nothing was processing)
 pub async fn get_data_model(
     State(state): State<AppState>,
     axum::extract::Path(cache_key): axum::extract::Path<String>,
 ) -> Result<Response, ApiError> {
+    // Snapshot BEFORE the cache read, not after: reading it after would let a
+    // write that finishes (and clears the marker) between the two checks lose
+    // the race the other way, answering 404 for a fill that in fact just
+    // landed -- checked here, `parse_parquet_stream`'s in-flight window ends
+    // only once the cache write itself is resolved, so this snapshot is
+    // conservative (may report in-flight a hair after the write lands, never
+    // the reverse).
+    let in_flight = state.data_model_in_flight.contains(&cache_key);
     let data_model_cache_key = data_model_cache_key(&cache_key);
 
     match state.cache.get_bytes(&data_model_cache_key).await? {
@@ -50,10 +60,9 @@ pub async fn get_data_model(
 
             Ok(response)
         }
-        None => {
-            tracing::debug!(cache_key = %cache_key, "Data model not yet available");
+        None if in_flight => {
+            tracing::debug!(cache_key = %cache_key, "Data model fill in flight");
 
-            // Return 202 Accepted to indicate processing
             let response = Response::builder()
                 .status(StatusCode::ACCEPTED)
                 .header(header::CONTENT_TYPE, "application/json")
@@ -61,6 +70,12 @@ pub async fn get_data_model(
                 .map_err(|e| ApiError::Internal(e.to_string()))?;
 
             Ok(response)
+        }
+        None => {
+            tracing::debug!(cache_key = %cache_key, "No data model cached and none in flight for this key");
+            Err(ApiError::NotFound(format!(
+                "No data model cached for key: {cache_key}"
+            )))
         }
     }
 }

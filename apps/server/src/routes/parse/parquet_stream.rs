@@ -326,12 +326,20 @@ pub async fn parse_parquet_stream(
         Ok(Event::default().data(json))
     });
 
-    // Spawn background task to extract and cache data model
+    // Spawn background task to extract and cache data model. Marked
+    // in-flight for the task's whole lifetime (#5129): `get_data_model`
+    // answers 202 only for a key in this set, so the marker must cover every
+    // way the task can end -- completion, a `set_bytes` failure, and the
+    // admission-saturated early return alike -- or a client polling during
+    // exactly that window sees a 404 for a fill that is, in fact, still
+    // possible on retry. `InFlightGuard::drop` handles all three uniformly.
     let content_for_cache = content.clone();
     let cache_key_for_dm = cache_key.clone();
     let cache_for_dm = cache.clone();
     let admission_for_dm = state.admission.clone();
+    let in_flight = state.data_model_in_flight.begin(cache_key.clone());
     tokio::spawn(async move {
+        let _in_flight = in_flight;
         // The data-model extraction re-parses the whole upload, so it must
         // pass admission like any parse job. It is a cache-fill optimization:
         // when the server is saturated, skipping it (the next request rebuilds
@@ -365,6 +373,8 @@ pub async fn parse_parquet_stream(
                 }
             }
         }
+        // `_in_flight` drops here, clearing the marker only after the cache
+        // write (success or failure) is fully resolved.
     });
 
     let boxed_stream: std::pin::Pin<

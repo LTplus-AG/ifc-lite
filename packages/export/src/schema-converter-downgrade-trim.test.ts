@@ -56,7 +56,7 @@ function makeLine(type: string, n: number): string {
  * an IFCPROXY placeholder.
  */
 function isDivertedByConversion(type: string, from: IfcSchemaVersion, to: IfcSchemaVersion): boolean {
-  const out = convertStepLine(makeLine(type, 1), from, to);
+  const out = convertStepLine(makeLine(type, 1), from, to)!;
   return !out.startsWith(`#1=${type}(`);
 }
 
@@ -86,7 +86,7 @@ describe.each([
   it('trims every entity whose target form is a strict prefix of the source form', () => {
     const wrong = shrinks
       .map(([type, srcN, tgtN]) => {
-        const got = argCount(convertStepLine(makeLine(type, srcN), from, to));
+        const got = argCount(convertStepLine(makeLine(type, srcN), from, to)!);
         return got === tgtN ? null : `${type}: expected ${tgtN} args, got ${got}`;
       })
       .filter((x): x is string => x !== null);
@@ -96,7 +96,7 @@ describe.each([
   it('never trims an entity whose attributes were inserted mid-list, not appended', () => {
     const wrong = notPrefix
       .map(([type, srcN]) => {
-        const got = argCount(convertStepLine(makeLine(type, srcN), from, to));
+        const got = argCount(convertStepLine(makeLine(type, srcN), from, to)!);
         return got === srcN ? null : `${type}: expected ${srcN} args untouched, got ${got}`;
       })
       .filter((x): x is string => x !== null);
@@ -115,7 +115,7 @@ describe.each([
       const srcAttrs = src.get(type);
       if (!srcAttrs || srcAttrs.length === 0 || srcAttrs.length !== tgtAttrs.length) continue;
       if (isDivertedByConversion(type, from, to)) continue;
-      const got = argCount(convertStepLine(makeLine(type, srcAttrs.length), from, to));
+      const got = argCount(convertStepLine(makeLine(type, srcAttrs.length), from, to)!);
       if (got !== srcAttrs.length) wrong.push(`${type}: expected ${srcAttrs.length} args, got ${got}`);
     }
     expect(wrong).toEqual([]);

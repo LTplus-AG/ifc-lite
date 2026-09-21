@@ -1272,7 +1272,20 @@ export class MergedExporter {
       finalText = rescaleEntityLengths(finalText, entityRef.type.toUpperCase(), mode.lengthFactor, mode.areaFactor, mode.volumeFactor);
     }
 
-    if (needsConversion(sourceSchema, targetSchema)) finalText = convertStepLine(finalText, sourceSchema, targetSchema, undefined, slotFill);
+    if (needsConversion(sourceSchema, targetSchema)) {
+      // No `withheldRefIds` passed (6th arg omitted), so `resolveUnrepresentedEntity`
+      // never takes its `allowOmit` branch here — this call cannot return `null`
+      // (#4206). The federated pipeline does not yet compute that set in its own
+      // offset/remapped id space, so it keeps this function's older, unconditional
+      // "proxy or throw" contract rather than risk a wrong omission in the wrong
+      // id space; the same LoadConfiguration/AppliedLoad case that would omit in
+      // `StepExporter` still throws here, unchanged from before this fix.
+      const converted = convertStepLine(finalText, sourceSchema, targetSchema, undefined, slotFill);
+      if (converted === null) {
+        throw new Error(`Internal error: schema conversion of #${localId + offset}=${entityRef.type} returned null with no withheldRefIds supplied.`);
+      }
+      finalText = converted;
+    }
 
     // Record the emitted GlobalId → final express id + unit scale, for rooted
     // entities only. Read it from the FINAL line, not the source: schema

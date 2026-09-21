@@ -35,6 +35,9 @@ const McpLanding = lazy(() =>
 const McpPlayground = lazy(() =>
   import('./components/mcp/McpPlayground').then((m) => ({ default: m.McpPlayground })),
 );
+const RteGpuWitness = lazy(() =>
+  import('./e2e/RteGpuWitness').then((m) => ({ default: m.RteGpuWitness })),
+);
 
 // Neutral full-viewport placeholder while a lazy MCP route chunk loads. Both
 // /mcp routes render on a near-black stage (McpLanding's `NIGHT` = #0a0a0c), so
@@ -64,6 +67,15 @@ export function App() {
   const normalizedPath = pathname.length > 1 && pathname.endsWith('/')
     ? pathname.slice(0, -1)
     : pathname;
+  if (normalizedPath === '/rte-gpu-witness') {
+    return (
+      <ChunkErrorBoundary key={normalizedPath} label="RTE GPU witness">
+        <Suspense fallback={<RouteFallback />}>
+          <RteGpuWitness />
+        </Suspense>
+      </ChunkErrorBoundary>
+    );
+  }
   // The two MCP branches below return the same fragment shape, so React
   // reconciles their ChunkErrorBoundary as ONE instance by type + position and
   // carries `state.error` across a route change: a failed playground chunk would

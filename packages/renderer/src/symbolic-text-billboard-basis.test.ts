@@ -42,6 +42,7 @@ function captureBillboardAxes(camera: Camera): { right: Axis; up: Axis } {
     let captured: { right: Axis; up: Axis } | null = null;
     const overlays = new SymbolicOverlays({
         expandModelBoundsWithFlatVertices: () => {},
+        expandModelBoundsWithAnchoredLineVertices: () => {},
         syncCameraSceneBounds: () => {},
         requestRender: () => {},
     });

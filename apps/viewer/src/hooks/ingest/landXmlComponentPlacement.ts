@@ -7,13 +7,15 @@
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { createCoordinateInfo, type Bounds3D } from '../../utils/localParsingUtils.js';
 import {
-  MAX_RENDER_FRAME_ORIGIN_METRES, placeComponentsInKnownRenderFrame,
+  MAX_RENDER_FRAME_LOCAL_EXTENT_METRES, placeComponentsInKnownRenderFrame,
   placeComponentsInRenderFrame, type LandXmlRenderFramePlan,
 } from './landXmlRenderFrame.js';
 
 export interface LandXmlGeometryComponent {
   mesh: MeshData;
   bounds: Bounds3D;
+  /** RTE batches from one source surface are admitted or refused together. */
+  frameGroup?: string;
   surfaceName: string;
   surfaceSourceId: string | null;
   pipeSourceId: string | null;
@@ -40,7 +42,7 @@ export function placeAndAssignLandXmlComponents(
     ? placeComponentsInKnownRenderFrame(components, frame, warnings)
     : placeComponentsInRenderFrame(components, warnings);
   if (placed.length === 0) {
-    throw new Error(`LandXML document has no surface components whose full Y-up bounds fit within the ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km render-frame limit`);
+    throw new Error(`LandXML document has no surface components within the ${MAX_RENDER_FRAME_LOCAL_EXTENT_METRES / 1000} km shared render-frame envelope`);
   }
   const meshes = placed.map((component, index) => ({ ...component.mesh, expressId: index + 1 }));
   const totals = meshes.reduce((total, mesh) => ({

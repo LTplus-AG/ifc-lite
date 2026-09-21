@@ -250,3 +250,16 @@ describe('ModelBoundsTracker.expandWithFlatVertices', () => {
     assert.deepStrictEqual(tracker.get(), box([-100, -100, -100], [1000, 1000, 1000]));
   });
 });
+
+describe('ModelBoundsTracker.expandWithAnchoredVertices (#5049)', () => {
+  it('forms f64 world bounds from a 5,000 km anchor without collapsing centimetre local geometry', () => {
+    const tracker = new ModelBoundsTracker(makeSources());
+    const origin: [number, number, number] = [5_000_000.015625, -3_000_000.25, 2_000_000.5];
+    const local = new Float32Array([-0.01, 0, 0, 0.01, 0, 0]);
+    tracker.expandWithAnchoredVertices(local, origin, 3);
+    const bounds = tracker.get()!;
+    assert.ok(Math.abs(bounds.min.x - 5_000_000.005625) < 1e-9);
+    assert.ok(Math.abs(bounds.max.x - 5_000_000.025625) < 1e-9);
+    assert.equal(Math.fround(origin[0] + 0.01), Math.fround(origin[0]), 'absolute f32 bounds would collapse this witness');
+  });
+});

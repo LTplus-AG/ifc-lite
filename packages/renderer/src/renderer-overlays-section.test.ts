@@ -51,6 +51,7 @@ function makeHarness(modelBounds: typeof MODEL_BOUNDS | null = MODEL_BOUNDS): Ha
     const host: OverlayHost = {
         getModelBounds: () => modelBounds,
         expandModelBoundsWithFlatVertices: () => { /* not exercised here */ },
+        expandModelBoundsWithAnchoredLineVertices: () => { /* not exercised here */ },
         syncCameraSceneBounds: () => { /* not exercised here */ },
         requestRender: () => { renders++; },
     };

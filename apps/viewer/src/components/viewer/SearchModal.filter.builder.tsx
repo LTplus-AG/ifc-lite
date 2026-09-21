@@ -3,15 +3,17 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * SearchModalFilterBuilder — chip palette over the unified
- * `FilterRule[]`. Storey / IFC type / Predefined type / Name / Property /
- * Quantity rules with AND/OR + IsSet/IsNotSet, schema-aware dropdowns
- * (storeys + types load eagerly, pset/qto names lazily), and saved
- * preset persistence.
+ * SearchModalFilterBuilder — a thin adapter over the search slice.
  *
- * UI-only: this component owns rule editing, not run lifecycle. The
- * parent `SearchModalFilter` reads the same slice state and triggers
- * the path-B evaluator from a single Run button.
+ * The group/rule chip UI (tabs, AND/OR, rule rows, "Add rule") moved to
+ * `FilterGroupEditor.tsx` as a CONTROLLED component (#5138 PR 5, so the
+ * information-validation rule editor can reuse it). This file keeps
+ * everything that is genuinely specific to the SEARCH tab — the search-bar
+ * "promote query as rule" button, saved-filter presets, the result limit —
+ * and wires the controlled editor to `useViewerStore`'s `searchFilter`
+ * slice. Behaviour is unchanged: `SearchModal.filter.wiring.test.tsx`,
+ * `.groups.test.tsx` and `.promote.test.tsx` assert on this component's
+ * rendered output and pass unmodified (the lift invariant).
  */
 
 import { useCallback, useState } from 'react';
@@ -30,8 +32,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Rule, type FilterRule } from '@/lib/search/filter-rules';
 import { totalRuleCount } from '@/lib/search/filter-groups';
-import { useFilterRuleOptions } from '@/hooks/useFilterRuleOptions';
-import { AddRuleMenu, CombinatorToggle, blankRuleOfKind } from './FilterRuleControls';
 import {
   loadSavedFilters,
   saveFilter,
@@ -39,10 +39,9 @@ import {
   type SavedFilterPreset,
 } from '@/lib/search/saved-filters';
 import { toast } from '@/components/ui/toast';
-import { RuleRow } from './SearchModal.filter.editors';
+import { FilterGroupEditor, type FilterGroupEditorModel, type FilterGroupEditorState } from './FilterGroupEditor';
 import { SearchModalFilterSelector, useActiveSchemaVersion } from './SearchModal.filter.selector';
 import { readSelector } from '@/lib/search/selector-to-rules';
-import { GroupTabs } from './SearchModal.filter.groupTabs';
 import { useTranslation } from '@/i18n';
 
 export function SearchModalFilterBuilder() {
@@ -51,49 +50,58 @@ export function SearchModalFilterBuilder() {
     filter,
     activeGroupIndex,
     searchQuery,
-    setFilterCombinator,
-    setFilterLimit,
+    models,
     addFilterRule,
-    updateFilterRule,
-    removeFilterRule,
     clearFilterRules,
-    addFilterGroup,
-    removeFilterGroup,
     setActiveFilterGroup,
     setSearchFilter,
+    setFilterLimit,
   } = useViewerStore(
     useShallow((s) => ({
       filter: s.searchFilter,
       activeGroupIndex: s.searchFilterActiveGroup,
       searchQuery: s.searchQuery,
-      setFilterCombinator: s.setFilterCombinator,
-      setFilterLimit: s.setFilterLimit,
+      models: s.models,
       addFilterRule: s.addFilterRule,
-      updateFilterRule: s.updateFilterRule,
-      removeFilterRule: s.removeFilterRule,
       clearFilterRules: s.clearFilterRules,
-      addFilterGroup: s.addFilterGroup,
-      removeFilterGroup: s.removeFilterGroup,
       setActiveFilterGroup: s.setActiveFilterGroup,
       setSearchFilter: s.setSearchFilter,
+      setFilterLimit: s.setFilterLimit,
     })),
   );
   const schemaVersion = useActiveSchemaVersion();
 
   const [savedPresets, setSavedPresets] = useState<SavedFilterPreset[]>(() => loadSavedFilters());
 
-  // The active group — rule edits (add/update/remove, AND/OR toggle) target
-  // only this one; `+ Add group` / the group tabs below switch it (#4904).
   const activeGroup = filter.groups[activeGroupIndex] ?? filter.groups[0];
   const activeRules = activeGroup?.rules ?? [];
-  const ruleOptions = useFilterRuleOptions(activeRules);
   const totalRules = totalRuleCount(filter.groups);
 
-  // ── Rule construction ─────────────────────────────────────────────
+  // Same `sourceFingerprint ?? id` fallback `useFilterRuleOptions` has
+  // always used for the search tab's `model` chip — unlike the validation
+  // editor (which only offers models WITH a fingerprint, so a persisted
+  // rule never carries a runtime id), search state is never written to
+  // disk, so the fallback is safe here and keeps this adapter's output
+  // identical to the pre-lift builder.
+  const modelList: FilterGroupEditorModel[] = Array.from(models.values(), (m) => ({
+    id: m.id,
+    name: m.name,
+    sourceFingerprint: m.sourceFingerprint ?? m.id,
+  }));
 
-  const addRuleOfKind = useCallback(
-    (kind: FilterRule['kind']) => addFilterRule(blankRuleOfKind(kind)),
-    [addFilterRule],
+  // Reads the store's CURRENT `searchFilter`/`searchFilterActiveGroup` at
+  // apply time, not the `filter`/`activeGroupIndex` this component closed
+  // over at its last render — see `FilterGroupEditor.tsx`'s docstring: a
+  // store mutation from elsewhere between renders must not be reverted by
+  // the next click this editor dispatches.
+  const handleGroupsChange = useCallback(
+    (updater: (prev: FilterGroupEditorState) => FilterGroupEditorState) => {
+      const state = useViewerStore.getState();
+      const next = updater({ groups: state.searchFilter.groups, activeGroup: state.searchFilterActiveGroup });
+      setSearchFilter({ groups: next.groups, limit: state.searchFilter.limit });
+      setActiveFilterGroup(next.activeGroup);
+    },
+    [setSearchFilter, setActiveFilterGroup],
   );
 
   /**
@@ -181,32 +189,9 @@ export function SearchModalFilterBuilder() {
     <div className="flex flex-col">
       <SearchModalFilterSelector />
       <div className="flex flex-col gap-3 p-4">
-        {/* ── Group tabs: which group "+ Add rule" etc. below targets (#4904) ── */}
-        {filter.groups.length > 1 && (
-          <GroupTabs
-            groups={filter.groups}
-            activeIndex={activeGroupIndex}
-            onSelect={setActiveFilterGroup}
-            onRemove={removeFilterGroup}
-          />
-        )}
-
-        {/* ── Toolbar: AND/OR · Limit · promote-query · Presets · Save · Reset ── */}
+        {/* ── Toolbar: Limit · promote-query · Presets · Save · Reset ── */}
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <CombinatorToggle value={activeGroup?.combinator ?? 'AND'} onChange={setFilterCombinator} />
-
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={addFilterGroup}
-            className="h-7 gap-1 text-[11px]"
-            title={t('filterGroups.addGroupTitle')}
-          >
-            <Plus className="h-3 w-3" /> {t('filterGroups.addGroup')}
-          </Button>
-
-          <div className="ml-1 flex items-center gap-1">
+          <div className="flex items-center gap-1">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
               {t('searchModal.filterBuilder.limitLabel')}
             </label>
@@ -265,24 +250,13 @@ export function SearchModalFilterBuilder() {
           </div>
         </div>
 
-        {/* ── Rules list (active group) ──────────────────────────────────── */}
-        <div className="flex flex-col gap-2">
-          {activeRules.length === 0 && (
-            <p className="rounded border border-dashed border-zinc-300 bg-zinc-50 px-3 py-3 text-center text-xs italic text-muted-foreground dark:border-zinc-800 dark:bg-zinc-900/30">
-              {t('searchModal.filterBuilder.emptyRulesHint')}
-            </p>
-          )}
-          {activeRules.map((rule, i) => (
-            <RuleRow
-              key={i}
-              rule={rule}
-              {...ruleOptions}
-              onChange={(next) => updateFilterRule(i, next)}
-              onRemove={() => removeFilterRule(i)}
-            />
-          ))}
-          <AddRuleMenu onAdd={addRuleOfKind} />
-        </div>
+        <FilterGroupEditor
+          groups={filter.groups}
+          activeGroup={activeGroupIndex}
+          onChange={handleGroupsChange}
+          schemaVersion={schemaVersion}
+          models={modelList}
+        />
       </div>
     </div>
   );

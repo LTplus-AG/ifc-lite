@@ -66,6 +66,28 @@ const ORTHO_NEAR_1_FAR_10 = new Float32Array([
 ]);
 
 describe('selectBoundingBoxesInRect (#1904)', () => {
+  it('retains a centimetre residual at a 5,000 km camera origin (#5049)', () => {
+    // Translation-free perspective projection: the RTE frame has already
+    // removed the eye. The two boxes are 2 cm apart at the national-grid
+    // origin; a world-f32 projection collapses them into one position.
+    const boxes = new Map([
+      [1, box(5_000_000.01, -0.01, -10, 5_000_000.02, 0.01, -9)],
+      [2, box(5_000_000.04, -0.01, -10, 5_000_000.05, 0.01, -9)],
+    ]);
+    const hits = selectBoundingBoxesInRect(
+      boxes,
+      PERSPECTIVE_NEAR_0_1,
+      // The first box projects around x=50.1; the second around x=50.5.
+      { x0: 49.9, y0: 49, x1: 50.15, y1: 51 },
+      W,
+      H,
+      undefined,
+      undefined,
+      undefined,
+      { cameraWorld: [5_000_000, 0, 0] },
+    );
+    assert.deepStrictEqual(hits, new Set([1]));
+  });
   it('selects a box whose projection lands inside the rect', () => {
     const boxes = new Map([[1, box(0, 0, 0, 0.2, 0.2, 0)]]);
     // Screen AABB is x 50..60, y 40..50.

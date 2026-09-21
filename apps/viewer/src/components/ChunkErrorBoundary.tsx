@@ -49,6 +49,7 @@ const CHUNK_LABEL_KEYS = {
   'Layers panel': 'viewerShell.chunkLabel.layersPanel',
   'MCP page': 'viewerShell.chunkLabel.mcpPage',
   'MCP playground': 'viewerShell.chunkLabel.mcpPlayground',
+  'RTE GPU witness': 'viewerShell.chunkLabel.rteGpuWitness',
 } as const satisfies Record<string, TranslationKey>;
 
 type ChunkLabel = keyof typeof CHUNK_LABEL_KEYS;

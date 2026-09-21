@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { relativeToEyeWgsl } from './relative-to-eye.wgsl.js';
+
 /**
  * Sun shadow-map depth pre-pass shaders (issue #2670, Phase 2).
  *
@@ -32,8 +34,11 @@
  * shader stage.
  */
 export const shadowShaderSource = `
+        ${relativeToEyeWgsl}
         struct Light {
           lightViewProj: mat4x4<f32>,
+          cameraHigh: vec4<f32>,
+          cameraLow: vec4<f32>,
         }
         @binding(0) @group(0) var<uniform> light: Light;
 
@@ -42,6 +47,8 @@ export const shadowShaderSource = `
           // xyz = lattice-aligned quantMin (batch-origin-relative), w = step.
           // Read only by vs_shadow_quantized; zero for the other paths.
           quantParams: vec4<f32>,
+          originHigh: vec4<f32>,
+          originLow: vec4<f32>,
         }
         @binding(1) @group(0) var<uniform> draw: Draw;
 
@@ -73,6 +80,9 @@ export const shadowShaderSource = `
           // colour pass reads. Locations 7 (entityId) and 8 (rgba) are unused by
           // the depth pass and left unbound.
           @location(9) flags: u32,
+          // V2 split drawable-minus-camera delta, byte offsets 88 and 104.
+          @location(10) anchorHigh: vec4<f32>,
+          @location(11) anchorLow: vec4<f32>,
         }
 
         struct ShadowOut {
@@ -80,23 +90,25 @@ export const shadowShaderSource = `
           @location(0) worldPos: vec3<f32>,
         }
 
-        fn emit(worldPos: vec4<f32>) -> ShadowOut {
+        fn emit(eyePos: vec4<f32>) -> ShadowOut {
           var out: ShadowOut;
-          out.position = light.lightViewProj * worldPos;
-          out.worldPos = worldPos.xyz;
+          out.position = light.lightViewProj * eyePos;
+          out.worldPos = eyePos.xyz;
           return out;
         }
 
         @vertex
         fn vs_shadow_flat(input: FlatIn) -> ShadowOut {
-          return emit(draw.model * vec4<f32>(input.position, 1.0));
+          let linear = (draw.model * vec4<f32>(input.position, 0.0)).xyz;
+          return emit(rteWorldPosition(linear, RteDrawableUniform(draw.originHigh, draw.originLow)));
         }
 
         @vertex
         fn vs_shadow_quantized(input: QuantIn) -> ShadowOut {
           let p = draw.quantParams.xyz
             + vec3<f32>(f32(input.q.x), f32(input.q.y), f32(input.q.z)) * draw.quantParams.w;
-          return emit(draw.model * vec4<f32>(p, 1.0));
+          let linear = (draw.model * vec4<f32>(p, 0.0)).xyz;
+          return emit(rteWorldPosition(linear, RteDrawableUniform(draw.originHigh, draw.originLow)));
         }
 
         @vertex
@@ -112,12 +124,19 @@ export const shadowShaderSource = `
             return out;
           }
           let instMat = mat4x4<f32>(inst.m0, inst.m1, inst.m2, inst.m3);
-          return emit(instMat * vec4<f32>(input.position, 1.0));
+          // Keep the local placement from the V1 matrix and add the shared
+          // CPU-packed drawable-minus-camera delta. The light projection uses
+          // the same RTE frame as the colour and picker submissions.
+          let linear = (instMat * vec4<f32>(input.position, 0.0)).xyz;
+          return emit(rteWorldPosition(linear, RteDrawableUniform(
+            inst.anchorHigh, inst.anchorLow,
+          )));
         }
 
         @vertex
         fn vs_shadow_textured(input: FlatIn) -> ShadowOut {
-          return emit(draw.model * vec4<f32>(input.position, 1.0));
+          let linear = (draw.model * vec4<f32>(input.position, 0.0)).xyz;
+          return emit(rteWorldPosition(linear, RteDrawableUniform(draw.originHigh, draw.originLow)));
         }
 
         // Clipped variant: discard before the depth write, so a clipped-away

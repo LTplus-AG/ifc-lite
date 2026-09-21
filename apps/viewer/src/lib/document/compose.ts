@@ -15,6 +15,8 @@
 import type { ReportPageSetup } from '@ifc-lite/charts';
 import { pageBox, REPORT_MARGIN } from '../export/report/compose.js';
 import { CHART_BLOCK_HEIGHT_DEFAULT, type BlockWidth, type TextBlock } from './types.js';
+import { layoutTable, type LayoutCursor, type TableColumnLayout, type TableLayoutBlock, type TextDrawnItem } from './compose-table.js';
+import type { TableRowOut } from './resolve-table.js';
 
 const HEADER_HEIGHT = 30;
 const FOOTER_HEIGHT = 24;
@@ -60,7 +62,8 @@ export type ResolvedBlock =
   | { kind: 'image'; id: string; height: number; align: 'left' | 'center' | 'right'; caption?: string; /** natural width / height */ aspect: number; width?: BlockWidth }
   | { kind: 'chart'; id: string; title: string; subtitle: string; hasData: boolean; snapshot: boolean; height?: number; width?: BlockWidth }
   | { kind: 'topic'; id: string; title: string; lines: string[]; /** null when there is no snapshot to print */ snapshotAspect: number | null }
-  | { kind: 'spacer'; id: string; height: number };
+  | { kind: 'spacer'; id: string; height: number }
+  | ({ kind: 'table' } & TableLayoutBlock);
 
 /** `true` when `block` may pair with an adjacent `'half'` block into one row (#4940) — chart and image only. */
 function isHalfPairable(block: ResolvedBlock): block is (Extract<ResolvedBlock, { kind: 'chart' | 'image' }>) & { width: 'half' } {
@@ -68,11 +71,13 @@ function isHalfPairable(block: ResolvedBlock): block is (Extract<ResolvedBlock, 
 }
 
 export type DrawnItem =
-  | { kind: 'text'; x: number; y: number; size: number; bold: boolean; gray: number; text: string }
+  | TextDrawnItem
   | { kind: 'image'; blockId: string; x: number; y: number; w: number; h: number }
   | { kind: 'chart'; blockId: string; x: number; y: number; w: number; h: number }
   | { kind: 'snapshot'; blockId: string; x: number; y: number; w: number; h: number }
-  | { kind: 'topic-snapshot'; blockId: string; x: number; y: number; w: number; h: number };
+  | { kind: 'topic-snapshot'; blockId: string; x: number; y: number; w: number; h: number }
+  /** One page-sized chunk of a table block (#5142); every chunk carries the head. */
+  | { kind: 'table'; blockId: string; x: number; y: number; w: number; columns: TableColumnLayout[]; rows: TableRowOut[] };
 
 export interface DocumentPage {
   index: number;
@@ -130,7 +135,7 @@ export function wrapText(text: string, width: number, size: number, bold: boolea
 }
 
 /** A single line, ellipsis-truncated to fit `width` by the same measure `wrapText` uses (#4940 review: a half-width chart's title/subtitle must not run into the next column). */
-function truncateToWidth(text: string, width: number, size: number, bold: boolean, measure: ComposeDocumentInput['measure']): string {
+export function truncateToWidth(text: string, width: number, size: number, bold: boolean, measure: ComposeDocumentInput['measure']): string {
   if (width <= 0 || measure(text, size, bold) <= width) return text;
   // Binary, not linear: a linear cut-by-one scan remeasures a near-full string once per code
   // unit, quadratic in an imported title's length (review finding). `measure` grows monotonically
@@ -167,6 +172,18 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     // partially filled it (top < y < bottom) — a 400pt spacer + a 400pt chart on A4 drew the
     // chart through the footer instead of starting page 2 in the latter case (review finding).
     if (y + h > bottom && (page.items.length > 0 || y > top)) newPage();
+  };
+  // The same cursor, as an object, for block layouts that live in their own module (#5142).
+  const cursor: LayoutCursor = {
+    get y() { return y; },
+    set y(value: number) { y = value; },
+    x: REPORT_MARGIN,
+    top,
+    bottom,
+    ensure,
+    newPage,
+    push: (...items) => { page.items.push(...items); },
+    truncate: (text, width, size, bold) => truncateToWidth(text, width, size, bold, input.measure),
   };
 
   // Both a full-width chart/image and one half of a two-up row need the same
@@ -278,6 +295,10 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
         ensure(single.height + BLOCK_GAP);
         page.items.push(...single.draw(y));
         y += single.height + BLOCK_GAP;
+        break;
+      }
+      case 'table': {
+        layoutTable(block, cursor, contentW, input.measure, BLOCK_GAP);
         break;
       }
       case 'topic': {

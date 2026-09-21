@@ -36,6 +36,7 @@ export const documentEn = {
   'document.block.kindChart': 'Chart',
   'document.block.kindTopic': 'BCF topic',
   'document.block.kindSpacer': 'Spacer',
+  'document.block.kindTable': 'Table',
   'document.block.styleLabel': 'Style',
   'document.block.textStyleAriaLabel': 'Text style',
   'document.block.textStyleTitle': 'Title',
@@ -122,6 +123,10 @@ export const documentEn = {
   'document.panel.problemImageFailures': {
     one: '{countDisplay} image unavailable',
     other: '{countDisplay} images unavailable',
+  },
+  'document.panel.problemTables': {
+    one: '{countDisplay} table not printed',
+    other: '{countDisplay} tables not printed',
   },
 
   // DocumentPreview.tsx (#4918 doc slice): empty-state and unresolved-topic

@@ -20,6 +20,7 @@ export const viewerShellEn = {
   'viewerShell.chunkLabel.layersPanel': 'Layers panel',
   'viewerShell.chunkLabel.mcpPage': 'MCP page',
   'viewerShell.chunkLabel.mcpPlayground': 'MCP playground',
+  'viewerShell.chunkLabel.rteGpuWitness': 'RTE GPU witness',
 
   'viewerShell.dialog.close': 'Close',
 } as const;

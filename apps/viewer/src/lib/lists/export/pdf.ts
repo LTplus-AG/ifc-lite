@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { CellValue } from '@ifc-lite/lists';
-import { displayCell, type ExportModel } from './model';
+import { displayCell, groupHeaderLabel, totalsRowCells, type ExportModel } from './model';
 
 /** Quality tabular PDF report: title + meta, dark header, grouped sections
  *  (bold group rows carrying per-group count + subtotals), right-aligned
@@ -36,7 +36,7 @@ export async function toPdf(model: ExportModel): Promise<Blob> {
     // level and carry their own count; member rows sit on leaf groups only.
     for (const g of model.groups) {
       body.push(model.columns.map((c, i) => ({
-        content: i === 0 ? `${'    '.repeat(g.level)}${g.label}  (${g.count})` : (c.summed ? displayCell(g.sums[c.id]) : ''),
+        content: i === 0 ? groupHeaderLabel(g) : (c.summed ? displayCell(g.sums[c.id]) : ''),
         styles: { fontStyle: 'bold', fillColor: [226, 232, 240] as unknown as number[] },
       })));
       for (const r of g.rows) body.push(model.columns.map((_, i) => cell(r, i)));
@@ -46,11 +46,7 @@ export async function toPdf(model: ExportModel): Promise<Blob> {
   }
 
   const foot = model.sumColumnIds.length > 0
-    ? [cols.map((c, i) => {
-        if (i === 0) return `Total (${model.totals.count})`;
-        if (model.schedule && c.id === '__count') return displayCell(model.totals.count);
-        return c.summed ? displayCell(model.totals.sums[c.id]) : '';
-      })]
+    ? [totalsRowCells(model, cols, `Total (${model.totals.count})`).map(displayCell)]
     : undefined;
 
   const columnStyles: Record<number, { halign: 'right' }> = {};

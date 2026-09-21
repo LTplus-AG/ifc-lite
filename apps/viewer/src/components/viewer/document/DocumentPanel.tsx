@@ -81,7 +81,8 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
   const update = upsert;
   const setBlocks = useCallback((blocks: DocumentBlock[]) => { if (document) update({ ...document, blocks }); }, [document, update]);
 
-  const addBlock = (kind: DocumentBlock['kind']): void => {
+  // The table block (#5142) gets its own entry once its editor lands; not offered here yet.
+  const addBlock = (kind: Exclude<DocumentBlock['kind'], 'table'>): void => {
     if (!document) return;
     const id = freshBlockId();
     const block: DocumentBlock = kind === 'text' ? { kind, id, text: '', style: 'body' }
@@ -106,6 +107,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
         chartMessages: data.chartMessages,
         snapshotIds: (blockId) => largestBucketIds(data.aggregations.get(blockId)),
         topics: data.topics,
+        tables: new Map(),
       }, seams);
       downloadBlob(result.blob, `${sanitizeFilename(document.name, { fallback: 'document' })}.pdf`);
       // Counts only — never the document's text or name.
@@ -115,6 +117,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
         result.missingTopics.length > 0 ? t('document.panel.problemMissingTopics', localeCount(locale, result.missingTopics.length)) : '',
         result.snapshotFailures.length > 0 ? t('document.panel.problemSnapshotFailures', localeCount(locale, result.snapshotFailures.length)) : '',
         result.imageFailures.length > 0 ? t('document.panel.problemImageFailures', localeCount(locale, result.imageFailures.length)) : '',
+        result.tableFailures.length > 0 ? t('document.panel.problemTables', localeCount(locale, result.tableFailures.length)) : '',
       ].filter(Boolean);
       const pages = localeCount(locale, result.pages);
       toast.success(problems.length > 0

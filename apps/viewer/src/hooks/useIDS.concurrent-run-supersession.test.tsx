@@ -178,7 +178,7 @@ describe('useIDS - concurrent-run supersession (#2802)', () => {
     });
     const afterFast = useViewerStore.getState().idsValidationReport;
     assert.ok(afterFast, 'the fast run must have published');
-    assert.equal(afterFast!.modelInfo.modelId, 'Fast');
+    assert.equal(afterFast!.modelInfo[0].modelId, 'Fast');
 
     await act(async () => {
       await slowPending;
@@ -187,7 +187,7 @@ describe('useIDS - concurrent-run supersession (#2802)', () => {
     const s = useViewerStore.getState();
     assert.ok(s.idsValidationReport, 'a report must still be present');
     assert.equal(
-      s.idsValidationReport!.modelInfo.modelId,
+      s.idsValidationReport!.modelInfo[0].modelId,
       'Fast',
       'runValidation("Fast") was started SECOND (while the Slow validation was already in flight) and it ' +
         'finished FIRST - it is the one the user is waiting on. The earlier, slower Slow validation finishing ' +

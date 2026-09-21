@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { CellValue } from '@ifc-lite/lists';
-import { displayCell, neutralizeSpreadsheetFormula, type ExportModel, type ExportColumn } from './model';
+import { displayCell, neutralizeSpreadsheetFormula, totalsRowCells, type ExportModel, type ExportColumn } from './model';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const NUM_FMT = '#,##0.####';
@@ -86,11 +86,7 @@ export async function toXlsx(model: ExportModel): Promise<Blob> {
 
   // Grand total.
   if (model.sumColumnIds.length > 0) {
-    const tr = ws.addRow(cols.map((c, i) => {
-      if (i === 0) return `Total (${model.totals.count})`;
-      if (model.schedule && c.id === '__count') return model.totals.count;
-      return c.summed ? model.totals.sums[c.id] : null;
-    }));
+    const tr = ws.addRow(totalsRowCells(model, cols, `Total (${model.totals.count})`));
     tr.font = { bold: true };
     tr.eachCell((cell) => { cell.border = { top: { style: 'double', color: { argb: 'FF334155' } } }; });
   }

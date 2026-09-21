@@ -61,11 +61,21 @@ export function CombinatorToggle({
 export function AddRuleMenu({
   onAdd,
   label,
+  allowedKinds,
 }: {
   onAdd: (kind: FilterRule['kind']) => void;
   label?: string;
+  /** Restrict which kinds the menu offers — used by the validation rule
+   *  editor (#5138) to hide kinds `rule-set-io.ts` would reject for the
+   *  block being edited (e.g. an `element` requirement only allows
+   *  `ELEMENT_REQUIREMENT_KINDS`). Every kind shows when omitted, the
+   *  existing search-builder/clash-panel behaviour. */
+  allowedKinds?: ReadonlySet<FilterRule['kind']>;
 }) {
   const { t } = useTranslation();
+  const kinds = (Object.keys(RULE_KIND_LABEL) as FilterRule['kind'][]).filter(
+    (k) => !allowedKinds || allowedKinds.has(k),
+  );
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -77,7 +87,7 @@ export function AddRuleMenu({
       <DropdownMenuContent align="start">
         <DropdownMenuLabel className="text-[10px] uppercase">{t('filterRuleControls.filterDimensionLabel')}</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {(Object.keys(RULE_KIND_LABEL) as FilterRule['kind'][]).map((k) => (
+        {kinds.map((k) => (
           <DropdownMenuItem key={k} onSelect={() => onAdd(k)}>
             {RULE_KIND_LABEL[k]}
           </DropdownMenuItem>

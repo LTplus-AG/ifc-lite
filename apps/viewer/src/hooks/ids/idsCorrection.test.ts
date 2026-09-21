@@ -36,7 +36,7 @@ function propertyRequirement(
 
 function failedResult(requirement: IDSRequirement, facetType: IDSRequirementResult['facetType'] = 'property'): IDSRequirementResult {
   return {
-    requirement,
+    requirement: { ...requirement, label: 'Pset_WallCommon.FireRating is present' },
     status: 'fail',
     facetType,
     checkedDescription: 'Pset_WallCommon.FireRating is present',
@@ -63,7 +63,7 @@ describe('checkCorrectionEligibility (#3929)', () => {
   it('rejects a passed requirement — nothing to correct', () => {
     const req = propertyRequirement();
     const result = checkCorrectionEligibility({
-      requirement: req,
+      requirement: { ...req, label: '' },
       status: 'pass',
       facetType: 'property',
       checkedDescription: '',

@@ -24,8 +24,9 @@ import type {
   IDSSpecification,
   IDSSpecificationResult,
   IDSValidationReport,
+  ValidationReport,
 } from '@ifc-lite/ids';
-import { buildReportHTML } from './idsExportService.js';
+import { buildReportHTML, buildReportJSON } from './idsExportService.js';
 
 // ----------------------------------------------------------------------------
 // Fixture builders — minimal, fully-typed, no validator involved.
@@ -44,11 +45,12 @@ function makeReqResult(
   status: 'pass' | 'fail' | 'not_applicable',
   overrides: Partial<IDSRequirementResult> = {},
 ): IDSRequirementResult {
+  const checkedDescription = overrides.checkedDescription ?? requirement.description ?? 'check';
   return {
-    requirement,
+    requirement: { ...requirement, label: checkedDescription },
     status,
     facetType: 'entity',
-    checkedDescription: overrides.checkedDescription ?? requirement.description ?? 'check',
+    checkedDescription,
     failureReason: overrides.failureReason,
     actualValue: overrides.actualValue,
     expectedValue: overrides.expectedValue,
@@ -99,8 +101,11 @@ function makeReport(specResults: IDSSpecificationResult[]): IDSValidationReport 
   const totalEntitiesPassed = specResults.reduce((s, sp) => s + sp.passedCount, 0);
   const totalEntitiesFailed = specResults.reduce((s, sp) => s + sp.failedCount, 0);
   return {
-    document: { info: { title: 'Test IDS' }, specifications: specResults.map(s => s.specification) },
-    modelInfo: { modelId: 'model-1', schemaVersion: 'IFC4', entityCount: 1000 },
+    source: {
+      kind: 'ids',
+      document: { info: { title: 'Test IDS' }, specifications: specResults.map(s => s.specification) },
+    },
+    modelInfo: [{ modelId: 'model-1', schemaVersion: 'IFC4', entityCount: 1000 }],
     timestamp: new Date('2026-01-01T00:00:00Z'),
     summary: {
       totalSpecifications,
@@ -733,5 +738,89 @@ describe('buildReportHTML — the search also opens the collapsed specification 
     } finally {
       page.close();
     }
+  });
+});
+
+// ----------------------------------------------------------------------------
+// Rule-set-sourced reports (#5138 §5) — no `IDSDocument` at all. The rule-set
+// engine that PRODUCES `source.kind: 'rules'` reports (with populated
+// `setResults`) lands in a later PR (#5138 PR 3); this only proves the
+// generalised export path (PR 1) handles the SHAPE without crashing or
+// reaching for `report.document`.
+// ----------------------------------------------------------------------------
+
+describe('buildReportHTML / buildReportJSON — a rule-set-sourced report (no IDSDocument)', () => {
+  function makeRulesReport(): ValidationReport {
+    return {
+      source: { kind: 'rules', ruleSet: { name: 'Delivery checks', description: 'Handover rule set' } },
+      modelInfo: [{ modelId: 'model-1', schemaVersion: 'IFC4', entityCount: 500 }],
+      timestamp: new Date('2026-01-01T00:00:00Z'),
+      summary: {
+        totalSpecifications: 1,
+        passedSpecifications: 0,
+        failedSpecifications: 1,
+        totalEntitiesChecked: 2,
+        totalEntitiesPassed: 1,
+        totalEntitiesFailed: 1,
+        overallPassRate: 50,
+      },
+      specificationResults: [{
+        specification: { id: 'rule-0', name: 'Unique door names' },
+        status: 'fail',
+        applicableCount: 2,
+        passedCount: 1,
+        failedCount: 1,
+        passRate: 50,
+        entityResults: [
+          {
+            expressId: 1,
+            modelId: 'model-1',
+            entityType: 'IfcDoor',
+            entityName: 'Door A',
+            globalId: 'GID-1',
+            passed: false,
+            requirementResults: [{
+              requirement: { id: 'req-unique', label: 'unique(Name)', optionality: 'required' },
+              status: 'fail',
+              facetType: 'unique',
+              checkedDescription: 'Name must be unique',
+              failureReason: 'duplicate',
+            }],
+          },
+        ],
+        // Set-level result (#5138 §5): describes the DUPLICATE GROUP, not
+        // one entity. Not yet produced by any engine in this PR — a
+        // hand-built fixture proves the export path tolerates it.
+        setResults: [{
+          kind: 'duplicate',
+          label: 'unique(Name)',
+          actual: 'Door A (2×)',
+          expected: 'unique',
+          passed: false,
+          failureReason: 'duplicate',
+          members: [
+            { modelId: 'model-1', expressId: 1 },
+            { modelId: 'model-1', expressId: 2 },
+          ],
+        }],
+      }],
+    };
+  }
+
+  it('buildReportJSON exports the report verbatim, including setResults and no document field', () => {
+    const report = makeRulesReport();
+    const json = buildReportJSON(report);
+    assert.equal((json as { source: { kind: string } }).source.kind, 'rules');
+    assert.ok(!('document' in json), 'a rule-set report has no document to export');
+    const specResults = (json as { specificationResults: Array<{ setResults?: unknown[] }> }).specificationResults;
+    assert.equal(specResults[0].setResults?.length, 1);
+    assert.equal((json as { timestamp: string }).timestamp, '2026-01-01T00:00:00.000Z');
+  });
+
+  it('buildReportHTML renders a title/description from ruleSet, not report.document', () => {
+    const html = buildReportHTML(makeRulesReport(), 'en');
+    assert.ok(html.includes('Delivery checks'), 'the ruleSet name stands in for the missing document title');
+    assert.ok(html.includes('Handover rule set'), 'the ruleSet description stands in for the missing document description');
+    assert.ok(html.includes('Unique door names'), 'the specification name still renders');
   });
 });

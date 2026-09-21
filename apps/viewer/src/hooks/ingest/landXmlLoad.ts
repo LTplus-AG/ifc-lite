@@ -11,7 +11,7 @@ import { toast } from '../../components/ui/toast.js';
 import { parseLandXmlViewerModelFromBlobAsync, type LandXmlViewerModel } from './landXmlViewerModel.js';
 import type { LandXmlGeometryPreflight } from './landXmlIngest.js';
 import type { LandXmlSchema, LandXmlTinDocument } from './landXmlSemantics.js';
-import { MAX_RENDER_FRAME_ORIGIN_METRES, meshFitsRenderFrame, meshRenderFrameBounds } from './landXmlRenderFrame.js';
+import { MAX_RENDER_FRAME_LOCAL_EXTENT_METRES, meshFitsRenderFrame, meshRenderFrameBounds } from './landXmlRenderFrame.js';
 import { LandXmlProvisionalTransaction } from './landXmlProvisionalTransaction.js';
 import { markLandXmlGpuUploaded } from './landXmlGpuOwnership.js';
 import { type FederatedLandXmlStreamingFinalization, FederatedLandXmlStreamingPlan } from './federatedLandXmlStreaming.js';
@@ -180,13 +180,13 @@ export function reframeLandXmlGeometry(geometry: GeometryResult, document: LandX
     recomputeRenderedFaceCounts(document);
   }
   if (retained.length === 0) {
-    throw new Error(`LandXML model cannot be federated: every surface component's full Y-up bounds exceed the ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km shared render-frame limit`);
+    throw new Error(`LandXML model cannot be federated: every surface component lies outside the ${MAX_RENDER_FRAME_LOCAL_EXTENT_METRES / 1000} km shared render-frame envelope`);
   }
   geometry.meshes = retained;
   updateRetainedGeometry(geometry, frame);
   return skipped === 0
     ? []
-    : [`Skipped ${skipped} LandXML surface component(s) whose full Y-up bounds exceed ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km from the shared federation render frame`];
+    : [`Skipped ${skipped} LandXML surface component(s) outside the ${MAX_RENDER_FRAME_LOCAL_EXTENT_METRES / 1000} km shared federation render-frame envelope`];
 }
 
 /** Own the format-specific branch while `loadFile` retains lifecycle ownership. */

@@ -123,7 +123,7 @@
   1815 apps/viewer/src/components/viewer/Viewport.tsx
   1190 apps/viewer/src/components/viewer/ViewportContainer.tsx
    508 apps/viewer/src/components/viewer/ZonesPanel.tsx
-   862 apps/viewer/src/hooks/ids/idsExportService.ts
+   847 apps/viewer/src/hooks/ids/idsExportService.ts
    598 apps/viewer/src/hooks/ingest/federationAlign.ts
    525 apps/viewer/src/hooks/ingest/pointCloudIngest.ts
    461 apps/viewer/src/hooks/useAnnotation2D.ts
@@ -132,7 +132,7 @@
    472 apps/viewer/src/hooks/useCompare.ts
   1353 apps/viewer/src/hooks/useDrawingExport.ts
   1041 apps/viewer/src/hooks/useDrawingGeneration.ts
-  1226 apps/viewer/src/hooks/useIDS.ts
+  1227 apps/viewer/src/hooks/useIDS.ts
    586 apps/viewer/src/hooks/useIfcCache.ts
    667 apps/viewer/src/hooks/useIfcFederation.ts
   2219 apps/viewer/src/hooks/useIfcLoader.ts
@@ -173,9 +173,9 @@
   1306 apps/viewer/src/store/slices/collabSlice.ts
    482 apps/viewer/src/store/slices/dataSlice.ts
    874 apps/viewer/src/store/slices/drawing2DSlice.ts
-   482 apps/viewer/src/store/slices/idsSlice.ts
+   489 apps/viewer/src/store/slices/idsSlice.ts
    820 apps/viewer/src/store/slices/measurementSlice.ts
-   635 apps/viewer/src/store/slices/modelSlice.ts
+   630 apps/viewer/src/store/slices/modelSlice.ts
   3276 apps/viewer/src/store/slices/mutationSlice.ts
   1317 apps/viewer/src/store/slices/scheduleSlice.ts
    536 apps/viewer/src/store/slices/scriptSlice.ts
@@ -259,8 +259,8 @@
    467 packages/ids/src/facets/property-facet.ts
    597 packages/ids/src/parser/xml-parser.ts
    624 packages/ids/src/translation/service.ts
-   639 packages/ids/src/types.ts
-   841 packages/ids/src/validation/validator.ts
+   629 packages/ids/src/types.ts
+   742 packages/ids/src/validation/validator.ts
    468 packages/ifcx/src/federated-composition.ts
    704 packages/ifcx/src/index.ts
    415 packages/ifcx/src/writer.ts
@@ -312,7 +312,6 @@
    462 packages/renderer/src/scene-raycaster.ts
   4229 packages/renderer/src/scene.ts
    639 packages/renderer/src/section-2d-overlay.ts
-   514 packages/renderer/src/section-plane.ts
    639 packages/renderer/src/shaders/main.wgsl.ts
    454 packages/renderer/src/shadow-pass.ts
    768 packages/renderer/src/snap-detector.ts

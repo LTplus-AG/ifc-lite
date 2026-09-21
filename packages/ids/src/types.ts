@@ -219,32 +219,60 @@ export type {
 } from './constraint-types.js';
 
 // ============================================================================
-// Validation Result Types
+// Validation Result Types (generalised — issue #5138)
+//
+// The general report shapes live in `./report-types.js` (kept separate so
+// this file stays under its module-size budget) and are re-exported below.
+// `IDSSpecification` already structurally satisfies `SpecificationSummary`,
+// so IDS specifications flow into a `SpecificationResult` unchanged.
+// `IDSRequirement` does NOT satisfy `RequirementSummary` — it has no
+// `label` — so `IDSRequirementResult.requirement` carries the real
+// `IDSRequirement` enriched with a `label` derived from the
+// already-computed `checkedDescription` (see `validator.ts`), rather than
+// a fabricated object. That enrichment is what lets the IDS-specific
+// result types below be zero-duplication NARROWINGS of the general ones.
 // ============================================================================
+// Only the names actually referenced below need a local binding; the rest
+// are re-exported (next statement) without one.
+import type {
+  RequirementSummary,
+  RequirementResult,
+  EntityResult,
+  SpecificationResult,
+  ValidationReport,
+  ValidationModelInfo,
+} from './report-types.js';
+export type {
+  ValidationSource,
+  SpecificationSummary,
+  RequirementSummary,
+  CheckKind,
+  FailureReasonCode,
+  SetResult,
+  RequirementResult,
+  EntityResult,
+  SpecificationResult,
+  ValidationReport,
+  ValidationModelInfo,
+} from './report-types.js';
 
-/** Complete validation report */
-export interface IDSValidationReport {
-  /** The IDS document that was validated */
-  document: IDSDocument;
-  /** Model information */
-  modelInfo: IDSModelInfo;
-  /** When validation was performed */
-  timestamp: Date;
-  /** Summary statistics */
-  summary: IDSValidationSummary;
-  /** Results per specification */
+/**
+ * Complete IDS validation report — the `source.kind === 'ids'` narrowing of
+ * {@link ValidationReport}. `specificationResults` is narrowed too (not just
+ * `source`): every IDS consumer below needs `requirement.facet` and
+ * `specification.applicability`, which the general `SpecificationResult`
+ * shape doesn't carry. `IDSSpecificationResult` is itself a narrowing of
+ * `SpecificationResult` (see above), so this stays a proper subtype of
+ * `ValidationReport` — assignable wherever the general shape is expected
+ * (e.g. `idsSlice`'s `idsValidationReport: ValidationReport | null`).
+ */
+export type IDSValidationReport = Omit<ValidationReport, 'source' | 'specificationResults'> & {
+  source: { kind: 'ids'; document: IDSDocument };
   specificationResults: IDSSpecificationResult[];
-}
+};
 
-/** Information about the validated model */
-export interface IDSModelInfo {
-  /** Model identifier/filename */
-  modelId: string;
-  /** IFC schema version */
-  schemaVersion: string;
-  /** Total entity count */
-  entityCount: number;
-}
+/** @deprecated Use {@link ValidationModelInfo}. Kept as an alias — identical shape. */
+export type IDSModelInfo = ValidationModelInfo;
 
 /** Summary statistics for the entire validation */
 export interface IDSValidationSummary {
@@ -264,28 +292,6 @@ export interface IDSValidationSummary {
   overallPassRate: number;
 }
 
-/** Result for a single specification */
-export interface IDSSpecificationResult {
-  /** Reference to the specification */
-  specification: IDSSpecification;
-  /** Overall pass/fail status */
-  status: 'pass' | 'fail' | 'not_applicable';
-  /** Number of entities that matched applicability */
-  applicableCount: number;
-  /** Number of applicable entities that passed */
-  passedCount: number;
-  /** Number of applicable entities that failed */
-  failedCount: number;
-  /** Pass rate (0-100) */
-  passRate: number;
-  /** Per-entity results */
-  entityResults: IDSEntityResult[];
-  /** Cardinality result (if minOccurs/maxOccurs specified) */
-  cardinalityResult?: IDSCardinalityResult;
-  /** Set when unevaluable (e.g. a ReDoS-rejected pattern) — `status` is `'fail'` */
-  error?: string;
-}
-
 /** Cardinality check result */
 export interface IDSCardinalityResult {
   /** Whether cardinality constraint was satisfied */
@@ -300,43 +306,28 @@ export interface IDSCardinalityResult {
   message: string;
 }
 
-/** Result for a single entity */
-export interface IDSEntityResult {
-  /** Express ID of the entity */
-  expressId: number;
-  /** Model ID (for multi-model support) */
-  modelId: string;
-  /** Entity type (e.g., "IfcWall") */
-  entityType: string;
-  /** Entity name (if available) */
-  entityName?: string;
-  /** IFC GlobalId (if available) */
-  globalId?: string;
-  /** Overall pass/fail status */
-  passed: boolean;
-  /** Results for each requirement */
-  requirementResults: IDSRequirementResult[];
-}
-
-/** Result for a single requirement check */
-export interface IDSRequirementResult {
-  /** Reference to the requirement */
-  requirement: IDSRequirement;
-  /** Pass/fail status */
-  status: 'pass' | 'fail' | 'not_applicable';
-  /** The facet type that was checked */
+/**
+ * Result for a single requirement check against an IDS specification — the
+ * `IDSRequirement`-typed narrowing of {@link RequirementResult}. `requirement`
+ * carries the real parsed requirement (facet, cardinalityRaw, …), enriched
+ * with the `label` the general shape requires (see the note above
+ * {@link ValidationSource}).
+ */
+export type IDSRequirementResult = Omit<RequirementResult, 'requirement' | 'facetType'> & {
+  requirement: IDSRequirement & Pick<RequirementSummary, 'label'>;
   facetType: FacetType;
-  /** Human-readable description of what was checked (translated) */
-  checkedDescription: string;
-  /** Human-readable failure reason (translated, if failed) */
-  failureReason?: string;
-  /** Actual value found */
-  actualValue?: string;
-  /** Expected value/constraint description */
-  expectedValue?: string;
-  /** Detailed failure information */
-  failure?: IDSFailureDetail;
-}
+};
+
+/** Result for a single entity against an IDS specification. */
+export type IDSEntityResult = Omit<EntityResult, 'requirementResults'> & {
+  requirementResults: IDSRequirementResult[];
+};
+
+/** Result for a single specification against an IDS document. */
+export type IDSSpecificationResult = Omit<SpecificationResult, 'specification' | 'entityResults'> & {
+  specification: IDSSpecification;
+  entityResults: IDSEntityResult[];
+};
 
 /** Detailed failure information */
 export interface IDSFailureDetail {

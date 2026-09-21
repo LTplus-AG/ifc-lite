@@ -16,7 +16,14 @@ export function placedSymbols(source: ParseResult | undefined, translation: Tran
   } });
   const text = (item: AnnotationText2D): AnnotationText2D => ({ ...item, x: item.x + dx, y: item.y + dz });
   const fill = (item: AnnotationFill2D): AnnotationFill2D => ({ ...item,
-    points: item.points.map((value, index) => value + (index % 2 === 0 ? dx : dz)) });
+    // The 2D drawing consumes its historical world-space buffer, while the
+    // 3D symbolic fill path consumes the exact placement anchor + original
+    // local ring below. Keeping both avoids changing 2D coordinates merely
+    // to fix the GPU render boundary.
+    points: item.points.map((value, index) => value + (index % 2 === 0 ? dx : dz)),
+    rteLocalPoints: item.points,
+    rteOrigin: [dx, dy, dz],
+  });
   const bucket = (item: AnnotationsForStorey): AnnotationsForStorey => ({ ...item,
     storeyElevation: (item.storeyElevation ?? fallbackY) + dy,
     lines: item.lines.map(line), texts: item.texts.map(text), fills: item.fills.map(fill) });

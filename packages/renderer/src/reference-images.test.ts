@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ReferenceImageManager } from './reference-images.js';
 import { referenceImageHit } from './reference-image-hit.js';
+import { ReferenceImagePipeline } from './reference-image-pipeline.js';
 import type { ReferenceImageInput } from './reference-image-types.js';
 
 Object.assign(globalThis, { GPUBufferUsage: { VERTEX: 32, UNIFORM: 64, COPY_DST: 8 },
@@ -102,4 +103,57 @@ test('ordinary viewer and locked pages create no reference pipeline or redundant
   assert.equal(f.pipelineCount(), 1);
   assert.equal(await f.manager.pick(0, 0), null); assert.equal(f.scenePicks(), 0);
   f.manager.destroy();
+});
+
+test('reference image GPU draw keeps a 5,000-km centimetre residual and legacy projection route (#5049)', () => {
+  const writes: Float32Array[] = [];
+  const device = {
+    limits: { maxTextureDimension2D: 4096 },
+    createShaderModule: () => ({}),
+    createRenderPipeline: () => ({ getBindGroupLayout: () => ({}) }),
+    createSampler: () => ({}),
+    createTexture: () => ({ createView: () => ({}), destroy() {} }),
+    createBuffer: () => ({ destroy() {} }),
+    createBindGroup: () => ({}),
+    queue: {
+      copyExternalImageToTexture() {},
+      writeBuffer(_buffer: GPUBuffer, _offset: number, data: ArrayBufferView) {
+        writes.push(new Float32Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)));
+      },
+    },
+  } as unknown as GPUDevice;
+  const image = new ReferenceImagePipeline(device, 'bgra8unorm', 1).upload({
+    ...input('survey'),
+    corners: [
+      [5_000_000.275, 100, -20], [5_000_000.285, 100, -20],
+      [5_000_000.285, 100.01, -20], [5_000_000.275, 100.01, -20],
+    ],
+  });
+  const pass = { setPipeline() {}, setBindGroup() {}, setVertexBuffer() {}, draw() {} } as unknown as GPURenderPassEncoder;
+  image.draw(
+    pass,
+    new Float32Array(16).fill(1),
+    new Float32Array(16).fill(2),
+    [5_000_000.25, 100, -20],
+  );
+  const vertices = writes.find((write) => write.length === 30);
+  const uniform = writes.find((write) => write.length === 48);
+  assert.ok(vertices, 'the image-local vertex stream was not uploaded');
+  assert.ok(uniform, 'the RTE image draw uniform was not uploaded');
+  assert.ok(Math.abs(vertices[5] - 0.01) < 1e-7, `lost local image edge: ${vertices[5]}`);
+  const residual = uniform[36] + uniform[40];
+  assert.ok(Math.abs(residual - 0.025) < 1e-7, `lost image origin residual: ${residual}`);
+  assert.equal(uniform[39], 1, 'anchored image draw must select the RTE shader route');
+  assert.equal(uniform[16], 2, 'anchored image draw must carry the RTE projection');
+  assert.equal(
+    uniform[32],
+    Math.fround(5_000_000.275 + 100 - 20 + 1),
+    'legacy clip origin occupies its post-RTE lane',
+  );
+
+  image.draw(pass, new Float32Array(16).fill(3));
+  const legacy = writes[writes.length - 1];
+  assert.equal(legacy[39], 0, 'legacy image draw must not inherit an earlier RTE flag');
+  assert.equal(legacy[0], 3, 'legacy image draw retains the global projection');
+  image.destroy();
 });

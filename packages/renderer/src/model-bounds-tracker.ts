@@ -164,7 +164,28 @@ export class ModelBoundsTracker {
      *  "expand" would no-op. We detect the placeholder by its exact symmetric
      *  signature and replace it with the actual annotation AABB instead. */
     expandWithFlatVertices(positions: Float32Array, stride: number): void {
-        if (positions.length === 0) return;
+        this.expandWithVertices(positions.length, stride, (index, axis) => positions[index + axis]);
+    }
+
+    /**
+     * Fold one f32-local drawable through its f64 source anchor. Overlay
+     * vertices must never be widened to absolute f32 just to update the scene
+     * bounds: that would make camera framing disagree with the RTE draw.
+     */
+    expandWithAnchoredVertices(
+        positions: Float32Array,
+        origin: readonly [number, number, number],
+        stride: number,
+    ): void {
+        this.expandWithVertices(positions.length, stride, (index, axis) => positions[index + axis] + origin[axis]);
+    }
+
+    private expandWithVertices(
+        length: number,
+        stride: number,
+        coordinateAt: (index: number, axis: 0 | 1 | 2) => number,
+    ): void {
+        if (length === 0) return;
         const isPlaceholderCube = (b: ModelBoundsBox): boolean =>
             b.min.x === -100 && b.min.y === -100 && b.min.z === -100
                 && b.max.x === 100 && b.max.y === 100 && b.max.z === 100;
@@ -175,10 +196,10 @@ export class ModelBoundsTracker {
             };
         }
         let expanded = false;
-        for (let i = 0; i + 2 < positions.length; i += stride) {
-            const x = positions[i];
-            const y = positions[i + 1];
-            const z = positions[i + 2];
+        for (let i = 0; i + 2 < length; i += stride) {
+            const x = coordinateAt(i, 0);
+            const y = coordinateAt(i, 1);
+            const z = coordinateAt(i, 2);
             if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
             if (x < this.bounds.min.x) this.bounds.min.x = x;
             if (y < this.bounds.min.y) this.bounds.min.y = y;

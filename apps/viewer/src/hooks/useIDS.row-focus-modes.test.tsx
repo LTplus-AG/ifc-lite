@@ -64,8 +64,8 @@ function report(): IDSValidationReport {
     requirementResults: [],
   });
   return {
-    document: { specifications: [] },
-    modelInfo: { modelId: 'A', schemaVersion: 'IFC4', entityCount: 3 },
+    source: { kind: 'ids', document: { specifications: [] } },
+    modelInfo: [{ modelId: 'A', schemaVersion: 'IFC4', entityCount: 3 }],
     timestamp: new Date(0),
     summary: {
       totalSpecifications: 1,

@@ -76,7 +76,6 @@
  * deliberately, with a benchmark, rather than folded into this fix.
  */
 
-import { MathUtils } from '../math.js';
 import type { Vec3 } from '../raycaster.js';
 import { isUsableModelMatrix } from './point-cloud-node.js';
 
@@ -85,6 +84,7 @@ export interface RayQueryNodeLike {
   meta: { expressId: number; modelIndex?: number };
   spatialIndex: { pointCount: number };
   model?: Float32Array;
+  placement?: Float64Array;
 }
 
 /** One entry of the snapshot handed to `queryPointClouds`. */
@@ -93,7 +93,7 @@ export interface RayQuerySource<TNode extends RayQueryNodeLike> {
   modelIndex?: number;
   index: TNode['spatialIndex'];
   classMask: Uint32Array;
-  model?: Float32Array;
+  model?: Float32Array | Float64Array;
 }
 
 /**
@@ -119,7 +119,7 @@ export function buildRayQuerySources<TNode extends RayQueryNodeLike>(
       // The index stores RAW decoder positions while the shader draws
       // through `model` (#1804) — the query needs the matrix to reconcile
       // the two, or an aligned scan snaps to pre-alignment coordinates.
-      model: node.model,
+      model: node.placement ?? node.model,
       classMask,
     });
   }
@@ -146,7 +146,7 @@ export interface LocalFrameRay {
  * tolerances in the right ballpark rather than exact. Returns 1 for a
  * degenerate (~zero) matrix so callers never divide by zero.
  */
-export function matrixUniformScale(m: Float32Array): number {
+export function matrixUniformScale(m: Float32Array | Float64Array): number {
   const cx = Math.hypot(m[0], m[1], m[2]);
   const cy = Math.hypot(m[4], m[5], m[6]);
   const cz = Math.hypot(m[8], m[9], m[10]);
@@ -159,7 +159,7 @@ export function matrixUniformScale(m: Float32Array): number {
  * it is pure overhead. The overwhelmingly common case is an unaligned
  * scan, and this keeps that path allocation-free.
  */
-export function isIdentityMatrix(m: Float32Array): boolean {
+export function isIdentityMatrix(m: Float32Array | Float64Array): boolean {
   const EPS = 1e-6;
   for (let i = 0; i < 16; i++) {
     const expected = i % 5 === 0 ? 1 : 0;
@@ -179,22 +179,42 @@ export function isIdentityMatrix(m: Float32Array): boolean {
 export function toLocalFrameRay(
   origin: Vec3,
   direction: Vec3,
-  model: Float32Array | undefined,
+  model: Float32Array | Float64Array | undefined,
 ): LocalFrameRay | null {
   if (!isUsableModelMatrix(model) || isIdentityMatrix(model)) return null;
 
-  const inv = MathUtils.invert({ m: model });
-  if (!inv) return null;
-  const i = inv.m;
+  // Point-cloud alignment is affine. Inverting its 3×3 linear part directly
+  // keeps the f64 translation in JavaScript numbers; `MathUtils.invert`
+  // returns an f32 Mat4 and would reintroduce the very map-grid rounding this
+  // RTE contract prevents.
+  const determinant =
+    model[0] * (model[5] * model[10] - model[9] * model[6])
+    - model[4] * (model[1] * model[10] - model[9] * model[2])
+    + model[8] * (model[1] * model[6] - model[5] * model[2]);
+  if (!Number.isFinite(determinant) || Math.abs(determinant) <= 1e-18) return null;
+  const invDet = 1 / determinant;
+  const i00 = (model[5] * model[10] - model[9] * model[6]) * invDet;
+  const i01 = (model[8] * model[6] - model[4] * model[10]) * invDet;
+  const i02 = (model[4] * model[9] - model[8] * model[5]) * invDet;
+  const i10 = (model[9] * model[2] - model[1] * model[10]) * invDet;
+  const i11 = (model[0] * model[10] - model[8] * model[2]) * invDet;
+  const i12 = (model[8] * model[1] - model[0] * model[9]) * invDet;
+  const i20 = (model[1] * model[6] - model[5] * model[2]) * invDet;
+  const i21 = (model[4] * model[2] - model[0] * model[6]) * invDet;
+  const i22 = (model[0] * model[5] - model[4] * model[1]) * invDet;
+  const tx = model[12]; const ty = model[13]; const tz = model[14];
+  const itx = -(i00 * tx + i01 * ty + i02 * tz);
+  const ity = -(i10 * tx + i11 * ty + i12 * tz);
+  const itz = -(i20 * tx + i21 * ty + i22 * tz);
 
-  const ox = i[0] * origin.x + i[4] * origin.y + i[8] * origin.z + i[12];
-  const oy = i[1] * origin.x + i[5] * origin.y + i[9] * origin.z + i[13];
-  const oz = i[2] * origin.x + i[6] * origin.y + i[10] * origin.z + i[14];
+  const ox = i00 * origin.x + i01 * origin.y + i02 * origin.z + itx;
+  const oy = i10 * origin.x + i11 * origin.y + i12 * origin.z + ity;
+  const oz = i20 * origin.x + i21 * origin.y + i22 * origin.z + itz;
 
   // Direction is a vector: no translation column.
-  const dx = i[0] * direction.x + i[4] * direction.y + i[8] * direction.z;
-  const dy = i[1] * direction.x + i[5] * direction.y + i[9] * direction.z;
-  const dz = i[2] * direction.x + i[6] * direction.y + i[10] * direction.z;
+  const dx = i00 * direction.x + i01 * direction.y + i02 * direction.z;
+  const dy = i10 * direction.x + i11 * direction.y + i12 * direction.z;
+  const dz = i20 * direction.x + i21 * direction.y + i22 * direction.z;
   const len = Math.hypot(dx, dy, dz);
   if (!(len > 1e-12)) return null;
 

@@ -13,7 +13,7 @@ import { LandXmlProvisionalTransaction } from './landXmlProvisionalTransaction.j
 
 function resources() {
   const renderer = getGlobalRenderer();
-  if (!renderer) throw new Error('Renderer not initialised for LandXML provisional publication');
+  if (!renderer) return null;
   return {
     publish: (mesh: import('@ifc-lite/geometry').MeshData) => {
       const outcome = renderer.addMeshes([mesh], true);
@@ -28,7 +28,9 @@ export function openPrimaryLandXmlProvisional(
   preflight: LandXmlGeometryPreflight,
 ): LandXmlProvisionalTransaction | null {
   if (preflight.componentCount === 0 || preflight.frame === null) return null;
-  return new LandXmlProvisionalTransaction(modelId, preflight.componentCount, preflight.frame, federationRegistry, resources());
+  const rendererResources = resources();
+  if (rendererResources === null) return null;
+  return new LandXmlProvisionalTransaction(modelId, preflight.componentCount, preflight.frame, federationRegistry, rendererResources);
 }
 
 export function openFederatedLandXmlStreamingPlan(
@@ -39,13 +41,15 @@ export function openFederatedLandXmlStreamingPlan(
   isCurrent: () => boolean,
 ): FederatedLandXmlStreamingPlan | null {
   if (preflight.componentCount === 0) return null;
+  const rendererResources = resources();
+  if (rendererResources === null) return null;
   return new FederatedLandXmlStreamingPlan({
     modelId,
     componentCount: preflight.componentCount,
     sourceCoordinateInfo,
     spatialReference,
     registry: federationRegistry,
-    resources: resources(),
+    resources: rendererResources,
     isCurrent,
   });
 }

@@ -1,5 +1,6 @@
 {
   "models": ["clean-model.ifc", "incomplete-model.ifc", "missing-model.ifc"],
   "structural": true,
-  "ids": ["walls-must-have-tag.ids"]
+  "ids": ["walls-must-have-tag.ids"],
+  "rules": ["walls-must-be-named.rules.json"]
 }

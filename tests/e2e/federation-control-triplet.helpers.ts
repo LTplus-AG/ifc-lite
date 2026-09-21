@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Shared control parsing, load-path, and federation-id assertions for #5051. */
-import { expect, type Page } from '@playwright/test';
+import { expect, type Page, type TestInfo } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ViewerState } from '../../apps/viewer/src/store';
@@ -32,6 +32,16 @@ export interface ModelSnapshot {
   visible: boolean;
   vertices: Point3[];
 }
+
+export interface ControlTripletLoad {
+  ifc: string;
+  landxml: string;
+  xyz: string;
+  timeout: number;
+  strictGpu: boolean;
+}
+
+const GPU_FAILURE = /webgpu|gpu(?:device|adapter)?|createbuffer|device.*lost|lost.*device|poperrorscope/i;
 
 function point3(value: unknown, label: string): Point3 {
   if (!Array.isArray(value) || value.length !== 3 || !value.every((component) => typeof component === 'number' && Number.isFinite(component))) {
@@ -135,6 +145,41 @@ export async function loadThroughViewer(page: Page, file: string, expectedCount:
   // control contracts, unlike ordinal hidden file-input selectors.
   await page.locator(expectedCount === 1 ? '#file-input-open' : '#file-input-add').setInputFiles(join(process.cwd(), file));
   await waitForModels(page, expectedCount, timeout);
+}
+
+/**
+ * Load the control files through Open/Add. Non-strict CI may skip only after
+ * diagnostics explicitly identify a software WebGPU failure; a generic page
+ * timeout or ordinary page text never qualifies.
+ */
+export async function loadControlTriplet(
+  page: Page, testInfo: TestInfo, files: ControlTripletLoad, pageErrors: readonly string[],
+): Promise<ModelSnapshot | null> {
+  try {
+    await loadThroughViewer(page, files.ifc, 1, files.timeout);
+    const primary = (await snapshotModels(page)).find((model) => model.name === 'terrain.ifc');
+    expect(primary, 'IFC model registered from the primary load').toBeDefined();
+    await assertSingleModelResolution(page, primary!.id);
+    await loadThroughViewer(page, files.landxml, 2, files.timeout);
+    await loadThroughViewer(page, files.xyz, 3, files.timeout);
+    return primary!;
+  } catch (error) {
+    const state = await page.evaluate(() => {
+      const current = globalThis.__ifc_lite_viewer_store__.getState();
+      return {
+        error: current.error,
+        models: [...current.models.values()].map((model) => ({ name: model.name, loadState: model.loadState, loadError: model.loadError })),
+      };
+    });
+    const gpuFailureText = JSON.stringify({ pageErrors, state });
+    if (files.strictGpu || !GPU_FAILURE.test(gpuFailureText)) throw error;
+    const body = (await page.locator('body').innerText()).slice(0, 2_000);
+    await testInfo.attach('software-webgpu-device-loss', {
+      body: JSON.stringify({ failure: String(error), gpuFailureText: JSON.parse(gpuFailureText), body }, null, 2),
+      contentType: 'application/json',
+    });
+    return null;
+  }
 }
 
 export async function snapshotModels(page: Page): Promise<ModelSnapshot[]> {

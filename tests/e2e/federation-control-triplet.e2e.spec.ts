@@ -29,7 +29,7 @@ import {
   canonicalToRender,
   controlFile,
   distance,
-  loadThroughViewer,
+  loadControlTriplet,
   renderToCanonical,
   snapshotModels,
   waitForModels,
@@ -251,15 +251,17 @@ test('canonical IFC + LandXML + XYZ federation keeps five independent bonsai-top
   expect(controls.toleranceMetres, 'the control declaration remains a 1 mm acceptance').toBe(0.001);
   assertIndependentControls(controls);
 
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error)));
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/');
-  await loadThroughViewer(page, IFC, 1, LOAD_TIMEOUT_MS);
-  const primary = (await snapshotModels(page)).find((model) => model.name === 'terrain.ifc');
-  expect(primary, 'IFC model registered from the primary load').toBeDefined();
-  await assertSingleModelResolution(page, primary!.id);
-  await loadThroughViewer(page, LANDXML, 2, LOAD_TIMEOUT_MS);
-  await loadThroughViewer(page, XYZ, 3, LOAD_TIMEOUT_MS);
-
+  const primary = await loadControlTriplet(page, testInfo, {
+    ifc: IFC, landxml: LANDXML, xyz: XYZ, timeout: LOAD_TIMEOUT_MS, strictGpu: GPU_STRICT,
+  }, pageErrors);
+  if (!primary) {
+    test.skip(true, `E2E_GPU_STRICT=0: software WebGPU failed before model load; evidence attached.`);
+    return;
+  }
   const models = await snapshotModels(page);
   expect(models).toHaveLength(3);
   const ifc = models.find((model) => model.name === 'terrain.ifc');
@@ -365,11 +367,11 @@ test('canonical IFC + LandXML + XYZ federation keeps five independent bonsai-top
   assertPickedControl(commonTinFace, ifcToLandxml, ifc!.id, landxml!.id, controls.toleranceMetres,
     [0, 0, 0], new Map([[xyz!.id, manualPlacement.correction]]));
   await page.keyboard.press('Escape');
-  const xyzToIfc: Record<string, PickedControl> = {};
+  const xyzToLandxml: Record<string, PickedControl> = {};
   for (const control of controls.points) {
     const picked = await pickControlThroughRenderer(page, control, xyz!, landxml!, models);
     assertPickedControl(control, picked, xyz!.id, landxml!.id, controls.toleranceMetres, manualPlacement.correction);
-    xyzToIfc[control.id] = picked;
+    xyzToLandxml[control.id] = picked;
     await page.keyboard.press('Escape');
   }
   await page.keyboard.press('Escape');
@@ -391,7 +393,7 @@ test('canonical IFC + LandXML + XYZ federation keeps five independent bonsai-top
   await testInfo.attach('bonsai-topo-control-correspondence', {
     body: JSON.stringify({ toleranceMetres: controls.toleranceMetres, controls: controls.points,
       rawXyz, renderedXyz, manualPlacement, renderedContent, ordinarySelections,
-      previews: { ifcToLandxml, xyzToIfc }, placementState }),
+      previews: { ifcToLandxml, xyzToLandxml }, placementState }),
     contentType: 'application/json',
   });
 });

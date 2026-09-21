@@ -1,5 +1,6 @@
 ---
 "@ifc-lite/renderer": minor
+"@ifc-lite/viewer": patch
 ---
 
 Expose resident point-cloud visibility control so viewer model visibility also

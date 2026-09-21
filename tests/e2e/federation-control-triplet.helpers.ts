@@ -155,12 +155,15 @@ export async function loadThroughViewer(page: Page, file: string, expectedCount:
 export async function loadControlTriplet(
   page: Page, testInfo: TestInfo, files: ControlTripletLoad, pageErrors: readonly string[],
 ): Promise<ModelSnapshot | null> {
+  let pageErrorStart = pageErrors.length;
   try {
     await loadThroughViewer(page, files.ifc, 1, files.timeout);
     const primary = (await snapshotModels(page)).find((model) => model.name === 'terrain.ifc');
     expect(primary, 'IFC model registered from the primary load').toBeDefined();
     await assertSingleModelResolution(page, primary!.id);
+    pageErrorStart = pageErrors.length;
     await loadThroughViewer(page, files.landxml, 2, files.timeout);
+    pageErrorStart = pageErrors.length;
     await loadThroughViewer(page, files.xyz, 3, files.timeout);
     return primary!;
   } catch (error) {
@@ -171,7 +174,11 @@ export async function loadControlTriplet(
         models: [...current.models.values()].map((model) => ({ name: model.name, loadState: model.loadState, loadError: model.loadError })),
       };
     });
-    const gpuFailureText = JSON.stringify({ pageErrors, state });
+    const gpuFailureText = JSON.stringify({
+      failure: String(error),
+      pageErrors: pageErrors.slice(pageErrorStart),
+      state,
+    });
     if (files.strictGpu || !GPU_FAILURE.test(gpuFailureText)) throw error;
     const body = (await page.locator('body').innerText()).slice(0, 2_000);
     await testInfo.attach('software-webgpu-device-loss', {

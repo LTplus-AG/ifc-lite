@@ -27,7 +27,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useIDS } from '@/hooks/useIDS';
+import type { ValidationReport } from '@ifc-lite/ids';
 import type { TranslationKey } from '@/i18n/en';
 import { IDSExportDialog } from './IDSExportDialog';
 import type { IDSBCFExportSettings, IDSExportProgress } from './IDSExportDialog';
@@ -45,7 +45,7 @@ interface ReportExportButtonProps {
   onExportHTML: () => void;
   onExportBCF: (settings: IDSBCFExportSettings) => Promise<void>;
   bcfExportProgress: IDSExportProgress | null;
-  report: ReturnType<typeof useIDS>['report'];
+  report: ValidationReport | null;
 }
 
 export function ReportExportButton({

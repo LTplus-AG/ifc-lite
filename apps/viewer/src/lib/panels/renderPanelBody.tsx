@@ -18,7 +18,7 @@ import { HierarchyPanel } from '@/components/viewer/HierarchyPanel';
 import { PropertiesPanel } from '@/components/viewer/PropertiesPanel';
 import { ComparePanel } from '@/components/viewer/ComparePanel';
 import { BCFPanel } from '@/components/viewer/BCFPanel';
-import { IDSPanel } from '@/components/viewer/IDSPanel';
+import { ValidationPanel } from '@/components/viewer/validation/ValidationPanel';
 import { LensPanel } from '@/components/viewer/LensPanel';
 import { ClashPanel } from '@/components/viewer/ClashPanel';
 import { ExtensionsPanel } from '@/components/extensions/ExtensionsPanel';
@@ -81,7 +81,7 @@ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): Reac
     case 'properties': return <PropertiesPanel />;
     case 'compare': return <ComparePanel onClose={onClose} />;
     case 'bcf': return <BCFPanel onClose={onClose} />;
-    case 'ids': return <IDSPanel onClose={onClose} />;
+    case 'validation': return <ValidationPanel onClose={onClose} />;
     case 'lens': return <LensPanel onClose={onClose} />;
     case 'clash': return <ClashPanel onClose={onClose} />;
     case 'extensions': return <ExtensionsPanel onClose={onClose} />;

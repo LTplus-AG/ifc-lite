@@ -53,7 +53,7 @@ function setDockedVisible(id: AnalysisPanelId, visible: boolean): void {
   switch (id) {
     case 'compare': s.setComparePanelVisible(visible); break;
     case 'bcf': s.setBcfPanelVisible(visible); break;
-    case 'ids': s.setIdsPanelVisible(visible); break;
+    case 'validation': s.setIdsPanelVisible(visible); break;
     case 'lens': s.setLensPanelVisible(visible); break;
     case 'clash': s.setClashPanelVisible(visible); break;
     case 'extensions': s.setExtensionsPanelVisible(visible); break;

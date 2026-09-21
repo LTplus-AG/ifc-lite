@@ -52,18 +52,18 @@ describe('dockSlice (#1201)', () => {
 
   it('snaps, resizes and closes a panel', () => {
     const s = makeStore();
-    s.getState().floatPanel('ids');
-    s.getState().snapFloatingPanel('ids', 'left');
+    s.getState().floatPanel('validation');
+    s.getState().snapFloatingPanel('validation', 'left');
     assert.strictEqual(s.getState().floatingPanels[0].snap, 'left');
-    s.getState().setFloatingPanelRect('ids', { w: 500 });
+    s.getState().setFloatingPanelRect('validation', { w: 500 });
     assert.strictEqual(s.getState().floatingPanels[0].w, 500);
-    s.getState().closeFloatingPanel('ids');
+    s.getState().closeFloatingPanel('validation');
     assert.strictEqual(s.getState().floatingPanels.length, 0);
   });
 
   it('brings a panel to the front', () => {
     const s = makeStore();
-    const ids: WorkspacePanelId[] = ['compare', 'bcf', 'ids'];
+    const ids: WorkspacePanelId[] = ['compare', 'bcf', 'validation'];
     ids.forEach((id) => s.getState().floatPanel(id));
     s.getState().bringFloatingPanelToFront('compare');
     assert.strictEqual(s.getState().floatingPanels.at(-1)?.id, 'compare');

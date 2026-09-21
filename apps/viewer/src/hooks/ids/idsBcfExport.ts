@@ -233,9 +233,24 @@ export async function runIdsBcfExport({
   setBcfExportProgress({ phase: 'writing', current: 0, total: 1, message: 'Building BCF project...' });
 
   // Rule-set reports (#5138, PR 3 onward) have no `IDSDocument` to read a
-  // title/author from; `createBCFFromIDSReport` — and set-result-as-topic
-  // rendering for them — stay IDS-only for now (PR 4).
+  // title/author from.
   const document = report.source.kind === 'ids' ? report.source.document : null;
+
+  // NOT implemented in this PR (plan §6: "one topic per failed SetResult…
+  // if ≤60 lines, else say so"): `SetResult.members` is `{modelId,
+  // expressId}[]`, with no IFC GlobalId to hand `createTopic`'s
+  // `components: [{ ifcGuid }]` directly (`packages/bcf/src/
+  // ids-reporter.ts:719-778`) — every existing entity-result topic gets its
+  // `ifcGuid` from `EntityResult.globalId`, which `SetResult` has no
+  // equivalent of. Resolving one would need either a GlobalId lookup
+  // threaded into the published `@ifc-lite/bcf` package's report input, or
+  // pre-resolving every member's GlobalId in this file before calling
+  // `createBCFFromIDSReport` and widening `IDSReportInput`/
+  // `buildTopicsPerEntity`'s sibling to accept `setResults` — both are a
+  // real package API change (versioning, a changeset, its own tests), not a
+  // ≤60-line addition here. Per-entity topics (including a rule set's
+  // `duplicate` member rows, which land in `entityResults` too) already
+  // export correctly; only the SET-level summary topic is missing.
 
   const exportOptions: IDSBCFExportOptions = {
     author: bcfAuthor || document?.info.author || 'ids-validator@ifc-lite',

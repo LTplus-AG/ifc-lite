@@ -6,7 +6,7 @@
 //! (`schema_pad`), and a proxy fallback for types with no target representation.
 
 use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
-use crate::schema_unrepresented::{has_representation, resolve_unrepresented_entity, UnrepresentedEntityError};
+use crate::schema_unrepresented::{check_representation, UnrepresentedEntityError};
 use crate::step_slot::split_top_level_args;
 
 /// Canonicalize a FILE_SCHEMA label to one of the four families we convert between.
@@ -262,9 +262,7 @@ fn trim_attributes(attrs: &str, max_count: usize) -> Option<String> {
 /// exporter cannot convert without having decided which owner history it
 /// writes, and cannot lose the count of what stayed `$`.
 ///
-/// Errs when `line`'s (possibly renamed) type has no representation at all in
-/// `to` and is not an `IfcRoot` subtype either — see
-/// [`crate::schema_unrepresented`] (#5116).
+/// Errs for a type with no representation in `to` at all (#5116, [`crate::schema_unrepresented`]).
 pub fn convert_step_line(
     line: &str,
     from: &str,
@@ -286,12 +284,7 @@ pub fn convert_step_line(
 
 /// [`convert_step_line`] before the IFC2X3 required-slot fills, between two
 /// different canonical schemas.
-fn convert_record(
-    line: &str,
-    cfrom: &'static str,
-    cto: &'static str,
-    express_id: u32,
-) -> Result<String, UnrepresentedEntityError> {
+fn convert_record(line: &str, cfrom: &'static str, cto: &'static str, express_id: u32) -> Result<String, UnrepresentedEntityError> {
     // Parse #ID=TYPE(attrs); (multi-line tolerant: rfind ')').
     let trimmed = line.trim_end();
     let body = trimmed.strip_suffix(';').unwrap_or(trimmed);
@@ -341,15 +334,9 @@ fn convert_record(
         ));
     }
 
-    // A type entirely unknown to the target schema (not merely a strict-
-    // prefix attribute mismatch, handled by the trim/pad below) has no
-    // representation in `cto` at all -- proxy it if rooted, error otherwise,
-    // rather than let it pass through unchanged under the target's header
-    // (#5116). `should_skip_entity` above only catches its hand-listed
-    // alignment types; this is the general case, checked on `new_type`
-    // (post-rename) the same way `should_skip_entity` was.
-    if !has_representation(&new_type, cto) {
-        return resolve_unrepresented_entity(prefix, &entity_type, cto, express_id);
+    // #5116, see `check_representation`'s doc.
+    if let Some(result) = check_representation(prefix, &entity_type, &new_type, cto, express_id) {
+        return result;
     }
 
     // IFCDOORTYPE/IFCWINDOWTYPE -> IFCDOORSTYLE/IFCWINDOWSTYLE: neither

@@ -105,6 +105,26 @@ pub(crate) fn resolve_unrepresented_entity(
     })
 }
 
+/// `schema_convert.rs::convert_record`'s hook into this module: `None` when
+/// `new_type` (the type AFTER any rename `map_4_to_2x3` etc. already
+/// applied) has a real representation in `to`, so the caller's normal
+/// rename/trim/pad logic should continue; `Some` when it does not, in which
+/// case the caller must return the wrapped result immediately rather than
+/// fall into that logic with a type `to` never declared. `should_skip_entity`
+/// (checked first, by the caller) only covers its hand-listed alignment
+/// types -- this is the general case (#5116), checked on `new_type` because
+/// that is what `has_representation` must agree exists, but resolved
+/// (proxy/error) against the ORIGINAL `entity_type`, matching the TypeScript
+/// twin's `resolveUnrepresentedEntity(prefix, entityType, ...)`.
+pub(crate) fn check_representation(
+    prefix: &str, entity_type: &str, new_type: &str, to: &str, express_id: u32,
+) -> Option<Result<String, UnrepresentedEntityError>> {
+    if has_representation(new_type, to) {
+        return None;
+    }
+    Some(resolve_unrepresented_entity(prefix, entity_type, to, express_id))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

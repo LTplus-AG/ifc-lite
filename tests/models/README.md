@@ -159,10 +159,14 @@ attribution or convert an unreviewed local file into a public release asset.
 ### Licensed producer rows
 
 The following source rows are in `manifest.json`; they are fetched on demand
-from their exact upstream commits. Their repository-root licenses are CC-BY-4.0
-and their raw bytes were checked on 2026-09-20. The fixture tests are purposely
-skip-safe on a fresh clone, but a skip is **unproven interoperability evidence**
-and cannot close #4937. Fetch the relevant byte with `pnpm fixtures <path>`.
+from their exact upstream commits. License evidence is source-specific: the
+InfraModel and IFC-infra-unit-test rows are CC-BY-4.0, the Civil 3D black-box
+fixture is MIT, and the bonsai-topo control files are dedicated under their
+directory-level CC0 notice (the surrounding openBIM-surveyor application is
+AGPL-3.0). Their raw bytes were checked on the per-row fetch dates recorded in
+the manifest. The fixture tests are purposely skip-safe on a fresh clone, but
+a skip is **unproven interoperability evidence** and cannot close #4937. Fetch
+the relevant byte with `pnpm fixtures <path>`.
 
 | Source and coverage | Source SHA-256 | Bytes |
 | --- | --- | ---: |
@@ -177,7 +181,10 @@ and cannot close #4937. Fetch the relevant byte with `pnpm fixtures <path>`.
 
 The applicable license evidence is the pinned
 [InfraModel LICENCE](https://github.com/buildingSMART-Finland/InfraModel/blob/eb2720b8b909d44f18ee4f84acfb113322405a87/LICENCE)
-and [IFC-infra-unit-test LICENSE.txt](https://github.com/bSI-InfraRoom/IFC-infra-unit-test/blob/bc13603cc4899084edbf9f1d9151443a7fb4cf0e/LICENSE.txt).
+and [IFC-infra-unit-test LICENSE.txt](https://github.com/bSI-InfraRoom/IFC-infra-unit-test/blob/bc13603cc4899084edbf9f1d9151443a7fb4cf0e/LICENSE.txt)
+(CC-BY-4.0), [tin2dem MIT LICENSE](https://github.com/lekks/tin2dem/blob/77ad81524567cce95dac4e7f5ad01aa51f1162f3/LICENSE),
+and the bonsai fixture directory's
+[CC0 notice](https://github.com/louistrue/openBIM-surveyor/blob/db5d60f98daf7937529e49dd6463ef2566da7e97/fixtures/ifc-lite-control/LICENSE-CC0.txt).
 The corpus deliberately records the current capability honestly: canonical
 Aplitop and OpenRoads roots retain their declared units but their
 alignment/profile payload is unsupported by the present TIN-only parser;

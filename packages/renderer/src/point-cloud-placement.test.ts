@@ -7,6 +7,8 @@ import { Renderer } from './index.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import { PointCloudPlacements } from './pointcloud/point-cloud-placement.js';
 import { transformAabb, type PointCloudNode } from './pointcloud/point-cloud-node.js';
+import { modelPlacementBounds } from './model-placement-bounds.js';
+import { Scene } from './scene.js';
 
   (globalThis as Record<string, unknown>).GPUShaderStage = { VERTEX: 1, FRAGMENT: 2 };
   (globalThis as Record<string, unknown>).GPUBufferUsage = { VERTEX: 32, COPY_DST: 8, UNIFORM: 64, STORAGE: 128 };
@@ -76,6 +78,9 @@ it('excludes a hidden streamed scan from draw-derived bounds and both pick sourc
   assert.deepEqual(renderer.getPickNodes().map((node) => node.expressId), [1]);
   assert.deepEqual(renderer.getRayQuerySources().map((node) => node.expressId), [1]);
   assert.deepEqual(renderer.getBounds(), { min: [1, 0, 0], max: [1, 0, 0] });
+  assert.equal(renderer.getPlacementBounds(0, hidden), null, 'a hidden handle does not provide model-specific frame bounds');
+  assert.equal(modelPlacementBounds(new Scene(), renderer, 0, hidden), null,
+    'a hidden streamed-only model cannot move the camera through Frame moving');
   renderer.clear();
 });
 

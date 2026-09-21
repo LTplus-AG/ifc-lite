@@ -307,8 +307,12 @@ export class PointCloudRenderer {
   getAssetTransform(handle: PointCloudAssetHandle): Float32Array | undefined { const matrix = this.nodes.get(handle.id)?.model; return matrix ? new Float32Array(matrix) : undefined; }
 
   getPlacementBounds(modelIndex: number, handle?: PointCloudAssetHandle) {
-    const nodes = handle ? [this.nodes.get(handle.id)] : [...this.nodes].filter(([id, node]) =>
-      this.nodeOwners.get(id) === 'ifcx' && (node.meta.modelIndex ?? 0) === modelIndex).map(([, node]) => node);
+    // Model-specific framing must obey whole-scene visibility: a hidden scan cannot move the camera.
+    const nodes = handle
+      ? this.visibility.visible(handle.id) ? [this.nodes.get(handle.id)] : []
+      : [...this.nodes].filter(([id, node]) => this.visibility.visible(id)
+        && this.nodeOwners.get(id) === 'ifcx' && (node.meta.modelIndex ?? 0) === modelIndex)
+        .map(([, node]) => node);
     return unionPointCloudBounds(nodes);
   }
 

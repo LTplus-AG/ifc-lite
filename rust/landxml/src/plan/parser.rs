@@ -83,9 +83,9 @@ pub fn parse_landxml_plan_with_cancel(
                 parser.start(&value)?;
                 parser.end(None)?;
             }
-            Event::End(value) => parser.end(Some(value.name().as_ref()))?,
-            Event::Text(value) => parser.text(value.as_ref())?,
-            Event::CData(value) => parser.cdata(value.as_ref())?,
+            Event::End(value) => parser.end(Some(value.name().as_ref().as_bytes()))?,
+            Event::Text(value) => parser.text(value.as_ref().as_bytes())?,
+            Event::CData(value) => parser.cdata(value.as_ref().as_bytes())?,
             Event::DocType(_) => return Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
             Event::Eof => break,
             _ => {}

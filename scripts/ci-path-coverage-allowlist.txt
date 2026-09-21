@@ -83,7 +83,6 @@ scripts/check-i18n-literals.test.mjs apps/landing/** # `apps` is a synthetic fix
 # ---------------------------------------------------------------------------
 scripts/fixtures/fetch-fixtures.mjs scripts/fixtures/* # the fetcher runs in rust-tests/geometry-census/benchmark, whose filters carry tests/models/manifest.json but not scripts/**
 scripts/fixtures/fetch-fixtures.mjs tests/models/README.md # the rust/geometry filters pin tests/models/manifest.json, the corpus input; the README is not one
-scripts/fixtures/fetch-fixtures.mjs tests/models/landxml # fixture payloads are gitignored; their committed manifest entry is the canonical trigger
 
 # ---------------------------------------------------------------------------
 # 4. THIS CHECK'S OWN REQUIRED_COVERAGE LITERALS. `check-ci-path-coverage.mjs`

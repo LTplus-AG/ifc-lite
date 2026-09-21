@@ -3186,6 +3186,8 @@ export class Scene {
         normals: t.normals,
         indices: t.indices,
         instanceData: t.instanceBuffer,
+        canonicalAnchors: t.canonicalAnchors,
+        canonicalMatrixTranslations: t.canonicalMatrixTranslations,
         localMin: [lmnx, lmny, lmnz],
         localMax: [lmxx, lmxy, lmxz],
       };

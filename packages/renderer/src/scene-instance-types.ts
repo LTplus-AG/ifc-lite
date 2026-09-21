@@ -53,6 +53,10 @@ export interface InstancedTemplateCpu {
   normals: Float32Array;
   indices: Uint32Array;
   instanceData: ArrayBuffer; // packed 88-byte instance records (mat4 at +0, col-major)
+  /** Canonical f64 occurrence anchors (xyz per record). These are deliberately
+   * CPU-side until the V2 GPU instance ABI is enabled. */
+  canonicalAnchors: Float64Array;
+  canonicalMatrixTranslations: Float32Array;
   localMin: [number, number, number];
   localMax: [number, number, number];
 }

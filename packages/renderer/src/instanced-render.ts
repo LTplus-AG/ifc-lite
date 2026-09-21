@@ -26,13 +26,12 @@
  * Rust (`verify_recomposition`), this lands instanced + flat geometry in one
  * frame. (See instanced-render.test.ts for the GPU-free proof.)
  *
- * PRECISION: the per-instance matrix is f32, so its translation jitters at
- * national-grid magnitudes (the f32-collapse the local-frame work targets). Fine
- * for building-local models; an f64 per-instance origin is the path for
- * georef-scale. That would be IFNS v3: v2 and header word 7 are both spent —
- * word 7 now carries the instance record stride (#2985), and an f64 origin is a
- * per-instance field, so it appends as trailing field 2 behind `itemId` and
- * moves the stride from 92 to 116 rather than claiming a header word. */
+ * PRECISION: the GPU record remains an f32 matrix for V1 rendering, but the
+ * decoded template origin is f64. `canonicalAnchors` therefore retain the
+ * occurrence's exact f64 world anchor independently of that matrix. CPU
+ * materialization (snap/measure/raycast fallback) consumes the anchor now;
+ * the following GPU V2 lane can upload it without changing the producer shard.
+ */
 
 import { MathUtils } from './math.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
@@ -107,6 +106,26 @@ export function composeInstanceMatrix(
   return instMat.m;
 }
 
+/**
+ * Canonical f64 world anchor for one occurrence's template origin. The IFNS
+ * transform coefficients are f32 by format, but evaluating them against the
+ * template's f64 origin before narrowing preserves the source residual that a
+ * composed f32 translation loses at national-grid offsets. Result is renderer
+ * Y-up, matching `composeInstanceMatrix` and every CPU consumer.
+ */
+export function composeInstanceAnchor(
+  transformRowMajor: Float32Array,
+  origin: readonly [number, number, number],
+): [number, number, number] {
+  const x = transformRowMajor[0] * origin[0] + transformRowMajor[1] * origin[1]
+    + transformRowMajor[2] * origin[2] + transformRowMajor[3];
+  const y = transformRowMajor[4] * origin[0] + transformRowMajor[5] * origin[1]
+    + transformRowMajor[6] * origin[2] + transformRowMajor[7];
+  const z = transformRowMajor[8] * origin[0] + transformRowMajor[9] * origin[1]
+    + transformRowMajor[10] * origin[2] + transformRowMajor[11];
+  return [x, z, -y];
+}
+
 /** A unique template + the interleaved per-instance buffer for its occurrences. */
 export interface InstancedRenderTemplate {
   /** Index of this template within its source shard (diagnostic only). */
@@ -135,6 +154,13 @@ export interface InstancedRenderTemplate {
    *  picker. This is host-query data: it answers "which entity produced this
    *  piece", never "how is it drawn". */
   itemIds?: Uint32Array;
+  /** f64 Y-up occurrence anchors, xyz per instance-buffer record. Kept outside
+   * the V1 GPU record so old IFNS input stays wire-compatible. */
+  canonicalAnchors: Float64Array;
+  /** V1 matrix translations paired with canonicalAnchors. A later interactive
+   * model/entity placement intentionally falls back to its edited matrix until
+   * that edit is promoted to the anchored GPU V2 record. */
+  canonicalMatrixTranslations: Float32Array;
 }
 
 /**
@@ -192,6 +218,8 @@ export function prepareInstancedRender(shard: DecodedInstancedShard): InstancedR
     const buffer = new ArrayBuffer(insts.length * INSTANCE_STRIDE_BYTES);
     const dv = new DataView(buffer);
     const entityIds = new Uint32Array(insts.length);
+    const canonicalAnchors = new Float64Array(insts.length * 3);
+    const canonicalMatrixTranslations = new Float32Array(insts.length * 3);
     // The shard's stride already answered "does anything here name an item"
     // (the encoder derives it from the data), so a model with none pays no
     // per-template allocation and no zero-fill for a column that would be all
@@ -200,9 +228,12 @@ export function prepareInstancedRender(shard: DecodedInstancedShard): InstancedR
     for (let i = 0; i < insts.length; i++) {
       const inst = insts[i];
       const mat = composeInstanceMatrix(inst.transform, tmpl.origin);
+      const anchor = composeInstanceAnchor(inst.transform, tmpl.origin);
       // flags = 0: every occurrence starts unselected.
       writeInstanceRecord(dv, i * INSTANCE_STRIDE_BYTES, mat, inst.entityId, inst.color, 0);
       entityIds[i] = inst.entityId >>> 0;
+      canonicalAnchors.set(anchor, i * 3);
+      canonicalMatrixTranslations.set([mat[12], mat[13], mat[14]], i * 3);
       if (itemIds) itemIds[i] = (inst.itemId ?? 0) >>> 0;
     }
 
@@ -216,6 +247,8 @@ export function prepareInstancedRender(shard: DecodedInstancedShard): InstancedR
       instanceCount: insts.length,
       entityIds,
       itemIds,
+      canonicalAnchors,
+      canonicalMatrixTranslations,
     });
   }
   return out;

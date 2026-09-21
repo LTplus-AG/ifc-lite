@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import {
   composeInstanceMatrix,
+  composeInstanceAnchor,
   writeInstanceRecord,
   prepareInstancedRender,
   foldOccurrenceWorldBox,
@@ -87,6 +88,14 @@ function expectedRenderCoord(
 }
 
 describe('composeInstanceMatrix — frame correctness vs the flat path', () => {
+  it('keeps a canonical centimetre residual at a 5,000 km template origin (#5049)', () => {
+    const origin: [number, number, number] = [5_000_000.01, -2_000_000.02, 30.03];
+    const anchor = composeInstanceAnchor(rowMajorTranslation(0.02, 0.04, -0.06), origin);
+    // Native [5000000.03, -1999999.98, 29.97] → Y-up [x, z, -y].
+    assertClose(anchor, [5_000_000.03, 29.97, 1_999_999.98], 'f64 occurrence anchor', 1e-8);
+    const v1 = composeInstanceMatrix(rowMajorTranslation(0.02, 0.04, -0.06), origin);
+    assert.notEqual(v1[12], anchor[0], 'the V1 f32 matrix demonstrably loses the residual');
+  });
   it('identity rel_k + origin: only the Z-up→Y-up swap of (origin + p)', () => {
     const relK = rowMajorIdentity();
     const origin: [number, number, number] = [1, 2, 3];

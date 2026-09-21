@@ -41,6 +41,16 @@ const MALFORMED_PARCEL_XML = `<?xml version="1.0" encoding="UTF-8"?>
   <Parcel name="good"><CoordGeom><Line><Start>0 0</Start><End>1 0</End></Line><Line><Start>1 0</Start><End>0 1</End></Line><Line><Start>0 1</Start><End>0 0</End></Line></CoordGeom></Parcel></Parcels>
 </LandXML>`;
 
+function aliasChainXml(count, cycle = false) {
+  const points = ['<CgPoint name="p0">0 0 0</CgPoint>'];
+  const geometry = [];
+  for (let index = 1; index <= count; index++) {
+    points.push(`<CgPoint name="p${index}" pntRef="p${cycle && index === count ? count : index - 1}"/>`);
+    geometry.push(`<Line><Start pntRef="p${index}"/><End>1 1 0</End></Line>`);
+  }
+  return `<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><CgPoints>${points.join('')}</CgPoints><Monuments>${Array.from({ length: count }, (_, index) => `<Monument pntRef="p${index + 1}"/>`).join('')}</Monuments><PlanFeatures><PlanFeature><CoordGeom>${geometry.join('')}</CoordGeom></PlanFeature></PlanFeatures></LandXML>`;
+}
+
 function utf16Le(text) {
   const output = new Uint8Array(2 + text.length * 2);
   output.set([0xff, 0xfe]);
@@ -90,6 +100,17 @@ export function runLandXmlContracts(api, test) {
     assert.equal(document.plan.parcels[0].loops[0].length, 0, 'bad Start/duplicate Start do not escape their parcel');
     assert.equal(document.plan.parcel_probes[0].state.kind, 'preserved_only');
     assert.equal(document.plan.parcel_probes[1].state.kind, 'analytic');
+  });
+
+  test('LandXML bulk resolver path-compresses hostile alias geometry and monuments (#5046)', () => {
+    const count = 1_024;
+    const document = api.parseLandXmlTinBytes(new TextEncoder().encode(aliasChainXml(count)));
+    assert.equal(document.plan.resolved_geometry.length, count);
+    assert.equal(document.plan.resolved_monuments.length, count);
+    assert.ok(document.plan.resolved_geometry.every((geometry) => geometry.start?.northing === 0));
+    assert.ok(document.plan.resolved_monuments.every((monument) => monument.point?.easting === 0));
+    const cyclic = api.parseLandXmlTinBytes(new TextEncoder().encode(aliasChainXml(64, true)));
+    assert.ok(cyclic.plan.resolved_geometry.some((geometry) => geometry.start === undefined), 'cycles remain unresolved rather than fabricated');
   });
 
   test('LandXML raw-byte parser preserves stable diagnostics', () => {

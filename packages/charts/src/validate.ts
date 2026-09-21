@@ -19,7 +19,7 @@ export interface DashboardValidationError {
 export const DASHBOARD_GRID_COLUMNS = 12;
 
 const SOURCES: ReadonlySet<string> = new Set<ChartSource>(['elements', 'clash', 'bcf', 'schedule', 'ids', 'compare']);
-const TYPES: ReadonlySet<string> = new Set<ChartType>(['bar', 'stackedBar', 'pie', 'treemap', 'histogram', 'timeline']);
+const TYPES: ReadonlySet<string> = new Set<ChartType>(['bar', 'stackedBar', 'pie', 'treemap', 'histogram', 'timeline', 'elementCount']);
 const SCOPES: ReadonlySet<string> = new Set(['all', 'visible', 'basket']);
 /** Sources whose rows do not stand for one matchable element (#4946): a BCF
  *  row is a topic (its "elements" are a viewpoint's component GUIDs, often
@@ -111,7 +111,7 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
       }
     }
   }
-  str(errors, chart, 'dimension', path);
+  str(errors, chart, 'dimension', path, chart.type === 'elementCount');
   str(errors, chart, 'stackBy', path, true);
   if (chart.type === 'stackedBar' && typeof chart.stackBy !== 'string') errors.push({ path: `${path}.stackBy`, message: 'a stackedBar needs stackBy' });
   const measure = chart.measure;

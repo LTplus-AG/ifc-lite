@@ -168,6 +168,38 @@ function toBucket(acc: Accumulator, color: string): Bucket {
 }
 
 export function aggregate(spec: ChartSpec, dataset: ChartDataset, options: AggregateOptions = {}): AggregateResult {
+  // Special handling for elementCount: create a single bucket with all elements.
+  if (spec.type === 'elementCount') {
+    const ids = new Set<number>();
+    let total = 0;
+    for (const row of dataset.rows) {
+      if (!rowInSlice(row, options.slice)) continue;
+      const measure = spec.measure.agg === 'count' ? 1 : 0;
+      total += measure;
+      for (let i = 0; i < row.ids.length; i++) ids.add(row.ids[i]);
+    }
+    const color = '#3b82f6'; // Default blue
+    const bucket: Bucket = { key: 'total', label: 'Total', value: total, count: ids.size, ids: Uint32Array.from(ids), color };
+    const palette = assignColors([bucket.label], options.palette);
+    const categoryOf = new Map<number, number[]>();
+    for (const id of ids) {
+      categoryOf.set(id, [0]);
+    }
+    return {
+      spec,
+      dataFingerprint: dataset.fingerprint,
+      categories: [bucket],
+      series: [{ key: 'total', label: spec.title, buckets: [bucket] }],
+      total,
+      unbucketed: 0,
+      unmeasured: 0,
+      unsupported: 0,
+      categoryOf,
+      unit: undefined,
+      palette,
+    };
+  }
+
   const columnIndex = (id: string | undefined): number => (id ? dataset.columns.findIndex((c) => c.id === id) : -1);
   const dimension = columnIndex(spec.dimension);
   if (dimension < 0) throw new Error(`chart "${spec.id}": dimension column "${spec.dimension}" is not in the dataset`);

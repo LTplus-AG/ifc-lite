@@ -262,4 +262,26 @@ describe('aggregate invariants', () => {
     expect(() => aggregate({ id: 'x', title: 'x', source: 'clash', type: 'bar', dimension: 'Nope', measure: { agg: 'count' } }, ds)).toThrow(/dimension column "Nope"/);
     expect(() => aggregate({ id: 'x', title: 'x', source: 'clash', type: 'bar', dimension: 'T', measure: { agg: 'sum', column: 'Nope' } }, ds)).toThrow(/measure column "Nope"/);
   });
+
+  it('creates a single bucket for elementCount, counting all elements', async () => {
+    const ds = await parsedDataset();
+    const agg = aggregate({ id: 'ec', title: 'All Elements', source: 'elements', type: 'elementCount', dimension: '', measure: { agg: 'count' } }, ds);
+    expect(agg.categories).toHaveLength(1);
+    expect(agg.categories[0].label).toBe('Total');
+    expect(agg.categories[0].count).toBe(5);
+    expect(agg.categories[0].value).toBe(5);
+    expect([...agg.categories[0].ids].sort()).toEqual([41, 42, 43, 44, 45]);
+    expect(agg.total).toBe(5);
+    expect(agg.unbucketed).toBe(0);
+    expect(agg.series).toHaveLength(1);
+    expect(agg.series[0].buckets).toHaveLength(1);
+  });
+
+  it('elementCount respects the slice option to count only selected elements', async () => {
+    const ds = await parsedDataset();
+    const selectedIds = new Set([41, 42, 44]);
+    const agg = aggregate({ id: 'ec', title: 'Selected', source: 'elements', type: 'elementCount', dimension: '', measure: { agg: 'count' } }, ds, { slice: selectedIds });
+    expect(agg.categories[0].count).toBe(3);
+    expect([...agg.categories[0].ids].sort()).toEqual([41, 42, 44]);
+  });
 });

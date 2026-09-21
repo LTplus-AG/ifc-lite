@@ -44,7 +44,7 @@ export interface ChartDataset {
   fingerprint: string;
 }
 
-export type ChartType = 'bar' | 'stackedBar' | 'pie' | 'treemap' | 'histogram' | 'timeline';
+export type ChartType = 'bar' | 'stackedBar' | 'pie' | 'treemap' | 'histogram' | 'timeline' | 'elementCount';
 
 export type ChartAggregate = 'count' | 'sum';
 

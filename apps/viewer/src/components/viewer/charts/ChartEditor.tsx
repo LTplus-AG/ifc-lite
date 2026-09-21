@@ -28,6 +28,7 @@ const TYPE_LABELS: Record<ChartType, string> = {
   treemap: 'Treemap',
   histogram: 'Histogram',
   timeline: 'Timeline (per week)',
+  elementCount: 'Element Count',
 };
 
 const SOURCE_LABELS: Record<ChartSource, string> = {
@@ -64,6 +65,7 @@ export function editorColumns(dataset: ChartDataset, draft: ChartSpec): ChartDat
 
 /** The columns a chart type can bucket by. */
 function dimensionColumns(type: ChartType, columns: readonly ChartDatasetColumn[]): ChartDatasetColumn[] {
+  if (type === 'elementCount') return []; // elementCount doesn't bucket by any dimension
   if (type === 'histogram') return columns.filter((c) => c.kind === 'number');
   if (type === 'timeline') return columns.filter((c) => c.kind === 'date');
   return columns.filter((c) => c.kind === 'category' || c.kind === 'boolean');
@@ -88,7 +90,7 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
   const numberColumns = columns.filter((c) => c.kind === 'number');
   const categoryColumns = columns.filter((c) => c.kind === 'category' || c.kind === 'boolean');
   const dims = dimensionColumns(draft.type, columns);
-  const dimensionOk = dims.some((c) => c.id === draft.dimension);
+  const dimensionOk = draft.type === 'elementCount' || dims.some((c) => c.id === draft.dimension);
   const measureOk = draft.measure.agg === 'count' || numberColumns.some((c) => c.id === draft.measure.column);
   const stackOk = draft.type !== 'stackedBar' || categoryColumns.some((c) => c.id === draft.stackBy);
   const valid = draft.title.trim().length > 0 && dimensionOk && measureOk && stackOk && filterValid;
@@ -136,8 +138,15 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
   const setType = (type: ChartType): void => {
     const next = { ...draft, type };
     const allowed = dimensionColumns(type, columns);
-    if (!allowed.some((c) => c.id === next.dimension)) next.dimension = allowed[0]?.id ?? next.dimension;
-    if (type === 'stackedBar' && !next.stackBy) next.stackBy = categoryColumns.find((c) => c.id !== next.dimension)?.id;
+    if (type === 'elementCount') {
+      // elementCount doesn't use dimension or stackBy
+      next.dimension = '';
+      next.stackBy = undefined;
+    } else {
+      // Other types need a valid dimension
+      if (!allowed.some((c) => c.id === next.dimension)) next.dimension = allowed[0]?.id ?? next.dimension;
+      if (type === 'stackedBar' && !next.stackBy) next.stackBy = categoryColumns.find((c) => c.id !== next.dimension)?.id;
+    }
     setDraft(next);
   };
 
@@ -216,13 +225,15 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
             {(Object.keys(TYPE_LABELS) as ChartType[]).map((type) => <option key={type} value={type}>{TYPE_LABELS[type]}</option>)}
           </select>
         </label>
-        <label className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground">{t('chartEditor.groupByLabel')}</span>
-          <select className={field} value={draft.dimension} onChange={(e) => setDraft({ ...draft, dimension: e.target.value })} aria-label={t('chartEditor.groupByAriaLabel')}>
-            {!dimensionOk && <option value={draft.dimension}>—</option>}
-            {dims.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-          </select>
-        </label>
+        {draft.type !== 'elementCount' && (
+          <label className="flex flex-col gap-0.5">
+            <span className="text-muted-foreground">{t('chartEditor.groupByLabel')}</span>
+            <select className={field} value={draft.dimension} onChange={(e) => setDraft({ ...draft, dimension: e.target.value })} aria-label={t('chartEditor.groupByAriaLabel')}>
+              {!dimensionOk && <option value={draft.dimension}>—</option>}
+              {dims.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+            </select>
+          </label>
+        )}
         {draft.type === 'stackedBar' && (
           <label className="flex flex-col gap-0.5">
             <span className="text-muted-foreground">{t('chartEditor.stackByLabel')}</span>
@@ -247,24 +258,28 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
             {numberColumns.map((c) => <option key={c.id} value={`sum:${c.id}`}>{t('chartEditor.sumOfOption', { column: c.label, unit: c.unit ? ` (${c.unit})` : '' })}</option>)}
           </select>
         </label>
-        <label className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground">{t('chartEditor.topNLabel')}</span>
-          <input
-            className={field}
-            type="number"
-            min={0}
-            value={draft.topN ?? ''}
-            onChange={(e) => setDraft({ ...draft, topN: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value)) })}
-            aria-label={t('chartEditor.topNAriaLabel')}
-          />
-        </label>
-        <label className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground">{t('chartEditor.orderLabel')}</span>
-          <select className={field} value={draft.sort ?? 'value'} onChange={(e) => setDraft({ ...draft, sort: e.target.value as 'value' | 'label' })} aria-label={t('chartEditor.orderAriaLabel')}>
-            <option value="value">{t('chartEditor.orderValueOption')}</option>
-            <option value="label">{t('chartEditor.orderLabelOption')}</option>
-          </select>
-        </label>
+        {draft.type !== 'elementCount' && (
+          <>
+            <label className="flex flex-col gap-0.5">
+              <span className="text-muted-foreground">{t('chartEditor.topNLabel')}</span>
+              <input
+                className={field}
+                type="number"
+                min={0}
+                value={draft.topN ?? ''}
+                onChange={(e) => setDraft({ ...draft, topN: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value)) })}
+                aria-label={t('chartEditor.topNAriaLabel')}
+              />
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="text-muted-foreground">{t('chartEditor.orderLabel')}</span>
+              <select className={field} value={draft.sort ?? 'value'} onChange={(e) => setDraft({ ...draft, sort: e.target.value as 'value' | 'label' })} aria-label={t('chartEditor.orderAriaLabel')}>
+                <option value="value">{t('chartEditor.orderValueOption')}</option>
+                <option value="label">{t('chartEditor.orderLabelOption')}</option>
+              </select>
+            </label>
+          </>
+        )}
       </div>
       <div className="flex justify-end gap-1">
         <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onCancel}>{t('chartEditor.cancelButton')}</Button>

@@ -1,0 +1,144 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { describe, it } from 'node:test';
+import assert from 'node:assert';
+import type { ModelSpatialReference } from '@ifc-lite/geometry';
+import { applyLandXmlRenderedLineUpdates, buildLandXmlRenderedLineUpdates } from './landXmlSpatialLines.js';
+import type { LandXmlAlignment, LandXmlPlanPoint, LandXmlTinDocument } from './landXmlSemantics.js';
+
+function reference(
+  eastings: number, northings: number, height: number, horizontal = 'EPSG:2056',
+): ModelSpatialReference {
+  return {
+    source: { axes: ['east', 'up', 'south'], horizontalUnitToMetres: 1, verticalUnitToMetres: 1 },
+    horizontal: { id: horizontal, provenance: { source: 'test' } },
+    vertical: { id: 'EPSG:5729', provenance: { source: 'test' } },
+    localToProjected: {
+      kind: 'local-projected-affine', eastings, northings, orthogonalHeight: height,
+      xAxisAbscissa: 1, xAxisOrdinate: 0, scaleX: 1, scaleY: 1, scaleZ: 1,
+    },
+    confidence: 'declared',
+  };
+}
+
+function document(): LandXmlTinDocument {
+  return {
+    format: 'landxml', schema: 'LandXML-1.2', version: '1.2',
+    capabilities: { renderableTin: true, preservedOnlySurfaces: 0, unknownExtensions: 0 },
+    units: { linearUnit: 'meter', elevationUnit: 'meter', linearScaleToMeters: 1, elevationScaleToMeters: 1 },
+    surfaces: [{
+      sourceId: 'surface', ordinal: 1, sourcePath: 'LandXML/Surfaces/Surface[1]', properties: {},
+      definitionProperties: {}, name: 'survey', kind: 'tin', renderState: 'rendered', points: [],
+      sourceDataPoints: [], faces: [], faceSourceIds: [], faceVisibility: [], hiddenFaceCount: 0,
+      boundaries: [], contours: [], breaklines: [{
+        sourceId: 'line', ordinal: 1, name: null, kind: 'breakline',
+        sourcePath: 'LandXML/Surfaces/Surface[1]/Breakline', properties: {}, coordinateDimension: 3,
+        points: [[2003, 1002, 24]], pointSourceIds: [],
+      }],
+    }],
+    extensions: [], warnings: [], alignments: [], profiles: [], crossSections: [],
+    crossSectionSurfaces: [], roadways: [], capabilityDiagnostics: [],
+    preservedOnlyExtensions: [], rendering: { meshProvenance: [], surfaceCounts: [] },
+  };
+}
+
+describe('LandXML federated overlay coordinates (#5048)', () => {
+  it('aligns COGO markers and plan geometry through the same staged frame as terrain', async () => {
+    const parsed = document();
+    const marker: LandXmlPlanPoint = { northing: 0, easting: 1010, elevation: 0 };
+    const start: LandXmlPlanPoint = { northing: 0, easting: 1010, elevation: 0 };
+    const end: LandXmlPlanPoint = { northing: 0, easting: 1011, elevation: 0 };
+    parsed.plan = {
+      version: '1.2', areaUnit: null, areaScaleToSquareMeters: null,
+      cogoPoints: [{ sourceId: 'cogo', scopeId: 'scope', ordinal: 1, name: 'P', code: null,
+        description: null, point: marker, pntRef: null, properties: {} }],
+      monuments: [],
+      planFeatures: [{ sourceId: 'feature', ordinal: 1, name: 'line', code: null, description: null,
+        properties: {}, locations: [], geometry: [{ sourceId: 'geometry', ordinal: 1, kind: 'line',
+          pointScopeId: null, start: { kind: 'coordinates', point: start, pntRef: null },
+          end: { kind: 'coordinates', point: end, pntRef: null }, center: null, pi: null,
+          intermediatePoints: [], rotation: null, radius: null, declaredLength: 1, properties: {} }] }],
+      parcels: [], warnings: [], sourceBatches: [{ sourceIds: ['cogo', 'geometry'] }],
+      parcelProbes: [], resolvedMonuments: [], resolvedGeometry: [{
+        sourceId: 'geometry', start, end, center: null, pi: null,
+      }],
+    };
+    const updates = await buildLandXmlRenderedLineUpdates(
+      parsed, reference(0, 0, 0), reference(1000, 0, 0), undefined,
+    );
+    applyLandXmlRenderedLineUpdates(updates);
+
+    assert.deepStrictEqual(marker.renderedPoint, [10, 0, 0]);
+    assert.deepStrictEqual(parsed.plan.resolvedGeometry[0].renderedPoints, [[10, 0, 0], [11, 0, 0]]);
+    assert.deepStrictEqual([marker.easting, start.easting, end.easting], [1010, 1010, 1011],
+      'derived alignment never rewrites authored plan coordinates');
+  });
+
+  it('rebuilds horizontal alignment spans into the federation anchor frame (#5044, #5048)', async () => {
+    const parsed = document();
+    const start: LandXmlPlanPoint = { northing: 0, easting: 1010, elevation: 0 };
+    const end: LandXmlPlanPoint = { northing: 0, easting: 1011, elevation: 0 };
+    parsed.alignments = [{
+      sourceId: 'alignment', ordinal: 1, name: 'road', length: 1, staStart: 0,
+      profileSourceIds: [], crossSectionSourceIds: [], start: { kind: 'coordinates', point: start },
+      alignPis: [], stationEquations: [], cant: null, cantStations: [], superelevations: [],
+      unsupportedTransitions: [], segments: [{ sourceId: 'alignment:segment:1', ordinal: 1,
+        primitive: { kind: 'line', start: { kind: 'coordinates', point: start },
+          end: { kind: 'coordinates', point: end }, declaredLength: 1 } }],
+    } satisfies LandXmlAlignment];
+
+    const updates = await buildLandXmlRenderedLineUpdates(
+      parsed, reference(0, 0, 0), reference(1000, 0, 0), undefined,
+    );
+    applyLandXmlRenderedLineUpdates(updates);
+
+    assert.deepStrictEqual(parsed.alignments[0].segments[0].renderedPoints, [[10, 0, 0], [11, 0, 0]]);
+    assert.deepStrictEqual([start.easting, end.easting], [1010, 1011], 'authored alignment stays immutable');
+  });
+
+  it('uses absolute authored N/E/H points once, without adding source RTC a second time', async () => {
+    const source = reference(0, 0, 0);
+    const target = reference(990, 2000, 20);
+    const parsed = document();
+    const updates = await buildLandXmlRenderedLineUpdates(parsed, source, target, undefined);
+    applyLandXmlRenderedLineUpdates(updates);
+    const line = parsed.surfaces[0].breaklines[0];
+    assert.deepStrictEqual(line.renderedPoints, [[12, 4, -3]]);
+    assert.deepStrictEqual(line.points, [[2003, 1002, 24]], 'authored points remain immutable');
+  });
+
+  it('normalizes LandXML projected feet around proj4 before rebuilding the overlay (#5048)', async () => {
+    const parsed = document();
+    parsed.units = {
+      linearUnit: 'US survey foot', elevationUnit: 'US survey foot',
+      linearScaleToMeters: 1200 / 3937, elevationScaleToMeters: 1200 / 3937,
+    };
+    parsed.surfaces[0].breaklines[0].points = [[0, 200_000, 0]];
+    // EPSG:2236 (US survey foot) false-origin → EPSG:32632 in metres.
+    const source = reference(0, 0, 0, 'EPSG:2236');
+    const target = reference(-9_240_280.602725117, 10_330_575.179250661, 0, 'EPSG:32632');
+    const updates = await buildLandXmlRenderedLineUpdates(parsed, source, target, undefined);
+    applyLandXmlRenderedLineUpdates(updates);
+    assert.deepStrictEqual(parsed.surfaces[0].breaklines[0].renderedPoints, [[0, 0, 0]]);
+  });
+
+  it('suppresses only a failed 1e100 line instead of falling back to source coordinates in an aligned surface (#5048)', async () => {
+    const parsed = document();
+    const valid = parsed.surfaces[0].breaklines[0];
+    valid.points = [[0, 0, 0], [1, 1, 1]];
+    const invalid = { ...valid, sourceId: 'overflow', points: [[0, 0, 0], [1e100, 1e100, 1e100]] };
+    parsed.surfaces[0].breaklines.push(invalid);
+    const source = reference(0, 0, 0, 'EPSG:2056');
+    const target = reference(0, 0, 0, 'EPSG:3857');
+    const updates = await buildLandXmlRenderedLineUpdates(parsed, source, target, undefined);
+    applyLandXmlRenderedLineUpdates(updates);
+
+    assert.equal(valid.renderedPointState, 'aligned', 'a valid sibling remains visible');
+    assert.equal(invalid.renderedPointState, 'suppressed');
+    assert.equal(invalid.renderedPoints, undefined);
+    assert.deepStrictEqual(invalid.points, [[0, 0, 0], [1e100, 1e100, 1e100]],
+      'suppression never rewrites the authored survey record');
+  });
+});

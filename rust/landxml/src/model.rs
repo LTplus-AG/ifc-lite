@@ -265,6 +265,14 @@ pub struct LandXmlUnits {
     pub elevation_scale_to_meters: f64,
 }
 
+/// Source-owned CRS declarations from LandXML 1.2's root CoordinateSystem.
+/// Kept as raw strings: only the viewer adapter may accept explicit EPSG IDs.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct LandXmlCoordinateSystem {
+    pub horizontal_datum: Option<String>,
+    pub vertical_datum: Option<String>,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LandXmlTinDocument {
     pub format: String,
@@ -275,6 +283,7 @@ pub struct LandXmlTinDocument {
     /// The document remains inspectable; consumers must refuse meter-based
     /// operations until a later georeferencing adapter supplies units.
     pub units: Option<LandXmlUnits>,
+    pub coordinate_system: Option<LandXmlCoordinateSystem>,
     pub surfaces: Vec<LandXmlSurface>,
     pub extensions: Vec<LandXmlExtension>,
     pub warnings: Vec<String>,

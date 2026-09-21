@@ -12,6 +12,7 @@ import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import { modelPointToWorkspacePoint } from '@/lib/model-placement/rotation';
 import { fromRenderTranslation, toRenderTranslation } from '@/lib/model-placement/translation';
+import { planPolyline } from './ingest/landXmlPlanGeometry.js';
 import { boundsFitRenderFrame } from './ingest/landXmlRenderFrame.js';
 
 export interface LandXmlOverlayUploadTarget {
@@ -55,54 +56,6 @@ function planGeometryOwners(document: LandXmlTinDocument): Map<string, string> {
   for (const feature of plan.planFeatures) for (const geometry of feature.geometry) owners.set(geometry.sourceId, feature.sourceId);
   for (const parcel of plan.parcels) for (const loop of parcel.loops) for (const geometry of loop) owners.set(geometry.sourceId, parcel.sourceId);
   return owners;
-}
-
-function planPolyline(
-  geometry: LandXmlPlanGeometry,
-  resolved: { start: LandXmlPlanPoint | null; end: LandXmlPlanPoint | null; center: LandXmlPlanPoint | null },
-): LandXmlPlanPoint[] | null {
-  const { start, end, center } = resolved;
-  if (!start || !end) return null;
-  if (geometry.kind === 'curve') return tessellateCurve(geometry, { start, end, center });
-  return [start, ...(geometry.kind === 'irregular_line' ? geometry.intermediatePoints : []), end];
-}
-
-/** Match Rust's bounded curve-topology partition without replacing its analytics. */
-function tessellateCurve(
-  geometry: LandXmlPlanGeometry,
-  resolved: { start: LandXmlPlanPoint; end: LandXmlPlanPoint; center: LandXmlPlanPoint | null },
-): LandXmlPlanPoint[] | null {
-  const center = resolved.center;
-  if (!center || (geometry.rotation !== 'cw' && geometry.rotation !== 'ccw')) return null;
-  const radius = geometry.radius ?? Math.hypot(
-    resolved.start.northing - center.northing,
-    resolved.start.easting - center.easting,
-  );
-  if (!Number.isFinite(radius) || radius <= 1e-9) return null;
-  const endRadius = Math.hypot(resolved.end.northing - center.northing, resolved.end.easting - center.easting);
-  if (!Number.isFinite(endRadius) || Math.abs(endRadius - radius) > 1e-9) return null;
-  const startAngle = Math.atan2(resolved.start.northing - center.northing, resolved.start.easting - center.easting);
-  const endAngle = Math.atan2(resolved.end.northing - center.northing, resolved.end.easting - center.easting);
-  const tau = Math.PI * 2;
-  const delta = geometry.rotation === 'ccw'
-    ? (endAngle - startAngle + tau) % tau
-    : -((startAngle - endAngle + tau) % tau);
-  if (Math.abs(delta) <= 1e-9) return null;
-  if (geometry.declaredLength !== null && Math.abs(radius * Math.abs(delta) - geometry.declaredLength) > 1e-9 * Math.max(radius, geometry.declaredLength, 1)) return null;
-  const count = Math.min(64, Math.max(1, Math.ceil(Math.abs(delta) / tau * 64)));
-  const points = [resolved.start];
-  for (let index = 1; index < count; index++) {
-    const fraction = index / count;
-    points.push({
-      northing: center.northing + radius * Math.sin(startAngle + delta * fraction),
-      easting: center.easting + radius * Math.cos(startAngle + delta * fraction),
-      elevation: resolved.start.elevation !== null && resolved.end.elevation !== null
-        ? resolved.start.elevation + (resolved.end.elevation - resolved.start.elevation) * fraction
-        : null,
-    });
-  }
-  points.push(resolved.end);
-  return points;
 }
 
 function boundsForSegment(left: { x: number; y: number; z: number }, right: { x: number; y: number; z: number }) {
@@ -163,13 +116,18 @@ export function useLandXmlOverlayLines(): Float32Array {
       const resolvedBySource = new Map(plan.resolvedGeometry.map((geometry) => [geometry.sourceId, geometry]));
       const cogoBySource = new Map(plan.cogoPoints.map((point) => [point.sourceId, point.point]));
       const monumentBySource = new Map(plan.resolvedMonuments.map((monument) => [monument.sourceId, monument.point]));
-      const localPoint = (point: LandXmlPlanPoint) => ({
-        x: point.easting * units.linearScaleToMeters - offset.x,
-        y: (point.elevation ?? 0) * units.elevationScaleToMeters - offset.y,
-        z: -point.northing * units.linearScaleToMeters - offset.z,
-      });
+      const localPoint = (point: LandXmlPlanPoint) => point.renderedPointState === 'suppressed' ? null : (
+        point.renderedPoint
+          ? { x: point.renderedPoint[0], y: point.renderedPoint[1], z: point.renderedPoint[2] }
+          : {
+              x: point.easting * units.linearScaleToMeters - offset.x,
+              y: (point.elevation ?? 0) * units.elevationScaleToMeters - offset.y,
+              z: -point.northing * units.linearScaleToMeters - offset.z,
+            }
+      );
       const appendMarker = (point: LandXmlPlanPoint) => {
         const local = localPoint(point);
+        if (!local) return;
         const halfSize = 0.25;
         appendPlacedSegment(vertices, { ...local, x: local.x - halfSize }, { ...local, x: local.x + halfSize }, place);
         appendPlacedSegment(vertices, { ...local, z: local.z - halfSize }, { ...local, z: local.z + halfSize }, place);
@@ -188,12 +146,19 @@ export function useLandXmlOverlayLines(): Float32Array {
           continue;
         }
         if (!geometry || !resolved) continue;
-        const points = planPolyline(geometry, resolved);
+        if (resolved.renderedPointState === 'suppressed') continue;
+        const points = resolved.renderedPoints ?? planPolyline(geometry, resolved);
         if (!points) continue;
         for (let index = 1; index < points.length; index++) {
           const previous = points[index - 1];
           const next = points[index];
-          appendPlacedSegment(vertices, localPoint(previous), localPoint(next), place);
+          const localPrevious = Array.isArray(previous)
+            ? { x: previous[0], y: previous[1], z: previous[2] }
+            : localPoint(previous);
+          const localNext = Array.isArray(next)
+            ? { x: next[0], y: next[1], z: next[2] }
+            : localPoint(next);
+          if (localPrevious && localNext) appendPlacedSegment(vertices, localPrevious, localNext, place);
         }
       }
     }

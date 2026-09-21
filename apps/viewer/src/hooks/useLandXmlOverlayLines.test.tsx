@@ -10,6 +10,7 @@ import { render, cleanup } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore, type FederatedModel } from '@/store/index.js';
 import type { LandXmlAlignment, LandXmlPolyline, LandXmlTinDocument } from './ingest/landXmlSemantics.js';
+import { planPolyline } from './ingest/landXmlPlanGeometry.js';
 import { uploadLandXmlOverlayGuarded, useLandXmlOverlayLines } from './useLandXmlOverlayLines.js';
 import { pickLandXmlOverlayLine } from '@/components/viewer/landXmlOverlayPick.js';
 
@@ -126,6 +127,68 @@ describe('LandXML source overlay rendering (#5042)', () => {
       [-80, -170, -310, -50, -140, -340],
       'same local source IDs cannot select the other federated model',
     );
+  });
+
+  it('uses precomputed cross-CRS render points without rewriting authored LandXML coordinates (#5048)', () => {
+    const source = line('reprojected');
+    source.renderedPoints = [[101, 202, 303], [104, 205, 306]];
+    const model = landXmlModel('cross-crs', source, { x: 9_999, y: 9_999, z: 9_999 });
+    useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
+    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    function Probe() { vertices = useLandXmlOverlayLines(); return null; }
+    render(<Probe />);
+    assert.deepEqual([...vertices], [101, 202, 303, 104, 205, 306]);
+    assert.deepEqual(source.points, [[10, 20, 30], [40, 50, 60]], 'inspection retains authored coordinates');
+  });
+
+  it('uses staged destination-frame points for plan markers and geometry (#5048)', () => {
+    const model = landXmlModel('plan-aligned', line('terrain'));
+    planOverlay(model);
+    const plan = model.landXmlDocument!.plan!;
+    plan.cogoPoints[0].point!.renderedPoint = [10, 0, 0];
+    plan.cogoPoints[0].point!.renderedPointState = 'aligned';
+    plan.resolvedGeometry[0].renderedPoints = [[20, 0, 0], [21, 0, 0]];
+    plan.resolvedGeometry[0].renderedPointState = 'aligned';
+    useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: {
+      modelId: model.id, sourceId: 'cogo',
+    } });
+    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    function Probe() { vertices = useLandXmlOverlayLines(); return null; }
+    render(<Probe />);
+    assert.deepEqual([...vertices].map((value) => Object.is(value, -0) ? 0 : value),
+      [9.75, 0, 0, 10.25, 0, 0, 10, 0, -0.25, 10, 0, 0.25]);
+
+    act(() => useViewerStore.getState().setSelectedLandXmlSource({ modelId: model.id, sourceId: 'curve' }));
+    assert.deepEqual([...vertices].map((value) => Object.is(value, -0) ? 0 : value), [20, 0, 0, 21, 0, 0]);
+    assert.equal(plan.cogoPoints[0].point!.easting, 2, 'source COGO coordinates remain authored');
+  });
+
+  it('does not fall back to source x=0..1 when an aligned line reprojection was suppressed (#5048)', () => {
+    const source = line('suppressed');
+    source.points = [[0, 0, 0], [1, 1, 1]];
+    source.renderedPointState = 'suppressed';
+    const model = landXmlModel('suppressed-cross-crs', source);
+    useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
+    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    function Probe() { vertices = useLandXmlOverlayLines(); return null; }
+    render(<Probe />);
+    assert.equal(vertices.length, 0, 'an unsafe line has no source-frame fallback after its surface aligned');
+  });
+
+  it('accepts millimetre-rounded authored curve lengths but rejects topology mismatches (#5048)', () => {
+    const point = (northing: number, easting: number) => ({ northing, easting, elevation: 0 });
+    const geometry = {
+      sourceId: 'rounded-arc', ordinal: 1, kind: 'curve' as const, pointScopeId: null,
+      start: { kind: 'coordinates' as const, point: point(0, 250), pntRef: null },
+      end: { kind: 'coordinates' as const, point: point(249.999, 0.001), pntRef: null },
+      center: { kind: 'coordinates' as const, point: point(0, 0), pntRef: null },
+      pi: null, intermediatePoints: [], rotation: 'ccw', radius: 250,
+      declaredLength: 392.699, properties: {},
+    };
+    const resolved = { start: point(0, 250), end: point(249.999, 0.001), center: point(0, 0) };
+    assert.ok(planPolyline(geometry, resolved), 'millimetre-rounded coordinates and length remain renderable');
+    assert.equal(planPolyline({ ...geometry, declaredLength: 390 }, resolved), null,
+      'a metre-scale disagreement remains a refusal');
   });
 
   it('does not lift a two-dimensional source list to an invented elevation', () => {

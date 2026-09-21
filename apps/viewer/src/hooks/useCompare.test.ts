@@ -23,7 +23,8 @@ import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometr
 import { isCurrentFor, readGeometryContentVersion } from './useCompare.js';
 import { useViewerStore } from '../store/index.js';
 import { buildEntityFingerprints } from '../lib/compare/buildFingerprints.js';
-import { alignGeometryToReference, type ModelGeoref } from './ingest/federationAlign.js';
+import { alignGeometryToReference, type ModelSpatialPlacement } from './ingest/federationAlign.js';
+import { spatialReferenceFromIfc } from '../lib/geo/ifc-spatial-reference.js';
 
 describe('isCurrentFor — the compare fingerprint cache key (#1891)', () => {
   const built = { baseModelId: 'a', headModelId: 'b', contentVersion: 3, keyProperty: undefined };
@@ -96,14 +97,12 @@ describe('why the content version belongs in that key', () => {
     };
   }
 
-  function georef(eastings: number): ModelGeoref {
+  function georef(eastings: number): ModelSpatialPlacement {
     return {
-      mapConversion: {
+      spatialReference: spatialReferenceFromIfc({ mapConversion: {
         id: 1, sourceCRS: 2, targetCRS: 3, eastings, northings: 0, orthogonalHeight: 0,
         xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1,
-      } as MapConversion,
-      projectedCRS: { id: 4, name: 'EPSG:2056', mapUnitScale: 1 } as ProjectedCRS,
-      lengthUnitScale: 1,
+      } as MapConversion, projectedCRS: { id: 4, name: 'EPSG:2056', verticalDatum: 'EPSG:5729', mapUnitScale: 1 } as ProjectedCRS, lengthUnitScale: 1 }),
     };
   }
 

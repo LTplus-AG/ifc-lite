@@ -53,19 +53,34 @@ export function collectLandXmlOverlaySpans(state: Pick<ViewerState, 'models' | '
       ...surface.boundaries.map((line) => ['boundary', line] as const), ...surface.breaklines.map((line) => ['breakline', line] as const), ...surface.contours.map((line) => ['contour', line] as const),
     ]) {
       if (selected && (selected.modelId !== model.id || selected.sourceId !== line.sourceId)) continue;
+      if (line.renderedPointState === 'suppressed') continue;
       const elevation = kind === 'contour' ? contourElevation(line) : null;
       if (line.coordinateDimension !== 3 && elevation === null) continue;
       for (let index = 1; index < line.points.length; index++) {
+        const renderedA = line.renderedPoints?.[index - 1];
+        const renderedB = line.renderedPoints?.[index];
         const [northA, eastA, elevationA] = line.points[index - 1]; const [northB, eastB, elevationB] = line.points[index];
         const aElevation = elevationA ?? elevation, bElevation = elevationB ?? elevation;
-        if (aElevation === null || bElevation === null) continue;
-        append({ modelId: model.id, sourceId: line.sourceId }, { x: eastA * units.linearScaleToMeters - offset.x, y: aElevation * units.elevationScaleToMeters - offset.y, z: -northA * units.linearScaleToMeters - offset.z }, { x: eastB * units.linearScaleToMeters - offset.x, y: bElevation * units.elevationScaleToMeters - offset.y, z: -northB * units.linearScaleToMeters - offset.z });
+        if ((!renderedA && aElevation === null) || (!renderedB && bElevation === null)) continue;
+        append({ modelId: model.id, sourceId: line.sourceId }, renderedA
+          ? { x: renderedA[0], y: renderedA[1], z: renderedA[2] }
+          : { x: eastA * units.linearScaleToMeters - offset.x, y: aElevation! * units.elevationScaleToMeters - offset.y, z: -northA * units.linearScaleToMeters - offset.z }, renderedB
+          ? { x: renderedB[0], y: renderedB[1], z: renderedB[2] }
+          : { x: eastB * units.linearScaleToMeters - offset.x, y: bElevation! * units.elevationScaleToMeters - offset.y, z: -northB * units.linearScaleToMeters - offset.z });
       }
     }
     for (const alignment of document.alignments ?? []) {
       if (selected && (selected.modelId !== model.id || (selected.sourceId !== alignment.sourceId && !alignment.segments.some((segment) => segment.sourceId === selected.sourceId)))) continue;
       for (const segment of alignment.segments) {
         if (selected && selected.sourceId !== alignment.sourceId && selected.sourceId !== segment.sourceId) continue;
+        if (segment.renderedPointState === 'suppressed') continue;
+        if (segment.renderedPoints) {
+          for (let index = 1; index < segment.renderedPoints.length; index++) {
+            const a = segment.renderedPoints[index - 1], b = segment.renderedPoints[index];
+            append({ modelId: model.id, sourceId: segment.sourceId }, { x: a[0], y: a[1], z: a[2] }, { x: b[0], y: b[1], z: b[2] });
+          }
+          continue;
+        }
         const primitive = segment.primitive;
         if (primitive.kind === 'unsupported_spiral' || primitive.start.kind !== 'coordinates' || primitive.end.kind !== 'coordinates') continue;
         const points = primitive.kind === 'irregular_line'

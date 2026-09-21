@@ -13,7 +13,9 @@ import {
   type MapConversionParams,
 } from './pointCloudAlignment.js';
 import { rebasePointCloudDecodeOrigin } from './pointCloudDecodeOrigin.js';
-import type { ModelGeoref } from './federationAlign.js';
+import type { ModelSpatialPlacement } from './federationAlign.js';
+import { spatialReferenceFromIfc } from '../../lib/geo/ifc-spatial-reference.js';
+import { spatialReferenceFromSourceMetadata } from './sourceSpatialReference.js';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import {
   decodeAsciiPoints,
@@ -172,8 +174,8 @@ function makeGeoref(overrides: {
   mapConversion?: Partial<MapConversion>;
   projectedCRS?: Partial<ProjectedCRS>;
   lengthUnitScale?: number;
-  coordinateInfo?: ModelGeoref['coordinateInfo'];
-} = {}): ModelGeoref {
+  coordinateInfo?: ModelSpatialPlacement['coordinateInfo'];
+} = {}): ModelSpatialPlacement {
   const mapConversion: MapConversion = {
     id: 1,
     sourceCRS: 0,
@@ -189,13 +191,15 @@ function makeGeoref(overrides: {
   const projectedCRS: ProjectedCRS = {
     id: 2,
     name: 'EPSG:32632',
+    // Cross-format spatial alignment is intentionally fail-closed without a
+    // matching vertical datum. This fixture declares the same target datum as
+    // its E57 source rather than weakening that production guard (#5048).
+    verticalDatum: 'EPSG:5729',
     mapUnitScale: 1,
     ...overrides.projectedCRS,
   };
   return {
-    mapConversion,
-    projectedCRS,
-    lengthUnitScale: overrides.lengthUnitScale ?? 1,
+    spatialReference: spatialReferenceFromIfc({ mapConversion, projectedCRS, lengthUnitScale: overrides.lengthUnitScale ?? 1, coordinateInfo: overrides.coordinateInfo }),
     coordinateInfo: overrides.coordinateInfo,
   };
 }
@@ -223,6 +227,28 @@ function runAlignmentChain(
 }
 
 describe('computePointCloudAlignment (issue #1804)', () => {
+  it('keeps an E57 raw XYZ scan in the viewer E/U/S frame exactly once (#5048)', () => {
+    const placement = makeGeoref({
+      mapConversion: { eastings: 0, northings: 0, orthogonalHeight: 0 },
+      coordinateInfo: {
+        originShift: { x: 0, y: 0, z: 0 },
+        wasmRtcOffset: { x: 2_600_000, y: 1_200_000, z: 500 },
+        originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+        shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+        hasLargeCoordinates: true,
+      },
+    });
+    const source = spatialReferenceFromSourceMetadata({
+      format: 'e57', horizontalId: 'EPSG:32632', verticalId: 'EPSG:5729',
+      axes: ['north', 'east', 'up'], horizontalUnitToMetres: 0.3048, verticalUnitToMetres: 0.3048,
+      provenance: 'E57 coordinateMetadata',
+    });
+    const transform = computePointCloudAlignment(placement, 'metre', source);
+    assert.ok(transform);
+    assert.deepStrictEqual(transform.decodeOriginOffset, [2_600_000, 1_200_000, 500]);
+    assert.deepStrictEqual(runAlignmentChain(transform, [2_600_002, 1_200_003, 504]), { x: 2, y: 4, z: -3 });
+  });
+
   it('lands a scan point at inverse-map-conversion viewer coordinates, shift folded in', () => {
     // Reference model with a large RTC offset AND an origin shift — the
     // combined viewer shift (totalYupOffset) must be honoured.
@@ -381,14 +407,14 @@ describe('computePointCloudAlignment with map-absolute geometry (#2526)', () => 
   // the SAME absolute coordinates, so aligning it must be a pure viewer-shift
   // subtraction (identity conversion) — inverting the authored conversion
   // would rotate the cloud away from the model it was scanned against.
-  const mapAbsInfo: NonNullable<ModelGeoref['coordinateInfo']> = {
+  const mapAbsInfo: NonNullable<ModelSpatialPlacement['coordinateInfo']> = {
     originShift: { x: 0, y: 0, z: 0 },
     originalBounds: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
     shiftedBounds: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
     hasLargeCoordinates: false,
     wasmRtcOffset: { x: 312000, y: 5996150, z: 10 },
   };
-  const mapAbsGeoref = (coordinateInfo?: ModelGeoref['coordinateInfo']) => makeGeoref({
+  const mapAbsGeoref = (coordinateInfo?: ModelSpatialPlacement['coordinateInfo']) => makeGeoref({
     mapConversion: {
       eastings: 312000,
       northings: 5996150,

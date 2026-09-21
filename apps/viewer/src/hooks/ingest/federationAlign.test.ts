@@ -19,7 +19,8 @@ import assert from 'node:assert';
 
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData } from '@ifc-lite/geometry';
-import { alignGeometryToReference, type ModelGeoref } from './federationAlign.js';
+import { alignGeometryToReference, type ModelSpatialPlacement } from './federationAlign.js';
+import { spatialReferenceFromIfc } from '../../lib/geo/ifc-spatial-reference.js';
 
 function mapConversion(over: Partial<MapConversion>): MapConversion {
   return {
@@ -36,19 +37,24 @@ function mapConversion(over: Partial<MapConversion>): MapConversion {
   };
 }
 
-function projectedCrs(name: string): ProjectedCRS {
-  return { id: 4, name, mapUnitScale: 1 } as ProjectedCRS;
+function projectedCrs(name: string, verticalDatum: string | null = 'EPSG:5729'): ProjectedCRS {
+  return { id: 4, name, ...(verticalDatum ? { verticalDatum } : {}), mapUnitScale: 1 } as ProjectedCRS;
 }
 
 function georef(
   conversion: Partial<MapConversion>,
   crsName = 'EPSG:2056',
   coordinateInfo?: CoordinateInfo,
-): ModelGeoref {
+  verticalDatum: string | null = 'EPSG:5729',
+  mapUnitScale = 1,
+): ModelSpatialPlacement {
   return {
-    mapConversion: mapConversion(conversion),
-    projectedCRS: projectedCrs(crsName),
-    lengthUnitScale: 1,
+    spatialReference: spatialReferenceFromIfc({
+      mapConversion: mapConversion(conversion),
+      projectedCRS: { ...projectedCrs(crsName, verticalDatum), mapUnitScale },
+      lengthUnitScale: 1,
+      coordinateInfo,
+    }),
     ...(coordinateInfo ? { coordinateInfo } : {}),
   };
 }
@@ -157,8 +163,22 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
     );
     assert.equal(status, 'same-crs');
 
-    assert.ok(Math.abs(mesh.positions[0] - 2500) < 1e-3, 'vertex must have moved +2500 in X');
+    assert.ok(Math.abs((mesh.origin?.[0] ?? 0) + mesh.positions[0] - 2500) < 1e-3,
+      'vertex must have moved +2500 in X without folding the translation into f32 positions');
+    assert.ok(Math.abs(mesh.origin?.[0] ?? 0) > 1_000,
+      'a large alignment translation must remain in the mesh local origin');
     assertBoxClose(mesh.geometryAabb, { min: [2500, 0, 0], max: [2501, 2, 3] }, 1e-3, 'translated');
+  });
+
+  it('transforms local-origin world coordinates without cancelling centimetre residuals (#5048)', async () => {
+    const mesh = boxMesh(32, [2_600_000.01, 0.02, 0.03], [2_600_000.01, 0.02, 0.03], [2_600_000, 0, 0]);
+    mesh.origin = [2_600_000, 0, 0];
+    const status = await alignGeometryToReference(
+      geometry([mesh]), georef({ eastings: 10 }), georef({}),
+    );
+    assert.equal(status, 'same-crs');
+    assert.ok(Math.abs((mesh.origin?.[0] ?? 0) + mesh.positions[0] - 2_600_010.01) < 1e-4);
+    assert.ok(Math.abs(mesh.positions[0] - 0.01) < 1e-4, 'centimetre residual stays local f32');
   });
 
   it('maps unequal source axis factors into the reference frame (#4615)', async () => {
@@ -416,6 +436,7 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
     const mesh = boxMesh(18, [0, 0, 0], [1, 2, 3]);
     const geom = geometry([mesh]);
     const positionSnapshot = new Float32Array(mesh.positions);
+    const originSnapshot = mesh.origin ? [...mesh.origin] as [number, number, number] : undefined;
     const boxSnapshot = mesh.geometryAabb;
     assert.ok(boxSnapshot);
 
@@ -426,6 +447,8 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
     // Restore exactly as realignFederation does, then re-align to a different
     // anchor. A compounding transform would land the box at 2500 + 700.
     mesh.positions = new Float32Array(positionSnapshot);
+    if (originSnapshot) mesh.origin = [...originSnapshot];
+    else delete mesh.origin;
     mesh.geometryAabb = boxSnapshot;
     geom.coordinateInfo = coordinateInfo();
     await alignGeometryToReference(geom, georef({ eastings: 700 }), georef({ eastings: 0 }));
@@ -434,7 +457,7 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
     assertBoxClose(mesh.geometryAabb, worldBoundsOfPositions([mesh], [0, 0, 0]), 1e-3, 're-aligned');
   });
 
-  it('drops the box of an entity only half of which could be reprojected', async () => {
+  it('keeps every vertex in its source frame when any cross-CRS reprojection fails (#5048)', async () => {
     // proj4 answers `Infinity` — it does not throw — for a point outside the
     // target projection's domain, and it answers per POINT. An outlying vertex
     // therefore stays in the SOURCE frame while its neighbours move, leaving
@@ -460,13 +483,26 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
       georef({ eastings: 500_000, northings: 5_000_000 }, 'EPSG:32632'),
       georef({ eastings: 300_000, northings: 5_000_000 }, 'EPSG:32633'),
     );
-    // The alignment itself still succeeds — most vertices moved, and that
-    // best-effort behaviour predates the box.
-    assert.equal(status, 'reprojected');
-    assert.equal(mesh.positions[24], 3e8, 'fixture must actually leave one vertex behind');
-    assert.ok(mesh.positions[0] < -1e5, 'fixture must actually reproject the others');
+    assert.equal(status, 'failed');
+    assert.equal(mesh.positions[24], 3e8, 'fixture must actually include an unprojectable vertex');
+    assert.equal(mesh.positions[0], 0, 'a partial result must not publish a second frame');
+    assert.deepEqual(mesh.geometryAabb, { min: [0, 0, 0], max: [3e8, 1, 1] });
+  });
 
-    assert.equal(mesh.geometryAabb, undefined, 'a two-frame mesh must not carry a box');
+  it('rolls back every same-CRS mesh when a later mesh has an invalid vertex (#5048)', async () => {
+    const first = boxMesh(30, [1, 2, 3], [2, 3, 4]);
+    const second = boxMesh(31, [5, 6, 7], [6, 7, 8]);
+    second.positions[0] = Number.NaN;
+    const geom = geometry([first, second]);
+    const firstBefore = new Float32Array(first.positions);
+    const secondBefore = new Float32Array(second.positions);
+    const frameBefore = structuredClone(geom.coordinateInfo);
+
+    assert.equal(await alignGeometryToReference(geom, georef({ eastings: 2500 }), georef({})), 'failed');
+    assert.deepEqual(first.positions, firstBefore, 'first staged mesh must not be partially published');
+    assert.equal(Number.isNaN(second.positions[0]), true, 'invalid source value remains NaN');
+    assert.deepEqual(second.positions.slice(1), secondBefore.slice(1), 'invalid source mesh remains exactly as loaded');
+    assert.deepEqual(geom.coordinateInfo, frameBefore, 'dependent frame metadata rolls back too');
   });
 
   it('carries the box across a cross-CRS reprojection', async () => {
@@ -488,6 +524,42 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
     assertBoxClose(mesh.geometryAabb, expected, 0.05, 'reprojected');
   });
 
+  it('admits a validated cross-CRS frame for a mesh-free spatial source (#5048)', async () => {
+    const geom = geometry([]);
+    const source = georef({ eastings: 500_000, northings: 5_000_000 }, 'EPSG:32632');
+    const reference = georef({ eastings: 300_000, northings: 5_000_000 }, 'EPSG:32633');
+    const status = await alignGeometryToReference(geom, source, reference, { allowEmptyGeometry: true });
+
+    assert.equal(status, 'reprojected');
+    assert.deepStrictEqual(geom.coordinateInfo.originShift, reference.coordinateInfo?.originShift ?? { x: 0, y: 0, z: 0 });
+  });
+
+  it('converts proj4 native US-survey-foot ordinates at the neutral metre boundary (#5048)', async () => {
+    const metreReference = georef(
+      { eastings: 500_000, northings: 3_760_000 },
+      'EPSG:32611',
+    );
+    const footReference = georef(
+      { eastings: 6_561_666.667, northings: 1_640_416.667 },
+      'EPSG:2229',
+      undefined,
+      'EPSG:5729',
+      1200 / 3937,
+    );
+    const mesh = boxMesh(33, [0, 0, 0], [1, 1, 1]);
+    const geom = geometry([mesh]);
+
+    const status = await alignGeometryToReference(geom, footReference, metreReference);
+    assert.equal(status, 'reprojected');
+    const world = worldBoundsOfPositions([mesh], [0, 0, 0]);
+    assert.ok(Number.isFinite(world.min[0]) && Number.isFinite(world.min[2]));
+    assert.ok(
+      Math.abs(world.min[0]) < 2_000_000 && Math.abs(world.min[2]) < 2_000_000,
+      `native-foot input must not leak into the metre frame: ${JSON.stringify(world)}`,
+    );
+    assertBoxClose(mesh.geometryAabb, world, 0.05, 'feet-to-metres');
+  });
+
   it('clears exact source RTC provenance after a CRS re-bake', async () => {
     const sourceInfo = coordinateInfo({
       wasmRtcFrame: { x: 10, y: 20, z: 30, needsShift: true },
@@ -505,6 +577,27 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
 
     assert.equal(status, 'reprojected');
     assert.equal(geom.coordinateInfo.wasmRtcFrame, undefined);
+  });
+
+  it('refuses unknown or mismatched vertical frames without baking a partial placement (#5048)', async () => {
+    const original = new Float32Array([1, 2, 3]);
+    const unknown = geometry([{
+      ...boxMesh(28, [1, 2, 3], [1, 2, 3]), positions: new Float32Array(original),
+    }]);
+    assert.equal(
+      await alignGeometryToReference(unknown, georef({}, 'EPSG:2056', undefined, null), georef({})),
+      'failed',
+    );
+    assert.deepEqual(unknown.meshes[0].positions, original, 'unknown vertical datum must not move geometry');
+
+    const mismatch = geometry([{
+      ...boxMesh(29, [1, 2, 3], [1, 2, 3]), positions: new Float32Array(original),
+    }]);
+    assert.equal(
+      await alignGeometryToReference(mismatch, georef({}, 'EPSG:32632', undefined, 'EPSG:5703'), georef({}, 'EPSG:32633')),
+      'failed',
+    );
+    assert.deepEqual(mismatch.meshes[0].positions, original, 'mismatched cross-CRS vertical datum must not move geometry');
   });
 });
 

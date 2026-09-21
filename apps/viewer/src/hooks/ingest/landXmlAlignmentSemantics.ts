@@ -20,6 +20,9 @@ export interface LandXmlAlignmentSegment {
   primitive: LandXmlAlignmentPrimitive;
   /** Canonical Rust-evaluated display samples for curves and supported transitions. */
   renderPoints?: LandXmlPlanPoint[];
+  /** Derived renderer E/U/S metre coordinates after federation reprojection. */
+  renderedPoints?: [number, number, number][];
+  renderedPointState?: 'aligned' | 'suppressed';
 }
 export interface LandXmlCantStation {
   sourceId: string; station: number; appliedCant: number; equilibriumCant: number | null;

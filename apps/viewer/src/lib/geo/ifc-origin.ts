@@ -3,161 +3,110 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Compute the viewer-space position where a model's IFC (0,0,0) point
- * currently sits — the "true" IFC origin, regardless of any federation
- * alignment that re-baked the vertices.
+ * Compute the viewer-space position of a model's IFC (0,0,0) point.
  *
- * Standalone load or this model is the federation anchor:
- *   viewer = -(originShift + wasmRtcOffset_Yup)
- *
- * Non-anchor federated model:
- *   1. IFC (0,0,0)  → model projected coords (E_m, N_m, H_m)  [the pivot,
- *      so MapConversion rotation/scale collapses to the offsets]
- *   2. model projected → anchor projected via proj4 (identity if same CRS)
- *   3. anchor projected → anchor IFC frame via inverse MapConversion
- *   4. anchor IFC (Z-up) → world Y-up via axis swap
- *   5. subtract anchor's shift + rtc to land in anchor viewer-local space
- *
- * This works for both same-CRS arithmetic alignment and cross-CRS proj4
- * alignment without depending on stored alignment transforms or vertex
- * snapshots — it derives everything from the MapConversion + ProjectedCRS
- * the IFC file declares.
+ * This is an overlay consumer of the format-neutral spatial-reference
+ * contract. It deliberately owns no IFC-shaped georeference record or map
+ * conversion arithmetic: source adapters construct a ModelSpatialReference,
+ * then every conversion below goes through the shared geometry primitives.
  */
 
 import proj4 from 'proj4';
-import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
-import type { CoordinateInfo } from '@ifc-lite/geometry';
-import { resolveProjection } from './reproject';
-import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale';
-import { effectiveMapConversionForGeometry } from './map-absolute';
+import {
+  localViewerToProjected,
+  projectedToLocalViewer,
+  type CoordinateInfo,
+  type ModelSpatialReference,
+} from '@ifc-lite/geometry';
 import { totalYupOffset } from './coordinate-frame';
+import { resolveProjectionId } from './reproject';
+import { projectedUnitToMetres } from '../../hooks/ingest/projected-units.js';
 
 export interface IfcOriginPlacement {
   /** Viewer-local position (Y-up) where this model's IFC (0,0,0) currently sits. */
   viewer: { x: number; y: number; z: number };
-  /**
-   * How the position was computed:
-   *   - `'self'`      — model is its own frame (standalone or anchor)
-   *   - `'anchor'`    — projected from model georef → anchor georef
-   *   - `'fallback'`  — anchor has no usable georef; used model's own
-   *                     pre-alignment frame as a best-effort guess
-   */
+  /** `anchor` means the neutral placement was resolved into the anchor frame. */
   source: 'self' | 'anchor' | 'fallback';
 }
 
-export interface ModelGeorefInput {
-  coordinateInfo?: CoordinateInfo;
-  mapConversion?: MapConversion;
-  projectedCRS?: ProjectedCRS;
-  lengthUnitScale?: number;
-  preAlignmentCoordinateInfo?: CoordinateInfo;
+/**
+ * The minimum frame record needed by an origin overlay. `spatialReference` is
+ * optional so a non-georeferenced model can still show its own local origin;
+ * when an anchor is supplied, an incomplete or incompatible reference refuses
+ * a derived origin rather than guessing a position.
+ */
+export interface IfcOriginFrame {
+  readonly coordinateInfo?: CoordinateInfo;
+  readonly spatialReference?: ModelSpatialReference;
+  readonly preAlignmentCoordinateInfo?: CoordinateInfo;
+}
+
+function ownOrigin(coordinateInfo?: CoordinateInfo): IfcOriginPlacement {
+  const offset = totalYupOffset(coordinateInfo);
+  return { viewer: { x: -offset.x, y: -offset.y, z: -offset.z }, source: 'self' };
+}
+
+function verticalCompatible(source: ModelSpatialReference, target: ModelSpatialReference): boolean {
+  // A browser proj4 hop has no vertical-datum operation. Do not publish an
+  // origin whose horizontal coordinates look right while its elevation means
+  // something different (or unknown) in the anchor frame.
+  return source.vertical !== undefined
+    && target.vertical !== undefined
+    && source.vertical.id === target.vertical.id;
 }
 
 /**
- * Total Y-up (viewer-space) offset applied to a model's IFC (0,0,0) point:
- * `originShift` plus the wasm RTC offset re-expressed in the viewer's Y-up
- * frame. A model's IFC origin sits at `-totalYupOffset` in viewer space, so for
- * a standalone load or the federation anchor this yields the origin
- * synchronously (no proj4 hop). The canonical helper lives in
- * `coordinate-frame.ts`, so every viewer consumer uses the same composition.
+ * Resolve an IFC origin into the anchor viewer frame. Same-CRS and cross-CRS
+ * paths share `localViewerToProjected` / `projectedToLocalViewer`; only the
+ * explicit horizontal projection operation differs. Unknown, mismatched, or
+ * unsupported vertical frames fail closed.
  */
 export async function computeIfcOriginViewerPosition(
-  model: ModelGeorefInput,
-  anchor?: ModelGeorefInput | null,
+  model: IfcOriginFrame,
+  anchor?: IfcOriginFrame | null,
 ): Promise<IfcOriginPlacement | null> {
-  // Standalone load, or model has no georef → its own frame.
-  if (!anchor || !model.mapConversion || !model.projectedCRS) {
-    const off = totalYupOffset(model.coordinateInfo);
-    return { viewer: { x: -off.x, y: -off.y, z: -off.z }, source: 'self' };
-  }
-  if (model === anchor) {
-    const off = totalYupOffset(anchor.coordinateInfo);
-    return { viewer: { x: -off.x, y: -off.y, z: -off.z }, source: 'self' };
-  }
-  if (!anchor.mapConversion || !anchor.projectedCRS) {
-    // Anchor has no usable georef. The model's geometry was either left in
-    // its own frame or aligned via RTC-only — fall back to pre-alignment.
-    const off = totalYupOffset(model.preAlignmentCoordinateInfo ?? model.coordinateInfo);
-    return { viewer: { x: -off.x, y: -off.y, z: -off.z }, source: 'fallback' };
+  if (!anchor || model === anchor || !model.spatialReference) return ownOrigin(model.coordinateInfo);
+  if (!anchor.spatialReference) {
+    const offset = totalYupOffset(model.preAlignmentCoordinateInfo ?? model.coordinateInfo);
+    return { viewer: { x: -offset.x, y: -offset.y, z: -offset.z }, source: 'fallback' };
   }
 
-  // Step 1: model IFC (0,0,0) → model projected. At the pivot, rotation+scale
-  // multiply zero — only the eastings/northings/orthogonalHeight remain.
-  const modelLengthScale = model.lengthUnitScale ?? 1;
-  const modelMapUnitScale = resolveMapUnitToMetreScale(model.projectedCRS.mapUnitScale, modelLengthScale);
-  // Map-absolute geometry (#2526): `federationAlign.ts` aligns this model's
-  // GEOMETRY through the neutralised conversion (`effectiveConv`); inverting
-  // the AUTHORED conversion here instead would draw the origin dot far from
-  // the geometry it belongs to the moment a map-absolute model is federated
-  // — the two computations must read the same effective conversion.
-  const modelConv = effectiveMapConversionForGeometry(
-    model.mapConversion,
-    modelMapUnitScale,
-    model.coordinateInfo,
-  );
-  const eM = modelConv.eastings * modelMapUnitScale;
-  const nM = modelConv.northings * modelMapUnitScale;
-  const hM = modelConv.orthogonalHeight * modelMapUnitScale;
+  const source = model.spatialReference;
+  const target = anchor.spatialReference;
+  const sourceCrs = source.horizontal?.id;
+  const targetCrs = target.horizontal?.id;
+  if (!sourceCrs || !targetCrs || !verticalCompatible(source, target)) return null;
 
-  // Step 2: same CRS → identity; different CRS → proj4 hop.
-  let eA = eM;
-  let nA = nM;
-  const sameCrs = (model.projectedCRS.name ?? '').toUpperCase()
-    === (anchor.projectedCRS.name ?? '').toUpperCase();
-  if (!sameCrs) {
-    const srcDef = await resolveProjection(model.projectedCRS);
-    const refDef = await resolveProjection(anchor.projectedCRS);
-    if (!srcDef || !refDef) return null;
+  // IFC local origin has no renderer/RTC offset. The anchor inverse receives
+  // its render-frame offset, exactly as federation alignment does.
+  const projectedSource = localViewerToProjected(source, [0, 0, 0]);
+  if (!projectedSource) return null;
+  let projectedTarget = projectedSource;
+  if (sourceCrs !== targetCrs) {
+    const [sourceDefinition, targetDefinition] = await Promise.all([
+      resolveProjectionId(sourceCrs),
+      resolveProjectionId(targetCrs),
+    ]);
+    if (!sourceDefinition || !targetDefinition) return null;
+    const sourceProjectedUnit = projectedUnitToMetres(sourceDefinition);
+    const targetProjectedUnit = projectedUnitToMetres(targetDefinition);
+    if (!sourceProjectedUnit || !targetProjectedUnit) return null;
     try {
-      const result = proj4(srcDef, refDef, [eM, nM]);
-      eA = result[0];
-      nA = result[1];
+      const transformed = proj4(sourceDefinition, targetDefinition, [
+        projectedSource[0] / sourceProjectedUnit,
+        projectedSource[1] / sourceProjectedUnit,
+      ]);
+      if (!Number.isFinite(transformed[0]) || !Number.isFinite(transformed[1])) return null;
+      projectedTarget = [
+        transformed[0] * targetProjectedUnit,
+        transformed[1] * targetProjectedUnit,
+        projectedSource[2],
+      ];
     } catch (error) {
-      console.warn(
-        `[ifc-origin] proj4 reprojection failed (${model.projectedCRS.name} → ${anchor.projectedCRS.name}) for [${eM}, ${nM}]:`,
-        error,
-      );
+      console.warn(`[ifc-origin] projection failed (${sourceCrs} → ${targetCrs}):`, error);
       return null;
     }
   }
-  const hA = hM; // No vertical datum transform in browser.
-
-  // Step 3: anchor projected → anchor IFC (invert anchor's MapConversion).
-  const anchorLengthScale = anchor.lengthUnitScale ?? 1;
-  const anchorMapUnitScale = resolveMapUnitToMetreScale(anchor.projectedCRS.mapUnitScale, anchorLengthScale);
-  // Same neutralisation on the anchor side: a map-absolute ANCHOR must be
-  // inverted through its own effective (identity) conversion too, or a
-  // non-anchor model federated onto it lands via the authored rotation while
-  // the anchor's own geometry never moved.
-  const anchorConv = effectiveMapConversionForGeometry(
-    anchor.mapConversion,
-    anchorMapUnitScale,
-    anchor.coordinateInfo,
-  );
-  const eAnchor = anchorConv.eastings * anchorMapUnitScale;
-  const nAnchor = anchorConv.northings * anchorMapUnitScale;
-  const hAnchor = anchorConv.orthogonalHeight * anchorMapUnitScale;
-  const anchorAbsc = anchorConv.xAxisAbscissa ?? 1;
-  const anchorOrd = anchorConv.xAxisOrdinate ?? 0;
-  const { x: anchorScaleX, y: anchorScaleY, z: anchorScaleZ } = getEffectiveAxisScales(
-    anchorConv, anchorMapUnitScale, anchorLengthScale,
-  );
-  const axisDenom = Math.max(anchorAbsc * anchorAbsc + anchorOrd * anchorOrd, 1e-12);
-  if ([anchorScaleX, anchorScaleY, anchorScaleZ].some((value) => Math.abs(value) < 1e-12)) return null;
-  const dE = eA - eAnchor;
-  const dN = nA - nAnchor;
-  const ifcX = (anchorAbsc * dE + anchorOrd * dN) / (anchorScaleX * axisDenom);
-  const ifcY = (-anchorOrd * dE + anchorAbsc * dN) / (anchorScaleY * axisDenom);
-  const ifcZ = (hA - hAnchor) / anchorScaleZ;
-
-  // Step 4 + 5: IFC Z-up → world Y-up → anchor viewer-local
-  const anchorOff = totalYupOffset(anchor.coordinateInfo);
-  return {
-    viewer: {
-      x: ifcX - anchorOff.x,
-      y: ifcZ - anchorOff.y,
-      z: -ifcY - anchorOff.z,
-    },
-    source: 'anchor',
-  };
+  const viewer = projectedToLocalViewer(target, projectedTarget, totalYupOffset(anchor.coordinateInfo));
+  return viewer ? { viewer: { x: viewer[0], y: viewer[1], z: viewer[2] }, source: 'anchor' } : null;
 }

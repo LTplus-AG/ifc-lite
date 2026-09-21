@@ -6,12 +6,22 @@ import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
 import type { LandXmlGeometryPayload, LandXmlSourceBuffer } from './landXmlIngest.js';
 import { parseLandXmlGeometry } from './landXmlIngest.js';
 import { parseLandXmlSourceInCurrentRealm } from './landXmlWasm.js';
+import { spatialMetadataFromLandXml, spatialReferenceFromSourceMetadata } from './sourceSpatialReference.js';
+import type { ModelSpatialReference } from '@ifc-lite/geometry';
 
 export interface LandXmlViewerModel extends LandXmlGeometryPayload {
   dataStore: IfcDataStore;
+  spatialReference?: ModelSpatialReference;
 }
 
-function attachSyntheticStore(payload: LandXmlGeometryPayload, fileSize: number): LandXmlViewerModel {
+function attachSyntheticStore(
+  payload: LandXmlGeometryPayload,
+  fileSize: number,
+): LandXmlViewerModel {
+  const metadata = spatialMetadataFromLandXml(payload.semanticDocument);
+  const spatialReference = metadata.horizontalId && metadata.verticalId
+    ? spatialReferenceFromSourceMetadata(metadata)
+    : undefined;
   return {
     ...payload,
     // LandXML is not IFC. This typed, entity-less store exists only so the
@@ -22,6 +32,7 @@ function attachSyntheticStore(payload: LandXmlGeometryPayload, fileSize: number)
       fileSize,
       entityCount: payload.geometryResult.meshes.length,
     }),
+    ...(spatialReference ? { spatialReference } : {}),
   };
 }
 

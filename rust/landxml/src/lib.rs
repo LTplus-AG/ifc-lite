@@ -27,9 +27,9 @@ mod xml;
 
 pub use limits::{LandXmlCancellation, LandXmlCancellationFlag, LandXmlLimits};
 pub use model::{
-    LandXmlCanonicalVertex, LandXmlCapabilities, LandXmlDiagnosticCode, LandXmlError,
-    LandXmlExtension, LandXmlPoint, LandXmlPolyline, LandXmlProperties, LandXmlRenderState,
-    LandXmlSourceId, LandXmlSourcePoint, LandXmlSurface, LandXmlSurfaceKind,
+    LandXmlCanonicalVertex, LandXmlCapabilities, LandXmlCoordinateSystem, LandXmlDiagnosticCode,
+    LandXmlError, LandXmlExtension, LandXmlPoint, LandXmlPolyline, LandXmlProperties,
+    LandXmlRenderState, LandXmlSourceId, LandXmlSourcePoint, LandXmlSurface, LandXmlSurfaceKind,
     LandXmlTerrainDiagnostic, LandXmlTerrainDiagnosticCode, LandXmlTinDocument,
     LandXmlTopologyOrigin, LandXmlUnits, LandXmlVersionCapability,
 };

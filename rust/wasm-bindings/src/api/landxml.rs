@@ -11,65 +11,18 @@ use super::IfcAPI;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::{prelude::*, JsCast};
 
-mod endpoints;
+pub(crate) mod endpoints;
 
 #[derive(Serialize)]
 struct LandXmlSourceDocument<'a> {
     tin: endpoints::LandXmlDocumentJs<'a>,
     alignments: ifc_lite_landxml::alignment::LandXmlAlignmentDocument,
     alignment_render_spans: Vec<ifc_lite_landxml::alignment::LandXmlAlignmentRenderSpan>,
-    alignment_render_refusals: Vec<LandXmlAlignmentRenderRefusal>,
+    alignment_render_refusals: Vec<ifc_lite_landxml::alignment::LandXmlAlignmentRenderRefusal>,
     alignment_render_truncated: bool,
 }
-#[derive(Serialize)]
-struct LandXmlAlignmentRenderRefusal {
-    source_id: String,
-    message: String,
-}
-
-const ALIGNMENT_RENDER_POINTS_PER_SPAN: usize = 65;
-const MAX_ALIGNMENT_RENDER_POINTS: usize = 250_000;
-const MAX_ALIGNMENT_RENDER_REFUSALS: usize = 1_024;
 const MAX_INTERACTIVE_SUPERELEVATION_BLOCKS: usize = 128;
 const MAX_INTERACTIVE_SUPERELEVATION_EVENTS: usize = 100;
-
-fn alignment_render_data(
-    document: &ifc_lite_landxml::alignment::LandXmlAlignmentDocument,
-) -> (
-    Vec<ifc_lite_landxml::alignment::LandXmlAlignmentRenderSpan>,
-    Vec<LandXmlAlignmentRenderRefusal>,
-    bool,
-) {
-    let mut spans = Vec::new();
-    let mut refusals = Vec::new();
-    let mut point_count = 0usize;
-    let mut truncated = false;
-    for alignment in &document.alignments {
-        for segment in &alignment.segments {
-            match segment.render_span(ALIGNMENT_RENDER_POINTS_PER_SPAN) {
-                Ok(Some(span)) => {
-                    let Some(next_point_count) = point_count.checked_add(span.points.len()) else {
-                        return (spans, refusals, true);
-                    };
-                    if next_point_count > MAX_ALIGNMENT_RENDER_POINTS {
-                        return (spans, refusals, true);
-                    }
-                    point_count = next_point_count;
-                    spans.push(span);
-                }
-                Ok(None) => {}
-                Err(error) if refusals.len() < MAX_ALIGNMENT_RENDER_REFUSALS => {
-                    refusals.push(LandXmlAlignmentRenderRefusal {
-                        source_id: segment.source_id.0.clone(),
-                        message: error.to_string(),
-                    });
-                }
-                Err(_) => truncated = true,
-            }
-        }
-    }
-    (spans, refusals, truncated)
-}
 #[derive(Serialize)]
 struct LandXmlAlignmentInspection {
     cant: Option<ifc_lite_landxml::alignment::LandXmlCantProbe>,

@@ -490,7 +490,6 @@ describe('captureColorFrame() lifecycle (#5051 strict GPU evidence)', () => {
             inFlight.settlePendingMaps();
             await inFlight.settle();
         }
-
         const failed = makeHarness();
         failed.knobs.encodeThrows = true;
         const pendingFailure = failed.renderer.captureColorFrame();

@@ -12,6 +12,7 @@
  */
 
 import type { EntityRef } from './types.js';
+import { federationRegistry } from '@ifc-lite/renderer';
 import { useViewerStore } from './index.js';
 
 /** Resolve a renderer/global ID against one consistent Viewer store snapshot. */
@@ -23,6 +24,15 @@ function resolveEntityRefFromState(
   if (resolved) {
     return { modelId: resolved.modelId, expressId: resolved.expressId };
   }
+
+  // A #5050 streamed federation publishes one component at a time after its
+  // range has been reserved, but before its final semantic document is ready
+  // to enter `models`. Preserve store/overlay precedence above; only this
+  // short-lived, published-but-not-yet-installed window needs the registry.
+  // Without it a pick on the new component is attributed to the anchor by the
+  // single-model fallback below.
+  const progressive = federationRegistry.fromGlobalId(globalId);
+  if (progressive) return progressive;
 
   // Fallback: single-model mode where offset is 0 → globalId === expressId
   if (state.models.size > 0) {

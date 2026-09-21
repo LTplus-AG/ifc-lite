@@ -154,7 +154,7 @@ pub(super) struct LandXmlDocumentJs<'a> {
 }
 
 #[derive(Serialize)]
-struct LandXmlPlanDocumentJs<'a> {
+pub(crate) struct LandXmlPlanDocumentJs<'a> {
     schema: &'a str,
     version: &'a str,
     capability_diagnostics: &'a [ifc_lite_landxml::LandXmlCapabilityDiagnostic],
@@ -227,7 +227,7 @@ fn resolved_geometry<'a>(
         .collect()
 }
 
-fn plan_adapter<'a>(
+pub(crate) fn plan_adapter<'a>(
     plan: &'a ifc_lite_landxml::LandXmlPlanDocument,
 ) -> Result<LandXmlPlanDocumentJs<'a>, ifc_lite_landxml::LandXmlError> {
     // Resolver work is document-wide. Parcel topology has its own checked,

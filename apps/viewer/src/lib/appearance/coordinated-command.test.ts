@@ -21,11 +21,22 @@ it('coordinated Apply publishes both IFC graphs, canonical geometry, and histori
   const original = f.entries.map(e => f.export(e.modelId));
   f.stage();
   const observed: number[] = [];
+  const firstCreated = new Map(f.entries.map(entry => [entry.modelId, entry.view.peekNextExpressId()]));
+  let ownershipWasReadyForObserver = false;
   const stop = useViewerStore.subscribe((current, previous) => {
-    if (current.models !== previous.models) observed.push([...current.models.values()].filter(m => m.geometryResult?.meshes[0].texture).length);
+    if (current.models !== previous.models) {
+      observed.push([...current.models.values()].filter(m => m.geometryResult?.meshes[0].texture).length);
+      for (const entry of f.entries) {
+        const expressId = firstCreated.get(entry.modelId)!;
+        assert.equal(federationRegistry.toGlobalId(entry.modelId, expressId), entry.model.idOffset + expressId,
+          'the committed coordinated overlay is owned before history observers run');
+      }
+      ownershipWasReadyForObserver = true;
+    }
   });
   await f.commit();
   assert.deepEqual(observed, [2], 'no observer sees only one canonical model changed');
+  assert.equal(ownershipWasReadyForObserver, true);
   for (const e of f.entries) {
     assert.equal(useViewerStore.getState().undoStacks.get(e.modelId)?.length, 1);
     assert.match(String(f.export(e.modelId)), /IFCIMAGETEXTURE/);
@@ -61,6 +72,27 @@ it('late second-model asset failure restores both IFC graphs, preview, and histo
   appearanceAssets.releaseOwner(f.owner);
   assert.equal(appearanceAssets.get(f.asset.id), undefined);
   assert.equal(f.resources.filter(r => !r.released).length, 2);
+});
+
+it('a second-model federation preflight failure rolls every prepared overlay back before GPU commit (#5050)', async () => {
+  const f = await coordinatedFixture(), initial = useViewerStore.getState();
+  const original = f.entries.map(entry => f.export(entry.modelId));
+  f.stage();
+  const second = f.entries[1]!;
+  const getNewEntity = second.view.getNewEntity.bind(second.view);
+  mock.method(second.view, 'getNewEntity', (expressId: number) => expressId > second.model.maxExpressId ? null : getNewEntity(expressId));
+  const firstCreated = new Map(f.entries.map(entry => [entry.modelId, entry.view.peekNextExpressId()]));
+
+  await assert.rejects(f.commit(), /Committed overlay IDs must remain contiguous and owned/);
+  assert.equal(useViewerStore.getState().models, initial.models, 'no grouped model state was published');
+  assert.equal(useViewerStore.getState().undoStacks, initial.undoStacks, 'no partial history was published');
+  for (const [index, entry] of f.entries.entries()) {
+    assert.deepEqual(f.export(entry.modelId), original[index]);
+    assert.deepEqual(f.scene.get(entry.globalId)?.parts[0], entry.before, 'the staged GPU texture was cancelled');
+    const expected = firstCreated.get(entry.modelId)!;
+    assert.equal(entry.view.peekNextExpressId(), expected, 'rollback restored the express-ID cursor');
+    assert.throws(() => federationRegistry.toGlobalId(entry.modelId, expected), /not published/);
+  }
 });
 
 it('a scene observer throwing after the second install restores the whole preview #4420', async () => {

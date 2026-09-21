@@ -25,6 +25,7 @@ import { markupTransitionPatch } from './drawing2DSlice.markupTransition.js';
 import { isolateModelsPatch, modelFieldPatch, modelsVisibilityPatch } from './modelSlice.visibility.js';
 import { upsertModelPatch } from './modelSlice.upsert.js';
 import { endChartVisibilityPresentation } from '@/lib/charts/visibility-ownership';
+import { toPublishedGlobalIdFromState } from '../federation-overlay-publication.js';
 
 export interface ModelSlice {
   // State
@@ -565,9 +566,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     return federationRegistry.registerModel(modelId, maxExpressId);
   },
 
-  toGlobalId: (modelId: string, expressId: number) => {
-    return federationRegistry.toGlobalId(modelId, expressId);
-  },
+  toGlobalId: (modelId: string, expressId: number) => toPublishedGlobalIdFromState(federationRegistry, get(), modelId, expressId),
 
   fromGlobalId: (globalId: number) => {
     return federationRegistry.fromGlobalId(globalId);

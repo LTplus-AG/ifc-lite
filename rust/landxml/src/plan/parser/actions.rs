@@ -375,7 +375,7 @@ impl Parser<'_> {
                 .zip(expected)
                 .all(|(frame, local)| frame.target && frame.local == *local)
     }
-    pub(super) fn document(self) -> LandXmlPlanDocument {
+    pub(crate) fn document(self) -> LandXmlPlanDocument {
         LandXmlPlanDocument {
             schema: self.schema,
             version: self.version,

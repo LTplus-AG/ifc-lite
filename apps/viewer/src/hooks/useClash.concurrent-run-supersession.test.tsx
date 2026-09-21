@@ -167,7 +167,7 @@ async function seed(): Promise<void> {
     isolatedEntities: null,
     ghostExceptEntities: null,
   });
-  useViewerStore.getState().registerModelOffset('A', 100);
+  useViewerStore.getState().registerModelOffset('A', WALL_COUNT);
   const container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);

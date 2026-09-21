@@ -143,6 +143,47 @@ export function runLandXmlContracts(api, test) {
     assert.equal(document.units, undefined);
   });
 
+  test('LandXML real-WASM stream cursor credits output, finalizes metadata, and releases cancellation state (#5161)', () => {
+    const source = new TextEncoder().encode(XML);
+    const session = api.createLandXmlTinStreamSession(source.byteLength);
+    const drainPending = () => {
+      const events = [];
+      while (session.outputPending()) {
+        assert.ok(session.queuedBytes() <= 512 * 1024, 'the retained transport queue stays bounded');
+        const drained = session.drain(1024 * 1024);
+        assert.ok(Array.isArray(drained) && drained.length > 0, 'pending output consumes credited drain capacity');
+        events.push(...drained);
+      }
+      assert.equal(session.queuedBytes(), 0, 'fully credited output releases retained transport bytes');
+      return events;
+    };
+    try {
+      assert.equal(session.outputPending(), false);
+      assert.equal(session.queuedBytes(), 0);
+      session.advanceChunk(source);
+      assert.equal(session.outputPending(), true, 'source parsing produces credited stream records');
+      assert.ok(session.queuedBytes() > 0, 'credited source records retain their exact transport bytes');
+      const sourceEvents = drainPending();
+      assert.ok(sourceEvents.some((event) => event.kind === 'header'));
+      assert.ok(sourceEvents.some((event) => event.kind === 'surface'));
+
+      session.finishCursor();
+      assert.equal(session.outputPending(), true, 'finishCursor begins the resumable metadata cursor');
+      const metadataEvents = drainPending();
+      assert.ok(metadataEvents.some((event) => event.kind === 'metadata' && event.metadata_kind === 'header'));
+      assert.ok(metadataEvents.some((event) => event.kind === 'metadata' && event.metadata_kind === 'end'));
+
+      session.abort();
+      session.abort();
+      assert.equal(session.outputPending(), false, 'idempotent cancellation clears every cursor');
+      assert.equal(session.queuedBytes(), 0, 'idempotent cancellation releases queued bytes');
+      assert.throws(() => session.advanceChunk(new Uint8Array()), /stream session is closed/);
+    } finally {
+      session.abort();
+      session.free();
+    }
+  });
+
   test('LandXML WASM preserves namespace-selected schema provenance across source families (#5051)', () => {
     const mismatch = (xml) => xml.replace('LandXML-1.2', 'LandXML-1.1');
     const source = api.parseLandXmlSourceBytes(new TextEncoder().encode(mismatch(PLAN_XML)));

@@ -39,18 +39,20 @@ impl Parser<'_> {
         }
         let authored_faces = !surface.faces.is_empty();
         // A refusal is source-preserving: do not retain a partial collection
-        // of synthetic vertices while marking the source preserved-only.
-        let source_surface = surface.clone();
+        // of synthetic vertices while marking the source preserved-only. An
+        // authored TIN cannot enter synthesis, so it never needs this second
+        // complete surface allocation on the streamed handoff path.
+        let source_surface = (!authored_faces).then(|| surface.clone());
         let terrain_diagnostic = crate::terrain::adapt_faceless_tin(
             &mut surface,
-            self.limits,
+            &self.limits,
             self.cancelled,
             &mut self.faces_seen,
             &mut self.references,
             &mut self.work,
         )?;
         if terrain_diagnostic.is_some() {
-            surface = source_surface;
+            surface = source_surface.expect("only faceless TIN synthesis can refuse");
         }
         let topology_origin = if authored_faces {
             crate::LandXmlTopologyOrigin::AuthoredFaces
@@ -146,7 +148,7 @@ impl Parser<'_> {
         Ok(())
     }
 
-    pub(super) fn finish(mut self) -> Result<LandXmlTinDocument> {
+    pub(crate) fn finish(mut self) -> Result<LandXmlTinDocument> {
         if self.version.is_empty() {
             return Err(error(Code::InvalidXml, "LandXML document is empty"));
         }
@@ -161,15 +163,17 @@ impl Parser<'_> {
             format: "landxml".to_owned(),
             schema: self.schema,
             capabilities: LandXmlCapabilities {
-                renderable_tin: self
-                    .surfaces
-                    .iter()
-                    .any(|surface| surface.render_state == LandXmlRenderState::Rendered),
-                preserved_only_surfaces: self
-                    .surfaces
-                    .iter()
-                    .filter(|surface| surface.render_state != LandXmlRenderState::Rendered)
-                    .count(),
+                renderable_tin: self.drained_renderable_surfaces > 0
+                    || self
+                        .surfaces
+                        .iter()
+                        .any(|surface| surface.render_state == LandXmlRenderState::Rendered),
+                preserved_only_surfaces: self.drained_preserved_surfaces
+                    + self
+                        .surfaces
+                        .iter()
+                        .filter(|surface| surface.render_state != LandXmlRenderState::Rendered)
+                        .count(),
                 unknown_extensions: self.extensions.len(),
             },
             version: self.version,

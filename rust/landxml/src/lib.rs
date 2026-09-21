@@ -8,19 +8,20 @@
 //! neither fabricates IFC nor creates renderer meshes; later adapters own
 //! coordinate systems, mesh partitioning, and presentation.
 
-mod capture;
 pub mod alignment;
+mod capture;
 mod limits;
 mod model;
 mod parser;
-mod plan;
 mod pipe_parser;
 mod pipes;
+mod plan;
 mod preflight;
 mod profile;
 mod profile_circular;
 mod profile_evaluator;
 mod semantics;
+mod stream;
 mod terrain;
 mod terrain_validation;
 mod xml;
@@ -60,4 +61,12 @@ pub use pipes::{
     LandXmlPipeNetworkDocument, LandXmlPipePart, LandXmlPipePosition, LandXmlPipeProperties,
     LandXmlPipeRefusal, LandXmlPipeSourceBatch, LandXmlPipeStructure, LandXmlPipeUnits,
     LandXmlStructurePart,
+};
+pub use stream::{
+    LandXmlMetadataRecord, LandXmlMetadataRecordFragment, LandXmlMetadataStreamAssembler, LandXmlMetadataStreamEnd,
+    LandXmlMetadataStreamEvent, LandXmlMetadataStreamHeader, LandXmlStreamEvent,
+    LandXmlStreamHeader, LandXmlStreamMetadata, LandXmlStreamSummary, LandXmlSurfaceComponent,
+    LandXmlSurfaceFragment, LandXmlTinStreamSession, MAX_LANDXML_STREAM_DRAIN_BYTES,
+    MAX_LANDXML_STREAM_EVENT_BYTES, MAX_LANDXML_STREAM_INPUT_CHUNK_BYTES,
+    MAX_LANDXML_STREAM_QUEUED_BYTES, MAX_LANDXML_STREAM_QUEUED_EVENTS,
 };

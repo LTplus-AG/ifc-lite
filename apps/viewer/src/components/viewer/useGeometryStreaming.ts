@@ -27,11 +27,8 @@ import { reshapeSceneKeepingPresentInstanced } from './geometry-rebuild';
 import { runGpuUpload } from './gpu-upload-guard';
 import { createRobustFitBoundsAccumulator } from './robustFitBoundsAccumulator.js';
 import { useColorOverlaySync } from './useColorOverlaySync.js';
+import { invalidateLandXmlGpuOwnershipAfterSceneClear, takeLandXmlGpuUploaded } from '../../hooks/ingest/landXmlGpuOwnership.js';
 
-// Session-scoped flag so the linear-infrastructure hint fires at most once
-// per page load (model swaps included). Stored at module scope rather than
-// in component state because federation re-mounts the streaming hook on
-// every model load — a useRef wouldn't survive.
 let linearFitHintShown = false;
 
 /**
@@ -193,8 +190,6 @@ function traceGeometrySync(message: string): void {
   console.log(`[GeomSync] ${message}`);
 }
 
-
-
 export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
   const {
     rendererRef,
@@ -289,6 +284,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         robustFitAccRef.current.reset();
         if (renderer && isInitialized) {
           renderer.getScene().clear();
+          invalidateLandXmlGpuOwnershipAfterSceneClear();
           renderer.getCamera().reset();
           geometryBoundsRef.current = { ...DEFAULT_BOUNDS };
           renderer.requestRender();
@@ -352,6 +348,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
     if (isCleared) {
       reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);
+      invalidateLandXmlGpuOwnershipAfterSceneClear();
       processedMeshIdsRef.current.clear();
       lastGeometryLengthRef.current = 0;
       lastGeometryRef.current = null;
@@ -361,12 +358,9 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
     if (isNewFile) {
       traceGeometrySync(`new file currentLength=${currentLength} lastLength=${lastLength} releaseAfterFinalize=${releaseGeometryAfterFinalize}`);
-      // #2073: a genuine first load has no existing instanced templates, so
-      // this is a no-op reconcile; a content-version bump (in-place mutation)
-      // disguises itself as "new file" by resetting lastGeometryLengthRef to 0
-      // above — retention must still apply here, not just at the bump site,
-      // or this branch would immediately undo it with a blind clear().
+      // Reconcile flat geometry while retaining present instanced templates.
       reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);
+      invalidateLandXmlGpuOwnershipAfterSceneClear();
       scene.setEphemeralStreamingMode(releaseGeometryAfterFinalize);
       processedMeshIdsRef.current.clear();
       cameraFittedRef.current = false;
@@ -380,11 +374,9 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     } else if (!isIncremental && currentLength !== lastLength) {
       if (currentLength < lastLength) {
         traceGeometrySync(`geometry rebuilt after shrink currentLength=${currentLength} lastLength=${lastLength}`);
-        // Length decreased (model hidden) — rebuild scene, keep camera.
-        // #2073: reconcile instanced ownership instead of a blind clear() so
-        // a model that is STILL present keeps its instanced geometry; only
-        // the model(s) missing from presentInstancedModelIndices lose theirs.
+        // Length decreased (model hidden): rebuild while retaining the camera.
         reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);
+        invalidateLandXmlGpuOwnershipAfterSceneClear();
         scene.setEphemeralStreamingMode(releaseGeometryAfterFinalize);
         processedMeshIdsRef.current.clear();
         lastGeometryLengthRef.current = 0;
@@ -393,6 +385,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         traceGeometrySync(`geometry rebuilt after replace currentLength=${currentLength} lastLength=${lastLength} releaseAfterFinalize=${releaseGeometryAfterFinalize}`);
         // New file while another was open — full reset
         reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);
+        invalidateLandXmlGpuOwnershipAfterSceneClear();
         scene.setEphemeralStreamingMode(releaseGeometryAfterFinalize);
         processedMeshIdsRef.current.clear();
         cameraFittedRef.current = false;
@@ -428,6 +421,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     // Visibility toggle while NOT streaming — array rebuilt from scratch
     if (isIncremental && !isStreaming && !prevIsStreamingRef.current) {
       reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);
+      invalidateLandXmlGpuOwnershipAfterSceneClear();
       processedMeshIdsRef.current.clear();
       lastGeometryLengthRef.current = 0;
       lastGeometryRef.current = geometry;
@@ -465,6 +459,10 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     }
 
     // ── Route meshes to scene ──
+    // A LandXML provisional transaction may have uploaded these exact
+    // store-owned meshes after its registry range became pickable. Consume the
+    // one-shot marker so normal scene rebuilds still own later re-uploads.
+    newMeshes = newMeshes.filter((mesh) => !takeLandXmlGpuUploaded(mesh));
     if (newMeshes.length > 0) {
       const pipeline = renderer.getPipeline();
       if (pipeline) {

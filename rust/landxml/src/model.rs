@@ -337,6 +337,13 @@ pub struct LandXmlTinDocument {
     pub pipe_networks: Option<crate::LandXmlPipeNetworkDocument>,
 }
 
+impl LandXmlTinDocument {
+    /// Split finalized terrain metadata into move-owned stream records.
+    pub(crate) fn into_stream_parts(self) -> crate::stream::metadata::TerrainStreamParts {
+        crate::stream::metadata::TerrainStreamParts::new(self)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct LandXmlCapabilities {
     pub renderable_tin: bool,

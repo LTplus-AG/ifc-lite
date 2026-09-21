@@ -10,7 +10,7 @@
 
 mod model;
 mod numeric;
-mod parser;
+pub(crate) mod parser;
 
 pub use model::{
     LandXmlCgPoint, LandXmlGeometryKind, LandXmlMonument, LandXmlParcel, LandXmlParcelProbe,

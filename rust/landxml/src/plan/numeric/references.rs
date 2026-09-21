@@ -108,6 +108,13 @@ impl<'a> LandXmlPlanResolver<'a> {
 }
 
 impl LandXmlPlanDocument {
+    /// Restore the same immutable reference cache a direct document parse
+    /// exposes after its plan adapters run. Stream reconstruction moves the
+    /// authored records once, so it rebuilds this cache from final records.
+    pub(crate) fn ensure_reference_index(&self) {
+        let _ = self.reference_index_with(|| Ok::<(), ()>(()));
+    }
+
     /// Resolve a COGO reference in its producer scope, falling back only when
     /// the document has one unambiguous name match.
     pub fn resolve_point(

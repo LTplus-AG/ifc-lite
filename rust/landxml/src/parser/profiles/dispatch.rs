@@ -12,6 +12,9 @@ use crate::{
 };
 
 use super::super::{Capture, Code, PairListTarget, Parser};
+use super::references::{
+    ambiguous_reference, missing_reference, unique_reference, ReferenceResolution,
+};
 
 impl Parser<'_> {
     pub(in super::super) fn start_road_semantics(
@@ -154,7 +157,7 @@ impl Parser<'_> {
                 .push(alignment.source_id.clone());
         }
         let mut surface_ids: HashMap<String, Vec<LandXmlSourceId>> =
-            HashMap::with_capacity(self.surfaces.len());
+            HashMap::with_capacity(self.surfaces.len() + self.drained_surface_refs.len());
         for index in 0..self.surfaces.len() {
             self.check_cancel_and_work(1)?;
             let surface = &self.surfaces[index];
@@ -162,6 +165,14 @@ impl Parser<'_> {
                 .entry(surface.name.clone())
                 .or_default()
                 .push(surface.source_id.clone());
+        }
+        for index in 0..self.drained_surface_refs.len() {
+            self.check_cancel_and_work(1)?;
+            let (name, source_id) = &self.drained_surface_refs[index];
+            surface_ids
+                .entry(name.clone())
+                .or_default()
+                .push(source_id.clone());
         }
         // Temporarily move these bounded collections out so each inner loop
         // can poll the parser cancellation hook without aliasing its output.
@@ -349,51 +360,5 @@ impl Parser<'_> {
             ),
         })?;
         Ok(())
-    }
-}
-
-enum ReferenceResolution {
-    Missing,
-    Ambiguous,
-}
-
-fn unique_reference(
-    source_ids: &HashMap<String, Vec<LandXmlSourceId>>,
-    reference: &str,
-) -> std::result::Result<LandXmlSourceId, ReferenceResolution> {
-    match source_ids.get(reference).map(Vec::as_slice) {
-        Some([source_id]) => Ok(source_id.clone()),
-        Some(_) => Err(ReferenceResolution::Ambiguous),
-        None => Err(ReferenceResolution::Missing),
-    }
-}
-
-fn missing_reference(
-    source_id: &LandXmlSourceId,
-    source_path: &str,
-    source_kind: &str,
-    reference_kind: &str,
-    reference: &str,
-) -> LandXmlCapabilityDiagnostic {
-    LandXmlCapabilityDiagnostic {
-        code: LandXmlCapabilityDiagnosticCode::MissingReference,
-        source_id: Some(source_id.clone()),
-        source_path: source_path.to_owned(),
-        message: format!("{source_kind} references unknown {reference_kind} \"{reference}\""),
-    }
-}
-
-fn ambiguous_reference(
-    source_id: &LandXmlSourceId,
-    source_path: &str,
-    source_kind: &str,
-    reference_kind: &str,
-    reference: &str,
-) -> LandXmlCapabilityDiagnostic {
-    LandXmlCapabilityDiagnostic {
-        code: LandXmlCapabilityDiagnosticCode::AmbiguousReference,
-        source_id: Some(source_id.clone()),
-        source_path: source_path.to_owned(),
-        message: format!("{source_kind} references ambiguous {reference_kind} \"{reference}\""),
     }
 }

@@ -243,6 +243,16 @@ pub struct LandXmlPipeNetworkDocument {
     pub refusals: Vec<LandXmlPipeRefusal>,
 }
 
+impl LandXmlPipeNetworkDocument {
+    /// Split finalized pipe metadata into move-owned stream records.
+    pub(crate) fn into_stream_parts(
+        self,
+        preflight_refusal_batches: Vec<Vec<usize>>,
+    ) -> crate::stream::metadata::PipeStreamParts {
+        crate::stream::metadata::PipeStreamParts::new(self, preflight_refusal_batches)
+    }
+}
+
 /// Stable source identities prepared for a future canonical LandXML adapter.
 ///
 /// This deliberately batches semantics only: it creates neither renderer

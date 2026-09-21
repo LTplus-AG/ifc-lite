@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-  boundsFitRenderFrame,
+  boundsFitRenderFrame, placeComponentsInKnownRenderFrame,
 } from './landXmlRenderFrame.js';
 
 describe('LandXML render frame acceptance (#5049)', () => {
@@ -28,5 +28,25 @@ describe('LandXML render frame acceptance (#5049)', () => {
       min: { x: -750_000, y: 0, z: 0 },
       max: { x: 750_000, y: 1, z: 1 },
     }, { x: 0, y: 0, z: 0 }), true);
+  });
+
+  it('refuses every member of a source group when one member misses the frozen frame (#5161)', () => {
+    const component = (expressId: number, x: number, frameGroup: string) => ({
+      mesh: {
+        expressId, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+        normals: new Float32Array([0, 1, 0, 0, 1, 0, 0, 1, 0]), indices: new Uint32Array([0, 1, 2]),
+        color: [0.42, 0.62, 0.32, 1] as [number, number, number, number], origin: [x, 0, 0] as [number, number, number],
+      },
+      bounds: { min: { x, y: 0, z: 0 }, max: { x: x + 1, y: 1, z: 0 } },
+      frameGroup,
+    });
+    const near = component(1, 0, 'surface-a');
+    const far = component(2, 1_000_001, 'surface-a');
+    const independent = component(3, 5, 'surface-b');
+    const placement = placeComponentsInKnownRenderFrame(
+      [near, far, independent], { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false }, [],
+    );
+    assert.deepEqual(placement.placed.map(({ mesh }) => mesh.expressId), [3]);
+    assert.deepEqual(placement.dropped.map(({ mesh }) => mesh.expressId), [1, 2]);
   });
 });

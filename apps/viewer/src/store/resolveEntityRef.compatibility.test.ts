@@ -7,16 +7,35 @@ import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
+import { federationRegistry } from '@ifc-lite/renderer';
 import { useViewerStore, type ViewerState } from './index.js';
-import { resolveEntityRefGlobalIdFromState, resolveGlobalId } from './resolveEntityRef.js';
+import { resolveEntityRef, resolveEntityRefGlobalIdFromState, resolveGlobalId } from './resolveEntityRef.js';
 
 describe('resolveGlobalId compatibility', () => {
   beforeEach(() => {
+    federationRegistry.clear();
     useViewerStore.setState({
       models: new Map(),
       ifcDataStore: null,
       mutationViews: new Map(),
     });
+  });
+
+  it('keeps a published streamed federation component with its reserved owner before final metadata installation (#5050)', () => {
+    const anchorOffset = federationRegistry.registerModel('anchor', 100);
+    const streamedOffset = federationRegistry.reserveModel('landxml-stream', 2);
+    federationRegistry.publishRange('landxml-stream', 1, 1);
+    useViewerStore.setState({
+      models: new Map([['anchor', {
+        id: 'anchor', idOffset: anchorOffset, maxExpressId: 100, ifcDataStore: null,
+      }]]) as unknown as ViewerState['models'],
+    });
+
+    assert.deepEqual(resolveEntityRef(streamedOffset + 1), {
+      modelId: 'landxml-stream', expressId: 1,
+    }, 'a progressive pick must not fall back to the already-loaded anchor');
+    assert.deepEqual(resolveEntityRef(anchorOffset + 7), { modelId: 'anchor', expressId: 7 },
+      'the store remains canonical for an installed model');
   });
 
   it('keeps the legacy store fallback while a registered model is hydrating', () => {

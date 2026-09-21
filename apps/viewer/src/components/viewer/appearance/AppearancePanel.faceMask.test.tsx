@@ -20,6 +20,7 @@ import { fixtureModel } from '@/test/store-fixture.js';
 import { faceMaskProductSource } from '@/test/face-mask-fixture.js';
 import { texturedProductPng as png } from '@/test/textured-product-fixture.js';
 import { useViewerStore } from '@/store';
+import { toPreparedOverlayGlobalId } from '@/store/federation-overlay-publication.js';
 import { modelIndices } from '@/lib/model-placement/model-indices.js';
 import { getGlobalRenderer, setGlobalRendererRef } from '@/hooks/useBCF';
 import { appearanceAssets, modelAppearanceAssets } from '@/lib/appearance/model-assets.js';
@@ -190,7 +191,7 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
     const source = faceMaskProductSource();
     const data = await new IfcParser().parseColumnar(source.slice().buffer, { disableWorkerScan: true });
     const view = new MutablePropertyView(data.properties, 'evaluated');
-    const idOffset = federationRegistry.registerModel('evaluated', 80);
+    const idOffset = federationRegistry.registerModel('evaluated', 79);
     const globalId = (id: number) => federationRegistry.toGlobalId('evaluated', id);
     // Freeze the renderer topology before any mesh enters preview ownership.
     // This remains independent of every appearanceSource installed later.
@@ -211,7 +212,7 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
     const geometry: GeometryResult = { meshes: instanced ? [] : originals, totalTriangles: instanced ? 0 : 4, totalVertices: instanced ? 0 : 8,
       ...(instanced ? { instancedGeometryAabbs: new Map(originals.map(mesh => [mesh.expressId, { min: [0, 0, -1] as [number, number, number], max: [1, 0, 0] as [number, number, number] }])) } : {}),
       coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false } };
-    const model = { ...fixtureModel('evaluated'), idOffset, maxExpressId: 80, ifcDataStore: data, geometryResult: geometry, schemaVersion: 'IFC4' as const, loadState: 'complete' as const };
+    const model = { ...fixtureModel('evaluated'), idOffset, maxExpressId: 79, ifcDataStore: data, geometryResult: geometry, schemaVersion: 'IFC4' as const, loadState: 'complete' as const };
     const selection = globalId(25);
     useViewerStore.setState({ models: new Map([['evaluated', model]]), activeModelId: 'evaluated',
       geometryResult: geometry, mutationViews: new Map([['evaluated', view]]), storeEditors: new Map([['evaluated', new StoreEditor(data, view)]]),
@@ -306,7 +307,10 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
     assert.equal(whole.request.faceMasks, undefined);
     assert.equal(whole.plan.conversions?.length, 1); assert.equal(whole.plan.conversions![0].sourceIndices.length, 6);
     assert.match(ui.textContent ?? '', /all 2 faces/);
-    const wholeTextured = globalId(whole.plan.conversions![0].geometryItemId);
+    const previewId = (plan: AppearancePlan, id: number) => toPreparedOverlayGlobalId(
+      federationRegistry, useViewerStore.getState(), 'evaluated', plan.created, id,
+    );
+    const wholeTextured = previewId(whole.plan, whole.plan.conversions![0].geometryItemId);
     assert.deepEqual(ids(selection), pageSource ? [wholeTextured, wholeTextured] : [wholeTextured],
       'a whole-surface conversion textures every resident fragment without changing its partition');
     if (pageSource) assertCanonicalFragments(readParts(selection)!, previewOracle, [[0, 1, 2], [3, 4, 5]],
@@ -351,7 +355,7 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
         { ...masked.page!, texelsPerMetre: 1e9 }, masked.rgba!)), /budget/);
     }
     assert.ok(conversion.geometryItemId !== undefined && conversion.retainedGeometryItemId !== undefined);
-    const textured = globalId(conversion.geometryItemId), retained = globalId(conversion.retainedGeometryItemId);
+    const textured = previewId(masked.plan, conversion.geometryItemId), retained = previewId(masked.plan, conversion.retainedGeometryItemId);
     const expectedSplitIds = [textured, retained].sort((a, b) => a - b);
     const splitIds = () => ids(selection).sort((a, b) => a - b);
     assert.deepEqual(splitIds(), expectedSplitIds, 'the masked preview stages the textured and the retained face set under one owner');

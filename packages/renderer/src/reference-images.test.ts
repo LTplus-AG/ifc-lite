@@ -145,6 +145,11 @@ test('reference image GPU draw keeps a 5,000-km centimetre residual and legacy p
   assert.ok(Math.abs(residual - 0.025) < 1e-7, `lost image origin residual: ${residual}`);
   assert.equal(uniform[39], 1, 'anchored image draw must select the RTE shader route');
   assert.equal(uniform[16], 2, 'anchored image draw must carry the RTE projection');
+  assert.equal(
+    uniform[32],
+    Math.fround(5_000_000.275 + 100 - 20 + 1),
+    'legacy clip origin occupies its post-RTE lane',
+  );
 
   image.draw(pass, new Float32Array(16).fill(3));
   const legacy = writes[writes.length - 1];

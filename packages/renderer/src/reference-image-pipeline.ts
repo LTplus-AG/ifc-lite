@@ -102,7 +102,7 @@ export class ReferenceImagePipeline {
           if (destroyed || !input.visible || input.opacity === 0) return;
           data.fill(0);
           data.set(viewProj, 0);
-          for (let row = 0; row < 4; row++) data[16+row] = viewProj[row]*origin[0]+viewProj[4+row]*origin[1]+viewProj[8+row]*origin[2]+viewProj[12+row];
+          for (let row = 0; row < 4; row++) data[32 + row] = viewProj[row]*origin[0]+viewProj[4+row]*origin[1]+viewProj[8+row]*origin[2]+viewProj[12+row];
           if (rteViewProj && rteCamera) {
             data.set(rteViewProj, 16);
             for (let axis = 0; axis < 3; axis++) {

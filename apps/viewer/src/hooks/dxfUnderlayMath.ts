@@ -50,9 +50,14 @@
 
 import { applyDxfPlacement, type DxfPlacement, type Point2D } from '@ifc-lite/drawing-2d';
 import type { GeometryResult } from '@ifc-lite/geometry';
-import type { AnchoredRendererLineVertices } from '@/lib/renderer/line-overlay-rte';
 import type { DxfUnderlayState } from '@/store/slices/drawing2DSlice';
 import { ifcToViewerAxes } from '@/lib/geo/coordinate-frame';
+import {
+  dxfUnderlayToWorldLines3D as toWorldLines3D,
+  dxfUnderlayToWorldLines3DAnchored as toWorldLines3DAnchored,
+  type AnchoredDxfLines3D,
+} from './dxfUnderlayWorldLines.js';
+export type { AnchoredDxfLines3D } from './dxfUnderlayWorldLines.js';
 
 export interface DxfUnderlayRenderLine {
   points: Point2D[];
@@ -370,11 +375,8 @@ export function dxfUnderlayToWorldLines3D(
   mapToWorld: (p: Point2D) => Point2D = (p) => p,
   georeferenceAvailable = false,
 ): Float32Array {
-  return new Float32Array(dxfUnderlayWorldLineNumbers(entry, shift, elevationRenderY, mapToWorld, georeferenceAvailable));
+  return toWorldLines3D(entry, shift, elevationRenderY, mapToWorld, resolveEffectiveGeoreferenced(entry, georeferenceAvailable));
 }
-
-/** Local f32 vertices plus the exact source-world renderer anchor for RTE drawing. */
-export type AnchoredDxfLines3D = AnchoredRendererLineVertices;
 
 /**
  * Build one DXF underlay directly into a local frame. Both DXF paths share
@@ -388,49 +390,5 @@ export function dxfUnderlayToWorldLines3DAnchored(
   mapToWorld: (p: Point2D) => Point2D = (p) => p,
   georeferenceAvailable = false,
 ): AnchoredDxfLines3D | null {
-  const world = dxfUnderlayWorldLineNumbers(entry, shift, elevationRenderY, mapToWorld, georeferenceAvailable);
-  if (world.length === 0) return null;
-  const origin: [number, number, number] = [world[0], world[1], world[2]];
-  const localVertices = new Float32Array(world.length);
-  for (let index = 0; index < world.length; index += 3) {
-    localVertices[index] = world[index] - origin[0];
-    localVertices[index + 1] = world[index + 1] - origin[1];
-    localVertices[index + 2] = world[index + 2] - origin[2];
-  }
-  return { localVertices, origin };
-}
-
-function dxfUnderlayWorldLineNumbers(
-  entry: DxfUnderlayState,
-  shift: { x: number; y: number },
-  elevationRenderY: number,
-  mapToWorld: (p: Point2D) => Point2D,
-  georeferenceAvailable: boolean,
-): number[] {
-  const t: WorldToDrawingParams = {
-    shiftX: shift.x,
-    shiftY: shift.y,
-    mirrorX: false,
-    placement: entry.placement,
-    mapToWorld: resolveEffectiveGeoreferenced(entry, georeferenceAvailable) ? mapToWorld : undefined,
-  };
-  const verts: number[] = [];
-  for (const layer of entry.underlay.layers) {
-    if (!(entry.layerVisibility[layer.name] ?? layer.visible)) continue;
-    for (const path of layer.paths) {
-      if (path.points.length < 2) continue;
-      const mapped = path.points.map((p) => worldToDrawing(p, t));
-      for (let i = 0; i < mapped.length - 1; i++) {
-        verts.push(mapped[i].x, elevationRenderY, mapped[i].y);
-        verts.push(mapped[i + 1].x, elevationRenderY, mapped[i + 1].y);
-      }
-      if (path.closed && mapped.length > 2) {
-        const a = mapped[mapped.length - 1];
-        const b = mapped[0];
-        verts.push(a.x, elevationRenderY, a.y);
-        verts.push(b.x, elevationRenderY, b.y);
-      }
-    }
-  }
-  return verts;
+  return toWorldLines3DAnchored(entry, shift, elevationRenderY, mapToWorld, resolveEffectiveGeoreferenced(entry, georeferenceAvailable));
 }

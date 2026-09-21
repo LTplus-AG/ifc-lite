@@ -23,6 +23,27 @@ function document(sourceId: string, meshExpressId = 1): LandXmlTinDocument {
   };
 }
 
+function pipeDocument(meshExpressId = 1): LandXmlTinDocument {
+  const result = document('landxml:surface:1:face:1', meshExpressId);
+  result.pipeNetworks = {
+    version: '1.2', rootUnits: null, collections: [],
+    networks: [{
+      sourceId: 'landxml:pipe-network:1', sourcePath: 'LandXML/PipeNetworks/PipeNetwork[1]', name: 'storm', pipeNetworkType: 'storm', properties: {}, structureUnits: null, pipeUnits: null, features: [],
+      structures: [],
+      pipes: [{
+        sourceId: 'landxml:pipe-network:1:pipe:1', sourcePath: 'LandXML/PipeNetworks/PipeNetwork[1]/Pipes/Pipe[1]', name: 'P-1', properties: {},
+        units: { linearUnit: 'meter', elevationUnit: 'meter', diameterUnit: 'meter', widthUnit: 'meter', heightUnit: 'meter', flowUnit: null, linearScaleToMeters: 1, elevationScaleToMeters: 1, diameterScaleToMeters: 1, widthScaleToMeters: 1, heightScaleToMeters: 1 },
+        connectivity: { startStructureSourceId: 'A', endStructureSourceId: 'B' }, part: { kind: 'circular', properties: {}, material: null }, geometry: { kind: 'straight', point: null }, length: null, flow: null,
+      }],
+    }],
+    features: [], refusals: [],
+  };
+  result.rendering.meshProvenance = [{
+    meshExpressId, surfaceSourceId: '', renderedFaceSourceIds: [], pipeSourceId: 'landxml:pipe-network:1:pipe:1',
+  }];
+  return result;
+}
+
 describe('LandXML semantic selection (#5042)', () => {
   it('keeps same local source IDs collision-safe across federated models', () => {
     const models = new Map([['a', { landXmlDocument: document('landxml:surface:1:face:1') }], ['b', { landXmlDocument: document('landxml:surface:1:face:1') }]]);
@@ -48,6 +69,29 @@ describe('LandXML semantic selection (#5042)', () => {
       landXmlPickSourceRefFromFederation({ models, findModelForGlobalId: (globalId) => registry.getModelForGlobalId(globalId) }, terrainOffset + 1),
       { modelId: 'terrain', sourceId: 'landxml:surface:1' },
       'without a PickResult triangle index the source surface is the honest pick result',
+    );
+  });
+
+  it('keeps pipe picks model-qualified for one and many federated models (#5047)', () => {
+    const singleRegistry = new FederationRegistry();
+    const singleOffset = singleRegistry.registerModel('pipe-only', 1);
+    const singleModels = new Map([['pipe-only', { landXmlDocument: pipeDocument(singleOffset + 1) }]]);
+    assert.deepEqual(
+      landXmlPickSourceRefFromFederation({ models: singleModels, findModelForGlobalId: (globalId) => singleRegistry.getModelForGlobalId(globalId) }, singleOffset + 1),
+      { modelId: 'pipe-only', sourceId: 'landxml:pipe-network:1:pipe:1' },
+    );
+
+    const registry = new FederationRegistry();
+    registry.registerModel('first-pipes', 1);
+    const secondOffset = registry.registerModel('second-pipes', 1);
+    const models = new Map([
+      ['first-pipes', { landXmlDocument: pipeDocument(1) }],
+      ['second-pipes', { landXmlDocument: pipeDocument(secondOffset + 1) }],
+    ]);
+    assert.deepEqual(
+      landXmlPickSourceRefFromFederation({ models, findModelForGlobalId: (globalId) => registry.getModelForGlobalId(globalId) }, secondOffset + 1),
+      { modelId: 'second-pipes', sourceId: 'landxml:pipe-network:1:pipe:1' },
+      'the same local source ID must never resolve to the first pipe model',
     );
   });
 

@@ -6,11 +6,10 @@ import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { createCoordinateInfo, type Bounds3D } from '../../utils/localParsingUtils.js';
 import { MAX_RENDER_FRAME_ORIGIN_METRES, placeComponentsInRenderFrame } from './landXmlRenderFrame.js';
 import type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
-
+import { buildLandXmlPipeComponents } from './landXmlPipeGeometry.js';
+import { pipeRefusalWarnings } from './landXmlPipeWarnings.js';
 export type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
-
 export type LandXmlSourceBuffer = ArrayBuffer | SharedArrayBuffer;
-
 export interface LandXmlGeometryPayload {
   geometryResult: GeometryResult;
   schemaVersion: 'IFC4';
@@ -19,7 +18,6 @@ export interface LandXmlGeometryPayload {
   /** Durable source records, independent of all mesh/component partitioning. */
   semanticDocument: LandXmlTinDocument;
 }
-
 interface WorldPoint {
   x: number;
   y: number;
@@ -269,24 +267,18 @@ function buildSurfaceMesh(
   };
 }
 
-interface SurfaceComponent {
-  mesh: MeshData;
-  bounds: Bounds3D;
-  surfaceName: string;
-  surfaceSourceId: string;
-  renderedFaceSourceIds: string[];
-}
+interface SurfaceComponent { mesh: MeshData; bounds: Bounds3D; surfaceName: string; surfaceSourceId: string | null; pipeSourceId: string | null; renderedFaceSourceIds: string[] }
 
 /** Adapt Rust-parsed LandXML 1.2 TIN semantics into the viewer's mesh payload. */
 export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometryPayload {
-  const warnings = [...parsed.warnings];
+  const warnings = [...parsed.warnings, ...pipeRefusalWarnings(parsed)];
   const renderableSurfaces = parsed.surfaces.filter((surface) => (
     surface.renderState === 'rendered' && surface.faceVisibility.some(Boolean)
   ));
   if (renderableSurfaces.length > 0 && parsed.units === null) {
     throw new Error('LandXML has renderable TIN topology but no Units declaration');
   }
-  if (renderableSurfaces.length === 0) {
+  if (renderableSurfaces.length === 0 && !parsed.pipeNetworks) {
     return {
       geometryResult: {
         meshes: [], totalVertices: 0, totalTriangles: 0,
@@ -329,7 +321,7 @@ export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometr
         if (result.mesh && result.bounds) {
           renderedComponents++;
           components.push({ mesh: result.mesh, bounds: result.bounds, surfaceName: surface.name, surfaceSourceId: surface.sourceId,
-            renderedFaceSourceIds: result.renderedFaces.map((face) => faceSourceId.get(face)).filter((id): id is string => id !== undefined) });
+            pipeSourceId: null, renderedFaceSourceIds: result.renderedFaces.map((face) => faceSourceId.get(face)).filter((id): id is string => id !== undefined) });
         }
         if (result.unrenderedFaces.length === 0) continue;
         if (result.unrenderedFaces.length < currentFaces.length) {
@@ -353,7 +345,18 @@ export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometr
     }
     droppedBySurface.set(surface.sourceId, { degenerate: degenerateFaces, precision: unrepresentableFaces });
   }
-  if (components.length === 0) throw new Error('LandXML document contains no non-degenerate TIN faces');
+  const pipeGeometry = buildLandXmlPipeComponents(parsed.pipeNetworks ?? null, components.length + 1);
+  warnings.push(...pipeGeometry.warnings);
+  for (const pipe of pipeGeometry.components) {
+    components.push({ ...pipe, surfaceName: pipe.name, surfaceSourceId: null, pipeSourceId: pipe.sourceId, renderedFaceSourceIds: [] });
+  }
+  if (components.length === 0) {
+    return {
+      geometryResult: { meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: sourceCoordinateInfo(parsed) },
+      schemaVersion: 'IFC4', warnings, surfaceNames: [],
+      semanticDocument: { ...parsed, rendering: { meshProvenance: [], surfaceCounts: parsed.surfaces.map((surface) => ({ surfaceSourceId: surface.sourceId, sourcePoints: surface.points.length, sourceFaces: surface.faces.length, hiddenFaces: surface.hiddenFaceCount, renderedFaces: 0, droppedDegenerateFaces: 0, droppedPrecisionFaces: 0, droppedReframeFaces: 0 })) } },
+    };
+  }
 
   const { placed, dropped: reframeDropped, bounds, originShift, hasLargeCoordinates } = placeComponentsInRenderFrame(components, warnings);
   if (placed.length === 0) {
@@ -378,7 +381,7 @@ export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometr
     semanticDocument: {
       ...parsed,
       rendering: {
-        meshProvenance: placed.map((component, index) => ({ meshExpressId: index + 1, surfaceSourceId: component.surfaceSourceId, renderedFaceSourceIds: component.renderedFaceSourceIds })),
+        meshProvenance: placed.map((component, index) => ({ meshExpressId: index + 1, surfaceSourceId: component.surfaceSourceId ?? '', renderedFaceSourceIds: component.renderedFaceSourceIds, ...(component.pipeSourceId ? { pipeSourceId: component.pipeSourceId } : {}) })),
         surfaceCounts: parsed.surfaces.map((surface) => {
           const componentsForSurface = placed.filter((component) => component.surfaceSourceId === surface.sourceId);
           const renderedFaces = componentsForSurface.reduce((count, component) => count + component.renderedFaceSourceIds.length, 0);

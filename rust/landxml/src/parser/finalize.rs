@@ -141,6 +141,7 @@ impl Parser<'_> {
             roadways: self.roadways,
             capability_diagnostics: self.capability_diagnostics,
             preserved_only_extensions: self.preserved_only_extensions,
+            pipe_networks: None,
         })
     }
 }

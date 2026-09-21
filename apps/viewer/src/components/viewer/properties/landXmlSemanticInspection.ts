@@ -7,7 +7,7 @@ import type { LandXmlSourceRecord } from '@/hooks/ingest/landXmlSemantics';
 export type SemanticDetailRow = { label: string; value: string; sourceId?: string };
 export type SemanticNavigationItem = { label: string; sourceId?: string };
 
-type SemanticRecord = Exclude<LandXmlSourceRecord, { kind: 'surface' | 'point' | 'source-data-point' | 'face' | 'boundary' | 'breakline' | 'contour' }>;
+type SemanticRecord = Exclude<LandXmlSourceRecord, { kind: 'surface' | 'point' | 'source-data-point' | 'face' | 'boundary' | 'breakline' | 'contour' | 'pipe' | 'pipe-structure' | 'pipe-feature' | 'pipe-network' | 'pipe-network-collection' }>;
 
 function association(label: string, sourceId: string): SemanticNavigationItem {
   return { label: `${label}: ${sourceId}`, sourceId };

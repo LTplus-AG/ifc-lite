@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from '@/i18n';
-import type { LandXmlSourceRef, LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics';
+import type { LandXmlPipeNetworkDocument, LandXmlSourceRef, LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics';
 
 const PAGE_SIZE = 100;
 const DIAGNOSTIC_PAGE_SIZE = 20;
@@ -17,6 +17,39 @@ interface LandXmlModelSourceNavigationProps {
 }
 
 type NavigationRecord = { label: string; sourceId: string; detail?: string };
+
+function pipeRecordCount(document: LandXmlPipeNetworkDocument | null | undefined): number {
+  if (!document) return 0;
+  return document.collections.length + document.features.length + document.networks.reduce(
+    (total, network) => total + 1 + network.structures.length + network.pipes.length + network.features.length, 0,
+  );
+}
+
+/** Extract a bounded page without flattening a potentially very large pipe document. */
+function pipeRecordPage(document: LandXmlPipeNetworkDocument | null | undefined, start: number): NavigationRecord[] {
+  if (!document) return [];
+  const records: NavigationRecord[] = [];
+  let remaining = start;
+  const take = <T,>(items: readonly T[], item: (value: T) => NavigationRecord): void => {
+    if (records.length >= PAGE_SIZE) return;
+    if (remaining >= items.length) { remaining -= items.length; return; }
+    const end = Math.min(items.length, remaining + PAGE_SIZE - records.length);
+    for (let index = remaining; index < end; index += 1) records.push(item(items[index]!));
+    remaining = 0;
+  };
+  take(document.collections, (collection) => ({ sourceId: collection.sourceId, label: collection.sourceId, detail: 'collection' }));
+  take(document.features, (feature) => ({ sourceId: feature.sourceId, label: feature.sourceId, detail: feature.ownerSourceId }));
+  for (const network of document.networks) {
+    if (records.length >= PAGE_SIZE) break;
+    const count = 1 + network.structures.length + network.pipes.length + network.features.length;
+    if (remaining >= count) { remaining -= count; continue; }
+    take([network], (current) => ({ sourceId: current.sourceId, label: current.name, detail: current.pipeNetworkType }));
+    take(network.structures, (structure) => ({ sourceId: structure.sourceId, label: structure.name, detail: structure.part.kind }));
+    take(network.pipes, (pipe) => ({ sourceId: pipe.sourceId, label: pipe.name, detail: pipe.geometry.kind }));
+    take(network.features, (feature) => ({ sourceId: feature.sourceId, label: feature.sourceId, detail: feature.ownerSourceId }));
+  }
+  return records;
+}
 
 function sourceRecordCount(document: LandXmlTinDocument): number {
   return document.alignments.length + document.profiles.length + document.crossSections.length
@@ -72,6 +105,7 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
   const [overlayPage, setOverlayPage] = useState(0);
   const [recordPage, setRecordPage] = useState(0);
   const [diagnosticPage, setDiagnosticPage] = useState(0);
+  const [pipePage, setPipePage] = useState(0);
   const pages = Math.max(1, Math.ceil(document.surfaces.length / PAGE_SIZE));
   const page = Math.min(surfacePage, pages - 1);
   const surfaces = useMemo(() => document.surfaces.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE), [document.surfaces, page]);
@@ -110,12 +144,20 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
     boundedDiagnosticPage * DIAGNOSTIC_PAGE_SIZE,
     (boundedDiagnosticPage + 1) * DIAGNOSTIC_PAGE_SIZE,
   ), [boundedDiagnosticPage, document.capabilityDiagnostics]);
+  const pipeCount = useMemo(() => pipeRecordCount(document.pipeNetworks), [document.pipeNetworks]);
+  const pipePages = Math.max(1, Math.ceil(pipeCount / PAGE_SIZE));
+  const boundedPipePage = Math.min(pipePage, pipePages - 1);
+  const pipeRecords = useMemo(
+    () => pipeRecordPage(document.pipeNetworks, boundedPipePage * PAGE_SIZE),
+    [boundedPipePage, document.pipeNetworks],
+  );
 
   useEffect(() => {
     setSurfacePage(0);
     setOverlayPage(0);
     setRecordPage(0);
     setDiagnosticPage(0);
+    setPipePage(0);
   }, [modelId, document]);
 
   return <>
@@ -127,6 +169,10 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
       {overlays.length === 0 ? <div className="px-3 py-2 text-xs text-zinc-500">{t('properties.modelMetadata.noSourceOverlays')}</div> : overlays.map((overlay) => <RecordButton key={overlay.sourceId} item={overlay} modelId={modelId} selected={selected} onSelect={onSelect} />)}
       <Pager page={boundedOverlayPage} pages={overlayPages} setPage={setOverlayPage} />
     </NavigationSection>
+    {pipeCount > 0 && <NavigationSection title={t('properties.modelMetadata.sourcePipeRecords')}>
+      {pipeRecords.map((record) => <RecordButton key={record.sourceId} item={record} modelId={modelId} selected={selected} onSelect={onSelect} />)}
+      <Pager page={boundedPipePage} pages={pipePages} setPage={setPipePage} />
+    </NavigationSection>}
     <NavigationSection title={t('properties.landXmlSource.reviewRecords')}>
       {records.length === 0 ? <div className="px-3 py-2 text-xs text-zinc-500">{t('properties.landXmlSource.noReviewRecords')}</div> : records.map((record) => <RecordButton key={record.sourceId} item={record} modelId={modelId} selected={selected} onSelect={onSelect} />)}
       <Pager page={boundedRecordPage} pages={recordPages} setPage={setRecordPage} />

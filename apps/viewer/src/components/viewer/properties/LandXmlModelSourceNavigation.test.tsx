@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { cleanup, click, render } from '@/test/render.js';
 import { LandXmlModelSourceNavigation } from './LandXmlModelSourceNavigation.js';
-import type { LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics';
+import type { LandXmlPipeUnits, LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics';
 
 function profilesOnlyDocument(): LandXmlTinDocument {
   return {
@@ -22,6 +22,34 @@ function profilesOnlyDocument(): LandXmlTinDocument {
     crossSections: [], crossSectionSurfaces: [], roadways: [], preservedOnlyExtensions: [], rendering: { meshProvenance: [], surfaceCounts: [] },
     capabilityDiagnostics: [{ code: 'missing_reference', sourceId: 'roadway', sourcePath: 'LandXML/Roadways/Roadway/@surfaceRefs', message: 'Roadway references unknown Surface "terrain"' }],
   };
+}
+
+const pipeUnits: LandXmlPipeUnits = {
+  linearUnit: 'meter', elevationUnit: 'meter', diameterUnit: 'meter', widthUnit: 'meter', heightUnit: 'meter', flowUnit: null,
+  linearScaleToMeters: 1, elevationScaleToMeters: 1, diameterScaleToMeters: 1, widthScaleToMeters: 1, heightScaleToMeters: 1,
+};
+
+function pipeNavigationDocument(): LandXmlTinDocument {
+  const result = profilesOnlyDocument();
+  result.alignments = [];
+  result.profiles = [];
+  result.capabilityDiagnostics = [];
+  result.pipeNetworks = {
+    version: '1.2', rootUnits: pipeUnits,
+    collections: [{ sourceId: 'collection', sourcePath: 'PipeNetworks', properties: {} }],
+    features: [{ sourceId: 'root-feature', sourcePath: 'PipeNetworks/Feature[1]', ownerSourceId: 'collection', properties: {} }],
+    refusals: [],
+    networks: Array.from({ length: 101 }, (_, index) => {
+      const suffix = String(index + 1);
+      return {
+        sourceId: `network-${suffix}`, sourcePath: `PipeNetwork[${suffix}]`, name: `Network ${suffix}`, pipeNetworkType: 'storm', properties: {}, structureUnits: pipeUnits, pipeUnits,
+        structures: [{ sourceId: `structure-${suffix}`, sourcePath: `Struct[${suffix}]`, name: `Structure ${suffix}`, properties: {}, units: pipeUnits, center: { northing: 0, easting: 0, northingMeters: 0, eastingMeters: 0, elevation: null }, part: { kind: 'circular' as const, properties: {}, material: null }, rimElevation: null, sumpElevation: null, inverts: [], flow: null }],
+        pipes: [{ sourceId: `pipe-${suffix}`, sourcePath: `Pipe[${suffix}]`, name: `Pipe ${suffix}`, properties: {}, units: pipeUnits, connectivity: { startStructureSourceId: `structure-${suffix}`, endStructureSourceId: `structure-${suffix}` }, part: { kind: 'circular' as const, properties: {}, material: null }, geometry: { kind: 'straight' as const, point: null }, length: null, flow: null }],
+        features: [{ sourceId: `feature-${suffix}`, sourcePath: `PipeNetwork[${suffix}]/Feature[1]`, ownerSourceId: `network-${suffix}`, properties: {} }],
+      };
+    }),
+  };
+  return result;
 }
 
 describe('LandXmlModelSourceNavigation (#5045)', () => {
@@ -65,6 +93,21 @@ describe('LandXmlModelSourceNavigation (#5045)', () => {
     }];
     const ui = render(<LandXmlModelSourceNavigation modelId="profiles" document={document} selected={null} onSelect={() => {}} />);
     assert.ok([...ui.querySelectorAll('button')].some((button) => button.textContent?.includes('Cross-section surface: section-surface')));
+    cleanup();
+  });
+
+  it('pages every retained network, collection, structure, pipe, and feature (#5047)', () => {
+    const selected: string[] = [];
+    const ui = render(<LandXmlModelSourceNavigation modelId="pipes" document={pipeNavigationDocument()} selected={null} onSelect={(ref) => selected.push(ref.sourceId)} />);
+    const text = ui.textContent ?? '';
+    for (const value of ['collection', 'Network 1', 'Structure 1', 'Pipe 1', 'root-feature']) assert.match(text, new RegExp(value));
+    const next = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Next');
+    assert.ok(next);
+    click(next);
+    const pipe = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Pipe 25'));
+    assert.ok(pipe, 'later records are reachable through bounded pages');
+    click(pipe);
+    assert.deepEqual(selected, ['pipe-25']);
     cleanup();
   });
 });

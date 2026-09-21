@@ -53,6 +53,18 @@ function readableStrings(container: HTMLElement): Set<string> {
   return out;
 }
 
+/** Dispatch the pointerdown+click pair Radix's uncontrolled DropdownMenu
+ *  trigger needs to open — a plain `click` does not toggle it (#4918,
+ *  mirrors `MainToolbar.i18n.test.tsx`'s `openMenu`). */
+function openMenu(trigger: Element): void {
+  act(() => {
+    trigger.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
+  });
+  act(() => {
+    trigger.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
+}
+
 function foundText(strings: Set<string>, text: string): boolean {
   if (strings.has(text)) return true;
   for (const s of strings) {
@@ -139,6 +151,13 @@ function mount(): HTMLElement {
   for (const button of [...container.querySelectorAll('button')]) {
     if (button.textContent?.includes('Advanced')) click(button);
   }
+  // The Unique rule's SubjectPicker offers every subjectKind (no
+  // singleValuedOnly restriction) — opening its dropdown renders all
+  // twelve `validationEditor.subjectKind.*` labels as DropdownMenuItems,
+  // portaled to `document.body` (Radix), not just the currently-selected
+  // kind's trigger button text.
+  const subjectTrigger = container.querySelector('button[aria-label="Unique value subject"]');
+  if (subjectTrigger) openMenu(subjectTrigger);
   return container;
 }
 
@@ -165,14 +184,16 @@ afterEach(() => {
 
 describe('validation rule editor localization (#5138)', () => {
   it('translates every static key rendered across the four requirement kinds', () => {
-    const containers = [mount(), mountEmpty()];
-    const english = new Set<string>();
-    for (const c of containers) for (const s of readableStrings(c)) english.add(s);
+    mount();
+    mountEmpty();
+    // Scanning `document.body` (not just each mounted container) so a
+    // Radix dropdown's portaled content — e.g. SubjectPicker's kind menu —
+    // is counted too.
+    const english = readableStrings(document.body);
 
     registerLocale('validation-editor-pseudo', PSEUDO);
     act(() => setLocale('validation-editor-pseudo'));
-    const after = new Set<string>();
-    for (const c of containers) for (const s of readableStrings(c)) after.add(s);
+    const after = readableStrings(document.body);
     act(() => setLocale('en'));
 
     for (const key of STATIC_KEYS) {
@@ -183,12 +204,12 @@ describe('validation rule editor localization (#5138)', () => {
   });
 
   it('accounts for every static key: rendered by the fixtures, or intentionally not', () => {
-    const containers = [mount(), mountEmpty()];
-    const english = new Set<string>();
-    for (const c of containers) for (const s of readableStrings(c)) english.add(s);
+    mount();
+    mountEmpty();
     // `notLoaded` needs a target fingerprint NOT among `models` — the
     // fixture's `fp-not-loaded` gives it that, so every static key should
     // be reachable from these two mounts.
+    const english = readableStrings(document.body);
     const unaccounted = STATIC_KEYS.filter((key) => !foundText(english, String(validationEditorEn[key])));
     assert.deepEqual(unaccounted, [], 'key not rendered by the fixtures — extend them or document the gap');
   });

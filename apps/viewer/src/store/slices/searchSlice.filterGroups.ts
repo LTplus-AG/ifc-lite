@@ -21,7 +21,7 @@
  * `import type`, which TypeScript erases before either module executes.
  */
 
-import type { FilterRule, Combinator } from '@/lib/search/filter-rules';
+import type { FilterRule } from '@/lib/search/filter-rules';
 import { emptyFilterGroup, type FilterGroup } from '@/lib/search/filter-groups';
 import type { SearchFilterStateValue } from './searchSlice.js';
 
@@ -57,7 +57,6 @@ function updateActiveGroup(state: GroupState, update: (group: FilterGroup) => Fi
 }
 
 export interface FilterGroupActions {
-  setFilterCombinator: (combinator: Combinator) => void;
   addFilterRule: (rule: FilterRule) => void;
   updateFilterRule: (index: number, rule: FilterRule) => void;
   removeFilterRule: (index: number) => void;
@@ -69,18 +68,11 @@ export interface FilterGroupActions {
    *  its clear action has to actually empty all of them or the badge stays
    *  non-zero after the click (review, PR #4987). */
   clearAllFilterGroups: () => void;
-  addFilterGroup: () => void;
-  removeFilterGroup: (index: number) => void;
   setActiveFilterGroup: (index: number) => void;
 }
 
 export function createFilterGroupActions(set: SetFn): FilterGroupActions {
   return {
-    setFilterCombinator: (combinator) =>
-      set((state) => ({
-        searchFilter: { ...state.searchFilter, groups: updateActiveGroup(state, (g) => ({ ...g, combinator })) },
-      })),
-
     addFilterRule: (rule) =>
       set((state) => ({
         searchFilter: {
@@ -131,39 +123,6 @@ export function createFilterGroupActions(set: SetFn): FilterGroupActions {
         searchFilter: { ...state.searchFilter, groups: [emptyFilterGroup()] },
         searchFilterActiveGroup: 0,
       })),
-
-    addFilterGroup: () =>
-      set((state) => {
-        const groups = [...state.searchFilter.groups, emptyFilterGroup()];
-        return {
-          searchFilter: { ...state.searchFilter, groups },
-          searchFilterActiveGroup: groups.length - 1,
-        };
-      }),
-
-    removeFilterGroup: (index) =>
-      set((state) => {
-        const groups = state.searchFilter.groups;
-        // A filter always keeps at least one group — dropping the last one
-        // would leave `addFilterRule` etc. with nothing to target.
-        if (groups.length <= 1 || index < 0 || index >= groups.length) return {};
-        const next = groups.slice();
-        next.splice(index, 1);
-        // The SAME logical group the user had open must stay open — review
-        // (PR #4987): clamping the OLD numeric index alone is wrong once a
-        // PRECEDING group is removed, because every group after `index`
-        // shifts left by one but the active index does not. With A/B/C and
-        // B active (index 1), removing A (index 0) must land on B, now at
-        // index 0 — not silently re-clamp to whatever slid into index 1
-        // (C). Only when the ACTIVE group itself is removed does a
-        // neighbour take over, which `clampGroupIndex` already handles.
-        const prevActive = state.searchFilterActiveGroup;
-        const nextActive = index < prevActive ? prevActive - 1 : prevActive;
-        return {
-          searchFilter: { ...state.searchFilter, groups: next },
-          searchFilterActiveGroup: clampGroupIndex(nextActive, next.length),
-        };
-      }),
 
     setActiveFilterGroup: (index) =>
       set((state) => ({

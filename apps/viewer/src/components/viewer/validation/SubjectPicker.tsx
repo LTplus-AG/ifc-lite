@@ -38,11 +38,12 @@ const SUBJECT_KINDS = [
 
 const MULTI_VALUED: ReadonlySet<string> = new Set(['material', 'classification', 'parent']);
 
-const SUBJECT_KIND_LABEL: Record<(typeof SUBJECT_KINDS)[number], string> = {
-  attribute: 'Attribute', property: 'Property', quantity: 'Quantity', classification: 'Classification',
-  name: 'Name', material: 'Material', storey: 'Storey', parent: 'Parent', type: 'Type Name',
-  ifcType: 'IFC Type', predefinedType: 'Predefined Type', globalId: 'Global ID',
-};
+/** `validationEditor.subjectKind.<kind>` — every label goes through `t()`
+ *  at its call site (a bot review on this PR caught an earlier version
+ *  hardcoding English text in a lookup table that never reached `t`). */
+function subjectKindLabel(t: ReturnType<typeof useTranslation>['t'], kind: (typeof SUBJECT_KINDS)[number]): string {
+  return t(`validationEditor.subjectKind.${kind}`);
+}
 
 function blankSubjectOfKind(kind: (typeof SUBJECT_KINDS)[number]): Subject {
   switch (kind) {
@@ -101,13 +102,13 @@ export function SubjectPicker({ subject, onChange, singleValuedOnly, 'aria-label
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" aria-label={ariaLabel}>
-            {SUBJECT_KIND_LABEL[subject.kind as (typeof SUBJECT_KINDS)[number]] ?? subject.kind}
+            {subjectKindLabel(t, subject.kind as (typeof SUBJECT_KINDS)[number])}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
           {kinds.map((k) => (
             <DropdownMenuItem key={k} onSelect={() => onChange(blankSubjectOfKind(k))}>
-              {SUBJECT_KIND_LABEL[k]}
+              {subjectKindLabel(t, k)}
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>

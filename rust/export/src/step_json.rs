@@ -82,5 +82,5 @@ pub fn export_step_json(
             .collect(),
         ..StepOptions::default()
     };
-    Ok(export_step(content, &opts))
+    export_step(content, &opts).map_err(|e| e.to_string())
 }

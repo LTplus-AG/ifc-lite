@@ -336,7 +336,7 @@
    680 scripts/check-changeset-bump.mjs
    526 scripts/check-ci-path-coverage.mjs
    572 scripts/check-collab-room-model-target.mjs
-   533 scripts/check-generated.mjs
+   535 scripts/check-generated.mjs
    430 scripts/check-git-lfs.mjs
    560 scripts/check-isolate-expansion-routing.mjs
    957 scripts/check-issue-queue.mjs

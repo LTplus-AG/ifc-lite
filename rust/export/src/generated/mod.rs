@@ -5,5 +5,6 @@
 //! Auto-generated tables. See each submodule's own header for its generator
 //! and the EXPRESS-derived source it reads.
 
+pub mod ifc2x3_entity_names;
 pub mod ifc2x3_required_slots;
 pub mod legacy_rooted_types;

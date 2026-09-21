@@ -15,7 +15,7 @@ import type { ReportDoc, ReportPdfSeams } from '../export/report/generate-report
 import { dataUrlToBytes } from '../export/download.js';
 import { renderTemplate, type BindingContext } from './bindings.js';
 import { composeDocument, estimateTextWidth, type DocumentLayout, type ResolvedBlock } from './compose.js';
-import { flattenExportModel, type TableLabels, type TableState } from './resolve-table.js';
+import { flattenExportModel, tableMessageKind, type TableLabels, type TableMessageKind, type TableState } from './resolve-table.js';
 import { TABLE_ROWS_DEFAULT, type DocumentSpec, type TableBlock } from './types.js';
 
 export interface DocumentPdfSeams extends ReportPdfSeams {
@@ -61,12 +61,19 @@ export const TABLE_PDF_LABELS: TableLabels = {
   total: (count) => `Total (${count.toLocaleString()})`,
 };
 
+const TABLE_MESSAGES: Record<Exclude<TableMessageKind, 'error'>, string> = {
+  resolving: 'Table not ready: the list is still running.',
+  'no-model': 'Load a model to fill this table.',
+  'no-rows': 'No rows match this list.',
+};
+
 /** What a table block prints in place of its rows, by state; `null` when it has rows to print. */
 export function tableMessage(state: TableState | undefined): string | null {
-  if (!state || state.status === 'resolving') return 'Table not ready: the list is still running.';
-  if (state.status === 'no-model') return 'Load a model to fill this table.';
-  if (state.status === 'error') return state.message;
-  return state.model.totals.count === 0 ? 'No rows match this list.' : null;
+  const kind = tableMessageKind(state);
+  if (kind === null) return null;
+  // An engine error with an empty message (review finding) still has to read as an error, not as an empty grid.
+  if (kind === 'error') return (state?.status === 'error' && state.message.trim()) || 'The list could not be run.';
+  return TABLE_MESSAGES[kind];
 }
 
 /** The title a table block prints: its own, or the list's name. */
@@ -148,9 +155,9 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
       case 'table': {
         const state = input.tables.get(block.id);
         const message = tableMessage(state);
-        if (message !== null || state?.status !== 'ok') {
+        if (state?.status !== 'ok' || message !== null) {
           if (state?.status !== 'ok') result.tableFailures.push(block.id);
-          blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, message: message ?? undefined, columns: [], rows: [] });
+          blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, message: message ?? TABLE_MESSAGES['no-rows'], columns: [], rows: [] });
           break;
         }
         const flat = flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS);

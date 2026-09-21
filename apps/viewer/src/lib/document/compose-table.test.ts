@@ -89,6 +89,13 @@ describe('table block layout (#5142)', () => {
     assert.deepEqual(texts, ['Walls', 'Load a model to fill this table.', 'after']);
   });
 
+  it('an error state with an EMPTY message still prints as a message line, never as an empty grid (review finding)', () => {
+    const layout = compose([table([], { message: '' }), { kind: 'text', id: 't', style: 'body', text: 'after' }]);
+    assert.equal(tablesOf(layout.pages).length, 0, 'no head-only table');
+    const texts = layout.pages[0].items.filter((i): i is Extract<DrawnItem, { kind: 'text' }> => i.kind === 'text').map((i) => i.text);
+    assert.deepEqual(texts, ['Walls', '', 'after']);
+  });
+
   it('column widths follow content, clamp to half the frame, and always sum to the frame', () => {
     const wide = [{ cells: ['w'.repeat(200), 'a', '1'], role: 'row' as const }];
     const widths = tableColumnWidths(columns, wide, 500, estimateTextWidth);

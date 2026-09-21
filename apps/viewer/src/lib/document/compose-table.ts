@@ -49,8 +49,11 @@ export interface TableLayoutBlock {
   rows: TableRowOut[];
 }
 
+/** A line of text on the page; `compose.ts` draws the same shape for every block. */
+export interface TextDrawnItem { kind: 'text'; x: number; y: number; size: number; bold: boolean; gray: number; text: string }
+
 export type TableDrawnItem =
-  | { kind: 'text'; x: number; y: number; size: number; bold: boolean; gray: number; text: string }
+  | TextDrawnItem
   | { kind: 'table'; blockId: string; x: number; y: number; w: number; columns: TableColumnLayout[]; rows: TableRowOut[] };
 
 /** The page cursor `composeDocument` lays blocks out with; `y` is the running position. */
@@ -99,13 +102,15 @@ export function layoutTable(block: TableLayoutBlock, cursor: LayoutCursor, conte
   const rows = block.rows;
 
   // Title, head and the first rows move together (a heading keeps its next line the same way).
-  const lead = TABLE_TITLE_HEIGHT + (block.message ? MESSAGE_HEIGHT : head + Math.min(3, rows.length) * row);
+  // `message` decides by presence, not truthiness: an empty error message still prints as a message line (review finding).
+  const hasMessage = block.message !== undefined;
+  const lead = TABLE_TITLE_HEIGHT + (hasMessage ? MESSAGE_HEIGHT : head + Math.min(3, rows.length) * row);
   cursor.ensure(lead);
   cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 11, size: 11, bold: true, gray: 0, text: cursor.truncate(block.title, contentW, 11, true) });
   cursor.y += TABLE_TITLE_HEIGHT;
 
-  if (block.message) {
-    cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 10, bold: false, gray: 130, text: cursor.truncate(block.message, contentW, 10, false) });
+  if (hasMessage) {
+    cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 10, bold: false, gray: 130, text: cursor.truncate(block.message ?? '', contentW, 10, false) });
     cursor.y += MESSAGE_HEIGHT;
   } else {
     const widths = tableColumnWidths(block.columns, rows, contentW, measure);

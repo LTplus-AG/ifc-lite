@@ -522,6 +522,14 @@ describe('table block (#5142)', () => {
     assert.ok(texts.includes('Walls') && texts.includes('Fire ratings') && texts.includes('Pending'));
     assert.ok(texts.includes('Table not ready: the list is still running.'));
     assert.deepEqual(pdf.tableFailures, ['tb2']);
+
+    // An engine error whose message is empty (review finding) prints a generic error line, not an empty grid.
+    const empty = recordingSeams();
+    const errDoc = docWith([tableBlock({ id: 'tb3' })]);
+    const errPdf = await generateDocumentPdf({ document: errDoc, bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), tables: new Map([['tb3', { status: 'error', message: '' }]]) }, empty.seams);
+    assert.equal(empty.calls.filter((c) => c.op === 'table').length, 0);
+    assert.ok(empty.calls.some((c) => c.op === 'text' && c.args[0] === 'The list could not be run.'));
+    assert.deepEqual(errPdf.tableFailures, ['tb3']);
     assert.equal(pdf.pages, 1);
   });
 });

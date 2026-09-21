@@ -15,7 +15,7 @@
 import type { ReportPageSetup } from '@ifc-lite/charts';
 import { pageBox, REPORT_MARGIN } from '../export/report/compose.js';
 import { CHART_BLOCK_HEIGHT_DEFAULT, type BlockWidth, type TextBlock } from './types.js';
-import { layoutTable, type LayoutCursor, type TableColumnLayout, type TableLayoutBlock } from './compose-table.js';
+import { layoutTable, type LayoutCursor, type TableColumnLayout, type TableLayoutBlock, type TextDrawnItem } from './compose-table.js';
 import type { TableRowOut } from './resolve-table.js';
 
 const HEADER_HEIGHT = 30;
@@ -71,7 +71,7 @@ function isHalfPairable(block: ResolvedBlock): block is (Extract<ResolvedBlock, 
 }
 
 export type DrawnItem =
-  | { kind: 'text'; x: number; y: number; size: number; bold: boolean; gray: number; text: string }
+  | TextDrawnItem
   | { kind: 'image'; blockId: string; x: number; y: number; w: number; h: number }
   | { kind: 'chart'; blockId: string; x: number; y: number; w: number; h: number }
   | { kind: 'snapshot'; blockId: string; x: number; y: number; w: number; h: number }

@@ -12,7 +12,7 @@
  * labels come in from the caller).
  */
 import type { CellValue } from '@ifc-lite/lists';
-import { displayCell, type ExportModel } from '../lists/export/model.js';
+import { displayCell, groupHeaderLabel, totalsRowCells, type ExportModel } from '../lists/export/model.js';
 
 export type TableRowRole = 'row' | 'group' | 'total' | 'more';
 
@@ -27,6 +27,16 @@ export type TableState =
   | { status: 'ok'; model: ExportModel }
   | { status: 'error'; message: string }
   | { status: 'no-model' };
+
+/** Why a table block prints a message instead of rows; `null` when it has rows. Shared by the preview (i18n) and the PDF (English). */
+export type TableMessageKind = 'resolving' | 'no-model' | 'error' | 'no-rows';
+
+export function tableMessageKind(state: TableState | undefined): TableMessageKind | null {
+  if (!state || state.status === 'resolving') return 'resolving';
+  if (state.status === 'no-model') return 'no-model';
+  if (state.status === 'error') return 'error';
+  return state.model.totals.count === 0 ? 'no-rows' : null;
+}
 
 export interface TableRowOut {
   cells: string[];
@@ -76,7 +86,7 @@ export function flattenExportModel(model: ExportModel, maxRows: number, labels: 
     for (const g of model.groups) {
       if (printed >= cap) break;
       rows.push({
-        cells: model.columns.map((c, i) => (i === 0 ? `${'  '.repeat(g.level)}${g.label}  (${g.count})` : c.summed ? displayCell(g.sums[c.id]) : '')),
+        cells: model.columns.map((c, i) => (i === 0 ? groupHeaderLabel(g, '  ') : c.summed ? displayCell(g.sums[c.id]) : '')),
         role: 'group',
       });
       for (const r of g.rows) {
@@ -99,14 +109,7 @@ export function flattenExportModel(model: ExportModel, maxRows: number, labels: 
 
   // Same rule as the list PDF's foot: a totals row only when something is summed.
   if (model.sumColumnIds.length > 0) {
-    rows.push({
-      cells: cols.map((c, i) => {
-        if (i === 0) return labels.total(model.totals.count);
-        if (model.schedule && c.id === '__count') return displayCell(model.totals.count);
-        return c.summed ? displayCell(model.totals.sums[c.id]) : '';
-      }),
-      role: 'total',
-    });
+    rows.push({ cells: totalsRowCells(model, cols, labels.total(model.totals.count)).map(displayCell), role: 'total' });
   }
 
   return { columns, rows, more, totalRows };

@@ -25,12 +25,12 @@ import { useViewerStore } from '@/store';
 import { LIST_PRESETS } from '@/lib/lists';
 import { freshListCopyId } from '@/lib/document/persistence';
 import { DEFAULT_VALIDATION_COLUMNS } from '@/lib/document/presets';
-import { VALIDATION_COLUMN_LABEL } from '@/lib/document/resolve-validation-table';
 import {
   listCopyForDocument, TABLE_COLUMN_IDS, TABLE_ROWS_DEFAULT, TABLE_ROWS_MAX,
   type ListTableSource, type TableBlock, type TableColumnId, type TableSource, type ValidationRowsMode, type ValidationTableSource,
 } from '@/lib/document/types';
 import { ClampedNumberInput, field } from './BlockEditor.parts';
+import { TABLE_COLUMN_LABEL_KEY } from './table-column-labels';
 
 /** Above this many columns a portrait page ellipsizes most cells. */
 const MANY_COLUMNS = 10;
@@ -174,7 +174,7 @@ function ValidationSourceEditor({ block, source, onChange }: { block: TableBlock
         {TABLE_COLUMN_IDS.map((c) => (
           <label key={c} className="inline-flex items-center gap-1 text-muted-foreground">
             <input type="checkbox" checked={source.columns.includes(c)} onChange={() => toggleColumn(c)} className="accent-[#7aa2f7]" />
-            {VALIDATION_COLUMN_LABEL[c]}
+            {t(TABLE_COLUMN_LABEL_KEY[c])}
           </label>
         ))}
       </div>

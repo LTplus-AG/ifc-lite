@@ -187,4 +187,19 @@ export const documentEn = {
   'document.table.noReport': 'No validation report yet — run validation, then this table fills in.',
   'document.table.ruleNotFound': 'The rule this table refers to is not in the current validation report.',
   'document.table.validationNoRows': 'No rows match this rule.',
+
+  // table-column-labels.ts (#5138 review): one column header per TableColumnId, for the
+  // column-toggle editor and the on-screen table — the printed PDF keeps the plain-English
+  // VALIDATION_COLUMN_LABEL these match, unlocalized like every other PDF fallback string.
+  'document.table.column.rule': 'Rule',
+  'document.table.column.result': 'Result',
+  'document.table.column.entityType': 'Entity type',
+  'document.table.column.name': 'Name',
+  'document.table.column.globalId': 'GlobalId',
+  'document.table.column.model': 'Model',
+  'document.table.column.actual': 'Actual',
+  'document.table.column.expected': 'Expected',
+  'document.table.column.reason': 'Reason',
+  'document.table.column.set': 'Set',
+  'document.table.column.members': 'Members',
 } as const satisfies Record<string, TranslationValue>;

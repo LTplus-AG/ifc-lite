@@ -75,6 +75,10 @@ export interface TableRowOut {
 }
 
 export interface TableColumnOut {
+  /** Set only for a source whose columns are a fixed, known set (#5138: validation's `TableColumnId`)
+   *  rather than free-form user-authored labels (a list's own column names) — lets a consumer
+   *  translate the header instead of printing `label` (English) verbatim. */
+  id?: string;
   label: string;
   numeric: boolean;
 }

@@ -13,9 +13,9 @@ import { useMemo } from 'react';
 import { useTranslation } from '@/i18n';
 import { localeCount } from '@/i18n/intlFormat';
 import { flattenExportModel, flattenRawModel, tableMessageKind, type TableRowRole, type TableState } from '@/lib/document/resolve-table';
-import { tableTitle } from '@/lib/document/generate-document-pdf';
-import { TABLE_ROWS_DEFAULT, type TableBlock } from '@/lib/document/types';
+import { TABLE_ROWS_DEFAULT, type TableBlock, type TableColumnId } from '@/lib/document/types';
 import { DOCUMENT_PREVIEW_MUTED_TEXT_CLASS } from './preview-theme';
+import { TABLE_COLUMN_LABEL_KEY } from './table-column-labels';
 
 const ROW_CLASS: Record<TableRowRole, string> = {
   row: '',
@@ -31,7 +31,10 @@ export interface TablePreviewProps {
 
 export function TablePreview({ block, state }: TablePreviewProps) {
   const { t, locale } = useTranslation();
-  const title = tableTitle(block);
+  // The PDF's `tableTitle` fallback ("Validation results") is plain English on purpose (every other
+  // PDF fallback string is); the on-screen preview is interactive UI, so it translates its own
+  // fallback instead of calling that helper (#5138 review).
+  const title = block.title?.trim() || (block.source.kind === 'list' ? block.source.list.name : t('document.block.tableSourceValidation'));
   const table = useMemo(() => {
     if (state?.status !== 'ok') return null;
     const labels = {
@@ -63,7 +66,7 @@ export function TablePreview({ block, state }: TablePreviewProps) {
         <table className="w-full border-collapse text-[8px] leading-tight" data-table-rows={table.rows.length}>
           <thead>
             <tr>
-              {table.columns.map((c, i) => <th key={i} className={`border border-neutral-200 bg-slate-700 px-1 py-0.5 font-semibold text-white ${c.numeric ? 'text-right' : 'text-left'}`}>{c.label}</th>)}
+              {table.columns.map((c, i) => <th key={i} className={`border border-neutral-200 bg-slate-700 px-1 py-0.5 font-semibold text-white ${c.numeric ? 'text-right' : 'text-left'}`}>{c.id ? t(TABLE_COLUMN_LABEL_KEY[c.id as TableColumnId]) : c.label}</th>)}
             </tr>
           </thead>
           <tbody>

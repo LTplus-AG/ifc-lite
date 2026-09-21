@@ -74,7 +74,9 @@ export function resolveValidationTableState(source: ValidationTableSource, repor
   const specs = source.ruleId ? report.specificationResults.filter((s) => s.specification.id === source.ruleId) : report.specificationResults;
   if (source.ruleId && specs.length === 0) return { status: 'rule-not-found' };
 
-  const columns = source.columns.map((c) => ({ label: VALIDATION_COLUMN_LABEL[c], numeric: c === 'members' }));
+  // `id` carries the column through to the preview/editor for translation (#5138 review); `label`
+  // is the plain-English fallback the PDF prints and the one used if a caller never translates.
+  const columns = source.columns.map((c) => ({ id: c, label: VALIDATION_COLUMN_LABEL[c], numeric: c === 'members' }));
   const rows: TableRowOut[] = [];
   if (source.rows === 'sets') {
     for (const spec of specs) for (const set of spec.setResults ?? []) rows.push({ cells: source.columns.map((c) => setColumnValue(c, spec, set)), role: 'row' });

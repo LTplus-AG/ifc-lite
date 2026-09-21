@@ -8456,6 +8456,7 @@
     "LandXmlAlignmentSummaryJs: interface",
     "LandXmlCantJs: interface",
     "LandXmlCantStationJs: interface",
+    "LandXmlCanonicalVertexJs: interface",
     "LandXmlCapabilityDiagnosticJs: interface",
     "LandXmlCgPointJs: interface",
     "LandXmlCrossSectionJs: interface",

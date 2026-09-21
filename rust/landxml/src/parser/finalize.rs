@@ -37,6 +37,28 @@ impl Parser<'_> {
                 .map(|point| LandXmlSourceId(format!("{}:point:{}", line.source_id.0, point + 1)))
                 .collect();
         }
+        let authored_faces = !surface.faces.is_empty();
+        // A refusal is source-preserving: do not retain a partial collection
+        // of synthetic vertices while marking the source preserved-only.
+        let source_surface = surface.clone();
+        let terrain_diagnostic = crate::terrain::adapt_faceless_tin(
+            &mut surface,
+            self.limits,
+            self.cancelled,
+            &mut self.faces_seen,
+            &mut self.references,
+            &mut self.work,
+        )?;
+        if terrain_diagnostic.is_some() {
+            surface = source_surface;
+        }
+        let topology_origin = if authored_faces {
+            crate::LandXmlTopologyOrigin::AuthoredFaces
+        } else if terrain_diagnostic.is_none() && !surface.faces.is_empty() {
+            crate::LandXmlTopologyOrigin::ConstrainedTriangulation
+        } else {
+            crate::LandXmlTopologyOrigin::PreservedOnly
+        };
         let render_state = match surface.kind {
             LandXmlSurfaceKind::Tin if surface.points.len() >= 3 && !surface.faces.is_empty() => {
                 for face in &surface.faces {
@@ -52,6 +74,13 @@ impl Parser<'_> {
                 LandXmlRenderState::Rendered
             }
             LandXmlSurfaceKind::Tin => {
+                if let Some(diagnostic) = &terrain_diagnostic {
+                    self.warnings.push(format!(
+                        "{}: {}",
+                        diagnostic.code.as_str(),
+                        diagnostic.message
+                    ));
+                }
                 self.warnings.push(format!(
                     "TIN surface \"{}\" has no renderable topology; source data was preserved",
                     surface.name
@@ -79,7 +108,18 @@ impl Parser<'_> {
             }
         };
         let face_source_ids = (0..surface.faces.len())
-            .map(|index| LandXmlSourceId(format!("{}:face:{}", source_id.0, index + 1)))
+            .map(|index| {
+                LandXmlSourceId(format!(
+                    "{}:{}:{}",
+                    source_id.0,
+                    if topology_origin == crate::LandXmlTopologyOrigin::ConstrainedTriangulation {
+                        "triangle"
+                    } else {
+                        "face"
+                    },
+                    index + 1,
+                ))
+            })
             .collect();
         self.surfaces.push(LandXmlSurface {
             source_id,
@@ -90,7 +130,10 @@ impl Parser<'_> {
             name: surface.name,
             kind: surface.kind,
             render_state,
+            topology_origin,
+            terrain_diagnostic,
             points: surface.points,
+            canonical_vertices: surface.canonical_vertices,
             source_data_points: surface.source_data_points,
             faces: surface.faces,
             face_source_ids,

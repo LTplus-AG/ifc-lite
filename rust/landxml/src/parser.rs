@@ -23,7 +23,7 @@ mod finalize;
 mod limits;
 mod path;
 mod profiles;
-mod state;
+pub(crate) mod state;
 mod text;
 mod version;
 
@@ -258,6 +258,7 @@ impl Parser<'_> {
                     name: required(&attributes, "name", "Surface")?.to_owned(),
                     kind: LandXmlSurfaceKind::Other,
                     points: Vec::new(),
+                    canonical_vertices: Vec::new(),
                     source_data_points: Vec::new(),
                     ids: std::collections::HashSet::new(),
                     faces: Vec::new(),

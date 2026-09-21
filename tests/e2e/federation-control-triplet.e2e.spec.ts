@@ -19,9 +19,24 @@
  */
 
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync } from 'node:fs';
 import type { ViewerState } from '../../apps/viewer/src/store';
+import {
+  assertCanonicalCorrespondences,
+  assertFederatedResolution,
+  assertIndependentControls,
+  assertSingleModelResolution,
+  canonicalToRender,
+  controlFile,
+  distance,
+  loadThroughViewer,
+  renderToCanonical,
+  snapshotModels,
+  waitForModels,
+  type ControlFile,
+  type ModelSnapshot,
+  type Point3,
+} from './federation-control-triplet.helpers';
 import { assertIsolatedRenderedContent, ordinaryGpuSelectControl, snapshotRenderedPointCloud } from './federation-control-triplet.rendering';
 
 declare global {
@@ -36,196 +51,6 @@ const XYZ = `${CONTROL_DIR}/survey.xyz`;
 const FIXTURES = [CONTROL, IFC, LANDXML, XYZ] as const;
 const LOAD_TIMEOUT_MS = 120_000;
 const GPU_STRICT = process.env.E2E_GPU_STRICT !== '0';
-
-type Point3 = readonly [number, number, number];
-
-interface ControlFile {
-  toleranceMetres: number;
-  coordinateOrder: string;
-  ifcMapOrigin: Point3;
-  points: Array<{ id: string; local: Point3; projected: Point3 }>;
-}
-
-interface ModelSnapshot {
-  id: string;
-  name: string;
-  idOffset: number;
-  maxExpressId: number;
-  loadPath: string | undefined;
-  alignment: string | undefined;
-  pointCloudHandleId: number | undefined;
-  visible: boolean;
-  vertices: Point3[];
-}
-
-function point3(value: unknown, label: string): Point3 {
-  if (!Array.isArray(value) || value.length !== 3 || !value.every((component) => typeof component === 'number' && Number.isFinite(component))) {
-    throw new Error(`${label} must be three finite numeric coordinates`);
-  }
-  return [value[0], value[1], value[2]];
-}
-
-function controlFile(): ControlFile {
-  const value: unknown = JSON.parse(readFileSync(CONTROL, 'utf8'));
-  if (typeof value !== 'object' || value === null) throw new Error(`${CONTROL} is not an object`);
-  const record = value as Record<string, unknown>;
-  if (typeof record.toleranceMetres !== 'number' || !Number.isFinite(record.toleranceMetres)
-    || typeof record.coordinateOrder !== 'string' || !Array.isArray(record.points)) {
-    throw new Error(`${CONTROL} lacks numeric tolerance, coordinate order, or points`);
-  }
-  const points = record.points.map((point, index) => {
-    if (typeof point !== 'object' || point === null) throw new Error(`${CONTROL} control point ${index + 1} is not an object`);
-    const control = point as Record<string, unknown>;
-    if (typeof control.id !== 'string' || control.id.length === 0) {
-      throw new Error(`${CONTROL} control point ${index + 1} lacks an id`);
-    }
-    return { id: control.id, local: point3(control.local, `${control.id}.local`), projected: point3(control.projected, `${control.id}.projected`) };
-  });
-  return { toleranceMetres: record.toleranceMetres, coordinateOrder: record.coordinateOrder,
-    ifcMapOrigin: point3(record.ifcMapOrigin, 'ifcMapOrigin'), points };
-}
-
-function distance(a: Point3, b: Point3): number {
-  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
-}
-
-/** Renderer geometry is Y-up; control coordinates are engineering Z-up. */
-function renderToCanonical(point: Point3): Point3 {
-  return [point[0], -point[2], point[1]];
-}
-
-function canonicalToRender(point: Point3): { x: number; y: number; z: number } {
-  return { x: point[0], y: point[2], z: -point[1] };
-}
-
-function assertIndependentControls(controls: ControlFile): void {
-  expect(controls.coordinateOrder).toBe('easting,northing,elevation');
-  expect(controls.points, 'the control declaration keeps five stated correspondences').toHaveLength(5);
-  expect(new Set(controls.points.map((point) => point.id)).size, 'control ids are independent').toBe(controls.points.length);
-  for (const point of controls.points) {
-    for (let axis = 0; axis < 3; axis++) {
-      expect(point.projected[axis] - controls.ifcMapOrigin[axis], `${point.id}: projected/local axis ${axis}`).toBeCloseTo(point.local[axis], 9);
-    }
-  }
-  for (let index = 0; index < controls.points.length; index++) {
-    for (let other = index + 1; other < controls.points.length; other++) {
-      expect(distance(controls.points[index]!.local, controls.points[other]!.local),
-        `${controls.points[index]!.id}/${controls.points[other]!.id}: controls must remain distinct`).toBeGreaterThan(controls.toleranceMetres);
-    }
-  }
-}
-
-function assertCanonicalCorrespondences(
-  controls: ControlFile,
-  sourceName: string,
-  candidates: readonly Point3[],
-  expectedCoordinates: (control: ControlFile['points'][number]) => Point3 = (control) => control.local,
-): void {
-  const matched = new Set<number>();
-  for (const point of controls.points) {
-    const expected = expectedCoordinates(point);
-    const distances = candidates.map((candidate) => distance(expected, candidate));
-    const candidateIndex = distances.indexOf(Math.min(...distances));
-    const error = distances[candidateIndex]!;
-    expect(error, `${point.id}: ${sourceName} canonical control correspondence`)
-      .toBeLessThanOrEqual(controls.toleranceMetres);
-    expect(matched.has(candidateIndex), `${point.id}: ${sourceName} must not reuse a control`)
-      .toBe(false);
-    matched.add(candidateIndex);
-  }
-}
-
-async function waitForModels(page: Page, count: number): Promise<void> {
-  await page.waitForFunction(
-    (expected) => {
-      const state = globalThis.__ifc_lite_viewer_store__?.getState();
-      return Boolean(state)
-        && !state.loading
-        && !state.geometryStreamingActive
-        && state.models.size === expected
-        && [...state.models.values()].every((model) => model.pointCloudHandleId !== undefined
-          || (model.geometryResult?.meshes.length ?? 0) > 0)
-        && [...state.models.values()].every((model) => model.visible)
-        && (expected < 3 || state.pointCloudAssetCount >= 1)
-        && [...state.models.values()].every((model) => !model.loadState || model.loadState === 'complete');
-    },
-    count,
-    { timeout: LOAD_TIMEOUT_MS },
-  );
-}
-
-async function loadThroughViewer(page: Page, file: string, expectedCount: number): Promise<void> {
-  // Add is intentionally used for both additions so it passes
-  // useIfcFederation.addModel → useIfcLoader.loadFile. These ids are stable
-  // control contracts, unlike ordinal hidden file-input selectors.
-  await page.locator(expectedCount === 1 ? '#file-input-open' : '#file-input-add').setInputFiles(join(process.cwd(), file));
-  await waitForModels(page, expectedCount);
-}
-
-async function snapshotModels(page: Page): Promise<ModelSnapshot[]> {
-  return page.evaluate(() => {
-    const state = globalThis.__ifc_lite_viewer_store__.getState();
-    return [...state.models.entries()].map(([id, model]) => {
-      const vertices: Array<[number, number, number]> = [];
-      for (const mesh of model.geometryResult?.meshes ?? []) {
-        const origin = mesh.origin ?? [0, 0, 0];
-        for (let index = 0; index < mesh.positions.length; index += 3) {
-          const vertex: [number, number, number] = [
-            mesh.positions[index] + origin[0],
-            mesh.positions[index + 1] + origin[1],
-            mesh.positions[index + 2] + origin[2],
-          ];
-          if (!vertices.some((other) => Math.hypot(
-            vertex[0] - other[0], vertex[1] - other[1], vertex[2] - other[2],
-          ) < 1e-7)) vertices.push(vertex);
-        }
-      }
-      return {
-        id,
-        name: model.name,
-        idOffset: model.idOffset,
-        maxExpressId: model.maxExpressId,
-        loadPath: model.loadPath,
-        alignment: model.federationAlignmentStatus,
-        pointCloudHandleId: model.pointCloudHandleId,
-        visible: model.visible,
-        vertices,
-      };
-    });
-  });
-}
-
-async function assertSingleModelResolution(page: Page, modelId: string): Promise<void> {
-  const resolution = await page.evaluate((id) => {
-    const state = globalThis.__ifc_lite_viewer_store__.getState();
-    const model = state.models.get(id)!;
-    const localId = model.geometryResult!.meshes[0]!.expressId - model.idOffset;
-    const globalId = state.toGlobalId(id, localId);
-    return { localId, globalId, from: state.fromGlobalId(globalId), resolved: state.resolveGlobalIdFromModels(globalId) };
-  }, modelId);
-  expect(resolution.globalId, 'single-model global id retains express id').toBe(resolution.localId);
-  expect(resolution.from).toEqual({ modelId, expressId: resolution.localId });
-  expect(resolution.resolved).toEqual({ modelId, expressId: resolution.localId });
-}
-
-async function assertFederatedResolution(page: Page, models: readonly ModelSnapshot[]): Promise<void> {
-  const resolution = await page.evaluate(() => {
-    const state = globalThis.__ifc_lite_viewer_store__.getState();
-    return [...state.models.values()].map((model) => {
-      const localId = model.maxExpressId;
-      const globalId = state.toGlobalId(model.id, localId);
-      return { modelId: model.id, localId, globalId, from: state.fromGlobalId(globalId),
-        owner: state.findModelForGlobalId(globalId), resolved: state.resolveGlobalIdFromModels(globalId) };
-    });
-  });
-  expect(resolution).toHaveLength(models.length);
-  expect(new Set(resolution.map((entry) => entry.globalId)).size, 'N-model control ids do not alias').toBe(models.length);
-  for (const entry of resolution) {
-    expect(entry.from).toEqual({ modelId: entry.modelId, expressId: entry.localId });
-    expect(entry.owner).toBe(entry.modelId);
-    expect(entry.resolved).toEqual({ modelId: entry.modelId, expressId: entry.localId });
-  }
-}
 
 interface PlacementSnapshot {
   modelId: string;
@@ -422,18 +247,18 @@ function assertPickedControl(
 test('canonical IFC + LandXML + XYZ federation keeps five independent bonsai-topo controls within tolerance (#5051)', async ({ page }, testInfo) => {
   const absent = FIXTURES.filter((fixture) => !existsSync(fixture));
   test.skip(absent.length > 0, `${absent.join(', ')} missing — run \`pnpm fixtures\``);
-  const controls = controlFile();
+  const controls = controlFile(CONTROL);
   expect(controls.toleranceMetres, 'the control declaration remains a 1 mm acceptance').toBe(0.001);
   assertIndependentControls(controls);
 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/');
-  await loadThroughViewer(page, IFC, 1);
+  await loadThroughViewer(page, IFC, 1, LOAD_TIMEOUT_MS);
   const primary = (await snapshotModels(page)).find((model) => model.name === 'terrain.ifc');
   expect(primary, 'IFC model registered from the primary load').toBeDefined();
   await assertSingleModelResolution(page, primary!.id);
-  await loadThroughViewer(page, LANDXML, 2);
-  await loadThroughViewer(page, XYZ, 3);
+  await loadThroughViewer(page, LANDXML, 2, LOAD_TIMEOUT_MS);
+  await loadThroughViewer(page, XYZ, 3, LOAD_TIMEOUT_MS);
 
   const models = await snapshotModels(page);
   expect(models).toHaveLength(3);
@@ -529,7 +354,7 @@ test('canonical IFC + LandXML + XYZ federation keeps five independent bonsai-top
     state.setIsolatedEntities(null);
     state.setModelsVisibility([...state.models.keys()], true);
   });
-  await waitForModels(page, 3);
+  await waitForModels(page, 3, LOAD_TIMEOUT_MS);
 
   // These are real magnetic picks, constrained by the production Reposition
   // panel to the named moving/reference models. Every XYZ control must be

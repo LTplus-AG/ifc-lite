@@ -7,7 +7,6 @@ import { FileText, Loader2, Play, Upload } from 'lucide-react';
 import type { UseIDSResult } from '@/hooks/useIDS';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
@@ -69,7 +68,12 @@ export function IDSPanelStates({ ids, fileInputRef, onFileSelect, onLoadClick }:
     );
   }
   if (report) return null;
-  const auditHasErrors = auditReport?.status === 'error';
+  // Audit errors are advisory once the strict parser accepted the document
+  // (#5123): real-world IDS files routinely put translated property names
+  // into standard Pset_* sets, which the audit flags as
+  // E_IFC_PROP_NOT_IN_PSET but the validator checks against the model
+  // exactly as written. Keep the issues listed, run the check anyway.
+  const auditErrorCount = auditReport?.issues.filter((issue) => issue.severity === 'error').length ?? 0;
   return (
     <div className="p-4 space-y-3">
       <div className="rounded-lg border p-4">
@@ -81,17 +85,15 @@ export function IDSPanelStates({ ids, fileInputRef, onFileSelect, onLoadClick }:
         </div>
       </div>
       <IDSAuditSummary report={auditReport} auditing={auditing} />
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="block">
-            <Button className="w-full" onClick={() => { void runValidation(); }} disabled={loading || auditHasErrors} variant={auditHasErrors ? 'secondary' : 'default'} {...tourAnchor(TOUR_ANCHORS.idsRun)}>
-              {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
-              {t('idsPanel.runValidation')}
-            </Button>
-          </span>
-        </TooltipTrigger>
-        {auditHasErrors && <TooltipContent>{t('idsPanel.resolveAuditErrors')}</TooltipContent>}
-      </Tooltip>
+      <Button className="w-full" onClick={() => { void runValidation(); }} disabled={loading} {...tourAnchor(TOUR_ANCHORS.idsRun)}>
+        {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
+        {t('idsPanel.runValidation')}
+      </Button>
+      {auditErrorCount > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {t('idsPanel.auditErrorsRunAnyway', { count: auditErrorCount, countDisplay: formatLocaleNumber(locale, auditErrorCount) })}
+        </p>
+      )}
     </div>
   );
 }

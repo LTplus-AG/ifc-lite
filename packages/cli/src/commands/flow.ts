@@ -176,7 +176,7 @@ export async function flowCommand(args: string[]): Promise<void> {
   let tracking: FileTrackingStore | undefined;
   if (!hasFlag(args, '--no-tracking') && doc.nodes.some((n) => registry.get(n.type)?.tracked)) {
     const pin = `file:${createHash('sha256').update(await readFile(modelPath)).digest('hex')}`;
-    tracking = await FileTrackingStore.open(getFlag(args, '--tracking') ?? defaultTrackingPath(graphPath), pin);
+    tracking = await FileTrackingStore.open(requireFlagValue(args, '--tracking') ?? defaultTrackingPath(graphPath), pin);
     if (tracking.loadedPin !== undefined && tracking.loadedPin !== pin) {
       process.stderr.write(`  warn  tracking sidecar ${tracking.path} was written against another model state; tracked elements that are missing will be re-created\n`);
     }

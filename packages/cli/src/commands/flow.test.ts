@@ -155,6 +155,7 @@ describe('ifc-lite flow', () => {
     await expect(flowCommand(['run', AUDIT_FLOW, SAMPLE_IFC, '--out'])).rejects.toThrow('exit');
     expect(exit2).toHaveBeenCalledWith(1);
     expect(c2.err.join('')).toMatch(/--out needs a value/);
+  });
 
   it('a tracked creation graph re-run updates its elements in place: same GlobalIds, no adds or removes, vanished lanes removed', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-'));

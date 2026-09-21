@@ -10,7 +10,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { aggregate } from '@ifc-lite/charts';
 import { DocumentPreview } from './DocumentPreview.js';
 import { pageBox } from '@/lib/export/report/compose.js';
-import type { DocumentSpec } from '@/lib/document/types.js';
+import { DOCUMENT_VERSION, type DocumentSpec } from '@/lib/document/types.js';
 
 let root: Root | undefined;
 let container: HTMLDivElement | undefined;
@@ -31,7 +31,7 @@ const imageBlock = {
 } satisfies Extract<DocumentSpec['blocks'][number], { kind: 'image' }>;
 
 const baseDocument = {
-  version: 2,
+  version: DOCUMENT_VERSION,
   id: 'document',
   name: 'Image preview',
   page: { size: 'A4', orientation: 'portrait' },
@@ -51,6 +51,7 @@ function render(dataUrl: string): HTMLImageElement {
       aggregations={new Map()}
       chartMessages={new Map()}
       topics={new Map()}
+      validationReport={null}
       selectedBlockId={null}
       onSelectBlock={() => {}}
     />,
@@ -85,7 +86,7 @@ it('clamps a tall chart to the same printable-page height as PDF composition (#4
   });
   const page = { size: 'A4', orientation: 'landscape' } as const;
   const document: DocumentSpec = {
-    version: 2,
+    version: DOCUMENT_VERSION,
     id: 'chart-document',
     name: 'Chart preview',
     page,
@@ -95,7 +96,7 @@ it('clamps a tall chart to the same printable-page height as PDF composition (#4
   window.document.body.appendChild(container);
   root = createRoot(container);
   act(() => root?.render(
-    <DocumentPreview document={document} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map([['chart-block', aggregation]])} chartMessages={new Map()} topics={new Map()} selectedBlockId={null} onSelectBlock={() => {}} />,
+    <DocumentPreview document={document} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map([['chart-block', aggregation]])} chartMessages={new Map()} topics={new Map()} validationReport={null} selectedBlockId={null} onSelectBlock={() => {}} />,
   ));
 
   const svg = container.querySelector('[data-chart-svg] svg');

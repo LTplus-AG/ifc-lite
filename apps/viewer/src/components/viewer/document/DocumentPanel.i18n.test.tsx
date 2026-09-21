@@ -25,6 +25,7 @@ const TEST_LOCALE: Catalogue = {
   'document.addBlock.button': 'Block hinzufügen',
   'document.addBlock.text': 'Text mit Feldern',
   'document.addBlock.image': 'Bild / Logo',
+  'document.addBlock.table': 'Validierungsergebnis-Tabelle',
   'document.panel.exportTitle': 'Diese Seite als PDF drucken',
   'document.panel.closeAriaLabel': 'Dokumentbereich schließen',
   'document.panel.emptyBlocks': 'Noch keine Blöcke — "Block hinzufügen" oben.',
@@ -77,6 +78,7 @@ describe('DocumentPanel localization (#4918)', () => {
     openMenu(trigger);
     assert.match(document.body.textContent ?? '', /Text with fields/);
     assert.match(document.body.textContent ?? '', /Image \/ logo/);
+    assert.match(document.body.textContent ?? '', /Validation results table/);
     act(() => document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
 
     registerLocale('document-panel-x', TEST_LOCALE);
@@ -91,6 +93,7 @@ describe('DocumentPanel localization (#4918)', () => {
     openMenu(translatedTrigger);
     assert.match(document.body.textContent ?? '', /Text mit Feldern/);
     assert.match(document.body.textContent ?? '', /Bild \/ Logo/);
+    assert.match(document.body.textContent ?? '', /Validierungsergebnis-Tabelle/);
     // Orientation has no override in this registered locale: falls back to English rather than
     // going blank.
     assert.match(document.body.textContent ?? '', /Portrait/);

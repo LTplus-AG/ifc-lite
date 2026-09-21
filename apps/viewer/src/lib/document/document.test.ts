@@ -13,13 +13,14 @@ import assert from 'node:assert/strict';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { aggregate, type Aggregation } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
+import type { ValidationReport } from '@ifc-lite/ids';
 import { localIsoDate, parsePath, renderTemplate, resolveBinding, templatePaths, type BindingContext } from './bindings.js';
 import { composeDocument, estimateTextWidth, wrapText } from './compose.js';
 import { largestBucketIds } from '../charts/buckets.js';
 import { generateDocumentPdf, topicLines, type DocumentPdfSeams } from './generate-document-pdf.js';
 import { parseDocumentFile } from './persistence.js';
 import { blankDocument, coverSheetDocument } from './presets.js';
-import { validateDocumentSpec, type DocumentSpec } from './types.js';
+import { DOCUMENT_VERSION, validateDocumentSpec, type DocumentSpec } from './types.js';
 import { elementsDataset } from '@ifc-lite/charts';
 
 // `migrateDocumentSpec` is imported dynamically (#4940 revert-oracle finding): a *static* `import
@@ -152,25 +153,28 @@ describe('document file', () => {
     assert.equal(imported.blocks.length, doc.blocks.length);
     imported.blocks.forEach((b, i) => assert.notEqual(b.id, doc.blocks[i].id));
     assert.equal((imported.blocks[0] as { text: string }).text, '{IfcProject.LongName}');
-    assert.throws(() => parseDocumentFile(JSON.stringify({ ...doc, version: 3 })), /Not a document file: version expected version 2/);
+    assert.throws(() => parseDocumentFile(JSON.stringify({ ...doc, version: 4 })), /Not a document file: version expected version 3/);
     const broken = { ...doc, blocks: [{ kind: 'image', id: 'i', dataUrl: 'http://x/logo.png', height: 0, align: 'middle', caption: {} }] };
     assert.deepEqual(validateDocumentSpec(broken).map((e) => e.path), ['blocks[0].dataUrl', 'blocks[0].height', 'blocks[0].align', 'blocks[0].caption']);
   });
 
-  it('migrates a version 1 file to version 2 and validates the new fields (#4940)', { skip: !migrateDocumentSpec && 'migrateDocumentSpec is not exported (production reverted)' }, () => {
+  it('migrates a version 1 or 2 file to version 3 and validates the new fields (#4940, #5138)', { skip: !migrateDocumentSpec && 'migrateDocumentSpec is not exported (production reverted)' }, () => {
     const v1 = { ...coverSheetDocument(), version: 1 };
-    assert.deepEqual(migrateDocumentSpec!(v1), { ...v1, version: 2 });
+    assert.deepEqual(migrateDocumentSpec!(v1), { ...v1, version: 3 });
     const imported = parseDocumentFile(JSON.stringify(v1));
-    assert.equal(imported.version, 2);
-    // Anything not a recognizable v1 document (e.g. already at a later version, or malformed) passes through unchanged.
-    assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 2 }), { ...v1, version: 2 });
+    assert.equal(imported.version, 3);
+    // A v2 document (#5138: `table` is additive, same as every v1 -> v2 field) migrates the same way.
+    const v2Input = { ...coverSheetDocument(), version: 2 };
+    assert.deepEqual(migrateDocumentSpec!(v2Input), { ...v2Input, version: 3 });
+    // Anything not a recognizable v1/v2 document (e.g. already current, or malformed) passes through unchanged.
+    assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 3 }), { ...v1, version: 3 });
     assert.equal(migrateDocumentSpec!(null), null);
 
     const spacer = { kind: 'spacer', id: 's', height: 20 };
     const halfChart = { kind: 'chart', id: 'c1', chart: coverSheetDocument().blocks.find((b) => b.kind === 'chart')!.chart, snapshot: false, height: 300, width: 'half' };
     const halfImage = { kind: 'image', id: 'i1', dataUrl: `data:image/png;base64,${btoa('x')}`, height: 60, align: 'left', width: 'half' };
     const caption = { kind: 'text', id: 't1', style: 'caption', text: 'a caption' };
-    const v2 = { version: 2, id: 'd2', name: 'V2', page: { size: 'A4', orientation: 'portrait' }, blocks: [caption, halfChart, halfImage, spacer] };
+    const v2 = { version: 3, id: 'd2', name: 'V2', page: { size: 'A4', orientation: 'portrait' }, blocks: [caption, halfChart, halfImage, spacer] };
     assert.deepEqual(validateDocumentSpec(v2), []);
 
     // half only valid on chart/image; a text block rejects it (structural: `width` is not a text field).
@@ -379,6 +383,58 @@ describe('compose', () => {
   });
 });
 
+describe('compose: table block (#5138)', () => {
+  const failedRows = Array.from({ length: 120 }, (_, i) => ['Walls have FireRating', i % 3 === 0 ? 'fail' : 'pass', `Wall ${i}`]);
+
+  it('paginates 120 rows across pages, repeats the header on every chunk, and never splits a row', () => {
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [{ kind: 'table', id: 't', title: 'Failures', columns: ['rule', 'result', 'name'], headers: ['Rule', 'Result', 'Name'], rows: failedRows, truncated: false }],
+    });
+    assert.ok(layout.pages.length >= 2, `${layout.pages.length} pages`);
+    const chunks = layout.pages.flatMap((p) => p.items.filter((i): i is Extract<typeof i, { kind: 'table' }> => i.kind === 'table'));
+    assert.ok(chunks.length >= 2, 'the 120 rows were split into more than one chunk');
+    for (const chunk of chunks) assert.deepEqual(chunk.head, ['Rule', 'Result', 'Name'], 'every chunk repeats the same header');
+    const totalRows = chunks.reduce((n, c) => n + c.body.length, 0);
+    assert.equal(totalRows, 120, 'no row is dropped or duplicated across chunks');
+    const seen = new Set(chunks.flatMap((c) => c.body.map((r) => r[2])));
+    assert.equal(seen.size, 120, 'no row appears in two chunks (a row is never split)');
+    for (const page of layout.pages) for (const item of page.items) assert.ok(item.y >= 40 && item.y <= layout.size.h - 40, `${item.kind} at y=${item.y} stays inside the page frame`);
+  });
+
+  it('a "sets" table (one row per SetResult) paginates the same way', () => {
+    const setRows = Array.from({ length: 60 }, (_, i) => ['No duplicate storey names', 'fail', `Level ${i} (Building)`, '2', 'Level (2×)', 'unique', 'duplicate']);
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [{ kind: 'table', id: 't2', columns: ['rule', 'result', 'set', 'members', 'actual', 'expected', 'reason'], headers: ['Rule', 'Result', 'Set', 'Members', 'Actual', 'Expected', 'Reason'], rows: setRows, truncated: false }],
+    });
+    const chunks = layout.pages.flatMap((p) => p.items.filter((i): i is Extract<typeof i, { kind: 'table' }> => i.kind === 'table'));
+    assert.equal(chunks.reduce((n, c) => n + c.body.length, 0), 60);
+    for (const chunk of chunks) assert.deepEqual(chunk.head, ['Rule', 'Result', 'Set', 'Members', 'Actual', 'Expected', 'Reason']);
+  });
+
+  it('a stale/absent report prints its placeholder message, not an (empty) grid', () => {
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [{ kind: 'table', id: 't3', title: 'Failures', columns: ['rule'], headers: ['Rule'], rows: [], truncated: false, placeholderMessage: 'No validation report yet — run validation, then export again.' }],
+    });
+    const chunks = layout.pages.flatMap((p) => p.items.filter((i) => i.kind === 'table'));
+    assert.equal(chunks.length, 0, 'a placeholder never draws a table grid');
+    const texts = layout.pages.flatMap((p) => p.items.filter((i): i is Extract<typeof i, { kind: 'text' }> => i.kind === 'text').map((i) => i.text));
+    assert.ok(texts.includes('No validation report yet — run validation, then export again.'));
+  });
+
+  it('a truncated table prints a truncation note after its last chunk', () => {
+    const rows = Array.from({ length: 5 }, (_, i) => [`R${i}`]);
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [{ kind: 'table', id: 't4', columns: ['rule'], headers: ['Rule'], rows, truncated: true }],
+    });
+    const texts = layout.pages.flatMap((p) => p.items.filter((i): i is Extract<typeof i, { kind: 'text' }> => i.kind === 'text').map((i) => i.text));
+    assert.ok(texts.some((t) => /Showing the first 5 rows; more rows matched\./.test(t)), texts.join(' | '));
+  });
+});
+
 describe('generateDocumentPdf', () => {
   function recordingSeams(): { seams: DocumentPdfSeams; calls: Array<{ op: string; args: unknown[] }> } {
     const calls: Array<{ op: string; args: unknown[] }> = [];
@@ -392,7 +448,7 @@ describe('generateDocumentPdf', () => {
           text: (t, x, y) => calls.push({ op: 'text', args: [t, x, y] }),
           addImage: (bytes, format, x, y, w, h) => calls.push({ op: 'image', args: [bytes.length, format, x, y, w, h] }),
           svg: async (svg) => { calls.push({ op: 'svg', args: [svg] }); },
-          table: () => {},
+          table: (args) => calls.push({ op: 'table', args: [args.head, args.body] }),
           pageCount: () => pages,
           output: () => new Blob(['pdf']),
         };
@@ -413,7 +469,7 @@ describe('generateDocumentPdf', () => {
     const agg: Aggregation = aggregate(chart.chart, dataset);
     const topic: BCFTopic = { guid: 'topic-1', title: 'Clash at grid B', topicStatus: 'Open', priority: 'High', creationDate: '2026-09-01T00:00:00Z', creationAuthor: 'Ada', comments: [], viewpoints: [{ guid: 'vp', snapshot: `data:image/png;base64,${btoa('png')}` }] };
     const doc: DocumentSpec = {
-      version: 2, id: 'd', name: 'Cover', page: { size: 'A3', orientation: 'landscape' },
+      version: DOCUMENT_VERSION, id: 'd', name: 'Cover', page: { size: 'A3', orientation: 'landscape' },
       blocks: [
         { kind: 'text', id: 't1', style: 'title', text: '{IfcProject.Name} — {Today}' },
         { kind: 'text', id: 't2', style: 'body', text: 'Roof: {IfcBuildingStorey["Roof"].Name}' },
@@ -424,7 +480,7 @@ describe('generateDocumentPdf', () => {
       ],
     };
     const { seams, calls } = recordingSeams();
-    const result = await generateDocumentPdf({ document: doc, bindings: ctx, aggregations: new Map([['chart-1', agg]]), chartMessages: new Map(), snapshotIds: () => [41, 42], topics: new Map([['topic-1', topic]]) }, seams);
+    const result = await generateDocumentPdf({ document: doc, bindings: ctx, aggregations: new Map([['chart-1', agg]]), chartMessages: new Map(), snapshotIds: () => [41, 42], topics: new Map([['topic-1', topic]]), validationReport: null }, seams);
     assert.deepEqual(calls[0], { op: 'create', args: ['a3', 'landscape'] });
     const texts = calls.filter((c) => c.op === 'text').map((c) => String(c.args[0]));
     assert.ok(texts.includes('Tower — 2026-09-12'), texts.join(' | '));
@@ -445,8 +501,40 @@ describe('generateDocumentPdf', () => {
 
   it('a blank document prints one page with its title binding resolved', async () => {
     const { seams, calls } = recordingSeams();
-    const result = await generateDocumentPdf({ document: blankDocument(), bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map() }, seams);
+    const result = await generateDocumentPdf({ document: blankDocument(), bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), validationReport: null }, seams);
     assert.equal(result.pages, 1);
     assert.ok(calls.some((c) => c.op === 'text' && c.args[0] === 'Tower'));
+  });
+
+  it('draws a validation table block through doc.table, and a stale ruleId as a placeholder message (#5138)', async () => {
+    const report: ValidationReport = {
+      source: { kind: 'rules', ruleSet: { name: 'Rule set' } },
+      modelInfo: [{ modelId: 'm1', schemaVersion: 'IFC4', entityCount: 2 }],
+      timestamp: new Date('2026-09-21T00:00:00Z'),
+      summary: { totalSpecifications: 1, passedSpecifications: 0, failedSpecifications: 1, totalEntitiesChecked: 1, totalEntitiesPassed: 0, totalEntitiesFailed: 1, overallPassRate: 0 },
+      specificationResults: [{
+        specification: { id: 's1', name: 'Walls have FireRating' },
+        status: 'fail', applicableCount: 1, passedCount: 0, failedCount: 1, passRate: 0,
+        entityResults: [{
+          expressId: 41, modelId: 'm1', entityType: 'IfcWall', entityName: 'Wall A', globalId: 'G-41', passed: false,
+          requirementResults: [{ requirement: { id: 'r1', label: 'FireRating is set', optionality: 'required' }, status: 'fail', facetType: 'property', checkedDescription: '', failureReason: 'absent' }],
+        }],
+      }],
+    };
+    const doc: DocumentSpec = {
+      version: DOCUMENT_VERSION, id: 'd-table', name: 'Table doc', page: { size: 'A4', orientation: 'portrait' },
+      blocks: [
+        { kind: 'table', id: 'tb1', title: 'Failures', columns: ['rule', 'result', 'name', 'reason'], source: { kind: 'validation', rows: 'failed' } },
+        { kind: 'table', id: 'tb2', columns: ['rule'], source: { kind: 'validation', ruleId: 'gone', rows: 'failed' } },
+      ],
+    };
+    const { seams, calls } = recordingSeams();
+    const result = await generateDocumentPdf({ document: doc, bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), validationReport: report }, seams);
+    const tableCalls = calls.filter((c) => c.op === 'table');
+    assert.equal(tableCalls.length, 1, 'the placeholder block never calls doc.table');
+    assert.deepEqual(tableCalls[0].args, [[['Rule', 'Result', 'Name', 'Reason']], [['Walls have FireRating', 'fail', 'Wall A', 'absent']]]);
+    const texts = calls.filter((c) => c.op === 'text').map((c) => String(c.args[0]));
+    assert.ok(texts.includes('The rule this table refers to is not in the current validation report.'));
+    assert.equal(result.pages, 1);
   });
 });

@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DocumentPreview } from '../../components/viewer/document/DocumentPreview';
 import { CoordRow } from '../../components/viewer/properties/CoordinateDisplay';
+import { DOCUMENT_VERSION } from '../../lib/document/types';
 import { closeContrastBrowser, measureTextContrastOnSurface, measureTextHoverColors, type Theme } from './render-harness';
 import { extractClassNameAfter } from './extract-classname';
 import { WCAG_AA_NORMAL_TEXT } from './wcag';
@@ -29,11 +30,12 @@ function classContaining(markup: string, token: string): string {
 
 function renderDocumentPreview(): string {
   return renderToStaticMarkup(createElement(DocumentPreview, {
-    document: { version: 2, id: 'contrast', name: 'Contrast preview', page: { size: 'A4', orientation: 'portrait' }, blocks: [] },
+    document: { version: DOCUMENT_VERSION, id: 'contrast', name: 'Contrast preview', page: { size: 'A4', orientation: 'portrait' }, blocks: [] },
     bindings: { models: [], activeModelId: null, today: new Date('2026-01-01') },
     aggregations: new Map(),
     chartMessages: new Map(),
     topics: new Map(),
+    validationReport: null,
     selectedBlockId: null,
     onSelectBlock: () => undefined,
   }));

@@ -14,7 +14,7 @@ import type { BCFTopic } from '@ifc-lite/bcf';
 import { cleanup, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { BindingContext } from '@/lib/document/bindings';
-import type { ChartBlock, ImageBlock, SpacerBlock, TextBlock, TopicBlock } from '@/lib/document/types';
+import type { ChartBlock, ImageBlock, SpacerBlock, TableBlock, TextBlock, TopicBlock } from '@/lib/document/types';
 import { BlockEditor } from './BlockEditor.js';
 
 const BINDINGS: BindingContext = { models: [], activeModelId: null, today: new Date(0) };
@@ -43,6 +43,13 @@ const TEST_LOCALE: Catalogue = {
   'document.block.topicNotLoaded': '{guid} (nicht geladen)',
   'document.block.pickTopicOption': 'Thema wählen…',
   'document.block.topicSnapshotLabel': 'Ansichtspunkt-Schnappschuss',
+  'document.block.kindTable': 'Tabelle',
+  'document.block.tableRowsLabel': 'Zeilen',
+  'document.block.tableRowsAriaLabel': 'Welche Zeilen anzeigen',
+  'document.block.tableRuleLabel': 'Regel',
+  'document.block.tableRuleAriaLabel': 'Auf eine Regel filtern',
+  'document.block.tableRuleAll': 'Jede Regel',
+  'document.tableColumn.rule': 'Regel_DE',
 };
 
 afterEach(() => {
@@ -137,5 +144,25 @@ describe('BlockEditor localization (#4918)', () => {
     registerLocale('block-editor-x-spacer', TEST_LOCALE);
     act(() => setLocale('block-editor-x-spacer'));
     assert.equal(ui.querySelector('[data-block-editor]')?.textContent?.includes('Abstand'), true);
+  });
+
+  it('translates the table block: kind label, rows/rule controls, and a column-toggle label (#5138)', () => {
+    const block: TableBlock = { kind: 'table', id: 'b6', source: { kind: 'validation', rows: 'failed' }, columns: ['rule', 'result'] };
+    const ui = render(
+      <BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} onChange={noop} onMove={noop} onRemove={noop} />,
+    );
+    assert.equal(ui.querySelector('[data-block-editor]')?.textContent?.includes('Table'), true);
+    assert.ok(ui.querySelector('select[aria-label="Which rows to show"]'));
+    assert.ok(ui.querySelector('select[aria-label="Filter to one rule"]'));
+    assert.equal(ui.textContent?.includes('Every rule'), true);
+
+    registerLocale('block-editor-x-table', TEST_LOCALE);
+    act(() => setLocale('block-editor-x-table'));
+
+    assert.equal(ui.querySelector('[data-block-editor]')?.textContent?.includes('Tabelle'), true);
+    assert.ok(ui.querySelector('select[aria-label="Welche Zeilen anzeigen"]'));
+    assert.ok(ui.querySelector('select[aria-label="Auf eine Regel filtern"]'));
+    assert.equal(ui.textContent?.includes('Jede Regel'), true);
+    assert.equal(ui.textContent?.includes('Regel_DE'), true, 'the column-toggle label switches with the locale');
   });
 });

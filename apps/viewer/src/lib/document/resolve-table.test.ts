@@ -67,6 +67,11 @@ describe('flattenExportModel (#5142)', () => {
     assert.equal(t.totalRows, 2);
   });
 
+  it('a cell with line breaks prints on one line, so the drawn row is as tall as the composer counted (review finding)', () => {
+    const t = flattenExportModel(model(undefined, [row('Wall\r\n  with\nbreaks', 'Level 1', 1)]), 50, labels);
+    assert.deepEqual(t.rows[0].cells, ['Wall with breaks', 'Level 1', '1']);
+  });
+
   it('a cap below one row still prints one row rather than none', () => {
     const t = flattenExportModel(model(), 0, labels);
     assert.deepEqual(t.rows.map((r) => r.role), ['row', 'more']);

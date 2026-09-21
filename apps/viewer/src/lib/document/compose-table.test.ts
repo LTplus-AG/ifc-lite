@@ -74,6 +74,17 @@ describe('table block layout (#5142)', () => {
     assert.equal(chunks[1].item.rows[0].role, 'group');
   });
 
+  it('with nested grouping, a parent header directly above a child header at the page end moves with it (review finding)', () => {
+    const h = pageBox(A4).h;
+    const filler = bottomOf(h) - topOf() - TABLE_TITLE_HEIGHT - TABLE_ROW_HEIGHT * 5;
+    const rows: TableRowOut[] = [...dataRows(2), { cells: ['Building A  (2)', '', ''], role: 'group' }, { cells: ['  Level 2  (2)', '', ''], role: 'group' }, ...dataRows(2)];
+    const layout = compose([{ kind: 'spacer', id: 's', height: filler }, table(rows)]);
+    const chunks = tablesOf(layout.pages);
+    assert.equal(chunks.length, 2);
+    assert.equal(chunks[0].item.rows.length, 2, 'both headers left the page');
+    assert.deepEqual(chunks[1].item.rows.slice(0, 2).map((r) => r.role), ['group', 'group']);
+  });
+
   it('a caption prints small and gray under the last chunk and is truncated to the content width', () => {
     const layout = compose([table(dataRows(3), { caption: 'x'.repeat(400) })]);
     const caption = layout.pages[0].items.find((i): i is Extract<DrawnItem, { kind: 'text' }> => i.kind === 'text' && i.size === 8);

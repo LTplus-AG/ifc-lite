@@ -523,6 +523,18 @@ describe('table block (#5142)', () => {
     assert.ok(texts.includes('Table not ready: the list is still running.'));
     assert.deepEqual(pdf.tableFailures, ['tb2']);
 
+    // The schedule view with a sum: one row per storey with a Count column, then the totals row carrying the element count under Count.
+    const scheduleGrouping = { columnId: 'storey', columnIds: ['storey'], sumColumnIds: ['fr'], view: 'schedule' as const };
+    const scheduleResult = runListFederated(listOf({ grouping: scheduleGrouping }), pairs, { models: new Map([[model.id, {}]]), modelTags: new Map(), modelTagAssignments: new Map() });
+    const scheduleModel = buildExportModel({ title: 'Walls', columns: scheduleResult.columns, rows: scheduleResult.rows, grouping: scheduleGrouping, numericCols: detectNumericColumns(scheduleResult.columns, scheduleResult.rows), columnWidths: [], generatedAt: 'now' });
+    const sched = recordingSeams();
+    await generateDocumentPdf({ document: docWith([tableBlock({ id: 'tb4' })]), bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), tables: new Map([['tb4', { status: 'ok', model: scheduleModel }]]) }, sched.seams);
+    const schedTable = sched.calls.find((c) => c.op === 'table')!.args[0] as { head: string[][]; body: string[][]; rowRoles: string[] };
+    assert.deepEqual(schedTable.head, [['Storey', 'Count', 'FireRating']]);
+    assert.deepEqual(schedTable.body.map((r) => r[0]), ['Level 1', 'Total (2)']);
+    assert.equal(schedTable.body[1][1], '2', 'the totals row counts elements under Count');
+    assert.deepEqual(schedTable.rowRoles, ['row', 'total']);
+
     // An engine error whose message is empty (review finding) prints a generic error line, not an empty grid.
     const empty = recordingSeams();
     const errDoc = docWith([tableBlock({ id: 'tb3' })]);

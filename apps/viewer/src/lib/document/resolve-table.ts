@@ -62,11 +62,14 @@ export interface TableLabels {
   total: (count: number) => string;
 }
 
+/** One line per cell: a value with a line break (`\X\0D\X\0A\` in a Revit comment) would otherwise make autotable draw a taller row than the composer counted (review finding). */
+const oneLine = (text: string): string => text.replace(/\s*[\r\n]+\s*/g, ' ');
+
 export function flattenExportModel(model: ExportModel, maxRows: number, labels: TableLabels): FlattenedTable {
   const cap = Math.max(1, Math.floor(maxRows));
   const cols = model.schedule?.columns ?? model.columns;
-  const columns: TableColumnOut[] = cols.map((c) => ({ label: c.label, numeric: c.numeric }));
-  const cells = (values: CellValue[]): string[] => cols.map((_, i) => displayCell(values[i]));
+  const columns: TableColumnOut[] = cols.map((c) => ({ label: oneLine(c.label), numeric: c.numeric }));
+  const cells = (values: CellValue[]): string[] => cols.map((_, i) => oneLine(displayCell(values[i])));
   const rows: TableRowOut[] = [];
   let printed = 0;
   let totalRows = 0;
@@ -86,7 +89,7 @@ export function flattenExportModel(model: ExportModel, maxRows: number, labels: 
     for (const g of model.groups) {
       if (printed >= cap) break;
       rows.push({
-        cells: model.columns.map((c, i) => (i === 0 ? groupHeaderLabel(g, '  ') : c.summed ? displayCell(g.sums[c.id]) : '')),
+        cells: model.columns.map((c, i) => (i === 0 ? oneLine(groupHeaderLabel(g, '  ')) : c.summed ? displayCell(g.sums[c.id]) : '')),
         role: 'group',
       });
       for (const r of g.rows) {

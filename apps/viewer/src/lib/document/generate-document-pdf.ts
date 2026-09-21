@@ -155,13 +155,14 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
       case 'table': {
         const state = input.tables.get(block.id);
         const message = tableMessage(state);
-        if (state?.status !== 'ok' || message !== null) {
-          if (state?.status !== 'ok') result.tableFailures.push(block.id);
-          blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, message: message ?? TABLE_MESSAGES['no-rows'], columns: [], rows: [] });
+        if (state?.status === 'ok' && message === null) {
+          const flat = flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS);
+          blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, columns: flat.columns, rows: flat.rows });
           break;
         }
-        const flat = flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS);
-        blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, columns: flat.columns, rows: flat.rows });
+        if (state?.status !== 'ok') result.tableFailures.push(block.id);
+        // `tableMessage` is non-null for every non-ok state; the fallback only satisfies the types.
+        blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, message: message ?? TABLE_MESSAGES['no-rows'], columns: [], rows: [] });
         break;
       }
       case 'topic': {

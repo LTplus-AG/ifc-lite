@@ -12,17 +12,13 @@
  * Column widths are computed once per block over every printed row and
  * reused by every chunk, so the columns line up across pages.
  */
+import { AUTOTABLE_ROW_HEIGHT } from '../export/report/generate-report-pdf.js';
 import type { TableColumnOut, TableRowOut } from './resolve-table.js';
 
 /** 11pt bold title at `y + 11`, the same strip a chart block gets. */
 export const TABLE_TITLE_HEIGHT = 18;
-/**
- * Head and body row height: jspdf-autotable's minimum row for `fontSize 8`
- * (8 × its 1.15 line factor = 9.2) plus `cellPadding 2` top and bottom.
- * The browser seam pins `minCellHeight` to the same number, so the
- * composer's arithmetic and autotable's agree.
- */
-export const TABLE_ROW_HEIGHT = 13.2;
+/** Head and body row height — the one the browser seam pins autotable to, so the composer's arithmetic and autotable's agree. */
+export const TABLE_ROW_HEIGHT = AUTOTABLE_ROW_HEIGHT;
 export const TABLE_FONT_SIZE = 8;
 const CAPTION_HEIGHT = 14;
 const MESSAGE_HEIGHT = 14;
@@ -123,8 +119,9 @@ export function layoutTable(block: TableLayoutBlock, cursor: LayoutCursor, conte
         continue;
       }
       let n = Math.min(Math.max(room, 1), rows.length - i);
-      // A group header is never the last row of a page: it moves to the next chunk with its rows.
-      if (n > 1 && i + n < rows.length && rows[i + n - 1].role === 'group') n -= 1;
+      // A group header is never the last row of a page: it moves to the next chunk with its rows —
+      // and so does a parent header directly above it (nested grouping, review finding).
+      while (n > 1 && i + n < rows.length && rows[i + n - 1].role === 'group') n -= 1;
       cursor.push({ kind: 'table', blockId: block.id, x: cursor.x, y: cursor.y, w: contentW, columns, rows: rows.slice(i, i + n) });
       cursor.y += head + n * row;
       i += n;

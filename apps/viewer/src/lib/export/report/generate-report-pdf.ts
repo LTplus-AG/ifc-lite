@@ -78,6 +78,13 @@ export interface ReportPdfResult {
  */
 export const REPORT_THEME: ChartTheme = { ...DEFAULT_THEME, fontFamily: 'Helvetica, Arial, sans-serif' };
 
+/**
+ * jspdf-autotable's minimum row for `fontSize 8` (8 × jsPDF's 1.15 line factor = 9.2) plus
+ * `cellPadding 2` top and bottom, with the document in points. The seam pins `minCellHeight` to
+ * it, so a composer that counts rows with it (`compose-table.ts`, #5142) agrees with what is drawn.
+ */
+export const AUTOTABLE_ROW_HEIGHT = 13.2;
+
 /** The browser seams: real jsPDF + autotable + svg2pdf, lazily imported. */
 export async function browserReportSeams(capture: SnapshotCapture | null, theme: ChartTheme = REPORT_THEME): Promise<ReportPdfSeams> {
   return {
@@ -118,10 +125,9 @@ export async function browserReportSeams(capture: SnapshotCapture | null, theme:
             : { 1: { halign: 'right' }, 2: { halign: 'right' } };
           autoTable(doc, {
             startY, margin: { ...margin, top: REPORT_MARGIN, bottom: REPORT_MARGIN }, head, body,
-            // `minCellHeight` pins the row to the height the document composer counts with
-            // (`TABLE_ROW_HEIGHT`, #5142): 8pt × 1.15 + 2 × 2pt padding. `pageBreak: 'avoid'` is
-            // the belt to that: the composer only ever hands over a chunk that fits.
-            styles: { fontSize: 8, cellPadding: 2, minCellHeight: 13.2, overflow: 'ellipsize', lineColor: [226, 232, 240], lineWidth: 0.5 },
+            // `pageBreak: 'avoid'` is the belt to `AUTOTABLE_ROW_HEIGHT`: the document composer only
+            // ever hands over a chunk that fits.
+            styles: { fontSize: 8, cellPadding: 2, minCellHeight: AUTOTABLE_ROW_HEIGHT, overflow: 'ellipsize', lineColor: [226, 232, 240], lineWidth: 0.5 },
             headStyles: { fillColor: [51, 65, 85], textColor: 255, fontStyle: 'bold' },
             columnStyles,
             pageBreak: columns ? 'avoid' : 'auto',

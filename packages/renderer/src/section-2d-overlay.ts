@@ -90,6 +90,8 @@ export interface Section2DOverlayOptions {
     max: { x: number; y: number; z: number };
   };
   viewProj: Float32Array;
+  rteViewProj?: Float32Array;
+  rteCamera?: readonly [number, number, number];
   flipped?: boolean;
   min?: number;  // Optional override for min range
   max?: number;  // Optional override for max range
@@ -135,6 +137,8 @@ export class Section2DOverlayRenderer {
   private fillIndexCount = 0;
   private lineVertexBuffer: GPUBuffer | null = null;
   private lineVertexCount = 0;
+  /** Canonical section-plane origin retained separately from local cap vertices. */
+  private capAnchor: [number, number, number] | null = null;
 
   /**
    * One world-space vertex buffer per {@link LineOverlayChannel}, each on its
@@ -374,6 +378,10 @@ export class Section2DOverlayRenderer {
     this.clearGeometry();
 
     const lift = createSectionLift(axis, planePosition, flipped, customPlane);
+    const anchor: [number, number, number] = customPlane
+      ? [...customPlane.origin]
+      : axis === 'side' ? [planePosition, 0, 0]
+        : axis === 'down' ? [0, planePosition, 0] : [0, 0, planePosition];
 
     const fill = buildCapFillGeometry(polygons, lift);
     if (fill) {
@@ -381,6 +389,9 @@ export class Section2DOverlayRenderer {
         size: fill.vertices.byteLength,
         usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
       });
+      for (let i = 0; i < fill.vertices.length; i += 7) {
+        fill.vertices[i] -= anchor[0]; fill.vertices[i + 1] -= anchor[1]; fill.vertices[i + 2] -= anchor[2];
+      }
       this.device.queue.writeBuffer(this.fillVertexBuffer, 0, fill.vertices);
 
       this.fillIndexBuffer = this.device.createBuffer({
@@ -397,9 +408,13 @@ export class Section2DOverlayRenderer {
         size: outline.byteLength,
         usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
       });
+      for (let i = 0; i < outline.length; i += 3) {
+        outline[i] -= anchor[0]; outline[i + 1] -= anchor[1]; outline[i + 2] -= anchor[2];
+      }
       this.device.queue.writeBuffer(this.lineVertexBuffer, 0, outline);
       this.lineVertexCount = outline.length / 3;  // Each vertex is 3 floats
     }
+    this.capAnchor = anchor;
   }
 
   /**
@@ -420,6 +435,7 @@ export class Section2DOverlayRenderer {
     }
     this.fillIndexCount = 0;
     this.lineVertexCount = 0;
+    this.capAnchor = null;
   }
 
   /**
@@ -550,6 +566,16 @@ export class Section2DOverlayRenderer {
     const S = SECTION_2D_UNIFORM_SLOTS;
     const uniforms = new Float32Array(SECTION_2D_UNIFORM_FLOATS);
     uniforms.set(viewProj, S.viewProj);
+    if (this.capAnchor && options.rteViewProj && options.rteCamera) {
+      uniforms.set(options.rteViewProj, S.rteViewProj);
+      for (let axis = 0; axis < 3; axis++) {
+        const delta = this.capAnchor[axis] - options.rteCamera[axis];
+        const high = Math.fround(delta);
+        uniforms[S.originDeltaHigh + axis] = high;
+        uniforms[S.originDeltaLow + axis] = Math.fround(delta - high);
+      }
+      uniforms[S.originDeltaHigh + 3] = 1;
+    }
     uniforms.set(this.overlayLineColor, S.lineColor); // section-cut outline colour
     uniforms[S.planeOffset + 0] = offset[0];
     uniforms[S.planeOffset + 1] = offset[1];

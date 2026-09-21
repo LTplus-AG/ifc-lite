@@ -38,6 +38,8 @@ export type ModelBounds = {
 export interface SectionDrawContext {
     options: RenderOptions;
     viewProj: Float32Array;
+    rteViewProj?: Float32Array;
+    rteCamera?: readonly [number, number, number];
     /** The bounds this frame resolved the section slider against. */
     modelBounds: ModelBounds | null;
 }
@@ -98,6 +100,8 @@ export function drawSectionOverlays(
                     position: o.position,
                     bounds: modelBounds,
                     viewProj,
+                    rteViewProj: ctx.rteViewProj,
+                    rteCamera: ctx.rteCamera,
                     min: o.min,
                     max: o.max,
                     showFills,

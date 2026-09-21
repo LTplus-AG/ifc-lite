@@ -400,6 +400,36 @@ fn shared_shapes_identity_only_when_nothing_shares() {
     );
 }
 
+/// Regression for #5130's review: `MeshGeometryKey` must include normals, not
+/// just positions/indices. The flat layout emits the SHARED shape's normals
+/// for every occurrence, so two meshes with identical positions/indices but
+/// DIFFERENT normals must not be collapsed onto one shape -- doing so would
+/// silently replace the second occurrence's normals with the first's.
+#[test]
+fn shared_shapes_does_not_merge_identical_geometry_with_different_normals() {
+    let mesh = |id: u32, normals: Vec<f32>| {
+        MeshData::new(
+            id,
+            "IfcWall".to_string(),
+            vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            normals,
+            vec![0, 1, 2],
+            [0.5, 0.5, 0.5, 1.0],
+        )
+    };
+    // Same positions/indices, different normals (e.g. flipped winding/shading).
+    let meshes = vec![
+        mesh(1, vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0]),
+        mesh(2, vec![0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0]),
+    ];
+
+    let plan = ShapePlan::shared_shapes(&meshes, None);
+    assert!(
+        matches!(plan, ShapePlan::Identity),
+        "meshes with matching positions/indices but different normals must NOT share a shape"
+    );
+}
+
 /// The issue's headline claim (#5130): the flat route's shape count must
 /// match `/optimized`'s `unique_meshes` on the SAME input. Mixes both
 /// stages — `rotated_repeats()` for the rotation-aware collator (3

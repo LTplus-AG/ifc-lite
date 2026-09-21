@@ -19,13 +19,20 @@ use std::hash::{Hash, Hasher};
 
 /// Content-hash fallback used by BOTH writers: `collate_rotation_aware_placements`
 /// runs first, this catches what it did not place. Two meshes with bit-identical
-/// (origin-relative) positions and indices collapse onto one shape.
+/// (origin-relative) positions, indices AND normals collapse onto one shape.
+///
+/// Normals are keyed because the flat layout emits the shared shape's normals
+/// for every occurrence; `/optimized` ships none, so the stricter key can only
+/// split a group whose normals differ, which the pipeline never produces
+/// (normals derive from positions/indices) — no `/optimized` behaviour change.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct MeshGeometryKey {
     /// Hash of the quantized positions.
     positions_hash: u64,
     /// Hash of the indices.
     indices_hash: u64,
+    /// Hash of the normals.
+    normals_hash: u64,
 }
 
 /// Compute a fast hash of a u32 slice.
@@ -54,6 +61,7 @@ pub(crate) fn mesh_geometry_key(mesh: &MeshData) -> MeshGeometryKey {
     MeshGeometryKey {
         positions_hash: hash_f32_slice(&mesh.positions),
         indices_hash: hash_u32_slice(&mesh.indices),
+        normals_hash: hash_f32_slice(&mesh.normals),
     }
 }
 

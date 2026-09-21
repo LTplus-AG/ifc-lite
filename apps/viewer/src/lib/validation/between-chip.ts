@@ -54,36 +54,62 @@ function isBetweenable(rule: FilterRule): rule is Betweenable {
 }
 
 /**
- * Merge adjacent-or-not `gte`/`lte` pairs on the identical subject into one
- * `BetweenChip`, in encounter order. A subject with only a `gte`, only a
- * `lte`, or more than one of either, is left as plain rules — folding only
- * ever removes exactly two entries and adds exactly one, never guesses
- * which of several candidates pairs with which.
+ * Merge `gte`/`lte` pairs on the identical subject into one `BetweenChip`,
+ * regardless of which one appears first. A subject with only a `gte`, only
+ * a `lte`, or more than one of either, is left as plain rules — folding
+ * only ever removes exactly two entries and adds exactly one, never
+ * guesses which of several candidates pairs with which.
+ *
+ * Pairing happens in a PASS OF ITS OWN, before anything is written to
+ * `out`: a single combined pass that pushed a `lte` immediately (because
+ * it isn't itself a `gte`) and only later discovered, at its `gte`
+ * partner's index, that the two pair up, would leave that `lte` in `out`
+ * TWICE — once as the plain rule already pushed, once folded inside the
+ * chip — so `[lte(300), gte(100)]` (partner before the `gte` that finds
+ * it) silently produced three rules on unfold instead of two. Deciding
+ * every pair up front means the emitting pass never has to un-push
+ * something it already committed.
  */
 export function foldBetweenPairs(rules: readonly FilterRule[]): FoldedRule[] {
   const consumed = new Set<number>();
-  const out: FoldedRule[] = [];
+  // gte index -> lte index, in both directions, so the emitting pass can
+  // look a consumed index up either way and always find its partner.
+  const partnerOf = new Map<number, number>();
+
   for (let i = 0; i < rules.length; i += 1) {
-    if (consumed.has(i)) continue;
     const rule = rules[i];
-    if (isBetweenable(rule) && rule.op === 'gte') {
-      const key = subjectKey(rule);
-      const partnerIndex = rules.findIndex(
-        (candidate, j) =>
-          j !== i &&
-          !consumed.has(j) &&
-          isBetweenable(candidate) &&
-          candidate.op === 'lte' &&
-          subjectKey(candidate) === key,
-      );
-      if (partnerIndex >= 0) {
-        consumed.add(i);
-        consumed.add(partnerIndex);
-        out.push({ kind: 'between', min: rule, max: rules[partnerIndex] as Betweenable });
-        continue;
-      }
+    if (consumed.has(i) || !isBetweenable(rule) || rule.op !== 'gte') continue;
+    const key = subjectKey(rule);
+    const partnerIndex = rules.findIndex(
+      (candidate, j) =>
+        j !== i &&
+        !consumed.has(j) &&
+        isBetweenable(candidate) &&
+        candidate.op === 'lte' &&
+        subjectKey(candidate) === key,
+    );
+    if (partnerIndex >= 0) {
+      consumed.add(i);
+      consumed.add(partnerIndex);
+      partnerOf.set(i, partnerIndex);
+      partnerOf.set(partnerIndex, i);
     }
-    out.push(rule);
+  }
+
+  const out: FoldedRule[] = [];
+  const emitted = new Set<number>();
+  for (let i = 0; i < rules.length; i += 1) {
+    if (!consumed.has(i)) {
+      out.push(rules[i]);
+      continue;
+    }
+    if (emitted.has(i)) continue; // the chip already went out at its partner's index
+    const partnerIndex = partnerOf.get(i) as number;
+    emitted.add(i);
+    emitted.add(partnerIndex);
+    const gteIndex = rules[i].op === 'gte' ? i : partnerIndex;
+    const lteIndex = gteIndex === i ? partnerIndex : i;
+    out.push({ kind: 'between', min: rules[gteIndex] as Betweenable, max: rules[lteIndex] as Betweenable });
   }
   return out;
 }

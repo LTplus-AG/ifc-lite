@@ -111,9 +111,15 @@ export class SymbolicFillPipeline {
   private readonly sampleCount: number;
   private pipeline: GPURenderPipeline | null = null;
   private bindGroupLayout: GPUBindGroupLayout | null = null;
-  private uniformBuffer: GPUBuffer | null = null;
-  private bindGroup: GPUBindGroup | null = null;
-  private partitions: Array<{ vertexBuffer: GPUBuffer; vertexCount: number; origin?: [number, number, number] }> = [];
+  /**
+   * Each partition owns its uniform resource. Queue writes happen before the
+   * encoded pass executes, so using one buffer for several partitions makes
+   * every draw observe the final anchor written that frame.
+   */
+  private partitions: Array<{
+    vertexBuffer: GPUBuffer; vertexCount: number; origin?: [number, number, number];
+    uniformBuffer: GPUBuffer; bindGroup: GPUBindGroup;
+  }> = [];
 
   constructor(device: GPUDevice, presentationFormat: GPUTextureFormat, sampleCount: number = 1) {
     this.device = device;
@@ -196,17 +202,6 @@ export class SymbolicFillPipeline {
       multisample: { count: this.sampleCount },
     });
 
-    this.uniformBuffer = this.device.createBuffer({
-      label: 'symbolic-fill-camera',
-      size: 160,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
-
-    this.bindGroup = this.device.createBindGroup({
-      label: 'symbolic-fill-bg',
-      layout: this.bindGroupLayout,
-      entries: [{ binding: 0, resource: { buffer: this.uniformBuffer } }],
-    });
   }
 
   /**
@@ -223,7 +218,10 @@ export class SymbolicFillPipeline {
     this.init();
 
     // Drop the previous buffer eagerly so swapping models doesn't accumulate.
-    for (const partition of this.partitions) partition.vertexBuffer.destroy();
+    for (const partition of this.partitions) {
+      partition.vertexBuffer.destroy();
+      partition.uniformBuffer.destroy();
+    }
     this.partitions = [];
 
     if (fills.length === 0) return;
@@ -242,17 +240,27 @@ export class SymbolicFillPipeline {
   }
 
   private addPartition(stream: number[], origin?: [number, number, number]): void {
-    if (stream.length === 0) return;
+    if (stream.length === 0 || !this.bindGroupLayout) return;
     const data = new Float32Array(stream);
     const vertexBuffer = this.device.createBuffer({ label: 'symbolic-fill-vbuf', size: data.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
     this.device.queue.writeBuffer(vertexBuffer, 0, data);
-    this.partitions.push({ vertexBuffer, vertexCount: data.length / (FILL_VERTEX_STRIDE_BYTES / 4), origin });
+    const uniformBuffer = this.device.createBuffer({
+      label: 'symbolic-fill-partition-camera', size: 160,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    const bindGroup = this.device.createBindGroup({
+      label: 'symbolic-fill-partition-bg', layout: this.bindGroupLayout,
+      entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],
+    });
+    this.partitions.push({
+      vertexBuffer, vertexCount: data.length / (FILL_VERTEX_STRIDE_BYTES / 4), origin,
+      uniformBuffer, bindGroup,
+    });
   }
 
   render(pass: GPURenderPassEncoder, viewProj: Float32Array, rteViewProj?: Float32Array, camera?: readonly [number, number, number]): void {
-    if (!this.pipeline || !this.uniformBuffer || !this.bindGroup) return;
+    if (!this.pipeline) return;
     pass.setPipeline(this.pipeline);
-    pass.setBindGroup(0, this.bindGroup);
     for (const partition of this.partitions) {
       const uniform = new Float32Array(40); uniform.set(viewProj);
       if (partition.origin && rteViewProj && camera) {
@@ -260,17 +268,18 @@ export class SymbolicFillPipeline {
         for (let axis = 0; axis < 3; axis++) { const delta = partition.origin[axis] - camera[axis]; const high = Math.fround(delta); uniform[32 + axis] = high; uniform[36 + axis] = Math.fround(delta - high); }
         uniform[35] = 1;
       }
-      this.device.queue.writeBuffer(this.uniformBuffer, 0, uniform);
+      this.device.queue.writeBuffer(partition.uniformBuffer, 0, uniform);
+      pass.setBindGroup(0, partition.bindGroup);
       pass.setVertexBuffer(0, partition.vertexBuffer); pass.draw(partition.vertexCount);
     }
   }
 
   destroy(): void {
-    for (const partition of this.partitions) partition.vertexBuffer.destroy();
-    if (this.uniformBuffer) this.uniformBuffer.destroy();
+    for (const partition of this.partitions) {
+      partition.vertexBuffer.destroy();
+      partition.uniformBuffer.destroy();
+    }
     this.partitions = [];
-    this.uniformBuffer = null;
-    this.bindGroup = null;
     this.bindGroupLayout = null;
     this.pipeline = null;
   }

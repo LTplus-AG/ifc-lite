@@ -9,13 +9,35 @@ import proj4 from 'proj4';
 import { totalYupOffset } from '../../lib/geo/coordinate-frame.js';
 import { resolveProjectionId } from '../../lib/geo/reproject.js';
 import { projectedUnitToMetres } from './projected-units.js';
-import type { LandXmlPolyline, LandXmlTinDocument } from './landXmlSemantics.js';
+import { planPolyline } from './landXmlPlanGeometry.js';
+import type {
+  LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlPolyline, LandXmlResolvedGeometry,
+  LandXmlTinDocument,
+} from './landXmlSemantics.js';
 
-export interface LandXmlRenderedLineUpdate {
+interface LandXmlRenderedPolylineUpdate {
+  kind: 'line';
   line: LandXmlPolyline;
   renderedPoints?: number[][];
   renderedPointState?: 'aligned' | 'suppressed';
 }
+
+interface LandXmlRenderedPlanPointUpdate {
+  kind: 'plan-point';
+  point: LandXmlPlanPoint;
+  renderedPoint?: [number, number, number];
+  renderedPointState?: 'aligned' | 'suppressed';
+}
+
+interface LandXmlRenderedPlanGeometryUpdate {
+  kind: 'plan-geometry';
+  geometry: LandXmlResolvedGeometry;
+  renderedPoints?: [number, number, number][];
+  renderedPointState?: 'aligned' | 'suppressed';
+}
+
+export type LandXmlRenderedLineUpdate = LandXmlRenderedPolylineUpdate
+  | LandXmlRenderedPlanPointUpdate | LandXmlRenderedPlanGeometryUpdate;
 
 function lines(document: LandXmlTinDocument): LandXmlPolyline[] {
   return document.surfaces.flatMap((surface) => [
@@ -23,19 +45,58 @@ function lines(document: LandXmlTinDocument): LandXmlPolyline[] {
   ]);
 }
 
+function planGeometryBySource(document: LandXmlTinDocument): Map<string, LandXmlPlanGeometry> {
+  const result = new Map<string, LandXmlPlanGeometry>();
+  for (const feature of document.plan?.planFeatures ?? []) {
+    for (const geometry of feature.geometry) result.set(geometry.sourceId, geometry);
+  }
+  for (const parcel of document.plan?.parcels ?? []) {
+    for (const loop of parcel.loops) for (const geometry of loop) result.set(geometry.sourceId, geometry);
+  }
+  return result;
+}
+
+function planPoints(document: LandXmlTinDocument): LandXmlPlanPoint[] {
+  const unique = new Set<LandXmlPlanPoint>();
+  for (const point of document.plan?.cogoPoints ?? []) if (point.point) unique.add(point.point);
+  for (const monument of document.plan?.resolvedMonuments ?? []) if (monument.point) unique.add(monument.point);
+  return [...unique];
+}
+
 /** Clear derived points when a source is no longer aligned to an anchor. */
 export function clearLandXmlRenderedLineUpdates(document: LandXmlTinDocument): LandXmlRenderedLineUpdate[] {
-  return lines(document).map((line) => ({ line }));
+  return [
+    ...lines(document).map((line): LandXmlRenderedLineUpdate => ({ kind: 'line', line })),
+    ...planPoints(document).map((point): LandXmlRenderedLineUpdate => ({ kind: 'plan-point', point })),
+    ...(document.plan?.resolvedGeometry ?? []).map((geometry): LandXmlRenderedLineUpdate => ({
+      kind: 'plan-geometry', geometry,
+    })),
+  ];
 }
 
 /** Apply a prepared result only after its whole rebuild has succeeded. */
 export function applyLandXmlRenderedLineUpdates(updates: readonly LandXmlRenderedLineUpdate[]): void {
-  for (const { line, renderedPoints, renderedPointState } of updates) {
-    if (renderedPointState === 'suppressed') {
+  for (const update of updates) {
+    if (update.kind === 'plan-point') {
+      if (update.renderedPoint) update.point.renderedPoint = update.renderedPoint;
+      else delete update.point.renderedPoint;
+      if (update.renderedPointState) update.point.renderedPointState = update.renderedPointState;
+      else delete update.point.renderedPointState;
+      continue;
+    }
+    if (update.kind === 'plan-geometry') {
+      if (update.renderedPoints) update.geometry.renderedPoints = update.renderedPoints;
+      else delete update.geometry.renderedPoints;
+      if (update.renderedPointState) update.geometry.renderedPointState = update.renderedPointState;
+      else delete update.geometry.renderedPointState;
+      continue;
+    }
+    const { line } = update;
+    if (update.renderedPointState === 'suppressed') {
       delete line.renderedPoints;
       line.renderedPointState = 'suppressed';
-    } else if (renderedPoints) {
-      line.renderedPoints = renderedPoints;
+    } else if (update.renderedPoints) {
+      line.renderedPoints = update.renderedPoints;
       line.renderedPointState = 'aligned';
     } else {
       delete line.renderedPoints;
@@ -69,46 +130,67 @@ export async function buildLandXmlRenderedLineUpdates(
   if (!sourceProjectedUnit || !targetProjectedUnit) return clear();
 
   const targetFrame = totalYupOffset(targetOffset);
-  return allLines.map((line) => {
+  const transform = (northing: number, easting: number, elevation: number): [number, number, number] | null => {
+    const sourcePoint = [
+      easting * document.units!.linearScaleToMeters,
+      elevation * document.units!.elevationScaleToMeters,
+      -northing * document.units!.linearScaleToMeters,
+    ] as const;
+    // Overlay vertices ultimately narrow to f32 on the GPU. A finite f64
+    // survey value such as 1e100 is still unrenderable.
+    if (!sourcePoint.every((value) => Number.isFinite(Math.fround(value)))) return null;
+    const projected = localViewerToProjected(source, sourcePoint);
+    if (!projected) return null;
+    let east = projected[0];
+    let north = projected[1];
+    if (sourceProjection && targetProjection) {
+      try {
+        [east, north] = proj4(sourceProjection, targetProjection, [
+          east / sourceProjectedUnit,
+          north / sourceProjectedUnit,
+        ]);
+        east *= targetProjectedUnit;
+        north *= targetProjectedUnit;
+      } catch (error) {
+        console.warn('[LandXML] source-record reprojection failed:', error);
+        return null;
+      }
+    }
+    const local = projectedToLocalViewer(target, [east, north, projected[2]], targetFrame);
+    return local?.every(Number.isFinite) ? [...local] : null;
+  };
+  const lineUpdates = allLines.map((line): LandXmlRenderedLineUpdate => {
     const elevation = line.coordinateDimension === 2 ? Number(line.properties.elev) : undefined;
     const transformed: number[][] = [];
     for (const point of line.points) {
       const height = point[2] ?? elevation;
-      if (height === undefined || !Number.isFinite(height)) return { line, renderedPointState: 'suppressed' };
-      const sourcePoint = [
-        point[1] * document.units!.linearScaleToMeters,
-        height * document.units!.elevationScaleToMeters,
-        -point[0] * document.units!.linearScaleToMeters,
-      ] as const;
-      // Overlay vertices ultimately narrow to f32 on the GPU. A finite f64
-      // survey value such as 1e100 is still unrenderable; publishing it as an
-      // "aligned" line would later fall back to the source coordinates.
-      if (!sourcePoint.every((value) => Number.isFinite(Math.fround(value)))) {
-        return { line, renderedPointState: 'suppressed' };
-      }
-      const projected = localViewerToProjected(source, sourcePoint);
-      if (!projected) return { line, renderedPointState: 'suppressed' };
-      let east = projected[0];
-      let north = projected[1];
-      if (sourceProjection && targetProjection) {
-        try {
-          [east, north] = proj4(sourceProjection, targetProjection, [
-            east / sourceProjectedUnit,
-            north / sourceProjectedUnit,
-          ]);
-          east *= targetProjectedUnit;
-          north *= targetProjectedUnit;
-        } catch (error) {
-          console.warn('[LandXML] line reprojection failed:', error);
-          return { line, renderedPointState: 'suppressed' };
-        }
-      }
-      const local = projectedToLocalViewer(target, [east, north, projected[2]], targetFrame);
-      if (!local?.every(Number.isFinite)) return { line, renderedPointState: 'suppressed' };
-      transformed.push([...local]);
+      const local = height === undefined || !Number.isFinite(height)
+        ? null : transform(point[0], point[1], height);
+      if (!local) return { kind: 'line', line, renderedPointState: 'suppressed' };
+      transformed.push(local);
     }
     return transformed.length === line.points.length
-      ? { line, renderedPoints: transformed, renderedPointState: 'aligned' }
-      : { line, renderedPointState: 'suppressed' };
+      ? { kind: 'line', line, renderedPoints: transformed, renderedPointState: 'aligned' }
+      : { kind: 'line', line, renderedPointState: 'suppressed' };
   });
+  const pointUpdates = planPoints(document).map((point): LandXmlRenderedLineUpdate => {
+    const renderedPoint = transform(point.northing, point.easting, point.elevation ?? 0);
+    return renderedPoint
+      ? { kind: 'plan-point', point, renderedPoint, renderedPointState: 'aligned' }
+      : { kind: 'plan-point', point, renderedPointState: 'suppressed' };
+  });
+  const authoredGeometry = planGeometryBySource(document);
+  const geometryUpdates = (document.plan?.resolvedGeometry ?? []).map((geometry): LandXmlRenderedLineUpdate => {
+    const authored = authoredGeometry.get(geometry.sourceId);
+    const points = authored ? planPolyline(authored, geometry) : null;
+    if (!points) return { kind: 'plan-geometry', geometry, renderedPointState: 'suppressed' };
+    const renderedPoints: [number, number, number][] = [];
+    for (const point of points) {
+      const rendered = transform(point.northing, point.easting, point.elevation ?? 0);
+      if (!rendered) return { kind: 'plan-geometry', geometry, renderedPointState: 'suppressed' };
+      renderedPoints.push(rendered);
+    }
+    return { kind: 'plan-geometry', geometry, renderedPoints, renderedPointState: 'aligned' };
+  });
+  return [...lineUpdates, ...pointUpdates, ...geometryUpdates];
 }

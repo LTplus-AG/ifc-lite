@@ -330,7 +330,9 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
         continue;
       }
 
-      const status = await alignGeometryToReference(geometry, georef, anchorGeoref);
+      const status = await alignGeometryToReference(geometry, georef, anchorGeoref, {
+        allowEmptyGeometry: model.landXmlDocument !== undefined,
+      });
       if (!transactionIsLive() || !isLive(modelId)) return stale();
       if (!commit(modelId, {
         preAlignment: snapshot,

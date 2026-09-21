@@ -51,6 +51,18 @@ function adoptIdentityFrame(geometry: GeometryResult, destination: GeometryResul
   geometry.coordinateInfo = info;
 }
 
+function hasLandXmlSpatialRecords(document: LandXmlTinDocument | undefined): boolean {
+  if (!document) return false;
+  if (document.alignments.length > 0) return true;
+  if (document.surfaces.some((surface) => (
+    surface.boundaries.length + surface.breaklines.length + surface.contours.length > 0
+  ))) return true;
+  const plan = document.plan;
+  return Boolean(plan && (plan.cogoPoints.some((point) => point.point)
+    || plan.resolvedMonuments.some((monument) => monument.point)
+    || plan.resolvedGeometry.length > 0));
+}
+
 /** Apply the one source-neutral placement path before IDs become globally visible. */
 export async function finalizeFederatedSpatialPlacement(options: {
   dataStore: IfcDataStore;
@@ -73,7 +85,9 @@ export async function finalizeFederatedSpatialPlacement(options: {
   if (reference && parsed) {
     options.setProgress({ phase: 'Aligning georeferenced model', percent: 90 });
     preAlignment = capturePreAlignment(options.geometry);
-    const status = await alignGeometryToReference(options.geometry, parsed, reference);
+    const status = await alignGeometryToReference(options.geometry, parsed, reference, {
+      allowEmptyGeometry: hasLandXmlSpatialRecords(options.landXmlDocument),
+    });
     if (!options.isCurrent()) return null;
     federationAlignmentStatus = status;
     // An identity spatial transform leaves vertices untouched, but the model

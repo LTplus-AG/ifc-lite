@@ -21,10 +21,10 @@ function coordinateInfo(rtcX?: number): CoordinateInfo {
   };
 }
 
-function spatialReference(eastings: number): ModelSpatialReference {
+function spatialReference(eastings: number, horizontal = 'EPSG:2056'): ModelSpatialReference {
   return {
     source: { axes: ['east', 'up', 'south'], horizontalUnitToMetres: 1, verticalUnitToMetres: 1 },
-    horizontal: { id: 'EPSG:2056', provenance: { source: 'test' } },
+    horizontal: { id: horizontal, provenance: { source: 'test' } },
     vertical: { id: 'EPSG:5729', provenance: { source: 'test' } },
     localToProjected: {
       kind: 'local-projected-affine', eastings, northings: 0, orthogonalHeight: 0,
@@ -58,6 +58,31 @@ function document(): LandXmlTinDocument {
 beforeEach(() => useViewerStore.getState().clearAllModels());
 
 describe('federated LandXML spatial finalization (#5048)', () => {
+  it('publishes transformed overlays for a mesh-free cross-CRS document', async () => {
+    const anchor = fixtureModel('anchor') as FederatedModel;
+    anchor.geometryResult = { meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: coordinateInfo() };
+    anchor.spatialReference = spatialReference(300_000, 'EPSG:32633');
+    useViewerStore.setState({ models: new Map([[anchor.id, anchor]]) });
+    const geometry: GeometryResult = {
+      meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: coordinateInfo(),
+    };
+    const landXml = document();
+    const result = await finalizeFederatedSpatialPlacement({
+      dataStore: {} as IfcDataStore,
+      geometry,
+      modelId: 'terrain',
+      fileName: 'mesh-free.xml',
+      spatialReference: spatialReference(500_000, 'EPSG:32632'),
+      landXmlDocument: landXml,
+      isCurrent: () => true,
+      setProgress: () => undefined,
+    });
+
+    assert.equal(result?.federationAlignmentStatus, 'reprojected');
+    assert.equal(landXml.surfaces[0].breaklines[0].renderedPointState, 'aligned');
+    assert.ok(landXml.surfaces[0].breaklines[0].renderedPoints?.[0]?.every(Number.isFinite));
+  });
+
   it('commits an identity alignment destination frame before LandXML reframing', async () => {
     const destinationFrame = coordinateInfo();
     const anchor = fixtureModel('anchor') as FederatedModel;

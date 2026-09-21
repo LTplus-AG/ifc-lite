@@ -524,6 +524,16 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
     assertBoxClose(mesh.geometryAabb, expected, 0.05, 'reprojected');
   });
 
+  it('admits a validated cross-CRS frame for a mesh-free spatial source (#5048)', async () => {
+    const geom = geometry([]);
+    const source = georef({ eastings: 500_000, northings: 5_000_000 }, 'EPSG:32632');
+    const reference = georef({ eastings: 300_000, northings: 5_000_000 }, 'EPSG:32633');
+    const status = await alignGeometryToReference(geom, source, reference, { allowEmptyGeometry: true });
+
+    assert.equal(status, 'reprojected');
+    assert.deepStrictEqual(geom.coordinateInfo.originShift, reference.coordinateInfo?.originShift ?? { x: 0, y: 0, z: 0 });
+  });
+
   it('converts proj4 native US-survey-foot ordinates at the neutral metre boundary (#5048)', async () => {
     const metreReference = georef(
       { eastings: 500_000, northings: 3_760_000 },

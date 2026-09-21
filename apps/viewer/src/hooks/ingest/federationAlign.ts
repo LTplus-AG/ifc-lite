@@ -5,9 +5,6 @@
 /**
  * Georeferencing / federation alignment helpers.
  *
- * Extracted verbatim from useIfcFederation.ts so the unified model-load path
- * (useIfcLoader's finalizeModel) can reuse them without a circular dependency.
- * The extraction was behaviour-preserving; keep the issue-#595 / issue-#658
  * comments, which encode subtle alignment behaviour. Since then, #2526 routed
  * every read of a model's MapConversion through `effectiveConv` (the
  * map-absolute guard); that is the only deliberate change to the maths.
@@ -41,6 +38,7 @@ import {
 import { alignNormals } from './alignment-normals.js';
 import { projectedUnitToMetres } from './projected-units.js';
 import { canonicalRendererPlacement } from './federationCanonicalReference.js';
+import { emptyAlignedCoordinateInfo } from './federationEmptyFrame.js';
 import proj4 from 'proj4';
 
 type FederatedGeometryResult = NonNullable<FederatedModel['geometryResult']>;
@@ -290,11 +288,8 @@ function applyAlignmentTransformAndUpdateBounds(
  * same locality are sub-degree, and recomputing per-vertex would require a
  * Jacobian per mesh — acceptable trade-off for now, document if it bites.
  */
-async function alignGeometryAcrossCrs(
-  geometry: FederatedGeometryResult,
-  source: ModelSpatialPlacement,
-  reference: ModelSpatialPlacement,
-): Promise<boolean> {
+async function alignGeometryAcrossCrs(geometry: FederatedGeometryResult, source: ModelSpatialPlacement,
+  reference: ModelSpatialPlacement, allowEmptyGeometry: boolean): Promise<boolean> {
   // Reprojection is all-or-nothing.  Publishing a mesh with even one source
   // vertex left in its old CRS creates geometry that no later re-alignment can
   // repair: its pre-alignment snapshot contains one object in two frames.
@@ -459,6 +454,10 @@ async function alignGeometryAcrossCrs(
   }
 
   if (!found) {
+    if (allowEmptyGeometry && attempts === 0) {
+      geometry.coordinateInfo = emptyAlignedCoordinateInfo(originalCoordinateInfo, reference.coordinateInfo);
+      return true;
+    }
     restoreSourceFrame();
     console.warn(
       `[ifc-lite] Cross-CRS alignment failed: ${projFailures}/${attempts} `
@@ -531,6 +530,7 @@ export async function alignGeometryToReference(
   geometry: FederatedGeometryResult,
   source: ModelSpatialPlacement,
   reference: ModelSpatialPlacement,
+  options: { allowEmptyGeometry?: boolean } = {},
 ): Promise<FederationAlignmentStatus> {
   if (source.spatialReference.horizontal?.id === reference.spatialReference.horizontal?.id) {
     const transform = buildSpatialAlignmentTransform(source, reference);
@@ -544,7 +544,7 @@ export async function alignGeometryToReference(
     );
     return applied ? 'same-crs' : 'failed';
   }
-  const ok = await alignGeometryAcrossCrs(geometry, source, reference);
+  const ok = await alignGeometryAcrossCrs(geometry, source, reference, options.allowEmptyGeometry === true);
   return ok ? 'reprojected' : 'failed';
 }
 

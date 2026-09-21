@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import type { ModelSpatialReference } from '@ifc-lite/geometry';
 import { applyLandXmlRenderedLineUpdates, buildLandXmlRenderedLineUpdates } from './landXmlSpatialLines.js';
-import type { LandXmlTinDocument } from './landXmlSemantics.js';
+import type { LandXmlPlanPoint, LandXmlTinDocument } from './landXmlSemantics.js';
 
 function reference(
   eastings: number, northings: number, height: number, horizontal = 'EPSG:2056',
@@ -45,6 +45,37 @@ function document(): LandXmlTinDocument {
 }
 
 describe('LandXML federated overlay coordinates (#5048)', () => {
+  it('aligns COGO markers and plan geometry through the same staged frame as terrain', async () => {
+    const parsed = document();
+    const marker: LandXmlPlanPoint = { northing: 0, easting: 1010, elevation: 0 };
+    const start: LandXmlPlanPoint = { northing: 0, easting: 1010, elevation: 0 };
+    const end: LandXmlPlanPoint = { northing: 0, easting: 1011, elevation: 0 };
+    parsed.plan = {
+      version: '1.2', areaUnit: null, areaScaleToSquareMeters: null,
+      cogoPoints: [{ sourceId: 'cogo', scopeId: 'scope', ordinal: 1, name: 'P', code: null,
+        description: null, point: marker, pntRef: null, properties: {} }],
+      monuments: [],
+      planFeatures: [{ sourceId: 'feature', ordinal: 1, name: 'line', code: null, description: null,
+        properties: {}, locations: [], geometry: [{ sourceId: 'geometry', ordinal: 1, kind: 'line',
+          pointScopeId: null, start: { kind: 'coordinates', point: start, pntRef: null },
+          end: { kind: 'coordinates', point: end, pntRef: null }, center: null, pi: null,
+          intermediatePoints: [], rotation: null, radius: null, declaredLength: 1, properties: {} }] }],
+      parcels: [], warnings: [], sourceBatches: [{ sourceIds: ['cogo', 'geometry'] }],
+      parcelProbes: [], resolvedMonuments: [], resolvedGeometry: [{
+        sourceId: 'geometry', start, end, center: null, pi: null,
+      }],
+    };
+    const updates = await buildLandXmlRenderedLineUpdates(
+      parsed, reference(0, 0, 0), reference(1000, 0, 0), undefined,
+    );
+    applyLandXmlRenderedLineUpdates(updates);
+
+    assert.deepStrictEqual(marker.renderedPoint, [10, 0, 0]);
+    assert.deepStrictEqual(parsed.plan.resolvedGeometry[0].renderedPoints, [[10, 0, 0], [11, 0, 0]]);
+    assert.deepStrictEqual([marker.easting, start.easting, end.easting], [1010, 1010, 1011],
+      'derived alignment never rewrites authored plan coordinates');
+  });
+
   it('uses absolute authored N/E/H points once, without adding source RTC a second time', async () => {
     const source = reference(0, 0, 0);
     const target = reference(990, 2000, 20);

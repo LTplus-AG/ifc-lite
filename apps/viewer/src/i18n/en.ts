@@ -37,6 +37,7 @@ import { hierarchyEn } from './catalogues/hierarchy.en';
 import { idsPanelEn } from './catalogues/ids-panel.en';
 import { validationEditorEn } from './catalogues/validation-editor.en';
 import { validationPanelEn } from './catalogues/validation-panel.en';
+import { flowPanelEn } from './catalogues/flow-panel.en';
 import { keyboardShortcutsEn } from './catalogues/keyboard-shortcuts.en';
 import { layersPanelEn } from './catalogues/layers-panel.en';
 import { landXmlEn } from './catalogues/landxml.en';
@@ -126,6 +127,7 @@ export const en = {
   ...idsPanelEn,
   ...validationEditorEn,
   ...validationPanelEn,
+  ...flowPanelEn,
   ...chatEn,
   ...chatByokEn,
   ...clashPanelEn,

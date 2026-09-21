@@ -430,50 +430,46 @@ export interface MutateBackendMethods {
  * the underlying store buffer is never mutated; changes materialise on
  * the next `bim.export.ifc()`.
  */
-export interface AddColumnInStoreParams {
+/**
+ * The `IfcRoot` + `IfcElement` header every in-store element builder takes:
+ * naming, and the optional explicit `GlobalId` a re-runnable author (a flow
+ * graph) derives from a stable key so a re-run updates the element instead
+ * of duplicating it. A malformed GlobalId is refused by the builder.
+ */
+export interface AddElementCommonParams {
+  Name?: string;
+  Description?: string;
+  ObjectType?: string;
+  Tag?: string;
+  GlobalId?: string;
+}
+
+export interface AddColumnInStoreParams extends AddElementCommonParams {
   Position: [number, number, number];
   Width: number;
   Depth: number;
   Height: number;
-  Name?: string;
-  Description?: string;
-  ObjectType?: string;
-  Tag?: string;
-  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
-  GlobalId?: string;
 }
 
-export interface AddWallInStoreParams {
+export interface AddWallInStoreParams extends AddElementCommonParams {
   Start: [number, number, number];
   End: [number, number, number];
   Thickness: number;
   Height: number;
-  Name?: string;
-  Description?: string;
-  ObjectType?: string;
-  Tag?: string;
-  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
-  GlobalId?: string;
 }
 
 export type AddSlabInStoreParams = AddSlabRectangleParams | AddSlabPolygonParams;
 
-export interface AddSlabRectangleParams {
+export interface AddSlabRectangleParams extends AddElementCommonParams {
   Position: [number, number, number];
   Width: number;
   Depth: number;
   Thickness: number;
   /** `'rectangle'` (or omit) selects the IfcRectangleProfileDef path. */
   Profile?: 'rectangle';
-  Name?: string;
-  Description?: string;
-  ObjectType?: string;
-  Tag?: string;
-  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
-  GlobalId?: string;
 }
 
-export interface AddSlabPolygonParams {
+export interface AddSlabPolygonParams extends AddElementCommonParams {
   /** `'polygon'` selects the IfcArbitraryClosedProfileDef path. */
   Profile: 'polygon';
   /** Closed outline as 2D storey-local points (≥3). Auto-closed at emit time. */
@@ -481,147 +477,89 @@ export interface AddSlabPolygonParams {
   /** Local placement origin (metres). Defaults to `[0, 0, 0]`. */
   Position?: [number, number, number];
   Thickness: number;
-  Name?: string;
-  Description?: string;
-  ObjectType?: string;
-  Tag?: string;
-  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
-  GlobalId?: string;
 }
 
-export interface AddBeamInStoreParams {
+export interface AddBeamInStoreParams extends AddElementCommonParams {
   Start: [number, number, number];
   End: [number, number, number];
   Width: number;
   Height: number;
-  Name?: string;
-  Description?: string;
-  ObjectType?: string;
-  Tag?: string;
-  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
-  GlobalId?: string;
 }
 
-export interface AddDoorInStoreParams {
+export interface AddDoorInStoreParams extends AddElementCommonParams {
   Position: [number, number, number];
   Width: number;
   Height: number;
   FrameThickness?: number;
   PredefinedType?: 'DOOR' | 'GATE' | 'TRAPDOOR' | 'USERDEFINED' | 'NOTDEFINED';
   OperationType?: string;
-  Name?: string;
-  Description?: string;
-  ObjectType?: string;
-  Tag?: string;
-  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
-  GlobalId?: string;
 }
 
-export interface AddWindowInStoreParams {
+export interface AddWindowInStoreParams extends AddElementCommonParams {
   Position: [number, number, number];
   Width: number;
   Height: number;
   FrameThickness?: number;
   PredefinedType?: 'WINDOW' | 'SKYLIGHT' | 'LIGHTDOME' | 'USERDEFINED' | 'NOTDEFINED';
   PartitioningType?: string;
-  Name?: string;
-  Description?: string;
-  ObjectType?: string;
-  Tag?: string;
-  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
-  GlobalId?: string;
 }
 
 export type AddSpaceInStoreParams = AddSpaceRectangleParams | AddSpacePolygonParams;
 
-export interface AddSpaceRectangleParams {
+export interface AddSpaceRectangleParams extends AddElementCommonParams {
   Position: [number, number, number];
   Width: number;
   Depth: number;
   Height: number;
   Profile?: 'rectangle';
-  Name?: string;
   LongName?: string;
-  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
-  GlobalId?: string;
-  Description?: string;
-  ObjectType?: string;
 }
 
-export interface AddSpacePolygonParams {
+export interface AddSpacePolygonParams extends AddElementCommonParams {
   Profile: 'polygon';
   OuterCurve: Array<[number, number]>;
   Position?: [number, number, number];
   Height: number;
-  Name?: string;
   LongName?: string;
-  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
-  GlobalId?: string;
-  Description?: string;
-  ObjectType?: string;
 }
 
 export type AddRoofInStoreParams = AddRoofRectangleParams | AddRoofPolygonParams;
 
-export interface AddRoofRectangleParams {
+export interface AddRoofRectangleParams extends AddElementCommonParams {
   Position: [number, number, number];
   Width: number;
   Depth: number;
   Thickness: number;
   Profile?: 'rectangle';
-  Name?: string;
-  Description?: string;
-  ObjectType?: string;
-  Tag?: string;
-  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
-  GlobalId?: string;
 }
 
-export interface AddRoofPolygonParams {
+export interface AddRoofPolygonParams extends AddElementCommonParams {
   Profile: 'polygon';
   OuterCurve: Array<[number, number]>;
   Position?: [number, number, number];
   Thickness: number;
-  Name?: string;
-  Description?: string;
-  ObjectType?: string;
-  Tag?: string;
-  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
-  GlobalId?: string;
 }
 
 export type AddPlateInStoreParams = AddPlateRectangleParams | AddPlatePolygonParams;
 
-export interface AddPlateRectangleParams {
+export interface AddPlateRectangleParams extends AddElementCommonParams {
   Position: [number, number, number];
   Width: number;
   Depth: number;
   Thickness: number;
   Profile?: 'rectangle';
   PredefinedType?: 'CURTAIN_PANEL' | 'SHEET' | 'USERDEFINED' | 'NOTDEFINED';
-  Name?: string;
-  Description?: string;
-  ObjectType?: string;
-  Tag?: string;
-  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
-  GlobalId?: string;
 }
 
-export interface AddPlatePolygonParams {
+export interface AddPlatePolygonParams extends AddElementCommonParams {
   Profile: 'polygon';
   OuterCurve: Array<[number, number]>;
   Position?: [number, number, number];
   Thickness: number;
   PredefinedType?: 'CURTAIN_PANEL' | 'SHEET' | 'USERDEFINED' | 'NOTDEFINED';
-  Name?: string;
-  Description?: string;
-  ObjectType?: string;
-  Tag?: string;
-  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
-  GlobalId?: string;
 }
 
-export interface AddMemberInStoreParams {
+export interface AddMemberInStoreParams extends AddElementCommonParams {
   Start: [number, number, number];
   End: [number, number, number];
   Width: number;
@@ -630,12 +568,6 @@ export interface AddMemberInStoreParams {
     | 'BRACE' | 'CHORD' | 'COLLAR' | 'MEMBER' | 'MULLION' | 'PLATE'
     | 'POST' | 'PURLIN' | 'RAFTER' | 'STRINGER' | 'STRUT' | 'STUD'
     | 'USERDEFINED' | 'NOTDEFINED';
-  Name?: string;
-  Description?: string;
-  ObjectType?: string;
-  Tag?: string;
-  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
-  GlobalId?: string;
 }
 
 export interface StoreBackendMethods extends CostStoreBackendMethods {

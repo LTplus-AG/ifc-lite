@@ -228,6 +228,11 @@ pub struct LandXmlPlanDocument {
 }
 
 impl LandXmlPlanDocument {
+    /// Split finalized plan metadata into move-owned stream records.
+    pub(crate) fn into_stream_parts(self) -> crate::stream::metadata::PlanStreamParts {
+        crate::stream::metadata::PlanStreamParts::new(self)
+    }
+
     /// COGO records are immutable through this view so the derived resolver
     /// index cannot become stale behind a public `Vec` mutation.
     pub fn cogo_points(&self) -> &[LandXmlCgPoint] {

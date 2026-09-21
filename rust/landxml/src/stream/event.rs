@@ -5,8 +5,16 @@
 //! Public, renderer-independent stream records.
 
 use crate::{
-    alignment::{LandXmlAlignmentDocument, LandXmlAlignmentRenderData},
-    LandXmlPlanDocument, LandXmlTinDocument, LandXmlUnits,
+    alignment::{
+        LandXmlAlignment as LandXmlHorizontalAlignment, LandXmlAlignmentDocument,
+        LandXmlAlignmentRenderData,
+    },
+    LandXmlAlignment as LandXmlTerrainAlignment, LandXmlCapabilityDiagnostic, LandXmlCgPoint,
+    LandXmlCrossSection, LandXmlCrossSectionSurface, LandXmlExtension, LandXmlMonument,
+    LandXmlParcel, LandXmlPipeFeature, LandXmlPipeNetwork, LandXmlPipeNetworkCollection,
+    LandXmlPipeNetworkDocument, LandXmlPipeRefusal, LandXmlPlanDocument, LandXmlPlanFeature,
+    LandXmlPreservedOnlyExtension, LandXmlProfile, LandXmlRoadway, LandXmlTinDocument,
+    LandXmlUnits,
 };
 use serde::Serialize;
 
@@ -44,6 +52,70 @@ pub struct LandXmlSurfaceFragment {
 pub enum LandXmlStreamEvent {
     Header(LandXmlStreamHeader),
     Surface(LandXmlSurfaceFragment),
+    Metadata(LandXmlMetadataStreamEvent),
+}
+
+/// Metadata header emitted once, after all surface fragments have received
+/// credit. Its record vectors are intentionally empty; their values follow as
+/// individually owned [`LandXmlMetadataStreamEvent::Record`] values.
+#[derive(Clone, Debug, Serialize)]
+pub struct LandXmlMetadataStreamHeader {
+    pub stream: LandXmlStreamHeader,
+    pub terrain: LandXmlTinDocument,
+    pub plan: LandXmlPlanDocument,
+    pub alignments: LandXmlAlignmentDocument,
+    pub pipe_networks: LandXmlPipeNetworkDocument,
+}
+
+/// One complete top-level LandXML semantic record. A consumer can release the
+/// record before requesting the next credited event.
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "record", content = "value", rename_all = "snake_case")]
+pub enum LandXmlMetadataRecord {
+    TerrainExtension(LandXmlExtension),
+    TerrainWarning(String),
+    TerrainAlignment(LandXmlTerrainAlignment),
+    TerrainProfile(LandXmlProfile),
+    TerrainCrossSection(LandXmlCrossSection),
+    TerrainCrossSectionSurface(LandXmlCrossSectionSurface),
+    TerrainRoadway(LandXmlRoadway),
+    TerrainCapabilityDiagnostic(LandXmlCapabilityDiagnostic),
+    TerrainPreservedOnlyExtension(LandXmlPreservedOnlyExtension),
+    PlanCogoPoint(LandXmlCgPoint),
+    PlanMonument(LandXmlMonument),
+    PlanFeature(LandXmlPlanFeature),
+    PlanParcel(LandXmlParcel),
+    PlanWarning(String),
+    HorizontalAlignment(LandXmlHorizontalAlignment),
+    HorizontalAlignmentWarning(String),
+    PipeCollection(LandXmlPipeNetworkCollection),
+    PipeFeature(LandXmlPipeFeature),
+    PipeNetwork(LandXmlPipeNetwork),
+    PipeRefusal(LandXmlPipeRefusal),
+}
+
+/// Counters emitted after every move-owned metadata record.
+#[derive(Clone, Debug, Serialize)]
+pub struct LandXmlMetadataStreamEnd {
+    pub surfaces_drained: usize,
+    pub renderable_surfaces: usize,
+    pub preserved_surfaces: usize,
+    pub plan_cogo_points: usize,
+    pub plan_parcels: usize,
+    pub horizontal_alignments: usize,
+    pub pipe_networks: usize,
+    pub pipe_structures: usize,
+    pub pipes: usize,
+    pub pipe_refusals: usize,
+}
+
+/// Resumable metadata events delivered through [`LandXmlStreamEvent::Metadata`].
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LandXmlMetadataStreamEvent {
+    Header(LandXmlMetadataStreamHeader),
+    Record(LandXmlMetadataRecord),
+    End(LandXmlMetadataStreamEnd),
 }
 
 /// Complete non-surface semantics finalized from the same event-driven

@@ -62,6 +62,26 @@ impl LandXmlTinStreamSession {
         }
     }
 
+    pub(super) fn flush_pending_metadata(&mut self) -> Result<(), LandXmlError> {
+        loop {
+            if self.queue.len() == MAX_LANDXML_STREAM_QUEUED_EVENTS {
+                return Ok(());
+            }
+            if self.queued_bytes > MAX_LANDXML_STREAM_QUEUED_BYTES - MAX_LANDXML_STREAM_EVENT_BYTES
+            {
+                return Ok(());
+            }
+            let Some(cursor) = &mut self.metadata_cursor else {
+                return Ok(());
+            };
+            let Some(event) = cursor.next_event() else {
+                self.metadata_cursor = None;
+                return Ok(());
+            };
+            self.push_event(LandXmlStreamEvent::Metadata(event))?;
+        }
+    }
+
     fn push_event(&mut self, event: LandXmlStreamEvent) -> Result<(), LandXmlError> {
         let serialized_bytes = serde_json::to_vec(&event)
             .map_err(|value| {

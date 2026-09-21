@@ -5,6 +5,7 @@
 mod decoder;
 mod event;
 mod fragments;
+pub(crate) mod metadata;
 mod output;
 mod token;
 
@@ -14,8 +15,9 @@ use crate::{
 };
 use decoder::Decoder;
 pub use event::{
-    LandXmlStreamEvent, LandXmlStreamHeader, LandXmlStreamMetadata, LandXmlStreamSummary,
-    LandXmlSurfaceComponent, LandXmlSurfaceFragment,
+    LandXmlMetadataRecord, LandXmlMetadataStreamEnd, LandXmlMetadataStreamEvent,
+    LandXmlMetadataStreamHeader, LandXmlStreamEvent, LandXmlStreamHeader, LandXmlStreamMetadata,
+    LandXmlStreamSummary, LandXmlSurfaceComponent, LandXmlSurfaceFragment,
 };
 use quick_xml::{events::Event, Reader};
 use std::{collections::VecDeque, io::BufReader};
@@ -49,6 +51,7 @@ pub struct LandXmlTinStreamSession {
     queue: VecDeque<QueuedEvent>,
     queued_bytes: usize,
     pending_surface: Option<fragments::SurfaceCursor>,
+    metadata_cursor: Option<metadata::MetadataCursor>,
     pending_input: VecDeque<u8>,
     header_emitted: bool,
     surfaces_drained: usize,
@@ -87,6 +90,7 @@ impl LandXmlTinStreamSession {
             queue: VecDeque::new(),
             queued_bytes: 0,
             pending_surface: None,
+            metadata_cursor: None,
             pending_input: VecDeque::new(),
             header_emitted: false,
             surfaces_drained: 0,
@@ -143,7 +147,12 @@ impl LandXmlTinStreamSession {
         Ok(events)
     }
 
-    pub fn finish(&mut self) -> Result<LandXmlStreamSummary, LandXmlError> {
+    /// Finalize parsing and begin credited metadata delivery.
+    ///
+    /// Call [`Self::drain`] until [`Self::output_pending`] is false. Metadata
+    /// is emitted as bounded header, record, and end events without cloning
+    /// the finalized family documents.
+    pub fn finish_cursor(&mut self) -> Result<(), LandXmlError> {
         if self.closed {
             return Err(error(
                 Code::InvalidSemantic,
@@ -167,7 +176,7 @@ impl LandXmlTinStreamSession {
             .header()
             .ok_or_else(|| error(Code::InvalidSemantic, "LandXML units were not declared"))?;
         self.closed = true;
-        let mut terrain = self.parser.take().expect("open parser").finish()?;
+        let terrain = self.parser.take().expect("open parser").finish()?;
         let plan = self.plan.take().expect("open plan parser");
         if plan.has_open_frames() {
             return Err(error(Code::InvalidXml, "unclosed plan XML element"));
@@ -178,7 +187,6 @@ impl LandXmlTinStreamSession {
             return Err(error(Code::InvalidXml, "unclosed alignment XML element"));
         }
         let alignment = alignment.finish()?;
-        let alignment_render = crate::alignment::alignment_render_data(&alignment);
         let pipe = self.pipe.take().expect("open pipe parser");
         if pipe.has_open_frames() {
             return Err(error(Code::InvalidXml, "unclosed pipe XML element"));
@@ -196,26 +204,46 @@ impl LandXmlTinStreamSession {
             .map(|network| network.pipes.len())
             .sum();
         let pipe_refusals = pipe.refusals.len();
-        terrain.pipe_networks = Some(pipe);
-        Ok(LandXmlStreamSummary {
-            header,
+        let end = LandXmlMetadataStreamEnd {
             surfaces_drained: self.surfaces_drained,
             renderable_surfaces: self.renderable_surfaces,
             preserved_surfaces: self.preserved_surfaces,
-            plan_cogo_points: plan.cogo_points.len(),
+            plan_cogo_points: plan.cogo_points().len(),
             plan_parcels: plan.parcels.len(),
             horizontal_alignments: alignment.alignments.len(),
             pipe_networks,
             pipe_structures,
             pipes,
             pipe_refusals,
-            metadata: LandXmlStreamMetadata {
-                terrain,
-                plan,
-                alignments: alignment,
-                alignment_render,
-            },
-        })
+        };
+        self.metadata_cursor = Some(metadata::MetadataCursor::new(
+            header,
+            terrain.into_stream_parts(),
+            plan.into_stream_parts(),
+            alignment.into_stream_parts(),
+            pipe.into_stream_parts(),
+            end,
+        ));
+        self.flush_pending_metadata()
+    }
+
+    /// Finalize and reassemble metadata for legacy summary consumers.
+    // TODO(remove-by: #5050 worker cursor migration, owner: LandXML)
+    pub fn finish(&mut self) -> Result<LandXmlStreamSummary, LandXmlError> {
+        self.finish_cursor()?;
+        let mut reassembler = metadata::MetadataReassembler::default();
+        while self.output_pending() {
+            for event in self.drain(MAX_LANDXML_STREAM_DRAIN_BYTES)? {
+                let LandXmlStreamEvent::Metadata(event) = event else {
+                    return Err(error(
+                        Code::InvalidSemantic,
+                        "summary adapter received non-metadata stream output",
+                    ));
+                };
+                reassembler.push(event)?;
+            }
+        }
+        reassembler.finish()
     }
 
     pub fn abort(&mut self) {
@@ -223,6 +251,7 @@ impl LandXmlTinStreamSession {
         self.queue.clear();
         self.queued_bytes = 0;
         self.pending_surface.take();
+        self.metadata_cursor.take();
         self.pending_input.clear();
         self.parser.take();
         self.plan.take();
@@ -242,7 +271,7 @@ impl LandXmlTinStreamSession {
 
     /// Whether the caller must grant output credit with [`Self::drain`].
     pub fn output_pending(&self) -> bool {
-        !self.queue.is_empty() || self.pending_surface.is_some()
+        !self.queue.is_empty() || self.pending_surface.is_some() || self.metadata_cursor.is_some()
     }
 
     /// Exact JSON transport bytes currently retained for a credited consumer.
@@ -267,6 +296,7 @@ impl LandXmlTinStreamSession {
 
     fn resume_after_drain(&mut self) -> Result<(), LandXmlError> {
         self.flush_pending_surface()?;
+        self.flush_pending_metadata()?;
         self.consume_pending_input()
     }
 

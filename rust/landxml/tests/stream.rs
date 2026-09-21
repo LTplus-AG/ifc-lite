@@ -6,9 +6,10 @@ use ifc_lite_landxml::{
     alignment::parse_landxml_alignments_optional, parse_landxml_document,
     parse_landxml_pipe_networks, parse_landxml_plan, parse_landxml_tin,
     parse_landxml_tin_with_cancel, LandXmlDiagnosticCode, LandXmlError, LandXmlLimits,
-    LandXmlStreamEvent, LandXmlStreamSummary, LandXmlSurfaceComponent, LandXmlTinStreamSession,
-    MAX_LANDXML_STREAM_DRAIN_BYTES, MAX_LANDXML_STREAM_EVENT_BYTES,
-    MAX_LANDXML_STREAM_QUEUED_BYTES, MAX_LANDXML_STREAM_QUEUED_EVENTS,
+    LandXmlMetadataRecord, LandXmlMetadataStreamEvent, LandXmlStreamEvent, LandXmlStreamSummary,
+    LandXmlSurfaceComponent, LandXmlTinStreamSession, MAX_LANDXML_STREAM_DRAIN_BYTES,
+    MAX_LANDXML_STREAM_EVENT_BYTES, MAX_LANDXML_STREAM_QUEUED_BYTES,
+    MAX_LANDXML_STREAM_QUEUED_EVENTS,
 };
 
 const XML: &str = r#"<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces></LandXML>"#;
@@ -326,6 +327,97 @@ fn issue_5050_stream_finalizes_non_surface_metadata_without_a_second_source_scan
     assert!(events.iter().any(
         |event| matches!(event, LandXmlStreamEvent::Surface(fragment) if fragment.source_id == source_id)
     ));
+}
+
+#[test]
+fn issue_5050_metadata_cursor_matches_direct_plan_and_uses_exact_credit_limits() {
+    let points = (1..=8)
+        .map(|ordinal| format!("<CgPoint name=\"p{ordinal}\">{ordinal} 0 0</CgPoint>"))
+        .collect::<String>();
+    let xml = landxml(&format!("<CgPoints>{points}</CgPoints>"));
+    let direct = parse_landxml_plan(xml.as_bytes()).expect("direct plan");
+    let mut session = LandXmlTinStreamSession::new(LandXmlLimits::default()).expect("session");
+    session.advance(xml.as_bytes()).expect("source input");
+    let mut ignored = Vec::new();
+    drain_until_idle(&mut session, &mut ignored);
+
+    session.finish_cursor().expect("begin metadata cursor");
+    let mut metadata = Vec::new();
+    let mut peak_events = 0;
+    let mut peak_bytes = 0;
+    while session.output_pending() {
+        peak_events = peak_events.max(session.queued_events());
+        peak_bytes = peak_bytes.max(session.queued_bytes());
+        assert!(session.queued_events() <= MAX_LANDXML_STREAM_QUEUED_EVENTS);
+        assert!(session.queued_bytes() <= MAX_LANDXML_STREAM_QUEUED_BYTES);
+        for event in session
+            .drain(MAX_LANDXML_STREAM_DRAIN_BYTES)
+            .expect("credited metadata drain")
+        {
+            let LandXmlStreamEvent::Metadata(event) = event else {
+                panic!("metadata cursor must not re-emit surface transport");
+            };
+            assert!(
+                serde_json::to_vec(&event)
+                    .expect("serialize bounded metadata")
+                    .len()
+                    <= MAX_LANDXML_STREAM_EVENT_BYTES
+            );
+            metadata.push(event);
+        }
+    }
+    assert_eq!(peak_events, MAX_LANDXML_STREAM_QUEUED_EVENTS);
+    assert!(peak_bytes > 0);
+    assert!(matches!(
+        metadata.first(),
+        Some(LandXmlMetadataStreamEvent::Header(_))
+    ));
+    assert!(matches!(
+        metadata.last(),
+        Some(LandXmlMetadataStreamEvent::End(_))
+    ));
+    assert_eq!(
+        metadata
+            .iter()
+            .filter(|event| matches!(
+                event,
+                LandXmlMetadataStreamEvent::Record(LandXmlMetadataRecord::PlanCogoPoint(_))
+            ))
+            .count(),
+        direct.cogo_points().len(),
+    );
+
+    let summary = summary_after_byte_cuts(xml.as_bytes()).expect("summary adapter cursor parity");
+    assert_eq!(summary.metadata.plan, direct);
+}
+
+#[test]
+fn issue_5050_metadata_cursor_abort_and_drop_release_pending_owned_records() {
+    let xml = landxml("<CgPoints><CgPoint name=\"control\">0 0 0</CgPoint></CgPoints>");
+    let mut session = LandXmlTinStreamSession::new(LandXmlLimits::default()).expect("session");
+    session.advance(xml.as_bytes()).expect("source input");
+    let mut ignored = Vec::new();
+    drain_until_idle(&mut session, &mut ignored);
+    session.finish_cursor().expect("begin metadata cursor");
+    assert!(session.output_pending());
+    session.abort();
+    assert!(!session.output_pending());
+    assert_eq!(session.queued_events(), 0);
+    assert_eq!(session.queued_bytes(), 0);
+    assert_eq!(
+        session
+            .advance(&[])
+            .expect_err("aborted stream is closed")
+            .code,
+        LandXmlDiagnosticCode::InvalidSemantic
+    );
+
+    let mut dropped = LandXmlTinStreamSession::new(LandXmlLimits::default()).expect("session");
+    dropped.advance(xml.as_bytes()).expect("source input");
+    drain_until_idle(&mut dropped, &mut ignored);
+    dropped.finish_cursor().expect("begin metadata cursor");
+    assert!(dropped.output_pending());
+    drop(dropped);
 }
 
 #[test]

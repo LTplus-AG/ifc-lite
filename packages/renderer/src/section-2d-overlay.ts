@@ -47,67 +47,15 @@ import {
   type SectionLinePipelineResources,
   type AnchoredLineVertices,
 } from './section-2d-line-buffer.js';
+import {
+  LINE_OVERLAY_CHANNELS,
+  type LineOverlayChannel,
+  type Section2DOverlayOptions,
+} from './section-2d-types.js';
 
 export type { CutPolygon2D, DrawingLine2D, SectionCustomPlane } from './section-2d-lift.js';
-
-/**
- * The standalone world-space line overlays, in draw order.
- *
- * Each channel is an independent vertex buffer sharing one line pipeline and one shared overlay
- * colour; only the buffer read and the uniform slot bound distinguish them — naming them makes a
- * sixth channel six table rows, not eight methods. Five of six refuse to compile if skipped;
- * the sixth, `SECTION_2D_UNIFORM_SLOT_COUNT`, derives from `SECTION_2D_UNIFORM_SLOT_INDEX`, so
- * the buffer follows it automatically (#3342 was a hand-written count, one short).
- *
- * Not enforced: each draw site binding its OWN slot. A test pins the index dense, but a channel
- * reusing an existing slot constant passes it while two sites overwrite each other's `lineColor`
- * (#2456).
- *
- * Clash box/contact lines are deliberately NOT a channel: they draw in their own colour via
- * `setClashOverlapBox` / `setClashContactLines`.
- */
-export const LINE_OVERLAY_CHANNELS = ['annotation', 'alignment', 'grid', 'dxf', 'terrain'] as const;
-
-/** One of {@link LINE_OVERLAY_CHANNELS}. */
-export type LineOverlayChannel = (typeof LINE_OVERLAY_CHANNELS)[number];
-
-export interface Section2DOverlayCapStyle {
-  fillColor:         [number, number, number, number];
-  strokeColor:       [number, number, number, number];
-  patternId:         number;   // 0..7, matches HATCH_PATTERN_IDS in section-cap.ts
-  spacingPx:         number;
-  angleRad:          number;
-  widthPx:           number;
-  secondaryAngleRad: number;
-}
-
-export interface Section2DOverlayOptions {
-  axis: 'down' | 'front' | 'side';  // Semantic axis: down (Y), front (Z), side (X)
-  position: number; // 0-100 percentage
-  bounds: {
-    min: { x: number; y: number; z: number };
-    max: { x: number; y: number; z: number };
-  };
-  viewProj: Float32Array;
-  rteViewProj?: Float32Array;
-  rteCamera?: readonly [number, number, number];
-  flipped?: boolean;
-  min?: number;  // Optional override for min range
-  max?: number;  // Optional override for max range
-  /**
-   * If provided, the 2D overlay's polygon fills render as the 3D section
-   * cap with this screen-space hatch style. If omitted or `showFills` is
-   * false, the filled hatch is skipped.
-   */
-  capStyle?: Section2DOverlayCapStyle;
-  showFills?: boolean;
-  /**
-   * Whether to draw the polygon outline + hidden lines on the cap. Users
-   * can turn surfaces and outlines on/off independently. Defaults to true
-   * so existing call sites keep showing outlines.
-   */
-  showOutlines?: boolean;
-}
+export { LINE_OVERLAY_CHANNELS } from './section-2d-types.js';
+export type { LineOverlayChannel, Section2DOverlayCapStyle, Section2DOverlayOptions } from './section-2d-types.js';
 
 export class Section2DOverlayRenderer {
   private device: GPUDevice;

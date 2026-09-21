@@ -164,6 +164,15 @@ describe('BlockEditor localization (#4918)', () => {
   });
 
   it('translates the table block\'s validation source (#5138): source label, rows-mode control, rule filter', () => {
+    // Finds the checkbox whose accessible name (its wrapping <label>'s own text, nothing else) is
+    // exactly `text` — isolates the column-toggle label from the RuleFilter <select>'s "Every rule"
+    // / "Jede Regel" option, which contains the substring "Regel" too (review finding: a plain
+    // `textContent.includes('Regel')` check passes on that option alone and never reaches the checkbox).
+    const columnCheckbox = (ui: HTMLElement, text: string): HTMLInputElement | null => {
+      const label = [...ui.querySelectorAll('label')].find((l) => l.querySelector('input[type="checkbox"]') && l.textContent?.trim() === text);
+      return label?.querySelector('input[type="checkbox"]') ?? null;
+    };
+
     const block: TableBlock = { kind: 'table', id: 'b7', source: { kind: 'validation', rows: 'failed', columns: ['rule', 'result'] } };
     const ui = render(
       <BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} onChange={noop} onMove={noop} onRemove={noop} />,
@@ -173,8 +182,8 @@ describe('BlockEditor localization (#4918)', () => {
     assert.ok(ui.querySelector('select[aria-label="Filter to one rule"]'));
     assert.equal(ui.textContent?.includes('Every rule'), true);
     // The column-toggle checkboxes (#5138 review): one label per TableColumnId, translated.
-    assert.equal(ui.textContent?.includes('Rule'), true);
-    assert.equal(ui.textContent?.includes('Result'), true);
+    assert.ok(columnCheckbox(ui, 'Rule'), 'the "rule" column checkbox reads exactly "Rule"');
+    assert.ok(columnCheckbox(ui, 'Result'), 'the "result" column checkbox reads exactly "Result"');
 
     registerLocale('block-editor-x-table-validation', TEST_LOCALE);
     act(() => setLocale('block-editor-x-table-validation'));
@@ -183,8 +192,8 @@ describe('BlockEditor localization (#4918)', () => {
     assert.ok(ui.querySelector('select[aria-label="Welche Zeilen anzeigen"]'));
     assert.ok(ui.querySelector('select[aria-label="Auf eine Regel filtern"]'));
     assert.equal(ui.textContent?.includes('Jede Regel'), true);
-    assert.equal(ui.textContent?.includes('Regel'), true, 'the "rule" column checkbox label switches with the locale');
-    assert.equal(ui.textContent?.includes('Ergebnis'), true, 'the "result" column checkbox label switches with the locale');
+    assert.ok(columnCheckbox(ui, 'Regel'), 'the "rule" column checkbox switches to exactly "Regel", not the rule-filter\'s "Jede Regel" option');
+    assert.ok(columnCheckbox(ui, 'Ergebnis'), 'the "result" column checkbox switches with the locale');
   });
 
   it('translates the spacer block\'s kind badge', () => {

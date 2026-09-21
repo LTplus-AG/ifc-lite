@@ -373,31 +373,7 @@ export interface RenderOptions {
   sunShadows?: { enabled: boolean; resolution?: number; sunAngleDeg?: number };
 }
 
-/**
- * Options for GPU picking/selection
- * Filters out hidden/invisible elements so users can select what's visible
- */
-export interface PickOptions {
-  // Skip picking during streaming for performance
-  isStreaming?: boolean;
-  // Visibility filtering - same as RenderOptions for consistency
-  hiddenIds?: Set<number>;        // Hidden elements (can't be picked)
-  isolatedIds?: Set<number> | null; // Only these elements can be picked (null = all pickable)
-}
-
-/**
- * Resolved clip state the GPU picker mirrors from the most recent render so that
- * section/crop-clipped geometry is unpickable, not just invisible. The renderer
- * stashes this each `render()` and feeds it to the picker; consumers don't build
- * it. Point clouds are clipped by the section plane only (matching the point
- * render); the crop box clips triangle meshes only, on render and on pick.
- */
-export interface PickClipState {
-  // Resolved section plane (world space, already enabled), or null when off.
-  sectionPlane?: { normal: [number, number, number]; distance: number; flipped: boolean } | null;
-  // Active axis-aligned crop box, or null when off.
-  clipBox?: ClipBox | null;
-}
+export type { PickOptions, PickClipState } from './pick-types.js';
 
 // `PickResult` lives with the code that builds it (pick-resolve.ts) and is
 // re-exported here so every existing `from './types.js'` import still resolves.

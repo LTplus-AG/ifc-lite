@@ -35,10 +35,10 @@ import { __setOverlayWorkerFactoryForTest } from '@/lib/overlay-parse/index.js';
 import { createEmptyFlatSymbolic, type FlatSymbolic } from '@/lib/overlay-parse/symbolic-flat.js';
 import { __resetSymbolicAnnotationsCacheForTests } from './symbolic-parse-cache.js';
 import {
-  symbolicLineVertexData,
   useSymbolicAnnotations,
   useSymbolicAnnotationsRichData,
 } from './useSymbolicAnnotations.js';
+import { symbolicLineVertexData } from './symbolic-line-channels.js';
 
 /**
  * The class names come FROM the channel table, never retyped. The first

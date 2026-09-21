@@ -22,11 +22,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  buildSymbolicLineChannels,
-  symbolicLineVertexData,
-  type SymbolicLineChannelsEntry,
-} from './useSymbolicAnnotations.js';
+import { buildSymbolicLineChannels, symbolicLineVertexData, type SymbolicLineChannelsEntry } from './symbolic-line-channels.js';
 import { createEmptyParseResult, type AnnotationsForStorey } from '../lib/overlay-parse/symbolic-parse.js';
 
 function gridOnlyEntry(): SymbolicLineChannelsEntry {

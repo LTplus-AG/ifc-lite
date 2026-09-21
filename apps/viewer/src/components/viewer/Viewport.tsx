@@ -59,9 +59,9 @@ import { useRenderUpdates } from './useRenderUpdates.js';
 import {
   useSymbolicAnnotations,
   useSymbolicAnnotationsRichData,
-  symbolicLineVertexData,
   type SectionClipForGrid,
 } from '../../hooks/useSymbolicAnnotations.js';
+import { symbolicLineVertexData } from '../../hooks/symbolic-line-channels.js';
 import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
 import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
 import { useLandXmlRendererOverlay } from '../../hooks/useLandXmlOverlayLines.js';

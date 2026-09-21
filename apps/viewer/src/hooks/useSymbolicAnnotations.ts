@@ -25,10 +25,8 @@ import { ensureParseFor, getParseFor, subscribeToParseCache } from './symbolic-p
 import { useOverlayChannelGate } from './useOverlayChannelGate.js';
 import {
   buildSymbolicLineChannels,
-  symbolicLineVertexData,
   type SymbolicLineChannels,
   type SymbolicLineChannelsEntry,
-  type SymbolicLineVertices,
 } from './symbolic-line-channels.js';
 import {
   buildSymbolicRichChannels,
@@ -170,18 +168,6 @@ export interface SectionClipForGrid {
   /** Cut axis. Only `'down'` performs vertical clipping; other axes pass through unfiltered (grid lines are vertical and don't project meaningfully onto elevation cuts). */
   axis: 'down' | 'front' | 'side';
 }
-
-// `buildSymbolicLineChannels` (the pure annotation/grid merge, issue #3359)
-// lives in `symbolic-line-channels.ts` — split out to keep this file under
-// budget and so it can be unit-tested with no React/store/WASM dependency.
-// Re-exported here so existing consumers keep this import path.
-export {
-  buildSymbolicLineChannels,
-  symbolicLineVertexData,
-  type SymbolicLineChannels,
-  type SymbolicLineChannelsEntry,
-  type SymbolicLineVertices,
-};
 
 // `buildSymbolicRichChannels` (the pure text/fill merge) and the
 // `AnnotationText3D` / `AnnotationFill3D` shapes it produces live in

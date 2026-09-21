@@ -1391,6 +1391,38 @@ fn issue_5045_parsed_circular_curves_stay_stable_for_shallow_and_near_parallel_g
         Err(ifc_lite_landxml::LandXmlProfileEvaluationError::InconsistentCircularCurve),
     );
 
+    let centered = |before: f64, after: f64, length: f64, radius: f64| {
+        format!(
+            r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="A" length="2" staStart="-1"><Profile><ProfAlign name="design"><PVI>-1 {before:.17e}</PVI><CircCurve length="{length:.17e}" radius="{radius:.17e}">0 0</CircCurve><PVI>1 {after:.17e}</PVI></ProfAlign></Profile></Alignment></Alignments></LandXML>"#,
+        )
+    };
+    let subnormal = parse(centered(0.0, 1.0, 7.071067811865473e-309, 1.0e-308).as_bytes())?;
+    for station in [-4.0e-309, 0.0, 4.0e-309] {
+        assert!(subnormal.profiles[0]
+            .evaluate_elevation_at(station)?
+            .is_some());
+    }
+    let invalid_subnormal = parse(centered(0.0, 1.0, 7.0e-309, 1.0e-308).as_bytes())?;
+    assert_eq!(
+        invalid_subnormal.profiles[0].evaluate_elevation_at(0.0),
+        Err(ifc_lite_landxml::LandXmlProfileEvaluationError::InconsistentCircularCurve)
+    );
+
+    let rise_extreme = parse(centered(-1.0e200, 2.0e200, 3.75e-93, 1.0e308).as_bytes())?;
+    let elevation = |station| {
+        rise_extreme.profiles[0]
+            .evaluate_elevation_at(station)
+            .unwrap()
+            .unwrap()
+    };
+    assert!((elevation(0.0) / 4.28932188134525e106 - 1.0).abs() < 1.0e-12);
+    let end = 1.25e-93;
+    let left = elevation(1.24e-93);
+    let at_end = elevation(end);
+    let right = elevation(1.26e-93);
+    assert!((left - at_end).abs() < 3.0e105);
+    assert!((right - at_end).abs() < 3.0e105);
+
     let near_parallel = parse(source(-100.0, 100.000001, 98.51853225045078, 1.0e11).as_bytes())?;
     assert!(near_parallel.profiles[0]
         .evaluate_elevation_at(1000.0)?

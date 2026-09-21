@@ -17,6 +17,10 @@ interface CrossSection { points: Array<readonly [number, number]> }
 export interface PipeComponent { mesh: MeshData; bounds: Bounds3D; sourceId: string; name: string }
 export interface PipeGeometryResult { components: PipeComponent[]; warnings: string[] }
 
+function isPoint(value: Point | string | null): value is Point {
+  return typeof value === 'object' && value !== null;
+}
+
 function point(position: LandXmlPipePosition, elevation = position.elevation?.meters): Point | null {
   return elevation === undefined || !Number.isFinite(elevation)
     ? null
@@ -39,10 +43,16 @@ function section(part: LandXmlPipePart): CrossSection | string {
   return 'Egg pipe cross-section is retained but not rendered';
 }
 
-function endpoint(structure: LandXmlPipeStructure | undefined, pipe: LandXmlPipe): Point | null {
+function endpoint(structure: LandXmlPipeStructure | undefined, pipe: LandXmlPipe): Point | string | null {
   if (!structure) return null;
-  const invert = structure.inverts.find((candidate) => candidate.pipeSourceId === pipe.sourceId);
-  return point(structure.center, invert?.elevation.meters);
+  const inverts = structure.inverts.filter((candidate) => candidate.pipeSourceId === pipe.sourceId);
+  if (inverts.length > 1) {
+    const elevation = inverts[0]!.elevation.meters;
+    if (!inverts.every((candidate) => Math.abs(candidate.elevation.meters - elevation) <= 1e-9)) {
+      return 'endpoint has conflicting authored Invert elevations';
+    }
+  }
+  return point(structure.center, inverts[0]?.elevation.meters);
 }
 
 function addSegment(points: Point[], start: Point, end: Point, shape: CrossSection): void {
@@ -99,16 +109,26 @@ function meshForRoute(route: Point[], shape: CrossSection, expressId: number): {
 export function buildLandXmlPipeComponents(document: LandXmlPipeNetworkDocument | null, firstExpressId: number): PipeGeometryResult {
   const components: PipeComponent[] = [], warnings: string[] = [];
   if (!document) return { components, warnings };
+  const pipeRefusals = new Map<string, string>();
+  const knownPipeIds = new Set<string>();
+  for (const network of document.networks) for (const pipe of network.pipes) knownPipeIds.add(pipe.sourceId);
+  for (const refusal of document.refusals) {
+    if (knownPipeIds.has(refusal.sourceId) && !pipeRefusals.has(refusal.sourceId)) pipeRefusals.set(refusal.sourceId, refusal.message);
+  }
   const refuse = (pipe: LandXmlPipe, reason: string): void => { if (warnings.length < MAX_PIPE_WARNINGS) warnings.push(`Skipped LandXML pipe ${pipe.name} (${pipe.sourceId}): ${reason}`); };
   for (const network of document.networks) {
     const structures = new Map(network.structures.map((structure) => [structure.sourceId, structure]));
     for (const pipe of network.pipes) {
       if (components.length >= MAX_PIPE_MESHES) return { components, warnings };
+      const sourceRefusal = pipeRefusals.get(pipe.sourceId);
+      if (sourceRefusal) { refuse(pipe, `source semantic refusal: ${sourceRefusal}`); continue; }
       const shape = section(pipe.part);
       if (typeof shape === 'string') { refuse(pipe, shape); continue; }
       const start = endpoint(structures.get(pipe.connectivity.startStructureSourceId), pipe), end = endpoint(structures.get(pipe.connectivity.endStructureSourceId), pipe);
       const passThrough = pipe.geometry.kind === 'pass_through' && pipe.geometry.point ? point(pipe.geometry.point) : undefined;
-      if (!start || !end || (pipe.geometry.kind === 'pass_through' && !passThrough)) { refuse(pipe, 'route requires finite northing, easting, and elevation at every endpoint and pass-through Center'); continue; }
+      const endpointError = typeof start === 'string' ? start : typeof end === 'string' ? end : null;
+      if (endpointError) { refuse(pipe, endpointError); continue; }
+      if (!isPoint(start) || !isPoint(end) || (pipe.geometry.kind === 'pass_through' && !passThrough)) { refuse(pipe, 'route requires finite northing, easting, and elevation at every endpoint and pass-through Center'); continue; }
       const built = meshForRoute(passThrough ? [start, passThrough, end] : [start, end], shape, firstExpressId + components.length);
       if (built) components.push({ ...built, sourceId: pipe.sourceId, name: pipe.name }); else refuse(pipe, 'route segments must have non-zero finite length');
     }

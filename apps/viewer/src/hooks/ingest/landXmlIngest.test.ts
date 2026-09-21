@@ -536,4 +536,31 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     const elevations = Array.from(mesh.positions).filter((_, index) => index % 3 === 1).map((value) => worldCoordinate(value, mesh.origin, 1));
     assert.ok(Math.min(...elevations) < 2.1 && Math.max(...elevations) > 3.9, 'the endpoint route follows the per-pipe invert elevations');
   });
+
+  it('refuses only a pipe with conflicting endpoint inverts and exposes its real-WASM diagnostic (#5047)', async () => {
+    const pipes = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/><Invert refPipe="bad" flowDir="out" elev="4"/><Invert refPipe="bad" flowDir="out" elev="40"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="C"><Center>0 10 0</Center><CircStruct diameter="1"/></Struct><Struct name="D"><Center>10 10 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="bad" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe><Pipe name="good" refStart="C" refEnd="D"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    const parsed = await parseDocument(pipes);
+    const badPipe = parsed.pipeNetworks?.networks[0]?.pipes.find((pipe) => pipe.name === 'bad');
+    assert.ok(badPipe);
+    const refusal = parsed.pipeNetworks?.refusals.find((item) => item.sourceId === badPipe.sourceId);
+    assert.ok(refusal);
+    assert.equal(refusal.message, 'conflicting authored endpoint Invert elevations');
+    assert.ok(refusal.code.length > 0);
+    assert.equal(refusal.sourcePath, badPipe.sourcePath);
+    const viewer = await parseViewer(bytes(pipes));
+    assert.equal(viewer.geometryResult.meshes.length, 1, 'the valid no-invert sibling retains legitimate Center fallback');
+    assert.ok(viewer.warnings.some((warning) => warning.includes(`(${badPipe.sourceId})`) && warning.includes(refusal.code) && warning.includes(refusal.sourcePath)));
+    assert.ok(viewer.warnings.some((warning) => warning.includes('bad') && warning.includes('source semantic refusal')));
+  });
+
+  it('does not fall back to a structure Center after an invalid authored endpoint invert (#5047)', async () => {
+    const pipes = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/><Invert refPipe="bad" flowDir="out" elev="bad"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="C"><Center>0 10 0</Center><CircStruct diameter="1"/></Struct><Struct name="D"><Center>10 10 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="bad" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe><Pipe name="good" refStart="C" refEnd="D"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    const parsed = await parseDocument(pipes);
+    const badPipe = parsed.pipeNetworks?.networks[0]?.pipes.find((pipe) => pipe.name === 'bad');
+    assert.ok(badPipe);
+    assert.ok(parsed.pipeNetworks?.refusals.some((item) => item.sourceId === badPipe.sourceId && item.message === 'an authored endpoint Invert is invalid'));
+    const viewer = await parseViewer(bytes(pipes));
+    assert.equal(viewer.geometryResult.meshes.length, 1, 'the bad pipe cannot silently route at Center elevation zero');
+    assert.ok(viewer.warnings.some((warning) => warning.includes('bad') && warning.includes('an authored endpoint Invert is invalid')));
+  });
 });

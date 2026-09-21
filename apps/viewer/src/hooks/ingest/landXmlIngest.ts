@@ -7,9 +7,9 @@ import { createCoordinateInfo, type Bounds3D } from '../../utils/localParsingUti
 import { MAX_RENDER_FRAME_ORIGIN_METRES, placeComponentsInRenderFrame } from './landXmlRenderFrame.js';
 import type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
 import { buildLandXmlPipeComponents } from './landXmlPipeGeometry.js';
+import { pipeRefusalWarnings } from './landXmlPipeWarnings.js';
 export type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
 export type LandXmlSourceBuffer = ArrayBuffer | SharedArrayBuffer;
-
 export interface LandXmlGeometryPayload {
   geometryResult: GeometryResult;
   schemaVersion: 'IFC4';
@@ -18,7 +18,6 @@ export interface LandXmlGeometryPayload {
   /** Durable source records, independent of all mesh/component partitioning. */
   semanticDocument: LandXmlTinDocument;
 }
-
 interface WorldPoint {
   x: number;
   y: number;
@@ -272,7 +271,7 @@ interface SurfaceComponent { mesh: MeshData; bounds: Bounds3D; surfaceName: stri
 
 /** Adapt Rust-parsed LandXML 1.2 TIN semantics into the viewer's mesh payload. */
 export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometryPayload {
-  const warnings = [...parsed.warnings];
+  const warnings = [...parsed.warnings, ...pipeRefusalWarnings(parsed)];
   const renderableSurfaces = parsed.surfaces.filter((surface) => (
     surface.renderState === 'rendered' && surface.faceVisibility.some(Boolean)
   ));

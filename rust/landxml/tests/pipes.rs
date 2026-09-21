@@ -580,3 +580,33 @@ fn issue_5047_does_not_adopt_feature_through_unknown_wrapper() {
     assert_eq!(parsed.features[0].properties.get("direct"), Some(&"yes".to_owned()));
     assert!(!parsed.features.iter().any(|feature| feature.properties.contains_key("foreign")));
 }
+
+#[test]
+fn issue_5047_refuses_ambiguous_or_invalid_endpoint_inverts_per_pipe() {
+    let base = document(
+        r#"<Metric linearUnit="meter"/>"#,
+        r#"<Pipe name="P-1" refStart="MH-1" refEnd="MH-2"><CircPipe diameter="1"/></Pipe>"#,
+    );
+    let conflicting = base.replace(
+        r#"<Invert refPipe="P-1" flowDir="out" elev="9.5"/>"#,
+        r#"<Invert refPipe="P-1" flowDir="out" elev="1000000000000"/><Invert refPipe="P-1" flowDir="out" elev="1000000000001"/>"#,
+    );
+    let parsed = parse_landxml_pipe_networks(conflicting.as_bytes()).expect("conflict stays local");
+    let pipe = &parsed.networks[0].pipes[0];
+    assert_eq!(parsed.networks[0].structures[0].inverts.len(), 2);
+    assert!(parsed.refusals.iter().any(|refusal| {
+        refusal.source_id == pipe.source_id
+            && refusal.source_path == pipe.source_path
+            && refusal.message == "conflicting authored endpoint Invert elevations"
+    }));
+
+    let invalid = base.replace(r#"elev="9.5""#, r#"elev="bad""#);
+    let parsed = parse_landxml_pipe_networks(invalid.as_bytes()).expect("bad invert stays local");
+    let pipe = &parsed.networks[0].pipes[0];
+    assert!(parsed.networks[0].structures[0].inverts.is_empty());
+    assert!(parsed.refusals.iter().any(|refusal| {
+        refusal.source_id == pipe.source_id
+            && refusal.source_path == pipe.source_path
+            && refusal.message == "an authored endpoint Invert is invalid"
+    }));
+}

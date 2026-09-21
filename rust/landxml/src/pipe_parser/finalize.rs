@@ -59,6 +59,10 @@ impl PipeParser<'_> {
             .iter()
             .map(|pipe| (pipe.source_id.clone(), pipe.connectivity.clone()))
             .collect::<HashMap<_, _>>();
+        let pipe_paths = pipes
+            .iter()
+            .map(|pipe| (pipe.source_id.clone(), pipe.source_path.clone()))
+            .collect::<HashMap<_, _>>();
         let mut structures = structures;
         for (structure, (inverts, units)) in structures.iter_mut().zip(structure_inputs) {
             structure.inverts = self.convert_inverts(
@@ -67,6 +71,7 @@ impl PipeParser<'_> {
                 &pipe_names,
                 &structure.source_id,
                 &pipe_connectivity,
+                &pipe_paths,
             )?;
         }
         let structure_units = self.convert_units(
@@ -307,12 +312,14 @@ impl PipeParser<'_> {
         pipes: &HashMap<String, LandXmlSourceId>,
         structure_source_id: &LandXmlSourceId,
         pipe_connectivity: &HashMap<LandXmlSourceId, LandXmlPipeConnectivity>,
+        pipe_paths: &HashMap<LandXmlSourceId, String>,
     ) -> Result<Vec<LandXmlPipeInvert>> {
         let mut inverts = Vec::new();
         for input in inputs {
             self.check_cancel_and_work(1)?;
             let source_id = input.source_id.clone();
             let source_path = input.source_path.clone();
+            let pipe_name = input.pipe_ref.clone();
             self.reserve_reference()?;
             let result = (|| {
                 let pipe_source_id =
@@ -351,10 +358,87 @@ impl PipeParser<'_> {
             })();
             match result {
                 Ok(invert) => inverts.push(invert),
-                Err(message) => self.refuse(source_id, source_path, &message)?,
+                Err(message) => {
+                    self.refuse(source_id, source_path, &message)?;
+                    self.refuse_affected_pipe_for_invert(
+                        pipe_name.as_deref(),
+                        pipes,
+                        structure_source_id,
+                        pipe_connectivity,
+                        pipe_paths,
+                        "an authored endpoint Invert is invalid",
+                    )?;
+                }
             }
         }
-        Ok(inverts)
+        let mut accepted = Vec::new();
+        for invert in inverts {
+            if let Some(existing) = accepted
+                .iter()
+                .find(|existing: &&LandXmlPipeInvert| {
+                    existing.pipe_source_id == invert.pipe_source_id
+                        && existing.flow_direction == invert.flow_direction
+                })
+            {
+                if elevations_match(existing.elevation.meters, invert.elevation.meters) {
+                    continue;
+                }
+                self.refuse_pipe_once(
+                    invert.pipe_source_id.clone(),
+                    pipe_paths
+                        .get(&invert.pipe_source_id)
+                        .expect("converted Invert pipe has a source path")
+                        .clone(),
+                    "conflicting authored endpoint Invert elevations",
+                )?;
+            }
+            accepted.push(invert);
+        }
+        Ok(accepted)
+    }
+
+    fn refuse_affected_pipe_for_invert(
+        &mut self,
+        pipe_name: Option<&str>,
+        pipes: &HashMap<String, LandXmlSourceId>,
+        structure_source_id: &LandXmlSourceId,
+        pipe_connectivity: &HashMap<LandXmlSourceId, LandXmlPipeConnectivity>,
+        pipe_paths: &HashMap<LandXmlSourceId, String>,
+        message: &str,
+    ) -> Result<()> {
+        let Some(pipe_source_id) = pipe_name.and_then(|name| pipes.get(name)) else {
+            return Ok(());
+        };
+        let Some(connectivity) = pipe_connectivity.get(pipe_source_id) else {
+            return Ok(());
+        };
+        if connectivity.start_structure_source_id != *structure_source_id
+            && connectivity.end_structure_source_id != *structure_source_id
+        {
+            return Ok(());
+        }
+        self.refuse_pipe_once(
+            pipe_source_id.clone(),
+            pipe_paths
+                .get(pipe_source_id)
+                .expect("available pipe connectivity has a source path")
+                .clone(),
+            message,
+        )
+    }
+
+    fn refuse_pipe_once(
+        &mut self,
+        source_id: LandXmlSourceId,
+        source_path: String,
+        message: &str,
+    ) -> Result<()> {
+        if self.refusals.iter().any(|refusal| {
+            refusal.source_id == source_id && refusal.message == message
+        }) {
+            return Ok(());
+        }
+        self.refuse(source_id, source_path, message)
     }
 
     fn refuse(
@@ -382,4 +466,12 @@ impl PipeParser<'_> {
             "pipe reference",
         )
     }
+}
+
+/// Equality is assessed in metres with a 1 nm authored-data tolerance plus a
+/// handful of ULPs for large finite values; it never grows as an arbitrary
+/// relative engineering tolerance.
+fn elevations_match(left: f64, right: f64) -> bool {
+    let ulps = left.abs().max(right.abs()).max(1.0) * f64::EPSILON * 8.0;
+    (left - right).abs() <= 1e-9_f64.max(ulps)
 }

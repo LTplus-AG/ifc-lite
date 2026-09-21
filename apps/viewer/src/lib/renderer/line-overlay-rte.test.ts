@@ -4,18 +4,18 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { anchorWorldLineVertices } from './line-overlay-rte.js';
+import { anchorWorldLineVertices, MAX_ANCHORED_LINE_EXTENT_METRES, rendererLineVertexData } from './line-overlay-rte.js';
 
-describe('anchorWorldLineVertices', () => {
-  it('keeps a national-grid centimetre residual local for every viewer producer (#5049)', () => {
-    const lines = anchorWorldLineVertices([
-      5_000_000.015625, 20, -4,
-      5_000_000.025625, 20, -4,
-    ]);
-
-    assert.ok(!(lines instanceof Float32Array));
-    if (lines instanceof Float32Array) return;
-    assert.equal(lines.origin[0], 5_000_000.015625);
-    assert.ok(Math.abs(lines.localVertices[3] - 0.01) < 1e-8);
+describe('anchored line overlay bounds (#5049)', () => {
+  it('refuses an unpartitioned 9km channel rather than narrowing it into f32', () => {
+    const previous = console.warn;
+    console.warn = () => {};
+    try {
+      const payload = anchorWorldLineVertices([5_000_000.125, 0, 0, 5_009_000.125, 0, 0]);
+      assert.equal(rendererLineVertexData(payload).length, 0);
+    } finally {
+      console.warn = previous;
+    }
+    assert.equal(MAX_ANCHORED_LINE_EXTENT_METRES, 8_192);
   });
 });

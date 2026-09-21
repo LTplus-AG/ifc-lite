@@ -54,6 +54,9 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
     useViewerStore.setState({ models: new Map([...(federated ? [['other', fixtureModel('other')] as const] : []), ['annotation', model]]), activeModelId: 'annotation',
       geometryResult: geometry, mutationViews: new Map([['annotation', view]]), storeEditors: new Map([['annotation', editor]]),
       undoStacks: new Map(), redoStacks: new Map(), dirtyModels: new Set(), mutationVersion: 0, collabRoomId: null });
+    const priorOverlay = editor.addEntity('IfcColourRgb', [null, 1, 0, 0]);
+    assert.equal(priorOverlay.expressId, 54);
+    assert.throws(() => federationRegistry.toGlobalId('annotation', priorOverlay.expressId), /not published/);
     const asset = await appearanceAssets.add(png, { owner: { kind: 'draft', id: 'test' } });
     const native = JSON.parse(new TextDecoder().decode(api.planAnnotationPlane(source, JSON.stringify({
       schema: 'IFC4', sourceRevision: appearanceRevision('annotation'), nextExpressId: view.peekNextExpressId(),
@@ -82,8 +85,11 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
     const allocationBefore = view.peekNextExpressId();
     const failingRenderer = { ...renderer, prepareAuthoredOwner() { throw new Error('injected GPU preparation failure'); } } as unknown as Renderer;
     await assert.rejects(commitTexturedProduct('annotation', asset.id, { ...native, objectId: native.annotationId }, containerId, failingRenderer, captureAppearanceSource(view)), /injected GPU/);
-    assert.equal(view.getNewEntities().length, 0);
+    assert.equal(view.getNewEntities().length, 1);
+    assert.equal(view.getNewEntity(priorOverlay.expressId)?.expressId, priorOverlay.expressId);
     assert.equal(view.peekNextExpressId(), allocationBefore);
+    assert.equal(federationRegistry.toGlobalId('annotation', priorOverlay.expressId), idOffset + priorOverlay.expressId,
+      'the canonical resolver reconciles only the existing committed overlay prefix');
     assert.throws(
       () => federationRegistry.toGlobalId('annotation', native.annotationId),
       /not published/,
@@ -96,7 +102,8 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
       return { commit() { throw new Error('injected GPU commit failure'); }, dispose() { staged.dispose(); } };
     } } as unknown as Renderer;
     await assert.rejects(commitTexturedProduct('annotation', asset.id, { ...native, objectId: native.annotationId }, containerId, failingCommitRenderer, captureAppearanceSource(view)), /injected GPU commit/);
-    assert.equal(view.getNewEntities().length, 0);
+    assert.equal(view.getNewEntities().length, 1);
+    assert.equal(view.getNewEntity(priorOverlay.expressId)?.expressId, priorOverlay.expressId);
     assert.equal(view.peekNextExpressId(), allocationBefore);
     assert.throws(
       () => federationRegistry.toGlobalId('annotation', native.annotationId),

@@ -59,6 +59,12 @@ export async function commitAuthoredProduct(modelId: string, assetIds: readonly 
     preparation = await prepareAppearanceEntities(state.storeEditors.get(modelId) ?? new StoreEditor(data, view), view, plan, appearanceRevision(modelId), options);
     validate();
     const { prepared, applied } = preparation;
+    const firstCreatedId = applied.created[0]?.expressId;
+    if (!Number.isSafeInteger(firstCreatedId) || firstCreatedId <= 0) throw new Error('The authored overlay has no valid first ID.');
+    // Existing mutation commands can have committed live rows that no caller
+    // has resolved through federation yet. Reconcile only their prefix via
+    // the canonical state path; detached `prepared` rows are not visible here.
+    state.toGlobalId(modelId, firstCreatedId - 1);
     const toStagedGlobalId = (expressId: number) => previewPreparedOverlayGlobalId(
       federationRegistry, state.models, modelId, applied.created, expressId,
     );

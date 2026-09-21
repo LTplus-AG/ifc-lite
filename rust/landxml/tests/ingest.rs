@@ -275,6 +275,42 @@ fn issue_5043_enforces_document_wide_generated_face_and_reference_limits() {
     );
 }
 
+#[test]
+fn issue_5043_rejects_unaffordable_split_elevation_work_before_the_quadratic_scan() {
+    // 9,001 vertices × 9,000 constrained segments is more than 81 million
+    // elevation comparisons. A two-million-work budget must decline this at
+    // the preflight estimate, not spend seconds in the uncharged scan before
+    // the CDT can observe its work callback.
+    let points = (0..9_001)
+        .map(|index| format!("<P id=\"{}\">{index} 0 0</P>", index + 1))
+        .collect::<String>();
+    let breaklines = (0..9_000)
+        .map(|index| format!(
+            "<Breakline brkType=\"standard\"><PntList3D>{index} 0 0 {} 0 0</PntList3D></Breakline>",
+            index + 1,
+        ))
+        .collect::<String>();
+    let source = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts>{points}</Pnts><Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></Boundary></Boundaries><Breaklines>{breaklines}</Breaklines></Definition></Surface></Surfaces></LandXML>"#,
+    );
+    let parsed = parse_landxml_tin_with_cancel(
+        source.as_bytes(),
+        &LandXmlLimits {
+            max_work: 2_000_000,
+            ..LandXmlLimits::default()
+        },
+        None,
+    )
+    .expect("preflight work refusal preserves the source document");
+    assert_eq!(
+        parsed.surfaces[0]
+            .terrain_diagnostic
+            .as_ref()
+            .map(|value| value.code),
+        Some(LandXmlTerrainDiagnosticCode::WorkLimitExceeded),
+    );
+}
+
 impl CancelsAfterPolls {
     fn new(cancel_after: usize) -> Self {
         Self {

@@ -3,6 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use crate::{LandXmlTerrainDiagnostic, LandXmlTerrainDiagnosticCode as TerrainCode};
+use ifc_lite_geometry::TerrainCdtError;
+
+/// A source-elevation conflict is a retained-data diagnostic; a progress
+/// failure is an operational result which must retain its cancellation/work
+/// meaning for the terrain adapter.
+pub(super) enum SplitElevationValidationError {
+    Diagnostic(LandXmlTerrainDiagnostic),
+    Progress(TerrainCdtError),
+}
 
 fn point_on_segment(point: [f64; 2], a: [f64; 2], b: [f64; 2]) -> bool {
     geometry_predicates::orient2d(a, b, point) == 0.0
@@ -17,7 +26,8 @@ fn point_on_segment(point: [f64; 2], a: [f64; 2], b: [f64; 2]) -> bool {
 pub(super) fn validate_split_elevations(
     vertices: &[(f64, f64, f64)],
     segments: &[(usize, usize)],
-) -> Result<(), LandXmlTerrainDiagnostic> {
+    progress: &mut dyn FnMut() -> Result<(), TerrainCdtError>,
+) -> Result<(), SplitElevationValidationError> {
     for &(a, b) in segments {
         let (start_northing, start_easting, start_elevation) = vertices[a];
         let (end_northing, end_easting, end_elevation) = vertices[b];
@@ -27,6 +37,7 @@ pub(super) fn validate_split_elevations(
         let dy = end_xy[1] - start_xy[1];
         let length_squared = dx * dx + dy * dy;
         for (index, &(northing, easting, elevation)) in vertices.iter().enumerate() {
+            progress().map_err(SplitElevationValidationError::Progress)?;
             if index == a || index == b || !point_on_segment([easting, northing], start_xy, end_xy)
             {
                 continue;
@@ -35,10 +46,10 @@ pub(super) fn validate_split_elevations(
                 / length_squared;
             let expected = start_elevation + (end_elevation - start_elevation) * t;
             if elevation != expected {
-                return Err(LandXmlTerrainDiagnostic {
+                return Err(SplitElevationValidationError::Diagnostic(LandXmlTerrainDiagnostic {
                     code: TerrainCode::ConflictingElevation,
                     message: "a collinear constraint vertex has an elevation inconsistent with its segment".to_owned(),
-                });
+                }));
             }
         }
     }

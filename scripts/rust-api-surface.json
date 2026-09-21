@@ -177,7 +177,7 @@
     "SubMeshCollection": "struct { ids_are_materials: bool; sub_meshes: Vec<SubMesh> }",
     "SurfaceOfLinearExtrusionProcessor": "struct (unit)",
     "SweptDiskSolidProcessor": "struct {  }",
-    "TerrainCdtError": "enum { ConstraintsUnrecoverable; IntersectingConstraints; InvalidInput }",
+    "TerrainCdtError": "enum { Cancelled; ConstraintsUnrecoverable; IntersectingConstraints; InvalidInput; WorkLimitExceeded }",
     "TerrainCdtMesh": "struct { indices: Vec<usize>; points: Vec<[f64; 2]> }",
     "TessellationQuality": "enum { High; Highest; Low; Lowest; Medium }",
     "TextureAttachment": "struct { source: TextureSource; texture_id: u32 }",
@@ -252,6 +252,7 @@
     "take_prism_stats": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "triangulate_polygon": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "triangulate_terrain_pslg": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "triangulate_terrain_pslg_with_progress": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "verify_recomposition": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)"
   },
   "ifc-lite-processing": {

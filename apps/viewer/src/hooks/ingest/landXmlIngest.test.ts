@@ -116,6 +116,22 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.match(parsed.warnings[0], /Unsupported Grid/);
   });
 
+  it('retains canonical terrain contributor source IDs from the real WASM bridge (#5043)', async () => {
+    const faceless = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+      <Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts>
+        <P id="1">0 0 0</P><P id="2">0 0 0</P><P id="3">0 10 0</P><P id="4">10 10 0</P><P id="5">10 0 0</P>
+      </Pnts><Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></Boundary></Boundaries></Definition></Surface></Surfaces></LandXML>`;
+    const parsed = await parseDocument(faceless);
+    const canonical = parsed.surfaces[0].canonicalVertices?.find(
+      (vertex) => vertex.northing === 0 && vertex.easting === 0,
+    );
+    assert.deepEqual(canonical?.contributorSourceIds, [
+      'landxml:surface:1:point:1',
+      'landxml:surface:1:point:2',
+      'landxml:surface:1:boundary:1:point:1',
+    ]);
+  });
+
   it('keeps source selection stable after geometry is partitioned (#5042)', async () => {
     const parsed = await parseDocument(LANDXML.replace(
       '</Faces>',

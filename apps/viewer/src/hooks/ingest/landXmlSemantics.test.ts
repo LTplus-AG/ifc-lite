@@ -14,6 +14,7 @@ function document(sourceId: string, meshExpressId = 1): LandXmlTinDocument {
     units: { linearUnit: 'meter', elevationUnit: 'meter', linearScaleToMeters: 1, elevationScaleToMeters: 1 },
     surfaces: [{ sourceId: 'landxml:surface:1', ordinal: 1, sourcePath: 'LandXML/Surfaces/Surface[1]', properties: { name: 'EG' }, definitionProperties: { surfType: 'TIN' }, name: 'EG', kind: 'tin', renderState: 'rendered',
       points: [{ sourceId: 'landxml:surface:1:point:1', id: '1', northing: 0, easting: 0, elevation: 0 }],
+      canonicalVertices: [{ id: '1', northing: 0, easting: 0, elevation: 0, contributorSourceIds: ['landxml:surface:1:point:1'] }],
       sourceDataPoints: [{ sourceId: 'landxml:surface:1:source-point:1', ordinal: 1, sourcePath: 'LandXML/Surfaces/Surface[1]/SourceData/PntList3D', coordinateDimension: 3, coordinates: [1, 2, 3] }],
       faces: [['1', '1', '1']], faceSourceIds: [sourceId], faceVisibility: [true], hiddenFaceCount: 0,
       boundaries: [{ sourceId: 'landxml:surface:1:boundary:1', ordinal: 1, name: 'Outer', kind: 'outer', sourcePath: 'LandXML/Surfaces/Surface[1]/SourceData/Boundaries/Boundary/PntList3D', properties: { name: 'Outer', bndType: 'outer' }, coordinateDimension: 3, points: [[0, 0, 0], [1, 0, 0]], pointSourceIds: ['landxml:surface:1:boundary:1:point:1', 'landxml:surface:1:boundary:1:point:2'] }], breaklines: [], contours: [],

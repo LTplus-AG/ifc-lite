@@ -28,13 +28,25 @@ describe('@ifc-lite/wasm constrained LandXML terrain (#5043)', () => {
     initSync(readFileSync(wasmPath));
     const api = new IfcAPI();
     try {
-      const result = api.parseLandXmlTinBytes(bytes.encode(document()));
+      const source = document().replace(
+        '<P id="2">0 10 0</P>',
+        '<P id="5">0 0 0</P><P id="2">0 10 0</P>',
+      );
+      const result = api.parseLandXmlTinBytes(bytes.encode(source));
       const surface = result.surfaces[0];
       assert.equal(surface.topology_origin, 'constrained_triangulation');
       assert.ok(surface.faces.length >= 2, 'the square has generated terrain faces');
       assert.equal(surface.faces.length, surface.face_source_ids.length);
       assert.equal(surface.canonical_vertices.length, 4);
       assert.ok(surface.canonical_vertices.every((vertex) => vertex.contributor_source_ids.length >= 1));
+      assert.deepEqual(
+        surface.canonical_vertices.find((vertex) => vertex.northing === 0 && vertex.easting === 0).contributor_source_ids,
+        [
+          'landxml:surface:1:point:1',
+          'landxml:surface:1:point:5',
+          'landxml:surface:1:boundary:1:point:1',
+        ],
+      );
     } finally {
       api.free?.();
     }

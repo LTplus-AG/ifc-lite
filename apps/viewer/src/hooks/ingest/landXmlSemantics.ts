@@ -28,6 +28,8 @@ export interface LandXmlTinSurface {
   topologyOrigin?: 'authored_faces' | 'constrained_triangulation' | 'preserved_only';
   terrainDiagnostic?: { code: string; message: string } | null;
   points: Array<{ sourceId: string; id: string; northing: number; easting: number; elevation: number }>;
+  /** Canonical terrain vertices, including every coincident source record that contributed to each one. Absent in persisted pre-triangulation documents. */
+  canonicalVertices?: Array<{ id: string; northing: number; easting: number; elevation: number; contributorSourceIds: string[] }>;
   sourceDataPoints: Array<{ sourceId: string; ordinal: number; sourcePath: string; coordinateDimension: 2 | 3; coordinates: number[] }>;
   faces: Array<readonly [string, string, string]>;
   faceSourceIds: string[];

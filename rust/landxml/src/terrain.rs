@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use crate::terrain_validation::validate_split_elevations;
+use crate::terrain_validation::{validate_split_elevations, SplitElevationValidationError};
 use crate::{
     xml::error, LandXmlCancellation, LandXmlCanonicalVertex, LandXmlDiagnosticCode as Code,
     LandXmlError, LandXmlLimits, LandXmlPoint, LandXmlPolyline, LandXmlSourceId,
@@ -172,6 +172,16 @@ fn point_in_ring(point: [f64; 2], ring: &[usize], vertices: &[Vertex]) -> bool {
     inside
 }
 
+/// Refuse a known-unaffordable quadratic scan before entering it. The scan
+/// itself still charges/polls every comparison: this only avoids spending a
+/// whole cancellation quantum proving a limit we can calculate up front.
+fn terrain_work_fits(limits: &LandXmlLimits, work_seen: usize, work: usize) -> bool {
+    work_seen
+        .checked_add(work)
+        .and_then(|value| value.checked_add(64))
+        .is_some_and(|value| value < limits.max_work)
+}
+
 /// Add generated faces only when every source rule can be proven as a PSLG.
 pub(super) fn adapt_faceless_tin(
     surface: &mut super::parser::state::SurfaceBuilder,
@@ -284,6 +294,28 @@ pub(super) fn adapt_faceless_tin(
         }
         segments.extend(line.windows(2).map(|pair| (pair[0], pair[1])));
     }
+    // This is segment × vertex, before the CDT's own progress callback can
+    // run. Include the two linear coordinate buffers too, then reject an
+    // impossible budget now; otherwise validate with the same callback so
+    // each comparison remains cancellable and charged.
+    if cancelled.is_some_and(LandXmlCancellation::is_cancelled) {
+        return Err(error(
+            Code::Cancelled,
+            "LandXML terrain triangulation cancelled",
+        ));
+    }
+    let terrain_preprocessing_work = segments
+        .len()
+        .checked_mul(vertices.len())
+        .and_then(|work| vertices.len().checked_mul(2).and_then(|linear| work.checked_add(linear)));
+    if terrain_preprocessing_work
+        .is_none_or(|work| !terrain_work_fits(limits, *work_seen, work))
+    {
+        return Ok(Some(diagnostic(
+            TerrainCode::WorkLimitExceeded,
+            "terrain constraint work limit exceeded",
+        )));
+    }
     let mut charge_work = || -> Result<(), TerrainCdtError> {
         if cancelled.is_some_and(LandXmlCancellation::is_cancelled) {
             return Err(TerrainCdtError::Cancelled);
@@ -295,17 +327,64 @@ pub(super) fn adapt_faceless_tin(
         *work_seen += 1;
         Ok(())
     };
-    let vertex_elevations: Vec<_> = vertices
-        .iter()
-        .map(|vertex| (vertex.northing, vertex.easting, vertex.elevation))
-        .collect();
-    if let Err(value) = validate_split_elevations(&vertex_elevations, &segments) {
-        return Ok(Some(value));
+    let mut vertex_elevations = Vec::with_capacity(vertices.len());
+    for vertex in &vertices {
+        match charge_work() {
+            Ok(()) => vertex_elevations.push((vertex.northing, vertex.easting, vertex.elevation)),
+            Err(TerrainCdtError::WorkLimitExceeded) => {
+                return Ok(Some(diagnostic(
+                    TerrainCode::WorkLimitExceeded,
+                    "terrain constraint work limit exceeded",
+                )))
+            }
+            Err(TerrainCdtError::Cancelled) => {
+                return Err(error(
+                    Code::Cancelled,
+                    "LandXML terrain triangulation cancelled",
+                ))
+            }
+            Err(_) => unreachable!("terrain work callback only charges or stops"),
+        }
     }
-    let points: Vec<[f64; 2]> = vertices
-        .iter()
-        .map(|point| [point.easting, point.northing])
-        .collect();
+    if let Err(value) = validate_split_elevations(&vertex_elevations, &segments, &mut charge_work) {
+        match value {
+            SplitElevationValidationError::Diagnostic(value) => return Ok(Some(value)),
+            SplitElevationValidationError::Progress(TerrainCdtError::WorkLimitExceeded) => {
+                return Ok(Some(diagnostic(
+                    TerrainCode::WorkLimitExceeded,
+                    "terrain constraint work limit exceeded",
+                )))
+            }
+            SplitElevationValidationError::Progress(TerrainCdtError::Cancelled) => {
+                return Err(error(
+                    Code::Cancelled,
+                    "LandXML terrain triangulation cancelled",
+                ))
+            }
+            SplitElevationValidationError::Progress(_) => {
+                unreachable!("terrain work callback only charges or stops")
+            }
+        }
+    }
+    let mut points = Vec::with_capacity(vertices.len());
+    for point in &vertices {
+        match charge_work() {
+            Ok(()) => points.push([point.easting, point.northing]),
+            Err(TerrainCdtError::WorkLimitExceeded) => {
+                return Ok(Some(diagnostic(
+                    TerrainCode::WorkLimitExceeded,
+                    "terrain constraint work limit exceeded",
+                )))
+            }
+            Err(TerrainCdtError::Cancelled) => {
+                return Err(error(
+                    Code::Cancelled,
+                    "LandXML terrain triangulation cancelled",
+                ))
+            }
+            Err(_) => unreachable!("terrain work callback only charges or stops"),
+        }
+    }
     let mesh = match triangulate_terrain_pslg_with_progress(&points, &segments, &mut charge_work) {
         Ok(mesh) => mesh,
         Err(TerrainCdtError::IntersectingConstraints) => {

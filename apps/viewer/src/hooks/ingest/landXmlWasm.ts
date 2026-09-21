@@ -114,6 +114,16 @@ function surface(value: unknown): LandXmlTinSurface {
         elevation: finite(parsed.elevation, `point ${index} elevation`),
       };
     }),
+    canonicalVertices: array(raw.canonical_vertices, 'canonical terrain vertices').map((vertex, index) => {
+      const parsed = record(vertex, `canonical terrain vertex ${index}`);
+      return {
+        id: string(parsed.id, `canonical terrain vertex ${index} id`),
+        northing: finite(parsed.northing, `canonical terrain vertex ${index} northing`),
+        easting: finite(parsed.easting, `canonical terrain vertex ${index} easting`),
+        elevation: finite(parsed.elevation, `canonical terrain vertex ${index} elevation`),
+        contributorSourceIds: strings(parsed.contributor_source_ids, `canonical terrain vertex ${index} contributor source ids`),
+      };
+    }),
     sourceDataPoints: array(raw.source_data_points, 'source data points').map((point, index) => {
       const parsed = record(point, `source data point ${index}`);
       const coordinateDimension = finite(parsed.coordinate_dimension, `source data point ${index} dimension`);

@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcAPI } from '@ifc-lite/wasm';
-import { parseLandXmlViewerModelAsync } from './landXmlViewerModel.js';
+import { parseLandXmlViewerModelAsync, parseLandXmlViewerModelFromBlobAsync } from './landXmlViewerModel.js';
 import { connectedFaceComponents } from './landXmlIngest.js';
 import { buildLandXmlPipeComponents } from './landXmlPipeGeometry.js';
 import { findLandXmlSourceRecord, type LandXmlPipeNetworkDocument } from './landXmlSemantics.js';
@@ -157,6 +157,20 @@ describe('LandXML content dispatch (#5041)', () => {
 });
 
 describe('LandXML 1.2 TIN ingest (#4937)', () => {
+  it('matches direct geometry through the bounded Blob cursor (#5050)', async () => {
+    const direct = await parseViewer(bytes(LANDXML));
+    const streamed = await parseLandXmlViewerModelFromBlobAsync(new Blob([LANDXML]));
+    assert.deepEqual(
+      streamed.geometryResult.meshes.map((mesh) => ({
+        expressId: mesh.expressId, positions: Array.from(mesh.positions), indices: Array.from(mesh.indices), origin: mesh.origin,
+      })),
+      direct.geometryResult.meshes.map((mesh) => ({
+        expressId: mesh.expressId, positions: Array.from(mesh.positions), indices: Array.from(mesh.indices), origin: mesh.origin,
+      })),
+    );
+    assert.deepEqual(streamed.semanticDocument.plan, direct.semanticDocument.plan);
+  });
+
   it('loads persisted pre-triangulation surface records without new optional fields (#5043)', async () => {
     await initLandXmlWasm();
     const api = new IfcAPI();

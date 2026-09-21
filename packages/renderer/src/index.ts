@@ -141,7 +141,7 @@ import { Picker } from './picker.js';
 import { reportableItemId } from './pick-resolve.js';
 import { MathUtils, viewBasis } from './math.js';
 import type { Vec3 as Vec3Type } from './types.js';
-import { FrustumUtils } from '@ifc-lite/spatial';
+import { isRteAabbVisible, rteFrustum, sourceFrustumFromRte } from './rte-frustum.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type {
     RenderOptions,
@@ -1742,6 +1742,12 @@ export class Renderer {
         const device = this.device.getDevice();
         const viewProj = this.camera.getViewProjMatrix().m;
         const relativeToEyeFrame = this.camera.getRelativeToEyeFrame();
+        // Culling must share the translation-free RTE frame used by every GPU
+        // pass. `sourceFrustum` is the f64 plane equivalent for the immutable
+        // source-space BVH; render-time boxes stay eye-relative below.
+        const rteCullFrustum = rteFrustum(relativeToEyeFrame);
+        const rteCullCamera = relativeToEyeFrame.getCameraWorld();
+        const sourceCullFrustum = sourceFrustumFromRte(rteCullFrustum, rteCullCamera);
         // Frame stats (issue #1682): geometry draw calls + per-frame cull
         // outcomes, snapshotted into _lastFrameStats before queue.submit.
         let frameDrawCalls = 0;
@@ -1911,8 +1917,7 @@ export class Renderer {
         // Frustum culling (if enabled and spatial index available)
         if (options.enableFrustumCulling && options.spatialIndex) {
             try {
-                const frustum = FrustumUtils.fromViewProjMatrix(viewProj);
-                const visibleIds = new Set(options.spatialIndex.queryFrustum(frustum));
+                const visibleIds = new Set(options.spatialIndex.queryFrustum(sourceCullFrustum));
                 meshes = meshes.filter(mesh => visibleIds.has(mesh.expressId));
             } catch (error) {
                 // Fallback: render all meshes if frustum culling fails
@@ -2374,7 +2379,7 @@ export class Renderer {
             if (allBatchedMeshes.length > 0 || this.scene.getTexturedMeshes().length > 0 || this.scene.getInstancedTemplates().length > 0) {
                 // Frustum culling for batched meshes - skip entire batches outside the camera view
                 // This is the primary performance optimization for large models (200K+ meshes)
-                const frustum = FrustumUtils.fromViewProjMatrix(viewProj);
+                const frustum = rteCullFrustum;
 
                 // Contribution culling (issue #1682): skip batches whose world
                 // AABB projects below a pixel threshold. Disabled unless the
@@ -2468,7 +2473,7 @@ export class Renderer {
                     // Frustum culling: skip batches entirely outside the camera view
                     if (batch.bounds) {
                         const batchAABB = { min: batch.bounds.min, max: batch.bounds.max };
-                        if (!FrustumUtils.isAABBVisible(frustum, batchAABB)) {
+                        if (!isRteAabbVisible(frustum, batchAABB, rteCullCamera)) {
                             frameBatchesFrustumCulled++;
                             continue; // Entire batch is off-screen
                         }
@@ -2723,7 +2728,7 @@ export class Renderer {
                     const kept: InstancedTemplateGPU[] = [];
                     for (const it of instancedTemplates) {
                         if (it.bounds) {
-                            if (!FrustumUtils.isAABBVisible(frustum, it.bounds)) {
+                            if (!isRteAabbVisible(frustum, it.bounds, rteCullCamera)) {
                                 frameInstancedFrustumCulled++;
                                 continue;
                             }

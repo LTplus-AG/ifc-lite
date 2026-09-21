@@ -24,7 +24,8 @@
 
 import type { Mat4 } from './types.js';
 import { shadowShaderSource } from './shaders/shadow.wgsl.js';
-import { packRteOrigin, type WorldPoint } from './relative-to-eye.js';
+import { packRteDrawableDelta, packRteOrigin, type WorldPoint } from './relative-to-eye.js';
+import { packRteClipBox, rtePlaneDistance } from './rte-clip-space.js';
 
 /** Which geometry path an occluder draw came from — selects the pipeline. */
 export type ShadowDrawKind = 'flat' | 'quantized' | 'instanced' | 'textured';
@@ -288,11 +289,7 @@ export class ShadowPass {
       this.drawScratch[base + 19] = q ? q[3] : 0;
       const origin = d.origin ?? [d.model?.[12] ?? 0, d.model?.[13] ?? 0, d.model?.[14] ?? 0] as const;
       const camera = rte?.cameraWorld ?? [0, 0, 0] as const;
-      packRteOrigin(
-        [origin[0] - camera[0], origin[1] - camera[1], origin[2] - camera[2]],
-        this.drawScratch,
-        base + 20,
-      );
+      packRteDrawableDelta(origin, camera, this.drawScratch, base + 20);
     }
     if (draws.length > 0) {
       this.device.queue.writeBuffer(
@@ -360,16 +357,9 @@ export class ShadowPass {
       s[0] = section.normal[0];
       s[1] = section.normal[1];
       s[2] = section.normal[2];
-      s[3] = section.distance - (camera[0] * section.normal[0] + camera[1] * section.normal[1] + camera[2] * section.normal[2]);
+      s[3] = rtePlaneDistance(section.distance, section.normal, camera);
     }
-    if (box) {
-      s[4] = box.min[0] - camera[0];
-      s[5] = box.min[1] - camera[1];
-      s[6] = box.min[2] - camera[2];
-      s[8] = box.max[0] - camera[0];
-      s[9] = box.max[1] - camera[1];
-      s[10] = box.max[2] - camera[2];
-    }
+    packRteClipBox(box, camera, s, 4);
     // flags.x — bit 0 section enabled, bit 1 flipped, bit 2 clip box enabled.
     this.clipFlags[12] = (section ? 1 : 0) | (section?.flipped ? 2 : 0) | (box ? 4 : 0);
     this.device.queue.writeBuffer(this.clipBuffer, 0, s);

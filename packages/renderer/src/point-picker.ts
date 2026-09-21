@@ -22,6 +22,7 @@ import { POINT_QUAD_VERTS, POINT_VERTEX_BYTES } from './pointcloud/point-pipelin
 import type { RelativeToEyeSnapshot } from './relative-to-eye.js';
 import type { ClipBox } from './types.js';
 import { relativeToEyeWgsl } from './shaders/relative-to-eye.wgsl.js';
+import { packRteClipBox } from './rte-clip-space.js';
 
 export interface PointPickNode {
   expressId: number;
@@ -352,14 +353,7 @@ fn fs_main(input: VOut) -> @location(0) u32 {
     } else {
       u.fill(0, 48, 56);
     }
-    const cameraWorld = relativeToEye?.getCameraWorld();
-    if (clipBox?.enabled) {
-      const cameraX = cameraWorld?.[0] ?? 0, cameraY = cameraWorld?.[1] ?? 0, cameraZ = cameraWorld?.[2] ?? 0;
-      u[56] = clipBox.min[0] - cameraX; u[57] = clipBox.min[1] - cameraY; u[58] = clipBox.min[2] - cameraZ; u[59] = 0;
-      u[60] = clipBox.max[0] - cameraX; u[61] = clipBox.max[1] - cameraY; u[62] = clipBox.max[2] - cameraZ; u[63] = 0;
-    } else {
-      u.fill(0, 56, 64);
-    }
+    packRteClipBox(clipBox, relativeToEye?.getCameraWorld() ?? [0, 0, 0], u, 56);
     this.device.queue.writeBuffer(buffer, 0, u.buffer, u.byteOffset, UNIFORM_BYTES);
   }
 

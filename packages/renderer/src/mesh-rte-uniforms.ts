@@ -12,7 +12,8 @@
  */
 
 import type { ClipBox } from './types.js';
-import type { RelativeToEyeFrame } from './relative-to-eye.js';
+import { packRteOrigin, type RelativeToEyeFrame } from './relative-to-eye.js';
+import { packRteClipBox, rtePlaneDistance } from './rte-clip-space.js';
 
 export const MESH_UNIFORM_FLOATS = 92;
 export const MESH_UNIFORM_BYTES = MESH_UNIFORM_FLOATS * Float32Array.BYTES_PER_ELEMENT;
@@ -67,24 +68,13 @@ export function packRteFragmentSpace(
     out[sectionOffset] = nx;
     out[sectionOffset + 1] = ny;
     out[sectionOffset + 2] = nz;
-    out[sectionOffset + 3] = section.distance - (eye[0] * nx + eye[1] * ny + eye[2] * nz);
+    out[sectionOffset + 3] = rtePlaneDistance(section.distance, section.normal, eye);
   } else {
     out.fill(0, sectionOffset, sectionOffset + 4);
   }
 
   const clipOffset = MESH_UNIFORM_OFFSET.clipBoxMin;
-  if (clipBox?.enabled) {
-    out[clipOffset] = clipBox.min[0] - eye[0];
-    out[clipOffset + 1] = clipBox.min[1] - eye[1];
-    out[clipOffset + 2] = clipBox.min[2] - eye[2];
-    out[clipOffset + 3] = 0;
-    out[clipOffset + 4] = clipBox.max[0] - eye[0];
-    out[clipOffset + 5] = clipBox.max[1] - eye[1];
-    out[clipOffset + 6] = clipBox.max[2] - eye[2];
-    out[clipOffset + 7] = 0;
-  } else {
-    out.fill(0, clipOffset, clipOffset + 8);
-  }
+  packRteClipBox(clipBox, eye, out, clipOffset);
 }
 
 /** Pack the shared camera high/low lanes used by V2 instance anchors. */
@@ -92,12 +82,5 @@ export function packRteCameraOrigin(frame: RelativeToEyeFrame, out: Float32Array
   if (out.length < MESH_UNIFORM_FLOATS) {
     throw new RangeError(`Mesh RTE uniform needs ${MESH_UNIFORM_FLOATS} floats.`);
   }
-  const camera = frame.getCameraWorld();
-  for (let axis = 0; axis < 3; axis++) {
-    const high = Math.fround(camera[axis]);
-    out[MESH_UNIFORM_OFFSET.rteCameraOrigin + axis] = high;
-    out[MESH_UNIFORM_OFFSET.rteCameraOrigin + 4 + axis] = Math.fround(camera[axis] - high);
-  }
-  out[MESH_UNIFORM_OFFSET.rteCameraOrigin + 3] = 0;
-  out[MESH_UNIFORM_OFFSET.rteCameraOrigin + 7] = 0;
+  packRteOrigin(frame.getCameraWorld(), out, MESH_UNIFORM_OFFSET.rteCameraOrigin);
 }

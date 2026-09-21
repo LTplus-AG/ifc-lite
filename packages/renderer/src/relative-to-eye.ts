@@ -145,7 +145,11 @@ function validateRteSourcePoint(point: WorldPoint): void {
   for (let axis = 0; axis < 3; axis++) splitFloat64ForRte(point[axis]);
 }
 
-function packDrawableDelta(
+/**
+ * Pack a drawable origin relative to a source f64 camera position.  Shadow
+ * submissions use this same boundary check/packing as colour and pick paths.
+ */
+export function packRteDrawableDelta(
   origin: WorldPoint,
   cameraWorld: WorldPoint,
   out: Float32Array,
@@ -298,7 +302,7 @@ export class RelativeToEyeFrame {
     this.requireAvailable();
     // Validate the original source origin before subtraction: a camera at the
     // boundary could otherwise make an out-of-range drawable look harmless.
-    packDrawableDelta(origin, this.cameraWorld, out, floatOffset);
+    packRteDrawableDelta(origin, this.cameraWorld, out, floatOffset);
   }
 
   /**
@@ -340,7 +344,7 @@ export class RelativeToEyeSnapshot {
   }
 
   packDrawableOrigin(origin: WorldPoint, out: Float32Array, floatOffset = 0): void {
-    packDrawableDelta(origin, this.cameraWorld, out, floatOffset);
+    packRteDrawableDelta(origin, this.cameraWorld, out, floatOffset);
   }
 
   worldToRelative(world: WorldPoint): [number, number, number] {

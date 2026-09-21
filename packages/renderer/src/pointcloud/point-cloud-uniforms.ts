@@ -15,6 +15,7 @@ import type { PointCloudNode } from './point-cloud-node.js';
 import { isUsableModelMatrix } from './point-cloud-node.js';
 import type { RelativeToEyeFrame } from '../relative-to-eye.js';
 import type { ClipBox } from '../types.js';
+import { packRteClipBox, rtePlaneDistance } from '../rte-clip-space.js';
 
 export type PointColorMode =
   | 'rgb'
@@ -147,10 +148,7 @@ export function writePointCloudUniforms(
   u[52] = inputs.sectionNormal[0];
   u[53] = inputs.sectionNormal[1];
   u[54] = inputs.sectionNormal[2];
-  u[55] = inputs.sectionDist
-    - inputs.sectionNormal[0] * camera[0]
-    - inputs.sectionNormal[1] * camera[1]
-    - inputs.sectionNormal[2] * camera[2];
+  u[55] = rtePlaneDistance(inputs.sectionDist, inputs.sectionNormal, camera);
   // flags (u32 view) — bytes 224..239 = u32 indices 56..59
   // flags.x = the asset's CURRENT expressId. The shader uses this
   // when non-zero so the federation registry can relabel a streamed
@@ -179,18 +177,7 @@ export function writePointCloudUniforms(
   }
   // Crop bounds follow classMask at floats 76..83. Point worldPos is already
   // eye-relative, so subtract before f32 narrowing just as the mesh ABI does.
-  if (inputs.clipBox?.enabled) {
-    u[76] = inputs.clipBox.min[0] - camera[0];
-    u[77] = inputs.clipBox.min[1] - camera[1];
-    u[78] = inputs.clipBox.min[2] - camera[2];
-    u[79] = 0;
-    u[80] = inputs.clipBox.max[0] - camera[0];
-    u[81] = inputs.clipBox.max[1] - camera[1];
-    u[82] = inputs.clipBox.max[2] - camera[2];
-    u[83] = 0;
-  } else {
-    u.fill(0, 76, 84);
-  }
+  packRteClipBox(inputs.clipBox, camera, u, 76);
 
   // Pass the typed array directly — TypeScript widens `.buffer` to
   // `ArrayBufferLike` here (vs. `ArrayBuffer` on a class field), which

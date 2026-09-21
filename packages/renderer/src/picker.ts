@@ -13,6 +13,7 @@ import type { InstancedTemplateGPU } from './scene.js';
 import { PointPicker, decodePickSample, type PointPickNode } from './point-picker.js';
 import { packPickClip, packPickUniforms } from './pick-uniforms.js';
 import type { RelativeToEyeSnapshot } from './relative-to-eye.js';
+import { packRteClipBox, rtePlaneDistance } from './rte-clip-space.js';
 import { restoreRtePickWorld, unprojectPickSample } from './pick-world-position.js';
 
 /**
@@ -536,13 +537,10 @@ export class Picker {
     out.set(mesh.transform.m, 16);
     packPickClip(clip, out, this.clipFlags, 32);
     const camera = snapshot.getCameraWorld();
-    if (clip?.clipBox?.enabled) {
-      out[32] = clip.clipBox.min[0] - camera[0]; out[33] = clip.clipBox.min[1] - camera[1]; out[34] = clip.clipBox.min[2] - camera[2];
-      out[36] = clip.clipBox.max[0] - camera[0]; out[37] = clip.clipBox.max[1] - camera[1]; out[38] = clip.clipBox.max[2] - camera[2];
-    }
+    packRteClipBox(clip?.clipBox, camera, out, 32);
     if (clip?.sectionPlane) {
       const normal = clip.sectionPlane.normal;
-      out[43] = clip.sectionPlane.distance - (camera[0] * normal[0] + camera[1] * normal[1] + camera[2] * normal[2]);
+      out[43] = rtePlaneDistance(clip.sectionPlane.distance, normal, camera);
     }
     snapshot.packDrawableOrigin(
       mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]],
@@ -557,13 +555,10 @@ export class Picker {
     const out = this.instancedUniformScratch;
     packPickUniforms(snapshot.getViewProjection().m, clip, out, this.instancedClipFlags);
     const camera = snapshot.getCameraWorld();
-    if (clip?.clipBox?.enabled) {
-      out[16] = clip.clipBox.min[0] - camera[0]; out[17] = clip.clipBox.min[1] - camera[1]; out[18] = clip.clipBox.min[2] - camera[2];
-      out[20] = clip.clipBox.max[0] - camera[0]; out[21] = clip.clipBox.max[1] - camera[1]; out[22] = clip.clipBox.max[2] - camera[2];
-    }
+    packRteClipBox(clip?.clipBox, camera, out, 16);
     if (clip?.sectionPlane) {
       const n = clip.sectionPlane.normal;
-      out[27] = clip.sectionPlane.distance - (camera[0] * n[0] + camera[1] * n[1] + camera[2] * n[2]);
+      out[27] = rtePlaneDistance(clip.sectionPlane.distance, n, camera);
     }
     for (let axis = 0; axis < 3; axis++) {
       const high = Math.fround(camera[axis]);

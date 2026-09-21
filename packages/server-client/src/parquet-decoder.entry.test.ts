@@ -48,22 +48,26 @@ function readJson(path: string | URL): Record<string, unknown> {
 }
 
 /**
- * `^0.Y.Z` is pinned to the minor. That is the only shape this package's
- * parquet-wasm peer range takes (a 0.x caret), and the test below asserts
- * the range still has that shape rather than quietly mis-reading a `^1.x`.
+ * Each `^0.Y.Z` alternative is pinned to the minor. The test below asserts
+ * every alternative still has that shape rather than quietly mis-reading a
+ * `^1.x` or another unsupported range form.
  */
 function satisfiesZeroMajorCaret(version: string, range: string): boolean {
-  const [rMajor, rMinor, rPatch] = range.replace(/^\^/, '').split('.').map(Number);
   const [vMajor, vMinor, vPatch] = version.split('.').map(Number);
-  return vMajor === rMajor && vMinor === rMinor && vPatch >= rPatch;
+  return range.split('||').some((alternative) => {
+    const [rMajor, rMinor, rPatch] = alternative.trim().replace(/^\^/, '').split('.').map(Number);
+    return vMajor === rMajor && vMinor === rMinor && vPatch >= rPatch;
+  });
 }
 
 describe('parquet-wasm entry point', () => {
   it('resolves a version that satisfies the declared peer range', () => {
     const pkg = readJson(new URL('../package.json', import.meta.url));
     const range = (pkg.peerDependencies as Record<string, string>)['parquet-wasm'];
-    // @source-text-assertion-ok shape guard, not a subject assertion: satisfiesZeroMajorCaret only reads a 0.x caret, so a `^1.x` range would let the check below pass vacuously
-    expect(range.startsWith('^0.')).toBe(true);
+    // @source-text-assertion-ok shape guard, not a subject assertion: satisfiesZeroMajorCaret only reads 0.x carets, so another range form could otherwise pass vacuously
+    expect(
+      range.split('||').every((alternative) => /^\^0\.\d+\.\d+$/.test(alternative.trim()))
+    ).toBe(true);
 
     // Ask the resolver, not a hard-coded node_modules path: this resolves
     // the very entry point `import('parquet-wasm')` in the decoder gets.

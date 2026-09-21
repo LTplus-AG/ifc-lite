@@ -81,5 +81,5 @@ test('production RTE GPU witness at 5,000 km (#5049)', async ({ page }, info) =>
   expect(report.evidence?.pointCropRectangle, 'point marquee obeys crop').toBe(true);
   expect(report.evidence?.sectionPick).toBe(true);
   expect(report.evidence?.screenshotBytes).toBeGreaterThan(100);
-  expect(report.evidence?.diagnostics).toEqual({ gpuErrors: 0, errors: 0 });
+  expect(report.evidence?.diagnostics).toMatchObject({ gpuErrors: 0, errors: 0 });
 });

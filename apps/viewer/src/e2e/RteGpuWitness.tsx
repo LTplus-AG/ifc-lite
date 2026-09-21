@@ -117,7 +117,7 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     const source = renderer.getScene().getMeshData(101);
     if (!source?.origin) throw new Error('Flat RTE source was not retained by the production scene.');
     const sourceResidualMetres = Math.abs(source.origin[0] - COMMON_ORIGIN[0]);
-    const pickResidualMetres = pick?.worldXYZ ? Math.abs(pick.worldXYZ[2] - COMMON_ORIGIN[2]) : null;
+    const pickResidualMetres = pick?.worldXYZ ? Math.abs(pick.worldXYZ.z - COMMON_ORIGIN[2]) : null;
     const snapResidualMetres = cpuRay?.snap
       ? distance(
         [cpuRay.snap.position.x, cpuRay.snap.position.y, cpuRay.snap.position.z],
@@ -231,7 +231,9 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     const cpuRayEvidence = cpuRay
       ? { expressId: cpuRay.intersection.expressId, point: [cpuPoint.x, cpuPoint.y, cpuPoint.z] as [number, number, number] }
       : null;
-    const gpuCpuResidual = pick?.worldXYZ && cpuRayEvidence ? distance(pick.worldXYZ, cpuRayEvidence.point) : Infinity;
+    const gpuCpuResidual = pick?.worldXYZ && cpuRayEvidence
+      ? distance([pick.worldXYZ.x, pick.worldXYZ.y, pick.worldXYZ.z], cpuRayEvidence.point)
+      : Infinity;
     report.evidence = {
       canvasPixels: { width: canvas.width, height: canvas.height },
       pickPixel: { x: PICK_CSS_X, y: PICK_CSS_Y },

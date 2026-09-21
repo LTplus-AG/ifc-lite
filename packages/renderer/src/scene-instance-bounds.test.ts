@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { unionInstancedWorldAabb } from './scene-instance-bounds.js';
+import type { BoundingBox } from './scene-raycaster.js';
 
 describe('instanced canonical-anchor bounds (#5049)', () => {
   it('keeps a centimetre box at 5,000 km in the CPU cull broad phase', () => {
@@ -19,7 +20,7 @@ describe('instanced canonical-anchor bounds (#5049)', () => {
       view.setFloat32(88 + axis * 4, high, true);
       view.setFloat32(104 + axis * 4, Math.fround(origin[axis] - high), true);
     }
-    const boxes = new Map();
+    const boxes = new Map<number, BoundingBox>();
     const bounds = unionInstancedWorldAabb(boxes, 9, view, 0, 0, 0, 0, 0.01, 0.01, 0.01);
     assert.equal(bounds.minX, 5_000_000.125);
     assert.equal(bounds.maxX, 5_000_000.135);

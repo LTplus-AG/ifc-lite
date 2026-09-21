@@ -50,11 +50,27 @@ async function load(page: Page, file: string | { name: string; mimeType: string;
   if (outcome === 'ok') return;
   const snapshot = await page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__?.getState();
-    if (!state) return { store: 'missing' };
+    // The inputs live in the desktop toolbars (useFileCommands), so when
+    // setInputFiles times out the question is which toolbar the layout chose
+    // and whether anything replaced it: MobileToolbar renders no inputs, and
+    // a root-level teardown leaves #root empty.
+    const dom = {
+      inputOpen: document.getElementById('file-input-open') !== null,
+      inputAdd: document.getElementById('file-input-add') !== null,
+      fileInputs: document.querySelectorAll('input[type=file]').length,
+      rootChildren: document.getElementById('root')?.childElementCount ?? null,
+      dialogs: document.querySelectorAll('[role=dialog]').length,
+      innerWidth: window.innerWidth,
+      maxTouchPoints: navigator.maxTouchPoints,
+      bodyText: (document.body.innerText ?? '').replace(/\s+/g, ' ').slice(0, 300),
+    };
+    if (!state) return { store: 'missing', dom };
     return {
       loading: state.loading, geometryStreamingActive: state.geometryStreamingActive, models: state.models.size,
       perModel: [...state.models.values()].map((m) => ({ loadState: m.loadState, pointCloud: m.pointCloudHandleId !== undefined, meshes: m.geometryResult?.meshes.length ?? null })),
       error: (state as { error?: unknown }).error ?? null,
+      isMobile: state.isMobile, toolbarStyle: state.toolbarStyle,
+      dom,
     };
   }).catch((e) => ({ evaluateFailed: String(e) }));
   const name = typeof file === 'string' ? file : file.name;

@@ -21,10 +21,11 @@ import { posthog } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { blankDocument, DOCUMENT_PRESETS } from '@/lib/document/presets';
-import { freshBlockId } from '@/lib/document/persistence';
+import { freshBlockId, freshListCopyId } from '@/lib/document/persistence';
+import { LIST_PRESETS } from '@/lib/lists';
 import { newChartSpec } from '@/lib/charts/presets';
 import { largestBucketIds } from '@/lib/charts/buckets';
-import type { DocumentBlock, DocumentSpec } from '@/lib/document/types';
+import { listCopyForDocument, TABLE_ROWS_DEFAULT, type DocumentBlock, type DocumentSpec } from '@/lib/document/types';
 import { browserImageSize, generateDocumentPdf, type DocumentPdfSeams } from '@/lib/document/generate-document-pdf';
 import { browserReportSeams } from '@/lib/export/report/generate-report-pdf';
 import { createSnapshotCapture } from '@/lib/export/report/snapshots';
@@ -59,6 +60,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
   const deleteDocument = useViewerStore((s) => s.deleteDocument);
   const setActiveDocumentId = useViewerStore((s) => s.setActiveDocumentId);
   const dashboards = useViewerStore((s) => s.dashboards);
+  const listDefinitions = useViewerStore((s) => s.listDefinitions);
 
   useEffect(() => { ensureActiveDocument(); }, [documents, activeDocumentId]);
 
@@ -81,11 +83,13 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
   const update = upsert;
   const setBlocks = useCallback((blocks: DocumentBlock[]) => { if (document) update({ ...document, blocks }); }, [document, update]);
 
-  // The table block (#5142) gets its own entry once its editor lands; not offered here yet.
-  const addBlock = (kind: Exclude<DocumentBlock['kind'], 'table'>): void => {
+  const addBlock = (kind: DocumentBlock['kind']): void => {
     if (!document) return;
     const id = freshBlockId();
+    // A table starts as a copy of the first saved list, else the first preset (#5142).
+    const seedList = listDefinitions[0] ?? LIST_PRESETS[0];
     const block: DocumentBlock = kind === 'text' ? { kind, id, text: '', style: 'body' }
+      : kind === 'table' ? { kind, id, source: { kind: 'list', list: listCopyForDocument(seedList, freshListCopyId()), fromListId: seedList.id }, maxRows: TABLE_ROWS_DEFAULT }
       : kind === 'image' ? { kind, id, dataUrl: '', height: 60, align: 'left' }
         : kind === 'chart' ? { kind, id, chart: charts[0]?.chart ? { ...charts[0].chart, id: freshBlockId() } : newChartSpec(), snapshot: false }
           : kind === 'spacer' ? { kind, id, height: 20 }
@@ -107,11 +111,11 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
         chartMessages: data.chartMessages,
         snapshotIds: (blockId) => largestBucketIds(data.aggregations.get(blockId)),
         topics: data.topics,
-        tables: new Map(),
+        tables: data.tables,
       }, seams);
       downloadBlob(result.blob, `${sanitizeFilename(document.name, { fallback: 'document' })}.pdf`);
       // Counts only — never the document's text or name.
-      posthog.capture('export_completed', { format: 'pdf', surface: 'document', page_count: result.pages, block_count: document.blocks.length, unresolved_count: result.unresolved.length });
+      posthog.capture('export_completed', { format: 'pdf', surface: 'document', page_count: result.pages, block_count: document.blocks.length, unresolved_count: result.unresolved.length, table_block_count: document.blocks.filter((b) => b.kind === 'table').length });
       const problems = [
         result.unresolved.length > 0 ? t('document.panel.problemUnresolved', localeCount(locale, result.unresolved.length)) : '',
         result.missingTopics.length > 0 ? t('document.panel.problemMissingTopics', localeCount(locale, result.missingTopics.length)) : '',
@@ -131,6 +135,9 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
       setBusy(false);
     }
   }, [document, data, pdfSeams, t, locale]);
+
+  // A table whose list is still running would print "not ready"; the export waits for it instead.
+  const tablesResolving = useMemo(() => [...data.tables.values()].some((s) => s.status === 'resolving'), [data.tables]);
 
   const select = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5';
 
@@ -180,10 +187,11 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
             <DropdownMenuItem onSelect={() => addBlock('chart')}>{t('document.addBlock.chart')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('topic')} disabled={data.topics.size === 0} title={data.topics.size === 0 ? t('document.addBlock.topicDisabledTitle') : undefined}>{t('document.addBlock.topic')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('spacer')}>{t('document.addBlock.spacer')}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => addBlock('table')}>{t('document.addBlock.table')}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={busy || !document || document.blocks.length === 0} onClick={() => void exportPdf()} title={t('document.panel.exportTitle')} data-document-export>
-          <FileText className="mr-1 h-3.5 w-3.5" />{busy ? t('document.panel.exportBusy') : t('document.panel.exportIdle')}
+        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={busy || tablesResolving || !document || document.blocks.length === 0} aria-busy={tablesResolving || undefined} onClick={() => void exportPdf()} title={t('document.panel.exportTitle')} data-document-export>
+          <FileText className="mr-1 h-3.5 w-3.5" />{busy ? t('document.panel.exportBusy') : tablesResolving ? t('document.panel.exportPreparingTables') : t('document.panel.exportIdle')}
         </Button>
         {onClose && (
           <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onClose} aria-label={t('document.panel.closeAriaLabel')}>
@@ -219,7 +227,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
             {document.blocks.length === 0 && <div className="p-2 text-muted-foreground">{t('document.panel.emptyBlocks')}</div>}
           </div>
           <div className="min-w-0 flex-1 overflow-auto bg-muted/40">
-            <DocumentPreview document={document} bindings={data.bindings} aggregations={data.aggregations} chartMessages={data.chartMessages} topics={data.topics} selectedBlockId={selectedBlockId} onSelectBlock={setSelectedBlockId} />
+            <DocumentPreview document={document} bindings={data.bindings} aggregations={data.aggregations} chartMessages={data.chartMessages} topics={data.topics} tables={data.tables} selectedBlockId={selectedBlockId} onSelectBlock={setSelectedBlockId} />
           </div>
         </div>
       )}

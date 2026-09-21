@@ -38,7 +38,7 @@ export interface DocumentPdfInput {
   /** BCF topics by GUID. */
   topics: Map<string, BCFTopic>;
   /** Table block id → its list run (#5142); a block with no entry prints as still resolving. */
-  tables: Map<string, TableState>;
+  tables: ReadonlyMap<string, TableState>;
 }
 
 export interface DocumentPdfResult {

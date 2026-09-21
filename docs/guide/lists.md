@@ -189,6 +189,10 @@ for (const row of scheduleRows) {
 
 `summariseListRows(definition, rows)` is what `executeList` calls internally to build `groups`/`summary`; call it directly when you already have rows from elsewhere (e.g. merged across federated models) and just need to re-derive the grouping.
 
+## Lists in documents
+
+A list can be printed inside a [document](./documents.md): **Analyze → Document → Add block → Table (from a list)** takes a copy of a saved list or a preset and prints it the way the list's own export does — unit-converted cells, group rows with count and sums or the schedule view, a totals row when something is summed — re-running it on the loaded models whenever the document is shown or printed. The block's *Edit in Lists* opens the copy in the Lists panel; saving there and *Update from saved list* on the block brings the edit back. A copy never carries a search-selection snapshot (`expressIdsByModel`), which is bound to one load of one model.
+
 ## The Data Provider
 
 `executeList` reads model data through the `ListDataProvider` interface, so the package has no hard dependency on how you parsed the model. Required methods include `getEntitiesByType`, `getEntityName`, `getEntityGlobalId`, `getPropertySets`, and `getQuantitySets`; optional methods (`getMaterialNames`, `getClassifications`, `getStoreyName`, `getProjectName`, `getZoneAssignment`, `getZoneSetNames`, `getZoneVolumeShares`, ...) unlock the `material`, `classification`, `spatial`, `model`, and `zone` column sources, and the engine degrades gracefully when they are absent (a `zone` column simply resolves to `null` on a provider without zone data). The two volume modes go through `getZoneVolumeShares` specifically, so a provider that implements `getZoneAssignment` but not `getZoneVolumeShares` still answers `Zone` and `Straddles` and returns `null` for the volumes.

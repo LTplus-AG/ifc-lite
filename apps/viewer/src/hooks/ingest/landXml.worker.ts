@@ -159,7 +159,7 @@ workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer | LandXml
     await init();
     const api = new IfcAPI();
     let payload: LandXmlGeometryPayload | null = null;
-    let streamed: { preflight: LandXmlGeometryPreflight } | null = null;
+    let streamed: { preflight: LandXmlGeometryPreflight; droppedPrimaryComponents: number } | null = null;
     try {
       const document = isBlobRequest(input)
         ? await (async () => {
@@ -228,6 +228,7 @@ workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer | LandXml
           let units: NonNullable<LandXmlTinDocument['units']> | null = null;
           let nextLocalId = 1;
           let retainedPrimaryComponents = 0;
+          let droppedPrimaryComponents = 0;
           await streamLandXmlSourceBlobWithApi(api, input.file, {
             onProgress: (loadedBytes, totalBytes) => workerScope.postMessage({
               progress: federatedStreaming
@@ -263,8 +264,10 @@ workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer | LandXml
                   if (placedComponents.has(component)) {
                     retainedPrimaryComponents++;
                     await waitForComponentUpload(surfaceComponent(component));
+                  } else {
+                    droppedPrimaryComponents++;
+                    await waitForSkippedComponent(surfaceComponent(component));
                   }
-                  else await waitForSkippedComponent(surfaceComponent(component));
                 }
               }
             },
@@ -273,7 +276,7 @@ workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer | LandXml
           if (!federatedStreaming && preflight.componentCount > 0 && nextLocalId - 1 === preflight.componentCount && retainedPrimaryComponents === 0) {
             throw new Error('LandXML primary preflight rejected every render component');
           }
-          return { kind: 'blob' as const, preflight };
+          return { kind: 'blob' as const, preflight, droppedPrimaryComponents };
         })()
         // TODO(remove-by: #5050 completion, owner: LandXML)
         // Buffer callers are retained only for the test/legacy compatibility

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
-import { createCoordinateInfo, createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
+import { createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
 import { placeAndAssignLandXmlComponents, type LandXmlGeometryComponent } from './landXmlComponentPlacement.js';
 import { deriveLandXmlRenderFrameFromMeasurement, type LandXmlRenderFramePlan } from './landXmlRenderFrame.js';
 import { sourceCoordinateInfo } from './landXmlSourceFrame.js';

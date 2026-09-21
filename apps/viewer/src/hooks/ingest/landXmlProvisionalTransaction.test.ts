@@ -73,4 +73,27 @@ describe('LandXML provisional publication transaction (#5050)', () => {
     assert.deepEqual(removed, [[global]]);
     assert.equal(registry.fromGlobalId(global), null);
   });
+
+  it('removes a resource that mutated before its GPU allocation failed (#5161)', () => {
+    const registry = new FederationRegistry();
+    const live = new Set<number>();
+    const removed: number[][] = [];
+    const transaction = new LandXmlProvisionalTransaction('partial-upload', 1, {
+      originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false,
+    }, registry, {
+      publish: (entry) => {
+        live.add(entry.expressId);
+        throw new Error('GPU allocation failed after CPU publication');
+      },
+      remove: (ids) => {
+        removed.push([...ids]);
+        for (const id of ids) live.delete(id);
+      },
+    });
+    const global = transaction.idOffset + 1;
+    assert.throws(() => transaction.publish(mesh(1)), /GPU allocation failed/);
+    assert.deepEqual(removed, [[global]]);
+    assert.deepEqual([...live], [], 'rollback owns the current failed resource publication too');
+    assert.equal(registry.fromGlobalId(global), null);
+  });
 });

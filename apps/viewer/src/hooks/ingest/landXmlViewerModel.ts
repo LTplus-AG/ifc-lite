@@ -154,12 +154,18 @@ export function parseLandXmlViewerModelFromBlobAsync(
     const sourceAssembler = new LandXmlStreamDocumentAssembler();
     let streamedSource: LandXmlAssembledSourceDocument | null = null;
     let finished = false;
+    let workerTerminated = false;
     let cancellationPoll: ReturnType<typeof setInterval> | undefined;
+    const terminateWorker = (): void => {
+      if (workerTerminated) return;
+      workerTerminated = true;
+      worker.terminate();
+    };
     const finish = (): boolean => {
       if (finished) return false;
       finished = true;
       if (cancellationPoll !== undefined) clearInterval(cancellationPoll);
-      worker.terminate();
+      terminateWorker();
       return true;
     };
     cancellationPoll = setInterval(() => {
@@ -168,7 +174,7 @@ export function parseLandXmlViewerModelFromBlobAsync(
     }, 25);
     worker.onmessage = (event: MessageEvent<
       | { ok: true; payload: LandXmlGeometryPayload }
-      | { ok: true; streamed: { preflight: LandXmlGeometryPreflight } }
+      | { ok: true; streamed: { preflight: LandXmlGeometryPreflight; droppedPrimaryComponents: number } }
       | { ok: false; error: string }
       | { progress: { loadedBytes: number; totalBytes: number } }
       | { preflight: LandXmlGeometryPreflight; sourceCoordinateInfo?: CoordinateInfo; spatialReference?: ModelSpatialReference }
@@ -292,7 +298,11 @@ export function parseLandXmlViewerModelFromBlobAsync(
         }
         return;
       }
-      if (!finish()) return;
+      if (finished) return;
+      // The worker has no more source work after its terminal message, but
+      // main-thread pipe publication can still await a renderer callback.
+      // Keep cancellation polling alive for that terminal stage.
+      terminateWorker();
       if (event.data.ok && 'streamed' in event.data) {
         try {
           const streamed = event.data.streamed;
@@ -316,30 +326,35 @@ export function parseLandXmlViewerModelFromBlobAsync(
             }
           };
           publishPipes().then(() => {
+            if (!isCurrent()) throw new Error('LandXML parsing cancelled');
             if (consumedComponentCount !== streamed.preflight.componentCount) {
               throw new Error('LandXML second pass did not reproduce its preflight component envelope');
             }
             if (streamed.preflight.componentCount > 0 && streamedComponents.length === 0) {
               throw new Error('LandXML preflight rejected every render component');
             }
-            resolve(attachSyntheticStore(
+            const model = attachSyntheticStore(
               completeLandXmlStreamedGeometry(
                 parsed,
                 streamedComponents,
                 streamed.preflight,
                 streamedSurfaceDiagnostics,
                 streamedSkippedComponents,
+                pipeComponents.warnings,
+                streamed.droppedPrimaryComponents + pipeComponents.droppedComponentCount,
               ),
               file.size,
-            ));
+            );
+            if (finish()) resolve(model);
           }).catch((error: unknown) => {
-            reject(error instanceof Error ? error : new Error(String(error)));
+            if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
           });
         } catch (error) {
-          reject(error instanceof Error ? error : new Error(String(error)));
+          if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
         }
-      } else if (event.data.ok) resolve(attachSyntheticStore(event.data.payload, file.size));
-      else reject(new Error(event.data.error));
+      } else if (event.data.ok) {
+        if (finish()) resolve(attachSyntheticStore(event.data.payload, file.size));
+      } else if (finish()) reject(new Error(event.data.error));
     };
     worker.onerror = (event) => {
       if (finish()) reject(new Error(event.message || 'LandXML worker failed'));

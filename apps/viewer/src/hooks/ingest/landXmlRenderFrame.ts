@@ -17,6 +17,11 @@ export const MAX_RENDER_FRAME_LOCAL_EXTENT_METRES = 1_000_000;
 /** Current name retained by federation callers; see the local-extent note above. */
 export const MAX_RENDER_FRAME_ORIGIN_METRES = MAX_RENDER_FRAME_LOCAL_EXTENT_METRES;
 
+/** Canonical parse and streamed-completion diagnostic for frozen-frame drops. */
+export function landXmlRenderFrameWarning(droppedComponents: number): string {
+  return `Skipped ${droppedComponents} LandXML surface component(s) outside the ${MAX_RENDER_FRAME_LOCAL_EXTENT_METRES / 1000} km shared render-frame envelope`;
+}
+
 interface RenderFrameComponent {
   mesh: MeshData;
   bounds: Bounds3D;
@@ -150,7 +155,7 @@ export function placeComponentsInKnownRenderFrame<T extends RenderFrameComponent
     mergeBounds(bounds, component.bounds);
   }
   if (dropped.length > 0) {
-    warnings.push(`Skipped ${dropped.length} LandXML surface component(s) outside the ${MAX_RENDER_FRAME_LOCAL_EXTENT_METRES / 1000} km shared render-frame envelope`);
+    warnings.push(landXmlRenderFrameWarning(dropped.length));
   }
   return { placed, dropped, bounds, originShift, hasLargeCoordinates: frame.hasLargeCoordinates };
 }

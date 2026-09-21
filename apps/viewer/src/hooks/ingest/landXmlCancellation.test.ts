@@ -4,7 +4,10 @@
 
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
+import { IfcAPI } from '@ifc-lite/wasm';
 import { parseLandXmlViewerModelAsync, parseLandXmlViewerModelFromBlobAsync } from './landXmlViewerModel.js';
+import { streamLandXmlSourceBlobWithApi } from './landXmlBlobCursor.js';
+import { initLandXmlWasm } from './landXmlWasmInit.js';
 
 it('refuses stale worker-less LandXML parsing before initializing WASM (#5041)', async () => {
   const originalWorker = globalThis.Worker;
@@ -219,6 +222,7 @@ it('uses the primary frozen frame when a Worker-present federated factory declin
       else if (this.posted.length === 5) reply({ sourceEvent: { kind: 'metadata', metadata_kind: 'end' } });
       else if (this.posted.length === 6) reply({ ok: true, streamed: {
         preflight: { componentCount: 2, frame: { originShift: { x: 2_600_000, y: 0, z: 0 }, hasLargeCoordinates: true } },
+        droppedPrimaryComponents: 1,
       } });
     }
     terminate(): void {}
@@ -249,9 +253,72 @@ it('uses the primary frozen frame when a Worker-present federated factory declin
     assert.deepEqual(uploaded, [1]);
     assert.deepEqual(skipped, [2]);
     assert.deepEqual(model.geometryResult.meshes.map((mesh) => mesh.expressId), [1]);
+    assert.ok(model.warnings.some((warning) => /Skipped 1 LandXML surface component/.test(warning)),
+      'the credited worker terminal preserves frozen-frame drops through completion');
     assert.equal(model.geometryResult.coordinateInfo.originalBounds.max.x, 2_600_001,
       'the worker must not select raw federation mode and apply the frozen origin twice');
   } finally {
+    Object.defineProperty(globalThis, 'Worker', { configurable: true, value: originalWorker });
+  }
+});
+
+it('cancels a held terminal pipe publication after worker completion (#5161)', async () => {
+  const originalWorker = globalThis.Worker;
+  const source = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter" widthUnit="meter" heightUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="good" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+  await initLandXmlWasm();
+  const api = new IfcAPI();
+  const events: unknown[] = [];
+  try {
+    await streamLandXmlSourceBlobWithApi(api, new Blob([source]), { onEvent: (event) => { events.push(event); } });
+  } finally {
+    api.free();
+  }
+  let terminated = 0;
+  class TerminalPipeWorker {
+    onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
+    onerror: ((event: ErrorEvent) => void) | null = null;
+    private sent = 0;
+    postMessage(message: unknown): void {
+      const reply = (data: unknown) => queueMicrotask(() => this.onmessage?.({ data } as MessageEvent<unknown>));
+      if (this.sent === 0) {
+        this.sent++;
+        reply({ preflight: { componentCount: 1, frame: null } });
+        return;
+      }
+      const type = (message as { type?: unknown }).type;
+      if (type === 'preflight-approved' || type === 'source-event-processed') {
+        const sourceEvent = events.shift();
+        if (sourceEvent !== undefined) {
+          reply({ sourceEvent });
+        } else {
+          reply({ ok: true, streamed: { preflight: { componentCount: 1, frame: null }, droppedPrimaryComponents: 0 } });
+        }
+      }
+    }
+    terminate(): void { terminated++; }
+  }
+  Object.defineProperty(globalThis, 'Worker', { configurable: true, value: TerminalPipeWorker as unknown as typeof Worker });
+  let current = true;
+  let enteredPublication: (() => void) | undefined;
+  const publishing = new Promise<void>((resolve) => { enteredPublication = resolve; });
+  let releasePublication: (() => void) | undefined;
+  try {
+    const pending = parseLandXmlViewerModelFromBlobAsync(
+      new Blob([source]),
+      () => current,
+      undefined,
+      undefined,
+      () => {
+        enteredPublication?.();
+        return new Promise<void>((resolve) => { releasePublication = resolve; });
+      },
+    );
+    await publishing;
+    current = false;
+    await assert.rejects(pending, /LandXML parsing cancelled/);
+    assert.equal(terminated, 1, 'the terminal worker is released while cancellation keeps polling pipe publication');
+  } finally {
+    releasePublication?.();
     Object.defineProperty(globalThis, 'Worker', { configurable: true, value: originalWorker });
   }
 });

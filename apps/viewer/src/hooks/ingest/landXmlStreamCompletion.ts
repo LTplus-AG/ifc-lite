@@ -6,7 +6,7 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 import { createCoordinateInfo, createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
-import { placeComponentsInKnownRenderFrame, meshRenderFrameBounds } from './landXmlRenderFrame.js';
+import { landXmlRenderFrameWarning, placeComponentsInKnownRenderFrame, meshRenderFrameBounds } from './landXmlRenderFrame.js';
 import { sourceCoordinateInfo } from './landXmlSourceFrame.js';
 import type { LandXmlTinDocument } from './landXmlSemantics.js';
 import { buildLandXmlPipeComponents } from './landXmlPipeGeometry.js';
@@ -42,6 +42,10 @@ export interface LandXmlStreamedSurfaceDiagnostics {
 
 export interface LandXmlStreamedPipeComponents {
   slots: Array<{ component: LandXmlStreamedComponent } | { skipped: LandXmlStreamedSkippedComponent }>;
+  /** Canonical pipe-builder warnings retained on the semantic-document owner. */
+  warnings: string[];
+  /** Included in the one aggregate frozen-frame warning at completion. */
+  droppedComponentCount: number;
 }
 
 function mergeBounds(target: Bounds3D, source: Bounds3D): void {
@@ -60,9 +64,12 @@ export function completeLandXmlStreamedGeometry(
   preflight: LandXmlGeometryPreflight,
   diagnostics: ReadonlyMap<string, LandXmlStreamedSurfaceDiagnostics> = new Map(),
   skippedComponents: readonly LandXmlStreamedSkippedComponent[] = [],
+  pipeWarnings: readonly string[] = [],
+  droppedPrimaryComponents = 0,
 ): LandXmlGeometryPayload {
   const meshes = components.map((component) => component.mesh);
-  const warnings = [...parsed.warnings, ...pipeRefusalWarnings(parsed)];
+  const warnings = [...parsed.warnings, ...pipeRefusalWarnings(parsed), ...pipeWarnings];
+  if (droppedPrimaryComponents > 0) warnings.push(landXmlRenderFrameWarning(droppedPrimaryComponents));
   const bounds = createEmptyBounds();
   const originShift = preflight.frame?.originShift ?? { x: 0, y: 0, z: 0 };
   for (const mesh of meshes) {
@@ -128,7 +135,8 @@ export function buildLandXmlStreamedPipeComponents(
   preflight: LandXmlGeometryPreflight,
   placeInFrozenFrame: boolean,
 ): LandXmlStreamedPipeComponents {
-  const components = buildLandXmlPipeComponents(parsed.pipeNetworks ?? null, firstExpressId).components
+  const built = buildLandXmlPipeComponents(parsed.pipeNetworks ?? null, firstExpressId);
+  const components = built.components
     .flatMap((pipe) => fragmentLandXmlGeometryComponent({
       ...pipe, surfaceName: pipe.name, surfaceSourceId: null, pipeSourceId: pipe.sourceId, renderedFaceSourceIds: [],
     }));
@@ -154,5 +162,7 @@ export function buildLandXmlStreamedPipeComponents(
         renderedFaceSourceIds: component.renderedFaceSourceIds,
       } }
       : { skipped: { expressId: component.mesh.expressId } }),
+    warnings: built.warnings,
+    droppedComponentCount: placement.dropped.length,
   };
 }

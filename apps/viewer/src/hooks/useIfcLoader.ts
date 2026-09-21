@@ -75,7 +75,6 @@ import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIng
 import { pointCloudSpatialReferenceFromMetadata, preparePointCloudSpatialLoad } from './ingest/pointCloudSpatialLoad.js';
 import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
 import { getGlobalRenderer } from './useBCF.js';
-import { federationRegistry } from '@ifc-lite/renderer';
 import type { FederatedLandXmlStreamingFinalization } from './ingest/federatedLandXmlStreaming.js';
 import { openFederatedLandXmlStreamingPlan, openPrimaryLandXmlProvisional } from './ingest/landXmlGpuTransactions.js';
 import { extractModelSpatialPlacement, findReferenceSpatialModel } from './ingest/federationAlign.js';

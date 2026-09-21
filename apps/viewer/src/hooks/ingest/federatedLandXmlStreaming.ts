@@ -126,6 +126,12 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
     return this.alignmentStatus;
   }
 
+  /** Source slots withheld by the frozen federation admission ledger. */
+  get droppedComponentCount(): number {
+    if (!this.completed) throw new Error('LandXML federation drops are not final before stream completion');
+    return this.options.componentCount - this.retained.length;
+  }
+
   get sourcePlacement(): ModelSpatialPlacement | null { return this.source; }
 
   get referencePlacement(): ModelSpatialPlacement | null { return this.reference; }

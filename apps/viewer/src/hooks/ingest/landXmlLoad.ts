@@ -11,7 +11,7 @@ import { toast } from '../../components/ui/toast.js';
 import { parseLandXmlViewerModelFromBlobAsync, type LandXmlViewerModel } from './landXmlViewerModel.js';
 import type { LandXmlGeometryPreflight } from './landXmlIngest.js';
 import type { LandXmlSchema, LandXmlTinDocument } from './landXmlSemantics.js';
-import { MAX_RENDER_FRAME_LOCAL_EXTENT_METRES, meshFitsRenderFrame, meshRenderFrameBounds } from './landXmlRenderFrame.js';
+import { landXmlRenderFrameWarning, MAX_RENDER_FRAME_LOCAL_EXTENT_METRES, meshFitsRenderFrame, meshRenderFrameBounds } from './landXmlRenderFrame.js';
 import { LandXmlProvisionalTransaction } from './landXmlProvisionalTransaction.js';
 import { markLandXmlGpuUploaded } from './landXmlGpuOwnership.js';
 import { type FederatedLandXmlStreamingFinalization, FederatedLandXmlStreamingPlan } from './federatedLandXmlStreaming.js';
@@ -277,6 +277,8 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
     if (federatedPlan.value !== null) {
       federatedPlan.value.complete(result.geometryResult);
       retainFederatedStreamedProvenance(result.semanticDocument, result.geometryResult.meshes);
+      const dropped = federatedPlan.value.droppedComponentCount;
+      if (dropped > 0) result.warnings.push(landXmlRenderFrameWarning(dropped));
       for (const mesh of result.geometryResult.meshes) markLandXmlGpuUploaded(mesh);
     }
     if (options.targetKind === 'primary') options.onPrimary(result);

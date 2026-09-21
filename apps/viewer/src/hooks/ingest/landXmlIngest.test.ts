@@ -8,7 +8,7 @@ import { IfcAPI } from '@ifc-lite/wasm';
 import { FederationRegistry } from '@ifc-lite/renderer';
 import { parseLandXmlViewerModelAsync, parseLandXmlViewerModelFromBlobAsync } from './landXmlViewerModel.js';
 import {
-  completeLandXmlStreamedGeometry, connectedFaceComponents,
+  buildLandXmlStreamedPipeComponents, completeLandXmlStreamedGeometry, connectedFaceComponents,
   fragmentLandXmlGeometryComponent, MAX_LANDXML_COMPONENT_TRANSFER_BYTES,
   buildLandXmlSurfaceComponents, parseLandXmlGeometry, preflightLandXmlGeometry,
 } from './landXmlIngest.js';
@@ -368,6 +368,47 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
       ...direct.semanticDocument.rendering.surfaceCounts[0], droppedReframeFaces: 1,
     });
     assert.ok(streamed.warnings.some((warning) => /Skipped 1 degenerate face/.test(warning)));
+  });
+
+  it('matches the direct frozen-frame warning after two real-WASM surface records are credited (#5161)', async () => {
+    const source = LANDXML.replace('</Surfaces>', `<Surface name="far"><Definition surfType="TIN"><Pnts>
+      <P id="101">0 800000000 0</P><P id="102">0 800000001 0</P><P id="103">1 800000000 0</P>
+    </Pnts><Faces><F>101 102 103</F></Faces></Definition></Surface></Surfaces>`);
+    const parsed = await parseDocument(source);
+    const preflight = preflightLandXmlGeometry(parsed);
+    const direct = parseLandXmlGeometry(parsed, preflight);
+    const nearProvenance = direct.semanticDocument.rendering.meshProvenance[0];
+    if (nearProvenance === undefined) throw new Error('near surface was unexpectedly refused');
+    const far = parsed.surfaces[2]!;
+    const streamed = completeLandXmlStreamedGeometry(
+      parsed,
+      direct.geometryResult.meshes.map((mesh) => ({
+        mesh, surfaceName: parsed.surfaces[0]!.name, surfaceSourceId: nearProvenance.surfaceSourceId,
+        pipeSourceId: null, renderedFaceSourceIds: nearProvenance.renderedFaceSourceIds,
+      })),
+      preflight,
+      new Map(),
+      [{ expressId: 2, surfaceSourceId: far.sourceId, renderedFaceSourceIds: far.faceSourceIds }],
+      [],
+      1,
+    );
+    assert.deepEqual(streamed.warnings, direct.warnings);
+    assert.deepEqual(streamed.semanticDocument.rendering.surfaceCounts, direct.semanticDocument.rendering.surfaceCounts);
+  });
+
+  it('retains pipe-builder refusal warnings at real-WASM streamed completion (#5161)', async () => {
+    const source = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter" widthUnit="meter" heightUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="egg" refStart="A" refEnd="B"><EggPipe span="2" height="10"/></Pipe><Pipe name="good" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    const parsed = await parseDocument(source);
+    const preflight = preflightLandXmlGeometry(parsed);
+    const direct = parseLandXmlGeometry(parsed, preflight);
+    const pipes = buildLandXmlStreamedPipeComponents(parsed, 1, preflight, true);
+    const components = pipes.slots.flatMap((slot) => 'component' in slot ? [slot.component] : []);
+    const skipped = pipes.slots.flatMap((slot) => 'skipped' in slot ? [slot.skipped] : []);
+    const streamed = completeLandXmlStreamedGeometry(
+      parsed, components, preflight, new Map(), skipped, pipes.warnings, pipes.droppedComponentCount,
+    );
+    assert.deepEqual(streamed.warnings, direct.warnings);
+    assert.ok(streamed.warnings.some((warning) => warning.includes('Egg pipe cross-section is retained but not rendered')));
   });
 
   it('loads persisted pre-triangulation surface records without new optional fields (#5043)', async () => {

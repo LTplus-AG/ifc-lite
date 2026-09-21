@@ -57,8 +57,12 @@ export class LandXmlProvisionalTransaction {
     const globalMesh = { ...mesh, expressId: globalId };
     try {
       this.registry.publishRange(this.modelId, localId, localId);
-      this.resources.publish(globalMesh);
+      // Renderer publication can install CPU-side mesh ownership before a
+      // later fragment or GPU allocation fails.  Own this attempted global
+      // ID before invoking it so rollback removes both a complete upload and
+      // that partially-installed failure path.
       this.published.push(globalId);
+      this.resources.publish(globalMesh);
       this.nextLocalId++;
       return globalId;
     } catch (error) {

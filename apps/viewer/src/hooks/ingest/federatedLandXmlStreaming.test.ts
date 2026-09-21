@@ -172,6 +172,7 @@ describe('federated LandXML streaming plan (#5050)', () => {
     const geometry: GeometryResult = { meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: sourceCoordinateInfo };
     plan.complete(geometry);
     assert.deepEqual(geometry.meshes.map((entry) => entry.expressId), [3]);
+    assert.equal(plan.droppedComponentCount, 2, 'federated completion retains the aggregate refused-slot count for canonical diagnostics');
     assert.deepEqual(geometry.coordinateInfo.originalBounds, {
       min: { x: 10, y: 0, z: 0 }, max: { x: 11, y: 1, z: 0 },
     });

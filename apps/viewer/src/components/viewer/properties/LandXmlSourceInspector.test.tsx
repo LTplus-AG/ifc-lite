@@ -8,7 +8,7 @@ import { describe, it } from 'node:test';
 import { render, click, cleanup } from '@/test/render.js';
 import { LandXmlSourceInspector } from './LandXmlSourceInspector.js';
 import { LandXmlModelSourceNavigation } from './LandXmlModelSourceNavigation.js';
-import { superelevationEventPage } from './LandXmlAlignmentSourceInspector.js';
+import { parseAlignmentProbeInputs, superelevationEventPage } from './LandXmlAlignmentSourceInspector.js';
 import type { LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics';
 
 function document(pointCount = 1): LandXmlTinDocument {
@@ -39,6 +39,13 @@ function document(pointCount = 1): LandXmlTinDocument {
     rendering: { meshProvenance: [], surfaceCounts: [{ surfaceSourceId: 'surface', sourcePoints: pointCount, sourceFaces: 1, hiddenFaces: 0, renderedFaces: 1, droppedDegenerateFaces: 2, droppedPrecisionFaces: 3, droppedReframeFaces: 4 }] },
   };
 }
+
+describe('LandXML alignment probe input', () => {
+  it('distinguishes a missing displayed station from an explicit zero (#5044)', () => {
+    assert.equal(parseAlignmentProbeInputs('station', '0', '', '0'), null);
+    assert.deepEqual(parseAlignmentProbeInputs('station', '0', '0', '0'), { value: 0, offsetRight: 0 });
+  });
+});
 
 function pipeDocument(): LandXmlTinDocument {
   const result = document();

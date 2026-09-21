@@ -14,6 +14,19 @@ type NavigationItem = { label: string; sourceId: string };
 type SuperelevationEventItem = { sourceId: string; blockSourceId: string; label: string };
 type Translate = UseTranslationResult['t'];
 
+export function parseAlignmentProbeInputs(
+  mode: 'distance' | 'station', distanceInput: string, stationInput: string, offsetInput: string,
+): { value: number; offsetRight: number } | null {
+  const numeric = (input: string): number | null => {
+    if (input.trim() === '') return null;
+    const value = Number(input);
+    return Number.isFinite(value) ? value : null;
+  };
+  const value = numeric(mode === 'distance' ? distanceInput : stationInput);
+  const offsetRight = numeric(offsetInput);
+  return value === null || offsetRight === null ? null : { value, offsetRight };
+}
+
 export function superelevationEventPage(values: LandXmlSuperelevation[], offset: number): { total: number; page: number; items: SuperelevationEventItem[] } {
   const total = values.reduce((sum, value) => sum + value.events.length, 0);
   const lastPageOffset = total === 0 ? 0 : Math.floor((total - 1) / PAGE_SIZE) * PAGE_SIZE;
@@ -75,14 +88,13 @@ export function LandXmlAlignmentSourceInspector({ modelId, sourceFile, record, o
     if (!sourceFile) { setProbe(null); setInspection(null); return; }
     let active = true;
     const controller = new AbortController();
-    const distance = Number(distanceInput), station = Number(stationInput), offset = Number(offsetInput);
-    const valid = Number.isFinite(offset) && (mode === 'distance' ? Number.isFinite(distance) : Number.isFinite(station));
-    if (!valid) {
+    const inputs = parseAlignmentProbeInputs(mode, distanceInput, stationInput, offsetInput);
+    if (!inputs) {
       setProbe(null); setInspection(null); setError(t('properties.landXmlAlignment.invalidProbe'));
       return () => { active = false; };
     }
     void sourceFile.arrayBuffer().then((buffer) => probeLandXmlAlignmentInWorker(buffer, {
-      alignmentSourceId: alignment.sourceId, mode, value: mode === 'distance' ? distance : station, offsetRight: offset,
+      alignmentSourceId: alignment.sourceId, mode, ...inputs,
     }, controller.signal)).then(({ probes, inspection: result }) => {
       const first = probes[0];
       if (!first) throw new Error(t('properties.landXmlAlignment.stationGap'));

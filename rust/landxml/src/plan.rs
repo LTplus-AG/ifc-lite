@@ -35,7 +35,7 @@ pub fn parse_landxml_document(
     input: &[u8],
 ) -> std::result::Result<LandXmlDocument, crate::LandXmlError> {
     Ok(LandXmlDocument {
-        terrain: crate::parse_landxml_tin(input)?,
+        terrain: crate::parser::parse_landxml_document(input)?,
         plan: parse_landxml_plan(input)?,
     })
 }

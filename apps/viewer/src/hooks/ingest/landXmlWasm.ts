@@ -7,6 +7,7 @@
 import { IfcAPI } from '@ifc-lite/wasm';
 import type { LandXmlSourceBuffer } from './landXmlIngest.js';
 import { initLandXmlWasm } from './landXmlWasmInit.js';
+import { pipeNetworks } from './landXmlPipeWasm.js';
 import { indexLandXmlPlanRecords, indexLandXmlSourceRecords } from './landXmlSemantics.js';
 import type {
   LandXmlAlignment, LandXmlCapabilityDiagnostic, LandXmlCrossSection, LandXmlCrossSectionPoint,
@@ -373,6 +374,7 @@ export function readLandXmlTinDocument(value: unknown): LandXmlTinDocument {
     capabilityDiagnostics,
     preservedOnlyExtensions,
     plan: plan(raw.plan),
+    pipeNetworks: pipeNetworks(raw.pipe_networks),
     rendering: { meshProvenance: [], surfaceCounts: [] },
   };
   indexLandXmlSourceRecords(document);

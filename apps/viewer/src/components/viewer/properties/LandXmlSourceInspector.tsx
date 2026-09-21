@@ -29,6 +29,9 @@ function recordName(record: LandXmlSourceRecord, t: Translate): string {
     case 'source-data-point': return t('properties.landXmlSource.sourcePointName', { ordinal: record.point.ordinal });
     case 'face': return record.pointIds.join(', ');
     case 'boundary': case 'breakline': case 'contour': return record.line.name ?? record.line.sourceId;
+    case 'pipe': return record.pipe.name;
+    case 'pipe-structure': return record.structure.name;
+    case 'pipe-feature': return record.feature.sourceId;
     case 'alignment': return record.alignment.name;
     case 'profile': return record.profile.name;
     case 'profile-point': return `PVI: sta ${record.point.station}`;
@@ -46,6 +49,8 @@ function recordName(record: LandXmlSourceRecord, t: Translate): string {
     case 'plan-feature': return record.feature.name ?? record.feature.sourceId;
     case 'parcel': return record.parcel.name ?? record.parcel.sourceId;
     case 'plan-geometry': return t('properties.landXmlSource.geometryName', { kind: record.geometry.kind, ordinal: record.geometry.ordinal });
+    case 'pipe-network': return record.network.name;
+    case 'pipe-network-collection': return record.collection.sourceId;
   }
 }
 
@@ -56,6 +61,9 @@ function recordPath(record: LandXmlSourceRecord): string {
     case 'face': return `${record.surface.sourcePath}/Definition/Faces/F`;
     case 'source-data-point': return record.point.sourcePath;
     case 'boundary': case 'breakline': case 'contour': return record.line.sourcePath;
+    case 'pipe': return record.pipe.sourcePath;
+    case 'pipe-structure': return record.structure.sourcePath;
+    case 'pipe-feature': return record.feature.sourcePath;
     case 'alignment': return record.alignment.sourceId;
     case 'profile': return record.profile.sourceId;
     case 'profile-point': return record.point.sourceId;
@@ -73,6 +81,8 @@ function recordPath(record: LandXmlSourceRecord): string {
     case 'plan-feature': return record.feature.sourceId;
     case 'parcel': return record.parcel.sourceId;
     case 'plan-geometry': return record.geometry.sourceId;
+    case 'pipe-network': return record.network.sourcePath;
+    case 'pipe-network-collection': return record.collection.sourcePath;
   }
 }
 
@@ -147,6 +157,24 @@ function pointText(point: { northing: number; easting: number; elevation: number
     : `${point.northing}, ${point.easting}, ${point.elevation}`;
 }
 
+function measure(value: { value: number; unit: string; meters: number } | null | undefined): string {
+  return value ? `${value.value} ${value.unit} (${value.meters} m)` : '—';
+}
+
+function engineeringRows(record: LandXmlSourceRecord, rootLinearUnit: string | undefined): Array<readonly [string, string]> {
+  if (record.kind === 'pipe') return [
+    ['cross-section', record.pipe.part.kind], ['diameter', measure(record.pipe.part.diameter)], ['span', measure(record.pipe.part.span)], ['width', measure(record.pipe.part.width)], ['height', measure(record.pipe.part.height)], ['thickness', measure(record.pipe.part.thickness)], ['material', record.pipe.part.material ?? '—'], ['length', measure(record.pipe.length)], ['flow in', record.pipe.flow?.flowIn?.toString() ?? '—'], ['flow unit', record.pipe.flow?.unit ?? record.pipe.units.flowUnit ?? '—'], ['linear unit', record.pipe.units.linearUnit], ['route', record.pipe.geometry.kind],
+  ];
+  if (record.kind === 'pipe-structure') return [
+    ['part', record.structure.part.kind], ['diameter', measure(record.structure.part.diameter)], ['length', measure(record.structure.part.length)], ['width', measure(record.structure.part.width)], ['thickness', measure(record.structure.part.thickness)], ['material', record.structure.part.material ?? '—'], ['rim elevation', measure(record.structure.rimElevation)], ['sump elevation', measure(record.structure.sumpElevation)], ['inverts', record.structure.inverts.map((invert) => `${invert.flowDirection}: ${measure(invert.elevation)}`).join(', ') || '—'], ['flow losses', record.structure.flow ? `${record.structure.flow.lossIn ?? '—'} / ${record.structure.flow.lossOut ?? '—'} ${record.structure.flow.unit ?? ''}`.trim() : '—'], ['linear unit', record.structure.units.linearUnit],
+  ];
+  if (record.kind === 'pipe-network') return [
+    ['network type', record.network.pipeNetworkType], ['structure units', record.network.structureUnits?.linearUnit ?? '—'], ['pipe units', record.network.pipeUnits?.linearUnit ?? '—'], ['structures', String(record.network.structures.length)], ['pipes', String(record.network.pipes.length)],
+  ];
+  if (record.kind === 'pipe-network-collection') return [['collection source', record.collection.sourceId], ['root linear unit', rootLinearUnit ?? '—']];
+  return [];
+}
+
 /** Inspect retained LandXML source records without pretending they are IFC entities. */
 export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSourceInspectorProps) {
   const { t } = useTranslation();
@@ -161,6 +189,25 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
   if (!record) return null;
   const document = models.get(selected.modelId)?.landXmlDocument;
   const terrain = terrainRecord(record);
+  if (record.kind === 'pipe' || record.kind === 'pipe-structure' || record.kind === 'pipe-feature' || record.kind === 'pipe-network' || record.kind === 'pipe-network-collection') {
+    const properties = record.kind === 'pipe'
+      ? record.pipe.properties
+      : record.kind === 'pipe-structure' ? record.structure.properties
+        : record.kind === 'pipe-feature' ? record.feature.properties
+          : record.kind === 'pipe-network' ? record.network.properties : record.collection.properties;
+    return <div className="h-full overflow-auto border-l-2 border-zinc-200 bg-white dark:border-zinc-800 dark:bg-black" data-landxml-source-inspector>
+      <div className="space-y-2 border-b-2 border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-black">
+        <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">{t('properties.landXmlSource.heading')}</p>
+        <h3 className="truncate text-sm font-bold uppercase tracking-tight text-zinc-900 dark:text-zinc-100">{recordName(record, t)}</h3>
+        <p className="break-all font-mono text-xs text-zinc-500">{recordPath(record)}</p>
+      </div>
+      <div className="space-y-2 p-4 text-xs text-zinc-700 dark:text-zinc-300">
+        <p><span className="font-semibold">{t('properties.landXmlSource.kind')}:</span> {record.kind}</p>
+        {engineeringRows(record, document?.pipeNetworks?.rootUnits?.linearUnit).map(([name, value]) => <p key={name}><span className="font-semibold">{name}:</span> {value}</p>)}
+      </div>
+      <SourceProperties title={t('properties.landXmlSource.properties')} rows={surfacePropertyRows(properties)} empty={t('properties.landXmlSource.noProperties')} />
+    </div>;
+  }
   if (!terrain && !planRecord(record)) {
     const count = semanticNavigationCount(record);
     const pages = Math.max(1, Math.ceil(count / NAVIGATION_PAGE_SIZE));
@@ -294,7 +341,7 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
           })}</p>}
         </>}
       </div>
-      <SourceProperties title={t('properties.landXmlSource.surfaceProperties')} rows={properties} empty={t('properties.landXmlSource.noProperties')} />
+      <SourceProperties title={t(terrain ? 'properties.landXmlSource.surfaceProperties' : 'properties.landXmlSource.properties')} rows={properties} empty={t('properties.landXmlSource.noProperties')} />
       <SourceProperties title={t('properties.landXmlSource.definitionProperties')} rows={definitionProperties} empty={t('properties.landXmlSource.noProperties')} />
     </div>
   );

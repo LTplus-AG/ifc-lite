@@ -107,6 +107,9 @@ const CURVE_IRREGULAR_CASES = [
   ['near-miss', '<Curve rot="ccw" radius="1"><Start>0 1</Start><Center>0 0</Center><End>0 -1</End></Curve><IrregularLine><Start>0 -1</Start><PntList2D>-2 -1 -2 2 -0.1 1.1</PntList2D><End>0 1</End></IrregularLine>'],
 ];
 
+const PIPE_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter" diameterUnit="millimeter" flowUnit="cubicMeterPerSecond"/></Units><PipeNetworks name="collection"><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A" elevRim="9" elevSump="4"><Center>0 0 5</Center><CircStruct diameter="1" material="concrete"/><Invert refPipe="P" flowDir="out" elev="4"/><StructFlow lossIn="1" lossOut="2"/></Struct><Struct name="B"><Center>0 10 3</Center><RectStruct length="2" width="1"/><Invert refPipe="P" flowDir="in" elev="2"/></Struct></Structs><Pipes><Pipe name="P" refStart="A" refEnd="B" length="10"><CircPipe diameter="600" thickness="20" material="PVC"/><PipeFlow flowIn="4.2"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+
 function utf16Le(text) {
   const output = new Uint8Array(2 + text.length * 2);
   output.set([0xff, 0xfe]);
@@ -238,6 +241,31 @@ export function runLandXmlContracts(api, test) {
     const reversed = '<Line><Start>0 1</Start><End>0 -1</End></Line><Curve rot="cw" radius="1"><Start>0 -1</Start><Center>0 0</Center><End>0 1</End></Curve>';
     const document = api.parseLandXmlTinBytes(new TextEncoder().encode(singleLoopCurveXml(reversed)));
     assert.deepEqual(document.plan.parcel_probes[0].state, { kind: 'analytic' }, 'reversed arc-plus-chord order remains analytic');
+  });
+
+  test('LandXML raw-byte parser serializes validated pipe records with metre coordinates', () => {
+    const document = api.parseLandXmlTinBytes(new TextEncoder().encode(PIPE_XML));
+    const pipe = document.pipe_networks.networks[0].pipes[0];
+    assert.equal(pipe.name, 'P');
+    assert.equal(pipe.part.diameter.meters, 0.6);
+    assert.equal(pipe.part.thickness.meters, 0.02);
+    assert.equal(pipe.part.material, 'PVC');
+    assert.equal(pipe.length.meters, 10);
+    assert.equal(pipe.flow.flow_in, 4.2);
+    assert.equal(pipe.units.flow_unit, 'cubicMeterPerSecond');
+    assert.equal(pipe.connectivity.start_structure_source_id, 'landxml:pipe-network:1:1:structure:1');
+    assert.equal(document.pipe_networks.collections[0].properties.name, 'collection');
+    assert.equal(document.pipe_networks.root_units.linear_unit, 'meter');
+    assert.equal(document.pipe_networks.networks[0].structures[0].inverts[0].elevation.meters, 4);
+    assert.equal(document.pipe_networks.networks[0].structures[0].flow.loss_out, 2);
+    assert.equal(document.pipe_networks.networks[0].structures[1].center.easting_meters, 10);
+  });
+
+  test('LandXML raw-byte parser locally refuses scaled Center overflow', () => {
+    const overflowing = PIPE_XML.replace('linearUnit="meter"', 'linearUnit="kilometer"').replace('<Center>0 0 5</Center>', '<Center>0 1e308 5</Center>');
+    const document = api.parseLandXmlTinBytes(new TextEncoder().encode(overflowing));
+    assert.equal(document.pipe_networks.networks[0].structures.length, 1);
+    assert.ok(document.pipe_networks.refusals.some((refusal) => refusal.message.includes('scaled Center coordinates must be finite')));
   });
 
   test('LandXML raw-byte parser preserves stable diagnostics', () => {

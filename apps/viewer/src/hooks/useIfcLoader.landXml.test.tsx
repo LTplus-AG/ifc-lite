@@ -61,6 +61,19 @@ function planOnlyLandXmlFile(name: string, offset: number): File {
   return new File([xml], name, { type: 'application/xml' });
 }
 
+function pipeLandXmlFile(name: string, offset: number): File {
+  const xml = `<?xml version="1.0"?>
+    <LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+      <Units><Metric linearUnit="meter" diameterUnit="meter" elevationUnit="meter"/></Units>
+      <PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs>
+        <Struct name="A"><Center>${offset} 0 0</Center><CircStruct diameter="1"/></Struct>
+        <Struct name="B"><Center>${offset} 10 0</Center><CircStruct diameter="1"/></Struct>
+      </Structs><Pipes><Pipe name="P-1" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe></Pipes>
+      </PipeNetwork></PipeNetworks>
+    </LandXML>`;
+  return new File([xml], name, { type: 'application/xml' });
+}
+
 let hookApi: ReturnType<typeof useIfcLoader> | null = null;
 function Probe(): null {
   hookApi = useIfcLoader();
@@ -150,6 +163,21 @@ describe('useIfcLoader LandXML route (#4937)', () => {
     assert.deepEqual(secondOrigin.map((value, axis) => value - firstOrigin[axis]), [100, 0, -100],
       'federated LandXML keeps survey separation inside one shared render frame');
   });
+
+  for (const [pipesFirst, name] of [[true, 'pipes first'], [false, 'terrain first']] as const) {
+    it(`loads pipe geometry through loadFile in either federation order (${name}, #5047)`, async () => {
+      const pipes = pipeLandXmlFile('storm.xml', 20);
+      const terrain = landXmlFile('terrain.xml', 20);
+      await act(async () => hookApi!.loadFile(pipesFirst ? pipes : terrain, { kind: 'primary' }));
+      await act(async () => hookApi!.loadFile(pipesFirst ? terrain : pipes, { kind: 'federated', modelId: 'second-landxml' }));
+      const models = useViewerStore.getState().models;
+      const pipeModel = Array.from(models.values()).find((model) => model.landXmlDocument?.pipeNetworks?.networks.length === 1);
+      assert.ok(pipeModel?.geometryResult);
+      assert.equal(pipeModel.geometryResult.meshes.length, 1);
+      assert.equal(pipeModel.landXmlDocument?.rendering.meshProvenance[0].pipeSourceId, 'landxml:pipe-network:1:1:pipe:1');
+      assert.equal(models.size, 2, 'pipes use the same canonical primary/federated registration path as terrain');
+    });
+  }
 
   for (const [primaryOffset, federatedOffset, order] of [
     [0, 2_000_000, 'near model first'],

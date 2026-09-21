@@ -19,6 +19,7 @@ export interface LandXmlTinDocumentJs {
     /** serde_wasm_bindgen omits an absent Rust Option field rather than serializing null. */
     units?: { linear_unit: string; elevation_unit: string; linear_scale_to_meters: number; elevation_scale_to_meters: number };
     surfaces: LandXmlSurfaceJs[];
+    pipe_networks?: LandXmlPipeNetworkDocumentJs;
     extensions: LandXmlExtensionJs[];
     warnings: string[];
     alignments: LandXmlAlignmentJs[]; profiles: LandXmlProfileJs[];
@@ -72,6 +73,20 @@ export interface LandXmlCrossSectionSurfaceJs { source_id: string; parent_cross_
 export interface LandXmlRoadwayJs { source_id: string; ordinal: number; name: string; alignment_refs: string[]; alignment_source_ids: string[]; surface_refs: string[]; surface_source_ids: string[]; grade_model_refs: string[]; }
 export interface LandXmlCapabilityDiagnosticJs { code: string; source_id?: string; source_path: string; message: string; }
 export interface LandXmlPreservedOnlyExtensionJs { source_id: string; parent_source_id?: string; local_name: string; source_path: string; kind: "corridor" | "string_line"; }
+export interface LandXmlPipeUnitsJs { linear_unit: string; elevation_unit: string; diameter_unit: string; width_unit: string; height_unit: string; flow_unit?: string; linear_scale_to_meters: number; elevation_scale_to_meters: number; diameter_scale_to_meters: number; width_scale_to_meters: number; height_scale_to_meters: number; }
+export interface LandXmlPipeNetworkDocumentJs { version: string; root_units?: LandXmlPipeUnitsJs; collections: LandXmlPipeCollectionJs[]; features: LandXmlPipeFeatureJs[]; networks: LandXmlPipeNetworkJs[]; refusals: LandXmlPipeRefusalJs[]; }
+export interface LandXmlPipeCollectionJs { source_id: string; source_path: string; properties: Record<string, string>; }
+export interface LandXmlPipeFeatureJs { source_id: string; source_path: string; owner_source_id: string; properties: Record<string, string>; }
+export interface LandXmlPipeRefusalJs { source_id: string; source_path: string; code: string; message: string; }
+export interface LandXmlPipeMeasureJs { value: number; unit: string; meters: number; }
+export interface LandXmlPipePositionJs { northing: number; easting: number; northing_meters: number; easting_meters: number; elevation?: LandXmlPipeMeasureJs; }
+export interface LandXmlPipeFlowJs { source_id: string; source_path: string; unit?: string; flow_in?: number; loss_in?: number; loss_out?: number; properties: Record<string, string>; }
+export interface LandXmlPipeInvertJs { source_id: string; source_path: string; pipe_source_id: string; flow_direction: string; elevation: LandXmlPipeMeasureJs; properties: Record<string, string>; }
+export interface LandXmlPipePartJs { kind: "circular" | "elliptical" | "egg" | "rectangular"; properties: Record<string, string>; diameter?: LandXmlPipeMeasureJs; span?: LandXmlPipeMeasureJs; width?: LandXmlPipeMeasureJs; height?: LandXmlPipeMeasureJs; thickness?: LandXmlPipeMeasureJs; material?: string; }
+export interface LandXmlStructurePartJs { kind: "circular" | "rectangular" | "inlet" | "outlet" | "connection"; properties: Record<string, string>; diameter?: LandXmlPipeMeasureJs; length?: LandXmlPipeMeasureJs; width?: LandXmlPipeMeasureJs; thickness?: LandXmlPipeMeasureJs; material?: string; }
+export interface LandXmlPipeNetworkJs { source_id: string; source_path: string; name: string; pipe_network_type: string; properties: Record<string, string>; features: LandXmlPipeFeatureJs[]; structure_units?: LandXmlPipeUnitsJs; pipe_units?: LandXmlPipeUnitsJs; structures: LandXmlPipeStructureJs[]; pipes: LandXmlPipeJs[]; }
+export interface LandXmlPipeStructureJs { source_id: string; source_path: string; name: string; properties: Record<string, string>; units: LandXmlPipeUnitsJs; center: LandXmlPipePositionJs; part: LandXmlStructurePartJs; rim_elevation?: LandXmlPipeMeasureJs; sump_elevation?: LandXmlPipeMeasureJs; inverts: LandXmlPipeInvertJs[]; flow?: LandXmlPipeFlowJs; }
+export interface LandXmlPipeJs { source_id: string; source_path: string; name: string; properties: Record<string, string>; units: LandXmlPipeUnitsJs; connectivity: { start_structure_source_id: string; end_structure_source_id: string }; part: LandXmlPipePartJs; geometry: { kind: "straight" | "pass_through"; point?: LandXmlPipePositionJs }; length?: LandXmlPipeMeasureJs; flow?: LandXmlPipeFlowJs; }
 
 
 

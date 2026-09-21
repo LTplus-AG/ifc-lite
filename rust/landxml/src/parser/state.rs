@@ -120,10 +120,6 @@ impl<'a> Parser<'a> {
         !self.frames.is_empty()
     }
 
-    pub(crate) fn max_text_bytes(&self) -> usize {
-        self.limits.max_text_bytes
-    }
-
     pub(crate) fn header(&self) -> Option<(String, LandXmlUnits)> {
         (!self.version.is_empty() && self.units.is_some()).then(|| {
             (

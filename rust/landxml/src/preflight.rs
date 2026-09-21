@@ -94,7 +94,9 @@ fn is_xml_s(byte: u8) -> bool {
     matches!(byte, b' ' | b'\t' | b'\r' | b'\n')
 }
 
-fn max_markup_bytes(limits: &LandXmlLimits) -> Result<usize> {
+/// Shared lexical bound for a single start/end/processing-instruction token.
+/// The resumable stream applies this before forwarding data to quick-xml too.
+pub(crate) fn max_markup_bytes(limits: &LandXmlLimits) -> Result<usize> {
     let per_attribute = limits
         .max_name_bytes
         .checked_add(limits.max_attribute_bytes)

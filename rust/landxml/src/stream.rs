@@ -8,8 +8,8 @@ mod fragments;
 mod token;
 
 use crate::{
-    parser::Parser, xml::error, LandXmlDiagnosticCode as Code, LandXmlError, LandXmlLimits,
-    LandXmlSurface,
+    parser::Parser, preflight::max_markup_bytes, xml::error, LandXmlDiagnosticCode as Code,
+    LandXmlError, LandXmlLimits, LandXmlSurface,
 };
 use decoder::Decoder;
 pub use event::{
@@ -33,6 +33,8 @@ pub struct LandXmlTinStreamSession {
     decoder: Decoder,
     token: Vec<u8>,
     kind: TokenKind,
+    max_text_bytes: usize,
+    max_markup_bytes: usize,
     queue: VecDeque<LandXmlStreamEvent>,
     header_emitted: bool,
     surfaces_drained: usize,
@@ -66,6 +68,8 @@ impl LandXmlTinStreamSession {
             decoder: Decoder::new(&limits)?,
             token: Vec::new(),
             kind: TokenKind::Text,
+            max_text_bytes: limits.max_text_bytes,
+            max_markup_bytes: max_markup_bytes(&limits)?,
             queue: VecDeque::new(),
             header_emitted: false,
             surfaces_drained: 0,
@@ -236,10 +240,23 @@ impl LandXmlTinStreamSession {
                 }
             }
         }
-        if self.token.len() > self.parser().max_text_bytes() {
-            return Err(error(Code::LimitExceeded, "XML token exceeds byte limit"));
+        let (limit, message) = self.token_limit();
+        if self.token.len() > limit {
+            return Err(error(Code::LimitExceeded, message));
         }
         Ok(())
+    }
+
+    fn token_limit(&self) -> (usize, &'static str) {
+        match &self.kind {
+            TokenKind::Text => (self.max_text_bytes, "text limit exceeded"),
+            TokenKind::Markup { .. }
+                if self.token.starts_with(b"<!--") || self.token.starts_with(b"<![CDATA[") =>
+            {
+                (self.max_text_bytes, "XML token limit exceeded")
+            }
+            TokenKind::Markup { .. } => (self.max_markup_bytes, "markup limit exceeded"),
+        }
     }
 
     fn emit_token(&mut self) -> Result<(), LandXmlError> {

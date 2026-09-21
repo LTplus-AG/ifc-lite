@@ -4,8 +4,9 @@
 
 use ifc_lite_landxml::{
     alignment::parse_landxml_alignments_optional, parse_landxml_pipe_networks, parse_landxml_plan,
-    parse_landxml_tin, LandXmlDiagnosticCode, LandXmlLimits, LandXmlStreamEvent,
-    LandXmlSurfaceComponent, LandXmlTinStreamSession, MAX_LANDXML_STREAM_DRAIN_BYTES,
+    parse_landxml_tin, parse_landxml_tin_with_cancel, LandXmlDiagnosticCode, LandXmlError,
+    LandXmlLimits, LandXmlStreamEvent, LandXmlStreamSummary, LandXmlSurfaceComponent,
+    LandXmlTinStreamSession, MAX_LANDXML_STREAM_DRAIN_BYTES,
 };
 
 const XML: &str = r#"<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces></LandXML>"#;
@@ -41,10 +42,15 @@ fn drive(bytes: &[u8], cuts: impl Iterator<Item = usize>) -> Vec<LandXmlStreamEv
     output
 }
 
-fn summary_after_byte_cuts(
+fn summary_after_byte_cuts(bytes: &[u8]) -> Result<LandXmlStreamSummary, LandXmlError> {
+    summary_after_byte_cuts_with_limits(bytes, LandXmlLimits::default())
+}
+
+fn summary_after_byte_cuts_with_limits(
     bytes: &[u8],
-) -> Result<ifc_lite_landxml::LandXmlStreamSummary, ifc_lite_landxml::LandXmlError> {
-    let mut session = LandXmlTinStreamSession::new(LandXmlLimits::default())?;
+    limits: LandXmlLimits,
+) -> Result<LandXmlStreamSummary, LandXmlError> {
+    let mut session = LandXmlTinStreamSession::new(limits)?;
     for byte in bytes {
         session.advance(std::slice::from_ref(byte))?;
     }
@@ -206,6 +212,63 @@ fn issue_5050_pipe_stream_keeps_direct_malformed_and_semantic_error_codes() {
             .code,
         parse_landxml_pipe_networks(invalid_type.as_bytes())
             .expect_err("direct invalid pipe type")
+            .code
+    );
+}
+
+#[test]
+fn issue_5050_owned_decoder_matches_direct_encoding_and_entity_refusals() {
+    let utf8 = format!(r#"<?xml version="1.0" encoding="UTF-8"?>{XML}"#);
+    let utf8_direct = parse_landxml_tin(utf8.as_bytes()).expect("direct UTF-8 document");
+    let utf8_stream = summary_after_byte_cuts(utf8.as_bytes()).expect("stream UTF-8 document");
+    assert_eq!(utf8_stream.surfaces_drained, utf8_direct.surfaces.len());
+
+    let utf16_document = format!(r#"<?xml version="1.0" encoding="UTF-16"?>{XML}"#);
+    let utf16_be = utf16_document
+        .encode_utf16()
+        .flat_map(u16::to_be_bytes)
+        .collect::<Vec<_>>();
+    let utf16_direct = parse_landxml_tin(&utf16_be).expect("direct UTF-16BE document");
+    let utf16_stream = summary_after_byte_cuts(&utf16_be).expect("stream UTF-16BE document");
+    assert_eq!(utf16_stream.surfaces_drained, utf16_direct.surfaces.len());
+
+    let declared_mismatch = format!(r#"<?xml version="1.0" encoding="ISO-8859-1"?>{XML}"#);
+    assert_eq!(
+        summary_after_byte_cuts(declared_mismatch.as_bytes())
+            .expect_err("stream declared encoding mismatch")
+            .code,
+        parse_landxml_tin(declared_mismatch.as_bytes())
+            .expect_err("direct declared encoding mismatch")
+            .code
+    );
+
+    let forbidden_entity = XML.replace("0 0 0", "&forbidden;");
+    assert_eq!(
+        summary_after_byte_cuts(forbidden_entity.as_bytes())
+            .expect_err("stream forbidden entity")
+            .code,
+        parse_landxml_tin(forbidden_entity.as_bytes())
+            .expect_err("direct forbidden entity")
+            .code
+    );
+}
+
+#[test]
+fn issue_5050_stream_applies_the_direct_markup_quota_before_quick_xml() {
+    let limits = LandXmlLimits {
+        max_name_bytes: 4,
+        max_attributes: 1,
+        max_attribute_bytes: 4,
+        max_text_bytes: 64,
+        ..LandXmlLimits::default()
+    };
+    let markup = format!("<LandXML {}>", "x".repeat(64));
+    assert_eq!(
+        summary_after_byte_cuts_with_limits(markup.as_bytes(), limits.clone())
+            .expect_err("stream markup quota")
+            .code,
+        parse_landxml_tin_with_cancel(markup.as_bytes(), &limits, None)
+            .expect_err("direct markup quota")
             .code
     );
 }

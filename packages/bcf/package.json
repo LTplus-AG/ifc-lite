@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "@ifc-lite/encoding": "workspace:^",
-    "jszip": "^3.10.0"
+    "jszip": "^3.10.2"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

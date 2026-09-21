@@ -38,6 +38,22 @@ fn aliased_triangle_parcels(count: usize) -> String {
     document(&aliases)
 }
 
+fn regular_line_parcel(edges: usize, name: &str) -> String {
+    let mut lines = String::new();
+    for ordinal in 0..edges {
+        let angle = std::f64::consts::TAU * ordinal as f64 / edges as f64;
+        let next_angle = std::f64::consts::TAU * (ordinal + 1) as f64 / edges as f64;
+        lines.push_str(&format!(
+            "<Line><Start>{} {}</Start><End>{} {}</End></Line>",
+            angle.sin(),
+            angle.cos(),
+            next_angle.sin(),
+            next_angle.cos(),
+        ));
+    }
+    format!("<Parcel name=\"{name}\"><CoordGeom>{lines}</CoordGeom></Parcel>")
+}
+
 #[test]
 fn issue_5046_retains_cogo_monuments_and_analytic_plan_features() {
     let parsed = parse(&document(
@@ -735,6 +751,68 @@ fn issue_5046_bulk_parcel_probes_preserve_scoped_dangling_and_cyclic_references(
             }
         );
     }
+}
+
+#[test]
+fn issue_5046_bulk_topology_supports_production_sized_regular_line_parcels() {
+    for edges in [76, 100, 128] {
+        let parsed = parse(&document(&format!(
+            "<Parcels>{}</Parcels>",
+            regular_line_parcel(edges, "regular")
+        )));
+        let mut resolver = LandXmlPlanResolver::new(&parsed, 10_000);
+        let probe = parsed
+            .probe_parcels_with_resolver(&parsed.parcels, &mut resolver)
+            .expect("a supported regular boundary must not exhaust document resolution")
+            .pop()
+            .expect("one parcel probe");
+        assert_eq!(probe.state, LandXmlParcelState::Analytic, "{edges} edges");
+        assert!(
+            probe
+                .area_in_declared_square_units
+                .is_some_and(f64::is_finite),
+            "{edges} edges retain analytic area"
+        );
+    }
+}
+
+#[test]
+fn issue_5046_bulk_topology_limit_preserves_one_parcel_without_starving_siblings() {
+    let parsed = parse(&document(&format!(
+        r#"<CgPoints><CgPoint name="safe">2 3</CgPoint></CgPoints>
+        <Monuments><Monument pntRef="safe"/></Monuments><Parcels>{}<Parcel name="safe"><CoordGeom>
+        <Line><Start pntRef="safe"/><End>3 3</End></Line><Line><Start>3 3</Start><End>2 4</End></Line><Line><Start>2 4</Start><End pntRef="safe"/></Line>
+        </CoordGeom></Parcel></Parcels>"#,
+        regular_line_parcel(701, "over-limit")
+    )));
+    let mut resolver = LandXmlPlanResolver::new(&parsed, 10_000);
+    let probes = parsed
+        .probe_parcels_with_resolver(&parsed.parcels, &mut resolver)
+        .expect("one complex parcel is a local preservation result");
+    assert_eq!(
+        parsed.cogo_points()[0].point.expect("safe COGO").northing,
+        2.0
+    );
+    assert_eq!(
+        probes[0].state,
+        LandXmlParcelState::PreservedOnly {
+            reason: "parcel topology work limit exceeded".to_owned(),
+        }
+    );
+    assert_eq!(probes[1].state, LandXmlParcelState::Analytic);
+    assert_eq!(
+        resolver
+            .resolve(
+                None,
+                &ifc_lite_landxml::LandXmlPlanPointLocation::PointReference {
+                    pnt_ref: "safe".to_owned(),
+                }
+            )
+            .expect("resolver remains usable")
+            .expect("safe COGO resolves")
+            .easting,
+        3.0
+    );
 }
 
 #[test]

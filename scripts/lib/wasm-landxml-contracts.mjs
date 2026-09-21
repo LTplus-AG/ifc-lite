@@ -69,6 +69,24 @@ const BULK_PARCEL_EDGE_CASES_XML = `<?xml version="1.0" encoding="UTF-8"?>
   <Parcels><Parcel name="second"><CoordGeom><Line><Start pntRef="shared"/><End>11 10</End></Line><Line><Start>11 10</Start><End>10 11</End></Line><Line><Start>10 11</Start><End pntRef="shared"/></Line></CoordGeom></Parcel><Parcel name="cycle"><CoordGeom><Line><Start pntRef="cycle-a"/><End>1 0</End></Line></CoordGeom></Parcel><Parcel name="dangling"><CoordGeom><Line><Start pntRef="missing"/><End>1 0</End></Line></CoordGeom></Parcel></Parcels>
 </LandXML>`;
 
+function regularLineParcel(edges, name) {
+  const lines = [];
+  for (let index = 0; index < edges; index++) {
+    const angle = Math.PI * 2 * index / edges;
+    const next = Math.PI * 2 * (index + 1) / edges;
+    lines.push(`<Line><Start>${Math.sin(angle)} ${Math.cos(angle)}</Start><End>${Math.sin(next)} ${Math.cos(next)}</End></Line>`);
+  }
+  return `<Parcel name="${name}"><CoordGeom>${lines.join('')}</CoordGeom></Parcel>`;
+}
+
+function regularLineParcelXml(edges) {
+  return `<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><Parcels>${regularLineParcel(edges, 'regular')}</Parcels></LandXML>`;
+}
+
+function topologyLimitParcelXml() {
+  return `<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><CgPoints><CgPoint name="safe">2 3</CgPoint></CgPoints><Monuments><Monument pntRef="safe"/></Monuments><Parcels>${regularLineParcel(701, 'over-limit')}<Parcel name="safe"><CoordGeom><Line><Start pntRef="safe"/><End>3 3</End></Line><Line><Start>3 3</Start><End>2 4</End></Line><Line><Start>2 4</Start><End pntRef="safe"/></Line></CoordGeom></Parcel></Parcels></LandXML>`;
+}
+
 function utf16Le(text) {
   const output = new Uint8Array(2 + text.length * 2);
   output.set([0xff, 0xfe]);
@@ -156,6 +174,25 @@ export function runLandXmlContracts(api, test) {
     assert.deepEqual(document.plan.parcel_probes.slice(2).map((probe) => probe.state), [
       { kind: 'preserved_only', reason: 'open or unresolved boundary' },
       { kind: 'preserved_only', reason: 'open or unresolved boundary' },
+    ]);
+  });
+
+  test('LandXML real-WASM regular production parcel boundaries stay analytic (#5046)', () => {
+    for (const edges of [76, 100, 128]) {
+      const document = api.parseLandXmlTinBytes(new TextEncoder().encode(regularLineParcelXml(edges)));
+      const probe = document.plan.parcel_probes[0];
+      assert.deepEqual(probe.state, { kind: 'analytic' }, `${edges}-edge regular boundary remains analytic`);
+      assert.ok(Number.isFinite(probe.area_in_declared_square_units), `${edges}-edge regular boundary retains finite analytic area`);
+    }
+  });
+
+  test('LandXML real-WASM preserves an over-limit parcel without discarding sibling records (#5046)', () => {
+    const document = api.parseLandXmlTinBytes(new TextEncoder().encode(topologyLimitParcelXml()));
+    assert.equal(document.plan.cogo_points[0].point.northing, 2, 'unrelated COGO survives');
+    assert.equal(document.plan.resolved_monuments[0].point.easting, 3, 'unrelated monument still resolves');
+    assert.deepEqual(document.plan.parcel_probes.map((probe) => probe.state), [
+      { kind: 'preserved_only', reason: 'parcel topology work limit exceeded' },
+      { kind: 'analytic' },
     ]);
   });
 

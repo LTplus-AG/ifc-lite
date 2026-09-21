@@ -165,31 +165,34 @@ fn resolved_geometry<'a>(
 fn plan_adapter<'a>(
     plan: &'a ifc_lite_landxml::LandXmlPlanDocument,
 ) -> Result<LandXmlPlanDocumentJs<'a>, ifc_lite_landxml::LandXmlError> {
-    let resolution_requests = plan.monuments.len().saturating_add(
-        plan.plan_features
-            .iter()
-            .map(|feature| feature.geometry.len().saturating_mul(4))
-            .sum::<usize>(),
-    );
-    // A curve is bounded to 64 topology edges. Reserve enough aggregate work
-    // for an exact curve + chord parcel while keeping all parcel probes on the
-    // same deterministic document budget as COGO resolution.
-    let parcel_work = plan.parcels.iter().fold(0usize, |work, parcel| {
-        work.saturating_add(8_192).saturating_add(
-            parcel
-                .loops
+    // Resolver work is document-wide. Parcel topology has its own checked,
+    // per-record bound, so a pathological ring cannot starve later aliases.
+    let resolution_requests = plan
+        .monuments
+        .len()
+        .saturating_add(
+            plan.plan_features
                 .iter()
-                .map(Vec::len)
-                .sum::<usize>()
-                .saturating_mul(32),
+                .map(|feature| feature.geometry.len().saturating_mul(4))
+                .sum::<usize>(),
         )
-    });
+        .saturating_add(
+            plan.parcels
+                .iter()
+                .map(|parcel| {
+                    parcel
+                        .loops
+                        .iter()
+                        .map(|loop_geometry| loop_geometry.len().saturating_mul(4))
+                        .sum::<usize>()
+                })
+                .sum::<usize>(),
+        );
     let max_work = plan
         .cogo_points()
         .len()
         .saturating_mul(8)
         .saturating_add(resolution_requests.saturating_mul(8))
-        .saturating_add(parcel_work)
         .saturating_add(1_000);
     let mut resolver = ifc_lite_landxml::LandXmlPlanResolver::new(plan, max_work);
     Ok(LandXmlPlanDocumentJs {

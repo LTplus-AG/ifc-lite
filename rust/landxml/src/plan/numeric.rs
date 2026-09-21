@@ -14,6 +14,8 @@ use measure::{arc_delta, cross, distance, finite_measure, finite_point, finite_s
 use topology::segments_intersect;
 
 const EPSILON: f64 = 1e-9;
+const MAX_PARCEL_TOPOLOGY_EDGES: usize = 700;
+const MAX_PARCEL_TOPOLOGY_WORK: usize = 1_000_000;
 type GeometryMeasure = (f64, f64, Vec<(LandXmlPlanPoint, LandXmlPlanPoint)>);
 
 pub(super) struct TopologyBudget<'a> {
@@ -93,6 +95,51 @@ impl ParcelProbeWork for LandXmlPlanResolver<'_> {
     }
 }
 
+/// Combines the document-wide reference cache with a deliberately local parcel
+/// topology budget. A complex parcel cannot spend the resolver work reserved
+/// for later monuments, geometry, or sibling parcels.
+struct BulkParcelProbe<'resolver, 'document> {
+    resolver: &'resolver mut LandXmlPlanResolver<'document>,
+    topology: TopologyBudget<'static>,
+    topology_exhausted: bool,
+}
+
+impl<'resolver, 'document> BulkParcelProbe<'resolver, 'document> {
+    fn new(resolver: &'resolver mut LandXmlPlanResolver<'document>, max_work: usize) -> Self {
+        Self {
+            resolver,
+            topology: TopologyBudget {
+                work: 0,
+                max_work,
+                cancelled: None,
+            },
+            topology_exhausted: false,
+        }
+    }
+}
+
+impl ParcelProbeWork for BulkParcelProbe<'_, '_> {
+    fn check(&mut self) -> std::result::Result<(), crate::LandXmlError> {
+        let result = self.topology.check();
+        if result
+            .as_ref()
+            .is_err_and(|error| error.code == crate::LandXmlDiagnosticCode::LimitExceeded)
+        {
+            self.topology_exhausted = true;
+        }
+        result
+    }
+
+    fn resolve(
+        &mut self,
+        _document: &LandXmlPlanDocument,
+        scope: Option<&crate::LandXmlSourceId>,
+        location: &LandXmlPlanPointLocation,
+    ) -> std::result::Result<Option<LandXmlPlanPoint>, crate::LandXmlError> {
+        self.resolver.resolve(scope, location)
+    }
+}
+
 impl LandXmlPlanDocument {
     /// Partition plan-source identities without coupling semantic records to a
     /// renderer allocation or introducing a second model-load path.
@@ -166,30 +213,72 @@ impl LandXmlPlanDocument {
         probe_parcel_with_work(self, parcel, &mut budget)
     }
 
-    /// Probe many parcels through one document-scoped resolver. Resolution
-    /// aliases and topology checks consume one aggregate budget, so repeated
-    /// parcel references are path-compressed instead of being re-walked for
-    /// every parcel. Non-limit probe failures remain attached to their parcel;
-    /// only deterministic exhaustion of the shared document budget aborts the
-    /// adapter.
+    /// Probe many parcels through one document-scoped resolver. Alias
+    /// resolution is aggregate and path-compressed across the document, while
+    /// each parcel gets a checked topology bound. This keeps a pathological
+    /// boundary local to its source record rather than starving its siblings.
     pub fn probe_parcels_with_resolver(
         &self,
         parcels: &[LandXmlParcel],
         resolver: &mut LandXmlPlanResolver<'_>,
     ) -> std::result::Result<Vec<LandXmlParcelProbe>, crate::LandXmlError> {
-        parcels
-            .iter()
-            .map(
-                |parcel| match probe_parcel_with_work(self, parcel, resolver) {
-                    Ok(probe) => Ok(probe),
-                    Err(error) if error.code == crate::LandXmlDiagnosticCode::LimitExceeded => {
-                        Err(error)
-                    }
-                    Err(error) => Ok(preserved(parcel, &error.message)),
-                },
-            )
-            .collect()
+        let mut probes = Vec::with_capacity(parcels.len());
+        for parcel in parcels {
+            let Some(max_topology_work) = parcel_topology_budget(parcel) else {
+                probes.push(preserved(parcel, "parcel topology work limit exceeded"));
+                continue;
+            };
+            let mut work = BulkParcelProbe::new(resolver, max_topology_work);
+            match probe_parcel_with_work(self, parcel, &mut work) {
+                Ok(probe) => probes.push(probe),
+                Err(error) if work.topology_exhausted => {
+                    probes.push(preserved(parcel, "parcel topology work limit exceeded"));
+                }
+                // Resolver limits and cancellation are document-level states:
+                // never mislabel them as an individual parcel refusal.
+                Err(error)
+                    if matches!(
+                        error.code,
+                        crate::LandXmlDiagnosticCode::LimitExceeded
+                            | crate::LandXmlDiagnosticCode::Cancelled
+                    ) =>
+                {
+                    return Err(error);
+                }
+                Err(error) => probes.push(preserved(parcel, &error.message)),
+            }
+        }
+        Ok(probes)
     }
+}
+
+/// Bound the existing exact pairwise topology checks before they allocate or
+/// traverse an adversarial boundary. Two scans cost at most `2n² + 3n` for n
+/// generated edges; extra slack covers loop bookkeeping. Curve edges are
+/// deterministically capped at 64, while irregular-line vertices are counted
+/// exactly. A checked cap keeps this arithmetic and the later edge vectors
+/// bounded even for malformed, enormous input.
+fn parcel_topology_budget(parcel: &LandXmlParcel) -> Option<usize> {
+    let mut edges = 0usize;
+    for geometry in parcel.loops.iter().flatten() {
+        let geometry_edges = match geometry.kind {
+            super::LandXmlGeometryKind::Line => 1,
+            super::LandXmlGeometryKind::Curve => 64,
+            super::LandXmlGeometryKind::IrregularLine => {
+                geometry.intermediate_points.len().checked_add(1)?
+            }
+        };
+        edges = edges.checked_add(geometry_edges)?;
+        if edges > MAX_PARCEL_TOPOLOGY_EDGES {
+            return None;
+        }
+    }
+    let work = edges
+        .checked_mul(edges)?
+        .checked_mul(2)?
+        .checked_add(edges.checked_mul(4)?)?
+        .checked_add(64)?;
+    (work <= MAX_PARCEL_TOPOLOGY_WORK).then_some(work)
 }
 
 fn probe_parcel_with_work<W: ParcelProbeWork>(

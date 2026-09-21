@@ -60,6 +60,12 @@ test('VERCEL_SOURCEMAPS forces the decision either way (#5132)', () => {
   assert.deepEqual(decide({ ...keys, VERCEL_SOURCEMAPS: '0' }, { meminfo: enhancedBuilder }), { on: false, vite: '' });
 });
 
+test('an inherited VITE_SOURCEMAP=1 cannot re-enable maps behind an "off" decision (#5132)', () => {
+  assert.deepEqual(decide({ ...keys, VERCEL_SOURCEMAPS: '0', VITE_SOURCEMAP: '1' }, { meminfo: enhancedBuilder }), { on: false, vite: '' });
+  assert.deepEqual(decide({ ...keys, VITE_SOURCEMAP: '1' }, { meminfo: basicBuilder }), { on: false, vite: '' });
+  assert.deepEqual(decide({ VITE_SOURCEMAP: '1' }, { meminfo: enhancedBuilder }), { on: false, vite: '' });
+});
+
 test('the build script uploads only when the same decision turned maps on (#5132)', () => {
   const script = readFileSync(new URL('scripts/vercel-build.sh', root), 'utf8');
   assert.match(script, /configure_vercel_sourcemaps/, 'the build script must source the shared decision');

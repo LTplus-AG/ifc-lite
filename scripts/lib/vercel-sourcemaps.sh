@@ -41,8 +41,13 @@ vercel_sourcemaps_ram_mb() {
 
 # Exports VITE_SOURCEMAP=1 when maps should be generated and prints why either
 # way. Returns 0 when maps are on, 1 when off, so callers can branch.
+#
+# Every "off" path also clears an inherited VITE_SOURCEMAP: this decision is
+# the only thing allowed to switch maps on, so a value leaking in from the
+# project env cannot re-enable them behind a "disabled" log line.
 configure_vercel_sourcemaps() {
   local have_keys=0 ram
+  unset VITE_SOURCEMAP
   if [ -n "${POSTHOG_CLI_API_KEY:-}" ] && [ -n "${POSTHOG_CLI_ENV_ID:-}" ]; then
     have_keys=1
   fi

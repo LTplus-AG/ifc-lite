@@ -46,7 +46,7 @@ function document(sourceLine: LandXmlPolyline, lineKind: 'breakline' | 'contour'
       points: [], sourceDataPoints: [], faces: [], faceSourceIds: [], faceVisibility: [], hiddenFaceCount: 0,
       boundaries: [], breaklines: lineKind === 'breakline' ? [sourceLine] : [], contours: lineKind === 'contour' ? [sourceLine] : [],
     }],
-    extensions: [], warnings: [], rendering: { meshProvenance: [], surfaceCounts: [] },
+    extensions: [], warnings: [], alignments: [], profiles: [], crossSections: [], crossSectionSurfaces: [], roadways: [], capabilityDiagnostics: [], preservedOnlyExtensions: [], rendering: { meshProvenance: [], surfaceCounts: [] },
   };
 }
 

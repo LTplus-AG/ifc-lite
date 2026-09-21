@@ -29,6 +29,21 @@ pub(crate) enum Capture {
         source_path: String,
         coordinate_dimension: u8,
     },
+    ProfilePoint {
+        depth: usize,
+        text: String,
+        curve: Option<ProfileCurveCapture>,
+    },
+    PairList {
+        depth: usize,
+        text: String,
+        target: PairListTarget,
+    },
+    CrossSectionPoint {
+        depth: usize,
+        text: String,
+        point: CrossSectionPointCapture,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -38,13 +53,40 @@ pub(crate) enum PolylineCategory {
     Contour,
 }
 
+pub(crate) struct CrossSectionPointCapture {
+    pub(crate) data_format: crate::LandXmlCrossSectionPointDataFormat,
+    pub(crate) pnt_ref: Option<String>,
+    pub(crate) alignment_ref: Option<String>,
+    pub(crate) align_ref_station: Option<f64>,
+    pub(crate) plan_feature_ref: Option<String>,
+    pub(crate) plan_feature_ref_station: Option<f64>,
+    pub(crate) parcel_ref: Option<String>,
+    pub(crate) parcel_ref_station: Option<f64>,
+}
+
+pub(crate) struct ProfileCurveCapture {
+    pub(crate) kind: crate::LandXmlVerticalCurveKind,
+    pub(crate) length: Option<f64>,
+    pub(crate) length_in: Option<f64>,
+    pub(crate) length_out: Option<f64>,
+    pub(crate) radius: Option<f64>,
+}
+
+pub(crate) enum PairListTarget {
+    GradeLine,
+    CrossSectionSegment,
+}
+
 impl Capture {
     pub(crate) fn depth(&self) -> usize {
         match self {
             Self::Point { depth, .. }
             | Self::Face { depth, .. }
             | Self::SourcePoints { depth, .. }
-            | Self::Polyline { depth, .. } => *depth,
+            | Self::Polyline { depth, .. }
+            | Self::ProfilePoint { depth, .. }
+            | Self::PairList { depth, .. }
+            | Self::CrossSectionPoint { depth, .. } => *depth,
         }
     }
 }

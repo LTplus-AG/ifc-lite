@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { FederationRegistry } from '@ifc-lite/renderer';
-import { findLandXmlModelSourceRecord, landXmlPickSourceRef, landXmlPickSourceRefFromFederation, type LandXmlTinDocument } from './landXmlSemantics.js';
+import { findLandXmlModelSourceRecord, findLandXmlSourceRecord, landXmlPickSourceRef, landXmlPickSourceRefFromFederation, type LandXmlProfile, type LandXmlTinDocument } from './landXmlSemantics.js';
 
 function document(sourceId: string, meshExpressId = 1): LandXmlTinDocument {
   return {
@@ -17,7 +17,7 @@ function document(sourceId: string, meshExpressId = 1): LandXmlTinDocument {
       sourceDataPoints: [{ sourceId: 'landxml:surface:1:source-point:1', ordinal: 1, sourcePath: 'LandXML/Surfaces/Surface[1]/SourceData/PntList3D', coordinateDimension: 3, coordinates: [1, 2, 3] }],
       faces: [['1', '1', '1']], faceSourceIds: [sourceId], faceVisibility: [true], hiddenFaceCount: 0,
       boundaries: [{ sourceId: 'landxml:surface:1:boundary:1', ordinal: 1, name: 'Outer', kind: 'outer', sourcePath: 'LandXML/Surfaces/Surface[1]/SourceData/Boundaries/Boundary/PntList3D', properties: { name: 'Outer', bndType: 'outer' }, coordinateDimension: 3, points: [[0, 0, 0], [1, 0, 0]], pointSourceIds: ['landxml:surface:1:boundary:1:point:1', 'landxml:surface:1:boundary:1:point:2'] }], breaklines: [], contours: [],
-    }], extensions: [], warnings: [],
+    }], extensions: [], warnings: [], alignments: [], profiles: [], crossSections: [], crossSectionSurfaces: [], roadways: [], capabilityDiagnostics: [], preservedOnlyExtensions: [],
     rendering: { meshProvenance: [{ meshExpressId, surfaceSourceId: 'landxml:surface:1', renderedFaceSourceIds: [sourceId] }],
       surfaceCounts: [{ surfaceSourceId: 'landxml:surface:1', sourcePoints: 1, sourceFaces: 1, hiddenFaces: 0, renderedFaces: 1, droppedDegenerateFaces: 0, droppedPrecisionFaces: 0, droppedReframeFaces: 0 }] },
   };
@@ -58,5 +58,45 @@ describe('LandXML semantic selection (#5042)', () => {
     });
     assert.equal(record?.kind, 'source-data-point');
     if (record?.kind === 'source-data-point') assert.deepEqual(record.point.coordinates, [1, 2, 3]);
+  });
+
+  it('resolves retained profile-review records without assigning IFC identities (#5045)', () => {
+    const source = document('landxml:surface:1:face:1');
+    source.profiles.push({
+      sourceId: 'landxml:profile:1:1:design:route', parentAlignmentSourceId: 'landxml:alignment:1:route', ordinal: 1,
+      name: 'route', kind: 'design', pvis: [{ sourceId: 'landxml:profile:1:pvi:1', station: 10, elevation: 2 }],
+      verticalCurves: [{ sourceId: 'landxml:profile:1:curve:1', parentProfileSourceId: 'landxml:profile:1:1:design:route', kind: 'parabolic', station: 10, elevation: 2, length: 20, lengthIn: null, lengthOut: null, radius: null }],
+      gradeLines: [{ sourceId: 'landxml:profile:1:grade:1', parentProfileSourceId: 'landxml:profile:1:1:design:route', ordinal: 1, points: [{ sourceId: 'landxml:profile:1:grade:1:point:1', station: 10, elevation: 2 }] }],
+    });
+    const record = findLandXmlModelSourceRecord(
+      new Map([['terrain', { landXmlDocument: source }]]),
+      { modelId: 'terrain', sourceId: 'landxml:profile:1:1:design:route' },
+    );
+    assert.equal(record?.kind, 'profile');
+    if (record?.kind === 'profile') assert.equal(record.profile.parentAlignmentSourceId, 'landxml:alignment:1:route');
+    assert.equal(findLandXmlModelSourceRecord(
+      new Map([['terrain', { landXmlDocument: source }]]),
+      { modelId: 'terrain', sourceId: 'landxml:profile:1:curve:1' },
+    )?.kind, 'vertical-curve');
+    assert.equal(findLandXmlModelSourceRecord(
+      new Map([['terrain', { landXmlDocument: source }]]),
+      { modelId: 'terrain', sourceId: 'landxml:profile:1:grade:1:point:1' },
+    )?.kind, 'grade-line-point');
+  });
+
+  it('opens a root roadway without touching unrelated profile child collections (#5045)', () => {
+    const source = document('landxml:surface:1:face:1');
+    let childReads = 0;
+    const pvis: LandXmlProfile['pvis'] = new Proxy(
+      Array.from({ length: 100_000 }, (_, index) => ({ sourceId: `pvi-${index}`, station: index, elevation: index })),
+      { get(target, property, receiver) {
+        if (property === 'length' || (typeof property === 'string' && /^\d+$/.test(property))) childReads += 1;
+        return Reflect.get(target, property, receiver);
+      } },
+    );
+    source.profiles.push({ sourceId: 'profile', parentAlignmentSourceId: 'alignment', ordinal: 1, name: 'design', kind: 'design', pvis, verticalCurves: [], gradeLines: [] });
+    source.roadways.push({ sourceId: 'roadway', ordinal: 1, name: 'Route', alignmentRefs: [], alignmentSourceIds: [], surfaceRefs: [], surfaceSourceIds: [], gradeModelRefs: [] });
+    assert.equal(findLandXmlSourceRecord(source, 'roadway')?.kind, 'roadway');
+    assert.equal(childReads, 0, 'root selection must not scan prior profile PVIs');
   });
 });

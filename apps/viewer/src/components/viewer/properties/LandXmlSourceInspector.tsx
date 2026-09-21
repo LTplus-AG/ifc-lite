@@ -10,6 +10,7 @@ import {
   type LandXmlSourceRecord,
   type LandXmlSourceRef,
 } from '@/hooks/ingest/landXmlSemantics';
+import { semanticDetailRows, semanticNavigationAt, semanticNavigationCount } from './landXmlSemanticInspection.js';
 
 interface LandXmlSourceInspectorProps {
   models: ReadonlyMap<string, LandXmlSourceModel>;
@@ -23,7 +24,19 @@ function recordName(record: LandXmlSourceRecord): string {
     case 'point': return record.point.id;
     case 'source-data-point': return `Source point ${record.point.ordinal}`;
     case 'face': return record.pointIds.join(', ');
-    default: return record.line.name ?? record.line.sourceId;
+    case 'boundary': case 'breakline': case 'contour': return record.line.name ?? record.line.sourceId;
+    case 'alignment': return record.alignment.name;
+    case 'profile': return record.profile.name;
+    case 'profile-point': return `PVI: sta ${record.point.station}`;
+    case 'vertical-curve': return `${record.curve.kind}: sta ${record.curve.station}`;
+    case 'grade-line': return `Grade line ${record.gradeLine.ordinal}`;
+    case 'grade-line-point': return `Grade sample: sta ${record.point.station}`;
+    case 'cross-section': return `Cross section ${record.crossSection.ordinal}`;
+    case 'cross-section-surface': return record.crossSectionSurface.name || record.crossSectionSurface.sourceId;
+    case 'cross-section-segment': return `Cross-section segment ${record.segment.ordinal}`;
+    case 'cross-section-point': return `Cross-section point ${record.point.sourceId}`;
+    case 'roadway': return record.roadway.name;
+    case 'preserved-extension': return record.extension.localName;
   }
 }
 
@@ -33,21 +46,34 @@ function recordPath(record: LandXmlSourceRecord): string {
     case 'point': return `${record.surface.sourcePath}/Definition/Pnts/P[@id="${record.point.id}"]`;
     case 'face': return `${record.surface.sourcePath}/Definition/Faces/F`;
     case 'source-data-point': return record.point.sourcePath;
-    default: return record.line.sourcePath;
+    case 'boundary': case 'breakline': case 'contour': return record.line.sourcePath;
+    case 'alignment': return record.alignment.sourceId;
+    case 'profile': return record.profile.sourceId;
+    case 'profile-point': return record.point.sourceId;
+    case 'vertical-curve': return record.curve.sourceId;
+    case 'grade-line': return record.gradeLine.sourceId;
+    case 'grade-line-point': return record.point.sourceId;
+    case 'cross-section': return record.crossSection.sourceId;
+    case 'cross-section-surface': return record.crossSectionSurface.sourceId;
+    case 'cross-section-segment': return record.segment.sourceId;
+    case 'cross-section-point': return record.point.sourceId;
+    case 'roadway': return record.roadway.sourceId;
+    case 'preserved-extension': return record.extension.sourcePath;
   }
 }
 
 const NAVIGATION_PAGE_SIZE = 100;
 
 type NavigationItem = { label: string; sourceId: string };
+type LandXmlSurfaceRecord = Extract<LandXmlSourceRecord, { kind: 'surface' }>['surface'];
 
-function navigationCount(surface: LandXmlSourceRecord['surface']): number {
+function navigationCount(surface: LandXmlSurfaceRecord): number {
   return 1 + surface.points.length + surface.sourceDataPoints.length + surface.faceSourceIds.length
     + surface.boundaries.length + surface.breaklines.length + surface.contours.length;
 }
 
 /** Materialize one page only: survey surfaces may contain millions of points. */
-function navigationAt(surface: LandXmlSourceRecord['surface'], itemIndex: number): NavigationItem {
+function navigationAt(surface: LandXmlSurfaceRecord, itemIndex: number): NavigationItem {
   if (itemIndex === 0) return { label: `Surface: ${surface.name}`, sourceId: surface.sourceId };
   let index = itemIndex - 1;
   const point = surface.points[index];
@@ -87,6 +113,44 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
 
   if (!record) return null;
   const document = models.get(selected.modelId)?.landXmlDocument;
+  if (!('surface' in record)) {
+    const count = semanticNavigationCount(record);
+    const pages = Math.max(1, Math.ceil(count / NAVIGATION_PAGE_SIZE));
+    const page = Math.min(navigationPage, pages - 1);
+    const firstItem = page * NAVIGATION_PAGE_SIZE;
+    const navigation = Array.from(
+      { length: Math.min(NAVIGATION_PAGE_SIZE, count - firstItem) },
+      (_, index) => semanticNavigationAt(record, firstItem + index),
+    );
+    const rows = semanticDetailRows(record);
+    return <div className="h-full overflow-auto border-l-2 border-zinc-200 bg-white p-4 text-xs dark:border-zinc-800 dark:bg-black" data-landxml-source-inspector>
+      <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">{t('properties.landXmlSource.heading')}</p>
+      <h3 className="mt-2 truncate text-sm font-bold uppercase tracking-tight text-zinc-900 dark:text-zinc-100">{recordName(record)}</h3>
+      <p className="mt-1 break-all font-mono text-xs text-zinc-500">{recordPath(record)}</p>
+      <p className="mt-3"><span className="font-semibold">{t('properties.landXmlSource.kind')}:</span> {record.kind}</p>
+      {navigation.length > 0 && <div className="mt-3 border-y border-zinc-200 dark:border-zinc-800">
+        <p className="pt-3 text-xs font-bold uppercase tracking-wide text-zinc-500">{t('properties.landXmlSource.navigation')}</p>
+        <div className="divide-y divide-zinc-100 py-2 dark:divide-zinc-900">
+          {navigation.map((item, index) => <button key={`${item.label}:${index}`} type="button" disabled={!item.sourceId}
+            className="block w-full px-2 py-2 text-left text-xs text-zinc-700 disabled:text-zinc-500 dark:text-zinc-300"
+            onClick={() => { if (item.sourceId) onSelect({ modelId: selected.modelId, sourceId: item.sourceId }); }}>
+            {item.label}
+          </button>)}
+        </div>
+        {pages > 1 && <div className="flex items-center justify-between border-t border-zinc-200 py-2 text-xs dark:border-zinc-800">
+          <button type="button" disabled={page === 0} onClick={() => setNavigationPage(page - 1)}>{t('properties.landXmlSource.previous')}</button>
+          <span>{t('properties.landXmlSource.page', { current: page + 1, total: pages })}</span>
+          <button type="button" disabled={page + 1 >= pages} onClick={() => setNavigationPage(page + 1)}>{t('properties.landXmlSource.next')}</button>
+        </div>}
+      </div>}
+      <dl className="mt-3 space-y-2">
+        {rows.map((row, index) => <div key={`${row.label}:${row.value}:${index}`} className="flex gap-2">
+          <dt className="shrink-0 font-semibold text-zinc-500">{row.label}</dt>
+          <dd className="min-w-0 break-all">{row.sourceId ? <button type="button" className="text-left text-primary underline" onClick={() => { if (row.sourceId) onSelect({ modelId: selected.modelId, sourceId: row.sourceId }); }}>{row.value}</button> : row.value}</dd>
+        </div>)}
+      </dl>
+    </div>;
+  }
   const sourceCount = document?.rendering.surfaceCounts.find((counts) => counts.surfaceSourceId === record.surface.sourceId);
   const pages = Math.ceil(navigationCount(record.surface) / NAVIGATION_PAGE_SIZE);
   const page = Math.min(navigationPage, pages - 1);

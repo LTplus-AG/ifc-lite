@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use crate::{
-    capture::{Capture, PolylineCategory},
+    capture::{Capture, PairListTarget, PolylineCategory, ProfileCurveCapture},
     preflight::preflight_xml_tokens,
     semantics::{positive_id, references, triple, units},
     xml::{
@@ -12,7 +12,7 @@ use crate::{
     },
     LandXmlCancellation, LandXmlCapabilities, LandXmlDiagnosticCode as Code, LandXmlExtension,
     LandXmlLimits, LandXmlPoint, LandXmlPolyline, LandXmlRenderState, LandXmlSourceId,
-    LandXmlSurface, LandXmlSurfaceKind, LandXmlTinDocument, LandXmlUnits,
+    LandXmlSurface, LandXmlSurfaceKind, LandXmlTinDocument,
 };
 use quick_xml::{
     events::{BytesStart, Event},
@@ -22,33 +22,13 @@ mod capture;
 mod finalize;
 mod limits;
 mod path;
+mod profiles;
 mod state;
 mod text;
 mod version;
 
-use state::{retained_properties, Frame, SurfaceBuilder};
+use state::{retained_properties, Frame, Parser, SurfaceBuilder};
 pub use version::*;
-struct Parser<'a> {
-    limits: &'a LandXmlLimits,
-    cancelled: Option<&'a dyn LandXmlCancellation>,
-    work: usize,
-    character_references: usize,
-    references: usize,
-    surfaces_seen: usize,
-    points_seen: usize,
-    faces_seen: usize,
-    frames: Vec<Frame>,
-    units: Option<LandXmlUnits>,
-    surface: Option<SurfaceBuilder>,
-    capture: Option<Capture>,
-    surfaces: Vec<LandXmlSurface>,
-    extensions: Vec<LandXmlExtension>,
-    warnings: Vec<String>,
-    surface_ordinal: usize,
-    version: String,
-    root_seen: bool,
-    root_closed: bool,
-}
 
 /// Parse exact LandXML 1.2 TIN semantics with default resource limits.
 pub fn parse_landxml_tin(input: &[u8]) -> Result<LandXmlTinDocument> {
@@ -86,6 +66,21 @@ pub fn parse_landxml_tin_with_cancel(
         version: String::new(),
         root_seen: false,
         root_closed: false,
+        profile_points_seen: 0,
+        vertical_curves_seen: 0,
+        cross_section_points_seen: 0,
+        alignment: None,
+        profile: None,
+        cross_section: None,
+        cross_section_surface: None,
+        alignments: Vec::new(),
+        profiles: Vec::new(),
+        cross_sections: Vec::new(),
+        cross_section_surfaces: Vec::new(),
+        roadways: Vec::new(),
+        capability_diagnostics: Vec::new(),
+        preserved_only_extensions: Vec::new(),
+        active_roadway_source_id: None,
     };
     let mut reader = Reader::from_reader(input.as_slice());
     reader.config_mut().trim_text(false);
@@ -224,6 +219,17 @@ impl Parser<'_> {
             namespaces: inherited,
         });
         if !target {
+            if local == "Corridor" {
+                self.record_preserved_only(
+                    local,
+                    crate::LandXmlPreservedOnlyExtensionKind::Corridor,
+                )?;
+            } else if local == "StringLine" {
+                self.record_preserved_only(
+                    local,
+                    crate::LandXmlPreservedOnlyExtensionKind::StringLine,
+                )?;
+            }
             return Ok(());
         }
         match local {
@@ -328,6 +334,7 @@ impl Parser<'_> {
             }
             _ => {}
         }
+        self.start_road_semantics(local, &attributes)?;
         Ok(())
     }
 
@@ -353,6 +360,7 @@ impl Parser<'_> {
         if self.is_path(&["LandXML", "Surfaces", "Surface"]) {
             self.finish_surface()?;
         }
+        self.finish_road_element()?;
         let closes_root = self.frames.len() == 1;
         self.frames.pop();
         if closes_root {

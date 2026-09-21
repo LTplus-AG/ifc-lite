@@ -23,7 +23,7 @@ function document(pointCount = 1): LandXmlTinDocument {
       breaklines: [{ sourceId: 'breakline', ordinal: 1, name: 'ridge', kind: null, sourcePath: 'breakline-path', properties: {}, coordinateDimension: 3, points: [[1, 2, 3]], pointSourceIds: [] }],
       contours: [{ sourceId: 'contour', ordinal: 1, name: '100 m', kind: null, sourcePath: 'contour-path', properties: { elev: '100' }, coordinateDimension: 2, points: [[1, 2]], pointSourceIds: [] }],
     }],
-    extensions: [], warnings: [], rendering: { meshProvenance: [], surfaceCounts: [{ surfaceSourceId: 'surface', sourcePoints: pointCount, sourceFaces: 1, hiddenFaces: 0, renderedFaces: 1, droppedDegenerateFaces: 2, droppedPrecisionFaces: 3, droppedReframeFaces: 4 }] },
+    extensions: [], warnings: [], alignments: [], profiles: [], crossSections: [], crossSectionSurfaces: [], roadways: [], capabilityDiagnostics: [], preservedOnlyExtensions: [], rendering: { meshProvenance: [], surfaceCounts: [{ surfaceSourceId: 'surface', sourcePoints: pointCount, sourceFaces: 1, hiddenFaces: 0, renderedFaces: 1, droppedDegenerateFaces: 2, droppedPrecisionFaces: 3, droppedReframeFaces: 4 }] },
   };
 }
 
@@ -65,6 +65,85 @@ describe('LandXmlSourceInspector (#5042)', () => {
     assert.ok(next);
     click(next);
     assert.ok([...ui.querySelectorAll('button')].some((button) => button.textContent === 'Point: P100'));
+    cleanup();
+  });
+
+  it('inspects profile links as bounded review fields rather than serialized source JSON', () => {
+    const profileDocument = {
+      ...document(),
+      profiles: [{ sourceId: 'profile', parentAlignmentSourceId: 'alignment', ordinal: 1, name: 'design', kind: 'design' as const, pvis: [], verticalCurves: [], gradeLines: [] }],
+    };
+    const selected: string[] = [];
+    const ui = render(<LandXmlSourceInspector
+      models={new Map([['terrain', { landXmlDocument: profileDocument }]])}
+      selected={{ modelId: 'terrain', sourceId: 'profile' }}
+      onSelect={(ref) => selected.push(`${ref.modelId}:${ref.sourceId}`)}
+    />);
+    assert.match(ui.textContent ?? '', /Parent alignment/);
+    assert.equal(ui.querySelector('pre'), null);
+    const parent = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Parent alignment: alignment');
+    assert.ok(parent);
+    click(parent);
+    assert.deepEqual(selected, ['terrain:alignment']);
+    cleanup();
+  });
+
+  it('pages engineering profile children and opens a late PVI by source ID (#5045)', () => {
+    const profileDocument = document();
+    profileDocument.profiles = [{
+      sourceId: 'profile', parentAlignmentSourceId: 'alignment', ordinal: 1, name: 'design', kind: 'design',
+      pvis: Array.from({ length: 101 }, (_, index) => ({ sourceId: `pvi-${index + 1}`, station: index + 1, elevation: index / 10 })),
+      verticalCurves: [{ sourceId: 'curve', parentProfileSourceId: 'profile', kind: 'unsymmetrical_parabolic', station: 20, elevation: 2, length: null, lengthIn: 10, lengthOut: 20, radius: null }],
+      gradeLines: [{ sourceId: 'grade-line', parentProfileSourceId: 'profile', ordinal: 1, points: [{ sourceId: 'grade-point', station: 1, elevation: 2 }] }],
+    }];
+    const selected: string[] = [];
+    const ui = render(<LandXmlSourceInspector models={new Map([['terrain', { landXmlDocument: profileDocument }]])}
+      selected={{ modelId: 'terrain', sourceId: 'profile' }} onSelect={(ref) => selected.push(`${ref.modelId}:${ref.sourceId}`)} />);
+    assert.match(ui.textContent ?? '', /PVI: sta 99/);
+    assert.doesNotMatch(ui.textContent ?? '', /PVI: sta 100/);
+    const next = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Next');
+    assert.ok(next);
+    click(next);
+    const latePvi = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'PVI: sta 101');
+    assert.ok(latePvi);
+    click(latePvi);
+    assert.deepEqual(selected, ['terrain:pvi-101']);
+    cleanup();
+  });
+
+  it('shows authored curve and cross-section point engineering values', () => {
+    const profileDocument = document();
+    profileDocument.profiles = [{
+      sourceId: 'profile', parentAlignmentSourceId: 'alignment', ordinal: 1, name: 'design', kind: 'design', pvis: [],
+      verticalCurves: [{ sourceId: 'curve', parentProfileSourceId: 'profile', kind: 'unsymmetrical_parabolic', station: 20, elevation: 2, length: null, lengthIn: 10, lengthOut: 20, radius: null }], gradeLines: [],
+    }];
+    profileDocument.crossSectionSurfaces = [{
+      sourceId: 'section-surface', parentCrossSectionSourceId: 'section', kind: 'design', name: 'pavement', segments: [],
+      points: [{ sourceId: 'section-point', dataFormat: 'offset_elevation', offset: -4, elevation: 12, slope: null, distance: null, pntRef: 'survey-7', alignmentRef: 'Route', alignRefStation: 12, alignmentSourceId: 'alignment', planFeatureRef: 'feature', planFeatureRefStation: 13, parcelRef: 'parcel', parcelRefStation: 14 }],
+    }];
+    const models = new Map([['terrain', { landXmlDocument: profileDocument }]]);
+    const curve = render(<LandXmlSourceInspector models={models} selected={{ modelId: 'terrain', sourceId: 'curve' }} onSelect={() => {}} />);
+    assert.match(curve.textContent ?? '', /Incoming length.*10/);
+    assert.match(curve.textContent ?? '', /Outgoing length.*20/);
+    cleanup();
+    const point = render(<LandXmlSourceInspector models={models} selected={{ modelId: 'terrain', sourceId: 'section-point' }} onSelect={() => {}} />);
+    assert.match(point.textContent ?? '', /Signed offset.*-4/);
+    assert.match(point.textContent ?? '', /Point reference.*survey-7/);
+    assert.match(point.textContent ?? '', /Plan feature reference.*feature/);
+    cleanup();
+  });
+
+  it('falls back to the source ID for an unnamed cross-section surface', () => {
+    const profileDocument = document();
+    profileDocument.crossSectionSurfaces = [{
+      sourceId: 'section-surface', parentCrossSectionSourceId: 'section', kind: 'design', name: '', segments: [], points: [],
+    }];
+    const ui = render(<LandXmlSourceInspector
+      models={new Map([['terrain', { landXmlDocument: profileDocument }]])}
+      selected={{ modelId: 'terrain', sourceId: 'section-surface' }}
+      onSelect={() => {}}
+    />);
+    assert.match(ui.textContent ?? '', /section-surface/);
     cleanup();
   });
 });

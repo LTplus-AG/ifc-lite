@@ -6,7 +6,13 @@
 
 import init, { IfcAPI } from '@ifc-lite/wasm';
 import type { LandXmlSourceBuffer } from './landXmlIngest.js';
-import type { LandXmlPolyline, LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
+import { indexLandXmlSourceRecords } from './landXmlSemantics.js';
+import type {
+  LandXmlAlignment, LandXmlCapabilityDiagnostic, LandXmlCrossSection, LandXmlCrossSectionPoint,
+  LandXmlCrossSectionSurface, LandXmlGradeLine, LandXmlPolyline, LandXmlPreservedOnlyExtension,
+  LandXmlProfile, LandXmlProfilePoint, LandXmlRoadway, LandXmlTinDocument, LandXmlTinSurface,
+  LandXmlVerticalCurve,
+} from './landXmlSemantics.js';
 
 interface NodeModuleApi {
   createRequire(url: string): { resolve(specifier: string): string };
@@ -131,6 +137,43 @@ function nullableString(value: unknown, context: string): string | null {
   return value === null || value === undefined ? null : string(value, context);
 }
 
+function nullableFinite(value: unknown, context: string): number | null {
+  return value === null || value === undefined ? null : finite(value, context);
+}
+
+function strings(value: unknown, context: string): string[] {
+  return array(value, context).map((entry, index) => string(entry, `${context} ${index}`));
+}
+
+function profilePoint(value: unknown, context: string): LandXmlProfilePoint {
+  const raw = record(value, context);
+  return { sourceId: string(raw.source_id, `${context} source id`), station: finite(raw.station, `${context} station`), elevation: nullableFinite(raw.elevation, `${context} elevation`) };
+}
+
+function profile(value: unknown, index: number): LandXmlProfile {
+  const raw = record(value, `profile ${index}`);
+  const kind = string(raw.kind, `profile ${index} kind`);
+  if (kind !== 'design' && kind !== 'sampled') throw new Error(`LandXML WASM returned an invalid profile ${index} kind`);
+  const curve = (entry: unknown, curveIndex: number): LandXmlVerticalCurve => {
+    const source = record(entry, `profile ${index} curve ${curveIndex}`);
+    const curveKind = string(source.kind, `profile ${index} curve ${curveIndex} kind`);
+    if (curveKind !== 'parabolic' && curveKind !== 'unsymmetrical_parabolic' && curveKind !== 'circular') throw new Error(`LandXML WASM returned an invalid profile ${index} curve ${curveIndex} kind`);
+    return { sourceId: string(source.source_id, `profile ${index} curve ${curveIndex} source id`), parentProfileSourceId: string(source.parent_profile_source_id, `profile ${index} curve ${curveIndex} parent`), kind: curveKind, station: finite(source.station, `profile ${index} curve ${curveIndex} station`), elevation: nullableFinite(source.elevation, `profile ${index} curve ${curveIndex} elevation`), length: nullableFinite(source.length, `profile ${index} curve ${curveIndex} length`), lengthIn: nullableFinite(source.length_in, `profile ${index} curve ${curveIndex} length in`), lengthOut: nullableFinite(source.length_out, `profile ${index} curve ${curveIndex} length out`), radius: nullableFinite(source.radius, `profile ${index} curve ${curveIndex} radius`) };
+  };
+  const line = (entry: unknown, lineIndex: number): LandXmlGradeLine => {
+    const source = record(entry, `profile ${index} grade line ${lineIndex}`);
+    return { sourceId: string(source.source_id, `profile ${index} grade line ${lineIndex} source id`), parentProfileSourceId: string(source.parent_profile_source_id, `profile ${index} grade line ${lineIndex} parent`), ordinal: finite(source.ordinal, `profile ${index} grade line ${lineIndex} ordinal`), points: array(source.points, `profile ${index} grade line ${lineIndex} points`).map((point, pointIndex) => profilePoint(point, `profile ${index} grade line ${lineIndex} point ${pointIndex}`)) };
+  };
+  return { sourceId: string(raw.source_id, `profile ${index} source id`), parentAlignmentSourceId: string(raw.parent_alignment_source_id, `profile ${index} parent alignment`), ordinal: finite(raw.ordinal, `profile ${index} ordinal`), name: string(raw.name, `profile ${index} name`), kind, pvis: array(raw.pvis, `profile ${index} PVIs`).map((point, pointIndex) => profilePoint(point, `profile ${index} PVI ${pointIndex}`)), verticalCurves: array(raw.vertical_curves, `profile ${index} curves`).map(curve), gradeLines: array(raw.grade_lines, `profile ${index} grade lines`).map(line) };
+}
+
+function crossSectionPoint(value: unknown, context: string): LandXmlCrossSectionPoint {
+  const raw = record(value, context);
+  const dataFormat = string(raw.data_format, `${context} data format`);
+  if (dataFormat !== 'offset_elevation' && dataFormat !== 'slope_distance') throw new Error(`LandXML WASM returned an invalid ${context} data format`);
+  return { sourceId: string(raw.source_id, `${context} source id`), dataFormat, offset: nullableFinite(raw.offset, `${context} offset`), elevation: nullableFinite(raw.elevation, `${context} elevation`), slope: nullableFinite(raw.slope, `${context} slope`), distance: nullableFinite(raw.distance, `${context} distance`), pntRef: nullableString(raw.pnt_ref, `${context} pntRef`), alignmentRef: nullableString(raw.alignment_ref, `${context} alignment ref`), alignRefStation: nullableFinite(raw.align_ref_station, `${context} alignment ref station`), alignmentSourceId: nullableString(raw.alignment_source_id, `${context} alignment source id`), planFeatureRef: nullableString(raw.plan_feature_ref, `${context} plan feature ref`), planFeatureRefStation: nullableFinite(raw.plan_feature_ref_station, `${context} plan feature station`), parcelRef: nullableString(raw.parcel_ref, `${context} parcel ref`), parcelRefStation: nullableFinite(raw.parcel_ref_station, `${context} parcel station`) };
+}
+
 function polylines(value: unknown, context: string): LandXmlPolyline[] {
   return array(value, context).map((line, index) => {
     const raw = record(line, `${context} ${index}`);
@@ -160,7 +203,39 @@ export function readLandXmlTinDocument(value: unknown): LandXmlTinDocument {
   const raw = record(value, 'document');
   const units = raw.units === null || raw.units === undefined ? null : record(raw.units, 'units');
   const capabilities = record(raw.capabilities, 'capabilities');
-  return {
+  const alignments: LandXmlAlignment[] = array(raw.alignments, 'alignments').map((alignment, index) => {
+    const source = record(alignment, `alignment ${index}`);
+    return { sourceId: string(source.source_id, `alignment ${index} source id`), ordinal: finite(source.ordinal, `alignment ${index} ordinal`), name: string(source.name, `alignment ${index} name`), length: finite(source.length, `alignment ${index} length`), staStart: finite(source.sta_start, `alignment ${index} staStart`), profileSourceIds: strings(source.profile_source_ids, `alignment ${index} profile ids`), crossSectionSourceIds: strings(source.cross_section_source_ids, `alignment ${index} cross section ids`) };
+  });
+  const crossSections: LandXmlCrossSection[] = array(raw.cross_sections, 'cross sections').map((section, index) => {
+    const source = record(section, `cross section ${index}`);
+    return { sourceId: string(source.source_id, `cross section ${index} source id`), parentAlignmentSourceId: string(source.parent_alignment_source_id, `cross section ${index} parent alignment`), ordinal: finite(source.ordinal, `cross section ${index} ordinal`), station: finite(source.station, `cross section ${index} station`), surfaceSourceIds: strings(source.surface_source_ids, `cross section ${index} surface ids`) };
+  });
+  const crossSectionSurfaces: LandXmlCrossSectionSurface[] = array(raw.cross_section_surfaces, 'cross section surfaces').map((surfaceValue, index) => {
+    const source = record(surfaceValue, `cross section surface ${index}`);
+    const kind = string(source.kind, `cross section surface ${index} kind`);
+    if (kind !== 'sampled' && kind !== 'design') throw new Error(`LandXML WASM returned an invalid cross section surface ${index} kind`);
+    const segments = array(source.segments, `cross section surface ${index} segments`).map((segmentValue, segmentIndex) => {
+      const segment = record(segmentValue, `cross section surface ${index} segment ${segmentIndex}`);
+      return { sourceId: string(segment.source_id, `cross section surface ${index} segment ${segmentIndex} source id`), parentSurfaceSourceId: string(segment.parent_surface_source_id, `cross section surface ${index} segment ${segmentIndex} parent`), ordinal: finite(segment.ordinal, `cross section surface ${index} segment ${segmentIndex} ordinal`), points: array(segment.points, `cross section surface ${index} segment ${segmentIndex} points`).map((point, pointIndex) => crossSectionPoint(point, `cross section surface ${index} segment ${segmentIndex} point ${pointIndex}`)) };
+    });
+    return { sourceId: string(source.source_id, `cross section surface ${index} source id`), parentCrossSectionSourceId: string(source.parent_cross_section_source_id, `cross section surface ${index} parent`), kind, name: nullableString(source.name, `cross section surface ${index} name`), segments, points: array(source.points, `cross section surface ${index} points`).map((point, pointIndex) => crossSectionPoint(point, `cross section surface ${index} point ${pointIndex}`)) };
+  });
+  const roadways: LandXmlRoadway[] = array(raw.roadways, 'roadways').map((roadway, index) => {
+    const source = record(roadway, `roadway ${index}`);
+    return { sourceId: string(source.source_id, `roadway ${index} source id`), ordinal: finite(source.ordinal, `roadway ${index} ordinal`), name: string(source.name, `roadway ${index} name`), alignmentRefs: strings(source.alignment_refs, `roadway ${index} alignment refs`), alignmentSourceIds: strings(source.alignment_source_ids, `roadway ${index} alignment ids`), surfaceRefs: strings(source.surface_refs, `roadway ${index} surface refs`), surfaceSourceIds: strings(source.surface_source_ids, `roadway ${index} surface ids`), gradeModelRefs: strings(source.grade_model_refs, `roadway ${index} grade model refs`) };
+  });
+  const capabilityDiagnostics: LandXmlCapabilityDiagnostic[] = array(raw.capability_diagnostics, 'capability diagnostics').map((diagnostic, index) => {
+    const source = record(diagnostic, `capability diagnostic ${index}`);
+    return { code: string(source.code, `capability diagnostic ${index} code`), sourceId: nullableString(source.source_id, `capability diagnostic ${index} source id`), sourcePath: string(source.source_path, `capability diagnostic ${index} source path`), message: string(source.message, `capability diagnostic ${index} message`) };
+  });
+  const preservedOnlyExtensions: LandXmlPreservedOnlyExtension[] = array(raw.preserved_only_extensions, 'preserved-only extensions').map((extension, index) => {
+    const source = record(extension, `preserved-only extension ${index}`);
+    const kind = string(source.kind, `preserved-only extension ${index} kind`);
+    if (kind !== 'corridor' && kind !== 'string_line') throw new Error(`LandXML WASM returned an invalid preserved-only extension ${index} kind`);
+    return { sourceId: string(source.source_id, `preserved-only extension ${index} source id`), parentSourceId: nullableString(source.parent_source_id, `preserved-only extension ${index} parent`), localName: string(source.local_name, `preserved-only extension ${index} local name`), sourcePath: string(source.source_path, `preserved-only extension ${index} path`), kind };
+  });
+  const document: LandXmlTinDocument = {
     format: string(raw.format, 'format') === 'landxml' ? 'landxml' : (() => { throw new Error('LandXML WASM returned an invalid format'); })(),
     schema: string(raw.schema, 'schema') === 'LandXML-1.2' ? 'LandXML-1.2' : (() => { throw new Error('LandXML WASM returned an invalid schema'); })(),
     capabilities: {
@@ -185,8 +260,17 @@ export function readLandXmlTinDocument(value: unknown): LandXmlTinDocument {
       };
     }),
     warnings: array(raw.warnings, 'warnings').map((warning, index) => string(warning, `warning ${index}`)),
+    alignments,
+    profiles: array(raw.profiles, 'profiles').map(profile),
+    crossSections,
+    crossSectionSurfaces,
+    roadways,
+    capabilityDiagnostics,
+    preservedOnlyExtensions,
     rendering: { meshProvenance: [], surfaceCounts: [] },
   };
+  indexLandXmlSourceRecords(document);
+  return document;
 }
 
 /** Parse original XML bytes using an API already owned by the calling realm. */

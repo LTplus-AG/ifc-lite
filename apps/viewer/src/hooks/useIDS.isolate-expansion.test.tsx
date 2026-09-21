@@ -51,8 +51,8 @@ function model(id: string): FederatedModel {
 /** One spec, one failing entity (express id 5 -- the "assembly" under test). */
 function report(): IDSValidationReport {
   return {
-    document: { specifications: [] },
-    modelInfo: { modelId: 'A', schemaVersion: 'IFC4', entityCount: 1 },
+    source: { kind: 'ids', document: { specifications: [] } },
+    modelInfo: [{ modelId: 'A', schemaVersion: 'IFC4', entityCount: 1 }],
     timestamp: new Date(0),
     summary: {
       totalSpecifications: 1,

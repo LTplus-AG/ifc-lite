@@ -243,7 +243,10 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const document = useViewerStore((s) => s.idsDocument);
   const auditReport = useViewerStore((s) => s.idsAuditReport);
   const auditing = useViewerStore((s) => s.idsAuditing);
-  const report = useViewerStore((s) => s.idsValidationReport);
+  // The store slot is generalised (#5138); `useIDS` only ever produces IDS
+  // reports (the rule-set engine lands later), so narrow back here once.
+  const rawReport = useViewerStore((s) => s.idsValidationReport);
+  const report = rawReport && rawReport.source.kind === 'ids' ? (rawReport as IDSValidationReport) : null;
   const loading = useViewerStore((s) => s.idsLoading);
   const progress = useViewerStore((s) => s.idsProgress);
   const error = useViewerStore((s) => s.idsError);

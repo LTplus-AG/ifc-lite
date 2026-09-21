@@ -11,9 +11,9 @@ import type { StateCreator } from 'zustand';
 import type {
   IDSAuditReport,
   IDSDocument,
-  IDSValidationReport,
-  IDSSpecificationResult,
-  IDSEntityResult,
+  ValidationReport,
+  SpecificationResult,
+  EntityResult,
   SupportedLocale,
   ValidationProgress,
 } from '@ifc-lite/ids';
@@ -84,8 +84,10 @@ export interface IDSSliceState {
   idsAuditReport: IDSAuditReport | null;
   /** Whether the audit pipeline is currently running. */
   idsAuditing: boolean;
-  /** Validation report after running validation */
-  idsValidationReport: IDSValidationReport | null;
+  /** Validation report (#5138: generalised over its source; today always `source.kind === 'ids'`). */
+  idsValidationReport: ValidationReport | null;
+  /** `idsValidationReport.source.kind`, mirrored so consumers can gate without null-checking the report. */
+  validationSource: 'ids' | 'rules' | null;
   /** Currently active specification (for filtering results) */
   idsActiveSpecificationId: string | null;
   /** Currently selected entity in results */
@@ -141,7 +143,7 @@ export interface IDSSlice extends IDSSliceState {
   setIdsAuditing: (auditing: boolean) => void;
 
   // Validation actions
-  setIdsValidationReport: (report: IDSValidationReport | null) => void;
+  setIdsValidationReport: (report: ValidationReport | null) => void;
   clearIdsValidationReport: () => void;
   setIdsProgress: (progress: ValidationProgress | null) => void;
 
@@ -163,10 +165,10 @@ export interface IDSSlice extends IDSSliceState {
   setIdsFocusVisibilityOwned: (owned: IDSFocusVisibilityOwnership) => void;
 
   // Utility getters
-  getActiveSpecificationResult: () => IDSSpecificationResult | null;
-  getFailedEntitiesForSpec: (specId: string) => IDSEntityResult[];
-  getPassedEntitiesForSpec: (specId: string) => IDSEntityResult[];
-  getEntityResultById: (modelId: string, expressId: number) => IDSEntityResult | null;
+  getActiveSpecificationResult: () => SpecificationResult | null;
+  getFailedEntitiesForSpec: (specId: string) => EntityResult[];
+  getPassedEntitiesForSpec: (specId: string) => EntityResult[];
+  getEntityResultById: (modelId: string, expressId: number) => EntityResult | null;
   isEntityFailed: (modelId: string, expressId: number) => boolean;
   isEntityPassed: (modelId: string, expressId: number) => boolean;
 }
@@ -201,7 +203,7 @@ const getDefaultLocale = (): SupportedLocale => {
  * Build cached entity ID sets from validation report
  */
 function buildEntityIdSets(
-  report: IDSValidationReport | null
+  report: ValidationReport | null
 ): { failed: Set<string>; passed: Set<string> } {
   const failed = new Set<string>();
   const passed = new Set<string>();
@@ -232,15 +234,11 @@ function buildEntityIdSets(
  * End the per-row focus presentation (#2867) before a state change discards
  * the report the focused row belonged to.
  *
- * ORDER is load-bearing, and it is the same order `endClashScenePresentation`
- * documents: RELEASE the shared channel first, THEN let the caller's `set()`
- * null the record. Nulling first leaves the release reading `null`, finding
- * nothing to release, and leaving a row isolation standing over a report that
- * no longer exists — `isEntityVisible` false for everything, with nothing on
- * screen to explain it.
- *
- * The release is ownership-scoped, so a clash focus, a spaces X-ray or IDS's
- * own set-level isolation occupying the channel instead is left alone.
+ * ORDER is load-bearing (same as `endClashScenePresentation`): RELEASE the
+ * shared channel first, THEN let the caller's `set()` null the record —
+ * nulling first leaves the release with nothing to find, stranding a row
+ * isolation over a report that no longer exists. Ownership-scoped, so a
+ * clash focus, a spaces X-ray or IDS's own set-level isolation is untouched.
  */
 function endIdsRowFocus(get: () => IDSSlice): void {
   endIdsRowFocusPresentation(get() as unknown as IDSRowFocusPresentation);
@@ -252,6 +250,7 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
   idsAuditReport: null,
   idsAuditing: false,
   idsValidationReport: null,
+  validationSource: null,
   idsActiveSpecificationId: null,
   idsActiveEntityId: null,
   idsPanelVisible: false,
@@ -281,14 +280,13 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
     set({
       idsDocument,
       // Loading a new document invalidates any previous audit/validation
-      // results — they were tied to a specific document instance. That
-      // includes `idsIsolateMode`: it drives the isolate-button "pressed"
-      // state and the 3D isolation built from the now-discarded report, so
-      // it must be cleared here exactly like `clearIdsValidationReport`
-      // clears it — otherwise the panel keeps showing an isolate mode as
-      // active for a report that no longer exists.
+      // results — they were tied to a specific document instance. Includes
+      // `idsIsolateMode` (drives the isolate-button "pressed" state and the
+      // 3D isolation built from the now-discarded report), cleared here
+      // exactly like `clearIdsValidationReport` clears it.
       idsAuditReport: null,
       idsValidationReport: null,
+      validationSource: null,
       idsActiveSpecificationId: null,
       idsActiveEntityId: null,
       idsError: null,
@@ -316,6 +314,7 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
       idsDocument: null,
       idsAuditReport: null,
       idsValidationReport: null,
+      validationSource: null,
       idsActiveSpecificationId: null,
       idsActiveEntityId: null,
       idsError: null,
@@ -342,6 +341,7 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
     endIdsRowFocus(get);
     set({
       idsValidationReport: report,
+      validationSource: report ? report.source.kind : null,
       idsFailedEntityIds: failed,
       idsPassedEntityIds: passed,
       idsIsolateMode: null,
@@ -353,15 +353,15 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
 
   clearIdsValidationReport: () => {
     // Same reasoning as `clearIdsDocument` above: `useIDS.clearValidation`
-    // bumps the epoch first, which makes a still-in-flight `runValidation()`
-    // skip its own `idsLoading`/`idsProgress` reset on purpose — this is the
-    // only remaining writer for those fields once that happens (PR #2837
-    // review).
-    // And, as in `clearIdsDocument`, the row focus is released BEFORE its
-    // record is nulled — otherwise the isolation outlives the report.
+    // bumps the epoch first, so a still-in-flight `runValidation()` skips its
+    // own `idsLoading`/`idsProgress` reset — this is the only remaining
+    // writer for those fields once that happens (PR #2837 review). And, as
+    // in `clearIdsDocument`, the row focus is released BEFORE its record is
+    // nulled — otherwise the isolation outlives the report.
     endIdsRowFocus(get);
     set({
       idsValidationReport: null,
+      validationSource: null,
       idsActiveSpecificationId: null,
       idsActiveEntityId: null,
       idsIsolationScope: 'ids',

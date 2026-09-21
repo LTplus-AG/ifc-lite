@@ -9,7 +9,7 @@
  * from IDS validation results. No React dependencies.
  */
 
-import type { IDSValidationReport, SupportedLocale } from '@ifc-lite/ids';
+import type { ValidationReport, SupportedLocale } from '@ifc-lite/ids';
 import { posthog } from '../../lib/analytics';
 import { downloadFile } from '../../lib/export/download';
 
@@ -19,46 +19,22 @@ import { downloadFile } from '../../lib/export/download';
 
 /**
  * Generate a JSON export object from a validation report.
- * Returns a plain object suitable for JSON.stringify.
+ *
+ * The report is exported VERBATIM (#5138 §5/§7): `source` and `modelInfo`
+ * (now an array) appear exactly as the engine produced them, for IDS and
+ * rule-set reports alike, rather than a hand-picked subset of fields.
  */
-export function buildReportJSON(report: IDSValidationReport): Record<string, unknown> {
+export function buildReportJSON(report: ValidationReport): Record<string, unknown> {
   return {
-    document: report.document,
-    modelInfo: report.modelInfo,
+    ...report,
     timestamp: report.timestamp.toISOString(),
-    summary: report.summary,
-    specificationResults: report.specificationResults.map(spec => ({
-      specification: spec.specification,
-      status: spec.status,
-      applicableCount: spec.applicableCount,
-      passedCount: spec.passedCount,
-      failedCount: spec.failedCount,
-      passRate: spec.passRate,
-      entityResults: spec.entityResults.map(entity => ({
-        expressId: entity.expressId,
-        modelId: entity.modelId,
-        entityType: entity.entityType,
-        entityName: entity.entityName,
-        globalId: entity.globalId,
-        passed: entity.passed,
-        requirementResults: entity.requirementResults.map(req => ({
-          requirement: req.requirement,
-          status: req.status,
-          facetType: req.facetType,
-          checkedDescription: req.checkedDescription,
-          failureReason: req.failureReason,
-          actualValue: req.actualValue,
-          expectedValue: req.expectedValue,
-        })),
-      })),
-    })),
   };
 }
 
 /**
  * Trigger a JSON report download in the browser.
  */
-export function downloadReportJSON(report: IDSValidationReport): void {
+export function downloadReportJSON(report: ValidationReport): void {
   const exportData = buildReportJSON(report);
   downloadFile(JSON.stringify(exportData, null, 2), `ids-report-${new Date().toISOString().split('T')[0]}.json`, 'application/json');
   posthog.capture('ids_report_exported', { format: 'json', total_specifications: report.summary.totalSpecifications });
@@ -131,7 +107,7 @@ interface RequirementGroup {
  * specification's `requirements`.
  */
 function buildRequirementGroups(
-  spec: IDSValidationReport['specificationResults'][0],
+  spec: ValidationReport['specificationResults'][0],
 ): RequirementGroup[] {
   const groups = new Map<string, RequirementGroup>();
 
@@ -322,7 +298,7 @@ function buildRequirementGroupHTML(group: RequirementGroup, esc: typeof escapeHt
  * disappears without being stated.
  */
 function buildEntityRows(
-  spec: IDSValidationReport['specificationResults'][0],
+  spec: ValidationReport['specificationResults'][0],
   esc: typeof escapeHtml,
 ): string {
   const ordered = [
@@ -359,8 +335,17 @@ function buildEntityRows(
  * Generate an interactive HTML report with search, filtering, sorting,
  * and click-to-copy GlobalId support.
  */
-export function buildReportHTML(report: IDSValidationReport, locale: SupportedLocale): string {
+export function buildReportHTML(report: ValidationReport, locale: SupportedLocale): string {
   const esc = escapeHtml;
+  // A rule-set report (#5138, PR 3 onward) has no `IDSDocument` — its title
+  // and description come from `ruleSet` instead. Author is IDS-only (an
+  // IDS document's `<info>` carries one; a rule set does not).
+  const reportTitle = report.source.kind === 'ids' ? report.source.document.info.title : report.source.ruleSet.name;
+  const reportDescription = report.source.kind === 'ids'
+    ? report.source.document.info.description
+    : report.source.ruleSet.description;
+  const reportAuthor = report.source.kind === 'ids' ? report.source.document.info.author : undefined;
+  const schemaVersions = report.modelInfo.map((m) => m.schemaVersion).join(', ');
   const totalChecks = report.summary.totalEntitiesChecked;
   const totalPassed = report.specificationResults.reduce((s, sp) => s + sp.passedCount, 0);
   const totalFailed = report.specificationResults.reduce((s, sp) => s + sp.failedCount, 0);
@@ -410,7 +395,7 @@ export function buildReportHTML(report: IDSValidationReport, locale: SupportedLo
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IDS Validation Report - ${esc(report.document.info.title)}</title>
+  <title>IDS Validation Report - ${esc(reportTitle)}</title>
   <style>
     :root {
       --pass: #22c55e; --pass-bg: #dcfce7; --pass-border: #86efac;
@@ -565,12 +550,12 @@ export function buildReportHTML(report: IDSValidationReport, locale: SupportedLo
 <body>
   <!-- Header -->
   <div class="card">
-    <h1>${esc(report.document.info.title)}</h1>
-    ${report.document.info.description ? `<p style="color: var(--muted); margin-top: 4px;">${esc(report.document.info.description)}</p>` : ''}
+    <h1>${esc(reportTitle)}</h1>
+    ${reportDescription ? `<p style="color: var(--muted); margin-top: 4px;">${esc(reportDescription)}</p>` : ''}
     <div class="meta">
-      ${report.document.info.author ? `<span>Author: ${esc(report.document.info.author)}</span>` : ''}
+      ${reportAuthor ? `<span>Author: ${esc(reportAuthor)}</span>` : ''}
       <span>Generated: ${esc(report.timestamp.toLocaleString())}</span>
-      <span>Schema: ${esc(report.modelInfo.schemaVersion)}</span>
+      <span>Schema: ${esc(schemaVersions)}</span>
     </div>
   </div>
 
@@ -855,7 +840,7 @@ export function buildReportHTML(report: IDSValidationReport, locale: SupportedLo
 /**
  * Trigger an HTML report download in the browser.
  */
-export function downloadReportHTML(report: IDSValidationReport, locale: SupportedLocale): void {
+export function downloadReportHTML(report: ValidationReport, locale: SupportedLocale): void {
   const html = buildReportHTML(report, locale);
   downloadFile(html, `ids-report-${new Date().toISOString().split('T')[0]}.html`, 'text/html');
   posthog.capture('ids_report_exported', { format: 'html', locale, total_specifications: report.summary.totalSpecifications });

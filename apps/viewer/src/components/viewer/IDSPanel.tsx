@@ -245,7 +245,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
           open={correctionSpecId != null}
           onOpenChange={(open) => { if (!open) setCorrectionSpecId(null); }}
           specResult={correctionSpecResult}
-          modelId={report.modelInfo.modelId}
+          modelId={report.modelInfo[0].modelId}
           onRevalidate={runValidation}
         />
       )}

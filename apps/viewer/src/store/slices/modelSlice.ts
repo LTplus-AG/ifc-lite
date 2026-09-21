@@ -225,7 +225,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
       clearMutations?: (id: string) => void;
       clearMutationView?: (id: string) => void;
       clearGeneratedSchedule?: () => number;
-      idsValidationReport?: { modelInfo: { modelId: string } } | null;
+      idsValidationReport?: { modelInfo: { modelId: string }[] } | null;
       clearIdsValidationReport?: () => void;
       removeSourceTag?: (id: string) => void;
       pointCloudDeviationComputed?: boolean;
@@ -307,7 +307,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     // report is stale by definition — its results reference a model that no
     // longer exists, and the panel's controlled model picker would bind to a
     // now-missing option. Drop it so the panel self-heals (#1702 C2).
-    if (cross.idsValidationReport?.modelInfo.modelId === modelId) {
+    if (cross.idsValidationReport?.modelInfo.some((m) => m.modelId === modelId)) {
       cross.clearIdsValidationReport?.();
     }
 

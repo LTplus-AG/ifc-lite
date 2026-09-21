@@ -1150,6 +1150,26 @@ describe('batched RTE draw uniforms (#5049)', () => {
     });
 });
 
+describe('individual mesh RTE fallback (#5049)', () => {
+    it('keeps a 5,000-km centimetre origin through the no-batch opaque draw', () => {
+        const h = makeHarness();
+        const origin: [number, number, number] = [5_000_000.015625, 0, 0];
+        h.renderer['createMeshFromData']({ ...triangle(91, GREY), origin });
+        const mesh = sceneOf(h).getMeshes()[0];
+        h.renderer['camera'].setPosition(5_000_000, 0, 10);
+        h.renderer['camera'].setTarget(5_000_000, 0, 0);
+
+        h.stats.writes.length = 0;
+        h.render();
+
+        const packed = rteDeltaFor(h, mesh.uniformBuffer);
+        assert.ok(packed, 'no-batch mesh must write RTE drawable lanes');
+        assert.equal(rteRelativePositionF32([0, 0, 0], packed)[0], 0.015625);
+        const write = h.stats.writes.find(candidate => candidate.buffer === mesh.uniformBuffer)!;
+        assert.equal(new Uint32Array(write.floats.buffer)[44] & 0x10000, 0x10000, 'shader selects RTE projection');
+    });
+});
+
 describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
     /**
      * The alpha (uniform float 35) of the LAST write aimed at `uniformBuffer`,

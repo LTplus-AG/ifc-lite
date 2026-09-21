@@ -2044,12 +2044,14 @@ export class Renderer {
                 : null;
 
             // Reuse pooled scratch buffer for per-mesh uniform writes
-            const meshBuf = this.uniformScratch;
-            const meshFlags = this.uniformScratchU32;
-            for (const mesh of allMeshes) {
-                if (mesh.uniformBuffer) {
-                    meshBuf.set(viewProj, 0);
-                    meshBuf.set(mesh.transform.m, 16);
+                const meshBuf = this.uniformScratch;
+                const meshFlags = this.uniformScratchU32;
+                for (const mesh of allMeshes) {
+                    if (mesh.uniformBuffer) {
+                        meshBuf.set(viewProj, 0);
+                        relativeToEyeFrame.packUniforms(meshBuf, MESH_UNIFORM_OFFSET.rteViewProj);
+                        packRteCameraOrigin(relativeToEyeFrame, meshBuf);
+                        meshBuf.set(mesh.transform.m, 16);
 
                     // Check if mesh is selected (single or multi-selection)
                     // For multi-model support: also check modelIndex if provided
@@ -2089,6 +2091,17 @@ export class Renderer {
                         clipBit;
                     meshFlags[2] = edgeEnabledU32;
                     meshFlags[3] = edgeIntensityMilliU32;
+
+                    // Individual/no-batch meshes use the same production shader
+                    // as a colour batch. Retain their canonical origin and use
+                    // the shared RTE fragment contract here too; otherwise this
+                    // fallback was the sole mesh path that narrowed its model
+                    // translation before projection/crop/section work.
+                    packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, meshBuf);
+                    const meshOrigin = mesh.rteOrigin
+                        ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
+                    relativeToEyeFrame.packDrawableOrigin(meshOrigin, meshBuf, MESH_UNIFORM_OFFSET.drawableDelta);
+                    meshFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
                     device.queue.writeBuffer(mesh.uniformBuffer, 0, meshBuf);
                 }

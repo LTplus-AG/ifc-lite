@@ -98,4 +98,31 @@ describe('federated LandXML spatial finalization (#5048)', () => {
     assert.deepEqual(landXml.surfaces[0].breaklines[0].renderedPoints, [[0, 0, 0]],
       'identity alignment still rebuilds absolute authored overlays in the destination frame');
   });
+
+  it('keeps source bounds when an identity IFC alignment adopts the anchor frame', async () => {
+    const anchor = fixtureModel('anchor') as FederatedModel;
+    anchor.geometryResult = { meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: coordinateInfo() };
+    anchor.spatialReference = spatialReference(0);
+    useViewerStore.setState({ models: new Map([[anchor.id, anchor]]) });
+    const sourceBounds = { min: { x: 100, y: 0, z: 0 }, max: { x: 101, y: 1, z: 0 } };
+    const geometry: GeometryResult = {
+      meshes: [{
+        expressId: 1, positions: new Float32Array([100, 0, 0, 101, 0, 0, 100, 1, 0]),
+        normals: new Float32Array([0, 1, 0, 0, 1, 0, 0, 1, 0]), indices: new Uint32Array([0, 1, 2]),
+        color: [1, 1, 1, 1], origin: [0, 0, 0],
+      }],
+      totalVertices: 3, totalTriangles: 1,
+      coordinateInfo: { ...coordinateInfo(), originalBounds: structuredClone(sourceBounds), shiftedBounds: structuredClone(sourceBounds) },
+    };
+
+    const result = await finalizeFederatedSpatialPlacement({
+      dataStore: {} as IfcDataStore, geometry, modelId: 'ifc', fileName: 'source.ifc',
+      spatialReference: spatialReference(0), isCurrent: () => true, setProgress: () => undefined,
+    });
+
+    assert.equal(result?.federationAlignmentStatus, 'identity');
+    assert.deepEqual(geometry.coordinateInfo.shiftedBounds, sourceBounds);
+    assert.deepEqual(Array.from(geometry.meshes[0].positions), [100, 0, 0, 101, 0, 0, 100, 1, 0]);
+    assert.equal(geometry.coordinateInfo.wasmRtcOffset, undefined, 'destination frame metadata is adopted');
+  });
 });

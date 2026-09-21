@@ -224,19 +224,17 @@ export function useIfcFederation(
       toast.error('Cannot re-align: no model with valid georeferencing.');
       return;
     }
-    // Snapshot georef edits once for the whole pass. Cross-CRS projection
-    // awaits can race new edits; re-reading here would mix coordinate frames
-    // across models. Apply a newer edit only on the next explicit realignment.
+    // Snapshot edits: an awaited cross-CRS pass must never mix old and new frames.
     const georefMutations = state.georefMutations;
+    const selectedAnchor = state.models.get(referenceSelection.modelId);
+    if (!selectedAnchor) return;
     state.closeReposition();
-    // A model rotation must never be inside a `preAlignment` snapshot, so every
-    // model stays un-rotated for the whole pass; the declared headings are
-    // re-applied once on top of the new alignment (`useModelRotationSync`).
+    // Keep rotations outside preAlignment; useModelRotationSync reapplies headings once.
     const { counts, anchorGeoref, movedModelIds, stale } = await withModelRotationsUnbaked(() => realignFederationModels({
       models: () => Array.from(useViewerStore.getState().models.entries()) as Array<[string, FederatedModel]>,
       getModel: (modelId) => useViewerStore.getState().models.get(modelId),
       anchorModelId: referenceSelection.modelId,
-      anchorModel: state.models.get(referenceSelection.modelId),
+      anchorModel: selectedAnchor,
       anchorGeoref: referenceSelection.placement,
       resolveGeoref: (modelId, model) => (
         model.geometryResult && model.spatialReference

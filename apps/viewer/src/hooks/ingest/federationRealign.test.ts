@@ -644,6 +644,31 @@ describe('realignFederationModels — switching the anchor back restores it (#20
       'the queued same-CRS pass must restore B\'s live snapshot, never capture the first baked x=101 as baseline');
   });
 
+  it('lets the newest queued request survive a no-op stale predecessor (#5048)', async () => {
+    const x = model([boxMesh(821, [0, 0, 0])], coordinateInfo(), georef({ eastings: 0 }));
+    const b = model([boxMesh(822, [1, 0, 0])], coordinateInfo(), georef({ eastings: 100 }));
+    const models = new Map<string, TestModel>([['X', x], ['B', b]]);
+    const updateImmutable = (modelId: string, patch: Partial<RealignableModel>) => {
+      const previous = models.get(modelId);
+      if (previous) models.set(modelId, { ...previous, ...patch });
+    };
+    let firstCurrent = true;
+    const request = (isCurrent?: () => boolean) => realignFederationModels<TestModel>({
+      models: () => Array.from(models.entries()) as Array<[string, TestModel]>,
+      getModel: (modelId) => models.get(modelId),
+      anchorModelId: 'X', anchorModel: models.get('X')!, anchorGeoref: resolveGeoref('X', models.get('X')!),
+      resolveGeoref, updateModel: updateImmutable, isCurrent,
+    });
+    const older = request(() => firstCurrent);
+    firstCurrent = false;
+    const newer = request();
+
+    const results = await Promise.all([older, newer]);
+    assert.deepEqual(results.map((result) => result.stale), [true, false]);
+    assert.equal(worldPositionsOf(models.get('B')!.geometryResult!.meshes[0])[0], 101,
+      'a request that never mutated must not replace records and cancel its successor');
+  });
+
   it('does not adopt an anchor replaced before its queued transaction owns the federation (#5048)', async () => {
     const x = model([boxMesh(83, [1, 0, 0])], coordinateInfo(), georef({ eastings: 100 }));
     const b = model([boxMesh(84, [2, 0, 0])], coordinateInfo(), georef({ eastings: 200 }));

@@ -131,6 +131,17 @@ export interface RealignFederationResult {
   stale: boolean;
 }
 
+/** Record replacements may be ordinary immutable store patches. Ownership,
+ * not wrapper identity, distinguishes those from a newly loaded model. */
+function sameModelOwnership(
+  current: RealignableModel,
+  selected: RealignableModel,
+): boolean {
+  return current.geometryResult === selected.geometryResult
+    && current.spatialReference === selected.spatialReference
+    && current.landXmlDocument === selected.landXmlDocument;
+}
+
 /**
  * Restore every model to its own frame and re-bake the non-anchors into the
  * anchor's. See the module header for the two ordering rules.
@@ -168,6 +179,7 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
   // restore geometry that an innocuous visibility/name patch continues to
   // share (#5048).
   const expectedModels = new Map(models);
+  let transactionMutated = false;
   const currentModel = (modelId: string): M | undefined => params.getModel?.(modelId);
   const currentEntries = (): ReadonlyArray<readonly [string, M]> | undefined => (
     typeof params.models === 'function' ? params.models() : undefined
@@ -193,6 +205,7 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
   const commit = (modelId: string, patch: Partial<RealignableModel>): boolean => {
     if (!transactionIsLive() || !isLive(modelId)) return false;
     updateModel(modelId, patch);
+    transactionMutated = true;
     // A normal Zustand patch makes the next expected record identity.
     if (params.getModel) {
       const updated = currentModel(modelId);
@@ -209,6 +222,7 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
   }]));
   const landXmlUpdates: LandXmlRenderedLineUpdate[][] = [];
   const rollback = () => {
+    if (!transactionMutated) return;
     for (const [modelId] of models) {
       const saved = before.get(modelId);
       if (!saved) continue;
@@ -244,12 +258,13 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
     // it was selected before queuing, and may since have been removed or
     // replaced. Never fall back to that request's old placement and mutate a
     // new federation against it (#5048).
-    if (!anchorModel || anchorModel !== params.anchorModel) return stale();
+    if (!anchorModel || !sameModelOwnership(anchorModel, params.anchorModel)) return stale();
     const anchorGeometry = anchorModel?.geometryResult;
     if (!transactionIsLive() || !isLive(anchorModelId)) return stale();
     if (anchorGeometry) {
       const snapshot = anchorModel.preAlignment;
       if (snapshot) {
+        transactionMutated = true;
         restorePreAlignment(anchorGeometry, snapshot);
         movedModelIds.push(anchorModelId);
       }

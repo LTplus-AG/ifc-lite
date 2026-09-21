@@ -37,6 +37,20 @@ function retainSnapshotMeshes(
   };
 }
 
+/** Adopt only the destination render-frame metadata. Identity alignment leaves
+ * this model's vertices and bounds untouched, so anchor bounds are unrelated. */
+function adoptIdentityFrame(geometry: GeometryResult, destination: GeometryResult['coordinateInfo']): void {
+  const info = structuredClone(geometry.coordinateInfo);
+  info.originShift = structuredClone(destination.originShift);
+  info.hasLargeCoordinates = destination.hasLargeCoordinates;
+  for (const key of ['wasmRtcOffset', 'wasmRtcFrame', 'buildingRotation'] as const) {
+    const value = destination[key];
+    if (value === undefined) delete info[key];
+    else Object.assign(info, { [key]: structuredClone(value) });
+  }
+  geometry.coordinateInfo = info;
+}
+
 /** Apply the one source-neutral placement path before IDs become globally visible. */
 export async function finalizeFederatedSpatialPlacement(options: {
   dataStore: IfcDataStore;
@@ -67,7 +81,7 @@ export async function finalizeFederatedSpatialPlacement(options: {
     // the LandXML render-frame pass below: reframing from the old source RTC
     // would translate an already destination-relative mesh a second time.
     if (status === 'identity' && reference.coordinateInfo) {
-      options.geometry.coordinateInfo = structuredClone(reference.coordinateInfo);
+      adoptIdentityFrame(options.geometry, reference.coordinateInfo);
     }
     if (options.landXmlDocument && (status === 'same-crs' || status === 'reprojected' || status === 'identity')) {
       const renderedLines = await buildLandXmlRenderedLineUpdates(

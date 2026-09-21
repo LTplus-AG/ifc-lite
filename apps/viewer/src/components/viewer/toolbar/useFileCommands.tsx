@@ -348,6 +348,7 @@ export function useFileCommands(): FileCommands {
         className="hidden"
       />
       <input
+        id="file-input-add"
         ref={addModelInputRef}
         type="file"
         accept={FILE_ACCEPT}

@@ -154,12 +154,14 @@ fn legacy_opening_spellings_emit_no_profiles_either() {
 /// an IFC2X3 slab authored as `IFCSLABSTANDARDCASE` matched none of them --
 /// the same silent loss this issue is about, one layer further on.
 ///
-/// The respelled keyword is `IFCSLAB`, chosen because AC20's slabs actually
-/// PRODUCE profiles (four of them). The first version of this test respelled
+/// The source keyword is `IFCSLAB`, chosen because AC20's slabs actually
+/// PRODUCE profiles (four of them). The respelling to `IFCSLABSTANDARDCASE`
+/// must retain that exact supported name instead of collapsing it back to
+/// `IfcSlab`. The first version of this test respelled
 /// `IFCDOOR`, and AC20's doors emit no extruded-area-solid profile at all, so
 /// it compared two door-free lists and passed with the fix reverted.
 #[test]
-fn legacy_spellings_are_labelled_with_their_resolved_type() {
+fn supported_slab_spellings_keep_their_exact_profile_labels() {
     let Some(content) = fixture("tests/models/ara3d/AC20-FZK-Haus.ifc") else {
         eprintln!("AC20-FZK-Haus.ifc fixture missing — skipping");
         return;
@@ -181,11 +183,18 @@ fn legacy_spellings_are_labelled_with_their_resolved_type() {
         profiles.iter().map(|p| p.ifc_type.as_str()).collect::<Vec<_>>()
     );
 
-    // And the label is the RESOLVED type, not merely non-Unknown: the consumers
-    // above ask for exactly "IfcSlab", so the whole multiset must be unchanged.
-    let mut want: Vec<&str> = baseline.iter().map(|p| p.ifc_type.as_str()).collect();
+    // Exact type names are part of the downstream join contract. Only the
+    // intentionally respelled slabs change their label; every other profile
+    // stays identical.
+    let mut want: Vec<&str> = baseline
+        .iter()
+        .map(|p| match p.ifc_type.as_str() {
+            "IfcSlab" => "IfcSlabStandardCase",
+            other => other,
+        })
+        .collect();
     let mut got: Vec<&str> = profiles.iter().map(|p| p.ifc_type.as_str()).collect();
     want.sort_unstable();
     got.sort_unstable();
-    assert_eq!(got, want, "respelling IFCSLAB changed the profile labels");
+    assert_eq!(got, want, "respelling IFCSLAB lost exact profile labels");
 }

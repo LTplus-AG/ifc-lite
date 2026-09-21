@@ -121,7 +121,7 @@
    916 apps/viewer/src/components/viewer/useMouseControls.ts
    683 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1815 apps/viewer/src/components/viewer/Viewport.tsx
-  1349 apps/viewer/src/components/viewer/ViewportContainer.tsx
+  1190 apps/viewer/src/components/viewer/ViewportContainer.tsx
    508 apps/viewer/src/components/viewer/ZonesPanel.tsx
    862 apps/viewer/src/hooks/ids/idsExportService.ts
    598 apps/viewer/src/hooks/ingest/federationAlign.ts
@@ -339,7 +339,6 @@
    430 scripts/check-git-lfs.mjs
    560 scripts/check-isolate-expansion-routing.mjs
    957 scripts/check-issue-queue.mjs
-   448 scripts/check-legacy-entity-coverage.mjs
   1145 scripts/check-loader-hook-specifier-match.mjs
    512 scripts/check-module-size.mjs
   1066 scripts/check-pr-review-signal.mjs

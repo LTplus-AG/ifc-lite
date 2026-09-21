@@ -8,6 +8,8 @@ import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import { PointCloudPlacements } from './pointcloud/point-cloud-placement.js';
 import { transformAabb, type PointCloudNode } from './pointcloud/point-cloud-node.js';
 import { toLocalFrameRay } from './pointcloud/point-cloud-ray-transform.js';
+import { modelPlacementBounds } from './model-placement-bounds.js';
+import { Scene } from './scene.js';
 
   (globalThis as Record<string, unknown>).GPUShaderStage = { VERTEX: 1, FRAGMENT: 2 };
   (globalThis as Record<string, unknown>).GPUBufferUsage = { VERTEX: 32, COPY_DST: 8, UNIFORM: 64, STORAGE: 128 };
@@ -89,6 +91,27 @@ it('keeps inline scan placement after resource-only clearing (#4226)', () => {
   const handle = renderer.addAsset({ expressId: 1, modelIndex: 7, chunk: { pointCount: 1,
     positions: new Float32Array([1, 2, 3]), bbox: { min: [1, 2, 3], max: [1, 2, 3] } } });
   assert.deepEqual(renderer.getPlacementBounds(7, handle), { min: [11, 22, 33], max: [11, 22, 33] });
+  renderer.clear();
+});
+
+it('excludes a hidden streamed scan from draw-derived bounds and both pick sources (#5051)', () => {
+  const renderer = new PointCloudRenderer(pointDevice(), 'rgba8unorm', 'depth32float', 1);
+  const visible = renderer.beginAsset({ expressId: 1 });
+  const hidden = renderer.beginAsset({ expressId: 2 });
+  const chunk = (x: number) => ({ pointCount: 1, positions: new Float32Array([x, 0, 0]),
+    bbox: { min: [x, 0, 0] as [number, number, number], max: [x, 0, 0] as [number, number, number] } });
+  renderer.appendChunk(visible, chunk(1));
+  renderer.appendChunk(hidden, chunk(9));
+  assert.equal(renderer.setAssetVisible(hidden, false), true, 'the first visibility transition changes the resident asset');
+  assert.equal(renderer.setAssetVisible(hidden, false), false, 'repeating a resident visibility value is a no-op');
+  assert.equal(renderer.setAssetVisible({ id: 999 }, false), false, 'a released handle cannot invalidate placement state');
+
+  assert.deepEqual(renderer.getPickNodes().map((node) => node.expressId), [1]);
+  assert.deepEqual(renderer.getRayQuerySources().map((node) => node.expressId), [1]);
+  assert.deepEqual(renderer.getBounds(), { min: [1, 0, 0], max: [1, 0, 0] });
+  assert.equal(renderer.getPlacementBounds(0, hidden), null, 'a hidden handle does not provide model-specific frame bounds');
+  assert.equal(modelPlacementBounds(new Scene(), renderer, 0, hidden), null,
+    'a hidden streamed-only model cannot move the camera through Frame moving');
   renderer.clear();
 });
 

@@ -1102,6 +1102,13 @@ export class Renderer {
         this.refreshPlacementBounds();
     }
 
+    /** Toggle one resident streamed scan without releasing its GPU buffers. */
+    setPointCloudVisibility(handle: { id: number }, visible: boolean): void {
+        if (!this.pointCloudRenderer?.setAssetVisible(handle, visible)) return;
+        this.clearCaches();
+        this.refreshPlacementBounds();
+    }
+
     private refreshPlacementBounds(): void {
         this.modelBoundsTracker.recompute();
         this.camera.setSceneBounds(this.modelBounds);

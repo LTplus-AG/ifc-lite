@@ -76,7 +76,8 @@ function landXmlModel(
 function planOverlay(model: FederatedModel, cogoNorthing = 2): void {
   const point = (northing: number, easting: number) => ({ northing, easting, elevation: 0 });
   model.landXmlDocument!.plan = {
-    version: '1.2', areaUnit: null, areaScaleToSquareMeters: null, warnings: [],
+    schema: 'LandXML-1.2', version: '1.2', capabilityDiagnostics: [],
+    areaUnit: null, areaScaleToSquareMeters: null, warnings: [],
     cogoPoints: [{ sourceId: 'cogo', scopeId: 'scope', ordinal: 1, name: 'control', code: null, description: null, point: point(cogoNorthing, 2), pntRef: null, properties: {} }],
     monuments: [{ sourceId: 'monument', pointScopeId: null, ordinal: 1, name: 'pin', code: null, description: null, pntRef: null, point: null, properties: {} }],
     planFeatures: [{ sourceId: 'feature', ordinal: 1, name: 'curve', code: null, description: null, properties: {}, locations: [], geometry: [{

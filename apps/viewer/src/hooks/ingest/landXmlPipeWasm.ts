@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { LandXmlPipeMeasure, LandXmlPipeNetworkDocument, LandXmlPipePosition, LandXmlPipeUnits } from './landXmlDocumentTypes.js';
+import { isLandXmlSchema } from './landXmlSemantics.js';
+import type { LandXmlCapabilityDiagnostic } from './landXmlSemantics.js';
 
 function record(value: unknown, context: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error(`LandXML WASM returned an invalid ${context}`);
@@ -86,5 +88,17 @@ export function pipeNetworks(value: unknown): LandXmlPipeNetworkDocument | null 
       }),
     };
   });
-  return { version: string(raw.version, 'pipe network version'), rootUnits: raw.root_units === null || raw.root_units === undefined ? null : pipeUnits(raw.root_units, 'pipe root units'), collections: array(raw.collections, 'pipe collections').map((value, index) => { const collection = record(value, `pipe collection ${index}`); return { sourceId: string(collection.source_id, `pipe collection ${index} source id`), sourcePath: string(collection.source_path, `pipe collection ${index} source path`), properties: properties(collection.properties, `pipe collection ${index} properties`) }; }), networks, features: array(raw.features, 'pipe features').map((item, index) => feature(item, `pipe feature ${index}`)), refusals: array(raw.refusals, 'pipe refusals').map((value, index) => { const item = record(value, `pipe refusal ${index}`); return { sourceId: string(item.source_id, `pipe refusal ${index} source id`), sourcePath: string(item.source_path, `pipe refusal ${index} source path`), code: string(item.code, `pipe refusal ${index} code`), message: string(item.message, `pipe refusal ${index} message`) }; }) };
+  const schema = string(raw.schema, 'pipe network schema');
+  if (!isLandXmlSchema(schema)) throw new Error('LandXML WASM returned an invalid pipe network schema');
+  const capabilityDiagnostics = array(raw.capability_diagnostics, 'pipe network capability diagnostics')
+    .map((value, index): LandXmlCapabilityDiagnostic => {
+      const diagnostic = record(value, `pipe network capability diagnostic ${index}`);
+      return {
+        code: string(diagnostic.code, `pipe network capability diagnostic ${index} code`),
+        sourceId: nullableString(diagnostic.source_id, `pipe network capability diagnostic ${index} source id`),
+        sourcePath: string(diagnostic.source_path, `pipe network capability diagnostic ${index} source path`),
+        message: string(diagnostic.message, `pipe network capability diagnostic ${index} message`),
+      };
+    });
+  return { schema, version: string(raw.version, 'pipe network version'), capabilityDiagnostics, rootUnits: raw.root_units === null || raw.root_units === undefined ? null : pipeUnits(raw.root_units, 'pipe root units'), collections: array(raw.collections, 'pipe collections').map((value, index) => { const collection = record(value, `pipe collection ${index}`); return { sourceId: string(collection.source_id, `pipe collection ${index} source id`), sourcePath: string(collection.source_path, `pipe collection ${index} source path`), properties: properties(collection.properties, `pipe collection ${index} properties`) }; }), networks, features: array(raw.features, 'pipe features').map((item, index) => feature(item, `pipe feature ${index}`)), refusals: array(raw.refusals, 'pipe refusals').map((value, index) => { const item = record(value, `pipe refusal ${index}`); return { sourceId: string(item.source_id, `pipe refusal ${index} source id`), sourcePath: string(item.source_path, `pipe refusal ${index} source path`), code: string(item.code, `pipe refusal ${index} code`), message: string(item.message, `pipe refusal ${index} message`) }; }) };
 }

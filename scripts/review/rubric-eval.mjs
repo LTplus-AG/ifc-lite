@@ -52,6 +52,7 @@ import { notApplicableClasses } from './lib/defect-classes.mjs';
 // test drives them by name. The split is the module-size budget, not a change
 // of interface.
 import { matches, score } from './lib/eval-score.mjs';
+import { resolveMatchers } from './lib/semantic-match.mjs';
 export { matches, score } from './lib/eval-score.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -127,7 +128,7 @@ function declaredNotApplicable(rawPath, validatedVerdict) {
   }
 }
 
-function main() {
+async function main() {
   const arg = (name, fallback) => {
     const i = process.argv.indexOf(name);
     return i === -1 ? fallback : process.argv[i + 1];
@@ -359,10 +360,16 @@ function main() {
       results.push({ pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: parsed.verdict, findings: posted, notApplicable });
     }
 
-    const validatedScore = score(validatedResults);
-    const s = score(results);
-    console.log(`\nRubric: ${rubric}   model: ${model}`);
+    // TWO MATCHERS, ONE AUTHORITATIVE. With TYPESAFE_API_KEY the semantic
+    // matcher (./lib/semantic-match.mjs) decides recall and the stem rule is
+    // printed beside it: on the shipped eval the stem rule credited 29 pairs
+    // of which 6 were the defect. Without the key nothing changes from before.
+    const m = await resolveMatchers(validatedResults, results, { fallback: matches, log: (msg) => console.log(`  ${msg}`) });
+    const validatedScore = score(validatedResults, { matcher: m.forValidated });
+    const s = score(results, { matcher: m.forPosted });
+    console.log(`\nRubric: ${rubric}   model: ${model}   matcher: ${m.note}`);
     for (const l of s.lines) console.log(l);
+    if (m.semantic) console.log(`\n  (stem matcher would report POSTED recall ${score(results).recall}; the semantic number above is the one that counts)`);
     // A case whose review never validated contributes zero to recall, and a recall
     // number is not readable without knowing how many of those there were.
     const noReview = results.filter((r) => r.verdict === null).length;
@@ -388,4 +395,5 @@ function main() {
   }
 }
 
-if (process.argv[1] && process.argv[1].endsWith('rubric-eval.mjs')) main();
+// Async now (the semantic matcher awaits the network); a rejection must still exit non-zero.
+if (process.argv[1] && process.argv[1].endsWith('rubric-eval.mjs')) main().catch((err) => { console.error(err?.stack ?? err); process.exit(1); });

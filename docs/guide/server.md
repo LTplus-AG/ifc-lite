@@ -127,7 +127,7 @@ console.log(`From cache: ${result.stats.from_cache}`);
 |----------|--------|-------------|
 | `/api/v1/parse` | POST | Full parse, JSON response |
 | `/api/v1/parse/parquet` | POST | Full parse, Parquet response (~15x smaller) |
-| `/api/v1/parse/parquet/optimized` | POST | Optimized Parquet (~50x smaller) |
+| `/api/v1/parse/parquet/optimized` | POST | Optimized Parquet (~50x smaller); `?sha256=` replays a cache hit with no upload |
 | `/api/v1/parse/stream` | POST | Streaming JSON (SSE) |
 | `/api/v1/parse/parquet-stream` | POST | Streaming Parquet (SSE); `?sha256=` replays a cache hit with no upload |
 | `/api/v1/parse/metadata` | POST | Quick metadata only (no geometry) |
@@ -152,7 +152,7 @@ JSON/SSE endpoints it's on `metadata`; for the Parquet endpoints it's in the
 |----------|--------|-------------|
 | `/api/v1/cache/check/{hash}` | GET | Check if file is cached (200 or 404) |
 | `/api/v1/cache/geometry/{hash}` | GET | Fetch cached geometry (no upload) |
-| `/api/v1/cache/{key}` | GET | Retrieve a cached JSON result |
+| `/api/v1/cache/{key}` | GET | Retrieve a cached JSON result (404, not 500, for a key whose entry is not JSON — e.g. a binary Parquet body) |
 | `/api/v1/cache/{hash}` | DELETE | Evict all cached representations for a 64-character source-file SHA-256 hash |
 | `/api/v1/parse/data-model/{key}` | GET | Fetch cached data model |
 | `/api/v1/parse/symbolic/{key}` | GET | Fetch 2D symbol data (`IfcAnnotation` + `IfcGrid`) as JSON |
@@ -646,6 +646,8 @@ Cache keys are derived from file content:
 # payload is quantized and deduplicated, so a hit on one route must never
 # satisfy the other. Both pairs are built from the same geometry pipeline, so
 # a bump of -parquet-v5 almost always needs a bump of -parquet-optimized-v1.
+# The optimized key ignores parquet_layout: this route has only ever emitted
+# one payload shape, so there is no second namespace to select between.
 {SHA256}-{filter}-parquet-optimized-v1          # Optimized geometry
 {SHA256}-{filter}-parquet-optimized-metadata-v2 # Optimized metadata header
 ```
@@ -655,12 +657,13 @@ reaches one or the other according to its `parquet_layout` parameter (below).
 They never cross-serve, because the shared-shape layout renders incorrectly on
 a client that does not know to apply its rotation columns.
 
-The `{SHA256}` half is what a client can supply itself, and two endpoints let
-it: `GET /api/v1/cache/check/{hash}` and `POST /api/v1/parse/parquet-stream?sha256=`
-(above). A client-supplied hash is a SELECTOR for entries that already exist and
-nothing more: it never causes a parse or a write, and on a request that also
-carries a file body it is discarded in favour of hashing that body. The stream
-probe additionally requires it to be 64 lowercase hex characters and answers
+The `{SHA256}` half is what a client can supply itself, and three endpoints let
+it: `GET /api/v1/cache/check/{hash}`, `POST /api/v1/parse/parquet-stream?sha256=`
+and (issue #5128) `POST /api/v1/parse/parquet/optimized?sha256=` (above). A
+client-supplied hash is a SELECTOR for entries that already exist and nothing
+more: it never causes a parse or a write, and on a request that also carries a
+file body it is discarded in favour of hashing that body. Both `?sha256=`
+probes additionally require it to be 64 lowercase hex characters and answer
 `400` otherwise, because the value is concatenated into the keys above and a
 caller-shaped hash would otherwise be a caller-shaped key. `/cache/check` and
 `/cache/geometry` do not check the shape; a malformed hash there simply names a
@@ -854,6 +857,20 @@ Two rules keep the parameter honest:
 Send the same `opening_filter`, `tessellation_quality` and `parquet_layout` you
 would send with the file. They are part of the cache identity, so a hash paired
 with a different layout asks about a different entry.
+
+`POST /api/v1/parse/parquet/optimized` accepts the same `?sha256=` parameter,
+with the same two rules and the same status codes (issue #5128) — the only
+difference is the response is a single body, not an SSE stream, so a hit is a
+plain `200` rather than a replayed `start`/`batch`/`complete` sequence:
+
+```bash
+curl -X POST "$SERVER/api/v1/parse/parquet/optimized?sha256=$SHA"
+```
+
+Send the same `opening_filter` and `tessellation_quality` you would send with
+the file, same as above — but not `parquet_layout`: that parameter is a
+flat-route-only concept (above), and the optimized route ignores it, cache key
+included, because it has only ever emitted one payload shape.
 
 `@ifc-lite/server-client` does this for you: `parseParquetStream` hashes the
 file locally, probes, and uploads on the 404. It also uploads when the probe is

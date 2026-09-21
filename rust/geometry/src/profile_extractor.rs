@@ -114,7 +114,7 @@ pub fn extract_profiles_with_diagnostics<T: AsRef<[u8]> + ?Sized>(content: &T, m
         // Resolve from `type_name`, not `entity.ifc_type`: only the legacy-aware
         // resolver preserves exact variants. Before support, bare `from_str` produced
         // `Unknown` and `IFCOPENINGSTANDARDCASE` emitted a profile (#3172).
-        let resolved_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
+        let resolved_type = ifc_lite_core::ifc_type_from_keyword(type_name);
         if resolved_type.is_subtype_of(IfcType::IfcFeatureElement) {
             continue;
         }

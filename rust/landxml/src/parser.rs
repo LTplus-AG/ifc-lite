@@ -10,9 +10,9 @@ use crate::{
         attr, attributes, character_references, error, normalize_encoding, required, split_name,
         Result,
     },
-    LandXmlCancellation, LandXmlCapabilities, LandXmlDiagnosticCode as Code, LandXmlExtension,
-    LandXmlCoordinateSystem, LandXmlLimits, LandXmlPoint, LandXmlPolyline, LandXmlRenderState,
-    LandXmlSourceId, LandXmlSurface, LandXmlSurfaceKind, LandXmlTinDocument,
+    LandXmlCancellation, LandXmlCapabilities, LandXmlCoordinateSystem,
+    LandXmlDiagnosticCode as Code, LandXmlExtension, LandXmlLimits, LandXmlPoint, LandXmlPolyline,
+    LandXmlRenderState, LandXmlSourceId, LandXmlSurface, LandXmlSurfaceKind, LandXmlTinDocument,
 };
 use quick_xml::{
     events::{BytesStart, Event},
@@ -28,16 +28,16 @@ pub(crate) mod state;
 mod text;
 mod version;
 
+pub(crate) use document::parse_landxml_document;
 use state::{retained_properties, Frame, Parser, SurfaceBuilder};
 pub use version::*;
-pub(crate) use document::parse_landxml_document;
 
-/// Parse exact LandXML 1.2 TIN semantics with default resource limits.
+/// Parse supported LandXML TIN semantics with default resource limits.
 pub fn parse_landxml_tin(input: &[u8]) -> Result<LandXmlTinDocument> {
     parse_landxml_tin_with_cancel(input, &LandXmlLimits::default(), None)
 }
 
-/// Parse exact LandXML 1.2 TIN semantics with host limits and cancellation.
+/// Parse supported LandXML TIN semantics with host limits and cancellation.
 pub fn parse_landxml_tin_with_cancel(
     input: &[u8],
     limits: &LandXmlLimits,
@@ -65,6 +65,8 @@ pub fn parse_landxml_tin_with_cancel(
         surfaces: Vec::new(),
         extensions: Vec::new(),
         warnings: Vec::new(),
+        schema: String::new(),
+        target_namespace: None,
         surface_ordinal: 0,
         version: String::new(),
         root_seen: false,
@@ -143,36 +145,33 @@ impl Parser<'_> {
             if local != "LandXML" {
                 return Err(error(Code::InvalidSemantic, "root element is not LandXML"));
             }
-            match classify_landxml_version(namespace, attr(&attributes, "version")) {
-                crate::LandXmlVersionCapability::LandXml12Tin => {}
-                crate::LandXmlVersionCapability::LandXml10Unsupported => {
-                    return Err(error(
-                        Code::UnsupportedVersion,
-                        "LandXML 1.0 is recognized but TIN ingestion supports 1.2 only",
-                    ));
-                }
-                crate::LandXmlVersionCapability::LandXml11Unsupported => {
-                    return Err(error(
-                        Code::UnsupportedVersion,
-                        "LandXML 1.1 is recognized but TIN ingestion supports 1.2 only",
-                    ));
-                }
-                crate::LandXmlVersionCapability::LandXml12VersionMismatch => {
-                    return Err(error(
-                        Code::UnsupportedVersion,
-                        "LandXML 1.2 namespace requires an explicit version=\"1.2\"",
-                    ));
-                }
-                crate::LandXmlVersionCapability::NotLandXml => {
-                    return Err(error(
+            let capability = classify_landxml_version(namespace, attr(&attributes, "version"));
+            if !capability.supports_tin_ingestion() {
+                return Err(match capability {
+                    crate::LandXmlVersionCapability::NotLandXml => error(
                         Code::UnsupportedNamespace,
                         "root namespace is not a recognized LandXML namespace",
-                    ));
-                }
+                    ),
+                    _ => error(
+                        Code::UnsupportedVersion,
+                        "LandXML namespaces require a known version declaration",
+                    ),
+                });
+            }
+            self.schema = capability
+                .schema()
+                .expect("supported capability has a schema")
+                .to_owned();
+            self.target_namespace = namespace.map(str::to_owned);
+            if let Some(diagnostic) = compatibility_version_diagnostic(
+                capability,
+                attr(&attributes, "version").expect("supported capability has a version"),
+            ) {
+                self.record_capability_diagnostic(diagnostic)?;
             }
             self.version = required(&attributes, "version", "LandXML")?.to_owned();
         }
-        let target = namespace == Some(LANDXML_12_NAMESPACE);
+        let target = namespace == self.target_namespace.as_deref();
         let sibling_ordinal = self.frames.last_mut().map_or(1, |parent| {
             let ordinal = parent
                 .child_ordinals
@@ -244,8 +243,10 @@ impl Parser<'_> {
                     );
                 }
                 self.coordinate_system = Some(LandXmlCoordinateSystem {
-                    horizontal_datum: attr(&attributes, "horizontalDatum").map(|value| value.to_owned()),
-                    vertical_datum: attr(&attributes, "verticalDatum").map(|value| value.to_owned()),
+                    horizontal_datum: attr(&attributes, "horizontalDatum")
+                        .map(|value| value.to_owned()),
+                    vertical_datum: attr(&attributes, "verticalDatum")
+                        .map(|value| value.to_owned()),
                 });
             }
             "Surface" if self.is_path(&["LandXML", "Surfaces", "Surface"]) => {

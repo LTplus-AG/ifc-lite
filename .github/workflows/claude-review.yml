@@ -454,6 +454,26 @@ jobs:
       # already dropped anything whose quote is not verbatim in the diff, and THIS
       # removes the ones an author would spend five seconds dismissing.
       #
+      # DUPLICATES ARE MERGED BEFORE THE JUDGE, by a yes/no per pair from
+      # TypeSafe (scripts/review/dedup-findings.mjs), not by judge.md prose: the
+      # ensemble pools several models' findings and the judge folded same-line
+      # duplicates unevenly and cross-file ones never. Same fail-soft contract
+      # as the judge -- no key, no network, a crash: the validated findings go
+      # through unmerged and the log says so. It can only merge, never add.
+      - name: Merge duplicate findings
+        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true' && steps.input.outputs.skip != 'true' && steps.validate.outputs.uncovered != 'true'
+        working-directory: ${{ runner.temp }}
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+        run: |
+          if node "$GITHUB_WORKSPACE/scripts/review/dedup-findings.mjs" \
+               --findings "$RUNNER_TEMP/findings.json" \
+               --out "$RUNNER_TEMP/deduped.json" && [ -s "$RUNNER_TEMP/deduped.json" ]; then
+            mv "$RUNNER_TEMP/deduped.json" "$RUNNER_TEMP/findings.json"
+          else
+            echo "::warning::Duplicate merging did not produce output; judging the unmerged findings."
+          fi
+
       # It CANNOT fail this job. Every way it can break -- no token, quota, a
       # malformed reply, a crash -- resolves to "post the validated findings
       # unjudged", because a judge outage that silently emptied a review would be

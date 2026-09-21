@@ -19,6 +19,7 @@ import { assertModelTranslation } from '../model-translation.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { PointCloudHandleIds } from './point-cloud-handle-ids.js';
 import { PointCloudPlacements, unionPointCloudBounds } from './point-cloud-placement.js';
+import { PointCloudVisibility } from './point-cloud-visibility.js';
 import { PointRenderPipeline, POINT_QUAD_VERTS, POINT_UNIFORM_SIZE } from './point-pipeline.js';
 import {
   appendChunkToNode,
@@ -145,6 +146,7 @@ export class PointCloudRenderer {
   private modelTranslations = new Map<number, readonly [number, number, number]>();
   private nodes = new Map<number, PointCloudNode>();
   private nodeOwners = new Map<number, NodeOwner>();
+  private readonly visibility = new PointCloudVisibility();
   readonly handleIds: PointCloudHandleIds;
   private uniformScratch = new Float32Array(POINT_UNIFORM_SIZE / 4);
   private uniformScratchU32 = new Uint32Array(this.uniformScratch.buffer);
@@ -222,6 +224,7 @@ export class PointCloudRenderer {
     const id = this.handleIds.allocate();
     this.nodes.set(id, node);
     this.nodeOwners.set(id, 'ifcx');
+    this.visibility.add(id);
     this.placements.translate(node, this.modelTranslations.get(asset.modelIndex ?? 0) ?? [0, 0, 0]);
     return { id };
   }
@@ -234,6 +237,7 @@ export class PointCloudRenderer {
     const id = this.handleIds.allocate();
     this.nodes.set(id, node);
     this.nodeOwners.set(id, 'streamed');
+    this.visibility.add(id);
     return { id };
   }
 
@@ -257,6 +261,7 @@ export class PointCloudRenderer {
     destroyNode(node);
     this.nodes.delete(handle.id);
     this.nodeOwners.delete(handle.id);
+    this.visibility.remove(handle.id);
   }
 
   /**
@@ -285,6 +290,9 @@ export class PointCloudRenderer {
     if (node) this.placements.translate(node, translation);
   }
 
+  /** Hide a resident asset from rendering and both point-cloud pick paths. */
+  setAssetVisible(handle: PointCloudAssetHandle, visible: boolean): boolean { return this.visibility.set(handle.id, visible, this.nodes.has(handle.id)); }
+
   validateModelTranslation(modelIndex: number, translation: readonly [number, number, number]): void {
     assertModelTranslation(modelIndex, translation);
     for (const [id, node] of this.nodes) if (this.nodeOwners.get(id) === 'ifcx' && (node.meta.modelIndex ?? 0) === modelIndex) {
@@ -302,14 +310,15 @@ export class PointCloudRenderer {
     }
   }
 
-  getAssetTransform(handle: PointCloudAssetHandle): Float32Array | undefined {
-    const matrix = this.nodes.get(handle.id)?.model;
-    return matrix ? new Float32Array(matrix) : undefined;
-  }
+  getAssetTransform(handle: PointCloudAssetHandle): Float32Array | undefined { const matrix = this.nodes.get(handle.id)?.model; return matrix ? new Float32Array(matrix) : undefined; }
 
   getPlacementBounds(modelIndex: number, handle?: PointCloudAssetHandle) {
-    const nodes = handle ? [this.nodes.get(handle.id)] : [...this.nodes].filter(([id, node]) =>
-      this.nodeOwners.get(id) === 'ifcx' && (node.meta.modelIndex ?? 0) === modelIndex).map(([, node]) => node);
+    // Model-specific framing must obey whole-scene visibility: a hidden scan cannot move the camera.
+    const nodes = handle
+      ? this.visibility.visible(handle.id) ? [this.nodes.get(handle.id)] : []
+      : [...this.nodes].filter(([id, node]) => this.visibility.visible(id)
+        && this.nodeOwners.get(id) === 'ifcx' && (node.meta.modelIndex ?? 0) === modelIndex)
+        .map(([, node]) => node);
     return unionPointCloudBounds(nodes);
   }
 
@@ -319,19 +328,16 @@ export class PointCloudRenderer {
     // Clearing assets is independent of model placement. Full renderer teardown
     // discards this renderer instance and its offset map together.
     clearOwnedPointCloudNodes(this.nodes, this.nodeOwners);
+    this.visibility.clear();
   }
 
   private clearOwner(owner: NodeOwner): void {
+    for (const [id, current] of this.nodeOwners) if (current === owner) this.visibility.remove(id);
     clearOwnedPointCloudNodes(this.nodes, this.nodeOwners, owner);
   }
 
-  hasAssets(): boolean {
-    return this.nodes.size > 0;
-  }
-
-  getNodeCount(): number {
-    return this.nodes.size;
-  }
+  hasAssets(): boolean { return this.nodes.size > 0; }
+  getNodeCount(): number { return this.nodes.size; }
 
   /**
    * Iterate every uploaded node. Exposed so the deviation compute
@@ -352,7 +358,7 @@ export class PointCloudRenderer {
   }
 
   getBounds(): { min: [number, number, number]; max: [number, number, number] } | null {
-    return unionPointCloudBounds(this.nodes.values());
+    return unionPointCloudBounds(this.visibleNodes());
   }
 
   /**
@@ -392,7 +398,8 @@ export class PointCloudRenderer {
     const viewportW = Math.max(1, state.viewport?.width ?? 1);
     const viewportH = Math.max(1, state.viewport?.height ?? 1);
 
-    for (const node of this.nodes.values()) {
+    for (const [id, node] of this.nodes) {
+      if (!this.visibility.visible(id)) continue;
       writePointCloudUniforms(
         this.device,
         this.uniformScratch,
@@ -448,7 +455,7 @@ export class PointCloudRenderer {
     rteOrigin?: [number, number, number];
     chunks: Array<{ vertexBuffer: GPUBuffer; pointCount: number }>;
   }> {
-    return buildPickNodeSources(this.nodes.values());
+    return buildPickNodeSources(this.visibleNodes());
   }
 
   /**
@@ -468,6 +475,10 @@ export class PointCloudRenderer {
   }> {
     // `classMask` is a live reference — read synchronously within one
     // query, and `setOptions` replaces (never mutates in place) the array.
-    return buildRayQuerySources(this.nodes.values(), this.options.classMask);
+    return buildRayQuerySources(this.visibleNodes(), this.options.classMask);
+  }
+
+  private *visibleNodes(): IterableIterator<PointCloudNode> {
+    for (const [id, node] of this.nodes) if (this.visibility.visible(id)) yield node;
   }
 }

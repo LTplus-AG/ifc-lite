@@ -23,6 +23,8 @@ const TEMPLATES = [
   'packages/create-ifc-lite/src/templates/server.ts',
   'packages/create-ifc-lite/src/templates/server-native.ts',
 ];
+const EXPECTED_PARQUET_WASM_RANGE = '^0.7.2 || ^0.8.0';
+const EXPECTED_TEMPLATE_RANGE = '^0.7.2';
 
 type Caret = { major: number; minor: number; patch: number };
 
@@ -37,6 +39,10 @@ function parseCaret(range: string, what: string): Caret {
     throw new Error(`${what} is "${range}", which this test can only check in ^X.Y.Z form.`);
   }
   return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]) };
+}
+
+function parseCaretAlternatives(range: string, what: string): Caret[] {
+  return range.split('||').map((part) => parseCaret(part.trim(), what));
 }
 
 /**
@@ -73,15 +79,26 @@ function readTemplatePin(relativePath: string): string {
 }
 
 describe('server template dependency pins', () => {
+  it('supports parquet-wasm 0.8 without breaking published server-client templates (#5110)', () => {
+    expect(readPeerRange()).toBe(EXPECTED_PARQUET_WASM_RANGE);
+    expect(TEMPLATES.map(readTemplatePin)).toEqual([
+      EXPECTED_TEMPLATE_RANGE,
+      EXPECTED_TEMPLATE_RANGE,
+    ]);
+  });
+
   it.each(TEMPLATES)('%s scaffolds a parquet-wasm inside the server-client peer range', (template) => {
     const peerRange = readPeerRange();
     const templateRange = readTemplatePin(template);
 
-    const peer = parseCaret(peerRange, 'The @ifc-lite/server-client parquet-wasm peer range');
+    const peers = parseCaretAlternatives(
+      peerRange,
+      'The @ifc-lite/server-client parquet-wasm peer range'
+    );
     const pinned = parseCaret(templateRange, `The parquet-wasm pin in ${template}`);
 
     expect(
-      floorSatisfies(pinned, peer),
+      peers.some((peer) => floorSatisfies(pinned, peer)),
       `${template} pins parquet-wasm ${templateRange}, outside the server-client peer range ${peerRange}.`
     ).toBe(true);
   });

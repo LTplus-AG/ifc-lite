@@ -14,6 +14,8 @@ import { createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.
  * [-750 km, +750 km] component is valid relative to the shared frame.
  */
 export const MAX_RENDER_FRAME_LOCAL_EXTENT_METRES = 1_000_000;
+/** Current name retained by federation callers; see the local-extent note above. */
+export const MAX_RENDER_FRAME_ORIGIN_METRES = MAX_RENDER_FRAME_LOCAL_EXTENT_METRES;
 
 interface RenderFrameComponent {
   mesh: MeshData;

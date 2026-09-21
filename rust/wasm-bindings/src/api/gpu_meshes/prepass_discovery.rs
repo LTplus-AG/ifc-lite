@@ -158,15 +158,13 @@ pub(super) fn discover_from_columns(
         if class & p::PREPASS_CLASS_FLAG_GEOMETRY_JOB != 0 {
             let kw = keyword_at(content, start, end);
             if !is_disabled(disabled_types, kw) {
-                // Legacy-aware, for the same reason the type-candidate branch
-                // above is: `classify_type_name` sets this flag through the
-                // legacy-aware `has_geometry_by_name`. Before exact-name
-                // support a bare `from_str` labelled such a job
-                // `Unknown(crc32)`; now it would preserve the legacy spelling
-                // but change the established processing type. Use the same
-                // resolver on both sides of the gate (#3179, #4203).
+                // Schema-resolved, for the same reason as the type-candidate
+                // branch: `classify_type_name` and this label must both use the
+                // generated schema universe. Exact variants are retained, while
+                // the bounded exporter aliases remain owned unknown keywords
+                // (#3179, #4203).
                 d.buffered_jobs
-                    .push((id, start, end, ifc_lite_core::legacy_aware_ifc_type(kw)));
+                    .push((id, start, end, ifc_lite_core::ifc_type_from_keyword(kw)));
                 d.total_jobs += 1;
             }
         }

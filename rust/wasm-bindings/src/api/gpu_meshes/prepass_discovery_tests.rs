@@ -261,7 +261,7 @@ END-ISO-10303-21;
 /// reachable from a host test (it lives inside a `#[wasm_bindgen]` method
 /// driven by JS callbacks), but this walk is, and it is the path that
 /// re-attaches a processing `IfcType` to a span someone else flagged. It must
-/// retain the legacy-aware base mapping even after exact variants exist.
+/// retain the exact schema-local type even after legacy tables are removed.
 #[test]
 fn sharded_column_discovery_labels_a_legacy_type_candidate_with_its_base_type() {
     let bytes = LEGACY_TYPE_FIXTURE.as_bytes();
@@ -305,12 +305,11 @@ fn sharded_column_discovery_labels_a_legacy_type_candidate_with_its_base_type() 
 }
 
 /// The geometry-JOB half of the same walk, and the sibling of the test
-/// above. The type-candidate branch was made legacy-aware and this one was
-/// not, so a keyword the gate admitted through the legacy-aware
-/// `has_geometry_by_name` was then labelled by a bare `IfcType::from_str` and
-/// reached the wire as `Unknown(crc32)` before #4203. Exact variants remove
-/// that information loss, but the sharded path must still preserve the same
-/// processing classification as every other path (#3179, #4203).
+/// above. Before #4203, a keyword admitted through `has_geometry_by_name` was
+/// labelled by a separate bare lookup and could reach the wire as
+/// `Unknown(crc32)`. Exact generated variants remove that information loss,
+/// and the sharded path must preserve the same schema-local type as every
+/// other path (#3179, #4203).
 #[test]
 fn sharded_column_discovery_labels_a_legacy_geometry_job_with_its_base_type() {
     let bytes = LEGACY_JOB_FIXTURE.as_bytes();

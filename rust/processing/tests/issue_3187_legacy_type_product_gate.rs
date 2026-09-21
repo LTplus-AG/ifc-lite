@@ -7,11 +7,8 @@
 //!
 //! `IFCDOORSTYLE` and `IFCWINDOWSTYLE` are IFC2X3 `IfcTypeProduct` subtypes
 //! that IFC4X3 dropped. The supported-schema type universe now preserves their
-//! exact variants, while the legacy-aware resolver retains its modern
-//! processing mapping. They carry
-//! `has_geometry: false` in `legacy_entities.rs`, so the ordinary product route
-//! never reaches them either — their `RepresentationMaps` geometry is silently
-//! dropped from every path.
+//! exact variants. They remain representation-map type candidates rather than
+//! ordinary geometry jobs, so their geometry is not double-rendered.
 
 use ifc_lite_core::{has_geometry_by_name, ifc_type_from_keyword, IfcType};
 use ifc_lite_processing::{
@@ -86,21 +83,21 @@ fn legacy_type_keywords_set_the_shard_type_candidate_flag() {
     }
 }
 
-/// The complete set of formerly-unknown legacy type keywords, and the reason
-/// exact-name resolution cannot double-count: every one of them is refused by
-/// `has_geometry_by_name`, so none is also scheduled as an ordinary product.
+/// The supported type-product keywords whose exact generated variants must not
+/// double-count: every one of them is refused by `has_geometry_by_name`, so
+/// none is also scheduled as an ordinary product.
 ///
 /// Enumerated, not sampled: the `ends_with("TYPE") || ends_with("STYLE")`
-/// pre-filter admits only these three entries of the legacy table, and
-/// `IFCPRESENTATIONSTYLEASSIGNMENT` (the only other legacy `*STYLE*` name) does
-/// not end in either suffix.
+/// pre-filter admits only these three entries, and
+/// `IFCPRESENTATIONSTYLEASSIGNMENT` (the only other matching `*STYLE*` name)
+/// does not end in either suffix.
 ///
 /// NOT a guard on the six gates #3187 rewired, and it should not be read as
-/// one. It asserts only over `legacy_aware_ifc_type`, `IfcType::from_str` and
+/// one. It asserts only over `ifc_type_from_keyword`, `IfcType::from_str` and
 /// `has_geometry_by_name` -- three functions #3187 leaves untouched -- and it
 /// stays green under the mutation that reds the tests above (maintainer review
 /// of #3190, confirmed by re-running it). What it does guard is
-/// `legacy_entities.rs`: flip `has_geometry` to `true` on any of the three, or
+/// the schema product classification: change any of the three to geometry or
 /// move a base type, and the widened gates would start double-rendering; this
 /// reddens first. The gates themselves are pinned by the other tests in this
 /// file, by `schema_helpers_tests.rs`'s widening sweep, and by the per-site
@@ -120,7 +117,7 @@ fn exact_legacy_type_candidates_are_never_also_geometry_jobs() {
         );
         assert!(
             ifc_type_from_keyword(name).is_subtype_of(IfcType::IfcTypeProduct),
-            "{name} must be admitted by the legacy-aware resolver"
+            "{name} must be admitted by schema-local keyword resolution"
         );
         assert!(
             !has_geometry_by_name(name),

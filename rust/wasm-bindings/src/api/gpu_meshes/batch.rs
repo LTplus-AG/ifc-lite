@@ -400,11 +400,11 @@ impl IfcAPI {
             let Ok(entity) = decoder.decode_and_cache(id, start, end) else {
                 continue;
             };
-            // LEGACY-AWARE, like the native pre-pass at
-            // `processing/src/processor/mod.rs:711`. Before exact-name support,
-            // omission produced `ifcType: "Unknown"`; now the exact variant would
-            // still disagree with established CLI/exporter classification and
-            // colour. Keep every pipeline on the same resolver (#3179, #4203).
+            // Schema-resolved, like the native pre-pass at
+            // `processing/src/processor/mod.rs:711`. Supported keywords retain
+            // their exact generated variants; raw-record fallback preserves an
+            // owned unknown keyword where decoding could not retain it (#3179,
+            // #4203).
             //
             // Not every dropped keyword reaches this line: the four arms with
             // `has_geometry: false` are refused by `has_geometry_by_name` in
@@ -414,7 +414,7 @@ impl IfcAPI {
             //
             // Recomputed from the SOURCE KEYWORD rather than recovered from
             // `entity.ifc_type` -- why it cannot be recovered is on
-            // `legacy_aware_ifc_type_from_record` itself. What is specific to
+            // `ifc_type_from_record` itself. What is specific to
             // HERE: the bytes are already in hand -- `content[start..end]` is
             // the span THIS JOB carries, so this is a ~20-byte scan to the
             // first `(`, not a re-read. Note it is the job's span, not

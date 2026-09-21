@@ -234,20 +234,19 @@ pub fn is_simple_geometry_type(type_name: &str) -> bool {
     )
 }
 
-/// Resolve a STEP keyword to its `IfcType`, **legacy-aware**: a removed/renamed
-/// entity (`IFCPROXY`, `IFCSOLIDSTRATUM`, …) maps to its modern base type via the
-/// hand-maintained legacy table, exactly as `has_geometry_by_name` does. Any pass
-/// that *classifies* or *labels* an entity must use this rather than a bare
-/// `IfcType::from_str`; otherwise it disagrees with the geometry pass (which meshes
-/// legacy entities), leaving a rendered node with no attribute row — the
-/// geometry/attribute product-set divergence (#1496).
+/// Resolve a STEP keyword to its schema-local `IfcType`. Supported keywords
+/// retain their exact generated variants. The three non-EXPRESS exporter
+/// stratum aliases remain owned `Unknown` values and are handled explicitly by
+/// `has_geometry_by_name`. Any pass that *classifies* or *labels* an entity
+/// must use this helper rather than reimplementing keyword normalization
+/// (#4203).
 pub fn ifc_type_from_keyword(type_name: &str) -> IfcType {
     let upper = normalise_uppercase(type_name);
     IfcType::from_str(upper.as_ref())
 }
 
-/// The `IfcTypeProduct` subtype a STEP keyword names, **legacy-aware**, or
-/// `None` when the keyword is not one.
+/// The `IfcTypeProduct` subtype a STEP keyword names, or `None` when it is
+/// not one.
 ///
 /// The single predicate behind every type-geometry candidate gate (#957/#962):
 /// the native processor, the streaming and sharded browser pre-passes, the
@@ -257,12 +256,10 @@ pub fn ifc_type_from_keyword(type_name: &str) -> IfcType {
 ///
 /// Keeps the cheap `ends_with` pre-filter that kept the resolve and the
 /// `is_subtype_of` walk off the hot path for the non-type majority, and
-/// resolves LEGACY-AWARE. Before the supported-schema universe, a bare
-/// [`IfcType::from_str`] returned `Unknown` for IFC2X3 type products IFC4X3
-/// dropped (`IFCDOORSTYLE`, `IFCWINDOWSTYLE`, `IFCBUILDINGELEMENTTYPE`), so
-/// every gate discarded them. Their exact variants now exist, but the legacy
-/// mapping remains the single classification contract shared by every path;
-/// bypassing it would silently change behavior as the enum grows (#3187).
+/// resolves through the generated schema universe. Exact variants are
+/// preserved for every supported schema keyword, while the three non-EXPRESS
+/// exporter stratum aliases remain owned `Unknown` values and are handled by
+/// the explicit compatibility predicates (#4203).
 ///
 /// `type_name` is the raw STEP keyword as the scanner read it, in whatever case the file wrote it.
 pub fn type_product_ifc_type(type_name: &str) -> Option<IfcType> {
@@ -275,28 +272,26 @@ pub fn type_product_ifc_type(type_name: &str) -> Option<IfcType> {
     ty.is_subtype_of(IfcType::IfcTypeProduct).then_some(ty)
 }
 
-/// The legacy-aware type for an entity, recovered from its RAW STEP RECORD.
+/// The schema-resolved type for an entity, recovered from its RAW STEP RECORD.
 ///
 /// For callers that hold a `DecodedEntity` and its source bytes but no keyword.
 /// `DecodedEntity.ifc_type` comes from a bare [`IfcType::from_str`]. Supported
-/// legacy names now arrive as exact variants and are remapped before the early
-/// return below. A genuinely unknown name still becomes `IfcType::Unknown`,
-/// which owns its normalized keyword alongside its CRC32 ID. The raw record is
-/// only the fallback when a decoder has not retained a recoverable keyword.
+/// supported schema names arrive as exact variants. A genuinely unknown name,
+/// including an exporter stratum alias, remains `IfcType::Unknown`, which owns
+/// its normalized keyword alongside its CRC32 ID. The raw record is only the
+/// fallback when a decoder has not retained a recoverable keyword.
 ///
 /// `decoded` is returned unchanged when it is already a known type, so the
 /// scan is paid only by entities that need it, and when the record is
 /// malformed enough that no keyword can be read.
 ///
 /// Exists because the wasm mesh batch had exactly this shape and got it wrong:
-/// every legacy keyword reached the browser labelled `"Unknown"` while the
-/// native pipeline, which still has the keyword in hand, labelled it correctly
-/// (#3179).
+/// unknown keywords reached the browser labelled `"Unknown"` even when the
+/// raw record could identify them. The raw-record fallback keeps both paths
+/// aligned (#3179).
 pub fn ifc_type_from_record(decoded: IfcType, record: &[u8]) -> IfcType {
-    // #4203: supported legacy schema names now have exact enum variants. Keep
-    // this helper's classification contract stable: native callers already
-    // map these names through legacy_aware_ifc_type, and the browser must not
-    // diverge merely because the decoder can finally preserve the exact name.
+    // #4203: supported schema names have exact enum variants. The raw record
+    // is only needed when the decoder preserved an owned unknown value.
     if !matches!(decoded, IfcType::Unknown(_)) {
         return decoded;
     }

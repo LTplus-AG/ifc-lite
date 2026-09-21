@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use ifc_lite_core::{
     keyword_eq, DecodedEntity, EntityDecoder, EntityIndex, EntityScanner, IfcType,
+    EXPORTER_STRATUM_ALIASES,
 };
 use ifc_lite_geometry::GeometryRouter;
 use ifc_lite_processing::element::{plan_type_geometry, TypeGeometryMode};
@@ -310,7 +311,9 @@ pub fn stream_export_model_with_options(
         // entity, while still receiving the row their geometry needs.
         let ty = ifc_lite_core::ifc_type_from_keyword(type_name);
         if !ty.is_subtype_of(IfcType::IfcProduct)
-            && !ifc_lite_core::is_exporter_stratum_alias(&type_name.to_ascii_uppercase())
+            && !EXPORTER_STRATUM_ALIASES
+                .iter()
+                .any(|alias| keyword_eq(type_name, alias))
         {
             continue;
         }

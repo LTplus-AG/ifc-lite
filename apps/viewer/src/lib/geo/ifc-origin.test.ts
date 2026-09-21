@@ -8,7 +8,7 @@ import assert from 'node:assert';
 import { computeIfcOriginViewerPosition, type IfcOriginFrame } from './ifc-origin.js';
 import { spatialReferenceFromIfc } from './ifc-spatial-reference.js';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
-import type { CoordinateInfo } from '@ifc-lite/geometry';
+import { projectedToLocalViewer, type CoordinateInfo } from '@ifc-lite/geometry';
 
 function crs(name: string, verticalDatum = 'EPSG:5729'): ProjectedCRS {
   return { id: 1, name, verticalDatum, mapUnit: 'METRE', mapUnitScale: 1 };
@@ -98,15 +98,20 @@ describe('computeIfcOriginViewerPosition (#5048)', () => {
     // browser-fetched precision grid, which is intentionally refused when it
     // is unavailable. These UTM definitions are bundled and deterministic.
     const sourceDef = '+proj=utm +zone=31 +datum=WGS84 +units=m +no_defs';
-    const targetDef = '+proj=utm +zone=31 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs';
-    const [targetE, targetN] = proj4(sourceDef, targetDef, [500000, 5700000]);
-    const anchor = frame(conversion(targetE, targetN), crs('EPSG:25831'));
+    const targetDef = '+proj=utm +zone=32 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs';
+    const sourceProjected: readonly [number, number, number] = [500000, 5700000, 0];
+    const [targetE, targetN] = proj4(sourceDef, targetDef, sourceProjected);
+    const anchor = frame(conversion(targetE, targetN), crs('EPSG:25832'));
     const other = frame(conversion(500000, 5700000), crs('EPSG:32631'));
+    const raw = projectedToLocalViewer(anchor.spatialReference, sourceProjected);
+    assert.ok(raw);
+    assert.ok(Math.hypot(raw[0], raw[2]) > 100_000,
+      `skipping the zone reprojection must remain visibly wrong: ${raw}`);
     const out = await computeIfcOriginViewerPosition(other, anchor);
     assert.ok(out);
     assert.strictEqual(out.source, 'anchor');
-    assert.ok(Math.abs(out.viewer.x) < 5, `x residual = ${out.viewer.x}`);
-    assert.ok(Math.abs(out.viewer.z) < 5, `z residual = ${out.viewer.z}`);
+    assert.ok(Math.abs(out.viewer.x) < 1e-6, `x residual = ${out.viewer.x}`);
+    assert.ok(Math.abs(out.viewer.z) < 1e-6, `z residual = ${out.viewer.z}`);
   });
 
   it('normalizes proj4 US-survey-foot coordinates for a cross-CRS origin marker (#5048)', async () => {

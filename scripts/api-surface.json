@@ -7952,6 +7952,7 @@
     "RenderOptions: interface",
     "RenderPipeline: class",
     "Renderer: class",
+    "RendererColorFrame: interface",
     "ResidencyShell: interface",
     "ResidentGpuBytes: interface",
     "ResolvedEnvironment: type",

@@ -4,7 +4,7 @@
 
 /** Bounded, post-pass color-frame readback used by strict hardware witnesses. */
 
-/** A central, actual-color crop copied from the offscreen production color target. */
+/** A central, actual-color crop copied from the presented production color target. */
 export interface RendererColorFrame {
   width: number;
   height: number;
@@ -28,7 +28,7 @@ interface PendingRendererColorFrame {
 
 export interface RendererColorFrameCapture {
   pending: PendingRendererColorFrame;
-  texture: GPUTexture;
+  sourceTexture: GPUTexture;
   width: number;
   height: number;
   format: GPUTextureFormat;
@@ -123,7 +123,15 @@ export function requestRendererColorFrame(
   let resolve!: (frame: RendererColorFrame | null) => void;
   const promise = new Promise<RendererColorFrame | null>((finish) => { resolve = finish; });
   pendingCaptures.set(host, { encoded: false, skippedFrames: 0, promise, resolve });
-  requestRender();
+  try {
+    requestRender();
+  } catch (error) {
+    // A synchronous host failure must not strand the coalescing entry: a
+    // later caller needs to be able to request a fresh frame.
+    pendingCaptures.delete(host);
+    resolve(null);
+    return Promise.reject(error);
+  }
   return promise;
 }
 
@@ -147,10 +155,10 @@ export function retryRendererColorFrame(host: object, requestRender: () => void)
   requestRender();
 }
 
-/** Allocates an offscreen COPY_SRC attachment for the exact production color passes. */
+/** Binds one pending request to the copy-capable production canvas texture. */
 export function beginRendererColorFrameCapture(
   host: object,
-  device: GPUDevice,
+  sourceTexture: GPUTexture,
   width: number,
   height: number,
   format: GPUTextureFormat,
@@ -159,11 +167,7 @@ export function beginRendererColorFrameCapture(
   if (!pending || pending.encoded) return null;
   return {
     pending,
-    texture: device.createTexture({
-      size: { width, height, depthOrArrayLayers: 1 },
-      format,
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
-    }),
+    sourceTexture,
     width,
     height,
     format,
@@ -177,29 +181,23 @@ export function encodeRendererColorFrameCapture(
   capture: RendererColorFrameCapture,
 ): ColorFrameCopy {
   const copy = encodeRendererColorFrameReadback(
-    device, encoder, capture.texture, capture.width, capture.height, capture.format,
+    device, encoder, capture.sourceTexture, capture.width, capture.height, capture.format,
   );
   capture.pending.encoded = true;
   return copy;
 }
 
-/** Releases the texture after submission and settles the requester once its copy maps. */
+/** Settles the requester once its submitted canvas copy maps. */
 export function settleRendererColorFrameCapture(
   host: object,
   capture: RendererColorFrameCapture,
   copy: ColorFrameCopy,
 ): void {
-  capture.texture.destroy();
   void resolveRendererColorFrameReadback(copy).then((frame) => {
     if (pendingCaptures.get(host) !== capture.pending) return;
     pendingCaptures.delete(host);
     capture.pending.resolve(frame);
   });
-}
-
-/** Frees an attachment whose command buffer could not be submitted. */
-export function discardRendererColorFrameCapture(capture: RendererColorFrameCapture | null): void {
-  capture?.texture.destroy();
 }
 
 /** Frees a copy whose command buffer could not be submitted. */

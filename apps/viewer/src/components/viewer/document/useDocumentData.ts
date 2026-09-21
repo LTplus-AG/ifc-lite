@@ -12,6 +12,7 @@ import { useMemo } from 'react';
 import { trimSelectorWhitespace } from '@ifc-lite/query';
 import { aggregate, type Aggregation, type ChartSpec } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
+import type { ValidationReport } from '@ifc-lite/ids';
 import { useViewerStore } from '@/store';
 import type { BindingContext } from '@/lib/document/bindings';
 import type { DocumentSpec } from '@/lib/document/types';
@@ -28,6 +29,8 @@ export interface DocumentData {
    *  `Aggregation`, so the message is the only thing that distinguishes them. */
   chartMessages: Map<string, string>;
   topics: Map<string, BCFTopic>;
+  /** The store's validation report (#5138), for table blocks; `null` when none has run. */
+  validationReport: ValidationReport | null;
 }
 
 const ALL_SCOPE = { kind: 'all' as const };
@@ -36,6 +39,7 @@ export function useDocumentData(document: DocumentSpec | null): DocumentData {
   const models = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const bcfProject = useViewerStore((s) => s.bcfProject);
+  const validationReport = useViewerStore((s) => s.idsValidationReport);
   const datasets = useChartDatasets(ALL_SCOPE);
   // Same resolution hook the Charts panel uses (#4946), so a document chart
   // block prints the SAME filtered numbers the dashboard card shows — never
@@ -85,5 +89,5 @@ export function useDocumentData(document: DocumentSpec | null): DocumentData {
 
   const topics = useMemo(() => bcfProject?.topics ?? new Map<string, BCFTopic>(), [bcfProject]);
 
-  return { bindings, aggregations, chartMessages, topics };
+  return { bindings, aggregations, chartMessages, topics, validationReport };
 }

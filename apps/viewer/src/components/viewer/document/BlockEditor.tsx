@@ -20,6 +20,7 @@ import { readImageFile } from '@/lib/document/persistence';
 import { FIELD_SUGGESTIONS } from '@/lib/document/presets';
 import { elementPropertyPaths, type BindingContext } from '@/lib/document/bindings';
 import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, type BlockWidth, type DocumentBlock, type TextBlock } from '@/lib/document/types';
+import { TableBlockEditor } from './TableBlockEditor';
 
 export interface BlockEditorProps {
   block: DocumentBlock;
@@ -40,6 +41,7 @@ const KIND_LABEL_KEY = {
   chart: 'document.block.kindChart',
   topic: 'document.block.kindTopic',
   spacer: 'document.block.kindSpacer',
+  table: 'document.block.kindTable',
 } as const satisfies Record<DocumentBlock['kind'], TranslationKey>;
 const field = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs';
 
@@ -249,6 +251,8 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, onC
           <ClampedHeightInput value={block.height} min={4} max={400} ariaLabel={t('document.block.spacerHeightAriaLabel')} onCommit={(height) => onChange({ ...block, height: height ?? 4 })} />
         </label>
       )}
+
+      {block.kind === 'table' && <TableBlockEditor block={block} onChange={onChange} />}
 
       {block.kind === 'topic' && (
         <div className="flex flex-wrap items-center gap-2">

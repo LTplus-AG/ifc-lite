@@ -11,14 +11,17 @@
 import { useMemo, useState } from 'react';
 import { renderChartSvg, type Aggregation } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
+import type { ValidationReport } from '@ifc-lite/ids';
 import { useTranslation } from '@/i18n';
 import { renderTemplate, type BindingContext } from '@/lib/document/bindings';
 import { REPORT_THEME } from '@/lib/export/report/generate-report-pdf';
 import { topicLines, topicSnapshotDataUrl } from '@/lib/document/generate-document-pdf';
 import { pageBox } from '@/lib/export/report/compose';
 import { documentChartSizing } from '@/lib/document/compose';
-import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type DocumentBlock, type DocumentSpec, type TextBlock } from '@/lib/document/types';
+import { resolveTableRows } from '@/lib/document/table-rows';
+import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type DocumentBlock, type DocumentSpec, type TableBlock, type TextBlock } from '@/lib/document/types';
 import { DOCUMENT_PREVIEW_MUTED_TEXT_CLASS, DOCUMENT_PREVIEW_PAPER_CLASS } from './preview-theme';
+import { TABLE_COLUMN_LABEL_KEY } from './table-column-labels';
 
 export interface DocumentPreviewProps {
   document: DocumentSpec;
@@ -28,6 +31,8 @@ export interface DocumentPreviewProps {
    *  still resolving or was refused — shown instead of "No data". */
   chartMessages: Map<string, string>;
   topics: Map<string, BCFTopic>;
+  /** The store's validation report (#5138), for table blocks. */
+  validationReport: ValidationReport | null;
   selectedBlockId: string | null;
   onSelectBlock: (id: string) => void;
 }
@@ -107,7 +112,35 @@ function PreviewImage({ dataUrl, alt, height, contentWidth }: { dataUrl: string;
   }} />;
 }
 
-function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth, scale, pageHeight }: { block: DocumentBlock; bindings: BindingContext; aggregation: Aggregation | null; chartMessage: string | undefined; topic: BCFTopic | undefined; contentWidth: number; scale: number; pageHeight: number }) {
+/** A table block's rows resolved against the live report (#5138) — a placeholder message, or a real `<table>`, never a throw. */
+function TableView({ block, validationReport, bindings }: { block: TableBlock; validationReport: ValidationReport | null; bindings: BindingContext }) {
+  const { t } = useTranslation();
+  const resolved = useMemo(() => {
+    const modelName = (modelId: string): string => bindings.models.find((m) => m.id === modelId)?.name ?? modelId;
+    return resolveTableRows(block, validationReport, modelName);
+  }, [block, validationReport, bindings]);
+
+  if (resolved.placeholderReason) {
+    const message = resolved.placeholderReason === 'no-report' ? t('document.table.noReport') : t('document.table.ruleNotFound');
+    return <div className="rounded border border-dashed border-neutral-300 px-3 py-2 text-xs text-neutral-500" data-table-placeholder>{message}</div>;
+  }
+  return (
+    <div className="overflow-x-auto" data-table-rows={resolved.rows.length}>
+      <table className="w-full border-collapse text-[10px]">
+        <thead>
+          <tr>{resolved.columns.map((c) => <th key={c} className="border-b border-neutral-300 px-1 py-0.5 text-left font-semibold">{t(TABLE_COLUMN_LABEL_KEY[c])}</th>)}</tr>
+        </thead>
+        <tbody>
+          {resolved.rows.length === 0 && <tr><td colSpan={resolved.columns.length} className="px-1 py-1 text-neutral-500">{t('document.table.noRows')}</td></tr>}
+          {resolved.rows.map((row, i) => <tr key={i}>{row.map((cell, j) => <td key={j} className="border-b border-neutral-100 px-1 py-0.5">{cell}</td>)}</tr>)}
+        </tbody>
+      </table>
+      {resolved.truncated && <div className="mt-1 text-[9px] text-neutral-500">{t('document.table.truncated', { count: String(resolved.rows.length) })}</div>}
+    </div>
+  );
+}
+
+function Block({ block, bindings, aggregation, chartMessage, topic, validationReport, contentWidth, scale, pageHeight }: { block: DocumentBlock; bindings: BindingContext; aggregation: Aggregation | null; chartMessage: string | undefined; topic: BCFTopic | undefined; validationReport: ValidationReport | null; contentWidth: number; scale: number; pageHeight: number }) {
   const { t } = useTranslation();
   switch (block.kind) {
     case 'text':
@@ -167,10 +200,18 @@ function Block({ block, bindings, aggregation, chartMessage, topic, contentWidth
         </div>
       );
     }
+    case 'table':
+      return (
+        <div>
+          {block.title && <div className="text-sm font-semibold">{block.title}</div>}
+          <TableView block={block} validationReport={validationReport} bindings={bindings} />
+          {block.caption && <div className="mt-1 text-[10px] text-neutral-500">{block.caption}</div>}
+        </div>
+      );
   }
 }
 
-export function DocumentPreview({ document, bindings, aggregations, chartMessages, topics, selectedBlockId, onSelectBlock }: DocumentPreviewProps) {
+export function DocumentPreview({ document, bindings, aggregations, chartMessages, topics, validationReport, selectedBlockId, onSelectBlock }: DocumentPreviewProps) {
   const { t } = useTranslation();
   const size = pageBox(document.page);
   // The sheet scales to the panel; block content is laid out at this width.
@@ -197,7 +238,7 @@ export function DocumentPreview({ document, bindings, aggregations, chartMessage
                 onClick={() => onSelectBlock(block.id)}
                 data-preview-block={block.id}
               >
-                <Block block={block} bindings={bindings} aggregation={aggregations.get(block.id) ?? null} chartMessage={chartMessages.get(block.id)} topic={block.kind === 'topic' ? topics.get(block.guid) : undefined} contentWidth={Array.isArray(group) ? (contentWidth - 12) / 2 : contentWidth} scale={scale} pageHeight={size.h} />
+                <Block block={block} bindings={bindings} aggregation={aggregations.get(block.id) ?? null} chartMessage={chartMessages.get(block.id)} topic={block.kind === 'topic' ? topics.get(block.guid) : undefined} validationReport={validationReport} contentWidth={Array.isArray(group) ? (contentWidth - 12) / 2 : contentWidth} scale={scale} pageHeight={size.h} />
               </div>
             );
             return Array.isArray(group)

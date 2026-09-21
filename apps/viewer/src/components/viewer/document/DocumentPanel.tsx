@@ -20,7 +20,7 @@ import { localeCount } from '@/i18n/intlFormat';
 import { posthog } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
-import { blankDocument, DOCUMENT_PRESETS } from '@/lib/document/presets';
+import { blankDocument, DOCUMENT_PRESETS, insertValidationTableBlock } from '@/lib/document/presets';
 import { freshBlockId } from '@/lib/document/persistence';
 import { newChartSpec } from '@/lib/charts/presets';
 import { largestBucketIds } from '@/lib/charts/buckets';
@@ -81,7 +81,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
   const update = upsert;
   const setBlocks = useCallback((blocks: DocumentBlock[]) => { if (document) update({ ...document, blocks }); }, [document, update]);
 
-  const addBlock = (kind: DocumentBlock['kind']): void => {
+  const addBlock = (kind: Exclude<DocumentBlock['kind'], 'table'>): void => {
     if (!document) return;
     const id = freshBlockId();
     const block: DocumentBlock = kind === 'text' ? { kind, id, text: '', style: 'body' }
@@ -91,6 +91,15 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
             : { kind, id, guid: [...data.topics.keys()][0] ?? '', snapshot: true };
     setBlocks([...document.blocks, block]);
     setSelectedBlockId(id);
+  };
+
+  // A `table` block's shape comes from `insertValidationTableBlock` (#5138), the same helper PR 4's
+  // results-panel "Insert results table" affordance calls, so both paths seed identical defaults.
+  const addTableBlock = (): void => {
+    if (!document) return;
+    const next = insertValidationTableBlock(document);
+    update(next);
+    setSelectedBlockId(next.blocks[next.blocks.length - 1].id);
   };
 
   const exportPdf = useCallback(async () => {
@@ -106,6 +115,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
         chartMessages: data.chartMessages,
         snapshotIds: (blockId) => largestBucketIds(data.aggregations.get(blockId)),
         topics: data.topics,
+        validationReport: data.validationReport,
       }, seams);
       downloadBlob(result.blob, `${sanitizeFilename(document.name, { fallback: 'document' })}.pdf`);
       // Counts only — never the document's text or name.
@@ -177,6 +187,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
             <DropdownMenuItem onSelect={() => addBlock('chart')}>{t('document.addBlock.chart')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('topic')} disabled={data.topics.size === 0} title={data.topics.size === 0 ? t('document.addBlock.topicDisabledTitle') : undefined}>{t('document.addBlock.topic')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('spacer')}>{t('document.addBlock.spacer')}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={addTableBlock}>{t('document.addBlock.table')}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={busy || !document || document.blocks.length === 0} onClick={() => void exportPdf()} title={t('document.panel.exportTitle')} data-document-export>
@@ -216,7 +227,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
             {document.blocks.length === 0 && <div className="p-2 text-muted-foreground">{t('document.panel.emptyBlocks')}</div>}
           </div>
           <div className="min-w-0 flex-1 overflow-auto bg-muted/40">
-            <DocumentPreview document={document} bindings={data.bindings} aggregations={data.aggregations} chartMessages={data.chartMessages} topics={data.topics} selectedBlockId={selectedBlockId} onSelectBlock={setSelectedBlockId} />
+            <DocumentPreview document={document} bindings={data.bindings} aggregations={data.aggregations} chartMessages={data.chartMessages} topics={data.topics} validationReport={data.validationReport} selectedBlockId={selectedBlockId} onSelectBlock={setSelectedBlockId} />
           </div>
         </div>
       )}

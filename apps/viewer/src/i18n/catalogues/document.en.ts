@@ -36,6 +36,7 @@ export const documentEn = {
   'document.block.kindChart': 'Chart',
   'document.block.kindTopic': 'BCF topic',
   'document.block.kindSpacer': 'Spacer',
+  'document.block.kindTable': 'Table',
   'document.block.styleLabel': 'Style',
   'document.block.textStyleAriaLabel': 'Text style',
   'document.block.textStyleTitle': 'Title',
@@ -69,6 +70,34 @@ export const documentEn = {
   'document.block.topicSnapshotLabel': 'Viewpoint snapshot',
   'document.block.imageReadError': 'Could not read the image',
 
+  // TableBlockEditor.tsx (#5138): rows mode, rule filter, title/caption, and the per-column toggles.
+  'document.block.tableRowsLabel': 'Rows',
+  'document.block.tableRowsAriaLabel': 'Which rows to show',
+  'document.block.tableRowsFailed': 'Failed entities',
+  'document.block.tableRowsPassed': 'Passed entities',
+  'document.block.tableRowsAll': 'All entities',
+  'document.block.tableRowsSets': 'Sets (uniqueness / aggregate)',
+  'document.block.tableRuleLabel': 'Rule',
+  'document.block.tableRuleAriaLabel': 'Filter to one rule',
+  'document.block.tableRuleAll': 'Every rule',
+  'document.block.tableTitlePlaceholder': 'Table title',
+  'document.block.tableTitleAriaLabel': 'Table title',
+  'document.block.tableCaptionAriaLabel': 'Table caption',
+  'document.block.tableColumnsLabel': 'Columns',
+
+  // table-column-labels.ts (#5138): one column header per `TableColumnId`, shared by the preview table and the column-toggle editor.
+  'document.tableColumn.rule': 'Rule',
+  'document.tableColumn.result': 'Result',
+  'document.tableColumn.entityType': 'Entity type',
+  'document.tableColumn.name': 'Name',
+  'document.tableColumn.globalId': 'GlobalId',
+  'document.tableColumn.model': 'Model',
+  'document.tableColumn.actual': 'Actual',
+  'document.tableColumn.expected': 'Expected',
+  'document.tableColumn.reason': 'Reason',
+  'document.tableColumn.set': 'Set',
+  'document.tableColumn.members': 'Members',
+
   // DocumentPanel.tsx (#4918 doc slice): the "Add block" menu (a sibling
   // to the existing addBlock.spacer key).
   'document.addBlock.text': 'Text with fields',
@@ -79,6 +108,7 @@ export const documentEn = {
   'document.addBlock.button': 'Add block',
   'document.addBlock.buttonTitle': 'Add a block to the page',
   'document.addBlock.spacer': 'Spacer',
+  'document.addBlock.table': 'Validation results table',
 
   // DocumentPanel.tsx (#4918 doc slice): the panel's own header controls,
   // export action, empty state, and the toasts its export/save flow raises.
@@ -131,4 +161,11 @@ export const documentEn = {
   'document.preview.imageEmpty': 'No image yet',
   'document.preview.topicNotLoaded': 'BCF topic {guid} is not among the loaded topics.',
   'document.preview.emptyPage': 'An empty page — add a block on the left.',
+
+  // DocumentPreview.tsx's TableView (#5138): the placeholder shown in place of the table itself,
+  // never a throw, when the report is missing or the block's rule no longer matches it.
+  'document.table.noReport': 'No validation report yet — run validation, then this table fills in.',
+  'document.table.ruleNotFound': 'The rule this table refers to is not in the current validation report.',
+  'document.table.noRows': 'No rows matched.',
+  'document.table.truncated': 'Showing the first {count} rows; more rows matched.',
 } as const satisfies Record<string, TranslationValue>;

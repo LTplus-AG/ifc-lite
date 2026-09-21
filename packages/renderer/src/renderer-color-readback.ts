@@ -70,11 +70,16 @@ export function encodeRendererColorFrameReadback(
     size: bytesPerRow * region.height,
     usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
   });
-  encoder.copyTextureToBuffer(
-    { texture, origin: { x: region.x, y: region.y, z: 0 } },
-    { buffer, bytesPerRow, rowsPerImage: region.height },
-    { width: region.width, height: region.height, depthOrArrayLayers: 1 },
-  );
+  try {
+    encoder.copyTextureToBuffer(
+      { texture, origin: { x: region.x, y: region.y, z: 0 } },
+      { buffer, bytesPerRow, rowsPerImage: region.height },
+      { width: region.width, height: region.height, depthOrArrayLayers: 1 },
+    );
+  } catch (error) {
+    buffer.destroy();
+    throw error;
+  }
   return { buffer, width: region.width, height: region.height, bytesPerRow, bgra: format.startsWith('bgra') };
 }
 

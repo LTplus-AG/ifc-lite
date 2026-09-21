@@ -3166,9 +3166,9 @@ export class Renderer {
             device.queue.submit([encoder.finish()]);
             if (colorReadback && colorCapture) {
                 settleRendererColorFrameCapture(this, colorCapture, colorReadback);
+                this.requestRender();
                 colorCapture = null; colorReadback = null;
             }
-
             this._lastFrameStats = {
                 drawCalls: frameDrawCalls,
                 batchesDrawn: frameBatchesDrawn,

@@ -417,12 +417,14 @@ describe('captureColorFrame() lifecycle (#5051 strict GPU evidence)', () => {
         const second = h.renderer.captureColorFrame();
         assert.strictEqual(first, second, 'only one in-flight color capture may allocate GPU readback memory');
 
+        h.renderer.consumeRenderRequest();
         h.render();
         const frame = await first;
 
         assert.ok(frame, 'the submitted production frame resolves its color copy');
         assert.deepStrictEqual([frame.width, frame.height], [256, 256]);
         assert.strictEqual(h.stats.mapAsync, 1, 'exactly one color buffer is mapped');
+        assert.strictEqual(h.renderer.peekRenderRequest(), true, 'the offscreen witness schedules a normal presented frame');
     });
 
     it('retries a transient context skip but bounds unavailable-frame polling', async () => {

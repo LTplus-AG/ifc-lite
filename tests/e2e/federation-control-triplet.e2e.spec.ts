@@ -22,6 +22,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ViewerState } from '../../apps/viewer/src/store';
+import { assertIsolatedRenderedContent, ordinaryGpuSelectControl, snapshotRenderedPointCloud } from './federation-control-triplet.rendering';
 
 declare global {
   var __ifc_lite_viewer_store__: { getState(): ViewerState };
@@ -34,6 +35,7 @@ const LANDXML = `${CONTROL_DIR}/terrain.xml`;
 const XYZ = `${CONTROL_DIR}/survey.xyz`;
 const FIXTURES = [CONTROL, IFC, LANDXML, XYZ] as const;
 const LOAD_TIMEOUT_MS = 120_000;
+const GPU_STRICT = process.env.E2E_GPU_STRICT !== '0';
 
 type Point3 = readonly [number, number, number];
 
@@ -335,17 +337,65 @@ test('canonical IFC + LandXML + XYZ federation keeps five independent bonsai-top
   assertCanonicalCorrespondences(controls, 'IFC', ifc!.vertices.map(renderToCanonical));
   assertCanonicalCorrespondences(controls, 'LandXML', landxml!.vertices.map(renderToCanonical));
 
+  // Streamed XYZ positions are deliberately absent from GeometryResult: they
+  // are transformed by the production point renderer after decode. The
+  // viewport hook reads the retained production sample through that exact live
+  // renderer matrix, so none of the MapConversion/RTC alignment is recreated
+  // in this test. All five stated correspondences must survive independently.
+  const renderedXyz = await snapshotRenderedPointCloud(page, xyz!.pointCloudHandleId!, LOAD_TIMEOUT_MS);
+  expect(renderedXyz.pointCount, 'XYZ stream contains all five declared controls').toBe(controls.points.length);
+  expect(renderedXyz.points, 'XYZ renderer sample contains all five declared controls').toHaveLength(controls.points.length);
+  assertCanonicalCorrespondences(controls, 'XYZ renderer', renderedXyz.points.map(renderToCanonical));
+
+  // Hide the overlapping sources one at a time and assert that each one
+  // actually paints. The PNG density is an assertion, not a screenshot-only
+  // attachment, and Frame moving is the normal production model framing path.
+  const renderedContent = [
+    await assertIsolatedRenderedContent(page, ifc!.id, GPU_STRICT),
+    await assertIsolatedRenderedContent(page, landxml!.id, GPU_STRICT),
+    await assertIsolatedRenderedContent(page, xyz!.id, GPU_STRICT),
+  ];
+
+  // In addition to magnetic placement picks below, prove normal viewport
+  // clicks reach the ordinary GPU pick/selection channel while model isolation
+  // removes the ambiguity of three coincident control representations.
+  const ordinarySelections = {
+    ifc: await ordinaryGpuSelectControl(page, ifc!.id, controls.points[0]!, canonicalToRender, GPU_STRICT),
+    landxml: await ordinaryGpuSelectControl(page, landxml!.id, controls.points[0]!, canonicalToRender, GPU_STRICT),
+    xyz: await ordinaryGpuSelectControl(page, xyz!.id, controls.points[0]!, canonicalToRender, GPU_STRICT),
+  };
+  if (GPU_STRICT) {
+    expect(ordinarySelections.ifc.selectedEntityId, 'ordinary IFC GPU pick supplies a renderer highlight id').not.toBeNull();
+    expect(ordinarySelections.ifc.selectedEntity?.modelId, 'ordinary IFC GPU pick retains federation owner').toBe(ifc!.id);
+    expect(ordinarySelections.landxml.selectedEntityId, 'LandXML uses its source-selection channel, not an invented IFC id').toBeNull();
+    expect(ordinarySelections.landxml.selectedLandXmlSource?.modelId, 'ordinary LandXML GPU pick retains its source owner').toBe(landxml!.id);
+    expect(ordinarySelections.landxml.selectedModelId, 'ordinary LandXML GPU pick selects its model').toBe(landxml!.id);
+    expect(ordinarySelections.xyz.selectedEntityId, 'ordinary XYZ GPU pick supplies the synthetic renderer id').not.toBeNull();
+    expect(ordinarySelections.xyz.selectedEntity?.modelId, 'ordinary XYZ GPU pick retains federation owner').toBe(xyz!.id);
+  }
+
+  // Restore the federated visual state before model-to-model placement picks.
+  await page.evaluate(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    state.clearEntitySelection();
+    state.setModelsVisibility(state.models.keys(), true);
+  });
+  await waitForModels(page, 3);
+
   // These are real magnetic picks, constrained by the production Reposition
-  // panel to the named moving/reference models. They establish visible,
-  // renderer-backed evidence for all three formats without applying a move.
+  // panel to the named moving/reference models. Every XYZ control must be
+  // independently picked against IFC; the source model constraint prevents a
+  // coincident IFC/LandXML vertex from making the scan path pass by accident.
   const ifcToLandxml = await pickControlThroughRenderer(page, controls.points[0]!, ifc!.id, landxml!.id);
   assertPickedControl(controls.points[0]!, ifcToLandxml, ifc!.id, landxml!.id, controls.toleranceMetres);
   await page.keyboard.press('Escape');
-  const xyzToIfc = await pickControlThroughRenderer(page, controls.points[4]!, xyz!.id, ifc!.id);
-  assertPickedControl(controls.points[4]!, xyzToIfc, xyz!.id, ifc!.id, controls.toleranceMetres);
-  await testInfo.attach('bonsai-topo-visible-control-triplet', {
-    body: await page.screenshot(), contentType: 'image/png',
-  });
+  const xyzToIfc: Record<string, PickedControl> = {};
+  for (const control of controls.points) {
+    const picked = await pickControlThroughRenderer(page, control, xyz!.id, ifc!.id);
+    assertPickedControl(control, picked, xyz!.id, ifc!.id, controls.toleranceMetres);
+    xyzToIfc[control.id] = picked;
+    await page.keyboard.press('Escape');
+  }
   await page.keyboard.press('Escape');
   const placementState = await page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
@@ -363,6 +413,7 @@ test('canonical IFC + LandXML + XYZ federation keeps five independent bonsai-top
   }
   await testInfo.attach('bonsai-topo-control-correspondence', {
     body: JSON.stringify({ toleranceMetres: controls.toleranceMetres, controls: controls.points,
+      renderedXyz, renderedContent, ordinarySelections,
       previews: { ifcToLandxml, xyzToIfc }, placementState }),
     contentType: 'application/json',
   });

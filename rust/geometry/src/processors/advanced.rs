@@ -13,6 +13,22 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use crate::router::GeometryProcessor;
 use super::advanced_face::{parse_rational_weights, process_advanced_face, process_bspline_face};
 
+/// A face that fails to triangulate (e.g. an un-triangulable holed planar
+/// face, #5053) is skipped rather than aborting the whole solid, mirroring
+/// `FaceBasedSurfaceModelProcessor::process` in `brep/surface_model.rs`.
+/// `allow`: `diag_debug!` no-ops without a tracing subscriber (wasm
+/// release), leaving both params unused there.
+#[allow(unused_variables)]
+fn trace_capped_advanced_brep_face(face_id: u32, error: &Error) {
+    crate::diag::diag_debug!(
+        { face_id, error = %error, "skipping unsupported advanced face in advanced_brep" }
+        else {
+            #[cfg(debug_assertions)]
+            eprintln!("[ifc-lite] Skipping unsupported advanced face #{face_id} in advanced_brep: {error}");
+        }
+    );
+}
+
 /// AdvancedBrep processor
 /// Handles IfcAdvancedBrep and IfcAdvancedBrepWithVoids - NURBS/B-spline surfaces
 /// Supports planar faces and B-spline surface tessellation
@@ -63,8 +79,28 @@ impl GeometryProcessor for AdvancedBrepProcessor {
             if let Some(face_id) = face_ref.as_entity_ref() {
                 let face = decoder.decode_by_id(face_id)?;
 
-                // Delegate to shared advanced face processing
-                let (positions, indices) = process_advanced_face(&face, decoder, quality)?;
+                // Delegate to shared advanced face processing. A face that
+                // fails (rather than one that meshes to nothing) is caught
+                // and skipped here too, so one un-triangulable holed face
+                // degrades to a per-face loss instead of aborting the whole
+                // solid (#5053) — and is still recorded in `empty_faces`
+                // below so the loss isn't silent.
+                let (positions, indices) = match process_advanced_face(&face, decoder, quality) {
+                    Ok(result) => result,
+                    Err(ref e) => {
+                        trace_capped_advanced_brep_face(face_id, e);
+                        #[cfg(any(feature = "debug_geometry", feature = "observability"))]
+                        {
+                            let surface_kind = face
+                                .get(1)
+                                .and_then(|a| decoder.resolve_ref(a).ok().flatten())
+                                .map(|s| s.ifc_type.as_str().to_string())
+                                .unwrap_or_else(|| "<unknown>".to_string());
+                            empty_faces.push((face_id, surface_kind));
+                        }
+                        continue;
+                    }
+                };
 
                 if !positions.is_empty() {
                     // Merge into combined mesh

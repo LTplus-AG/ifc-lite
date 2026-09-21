@@ -234,11 +234,15 @@ function buildEntityIdSets(
  * End the per-row focus presentation (#2867) before a state change discards
  * the report the focused row belonged to.
  *
- * ORDER is load-bearing (same as `endClashScenePresentation`): RELEASE the
- * shared channel first, THEN let the caller's `set()` null the record —
- * nulling first leaves the release with nothing to find, stranding a row
- * isolation over a report that no longer exists. Ownership-scoped, so a
- * clash focus, a spaces X-ray or IDS's own set-level isolation is untouched.
+ * ORDER is load-bearing, and it is the same order `endClashScenePresentation`
+ * documents: RELEASE the shared channel first, THEN let the caller's `set()`
+ * null the record. Nulling first leaves the release reading `null`, finding
+ * nothing to release, and leaving a row isolation standing over a report that
+ * no longer exists — `isEntityVisible` false for everything, with nothing on
+ * screen to explain it.
+ *
+ * The release is ownership-scoped, so a clash focus, a spaces X-ray or IDS's
+ * own set-level isolation occupying the channel instead is left alone.
  */
 function endIdsRowFocus(get: () => IDSSlice): void {
   endIdsRowFocusPresentation(get() as unknown as IDSRowFocusPresentation);
@@ -280,10 +284,12 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
     set({
       idsDocument,
       // Loading a new document invalidates any previous audit/validation
-      // results — they were tied to a specific document instance. Includes
-      // `idsIsolateMode` (drives the isolate-button "pressed" state and the
-      // 3D isolation built from the now-discarded report), cleared here
-      // exactly like `clearIdsValidationReport` clears it.
+      // results — they were tied to a specific document instance. That
+      // includes `idsIsolateMode`: it drives the isolate-button "pressed"
+      // state and the 3D isolation built from the now-discarded report, so
+      // it must be cleared here exactly like `clearIdsValidationReport`
+      // clears it — otherwise the panel keeps showing an isolate mode as
+      // active for a report that no longer exists.
       idsAuditReport: null,
       idsValidationReport: null,
       validationSource: null,
@@ -353,11 +359,12 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
 
   clearIdsValidationReport: () => {
     // Same reasoning as `clearIdsDocument` above: `useIDS.clearValidation`
-    // bumps the epoch first, so a still-in-flight `runValidation()` skips its
-    // own `idsLoading`/`idsProgress` reset — this is the only remaining
-    // writer for those fields once that happens (PR #2837 review). And, as
-    // in `clearIdsDocument`, the row focus is released BEFORE its record is
-    // nulled — otherwise the isolation outlives the report.
+    // bumps the epoch first, which makes a still-in-flight `runValidation()`
+    // skip its own `idsLoading`/`idsProgress` reset on purpose — this is the
+    // only remaining writer for those fields once that happens (PR #2837
+    // review).
+    // And, as in `clearIdsDocument`, the row focus is released BEFORE its
+    // record is nulled — otherwise the isolation outlives the report.
     endIdsRowFocus(get);
     set({
       idsValidationReport: null,

@@ -110,6 +110,9 @@ export { flattenMaterials } from './bridge/materials.js';
 
 export { validateIDS } from './validation/validator.js';
 
+// Runtime narrowing for the generalised report (#5138) — see report-guards.ts.
+export { isIDSValidationReport } from './report-guards.js';
+
 // ============================================================================
 // Facets
 // ============================================================================

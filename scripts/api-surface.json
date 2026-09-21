@@ -5944,6 +5944,7 @@
     "formatConstraint: function",
     "fr: const",
     "getConstraintMismatchReason: function",
+    "isIDSValidationReport: function",
     "matchConstraint: function",
     "parseIDS: function",
     "validateIDS: function"

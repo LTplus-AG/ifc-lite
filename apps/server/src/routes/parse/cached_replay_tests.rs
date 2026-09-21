@@ -39,6 +39,7 @@ async fn test_state(label: &str) -> AppState {
             queue_timeout: std::time::Duration::from_millis(100),
             shed_pct: 85,
         })),
+        data_model_in_flight: Arc::new(crate::in_flight::InFlightKeys::default()),
     }
 }
 

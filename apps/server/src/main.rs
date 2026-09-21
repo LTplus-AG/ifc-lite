@@ -51,6 +51,7 @@ mod admission;
 mod config;
 mod mem_policy;
 mod error;
+mod in_flight;
 mod middleware;
 mod panic_strategy;
 mod routes;
@@ -138,6 +139,10 @@ pub struct AppState {
     pub cache: Arc<DiskCache>,
     pub config: Arc<Config>,
     pub admission: Arc<admission::Admission>,
+    /// Cache keys with a data-model write in flight right now (#5129):
+    /// `get_data_model` answers 202 only for a key in this set, and 404 for
+    /// everything else it cannot read.
+    pub data_model_in_flight: Arc<in_flight::InFlightKeys>,
 }
 
 /// Build the application router with all routes and middleware.
@@ -340,6 +345,7 @@ async fn main() -> anyhow::Result<()> {
         cache,
         config: Arc::new(config.clone()),
         admission,
+        data_model_in_flight: Arc::new(in_flight::InFlightKeys::default()),
     };
 
     // Build router

@@ -9,14 +9,16 @@
 //! lives in `parquet_optimized_replay.rs` (issue #5128) for the same reason.
 
 use super::cache_keys::request_cache_key;
+use super::parquet::DataModelStats;
 use super::parquet_optimized_replay::{
-    cache_optimized_response, optimized_parquet_response, replay_optimized_by_client_hash,
-    try_cached_optimized_parquet, OptimizedParquetMetadataHeader,
+    cache_data_model, cache_optimized_response, optimized_parquet_response,
+    replay_optimized_by_client_hash, try_cached_optimized_parquet, OptimizedParquetMetadataHeader,
 };
 use super::{cache_symbolic_data_off_runtime, extract_file, ParseQuery};
 use crate::error::ApiError;
 use crate::services::{
-    baked_basis_zup, serialize_to_parquet_optimized_with_stats, VERTEX_MULTIPLIER,
+    baked_basis_zup, extract_data_model, serialize_data_model_to_parquet,
+    serialize_to_parquet_optimized_with_stats, VERTEX_MULTIPLIER,
 };
 use crate::AppState;
 use axum::{
@@ -101,15 +103,28 @@ pub async fn parse_parquet_optimized(
     let content = data;
     let opening_filter = query.opening_filter;
 
-    // The parse, the 2D symbol stream (IfcAnnotation + IfcGrid, endpoint
-    // parity, issue #900) and the optimized serialization all run in this one
-    // blocking task, so none of it occupies an async worker. Guard rides the
-    // blocking task (see parse_full).
+    // The geometry parse, the data model extraction (#5129: this route now
+    // produces one the way the flat route does), the 2D symbol stream
+    // (IfcAnnotation + IfcGrid, endpoint parity, issue #900) and both
+    // serializations all run in this one blocking task, so none of it
+    // occupies an async worker. Guard rides the blocking task (see
+    // parse_full).
     let cache_key_for_log = cache_key.clone();
-    let (result, symbolic_data, parquet_data, opt_stats, _admission) =
+    let (result, dm_stats, symbolic_data, parquet_data, dm_parquet, opt_stats, _admission) =
         tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
-            let mut result =
-                process_geometry_filtered_with_quality(&content, opening_filter, tessellation_quality);
+            // First: geometry and the data model in parallel, mirroring
+            // `parse_parquet` -- independent extractions over the same bytes,
+            // each on its own rayon thread.
+            let (mut result, data_model) = rayon::join(
+                || process_geometry_filtered_with_quality(&content, opening_filter, tessellation_quality),
+                || extract_data_model(&content),
+            );
+            let dm_stats = DataModelStats {
+                entity_count: data_model.entities.len(),
+                property_set_count: data_model.property_sets.len(),
+                relationship_count: data_model.relationships.len(),
+                spatial_node_count: data_model.spatial_hierarchy.nodes.len(),
+            };
             // Don't include normals by default - client can compute them
             // The frame `result`'s vertices were baked in (#4118): the
             // collator's emitted `rel` is consumed directly by this route, so
@@ -123,17 +138,23 @@ pub async fn parse_parquet_optimized(
             // The symbol stream used to run in a `rayon::join` BESIDE the
             // parse. It cannot: it needs the frame the parse selected, or a
             // site-local model's symbols keep the site translation and
-            // rotation its meshes dropped (#4706). Joined with the
-            // serialization instead, so it still overlaps other work. The
+            // rotation its meshes dropped (#4706). Joined with both
+            // serializations instead, so it still overlaps other work. The
             // upload therefore stays resident until the join ends rather than
             // being freed before the serialization; admission reserves the
             // upload size for the request's whole lifetime either way.
-            let (symbolic_data, serialized) = rayon::join(
+            let (symbolic_data, (serialized, dm_parquet)) = rayon::join(
                 || extract_symbolic_data_with_provenance_in_frame(&content, result.frame),
-                || serialize_to_parquet_optimized_with_stats(&result.meshes, false, Some(&basis)),
+                || {
+                    rayon::join(
+                        || serialize_to_parquet_optimized_with_stats(&result.meshes, false, Some(&basis)),
+                        || serialize_data_model_to_parquet(&data_model),
+                    )
+                },
             );
             drop(content);
             let (parquet_data, opt_stats) = serialized?;
+            let dm_parquet = dm_parquet?;
             // Nothing after this reads the meshes; free them here rather than
             // hold the model across the cache writes below.
             drop(std::mem::take(&mut result.meshes));
@@ -146,9 +167,24 @@ pub async fn parse_parquet_optimized(
                 payload_size = parquet_data.len(),
                 "Optimized Parquet serialization complete"
             );
-            Ok((result, symbolic_data, parquet_data, opt_stats, admission_guard))
+            Ok((
+                result,
+                dm_stats,
+                symbolic_data,
+                parquet_data,
+                dm_parquet,
+                opt_stats,
+                admission_guard,
+            ))
         })
         .await??;
+
+    // Cache the data model FIRST (#5129), so it can never sit missing behind
+    // a geometry/metadata pair the replay gate would treat as current -- the
+    // same ordering `parse_parquet` uses and the same #3869 reasoning: written
+    // synchronously, before the response, not in a background task, because a
+    // background write races the client's very next request.
+    cache_data_model(&state, &cache_key, &dm_parquet).await;
 
     // Cache the symbolic stream so the client can fetch it via
     // `GET /api/v1/parse/symbolic/{cache_key}`.
@@ -164,6 +200,7 @@ pub async fn parse_parquet_optimized(
         building_transform: result.building_transform,
         optimization_stats: opt_stats,
         vertex_multiplier: VERTEX_MULTIPLIER,
+        data_model_stats: Some(dm_stats),
     };
 
     let metadata_json = serde_json::to_string(&metadata_header)?;
@@ -171,10 +208,12 @@ pub async fn parse_parquet_optimized(
     // Store body and metadata BEFORE responding, not in a background task like
     // the flat route (issue #3889): a background write races the client's very
     // next request, which is the request the cache exists to serve, and this
-    // payload is the small one so the write is cheap. Metadata is written only
-    // after the body lands, so it can never sit under a key with no body behind
-    // it. A write failure is logged and the response still goes out: the parse
-    // succeeded, only the replay is lost.
+    // payload is the small one so the write is cheap. Metadata is written
+    // LAST -- after the body AND the data model land -- so it can never sit
+    // under a key with either one missing behind it: the replay gate reads
+    // the metadata presence as "this cache_key is fully replayable" (#3869,
+    // #5129). A write failure is logged and the response still goes out: the
+    // parse succeeded, only the replay is lost.
     if let Err(e) = cache_optimized_response(&state, &cache_key, &parquet_data, &metadata_json).await
     {
         tracing::error!(error = %e, cache_key = %cache_key, "Failed to cache optimized Parquet response");

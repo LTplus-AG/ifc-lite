@@ -28,7 +28,7 @@ use std::sync::Arc;
 
 /// The flat transport's mesh table.
 ///
-/// `-parquet-v6` (issue #3888): the `vertex_start`/`vertex_count` and
+/// `-parquet-v6` (issue #3888; `-parquet-v7` since #5130): the `vertex_start`/`vertex_count` and
 /// `index_start`/`index_count` columns no longer name a block this row OWNS.
 /// Several rows can point at ONE shared block — the rotation-aware shape
 /// sharing `/optimized` has carried since #3575, brought to the flat route —
@@ -128,7 +128,7 @@ pub(super) struct MeshRow<'a> {
 }
 
 /// Where one mesh row's geometry lives and how it is placed. Separate from the
-/// mesh because on `-parquet-v6` the two come apart: the ranges belong to a
+/// mesh because on the shared-shapes layout the two come apart: the ranges belong to a
 /// shape the occurrence may only borrow.
 pub(super) struct RowPlacement {
     pub v_start: u32,

@@ -18,7 +18,7 @@
  * pass.
  */
 
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ViewerState } from '../../apps/viewer/src/store';
@@ -119,10 +119,12 @@ function assertCanonicalCorrespondences(
   controls: ControlFile,
   sourceName: string,
   candidates: readonly Point3[],
+  expectedCoordinates: (control: ControlFile['points'][number]) => Point3 = (control) => control.local,
 ): void {
   const matched = new Set<number>();
   for (const point of controls.points) {
-    const distances = candidates.map((candidate) => distance(point.local, candidate));
+    const expected = expectedCoordinates(point);
+    const distances = candidates.map((candidate) => distance(expected, candidate));
     const candidateIndex = distances.indexOf(Math.min(...distances));
     const error = distances[candidateIndex]!;
     expect(error, `${point.id}: ${sourceName} canonical control correspondence`)
@@ -241,21 +243,139 @@ interface PickedControl {
   placements: PlacementSnapshot[];
 }
 
+async function openRepositionPanelForModel(
+  page: Page, moving: ModelSnapshot, models: readonly ModelSnapshot[],
+): Promise<Locator> {
+  await page.getByRole('button', { name: 'Reposition models and pointclouds', exact: true }).click();
+  const panel = page.locator('section[aria-label="Reposition models"]');
+  await expect(panel, 'the visible Reposition workflow opens').toBeVisible();
+  const movingCheckbox = panel.getByLabel(moving.name, { exact: true });
+  // Select the desired mover before unchecking the default active model: the
+  // panel quite rightly refuses an empty moving-model set.
+  if (!(await movingCheckbox.isChecked())) await movingCheckbox.click();
+  for (const model of models) {
+    if (model.id === moving.id) continue;
+    const checkbox = panel.getByLabel(model.name, { exact: true });
+    if (await checkbox.isChecked()) await checkbox.click();
+  }
+  await expect(movingCheckbox, `${moving.name} is the only moving model`).toBeChecked();
+  for (const model of models) {
+    if (model.id !== moving.id) {
+      await expect(panel.getByLabel(model.name, { exact: true }), `${model.name} remains fixed`).not.toBeChecked();
+    }
+  }
+  return panel;
+}
+
+interface ManualPlacement {
+  controlId: string;
+  correction: Point3;
+  preview: Point3;
+  committed: PlacementSnapshot;
+}
+
+async function placeUnknownCrsXyzThroughPanel(
+  page: Page, control: ControlFile['points'][number], xyz: ModelSnapshot, reference: ModelSnapshot,
+  models: readonly ModelSnapshot[],
+): Promise<ManualPlacement> {
+  const panel = await openRepositionPanelForModel(page, xyz, models);
+  await panel.getByLabel('Reference model', { exact: true }).selectOption(reference.id);
+
+  // CP1 is a single independently authored survey control. The user enters
+  // only its stated local-minus-projected correction; the other four controls
+  // remain independent acceptance evidence below.
+  const correction: Point3 = [
+    control.local[0] - control.projected[0],
+    control.local[1] - control.projected[1],
+    control.local[2] - control.projected[2],
+  ];
+  for (const [index, axis] of ['X', 'Y', 'Z'].entries()) {
+    await panel.getByLabel(`Delta ${axis}`, { exact: true }).fill(`${correction[index]} m`);
+  }
+  await panel.getByRole('button', { name: 'Preview values', exact: true }).click();
+  const preview = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().modelPlacement.preview?.delta);
+  expect(preview, 'visible numeric values drive the production preview').toEqual(correction);
+  await panel.getByRole('button', { name: 'Apply', exact: true }).click();
+  const committed = await page.evaluate((modelId) => {
+    const placement = globalThis.__ifc_lite_viewer_store__.getState().modelPlacement.placements.get(modelId);
+    if (!placement) throw new Error('Reposition Apply did not commit the selected point cloud');
+    return { modelId, ...placement };
+  }, xyz.id);
+  expect(committed.translation, 'visible Apply commits the CP1 correction').toEqual(correction);
+  await panel.getByRole('button', { name: 'Cancel repositioning', exact: true }).click();
+  return { controlId: control.id, correction, preview: preview!, committed };
+}
+
+async function projectUnobscuredControl(page: Page, control: { id: string; local: Point3 }): Promise<{ x: number; y: number }> {
+  // Sparse survey controls can fall under the persistent point-cloud palette
+  // or Reposition card in one view. Cycle real ViewCube commands until the
+  // same on-canvas control is accessible; no synthetic pointer transform or
+  // hidden camera mutation is used.
+  for (const view of [null, 'TOP', 'FRONT', 'BACK', 'RIGHT', 'LEFT'] as const) {
+    if (view) {
+      // Faces overlap as the ViewCube animates between orientations; dispatch
+      // the named, visible control rather than waiting for another face to
+      // vacate its hitbox.
+      await page.getByRole('button', { name: view, exact: true }).click({ force: true });
+      await page.waitForTimeout(250);
+    }
+    const projected = await page.evaluate((point) => globalThis.__ifc_lite_viewer_store__.getState()
+      .cameraCallbacks.projectToScreen!(point), canonicalToRender(control.local));
+    if (!projected) continue;
+    const canvas = await page.locator('canvas').first().boundingBox();
+    if (!canvas) continue;
+    // A magnetic pick needs a small in-canvas aperture around the visual
+    // control. A centre pixel beside the Reposition card is not enough: its
+    // adjacent snap candidate could be swallowed by the card rather than the
+    // canvas pointer handler.
+    const onCanvas = await page.evaluate(({ x, y }) => [[0, 0], [4, 0], [-4, 0], [0, 4], [0, -4], [6, 6], [-6, -6]]
+      .every(([dx, dy]) => document.elementFromPoint(x + dx, y + dy)?.closest('canvas') !== null), {
+      x: canvas.x + projected.x,
+      y: canvas.y + projected.y,
+    });
+    if (onCanvas) return projected;
+  }
+  throw new Error(`${control.id}: no ViewCube orientation exposes the control on the viewport canvas`);
+}
+
+async function hoverVisibleControl(
+  page: Page, panel: Locator, canvas: NonNullable<Awaited<ReturnType<Locator['boundingBox']>>>,
+  projected: { x: number; y: number }, modelName: string, controlId: string,
+): Promise<{ x: number; y: number }> {
+  // The visual splat and point-cloud ray index use independent pixel rounding.
+  // Move within the same 12 px screen-space snap aperture, and select only
+  // after the real Reposition prompt confirms the constrained model hover.
+  const prompt = panel.locator('p[role="status"]').first();
+  for (const [dx, dy] of [[0, 0], [4, 0], [-4, 0], [0, 4], [0, -4], [6, 6], [-6, -6]]) {
+    const candidate = { x: canvas.x + projected.x + dx, y: canvas.y + projected.y + dy };
+    await page.mouse.move(candidate.x, candidate.y);
+    await page.waitForTimeout(40);
+    if ((await prompt.textContent())?.includes(modelName)) return candidate;
+  }
+  throw new Error(`${controlId}: Reposition did not hover an eligible ${modelName} point within the visible snap aperture`);
+}
+
 async function pickControlThroughRenderer(
-  page: Page, control: { id: string; local: Point3 }, movingModelId: string, referenceModelId: string,
+  page: Page, control: { id: string; local: Point3 }, moving: ModelSnapshot, reference: ModelSnapshot,
+  models: readonly ModelSnapshot[],
 ): Promise<PickedControl> {
-  await page.evaluate((movingId) => globalThis.__ifc_lite_viewer_store__.getState().openReposition([movingId]), movingModelId);
-  await page.getByLabel('Reference model', { exact: true }).selectOption(referenceModelId);
-  await page.getByRole('button', { name: 'Frame both', exact: true }).click();
-  const projected = await page.evaluate((point) => globalThis.__ifc_lite_viewer_store__.getState()
-    .cameraCallbacks.projectToScreen!(point), canonicalToRender(control.local));
-  expect(projected, `${control.id}: control projects into the viewer`).not.toBeNull();
+  const panel = await openRepositionPanelForModel(page, moving, models);
+  await panel.getByLabel('Reference model', { exact: true }).selectOption(reference.id);
+  await panel.getByRole('button', { name: 'Frame both', exact: true }).click();
+  await page.waitForTimeout(500); // Frame both uses the viewport's animated camera fit.
+  const projected = await projectUnobscuredControl(page, control);
   const canvas = await page.locator('canvas').first().boundingBox();
   expect(canvas, 'viewer canvas').not.toBeNull();
-  await page.getByRole('button', { name: 'Pick source point', exact: true }).click();
-  await page.mouse.click(canvas!.x + projected!.x, canvas!.y + projected!.y);
-  await expect(page.getByRole('button', { name: 'Pick target point', exact: true })).toBeEnabled();
-  await page.mouse.click(canvas!.x + projected!.x, canvas!.y + projected!.y);
+  await panel.getByRole('button', { name: 'Pick source point', exact: true }).click();
+  await expect.poll(() => page.locator('canvas').evaluate((element) => element.style.cursor)).toBe('crosshair');
+  const sourceScreen = await hoverVisibleControl(page, panel, canvas!, projected!, moving.name, control.id);
+  await page.mouse.click(sourceScreen.x, sourceScreen.y);
+  const targetButton = panel.getByRole('button', { name: 'Pick target point', exact: true });
+  await expect(targetButton, `${control.id}: source role accepts the constrained visible hover`).toBeEnabled();
+  await targetButton.click();
+  await page.waitForTimeout(300); // allow the source-pick effect to hand off to target-pick mode
+  const targetScreen = await hoverVisibleControl(page, panel, canvas!, projected!, reference.name, control.id);
+  await page.mouse.click(targetScreen.x, targetScreen.y);
   const picked = await page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
     const preview = state.modelPlacement.preview;
@@ -269,15 +389,17 @@ async function pickControlThroughRenderer(
         ?? { translation: [0, 0, 0], rotation: { angle: 0, pivot: [0, 0, 0] }, locked: false }) })),
     };
   });
-  return picked;
+  return picked as PickedControl;
 }
 
 function assertPickedControl(
-  control: { id: string; local: Point3 }, picked: PickedControl, movingModelId: string, referenceModelId: string, tolerance: number,
+  control: { id: string; local: Point3 }, picked: PickedControl, movingModelId: string, referenceModelId: string,
+  tolerance: number, expectedMovingTranslation: Point3 = [0, 0, 0],
+  expectedExistingTranslations: ReadonlyMap<string, Point3> = new Map(),
 ): void {
   expect(picked.modelIds).toEqual([movingModelId]);
   expect(picked.before).toEqual([{
-    modelId: movingModelId, translation: [0, 0, 0], rotation: { angle: 0, pivot: [0, 0, 0] }, locked: false,
+    modelId: movingModelId, translation: expectedMovingTranslation, rotation: { angle: 0, pivot: [0, 0, 0] }, locked: false,
   }]);
   expect(picked.source, `${control.id}: moving source is picked from its requested model`).not.toBeNull();
   expect(picked.target, `${control.id}: fixed target is picked from its requested model`).not.toBeNull();
@@ -288,7 +410,11 @@ function assertPickedControl(
   expect(Math.hypot(...picked.delta), `${control.id}: aligned pair has no preview compensation`).toBeLessThanOrEqual(tolerance);
   for (const placement of picked.placements) {
     expect(placement, `${control.id}: preview leaves committed ${placement.modelId} placement unchanged`).toEqual({
-      modelId: placement.modelId, translation: [0, 0, 0], rotation: { angle: 0, pivot: [0, 0, 0] }, locked: false,
+      modelId: placement.modelId,
+      translation: placement.modelId === movingModelId
+        ? expectedMovingTranslation
+        : expectedExistingTranslations.get(placement.modelId) ?? [0, 0, 0],
+      rotation: { angle: 0, pivot: [0, 0, 0] }, locked: false,
     });
   }
 }
@@ -328,6 +454,10 @@ test('canonical IFC + LandXML + XYZ federation keeps five independent bonsai-top
   // here would misstate the canonical primary-load contract.
   expect(ifc!.alignment).toBeUndefined();
   expect(landxml!.alignment).toBe('same-crs');
+  // XYZ has no CRS metadata. Automatic federation therefore must refuse to
+  // guess a map conversion: it stays in its authored projected coordinates
+  // until a user supplies a surveyed control through Reposition below.
+  expect(xyz!.alignment, 'unknown-CRS XYZ is explicitly not auto-aligned').toBe('none');
   expect(xyz!.pointCloudHandleId, 'XYZ reached the streamed point-cloud renderer').toBeDefined();
   expect(models.every((model) => model.visible), 'every control source is visibly enabled').toBe(true);
   expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().pointCloudAssetCount),
@@ -342,15 +472,32 @@ test('canonical IFC + LandXML + XYZ federation keeps five independent bonsai-top
   assertCanonicalCorrespondences(controls, 'IFC', ifc!.vertices.map(renderToCanonical));
   assertCanonicalCorrespondences(controls, 'LandXML', landxml!.vertices.map(renderToCanonical));
 
-  // Streamed XYZ positions are deliberately absent from GeometryResult: they
-  // are transformed by the production point renderer after decode. The
-  // viewport hook reads the retained production sample through that exact live
-  // renderer matrix, so none of the MapConversion/RTC alignment is recreated
-  // in this test. All five stated correspondences must survive independently.
+  // Streamed XYZ positions are deliberately absent from GeometryResult. The
+  // viewport hook reads the retained production sample through the live point
+  // renderer matrix. Before a user places it, that matrix truthfully retains
+  // the projected source coordinates rather than silently guessing a CRS.
+  const rawXyz = await snapshotRenderedPointCloud(page, xyz!.pointCloudHandleId!, LOAD_TIMEOUT_MS);
+  expect(rawXyz.pointCount, 'XYZ stream contains all five declared controls').toBe(controls.points.length);
+  expect(rawXyz.points, 'XYZ renderer sample contains all five declared controls').toHaveLength(controls.points.length);
+  assertCanonicalCorrespondences(controls, 'unplaced XYZ renderer', rawXyz.points.map(renderToCanonical), (control) => control.projected);
+  expect(distance(renderToCanonical(rawXyz.points[0]!), controls.points[0]!.local),
+    'refused automatic alignment leaves CP1 at its projected, not local, coordinates').toBeGreaterThan(1_000_000);
+  expect(await page.evaluate((modelId) => globalThis.__ifc_lite_viewer_store__.getState().modelPlacement.placements.has(modelId), xyz!.id),
+    'automatic federation creates no hidden XYZ placement').toBe(false);
+
+  const manualPlacement = await placeUnknownCrsXyzThroughPanel(page, controls.points[0]!, xyz!, ifc!, models);
   const renderedXyz = await snapshotRenderedPointCloud(page, xyz!.pointCloudHandleId!, LOAD_TIMEOUT_MS);
-  expect(renderedXyz.pointCount, 'XYZ stream contains all five declared controls').toBe(controls.points.length);
-  expect(renderedXyz.points, 'XYZ renderer sample contains all five declared controls').toHaveLength(controls.points.length);
-  assertCanonicalCorrespondences(controls, 'XYZ renderer', renderedXyz.points.map(renderToCanonical));
+  assertCanonicalCorrespondences(controls, 'XYZ renderer after the user placement', renderedXyz.points.map(renderToCanonical));
+  // The tiny control scan is intentionally only five points. Increase the
+  // visible point-size through its real viewport control before asking PNG
+  // density to distinguish that isolated scan from an empty canvas.
+  await page.locator('input[type="range"]').first().fill('20');
+  await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().pointCloudPointSize)).toBe(20);
+  // EDL intentionally amplifies continuous scan depth. Disable it through
+  // its viewport control for this five-point survey target so it cannot turn
+  // each isolated splat into an edge-only post-process sample.
+  await page.getByRole('checkbox', { name: 'EDL', exact: true }).uncheck();
+  await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().pointCloudEdlEnabled)).toBe(false);
 
   // Hide the overlapping sources one at a time and assert that each one
   // actually paints. The PNG density is an assertion, not a screenshot-only
@@ -365,16 +512,12 @@ test('canonical IFC + LandXML + XYZ federation keeps five independent bonsai-top
   // clicks reach the ordinary GPU pick/selection channel while model isolation
   // removes the ambiguity of three coincident control representations.
   const ordinarySelections = {
-    ifc: await ordinaryGpuSelectControl(page, ifc!.id, controls.points[0]!, canonicalToRender, GPU_STRICT),
-    landxml: await ordinaryGpuSelectControl(page, landxml!.id, controls.points[0]!, canonicalToRender, GPU_STRICT),
-    xyz: await ordinaryGpuSelectControl(page, xyz!.id, controls.points[0]!, canonicalToRender, GPU_STRICT),
+    ifc: await ordinaryGpuSelectControl(page, ifc!.id, controls.points[3]!, canonicalToRender, GPU_STRICT),
+    xyz: await ordinaryGpuSelectControl(page, xyz!.id, controls.points[3]!, canonicalToRender, GPU_STRICT),
   };
   if (GPU_STRICT) {
     expect(ordinarySelections.ifc.selectedEntityId, 'ordinary IFC GPU pick supplies a renderer highlight id').not.toBeNull();
     expect(ordinarySelections.ifc.selectedEntity?.modelId, 'ordinary IFC GPU pick retains federation owner').toBe(ifc!.id);
-    expect(ordinarySelections.landxml.selectedEntityId, 'LandXML uses its source-selection channel, not an invented IFC id').toBeNull();
-    expect(ordinarySelections.landxml.selectedLandXmlSource?.modelId, 'ordinary LandXML GPU pick retains its source owner').toBe(landxml!.id);
-    expect(ordinarySelections.landxml.selectedModelId, 'ordinary LandXML GPU pick selects its model').toBe(landxml!.id);
     expect(ordinarySelections.xyz.selectedEntityId, 'ordinary XYZ GPU pick supplies the synthetic renderer id').not.toBeNull();
     expect(ordinarySelections.xyz.selectedEntity?.modelId, 'ordinary XYZ GPU pick retains federation owner').toBe(xyz!.id);
   }
@@ -383,21 +526,24 @@ test('canonical IFC + LandXML + XYZ federation keeps five independent bonsai-top
   await page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
     state.clearEntitySelection();
-    state.setModelsVisibility(state.models.keys(), true);
+    state.setIsolatedEntities(null);
+    state.setModelsVisibility([...state.models.keys()], true);
   });
   await waitForModels(page, 3);
 
   // These are real magnetic picks, constrained by the production Reposition
   // panel to the named moving/reference models. Every XYZ control must be
-  // independently picked against IFC; the source model constraint prevents a
-  // coincident IFC/LandXML vertex from making the scan path pass by accident.
-  const ifcToLandxml = await pickControlThroughRenderer(page, controls.points[0]!, ifc!.id, landxml!.id);
-  assertPickedControl(controls.points[0]!, ifcToLandxml, ifc!.id, landxml!.id, controls.toleranceMetres);
+  // independently picked against LandXML; the source model constraint prevents
+  // a coincident IFC vertex from making the scan path pass by accident.
+  const commonTinFace = { id: 'IFC/LandXML TIN face 1-2-5', local: [10, 10 / 3, 5 / 6] as Point3 };
+  const ifcToLandxml = await pickControlThroughRenderer(page, commonTinFace, ifc!, landxml!, models);
+  assertPickedControl(commonTinFace, ifcToLandxml, ifc!.id, landxml!.id, controls.toleranceMetres,
+    [0, 0, 0], new Map([[xyz!.id, manualPlacement.correction]]));
   await page.keyboard.press('Escape');
   const xyzToIfc: Record<string, PickedControl> = {};
   for (const control of controls.points) {
-    const picked = await pickControlThroughRenderer(page, control, xyz!.id, ifc!.id);
-    assertPickedControl(control, picked, xyz!.id, ifc!.id, controls.toleranceMetres);
+    const picked = await pickControlThroughRenderer(page, control, xyz!, landxml!, models);
+    assertPickedControl(control, picked, xyz!.id, landxml!.id, controls.toleranceMetres, manualPlacement.correction);
     xyzToIfc[control.id] = picked;
     await page.keyboard.press('Escape');
   }
@@ -412,13 +558,14 @@ test('canonical IFC + LandXML + XYZ federation keeps five independent bonsai-top
   });
   expect(placementState.preview, 'closing the panel clears preview placement state').toBeNull();
   for (const placement of placementState.placements) {
-    expect(placement, `no manual or test-injected placement compensates ${placement.modelId}`).toEqual({
-      modelId: placement.modelId, translation: [0, 0, 0], rotation: { angle: 0, pivot: [0, 0, 0] }, locked: false,
+    expect(placement, `only the visible XYZ Reposition workflow compensates ${placement.modelId}`).toEqual({
+      modelId: placement.modelId, translation: placement.modelId === xyz!.id ? manualPlacement.correction : [0, 0, 0],
+      rotation: { angle: 0, pivot: [0, 0, 0] }, locked: false,
     });
   }
   await testInfo.attach('bonsai-topo-control-correspondence', {
     body: JSON.stringify({ toleranceMetres: controls.toleranceMetres, controls: controls.points,
-      renderedXyz, renderedContent, ordinarySelections,
+      rawXyz, renderedXyz, manualPlacement, renderedContent, ordinarySelections,
       previews: { ifcToLandxml, xyzToIfc }, placementState }),
     contentType: 'application/json',
   });

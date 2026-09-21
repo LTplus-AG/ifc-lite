@@ -48,13 +48,13 @@ async function showOnlyModelAndFrame(page: Page, modelId: string): Promise<void>
   await page.evaluate((id) => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
     state.clearEntitySelection();
-    state.setModelsVisibility(state.models.keys(), false);
+    state.setModelsVisibility([...state.models.keys()], false);
     state.setModelVisibility(id, true);
     state.openReposition([id]);
   }, modelId);
   await page.waitForFunction((id) => {
     const models = globalThis.__ifc_lite_viewer_store__.getState().models;
-    return [...models.values()].filter((model) => model.visible).map((model) => model.id).join(',') === id;
+    return [...models].filter(([, model]) => model.visible).map(([modelId]) => modelId).join(',') === id;
   }, modelId);
   await page.getByRole('button', { name: 'Frame moving', exact: true }).click();
   await page.waitForTimeout(500); // fitting is animated; wait for a painted frame
@@ -74,7 +74,7 @@ export async function assertIsolatedRenderedContent(page: Page, modelId: string,
   const bytesPerPixel = png.byteLength / (width * height);
   await page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
-    state.setModelsVisibility(state.models.keys(), false);
+    state.setModelsVisibility([...state.models.keys()], false);
   });
   await page.waitForTimeout(250);
   const blank = await canvas.screenshot();
@@ -97,6 +97,11 @@ export async function ordinaryGpuSelectControl(
   expect(projected, `${control.id}: isolated ${modelId} control projects into the viewer`).not.toBeNull();
   const canvas = await page.locator('canvas').first().boundingBox();
   expect(canvas, 'viewer canvas').not.toBeNull();
+  const clickTarget = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.tagName ?? null, {
+    x: canvas!.x + projected!.x,
+    y: canvas!.y + projected!.y,
+  });
+  expect(clickTarget, `${control.id}: ${modelId} projected control is not covered by a viewport panel`).toBe('CANVAS');
   const revision = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().selectionRevision);
   await page.mouse.click(canvas!.x + projected!.x, canvas!.y + projected!.y);
   await expect.poll(

@@ -61,6 +61,24 @@ it('keeps inline scan placement after resource-only clearing (#4226)', () => {
   renderer.clear();
 });
 
+it('excludes a hidden streamed scan from draw-derived bounds and both pick sources (#5051)', () => {
+  const renderer = new PointCloudRenderer(pointDevice(), 'rgba8unorm', 'depth32float', 1);
+  const visible = renderer.beginAsset({ expressId: 1 });
+  const hidden = renderer.beginAsset({ expressId: 2 });
+  const chunk = (x: number) => ({ pointCount: 1, positions: new Float32Array([x, 0, 0]),
+    bbox: { min: [x, 0, 0] as [number, number, number], max: [x, 0, 0] as [number, number, number] } });
+  renderer.appendChunk(visible, chunk(1));
+  renderer.appendChunk(hidden, chunk(9));
+  assert.equal(renderer.setAssetVisible(hidden, false), true, 'the first visibility transition changes the resident asset');
+  assert.equal(renderer.setAssetVisible(hidden, false), false, 'repeating a resident visibility value is a no-op');
+  assert.equal(renderer.setAssetVisible({ id: 999 }, false), false, 'a released handle cannot invalidate placement state');
+
+  assert.deepEqual(renderer.getPickNodes().map((node) => node.expressId), [1]);
+  assert.deepEqual(renderer.getRayQuerySources().map((node) => node.expressId), [1]);
+  assert.deepEqual(renderer.getBounds(), { min: [1, 0, 0], max: [1, 0, 0] });
+  renderer.clear();
+});
+
 for (const replace of [false, true]) it(`retains a pre-init model offset for embedded clouds (replace: ${replace}, #4226)`, () => {
   const device = pointDevice();
   const renderer = new Renderer({ width: 256, height: 256, getBoundingClientRect: () => ({ width: 256, height: 256 }) } as unknown as HTMLCanvasElement);

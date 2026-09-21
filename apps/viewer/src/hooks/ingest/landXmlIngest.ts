@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
-import { createCoordinateInfo, type Bounds3D } from '../../utils/localParsingUtils.js';
-import { MAX_RENDER_FRAME_ORIGIN_METRES, placeComponentsInRenderFrame } from './landXmlRenderFrame.js';
+import type { Bounds3D } from '../../utils/localParsingUtils.js';
+import { placeAndAssignLandXmlComponents, type LandXmlGeometryComponent } from './landXmlComponentPlacement.js';
 import { sourceCoordinateInfo } from './landXmlSourceFrame.js';
 import type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
 import { buildLandXmlPipeComponents } from './landXmlPipeGeometry.js';
@@ -222,8 +222,6 @@ function buildSurfaceMesh(
   };
 }
 
-interface SurfaceComponent { mesh: MeshData; bounds: Bounds3D; surfaceName: string; surfaceSourceId: string | null; pipeSourceId: string | null; renderedFaceSourceIds: string[] }
-
 /** Adapt Rust-parsed LandXML 1.2 TIN semantics into the viewer's mesh payload. */
 export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometryPayload {
   const warnings = [...parsed.warnings, ...pipeRefusalWarnings(parsed)];
@@ -254,7 +252,7 @@ export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometr
       })) } },
     };
   }
-  const components: SurfaceComponent[] = [];
+  const components: LandXmlGeometryComponent[] = [];
   const droppedBySurface = new Map<string, { degenerate: number; precision: number }>();
   for (const surface of renderableSurfaces) {
     let renderedComponents = 0;
@@ -313,23 +311,11 @@ export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometr
     };
   }
 
-  const { placed, dropped: reframeDropped, bounds, originShift, hasLargeCoordinates } = placeComponentsInRenderFrame(components, warnings);
-  if (placed.length === 0) {
-    throw new Error(`LandXML document has no surface components whose full Y-up bounds fit within the ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km render-frame limit`);
-  }
-  const meshes = placed.map((component, index) => ({ ...component.mesh, expressId: index + 1 }));
+  const { components: placed, dropped: reframeDropped, geometry: geometryResult } = placeAndAssignLandXmlComponents(components, warnings);
+  const meshes = geometryResult.meshes;
   const surfaceNames = [...new Set(placed.map((component) => component.surfaceName))];
-  const stats = meshes.reduce((total, mesh) => ({
-    totalVertices: total.totalVertices + mesh.positions.length / 3,
-    totalTriangles: total.totalTriangles + mesh.indices.length / 3,
-  }), { totalVertices: 0, totalTriangles: 0 });
   return {
-    geometryResult: {
-      meshes,
-      totalVertices: stats.totalVertices,
-      totalTriangles: stats.totalTriangles,
-      coordinateInfo: createCoordinateInfo(bounds, originShift, hasLargeCoordinates),
-    },
+    geometryResult,
     schemaVersion: 'IFC4',
     warnings,
     surfaceNames,

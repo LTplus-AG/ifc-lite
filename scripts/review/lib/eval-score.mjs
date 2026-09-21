@@ -91,15 +91,23 @@ export function matches(expected, findings, body = null) {
  * once as a miss, and the count below exists so a human can see WHICH kind of
  * miss the recall number is made of. Nothing here can turn a miss into a hit.
  *
+ * THE MATCHER IS A PARAMETER. `matches` above is the offline stem rule; the
+ * semantic matcher in ./semantic-match.mjs resolves its answers up front and
+ * hands in a lookup with the same `(expected, findings, body)` contract plus a
+ * position, so this function stays synchronous and every branch below is still
+ * drivable without a model call. Default unchanged: every existing caller and
+ * test scores exactly as before.
+ *
+ * @param {(expected: object, findings: object[], body: string|null, ctx: { caseIndex: number, expectedIndex: number }) => { hit: boolean, by: string|null }} [opts.matcher]
  * @returns {{ recall: string, hits: number, total: number, extra: number, skippedClass: number, lines: string[] }}
  */
-export function score(cases) {
+export function score(cases, { matcher = matches } = {}) {
   const lines = [];
   let hits = 0;
   let total = 0;
   let extra = 0;
   let skippedClass = 0;
-  for (const c of cases) {
+  for (const [caseIndex, c] of cases.entries()) {
     // A `class` this harness does not recognise would attribute NOTHING and
     // print a normal miss, so a typo in a case file would quietly disable the
     // attribution for that case with every test still green. Refuse it instead.
@@ -119,7 +127,7 @@ export function score(cases) {
     // and missing one would have been silent: `claimed` would have been built
     // without the body exclusion, the EXTRA list would have quietly shrunk, and
     // recall would have printed the same number either way.
-    const ms = c.expected.map((e) => matches(e, c.findings, c.body));
+    const ms = c.expected.map((e, expectedIndex) => matcher(e, c.findings, c.body, { caseIndex, expectedIndex }));
     for (const [i, e] of c.expected.entries()) {
       total += 1;
       const m = ms[i];

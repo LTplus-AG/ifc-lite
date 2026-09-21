@@ -77,7 +77,7 @@ function surface(value: unknown): LandXmlTinSurface {
     name: string(raw.name, 'surface name'),
     kind: surfaceKind(raw.kind),
     renderState: renderState(raw.render_state),
-    topologyOrigin: topologyOrigin(raw.topology_origin),
+    topologyOrigin: raw.topology_origin === undefined ? undefined : topologyOrigin(raw.topology_origin),
     terrainDiagnostic: raw.terrain_diagnostic === undefined || raw.terrain_diagnostic === null ? null : (() => {
       const diagnostic = record(raw.terrain_diagnostic, 'terrain diagnostic');
       return { code: string(diagnostic.code, 'terrain diagnostic code'), message: string(diagnostic.message, 'terrain diagnostic message') };
@@ -92,7 +92,7 @@ function surface(value: unknown): LandXmlTinSurface {
         elevation: finite(parsed.elevation, `point ${index} elevation`),
       };
     }),
-    canonicalVertices: array(raw.canonical_vertices, 'canonical terrain vertices').map((vertex, index) => {
+    canonicalVertices: raw.canonical_vertices === undefined ? undefined : array(raw.canonical_vertices, 'canonical terrain vertices').map((vertex, index) => {
       const parsed = record(vertex, `canonical terrain vertex ${index}`);
       return {
         id: string(parsed.id, `canonical terrain vertex ${index} id`),

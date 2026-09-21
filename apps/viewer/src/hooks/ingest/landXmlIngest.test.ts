@@ -4,12 +4,14 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { IfcAPI } from '@ifc-lite/wasm';
 import { parseLandXmlViewerModelAsync } from './landXmlViewerModel.js';
 import { connectedFaceComponents } from './landXmlIngest.js';
 import { buildLandXmlPipeComponents } from './landXmlPipeGeometry.js';
 import { findLandXmlSourceRecord, type LandXmlPipeNetworkDocument } from './landXmlSemantics.js';
 import { isLandXmlContent } from './landXmlSniff.js';
-import { parseLandXmlTinInCurrentRealm } from './landXmlWasm.js';
+import { parseLandXmlTinInCurrentRealm, readLandXmlTinDocument } from './landXmlWasm.js';
+import { initLandXmlWasm } from './landXmlWasmInit.js';
 
 const LANDXML = `<?xml version="1.0" encoding="UTF-8"?>
 <LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
@@ -152,6 +154,23 @@ describe('LandXML content dispatch (#5041)', () => {
 });
 
 describe('LandXML 1.2 TIN ingest (#4937)', () => {
+  it('loads persisted pre-triangulation surface records without new optional fields (#5043)', async () => {
+    await initLandXmlWasm();
+    const api = new IfcAPI();
+    try {
+      const raw = api.parseLandXmlTinBytes(new TextEncoder().encode(LANDXML)) as unknown as {
+        surfaces: Array<Record<string, unknown>>;
+      };
+      delete raw.surfaces[0].topology_origin;
+      delete raw.surfaces[0].canonical_vertices;
+      const parsed = readLandXmlTinDocument(raw);
+      assert.equal(parsed.surfaces[0].topologyOrigin, undefined);
+      assert.equal(parsed.surfaces[0].canonicalVertices, undefined);
+    } finally {
+      api.free();
+    }
+  });
+
   it('parses schema point order while retaining hidden faces and non-TIN surfaces', async () => {
     const parsed = await parseDocument(LANDXML);
     assert.equal(parsed.version, '1.2');

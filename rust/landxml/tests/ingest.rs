@@ -512,11 +512,18 @@ fn issue_5043_enforces_document_wide_generated_face_and_reference_limits() {
             ..LandXmlLimits::default()
         },
     ] {
+        let parsed = parse_landxml_tin_with_cancel(source.as_bytes(), &limits, None)
+            .expect("generated topology over the bound is preserved, not rejected");
         assert_eq!(
-            parse_landxml_tin_with_cancel(source.as_bytes(), &limits, None)
-                .unwrap_err()
-                .code,
-            LandXmlDiagnosticCode::LimitExceeded
+            parsed.surfaces[0].render_state,
+            ifc_lite_landxml::LandXmlRenderState::PreservedOnly
+        );
+        assert_eq!(
+            parsed.surfaces[0]
+                .terrain_diagnostic
+                .as_ref()
+                .map(|value| value.code),
+            Some(LandXmlTerrainDiagnosticCode::WorkLimitExceeded),
         );
     }
     let surface_xml = source
@@ -529,11 +536,16 @@ fn issue_5043_enforces_document_wide_generated_face_and_reference_limits() {
         max_faces: 3,
         ..LandXmlLimits::default()
     };
+    let parsed = parse_landxml_tin_with_cancel(twice.as_bytes(), &limits, None)
+        .expect("a later over-limit faceless surface is locally preserved");
+    assert_eq!(parsed.surfaces.len(), 2);
     assert_eq!(
-        parse_landxml_tin_with_cancel(twice.as_bytes(), &limits, None)
-            .unwrap_err()
-            .code,
-        LandXmlDiagnosticCode::LimitExceeded
+        parsed.surfaces[0].render_state,
+        ifc_lite_landxml::LandXmlRenderState::Rendered
+    );
+    assert_eq!(
+        parsed.surfaces[1].render_state,
+        ifc_lite_landxml::LandXmlRenderState::PreservedOnly
     );
 }
 

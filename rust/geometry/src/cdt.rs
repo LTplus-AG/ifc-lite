@@ -220,6 +220,10 @@ struct Cdt {
     /// returns `None`, so the caller falls back to ear-clipping — matching how
     /// every other degenerate case in this module degrades.
     failed: bool,
+    /// Whether the fixed legalization guard is a caller-visible work budget.
+    /// Ordinary geometry callers preserve their historical best-effort break;
+    /// hostile terrain parsing reports the bound explicitly.
+    fail_on_legalization_guard: bool,
 }
 
 impl Cdt {
@@ -228,15 +232,25 @@ impl Cdt {
     /// add Steiner points and replace a segment with its two halves, then
     /// rebuild cleanly from scratch — no fragile in-place mutation).
     fn build_from(points: Vec<P2>, segments: &[(usize, usize)], steiner_cap: usize) -> Option<Cdt> {
-        Self::build_from_with_progress(points, segments, steiner_cap, &mut || Ok(()))
+        Self::build_from_with_progress_mode(points, segments, steiner_cap, false, &mut || Ok(()))
             .ok()
             .flatten()
     }
 
     fn build_from_with_progress(
+        points: Vec<P2>,
+        segments: &[(usize, usize)],
+        steiner_cap: usize,
+        progress: &mut dyn FnMut() -> Result<(), crate::terrain_cdt::TerrainCdtError>,
+    ) -> Result<Option<Cdt>, crate::terrain_cdt::TerrainCdtError> {
+        Self::build_from_with_progress_mode(points, segments, steiner_cap, true, progress)
+    }
+
+    fn build_from_with_progress_mode(
         mut points: Vec<P2>,
         segments: &[(usize, usize)],
         steiner_cap: usize,
+        fail_on_legalization_guard: bool,
         progress: &mut dyn FnMut() -> Result<(), crate::terrain_cdt::TerrainCdtError>,
     ) -> Result<Option<Cdt>, crate::terrain_cdt::TerrainCdtError> {
         let n_input = points.len();
@@ -298,6 +312,7 @@ impl Cdt {
             track: false,
             cos_min_angle: COS_MIN_ANGLE,
             failed: false,
+            fail_on_legalization_guard,
         };
         cdt.tris.push(Tri {
             v: [super_base, super_base + 1, super_base + 2],
@@ -604,7 +619,10 @@ impl Cdt {
             guard += 1;
             progress()?;
             if guard > 4_000_000 {
-                return Err(crate::terrain_cdt::TerrainCdtError::WorkLimitExceeded);
+                if self.fail_on_legalization_guard {
+                    return Err(crate::terrain_cdt::TerrainCdtError::WorkLimitExceeded);
+                }
+                break;
             }
             if !self.tris[ti].alive {
                 continue;

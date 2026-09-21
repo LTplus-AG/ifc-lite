@@ -36,9 +36,9 @@ pub struct TerrainCdtMesh {
 /// CDT. The output covers the convex hull; callers own closed-region/hole
 /// selection because an open breakline has no fill-side meaning.
 ///
-/// No unconstrained or ear-clipping fallback is used. Exact duplicate points,
-/// bad segment indices, and all-collinear input are rejected before entering
-/// the CDT so adapters can return stable source-specific diagnostics.
+/// No unconstrained or ear-clipping fallback is used. Exact duplicate points
+/// and bad segment indices are rejected before entering the CDT. All-collinear
+/// input is detected by the CDT and reported as `ConstraintsUnrecoverable`.
 pub fn triangulate_terrain_pslg(
     points: &[[f64; 2]],
     segments: &[(usize, usize)],

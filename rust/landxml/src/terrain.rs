@@ -371,10 +371,10 @@ pub(super) fn adapt_faceless_tin(
                 .checked_add(next_faces.saturating_mul(3))
                 .is_none_or(|references| references > limits.max_references)
         {
-            return Err(error(
-                Code::LimitExceeded,
+            return Ok(Some(diagnostic(
+                TerrainCode::WorkLimitExceeded,
                 "generated face or reference limit exceeded",
-            ));
+            )));
         }
         generated_faces.push([
             vertices[a].id.clone(),

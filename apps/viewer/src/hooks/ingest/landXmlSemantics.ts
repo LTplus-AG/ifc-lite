@@ -19,6 +19,13 @@ export {
   indexLandXmlSourceRecords, landXmlPlanChildPage, landXmlPlanSourcePage,
 } from './landXmlSourceIndex.js';
 
+/** Namespace-selected LandXML grammar retained as truthful source metadata. */
+export type LandXmlSchema = 'LandXML-1.0' | 'LandXML-1.1' | 'LandXML-1.2';
+
+export function isLandXmlSchema(value: string): value is LandXmlSchema {
+  return value === 'LandXML-1.0' || value === 'LandXML-1.1' || value === 'LandXML-1.2';
+}
+
 export interface LandXmlPolyline {
   sourceId: string;
   ordinal: number;
@@ -104,7 +111,9 @@ export interface LandXmlResolvedGeometry {
   renderedPoints?: [number, number, number][]; renderedPointState?: 'aligned' | 'suppressed';
 }
 export interface LandXmlPlanDocument {
-  version: string; areaUnit: string | null; areaScaleToSquareMeters: number | null;
+  schema: LandXmlSchema; version: string;
+  capabilityDiagnostics: LandXmlCapabilityDiagnostic[];
+  areaUnit: string | null; areaScaleToSquareMeters: number | null;
   cogoPoints: LandXmlCgPoint[]; monuments: LandXmlMonument[]; planFeatures: LandXmlPlanFeature[];
   parcels: LandXmlParcel[]; warnings: string[];
   /** Rust-created partitions consumed by the one shared plan line overlay. */
@@ -122,7 +131,7 @@ export interface LandXmlPlanDocument {
 export interface LandXmlTinDocument {
   /** The source format, never an IFC schema alias. */
   format: 'landxml';
-  schema: 'LandXML-1.2';
+  schema: LandXmlSchema;
   capabilities: { renderableTin: boolean; preservedOnlySurfaces: number; unknownExtensions: number };
   version: string;
   units: {

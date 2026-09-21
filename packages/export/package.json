@@ -25,9 +25,9 @@
     "@ifc-lite/encoding": "workspace:^",
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
-    "parquet-wasm": "^0.7.2",
+    "parquet-wasm": "^0.8.0",
     "apache-arrow": "^21.2.0",
-    "jszip": "^3.10.0",
+    "jszip": "^3.10.2",
     "@ifc-lite/ifcx": "workspace:^"
   },
   "devDependencies": {

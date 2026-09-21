@@ -16,7 +16,8 @@ use super::{LandXmlAlignment, LandXmlAlignmentDocument, LandXmlSuperelevationEve
 use crate::{
     preflight::preflight_xml_tokens,
     xml::{error, normalize_encoding, Result},
-    LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlLimits, LandXmlUnits,
+    LandXmlCancellation, LandXmlCapabilityDiagnostic, LandXmlDiagnosticCode as Code, LandXmlLimits,
+    LandXmlUnits,
 };
 
 /// Alignment-specific record bounds layered over the shared hostile-XML bounds.
@@ -160,6 +161,10 @@ pub(super) struct Parser<'a> {
     pub(super) alignment: Option<state::AlignmentBuilder>,
     pub(super) capture: Option<Capture>,
     pub(super) warnings: Vec<String>,
+    pub(super) schema: String,
+    pub(super) version: String,
+    pub(super) capability_diagnostics: Vec<LandXmlCapabilityDiagnostic>,
+    pub(super) target_namespace: Option<String>,
     pub(super) root_seen: bool,
     pub(super) root_closed: bool,
     pub(super) require_alignment: bool,
@@ -186,6 +191,10 @@ impl<'a> Parser<'a> {
             alignment: None,
             capture: None,
             warnings: Vec::new(),
+            schema: String::new(),
+            version: String::new(),
+            capability_diagnostics: Vec::new(),
+            target_namespace: None,
             root_seen: false,
             root_closed: false,
             require_alignment,

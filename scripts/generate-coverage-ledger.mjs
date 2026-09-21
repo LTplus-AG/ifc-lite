@@ -26,17 +26,14 @@
  *                    (`packages/data/src/ifc-schema/generated/entities-*.ts`,
  *                    `ENTITIES_IFC*`), with `abstract: false` (only concrete
  *                    entities can appear in a STEP file). Uses the SAME
- *                    `parseEntityTable` parser `check-legacy-entity-coverage.mjs`
- *                    already ships and is tested against, not a re-derived copy.
+ *                    `parseEntityTable` parser `lib/entity-table.mjs`, not a
+ *                    re-derived copy.
  *   retained      — the entity's uppercase name resolves to a real `IfcType`
  *                    variant rather than `Unknown`: directly, via
  *                    `rust/core/src/generated/schema.rs`'s `from_str` arms
  *                    (`generatedNames`, same parser as above), for IFC4X3; or
- *                    via a `rust/core/src/legacy_entities.rs` match arm
- *                    (`legacyKeys`, same parser) for IFC2X3/IFC4, since that is
- *                    the table `rust/core/src/schema_helpers.rs` says every
- *                    classification pass must consult instead of a bare
- *                    `IfcType::from_str`.
+ *                    through the generated type universe for every bundled
+ *                    schema version.
  *   relationships — the entity's name is one of the `IfcRel*` classes
  *                    `packages/data/src/relationship-type.ts`'s `NAMES` map
  *                    (behind `relationshipTypeName()`) maps a `RelationshipType`
@@ -102,7 +99,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { legacyKeys, generatedNames, parseEntityTable } from './check-legacy-entity-coverage.mjs';
+import { generatedNames, parseEntityTable } from './lib/entity-table.mjs';
 import { deriveCreatableTypes } from './coverage-ledger-creatable.mjs';
 
 const rootFlag = process.argv.indexOf('--root');
@@ -149,16 +146,12 @@ for (const schema of SCHEMAS) {
 // ─── Retained (resolves to a real IfcType, not Unknown) ─────────────────
 
 const schemaRs = read('rust/core/src/generated/schema.rs');
-const legacyRs = read('rust/core/src/legacy_entities.rs');
 const ifc4x3RetainedNames = new Set([...generatedNames(schemaRs)].map((n) => n.toUpperCase()));
 assertNonEmpty('retained(IFC4X3 from_str arms)', ifc4x3RetainedNames);
-const legacyRetainedNames = new Set([...legacyKeys(legacyRs)].map((n) => n.toUpperCase()));
-assertNonEmpty('retained(legacy_entities.rs arms)', legacyRetainedNames);
 
 function isRetained(schema, upperName) {
   if (ifc4x3RetainedNames.has(upperName)) return true;
-  if (schema !== 'IFC4X3' && legacyRetainedNames.has(upperName)) return true;
-  return false;
+  return ifc4x3RetainedNames.has(upperName);
 }
 
 // ─── Relationships (RelationshipType -> IfcRel* class) ──────────────────

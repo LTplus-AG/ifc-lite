@@ -4,8 +4,7 @@
 
 use crate::generated::schema_registry::SchemaVersion;
 use crate::{
-    attribute_names_for_schema, entity_info_for_schema, is_subtype_of_for_schema,
-    legacy_attribute_names, IfcType,
+    attribute_names_for_schema, entity_info_for_schema, is_subtype_of_for_schema, IfcType,
 };
 
 // These tests enter the new public registry API directly. A whole-file revert
@@ -97,16 +96,10 @@ fn generated_registries_use_ifc4x1_and_ifc4x2_not_transitional_tables() {
 }
 
 #[test]
-fn legacy_wrapper_preserves_its_old_non_modern_contract() {
-    assert_eq!(legacy_attribute_names("IFCWALL"), None);
+fn schema_local_metadata_replaces_legacy_attribute_lookup() {
     assert_eq!(
-        legacy_attribute_names("ifcdoorstyle").and_then(|names| names.last()),
+        attribute_names_for_schema("IFC2X3", "IFCDOORSTYLE").and_then(|names| names.last()),
         Some(&"Sizeable")
-    );
-    assert_eq!(
-        legacy_attribute_names("IFCALIGNMENTCURVE"),
-        Some(&["Horizontal", "Vertical", "Tag"][..]),
-        "retain IFC4.1 transitional metadata absent from the pinned EXPRESS inputs"
     );
 }
 

@@ -32,6 +32,7 @@ import type { PreAlignmentSnapshot } from '../../store/index.js';
 import { buildSpatialIndexForModel, invalidateSpatialIndex } from '../../utils/loadingUtils.js';
 import { hasInstancedShards } from '../../store/instancedShardModels.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
+import { isLandXmlSchema } from './landXmlSemantics.js';
 
 /**
  * A model whose geometry is final. A model still streaming keeps receiving
@@ -78,7 +79,7 @@ function adoptMeshlessLandXmlFrame(
   const adopted: string[] = [];
   for (const [modelId, model] of settled) {
     const geometry = model.geometryResult;
-    if (model.sourceSchema !== 'LandXML-1.2' || !geometry || geometry.meshes.length !== 0) continue;
+    if (!model.sourceSchema || !isLandXmlSchema(model.sourceSchema) || !geometry || geometry.meshes.length !== 0) continue;
     geometry.coordinateInfo = structuredClone(frame);
     adopted.push(modelId);
   }

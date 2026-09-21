@@ -35,7 +35,7 @@ function pipeNavigationDocument(): LandXmlTinDocument {
   result.profiles = [];
   result.capabilityDiagnostics = [];
   result.pipeNetworks = {
-    version: '1.2', rootUnits: pipeUnits,
+    schema: 'LandXML-1.2', version: '1.2', capabilityDiagnostics: [], rootUnits: pipeUnits,
     collections: [{ sourceId: 'collection', sourcePath: 'PipeNetworks', properties: {} }],
     features: [{ sourceId: 'root-feature', sourcePath: 'PipeNetworks/Feature[1]', ownerSourceId: 'collection', properties: {} }],
     refusals: [],

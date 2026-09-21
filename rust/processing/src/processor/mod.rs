@@ -716,7 +716,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
             // Legacy-aware so a remapped entity (IfcProxy, IfcSolidStratum, …)
             // labels its node with the real base type, not "Unknown", and matches
             // the attribute pass's row type (#1496).
-            let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
+            let ifc_type = ifc_lite_core::ifc_type_from_keyword(type_name);
             if quick_metadata_enabled {
                 quick_element_summaries.insert(
                     id,
@@ -759,7 +759,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
             // `quick_element_summaries` insert above — the spatial tree
             // already carries this entity as a node (`spatial_nodes`), so an
             // extra "element" summary row would duplicate it in the UI tree.
-            let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
+            let ifc_type = ifc_lite_core::ifc_type_from_keyword(type_name);
             entity_jobs.push(EntityJob {
                 id,
                 ifc_type: ifc_type.clone(),

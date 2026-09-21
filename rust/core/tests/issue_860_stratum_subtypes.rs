@@ -10,27 +10,20 @@
 //! and the wasm geometry pipeline silently skipped every stratum element
 //! in the user's UT_Tin_in_MGA_56 terrain fixture.
 
-use ifc_lite_core::{
-    has_geometry_by_name,
-    legacy_entities::{get_legacy_entity_info, map_legacy_to_base_type},
-    IfcType,
-};
+use ifc_lite_core::{has_geometry_by_name, ifc_type_from_keyword};
 
 #[test]
 fn solid_stratum_recognised_as_geotechnical_stratum() {
-    let info = get_legacy_entity_info("IFCSOLIDSTRATUM")
-        .expect("IFCSOLIDSTRATUM must be in the legacy registry");
-    assert_eq!(info.base_type, IfcType::IfcGeotechnicalStratum);
-    assert!(info.has_geometry, "stratum elements carry Body geometry");
+    assert_eq!(
+        ifc_type_from_keyword("IFCSOLIDSTRATUM").as_str(),
+        "IFCSOLIDSTRATUM"
+    );
 }
 
 #[test]
 fn void_and_water_strata_are_also_geotechnical_stratum() {
     for name in &["IFCVOIDSTRATUM", "IFCWATERSTRATUM"] {
-        let info = get_legacy_entity_info(name)
-            .unwrap_or_else(|| panic!("{name} must be in the legacy registry"));
-        assert_eq!(info.base_type, IfcType::IfcGeotechnicalStratum);
-        assert!(info.has_geometry);
+        assert_eq!(ifc_type_from_keyword(name).as_str(), *name);
     }
 }
 
@@ -44,12 +37,4 @@ fn has_geometry_by_name_passes_for_all_stratum_subtypes() {
              from the spatial tree (issue #860)."
         );
     }
-}
-
-#[test]
-fn map_legacy_to_base_type_returns_geotechnical_stratum() {
-    assert_eq!(
-        map_legacy_to_base_type("IFCSOLIDSTRATUM"),
-        Some(IfcType::IfcGeotechnicalStratum),
-    );
 }

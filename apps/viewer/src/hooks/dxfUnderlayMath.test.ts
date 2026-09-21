@@ -13,6 +13,7 @@ import {
   dxfElevationRenderY,
   dxfUnderlayToDrawing,
   dxfUnderlayToWorldLines3D,
+  dxfUnderlayToWorldLines3DAnchored,
   dxfUnderlayDrawingBounds,
   resolveEffectiveGeoreferenced,
 } from './dxfUnderlayMath.js';
@@ -363,6 +364,17 @@ describe('dxfElevationRenderY (issue #2043)', () => {
 });
 
 describe('dxfUnderlayToWorldLines3D (issue #2043)', () => {
+  it('keeps a centimetre georeferenced DXF segment local at 5,000 km (#5049)', () => {
+    const e = {
+      name: 'survey.dxf', visible3D: true, opacity: 1, georeferenced: false,
+      placement: { offsetX: 5_000_000.015625, offsetY: 0, rotationDeg: 0, scale: 1 },
+      layerVisibility: {}, underlay: { layers: [{ name: '0', visible: true, paths: [{ points: [{ x: 0, y: 0 }, { x: 0.01, y: 0 }], closed: false }] }] },
+    } as unknown as DxfUnderlayState;
+    const result = dxfUnderlayToWorldLines3DAnchored(e, { x: 0, y: 0 }, 0);
+    assert.ok(result, 'the segment should produce an anchored line payload');
+    assert.deepEqual(result!.origin, [5_000_000.015625, 0, 0]);
+    assert.ok(Math.abs(result!.localVertices[3] - 0.01) < 1e-8, `DXF local residual became ${result!.localVertices[3]}`);
+  });
   const entry = (paths: DxfUnderlayState['underlay']['layers'][number]['paths']): DxfUnderlayState => ({
     id: 'u1',
     name: 'test.dxf',

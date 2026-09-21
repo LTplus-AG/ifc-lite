@@ -32,7 +32,7 @@ import { buildDxfMapToWorldTransform, resolveDxfExportGeoreference } from './dxf
 import {
   dxfElevationRenderY,
   dxfUnderlayToDrawing,
-  dxfUnderlayToWorldLines3D,
+  dxfUnderlayToWorldLines3DAnchored,
   dxfWorldShift,
 } from './dxfUnderlayMath';
 
@@ -46,6 +46,7 @@ export {
   type DxfUnderlayRenderLine,
   type DxfUnderlayRenderFill,
   type DxfUnderlayRenderText,
+  type AnchoredDxfLines3D,
 } from './dxfUnderlayMath';
 
 import type { DxfUnderlayRenderData } from './dxfUnderlayMath';
@@ -124,9 +125,11 @@ export function useDxfUnderlaysForDrawing(params: {
  * alignment 3D overlay is always-eligible (`useAlignmentLines3D`); grid 3D
  * lines are drawn by `useSymbolicAnnotations` instead (issue #3368).
  */
+export type DxfLines3D = Float32Array | AnchoredDxfLines3D;
+
 export function useDxfUnderlays3DLines(
   coordinateInfo: GeometryResult['coordinateInfo'] | undefined,
-): Float32Array {
+): DxfLines3D {
   const dxfUnderlays = useViewerStore((s) => s.dxfUnderlays);
   const { transform: mapToWorld, available: georeferenceAvailable } = useDxfMapToWorldTransform();
 
@@ -147,18 +150,23 @@ export function useDxfUnderlays3DLines(
     const shift = dxfWorldShift(coordinateInfo);
     const elevationRenderY = dxfElevationRenderY(coordinateInfo);
     const arrays = visible.map((u) =>
-      dxfUnderlayToWorldLines3D(u, shift, elevationRenderY, mapToWorld, georeferenceAvailable),
-    );
+      dxfUnderlayToWorldLines3DAnchored(u, shift, elevationRenderY, mapToWorld, georeferenceAvailable),
+    ).filter((value): value is AnchoredDxfLines3D => value !== null);
     let total = 0;
-    for (const a of arrays) total += a.length;
+    for (const a of arrays) total += a.localVertices.length;
     if (total === 0) return EMPTY_LINES_3D;
     if (arrays.length === 1) return arrays[0];
+    const origin = arrays[0].origin;
     const merged = new Float32Array(total);
     let offset = 0;
     for (const a of arrays) {
-      merged.set(a, offset);
-      offset += a.length;
+      for (let index = 0; index < a.localVertices.length; index += 3) {
+        merged[offset + index] = a.localVertices[index] + (a.origin[0] - origin[0]);
+        merged[offset + index + 1] = a.localVertices[index + 1] + (a.origin[1] - origin[1]);
+        merged[offset + index + 2] = a.localVertices[index + 2] + (a.origin[2] - origin[2]);
+      }
+      offset += a.localVertices.length;
     }
-    return merged;
+    return { localVertices: merged, origin };
   }, [dxfUnderlays, coordinateInfo, mapToWorld, georeferenceAvailable]);
 }

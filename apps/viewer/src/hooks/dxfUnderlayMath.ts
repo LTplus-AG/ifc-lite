@@ -369,6 +369,46 @@ export function dxfUnderlayToWorldLines3D(
   mapToWorld: (p: Point2D) => Point2D = (p) => p,
   georeferenceAvailable = false,
 ): Float32Array {
+  return new Float32Array(dxfUnderlayWorldLineNumbers(entry, shift, elevationRenderY, mapToWorld, georeferenceAvailable));
+}
+
+/** Local f32 vertices plus the exact source-world anchor for RTE drawing. */
+export interface AnchoredDxfLines3D {
+  localVertices: Float32Array;
+  origin: [number, number, number];
+}
+
+/**
+ * Build one DXF underlay directly into a local frame. Both DXF paths share
+ * the same georeference/mirror/placement walk; only this final render-boundary
+ * variant avoids narrowing national-grid coordinates before RTE can rebase.
+ */
+export function dxfUnderlayToWorldLines3DAnchored(
+  entry: DxfUnderlayState,
+  shift: { x: number; y: number },
+  elevationRenderY: number,
+  mapToWorld: (p: Point2D) => Point2D = (p) => p,
+  georeferenceAvailable = false,
+): AnchoredDxfLines3D | null {
+  const world = dxfUnderlayWorldLineNumbers(entry, shift, elevationRenderY, mapToWorld, georeferenceAvailable);
+  if (world.length === 0) return null;
+  const origin: [number, number, number] = [world[0], world[1], world[2]];
+  const localVertices = new Float32Array(world.length);
+  for (let index = 0; index < world.length; index += 3) {
+    localVertices[index] = world[index] - origin[0];
+    localVertices[index + 1] = world[index + 1] - origin[1];
+    localVertices[index + 2] = world[index + 2] - origin[2];
+  }
+  return { localVertices, origin };
+}
+
+function dxfUnderlayWorldLineNumbers(
+  entry: DxfUnderlayState,
+  shift: { x: number; y: number },
+  elevationRenderY: number,
+  mapToWorld: (p: Point2D) => Point2D,
+  georeferenceAvailable: boolean,
+): number[] {
   const t: WorldToDrawingParams = {
     shiftX: shift.x,
     shiftY: shift.y,
@@ -394,5 +434,5 @@ export function dxfUnderlayToWorldLines3D(
       }
     }
   }
-  return new Float32Array(verts);
+  return verts;
 }

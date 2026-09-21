@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import type { ViewerState } from '../../apps/viewer/src/store';
 import { snapshotRenderedPointCloud } from './federation-control-triplet.rendering';
@@ -80,6 +80,32 @@ async function load(page: Page, file: string | { name: string; mimeType: string;
 let consoleLines: string[] = [];
 let pageErrorLines: string[] = [];
 
+function captureDiagnostics(page: Page, errors: string[]): void {
+  page.on('pageerror', (error) => {
+    const message = String(error);
+    errors.push(message);
+    pageErrorLines.push(message);
+  });
+  page.on('console', (message) => {
+    if (message.type() === 'error' || message.type() === 'warning') {
+      consoleLines.push(`[${message.type()}] ${message.text().slice(0, 300)}`);
+    }
+  });
+}
+
+async function deriveDiagnosticScan(context: BrowserContext, errors: string[]): Promise<Buffer> {
+  const seedPage = await context.newPage();
+  captureDiagnostics(seedPage, errors);
+  try {
+    await seedPage.setViewportSize({ width: 1440, height: 1000 });
+    await seedPage.goto('/');
+    await load(seedPage, IFC, 1);
+    return await diagnosticScan(seedPage);
+  } finally {
+    await seedPage.close();
+  }
+}
+
 /** Synthetic diagnostic scan, explicitly derived from a real authoring fixture.
  * The known translation is the oracle; this does not pretend to be a field scan. */
 async function diagnosticScan(page: Page): Promise<Buffer> {
@@ -109,26 +135,28 @@ async function openScanMove(page: Page) {
   });
 }
 
-for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan, ${scanFirst ? 'scan' : 'IFC'} first (#4226)`, async ({ page }, info) => {
+for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan, ${scanFirst ? 'scan' : 'IFC'} first (#4226)`, async ({ page, context }, info) => {
   test.skip(!existsSync(IFC), 'Real IFC fixture missing — run pnpm fixtures');
   const errors: string[] = [];
   pageErrorLines = [];
-  page.on('pageerror', (error) => {
-    const message = String(error);
-    errors.push(message);
-    pageErrorLines.push(message);
-  });
   consoleLines = [];
-  page.on('console', (message) => { if (message.type() === 'error' || message.type() === 'warning') consoleLines.push(`[${message.type()}] ${message.text().slice(0, 300)}`); });
+  captureDiagnostics(page, errors);
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto('/');
-  await load(page, IFC, 1);
-  const scan = { name: 'known-offset.xyz', mimeType: 'text/plain', buffer: await diagnosticScan(page) };
   if (scanFirst) {
-    await page.reload();
+    // The scan is synthetic and derived from the real IFC fixture. Generate it
+    // in a disposable page so the workflow under test genuinely starts with a
+    // fresh viewer and the scan first; reloading a live GPU page tests teardown
+    // timing instead of federation load order.
+    const scan = { name: 'known-offset.xyz', mimeType: 'text/plain', buffer: await deriveDiagnosticScan(context, errors) };
+    await page.goto('/');
     await load(page, scan, 1);
     await load(page, IFC, 2);
-  } else await load(page, scan, 2);
+  } else {
+    await page.goto('/');
+    await load(page, IFC, 1);
+    const scan = { name: 'known-offset.xyz', mimeType: 'text/plain', buffer: await diagnosticScan(page) };
+    await load(page, scan, 2);
+  }
   await openScanMove(page);
   for (const [i, axis] of ['X', 'Y', 'Z'].entries()) await page.getByLabel(`Delta ${axis}`, { exact: true }).fill(String(-OFFSET[i]));
   await page.getByRole('button', { name: 'Preview values', exact: true }).click();

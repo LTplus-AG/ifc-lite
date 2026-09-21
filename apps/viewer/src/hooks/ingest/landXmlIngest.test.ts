@@ -425,6 +425,20 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.ok(Math.abs(info.max.y - 6) < 1e-12, 'elevation uses the schema-default meter scale');
   });
 
+  it('retains the authored frame of geometry-free 2D contours (#5046)', async () => {
+    const contourOnly = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+      <Units><Metric linearUnit="meter" elevationUnit="meter"/></Units>
+      <Surfaces><Surface name="contours"><Definition surfType="TIN"/><SourceData><Contours>
+        <Contour name="100" elev="100"><PntList2D>5000000 2600000 5000010 2600010</PntList2D></Contour>
+      </Contours></SourceData></Surface></Surfaces>
+    </LandXML>`;
+    const result = await parseViewer(bytes(contourOnly));
+    const bounds = result.geometryResult.coordinateInfo.originalBounds;
+    assert.deepEqual(bounds.min, { x: 2_600_000, y: 100, z: -5_000_010 });
+    assert.deepEqual(bounds.max, { x: 2_600_010, y: 100, z: -5_000_000 });
+    assert.equal(result.geometryResult.coordinateInfo.hasLargeCoordinates, true);
+  });
+
   it('preserves the stable Rust error code for unsupported units', async () => {
     const inheritedUnit = LANDXML.replace('linearUnit="meter"', 'linearUnit="constructor"');
     await assert.rejects(

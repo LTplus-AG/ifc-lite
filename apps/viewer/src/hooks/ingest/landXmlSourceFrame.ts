@@ -19,9 +19,16 @@ export function sourceCoordinateInfo(parsed: LandXmlTinDocument): GeometryResult
   };
   for (const surface of parsed.surfaces) {
     for (const point of surface.points) add(point.northing, point.easting, point.elevation);
-    for (const lines of [surface.boundaries, surface.breaklines, surface.contours]) {
+    for (const lines of [surface.boundaries, surface.breaklines]) {
       for (const line of lines) {
         for (const point of line.points) if (point.length === 3) add(point[0]!, point[1]!, point[2]);
+      }
+    }
+    for (const contour of surface.contours) {
+      const authoredElevation = contour.properties.elev?.trim();
+      const contourElevation = authoredElevation ? Number(authoredElevation) : undefined;
+      for (const point of contour.points) {
+        add(point[0]!, point[1]!, point.length === 3 ? point[2] : contourElevation);
       }
     }
   }

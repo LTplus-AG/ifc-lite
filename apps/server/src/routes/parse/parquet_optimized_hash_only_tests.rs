@@ -164,3 +164,47 @@ async fn a_request_with_neither_body_nor_hash_is_a_missing_file() {
     let json: Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["code"], serde_json::json!("MISSING_FILE"));
 }
+
+/// A bot-review concern on this PR: does `Option<Multipart>` turn a
+/// genuinely malformed multipart request into a silent probe hit just
+/// because it also carries `?sha256=` for an entry that happens to be
+/// cached? It does not, and this pins why: axum's
+/// `OptionalFromRequest for Multipart` (`axum::extract::multipart`) maps
+/// `None` only when `Content-Type` is missing or is not
+/// `multipart/form-data` at all (`multer::Error::NoMultipart`) --
+/// `Content-Type: multipart/form-data` with no `boundary` parameter is a
+/// DIFFERENT failure (`multer::Error::NoBoundary`), which the extractor
+/// turns into a real `MultipartRejection::InvalidBoundary` (400) instead of
+/// `None`. So a request that actually attempts a multipart upload, however
+/// malformed, is rejected before the handler runs and never reaches the
+/// probe branch; only a request that never looked like multipart at all
+/// (no `Content-Type`, or a non-multipart one) does, which is the same "no
+/// body" case this and the flat route's probe were built to answer.
+#[tokio::test]
+async fn a_malformed_multipart_boundary_alongside_a_cached_hash_is_rejected_not_replayed() {
+    let state = test_state("optimized-hash-malformed-boundary").await;
+    let content = MINIMAL_IFC.as_bytes();
+
+    // Warm a real entry so a silent probe-hit would be observable as a 200.
+    let (status, _, _) = post_optimized(&state, content).await;
+    assert_eq!(status, StatusCode::OK);
+    let hash = digest(content);
+
+    // `multipart/form-data` with no `boundary` parameter: a genuine (if
+    // malformed) multipart attempt, not the "no Content-Type at all" shape
+    // the probe is meant for.
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/parse/parquet/optimized?sha256={hash}"))
+        .header(header::CONTENT_TYPE, "multipart/form-data")
+        .body(Body::from(b"whatever".to_vec()))
+        .unwrap();
+    let response = build_router(state.clone()).oneshot(request).await.unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "a malformed multipart request must be rejected (axum's own \
+         InvalidBoundary), not silently replayed as a hash-only probe hit"
+    );
+}

@@ -4,7 +4,7 @@
 
 use super::super::LandXmlPlanPoint;
 
-pub(super) fn area_scale(unit: &str) -> Result<f64> {
+pub(in crate::plan) fn area_scale(unit: &str) -> Result<f64> {
     match unit {
         "squareMillimeter" => Ok(0.000_001),
         "squareCentimeter" => Ok(0.0001),

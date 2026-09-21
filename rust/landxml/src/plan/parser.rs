@@ -27,7 +27,7 @@ mod driver;
 mod state;
 mod value;
 use state::{Active, Capture, Frame, GeometryBuilder};
-use value::area_scale;
+pub(super) use value::area_scale;
 /// Plan-record bounds layered over the shared hostile-XML limits.
 #[derive(Clone, Debug)]
 pub struct LandXmlPlanLimits {

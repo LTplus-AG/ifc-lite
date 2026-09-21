@@ -10,6 +10,7 @@ use super::{
     LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlPlanPointLocation, LandXmlPlanResolver,
     ParcelProbeWork,
 };
+use crate::plan::parser::area_scale;
 
 const MAX_PARCEL_TOPOLOGY_EDGES: usize = 700;
 const MAX_PARCEL_TOPOLOGY_WORK: usize = 1_000_000;
@@ -251,9 +252,15 @@ fn probe_parcel_with_work<W: ParcelProbeWork>(
             Some(units) => {
                 let square_meters =
                     finite_measure(coordinate_area * units.linear_scale_to_meters.powi(2))?;
-                let declared_scale = document
-                    .area_scale_to_square_meters
-                    .unwrap_or(units.linear_scale_to_meters.powi(2));
+                let declared_scale = match parcel.declared_area_unit.as_deref() {
+                    Some(unit) => match area_scale(unit) {
+                        Ok(scale) => scale,
+                        Err(_) => return Ok(preserved(parcel, "unsupported parcel area unit")),
+                    },
+                    None => document
+                        .area_scale_to_square_meters
+                        .unwrap_or(units.linear_scale_to_meters.powi(2)),
+                };
                 if !declared_scale.is_finite() || declared_scale <= 0.0 {
                     return Ok(preserved(parcel, "invalid declared area unit scale"));
                 }

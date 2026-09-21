@@ -6,16 +6,18 @@
 //! of `parquet_optimized.rs` (issue #5128) so the route stays under the
 //! module-size ratchet once it gains a `?sha256=` probe of its own — the same
 //! reason the flat route's replay lives in `cached_replay.rs` rather than in
-//! `parquet_stream.rs`.
+//! `parquet_stream.rs`. [`replay_optimized_by_client_hash`] IS that probe.
 //!
 //! Everything here is `pub(super)`: only `parquet_optimized.rs` and its
 //! siblings under `routes::parse` need it.
 
 use super::cache_keys::{
-    data_model_cache_key, has_cached_symbolic, has_current_data_model, parquet_optimized_cache_key,
+    cache_key_from_parts, data_model_cache_key, has_cached_symbolic, has_current_data_model,
+    has_optimized_metadata, is_file_digest, not_a_file_digest, parquet_optimized_cache_key,
     parquet_optimized_metadata_cache_key,
 };
 use super::parquet::DataModelStats;
+use super::ParseQuery;
 use crate::error::ApiError;
 use crate::services::OptimizedStats;
 use crate::types::{ModelMetadata, ProcessingStats};
@@ -25,7 +27,7 @@ use axum::{
     http::{header, StatusCode},
     response::Response,
 };
-use ifc_lite_processing::MeshCoordinateSpace;
+use ifc_lite_processing::{MeshCoordinateSpace, TessellationQuality};
 use serde::Serialize;
 
 /// Response header containing metadata for optimized Parquet response.
@@ -166,6 +168,74 @@ pub(super) async fn cache_data_model(state: &AppState, cache_key: &str, bytes: &
     } else {
         tracing::info!(cache_key = %key, size = bytes.len(), "Data model cached from optimized route");
     }
+}
+
+/// Serve `POST /api/v1/parse/parquet/optimized` from a client-supplied file
+/// hash, with no request body at all (issue #5128), the same contract the
+/// flat route's `?sha256=` probe has (issue #3901):
+/// [`cached_replay::replay_by_client_hash`].
+///
+/// The optimized key ignores `parquet_layout` -- unlike the flat route, this
+/// route has only ever emitted one payload shape, so there is no second
+/// namespace to select between.
+///
+/// The hash SELECTS; it never asserts. A miss answers `404` and runs no
+/// parse, so a probe cannot become a way to make the server do work for a
+/// body it never received.
+///
+/// A MISS costs no admission slot: the gates below are three small reads
+/// (symbolic sidecar, optimized metadata, and the data model, #5129), cheaper
+/// than queueing for a slot only to fail the actual lookup. Without the
+/// data-model gate here, a probe for an entry warmed before #5129 (geometry
+/// and symbolic present, no data model) would still take an admission slot,
+/// only to be refused anyway by the same gate inside
+/// `try_cached_optimized_parquet` -- charging a slot for a lookup already
+/// known to fail. A HIT takes a slot around the cache read
+/// (`try_cached_optimized_parquet` reads the whole body into memory), dropped
+/// before the response goes out.
+///
+/// [`cached_replay::replay_by_client_hash`]: super::cached_replay::replay_by_client_hash
+pub(super) async fn replay_optimized_by_client_hash(
+    state: &AppState,
+    query: &ParseQuery,
+    quality: TessellationQuality,
+    sha256: &str,
+) -> Result<Response, ApiError> {
+    if !is_file_digest(sha256) {
+        return Err(not_a_file_digest(sha256));
+    }
+    let cache_key = cache_key_from_parts(sha256, query.opening_filter, quality);
+
+    let hit = if has_optimized_metadata(&state.cache, &cache_key).await
+        && has_cached_symbolic(&state.cache, &cache_key).await
+        && has_current_data_model(&state.cache, &cache_key).await
+    {
+        let admission_guard = state
+            .admission
+            .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
+            .await?;
+        let hit = try_cached_optimized_parquet(state, &cache_key).await;
+        drop(admission_guard);
+        hit?
+    } else {
+        None
+    };
+
+    if let Some(response) = hit {
+        tracing::info!(
+            cache_key = %cache_key,
+            "Optimized Parquet cache HIT by client-supplied hash - no upload"
+        );
+        return Ok(response);
+    }
+
+    tracing::debug!(
+        cache_key = %cache_key,
+        "Hash-only optimized-Parquet request has nothing cached; asking the client to upload"
+    );
+    Err(ApiError::NotFound(format!(
+        "Nothing cached for sha256 {sha256} under this opening_filter / tessellation_quality. Resend the request with the multipart file body."
+    )))
 }
 
 /// Write the optimized body and then its metadata, stopping at the first

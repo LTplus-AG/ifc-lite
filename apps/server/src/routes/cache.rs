@@ -15,20 +15,40 @@ use axum::{
 use serde::Serialize;
 
 /// GET /api/v1/cache/:key - Retrieve cached result.
+///
+/// Every parse route's response entry is JSON, EXCEPT the binary Parquet
+/// routes' bodies (`-parquet-v5`, `-parquet-v6`, `-parquet-optimized-v1`),
+/// which this route was never meant to serve. Before #5128 it deserialized
+/// whatever it read as `ParseResponse` unconditionally: a client that found
+/// one of those keys some other way (e.g. from an `X-IFC-Metadata`
+/// `cache_key`, guessed at a suffix) got a `500` from `serde_json` refusing
+/// non-JSON bytes, on a key that genuinely exists. Reading the bytes directly
+/// (rather than through `DiskCache::get`, whose `?` cannot tell that failure
+/// apart from a real I/O error) keeps a decode failure a `404` -- the answer
+/// this route already gives for a key that was never written -- while an
+/// actual cache-store error still surfaces as `500`.
 pub async fn get_cached(
     State(state): State<AppState>,
     Path(key): Path<String>,
 ) -> Result<Json<ParseResponse>, ApiError> {
     tracing::debug!(key = %key, "Cache lookup");
 
-    match state.cache.get::<ParseResponse>(&key).await? {
-        Some(mut response) => {
+    let bytes = match state.cache.get_bytes(&key).await? {
+        Some(bytes) => bytes,
+        None => {
+            tracing::debug!(key = %key, "Cache MISS");
+            return Err(ApiError::NotFound(format!("Cache key not found: {}", key)));
+        }
+    };
+
+    match serde_json::from_slice::<ParseResponse>(&bytes) {
+        Ok(mut response) => {
             response.stats.from_cache = true;
             tracing::info!(key = %key, "Cache HIT");
             Ok(Json(response))
         }
-        None => {
-            tracing::debug!(key = %key, "Cache MISS");
+        Err(e) => {
+            tracing::warn!(error = %e, key = %key, "Cache entry is not a ParseResponse; answering 404");
             Err(ApiError::NotFound(format!("Cache key not found: {}", key)))
         }
     }
@@ -90,3 +110,7 @@ pub async fn delete_cached(
 #[cfg(test)]
 #[path = "cache_delete_tests.rs"]
 mod cache_delete_tests;
+
+#[cfg(test)]
+#[path = "cache_get_tests.rs"]
+mod cache_get_tests;

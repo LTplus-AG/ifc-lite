@@ -527,3 +527,6 @@ async fn the_optimized_serialization_runs_off_the_async_worker() {
     let symbolic = threads_that_logged(SYMBOLIC_CACHED, &symbolic_cache_key(&cache_key));
     assert_off_the_worker(&symbolic, "the symbolic sidecar encode");
 }
+
+#[path = "parquet_optimized_hash_only_tests.rs"]
+mod hash_only;

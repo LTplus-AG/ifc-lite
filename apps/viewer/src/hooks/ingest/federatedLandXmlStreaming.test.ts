@@ -289,7 +289,7 @@ describe('federated LandXML streaming plan (#5050)', () => {
     anchor.geometryResult = {
       meshes: [], totalVertices: 0, totalTriangles: 0,
       coordinateInfo: {
-        originShift: { x: 0, y: 0, z: 0 },
+        originShift: { x: 2_600_000, y: 400, z: -1_200_000 },
         originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
         shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
         hasLargeCoordinates: true,
@@ -306,7 +306,7 @@ describe('federated LandXML streaming plan (#5050)', () => {
       // Unknown-CRS inputs preserve their semantics but adopt the frozen anchor
       // frame. Give the raw cursor mesh that frame's absolute origin so the
       // retained component itself lands at x=1000 in renderer coordinates.
-      raw.origin = [2_600_000, 400, -1_200_000];
+      raw.origin = [5_200_000, 800, -2_400_000];
       return raw;
     };
     await plan.measure(admitted());
@@ -320,7 +320,11 @@ describe('federated LandXML streaming plan (#5050)', () => {
     assert.deepEqual(geometry.coordinateInfo.shiftedBounds, {
       min: { x: 1_000, y: 0, z: 0 }, max: { x: 1_001, y: 1, z: 0 },
     }, 'the loaded terrain, not the anchor, supplies its model bounds');
-    assert.deepEqual(geometry.coordinateInfo.originalBounds, geometry.coordinateInfo.shiftedBounds);
+    assert.deepEqual(geometry.coordinateInfo.originalBounds, {
+      min: { x: 2_601_000, y: 400, z: -1_200_000 },
+      max: { x: 2_601_001, y: 401, z: -1_200_000 },
+    }, 'the retained bounds use the anchor origin shift exactly once');
+    assert.notDeepEqual(geometry.coordinateInfo.originalBounds, geometry.coordinateInfo.shiftedBounds);
     assert.deepEqual(geometry.coordinateInfo.originShift, anchor.geometryResult.coordinateInfo.originShift);
     assert.deepEqual(geometry.coordinateInfo.wasmRtcOffset, anchor.geometryResult.coordinateInfo.wasmRtcOffset);
   });

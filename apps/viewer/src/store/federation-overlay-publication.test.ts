@@ -61,14 +61,14 @@ describe('mutation overlay federation publication', () => {
     assert.equal(registry.fromGlobalId(103), null, 'previewed IDs remain unpickable before their transaction commits');
     assert.throws(() => registry.toGlobalId('editable', 103), /not published/);
     assert.deepEqual(registry.fromGlobalId(otherOffset + 1), { modelId: 'other', expressId: 1 });
-    const views = new Map([['editable', { getNewEntity: (id: number) => created.some(entity => entity.expressId === id) ? { expressId: id } : null }]]);
-    publishPreparedOverlayRange(registry, models, views, 'editable', created);
-    assert.equal(registry.toGlobalId('editable', 101), 101);
-    assert.equal(registry.toGlobalId('editable', 103), 103);
     assert.throws(
       () => previewPreparedOverlayGlobalId(registry, models, 'editable', [{ expressId: 101 }, { expressId: 103 }], 103),
       /contiguous/,
     );
+    const views = new Map([['editable', { getNewEntity: (id: number) => created.some(entity => entity.expressId === id) ? { expressId: id } : null }]]);
+    publishPreparedOverlayRange(registry, models, views, 'editable', created);
+    assert.equal(registry.toGlobalId('editable', 101), 101);
+    assert.equal(registry.toGlobalId('editable', 103), 103);
   });
 
   it('maps only an exact detached plan range while keeping it unpickable (#5050)', () => {

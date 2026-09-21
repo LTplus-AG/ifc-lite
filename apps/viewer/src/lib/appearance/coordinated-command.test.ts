@@ -81,6 +81,7 @@ it('a second-model federation preflight failure rolls every prepared overlay bac
   const second = f.entries[1]!;
   const getNewEntity = second.view.getNewEntity.bind(second.view);
   mock.method(second.view, 'getNewEntity', (expressId: number) => expressId > second.model.maxExpressId ? null : getNewEntity(expressId));
+  const firstCreated = new Map(f.entries.map(entry => [entry.modelId, entry.view.peekNextExpressId()]));
 
   await assert.rejects(f.commit(), /Committed overlay IDs must remain contiguous and owned/);
   assert.equal(useViewerStore.getState().models, initial.models, 'no grouped model state was published');
@@ -88,8 +89,9 @@ it('a second-model federation preflight failure rolls every prepared overlay bac
   for (const [index, entry] of f.entries.entries()) {
     assert.deepEqual(f.export(entry.modelId), original[index]);
     assert.deepEqual(f.scene.get(entry.globalId)?.parts[0], entry.before, 'the staged GPU texture was cancelled');
-    const firstCreated = entry.view.peekNextExpressId();
-    assert.throws(() => federationRegistry.toGlobalId(entry.modelId, firstCreated), /not published/);
+    const expected = firstCreated.get(entry.modelId)!;
+    assert.equal(entry.view.peekNextExpressId(), expected, 'rollback restored the express-ID cursor');
+    assert.throws(() => federationRegistry.toGlobalId(entry.modelId, expected), /not published/);
   }
 });
 

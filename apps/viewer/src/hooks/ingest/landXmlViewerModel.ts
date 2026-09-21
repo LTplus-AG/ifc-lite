@@ -4,12 +4,10 @@
 
 import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
 import type { LandXmlGeometryPayload, LandXmlGeometryPreflight, LandXmlSourceBuffer, LandXmlStreamedComponent, LandXmlStreamedSkippedComponent, LandXmlStreamedSurfaceDiagnostics } from './landXmlIngest.js';
-import { buildLandXmlStreamedPipeComponents, completeLandXmlStreamedGeometry, parseLandXmlGeometry, preflightLandXmlGeometry } from './landXmlIngest.js';
+import { buildLandXmlStreamedPipeComponents, completeLandXmlStreamedGeometry, parseLandXmlGeometry } from './landXmlIngest.js';
 import { parseLandXmlSourceInCurrentRealm, readLandXmlSourceDocument } from './landXmlWasm.js';
-import { parseLandXmlSourceBlobWithApi } from './landXmlBlobCursor.js';
+import { parseLandXmlBlobInCurrentRealm } from './landXmlBlobLocalCompletion.js';
 import { LandXmlStreamDocumentAssembler, type LandXmlAssembledSourceDocument } from './landXmlStreamAssembler.js';
-import { initLandXmlWasm } from './landXmlWasmInit.js';
-import { IfcAPI } from '@ifc-lite/wasm';
 import { spatialMetadataFromLandXml, spatialReferenceFromSourceMetadata } from './sourceSpatialReference.js';
 import type { CoordinateInfo, ModelSpatialReference, MeshData } from '@ifc-lite/geometry';
 import type { LandXmlPreflightComponent } from './landXmlStreamPreflight.js';
@@ -126,23 +124,17 @@ export function parseLandXmlViewerModelFromBlobAsync(
 ): Promise<LandXmlViewerModel> {
   if (typeof Worker === 'undefined') {
     if (!isCurrent()) return Promise.reject(new Error('LandXML parsing cancelled'));
-    return initLandXmlWasm().then(async () => {
-      const api = new IfcAPI();
-      try {
-        const preflight = preflightLandXmlGeometry(await parseLandXmlSourceBlobWithApi(api, file, {
-          isCurrent,
-          onProgress: (loadedBytes, totalBytes) => onProgress?.(loadedBytes, totalBytes * 2),
-        }));
-        await onPreflight?.(preflight);
-        const parsed = await parseLandXmlSourceBlobWithApi(api, file, {
-          isCurrent,
-          onProgress: (loadedBytes, totalBytes) => onProgress?.(totalBytes + loadedBytes, totalBytes * 2),
-        });
-        return attachSyntheticStore(parseLandXmlGeometry(parsed, preflight), file.size);
-      } finally {
-        api.free();
-      }
-    });
+    return parseLandXmlBlobInCurrentRealm(file, isCurrent, {
+      onProgress,
+      onPreflight,
+      onComponent,
+      onFederatedPreflight,
+      onPreflightComponent,
+      onPreflightComplete,
+      onFederatedAdmissionComponent,
+      onFederatedAdmissionComplete,
+      onSkippedComponent,
+    }).then((payload) => attachSyntheticStore(payload, file.size));
   }
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./landXml.worker.ts', import.meta.url), { type: 'module' });

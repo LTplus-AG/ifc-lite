@@ -434,6 +434,9 @@ fn issue_5161_pipe_preflight_refusal_precedes_its_network_without_reordering_sem
             _ => {}
         }
     }
+    let preflight_refusal = preflight_refusal.expect("cursor-only preflight refusal emitted");
+    let network = network.expect("retained pipe network emitted");
+    let semantic_refusal = semantic_refusal.expect("durable semantic refusal emitted");
     assert!(preflight_refusal < network && network < semantic_refusal);
 }
 

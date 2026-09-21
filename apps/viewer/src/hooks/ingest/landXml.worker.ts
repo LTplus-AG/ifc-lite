@@ -3,12 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import init, { IfcAPI } from '@ifc-lite/wasm';
-import { buildLandXmlSurfaceComponents, parseLandXmlGeometry, type LandXmlGeometryPayload, type LandXmlGeometryPreflight, type LandXmlSourceBuffer, type LandXmlStreamedComponent, type LandXmlStreamedSkippedComponent, type LandXmlStreamedSurfaceDiagnostics, type LandXmlTinDocument } from './landXmlIngest.js';
-import { parseLandXmlSourceWithApi, readLandXmlTinSurface } from './landXmlWasm.js';
-import { streamLandXmlSourceBlobWithApi } from './landXmlBlobCursor.js';
-import { placeComponentsInKnownRenderFrame } from './landXmlRenderFrame.js';
-import { spatialMetadataFromLandXml, spatialReferenceFromSourceMetadata } from './sourceSpatialReference.js';
-import { LandXmlStreamPreflightReducer, type LandXmlPreflightComponent } from './landXmlStreamPreflight.js';
+import {
+  parseLandXmlGeometry, type LandXmlGeometryPayload, type LandXmlGeometryPreflight,
+  type LandXmlSourceBuffer, type LandXmlStreamedComponent,
+} from './landXmlIngest.js';
+import { streamLandXmlBlobWithSink } from './landXmlBlobStreamDriver.js';
+import { parseLandXmlSourceWithApi } from './landXmlWasm.js';
+import type { LandXmlPreflightComponent } from './landXmlStreamPreflight.js';
 
 const workerScope = self as unknown as {
   onmessage: ((event: MessageEvent<LandXmlSourceBuffer | LandXmlBlobWorkerRequest | LandXmlWorkerContinue>) => void) | null;
@@ -35,107 +36,63 @@ function isContinue(value: unknown): value is LandXmlWorkerContinue {
   );
 }
 
+function isBlobRequest(value: unknown): value is LandXmlBlobWorkerRequest {
+  return typeof value === 'object' && value !== null && 'file' in value && (value as { file?: unknown }).file instanceof Blob;
+}
+
 let approvePreflight: ((federatedStreaming: boolean) => void) | null = null;
 let acknowledgeComponent: (() => void) | null = null;
 let acknowledgeSourceEvent: (() => void) | null = null;
 
-function waitForPreflightApproval(preflight: LandXmlGeometryPreflight, emit = true): Promise<boolean> {
-  return new Promise((resolve) => {
-    approvePreflight = resolve;
-    if (emit) workerScope.postMessage({ preflight });
-  });
+function awaitPreflightApproval(): Promise<boolean> {
+  return new Promise((resolve) => { approvePreflight = resolve; });
 }
 
-function waitForComponentUpload(component: LandXmlStreamedComponent): Promise<void> {
+function awaitComponent(message: unknown, transfer?: Transferable[]): Promise<void> {
   return new Promise((resolve) => {
     acknowledgeComponent = resolve;
-    const mesh = component.mesh;
-    workerScope.postMessage({ component }, [mesh.positions.buffer, mesh.normals.buffer, mesh.indices.buffer]);
+    workerScope.postMessage(message, transfer);
   });
 }
 
-/** Consume one reserved source slot without transferring rejected mesh bytes. */
-function waitForSkippedComponent(component: LandXmlStreamedComponent): Promise<void> {
-  return new Promise((resolve) => {
-    acknowledgeComponent = resolve;
-    const skipped: LandXmlStreamedSkippedComponent = {
-      expressId: component.mesh.expressId,
-      ...(component.surfaceSourceId === null ? {} : { surfaceSourceId: component.surfaceSourceId }),
-      ...(component.renderedFaceSourceIds.length === 0 ? {} : { renderedFaceSourceIds: component.renderedFaceSourceIds }),
-    };
-    workerScope.postMessage({ skippedComponent: skipped });
-  });
-}
-
-/** Keep surface diagnostics bounded and credited even when it built no mesh. */
-function waitForSurfaceDiagnostics(diagnostics: LandXmlStreamedSurfaceDiagnostics): Promise<void> {
-  return new Promise((resolve) => {
-    acknowledgeComponent = resolve;
-    workerScope.postMessage({ surfaceDiagnostics: diagnostics });
-  });
-}
-
-function waitForSourceEvent(event: unknown): Promise<void> {
+function awaitSourceEvent(event: unknown): Promise<void> {
   return new Promise((resolve) => {
     acknowledgeSourceEvent = resolve;
     workerScope.postMessage({ sourceEvent: event });
   });
 }
 
-function waitForPreflightComponent(component: LandXmlPreflightComponent): Promise<void> {
-  return new Promise((resolve) => {
-    acknowledgeComponent = resolve;
-    const { mesh } = component;
-    workerScope.postMessage({ preflightComponent: component }, [mesh.positions.buffer, mesh.normals.buffer, mesh.indices.buffer]);
-  });
+function meshTransfer(component: { mesh: LandXmlStreamedComponent['mesh'] | LandXmlPreflightComponent['mesh'] }): Transferable[] {
+  const { mesh } = component;
+  return [mesh.positions.buffer, mesh.normals.buffer, mesh.indices.buffer] as Transferable[];
 }
 
-function waitForFederatedAdmission(component: LandXmlPreflightComponent): Promise<void> {
-  return new Promise((resolve) => {
-    acknowledgeComponent = resolve;
-    const { mesh } = component;
-    workerScope.postMessage({ federatedAdmissionComponent: component }, [mesh.positions.buffer, mesh.normals.buffer, mesh.indices.buffer]);
-  });
-}
-
-function streamUnits(header: unknown): NonNullable<LandXmlTinDocument['units']> | null {
-  if (typeof header !== 'object' || header === null) throw new Error('LandXML stream emitted an invalid header');
-  const units = (header as { units?: unknown }).units;
-  if (units === undefined || units === null) return null;
-  if (typeof units !== 'object') throw new Error('LandXML stream header has invalid Units');
-  const raw = units as {
-    linear_unit?: unknown;
-    elevation_unit?: unknown;
-    linear_scale_to_meters?: unknown;
-    elevation_scale_to_meters?: unknown;
-  };
-  if (typeof raw.linear_unit !== 'string' || typeof raw.elevation_unit !== 'string') {
-    throw new Error('LandXML stream header has invalid unit names');
-  }
-  if (typeof raw.linear_scale_to_meters !== 'number' || !Number.isFinite(raw.linear_scale_to_meters)
-    || typeof raw.elevation_scale_to_meters !== 'number' || !Number.isFinite(raw.elevation_scale_to_meters)) {
-    throw new Error('LandXML stream header has invalid unit scales');
-  }
-  return {
-    linearUnit: raw.linear_unit,
-    elevationUnit: raw.elevation_unit,
-    linearScaleToMeters: raw.linear_scale_to_meters,
-    elevationScaleToMeters: raw.elevation_scale_to_meters,
-  };
-}
-
-function isBlobRequest(value: unknown): value is LandXmlBlobWorkerRequest {
-  return typeof value === 'object' && value !== null && 'file' in value && (value as { file?: unknown }).file instanceof Blob;
-}
-
-function surfaceComponent(component: ReturnType<typeof buildLandXmlSurfaceComponents>['components'][number]): LandXmlStreamedComponent {
-  return {
-    mesh: component.mesh,
-    surfaceName: component.surfaceName,
-    surfaceSourceId: component.surfaceSourceId,
-    pipeSourceId: component.pipeSourceId,
-    renderedFaceSourceIds: component.renderedFaceSourceIds,
-  };
+async function streamBlobRequest(api: IfcAPI, input: LandXmlBlobWorkerRequest): Promise<{
+  preflight: LandXmlGeometryPreflight;
+  droppedPrimaryComponents: number;
+}> {
+  const result = await streamLandXmlBlobWithSink(api, input.file, {
+    onProgress: (loadedBytes, totalBytes) => workerScope.postMessage({ progress: { loadedBytes, totalBytes } }),
+    onPreflight: async (preflight, sourceCoordinateInfo, spatialReference) => {
+      workerScope.postMessage({ preflight, sourceCoordinateInfo, spatialReference });
+      return awaitPreflightApproval();
+    },
+    onPreflightComponent: (component) => awaitComponent({ preflightComponent: component }, meshTransfer(component)),
+    onPreflightComplete: async () => {
+      workerScope.postMessage({ preflightComplete: true });
+      await awaitPreflightApproval();
+    },
+    onFederatedAdmissionComponent: (component) => awaitComponent({ federatedAdmissionComponent: component }, meshTransfer(component)),
+    onFederatedAdmissionComplete: async () => {
+      workerScope.postMessage({ federatedAdmissionComplete: true });
+      await awaitPreflightApproval();
+    },
+    onComponent: (component) => awaitComponent({ component }, meshTransfer(component)),
+    onSkippedComponent: (skippedComponent) => awaitComponent({ skippedComponent }),
+    onSurfaceDiagnostics: (surfaceDiagnostics) => awaitComponent({ surfaceDiagnostics }),
+    onSourceEvent: awaitSourceEvent,
+  }, { wantsFederatedStreaming: input.streamFederatedPreflight === true });
+  return { preflight: result.preflight, droppedPrimaryComponents: result.droppedPrimaryComponents };
 }
 
 workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer | LandXmlBlobWorkerRequest | LandXmlWorkerContinue>): Promise<void> => {
@@ -154,157 +111,24 @@ workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer | LandXml
     return;
   }
   try {
-    // A worker owns a separate WASM instance. Pass the original bytes directly:
-    // ArrayBuffers are transferred by the client and SharedArrayBuffers remain shared.
     await init();
     const api = new IfcAPI();
-    let payload: LandXmlGeometryPayload | null = null;
-    let streamed: { preflight: LandXmlGeometryPreflight; droppedPrimaryComponents: number } | null = null;
     try {
-      const document = isBlobRequest(input)
-        ? await (async () => {
-          // Pass one derives the exact component envelope and canonical
-          // dominant frame while releasing every mesh immediately. Pass two
-          // rebuilds the source against that frozen policy; a mismatch is a
-          // hard failure, never a partially publishable model.
-          const totalPasses = input.streamFederatedPreflight === true ? 4 : 2;
-          const reducer = new LandXmlStreamPreflightReducer();
-          await streamLandXmlSourceBlobWithApi(api, input.file, {
-            onProgress: (loadedBytes, totalBytes) => workerScope.postMessage({ progress: { loadedBytes, totalBytes: totalBytes * totalPasses } }),
-            onHeader: (header) => reducer.onHeader(header),
-            onSurface: (surface) => reducer.onSurface(surface),
-            onEvent: (streamEvent) => reducer.onEvent(streamEvent),
-          });
-          const reduced = reducer.finish();
-          const preflight = reduced.preflight;
-          workerScope.postMessage({
-            preflight,
-            sourceCoordinateInfo: reduced.sourceCoordinateInfo,
-            spatialReference: (() => {
-              const metadata = spatialMetadataFromLandXml({ coordinateSystem: reduced.coordinateSystem });
-              return metadata.horizontalId && metadata.verticalId
-                ? spatialReferenceFromSourceMetadata(metadata)
-                : undefined;
-            })(),
-          });
-          const federatedStreaming = (await waitForPreflightApproval(preflight, false)) && input.streamFederatedPreflight === true;
-          if (!federatedStreaming && input.streamFederatedPreflight === true) {
-            workerScope.postMessage({ progress: { loadedBytes: input.file.size, totalBytes: input.file.size * 2 } });
-          }
-          if (federatedStreaming) {
-            let emitted = 0;
-            const federatedReducer = new LandXmlStreamPreflightReducer(async (component) => {
-              component.mesh.expressId = ++emitted;
-              await waitForPreflightComponent(component);
-            });
-            await streamLandXmlSourceBlobWithApi(api, input.file, {
-              onProgress: (loadedBytes, totalBytes) => workerScope.postMessage({ progress: { loadedBytes: totalBytes + loadedBytes, totalBytes: totalBytes * 4 } }),
-              onHeader: (header) => federatedReducer.onHeader(header),
-              onSurface: (surface) => federatedReducer.onSurface(surface),
-              onEvent: (streamEvent) => federatedReducer.onEvent(streamEvent),
-            });
-            if (federatedReducer.finish().preflight.componentCount !== preflight.componentCount || emitted !== preflight.componentCount) {
-              throw new Error('LandXML federation preflight did not reproduce its component envelope');
-            }
-            workerScope.postMessage({ preflightComplete: true });
-            await new Promise<void>((resolve) => { approvePreflight = () => resolve(); });
-            let admitted = 0;
-            const admissionReducer = new LandXmlStreamPreflightReducer(async (component) => {
-              component.mesh.expressId = ++admitted;
-              await waitForFederatedAdmission(component);
-            });
-            await streamLandXmlSourceBlobWithApi(api, input.file, {
-              onProgress: (loadedBytes, totalBytes) => workerScope.postMessage({ progress: { loadedBytes: (totalBytes * 2) + loadedBytes, totalBytes: totalBytes * 4 } }),
-              onHeader: (header) => admissionReducer.onHeader(header),
-              onSurface: (surface) => admissionReducer.onSurface(surface),
-              onEvent: (streamEvent) => admissionReducer.onEvent(streamEvent),
-            });
-            if (admissionReducer.finish().preflight.componentCount !== preflight.componentCount || admitted !== preflight.componentCount) {
-              throw new Error('LandXML federation admission did not reproduce its component envelope');
-            }
-            workerScope.postMessage({ federatedAdmissionComplete: true });
-            await new Promise<void>((resolve) => { approvePreflight = () => resolve(); });
-          }
-          let units: NonNullable<LandXmlTinDocument['units']> | null = null;
-          let nextLocalId = 1;
-          let retainedPrimaryComponents = 0;
-          let droppedPrimaryComponents = 0;
-          await streamLandXmlSourceBlobWithApi(api, input.file, {
-            onProgress: (loadedBytes, totalBytes) => workerScope.postMessage({
-              progress: federatedStreaming
-                ? { loadedBytes: (totalBytes * 3) + loadedBytes, totalBytes: totalBytes * 4 }
-                : { loadedBytes: totalBytes + loadedBytes, totalBytes: totalBytes * 2 },
-            }),
-            onHeader: (header) => { units = streamUnits(header); },
-            onSurface: async (surface) => {
-              const decodedSurface = readLandXmlTinSurface(surface);
-              // A VOLUME/preserved-only surface remains in the semantic cursor
-              // document but has no numeric geometry to build, so Units are
-              // optional until a genuinely rendered surface reaches this path.
-              if (decodedSurface.renderState !== 'rendered' || !decodedSurface.faceVisibility.some(Boolean)) return;
-              if (units === null) throw new Error('LandXML surface arrived before stream Units');
-              const built = buildLandXmlSurfaceComponents(decodedSurface, units, nextLocalId);
-              await waitForSurfaceDiagnostics({
-                surfaceSourceId: decodedSurface.sourceId,
-                surfaceName: decodedSurface.name,
-                droppedDegenerateFaces: built.droppedDegenerateFaces,
-                droppedPrecisionFaces: built.droppedPrecisionFaces,
-                hasNoRenderableFaces: built.components.length === 0,
-              });
-              if (federatedStreaming) {
-                for (const component of built.components) {
-                  component.mesh.expressId = nextLocalId++;
-                  await waitForComponentUpload(surfaceComponent(component));
-                }
-              } else {
-                const placed = placeComponentsInKnownRenderFrame(built.components, preflight.frame ?? { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false }, []);
-                const placedComponents = new Set(placed.placed);
-                for (const component of built.components) {
-                  component.mesh.expressId = nextLocalId++;
-                  if (placedComponents.has(component)) {
-                    retainedPrimaryComponents++;
-                    await waitForComponentUpload(surfaceComponent(component));
-                  } else {
-                    droppedPrimaryComponents++;
-                    await waitForSkippedComponent(surfaceComponent(component));
-                  }
-                }
-              }
-            },
-            onEvent: waitForSourceEvent,
-          });
-          if (!federatedStreaming && preflight.componentCount > 0 && nextLocalId - 1 === preflight.componentCount && retainedPrimaryComponents === 0) {
-            throw new Error('LandXML primary preflight rejected every render component');
-          }
-          return { kind: 'blob' as const, preflight, droppedPrimaryComponents };
-        })()
-        // TODO(remove-by: #5050 completion, owner: LandXML)
-        // Buffer callers are retained only for the test/legacy compatibility
-        // adapter; the canonical loadFile LandXML path sends a Blob request.
-        : { kind: 'buffer' as const, document: parseLandXmlSourceWithApi(api, input) };
-      if (document.kind === 'blob') streamed = document;
-      else payload = parseLandXmlGeometry(document.document);
-    } finally {
-      api.free();
-    }
-    if (streamed !== null) {
-      // Components were transferred and acknowledged one at a time. The
-      // terminal message is semantic-only: never rebuild and retransmit every
-      // positions/normals/indices buffer as a complete payload.
-      workerScope.postMessage({ ok: true, streamed });
-    } else if (payload !== null) {
+      if (isBlobRequest(input)) {
+        const streamed = await streamBlobRequest(api, input);
+        workerScope.postMessage({ ok: true, streamed });
+        return;
+      }
+      const payload: LandXmlGeometryPayload = parseLandXmlGeometry(parseLandXmlSourceWithApi(api, input));
       const transfer: Transferable[] = [];
       for (const mesh of payload.geometryResult.meshes) {
         transfer.push(mesh.positions.buffer, mesh.normals.buffer, mesh.indices.buffer);
       }
       workerScope.postMessage({ ok: true, payload } satisfies { ok: true; payload: LandXmlGeometryPayload }, transfer);
-    } else {
-      throw new Error('LandXML worker completed without a result');
+    } finally {
+      api.free();
     }
   } catch (error) {
-    workerScope.postMessage({
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    workerScope.postMessage({ ok: false, error: error instanceof Error ? error.message : String(error) });
   }
 };

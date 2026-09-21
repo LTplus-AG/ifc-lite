@@ -26,14 +26,16 @@ it('keeps successive detached assignment batches virtual until their coordinated
   assert.deepEqual(ledger.get('editable')?.map(row => row.expressId), [101, 102, 103, 104]);
   assert.deepEqual(ledger.get('other')?.map(row => row.expressId), [51]);
   const registry = new FederationRegistry();
+  registry.registerModel('prior', 50);
   registry.registerModel('editable', 100);
   const state = {
-    models: new Map([['editable', { maxExpressId: 100 }]]),
+    models: new Map([['prior', { maxExpressId: 50 }], ['editable', { maxExpressId: 100 }]]),
     mutationViews: new Map([['editable', { getNewEntity: () => null }]]),
   };
+  const offset = registry.getOffset('editable')!;
   for (const expressId of [101, 104]) {
-    assert.equal(toPreparedOverlayGlobalId(registry, state, 'editable', ledger.get('editable')!, expressId), expressId);
-    assert.equal(registry.fromGlobalId(expressId), null, `detached batch #${expressId} remains unpickable`);
+    assert.equal(toPreparedOverlayGlobalId(registry, state, 'editable', ledger.get('editable')!, expressId), offset + expressId);
+    assert.equal(registry.fromGlobalId(offset + expressId), null, `detached batch #${expressId} remains unpickable`);
     assert.throws(() => registry.toGlobalId('editable', expressId), /not published/);
   }
   assert.throws(

@@ -281,6 +281,10 @@ export function runLandXmlContracts(api, test) {
   test('LandXML alignment WASM contract tags refused spirals and exposes authored inspection', () => {
     const source = api.parseLandXmlSourceBytes(new TextEncoder().encode(ALIGNMENT_XML));
     const alignment = source.alignments.alignments[0];
+    assert.equal('profile_source_ids' in alignment, false, 'full alignment must not claim terrain-summary linkage fields');
+    assert.equal('cross_section_source_ids' in alignment, false, 'full alignment must not claim terrain-summary linkage fields');
+    assert.ok(Array.isArray(source.tin.alignments[0].profile_source_ids), 'terrain summary retains profile linkage');
+    assert.ok(Array.isArray(source.tin.alignments[0].cross_section_source_ids), 'terrain summary retains cross-section linkage');
     assert.equal(alignment.unsupported_transitions[0].spiral.spi_type, 'bloss');
     assert.equal(alignment.segments[1].primitive.kind, 'unsupported_spiral');
     assert.equal(alignment.cant.stations[0].applied_cant, 2);

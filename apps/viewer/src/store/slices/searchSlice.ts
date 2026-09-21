@@ -23,7 +23,7 @@
 import type { StateCreator } from 'zustand';
 import type { Tier1Index } from '@/lib/search/tier1-index';
 import type { SearchResult, MatchField } from '@/lib/search/tier0-scan';
-import type { FilterRule, Combinator } from '@/lib/search/filter-rules';
+import type { FilterRule } from '@/lib/search/filter-rules';
 import { emptyFilterGroup, type FilterGroup } from '@/lib/search/filter-groups';
 import type { FilterSchema, PsetQtoSchema, FilterValueSchema } from '@/lib/search/filter-schema';
 import { clampGroupIndex, createFilterGroupActions } from './searchSlice.filterGroups.js';
@@ -205,8 +205,6 @@ export interface SearchSlice {
   setSearchFilter: (state: SearchFilterStateValue) => void;
   /** Arm/disarm the "auto-run on next Filter render" flag. */
   setSearchFilterAutoRunPending: (pending: boolean) => void;
-  /** AND/OR toggle for the ACTIVE group only — other groups keep their own. */
-  setFilterCombinator: (combinator: Combinator) => void;
   setFilterLimit: (limit: number) => void;
   /** Add a rule to the ACTIVE group. */
   addFilterRule: (rule: FilterRule) => void;
@@ -220,14 +218,9 @@ export interface SearchSlice {
   /** Drop EVERY group back to one empty AND group — what a caller with no
    *  per-group UI context (the inline toolbar's "Clear filters") uses. */
   clearAllFilterGroups: () => void;
-  /** Append a new empty AND group (the selector's `+`, or the builder's "Add
-   *  group" button) and make it the active one. */
-  addFilterGroup: () => void;
-  /** Remove group `index`. Refuses to drop the last remaining group — a
-   *  filter always has at least one, even if it is empty. Clamps the active
-   *  group index afterward. */
-  removeFilterGroup: (index: number) => void;
-  /** Switch which group the rule-editing actions above target. */
+  /** Switch which group the rule-editing actions above target. `FilterGroupEditor.tsx`
+   *  (#5138 PR 5) owns adding/removing groups itself, through its controlled
+   *  `onChange` updater — this store only tracks which one is active. */
   setActiveFilterGroup: (index: number) => void;
 
   // ── Schema cache actions ──────────────────────────────────────────

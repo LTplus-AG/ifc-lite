@@ -171,6 +171,7 @@ and cannot close #4937. Fetch the relevant byte with `pnpm fixtures <path>`.
 | [3D-Win 6.6.4 CgPoints, GK21 EPSG:3875](https://github.com/buildingSMART-Finland/InfraModel/blob/eb2720b8b909d44f18ee4f84acfb113322405a87/examples/M3_Road/3300_Lighting/Lightning_columns.xy.xml) | `1adfefa81f5e7593be530ae0189348a9d877e3674094122a4c978694eeef92e1` | 7,417 |
 | [Aplitop MDT 8.0 alignment/profile](https://github.com/bSI-InfraRoom/IFC-infra-unit-test/blob/bc13603cc4899084edbf9f1d9151443a7fb4cf0e/Alignment-Aplitop-1/UT-Alignment-Aplitop-1.xml) | `895b0932fcc887685eb766f9be47bf3fb21be716c47bf8071494af321be7ac16` | 5,491 |
 | [OpenRoads Designer 10.09 US-survey-foot alignment/profile](https://github.com/bSI-InfraRoom/IFC-infra-unit-test/blob/bc13603cc4899084edbf9f1d9151443a7fb4cf0e/Alignment-INDOT/PR_Twin_Branch_section_alignment.xml) | `57b37fdb3d63a1cfebd2af14646c60f78d566b2908b21b91ea5d411f7eb50740` | 2,487 |
+| [Autodesk Civil 3D 2020 LandXML 1.2 international-foot TIN](https://github.com/lekks/tin2dem/blob/77ad81524567cce95dac4e7f5ad01aa51f1162f3/black-box-test/input/cplx_test.xml) | `a81c280d182c941b675cdf412a2e0e4c88813d6403a171308690f6678119a9d4` | 15,772 |
 | [Trimble Novapoint 21.354 drainage PipeNetworks, EPSG:3878](https://github.com/bSI-InfraRoom/IFC-infra-unit-test/blob/bc13603cc4899084edbf9f1d9151443a7fb4cf0e/DrainageSystem-1/DrainageSystem-1-1.xml) | `bf13d686b9ce69a83d52d5f7ae8afb0746f1b0c4b43ca94a46f59c7725bc7de6` | 13,446 |
 | [bonsai-topo control-v1 LandXML terrain/CgPoints, EPSG:3006 + EPSG:5613](https://github.com/louistrue/openBIM-surveyor/blob/db5d60f98daf7937529e49dd6463ef2566da7e97/fixtures/ifc-lite-control/terrain.xml) | `e0d3c11ce5ea61e98482f6b22b051da91cfc3abcf5e75989f9110f700323ea10` | 1,766 |
 
@@ -181,17 +182,31 @@ The corpus deliberately records the current capability honestly: canonical
 Aplitop and OpenRoads roots retain their declared units but their
 alignment/profile payload is unsupported by the present TIN-only parser;
 InfraModel namespace rows are refused rather than partially interpreted.
-This does not certify successful alignment, terrain, CgPoints, or PipeNetworks
-interchange.
+This does not certify successful alignment, CgPoints, or PipeNetworks
+interchange. The Civil 3D 2020 source is a repository black-box test fixture
+under the root MIT grant; it is recorded as a generic test surface, not as a
+customer deliverable or vendor conformance certification.
 
 The CC0 `bonsai-topo-control-v1` catalogue group supplies an IFC4X3 terrain,
 LandXML 1.2 TIN/CgPoints, XYZ survey and five independently stated projected
 controls at 1 mm tolerance. Its three model files must still pass the viewer's
 canonical multi-model load path before the controlled-federation acceptance row
-is considered proven. Civil 3D 1.0/1.1/1.2 (including international-foot) and
-a TBC-native export remain held. The public RustedGeom examples cannot become vendor
+is considered proven. Civil 3D 1.0/1.1 and a TBC-native export remain held.
+Civil 3D 1.2 international-foot terrain is covered; no rights-clear,
+non-customer 1.0 or 1.1 candidate was found. The public RustedGeom examples cannot become vendor
 conformance evidence without an author/rights-holder attestation; no customer
 or forum upload may substitute for that grant.
+
+The remaining #5051 rows are deliberately documented as unproven rather than
+backfilled with plausible-looking bytes. `nathancrews/LandXML2glTF` carries an
+Apache-2.0 root grant and a Civil 3D 2007 LandXML 1.1 foot file, but its
+`Project name="Partridge"` / parcel payload has no separate no-customer-data
+attestation, so it is excluded. Exhaustive public-code searches found no
+rights-clear Civil 3D 1.0 export. The only located TBC-native surface export
+is an Autodesk Community forum attachment (TBC 32.0.7286.17026; SourceData,
+DataPoints, and Breaklines); the attachment has no redistribution grant and
+is retained only as an uncommitted local compatibility diagnostic. It does
+not satisfy the mandatory TBC producer row.
 
 Historical LandXML XSDs are provenance-only until their original redistribution
 terms are verified. They are not vendored or uploaded to the fixture release:

@@ -137,6 +137,22 @@ fn issue_5051_canonical_producers_refuse_non_tin_exports_without_inventing_geome
 }
 
 #[test]
+fn issue_5051_civil3d_2020_international_foot_tin_preserves_source_and_definition() {
+    let path = "landxml/producers/autodesk-civil3d-2020-international-foot-tin.xml";
+    let Some(bytes) = fixture(path) else {
+        return;
+    };
+    assert!(contains_ascii(&bytes, r#"name="Autodesk Civil 3D""#));
+    assert!(contains_ascii(&bytes, r#"version="2020""#));
+    assert!(contains_ascii(&bytes, r#"linearUnit="foot""#));
+    let document = parse_landxml_tin(&bytes).expect("Civil 3D LandXML 1.2 TIN must parse");
+    let surface = document.surfaces.first().expect("Civil 3D source must retain its surface");
+    assert!(!surface.points.is_empty(), "Pnts must not be fabricated away");
+    assert!(!surface.faces.is_empty(), "Faces must not be fabricated away");
+    assert!(document.capabilities.renderable_tin, "the recorded TIN must remain renderable");
+}
+
+#[test]
 fn issue_5051_inframodel_producers_are_refused_before_the_profile_is_interpreted() {
     let cases = [
         (

@@ -744,6 +744,20 @@
       "feature_inventory": [{ "feature": "alignment, profile, lines, and curves", "expected_capability": "unsupported" }]
     },
     {
+      "path": "landxml/producers/autodesk-civil3d-2020-international-foot-tin.xml",
+      "sha256": "a81c280d182c941b675cdf412a2e0e4c88813d6403a171308690f6678119a9d4",
+      "size": 15772,
+      "provenance": {
+        "source": { "blob_url": "https://github.com/lekks/tin2dem/blob/77ad81524567cce95dac4e7f5ad01aa51f1162f3/black-box-test/input/cplx_test.xml", "commit": "77ad81524567cce95dac4e7f5ad01aa51f1162f3", "sha256": "a81c280d182c941b675cdf412a2e0e4c88813d6403a171308690f6678119a9d4", "fetched_at": "2026-09-21" },
+        "license": { "spdx": "MIT", "url": "https://github.com/lekks/tin2dem/blob/77ad81524567cce95dac4e7f5ad01aa51f1162f3/LICENSE", "attribution": "Alexey Dolinenko, tin2dem contributors" },
+        "modification": { "status": "unmodified" },
+        "no_customer_data": true
+      },
+      "producer": { "name": "Autodesk Civil 3D", "version": "2020", "export_settings": "LandXML 1.2 international-foot surface test export with SourceData breaklines and Definition Pnts/Faces" },
+      "landxml": { "schema": "LandXML 1.2", "namespace": "http://www.landxml.org/schema/LandXML-1.2", "units": "international foot", "crs": "not-declared" },
+      "feature_inventory": [{ "feature": "TIN SourceData Breaklines and Definition Pnts/Faces", "expected_capability": "rendered" }]
+    },
+    {
       "path": "landxml/producers/trimble-novapoint-21.354-drainage.xml",
       "sha256": "bf13d686b9ce69a83d52d5f7ae8afb0746f1b0c4b43ca94a46f59c7725bc7de6",
       "size": 13446,

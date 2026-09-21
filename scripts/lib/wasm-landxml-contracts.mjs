@@ -98,6 +98,15 @@ const CURVE_MULTI_LOOP_CASES = [
   ['disjoint', '<Line><Start>2 2</Start><End>3 2</End></Line><Line><Start>3 2</Start><End>2 3</End></Line><Line><Start>2 3</Start><End>2 2</End></Line>'],
 ];
 
+function singleLoopCurveXml(boundary) {
+  return `<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><Parcels><Parcel><CoordGeom>${boundary}</CoordGeom></Parcel></Parcels></LandXML>`;
+}
+
+const CURVE_IRREGULAR_CASES = [
+  ['crossing', '<Curve rot="ccw" radius="1"><Start>0 1</Start><Center>0 0</Center><End>0 -1</End></Curve><IrregularLine><Start>0 -1</Start><PntList2D>-2 -1 -2 2 0.0490774878622835 0.9989952152964134 0.04895800097771826 0.9986005979070239</PntList2D><End>0 1</End></IrregularLine>'],
+  ['near-miss', '<Curve rot="ccw" radius="1"><Start>0 1</Start><Center>0 0</Center><End>0 -1</End></Curve><IrregularLine><Start>0 -1</Start><PntList2D>-2 -1 -2 2 -0.1 1.1</PntList2D><End>0 1</End></IrregularLine>'],
+];
+
 function utf16Le(text) {
   const output = new Uint8Array(2 + text.length * 2);
   output.set([0xff, 0xfe]);
@@ -214,6 +223,21 @@ export function runLandXmlContracts(api, test) {
         kind: 'preserved_only', reason: 'multi-loop boundary with curves',
       }, `${name} cannot be inferred from sampled curve chords`);
     }
+  });
+
+  test('LandXML real-WASM limits single-loop curve fills to an arc and closing line (#5046)', () => {
+    for (const [name, boundary] of CURVE_IRREGULAR_CASES) {
+      const document = api.parseLandXmlTinBytes(new TextEncoder().encode(singleLoopCurveXml(boundary)));
+      const probe = document.plan.parcel_probes[0];
+      assert.deepEqual(probe.state, {
+        kind: 'preserved_only', reason: 'unsupported curved boundary topology',
+      }, `${name} irregular curve topology stays source-preserved`);
+      assert.equal(probe.area_in_declared_square_units, undefined);
+      assert.equal(probe.perimeter_in_declared_linear_units, undefined);
+    }
+    const reversed = '<Line><Start>0 1</Start><End>0 -1</End></Line><Curve rot="cw" radius="1"><Start>0 -1</Start><Center>0 0</Center><End>0 1</End></Curve>';
+    const document = api.parseLandXmlTinBytes(new TextEncoder().encode(singleLoopCurveXml(reversed)));
+    assert.deepEqual(document.plan.parcel_probes[0].state, { kind: 'analytic' }, 'reversed arc-plus-chord order remains analytic');
   });
 
   test('LandXML raw-byte parser preserves stable diagnostics', () => {

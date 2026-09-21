@@ -307,6 +307,9 @@ fn probe_parcel_with_work<W: ParcelProbeWork>(
     let mut twice_area = 0.0;
     let mut all_segments = Vec::new();
     for loop_geometry in &parcel.loops {
+        if !supports_analytic_curve_loop(loop_geometry) {
+            return Ok(preserved(parcel, "unsupported curved boundary topology"));
+        }
         let Some(loop_probe) = probe_loop(document, loop_geometry, work)? else {
             return Ok(preserved(parcel, "open or unresolved boundary"));
         };
@@ -357,6 +360,24 @@ fn probe_parcel_with_work<W: ParcelProbeWork>(
     })
 }
 
+/// Curved parcel measurement is exact only for a circular arc and its one
+/// straight closing chord. An `IrregularLine` may expand to arbitrary segments
+/// that sampled curve edges cannot validate, so it is intentionally never a
+/// fill-capable companion to a curve. Resolved endpoint continuity is checked
+/// by `probe_loop`, which accepts either authored record order/direction.
+fn supports_analytic_curve_loop(geometry: &[LandXmlPlanGeometry]) -> bool {
+    let curve_count = geometry
+        .iter()
+        .filter(|item| item.kind == super::LandXmlGeometryKind::Curve)
+        .count();
+    curve_count == 0
+        || (geometry.len() == 2
+            && curve_count == 1
+            && geometry
+                .iter()
+                .any(|item| item.kind == super::LandXmlGeometryKind::Line))
+}
+
 struct LoopProbe {
     perimeter: f64,
     twice_area: f64,
@@ -383,16 +404,6 @@ fn probe_loop<W: ParcelProbeWork>(
     geometry: &[LandXmlPlanGeometry],
     work: &mut W,
 ) -> std::result::Result<Option<LoopProbe>, crate::LandXmlError> {
-    // A full curve/curve intersection solver belongs in the future renderer
-    // adapter. Until then, only a single analytic arc plus its closing chord
-    // receives a fill-capable probe; richer curved loops stay preserved-only.
-    let curve_count = geometry
-        .iter()
-        .filter(|item| item.kind == super::LandXmlGeometryKind::Curve)
-        .count();
-    if curve_count > 1 || (curve_count == 1 && geometry.len() > 2) {
-        return Ok(None);
-    }
     let mut segments = Vec::with_capacity(geometry.len());
     let mut perimeter = 0.0;
     let mut twice_area = 0.0;

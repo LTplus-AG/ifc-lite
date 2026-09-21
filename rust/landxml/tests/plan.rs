@@ -871,6 +871,47 @@ fn issue_5046_never_fabricates_multi_loop_curve_topology_from_sampled_chords() {
 }
 
 #[test]
+fn issue_5046_limits_single_loop_curve_fills_to_an_arc_and_closing_line() {
+    let cases = [
+        (
+            "crossing irregular line",
+            r#"<Curve rot="ccw" radius="1"><Start>0 1</Start><Center>0 0</Center><End>0 -1</End></Curve><IrregularLine><Start>0 -1</Start><PntList2D>-2 -1 -2 2 0.0490774878622835 0.9989952152964134 0.04895800097771826 0.9986005979070239</PntList2D><End>0 1</End></IrregularLine>"#,
+        ),
+        (
+            "near-miss irregular line",
+            r#"<Curve rot="ccw" radius="1"><Start>0 1</Start><Center>0 0</Center><End>0 -1</End></Curve><IrregularLine><Start>0 -1</Start><PntList2D>-2 -1 -2 2 -0.1 1.1</PntList2D><End>0 1</End></IrregularLine>"#,
+        ),
+    ];
+    for (name, boundary) in cases {
+        let parsed = parse(&document(&format!(
+            "<Parcels><Parcel><CoordGeom>{boundary}</CoordGeom></Parcel></Parcels>"
+        )));
+        let probe = parsed.probe_parcel(&parsed.parcels[0]);
+        assert_eq!(
+            probe.state,
+            LandXmlParcelState::PreservedOnly {
+                reason: "unsupported curved boundary topology".to_owned(),
+            },
+            "{name} must not use sampled curve chords as topology evidence"
+        );
+        assert_eq!(probe.area_in_declared_square_units, None);
+        assert_eq!(probe.perimeter_in_declared_linear_units, None);
+    }
+
+    let reversed = parse(&document(
+        r#"<Parcels><Parcel><CoordGeom>
+          <Line><Start>0 1</Start><End>0 -1</End></Line>
+          <Curve rot="cw" radius="1"><Start>0 -1</Start><Center>0 0</Center><End>0 1</End></Curve>
+        </CoordGeom></Parcel></Parcels>"#,
+    ));
+    assert_eq!(
+        reversed.probe_parcel(&reversed.parcels[0]).state,
+        LandXmlParcelState::Analytic,
+        "the exact arc-plus-chord loop accepts reversed authored order"
+    );
+}
+
+#[test]
 fn issue_5046_deserialized_reference_index_is_polled_once_and_retained() {
     let mut points = String::from("<CgPoints>");
     for ordinal in 0..100_000 {

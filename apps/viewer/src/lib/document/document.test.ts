@@ -19,7 +19,7 @@ import { largestBucketIds } from '../charts/buckets.js';
 import { generateDocumentPdf, topicLines, type DocumentPdfSeams } from './generate-document-pdf.js';
 import { parseDocumentFile } from './persistence.js';
 import { blankDocument, coverSheetDocument } from './presets.js';
-import { DOCUMENT_VERSION, TABLE_ROWS_MAX, listCopyForDocument, validateDocumentSpec, type DocumentSpec, type TableBlock } from './types.js';
+import { DOCUMENT_VERSION, validateDocumentSpec, type DocumentSpec, type TableBlock } from './types.js';
 import { elementsDataset } from '@ifc-lite/charts';
 import { IfcTypeEnum } from '@ifc-lite/data';
 import type { ListDefinition } from '@ifc-lite/lists';
@@ -33,6 +33,10 @@ import { detectNumericColumns } from '../../components/viewer/lists/list-table-u
 // state that does not export it yet, crashing this entire file's load — not just the one test
 // that needs it. A dynamic import degrades to `undefined` instead, so only that test skips.
 const migrateDocumentSpec: typeof import('./types.js').migrateDocumentSpec | undefined = (await import('./types.js')).migrateDocumentSpec;
+// Same reason for the table block's exports (#5142): the assertions below must still RUN with
+// production reverted, so a reverted `validateDocumentSpec` fails them by assertion rather than
+// this whole file dying at import.
+const tableExports: Partial<Pick<typeof import('./types.js'), 'TABLE_ROWS_MAX' | 'listCopyForDocument'>> = await import('./types.js');
 
 const ifc = (project: string, wallName: string, fireRating: string): string => `ISO-10303-21;
 HEADER;
@@ -473,7 +477,7 @@ describe('table block (#5142)', () => {
     assert.deepEqual(validateDocumentSpec(docWith([tableBlock({ maxRows: 20, title: 'T', caption: 'C' })])), []);
     const bad = (block: unknown) => validateDocumentSpec(docWith([block as TableBlock])).map((e) => e.path);
     assert.deepEqual(bad({ ...tableBlock(), maxRows: 0 }), ['blocks[0].maxRows']);
-    assert.deepEqual(bad({ ...tableBlock(), maxRows: TABLE_ROWS_MAX + 1 }), ['blocks[0].maxRows']);
+    assert.deepEqual(bad({ ...tableBlock(), maxRows: (tableExports.TABLE_ROWS_MAX ?? 500) + 1 }), ['blocks[0].maxRows']);
     assert.deepEqual(bad({ ...tableBlock(), maxRows: 2.5 }), ['blocks[0].maxRows']);
     assert.deepEqual(bad({ ...tableBlock(), source: { kind: 'elements' } }), ['blocks[0].source']);
     assert.deepEqual(bad({ ...tableBlock(), source: { kind: 'list', list: { ...listOf(), columns: undefined } } }), ['blocks[0].source.list']);
@@ -489,8 +493,8 @@ describe('table block (#5142)', () => {
     assert.equal(block.source.list.columns.length, 3);
   });
 
-  it('listCopyForDocument drops the selection snapshot and takes the given id', () => {
-    const copy = listCopyForDocument(listOf({ expressIdsByModel: { m: [41] }, modelTagScope: { op: 'hasAny', tagIds: ['t'] } }), 'copy-1');
+  it('listCopyForDocument drops the selection snapshot and takes the given id', { skip: !tableExports.listCopyForDocument && 'listCopyForDocument is not exported (production reverted)' }, () => {
+    const copy = tableExports.listCopyForDocument!(listOf({ expressIdsByModel: { m: [41] }, modelTagScope: { op: 'hasAny', tagIds: ['t'] } }), 'copy-1');
     assert.equal(copy.id, 'copy-1');
     assert.equal('expressIdsByModel' in copy, false);
     assert.deepEqual(copy.modelTagScope, { op: 'hasAny', tagIds: ['t'] }, 'a tag scope survives reloads and is kept');

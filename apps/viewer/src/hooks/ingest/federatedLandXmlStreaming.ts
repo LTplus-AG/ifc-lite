@@ -24,6 +24,26 @@ export interface FederatedLandXmlStreamingFinalization {
   verify(geometry: GeometryResult): void;
 }
 
+/**
+ * A streamed document aligns its components independently. Keep the result
+ * which most urgently describes what the user needs to know, rather than
+ * allowing a later successful component to hide an earlier refusal.
+ */
+export function retainHighestFederationAlignmentStatus(
+  previous: FederatedLandXmlStreamingFinalization['federationAlignmentStatus'],
+  candidate: FederatedLandXmlStreamingFinalization['federationAlignmentStatus'],
+): FederatedLandXmlStreamingFinalization['federationAlignmentStatus'] {
+  const severity = {
+    none: 0,
+    anchor: 0,
+    identity: 1,
+    'same-crs': 2,
+    reprojected: 3,
+    failed: 4,
+  } as const;
+  return severity[candidate] > severity[previous] ? candidate : previous;
+}
+
 /** One bit per source slot, so frozen admission never retains component meshes. */
 const MAX_FEDERATED_ADMISSION_BYTES = 512 * 1024;
 
@@ -327,7 +347,7 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
   private async align(mesh: MeshData): Promise<MeshData> {
     if (this.rawSource && this.reference) {
       const aligned = await alignLandXmlComponent(mesh, this.rawCoordinateInfo, this.rawSource, this.reference);
-      this.alignmentStatus = aligned.status;
+      this.alignmentStatus = retainHighestFederationAlignmentStatus(this.alignmentStatus, aligned.status);
       if (aligned.status !== 'failed') return aligned.mesh;
       return mesh;
     }

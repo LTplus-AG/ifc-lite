@@ -8,6 +8,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult, ModelSpatialReference } from '@ifc-lite/geometry';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { useViewerStore, type FederatedModel } from '../../store/index.js';
+import { toast } from '../../components/ui/toast.js';
 import type { LandXmlTinDocument } from './landXmlSemantics.js';
 import { finalizeFederatedSpatialPlacement } from './federatedSpatialFinalize.js';
 import type { FederatedLandXmlStreamingFinalization } from './federatedLandXmlStreaming.js';
@@ -59,6 +60,41 @@ function document(): LandXmlTinDocument {
 beforeEach(() => useViewerStore.getState().clearAllModels());
 
 describe('federated LandXML spatial finalization (#5048)', () => {
+  it('reports streamed reprojected and failed component outcomes with the aggregate warnings (#5161)', async () => {
+    const source = spatialReference(0, 'EPSG:2056');
+    const target = spatialReference(0, 'EPSG:32632');
+    const messages: { info: string[]; error: string[] } = { info: [], error: [] };
+    const originalInfo = toast.info;
+    const originalError = toast.error;
+    toast.info = (message: string) => { messages.info.push(message); };
+    toast.error = (message: string) => { messages.error.push(message); };
+    const streamingPlan = (status: FederatedLandXmlStreamingFinalization['federationAlignmentStatus']): FederatedLandXmlStreamingFinalization => ({
+      coordinateInfo: coordinateInfo(), federationAlignmentStatus: status,
+      sourcePlacement: { spatialReference: source, coordinateInfo: coordinateInfo() },
+      referencePlacement: { spatialReference: target, coordinateInfo: coordinateInfo() },
+      preAlignment: { positions: [], normals: [], origins: [], geometryAabbs: [], coordinateInfo: coordinateInfo(), instancedGeometryAabbs: undefined },
+      verify: () => undefined,
+    });
+    const geometry = (): GeometryResult => ({ meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: coordinateInfo() });
+    try {
+      await finalizeFederatedSpatialPlacement({
+        dataStore: {} as IfcDataStore, geometry: geometry(), modelId: 'terrain', fileName: 'terrain.xml',
+        federatedLandXmlStreamingPlan: streamingPlan('reprojected'), isCurrent: () => true, setProgress: () => undefined,
+      });
+      await finalizeFederatedSpatialPlacement({
+        dataStore: {} as IfcDataStore, geometry: geometry(), modelId: 'terrain', fileName: 'terrain.xml',
+        federatedLandXmlStreamingPlan: streamingPlan('failed'), isCurrent: () => true, setProgress: () => undefined,
+      });
+    } finally {
+      toast.info = originalInfo;
+      toast.error = originalError;
+    }
+    assert.deepEqual(messages, {
+      info: ['Reprojected "terrain.xml" from EPSG:2056 to EPSG:32632 for federation alignment.'],
+      error: ['Could not align "terrain.xml" with the federation anchor — EPSG:2056 → EPSG:32632 reprojection failed. The model is shown in its own local frame and may appear at the wrong real-world position.'],
+    });
+  });
+
   it('still rebuilds source-derived overlays after streamed component alignment (#5050)', async () => {
     const landXml = document();
     const source = spatialReference(0);

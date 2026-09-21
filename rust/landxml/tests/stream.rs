@@ -526,6 +526,71 @@ fn issue_5050_metadata_cursor_matches_direct_plan_and_uses_exact_credit_limits()
 }
 
 #[test]
+fn issue_5161_streamed_resolved_geometry_includes_mixed_feature_and_parcel_loops() {
+    let xml = landxml(
+        r#"<PlanFeatures><PlanFeature name="road"><CoordGeom><Line><Start>1 2</Start><End>3 4</End></Line></CoordGeom></PlanFeature></PlanFeatures><Parcels><Parcel name="lot"><CoordGeom><Line><Start>10 20</Start><End>30 40</End></Line></CoordGeom></Parcel></Parcels>"#,
+    );
+    let direct = parse_landxml_plan(xml.as_bytes()).expect("direct plan");
+    let expected = direct
+        .plan_features
+        .iter()
+        .flat_map(|feature| feature.geometry.iter())
+        .chain(
+            direct
+                .parcels
+                .iter()
+                .flat_map(|parcel| parcel.loops.iter().flatten()),
+        )
+        .map(|geometry| {
+            (
+                geometry.source_id.clone(),
+                direct.resolve_point(geometry.point_scope_id.as_ref(), &geometry.start),
+                direct.resolve_point(geometry.point_scope_id.as_ref(), &geometry.end),
+                geometry.center.as_ref().and_then(|point| {
+                    direct.resolve_point(geometry.point_scope_id.as_ref(), point)
+                }),
+                geometry.pi.as_ref().and_then(|point| {
+                    direct.resolve_point(geometry.point_scope_id.as_ref(), point)
+                }),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let mut session = LandXmlTinStreamSession::new(LandXmlLimits::default()).expect("session");
+    let mut ignored = Vec::new();
+    advance_and_drain(&mut session, xml.as_bytes(), &mut ignored);
+    session.finish_cursor().expect("metadata cursor");
+    let mut events = Vec::new();
+    drain_until_idle(&mut session, &mut events);
+    let streamed = events
+        .into_iter()
+        .filter_map(|event| match event {
+            LandXmlStreamEvent::Metadata(metadata) => match *metadata {
+                LandXmlMetadataStreamEvent::Record(record) => match *record {
+                    LandXmlMetadataRecord::PlanResolvedGeometry(geometry) => Some((
+                        geometry.source_id,
+                        geometry.start,
+                        geometry.end,
+                        geometry.center,
+                        geometry.pi,
+                    )),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(streamed, expected);
+    assert_eq!(
+        streamed.len(),
+        2,
+        "feature and parcel geometry are both emitted"
+    );
+}
+
+#[test]
 fn issue_5050_fragments_legal_large_nested_metadata_records_under_credit() {
     let value = "x".repeat(256 * 1024);
     let xml = landxml(&format!(

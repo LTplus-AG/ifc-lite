@@ -8,7 +8,7 @@ import type { GeometryResult, ModelSpatialReference } from '@ifc-lite/geometry';
 import { FederationRegistry } from '@ifc-lite/renderer';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { useViewerStore, type FederatedModel } from '../../store/index.js';
-import { FederatedLandXmlStreamingPlan } from './federatedLandXmlStreaming.js';
+import { FederatedLandXmlStreamingPlan, retainHighestFederationAlignmentStatus } from './federatedLandXmlStreaming.js';
 
 function mesh(expressId: number, x = 0) {
   return {
@@ -70,6 +70,24 @@ function absoluteMesh(expressId: number) {
 beforeEach(() => useViewerStore.getState().clearAllModels());
 
 describe('federated LandXML streaming plan (#5050)', () => {
+  it('retains the most severe component alignment outcome across a mixed stream (#5161)', () => {
+    assert.equal(
+      retainHighestFederationAlignmentStatus('failed', 'same-crs'),
+      'failed',
+      'a later successful component must not hide an earlier failed alignment',
+    );
+    assert.equal(
+      retainHighestFederationAlignmentStatus('reprojected', 'identity'),
+      'reprojected',
+      'a later identity component must retain the earlier reprojection disclosure',
+    );
+    assert.equal(
+      retainHighestFederationAlignmentStatus('identity', 'reprojected'),
+      'reprojected',
+      'the first non-identity component outcome remains visible',
+    );
+  });
+
   it('publishes each frozen-frame component once and makes it pickable before End', async () => {
     const registry = new FederationRegistry();
     const uploaded: number[] = [];

@@ -16,6 +16,14 @@ import { readLandXmlTinSurface } from './landXmlWasm.js';
 import type { LandXmlTinDocument } from './landXmlSemantics.js';
 
 const MAX_METADATA_RECORD_BYTES = 512 * 1024;
+const REASSEMBLED_METADATA_RECORDS = new Set([
+  'pipe_network',
+  'pipe_preflight_refusal',
+  'plan_cogo_point',
+  'plan_resolved_monument',
+  'plan_resolved_geometry',
+  'horizontal_alignment',
+]);
 
 interface StreamUnits {
   linearScaleToMeters: number;
@@ -276,7 +284,7 @@ export class LandXmlStreamPreflightReducer {
     if (typeof recordName !== 'string' || !Number.isInteger(sequence) || (sequence as number) < 0) {
       throw new Error('LandXML stream emitted an invalid metadata fragment envelope');
     }
-    if (recordName !== 'pipe_network' && recordName !== 'pipe_preflight_refusal') {
+    if (!REASSEMBLED_METADATA_RECORDS.has(recordName)) {
       if (this.pending !== null) throw new Error('LandXML stream interleaved a discarded metadata fragment');
       if (this.skipped === null) {
         if (sequence !== 0) throw new Error('LandXML metadata fragment started at a nonzero sequence');

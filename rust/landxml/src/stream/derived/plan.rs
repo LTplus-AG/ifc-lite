@@ -36,9 +36,15 @@ pub(crate) struct PlanDerivedCursor {
     parcel_geometry_source_index: usize,
     parcel_probe_index: usize,
     monument_index: usize,
-    feature_geometry_index: usize,
-    parcel_geometry_index: usize,
-    parcel_geometry_loop_index: usize,
+    /// Geometry phase cursor for plan-feature geometry.
+    geometry_feature_index: usize,
+    geometry_feature_item_index: usize,
+    /// Geometry phase cursor for parcel loop geometry. These must not share
+    /// state with the feature phase: both families may be present in one
+    /// document and their collection lengths are independent.
+    geometry_parcel_index: usize,
+    geometry_parcel_loop_index: usize,
+    geometry_parcel_item_index: usize,
 }
 
 impl PlanDerivedCursor {
@@ -55,9 +61,11 @@ impl PlanDerivedCursor {
             parcel_geometry_source_index: 0,
             parcel_probe_index: 0,
             monument_index: 0,
-            feature_geometry_index: 0,
-            parcel_geometry_index: 0,
-            parcel_geometry_loop_index: 0,
+            geometry_feature_index: 0,
+            geometry_feature_item_index: 0,
+            geometry_parcel_index: 0,
+            geometry_parcel_loop_index: 0,
+            geometry_parcel_item_index: 0,
         }
     }
 
@@ -205,27 +213,27 @@ impl PlanDerivedCursor {
         &mut self,
         plan: &'a LandXmlPlanDocument,
     ) -> Option<&'a LandXmlPlanGeometry> {
-        while let Some(feature) = plan.plan_features.get(self.feature_geometry_index) {
-            if let Some(geometry) = feature.geometry.get(self.parcel_geometry_index) {
-                self.parcel_geometry_index += 1;
+        while let Some(feature) = plan.plan_features.get(self.geometry_feature_index) {
+            if let Some(geometry) = feature.geometry.get(self.geometry_feature_item_index) {
+                self.geometry_feature_item_index += 1;
                 return Some(geometry);
             }
-            self.feature_geometry_index += 1;
-            self.parcel_geometry_index = 0;
+            self.geometry_feature_index += 1;
+            self.geometry_feature_item_index = 0;
         }
-        while let Some(parcel) = plan.parcels.get(self.parcel_geometry_index) {
-            if let Some(loop_geometry) = parcel.loops.get(self.parcel_geometry_loop_index) {
-                if let Some(geometry) = loop_geometry.get(self.feature_geometry_index) {
-                    self.feature_geometry_index += 1;
+        while let Some(parcel) = plan.parcels.get(self.geometry_parcel_index) {
+            if let Some(loop_geometry) = parcel.loops.get(self.geometry_parcel_loop_index) {
+                if let Some(geometry) = loop_geometry.get(self.geometry_parcel_item_index) {
+                    self.geometry_parcel_item_index += 1;
                     return Some(geometry);
                 }
-                self.parcel_geometry_loop_index += 1;
-                self.feature_geometry_index = 0;
+                self.geometry_parcel_loop_index += 1;
+                self.geometry_parcel_item_index = 0;
                 continue;
             }
-            self.parcel_geometry_index += 1;
-            self.parcel_geometry_loop_index = 0;
-            self.feature_geometry_index = 0;
+            self.geometry_parcel_index += 1;
+            self.geometry_parcel_loop_index = 0;
+            self.geometry_parcel_item_index = 0;
         }
         None
     }

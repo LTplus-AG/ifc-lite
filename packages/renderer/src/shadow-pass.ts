@@ -24,85 +24,18 @@
 
 import type { Mat4 } from './types.js';
 import { shadowShaderSource } from './shaders/shadow.wgsl.js';
-import { packRteDrawableDelta, packRteOrigin, type WorldPoint } from './relative-to-eye.js';
+import { packRteDrawableDelta, packRteOrigin } from './relative-to-eye.js';
 import { packRteClipBox, rtePlaneDistance } from './rte-clip-space.js';
+import {
+  resolveShadowMapResolution,
+  type ShadowClip,
+  type ShadowDrawKind,
+  type ShadowOccluderDraw,
+  type ShadowRteFrame,
+} from './shadow-types.js';
 
-/** Which geometry path an occluder draw came from — selects the pipeline. */
-export type ShadowDrawKind = 'flat' | 'quantized' | 'instanced' | 'textured';
-
-/**
- * Resolve the shadow-map side length to actually allocate.
- *
- * `requested === 0` (or a non-positive / non-finite value) means **Auto**: pick
- * a sensible size from the device's 2D texture limit — a laptop iGPU capped at
- * 4096 gets a 2048 map, a discrete GPU (8192+) gets 4096 (#2670 review). A
- * manual request is honoured but never allowed to exceed the device limit,
- * since `createTexture` would otherwise fail outright on a smaller device.
- */
-export function resolveShadowMapResolution(requested: number | undefined, maxTextureDim: number): number {
-  const cap = Number.isFinite(maxTextureDim) && maxTextureDim >= 1024 ? maxTextureDim : 2048;
-  if (requested && requested > 0) {
-    // Floor + clamp to the same [256, cap] window ShadowPass allocates in, so
-    // the caller's texelWorld / texelSize (derived from this return value) match
-    // the texture actually created — a fractional or sub-256 request otherwise
-    // samples at one size and allocates at another (CodeRabbit #3053).
-    return Math.max(256, Math.floor(Math.min(requested, cap)));
-  }
-  if (cap >= 8192) return 4096;
-  if (cap >= 4096) return 2048;
-  return 1024;
-}
-
-/** One occluder draw recorded into the depth pre-pass. */
-export interface ShadowOccluderDraw {
-  kind: ShadowDrawKind;
-  /** Slot-0 vertex buffer (positions). */
-  vertexBuffer: GPUBuffer;
-  indexBuffer: GPUBuffer;
-  indexCount: number;
-  /**
-   * Column-major model matrix (16 floats). Carries the batch origin for the
-   * flat/quantized/textured paths; ignored for the instanced path.
-   */
-  model?: Float32Array;
-  /**
-   * Canonical f64 drawable origin. The depth pass subtracts the frame camera
-   * before narrowing, exactly like the colour/pick paths.  If absent, the
-   * model translation is retained as the legacy origin.
-   */
-  origin?: WorldPoint;
-  /** Dequantization params [minX, minY, minZ, step]; quantized path only. */
-  quantParams?: readonly [number, number, number, number];
-  /** Slot-1 per-occurrence instance buffer; instanced path only. */
-  instanceBuffer?: GPUBuffer;
-  /** Instance count; instanced path only. */
-  instanceCount?: number;
-}
-
-/** The camera-owned RTE inputs for one shadow submission. */
-export interface ShadowRteFrame {
-  cameraWorld: WorldPoint;
-}
-
-/**
- * The clip this frame, mirrored from the colour pass so clipped-away geometry
- * stops casting (a sectioned-off roof must not keep shadowing the floor).
- * `null`/all-absent members mean "no clipping" and keep the fragment-less
- * depth-only pipelines.
- */
-export interface ShadowClip {
-  /** World-space plane; fragments on its + side are cut (see `flipped`). */
-  section?: {
-    normal: readonly [number, number, number];
-    distance: number;
-    flipped?: boolean;
-  } | null;
-  /** World-space crop box; fragments outside it are cut. */
-  box?: {
-    min: readonly [number, number, number];
-    max: readonly [number, number, number];
-  } | null;
-}
+export { resolveShadowMapResolution } from './shadow-types.js';
+export type { ShadowClip, ShadowDrawKind, ShadowOccluderDraw, ShadowRteFrame } from './shadow-types.js';
 
 /** Bytes of the per-draw uniform: linear model + quant params + split RTE origin. */
 const PER_DRAW_BYTES = 112;

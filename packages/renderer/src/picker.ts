@@ -11,56 +11,14 @@ import type { Mesh, PickResult, PickClipState } from './types.js';
 import { resolvePickSample, resolvePickedExpressId } from './pick-resolve.js';
 import type { InstancedTemplateGPU } from './scene.js';
 import { PointPicker, decodePickSample, type PointPickNode } from './point-picker.js';
-import { packPickClip, packPickUniforms } from './pick-uniforms.js';
 import type { RelativeToEyeSnapshot } from './relative-to-eye.js';
-import { packRteClipBox, rtePlaneDistance } from './rte-clip-space.js';
 import { restoreRtePickWorld, unprojectPickSample } from './pick-world-position.js';
-
-/**
- * Whether a rejected `mapAsync` readback means "the GPU resource went away"
- * rather than "we asked for something illegal".
- *
- * WebGPU only rejects a map with `AbortError` when the thing being mapped
- * stops existing: the buffer is destroyed or unmapped before the map settles,
- * or the device/instance behind it is destroyed or lost. The pick path never
- * touches its readback buffers before the map settles, so for us that reduces
- * to "the device is gone" — Chromium words it
- * `AbortError: … A valid external Instance reference no longer exists.` (#1901).
- *
- * The entry guards in `pick()` / `pickRect()` (and `Renderer.pickPathAlive()`)
- * stop a pick that STARTS on a dead device, but they cannot close the window
- * between `queue.submit()` and the map settling: a pick that was perfectly
- * legal when it started is still aborted if the canvas unmounts, the model
- * reloads (`Renderer.destroy()` ends in `device.destroy()`), or the driver
- * resets while the readback is in flight. Nothing on that path can handle the
- * rejection — the DOM listeners that reach it are `async` functions nobody
- * awaits — so it escapes as an unhandled rejection.
- *
- * Real faults are NOT covered here: a validation failure (already-mapped
- * buffer, bad usage flags, out-of-range range) rejects with `OperationError`,
- * which still propagates.
- */
-function isReadbackAbort(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && (err as { name?: unknown }).name === 'AbortError';
-}
-
-/**
- * Free readback buffers on the aborted path. The device may already be gone,
- * in which case `destroy()` is a no-op — or throws on some backends, which
- * must not turn a handled teardown back into an escaping error.
- */
-function releaseReadbacks(...buffers: GPUBuffer[]): void {
-  for (const buffer of buffers) {
-    try {
-      buffer.destroy();
-    } catch (err) {
-      // Non-fatal: the device is already gone and the buffer died with it.
-      // Surfaced rather than swallowed, per the no-silent-catch house rule —
-      // this firing on a LIVE device would mean a real teardown bug.
-      console.warn('[Picker] failed to release a readback buffer during teardown', err);
-    }
-  }
-}
+import {
+  writeFlatPickUniform,
+  writeInstancedPickUniforms,
+  writePickUniforms,
+} from './picker-rte-uniforms.js';
+import { isReadbackAbort, releaseReadbacks } from './picker-readbacks.js';
 
 /** Point-pick sizing parameters forwarded to the GPU pipeline. */
 export interface PointPickSizing {
@@ -506,67 +464,7 @@ export class Picker {
   }
 
   updateUniforms(viewProj: Float32Array, clip?: PickClipState | null): void {
-    this.writePickUniforms(viewProj, clip);
-  }
-
-  /**
-   * Pack viewProj + the last render's section plane / crop box into the shared
-   * pick uniform and upload it. Layout + flag bits live in {@link packPickUniforms}.
-   */
-  private writePickUniforms(viewProj: Float32Array, clip?: PickClipState | null): void {
-    this.uniformScratch.fill(0);
-    this.uniformScratch.set(viewProj, 0);
-    this.uniformScratch[16] = 1;
-    this.uniformScratch[21] = 1;
-    this.uniformScratch[26] = 1;
-    this.uniformScratch[31] = 1;
-    packPickClip(clip, this.uniformScratch, this.clipFlags, 32);
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, this.uniformScratch);
-  }
-
-  /** Write one immutable dynamic-uniform slot for a flat mesh RTE pick draw. */
-  private writeFlatPickUniform(
-    mesh: Mesh,
-    snapshot: RelativeToEyeSnapshot,
-    clip: PickClipState | null | undefined,
-    slot: number,
-  ): void {
-    const out = this.uniformScratch;
-    out.fill(0);
-    out.set(snapshot.getViewProjection().m, 0);
-    out.set(mesh.transform.m, 16);
-    packPickClip(clip, out, this.clipFlags, 32);
-    const camera = snapshot.getCameraWorld();
-    packRteClipBox(clip?.clipBox, camera, out, 32);
-    if (clip?.sectionPlane) {
-      const normal = clip.sectionPlane.normal;
-      out[43] = rtePlaneDistance(clip.sectionPlane.distance, normal, camera);
-    }
-    snapshot.packDrawableOrigin(
-      mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]],
-      out,
-      48,
-    );
-    this.device.queue.writeBuffer(this.uniformBuffer, slot * 256, out);
-  }
-
-  /** V2 instance pick uniform: RTE projection plus clip inputs rebased in f64. */
-  private writeInstancedPickUniforms(snapshot: RelativeToEyeSnapshot, clip?: PickClipState | null): void {
-    const out = this.instancedUniformScratch;
-    packPickUniforms(snapshot.getViewProjection().m, clip, out, this.instancedClipFlags);
-    const camera = snapshot.getCameraWorld();
-    packRteClipBox(clip?.clipBox, camera, out, 16);
-    if (clip?.sectionPlane) {
-      const n = clip.sectionPlane.normal;
-      out[27] = rtePlaneDistance(clip.sectionPlane.distance, n, camera);
-    }
-    for (let axis = 0; axis < 3; axis++) {
-      const high = Math.fround(camera[axis]);
-      out[32 + axis] = high;
-      out[36 + axis] = Math.fround(camera[axis] - high);
-    }
-    out[35] = 0; out[39] = 0;
-    this.device.queue.writeBuffer(this.instancedUniformBuffer, 0, out);
+    writePickUniforms(this.device, this.uniformBuffer, this.uniformScratch, this.clipFlags, viewProj, clip);
   }
 
   /**
@@ -736,12 +634,21 @@ export class Picker {
       const mesh = meshes[i];
       if (!mesh) continue;
       if (pointRteSnapshot) {
-        this.writeFlatPickUniform(mesh, pointRteSnapshot, clip, i);
+        writeFlatPickUniform(
+          this.device,
+          this.uniformBuffer,
+          this.uniformScratch,
+          this.clipFlags,
+          mesh,
+          pointRteSnapshot,
+          clip,
+          i,
+        );
       } else {
         // Compatibility for direct Picker callers that predate RTE snapshots.
         // Renderer/PickingManager always supplies one so production draws use
         // the per-mesh immutable RTE slots above.
-        this.writePickUniforms(viewProj, clip);
+        writePickUniforms(this.device, this.uniformBuffer, this.uniformScratch, this.clipFlags, viewProj, clip);
       }
       pass.setBindGroup(0, this.bindGroup, [i * 256]);
       pass.setVertexBuffer(0, mesh.vertexBuffer);
@@ -753,7 +660,14 @@ export class Picker {
     // occlusion is shared with flat meshes/points. The shader writes
     // (bit30 | express id) per occurrence; the decoder returns the entity.
     if (instancedTemplates && instancedTemplates.length > 0 && this.instancedPickPipeline && this.instancedPickBindGroup && pointRteSnapshot) {
-      this.writeInstancedPickUniforms(pointRteSnapshot, clip);
+      writeInstancedPickUniforms(
+        this.device,
+        this.instancedUniformBuffer,
+        this.instancedUniformScratch,
+        this.instancedClipFlags,
+        pointRteSnapshot,
+        clip,
+      );
       pass.setPipeline(this.instancedPickPipeline);
       pass.setBindGroup(0, this.instancedPickBindGroup);
       for (const it of instancedTemplates) {

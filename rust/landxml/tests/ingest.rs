@@ -1469,6 +1469,39 @@ fn issue_5045_parsed_circular_curves_stay_stable_for_shallow_and_near_parallel_g
     assert!(reverse_elevation(-4.0e-310) < reverse_at_pvi);
     assert!(reverse_elevation(4.0e-310) > reverse_at_pvi);
 
+    // #5045: signed factors pass through the exponent-aware ratio unchanged.
+    // This descending circle used to receive the magnitude of the rise and
+    // jump from the curve end to its outgoing tangent.
+    let descending = parse(source(100.0, -200.0, 20.0, 207.012_729_872_537_2).as_bytes())?;
+    let descending_elevation = |station| {
+        descending.profiles[0]
+            .evaluate_elevation_at(station)
+            .unwrap()
+            .unwrap()
+    };
+    assert!((descending_elevation(1000.0) + 0.250_139_238_895_676_7).abs() < 2.0e-13);
+    let descending_end = 1_009.926_825_350_344_4;
+    assert!((descending_elevation(descending_end) + 1.985_365_070_068_875_4).abs() < 2.0e-12);
+    assert!(
+        (descending_elevation(descending_end + 1.0e-6)
+            - (-0.2 * (descending_end + 1.0e-6 - 1000.0)))
+            .abs()
+            < 2.0e-12
+    );
+    assert!(descending_elevation(995.0) > descending_elevation(1000.0));
+    assert!(descending_elevation(1005.0) < descending_elevation(1000.0));
+
+    let negative_mirror = parse(centered(1.0e308, -1.2e308, root_length, 1.0e308).as_bytes())?;
+    let negative_mirror_elevation = |station| {
+        negative_mirror.profiles[0]
+            .evaluate_elevation_at(station)
+            .unwrap()
+            .unwrap()
+    };
+    assert!((negative_mirror_elevation(0.0) / -0.003_795_737_491_389_808 - 1.0).abs() < 2.0e-12);
+    assert!(negative_mirror_elevation(-4.0e-310) > negative_mirror_elevation(0.0));
+    assert!(negative_mirror_elevation(4.0e-310) < negative_mirror_elevation(0.0));
+
     let near_parallel = parse(source(-100.0, 100.000001, 98.51853225045078, 1.0e11).as_bytes())?;
     assert!(near_parallel.profiles[0]
         .evaluate_elevation_at(1000.0)?

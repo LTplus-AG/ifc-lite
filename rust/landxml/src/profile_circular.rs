@@ -122,17 +122,25 @@ fn ulp(value: f64) -> f64 {
 fn scaled_ratio(numerators: &[f64], denominators: &[f64]) -> f64 {
     let mut mantissa = 1.0;
     let mut exponent = 0_i32;
+    let mut negative = false;
     for value in numerators {
+        negative ^= value.is_sign_negative();
         let (part, power) = binary_parts(*value);
         mantissa *= part;
         exponent += power;
     }
     for value in denominators {
+        negative ^= value.is_sign_negative();
         let (part, power) = binary_parts(*value);
         mantissa /= part;
         exponent -= power;
     }
-    scale_binary(mantissa, exponent)
+    let magnitude = scale_binary(mantissa, exponent);
+    if negative {
+        -magnitude
+    } else {
+        magnitude
+    }
 }
 
 fn scale_binary(mut mantissa: f64, mut exponent: i32) -> f64 {
@@ -253,5 +261,14 @@ mod tests {
         assert_eq!(min.to_bits(), 1);
         let negative = scale_binary(-1.5, -1074);
         assert!(negative.is_sign_negative());
+    }
+
+    #[test]
+    fn scaled_ratio_preserves_factor_signs_including_negative_zero() {
+        assert_eq!(scaled_ratio(&[-6.0], &[2.0]), -3.0);
+        assert_eq!(scaled_ratio(&[6.0], &[-2.0]), -3.0);
+        assert_eq!(scaled_ratio(&[-6.0], &[-2.0]), 3.0);
+        assert!(scaled_ratio(&[-0.0], &[2.0]).is_sign_negative());
+        assert!(scaled_ratio(&[0.0], &[-2.0]).is_sign_negative());
     }
 }

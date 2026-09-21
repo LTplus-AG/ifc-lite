@@ -53,10 +53,25 @@
 # +4: build the index once in parallel on the fail-closed try_/project_glb_size large-model GLB paths (perf/parallel-scan).
 # +81: emissive-material knob for KMZ/Google Earth (#1427) - make_material lit/unlit/emissive branch + emissive param threaded through build_gltf/export_glb_from_meshes and their tests.
     4028 rust/export/src/gltf.rs
+# NEW (#5116): a non-rooted type with no representation in the target schema
+# (common real-world input: any IFC4 model with tessellated geometry) must not
+# panic here, since export_merged/export_merged_models have no fallible
+# signature to propagate a clean error through (unlike the single-model
+# step.rs path, which does). Falls back to the prior pass-through behavior
+# and reports every affected type in stats.warnings instead.
+     447 rust/export/src/merged/mod.rs
 # Row DELETED: the COLLADA document WRITER moved verbatim to collada_document.rs
 # so collada.rs could take try_export_collada_from_meshes and come
 # back under the 400-line rule instead of raising this budget to 470.
      468 rust/export/src/model.rs
+# NEW (#5116): port the TypeScript exporter's resolveUnrepresentedEntity
+# fallback (proxy a rooted type with no target representation, error for a
+# non-rooted one) instead of silently passing an unmapped type through
+# unchanged. The bulk of the new logic lives in schema_unrepresented.rs
+# (a fresh, well-under-budget module); this is only the one call site plus
+# the Result-returning signature changes that ripple through convert_record's
+# existing early returns.
+     408 rust/export/src/schema_convert.rs
 # -140 net: text-level STEP primitives (escape/detect_schema/refs_in_line/
 # split_top_level_args/apply_attr_mutations) split out to step_text.rs, making
 # room for the backslash-doubling fix to escape() without raising this

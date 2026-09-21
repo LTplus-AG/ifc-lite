@@ -202,7 +202,7 @@ fn a_lower_case_ifc2x3_file_is_not_relabelled_ifc4_on_a_plain_re_export() {
                file_name('a.ifc','',(''),(''),'','','');\nfile_schema(('IFC2X3'));\nendsec;\n\
                DATA;\n#1=IFCWALL('0abcdefghijklmnopqrstu',$,'W1',$,$,$,$,$);\n\
                ENDSEC;\nEND-ISO-10303-21;\n";
-    let out = crate::export_step(src.as_bytes(), &crate::StepOptions::default());
+    let out = crate::export_step(src.as_bytes(), &crate::StepOptions::default()).unwrap();
     assert!(out.contains("FILE_SCHEMA(('IFC2X3'));"), "{out}");
     assert!(!out.contains("FILE_SCHEMA(('IFC4'))"), "relabelled: {out}");
     // The records are copied through either way; the label is the whole defect.

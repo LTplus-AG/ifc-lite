@@ -6,6 +6,7 @@
 //! (`schema_pad`), and a proxy fallback for types with no target representation.
 
 use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
+use crate::schema_unrepresented::{check_representation, UnrepresentedEntityError};
 use crate::step_slot::split_top_level_args;
 
 /// Canonicalize a FILE_SCHEMA label to one of the four families we convert between.
@@ -52,6 +53,10 @@ fn map_4_to_2x3(t: &str) -> Option<&'static str> {
         // name since IFC4 inserted ElementType/PredefinedType mid-list.
         "IFCDOORTYPE" => "IFCDOORSTYLE",
         "IFCWINDOWTYPE" => "IFCWINDOWSTYLE",
+        // #4206, door/window's bug class: unmapped, fell through to a proxy.
+        "IFCSTRUCTURALLOADCASE" => "IFCSTRUCTURALLOADGROUP",
+        "IFCSTRUCTURALCURVEACTION" => "IFCSTRUCTURALLINEARACTION",
+        "IFCSTRUCTURALSURFACEACTION" => "IFCSTRUCTURALPLANARACTION",
         _ => return None,
     })
 }
@@ -87,6 +92,14 @@ fn by_name_attr_remap_names(entity_type: &str) -> Option<(&'static [&'static str
                 "HasPropertySets", "RepresentationMaps", "Tag", "ConstructionType", "OperationType",
                 "ParameterTakesPrecedence", "Sizeable",
             ],
+        )),
+        // #4206: IFC4 appends PredefinedType where IFC2X3 inserts CausedBy
+        // before ProjectedOrTrue -- neither list is a positional prefix.
+        "IFCSTRUCTURALCURVEACTION" | "IFCSTRUCTURALSURFACEACTION" => Some((
+            &["GlobalId", "OwnerHistory", "Name", "Description", "ObjectType", "ObjectPlacement",
+              "Representation", "AppliedLoad", "GlobalOrLocal", "DestabilizingLoad", "ProjectedOrTrue", "PredefinedType"],
+            &["GlobalId", "OwnerHistory", "Name", "Description", "ObjectType", "ObjectPlacement",
+              "Representation", "AppliedLoad", "GlobalOrLocal", "DestabilizingLoad", "CausedBy", "ProjectedOrTrue"],
         )),
         _ => None,
     }
@@ -168,6 +181,7 @@ fn ifc2x3_attr_count(t: &str) -> Option<usize> {
         | "IFCBUILDINGELEMENTPROXY" => 9,
         "IFCPILE" => 11,
         "IFCDOOR" | "IFCWINDOW" => 10,
+        "IFCSTRUCTURALLOADGROUP" => 10, // #4206: drops trailing SelfWeightCoefficients
         _ => return None,
     })
 }
@@ -247,44 +261,46 @@ fn trim_attributes(attrs: &str, max_count: usize) -> Option<String> {
 /// [`crate::schema_ifc2x3_slots`]. Required rather than defaulted, so an
 /// exporter cannot convert without having decided which owner history it
 /// writes, and cannot lose the count of what stayed `$`.
+///
+/// Errs for a type with no representation in `to` at all (#5116, [`crate::schema_unrepresented`]).
 pub fn convert_step_line(
     line: &str,
     from: &str,
     to: &str,
     express_id: u32,
     slots: &mut Ifc2x3SlotFill,
-) -> String {
+) -> Result<String, UnrepresentedEntityError> {
     let (cfrom, cto) = (canon(from), canon(to));
     if cfrom == cto {
-        return line.to_string();
+        return Ok(line.to_string());
     }
-    let converted = convert_record(line, cfrom, cto, express_id);
-    if cto == "IFC2X3" {
+    let converted = convert_record(line, cfrom, cto, express_id)?;
+    Ok(if cto == "IFC2X3" {
         slots.apply(converted)
     } else {
         converted
-    }
+    })
 }
 
 /// [`convert_step_line`] before the IFC2X3 required-slot fills, between two
 /// different canonical schemas.
-fn convert_record(line: &str, cfrom: &'static str, cto: &'static str, express_id: u32) -> String {
+fn convert_record(line: &str, cfrom: &'static str, cto: &'static str, express_id: u32) -> Result<String, UnrepresentedEntityError> {
     // Parse #ID=TYPE(attrs); (multi-line tolerant: rfind ')').
     let trimmed = line.trim_end();
     let body = trimmed.strip_suffix(';').unwrap_or(trimmed);
     let eq = match body.find('=') {
         Some(e) => e,
-        None => return line.to_string(),
+        None => return Ok(line.to_string()),
     };
     let prefix = &body[..=eq]; // "#123="
     let after = &body[eq + 1..];
     let popen = match after.find('(') {
         Some(p) => p,
-        None => return line.to_string(),
+        None => return Ok(line.to_string()),
     };
     let aclose = match after.rfind(')') {
         Some(c) if c > popen => c,
-        _ => return line.to_string(),
+        _ => return Ok(line.to_string()),
     };
     let entity_type = after[..popen].trim().to_uppercase();
     let attrs = &after[popen + 1..aclose];
@@ -293,7 +309,7 @@ fn convert_record(line: &str, cfrom: &'static str, cto: &'static str, express_id
     // slot list can still receive a type rename, proxy replacement, trim, or
     // padding and become a partially converted record (#4200).
     if split_top_level_args(attrs).is_none() {
-        return line.to_string();
+        return Ok(line.to_string());
     }
 
     let new_type = convert_entity_type(&entity_type, cfrom, cto);
@@ -311,11 +327,16 @@ fn convert_record(line: &str, cfrom: &'static str, cto: &'static str, express_id
         // line — so the same model downgraded by each yields different proxy
         // ids. Left as found; changing either is a decision for the maintainer,
         // not a side effect of a round-trip test.
-        return format!(
+        return Ok(format!(
             "{prefix}IFCPROXY('{}',$,'{}',$,$,$,$,.NOTDEFINED.,$);",
             placeholder_guid(express_id),
             entity_type
-        );
+        ));
+    }
+
+    // #5116, see `check_representation`'s doc.
+    if let Some(result) = check_representation(prefix, &entity_type, &new_type, cto, express_id) {
+        return result;
     }
 
     // IFCDOORTYPE/IFCWINDOWTYPE -> IFCDOORSTYLE/IFCWINDOWSTYLE: neither
@@ -326,13 +347,13 @@ fn convert_record(line: &str, cfrom: &'static str, cto: &'static str, express_id
         if let Some((src_names, tgt_names)) = by_name_attr_remap_names(&entity_type) {
             match remap_attrs_by_name(attrs, src_names, tgt_names) {
                 Some(value) => value,
-                None => return line.to_string(),
+                None => return Ok(line.to_string()),
             }
         } else if cto == "IFC2X3" {
             match ifc2x3_attr_count(&new_type) {
                 Some(max) => match trim_attributes(attrs, max) {
                     Some(value) => value,
-                    None => return line.to_string(),
+                    None => return Ok(line.to_string()),
                 },
                 None => attrs.to_string(),
             }
@@ -343,7 +364,7 @@ fn convert_record(line: &str, cfrom: &'static str, cto: &'static str, express_id
         match ifc2x3_attr_count(&new_type) {
             Some(max) => match trim_attributes(attrs, max) {
                 Some(value) => value,
-                None => return line.to_string(),
+                None => return Ok(line.to_string()),
             },
             None => attrs.to_string(),
         }
@@ -369,7 +390,7 @@ fn convert_record(line: &str, cfrom: &'static str, cto: &'static str, express_id
         }
     }
 
-    format!("{prefix}{new_type}({final_attrs});")
+    Ok(format!("{prefix}{new_type}({final_attrs});"))
 }
 
 /// True when `to` names IFC2X3, the one target whose `OwnerHistory` is mandatory.

@@ -68,20 +68,22 @@ pub(super) struct Frame {
     pub(super) namespaces: HashMap<String, String>,
 }
 
-pub(super) struct SurfaceBuilder {
-    pub(super) name: String,
-    pub(super) kind: LandXmlSurfaceKind,
-    pub(super) points: Vec<LandXmlPoint>,
-    pub(super) source_data_points: Vec<crate::LandXmlSourcePoint>,
-    pub(super) ids: HashSet<String>,
-    pub(super) faces: Vec<[String; 3]>,
-    pub(super) face_visibility: Vec<bool>,
-    pub(super) hidden_face_count: usize,
-    pub(super) boundaries: Vec<LandXmlPolyline>,
-    pub(super) breaklines: Vec<LandXmlPolyline>,
-    pub(super) contours: Vec<LandXmlPolyline>,
-    pub(super) properties: crate::LandXmlProperties,
-    pub(super) definition_properties: crate::LandXmlProperties,
+#[derive(Clone)]
+pub(crate) struct SurfaceBuilder {
+    pub(crate) name: String,
+    pub(crate) kind: LandXmlSurfaceKind,
+    pub(crate) points: Vec<LandXmlPoint>,
+    pub(crate) canonical_vertices: Vec<crate::LandXmlCanonicalVertex>,
+    pub(crate) source_data_points: Vec<crate::LandXmlSourcePoint>,
+    pub(crate) ids: HashSet<String>,
+    pub(crate) faces: Vec<[String; 3]>,
+    pub(crate) face_visibility: Vec<bool>,
+    pub(crate) hidden_face_count: usize,
+    pub(crate) boundaries: Vec<LandXmlPolyline>,
+    pub(crate) breaklines: Vec<LandXmlPolyline>,
+    pub(crate) contours: Vec<LandXmlPolyline>,
+    pub(crate) properties: crate::LandXmlProperties,
+    pub(crate) definition_properties: crate::LandXmlProperties,
 }
 
 pub(super) fn retained_properties(attributes: &Attributes) -> crate::LandXmlProperties {

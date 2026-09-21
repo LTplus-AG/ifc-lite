@@ -11,7 +11,7 @@ import { resolveProjectionId } from '../../lib/geo/reproject.js';
 import { projectedUnitToMetres } from './projected-units.js';
 import { planPolyline } from './landXmlPlanGeometry.js';
 import type {
-  LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlPolyline, LandXmlResolvedGeometry,
+  LandXmlAlignmentSegment, LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlPolyline, LandXmlResolvedGeometry,
   LandXmlTinDocument,
 } from './landXmlSemantics.js';
 
@@ -36,8 +36,16 @@ interface LandXmlRenderedPlanGeometryUpdate {
   renderedPointState?: 'aligned' | 'suppressed';
 }
 
+interface LandXmlRenderedAlignmentUpdate {
+  kind: 'alignment-segment';
+  segment: LandXmlAlignmentSegment;
+  renderedPoints?: [number, number, number][];
+  renderedPointState?: 'aligned' | 'suppressed';
+}
+
 export type LandXmlRenderedLineUpdate = LandXmlRenderedPolylineUpdate
-  | LandXmlRenderedPlanPointUpdate | LandXmlRenderedPlanGeometryUpdate;
+  | LandXmlRenderedPlanPointUpdate | LandXmlRenderedPlanGeometryUpdate
+  | LandXmlRenderedAlignmentUpdate;
 
 function lines(document: LandXmlTinDocument): LandXmlPolyline[] {
   return document.surfaces.flatMap((surface) => [
@@ -63,10 +71,22 @@ function planPoints(document: LandXmlTinDocument): LandXmlPlanPoint[] {
   return [...unique];
 }
 
+function alignmentSegmentPoints(segment: LandXmlAlignmentSegment): LandXmlPlanPoint[] | null {
+  const primitive = segment.primitive;
+  if (primitive.kind === 'unsupported_spiral'
+    || primitive.start.kind !== 'coordinates' || primitive.end.kind !== 'coordinates') return null;
+  if (primitive.kind === 'irregular_line') return [primitive.start.point, ...primitive.points, primitive.end.point];
+  if (primitive.kind === 'line') return [primitive.start.point, primitive.end.point];
+  return segment.renderPoints ?? null;
+}
+
 /** Clear derived points when a source is no longer aligned to an anchor. */
 export function clearLandXmlRenderedLineUpdates(document: LandXmlTinDocument): LandXmlRenderedLineUpdate[] {
   return [
     ...lines(document).map((line): LandXmlRenderedLineUpdate => ({ kind: 'line', line })),
+    ...document.alignments.flatMap((alignment) => alignment.segments.map(
+      (segment): LandXmlRenderedLineUpdate => ({ kind: 'alignment-segment', segment }),
+    )),
     ...planPoints(document).map((point): LandXmlRenderedLineUpdate => ({ kind: 'plan-point', point })),
     ...(document.plan?.resolvedGeometry ?? []).map((geometry): LandXmlRenderedLineUpdate => ({
       kind: 'plan-geometry', geometry,
@@ -89,6 +109,13 @@ export function applyLandXmlRenderedLineUpdates(updates: readonly LandXmlRendere
       else delete update.geometry.renderedPoints;
       if (update.renderedPointState) update.geometry.renderedPointState = update.renderedPointState;
       else delete update.geometry.renderedPointState;
+      continue;
+    }
+    if (update.kind === 'alignment-segment') {
+      if (update.renderedPoints) update.segment.renderedPoints = update.renderedPoints;
+      else delete update.segment.renderedPoints;
+      if (update.renderedPointState) update.segment.renderedPointState = update.renderedPointState;
+      else delete update.segment.renderedPointState;
       continue;
     }
     const { line } = update;
@@ -173,6 +200,19 @@ export async function buildLandXmlRenderedLineUpdates(
       ? { kind: 'line', line, renderedPoints: transformed, renderedPointState: 'aligned' }
       : { kind: 'line', line, renderedPointState: 'suppressed' };
   });
+  const alignmentUpdates = document.alignments.flatMap((alignment) => alignment.segments.map(
+    (segment): LandXmlRenderedLineUpdate => {
+      const points = alignmentSegmentPoints(segment);
+      if (!points) return { kind: 'alignment-segment', segment, renderedPointState: 'suppressed' };
+      const renderedPoints: [number, number, number][] = [];
+      for (const point of points) {
+        const rendered = transform(point.northing, point.easting, point.elevation ?? 0);
+        if (!rendered) return { kind: 'alignment-segment', segment, renderedPointState: 'suppressed' };
+        renderedPoints.push(rendered);
+      }
+      return { kind: 'alignment-segment', segment, renderedPoints, renderedPointState: 'aligned' };
+    },
+  ));
   const pointUpdates = planPoints(document).map((point): LandXmlRenderedLineUpdate => {
     const renderedPoint = transform(point.northing, point.easting, point.elevation ?? 0);
     return renderedPoint
@@ -192,5 +232,5 @@ export async function buildLandXmlRenderedLineUpdates(
     }
     return { kind: 'plan-geometry', geometry, renderedPoints, renderedPointState: 'aligned' };
   });
-  return [...lineUpdates, ...pointUpdates, ...geometryUpdates];
+  return [...lineUpdates, ...alignmentUpdates, ...pointUpdates, ...geometryUpdates];
 }

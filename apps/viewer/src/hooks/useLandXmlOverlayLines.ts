@@ -4,15 +4,16 @@
 
 import { useEffect, useMemo, type RefObject } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
-import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import { useViewerStore } from '../store/index.js';
-import { boundsFitRenderFrame } from './ingest/landXmlRenderFrame.js';
+import { collectLandXmlOverlaySpans, overlaySpanVertices } from './ingest/landXmlOverlaySpans.js';
+import { runGpuUpload } from '@/components/viewer/gpu-upload-guard';
+import type { LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlTinDocument } from './ingest/landXmlSemantics.js';
+import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import { modelPointToWorkspacePoint } from '@/lib/model-placement/rotation';
 import { fromRenderTranslation, toRenderTranslation } from '@/lib/model-placement/translation';
-import { runGpuUpload } from '@/components/viewer/gpu-upload-guard';
-import type { LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlTinDocument } from './ingest/landXmlSemantics.js';
 import { planPolyline } from './ingest/landXmlPlanGeometry.js';
+import { boundsFitRenderFrame } from './ingest/landXmlRenderFrame.js';
 
 export interface LandXmlOverlayUploadTarget {
   setLineOverlay(channel: 'terrain', vertices: Float32Array | null): void;
@@ -39,14 +40,6 @@ export function uploadLandXmlOverlayGuarded(
  * attribute supplies the missing ordinate.  Boundaries and breaklines have no
  * equivalent schema field, so only contours may be lifted this way.
  */
-export function contourElevation(line: { coordinateDimension: 2 | 3; properties: Record<string, string> }): number | null {
-  if (line.coordinateDimension !== 2) return null;
-  const authored = line.properties.elev;
-  if (authored === undefined || authored.trim() === '') return null;
-  const elevation = Number(authored);
-  return Number.isFinite(elevation) ? elevation : null;
-}
-
 function planGeometryBySource(document: LandXmlTinDocument): Map<string, LandXmlPlanGeometry> {
   const geometry = new Map<string, LandXmlPlanGeometry>();
   const plan = document.plan;
@@ -101,7 +94,9 @@ export function useLandXmlOverlayLines(): Float32Array {
   const selectedSource = useViewerStore((state) => state.selectedLandXmlSource);
   const placement = useViewerStore((state) => state.modelPlacement);
   return useMemo(() => {
-    const vertices: number[] = [];
+    const vertices = [...overlaySpanVertices(collectLandXmlOverlaySpans({
+      models, selectedLandXmlSource: selectedSource, modelPlacement: placement,
+    }))];
     for (const model of models.values()) {
       if (!model.visible) continue;
       const document = model.landXmlDocument;
@@ -114,47 +109,6 @@ export function useLandXmlOverlayLines(): Float32Array {
       const place = (point: { x: number; y: number; z: number }) => toRenderTranslation(
         modelPointToWorkspacePoint(fromRenderTranslation(point), pointPlacement),
       );
-      for (const surface of document.surfaces) {
-        for (const [lineKind, line] of [
-          ...surface.boundaries.map((line) => ['boundary', line] as const),
-          ...surface.breaklines.map((line) => ['breakline', line] as const),
-          ...surface.contours.map((line) => ['contour', line] as const),
-        ]) {
-          // A source-list selection is deliberately a filter, not an IFC pick:
-          // line GPU picking has no model/source identity channel. This keeps
-          // the selected non-IFC record and its visible geometry in lockstep.
-          if (selectedSource && (selectedSource.modelId !== model.id || selectedSource.sourceId !== line.sourceId)) {
-            continue;
-          }
-          // Once the terrain surface is aligned, a failed line reprojection
-          // must not fall back to authored/source coordinates in that new
-          // frame. The source remains inspectable; only its unsafe overlay is
-          // suppressed until the next successful alignment rebuild.
-          if (line.renderedPointState === 'suppressed') continue;
-          const planarContourElevation = lineKind === 'contour' ? contourElevation(line) : null;
-          if (line.coordinateDimension !== 3 && planarContourElevation === null) continue;
-          for (let index = 1; index < line.points.length; index++) {
-            const renderedA = line.renderedPoints?.[index - 1];
-            const renderedB = line.renderedPoints?.[index];
-            const [northA, eastA, pointElevationA] = line.points[index - 1];
-            const [northB, eastB, pointElevationB] = line.points[index];
-            const elevationA = pointElevationA ?? planarContourElevation;
-            const elevationB = pointElevationB ?? planarContourElevation;
-            if ((!renderedA && elevationA === null) || (!renderedB && elevationB === null)) continue;
-            const localA = renderedA ? { x: renderedA[0], y: renderedA[1], z: renderedA[2] } : {
-              x: eastA * units.linearScaleToMeters - offset.x,
-              y: elevationA! * units.elevationScaleToMeters - offset.y,
-              z: -northA * units.linearScaleToMeters - offset.z,
-            };
-            const localB = renderedB ? { x: renderedB[0], y: renderedB[1], z: renderedB[2] } : {
-              x: eastB * units.linearScaleToMeters - offset.x,
-              y: elevationB! * units.elevationScaleToMeters - offset.y,
-              z: -northB * units.linearScaleToMeters - offset.z,
-            };
-            appendPlacedSegment(vertices, localA, localB, place);
-          }
-        }
-      }
       const plan = document.plan;
       if (!plan) continue;
       const geometryBySource = planGeometryBySource(document);

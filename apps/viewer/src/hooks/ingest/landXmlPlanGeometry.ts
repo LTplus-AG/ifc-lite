@@ -26,8 +26,11 @@ function tessellateCurve(
     resolved.start.easting - center.easting,
   );
   if (!Number.isFinite(radius) || radius <= 1e-9) return null;
+  // Exporters commonly round authored coordinates and lengths to
+  // millimetres. Use one survey-scale consistency tolerance for both.
+  const tolerance = Math.max(1e-3, 1e-6 * Math.max(radius, 1));
   const endRadius = Math.hypot(resolved.end.northing - center.northing, resolved.end.easting - center.easting);
-  if (!Number.isFinite(endRadius) || Math.abs(endRadius - radius) > 1e-9) return null;
+  if (!Number.isFinite(endRadius) || Math.abs(endRadius - radius) > tolerance) return null;
   const startAngle = Math.atan2(resolved.start.northing - center.northing, resolved.start.easting - center.easting);
   const endAngle = Math.atan2(resolved.end.northing - center.northing, resolved.end.easting - center.easting);
   const tau = Math.PI * 2;
@@ -35,7 +38,9 @@ function tessellateCurve(
     ? (endAngle - startAngle + tau) % tau
     : -((startAngle - endAngle + tau) % tau);
   if (Math.abs(delta) <= 1e-9) return null;
-  if (geometry.declaredLength !== null && Math.abs(radius * Math.abs(delta) - geometry.declaredLength) > 1e-9 * Math.max(radius, geometry.declaredLength, 1)) return null;
+  if (geometry.declaredLength !== null) {
+    if (Math.abs(radius * Math.abs(delta) - geometry.declaredLength) > tolerance) return null;
+  }
   const count = Math.min(64, Math.max(1, Math.ceil(Math.abs(delta) / tau * 64)));
   const points = [resolved.start];
   for (let index = 1; index < count; index++) {

@@ -29,4 +29,14 @@ describe('IFC spatial-reference adapter (#5048)', () => {
     assert.equal(reference.confidence, 'unknown');
     assert.equal(reference.sourceMetadata?.projectedCrsName, 'Swiss local grid');
   });
+
+  it('maps only authoritative named vertical datums and leaves ambiguous MSL unresolved (#5048)', () => {
+    const reference = (verticalDatum: string) => spatialReferenceFromIfc({
+      mapConversion: { id: 2, sourceCRS: 3, targetCRS: 4, eastings: 0, northings: 0, orthogonalHeight: 0 },
+      projectedCRS: { id: 4, name: 'EPSG:28992', verticalDatum }, lengthUnitScale: 1,
+    }).vertical?.id;
+    assert.equal(reference('NAVD88'), 'EPSG:5703');
+    assert.equal(reference('Normaal Amsterdams Peil'), 'EPSG:5709');
+    assert.equal(reference('MSL'), undefined, 'MSL has no unique global EPSG vertical CRS');
+  });
 });

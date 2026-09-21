@@ -21,7 +21,13 @@ fn main() -> std::process::ExitCode {
     let opts = StepOptions::default();
     let stats = match mode.as_str() {
         "held" => {
-            let (text, stats) = export_step_with_stats(&content, &opts);
+            let (text, stats) = match export_step_with_stats(&content, &opts) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("failed: {e}");
+                    return std::process::ExitCode::FAILURE;
+                }
+            };
             println!("output {} bytes", text.len());
             std::fs::write(&out, text.as_bytes()).expect("write");
             stats

@@ -9,8 +9,10 @@ import { act } from 'react';
 import { render, cleanup } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore, type FederatedModel } from '@/store/index.js';
-import type { LandXmlPolyline, LandXmlTinDocument } from './ingest/landXmlSemantics.js';
+import type { LandXmlAlignment, LandXmlPolyline, LandXmlTinDocument } from './ingest/landXmlSemantics.js';
+import { planPolyline } from './ingest/landXmlPlanGeometry.js';
 import { uploadLandXmlOverlayGuarded, useLandXmlOverlayLines } from './useLandXmlOverlayLines.js';
+import { pickLandXmlOverlayLine } from '@/components/viewer/landXmlOverlayPick.js';
 
 const initialState = useViewerStore.getState();
 
@@ -163,7 +165,7 @@ describe('LandXML source overlay rendering (#5042)', () => {
 
   it('does not fall back to source x=0..1 when an aligned line reprojection was suppressed (#5048)', () => {
     const source = line('suppressed');
-    source.points = [[0, 0, 0], [1, 1, 1e100]];
+    source.points = [[0, 0, 0], [1, 1, 1]];
     source.renderedPointState = 'suppressed';
     const model = landXmlModel('suppressed-cross-crs', source);
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
@@ -173,6 +175,22 @@ describe('LandXML source overlay rendering (#5042)', () => {
     assert.equal(vertices.length, 0, 'an unsafe line has no source-frame fallback after its surface aligned');
   });
 
+  it('accepts millimetre-rounded authored curve lengths but rejects topology mismatches (#5048)', () => {
+    const point = (northing: number, easting: number) => ({ northing, easting, elevation: 0 });
+    const geometry = {
+      sourceId: 'rounded-arc', ordinal: 1, kind: 'curve' as const, pointScopeId: null,
+      start: { kind: 'coordinates' as const, point: point(0, 250), pntRef: null },
+      end: { kind: 'coordinates' as const, point: point(249.999, 0.001), pntRef: null },
+      center: { kind: 'coordinates' as const, point: point(0, 0), pntRef: null },
+      pi: null, intermediatePoints: [], rotation: 'ccw', radius: 250,
+      declaredLength: 392.699, properties: {},
+    };
+    const resolved = { start: point(0, 250), end: point(249.999, 0.001), center: point(0, 0) };
+    assert.ok(planPolyline(geometry, resolved), 'millimetre-rounded coordinates and length remain renderable');
+    assert.equal(planPolyline({ ...geometry, declaredLength: 390 }, resolved), null,
+      'a metre-scale disagreement remains a refusal');
+  });
+
   it('does not lift a two-dimensional source list to an invented elevation', () => {
     const model = landXmlModel('two-dimensional', line('flat', 2));
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: { modelId: model.id, sourceId: 'flat' } });
@@ -180,6 +198,27 @@ describe('LandXML source overlay rendering (#5042)', () => {
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
     assert.equal(vertices.length, 0, 'a PntList2D stays inspectable but has no fabricated 3D overlay');
+  });
+
+  it('renders only exact authored alignment line spans with model-qualified selection (#5044)', () => {
+    const model = landXmlModel('alignment', line('terrain'));
+    const alignment: LandXmlAlignment = {
+      sourceId: 'alignment:one', ordinal: 1, name: 'Main', length: 20, staStart: 100,
+      profileSourceIds: [], crossSectionSourceIds: [],
+      segments: [
+        { sourceId: 'alignment:line', ordinal: 1, primitive: { kind: 'line', start: { kind: 'coordinates', point: { northing: 10, easting: 20, elevation: null } }, end: { kind: 'coordinates', point: { northing: 40, easting: 50, elevation: null } }, declaredLength: 20 } },
+        { sourceId: 'alignment:curve', ordinal: 2, primitive: { kind: 'curve', start: { kind: 'coordinates', point: { northing: 40, easting: 50, elevation: null } }, center: { kind: 'coordinates', point: { northing: 30, easting: 50, elevation: null } }, end: { kind: 'coordinates', point: { northing: 30, easting: 60, elevation: null } }, rotation: 'clockwise', radius: 10, declaredLength: 15.7 }, renderPoints: [{ northing: 40, easting: 50, elevation: null }, { northing: 37, easting: 57, elevation: null }, { northing: 30, easting: 60, elevation: null }] },
+      ],
+      cantStations: [], superelevations: [], unsupportedTransitions: [],
+    };
+    model.landXmlDocument!.alignments = [alignment];
+    useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: { modelId: model.id, sourceId: alignment.sourceId } });
+    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    function Probe() { vertices = useLandXmlOverlayLines(); return null; }
+    render(<Probe />);
+    assert.deepEqual([...vertices], [20, 0, -10, 50, 0, -40, 50, 0, -40, 57, 0, -37, 57, 0, -37, 60, 0, -30], 'curve uses canonical Rust-evaluated display samples');
+    act(() => useViewerStore.getState().setSelectedLandXmlSource({ modelId: model.id, sourceId: 'alignment:curve' }));
+    assert.deepEqual([...vertices], [50, 0, -40, 57, 0, -37, 57, 0, -37, 60, 0, -30], 'every sampled piece keeps the selected segment source ID');
   });
 
   it('renders a schema-valid two-dimensional Contour at its authored elevation (#5042)', () => {
@@ -213,6 +252,22 @@ describe('LandXML source overlay rendering (#5042)', () => {
 
     act(() => useViewerStore.getState().setModelVisibility(model.id, false));
     assert.equal(vertices.length, 0, 'hidden models cannot retain source overlays');
+  });
+
+  it('keeps a mounted hidden or selection-filtered span unpickable (#5044)', () => {
+    const model = landXmlModel('pick-filter', line('visible-source'));
+    const hidden = line('hidden-source');
+    hidden.points = [[10, 20, 30], [40, 50, 60]];
+    model.landXmlDocument!.surfaces[0].breaklines.push(hidden);
+    useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: { modelId: model.id, sourceId: 'visible-source' } });
+    function Probe() { useLandXmlOverlayLines(); return null; }
+    render(<Probe />);
+    const projector = { projectToScreen: (point: { x: number; y: number }) => ({ x: point.x, y: point.y }) };
+    assert.equal(pickLandXmlOverlayLine(useViewerStore.getState(), projector, 20, 30, 100, 100)?.sourceId, 'visible-source');
+    act(() => useViewerStore.getState().setSelectedLandXmlSource({ modelId: model.id, sourceId: 'hidden-source' }));
+    assert.equal(pickLandXmlOverlayLine(useViewerStore.getState(), projector, 20, 30, 100, 100)?.sourceId, 'hidden-source');
+    act(() => useViewerStore.getState().setModelVisibility(model.id, false));
+    assert.equal(pickLandXmlOverlayLine(useViewerStore.getState(), projector, 20, 30, 100, 100), null);
   });
 
   it('refuses overlay segments outside the terrain render-frame precision limit', () => {

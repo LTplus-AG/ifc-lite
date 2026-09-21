@@ -59,14 +59,19 @@ function unitFactor(node: WktNode | undefined): number | undefined {
  */
 function unit(node: WktNode | undefined): number | undefined {
   if (!node) return undefined;
+  // WKT1 GEOGCS owns an angular UNIT. It must never be interpreted as a
+  // metres-per-coordinate factor for a point cloud.
+  const names = node.name === 'GEOGCS' || node.name === 'GEOGCRS'
+    ? ['LENGTHUNIT']
+    : ['LENGTHUNIT', 'UNIT'];
   const candidates = [
     ...nodes(node.body)
-      .filter((child) => child.name === 'LENGTHUNIT' || child.name === 'UNIT')
+      .filter((child) => names.includes(child.name))
       .map(unitFactor),
     ...nodes(node.body)
       .filter((child) => child.name === 'AXIS')
       .flatMap((axis) => nodes(axis.body)
-        .filter((child) => child.name === 'LENGTHUNIT' || child.name === 'UNIT')
+        .filter((child) => names.includes(child.name))
         .map(unitFactor)),
   ];
   if (candidates.length === 0 || candidates.some((value) => value === undefined)) return undefined;

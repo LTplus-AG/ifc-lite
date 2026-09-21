@@ -9,6 +9,7 @@ export type SemanticNavigationItem = { label: string; sourceId?: string };
 
 type SemanticRecord = Exclude<LandXmlSourceRecord, {
   kind: 'surface' | 'point' | 'source-data-point' | 'face' | 'boundary' | 'breakline' | 'contour'
+    | 'alignment-segment' | 'unsupported-transition'
     | 'cogo-point' | 'monument' | 'plan-feature' | 'parcel' | 'plan-geometry'
     | 'pipe' | 'pipe-structure' | 'pipe-feature' | 'pipe-network' | 'pipe-network-collection';
 }>;

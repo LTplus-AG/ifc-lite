@@ -8,7 +8,7 @@ import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { IfcParser } from '@ifc-lite/parser';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
-import { saveWorkspacePlacements, restoreWorkspacePlacements, placementFrameKey, placementFrameBaseKey } from './persistence';
+import { saveWorkspacePlacements, restoreWorkspacePlacements, placementFrameKey } from './persistence';
 import { emptyPlacementState, importPlacements } from './state';
 import { makePlacementManifest, resolvePlacementManifest } from './manifest';
 

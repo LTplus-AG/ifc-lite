@@ -47,4 +47,9 @@ describe('WKT spatial metadata (#5048)', () => {
       axes: ['east', 'north', 'up'], horizontalUnitToMetres: 1,
     });
   });
+
+  it('does not treat a WKT1 geographic angular UNIT as metres (#5048)', () => {
+    const geographic = 'GEOGCS["WGS 84",DATUM["WGS_1984"],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433],AUTHORITY["EPSG","4326"]]';
+    expect(extractWktSpatialMetadata(geographic)).toEqual({ horizontalId: 'EPSG:4326' });
+  });
 });

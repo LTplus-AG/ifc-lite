@@ -124,6 +124,10 @@ export const documentEn = {
     one: '{countDisplay} image unavailable',
     other: '{countDisplay} images unavailable',
   },
+  'document.panel.problemTables': {
+    one: '{countDisplay} table not printed',
+    other: '{countDisplay} tables not printed',
+  },
 
   // DocumentPreview.tsx (#4918 doc slice): empty-state and unresolved-topic
   // messages the rendered page itself shows.

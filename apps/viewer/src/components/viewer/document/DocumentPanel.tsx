@@ -117,6 +117,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
         result.missingTopics.length > 0 ? t('document.panel.problemMissingTopics', localeCount(locale, result.missingTopics.length)) : '',
         result.snapshotFailures.length > 0 ? t('document.panel.problemSnapshotFailures', localeCount(locale, result.snapshotFailures.length)) : '',
         result.imageFailures.length > 0 ? t('document.panel.problemImageFailures', localeCount(locale, result.imageFailures.length)) : '',
+        result.tableFailures.length > 0 ? t('document.panel.problemTables', localeCount(locale, result.tableFailures.length)) : '',
       ].filter(Boolean);
       const pages = localeCount(locale, result.pages);
       toast.success(problems.length > 0

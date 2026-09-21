@@ -33,9 +33,9 @@ test('one request, every finding once, one yes/no per unordered pair', () => {
 });
 
 test('a group above the threshold keeps one survivor: verified sibling first, then the more specific text', () => {
-  const scores = [{ a: 0, b: 1, p: 0.95 }, { a: 0, b: 2, p: 0.88 }, { a: 1, b: 2, p: 0.6 }, { a: 0, b: 3, p: 0.02 }, { a: 1, b: 3, p: 0.01 }, { a: 2, b: 3, p: 0.03 }];
+  const scores = [{ a: 0, b: 1, p: 0.95 }, { a: 0, b: 2, p: 0.88 }, { a: 1, b: 2, p: 0.75 }, { a: 0, b: 3, p: 0.02 }, { a: 1, b: 3, p: 0.01 }, { a: 2, b: 3, p: 0.03 }];
   const { kept, dropped } = mergeDuplicates(F, scores);
-  // 0-1-2 are one group (0~1 and 0~2 above 0.7; 1~2 joins through 0). Survivor is 2: it has a sibling.
+  // 0-1-2 are one group: every pair is above 0.7. Survivor is 2: it has a sibling.
   assert.deepEqual(kept.map((f) => `${f.path}:${f.line}`), ['b.ts:40', 'c.ts:5']);
   assert.deepEqual(dropped.map((d) => [d.index, d.duplicateOf]), [[0, 2], [1, 2]]);
   assert.equal(dropped[0].probability, 0.95);
@@ -98,4 +98,22 @@ test('main fails soft: no key, a network error, or one finding all pass the inpu
 
 test('main needs both paths', async () => {
   await assert.rejects(() => main(['--findings', 'x'], { readFile: () => '{}', writeFile: () => {}, log: () => {}, env: ENV }), /usage/);
+});
+
+test('groups are cliques: B and C do not merge through a shared resemblance to A', () => {
+  // A~B 0.8, A~C 0.8, B~C 0.1: B and C are distinct defects. Union-find would keep one of three.
+  const scores = [{ a: 0, b: 1, p: 0.8 }, { a: 0, b: 2, p: 0.8 }, { a: 1, b: 2, p: 0.1 }, { a: 0, b: 3, p: 0 }, { a: 1, b: 3, p: 0 }, { a: 2, b: 3, p: 0 }];
+  const { kept, dropped } = mergeDuplicates(F, scores);
+  assert.equal(kept.length, 3);
+  assert.equal(dropped.length, 1);
+  // A joined the strongest-first pair (A~B at 0.8 ties A~C; the earlier pair wins) and C stayed separate.
+  assert.ok(kept.some((f) => f.path === 'b.ts'));
+  assert.ok(kept.some((f) => f.path === 'c.ts'));
+});
+
+test('a genuine three-way duplicate still collapses to one', () => {
+  const scores = [{ a: 0, b: 1, p: 0.9 }, { a: 0, b: 2, p: 0.85 }, { a: 1, b: 2, p: 0.8 }, { a: 0, b: 3, p: 0 }, { a: 1, b: 3, p: 0 }, { a: 2, b: 3, p: 0 }];
+  const { kept, dropped } = mergeDuplicates(F, scores);
+  assert.deepEqual(kept.map((f) => f.path), ['b.ts', 'c.ts']);
+  assert.deepEqual(dropped.map((d) => d.duplicateOf), [2, 2]);
 });

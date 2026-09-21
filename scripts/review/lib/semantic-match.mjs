@@ -64,7 +64,10 @@ export async function semanticMatches(expected, findings, { env, fetchImpl, thre
   let best = { score: -1, f: null };
   sameFile.forEach((f, i) => {
     const p = Number(answers[`same_${i}`]?.noul);
-    if (Number.isFinite(p) && p > best.score) best = { score: p, f };
+    // A missing or non-numeric answer is a broken response, not a miss: throw so
+    // the caller falls back to the stem rule for this pair instead of scoring 0.
+    if (!Number.isFinite(p)) throw new Error(`TypeSafe answer same_${i} missing or not a number`);
+    if (p > best.score) best = { score: p, f };
   });
   if (best.f && best.score >= threshold) {
     return { hit: true, by: `${best.f.path}:${best.f.line} (P ${best.score.toFixed(2)})`, score: best.score };

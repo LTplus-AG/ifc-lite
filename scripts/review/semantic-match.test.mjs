@@ -119,3 +119,13 @@ test('resolveMatchers hands back the stem rule without a key, and offset-aware s
   assert.equal(score(posted, { matcher: on.forPosted }).hits, 1);
   assert.match(score(posted, { matcher: on.forPosted }).lines.join('\n'), /a\.ts|check-review-posted\.mjs:533 \(P 0\.90\)/);
 });
+
+test('a response missing an answer for a same-file candidate throws, so the pair falls back to stems rather than scoring a miss', async () => {
+  const partial = async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ answers: {} }) });
+  await assert.rejects(() => semanticMatches(EXPECTED, [F_SAME], { env: ENV, fetchImpl: partial }), /same_0 missing/);
+  const cases = [{ pr: 1, body: null, expected: [EXPECTED], verdict: 'findings', findings: [F_SAME], notApplicable: [] }];
+  const sem = await semanticMatcher(cases, { env: ENV, fetchImpl: partial, fallback: matches });
+  assert.equal(sem.failures, 1);
+  // The stem rule takes over for that pair: F_SAME shares enough stems with EXPECTED to be a hit.
+  assert.equal(score(cases, { matcher: sem.matcher }).hits, matches(EXPECTED, [F_SAME]).hit ? 1 : 0);
+});

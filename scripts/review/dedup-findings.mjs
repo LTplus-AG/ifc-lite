@@ -54,23 +54,42 @@ export function buildDedupRequest(findings) {
 }
 
 /**
- * Pure: given pair probabilities, decide which findings survive. Union-find
- * over pairs above the threshold; the survivor of each group is the finding
- * with a verified sibling, else the longest body, else the earliest index.
+ * Pure: given pair probabilities, decide which findings survive. Groups are
+ * CLIQUES, not connected components: a finding joins a group only if its
+ * probability with EVERY member is above the threshold. Union-find would let
+ * B and C (P 0.1, distinct defects) merge through a shared resemblance to A
+ * (P 0.8 each) and silently drop one of two real findings. The survivor of
+ * each group is the finding with a verified sibling, else the longest body,
+ * else the earliest index.
  * @returns {{ kept: object[], dropped: Array<{ index: number, duplicateOf: number, probability: number, path: string, line: number }> }}
  */
 export function mergeDuplicates(findings, pairScores, threshold = DUPLICATE_THRESHOLD) {
-  const parent = findings.map((_, i) => i);
-  const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const p = new Map();
+  for (const { a, b, p: prob } of pairScores) p.set(`${Math.min(a, b)}:${Math.max(a, b)}`, prob);
+  const pairP = (a, b) => p.get(`${Math.min(a, b)}:${Math.max(a, b)}`) ?? 0;
+  // Strongest pairs first, so a finding lands in the group it resembles most.
+  const strong = pairScores.filter((x) => x.p >= threshold).sort((x, y) => y.p - x.p);
+  const groupOf = new Map();
+  const groupsList = [];
   const best = new Map(); // index -> highest probability that linked it
-  for (const { a, b, p } of pairScores) {
-    if (!(p >= threshold)) continue;
-    parent[find(a)] = find(b);
-    best.set(a, Math.max(best.get(a) ?? 0, p));
-    best.set(b, Math.max(best.get(b) ?? 0, p));
+  for (const { a, b, p: prob } of strong) {
+    const ga = groupOf.get(a), gb = groupOf.get(b);
+    if (ga && gb) {
+      if (ga === gb) continue;
+      if (ga.every((x) => gb.every((y) => pairP(x, y) >= threshold))) { for (const y of gb) { ga.push(y); groupOf.set(y, ga); } groupsList.splice(groupsList.indexOf(gb), 1); }
+      else continue;
+    } else if (ga || gb) {
+      const g = ga ?? gb, n = ga ? b : a;
+      if (!g.every((x) => pairP(x, n) >= threshold)) continue;
+      g.push(n); groupOf.set(n, g);
+    } else {
+      const g = [a, b]; groupsList.push(g); groupOf.set(a, g); groupOf.set(b, g);
+    }
+    best.set(a, Math.max(best.get(a) ?? 0, prob));
+    best.set(b, Math.max(best.get(b) ?? 0, prob));
   }
-  const groups = new Map();
-  findings.forEach((_, i) => { const r = find(i); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(i); });
+  const groups = new Map(groupsList.map((g) => [g[0], g]));
+  findings.forEach((_, i) => { if (!groupOf.has(i)) groups.set(i, [i]); });
   const strength = (i) => [findings[i].sibling?.path ? 1 : 0, String(findings[i].body ?? '').length, -i];
   const better = (i, j) => { const x = strength(i), y = strength(j); for (let k = 0; k < x.length; k += 1) if (x[k] !== y[k]) return x[k] > y[k] ? i : j; return i; };
   const keep = new Set();

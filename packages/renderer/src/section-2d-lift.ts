@@ -158,6 +158,12 @@ export interface CapFillGeometry {
 export function buildCapFillGeometry(
   polygons: readonly CutPolygon2D[],
   lift: SectionLift,
+  /**
+   * Canonical f64 plane anchor. Supplying it makes this builder narrow only
+   * plane-local residuals; callers that omit it retain the legacy world-f32
+   * representation.
+   */
+  origin?: readonly [number, number, number],
 ): CapFillGeometry | null {
   const fillVertices: number[] = [];
   const fillIndices: number[] = [];
@@ -187,7 +193,12 @@ export function buildCapFillGeometry(
     const baseVertex = vertexOffset;
     for (const pt of capPoints) {
       const [x3d, y3d, z3d] = lift(pt.x, pt.z);
-      fillVertices.push(x3d, y3d, z3d, color[0], color[1], color[2], color[3]);
+      fillVertices.push(
+        origin ? x3d - origin[0] : x3d,
+        origin ? y3d - origin[1] : y3d,
+        origin ? z3d - origin[2] : z3d,
+        color[0], color[1], color[2], color[3],
+      );
       vertexOffset++;
     }
     for (const [a, b, c] of tris) {
@@ -213,6 +224,8 @@ export function buildDrawingOutlineVertices(
   polygons: readonly CutPolygon2D[],
   lines: readonly DrawingLine2D[],
   lift: SectionLift,
+  /** See {@link buildCapFillGeometry}; applies to every in-plane axis too. */
+  origin?: readonly [number, number, number],
 ): Float32Array | null {
   const lineVertices: number[] = [];
 
@@ -224,7 +237,10 @@ export function buildDrawingOutlineVertices(
       const p2 = outer[(i + 1) % outer.length];
       const [x1, y1, z1] = lift(p1.x, p1.y);
       const [x2, y2, z2] = lift(p2.x, p2.y);
-      lineVertices.push(x1, y1, z1, x2, y2, z2);
+      lineVertices.push(
+        origin ? x1 - origin[0] : x1, origin ? y1 - origin[1] : y1, origin ? z1 - origin[2] : z1,
+        origin ? x2 - origin[0] : x2, origin ? y2 - origin[1] : y2, origin ? z2 - origin[2] : z2,
+      );
     }
 
     // Hole outlines
@@ -234,7 +250,10 @@ export function buildDrawingOutlineVertices(
         const p2 = hole[(i + 1) % hole.length];
         const [x1, y1, z1] = lift(p1.x, p1.y);
         const [x2, y2, z2] = lift(p2.x, p2.y);
-        lineVertices.push(x1, y1, z1, x2, y2, z2);
+        lineVertices.push(
+          origin ? x1 - origin[0] : x1, origin ? y1 - origin[1] : y1, origin ? z1 - origin[2] : z1,
+          origin ? x2 - origin[0] : x2, origin ? y2 - origin[1] : y2, origin ? z2 - origin[2] : z2,
+        );
       }
     }
   }
@@ -243,7 +262,10 @@ export function buildDrawingOutlineVertices(
   for (const line of lines) {
     const [x1, y1, z1] = lift(line.line.start.x, line.line.start.y);
     const [x2, y2, z2] = lift(line.line.end.x, line.line.end.y);
-    lineVertices.push(x1, y1, z1, x2, y2, z2);
+    lineVertices.push(
+      origin ? x1 - origin[0] : x1, origin ? y1 - origin[1] : y1, origin ? z1 - origin[2] : z1,
+      origin ? x2 - origin[0] : x2, origin ? y2 - origin[1] : y2, origin ? z2 - origin[2] : z2,
+    );
   }
 
   if (lineVertices.length === 0) return null;

@@ -383,15 +383,16 @@ export class Section2DOverlayRenderer {
       : axis === 'side' ? [planePosition, 0, 0]
         : axis === 'down' ? [0, planePosition, 0] : [0, 0, planePosition];
 
-    const fill = buildCapFillGeometry(polygons, lift);
+    // Lift/subtract while the coordinates are JS f64. Building a world-space
+    // Float32Array first then subtracting the cap anchor loses centimetre
+    // detail in both the plane normal and its in-plane axes at national-grid
+    // offsets.
+    const fill = buildCapFillGeometry(polygons, lift, anchor);
     if (fill) {
       this.fillVertexBuffer = this.device.createBuffer({
         size: fill.vertices.byteLength,
         usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
       });
-      for (let i = 0; i < fill.vertices.length; i += 7) {
-        fill.vertices[i] -= anchor[0]; fill.vertices[i + 1] -= anchor[1]; fill.vertices[i + 2] -= anchor[2];
-      }
       this.device.queue.writeBuffer(this.fillVertexBuffer, 0, fill.vertices);
 
       this.fillIndexBuffer = this.device.createBuffer({
@@ -402,15 +403,12 @@ export class Section2DOverlayRenderer {
       this.fillIndexCount = fill.indices.length;
     }
 
-    const outline = buildDrawingOutlineVertices(polygons, lines, lift);
+    const outline = buildDrawingOutlineVertices(polygons, lines, lift, anchor);
     if (outline) {
       this.lineVertexBuffer = this.device.createBuffer({
         size: outline.byteLength,
         usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
       });
-      for (let i = 0; i < outline.length; i += 3) {
-        outline[i] -= anchor[0]; outline[i + 1] -= anchor[1]; outline[i + 2] -= anchor[2];
-      }
       this.device.queue.writeBuffer(this.lineVertexBuffer, 0, outline);
       this.lineVertexCount = outline.length / 3;  // Each vertex is 3 floats
     }

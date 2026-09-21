@@ -23,6 +23,7 @@ const TEMPLATES = [
   'packages/create-ifc-lite/src/templates/server.ts',
   'packages/create-ifc-lite/src/templates/server-native.ts',
 ];
+const EXPECTED_PARQUET_WASM_RANGE = '^0.8.0';
 
 type Caret = { major: number; minor: number; patch: number };
 
@@ -73,6 +74,14 @@ function readTemplatePin(relativePath: string): string {
 }
 
 describe('server template dependency pins', () => {
+  it('keeps the server-client peer and generated templates on parquet-wasm 0.8 (#5110)', () => {
+    expect(readPeerRange()).toBe(EXPECTED_PARQUET_WASM_RANGE);
+    expect(TEMPLATES.map(readTemplatePin)).toEqual([
+      EXPECTED_PARQUET_WASM_RANGE,
+      EXPECTED_PARQUET_WASM_RANGE,
+    ]);
+  });
+
   it.each(TEMPLATES)('%s scaffolds a parquet-wasm inside the server-client peer range', (template) => {
     const peerRange = readPeerRange();
     const templateRange = readTemplatePin(template);

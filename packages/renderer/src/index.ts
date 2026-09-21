@@ -85,7 +85,7 @@ export type { ResidencyShell, ColdGeometryProvider } from './residency.js';
 export { simplifyIndicesByClustering, lodCellSizeForBounds, LOD_MIN_TRIANGLES, LOD_CELL_FRACTION } from './lod-simplify.js';
 export { quantizeInterleaved, octEncode, octDecode, QUANT_STEP, MAX_QUANT_EXTENT, QUANT_BYTES_PER_VERTEX } from './quantize.js';
 export type { QuantizedVertexData } from './quantize.js';
-export { sumResidentGpuBytes } from './render-stats.js';
+export { sumResidentGpuBytes } from './render-stats.js'; export type { RendererColorFrame } from './renderer-color-readback.js';
 
 // The hide/isolate rule and its change detection, shared with consumers that
 // render the model outside this package's pipeline (the Cesium world view,
@@ -188,7 +188,7 @@ import { collectShadowOccluders } from './shadow-occluders.js';
 import { uploadInstancedRteDeltas } from './instanced-rte.js';
 import { shadowOccluderBatches } from './shadow-occluder-batches.js';
 import { captureRendererScreenshot } from './renderer-screenshot.js';
-import { beginRendererColorFrameCapture, cancelRendererColorFrame, discardRendererColorFrameCapture, discardRendererColorFrameReadback, encodeRendererColorFrameCapture, requestRendererColorFrame, retryRendererColorFrame, settleRendererColorFrameCapture, type RendererColorFrameCapture } from './renderer-color-readback.js';
+import { beginRendererColorFrameCapture, cancelRendererColorFrame, discardRendererColorFrameReadback, encodeRendererColorFrameCapture, requestRendererColorFrame, retryRendererColorFrame, settleRendererColorFrameCapture, type RendererColorFrame, type RendererColorFrameCapture } from './renderer-color-readback.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { XRayAlpha, XRayEpochTracker, type AlphaBatchLike } from './xray-alpha.js';
 import { PartialBatchRequests } from './partial-batch-requests.js';
@@ -836,7 +836,7 @@ export class Renderer {
         // Latched: only the current device's `device.lost` signal is a replacement loss; anything else is a duplicate report.
         if (this.deviceLost) { if (options.fromDevicePromise) this.deviceLossSequence++; return; }
         this.deviceLossSequence++;
-        this.deviceLost = true;
+        this.deviceLost = true; cancelRendererColorFrame(this);
         this.recovery.lostReferenceImages = this.referenceImages.hasImages();
         this.referenceImages.destroy();
         this.deviceLostGeneration = this.initGeneration;
@@ -1915,8 +1915,8 @@ export class Renderer {
                     : options.clearColor)
                 : { r: 0.1, g: 0.1, b: 0.1, a: 1 };
 
-            colorCapture = beginRendererColorFrameCapture(this, device, this.canvas.width, this.canvas.height, this.device.getFormat());
-            const textureView = (colorCapture?.texture ?? currentTexture).createView();
+            colorCapture = beginRendererColorFrameCapture(this, currentTexture, this.canvas.width, this.canvas.height, this.device.getFormat());
+            const textureView = currentTexture.createView();
             const objectIdView = this.pipeline.getObjectIdTextureView();
 
             // Separate meshes into opaque and transparent
@@ -3166,7 +3166,6 @@ export class Renderer {
             device.queue.submit([encoder.finish()]);
             if (colorReadback && colorCapture) {
                 settleRendererColorFrameCapture(this, colorCapture, colorReadback);
-                this.requestRender();
                 colorCapture = null; colorReadback = null;
             }
             this._lastFrameStats = {
@@ -3193,7 +3192,6 @@ export class Renderer {
                 this.drainErrorScope(device);
             }
         } catch (error) {
-            discardRendererColorFrameCapture(colorCapture);
             discardRendererColorFrameReadback(colorReadback);
             // Balance the validation scope if we threw before popping it above —
             // an unpopped scope would capture every later frame's errors silently.
@@ -3612,9 +3610,9 @@ export class Renderer {
         return this.device.getDevice();
     }
 
-    /** Capture the next submitted frame's bounded color pixels, not compositor state. */
     captureScreenshot(): Promise<string | null> { return captureRendererScreenshot(this.device, this.canvas); }
-    captureColorFrame() { return requestRendererColorFrame(this, !this.destroyed && !this.deviceLost && this.device.isInitialized(), () => this.requestRender()); }
+    /** Capture the next submitted frame's bounded color pixels, not compositor state. */
+    captureColorFrame(): Promise<RendererColorFrame | null> { return requestRendererColorFrame(this, !this.destroyed && !this.deviceLost && this.device.isInitialized(), () => this.requestRender()); }
 
     /**
      * Destroy the renderer and release all GPU resources.
@@ -3663,7 +3661,7 @@ export class Renderer {
         // Nothing below survives this call, so `whenReady()` / `isReady()` must
         // go back to waiting. Set first: every release below is synchronous, but
         // the flag is what a caller holding a live reference actually reads.
-        this.ready = false;
+        this.ready = false; cancelRendererColorFrame(this);
 
         // Scene mesh GPU buffers
         if (clearScene) {

@@ -139,7 +139,6 @@ async function rendererColorFrame(page: Page): Promise<Buffer> {
   expect(encoded, 'renderer color capture is a PNG data URL').not.toBeNull();
   return Buffer.from(encoded![1]!, 'base64');
 }
-
 export async function assertIsolatedRenderedContent(page: Page, modelId: string, gpuStrict: boolean): Promise<RenderedModelEvidence> {
   await showOnlyModelAndFrame(page, modelId);
   if (!gpuStrict) {

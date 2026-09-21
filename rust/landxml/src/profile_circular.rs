@@ -30,20 +30,29 @@ pub(crate) fn circular_geometry(
     let sine_in = incoming_grade / incoming_norm;
     let cosine_in = incoming_norm.recip();
     let cosine_out = outgoing_norm.recip();
-    let grade_product = incoming_grade * outgoing_grade;
-    let angle_delta = (outgoing_grade - incoming_grade).atan2(1.0 + grade_product);
-    let half_angle = angle_delta / 2.0;
-    let cosine_mid = ((1.0 + (1.0 - grade_product) / (incoming_norm * outgoing_norm)) / 2.0).sqrt();
-    let change = 2.0 * cosine_mid * half_angle.sin();
+    let grade_delta = outgoing_grade - incoming_grade;
+    if grade_delta == 0.0 {
+        return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
+    }
+    let norms_product = incoming_norm * outgoing_norm;
+    let cross = grade_delta / norms_product;
+    let dot = (1.0 + incoming_grade * outgoing_grade) / norms_product;
+    let tangent_half = if dot >= 0.0 {
+        cross / (1.0 + dot)
+    } else {
+        (1.0 - dot) / cross
+    };
+    // sin(theta_out) - sin(theta_in) = tan(delta / 2) *
+    // (cos(theta_in) + cos(theta_out)). This stays finite for both nearly
+    // parallel steep grades and nearly opposing vertical tangents.
+    let change = tangent_half * (cosine_in + cosine_out);
     if change == 0.0 {
         return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
     }
     let expected_length = radius * change.abs();
-    // Source grades are f64 after parsing. Give their input ulps a physical
-    // length allowance, without multiplying a trigonometric cancellation by R.
-    let input_ulp_length =
-        2.0 * f64::EPSILON * incoming_grade.abs().max(outgoing_grade.abs()) * radius;
-    let tolerance = 1.0e-10 * length.max(expected_length).max(1.0) + input_ulp_length;
+    // Both values are already represented f64 source quantities. Compare them
+    // at their own scale; do not grant a radius-amplified source allowance.
+    let tolerance = 32.0 * f64::EPSILON * length.max(expected_length).max(1.0);
     if !expected_length.is_finite()
         || !tolerance.is_finite()
         || (length - expected_length).abs() > tolerance
@@ -51,7 +60,7 @@ pub(crate) fn circular_geometry(
         return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
     }
     let curvature = change.signum() / radius;
-    let tangent_length = half_angle.tan() / curvature;
+    let tangent_length = tangent_half / curvature;
     let start_tangent = tangent_length * cosine_in;
     let end_tangent = tangent_length * cosine_out;
     if !tangent_length.is_finite()

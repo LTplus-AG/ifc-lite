@@ -1344,13 +1344,25 @@ fn issue_5045_parsed_circular_curves_stay_stable_for_shallow_and_near_parallel_g
     let end_slope = (extreme_elevation(end) - extreme_elevation(end - epsilon)) / epsilon;
     assert!((start_slope - incoming_grade).abs() < 1.0e-8);
     assert!((end_slope - outgoing_grade).abs() < 1.0e-8);
-    let inconsistent_extreme = parse(source(-100.0, 100.00000000000003, 100.0, 1.0e18).as_bytes())?;
-    assert_eq!(
-        inconsistent_extreme.profiles[0].evaluate_elevation_at(1000.0),
-        Err(ifc_lite_landxml::LandXmlProfileEvaluationError::InconsistentCircularCurve),
-    );
+    for length in [0.001_f64, 1.0, 20.0, 25.0, 30.0, 35.0, 60.0, 70.0] {
+        let inconsistent_extreme =
+            parse(source(-100.0, 100.00000000000003, length, 1.0e18).as_bytes())?;
+        assert_eq!(
+            inconsistent_extreme.profiles[0].evaluate_elevation_at(1000.0),
+            Err(ifc_lite_landxml::LandXmlProfileEvaluationError::InconsistentCircularCurve),
+        );
+    }
 
-    let near_parallel = parse(source(-100.0, 100.000001, 98.51853222109241, 1.0e11).as_bytes())?;
+    let steep = parse(source(-1.0e11, 2.0e11, 37.5, 1.0e18).as_bytes())?;
+    assert!(steep.profiles[0].evaluate_elevation_at(1000.0)?.is_some());
+
+    let opposing = parse(source(1.0e19, 1.0e19, 2.0, 1.0).as_bytes())?;
+    let opposing_elevation = opposing.profiles[0]
+        .evaluate_elevation_at(1000.0)?
+        .expect("opposing steep curve evaluates at its PVI");
+    assert!((opposing_elevation / 1.0e16 - 1.0).abs() < 1.0e-12);
+
+    let near_parallel = parse(source(-100.0, 100.000001, 98.51853225045078, 1.0e11).as_bytes())?;
     assert!(near_parallel.profiles[0]
         .evaluate_elevation_at(1000.0)?
         .is_some());

@@ -49,6 +49,26 @@ interface LandXmlLoadOptions {
   onError(message: string): void;
 }
 
+interface LandXmlRollbackOwnership { rollback(): void }
+
+/**
+ * A finalizer may suspend for CRS alignment after streamed ownership commits.
+ * Re-check liveness at that exact boundary and release both reservations
+ * before any model-visible success effects are allowed to run.
+ */
+export async function awaitLandXmlFinalization(
+  finalization: Promise<void>,
+  isCurrent: () => boolean,
+  provisional: LandXmlRollbackOwnership | null,
+  federatedPlan: LandXmlRollbackOwnership | null,
+): Promise<boolean> {
+  await finalization;
+  if (isCurrent()) return true;
+  provisional?.rollback();
+  federatedPlan?.rollback();
+  return false;
+}
+
 function shiftBounds(
   bounds: CoordinateInfo['originalBounds'],
   offset: Readonly<{ x: number; y: number; z: number }>,
@@ -230,7 +250,7 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
       for (const mesh of result.geometryResult.meshes) markLandXmlGpuUploaded(mesh);
     }
     if (options.targetKind === 'primary') options.onPrimary(result);
-    await options.finalize(result.dataStore, result.geometryResult, result.schemaVersion, {
+    const finalization = options.finalize(result.dataStore, result.geometryResult, result.schemaVersion, {
       loadPath: 'landxml',
       landXmlDocument: result.semanticDocument,
       sourceSchema: result.semanticDocument.schema,
@@ -241,7 +261,7 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
       ...(federatedPlan.value ? { federatedLandXmlStreamingPlan: federatedPlan.value } : {}),
       ...(result.spatialReference ? { spatialReference: result.spatialReference } : {}),
     });
-    if (!options.isCurrent()) return;
+    if (!(await awaitLandXmlFinalization(finalization, options.isCurrent, provisional.value, federatedPlan.value))) return;
     for (const warning of result.warnings) toast.info(warning);
     options.setProgress({ phase: 'Complete', percent: 100 });
     captureModelLoaded({

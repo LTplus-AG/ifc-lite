@@ -65,7 +65,9 @@ describe('LandXML streamed surface assembly (#5050)', () => {
     };
     const header = assembler.push({
       kind: 'metadata', metadata_kind: 'header', stream: {}, terrain,
-      plan: { cogo_points: [], monuments: [], plan_features: [], parcels: [], warnings: [], source_batches: [], parcel_probes: [], resolved_monuments: [], resolved_geometry: [] },
+      // This is the actual Rust metadata header. Derived plan fields are
+      // separately credited records, not fabricated header fields.
+      plan: { cogo_points: [], monuments: [], plan_features: [], parcels: [], warnings: [] },
       alignments: { alignments: [], warnings: [] }, pipe_networks: { collections: [], features: [], networks: [], refusals: [] },
     });
     assert.equal(header.document, null);
@@ -79,5 +81,30 @@ describe('LandXML streamed surface assembly (#5050)', () => {
     assert.deepEqual(complete?.tin.warnings, ['kept']);
     assert.deepEqual((complete?.tin.plan as { source_batches: unknown[] }).source_batches, [{ source_ids: ['p-1'] }]);
     assert.equal(complete?.alignment_render_truncated, true);
+  });
+
+  it('reassembles a legal oversized metadata record under per-event credit (#5050)', () => {
+    const assembler = new LandXmlStreamDocumentAssembler();
+    const terrain = {
+      format: 'landxml', schema: 'LandXML-1.2', capabilities: {}, version: '1.2', units: null, surfaces: [],
+      extensions: [], warnings: [], alignments: [], profiles: [], cross_sections: [], cross_section_surfaces: [], roadways: [], capability_diagnostics: [], preserved_only_extensions: [], pipe_networks: null,
+    };
+    assembler.push({
+      kind: 'metadata', metadata_kind: 'header', stream: {}, terrain,
+      plan: { cogo_points: [], monuments: [], plan_features: [], parcels: [], warnings: [] },
+      alignments: { alignments: [], warnings: [] }, pipe_networks: { collections: [], features: [], networks: [], refusals: [] },
+    });
+    const value = { message: 'x'.repeat(256 * 1024) };
+    const encoded = new TextEncoder().encode(JSON.stringify(value));
+    const cut = 32 * 1024;
+    for (let offset = 0, sequence = 0; offset < encoded.byteLength; offset += cut, sequence++) {
+      const end = Math.min(encoded.byteLength, offset + cut);
+      assembler.push({
+        kind: 'metadata', metadata_kind: 'record_fragment', record: 'terrain_warning', sequence,
+        continued: end < encoded.byteLength, payload_utf8: Array.from(encoded.subarray(offset, end)),
+      });
+    }
+    const complete = assembler.push({ kind: 'metadata', metadata_kind: 'end' }).document;
+    assert.deepEqual(complete?.tin.warnings, [value]);
   });
 });

@@ -2,213 +2,49 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** Strict, bounded reassembly of one Rust LandXML surface fragment stream. */
+/** Source-document ownership after strict, bounded stream reassembly. */
 
-export const MAX_LANDXML_ASSEMBLED_COMPONENT_BYTES = 8 * 1024 * 1024;
+import { LandXmlSurfaceFragmentAssembler } from './landXmlSurfaceFragmentAssembler.js';
+import { bytes, MAX_LANDXML_ASSEMBLED_COMPONENT_BYTES, object, payload, type LandXmlAssembledSurface, type LandXmlSurfaceStreamComponent } from './landXmlStreamWire.js';
+export { LandXmlSurfaceFragmentAssembler } from './landXmlSurfaceFragmentAssembler.js';
+export {
+  MAX_LANDXML_ASSEMBLED_COMPONENT_BYTES,
+  type LandXmlAssembledSurface,
+  type LandXmlSurfaceStreamComponent,
+  type LandXmlSurfaceStreamFragment,
+} from './landXmlStreamWire.js';
 
-export type LandXmlSurfaceStreamComponent =
-  | 'start' | 'points' | 'canonical_vertices' | 'source_data_points'
-  | 'faces' | 'boundaries' | 'breaklines' | 'contours' | 'end';
-
-export interface LandXmlSurfaceStreamFragment {
-  source_id: string;
-  component: LandXmlSurfaceStreamComponent;
-  sequence: number;
-  continued: boolean;
-  payload_utf8: unknown;
-}
-
-export interface LandXmlAssembledSurface {
-  source_id: string;
-  ordinal: unknown;
-  source_path: unknown;
-  properties: unknown;
-  definition_properties: unknown;
-  name: unknown;
-  kind: unknown;
-  render_state: unknown;
-  topology_origin: unknown;
-  terrain_diagnostic: unknown;
-  hidden_face_count: unknown;
-  points: unknown[];
-  canonical_vertices: unknown[];
-  source_data_points: unknown[];
-  faces: unknown[];
-  face_source_ids: unknown[];
-  face_visibility: unknown[];
-  boundaries: unknown[];
-  breaklines: unknown[];
-  contours: unknown[];
-}
-
-interface PendingPayload {
-  component: LandXmlSurfaceStreamComponent;
+interface PendingMetadataPayload {
+  record: string;
   nextSequence: number;
   chunks: Uint8Array[];
   bytes: number;
 }
 
-const ORDER: readonly LandXmlSurfaceStreamComponent[] = [
-  'start', 'points', 'canonical_vertices', 'source_data_points', 'faces',
-  'boundaries', 'breaklines', 'contours', 'end',
-];
-
-function object(value: unknown, context: string): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error(`LandXML stream emitted an invalid ${context}`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function bytes(value: unknown): Uint8Array {
-  if (value instanceof Uint8Array) return value;
-  if (!Array.isArray(value) || value.some((byte) => typeof byte !== 'number' || !Number.isInteger(byte) || byte < 0 || byte > 255)) {
-    throw new Error('LandXML stream emitted an invalid UTF-8 payload');
-  }
-  return Uint8Array.from(value);
-}
-
-function payload(chunks: readonly Uint8Array[], bytesLength: number): unknown {
-  const joined = new Uint8Array(bytesLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    joined.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(joined)) as unknown;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`LandXML stream emitted malformed JSON payload: ${message}`);
-  }
-}
-
-/**
- * Owns one in-progress surface. A caller transfers each returned surface into
- * its provisional renderer transaction before feeding more source input.
- */
-export class LandXmlSurfaceFragmentAssembler {
-  private sourceId: string | null = null;
-  private surface: LandXmlAssembledSurface | null = null;
-  private stage = 0;
-  private pending: PendingPayload | null = null;
-
-  get pendingBytes(): number { return this.pending?.bytes ?? 0; }
-
-  get hasPendingSurface(): boolean { return this.surface !== null || this.pending !== null; }
-
-  push(fragment: LandXmlSurfaceStreamFragment): LandXmlAssembledSurface | null {
-    if (!ORDER.includes(fragment.component) || !Number.isInteger(fragment.sequence) || fragment.sequence < 0) {
-      throw new Error('LandXML stream emitted an invalid surface fragment envelope');
-    }
-    if (this.sourceId !== null && fragment.source_id !== this.sourceId) {
-      throw new Error('LandXML stream interleaved source surface fragments');
-    }
-    if (this.pending === null) {
-      if (fragment.sequence !== 0) throw new Error('LandXML stream started a component at a nonzero sequence');
-      if (fragment.component === 'start') {
-        if (this.surface !== null) throw new Error('LandXML stream started a surface before ending the prior surface');
-        this.sourceId = fragment.source_id;
-        this.stage = 0;
-      } else if (this.surface === null) {
-        throw new Error('LandXML stream emitted a surface component before Start');
-      }
-      const componentStage = ORDER.indexOf(fragment.component);
-      if (componentStage < this.stage) {
-        throw new Error(`LandXML stream emitted ${fragment.component} out of source order`);
-      }
-      if (fragment.component === 'end') {
-        if (fragment.continued || bytes(fragment.payload_utf8).byteLength !== 0) {
-          throw new Error('LandXML stream emitted an invalid End fragment');
-        }
-        const complete = this.surface;
-        this.reset();
-        return complete;
-      }
-      this.pending = {
-        component: fragment.component,
-        nextSequence: 0,
-        chunks: [],
-        bytes: 0,
-      };
-    }
-    const pending = this.pending;
-    if (pending.component !== fragment.component || pending.nextSequence !== fragment.sequence) {
-      throw new Error('LandXML stream fragment continuation sequence is invalid');
-    }
-    const chunk = bytes(fragment.payload_utf8);
-    pending.bytes += chunk.byteLength;
-    if (pending.bytes > MAX_LANDXML_ASSEMBLED_COMPONENT_BYTES) {
-      throw new Error('LandXML stream component exceeds its bounded assembly limit');
-    }
-    pending.chunks.push(chunk);
-    pending.nextSequence++;
-    if (fragment.continued) return null;
-    const value = payload(pending.chunks, pending.bytes);
-    this.pending = null;
-    if (pending.component === 'end') {
-      throw new Error('LandXML stream emitted an End payload outside its terminal fragment');
-    }
-    this.apply(pending.component, value);
-    return null;
-  }
-
-  abort(): void { this.reset(); }
-
-  private apply(component: Exclude<LandXmlSurfaceStreamComponent, 'end'>, value: unknown): void {
-    if (component === 'start') {
-      const start = object(value, 'surface Start payload');
-      this.surface = {
-        source_id: this.sourceId ?? '',
-        ordinal: start.ordinal,
-        source_path: start.source_path,
-        properties: start.properties,
-        definition_properties: start.definition_properties,
-        name: start.name,
-        kind: start.kind,
-        render_state: start.render_state,
-        topology_origin: start.topology_origin,
-        terrain_diagnostic: start.terrain_diagnostic,
-        hidden_face_count: start.hidden_face_count,
-        points: [], canonical_vertices: [], source_data_points: [], faces: [], face_source_ids: [],
-        face_visibility: [], boundaries: [], breaklines: [], contours: [],
-      };
-      this.stage = 1;
-      return;
-    }
-    const surface = this.surface;
-    if (surface === null) throw new Error('LandXML stream lost its surface Start payload');
-    switch (component) {
-      case 'points': surface.points.push(value); break;
-      case 'canonical_vertices': surface.canonical_vertices.push(value); break;
-      case 'source_data_points': surface.source_data_points.push(value); break;
-      case 'faces': {
-        const face = object(value, 'face payload');
-        surface.faces.push(face.ids);
-        surface.face_source_ids.push(face.source_id);
-        surface.face_visibility.push(face.visible);
-        break;
-      }
-      case 'boundaries': surface.boundaries.push(value); break;
-      case 'breaklines': surface.breaklines.push(value); break;
-      case 'contours': surface.contours.push(value); break;
-    }
-    const componentStage = ORDER.indexOf(component);
-    if (componentStage > this.stage) this.stage = componentStage;
-  }
-
-  private reset(): void {
-    this.sourceId = null;
-    this.surface = null;
-    this.stage = 0;
-    this.pending = null;
-  }
-}
 
 function values(target: Record<string, unknown>, field: string): unknown[] {
   const value = target[field];
   if (!Array.isArray(value)) throw new Error(`LandXML metadata header has an invalid ${field} collection`);
   return value;
+}
+
+/**
+ * The Rust cursor deliberately keeps presentation-derived plan fields out of
+ * its metadata header. They arrive as separately credited record events. The
+ * normal (non-streaming) WASM document has these arrays, so initialise the
+ * compatibility document here rather than requiring an invented header wire
+ * shape from Rust.
+ */
+function initialiseDerivedPlanCollections(plan: Record<string, unknown>): void {
+  for (const field of [
+    'source_batches', 'parcel_probes', 'resolved_monuments', 'resolved_geometry',
+  ]) {
+    if (field in plan) {
+      values(plan, field);
+    } else {
+      plan[field] = [];
+    }
+  }
 }
 
 function text(value: unknown, context: string): string {
@@ -240,6 +76,7 @@ export class LandXmlStreamDocumentAssembler {
   private readonly alignmentRenderSpans: unknown[] = [];
   private readonly alignmentRenderRefusals: unknown[] = [];
   private alignmentRenderTruncated = false;
+  private metadataPayload: PendingMetadataPayload | null = null;
   private completed = false;
 
   get pendingSurfaceBytes(): number { return this.surface.pendingBytes; }
@@ -272,16 +109,23 @@ export class LandXmlStreamDocumentAssembler {
       values(this.terrain, 'surfaces').push(...this.surfaces);
       this.surfaces.length = 0;
       this.plan = { ...object(envelope.plan, 'plan metadata header') };
+      initialiseDerivedPlanCollections(this.plan);
       this.alignments = { ...object(envelope.alignments, 'alignment metadata header') };
       this.pipeNetworks = { ...object(envelope.pipe_networks, 'pipe metadata header') };
       return { surface: null, document: null };
     }
     if (metadataKind === 'record') {
+      if (this.metadataPayload !== null) throw new Error('LandXML stream interleaved a metadata record fragment');
       this.pushMetadataRecord(text(envelope.record, 'metadata record kind'), envelope.value);
+      return { surface: null, document: null };
+    }
+    if (metadataKind === 'record_fragment') {
+      this.pushMetadataFragment(envelope);
       return { surface: null, document: null };
     }
     if (metadataKind !== 'end' || this.completed) throw new Error('LandXML stream emitted an invalid metadata End');
     if (this.surface.hasPendingSurface) throw new Error('LandXML stream ended with an incomplete surface');
+    if (this.metadataPayload !== null) throw new Error('LandXML stream ended with an incomplete metadata record fragment');
     const terrain = this.terrain;
     const alignments = this.alignments;
     const plan = this.plan;
@@ -309,7 +153,38 @@ export class LandXmlStreamDocumentAssembler {
     this.alignmentRenderSpans.length = 0;
     this.alignmentRenderRefusals.length = 0;
     this.alignmentRenderTruncated = false;
+    this.metadataPayload = null;
     this.completed = true;
+  }
+
+  private pushMetadataFragment(envelope: Record<string, unknown>): void {
+    if (this.terrain === null || this.completed) {
+      throw new Error('LandXML metadata record fragment arrived outside a cursor session');
+    }
+    const record = text(envelope.record, 'metadata record fragment kind');
+    const sequence = envelope.sequence;
+    if (!Number.isInteger(sequence) || (sequence as number) < 0) {
+      throw new Error('LandXML stream emitted an invalid metadata record fragment sequence');
+    }
+    const chunk = bytes(envelope.payload_utf8);
+    if (this.metadataPayload === null) {
+      if (sequence !== 0) throw new Error('LandXML metadata record fragment started at a nonzero sequence');
+      this.metadataPayload = { record, nextSequence: 0, chunks: [], bytes: 0 };
+    }
+    const pending = this.metadataPayload;
+    if (pending.record !== record || pending.nextSequence !== sequence) {
+      throw new Error('LandXML metadata record fragment continuation sequence is invalid');
+    }
+    pending.bytes += chunk.byteLength;
+    if (pending.bytes > MAX_LANDXML_ASSEMBLED_COMPONENT_BYTES) {
+      throw new Error('LandXML metadata record exceeds its bounded assembly limit');
+    }
+    pending.chunks.push(chunk);
+    pending.nextSequence++;
+    if (envelope.continued === true) return;
+    const value = payload(pending.chunks, pending.bytes);
+    this.metadataPayload = null;
+    this.pushMetadataRecord(record, value);
   }
 
   private pushMetadataRecord(kind: string, value: unknown): void {

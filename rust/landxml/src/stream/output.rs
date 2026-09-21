@@ -74,7 +74,7 @@ impl LandXmlTinStreamSession {
             let Some(cursor) = &mut self.metadata_cursor else {
                 return Ok(());
             };
-            let Some(event) = cursor.next_event() else {
+            let Some(event) = cursor.next_event()? else {
                 self.metadata_cursor = None;
                 return Ok(());
             };

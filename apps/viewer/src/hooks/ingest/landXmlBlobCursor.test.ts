@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   LANDXML_BLOB_CHUNK_BYTES, LANDXML_CURSOR_CREDIT_BYTES,
-  parseLandXmlSourceBlobWithApi, type LandXmlCursorApi,
+  parseLandXmlSourceBlobWithApi, streamLandXmlSourceBlobWithApi, type LandXmlCursorApi,
 } from './landXmlBlobCursor.js';
 
 const encode = (value: unknown): number[] => Array.from(new TextEncoder().encode(JSON.stringify(value)));
@@ -42,5 +42,34 @@ describe('LandXML Blob cursor driver (#5050)', () => {
     assert.ok(credits.every((credit) => credit === LANDXML_CURSOR_CREDIT_BYTES));
     assert.equal(aborted, 1);
     assert.equal(freed, 1);
+  });
+
+  it('relays credited events without constructing a second source document (#5050)', async () => {
+    let pending = false;
+    let drained = 0;
+    const kinds: string[] = [];
+    const api: LandXmlCursorApi = {
+      createLandXmlTinStreamSession: () => ({
+        advanceChunk: () => { pending = true; },
+        drain: () => {
+          pending = false;
+          drained++;
+          return drained === 1
+            ? [{ kind: 'header', units: { linear_scale_to_meters: 1, elevation_scale_to_meters: 1 } }]
+            : [
+              { kind: 'metadata', metadata_kind: 'header', terrain: {}, pipe_networks: {} },
+              { kind: 'metadata', metadata_kind: 'end' },
+            ];
+        },
+        finishCursor: () => { pending = true; },
+        outputPending: () => pending,
+        abort: () => {},
+        free: () => {},
+      }),
+    };
+    await streamLandXmlSourceBlobWithApi(api, new Blob(['x']), {
+      onEvent: (event) => { kinds.push((event as { kind: string }).kind); },
+    });
+    assert.deepEqual(kinds, ['header', 'metadata', 'metadata']);
   });
 });

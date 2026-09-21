@@ -11,7 +11,7 @@ const MAX_POINTS: usize = 250_000;
 const MAX_REFUSALS: usize = 1_024;
 
 /// One numeric display-sampling refusal retained with its authored identity.
-#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+#[derive(Clone, Debug, serde::Deserialize, PartialEq, serde::Serialize)]
 pub struct LandXmlAlignmentRenderRefusal {
     pub source_id: String,
     pub message: String,

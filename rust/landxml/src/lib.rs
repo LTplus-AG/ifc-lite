@@ -63,7 +63,7 @@ pub use pipes::{
     LandXmlStructurePart,
 };
 pub use stream::{
-    LandXmlMetadataRecord, LandXmlMetadataStreamAssembler, LandXmlMetadataStreamEnd,
+    LandXmlMetadataRecord, LandXmlMetadataRecordFragment, LandXmlMetadataStreamAssembler, LandXmlMetadataStreamEnd,
     LandXmlMetadataStreamEvent, LandXmlMetadataStreamHeader, LandXmlStreamEvent,
     LandXmlStreamHeader, LandXmlStreamMetadata, LandXmlStreamSummary, LandXmlSurfaceComponent,
     LandXmlSurfaceFragment, LandXmlTinStreamSession, MAX_LANDXML_STREAM_DRAIN_BYTES,

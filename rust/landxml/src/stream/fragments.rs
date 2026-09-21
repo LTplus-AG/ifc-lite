@@ -6,7 +6,10 @@
 
 use serde::Serialize;
 
-use super::{LandXmlStreamEvent, LandXmlSurfaceComponent, LandXmlSurfaceFragment};
+use super::{
+    LandXmlStreamEvent, LandXmlSurfaceComponent, LandXmlSurfaceFragment,
+    MAX_LANDXML_STREAM_QUEUED_BYTES,
+};
 use crate::{xml::error, LandXmlDiagnosticCode as Code, LandXmlError, LandXmlSurface};
 
 /// A `Vec<u8>` is JSON-encoded as decimal bytes, so keep payloads well below
@@ -236,10 +239,17 @@ fn value_for<T: Serialize>(
 }
 
 fn serialize<T: Serialize>(value: &T) -> Result<Vec<u8>, LandXmlError> {
-    serde_json::to_vec(value).map_err(|value| {
+    let bytes = serde_json::to_vec(value).map_err(|value| {
         error(
             Code::InvalidSemantic,
             format!("stream serialization failed: {value}"),
         )
-    })
+    })?;
+    if bytes.len() > MAX_LANDXML_STREAM_QUEUED_BYTES {
+        return Err(error(
+            Code::LimitExceeded,
+            "surface component exceeds the 512 KiB credited serialization limit",
+        ));
+    }
+    Ok(bytes)
 }

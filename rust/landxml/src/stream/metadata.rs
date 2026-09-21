@@ -4,14 +4,17 @@
 
 //! Move-owned, bounded metadata records emitted after streamed surfaces.
 
-use super::{
-    LandXmlMetadataRecord, LandXmlMetadataStreamEnd, LandXmlMetadataStreamEvent,
-    LandXmlMetadataStreamHeader, LandXmlStreamHeader, LandXmlStreamMetadata, LandXmlStreamSummary,
-};
+mod cursor;
+mod reassembly;
+pub(crate) use cursor::MetadataCursor;
+pub(crate) use reassembly::MetadataReassembler;
+
+use super::LandXmlMetadataRecord;
 use crate::{
-    alignment::{self, LandXmlAlignmentDocument},
-    LandXmlPipeNetworkDocument, LandXmlPlanDocument, LandXmlTinDocument,
+    alignment::LandXmlAlignmentDocument, LandXmlPipeNetworkDocument, LandXmlPlanDocument,
+    LandXmlTinDocument,
 };
+use std::cell::RefCell;
 
 pub(crate) struct TerrainStreamParts {
     header: Option<LandXmlTinDocument>,
@@ -148,6 +151,23 @@ pub(crate) struct PlanStreamParts {
 }
 
 impl PlanStreamParts {
+    pub(crate) fn header(document: &LandXmlPlanDocument) -> LandXmlPlanDocument {
+        LandXmlPlanDocument {
+            schema: document.schema.clone(),
+            version: document.version.clone(),
+            capability_diagnostics: document.capability_diagnostics.clone(),
+            units: document.units.clone(),
+            area_unit: document.area_unit.clone(),
+            area_scale_to_square_meters: document.area_scale_to_square_meters,
+            cogo_points: Vec::new(),
+            monuments: Vec::new(),
+            plan_features: Vec::new(),
+            parcels: Vec::new(),
+            warnings: Vec::new(),
+            reference_index: RefCell::new(None),
+        }
+    }
+
     pub(crate) fn new(document: LandXmlPlanDocument) -> Self {
         let LandXmlPlanDocument {
             schema,
@@ -186,8 +206,10 @@ impl PlanStreamParts {
         }
     }
 
-    fn take_header(&mut self) -> LandXmlPlanDocument {
-        self.header.take().expect("metadata header is emitted once")
+    pub(crate) fn without_header(document: LandXmlPlanDocument) -> Self {
+        let mut parts = Self::new(document);
+        parts.header = None;
+        parts
     }
 
     fn next_record(&mut self) -> Option<LandXmlMetadataRecord> {
@@ -212,6 +234,17 @@ pub(crate) struct AlignmentStreamParts {
 }
 
 impl AlignmentStreamParts {
+    pub(crate) fn header(document: &LandXmlAlignmentDocument) -> LandXmlAlignmentDocument {
+        LandXmlAlignmentDocument {
+            schema: document.schema.clone(),
+            version: document.version.clone(),
+            capability_diagnostics: document.capability_diagnostics.clone(),
+            units: document.units.clone(),
+            alignments: Vec::new(),
+            warnings: Vec::new(),
+        }
+    }
+
     pub(crate) fn new(document: LandXmlAlignmentDocument) -> Self {
         let LandXmlAlignmentDocument {
             schema,
@@ -235,8 +268,10 @@ impl AlignmentStreamParts {
         }
     }
 
-    fn take_header(&mut self) -> LandXmlAlignmentDocument {
-        self.header.take().expect("metadata header is emitted once")
+    pub(crate) fn without_header(document: LandXmlAlignmentDocument) -> Self {
+        let mut parts = Self::new(document);
+        parts.header = None;
+        parts
     }
 
     fn next_record(&mut self) -> Option<LandXmlMetadataRecord> {
@@ -300,210 +335,5 @@ impl PipeStreamParts {
             .or_else(|| self.features.next().map(LandXmlMetadataRecord::PipeFeature))
             .or_else(|| self.networks.next().map(LandXmlMetadataRecord::PipeNetwork))
             .or_else(|| self.refusals.next().map(LandXmlMetadataRecord::PipeRefusal))
-    }
-}
-
-pub(crate) struct MetadataCursor {
-    header: Option<LandXmlMetadataStreamHeader>,
-    terrain: TerrainStreamParts,
-    plan: PlanStreamParts,
-    plan_derived: std::collections::VecDeque<LandXmlMetadataRecord>,
-    alignment: AlignmentStreamParts,
-    alignment_derived: std::collections::VecDeque<LandXmlMetadataRecord>,
-    pipe: PipeStreamParts,
-    end: Option<LandXmlMetadataStreamEnd>,
-}
-
-impl MetadataCursor {
-    pub(crate) fn new(
-        header: LandXmlStreamHeader,
-        mut terrain: TerrainStreamParts,
-        mut plan: PlanStreamParts,
-        plan_derived: std::collections::VecDeque<LandXmlMetadataRecord>,
-        mut alignment: AlignmentStreamParts,
-        alignment_derived: std::collections::VecDeque<LandXmlMetadataRecord>,
-        mut pipe: PipeStreamParts,
-        end: LandXmlMetadataStreamEnd,
-    ) -> Self {
-        Self {
-            header: Some(LandXmlMetadataStreamHeader {
-                stream: header,
-                terrain: terrain.take_header(),
-                plan: plan.take_header(),
-                alignments: alignment.take_header(),
-                pipe_networks: pipe.take_header(),
-            }),
-            terrain,
-            plan,
-            plan_derived,
-            alignment,
-            alignment_derived,
-            pipe,
-            end: Some(end),
-        }
-    }
-
-    pub(crate) fn next_event(&mut self) -> Option<LandXmlMetadataStreamEvent> {
-        self.header
-            .take()
-            .map(LandXmlMetadataStreamEvent::Header)
-            .or_else(|| {
-                self.terrain
-                    .next_record()
-                    .map(LandXmlMetadataStreamEvent::Record)
-            })
-            .or_else(|| {
-                self.plan
-                    .next_record()
-                    .map(LandXmlMetadataStreamEvent::Record)
-            })
-            .or_else(|| {
-                self.plan_derived
-                    .pop_front()
-                    .map(LandXmlMetadataStreamEvent::Record)
-            })
-            .or_else(|| {
-                self.alignment
-                    .next_record()
-                    .map(LandXmlMetadataStreamEvent::Record)
-            })
-            .or_else(|| {
-                self.alignment_derived
-                    .pop_front()
-                    .map(LandXmlMetadataStreamEvent::Record)
-            })
-            .or_else(|| {
-                self.pipe
-                    .next_record()
-                    .map(LandXmlMetadataStreamEvent::Record)
-            })
-            .or_else(|| self.end.take().map(LandXmlMetadataStreamEvent::End))
-    }
-}
-
-#[derive(Default)]
-pub(crate) struct MetadataReassembler {
-    header: Option<LandXmlMetadataStreamHeader>,
-    end: Option<LandXmlMetadataStreamEnd>,
-}
-
-impl MetadataReassembler {
-    pub(crate) fn push(
-        &mut self,
-        event: LandXmlMetadataStreamEvent,
-    ) -> Result<(), crate::LandXmlError> {
-        match event {
-            LandXmlMetadataStreamEvent::Header(header) => {
-                if self.header.replace(header).is_some() {
-                    return Err(crate::xml::error(
-                        crate::LandXmlDiagnosticCode::InvalidSemantic,
-                        "metadata stream emitted multiple headers",
-                    ));
-                }
-            }
-            LandXmlMetadataStreamEvent::Record(record) => self.push_record(record)?,
-            LandXmlMetadataStreamEvent::End(end) => {
-                if self.end.replace(end).is_some() {
-                    return Err(crate::xml::error(
-                        crate::LandXmlDiagnosticCode::InvalidSemantic,
-                        "metadata stream emitted multiple end records",
-                    ));
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn push_record(&mut self, record: LandXmlMetadataRecord) -> Result<(), crate::LandXmlError> {
-        let header = self.header.as_mut().ok_or_else(|| {
-            crate::xml::error(
-                crate::LandXmlDiagnosticCode::InvalidSemantic,
-                "metadata record arrived before its header",
-            )
-        })?;
-        match record {
-            LandXmlMetadataRecord::TerrainExtension(value) => header.terrain.extensions.push(value),
-            LandXmlMetadataRecord::TerrainWarning(value) => header.terrain.warnings.push(value),
-            LandXmlMetadataRecord::TerrainAlignment(value) => header.terrain.alignments.push(value),
-            LandXmlMetadataRecord::TerrainProfile(value) => header.terrain.profiles.push(value),
-            LandXmlMetadataRecord::TerrainCrossSection(value) => {
-                header.terrain.cross_sections.push(value)
-            }
-            LandXmlMetadataRecord::TerrainCrossSectionSurface(value) => {
-                header.terrain.cross_section_surfaces.push(value)
-            }
-            LandXmlMetadataRecord::TerrainRoadway(value) => header.terrain.roadways.push(value),
-            LandXmlMetadataRecord::TerrainCapabilityDiagnostic(value) => {
-                header.terrain.capability_diagnostics.push(value)
-            }
-            LandXmlMetadataRecord::TerrainPreservedOnlyExtension(value) => {
-                header.terrain.preserved_only_extensions.push(value)
-            }
-            LandXmlMetadataRecord::PlanCogoPoint(value) => header.plan.cogo_points.push(value),
-            LandXmlMetadataRecord::PlanMonument(value) => header.plan.monuments.push(value),
-            LandXmlMetadataRecord::PlanFeature(value) => header.plan.plan_features.push(value),
-            LandXmlMetadataRecord::PlanParcel(value) => header.plan.parcels.push(value),
-            LandXmlMetadataRecord::PlanWarning(value) => header.plan.warnings.push(value),
-            // These cursor-only conveniences are already represented by the
-            // owned plan records above. Legacy callers deliberately rebuild
-            // only the semantic summary, not its WASM presentation adapter.
-            LandXmlMetadataRecord::PlanSourceBatch(_)
-            | LandXmlMetadataRecord::PlanParcelProbe(_)
-            | LandXmlMetadataRecord::PlanResolvedMonument(_)
-            | LandXmlMetadataRecord::PlanResolvedGeometry(_)
-            | LandXmlMetadataRecord::AlignmentRenderSpan(_)
-            | LandXmlMetadataRecord::AlignmentRenderRefusal(_)
-            | LandXmlMetadataRecord::AlignmentRenderTruncated(_) => {}
-            LandXmlMetadataRecord::HorizontalAlignment(value) => {
-                header.alignments.alignments.push(value)
-            }
-            LandXmlMetadataRecord::HorizontalAlignmentWarning(value) => {
-                header.alignments.warnings.push(value)
-            }
-            LandXmlMetadataRecord::PipeCollection(value) => {
-                header.pipe_networks.collections.push(value)
-            }
-            LandXmlMetadataRecord::PipeFeature(value) => header.pipe_networks.features.push(value),
-            LandXmlMetadataRecord::PipeNetwork(value) => header.pipe_networks.networks.push(value),
-            LandXmlMetadataRecord::PipeRefusal(value) => header.pipe_networks.refusals.push(value),
-        }
-        Ok(())
-    }
-
-    pub(crate) fn finish(mut self) -> Result<LandXmlStreamSummary, crate::LandXmlError> {
-        let end = self.end.take().ok_or_else(|| {
-            crate::xml::error(
-                crate::LandXmlDiagnosticCode::InvalidSemantic,
-                "metadata stream ended without an end record",
-            )
-        })?;
-        let header = self.header.take().ok_or_else(|| {
-            crate::xml::error(
-                crate::LandXmlDiagnosticCode::InvalidSemantic,
-                "metadata stream ended without a header",
-            )
-        })?;
-        let alignment_render = alignment::alignment_render_data(&header.alignments);
-        let mut terrain = header.terrain;
-        terrain.pipe_networks = Some(header.pipe_networks);
-        Ok(LandXmlStreamSummary {
-            header: header.stream,
-            surfaces_drained: end.surfaces_drained,
-            renderable_surfaces: end.renderable_surfaces,
-            preserved_surfaces: end.preserved_surfaces,
-            plan_cogo_points: end.plan_cogo_points,
-            plan_parcels: end.plan_parcels,
-            horizontal_alignments: end.horizontal_alignments,
-            pipe_networks: end.pipe_networks,
-            pipe_structures: end.pipe_structures,
-            pipes: end.pipes,
-            pipe_refusals: end.pipe_refusals,
-            metadata: LandXmlStreamMetadata {
-                terrain,
-                plan: header.plan,
-                alignments: header.alignments,
-                alignment_render,
-            },
-        })
     }
 }

@@ -6,20 +6,22 @@ mod decoder;
 mod derived;
 mod event;
 mod fragments;
+mod lifecycle;
 pub(crate) mod metadata;
 mod output;
 mod token;
+pub use lifecycle::LandXmlMetadataStreamAssembler;
 
 use crate::{
     parser::Parser, preflight::max_markup_bytes, xml::error, LandXmlDiagnosticCode as Code,
     LandXmlError, LandXmlLimits,
 };
 use decoder::Decoder;
-use derived::{alignment_derived_records, plan_derived_records};
 pub use event::{
-    LandXmlMetadataRecord, LandXmlMetadataStreamEnd, LandXmlMetadataStreamEvent,
-    LandXmlMetadataStreamHeader, LandXmlStreamEvent, LandXmlStreamHeader, LandXmlStreamMetadata,
-    LandXmlStreamSummary, LandXmlSurfaceComponent, LandXmlSurfaceFragment,
+    LandXmlMetadataRecord, LandXmlMetadataRecordFragment, LandXmlMetadataStreamEnd,
+    LandXmlMetadataStreamEvent, LandXmlMetadataStreamHeader, LandXmlStreamEvent,
+    LandXmlStreamHeader, LandXmlStreamMetadata, LandXmlStreamSummary, LandXmlSurfaceComponent,
+    LandXmlSurfaceFragment,
 };
 use quick_xml::{events::Event, Reader};
 use std::{collections::VecDeque, io::BufReader};
@@ -32,6 +34,9 @@ pub const MAX_LANDXML_STREAM_QUEUED_BYTES: usize = 512 * 1024;
 pub const MAX_LANDXML_STREAM_QUEUED_EVENTS: usize = 4;
 /// Maximum serialized event retained while reserving queue headroom.
 pub const MAX_LANDXML_STREAM_EVENT_BYTES: usize = 192 * 1024;
+/// A single semantic metadata value may legally exceed one transport event,
+/// but no serializer/reassembler state may exceed the host's one-credit cap.
+pub const MAX_LANDXML_STREAM_METADATA_RECORD_BYTES: usize = MAX_LANDXML_STREAM_QUEUED_BYTES;
 
 struct QueuedEvent {
     event: LandXmlStreamEvent,
@@ -60,25 +65,6 @@ pub struct LandXmlTinStreamSession {
     renderable_surfaces: usize,
     preserved_surfaces: usize,
     closed: bool,
-}
-
-/// Reassembles move-owned metadata cursor events for adapters that still need
-/// a complete semantic document at their compatibility boundary.
-#[derive(Default)]
-pub struct LandXmlMetadataStreamAssembler {
-    inner: metadata::MetadataReassembler,
-}
-
-impl LandXmlMetadataStreamAssembler {
-    /// Consume one event emitted through [`LandXmlStreamEvent::Metadata`].
-    pub fn push(&mut self, event: LandXmlMetadataStreamEvent) -> Result<(), LandXmlError> {
-        self.inner.push(event)
-    }
-
-    /// Return the reassembled summary after its single end event.
-    pub fn finish(self) -> Result<LandXmlStreamSummary, LandXmlError> {
-        self.inner.finish()
-    }
 }
 
 impl LandXmlTinStreamSession {
@@ -208,7 +194,6 @@ impl LandXmlTinStreamSession {
             return Err(error(Code::InvalidXml, "unclosed alignment XML element"));
         }
         let alignment = alignment.finish()?;
-        let alignment_derived = alignment_derived_records(&alignment);
         let pipe = self.pipe.take().expect("open pipe parser");
         if pipe.has_open_frames() {
             return Err(error(Code::InvalidXml, "unclosed pipe XML element"));
@@ -238,75 +223,19 @@ impl LandXmlTinStreamSession {
             pipes,
             pipe_refusals,
         };
-        let plan_derived = plan_derived_records(&plan)?;
         self.metadata_cursor = Some(metadata::MetadataCursor::new(
             header,
             terrain.into_stream_parts(),
-            plan.into_stream_parts(),
-            plan_derived,
-            alignment.into_stream_parts(),
-            alignment_derived,
+            plan,
+            alignment,
             pipe.into_stream_parts(),
             end,
         ));
         self.flush_pending_metadata()
     }
 
-    /// Finalize and reassemble metadata for legacy summary consumers.
-    // TODO(remove-by: #5050 worker cursor migration, owner: LandXML)
-    pub fn finish(&mut self) -> Result<LandXmlStreamSummary, LandXmlError> {
-        self.finish_cursor()?;
-        let mut reassembler = LandXmlMetadataStreamAssembler::default();
-        while self.output_pending() {
-            for event in self.drain(MAX_LANDXML_STREAM_DRAIN_BYTES)? {
-                let LandXmlStreamEvent::Metadata(event) = event else {
-                    return Err(error(
-                        Code::InvalidSemantic,
-                        "summary adapter received non-metadata stream output",
-                    ));
-                };
-                reassembler.push(event)?;
-            }
-        }
-        reassembler.finish()
-    }
-
-    pub fn abort(&mut self) {
-        self.token.clear();
-        self.queue.clear();
-        self.queued_bytes = 0;
-        self.pending_surface.take();
-        self.metadata_cursor.take();
-        self.pending_input.clear();
-        self.parser.take();
-        self.plan.take();
-        self.alignment.take();
-        self.pipe.take();
-        self.closed = true;
-    }
-    pub fn header(&self) -> Option<LandXmlStreamHeader> {
-        self.parser
-            .as_ref()?
-            .header()
-            .map(|(version, units)| LandXmlStreamHeader { version, units })
-    }
     fn parser(&mut self) -> &mut Parser<'static> {
         self.parser.as_mut().expect("open stream parser")
-    }
-
-    /// Whether the caller must grant output credit with [`Self::drain`].
-    pub fn output_pending(&self) -> bool {
-        !self.queue.is_empty() || self.pending_surface.is_some() || self.metadata_cursor.is_some()
-    }
-
-    /// Exact JSON transport bytes currently retained for a credited consumer.
-    pub fn queued_bytes(&self) -> usize {
-        self.queued_bytes
-    }
-
-    /// Number of complete transport records currently retained for a consumer.
-    pub fn queued_events(&self) -> usize {
-        self.queue.len()
     }
 
     fn consume_pending_input(&mut self) -> Result<(), LandXmlError> {
@@ -390,20 +319,39 @@ impl LandXmlTinStreamSession {
         let token = std::mem::take(&mut self.token);
         let token_debug = String::from_utf8_lossy(&token).into_owned();
         let text_token = !token.starts_with(b"<");
+        let comment_token = token.starts_with(b"<!--");
         self.feed.push(token);
         if text_token {
             self.feed.push(b"<!--ifc-lite-stream-pad-->".to_vec());
+        } else if comment_token {
+            // Keep quick-xml from observing EOF for a standalone comment.
+            // The processing instruction is deliberately not exposed to the
+            // semantic parsers below.
+            self.feed.push(b"<?ifc-lite-stream-pad?>".to_vec());
         }
         let mut buffer = Vec::new();
+        let mut consumed_comment = false;
         loop {
             let event = self.reader.read_event_into(&mut buffer).map_err(|value| {
                 error(Code::InvalidXml, format!("malformed XML token: {value}"))
             })?;
             if matches!(event, Event::Comment(_)) {
+                // Text tokens leave a padding comment in the reader to stop
+                // quick-xml waiting for the next chunk. A real XML comment
+                // is also a complete legal token. Keep consuming in case an
+                // earlier padding comment precedes this token; EOF after only
+                // comments is the legitimate standalone-comment case.
+                consumed_comment = true;
                 buffer.clear();
                 continue;
             }
+            if comment_token && consumed_comment && matches!(event, Event::PI(_)) {
+                return self.emit_header_and_surfaces();
+            }
             if matches!(event, Event::Eof) {
+                if consumed_comment {
+                    return self.emit_header_and_surfaces();
+                }
                 return Err(error(
                     Code::InvalidXml,
                     format!("XML reader ended while consuming token {token_debug:?}"),

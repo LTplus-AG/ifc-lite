@@ -105,36 +105,78 @@ function meshForRoute(route: Point[], shape: CrossSection, expressId: number): {
   return { mesh: { expressId, positions, normals, indices: new Uint32Array(indices), color: [0.2, 0.48, 0.8, 1], origin: [origin.x, origin.y, origin.z] }, bounds: { min, max } };
 }
 
-/** Build pickable meshes only where every authored route coordinate is present. */
-export function buildLandXmlPipeComponents(document: LandXmlPipeNetworkDocument | null, firstExpressId: number): PipeGeometryResult {
-  const components: PipeComponent[] = [], warnings: string[] = [];
-  if (!document) return { components, warnings };
-  const pipeRefusals = new Map<string, string>();
-  const knownPipeIds = new Set<string>();
-  for (const network of document.networks) for (const pipe of network.pipes) knownPipeIds.add(pipe.sourceId);
-  for (const refusal of document.refusals) {
-    if (knownPipeIds.has(refusal.sourceId) && !pipeRefusals.has(refusal.sourceId)) pipeRefusals.set(refusal.sourceId, refusal.message);
-  }
-  const refuse = (pipe: LandXmlPipe, reason: string): void => { if (warnings.length < MAX_PIPE_WARNINGS - 1) warnings.push(`Skipped LandXML pipe ${pipe.name} (${pipe.sourceId}): ${reason}`); };
-  for (const network of document.networks) {
-    const structures = new Map(network.structures.map((structure) => [structure.sourceId, structure]));
-    for (const pipe of network.pipes) {
-      if (components.length >= MAX_PIPE_MESHES) {
-        warnings.push(`Stopped LandXML pipe rendering after ${MAX_PIPE_MESHES} meshes; additional pipe meshes were omitted`);
-        return { components, warnings };
-      }
-      const sourceRefusal = pipeRefusals.get(pipe.sourceId);
-      if (sourceRefusal) { refuse(pipe, `source semantic refusal: ${sourceRefusal}`); continue; }
-      const shape = section(pipe.part);
-      if (typeof shape === 'string') { refuse(pipe, shape); continue; }
-      const start = endpoint(structures.get(pipe.connectivity.startStructureSourceId), pipe), end = endpoint(structures.get(pipe.connectivity.endStructureSourceId), pipe);
-      const passThrough = pipe.geometry.kind === 'pass_through' && pipe.geometry.point ? point(pipe.geometry.point) : undefined;
-      const endpointError = typeof start === 'string' ? start : typeof end === 'string' ? end : null;
-      if (endpointError) { refuse(pipe, endpointError); continue; }
-      if (!isPoint(start) || !isPoint(end) || (pipe.geometry.kind === 'pass_through' && !passThrough)) { refuse(pipe, 'route requires finite northing, easting, and elevation at every endpoint and pass-through Center'); continue; }
-      const built = meshForRoute(passThrough ? [start, passThrough, end] : [start, end], shape, firstExpressId + components.length);
-      if (built) components.push({ ...built, sourceId: pipe.sourceId, name: pipe.name }); else refuse(pipe, 'route segments must have non-zero finite length');
+/**
+ * One-at-a-time pipe mesh producer. Preflight can discard each yielded mesh
+ * before asking for the next, while direct ingestion still collects the same
+ * source-ordered results through the compatibility wrapper below.
+ */
+export class LandXmlPipeComponentCursor {
+  readonly warnings: string[] = [];
+  private readonly refusals = new Map<string, string>();
+  private networkIndex = 0;
+  private pipeIndex = 0;
+  private emitted = 0;
+  private stopped = false;
+  private structures: Map<string, LandXmlPipeStructure> | null = null;
+
+  constructor(private readonly document: LandXmlPipeNetworkDocument | null, private readonly firstExpressId: number) {
+    if (document === null) return;
+    const knownPipeIds = new Set<string>();
+    for (const network of document.networks) for (const pipe of network.pipes) knownPipeIds.add(pipe.sourceId);
+    for (const refusal of document.refusals) {
+      if (knownPipeIds.has(refusal.sourceId) && !this.refusals.has(refusal.sourceId)) this.refusals.set(refusal.sourceId, refusal.message);
     }
   }
-  return { components, warnings };
+
+  next(): PipeComponent | null {
+    if (this.stopped || this.document === null) return null;
+    while (this.networkIndex < this.document.networks.length) {
+      const network = this.document.networks[this.networkIndex]!;
+      if (this.structures === null) this.structures = new Map(network.structures.map((structure) => [structure.sourceId, structure]));
+      while (this.pipeIndex < network.pipes.length) {
+        if (this.emitted >= MAX_PIPE_MESHES) {
+          this.warnings.push(`Stopped LandXML pipe rendering after ${MAX_PIPE_MESHES} meshes; additional pipe meshes were omitted`);
+          this.stopped = true;
+          return null;
+        }
+        const pipe = network.pipes[this.pipeIndex++]!;
+        const refusal = this.refusals.get(pipe.sourceId);
+        if (refusal) { this.refuse(pipe, `source semantic refusal: ${refusal}`); continue; }
+        const shape = section(pipe.part);
+        if (typeof shape === 'string') { this.refuse(pipe, shape); continue; }
+        const start = endpoint(this.structures.get(pipe.connectivity.startStructureSourceId), pipe);
+        const end = endpoint(this.structures.get(pipe.connectivity.endStructureSourceId), pipe);
+        const passThrough = pipe.geometry.kind === 'pass_through' && pipe.geometry.point ? point(pipe.geometry.point) : undefined;
+        const endpointError = typeof start === 'string' ? start : typeof end === 'string' ? end : null;
+        if (endpointError) { this.refuse(pipe, endpointError); continue; }
+        if (!isPoint(start) || !isPoint(end) || (pipe.geometry.kind === 'pass_through' && !passThrough)) {
+          this.refuse(pipe, 'route requires finite northing, easting, and elevation at every endpoint and pass-through Center');
+          continue;
+        }
+        const built = meshForRoute(passThrough ? [start, passThrough, end] : [start, end], shape, this.firstExpressId + this.emitted);
+        if (built === null) { this.refuse(pipe, 'route segments must have non-zero finite length'); continue; }
+        this.emitted++;
+        return { ...built, sourceId: pipe.sourceId, name: pipe.name };
+      }
+      this.networkIndex++;
+      this.pipeIndex = 0;
+      this.structures = null;
+    }
+    this.stopped = true;
+    return null;
+  }
+
+  private refuse(pipe: LandXmlPipe, reason: string): void {
+    if (this.warnings.length < MAX_PIPE_WARNINGS - 1) {
+      this.warnings.push(`Skipped LandXML pipe ${pipe.name} (${pipe.sourceId}): ${reason}`);
+    }
+  }
+}
+
+/** Build pickable meshes only where every authored route coordinate is present. */
+export function buildLandXmlPipeComponents(document: LandXmlPipeNetworkDocument | null, firstExpressId: number): PipeGeometryResult {
+  const cursor = new LandXmlPipeComponentCursor(document, firstExpressId);
+  const components: PipeComponent[] = [];
+  for (let component = cursor.next(); component !== null; component = cursor.next()) components.push(component);
+  return { components, warnings: cursor.warnings };
 }

@@ -239,9 +239,4 @@ pub struct LandXmlAlignmentDocument {
     pub warnings: Vec<String>,
 }
 
-impl LandXmlAlignmentDocument {
-    /// Split finalized alignment metadata into move-owned stream records.
-    pub(crate) fn into_stream_parts(self) -> crate::stream::metadata::AlignmentStreamParts {
-        crate::stream::metadata::AlignmentStreamParts::new(self)
-    }
-}
+impl LandXmlAlignmentDocument {}

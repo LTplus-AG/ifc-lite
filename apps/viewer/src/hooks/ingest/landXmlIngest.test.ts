@@ -6,7 +6,11 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcAPI } from '@ifc-lite/wasm';
 import { parseLandXmlViewerModelAsync, parseLandXmlViewerModelFromBlobAsync } from './landXmlViewerModel.js';
-import { connectedFaceComponents, parseLandXmlGeometry, preflightLandXmlGeometry } from './landXmlIngest.js';
+import {
+  completeLandXmlStreamedGeometry, connectedFaceComponents,
+  fragmentLandXmlGeometryComponent, MAX_LANDXML_COMPONENT_TRANSFER_BYTES,
+  parseLandXmlGeometry, preflightLandXmlGeometry,
+} from './landXmlIngest.js';
 import { buildLandXmlPipeComponents } from './landXmlPipeGeometry.js';
 import { findLandXmlSourceRecord, type LandXmlPipeNetworkDocument } from './landXmlSemantics.js';
 import { isLandXmlContent } from './landXmlSniff.js';
@@ -15,6 +19,8 @@ import {
 } from './landXmlWasm.js';
 import { inspectLandXmlAlignmentAtDistance } from './landXmlAlignmentWasm.js';
 import { initLandXmlWasm } from './landXmlWasmInit.js';
+import { streamLandXmlSourceBlobWithApi } from './landXmlBlobCursor.js';
+import { LandXmlStreamPreflightReducer } from './landXmlStreamPreflight.js';
 
 const LANDXML = `<?xml version="1.0" encoding="UTF-8"?>
 <LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
@@ -123,6 +129,32 @@ it('reports pipe mesh truncation even after ordinary warning capacity is exhaust
   assert.match(result.warnings.at(-1) ?? '', /Stopped LandXML pipe rendering after 10000 meshes/);
 });
 
+it('fragments high-valence component transfers below cursor credit without losing stable face provenance (#5050)', () => {
+  const triangleCount = 20_000;
+  const positions = new Float32Array(triangleCount * 9);
+  const normals = new Float32Array(triangleCount * 9);
+  const indices = new Uint32Array(triangleCount * 3);
+  for (let triangle = 0; triangle < triangleCount; triangle++) {
+    const vertex = triangle * 3;
+    positions.set([triangle, 0, 0, triangle, 1, 0, triangle + 0.5, 0, 1], vertex * 3);
+    normals.set([0, 1, 0, 0, 1, 0, 0, 1, 0], vertex * 3);
+    indices.set([vertex, vertex + 1, vertex + 2], triangle * 3);
+  }
+  const fragments = fragmentLandXmlGeometryComponent({
+    mesh: { expressId: 1, positions, normals, indices, color: [0.42, 0.62, 0.32, 1], origin: [0, 0, 0] },
+    bounds: { min: { x: 0, y: 0, z: 0 }, max: { x: triangleCount, y: 1, z: 1 } },
+    surfaceName: 'high-valence', surfaceSourceId: 'surface-high', pipeSourceId: null,
+    renderedFaceSourceIds: Array.from({ length: triangleCount }, (_, index) => `face-${index}`),
+  });
+  assert.ok(fragments.length > 1);
+  assert.ok(fragments.every((fragment) => (
+    fragment.mesh.positions.byteLength + fragment.mesh.normals.byteLength + fragment.mesh.indices.byteLength
+      <= MAX_LANDXML_COMPONENT_TRANSFER_BYTES
+  )));
+  assert.equal(fragments.reduce((total, fragment) => total + fragment.mesh.indices.length / 3, 0), triangleCount);
+  assert.deepEqual(fragments.flatMap((fragment) => fragment.renderedFaceSourceIds), Array.from({ length: triangleCount }, (_, index) => `face-${index}`));
+});
+
 describe('LandXML content dispatch (#5041)', () => {
   it('recognizes default and prefixed roots without claiming generic XML', () => {
     assert.equal(isLandXmlContent(new Uint8Array(bytes(LANDXML))), true);
@@ -185,6 +217,43 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
       secondPass.geometryResult.meshes.map((mesh) => [mesh.expressId, mesh.origin, Array.from(mesh.indices)]),
       direct.geometryResult.meshes.map((mesh) => [mesh.expressId, mesh.origin, Array.from(mesh.indices)]),
     );
+  });
+
+  it('matches direct preflight from the real credited first-pass reducer (#5050)', async () => {
+    await initLandXmlWasm();
+    const api = new IfcAPI();
+    try {
+      const withPipe = LANDXML.replace('</LandXML>', `<PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>5000000 2600000 100</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>5000010 2600000 100</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="P" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`);
+      const reducer = new LandXmlStreamPreflightReducer();
+      await streamLandXmlSourceBlobWithApi(api, new Blob([withPipe]), {
+        onHeader: (header) => reducer.onHeader(header),
+        onSurface: (surface) => reducer.onSurface(surface),
+        onEvent: (event) => reducer.onEvent(event),
+      });
+      const parsed = await parseDocument(withPipe);
+      assert.deepEqual(reducer.finish().preflight, preflightLandXmlGeometry(parsed));
+    } finally {
+      api.free();
+    }
+  });
+
+  it('completes a Blob stream from acknowledged meshes without a second geometry build (#5050)', async () => {
+    const parsed = await parseDocument(LANDXML);
+    const preflight = preflightLandXmlGeometry(parsed);
+    const direct = parseLandXmlGeometry(parsed, preflight);
+    const streamed = completeLandXmlStreamedGeometry(parsed, direct.geometryResult.meshes.map((mesh) => {
+      const provenance = direct.semanticDocument.rendering.meshProvenance.find((entry) => entry.meshExpressId === mesh.expressId);
+      if (provenance === undefined) throw new Error('direct mesh is missing provenance');
+      return {
+        mesh, surfaceName: parsed.surfaces.find((surface) => surface.sourceId === provenance.surfaceSourceId)?.name ?? 'pipe',
+        surfaceSourceId: provenance.surfaceSourceId || null,
+        pipeSourceId: provenance.pipeSourceId ?? null,
+        renderedFaceSourceIds: provenance.renderedFaceSourceIds,
+      };
+    }), preflight);
+    assert.equal(streamed.geometryResult.meshes[0], direct.geometryResult.meshes[0]);
+    assert.deepEqual(streamed.geometryResult.coordinateInfo, direct.geometryResult.coordinateInfo);
+    assert.deepEqual(streamed.semanticDocument.rendering.meshProvenance, direct.semanticDocument.rendering.meshProvenance);
   });
 
   it('loads persisted pre-triangulation surface records without new optional fields (#5043)', async () => {

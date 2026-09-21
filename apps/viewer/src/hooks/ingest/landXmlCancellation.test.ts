@@ -136,7 +136,10 @@ it('acknowledges each federated preflight and raw component before the next work
       });
       else if (this.posted.length === 2) reply({ preflightComponent: component });
       else if (this.posted.length === 3) reply({ preflightComplete: true });
-      else if (this.posted.length === 4) reply({ component });
+      else if (this.posted.length === 4) reply({ component: {
+        mesh: component, surfaceName: 'grade', surfaceSourceId: 'surface-1', pipeSourceId: null,
+        renderedFaceSourceIds: ['surface-1:face:1'],
+      } });
       else if (this.posted.length === 5) reply({ ok: false, error: 'stop after federated acknowledgements' });
     }
     terminate(): void {}

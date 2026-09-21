@@ -119,6 +119,18 @@ fn issue_5050_utf16_code_unit_and_surrogate_cuts_match_utf8() {
 }
 
 #[test]
+fn issue_5050_accepts_leading_interior_and_trailing_comments_across_chunks() {
+    let xml = r#"<!--leading--><?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><!--between-root-and-units--><Units><!--inside-units--><Metric linearUnit="meter"/></Units><!--before-surfaces--><Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><!--between-topology--><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces></LandXML><!--trailing-->"#;
+    let direct = parse_landxml_tin(xml.as_bytes()).expect("direct comments");
+    let events = drive(xml.as_bytes(), 1..=xml.len());
+    assert!(events.iter().any(
+        |event| matches!(event, LandXmlStreamEvent::Surface(fragment) if fragment.component == LandXmlSurfaceComponent::End)
+    ));
+    let summary = summary_after_byte_cuts(xml.as_bytes()).expect("stream comments");
+    assert_eq!(summary.surfaces_drained, direct.surfaces.len());
+}
+
+#[test]
 fn issue_5050_large_single_surface_is_fragmented_not_rejected() {
     let points = (1..=30_000)
         .map(|id| format!("<P id=\"{id}\">{id} {id} 0</P>"))
@@ -453,6 +465,45 @@ fn issue_5050_metadata_cursor_matches_direct_plan_and_uses_exact_credit_limits()
 
     let summary = summary_after_byte_cuts(xml.as_bytes()).expect("summary adapter cursor parity");
     assert_eq!(summary.metadata.plan, direct);
+}
+
+#[test]
+fn issue_5050_fragments_legal_large_nested_metadata_records_under_credit() {
+    let value = "x".repeat(256 * 1024);
+    let xml = landxml(&format!(
+        r#"<PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Feature label="vendor"><Property label="blob" value="{value}"/></Feature></PipeNetwork></PipeNetworks>"#
+    ));
+    let mut session = LandXmlTinStreamSession::new(LandXmlLimits {
+        max_attribute_bytes: 512 * 1024,
+        ..LandXmlLimits::default()
+    })
+    .expect("session");
+    session.advance(xml.as_bytes()).expect("source input");
+    let mut ignored = Vec::new();
+    drain_until_idle(&mut session, &mut ignored);
+    session.finish_cursor().expect("metadata cursor");
+    let mut fragments = 0;
+    while session.output_pending() {
+        assert!(session.queued_bytes() <= MAX_LANDXML_STREAM_QUEUED_BYTES);
+        for event in session
+            .drain(MAX_LANDXML_STREAM_DRAIN_BYTES)
+            .expect("credited metadata drain")
+        {
+            assert!(
+                serde_json::to_vec(&event)
+                    .expect("serialize bounded metadata event")
+                    .len()
+                    <= MAX_LANDXML_STREAM_EVENT_BYTES
+            );
+            if matches!(
+                event,
+                LandXmlStreamEvent::Metadata(LandXmlMetadataStreamEvent::RecordFragment(_))
+            ) {
+                fragments += 1;
+            }
+        }
+    }
+    assert!(fragments > 1, "large nested metadata must be fragmented");
 }
 
 #[test]

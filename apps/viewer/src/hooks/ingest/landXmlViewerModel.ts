@@ -3,10 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
-import type { LandXmlGeometryPayload, LandXmlGeometryPreflight, LandXmlSourceBuffer } from './landXmlIngest.js';
-import { parseLandXmlGeometry, preflightLandXmlGeometry } from './landXmlIngest.js';
-import { parseLandXmlSourceInCurrentRealm } from './landXmlWasm.js';
+import type { LandXmlGeometryPayload, LandXmlGeometryPreflight, LandXmlSourceBuffer, LandXmlStreamedComponent } from './landXmlIngest.js';
+import { buildLandXmlStreamedPipeComponents, completeLandXmlStreamedGeometry, parseLandXmlGeometry, preflightLandXmlGeometry } from './landXmlIngest.js';
+import { parseLandXmlSourceInCurrentRealm, readLandXmlSourceDocument } from './landXmlWasm.js';
 import { parseLandXmlSourceBlobWithApi } from './landXmlBlobCursor.js';
+import { LandXmlStreamDocumentAssembler, type LandXmlAssembledSourceDocument } from './landXmlStreamAssembler.js';
 import { initLandXmlWasm } from './landXmlWasmInit.js';
 import { IfcAPI } from '@ifc-lite/wasm';
 import { spatialMetadataFromLandXml, spatialReferenceFromSourceMetadata } from './sourceSpatialReference.js';
@@ -141,6 +142,9 @@ export function parseLandXmlViewerModelFromBlobAsync(
   }
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./landXml.worker.ts', import.meta.url), { type: 'module' });
+    const streamedComponents: LandXmlStreamedComponent[] = [];
+    const sourceAssembler = new LandXmlStreamDocumentAssembler();
+    let streamedSource: LandXmlAssembledSourceDocument | null = null;
     let finished = false;
     let cancellationPoll: ReturnType<typeof setInterval> | undefined;
     const finish = (): boolean => {
@@ -156,12 +160,14 @@ export function parseLandXmlViewerModelFromBlobAsync(
     }, 25);
     worker.onmessage = (event: MessageEvent<
       | { ok: true; payload: LandXmlGeometryPayload }
+      | { ok: true; streamed: { preflight: LandXmlGeometryPreflight } }
       | { ok: false; error: string }
       | { progress: { loadedBytes: number; totalBytes: number } }
       | { preflight: LandXmlGeometryPreflight; sourceCoordinateInfo?: CoordinateInfo; spatialReference?: ModelSpatialReference }
       | { preflightComponent: MeshData }
       | { preflightComplete: true }
-      | { component: MeshData }
+      | { component: LandXmlStreamedComponent }
+      | { sourceEvent: unknown }
     >) => {
       if ('progress' in event.data) {
         onProgress?.(event.data.progress.loadedBytes, event.data.progress.totalBytes);
@@ -205,15 +211,66 @@ export function parseLandXmlViewerModelFromBlobAsync(
       }
       if ('component' in event.data) {
         const { component } = event.data;
-        invokeCallback(() => onComponent?.(component)).then(() => {
+        // Own the transferred typed arrays exactly once. Terminal completion
+        // reuses these meshes rather than asking the worker to send a full
+        // geometry payload after every component was already acknowledged.
+        streamedComponents.push(component);
+        invokeCallback(() => onComponent?.(component.mesh)).then(() => {
           if (!finished) worker.postMessage({ type: 'component-uploaded' });
         }).catch((error: unknown) => {
           if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
         });
         return;
       }
+      if ('sourceEvent' in event.data) {
+        try {
+          const completed = sourceAssembler.push(event.data.sourceEvent).document;
+          if (completed !== null) {
+            if (streamedSource !== null) throw new Error('LandXML worker emitted multiple completed source documents');
+            streamedSource = completed;
+          }
+          if (!finished) worker.postMessage({ type: 'source-event-processed' });
+        } catch (error) {
+          sourceAssembler.abort();
+          if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
+        }
+        return;
+      }
       if (!finish()) return;
-      if (event.data.ok) resolve(attachSyntheticStore(event.data.payload, file.size));
+      if (event.data.ok && 'streamed' in event.data) {
+        try {
+          if (streamedSource === null) throw new Error('LandXML worker ended without a credited source document');
+          const parsed = readLandXmlSourceDocument(streamedSource);
+          sourceAssembler.abort();
+          const pipeComponents = buildLandXmlStreamedPipeComponents(
+            parsed,
+            streamedComponents.length + 1,
+            event.data.streamed.preflight,
+            onFederatedPreflight === undefined,
+          );
+          const publishPipes = async (): Promise<void> => {
+            for (const component of pipeComponents) {
+              if (!isCurrent()) throw new Error('LandXML parsing cancelled');
+              await invokeCallback(() => onComponent?.(component.mesh));
+              if (!isCurrent()) throw new Error('LandXML parsing cancelled');
+              streamedComponents.push(component);
+            }
+          };
+          publishPipes().then(() => {
+            if (streamedComponents.length !== event.data.streamed.preflight.componentCount) {
+              throw new Error('LandXML second pass did not reproduce its preflight component envelope');
+            }
+            resolve(attachSyntheticStore(
+              completeLandXmlStreamedGeometry(parsed, streamedComponents, event.data.streamed.preflight),
+              file.size,
+            ));
+          }).catch((error: unknown) => {
+            reject(error instanceof Error ? error : new Error(String(error)));
+          });
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
+      } else if (event.data.ok) resolve(attachSyntheticStore(event.data.payload, file.size));
       else reject(new Error(event.data.error));
     };
     worker.onerror = (event) => {

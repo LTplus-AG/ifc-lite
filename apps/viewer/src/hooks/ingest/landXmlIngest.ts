@@ -1,15 +1,19 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
-import { createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
+import { createCoordinateInfo, createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
 import { placeAndAssignLandXmlComponents, type LandXmlGeometryComponent } from './landXmlComponentPlacement.js';
 import { deriveLandXmlRenderFrameFromMeasurement, type LandXmlRenderFramePlan } from './landXmlRenderFrame.js';
 import { sourceCoordinateInfo } from './landXmlSourceFrame.js';
 import type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
 import { buildLandXmlPipeComponents } from './landXmlPipeGeometry.js';
 import { pipeRefusalWarnings } from './landXmlPipeWarnings.js';
+import { fragmentLandXmlGeometryComponent } from './landXmlComponentFragmentation.js';
+export {
+  fragmentLandXmlGeometryComponent, MAX_LANDXML_COMPONENT_MESSAGE_BYTES,
+  MAX_LANDXML_COMPONENT_TRANSFER_BYTES,
+} from './landXmlComponentFragmentation.js';
 export { connectedFaceComponents } from './landXmlFaceComponents.js';
 import { connectedFaceComponents } from './landXmlFaceComponents.js';
 export type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
@@ -22,12 +26,12 @@ export interface LandXmlGeometryPayload {
   /** Durable source records, independent of all mesh/component partitioning. */
   semanticDocument: LandXmlTinDocument;
 }
-interface WorldPoint {
-  x: number;
-  y: number;
-  z: number;
-}
-
+/** One transferred mesh plus its immutable source provenance. The worker
+ * relinquishes the mesh buffers before it requests the next cursor credit. */
+export {
+  buildLandXmlStreamedPipeComponents, completeLandXmlStreamedGeometry,
+  type LandXmlStreamedComponent,
+} from './landXmlStreamCompletion.js';
 export function buildLandXmlSurfaceMesh(
   surface: LandXmlTinSurface,
   expressId: number,
@@ -35,7 +39,7 @@ export function buildLandXmlSurfaceMesh(
   elevationScale: number,
   originOverride?: [number, number, number],
 ): { mesh: MeshData | null; degenerateFaces: number; bounds: Bounds3D | null; renderedFaces: LandXmlTinSurface['faces']; unrenderedFaces: LandXmlTinSurface['faces'] } {
-  const worldById = new Map<string, WorldPoint>();
+  const worldById = new Map<string, { x: number; y: number; z: number }>();
   for (const point of surface.points) {
     // LandXML: northing/easting/elevation (Z-up). Viewer: X east, Y up,
     // Z south. This is the same Z-up -> Y-up convention used by IFC and the
@@ -197,6 +201,8 @@ export interface LandXmlGeometryPreflight {
   frame: LandXmlRenderFramePlan | null;
 }
 
+const MAX_LANDXML_SURFACE_COMPONENT_TRIANGLES = 3_000;
+
 function mergeLandXmlBounds(target: Bounds3D, source: Bounds3D): void {
   target.min.x = Math.min(target.min.x, source.min.x);
   target.min.y = Math.min(target.min.y, source.min.y);
@@ -233,9 +239,11 @@ export function preflightLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeo
     for (const component of built.components) measure(component);
   }
   const pipes = buildLandXmlPipeComponents(parsed.pipeNetworks ?? null, componentCount + 1);
-  for (const component of pipes.components) measure({
-    ...component, surfaceName: component.name, surfaceSourceId: null, pipeSourceId: component.sourceId, renderedFaceSourceIds: [],
-  });
+  for (const component of pipes.components) {
+    for (const fragment of fragmentLandXmlGeometryComponent({
+      ...component, surfaceName: component.name, surfaceSourceId: null, pipeSourceId: component.sourceId, renderedFaceSourceIds: [],
+    })) measure(fragment);
+  }
   return { componentCount, frame: dominant.value === null ? null : deriveLandXmlRenderFrameFromMeasurement(sourceBounds, dominant.value.bounds) };
 }
 
@@ -251,7 +259,13 @@ export function buildLandXmlSurfaceComponents(
   const faceSourceId = new Map(surface.faces.map((face, index) => [face, surface.faceSourceIds[index]]));
   const visibleFaces = surface.faces.filter((_, index) => surface.faceVisibility[index]);
   for (const faces of connectedFaceComponents(visibleFaces)) {
-    const pending = [faces];
+    // A connected TIN island is a semantic unit, not a renderer allocation.
+    // Cut its upload work before mesh construction so a legal high-valence
+    // island never creates an oversized pre-transfer typed array.
+    const pending: string[][][] = [];
+    for (let end = faces.length; end > 0; end -= MAX_LANDXML_SURFACE_COMPONENT_TRIANGLES) {
+      pending.push(faces.slice(Math.max(0, end - MAX_LANDXML_SURFACE_COMPONENT_TRIANGLES), end));
+    }
     while (pending.length > 0) {
       const currentFaces = pending.pop()!;
       const result = buildLandXmlSurfaceMesh(
@@ -262,8 +276,11 @@ export function buildLandXmlSurfaceComponents(
       );
       degenerateFaces += result.degenerateFaces;
       if (result.mesh && result.bounds) {
-        components.push({ mesh: result.mesh, bounds: result.bounds, surfaceName: surface.name, surfaceSourceId: surface.sourceId,
-          pipeSourceId: null, renderedFaceSourceIds: result.renderedFaces.map((face) => faceSourceId.get(face)).filter((id): id is string => id !== undefined) });
+        components.push(...fragmentLandXmlGeometryComponent({
+          mesh: result.mesh, bounds: result.bounds, surfaceName: surface.name, surfaceSourceId: surface.sourceId,
+          pipeSourceId: null,
+          renderedFaceSourceIds: result.renderedFaces.map((face) => faceSourceId.get(face)).filter((id): id is string => id !== undefined),
+        }));
       }
       if (result.unrenderedFaces.length === 0) continue;
       if (result.unrenderedFaces.length < currentFaces.length) {
@@ -334,7 +351,9 @@ export function parseLandXmlGeometry(
   const pipeGeometry = buildLandXmlPipeComponents(parsed.pipeNetworks ?? null, components.length + 1);
   warnings.push(...pipeGeometry.warnings);
   for (const pipe of pipeGeometry.components) {
-    components.push({ ...pipe, surfaceName: pipe.name, surfaceSourceId: null, pipeSourceId: pipe.sourceId, renderedFaceSourceIds: [] });
+    components.push(...fragmentLandXmlGeometryComponent({
+      ...pipe, surfaceName: pipe.name, surfaceSourceId: null, pipeSourceId: pipe.sourceId, renderedFaceSourceIds: [],
+    }));
   }
   if (components.length !== placementPreflight.componentCount) {
     throw new Error('LandXML second pass did not reproduce its preflight component envelope');

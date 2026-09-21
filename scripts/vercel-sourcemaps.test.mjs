@@ -29,7 +29,7 @@ function decide(overrides = {}, { meminfo = basicBuilder } = {}) {
     }
     const result = spawnSync(
       'bash',
-      ['-c', '. scripts/lib/vercel-sourcemaps.sh; if configure_vercel_sourcemaps >/dev/null; then on=1; else on=0; fi; printf "%s\\t%s" "$on" "${VITE_SOURCEMAP:-}"'],
+      ['-c', '. scripts/lib/vercel-sourcemaps.sh; if configure_vercel_sourcemaps >/dev/null; then on=1; else on=0; fi; printf "%s\\t%s" "$on" "$VITE_SOURCEMAP"'],
       { cwd: root, env, encoding: 'utf8' },
     );
     assert.equal(result.status, 0, result.stderr);
@@ -50,8 +50,10 @@ test('source maps follow the machine when the keys are present (#5132)', () => {
   assert.deepEqual(decide(keys, { meminfo: basicBuilder }), { on: false, vite: '' });
   // The enhanced 16 GB builder gets symbolicated traces back automatically.
   assert.deepEqual(decide(keys, { meminfo: enhancedBuilder }), { on: true, vite: '1' });
-  // An unreadable meminfo cannot prove the machine small, so the keys decide.
-  assert.deepEqual(decide({ ...keys, VERCEL_SOURCEMAPS_MEMINFO: '/nonexistent/meminfo' }), { on: true, vite: '1' });
+  // An unreadable meminfo cannot prove the machine large either: unknown
+  // memory fails safe to off, and only VERCEL_SOURCEMAPS=1 overrides that.
+  assert.deepEqual(decide({ ...keys, VERCEL_SOURCEMAPS_MEMINFO: '/nonexistent/meminfo' }), { on: false, vite: '' });
+  assert.deepEqual(decide({ ...keys, VERCEL_SOURCEMAPS: '1', VERCEL_SOURCEMAPS_MEMINFO: '/nonexistent/meminfo' }), { on: true, vite: '1' });
 });
 
 test('VERCEL_SOURCEMAPS forces the decision either way (#5132)', () => {

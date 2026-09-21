@@ -39,6 +39,7 @@ import { ClashRevisionCompareDialog } from '@/components/viewer/ClashRevisionCom
 import { ClashManualGroupDialog } from '@/components/viewer/ClashManualGroupDialog';
 import { useManualClashGroups } from '@/components/viewer/useManualClashGroups';
 import { ClashGroupHeader, ClashGroupingCheckbox, RemoveFromClashGroupButton } from '@/components/viewer/ClashManualGroupControls';
+import { ClashGroupHeaderWithActions } from '@/components/viewer/ClashGroupHeaderWithActions';
 import { ClashResultSummary, type ClashResultView } from '@/components/viewer/ClashResultSummary';
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import { duplicateSetSections } from '@/lib/clash/duplicate-set-sections';
@@ -1179,20 +1180,18 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                   style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${v.start}px)` }}
                 >
                   {row.kind === 'group' ? (
-                    <ClashGroupHeader
-                      sectionKey={row.key}
-                      label={row.label}
-                      color={row.color}
-                      count={row.count}
+                    <ClashGroupHeaderWithActions
+                      section={row}
                       collapsed={collapsed.has(row.key)}
-                      manualGroupId={row.manualGroupId}
                       creatingTopic={creatingTopic}
+                      focusMode={focusMode}
                       onToggle={toggleSection}
-                      onFocus={(groupId) => focusClashes(manualMembersById.get(groupId) ?? [], focusMode)}
-                      onAddToGroup={(g) => (openAddToGroup(g), showManualGroups())}
+                      onFocus={focusClashes}
+                      onAddToGroup={openAddToGroup}
                       onCreateBcf={(groupId) => { void createBcfTopicForGroup(groupId); }}
                       onRename={(groupId, label) => setGroupDialog({ mode: 'rename', groupId, initialName: label })}
                       onRemove={removeManualGroup}
+                      showGroups={showManualGroups}
                     />
                   ) : row.kind === 'detail' ? (
                     <div className="border-t border-border/40 pb-1.5">

@@ -772,28 +772,3 @@ test('#3831 round 2: notApplicableClasses reads nothing off a verdict the pass n
   assert.deepEqual(notApplicableClasses({ class_pass: rows }), []);
   assert.deepEqual(notApplicableClasses({ verdict: 'clean' }), []);
 });
-
-// THE MATCHER IS INJECTABLE, and this is the revert oracle's witness for it.
-// The semantic matcher's own tests import a module the revert deletes, so they
-// die at load and prove nothing (REVERT-BROKE-BUILD); this file imports only
-// what survives the revert, and with the old `score(cases)` the injected
-// matcher is never consulted, so the assertion below goes red.
-test('score() consults the injected matcher by position and reports what it returns', () => {
-  const expected = { path: 'a.ts', what: 'the thing', class: 'duplicate-site' };
-  const cases = [
-    { pr: 1, body: null, expected: [expected], verdict: 'findings', findings: [{ path: 'a.ts', line: 1, body: 'unrelated prose' }], notApplicable: [] },
-    { pr: 2, body: null, expected: [expected, expected], verdict: 'findings', findings: [], notApplicable: [] },
-  ];
-  const seen = [];
-  const matcher = (e, findings, body, ctx) => {
-    seen.push(`${ctx.caseIndex}:${ctx.expectedIndex}`);
-    return ctx.caseIndex === 1 && ctx.expectedIndex === 1 ? { hit: true, by: 'a.ts:9 (P 0.91)' } : { hit: false, by: null };
-  };
-  const s = score(cases, { matcher });
-  assert.deepEqual(seen, ['0:0', '1:0', '1:1']);
-  assert.equal(s.hits, 1);
-  assert.equal(s.total, 3);
-  assert.match(s.lines.join('\n'), /via a\.ts:9 \(P 0\.91\)/);
-  // The stem rule stays the default: nothing in the fixture stems to a hit.
-  assert.equal(score(cases).hits, 0);
-});

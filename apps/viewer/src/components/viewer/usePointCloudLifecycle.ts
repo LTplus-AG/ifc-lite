@@ -12,8 +12,8 @@
  * the GPU buffers leak for the rest of the session.
  *
  * The hook tracks the previous set of `(modelId → handleId)` pairs and,
- * on every store change, frees the handles for models that disappeared.
- * Pure cleanup — no state mutation.
+ * on every model change, frees handles for disappeared models while mirroring
+ * model visibility onto resident streamed assets.
  */
 
 import { useEffect, useRef, type MutableRefObject } from 'react';
@@ -43,6 +43,7 @@ export function usePointCloudLifecycle(params: UsePointCloudLifecycleParams): vo
     for (const [modelId, model] of models) {
       if (typeof model.pointCloudHandleId === 'number') {
         current.set(modelId, model.pointCloudHandleId);
+        renderer.setPointCloudVisibility({ id: model.pointCloudHandleId }, model.visible);
       }
     }
 

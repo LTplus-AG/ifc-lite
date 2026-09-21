@@ -9,6 +9,23 @@
 use std::{fs, io::ErrorKind, path::PathBuf};
 
 use ifc_lite_landxml::{parse_landxml_tin, LandXmlDiagnosticCode, LANDXML_12_NAMESPACE};
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct FederationControl {
+    synthetic: bool,
+    #[serde(rename = "customerData")]
+    customer_data: bool,
+    #[serde(rename = "toleranceMetres")]
+    tolerance_metres: f64,
+    points: Vec<FederationControlPoint>,
+}
+
+#[derive(Deserialize)]
+struct FederationControlPoint {
+    id: String,
+    projected: [f64; 3],
+}
 
 fn fixture(path: &str) -> Option<Vec<u8>> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -33,6 +50,48 @@ fn contains_ascii(bytes: &[u8], needle: &str) -> bool {
     bytes
         .windows(needle.len())
         .any(|window| window == needle.as_bytes())
+}
+
+#[test]
+fn issue_5051_bonsai_control_landxml_matches_independent_projected_points() {
+    let root = "landxml/federation/bonsai-topo-control-v1";
+    let Some(control_bytes) = fixture(&format!("{root}/control.json")) else {
+        return;
+    };
+    let Some(landxml_bytes) = fixture(&format!("{root}/terrain.xml")) else {
+        return;
+    };
+    let control: FederationControl =
+        serde_json::from_slice(&control_bytes).expect("control metadata must be valid JSON");
+    assert!(control.synthetic, "the public control set must stay synthetic");
+    assert!(!control.customer_data, "customer data must never enter this corpus");
+
+    let document = ifc_lite_landxml::parse_landxml_document(&landxml_bytes)
+        .expect("the rights-clear LandXML control terrain must parse canonically");
+    let surface = document
+        .terrain
+        .surfaces
+        .first()
+        .expect("the control terrain must retain its TIN surface");
+    assert_eq!(surface.points.len(), control.points.len());
+    assert_eq!(document.plan.cogo_points().len(), control.points.len());
+    for control_point in &control.points {
+        let point = document
+            .plan
+            .cogo_points()
+            .iter()
+            .find(|point| point.name.as_deref() == Some(control_point.id.as_str()))
+            .unwrap_or_else(|| panic!("missing control point {}", control_point.id));
+        let actual = point.point.expect("control CgPoint must carry coordinates");
+        let authored = [actual.easting, actual.northing, actual.elevation.unwrap_or_default()];
+        for (actual, expected) in authored.into_iter().zip(control_point.projected) {
+            assert!(
+                (actual - expected).abs() <= control.tolerance_metres,
+                "{} ordinate {actual} differs from control {expected}",
+                control_point.id
+            );
+        }
+    }
 }
 
 #[test]
@@ -75,6 +134,29 @@ fn issue_5051_canonical_producers_refuse_non_tin_exports_without_inventing_geome
         assert!(document.surfaces.is_empty(), "{path}: no TIN may be fabricated");
         assert!(!document.capabilities.renderable_tin, "{path}");
     }
+}
+
+#[test]
+fn issue_5051_civil3d_2020_international_foot_tin_preserves_source_and_definition() {
+    let path = "landxml/producers/autodesk-civil3d-2020-international-foot-tin.xml";
+    let Some(bytes) = fixture(path) else {
+        return;
+    };
+    assert!(contains_ascii(&bytes, r#"name="Autodesk Civil 3D""#));
+    assert!(contains_ascii(&bytes, r#"version="2020""#));
+    assert!(contains_ascii(&bytes, r#"linearUnit="foot""#));
+    let document = parse_landxml_tin(&bytes).expect("Civil 3D LandXML 1.2 TIN must parse");
+    let surface = document.surfaces.first().expect("Civil 3D source must retain its surface");
+    assert!(!surface.points.is_empty(), "Pnts must not be fabricated away");
+    assert!(!surface.faces.is_empty(), "Faces must not be fabricated away");
+    assert!(
+        !surface.breaklines.is_empty(),
+        "SourceData Breaklines must remain available to downstream tools"
+    );
+    let units = document.units.expect("Civil 3D source declares Imperial units");
+    assert_eq!(units.linear_unit, "foot");
+    assert_eq!(units.linear_scale_to_meters, 0.3048);
+    assert!(document.capabilities.renderable_tin, "the recorded TIN must remain renderable");
 }
 
 #[test]

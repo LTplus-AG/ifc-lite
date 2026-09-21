@@ -1,8 +1,9 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { appearanceSourceTriangle, type Renderer } from '@ifc-lite/renderer';
+import { appearanceSourceTriangle, MathUtils, type Renderer } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
+import { getPointCloudScanSample } from '@/hooks/ingest/pointCloudScanCache';
 import { useViewerStore } from '@/store';
 
 /** One resident part of an owner as plain data: no buffers, no live objects. */
@@ -31,6 +32,15 @@ export interface SceneOwnerSnapshot {
   /** Client-space centre of the owner's bounds, where a viewport click would land; `null` off screen. */
   screen: { x: number; y: number } | null;
 }
+
+/** The streamed points after the exact matrix the point renderer applies. */
+export interface RenderedPointCloudSnapshot {
+  pointCount: number;
+  points: Array<[number, number, number]>;
+}
+
+/** A diagnostic must never copy an unbounded retained scan into page state. */
+const RENDERED_POINT_CLOUD_DEBUG_LIMIT = 16;
 
 function snapshot(part: MeshData): ScenePartSnapshot {
   const sourceTriangles: number[] = [];
@@ -94,6 +104,24 @@ export function installViewportDebugHooks(renderer: Renderer): void {
     }
     return [...hits.values()].sort((a, b) => a.sourceTriangleIndex - b.sourceTriangleIndex);
   };
+  // Streamed point data is GPU-resident, while the bounded cache retains the
+  // same post-Y-up decode points for product features such as scan sections.
+  // This read-only diagnostic returns only a small prefix and applies the
+  // renderer's live matrix, rather than making E2E recreate alignment, RTC,
+  // or manual-placement math outside the production path.
+  host.__ifc_lite_rendered_point_cloud__ = (handleId: number): RenderedPointCloudSnapshot | null => {
+    const sample = getPointCloudScanSample(handleId);
+    if (!sample) return null;
+    const matrix = renderer.getPointCloudTransform({ id: handleId });
+    const points: Array<[number, number, number]> = [];
+    for (let index = 0; index < Math.min(sample.count, RENDERED_POINT_CLOUD_DEBUG_LIMIT); index++) {
+      const offset = index * 3;
+      const raw = { x: sample.positions[offset]!, y: sample.positions[offset + 1]!, z: sample.positions[offset + 2]! };
+      const placed = matrix ? MathUtils.transformPoint({ m: matrix }, raw) : raw;
+      points.push([placed.x, placed.y, placed.z]);
+    }
+    return { pointCount: sample.seen, points };
+  };
 }
 
 export function clearViewportDebugHooks(): void {
@@ -101,4 +129,5 @@ export function clearViewportDebugHooks(): void {
   delete host.__ifc_lite_render_stats__;
   delete host.__ifc_lite_scene_owner__;
   delete host.__ifc_lite_scene_face_hits__;
+  delete host.__ifc_lite_rendered_point_cloud__;
 }

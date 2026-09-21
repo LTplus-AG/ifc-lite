@@ -1,9 +1,10 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import type { ViewerState } from '../../apps/viewer/src/store';
+import { snapshotRenderedPointCloud } from './federation-control-triplet.rendering';
 
 declare global {
   var __ifc_lite_viewer_store__: { getState(): ViewerState };
@@ -14,13 +15,25 @@ const OFFSET = [10_000, 20_000, 30_000];
 /** The viewer's own point-cloud error when the GPU device died mid-load
  * (apps/viewer/src/hooks/useIfcLoader.ts). */
 const DEVICE_LOST_ERROR = /graphics device was lost during the load/;
-const DEVICE_LOST_CONSOLE = /\[WebGPU\] Device lost:|\[Renderer\] GPU device lost|CONTEXT_LOST_WEBGL/;
+// The final alternative is the renderer's documented device-loss race: the
+// device can disappear after whenReady() resolves but before stream creation.
+const DEVICE_LOST_CONSOLE = /\[WebGPU\] Device lost:|\[Renderer\] GPU device lost|CONTEXT_LOST_WEBGL|Renderer not initialized\. Call init\(\) first\./;
 
 async function load(page: Page, file: string | { name: string; mimeType: string; buffer: Buffer }, count: number) {
   const consoleStart = consoleLines.length;
-  await page.locator('input[type=file]').nth(count === 1 ? 0 : 1).setInputFiles(file);
+  const pageErrorStart = pageErrorLines.length;
+  let inputFailure: unknown;
+  try {
+    // These ids are the viewer's Open/Add contract. Ordinal inputs can silently
+    // start waiting for a non-existent element after an error-boundary teardown,
+    // obscuring the GPU/page diagnostic that caused the teardown.
+    await page.locator(count === 1 ? '#file-input-open' : '#file-input-add').setInputFiles(file);
+  } catch (error) {
+    inputFailure = error;
+  }
   let outcome: 'ok' | 'device-lost' | 'timeout';
   try {
+    if (inputFailure !== undefined) throw inputFailure;
     const handle = await page.waitForFunction(({ n, deviceLost }) => {
       const state = globalThis.__ifc_lite_viewer_store__?.getState();
       if (!state) return false;
@@ -46,14 +59,16 @@ async function load(page: Page, file: string | { name: string; mimeType: string;
   }).catch((e) => ({ evaluateFailed: String(e) }));
   const name = typeof file === 'string' ? file : file.name;
   const loadConsole = consoleLines.slice(consoleStart);
-  const detail = `${JSON.stringify(snapshot)}\nconsole: ${loadConsole.slice(-40).join('\n')}`;
+  const loadPageErrors = pageErrorLines.slice(pageErrorStart);
+  const detail = `${JSON.stringify(snapshot)}\ninput: ${String(inputFailure ?? 'submitted')}\npageerror: ${loadPageErrors.slice(-20).join('\n')}\nconsole: ${loadConsole.slice(-40).join('\n')}`;
   // Hosted runners' SwiftShader WebGPU device drops under load (the IFC upload
   // that precedes the scan drop); the viewer then refuses the point-cloud
   // stream by design. That is the documented software-GPU limitation the
   // E2E_GPU_STRICT=0 mode already skips GPU assertions for — not a viewer
   // regression — so skip with the evidence attached rather than fail. A
   // strict run (real GPU) still fails here.
-  const softwareDeviceLost = outcome === 'device-lost' || loadConsole.some((line) => DEVICE_LOST_CONSOLE.test(line));
+  const softwareDeviceLost = outcome === 'device-lost'
+    || [...loadConsole, ...loadPageErrors].some((line) => DEVICE_LOST_CONSOLE.test(line));
   if (softwareDeviceLost && process.env.E2E_GPU_STRICT === '0') {
     console.warn(`[e2e] E2E_GPU_STRICT=0 — skipping: software-GPU device lost during load(${name}, ${count})`);
     test.skip(true, `hosted software-GPU device lost during load(${name}, ${count}): ${detail}`);
@@ -63,6 +78,33 @@ async function load(page: Page, file: string | { name: string; mimeType: string;
 
 /** Page console (warnings/errors) for the current test, attached to the load() timeout diagnostic. */
 let consoleLines: string[] = [];
+let pageErrorLines: string[] = [];
+
+function captureDiagnostics(page: Page, errors: string[]): void {
+  page.on('pageerror', (error) => {
+    const message = String(error);
+    errors.push(message);
+    pageErrorLines.push(message);
+  });
+  page.on('console', (message) => {
+    if (message.type() === 'error' || message.type() === 'warning') {
+      consoleLines.push(`[${message.type()}] ${message.text().slice(0, 300)}`);
+    }
+  });
+}
+
+async function deriveDiagnosticScan(context: BrowserContext, errors: string[]): Promise<Buffer> {
+  const seedPage = await context.newPage();
+  captureDiagnostics(seedPage, errors);
+  try {
+    await seedPage.setViewportSize({ width: 1440, height: 1000 });
+    await seedPage.goto('/');
+    await load(seedPage, IFC, 1);
+    return await diagnosticScan(seedPage);
+  } finally {
+    await seedPage.close();
+  }
+}
 
 /** Synthetic diagnostic scan, explicitly derived from a real authoring fixture.
  * The known translation is the oracle; this does not pretend to be a field scan. */
@@ -93,21 +135,28 @@ async function openScanMove(page: Page) {
   });
 }
 
-for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan, ${scanFirst ? 'scan' : 'IFC'} first (#4226)`, async ({ page }, info) => {
+for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan, ${scanFirst ? 'scan' : 'IFC'} first (#4226)`, async ({ page, context }, info) => {
   test.skip(!existsSync(IFC), 'Real IFC fixture missing — run pnpm fixtures');
   const errors: string[] = [];
-  page.on('pageerror', (error) => errors.push(String(error)));
+  pageErrorLines = [];
   consoleLines = [];
-  page.on('console', (message) => { if (message.type() === 'error' || message.type() === 'warning') consoleLines.push(`[${message.type()}] ${message.text().slice(0, 300)}`); });
+  captureDiagnostics(page, errors);
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto('/');
-  await load(page, IFC, 1);
-  const scan = { name: 'known-offset.xyz', mimeType: 'text/plain', buffer: await diagnosticScan(page) };
   if (scanFirst) {
-    await page.reload();
+    // The scan is synthetic and derived from the real IFC fixture. Generate it
+    // in a disposable page so the workflow under test genuinely starts with a
+    // fresh viewer and the scan first; reloading a live GPU page tests teardown
+    // timing instead of federation load order.
+    const scan = { name: 'known-offset.xyz', mimeType: 'text/plain', buffer: await deriveDiagnosticScan(context, errors) };
+    await page.goto('/');
     await load(page, scan, 1);
     await load(page, IFC, 2);
-  } else await load(page, scan, 2);
+  } else {
+    await page.goto('/');
+    await load(page, IFC, 1);
+    const scan = { name: 'known-offset.xyz', mimeType: 'text/plain', buffer: await diagnosticScan(page) };
+    await load(page, scan, 2);
+  }
   await openScanMove(page);
   for (const [i, axis] of ['X', 'Y', 'Z'].entries()) await page.getByLabel(`Delta ${axis}`, { exact: true }).fill(String(-OFFSET[i]));
   await page.getByRole('button', { name: 'Preview values', exact: true }).click();
@@ -115,8 +164,13 @@ for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan,
   await page.getByRole('button', { name: 'Frame both', exact: true }).click();
   const placement = await page.evaluate(() => {
     const s = globalThis.__ifc_lite_viewer_store__.getState();
-    return { identities: [...s.models.values()].map((model) => model.sourceContentHash), translations: [...s.models].filter(([, m]) => m.pointCloudHandleId !== undefined).map(([id]) => s.modelPlacement.placements.get(id)?.translation),
-      fixed: [...s.models].filter(([, m]) => m.pointCloudHandleId === undefined).map(([id]) => s.modelPlacement.placements.get(id)?.translation ?? [0, 0, 0]), count: s.pointCloudAssetCount };
+    // The streamed GPU handle is intentionally transient: hosted software-GPU
+    // recovery may clear it after the placement has committed. `loadPath` is
+    // the model's durable ingest identity, so CPU placement assertions must not
+    // become renderer-lifecycle assertions merely because Frame both rendered.
+    const isScan = (model: (typeof s.models extends Map<string, infer M> ? M : never)) => model.loadPath === 'point-cloud';
+    return { identities: [...s.models.values()].map((model) => model.sourceContentHash), translations: [...s.models].filter(([, model]) => isScan(model)).map(([id]) => s.modelPlacement.placements.get(id)?.translation),
+      fixed: [...s.models].filter(([, model]) => !isScan(model)).map(([id]) => s.modelPlacement.placements.get(id)?.translation ?? [0, 0, 0]), count: s.pointCloudAssetCount };
   });
   expect(placement.translations).toEqual([OFFSET.map((v) => -v)]);
   expect(placement.count).toBe(1);
@@ -227,29 +281,56 @@ for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan,
   expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId)).toBe(priorSelection);
   for (let axis = 0; axis < 3; axis++) expect(anchors!.source!.point[axis] + anchors!.delta[axis]).toBeCloseTo(anchors!.target!.point[axis], 6);
   await page.keyboard.press('Escape');
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const s = globalThis.__ifc_lite_viewer_store__.getState();
     s.closeReposition(); s.setSelectedEntityId(null);
-    for (const [id, model] of s.models) if (model.pointCloudHandleId === undefined) s.setModelVisibility(id, false);
+    for (const [id, model] of s.models) if (model.loadPath !== 'point-cloud') s.setModelVisibility(id, false);
+    // Visibility is consumed by the renderer on its next frame. Waiting for
+    // two frames proves the normal GPU picker against the published scan-only
+    // scene instead of racing the stale IFC visibility buffer.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
   });
-  let selectedScan = false;
-  for (const point of candidates) {
-    await page.mouse.click(canvas!.x + point.x, canvas!.y + point.y);
-    selectedScan = await page.evaluate(() => {
-      const s = globalThis.__ifc_lite_viewer_store__.getState();
-      const scan = [...s.models.values()].find((model) => model.pointCloudHandleId !== undefined)!;
-      return s.selectedEntityId !== null && s.selectedEntityId >= scan.idOffset && s.selectedEntityId <= scan.idOffset + scan.maxExpressId;
-    });
-    if (selectedScan) break;
-  }
+  const scanHandle = await page.evaluate(() => {
+    const scan = [...globalThis.__ifc_lite_viewer_store__.getState().models.values()]
+      .find((model) => model.loadPath === 'point-cloud');
+    if (scan?.pointCloudHandleId === undefined) throw new Error('Visible scan lost its renderer handle');
+    return scan.pointCloudHandleId;
+  });
+  const renderedScan = await snapshotRenderedPointCloud(page, scanHandle, 10_000);
+  const scanCandidates = await page.evaluate((points) => {
+    const project = globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.projectToScreen!;
+    const canvas = document.querySelector('canvas');
+    if (!canvas) throw new Error('Viewer canvas missing');
+    const { width, height } = canvas.getBoundingClientRect();
+    return points.map(([x, y, z]) => project({ x, y, z }))
+      .filter((point): point is { x: number; y: number } => point !== null
+        && point.x >= 0 && point.x < width && point.y >= 0 && point.y < height);
+  }, renderedScan.points);
+  expect(scanCandidates.length, 'production-rendered scan points project into the viewport').toBeGreaterThan(0);
+  const point = scanCandidates[0]!;
+  await page.mouse.click(canvas!.x + point.x, canvas!.y + point.y);
+  // The DOM listener awaits a GPU map/readback after click dispatch. Wait for
+  // that production selection commit instead of launching overlapping picks.
+  await page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId !== null, undefined, { timeout: 10_000 });
+  const selectedScan = await page.evaluate(() => {
+    const s = globalThis.__ifc_lite_viewer_store__.getState();
+    const scan = [...s.models.values()].find((model) => model.loadPath === 'point-cloud')!;
+    return s.selectedEntityId! >= scan.idOffset && s.selectedEntityId! <= scan.idOffset + scan.maxExpressId;
+  });
   expect(selectedScan, 'normal GPU selection picks the visible translated scan').toBe(true);
   await page.evaluate(() => { const s = globalThis.__ifc_lite_viewer_store__.getState(); for (const [id] of s.models) s.setModelVisibility(id, true); });
   await openScanMove(page);
   await page.getByRole('button', { name: 'Frame both', exact: true }).click();
   await info.attach('aligned real IFC and diagnostic scan', { body: await page.screenshot(), contentType: 'image/png' });
-  await page.getByRole('button', { name: 'Undo move', exact: true }).click();
-  await page.getByRole('button', { name: 'Redo move', exact: true }).click();
-  expect(await page.evaluate(() => { const s = globalThis.__ifc_lite_viewer_store__.getState(); return [...s.models].filter(([, m]) => m.pointCloudHandleId !== undefined).map(([id]) => s.modelPlacement.placements.get(id)?.translation); })).toEqual([OFFSET.map((v) => -v)]);
+  await page.getByRole('button', { name: 'Cancel repositioning', exact: true }).click();
+  await page.keyboard.press('Control+z');
+  await page.waitForFunction(() => {
+    const s = globalThis.__ifc_lite_viewer_store__.getState();
+    const scan = [...s.models].find(([, model]) => model.loadPath === 'point-cloud');
+    return !!scan && (s.modelPlacement.placements.get(scan[0])?.translation ?? [0, 0, 0]).every((value) => value === 0);
+  });
+  await page.keyboard.press('Control+Shift+z');
+  expect(await page.evaluate(() => { const s = globalThis.__ifc_lite_viewer_store__.getState(); return [...s.models].filter(([, model]) => model.loadPath === 'point-cloud').map(([id]) => s.modelPlacement.placements.get(id)?.translation); })).toEqual([OFFSET.map((v) => -v)]);
   expect(errors).toEqual([]);
 });
 

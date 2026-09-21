@@ -33,7 +33,7 @@ export type { ColumnType, Column, Cell, Row, Table, TableProblem, GroupedRows } 
 export { canonicalJson, digest, digestFlowData, trackingGuid } from './digest.js';
 
 export { NodeRegistry, resolveParams } from './registry.js';
-export type { PortDef, ParamDef, ParamKind, LogLevel, NodeRunContext, NodeOutputs, NodeDef } from './registry.js';
+export type { PortDef, ParamDef, ParamKind, LogLevel, LaneTracking, NodeRunContext, NodeOutputs, NodeDef } from './registry.js';
 
 export { planLift, assemble, CrossProductTooLarge } from './lift.js';
 export type { LiftInput, Lane, LiftPlan, LiftOptions } from './lift.js';
@@ -57,8 +57,9 @@ export {
   trackedSetFrom,
   withTrackedSet,
   TrackingPinMismatch,
+  MemoryTrackingStore,
 } from './tracking.js';
-export type { TrackedEntry, TrackedSet, TrackingSidecar, DesiredLane, TrackingPlan } from './tracking.js';
+export type { TrackedEntry, TrackedSet, TrackingSidecar, TrackingStore, DesiredLane, TrackingPlan } from './tracking.js';
 
 export { validateFlowWiring } from './wiring.js';
 export { nodeAvailability, checkAvailability } from './availability.js';

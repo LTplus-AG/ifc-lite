@@ -36,6 +36,8 @@ export interface RoofRectangleParams {
   Description?: string;
   ObjectType?: string;
   Tag?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
 }
 
 export interface RoofPolygonParams {
@@ -47,6 +49,8 @@ export interface RoofPolygonParams {
   Description?: string;
   ObjectType?: string;
   Tag?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
 }
 
 export interface RoofBuildResult {

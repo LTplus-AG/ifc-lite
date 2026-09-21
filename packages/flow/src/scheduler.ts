@@ -18,7 +18,8 @@ import { nodeAvailability, type HostFeatures } from './availability.js';
 import { digest, digestFlowData } from './digest.js';
 import type { FlowDocument, FlowNode } from './document.js';
 import { assemble, planLift, type LiftInput, type LiftPlan } from './lift.js';
-import { resolveParams, type LogLevel, type NodeDef, type NodeOutputs, type NodeRegistry } from './registry.js';
+import { resolveParams, type LaneTracking, type LogLevel, type NodeDef, type NodeOutputs, type NodeRegistry } from './registry.js';
+import { emptyTrackedSet, planTracking, type TrackingPlan, type TrackingStore } from './tracking.js';
 import { isAssignable, item, type FlowData } from './values.js';
 
 export const DEFAULT_MAX_CROSS = 100_000;
@@ -41,6 +42,8 @@ export interface NodeReport {
   readonly missing: Readonly<Record<string, readonly string[]>>;
   readonly warnings: readonly string[];
   readonly error?: string;
+  /** Tracked nodes: what the run did to the node's element set. */
+  readonly tracking?: { readonly created: number; readonly updated: number; readonly kept: number; readonly removed: number };
 }
 
 export interface GraphOutputValue {
@@ -95,6 +98,8 @@ export interface RunOptions<H> {
   readonly modelRevisions?: Readonly<Record<string, number>>;
   readonly features?: HostFeatures;
   readonly cache?: MemoCache;
+  /** Where tracked nodes read and persist their element sets; absent = every lane is a fresh create. */
+  readonly tracking?: TrackingStore;
   readonly signal?: AbortSignal;
 }
 
@@ -265,24 +270,51 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       log.push({ nodeId, laneKey: null, level: 'warn', message: `input "${port}" has no branch for keys: ${keys.join(', ')}` });
     }
 
+    // Tracked nodes: decide per lane what to do against last run's set.
+    let trackingPlan: TrackingPlan | undefined;
+    const trackingKey = node.trackingKey ?? `${doc.name}/${node.label ?? node.id}`;
+    if (def.tracked) {
+      const previous = opts.tracking?.load(trackingKey) ?? emptyTrackedSet(trackingKey);
+      const desired = plan.lanes
+        .filter((l) => !l.nullLane)
+        .map((l) => ({ laneKey: l.laneKey ?? '', digest: digest({ args: l.args, params }) }));
+      trackingPlan = planTracking(previous, desired, node.tracking ?? 'update');
+      for (const k of trackingPlan.duplicateLanes) log.push({ nodeId, laneKey: k, level: 'warn', message: 'duplicate lane key; only the first lane is tracked' });
+    }
+    const laneTracking = (laneKey: string | null): LaneTracking | undefined => {
+      if (!trackingPlan) return undefined;
+      const k = laneKey ?? '';
+      const c = trackingPlan.create.find((e) => e.laneKey === k);
+      if (c) return { action: 'create', globalId: c.globalId };
+      const u = trackingPlan.update.find((e) => e.laneKey === k);
+      if (u) return { action: 'update', globalId: u.globalId };
+      const kept = trackingPlan.keep.find((e) => e.laneKey === k);
+      return kept ? { action: 'keep', globalId: kept.globalId } : undefined;
+    };
+    const makeCtx = (laneKey: string | null, tracking?: LaneTracking) => ({
+      host: opts.host,
+      laneKey,
+      tracking,
+      signal: opts.signal,
+      log: (level: LogLevel, message: string) => log.push({ nodeId, laneKey, level, message }),
+    });
+
     const results: (NodeOutputs | null)[] = [];
     let laneErrors = 0;
     let nodeError: string | undefined;
+    const seenLanes = new Set<string>();
     for (const lane of plan.lanes) {
       if (opts.signal?.aborted) {
         nodeError = 'aborted';
         break;
       }
-      if (lane.nullLane) {
+      const duplicate = trackingPlan !== undefined && seenLanes.has(lane.laneKey ?? '');
+      seenLanes.add(lane.laneKey ?? '');
+      if (lane.nullLane || duplicate) {
         results.push(null);
         continue;
       }
-      const ctx = {
-        host: opts.host,
-        laneKey: lane.laneKey,
-        signal: opts.signal,
-        log: (level: LogLevel, message: string) => log.push({ nodeId, laneKey: lane.laneKey, level, message }),
-      };
+      const ctx = makeCtx(lane.laneKey, laneTracking(lane.laneKey));
       try {
         results.push(await def.run(ctx, lane.args, params));
       } catch (err) {
@@ -300,6 +332,27 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       fail(nodeError, plan.lanes.length);
       continue;
     }
+    let removeErrors = 0;
+    if (trackingPlan) {
+      for (const gone of trackingPlan.remove) {
+        try {
+          await def.remove?.(makeCtx(gone.laneKey), gone.globalId);
+        } catch (err) {
+          removeErrors += 1;
+          log.push({ nodeId, laneKey: gone.laneKey, level: 'error', message: `remove ${gone.globalId}: ${err instanceof Error ? err.message : String(err)}` });
+        }
+      }
+      // A lane that failed keeps its previous entry, so the next run retries
+      // it instead of forgetting an element that may still exist.
+      const failedLanes = new Set(plan.lanes.filter((l, i) => results[i] === null && !l.nullLane).map((l) => l.laneKey ?? ''));
+      const entries = { ...trackingPlan.next.entries };
+      const previous = opts.tracking?.load(trackingKey)?.entries ?? {};
+      for (const k of failedLanes) {
+        if (previous[k]) entries[k] = previous[k];
+        else delete entries[k];
+      }
+      opts.tracking?.save({ ...trackingPlan.next, entries });
+    }
     let assembled: Map<string, FlowData>;
     try {
       assembled = assemble(plan, def.outputs, results);
@@ -313,7 +366,16 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       if (opts.cache) opts.cache.writeGeneration += 1;
     }
     if (memoKey && opts.cache) opts.cache.set(nodeId, memoKey, assembled);
-    report({ status: 'ok', lanes: plan.lanes.length, laneErrors, missing: plan.missing, warnings: plan.warnings });
+    report({
+      status: 'ok',
+      lanes: plan.lanes.length,
+      laneErrors: laneErrors + removeErrors,
+      missing: plan.missing,
+      warnings: plan.warnings,
+      tracking: trackingPlan
+        ? { created: trackingPlan.create.length, updated: trackingPlan.update.length, kept: trackingPlan.keep.length, removed: trackingPlan.remove.length - removeErrors }
+        : undefined,
+    });
   }
 
   const graphOutputs = doc.outputs.map((o) => ({ label: o.label, nodeId: o.nodeId, port: o.port, data: outputs.get(o.nodeId)?.get(o.port) }));

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +13,8 @@ import { createHeadlessContext } from '../loader.js';
 const here = dirname(fileURLToPath(import.meta.url));
 const SAMPLE_IFC = resolve(here, '../../../../apps/viewer/public/samples/building-architecture.ifc');
 const AUDIT_FLOW = resolve(here, '../__fixtures__/flows/fire-rating-audit.flow.json');
+const COLUMNS_FLOW = resolve(here, '../__fixtures__/flows/columns-along-x.flow.json');
+const HELLO_WALL = resolve(here, '../../../../apps/viewer/public/samples/hello-wall.ifc');
 
 function capture() {
   const out: string[] = [];
@@ -153,5 +155,47 @@ describe('ifc-lite flow', () => {
     await expect(flowCommand(['run', AUDIT_FLOW, SAMPLE_IFC, '--out'])).rejects.toThrow('exit');
     expect(exit2).toHaveBeenCalledWith(1);
     expect(c2.err.join('')).toMatch(/--out needs a value/);
+
+  it('a tracked creation graph re-run updates its elements in place: same GlobalIds, no adds or removes, vanished lanes removed', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-'));
+    const graph = join(dir, 'columns.flow.json');
+    await copyFile(COLUMNS_FLOW, graph);
+    const out1 = join(dir, 'cols1.ifc');
+    const out2 = join(dir, 'cols2.ifc');
+    const out3 = join(dir, 'cols3.ifc');
+    const columnsOf = async (path: string) => {
+      const { bim } = await createHeadlessContext(path);
+      return bim.query().byType('IfcColumn').toArray().map((c) => c.globalId).sort();
+    };
+    const actions = (c: ReturnType<typeof capture>) =>
+      (c.json() as { log: Array<{ nodeId: string; level: string; message: string }> }).log
+        .filter((l) => l.nodeId === 'add' && l.level === 'info')
+        .map((l) => l.message.split(' ')[0]);
+
+    let c = capture();
+    await flowCommand(['run', graph, HELLO_WALL, '--out', out1, '--json']);
+    expect(actions(c)).toEqual(['create', 'create', 'create']);
+    const first = await columnsOf(out1);
+    expect(first).toHaveLength(3);
+    expect(JSON.parse(await readFile(join(dir, 'columns.tracking.json'), 'utf-8')).sets['columns-along-x/columns'].entries).toHaveProperty('0'); // @source-text-assertion-ok the sidecar is this run's own output
+    vi.restoreAllMocks();
+
+    c = capture();
+    await flowCommand(['run', graph, out1, '--input', 'column.height=4', '--out', out2, '--json']);
+    expect(actions(c)).toEqual(['update', 'update', 'update']);
+    expect(await columnsOf(out2)).toEqual(first);
+    // The extrusion depth carries the new height. (The replaced bodies stay in
+    // the file as orphaned, unreferenced solids: `store.removeEntity` tombstones
+    // the product only — a store-level cleanup tracked separately.)
+    const step2 = await readFile(out2, 'utf-8');
+    expect(step2.match(/IFCEXTRUDEDAREASOLID\([^)]*,4\.\)/g)).toHaveLength(3); // @source-text-assertion-ok the model is this run's own output
+    vi.restoreAllMocks();
+
+    c = capture();
+    await flowCommand(['run', graph, out2, '--input', 'xs.items=[0,4]', '--input', 'column.height=4', '--out', out3, '--json']);
+    expect(actions(c)).toEqual(['keep', 'keep']);
+    const third = await columnsOf(out3);
+    expect(third).toHaveLength(2);
+    expect(first.filter((g) => !third.includes(g))).toHaveLength(1);
   });
 });

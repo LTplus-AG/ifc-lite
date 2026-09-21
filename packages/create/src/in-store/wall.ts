@@ -22,7 +22,7 @@ import type { StoreEditor } from '@ifc-lite/mutations';
 import { vecNorm, assertFinitePoint3 } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
-import { assertPositiveFinite, ownerHistoryRef } from './_emit-helpers.js';
+import { assertPositiveFinite, ownerHistoryRef, productGuid } from './_emit-helpers.js';
 
 export interface WallInStoreParams {
   /** Start of the wall axis, in storey-local coordinates (metres). */
@@ -37,6 +37,8 @@ export interface WallInStoreParams {
   Description?: string;
   ObjectType?: string;
   Tag?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
 }
 
 export interface WallBuildResult {
@@ -142,7 +144,7 @@ export function addWallToStore(
 
   // `IfcWall.PredefinedType` only exists from IFC4 onward.
   const wallAttrs: Array<unknown> = [
-    generateIfcGuid(anchor.guidRandom),
+    productGuid(params, anchor.guidRandom),
     ownerHistoryRef(ownerHistoryId),
     params.Name ?? 'Wall',
     params.Description ?? null,

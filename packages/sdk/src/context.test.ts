@@ -778,6 +778,24 @@ describe('MutateNamespace', () => {
     bim.mutate.undo('model-1');
     expect(mutate.undo).toHaveBeenCalledWith('model-1');
   });
+
+  it('batchAsync() keeps the batch open across awaits and closes it on rejection too', async () => {
+    const { backend, mutate } = createMockBackend();
+    const bim = createBimContext({ backend });
+
+    const value = await bim.mutate.batchAsync('flow run', async () => {
+      expect(mutate.batchBegin).toHaveBeenCalledWith('flow run');
+      expect(mutate.batchEnd).not.toHaveBeenCalled();
+      await Promise.resolve();
+      bim.mutate.setProperty({ modelId: 'm', expressId: 1 }, 'Pset', 'Prop', 1);
+      return 42;
+    });
+    expect(value).toBe(42);
+    expect(mutate.batchEnd).toHaveBeenCalledWith('flow run');
+
+    await expect(bim.mutate.batchAsync('failing', async () => { throw new Error('boom'); })).rejects.toThrow('boom');
+    expect(mutate.batchEnd).toHaveBeenLastCalledWith('failing');
+  });
 });
 
 describe('LensNamespace', () => {

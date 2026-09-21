@@ -56,8 +56,9 @@ node is not called and its outputs for that lane are `null`. Errors inside
 one lane are logged with the lane key and yield `null`; the run continues.
 
 Restructuring is a small, complete set of nodes: `core.groupBy`,
-`core.flatten`, `core.keys`, `core.lookup`, `core.wrap`, `core.filter`, and
-for tables `table.groupRows` and `table.pivot`.
+`core.flatten`, `core.keys`, `core.lookup`, `core.first`, `core.item`,
+`core.wrap`, `core.filter`, and for tables `table.groupRows` and
+`table.pivot`.
 
 ## The document
 
@@ -87,6 +88,40 @@ for tables `table.groupRows` and `table.pivot`.
   tracked element sets do not.
 
 The full fixture is `packages/cli/src/__fixtures__/flows/fire-rating-audit.flow.json`, which the CLI test runs end to end.
+
+## Creating elements, and re-running
+
+`element.wall`, `element.column`, `element.beam` and `element.slab` build
+parametric specs (a value, not yet an element); `model.addElement` writes
+them. That node is **tracked**: it owns the elements it creates.
+
+- Each output lane gets a GlobalId derived from the node's `trackingKey`
+  (default `<graph name>/<node label>`) and the lane key — never from the
+  model id, the graph id, or the run. Re-running the same graph on the same
+  model, on a re-exported copy, or after a reload finds the same elements.
+- Per lane the runtime decides **create** (new lane), **update** (inputs
+  changed: the element is replaced under the same GlobalId), or **keep**
+  (nothing to write). Lanes that vanished since the last run are
+  **removed** — the orphan Dynamo leaves behind.
+- The tracked sets live in a sidecar, not in the graph: `ifc-lite flow
+  run` writes `<graph>.tracking.json` beside the graph (`--tracking F`,
+  `--no-tracking`). A graph is reusable across models; its tracked sets
+  are not.
+- `tracking: "replace"` on a node re-creates every lane under fresh
+  GlobalIds and removes the previous set; `"disabled"` computes without
+  writing.
+- A lane keyed by index (a list of numbers rather than of entities) is
+  stable only while the list keeps its order; the run log warns. Drive
+  creation from entities (grid axes, storeys, existing elements) when the
+  set can change in the middle.
+
+`model.addElement` refuses to create under a GlobalId that already belongs
+to a foreign element — change the tracking key rather than overwrite.
+Geometry is parametric only (what `bim.store.add*` can author); there is no
+BRep/Solid write path.
+
+A run is one undo step in the viewer: every write the graph made is tagged
+as one batch (`bim.mutate.batchAsync`), so Ctrl+Z reverts the whole run.
 
 ## Where a node can run
 

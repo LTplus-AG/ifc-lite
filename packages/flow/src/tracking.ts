@@ -47,6 +47,23 @@ export interface TrackingSidecar {
   readonly sets: Readonly<Record<string, TrackedSet>>;
 }
 
+/** Where a run reads and writes tracked sets (a sidecar file, browser storage, memory). */
+export interface TrackingStore {
+  load(trackingKey: string): TrackedSet | undefined;
+  save(set: TrackedSet): void;
+}
+
+/** In-memory store: tests, and hosts that have not chosen a sidecar yet. */
+export class MemoryTrackingStore implements TrackingStore {
+  private readonly sets = new Map<string, TrackedSet>();
+  load(trackingKey: string): TrackedSet | undefined {
+    return this.sets.get(trackingKey);
+  }
+  save(set: TrackedSet): void {
+    this.sets.set(set.trackingKey, set);
+  }
+}
+
 export interface DesiredLane {
   readonly laneKey: GroupKey;
   readonly digest: string;

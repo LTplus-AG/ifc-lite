@@ -439,6 +439,8 @@ export interface AddColumnInStoreParams {
   Description?: string;
   ObjectType?: string;
   Tag?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
 }
 
 export interface AddWallInStoreParams {
@@ -450,6 +452,8 @@ export interface AddWallInStoreParams {
   Description?: string;
   ObjectType?: string;
   Tag?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
 }
 
 export type AddSlabInStoreParams = AddSlabRectangleParams | AddSlabPolygonParams;
@@ -465,6 +469,8 @@ export interface AddSlabRectangleParams {
   Description?: string;
   ObjectType?: string;
   Tag?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
 }
 
 export interface AddSlabPolygonParams {
@@ -479,6 +485,8 @@ export interface AddSlabPolygonParams {
   Description?: string;
   ObjectType?: string;
   Tag?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
 }
 
 export interface AddBeamInStoreParams {
@@ -490,6 +498,8 @@ export interface AddBeamInStoreParams {
   Description?: string;
   ObjectType?: string;
   Tag?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
 }
 
 export interface AddDoorInStoreParams {
@@ -503,6 +513,8 @@ export interface AddDoorInStoreParams {
   Description?: string;
   ObjectType?: string;
   Tag?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
 }
 
 export interface AddWindowInStoreParams {
@@ -516,6 +528,8 @@ export interface AddWindowInStoreParams {
   Description?: string;
   ObjectType?: string;
   Tag?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
 }
 
 export type AddSpaceInStoreParams = AddSpaceRectangleParams | AddSpacePolygonParams;
@@ -528,6 +542,8 @@ export interface AddSpaceRectangleParams {
   Profile?: 'rectangle';
   Name?: string;
   LongName?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
   Description?: string;
   ObjectType?: string;
 }
@@ -539,6 +555,8 @@ export interface AddSpacePolygonParams {
   Height: number;
   Name?: string;
   LongName?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
   Description?: string;
   ObjectType?: string;
 }
@@ -555,6 +573,8 @@ export interface AddRoofRectangleParams {
   Description?: string;
   ObjectType?: string;
   Tag?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
 }
 
 export interface AddRoofPolygonParams {
@@ -566,6 +586,8 @@ export interface AddRoofPolygonParams {
   Description?: string;
   ObjectType?: string;
   Tag?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
 }
 
 export type AddPlateInStoreParams = AddPlateRectangleParams | AddPlatePolygonParams;
@@ -581,6 +603,8 @@ export interface AddPlateRectangleParams {
   Description?: string;
   ObjectType?: string;
   Tag?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
 }
 
 export interface AddPlatePolygonParams {
@@ -593,6 +617,8 @@ export interface AddPlatePolygonParams {
   Description?: string;
   ObjectType?: string;
   Tag?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
 }
 
 export interface AddMemberInStoreParams {
@@ -608,6 +634,8 @@ export interface AddMemberInStoreParams {
   Description?: string;
   ObjectType?: string;
   Tag?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
 }
 
 export interface StoreBackendMethods extends CostStoreBackendMethods {

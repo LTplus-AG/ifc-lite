@@ -37,6 +37,20 @@ export class MutateNamespace {
     }
   }
 
+  /**
+   * `batch` for asynchronous work (a flow run, a fetch-then-write): the
+   * batch stays open across awaits and closes when the promise settles.
+   * Other writers on the same backend meanwhile land inside the batch.
+   */
+  async batchAsync<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    this.backend.mutate.batchBegin(label);
+    try {
+      return await fn();
+    } finally {
+      this.backend.mutate.batchEnd(label);
+    }
+  }
+
   /** Undo last mutation for a model */
   undo(modelId: string): boolean {
     return this.backend.mutate.undo(modelId);

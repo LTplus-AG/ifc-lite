@@ -12,41 +12,8 @@ import { useViewerStore } from '@/store';
 import { formatFileSize, getCachedFile, type RecentFileEntry } from '@/lib/recent-files';
 import { FILE_ACCEPT } from '@/services/supported-model-files';
 import { WebGpuDisabledCaption, WebGpuTroubleshootingDetails, webGpuBannerBlurb } from './WebGpuTroubleshooting';
+import { FLOAT_SLOW_KEYFRAMES, GridPattern } from './ViewportEmptyStateChrome';
 import type { WebGPUStatus } from '@/hooks/useWebGPU';
-
-// Plain CSS text (not UI copy) so the i18n literal gate never flags it.
-const FLOAT_SLOW_KEYFRAMES = `
-  @keyframes float-slow {
-    0%, 100% { transform: translateY(0px) rotate(0deg); }
-    50% { transform: translateY(-6px) rotate(1deg); }
-  }
-  .animate-float-slow {
-    animation: float-slow 5s ease-in-out infinite;
-  }
-`;
-
-const GridPattern = () => (
-  <>
-    {/* Light mode grid - subtle gray */}
-    <div 
-      className="absolute inset-0 z-0 pointer-events-none opacity-[0.06] dark:hidden"
-      style={{
-        backgroundImage: `linear-gradient(#3b4261 1px, transparent 1px), linear-gradient(90deg, #3b4261 1px, transparent 1px)`,
-        backgroundSize: '32px 32px',
-        backgroundPosition: '-1px -1px'
-      }}
-    />
-    {/* Dark mode grid - subtle blue/cyan tint */}
-    <div 
-      className="absolute inset-0 z-0 pointer-events-none opacity-[0.12] hidden dark:block"
-      style={{
-        backgroundImage: `linear-gradient(#3b4261 1px, transparent 1px), linear-gradient(90deg, #3b4261 1px, transparent 1px)`,
-        backgroundSize: '32px 32px',
-        backgroundPosition: '-1px -1px'
-      }}
-    />
-  </>
-);
 
 export interface ViewportEmptyStateProps {
   handleDragEnter: (e: DragEvent) => void;

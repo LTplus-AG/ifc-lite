@@ -4,6 +4,7 @@
 
 mod decoder;
 mod event;
+mod fragments;
 mod token;
 
 use crate::{
@@ -22,7 +23,6 @@ use token::{TokenFeed, TokenKind};
 
 pub const MAX_LANDXML_STREAM_INPUT_CHUNK_BYTES: usize = 1024 * 1024;
 pub const MAX_LANDXML_STREAM_DRAIN_BYTES: usize = 1024 * 1024;
-const MAX_FRAGMENT_PAYLOAD_BYTES: usize = 192 * 1024;
 
 pub struct LandXmlTinStreamSession {
     parser: Option<Parser<'static>>,
@@ -297,7 +297,8 @@ impl LandXmlTinStreamSession {
             terrain_diagnostic: &'a Option<crate::LandXmlTerrainDiagnostic>,
             hidden_face_count: usize,
         }
-        self.enqueue_json(
+        fragments::push_value(
+            &mut self.queue,
             &source_id,
             LandXmlSurfaceComponent::Start,
             &Start {
@@ -313,13 +314,20 @@ impl LandXmlTinStreamSession {
                 hidden_face_count: surface.hidden_face_count,
             },
         )?;
-        self.enqueue_records(&source_id, LandXmlSurfaceComponent::Points, surface.points)?;
-        self.enqueue_records(
+        fragments::push_values(
+            &mut self.queue,
+            &source_id,
+            LandXmlSurfaceComponent::Points,
+            surface.points,
+        )?;
+        fragments::push_values(
+            &mut self.queue,
             &source_id,
             LandXmlSurfaceComponent::CanonicalVertices,
             surface.canonical_vertices,
         )?;
-        self.enqueue_records(
+        fragments::push_values(
+            &mut self.queue,
             &source_id,
             LandXmlSurfaceComponent::SourceDataPoints,
             surface.source_data_points,
@@ -340,18 +348,26 @@ impl LandXmlTinStreamSession {
                 visible: surface.face_visibility[index],
             })
             .collect::<Vec<_>>();
-        self.enqueue_records(&source_id, LandXmlSurfaceComponent::Faces, faces)?;
-        self.enqueue_records(
+        fragments::push_values(
+            &mut self.queue,
+            &source_id,
+            LandXmlSurfaceComponent::Faces,
+            faces,
+        )?;
+        fragments::push_values(
+            &mut self.queue,
             &source_id,
             LandXmlSurfaceComponent::Boundaries,
             surface.boundaries,
         )?;
-        self.enqueue_records(
+        fragments::push_values(
+            &mut self.queue,
             &source_id,
             LandXmlSurfaceComponent::Breaklines,
             surface.breaklines,
         )?;
-        self.enqueue_records(
+        fragments::push_values(
+            &mut self.queue,
             &source_id,
             LandXmlSurfaceComponent::Contours,
             surface.contours,
@@ -364,53 +380,6 @@ impl LandXmlTinStreamSession {
                 continued: false,
                 payload_utf8: Vec::new(),
             }));
-        Ok(())
-    }
-
-    fn enqueue_json<T: Serialize>(
-        &mut self,
-        source_id: &str,
-        component: LandXmlSurfaceComponent,
-        value: &T,
-    ) -> Result<(), LandXmlError> {
-        self.enqueue_bytes(
-            source_id,
-            component,
-            serde_json::to_vec(value).map_err(|value| {
-                error(
-                    Code::InvalidSemantic,
-                    format!("stream serialization failed: {value}"),
-                )
-            })?,
-        )
-    }
-    fn enqueue_records<T: Serialize>(
-        &mut self,
-        source_id: &str,
-        component: LandXmlSurfaceComponent,
-        values: Vec<T>,
-    ) -> Result<(), LandXmlError> {
-        for value in values {
-            self.enqueue_json(source_id, component, &value)?;
-        }
-        Ok(())
-    }
-    fn enqueue_bytes(
-        &mut self,
-        source_id: &str,
-        component: LandXmlSurfaceComponent,
-        bytes: Vec<u8>,
-    ) -> Result<(), LandXmlError> {
-        for (sequence, payload_utf8) in bytes.chunks(MAX_FRAGMENT_PAYLOAD_BYTES).enumerate() {
-            self.queue
-                .push_back(LandXmlStreamEvent::Surface(LandXmlSurfaceFragment {
-                    source_id: source_id.to_owned(),
-                    component,
-                    sequence,
-                    continued: (sequence + 1) * MAX_FRAGMENT_PAYLOAD_BYTES < bytes.len(),
-                    payload_utf8: payload_utf8.to_vec(),
-                }));
-        }
         Ok(())
     }
 }

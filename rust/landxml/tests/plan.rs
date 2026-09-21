@@ -5,7 +5,7 @@
 use ifc_lite_landxml::{
     parse_landxml_document, parse_landxml_plan_with_cancel, LandXmlCancellation,
     LandXmlCancellationFlag, LandXmlDiagnosticCode, LandXmlParcelState, LandXmlPlanLimits,
-    LANDXML_12_NAMESPACE,
+    LandXmlPlanResolver, LANDXML_12_NAMESPACE,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -18,6 +18,24 @@ fn document(body: &str) -> String {
     format!(
         r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Imperial linearUnit="foot" areaUnit="squareFoot"/></Units>{body}</LandXML>"#
     )
+}
+
+fn aliased_triangle_parcels(count: usize) -> String {
+    let mut aliases = String::from(r#"<CgPoints><CgPoint name="a0">0 0</CgPoint>"#);
+    for ordinal in 1..=count {
+        aliases.push_str(&format!(
+            r#"<CgPoint name="a{ordinal}" pntRef="a{}"/>"#,
+            ordinal - 1
+        ));
+    }
+    aliases.push_str("</CgPoints><Parcels>");
+    for ordinal in 0..count {
+        aliases.push_str(&format!(
+            r#"<Parcel name="p{ordinal}"><CoordGeom><Line><Start pntRef="a{count}"/><End>1 0</End></Line><Line><Start>1 0</Start><End>0 1</End></Line><Line><Start>0 1</Start><End pntRef="a{count}"/></Line></CoordGeom></Parcel>"#
+        ));
+    }
+    aliases.push_str("</Parcels>");
+    document(&aliases)
 }
 
 #[test]
@@ -656,6 +674,67 @@ fn issue_5046_bounds_curve_center_aliases_and_rebuilds_safe_lookup_after_deseria
             .expect("authored name survives"),
         zero_ordinal.cogo_points()[0].point.expect("authored point")
     );
+}
+
+#[test]
+fn issue_5046_bulk_parcel_probes_share_alias_cache_and_one_operation_budget() {
+    // This is deliberately an operation-count invariant, not a timing test:
+    // every parcel reaches the same 1,024-hop alias. Without document-scoped
+    // path compression that is quadratic alias work before topology begins.
+    let count = 1_024;
+    let parsed = parse(&aliased_triangle_parcels(count));
+    let mut resolver = LandXmlPlanResolver::new(&parsed, count * 32);
+    let probes = parsed
+        .probe_parcels_with_resolver(&parsed.parcels, &mut resolver)
+        .expect("one aggregate budget accepts cached aliases and triangle topology");
+    assert_eq!(probes.len(), count);
+    assert!(probes
+        .iter()
+        .all(|probe| probe.state == LandXmlParcelState::Analytic));
+    assert!(
+        resolver.work_used() <= count * 32,
+        "cached bulk parcels must remain linear in aliases plus parcel topology; used {} operations",
+        resolver.work_used()
+    );
+
+    let mut exhausted = LandXmlPlanResolver::new(&parsed, count);
+    assert_eq!(
+        parsed
+            .probe_parcels_with_resolver(&parsed.parcels, &mut exhausted)
+            .expect_err("the one shared budget, not a per-parcel reset, must exhaust")
+            .code,
+        LandXmlDiagnosticCode::LimitExceeded
+    );
+}
+
+#[test]
+fn issue_5046_bulk_parcel_probes_preserve_scoped_dangling_and_cyclic_references() {
+    let parsed = parse(&document(
+        r#"
+        <CgPoints><CgPoint name="shared">0 0</CgPoint></CgPoints>
+        <Parcels><Parcel name="first"><CoordGeom><Line><Start pntRef="shared"/><End>1 0</End></Line><Line><Start>1 0</Start><End>0 1</End></Line><Line><Start>0 1</Start><End pntRef="shared"/></Line></CoordGeom></Parcel></Parcels>
+        <CgPoints><CgPoint name="shared">10 10</CgPoint><CgPoint name="cycle-a" pntRef="cycle-b"/><CgPoint name="cycle-b" pntRef="cycle-a"/></CgPoints>
+        <Parcels>
+          <Parcel name="second"><CoordGeom><Line><Start pntRef="shared"/><End>11 10</End></Line><Line><Start>11 10</Start><End>10 11</End></Line><Line><Start>10 11</Start><End pntRef="shared"/></Line></CoordGeom></Parcel>
+          <Parcel name="cycle"><CoordGeom><Line><Start pntRef="cycle-a"/><End>1 0</End></Line></CoordGeom></Parcel>
+          <Parcel name="dangling"><CoordGeom><Line><Start pntRef="missing"/><End>1 0</End></Line></CoordGeom></Parcel>
+        </Parcels>
+    "#,
+    ));
+    let mut resolver = LandXmlPlanResolver::new(&parsed, 10_000);
+    let probes = parsed
+        .probe_parcels_with_resolver(&parsed.parcels, &mut resolver)
+        .expect("unresolved parcel evidence is preserved, not a document error");
+    assert_eq!(probes[0].state, LandXmlParcelState::Analytic);
+    assert_eq!(probes[1].state, LandXmlParcelState::Analytic);
+    for probe in &probes[2..] {
+        assert_eq!(
+            probe.state,
+            LandXmlParcelState::PreservedOnly {
+                reason: "open or unresolved boundary".to_owned(),
+            }
+        );
+    }
 }
 
 #[test]

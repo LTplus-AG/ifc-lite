@@ -4,7 +4,7 @@
 
 use super::{
     LandXmlParcel, LandXmlParcelProbe, LandXmlParcelState, LandXmlPlanDocument,
-    LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlPlanPointLocation,
+    LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlPlanPointLocation, LandXmlPlanResolver,
 };
 
 mod measure;
@@ -21,6 +21,21 @@ pub(super) struct TopologyBudget<'a> {
     pub(super) max_work: usize,
     pub(super) cancelled: Option<&'a dyn crate::LandXmlCancellation>,
 }
+
+/// The parcel probe's resolution and topology passes must charge the same
+/// caller-owned work counter.  The ordinary single-parcel API owns a local
+/// counter; bulk adapters provide their document-scoped resolver instead.
+pub(super) trait ParcelProbeWork {
+    fn check(&mut self) -> std::result::Result<(), crate::LandXmlError>;
+
+    fn resolve(
+        &mut self,
+        document: &LandXmlPlanDocument,
+        scope: Option<&crate::LandXmlSourceId>,
+        location: &LandXmlPlanPointLocation,
+    ) -> std::result::Result<Option<LandXmlPlanPoint>, crate::LandXmlError>;
+}
+
 impl TopologyBudget<'_> {
     pub(super) fn check(&mut self) -> std::result::Result<(), crate::LandXmlError> {
         if self
@@ -45,6 +60,36 @@ impl TopologyBudget<'_> {
             ));
         }
         Ok(())
+    }
+}
+
+impl ParcelProbeWork for TopologyBudget<'_> {
+    fn check(&mut self) -> std::result::Result<(), crate::LandXmlError> {
+        TopologyBudget::check(self)
+    }
+
+    fn resolve(
+        &mut self,
+        document: &LandXmlPlanDocument,
+        scope: Option<&crate::LandXmlSourceId>,
+        location: &LandXmlPlanPointLocation,
+    ) -> std::result::Result<Option<LandXmlPlanPoint>, crate::LandXmlError> {
+        document.resolve_point_with_work(scope, location, self)
+    }
+}
+
+impl ParcelProbeWork for LandXmlPlanResolver<'_> {
+    fn check(&mut self) -> std::result::Result<(), crate::LandXmlError> {
+        self.check_work()
+    }
+
+    fn resolve(
+        &mut self,
+        _document: &LandXmlPlanDocument,
+        scope: Option<&crate::LandXmlSourceId>,
+        location: &LandXmlPlanPointLocation,
+    ) -> std::result::Result<Option<LandXmlPlanPoint>, crate::LandXmlError> {
+        LandXmlPlanResolver::resolve(self, scope, location)
     }
 }
 
@@ -118,62 +163,95 @@ impl LandXmlPlanDocument {
             max_work: max_topology_work,
             cancelled,
         };
-        if let Some(reason) = &parcel.preservation_reason {
-            return Ok(preserved(parcel, reason));
-        }
-        let mut perimeter = 0.0;
-        let mut twice_area = 0.0;
-        let mut all_segments = Vec::new();
-        for loop_geometry in &parcel.loops {
-            let Some(loop_probe) = probe_loop(self, loop_geometry, &mut budget)? else {
-                return Ok(preserved(parcel, "open or unresolved boundary"));
-            };
-            if loop_probe.self_intersects {
-                return Ok(preserved(parcel, "self-intersecting boundary"));
-            }
-            perimeter = finite_sum(perimeter, loop_probe.perimeter)?;
-            twice_area = finite_sum(twice_area, loop_probe.twice_area)?;
-            if segments_intersect(&all_segments, &loop_probe.segments, &mut budget)? {
-                return Ok(preserved(parcel, "cross-loop or retraced boundary"));
-            }
-            all_segments.extend(loop_probe.segments);
-        }
-        if parcel.loops.is_empty() {
-            return Ok(preserved(parcel, "missing CoordGeom boundary"));
-        }
-        if twice_area == 0.0 {
-            return Ok(preserved(parcel, "zero-area boundary"));
-        }
-        let coordinate_area = finite_measure(twice_area.abs() * 0.5)?;
-        let (perimeter_in_meters, area_in_square_meters, area_in_declared_square_units) =
-            match &self.units {
-                Some(units) => {
-                    let square_meters =
-                        finite_measure(coordinate_area * units.linear_scale_to_meters.powi(2))?;
-                    let declared_scale = self
-                        .area_scale_to_square_meters
-                        .unwrap_or(units.linear_scale_to_meters.powi(2));
-                    if !declared_scale.is_finite() || declared_scale <= 0.0 {
-                        return Ok(preserved(parcel, "invalid declared area unit scale"));
-                    }
-                    (
-                        Some(finite_measure(perimeter * units.linear_scale_to_meters)?),
-                        Some(square_meters),
-                        Some(finite_measure(square_meters / declared_scale)?),
-                    )
-                }
-                None => (None, None, Some(coordinate_area)),
-            };
-        Ok(LandXmlParcelProbe {
-            state: LandXmlParcelState::Analytic,
-            perimeter_in_declared_linear_units: Some(perimeter),
-            area_in_declared_square_units,
-            declared_area: parcel.declared_area,
-            declared_perimeter: parcel.declared_perimeter,
-            perimeter_in_meters,
-            area_in_square_meters,
-        })
+        probe_parcel_with_work(self, parcel, &mut budget)
     }
+
+    /// Probe many parcels through one document-scoped resolver. Resolution
+    /// aliases and topology checks consume one aggregate budget, so repeated
+    /// parcel references are path-compressed instead of being re-walked for
+    /// every parcel. Non-limit probe failures remain attached to their parcel;
+    /// only deterministic exhaustion of the shared document budget aborts the
+    /// adapter.
+    pub fn probe_parcels_with_resolver(
+        &self,
+        parcels: &[LandXmlParcel],
+        resolver: &mut LandXmlPlanResolver<'_>,
+    ) -> std::result::Result<Vec<LandXmlParcelProbe>, crate::LandXmlError> {
+        parcels
+            .iter()
+            .map(
+                |parcel| match probe_parcel_with_work(self, parcel, resolver) {
+                    Ok(probe) => Ok(probe),
+                    Err(error) if error.code == crate::LandXmlDiagnosticCode::LimitExceeded => {
+                        Err(error)
+                    }
+                    Err(error) => Ok(preserved(parcel, &error.message)),
+                },
+            )
+            .collect()
+    }
+}
+
+fn probe_parcel_with_work<W: ParcelProbeWork>(
+    document: &LandXmlPlanDocument,
+    parcel: &LandXmlParcel,
+    work: &mut W,
+) -> std::result::Result<LandXmlParcelProbe, crate::LandXmlError> {
+    if let Some(reason) = &parcel.preservation_reason {
+        return Ok(preserved(parcel, reason));
+    }
+    let mut perimeter = 0.0;
+    let mut twice_area = 0.0;
+    let mut all_segments = Vec::new();
+    for loop_geometry in &parcel.loops {
+        let Some(loop_probe) = probe_loop(document, loop_geometry, work)? else {
+            return Ok(preserved(parcel, "open or unresolved boundary"));
+        };
+        if loop_probe.self_intersects {
+            return Ok(preserved(parcel, "self-intersecting boundary"));
+        }
+        perimeter = finite_sum(perimeter, loop_probe.perimeter)?;
+        twice_area = finite_sum(twice_area, loop_probe.twice_area)?;
+        if segments_intersect(&all_segments, &loop_probe.segments, work)? {
+            return Ok(preserved(parcel, "cross-loop or retraced boundary"));
+        }
+        all_segments.extend(loop_probe.segments);
+    }
+    if parcel.loops.is_empty() {
+        return Ok(preserved(parcel, "missing CoordGeom boundary"));
+    }
+    if twice_area == 0.0 {
+        return Ok(preserved(parcel, "zero-area boundary"));
+    }
+    let coordinate_area = finite_measure(twice_area.abs() * 0.5)?;
+    let (perimeter_in_meters, area_in_square_meters, area_in_declared_square_units) =
+        match &document.units {
+            Some(units) => {
+                let square_meters =
+                    finite_measure(coordinate_area * units.linear_scale_to_meters.powi(2))?;
+                let declared_scale = document
+                    .area_scale_to_square_meters
+                    .unwrap_or(units.linear_scale_to_meters.powi(2));
+                if !declared_scale.is_finite() || declared_scale <= 0.0 {
+                    return Ok(preserved(parcel, "invalid declared area unit scale"));
+                }
+                (
+                    Some(finite_measure(perimeter * units.linear_scale_to_meters)?),
+                    Some(square_meters),
+                    Some(finite_measure(square_meters / declared_scale)?),
+                )
+            }
+            None => (None, None, Some(coordinate_area)),
+        };
+    Ok(LandXmlParcelProbe {
+        state: LandXmlParcelState::Analytic,
+        perimeter_in_declared_linear_units: Some(perimeter),
+        area_in_declared_square_units,
+        declared_area: parcel.declared_area,
+        declared_perimeter: parcel.declared_perimeter,
+        perimeter_in_meters,
+        area_in_square_meters,
+    })
 }
 
 struct LoopProbe {
@@ -197,10 +275,10 @@ fn preserved(parcel: &LandXmlParcel, reason: &str) -> LandXmlParcelProbe {
     }
 }
 
-fn probe_loop(
+fn probe_loop<W: ParcelProbeWork>(
     document: &LandXmlPlanDocument,
     geometry: &[LandXmlPlanGeometry],
-    budget: &mut TopologyBudget<'_>,
+    work: &mut W,
 ) -> std::result::Result<Option<LoopProbe>, crate::LandXmlError> {
     // A full curve/curve intersection solver belongs in the future renderer
     // adapter. Until then, only a single analytic arc plus its closing chord
@@ -218,18 +296,11 @@ fn probe_loop(
     let mut previous_end = None;
     let mut area_origin = None;
     for item in geometry {
-        budget.check()?;
-        let Some(start) = document.resolve_point_with_budget(
-            item.point_scope_id.as_ref(),
-            &item.start,
-            budget,
-        )?
-        else {
+        work.check()?;
+        let Some(start) = work.resolve(document, item.point_scope_id.as_ref(), &item.start)? else {
             return Ok(None);
         };
-        let Some(end) =
-            document.resolve_point_with_budget(item.point_scope_id.as_ref(), &item.end, budget)?
-        else {
+        let Some(end) = work.resolve(document, item.point_scope_id.as_ref(), &item.end)? else {
             return Ok(None);
         };
         if !finite_point(start) || !finite_point(end) {
@@ -240,7 +311,7 @@ fn probe_loop(
         }
         let origin = *area_origin.get_or_insert(start);
         let Some((length, integral, edges)) =
-            geometry_measure(document, item, start, end, origin, budget)?
+            geometry_measure(document, item, start, end, origin, work)?
         else {
             return Ok(None);
         };
@@ -252,13 +323,7 @@ fn probe_loop(
     let (Some(first), Some(last)) = (
         geometry
             .first()
-            .map(|item| {
-                document.resolve_point_with_budget(
-                    item.point_scope_id.as_ref(),
-                    &item.start,
-                    budget,
-                )
-            })
+            .map(|item| work.resolve(document, item.point_scope_id.as_ref(), &item.start))
             .transpose()?
             .flatten(),
         previous_end,
@@ -271,18 +336,18 @@ fn probe_loop(
     Ok(Some(LoopProbe {
         perimeter,
         twice_area,
-        self_intersects: segments_intersect(&[], &segments, budget)?,
+        self_intersects: segments_intersect(&[], &segments, work)?,
         segments,
     }))
 }
 
-fn geometry_measure(
+fn geometry_measure<W: ParcelProbeWork>(
     document: &LandXmlPlanDocument,
     geometry: &LandXmlPlanGeometry,
     start: LandXmlPlanPoint,
     end: LandXmlPlanPoint,
     area_origin: LandXmlPlanPoint,
-    budget: &mut TopologyBudget<'_>,
+    work: &mut W,
 ) -> std::result::Result<Option<GeometryMeasure>, crate::LandXmlError> {
     match geometry.kind {
         super::LandXmlGeometryKind::Line => Ok(Some((
@@ -311,11 +376,8 @@ fn geometry_measure(
             let Some(center_location) = geometry.center.as_ref() else {
                 return Ok(None);
             };
-            let Some(center) = document.resolve_point_with_budget(
-                geometry.point_scope_id.as_ref(),
-                center_location,
-                budget,
-            )?
+            let Some(center) =
+                work.resolve(document, geometry.point_scope_id.as_ref(), center_location)?
             else {
                 return Ok(None);
             };

@@ -165,17 +165,31 @@ fn resolved_geometry<'a>(
 fn plan_adapter<'a>(
     plan: &'a ifc_lite_landxml::LandXmlPlanDocument,
 ) -> Result<LandXmlPlanDocumentJs<'a>, ifc_lite_landxml::LandXmlError> {
-    let requests = plan.monuments.len().saturating_add(
+    let resolution_requests = plan.monuments.len().saturating_add(
         plan.plan_features
             .iter()
             .map(|feature| feature.geometry.len().saturating_mul(4))
             .sum::<usize>(),
     );
+    // A curve is bounded to 64 topology edges. Reserve enough aggregate work
+    // for an exact curve + chord parcel while keeping all parcel probes on the
+    // same deterministic document budget as COGO resolution.
+    let parcel_work = plan.parcels.iter().fold(0usize, |work, parcel| {
+        work.saturating_add(8_192).saturating_add(
+            parcel
+                .loops
+                .iter()
+                .map(Vec::len)
+                .sum::<usize>()
+                .saturating_mul(32),
+        )
+    });
     let max_work = plan
         .cogo_points()
         .len()
         .saturating_mul(8)
-        .saturating_add(requests.saturating_mul(8))
+        .saturating_add(resolution_requests.saturating_mul(8))
+        .saturating_add(parcel_work)
         .saturating_add(1_000);
     let mut resolver = ifc_lite_landxml::LandXmlPlanResolver::new(plan, max_work);
     Ok(LandXmlPlanDocumentJs {
@@ -191,11 +205,12 @@ fn plan_adapter<'a>(
         // overlay, never a GPU resource per plan source record.
         source_batches: plan.source_batches(128),
         parcel_probes: plan
-            .parcels
-            .iter()
-            .map(|parcel| LandXmlParcelProbeJs {
+            .probe_parcels_with_resolver(&plan.parcels, &mut resolver)?
+            .into_iter()
+            .zip(plan.parcels.iter())
+            .map(|(probe, parcel)| LandXmlParcelProbeJs {
                 source_id: &parcel.source_id,
-                probe: plan.probe_parcel(parcel),
+                probe,
             })
             .collect(),
         resolved_monuments: plan

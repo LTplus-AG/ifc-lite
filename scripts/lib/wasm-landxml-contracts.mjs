@@ -51,6 +51,24 @@ function aliasChainXml(count, cycle = false) {
   return `<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><CgPoints>${points.join('')}</CgPoints><Monuments>${Array.from({ length: count }, (_, index) => `<Monument pntRef="p${index + 1}"/>`).join('')}</Monuments><PlanFeatures><PlanFeature><CoordGeom>${geometry.join('')}</CoordGeom></PlanFeature></PlanFeatures></LandXML>`;
 }
 
+function bulkParcelAliasXml(count) {
+  const points = ['<CgPoint name="p0">0 0 0</CgPoint>'];
+  const parcels = [];
+  for (let index = 1; index <= count; index++) {
+    points.push(`<CgPoint name="p${index}" pntRef="p${index - 1}"/>`);
+    parcels.push(`<Parcel name="p${index}"><CoordGeom><Line><Start pntRef="p${count}"/><End>1 0</End></Line><Line><Start>1 0</Start><End>0 1</End></Line><Line><Start>0 1</Start><End pntRef="p${count}"/></Line></CoordGeom></Parcel>`);
+  }
+  return `<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><CgPoints>${points.join('')}</CgPoints><Monuments><Monument pntRef="p${count}"/></Monuments><PlanFeatures><PlanFeature><CoordGeom><Line><Start pntRef="p${count}"/><End>1 1 0</End></Line></CoordGeom></PlanFeature></PlanFeatures><Parcels>${parcels.join('')}</Parcels></LandXML>`;
+}
+
+const BULK_PARCEL_EDGE_CASES_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units>
+  <CgPoints><CgPoint name="shared">0 0</CgPoint></CgPoints>
+  <Parcels><Parcel name="first"><CoordGeom><Line><Start pntRef="shared"/><End>1 0</End></Line><Line><Start>1 0</Start><End>0 1</End></Line><Line><Start>0 1</Start><End pntRef="shared"/></Line></CoordGeom></Parcel></Parcels>
+  <CgPoints><CgPoint name="shared">10 10</CgPoint><CgPoint name="cycle-a" pntRef="cycle-b"/><CgPoint name="cycle-b" pntRef="cycle-a"/></CgPoints>
+  <Parcels><Parcel name="second"><CoordGeom><Line><Start pntRef="shared"/><End>11 10</End></Line><Line><Start>11 10</Start><End>10 11</End></Line><Line><Start>10 11</Start><End pntRef="shared"/></Line></CoordGeom></Parcel><Parcel name="cycle"><CoordGeom><Line><Start pntRef="cycle-a"/><End>1 0</End></Line></CoordGeom></Parcel><Parcel name="dangling"><CoordGeom><Line><Start pntRef="missing"/><End>1 0</End></Line></CoordGeom></Parcel></Parcels>
+</LandXML>`;
+
 function utf16Le(text) {
   const output = new Uint8Array(2 + text.length * 2);
   output.set([0xff, 0xfe]);
@@ -111,6 +129,34 @@ export function runLandXmlContracts(api, test) {
     assert.ok(document.plan.resolved_monuments.every((monument) => monument.point?.easting === 0));
     const cyclic = api.parseLandXmlTinBytes(new TextEncoder().encode(aliasChainXml(64, true)));
     assert.ok(cyclic.plan.resolved_geometry.some((geometry) => geometry.start === undefined), 'cycles remain unresolved rather than fabricated');
+  });
+
+  test('LandXML real-WASM bulk parcel probes share bounded aliases and retain analytic measurements (#5046)', () => {
+    // This checks three input scales and exact semantic results, rather than a
+    // flaky elapsed-time threshold. Every parcel reaches the same deep alias;
+    // the adapter must therefore reuse its one resolver and aggregate budget.
+    for (const count of [1_024, 2_048, 4_096]) {
+      const document = api.parseLandXmlTinBytes(new TextEncoder().encode(bulkParcelAliasXml(count)));
+      assert.equal(document.plan.parcel_probes.length, count, `${count} parcel probes survive`);
+      assert.equal(document.plan.resolved_monuments[0].point.northing, 0, `${count} aliases resolve for monuments`);
+      assert.equal(document.plan.resolved_geometry[0].start.northing, 0, `${count} aliases resolve for plan geometry`);
+      for (const probe of document.plan.parcel_probes) {
+        assert.deepEqual(probe.state, { kind: 'analytic' }, `${count} aliases retain analytic parcel topology`);
+        assert.ok(Math.abs(probe.perimeter_in_declared_linear_units - (2 + Math.SQRT2)) < 1e-12, 'exact triangle perimeter remains authored-unit analytic');
+        assert.ok(Math.abs(probe.area_in_declared_square_units - 0.5) < 1e-12, 'exact triangle area remains authored-unit analytic');
+      }
+    }
+  });
+
+  test('LandXML real-WASM bulk parcel probes preserve scoped, cyclic and dangling records (#5046)', () => {
+    const document = api.parseLandXmlTinBytes(new TextEncoder().encode(BULK_PARCEL_EDGE_CASES_XML));
+    assert.deepEqual(document.plan.parcel_probes.slice(0, 2).map((probe) => probe.state), [
+      { kind: 'analytic' }, { kind: 'analytic' },
+    ]);
+    assert.deepEqual(document.plan.parcel_probes.slice(2).map((probe) => probe.state), [
+      { kind: 'preserved_only', reason: 'open or unresolved boundary' },
+      { kind: 'preserved_only', reason: 'open or unresolved boundary' },
+    ]);
   });
 
   test('LandXML raw-byte parser preserves stable diagnostics', () => {

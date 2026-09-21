@@ -4,10 +4,10 @@
 
 use super::*;
 
-pub(super) fn segments_intersect(
+pub(super) fn segments_intersect<W: ParcelProbeWork>(
     previous: &[(LandXmlPlanPoint, LandXmlPlanPoint)],
     segments: &[(LandXmlPlanPoint, LandXmlPlanPoint)],
-    budget: &mut TopologyBudget<'_>,
+    budget: &mut W,
 ) -> std::result::Result<bool, crate::LandXmlError> {
     for (index, left) in segments.iter().enumerate() {
         budget.check()?;

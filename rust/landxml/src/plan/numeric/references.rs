@@ -7,7 +7,7 @@ use std::{
     collections::{HashMap, HashSet},
 };
 
-use super::{LandXmlPlanDocument, LandXmlPlanPoint, LandXmlPlanPointLocation, TopologyBudget};
+use super::{LandXmlPlanDocument, LandXmlPlanPoint, LandXmlPlanPointLocation, ParcelProbeWork};
 use crate::plan::model::LandXmlPlanReferenceIndex;
 use crate::LandXmlMonument;
 
@@ -51,13 +51,7 @@ impl<'a> LandXmlPlanResolver<'a> {
         let mut path = Vec::new();
         let mut seen = HashSet::new();
         let result = loop {
-            if self.work >= self.max_work {
-                return Err(crate::LandXmlError::new(
-                    crate::LandXmlDiagnosticCode::LimitExceeded,
-                    "COGO bulk resolution work limit exceeded",
-                ));
-            }
-            self.work += 1;
+            self.check_work()?;
             if let Some(value) = self.cache.get(&key) {
                 break *value;
             }
@@ -87,6 +81,29 @@ impl<'a> LandXmlPlanResolver<'a> {
         }
         self.cache.insert(first, result);
         Ok(result)
+    }
+
+    /// Number of document-scoped resolution/topology work units consumed.
+    /// Bulk adapters use this for deterministic scaling assertions; it is not
+    /// a timing measurement.
+    pub fn work_used(&self) -> usize {
+        self.work
+    }
+
+    pub(super) fn check_work(&mut self) -> std::result::Result<(), crate::LandXmlError> {
+        self.work = self.work.checked_add(1).ok_or_else(|| {
+            crate::LandXmlError::new(
+                crate::LandXmlDiagnosticCode::LimitExceeded,
+                "LandXML bulk plan work limit exceeded",
+            )
+        })?;
+        if self.work > self.max_work {
+            return Err(crate::LandXmlError::new(
+                crate::LandXmlDiagnosticCode::LimitExceeded,
+                "LandXML bulk plan work limit exceeded",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -172,22 +189,22 @@ impl LandXmlPlanDocument {
         Ok(None)
     }
 
-    pub(super) fn resolve_point_with_budget(
+    pub(super) fn resolve_point_with_work<W: ParcelProbeWork>(
         &self,
         scope_id: Option<&crate::LandXmlSourceId>,
         location: &LandXmlPlanPointLocation,
-        budget: &mut TopologyBudget<'_>,
+        work: &mut W,
     ) -> std::result::Result<Option<LandXmlPlanPoint>, crate::LandXmlError> {
         match location {
             LandXmlPlanPointLocation::Coordinates { point, .. } => Ok(Some(*point)),
             LandXmlPlanPointLocation::PointReference { pnt_ref } => {
-                let index = self.reference_index_with(|| budget.check())?;
+                let index = self.reference_index_with(|| work.check())?;
                 let mut next_scope = scope_id.cloned();
                 let mut next_reference = pnt_ref.as_str();
                 let mut remaining = self.cogo_points().len();
                 let mut seen = HashSet::new();
                 while remaining > 0 {
-                    budget.check()?;
+                    work.check()?;
                     let Some(index) =
                         self.lookup_reference(&index, next_scope.as_ref(), next_reference)
                     else {

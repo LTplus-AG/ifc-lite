@@ -22,6 +22,25 @@ export interface LandXmlRenderFramePlan {
   hasLargeCoordinates: boolean;
 }
 
+/** Derive the exact frame after a preflight has retained only bounds probes. */
+export function deriveLandXmlRenderFrameFromMeasurement(
+  sourceBounds: Bounds3D,
+  dominantBounds: Bounds3D,
+): LandXmlRenderFramePlan {
+  const maxAbs = Math.max(
+    Math.abs(sourceBounds.min.x), Math.abs(sourceBounds.min.y), Math.abs(sourceBounds.min.z),
+    Math.abs(sourceBounds.max.x), Math.abs(sourceBounds.max.y), Math.abs(sourceBounds.max.z),
+  );
+  const hasLargeCoordinates = maxAbs > 10_000;
+  return hasLargeCoordinates
+    ? { originShift: {
+      x: (dominantBounds.min.x + dominantBounds.max.x) / 2,
+      y: (dominantBounds.min.y + dominantBounds.max.y) / 2,
+      z: (dominantBounds.min.z + dominantBounds.max.z) / 2,
+    }, hasLargeCoordinates }
+    : { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates };
+}
+
 function mergeBounds(target: Bounds3D, source: Bounds3D): void {
   target.min.x = Math.min(target.min.x, source.min.x);
   target.min.y = Math.min(target.min.y, source.min.y);
@@ -46,22 +65,10 @@ export function boundsFitRenderFrame(
 export function deriveLandXmlRenderFrame<T extends RenderFrameComponent>(components: readonly T[]): LandXmlRenderFramePlan {
   const sourceBounds = createEmptyBounds();
   for (const component of components) mergeBounds(sourceBounds, component.bounds);
-  const maxAbs = Math.max(
-    Math.abs(sourceBounds.min.x), Math.abs(sourceBounds.min.y), Math.abs(sourceBounds.min.z),
-    Math.abs(sourceBounds.max.x), Math.abs(sourceBounds.max.y), Math.abs(sourceBounds.max.z),
-  );
-  const hasLargeCoordinates = maxAbs > 10_000;
-  if (!hasLargeCoordinates) {
-    return { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates };
-  }
   const dominant = components.reduce((best, component) => (
     component.mesh.indices.length > best.mesh.indices.length ? component : best
   ));
-  return { originShift: {
-    x: (dominant.bounds.min.x + dominant.bounds.max.x) / 2,
-    y: (dominant.bounds.min.y + dominant.bounds.max.y) / 2,
-    z: (dominant.bounds.min.z + dominant.bounds.max.z) / 2,
-  }, hasLargeCoordinates };
+  return deriveLandXmlRenderFrameFromMeasurement(sourceBounds, dominant.bounds);
 }
 
 /** Apply a frame selected by an earlier bounded preflight pass. */

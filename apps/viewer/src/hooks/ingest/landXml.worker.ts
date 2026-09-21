@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import init, { IfcAPI } from '@ifc-lite/wasm';
-import { parseLandXmlGeometry, type LandXmlGeometryPayload, type LandXmlSourceBuffer } from './landXmlIngest.js';
+import { parseLandXmlGeometry, preflightLandXmlGeometry, type LandXmlGeometryPayload, type LandXmlSourceBuffer } from './landXmlIngest.js';
 import { parseLandXmlSourceWithApi } from './landXmlWasm.js';
 import { parseLandXmlSourceBlobWithApi } from './landXmlBlobCursor.js';
 
@@ -29,14 +29,24 @@ workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer | LandXml
     let payload: LandXmlGeometryPayload;
     try {
       const document = isBlobRequest(event.data)
-        ? await parseLandXmlSourceBlobWithApi(api, event.data.file, {
-          onProgress: (loadedBytes, totalBytes) => workerScope.postMessage({ progress: { loadedBytes, totalBytes } }),
+        ? await (async () => {
+          // Pass one derives the exact component envelope and canonical
+          // dominant frame while releasing every mesh immediately. Pass two
+          // rebuilds the source against that frozen policy; a mismatch is a
+          // hard failure, never a partially publishable model.
+          const preflight = preflightLandXmlGeometry(await parseLandXmlSourceBlobWithApi(api, event.data.file, {
+            onProgress: (loadedBytes, totalBytes) => workerScope.postMessage({ progress: { loadedBytes, totalBytes: totalBytes * 2 } }),
+          }));
+          const secondPass = await parseLandXmlSourceBlobWithApi(api, event.data.file, {
+            onProgress: (loadedBytes, totalBytes) => workerScope.postMessage({ progress: { loadedBytes: totalBytes + loadedBytes, totalBytes: totalBytes * 2 } }),
+          });
+          return { document: secondPass, preflight };
         })
         // TODO(remove-by: #5050 completion, owner: LandXML)
         // Buffer callers are retained only for the test/legacy compatibility
         // adapter; the canonical loadFile LandXML path sends a Blob request.
-        : parseLandXmlSourceWithApi(api, event.data);
-      payload = parseLandXmlGeometry(document);
+        : { document: parseLandXmlSourceWithApi(api, event.data), preflight: undefined };
+      payload = parseLandXmlGeometry(document.document, document.preflight);
     } finally {
       api.free();
     }

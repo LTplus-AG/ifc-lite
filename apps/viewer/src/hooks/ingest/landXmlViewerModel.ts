@@ -4,7 +4,7 @@
 
 import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
 import type { LandXmlGeometryPayload, LandXmlSourceBuffer } from './landXmlIngest.js';
-import { parseLandXmlGeometry } from './landXmlIngest.js';
+import { parseLandXmlGeometry, preflightLandXmlGeometry } from './landXmlIngest.js';
 import { parseLandXmlSourceInCurrentRealm } from './landXmlWasm.js';
 import { parseLandXmlSourceBlobWithApi } from './landXmlBlobCursor.js';
 import { initLandXmlWasm } from './landXmlWasmInit.js';
@@ -110,8 +110,15 @@ export function parseLandXmlViewerModelFromBlobAsync(
     return initLandXmlWasm().then(async () => {
       const api = new IfcAPI();
       try {
-        const parsed = await parseLandXmlSourceBlobWithApi(api, file, { isCurrent, onProgress });
-        return attachSyntheticStore(parseLandXmlGeometry(parsed), file.size);
+        const preflight = preflightLandXmlGeometry(await parseLandXmlSourceBlobWithApi(api, file, {
+          isCurrent,
+          onProgress: (loadedBytes, totalBytes) => onProgress?.(loadedBytes, totalBytes * 2),
+        }));
+        const parsed = await parseLandXmlSourceBlobWithApi(api, file, {
+          isCurrent,
+          onProgress: (loadedBytes, totalBytes) => onProgress?.(totalBytes + loadedBytes, totalBytes * 2),
+        });
+        return attachSyntheticStore(parseLandXmlGeometry(parsed, preflight), file.size);
       } finally {
         api.free();
       }

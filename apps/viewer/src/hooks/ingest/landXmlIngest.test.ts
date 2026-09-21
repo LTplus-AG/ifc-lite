@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcAPI } from '@ifc-lite/wasm';
 import { parseLandXmlViewerModelAsync, parseLandXmlViewerModelFromBlobAsync } from './landXmlViewerModel.js';
-import { connectedFaceComponents } from './landXmlIngest.js';
+import { connectedFaceComponents, parseLandXmlGeometry, preflightLandXmlGeometry } from './landXmlIngest.js';
 import { buildLandXmlPipeComponents } from './landXmlPipeGeometry.js';
 import { findLandXmlSourceRecord, type LandXmlPipeNetworkDocument } from './landXmlSemantics.js';
 import { isLandXmlContent } from './landXmlSniff.js';
@@ -169,6 +169,21 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
       })),
     );
     assert.deepEqual(streamed.semanticDocument.plan, direct.semanticDocument.plan);
+  });
+
+  it('uses the exact discard-after-measurement frame on the second pass (#5050)', async () => {
+    const parsed = await parseDocument(LANDXML.replace(
+      '</Faces>', '<F>10 20 30</F></Faces>',
+    ));
+    const preflight = preflightLandXmlGeometry(parsed);
+    const direct = parseLandXmlGeometry(parsed);
+    const secondPass = parseLandXmlGeometry(parsed, preflight);
+    assert.equal(preflight.componentCount, secondPass.geometryResult.meshes.length);
+    assert.deepEqual(secondPass.geometryResult.coordinateInfo, direct.geometryResult.coordinateInfo);
+    assert.deepEqual(
+      secondPass.geometryResult.meshes.map((mesh) => [mesh.expressId, mesh.origin, Array.from(mesh.indices)]),
+      direct.geometryResult.meshes.map((mesh) => [mesh.expressId, mesh.origin, Array.from(mesh.indices)]),
+    );
   });
 
   it('loads persisted pre-triangulation surface records without new optional fields (#5043)', async () => {

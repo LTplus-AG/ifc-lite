@@ -109,6 +109,7 @@ interface InstancedTestState {
   instancedTemplateCpu: {
     positions: Float32Array; normals: Float32Array; indices: Uint32Array;
     instanceData: ArrayBuffer; localMin: number[]; localMax: number[];
+    canonicalAnchors?: Float64Array; canonicalMatrixTranslations?: Float32Array;
   }[];
   instancedTemplates: unknown[];
   boundingBoxes: Map<number, { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }>;
@@ -157,10 +158,12 @@ describe('Scene.translateInstancedEntity', () => {
     assert.strictEqual(bbox.min.y, 5);
     assert.strictEqual(bbox.max.y, 6);
 
-    // Lazily-materialized occurrence geometry reflects the lift.
+    // Lazily-materialized occurrence geometry retains its transformed local
+    // vertices and carries the occurrence placement separately.
     const pieces = scene.getInstancedMeshDataPieces(42)!;
     assert.ok(pieces && pieces.length === 1);
-    assert.strictEqual(pieces[0].positions[1], 5, 'first vertex y lifted by 5');
+    assert.strictEqual(pieces[0].positions[1], 0, 'first vertex stays local');
+    assert.strictEqual(pieces[0].origin?.[1], 5, 'occurrence origin y lifted by 5');
   });
 
   it('the public translateMeshesForEntity moves an instanced-only entity', () => {
@@ -168,7 +171,23 @@ describe('Scene.translateInstancedEntity', () => {
     injectInstanced(scene, 7, [0, 0, 0]);
     // No flat mesh for id 7 — the move must still succeed via the instanced path.
     assert.strictEqual(scene.translateMeshesForEntity(7, [0, 4, 0]), true);
-    assert.strictEqual(scene.getInstancedMeshDataPieces(7)![0].positions[1], 4);
+    assert.strictEqual(scene.getInstancedMeshDataPieces(7)![0].origin?.[1], 4);
+  });
+
+  it('issue #5049 materializes a 5,000-km centimetre-residual occurrence without narrowing its anchor', () => {
+    const scene = new Scene();
+    const dv = injectInstanced(scene, 77, [5_000_000, 0, 0]);
+    const state = scene as unknown as InstancedTestState;
+    state.instancedTemplateCpu[0].canonicalAnchors = new Float64Array([5_000_000.025, 0, 0]);
+    // The V1 matrix remains the editable f32 compatibility record. Its paired
+    // baseline tells materialization to recover the canonical V2 anchor.
+    state.instancedTemplateCpu[0].canonicalMatrixTranslations = new Float32Array([
+      dv.getFloat32(48, true), dv.getFloat32(52, true), dv.getFloat32(56, true),
+    ]);
+
+    const piece = scene.getInstancedMeshDataPieces(77)![0];
+    assert.strictEqual(piece.origin?.[0], 5_000_000.025, 'f64 anchor retains centimetre residual');
+    assert.strictEqual(piece.positions[3], 1, 'template residual remains local f32');
   });
 
   it('is reversible (Exploded -> Stacked subtracts the same delta)', () => {

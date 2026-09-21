@@ -4,6 +4,7 @@
 import type { MeshData } from '@ifc-lite/geometry';
 interface Occurrence { templateIndex: number; byteOffset: number; originalColor: [number, number, number, number]; itemId?: number }
 interface Template { modelIndex: number; positions: Float32Array; normals: Float32Array; indices: Uint32Array; instanceData: ArrayBuffer; canonicalAnchors?: Float64Array; canonicalMatrixTranslations?: Float32Array }
+const INSTANCE_STRIDE_BYTES = 120;
 /** CPU expansion retains the canonical f64 occurrence anchor rather than
  * round-tripping a national-grid translation through the V1 f32 matrix. */
 export function materializeInstances(expressId: number, occ: readonly Occurrence[], templates: readonly (Template | undefined)[]): MeshData[] | undefined {
@@ -16,7 +17,7 @@ export function materializeInstances(expressId: number, occ: readonly Occurrence
       const m0 = dv.getFloat32(b + 0, true), m1 = dv.getFloat32(b + 4, true), m2 = dv.getFloat32(b + 8, true);
       const m4 = dv.getFloat32(b + 16, true), m5 = dv.getFloat32(b + 20, true), m6 = dv.getFloat32(b + 24, true);
       const m8 = dv.getFloat32(b + 32, true), m9 = dv.getFloat32(b + 36, true), m10 = dv.getFloat32(b + 40, true);
-      const anchorOffset = (b / 88) * 3;
+      const anchorOffset = (b / INSTANCE_STRIDE_BYTES) * 3;
       const raw12 = dv.getFloat32(b + 48, true), raw13 = dv.getFloat32(b + 52, true), raw14 = dv.getFloat32(b + 56, true);
       const anchors = tpl.canonicalAnchors, baseline = tpl.canonicalMatrixTranslations;
       // Model/entity placement mutates the V1 matrix after decode. Do not apply
@@ -32,9 +33,12 @@ export function materializeInstances(expressId: number, occ: readonly Occurrence
       const normals = new Float32Array(tpl.normals.length);
       for (let i = 0; i < n; i += 3) {
         const x = tpl.positions[i], y = tpl.positions[i + 1], z = tpl.positions[i + 2];
-        positions[i] = m0 * x + m4 * y + m8 * z + m12;
-        positions[i + 1] = m1 * x + m5 * y + m9 * z + m13;
-        positions[i + 2] = m2 * x + m6 * y + m10 * z + m14;
+        // Keep the transformed template local. Adding the occurrence anchor
+        // here would narrow a 5,000-km f64 placement back into Float32 before
+        // raycast/snap/section consumers can use it.
+        positions[i] = m0 * x + m4 * y + m8 * z;
+        positions[i + 1] = m1 * x + m5 * y + m9 * z;
+        positions[i + 2] = m2 * x + m6 * y + m10 * z;
         if (i + 2 < tpl.normals.length) {
           // Rotate normals by the upper-3×3 (instancing transforms are rigid +
           // uniform scale, so this is correct up to a renormalize).
@@ -61,7 +65,7 @@ export function materializeInstances(expressId: number, occ: readonly Occurrence
       // decoded template's exact index reference as the canonical source fence,
       // and carry its model-scoped slot onto the materialized occurrence.
       const indices = tpl.indices;
-      out.push({ expressId, modelIndex: tpl.modelIndex, positions, normals, indices, color, occurrenceKey, ...item,
+      out.push({ expressId, modelIndex: tpl.modelIndex, positions, normals, indices, color, origin: [m12, m13, m14], occurrenceKey, ...item,
         appearanceSource: { kind: 'canonical-item', indices, sourceIndices: indices } });
     }
     return out.length > 0 ? out : undefined;

@@ -16,6 +16,12 @@ interface RenderFrameComponent {
   bounds: Bounds3D;
 }
 
+/** Stable frame chosen during the cursor's geometry-free preflight pass. */
+export interface LandXmlRenderFramePlan {
+  originShift: { x: number; y: number; z: number };
+  hasLargeCoordinates: boolean;
+}
+
 function mergeBounds(target: Bounds3D, source: Bounds3D): void {
   target.min.x = Math.min(target.min.x, source.min.x);
   target.min.y = Math.min(target.min.y, source.min.y);
@@ -37,10 +43,7 @@ export function boundsFitRenderFrame(
 }
 
 /** Place mesh components in one precise shared GPU frame, rejecting distant islands. */
-export function placeComponentsInRenderFrame<T extends RenderFrameComponent>(
-  components: T[],
-  warnings: string[],
-): { placed: T[]; dropped: T[]; bounds: Bounds3D; originShift: { x: number; y: number; z: number }; hasLargeCoordinates: boolean } {
+export function deriveLandXmlRenderFrame<T extends RenderFrameComponent>(components: readonly T[]): LandXmlRenderFramePlan {
   const sourceBounds = createEmptyBounds();
   for (const component of components) mergeBounds(sourceBounds, component.bounds);
   const maxAbs = Math.max(
@@ -49,16 +52,25 @@ export function placeComponentsInRenderFrame<T extends RenderFrameComponent>(
   );
   const hasLargeCoordinates = maxAbs > 10_000;
   if (!hasLargeCoordinates) {
-    return { placed: components, dropped: [], bounds: sourceBounds, originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates };
+    return { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates };
   }
   const dominant = components.reduce((best, component) => (
     component.mesh.indices.length > best.mesh.indices.length ? component : best
   ));
-  const originShift = {
+  return { originShift: {
     x: (dominant.bounds.min.x + dominant.bounds.max.x) / 2,
     y: (dominant.bounds.min.y + dominant.bounds.max.y) / 2,
     z: (dominant.bounds.min.z + dominant.bounds.max.z) / 2,
-  };
+  }, hasLargeCoordinates };
+}
+
+/** Apply a frame selected by an earlier bounded preflight pass. */
+export function placeComponentsInKnownRenderFrame<T extends RenderFrameComponent>(
+  components: T[],
+  frame: LandXmlRenderFramePlan,
+  warnings: string[],
+): { placed: T[]; dropped: T[]; bounds: Bounds3D; originShift: { x: number; y: number; z: number }; hasLargeCoordinates: boolean } {
+  const originShift = frame.originShift;
   const placed: T[] = [];
   const dropped: T[] = [];
   const bounds = createEmptyBounds();
@@ -79,7 +91,15 @@ export function placeComponentsInRenderFrame<T extends RenderFrameComponent>(
   if (dropped.length > 0) {
     warnings.push(`Skipped ${dropped.length} surface component(s) whose full Y-up bounds exceed ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km from the model render frame because they cannot be placed precisely`);
   }
-  return { placed, dropped, bounds, originShift, hasLargeCoordinates };
+  return { placed, dropped, bounds, originShift, hasLargeCoordinates: frame.hasLargeCoordinates };
+}
+
+/** Place components using the canonical dominant-component frame policy. */
+export function placeComponentsInRenderFrame<T extends RenderFrameComponent>(
+  components: T[],
+  warnings: string[],
+): { placed: T[]; dropped: T[]; bounds: Bounds3D; originShift: { x: number; y: number; z: number }; hasLargeCoordinates: boolean } {
+  return placeComponentsInKnownRenderFrame(components, deriveLandXmlRenderFrame(components), warnings);
 }
 
 /** Return one mesh's complete bounds in its current render frame. */

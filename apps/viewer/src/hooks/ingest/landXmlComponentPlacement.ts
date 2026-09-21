@@ -6,7 +6,10 @@
 
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { createCoordinateInfo, type Bounds3D } from '../../utils/localParsingUtils.js';
-import { MAX_RENDER_FRAME_ORIGIN_METRES, placeComponentsInRenderFrame } from './landXmlRenderFrame.js';
+import {
+  MAX_RENDER_FRAME_ORIGIN_METRES, placeComponentsInKnownRenderFrame,
+  placeComponentsInRenderFrame, type LandXmlRenderFramePlan,
+} from './landXmlRenderFrame.js';
 
 export interface LandXmlGeometryComponent {
   mesh: MeshData;
@@ -31,8 +34,11 @@ export interface PlacedLandXmlComponents {
 export function placeAndAssignLandXmlComponents(
   components: LandXmlGeometryComponent[],
   warnings: string[],
+  frame?: LandXmlRenderFramePlan,
 ): PlacedLandXmlComponents {
-  const { placed, dropped, bounds, originShift, hasLargeCoordinates } = placeComponentsInRenderFrame(components, warnings);
+  const { placed, dropped, bounds, originShift, hasLargeCoordinates } = frame
+    ? placeComponentsInKnownRenderFrame(components, frame, warnings)
+    : placeComponentsInRenderFrame(components, warnings);
   if (placed.length === 0) {
     throw new Error(`LandXML document has no surface components whose full Y-up bounds fit within the ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km render-frame limit`);
   }

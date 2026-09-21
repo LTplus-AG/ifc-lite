@@ -128,10 +128,14 @@ const PINNED_OPEN_EDGES: Option<i64> = None;
 #[cfg(all(not(feature = "csg_manifold_gate"), feature = "csg_topology_gate"))]
 const PINNED_VOLUME_M3: Option<f64> = None;
 
+// #5131: 416 -> 422 and 24.956 -> 24.977 m3. The stray-shard sweep now keeps
+// faces whose centroid is within 1 mm of the reference host; the manifold-gate
+// fallback carried a few such slivers and now keeps them, which also reads
+// 0.021 m3 more of the wall. Both gates together stayed at 552 / 24.103.
 #[cfg(all(feature = "csg_manifold_gate", not(feature = "csg_topology_gate")))]
-const PINNED_OPEN_EDGES: Option<i64> = Some(416);
+const PINNED_OPEN_EDGES: Option<i64> = Some(422);
 #[cfg(all(feature = "csg_manifold_gate", not(feature = "csg_topology_gate")))]
-const PINNED_VOLUME_M3: Option<f64> = Some(24.956);
+const PINNED_VOLUME_M3: Option<f64> = Some(24.977);
 
 #[cfg(all(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
 const PINNED_OPEN_EDGES: Option<i64> = Some(552);

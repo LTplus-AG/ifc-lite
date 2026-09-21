@@ -72,13 +72,42 @@ it('holds the second cursor pass until main has acknowledged preflight (#5050)',
     );
     await Promise.resolve();
     await Promise.resolve();
+    await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
     assert.equal(worker?.posted.length, 1, 'worker must not begin pass two before reservation approval');
     approve?.();
     await Promise.resolve();
     await Promise.resolve();
+    await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
     assert.deepEqual(worker?.posted[1], { type: 'preflight-approved' });
     worker?.onmessage?.({ data: { ok: false, error: 'stop after handshake' } } as MessageEvent<unknown>);
     await assert.rejects(pending, /stop after handshake/);
+  } finally {
+    Object.defineProperty(globalThis, 'Worker', { configurable: true, value: originalWorker });
+  }
+});
+
+it('rejects and terminates when a synchronous preflight callback fails (#5050)', async () => {
+  const originalWorker = globalThis.Worker;
+  let terminated = 0;
+  class PreflightWorker {
+    onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
+    onerror: ((event: ErrorEvent) => void) | null = null;
+    postMessage(): void {
+      queueMicrotask(() => this.onmessage?.({ data: {
+        preflight: { componentCount: 1, frame: null },
+      } } as MessageEvent<unknown>));
+    }
+    terminate(): void { terminated++; }
+  }
+  Object.defineProperty(globalThis, 'Worker', { configurable: true, value: PreflightWorker as unknown as typeof Worker });
+  try {
+    await assert.rejects(
+      parseLandXmlViewerModelFromBlobAsync(new Blob(['<LandXML/>']), () => true, undefined, () => {
+        throw new Error('reservation failed');
+      }),
+      /reservation failed/,
+    );
+    assert.equal(terminated, 1, 'a rejected callback must release the worker rather than strand the load');
   } finally {
     Object.defineProperty(globalThis, 'Worker', { configurable: true, value: originalWorker });
   }

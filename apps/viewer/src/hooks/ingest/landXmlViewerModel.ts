@@ -17,6 +17,16 @@ export interface LandXmlViewerModel extends LandXmlGeometryPayload {
   spatialReference?: ModelSpatialReference;
 }
 
+/** Convert either callback form to a rejection without letting a synchronous
+ * throw escape a worker message handler and strand its outer load promise. */
+function invokeCallback<T>(callback: () => T | Promise<T>): Promise<T> {
+  try {
+    return Promise.resolve(callback());
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
 function attachSyntheticStore(
   payload: LandXmlGeometryPayload,
   fileSize: number,
@@ -159,12 +169,17 @@ export function parseLandXmlViewerModelFromBlobAsync(
         return;
       }
       if ('preflight' in event.data) {
-        const federatedPreflight = onFederatedPreflight === undefined
-          ? undefined
-          : event.data.sourceCoordinateInfo === undefined
-            ? Promise.reject(new Error('LandXML worker omitted federation source coordinates'))
-            : onFederatedPreflight(event.data.preflight, event.data.sourceCoordinateInfo, event.data.spatialReference);
-        Promise.resolve(onPreflight?.(event.data.preflight)).then(() => federatedPreflight).then(() => {
+        const federatedPreflight = (): void | Promise<void> => {
+          if (onFederatedPreflight === undefined) return;
+          if (event.data.sourceCoordinateInfo === undefined) {
+            throw new Error('LandXML worker omitted federation source coordinates');
+          }
+          return onFederatedPreflight(event.data.preflight, event.data.sourceCoordinateInfo, event.data.spatialReference);
+        };
+        // `Promise.resolve(cb())` evaluates `cb` first, so use the guarded
+        // helper to turn a synchronous renderer/reservation failure into the
+        // same rejection path as an asynchronous callback failure.
+        invokeCallback(() => onPreflight?.(event.data.preflight)).then(() => invokeCallback(federatedPreflight)).then(() => {
           if (!finished) worker.postMessage({ type: 'preflight-approved' });
         }).catch((error: unknown) => {
           if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
@@ -172,7 +187,7 @@ export function parseLandXmlViewerModelFromBlobAsync(
         return;
       }
       if ('preflightComponent' in event.data) {
-        Promise.resolve(onPreflightComponent?.(event.data.preflightComponent)).then(() => {
+        invokeCallback(() => onPreflightComponent?.(event.data.preflightComponent)).then(() => {
           if (!finished) worker.postMessage({ type: 'component-uploaded' });
         }).catch((error: unknown) => {
           if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
@@ -180,7 +195,7 @@ export function parseLandXmlViewerModelFromBlobAsync(
         return;
       }
       if ('preflightComplete' in event.data) {
-        Promise.resolve(onPreflightComplete?.()).then(() => {
+        invokeCallback(() => onPreflightComplete?.()).then(() => {
           if (!finished) worker.postMessage({ type: 'preflight-approved' });
         }).catch((error: unknown) => {
           if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
@@ -188,7 +203,7 @@ export function parseLandXmlViewerModelFromBlobAsync(
         return;
       }
       if ('component' in event.data) {
-        Promise.resolve(onComponent?.(event.data.component)).then(() => {
+        invokeCallback(() => onComponent?.(event.data.component)).then(() => {
           if (!finished) worker.postMessage({ type: 'component-uploaded' });
         }).catch((error: unknown) => {
           if (finish()) reject(error instanceof Error ? error : new Error(String(error)));

@@ -142,6 +142,47 @@ describe('SpecificationCard set-results section (#5138)', () => {
     assert.deepStrictEqual(isolated[0], set.members);
   });
 
+  it('the failed/passed toolbar filter applies to set rows exactly as it does to entity rows', () => {
+    // A mixed report: one failing duplicate group, one passing aggregate
+    // check. Unfiltered, review found both rendered regardless of the
+    // active filter (PRRT_kwDOQ3UF-86kc6tJ / PRRT_kwDOQ3UF-86kdJDs).
+    const failing = duplicateSet();
+    const passing = aggregateSet(true);
+    const result = specResult([failing, passing]);
+
+    const failedOnly = render(
+      <SpecificationCard
+        result={result} isActive={false} onSelect={() => {}}
+        onEntityClick={() => {}} onIsolateSet={() => {}} filterMode="failed"
+      />,
+    );
+    click(failedOnly.querySelector('button')!);
+    assert.match(failedOnly.textContent ?? '', /unique\(Name\)/, 'the failing set row must render under "failed"');
+    assert.doesNotMatch(failedOnly.textContent ?? '', /sum\(Qto_SpaceBaseQuantities\.NetFloorArea\)/, 'the passing set row must NOT render under "failed"');
+    cleanup();
+
+    const passedOnly = render(
+      <SpecificationCard
+        result={result} isActive={false} onSelect={() => {}}
+        onEntityClick={() => {}} onIsolateSet={() => {}} filterMode="passed"
+      />,
+    );
+    click(passedOnly.querySelector('button')!);
+    assert.doesNotMatch(passedOnly.textContent ?? '', /unique\(Name\)/, 'the failing set row must NOT render under "passed"');
+    assert.match(passedOnly.textContent ?? '', /sum\(Qto_SpaceBaseQuantities\.NetFloorArea\)/, 'the passing set row must render under "passed"');
+    cleanup();
+
+    const all = render(
+      <SpecificationCard
+        result={result} isActive={false} onSelect={() => {}}
+        onEntityClick={() => {}} onIsolateSet={() => {}} filterMode="all"
+      />,
+    );
+    click(all.querySelector('button')!);
+    assert.match(all.textContent ?? '', /unique\(Name\)/, '"all" shows the failing set row too');
+    assert.match(all.textContent ?? '', /sum\(Qto_SpaceBaseQuantities\.NetFloorArea\)/, '"all" shows the passing set row too');
+  });
+
   it('a specification with no set results renders no set-results section', () => {
     const result = specResult([]);
     const ui = render(

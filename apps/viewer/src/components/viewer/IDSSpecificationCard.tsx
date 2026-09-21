@@ -75,6 +75,14 @@ export function SpecificationCard({
   const setResults = result.setResults ?? [];
   const duplicateGroupCount = setResults.filter((s) => s.kind === 'duplicate' && !s.passed).length;
   const failedAggregateCount = setResults.filter((s) => s.kind === 'aggregate' && !s.passed).length;
+  // The toolbar's failed/passed filter applies to set rows exactly as it
+  // does to entity rows (review PRRT_kwDOQ3UF-86kc6tJ /
+  // PRRT_kwDOQ3UF-86kdJDs): unfiltered, a rules report with mixed set
+  // outcomes showed every set row regardless of the active filter.
+  const filteredSetResults = useMemo(() => {
+    if (filterMode === 'all') return setResults;
+    return setResults.filter((s) => (filterMode === 'failed' ? !s.passed : s.passed));
+  }, [setResults, filterMode]);
 
   const hasCorrectable = correctable && result.failedCount > 0;
 
@@ -194,12 +202,12 @@ export function SpecificationCard({
 
         {/* Set Results (#5138: uniqueness/aggregate groups) — above the
             entity rows, since a SetResult describes a GROUP, not one entity. */}
-        {setResults.length > 0 && (
+        {filteredSetResults.length > 0 && (
           <CollapsibleContent>
             <Separator />
             <div className="p-2 pt-1 text-xs font-medium text-muted-foreground">{t('validationPanel.setResult.heading')}</div>
             <div className="p-2 pt-0 space-y-1">
-              {setResults.map((set, idx) => (
+              {filteredSetResults.map((set, idx) => (
                 <SetResultRow key={`${set.kind}:${set.label}:${idx}`} result={set} onIsolate={onIsolateSet} />
               ))}
               {result.setResultsTruncated && (

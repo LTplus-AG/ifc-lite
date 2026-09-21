@@ -54,8 +54,8 @@ export function AnalyzeTab() {
           icon={Check}
           label={t('ribbon.analyze.ids')}
           tooltip={t('ribbon.analyze.idsTooltip')}
-          active={activeWorkspacePanels.has('ids')}
-          onClick={() => handleToggleRightPanel('ids')}
+          active={activeWorkspacePanels.has('validation')}
+          onClick={() => handleToggleRightPanel('validation')}
         />
         <RibbonLargeButton
           icon={Clash}

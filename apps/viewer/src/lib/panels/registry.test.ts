@@ -8,6 +8,7 @@ import {
   WORKSPACE_PANELS,
   isBottomPanel,
   isWorkspacePanelId,
+  migratePanelId,
   workspacePanelForShortcutCode,
 } from './registry.js';
 
@@ -66,6 +67,27 @@ describe('workspacePanelForShortcutCode (Alt+digit routing #1200/#1208)', () => 
     for (const code of ['KeyA', 'Backslash', 'Digit', 'Numpad', 'F1', '', 'Digit12', 'digit1']) {
       assert.strictEqual(workspacePanelForShortcutCode(code), undefined, code);
     }
+  });
+});
+
+// The IDS panel was renamed/generalised to Data validation (#5138): the old
+// id must not silently vanish from a persisted sidebar order / hidden set /
+// float layout, which all key on WorkspacePanelId.
+describe('migratePanelId (#5138 registry rename)', () => {
+  it('maps the retired "ids" id to its replacement "validation"', () => {
+    assert.strictEqual(migratePanelId('ids'), 'validation');
+    assert.ok(isWorkspacePanelId('validation'));
+    assert.ok(!isWorkspacePanelId('ids'));
+  });
+
+  it('passes a current id through unchanged', () => {
+    for (const def of WORKSPACE_PANELS) {
+      assert.strictEqual(migratePanelId(def.id), def.id);
+    }
+  });
+
+  it('returns undefined for an id that is neither current nor a known legacy alias', () => {
+    assert.strictEqual(migratePanelId('not-a-real-panel'), undefined);
   });
 });
 

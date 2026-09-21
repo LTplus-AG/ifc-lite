@@ -42,6 +42,11 @@ export const TOUR_ANCHORS = {
   idsResults: 'ids-results',
   /** IDSPanel isolate-failed (EyeOff) toggle in the results actions bar. */
   idsIsolateFailed: 'ids-isolate-failed',
+  /** ValidationPanel empty-state entry cards (#5138: IDS validation /
+   *  Information validation). */
+  validationEntry: 'validation-entry',
+  /** ValidationPanel authoring state's RuleSetEditor root (#5138). */
+  ruleEditor: 'rule-editor',
   /** ClashPanel "Detect all clashes" run button. */
   clashRun: 'clash-run',
   /** ClashPanel severity summary (only while a result exists). */

@@ -361,7 +361,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
     get().setPanelPoppedOut(panel, false);
     set({
       bcfPanelVisible: panel === 'bcf',
-      idsPanelVisible: panel === 'ids',
+      idsPanelVisible: panel === 'validation',
       lensPanelVisible: panel === 'lens',
       clashPanelVisible: panel === 'clash',
       comparePanelVisible: panel === 'compare',
@@ -477,7 +477,7 @@ const globalStoreRegistry = globalThis as typeof globalThis & {
  */
 const SIDEBAR_PANEL_FLAGS: ReadonlyArray<readonly [keyof ViewerState, WorkspacePanelId]> = [
   ['bcfPanelVisible', 'bcf'],
-  ['idsPanelVisible', 'ids'],
+  ['idsPanelVisible', 'validation'],
   ['lensPanelVisible', 'lens'],
   ['clashPanelVisible', 'clash'],
   ['comparePanelVisible', 'compare'],

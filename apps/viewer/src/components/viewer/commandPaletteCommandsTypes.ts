@@ -16,7 +16,7 @@ import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import type { TranslationKey, TranslationParameters } from '@/i18n';
 
 export type RightPanel =
-  | 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers'
+  | 'bcf' | 'validation' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers'
   | 'collab' | 'sources' | 'zones' | 'loadReport' | 'appearance';
 
 export interface CommandPaletteBuildParams {

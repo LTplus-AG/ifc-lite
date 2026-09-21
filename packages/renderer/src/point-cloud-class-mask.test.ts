@@ -18,6 +18,8 @@ import {
 } from './pointcloud/point-cloud-uniforms.js';
 import { POINT_UNIFORM_SIZE } from './pointcloud/point-pipeline.js';
 import type { PointCloudNode } from './pointcloud/point-cloud-node.js';
+import { RelativeToEyeFrame } from './relative-to-eye.js';
+import { MathUtils } from './math.js';
 
 describe('normalizeClassMask (#1783)', () => {
   it('defaults to every class visible', () => {
@@ -55,7 +57,7 @@ describe('normalizeClassMask (#1783)', () => {
 });
 
 describe('writePointCloudUniforms class-mask packing (#1783)', () => {
-  it('writes the 8 mask words at u32 slots 60..67 and zeroes legacy flags.w', () => {
+  it('writes the 8 mask words at u32 slots 68..75 and zeroes reserved flags.w', () => {
     const scratch = new Float32Array(POINT_UNIFORM_SIZE / 4);
     const scratchU32 = new Uint32Array(scratch.buffer);
     let wroteWords = 0;
@@ -77,8 +79,11 @@ describe('writePointCloudUniforms class-mask packing (#1783)', () => {
 
     // Hide class 2 (word 0) and class 200 (word 6, bit 8).
     const classMask = normalizeClassMask([~(1 << 2) >>> 0, -1, -1, -1, -1, -1, ~(1 << 8) >>> 0, -1]);
+    const relativeToEyeFrame = new RelativeToEyeFrame();
+    relativeToEyeFrame.update({ x: 0, y: 0, z: 0 }, MathUtils.identity(), MathUtils.identity());
     const inputs: PointUniformInputs = {
       viewProj: new Float32Array(16),
+      relativeToEyeFrame,
       fixedColor: [1, 1, 1, 1],
       colorMode: 'rgb',
       sizeMode: 'fixed-px',
@@ -100,10 +105,10 @@ describe('writePointCloudUniforms class-mask packing (#1783)', () => {
 
     writePointCloudUniforms(device, scratch, scratchU32, node, inputs);
 
-    assert.strictEqual(scratchU32[48], 42, 'flags.x = expressId');
-    assert.strictEqual(scratchU32[51], 0, 'flags.w is reserved since the 256-bit mask');
+    assert.strictEqual(scratchU32[56], 42, 'flags.x = expressId');
+    assert.strictEqual(scratchU32[59], 0, 'flags.w is reserved since the 256-bit mask');
     for (let w = 0; w < CLASS_MASK_WORDS; w++) {
-      assert.strictEqual(scratchU32[60 + w], classMask[w], `mask word ${w}`);
+      assert.strictEqual(scratchU32[68 + w], classMask[w], `mask word ${w}`);
     }
     // The full block, including the mask words, must reach the GPU.
     assert.strictEqual(wroteWords, POINT_UNIFORM_SIZE / 4);

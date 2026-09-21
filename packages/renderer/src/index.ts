@@ -1725,6 +1725,7 @@ export class Renderer {
 
         const device = this.device.getDevice();
         const viewProj = this.camera.getViewProjMatrix().m;
+        const relativeToEyeFrame = this.camera.getRelativeToEyeFrame();
         // Frame stats (issue #1682): geometry draw calls + per-frame cull
         // outcomes, snapshotted into _lastFrameStats before queue.submit.
         let frameDrawCalls = 0;
@@ -3069,7 +3070,8 @@ export class Renderer {
             // viewport size to convert pixel sizes into clip-space offsets.
             if (this.pointCloudRenderer && this.pointCloudRenderer.hasAssets()) {
                 this.pointCloudRenderer.draw(pass, {
-                    viewProj,
+                    viewProj: relativeToEyeFrame.getViewProjection().m,
+                    relativeToEyeFrame,
                     sectionPlane: sectionPlaneData
                         ? { ...sectionPlaneData, flipped: options.sectionPlane?.flipped === true }
                         : null,

@@ -49,6 +49,18 @@ describe('pointcloud import/manual transform composition (#4226)', () => {
     placements.translate(a, [6, 0, 0]);
     assert.equal(a.model![12], 6, 'rejected alignment cannot poison subsequent translation');
   });
+
+  it('retains a centimetre grid residual for the RTE render boundary (#5049)', () => {
+    const node = {} as PointCloudNode;
+    const placements = new PointCloudPlacements();
+    placements.align(node, new Float64Array([
+      1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0,
+      5_000_000.015625, 0, 0, 1,
+    ]));
+    // GPU picking remains f32-compatible, but the active render path reads
+    // this f64 value before it forms the camera-relative high/low pair.
+    assert.deepEqual(node.rteOrigin, [5_000_000.015625, 0, 0]);
+  });
 });
 
 it('keeps inline scan placement after resource-only clearing (#4226)', () => {

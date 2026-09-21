@@ -63,12 +63,14 @@ export interface PointCloudNode {
   spatialIndex: PointCloudSpatialIndex;
   /**
    * Optional per-asset GPU model matrix (column-major, 16 floats),
-   * applied in the vertex shader as `uniforms.model * vec4(position, 1)`
-   * before `viewProj` (issue #1804: aligns a georeferenced point cloud
-   * with the IFC model's `IfcMapConversion`). `undefined` → identity,
-   * written by `writePointCloudUniforms`.
+   * Its linear part is applied in the vertex shader; the translation is
+   * separately retained as `rteOrigin` and split against the camera before
+   * projection. That keeps a georeferenced cloud aligned without rounding a
+   * map-grid origin into an f32 matrix (issue #1804, #5049).
    */
   model?: Float32Array;
+  /** Exact model translation retained until the RTE upload boundary. */
+  rteOrigin?: [number, number, number];
 }
 
 /**

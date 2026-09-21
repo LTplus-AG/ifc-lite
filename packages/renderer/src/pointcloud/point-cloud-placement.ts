@@ -45,16 +45,28 @@ export class PointCloudPlacements {
     this.matrix({ ...this.entry(node), translation });
   }
 
-  private apply(node: PointCloudNode, entry: Placement): void { node.model = this.matrix(entry); }
+  private apply(node: PointCloudNode, entry: Placement): void {
+    const matrix = this.matrix(entry);
+    node.rteOrigin = [matrix[12], matrix[13], matrix[14]];
+    // The legacy CPU picker accepts an f32 matrix. Rendering consumes the
+    // exact `rteOrigin` above, so this narrowing cannot erase visible detail.
+    node.model = new Float32Array(matrix);
+  }
 
-  private matrix(entry: Placement): Float32Array {
-    const matrix = new Float32Array(entry.baseline);
+  private matrix(entry: Placement): Float64Array {
+    // Preserve map-grid translations until the RTE render boundary. Narrowing
+    // this matrix here loses centimetres before the high/low split can help.
+    const matrix = new Float64Array(entry.baseline);
     for (let axis = 0; axis < 3; axis++) {
       // Sum in f64 FIRST. Narrowing the baseline at map magnitude would lose
       // the millimetres before a coarse move can bring the cloud near zero.
       matrix[12 + axis] = entry.baseline[12 + axis] + entry.translation[axis];
     }
-    if (!matrix.every(Number.isFinite)) throw new Error('Pointcloud placement exceeds the renderable coordinate range.');
+    // The legacy picker still holds a Float32 matrix. Keep its established
+    // finite-range guard while preserving finite f64 residuals for RTE.
+    if (!matrix.every(Number.isFinite) || !new Float32Array(matrix).every(Number.isFinite)) {
+      throw new Error('Pointcloud placement exceeds the renderable coordinate range.');
+    }
     return matrix;
   }
 }

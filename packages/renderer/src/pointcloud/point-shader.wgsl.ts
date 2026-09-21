@@ -26,6 +26,8 @@ export const pointShaderSource = `
     struct PointUniforms {
       viewProj: mat4x4<f32>,
       model: mat4x4<f32>,
+      drawableDeltaHigh: vec4<f32>,
+      drawableDeltaLow: vec4<f32>,
       colorOverride: vec4<f32>,
       // x = colorMode, y = pointSizePx, z = heightMin, w = heightMax
       colorModeAndExtras: vec4<f32>,
@@ -161,8 +163,11 @@ export const pointShaderSource = `
       );
       let corner = corners[vId];
 
-      let worldPos4 = uniforms.model * vec4<f32>(input.position, 1.0);
-      var clipPos = uniforms.viewProj * worldPos4;
+      let localWorld = (uniforms.model * vec4<f32>(input.position, 1.0)).xyz;
+      // The CPU forms this delta in f64, then splits it. Never subtract two
+      // independently rounded map-grid origins in the point shader.
+      let worldPos = (localWorld + uniforms.drawableDeltaHigh.xyz) + uniforms.drawableDeltaLow.xyz;
+      var clipPos = uniforms.viewProj * vec4<f32>(worldPos, 1.0);
 
       // Compute splat half-extent in pixels for the active size mode.
       let sizeMode = u32(uniforms.sizing.x);
@@ -180,7 +185,7 @@ export const pointShaderSource = `
       } else {
         // Project a world-radius offset to clip space, take pixel delta.
         // worldRadius is already a radius — no /2 needed here.
-        let edgePos = uniforms.viewProj * (worldPos4 + vec4<f32>(worldRadius, 0.0, 0.0, 0.0));
+        let edgePos = uniforms.viewProj * vec4<f32>(worldPos + vec3<f32>(worldRadius, 0.0, 0.0), 1.0);
         let centerNdcX = clipPos.x / max(abs(clipPos.w), 1e-6);
         let edgeNdcX = edgePos.x / max(abs(edgePos.w), 1e-6);
         let projectedPx = abs(edgeNdcX - centerNdcX) * 0.5 * viewport.x;
@@ -219,7 +224,7 @@ export const pointShaderSource = `
         return output;
       }
       let heightT =
-        (worldPos4.y - uniforms.colorModeAndExtras.z) /
+        (worldPos.y - uniforms.colorModeAndExtras.z) /
         max(1e-6, uniforms.colorModeAndExtras.w - uniforms.colorModeAndExtras.z);
 
       var rgb: vec3<f32>;
@@ -244,7 +249,7 @@ export const pointShaderSource = `
       var output: VertexOutput;
       output.position = clipPos;
       output.color = vec4<f32>(rgb, 1.0);
-      output.worldPos = worldPos4.xyz;
+      output.worldPos = worldPos;
       output.entityId = input.entityId;
       output.quadUv = corner;
       return output;

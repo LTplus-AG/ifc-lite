@@ -38,6 +38,7 @@ import {
   type PointColorMode,
   type PointSizeMode,
 } from './point-cloud-uniforms.js';
+import type { RelativeToEyeFrame } from '../relative-to-eye.js';
 
 export interface ResolvedSectionPlane {
   normal: [number, number, number];
@@ -62,6 +63,8 @@ export type { PointColorMode, PointSizeMode };
 export interface PointCloudDrawState {
   /** column-major view-projection matrix (16 floats) */
   viewProj: Float32Array;
+  /** Shared RTE camera frame: no point path may derive a second rebase. */
+  relativeToEyeFrame: RelativeToEyeFrame;
   /** Section plane already resolved by the main render path. */
   sectionPlane?: ResolvedSectionPlane | null;
   /** Viewport size in pixels — needed by the splat shader to convert
@@ -394,6 +397,7 @@ export class PointCloudRenderer {
         node,
         {
           viewProj: state.viewProj,
+          relativeToEyeFrame: state.relativeToEyeFrame,
           fixedColor: this.options.fixedColor,
           colorMode: this.options.colorMode,
           sizeMode: this.options.sizeMode,

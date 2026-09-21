@@ -13,6 +13,7 @@
 import { POINT_UNIFORM_SIZE } from './point-pipeline.js';
 import type { PointCloudNode } from './point-cloud-node.js';
 import { isUsableModelMatrix } from './point-cloud-node.js';
+import type { RelativeToEyeFrame } from '../relative-to-eye.js';
 
 export type PointColorMode =
   | 'rgb'
@@ -69,6 +70,7 @@ export const SIZE_MODE_INDEX: Record<PointSizeMode, number> = {
 
 export interface PointUniformInputs {
   viewProj: Float32Array;
+  relativeToEyeFrame: RelativeToEyeFrame;
   fixedColor: [number, number, number, number];
   colorMode: PointColorMode;
   sizeMode: PointSizeMode;
@@ -107,63 +109,71 @@ export function writePointCloudUniforms(
   const u = scratch;
   const uU32 = scratchU32;
 
-  // viewProj — floats 0..15
+  // Translation-free RTE viewProj — floats 0..15.
   u.set(inputs.viewProj.subarray(0, 16), 0);
-  // model — floats 16..31. Per-asset transform (issue #1804: point-cloud
-  // ↔ IfcMapConversion alignment); defaults to identity when the node
-  // carries none.
+  // Model linear transform — floats 16..31. Its translation is separately
+  // split against the camera below; do not narrow it into this f32 matrix.
+  let origin: [number, number, number] = [0, 0, 0];
   if (isUsableModelMatrix(node.model)) {
     u.set(node.model, 16);
+    origin = node.rteOrigin ?? [node.model[12], node.model[13], node.model[14]];
   } else {
     u.fill(0, 16, 32);
     u[16] = 1; u[21] = 1; u[26] = 1; u[31] = 1;
   }
-  // colorOverride — floats 32..35
-  u[32] = inputs.fixedColor[0];
-  u[33] = inputs.fixedColor[1];
-  u[34] = inputs.fixedColor[2];
-  u[35] = inputs.fixedColor[3];
-  // colorModeAndExtras — floats 36..39 (mode, pointSize, heightMin, heightMax)
-  u[36] = COLOR_MODE_INDEX[inputs.colorMode];
-  u[37] = inputs.pointSize;
-  u[38] = inputs.heightMin;
-  u[39] = inputs.heightMax;
-  // sizing — floats 40..43 (sizeMode, worldRadius, viewportW, viewportH)
-  u[40] = SIZE_MODE_INDEX[inputs.sizeMode];
-  u[41] = inputs.worldRadius;
-  u[42] = inputs.viewportW;
-  u[43] = inputs.viewportH;
-  // sectionPlane — floats 44..47
-  u[44] = inputs.sectionNormal[0];
-  u[45] = inputs.sectionNormal[1];
-  u[46] = inputs.sectionNormal[2];
-  u[47] = inputs.sectionDist;
-  // flags (u32 view) — bytes 192..207 = u32 indices 48..51
+  u[28] = 0; u[29] = 0; u[30] = 0; u[31] = 1;
+  inputs.relativeToEyeFrame.packDrawableOrigin(origin, u, 32);
+  const camera = inputs.relativeToEyeFrame.getCameraWorld();
+  // colorOverride — floats 40..43
+  u[40] = inputs.fixedColor[0];
+  u[41] = inputs.fixedColor[1];
+  u[42] = inputs.fixedColor[2];
+  u[43] = inputs.fixedColor[3];
+  // colorModeAndExtras — floats 44..47 (mode, pointSize, heightMin, heightMax)
+  u[44] = COLOR_MODE_INDEX[inputs.colorMode];
+  u[45] = inputs.pointSize;
+  u[46] = inputs.heightMin - camera[1];
+  u[47] = inputs.heightMax - camera[1];
+  // sizing — floats 48..51 (sizeMode, worldRadius, viewportW, viewportH)
+  u[48] = SIZE_MODE_INDEX[inputs.sizeMode];
+  u[49] = inputs.worldRadius;
+  u[50] = inputs.viewportW;
+  u[51] = inputs.viewportH;
+  // sectionPlane — floats 52..55. The shader now receives eye-relative
+  // positions, so express the plane in that same frame.
+  u[52] = inputs.sectionNormal[0];
+  u[53] = inputs.sectionNormal[1];
+  u[54] = inputs.sectionNormal[2];
+  u[55] = inputs.sectionDist
+    - inputs.sectionNormal[0] * camera[0]
+    - inputs.sectionNormal[1] * camera[1]
+    - inputs.sectionNormal[2] * camera[2];
+  // flags (u32 view) — bytes 224..239 = u32 indices 56..59
   // flags.x = the asset's CURRENT expressId. The shader uses this
   // when non-zero so the federation registry can relabel a streamed
   // asset post-upload (its per-vertex entityId attribute is baked
   // at upload and would otherwise stay at the synthetic local ID).
-  // flags.w (u32 slot 51) is reserved — the class-visibility mask
+  // flags.w (u32 slot 59) is reserved — the class-visibility mask
   // moved to its own 8-word block below when it grew to cover the
   // full 0..255 LAS class range (#1783).
-  uU32[48] = node.meta.expressId >>> 0;
-  uU32[49] = inputs.sectionEnabled ? 1 : 0;
-  uU32[50] = inputs.roundShape ? 1 : 0;
-  uU32[51] = 0;
-  // extras (u32 slots 52..55) — extras.x = previewStride, yzw reserved.
-  uU32[52] = inputs.previewStride >>> 0;
-  uU32[53] = 0;
-  uU32[54] = 0;
-  uU32[55] = 0;
-  // deviationRange (f32 slots 56..59) — center, halfRange, _, _.
-  u[56] = inputs.deviationCenterOffset;
-  u[57] = inputs.deviationHalfRange;
-  u[58] = 0;
-  u[59] = 0;
-  // classMask (u32 slots 60..67) — 256-bit LAS class-visibility mask,
+  uU32[56] = node.meta.expressId >>> 0;
+  uU32[57] = inputs.sectionEnabled ? 1 : 0;
+  uU32[58] = inputs.roundShape ? 1 : 0;
+  uU32[59] = 0;
+  // extras (u32 slots 60..63) — extras.x = previewStride, yzw reserved.
+  uU32[60] = inputs.previewStride >>> 0;
+  uU32[61] = 0;
+  uU32[62] = 0;
+  uU32[63] = 0;
+  // deviationRange (f32 slots 64..67) — center, halfRange, _, _.
+  u[64] = inputs.deviationCenterOffset;
+  u[65] = inputs.deviationHalfRange;
+  u[66] = 0;
+  u[67] = 0;
+  // classMask (u32 slots 68..75) — 256-bit LAS class-visibility mask,
   // bit (i % 32) of word (i / 32) set → class i shown.
   for (let w = 0; w < CLASS_MASK_WORDS; w++) {
-    uU32[60 + w] = inputs.classMask[w] ?? 0xFFFFFFFF;
+    uU32[68 + w] = inputs.classMask[w] ?? 0xFFFFFFFF;
   }
 
   // Pass the typed array directly — TypeScript widens `.buffer` to

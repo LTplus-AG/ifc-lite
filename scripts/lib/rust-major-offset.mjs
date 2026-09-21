@@ -60,10 +60,10 @@ export const MIN_TOTAL_DEP_LITERALS = 10;
  * literals. Kept here, next to the pattern, so `sync-versions.js` (which
  * writes them) and `check-rust-major-offset.mjs` (which checks them) cannot
  * drift apart into "the writer skipped a file the checker never looked at". */
-export const RUST_MEMBER_DIRS = ['core', 'geometry', 'processing', 'clash', 'export', 'ffi', 'wasm-bindings'];
+export const RUST_MEMBER_DIRS = ['core', 'geometry', 'processing', 'clash', 'export', 'ffi', 'wasm-bindings', 'landxml'];
 
 /** The internal crate names that carry a `version = "…"` requirement. */
-const INTERNAL_CRATE = '(?:core|geometry|processing|clash|export|wasm)';
+const INTERNAL_CRATE = '(?:core|geometry|processing|clash|export|wasm|landxml)';
 
 /** A fresh `/g` regex each call — a shared one carries `lastIndex` between
  * callers and silently skips matches.

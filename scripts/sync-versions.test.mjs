@@ -23,7 +23,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const SYNC = join(scriptDir, 'sync-versions.js');
 const GATE = join(scriptDir, 'check-rust-major-offset.mjs');
 
-const MEMBERS = ['core', 'geometry', 'processing', 'clash', 'export', 'ffi', 'wasm-bindings'];
+const MEMBERS = ['core', 'geometry', 'processing', 'clash', 'export', 'ffi', 'wasm-bindings', 'landxml'];
 
 function run(script, root) {
   try {

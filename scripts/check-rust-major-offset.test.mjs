@@ -22,7 +22,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const GATE = join(scriptDir, 'check-rust-major-offset.mjs');
 const REPO_ROOT = join(scriptDir, '..');
 
-const MEMBERS = ['core', 'geometry', 'processing', 'clash', 'export', 'ffi', 'wasm-bindings'];
+const MEMBERS = ['core', 'geometry', 'processing', 'clash', 'export', 'ffi', 'wasm-bindings', 'landxml'];
 
 function run(root) {
   try {
@@ -216,7 +216,7 @@ test('a reordered literal that AGREES is counted, so the total stays honest', (t
   const { code, out } = run(root);
   assert.equal(code, 0, out);
   // 6 in the root table + one per member manifest, the reordered one included.
-  assert.match(out, /13 internal dependency literal\(s\)/);
+  assert.match(out, /14 internal dependency literal\(s\)/);
 });
 
 test('a declaration carrying no version requirement is not counted as a literal', (t) => {
@@ -229,7 +229,7 @@ test('a declaration carrying no version requirement is not counted as a literal'
   );
   const { code, out } = run(root);
   assert.equal(code, 0, out);
-  assert.match(out, /12 internal dependency literal\(s\)/);
+  assert.match(out, /13 internal dependency literal\(s\)/);
 });
 
 test('vacuous: a declaration the scan cannot parse is named, not skipped', (t) => {

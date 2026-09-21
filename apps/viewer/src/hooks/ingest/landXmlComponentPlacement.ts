@@ -44,7 +44,10 @@ export function placeAndAssignLandXmlComponents(
   if (placed.length === 0) {
     throw new Error(`LandXML document has no surface components within the ${MAX_RENDER_FRAME_LOCAL_EXTENT_METRES / 1000} km shared render-frame envelope`);
   }
-  const meshes = placed.map((component, index) => ({ ...component.mesh, expressId: index + 1 }));
+  // Local identities belong to the source-order envelope, including slots
+  // refused by the frozen frame. Never compact surviving IDs: provisional
+  // streaming transactions reserve and explicitly skip those holes.
+  const meshes = placed.map((component) => ({ ...component.mesh }));
   const totals = meshes.reduce((total, mesh) => ({
     totalVertices: total.totalVertices + mesh.positions.length / 3,
     totalTriangles: total.totalTriangles + mesh.indices.length / 3,

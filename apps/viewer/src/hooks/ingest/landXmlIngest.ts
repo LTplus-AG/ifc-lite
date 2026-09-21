@@ -31,6 +31,7 @@ export {
   buildLandXmlStreamedPipeComponents, completeLandXmlStreamedGeometry,
   type LandXmlStreamedComponent,
   type LandXmlStreamedSkippedComponent,
+  type LandXmlStreamedSurfaceDiagnostics,
 } from './landXmlStreamCompletion.js';
 export function buildLandXmlSurfaceMesh(
   surface: LandXmlTinSurface,
@@ -380,7 +381,7 @@ export function parseLandXmlGeometry(
     semanticDocument: {
       ...parsed,
       rendering: {
-        meshProvenance: placed.map((component, index) => ({ meshExpressId: index + 1, surfaceSourceId: component.surfaceSourceId ?? '', renderedFaceSourceIds: component.renderedFaceSourceIds, ...(component.pipeSourceId ? { pipeSourceId: component.pipeSourceId } : {}) })),
+        meshProvenance: placed.map((component) => ({ meshExpressId: component.mesh.expressId, surfaceSourceId: component.surfaceSourceId ?? '', renderedFaceSourceIds: component.renderedFaceSourceIds, ...(component.pipeSourceId ? { pipeSourceId: component.pipeSourceId } : {}) })),
         surfaceCounts: parsed.surfaces.map((surface) => {
           const componentsForSurface = placed.filter((component) => component.surfaceSourceId === surface.sourceId);
           const renderedFaces = componentsForSurface.reduce((count, component) => count + component.renderedFaceSourceIds.length, 0);

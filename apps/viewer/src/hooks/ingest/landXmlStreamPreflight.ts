@@ -60,8 +60,9 @@ function mergeBounds(target: Bounds3D, source: Bounds3D): void {
   target.max.z = Math.max(target.max.z, source.max.z);
 }
 
-function decodeUnits(header: unknown): StreamUnits {
+function decodeUnits(header: unknown): StreamUnits | null {
   const raw = record(header, 'stream header');
+  if (raw.units === undefined || raw.units === null) return null;
   const units = record(raw.units, 'stream Units');
   const linear = units.linear_scale_to_meters;
   const elevation = units.elevation_scale_to_meters;
@@ -79,6 +80,7 @@ function decodeUnits(header: unknown): StreamUnits {
  */
 export class LandXmlStreamPreflightReducer {
   private units: StreamUnits | null = null;
+  private headerSeen = false;
   private componentCount = 0;
   private nextSurfaceFrameGroup = 0;
   private readonly sourceBounds = createEmptyBounds();
@@ -96,14 +98,20 @@ export class LandXmlStreamPreflightReducer {
   constructor(private readonly componentSink?: (component: LandXmlPreflightComponent) => void | Promise<void>) {}
 
   onHeader(header: unknown): void {
-    if (this.units !== null) throw new Error('LandXML stream emitted multiple source headers');
+    if (this.headerSeen) throw new Error('LandXML stream emitted multiple source headers');
+    this.headerSeen = true;
     this.units = decodeUnits(header);
   }
 
   async onSurface(surfaceWire: LandXmlAssembledSurface): Promise<void> {
-    const units = this.units;
-    if (units === null || this.completed) throw new Error('LandXML surface arrived outside preflight');
+    if (this.completed) throw new Error('LandXML surface arrived outside preflight');
     const surface = readLandXmlTinSurface(surfaceWire);
+    // Preserved-only source records (for example a VOLUME surface) are valid
+    // LandXML without Units. They still reach the semantic assembler, but
+    // never enter this numeric geometry reducer.
+    if (surface.renderState !== 'rendered' || !surface.faceVisibility.some(Boolean)) return;
+    const units = this.units;
+    if (units === null) throw new Error('LandXML stream emitted renderable geometry without Units');
     for (const point of surface.points) this.addSourcePoint(point.northing, point.easting, point.elevation);
     for (const lines of [surface.boundaries, surface.breaklines]) {
       for (const line of lines) for (const point of line.points) {
@@ -114,7 +122,6 @@ export class LandXmlStreamPreflightReducer {
       const elevation = contour.properties.elev === undefined ? undefined : Number(contour.properties.elev);
       for (const point of contour.points) this.addSourcePoint(point[0]!, point[1]!, point.length === 3 ? point[2]! : elevation);
     }
-    if (surface.renderState !== 'rendered' || !surface.faceVisibility.some(Boolean)) return;
     const built = buildLandXmlSurfaceComponents(surface, {
       linearUnit: 'stream', elevationUnit: 'stream', linearScaleToMeters: units.linearScaleToMeters,
       elevationScaleToMeters: units.elevationScaleToMeters,
@@ -168,7 +175,7 @@ export class LandXmlStreamPreflightReducer {
   }
 
   finish(): { preflight: LandXmlGeometryPreflight; sourceCoordinateInfo: CoordinateInfo; coordinateSystem: LandXmlTinDocument['coordinateSystem'] } {
-    if (!this.completed || this.units === null) throw new Error('LandXML preflight cursor ended without metadata End');
+    if (!this.completed || !this.headerSeen) throw new Error('LandXML preflight cursor ended without a source header');
     const empty = !Number.isFinite(this.sourceBounds.min.x);
     const bounds = empty
       ? { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } }

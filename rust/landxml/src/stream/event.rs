@@ -21,7 +21,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize)]
 pub struct LandXmlStreamHeader {
     pub version: String,
-    pub units: LandXmlUnits,
+    /// Units are absent for legal preserved-only source documents. Renderable
+    /// numeric surfaces still require them before a surface is emitted.
+    pub units: Option<LandXmlUnits>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]

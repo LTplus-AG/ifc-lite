@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
-import type { LandXmlGeometryPayload, LandXmlGeometryPreflight, LandXmlSourceBuffer, LandXmlStreamedComponent, LandXmlStreamedSkippedComponent } from './landXmlIngest.js';
+import type { LandXmlGeometryPayload, LandXmlGeometryPreflight, LandXmlSourceBuffer, LandXmlStreamedComponent, LandXmlStreamedSkippedComponent, LandXmlStreamedSurfaceDiagnostics } from './landXmlIngest.js';
 import { buildLandXmlStreamedPipeComponents, completeLandXmlStreamedGeometry, parseLandXmlGeometry, preflightLandXmlGeometry } from './landXmlIngest.js';
 import { parseLandXmlSourceInCurrentRealm, readLandXmlSourceDocument } from './landXmlWasm.js';
 import { parseLandXmlSourceBlobWithApi } from './landXmlBlobCursor.js';
@@ -147,6 +147,8 @@ export function parseLandXmlViewerModelFromBlobAsync(
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./landXml.worker.ts', import.meta.url), { type: 'module' });
     const streamedComponents: LandXmlStreamedComponent[] = [];
+    const streamedSkippedComponents: LandXmlStreamedSkippedComponent[] = [];
+    const streamedSurfaceDiagnostics = new Map<string, LandXmlStreamedSurfaceDiagnostics>();
     let federatedStreaming = false;
     let consumedComponentCount = 0;
     const sourceAssembler = new LandXmlStreamDocumentAssembler();
@@ -176,6 +178,7 @@ export function parseLandXmlViewerModelFromBlobAsync(
       | { federatedAdmissionComplete: true }
       | { component: LandXmlStreamedComponent }
       | { skippedComponent: LandXmlStreamedSkippedComponent }
+      | { surfaceDiagnostics: LandXmlStreamedSurfaceDiagnostics }
       | { sourceEvent: unknown }
     >) => {
       if ('progress' in event.data) {
@@ -257,11 +260,22 @@ export function parseLandXmlViewerModelFromBlobAsync(
           return;
         }
         consumedComponentCount++;
+        streamedSkippedComponents.push(skippedComponent);
         invokeCallback(() => onSkippedComponent?.(skippedComponent)).then(() => {
           if (!finished) worker.postMessage({ type: 'component-uploaded' });
         }).catch((error: unknown) => {
           if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
         });
+        return;
+      }
+      if ('surfaceDiagnostics' in event.data) {
+        const { surfaceDiagnostics } = event.data;
+        if (streamedSurfaceDiagnostics.has(surfaceDiagnostics.surfaceSourceId)) {
+          if (finish()) reject(new Error('LandXML worker emitted duplicate surface diagnostics'));
+          return;
+        }
+        streamedSurfaceDiagnostics.set(surfaceDiagnostics.surfaceSourceId, surfaceDiagnostics);
+        if (!finished) worker.postMessage({ type: 'component-uploaded' });
         return;
       }
       if ('sourceEvent' in event.data) {
@@ -309,7 +323,13 @@ export function parseLandXmlViewerModelFromBlobAsync(
               throw new Error('LandXML preflight rejected every render component');
             }
             resolve(attachSyntheticStore(
-              completeLandXmlStreamedGeometry(parsed, streamedComponents, streamed.preflight),
+              completeLandXmlStreamedGeometry(
+                parsed,
+                streamedComponents,
+                streamed.preflight,
+                streamedSurfaceDiagnostics,
+                streamedSkippedComponents,
+              ),
               file.size,
             ));
           }).catch((error: unknown) => {

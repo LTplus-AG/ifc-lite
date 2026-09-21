@@ -129,7 +129,8 @@ export function placeComponentsInKnownRenderFrame<T extends RenderFrameComponent
   const dropped: T[] = [];
   const bounds = createEmptyBounds();
   const rejectedGroups = new Set(components
-    .filter((component) => !boundsFitLandXmlPrecisionBatch(component.bounds))
+    .filter((component) => !boundsFitLandXmlPrecisionBatch(component.bounds)
+      || !boundsFitRenderFrame(component.bounds, originShift))
     .map((component) => component.frameGroup)
     .filter((group): group is string => group !== undefined));
   for (const component of components) {

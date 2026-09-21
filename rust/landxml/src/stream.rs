@@ -181,7 +181,11 @@ impl LandXmlTinStreamSession {
         }
         let header = self
             .header()
-            .ok_or_else(|| error(Code::InvalidSemantic, "LandXML units were not declared"))?;
+            .ok_or_else(|| error(Code::InvalidXml, "LandXML document is empty"))?;
+        if !self.header_emitted {
+            self.push_event(LandXmlStreamEvent::Header(header.clone()))?;
+            self.header_emitted = true;
+        }
         self.closed = true;
         let terrain = self.parser.take().expect("open parser").finish()?;
         let plan = self.plan.take().expect("open plan parser");

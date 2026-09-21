@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import init, { IfcAPI } from '@ifc-lite/wasm';
-import { buildLandXmlSurfaceComponents, parseLandXmlGeometry, type LandXmlGeometryPayload, type LandXmlGeometryPreflight, type LandXmlSourceBuffer, type LandXmlStreamedComponent, type LandXmlTinDocument } from './landXmlIngest.js';
+import { buildLandXmlSurfaceComponents, parseLandXmlGeometry, type LandXmlGeometryPayload, type LandXmlGeometryPreflight, type LandXmlSourceBuffer, type LandXmlStreamedComponent, type LandXmlStreamedSkippedComponent, type LandXmlStreamedSurfaceDiagnostics, type LandXmlTinDocument } from './landXmlIngest.js';
 import { parseLandXmlSourceWithApi, readLandXmlTinSurface } from './landXmlWasm.js';
 import { streamLandXmlSourceBlobWithApi } from './landXmlBlobCursor.js';
 import { placeComponentsInKnownRenderFrame } from './landXmlRenderFrame.js';
@@ -55,10 +55,23 @@ function waitForComponentUpload(component: LandXmlStreamedComponent): Promise<vo
 }
 
 /** Consume one reserved source slot without transferring rejected mesh bytes. */
-function waitForSkippedComponent(expressId: number): Promise<void> {
+function waitForSkippedComponent(component: LandXmlStreamedComponent): Promise<void> {
   return new Promise((resolve) => {
     acknowledgeComponent = resolve;
-    workerScope.postMessage({ skippedComponent: { expressId } });
+    const skipped: LandXmlStreamedSkippedComponent = {
+      expressId: component.mesh.expressId,
+      ...(component.surfaceSourceId === null ? {} : { surfaceSourceId: component.surfaceSourceId }),
+      ...(component.renderedFaceSourceIds.length === 0 ? {} : { renderedFaceSourceIds: component.renderedFaceSourceIds }),
+    };
+    workerScope.postMessage({ skippedComponent: skipped });
+  });
+}
+
+/** Keep surface diagnostics bounded and credited even when it built no mesh. */
+function waitForSurfaceDiagnostics(diagnostics: LandXmlStreamedSurfaceDiagnostics): Promise<void> {
+  return new Promise((resolve) => {
+    acknowledgeComponent = resolve;
+    workerScope.postMessage({ surfaceDiagnostics: diagnostics });
   });
 }
 
@@ -85,10 +98,11 @@ function waitForFederatedAdmission(component: LandXmlPreflightComponent): Promis
   });
 }
 
-function streamUnits(header: unknown): NonNullable<LandXmlTinDocument['units']> {
+function streamUnits(header: unknown): NonNullable<LandXmlTinDocument['units']> | null {
   if (typeof header !== 'object' || header === null) throw new Error('LandXML stream emitted an invalid header');
   const units = (header as { units?: unknown }).units;
-  if (typeof units !== 'object' || units === null) throw new Error('LandXML stream header omitted Units');
+  if (units === undefined || units === null) return null;
+  if (typeof units !== 'object') throw new Error('LandXML stream header has invalid Units');
   const raw = units as {
     linear_unit?: unknown;
     elevation_unit?: unknown;
@@ -222,8 +236,20 @@ workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer | LandXml
             }),
             onHeader: (header) => { units = streamUnits(header); },
             onSurface: async (surface) => {
+              const decodedSurface = readLandXmlTinSurface(surface);
+              // A VOLUME/preserved-only surface remains in the semantic cursor
+              // document but has no numeric geometry to build, so Units are
+              // optional until a genuinely rendered surface reaches this path.
+              if (decodedSurface.renderState !== 'rendered' || !decodedSurface.faceVisibility.some(Boolean)) return;
               if (units === null) throw new Error('LandXML surface arrived before stream Units');
-              const built = buildLandXmlSurfaceComponents(readLandXmlTinSurface(surface), units, nextLocalId);
+              const built = buildLandXmlSurfaceComponents(decodedSurface, units, nextLocalId);
+              await waitForSurfaceDiagnostics({
+                surfaceSourceId: decodedSurface.sourceId,
+                surfaceName: decodedSurface.name,
+                droppedDegenerateFaces: built.droppedDegenerateFaces,
+                droppedPrecisionFaces: built.droppedPrecisionFaces,
+                hasNoRenderableFaces: built.components.length === 0,
+              });
               if (federatedStreaming) {
                 for (const component of built.components) {
                   component.mesh.expressId = nextLocalId++;
@@ -238,7 +264,7 @@ workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer | LandXml
                     retainedPrimaryComponents++;
                     await waitForComponentUpload(surfaceComponent(component));
                   }
-                  else await waitForSkippedComponent(component.mesh.expressId);
+                  else await waitForSkippedComponent(surfaceComponent(component));
                 }
               }
             },

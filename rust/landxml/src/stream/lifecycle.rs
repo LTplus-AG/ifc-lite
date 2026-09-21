@@ -37,13 +37,20 @@ impl LandXmlTinStreamSession {
         let mut reassembler = LandXmlMetadataStreamAssembler::default();
         while self.output_pending() {
             for event in self.drain(MAX_LANDXML_STREAM_DRAIN_BYTES)? {
-                let LandXmlStreamEvent::Metadata(event) = event else {
-                    return Err(error(
-                        Code::InvalidSemantic,
-                        "summary adapter received non-metadata stream output",
-                    ));
-                };
-                reassembler.push(*event)?;
+                match event {
+                    // Unit-less preserved-only sources emit their transport
+                    // header at finish. The metadata header repeats it, so a
+                    // legacy summary adapter intentionally consumes this
+                    // transport-only record without reassembling it twice.
+                    LandXmlStreamEvent::Header(_) => {}
+                    LandXmlStreamEvent::Metadata(event) => reassembler.push(*event)?,
+                    LandXmlStreamEvent::Surface(_) => {
+                        return Err(error(
+                            Code::InvalidSemantic,
+                            "summary adapter received non-metadata stream output",
+                        ));
+                    }
+                }
             }
         }
         reassembler.finish()

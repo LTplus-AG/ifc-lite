@@ -6,7 +6,8 @@
 
 import type { CoordinateInfo, GeometryResult, MeshData, ModelSpatialReference } from '@ifc-lite/geometry';
 import type { PreAlignmentSnapshot } from '../../store/types.js';
-import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
+import { federationFrameInfo, totalYupOffset } from '@ifc-lite/geometry/world-frame';
+import { useViewerStore } from '../../store/index.js';
 import { createCoordinateInfo, createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
 import { findReferenceSpatialModel, type FederationAlignmentStatus, type ModelSpatialPlacement } from './federationAlign.js';
 import { alignLandXmlComponent } from './federationComponentAlignment.js';
@@ -54,13 +55,32 @@ function resetBounds(bounds: Bounds3D): void {
 }
 
 /**
+ * Cursor meshes carry absolute E/U/S origins.  Give federation alignment the
+ * matching zero-offset frame; the durable source metadata remains on
+ * `sourcePlacement` for overlays and later CRS resolution.
+ */
+function rawAbsoluteCoordinateInfo(source: CoordinateInfo): CoordinateInfo {
+  const bounds = structuredClone(source.originalBounds);
+  return {
+    originShift: { x: 0, y: 0, z: 0 },
+    originalBounds: bounds,
+    shiftedBounds: structuredClone(bounds),
+    hasLargeCoordinates: source.hasLargeCoordinates,
+  };
+}
+
+/**
  * The first pass owns only one mesh at a time.  It runs the canonical
  * one-mesh adapter to measure the *destination* frame; pass two repeats that
  * same operation before publishing the component and acknowledging the worker.
  */
 export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingFinalization {
   private readonly source: ModelSpatialPlacement | null;
-  private readonly reference = findReferenceSpatialModel()?.placement ?? null;
+  private readonly rawSource: ModelSpatialPlacement | null;
+  private readonly rawCoordinateInfo: CoordinateInfo;
+  private readonly reference: ModelSpatialPlacement | null;
+  /** Existing canonical renderer frame when no model has geographic metadata. */
+  private readonly fallbackFrame: CoordinateInfo | null;
   private readonly measuredBounds = createEmptyBounds();
   /** Bounds of only those source groups which passed frozen RTE admission. */
   private readonly admittedBounds = createEmptyBounds();
@@ -87,8 +107,16 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
   coordinateInfo: CoordinateInfo;
 
   constructor(private readonly options: FederatedLandXmlStreamingOptions) {
+    this.reference = findReferenceSpatialModel()?.placement ?? null;
+    this.fallbackFrame = this.reference?.coordinateInfo
+      ?? federationFrameInfo(useViewerStore.getState().models.values())
+      ?? null;
+    this.rawCoordinateInfo = rawAbsoluteCoordinateInfo(options.sourceCoordinateInfo);
     this.source = options.spatialReference
       ? { spatialReference: options.spatialReference, coordinateInfo: options.sourceCoordinateInfo }
+      : null;
+    this.rawSource = options.spatialReference
+      ? { spatialReference: options.spatialReference, coordinateInfo: this.rawCoordinateInfo }
       : null;
     this.alignmentStatus = this.reference && this.source ? 'identity' : this.source ? 'anchor' : 'none';
     this.coordinateInfo = structuredClone(options.sourceCoordinateInfo);
@@ -108,7 +136,7 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
       normals: this.sourceMeshes.map((mesh) => new Float32Array(mesh.normals)),
       origins: this.sourceMeshes.map((mesh) => mesh.origin ? [...mesh.origin] as [number, number, number] : undefined),
       geometryAabbs: this.sourceMeshes.map((mesh) => mesh.geometryAabb),
-      coordinateInfo: structuredClone(this.options.sourceCoordinateInfo),
+      coordinateInfo: structuredClone(this.rawCoordinateInfo),
       instancedGeometryAabbs: undefined,
     };
   }
@@ -142,9 +170,9 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
     // one-component adapter below produces coordinates relative to that frame,
     // so selecting a second "dominant" LandXML origin here would shift the
     // input twice and discard anchor RTC/building metadata.
-    if (this.reference?.coordinateInfo) {
-      this.frame = { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: this.reference.coordinateInfo.hasLargeCoordinates };
-      this.coordinateInfo = structuredClone(this.reference.coordinateInfo);
+    if (this.fallbackFrame) {
+      this.frame = { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: this.fallbackFrame.hasLargeCoordinates };
+      this.coordinateInfo = structuredClone(this.fallbackFrame);
     } else {
       const dominant = this.dominant;
       if (dominant === null) throw new Error('LandXML federation preflight froze without a measured component');
@@ -212,7 +240,7 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
     if (this.options.componentCount > 0 && this.admissionAccepted === 0) {
       throw new Error('LandXML federation preflight rejected every render component');
     }
-    if (!this.reference?.coordinateInfo) {
+    if (!this.fallbackFrame) {
       this.coordinateInfo = createCoordinateInfo(
         this.admittedBounds,
         this.frame!.originShift,
@@ -297,8 +325,8 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
   }
 
   private async align(mesh: MeshData): Promise<MeshData> {
-    if (this.source && this.reference) {
-      const aligned = await alignLandXmlComponent(mesh, this.options.sourceCoordinateInfo, this.source, this.reference);
+    if (this.rawSource && this.reference) {
+      const aligned = await alignLandXmlComponent(mesh, this.rawCoordinateInfo, this.rawSource, this.reference);
       this.alignmentStatus = aligned.status;
       if (aligned.status !== 'failed') return aligned.mesh;
       return mesh;
@@ -306,11 +334,10 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
     // Unknown-CRS LandXML still uses the federation render origin. This is
     // the same offset-only operation used by normal federation finalization;
     // it does not claim geographic equivalence or manufacture a new frame.
-    if (this.reference?.coordinateInfo) {
-      const own = totalYupOffset(this.options.sourceCoordinateInfo);
-      const target = totalYupOffset(this.reference.coordinateInfo);
+    if (this.fallbackFrame) {
+      const target = totalYupOffset(this.fallbackFrame);
       const origin = mesh.origin ?? [0, 0, 0];
-      mesh.origin = [origin[0] + own.x - target.x, origin[1] + own.y - target.y, origin[2] + own.z - target.z];
+      mesh.origin = [origin[0] - target.x, origin[1] - target.y, origin[2] - target.z];
     }
     return mesh;
   }

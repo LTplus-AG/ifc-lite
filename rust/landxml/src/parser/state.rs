@@ -138,13 +138,8 @@ impl<'a> Parser<'a> {
         !self.frames.is_empty()
     }
 
-    pub(crate) fn header(&self) -> Option<(String, LandXmlUnits)> {
-        (!self.version.is_empty() && self.units.is_some()).then(|| {
-            (
-                self.version.clone(),
-                self.units.clone().expect("guarded units"),
-            )
-        })
+    pub(crate) fn header(&self) -> Option<(String, Option<LandXmlUnits>)> {
+        (!self.version.is_empty()).then(|| (self.version.clone(), self.units.clone()))
     }
 }
 

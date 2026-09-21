@@ -47,6 +47,20 @@ describe('LandXML provisional publication transaction (#5050)', () => {
     assert.equal(registry.getOffset('short'), null);
   });
 
+  it('keeps a workerless frozen-frame hole owned before publishing a later source slot (#5161)', () => {
+    const registry = new FederationRegistry();
+    const published: number[] = [];
+    const transaction = new LandXmlProvisionalTransaction('workerless-hole', 2, {
+      originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false,
+    }, registry, { publish: (entry) => { published.push(entry.expressId); }, remove: () => {} });
+    transaction.skip(mesh(1));
+    transaction.publish(mesh(2));
+    transaction.commit();
+    assert.deepEqual(published, [transaction.idOffset + 2]);
+    assert.deepEqual(registry.fromGlobalId(transaction.idOffset + 1), { modelId: 'workerless-hole', expressId: 1 });
+    assert.deepEqual(registry.fromGlobalId(transaction.idOffset + 2), { modelId: 'workerless-hole', expressId: 2 });
+  });
+
   it('can roll back an already committed upload if final metadata installation fails (#5050)', () => {
     const registry = new FederationRegistry();
     const removed: number[][] = [];

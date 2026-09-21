@@ -3,8 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { beforeEach, describe, it } from 'node:test';
+import type { GeometryResult, ModelSpatialReference } from '@ifc-lite/geometry';
 import { FederationRegistry } from '@ifc-lite/renderer';
+import { fixtureModel } from '@/test/store-fixture.js';
+import { useViewerStore, type FederatedModel } from '../../store/index.js';
 import { FederatedLandXmlStreamingPlan } from './federatedLandXmlStreaming.js';
 
 function mesh(expressId: number, x = 0) {
@@ -35,6 +38,36 @@ const sourceCoordinateInfo = {
   shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 2, y: 1, z: 0 } },
   hasLargeCoordinates: false,
 };
+
+function spatialReference(): ModelSpatialReference {
+  return {
+    source: { axes: ['east', 'up', 'south'], horizontalUnitToMetres: 1, verticalUnitToMetres: 1 },
+    horizontal: { id: 'EPSG:2056', provenance: { source: 'test' } },
+    vertical: { id: 'EPSG:5729', provenance: { source: 'test' } },
+    localToProjected: {
+      kind: 'local-projected-affine', eastings: 0, northings: 0, orthogonalHeight: 0,
+      xAxisAbscissa: 1, xAxisOrdinate: 0, scaleX: 1, scaleY: 1, scaleZ: 1,
+    },
+    confidence: 'declared',
+  };
+}
+
+function absoluteCoordinateInfo() {
+  return {
+    originShift: { x: 2_600_000.5, y: 400.5, z: -1_199_999.5 },
+    originalBounds: { min: { x: 2_600_000, y: 400, z: -1_200_000 }, max: { x: 2_600_001, y: 401, z: -1_199_999 } },
+    shiftedBounds: { min: { x: -0.5, y: -0.5, z: -0.5 }, max: { x: 0.5, y: 0.5, z: 0.5 } },
+    hasLargeCoordinates: true,
+  };
+}
+
+function absoluteMesh(expressId: number) {
+  const result = mesh(expressId);
+  result.origin = [2_600_000, 400, -1_200_000];
+  return result;
+}
+
+beforeEach(() => useViewerStore.getState().clearAllModels());
 
 describe('federated LandXML streaming plan (#5050)', () => {
   it('publishes each frozen-frame component once and makes it pickable before End', async () => {
@@ -136,7 +169,7 @@ describe('federated LandXML streaming plan (#5050)', () => {
     await plan.publish(wide);
     await plan.publish(grouped);
     await plan.publish(retained);
-    const geometry = { meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: sourceCoordinateInfo };
+    const geometry: GeometryResult = { meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: sourceCoordinateInfo };
     plan.complete(geometry);
     assert.deepEqual(geometry.meshes.map((entry) => entry.expressId), [3]);
     assert.deepEqual(geometry.coordinateInfo.originalBounds, {
@@ -173,5 +206,60 @@ describe('federated LandXML streaming plan (#5050)', () => {
     await plan.admit({ mesh: mesh(1), frameGroup: 1 });
     await plan.admit({ mesh: mesh(2), frameGroup: 2 });
     await assert.rejects(plan.admit({ mesh: mesh(3), frameGroup: 1 }), /non-contiguous source group/);
+  });
+
+  it('aligns raw-absolute cursor meshes exactly once and snapshots that raw contract (#5161)', async () => {
+    const anchor = fixtureModel('anchor') as FederatedModel;
+    anchor.loadedAt = 0;
+    anchor.spatialReference = spatialReference();
+    anchor.geometryResult = {
+      meshes: [], totalVertices: 0, totalTriangles: 0,
+      coordinateInfo: {
+        ...absoluteCoordinateInfo(),
+        originShift: { x: 2_600_000, y: 400, z: -1_200_000 },
+      },
+    };
+    useViewerStore.setState({ models: new Map([[anchor.id, anchor]]) });
+    const source = absoluteCoordinateInfo();
+    const plan = new FederatedLandXmlStreamingPlan({
+      modelId: 'absolute-terrain', componentCount: 1, sourceCoordinateInfo: source, spatialReference: spatialReference(),
+      registry: new FederationRegistry(), resources: { publish: () => {}, remove: () => {} }, isCurrent: () => true,
+    });
+    await plan.measure(absoluteMesh(1));
+    plan.freeze();
+    await plan.admit({ mesh: absoluteMesh(1), frameGroup: 1 });
+    plan.freezeAdmission();
+    await plan.publish(absoluteMesh(1));
+    const geometry: GeometryResult = { meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: source };
+    plan.complete(geometry);
+    assert.deepEqual(geometry.meshes[0]?.origin, [0, 0, 0]);
+    assert.deepEqual(plan.preAlignment.origins, [[2_600_000, 400, -1_200_000]], 'the re-alignment snapshot keeps cursor-absolute origins');
+    assert.deepEqual(plan.preAlignment.coordinateInfo.originShift, { x: 0, y: 0, z: 0 }, 'the snapshot coordinate frame must match raw cursor meshes');
+  });
+
+  it('uses the existing federation renderer frame when no geographic anchor exists (#5161)', async () => {
+    const anchor = fixtureModel('render-frame-anchor') as FederatedModel;
+    anchor.loadedAt = 0;
+    anchor.geometryResult = {
+      meshes: [], totalVertices: 0, totalTriangles: 0,
+      coordinateInfo: {
+        ...absoluteCoordinateInfo(),
+        originShift: { x: 2_600_000, y: 400, z: -1_200_000 },
+      },
+    };
+    useViewerStore.setState({ models: new Map([[anchor.id, anchor]]) });
+    const plan = new FederatedLandXmlStreamingPlan({
+      modelId: 'unknown-crs-terrain', componentCount: 1, sourceCoordinateInfo: absoluteCoordinateInfo(),
+      registry: new FederationRegistry(), resources: { publish: () => {}, remove: () => {} }, isCurrent: () => true,
+    });
+    await plan.measure(absoluteMesh(1));
+    plan.freeze();
+    await plan.admit({ mesh: absoluteMesh(1), frameGroup: 1 });
+    plan.freezeAdmission();
+    await plan.publish(absoluteMesh(1));
+    const geometry: GeometryResult = { meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: absoluteCoordinateInfo() };
+    plan.complete(geometry);
+    assert.deepEqual(geometry.meshes[0]?.origin, [0, 0, 0]);
+    assert.deepEqual(geometry.coordinateInfo.originShift, { x: 2_600_000, y: 400, z: -1_200_000 });
   });
 });

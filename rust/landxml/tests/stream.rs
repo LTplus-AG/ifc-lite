@@ -13,6 +13,7 @@ use ifc_lite_landxml::{
 };
 
 const XML: &str = r#"<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces></LandXML>"#;
+const XML_WITHOUT_UNITS: &str = r#"<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Surfaces><Surface name="survey-only"><Definition surfType="VOLUME"/></Surface></Surfaces></LandXML>"#;
 
 fn drive(bytes: &[u8], cuts: impl Iterator<Item = usize>) -> Vec<LandXmlStreamEvent> {
     let mut session = LandXmlTinStreamSession::new(LandXmlLimits::default()).expect("session");
@@ -116,6 +117,19 @@ fn issue_5050_utf16_code_unit_and_surrogate_cuts_match_utf8() {
         serde_json::to_value(utf8).expect("json"),
         serde_json::to_value(utf16_events).expect("json")
     );
+}
+
+#[test]
+fn issue_5161_stream_preserves_a_unitless_volume_document() {
+    let direct =
+        parse_landxml_tin(XML_WITHOUT_UNITS.as_bytes()).expect("direct preserved-only source");
+    let summary = summary_after_byte_cuts(XML_WITHOUT_UNITS.as_bytes())
+        .expect("stream preserved-only source");
+    assert!(direct.units.is_none());
+    assert_eq!(direct.capabilities.preserved_only_surfaces, 1);
+    assert!(summary.header.units.is_none());
+    assert_eq!(summary.preserved_surfaces, 1);
+    assert!(summary.metadata.terrain.units.is_none());
 }
 
 #[test]

@@ -104,6 +104,11 @@ function recomputeRenderedFaceCounts(document: LandXmlTinDocument): void {
 
 function retainFederatedStreamedProvenance(document: LandXmlTinDocument, meshes: readonly GeometryResult['meshes'][number][]): void {
   const retainedIds = new Set(meshes.map((mesh) => mesh.expressId));
+  for (const provenance of document.rendering.meshProvenance) {
+    if (retainedIds.has(provenance.meshExpressId)) continue;
+    const counts = document.rendering.surfaceCounts.find((count) => count.surfaceSourceId === provenance.surfaceSourceId);
+    if (counts) counts.droppedReframeFaces += provenance.renderedFaceSourceIds.length;
+  }
   document.rendering.meshProvenance = document.rendering.meshProvenance
     .filter((provenance) => retainedIds.has(provenance.meshExpressId));
   recomputeRenderedFaceCounts(document);
@@ -246,7 +251,20 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
       return;
     }
     if (provisional.value !== null) {
-      for (const mesh of result.geometryResult.meshes.slice(streamedComponents)) provisional.value.publish(mesh);
+      if (streamedComponents === 0) {
+        // Worker-less Blob loads still reserve the exact measured envelope.
+        // Their direct completion may have refused frame slots, so replay the
+        // original source order and consume each gap rather than compacting
+        // surviving mesh identities before committing the reservation.
+        const bySourceId = new Map(result.geometryResult.meshes.map((mesh) => [mesh.expressId, mesh]));
+        for (let expressId = 1; expressId <= provisional.value.reservedMaxExpressId; expressId++) {
+          const mesh = bySourceId.get(expressId);
+          if (mesh === undefined) provisional.value.skip({ expressId });
+          else provisional.value.publish(mesh);
+        }
+      } else {
+        for (const mesh of result.geometryResult.meshes.slice(streamedComponents)) provisional.value.publish(mesh);
+      }
       for (const mesh of result.geometryResult.meshes) {
         mesh.expressId += provisional.value.idOffset;
         markLandXmlGpuUploaded(mesh);

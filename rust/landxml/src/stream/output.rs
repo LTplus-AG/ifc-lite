@@ -15,11 +15,25 @@ impl LandXmlTinStreamSession {
     pub(super) fn emit_header_and_surfaces(&mut self) -> Result<(), LandXmlError> {
         if !self.header_emitted {
             if let Some(header) = self.header() {
-                self.push_event(LandXmlStreamEvent::Header(header))?;
-                self.header_emitted = true;
+                // A numeric surface cannot leave the parser without Units;
+                // wait for them so the transport header remains the complete
+                // geometry contract. Unit-less preserved-only documents get
+                // their one header during `finish_cursor` instead.
+                if header.units.is_some() {
+                    self.push_event(LandXmlStreamEvent::Header(header))?;
+                    self.header_emitted = true;
+                }
             }
         }
         for surface in self.parser().take_surfaces() {
+            if surface.render_state == crate::LandXmlRenderState::Rendered
+                && self.header().and_then(|header| header.units).is_none()
+            {
+                return Err(error(
+                    Code::InvalidSemantic,
+                    "LandXML units are required for renderable numeric surfaces",
+                ));
+            }
             self.enqueue_surface(surface)?;
         }
         self.flush_pending_surface()
@@ -82,7 +96,7 @@ impl LandXmlTinStreamSession {
         }
     }
 
-    fn push_event(&mut self, event: LandXmlStreamEvent) -> Result<(), LandXmlError> {
+    pub(super) fn push_event(&mut self, event: LandXmlStreamEvent) -> Result<(), LandXmlError> {
         let serialized_bytes = serde_json::to_vec(&event)
             .map_err(|value| {
                 error(

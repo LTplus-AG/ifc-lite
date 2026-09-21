@@ -26,6 +26,18 @@ export interface LandXmlStreamedComponent {
 /** A preflighted local mesh slot intentionally rejected by its frozen frame. */
 export interface LandXmlStreamedSkippedComponent {
   expressId: number;
+  /** Present for terrain slots so completion can retain direct-parser counts. */
+  surfaceSourceId?: string | null;
+  renderedFaceSourceIds?: string[];
+}
+
+/** Bounded per-surface facts emitted before its credited component slots. */
+export interface LandXmlStreamedSurfaceDiagnostics {
+  surfaceSourceId: string;
+  surfaceName: string;
+  droppedDegenerateFaces: number;
+  droppedPrecisionFaces: number;
+  hasNoRenderableFaces: boolean;
 }
 
 export interface LandXmlStreamedPipeComponents {
@@ -46,6 +58,8 @@ export function completeLandXmlStreamedGeometry(
   parsed: LandXmlTinDocument,
   components: readonly LandXmlStreamedComponent[],
   preflight: LandXmlGeometryPreflight,
+  diagnostics: ReadonlyMap<string, LandXmlStreamedSurfaceDiagnostics> = new Map(),
+  skippedComponents: readonly LandXmlStreamedSkippedComponent[] = [],
 ): LandXmlGeometryPayload {
   const meshes = components.map((component) => component.mesh);
   const warnings = [...parsed.warnings, ...pipeRefusalWarnings(parsed)];
@@ -70,11 +84,28 @@ export function completeLandXmlStreamedGeometry(
   }));
   const surfaceCounts = parsed.surfaces.map((surface) => {
     const surfaceComponents = components.filter((component) => component.surfaceSourceId === surface.sourceId);
+    const skippedFaces = skippedComponents
+      .filter((component) => component.surfaceSourceId === surface.sourceId)
+      .reduce((count, component) => count + (component.renderedFaceSourceIds?.length ?? 0), 0);
+    const diagnostic = diagnostics.get(surface.sourceId);
+    if (diagnostic !== undefined) {
+      if (diagnostic.droppedDegenerateFaces > 0) {
+        warnings.push(`Skipped ${diagnostic.droppedDegenerateFaces} degenerate face(s) in surface "${diagnostic.surfaceName}"`);
+      }
+      if (diagnostic.droppedPrecisionFaces > 0) {
+        warnings.push(`Skipped ${diagnostic.droppedPrecisionFaces} face(s) in surface "${diagnostic.surfaceName}" because their coordinate span exceeds render precision`);
+      }
+      if (diagnostic.hasNoRenderableFaces) {
+        warnings.push(`Skipped surface "${diagnostic.surfaceName}" because it has no non-degenerate faces`);
+      }
+    }
     return {
       surfaceSourceId: surface.sourceId, sourcePoints: surface.points.length, sourceFaces: surface.faces.length,
       hiddenFaces: surface.hiddenFaceCount,
       renderedFaces: surfaceComponents.reduce((count, component) => count + component.renderedFaceSourceIds.length, 0),
-      droppedDegenerateFaces: 0, droppedPrecisionFaces: 0, droppedReframeFaces: 0,
+      droppedDegenerateFaces: diagnostic?.droppedDegenerateFaces ?? 0,
+      droppedPrecisionFaces: diagnostic?.droppedPrecisionFaces ?? 0,
+      droppedReframeFaces: skippedFaces,
     };
   });
   return {

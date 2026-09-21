@@ -54,6 +54,11 @@ const LANDXML = `<?xml version="1.0" encoding="UTF-8"?>
   </Surfaces>
 </LandXML>`;
 
+const XML_WITHOUT_UNITS = `<?xml version="1.0" encoding="UTF-8"?>
+<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+  <Surfaces><Surface name="cut-fill"><Definition surfType="VOLUME"/></Surface></Surfaces>
+</LandXML>`;
+
 function bytes(text: string): ArrayBuffer {
   return new TextEncoder().encode(text).buffer;
 }
@@ -206,6 +211,32 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.deepEqual(streamed.semanticDocument.plan, direct.semanticDocument.plan);
   });
 
+  it('preserves a unitless VOLUME source through the real WASM cursor (#5161)', async () => {
+    const direct = await parseViewer(bytes(XML_WITHOUT_UNITS));
+    const streamed = await parseLandXmlViewerModelFromBlobAsync(new Blob([XML_WITHOUT_UNITS]));
+    await initLandXmlWasm();
+    const api = new IfcAPI();
+    try {
+      const reducer = new LandXmlStreamPreflightReducer();
+      await streamLandXmlSourceBlobWithApi(api, new Blob([XML_WITHOUT_UNITS]), {
+        onHeader: (header) => reducer.onHeader(header),
+        onSurface: (surface) => reducer.onSurface(surface),
+        onEvent: (event) => reducer.onEvent(event),
+      });
+      assert.equal(reducer.finish().preflight.componentCount, 0);
+    } finally {
+      api.free();
+    }
+    assert.equal(direct.semanticDocument.units, null);
+    assert.equal(streamed.semanticDocument.units, null);
+    assert.equal(streamed.semanticDocument.surfaces[0]?.renderState, 'preserved_only');
+    assert.equal(streamed.geometryResult.meshes.length, 0);
+    assert.deepEqual(streamed.semanticDocument.surfaces, direct.semanticDocument.surfaces);
+    assert.deepEqual(streamed.semanticDocument.capabilities, direct.semanticDocument.capabilities);
+    assert.deepEqual(streamed.semanticDocument.warnings, direct.semanticDocument.warnings);
+    assert.equal(streamed.semanticDocument.pipeNetworks?.networks.length, 0);
+  });
+
   it('uses the exact discard-after-measurement frame on the second pass (#5050)', async () => {
     const parsed = await parseDocument(LANDXML.replace(
       '</Faces>', '<F>10 20 30</F></Faces>',
@@ -310,6 +341,33 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.equal(streamed.geometryResult.meshes[0], direct.geometryResult.meshes[0]);
     assert.deepEqual(streamed.geometryResult.coordinateInfo, direct.geometryResult.coordinateInfo);
     assert.deepEqual(streamed.semanticDocument.rendering.meshProvenance, direct.semanticDocument.rendering.meshProvenance);
+  });
+
+  it('retains builder diagnostics and frozen-frame refusal counts at stream completion (#5161)', async () => {
+    const parsed = await parseDocument(LANDXML.replace('</Faces>', '<F>10 10 10</F></Faces>'));
+    const preflight = preflightLandXmlGeometry(parsed);
+    const direct = parseLandXmlGeometry(parsed, preflight);
+    const streamed = completeLandXmlStreamedGeometry(
+      parsed,
+      direct.geometryResult.meshes.map((mesh) => {
+        const provenance = direct.semanticDocument.rendering.meshProvenance.find((entry) => entry.meshExpressId === mesh.expressId);
+        if (provenance === undefined) throw new Error('direct mesh is missing provenance');
+        return {
+          mesh, surfaceName: parsed.surfaces[0]!.name, surfaceSourceId: provenance.surfaceSourceId,
+          pipeSourceId: provenance.pipeSourceId ?? null, renderedFaceSourceIds: provenance.renderedFaceSourceIds,
+        };
+      }),
+      preflight,
+      new Map([[parsed.surfaces[0]!.sourceId, {
+        surfaceSourceId: parsed.surfaces[0]!.sourceId, surfaceName: parsed.surfaces[0]!.name,
+        droppedDegenerateFaces: 1, droppedPrecisionFaces: 0, hasNoRenderableFaces: false,
+      }]]),
+      [{ expressId: 99, surfaceSourceId: parsed.surfaces[0]!.sourceId, renderedFaceSourceIds: ['refused-face'] }],
+    );
+    assert.deepEqual(streamed.semanticDocument.rendering.surfaceCounts[0], {
+      ...direct.semanticDocument.rendering.surfaceCounts[0], droppedReframeFaces: 1,
+    });
+    assert.ok(streamed.warnings.some((warning) => /Skipped 1 degenerate face/.test(warning)));
   });
 
   it('loads persisted pre-triangulation surface records without new optional fields (#5043)', async () => {
@@ -564,7 +622,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.equal(result.warnings.some((warning) => /degenerate face|render frame/.test(warning)), false);
   });
 
-  it('refuses a compact disconnected component beyond the shared RTE envelope (#5049)', async () => {
+  it('atomically refuses a source surface when one disconnected component misses the shared RTE envelope (#5161)', async () => {
     const withDistantSmallFace = LANDXML
       .replace(
         '</Pnts>',
@@ -573,14 +631,11 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
          <P id="52">900000001 800000000 700000000</P></Pnts>`,
       )
       .replace('</Faces>', '<F>50 51 52</F></Faces>');
-    const result = await parseViewer(bytes(withDistantSmallFace));
-    assert.equal(result.geometryResult.meshes.length, 1);
-    assert.equal(result.geometryResult.totalTriangles, 1);
-    assert.deepEqual(result.geometryResult.meshes[0].origin, [0, 0, 0]);
-    assert.deepEqual(result.geometryResult.coordinateInfo.originShift, { x: 2_600_005, y: 101, z: -5_000_005 });
-    assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 2_600_010);
-    assert.equal(result.warnings.some((warning) => /Skipped 1 LandXML surface component.*shared render-frame envelope/.test(warning)), true);
-    assert.equal(result.semanticDocument.rendering.surfaceCounts[0].droppedReframeFaces, 1);
+    await assert.rejects(
+      parseViewer(bytes(withDistantSmallFace)),
+      /no surface components within the 1000 km shared render-frame envelope/,
+      'primary and federated loads must refuse the complete source group rather than split its semantic surface',
+    );
   });
 
   it('removes the survey translation before GPU upload and retains it as frame metadata', async () => {

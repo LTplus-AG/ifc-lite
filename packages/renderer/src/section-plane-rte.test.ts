@@ -113,4 +113,26 @@ describe('section preview and cap use the same f64 RTE plane at survey coordinat
     assert.ok(Math.abs(capPosition[1] - previewPosition[1]) < 1e-7, 'cap and preview must share the plane position');
     assert.ok(Math.abs(capPosition[0] + 0.01) < 1e-7, 'cap anchor retains its centimetre in-plane X residual');
   });
+
+  it('preserves the legacy preview for callers that only supply a world-space viewProj (#5152)', () => {
+    const gpu = fakeDevice();
+    const preview = new SectionPlaneRenderer(gpu.device, 'bgra8unorm' as GPUTextureFormat);
+    const draws: number[] = [];
+    const pass = {
+      setPipeline() {}, setBindGroup() {}, setVertexBuffer() {},
+      draw(vertexCount: number) { draws.push(vertexCount); },
+    } as unknown as GPURenderPassEncoder;
+    const viewProj = new Float32Array(MathUtils.identity().m);
+    const bounds = { min: { x: -2, y: 0, z: -3 }, max: { x: 4, y: 10, z: 5 } };
+
+    preview.draw(pass, { axis: 'down', position: 50, bounds, isPreview: true, viewProj });
+
+    assert.deepEqual(draws, [6], 'an optional RTE frame must not suppress an otherwise valid legacy preview');
+    const vertices = lastWrite(gpu.writes, 120);
+    const uniforms = lastWrite(gpu.writes, 112);
+    assert.equal(vertices[1], 5, 'legacy vertices remain in world space for the legacy matrix');
+    assert.deepEqual([...uniforms.slice(0, 16)], [...viewProj], 'legacy matrix occupies the RTE frame slot');
+    assert.deepEqual([...uniforms.slice(SECTION_PLANE_UNIFORM_SLOTS.drawableDelta)], new Array(8).fill(0),
+      'legacy world vertices use a zero drawable delta');
+  });
 });

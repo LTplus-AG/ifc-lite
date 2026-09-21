@@ -31,8 +31,15 @@ export interface SectionPlaneRenderOptions {
   /**
    * The camera-owned translation-free frame. Its f64 camera coordinate is
    * used to form the drawable delta before either value reaches the GPU.
+   * When omitted, `viewProj` preserves the legacy absolute-world preview path.
    */
   relativeToEyeFrame?: RelativeToEyeFrame;
+  /**
+   * Legacy world-space view-projection. Required when `relativeToEyeFrame` is
+   * omitted; the resulting f32 preview intentionally has the pre-RTE precision
+   * characteristics, while keeping established callers renderable.
+   */
+  viewProj?: Float32Array;
   /**
    * Declared but never read. `SectionPlaneRenderer.render()` never consults
    * it, so the gizmo quad looks identical either way — this field cannot
@@ -295,10 +302,10 @@ export class SectionPlaneRenderer {
       return;
     }
 
-    const { axis, position, bounds, relativeToEyeFrame, isPreview, min: minOverride, max: maxOverride, normal, distance } = options;
+    const { axis, position, bounds, relativeToEyeFrame, viewProj, isPreview, min: minOverride, max: maxOverride, normal, distance } = options;
 
     // Only draw section plane in preview mode - hide it during active cutting
-    if (!isPreview || !relativeToEyeFrame) {
+    if (!isPreview || (!relativeToEyeFrame && !viewProj)) {
       return;
     }
 
@@ -313,17 +320,28 @@ export class SectionPlaneRenderer {
       ? calculateSectionPlaneVerticesFromNormal(normal!, distance!, bounds)
       : calculateSectionPlaneVertices(axis, position, bounds, minOverride, maxOverride);
     const origin: [number, number, number] = [vertices[0], vertices[1], vertices[2]];
-    const local = new Float32Array(vertices.length);
-    for (let i = 0; i < vertices.length; i += 5) {
-      local[i] = vertices[i] - origin[0]; local[i + 1] = vertices[i + 1] - origin[1]; local[i + 2] = vertices[i + 2] - origin[2];
-      local[i + 3] = vertices[i + 3]; local[i + 4] = vertices[i + 4];
+    const vertexData = new Float32Array(vertices.length);
+    if (relativeToEyeFrame) {
+      for (let i = 0; i < vertices.length; i += 5) {
+        vertexData[i] = vertices[i] - origin[0]; vertexData[i + 1] = vertices[i + 1] - origin[1]; vertexData[i + 2] = vertices[i + 2] - origin[2];
+        vertexData[i + 3] = vertices[i + 3]; vertexData[i + 4] = vertices[i + 4];
+      }
+    } else {
+      // The pre-RTE API supplied a world-space viewProj and world-space f32
+      // vertices. Keep that contract for callers that have not adopted a
+      // camera frame; new renderer paths always take the branch above.
+      vertexData.set(vertices);
     }
-    this.device.queue.writeBuffer(this.vertexBuffer, 0, local);
+    this.device.queue.writeBuffer(this.vertexBuffer, 0, vertexData);
 
     // Update uniforms
     const uniforms = new Float32Array(SECTION_PLANE_UNIFORM_FLOATS);
-    relativeToEyeFrame.packUniforms(uniforms, SECTION_PLANE_UNIFORM_SLOTS.rteViewProj);
-    relativeToEyeFrame.packDrawableOrigin(origin, uniforms, SECTION_PLANE_UNIFORM_SLOTS.drawableDelta);
+    if (relativeToEyeFrame) {
+      relativeToEyeFrame.packUniforms(uniforms, SECTION_PLANE_UNIFORM_SLOTS.rteViewProj);
+      relativeToEyeFrame.packDrawableOrigin(origin, uniforms, SECTION_PLANE_UNIFORM_SLOTS.drawableDelta);
+    } else {
+      uniforms.set(viewProj!, SECTION_PLANE_UNIFORM_SLOTS.rteViewProj);
+    }
 
     // Axis-specific colors for better identification.
     // down (Y) = light blue, front (Z) = green, side (X) = orange.

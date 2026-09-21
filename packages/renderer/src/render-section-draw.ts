@@ -71,6 +71,7 @@ export function drawSectionOverlays(
                 position: options.sectionPlane.position,
                 bounds: modelBounds,
                 relativeToEyeFrame: ctx.relativeToEyeFrame,
+                viewProj,
                 isPreview: !options.sectionPlane.enabled, // Preview mode when not enabled
                 min: options.sectionPlane.min,
                 max: options.sectionPlane.max,

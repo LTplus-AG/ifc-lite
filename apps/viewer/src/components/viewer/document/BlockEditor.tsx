@@ -40,6 +40,7 @@ const KIND_LABEL_KEY = {
   chart: 'document.block.kindChart',
   topic: 'document.block.kindTopic',
   spacer: 'document.block.kindSpacer',
+  table: 'document.block.kindTable',
 } as const satisfies Record<DocumentBlock['kind'], TranslationKey>;
 const field = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs';
 

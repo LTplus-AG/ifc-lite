@@ -52,6 +52,8 @@ export function exportDocument(document: DocumentSpec): void {
 
 export const freshDocumentId = (): string => `document-${crypto.randomUUID()}`;
 export const freshBlockId = (): string => `block-${crypto.randomUUID()}`;
+/** The id of the list copy a table block embeds (#5142) — never a library list's id. */
+export const freshListCopyId = (): string => `document-list-${crypto.randomUUID()}`;
 
 /**
  * Parse a document file: validated, and re-identified so the imported copy
@@ -65,7 +67,15 @@ export function parseDocumentFile(text: string): DocumentSpec {
     throw new Error(`Not a document file: ${errors.slice(0, 3).map((e) => `${e.path || '/'} ${e.message}`).join('; ')}`);
   }
   const spec = parsed as DocumentSpec;
-  return { ...spec, id: freshDocumentId(), blocks: spec.blocks.map((b) => ({ ...b, id: freshBlockId() })) };
+  return {
+    ...spec,
+    id: freshDocumentId(),
+    // A table block's embedded list is re-identified too (#5142): it is a copy, and must never
+    // share an id with a list in this browser's library.
+    blocks: spec.blocks.map((b) => (b.kind === 'table'
+      ? { ...b, id: freshBlockId(), source: { ...b.source, list: { ...b.source.list, id: freshListCopyId() } } }
+      : { ...b, id: freshBlockId() })),
+  };
 }
 
 export function importDocument(file: File): Promise<DocumentSpec> {

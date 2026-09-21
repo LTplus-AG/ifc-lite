@@ -9,6 +9,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DocumentPreview } from '../../components/viewer/document/DocumentPreview';
+import { DOCUMENT_VERSION } from '../../lib/document/types';
 import { CoordRow } from '../../components/viewer/properties/CoordinateDisplay';
 import { closeContrastBrowser, measureTextContrastOnSurface, measureTextHoverColors, type Theme } from './render-harness';
 import { extractClassNameAfter } from './extract-classname';
@@ -29,7 +30,7 @@ function classContaining(markup: string, token: string): string {
 
 function renderDocumentPreview(): string {
   return renderToStaticMarkup(createElement(DocumentPreview, {
-    document: { version: 2, id: 'contrast', name: 'Contrast preview', page: { size: 'A4', orientation: 'portrait' }, blocks: [] },
+    document: { version: DOCUMENT_VERSION, id: 'contrast', name: 'Contrast preview', page: { size: 'A4', orientation: 'portrait' }, blocks: [] },
     bindings: { models: [], activeModelId: null, today: new Date('2026-01-01') },
     aggregations: new Map(),
     chartMessages: new Map(),

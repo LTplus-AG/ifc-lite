@@ -12,8 +12,9 @@
  * The shape is plain JSON: it is what `.ifclite-document.json` carries.
  */
 import type { ChartSpec, ReportPageSetup } from '@ifc-lite/charts';
+import type { ListDefinition } from '@ifc-lite/lists';
 
-export const DOCUMENT_VERSION = 2;
+export const DOCUMENT_VERSION = 3;
 
 /** A block that can sit two-up in a row (#4940): `'half'` only takes effect when the block right after it is also a chart/image at `'half'`; unpaired, it prints full width. */
 export type BlockWidth = 'full' | 'half';
@@ -68,7 +69,42 @@ export interface SpacerBlock {
   height: number;
 }
 
-export type DocumentBlock = TextBlock | ImageBlock | ChartBlock | TopicBlock | SpacerBlock;
+/** Data rows a table block prints before its "… n more rows" line (#5142): one A4 portrait page by default. */
+export const TABLE_ROWS_DEFAULT = 50;
+export const TABLE_ROWS_MAX = 500;
+
+/**
+ * Where a table block's rows come from (#5142). One kind today; the
+ * discriminator is where a validation-results table (#5138) plugs in.
+ */
+export type TableSource = ListTableSource;
+
+export interface ListTableSource {
+  kind: 'list';
+  /**
+   * A copy of the list (lists live in localStorage; the document must
+   * travel), re-run on the loaded models whenever the document is shown or
+   * printed. `expressIdsByModel` is never stored: it is keyed by the
+   * per-load model id, so a selection snapshot is dead after any reload.
+   */
+  list: ListDefinition;
+  /** Library / preset id the copy came from — enables "Update from saved list". */
+  fromListId?: string;
+}
+
+/** A list printed as a table (#5142): head + rows, paginated with the head repeated. */
+export interface TableBlock {
+  kind: 'table';
+  id: string;
+  source: TableSource;
+  /** Printed above the table; empty → the list's name. */
+  title?: string;
+  caption?: string;
+  /** Data rows printed before "… n more rows"; 1..TABLE_ROWS_MAX, default TABLE_ROWS_DEFAULT. */
+  maxRows?: number;
+}
+
+export type DocumentBlock = TextBlock | ImageBlock | ChartBlock | TopicBlock | SpacerBlock | TableBlock;
 export type DocumentBlockKind = DocumentBlock['kind'];
 
 export const CHART_BLOCK_HEIGHT_MIN = 120;
@@ -89,15 +125,17 @@ export function isHalfPairable(block: DocumentBlock): block is (ChartBlock | Ima
 }
 
 /**
- * `.ifclite-document.json` version 1 -> 2 (#4940): the shape did not change
- * for existing blocks (`width`/`height` on chart/image are new optional
- * fields, the new text styles and the spacer block are additive), so a v1
- * document is a v2 document with the version number bumped. Anything that
- * is not a recognizable v1 document passes through unchanged so
+ * `.ifclite-document.json` version 1 -> 2 (#4940) -> 3 (#5142): the shape
+ * did not change for existing blocks (v2 added optional `width`/`height`
+ * on chart/image, text styles and the spacer block; v3 added the table
+ * block), so an older document is the current one with the version number
+ * bumped. The bump is still made, so an older viewer refuses a file with a
+ * block it cannot print instead of silently dropping it. Anything that is
+ * not a recognizable older document passes through unchanged so
  * `validateDocumentSpec` reports the real problem.
  */
 export function migrateDocumentSpec(raw: unknown): unknown {
-  if (!isRecord(raw) || raw.version !== 1) return raw;
+  if (!isRecord(raw) || (raw.version !== 1 && raw.version !== 2)) return raw;
   return { ...raw, version: DOCUMENT_VERSION };
 }
 
@@ -168,9 +206,41 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
         // height in the preview (review finding).
         if (typeof block.height !== 'number' || !Number.isFinite(block.height) || !(block.height > 0)) errors.push({ path: `${at}.height`, message: 'expected a positive number' });
         break;
+      case 'table':
+        validateTableBlock(block, at, errors);
+        break;
       default:
-        errors.push({ path: `${at}.kind`, message: 'expected text | image | chart | topic | spacer' });
+        errors.push({ path: `${at}.kind`, message: 'expected text | image | chart | topic | spacer | table' });
     }
   });
   return errors;
+}
+
+/** Structural check of a table block (#5142); the list engine validates the definition's meaning at run time. */
+function validateTableBlock(block: Record<string, unknown>, at: string, errors: DocumentValidationError[]): void {
+  const source = block.source;
+  if (!isRecord(source) || source.kind !== 'list') {
+    errors.push({ path: `${at}.source`, message: 'expected source.kind list' });
+  } else {
+    const list = source.list;
+    const columnsOk = isRecord(list) && Array.isArray(list.columns) && list.columns.every((c: unknown) => isRecord(c) && isString(c.id));
+    if (!isRecord(list) || !isString(list.id) || list.id.length === 0 || !isString(list.name) || !Array.isArray(list.entityTypes) || !Array.isArray(list.conditions) || !columnsOk) {
+      errors.push({ path: `${at}.source.list`, message: 'expected a list definition' });
+    } else if (list.expressIdsByModel !== undefined) {
+      errors.push({ path: `${at}.source.list.expressIdsByModel`, message: 'not allowed in a document' });
+    }
+    if (source.fromListId !== undefined && !isString(source.fromListId)) errors.push({ path: `${at}.source.fromListId`, message: 'expected a string' });
+  }
+  if (block.title !== undefined && !isString(block.title)) errors.push({ path: `${at}.title`, message: 'expected a string' });
+  if (block.caption !== undefined && !isString(block.caption)) errors.push({ path: `${at}.caption`, message: 'expected a string' });
+  if (block.maxRows !== undefined && (!Number.isInteger(block.maxRows) || (block.maxRows as number) < 1 || (block.maxRows as number) > TABLE_ROWS_MAX)) {
+    errors.push({ path: `${at}.maxRows`, message: `expected an integer between 1 and ${TABLE_ROWS_MAX}` });
+  }
+}
+
+/** The copy of a list a table block stores: a fresh id, no selection snapshot (see `ListTableSource.list`). */
+export function listCopyForDocument(list: ListDefinition, id: string): ListDefinition {
+  const { expressIdsByModel: _dropped, ...rest } = list;
+  void _dropped;
+  return { ...rest, id };
 }

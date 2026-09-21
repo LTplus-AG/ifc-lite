@@ -21,6 +21,9 @@ import { fixtureModel } from '@/test/store-fixture.js';
 import { render, click, cleanup } from '@/test/render.js';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
 import type { DocumentPdfSeams } from '@/lib/document/generate-document-pdf.js';
+import { Toaster } from '@/components/ui/toast';
+import { DOCUMENT_VERSION, type DocumentSpec } from '@/lib/document/types.js';
+import { LIST_PRESETS } from '@/lib/lists';
 import { DocumentPanel, ensureActiveDocument } from './DocumentPanel.js';
 
 const MINI_IFC = `ISO-10303-21;
@@ -141,6 +144,39 @@ describe('DocumentPanel over a parsed model (#4594)', () => {
     await change(ui.querySelector<HTMLSelectElement>('select[aria-label="Orientation"]')!, 'landscape');
     await settle();
     assert.equal(useViewerStore.getState().documents[1].page.orientation, 'landscape');
+  });
+
+  it('a table block whose list did not run prints its message in place AND is counted in the export toast, never a silent success (review finding, #5142)', async () => {
+    const drawn: string[] = [];
+    const seams = async (): Promise<DocumentPdfSeams> => ({
+      createDoc: async () => ({
+        addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {},
+        text: (t) => { drawn.push(t); }, addImage: () => {}, svg: async () => {}, table: () => { drawn.push('<table>'); },
+        pageCount: () => 1, output: () => new Blob(['pdf']),
+      }),
+      renderSvg: (aggregation, w, h, theme) => renderChartSvg({ aggregation, width: w, height: h, theme, showTitle: false }),
+      capture: null,
+      theme: DEFAULT_THEME,
+      now: () => new Date(0),
+      imageSize: async () => ({ w: 2, h: 1 }),
+    });
+    // An imported document carrying a table block (the shape a shared `.ifclite-document.json` has).
+    const doc: DocumentSpec = { version: DOCUMENT_VERSION, id: 'doc-tbl', name: 'Imported', page: { size: 'A4', orientation: 'portrait' }, blocks: [
+      { kind: 'table', id: 'tb', source: { kind: 'list', list: { ...LIST_PRESETS[0], id: 'copy' }, fromListId: LIST_PRESETS[0].id } },
+    ] };
+    useViewerStore.setState({ documents: [doc], activeDocumentId: doc.id });
+    const ui = render(<><DocumentPanel pdfSeams={seams} /><Toaster /></>);
+    await settle();
+    click(ui.querySelector('[data-document-export]')!);
+    let toastText = '';
+    for (let i = 0; i < 20 && !toastText; i++) {
+      await settle();
+      toastText = document.body.querySelector('[data-sonner-toast], [role="status"]')?.textContent ?? '';
+      if (!/exported/.test(toastText)) toastText = '';
+    }
+    assert.match(toastText, /1 table not printed/);
+    assert.ok(!drawn.includes('<table>'), 'no grid was drawn for a list that did not run');
+    assert.ok(drawn.some((t) => /Table not ready|could not be run|Load a model/.test(t)), drawn.join(' | '));
   });
 
   it('"Export PDF" prints the resolved page through the seams and downloads it', async () => {

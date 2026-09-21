@@ -10,6 +10,7 @@ import { render, cleanup } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore, type FederatedModel } from '@/store/index.js';
 import type { LandXmlPolyline, LandXmlTinDocument } from './ingest/landXmlSemantics.js';
+import { planPolyline } from './ingest/landXmlPlanGeometry.js';
 import { uploadLandXmlOverlayGuarded, useLandXmlOverlayLines } from './useLandXmlOverlayLines.js';
 
 const initialState = useViewerStore.getState();
@@ -163,7 +164,7 @@ describe('LandXML source overlay rendering (#5042)', () => {
 
   it('does not fall back to source x=0..1 when an aligned line reprojection was suppressed (#5048)', () => {
     const source = line('suppressed');
-    source.points = [[0, 0, 0], [1, 1, 1e100]];
+    source.points = [[0, 0, 0], [1, 1, 1]];
     source.renderedPointState = 'suppressed';
     const model = landXmlModel('suppressed-cross-crs', source);
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
@@ -171,6 +172,22 @@ describe('LandXML source overlay rendering (#5042)', () => {
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
     assert.equal(vertices.length, 0, 'an unsafe line has no source-frame fallback after its surface aligned');
+  });
+
+  it('accepts millimetre-rounded authored curve lengths but rejects topology mismatches (#5048)', () => {
+    const point = (northing: number, easting: number) => ({ northing, easting, elevation: 0 });
+    const geometry = {
+      sourceId: 'rounded-arc', ordinal: 1, kind: 'curve' as const, pointScopeId: null,
+      start: { kind: 'coordinates' as const, point: point(0, 250), pntRef: null },
+      end: { kind: 'coordinates' as const, point: point(250, 0), pntRef: null },
+      center: { kind: 'coordinates' as const, point: point(0, 0), pntRef: null },
+      pi: null, intermediatePoints: [], rotation: 'ccw', radius: 250,
+      declaredLength: 392.699, properties: {},
+    };
+    const resolved = { start: point(0, 250), end: point(250, 0), center: point(0, 0) };
+    assert.ok(planPolyline(geometry, resolved), 'ordinary decimal rounding remains renderable');
+    assert.equal(planPolyline({ ...geometry, declaredLength: 390 }, resolved), null,
+      'a metre-scale disagreement remains a refusal');
   });
 
   it('does not lift a two-dimensional source list to an invented elevation', () => {

@@ -35,7 +35,12 @@ function tessellateCurve(
     ? (endAngle - startAngle + tau) % tau
     : -((startAngle - endAngle + tau) % tau);
   if (Math.abs(delta) <= 1e-9) return null;
-  if (geometry.declaredLength !== null && Math.abs(radius * Math.abs(delta) - geometry.declaredLength) > 1e-9 * Math.max(radius, geometry.declaredLength, 1)) return null;
+  if (geometry.declaredLength !== null) {
+    // Exporters commonly round authored lengths to millimetres. Preserve that
+    // ordinary survey precision while still refusing a real topology mismatch.
+    const tolerance = Math.max(1e-3, 1e-6 * Math.max(radius, geometry.declaredLength, 1));
+    if (Math.abs(radius * Math.abs(delta) - geometry.declaredLength) > tolerance) return null;
+  }
   const count = Math.min(64, Math.max(1, Math.ceil(Math.abs(delta) / tau * 64)));
   const points = [resolved.start];
   for (let index = 1; index < count; index++) {

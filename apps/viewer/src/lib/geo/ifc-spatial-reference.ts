@@ -26,6 +26,16 @@ function declaredEpsg(name: string | undefined): string | undefined {
   return match ? `EPSG:${match[1]}` : undefined;
 }
 
+/** Exact, authoritative vertical-datum aliases commonly written by IFC tools. */
+function declaredVerticalEpsg(name: string | undefined): string | undefined {
+  const epsg = declaredEpsg(name);
+  if (epsg) return epsg;
+  const normalized = name?.trim().toUpperCase();
+  if (normalized === 'NAVD88' || normalized === 'NORTH AMERICAN VERTICAL DATUM 1988') return 'EPSG:5703';
+  if (normalized === 'NAP' || normalized === 'NORMAAL AMSTERDAMS PEIL') return 'EPSG:5709';
+  return undefined;
+}
+
 /**
  * Convert current IFC metadata to an immutable format-neutral reference.
  * `effectiveMapConversionForGeometry` remains the one #2526 map-absolute
@@ -41,7 +51,7 @@ export function spatialReferenceFromIfc(input: IfcSpatialReferenceInput): ModelS
   );
   const scale = getEffectiveAxisScales(conversion, mapUnitScale, lengthUnitScale);
   const epsg = declaredEpsg(input.projectedCRS.name);
-  const verticalEpsg = declaredEpsg(input.projectedCRS.verticalDatum);
+  const verticalEpsg = declaredVerticalEpsg(input.projectedCRS.verticalDatum);
   return Object.freeze({
     source: Object.freeze({
       axes: ['east', 'up', 'south'],

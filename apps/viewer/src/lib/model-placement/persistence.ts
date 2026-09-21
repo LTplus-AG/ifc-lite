@@ -22,7 +22,10 @@ import type { ModelPlacement } from './state.js';
  * anything that could ever be a decision made once rather than read fresh. */
 export function georeferencedPlacementFrameKey(placement: ModelSpatialPlacement): string {
   const info = placement.coordinateInfo;
-  return JSON.stringify({ spatialReference: placement.spatialReference,
+  const { source, horizontal, vertical, localToProjected } = placement.spatialReference;
+  return JSON.stringify({ spatialReference: {
+    source, horizontal: horizontal?.id, vertical: vertical?.id, localToProjected,
+  },
     originShift: info?.originShift, rotation: info?.buildingRotation });
 }
 

@@ -12,7 +12,11 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { expandTriangles, type ClashSolidInput } from './clash-solid-pipeline.js';
+import { ClashSolidPipeline, expandTriangles, type ClashSolidInput } from './clash-solid-pipeline.js';
+
+(globalThis as Record<string, unknown>).GPUShaderStage = { VERTEX: 1 };
+(globalThis as Record<string, unknown>).GPUColorWrite = { ALL: 15 };
+(globalThis as Record<string, unknown>).GPUBufferUsage = { COPY_DST: 8, VERTEX: 32, UNIFORM: 64 };
 
 /** Compare through an f32 round-trip: the vertex buffer is Float32Array, so an
  *  input literal like 0.9 legitimately comes back as 0.8999999761581421. */
@@ -89,5 +93,58 @@ describe('expandTriangles', () => {
       color: [1, 1, 1, 1],
     };
     assert.equal(expandTriangles(input).length, 0);
+  });
+
+  it('keeps a 5,000-km centimetre residual through the anchored solid draw (#5049)', () => {
+    const writes: Float32Array[] = [];
+    const device = {
+      createBindGroupLayout: () => ({}) as GPUBindGroupLayout,
+      createPipelineLayout: () => ({}) as GPUPipelineLayout,
+      createShaderModule: () => ({}) as GPUShaderModule,
+      createRenderPipeline: () => ({}) as GPURenderPipeline,
+      createBindGroup: () => ({}) as GPUBindGroup,
+      createBuffer: () => ({ destroy() {} }) as GPUBuffer,
+      queue: {
+        writeBuffer(_buffer: GPUBuffer, _offset: number, data: ArrayBufferView) {
+          writes.push(new Float32Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)));
+        },
+      },
+    } as unknown as GPUDevice;
+    const pipeline = new ClashSolidPipeline(device, 'bgra8unorm', 1);
+    pipeline.upload({
+      positions: new Float64Array([
+        5_000_000.275, 100, -20,
+        5_000_000.285, 100, -20,
+        5_000_000.275, 100.01, -20,
+      ]),
+      indices: new Uint32Array([0, 1, 2]),
+      color: [1, 0, 0, 1],
+    });
+    const pass = { setPipeline() {}, setBindGroup() {}, setVertexBuffer() {}, draw() {} } as unknown as GPURenderPassEncoder;
+    pipeline.render(
+      pass,
+      new Float32Array(16).fill(1),
+      new Float32Array(16).fill(2),
+      [5_000_000.25, 100, -20],
+    );
+    const vertices = writes.find((write) => write.length === 21);
+    const uniform = writes.find((write) => write.length === 40);
+    assert.ok(vertices, 'the local clash-solid vertex stream was not uploaded');
+    assert.ok(uniform, 'the clash-solid RTE draw uniform was not uploaded');
+    assert.ok(Math.abs(vertices[7] - 0.01) < 1e-7, `lost local clash edge: ${vertices[7]}`);
+    const residual = uniform[32] + uniform[36];
+    assert.ok(Math.abs(residual - 0.025) < 1e-7, `lost clash origin residual: ${residual}`);
+    assert.equal(uniform[35], 1, 'Float64 clash output must select the RTE shader route');
+    assert.equal(uniform[16], 2, 'Float64 clash output must carry the RTE projection');
+
+    pipeline.upload({
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      indices: new Uint32Array([0, 1, 2]),
+      color: [1, 0, 0, 1],
+    });
+    pipeline.render(pass, new Float32Array(16).fill(3), new Float32Array(16).fill(4), [0, 0, 0]);
+    const legacy = writes[writes.length - 1];
+    assert.equal(legacy[35], 0, 'legacy Float32 callers must retain the global route');
+    assert.equal(legacy[0], 3, 'legacy Float32 callers retain the global projection');
   });
 });

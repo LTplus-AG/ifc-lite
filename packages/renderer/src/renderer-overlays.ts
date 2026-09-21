@@ -210,7 +210,7 @@ export class RendererOverlays {
         // overlap volume shows opaque through both ghosted parents rather
         // than being buried inside them.
         if (this.clashSolidPipeline?.hasGeometry()) {
-            this.clashSolidPipeline.render(pass, viewProj);
+            this.clashSolidPipeline.render(pass, viewProj, ctx.rteViewProj, ctx.rteCamera);
         }
         this.symbolic.drawTexts(
             pass,

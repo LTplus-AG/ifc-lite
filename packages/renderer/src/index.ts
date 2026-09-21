@@ -3537,7 +3537,7 @@ export class Renderer {
      * one, box/lines as the fallback when it didn't).
      */
     setClashIntersectionSolid(
-        solid: { positions: Float32Array | Float64Array; indices: Uint32Array; color: [number, number, number, number] } | null,
+        solid: { positions: Float32Array | Float64Array; origin?: [number, number, number]; indices: Uint32Array; color: [number, number, number, number] } | null,
     ): void {
         this.overlays.setClashIntersectionSolid(solid);
     }

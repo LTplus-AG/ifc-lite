@@ -64,6 +64,16 @@ function sharedBytes(buffer: ArrayBuffer): SharedArrayBuffer {
 const parseDocument = (text: string) => parseLandXmlTinInCurrentRealm(bytes(text));
 const parseViewer = (buffer: ArrayBuffer | SharedArrayBuffer) => parseLandXmlViewerModelAsync(buffer);
 
+function assertSectionNormals(mesh: { normals: Float32Array }): void {
+  const normals = Array.from(mesh.normals);
+  assert.ok(normals.every(Number.isFinite));
+  for (let index = 0; index < normals.length; index += 3) {
+    assert.ok(Math.abs(Math.hypot(normals[index], normals[index + 1], normals[index + 2]) - 1) < 1e-5);
+  }
+  assert.ok(normals.some((value, index) => index % 3 === 0 && Math.abs(value) > 0.5));
+  assert.ok(normals.some((value, index) => index % 3 === 1 && Math.abs(value) > 0.05));
+}
+
 describe('LandXML content dispatch (#5041)', () => {
   it('recognizes default and prefixed roots without claiming generic XML', () => {
     assert.equal(isLandXmlContent(new Uint8Array(bytes(LANDXML))), true);
@@ -460,6 +470,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     }, { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] });
     assert.equal(world.max[0] - world.min[0], 2);
     assert.equal(world.max[1] - world.min[1], 10);
+    assertSectionNormals(mesh);
     const ellipse = await parseViewer(bytes(pipes.replace('<RectPipe width="2" height="10"/>', '<ElliPipe span="2" height="10"/>')));
     const ellipseWorld = Array.from(ellipse.geometryResult.meshes[0].positions).reduce((bounds, value, index) => {
       const axis = index % 3, coordinate = value + ellipse.geometryResult.meshes[0].origin[axis];
@@ -468,6 +479,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     }, { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] });
     assert.ok(Math.abs((ellipseWorld.max[0] - ellipseWorld.min[0]) - 2) < 1e-6);
     assert.ok(Math.abs((ellipseWorld.max[1] - ellipseWorld.min[1]) - 9.510565) < 1e-5, 'the ten-sided ellipse follows its authored height, not a 2 m circle');
+    assertSectionNormals(ellipse.geometryResult.meshes[0]);
     const egg = await parseViewer(bytes(pipes.replace('<RectPipe width="2" height="10"/>', '<EggPipe span="2" height="10"/>')));
     assert.equal(egg.geometryResult.meshes.length, 0);
     assert.ok(egg.warnings.some((warning) => warning.includes('Egg pipe cross-section is retained but not rendered')));

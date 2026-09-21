@@ -60,6 +60,9 @@ function addSegment(points: Point[], start: Point, end: Point, shape: CrossSecti
 
 function meshForRoute(route: Point[], shape: CrossSection, expressId: number): { mesh: MeshData; bounds: Bounds3D } | null {
   const rings: Point[] = [];
+  // Each declared segment owns its endpoint rings. LandXML Pipe/Center is a
+  // pass-through point, not a tangent or radius contract, so no cap or
+  // interpolated bend is fabricated at a joint.
   for (let index = 1; index < route.length; index++) addSegment(rings, route[index - 1], route[index], shape);
   if (rings.length === 0) return null;
   const origin = route.reduce((total, item) => ({ x: total.x + item.x / route.length, y: total.y + item.y / route.length, z: total.z + item.z / route.length }), { x: 0, y: 0, z: 0 });
@@ -70,6 +73,18 @@ function meshForRoute(route: Point[], shape: CrossSection, expressId: number): {
   for (let segment = 0; segment < rings.length / (sides * 2); segment++) for (let side = 0; side < sides; side++) {
     const start = segment * sides * 2, next = (side + 1) % sides;
     indices.push(start + side, start + next, start + sides + next, start + side, start + sides + next, start + sides + side);
+  }
+  const sums = new Float64Array(positions.length);
+  for (let index = 0; index < indices.length; index += 3) {
+    const [a, b, c] = [indices[index], indices[index + 1], indices[index + 2]];
+    const ab = [positions[b * 3] - positions[a * 3], positions[b * 3 + 1] - positions[a * 3 + 1], positions[b * 3 + 2] - positions[a * 3 + 2]];
+    const ac = [positions[c * 3] - positions[a * 3], positions[c * 3 + 1] - positions[a * 3 + 1], positions[c * 3 + 2] - positions[a * 3 + 2]];
+    const normal = [ab[1] * ac[2] - ab[2] * ac[1], ab[2] * ac[0] - ab[0] * ac[2], ab[0] * ac[1] - ab[1] * ac[0]];
+    for (const vertex of [a, b, c]) { sums[vertex * 3] += normal[0]; sums[vertex * 3 + 1] += normal[1]; sums[vertex * 3 + 2] += normal[2]; }
+  }
+  for (let index = 0; index < normals.length; index += 3) {
+    const length = Math.hypot(sums[index], sums[index + 1], sums[index + 2]);
+    if (length > Number.EPSILON) { normals[index] = sums[index] / length; normals[index + 1] = sums[index + 1] / length; normals[index + 2] = sums[index + 2] / length; }
   }
   return { mesh: { expressId, positions, normals, indices: new Uint32Array(indices), color: [0.2, 0.48, 0.8, 1], origin: [origin.x, origin.y, origin.z] }, bounds: { min, max } };
 }

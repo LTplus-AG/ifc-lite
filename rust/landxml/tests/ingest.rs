@@ -1299,6 +1299,53 @@ fn issue_5045_parsed_circular_curves_validate_length_units_and_large_scale_endpo
 }
 
 #[test]
+fn issue_5045_parsed_circular_curves_stay_stable_for_shallow_and_near_parallel_grades(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = |before: f64, after: f64, length: f64, radius: f64| {
+        format!(
+            r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="A" length="2000" staStart="0"><Profile><ProfAlign name="design"><PVI>0 {before:.15}</PVI><CircCurve length="{length:.15}" radius="{radius:.15}">1000 0</CircCurve><PVI>2000 {after:.15}</PVI></ProfAlign></Profile></Alignment></Alignments></LandXML>"#,
+        )
+    };
+    let shallow = parse(source(-0.000001, 0.000002, 10.0, 1.0e10).as_bytes())?;
+    let shallow_profile = &shallow.profiles[0];
+    let shallow_elevation = |station| {
+        shallow_profile
+            .evaluate_elevation_at(station)
+            .unwrap()
+            .unwrap()
+    };
+    assert!(shallow_elevation(1000.0).is_finite());
+    assert!((shallow_elevation(995.0) + 5.0e-9).abs() < 1.0e-12);
+    assert!((shallow_elevation(1005.0) - 1.0e-8).abs() < 1.0e-12);
+
+    let near_parallel = parse(source(-100.0, 100.000001, 98.51853222109241, 1.0e11).as_bytes())?;
+    assert!(near_parallel.profiles[0]
+        .evaluate_elevation_at(1000.0)?
+        .is_some());
+
+    for (incoming_grade, outgoing_grade) in [
+        (0.1_f64, 0.2_f64),
+        (0.2_f64, 0.1_f64),
+        (-0.2_f64, -0.1_f64),
+        (-0.1_f64, -0.2_f64),
+    ] {
+        let sine_change = outgoing_grade.atan().sin() - incoming_grade.atan().sin();
+        let radius = 20.0 / sine_change.abs();
+        let profile = parse(
+            source(
+                -1000.0 * incoming_grade,
+                1000.0 * outgoing_grade,
+                20.0,
+                radius,
+            )
+            .as_bytes(),
+        )?;
+        assert!(profile.profiles[0].evaluate_elevation_at(1000.0)?.is_some());
+    }
+    Ok(())
+}
+
+#[test]
 fn issue_5045_refuses_nonfinite_profile_results_and_invalid_curve_extents(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use ifc_lite_landxml::LandXmlProfileEvaluationError;

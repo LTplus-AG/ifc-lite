@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use crate::profile_circular::circular_geometry;
+use crate::profile_circular::{circular_geometry, cosine_difference};
 use crate::{
     LandXmlProfile, LandXmlProfileEvaluationError, LandXmlProfileKind, LandXmlVerticalCurve,
     LandXmlVerticalCurveKind,
@@ -292,9 +292,7 @@ fn evaluate_circular(
     finite_elevation(
         pvi_elevation
             + incoming_grade * start_relative_to_pvi
-            + ((1.0 - geometry.sine_in * geometry.sine_in).sqrt()
-                - (1.0 - sine * sine).max(0.0).sqrt())
-                / geometry.curvature,
+            + cosine_difference(geometry.sine_in, sine) / geometry.curvature,
     )
 }
 
@@ -306,24 +304,9 @@ fn circular_bounds(
     radius: Option<f64>,
 ) -> Result<(f64, f64), LandXmlProfileEvaluationError> {
     let geometry = circular_geometry(incoming_grade, outgoing_grade, length, radius)?;
-    let rise = ((1.0 - geometry.sine_in * geometry.sine_in).sqrt()
-        - (1.0 - geometry.sine_out * geometry.sine_out).sqrt())
-        / geometry.curvature;
-    let grade_change = outgoing_grade - incoming_grade;
-    if !rise.is_finite() || !grade_change.is_finite() || grade_change.abs() <= f64::EPSILON {
-        return Err(LandXmlProfileEvaluationError::NonFiniteEvaluation);
-    }
-    let start_relative_to_pvi = (rise - outgoing_grade * geometry.length) / grade_change;
-    let end_relative_to_pvi = start_relative_to_pvi + geometry.length;
-    if !start_relative_to_pvi.is_finite() || !end_relative_to_pvi.is_finite() {
-        return Err(LandXmlProfileEvaluationError::NonFiniteEvaluation);
-    }
-    if start_relative_to_pvi >= 0.0 || end_relative_to_pvi <= 0.0 {
-        return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
-    }
     Ok((
-        pvi_station + start_relative_to_pvi,
-        pvi_station + end_relative_to_pvi,
+        pvi_station - geometry.start_tangent,
+        pvi_station + geometry.end_tangent,
     ))
 }
 

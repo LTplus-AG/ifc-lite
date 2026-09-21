@@ -606,6 +606,72 @@ describe('realignFederationModels — switching the anchor back restores it (#20
     assert.equal(worldPositionsOf(b.geometryResult!.meshes[0])[0], 101,
       'the newer B→X alignment must survive the stale B pass rollback (not the old source x=1)');
   });
+
+  it('reads immutable store records only after a queued pass enters the transaction (#5048)', async () => {
+    // Zustand's updateModel replaces the record. If the second request retains
+    // the pre-queue array, it sees B without the first pass's snapshot, takes
+    // x=101 as a new baseline, and re-bakes it to x=201. The live record has
+    // the x=1 baseline and must stay at x=101.
+    const x = model([boxMesh(81, [0, 0, 0])], coordinateInfo(), georef({ eastings: 0 }));
+    const b = model([boxMesh(82, [1, 0, 0])], coordinateInfo(), georef({ eastings: 100 }));
+    const models = new Map<string, TestModel>([['X', x], ['B', b]]);
+    const updateImmutable = (modelId: string, patch: Partial<RealignableModel>) => {
+      const previous = models.get(modelId);
+      if (!previous) return;
+      models.set(modelId, { ...previous, ...patch });
+    };
+    const params = () => ({
+      models: () => Array.from(models.entries()) as Array<[string, TestModel]>,
+      getModel: (modelId: string) => models.get(modelId),
+      anchorModelId: 'X',
+      anchorGeoref: resolveGeoref('X', models.get('X')!),
+      resolveGeoref,
+      updateModel: updateImmutable,
+    });
+
+    await Promise.all([
+      realignFederationModels<TestModel>(params()),
+      realignFederationModels<TestModel>(params()),
+    ]);
+    assert.equal(worldPositionsOf(models.get('B')!.geometryResult!.meshes[0])[0], 101,
+      'the queued same-CRS pass must restore B\'s live snapshot, never capture the first baked x=101 as baseline');
+  });
+
+  it('does not roll back over a replacement model that arrives during a CRS await (#5048)', async () => {
+    const x = model([boxMesh(91, [0, 0, 0])], coordinateInfo(), georef({ eastings: 0 }));
+    const b = model([boxMesh(92, [1, 0, 0])], coordinateInfo(), georef({ eastings: 100 }, 'EPSG:4326'));
+    const models = new Map<string, TestModel>([['X', x], ['B', b]]);
+    const updateImmutable = (modelId: string, patch: Partial<RealignableModel>) => {
+      const previous = models.get(modelId);
+      if (previous) models.set(modelId, { ...previous, ...patch });
+    };
+    let replaced = false;
+    const resolveWithReplacement = (modelId: string, candidate: TestModel): ModelSpatialPlacement | null => {
+      if (modelId === 'B' && !replaced) {
+        replaced = true;
+        // `alignGeometryToReference` now awaits its CRS definitions. Queue the
+        // replacement after this resolver returns so it lands in that await,
+        // not before the old transaction chose B.
+        queueMicrotask(() => {
+          models.set('B', model([boxMesh(93, [9100, 0, 0])], coordinateInfo(), georef({ eastings: 9100 })));
+        });
+      }
+      return resolveGeoref(modelId, candidate);
+    };
+    const result = await realignFederationModels<TestModel>({
+      models: () => Array.from(models.entries()) as Array<[string, TestModel]>,
+      getModel: (modelId) => models.get(modelId),
+      anchorModelId: 'X', anchorGeoref: resolveGeoref('X', x),
+      resolveGeoref: resolveWithReplacement, updateModel: updateImmutable,
+    });
+
+    const replacement = models.get('B')!;
+    assert.equal(result.stale, true, 'the old transaction must stop once B is replaced');
+    assert.equal(worldPositionsOf(replacement.geometryResult!.meshes[0])[0], 9100,
+      'rollback must retain the replacement geometry rather than restoring old B');
+    assert.equal(replacement.preAlignment, undefined,
+      'rollback must retain the replacement\'s own baseline rather than installing old B\'s snapshot');
+  });
 });
 
 /**

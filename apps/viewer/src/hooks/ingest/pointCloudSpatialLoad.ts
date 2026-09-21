@@ -15,6 +15,7 @@ import {
   type PointCloudSourceUnit,
 } from './pointCloudAlignment';
 import { findReferenceSpatialModel } from './federationAlign';
+import { canonicalRendererPlacement } from './federationCanonicalReference';
 import type { PointCloudFormat } from './pointCloudIngest';
 import { hasUsableLasWktFrame, spatialReferenceFromLasBlob, spatialReferenceFromSourceMetadata } from './sourceSpatialReference';
 
@@ -62,7 +63,18 @@ export async function preparePointCloudSpatialLoad(
     && sourceSpatialReference.vertical?.id === reference.placement.spatialReference.vertical?.id;
   const alignment = sameFrame && reference
     ? computePointCloudAlignment(reference.placement, sourceUnit, sourceSpatialReference) ?? undefined
-    : undefined;
+    // A LAS/LAZ scan can itself be the first (including primary) spatial
+    // asset. Its decoder emits its declared native axis/unit tuple, while the
+    // renderer is always East/Up/South metres; do that conversion immediately
+    // instead of waiting for a later IFC anchor to happen to arrive. The raw
+    // source reference remains the registry provenance for future anchors.
+    : !reference && sourceSpatialReference && (format === 'las' || format === 'laz')
+      ? computePointCloudAlignment(
+        canonicalRendererPlacement({ spatialReference: sourceSpatialReference }),
+        sourceUnit,
+        sourceSpatialReference,
+      ) ?? undefined
+      : undefined;
   if (isCurrent() && reference && !sameFrame && (format === 'las' || format === 'laz' || format === 'e57')) {
     toast.info(`${format.toUpperCase()} CRS is missing or differs from the federation anchor; automatic placement was refused.`);
   }

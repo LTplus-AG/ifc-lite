@@ -216,8 +216,7 @@ export function useIfcFederation(
   const realignFederation = useCallback(async (): Promise<void> => {
     const realignSession = ++realignSessionRef.current;
     const state = useViewerStore.getState();
-    const allModels = Array.from(state.models.entries()) as Array<[string, FederatedModel]>;
-    if (allModels.length === 0) { toast.info('No models loaded — nothing to re-align.'); return; }
+    if (state.models.size === 0) { toast.info('No models loaded — nothing to re-align.'); return; }
 
     const referenceSelection = findReferenceSpatialModel();
     if (!referenceSelection) {
@@ -234,7 +233,8 @@ export function useIfcFederation(
     // model stays un-rotated for the whole pass; the declared headings are
     // re-applied once on top of the new alignment (`useModelRotationSync`).
     const { counts, anchorGeoref, movedModelIds } = await withModelRotationsUnbaked(() => realignFederationModels({
-      models: allModels,
+      models: () => Array.from(useViewerStore.getState().models.entries()) as Array<[string, FederatedModel]>,
+      getModel: (modelId) => useViewerStore.getState().models.get(modelId),
       anchorModelId: referenceSelection.modelId,
       anchorGeoref: referenceSelection.placement,
       resolveGeoref: (modelId, model) => (

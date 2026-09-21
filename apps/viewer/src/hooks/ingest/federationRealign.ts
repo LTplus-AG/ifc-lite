@@ -162,8 +162,8 @@ export interface RealignCounts {
 }
 
 export interface RealignFederationParams<M extends RealignableModel> {
-  /** Every model in the federation, `[modelId, model]`, anchor included. */
-  models: ReadonlyArray<readonly [string, M]>;
+  models: ReadonlyArray<readonly [string, M]> | (() => ReadonlyArray<readonly [string, M]>);
+  getModel?: (modelId: string) => M | undefined;
   anchorModelId: string;
   /**
    * The anchor's georeference as the caller resolved it. Its `coordinateInfo`
@@ -243,10 +243,28 @@ export function realignFederationModels<M extends RealignableModel>(
 async function realignFederationModelsTransaction<M extends RealignableModel>(
   params: RealignFederationParams<M>,
 ): Promise<RealignFederationResult> {
-  const { models, anchorModelId, resolveGeoref, updateModel } = params;
+  const models = typeof params.models === 'function' ? params.models() : params.models;
+  const { anchorModelId, resolveGeoref, updateModel } = params;
   const isCurrent = params.isCurrent ?? (() => true);
   const counts: RealignCounts = { aligned: 0, reprojected: 0, skipped: 0, failed: 0 };
   const movedModelIds: string[] = [];
+  const expectedModels = new Map(models);
+  const currentModel = (modelId: string): M | undefined => params.getModel?.(modelId);
+  const isLive = (modelId: string): boolean => {
+    if (!params.getModel) return true;
+    return currentModel(modelId) === expectedModels.get(modelId);
+  };
+  const commit = (modelId: string, patch: Partial<RealignableModel>): boolean => {
+    if (!isLive(modelId)) return false;
+    updateModel(modelId, patch);
+    // A normal Zustand patch makes the next expected record identity.
+    if (params.getModel) {
+      const updated = currentModel(modelId);
+      if (!updated) return false;
+      expectedModels.set(modelId, updated);
+    }
+    return true;
+  };
   const before = new Map(models.map(([modelId, model]) => [modelId, {
     geometry: model.geometryResult ? capturePreAlignment(model.geometryResult) : undefined,
     preAlignment: model.preAlignment,
@@ -257,8 +275,10 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
     for (const [modelId, model] of models) {
       const saved = before.get(modelId);
       if (!saved) continue;
+      // Rollback must not overwrite a replacement/removal after an await.
+      if (!isLive(modelId)) continue;
       if (model.geometryResult && saved.geometry) restorePreAlignment(model.geometryResult, saved.geometry);
-      updateModel(modelId, {
+      commit(modelId, {
         preAlignment: saved.preAlignment,
         federationAlignmentStatus: saved.federationAlignmentStatus,
       });
@@ -274,6 +294,7 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
     const anchorModel = models.find(([modelId]) => modelId === anchorModelId)?.[1];
     const anchorGeometry = anchorModel?.geometryResult;
     if (anchorModel) {
+      if (!isLive(anchorModelId)) return stale();
       if (anchorGeometry) {
         const snapshot = anchorModel.preAlignment;
         if (snapshot) {
@@ -286,10 +307,10 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
       // how every previous defect in this path started. Clearing also restores
       // the invariant the loader documents ("undefined for the anchor itself")
       // and drops the geometry-sized copies.
-      updateModel(anchorModelId, {
+      if (!commit(anchorModelId, {
         preAlignment: undefined,
         federationAlignmentStatus: 'anchor',
-      });
+      })) return stale();
       if (anchorModel.landXmlDocument) landXmlUpdates.push(clearLandXmlRenderedLineUpdates(anchorModel.landXmlDocument));
     }
 
@@ -307,13 +328,14 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
 
     for (const [modelId, model] of models) {
       if (modelId === anchorModelId) continue;
+      if (!isLive(modelId)) return stale();
       const geometry = model.geometryResult;
       if (!geometry) {
       // Say so, rather than leaving the badge from the PREVIOUS anchor. A model
       // with no geometry cannot be aligned against anything, and a stale
       // `same-crs` here reads in the models panel and the basepoint overlay as
       // "aligned to the current anchor" — a claim nothing in this pass made.
-        updateModel(modelId, { federationAlignmentStatus: 'none' });
+        if (!commit(modelId, { federationAlignmentStatus: 'none' })) return stale();
         counts.skipped += 1;
         continue;
       }
@@ -331,10 +353,10 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
     // one that matters is its own, not the frame it was last baked into.
       const georef = resolveGeoref(modelId, model);
       if (!georef) {
-        updateModel(modelId, {
+        if (!commit(modelId, {
           preAlignment: snapshot,
           federationAlignmentStatus: 'none',
-        });
+        })) return stale();
       // Skipped by the ALIGNMENT, but the restore above still moved it out of
       // the previous anchor's frame.
         if (restoredFromSnapshot) movedModelIds.push(modelId);
@@ -345,10 +367,11 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
       }
 
       const status = await alignGeometryToReference(geometry, georef, anchorGeoref);
-      updateModel(modelId, {
+      if (!isLive(modelId)) return stale();
+      if (!commit(modelId, {
         preAlignment: snapshot,
         federationAlignmentStatus: status,
-      });
+      })) return stale();
       if (restoredFromSnapshot || status === 'same-crs' || status === 'reprojected') {
         movedModelIds.push(modelId);
       }

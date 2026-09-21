@@ -191,6 +191,10 @@ function makeGeoref(overrides: {
   const projectedCRS: ProjectedCRS = {
     id: 2,
     name: 'EPSG:32632',
+    // Cross-format spatial alignment is intentionally fail-closed without a
+    // matching vertical datum. This fixture declares the same target datum as
+    // its E57 source rather than weakening that production guard (#5048).
+    verticalDatum: 'EPSG:5729',
     mapUnitScale: 1,
     ...overrides.projectedCRS,
   };

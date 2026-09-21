@@ -52,6 +52,10 @@ fn map_4_to_2x3(t: &str) -> Option<&'static str> {
         // name since IFC4 inserted ElementType/PredefinedType mid-list.
         "IFCDOORTYPE" => "IFCDOORSTYLE",
         "IFCWINDOWTYPE" => "IFCWINDOWSTYLE",
+        // #4206, door/window's bug class: unmapped, fell through to a proxy.
+        "IFCSTRUCTURALLOADCASE" => "IFCSTRUCTURALLOADGROUP",
+        "IFCSTRUCTURALCURVEACTION" => "IFCSTRUCTURALLINEARACTION",
+        "IFCSTRUCTURALSURFACEACTION" => "IFCSTRUCTURALPLANARACTION",
         _ => return None,
     })
 }
@@ -87,6 +91,14 @@ fn by_name_attr_remap_names(entity_type: &str) -> Option<(&'static [&'static str
                 "HasPropertySets", "RepresentationMaps", "Tag", "ConstructionType", "OperationType",
                 "ParameterTakesPrecedence", "Sizeable",
             ],
+        )),
+        // #4206: IFC4 appends PredefinedType where IFC2X3 inserts CausedBy
+        // before ProjectedOrTrue -- neither list is a positional prefix.
+        "IFCSTRUCTURALCURVEACTION" | "IFCSTRUCTURALSURFACEACTION" => Some((
+            &["GlobalId", "OwnerHistory", "Name", "Description", "ObjectType", "ObjectPlacement",
+              "Representation", "AppliedLoad", "GlobalOrLocal", "DestabilizingLoad", "ProjectedOrTrue", "PredefinedType"],
+            &["GlobalId", "OwnerHistory", "Name", "Description", "ObjectType", "ObjectPlacement",
+              "Representation", "AppliedLoad", "GlobalOrLocal", "DestabilizingLoad", "CausedBy", "ProjectedOrTrue"],
         )),
         _ => None,
     }
@@ -168,6 +180,7 @@ fn ifc2x3_attr_count(t: &str) -> Option<usize> {
         | "IFCBUILDINGELEMENTPROXY" => 9,
         "IFCPILE" => 11,
         "IFCDOOR" | "IFCWINDOW" => 10,
+        "IFCSTRUCTURALLOADGROUP" => 10, // #4206: drops trailing SelfWeightCoefficients
         _ => return None,
     })
 }

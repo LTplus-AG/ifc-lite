@@ -9,28 +9,36 @@
 //! "not for this key, stop asking": the first is 202, the second 404. A cache
 //! miss alone cannot make that distinction — the entry could be absent because
 //! nothing ever asked for it, which is exactly the case the issue's 404 is
-//! for. This set is the missing signal: a key is present in it for the
-//! lifetime of the one background task that could still write it
-//! (`parse_parquet_stream`'s data-model fill), and gone the moment that task
-//! ends, however it ends.
+//! for. This map is the missing signal: a key is present in it for the
+//! lifetime of every background task that could still write it
+//! (`parse_parquet_stream`'s data-model fill), and gone only once every such
+//! task for that key has ended, however each one ends.
+//!
+//! Refcounted, not a plain set (PR #5134 review): two concurrent uploads of
+//! the same content each spawn their own fill and each call `begin` with the
+//! same cache key. A plain set's `remove` on either `Drop` would clear the
+//! key while the other fill is still running, and a `GET` racing that window
+//! would see 404 for a fill that is, in fact, still in progress.
 
-use rustc_hash::FxHashSet;
+use rustc_hash::FxHashMap;
 use std::sync::{Arc, Mutex};
 
-/// The set of cache keys with a data-model write in flight. One instance
-/// lives on `AppState`, shared by every request.
+/// The refcounted set of cache keys with a data-model write in flight. One
+/// instance lives on `AppState`, shared by every request. The count is how
+/// many live guards currently name that key, not a byte size or anything
+/// meaningful beyond "still positive".
 #[derive(Default)]
-pub struct InFlightKeys(Mutex<FxHashSet<String>>);
+pub struct InFlightKeys(Mutex<FxHashMap<String, usize>>);
 
 impl InFlightKeys {
-    /// Mark `key` as in flight and return a guard that clears it on drop.
+    /// Mark `key` as in flight and return a guard that un-marks it on drop.
     ///
     /// Takes `self` as `Arc` so the returned guard can outlive the borrow —
     /// it is moved into the spawned task, which outlives the request handler
     /// that calls `begin`.
     pub fn begin(self: &Arc<Self>, key: String) -> InFlightGuard {
         if let Ok(mut keys) = self.0.lock() {
-            keys.insert(key.clone());
+            *keys.entry(key.clone()).or_insert(0) += 1;
         }
         InFlightGuard {
             keys: self.clone(),
@@ -40,18 +48,22 @@ impl InFlightKeys {
 
     /// Whether a write for `key` is in flight right now.
     ///
-    /// A lock-poisoned set (a prior holder panicked mid-mutation) answers
+    /// A lock-poisoned map (a prior holder panicked mid-mutation) answers
     /// `false`: the safe direction is a 404 telling the client to re-upload,
     /// not a 202 that polls a key nothing can ever finish writing.
     pub fn contains(&self, key: &str) -> bool {
-        self.0.lock().map(|keys| keys.contains(key)).unwrap_or(false)
+        self.0
+            .lock()
+            .map(|keys| keys.contains_key(key))
+            .unwrap_or(false)
     }
 }
 
-/// RAII marker returned by [`InFlightKeys::begin`]. Removes its key on drop —
-/// on task completion, on early return (e.g. admission saturated), and on
-/// panic unwind alike, so the marker can never outlive the work it stands
-/// for.
+/// RAII marker returned by [`InFlightKeys::begin`]. Decrements its key's
+/// count on drop -- on task completion, on early return (e.g. admission
+/// saturated), and on panic unwind alike -- removing the key only once the
+/// count reaches zero, so one of two concurrent fills for the same key ending
+/// can never un-mark the other's still-running fill.
 pub struct InFlightGuard {
     keys: Arc<InFlightKeys>,
     key: String,
@@ -60,7 +72,12 @@ pub struct InFlightGuard {
 impl Drop for InFlightGuard {
     fn drop(&mut self) {
         if let Ok(mut keys) = self.keys.0.lock() {
-            keys.remove(&self.key);
+            if let Some(count) = keys.get_mut(&self.key) {
+                *count -= 1;
+                if *count == 0 {
+                    keys.remove(&self.key);
+                }
+            }
         }
     }
 }
@@ -94,5 +111,26 @@ mod tests {
         assert!(keys.contains("b"));
         drop(guard_b);
         assert!(!keys.contains("b"));
+    }
+
+    /// Two concurrent fills for the SAME key (issue #5134 review: two
+    /// uploads of identical content each spawning their own data-model
+    /// task): dropping one guard must not un-mark the other's still-running
+    /// fill. Only the last drop clears the key.
+    #[test]
+    fn two_guards_for_the_same_key_require_both_to_drop() {
+        let keys = Arc::new(InFlightKeys::default());
+        let first = keys.begin("k".to_string());
+        let second = keys.begin("k".to_string());
+        assert!(keys.contains("k"));
+
+        drop(first);
+        assert!(
+            keys.contains("k"),
+            "the second fill is still running; the key must still read as in-flight"
+        );
+
+        drop(second);
+        assert!(!keys.contains("k"), "the last guard's drop must clear the key");
     }
 }

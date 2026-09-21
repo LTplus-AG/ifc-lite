@@ -33,17 +33,26 @@ pub async fn get_data_model(
     State(state): State<AppState>,
     axum::extract::Path(cache_key): axum::extract::Path<String>,
 ) -> Result<Response, ApiError> {
-    // Snapshot BEFORE the cache read, not after: reading it after would let a
-    // write that finishes (and clears the marker) between the two checks lose
-    // the race the other way, answering 404 for a fill that in fact just
-    // landed -- checked here, `parse_parquet_stream`'s in-flight window ends
-    // only once the cache write itself is resolved, so this snapshot is
-    // conservative (may report in-flight a hair after the write lands, never
-    // the reverse).
-    let in_flight = state.data_model_in_flight.contains(&cache_key);
+    // Checked on BOTH sides of the (awaited, disk-I/O) cache read, not once,
+    // and answering 202 if EITHER saw it (issue #5134 review): a single
+    // check before the read leaves the read's whole await window open for a
+    // fill to begin and go unnoticed, and a single check after leaves the
+    // window before the read open the same way in the other direction --
+    // either alone can land on a 404 for a fill that is (or was, moments
+    // ago) genuinely in progress. `fetchDataModel` treats 404 as terminal, so
+    // that false negative does not just cost a retry, it stops the client
+    // from ever asking again. A real background fill's begin-to-drop span is
+    // milliseconds to seconds of real parse/serialize/write work, so the
+    // residual window -- a fill starting AND finishing its own drop entirely
+    // between these two checks -- is negligible; closing it fully would need
+    // a lock spanning both the in-memory marker and the disk read, which is
+    // disproportionate here.
+    let in_flight_before = state.data_model_in_flight.contains(&cache_key);
     let data_model_cache_key = data_model_cache_key(&cache_key);
+    let cached = state.cache.get_bytes(&data_model_cache_key).await?;
+    let in_flight = in_flight_before || state.data_model_in_flight.contains(&cache_key);
 
-    match state.cache.get_bytes(&data_model_cache_key).await? {
+    match cached {
         Some(data_model_parquet) => {
             tracing::info!(
                 cache_key = %cache_key,

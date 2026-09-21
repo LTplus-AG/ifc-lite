@@ -114,9 +114,9 @@ impl<'a> PipeParser<'a> {
                 self.start(&start)?;
                 self.end(None)
             }
-            Event::End(end) => self.end(Some(end.name().as_ref())),
-            Event::Text(text) => self.text(text.as_ref()),
-            Event::CData(text) => self.cdata(text.as_ref()),
+            Event::End(end) => self.end(Some(end.name().as_ref().as_bytes())),
+            Event::Text(text) => self.text(text.as_ref().as_bytes()),
+            Event::CData(text) => self.cdata(text.as_ref().as_bytes()),
             Event::DocType(_) => Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
             _ => Ok(()),
         }
@@ -131,7 +131,7 @@ impl<'a> PipeParser<'a> {
             return Err(error(Code::LimitExceeded, "XML depth limit exceeded"));
         }
         let name = start.name();
-        let (_, local, prefix) = split_name(name.as_ref(), self.limits.max_name_bytes)?;
+        let (_, local, prefix) = split_name(name.as_ref().as_bytes(), self.limits.max_name_bytes)?;
         let (attributes, namespaces, references) = attributes(start, &self.limits)?;
         self.check_cancel_and_work(attributes.len())?;
         self.check_character_references(references)?;
@@ -154,19 +154,20 @@ impl<'a> PipeParser<'a> {
             let capability = classify_landxml_version(namespace, attr(&attributes, "version"));
             if !capability.supports_tin_ingestion() {
                 return Err(match capability {
-                crate::LandXmlVersionCapability::NotLandXml => {
-                    error(
+                    crate::LandXmlVersionCapability::NotLandXml => error(
                         Code::UnsupportedNamespace,
                         "root namespace is not a recognized LandXML namespace",
-                    )
-                }
-                _ => error(
+                    ),
+                    _ => error(
                         Code::UnsupportedVersion,
                         "LandXML namespaces require a known version declaration",
                     ),
                 });
             }
-            self.schema = capability.schema().expect("supported capability has a schema").to_owned();
+            self.schema = capability
+                .schema()
+                .expect("supported capability has a schema")
+                .to_owned();
             self.target_namespace = namespace.map(str::to_owned);
             if let Some(diagnostic) = compatibility_version_diagnostic(
                 capability,
@@ -174,7 +175,9 @@ impl<'a> PipeParser<'a> {
             ) {
                 self.capability_diagnostics.push(diagnostic);
             }
-            self.version = attr(&attributes, "version").expect("supported capability has a version").to_owned();
+            self.version = attr(&attributes, "version")
+                .expect("supported capability has a version")
+                .to_owned();
             self.root_seen = true;
         }
         let target = namespace == self.target_namespace.as_deref();

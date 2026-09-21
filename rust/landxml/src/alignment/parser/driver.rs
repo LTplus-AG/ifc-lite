@@ -62,7 +62,7 @@ impl Parser<'_> {
             return Err(limit("XML depth limit exceeded"));
         }
         let name = start.name();
-        let (_, local, prefix) = split_name(name.as_ref(), self.limits.xml.max_name_bytes)?;
+        let (_, local, prefix) = split_name(name.as_ref().as_bytes(), self.limits.xml.max_name_bytes)?;
         let (attrs, namespaces, refs) = attributes(start, &self.limits.xml)?;
         self.check(attrs.len().saturating_add(refs))?;
         self.check_character_references(refs)?;

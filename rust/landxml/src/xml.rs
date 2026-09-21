@@ -70,13 +70,13 @@ pub(crate) fn attributes(
             return Err(error(Code::LimitExceeded, "attribute limit exceeded"));
         }
         let key = utf8(
-            attribute.key.as_ref(),
+            attribute.key.as_ref().as_bytes(),
             limits.max_name_bytes,
             "attribute name",
         )?
         .to_owned();
         let raw_value = utf8(
-            attribute.value.as_ref(),
+            attribute.value.as_ref().as_bytes(),
             limits.max_attribute_bytes,
             "attribute value",
         )?;

@@ -199,9 +199,9 @@ impl<'a> Parser<'a> {
                 self.start(&value)?;
                 self.end(None)
             }
-            Event::End(value) => self.end(Some(value.name().as_ref())),
-            Event::Text(value) => self.text(value.as_ref()),
-            Event::CData(value) => self.cdata(value.as_ref()),
+            Event::End(value) => self.end(Some(value.name().as_ref().as_bytes())),
+            Event::Text(value) => self.text(value.as_ref().as_bytes()),
+            Event::CData(value) => self.cdata(value.as_ref().as_bytes()),
             Event::DocType(_) => Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
             _ => Ok(()),
         }

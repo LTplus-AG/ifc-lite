@@ -123,6 +123,18 @@ describe('LandXML source overlay rendering (#5042)', () => {
     assert.deepEqual(source.points, [[10, 20, 30], [40, 50, 60]], 'inspection retains authored coordinates');
   });
 
+  it('does not fall back to source x=0..1 when an aligned line reprojection was suppressed (#5048)', () => {
+    const source = line('suppressed');
+    source.points = [[0, 0, 0], [1, 1, 1e100]];
+    source.renderedPointState = 'suppressed';
+    const model = landXmlModel('suppressed-cross-crs', source);
+    useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
+    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    function Probe() { vertices = useLandXmlOverlayLines(); return null; }
+    render(<Probe />);
+    assert.equal(vertices.length, 0, 'an unsafe line has no source-frame fallback after its surface aligned');
+  });
+
   it('does not lift a two-dimensional source list to an invented elevation', () => {
     const model = landXmlModel('two-dimensional', line('flat', 2));
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: { modelId: model.id, sourceId: 'flat' } });

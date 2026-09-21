@@ -38,6 +38,7 @@ import type { FederatedModel, PreAlignmentSnapshot } from '../../store/index.js'
 import type { ModelSpatialReference } from '@ifc-lite/geometry';
 import { growPreAlignment } from '../../store/slices/data-mesh-prealign.js';
 import { alignGeometryToReference, type ModelSpatialPlacement } from './federationAlign.js';
+import { canonicalRendererPlacement } from './federationCanonicalReference.js';
 import {
   applyLandXmlRenderedLineUpdates,
   buildLandXmlRenderedLineUpdates,
@@ -220,7 +221,26 @@ export interface RealignFederationResult {
  * Restore every model to its own frame and re-bake the non-anchors into the
  * anchor's. See the module header for the two ordering rules.
  */
-export async function realignFederationModels<M extends RealignableModel>(
+let realignmentTail: Promise<void> = Promise.resolve();
+
+/**
+ * Serialize complete transactions, including rollback. A stale pass owns its
+ * snapshot, so allowing a newer pass to publish while the stale one awaits a
+ * CRS operation lets that old snapshot overwrite new geometry on rollback.
+ */
+function serializeRealignment<T>(operation: () => Promise<T>): Promise<T> {
+  const result = realignmentTail.then(operation, operation);
+  realignmentTail = result.then(() => undefined, () => undefined);
+  return result;
+}
+
+export function realignFederationModels<M extends RealignableModel>(
+  params: RealignFederationParams<M>,
+): Promise<RealignFederationResult> {
+  return serializeRealignment(() => realignFederationModelsTransaction(params));
+}
+
+async function realignFederationModelsTransaction<M extends RealignableModel>(
   params: RealignFederationParams<M>,
 ): Promise<RealignFederationResult> {
   const { models, anchorModelId, resolveGeoref, updateModel } = params;
@@ -277,12 +297,13 @@ export async function realignFederationModels<M extends RealignableModel>(
     // just `coordinateInfo`: the IFC adapter's map-absolute guard derives its
     // local operation from that frame, so keeping the operation captured before
     // restore can align A→B→A through B's neutralised conversion.
-    const anchorGeoref = anchorModel
+    const rawAnchorGeoref = anchorModel
       ? resolveGeoref(anchorModelId, anchorModel)
       : params.anchorGeoref;
-    if (!anchorGeoref) {
+    if (!rawAnchorGeoref) {
       throw new Error('Cannot re-align federation: the restored anchor no longer has a valid spatial reference');
     }
+    const anchorGeoref = canonicalRendererPlacement(rawAnchorGeoref);
 
     for (const [modelId, model] of models) {
       if (modelId === anchorModelId) continue;

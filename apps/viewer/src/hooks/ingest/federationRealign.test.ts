@@ -577,6 +577,35 @@ describe('realignFederationModels — switching the anchor back restores it (#20
     assertBytesEqual(a.geometryResult!.meshes[0].positions, before, 'stale work cannot publish a mixed frame');
     assert.equal(a.federationAlignmentStatus, 'none', 'the old alignment badge is restored with the mesh');
   });
+
+  it('serializes a stale rollback before a newer anchor can publish (#5048)', async () => {
+    const x = model([boxMesh(71, [0, 0, 0])], coordinateInfo(), georef({ eastings: 0 }));
+    const b = model([boxMesh(72, [1, 0, 0])], coordinateInfo(), georef({ eastings: 100 }));
+    const models = new Map<string, TestModel>([['X', x], ['B', b]]);
+    let oldCurrent = true;
+    const oldResolve = (modelId: string, candidate: TestModel): ModelSpatialPlacement => {
+      const resolved = resolveGeoref(modelId, candidate);
+      // Force the old operation through the asynchronous cross-CRS path while
+      // the replacement only needs the same-CRS path.
+      return modelId === 'X'
+        ? { ...resolved, spatialReference: { ...resolved.spatialReference, horizontal: { id: 'EPSG:999999' } } }
+        : resolved;
+    };
+    const older = realignFederationModels<TestModel>({
+      models: Array.from(models.entries()), anchorModelId: 'B', anchorGeoref: resolveGeoref('B', b),
+      resolveGeoref: oldResolve, updateModel: applyPatch(models), isCurrent: () => oldCurrent,
+    });
+    oldCurrent = false;
+    const newer = realignFederationModels<TestModel>({
+      models: Array.from(models.entries()), anchorModelId: 'X', anchorGeoref: resolveGeoref('X', x),
+      resolveGeoref, updateModel: applyPatch(models),
+    });
+    const [stale, latest] = await Promise.all([older, newer]);
+    assert.equal(stale.stale, true);
+    assert.equal(latest.counts.aligned, 1, JSON.stringify(latest.counts));
+    assert.equal(worldPositionsOf(b.geometryResult!.meshes[0])[0], 101,
+      'the newer B→X alignment must survive the stale B pass rollback (not the old source x=1)');
+  });
 });
 
 /**

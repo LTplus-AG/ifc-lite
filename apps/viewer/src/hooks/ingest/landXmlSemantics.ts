@@ -16,6 +16,8 @@ export interface LandXmlPolyline {
   /** Derived renderer E/U/S metre coordinates after federation reprojection.
    * Authored `points` remain untouched for inspection/export. */
   renderedPoints?: number[][];
+  /** Whether an aligned line has points to render or was deliberately suppressed. */
+  renderedPointState?: 'aligned' | 'suppressed';
 }
 
 export interface LandXmlTinSurface {

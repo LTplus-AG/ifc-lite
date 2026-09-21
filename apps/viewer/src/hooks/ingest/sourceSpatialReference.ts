@@ -21,6 +21,20 @@ export interface SourceSpatialMetadata {
   provenance: string;
 }
 
+/**
+ * LAS ordinates have no format-level metre guarantee. Once its WKT declares a
+ * CRS, missing or conflicting WKT unit factors are an explicit refusal, not a
+ * licence to reinterpret feet as metres. E57 is deliberately excluded: its
+ * cartesianX/Y/Z payload is defined in metres independently of its CRS WKT.
+ */
+export function hasUsableLasWktFrame(metadata: SourceSpatialMetadata): boolean {
+  if ((metadata.format !== 'las' && metadata.format !== 'laz') || !metadata.wkt) return true;
+  return Number.isFinite(metadata.horizontalUnitToMetres)
+    && metadata.horizontalUnitToMetres! > 0
+    && Number.isFinite(metadata.verticalUnitToMetres)
+    && metadata.verticalUnitToMetres! > 0;
+}
+
 function metadata(
   format: SpatialSourceFormat,
   text: string,
@@ -145,7 +159,7 @@ export async function spatialReferenceFromLasBlob(blob: Blob, format: 'las' | 'l
   if (pointDataOffset < 227 || pointDataOffset > 4 * 1024 * 1024) return undefined;
   const vlrBytes = new Uint8Array(await blob.slice(0, pointDataOffset).arrayBuffer());
   const source = spatialMetadataFromLasVlrs(vlrBytes, format);
-  return source.horizontalId && source.verticalId
+  return source.horizontalId && source.verticalId && hasUsableLasWktFrame(source)
     ? spatialReferenceFromSourceMetadata(source)
     : undefined;
 }

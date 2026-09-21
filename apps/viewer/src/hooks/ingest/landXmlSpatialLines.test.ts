@@ -68,4 +68,22 @@ describe('LandXML federated overlay coordinates (#5048)', () => {
     applyLandXmlRenderedLineUpdates(updates);
     assert.deepStrictEqual(parsed.surfaces[0].breaklines[0].renderedPoints, [[0, 0, 0]]);
   });
+
+  it('suppresses only a failed 1e100 line instead of falling back to source coordinates in an aligned surface (#5048)', async () => {
+    const parsed = document();
+    const valid = parsed.surfaces[0].breaklines[0];
+    valid.points = [[0, 0, 0], [1, 1, 1]];
+    const invalid = { ...valid, sourceId: 'overflow', points: [[0, 0, 0], [1e100, 1e100, 1e100]] };
+    parsed.surfaces[0].breaklines.push(invalid);
+    const source = reference(0, 0, 0, 'EPSG:2056');
+    const target = reference(0, 0, 0, 'EPSG:3857');
+    const updates = await buildLandXmlRenderedLineUpdates(parsed, source, target, undefined);
+    applyLandXmlRenderedLineUpdates(updates);
+
+    assert.equal(valid.renderedPointState, 'aligned', 'a valid sibling remains visible');
+    assert.equal(invalid.renderedPointState, 'suppressed');
+    assert.equal(invalid.renderedPoints, undefined);
+    assert.deepStrictEqual(invalid.points, [[0, 0, 0], [1e100, 1e100, 1e100]],
+      'suppression never rewrites the authored survey record');
+  });
 });

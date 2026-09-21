@@ -47,10 +47,31 @@ function axes(node: WktNode | undefined): WktAxisDirection[] {
     .map((child) => /^[^,]*,\s*(east|west|north|south|up|down)\b/i.exec(child.body)?.[1]?.toLowerCase())
     .filter((value): value is WktAxisDirection => value !== undefined) : [];
 }
-function unit(node: WktNode | undefined): number | undefined {
-  const owned = node && direct(node.body, ['LENGTHUNIT', 'UNIT']);
-  const number = Number(owned && /,\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)/i.exec(owned.body)?.[1]);
+function unitFactor(node: WktNode | undefined): number | undefined {
+  const number = Number(node && /,\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)/i.exec(node.body)?.[1]);
   return Number.isFinite(number) && number > 0 ? number : undefined;
+}
+
+/**
+ * WKT2 allows LENGTHUNIT to belong to each AXIS rather than to the CRS. Keep
+ * every owned candidate: picking the first silently turns a conflicting CRS
+ * declaration into metres (or whichever axis happened to be first).
+ */
+function unit(node: WktNode | undefined): number | undefined {
+  if (!node) return undefined;
+  const candidates = [
+    ...nodes(node.body)
+      .filter((child) => child.name === 'LENGTHUNIT' || child.name === 'UNIT')
+      .map(unitFactor),
+    ...nodes(node.body)
+      .filter((child) => child.name === 'AXIS')
+      .flatMap((axis) => nodes(axis.body)
+        .filter((child) => child.name === 'LENGTHUNIT' || child.name === 'UNIT')
+        .map(unitFactor)),
+  ];
+  if (candidates.length === 0 || candidates.some((value) => value === undefined)) return undefined;
+  const first = candidates[0]!;
+  return candidates.every((value) => value === first) ? first : undefined;
 }
 
 export function extractWktSpatialMetadata(wkt: string): WktSpatialMetadata {

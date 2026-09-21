@@ -40,6 +40,7 @@ import {
 } from './federationAlignAabb.js';
 import { alignNormals } from './alignment-normals.js';
 import { projectedUnitToMetres } from './projected-units.js';
+import { canonicalRendererPlacement } from './federationCanonicalReference.js';
 import proj4 from 'proj4';
 
 type FederatedGeometryResult = NonNullable<FederatedModel['geometryResult']>;
@@ -564,7 +565,7 @@ export function findReferenceSpatialModel(): { modelId: string; placement: Model
     const model = state.models.get(override) as FederatedModel | undefined;
     if (model?.spatialReference && model.geometryResult
       && model.spatialReference.horizontal && model.spatialReference.vertical) {
-      return { modelId: override, placement: { spatialReference: model.spatialReference, coordinateInfo: model.geometryResult.coordinateInfo } };
+      return { modelId: override, placement: canonicalRendererPlacement({ spatialReference: model.spatialReference, coordinateInfo: model.geometryResult.coordinateInfo }) };
     }
     if (model?.ifcDataStore && model.geometryResult) {
       const placement = extractModelSpatialPlacement(
@@ -572,7 +573,7 @@ export function findReferenceSpatialModel(): { modelId: string; placement: Model
         model.geometryResult.coordinateInfo,
         state.georefMutations.get(override),
       );
-      if (placement) return { modelId: override, placement };
+      if (placement) return { modelId: override, placement: canonicalRendererPlacement(placement) };
     }
     // Fall through if the override no longer resolves — keeps loads
     // recoverable even if the user removed the anchor they had pinned.
@@ -583,7 +584,7 @@ export function findReferenceSpatialModel(): { modelId: string; placement: Model
   for (const [modelId, model] of sorted) {
     if (model.spatialReference && model.geometryResult
       && model.spatialReference.horizontal && model.spatialReference.vertical) {
-      return { modelId, placement: { spatialReference: model.spatialReference, coordinateInfo: model.geometryResult.coordinateInfo } };
+      return { modelId, placement: canonicalRendererPlacement({ spatialReference: model.spatialReference, coordinateInfo: model.geometryResult.coordinateInfo }) };
     }
     if (!model.ifcDataStore || !model.geometryResult) continue;
     const placement = extractModelSpatialPlacement(
@@ -591,7 +592,7 @@ export function findReferenceSpatialModel(): { modelId: string; placement: Model
       model.geometryResult.coordinateInfo,
       state.georefMutations.get(modelId),
     );
-    if (placement) return { modelId, placement };
+    if (placement) return { modelId, placement: canonicalRendererPlacement(placement) };
   }
   return null;
 }

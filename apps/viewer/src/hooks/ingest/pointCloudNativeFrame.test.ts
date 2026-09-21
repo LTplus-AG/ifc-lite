@@ -28,6 +28,13 @@ test('stream metadata retains its WKT native frame (#5048)', () => {
   assert.equal(reference?.sourceMetadata?.wkt, wkt);
 });
 
+test('a LAS WKT with conflicting AXIS-owned units is refused, never defaulted to metres (#5048)', () => {
+  const wkt = 'COMPOUNDCRS["grid+height",PROJCRS["grid",AXIS["north",north,LENGTHUNIT["foot",0.3048]],AXIS["east",east,LENGTHUNIT["US survey foot",0.3048006096012192]],ID["EPSG",2236]],VERTCRS["height",AXIS["up",up,LENGTHUNIT["foot",0.3048]],ID["EPSG",5703]]]';
+  assert.equal(pointCloudSpatialReferenceFromMetadata('las', {
+    horizontalId: 'EPSG:2236', verticalId: 'EPSG:5703', wkt, provenance: 'LAS VLR 2112',
+  }), undefined);
+});
+
 function reference(
   source: ModelSpatialReference['source'],
   eastings: number,

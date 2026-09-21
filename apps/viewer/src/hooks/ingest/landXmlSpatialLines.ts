@@ -14,6 +14,7 @@ import type { LandXmlPolyline, LandXmlTinDocument } from './landXmlSemantics.js'
 export interface LandXmlRenderedLineUpdate {
   line: LandXmlPolyline;
   renderedPoints?: number[][];
+  renderedPointState?: 'aligned' | 'suppressed';
 }
 
 function lines(document: LandXmlTinDocument): LandXmlPolyline[] {
@@ -29,9 +30,17 @@ export function clearLandXmlRenderedLineUpdates(document: LandXmlTinDocument): L
 
 /** Apply a prepared result only after its whole rebuild has succeeded. */
 export function applyLandXmlRenderedLineUpdates(updates: readonly LandXmlRenderedLineUpdate[]): void {
-  for (const { line, renderedPoints } of updates) {
-    if (renderedPoints) line.renderedPoints = renderedPoints;
-    else delete line.renderedPoints;
+  for (const { line, renderedPoints, renderedPointState } of updates) {
+    if (renderedPointState === 'suppressed') {
+      delete line.renderedPoints;
+      line.renderedPointState = 'suppressed';
+    } else if (renderedPoints) {
+      line.renderedPoints = renderedPoints;
+      line.renderedPointState = 'aligned';
+    } else {
+      delete line.renderedPoints;
+      delete line.renderedPointState;
+    }
   }
 }
 
@@ -65,13 +74,20 @@ export async function buildLandXmlRenderedLineUpdates(
     const transformed: number[][] = [];
     for (const point of line.points) {
       const height = point[2] ?? elevation;
-      if (height === undefined || !Number.isFinite(height)) return { line };
-      const projected = localViewerToProjected(source, [
+      if (height === undefined || !Number.isFinite(height)) return { line, renderedPointState: 'suppressed' };
+      const sourcePoint = [
         point[1] * document.units!.linearScaleToMeters,
         height * document.units!.elevationScaleToMeters,
         -point[0] * document.units!.linearScaleToMeters,
-      ]);
-      if (!projected) return { line };
+      ] as const;
+      // Overlay vertices ultimately narrow to f32 on the GPU. A finite f64
+      // survey value such as 1e100 is still unrenderable; publishing it as an
+      // "aligned" line would later fall back to the source coordinates.
+      if (!sourcePoint.every((value) => Number.isFinite(Math.fround(value)))) {
+        return { line, renderedPointState: 'suppressed' };
+      }
+      const projected = localViewerToProjected(source, sourcePoint);
+      if (!projected) return { line, renderedPointState: 'suppressed' };
       let east = projected[0];
       let north = projected[1];
       if (sourceProjection && targetProjection) {
@@ -84,13 +100,15 @@ export async function buildLandXmlRenderedLineUpdates(
           north *= targetProjectedUnit;
         } catch (error) {
           console.warn('[LandXML] line reprojection failed:', error);
-          return { line };
+          return { line, renderedPointState: 'suppressed' };
         }
       }
       const local = projectedToLocalViewer(target, [east, north, projected[2]], targetFrame);
-      if (!local?.every(Number.isFinite)) return { line };
+      if (!local?.every(Number.isFinite)) return { line, renderedPointState: 'suppressed' };
       transformed.push([...local]);
     }
-    return transformed.length === line.points.length ? { line, renderedPoints: transformed } : { line };
+    return transformed.length === line.points.length
+      ? { line, renderedPoints: transformed, renderedPointState: 'aligned' }
+      : { line, renderedPointState: 'suppressed' };
   });
 }

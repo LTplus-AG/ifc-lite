@@ -81,6 +81,11 @@ export function useLandXmlOverlayLines(): Float32Array {
           if (selectedSource && (selectedSource.modelId !== model.id || selectedSource.sourceId !== line.sourceId)) {
             continue;
           }
+          // Once the terrain surface is aligned, a failed line reprojection
+          // must not fall back to authored/source coordinates in that new
+          // frame. The source remains inspectable; only its unsafe overlay is
+          // suppressed until the next successful alignment rebuild.
+          if (line.renderedPointState === 'suppressed') continue;
           const planarContourElevation = lineKind === 'contour' ? contourElevation(line) : null;
           if (line.coordinateDimension !== 3 && planarContourElevation === null) continue;
           for (let index = 1; index < line.points.length; index++) {

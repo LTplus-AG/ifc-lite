@@ -16,7 +16,7 @@ import {
 } from './pointCloudAlignment';
 import { findReferenceSpatialModel } from './federationAlign';
 import type { PointCloudFormat } from './pointCloudIngest';
-import { spatialReferenceFromLasBlob, spatialReferenceFromSourceMetadata } from './sourceSpatialReference';
+import { hasUsableLasWktFrame, spatialReferenceFromLasBlob, spatialReferenceFromSourceMetadata } from './sourceSpatialReference';
 
 export function pointCloudSpatialReferenceFromMetadata(
   format: PointCloudFormat,
@@ -25,7 +25,7 @@ export function pointCloudSpatialReferenceFromMetadata(
   if ((format !== 'las' && format !== 'laz' && format !== 'e57')
     || !metadata?.horizontalId || !metadata.verticalId) return undefined;
   const nativeFrame = metadata.wkt ? extractWktSpatialMetadata(metadata.wkt) : {};
-  return spatialReferenceFromSourceMetadata({
+  const source = {
     format: format === 'e57' ? 'e57' : format === 'laz' ? 'laz' : 'las',
     horizontalId: metadata.horizontalId,
     verticalId: metadata.verticalId,
@@ -38,7 +38,8 @@ export function pointCloudSpatialReferenceFromMetadata(
       : {}),
     ...(metadata.wkt ? { wkt: metadata.wkt } : {}),
     provenance: metadata.provenance,
-  });
+  } as const;
+  return hasUsableLasWktFrame(source) ? spatialReferenceFromSourceMetadata(source) : undefined;
 }
 
 export async function preparePointCloudSpatialLoad(

@@ -119,3 +119,42 @@ fn drop_faces_outside_host_vertex_clearance_boundary_is_1e_3() {
          leaving only the anchor triangle"
     );
 }
+
+/// A sliver whose centroid probes BOTH land outside the host is kept when it
+/// sits within the 1 mm clearance of the reference surface (#5127): a flush
+/// cap grazing the host by ~10 µm leaves such a strip along the host's edge,
+/// connected to the closed skin, and dropping it tore ISSUE_068 #1401204. The
+/// same sliver 2 mm off the host is still swept.
+#[test]
+fn drop_faces_outside_host_keeps_a_grazing_sliver_within_centroid_clearance_5127() {
+    let host = box_mesh((0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
+    // Sliver past the +y face at the x=1 edge, tilted so `centroid ± 50 µm·n`
+    // exits the box on both sides (n ≈ (-0.894, -0.447, 0)): the -n probe
+    // lands past y=1, the +n probe past x=1.
+    let sliver = |past_y: f64| {
+        let mut m = Mesh::with_capacity(6, 6);
+        let n = Vector3::new(-0.894, -0.447, 0.0);
+        m.add_vertex(Point3::new(1.0, 1.0 + past_y, 0.4), n);
+        m.add_vertex(Point3::new(1.0, 1.0 + past_y, 0.6), n);
+        m.add_vertex(Point3::new(0.99998, 1.0 + past_y + 0.00004, 0.5), n);
+        m.add_triangle(0, 1, 2);
+        // Anchor: comfortably inside, so the all-dropped bailout cannot mask
+        // a wrong drop.
+        m.add_vertex(Point3::new(0.2, 0.2, 0.2), n);
+        m.add_vertex(Point3::new(0.3, 0.2, 0.2), n);
+        m.add_vertex(Point3::new(0.2, 0.3, 0.2), n);
+        m.add_triangle(3, 4, 5);
+        m
+    };
+
+    let grazing = drop_faces_outside_host(sliver(0.00001), &host);
+    assert_eq!(
+        grazing.triangle_count(),
+        2,
+        "a sliver 10 µm past the host, both probes outside, is within the 1 mm \
+         centroid clearance and must be kept"
+    );
+
+    let far = drop_faces_outside_host(sliver(0.002), &host);
+    assert_eq!(far.triangle_count(), 1, "the same sliver 2 mm off the host is a shard and is swept");
+}

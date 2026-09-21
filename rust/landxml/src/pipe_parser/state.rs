@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    LandXmlCancellation, LandXmlLimits, LandXmlPipeFeature, LandXmlPipeNetwork,
+    LandXmlCancellation, LandXmlCapabilityDiagnostic, LandXmlLimits, LandXmlPipeFeature, LandXmlPipeNetwork,
     LandXmlPipeNetworkCollection, LandXmlPipeProperties, LandXmlPipeRefusal, LandXmlSourceId,
 };
 
@@ -19,6 +19,10 @@ pub(crate) struct PipeParser<'a> {
     pub(super) character_references: usize,
     pub(super) frames: Vec<Frame>,
     pub(super) root_units: Option<RawUnits>,
+    pub(super) schema: String,
+    pub(super) version: String,
+    pub(super) capability_diagnostics: Vec<LandXmlCapabilityDiagnostic>,
+    pub(super) target_namespace: Option<String>,
     pub(super) root_seen: bool,
     pub(super) root_closed: bool,
     pub(super) network: Option<NetworkBuilder>,

@@ -115,36 +115,30 @@ impl Parser<'_> {
             if local != "LandXML" {
                 return Err(error(Code::InvalidSemantic, "root element is not LandXML"));
             }
-            match classify_landxml_version(namespace, attr(&attributes, "version")) {
-                crate::LandXmlVersionCapability::LandXml12Tin => {}
-                crate::LandXmlVersionCapability::LandXml10Unsupported => {
-                    return Err(error(
-                        Code::UnsupportedVersion,
-                        "LandXML 1.0 is recognized but TIN ingestion supports 1.2 only",
-                    ));
-                }
-                crate::LandXmlVersionCapability::LandXml11Unsupported => {
-                    return Err(error(
-                        Code::UnsupportedVersion,
-                        "LandXML 1.1 is recognized but TIN ingestion supports 1.2 only",
-                    ));
-                }
-                crate::LandXmlVersionCapability::LandXml12VersionMismatch => {
-                    return Err(error(
-                        Code::UnsupportedVersion,
-                        "LandXML 1.2 namespace requires an explicit version=\"1.2\"",
-                    ));
-                }
-                crate::LandXmlVersionCapability::NotLandXml => {
-                    return Err(error(
+            let capability = classify_landxml_version(namespace, attr(&attributes, "version"));
+            if !capability.supports_tin_ingestion() {
+                return Err(match capability {
+                    crate::LandXmlVersionCapability::NotLandXml => error(
                         Code::UnsupportedNamespace,
                         "root namespace is not a recognized LandXML namespace",
-                    ));
-                }
+                    ),
+                    _ => error(
+                        Code::UnsupportedVersion,
+                        "LandXML namespaces require a known version declaration",
+                    ),
+                });
+            }
+            self.schema = capability.schema().expect("supported capability has a schema").to_owned();
+            self.target_namespace = namespace.map(str::to_owned);
+            if let Some(diagnostic) = compatibility_version_diagnostic(
+                capability,
+                attr(&attributes, "version").expect("supported capability has a version"),
+            ) {
+                self.record_capability_diagnostic(diagnostic)?;
             }
             self.version = required(&attributes, "version", "LandXML")?.to_owned();
         }
-        let target = namespace == Some(LANDXML_12_NAMESPACE);
+        let target = namespace == self.target_namespace.as_deref();
         let sibling_ordinal = self.frames.last_mut().map_or(1, |parent| {
             let ordinal = parent
                 .child_ordinals

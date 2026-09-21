@@ -5,6 +5,7 @@
 /** Frozen, main-thread-owned federation plan for streamed LandXML meshes. */
 
 import type { CoordinateInfo, GeometryResult, MeshData, ModelSpatialReference } from '@ifc-lite/geometry';
+import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import { createCoordinateInfo, createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
 import { findReferenceSpatialModel, type FederationAlignmentStatus, type ModelSpatialPlacement } from './federationAlign.js';
 import { alignLandXmlComponent } from './federationComponentAlignment.js';
@@ -45,8 +46,6 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
   private readonly source: ModelSpatialPlacement | null;
   private readonly reference = findReferenceSpatialModel()?.placement ?? null;
   private readonly measuredBounds = createEmptyBounds();
-  private dominantBounds: Bounds3D | null = null;
-  private dominantIndices = -1;
   private measured = 0;
   private transaction: LandXmlProvisionalTransaction | null = null;
   private frame: LandXmlRenderFramePlan | null = null;
@@ -77,10 +76,6 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
     const bounds = meshRenderFrameBounds(aligned);
     if (bounds === null) throw new Error('LandXML federation preflight produced non-finite component bounds');
     mergeBounds(this.measuredBounds, bounds);
-    if (aligned.indices.length > this.dominantIndices) {
-      this.dominantIndices = aligned.indices.length;
-      this.dominantBounds = bounds;
-    }
     this.measured++;
   }
 
@@ -88,11 +83,21 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
   freeze(): void {
     this.assertCurrent();
     if (this.frozen) throw new Error('LandXML federation destination frame was frozen twice');
-    if (this.measured !== this.options.componentCount || this.dominantBounds === null) {
+    if (this.measured !== this.options.componentCount) {
       throw new Error('LandXML federation preflight did not reproduce its component envelope');
     }
-    this.frame = deriveLandXmlRenderFrameFromMeasurement(this.measuredBounds, this.dominantBounds);
-    this.coordinateInfo = createCoordinateInfo(this.measuredBounds, this.frame.originShift, this.frame.hasLargeCoordinates);
+    // A federated stream enters the anchor's already-frozen render frame. The
+    // one-component adapter below produces coordinates relative to that frame,
+    // so selecting a second "dominant" LandXML origin here would shift the
+    // input twice and discard anchor RTC/building metadata.
+    if (this.reference?.coordinateInfo) {
+      this.frame = { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: this.reference.coordinateInfo.hasLargeCoordinates };
+      this.coordinateInfo = structuredClone(this.reference.coordinateInfo);
+    } else {
+      const dominantBounds = this.measuredBounds;
+      this.frame = deriveLandXmlRenderFrameFromMeasurement(this.measuredBounds, dominantBounds);
+      this.coordinateInfo = createCoordinateInfo(this.measuredBounds, this.frame.originShift, this.frame.hasLargeCoordinates);
+    }
     this.transaction = new LandXmlProvisionalTransaction(
       this.options.modelId,
       this.options.componentCount,
@@ -158,11 +163,22 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
   }
 
   private async align(mesh: MeshData): Promise<MeshData> {
-    if (!this.source || !this.reference) return mesh;
-    const aligned = await alignLandXmlComponent(mesh, this.options.sourceCoordinateInfo, this.source, this.reference);
-    this.alignmentStatus = aligned.status;
-    if (aligned.status === 'failed') return mesh;
-    return aligned.mesh;
+    if (this.source && this.reference) {
+      const aligned = await alignLandXmlComponent(mesh, this.options.sourceCoordinateInfo, this.source, this.reference);
+      this.alignmentStatus = aligned.status;
+      if (aligned.status !== 'failed') return aligned.mesh;
+      return mesh;
+    }
+    // Unknown-CRS LandXML still uses the federation render origin. This is
+    // the same offset-only operation used by normal federation finalization;
+    // it does not claim geographic equivalence or manufacture a new frame.
+    if (this.reference?.coordinateInfo) {
+      const own = totalYupOffset(this.options.sourceCoordinateInfo);
+      const target = totalYupOffset(this.reference.coordinateInfo);
+      const origin = mesh.origin ?? [0, 0, 0];
+      mesh.origin = [origin[0] + own.x - target.x, origin[1] + own.y - target.y, origin[2] + own.z - target.z];
+    }
+    return mesh;
   }
 
   private assertCurrent(): void {

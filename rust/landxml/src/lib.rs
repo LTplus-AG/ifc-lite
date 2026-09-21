@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-//! Bounded, event-driven LandXML 1.2 source ingestion.
+//! Bounded, event-driven LandXML 1.0, 1.1, and 1.2 source ingestion.
 //!
 //! This crate intentionally stops at durable LandXML semantic records. It
 //! neither fabricates IFC nor creates renderer meshes; later adapters own
@@ -38,13 +38,14 @@ pub use parser::{
     classify_landxml_version, parse_landxml_tin, parse_landxml_tin_with_cancel,
     LANDXML_10_NAMESPACE, LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
 };
-pub use pipe_parser::{parse_landxml_pipe_networks, parse_landxml_pipe_networks_with_cancel};
-pub use pipes::{
-    LandXmlPipe, LandXmlPipeConnectivity, LandXmlPipeFeature, LandXmlPipeFlow, LandXmlPipeGeometry,
-    LandXmlPipeInvert, LandXmlPipeMeasure, LandXmlPipeNetwork, LandXmlPipeNetworkCollection,
-    LandXmlPipeNetworkDocument, LandXmlPipePart, LandXmlPipePosition, LandXmlPipeProperties,
-    LandXmlPipeRefusal, LandXmlPipeSourceBatch, LandXmlPipeStructure, LandXmlPipeUnits,
-    LandXmlStructurePart,
+pub(crate) use parser::compatibility_version_diagnostic;
+pub use profile::{
+    LandXmlAlignment, LandXmlCapabilityDiagnostic, LandXmlCapabilityDiagnosticCode,
+    LandXmlCrossSection, LandXmlCrossSectionPoint, LandXmlCrossSectionPointDataFormat,
+    LandXmlCrossSectionSegment, LandXmlCrossSectionSurface, LandXmlCrossSectionSurfaceKind,
+    LandXmlGradeLine, LandXmlPreservedOnlyExtension, LandXmlPreservedOnlyExtensionKind,
+    LandXmlProfile, LandXmlProfileEvaluationError, LandXmlProfileKind, LandXmlProfilePoint,
+    LandXmlRoadway, LandXmlVerticalCurve, LandXmlVerticalCurveKind,
 };
 pub use plan::{
     parse_landxml_document, parse_landxml_plan, parse_landxml_plan_with_cancel, LandXmlCgPoint,
@@ -53,13 +54,13 @@ pub use plan::{
     LandXmlPlanLimits, LandXmlPlanPoint, LandXmlPlanPointLocation, LandXmlPlanResolver,
     LandXmlPlanSourceBatch,
 };
-pub use profile::{
-    LandXmlAlignment, LandXmlCapabilityDiagnostic, LandXmlCapabilityDiagnosticCode,
-    LandXmlCrossSection, LandXmlCrossSectionPoint, LandXmlCrossSectionPointDataFormat,
-    LandXmlCrossSectionSegment, LandXmlCrossSectionSurface, LandXmlCrossSectionSurfaceKind,
-    LandXmlGradeLine, LandXmlPreservedOnlyExtension, LandXmlPreservedOnlyExtensionKind,
-    LandXmlProfile, LandXmlProfileEvaluationError, LandXmlProfileKind, LandXmlProfilePoint,
-    LandXmlRoadway, LandXmlVerticalCurve, LandXmlVerticalCurveKind,
+pub use pipe_parser::{parse_landxml_pipe_networks, parse_landxml_pipe_networks_with_cancel};
+pub use pipes::{
+    LandXmlPipe, LandXmlPipeConnectivity, LandXmlPipeFeature, LandXmlPipeFlow, LandXmlPipeGeometry,
+    LandXmlPipeInvert, LandXmlPipeMeasure, LandXmlPipeNetwork, LandXmlPipeNetworkCollection,
+    LandXmlPipeNetworkDocument, LandXmlPipePart, LandXmlPipePosition, LandXmlPipeProperties,
+    LandXmlPipeRefusal, LandXmlPipeSourceBatch, LandXmlPipeStructure, LandXmlPipeUnits,
+    LandXmlStructurePart,
 };
 pub use stream::{
     LandXmlMetadataRecord, LandXmlMetadataStreamAssembler, LandXmlMetadataStreamEnd,

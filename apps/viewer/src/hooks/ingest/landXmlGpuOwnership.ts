@@ -6,16 +6,22 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 
-const alreadyUploaded = new WeakSet<MeshData>();
+const uploadedEpoch = new WeakMap<MeshData, number>();
+let sceneEpoch = 0;
 
 /** Mark the store-owned mesh after its identical global-id batch reached GPU. */
 export function markLandXmlGpuUploaded(mesh: MeshData): void {
-  alreadyUploaded.add(mesh);
+  uploadedEpoch.set(mesh, sceneEpoch);
 }
 
 /** Consume the marker exactly once; scene rebuilds must upload again. */
 export function takeLandXmlGpuUploaded(mesh: MeshData): boolean {
-  if (!alreadyUploaded.has(mesh)) return false;
-  alreadyUploaded.delete(mesh);
+  if (uploadedEpoch.get(mesh) !== sceneEpoch) return false;
+  uploadedEpoch.delete(mesh);
   return true;
+}
+
+/** A scene clear destroys the allocation a marker represented. */
+export function invalidateLandXmlGpuOwnershipAfterSceneClear(): void {
+  sceneEpoch++;
 }

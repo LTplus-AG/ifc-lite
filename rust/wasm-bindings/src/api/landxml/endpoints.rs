@@ -30,7 +30,7 @@ extern "C" {
 const LANDXML_TYPES: &str = r#"
 export interface LandXmlTinDocumentJs {
   format: "landxml";
-  schema: "LandXML-1.2";
+  schema: "LandXML-1.0" | "LandXML-1.1" | "LandXML-1.2";
   capabilities: { renderable_tin: boolean; preserved_only_surfaces: number; unknown_extensions: number };
   version: string;
   /** serde_wasm_bindgen omits an absent Rust Option field rather than serializing null. */
@@ -47,7 +47,9 @@ export interface LandXmlTinDocumentJs {
   plan: LandXmlPlanDocumentJs;
 }
 export interface LandXmlPlanDocumentJs {
-  version: string; area_unit?: string; area_scale_to_square_meters?: number;
+  schema: "LandXML-1.0" | "LandXML-1.1" | "LandXML-1.2"; version: string;
+  capability_diagnostics: LandXmlCapabilityDiagnosticJs[];
+  area_unit?: string; area_scale_to_square_meters?: number;
   cogo_points: LandXmlCgPointJs[]; monuments: LandXmlMonumentJs[];
   plan_features: LandXmlPlanFeatureJs[]; parcels: LandXmlParcelJs[]; warnings: string[];
   source_batches: LandXmlPlanSourceBatchJs[]; parcel_probes: LandXmlParcelProbeJs[];
@@ -84,7 +86,11 @@ export interface LandXmlExtensionJs { namespace: string; local_name: string; pat
 export interface LandXmlSourceDocumentJs { tin: LandXmlTinDocumentJs; alignments: LandXmlAlignmentDocumentJs; alignment_render_spans: LandXmlAlignmentRenderSpanJs[]; alignment_render_refusals: LandXmlAlignmentRenderRefusalJs[]; alignment_render_truncated: boolean; }
 export interface LandXmlAlignmentRenderSpanJs { source_id: string; points: LandXmlPlanPointJs[]; }
 export interface LandXmlAlignmentRenderRefusalJs { source_id: string; message: string; }
-export interface LandXmlAlignmentDocumentJs { units?: LandXmlUnitsJs; alignments: LandXmlAlignmentJs[]; warnings: string[]; }
+export interface LandXmlAlignmentDocumentJs {
+  schema: "LandXML-1.0" | "LandXML-1.1" | "LandXML-1.2"; version: string;
+  capability_diagnostics: LandXmlCapabilityDiagnosticJs[];
+  units?: LandXmlUnitsJs; alignments: LandXmlAlignmentJs[]; warnings: string[];
+}
 export interface LandXmlUnitsJs { linear_unit: string; elevation_unit: string; linear_scale_to_meters: number; elevation_scale_to_meters: number; }
 /** Terrain-parser alignment linkage; use LandXmlAlignmentDocumentJs for complete alignment semantics. */
 export interface LandXmlAlignmentSummaryJs { source_id: string; ordinal: number; name: string; length: number; sta_start: number; profile_source_ids: string[]; cross_section_source_ids: string[]; }
@@ -120,7 +126,12 @@ export interface LandXmlRoadwayJs { source_id: string; ordinal: number; name: st
 export interface LandXmlCapabilityDiagnosticJs { code: string; source_id?: string; source_path: string; message: string; }
 export interface LandXmlPreservedOnlyExtensionJs { source_id: string; parent_source_id?: string; local_name: string; source_path: string; kind: "corridor" | "string_line"; }
 export interface LandXmlPipeUnitsJs { linear_unit: string; elevation_unit: string; diameter_unit: string; width_unit: string; height_unit: string; flow_unit?: string; linear_scale_to_meters: number; elevation_scale_to_meters: number; diameter_scale_to_meters: number; width_scale_to_meters: number; height_scale_to_meters: number; }
-export interface LandXmlPipeNetworkDocumentJs { version: string; root_units?: LandXmlPipeUnitsJs; collections: LandXmlPipeCollectionJs[]; features: LandXmlPipeFeatureJs[]; networks: LandXmlPipeNetworkJs[]; refusals: LandXmlPipeRefusalJs[]; }
+export interface LandXmlPipeNetworkDocumentJs {
+  schema: "LandXML-1.0" | "LandXML-1.1" | "LandXML-1.2"; version: string;
+  capability_diagnostics: LandXmlCapabilityDiagnosticJs[];
+  root_units?: LandXmlPipeUnitsJs; collections: LandXmlPipeCollectionJs[];
+  features: LandXmlPipeFeatureJs[]; networks: LandXmlPipeNetworkJs[]; refusals: LandXmlPipeRefusalJs[];
+}
 export interface LandXmlPipeCollectionJs { source_id: string; source_path: string; properties: Record<string, string>; }
 export interface LandXmlPipeFeatureJs { source_id: string; source_path: string; owner_source_id: string; properties: Record<string, string>; }
 export interface LandXmlPipeRefusalJs { source_id: string; source_path: string; code: string; message: string; }
@@ -144,7 +155,9 @@ pub(super) struct LandXmlDocumentJs<'a> {
 
 #[derive(Serialize)]
 pub(crate) struct LandXmlPlanDocumentJs<'a> {
+    schema: &'a str,
     version: &'a str,
+    capability_diagnostics: &'a [ifc_lite_landxml::LandXmlCapabilityDiagnostic],
     area_unit: &'a Option<String>,
     area_scale_to_square_meters: Option<f64>,
     cogo_points: &'a [ifc_lite_landxml::LandXmlCgPoint],
@@ -248,7 +261,9 @@ pub(crate) fn plan_adapter<'a>(
         .saturating_add(1_000);
     let mut resolver = ifc_lite_landxml::LandXmlPlanResolver::new(plan, max_work);
     Ok(LandXmlPlanDocumentJs {
+        schema: &plan.schema,
         version: &plan.version,
+        capability_diagnostics: &plan.capability_diagnostics,
         area_unit: &plan.area_unit,
         area_scale_to_square_meters: plan.area_scale_to_square_meters,
         cogo_points: plan.cogo_points(),

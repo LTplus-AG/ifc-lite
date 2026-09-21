@@ -57,10 +57,10 @@ pub(crate) fn combined_pre_pass(
             if site_position.is_none() {
                 site_position = Some((id, start, end));
             }
-            let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
+            let ifc_type = ifc_lite_core::ifc_type_from_keyword(type_name);
             complex_jobs.push((id, start, end, ifc_type));
         } else if ifc_lite_core::has_geometry_by_name(type_name) {
-            let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
+            let ifc_type = ifc_lite_core::ifc_type_from_keyword(type_name);
             if ifc_lite_core::is_simple_geometry_type(type_name) {
                 simple_jobs.push((id, start, end, ifc_type));
             } else {
@@ -81,7 +81,7 @@ pub(crate) fn combined_pre_pass(
             // routed through this one-shot path keep rendering
             // nothing. Filed as complex (not simple) — it is never
             // one of the named simple element types.
-            let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
+            let ifc_type = ifc_lite_core::ifc_type_from_keyword(type_name);
             complex_jobs.push((id, start, end, ifc_type));
         }
     }

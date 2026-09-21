@@ -224,6 +224,13 @@ pub struct LandXmlAlignment {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LandXmlAlignmentDocument {
+    /// Namespace-selected grammar used to parse this source, independent from
+    /// the producer's declared version string.
+    pub schema: String,
+    /// The producer-authored root version, retained verbatim as provenance.
+    pub version: String,
+    /// Compatibility observations retained for direct alignment-parser consumers.
+    pub capability_diagnostics: Vec<crate::LandXmlCapabilityDiagnostic>,
     /// LandXML's declared linear/elevation units. Alignment geometry remains
     /// authored-value data; a format-neutral georeferencing adapter owns any
     /// coordinate conversion.

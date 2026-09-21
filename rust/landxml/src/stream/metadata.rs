@@ -150,7 +150,9 @@ pub(crate) struct PlanStreamParts {
 impl PlanStreamParts {
     pub(crate) fn new(document: LandXmlPlanDocument) -> Self {
         let LandXmlPlanDocument {
+            schema,
             version,
+            capability_diagnostics,
             units,
             area_unit,
             area_scale_to_square_meters,
@@ -163,7 +165,9 @@ impl PlanStreamParts {
         } = document;
         Self {
             header: Some(LandXmlPlanDocument {
+                schema,
                 version,
+                capability_diagnostics,
                 units,
                 area_unit,
                 area_scale_to_square_meters,
@@ -210,12 +214,18 @@ pub(crate) struct AlignmentStreamParts {
 impl AlignmentStreamParts {
     pub(crate) fn new(document: LandXmlAlignmentDocument) -> Self {
         let LandXmlAlignmentDocument {
+            schema,
+            version,
+            capability_diagnostics,
             units,
             alignments,
             warnings,
         } = document;
         Self {
             header: Some(LandXmlAlignmentDocument {
+                schema,
+                version,
+                capability_diagnostics,
                 units,
                 alignments: Vec::new(),
                 warnings: Vec::new(),
@@ -252,7 +262,9 @@ pub(crate) struct PipeStreamParts {
 impl PipeStreamParts {
     pub(crate) fn new(document: LandXmlPipeNetworkDocument) -> Self {
         let LandXmlPipeNetworkDocument {
+            schema,
             version,
+            capability_diagnostics,
             root_units,
             collections,
             features,
@@ -261,7 +273,9 @@ impl PipeStreamParts {
         } = document;
         Self {
             header: Some(LandXmlPipeNetworkDocument {
+                schema,
                 version,
+                capability_diagnostics,
                 root_units,
                 collections: Vec::new(),
                 features: Vec::new(),

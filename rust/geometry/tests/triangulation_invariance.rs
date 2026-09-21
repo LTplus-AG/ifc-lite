@@ -1978,7 +1978,11 @@ const ISSUE_068_MODEL: &str = "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc";
 // #3925: independently remeasured on pre-#3912 code with the loader frame.
 // #4698: 26 -> 25. #893133 closed (open 25 -> 0) once consolidation stopped
 // dropping its 2 to 6 mm wedge regions and falling back to the raw kernel mesh.
-const ISSUE_068_KNOWN_TORN_HOSTS: usize = 25;
+// #5127: 25 -> 23. #640479 (open 4 -> 0) and #1401653 (3 -> 0) closed once
+// #5033 judged the conform candidate with its collinear slivers removed. The
+// same change first tore #1401204 (0 -> 6) through the stray-shard sweep,
+// which is the fix #5127 carries; that host is back on its blessed row.
+const ISSUE_068_KNOWN_TORN_HOSTS: usize = 23;
 
 /// Coverage floors, one per heavy fixture, bounding BOTH the checked-in golden
 /// and every sweep that gates or blesses against it. [`MIN_VOID_HOSTS`]'s job,

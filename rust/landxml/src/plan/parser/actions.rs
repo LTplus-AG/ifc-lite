@@ -377,7 +377,9 @@ impl Parser<'_> {
     }
     pub(crate) fn document(self) -> LandXmlPlanDocument {
         LandXmlPlanDocument {
+            schema: self.schema,
             version: self.version,
+            capability_diagnostics: self.capability_diagnostics,
             units: self.units,
             area_unit: self.area_unit,
             area_scale_to_square_meters: self.area_scale_to_square_meters,

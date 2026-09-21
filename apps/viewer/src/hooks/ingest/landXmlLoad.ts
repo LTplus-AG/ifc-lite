@@ -10,7 +10,7 @@ import { createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.
 import { toast } from '../../components/ui/toast.js';
 import { parseLandXmlViewerModelFromBlobAsync, type LandXmlViewerModel } from './landXmlViewerModel.js';
 import type { LandXmlGeometryPreflight } from './landXmlIngest.js';
-import type { LandXmlTinDocument } from './landXmlSemantics.js';
+import type { LandXmlSchema, LandXmlTinDocument } from './landXmlSemantics.js';
 import { MAX_RENDER_FRAME_ORIGIN_METRES, meshFitsRenderFrame, meshRenderFrameBounds } from './landXmlRenderFrame.js';
 import { LandXmlProvisionalTransaction } from './landXmlProvisionalTransaction.js';
 import { markLandXmlGpuUploaded } from './landXmlGpuOwnership.js';
@@ -40,7 +40,7 @@ interface LandXmlLoadOptions {
     patch: {
       loadPath: 'landxml';
       landXmlDocument?: LandXmlTinDocument;
-      sourceSchema?: 'LandXML-1.2';
+      sourceSchema?: LandXmlSchema;
       spatialReference?: ModelSpatialReference;
       postAlignmentReframe?: boolean;
       federatedLandXmlStreamingPlan?: FederatedLandXmlStreamingFinalization;

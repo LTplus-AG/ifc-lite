@@ -11,7 +11,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use ifc_lite_core::{keyword_eq, DecodedEntity, EntityDecoder, EntityIndex, EntityScanner, IfcType};
+use ifc_lite_core::{
+    keyword_eq, DecodedEntity, EntityDecoder, EntityIndex, EntityScanner, IfcType,
+    EXPORTER_STRATUM_ALIASES,
+};
 use ifc_lite_geometry::GeometryRouter;
 use ifc_lite_processing::element::{plan_type_geometry, TypeGeometryMode};
 use ifc_lite_processing::prepass::{resolve_unit_scales, UnitScales};
@@ -153,8 +156,6 @@ pub fn stream_export_model_with_options(
     const PSET_CACHE_CAP: usize = 1 << 18; // 262_144 entries
 
     let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
-
-
 
     // Pass 1 — one scan that collects, uncached (each entity visited once here):
     //   • object → attached property/quantity definitions (IfcRelDefinesByProperties),
@@ -303,22 +304,25 @@ pub fn stream_export_model_with_options(
     // Pass 2 — emit a row per IfcProduct occurrence, resolving its property/quantity sets.
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        // Filter on the STEP keyword *before* decoding, skipping the millions of
-        // non-product geometry primitives. `legacy_aware_ifc_type` (not a bare
-        // `from_str`) resolves removed/renamed keywords (IFCPROXY, IFCSOLIDSTRATUM,
-        // …) to their modern base type, matching what the geometry pass meshes —
-        // otherwise those products render as GLB nodes with no attribute row (#1496).
-        let ty = ifc_lite_core::legacy_aware_ifc_type(type_name);
-        if !ty.is_subtype_of(IfcType::IfcProduct) {
+        // Filter on the STEP keyword before decoding, skipping non-product geometry primitives. The three exporter-only stratum
+        // spellings are explicit product compatibility aliases: they keep their
+        // owned exact keyword rather than being relabelled as a nearby EXPRESS
+        // entity, while still receiving the row their geometry needs.
+        let ty = ifc_lite_core::ifc_type_from_keyword(type_name);
+        if !ty.is_subtype_of(IfcType::IfcProduct)
+            && !EXPORTER_STRATUM_ALIASES
+                .iter()
+                .any(|alias| keyword_eq(type_name, alias))
+        {
             continue;
         }
         let entity = match decoder.decode_at_uncached(start, end) {
             Ok(e) => e,
             Err(_) => continue,
         };
-        // PascalCase canonical name (IfcWall), not the STEP keyword (IFCWALL);
-        // the legacy-resolved type, so a proxy is "IfcBuildingElementProxy", not
-        // "Unknown", and equals the node's `ifcType` extra.
+        // PascalCase canonical name (IfcWall), not the STEP keyword (IFCWALL).
+        // An owned unknown compatibility alias intentionally retains its exact
+        // upper-case STEP spelling, matching the geometry label.
         let ifc_type = ty.name().to_string();
         let global_id = opt_string(entity.get(0));
         let name = opt_string(entity.get(2));
@@ -364,23 +368,26 @@ pub fn stream_export_model_with_options(
             }
         }
 
-        f(EntityRow {
-            express_id: id,
-            ifc_type,
-            global_id,
-            name,
-            description,
-            object_type,
-            has_geometry,
-            placement,
-            property_sets,
-            quantity_sets,
-            attributes: if opts.attributes {
-                render_attributes(&entity, type_name, source_schema.as_deref())
-            } else {
-                Vec::new()
+        f(
+            EntityRow {
+                express_id: id,
+                ifc_type,
+                global_id,
+                name,
+                description,
+                object_type,
+                has_geometry,
+                placement,
+                property_sets,
+                quantity_sets,
+                attributes: if opts.attributes {
+                    render_attributes(&entity, type_name, source_schema.as_deref())
+                } else {
+                    Vec::new()
+                },
             },
-        }, Some(&entity));
+            Some(&entity),
+        );
 
         // Keep the property-resolution cache bounded across the whole file.
         // `clear_entity_cache`, not `clear_cache`: the latter also drops the
@@ -419,32 +426,35 @@ pub fn stream_export_model_with_options(
         // IfcRelDefinesByProperties.
         let (property_sets, quantity_sets) = resolve_pset_defs(&mut decoder, &cand.pset_def_ids);
 
-        f(EntityRow {
-            express_id: cand.express_id,
-            // PascalCase canonical name (IfcBoilerType) — equals the node's
-            // `ifcType` extra the geometry pass emits.
-            ifc_type: cand.ifc_type.name().to_string(),
-            global_id: cand.global_id.clone(),
-            name: cand.name.clone(),
-            description: cand.description.clone(),
-            // IfcTypeObject attr 4 is ApplicableOccurrence, not ObjectType.
-            object_type: None,
-            has_geometry: true,
-            placement: None,
-            property_sets,
-            quantity_sets,
-            // Pass 3 has no type handle, so honouring the attributes option
-            // costs one decode per rare orphan-geometry type.
-            attributes: if opts.attributes {
-                decoder
-                    .decode_by_id(cand.express_id)
-                    .ok()
-                    .map(|t| render_attributes(&t, &cand.type_name, source_schema.as_deref()))
-                    .unwrap_or_default()
-            } else {
-                Vec::new()
+        f(
+            EntityRow {
+                express_id: cand.express_id,
+                // PascalCase canonical name (IfcBoilerType) — equals the node's
+                // `ifcType` extra the geometry pass emits.
+                ifc_type: cand.ifc_type.name().to_string(),
+                global_id: cand.global_id.clone(),
+                name: cand.name.clone(),
+                description: cand.description.clone(),
+                // IfcTypeObject attr 4 is ApplicableOccurrence, not ObjectType.
+                object_type: None,
+                has_geometry: true,
+                placement: None,
+                property_sets,
+                quantity_sets,
+                // Pass 3 has no type handle, so honouring the attributes option
+                // costs one decode per rare orphan-geometry type.
+                attributes: if opts.attributes {
+                    decoder
+                        .decode_by_id(cand.express_id)
+                        .ok()
+                        .map(|t| render_attributes(&t, &cand.type_name, source_schema.as_deref()))
+                        .unwrap_or_default()
+                } else {
+                    Vec::new()
+                },
             },
-        }, None);
+            None,
+        );
         if decoder.cache_size() > PSET_CACHE_CAP {
             decoder.clear_entity_cache();
         }

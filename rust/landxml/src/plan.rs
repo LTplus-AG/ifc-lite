@@ -30,7 +30,7 @@ pub struct LandXmlDocument {
     pub plan: LandXmlPlanDocument,
 }
 
-/// Parse all supported LandXML 1.2 semantic families from one source buffer.
+/// Parse all supported LandXML semantic families from one source buffer.
 pub fn parse_landxml_document(
     input: &[u8],
 ) -> std::result::Result<LandXmlDocument, crate::LandXmlError> {

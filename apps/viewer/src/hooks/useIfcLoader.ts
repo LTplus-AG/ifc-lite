@@ -454,9 +454,10 @@ export function useIfcLoader() {
       const fileName = file.name;
       const fileSize = file.size;
       const fileSizeMB = fileSize / (1024 * 1024);
-      // LandXML takes its canonical Blob cursor path before any full-source
-      // buffer exists. These bindings are deliberately initialized here so
-      // the shared finalizer can safely consume them on that early path.
+      // LandXML finalizes before the full-buffer detector below.
+      let format: ReturnType<typeof detectFormat> | 'landxml' = isLandXmlFileName(file.name)
+        ? 'landxml'
+        : 'unknown';
       let loadedBufferByteLength = fileSize;
       let modelSourceIdentity = '';
       let placementIdentity: string | undefined;
@@ -509,7 +510,7 @@ export function useIfcLoader() {
         dataStore: IfcDataStore | null,
         geometryResult: GeometryResult | null,
         schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5',
-        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number; landXmlDocument?: import('./ingest/landXmlSemantics.js').LandXmlTinDocument; sourceSchema?: 'LandXML-1.2'; spatialReference?: ModelSpatialReference; postAlignmentReframe?: boolean; federatedLandXmlStreamingPlan?: FederatedLandXmlStreamingFinalization } & Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>, // #3927, per-call-site like buildModelLoadReportPatch's doc explains
+        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number; landXmlDocument?: import('./ingest/landXmlSemantics.js').LandXmlTinDocument; sourceSchema?: import('./ingest/landXmlSemantics.js').LandXmlSchema; spatialReference?: ModelSpatialReference; postAlignmentReframe?: boolean; federatedLandXmlStreamingPlan?: FederatedLandXmlStreamingFinalization } & Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>, // #3927, per-call-site like buildModelLoadReportPatch's doc explains
         // GPU-instancing shard bytes (#1912), forwarded explicitly rather than
         // closed over: the WASM streaming section's `allInstancedShards` is
         // declared ~800 lines below this closure, so a plain closure read would
@@ -675,15 +676,9 @@ export function useIfcLoader() {
           ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
         });
       };
-      // Detect point clouds from a small head slice FIRST. Point clouds
-      // (E57/LAS/LAZ/PLY/PCD/PTS/XYZ) stream from the Blob in bounded windows
-      // and must NOT be read whole into a (Shared)ArrayBuffer — a multi-GB
-      // scan dies with "Array buffer allocation failed" on that single
-      // allocation, before the streaming decoder ever runs. Magic-byte /
-      // extension detection only needs the first few bytes. Only IFC / GLB /
-      // IFCX actually need the full buffer.
+      // Point clouds stream from Blob; only their head is needed for detection.
       const headBuf = await file.slice(0, 4096).arrayBuffer();
-      const pointCloudFormat = detectPointCloudFormat(file.name, headBuf), landXmlCandidate = isLandXmlFileName(file.name);
+      const pointCloudFormat = detectPointCloudFormat(file.name, headBuf), landXmlCandidate = format === 'landxml';
 
       if (landXmlCandidate && !pointCloudFormat) {
         // A .xml file is handed to the authoritative LandXML parser, which
@@ -709,11 +704,7 @@ export function useIfcLoader() {
         return;
       }
 
-      // The browser path streams files ≥ STREAM_SAB_THRESHOLD directly into a
-      // SharedArrayBuffer, avoiding a doubled-peak ArrayBuffer + SAB allocation
-      // when the geometry pipeline copies into its own SAB (#600). For point
-      // clouds we keep `acquired`/`buffer` as a cheap head stand-in — the PC
-      // ingest path uses the Blob + file.size, never this buffer.
+      // Point clouds retain the head buffer; other formats acquire source bytes.
       const fileReadStart = performance.now();
       const acquired: AcquiredBuffer = pointCloudFormat
         ? { buffer: headBuf, view: new Uint8Array(headBuf), isShared: false }
@@ -728,13 +719,7 @@ export function useIfcLoader() {
             : `, read in ${fileReadMs.toFixed(0)}ms${acquired.isShared ? ' (streamed→SAB)' : ''}`),
       );
 
-      // Transparent .ifcZIP unwrap (issue #1494) — cheap magic-byte no-op for
-      // an ordinary file. Skipped for point clouds: those never reach here
-      // with the full buffer (streamed straight from the Blob). The server
-      // client uploads the original `file` object (still zipped), but the
-      // server unwraps `.ifcZIP` itself (apps/server extract_file), so a zipped
-      // upload can still take the server fast-path; the local WASM path
-      // consumes the now-unwrapped `buffer`.
+      // Transparent .ifcZIP unwrap; point clouds retain Blob streaming.
       let textureBitmaps: TextureBitmapStore | null = null;
       if (!pointCloudFormat) {
         // Preserve ArrayBuffer zero-copy; copy SAB at this legacy API boundary.
@@ -752,10 +737,8 @@ export function useIfcLoader() {
       placementIdentity = pointCloudFormat ? undefined : await placementSourceIdentity(file, () => loadSessionRef.current !== currentSession);
       if (loadSessionRef.current !== currentSession) return;
       if (target.kind === 'primary') updateModel(modelId, { sourceFingerprint: modelSourceIdentity, sourceContentHash: placementIdentity });
-      // Resolve model formats from the full buffer; point clouds were resolved from the head slice above.
-      const format = pointCloudFormat ?? detectFormat(buffer instanceof ArrayBuffer ? buffer : new Uint8Array(buffer).slice().buffer);
+      format = pointCloudFormat ?? detectFormat(buffer instanceof ArrayBuffer ? buffer : new Uint8Array(buffer).slice().buffer);
 
-      // All remaining format loaders have ArrayBuffer-only contracts.
       const arrayBuffer = buffer instanceof ArrayBuffer ? buffer : new Uint8Array(buffer).slice().buffer; buffer = arrayBuffer;
 
       // LAS / LAZ point clouds: stream chunks straight to the renderer.

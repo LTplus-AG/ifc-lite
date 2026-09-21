@@ -3,11 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::{
-    classify_landxml_version,
+    classify_landxml_version, compatibility_version_diagnostic,
     preflight::preflight_xml_tokens,
     xml::{attr, attributes, error, normalize_encoding, split_name, Result},
     LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlLimits, LandXmlPipeNetworkDocument,
-    LandXmlSourceId, LANDXML_12_NAMESPACE,
+    LandXmlSourceId,
 };
 use quick_xml::{
     events::{BytesStart, Event},
@@ -74,6 +74,10 @@ impl<'a> PipeParser<'a> {
             character_references: 0,
             frames: Vec::new(),
             root_units: None,
+            schema: String::new(),
+            version: String::new(),
+            capability_diagnostics: Vec::new(),
+            target_namespace: None,
             root_seen: false,
             root_closed: false,
             network: None,
@@ -147,24 +151,33 @@ impl<'a> PipeParser<'a> {
             if local != "LandXML" {
                 return Err(error(Code::InvalidSemantic, "root element is not LandXML"));
             }
-            match classify_landxml_version(namespace, attr(&attributes, "version")) {
-                crate::LandXmlVersionCapability::LandXml12Tin => {}
+            let capability = classify_landxml_version(namespace, attr(&attributes, "version"));
+            if !capability.supports_tin_ingestion() {
+                return Err(match capability {
                 crate::LandXmlVersionCapability::NotLandXml => {
-                    return Err(error(
+                    error(
                         Code::UnsupportedNamespace,
                         "root namespace is not a recognized LandXML namespace",
-                    ));
+                    )
                 }
-                _ => {
-                    return Err(error(
+                _ => error(
                         Code::UnsupportedVersion,
-                        "pipe ingestion requires LandXML 1.2",
-                    ))
-                }
+                        "LandXML namespaces require a known version declaration",
+                    ),
+                });
             }
+            self.schema = capability.schema().expect("supported capability has a schema").to_owned();
+            self.target_namespace = namespace.map(str::to_owned);
+            if let Some(diagnostic) = compatibility_version_diagnostic(
+                capability,
+                attr(&attributes, "version").expect("supported capability has a version"),
+            ) {
+                self.capability_diagnostics.push(diagnostic);
+            }
+            self.version = attr(&attributes, "version").expect("supported capability has a version").to_owned();
             self.root_seen = true;
         }
-        let target = namespace == Some(LANDXML_12_NAMESPACE);
+        let target = namespace == self.target_namespace.as_deref();
         self.frames.push(Frame {
             local: local.to_owned(),
             target,

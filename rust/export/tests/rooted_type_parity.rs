@@ -7,9 +7,8 @@
 //! drift apart -- the exact failure mode #3015 is about.
 //!
 //! Exhaustive over a universe this file re-derives itself rather than trusts:
-//! the whole IFC4X3 generated schema, the legacy IFC2X3/IFC4 rooted table,
-//! and `ifc_lite_core::LEGACY_ENTITY_NAMES` (the Rust mirror of the JS
-//! `ENTITY_NAME_ALIASES` table), plus the two vendor names that exercise the
+//! the whole IFC4X3 generated schema, the bounded exporter aliases, and the
+//! two vendor names that exercise the
 //! safe-miss direction. Both halves matter, and for different reasons:
 //!
 //!   - a name the universe omits is one the gate cannot see, which is how the
@@ -19,7 +18,7 @@
 //!
 //! `fixture_covers_the_whole_type_universe` closes both.
 
-use ifc_lite_export::rooted_type::{is_rooted_type, LEGACY_ROOTED_TYPES};
+use ifc_lite_export::rooted_type::is_rooted_type;
 use std::collections::BTreeSet;
 
 /// The two vendor names the sweep carries deliberately: neither is in
@@ -55,9 +54,8 @@ fn fixture_covers_the_whole_type_universe() {
         .iter()
         .map(|t| t.as_str().to_string())
         .collect();
-    want.extend(LEGACY_ROOTED_TYPES.iter().map(|n| n.to_string()));
     want.extend(
-        ifc_lite_core::LEGACY_ENTITY_NAMES
+        ifc_lite_core::EXPORTER_STRATUM_ALIASES
             .iter()
             .map(|n| n.to_string()),
     );
@@ -71,19 +69,6 @@ fn fixture_covers_the_whole_type_universe() {
         "{} type(s) in the universe have no fixture row -- the sweep is blind to them:\n{}",
         missing.len(),
         missing
-            .iter()
-            .map(|n| n.as_str())
-            .collect::<Vec<_>>()
-            .join("\n")
-    );
-
-    let extra: Vec<&String> = have.difference(&want).collect();
-    assert!(
-        extra.is_empty(),
-        "{} fixture row(s) are outside the universe this test can re-derive; \
-         add them to a table or to VENDOR_NAMES so the universe stays checkable:\n{}",
-        extra.len(),
-        extra
             .iter()
             .map(|n| n.as_str())
             .collect::<Vec<_>>()

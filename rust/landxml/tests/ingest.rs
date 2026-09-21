@@ -804,7 +804,8 @@ fn retains_source_terrain_records_without_guessing_grid_topology(
 }
 
 #[test]
-fn preserves_only_the_root_landxml_coordinate_system_as_structured_metadata() -> Result<(), Box<dyn std::error::Error>> {
+fn preserves_only_the_root_landxml_coordinate_system_as_structured_metadata(
+) -> Result<(), Box<dyn std::error::Error>> {
     let valid = String::from_utf8(document("grade")).expect("fixture is UTF-8");
     let input = valid.replace(
         "<Units>",
@@ -812,13 +813,20 @@ fn preserves_only_the_root_landxml_coordinate_system_as_structured_metadata() ->
     );
     let parsed = parse(input.as_bytes())?;
     let coordinate_system = parsed.coordinate_system.expect("source CoordinateSystem");
-    assert_eq!(coordinate_system.horizontal_datum.as_deref(), Some("EPSG:2056"));
-    assert_eq!(coordinate_system.vertical_datum.as_deref(), Some("EPSG:5729"));
+    assert_eq!(
+        coordinate_system.horizontal_datum.as_deref(),
+        Some("EPSG:2056")
+    );
+    assert_eq!(
+        coordinate_system.vertical_datum.as_deref(),
+        Some("EPSG:5729")
+    );
     Ok(())
 }
 
 #[test]
-fn duplicate_root_coordinate_system_preserves_prior_last_declaration_behavior() -> Result<(), Box<dyn std::error::Error>> {
+fn duplicate_root_coordinate_system_preserves_prior_last_declaration_behavior(
+) -> Result<(), Box<dyn std::error::Error>> {
     let valid = String::from_utf8(document("grade")).expect("fixture is UTF-8");
     let input = valid.replace(
         "<Units>",
@@ -826,10 +834,15 @@ fn duplicate_root_coordinate_system_preserves_prior_last_declaration_behavior() 
     );
     let parsed = parse(input.as_bytes())?;
     assert_eq!(
-        parsed.coordinate_system.and_then(|value| value.horizontal_datum),
+        parsed
+            .coordinate_system
+            .and_then(|value| value.horizontal_datum),
         Some("EPSG:25832".to_owned()),
     );
-    assert!(parsed.warnings.iter().any(|warning| warning.contains("retained the last declaration")));
+    assert!(parsed
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("retained the last declaration")));
     Ok(())
 }
 
@@ -886,7 +899,7 @@ fn bounds_source_data_and_overlay_vertices_with_the_global_point_limit() {
 }
 
 #[test]
-fn requires_exact_namespace_and_version() {
+fn rejects_unknown_namespaces_and_versions() {
     let valid = String::from_utf8(document("grade")).expect("fixture is UTF-8");
     assert_eq!(
         parse(valid.replace(LANDXML_12_NAMESPACE, "urn:vendor").as_bytes())
@@ -897,7 +910,7 @@ fn requires_exact_namespace_and_version() {
     assert_eq!(
         parse(
             valid
-                .replace("version=\"1.2\"", "version=\"1.1\"")
+                .replace("version=\"1.2\"", "version=\"9.9\"")
                 .as_bytes()
         )
         .unwrap_err()
@@ -913,14 +926,14 @@ fn requires_exact_namespace_and_version() {
 }
 
 #[test]
-fn classifies_known_versions_but_keeps_12_as_the_only_ingest_capability() {
+fn issue_5051_accepts_10_and_11_by_namespace_while_preserving_version_provenance() {
     assert_eq!(
         classify_landxml_version(Some(LANDXML_10_NAMESPACE), Some("1.0")),
-        LandXmlVersionCapability::LandXml10Unsupported
+        LandXmlVersionCapability::LandXml10Tin
     );
     assert_eq!(
         classify_landxml_version(Some(LANDXML_11_NAMESPACE), Some("1.1")),
-        LandXmlVersionCapability::LandXml11Unsupported
+        LandXmlVersionCapability::LandXml11Tin
     );
     assert_eq!(
         classify_landxml_version(Some(LANDXML_12_NAMESPACE), Some("1.2")),
@@ -935,18 +948,48 @@ fn classifies_known_versions_but_keeps_12_as_the_only_ingest_capability() {
         LandXmlVersionCapability::NotLandXml
     );
     assert!(LandXmlVersionCapability::LandXml12Tin.supports_tin_ingestion());
-    assert!(!LandXmlVersionCapability::LandXml11Unsupported.supports_tin_ingestion());
+    assert!(LandXmlVersionCapability::LandXml11Tin.supports_tin_ingestion());
+    assert!(LandXmlVersionCapability::LandXml12VersionMismatch.supports_tin_ingestion());
+    assert_eq!(
+        classify_landxml_version(Some(LANDXML_11_NAMESPACE), Some("1.2")),
+        LandXmlVersionCapability::LandXml11VersionMismatch
+    );
 
     for (namespace, version) in [(LANDXML_10_NAMESPACE, "1.0"), (LANDXML_11_NAMESPACE, "1.1")] {
         let input = String::from_utf8(document("grade"))
             .expect("fixture is UTF-8")
             .replace(LANDXML_12_NAMESPACE, namespace)
             .replace("version=\"1.2\"", &format!("version=\"{version}\""));
-        assert_eq!(
-            parse(input.as_bytes()).unwrap_err().code,
-            LandXmlDiagnosticCode::UnsupportedVersion
-        );
+        let parsed = parse(input.as_bytes()).expect("rights-clear synthetic 1.0/1.1 TIN");
+        assert_eq!(parsed.schema, format!("LandXML-{version}"));
+        assert_eq!(parsed.version, version);
+        assert_eq!(parsed.surfaces.len(), 1);
+        assert!(parsed.capability_diagnostics.is_empty());
     }
+
+    // This is a synthetic invariant for the real producer pattern: the
+    // namespace owns grammar selection, while the declared version remains
+    // visible and diagnosed rather than being silently rewritten.
+    let mismatched = String::from_utf8(document("grade"))
+        .expect("fixture is UTF-8")
+        .replace(LANDXML_12_NAMESPACE, LANDXML_11_NAMESPACE);
+    let parsed = parse(mismatched.as_bytes()).expect("known 1.1 grammar mismatch");
+    assert_eq!(parsed.schema, "LandXML-1.1");
+    assert_eq!(parsed.version, "1.2");
+    assert!(parsed.capability_diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == LandXmlCapabilityDiagnosticCode::SchemaVersionMismatch
+            && diagnostic.source_id.is_none()
+            && diagnostic.source_path == "LandXML"
+            && diagnostic.message.contains("version=\"1.2\"")
+    }));
+
+    let unknown_version = mismatched.replace("version=\"1.2\"", "version=\"9.9\"");
+    assert_eq!(
+        parse(unknown_version.as_bytes())
+            .expect_err("unknown version is refused")
+            .code,
+        LandXmlDiagnosticCode::UnsupportedVersion
+    );
 }
 
 #[test]

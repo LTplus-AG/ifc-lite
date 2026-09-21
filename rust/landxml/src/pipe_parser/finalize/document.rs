@@ -29,7 +29,9 @@ impl PipeParser<'_> {
             .transpose()
             .map_err(|message| error(Code::InvalidSemantic, message))?;
         Ok(LandXmlPipeNetworkDocument {
-            version: "1.2".to_owned(),
+            schema: self.schema,
+            version: self.version,
+            capability_diagnostics: self.capability_diagnostics,
             root_units,
             collections: self.collections,
             features: self.features,

@@ -11,15 +11,15 @@ use super::{
     LandXmlPlanDocument, LandXmlPlanFeature,
 };
 use crate::{
-    classify_landxml_version,
+    classify_landxml_version, compatibility_version_diagnostic,
     preflight::preflight_xml_tokens,
     semantics::units,
     xml::{
         attr, attributes, character_references, error, normalize_encoding, split_name, unescape,
         Attributes, Result,
     },
-    LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlLimits, LandXmlSourceId,
-    LandXmlUnits, LandXmlVersionCapability, LANDXML_12_NAMESPACE,
+    LandXmlCancellation, LandXmlCapabilityDiagnostic, LandXmlDiagnosticCode as Code, LandXmlLimits,
+    LandXmlSourceId, LandXmlUnits, LandXmlVersionCapability,
 };
 
 mod actions;
@@ -104,7 +104,10 @@ pub(crate) struct Parser<'a> {
     pub(super) units: Option<LandXmlUnits>,
     pub(super) area_unit: Option<String>,
     pub(super) area_scale_to_square_meters: Option<f64>,
+    pub(super) schema: String,
     pub(super) version: String,
+    pub(super) capability_diagnostics: Vec<LandXmlCapabilityDiagnostic>,
+    pub(super) target_namespace: Option<String>,
     pub(super) root_seen: bool,
     pub(super) cogo_points: Vec<LandXmlCgPoint>,
     pub(super) reference_index: LandXmlPlanReferenceIndex,
@@ -137,7 +140,10 @@ impl<'a> Parser<'a> {
             units: None,
             area_unit: None,
             area_scale_to_square_meters: None,
+            schema: String::new(),
             version: String::new(),
+            capability_diagnostics: Vec::new(),
+            target_namespace: None,
             root_seen: false,
             cogo_points: Vec::new(),
             reference_index: LandXmlPlanReferenceIndex::default(),

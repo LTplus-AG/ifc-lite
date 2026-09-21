@@ -10,6 +10,8 @@ import { sourceCoordinateInfo } from './landXmlSourceFrame.js';
 import type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
 import { buildLandXmlPipeComponents } from './landXmlPipeGeometry.js';
 import { pipeRefusalWarnings } from './landXmlPipeWarnings.js';
+export { connectedFaceComponents } from './landXmlFaceComponents.js';
+import { connectedFaceComponents } from './landXmlFaceComponents.js';
 export type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
 export type LandXmlSourceBuffer = ArrayBuffer | SharedArrayBuffer;
 export interface LandXmlGeometryPayload {
@@ -24,45 +26,6 @@ interface WorldPoint {
   x: number;
   y: number;
   z: number;
-}
-
-export function connectedFaceComponents(
-  faces: LandXmlTinSurface['faces'],
-): Array<LandXmlTinSurface['faces']> {
-  const faceIndexesByPoint = new Map<string, number[]>();
-  faces.forEach((face, faceIndex) => {
-    for (const pointId of face) {
-      const indexes = faceIndexesByPoint.get(pointId) ?? [];
-      indexes.push(faceIndex);
-      faceIndexesByPoint.set(pointId, indexes);
-    }
-  });
-
-  const visited = new Uint8Array(faces.length);
-  const components: Array<LandXmlTinSurface['faces']> = [];
-  for (let start = 0; start < faces.length; start++) {
-    if (visited[start]) continue;
-    const component: LandXmlTinSurface['faces'] = [];
-    const pending = [start];
-    const processedPointIds = new Set<string>();
-    visited[start] = 1;
-    while (pending.length > 0) {
-      const faceIndex = pending.pop()!;
-      const face = faces[faceIndex];
-      component.push(face);
-      for (const pointId of face) {
-        if (processedPointIds.has(pointId)) continue;
-        processedPointIds.add(pointId);
-        for (const neighbour of faceIndexesByPoint.get(pointId) ?? []) {
-          if (visited[neighbour]) continue;
-          visited[neighbour] = 1;
-          pending.push(neighbour);
-        }
-      }
-    }
-    components.push(component);
-  }
-  return components;
 }
 
 export function buildLandXmlSurfaceMesh(

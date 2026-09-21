@@ -53,6 +53,11 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
     }
     return pageRecords;
   }, [boundedOverlayPage, document.surfaces]);
+  const alignments = useMemo(() => document.alignments?.flatMap((alignment) => [
+    { label: 'Alignment', sourceId: alignment.sourceId, name: alignment.name },
+    ...alignment.segments.map((segment) => ({ label: `Segment ${segment.ordinal}`, sourceId: segment.sourceId, name: segment.primitive.kind })),
+    ...alignment.unsupportedTransitions.map((transition) => ({ label: `Refused ${transition.spiType}`, sourceId: transition.sourceId, name: transition.reason })),
+  ]) ?? [], [document.alignments]);
 
   useEffect(() => {
     setSurfacePage(0);
@@ -102,6 +107,19 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
         <span>{t('properties.landXmlSource.page', { current: boundedOverlayPage + 1, total: overlayPages })}</span>
         <button type="button" disabled={boundedOverlayPage + 1 >= overlayPages} onClick={() => setOverlayPage(boundedOverlayPage + 1)}>{t('properties.landXmlSource.next')}</button>
       </div>}
+    </div>
+    <div className="border-b border-zinc-200 dark:border-zinc-800">
+      <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50">
+        <h4 className="font-bold text-xs uppercase tracking-wide text-zinc-700 dark:text-zinc-300">LandXML alignments</h4>
+      </div>
+      <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
+        {alignments.length === 0 ? <div className="px-3 py-2 text-xs text-zinc-500">No retained alignment records</div> : alignments.map((alignment) => {
+          const isSelected = selected?.modelId === modelId && selected.sourceId === alignment.sourceId;
+          return <button key={alignment.sourceId} type="button" className={`flex w-full items-center gap-3 px-3 py-2 text-left text-xs ${isSelected ? 'bg-primary/10 text-primary' : 'text-zinc-700 dark:text-zinc-300'}`} onClick={() => onSelect({ modelId, sourceId: alignment.sourceId })}>
+            <span className="font-mono">{alignment.label}</span><span className="truncate">{alignment.name}</span>
+          </button>;
+        })}
+      </div>
     </div>
   </>;
 }

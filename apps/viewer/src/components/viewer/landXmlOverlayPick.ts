@@ -4,12 +4,9 @@
 
 /** CPU source pick for the exact LandXML line spans uploaded to the terrain channel. */
 
-import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import type { ViewerState } from '@/store';
-import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
-import { modelPointToWorkspacePoint } from '@/lib/model-placement/rotation';
-import { fromRenderTranslation, toRenderTranslation } from '@/lib/model-placement/translation';
 import type { LandXmlSourceRef } from '@/hooks/ingest/landXmlSemantics';
+import { collectLandXmlOverlaySpans } from '@/hooks/ingest/landXmlOverlaySpans.js';
 
 interface Projector {
   projectToScreen(point: { x: number; y: number; z: number }, width: number, height: number): { x: number; y: number } | null;
@@ -25,37 +22,19 @@ function distanceToSegment(x: number, y: number, a: { x: number; y: number }, b:
 /**
  * Return a model-qualified source span only when the regular renderer pick
  * missed. This avoids claiming a line hidden behind a mesh is selectable.
- * Curves and transitions are intentionally absent: they have no overlay span
- * until a certified native sampling path is added.
+ * The shared collector means selection filtering and frame rejection are
+ * identical to the buffer that was actually sent to the renderer.
  */
 export function pickLandXmlOverlayLine(
   state: ViewerState, projector: Projector, x: number, y: number, width: number, height: number,
 ): LandXmlSourceRef | null {
   let best: { distance: number; ref: LandXmlSourceRef } | null = null;
-  for (const model of state.models.values()) {
-    const document = model.landXmlDocument, frame = model.geometryResult?.coordinateInfo;
-    if (!model.visible || !document?.units || !frame) continue;
-    const offset = totalYupOffset(frame);
-    const placement = { ...placementFor(state.modelPlacement, model.id), translation: displayedTranslation(state.modelPlacement, model.id) };
-    const screen = (northing: number, easting: number): { x: number; y: number } | null => {
-      const local = { x: easting * document.units!.linearScaleToMeters - offset.x, y: -offset.y, z: -northing * document.units!.linearScaleToMeters - offset.z };
-      if (!Object.values(local).every(Number.isFinite)) return null;
-      const [px, py, pz] = toRenderTranslation(modelPointToWorkspacePoint(fromRenderTranslation(local), placement));
-      return projector.projectToScreen({ x: px, y: py, z: pz }, width, height);
-    };
-    for (const alignment of document.alignments ?? []) {
-      for (const segment of alignment.segments) {
-        const primitive = segment.primitive;
-        if ((primitive.kind !== 'line' && primitive.kind !== 'irregular_line') || primitive.start.kind !== 'coordinates' || primitive.end.kind !== 'coordinates') continue;
-        const points = primitive.kind === 'line' ? [primitive.start.point, primitive.end.point] : [primitive.start.point, ...primitive.points, primitive.end.point];
-        for (let index = 1; index < points.length; index++) {
-          const a = screen(points[index - 1].northing, points[index - 1].easting), b = screen(points[index].northing, points[index].easting);
-          if (!a || !b) continue;
-          const distance = distanceToSegment(x, y, a, b);
-          if (distance <= 8 && (best === null || distance < best.distance)) best = { distance, ref: { modelId: model.id, sourceId: segment.sourceId } };
-        }
-      }
-    }
+  for (const span of collectLandXmlOverlaySpans(state)) {
+    const a = projector.projectToScreen(span.a, width, height);
+    const b = projector.projectToScreen(span.b, width, height);
+    if (!a || !b) continue;
+    const distance = distanceToSegment(x, y, a, b);
+    if (distance <= 8 && (best === null || distance < best.distance)) best = { distance, ref: span.ref };
   }
   return best?.ref ?? null;
 }

@@ -13,6 +13,7 @@ import {
 import {
   inspectLandXmlAlignmentAtDistance,
   probeLandXmlAlignmentAtDistance,
+  probeLandXmlAlignmentAtStation,
   type LandXmlAlignmentInspectionResult,
   type LandXmlAlignmentProbeResult,
 } from '@/hooks/ingest/landXmlWasm';
@@ -31,6 +32,7 @@ function recordName(record: LandXmlSourceRecord): string {
     case 'face': return record.pointIds.join(', ');
     case 'alignment': return record.alignment.name;
     case 'alignment-segment': return `Segment ${record.segment.ordinal}`;
+    case 'unsupported-transition': return `Unsupported ${record.transition.spiType} transition`;
     default: return record.line.name ?? record.line.sourceId;
   }
 }
@@ -43,6 +45,7 @@ function recordPath(record: LandXmlSourceRecord): string {
     case 'source-data-point': return record.point.sourcePath;
     case 'alignment': return `LandXML/Alignments/Alignment[${record.alignment.ordinal}]`;
     case 'alignment-segment': return `LandXML/Alignments/Alignment[${record.alignment.ordinal}]/CoordGeom`;
+    case 'unsupported-transition': return `LandXML/Alignments/Alignment[${record.alignment.ordinal}]/CoordGeom`;
     default: return record.line.sourcePath;
   }
 }
@@ -90,6 +93,11 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
   const [navigationPage, setNavigationPage] = useState(0);
   const [alignmentProbe, setAlignmentProbe] = useState<LandXmlAlignmentProbeResult | null>(null);
   const [alignmentInspection, setAlignmentInspection] = useState<LandXmlAlignmentInspectionResult | null>(null);
+  const [probeMode, setProbeMode] = useState<'distance' | 'station'>('distance');
+  const [distanceInput, setDistanceInput] = useState('0');
+  const [stationInput, setStationInput] = useState('');
+  const [offsetInput, setOffsetInput] = useState('0');
+  const [probeError, setProbeError] = useState<string | null>(null);
   const record = useMemo(
     () => findLandXmlModelSourceRecord(models, selected),
     [models, selected],
@@ -101,23 +109,37 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
     const model = models.get(selected.modelId);
     const document = model?.landXmlDocument;
     const selectedAlignment = document?.alignments?.find((alignment) => alignment.sourceId === selected.sourceId)
-      ?? document?.alignments?.find((alignment) => alignment.segments.some((segment) => segment.sourceId === selected.sourceId));
+      ?? document?.alignments?.find((alignment) => alignment.segments.some((segment) => segment.sourceId === selected.sourceId)
+        || alignment.unsupportedTransitions.some((transition) => transition.sourceId === selected.sourceId));
     if (!selectedAlignment || !model?.sourceFile) {
       setAlignmentProbe(null); setAlignmentInspection(null); return;
     }
     let active = true;
+    const distance = Number(distanceInput);
+    const station = Number(stationInput);
+    const offset = Number(offsetInput);
+    const validInput = Number.isFinite(offset) && (probeMode === 'distance' ? Number.isFinite(distance) : Number.isFinite(station));
+    if (!validInput) {
+      setAlignmentProbe(null); setAlignmentInspection(null); setProbeError('Enter finite numeric probe values.');
+      return () => { active = false; };
+    }
     void model.sourceFile.arrayBuffer().then(async (buffer) => {
-      const [probe, inspection] = await Promise.all([
-        probeLandXmlAlignmentAtDistance(buffer, selectedAlignment.sourceId, 0),
-        inspectLandXmlAlignmentAtDistance(buffer, selectedAlignment.sourceId, 0),
-      ]);
-      if (active) { setAlignmentProbe(probe); setAlignmentInspection(inspection); }
-    }).catch(() => { if (active) { setAlignmentProbe(null); setAlignmentInspection(null); } });
+      const probes = probeMode === 'distance'
+        ? [await probeLandXmlAlignmentAtDistance(buffer, selectedAlignment.sourceId, distance, offset)]
+        : await probeLandXmlAlignmentAtStation(buffer, selectedAlignment.sourceId, station, offset);
+      const probe = probes[0];
+      if (!probe) throw new Error('The displayed station is in a station-equation gap.');
+      const inspection = await inspectLandXmlAlignmentAtDistance(buffer, selectedAlignment.sourceId, probe.distance);
+      if (active) { setAlignmentProbe(probe); setAlignmentInspection(inspection); setProbeError(probes.length > 1 ? `Station resolves to ${probes.length} physical distances; showing the first.` : null); }
+    }).catch((error: unknown) => {
+      console.error('[LandXmlSourceInspector] alignment probe failed:', error);
+      if (active) { setAlignmentProbe(null); setAlignmentInspection(null); setProbeError(error instanceof Error ? error.message : 'LandXML alignment probe failed.'); }
+    });
     return () => { active = false; };
-  }, [models, selected.modelId, selected.sourceId]);
+  }, [models, selected.modelId, selected.sourceId, probeMode, distanceInput, stationInput, offsetInput]);
 
   if (!record) return null;
-  if (record.kind === 'alignment' || record.kind === 'alignment-segment') {
+  if (record.kind === 'alignment' || record.kind === 'alignment-segment' || record.kind === 'unsupported-transition') {
     const alignment = record.alignment;
     const pages = Math.ceil((alignment.segments.length + 1) / NAVIGATION_PAGE_SIZE);
     const page = Math.min(navigationPage, pages - 1);
@@ -125,6 +147,7 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
     const items = [
       { label: `Alignment: ${alignment.name}`, sourceId: alignment.sourceId },
       ...alignment.segments.map((segment) => ({ label: `Segment ${segment.ordinal}: ${segment.primitive.kind}`, sourceId: segment.sourceId })),
+      ...alignment.unsupportedTransitions.map((transition) => ({ label: `Refused ${transition.spiType} transition: ${transition.reason}`, sourceId: transition.sourceId })),
     ].slice(firstItem, firstItem + NAVIGATION_PAGE_SIZE);
     return (
       <div className="h-full overflow-auto border-l-2 border-zinc-200 bg-white dark:border-zinc-800 dark:bg-black" data-landxml-source-inspector>
@@ -137,7 +160,18 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
           {items.map((item) => <button key={item.sourceId} type="button" className="block w-full px-4 py-2 text-left text-xs text-zinc-700 dark:text-zinc-300" onClick={() => onSelect({ modelId: selected.modelId, sourceId: item.sourceId })}>{item.label}</button>)}
         </div>
         {pages > 1 && <div className="flex items-center justify-between border-t border-zinc-200 px-4 py-2 text-xs dark:border-zinc-800"><button type="button" disabled={page === 0} onClick={() => setNavigationPage(page - 1)}>Previous</button><span>{page + 1} / {pages}</span><button type="button" disabled={page + 1 >= pages} onClick={() => setNavigationPage(page + 1)}>Next</button></div>}
-        <div className="space-y-2 p-4 text-xs text-zinc-700 dark:text-zinc-300"><p>Length: {alignment.length}</p><p>Start station: {alignment.staStart}</p><p>Segments: {alignment.segments.length}</p>{alignmentProbe && <><p>Start probe: {alignmentProbe.northing}, {alignmentProbe.easting}</p><p>Displayed station: {alignmentProbe.displayedBack} / {alignmentProbe.displayedAhead}</p><p>Probe span: {alignmentProbe.segmentSourceId}</p></>}{alignmentInspection && <><p>Authored CantStation bracket: {alignmentInspection.previousCantStation ?? 'none'} / {alignmentInspection.nextCantStation ?? 'none'}</p><p>Authored Superelevation blocks: {alignmentInspection.superelevationCount}</p></>}</div>
+        <div className="space-y-2 p-4 text-xs text-zinc-700 dark:text-zinc-300">
+          <p>Length: {alignment.length}</p><p>Start station: {alignment.staStart}</p><p>Segments: {alignment.segments.length}</p>
+          <label className="block">Probe by <select aria-label="Probe mode" value={probeMode} onChange={(event) => setProbeMode(event.target.value === 'station' ? 'station' : 'distance')}><option value="distance">geometric distance</option><option value="station">displayed station</option></select></label>
+          {probeMode === 'distance' ? <label className="block">Distance <input aria-label="Geometric distance" type="number" value={distanceInput} onChange={(event) => setDistanceInput(event.target.value)} /></label> : <label className="block">Station <input aria-label="Displayed station" type="number" value={stationInput} onChange={(event) => setStationInput(event.target.value)} /></label>}
+          <label className="block">Right offset <input aria-label="Right offset" type="number" value={offsetInput} onChange={(event) => setOffsetInput(event.target.value)} /></label>
+          {probeError && <p role="alert" className="text-red-700 dark:text-red-300">Probe unavailable: {probeError}</p>}
+          {alignmentProbe && <><p>Probe: {alignmentProbe.northing}, {alignmentProbe.easting}</p><p>Displayed station: {alignmentProbe.displayedBack} / {alignmentProbe.displayedAhead}</p><p>Probe span: {alignmentProbe.segmentSourceId}</p></>}
+          {alignmentInspection && <><p>Authored CantStation bracket: {alignmentInspection.previousCantStation ? `${alignmentInspection.previousCantStation.station} (applied ${alignmentInspection.previousCantStation.appliedCant})` : 'none'} / {alignmentInspection.nextCantStation ? `${alignmentInspection.nextCantStation.station} (applied ${alignmentInspection.nextCantStation.appliedCant})` : 'none'}</p><p>Authored Superelevation: {alignmentInspection.superelevations.map((value) => `${value.staStart ?? 'open'}–${value.staEnd ?? 'open'}: ${value.events.map((event) => `${event.kind}${event.value === null ? '' : `=${event.value}`}`).join(', ')}`).join('; ') || 'none'}</p></>}
+          {alignment.cantStations.length > 0 && <p>Retained CantStations: {alignment.cantStations.map((value) => `${value.station} (applied ${value.appliedCant})`).join(', ')}</p>}
+          {alignment.superelevations.length > 0 && <p>Retained Superelevation blocks: {alignment.superelevations.map((value) => `${value.staStart ?? 'open'}–${value.staEnd ?? 'open'}`).join(', ')}</p>}
+          {alignment.unsupportedTransitions.map((transition) => <p key={transition.sourceId} className="text-amber-800 dark:text-amber-200">Refused {transition.spiType}: {transition.reason}</p>)}
+        </div>
       </div>
     );
   }
@@ -190,6 +224,7 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
         <p><span className="font-semibold">{t('properties.landXmlSource.kind')}:</span> {record.kind}</p>
         <p><span className="font-semibold">{t('properties.landXmlSource.renderState')}:</span> {record.surface.renderState}</p>
         {document && <p><span className="font-semibold">{t('properties.landXmlSource.capabilities')}:</span> {JSON.stringify(document.capabilities)}</p>}
+        {document?.warnings.map((warning, index) => <p key={`${warning}-${index}`} role="alert" className="text-amber-800 dark:text-amber-200">Source refusal: {warning}</p>)}
         {sourceCount && <p><span className="font-semibold">{t('properties.landXmlSource.counts')}:</span> {t('properties.landXmlSource.countsValue', { ...sourceCount })}</p>}
         {record.kind === 'face' && <p><span className="font-semibold">{t('properties.landXmlSource.facePoints')}:</span> {record.pointIds.join(', ')}</p>}
         {record.kind === 'point' && <p><span className="font-semibold">{t('properties.landXmlSource.pointCoordinates')}:</span> {record.point.northing}, {record.point.easting}, {record.point.elevation}</p>}

@@ -58,6 +58,21 @@ export interface LandXmlTinDocument {
 export interface LandXmlPlanPoint { northing: number; easting: number; elevation: number | null }
 export type LandXmlPointLocation = { kind: 'coordinates'; point: LandXmlPlanPoint } | { kind: 'point_reference'; pntRef: string };
 export interface LandXmlAlignmentSegment { sourceId: string; ordinal: number; primitive: LandXmlAlignmentPrimitive }
+export interface LandXmlCantStation {
+  sourceId: string;
+  station: number;
+  appliedCant: number;
+  equilibriumCant: number | null;
+  transitionType: string | null;
+}
+export interface LandXmlSuperelevationEvent { sourceId: string; kind: string; value: string | null }
+export interface LandXmlSuperelevation {
+  sourceId: string;
+  staStart: number | null;
+  staEnd: number | null;
+  events: LandXmlSuperelevationEvent[];
+}
+export interface LandXmlUnsupportedTransition { sourceId: string; spiType: string; reason: string }
 export type LandXmlAlignmentPrimitive =
   | { kind: 'line'; start: LandXmlPointLocation; end: LandXmlPointLocation; declaredLength: number | null }
   | { kind: 'irregular_line'; start: LandXmlPointLocation; end: LandXmlPointLocation; points: LandXmlPlanPoint[]; declaredLength: number | null }
@@ -70,6 +85,10 @@ export interface LandXmlAlignment {
   length: number;
   staStart: number;
   segments: LandXmlAlignmentSegment[];
+  /** Authored records are retained for source navigation and inspection. */
+  cantStations: LandXmlCantStation[];
+  superelevations: LandXmlSuperelevation[];
+  unsupportedTransitions: LandXmlUnsupportedTransition[];
 }
 
 export interface LandXmlSourceRef { modelId: string; sourceId: string }
@@ -98,7 +117,8 @@ export type LandXmlSourceRecord =
   | { kind: 'face'; surface: LandXmlTinSurface; pointIds: readonly [string, string, string] }
   | { kind: 'boundary' | 'breakline' | 'contour'; surface: LandXmlTinSurface; line: LandXmlPolyline }
   | { kind: 'alignment'; alignment: LandXmlAlignment }
-  | { kind: 'alignment-segment'; alignment: LandXmlAlignment; segment: LandXmlAlignmentSegment };
+  | { kind: 'alignment-segment'; alignment: LandXmlAlignment; segment: LandXmlAlignmentSegment }
+  | { kind: 'unsupported-transition'; alignment: LandXmlAlignment; transition: LandXmlUnsupportedTransition };
 
 export interface LandXmlSourceModel { landXmlDocument?: LandXmlTinDocument; sourceFile?: File }
 
@@ -114,6 +134,8 @@ export function findLandXmlSourceRecord(document: LandXmlTinDocument, sourceId: 
     if (alignment.sourceId === sourceId) return { kind: 'alignment', alignment };
     const segment = alignment.segments.find((candidate) => candidate.sourceId === sourceId);
     if (segment) return { kind: 'alignment-segment', alignment, segment };
+    const transition = alignment.unsupportedTransitions.find((candidate) => candidate.sourceId === sourceId);
+    if (transition) return { kind: 'unsupported-transition', alignment, transition };
   }
   for (const surface of document.surfaces) {
     if (surface.sourceId === sourceId) return { kind: 'surface', surface };

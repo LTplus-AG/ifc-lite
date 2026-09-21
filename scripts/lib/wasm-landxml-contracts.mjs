@@ -17,6 +17,8 @@ const XML_WITHOUT_UNITS = `<?xml version="1.0" encoding="UTF-8"?>
   <Surfaces><Surface name="preserved"><Definition surfType="VOLUME"/></Surface></Surfaces>
 </LandXML>`;
 
+const ALIGNMENT_XML = `<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="main" length="11" staStart="100"><CoordGeom><Line length="10"><Start>0 0</Start><End>10 0</End></Line><Spiral spiType="bloss" radiusStart="INF" radiusEnd="50" rot="ccw" length="1"><Start>10 0</Start><PI>10.5 0</PI><End>11 0</End></Spiral></CoordGeom><Cant name="rail" gauge="1"><CantStation station="100" appliedCant="2" curvature="ccw"/></Cant><Superelevation staStart="100" staEnd="110"><FullSuperelev>0.06</FullSuperelev></Superelevation></Alignment></Alignments></LandXML>`;
+
 function utf16Le(text) {
   const output = new Uint8Array(2 + text.length * 2);
   output.set([0xff, 0xfe]);
@@ -52,6 +54,20 @@ export function runLandXmlContracts(api, test) {
       () => api.parseLandXmlTinBytes(new TextEncoder().encode(XML.replace('linearUnit="meter"', 'linearUnit="bogus"'))),
       /LXML009: unsupported LandXML unit/,
     );
+  });
+
+  test('LandXML alignment WASM contract tags refused spirals and exposes authored inspection', () => {
+    const source = api.parseLandXmlSourceBytes(new TextEncoder().encode(ALIGNMENT_XML));
+    const alignment = source.alignments.alignments[0];
+    assert.equal(alignment.unsupported_transitions[0].spiral.spi_type, 'bloss');
+    assert.equal(alignment.segments[1].primitive.kind, 'unsupported_spiral');
+    assert.equal(alignment.cant.stations[0].applied_cant, 2);
+    const inspection = api.inspectLandXmlAlignmentAtDistance(new TextEncoder().encode(ALIGNMENT_XML), alignment.source_id, 0);
+    assert.equal(inspection.cant.previous.applied_cant, 2);
+    assert.equal(inspection.superelevations[0].events[0].value, '0.06');
+    const probes = api.probeLandXmlAlignmentAtStation(new TextEncoder().encode(ALIGNMENT_XML), alignment.source_id, 105, 0);
+    assert.equal(probes.length, 1);
+    assert.equal(probes[0].geometric_distance, 5);
   });
 }
 

@@ -11,6 +11,7 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore, type FederatedModel } from '@/store/index.js';
 import type { LandXmlAlignment, LandXmlPolyline, LandXmlTinDocument } from './ingest/landXmlSemantics.js';
 import { uploadLandXmlOverlayGuarded, useLandXmlOverlayLines } from './useLandXmlOverlayLines.js';
+import { pickLandXmlOverlayLine } from '@/components/viewer/landXmlOverlayPick.js';
 
 const initialState = useViewerStore.getState();
 
@@ -128,6 +129,7 @@ describe('LandXML source overlay rendering (#5042)', () => {
         { sourceId: 'alignment:line', ordinal: 1, primitive: { kind: 'line', start: { kind: 'coordinates', point: { northing: 10, easting: 20, elevation: null } }, end: { kind: 'coordinates', point: { northing: 40, easting: 50, elevation: null } }, declaredLength: 20 } },
         { sourceId: 'alignment:curve', ordinal: 2, primitive: { kind: 'curve', start: { kind: 'coordinates', point: { northing: 40, easting: 50, elevation: null } }, center: { kind: 'coordinates', point: { northing: 30, easting: 50, elevation: null } }, end: { kind: 'coordinates', point: { northing: 30, easting: 60, elevation: null } }, rotation: 'clockwise', radius: 10, declaredLength: 15.7 } },
       ],
+      cantStations: [], superelevations: [], unsupportedTransitions: [],
     };
     model.landXmlDocument!.alignments = [alignment];
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: { modelId: model.id, sourceId: alignment.sourceId } });
@@ -170,6 +172,22 @@ describe('LandXML source overlay rendering (#5042)', () => {
 
     act(() => useViewerStore.getState().setModelVisibility(model.id, false));
     assert.equal(vertices.length, 0, 'hidden models cannot retain source overlays');
+  });
+
+  it('keeps a mounted hidden or selection-filtered span unpickable (#5044)', () => {
+    const model = landXmlModel('pick-filter', line('visible-source'));
+    const hidden = line('hidden-source');
+    hidden.points = [[10, 20, 30], [40, 50, 60]];
+    model.landXmlDocument!.surfaces[0].breaklines.push(hidden);
+    useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: { modelId: model.id, sourceId: 'visible-source' } });
+    function Probe() { useLandXmlOverlayLines(); return null; }
+    render(<Probe />);
+    const projector = { projectToScreen: (point: { x: number; y: number }) => ({ x: point.x, y: point.y }) };
+    assert.equal(pickLandXmlOverlayLine(useViewerStore.getState(), projector, 20, 30, 100, 100)?.sourceId, 'visible-source');
+    act(() => useViewerStore.getState().setSelectedLandXmlSource({ modelId: model.id, sourceId: 'hidden-source' }));
+    assert.equal(pickLandXmlOverlayLine(useViewerStore.getState(), projector, 20, 30, 100, 100)?.sourceId, 'hidden-source');
+    act(() => useViewerStore.getState().setModelVisibility(model.id, false));
+    assert.equal(pickLandXmlOverlayLine(useViewerStore.getState(), projector, 20, 30, 100, 100), null);
   });
 
   it('refuses overlay segments outside the terrain render-frame precision limit', () => {

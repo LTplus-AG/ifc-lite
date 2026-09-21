@@ -7,8 +7,9 @@
 import init, { IfcAPI } from '@ifc-lite/wasm';
 import type { LandXmlSourceBuffer } from './landXmlIngest.js';
 import type {
-  LandXmlAlignment, LandXmlAlignmentPrimitive, LandXmlAlignmentSegment, LandXmlPlanPoint,
+  LandXmlAlignment, LandXmlAlignmentPrimitive, LandXmlAlignmentSegment, LandXmlCantStation, LandXmlPlanPoint,
   LandXmlPointLocation, LandXmlPolyline, LandXmlTinDocument, LandXmlTinSurface,
+  LandXmlSuperelevation, LandXmlUnsupportedTransition,
 } from './landXmlSemantics.js';
 
 interface NodeModuleApi {
@@ -228,13 +229,40 @@ function primitive(value: unknown, context: string): LandXmlAlignmentPrimitive {
 
 function alignment(value: unknown, index: number): LandXmlAlignment {
   const raw = record(value, `alignment ${index}`);
+  const cant = raw.cant === undefined || raw.cant === null ? null : record(raw.cant, `alignment ${index} cant`);
+  const cantStations: LandXmlCantStation[] = cant === null ? [] : array(cant.stations, `alignment ${index} cant stations`).map((station, stationIndex) => {
+    const parsed = record(station, `alignment ${index} cant station ${stationIndex}`);
+    return {
+      sourceId: string(parsed.source_id, `alignment ${index} cant station ${stationIndex} source id`),
+      station: finite(parsed.station, `alignment ${index} cant station ${stationIndex} station`),
+      appliedCant: finite(parsed.applied_cant, `alignment ${index} cant station ${stationIndex} applied cant`),
+      equilibriumCant: optionalFinite(parsed.equilibrium_cant, `alignment ${index} cant station ${stationIndex} equilibrium cant`),
+      transitionType: nullableString(parsed.transition_type, `alignment ${index} cant station ${stationIndex} transition type`),
+    };
+  });
+  const superelevations: LandXmlSuperelevation[] = array(raw.superelevations, `alignment ${index} superelevations`).map((value, superelevationIndex) => {
+    const parsed = record(value, `alignment ${index} superelevation ${superelevationIndex}`);
+    return {
+      sourceId: string(parsed.source_id, `alignment ${index} superelevation ${superelevationIndex} source id`),
+      staStart: optionalFinite(parsed.sta_start, `alignment ${index} superelevation ${superelevationIndex} start`),
+      staEnd: optionalFinite(parsed.sta_end, `alignment ${index} superelevation ${superelevationIndex} end`),
+      events: array(parsed.events, `alignment ${index} superelevation ${superelevationIndex} events`).map((event, eventIndex) => {
+        const eventValue = record(event, `alignment ${index} superelevation ${superelevationIndex} event ${eventIndex}`);
+        return { sourceId: string(eventValue.source_id, `alignment ${index} superelevation ${superelevationIndex} event ${eventIndex} source id`), kind: string(eventValue.kind, `alignment ${index} superelevation ${superelevationIndex} event ${eventIndex} kind`), value: nullableString(eventValue.value, `alignment ${index} superelevation ${superelevationIndex} event ${eventIndex} value`) };
+      }),
+    };
+  });
+  const unsupportedTransitions: LandXmlUnsupportedTransition[] = array(raw.unsupported_transitions, `alignment ${index} unsupported transitions`).map((value, transitionIndex) => {
+    const parsed = record(value, `alignment ${index} unsupported transition ${transitionIndex}`);
+    return { sourceId: string(parsed.source_id, `alignment ${index} unsupported transition ${transitionIndex} source id`), spiType: string(parsed.spi_type, `alignment ${index} unsupported transition ${transitionIndex} type`), reason: string(parsed.reason, `alignment ${index} unsupported transition ${transitionIndex} reason`) };
+  });
   return {
     sourceId: string(raw.source_id, `alignment ${index} source id`), ordinal: finite(raw.ordinal, `alignment ${index} ordinal`),
     name: string(raw.name, `alignment ${index} name`), length: finite(raw.length, `alignment ${index} length`), staStart: finite(raw.sta_start, `alignment ${index} staStart`),
     segments: array(raw.segments, `alignment ${index} segments`).map((segment, segmentIndex): LandXmlAlignmentSegment => {
       const parsed = record(segment, `alignment ${index} segment ${segmentIndex}`);
       return { sourceId: string(parsed.source_id, `alignment ${index} segment ${segmentIndex} source id`), ordinal: finite(parsed.ordinal, `alignment ${index} segment ${segmentIndex} ordinal`), primitive: primitive(parsed.primitive, `alignment ${index} segment ${segmentIndex} primitive`) };
-    }),
+    }), cantStations, superelevations, unsupportedTransitions,
   };
 }
 
@@ -244,6 +272,7 @@ export function readLandXmlSourceDocument(value: unknown): LandXmlTinDocument {
   const document = readLandXmlTinDocument(raw.tin);
   const alignmentDocument = record(raw.alignments, 'alignment document');
   document.alignments = array(alignmentDocument.alignments, 'alignments').map(alignment);
+  document.warnings.push(...array(alignmentDocument.warnings, 'alignment warnings').map((warning, index) => string(warning, `alignment warning ${index}`)));
   return document;
 }
 
@@ -288,9 +317,9 @@ export interface LandXmlAlignmentProbeResult {
 }
 
 export interface LandXmlAlignmentInspectionResult {
-  previousCantStation: number | null;
-  nextCantStation: number | null;
-  superelevationCount: number;
+  previousCantStation: LandXmlCantStation | null;
+  nextCantStation: LandXmlCantStation | null;
+  superelevations: LandXmlSuperelevation[];
 }
 
 /** Invoke native f64 alignment probing from an original source buffer. */
@@ -308,6 +337,23 @@ export async function probeLandXmlAlignmentAtDistance(
   }
 }
 
+/** Resolve a displayed station to every physical position retained by equations. */
+export async function probeLandXmlAlignmentAtStation(
+  buffer: LandXmlSourceBuffer, alignmentSourceId: string, station: number, offsetRight = 0,
+): Promise<LandXmlAlignmentProbeResult[]> {
+  await initLandXmlWasm();
+  const api = new IfcAPI();
+  try {
+    return array(api.probeLandXmlAlignmentAtStation(new Uint8Array(buffer), alignmentSourceId, station, offsetRight), 'alignment station probes').map((value, index) => {
+      const raw = record(value, `alignment station probe ${index}`);
+      const mappedStation = record(raw.station, `alignment station probe ${index} station`);
+      return { segmentSourceId: string(raw.segment_source_id, `alignment station probe ${index} segment`), distance: finite(raw.geometric_distance, `alignment station probe ${index} distance`), northing: finite(raw.northing, `alignment station probe ${index} northing`), easting: finite(raw.easting, `alignment station probe ${index} easting`), displayedBack: finite(mappedStation.displayed_back, `alignment station probe ${index} station back`), displayedAhead: finite(mappedStation.displayed_ahead, `alignment station probe ${index} station ahead`) };
+    });
+  } finally {
+    api.free();
+  }
+}
+
 /** Inspect only authored cant/superelevation records; no value interpolation occurs. */
 export async function inspectLandXmlAlignmentAtDistance(
   buffer: LandXmlSourceBuffer, alignmentSourceId: string, distance: number,
@@ -319,7 +365,15 @@ export async function inspectLandXmlAlignmentAtDistance(
     const cant = raw.cant === undefined || raw.cant === null ? null : record(raw.cant, 'cant inspection');
     const previous = cant?.previous === undefined || cant.previous === null ? null : record(cant.previous, 'previous CantStation');
     const next = cant?.next === undefined || cant.next === null ? null : record(cant.next, 'next CantStation');
-    return { previousCantStation: previous === null ? null : finite(previous.station, 'previous CantStation station'), nextCantStation: next === null ? null : finite(next.station, 'next CantStation station'), superelevationCount: array(raw.superelevations, 'superelevations').length };
+    const cantStation = (value: Record<string, unknown> | null, context: string): LandXmlCantStation | null => value === null ? null : {
+      sourceId: string(value.source_id, `${context} source id`), station: finite(value.station, `${context} station`),
+      appliedCant: finite(value.applied_cant, `${context} applied cant`), equilibriumCant: optionalFinite(value.equilibrium_cant, `${context} equilibrium cant`), transitionType: nullableString(value.transition_type, `${context} transition type`),
+    };
+    const superelevations: LandXmlSuperelevation[] = array(raw.superelevations, 'superelevations').map((value, index) => {
+      const parsed = record(value, `superelevation ${index}`);
+      return { sourceId: string(parsed.source_id, `superelevation ${index} source id`), staStart: optionalFinite(parsed.sta_start, `superelevation ${index} start`), staEnd: optionalFinite(parsed.sta_end, `superelevation ${index} end`), events: array(parsed.events, `superelevation ${index} events`).map((event, eventIndex) => { const parsedEvent = record(event, `superelevation ${index} event ${eventIndex}`); return { sourceId: string(parsedEvent.source_id, `superelevation ${index} event ${eventIndex} source id`), kind: string(parsedEvent.kind, `superelevation ${index} event ${eventIndex} kind`), value: nullableString(parsedEvent.value, `superelevation ${index} event ${eventIndex} value`) }; }) };
+    });
+    return { previousCantStation: cantStation(previous, 'previous CantStation'), nextCantStation: cantStation(next, 'next CantStation'), superelevations };
   } finally {
     api.free();
   }

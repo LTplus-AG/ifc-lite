@@ -44,7 +44,8 @@ export type LandXmlPointLocationJs = { kind: "coordinates"; point: LandXmlPlanPo
 export interface LandXmlPlanPointJs { northing: number; easting: number; elevation?: number; }
 export interface LandXmlAlignmentPiJs { source_id: string; location: LandXmlPointLocationJs; }
 export type LandXmlAlignmentSegmentJs = { source_id: string; ordinal: number; primitive: LandXmlAlignmentPrimitiveJs };
-export type LandXmlAlignmentPrimitiveJs = { kind: "line"; start: LandXmlPointLocationJs; end: LandXmlPointLocationJs; declared_length?: number } | { kind: "irregular_line"; start: LandXmlPointLocationJs; end: LandXmlPointLocationJs; points: LandXmlPlanPointJs[]; declared_length?: number } | { kind: "curve"; start: LandXmlPointLocationJs; center: LandXmlPointLocationJs; end: LandXmlPointLocationJs; pi?: LandXmlPointLocationJs; rotation: "clockwise" | "counter_clockwise"; radius?: number; declared_length?: number } | { kind: "spiral" | "unsupported_spiral"; start: LandXmlPointLocationJs; pi: LandXmlPointLocationJs; end: LandXmlPointLocationJs; spi_type: string; radius_start: LandXmlRadiusJs; radius_end: LandXmlRadiusJs; rotation: "clockwise" | "counter_clockwise"; declared_length: number };
+export interface LandXmlSpiralJs { start: LandXmlPointLocationJs; pi: LandXmlPointLocationJs; end: LandXmlPointLocationJs; spi_type: string; radius_start: LandXmlRadiusJs; radius_end: LandXmlRadiusJs; rotation: "clockwise" | "counter_clockwise"; declared_length: number; }
+export type LandXmlAlignmentPrimitiveJs = { kind: "line"; start: LandXmlPointLocationJs; end: LandXmlPointLocationJs; declared_length?: number } | { kind: "irregular_line"; start: LandXmlPointLocationJs; end: LandXmlPointLocationJs; points: LandXmlPlanPointJs[]; declared_length?: number } | { kind: "curve"; start: LandXmlPointLocationJs; center: LandXmlPointLocationJs; end: LandXmlPointLocationJs; pi?: LandXmlPointLocationJs; rotation: "clockwise" | "counter_clockwise"; radius?: number; declared_length?: number } | ({ kind: "spiral" } & LandXmlSpiralJs) | ({ kind: "unsupported_spiral" } & LandXmlSpiralJs);
 export type LandXmlRadiusJs = { finite: number } | "infinite";
 export interface LandXmlStationEquationJs { source_id: string; sta_internal: number; sta_ahead: number; sta_back?: number; sta_increment?: string; }
 export interface LandXmlCantJs { source_id: string; name: string; gauge: number; rotation_point?: string; equilibrium_constant?: number; applied_cant_constant?: number; stations: LandXmlCantStationJs[]; speed_stations: LandXmlSpeedStationJs[]; }
@@ -52,8 +53,10 @@ export interface LandXmlCantStationJs { source_id: string; station: number; appl
 export interface LandXmlSpeedStationJs { source_id: string; station: number; speed: number; }
 export interface LandXmlSuperelevationJs { source_id: string; sta_start?: number; sta_end?: number; events: LandXmlSuperelevationEventJs[]; }
 export interface LandXmlSuperelevationEventJs { source_id: string; kind: string; value?: string; }
-export interface LandXmlUnsupportedTransitionJs { source_id: string; spi_type: string; spiral: Extract<LandXmlAlignmentPrimitiveJs, { kind: "spiral" }>; reason: string; }
+/** `spiral` is the Rust LandXmlSpiral payload, not a tagged primitive enum. */
+export interface LandXmlUnsupportedTransitionJs { source_id: string; spi_type: string; spiral: LandXmlSpiralJs; reason: string; }
 export interface LandXmlAlignmentProbeJs { alignment_source_id: string; segment_source_id: string; geometric_distance: number; station: { geometric_distance: number; displayed_back: number; displayed_ahead: number; is_equation_boundary: boolean }; northing: number; easting: number; tangent_northing: number; tangent_easting: number; }
+export type LandXmlAlignmentProbesJs = LandXmlAlignmentProbeJs[];
 /** Neighbouring authored CantStation records; values are never interpolated. */
 export interface LandXmlAlignmentInspectionJs { cant?: { internal_station: number; station: { geometric_distance: number; displayed_back: number; displayed_ahead: number; is_equation_boundary: boolean }; previous?: LandXmlCantStationJs; next?: LandXmlCantStationJs }; superelevations: LandXmlSuperelevationJs[]; }
 export interface LandXmlParseOptionsJs { maxBytes?: number; maxDepth?: number; maxTextBytes?: number; maxPoints?: number; maxFaces?: number; maxWork?: number; maxAlignments?: number; maxAlignmentSegments?: number; maxAlignmentPoints?: number; maxStationEquations?: number; maxCantStations?: number; maxSuperelevationEvents?: number; cancelled?: boolean; }
@@ -817,6 +820,11 @@ export class IfcAPI {
      * unsupported transition domains are rejected rather than approximated.
      */
     probeLandXmlAlignmentAtDistance(data: Uint8Array, alignment_source_id: string, distance: number, offset_right: number): LandXmlAlignmentProbeJs;
+    /**
+     * Evaluate every physical location carrying a displayed station label.
+     * A duplicate label is a real station-equation result, never collapsed.
+     */
+    probeLandXmlAlignmentAtStation(data: Uint8Array, alignment_source_id: string, station: number, offset_right: number): LandXmlAlignmentProbesJs;
     /**
      * Process geometry for a subset of pre-scanned entities → flat
      * MeshCollection. Takes raw bytes + pre-pass data from buildPrePassOnce.
@@ -2282,6 +2290,7 @@ export interface InitOutput {
     readonly ifcapi_planPointTransfer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number) => void;
     readonly ifcapi_preparePdfVectorPage: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_probeLandXmlAlignmentAtDistance: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
+    readonly ifcapi_probeLandXmlAlignmentAtStation: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_processGeometryBatch: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number) => number;
     readonly ifcapi_processGeometryBatchFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number) => number;
     readonly ifcapi_processGeometryBatchInstanced: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number, c1: number) => void;

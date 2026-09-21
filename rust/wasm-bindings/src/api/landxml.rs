@@ -120,6 +120,8 @@ extern "C" {
     pub type LandXmlSourceDocumentJs;
     #[wasm_bindgen(typescript_type = "LandXmlAlignmentProbeJs")]
     pub type LandXmlAlignmentProbeJs;
+    #[wasm_bindgen(typescript_type = "LandXmlAlignmentProbesJs")]
+    pub type LandXmlAlignmentProbesJs;
     #[wasm_bindgen(typescript_type = "LandXmlAlignmentInspectionJs")]
     pub type LandXmlAlignmentInspectionJs;
     #[wasm_bindgen(typescript_type = "LandXmlParseOptionsJs")]
@@ -161,7 +163,8 @@ export type LandXmlPointLocationJs = { kind: "coordinates"; point: LandXmlPlanPo
 export interface LandXmlPlanPointJs { northing: number; easting: number; elevation?: number; }
 export interface LandXmlAlignmentPiJs { source_id: string; location: LandXmlPointLocationJs; }
 export type LandXmlAlignmentSegmentJs = { source_id: string; ordinal: number; primitive: LandXmlAlignmentPrimitiveJs };
-export type LandXmlAlignmentPrimitiveJs = { kind: "line"; start: LandXmlPointLocationJs; end: LandXmlPointLocationJs; declared_length?: number } | { kind: "irregular_line"; start: LandXmlPointLocationJs; end: LandXmlPointLocationJs; points: LandXmlPlanPointJs[]; declared_length?: number } | { kind: "curve"; start: LandXmlPointLocationJs; center: LandXmlPointLocationJs; end: LandXmlPointLocationJs; pi?: LandXmlPointLocationJs; rotation: "clockwise" | "counter_clockwise"; radius?: number; declared_length?: number } | { kind: "spiral" | "unsupported_spiral"; start: LandXmlPointLocationJs; pi: LandXmlPointLocationJs; end: LandXmlPointLocationJs; spi_type: string; radius_start: LandXmlRadiusJs; radius_end: LandXmlRadiusJs; rotation: "clockwise" | "counter_clockwise"; declared_length: number };
+export interface LandXmlSpiralJs { start: LandXmlPointLocationJs; pi: LandXmlPointLocationJs; end: LandXmlPointLocationJs; spi_type: string; radius_start: LandXmlRadiusJs; radius_end: LandXmlRadiusJs; rotation: "clockwise" | "counter_clockwise"; declared_length: number; }
+export type LandXmlAlignmentPrimitiveJs = { kind: "line"; start: LandXmlPointLocationJs; end: LandXmlPointLocationJs; declared_length?: number } | { kind: "irregular_line"; start: LandXmlPointLocationJs; end: LandXmlPointLocationJs; points: LandXmlPlanPointJs[]; declared_length?: number } | { kind: "curve"; start: LandXmlPointLocationJs; center: LandXmlPointLocationJs; end: LandXmlPointLocationJs; pi?: LandXmlPointLocationJs; rotation: "clockwise" | "counter_clockwise"; radius?: number; declared_length?: number } | ({ kind: "spiral" } & LandXmlSpiralJs) | ({ kind: "unsupported_spiral" } & LandXmlSpiralJs);
 export type LandXmlRadiusJs = { finite: number } | "infinite";
 export interface LandXmlStationEquationJs { source_id: string; sta_internal: number; sta_ahead: number; sta_back?: number; sta_increment?: string; }
 export interface LandXmlCantJs { source_id: string; name: string; gauge: number; rotation_point?: string; equilibrium_constant?: number; applied_cant_constant?: number; stations: LandXmlCantStationJs[]; speed_stations: LandXmlSpeedStationJs[]; }
@@ -169,8 +172,10 @@ export interface LandXmlCantStationJs { source_id: string; station: number; appl
 export interface LandXmlSpeedStationJs { source_id: string; station: number; speed: number; }
 export interface LandXmlSuperelevationJs { source_id: string; sta_start?: number; sta_end?: number; events: LandXmlSuperelevationEventJs[]; }
 export interface LandXmlSuperelevationEventJs { source_id: string; kind: string; value?: string; }
-export interface LandXmlUnsupportedTransitionJs { source_id: string; spi_type: string; spiral: Extract<LandXmlAlignmentPrimitiveJs, { kind: "spiral" }>; reason: string; }
+/** `spiral` is the Rust LandXmlSpiral payload, not a tagged primitive enum. */
+export interface LandXmlUnsupportedTransitionJs { source_id: string; spi_type: string; spiral: LandXmlSpiralJs; reason: string; }
 export interface LandXmlAlignmentProbeJs { alignment_source_id: string; segment_source_id: string; geometric_distance: number; station: { geometric_distance: number; displayed_back: number; displayed_ahead: number; is_equation_boundary: boolean }; northing: number; easting: number; tangent_northing: number; tangent_easting: number; }
+export type LandXmlAlignmentProbesJs = LandXmlAlignmentProbeJs[];
 /** Neighbouring authored CantStation records; values are never interpolated. */
 export interface LandXmlAlignmentInspectionJs { cant?: { internal_station: number; station: { geometric_distance: number; displayed_back: number; displayed_ahead: number; is_equation_boundary: boolean }; previous?: LandXmlCantStationJs; next?: LandXmlCantStationJs }; superelevations: LandXmlSuperelevationJs[]; }
 export interface LandXmlParseOptionsJs { maxBytes?: number; maxDepth?: number; maxTextBytes?: number; maxPoints?: number; maxFaces?: number; maxWork?: number; maxAlignments?: number; maxAlignmentSegments?: number; maxAlignmentPoints?: number; maxStationEquations?: number; maxCantStations?: number; maxSuperelevationEvents?: number; cancelled?: boolean; }
@@ -282,6 +287,37 @@ impl IfcAPI {
             .map_err(|error| {
                 JsValue::from_str(&format!("LandXML probe serialization failed: {error}"))
             })
+    }
+
+    /// Evaluate every physical location carrying a displayed station label.
+    /// A duplicate label is a real station-equation result, never collapsed.
+    #[wasm_bindgen(js_name = probeLandXmlAlignmentAtStation)]
+    pub fn probe_landxml_alignment_at_station(
+        &self,
+        data: &[u8],
+        alignment_source_id: &str,
+        station: f64,
+        offset_right: f64,
+    ) -> Result<LandXmlAlignmentProbesJs, JsValue> {
+        let document = ifc_lite_landxml::alignment::parse_landxml_alignments_optional(data)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let alignment = document
+            .alignments
+            .iter()
+            .find(|value| value.source_id.0 == alignment_source_id)
+            .ok_or_else(|| JsValue::from_str("LXMLA229: alignment source id was not found"))?;
+        let probes: Result<Vec<_>, _> = alignment
+            .distances_for_station(station)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?
+            .into_iter()
+            .map(|distance| alignment.probe_at_distance(distance, offset_right))
+            .collect();
+        let probes = probes.map_err(|error: ifc_lite_landxml::alignment::LandXmlNumericDiagnostic| JsValue::from_str(&error.to_string()))?;
+        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+        probes
+            .serialize(&serializer)
+            .map(|value| value.unchecked_into())
+            .map_err(|error| JsValue::from_str(&format!("LandXML probe serialization failed: {error}")))
     }
 
     /// Inspect authored cant and superelevation records at a physical distance.

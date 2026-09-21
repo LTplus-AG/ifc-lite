@@ -67,4 +67,19 @@ describe('LandXmlSourceInspector (#5042)', () => {
     assert.ok([...ui.querySelectorAll('button')].some((button) => button.textContent === 'Point: P100'));
     cleanup();
   });
+
+  it('navigates an explicitly refused transition and displays its refusal (#5044)', () => {
+    const source = document();
+    source.alignments = [{ sourceId: 'alignment', ordinal: 1, name: 'Main', length: 10, staStart: 0,
+      segments: [{ sourceId: 'transition', ordinal: 1, primitive: { kind: 'unsupported_spiral', start: { kind: 'coordinates', point: { northing: 0, easting: 0, elevation: null } }, pi: { kind: 'coordinates', point: { northing: 5, easting: 5, elevation: null } }, end: { kind: 'coordinates', point: { northing: 10, easting: 0, elevation: null } }, spiType: 'bloss', declaredLength: 10 } }],
+      cantStations: [], superelevations: [], unsupportedTransitions: [{ sourceId: 'transition', spiType: 'bloss', reason: 'retained but unsupported' }] }];
+    const selected: string[] = [];
+    const ui = render(<LandXmlSourceInspector models={new Map([['alignment-model', { landXmlDocument: source }]])} selected={{ modelId: 'alignment-model', sourceId: 'alignment' }} onSelect={(ref) => selected.push(ref.sourceId)} />);
+    assert.match(ui.textContent ?? '', /Refused bloss/);
+    const refusal = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Refused bloss'));
+    assert.ok(refusal);
+    click(refusal);
+    assert.deepEqual(selected, ['transition']);
+    cleanup();
+  });
 });

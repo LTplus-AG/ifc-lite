@@ -188,7 +188,7 @@ impl GeometryRouter {
                         // `IfcMappedItem` (not the inner item's type) is deliberate —
                         // the inner walk errored before it could attribute anything,
                         // so this level names the item it actually lost.
-                        self.record_unsupported_item(sub_item.ifc_type);
+                        self.record_unsupported_item(sub_item.ifc_type.clone());
                         crate::diag::diag_debug!(
                             { item_id = sub_item.id, error = %_e,
                               "skipping nested IfcMappedItem" }
@@ -229,7 +229,7 @@ impl GeometryRouter {
                         mesh.merge(&sub_mesh);
                     }
                     Err(_e) => {
-                        self.record_unsupported_item(sub_item.ifc_type);
+                        self.record_unsupported_item(sub_item.ifc_type.clone());
                         crate::diag::diag_debug!(
                             { item_id = sub_item.id, ifc_type = ?sub_item.ifc_type,
                               error = %_e, "skipping unsupported mapped-source item" }
@@ -245,7 +245,7 @@ impl GeometryRouter {
                     }
                 }
                 None => {
-                    self.record_unsupported_item(sub_item.ifc_type);
+                    self.record_unsupported_item(sub_item.ifc_type.clone());
                     crate::diag::diag_debug!(
                         { item_id = sub_item.id, ifc_type = ?sub_item.ifc_type,
                           "skipping unsupported mapped-source item (no processor)" }

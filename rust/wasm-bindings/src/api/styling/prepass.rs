@@ -202,15 +202,15 @@ pub(crate) fn collect_type_geometry_jobs_from_spans(
     }
 
     let mut candidates: Vec<(u32, usize, usize, ifc_lite_core::IfcType, Vec<u32>)> = Vec::new();
-    for &(id, start, end, ifc_type) in type_candidate_spans {
-        if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
+    for (id, start, end, ifc_type) in type_candidate_spans {
+        if let Ok(entity) = decoder.decode_at_with_id(*id, *start, *end) {
             let rep_maps: Vec<u32> = entity
                 .get(6)
                 .and_then(|a| a.as_list())
                 .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
                 .unwrap_or_default();
             if !rep_maps.is_empty() {
-                candidates.push((id, start, end, ifc_type, rep_maps));
+                candidates.push((*id, *start, *end, ifc_type.clone(), rep_maps));
             }
         }
     }

@@ -320,7 +320,7 @@ fn produce_inner(
 
     let element_color = job
         .element_color
-        .unwrap_or_else(|| crate::style::default_color_for_type(job.ifc_type).to_array());
+        .unwrap_or_else(|| crate::style::default_color_for_type(job.ifc_type.clone()).to_array());
 
     if let ElementJobKind::TypeProduct { rep_maps } = &job.kind {
         // Type-product geometry (orphan/instanced RepresentationMaps) never rides the

@@ -233,7 +233,7 @@ pub(super) fn process_entity_job(
     let produced = crate::element::produce_element_meshes(
         &crate::element::ElementMeshJob {
             id: job.id,
-            ifc_type: job.ifc_type,
+            ifc_type: job.ifc_type.clone(),
             entity: &entity,
             kind,
             element_color: Some(job.element_color),

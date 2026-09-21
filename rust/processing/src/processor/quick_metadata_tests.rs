@@ -181,7 +181,7 @@ fn quick_spatial_predicate_matches_the_generated_spatial_branch() {
     let mut extra = Vec::new();
     for ty in IFC_TYPES {
         let name = ty.as_str();
-        let want = rule(*ty);
+        let want = rule(ty.clone());
         if want {
             expected_true += 1;
         }

@@ -128,10 +128,10 @@ fn schema_says_spatial(t: IfcType) -> bool {
 fn quick_spatial_gate_matches_the_schema() {
     let mut expected = BTreeSet::new();
     let mut mismatches = Vec::new();
-    for &t in IFC_TYPES {
-        let want = schema_says_spatial(t);
+    for t in IFC_TYPES {
+        let want = schema_says_spatial(t.clone());
         if want {
-            expected.insert(t.as_str());
+            expected.insert(t.known_as_str().expect("catalog entries are known"));
         }
         let got = is_quick_spatial_type_ci(t.as_str());
         if got != want {

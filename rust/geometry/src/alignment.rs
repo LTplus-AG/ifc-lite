@@ -38,7 +38,7 @@ macro_rules! ifc_type_fn {
     ($name:ident, $literal:expr) => {
         fn $name() -> IfcType {
             static T: OnceLock<IfcType> = OnceLock::new();
-            *T.get_or_init(|| IfcType::from_str($literal))
+            T.get_or_init(|| IfcType::from_str($literal)).clone()
         }
     };
 }

@@ -307,10 +307,11 @@ export class PickingManager {
             const boxHits = this.scene.selectRect(
                 sx0, sy0, sx1, sy1,
                 this.canvas.width, this.canvas.height,
-                this.camera.getViewProjMatrix().m,
+                this.camera.getRelativeToEyeFrame().getViewProjection().m,
                 options?.hiddenIds,
                 options?.isolatedIds,
                 clip,
+                { cameraWorld: this.camera.getRelativeToEyeFrame().getCameraWorld() },
             );
             const cpuPointSnap = this.pointPickProvider?.() ?? null;
             if (!cpuPointSnap || cpuPointSnap.nodes.length === 0) return boxHits;

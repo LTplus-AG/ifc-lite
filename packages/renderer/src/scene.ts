@@ -29,7 +29,7 @@ import {
   raycastTriangles,
   rayIntersectsBox,
 } from './scene-raycaster.js';
-import { selectBoundingBoxesInRect } from './scene-rect-select.js';
+import { selectBoundingBoxesInRect, type RectangleRteFrame } from './scene-rect-select.js';
 import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, destroyGpuResources, topologySafeBatchOrigin } from './scene-geometry.js';
 import { resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
@@ -4226,6 +4226,7 @@ export class Scene {
     hiddenIds?: Set<number>,
     isolatedIds?: Set<number> | null,
     clip?: PickClipState | null,
+    rte?: RectangleRteFrame | null,
   ): Set<number> {
     // After release the cache is already the complete set; before it, boxes are
     // computed lazily, so make sure every entity that still has mesh data has
@@ -4254,6 +4255,7 @@ export class Scene {
       hiddenIds,
       isolatedIds,
       clip,
+      rte,
     );
   }
 }

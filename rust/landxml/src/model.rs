@@ -287,6 +287,9 @@ pub struct LandXmlTinDocument {
     pub roadways: Vec<crate::LandXmlRoadway>,
     pub capability_diagnostics: Vec<crate::LandXmlCapabilityDiagnostic>,
     pub preserved_only_extensions: Vec<crate::LandXmlPreservedOnlyExtension>,
+    /// Pipe networks are retained in the same canonical source document as
+    /// terrain. Their absence means this LandXML source did not declare one.
+    pub pipe_networks: Option<crate::LandXmlPipeNetworkDocument>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

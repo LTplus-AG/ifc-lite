@@ -48,6 +48,18 @@ pub struct LandXmlLimits {
     pub max_character_references: usize,
     /// Maximum LandXML `Surface` records, including non-TIN surfaces we skip.
     pub max_surfaces: usize,
+    /// Maximum LandXML `PipeNetwork` records, including refused networks.
+    pub max_pipe_networks: usize,
+    /// Maximum pipe-network `Struct` records across a document.
+    pub max_pipe_structures: usize,
+    /// Maximum pipe-network `Pipe` records across a document.
+    pub max_pipes: usize,
+    /// Maximum `Invert` records across a document.
+    pub max_pipe_inverts: usize,
+    /// Maximum `PipeFlow` and `StructFlow` records across a document.
+    pub max_pipe_flows: usize,
+    /// Maximum element-level semantic refusals retained for a document.
+    pub max_pipe_refusals: usize,
     /// Maximum preserved roots from foreign XML namespaces.
     pub max_extensions: usize,
     /// Maximum coordinate records across the whole source document, including
@@ -89,6 +101,12 @@ impl Default for LandXmlLimits {
             max_text_bytes: 1024 * 1024,
             max_character_references: 100_000,
             max_surfaces: 100_000,
+            max_pipe_networks: 100_000,
+            max_pipe_structures: 5_000_000,
+            max_pipes: 5_000_000,
+            max_pipe_inverts: 10_000_000,
+            max_pipe_flows: 10_000_000,
+            max_pipe_refusals: 1_000_000,
             max_extensions: 100_000,
             max_points: 5_000_000,
             max_faces: 10_000_000,

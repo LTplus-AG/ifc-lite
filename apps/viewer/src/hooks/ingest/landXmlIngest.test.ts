@@ -6,7 +6,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseLandXmlViewerModelAsync } from './landXmlViewerModel.js';
 import { connectedFaceComponents } from './landXmlIngest.js';
-import { findLandXmlSourceRecord } from './landXmlSemantics.js';
+import { buildLandXmlPipeComponents } from './landXmlPipeGeometry.js';
+import { findLandXmlSourceRecord, type LandXmlPipeNetworkDocument } from './landXmlSemantics.js';
 import { isLandXmlContent } from './landXmlSniff.js';
 import { parseLandXmlTinInCurrentRealm } from './landXmlWasm.js';
 
@@ -63,6 +64,58 @@ function sharedBytes(buffer: ArrayBuffer): SharedArrayBuffer {
 
 const parseDocument = (text: string) => parseLandXmlTinInCurrentRealm(bytes(text));
 const parseViewer = (buffer: ArrayBuffer | SharedArrayBuffer) => parseLandXmlViewerModelAsync(buffer);
+
+function assertSectionNormals(mesh: { normals: Float32Array }): void {
+  const normals = Array.from(mesh.normals);
+  assert.ok(normals.every(Number.isFinite));
+  for (let index = 0; index < normals.length; index += 3) {
+    assert.ok(Math.abs(Math.hypot(normals[index], normals[index + 1], normals[index + 2]) - 1) < 1e-5);
+  }
+  assert.ok(normals.some((value, index) => index % 3 === 0 && Math.abs(value) > 0.5));
+  assert.ok(normals.some((value, index) => index % 3 === 1 && Math.abs(value) > 0.05));
+}
+
+function worldCoordinate(value: number, origin: readonly number[] | undefined, axis: number): number {
+  const offset = origin?.[axis];
+  if (offset === undefined) throw new Error(`mesh origin is missing axis ${axis}`);
+  return value + offset;
+}
+
+it('reports pipe mesh truncation even after ordinary warning capacity is exhausted (#5047)', () => {
+  const units = {
+    linearUnit: 'meter', elevationUnit: 'meter', diameterUnit: 'meter', widthUnit: 'meter', heightUnit: 'meter', flowUnit: null,
+    linearScaleToMeters: 1, elevationScaleToMeters: 1, diameterScaleToMeters: 1, widthScaleToMeters: 1, heightScaleToMeters: 1,
+  };
+  const elevation = { value: 0, unit: 'meter', meters: 0 };
+  const structure = (sourceId: string, easting: number) => ({
+    sourceId, sourcePath: sourceId, name: sourceId, properties: {}, units,
+    center: { northing: 0, easting, northingMeters: 0, eastingMeters: easting, elevation },
+    part: { kind: 'circular' as const, properties: {}, diameter: { value: 1, unit: 'meter', meters: 1 }, material: null },
+    rimElevation: null, sumpElevation: null, inverts: [], flow: null,
+  });
+  const pipe = (index: number) => ({
+    sourceId: `pipe-${index}`, sourcePath: `/pipe-${index}`, name: `pipe-${index}`, properties: {}, units,
+    connectivity: { startStructureSourceId: 'start', endStructureSourceId: 'end' },
+    part: { kind: 'circular' as const, properties: {}, diameter: { value: 1, unit: 'meter', meters: 1 }, material: null },
+    geometry: { kind: 'straight' as const, point: null }, length: null, flow: null,
+  });
+  const validPipes = Array.from({ length: 10_001 }, (_, index) => pipe(index));
+  const refusedPipes = Array.from({ length: 1_000 }, (_, index) => pipe(20_000 + index));
+  const document: LandXmlPipeNetworkDocument = {
+    version: '1.2', rootUnits: units, collections: [], features: [],
+    networks: [{
+      sourceId: 'network', sourcePath: '/network', name: 'network', pipeNetworkType: '', properties: {},
+      structureUnits: units, pipeUnits: units, structures: [structure('start', 0), structure('end', 1)],
+      pipes: [...refusedPipes, ...validPipes], features: [],
+    }],
+    refusals: refusedPipes.map((candidate) => ({ sourceId: candidate.sourceId, sourcePath: candidate.sourcePath, code: 'invalid_semantic', message: 'refused' })),
+  };
+
+  const result = buildLandXmlPipeComponents(document, 1);
+  assert.equal(result.components.length, 10_000);
+  assert.equal(result.warnings.length, 1_000);
+  assert.match(result.warnings.at(-1) ?? '', /Stopped LandXML pipe rendering after 10000 meshes/);
+});
 
 describe('LandXML content dispatch (#5041)', () => {
   it('recognizes default and prefixed roots without claiming generic XML', () => {
@@ -130,6 +183,18 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
       'landxml:surface:1:point:2',
       'landxml:surface:1:boundary:1:point:1',
     ]);
+  });
+
+  it('retains COGO and analytic plan records from the canonical WASM document (#5046)', async () => {
+    const parsed = await parseDocument(LANDXML.replace(
+      '</Surfaces>',
+      `</Surfaces><CgPoints><CgPoint name="control">5000000 2600000 100</CgPoint></CgPoints>
+      <PlanFeatures><PlanFeature name="right-of-way"><CoordGeom><Line><Start pntRef="control"/><End>5000010 2600010 102</End></Line></CoordGeom></PlanFeature></PlanFeatures>
+      <Parcels><Parcel name="lot"><CoordGeom><Line><Start pntRef="control"/><End>5000010 2600010</End></Line></CoordGeom></Parcel></Parcels>`,
+    ));
+    assert.equal(parsed.plan?.cogoPoints[0].name, 'control');
+    assert.equal(parsed.plan?.planFeatures[0].geometry[0].kind, 'line');
+    assert.equal(parsed.plan?.parcels[0].name, 'lot');
   });
 
   it('keeps source selection stable after geometry is partitioned (#5042)', async () => {
@@ -376,6 +441,20 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.ok(Math.abs(info.max.y - 6) < 1e-12, 'elevation uses the schema-default meter scale');
   });
 
+  it('retains the authored frame of geometry-free 2D contours (#5046)', async () => {
+    const contourOnly = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+      <Units><Metric linearUnit="meter" elevationUnit="meter"/></Units>
+      <Surfaces><Surface name="contours"><Definition surfType="TIN"/><SourceData><Contours>
+        <Contour name="100" elev="100"><PntList2D>5000000 2600000 5000010 2600010</PntList2D></Contour>
+      </Contours></SourceData></Surface></Surfaces>
+    </LandXML>`;
+    const result = await parseViewer(bytes(contourOnly));
+    const bounds = result.geometryResult.coordinateInfo.originalBounds;
+    assert.deepEqual(bounds.min, { x: 2_600_000, y: 100, z: -5_000_010 });
+    assert.deepEqual(bounds.max, { x: 2_600_010, y: 100, z: -5_000_000 });
+    assert.equal(result.geometryResult.coordinateInfo.hasLargeCoordinates, true);
+  });
+
   it('preserves the stable Rust error code for unsupported units', async () => {
     const inheritedUnit = LANDXML.replace('linearUnit="meter"', 'linearUnit="constructor"');
     await assert.rejects(
@@ -453,5 +532,136 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
   it('parses without the window-only DOMParser global used by the browser main thread', async () => {
     assert.equal(globalThis.DOMParser, undefined);
     assert.equal((await parseDocument(LANDXML)).surfaces[0].name, 'Existing Ground');
+  });
+
+  it('renders validated pipe routes in metres and retains model-qualified provenance (#5047)', async () => {
+    const pipes = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Imperial linearUnit="foot" diameterUnit="inch"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>0 10 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="straight" refStart="A" refEnd="B"><CircPipe diameter="12"/></Pipe><Pipe name="route" refStart="A" refEnd="B"><CircPipe diameter="12"/><Center>5 5 0</Center></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    const parsed = await parseDocument(pipes);
+    assert.ok(Math.abs((parsed.pipeNetworks?.networks[0].pipes[0].part.diameter?.meters ?? 0) - 0.3048) < Number.EPSILON);
+    assert.equal(parsed.pipeNetworks?.networks[0].structures[1].center.eastingMeters, 3.048);
+    const viewer = await parseViewer(bytes(pipes));
+    assert.equal(viewer.geometryResult.meshes.length, 2, 'straight and declared pass-through routes each render once');
+    assert.equal(viewer.semanticDocument.rendering.meshProvenance.every((mesh) => mesh.pipeSourceId !== undefined), true);
+  });
+
+  it('renders rectangular pipes with authored width and height rather than a circular fallback (#5047)', async () => {
+    const pipes = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter" widthUnit="meter" heightUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="box" refStart="A" refEnd="B"><RectPipe width="2" height="10"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    const viewer = await parseViewer(bytes(pipes));
+    const mesh = viewer.geometryResult.meshes[0];
+    assert.ok(mesh);
+    const world = Array.from(mesh.positions).reduce((bounds, value, index) => {
+      const axis = index % 3, coordinate = worldCoordinate(value, mesh.origin, axis);
+      bounds.min[axis] = Math.min(bounds.min[axis], coordinate); bounds.max[axis] = Math.max(bounds.max[axis], coordinate);
+      return bounds;
+    }, { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] });
+    assert.equal(world.max[0] - world.min[0], 2);
+    assert.equal(world.max[1] - world.min[1], 10);
+    assertSectionNormals(mesh);
+    const ellipse = await parseViewer(bytes(pipes.replace('<RectPipe width="2" height="10"/>', '<ElliPipe span="2" height="10"/>')));
+    const ellipseMesh = ellipse.geometryResult.meshes[0];
+    assert.ok(ellipseMesh);
+    const ellipseWorld = Array.from(ellipseMesh.positions).reduce((bounds, value, index) => {
+      const axis = index % 3, coordinate = worldCoordinate(value, ellipseMesh.origin, axis);
+      bounds.min[axis] = Math.min(bounds.min[axis], coordinate); bounds.max[axis] = Math.max(bounds.max[axis], coordinate);
+      return bounds;
+    }, { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] });
+    assert.ok(Math.abs((ellipseWorld.max[0] - ellipseWorld.min[0]) - 2) < 1e-6);
+    assert.ok(Math.abs((ellipseWorld.max[1] - ellipseWorld.min[1]) - 9.510565) < 1e-5, 'the ten-sided ellipse follows its authored height, not a 2 m circle');
+    assertSectionNormals(ellipseMesh);
+    const egg = await parseViewer(bytes(pipes.replace('<RectPipe width="2" height="10"/>', '<EggPipe span="2" height="10"/>')));
+    assert.equal(egg.geometryResult.meshes.length, 0);
+    assert.ok(egg.warnings.some((warning) => warning.includes('Egg pipe cross-section is retained but not rendered')));
+  });
+
+  it('keeps finite non-zero normals for representable micro-pipes (#5047)', async () => {
+    const pipes = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="micro" refStart="A" refEnd="B"><CircPipe diameter="1e-20"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    const viewer = await parseViewer(bytes(pipes));
+    const mesh = viewer.geometryResult.meshes[0];
+    assert.ok(mesh);
+    assertSectionNormals(mesh);
+  });
+
+  it('does not forge pipe feature owners through unexpected wrappers in the real WASM contract (#5047)', async () => {
+    const pipes = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks><Unexpected><Feature><Property label="bad-collection" value="yes"/></Feature></Unexpected><PipeNetwork name="storm" pipeNetType="storm"><Structs><Unexpected><Feature><Property label="bad-structs" value="yes"/></Feature></Unexpected><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="P" refStart="A" refEnd="B"><CircPipe diameter="1"><Unexpected><Feature><Property label="bad-pipe" value="yes"/></Feature></Unexpected></CircPipe><Feature><Property label="direct" value="yes"/></Feature></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    const parsed = await parseDocument(pipes);
+    const allFeatures = [
+      ...(parsed.pipeNetworks?.features ?? []),
+      ...(parsed.pipeNetworks?.networks.flatMap((network) => network.features) ?? []),
+    ];
+    assert.deepEqual(allFeatures.map((feature) => feature.properties.direct), ['yes']);
+    assert.equal(allFeatures.some((feature) => Object.keys(feature.properties).some((key) => key.startsWith('bad-'))), false);
+  });
+
+  it('refuses incomplete pipe routes locally without fabricating a partial segment (#5047)', async () => {
+    const pipes = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="C"><Center>0 10 0</Center><CircStruct diameter="1"/></Struct><Struct name="D"><Center>10 10 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="bad-center" refStart="A" refEnd="B"><CircPipe diameter="1"/><Center>5 0</Center></Pipe><Pipe name="bad-start" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe><Pipe name="good" refStart="C" refEnd="D"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    const parsed = await parseDocument(pipes);
+    assert.equal(parsed.pipeNetworks?.networks[0].pipes.length, 3, 'source semantics remain inspectable');
+    const viewer = await parseViewer(bytes(pipes));
+    assert.equal(viewer.geometryResult.meshes.length, 2, 'the valid sibling and ordinary complete pipe render');
+    assert.ok(viewer.warnings.some((warning) => warning.includes('bad-center') && warning.includes('every endpoint')));
+
+    const missingStart = pipes.replace('<Center>0 0 0</Center>', '<Center>0 0</Center>');
+    const missingStartViewer = await parseViewer(bytes(missingStart));
+    assert.equal(missingStartViewer.geometryResult.meshes.length, 1, 'a 2D start Center never creates a partial route');
+    assert.ok(missingStartViewer.warnings.some((warning) => warning.includes('bad-start')));
+  });
+
+  it('uses pipe-specific endpoint inverts when an authored structure Center is two-dimensional (#5047)', async () => {
+    const pipes = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0</Center><CircStruct diameter="1"/><Invert refPipe="P" flowDir="out" elev="4"/></Struct><Struct name="B"><Center>10 0</Center><CircStruct diameter="1"/><Invert refPipe="P" flowDir="in" elev="2"/></Struct></Structs><Pipes><Pipe name="P" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    const viewer = await parseViewer(bytes(pipes));
+    assert.equal(viewer.geometryResult.meshes.length, 1);
+    const mesh = viewer.geometryResult.meshes[0];
+    assert.ok(mesh);
+    const elevations = Array.from(mesh.positions).filter((_, index) => index % 3 === 1).map((value) => worldCoordinate(value, mesh.origin, 1));
+    assert.ok(Math.min(...elevations) < 2.1 && Math.max(...elevations) > 3.9, 'the endpoint route follows the per-pipe invert elevations');
+  });
+
+  it('refuses only a pipe with conflicting endpoint inverts and exposes its real-WASM diagnostic (#5047)', async () => {
+    const pipes = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/><Invert refPipe="bad" flowDir="out" elev="4"/><Invert refPipe="bad" flowDir="out" elev="40"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="C"><Center>0 10 0</Center><CircStruct diameter="1"/></Struct><Struct name="D"><Center>10 10 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="bad" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe><Pipe name="good" refStart="C" refEnd="D"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    const parsed = await parseDocument(pipes);
+    const badPipe = parsed.pipeNetworks?.networks[0]?.pipes.find((pipe) => pipe.name === 'bad');
+    assert.ok(badPipe);
+    const refusal = parsed.pipeNetworks?.refusals.find((item) => item.sourceId === badPipe.sourceId);
+    assert.ok(refusal);
+    assert.equal(refusal.message, 'conflicting authored endpoint Invert elevations');
+    assert.ok(refusal.code.length > 0);
+    assert.equal(refusal.sourcePath, badPipe.sourcePath);
+    const viewer = await parseViewer(bytes(pipes));
+    assert.equal(viewer.geometryResult.meshes.length, 1, 'the valid no-invert sibling retains legitimate Center fallback');
+    assert.ok(viewer.warnings.some((warning) => warning.includes(`(${badPipe.sourceId})`) && warning.includes(refusal.code) && warning.includes(refusal.sourcePath)));
+    assert.ok(viewer.warnings.some((warning) => warning.includes('bad') && warning.includes('source semantic refusal')));
+  });
+
+  it('keeps one-metre endpoint conflicts visible at huge elevations while exact duplicates remain valid (#5047)', async () => {
+    const base = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 1000000000000000</Center><CircStruct diameter="1"/><Invert refPipe="P" flowDir="out" elev="1000000000000000"/><Invert refPipe="P" flowDir="out" elev="ELEVATION"/></Struct><Struct name="B"><Center>10 0 1000000000000000</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="P" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe><Pipe name="sibling" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    const conflict = base.replace('ELEVATION', '1000000000000001');
+    const parsed = await parseDocument(conflict);
+    const pipe = parsed.pipeNetworks?.networks[0]?.pipes.find((candidate) => candidate.name === 'P');
+    assert.ok(pipe);
+    assert.ok(parsed.pipeNetworks?.refusals.some((refusal) => (
+      refusal.sourceId === pipe.sourceId && refusal.message === 'conflicting authored endpoint Invert elevations'
+    )));
+    const viewer = await parseViewer(bytes(conflict));
+    assert.equal(viewer.geometryResult.meshes.length, 1, 'only the unaffected sibling renders');
+    assert.ok(viewer.warnings.some((warning) => warning.includes('P') && warning.includes('conflicting authored endpoint Invert elevations')));
+
+    const duplicates = base.replace('ELEVATION', '1000000000000000');
+    const duplicateParsed = await parseDocument(duplicates);
+    assert.equal(duplicateParsed.pipeNetworks?.refusals.length, 0);
+    assert.equal(duplicateParsed.pipeNetworks?.networks[0]?.structures[0]?.inverts.length, 1);
+    const duplicateViewer = await parseViewer(bytes(duplicates));
+    assert.equal(duplicateViewer.geometryResult.meshes.length, 2);
+    assert.equal(duplicateViewer.warnings.length, 0);
+  });
+
+  it('does not fall back to a structure Center after an invalid authored endpoint invert (#5047)', async () => {
+    const pipes = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/><Invert refPipe="bad" flowDir="out" elev="bad"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="C"><Center>0 10 0</Center><CircStruct diameter="1"/></Struct><Struct name="D"><Center>10 10 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="bad" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe><Pipe name="good" refStart="C" refEnd="D"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    const parsed = await parseDocument(pipes);
+    const badPipe = parsed.pipeNetworks?.networks[0]?.pipes.find((pipe) => pipe.name === 'bad');
+    assert.ok(badPipe);
+    assert.ok(parsed.pipeNetworks?.refusals.some((item) => item.sourceId === badPipe.sourceId && item.message === 'an authored endpoint Invert is invalid'));
+    const viewer = await parseViewer(bytes(pipes));
+    assert.equal(viewer.geometryResult.meshes.length, 1, 'the bad pipe cannot silently route at Center elevation zero');
+    assert.ok(viewer.warnings.some((warning) => warning.includes('bad') && warning.includes('an authored endpoint Invert is invalid')));
   });
 });

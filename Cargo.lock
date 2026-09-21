@@ -1562,6 +1562,7 @@ dependencies = [
  "ifc-lite-geometry",
  "quick-xml",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

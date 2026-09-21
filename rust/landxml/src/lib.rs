@@ -12,6 +12,9 @@ mod capture;
 mod limits;
 mod model;
 mod parser;
+mod plan;
+mod pipe_parser;
+mod pipes;
 mod preflight;
 mod profile;
 mod profile_circular;
@@ -40,4 +43,19 @@ pub use profile::{
     LandXmlGradeLine, LandXmlPreservedOnlyExtension, LandXmlPreservedOnlyExtensionKind,
     LandXmlProfile, LandXmlProfileEvaluationError, LandXmlProfileKind, LandXmlProfilePoint,
     LandXmlRoadway, LandXmlVerticalCurve, LandXmlVerticalCurveKind,
+};
+pub use plan::{
+    parse_landxml_document, parse_landxml_plan, parse_landxml_plan_with_cancel, LandXmlCgPoint,
+    LandXmlDocument, LandXmlGeometryKind, LandXmlMonument, LandXmlParcel, LandXmlParcelProbe,
+    LandXmlParcelState, LandXmlPlanDocument, LandXmlPlanFeature, LandXmlPlanGeometry,
+    LandXmlPlanLimits, LandXmlPlanPoint, LandXmlPlanPointLocation, LandXmlPlanResolver,
+    LandXmlPlanSourceBatch,
+};
+pub use pipe_parser::{parse_landxml_pipe_networks, parse_landxml_pipe_networks_with_cancel};
+pub use pipes::{
+    LandXmlPipe, LandXmlPipeConnectivity, LandXmlPipeFeature, LandXmlPipeFlow, LandXmlPipeGeometry,
+    LandXmlPipeInvert, LandXmlPipeMeasure, LandXmlPipeNetwork, LandXmlPipeNetworkCollection,
+    LandXmlPipeNetworkDocument, LandXmlPipePart, LandXmlPipePosition, LandXmlPipeProperties,
+    LandXmlPipeRefusal, LandXmlPipeSourceBatch, LandXmlPipeStructure, LandXmlPipeUnits,
+    LandXmlStructurePart,
 };

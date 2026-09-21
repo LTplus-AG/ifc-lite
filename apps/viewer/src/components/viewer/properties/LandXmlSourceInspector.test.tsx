@@ -23,8 +23,34 @@ function document(pointCount = 1): LandXmlTinDocument {
       breaklines: [{ sourceId: 'breakline', ordinal: 1, name: 'ridge', kind: null, sourcePath: 'breakline-path', properties: {}, coordinateDimension: 3, points: [[1, 2, 3]], pointSourceIds: [] }],
       contours: [{ sourceId: 'contour', ordinal: 1, name: '100 m', kind: null, sourcePath: 'contour-path', properties: { elev: '100' }, coordinateDimension: 2, points: [[1, 2]], pointSourceIds: [] }],
     }],
-    extensions: [], warnings: [], alignments: [], profiles: [], crossSections: [], crossSectionSurfaces: [], roadways: [], capabilityDiagnostics: [], preservedOnlyExtensions: [], rendering: { meshProvenance: [], surfaceCounts: [{ surfaceSourceId: 'surface', sourcePoints: pointCount, sourceFaces: 1, hiddenFaces: 0, renderedFaces: 1, droppedDegenerateFaces: 2, droppedPrecisionFaces: 3, droppedReframeFaces: 4 }] },
+    extensions: [], warnings: [], alignments: [], profiles: [], crossSections: [], crossSectionSurfaces: [], roadways: [], capabilityDiagnostics: [], preservedOnlyExtensions: [],
+    plan: {
+      version: '1.2', areaUnit: 'squareMeter', areaScaleToSquareMeters: 1,
+      cogoPoints: [], monuments: [{ sourceId: 'monument', pointScopeId: null, ordinal: 1, name: 'corner', code: null, description: null, pntRef: 'control', point: null, properties: {} }],
+      planFeatures: [{ sourceId: 'feature', ordinal: 1, name: 'road', code: null, description: null, properties: {}, locations: [], geometry: [{ sourceId: 'feature-line', ordinal: 1, kind: 'line', pointScopeId: null, start: { kind: 'coordinates', point: { northing: 1, easting: 2, elevation: null }, pntRef: null }, end: { kind: 'coordinates', point: { northing: 3, easting: 4, elevation: null }, pntRef: null }, center: null, pi: null, intermediatePoints: [], rotation: null, radius: null, declaredLength: null, properties: {} }] }],
+      parcels: [{ sourceId: 'parcel', ordinal: 1, name: 'lot', code: null, description: null, title: 'DEED-123', declaredArea: null, declaredPerimeter: null, declaredAreaUnit: null, properties: {}, loops: [[{ sourceId: 'parcel-curve', ordinal: 1, kind: 'curve', pointScopeId: null, start: { kind: 'coordinates', point: { northing: 0, easting: 1, elevation: null }, pntRef: null }, end: { kind: 'coordinates', point: { northing: 0, easting: -1, elevation: null }, pntRef: null }, center: { kind: 'coordinates', point: { northing: 0, easting: 0, elevation: null }, pntRef: null }, pi: null, intermediatePoints: [], rotation: 'ccw', radius: 1, declaredLength: null, properties: {} }]], loopOffsets: [0], preservationReason: null }], warnings: [],
+      sourceBatches: [{ sourceIds: ['feature-line', 'parcel-curve'] }],
+      parcelProbes: [{ sourceId: 'parcel', state: { kind: 'analytic' }, perimeterInDeclaredLinearUnits: 5.14, areaInDeclaredSquareUnits: 1.57, declaredArea: null, declaredPerimeter: null, perimeterInMeters: 5.14, areaInSquareMeters: 1.57 }],
+      resolvedMonuments: [{ sourceId: 'monument', point: { northing: 1, easting: 2, elevation: 3 } }],
+      resolvedGeometry: [{ sourceId: 'feature-line', start: { northing: 1, easting: 2, elevation: null }, end: { northing: 3, easting: 4, elevation: null }, center: null, pi: null }, { sourceId: 'parcel-curve', start: { northing: 0, easting: 1, elevation: null }, end: { northing: 0, easting: -1, elevation: null }, center: { northing: 0, easting: 0, elevation: null }, pi: null }],
+    },
+    rendering: { meshProvenance: [], surfaceCounts: [{ surfaceSourceId: 'surface', sourcePoints: pointCount, sourceFaces: 1, hiddenFaces: 0, renderedFaces: 1, droppedDegenerateFaces: 2, droppedPrecisionFaces: 3, droppedReframeFaces: 4 }] },
   };
+}
+
+function pipeDocument(): LandXmlTinDocument {
+  const result = document();
+  const metre = { value: 1, unit: 'meter', meters: 1 };
+  const units = { linearUnit: 'meter', elevationUnit: 'meter', diameterUnit: 'meter', widthUnit: 'meter', heightUnit: 'meter', flowUnit: 'cubicMeterPerSecond', linearScaleToMeters: 1, elevationScaleToMeters: 1, diameterScaleToMeters: 1, widthScaleToMeters: 1, heightScaleToMeters: 1 };
+  const pipeId = 'pipe';
+  result.pipeNetworks = {
+    version: '1.2', rootUnits: units, collections: [{ sourceId: 'collection', sourcePath: 'LandXML/PipeNetworks[1]', properties: { name: 'collection' } }], features: [], refusals: [],
+    networks: [{ sourceId: 'network', sourcePath: 'LandXML/PipeNetworks[1]/PipeNetwork[1]', name: 'storm', pipeNetworkType: 'storm', properties: { owner: 'city' }, structureUnits: units, pipeUnits: units, features: [],
+      structures: [{ sourceId: 'structure', sourcePath: 'Struct[1]', name: 'A', properties: {}, units, center: { northing: 0, easting: 0, northingMeters: 0, eastingMeters: 0, elevation: metre }, part: { kind: 'circular', properties: {}, diameter: metre, material: 'concrete' }, rimElevation: metre, sumpElevation: metre, inverts: [{ sourceId: 'invert', sourcePath: 'Invert[1]', pipeSourceId: pipeId, flowDirection: 'out', elevation: metre, properties: {} }], flow: { sourceId: 'flow', sourcePath: 'StructFlow', unit: 'cubicMeterPerSecond', flowIn: null, lossIn: 1, lossOut: 2, properties: {} } }],
+      pipes: [{ sourceId: pipeId, sourcePath: 'Pipe[1]', name: 'P-1', properties: { owner: 'city' }, units, connectivity: { startStructureSourceId: 'structure', endStructureSourceId: 'structure' }, part: { kind: 'circular', properties: { material: 'PVC' }, diameter: metre, thickness: metre, material: 'PVC' }, geometry: { kind: 'straight', point: null }, length: metre, flow: { sourceId: 'pipe-flow', sourcePath: 'PipeFlow', unit: 'cubicMeterPerSecond', flowIn: 4.2, lossIn: null, lossOut: null, properties: {} } }],
+    }],
+  };
+  return result;
 }
 
 describe('LandXmlSourceInspector (#5042)', () => {
@@ -144,6 +170,51 @@ describe('LandXmlSourceInspector (#5042)', () => {
       onSelect={() => {}}
     />);
     assert.match(ui.textContent ?? '', /section-surface/);
+    cleanup();
+  });
+
+  it('mounts plan children, parcel probe fields, curve endpoints and resolved monuments (#5046)', () => {
+    const models = new Map([['plan', { landXmlDocument: document() }]]);
+    const parcel = render(<LandXmlSourceInspector models={models} selected={{ modelId: 'plan', sourceId: 'parcel' }} onSelect={() => {}} />);
+    assert.match(parcel.textContent ?? '', /DEED-123/);
+    assert.match(parcel.textContent ?? '', /Status: analytic/);
+    assert.match(parcel.textContent ?? '', /Probe: perimeter 5.14, computed area 1.57 squareMeter/);
+    assert.ok([...parcel.querySelectorAll('button')].some((button) => button.textContent === 'Geometry parcel-curve'));
+    cleanup();
+
+    const mixedUnits = document();
+    const mixedParcel = mixedUnits.plan?.parcels[0];
+    if (!mixedParcel) throw new Error('parcel fixture is required');
+    mixedParcel.declaredAreaUnit = 'squareFoot';
+    const mixed = render(<LandXmlSourceInspector models={new Map([['plan', { landXmlDocument: mixedUnits }]])} selected={{ modelId: 'plan', sourceId: 'parcel' }} onSelect={() => {}} />);
+    assert.match(mixed.textContent ?? '', /computed area 1.57 squareFoot/);
+    cleanup();
+
+    const curve = render(<LandXmlSourceInspector models={models} selected={{ modelId: 'plan', sourceId: 'parcel-curve' }} onSelect={() => {}} />);
+    assert.match(curve.textContent ?? '', /Endpoints: 0, 1 → 0, -1/);
+    assert.match(curve.textContent ?? '', /Curve: ccw, radius 1, center 0, 0, PI none/);
+    cleanup();
+
+    const monument = render(<LandXmlSourceInspector models={models} selected={{ modelId: 'plan', sourceId: 'monument' }} onSelect={() => {}} />);
+    assert.match(monument.textContent ?? '', /Resolved monument coordinate: 1, 2, 3/);
+    cleanup();
+  });
+
+  it('shows typed pipe engineering fields and collection/network metadata (#5047)', () => {
+    const models = new Map([['pipes', { landXmlDocument: pipeDocument() }]]);
+    const pipe = render(<LandXmlSourceInspector models={models} selected={{ modelId: 'pipes', sourceId: 'pipe' }} onSelect={() => {}} />);
+    assert.match(pipe.textContent ?? '', /cross-section: circular/);
+    assert.match(pipe.textContent ?? '', /thickness: 1 meter \(1 m\)/);
+    assert.match(pipe.textContent ?? '', /flow in: 4.2/);
+    assert.match(pipe.textContent ?? '', /linear unit: meter/);
+    cleanup();
+    const network = render(<LandXmlSourceInspector models={models} selected={{ modelId: 'pipes', sourceId: 'network' }} onSelect={() => {}} />);
+    assert.match(network.textContent ?? '', /network type: storm/);
+    assert.match(network.textContent ?? '', /structures: 1/);
+    cleanup();
+    const collection = render(<LandXmlSourceInspector models={models} selected={{ modelId: 'pipes', sourceId: 'collection' }} onSelect={() => {}} />);
+    assert.match(collection.textContent ?? '', /root linear unit: meter/);
+    assert.match(collection.textContent ?? '', /collection/);
     cleanup();
   });
 });

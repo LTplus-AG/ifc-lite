@@ -12,6 +12,7 @@ interface ClashGroupHeaderWithActionsProps {
   collapsed: boolean;
   creatingTopic: boolean;
   focusMode: ClashFocusMode;
+  membersById: Map<string, readonly Clash[]>;
   onToggle: (key: string) => void;
   onFocus: (clashes: readonly Clash[], mode: ClashFocusMode) => void;
   onAddToGroup: (groupId: string) => void;
@@ -26,6 +27,7 @@ export function ClashGroupHeaderWithActions({
   collapsed,
   creatingTopic,
   focusMode,
+  membersById,
   onToggle,
   onFocus,
   onAddToGroup,
@@ -47,7 +49,7 @@ export function ClashGroupHeaderWithActions({
       manualGroupId={section.manualGroupId}
       creatingTopic={creatingTopic}
       onToggle={onToggle}
-      onFocus={() => onFocus(section.items, focusMode)}
+      onFocus={(groupId) => onFocus(membersById.get(groupId) ?? [], focusMode)}
       onAddToGroup={handleAddToGroup || (() => {})}
       onCreateBcf={onCreateBcf}
       onRename={(groupId) => onRename(groupId, section.label)}

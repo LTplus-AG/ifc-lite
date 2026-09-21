@@ -1184,7 +1184,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                       section={row}
                       collapsed={collapsed.has(row.key)}
                       creatingTopic={creatingTopic}
-                      focusMode={focusMode}
+                      focusMode={focusMode} membersById={manualMembersById}
                       onToggle={toggleSection}
                       onFocus={focusClashes}
                       onAddToGroup={openAddToGroup}

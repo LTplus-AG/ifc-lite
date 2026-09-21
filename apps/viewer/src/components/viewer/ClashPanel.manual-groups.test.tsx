@@ -261,4 +261,57 @@ describe('ClashPanel manual groups (#4921, #5122)', () => {
     assert.equal(afterAdd.groups[0].members.length, 3, 'group now has 3 members after add');
     assert.equal(afterAdd.groups[0].name, 'Riser coordination', 'group name unchanged');
   });
+
+  it('focuses full group membership even when some clashes are hidden by filter (#5122)', async () => {
+    const checkboxes = [...container!.querySelectorAll('input[type="checkbox"]')]
+      .filter((input) => input.getAttribute('aria-label')?.startsWith('Select clash '));
+
+    // Create a group with both clashes
+    await act(async () => {
+      for (const checkbox of checkboxes) (checkbox as HTMLInputElement).click();
+    });
+    await act(async () => buttonWithText('Group selected (2)').click());
+    await setDialogName('Focus test group');
+    await act(async () => buttonWithText('Create group').click());
+
+    let focusedClashes: Clash[] = [];
+    await act(async () => {
+      useViewerStore.setState({
+        focusClashes: (clashes: readonly Clash[]) => {
+          focusedClashes = [...clashes];
+          return null;
+        },
+      });
+    });
+
+    // Get the first clash ID to filter it out
+    const clashResult = useViewerStore.getState().clashResult;
+    const firstClashId = clashResult?.clashes[0].id;
+    assert.ok(firstClashId, 'first clash must exist');
+
+    // Filter out the first clash by excluding it from statusFilter
+    await act(async () => {
+      useViewerStore.setState({
+        clashStatusFilter: new Set(['resolved', 'accepted']),
+        clashReviews: new Map([
+          [firstClashId, { status: 'open', date: new Date() }],
+        ]),
+      });
+    });
+
+    // The section should now show only 1 visible clash
+    const visibleCount = [...container!.querySelectorAll('input[type="checkbox"]')]
+      .filter((input) => input.getAttribute('aria-label')?.startsWith('Select clash ')).length;
+    assert.equal(visibleCount, 1, 'only 1 clash visible after filter');
+
+    // Click the Focus button
+    const focusButton = container!.querySelector('button[title="Focus every object in this group"]');
+    assert.ok(focusButton instanceof HTMLButtonElement, 'focus button must render');
+    await act(async () => {
+      focusButton.click();
+    });
+
+    // Focus should include BOTH group members, not just the visible one
+    assert.equal(focusedClashes.length, 2, 'focus includes full membership (both clashes), not just visible ones');
+  });
 });

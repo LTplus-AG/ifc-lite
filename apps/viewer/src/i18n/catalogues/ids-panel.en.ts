@@ -44,7 +44,7 @@ export const idsPanelEn = {
   'idsPanel.specifications': { one: '{countDisplay} specification', other: '{countDisplay} specifications' },
   'idsPanel.version': 'v{version}',
   'idsPanel.runValidation': 'Run Validation',
-  'idsPanel.resolveAuditErrors': 'Resolve audit errors before validating against a model.',
+  'idsPanel.auditErrorsRunAnyway': { one: 'The audit found {countDisplay} error. Validation runs anyway — requirements are checked against the model exactly as written.', other: 'The audit found {countDisplay} errors. Validation runs anyway — requirements are checked against the model exactly as written.' },
   'idsPanel.validate': 'Validate',
   'idsPanel.modelToValidate': 'Model to validate',
   'idsPanel.specificationsPassed': '{passed}/{total} Specifications Passed',

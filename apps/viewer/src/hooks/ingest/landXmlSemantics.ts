@@ -259,12 +259,16 @@ export function indexLandXmlSourceRecords(document: LandXmlTinDocument): void {
       for (const line of lines) index.records.set(line.sourceId, { kind, surface, line });
     }
   }
-  for (const feature of document.plan?.planFeatures ?? []) {
-    for (const geometry of feature.geometry) index.records.set(geometry.sourceId, { kind: 'plan-geometry', geometry });
-  }
-  for (const parcel of document.plan?.parcels ?? []) {
-    for (const loop of parcel.loops) {
-      for (const geometry of loop) index.records.set(geometry.sourceId, { kind: 'plan-geometry', geometry });
+  if (document.plan?.sourceRecords) {
+    for (const [sourceId, record] of document.plan.sourceRecords) index.records.set(sourceId, record);
+  } else {
+    for (const feature of document.plan?.planFeatures ?? []) {
+      for (const geometry of feature.geometry) index.records.set(geometry.sourceId, { kind: 'plan-geometry', geometry });
+    }
+    for (const parcel of document.plan?.parcels ?? []) {
+      for (const loop of parcel.loops) {
+        for (const geometry of loop) index.records.set(geometry.sourceId, { kind: 'plan-geometry', geometry });
+      }
     }
   }
   index.complete = true;
@@ -277,6 +281,8 @@ export function clearLandXmlSourceRecordIndex(document: LandXmlTinDocument): voi
 
 /** Resolve source data without walking retained geometry on every selection. */
 export function findLandXmlSourceRecord(document: LandXmlTinDocument, sourceId: string): LandXmlSourceRecord | null {
+  const indexedPlan = document.plan?.sourceRecords?.get(sourceId);
+  if (indexedPlan) return indexedPlan;
   const index = sourceRecordIndex(document);
   const root = index.roots.get(sourceId);
   if (root) return root;

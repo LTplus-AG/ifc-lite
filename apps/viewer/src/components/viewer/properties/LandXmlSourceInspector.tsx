@@ -171,7 +171,7 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
     const rows = semanticDetailRows(record);
     return <div className="h-full overflow-auto border-l-2 border-zinc-200 bg-white p-4 text-xs dark:border-zinc-800 dark:bg-black" data-landxml-source-inspector>
       <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">{t('properties.landXmlSource.heading')}</p>
-      <h3 className="mt-2 truncate text-sm font-bold uppercase tracking-tight text-zinc-900 dark:text-zinc-100">{recordName(record)}</h3>
+      <h3 className="mt-2 truncate text-sm font-bold uppercase tracking-tight text-zinc-900 dark:text-zinc-100">{recordName(record, t)}</h3>
       <p className="mt-1 break-all font-mono text-xs text-zinc-500">{recordPath(record)}</p>
       <p className="mt-3"><span className="font-semibold">{t('properties.landXmlSource.kind')}:</span> {record.kind}</p>
       {navigation.length > 0 && <div className="mt-3 border-y border-zinc-200 dark:border-zinc-800">

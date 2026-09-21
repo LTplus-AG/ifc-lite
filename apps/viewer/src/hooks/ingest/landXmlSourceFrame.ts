@@ -17,7 +17,14 @@ export function sourceCoordinateInfo(parsed: LandXmlTinDocument): GeometryResult
     bounds.min.x = Math.min(bounds.min.x, point.x); bounds.min.y = Math.min(bounds.min.y, point.y); bounds.min.z = Math.min(bounds.min.z, point.z);
     bounds.max.x = Math.max(bounds.max.x, point.x); bounds.max.y = Math.max(bounds.max.y, point.y); bounds.max.z = Math.max(bounds.max.z, point.z);
   };
-  for (const surface of parsed.surfaces) for (const point of surface.points) add(point.northing, point.easting, point.elevation);
+  for (const surface of parsed.surfaces) {
+    for (const point of surface.points) add(point.northing, point.easting, point.elevation);
+    for (const lines of [surface.boundaries, surface.breaklines, surface.contours]) {
+      for (const line of lines) {
+        for (const point of line.points) if (point.length === 3) add(point[0]!, point[1]!, point[2]);
+      }
+    }
+  }
   for (const point of parsed.plan?.cogoPoints ?? []) if (point.point) add(point.point.northing, point.point.easting, point.point.elevation ?? 0);
   for (const monument of parsed.plan?.resolvedMonuments ?? []) if (monument.point) add(monument.point.northing, monument.point.easting, monument.point.elevation ?? 0);
   for (const geometry of parsed.plan?.resolvedGeometry ?? []) for (const point of [geometry.start, geometry.end, geometry.center, geometry.pi]) if (point) add(point.northing, point.easting, point.elevation ?? 0);

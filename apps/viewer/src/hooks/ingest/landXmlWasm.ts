@@ -4,8 +4,9 @@
 
 /** Raw-byte bridge to the bounded Rust LandXML parser. */
 
-import init, { IfcAPI } from '@ifc-lite/wasm';
+import { IfcAPI } from '@ifc-lite/wasm';
 import type { LandXmlSourceBuffer } from './landXmlIngest.js';
+import { initLandXmlWasm } from './landXmlWasmInit.js';
 import { indexLandXmlPlanRecords, indexLandXmlSourceRecords } from './landXmlSemantics.js';
 import type {
   LandXmlAlignment, LandXmlCapabilityDiagnostic, LandXmlCrossSection, LandXmlCrossSectionPoint,
@@ -16,33 +17,6 @@ import type {
   LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlPlanPointLocation,
   LandXmlParcelProbe, LandXmlResolvedGeometry, LandXmlResolvedMonument,
 } from './landXmlSemantics.js';
-
-interface NodeModuleApi {
-  createRequire(url: string): { resolve(specifier: string): string };
-}
-
-interface NodeFsApi {
-  readFile(path: string): Promise<Uint8Array>;
-}
-
-async function initLandXmlWasm(): Promise<void> {
-  const process = (globalThis as { process?: { versions?: { node?: string } } }).process;
-  if (!process?.versions?.node) {
-    await init();
-    return;
-  }
-
-  // Node cannot fetch wasm-bindgen's file:// URL. Keep these imports hidden
-  // behind the runtime gate so Vite never resolves Node built-ins in browsers.
-  const moduleSpecifier = 'node:module';
-  const fsSpecifier = 'node:fs/promises';
-  const nodeModule = await import(/* @vite-ignore */ moduleSpecifier) as unknown as NodeModuleApi;
-  const nodeFs = await import(/* @vite-ignore */ fsSpecifier) as unknown as NodeFsApi;
-  const wasmPath = nodeModule.createRequire(import.meta.url)
-    .resolve('@ifc-lite/wasm/ifc-lite_bg.wasm');
-  const bytes = await nodeFs.readFile(wasmPath);
-  await init({ module_or_path: bytes });
-}
 
 function record(value: unknown, context: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {

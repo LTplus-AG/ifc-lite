@@ -111,4 +111,53 @@ describe('convertStepLine refuses an unrepresentable non-rooted entity rather th
       expect(out).not.toContain('IFCPROXY');
     });
   });
+
+  // #5115: IfcMaterialProfileSet (+IfcMaterialProfile, +IfcMaterialProfileSetUsage)
+  // is the material-resource-domain twin of #4206's IFCSTRUCTURALLOADCONFIGURATION
+  // gap -- IFC4-only, non-rooted, no IFC2X3 representation.
+  describe('IFCMATERIALPROFILESET family (#5115 withholding, scoped to callers that opt in)', () => {
+    const setLine = '#340=IFCMATERIALPROFILESET($,$,(#342),$);';
+    const profileLine = "#342=IFCMATERIALPROFILE($,$,#353,#419,$,$);";
+    const usageLine = '#344=IFCMATERIALPROFILESETUSAGE(#340,$,$);';
+
+    it('still throws with no withheldRefIds argument (control: the 5-argument form did not change)', () => {
+      expect(() => convertStepLine(setLine, 'IFC4', 'IFC2X3')).toThrow(/IFCMATERIALPROFILESET/);
+    });
+
+    it('IfcMaterialProfileSet is omitted once a caller supplies withheldRefIds', () => {
+      expect(convertStepLine(setLine, 'IFC4', 'IFC2X3', undefined, undefined, new Set())).toBeNull();
+    });
+
+    it('IfcMaterialProfile is omitted once a caller supplies withheldRefIds', () => {
+      expect(convertStepLine(profileLine, 'IFC4', 'IFC2X3', undefined, undefined, new Set())).toBeNull();
+    });
+
+    it('IfcMaterialProfileSetUsage is omitted once a caller supplies withheldRefIds', () => {
+      expect(convertStepLine(usageLine, 'IFC4', 'IFC2X3', undefined, undefined, new Set())).toBeNull();
+    });
+
+    it('a rooted referrer (IfcRelAssociatesMaterial) naming a withheld set id is redirected to a proxy, not left dangling', () => {
+      const rel =
+        "#345=IFCRELASSOCIATESMATERIAL('guid',#45,$,$,(#228,#263,#296),#344);";
+      const withheld = new Set([344]);
+      const out = convertStepLine(rel, 'IFC4', 'IFC2X3', undefined, undefined, withheld);
+      expect(out).toContain('IFCPROXY');
+      expect(out).not.toContain('#344');
+      // The proxy line embeds the original type name as a string literal
+      // attribute -- that's expected (mirrors IFCPROXY's own shape), unlike
+      // the structural precedent's rename-collision check.
+      expect(out).not.toMatch(/^#345\s*=\s*IFCRELASSOCIATESMATERIAL\(/);
+    });
+
+    it('a withheld type\'s OWN record referencing a SIBLING withheld id is also omitted via the reference-scan path, not just the own-type path', () => {
+      // #340's attrs name #342 (a withheld IfcMaterialProfile), so this
+      // exercises convertRecord's EARLIER reference-scan branch, not the
+      // later own-type-unknown branch every other case above hits (both
+      // converge on the same resolution, but only a non-empty, relevant
+      // withheldRefIds set proves the scan branch itself is reached).
+      const withheld = new Set([340, 342, 344]);
+      expect(convertStepLine(setLine, 'IFC4', 'IFC2X3', undefined, undefined, withheld)).toBeNull();
+      expect(convertStepLine(usageLine, 'IFC4', 'IFC2X3', undefined, undefined, withheld)).toBeNull();
+    });
+  });
 });

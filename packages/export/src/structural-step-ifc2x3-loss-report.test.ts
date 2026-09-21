@@ -17,7 +17,11 @@
  * `IfcStructuralLoadConfiguration` specifically: `convertStepLine` now omits
  * its record and redirects every referencing action/reaction to the same
  * proxy fallback an unmapped rooted type gets, instead of shipping (or
- * crashing on) a dangling `#N` (`WITHHOLDABLE_UNROOTED_TYPES`, #4206).
+ * crashing on) a dangling `#N` (`WITHHOLDABLE_UNROOTED_TYPES`, #4206). The
+ * fixture's `IfcMaterialProfileSet` cross-section association (Material
+ * resource domain, not structural) hit the exact same class of gap one
+ * express id later; #5115 extended `WITHHOLDABLE_UNROOTED_TYPES` to the
+ * whole `IFCMATERIALPROFILE*` family so the fixture now converts end to end.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -89,37 +93,46 @@ describeFixture(
       expect(describedTypes).toContain('IFCSTRUCTURALCURVEACTION');
     });
 
-    it('no longer throws on IfcStructuralLoadConfiguration — the export now gets past it to a SEPARATE, pre-existing, out-of-scope gap', async () => {
+    it('exports the full fixture to IFC2X3 with no crash and no dangling reference (#5114, #5115)', async () => {
       const store = await parse(new Uint8Array(readFileSync(FIXTURE)));
-      // The fixture's curve members carry an `IfcMaterialProfileSet` cross-
-      // section (Material resource domain, not structural analysis — out of
-      // #4206's scope) that IFC2X3 also has no representation for and is
-      // ALSO not an IfcRoot subtype. Before the withholding fix, this never
-      // reached: `IfcStructuralLoadConfiguration` threw first, at a lower
-      // express id. Asserting the failure has moved past every
-      // `IFCSTRUCTURAL*` id is the regression guard: if the withholding fix
-      // ever regresses, this reports LOADCONFIGURATION again, not silence.
-      let caught: unknown;
-      try {
-        exportToStep(store, { schema: 'IFC2X3' });
-      } catch (e) {
-        caught = e;
+      // The fixture's curve members also carry an `IfcMaterialProfileSet`
+      // cross-section (Material resource domain, not structural analysis) that
+      // IFC2X3 has no representation for and is ALSO not an IfcRoot subtype.
+      // Before #5115 extended `WITHHOLDABLE_UNROOTED_TYPES` to the
+      // `IFCMATERIALPROFILE*` family, this threw right after the
+      // `IfcStructuralLoadConfiguration` gap (#5114) was fixed. Both gaps
+      // withheld, the whole fixture now converts end to end.
+      const content = exportToStep(store, { schema: 'IFC2X3' });
+
+      expect(content).toContain("FILE_SCHEMA(('IFC2X3'))");
+      expect(content).not.toContain('IFCSTRUCTURALLOADCONFIGURATION');
+      expect(content).not.toContain('IFCMATERIALPROFILESET');
+      expect(content).not.toContain('IFCMATERIALPROFILE(');
+      expect(content).not.toContain('IFCMATERIALPROFILESETUSAGE');
+      // The referencing IfcRelAssociatesMaterial is proxied, not passed
+      // through unchanged (the proxy embeds the original type name as a
+      // string attribute, so a bare `not.toContain('IFCRELASSOCIATESMATERIAL')`
+      // would be wrong -- assert no LINE actually declares that type).
+      expect(content).not.toMatch(/^#\d+\s*=\s*IFCRELASSOCIATESMATERIAL\(/m);
+      expect(content).toContain('IFCPROXY');
+
+      const ids = new Set<number>();
+      for (const m of content.matchAll(/^#(\d+)\s*=/gm)) ids.add(Number(m[1]));
+      const referenced = new Set<number>();
+      for (const m of content.matchAll(/#(\d+)/g)) referenced.add(Number(m[1]));
+      for (const id of referenced) {
+        expect(ids.has(id)).toBe(true);
       }
-      expect(caught).toBeInstanceOf(Error);
-      const message = (caught as Error).message;
-      expect(message).not.toContain('IFCSTRUCTURALLOADCONFIGURATION');
-      expect(message).toContain('IFCMATERIALPROFILESET');
     });
   },
 );
 
 /**
- * The real fixture's `IfcMaterialProfileSet` gap (above) means it cannot
- * prove a COMPLETE, successful IFC2X3 export end-to-end. This isolates the
- * structural-only chain — analysis model, load case, curve action and curve
- * reaction, each through an `IfcStructuralLoadConfiguration` — with no
- * material/profile cross-section, so the fix's actual claim (no crash, no
- * dangling reference, a valid file) is checked against real bytes.
+ * The structural-only chain — analysis model, load case, curve action and
+ * curve reaction, each through an `IfcStructuralLoadConfiguration` — with no
+ * material/profile cross-section, isolated from the separate material-profile
+ * gap above so the fix's actual claim (no crash, no dangling reference, a
+ * valid file) is checked against real bytes for #5114 specifically.
  */
 describe('IfcStructuralLoadConfiguration withholding, isolated from unrelated gaps (#4206)', () => {
   const MODEL = `ISO-10303-21;

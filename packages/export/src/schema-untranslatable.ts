@@ -107,11 +107,42 @@ export function resolveUnrepresentedEntity(
  * IFCPROXY the same way any other unrepresented rooted type does; nothing
  * survives the export still pointing at the omitted `IfcStructuralLoadConfiguration`.
  *
+ * The `IFCMATERIALPROFILE*` family (#5115) qualifies the same way:
+ * `IfcMaterialProfile`, `IfcMaterialProfileSet` (+ its `MaterialProfiles`
+ * list back-reference), `IfcMaterialProfileSetUsage`,
+ * `IfcMaterialProfileSetUsageTapering` (adds a second `ForProfileEndSet`
+ * slot) and `IfcMaterialProfileWithOffsets` are IFC4-only, non-rooted, and
+ * every ordinary path to one of them is `IfcRelAssociatesMaterial
+ * .RelatingMaterial` (the sole `IfcMaterialSelect`-typed attribute in the
+ * schema) — `IfcRelAssociatesMaterial` is rooted, so it already gets the
+ * IFCPROXY fallback regardless of this set. (A handful of generic,
+ * multi-purpose non-rooted types could in principle also name one of these
+ * ids — `IfcResourceObjectSelect` on `IfcExternalReferenceRelationship`/
+ * `IfcResourceApprovalRelationship`/`IfcResourceConstraintRelationship`,
+ * `IfcObjectReferenceSelect` on `IfcPropertyReferenceValue`, and
+ * `IfcMaterialProperties.Material` (typed `IfcMaterialDefinition`, so it can
+ * legally hold a profile/profile-set directly, not only a plain
+ * `IfcMaterial`) — they are deliberately NOT added here, because
+ * `computeWithheldRefIds` is type-scoped, not instance-scoped, and every one
+ * of those types is used for many unrelated resources too (the fixture
+ * itself has two `IfcMaterialProperties` on a plain `IfcMaterial`, which must
+ * NOT be omitted), so adding them would omit every instance of that type
+ * rather than only the ones that reference a withheld id. A real file
+ * exercising one of those rare paths would still throw — a known,
+ * documented residual, not a silent miss.)
+ *
  * Do not add another type here without the same end-to-end guarantee: this
  * set is exactly as safe as the caller's `withheldRefIds` computation is
  * complete for it.
  */
-export const WITHHOLDABLE_UNROOTED_TYPES: ReadonlySet<string> = new Set(['IFCSTRUCTURALLOADCONFIGURATION']);
+export const WITHHOLDABLE_UNROOTED_TYPES: ReadonlySet<string> = new Set([
+  'IFCSTRUCTURALLOADCONFIGURATION',
+  'IFCMATERIALPROFILE',
+  'IFCMATERIALPROFILESET',
+  'IFCMATERIALPROFILESETUSAGE',
+  'IFCMATERIALPROFILESETUSAGETAPERING',
+  'IFCMATERIALPROFILEWITHOFFSETS',
+]);
 
 /**
  * Every express id, across `WITHHOLDABLE_UNROOTED_TYPES`, that an export

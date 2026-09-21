@@ -384,7 +384,20 @@ fn issue_5046_accepts_simple_square_and_uses_linear_units_for_geometric_area() {
     ));
     let probe = parcel_override.probe_parcel(&parcel_override.parcels[0]);
     assert_eq!(probe.area_in_square_meters, Some(100.0));
-    assert!((probe.area_in_declared_square_units.expect("square feet") - 1_076.391_041_670_972_3).abs() < 1e-9);
+    assert!(
+        (probe.area_in_declared_square_units.expect("square feet") - 1_076.391_041_670_972_3).abs()
+            < 1e-9
+    );
+
+    let missing_linear_units = parse(&format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Parcels><Parcel areaUnit="squareFoot"><CoordGeom><Line><Start>0 0</Start><End>10 0</End></Line><Line><Start>10 0</Start><End>10 10</End></Line><Line><Start>10 10</Start><End>0 10</End></Line><Line><Start>0 10</Start><End>0 0</End></Line></CoordGeom></Parcel></Parcels></LandXML>"#
+    ));
+    assert!(matches!(
+        missing_linear_units
+            .probe_parcel(&missing_linear_units.parcels[0])
+            .state,
+        LandXmlParcelState::PreservedOnly { .. }
+    ));
 }
 
 #[test]

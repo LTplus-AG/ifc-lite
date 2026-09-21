@@ -270,6 +270,12 @@ fn probe_parcel_with_work<W: ParcelProbeWork>(
                     Some(finite_measure(square_meters / declared_scale)?),
                 )
             }
+            None if parcel.declared_area_unit.is_some() => {
+                return Ok(preserved(
+                    parcel,
+                    "parcel area unit requires document linear units",
+                ));
+            }
             None => (None, None, Some(coordinate_area)),
         };
     Ok(LandXmlParcelProbe {

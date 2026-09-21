@@ -17,7 +17,6 @@ pub use event::{
     LandXmlSurfaceFragment,
 };
 use quick_xml::{events::Event, Reader};
-use serde::Serialize;
 use std::{collections::VecDeque, io::BufReader};
 use token::{TokenFeed, TokenKind};
 
@@ -28,6 +27,7 @@ pub struct LandXmlTinStreamSession {
     parser: Option<Parser<'static>>,
     plan: Option<crate::plan::parser::Parser<'static>>,
     alignment: Option<crate::alignment::parser::Parser<'static>>,
+    pipe: Option<crate::pipe_parser::PipeParser<'static>>,
     reader: Reader<BufReader<TokenFeed>>,
     feed: TokenFeed,
     decoder: Decoder,
@@ -60,6 +60,7 @@ impl LandXmlTinStreamSession {
                     ..Default::default()
                 },
             )),
+            pipe: Some(crate::pipe_parser::PipeParser::new_stream(limits.clone())),
             reader,
             feed,
             decoder: Decoder::new(&limits)?,
@@ -149,6 +150,11 @@ impl LandXmlTinStreamSession {
             return Err(error(Code::InvalidXml, "unclosed alignment XML element"));
         }
         let alignment = alignment.finish()?;
+        let pipe = self.pipe.take().expect("open pipe parser");
+        if pipe.has_open_frames() {
+            return Err(error(Code::InvalidXml, "unclosed pipe XML element"));
+        }
+        let pipe = pipe.finish_stream()?;
         Ok(LandXmlStreamSummary {
             header,
             surfaces_drained: self.surfaces_drained,
@@ -157,6 +163,18 @@ impl LandXmlTinStreamSession {
             plan_cogo_points: plan.cogo_points.len(),
             plan_parcels: plan.parcels.len(),
             horizontal_alignments: alignment.alignments.len(),
+            pipe_networks: pipe.networks.len(),
+            pipe_structures: pipe
+                .networks
+                .iter()
+                .map(|network| network.structures.len())
+                .sum(),
+            pipes: pipe
+                .networks
+                .iter()
+                .map(|network| network.pipes.len())
+                .sum(),
+            pipe_refusals: pipe.refusals.len(),
         })
     }
 
@@ -166,6 +184,7 @@ impl LandXmlTinStreamSession {
         self.parser.take();
         self.plan.take();
         self.alignment.take();
+        self.pipe.take();
         self.closed = true;
     }
     pub fn header(&self) -> Option<LandXmlStreamHeader> {
@@ -257,6 +276,10 @@ impl LandXmlTinStreamSession {
             self.alignment
                 .as_mut()
                 .expect("open alignment parser")
+                .consume_event(event.clone())?;
+            self.pipe
+                .as_mut()
+                .expect("open pipe parser")
                 .consume_event(event)?;
             break;
         }
@@ -283,104 +306,7 @@ impl LandXmlTinStreamSession {
         } else {
             self.preserved_surfaces += 1;
         }
-        let source_id = surface.source_id.0.clone();
-        #[derive(Serialize)]
-        struct Start<'a> {
-            ordinal: usize,
-            source_path: &'a str,
-            properties: &'a crate::LandXmlProperties,
-            definition_properties: &'a crate::LandXmlProperties,
-            name: &'a str,
-            kind: crate::LandXmlSurfaceKind,
-            render_state: crate::LandXmlRenderState,
-            topology_origin: crate::LandXmlTopologyOrigin,
-            terrain_diagnostic: &'a Option<crate::LandXmlTerrainDiagnostic>,
-            hidden_face_count: usize,
-        }
-        fragments::push_value(
-            &mut self.queue,
-            &source_id,
-            LandXmlSurfaceComponent::Start,
-            &Start {
-                ordinal: surface.ordinal,
-                source_path: &surface.source_path,
-                properties: &surface.properties,
-                definition_properties: &surface.definition_properties,
-                name: &surface.name,
-                kind: surface.kind,
-                render_state: surface.render_state,
-                topology_origin: surface.topology_origin,
-                terrain_diagnostic: &surface.terrain_diagnostic,
-                hidden_face_count: surface.hidden_face_count,
-            },
-        )?;
-        fragments::push_values(
-            &mut self.queue,
-            &source_id,
-            LandXmlSurfaceComponent::Points,
-            surface.points,
-        )?;
-        fragments::push_values(
-            &mut self.queue,
-            &source_id,
-            LandXmlSurfaceComponent::CanonicalVertices,
-            surface.canonical_vertices,
-        )?;
-        fragments::push_values(
-            &mut self.queue,
-            &source_id,
-            LandXmlSurfaceComponent::SourceDataPoints,
-            surface.source_data_points,
-        )?;
-        #[derive(Serialize)]
-        struct Face {
-            ids: [String; 3],
-            source_id: crate::LandXmlSourceId,
-            visible: bool,
-        }
-        let faces = surface
-            .faces
-            .into_iter()
-            .enumerate()
-            .map(|(index, ids)| Face {
-                ids,
-                source_id: surface.face_source_ids[index].clone(),
-                visible: surface.face_visibility[index],
-            })
-            .collect::<Vec<_>>();
-        fragments::push_values(
-            &mut self.queue,
-            &source_id,
-            LandXmlSurfaceComponent::Faces,
-            faces,
-        )?;
-        fragments::push_values(
-            &mut self.queue,
-            &source_id,
-            LandXmlSurfaceComponent::Boundaries,
-            surface.boundaries,
-        )?;
-        fragments::push_values(
-            &mut self.queue,
-            &source_id,
-            LandXmlSurfaceComponent::Breaklines,
-            surface.breaklines,
-        )?;
-        fragments::push_values(
-            &mut self.queue,
-            &source_id,
-            LandXmlSurfaceComponent::Contours,
-            surface.contours,
-        )?;
-        self.queue
-            .push_back(LandXmlStreamEvent::Surface(LandXmlSurfaceFragment {
-                source_id,
-                component: LandXmlSurfaceComponent::End,
-                sequence: 0,
-                continued: false,
-                payload_utf8: Vec::new(),
-            }));
-        Ok(())
+        fragments::enqueue_surface(&mut self.queue, surface)
     }
 }
 

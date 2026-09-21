@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use ifc_lite_landxml::{
-    LandXmlDiagnosticCode, LandXmlLimits, LandXmlStreamEvent, LandXmlSurfaceComponent,
-    LandXmlTinStreamSession, MAX_LANDXML_STREAM_DRAIN_BYTES,
+    alignment::parse_landxml_alignments_optional, parse_landxml_pipe_networks, parse_landxml_plan,
+    parse_landxml_tin, LandXmlDiagnosticCode, LandXmlLimits, LandXmlStreamEvent,
+    LandXmlSurfaceComponent, LandXmlTinStreamSession, MAX_LANDXML_STREAM_DRAIN_BYTES,
 };
 
 const XML: &str = r#"<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces></LandXML>"#;
@@ -38,6 +39,24 @@ fn drive(bytes: &[u8], cuts: impl Iterator<Item = usize>) -> Vec<LandXmlStreamEv
             .expect("final drain"),
     );
     output
+}
+
+fn summary_after_byte_cuts(
+    bytes: &[u8],
+) -> Result<ifc_lite_landxml::LandXmlStreamSummary, ifc_lite_landxml::LandXmlError> {
+    let mut session = LandXmlTinStreamSession::new(LandXmlLimits::default())?;
+    for byte in bytes {
+        session.advance(std::slice::from_ref(byte))?;
+    }
+    session.finish()
+}
+
+const PIPE_NETWORK: &str = r#"<PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>0 1 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="P" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks>"#;
+
+fn landxml(body: &str) -> String {
+    format!(
+        r#"<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units>{body}</LandXML>"#
+    )
 }
 
 #[test]
@@ -109,5 +128,84 @@ fn issue_5050_mixed_plan_and_alignment_fanout_matches_direct_family_counts() {
     assert_eq!(
         summary.horizontal_alignments,
         direct_alignment.alignments.len()
+    );
+}
+
+#[test]
+fn issue_5050_pipe_only_stream_matches_direct_pipe_document() {
+    let xml = landxml(PIPE_NETWORK);
+    let direct = parse_landxml_pipe_networks(xml.as_bytes()).expect("direct pipe document");
+    let summary = summary_after_byte_cuts(xml.as_bytes()).expect("stream pipe document");
+    assert_eq!(summary.pipe_networks, direct.networks.len());
+    assert_eq!(
+        summary.pipe_structures,
+        direct
+            .networks
+            .iter()
+            .map(|network| network.structures.len())
+            .sum::<usize>()
+    );
+    assert_eq!(
+        summary.pipes,
+        direct
+            .networks
+            .iter()
+            .map(|network| network.pipes.len())
+            .sum::<usize>()
+    );
+    assert_eq!(summary.pipe_refusals, direct.refusals.len());
+}
+
+#[test]
+fn issue_5050_all_family_stream_matches_direct_semantic_totals() {
+    let xml = landxml(&format!(
+        r#"<Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces><CgPoints><CgPoint name="control">0 0 0</CgPoint></CgPoints><Alignments><Alignment name="a" length="1" staStart="0"><CoordGeom><Line><Start>0 0</Start><End>1 0</End></Line></CoordGeom></Alignment></Alignments>{PIPE_NETWORK}"#
+    ));
+    let terrain = parse_landxml_tin(xml.as_bytes()).expect("direct terrain document");
+    let plan = parse_landxml_plan(xml.as_bytes()).expect("direct plan document");
+    let alignment =
+        parse_landxml_alignments_optional(xml.as_bytes()).expect("direct alignment document");
+    let pipe = parse_landxml_pipe_networks(xml.as_bytes()).expect("direct pipe document");
+    let summary = summary_after_byte_cuts(xml.as_bytes()).expect("stream all-family document");
+    assert_eq!(summary.surfaces_drained, terrain.surfaces.len());
+    assert_eq!(summary.plan_cogo_points, plan.cogo_points().len());
+    assert_eq!(summary.horizontal_alignments, alignment.alignments.len());
+    assert_eq!(summary.pipe_networks, pipe.networks.len());
+    assert_eq!(
+        summary.pipe_structures,
+        pipe.networks
+            .iter()
+            .map(|network| network.structures.len())
+            .sum::<usize>()
+    );
+    assert_eq!(
+        summary.pipes,
+        pipe.networks
+            .iter()
+            .map(|network| network.pipes.len())
+            .sum::<usize>()
+    );
+}
+
+#[test]
+fn issue_5050_pipe_stream_keeps_direct_malformed_and_semantic_error_codes() {
+    let malformed = landxml("<PipeNetworks>");
+    assert_eq!(
+        summary_after_byte_cuts(malformed.as_bytes())
+            .expect_err("stream malformed XML")
+            .code,
+        parse_landxml_pipe_networks(malformed.as_bytes())
+            .expect_err("direct malformed XML")
+            .code
+    );
+    let invalid_type =
+        landxml(&PIPE_NETWORK.replace("pipeNetType=\"storm\"", "pipeNetType=\"bogus\""));
+    assert_eq!(
+        summary_after_byte_cuts(invalid_type.as_bytes())
+            .expect_err("stream invalid pipe type")
+            .code,
+        parse_landxml_pipe_networks(invalid_type.as_bytes())
+            .expect_err("direct invalid pipe type")
+            .code
     );
 }

@@ -7,16 +7,14 @@ use crate::{
     preflight::preflight_xml_tokens,
     xml::{attr, attributes, error, normalize_encoding, split_name, Result},
     LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlLimits, LandXmlPipeNetworkDocument,
-    LandXmlPipeRefusal, LandXmlSourceId, LANDXML_12_NAMESPACE,
+    LandXmlSourceId, LANDXML_12_NAMESPACE,
 };
 use quick_xml::{
     events::{BytesStart, Event},
     Reader,
 };
-use state::{
-    properties, FeatureBuilder, Frame, NetworkBuilder, PipeBuilder, PositionCapture, RawUnits,
-    StructureBuilder,
-};
+pub(crate) use state::PipeParser;
+use state::{properties, FeatureBuilder, Frame, NetworkBuilder};
 use std::collections::{HashMap, HashSet};
 mod convert;
 mod driver;
@@ -26,37 +24,6 @@ mod handlers;
 mod inverts;
 mod state;
 mod units;
-struct PipeParser<'a> {
-    limits: &'a LandXmlLimits,
-    cancelled: Option<&'a dyn LandXmlCancellation>,
-    work: usize,
-    character_references: usize,
-    frames: Vec<Frame>,
-    root_units: Option<RawUnits>,
-    root_seen: bool,
-    root_closed: bool,
-    network: Option<NetworkBuilder>,
-    structure: Option<StructureBuilder>,
-    pipe: Option<PipeBuilder>,
-    capture: Option<PositionCapture>,
-    features_open: Vec<FeatureBuilder>,
-    networks: Vec<crate::LandXmlPipeNetwork>,
-    collections: Vec<crate::LandXmlPipeNetworkCollection>,
-    features: Vec<crate::LandXmlPipeFeature>,
-    pending_networks: Vec<NetworkBuilder>,
-    refusals: Vec<LandXmlPipeRefusal>,
-    refusal_keys: HashSet<(LandXmlSourceId, String)>,
-    pipe_networks_seen: usize,
-    structures_seen: usize,
-    pipes_seen: usize,
-    inverts_seen: usize,
-    flows_seen: usize,
-    points_seen: usize,
-    references_seen: usize,
-    pipe_network_collections: usize,
-    network_ordinal: usize,
-    feature_ordinals: HashMap<LandXmlSourceId, usize>,
-}
 /// Parse exact LandXML 1.2 pipe networks with default resource limits.
 /// This native source parser exposes no renderer, WASM, or invented IFC path.
 pub fn parse_landxml_pipe_networks(input: &[u8]) -> Result<LandXmlPipeNetworkDocument> {
@@ -73,74 +40,95 @@ pub fn parse_landxml_pipe_networks_with_cancel(
     }
     let input = normalize_encoding(input, limits, cancelled)?;
     preflight_xml_tokens(&input, limits, cancelled)?;
-    let mut parser = PipeParser {
-        limits,
-        cancelled,
-        work: 0,
-        character_references: 0,
-        frames: Vec::new(),
-        root_units: None,
-        root_seen: false,
-        root_closed: false,
-        network: None,
-        structure: None,
-        pipe: None,
-        capture: None,
-        features_open: Vec::new(),
-        networks: Vec::new(),
-        collections: Vec::new(),
-        features: Vec::new(),
-        pending_networks: Vec::new(),
-        refusals: Vec::new(),
-        refusal_keys: HashSet::new(),
-        pipe_networks_seen: 0,
-        structures_seen: 0,
-        pipes_seen: 0,
-        inverts_seen: 0,
-        flows_seen: 0,
-        points_seen: 0,
-        references_seen: 0,
-        pipe_network_collections: 0,
-        network_ordinal: 0,
-        feature_ordinals: HashMap::new(),
-    };
+    let mut parser = PipeParser::new(limits, cancelled, true);
     let mut reader = Reader::from_reader(input.as_slice());
     reader.config_mut().trim_text(false);
     let mut buffer = Vec::new();
     loop {
-        parser.check_cancel_and_work(1)?;
         let event = reader
             .read_event_into(&mut buffer)
             .map_err(|_| error(Code::InvalidXml, "malformed XML"))?;
-        match event {
-            Event::Start(start) => parser.start(&start)?,
-            Event::Empty(start) => {
-                parser.start(&start)?;
-                parser.end(None)?;
-            }
-            Event::End(end) => parser.end(Some(end.name().as_ref()))?,
-            Event::Text(text) => parser.text(text.as_ref())?,
-            Event::CData(text) => parser.cdata(text.as_ref())?,
-            Event::DocType(_) => return Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
-            Event::Eof => break,
-            _ => {}
+        if matches!(event, Event::Eof) {
+            break;
         }
+        parser.consume_event(event)?;
         buffer.clear();
     }
     if !parser.frames.is_empty() || !parser.root_seen || !parser.root_closed {
         return Err(error(Code::InvalidXml, "unclosed XML element"));
     }
-    parser.finish()
+    parser.finish_stream()
 }
 
-impl PipeParser<'_> {
+impl<'a> PipeParser<'a> {
+    fn new(
+        limits: &LandXmlLimits,
+        cancelled: Option<&'a dyn LandXmlCancellation>,
+        require_pipe_networks: bool,
+    ) -> Self {
+        Self {
+            limits: limits.clone(),
+            cancelled,
+            require_pipe_networks,
+            work: 0,
+            character_references: 0,
+            frames: Vec::new(),
+            root_units: None,
+            root_seen: false,
+            root_closed: false,
+            network: None,
+            structure: None,
+            pipe: None,
+            capture: None,
+            features_open: Vec::new(),
+            networks: Vec::new(),
+            collections: Vec::new(),
+            features: Vec::new(),
+            pending_networks: Vec::new(),
+            refusals: Vec::new(),
+            refusal_keys: HashSet::new(),
+            pipe_networks_seen: 0,
+            structures_seen: 0,
+            pipes_seen: 0,
+            inverts_seen: 0,
+            flows_seen: 0,
+            points_seen: 0,
+            references_seen: 0,
+            pipe_network_collections: 0,
+            network_ordinal: 0,
+            feature_ordinals: HashMap::new(),
+        }
+    }
+
+    /// Consume a quick-xml event through the same state transitions used by
+    /// the bounded pull wrapper and the resumable stream driver.
+    pub(crate) fn consume_event(&mut self, event: Event<'_>) -> Result<()> {
+        self.check_cancel_and_work(1)?;
+        match event {
+            Event::Start(start) => self.start(&start),
+            Event::Empty(start) => {
+                self.start(&start)?;
+                self.end(None)
+            }
+            Event::End(end) => self.end(Some(end.name().as_ref())),
+            Event::Text(text) => self.text(text.as_ref()),
+            Event::CData(text) => self.cdata(text.as_ref()),
+            Event::DocType(_) => Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
+            _ => Ok(()),
+        }
+    }
+
+    pub(crate) fn has_open_frames(&self) -> bool {
+        !self.frames.is_empty()
+    }
+
     fn start(&mut self, start: &BytesStart<'_>) -> Result<()> {
         if self.frames.len() >= self.limits.max_depth {
             return Err(error(Code::LimitExceeded, "XML depth limit exceeded"));
         }
         let name = start.name();
         let (_, local, prefix) = split_name(name.as_ref(), self.limits.max_name_bytes)?;
-        let (attributes, namespaces, references) = attributes(start, self.limits)?;
+        let (attributes, namespaces, references) = attributes(start, &self.limits)?;
         self.check_cancel_and_work(attributes.len())?;
         self.check_character_references(references)?;
         let mut inherited = self
@@ -368,5 +356,13 @@ impl PipeParser<'_> {
                 .iter()
                 .zip(expected)
                 .all(|(frame, local)| frame.target && frame.local == *local)
+    }
+}
+
+impl PipeParser<'static> {
+    /// Construct the optional pipe-family participant for the canonical
+    /// LandXML stream. Terrain-only documents remain valid stream inputs.
+    pub(crate) fn new_stream(limits: LandXmlLimits) -> Self {
+        Self::new(&limits, None, false)
     }
 }

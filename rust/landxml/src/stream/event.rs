@@ -54,4 +54,10 @@ pub struct LandXmlStreamSummary {
     pub plan_cogo_points: usize,
     pub plan_parcels: usize,
     pub horizontal_alignments: usize,
+    /// Pipe-family totals are finalized from the same canonical event stream;
+    /// the stream deliberately does not retain complete pipe documents.
+    pub pipe_networks: usize,
+    pub pipe_structures: usize,
+    pub pipes: usize,
+    pub pipe_refusals: usize,
 }

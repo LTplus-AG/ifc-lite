@@ -10,8 +10,9 @@ use crate::{
 use super::super::{convert, state::RawUnits, PipeParser};
 
 impl PipeParser<'_> {
-    pub(crate) fn finish(mut self) -> Result<LandXmlPipeNetworkDocument> {
-        if self.pipe_networks_seen == 0 {
+    /// Finalize the shared parser after either pull or stream event delivery.
+    pub(crate) fn finish_stream(mut self) -> Result<LandXmlPipeNetworkDocument> {
+        if self.require_pipe_networks && self.pipe_networks_seen == 0 {
             return Err(error(
                 Code::InvalidSemantic,
                 "document contains no PipeNetwork records",

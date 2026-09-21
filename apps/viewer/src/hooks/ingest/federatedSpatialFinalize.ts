@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { localViewerToProjected, projectedToLocalViewer, type GeometryResult, type ModelSpatialReference } from '@ifc-lite/geometry';
+import { type GeometryResult, type ModelSpatialReference } from '@ifc-lite/geometry';
 import { federationFrameInfo } from '@ifc-lite/geometry/world-frame';
 import type { FederatedModel, PreAlignmentSnapshot } from '@/store';
 import { useViewerStore } from '@/store';
@@ -12,9 +12,7 @@ import type { LandXmlTinDocument } from './landXmlSemantics';
 import { reframeLandXmlGeometry } from './landXmlLoad';
 import { alignGeometryToReference, extractModelSpatialPlacement, findReferenceSpatialModel } from './federationAlign';
 import { capturePreAlignment } from './federationRealign';
-import { resolveProjectionId } from '@/lib/geo/reproject';
-import { totalYupOffset } from '@/lib/geo/coordinate-frame';
-import proj4 from 'proj4';
+import { applyLandXmlRenderedLineUpdates, buildLandXmlRenderedLineUpdates } from './landXmlSpatialLines';
 
 export interface FederatedSpatialFinalizeResult {
   preAlignment?: PreAlignmentSnapshot;
@@ -37,44 +35,6 @@ function retainSnapshotMeshes(
     origins: snapshot.origins.filter(keep),
     geometryAabbs: snapshot.geometryAabbs.filter(keep),
   };
-}
-
-/** Derive overlay vertices through the same CRS path as the LandXML meshes. */
-async function reprojectLandXmlLines(
-  document: LandXmlTinDocument, source: ModelSpatialReference, target: ModelSpatialReference,
-  sourceOffset: GeometryResult['coordinateInfo'] | undefined,
-  targetOffset: GeometryResult['coordinateInfo'] | undefined,
-): Promise<void> {
-  if (!document.units || !source.horizontal || !target.horizontal
-    || source.vertical?.id !== target.vertical?.id) return;
-  const sourceProjection = source.horizontal.id === target.horizontal.id
-    ? null : await resolveProjectionId(source.horizontal.id);
-  const targetProjection = sourceProjection ? await resolveProjectionId(target.horizontal.id) : null;
-  if ((sourceProjection && !targetProjection) || (!sourceProjection && source.horizontal.id !== target.horizontal.id)) return;
-  const sourceFrame = totalYupOffset(sourceOffset);
-  const targetFrame = totalYupOffset(targetOffset);
-  for (const surface of document.surfaces) for (const line of [
-    ...surface.boundaries, ...surface.breaklines, ...surface.contours,
-  ]) {
-    const elevation = line.coordinateDimension === 2 ? Number(line.properties.elev) : undefined;
-    const transformed: number[][] = [];
-    for (const point of line.points) {
-      const height = point[2] ?? elevation;
-      if (height === undefined || !Number.isFinite(height)) { transformed.length = 0; break; }
-      const projected = localViewerToProjected(source, [
-        point[1] * document.units.linearScaleToMeters,
-        height * document.units.elevationScaleToMeters,
-        -point[0] * document.units.linearScaleToMeters,
-      ], sourceFrame);
-      if (!projected) { transformed.length = 0; break; }
-      let east = projected[0], north = projected[1];
-      if (sourceProjection && targetProjection) [east, north] = proj4(sourceProjection, targetProjection, [east, north]);
-      const local = projectedToLocalViewer(target, [east, north, projected[2]], targetFrame);
-      if (!local?.every(Number.isFinite)) { transformed.length = 0; break; }
-      transformed.push([...local]);
-    }
-    if (transformed.length === line.points.length) line.renderedPoints = transformed;
-  }
 }
 
 /** Apply the one source-neutral placement path before IDs become globally visible. */
@@ -103,10 +63,12 @@ export async function finalizeFederatedSpatialPlacement(options: {
     if (!options.isCurrent()) return null;
     federationAlignmentStatus = status;
     if (options.landXmlDocument && (status === 'same-crs' || status === 'reprojected')) {
-      await reprojectLandXmlLines(
+      const renderedLines = await buildLandXmlRenderedLineUpdates(
         options.landXmlDocument,
-        parsed.spatialReference, reference.spatialReference, parsed.coordinateInfo, reference.coordinateInfo,
+        parsed.spatialReference, reference.spatialReference, reference.coordinateInfo,
       );
+      if (!options.isCurrent()) return null;
+      applyLandXmlRenderedLineUpdates(renderedLines);
     }
     const source = parsed.spatialReference.horizontal?.id ?? 'unknown CRS';
     const target = reference.spatialReference.horizontal?.id ?? 'unknown CRS';

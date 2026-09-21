@@ -20,6 +20,7 @@ import {
 } from '@ifc-lite/geometry';
 import { totalYupOffset } from './coordinate-frame';
 import { resolveProjectionId } from './reproject';
+import { projectedUnitToMetres } from '../../hooks/ingest/projected-units.js';
 
 export interface IfcOriginPlacement {
   /** Viewer-local position (Y-up) where this model's IFC (0,0,0) currently sits. */
@@ -87,10 +88,20 @@ export async function computeIfcOriginViewerPosition(
       resolveProjectionId(targetCrs),
     ]);
     if (!sourceDefinition || !targetDefinition) return null;
+    const sourceProjectedUnit = projectedUnitToMetres(sourceDefinition);
+    const targetProjectedUnit = projectedUnitToMetres(targetDefinition);
+    if (!sourceProjectedUnit || !targetProjectedUnit) return null;
     try {
-      const transformed = proj4(sourceDefinition, targetDefinition, [projectedSource[0], projectedSource[1]]);
+      const transformed = proj4(sourceDefinition, targetDefinition, [
+        projectedSource[0] / sourceProjectedUnit,
+        projectedSource[1] / sourceProjectedUnit,
+      ]);
       if (!Number.isFinite(transformed[0]) || !Number.isFinite(transformed[1])) return null;
-      projectedTarget = [transformed[0], transformed[1], projectedSource[2]];
+      projectedTarget = [
+        transformed[0] * targetProjectedUnit,
+        transformed[1] * targetProjectedUnit,
+        projectedSource[2],
+      ];
     } catch (error) {
       console.warn(`[ifc-origin] projection failed (${sourceCrs} → ${targetCrs}):`, error);
       return null;

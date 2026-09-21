@@ -15,6 +15,7 @@ import {
 import { rebasePointCloudDecodeOrigin } from './pointCloudDecodeOrigin.js';
 import type { ModelSpatialPlacement } from './federationAlign.js';
 import { spatialReferenceFromIfc } from '../../lib/geo/ifc-spatial-reference.js';
+import { spatialReferenceFromSourceMetadata } from './sourceSpatialReference.js';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import {
   decodeAsciiPoints,
@@ -222,6 +223,28 @@ function runAlignmentChain(
 }
 
 describe('computePointCloudAlignment (issue #1804)', () => {
+  it('keeps an E57 raw XYZ scan in the viewer E/U/S frame exactly once (#5048)', () => {
+    const placement = makeGeoref({
+      mapConversion: { eastings: 0, northings: 0, orthogonalHeight: 0 },
+      coordinateInfo: {
+        originShift: { x: 0, y: 0, z: 0 },
+        wasmRtcOffset: { x: 2_600_000, y: 1_200_000, z: 500 },
+        originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+        shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+        hasLargeCoordinates: true,
+      },
+    });
+    const source = spatialReferenceFromSourceMetadata({
+      format: 'e57', horizontalId: 'EPSG:32632', verticalId: 'EPSG:5729',
+      axes: ['north', 'east', 'up'], horizontalUnitToMetres: 0.3048, verticalUnitToMetres: 0.3048,
+      provenance: 'E57 coordinateMetadata',
+    });
+    const transform = computePointCloudAlignment(placement, 'metre', source);
+    assert.ok(transform);
+    assert.deepStrictEqual(transform.decodeOriginOffset, [2_600_000, 1_200_000, 500]);
+    assert.deepStrictEqual(runAlignmentChain(transform, [2_600_002, 1_200_003, 504]), { x: 2, y: 4, z: -3 });
+  });
+
   it('lands a scan point at inverse-map-conversion viewer coordinates, shift folded in', () => {
     // Reference model with a large RTC offset AND an origin shift — the
     // combined viewer shift (totalYupOffset) must be honoured.

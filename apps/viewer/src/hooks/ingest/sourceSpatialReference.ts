@@ -97,25 +97,27 @@ export function spatialMetadataFromE57Xml(xml: string): SourceSpatialMetadata {
 }
 
 /**
- * All non-IFC source geometry is already in its declared projected frame.
- * Missing horizontal or vertical metadata remains a first-class unknown: the
- * federation resolver refuses any cross/manual operation rather than guessing.
+ * Each adapter declares the decoder tuple it actually emits. Missing horizontal
+ * or vertical metadata remains a first-class unknown: the federation resolver
+ * refuses any cross/manual operation rather than guessing.
  */
 export function spatialReferenceFromSourceMetadata(metadata: SourceSpatialMetadata): ModelSpatialReference {
   // CRS metadata describes where authored coordinates belong, not necessarily
-  // the frame emitted by an importer. LandXML geometry is already converted to
-  // viewer East/Up/South metres and the E57 decoder is metre-native by spec.
-  // Applying WKT axes or feet a second time silently moves those meshes.
-  const nativeLasFrame = metadata.format === 'las' || metadata.format === 'laz';
+  // the tuple emitted by an importer. LandXML is already viewer E/U/S metres;
+  // E57 remains raw cartesian XYZ metres through its decoder.
+  const rawXyzFrame = metadata.format === 'las' || metadata.format === 'laz' || metadata.format === 'e57';
   return {
     // LAS stores X/Y/Z in the native CRS coordinate order. Retain every WKT
     // axis and unit declaration instead of treating a foot-based north/east
     // grid as the viewer's metre east/up/south frame. Older metadata records
     // have no WKT frame, so use LAS's documented X=east, Y=north, Z=up order.
     source: {
-      axes: nativeLasFrame ? metadata.axes ?? ['east', 'north', 'up'] : ['east', 'up', 'south'],
-      horizontalUnitToMetres: nativeLasFrame ? metadata.horizontalUnitToMetres ?? 1 : 1,
-      verticalUnitToMetres: nativeLasFrame ? metadata.verticalUnitToMetres ?? 1 : 1,
+      // E57's cartesianX/Y/Z are spec-mandated metres in raw XYZ order. Its
+      // WKT describes the CRS, not a decoder-axis remap; applying WKT axes
+      // here would make the later raw-XYZ matrix unswap the scan twice.
+      axes: metadata.format === 'e57' ? ['east', 'north', 'up'] : rawXyzFrame ? metadata.axes ?? ['east', 'north', 'up'] : ['east', 'up', 'south'],
+      horizontalUnitToMetres: metadata.format === 'e57' ? 1 : rawXyzFrame ? metadata.horizontalUnitToMetres ?? 1 : 1,
+      verticalUnitToMetres: metadata.format === 'e57' ? 1 : rawXyzFrame ? metadata.verticalUnitToMetres ?? 1 : 1,
     },
     ...(metadata.horizontalId ? { horizontal: { id: metadata.horizontalId, provenance: { source: metadata.provenance } } } : {}),
     ...(metadata.verticalId ? { vertical: { id: metadata.verticalId, provenance: { source: metadata.provenance } } } : {}),

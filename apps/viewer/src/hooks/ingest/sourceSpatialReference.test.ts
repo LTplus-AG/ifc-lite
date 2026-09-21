@@ -84,7 +84,7 @@ describe('non-IFC source spatial metadata (#5048)', () => {
     });
   });
 
-  it('keeps LandXML and metre-native E57 geometry in their emitted viewer frame (#5048)', () => {
+  it('keeps LandXML in its emitted viewer frame but retains E57 raw XYZ metres (#5048)', () => {
     const declared = {
       horizontalId: 'EPSG:2236', verticalId: 'EPSG:6360',
       axes: ['north', 'east', 'up'] as const,
@@ -92,14 +92,16 @@ describe('non-IFC source spatial metadata (#5048)', () => {
       verticalUnitToMetres: 0.3048,
       provenance: 'declared WKT',
     };
-    for (const format of ['landxml', 'e57'] as const) {
-      const reference = spatialReferenceFromSourceMetadata({ format, ...declared });
-      assert.deepEqual(reference.source, {
-        axes: ['east', 'up', 'south'], horizontalUnitToMetres: 1, verticalUnitToMetres: 1,
-      });
-      assert.equal(reference.horizontal?.id, 'EPSG:2236');
-      assert.equal(reference.vertical?.id, 'EPSG:6360');
-    }
+    const landXml = spatialReferenceFromSourceMetadata({ format: 'landxml', ...declared });
+    assert.deepEqual(landXml.source, {
+      axes: ['east', 'up', 'south'], horizontalUnitToMetres: 1, verticalUnitToMetres: 1,
+    });
+    const e57 = spatialReferenceFromSourceMetadata({ format: 'e57', ...declared });
+    assert.deepEqual(e57.source, {
+      axes: ['east', 'north', 'up'], horizontalUnitToMetres: 1, verticalUnitToMetres: 1,
+    });
+    assert.equal(e57.horizontal?.id, 'EPSG:2236');
+    assert.equal(e57.vertical?.id, 'EPSG:6360');
   });
 
   it('makes missing vertical metadata explicit-unknown so federation cannot carry height through', () => {

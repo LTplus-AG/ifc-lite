@@ -95,7 +95,7 @@ export function useIfcFederation(
   // their captured value before mutating, so a cancelled load A doesn't
   // overwrite progress for a newer load B that started after A's abort.
   // Mirrors the same pattern in useIfcLoader.ts.
-  const loadSessionRef = useRef(0);
+  const loadSessionRef = useRef(0), realignSessionRef = useRef(0);
 
   /**
    * Add a model to the federation (multi-model support)
@@ -214,6 +214,7 @@ export function useIfcFederation(
    * remove/reorder/anchor-change. Wire it to a "Re-align federation" button.
    */
   const realignFederation = useCallback(async (): Promise<void> => {
+    const realignSession = ++realignSessionRef.current;
     const state = useViewerStore.getState();
     const allModels = Array.from(state.models.entries()) as Array<[string, FederatedModel]>;
     if (allModels.length === 0) { toast.info('No models loaded — nothing to re-align.'); return; }
@@ -224,7 +225,6 @@ export function useIfcFederation(
       toast.error('Cannot re-align: no model with valid georeferencing.');
       return;
     }
-
     // Snapshot georef edits once for the whole pass. Cross-CRS projection
     // awaits can race new edits; re-reading here would mix coordinate frames
     // across models. Apply a newer edit only on the next explicit realignment.
@@ -249,8 +249,9 @@ export function useIfcFederation(
           : null
       ),
       updateModel: state.updateModel,
+      isCurrent: () => realignSession === realignSessionRef.current,
     }));
-
+    if (realignSession !== realignSessionRef.current) return;
     // Manual offsets remain explicit workspace vectors after re-alignment.
     // Picked anchors were cancelled above; exchange files must name the new frame.
     const frameCommitted = commitRealignmentFrame(state.models, anchorGeoref);

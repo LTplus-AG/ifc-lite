@@ -106,6 +106,27 @@ describe('computeIfcOriginViewerPosition (#5048)', () => {
     assert.ok(Math.abs(out.viewer.z) < 5, `z residual = ${out.viewer.z}`);
   });
 
+  it('normalizes proj4 US-survey-foot coordinates for a cross-CRS origin marker (#5048)', async () => {
+    // EPSG:2236's central-meridian false origin is exactly (200000 ft, 0 ft).
+    // Its known EPSG:32632 projection is fixed here in metres; passing the
+    // metre values straight to proj4 as feet leaves the marker millions of
+    // metres from the anchor.
+    const feetPerMetre = 1200 / 3937;
+    const source = frame(
+      conversion(200_000, 0),
+      { ...crs('EPSG:2236'), mapUnit: 'US survey foot', mapUnitScale: feetPerMetre },
+    );
+    const anchor = frame(
+      conversion(-9_240_280.602725117, 10_330_575.179250661),
+      crs('EPSG:32632'),
+    );
+    const out = await computeIfcOriginViewerPosition(source, anchor);
+    assert.ok(out);
+    assert.strictEqual(out.source, 'anchor');
+    assert.ok(Math.abs(out.viewer.x) < 1e-5, `easting residual = ${out.viewer.x}`);
+    assert.ok(Math.abs(out.viewer.z) < 1e-5, `northing residual = ${out.viewer.z}`);
+  });
+
   it('shares map-absolute neutralization with federation alignment', async () => {
     const anchorInfo = coordinateInfo({
       wasmRtcOffset: { x: 312_018.898, y: 5_996_169.654, z: 14 }, hasLargeCoordinates: true,

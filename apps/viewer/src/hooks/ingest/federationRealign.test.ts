@@ -560,6 +560,23 @@ describe('realignFederationModels — switching the anchor back restores it (#20
     assert.deepStrictEqual(result.movedModelIds, [], 'an identity alignment moves nothing');
     assert.equal(result.counts.aligned, 1, 'it still counts as handled');
   });
+
+  it('rolls a superseded realignment back to its prior mesh and status (#5048)', async () => {
+    const { models, a } = federation();
+    const before = new Float32Array(a.geometryResult!.meshes[0].positions);
+    const anchor = models.get('X')!;
+    const result = await realignFederationModels<TestModel>({
+      models: Array.from(models.entries()),
+      anchorModelId: 'X',
+      anchorGeoref: resolveGeoref('X', anchor),
+      resolveGeoref,
+      updateModel: applyPatch(models),
+      isCurrent: () => false,
+    });
+    assert.equal(result.stale, true);
+    assertBytesEqual(a.geometryResult!.meshes[0].positions, before, 'stale work cannot publish a mixed frame');
+    assert.equal(a.federationAlignmentStatus, 'none', 'the old alignment badge is restored with the mesh');
+  });
 });
 
 /**

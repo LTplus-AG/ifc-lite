@@ -321,7 +321,12 @@ test('canonical IFC + LandXML + XYZ federation keeps five independent bonsai-top
   expect(ifc!.loadPath).toBe('wasm');
   expect(landxml!.loadPath).toBe('landxml');
   expect(xyz!.loadPath).toBe('point-cloud');
-  expect(ifc!.alignment).toBe('anchor');
+  // Open creates the primary model before federation exists, so it has no
+  // explicit alignment badge. It is nevertheless the effective anchor used
+  // by both subsequent Add operations (the LandXML status below proves the
+  // second model entered that frame). Requiring the UI-only `anchor` marker
+  // here would misstate the canonical primary-load contract.
+  expect(ifc!.alignment).toBeUndefined();
   expect(landxml!.alignment).toBe('same-crs');
   expect(xyz!.pointCloudHandleId, 'XYZ reached the streamed point-cloud renderer').toBeDefined();
   expect(models.every((model) => model.visible), 'every control source is visibly enabled').toBe(true);

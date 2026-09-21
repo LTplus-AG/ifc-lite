@@ -222,7 +222,7 @@ function buildSurfaceMesh(
   };
 }
 
-interface SurfaceComponent { mesh: MeshData; bounds: Bounds3D; surfaceName: string; surfaceSourceId: string | null; pipeSourceId: string | null; renderedFaceSourceIds: string[] }
+interface SurfaceComponent { mesh: MeshData; bounds: Bounds3D; frameGroup?: string; surfaceName: string; surfaceSourceId: string | null; pipeSourceId: string | null; renderedFaceSourceIds: string[] }
 
 /** Adapt Rust-parsed LandXML 1.2 TIN semantics into the viewer's mesh payload. */
 export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometryPayload {
@@ -275,7 +275,7 @@ export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometr
         degenerateFaces += result.degenerateFaces;
         if (result.mesh && result.bounds) {
           renderedComponents++;
-          components.push({ mesh: result.mesh, bounds: result.bounds, surfaceName: surface.name, surfaceSourceId: surface.sourceId,
+          components.push({ mesh: result.mesh, bounds: result.bounds, frameGroup: surface.sourceId, surfaceName: surface.name, surfaceSourceId: surface.sourceId,
             pipeSourceId: null, renderedFaceSourceIds: result.renderedFaces.map((face) => faceSourceId.get(face)).filter((id): id is string => id !== undefined) });
         }
         if (result.unrenderedFaces.length === 0) continue;
@@ -313,7 +313,7 @@ export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometr
     };
   }
 
-  const { placed, dropped: reframeDropped, bounds, originShift, hasLargeCoordinates } = placeComponentsInRenderFrame(components, warnings);
+  const { placed, dropped: reframeDropped, bounds, originShift, hasLargeCoordinates } = placeComponentsInRenderFrame(components);
   if (placed.length === 0) {
     throw new Error(`LandXML document has no surface components whose local extent fits within the ${MAX_RENDER_FRAME_LOCAL_EXTENT_METRES / 1000} km render-frame limit`);
   }

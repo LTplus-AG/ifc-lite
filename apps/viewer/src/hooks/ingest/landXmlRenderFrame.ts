@@ -18,6 +18,8 @@ export const MAX_RENDER_FRAME_LOCAL_EXTENT_METRES = 1_000_000;
 interface RenderFrameComponent {
   mesh: MeshData;
   bounds: Bounds3D;
+  /** Components split from one connected surface must be accepted atomically. */
+  frameGroup?: string;
 }
 
 function mergeBounds(target: Bounds3D, source: Bounds3D): void {
@@ -46,10 +48,35 @@ export function boundsFitRenderFrame(
   return frameFit;
 }
 
-/** Place mesh components in one precise shared GPU frame, rejecting only remote batches. */
+/**
+ * Parser components are one GPU mesh today, so an unpartitioned connected
+ * component still needs a bounded local extent. This is deliberately separate
+ * from `boundsFitRenderFrame`: a wide component may fit a shared frame once
+ * the precision pipeline has partitioned it, but raw connected geometry cannot
+ * be narrowed safely by merely changing its origin.
+ */
+function componentFitsPrecisionBatch(bounds: Bounds3D): boolean {
+  const span = Math.max(
+    bounds.max.x - bounds.min.x,
+    bounds.max.y - bounds.min.y,
+    bounds.max.z - bounds.min.z,
+  );
+  return Number.isFinite(span) && span <= MAX_RENDER_FRAME_LOCAL_EXTENT_METRES;
+}
+
+/**
+ * Place parsed mesh components in their model-local frame.
+ *
+ * Initial ingestion retains disconnected survey islands: their mesh origins
+ * stay f64 until the renderer establishes a camera-relative draw frame. The
+ * bounded shared-frame guard belongs to federation reframe
+ * (`reframeLandXmlGeometry`), where a second model would otherwise silently
+ * move an already-published frame. Keeping those responsibilities separate
+ * preserves compact disconnected components without admitting a remote
+ * federated model.
+ */
 export function placeComponentsInRenderFrame<T extends RenderFrameComponent>(
   components: T[],
-  warnings: string[],
 ): { placed: T[]; dropped: T[]; bounds: Bounds3D; originShift: { x: number; y: number; z: number }; hasLargeCoordinates: boolean } {
   const sourceBounds = createEmptyBounds();
   for (const component of components) mergeBounds(sourceBounds, component.bounds);
@@ -72,8 +99,13 @@ export function placeComponentsInRenderFrame<T extends RenderFrameComponent>(
   const placed: T[] = [];
   const dropped: T[] = [];
   const bounds = createEmptyBounds();
+  const rejectedGroups = new Set(components
+    .filter((component) => !componentFitsPrecisionBatch(component.bounds))
+    .map((component) => component.frameGroup)
+    .filter((group): group is string => group !== undefined));
   for (const component of components) {
-    if (!boundsFitRenderFrame(component.bounds, originShift)) {
+    if (!componentFitsPrecisionBatch(component.bounds)
+      || (component.frameGroup !== undefined && rejectedGroups.has(component.frameGroup))) {
       dropped.push(component);
       continue;
     }
@@ -85,9 +117,6 @@ export function placeComponentsInRenderFrame<T extends RenderFrameComponent>(
     ];
     placed.push(component);
     mergeBounds(bounds, component.bounds);
-  }
-  if (dropped.length > 0) {
-    warnings.push(`Skipped ${dropped.length} surface component(s) outside the ${MAX_RENDER_FRAME_LOCAL_EXTENT_METRES / 1000} km shared render-frame envelope; split it into precision-safe render batches`);
   }
   return { placed, dropped, bounds, originShift, hasLargeCoordinates };
 }

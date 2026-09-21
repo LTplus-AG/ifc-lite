@@ -32,7 +32,7 @@ function recordName(record: LandXmlSourceRecord): string {
     case 'grade-line': return `Grade line ${record.gradeLine.ordinal}`;
     case 'grade-line-point': return `Grade sample: sta ${record.point.station}`;
     case 'cross-section': return `Cross section ${record.crossSection.ordinal}`;
-    case 'cross-section-surface': return record.crossSectionSurface.name ?? record.crossSectionSurface.sourceId;
+    case 'cross-section-surface': return record.crossSectionSurface.name || record.crossSectionSurface.sourceId;
     case 'cross-section-segment': return `Cross-section segment ${record.segment.ordinal}`;
     case 'cross-section-point': return `Cross-section point ${record.point.sourceId}`;
     case 'roadway': return record.roadway.name;

@@ -132,4 +132,18 @@ describe('LandXmlSourceInspector (#5042)', () => {
     assert.match(point.textContent ?? '', /Plan feature reference.*feature/);
     cleanup();
   });
+
+  it('falls back to the source ID for an unnamed cross-section surface', () => {
+    const profileDocument = document();
+    profileDocument.crossSectionSurfaces = [{
+      sourceId: 'section-surface', parentCrossSectionSourceId: 'section', kind: 'design', name: '', segments: [], points: [],
+    }];
+    const ui = render(<LandXmlSourceInspector
+      models={new Map([['terrain', { landXmlDocument: profileDocument }]])}
+      selected={{ modelId: 'terrain', sourceId: 'section-surface' }}
+      onSelect={() => {}}
+    />);
+    assert.match(ui.textContent ?? '', /section-surface/);
+    cleanup();
+  });
 });

@@ -17,7 +17,7 @@
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { InformationRule, RuleSetFile } from '@/lib/validation/rule-set';
+import type { InformationRule, RuleSetFile } from '@ifc-lite/rules';
 import { RuleCard } from './RuleSetEditor.ruleCard';
 import { RuleModelPicker, type RuleModelPickerModel } from './RuleModelPicker';
 import { useTranslation } from '@/i18n';

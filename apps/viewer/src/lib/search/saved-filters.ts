@@ -20,8 +20,8 @@ import {
   parseFilterRules,
   type Combinator,
   type FilterRule,
-} from './filter-rules.js';
-import { emptyFilterGroup, parseFilterGroups, type FilterGroup } from './filter-groups.js';
+} from '@ifc-lite/rules';
+import { emptyFilterGroup, parseFilterGroups, type FilterGroup } from '@ifc-lite/rules';
 import { forgetEntryAndBackups, preserveUnreadableEntry } from '../storage/unreadable-entry.js';
 
 const STORAGE_KEY = 'ifc-lite:search:saved-filters';

@@ -14,7 +14,7 @@
 
 import { useCallback } from 'react';
 import { useViewerStore } from '@/store';
-import type { FilterGroup } from '@/lib/search/filter-groups';
+import type { FilterGroup } from '@ifc-lite/rules';
 import { SelectorTextEditor, DOCS_URL } from './SelectorTextEditor';
 
 export { DOCS_URL };

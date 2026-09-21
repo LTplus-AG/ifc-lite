@@ -11,8 +11,8 @@ import {
   clearSavedFilters,
   __internal,
 } from './saved-filters.js';
-import { Rule } from './filter-rules.js';
-import type { Combinator, FilterRule } from './filter-rules.js';
+import { Rule } from '@ifc-lite/rules';
+import type { Combinator, FilterRule } from '@ifc-lite/rules';
 
 /** Test-only shim for the old 3-arg `saveFilter` — this suite predates
  *  `groups: FilterGroup[]` (#4904) and every call here is single-group. */

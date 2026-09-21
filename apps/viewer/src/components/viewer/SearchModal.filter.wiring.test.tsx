@@ -35,7 +35,7 @@ import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { toast } from '@/components/ui/toast';
-import { Rule } from '@/lib/search/filter-rules';
+import { Rule } from '@ifc-lite/rules';
 import { SearchModalFilter } from './SearchModal.filter.js';
 
 const MODEL_ID = 'model-a';

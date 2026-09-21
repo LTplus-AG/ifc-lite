@@ -30,8 +30,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
-import { Rule, type FilterRule } from '@/lib/search/filter-rules';
-import { totalRuleCount } from '@/lib/search/filter-groups';
+import { Rule, type FilterRule } from '@ifc-lite/rules';
+import { totalRuleCount } from '@ifc-lite/rules';
 import {
   loadSavedFilters,
   saveFilter,

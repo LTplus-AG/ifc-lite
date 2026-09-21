@@ -30,7 +30,7 @@
 import { IfcParser, type IfcDataStore, extractLengthUnitScale, extractProjectUnits } from '@ifc-lite/parser';
 import { QuantityType } from '@ifc-lite/data';
 import { formatQuantityUnit } from '@/lib/units/display';
-import { lensMaterialNames } from '@/lib/lens-material-names';
+import { lensMaterialNames } from '@ifc-lite/rules';
 import {
   BsddNamespace,
   createBimContext,

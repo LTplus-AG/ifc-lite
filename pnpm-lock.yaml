@@ -203,6 +203,9 @@ importers:
       '@ifc-lite/renderer':
         specifier: workspace:^
         version: link:../../packages/renderer
+      '@ifc-lite/rules':
+        specifier: workspace:^
+        version: link:../../packages/rules
       '@ifc-lite/sandbox':
         specifier: workspace:^
         version: link:../../packages/sandbox

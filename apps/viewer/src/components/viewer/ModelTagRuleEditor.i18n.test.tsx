@@ -17,8 +17,8 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { render, cleanup } from '@/test/render';
 import { registerLocale, setLocale } from '@/i18n';
-import { Rule, type ModelTagRule } from '@/lib/search/filter-rules';
-import type { ModelTag } from '@/lib/model-tags/types';
+import { Rule, type ModelTagRule } from '@ifc-lite/rules';
+import type { ModelTag } from '@ifc-lite/rules';
 import { ModelTagRuleEditor } from './ModelTagRuleEditor';
 
 afterEach(() => {

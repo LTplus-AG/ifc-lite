@@ -15,7 +15,7 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { render, cleanup, type } from '@/test/render.js';
-import type { InformationRule, RuleSetFile } from '@/lib/validation/rule-set';
+import type { InformationRule, RuleSetFile } from '@ifc-lite/rules';
 import { RuleSetEditor } from './RuleSetEditor.js';
 
 function fileWithRule(rule: InformationRule): RuleSetFile {

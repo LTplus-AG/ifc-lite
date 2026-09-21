@@ -21,8 +21,8 @@
  * `import type`, which TypeScript erases before either module executes.
  */
 
-import type { FilterRule } from '@/lib/search/filter-rules';
-import { emptyFilterGroup, type FilterGroup } from '@/lib/search/filter-groups';
+import type { FilterRule } from '@ifc-lite/rules';
+import { emptyFilterGroup, type FilterGroup } from '@ifc-lite/rules';
 import type { SearchFilterStateValue } from './searchSlice.js';
 
 interface GroupState {

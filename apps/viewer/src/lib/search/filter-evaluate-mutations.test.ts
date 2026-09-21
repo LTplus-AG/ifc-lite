@@ -16,9 +16,9 @@ import assert from 'node:assert/strict';
 import { IfcParser, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
-import { quantitySetsFor } from './filter-evaluate-mutations.js';
-import { evaluateFilterRulesFederated } from './filter-evaluate.js';
-import { Rule } from './filter-rules.js';
+import { quantitySetsFor } from '@ifc-lite/rules';
+import { evaluateFilterRulesFederated } from '@ifc-lite/rules';
+import { Rule } from '@ifc-lite/rules';
 import { configureMutationView } from '@/utils/configureMutationView.js';
 
 const MINI_IFC = `ISO-10303-21;

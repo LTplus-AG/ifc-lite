@@ -15,13 +15,13 @@
  *
  * Renaming changes `name` only; the id — what saved rules hold — never moves.
  * Deleting a tag drops its assignments here, and leaves every rule that named
- * it UNRESOLVED (`lib/model-tags/types.ts`): the rule keeps the id, matches
- * nothing, and the editors say why. See `lib/model-tags/types.ts` for what
+ * it UNRESOLVED (`@ifc-lite/rules's model-tag.ts`): the rule keeps the id, matches
+ * nothing, and the editors say why. See `@ifc-lite/rules's model-tag.ts` for what
  * these are not (IFC `Tag`, plugin `SourceTag`).
  */
 
 import type { StateCreator } from 'zustand';
-import { normalizeModelTagName, type ModelTag } from '../../lib/model-tags/types.js';
+import { normalizeModelTagName, type ModelTag } from '@ifc-lite/rules';
 import { loadPersistedModelTags, savePersistedModelTags } from '../../lib/model-tags/persistence.js';
 
 export type ModelTagAssignments = ReadonlyMap<string, ReadonlySet<string>>;

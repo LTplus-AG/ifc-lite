@@ -21,7 +21,7 @@ import { useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import { COMMON_IFC_TYPES } from '@/lib/search/common-ifc-types';
-import type { FilterRule } from '@/lib/search/filter-rules';
+import type { FilterRule } from '@ifc-lite/rules';
 import {
   discoverFilterSchema,
   discoverPropertyAndQuantitySchema,

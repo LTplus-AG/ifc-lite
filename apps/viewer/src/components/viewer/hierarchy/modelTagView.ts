@@ -32,7 +32,7 @@
  * flat view and the storeys section keep the spatial drill-down.
  */
 
-import type { ModelTag } from '@/lib/model-tags/types';
+import type { ModelTag } from '@ifc-lite/rules';
 import type { ModelTagView } from '@/store/slices/modelTagsSlice';
 import type { TreeNode } from './types';
 

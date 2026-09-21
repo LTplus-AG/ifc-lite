@@ -19,9 +19,9 @@
  */
 import { trimSelectorWhitespace } from '@ifc-lite/query';
 import { readSelector } from '@/lib/search/selector-to-rules';
-import { evaluateFilterGroupsFederated } from '@/lib/search/filter-evaluate-groups';
-import type { EvaluatorModel } from '@/lib/search/filter-evaluate';
-import type { FilterGroup } from '@/lib/search/filter-groups';
+import { evaluateFilterGroupsFederated } from '@ifc-lite/rules';
+import type { EvaluatorModel } from '@ifc-lite/rules';
+import type { FilterGroup } from '@ifc-lite/rules';
 import { describeSelectorParseError } from '@/components/viewer/SearchModal.filter.feedback';
 import type { ChartDataset, ChartDatasetRow, ChartSourceFilter } from '@ifc-lite/charts';
 

@@ -21,7 +21,7 @@ installLayout();
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { render, cleanup, click } from '@/test/render.js';
-import { Rule } from '@/lib/search/filter-rules';
+import { Rule } from '@ifc-lite/rules';
 import type { ClashSetFilter } from '@/lib/clash/set-filter';
 import { ClashSetFilterEditor } from './ClashSetFilterEditor.js';
 import { RuleRow } from './SearchModal.filter.editors.js';

@@ -16,7 +16,7 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import type { SetOp, StringOp, ValueOp, NumericOp, ClassificationOp } from '@/lib/search/filter-rules';
+import type { SetOp, StringOp, ValueOp, NumericOp, ClassificationOp } from '@ifc-lite/rules';
 
 export const SET_OPS: SetOp[] = ['in', 'notIn'];
 export const STRING_OPS: StringOp[] = ['eq', 'ne', 'contains', 'notContains', 'startsWith', 'matches', 'notMatches'];

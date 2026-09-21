@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { FilterRule } from '@/lib/search/filter-rules';
+import type { FilterRule } from '@ifc-lite/rules';
 
 export const RULE_KIND_LABEL: Record<FilterRule['kind'], string> = {
   model: 'Model',

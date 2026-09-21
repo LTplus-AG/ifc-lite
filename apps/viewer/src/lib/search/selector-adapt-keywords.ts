@@ -11,7 +11,7 @@
  */
 
 import type { SelectorOp, SelectorValue } from '@ifc-lite/query';
-import { Rule, type FilterRule } from './filter-rules.js';
+import { Rule, type FilterRule } from '@ifc-lite/rules';
 import {
   setOpFor,
   stringOpFor,

@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store/types.js';
 import { DEFAULT_MODEL_TAG_VIEW, type ModelTagView } from '@/store/slices/modelTagsSlice.js';
-import type { ModelTag } from '@/lib/model-tags/types.js';
+import type { ModelTag } from '@ifc-lite/rules';
 import { buildTreeData, buildUnifiedStoreys, splitNodes } from './treeDataBuilder.js';
 import {
   applyModelTagView,

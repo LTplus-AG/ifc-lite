@@ -24,7 +24,7 @@ import {
   type ProjectUnits,
 } from '@ifc-lite/parser';
 import { classificationLabel } from '../lens-classification-labels.js';
-import { lensMaterialNames } from '../lens-material-names.js';
+import { lensMaterialNames } from '@ifc-lite/rules';
 import { isGeometricDataName } from './geometricData.js';
 import { isTypeObjectClass, typeObjectTag } from './typeObjectTag.js';
 import type { ExtractedPropertySets } from './authoredKeys.js';

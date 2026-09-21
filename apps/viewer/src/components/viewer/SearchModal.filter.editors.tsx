@@ -25,7 +25,7 @@ import {
   type FilterRule,
   type SetOp,
   type StringOp,
-} from '@/lib/search/filter-rules';
+} from '@ifc-lite/rules';
 import { ComboInput } from '@/components/ui/combo-input';
 import { useTranslation } from '@/i18n';
 import { propValueKey, type FilterValueSchema } from '@/lib/search/filter-schema';
@@ -33,7 +33,7 @@ import { RULE_KIND_LABEL } from './filter-rule-labels';
 import { GlobalIdEditor, AttributeEditor } from './SearchModal.filter.editors.identity';
 import { ElevationEditor } from './SearchModal.filter.editors.elevation';
 import { ModelTagRuleEditor } from './ModelTagRuleEditor';
-import type { ModelTag } from '@/lib/model-tags/types';
+import type { ModelTag } from '@ifc-lite/rules';
 import {
   SET_OPS,
   STRING_OPS,

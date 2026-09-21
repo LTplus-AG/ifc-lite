@@ -83,7 +83,10 @@ async fn optimized_probe_rejects_non_digest_with_400() {
 #[tokio::test]
 async fn optimized_probe_404_when_nothing_cached() {
     let state = test_state("optimized-hash-miss").await;
-    let hash = digest(MINIMAL_IFC.as_bytes());
+    let content = MINIMAL_IFC.as_bytes();
+    let hash = digest(content);
+    let cache_key =
+        request_cache_key(content, &ParseQuery::default(), TessellationQuality::default());
 
     let (status, _, body) = read_response(hash_only_request(&state, &hash).await).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
@@ -95,18 +98,17 @@ async fn optimized_probe_404_when_nothing_cached() {
         "the miss has to tell the client to send the body, got {json}"
     );
 
-    let cache_key = format!("{hash}-default");
-    for suffix in [
-        "-parquet-optimized-v1",
-        "-parquet-optimized-metadata-v2",
-        "-symbolic-v4",
+    // Built from the shared key helpers, not repeated as literal suffixes, so
+    // a suffix bump moves this fixture with the route instead of leaving it
+    // asserting `Ok(None)` for a key nobody would ever write either way.
+    for key in [
+        parquet_optimized_cache_key(&cache_key),
+        parquet_optimized_metadata_cache_key(&cache_key),
+        symbolic_cache_key(&cache_key),
     ] {
         assert!(
-            matches!(
-                state.cache.get_bytes(&format!("{cache_key}{suffix}")).await,
-                Ok(None)
-            ),
-            "a hash-only miss must not have parsed or cached anything ({suffix})"
+            matches!(state.cache.get_bytes(&key).await, Ok(None)),
+            "a hash-only miss must not have parsed or cached anything ({key})"
         );
     }
 }

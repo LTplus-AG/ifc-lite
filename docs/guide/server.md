@@ -854,6 +854,10 @@ Two rules keep the parameter honest:
 - **The hash only selects.** It can not cause anything to be parsed or written;
   a key with nothing behind it is a 404, never a parse.
 
+Send the same `opening_filter`, `tessellation_quality` and `parquet_layout` you
+would send with the file. They are part of the cache identity, so a hash paired
+with a different layout asks about a different entry.
+
 `POST /api/v1/parse/parquet/optimized` accepts the same `?sha256=` parameter,
 with the same two rules and the same status codes (issue #5128) — the only
 difference is the response is a single body, not an SSE stream, so a hit is a
@@ -864,9 +868,8 @@ curl -X POST "$SERVER/api/v1/parse/parquet/optimized?sha256=$SHA"
 ```
 
 Send the same `opening_filter` and `tessellation_quality` you would send with
-the file — they are part of the cache identity, so a hash paired with a
-different one of either asks about a different entry. `parquet_layout` is a
-flat-route-only concept (above); the optimized route ignores it, cache key
+the file, same as above — but not `parquet_layout`: that parameter is a
+flat-route-only concept (above), and the optimized route ignores it, cache key
 included, because it has only ever emitted one payload shape.
 
 `@ifc-lite/server-client` does this for you: `parseParquetStream` hashes the

@@ -823,6 +823,9 @@ importers:
       '@ifc-lite/query':
         specifier: workspace:^
         version: link:../query
+      '@ifc-lite/rules':
+        specifier: workspace:^
+        version: link:../rules
       '@ifc-lite/sandbox':
         specifier: workspace:^
         version: link:../sandbox
@@ -1294,6 +1297,9 @@ importers:
       '@ifc-lite/query':
         specifier: workspace:^
         version: link:../query
+      '@ifc-lite/rules':
+        specifier: workspace:^
+        version: link:../rules
       '@ifc-lite/sdk':
         specifier: workspace:^
         version: link:../sdk

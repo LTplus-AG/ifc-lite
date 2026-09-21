@@ -1190,21 +1190,6 @@ jobs:
       # type/side it names, never a whole concept.
       - name: Check server/browser type parity gate regressions
         run: node --test scripts/check-server-browser-type-parity.test.mjs
-      # `legacy_entities.rs` is the table every classification pass is told to
-      # consult instead of a bare `IfcType::from_str`, and nothing checked it
-      # was complete. Six concrete IFC2X3 products were missing (#3172), and a
-      # name it misses resolves to `Unknown` -- a subtype of nothing -- so the
-      # entity is dropped from the attribute export AND from meshing at once.
-      # Nothing disagrees, so nothing looks wrong. Same call as the parity gate
-      # above: reading two sources is banned in test files, so it is a lint.
-      - name: Check legacy entity coverage
-        run: node scripts/check-legacy-entity-coverage.mjs
-      # Executable proof the gate cannot pass vacuously: "nothing is missing" is
-      # equally true of a complete table and of an extractor that found nothing.
-      # Each of the four extractors is broken in turn against mutated copies of
-      # the real sources, plus a deleted arm and the #3172 misspelling itself.
-      - name: Check legacy entity coverage gate regressions
-        run: node --test scripts/check-legacy-entity-coverage.test.mjs
       # `check:server-attr-indices` (below, and its own CI step) only proves the
       # committed generated/attr_indices.rs TABLE is fresh against the schema
       # registry -- it never opens metadata.rs, so reintroducing #3949 by
@@ -1524,12 +1509,6 @@ jobs:
       # rebuilds it (fast, single package) otherwise.
       - name: Check codegen output freshness
         run: pnpm run check:codegen-sync
-      # `LEGACY_ROOTED_TYPES` is generated from the older EXPRESS-derived
-      # entity tables, but it is consumed by Rust rather than by the TS codegen
-      # package above. Check its own generator explicitly so a schema refresh
-      # cannot leave the committed Rust table stale while CI stays green.
-      - name: Check legacy rooted-type freshness
-        run: node scripts/generate-legacy-rooted-types.mjs --check
       # `IFC2X3_ENTITY_NAMES` (#5116) is the Rust schema converter's "does
       # this type have any representation at all in IFC2X3" table, generated
       # from the same TS entity table the TypeScript converter's

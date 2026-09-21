@@ -63,6 +63,7 @@
 //! - **Number parsing**: 10x faster than std using [lexical-core](https://docs.rs/lexical-core)
 
 pub mod columnar_index;
+pub mod compatibility;
 pub mod decoder;
 pub mod dense_index;
 pub mod error;
@@ -70,7 +71,6 @@ pub mod express_id;
 pub mod fast_parse;
 pub mod generated;
 pub mod georef;
-pub mod legacy_entities;
 pub mod limits;
 pub mod model_bounds;
 pub mod parser;
@@ -87,6 +87,7 @@ pub mod units;
 mod schema_registry_tests;
 
 pub use columnar_index::{ColumnLengthMismatch, ColumnarEntityIndex};
+pub use compatibility::{is_exporter_stratum_alias, EXPORTER_STRATUM_ALIASES};
 pub use decoder::{build_entity_index, EntityDecoder, EntityIndex};
 pub use dense_index::DenseEntityIndex;
 pub use error::{Error, Result};
@@ -101,10 +102,6 @@ pub use generated::{
 };
 pub use georef::{GeoRefExtractor, GeoRefSource, GeoReference};
 pub use limits::{RtcVerdict, MAX_MAPPED_ITEM_DEPTH, MAX_PLACEMENT_DEPTH};
-pub use legacy_entities::{
-    get_legacy_entity_info, is_legacy_entity, legacy_attribute_names, map_legacy_to_base_type,
-    LegacyEntityInfo, LEGACY_ENTITY_NAMES,
-};
 pub use model_bounds::{scan_model_bounds, scan_placement_bounds, ModelBounds};
 pub use parser::{
     entity_count, find_keyword, keyword_ends_with, keyword_eq, keyword_starts_with,
@@ -119,8 +116,7 @@ pub use project_units::{
 pub use schema_gen::{AttributeValue, DecodedEntity, GeometryCategory, IfcSchema, ProfileCategory};
 pub use schema_helpers::{
     geometry_flags_by_name, has_geometry_by_name, is_representationless_spatial_container_by_name,
-    is_simple_geometry_type,
-    legacy_aware_ifc_type, legacy_aware_ifc_type_from_record, type_product_ifc_type,
+    ifc_type_from_keyword, ifc_type_from_record, is_simple_geometry_type, type_product_ifc_type,
 };
 pub use step_encoding::decode_ifc_string;
 pub use streaming::{parse_stream, ParseEvent, StreamConfig};

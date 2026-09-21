@@ -11,7 +11,7 @@
 //! move. `prepass_orphan_type_tests.rs` is the same pattern.
 use super::combined_pre_pass;
 
-use ifc_lite_core::{legacy_aware_ifc_type, EntityDecoder, IfcType};
+use ifc_lite_core::{ifc_type_from_keyword, EntityDecoder, IfcType};
 
 // #3187. The scan loop resolved a job's type with a BARE
 // `IfcType::from_str`, which once knew only IFC4X3. The supported-schema
@@ -22,9 +22,9 @@ use ifc_lite_core::{legacy_aware_ifc_type, EntityDecoder, IfcType};
 // sites were left, and they are reachable: every keyword below answers
 // `has_geometry_by_name` = true, so it reaches the branch at first hand.
 const LEGACY_WITH_GEOMETRY: &[(&str, IfcType)] = &[
-    ("IFCBEAMSTANDARDCASE", IfcType::IfcBeam),
-    ("IFCDOORSTANDARDCASE", IfcType::IfcDoor),
-    ("IFCPROXY", IfcType::IfcBuildingElementProxy),
+    ("IFCBEAMSTANDARDCASE", IfcType::IfcBeamStandardCase),
+    ("IFCDOORSTANDARDCASE", IfcType::IfcDoorStandardCase),
+    ("IFCPROXY", IfcType::IfcProxy),
 ];
 
 fn job_type_for(keyword: &str) -> Option<IfcType> {
@@ -69,14 +69,10 @@ fn legacy_keywords_are_not_scheduled_as_unknown() {
             keyword,
             "{keyword} must retain its exact name"
         );
-        assert_ne!(
-            exact, expected.clone(),
-            "{keyword} must remain distinct from its processing base"
-        );
         assert_eq!(
-            legacy_aware_ifc_type(keyword),
+            ifc_type_from_keyword(keyword),
             expected.clone(),
-            "table sanity: {keyword}"
+            "exact generated type: {keyword}"
         );
 
         let scheduled = job_type_for(keyword)
@@ -118,7 +114,7 @@ fn legacy_keywords_are_not_scheduled_as_unknown() {
 fn every_legacy_keyword_reaches_the_geometry_arm_and_no_other() {
     let mut geometry = 0;
     let mut other = Vec::new();
-    for name in ifc_lite_core::LEGACY_ENTITY_NAMES.iter() {
+    for name in ifc_lite_core::EXPORTER_STRATUM_ALIASES.iter() {
         let name: &str = name;
         if !matches!(IfcType::from_str(name), IfcType::Unknown(_)) {
             continue;

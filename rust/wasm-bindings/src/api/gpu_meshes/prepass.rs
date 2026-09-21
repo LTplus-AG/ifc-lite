@@ -355,7 +355,7 @@ impl IfcAPI {
                 if site_position.is_none() {
                     site_position = Some((id, start, end));
                 }
-                let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
+                let ifc_type = ifc_lite_core::ifc_type_from_keyword(type_name);
                 buffered_jobs.push((id, start, end, ifc_type));
                 total_jobs += 1;
             } else if keyword_eq(type_name, "IFCMAPPEDITEM") {
@@ -375,7 +375,7 @@ impl IfcAPI {
                     type_candidate_spans.push((id, start, end, type_ty));
                 }
                 if has_geometry_by_name(type_name) && !is_disabled(&disabled_types, type_name) {
-                    let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
+                    let ifc_type = ifc_lite_core::ifc_type_from_keyword(type_name);
                     // We don't bucket by simple/complex here — the host
                     // distributes work across N geometry workers anyway, and
                     // nothing else reads the split: RTC sampling has its own
@@ -396,7 +396,7 @@ impl IfcAPI {
                     // with no `IfcBuildingElement` children at all) must
                     // still be scheduled for meshing, or the browser
                     // viewer renders nothing despite a correct scene tree.
-                    let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
+                    let ifc_type = ifc_lite_core::ifc_type_from_keyword(type_name);
                     buffered_jobs.push((id, start, end, ifc_type));
                     total_jobs += 1;
                 }

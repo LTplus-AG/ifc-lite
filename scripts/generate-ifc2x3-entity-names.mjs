@@ -27,7 +27,7 @@
  * SOURCE OF TRUTH: `packages/data/src/ifc-schema/generated/entities-ifc2x3.ts`
  * (`ENTITIES_IFC2X3`) — the exact table the TypeScript converter reads for
  * the same question. Parsed with the source-text regex `parseEntityTable`
- * already shares with `generate-legacy-rooted-types.mjs`, not `import()`: no
+ * shared `parseEntityTable` helper, not `import()`: no
  * enum/type resolution is needed here, so there is no reason to pay for a
  * `tsx` re-exec.
  *
@@ -44,7 +44,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseEntityTable } from './check-legacy-entity-coverage.mjs';
+import { parseEntityTable } from './lib/entity-table.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC_REL = 'packages/data/src/ifc-schema/generated/entities-ifc2x3.ts';

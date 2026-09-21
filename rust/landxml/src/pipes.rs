@@ -229,7 +229,12 @@ pub struct LandXmlPipeNetwork {
 /// Pipe-network semantic result. It is intentionally independent from TIN.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LandXmlPipeNetworkDocument {
+    /// Namespace-selected grammar used to parse this source, independent from
+    /// the producer's declared version string.
+    pub schema: String,
     pub version: String,
+    /// Compatibility observations retained for direct pipe-parser consumers.
+    pub capability_diagnostics: Vec<crate::LandXmlCapabilityDiagnostic>,
     pub root_units: Option<LandXmlPipeUnits>,
     pub collections: Vec<LandXmlPipeNetworkCollection>,
     /// Features authored at any schema-valid pipe-network owner.

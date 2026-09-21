@@ -37,7 +37,11 @@
 import type { FederatedModel, PreAlignmentSnapshot } from '../../store/index.js';
 import type { ModelSpatialReference } from '@ifc-lite/geometry';
 import { alignGeometryToReference, type ModelSpatialPlacement } from './federationAlign.js';
-import { capturePreAlignment, restorePreAlignment } from './federationPreAlignment.js';
+import {
+  capturePreAlignment,
+  restorePreAlignment,
+  type AlignableGeometry,
+} from './federationPreAlignment.js';
 import { canonicalRendererPlacement } from './federationCanonicalReference.js';
 import {
   applyLandXmlRenderedLineUpdates,

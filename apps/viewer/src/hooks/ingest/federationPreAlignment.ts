@@ -7,7 +7,8 @@
 import type { FederatedModel, PreAlignmentSnapshot } from '../../store/index.js';
 import { growPreAlignment } from '../../store/slices/data-mesh-prealign.js';
 
-type AlignableGeometry = NonNullable<FederatedModel['geometryResult']>;
+/** The geometry channels federation alignment snapshots and restores. */
+export type AlignableGeometry = NonNullable<FederatedModel['geometryResult']>;
 
 /** Capture a geometry result's current state as its independently owned baseline. */
 export function capturePreAlignment(geometry: AlignableGeometry): PreAlignmentSnapshot {

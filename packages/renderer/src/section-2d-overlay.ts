@@ -46,7 +46,6 @@ import {
 import {
   WorldLineBuffer,
   type SectionLinePipelineResources,
-  type AnchoredLineVertices,
   type LineVertices,
 } from './section-2d-line-buffer.js';
 import {

@@ -27,12 +27,11 @@ import { shadowShaderSource } from './shaders/shadow.wgsl.js';
 import { packRteDrawableDelta, packRteOrigin } from './relative-to-eye.js';
 import { uploadInstancedRteDeltas } from './instanced-rte.js';
 import { packRteClipBox, rtePlaneDistance } from './rte-clip-space.js';
-import {
-  resolveShadowMapResolution,
-  type ShadowClip,
-  type ShadowDrawKind,
-  type ShadowOccluderDraw,
-  type ShadowRteFrame,
+import type {
+  ShadowClip,
+  ShadowDrawKind,
+  ShadowOccluderDraw,
+  ShadowRteFrame,
 } from './shadow-types.js';
 
 export { resolveShadowMapResolution } from './shadow-types.js';

@@ -65,14 +65,13 @@ export type { PointColorMode, PointSizeMode };
 export interface PointCloudDrawState {
   /** column-major view-projection matrix (16 floats) */
   viewProj: Float32Array;
-  /** Shared RTE camera frame: no point path may derive a second rebase. */
+  /** Shared RTE camera frame; point paths may not derive another rebase. */
   relativeToEyeFrame: RelativeToEyeFrame;
-  /** Section plane already resolved by the main render path. */
+  /** Section plane resolved by the main render path. */
   sectionPlane?: ResolvedSectionPlane | null;
-  /** Crop box from the main mesh pass; packed in the same RTE camera frame. */
+  /** Main mesh crop box, packed in the same RTE camera frame. */
   clipBox?: ClipBox | null;
-  /** Viewport size in pixels — needed by the splat shader to convert
-   *  pixel sizes into clip-space offsets. */
+  /** Viewport pixels for splat shader clip-space offsets. */
   viewport?: { width: number; height: number };
 }
 
@@ -392,9 +391,7 @@ export class PointCloudRenderer {
     const bounds = this.getBounds();
     const heightMin = bounds ? bounds.min[1] : 0;
     const heightMax = bounds ? bounds.max[1] : 1;
-    // Default to 1×1 if the caller didn't supply a viewport — keeps the
-    // shader from dividing by zero in adaptive-world mode and degrades
-    // gracefully to "all points the same fixed-px size".
+    // A missing viewport uses 1×1, avoiding adaptive-world division by zero.
     const viewportW = Math.max(1, state.viewport?.width ?? 1);
     const viewportH = Math.max(1, state.viewport?.height ?? 1);
 
@@ -439,15 +436,12 @@ export class PointCloudRenderer {
     }
   }
 
-  /**
-   * Resolve a packed objectId rgba8 sample back to the asset that owns it.
-   * Returns null when the sample doesn't match any asset's expressId.
-   */
+  /** Resolve an objectId rgba8 sample, or null when it matches no asset. */
   resolvePick(expressId: number): { handle: PointCloudAssetHandle; meta: PointCloudNodeMeta } | null {
     return resolvePickedAsset(this.nodes.entries(), expressId);
   }
 
-  /** Picker snapshot includes the exact model matrix used by visible splats. */
+  /** Picker snapshot uses each visible splat's exact model matrix. */
   getPickNodes(): Array<{
     expressId: number;
     modelIndex?: number;
@@ -458,14 +452,8 @@ export class PointCloudRenderer {
     return buildPickNodeSources(this.visibleNodes());
   }
 
-  /**
-   * Snapshot of every node's CPU spatial index (issue #1860), for the
-   * measure tool's ray-based point snapping (`RaycastEngine`). Skips
-   * empty nodes, mirroring `getPickNodes`. Each source carries the
-   * CURRENT class visibility bitmask so the query skips points the
-   * splat shader is hiding (#1783) — snapping to invisible scan data
-   * would otherwise silently corrupt measurements.
-   */
+  /** CPU spatial-index snapshot for measurement snapping (#1860), with the
+   * live visibility mask so hidden points cannot corrupt measurements (#1783). */
   getRayQuerySources(): Array<{
     expressId: number;
     modelIndex?: number;

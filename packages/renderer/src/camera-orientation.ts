@@ -122,14 +122,6 @@ export class CameraOrientation {
     // deltas — a rejected call changes nothing at all.
     if (!areFiniteNumbers(azimuth, elevation)) return;
 
-    // An in-flight tween or leftover inertia writes position/target on the next
-    // `update()` and would erase this pose a frame later — a host that sends
-    // SET_VIEW (animated) and then SET_CAMERA would end up at the preset. An
-    // absolute placement supersedes whatever motion is still running, so cancel
-    // it; this also drops the preset-view rotation cycle, which is correct
-    // after the camera has been reoriented out from under it.
-    this.animator.reset();
-
     const target = this.state.camera.target;
     const dir = {
       x: this.state.camera.position.x - target.x,
@@ -151,6 +143,11 @@ export class CameraOrientation {
     // pose, so silently writing an unrecoverable one is worse than refusing.
     // Same rejection shape as the angle guard at the top: change nothing.
     if (!areFiniteNumbers(target.x, target.y, target.z)) return;
+
+    // An in-flight tween or leftover inertia writes position/target on the next
+    // `update()` and would erase this pose a frame later. Cancel it only after
+    // every input has been accepted: rejected commands must change nothing.
+    this.animator.reset();
 
     const theta = ((((azimuth % 360) + 360) % 360) * Math.PI) / 180;
     const poleMargin = CAMERA_CONSTANTS.MIN_PHI;

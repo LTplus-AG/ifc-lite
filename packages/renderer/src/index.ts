@@ -498,11 +498,7 @@ export class Renderer {
     // users can confirm the slider is operating on the intended range.
     private _loggedSectionBounds: boolean = false;
 
-    // Pooled per-frame buffers to avoid GC pressure from per-batch Float32Array allocations
-    // A single 336-byte uniform buffer is reused for all batches/meshes within a frame.
-    // 84 floats includes legacy material/clip/quant fields plus the RTE frame
-    // and drawable high/low lanes (see
-    // pipeline.getUniformBufferSize).
+    // One 336-byte buffer serves all frame batches/meshes (84 floats including RTE lanes).
     private readonly uniformScratch = new Float32Array(MESH_UNIFORM_FLOATS);
     private readonly uniformScratchU32 = new Uint32Array(this.uniformScratch.buffer, MESH_FLAGS_BYTE_OFFSET, 4);
 
@@ -2046,11 +2042,8 @@ export class Renderer {
                     meshFlags[2] = edgeEnabledU32;
                     meshFlags[3] = edgeIntensityMilliU32;
 
-                    // Individual/no-batch meshes use the same production shader
-                    // as a colour batch. Retain their canonical origin and use
-                    // the shared RTE fragment contract here too; otherwise this
-                    // fallback was the sole mesh path that narrowed its model
-                    // translation before projection/crop/section work.
+                    // Individual meshes retain their origin and share the RTE
+                    // fragment contract with colour batches.
                     packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, meshBuf);
                     const meshOrigin = mesh.rteOrigin
                         ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
@@ -2090,11 +2083,7 @@ export class Renderer {
                     } else {
                         this.shadowPass.setResolution(resolution);
                     }
-                    // The light matrix is evaluated against the same
-                    // eye-relative positions as every main-family vertex. Keep
-                    // the fit in that small frame too: composing a world-space
-                    // f32 light matrix at a 5,000-km grid coordinate destroys
-                    // both shadow depth and the receiver comparison residual.
+                    // Fit shadows in the same eye-relative frame as vertices.
                     const shadowEye = relativeToEyeFrame.getCameraWorld();
                     const sourceBoundsMin: [number, number, number] = [bounds.min.x, bounds.min.y, bounds.min.z];
                     const sourceBoundsMax: [number, number, number] = [bounds.max.x, bounds.max.y, bounds.max.z];

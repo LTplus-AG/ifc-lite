@@ -132,7 +132,6 @@
    472 apps/viewer/src/hooks/useCompare.ts
   1353 apps/viewer/src/hooks/useDrawingExport.ts
   1041 apps/viewer/src/hooks/useDrawingGeneration.ts
-  1227 apps/viewer/src/hooks/useIDS.ts
    586 apps/viewer/src/hooks/useIfcCache.ts
    667 apps/viewer/src/hooks/useIfcFederation.ts
   2219 apps/viewer/src/hooks/useIfcLoader.ts

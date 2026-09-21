@@ -220,9 +220,15 @@ export class ShadowPass {
       this.drawScratch[base + 17] = q ? q[1] : 0;
       this.drawScratch[base + 18] = q ? q[2] : 0;
       this.drawScratch[base + 19] = q ? q[3] : 0;
-      const origin = d.origin ?? [d.model?.[12] ?? 0, d.model?.[13] ?? 0, d.model?.[14] ?? 0] as const;
-      const camera = rte?.cameraWorld ?? [0, 0, 0] as const;
-      packRteDrawableDelta(origin, camera, this.drawScratch, base + 20);
+      // Instanced vertices reconstruct from their per-occurrence split anchors
+      // in `vs_shadow_instanced`; they deliberately have no single draw origin.
+      // Packing a fictitious [0,0,0] here rejects a perfectly valid 5,000-km
+      // camera before that shader can run.
+      if (d.kind !== 'instanced') {
+        const origin = d.origin ?? [d.model?.[12] ?? 0, d.model?.[13] ?? 0, d.model?.[14] ?? 0] as const;
+        const camera = rte?.cameraWorld ?? [0, 0, 0] as const;
+        packRteDrawableDelta(origin, camera, this.drawScratch, base + 20);
+      }
     }
     if (draws.length > 0) {
       this.device.queue.writeBuffer(

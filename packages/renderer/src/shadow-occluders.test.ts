@@ -400,6 +400,20 @@ describe('ShadowPass.render', () => {
     assert.ok(dev.lightWrite, 'instanced shadow anchors need the same camera split');
     assert.equal(dev.lightWrite![16] + dev.lightWrite![20], 5_000_000);
   });
+
+  it('submits collector-produced instanced anchors at 5,000 km without a fictitious draw origin (#5049)', () => {
+    const dev: DeviceRecord = { pipelines: [], clipWrite: null, drawWrite: null, lightWrite: null };
+    const pass = new ShadowPass(mockShadowDevice(dev), 1024);
+    const draw = collectShadowOccluders({ batches: [], instanced: [instancedTemplate()], textured: [] });
+    assert.equal(draw[0].origin, undefined, 'occurrences, not the batch, own the canonical anchors');
+    assert.doesNotThrow(() => pass.render(
+      mockEncoder(emptyRecord()), { m: new Float32Array(16) }, draw, null,
+      { cameraWorld: [5_000_000, 0, 0] },
+    ));
+    assert.ok(dev.drawWrite, 'the instanced depth draw still uploads its layout');
+    assert.equal(dev.drawWrite![20], 0, 'per-draw origin lanes stay unused for per-occurrence anchors');
+    assert.equal(dev.lightWrite![16] + dev.lightWrite![20], 5_000_000);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -28,6 +28,7 @@ const make = () => createStore<IDSSlice>(createIdsSlice);
 
 const report = (): IDSValidationReport =>
   ({
+    source: { kind: 'ids', document: { specifications: [] } },
     specificationResults: [
       {
         specification: { id: 'spec1' },

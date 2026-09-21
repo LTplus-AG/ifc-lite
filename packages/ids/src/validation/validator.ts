@@ -15,7 +15,7 @@ import type {
   IDSEntityResult,
   IDSRequirementResult,
   IDSValidationSummary,
-  IDSModelInfo,
+  ValidationModelInfo,
   IDSCardinalityResult,
   IFCDataAccessor,
   ValidatorOptions,
@@ -192,7 +192,7 @@ type MaybeYield = ReturnType<typeof createYielder>;
 export async function validateIDS(
   document: IDSDocument,
   accessor: IFCDataAccessor,
-  modelInfo: IDSModelInfo,
+  modelInfo: ValidationModelInfo,
   options: ValidatorOptions = {}
 ): Promise<IDSValidationReport> {
   const { onProgress } = options;
@@ -275,8 +275,8 @@ export async function validateIDS(
   const summary = calculateSummary(specificationResults);
 
   return {
-    document,
-    modelInfo,
+    source: { kind: 'ids', document },
+    modelInfo: [modelInfo],
     timestamp: new Date(),
     summary,
     specificationResults,
@@ -306,7 +306,7 @@ function unsafePatternResult(
 async function validateSpecification(
   spec: IDSSpecification,
   accessor: IFCDataAccessor,
-  modelInfo: IDSModelInfo,
+  modelInfo: ValidationModelInfo,
   options: ValidatorOptions,
   descriptionCache: DescriptionCache,
   maybeYield: MaybeYield,
@@ -556,7 +556,7 @@ function checkRequirement(
       if (!facetResult.passed) {
         failureReason = translator
           ? translator.describeFailure({
-              requirement,
+              requirement: { ...requirement, label: '' },
               status: 'fail',
               facetType: requirement.facet.type,
               checkedDescription: '',
@@ -602,7 +602,7 @@ function checkRequirement(
           status = 'fail';
           failureReason = translator
             ? translator.describeFailure({
-                requirement,
+                requirement: { ...requirement, label: '' },
                 status: 'fail',
                 facetType: requirement.facet.type,
                 checkedDescription: '',
@@ -641,7 +641,11 @@ function checkRequirement(
   }
 
   return {
-    requirement,
+    // `IDSRequirement` has no `label` of its own (#5138 §5) — the
+    // generalised `RequirementResult.requirement: RequirementSummary`
+    // needs one, so it is derived here from the description already
+    // computed for this requirement rather than fabricated.
+    requirement: { ...requirement, label: checkedDescription },
     status,
     facetType: requirement.facet.type,
     checkedDescription,

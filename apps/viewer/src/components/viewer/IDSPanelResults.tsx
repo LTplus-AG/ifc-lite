@@ -93,7 +93,7 @@ export function IDSPanelResults({
                   see which model the results reflect and switch to another.
                   Changing it re-runs validation against the chosen model. */}
               <select
-                value={pendingModelId ?? report.modelInfo.modelId}
+                value={pendingModelId ?? report.modelInfo[0].modelId}
                 onChange={(e) => {
                   // An active isolation (failed/passed/involved) pins
                   // isolatedEntities to the OLD model's global ids. The new

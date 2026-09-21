@@ -27,8 +27,8 @@ const documentFixture: IDSDocument = {
 };
 
 const reportFixture: IDSValidationReport = {
-  document: documentFixture,
-  modelInfo: { modelId: 'model-a', schemaVersion: 'IFC4', entityCount: 1234 },
+  source: { kind: 'ids', document: documentFixture },
+  modelInfo: [{ modelId: 'model-a', schemaVersion: 'IFC4', entityCount: 1234 }],
   timestamp: new Date(0),
   summary: {
     totalSpecifications: 1,
@@ -81,7 +81,7 @@ function requirementResult(id: string): IDSRequirementResult {
     optionality: 'required',
   };
   return {
-    requirement,
+    requirement: { ...requirement, label: `Checks ${id}` },
     status: 'pass',
     facetType: 'attribute',
     checkedDescription: `Checks ${id}`,

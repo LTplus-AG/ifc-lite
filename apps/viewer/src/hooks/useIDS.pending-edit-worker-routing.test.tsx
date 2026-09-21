@@ -86,9 +86,9 @@ const WORKER_REPORT = {
     overallPassRate: 100,
   },
   specificationResults: [],
-  document: { specifications: [] },
+  source: { kind: 'ids', document: { specifications: [] } },
   timestamp: new Date(0),
-  modelInfo: { modelId: 'from-the-worker', schemaVersion: 'IFC4', entityCount: 1 },
+  modelInfo: [{ modelId: 'from-the-worker', schemaVersion: 'IFC4', entityCount: 1 }],
 } as unknown as IDSValidationReport;
 
 // ─── Fixture ──────────────────────────────────────────────────────────────
@@ -238,7 +238,7 @@ describe('useIDS worker routing with pending property edits (#3946)', () => {
 
     assert.equal(instances.length, 1, 'the unedited path has always used the worker');
     assert.equal(
-      run.report?.modelInfo.modelId,
+      run.report?.modelInfo[0].modelId,
       'from-the-worker',
       'the report must be the one the worker returned, not an in-process run'
     );
@@ -265,7 +265,7 @@ describe('useIDS worker routing with pending property edits (#3946)', () => {
       1,
       'one edited property must not move the whole validation onto the main thread'
     );
-    assert.equal(run.report?.modelInfo.modelId, 'from-the-worker');
+    assert.equal(run.report?.modelInfo[0].modelId, 'from-the-worker');
   });
 
   it('the edit crosses to the worker as an overlay entry, so it is not silently dropped', async () => {
@@ -323,7 +323,7 @@ describe('useIDS worker routing with pending property edits (#3946)', () => {
 
     assert.equal(instances.length, 0, 'the worker cannot re-parse IFCX JSON as STEP');
     assert.notEqual(
-      run.report?.modelInfo.modelId,
+      run.report?.modelInfo[0].modelId,
       'from-the-worker',
       'the report must come from the in-process validator'
     );

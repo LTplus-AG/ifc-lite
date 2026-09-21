@@ -9,7 +9,7 @@
  * on renderer meshes. No React dependencies.
  */
 
-import type { IDSValidationReport } from '@ifc-lite/ids';
+import type { ValidationReport } from '@ifc-lite/ids';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { toGlobalIdFromModels } from '../../store/globalId.js';
 
@@ -65,7 +65,7 @@ export interface ColorScopeOptions {
  * Also captures original colors from geometry (only if originalColors is empty)
  * so they can be restored later via `buildRestoreColorUpdates`.
  *
- * @param report - The IDS validation report
+ * @param report - The validation report (IDS or rule-set)
  * @param models - Map of model ID to model info (for ID offset resolution)
  * @param displayOptions - Controls which highlights are active and their colors
  * @param defaultFailedColor - Fallback failed color
@@ -76,7 +76,7 @@ export interface ColorScopeOptions {
  * @returns Map of globalId to color tuple for updateMeshColors
  */
 export function buildValidationColorUpdates(
-  report: IDSValidationReport,
+  report: ValidationReport,
   models: ReadonlyMap<string, ColorModelInfo>,
   displayOptions: ColorDisplayOptions,
   defaultFailedColor: ColorTuple,

@@ -382,7 +382,7 @@
         use arrow::array::{Float32Array, Int32Array};
         use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
-        // The SAME fixture the flat `-parquet-v6` test uses
+        // The SAME fixture the flat shared-shapes test uses
         // (`parquet_mesh_tables_tests.rs`): "the flat route shares exactly what
         // this route shares" is only a claim while both are handed the same
         // meshes, and two drifting copies of the builder would leave both tests

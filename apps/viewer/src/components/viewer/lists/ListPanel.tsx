@@ -11,26 +11,19 @@
  * - List library (saved lists + presets)
  */
 
-import React, { useCallback, useState, useMemo } from 'react';
+import React, { useCallback, useState } from 'react';
 import { X, Table2, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
-import { useIfc } from '@/hooks/useIfc';
 import {
-  executeList,
   summariseListRows,
   importListDefinition,
   exportListDefinition,
-  createListDataProvider,
 } from '@/lib/lists';
-import type { ListDefinition, ListResult, ListDataProvider, ListGrouping } from '@/lib/lists';
-import { mergeResultColumns } from '@/lib/lists/merge-result-columns';
-import { scopeModelPairs } from '@/lib/lists/model-tag-scope';
-import { extractProjectUnits, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
-import { useRenderFrameOffsets } from '@/hooks/useRenderFrameOffsets';
-import { makeWorldPositionGetter } from '@/lib/geo/entity-world-position';
-import { zoneVolumeSiScale } from '@/lib/units/zone-volume-scale';
+import type { ListDefinition, ListGrouping } from '@/lib/lists';
+import { runListFederated } from '@/lib/lists/run-list';
+import { useListProviders } from './useListProviders';
 import { ListBuilder } from './ListBuilder';
 import { ListResultsTable } from './ListResultsTable';
 import { ListErrorBox } from './ListErrorBox';
@@ -46,8 +39,6 @@ type PanelView = 'library' | 'builder' | 'results';
 
 export function ListPanel({ onClose }: ListPanelProps) {
   const { t, locale } = useTranslation();
-  const { ifcDataStore, models, geometryResult } = useIfc();
-  const renderFrame = useRenderFrameOffsets(); // scene-wide frame for World X/Y/Z (issue #3671)
   const [view, setView] = useState<PanelView>('library');
   const [editingList, setEditingList] = useState<ListDefinition | null>(null);
 
@@ -77,78 +68,8 @@ export function ListPanel({ onClose }: ListPanelProps) {
 
   const importInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Zone assignment (issue #1810) is shared across every model's provider —
-  // `zoneAssignments` is already keyed by federated global id, so each
-  // model's provider just needs ITS OWN `toGlobalId` closure.
-  const zoneSets = useViewerStore((s) => s.zoneSets);
-  const zoneAssignments = useViewerStore((s) => s.zoneAssignments);
-  const zoneApportionment = useViewerStore((s) => s.zoneApportionment);
-  const toGlobalId = useViewerStore((s) => s.toGlobalId);
-
-  // Declared VOLUMEUNIT scale per model (#2508), memoized on MODELS alone so
-  // zone/assignment changes don't re-derive a value that cannot have moved.
-  const volumeScaleByModelId = useMemo(() => {
-    const map = new Map<string, number>();
-    const scaleOf = (store: IfcDataStore) => (store.source.length > 0
-      ? zoneVolumeSiScale(extractProjectUnits(store.source, store.entityIndex)) : 1);
-    if (models.size > 0) {
-      for (const [modelId, model] of models) {
-        if (!model.ifcDataStore) continue;
-        map.set(modelId, scaleOf(model.ifcDataStore));
-      }
-    } else if (ifcDataStore) {
-      map.set('default', scaleOf(ifcDataStore));
-    }
-    return map;
-  }, [models, ifcDataStore]);
-
-  // {modelId, provider} pairs, built in one pass so the two arrays can never
-  // drift out of alignment.
-  const modelProviderPairs = useMemo(() => {
-    const pairs: Array<{ modelId: string; provider: ListDataProvider; store: IfcDataStore }> = [];
-    if (models.size > 0) {
-      for (const [modelId, model] of models) {
-        if (!model.ifcDataStore) continue; // native-metadata model, nothing to query
-        const zoneContext = {
-          zoneSets, zoneAssignments,
-          apportionment: zoneApportionment,
-          volumeSiScale: volumeScaleByModelId.get(modelId) ?? 1,
-          toGlobalId: (expressId: number) => toGlobalId(modelId, expressId),
-          getWorldPosition: makeWorldPositionGetter(model.ifcDataStore, model.geometryResult ?? geometryResult, renderFrame, (id) => toGlobalId(modelId, id)),
-        };
-        pairs.push({ modelId, provider: createListDataProvider(model.ifcDataStore, model.name, zoneContext), store: model.ifcDataStore });
-      }
-    } else if (ifcDataStore) {
-      const zoneContext = {
-        zoneSets, zoneAssignments,
-        apportionment: zoneApportionment,
-        volumeSiScale: volumeScaleByModelId.get('default') ?? 1,
-        toGlobalId: (expressId: number) => toGlobalId('default', expressId),
-        getWorldPosition: makeWorldPositionGetter(ifcDataStore, geometryResult, renderFrame, (id) => toGlobalId('default', id)),
-      };
-      pairs.push({ modelId: 'default', provider: createListDataProvider(ifcDataStore, '', zoneContext), store: ifcDataStore });
-    }
-    return pairs;
-  }, [models, ifcDataStore, geometryResult, renderFrame, zoneSets, zoneAssignments, zoneApportionment, volumeScaleByModelId, toGlobalId]);
-
-  const allProviders = useMemo(() => modelProviderPairs.map((p) => p.provider), [modelProviderPairs]);
-  const allStores = useMemo(() => modelProviderPairs.map((p) => p.store), [modelProviderPairs]);
-
-  // Every loaded model's declared units, keyed by the same modelId the rows
-  // carry (issue #1573 follow-up) — the single per-model source both the
-  // on-screen table and the export resolve quantity/measure columns against
-  // (`resolveListColumnUnits`), so a federation of models with different
-  // declared units converts each row from ITS OWN model's unit rather than
-  // assuming every row shares the first model's units.
-  const modelUnits = useMemo(() => {
-    const map = new Map<string, ProjectUnits>();
-    for (const { modelId, store } of modelProviderPairs) {
-      map.set(modelId, store.source.length > 0 ? extractProjectUnits(store.source, store.entityIndex) : ProjectUnits.empty());
-    }
-    return map;
-  }, [modelProviderPairs]);
-
-  const hasData = allProviders.length > 0;
+  // Providers + declared units per model, shared with document table blocks (#5142).
+  const { pairs: modelProviderPairs, providers: allProviders, stores: allStores, modelUnits, hasData } = useListProviders();
 
   const handleExecuteList = useCallback((definition: ListDefinition) => {
     if (!hasData) return;
@@ -161,33 +82,7 @@ export function ListPanel({ onClose }: ListPanelProps) {
     // Use requestAnimationFrame to avoid blocking UI during execution
     requestAnimationFrame(() => {
       try {
-        const resultParts: ListResult[] = [];
-        // The list's model tag scope (#4215) decides which providers run;
-        // an unresolved or empty scope throws its reason into the box below.
-        for (const { modelId, provider } of scopeModelPairs(definition, modelProviderPairs, useViewerStore.getState())) {
-          resultParts.push(executeList(definition, provider, modelId));
-        }
-
-        const allRows = resultParts.flatMap(r => r.rows);
-        const totalTime = resultParts.reduce((sum, r) => sum + r.executionTime, 0);
-
-        // Re-derive groups/summary over the merged rows so grouping works
-        // across federated models (and isn't dropped on the merge).
-        const { groups, summary } = summariseListRows(definition, allRows);
-
-        // Merge each part's execution-time quantityType/dataType onto the
-        // columns (P0 fix, #1573 follow-up): `definition.columns` alone never
-        // carries them, which silently killed the export unit conversion.
-        const columns = mergeResultColumns(resultParts, definition.columns);
-
-        setListResult({
-          columns,
-          rows: allRows,
-          totalCount: allRows.length,
-          executionTime: totalTime,
-          groups,
-          summary,
-        });
+        setListResult(runListFederated(definition, modelProviderPairs, useViewerStore.getState()));
         setView('results');
       } catch (err) {
         // Must be user-visible, not just logged (#4317) — e.g. a name-pattern

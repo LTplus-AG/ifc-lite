@@ -173,6 +173,18 @@ describe('rule-set-io — round-trip identity (#5138)', () => {
     const ifcTypeRule = rule?.applicability.groups[0]?.rules.find((r) => r.kind === 'ifcType');
     assert.equal((ifcTypeRule as { exactClass?: boolean } | undefined)?.exactClass, true);
   });
+
+  it('targets are opaque strings, never a loaded model id — no resolution attempted here (#5138)', () => {
+    // `parseTargets` only checks shape (string arrays); it never looks a
+    // fingerprint/tag id up against any model registry, so a string that
+    // could never be a real `sourceFingerprint` or runtime model id round-
+    // trips unchanged — this module has no notion of "loaded".
+    const raw = { ...fullRuleSet(), targets: { modelFingerprints: ['not-a-real-model !! 42'], modelTagIds: [] } };
+    const result = parseRuleSetFile(raw);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(result.file.targets, { modelFingerprints: ['not-a-real-model !! 42'], modelTagIds: [] });
+  });
 });
 
 describe('rule-set-io — rejections (#5138)', () => {

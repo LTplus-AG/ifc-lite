@@ -165,13 +165,19 @@ fn resolved_geometry<'a>(
 fn plan_adapter<'a>(
     plan: &'a ifc_lite_landxml::LandXmlPlanDocument,
 ) -> Result<LandXmlPlanDocumentJs<'a>, ifc_lite_landxml::LandXmlError> {
-    let mut resolver = ifc_lite_landxml::LandXmlPlanResolver::new(
-        plan,
-        plan.cogo_points()
-            .len()
-            .saturating_mul(8)
-            .saturating_add(1_000),
+    let requests = plan.monuments.len().saturating_add(
+        plan.plan_features
+            .iter()
+            .map(|feature| feature.geometry.len().saturating_mul(4))
+            .sum::<usize>(),
     );
+    let max_work = plan
+        .cogo_points()
+        .len()
+        .saturating_mul(8)
+        .saturating_add(requests.saturating_mul(8))
+        .saturating_add(1_000);
+    let mut resolver = ifc_lite_landxml::LandXmlPlanResolver::new(plan, max_work);
     Ok(LandXmlPlanDocumentJs {
         version: &plan.version,
         area_unit: &plan.area_unit,

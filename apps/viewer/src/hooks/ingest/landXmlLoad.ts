@@ -224,10 +224,13 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
       hasFederatedStreamingPlan
         ? (preflight, sourceCoordinateInfo, spatialReference) => {
           federatedPlan.value = options.openFederatedStreamingPlan?.(preflight, sourceCoordinateInfo, spatialReference) ?? null;
+          return federatedPlan.value !== null;
         }
         : undefined,
-      hasFederatedStreamingPlan ? (mesh) => federatedPlan.value?.measure(mesh) : undefined,
+      hasFederatedStreamingPlan ? (component) => federatedPlan.value?.measure(component.mesh) : undefined,
       hasFederatedStreamingPlan ? () => federatedPlan.value?.freeze() : undefined,
+      hasFederatedStreamingPlan ? (component) => federatedPlan.value?.admit(component) : undefined,
+      hasFederatedStreamingPlan ? () => federatedPlan.value?.freezeAdmission() : undefined,
       (component) => {
         if (federatedPlan.value !== null) {
           throw new Error('LandXML federated stream skipped a component before destination alignment');

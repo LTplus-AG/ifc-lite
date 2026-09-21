@@ -5,11 +5,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcAPI } from '@ifc-lite/wasm';
+import { FederationRegistry } from '@ifc-lite/renderer';
 import { parseLandXmlViewerModelAsync, parseLandXmlViewerModelFromBlobAsync } from './landXmlViewerModel.js';
 import {
   completeLandXmlStreamedGeometry, connectedFaceComponents,
   fragmentLandXmlGeometryComponent, MAX_LANDXML_COMPONENT_TRANSFER_BYTES,
-  parseLandXmlGeometry, preflightLandXmlGeometry,
+  buildLandXmlSurfaceComponents, parseLandXmlGeometry, preflightLandXmlGeometry,
 } from './landXmlIngest.js';
 import { buildLandXmlPipeComponents } from './landXmlPipeGeometry.js';
 import { findLandXmlSourceRecord, type LandXmlPipeNetworkDocument } from './landXmlSemantics.js';
@@ -21,6 +22,7 @@ import { inspectLandXmlAlignmentAtDistance } from './landXmlAlignmentWasm.js';
 import { initLandXmlWasm } from './landXmlWasmInit.js';
 import { streamLandXmlSourceBlobWithApi } from './landXmlBlobCursor.js';
 import { LandXmlStreamPreflightReducer } from './landXmlStreamPreflight.js';
+import { FederatedLandXmlStreamingPlan } from './federatedLandXmlStreaming.js';
 
 const LANDXML = `<?xml version="1.0" encoding="UTF-8"?>
 <LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
@@ -618,6 +620,29 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
       /no surface components within the 1000 km shared render-frame envelope/,
       'a connected component cannot be partially registered after its local extent exceeds one precision-safe batch',
     );
+  });
+
+  it('rejects a real-WASM 1,500-km source component before federated publication (#5161)', async () => {
+    const xml = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="wide"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1500000 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces></LandXML>`;
+    const parsed = await parseDocument(xml);
+    const component = buildLandXmlSurfaceComponents(parsed.surfaces[0]!, parsed.units!, 1).components[0]!;
+    assert.equal(component.bounds.max.x - component.bounds.min.x, 1_500_000);
+    assert.throws(() => parseLandXmlGeometry(parsed), /no surface components within the 1000 km/);
+
+    const registry = new FederationRegistry();
+    const plan = new FederatedLandXmlStreamingPlan({
+      modelId: 'real-wasm-wide', componentCount: 1,
+      sourceCoordinateInfo: {
+        originShift: { x: 0, y: 0, z: 0 }, originalBounds: component.bounds,
+        shiftedBounds: component.bounds, hasLargeCoordinates: true,
+      },
+      registry, resources: { publish: () => {}, remove: () => {} }, isCurrent: () => true,
+    });
+    await plan.measure(component.mesh);
+    plan.freeze();
+    await plan.admit({ mesh: component.mesh, frameGroup: 1 });
+    assert.throws(() => plan.freezeAdmission(), /rejected every render component/);
+    assert.equal(registry.getOffset('real-wasm-wide'), null);
   });
 
   it('walks a high-valence face fan without rescanning its shared point adjacency (#4937)', () => {

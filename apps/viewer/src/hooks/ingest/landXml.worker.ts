@@ -8,7 +8,7 @@ import { parseLandXmlSourceWithApi, readLandXmlTinSurface } from './landXmlWasm.
 import { streamLandXmlSourceBlobWithApi } from './landXmlBlobCursor.js';
 import { placeComponentsInKnownRenderFrame } from './landXmlRenderFrame.js';
 import { spatialMetadataFromLandXml, spatialReferenceFromSourceMetadata } from './sourceSpatialReference.js';
-import { LandXmlStreamPreflightReducer } from './landXmlStreamPreflight.js';
+import { LandXmlStreamPreflightReducer, type LandXmlPreflightComponent } from './landXmlStreamPreflight.js';
 
 const workerScope = self as unknown as {
   onmessage: ((event: MessageEvent<LandXmlSourceBuffer | LandXmlBlobWorkerRequest | LandXmlWorkerContinue>) => void) | null;
@@ -20,21 +20,26 @@ interface LandXmlBlobWorkerRequest {
   streamFederatedPreflight?: boolean;
 }
 
-interface LandXmlWorkerContinue { type: 'preflight-approved' | 'component-uploaded' | 'source-event-processed' }
+interface LandXmlWorkerContinue {
+  type: 'preflight-approved' | 'component-uploaded' | 'source-event-processed';
+  federatedStreaming?: boolean;
+}
 
 function isContinue(value: unknown): value is LandXmlWorkerContinue {
-  return typeof value === 'object' && value !== null && (
+  return typeof value === 'object' && value !== null
+    && ((value as { federatedStreaming?: unknown }).federatedStreaming === undefined
+      || typeof (value as { federatedStreaming?: unknown }).federatedStreaming === 'boolean') && (
     (value as { type?: unknown }).type === 'preflight-approved'
     || (value as { type?: unknown }).type === 'component-uploaded'
     || (value as { type?: unknown }).type === 'source-event-processed'
   );
 }
 
-let approvePreflight: (() => void) | null = null;
+let approvePreflight: ((federatedStreaming: boolean) => void) | null = null;
 let acknowledgeComponent: (() => void) | null = null;
 let acknowledgeSourceEvent: (() => void) | null = null;
 
-function waitForPreflightApproval(preflight: LandXmlGeometryPreflight, emit = true): Promise<void> {
+function waitForPreflightApproval(preflight: LandXmlGeometryPreflight, emit = true): Promise<boolean> {
   return new Promise((resolve) => {
     approvePreflight = resolve;
     if (emit) workerScope.postMessage({ preflight });
@@ -64,10 +69,19 @@ function waitForSourceEvent(event: unknown): Promise<void> {
   });
 }
 
-function waitForPreflightComponent(mesh: import('@ifc-lite/geometry').MeshData): Promise<void> {
+function waitForPreflightComponent(component: LandXmlPreflightComponent): Promise<void> {
   return new Promise((resolve) => {
     acknowledgeComponent = resolve;
-    workerScope.postMessage({ preflightComponent: mesh }, [mesh.positions.buffer, mesh.normals.buffer, mesh.indices.buffer]);
+    const { mesh } = component;
+    workerScope.postMessage({ preflightComponent: component }, [mesh.positions.buffer, mesh.normals.buffer, mesh.indices.buffer]);
+  });
+}
+
+function waitForFederatedAdmission(component: LandXmlPreflightComponent): Promise<void> {
+  return new Promise((resolve) => {
+    acknowledgeComponent = resolve;
+    const { mesh } = component;
+    workerScope.postMessage({ federatedAdmissionComponent: component }, [mesh.positions.buffer, mesh.normals.buffer, mesh.indices.buffer]);
   });
 }
 
@@ -114,7 +128,7 @@ workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer | LandXml
   const input = event.data;
   if (isContinue(input)) {
     if (input.type === 'preflight-approved') {
-      approvePreflight?.();
+      approvePreflight?.(input.federatedStreaming === true);
       approvePreflight = null;
     } else if (input.type === 'component-uploaded') {
       acknowledgeComponent?.();
@@ -139,9 +153,10 @@ workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer | LandXml
           // dominant frame while releasing every mesh immediately. Pass two
           // rebuilds the source against that frozen policy; a mismatch is a
           // hard failure, never a partially publishable model.
+          const totalPasses = input.streamFederatedPreflight === true ? 4 : 2;
           const reducer = new LandXmlStreamPreflightReducer();
           await streamLandXmlSourceBlobWithApi(api, input.file, {
-            onProgress: (loadedBytes, totalBytes) => workerScope.postMessage({ progress: { loadedBytes, totalBytes: totalBytes * 2 } }),
+            onProgress: (loadedBytes, totalBytes) => workerScope.postMessage({ progress: { loadedBytes, totalBytes: totalBytes * totalPasses } }),
             onHeader: (header) => reducer.onHeader(header),
             onSurface: (surface) => reducer.onSurface(surface),
             onEvent: (streamEvent) => reducer.onEvent(streamEvent),
@@ -158,14 +173,18 @@ workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer | LandXml
                 : undefined;
             })(),
           });
-          await waitForPreflightApproval(preflight, false);
-          if (input.streamFederatedPreflight) {
+          const federatedStreaming = (await waitForPreflightApproval(preflight, false)) && input.streamFederatedPreflight === true;
+          if (!federatedStreaming && input.streamFederatedPreflight === true) {
+            workerScope.postMessage({ progress: { loadedBytes: input.file.size, totalBytes: input.file.size * 2 } });
+          }
+          if (federatedStreaming) {
             let emitted = 0;
-            const federatedReducer = new LandXmlStreamPreflightReducer(async (mesh) => {
-              mesh.expressId = ++emitted;
-              await waitForPreflightComponent(mesh);
+            const federatedReducer = new LandXmlStreamPreflightReducer(async (component) => {
+              component.mesh.expressId = ++emitted;
+              await waitForPreflightComponent(component);
             });
             await streamLandXmlSourceBlobWithApi(api, input.file, {
+              onProgress: (loadedBytes, totalBytes) => workerScope.postMessage({ progress: { loadedBytes: totalBytes + loadedBytes, totalBytes: totalBytes * 4 } }),
               onHeader: (header) => federatedReducer.onHeader(header),
               onSurface: (surface) => federatedReducer.onSurface(surface),
               onEvent: (streamEvent) => federatedReducer.onEvent(streamEvent),
@@ -174,17 +193,38 @@ workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer | LandXml
               throw new Error('LandXML federation preflight did not reproduce its component envelope');
             }
             workerScope.postMessage({ preflightComplete: true });
-            await new Promise<void>((resolve) => { approvePreflight = resolve; });
+            await new Promise<void>((resolve) => { approvePreflight = () => resolve(); });
+            let admitted = 0;
+            const admissionReducer = new LandXmlStreamPreflightReducer(async (component) => {
+              component.mesh.expressId = ++admitted;
+              await waitForFederatedAdmission(component);
+            });
+            await streamLandXmlSourceBlobWithApi(api, input.file, {
+              onProgress: (loadedBytes, totalBytes) => workerScope.postMessage({ progress: { loadedBytes: (totalBytes * 2) + loadedBytes, totalBytes: totalBytes * 4 } }),
+              onHeader: (header) => admissionReducer.onHeader(header),
+              onSurface: (surface) => admissionReducer.onSurface(surface),
+              onEvent: (streamEvent) => admissionReducer.onEvent(streamEvent),
+            });
+            if (admissionReducer.finish().preflight.componentCount !== preflight.componentCount || admitted !== preflight.componentCount) {
+              throw new Error('LandXML federation admission did not reproduce its component envelope');
+            }
+            workerScope.postMessage({ federatedAdmissionComplete: true });
+            await new Promise<void>((resolve) => { approvePreflight = () => resolve(); });
           }
           let units: NonNullable<LandXmlTinDocument['units']> | null = null;
           let nextLocalId = 1;
+          let retainedPrimaryComponents = 0;
           await streamLandXmlSourceBlobWithApi(api, input.file, {
-            onProgress: (loadedBytes, totalBytes) => workerScope.postMessage({ progress: { loadedBytes: totalBytes + loadedBytes, totalBytes: totalBytes * 2 } }),
+            onProgress: (loadedBytes, totalBytes) => workerScope.postMessage({
+              progress: federatedStreaming
+                ? { loadedBytes: (totalBytes * 3) + loadedBytes, totalBytes: totalBytes * 4 }
+                : { loadedBytes: totalBytes + loadedBytes, totalBytes: totalBytes * 2 },
+            }),
             onHeader: (header) => { units = streamUnits(header); },
             onSurface: async (surface) => {
               if (units === null) throw new Error('LandXML surface arrived before stream Units');
               const built = buildLandXmlSurfaceComponents(readLandXmlTinSurface(surface), units, nextLocalId);
-              if (input.streamFederatedPreflight) {
+              if (federatedStreaming) {
                 for (const component of built.components) {
                   component.mesh.expressId = nextLocalId++;
                   await waitForComponentUpload(surfaceComponent(component));
@@ -194,13 +234,19 @@ workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer | LandXml
                 const placedComponents = new Set(placed.placed);
                 for (const component of built.components) {
                   component.mesh.expressId = nextLocalId++;
-                  if (placedComponents.has(component)) await waitForComponentUpload(surfaceComponent(component));
+                  if (placedComponents.has(component)) {
+                    retainedPrimaryComponents++;
+                    await waitForComponentUpload(surfaceComponent(component));
+                  }
                   else await waitForSkippedComponent(component.mesh.expressId);
                 }
               }
             },
             onEvent: waitForSourceEvent,
           });
+          if (!federatedStreaming && preflight.componentCount > 0 && nextLocalId - 1 === preflight.componentCount && retainedPrimaryComponents === 0) {
+            throw new Error('LandXML primary preflight rejected every render component');
+          }
           return { kind: 'blob' as const, preflight };
         })()
         // TODO(remove-by: #5050 completion, owner: LandXML)

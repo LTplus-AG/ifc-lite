@@ -78,7 +78,7 @@ it('holds the second cursor pass until main has acknowledged preflight (#5050)',
     await Promise.resolve();
     await Promise.resolve();
     await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
-    assert.deepEqual(workers[0]?.posted[1], { type: 'preflight-approved' });
+    assert.deepEqual(workers[0]?.posted[1], { type: 'preflight-approved', federatedStreaming: false });
     workers[0]?.onmessage?.({ data: { ok: false, error: 'stop after handshake' } } as MessageEvent<unknown>);
     await assert.rejects(pending, /stop after handshake/);
   } finally {
@@ -134,13 +134,15 @@ it('acknowledges each federated preflight and raw component before the next work
           shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } }, hasLargeCoordinates: false,
         },
       });
-      else if (this.posted.length === 2) reply({ preflightComponent: component });
+      else if (this.posted.length === 2) reply({ preflightComponent: { mesh: component, frameGroup: 1 } });
       else if (this.posted.length === 3) reply({ preflightComplete: true });
-      else if (this.posted.length === 4) reply({ component: {
+      else if (this.posted.length === 4) reply({ federatedAdmissionComponent: { mesh: component, frameGroup: 1 } });
+      else if (this.posted.length === 5) reply({ federatedAdmissionComplete: true });
+      else if (this.posted.length === 6) reply({ component: {
         mesh: component, surfaceName: 'grade', surfaceSourceId: 'surface-1', pipeSourceId: null,
         renderedFaceSourceIds: ['surface-1:face:1'],
       } });
-      else if (this.posted.length === 5) reply({ ok: false, error: 'stop after federated acknowledgements' });
+      else if (this.posted.length === 7) reply({ ok: false, error: 'stop after federated acknowledgements' });
     }
     terminate(): void {}
   }
@@ -153,14 +155,17 @@ it('acknowledges each federated preflight and raw component before the next work
       undefined,
       undefined,
       () => { phases.push('raw'); },
-      () => { phases.push('preflight'); },
+      () => { phases.push('preflight'); return true; },
       () => { phases.push('measure'); },
       () => { phases.push('freeze'); },
+      () => { phases.push('admit'); },
+      () => { phases.push('admit-freeze'); },
     );
     await assert.rejects(pending, /stop after federated acknowledgements/);
-    assert.deepEqual(phases, ['preflight', 'measure', 'freeze', 'raw']);
+    assert.deepEqual(phases, ['preflight', 'measure', 'freeze', 'admit', 'admit-freeze', 'raw']);
     assert.deepEqual((workers[0]?.posted[0] as { streamFederatedPreflight?: boolean }).streamFederatedPreflight, true);
     assert.deepEqual(workers[0]?.posted.slice(1), [
+      { type: 'preflight-approved', federatedStreaming: true }, { type: 'component-uploaded' },
       { type: 'preflight-approved' }, { type: 'component-uploaded' },
       { type: 'preflight-approved' }, { type: 'component-uploaded' },
     ]);
@@ -169,7 +174,7 @@ it('acknowledges each federated preflight and raw component before the next work
   }
 });
 
-it('keeps a primary stream in its frozen frame while consuming dropped source IDs (#5161)', async () => {
+it('uses the primary frozen frame when a Worker-present federated factory declines a renderer plan (#5161)', async () => {
   const originalWorker = globalThis.Worker;
   const component = {
     expressId: 1,
@@ -191,7 +196,10 @@ it('keeps a primary stream in its frozen frame while consuming dropped source ID
       this.posted.push(message);
       const reply = (data: unknown) => queueMicrotask(() => this.onmessage?.({ data } as MessageEvent<unknown>));
       if (this.posted.length === 1) reply({ preflight: {
-        componentCount: 2, frame: { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false },
+        componentCount: 2, frame: { originShift: { x: 2_600_000, y: 0, z: 0 }, hasLargeCoordinates: true },
+      }, sourceCoordinateInfo: {
+        originShift: { x: 2_600_000, y: 0, z: 0 }, originalBounds: { min: { x: 2_600_000, y: 0, z: 0 }, max: { x: 2_600_001, y: 1, z: 0 } },
+        shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } }, hasLargeCoordinates: true,
       } });
       else if (this.posted.length === 2) reply({ component: {
         mesh: component, surfaceName: 'grade', surfaceSourceId: 'surface-1', pipeSourceId: null, renderedFaceSourceIds: ['surface-1:face:1'],
@@ -210,7 +218,7 @@ it('keeps a primary stream in its frozen frame while consuming dropped source ID
       } });
       else if (this.posted.length === 5) reply({ sourceEvent: { kind: 'metadata', metadata_kind: 'end' } });
       else if (this.posted.length === 6) reply({ ok: true, streamed: {
-        preflight: { componentCount: 2, frame: { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false } },
+        preflight: { componentCount: 2, frame: { originShift: { x: 2_600_000, y: 0, z: 0 }, hasLargeCoordinates: true } },
       } });
     }
     terminate(): void {}
@@ -229,15 +237,20 @@ it('keeps a primary stream in its frozen frame while consuming dropped source ID
       undefined,
       undefined,
       (mesh) => { uploaded.push(mesh.expressId); },
+      () => false,
+      undefined,
       undefined,
       undefined,
       undefined,
       (slot) => { skipped.push(slot.expressId); },
     );
-    assert.equal((workers[0]?.posted[0] as { streamFederatedPreflight?: boolean }).streamFederatedPreflight, false);
+    assert.equal((workers[0]?.posted[0] as { streamFederatedPreflight?: boolean }).streamFederatedPreflight, true);
+    assert.deepEqual(workers[0]?.posted[1], { type: 'preflight-approved', federatedStreaming: false });
     assert.deepEqual(uploaded, [1]);
     assert.deepEqual(skipped, [2]);
     assert.deepEqual(model.geometryResult.meshes.map((mesh) => mesh.expressId), [1]);
+    assert.equal(model.geometryResult.coordinateInfo.originalBounds.max.x, 2_600_001,
+      'the worker must not select raw federation mode and apply the frozen origin twice');
   } finally {
     Object.defineProperty(globalThis, 'Worker', { configurable: true, value: originalWorker });
   }

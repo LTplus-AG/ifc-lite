@@ -48,6 +48,9 @@ describe('federated LandXML streaming plan (#5050)', () => {
     await plan.measure(mesh(1));
     await plan.measure(mesh(2, 10));
     plan.freeze();
+    await plan.admit({ mesh: mesh(1) });
+    await plan.admit({ mesh: mesh(2, 10) });
+    plan.freezeAdmission();
     await plan.publish(mesh(1));
     assert.deepEqual(registry.fromGlobalId(uploaded[0]!), { modelId: 'terrain', expressId: 1 });
     await plan.publish(mesh(2, 10));
@@ -71,6 +74,8 @@ describe('federated LandXML streaming plan (#5050)', () => {
     });
     await plan.measure(mesh(1));
     plan.freeze();
+    await plan.admit({ mesh: mesh(1) });
+    plan.freezeAdmission();
     await plan.publish(mesh(1));
     current = false;
     assert.throws(() => plan.complete({ meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: sourceCoordinateInfo }), /cancelled/);
@@ -89,6 +94,9 @@ describe('federated LandXML streaming plan (#5050)', () => {
     await plan.measure(mesh(1, 2_000_000));
     await plan.measure(twoTriangleMesh(2, 0));
     plan.freeze();
+    await plan.admit({ mesh: mesh(1, 2_000_000) });
+    await plan.admit({ mesh: twoTriangleMesh(2, 0) });
+    plan.freezeAdmission();
     assert.deepEqual(plan.coordinateInfo.originShift, { x: 1, y: 1, z: 0 });
   });
 
@@ -101,6 +109,69 @@ describe('federated LandXML streaming plan (#5050)', () => {
     await plan.measure(mesh(1, 2_000_000));
     await plan.measure(mesh(2, 0));
     plan.freeze();
+    await plan.admit({ mesh: mesh(1, 2_000_000) });
+    await plan.admit({ mesh: mesh(2, 0) });
+    plan.freezeAdmission();
     assert.deepEqual(plan.coordinateInfo.originShift, { x: 2_000_000.5, y: 0.5, z: 0 });
+  });
+
+  it('atomically rejects a precision-overflow source group before publication (#5161)', async () => {
+    const registry = new FederationRegistry();
+    const plan = new FederatedLandXmlStreamingPlan({
+      modelId: 'precision-group', componentCount: 3, sourceCoordinateInfo, registry,
+      resources: { publish: () => {}, remove: () => {} }, isCurrent: () => true,
+    });
+    const wide = mesh(1, 0);
+    wide.positions[3] = 1_500_000;
+    const grouped = mesh(2, 2);
+    const retained = mesh(3, 10);
+    await plan.measure(wide);
+    await plan.measure(grouped);
+    await plan.measure(retained);
+    plan.freeze();
+    await plan.admit({ mesh: wide, frameGroup: 1 });
+    await plan.admit({ mesh: grouped, frameGroup: 1 });
+    await plan.admit({ mesh: retained, frameGroup: 2 });
+    plan.freezeAdmission();
+    await plan.publish(wide);
+    await plan.publish(grouped);
+    await plan.publish(retained);
+    const geometry = { meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: sourceCoordinateInfo };
+    plan.complete(geometry);
+    assert.deepEqual(geometry.meshes.map((entry) => entry.expressId), [3]);
+    assert.deepEqual(geometry.coordinateInfo.originalBounds, {
+      min: { x: 10, y: 0, z: 0 }, max: { x: 11, y: 1, z: 0 },
+    });
+  });
+
+  it('rejects a nonempty federation envelope when every group violates precision (#5161)', async () => {
+    const registry = new FederationRegistry();
+    const plan = new FederatedLandXmlStreamingPlan({
+      modelId: 'all-refused', componentCount: 1, sourceCoordinateInfo, registry,
+      resources: { publish: () => {}, remove: () => {} }, isCurrent: () => true,
+    });
+    const tooWide = mesh(1);
+    tooWide.positions[3] = 1_500_000;
+    await plan.measure(tooWide);
+    plan.freeze();
+    await plan.admit({ mesh: tooWide, frameGroup: 1 });
+    assert.throws(() => plan.freezeAdmission(), /rejected every render component/);
+    assert.equal(registry.getOffset('all-refused'), null);
+  });
+
+  it('requires the admitted source-slot order and contiguous surface groups (#5161)', async () => {
+    const registry = new FederationRegistry();
+    const plan = new FederatedLandXmlStreamingPlan({
+      modelId: 'ordered-groups', componentCount: 3, sourceCoordinateInfo, registry,
+      resources: { publish: () => {}, remove: () => {} }, isCurrent: () => true,
+    });
+    await plan.measure(mesh(1));
+    await plan.measure(mesh(2));
+    await plan.measure(mesh(3));
+    plan.freeze();
+    await assert.rejects(plan.admit({ mesh: mesh(2), frameGroup: 1 }), /source-slot ordering/);
+    await plan.admit({ mesh: mesh(1), frameGroup: 1 });
+    await plan.admit({ mesh: mesh(2), frameGroup: 2 });
+    await assert.rejects(plan.admit({ mesh: mesh(3), frameGroup: 1 }), /non-contiguous source group/);
   });
 });

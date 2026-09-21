@@ -22,6 +22,13 @@ interface StreamUnits {
   elevationScaleToMeters: number;
 }
 
+/** One source-ordered RTE candidate, released after its acknowledged callback. */
+export interface LandXmlPreflightComponent {
+  mesh: MeshData;
+  /** Monotonic source-surface group; pipes remain individual undefined groups. */
+  frameGroup?: number;
+}
+
 interface PendingRecord {
   record: string;
   nextSequence: number;
@@ -73,6 +80,7 @@ function decodeUnits(header: unknown): StreamUnits {
 export class LandXmlStreamPreflightReducer {
   private units: StreamUnits | null = null;
   private componentCount = 0;
+  private nextSurfaceFrameGroup = 0;
   private readonly sourceBounds = createEmptyBounds();
   private readonly measurementBounds = createEmptyBounds();
   private dominant: { bounds: Bounds3D; triangles: number } | null = null;
@@ -85,7 +93,7 @@ export class LandXmlStreamPreflightReducer {
   private completed = false;
   private coordinateSystem: LandXmlTinDocument['coordinateSystem'];
 
-  constructor(private readonly componentSink?: (mesh: MeshData) => void | Promise<void>) {}
+  constructor(private readonly componentSink?: (component: LandXmlPreflightComponent) => void | Promise<void>) {}
 
   onHeader(header: unknown): void {
     if (this.units !== null) throw new Error('LandXML stream emitted multiple source headers');
@@ -111,7 +119,13 @@ export class LandXmlStreamPreflightReducer {
       linearUnit: 'stream', elevationUnit: 'stream', linearScaleToMeters: units.linearScaleToMeters,
       elevationScaleToMeters: units.elevationScaleToMeters,
     }, this.componentCount + 1);
-    for (const component of built.components) await this.measure(component.bounds, component.mesh.indices.length / 3, component.mesh);
+    // Each Rust surface record is delivered exactly once and its components
+    // are emitted synchronously before the next record, making this compact
+    // ordinal a replayable contiguity witness without retaining source IDs.
+    const frameGroup = ++this.nextSurfaceFrameGroup;
+    for (const component of built.components) {
+      await this.measure(component.bounds, component.mesh.indices.length / 3, component.mesh, frameGroup);
+    }
   }
 
   async onEvent(event: unknown): Promise<void> {
@@ -191,11 +205,16 @@ export class LandXmlStreamPreflightReducer {
     mergeBounds(this.sourceBounds, { min: point, max: point });
   }
 
-  private async measure(bounds: Bounds3D, triangles: number, mesh: MeshData): Promise<void> {
+  private async measure(
+    bounds: Bounds3D,
+    triangles: number,
+    mesh: MeshData,
+    frameGroup?: number,
+  ): Promise<void> {
     this.componentCount++;
     mergeBounds(this.measurementBounds, bounds);
     if (this.dominant === null || triangles > this.dominant.triangles) this.dominant = { bounds, triangles };
-    await this.componentSink?.(mesh);
+    await this.componentSink?.({ mesh, ...(frameGroup === undefined ? {} : { frameGroup }) });
   }
 
   private async pushRecord(recordName: unknown, value: unknown): Promise<void> {

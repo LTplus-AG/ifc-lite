@@ -10,7 +10,7 @@ import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import { createCoordinateInfo, createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
 import { findReferenceSpatialModel, type FederationAlignmentStatus, type ModelSpatialPlacement } from './federationAlign.js';
 import { alignLandXmlComponent } from './federationComponentAlignment.js';
-import { boundsFitRenderFrame, deriveLandXmlRenderFrameFromMeasurement, meshRenderFrameBounds, type LandXmlRenderFramePlan } from './landXmlRenderFrame.js';
+import { boundsFitLandXmlPrecisionBatch, boundsFitRenderFrame, deriveLandXmlRenderFrameFromMeasurement, meshRenderFrameBounds, type LandXmlRenderFramePlan } from './landXmlRenderFrame.js';
 import { LandXmlProvisionalTransaction, type LandXmlFederationReservation, type LandXmlProvisionalResources } from './landXmlProvisionalTransaction.js';
 
 export interface FederatedLandXmlStreamingFinalization {
@@ -21,6 +21,9 @@ export interface FederatedLandXmlStreamingFinalization {
   readonly preAlignment: PreAlignmentSnapshot;
   verify(geometry: GeometryResult): void;
 }
+
+/** One bit per source slot, so frozen admission never retains component meshes. */
+const MAX_FEDERATED_ADMISSION_BYTES = 512 * 1024;
 
 interface FederatedLandXmlStreamingOptions {
   modelId: string;
@@ -41,6 +44,15 @@ function mergeBounds(target: Bounds3D, source: Bounds3D): void {
   target.max.z = Math.max(target.max.z, source.max.z);
 }
 
+function resetBounds(bounds: Bounds3D): void {
+  bounds.min.x = Infinity;
+  bounds.min.y = Infinity;
+  bounds.min.z = Infinity;
+  bounds.max.x = -Infinity;
+  bounds.max.y = -Infinity;
+  bounds.max.z = -Infinity;
+}
+
 /**
  * The first pass owns only one mesh at a time.  It runs the canonical
  * one-mesh adapter to measure the *destination* frame; pass two repeats that
@@ -50,10 +62,22 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
   private readonly source: ModelSpatialPlacement | null;
   private readonly reference = findReferenceSpatialModel()?.placement ?? null;
   private readonly measuredBounds = createEmptyBounds();
+  /** Bounds of only those source groups which passed frozen RTE admission. */
+  private readonly admittedBounds = createEmptyBounds();
+  private readonly admissionRunBounds = createEmptyBounds();
   private dominant: { bounds: Bounds3D; triangles: number } | null = null;
   private measured = 0;
   private transaction: LandXmlProvisionalTransaction | null = null;
   private frame: LandXmlRenderFramePlan | null = null;
+  private admission: Uint8Array | null = null;
+  private admissionMeasured = 0;
+  private admissionAccepted = 0;
+  private admissionRunStart = 0;
+  private admissionRunGroup: number | undefined;
+  private lastFinishedAdmissionGroup = 0;
+  private admissionRunAccepted = true;
+  private admissionRunOpen = false;
+  private admissionFrozen = false;
   private retained: MeshData[] = [];
   private readonly sourceMeshes: MeshData[] = [];
   private consumed = 0;
@@ -125,23 +149,96 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
       const dominant = this.dominant;
       if (dominant === null) throw new Error('LandXML federation preflight froze without a measured component');
       this.frame = deriveLandXmlRenderFrameFromMeasurement(this.measuredBounds, dominant.bounds);
-      this.coordinateInfo = createCoordinateInfo(this.measuredBounds, this.frame.originShift, this.frame.hasLargeCoordinates);
+    }
+    const admissionBytes = Math.ceil(this.options.componentCount / 8);
+    if (admissionBytes > MAX_FEDERATED_ADMISSION_BYTES) {
+      throw new Error('LandXML federation preflight exceeds the 512 KiB admission ledger limit');
+    }
+    this.admission = new Uint8Array(admissionBytes);
+    this.frozen = true;
+  }
+
+  /**
+   * Measure one post-frame candidate without retaining its mesh. Surface RTE
+   * batches arrive contiguously, so one current group is sufficient to freeze
+   * atomic acceptance in the fixed-size source-slot bitset.
+   */
+  async admit(component: { mesh: MeshData; frameGroup?: number }): Promise<void> {
+    this.assertCurrent();
+    if (!this.frozen || this.frame === null || this.admission === null || this.admissionFrozen) {
+      throw new Error('LandXML federation admission arrived outside its frozen preflight');
+    }
+    if (this.admissionMeasured >= this.options.componentCount) {
+      throw new Error('LandXML federation admission exceeded its source-slot envelope');
+    }
+    const slot = this.admissionMeasured;
+    if (component.mesh.expressId !== slot + 1) {
+      throw new Error('LandXML federation admission violated source-slot ordering');
+    }
+    if (this.admissionRunOpen && (component.frameGroup === undefined || component.frameGroup !== this.admissionRunGroup)) {
+      this.finishAdmissionRun();
+    }
+    if (!this.admissionRunOpen) {
+      if (component.frameGroup !== undefined && component.frameGroup <= this.lastFinishedAdmissionGroup) {
+        throw new Error('LandXML federation admission replayed a non-contiguous source group');
+      }
+      this.admissionRunStart = slot;
+      this.admissionRunGroup = component.frameGroup;
+      this.admissionRunAccepted = true;
+      this.admissionRunOpen = true;
+      resetBounds(this.admissionRunBounds);
+    }
+    const aligned = await this.align(component.mesh);
+    const bounds = meshRenderFrameBounds(aligned);
+    if (bounds !== null) mergeBounds(this.admissionRunBounds, bounds);
+    this.admissionRunAccepted &&= bounds !== null
+      && boundsFitLandXmlPrecisionBatch(bounds)
+      && boundsFitRenderFrame(bounds, this.frame.originShift);
+    this.admissionMeasured++;
+    // Unnamed entries are pipes: their source slot is their atomic group.
+    if (component.frameGroup === undefined) this.finishAdmissionRun();
+  }
+
+  /** Freeze the deterministic source-slot ledger before the publication pass. */
+  freezeAdmission(): void {
+    this.assertCurrent();
+    if (!this.frozen || this.admission === null || this.admissionFrozen) {
+      throw new Error('LandXML federation admission was frozen in an invalid state');
+    }
+    this.finishAdmissionRun();
+    if (this.admissionMeasured !== this.options.componentCount) {
+      throw new Error('LandXML federation admission did not reproduce its component envelope');
+    }
+    if (this.options.componentCount > 0 && this.admissionAccepted === 0) {
+      throw new Error('LandXML federation preflight rejected every render component');
+    }
+    if (!this.reference?.coordinateInfo) {
+      this.coordinateInfo = createCoordinateInfo(
+        this.admittedBounds,
+        this.frame!.originShift,
+        this.frame!.hasLargeCoordinates,
+      );
     }
     this.transaction = new LandXmlProvisionalTransaction(
       this.options.modelId,
       this.options.componentCount,
-      this.frame,
+      this.frame!,
       this.options.registry,
       this.options.resources,
     );
-    this.frozen = true;
+    this.admissionFrozen = true;
   }
 
   /** Main-thread publication for one raw pass-two component. */
   async publish(mesh: MeshData): Promise<void> {
     this.assertCurrent();
-    if (!this.frozen || this.frame === null || this.transaction === null) {
+    if (!this.frozen || this.frame === null || this.transaction === null || !this.admissionFrozen) {
       throw new Error('LandXML federation component arrived before its destination frame froze');
+    }
+    if (!this.isAdmitted(this.consumed)) {
+      this.transaction.skip(mesh);
+      this.consumed++;
+      return;
     }
     const source = {
       ...mesh,
@@ -152,10 +249,8 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
     };
     const aligned = await this.align(mesh);
     const bounds = meshRenderFrameBounds(aligned);
-    if (bounds === null || !boundsFitRenderFrame(bounds, this.frame.originShift)) {
-      this.transaction.skip(aligned);
-      this.consumed++;
-      return;
+    if (bounds === null || !boundsFitLandXmlPrecisionBatch(bounds) || !boundsFitRenderFrame(bounds, this.frame.originShift)) {
+      throw new Error('LandXML federation publication diverged from its frozen admission ledger');
     }
     const origin = aligned.origin ?? [0, 0, 0];
     aligned.origin = [
@@ -172,7 +267,7 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
   /** Install the already-published meshes into the eventual model payload. */
   complete(geometry: GeometryResult): void {
     this.assertCurrent();
-    if (!this.frozen || this.transaction === null || this.completed) {
+    if (!this.frozen || this.transaction === null || !this.admissionFrozen || this.completed) {
       throw new Error('LandXML federation stream completed without an open destination plan');
     }
     if (this.consumed !== this.options.componentCount) {
@@ -190,6 +285,7 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
     this.transaction?.rollback();
     this.retained = [];
     this.sourceMeshes.length = 0;
+    this.admission = null;
   }
 
   verify(geometry: GeometryResult): void {
@@ -221,5 +317,27 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
 
   private assertCurrent(): void {
     if (!this.options.isCurrent()) throw new Error('LandXML parsing cancelled');
+  }
+
+  private finishAdmissionRun(): void {
+    if (!this.admissionRunOpen) return;
+    if (this.admissionRunAccepted) {
+      for (let slot = this.admissionRunStart; slot < this.admissionMeasured; slot++) {
+        this.admission![slot >> 3] |= 1 << (slot & 7);
+        this.admissionAccepted++;
+      }
+      mergeBounds(this.admittedBounds, this.admissionRunBounds);
+    }
+    this.admissionRunOpen = false;
+    if (this.admissionRunGroup !== undefined) this.lastFinishedAdmissionGroup = this.admissionRunGroup;
+    this.admissionRunGroup = undefined;
+  }
+
+  private isAdmitted(slot: number): boolean {
+    const admission = this.admission;
+    if (admission === null || slot < 0 || slot >= this.options.componentCount) {
+      throw new Error('LandXML federation publication exceeded its frozen admission ledger');
+    }
+    return (admission[slot >> 3]! & (1 << (slot & 7))) !== 0;
   }
 }

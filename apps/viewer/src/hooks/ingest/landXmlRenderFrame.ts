@@ -82,7 +82,8 @@ export function boundsFitRenderFrame(
  * the precision pipeline has partitioned it, but raw connected geometry cannot
  * be narrowed safely by merely changing its origin.
  */
-function componentFitsPrecisionBatch(bounds: Bounds3D): boolean {
+/** Whether one RTE-local mesh can preserve its full f32 spatial extent. */
+export function boundsFitLandXmlPrecisionBatch(bounds: Bounds3D): boolean {
   const span = Math.max(
     bounds.max.x - bounds.min.x,
     bounds.max.y - bounds.min.y,
@@ -128,11 +129,11 @@ export function placeComponentsInKnownRenderFrame<T extends RenderFrameComponent
   const dropped: T[] = [];
   const bounds = createEmptyBounds();
   const rejectedGroups = new Set(components
-    .filter((component) => !componentFitsPrecisionBatch(component.bounds))
+    .filter((component) => !boundsFitLandXmlPrecisionBatch(component.bounds))
     .map((component) => component.frameGroup)
     .filter((group): group is string => group !== undefined));
   for (const component of components) {
-    if (!componentFitsPrecisionBatch(component.bounds)
+    if (!boundsFitLandXmlPrecisionBatch(component.bounds)
       || !boundsFitRenderFrame(component.bounds, originShift)
       || (component.frameGroup !== undefined && rejectedGroups.has(component.frameGroup))) {
       dropped.push(component);

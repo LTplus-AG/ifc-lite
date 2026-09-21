@@ -12,6 +12,7 @@ import { initLandXmlWasm } from './landXmlWasmInit.js';
 import { IfcAPI } from '@ifc-lite/wasm';
 import { spatialMetadataFromLandXml, spatialReferenceFromSourceMetadata } from './sourceSpatialReference.js';
 import type { CoordinateInfo, ModelSpatialReference, MeshData } from '@ifc-lite/geometry';
+import type { LandXmlPreflightComponent } from './landXmlStreamPreflight.js';
 
 export interface LandXmlViewerModel extends LandXmlGeometryPayload {
   dataStore: IfcDataStore;
@@ -116,9 +117,11 @@ export function parseLandXmlViewerModelFromBlobAsync(
   onProgress?: (loadedBytes: number, totalBytes: number) => void,
   onPreflight?: (preflight: LandXmlGeometryPreflight) => void | Promise<void>,
   onComponent?: (mesh: MeshData) => void | Promise<void>,
-  onFederatedPreflight?: (preflight: LandXmlGeometryPreflight, sourceCoordinateInfo: CoordinateInfo, spatialReference?: ModelSpatialReference) => void | Promise<void>,
-  onPreflightComponent?: (mesh: MeshData) => void | Promise<void>,
+  onFederatedPreflight?: (preflight: LandXmlGeometryPreflight, sourceCoordinateInfo: CoordinateInfo, spatialReference?: ModelSpatialReference) => boolean | Promise<boolean>,
+  onPreflightComponent?: (component: LandXmlPreflightComponent) => void | Promise<void>,
   onPreflightComplete?: () => void | Promise<void>,
+  onFederatedAdmissionComponent?: (component: LandXmlPreflightComponent) => void | Promise<void>,
+  onFederatedAdmissionComplete?: () => void | Promise<void>,
   onSkippedComponent?: (component: LandXmlStreamedSkippedComponent) => void | Promise<void>,
 ): Promise<LandXmlViewerModel> {
   if (typeof Worker === 'undefined') {
@@ -144,6 +147,7 @@ export function parseLandXmlViewerModelFromBlobAsync(
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./landXml.worker.ts', import.meta.url), { type: 'module' });
     const streamedComponents: LandXmlStreamedComponent[] = [];
+    let federatedStreaming = false;
     let consumedComponentCount = 0;
     const sourceAssembler = new LandXmlStreamDocumentAssembler();
     let streamedSource: LandXmlAssembledSourceDocument | null = null;
@@ -166,8 +170,10 @@ export function parseLandXmlViewerModelFromBlobAsync(
       | { ok: false; error: string }
       | { progress: { loadedBytes: number; totalBytes: number } }
       | { preflight: LandXmlGeometryPreflight; sourceCoordinateInfo?: CoordinateInfo; spatialReference?: ModelSpatialReference }
-      | { preflightComponent: MeshData }
+      | { preflightComponent: LandXmlPreflightComponent }
       | { preflightComplete: true }
+      | { federatedAdmissionComponent: LandXmlPreflightComponent }
+      | { federatedAdmissionComplete: true }
       | { component: LandXmlStreamedComponent }
       | { skippedComponent: LandXmlStreamedSkippedComponent }
       | { sourceEvent: unknown }
@@ -178,8 +184,8 @@ export function parseLandXmlViewerModelFromBlobAsync(
       }
       if ('preflight' in event.data) {
         const { preflight, sourceCoordinateInfo, spatialReference } = event.data;
-        const federatedPreflight = (): void | Promise<void> => {
-          if (onFederatedPreflight === undefined) return;
+        const federatedPreflight = (): boolean | Promise<boolean> => {
+          if (onFederatedPreflight === undefined) return false;
           if (sourceCoordinateInfo === undefined) {
             throw new Error('LandXML worker omitted federation source coordinates');
           }
@@ -188,8 +194,9 @@ export function parseLandXmlViewerModelFromBlobAsync(
         // `Promise.resolve(cb())` evaluates `cb` first, so use the guarded
         // helper to turn a synchronous renderer/reservation failure into the
         // same rejection path as an asynchronous callback failure.
-        invokeCallback(() => onPreflight?.(preflight)).then(() => invokeCallback(federatedPreflight)).then(() => {
-          if (!finished) worker.postMessage({ type: 'preflight-approved' });
+        invokeCallback(() => onPreflight?.(preflight)).then(() => invokeCallback(federatedPreflight)).then((approved) => {
+          federatedStreaming = approved === true;
+          if (!finished) worker.postMessage({ type: 'preflight-approved', federatedStreaming });
         }).catch((error: unknown) => {
           if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
         });
@@ -206,6 +213,23 @@ export function parseLandXmlViewerModelFromBlobAsync(
       }
       if ('preflightComplete' in event.data) {
         invokeCallback(() => onPreflightComplete?.()).then(() => {
+          if (!finished) worker.postMessage({ type: 'preflight-approved' });
+        }).catch((error: unknown) => {
+          if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
+        });
+        return;
+      }
+      if ('federatedAdmissionComponent' in event.data) {
+        const { federatedAdmissionComponent } = event.data;
+        invokeCallback(() => onFederatedAdmissionComponent?.(federatedAdmissionComponent)).then(() => {
+          if (!finished) worker.postMessage({ type: 'component-uploaded' });
+        }).catch((error: unknown) => {
+          if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
+        });
+        return;
+      }
+      if ('federatedAdmissionComplete' in event.data) {
+        invokeCallback(() => onFederatedAdmissionComplete?.()).then(() => {
           if (!finished) worker.postMessage({ type: 'preflight-approved' });
         }).catch((error: unknown) => {
           if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
@@ -265,7 +289,7 @@ export function parseLandXmlViewerModelFromBlobAsync(
             parsed,
             consumedComponentCount + 1,
             streamed.preflight,
-            onFederatedPreflight === undefined,
+            !federatedStreaming,
           );
           const publishPipes = async (): Promise<void> => {
             for (const slot of pipeComponents.slots) {
@@ -280,6 +304,9 @@ export function parseLandXmlViewerModelFromBlobAsync(
           publishPipes().then(() => {
             if (consumedComponentCount !== streamed.preflight.componentCount) {
               throw new Error('LandXML second pass did not reproduce its preflight component envelope');
+            }
+            if (streamed.preflight.componentCount > 0 && streamedComponents.length === 0) {
+              throw new Error('LandXML preflight rejected every render component');
             }
             resolve(attachSyntheticStore(
               completeLandXmlStreamedGeometry(parsed, streamedComponents, streamed.preflight),

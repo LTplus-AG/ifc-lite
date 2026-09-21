@@ -116,7 +116,8 @@ struct InstIn {
   // to the tag at every zoom level.
   @location(10) targetPxOverride: f32,
   // CPU-packed drawable-minus-camera delta. deltaHigh.w == 1 selects the
-  // RTE route; old world-f32 records retain a zero flag and the old route.
+  // RTE route; deltaLow.w marks an anchor-local static glyph origin for the
+  // legacy projection path too.
   @location(11) deltaHigh: vec4<f32>,
   @location(12) deltaLow: vec4<f32>,
 };
@@ -131,11 +132,11 @@ fn rteClipPosition(
   local: vec3<f32>, high: vec3<f32>, low: vec3<f32>, viewProj: mat4x4<f32>,
 ) -> vec4<f32> {
   // Do not first reconstruct a million-metre f32 position: that addition can
-  // discard centimetre low lanes before projection. Transform high/local and
-  // low independently, then combine them in clip space where projection has
+  // discard centimetre local lanes before projection. Transform high and the
+  // combined local/low term independently, then combine in clip space where projection has
   // reduced or cancelled the coordinate scale. A final raw f32 eye vector
   // still cannot represent a sub-ULP residual at the ±1,000,000 m boundary.
-  return viewProj * vec4<f32>(local + high, 1.0) + viewProj * vec4<f32>(low, 0.0);
+  return viewProj * vec4<f32>(high, 1.0) + viewProj * vec4<f32>(local + low, 0.0);
 }
 
 @vertex
@@ -153,6 +154,7 @@ fn vs_main(in: VsIn, inst: InstIn) -> VsOut {
   // top-down / ground / oblique views.
   let isBillboard = inst.billboard > 0.5;
   let isRte = inst.deltaHigh.w == 1.0;
+  let hasLocalOrigin = inst.deltaLow.w == 1.0;
   // The f64 CPU path has already formed the drawable-camera delta. Project
   // split terms independently so projection can retain low residuals.
   let scaleProbeAxis = select(vec3<f32>(0.0, 1.0, 0.0), camera.cameraUp.xyz, isBillboard);
@@ -189,7 +191,7 @@ fn vs_main(in: VsIn, inst: InstIn) -> VsOut {
   // always faces the camera — grid-tag convention).
   // Anchored producers retain a small glyph-local origin; legacy producers
   // retain the original absolute origin and derive its local offset here.
-  let authoredLocalOffset = select(inst.origin - inst.anchor, inst.origin, isRte);
+  let authoredLocalOffset = select(inst.origin - inst.anchor, inst.origin, hasLocalOrigin);
   let authoredLocalPos =
       authoredLocalOffset * scale
     + inst.rightAxis * scale * u

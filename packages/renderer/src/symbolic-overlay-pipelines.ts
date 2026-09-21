@@ -31,7 +31,7 @@ const TEXT_RTE_DELTA_FLOATS = 8;
 const TEXT_RTE_DELTA_STRIDE_BYTES = TEXT_RTE_DELTA_FLOATS * 4;
 // Static glyph fields: origin, axes, UV/color, label anchor, cap height,
 // billboard, glyph offset/size and target override (108 B/glyph). A separate
-// dynamic RTE delta stream updates only 32 B/glyph per camera frame.
+// dynamic RTE delta stream updates only 32 B/glyph per camera frame; low.w marks anchor-local legacy origins.
 // Uniform: global viewProj (64 B) + RTE viewProj (64 B) + viewport/target
 // (16 B) + camera basis (32 B) + f64 camera split (32 B) = 208 B. Keeping
 // both projections is deliberate: a mixed legacy/anchored upload must keep
@@ -303,7 +303,6 @@ export class SymbolicTextPipeline {
   private instanceCount = 0;
   /** CPU-side dynamic delta stream; never derived from f32 instance lanes. */
   private rteDeltaData: Float32Array | null = null;
-  /** Canonical f64 world anchors, one entry per glyph instance (`null` is legacy). */
   private instanceAnchors: Array<WorldPoint | null> = [];
   private uploadedAtlasVersion = -1;
 
@@ -674,6 +673,8 @@ export class SymbolicTextPipeline {
       } else {
         this.rteDeltaData.fill(0, offset, offset + TEXT_RTE_DELTA_FLOATS);
       }
+      // Keep the anchor-local marker separate from high.w's RTE projection flag.
+      if (anchor) this.rteDeltaData[offset + 7] = 1;
     }
     this.device.queue.writeBuffer(this.rteDeltaBuffer, 0, this.rteDeltaData);
   }

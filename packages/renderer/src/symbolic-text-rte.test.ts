@@ -69,6 +69,30 @@ function makeDevice(): {
 }
 
 describe('SymbolicTextPipeline anchored instance ABI (#5049)', () => {
+  it('keeps an anchored non-billboard glyph at its world position without an RTE frame (#5152)', () => {
+    const { device, writes } = makeDevice();
+    const pipeline = new SymbolicTextPipeline(device, 'bgra8unorm', 1, makeAtlas());
+    pipeline.upload([{
+      origin: [100, 200, 300], worldPos: [0.125, 0, 0], dirX: 1, dirZ: 0,
+      height: 0.48, content: 'A', alignment: 'bottom-right',
+    }]);
+    const pass = { setPipeline() {}, setBindGroup() {}, setVertexBuffer() {}, draw() {} } as unknown as GPURenderPassEncoder;
+    pipeline.render(pass, new Float32Array(16).fill(1), 800, 600, [1, 0, 0], [0, 1, 0]);
+
+    const staticInstance = writes.find((write) => write.length === 27);
+    const legacyDelta = writes.filter((write) => write.length === 8).at(-1);
+    assert.ok(staticInstance);
+    assert.ok(legacyDelta);
+    assert.equal(legacyDelta[3], 0, 'no RTE frame selects the legacy projection');
+    assert.equal(legacyDelta[7], 1, 'the legacy route knows this static origin is anchor-local');
+    // This emulates the live selected shader expression at scale=0.5. The
+    // former `origin - anchor` branch produced about 50m instead of 100.065m.
+    const actualWorldX = Math.fround(staticInstance[17] + Math.fround(staticInstance[0] * 0.5));
+    const oldWorldX = Math.fround(staticInstance[17] + Math.fround((staticInstance[0] - staticInstance[17]) * 0.5));
+    assert.ok(Math.abs(actualWorldX - 100.065) < 1e-5, `anchored legacy glyph moved to ${actualWorldX}`);
+    assert.ok(Math.abs(oldWorldX - actualWorldX) > 1, 'the regression fixture must expose the old translation loss');
+  });
+
   it('packs an f64 drawable-minus-camera text delta once before GPU upload (#5152)', () => {
     const { device, writes, getPipeline } = makeDevice();
     const pipeline = new SymbolicTextPipeline(device, 'bgra8unorm', 1, makeAtlas());
@@ -116,16 +140,17 @@ describe('SymbolicTextPipeline anchored instance ABI (#5049)', () => {
     // cancels to zero; projecting high and low independently preserves the
     // 1.25 cm residual in the actual clip calculation.
     const f32 = Math.fround;
-    const projectedSplit = f32(f32(delta[0] - delta[1]) + f32(delta[4] - delta[5]));
-    const collapsedBeforeProjection = f32(f32(delta[0] + delta[4]) - f32(delta[1] + delta[5]));
-    const expectedClip = f32((10_999_999.975 - 10_000_000.05) - (10_999_999.9375 - 10_000_000));
+    const glyphLocalX = 0.01;
+    const projectedSplit = f32(f32(delta[0] - delta[1]) + f32((glyphLocalX + delta[4]) - delta[5]));
+    const collapsedBeforeProjection = f32(f32(delta[0] + glyphLocalX + delta[4]) - f32(delta[1] + delta[5]));
+    const expectedClip = f32((10_999_999.975 - 10_000_000.05 + glyphLocalX) - (10_999_999.9375 - 10_000_000));
     assert.equal(projectedSplit, expectedClip, 'the split low lane reaches the projected coordinate');
-    assert.notEqual(collapsedBeforeProjection, expectedClip, 'the old reconstructed f32 position loses the low lane');
+    assert.notEqual(collapsedBeforeProjection, expectedClip, 'the old high-plus-local path loses the centimetre glyph extent');
     assert.equal(f32(delta[0] + delta[4]), delta[0], 'a raw million-metre f32 eye vector cannot itself retain this low lane');
     assert.match(
       SYMBOLIC_TEXT_WGSL,
-      /viewProj \* vec4<f32>\(local \+ high, 1\.0\) \+ viewProj \* vec4<f32>\(low, 0\.0\)/,
-      'the live WGSL must project high/local and low terms separately',
+      /viewProj \* vec4<f32>\(high, 1\.0\) \+ viewProj \* vec4<f32>\(local \+ low, 0\.0\)/,
+      'the live WGSL must project high and local-plus-low terms separately',
     );
 
     const staticWritesBeforeLegacyDraw = writes.filter((write) => write.length === 27).length;
@@ -133,9 +158,13 @@ describe('SymbolicTextPipeline anchored instance ABI (#5049)', () => {
     const legacyDelta = writes.filter((write) => write.length === 8).at(-1);
     assert.ok(legacyDelta);
     assert.equal(legacyDelta[3], 0, 'an RTE-less render returns anchored labels to the legacy world projection');
+    assert.equal(legacyDelta[7], 1, 'an anchored legacy glyph retains its local-origin marker');
     assert.equal(writes.filter((write) => write.length === 27).length, staticWritesBeforeLegacyDraw,
       'camera motion updates only the compact delta stream, not the atlas layout');
     assert.equal(staticInstance[17], Math.fround(10_999_999.975), 'legacy record retains its world-space f32 anchor');
+
+    assert.match(SYMBOLIC_TEXT_WGSL, /select\(inst\.origin - inst\.anchor, inst\.origin, hasLocalOrigin\)/,
+      'the legacy shader branch uses an anchor-local origin when its marker is set');
 
     const attributes = getPipeline()?.buffers?.[2]?.attributes ?? [];
     assert.deepStrictEqual(

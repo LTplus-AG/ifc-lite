@@ -329,13 +329,12 @@ fn issue_5046_accepts_simple_square_and_uses_linear_units_for_geometric_area() {
     );
 
     let metric = parse(&format!(
-        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter" areaUnit="hectare"/></Units><Parcels><Parcel><CoordGeom><Curve rot="ccw" radius="1"><Start>1 0</Start><Center>0 0</Center><End>-1 0</End></Curve><Line><Start>-1 0</Start><End>1 0</End></Line></CoordGeom></Parcel></Parcels></LandXML>"#,
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter" areaUnit="hectare"/></Units><Parcels><Parcel area="1"><CoordGeom><Line><Start>0 0</Start><End>100 0</End></Line><Line><Start>100 0</Start><End>100 100</End></Line><Line><Start>100 100</Start><End>0 100</End></Line><Line><Start>0 100</Start><End>0 0</End></Line></CoordGeom></Parcel></Parcels></LandXML>"#
     ));
-    let area = metric
-        .probe_parcel(&metric.parcels[0])
-        .area_in_square_meters
-        .expect("area");
-    assert!((area - std::f64::consts::PI / 2.0).abs() < 1e-12);
+    let probe = metric.probe_parcel(&metric.parcels[0]);
+    assert_eq!(probe.area_in_square_meters, Some(10_000.0));
+    assert_eq!(probe.area_in_declared_square_units, Some(1.0));
+    assert_eq!(probe.declared_area, Some(1.0));
 }
 
 #[test]

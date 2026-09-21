@@ -270,7 +270,7 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
           {record.parcel.title && <p><span className="font-semibold">Title:</span> {record.parcel.title}</p>}
           <p><span className="font-semibold">Status:</span> {probe?.state.kind ?? 'preserved_only'}</p>
           {probe?.state.kind === 'preserved_only' && <p><span className="font-semibold">Reason:</span> {probe.state.reason}</p>}
-          {probe?.state.kind === 'analytic' && <p><span className="font-semibold">Probe:</span> perimeter {probe.perimeterInDeclaredLinearUnits ?? ''}, area {probe.areaInDeclaredSquareUnits ?? ''}</p>}
+          {probe?.state.kind === 'analytic' && <p><span className="font-semibold">Probe:</span> perimeter {probe.perimeterInDeclaredLinearUnits ?? ''}, declared area {probe.areaInDeclaredSquareUnits ?? ''} {document?.plan?.areaUnit ?? 'coordinate²'}, area {probe.areaInSquareMeters ?? ''} m²</p>}
         </>}
         {record.kind === 'plan-geometry' && <>
           <p><span className="font-semibold">Endpoints:</span> {resolvedGeometry?.start ? pointText(resolvedGeometry.start) : 'unresolved'} → {resolvedGeometry?.end ? pointText(resolvedGeometry.end) : 'unresolved'}</p>

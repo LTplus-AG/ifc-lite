@@ -144,26 +144,30 @@ impl LandXmlPlanDocument {
         if twice_area == 0.0 {
             return Ok(preserved(parcel, "zero-area boundary"));
         }
-        let area = finite_measure(twice_area.abs() * 0.5)?;
-        // Declared parcel area is expressed in the document `areaUnit`, while
-        // analytic geometry is expressed in the linear coordinate unit. Keep
-        // both truthful and still validate the declared-unit conversion.
-        if let (Some(declared), Some(scale)) =
-            (parcel.declared_area, self.area_scale_to_square_meters)
-        {
-            finite_measure(declared * scale)?;
-        }
-        let (perimeter_in_meters, area_in_square_meters) = match &self.units {
-            Some(units) => (
-                Some(finite_measure(perimeter * units.linear_scale_to_meters)?),
-                Some(finite_measure(area * units.linear_scale_to_meters.powi(2))?),
-            ),
-            None => (None, None),
-        };
+        let coordinate_area = finite_measure(twice_area.abs() * 0.5)?;
+        let (perimeter_in_meters, area_in_square_meters, area_in_declared_square_units) =
+            match &self.units {
+                Some(units) => {
+                    let square_meters =
+                        finite_measure(coordinate_area * units.linear_scale_to_meters.powi(2))?;
+                    let declared_scale = self
+                        .area_scale_to_square_meters
+                        .unwrap_or(units.linear_scale_to_meters.powi(2));
+                    if !declared_scale.is_finite() || declared_scale <= 0.0 {
+                        return Ok(preserved(parcel, "invalid declared area unit scale"));
+                    }
+                    (
+                        Some(finite_measure(perimeter * units.linear_scale_to_meters)?),
+                        Some(square_meters),
+                        Some(finite_measure(square_meters / declared_scale)?),
+                    )
+                }
+                None => (None, None, Some(coordinate_area)),
+            };
         Ok(LandXmlParcelProbe {
             state: LandXmlParcelState::Analytic,
             perimeter_in_declared_linear_units: Some(perimeter),
-            area_in_declared_square_units: Some(area),
+            area_in_declared_square_units,
             declared_area: parcel.declared_area,
             declared_perimeter: parcel.declared_perimeter,
             perimeter_in_meters,

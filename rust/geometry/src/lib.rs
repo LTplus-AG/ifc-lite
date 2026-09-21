@@ -219,7 +219,10 @@ pub use profile_extractor::{extract_profiles, extract_profiles_with_diagnostics,
 pub use profile_skip::SkippedProfile;
 pub use profiles::ProfileProcessor;
 pub use cdt::take_cdt_recovery_fallbacks;
-pub use terrain_cdt::{triangulate_terrain_pslg, TerrainCdtError, TerrainCdtMesh};
+pub use terrain_cdt::{
+    triangulate_terrain_pslg, triangulate_terrain_pslg_with_progress, TerrainCdtError,
+    TerrainCdtMesh,
+};
 pub use kernel::plane_weld::take_plane_weld_stats;
 pub use router::take_bool2d_stats;
 pub use router::{take_prism_defers, take_prism_stats};

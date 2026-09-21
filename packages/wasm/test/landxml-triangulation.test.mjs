@@ -57,4 +57,19 @@ describe('@ifc-lite/wasm constrained LandXML terrain (#5043)', () => {
       api.free?.();
     }
   });
+
+  it('keeps SourceData-generated face references resolvable through the real binding', async (t) => {
+    if (!existsSync(wasmPath) || !existsSync(wasmJsPath)) { t.skip('wasm bundle not built — run `bash scripts/build-wasm.sh` first'); return; }
+    const { initSync, IfcAPI } = await import(wasmJsPath);
+    initSync(readFileSync(wasmPath));
+    const api = new IfcAPI();
+    try {
+      const sourceData = '<SourceData><DataPoints><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></DataPoints></SourceData>';
+      const source = document().replace('<Pnts><P id="1">0 0 0</P><P id="2">0 10 0</P><P id="3">10 10 0</P><P id="4">10 0 0</P></Pnts>', '').replace('</Definition>', `</Definition>${sourceData}`);
+      const surface = api.parseLandXmlTinBytes(bytes.encode(source)).surfaces[0];
+      const ids = new Set(surface.points.map((point) => point.id));
+      assert.ok(surface.faces.flat().every((id) => ids.has(id)));
+      assert.ok(surface.points.some((point) => point.id.startsWith('terrain:landxml:surface:1:source-point:')));
+    } finally { api.free?.(); }
+  });
 });

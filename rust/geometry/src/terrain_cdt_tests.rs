@@ -35,3 +35,11 @@ fn issue_5043_splits_a_single_endpoint_junction_after_validation() {
             || (face[2] == 5 && face[0] == 4)
     }));
 }
+
+#[test]
+fn issue_5043_accepts_an_oblique_v_junction_without_a_false_collinear_contact() {
+    let points = [[0.0, 0.0], [4.0, 4.0], [0.0, 4.0], [2.0, 3.0]];
+    let mesh = triangulate_terrain_pslg(&points, &[(0, 1), (0, 3)])
+        .expect("an oblique V junction is a valid PSLG");
+    assert!(!mesh.indices.is_empty());
+}

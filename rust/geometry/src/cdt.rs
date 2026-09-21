@@ -224,16 +224,26 @@ impl Cdt {
     /// add Steiner points and replace a segment with its two halves, then
     /// rebuild cleanly from scratch — no fragile in-place mutation).
     fn build_from(
-        mut points: Vec<P2>,
+        points: Vec<P2>,
         segments: &[(usize, usize)],
         steiner_cap: usize,
     ) -> Option<Cdt> {
+        Self::build_from_with_progress(points, segments, steiner_cap, &mut || Ok(())).ok().flatten()
+    }
+
+    fn build_from_with_progress(
+        mut points: Vec<P2>,
+        segments: &[(usize, usize)],
+        steiner_cap: usize,
+        progress: &mut dyn FnMut() -> Result<(), crate::terrain_cdt::TerrainCdtError>,
+    ) -> Result<Option<Cdt>, crate::terrain_cdt::TerrainCdtError> {
         let n_input = points.len();
         if n_input < 3 {
-            return None;
+            return Ok(None);
         }
         let mut constraints = BTreeSet::new();
         for &(a, b) in segments {
+            progress()?;
             if a != b && a < n_input && b < n_input {
                 constraints.insert(ekey(a, b));
             }
@@ -243,8 +253,9 @@ impl Cdt {
         let (mut minx, mut miny, mut maxx, mut maxy) =
             (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
         for p in &points {
+            progress()?;
             if !p[0].is_finite() || !p[1].is_finite() {
-                return None;
+                return Ok(None);
             }
             minx = minx.min(p[0]);
             miny = miny.min(p[1]);
@@ -253,7 +264,7 @@ impl Cdt {
         }
         let span = (maxx - minx).max(maxy - miny);
         if !(span > 0.0) || !span.is_finite() {
-            return None;
+            return Ok(None);
         }
         let cx = (minx + maxx) * 0.5;
         let cy = (miny + maxy) * 0.5;
@@ -296,16 +307,17 @@ impl Cdt {
 
         // Incremental Delaunay insertion in canonical index order.
         for vi in 0..n_input {
+            progress()?;
             cdt.insert_point(vi);
         }
         if cdt.failed {
-            return None; // an insertion tripped a topology invariant — fall back to ear-clipping
+            return Ok(None); // an insertion tripped a topology invariant — fall back to ear-clipping
         }
-        if !cdt.enforce_constraints() {
-            return None;
+        if !cdt.enforce_constraints_with_progress(progress)? {
+            return Ok(None);
         }
         cdt.restore_constrained_delaunay();
-        Some(cdt)
+        Ok(Some(cdt))
     }
 
     // ───────────────────────── Delaunay insertion ─────────────────────────
@@ -955,11 +967,10 @@ impl Cdt {
 
     // ─────────────────────── constraint recovery ──────────────────────────
 
-    /// Ensure every constraint segment appears as an edge of the triangulation.
-    /// After Delaunay insertion of the ring vertices, most segments already
-    /// exist; any missing one is recovered by flipping the diagonals that cross
-    /// it. Returns false if a segment can't be recovered (caller falls back).
-    fn enforce_constraints(&mut self) -> bool {
+    fn enforce_constraints_with_progress(
+        &mut self,
+        progress: &mut dyn FnMut() -> Result<(), crate::terrain_cdt::TerrainCdtError>,
+    ) -> Result<bool, crate::terrain_cdt::TerrainCdtError> {
         // Materialise the alive edge set ONCE instead of re-scanning every
         // triangle per `edge_exists` probe (4.7e8 slot visits on ISSUE_129 —
         // the second-largest cost in the consolidate path). Recovery's only
@@ -967,17 +978,19 @@ impl Cdt {
         // exactly "drop u-w, add apex-q", so the set stays exact.
         let mut edges: rustc_hash::FxHashSet<(usize, usize)> = rustc_hash::FxHashSet::default();
         for t in self.tris.iter().filter(|t| t.alive) {
+            progress()?;
             for e in 0..3 {
                 edges.insert(ekey(t.v[e], t.v[(e + 1) % 3]));
             }
         }
         let segs: Vec<(usize, usize)> = self.constraints.iter().copied().collect();
         for (a, b) in segs {
-            if !self.recover_segment(a, b, &mut edges) {
-                return false;
+            progress()?;
+            if !self.recover_segment_with_progress(a, b, &mut edges, progress)? {
+                return Ok(false);
             }
         }
-        true
+        Ok(true)
     }
 
     /// Recover a single constraint segment `a-b` by repeatedly flipping a
@@ -991,32 +1004,37 @@ impl Cdt {
     /// Reordering the walk would change the flip sequence and, on cocircular
     /// input (every rectangular profile), the emitted triangulation, which
     /// the mesh-determinism manifests pin; re-pin both if you reorder it.
-    fn recover_segment(
+    fn recover_segment_with_progress(
         &mut self,
         a: usize,
         b: usize,
         edges: &mut rustc_hash::FxHashSet<(usize, usize)>,
-    ) -> bool {
+        progress: &mut dyn FnMut() -> Result<(), crate::terrain_cdt::TerrainCdtError>,
+    ) -> Result<bool, crate::terrain_cdt::TerrainCdtError> {
         if edges.contains(&ekey(a, b)) {
-            return true;
+            return Ok(true);
         }
         let pa = self.points[a];
         let pb = self.points[b];
         let mut guard = 0usize;
         loop {
+            progress()?;
             guard += 1;
             if guard > 100_000 {
                 RECOVERY_EXHAUSTED.fetch_add(1, Ordering::Relaxed);
-                return false;
+                return Ok(false);
             }
             if edges.contains(&ekey(a, b)) {
-                return true;
+                return Ok(true);
             }
             // Find an edge (u,v) strictly crossing segment a-b whose flip is
             // legal (the quad is convex). Scan triangles in index order for
             // determinism; pick the first crossing edge encountered.
             let mut flipped = false;
             'scan: for ti in 0..self.tris.len() {
+                if ti % 64 == 0 {
+                    progress()?;
+                }
                 if !self.tris[ti].alive {
                     continue;
                 }
@@ -1075,10 +1093,10 @@ impl Cdt {
                 // No flippable crossing edge found — segment already present or
                 // unrecoverable. Re-check existence at loop top.
                 if edges.contains(&ekey(a, b)) {
-                    return true;
+                    return Ok(true);
                 }
                 RECOVERY_STUCK.fetch_add(1, Ordering::Relaxed);
-                return false;
+                return Ok(false);
             }
         }
     }
@@ -1502,6 +1520,43 @@ pub(crate) fn triangulate_pslg(
         .map(|p| Point2::new(p[0], p[1]))
         .collect();
     Some((out_pts, indices))
+}
+
+pub(crate) fn triangulate_pslg_with_progress(
+    points: &[Point2<f64>],
+    segments: &[(usize, usize)],
+    progress: &mut dyn FnMut() -> Result<(), crate::terrain_cdt::TerrainCdtError>,
+) -> Result<Option<(Vec<Point2<f64>>, Vec<usize>)>, crate::terrain_cdt::TerrainCdtError> {
+    let pts: Vec<P2> = points.iter().map(p2).collect();
+    let Some(cdt) = Cdt::build_from_with_progress(pts, segments, 0, progress)? else {
+        return Ok(None);
+    };
+    let keep_upto = cdt.super_base;
+    let mut indices: Vec<usize> = Vec::new();
+    for tri in &cdt.tris {
+        progress()?;
+        if !tri.alive {
+            continue;
+        }
+        let v = tri.v;
+        if v.iter().any(|&x| x >= keep_upto) {
+            continue;
+        }
+        let a = cdt.points[v[0]];
+        let b = cdt.points[v[1]];
+        let c = cdt.points[v[2]];
+        if orient(a, b, c) >= 0 {
+            indices.extend_from_slice(&[v[0], v[1], v[2]]);
+        } else {
+            indices.extend_from_slice(&[v[0], v[2], v[1]]);
+        }
+    }
+    if indices.is_empty() {
+        return Ok(None);
+    }
+    let out_pts: Vec<Point2<f64>> = cdt.points[..keep_upto]
+        .iter().map(|p| Point2::new(p[0], p[1])).collect();
+    Ok(Some((out_pts, indices)))
 }
 
 #[cfg(test)]

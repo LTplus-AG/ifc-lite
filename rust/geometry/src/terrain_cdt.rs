@@ -20,6 +20,8 @@ pub enum TerrainCdtError {
     IntersectingConstraints,
     /// The exact CDT could not recover every requested constraint.
     ConstraintsUnrecoverable,
+    WorkLimitExceeded,
+    Cancelled,
 }
 
 /// A deterministic, f64 constrained triangulation. Indices address `points`.
@@ -40,6 +42,16 @@ pub fn triangulate_terrain_pslg(
     points: &[[f64; 2]],
     segments: &[(usize, usize)],
 ) -> Result<TerrainCdtMesh, TerrainCdtError> {
+    triangulate_terrain_pslg_with_progress(points, segments, &mut || Ok(()))
+}
+
+/// Triangulate while checking a caller-supplied cancellation/work callback in
+/// source validation, exact CDT construction/recovery, and output emission.
+pub fn triangulate_terrain_pslg_with_progress(
+    points: &[[f64; 2]],
+    segments: &[(usize, usize)],
+    progress: &mut dyn FnMut() -> Result<(), TerrainCdtError>,
+) -> Result<TerrainCdtMesh, TerrainCdtError> {
     if points.len() < 3
         || points
             .iter()
@@ -51,6 +63,7 @@ pub fn triangulate_terrain_pslg(
         return Err(TerrainCdtError::InvalidInput);
     }
     for (index, point) in points.iter().enumerate() {
+        progress()?;
         if points[..index].contains(point) {
             return Err(TerrainCdtError::InvalidInput);
         }
@@ -58,13 +71,13 @@ pub fn triangulate_terrain_pslg(
     // Validate the producer's graph before the collinear-vertex split.  Doing
     // this afterwards silently normalises repeated/overlapping source edges
     // into a harmless-looking deduplicated edge set.
-    validate_original_segments(points, segments)?;
-    let segments = split_segments_at_vertices(points, segments);
+    validate_original_segments(points, segments, progress)?;
+    let segments = split_segments_at_vertices(points, segments, progress)?;
     let source: Vec<Point2<f64>> = points
         .iter()
         .map(|point| Point2::new(point[0], point[1]))
         .collect();
-    let Some((output, indices)) = crate::cdt::triangulate_pslg(&source, &segments) else {
+    let Some((output, indices)) = crate::cdt::triangulate_pslg_with_progress(&source, &segments, progress)? else {
         return Err(TerrainCdtError::ConstraintsUnrecoverable);
     };
     Ok(TerrainCdtMesh {
@@ -76,9 +89,11 @@ pub fn triangulate_terrain_pslg(
 fn validate_original_segments(
     points: &[[f64; 2]],
     segments: &[(usize, usize)],
+    progress: &mut dyn FnMut() -> Result<(), TerrainCdtError>,
 ) -> Result<(), TerrainCdtError> {
     for (left, &(a, b)) in segments.iter().enumerate() {
         for &(c, d) in &segments[..left] {
+            progress()?;
             if !segments_intersect(points[a], points[b], points[c], points[d]) {
                 continue;
             }
@@ -127,11 +142,13 @@ fn validate_original_segments(
 fn split_segments_at_vertices(
     points: &[[f64; 2]],
     segments: &[(usize, usize)],
-) -> Vec<(usize, usize)> {
+    progress: &mut dyn FnMut() -> Result<(), TerrainCdtError>,
+) -> Result<Vec<(usize, usize)>, TerrainCdtError> {
     let mut split = Vec::new();
     for &(a, b) in segments {
         let mut vertices = vec![a, b];
         for (index, &point) in points.iter().enumerate() {
+            progress()?;
             if index != a
                 && index != b
                 && orientation(points[a], points[b], point) == 0
@@ -152,7 +169,7 @@ fn split_segments_at_vertices(
     }
     split.sort_unstable();
     split.dedup();
-    split
+    Ok(split)
 }
 
 fn orientation(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> i32 {
@@ -167,7 +184,8 @@ fn orientation(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> i32 {
 }
 
 fn on_segment(a: [f64; 2], b: [f64; 2], point: [f64; 2]) -> bool {
-    (a[0] <= point[0] && point[0] <= b[0] || b[0] <= point[0] && point[0] <= a[0])
+    orientation(a, b, point) == 0
+        && (a[0] <= point[0] && point[0] <= b[0] || b[0] <= point[0] && point[0] <= a[0])
         && (a[1] <= point[1] && point[1] <= b[1] || b[1] <= point[1] && point[1] <= a[1])
 }
 

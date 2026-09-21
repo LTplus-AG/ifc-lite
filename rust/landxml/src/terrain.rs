@@ -8,8 +8,8 @@ use crate::{
     LandXmlError, LandXmlLimits, LandXmlPoint, LandXmlPolyline, LandXmlSourceId,
     LandXmlSurfaceKind, LandXmlTerrainDiagnostic, LandXmlTerrainDiagnosticCode as TerrainCode,
 };
-use ifc_lite_geometry::{triangulate_terrain_pslg, TerrainCdtError};
-use std::collections::BTreeMap;
+use ifc_lite_geometry::{triangulate_terrain_pslg_with_progress, TerrainCdtError};
+use std::collections::{BTreeMap, BTreeSet};
 struct Vertex {
     id: String,
     northing: f64,
@@ -146,6 +146,9 @@ fn ring_edges(
             "boundary is degenerate",
         ));
     }
+    if ring.iter().copied().collect::<BTreeSet<_>>().len() != ring.len() {
+        return Err(diagnostic(TerrainCode::DegenerateConstraints, "boundary repeats a nonconsecutive vertex"));
+    }
     for index in 0..ring.len() {
         segments.push((ring[index], ring[(index + 1) % ring.len()]));
     }
@@ -213,7 +216,7 @@ pub(super) fn adapt_faceless_tin(
                     id: format!("terrain:{}", point.source_id.0),
                     source_id: point.source_id,
                 },
-                false,
+                true,
             ) {
                 return Ok(Some(value));
             }
@@ -281,31 +284,17 @@ pub(super) fn adapt_faceless_tin(
         }
         segments.extend(line.windows(2).map(|pair| (pair[0], pair[1])));
     }
-    let split_work = vertices.len().saturating_mul(segments.len());
-    let intersection_work = segments
-        .len()
-        .saturating_mul(segments.len().saturating_sub(1))
-        / 2;
-    let cdt_work = vertices.len().saturating_mul(vertices.len());
-    let total_work = split_work
-        .saturating_add(intersection_work)
-        .saturating_add(cdt_work);
-    if work_seen
-        .checked_add(total_work)
-        .is_none_or(|work| work > limits.max_work)
-    {
-        return Ok(Some(diagnostic(
-            TerrainCode::WorkLimitExceeded,
-            "terrain constraint work limit exceeded",
-        )));
-    }
-    *work_seen += total_work;
-    if cancelled.is_some_and(LandXmlCancellation::is_cancelled) {
-        return Err(error(
-            Code::Cancelled,
-            "LandXML terrain triangulation cancelled",
-        ));
-    }
+    let mut charge_work = || -> Result<(), TerrainCdtError> {
+        if cancelled.is_some_and(LandXmlCancellation::is_cancelled) {
+            return Err(TerrainCdtError::Cancelled);
+        }
+        // Preserve close-tag capacity after an optional terrain refusal.
+        if work_seen.saturating_add(64) >= limits.max_work {
+            return Err(TerrainCdtError::WorkLimitExceeded);
+        }
+        *work_seen += 1;
+        Ok(())
+    };
     let vertex_elevations: Vec<_> = vertices
         .iter()
         .map(|vertex| (vertex.northing, vertex.easting, vertex.elevation))
@@ -317,7 +306,7 @@ pub(super) fn adapt_faceless_tin(
         .iter()
         .map(|point| [point.easting, point.northing])
         .collect();
-    let mesh = match triangulate_terrain_pslg(&points, &segments) {
+    let mesh = match triangulate_terrain_pslg_with_progress(&points, &segments, &mut charge_work) {
         Ok(mesh) => mesh,
         Err(TerrainCdtError::IntersectingConstraints) => {
             return Ok(Some(diagnostic(
@@ -331,14 +320,22 @@ pub(super) fn adapt_faceless_tin(
                 "terrain constraints cannot form a valid constrained triangulation",
             )))
         }
+        Err(TerrainCdtError::WorkLimitExceeded) => return Ok(Some(diagnostic(
+            TerrainCode::WorkLimitExceeded,
+            "terrain constraint work limit exceeded",
+        ))),
+        Err(TerrainCdtError::Cancelled) => return Err(error(
+            Code::Cancelled,
+            "LandXML terrain triangulation cancelled",
+        )),
     };
     let mut generated_faces = Vec::new();
     for triangle in mesh.indices.chunks_exact(3) {
-        if cancelled.is_some_and(LandXmlCancellation::is_cancelled) {
-            return Err(error(
-                Code::Cancelled,
-                "LandXML terrain triangulation cancelled",
-            ));
+        match charge_work() {
+            Ok(()) => {}
+            Err(TerrainCdtError::WorkLimitExceeded) => return Ok(Some(diagnostic(TerrainCode::WorkLimitExceeded, "terrain constraint work limit exceeded"))),
+            Err(TerrainCdtError::Cancelled) => return Err(error(Code::Cancelled, "LandXML terrain triangulation cancelled")),
+            Err(_) => unreachable!("terrain work callback only charges or stops"),
         }
         let [a, b, c] = [triangle[0], triangle[1], triangle[2]];
         let centroid = [
@@ -354,6 +351,11 @@ pub(super) fn adapt_faceless_tin(
         {
             continue;
         }
+        let next_faces = generated_faces.len() + 1;
+        if faces_seen.checked_add(next_faces).is_none_or(|faces| faces > limits.max_faces)
+            || references_seen.checked_add(next_faces.saturating_mul(3)).is_none_or(|references| references > limits.max_references) {
+            return Err(error(Code::LimitExceeded, "generated face or reference limit exceeded"));
+        }
         generated_faces.push([
             vertices[a].id.clone(),
             vertices[b].id.clone(),
@@ -367,18 +369,6 @@ pub(super) fn adapt_faceless_tin(
         )));
     }
     let generated_references = generated_faces.len().saturating_mul(3);
-    if faces_seen
-        .checked_add(generated_faces.len())
-        .is_none_or(|faces| faces > limits.max_faces)
-    {
-        return Err(error(Code::LimitExceeded, "face limit exceeded"));
-    }
-    if references_seen
-        .checked_add(generated_references)
-        .is_none_or(|references| references > limits.max_references)
-    {
-        return Err(error(Code::LimitExceeded, "reference limit exceeded"));
-    }
     *faces_seen += generated_faces.len();
     *references_seen += generated_references;
     surface

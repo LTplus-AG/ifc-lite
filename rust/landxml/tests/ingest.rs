@@ -189,6 +189,28 @@ fn issue_5043_refuses_collinear_elevation_conflicts_and_overlapping_breaklines(
 }
 
 #[test]
+fn issue_5043_refuses_pinched_and_bow_tie_outer_rings() -> Result<(), Box<dyn std::error::Error>> {
+    let pinched = r#"<Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 10 0 10 10 0 0 10 0 10 0 0</PntList3D></Boundary></Boundaries>"#;
+    let parsed = parse(faceless_tin(pinched, "", "").as_bytes())?;
+    assert_eq!(parsed.surfaces[0].terrain_diagnostic.as_ref().map(|value| value.code), Some(LandXmlTerrainDiagnosticCode::DegenerateConstraints));
+    let bow_tie = r#"<Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 10 10 0 0 10 0 10 0 0</PntList3D></Boundary></Boundaries>"#;
+    let parsed = parse(faceless_tin(bow_tie, "", "").as_bytes())?;
+    assert_eq!(parsed.surfaces[0].terrain_diagnostic.as_ref().map(|value| value.code), Some(LandXmlTerrainDiagnosticCode::IntersectingConstraints));
+    Ok(())
+}
+
+#[test]
+fn issue_5043_keeps_source_data_vertices_resolvable_by_generated_faces() -> Result<(), Box<dyn std::error::Error>> {
+    let source = format!(r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="grade"><Definition surfType="TIN"><Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></Boundary></Boundaries></Definition><SourceData><DataPoints><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></DataPoints></SourceData></Surface></Surfaces></LandXML>"#);
+    let parsed = parse(source.as_bytes())?;
+    let surface = &parsed.surfaces[0];
+    let ids: std::collections::HashSet<_> = surface.points.iter().map(|point| point.id.as_str()).collect();
+    assert!(surface.faces.iter().flatten().all(|id| ids.contains(id.as_str())));
+    assert!(surface.points.iter().any(|point| point.id.starts_with("terrain:landxml:surface:1:source-point:")));
+    Ok(())
+}
+
+#[test]
 fn issue_5043_keeps_coincident_source_records_and_maps_them_to_one_vertex(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let source = format!(

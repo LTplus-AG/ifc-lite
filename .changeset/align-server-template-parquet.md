@@ -1,5 +1,5 @@
 ---
-'create-ifc-lite': patch
+'@ifc-lite/server-client': patch
 ---
 
-Align generated server templates with the supported `parquet-wasm` peer range.
+Support `parquet-wasm` 0.8 while retaining compatibility with generated server templates on 0.7.

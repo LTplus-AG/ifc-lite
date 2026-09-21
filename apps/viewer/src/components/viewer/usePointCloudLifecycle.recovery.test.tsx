@@ -83,3 +83,51 @@ it('keeps rebuilt IFCx count when stale streamed handles are cleaned after recov
   assert.strictEqual(useViewerStore.getState().pointCloudAssetCount, 1,
     'stale streamed cleanup cannot decrement the rebuilt inline asset');
 });
+
+it('does not unmount the app when the renderer is torn down by a device loss (#5147)', () => {
+  // The main-page failure the CI trace showed: the scan loaded, SwiftShader
+  // lost the WebGPU device, the renderer tore its point-cloud pipeline down,
+  // and this hook's effect called setPointClouds on it — an uncaught throw
+  // that emptied #root while the store still held the model.
+  let ready = false;
+  let synced = 0;
+  const renderer = {
+    isReady: () => ready,
+    setPointClouds: () => {
+      if (!ready) throw new Error('Renderer not initialized. Call init() first.');
+      synced++;
+    },
+    getPointCloudAssetCount: () => synced,
+    setPointCloudOptions: () => {},
+    setEdlOptions: () => {},
+    getModelBounds: () => null,
+    requestRender: () => {},
+  } as unknown as Renderer;
+  const rendererRef = { current: renderer };
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); };
+
+  function Probe() {
+    usePointCloudSync({ rendererRef, isInitialized: true, pointClouds: [inlineAsset], hasMeshes: false });
+    return <div data-testid="alive" />;
+  }
+
+  try {
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+    act(() => root?.render(<Probe />));
+    assert.ok(host.querySelector('[data-testid="alive"]'), 'the tree survives a torn-down renderer');
+    assert.strictEqual(synced, 0);
+    assert.ok(warnings.some((w) => w.includes('[usePointCloudSync]') && w.includes('device lost')), `the skip is logged: ${warnings.join(' | ')}`);
+
+    // Recovery re-inits the renderer; the next render (a fresh asset list
+    // literal, so the effect re-runs) syncs again.
+    ready = true;
+    act(() => root?.render(<Probe />));
+    assert.strictEqual(synced, 1, 'a ready renderer is synced');
+  } finally {
+    console.warn = originalWarn;
+  }
+});

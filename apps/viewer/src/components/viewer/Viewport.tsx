@@ -1473,14 +1473,8 @@ export function Viewport({
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
-    renderer.setLineOverlay(
-      'alignment',
-      (alignmentVertices3D instanceof Float32Array
-        ? alignmentVertices3D.length === 0
-        : alignmentVertices3D.localVertices.length === 0)
-        ? null
-        : alignmentVertices3D,
-    );
+    const empty = alignmentVertices3D instanceof Float32Array ? alignmentVertices3D.length === 0 : alignmentVertices3D.localVertices.length === 0;
+    renderer.setLineOverlay('alignment', empty ? null : alignmentVertices3D);
   }, [alignmentVertices3D, isInitialized]);
 
   // Structural-grid (IfcGridAxis) lines draw ONLY from `useSymbolicAnnotations`

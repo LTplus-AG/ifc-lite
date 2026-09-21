@@ -43,7 +43,7 @@ impl LandXmlTinStreamSession {
                         "summary adapter received non-metadata stream output",
                     ));
                 };
-                reassembler.push(event)?;
+                reassembler.push(*event)?;
             }
         }
         reassembler.finish()

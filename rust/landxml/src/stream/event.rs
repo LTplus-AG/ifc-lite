@@ -52,7 +52,9 @@ pub struct LandXmlSurfaceFragment {
 pub enum LandXmlStreamEvent {
     Header(LandXmlStreamHeader),
     Surface(LandXmlSurfaceFragment),
-    Metadata(LandXmlMetadataStreamEvent),
+    /// Metadata can contain a complete semantic record. Keep it separately
+    /// owned so lightweight surface/header transport records stay compact.
+    Metadata(Box<LandXmlMetadataStreamEvent>),
 }
 
 /// Metadata header emitted once, after all surface fragments have received
@@ -147,8 +149,12 @@ pub struct LandXmlMetadataStreamEnd {
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "metadata_kind", rename_all = "snake_case")]
 pub enum LandXmlMetadataStreamEvent {
-    Header(LandXmlMetadataStreamHeader),
-    Record(LandXmlMetadataRecord),
+    /// The header contains the bounded family roots; keep record and fragment
+    /// events compact while the header is awaiting credited delivery.
+    Header(Box<LandXmlMetadataStreamHeader>),
+    /// Records may carry a full semantic source item. The cursor moves that
+    /// item through the credited queue without inflating every other event.
+    Record(Box<LandXmlMetadataRecord>),
     /// A single legal metadata value which is too large for one credited
     /// transport event. The receiver must concatenate `payload_utf8` in
     /// sequence order, decode it as JSON, and handle it exactly as the

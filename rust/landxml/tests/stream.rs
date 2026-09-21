@@ -223,12 +223,18 @@ fn issue_5050_huge_plan_end_stays_credited_and_abandonment_releases_it() {
         assert!(emitted <= 512 * 1024, "one drain cannot exceed host credit");
         for event in events {
             if let LandXmlStreamEvent::Metadata(metadata) = event {
-                match metadata {
-                    LandXmlMetadataStreamEvent::Record(LandXmlMetadataRecord::PlanSourceBatch(
-                        _,
-                    )) => saw_derived = true,
+                match metadata.as_ref() {
+                    LandXmlMetadataStreamEvent::Record(record)
+                        if matches!(record.as_ref(), LandXmlMetadataRecord::PlanSourceBatch(_)) =>
+                    {
+                        saw_derived = true;
+                    }
                     LandXmlMetadataStreamEvent::End(_) => {
-                        end_bytes = Some(serde_json::to_vec(&metadata).expect("End JSON").len())
+                        end_bytes = Some(
+                            serde_json::to_vec(metadata.as_ref())
+                                .expect("End JSON")
+                                .len(),
+                        )
                     }
                     _ => {}
                 }
@@ -439,7 +445,7 @@ fn issue_5050_metadata_cursor_matches_direct_plan_and_uses_exact_credit_limits()
                     .len()
                     <= MAX_LANDXML_STREAM_EVENT_BYTES
             );
-            metadata.push(event);
+            metadata.push(*event);
         }
     }
     assert_eq!(peak_events, MAX_LANDXML_STREAM_QUEUED_EVENTS);
@@ -457,7 +463,8 @@ fn issue_5050_metadata_cursor_matches_direct_plan_and_uses_exact_credit_limits()
             .iter()
             .filter(|event| matches!(
                 event,
-                LandXmlMetadataStreamEvent::Record(LandXmlMetadataRecord::PlanCogoPoint(_))
+                LandXmlMetadataStreamEvent::Record(record)
+                    if matches!(record.as_ref(), LandXmlMetadataRecord::PlanCogoPoint(_))
             ))
             .count(),
         direct.cogo_points().len(),
@@ -497,7 +504,8 @@ fn issue_5050_fragments_legal_large_nested_metadata_records_under_credit() {
             );
             if matches!(
                 event,
-                LandXmlStreamEvent::Metadata(LandXmlMetadataStreamEvent::RecordFragment(_))
+                LandXmlStreamEvent::Metadata(metadata)
+                    if matches!(metadata.as_ref(), LandXmlMetadataStreamEvent::RecordFragment(_))
             ) {
                 fragments += 1;
             }

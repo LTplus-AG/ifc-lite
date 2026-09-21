@@ -31,14 +31,14 @@ impl MetadataReassembler {
     ) -> Result<(), crate::LandXmlError> {
         match event {
             LandXmlMetadataStreamEvent::Header(header) => {
-                if self.header.replace(header).is_some() {
+                if self.header.replace(*header).is_some() {
                     return Err(crate::xml::error(
                         crate::LandXmlDiagnosticCode::InvalidSemantic,
                         "metadata stream emitted multiple headers",
                     ));
                 }
             }
-            LandXmlMetadataStreamEvent::Record(record) => self.push_record(record)?,
+            LandXmlMetadataStreamEvent::Record(record) => self.push_record(*record)?,
             LandXmlMetadataStreamEvent::RecordFragment(fragment) => self.push_fragment(fragment)?,
             LandXmlMetadataStreamEvent::End(end) => {
                 if self.end.replace(end).is_some() {

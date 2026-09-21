@@ -176,15 +176,22 @@ mod tests {
                 .expect("metadata credit")
             {
                 if let ifc_lite_landxml::LandXmlStreamEvent::Metadata(event) = event {
-                    match event {
-                        ifc_lite_landxml::LandXmlMetadataStreamEvent::Record(
-                            ifc_lite_landxml::LandXmlMetadataRecord::PlanResolvedGeometry(_)
-                            | ifc_lite_landxml::LandXmlMetadataRecord::PlanResolvedMonument(_)
-                            | ifc_lite_landxml::LandXmlMetadataRecord::PlanParcelProbe(_)
-                            | ifc_lite_landxml::LandXmlMetadataRecord::PlanSourceBatch(_),
-                        ) => saw_derived = true,
+                    match event.as_ref() {
+                        ifc_lite_landxml::LandXmlMetadataStreamEvent::Record(record)
+                            if matches!(
+                                record.as_ref(),
+                                ifc_lite_landxml::LandXmlMetadataRecord::PlanResolvedGeometry(_)
+                                    | ifc_lite_landxml::LandXmlMetadataRecord::PlanResolvedMonument(
+                                        _
+                                    )
+                                    | ifc_lite_landxml::LandXmlMetadataRecord::PlanParcelProbe(_)
+                                    | ifc_lite_landxml::LandXmlMetadataRecord::PlanSourceBatch(_),
+                            ) =>
+                        {
+                            saw_derived = true
+                        }
                         ifc_lite_landxml::LandXmlMetadataStreamEvent::End(_) => {
-                            end_bytes = serde_json::to_vec(&event).expect("end JSON").len();
+                            end_bytes = serde_json::to_vec(event.as_ref()).expect("end JSON").len();
                         }
                         _ => {}
                     }

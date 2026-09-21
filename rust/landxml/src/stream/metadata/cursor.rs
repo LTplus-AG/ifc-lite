@@ -115,15 +115,15 @@ impl MetadataCursor {
         &mut self,
     ) -> Result<Option<LandXmlMetadataStreamEvent>, crate::LandXmlError> {
         if let Some(header) = self.header.take() {
-            return Ok(Some(LandXmlMetadataStreamEvent::Header(header)));
+            return Ok(Some(LandXmlMetadataStreamEvent::Header(Box::new(header))));
         }
         if let Some(record) = self.terrain.next_record() {
-            return Ok(Some(LandXmlMetadataStreamEvent::Record(record)));
+            return Ok(Some(LandXmlMetadataStreamEvent::Record(Box::new(record))));
         }
         loop {
             if let Some(cursor) = self.plan_derived.as_mut() {
                 if let Some(record) = cursor.next_record()? {
-                    return Ok(Some(LandXmlMetadataStreamEvent::Record(record)));
+                    return Ok(Some(LandXmlMetadataStreamEvent::Record(Box::new(record))));
                 }
                 let plan = cursor
                     .take_plan()
@@ -134,14 +134,14 @@ impl MetadataCursor {
             }
             if let Some(parts) = self.plan.as_mut() {
                 if let Some(record) = parts.next_record() {
-                    return Ok(Some(LandXmlMetadataStreamEvent::Record(record)));
+                    return Ok(Some(LandXmlMetadataStreamEvent::Record(Box::new(record))));
                 }
                 self.plan = None;
                 continue;
             }
             if let Some(cursor) = self.alignment_derived.as_mut() {
                 if let Some(record) = cursor.next_record() {
-                    return Ok(Some(LandXmlMetadataStreamEvent::Record(record)));
+                    return Ok(Some(LandXmlMetadataStreamEvent::Record(Box::new(record))));
                 }
                 let alignment = cursor
                     .take_document()
@@ -152,13 +152,13 @@ impl MetadataCursor {
             }
             if let Some(parts) = self.alignment.as_mut() {
                 if let Some(record) = parts.next_record() {
-                    return Ok(Some(LandXmlMetadataStreamEvent::Record(record)));
+                    return Ok(Some(LandXmlMetadataStreamEvent::Record(Box::new(record))));
                 }
                 self.alignment = None;
                 continue;
             }
             if let Some(record) = self.pipe.next_record() {
-                return Ok(Some(LandXmlMetadataStreamEvent::Record(record)));
+                return Ok(Some(LandXmlMetadataStreamEvent::Record(Box::new(record))));
             }
             return Ok(self.end.take().map(LandXmlMetadataStreamEvent::End));
         }

@@ -78,7 +78,7 @@ impl LandXmlTinStreamSession {
                 self.metadata_cursor = None;
                 return Ok(());
             };
-            self.push_event(LandXmlStreamEvent::Metadata(event))?;
+            self.push_event(LandXmlStreamEvent::Metadata(Box::new(event)))?;
         }
     }
 

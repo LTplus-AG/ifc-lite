@@ -78,6 +78,15 @@ export default defineConfig({
         baseURL: BASE_URL,
         actionTimeout: 60000,
         headless: true,
+        // A failed test leaves a trace (DOM snapshots per action, console,
+        // network) and a screenshot under test-results/, which the workflow
+        // already uploads. The recurring model-reposition flake — `#file-
+        // input-add` absent for 60 s after a point-cloud-first load — had been
+        // diagnosed blind from the store snapshot alone, four reruns in a row
+        // on 2026-09-21; the trace is what shows what the page looked like.
+        // Retained only on failure, so a green run costs nothing extra.
+        trace: 'retain-on-failure',
+        screenshot: 'only-on-failure',
         // Real Chrome, not Playwright's headless shell — the shell's
         // WebGPU device is broken under software rendering (createBuffer
         // fails for KB-sized buffers, popErrorScope instance drops).

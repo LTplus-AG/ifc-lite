@@ -75,6 +75,8 @@ import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIng
 import { pointCloudSpatialReferenceFromMetadata, preparePointCloudSpatialLoad } from './ingest/pointCloudSpatialLoad.js';
 import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
 import { getGlobalRenderer } from './useBCF.js';
+import { federationRegistry } from '@ifc-lite/renderer';
+import { LandXmlProvisionalTransaction } from './ingest/landXmlProvisionalTransaction.js';
 import { extractModelSpatialPlacement, findReferenceSpatialModel } from './ingest/federationAlign.js';
 import { finalizeFederatedSpatialPlacement } from './ingest/federatedSpatialFinalize.js';
 import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment, type PointCloudSourceUnit } from './ingest/pointCloudAlignment.js';
@@ -695,6 +697,18 @@ export function useIfcLoader() {
         });
         await loadLandXmlModel({ file, fileSizeMB, targetKind: target.kind, totalStartTime, wasHidden: wasHidden(),
           isCurrent: () => loadSessionRef.current === currentSession, setProgress, setGeometryStreamingActive, setLoading,
+          openProvisional: target.kind === 'primary' ? (preflight) => {
+            if (preflight.componentCount === 0 || preflight.frame === null) return null;
+            const renderer = getGlobalRenderer();
+            if (!renderer) throw new Error('Renderer not initialised for LandXML provisional publication');
+            return new LandXmlProvisionalTransaction(modelId, preflight.componentCount, preflight.frame, federationRegistry, {
+              publish: (mesh) => {
+                const outcome = renderer.addMeshes([mesh], true);
+                if (!outcome.ok) throw new Error(`LandXML provisional GPU upload failed: ${outcome.reason}`);
+              },
+              remove: (globalExpressIds) => { renderer.getScene().removeMeshesForEntities(globalExpressIds); },
+            });
+          } : undefined,
           onPrimary: (r) => { setGeometryResult(r.geometryResult); setIfcDataStore(r.dataStore); }, finalize: finalizeModel,
           onError: (message) => { updateModel(modelId, { loadState: 'error', loadError: message }); setError(`LandXML parsing failed: ${message}`); },
         });

@@ -27,6 +27,7 @@ import { reshapeSceneKeepingPresentInstanced } from './geometry-rebuild';
 import { runGpuUpload } from './gpu-upload-guard';
 import { createRobustFitBoundsAccumulator } from './robustFitBoundsAccumulator.js';
 import { useColorOverlaySync } from './useColorOverlaySync.js';
+import { takeLandXmlGpuUploaded } from '../../hooks/ingest/landXmlGpuOwnership.js';
 
 // Session-scoped flag so the linear-infrastructure hint fires at most once
 // per page load (model swaps included). Stored at module scope rather than
@@ -465,6 +466,10 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     }
 
     // ── Route meshes to scene ──
+    // A LandXML provisional transaction may have uploaded these exact
+    // store-owned meshes after its registry range became pickable. Consume the
+    // one-shot marker so normal scene rebuilds still own later re-uploads.
+    newMeshes = newMeshes.filter((mesh) => !takeLandXmlGpuUploaded(mesh));
     if (newMeshes.length > 0) {
       const pipeline = renderer.getPipeline();
       if (pipeline) {

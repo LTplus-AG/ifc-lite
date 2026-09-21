@@ -9,8 +9,11 @@ import { captureModelLoaded, snapshotFromGeometry } from '../../utils/loadTeleme
 import { createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
 import { toast } from '../../components/ui/toast.js';
 import { parseLandXmlViewerModelFromBlobAsync, type LandXmlViewerModel } from './landXmlViewerModel.js';
+import type { LandXmlGeometryPreflight } from './landXmlIngest.js';
 import type { LandXmlTinDocument } from './landXmlSemantics.js';
 import { MAX_RENDER_FRAME_ORIGIN_METRES, meshFitsRenderFrame, meshRenderFrameBounds } from './landXmlRenderFrame.js';
+import { LandXmlProvisionalTransaction } from './landXmlProvisionalTransaction.js';
+import { markLandXmlGpuUploaded } from './landXmlGpuOwnership.js';
 
 interface LandXmlLoadOptions {
   file: File;
@@ -22,6 +25,7 @@ interface LandXmlLoadOptions {
   setProgress(progress: { phase: string; percent: number }): void;
   setGeometryStreamingActive(active: boolean): void;
   setLoading(loading: boolean): void;
+  openProvisional?(preflight: LandXmlGeometryPreflight): LandXmlProvisionalTransaction | null;
   onPrimary(result: LandXmlViewerModel): void;
   finalize(
     dataStore: IfcDataStore,
@@ -155,6 +159,7 @@ export function reframeLandXmlGeometry(geometry: GeometryResult, document: LandX
 export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<void> {
   options.setProgress({ phase: 'Parsing LandXML TIN surfaces', percent: 10 });
   options.setGeometryStreamingActive(false);
+  let provisional: LandXmlProvisionalTransaction | null = null;
   try {
     const result = await parseLandXmlViewerModelFromBlobAsync(
       options.file,
@@ -166,10 +171,28 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
           percent: Math.min(90, 10 + Math.round((loadedBytes / totalBytes) * 80)),
         });
       },
+      (preflight) => {
+        if (!options.isCurrent()) throw new Error('LandXML parsing cancelled');
+        provisional = options.openProvisional?.(preflight) ?? null;
+      },
     );
     // The browser worker is terminated within the cancellation polling bound;
     // this guard also prevents a racing stale reply from mutating model state.
-    if (!options.isCurrent()) return;
+    if (!options.isCurrent()) {
+      provisional?.rollback();
+      return;
+    }
+    if (provisional !== null) {
+      for (const mesh of result.geometryResult.meshes) provisional.publish(mesh);
+      for (const mesh of result.geometryResult.meshes) {
+        mesh.expressId += provisional.idOffset;
+        markLandXmlGpuUploaded(mesh);
+      }
+      for (const provenance of result.semanticDocument.rendering.meshProvenance) {
+        provenance.meshExpressId += provisional.idOffset;
+      }
+      provisional.commit();
+    }
     if (options.targetKind === 'primary') options.onPrimary(result);
     await options.finalize(result.dataStore, result.geometryResult, result.schemaVersion, {
       loadPath: 'landxml',
@@ -194,6 +217,7 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
     }, snapshotFromGeometry(options.fileSizeMB, result.geometryResult));
     options.setLoading(false);
   } catch (error) {
+    provisional?.rollback();
     if (!options.isCurrent()) return;
     console.error('[useIfc] LandXML parsing failed:', error);
     const message = error instanceof Error ? error.message : String(error);

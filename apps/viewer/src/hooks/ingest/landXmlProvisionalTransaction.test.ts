@@ -46,4 +46,17 @@ describe('LandXML provisional publication transaction (#5050)', () => {
     assert.equal(removed, 1);
     assert.equal(registry.getOffset('short'), null);
   });
+
+  it('can roll back an already committed upload if final metadata installation fails (#5050)', () => {
+    const registry = new FederationRegistry();
+    const removed: number[][] = [];
+    const transaction = new LandXmlProvisionalTransaction('late-failure', 1, {
+      originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false,
+    }, registry, { publish: () => {}, remove: (ids) => { removed.push([...ids]); } });
+    const global = transaction.publish(mesh(1));
+    transaction.commit();
+    transaction.rollback();
+    assert.deepEqual(removed, [[global]]);
+    assert.equal(registry.fromGlobalId(global), null);
+  });
 });

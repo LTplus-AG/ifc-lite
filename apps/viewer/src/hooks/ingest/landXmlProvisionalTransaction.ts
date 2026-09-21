@@ -27,7 +27,8 @@ export class LandXmlProvisionalTransaction {
   readonly idOffset: number;
   private readonly published: number[] = [];
   private nextLocalId = 1;
-  private closed = false;
+  private committed = false;
+  private rolledBack = false;
 
   constructor(
     private readonly modelId: string,
@@ -73,12 +74,12 @@ export class LandXmlProvisionalTransaction {
       this.rollback();
       throw new Error('LandXML second pass did not reproduce its preflight ID envelope');
     }
-    this.closed = true;
+    this.committed = true;
   }
 
   rollback(): void {
-    if (this.closed) return;
-    this.closed = true;
+    if (this.rolledBack) return;
+    this.rolledBack = true;
     try {
       if (this.published.length > 0) this.resources.remove(this.published);
     } finally {
@@ -87,6 +88,6 @@ export class LandXmlProvisionalTransaction {
   }
 
   private ensureOpen(): void {
-    if (this.closed) throw new Error('LandXML provisional transaction is closed');
+    if (this.committed || this.rolledBack) throw new Error('LandXML provisional transaction is closed');
   }
 }

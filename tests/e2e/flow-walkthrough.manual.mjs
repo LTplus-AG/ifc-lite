@@ -52,7 +52,7 @@ await page.locator('[data-flow-panel]').waitFor({ timeout: 10000 });
 await shot('flow-panel-open');
 
 // 2. Import the fixture graph (the same file the CLI test runs).
-const fixture = readFileSync(new URL('../fixtures/flows/fire-rating-audit.flow.json', import.meta.url), 'utf-8');
+const fixture = readFileSync(new URL('../../packages/cli/src/__fixtures__/flows/fire-rating-audit.flow.json', import.meta.url), 'utf-8');
 await page.locator('[data-flow-panel] input[type=file]').setInputFiles({ name: 'fire-rating-audit.flow.json', mimeType: 'application/json', buffer: Buffer.from(fixture) });
 await page.waitForFunction((k) => globalThis[k].getState().flowDoc?.id === 'fire-rating-audit', STORE, { timeout: 5000 });
 await page.waitForTimeout(800);

@@ -11,7 +11,7 @@ import type { Mesh, PickResult, PickClipState } from './types.js';
 import { resolvePickSample, resolvePickedExpressId } from './pick-resolve.js';
 import type { InstancedTemplateGPU } from './scene.js';
 import { PointPicker, decodePickSample, type PointPickNode } from './point-picker.js';
-import { packPickUniforms } from './pick-uniforms.js';
+import { packPickClip, packPickUniforms } from './pick-uniforms.js';
 import type { RelativeToEyeSnapshot } from './relative-to-eye.js';
 import { restoreRtePickWorld, unprojectPickSample } from './pick-world-position.js';
 
@@ -86,11 +86,11 @@ export class Picker {
   /** Set by `destroy()`; makes it idempotent and turns `pick`/`pickRect` into no-ops. */
   private destroyed = false;
   private pointPicker: PointPicker | null = null;
-  // Reused scratch for the 32-float (128-byte) uniform block: viewProj +
-  // clipBoxMin/Max + sectionPlane + clipFlags. `clipFlags` is a u32 view aliasing
-  // floats 28-31 (byte 112): bit 0 = sectionEnabled, bit 1 = flipped, bit 2 = clipBox.
-  private readonly uniformScratch = new Float32Array(32);
-  private readonly clipFlags = new Uint32Array(this.uniformScratch.buffer, 112, 4);
+  // Flat meshes each bind a dynamic 256-byte slot: RTE view projection +
+  // model linear transform + clip state + split drawable origin. A single
+  // uniform rewritten in a loop would make every draw observe the last mesh.
+  private readonly uniformScratch = new Float32Array(64);
+  private readonly clipFlags = new Uint32Array(this.uniformScratch.buffer, 44 * 4, 4);
   private readonly instancedUniformScratch = new Float32Array(40);
   private readonly instancedClipFlags = new Uint32Array(this.instancedUniformScratch.buffer, 112, 4);
 
@@ -114,12 +114,11 @@ export class Picker {
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
     });
 
-    // Uniform buffer: viewProj (16 floats) + clipBoxMin (vec4) + clipBoxMax (vec4)
-    // + sectionPlane (vec4) + clipFlags (vec4<u32>) = 32 floats = 128 bytes. The
-    // picker mirrors the main render's section plane + crop box so clipped-away
-    // geometry is unpickable, not just invisible.
+    // One dynamically-offset uniform slot per flat mesh. The buffer carries
+    // `maxMeshes` slots so the command encoder can bind the immutable payload
+    // for each draw after all queue writes have completed.
     this.uniformBuffer = this.device.createBuffer({
-      size: 128,
+      size: this.maxMeshes * 256,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     this.instancedUniformBuffer = this.device.createBuffer({
@@ -138,13 +137,14 @@ export class Picker {
     const shaderModule = this.device.createShaderModule({
       code: `
         struct Uniforms {
-          viewProj: mat4x4<f32>,
+          viewProj: mat4x4<f32>, // translation-free RTE projection
+          model: mat4x4<f32>,    // linear transform; translation lives in originHigh/Low
           clipBoxMin: vec4<f32>,   // xyz = min corner (world), w = pad
           clipBoxMax: vec4<f32>,   // xyz = max corner (world), w = pad
           sectionPlane: vec4<f32>, // xyz = plane normal, w = plane distance
           clipFlags: vec4<u32>,    // x: bit0 sectionEnabled, bit1 flipped, bit2 clipBox
-          cameraHigh: vec4<f32>,
-          cameraLow: vec4<f32>,
+          originHigh: vec4<f32>,
+          originLow: vec4<f32>,
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
         @binding(1) @group(0) var<storage, read> expressIds: array<u32>;
@@ -163,9 +163,10 @@ export class Picker {
         @vertex
         fn vs_main(input: VertexInput, @builtin(instance_index) instanceIndex: u32) -> VertexOutput {
           var output: VertexOutput;
-          // Identity transform - positions are already in world space
-          output.position = uniforms.viewProj * vec4<f32>(input.position, 1.0);
-          output.worldPos = input.position;
+          let linear = (uniforms.model * vec4<f32>(input.position, 0.0)).xyz;
+          let relative = (linear + uniforms.originHigh.xyz) + uniforms.originLow.xyz;
+          output.position = uniforms.viewProj * vec4<f32>(relative, 1.0);
+          output.worldPos = relative;
           // Look up expressId from storage buffer using instance index
           output.objectId = expressIds[instanceIndex];
           return output;
@@ -195,7 +196,12 @@ export class Picker {
     });
 
     this.pipeline = this.device.createRenderPipeline({
-      layout: 'auto',
+      layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.device.createBindGroupLayout({
+        entries: [
+          { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 224 } },
+          { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+        ],
+      })] }),
       vertex: {
         module: shaderModule,
         entryPoint: 'vs_main',
@@ -228,14 +234,13 @@ export class Picker {
       },
     });
 
-    // Create bind group using the pipeline's auto-generated layout
-    // IMPORTANT: Must use getBindGroupLayout() when pipeline uses layout: 'auto'
+    // Dynamic uniform offset selects the mesh-specific RTE origin/transform.
     this.bindGroup = this.device.createBindGroup({
       layout: this.pipeline.getBindGroupLayout(0),
       entries: [
         {
           binding: 0,
-          resource: { buffer: this.uniformBuffer },
+          resource: { buffer: this.uniformBuffer, size: 224 },
         },
         {
           binding: 1,
@@ -258,6 +263,8 @@ export class Picker {
           clipBoxMax: vec4<f32>,   // xyz = max corner (world), w = pad
           sectionPlane: vec4<f32>, // xyz = plane normal, w = plane distance
           clipFlags: vec4<u32>,    // x: bit0 sectionEnabled, bit1 flipped, bit2 clipBox
+          cameraHigh: vec4<f32>,
+          cameraLow: vec4<f32>,
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
         struct VertexInput { @location(0) position: vec3<f32> }
@@ -477,7 +484,9 @@ export class Picker {
     // [0, 1] (1 = near, 0 = far) — same NDC convention as the camera
     // raycaster, so MathUtils.transformPoint with the inverse viewProj
     // gives the world hit position directly.
-    const rteDecoded = decoded.kind === 'point' || decoded.kind === 'instanced';
+    // Flat meshes, points and instanced occurrences all rasterise in the
+    // captured RTE frame. Decode depth with that same immutable projection.
+    const rteDecoded = decoded.kind === 'mesh' || decoded.kind === 'point' || decoded.kind === 'instanced';
     const projectedWorld = unprojectPickSample(
       rteDecoded && pointRteSnapshot ? pointRteSnapshot.getViewProjection().m : viewProj,
       sampleX,
@@ -504,8 +513,43 @@ export class Picker {
    * pick uniform and upload it. Layout + flag bits live in {@link packPickUniforms}.
    */
   private writePickUniforms(viewProj: Float32Array, clip?: PickClipState | null): void {
-    packPickUniforms(viewProj, clip, this.uniformScratch, this.clipFlags);
+    this.uniformScratch.fill(0);
+    this.uniformScratch.set(viewProj, 0);
+    this.uniformScratch[16] = 1;
+    this.uniformScratch[21] = 1;
+    this.uniformScratch[26] = 1;
+    this.uniformScratch[31] = 1;
+    packPickClip(clip, this.uniformScratch, this.clipFlags, 32);
     this.device.queue.writeBuffer(this.uniformBuffer, 0, this.uniformScratch);
+  }
+
+  /** Write one immutable dynamic-uniform slot for a flat mesh RTE pick draw. */
+  private writeFlatPickUniform(
+    mesh: Mesh,
+    snapshot: RelativeToEyeSnapshot,
+    clip: PickClipState | null | undefined,
+    slot: number,
+  ): void {
+    const out = this.uniformScratch;
+    out.fill(0);
+    out.set(snapshot.getViewProjection().m, 0);
+    out.set(mesh.transform.m, 16);
+    packPickClip(clip, out, this.clipFlags, 32);
+    const camera = snapshot.getCameraWorld();
+    if (clip?.clipBox?.enabled) {
+      out[32] = clip.clipBox.min[0] - camera[0]; out[33] = clip.clipBox.min[1] - camera[1]; out[34] = clip.clipBox.min[2] - camera[2];
+      out[36] = clip.clipBox.max[0] - camera[0]; out[37] = clip.clipBox.max[1] - camera[1]; out[38] = clip.clipBox.max[2] - camera[2];
+    }
+    if (clip?.sectionPlane) {
+      const normal = clip.sectionPlane.normal;
+      out[43] = clip.sectionPlane.distance - (camera[0] * normal[0] + camera[1] * normal[1] + camera[2] * normal[2]);
+    }
+    snapshot.packDrawableOrigin(
+      mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]],
+      out,
+      48,
+    );
+    this.device.queue.writeBuffer(this.uniformBuffer, slot * 256, out);
   }
 
   /** V2 instance pick uniform: RTE projection plus clip inputs rebased in f64. */
@@ -686,7 +730,6 @@ export class Picker {
     if (meshes.length > this.maxMeshes) {
       this.resizeExpressIdBuffer(meshes.length);
     }
-    this.writePickUniforms(viewProj, clip);
     const meshIndexArray = new Uint32Array(meshes.length);
     for (let i = 0; i < meshes.length; i++) {
       if (meshes[i]) meshIndexArray[i] = i + 1;  // +1 so 0 means no hit
@@ -694,10 +737,18 @@ export class Picker {
     this.device.queue.writeBuffer(this.expressIdBuffer, 0, meshIndexArray);
 
     pass.setPipeline(this.pipeline);
-    pass.setBindGroup(0, this.bindGroup);
     for (let i = 0; i < meshes.length; i++) {
       const mesh = meshes[i];
       if (!mesh) continue;
+      if (pointRteSnapshot) {
+        this.writeFlatPickUniform(mesh, pointRteSnapshot, clip, i);
+      } else {
+        // Compatibility for direct Picker callers that predate RTE snapshots.
+        // Renderer/PickingManager always supplies one so production draws use
+        // the per-mesh immutable RTE slots above.
+        this.writePickUniforms(viewProj, clip);
+      }
+      pass.setBindGroup(0, this.bindGroup, [i * 256]);
       pass.setVertexBuffer(0, mesh.vertexBuffer);
       pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
       pass.drawIndexed(mesh.indexCount, 1, 0, 0, i);
@@ -742,6 +793,7 @@ export class Picker {
   private resizeExpressIdBuffer(newSize: number): void {
     // Destroy old buffer
     this.expressIdBuffer.destroy();
+    this.uniformBuffer.destroy();
 
     // Increase maxMeshes with 50% headroom for future growth
     this.maxMeshes = Math.ceil(newSize * 1.5);
@@ -751,6 +803,10 @@ export class Picker {
       size: this.maxMeshes * 4, // 4 bytes per u32
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
+    this.uniformBuffer = this.device.createBuffer({
+      size: this.maxMeshes * 256,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
 
     // Recreate bind group with new buffer
     this.bindGroup = this.device.createBindGroup({
@@ -758,7 +814,7 @@ export class Picker {
       entries: [
         {
           binding: 0,
-          resource: { buffer: this.uniformBuffer },
+          resource: { buffer: this.uniformBuffer, size: 224 },
         },
         {
           binding: 1,

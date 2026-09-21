@@ -236,9 +236,7 @@ export class PickingManager {
         // The point pass projects in this immutable RTE frame. Never decode a
         // delayed readback with a later camera placement: that turns a valid
         // click into an absolute-coordinate jump after navigation.
-        const pointRteSnapshot = (pointNodes?.length || this.scene.getInstancedTemplates()?.length)
-            ? capturePointRteSnapshot(this.camera)
-            : undefined;
+        const pointRteSnapshot = capturePointRteSnapshot(this.camera);
         const result = await this.picker.pick(
             scaledX,
             scaledY,
@@ -370,9 +368,7 @@ export class PickingManager {
         meshes = meshes.filter((m) => isEntityVisible(m.expressId, options?.hiddenIds, options?.isolatedIds));
         const viewProj = this.camera.getViewProjMatrix().m;
         const pointSnap = this.pointPickProvider?.() ?? null;
-        const pointRteSnapshot = (pointSnap?.nodes.length || this.scene.getInstancedTemplates().length)
-            ? capturePointRteSnapshot(this.camera)
-            : undefined;
+        const pointRteSnapshot = capturePointRteSnapshot(this.camera);
         const hits = await this.picker.pickRect(
             sx0, sy0, sx1, sy1,
             this.canvas.width, this.canvas.height,

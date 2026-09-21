@@ -54,6 +54,17 @@ export function usePointCloudSync(params: UsePointCloudSyncParams): void {
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
+    // `isInitialized` is the Viewport's React flag and outlives the GPU
+    // objects: after a device loss the renderer tears its point-cloud
+    // pipeline down and `setPointClouds` throws `Renderer not initialized`.
+    // Thrown from an effect that is an uncaught error, and React unmounts the
+    // whole root — a blank page with the store still holding the models. The
+    // renderer's own readiness is the truth here; every other upload path
+    // already skips on device loss and lets recovery rebuild (#4885, #5147).
+    if (typeof renderer.isReady === 'function' && !renderer.isReady()) {
+      console.warn('[usePointCloudSync] renderer not ready (device lost?); skipping point-cloud sync until recovery re-inits');
+      return;
+    }
 
     const assets = pointClouds ?? [];
     renderer.setPointClouds(assets);

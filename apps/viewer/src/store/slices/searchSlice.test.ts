@@ -201,9 +201,7 @@ describe('searchSlice — filter rule actions', () => {
     assert.strictEqual(s.searchFilterError, null);
   });
 
-  it('setFilterCombinator / setFilterLimit patch the active group / filter state', () => {
-    store.getState().setFilterCombinator('OR');
-    assert.strictEqual(store.getState().searchFilter.groups[0].combinator, 'OR');
+  it('setFilterLimit patches the filter state', () => {
     store.getState().setFilterLimit(100);
     assert.strictEqual(store.getState().searchFilter.limit, 100);
   });
@@ -250,7 +248,11 @@ describe('searchSlice — filter rule actions', () => {
   });
 
   it('clearFilterRules empties the active group but preserves its combinator + limit', () => {
-    store.getState().setFilterCombinator('OR');
+    // `setFilterCombinator` was removed with its last caller (#5138 PR 5 —
+    // `FilterGroupEditor.tsx` now owns combinator edits through its own
+    // `onChange` updater); seed the group's combinator directly to keep
+    // this test's own assertion — clearFilterRules leaves it alone.
+    store.setState((s) => ({ searchFilter: { ...s.searchFilter, groups: [{ ...s.searchFilter.groups[0], combinator: 'OR' }] } }));
     store.getState().setFilterLimit(123);
     store.getState().addFilterRule({
       kind: 'ifcType' as const, values: ['IfcWall'], op: 'in' as const,
@@ -279,75 +281,26 @@ describe('searchSlice — filter groups (#4904)', () => {
     store = createStore<SearchSlice>((set, get, api) => createSearchSlice(set, get, api));
   });
 
-  it('addFilterGroup appends an empty AND group and makes it active', () => {
-    store.getState().addFilterRule({ kind: 'ifcType', values: ['IfcWall'], op: 'in' });
-    store.getState().addFilterGroup();
-    const s = store.getState();
-    assert.strictEqual(s.searchFilter.groups.length, 2);
-    assert.deepStrictEqual(s.searchFilter.groups[1], { rules: [], combinator: 'AND' });
-    assert.strictEqual(s.searchFilterActiveGroup, 1);
-  });
+  // `addFilterGroup`/`removeFilterGroup` were removed with their last
+  // production caller (#5138 PR 5): `FilterGroupEditor.tsx` now adds/
+  // removes groups itself through its controlled `onChange` updater, not a
+  // store action. The behavioural invariants they carried (new group
+  // becomes active; a PRECEDING removal keeps the SAME logical group
+  // active; removing the active group picks a neighbour; the last group
+  // can never be dropped) moved to `FilterGroupEditor.test.tsx`, which
+  // asserts them on rendered output instead.
 
-  it('rule actions after addFilterGroup target the NEW group, leaving group 0 untouched', () => {
-    store.getState().addFilterRule({ kind: 'ifcType', values: ['IfcWall'], op: 'in' });
-    store.getState().addFilterGroup();
-    store.getState().addFilterRule({ kind: 'ifcType', values: ['IfcDoor'], op: 'in' });
-    const groups = store.getState().searchFilter.groups;
-    assert.strictEqual(groups[0].rules.length, 1);
-    assert.strictEqual(groups[0].rules[0].kind, 'ifcType');
-    if (groups[0].rules[0].kind === 'ifcType') assert.deepStrictEqual(groups[0].rules[0].values, ['IfcWall']);
-    assert.strictEqual(groups[1].rules.length, 1);
-    if (groups[1].rules[0].kind === 'ifcType') assert.deepStrictEqual(groups[1].rules[0].values, ['IfcDoor']);
-  });
-
-  it('removeFilterGroup refuses to drop the last remaining group', () => {
-    const before = store.getState().searchFilter;
-    store.getState().removeFilterGroup(0);
-    assert.strictEqual(store.getState().searchFilter, before);
-    assert.strictEqual(store.getState().searchFilter.groups.length, 1);
-  });
-
-  it('removeFilterGroup drops a group and clamps the active index', () => {
-    store.getState().addFilterGroup(); // active = 1
-    store.getState().addFilterGroup(); // active = 2
-    store.getState().removeFilterGroup(2);
-    const s = store.getState();
-    assert.strictEqual(s.searchFilter.groups.length, 2);
-    assert.strictEqual(s.searchFilterActiveGroup, 1);
-  });
-
-  it('removeFilterGroup keeps the SAME logical group active when a PRECEDING group is removed (#4987 review)', () => {
-    // A/B/C, B active. Removing A must land on B (now index 0), not
-    // re-clamp the stale numeric index 1 onto whatever slid into it (C).
-    store.getState().addFilterRule({ kind: 'ifcType', values: ['A'], op: 'in' }); // group 0 = "A"
-    store.getState().addFilterGroup();
-    store.getState().addFilterRule({ kind: 'ifcType', values: ['B'], op: 'in' }); // group 1 = "B"
-    store.getState().addFilterGroup();
-    store.getState().addFilterRule({ kind: 'ifcType', values: ['C'], op: 'in' }); // group 2 = "C"
-    store.getState().setActiveFilterGroup(1); // "B" is active
-    store.getState().removeFilterGroup(0); // remove "A"
-
-    const s = store.getState();
-    assert.strictEqual(s.searchFilter.groups.length, 2);
-    assert.strictEqual(s.searchFilterActiveGroup, 0);
-    const activeRule = s.searchFilter.groups[s.searchFilterActiveGroup].rules[0];
-    assert.strictEqual(activeRule.kind, 'ifcType');
-    if (activeRule.kind === 'ifcType') assert.deepStrictEqual(activeRule.values, ['B']);
-  });
-
-  it('removeFilterGroup picks a neighbour when the ACTIVE group itself is removed', () => {
-    store.getState().addFilterGroup(); // active = 1
-    store.getState().addFilterGroup(); // active = 2
-    store.getState().removeFilterGroup(2); // removes the active group itself
-    const s = store.getState();
-    assert.strictEqual(s.searchFilter.groups.length, 2);
-    assert.strictEqual(s.searchFilterActiveGroup, 1);
-  });
-
-  it('clearAllFilterGroups empties every group, not just the active one', () => {
-    store.getState().addFilterRule({ kind: 'ifcType', values: ['IfcWall'], op: 'in' });
-    store.getState().addFilterGroup();
-    store.getState().addFilterRule({ kind: 'ifcType', values: ['IfcDoor'], op: 'in' });
+  it('clearAllFilterGroups empties every group, not just a multi-group filter’s active one', () => {
+    store.setState({
+      searchFilter: {
+        groups: [
+          { rules: [{ kind: 'ifcType', values: ['IfcWall'], op: 'in' }], combinator: 'AND' },
+          { rules: [{ kind: 'ifcType', values: ['IfcDoor'], op: 'in' }], combinator: 'AND' },
+        ],
+        limit: 500,
+      },
+      searchFilterActiveGroup: 1,
+    });
     store.getState().clearAllFilterGroups();
     const s = store.getState();
     assert.deepStrictEqual(s.searchFilter.groups, [{ rules: [], combinator: 'AND' }]);

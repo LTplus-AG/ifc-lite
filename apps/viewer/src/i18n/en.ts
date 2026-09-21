@@ -35,6 +35,7 @@ import { documentMenuEn } from './catalogues/document-menu.en';
 import { drawingUnderlayEn } from './catalogues/drawing-underlay.en';
 import { hierarchyEn } from './catalogues/hierarchy.en';
 import { idsPanelEn } from './catalogues/ids-panel.en';
+import { validationEditorEn } from './catalogues/validation-editor.en';
 import { keyboardShortcutsEn } from './catalogues/keyboard-shortcuts.en';
 import { layersPanelEn } from './catalogues/layers-panel.en';
 import { landXmlEn } from './catalogues/landxml.en';
@@ -122,6 +123,7 @@ export const en = {
   ...extensionsFlavorsEn,
   ...extensionsPanelsEn,
   ...idsPanelEn,
+  ...validationEditorEn,
   ...chatEn,
   ...chatByokEn,
   ...clashPanelEn,

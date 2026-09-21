@@ -86,6 +86,27 @@ describe('FederationRegistry - toGlobalId / fromGlobalId round-trip', () => {
     assert.throws(() => reg.publishRange('landxml', 13, 13), /Invalid published range/);
   });
 
+  it('rejects late source growth and bounds explicitly owned overlay headroom', () => {
+    const reg = new FederationRegistry();
+    reg.reserveModel('landxml', 2);
+    reg.publishRange('landxml', 1, 2);
+    reg.publishOverlayRange('landxml', 3, 1_000_002);
+    assert.deepEqual(reg.fromGlobalId(1_000_002), { modelId: 'landxml', expressId: 1_000_002 });
+    assert.throws(() => reg.publishOverlayRange('landxml', 1_000_003, 1_000_003), /Invalid overlay range/);
+    assert.throws(() => reg.publishRange('landxml', 3, 3), /Invalid published range/);
+  });
+
+  it('removal and reload burn only the removed reservation and preserve survivors', () => {
+    const reg = new FederationRegistry();
+    reg.reserveModel('first', 4);
+    reg.publishRange('first', 1, 2);
+    const survivor = reg.registerModel('survivor', 2);
+    reg.unregisterModel('first');
+    const reloaded = reg.reserveModel('first', 4);
+    assert.ok(reloaded > survivor);
+    assert.deepEqual(reg.fromGlobalId(survivor + 2), { modelId: 'survivor', expressId: 2 });
+  });
+
   it('round-trips expressId -> globalId -> {modelId, expressId} across multiple models', () => {
     const reg = new FederationRegistry();
     reg.registerModel('modelA', 100); // offset 0

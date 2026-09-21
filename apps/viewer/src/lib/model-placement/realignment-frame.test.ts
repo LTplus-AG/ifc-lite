@@ -6,14 +6,17 @@ import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
-import type { ModelGeoref } from '@/hooks/ingest/federationAlign';
+import type { ModelSpatialPlacement } from '@/hooks/ingest/federationAlign';
+import { spatialReferenceFromIfc } from '@/lib/geo/ifc-spatial-reference';
 import { emptyPlacementState } from './state';
 import { commitRealignmentFrame } from './realignment-frame';
 
-const georef: ModelGeoref = {
-  mapConversion: { id: 1, sourceCRS: 2, targetCRS: 3, eastings: 200, northings: 300,
-    orthogonalHeight: 4, xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1 },
-  projectedCRS: { id: 4, name: 'EPSG:2056' }, lengthUnitScale: 1,
+const georef: ModelSpatialPlacement = {
+  spatialReference: spatialReferenceFromIfc({
+    mapConversion: { id: 1, sourceCRS: 2, targetCRS: 3, eastings: 200, northings: 300,
+      orthogonalHeight: 4, xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1 },
+    projectedCRS: { id: 4, name: 'EPSG:2056' }, lengthUnitScale: 1,
+  }),
 };
 for (const replacement of [false, true]) it(`refuses the old frame after a pending realignment loses its federation (replacement: ${replacement}, #4226)`, async () => {
   useViewerStore.setState({ ...fixtureModels(fixtureModel('old')), modelPlacement: emptyPlacementState() });
@@ -44,9 +47,13 @@ it('keeps the same coordinate frame across renamed or revised anchors (#4226)', 
   useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('new'), sourceFingerprint: 'new.ifc:xyz' }), modelPlacement: emptyPlacementState() });
   commitRealignmentFrame(useViewerStore.getState().models, georef);
   assert.equal(useViewerStore.getState().modelPlacement.realignedFrameKey, frame);
-  commitRealignmentFrame(useViewerStore.getState().models, { ...georef, lengthUnitScale: 0.001 });
+  commitRealignmentFrame(useViewerStore.getState().models, { ...georef, spatialReference: {
+    ...georef.spatialReference, localToProjected: { ...georef.spatialReference.localToProjected!, scaleX: 0.001 },
+  } });
   assert.notEqual(useViewerStore.getState().modelPlacement.realignedFrameKey, frame);
   // An IfcMapConversionScaled factor changes the frame as much as Scale does (#4615).
-  commitRealignmentFrame(useViewerStore.getState().models, { ...georef, mapConversion: { ...georef.mapConversion!, factorZ: 2 } });
+  commitRealignmentFrame(useViewerStore.getState().models, { ...georef, spatialReference: {
+    ...georef.spatialReference, localToProjected: { ...georef.spatialReference.localToProjected!, scaleZ: 2 },
+  } });
   assert.notEqual(useViewerStore.getState().modelPlacement.realignedFrameKey, frame);
 });

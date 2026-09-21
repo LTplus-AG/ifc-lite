@@ -15,26 +15,20 @@ import { useCallback, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore, type FederatedModel } from '../store/index.js';
 import { layerStackEntry } from '../lib/layers/stack.js';
-import {
-  detectFormat,
-  parseFederatedIfcx,
-  type IfcDataStore,
-} from '@ifc-lite/parser';
+import { detectFormat, parseFederatedIfcx, type IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import { chooseSharedRtcOffset } from '@ifc-lite/geometry/world-frame';
 import { IfcQuery } from '@ifc-lite/query';
 import { buildSpatialIndexForModel } from '../utils/loadingUtils.js';
 import { calculateMeshBounds, createCoordinateInfo } from '../utils/localParsingUtils.js';
-import {
-  buildIfcxDataStore,
-  convertIfcxMeshes,
-} from './ingest/viewerModelIngest.js';
-import { extractModelGeoref, findReferenceGeorefModel } from './ingest/federationAlign.js';
+import { buildIfcxDataStore, convertIfcxMeshes } from './ingest/viewerModelIngest.js';
+import { extractModelSpatialPlacement, findReferenceSpatialModel } from './ingest/federationAlign.js';
 import { realignFederationModels } from './ingest/federationRealign.js';
 import { withModelRotationsUnbaked } from '../components/viewer/useModelRotationSync.js';
 import { convergeFederationRtcFrame } from './ingest/federationRtcRebase.js';
 import { toast } from '../components/ui/toast.js';
 import { acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
+import { realignFederatedPointClouds } from './ingest/pointCloudFederationLifecycle.js';
 
 /**
  * Extended data store type for IFCX (IFC5) files.
@@ -101,7 +95,7 @@ export function useIfcFederation(
   // their captured value before mutating, so a cancelled load A doesn't
   // overwrite progress for a newer load B that started after A's abort.
   // Mirrors the same pattern in useIfcLoader.ts.
-  const loadSessionRef = useRef(0);
+  const loadSessionRef = useRef(0), realignSessionRef = useRef(0);
 
   /**
    * Add a model to the federation (multi-model support)
@@ -220,28 +214,33 @@ export function useIfcFederation(
    * remove/reorder/anchor-change. Wire it to a "Re-align federation" button.
    */
   const realignFederation = useCallback(async (): Promise<void> => {
+    const realignSession = ++realignSessionRef.current;
     const state = useViewerStore.getState();
-    const allModels = Array.from(state.models.entries()) as Array<[string, FederatedModel]>;
-    if (allModels.length === 0) { toast.info('No models loaded — nothing to re-align.'); return; }
+    if (state.models.size === 0) { toast.info('No models loaded — nothing to re-align.'); return; }
 
-    const referenceSelection = findReferenceGeorefModel();
-    if (!referenceSelection) { toast.error('Cannot re-align: no model with valid georeferencing.'); return; }
-
-    // Snapshot georef edits once for the whole pass. Cross-CRS projection
-    // awaits can race new edits; re-reading here would mix coordinate frames
-    // across models. Apply a newer edit only on the next explicit realignment.
+    const referenceSelection = findReferenceSpatialModel();
+    if (!referenceSelection) {
+      realignFederatedPointClouds(null);
+      toast.error('Cannot re-align: no model with valid georeferencing.');
+      return;
+    }
+    // Snapshot edits: an awaited cross-CRS pass must never mix old and new frames.
     const georefMutations = state.georefMutations;
+    const selectedAnchor = state.models.get(referenceSelection.modelId);
+    if (!selectedAnchor) return;
     state.closeReposition();
-    // A model rotation must never be inside a `preAlignment` snapshot, so every
-    // model stays un-rotated for the whole pass; the declared headings are
-    // re-applied once on top of the new alignment (`useModelRotationSync`).
-    const { counts, anchorGeoref, movedModelIds } = await withModelRotationsUnbaked(() => realignFederationModels({
-      models: allModels,
+    // Keep rotations outside preAlignment; useModelRotationSync reapplies headings once.
+    const { counts, anchorGeoref, movedModelIds, stale } = await withModelRotationsUnbaked(() => realignFederationModels({
+      models: () => Array.from(useViewerStore.getState().models.entries()) as Array<[string, FederatedModel]>,
+      getModel: (modelId) => useViewerStore.getState().models.get(modelId),
       anchorModelId: referenceSelection.modelId,
-      anchorGeoref: referenceSelection.georef,
+      anchorModel: selectedAnchor,
+      anchorGeoref: referenceSelection.placement,
       resolveGeoref: (modelId, model) => (
-        model.ifcDataStore && model.geometryResult
-          ? extractModelGeoref(
+        model.geometryResult && model.spatialReference
+          ? { spatialReference: model.spatialReference, coordinateInfo: model.geometryResult.coordinateInfo }
+          : model.ifcDataStore && model.geometryResult
+            ? extractModelSpatialPlacement(
             model.ifcDataStore,
             model.geometryResult.coordinateInfo,
             georefMutations.get(modelId),
@@ -249,8 +248,9 @@ export function useIfcFederation(
           : null
       ),
       updateModel: state.updateModel,
+      isCurrent: () => realignSession === realignSessionRef.current,
     }));
-
+    if (stale || realignSession !== realignSessionRef.current) return; // Stale rollback must not publish frame/index/scan work.
     // Manual offsets remain explicit workspace vectors after re-alignment.
     // Picked anchors were cancelled above; exchange files must name the new frame.
     const frameCommitted = commitRealignmentFrame(state.models, anchorGeoref);
@@ -283,6 +283,8 @@ export function useIfcFederation(
       }
     }
 
+    realignFederatedPointClouds(findReferenceSpatialModel()?.placement ?? null);
+
     if (!frameCommitted) return; // Surviving geometry still needed the invalidation above.
     const messageParts: string[] = [];
     if (counts.aligned > 0) messageParts.push(`${counts.aligned} aligned`);
@@ -291,9 +293,9 @@ export function useIfcFederation(
     if (counts.failed > 0) messageParts.push(`${counts.failed} failed`);
     const summary = messageParts.length > 0 ? messageParts.join(', ') : 'no changes needed';
     if (counts.failed > 0) {
-      toast.error(`Federation re-aligned against "${anchorGeoref.projectedCRS.name}": ${summary}.`);
+      toast.error(`Federation re-aligned against "${anchorGeoref.spatialReference.horizontal?.id ?? 'unknown CRS'}": ${summary}.`);
     } else {
-      toast.success(`Federation re-aligned against "${anchorGeoref.projectedCRS.name}": ${summary}.`);
+      toast.success(`Federation re-aligned against "${anchorGeoref.spatialReference.horizontal?.id ?? 'unknown CRS'}": ${summary}.`);
     }
   }, []);
 
@@ -314,6 +316,7 @@ export function useIfcFederation(
       setIfcDataStore(null);
       setGeometryResult(null);
     }
+    realignFederatedPointClouds(findReferenceSpatialModel()?.placement ?? null);
   }, [storeRemoveModel, setIfcDataStore, setGeometryResult]);
 
   /**

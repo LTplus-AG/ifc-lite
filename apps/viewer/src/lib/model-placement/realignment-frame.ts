@@ -2,13 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore, type FederatedModel } from '@/store';
-import type { ModelGeoref } from '@/hooks/ingest/federationAlign';
+import type { ModelSpatialPlacement } from '@/hooks/ingest/federationAlign';
 import { georeferencedPlacementFrameKey } from './persistence';
 
 /** Re-alignment may replace model records while retaining their source/store
  * and geometry. A cleared, replaced or expanded federation is a different job. */
 export function commitRealignmentFrame(
-  models: ReadonlyMap<string, FederatedModel>, georef: ModelGeoref,
+  models: ReadonlyMap<string, FederatedModel>, georef: ModelSpatialPlacement,
 ): boolean {
   const current = useViewerStore.getState();
   if (current.models.size !== models.size || [...models].some(([id, model]) => {

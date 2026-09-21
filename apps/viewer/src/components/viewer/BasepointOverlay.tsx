@@ -13,10 +13,9 @@
  * pipeline collapses everything onto one point, you'll see all the markers
  * stacked.
  *
- * Origins are derived from each model's IfcMapConversion + the anchor's
- * MapConversion via `computeIfcOriginViewerPosition` — independent of any
- * vertex-baked alignment, so it stays correct after re-aligns and across
- * cross-CRS reprojections.
+ * Origins are derived from each model's neutral spatial reference — independent
+ * of vertex-baked alignment, so they stay correct after re-aligns and across
+ * cross-CRS reprojections without maintaining a second IFC conversion seam.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -25,10 +24,9 @@ import { getGlobalRenderer } from '@/hooks/useBCF';
 import {
   computeIfcOriginViewerPosition,
   type IfcOriginPlacement,
-  type ModelGeorefInput,
+  type IfcOriginFrame,
 } from '@/lib/geo/ifc-origin';
-import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
-import { selectAnchorGeoref } from '@/lib/geo/useAnchorGeoreference';
+import { extractModelSpatialPlacement, findReferenceSpatialModel } from '@/hooks/ingest/federationAlign';
 import type { FederatedModel } from '@/store/types';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { Renderer } from '@ifc-lite/renderer';
@@ -71,23 +69,12 @@ export function BasepointOverlay() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number | null>(null);
 
-  // Compute the anchor's georef input once per dependency change. Shares the
-  // "user-pinned anchor, else earliest-loaded model with a usable map-conversion
-  // georef" selection with the measure-tool readout and findReferenceGeorefModel.
-  const anchorInput = useMemo((): { id: string | null; input: ModelGeorefInput | null } => {
-    const selection = selectAnchorGeoref({ models, anchorModelIdOverride, georefMutations });
-    if (!selection) return { id: null, input: null };
-    const model = models.get(selection.modelId);
-    return {
-      id: selection.modelId,
-      input: {
-        coordinateInfo: selection.coordinateInfo,
-        mapConversion: selection.eff.mapConversion,
-        projectedCRS: selection.eff.projectedCRS,
-        lengthUnitScale: selection.eff.lengthUnitScale,
-        preAlignmentCoordinateInfo: model?.preAlignment?.coordinateInfo,
-      },
-    };
+  // The overlay must use the exact same canonical-anchor predicate as the
+  // federation. A display label is not a CRS identity and must not become one
+  // merely because a diagnostic overlay happened to read it.
+  const anchorInput = useMemo((): { id: string | null; input: IfcOriginFrame | null } => {
+    const selection = findReferenceSpatialModel();
+    return selection ? { id: selection.modelId, input: selection.placement } : { id: null, input: null };
   }, [models, anchorModelIdOverride, georefMutations]);
 
   // Recompute every model's IFC-origin viewer position when the inputs change.
@@ -106,16 +93,14 @@ export function BasepointOverlay() {
         if (!model.visible) continue;
         const ds = model.ifcDataStore;
         if (!ds) continue;
-        const eff = getEffectiveGeoreference(
+        const ownPlacement = extractModelSpatialPlacement(
           ds as IfcDataStore,
           model.geometryResult?.coordinateInfo,
           georefMutations.get(modelId),
         );
-        const modelInput: ModelGeorefInput = {
+        const modelInput: IfcOriginFrame = {
+          ...(ownPlacement ?? {}),
           coordinateInfo: model.geometryResult?.coordinateInfo,
-          mapConversion: eff?.mapConversion,
-          projectedCRS: eff?.projectedCRS,
-          lengthUnitScale: eff?.lengthUnitScale,
           preAlignmentCoordinateInfo: model.preAlignment?.coordinateInfo,
         };
         const anchorIsThis = anchorInput.id === modelId;

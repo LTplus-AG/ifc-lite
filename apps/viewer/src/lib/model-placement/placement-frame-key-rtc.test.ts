@@ -331,6 +331,19 @@ function savedUnder(disk: ReturnType<typeof storage>, frame: string): string | n
   return disk.getItem('ifc-lite:placements:v1:' + frame);
 }
 
+/** The serialized v1.47 georeferenced key, kept explicit so this migration
+ * test proves compatibility with data that was actually shipped, rather than
+ * deriving an old shape from the new spatial-reference identity. */
+function v147GeoreferencedFrameKey(eastings: number, rtc: { x: number; y: number; z: number }, rotation: number): string {
+  return JSON.stringify({
+    crs: { name: 'EPSG:2056', mapUnitScale: 1 },
+    conversion: { eastings, northings: 1200000, orthogonalHeight: 400,
+      xAxisAbscissa: 1, xAxisOrdinate: 0, scale: undefined,
+      factorX: undefined, factorY: undefined, factorZ: undefined },
+    lengthUnitScale: 1, originShift: { x: 0, y: 0, z: 0 }, rtc, rotation,
+  });
+}
+
 /** v1.47.0, the release before this fix, embedded the live RTC anchor in the
  * georeferenced base's `rtc` field BETWEEN `originShift` and `rotation`,
  * where `placementFrameKey` now folds it in as a trailing field
@@ -358,8 +371,7 @@ describe('restoreWorkspacePlacements falls back to the pre-#4936 (v1.47.0) legac
     });
 
     const state = useViewerStore.getState();
-    const { rotation, ...rest } = JSON.parse(placementFrameBaseKey(state)) as Record<string, unknown>;
-    const legacyKey = JSON.stringify({ ...rest, rtc: anchor, rotation });
+    const legacyKey = v147GeoreferencedFrameKey(2600000, anchor, 0.5);
     assert.notEqual(legacyKey, placementFrameKey(state), 'sanity: the legacy shape differs from the current key');
 
     const legacyManifest = makePlacementManifest(state.models,
@@ -383,8 +395,7 @@ describe('restoreWorkspacePlacements falls back to the pre-#4936 (v1.47.0) legac
       return { models };
     });
     const unpinned = useViewerStore.getState();
-    const { rotation, ...rest } = JSON.parse(placementFrameBaseKey(unpinned)) as Record<string, unknown>;
-    const legacyKey = JSON.stringify({ ...rest, rtc: anchor, rotation });
+    const legacyKey = v147GeoreferencedFrameKey(2600000, anchor, 0.5);
     const disk = storage();
     disk.setItem('ifc-lite:placements:v1:' + legacyKey, JSON.stringify(makePlacementManifest(unpinned.models,
       new Map([['a', { translation: [7, 0, 0], rotation: { angle: 0, pivot: [0, 0, 0] }, locked: false }]]), legacyKey)));
@@ -395,7 +406,7 @@ describe('restoreWorkspacePlacements falls back to the pre-#4936 (v1.47.0) legac
     // derivable from the model's own georef, but its manifest describes the
     // frame the workspace was re-aligned AWAY from.
     const pinned = { ...unpinned, modelPlacement: { ...unpinned.modelPlacement,
-      realignedFrameKey: JSON.stringify({ ...rest, crs: { name: 'EPSG:3857', mapUnitScale: 1 }, rotation }) } };
+      realignedFrameKey: JSON.stringify({ explicitTarget: 'EPSG:3857' }) } };
     assert.notEqual(placementFrameKey(pinned), placementFrameKey(unpinned), 'sanity: the pin changes the current key');
     assert.equal(restoreWorkspacePlacements(disk, pinned).size, 0,
       'a pre-fix manifest for the un-pinned georef must not be applied inside the re-aligned frame');

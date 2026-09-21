@@ -89,9 +89,14 @@
  * any CRS whose MapUnit isn't already the metre.
  */
 
-import type { ModelGeoref } from './federationAlign.js';
-import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from '../../lib/geo/geo-scale.js';
-import { effectiveMapConversionForGeometry } from '../../lib/geo/map-absolute.js';
+import {
+  localViewerToProjected,
+  projectedToLocalViewer,
+  resolveSpatialPlacement,
+  type ModelSpatialReference,
+  type SpatialAffineTransform,
+} from '@ifc-lite/geometry';
+import type { ModelSpatialPlacement } from './federationAlign.js';
 import { totalYupOffset } from '../../lib/geo/coordinate-frame.js';
 
 export interface MapConversionParams {
@@ -106,6 +111,26 @@ export interface MapConversionParams {
   factorZ?: number;
 }
 
+/** Convert the legacy IFC-shaped test/input record to the one neutral maths home. */
+function spatialReferenceFromMapConversion(params: MapConversionParams): ModelSpatialReference {
+  const scale = params.scale ?? 1;
+  return {
+    source: { axes: ['east', 'up', 'south'], horizontalUnitToMetres: 1, verticalUnitToMetres: 1 },
+    localToProjected: {
+      kind: 'local-projected-affine',
+      eastings: params.eastings,
+      northings: params.northings,
+      orthogonalHeight: params.orthogonalHeight,
+      xAxisAbscissa: params.xAxisAbscissa ?? 1,
+      xAxisOrdinate: params.xAxisOrdinate ?? 0,
+      scaleX: scale * (params.factorX || 1),
+      scaleY: scale * (params.factorY || 1),
+      scaleZ: scale * (params.factorZ || 1),
+    },
+    confidence: 'declared',
+  };
+}
+
 /** Normalize the (possibly non-unit) XAxisAbscissa/XAxisOrdinate direction
  *  vector to unit length, as `GeoReference::sanitize_transform` in
  *  `rust/core/src/georef.rs` does for a usable axis — IfcMapConversion's axis
@@ -118,18 +143,9 @@ function normalizeAxis(rawA: number, rawB: number): { a: number; b: number } | n
   return { a: rawA / len, b: rawB / len };
 }
 
-type AxisScales = { x: number; y: number; z: number };
-
 /** A ~0 or non-finite axis scale collapses or poisons that axis. */
-function usableScales(s: AxisScales): boolean {
+function usableScales(s: { x: number; y: number; z: number }): boolean {
   return [s.x, s.y, s.z].every((value) => Number.isFinite(value) && Math.abs(value) >= 1e-12);
-}
-
-/** Scale x Factor per axis (an absent or zero factor reads as 1), or null when unusable. */
-function axisScales(params: MapConversionParams): AxisScales | null {
-  const scale = params.scale ?? 1;
-  const s = { x: scale * (params.factorX || 1), y: scale * (params.factorY || 1), z: scale * (params.factorZ || 1) };
-  return usableScales(s) ? s : null;
 }
 
 /**
@@ -147,22 +163,8 @@ export function applyMapConversion(
   y: number,
   z: number,
 ): { e: number; n: number; h: number } | null {
-  const axis = normalizeAxis(params.xAxisAbscissa ?? 1, params.xAxisOrdinate ?? 0);
-  if (!axis) return null;
-  // Reject a ~0 Scale the same way the inverse does. Without this the
-  // forward map stays "successful" while collapsing every local point onto
-  // (Eastings, Northings, OrthogonalHeight) — a whole cloud silently
-  // stacked on one spot reads as a placement bug, where a null reads as
-  // the malformed IfcMapConversion it actually is.
-  const scales = axisScales(params);
-  if (!scales) return null;
-  const { x: scaleX, y: scaleY, z: scaleZ } = scales;
-  const { a, b } = axis;
-  return {
-    e: params.eastings + a * scaleX * x - b * scaleY * y,
-    n: params.northings + b * scaleX * x + a * scaleY * y,
-    h: params.orthogonalHeight + scaleZ * z,
-  };
+  const projected = localViewerToProjected(spatialReferenceFromMapConversion(params), [x, z, -y]);
+  return projected ? { e: projected[0], n: projected[1], h: projected[2] } : null;
 }
 
 /**
@@ -182,19 +184,8 @@ export function invertMapConversion(
   n: number,
   h: number,
 ): { x: number; y: number; z: number } | null {
-  const axis = normalizeAxis(params.xAxisAbscissa ?? 1, params.xAxisOrdinate ?? 0);
-  if (!axis) return null;
-  const scales = axisScales(params);
-  if (!scales) return null;
-  const { x: scaleX, y: scaleY, z: scaleZ } = scales;
-  const { a, b } = axis;
-  const dE = e - params.eastings;
-  const dN = n - params.northings;
-  return {
-    x: (a * dE + b * dN) / scaleX,
-    y: (-b * dE + a * dN) / scaleY,
-    z: (h - params.orthogonalHeight) / scaleZ,
-  };
+  const local = projectedToLocalViewer(spatialReferenceFromMapConversion(params), [e, n, h]);
+  return local ? { x: local[0], y: -local[2], z: local[1] } : null;
 }
 
 /**
@@ -253,8 +244,8 @@ export interface PointCloudAlignmentTransform {
  * Compute the point-cloud alignment transform for a model's georeference.
  *
  * `georef` is exactly the object `federationAlign.ts`'s
- * `findReferenceGeorefModel()` already resolves for the loaded model
- * (or federation anchor) — the same `ModelGeoref` used to align a second
+ * `findReferenceSpatialModel()` already resolves for the loaded model
+ * (or federation anchor) — the same neutral placement used to align a second
  * federated IFC model into the reference frame. Returns `null` when the
  * conversion is unusable (degenerate axis direction or ~zero scale) so
  * the caller can hide/disable the alignment toggle.
@@ -268,33 +259,55 @@ export interface PointCloudAlignmentTransform {
  * Callers that ingest E57/PCD/PLY/PTS/XYZ MUST pass `'metre'` explicitly.
  */
 export function computePointCloudAlignment(
-  georef: ModelGeoref,
+  placement: ModelSpatialPlacement,
   sourceUnit: PointCloudSourceUnit = 'mapUnit',
+  sourceSpatialReference?: ModelSpatialReference,
 ): PointCloudAlignmentTransform | null {
-  const lengthUnitScale = georef.lengthUnitScale ?? 1;
-  const mapUnitScale = resolveMapUnitToMetreScale(georef.projectedCRS.mapUnitScale, lengthUnitScale);
+  const spatialReference = placement.spatialReference;
+  const operation = spatialReference.localToProjected;
+  const mapUnitScale = typeof spatialReference.sourceMetadata?.mapUnitToMetres === 'number'
+    ? spatialReference.sourceMetadata.mapUnitToMetres : 1;
   if (!(mapUnitScale > 0)) return null;
-  // Map-absolute geometry (#2526): a reference model whose geometry already
-  // sits at the declared anchor lives in the SAME absolute frame as the scan,
-  // so the alignment reduces to the viewer shift alone — inverting the
-  // authored conversion would subtract the anchor twice and rotate the cloud
-  // off the model it was scanned against.
-  const conv = effectiveMapConversionForGeometry(
-    georef.mapConversion,
-    mapUnitScale,
-    georef.coordinateInfo,
-  );
-  const effectiveScales = getEffectiveAxisScales(conv, mapUnitScale, lengthUnitScale);
+  if (!operation) return null;
+  const effectiveScales = { x: operation.scaleX, y: operation.scaleY, z: operation.scaleZ };
   if (!usableScales(effectiveScales)) return null;
   const { x: scaleX, y: scaleY, z: scaleZ } = effectiveScales;
-
-  const rawA = conv.xAxisAbscissa ?? 1;
-  const rawB = conv.xAxisOrdinate ?? 0;
+  const rawA = operation.xAxisAbscissa;
+  const rawB = operation.xAxisOrdinate;
   const axis = normalizeAxis(rawA, rawB);
   if (!axis) return null;
   const { a, b } = axis;
 
-  const off = totalYupOffset(georef.coordinateInfo);
+  const off = totalYupOffset(placement.coordinateInfo);
+
+  // A CRS-bearing scan has its own native axis order and independent
+  // horizontal/vertical units. Resolve that native frame through the same
+  // neutral f64 placement used by federated models instead of treating every
+  // decoder tuple as metre East/North/Height. The target frame offset folds
+  // the viewer origin into the decode offset, retaining a zero-translation
+  // GPU matrix and therefore sub-centimetre precision at map magnitudes.
+  if (sourceSpatialReference) {
+    const resolved = resolveSpatialPlacement(sourceSpatialReference, spatialReference, {
+      targetFrameOffset: off,
+    });
+    if (!resolved.ok) return null;
+    const projectedOrigin = localViewerToProjected(spatialReference, [0, 0, 0], off);
+    const decodeOriginOffset = projectedOrigin
+      ? projectedToLocalViewer(sourceSpatialReference, projectedOrigin)
+      : null;
+    if (!decodeOriginOffset) return null;
+    return {
+      decodeOriginOffset,
+      decodeOriginOffsetUnit: sourceUnit,
+      alignedMatrix: matrixFromNativeScanTransform(resolved.placement.sourceToFederation),
+      unalignedMatrix: new Float64Array([
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        decodeOriginOffset[0], decodeOriginOffset[2], -decodeOriginOffset[1], 1,
+      ]),
+    };
+  }
 
   // Fold the ENTIRE viewer shift into the decode-time offset (see module
   // doc, "Precision"): the decode offset is the map-space position of the
@@ -310,26 +323,11 @@ export function computePointCloudAlignment(
   // coordinates are stored in; `'metre'` (every other format) keeps it as
   // metres, since none of those formats share LAS/LAZ's MapUnit
   // convention.
-  const originMap = applyMapConversion(
-    {
-      eastings: conv.eastings * mapUnitScale,
-      northings: conv.northings * mapUnitScale,
-      orthogonalHeight: conv.orthogonalHeight * mapUnitScale,
-      xAxisAbscissa: a,
-      xAxisOrdinate: b,
-      scale: 1,
-      factorX: scaleX,
-      factorY: scaleY,
-      factorZ: scaleZ,
-    },
-    off.x,
-    -off.z,
-    off.y,
-  );
-  if (!originMap) return null; // unreachable: axis validated above
+  const originMap = localViewerToProjected(spatialReference, [off.x, off.y, off.z]);
+  if (!originMap) return null; // conversion was validated above
   const decodeOriginOffset: readonly [number, number, number] = sourceUnit === 'mapUnit'
-    ? [originMap.e / mapUnitScale, originMap.n / mapUnitScale, originMap.h / mapUnitScale]
-    : [originMap.e, originMap.n, originMap.h];
+    ? [originMap[0] / mapUnitScale, originMap[1] / mapUnitScale, originMap[2] / mapUnitScale]
+    : [originMap[0], originMap[1], originMap[2]];
 
   // Aligned matrix operates on (px,py,pz) — the Z-up→Y-up-swapped,
   // decode-time-shifted residual positions the ingest path uploads (see
@@ -384,8 +382,19 @@ export function computePointCloudAlignment(
   };
 }
 
+/** Pack a native XYZ affine for decoder output `(X, Z, -Y)`. */
+function matrixFromNativeScanTransform(transform: SpatialAffineTransform): Float64Array {
+  return new Float64Array([
+    transform.m00, transform.m10, transform.m20, 0,
+    transform.m02, transform.m12, transform.m22, 0,
+    -transform.m01, -transform.m11, -transform.m21, 0,
+    0, 0, 0, 1,
+  ]);
+}
+
 // ─── per-asset registry (drives the global alignment toggle) ──────────────
 
 export { registerPointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment,
   applyPointCloudAlignmentToggle, retargetPointCloudDecodeOrigin,
-  type PointCloudTransformTarget } from './pointCloudAlignmentRegistry';
+  realignRegisteredPointClouds,
+  type PointCloudAlignmentRegistration, type PointCloudTransformTarget } from './pointCloudAlignmentRegistry';

@@ -11,14 +11,15 @@ use crate::{
         Result,
     },
     LandXmlCancellation, LandXmlCapabilities, LandXmlDiagnosticCode as Code, LandXmlExtension,
-    LandXmlLimits, LandXmlPoint, LandXmlPolyline, LandXmlRenderState, LandXmlSourceId,
-    LandXmlSurface, LandXmlSurfaceKind, LandXmlTinDocument,
+    LandXmlCoordinateSystem, LandXmlLimits, LandXmlPoint, LandXmlPolyline, LandXmlRenderState,
+    LandXmlSourceId, LandXmlSurface, LandXmlSurfaceKind, LandXmlTinDocument,
 };
 use quick_xml::{
     events::{BytesStart, Event},
     Reader,
 };
 mod capture;
+mod document;
 mod finalize;
 mod limits;
 mod path;
@@ -29,26 +30,11 @@ mod version;
 
 use state::{retained_properties, Frame, Parser, SurfaceBuilder};
 pub use version::*;
+pub(crate) use document::parse_landxml_document;
 
 /// Parse exact LandXML 1.2 TIN semantics with default resource limits.
 pub fn parse_landxml_tin(input: &[u8]) -> Result<LandXmlTinDocument> {
     parse_landxml_tin_with_cancel(input, &LandXmlLimits::default(), None)
-}
-
-/// Parse the canonical LandXML source document used by all runtime adapters.
-///
-/// TIN and pipe semantics deliberately keep their specialised bounded parsers,
-/// but consumers receive one document and therefore cannot accidentally load
-/// pipe records through a second ingestion path.
-pub(crate) fn parse_landxml_document(input: &[u8]) -> Result<LandXmlTinDocument> {
-    let mut document = parse_landxml_tin(input)?;
-    match crate::parse_landxml_pipe_networks(input) {
-        Ok(networks) => document.pipe_networks = Some(networks),
-        Err(error) if error.code == Code::InvalidSemantic
-            && error.message == "document contains no PipeNetwork records" => {}
-        Err(error) => return Err(error),
-    }
-    Ok(document)
 }
 
 /// Parse exact LandXML 1.2 TIN semantics with host limits and cancellation.
@@ -73,6 +59,7 @@ pub fn parse_landxml_tin_with_cancel(
         faces_seen: 0,
         frames: Vec::new(),
         units: None,
+        coordinate_system: None,
         surface: None,
         capture: None,
         surfaces: Vec::new(),
@@ -249,6 +236,18 @@ impl Parser<'_> {
             return Ok(());
         }
         match local {
+            "CoordinateSystem" if self.is_path(&["LandXML", "CoordinateSystem"]) => {
+                if self.coordinate_system.is_some() {
+                    self.warnings.push(
+                        "LandXML declares multiple root CoordinateSystem records; retained the last declaration"
+                            .to_owned(),
+                    );
+                }
+                self.coordinate_system = Some(LandXmlCoordinateSystem {
+                    horizontal_datum: attr(&attributes, "horizontalDatum").map(|value| value.to_owned()),
+                    vertical_datum: attr(&attributes, "verticalDatum").map(|value| value.to_owned()),
+                });
+            }
             "Surface" if self.is_path(&["LandXML", "Surfaces", "Surface"]) => {
                 if self.surfaces_seen >= self.limits.max_surfaces {
                     return Err(error(Code::LimitExceeded, "surface limit exceeded"));

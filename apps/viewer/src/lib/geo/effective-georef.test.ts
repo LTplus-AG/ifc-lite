@@ -586,7 +586,7 @@ END-ISO-10303-21;
   });
 
   describe('hasStandardGeoreferencing (federation alignment gate)', () => {
-    // Federation affine alignment (extractModelGeoref → buildGeorefAlignmentTransform)
+    // Federation affine alignment (extractModelSpatialPlacement → resolveSpatialPlacement)
     // gates on this predicate. A site-location-only georef must NOT qualify: it is
     // EPSG:4326 lat/long degrees + a raw, un-unit-scaled IfcSite RefElevation, which
     // the projected-CRS transform misreads as metres and flings the second federated

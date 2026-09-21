@@ -20,6 +20,11 @@ export interface LandXmlPolyline {
   coordinateDimension: 2 | 3;
   points: number[][];
   pointSourceIds: string[];
+  /** Derived renderer E/U/S metre coordinates after federation reprojection.
+   * Authored `points` remain untouched for inspection/export. */
+  renderedPoints?: number[][];
+  /** Whether an aligned line has points to render or was deliberately suppressed. */
+  renderedPointState?: 'aligned' | 'suppressed';
 }
 
 export interface LandXmlTinSurface {
@@ -42,7 +47,7 @@ export interface LandXmlTinSurface {
   contours: LandXmlPolyline[];
 }
 
-export interface LandXmlPlanPoint { northing: number; easting: number; elevation: number | null }
+export interface LandXmlPlanPoint { northing: number; easting: number; elevation: number | null; renderedPoint?: [number, number, number]; renderedPointState?: 'aligned' | 'suppressed' }
 export type LandXmlPlanPointLocation =
   | { kind: 'coordinates'; point: LandXmlPlanPoint; pntRef: string | null }
   | { kind: 'point_reference'; pntRef: string };
@@ -82,6 +87,7 @@ export interface LandXmlResolvedMonument { sourceId: string; point: LandXmlPlanP
 export interface LandXmlResolvedGeometry {
   sourceId: string; start: LandXmlPlanPoint | null; end: LandXmlPlanPoint | null;
   center: LandXmlPlanPoint | null; pi: LandXmlPlanPoint | null;
+  renderedPoints?: [number, number, number][]; renderedPointState?: 'aligned' | 'suppressed';
 }
 export interface LandXmlPlanDocument {
   version: string; areaUnit: string | null; areaScaleToSquareMeters: number | null;
@@ -111,6 +117,7 @@ export interface LandXmlTinDocument {
     linearScaleToMeters: number;
     elevationScaleToMeters: number;
   } | null;
+  coordinateSystem?: { horizontalDatum?: string; verticalDatum?: string };
   surfaces: LandXmlTinSurface[];
   extensions: Array<{ namespace: string; localName: string; path: string }>;
   warnings: string[];

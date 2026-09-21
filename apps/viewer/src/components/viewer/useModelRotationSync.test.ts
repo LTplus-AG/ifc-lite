@@ -14,7 +14,7 @@ import { addTranslation, toRenderTranslation, type Translation } from '@/lib/mod
 import { testPlacement } from '@/lib/model-placement/test-fixtures';
 import { modelRotationBaker } from '@/lib/model-placement/rotation-bake';
 import { realignFederationModels } from '@/hooks/ingest/federationRealign';
-import type { ModelGeoref } from '@/hooks/ingest/federationAlign';
+import type { ModelSpatialPlacement } from '@/hooks/ingest/federationAlign';
 import { applyRoomModelData } from '@/lib/collab/room-model-apply';
 import { placementFrameKey } from '@/lib/model-placement/persistence';
 import { convergeFederationRtcFrame } from '@/hooks/ingest/federationRtcRebase';
@@ -353,7 +353,23 @@ describe('model rotation reaches the geometry every render path reads (#4869)', 
       const state = useViewerStore.getState();
       await withModelRotationsUnbaked(() => realignFederationModels({
         models: [...state.models] as Array<[string, FederatedModel]>, anchorModelId: 'ifc',
-        anchorGeoref: {} as ModelGeoref, resolveGeoref: () => null, updateModel: state.updateModel,
+        anchorModel: state.models.get('ifc') as FederatedModel,
+        anchorGeoref: {
+          spatialReference: {
+            source: { axes: ['east', 'up', 'south'], horizontalUnitToMetres: 1, verticalUnitToMetres: 1 },
+            confidence: 'unknown',
+          },
+        } satisfies ModelSpatialPlacement,
+        // A real re-alignment re-extracts the anchor after its baseline has
+        // been restored. Keep this focused rotation test faithful to that
+        // contract while leaving the non-anchor intentionally unreferenced.
+        resolveGeoref: (modelId) => modelId === 'ifc' ? {
+          spatialReference: {
+            source: { axes: ['east', 'up', 'south'], horizontalUnitToMetres: 1, verticalUnitToMetres: 1 },
+            confidence: 'unknown',
+          },
+        } satisfies ModelSpatialPlacement : null,
+        updateModel: state.updateModel,
       }));
 
       const after = useViewerStore.getState().models.get('second') as FederatedModel;

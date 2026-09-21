@@ -21,8 +21,9 @@ import {
   type DecodedPointChunk,
   type StreamPointCloudOptions,
   type StreamHandle,
+  type PointSourceSpatialMetadata,
 } from '@ifc-lite/pointcloud';
-import type { CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
+import type { CoordinateInfo, GeometryResult, ModelSpatialReference, PointCloudAsset } from '@ifc-lite/geometry';
 import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
 import type { SchemaVersion } from '../../store/types.js';
 import { createCoordinateInfo } from '../../utils/localParsingUtils.js';
@@ -111,6 +112,8 @@ export interface PointCloudIngestOptions {
   maxScanCachePoints?: number;
   /** Progress callback shared with the existing UI. */
   onProgress?: (progress: { phase: string; percent: number }) => void;
+  /** Source-declared CRS metadata, delivered before the first GPU chunk. */
+  onSpatialMetadata?: (metadata: PointSourceSpatialMetadata | undefined) => void;
   /** Notified with +1 when streaming starts and -1 if it errors. */
   onAssetCountDelta?: (delta: number) => void;
   /**
@@ -145,6 +148,8 @@ export interface PointCloudIngestOptions {
    *  (aligned) — matches the issue's "on by default" requirement. Only
    *  consulted when `alignment` is provided. */
   alignmentEnabled?: boolean;
+  /** Declared scan CRS retained even when no compatible anchor exists yet. */
+  spatialReference?: ModelSpatialReference;
 }
 
 /**
@@ -332,12 +337,19 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
   // (originally LAS/LAZ-only; extended to E57/PLY/PCD/PTS/XYZ), so the
   // matrix is valid for any format here — no gate needed.
   const alignment = opts.alignment;
+  const alignmentEnabled = opts.alignmentEnabled ?? true;
+  // Register every scan, even before a compatible anchor exists. The registry
+  // retains its explicit source CRS and can atomically realign it when an IFC
+  // anchor loads later; omitting raw scans made model-after-scan order depend
+  // on a manual reload.
+  registerPointCloudAlignment(handle, alignment, alignmentEnabled, {
+    sourceSpatialReference: opts.spatialReference,
+    sourceUnit: opts.format === 'las' || opts.format === 'laz' ? 'mapUnit' : 'metre',
+  });
   if (alignment) {
-    registerPointCloudAlignment(handle, alignment, opts.alignmentEnabled ?? true);
-    const enabled = opts.alignmentEnabled ?? true;
     opts.renderer.setPointCloudTransform(
       handle,
-      enabled ? alignment.alignedMatrix : alignment.unalignedMatrix,
+      alignmentEnabled ? alignment.alignedMatrix : alignment.unalignedMatrix,
     );
   }
 
@@ -384,6 +396,7 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
       createSource: opts.createSource,
       autoOrigin: true,
       onOpen: (info) => {
+        opts.onSpatialMetadata?.(info.spatialMetadata);
         if (info.originOffset) { retargetPointCloudDecodeOrigin(opts.renderer, handle, info.originOffset); setPointCloudScanCacheOrigin(handle.id, info.originOffset); }
         opts.onProgress?.({
           phase: info.stride > 1

@@ -15,7 +15,7 @@ import { useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore, type FederatedModel } from '../store/index.js';
 import { useIfc } from './useIfc.js';
-import { findReferenceGeorefModel } from './ingest/federationAlign.js';
+import { findReferenceSpatialModel } from './ingest/federationAlign.js';
 import {
   buildFederationSetupFile,
   serializeFederationSetupFile,
@@ -60,7 +60,7 @@ export function useFederationSetup() {
     if (models.length === 0) {
       return { ok: false, error: 'No models loaded — nothing to save.' };
     }
-    const reference = findReferenceGeorefModel();
+    const reference = findReferenceSpatialModel();
     const anchorModelId = reference?.modelId ?? anchorModelIdOverride ?? null;
 
     const setup = await buildFederationSetupFile(models, anchorModelId, state);

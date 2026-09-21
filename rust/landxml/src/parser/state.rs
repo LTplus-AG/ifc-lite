@@ -7,8 +7,9 @@ use std::collections::{HashMap, HashSet};
 use crate::{
     capture::Capture, xml::Attributes, LandXmlAlignment, LandXmlCancellation,
     LandXmlCapabilityDiagnostic, LandXmlCrossSection, LandXmlCrossSectionSurface, LandXmlExtension,
-    LandXmlLimits, LandXmlPoint, LandXmlPolyline, LandXmlPreservedOnlyExtension, LandXmlProfile,
-    LandXmlRoadway, LandXmlSourceId, LandXmlSurface, LandXmlSurfaceKind, LandXmlUnits,
+    LandXmlCoordinateSystem, LandXmlLimits, LandXmlPoint, LandXmlPolyline,
+    LandXmlPreservedOnlyExtension, LandXmlProfile, LandXmlRoadway, LandXmlSourceId, LandXmlSurface,
+    LandXmlSurfaceKind, LandXmlUnits,
 };
 
 use super::profiles::{
@@ -29,6 +30,7 @@ pub(super) struct Parser<'a> {
     pub(super) cross_section_points_seen: usize,
     pub(super) frames: Vec<Frame>,
     pub(super) units: Option<LandXmlUnits>,
+    pub(super) coordinate_system: Option<LandXmlCoordinateSystem>,
     pub(super) surface: Option<SurfaceBuilder>,
     pub(super) capture: Option<Capture>,
     pub(super) surfaces: Vec<LandXmlSurface>,

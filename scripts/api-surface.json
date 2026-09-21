@@ -8531,6 +8531,7 @@
     "LandXmlSuperelevationJs: interface",
     "LandXmlSurfaceJs: interface",
     "LandXmlTinDocumentJs: interface",
+    "LandXmlTinStreamSession: class",
     "LandXmlUnitsJs: interface",
     "LandXmlUnsupportedTransitionJs: interface",
     "LandXmlVerticalCurveJs: interface",

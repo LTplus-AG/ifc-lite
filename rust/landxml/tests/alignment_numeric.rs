@@ -825,4 +825,18 @@ fn issue_5044_cant_and_superelevation_are_inspectable_by_internal_station() {
         .superelevations_at_distance(40.0)
         .expect("outside range")
         .is_empty());
+
+    alignment
+        .cant
+        .as_mut()
+        .expect("cant source")
+        .stations
+        .swap(0, 1);
+    assert_eq!(
+        alignment
+            .cant_at_distance(15.0)
+            .expect_err("directly constructed unsorted cant must be refused")
+            .code,
+        "LXMLA207"
+    );
 }

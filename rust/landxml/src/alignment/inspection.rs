@@ -34,6 +34,21 @@ impl LandXmlAlignment {
             return Ok(None);
         };
         let internal_station = self.sta_start + distance;
+        if cant
+            .stations
+            .iter()
+            .any(|candidate| !candidate.station.is_finite())
+            || cant
+                .stations
+                .windows(2)
+                .any(|pair| pair[1].station <= pair[0].station)
+        {
+            return Err(super::numeric::diagnostic(
+                &cant.source_id,
+                "LXMLA207",
+                "CantStation values must be finite and strictly increasing",
+            ));
+        }
         let split = cant
             .stations
             .partition_point(|candidate| candidate.station <= internal_station);

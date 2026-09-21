@@ -15,7 +15,7 @@ import type { ReportDoc, ReportPdfSeams } from '../export/report/generate-report
 import { dataUrlToBytes } from '../export/download.js';
 import { renderTemplate, type BindingContext } from './bindings.js';
 import { composeDocument, estimateTextWidth, type DocumentLayout, type ResolvedBlock } from './compose.js';
-import { flattenExportModel, tableMessageKind, type TableLabels, type TableMessageKind, type TableState } from './resolve-table.js';
+import { flattenExportModel, flattenRawModel, tableMessageKind, type TableLabels, type TableMessageKind, type TableState } from './resolve-table.js';
 import { TABLE_ROWS_DEFAULT, type DocumentSpec, type TableBlock } from './types.js';
 
 export interface DocumentPdfSeams extends ReportPdfSeams {
@@ -61,10 +61,11 @@ export const TABLE_PDF_LABELS: TableLabels = {
   total: (count) => `Total (${count.toLocaleString()})`,
 };
 
-const TABLE_MESSAGES: Record<Exclude<TableMessageKind, 'error'>, string> = {
+const TABLE_MESSAGES: Record<Exclude<TableMessageKind, 'error' | 'no-rows'>, string> = {
   resolving: 'Table not ready: the list is still running.',
   'no-model': 'Load a model to fill this table.',
-  'no-rows': 'No rows match this list.',
+  'no-report': 'No validation report yet — run validation, then export again.',
+  'rule-not-found': 'The rule this table refers to is not in the current validation report.',
 };
 
 /** What a table block prints in place of its rows, by state; `null` when it has rows to print. */
@@ -73,11 +74,13 @@ export function tableMessage(state: TableState | undefined): string | null {
   if (kind === null) return null;
   // An engine error with an empty message (review finding) still has to read as an error, not as an empty grid.
   if (kind === 'error') return (state?.status === 'error' && state.message.trim()) || 'The list could not be run.';
+  // "No rows" reads differently per source: a list matched nothing, a validation table's rule/rows filter did.
+  if (kind === 'no-rows') return state?.status === 'ok' && state.kind === 'validation' ? 'No rows match this rule.' : 'No rows match this list.';
   return TABLE_MESSAGES[kind];
 }
 
-/** The title a table block prints: its own, or the list's name. */
-export const tableTitle = (block: TableBlock): string => block.title?.trim() || block.source.list.name;
+/** The title a table block prints: its own, the list's name, or "Validation results". */
+export const tableTitle = (block: TableBlock): string => block.title?.trim() || (block.source.kind === 'list' ? block.source.list.name : 'Validation results');
 
 /** The browser's image measure: decode the data URL. */
 export function browserImageSize(dataUrl: string): Promise<{ w: number; h: number }> {
@@ -156,13 +159,15 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         const state = input.tables.get(block.id);
         const message = tableMessage(state);
         if (state?.status === 'ok' && message === null) {
-          const flat = flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS);
+          const flat = state.kind === 'validation'
+            ? flattenRawModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS)
+            : flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS);
           blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, columns: flat.columns, rows: flat.rows });
           break;
         }
         if (state?.status !== 'ok') result.tableFailures.push(block.id);
         // `tableMessage` is non-null for every non-ok state; the fallback only satisfies the types.
-        blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, message: message ?? TABLE_MESSAGES['no-rows'], columns: [], rows: [] });
+        blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, message: message ?? 'No rows to print.', columns: [], rows: [] });
         break;
       }
       case 'topic': {

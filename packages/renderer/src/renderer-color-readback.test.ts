@@ -5,7 +5,9 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import {
+  cancelRendererColorFrame,
   encodeRendererColorFrameReadback,
+  requestRendererColorFrame,
   resolveRendererColorFrameReadback,
 } from './renderer-color-readback.js';
 
@@ -108,5 +110,20 @@ describe('renderer color-frame readback (#5051 strict GPU evidence)', () => {
     assert.deepStrictEqual([...frame!.rgba.subarray(8, 12)], [50, 60, 70, 255]);
     assert.strictEqual(buffer!.unmaps, 1);
     assert.strictEqual(buffer!.destroys, 1);
+  });
+
+  it('releases a failed render request so a later color capture can proceed', async () => {
+    const host = {};
+    const failure = new Error('render scheduling failed');
+    await assert.rejects(
+      requestRendererColorFrame(host, true, () => { throw failure; }),
+      failure,
+    );
+
+    let requests = 0;
+    const next = requestRendererColorFrame(host, true, () => { requests++; });
+    assert.strictEqual(requests, 1, 'the failed request did not leave a coalesced capture behind');
+    cancelRendererColorFrame(host);
+    assert.strictEqual(await next, null);
   });
 });

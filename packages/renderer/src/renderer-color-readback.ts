@@ -123,7 +123,15 @@ export function requestRendererColorFrame(
   let resolve!: (frame: RendererColorFrame | null) => void;
   const promise = new Promise<RendererColorFrame | null>((finish) => { resolve = finish; });
   pendingCaptures.set(host, { encoded: false, skippedFrames: 0, promise, resolve });
-  requestRender();
+  try {
+    requestRender();
+  } catch (error) {
+    // A synchronous host failure must not strand the coalescing entry: a
+    // later caller needs to be able to request a fresh frame.
+    pendingCaptures.delete(host);
+    resolve(null);
+    return Promise.reject(error);
+  }
   return promise;
 }
 

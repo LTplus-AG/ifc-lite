@@ -90,6 +90,32 @@ export function previewPreparedOverlayGlobalId(
   return registry.previewOverlayGlobalId(modelId, start, end, expressId);
 }
 
+/**
+ * Resolve an ID used by a detached native plan without granting it federation
+ * ownership. Live rows are published through the normal state path; only an
+ * ID in this plan's exact, contiguous creation batch may use the temporary
+ * preview mapping. This keeps holes and unrelated reservations unresolvable.
+ */
+export function toPreparedOverlayGlobalId(
+  registry: OverlayPublicationRegistry,
+  state: OverlayPublicationState,
+  modelId: string,
+  created: readonly { expressId: number }[],
+  expressId: number,
+): number {
+  try {
+    return toPublishedGlobalId(registry, state.models, state.mutationViews, modelId, expressId);
+  } catch (error) {
+    if (!created.length) throw error;
+    const { start, end } = preparedOverlayRange(state.models, modelId, created);
+    if (expressId < start || expressId > end) throw error;
+    // Earlier committed overlays must become owned before a later detached
+    // batch can be previewed. A missing committed row remains a hard error.
+    toPublishedGlobalId(registry, state.models, state.mutationViews, modelId, start - 1);
+    return registry.previewOverlayGlobalId(modelId, start, end, expressId);
+  }
+}
+
 /** Publish an exact detached batch only after every committed row is live. */
 export function publishPreparedOverlayRange(
   registry: OverlayPublicationRegistry,
@@ -105,6 +131,45 @@ export function publishPreparedOverlayRange(
     if (view.getNewEntity(localId) === null) throw new Error('Committed overlay IDs must remain contiguous and owned.');
   }
   registry.publishOverlayRange(modelId, start, end);
+}
+
+/**
+ * Verify a just-committed overlay while every later publication step is still
+ * reversible. The returned action is side-effect free until the caller's GPU
+ * commit has succeeded. Unregistered models intentionally keep the canonical
+ * one-model `globalId === expressId` fallback.
+ */
+export function preparePreparedOverlayPublication(
+  registry: OverlayPublicationRegistry,
+  state: OverlayPublicationState,
+  modelId: string,
+  created: readonly { expressId: number }[],
+): (() => void) | null {
+  if (!created.length) return null;
+  // Only genuinely unregistered primary models use the canonical local-ID
+  // fallback. A reserved model with no published base range is an invalid
+  // federation lifecycle state and must fail before GPU ownership changes.
+  if (registry.getOffset(modelId) === null) return null;
+  if (registry.getGlobalIdRange(modelId) === null) {
+    throw new Error('Committed overlay IDs require a published federation base range.');
+  }
+  const { start, end } = preparedOverlayRange(state.models, modelId, created);
+  const view = state.mutationViews.get(modelId);
+  const offset = registry.getOffset(modelId);
+  if (view === undefined || offset === null || created.some(row => view.getNewEntity(row.expressId) === null)) {
+    throw new Error('Committed overlay IDs must remain contiguous and owned.');
+  }
+  // This can only publish an older, already-live prefix. The new range stays
+  // unowned until its GPU ownership transaction has completed.
+  toPublishedGlobalId(registry, state.models, state.mutationViews, modelId, start - 1);
+  const range = registry.getGlobalIdRange(modelId);
+  if (range === null || range.end - offset + 1 !== start) {
+    throw new Error('Committed overlay IDs must extend federation ownership contiguously.');
+  }
+  // Validate the exact headroom reservation now. `publishOverlayRange` would
+  // reject it too, but only after GPU tokens have been consumed.
+  registry.previewOverlayGlobalId(modelId, start, end, start);
+  return () => registry.publishOverlayRange(modelId, start, end);
 }
 
 function preparedOverlayRange(

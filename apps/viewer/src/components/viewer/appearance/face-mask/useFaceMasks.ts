@@ -3,7 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MeshData } from '@ifc-lite/geometry';
+import { federationRegistry } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
+import { toPreparedOverlayGlobalId } from '@/store/federation-overlay-publication';
 import { faceMaskRequests, normalizeFaceTriangles, reconcileFaceMasks, type FaceMask, type FaceMasks } from '@/lib/appearance/face-masks.js';
 import { occurrenceSourceMesh } from '@/lib/appearance/occurrence-source-mesh.js';
 import type { AppearancePlan } from '@/lib/appearance/planner-types.js';
@@ -42,12 +44,12 @@ const sameArray = (a: ArrayLike<number> | undefined, b: ArrayLike<number> | unde
  * identity, so a re-plan that reproduces the same surface (same fingerprint,
  * same placed corners) must hand back the previous object, not an equal copy.
  */
-function stableSurface(previous: Surface | undefined, conversion: Conversion, modelId: string): Surface {
+function stableSurface(previous: Surface | undefined, conversion: Conversion, modelId: string,
+  toGlobalId: (expressId: number) => number): Surface {
   const fingerprint = conversion.surfaceFingerprint!;
   const mesh = { ...occurrenceSourceMesh(useViewerStore.getState(), modelId, conversion), color: [...SELECTED_FACE_COLOR] as MeshData['color'] };
-  const state = useViewerStore.getState();
   const geometryItemIds = new Set([conversion.sourceGeometryItemId, conversion.geometryItemId,
-    conversion.retainedGeometryItemId].filter((id): id is number => id !== undefined).map(id => state.toGlobalId(modelId, id)));
+    conversion.retainedGeometryItemId].filter((id): id is number => id !== undefined).map(toGlobalId));
   if (previous && previous.fingerprint === fingerprint && sameArray(previous.mesh.positions, mesh.positions)
     && sameArray(previous.mesh.indices, mesh.indices) && sameArray(previous.mesh.origin, mesh.origin)) return { ...previous, geometryItemIds };
   return { productId: conversion.productId, fingerprint, triangleCount: conversion.sourceIndices.length / 3, mesh, geometryItemIds };
@@ -66,7 +68,7 @@ export function useFaceMasks(modelId: string | null) {
   const modelKey = useViewerStore(state => modelId ? `${modelId}:${state.models.get(modelId)?.loadedAt ?? 'removed'}` : null);
   const [masks, setMasks] = useState<FaceMasks>(new Map());
   const [diagnostics, setDiagnostics] = useState<readonly string[]>([]);
-  const [conversions, setConversions] = useState<{ modelId: string; items: readonly Conversion[] } | null>(null);
+  const [conversions, setConversions] = useState<{ modelId: string; items: readonly Conversion[]; created: AppearancePlan['created'] } | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
   // The latest map for callbacks that run between renders (requests, reconcile).
   const current = useRef(masks);
@@ -82,7 +84,7 @@ export function useFaceMasks(modelId: string | null) {
     // A dropped selection's diagnostic stays through the automatic re-plan
     // that follows it; a selection change, Discard or Apply clears it.
     if (result.diagnostics.length) setDiagnostics(result.diagnostics);
-    setConversions(plan.conversions?.length ? { modelId: targetModelId, items: plan.conversions } : null);
+    setConversions(plan.conversions?.length ? { modelId: targetModelId, items: plan.conversions, created: plan.created } : null);
     return result;
   }, [commit]);
   const change = useCallback((productId: number, triangles: Iterable<number> | null) => {
@@ -109,9 +111,13 @@ export function useFaceMasks(modelId: string | null) {
   const editable = useMemo<Surface[]>(() => {
     if (!conversions || conversions.modelId !== modelId) return [];
     const cache = surfaces.current, live = new Map<number, Surface>();
+    const state = useViewerStore.getState();
+    const toGlobalId = (expressId: number) => toPreparedOverlayGlobalId(
+      federationRegistry, state, conversions.modelId, conversions.created, expressId,
+    );
     for (const conversion of conversions.items) {
       if (!conversion.surfaceFingerprint || conversion.sourcePositions === undefined) continue;
-      try { live.set(conversion.productId, stableSurface(cache.get(conversion.productId), conversion, conversions.modelId)); }
+      try { live.set(conversion.productId, stableSurface(cache.get(conversion.productId), conversion, conversions.modelId, toGlobalId)); }
       catch (error) { console.warn('[Appearance] face selection surface unavailable', error); }
     }
     surfaces.current = live;

@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { captureAppearanceDependencies } from '@ifc-lite/export';
 import { StoreEditor } from '@ifc-lite/mutations';
-import type { Renderer } from '@ifc-lite/renderer';
+import { federationRegistry, type Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
+import { preparePreparedOverlayPublication } from '@/store/federation-overlay-publication';
 import type { AppearanceCommitOptions } from './command.js';
 import { appearanceAssets, modelAppearanceAssets } from './model-assets.js';
 import { trackAppearanceCommandResources } from './command-resources.js';
@@ -70,6 +71,14 @@ export async function commitAppearanceAssignments(
     // No await or external progress callback after this fence. Every IFC install
     // remains reversible until the combined GPU tokens and history are prepared.
     for (const { value } of sequences) value.prepared.commit();
+    // Verify every model's just-committed overlay before consuming a single
+    // GPU token. The actions themselves are deliberately deferred until the
+    // GPU transaction succeeds, so a cross-model preflight failure rolls all
+    // prepared IFC mutations back without granting new federation ownership.
+    const publishOverlays = sequences.flatMap(({ modelId, value }) => {
+      const publish = preparePreparedOverlayPublication(federationRegistry, initial, modelId, value.created);
+      return publish === null ? [] : [publish];
+    });
     for (const record of records) {
       const plans = preparation.steps.filter(step => step.modelId === record.modelId).map(step => step.plan);
       const roots = new Set(plans.flatMap(plan => [...plan.items.flatMap(item => [item.productId, item.geometryItemId]),
@@ -99,6 +108,7 @@ export async function commitAppearanceAssignments(
     // install/store callbacks between this membership fence and publication.
     const commitGpu = preview.prepareCommit(allGroups);
     for (const change of commitGpu()) changes.push(change);
+    for (const publish of publishOverlays) publish();
     published = true;
     try { recordHistory(publication); }
     catch (error) {

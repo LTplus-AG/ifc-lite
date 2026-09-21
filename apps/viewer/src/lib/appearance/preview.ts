@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { MeshData } from '@ifc-lite/geometry';
-import { equivalentAppearanceGeometry, sameCompanionParts } from '@ifc-lite/renderer';
+import { equivalentAppearanceGeometry, federationRegistry, sameCompanionParts } from '@ifc-lite/renderer';
 import type { AppearanceChange, AppearancePartition, AppearancePreview, AppearanceToken, Renderer } from '@ifc-lite/renderer';
 import type { ViewerState } from '@/store';
 import { occurrenceSourceMesh, validateOccurrenceSourceBudget } from './occurrence-source-mesh';
 import { placementFrameKey, placementFrameCoordinateInfo } from '@/lib/model-placement/persistence';
 import { totalYupOffset } from '@/lib/geo/coordinate-frame';
 import { useViewerStore } from '@/store';
+import { toPreparedOverlayGlobalId } from '@/store/federation-overlay-publication';
 import type { AppearancePlan } from './planner-types.js';
 import { bindCompanionPreview, companionHiddenNow } from './companion-preview';
 import { bindMaskedConversionParts, maskedSplit, partitionHistoryParts } from './preview-partition';
@@ -49,8 +50,14 @@ export function bindAppearancePreview(
   expandCorners: (mesh: MeshData, sourceIndices: readonly number[], cornerUvs: readonly number[], targetIndices: Uint32Array,
     targetCornerNormals: readonly number[], targetVertexCount: number) => MeshData,
   itemImages?: ReadonlyMap<number, AppearancePreviewImage>,
+  detachedCreated: readonly { expressId: number }[] = plan.created,
 ): AppearancePreviewParts[] {
   validateOccurrenceSourceBudget(plan.conversions ?? []);
+  const toGlobalId = (expressId: number) => state.toGlobalId(modelId, expressId);
+  const detachedIds = new Set(detachedCreated.map(entity => entity.expressId));
+  const toPlannedGlobalId = (expressId: number) => detachedIds.has(expressId)
+    ? toPreparedOverlayGlobalId(federationRegistry, state, modelId, detachedCreated, expressId)
+    : state.toGlobalId(modelId, expressId);
   const plannedItems = new Map(plan.items.map(item => [item.geometryItemId, item]));
   const conversions = new Map<number, NonNullable<AppearancePlan['conversions']>[number]>();
   for (const conversion of plan.conversions ?? []) {
@@ -76,7 +83,7 @@ export function bindAppearancePreview(
     items.set(sourceItem, item);
   }
   const groups: AppearancePreviewParts[] = [...byProduct].map(([productId, items]) => {
-    const globalId = state.toGlobalId(modelId, productId);
+    const globalId = toGlobalId(productId);
     const scene = renderer.getScene();
     let originals = scene.getMeshDataPieces(globalId);
     let materializedOriginals: readonly MeshData[] | undefined;
@@ -124,8 +131,8 @@ export function bindAppearancePreview(
       if (!image) throw new Error(`The baked image for IFC geometry #${firstItem.geometryItemId} is missing.`);
       const masked = bindMaskedConversionParts({ originals, conversion: maskedConversion, item: firstItem, image, expandCorners,
         sourceGeometryItemId: originals[0].geometryItemId!,
-        textureId: textureIdentity(image.bitmap), texturedItemId: state.toGlobalId(modelId, firstItem.geometryItemId),
-        retainedItemId: state.toGlobalId(modelId, maskedConversion.retainedGeometryItemId!) });
+        textureId: textureIdentity(image.bitmap), texturedItemId: toPlannedGlobalId(firstItem.geometryItemId),
+        retainedItemId: toPlannedGlobalId(maskedConversion.retainedGeometryItemId!) });
       return { globalId, modelIndex, parts: masked.parts, ...(materializedOriginals ? { materializedOriginals, validate } : {}),
         partition: masked.partition };
     }
@@ -141,9 +148,9 @@ export function bindAppearancePreview(
       const conversion = conversions.get(item.geometryItemId);
       if (conversion && maskedSplit(conversion)) throw new Error(`Face selection requires one canonical surface for IFC object #${productId}.`);
       if (conversion && !geometryItemRemaps.some(pair => pair.from === mesh.geometryItemId)) {
-        geometryItemRemaps.push({ from: mesh.geometryItemId!, to: state.toGlobalId(modelId, item.geometryItemId) });
+        geometryItemRemaps.push({ from: mesh.geometryItemId!, to: toPlannedGlobalId(item.geometryItemId) });
       }
-      return [{ ...expandCorners(mesh, conversion?.sourceIndices ?? item.sourceIndices, item.previewCornerUvs, targetTopologies.get(item.geometryItemId)!, item.targetCornerNormals, item.targetVertexCount), geometryItemId: state.toGlobalId(modelId, item.geometryItemId), color: [1, 1, 1, 1] as [number, number, number, number],
+      return [{ ...expandCorners(mesh, conversion?.sourceIndices ?? item.sourceIndices, item.previewCornerUvs, targetTopologies.get(item.geometryItemId)!, item.targetCornerNormals, item.targetVertexCount), geometryItemId: toPlannedGlobalId(item.geometryItemId), color: [1, 1, 1, 1] as [number, number, number, number],
         shadingColor: undefined, texture: undefined,
         textureBitmap: image.bitmap,
         textureRef: { textureId: textureIdentity(image.bitmap), url: image.imageUri, repeatS: image.repeatS, repeatT: image.repeatT } }];

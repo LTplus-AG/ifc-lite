@@ -19,7 +19,7 @@ import { largestBucketIds } from '../charts/buckets.js';
 import { generateDocumentPdf, topicLines, type DocumentPdfSeams } from './generate-document-pdf.js';
 import { parseDocumentFile } from './persistence.js';
 import { blankDocument, coverSheetDocument } from './presets.js';
-import { DOCUMENT_VERSION, validateDocumentSpec, type DocumentSpec, type TableBlock } from './types.js';
+import { DOCUMENT_VERSION, validateDocumentSpec, type DocumentSpec, type ListTableSource, type TableBlock } from './types.js';
 import { elementsDataset } from '@ifc-lite/charts';
 import { IfcTypeEnum } from '@ifc-lite/data';
 import type { ListDefinition } from '@ifc-lite/lists';
@@ -37,6 +37,13 @@ const migrateDocumentSpec: typeof import('./types.js').migrateDocumentSpec | und
 // production reverted, so a reverted `validateDocumentSpec` fails them by assertion rather than
 // this whole file dying at import.
 const tableExports: Partial<Pick<typeof import('./types.js'), 'TABLE_ROWS_MAX' | 'listCopyForDocument'>> = await import('./types.js');
+// `resolve-validation-table.ts` is new in this PR (#5138) and does not exist on `main` at all yet
+// (unlike `types.js`/`generate-document-pdf.js`, which #5142 already put there): a static import,
+// or even a bare dynamic one, would fail module resolution outright under the revert oracle and
+// crash this whole file's load. The `.catch` degrades to `undefined` instead, so only the one test
+// that needs it skips.
+const validationTableExports: Partial<Pick<typeof import('./resolve-validation-table.js'), 'resolveValidationTableState'>> =
+  await import('./resolve-validation-table.js').catch(() => ({}));
 
 const ifc = (project: string, wallName: string, fireRating: string): string => `ISO-10303-21;
 HEADER;
@@ -487,10 +494,11 @@ describe('table block (#5142)', () => {
 
     const imported = parseDocumentFile(JSON.stringify(docWith([tableBlock()])));
     const block = imported.blocks[0] as TableBlock;
+    const source = block.source as ListTableSource;
     assert.notEqual(block.id, 'tb');
-    assert.notEqual(block.source.list.id, 'list-walls', 'the copy never shares an id with a library list');
-    assert.equal(block.source.fromListId, 'preset-wall-schedule', 'the back-pointer is kept');
-    assert.equal(block.source.list.columns.length, 3);
+    assert.notEqual(source.list.id, 'list-walls', 'the copy never shares an id with a library list');
+    assert.equal(source.fromListId, 'preset-wall-schedule', 'the back-pointer is kept');
+    assert.equal(source.list.columns.length, 3);
   });
 
   it('listCopyForDocument drops the selection snapshot and takes the given id', { skip: !tableExports.listCopyForDocument && 'listCopyForDocument is not exported (production reverted)' }, () => {
@@ -543,5 +551,78 @@ describe('table block (#5142)', () => {
     assert.ok(empty.calls.some((c) => c.op === 'text' && c.args[0] === 'The list could not be run.'));
     assert.deepEqual(errPdf.tableFailures, ['tb3']);
     assert.equal(pdf.pages, 1);
+  });
+});
+
+describe('validation-results table source (#5138)', () => {
+  const docWith = (blocks: DocumentSpec['blocks']): DocumentSpec => ({ version: DOCUMENT_VERSION, id: 'd', name: 'Validation report', page: { size: 'A4', orientation: 'portrait' }, blocks });
+
+  it(
+    'a validation table with 120 failing entities paginates through compose-table with the head repeated on every chunk',
+    { skip: !validationTableExports.resolveValidationTableState && 'resolveValidationTableState is not exported (production reverted)' },
+    async () => {
+      const entityResults = Array.from({ length: 120 }, (_, i) => ({
+        expressId: i, modelId: 'm1', entityType: 'IfcWall', entityName: `Wall ${i}`, globalId: `G-${i}`, passed: false,
+        requirementResults: [{ requirement: { id: 'r1', label: 'FireRating is set', optionality: 'required' as const }, status: 'fail' as const, facetType: 'property' as const, checkedDescription: '', failureReason: 'absent' }],
+      }));
+      const report = {
+        source: { kind: 'rules' as const, ruleSet: { name: 'Rule set' } },
+        modelInfo: [{ modelId: 'm1', schemaVersion: 'IFC4', entityCount: 120 }],
+        timestamp: new Date('2026-09-21T00:00:00Z'),
+        summary: { totalSpecifications: 1, passedSpecifications: 0, failedSpecifications: 1, totalEntitiesChecked: 120, totalEntitiesPassed: 0, totalEntitiesFailed: 120, overallPassRate: 0 },
+        specificationResults: [{ specification: { id: 's1', name: 'Walls have FireRating' }, status: 'fail' as const, applicableCount: 120, passedCount: 0, failedCount: 120, passRate: 0, entityResults }],
+      };
+      const source = { kind: 'validation' as const, rows: 'failed' as const, columns: ['rule', 'result', 'name', 'reason'] as const };
+      const modelName = (id: string): string => (id === 'm1' ? 'tower.ifc' : id);
+      const state = validationTableExports.resolveValidationTableState!(source, report, modelName);
+
+      const doc = docWith([{ kind: 'table', id: 'vt', source, maxRows: 500 }]);
+      const { seams, calls } = recordingSeams();
+      const pdf = await generateDocumentPdf({ document: doc, bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), tables: new Map([['vt', state]]) }, seams);
+      const tables = calls.filter((c) => c.op === 'table').map((c) => c.args[0] as { head: string[][]; body: string[][] });
+      assert.ok(tables.length >= 2, `expected several chunks, got ${tables.length}`);
+      for (const t of tables) assert.deepEqual(t.head, [['Rule', 'Result', 'Name', 'Reason']], 'every chunk repeats the same header');
+      assert.equal(tables.reduce((n, t) => n + t.body.length, 0), 120, 'every row printed exactly once, none split');
+      assert.deepEqual(pdf.tableFailures, []);
+    },
+  );
+
+  it(
+    'a stale ruleId and an absent report each print their own placeholder — never a crash',
+    { skip: !validationTableExports.resolveValidationTableState && 'resolveValidationTableState is not exported (production reverted)' },
+    async () => {
+      const source = { kind: 'validation' as const, ruleId: 'gone', rows: 'failed' as const, columns: ['rule'] as const };
+      const modelName = (id: string): string => id;
+      const absentState = validationTableExports.resolveValidationTableState!(source, null, modelName);
+      const doc = docWith([{ kind: 'table', id: 'vt1', source }]);
+      const { seams, calls } = recordingSeams();
+      const pdf = await generateDocumentPdf({ document: doc, bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), tables: new Map([['vt1', absentState]]) }, seams);
+      const texts = calls.filter((c) => c.op === 'text').map((c) => String(c.args[0]));
+      assert.ok(texts.includes('No validation report yet — run validation, then export again.'));
+      assert.deepEqual(pdf.tableFailures, ['vt1']);
+
+      const emptyReport = {
+        source: { kind: 'rules' as const, ruleSet: { name: 'x' } }, modelInfo: [], timestamp: new Date(0),
+        summary: { totalSpecifications: 1, passedSpecifications: 0, failedSpecifications: 1, totalEntitiesChecked: 0, totalEntitiesPassed: 0, totalEntitiesFailed: 0, overallPassRate: 0 },
+        specificationResults: [{ specification: { id: 'other', name: 'Other' }, status: 'fail' as const, applicableCount: 0, passedCount: 0, failedCount: 0, passRate: 0, entityResults: [] }],
+      };
+      const staleState = validationTableExports.resolveValidationTableState!(source, emptyReport, modelName);
+      const staleDoc = docWith([{ kind: 'table', id: 'vt2', source }]);
+      const staleResult = await generateDocumentPdf({ document: staleDoc, bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), tables: new Map([['vt2', staleState]]) }, seams);
+      assert.deepEqual(staleResult.tableFailures, ['vt2']);
+    },
+  );
+
+  it('an older document with only a list-sourced table block (no validation source anywhere) still validates and loads (#5142 compat)', () => {
+    const list: ListDefinition = {
+      id: 'list-walls', name: 'Walls', createdAt: 0, updatedAt: 0, entityTypes: [IfcTypeEnum.IfcWall], conditions: [],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+    };
+    const oldDoc = docWith([{ kind: 'table', id: 'tb', source: { kind: 'list', list, fromListId: 'preset-wall-schedule' }, maxRows: 10 }]);
+    assert.deepEqual(validateDocumentSpec(oldDoc), [], 'a document that only ever names source.kind "list" still validates cleanly');
+    const imported = parseDocumentFile(JSON.stringify(oldDoc));
+    const source = (imported.blocks[0] as TableBlock).source as ListTableSource;
+    assert.equal(source.kind, 'list');
+    assert.equal(source.list.name, 'Walls');
   });
 });

@@ -27,6 +27,13 @@ const TEST_LOCALE: Catalogue = {
   'document.block.kindChart': 'Diagramm',
   'document.block.kindTopic': 'BCF-Thema',
   'document.block.kindSpacer': 'Abstand',
+  'document.block.tableSourceLabel': 'Quelle',
+  'document.block.tableSourceAriaLabel': 'Tabellenquelle',
+  'document.block.tableSourceList': 'Liste',
+  'document.block.tableSourceValidation': 'Validierungsergebnisse',
+  'document.block.tableValidationRowsAriaLabel': 'Welche Zeilen anzeigen',
+  'document.block.tableRuleAriaLabel': 'Auf eine Regel filtern',
+  'document.block.tableRuleAll': 'Jede Regel',
   'document.block.styleLabel': 'Stil',
   'document.block.textStyleAriaLabel': 'Textstil',
   'document.block.insertFieldLabel': 'Feld einfügen',
@@ -152,6 +159,25 @@ describe('BlockEditor localization (#4918)', () => {
     assert.equal(ui.textContent?.includes('In Listen bearbeiten'), true);
     assert.equal(ui.textContent?.includes('Zeilen'), true);
     assert.equal(ui.textContent?.includes(`${list.columns.length} Spalten · eine Zeile je Element`), true);
+  });
+
+  it('translates the table block\'s validation source (#5138): source label, rows-mode control, rule filter', () => {
+    const block: TableBlock = { kind: 'table', id: 'b7', source: { kind: 'validation', rows: 'failed', columns: ['rule', 'result'] } };
+    const ui = render(
+      <BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} onChange={noop} onMove={noop} onRemove={noop} />,
+    );
+    assert.ok(ui.querySelector('select[aria-label="Table source"]'));
+    assert.ok(ui.querySelector('select[aria-label="Which rows to show"]'));
+    assert.ok(ui.querySelector('select[aria-label="Filter to one rule"]'));
+    assert.equal(ui.textContent?.includes('Every rule'), true);
+
+    registerLocale('block-editor-x-table-validation', TEST_LOCALE);
+    act(() => setLocale('block-editor-x-table-validation'));
+
+    assert.ok(ui.querySelector('select[aria-label="Tabellenquelle"]'));
+    assert.ok(ui.querySelector('select[aria-label="Welche Zeilen anzeigen"]'));
+    assert.ok(ui.querySelector('select[aria-label="Auf eine Regel filtern"]'));
+    assert.equal(ui.textContent?.includes('Jede Regel'), true);
   });
 
   it('translates the spacer block\'s kind badge', () => {

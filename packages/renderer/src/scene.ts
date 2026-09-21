@@ -3294,16 +3294,13 @@ export class Scene {
     this.instancedVisibilityDirty = true;
     this.instancedGhostDirty = true;
   }
-
   private unionInstancedWorldAabb(eid: number, dv: DataView, matOffset: number, lmnx: number, lmny: number, lmnz: number, lmxx: number, lmxy: number, lmxz: number): { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number } {
     return unionInstanceBounds(this.boundingBoxes, eid, dv, matOffset, lmnx, lmny, lmnz, lmxx, lmxy, lmxz);
   }
-
   /** True when `expressId` has a GPU-instanced occurrence. */
   isInstancedEntity(expressId: number): boolean {
     return this.instancedEntityMap.has(expressId);
   }
-
   /** Retain one model-owned occurrence for reversible appearance replacement. */
   retainInstancedOccurrence(expressId: number, modelIndex: number) {
     const occurrences = this.instancedEntityMap.get(expressId);

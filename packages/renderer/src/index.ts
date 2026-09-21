@@ -187,7 +187,9 @@ import { skyShaderSource } from './shaders/sky.wgsl.js';
 import { resolveEnvironment } from './environment.js';
 import { ShadowPass, resolveShadowMapResolution } from './shadow-pass.js';
 import { fitSunLightMatrix, cameraFrustumFocusCorners } from './shadow-light-matrix.js';
-import { collectShadowOccluders, classifyBatchVisibility, DEFAULT_MIN_CAST_ALPHA } from './shadow-occluders.js';
+import { collectShadowOccluders } from './shadow-occluders.js';
+import { shadowOccluderBatches } from './shadow-occluder-batches.js';
+import { captureRendererScreenshot } from './renderer-screenshot.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { XRayAlpha, XRayEpochTracker, type AlphaBatchLike } from './xray-alpha.js';
 import { PartialBatchRequests } from './partial-batch-requests.js';
@@ -1329,67 +1331,7 @@ export class Renderer {
         device: GPUDevice,
         hasVisibilityFiltering: boolean,
     ): BatchedMesh[] {
-        const all = this.scene.getBatchedMeshes();
-        if (!hasVisibilityFiltering) {
-            for (const batch of all) this.noteShadowOccluderResidency(batch);
-            return all;
-        }
-        const pipeline = this.pipeline;
-
-        const out: BatchedMesh[] = [];
-        for (const batch of all) {
-            const vis = classifyBatchVisibility(batch.expressIds, options.hiddenIds, options.isolatedIds);
-            if (vis.kind === 'none') continue; // fully hidden → does not cast
-            if (vis.kind === 'all') {
-                this.noteShadowOccluderResidency(batch);
-                out.push(batch); // fully visible → its own buffers
-                continue;
-            }
-            // Partially hidden. Transparent parents don't cast (collector's alpha
-            // filter) — skip rather than build a wasted, divergent-key clone.
-            if (batch.color[3] < DEFAULT_MIN_CAST_ALPHA) continue;
-            // The partial sub-batch is built from the PARENT's CPU meshData, so a
-            // cold parent yields nothing until it is restored. Queue that restore
-            // here too: the colour pass only queues it for parents inside its own
-            // frustum, but an up-sun occluder behind the camera still has to cast.
-            this.noteShadowOccluderResidency(batch);
-            // Opaque partial: reuse the colour pass's cached sub-batch. The key is
-            // visibility-content-independent; `_partialBatchEpoch` invalidates it on
-            // any hide/isolate or override change, so the clone is always current.
-            // Without a pipeline the renderer isn't drawing, so skip (the shadow
-            // pass won't run either); casting the whole parent would be wrong.
-            if (!pipeline) continue;
-            const sub = this.scene.getOrCreatePartialBatch(
-                `${batch.colorKey}:${batch.id}`,
-                batch.colorKey,
-                vis.visibleIds,
-                device,
-                pipeline,
-                this._partialBatchEpoch,
-            );
-            // A cold parent yields an empty partial (its residency restore is queued
-            // above); skip this frame — the collector drops zero-index draws anyway,
-            // and the subset casts once resident.
-            if (sub && sub.indexCount > 0) out.push(sub);
-        }
-        return out;
-    }
-
-    /**
-     * Keep a shadow occluder batch resident so it does not thin out silently on
-     * large models under the GPU residency budget (#2670 review). The depth pass
-     * reads these batches' buffers, but that read did not count as usage, so an
-     * up-sun occluder outside the colour frustum aged into an eviction candidate.
-     * Transparent batches never cast (the collector's alpha filter), so their
-     * residency is irrelevant here.
-     */
-    private noteShadowOccluderResidency(batch: BatchedMesh): void {
-        if (batch.color[3] < DEFAULT_MIN_CAST_ALPHA) return;
-        if (batch.gpuResident === false) {
-            this.scene.requestBatchResidency(batch);
-        } else {
-            this.scene.recordBatchDrawn(batch);
-        }
+        return shadowOccluderBatches(this.scene, options, device, hasVisibilityFiltering, this.pipeline, this._partialBatchEpoch);
     }
 
     /** Guarded entry point (#4885) for the unguarded body below. */
@@ -3668,24 +3610,7 @@ export class Renderer {
      * @returns PNG data URL or null if capture failed
      */
     async captureScreenshot(): Promise<string | null> {
-        if (!this.device.isInitialized()) {
-            console.warn('[Renderer] Cannot capture screenshot: not initialized');
-            return null;
-        }
-
-        try {
-            // Wait for any pending GPU work to complete before capturing
-            // This ensures we capture the fully rendered frame
-            const device = this.device.getDevice();
-            await device.queue.onSubmittedWorkDone();
-
-            // Capture exactly what's displayed on the canvas
-            const dataUrl = this.canvas.toDataURL('image/png');
-            return dataUrl;
-        } catch (error) {
-            console.error('[Renderer] Screenshot capture failed:', error);
-            return null;
-        }
+        return captureRendererScreenshot(this.device, this.canvas);
     }
 
     /**

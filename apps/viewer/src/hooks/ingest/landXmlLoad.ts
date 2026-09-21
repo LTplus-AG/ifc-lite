@@ -8,13 +8,12 @@ import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import { captureModelLoaded, snapshotFromGeometry } from '../../utils/loadTelemetry.js';
 import { createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
 import { toast } from '../../components/ui/toast.js';
-import { parseLandXmlViewerModelAsync, type LandXmlViewerModel } from './landXmlViewerModel.js';
-import type { LandXmlSourceBuffer } from './landXmlIngest.js';
+import { parseLandXmlViewerModelFromBlobAsync, type LandXmlViewerModel } from './landXmlViewerModel.js';
 import type { LandXmlTinDocument } from './landXmlSemantics.js';
 import { MAX_RENDER_FRAME_ORIGIN_METRES, meshFitsRenderFrame, meshRenderFrameBounds } from './landXmlRenderFrame.js';
 
 interface LandXmlLoadOptions {
-  buffer: LandXmlSourceBuffer;
+  file: File;
   fileSizeMB: number;
   targetKind: 'primary' | 'federated';
   totalStartTime: number;
@@ -157,7 +156,17 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
   options.setProgress({ phase: 'Parsing LandXML TIN surfaces', percent: 10 });
   options.setGeometryStreamingActive(false);
   try {
-    const result = await parseLandXmlViewerModelAsync(options.buffer, options.isCurrent);
+    const result = await parseLandXmlViewerModelFromBlobAsync(
+      options.file,
+      options.isCurrent,
+      (loadedBytes, totalBytes) => {
+        if (!options.isCurrent()) return;
+        options.setProgress({
+          phase: 'Streaming LandXML TIN surfaces',
+          percent: Math.min(90, 10 + Math.round((loadedBytes / totalBytes) * 80)),
+        });
+      },
+    );
     // The browser worker is terminated within the cancellation polling bound;
     // this guard also prevents a racing stale reply from mutating model state.
     if (!options.isCurrent()) return;

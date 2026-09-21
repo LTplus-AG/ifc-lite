@@ -5,13 +5,22 @@
 import init, { IfcAPI } from '@ifc-lite/wasm';
 import { parseLandXmlGeometry, type LandXmlGeometryPayload, type LandXmlSourceBuffer } from './landXmlIngest.js';
 import { parseLandXmlSourceWithApi } from './landXmlWasm.js';
+import { parseLandXmlSourceBlobWithApi } from './landXmlBlobCursor.js';
 
 const workerScope = self as unknown as {
   onmessage: ((event: MessageEvent<LandXmlSourceBuffer>) => void) | null;
   postMessage(message: unknown, transfer?: Transferable[]): void;
 };
 
-workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer>): Promise<void> => {
+interface LandXmlBlobWorkerRequest {
+  file: Blob;
+}
+
+function isBlobRequest(value: unknown): value is LandXmlBlobWorkerRequest {
+  return typeof value === 'object' && value !== null && 'file' in value && (value as { file?: unknown }).file instanceof Blob;
+}
+
+workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer | LandXmlBlobWorkerRequest>): Promise<void> => {
   try {
     // A worker owns a separate WASM instance. Pass the original bytes directly:
     // ArrayBuffers are transferred by the client and SharedArrayBuffers remain shared.
@@ -19,7 +28,15 @@ workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer>): Promis
     const api = new IfcAPI();
     let payload: LandXmlGeometryPayload;
     try {
-      payload = parseLandXmlGeometry(parseLandXmlSourceWithApi(api, event.data));
+      const document = isBlobRequest(event.data)
+        ? await parseLandXmlSourceBlobWithApi(api, event.data.file, {
+          onProgress: (loadedBytes, totalBytes) => workerScope.postMessage({ progress: { loadedBytes, totalBytes } }),
+        })
+        // TODO(remove-by: #5050 completion, owner: LandXML)
+        // Buffer callers are retained only for the test/legacy compatibility
+        // adapter; the canonical loadFile LandXML path sends a Blob request.
+        : parseLandXmlSourceWithApi(api, event.data);
+      payload = parseLandXmlGeometry(document);
     } finally {
       api.free();
     }

@@ -6,6 +6,9 @@ import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
 import type { LandXmlGeometryPayload, LandXmlSourceBuffer } from './landXmlIngest.js';
 import { parseLandXmlGeometry } from './landXmlIngest.js';
 import { parseLandXmlSourceInCurrentRealm } from './landXmlWasm.js';
+import { parseLandXmlSourceBlobWithApi } from './landXmlBlobCursor.js';
+import { initLandXmlWasm } from './landXmlWasmInit.js';
+import { IfcAPI } from '@ifc-lite/wasm';
 import { spatialMetadataFromLandXml, spatialReferenceFromSourceMetadata } from './sourceSpatialReference.js';
 import type { ModelSpatialReference } from '@ifc-lite/geometry';
 
@@ -70,7 +73,12 @@ export function parseLandXmlViewerModelAsync(
     worker.onmessage = (event: MessageEvent<
       | { ok: true; payload: LandXmlGeometryPayload }
       | { ok: false; error: string }
+      | { progress: { loadedBytes: number; totalBytes: number } }
     >) => {
+      if ('progress' in event.data) {
+        onProgress?.(event.data.progress.loadedBytes, event.data.progress.totalBytes);
+        return;
+      }
       if (!finish()) return;
       if (event.data.ok) resolve(attachSyntheticStore(event.data.payload, fileSize));
       else reject(new Error(event.data.error));
@@ -84,5 +92,63 @@ export function parseLandXmlViewerModelAsync(
       return;
     }
     worker.postMessage(buffer, transferable ? [buffer] : []);
+  });
+}
+
+/**
+ * Canonical File path: structured-clone the Blob to a worker, which feeds
+ * bounded slices into the credited WASM stream instead of transferring one
+ * whole source ArrayBuffer.
+ */
+export function parseLandXmlViewerModelFromBlobAsync(
+  file: Blob,
+  isCurrent: () => boolean = () => true,
+  onProgress?: (loadedBytes: number, totalBytes: number) => void,
+): Promise<LandXmlViewerModel> {
+  if (typeof Worker === 'undefined') {
+    if (!isCurrent()) return Promise.reject(new Error('LandXML parsing cancelled'));
+    return initLandXmlWasm().then(async () => {
+      const api = new IfcAPI();
+      try {
+        const parsed = await parseLandXmlSourceBlobWithApi(api, file, { isCurrent, onProgress });
+        return attachSyntheticStore(parseLandXmlGeometry(parsed), file.size);
+      } finally {
+        api.free();
+      }
+    });
+  }
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./landXml.worker.ts', import.meta.url), { type: 'module' });
+    let finished = false;
+    let cancellationPoll: ReturnType<typeof setInterval> | undefined;
+    const finish = (): boolean => {
+      if (finished) return false;
+      finished = true;
+      if (cancellationPoll !== undefined) clearInterval(cancellationPoll);
+      worker.terminate();
+      return true;
+    };
+    cancellationPoll = setInterval(() => {
+      if (isCurrent()) return;
+      if (finish()) reject(new Error('LandXML parsing cancelled'));
+    }, 25);
+    worker.onmessage = (event: MessageEvent<
+      | { ok: true; payload: LandXmlGeometryPayload }
+      | { ok: false; error: string }
+    >) => {
+      if (!finish()) return;
+      if (event.data.ok) resolve(attachSyntheticStore(event.data.payload, file.size));
+      else reject(new Error(event.data.error));
+    };
+    worker.onerror = (event) => {
+      if (finish()) reject(new Error(event.message || 'LandXML worker failed'));
+    };
+    if (!isCurrent()) {
+      if (finish()) reject(new Error('LandXML parsing cancelled'));
+      return;
+    }
+    // Blob structured cloning preserves the backing file handle; it does not
+    // transfer or duplicate the full LandXML byte payload.
+    worker.postMessage({ file });
   });
 }

@@ -16,7 +16,8 @@ use crate::services::parquet::ParquetError;
 use crate::services::parquet_layout::ParquetLayout;
 use crate::services::parquet_vertex_columns::{shape_vertices, VertexColumns};
 use crate::services::parquet_instancing::{
-    collate_rotation_aware_placements, rotation_zup_to_yup, IDENTITY_ROTATION,
+    collate_rotation_aware_placements, mesh_geometry_key, rotation_zup_to_yup, MeshGeometryKey,
+    IDENTITY_ROTATION,
 };
 use crate::services::parquet_schema::{
     index_schema, mesh_schema, vertex_schema, MeshRow, RowPlacement, ABSENT_SOURCE_ID,
@@ -52,7 +53,7 @@ pub(super) enum ShapePlan {
     /// there would be batch-local (issue #3888 scopes it to the non-streaming
     /// route).
     Identity,
-    /// The `-parquet-v6` layout.
+    /// The `-parquet-v7` layout.
     Shared {
         /// Mesh indices whose vertex/index data is emitted, in emission order.
         shapes: Vec<usize>,
@@ -62,30 +63,38 @@ pub(super) enum ShapePlan {
 }
 
 impl ShapePlan {
-    /// Plan the shared layout: occurrences of one `IfcMappedItem` /
-    /// `IfcRepresentationMap` shape collapse onto the template's single block
-    /// of vertices, each row carrying the verified origin + rotation that puts
-    /// it back where it belongs.
+    /// Plan the shared layout in the SAME two-stage order `/optimized` uses
+    /// (issue #5130): the rotation-aware collator
+    /// ([`collate_rotation_aware_placements`]) runs first, and every
+    /// occurrence it did not place falls through to a content hash of its
+    /// (origin-relative) vertex and index buffers
+    /// ([`crate::services::parquet_instancing::mesh_geometry_key`]), so
+    /// bit-identical occurrences the collator has no group for still collapse
+    /// onto one shape.
     ///
-    /// Reuses [`collate_rotation_aware_placements`] verbatim — the same
-    /// grouping, the same per-vertex residual check, the same all-or-nothing
-    /// per group — so the flat route can never share a shape the `/optimized`
-    /// route would have refused to share.
+    /// Stage 1 reuses [`collate_rotation_aware_placements`] verbatim — the
+    /// same grouping, the same per-vertex residual check, the same
+    /// all-or-nothing per group — so the flat route can never share a shape
+    /// the `/optimized` route would have refused to share. Stage 2 mirrors
+    /// `serialize_to_parquet_optimized`'s `None` branch: the hash's first
+    /// occurrence (by mesh index, not by slot) becomes the shared shape every
+    /// later bit-identical occurrence points at.
     ///
-    /// Returns [`ShapePlan::Identity`] when that collation found nothing to
-    /// share, so a model with no repeats emits the v5 layout through the same
-    /// path it always did rather than through a Shared plan that happens to be
-    /// one-to-one.
+    /// Returns [`ShapePlan::Identity`] only when NEITHER stage shared
+    /// anything — a hash-only match must still return `Shared`, not just a
+    /// collator match — so a model with no repeats at all emits the v5 layout
+    /// through the same path it always did rather than through a `Shared`
+    /// plan that happens to be one-to-one.
     pub(super) fn shared_shapes(
         meshes: &[MeshData],
         baked_basis: Option<&ifc_lite_geometry::Matrix4<f64>>,
     ) -> Self {
         let placements = collate_rotation_aware_placements(meshes, baked_basis);
-        if placements.is_empty() {
-            return Self::Identity;
-        }
         let mut shapes: Vec<usize> = Vec::with_capacity(meshes.len());
         let mut slot_of: FxHashMap<usize, usize> = FxHashMap::default();
+        // Content-hash fallback (stage 2): first occurrence of a hash wins the
+        // slot for every later bit-identical occurrence the collator left out.
+        let mut hash_slot: FxHashMap<MeshGeometryKey, usize> = FxHashMap::default();
         let mut rows: Vec<PlannedRow> = Vec::with_capacity(meshes.len());
         for (i, mesh) in meshes.iter().enumerate() {
             // The template is itself an occurrence of its own group, so it
@@ -98,7 +107,10 @@ impl ShapePlan {
                     zup_to_yup_f64(placement.origin_zup),
                     rotation_zup_to_yup(&placement.rotation_zup),
                 ),
-                None => (i, zup_to_yup_f64(mesh.origin), IDENTITY_ROTATION),
+                None => {
+                    let first = *hash_slot.entry(mesh_geometry_key(mesh)).or_insert(i);
+                    (first, zup_to_yup_f64(mesh.origin), IDENTITY_ROTATION)
+                }
             };
             let shape_slot = *slot_of.entry(shape_mesh).or_insert_with(|| {
                 let slot = shapes.len();
@@ -110,6 +122,10 @@ impl ShapePlan {
                 origin_yup,
                 rotation,
             });
+        }
+        if shapes.len() == meshes.len() {
+            // Neither stage shared anything: every row emits its own shape.
+            return Self::Identity;
         }
         Self::Shared { shapes, rows }
     }

@@ -25,8 +25,14 @@ pub enum ParquetLayout {
     #[default]
     #[serde(rename = "flat")]
     Flat,
-    /// `-parquet-v6`: occurrences of one shape share a block of vertices,
-    /// placed by `world = origin + R * p` via the `rot0..rot8` columns.
+    /// `-parquet-v7`: occurrences of one shape share a block of vertices,
+    /// placed by `world = origin + R * p` via the `rot0..rot8` columns. `v7` =
+    /// `v6`'s schema plus a second, content-hash sharing stage
+    /// (`ShapePlan::shared_shapes`, issue #5130): `v6` only ran the
+    /// rotation-aware collator, so a model whose repeats are bit-identical but
+    /// not `IfcMappedItem`/`IfcRepresentationMap` occurrences (the common case
+    /// on models with no instancing metadata at all) shared nothing and paid
+    /// for nine all-identity `rot*` columns on every row for free.
     #[serde(rename = "shared-shapes")]
     SharedShapes,
 }
@@ -46,7 +52,7 @@ impl ParquetLayout {
     pub(crate) fn cache_suffix(self) -> &'static str {
         match self {
             Self::Flat => "parquet-v5",
-            Self::SharedShapes => "parquet-v6",
+            Self::SharedShapes => "parquet-v7",
         }
     }
 }

@@ -10,6 +10,98 @@
     use super::*;
     use crate::services::parquet_schema::ABSENT_SOURCE_ID;
 
+    /// Backs the issue #5130 writer finding with a measurement instead of
+    /// theory: 1,000 distinct meshes (small triangle each), no repeats in
+    /// EITHER stage, so `SharedShapes` plans `Identity` and the only
+    /// difference from `Flat` is the nine identity `rot0..rot8` columns. If
+    /// `writer_props`'s dictionary encoding for `rot*` columns ever regressed
+    /// (e.g. someone drops the `!name.starts_with("rot")` exemption), those
+    /// nine constant-valued columns would be written PLAIN and this ratchet
+    /// would fail loudly instead of silently shipping a bigger file.
+    ///
+    /// Reads column-chunk `compressed_size` straight from the Parquet footer
+    /// (`ColumnChunkMetaData`), not from the arrow schema, so page headers,
+    /// dictionary pages and statistics are all accounted for.
+    #[test]
+    fn identity_rot_columns_cost_under_10pct_on_1000_rows() {
+        use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+
+        let meshes: Vec<MeshData> = (0..1000u32)
+            .map(|i| {
+                let x = i as f32;
+                MeshData::new(
+                    i + 1,
+                    "IfcWall".to_string(),
+                    vec![x, 0.0, 0.0, x + 0.5, 0.0, 0.0, x + 0.5, 0.5, 0.0],
+                    vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                    vec![0, 1, 2],
+                    [0.5, 0.5, 0.5, 1.0],
+                )
+                .with_origin([x as f64, 0.0, 0.0])
+            })
+            .collect();
+
+        let plan = ShapePlan::shared_shapes(&meshes, None);
+        assert!(
+            matches!(plan, ShapePlan::Identity),
+            "fixture must share nothing in either stage for this measurement to isolate the rot* cost"
+        );
+
+        let flat = serialize_combined_for_layout(&meshes, ParquetLayout::Flat, None).unwrap();
+        let shared = serialize_combined_for_layout(&meshes, ParquetLayout::SharedShapes, None).unwrap();
+        let total_delta_pct = 100.0 * (shared.len() as f64 / flat.len() as f64 - 1.0);
+        eprintln!(
+            "MEASURED #5130: flat_total={} shared_total={} delta={} ({total_delta_pct:.2}%)",
+            flat.len(),
+            shared.len(),
+            shared.len() as i64 - flat.len() as i64,
+        );
+
+        // Unwrap the outer `[geo_len][mesh_len][mesh]...` framing to reach the
+        // mesh table's own Parquet buffer, then read column-chunk sizes
+        // straight from the footer (not from the arrow schema).
+        let mesh_table_bytes = |blob: &Bytes| -> Bytes {
+            let mesh_len = u32::from_le_bytes(blob[4..8].try_into().unwrap()) as usize;
+            Bytes::copy_from_slice(&blob[8..8 + mesh_len])
+        };
+        let report_columns = |label: &str, blob: &Bytes| -> (usize, i64) {
+            let bytes = mesh_table_bytes(blob);
+            let total_len = bytes.len();
+            let builder = ParquetRecordBatchReaderBuilder::try_new(bytes).unwrap();
+            let mut per_column: std::collections::BTreeMap<String, i64> = std::collections::BTreeMap::new();
+            for rg in builder.metadata().row_groups() {
+                for col in rg.columns() {
+                    *per_column.entry(col.column_path().string()).or_insert(0) += col.compressed_size();
+                }
+            }
+            eprintln!("MEASURED #5130: {label} mesh_table_bytes={total_len}");
+            let mut rot_total = 0i64;
+            for (name, size) in &per_column {
+                eprintln!("MEASURED #5130:   {label} column {name} compressed_size={size}");
+                if name.starts_with("rot") {
+                    rot_total += size;
+                }
+            }
+            (total_len, rot_total)
+        };
+        report_columns("flat", &flat);
+        let (shared_mesh_table_len, rot_total) = report_columns("shared", &shared);
+        let rot_pct = 100.0 * rot_total as f64 / shared_mesh_table_len as f64;
+        eprintln!("MEASURED #5130: shared rot* columns total={rot_total} ({rot_pct:.2}% of mesh table)");
+
+        assert!(
+            rot_pct < 10.0,
+            "identity rot* columns must stay dictionary/RLE-cheap (<10% of the mesh table): \
+             got {rot_pct:.2}% ({rot_total} of {shared_mesh_table_len} bytes) — writer_props may \
+             have stopped dictionary-encoding rot* columns"
+        );
+        assert!(
+            total_delta_pct < 10.0,
+            "a no-share SharedShapes blob must stay within 10% of the Flat blob's size: \
+             got {total_delta_pct:.2}%"
+        );
+    }
+
     #[test]
     fn test_parquet_serialization() {
         let meshes = vec![

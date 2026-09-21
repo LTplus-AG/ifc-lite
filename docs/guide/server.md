@@ -569,7 +569,11 @@ The server uses Apache Parquet for efficient binary serialization.
 `?parquet_layout=shared-shapes`. Occurrences of one shape — repeated furniture,
 pipe runs, structural members — then share a single block of vertices instead of
 each carrying a full copy, and the mesh table gains nine `rot0..rot8` columns
-(row-major 3x3, Float32) placing each occurrence:
+(row-major 3x3, Float32) placing each occurrence. Sharing runs in the same two
+stages `/parse/parquet/optimized` uses (issue #5130): rotation-aware
+`IfcMappedItem`/`IfcRepresentationMap` placement first, then a content hash of
+each remaining occurrence's vertex/index buffers, so bit-identical repeats with
+no instancing metadata at all still collapse onto one shape:
 
 ```text
 world_vertex = origin + R * position
@@ -593,7 +597,7 @@ Two further consequences:
   Under `shared-shapes` it carries the placement.
 - **Send the same parameter to `/cache/check/{hash}` and
   `/cache/geometry/{hash}`.** The two layouts are cached separately
-  (`-parquet-v5` / `-parquet-v6`) and never cross-serve, so a check that omits
+  (`-parquet-v5` / `-parquet-v7`) and never cross-serve, so a check that omits
   it answers about the other entry. `@ifc-lite/server-client` does this for you.
 
 ### Optimized Format
@@ -637,7 +641,7 @@ Cache keys are derived from file content:
 # {filter} is the opening filter (e.g. "default"); a non-default tessellation
 # quality appends a "-q{level}" suffix after it
 {SHA256}-{filter}-parquet-v5          # Geometry (default layout)
-{SHA256}-{filter}-parquet-v6          # Geometry (parquet_layout=shared-shapes)
+{SHA256}-{filter}-parquet-v7          # Geometry (parquet_layout=shared-shapes)
 {SHA256}-{filter}-parquet-metadata-v5 # Metadata header
 {SHA256}-{filter}-datamodel-v6        # Properties & hierarchy
 {SHA256}-{filter}-symbolic-v3         # 2D symbol stream

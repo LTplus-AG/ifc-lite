@@ -86,7 +86,7 @@ fn the_two_layouts_never_share_a_cache_entry() {
                 "the default layout must keep the pre-#3888 key: {flat}"
             );
             assert!(
-                shared.ends_with("-parquet-v6"),
+                shared.ends_with("-parquet-v7"),
                 "the opt-in layout needs its own namespace: {shared}"
             );
             assert_ne!(flat, shared);
@@ -96,6 +96,35 @@ fn the_two_layouts_never_share_a_cache_entry() {
             );
         }
     }
+}
+
+/// Regression for #5130: `ShapePlan::shared_shapes` gained a second
+/// (content-hash) sharing stage, so the schema this namespace holds changed
+/// even though `rot0..rot8` did not -- a warm cache would otherwise keep
+/// serving the pre-fix, uncollated bytes under the old `-parquet-v6` key
+/// forever. `Flat` is untouched by this issue and must keep `-parquet-v5`.
+#[test]
+fn shared_shapes_geometry_key_ends_with_parquet_v7() {
+    let shared = parquet_cache_key(
+        "deadbeef",
+        OpeningFilterMode::Default,
+        TessellationQuality::Medium,
+        ParquetLayout::SharedShapes,
+    );
+    assert!(
+        shared.ends_with("-parquet-v7"),
+        "the #5130 content-hash stage must bump the shared-shapes namespace: {shared}"
+    );
+    let flat = parquet_cache_key(
+        "deadbeef",
+        OpeningFilterMode::Default,
+        TessellationQuality::Medium,
+        ParquetLayout::Flat,
+    );
+    assert!(
+        flat.ends_with("-parquet-v5"),
+        "the flat layout is untouched by #5130: {flat}"
+    );
 }
 
 /// The default is `Flat`, and it is the default that carries the safety
@@ -375,7 +404,7 @@ ENDSEC;";
 /// The optimized-Parquet route got a key of its own with #3889. Its whole
 /// point is that it is a DIFFERENT namespace from the flat route's: the two
 /// emit different payloads, so a hit on one must never satisfy the other.
-/// Deriving the optimized key from the flat one (or reusing `-parquet-v6`)
+/// Deriving the optimized key from the flat one (or reusing `-parquet-v7`)
 /// would put a quantized, deduplicated payload where a client expecting flat
 /// meshes reads it.
 #[test]

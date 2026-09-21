@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Unit tests for `parquet_mesh_tables.rs` — the `-parquet-v6` shape plan
+//! Unit tests for `parquet_mesh_tables.rs` — the `-parquet-v7` shape plan
 //! (issue #3888). Split into this ratchet-exempt sibling file, the same
 //! pattern as `parquet_tests.rs` and `parquet_optimized_tests.rs`.
 
@@ -308,5 +308,143 @@ fn v6_is_at_most_40_percent_of_v5_on_a_real_model() {
     assert!(
         ratio <= 0.40,
         "v6 must be at most 40% of the flat v5 blob on this model: v5={v5} v6={v6} ratio={ratio:.3}"
+    );
+}
+
+/// RED/GREEN for issue #5130: two occurrences with bit-identical (origin
+/// relative) vertex/index buffers, DIFFERENT origins, and no `InstanceMeta` at
+/// all — so the rotation-aware collator has nothing to group — must still
+/// collapse onto one shape through the content-hash stage
+/// `ShapePlan::shared_shapes` gained in this issue.
+#[test]
+fn shared_shapes_hash_stage_shares_translated_copies() {
+    let mesh = |id: u32, origin: [f64; 3]| {
+        MeshData::new(
+            id,
+            "IfcFurniture".to_string(),
+            vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+            vec![0, 1, 2],
+            [0.6, 0.4, 0.2, 1.0],
+        )
+        .with_origin(origin)
+    };
+    let meshes = vec![mesh(1, [0.0, 0.0, 0.0]), mesh(2, [5.0, 0.0, 0.0])];
+
+    let plan = ShapePlan::shared_shapes(&meshes, None);
+    assert_eq!(
+        plan.shape_count(&meshes),
+        1,
+        "two bit-identical, translated occurrences with no instancing metadata \
+         must still share through the content-hash stage"
+    );
+    assert!(
+        matches!(plan, ShapePlan::Shared { .. }),
+        "a hash-only match must return Shared, not Identity"
+    );
+
+    let blob = serialize_to_parquet_shared_shapes(&meshes).unwrap();
+    let sections = read_flat_sections(&blob);
+    let mesh_batch = &sections[0];
+    assert_eq!(mesh_batch.num_rows(), 2, "every occurrence keeps its own row");
+
+    let vertex_starts = col::<UInt32Array>(mesh_batch, "vertex_start");
+    assert_eq!(
+        vertex_starts.values(),
+        &[0, 0],
+        "both rows must point at the SAME shared vertex block"
+    );
+    assert_eq!(sections[1].num_rows(), 3, "only one occurrence's vertices may be written");
+
+    let rot = rotation_columns(mesh_batch);
+    let identity = [1.0f32, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+    for row in 0..2 {
+        for (k, want) in identity.iter().enumerate() {
+            assert_eq!(rot[k].value(row), *want, "hash-shared row {row} rot{k} must be identity");
+        }
+    }
+
+    // Y-up swap [x, z, -y]: origin (0,0,0) and (5,0,0) both keep x, and y/z
+    // stay zero — each row must carry its OWN origin, not the shared shape's.
+    let (ox, oz) = (col::<Float64Array>(mesh_batch, "origin_x"), col::<Float64Array>(mesh_batch, "origin_z"));
+    assert_eq!(ox.value(0), 0.0);
+    assert_eq!(ox.value(1), 5.0);
+    assert_eq!(oz.value(0), 0.0);
+    assert_eq!(oz.value(1), 0.0);
+}
+
+/// All-distinct meshes must plan `Identity`: neither the collator nor the
+/// content-hash stage found anything to share, so the default v5 layout path
+/// (no `Shared` allocation) still applies.
+#[test]
+fn shared_shapes_identity_only_when_nothing_shares() {
+    let meshes: Vec<MeshData> = (0..4u32)
+        .map(|i| {
+            let x = i as f32;
+            MeshData::new(
+                i + 1,
+                "IfcWall".to_string(),
+                vec![x, 0.0, 0.0, x + 1.0, 0.0, 0.0, x + 1.0, 1.0, 0.0],
+                vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                vec![0, 1, 2],
+                [0.5, 0.5, 0.5, 1.0],
+            )
+            .with_origin([i as f64, 2.0 * i as f64, 3.0])
+        })
+        .collect();
+
+    let plan = ShapePlan::shared_shapes(&meshes, None);
+    assert!(
+        matches!(plan, ShapePlan::Identity),
+        "meshes with no repeats in either stage must plan Identity"
+    );
+}
+
+/// The issue's headline claim (#5130): the flat route's shape count must
+/// match `/optimized`'s `unique_meshes` on the SAME input. Mixes both
+/// stages — `rotated_repeats()` for the rotation-aware collator (3
+/// occurrences -> 1 template), two translated bit-identical copies with no
+/// `InstanceMeta` for the content-hash stage (2 -> 1), and one fully distinct
+/// mesh that shares nothing — so a writer that only ran one stage disagrees
+/// with `/optimized` on the count.
+#[test]
+fn shared_shapes_shape_count_matches_optimized_unique_meshes() {
+    use crate::services::parquet_optimized::serialize_to_parquet_optimized_with_stats;
+
+    let mut meshes = rotated_repeats();
+
+    let hash_mesh = |id: u32, origin: [f64; 3]| {
+        MeshData::new(
+            id,
+            "IfcDoor".to_string(),
+            vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+            vec![0, 1, 2],
+            [0.2, 0.2, 0.2, 1.0],
+        )
+        .with_origin(origin)
+    };
+    meshes.push(hash_mesh(200, [0.0, 0.0, 0.0]));
+    meshes.push(hash_mesh(201, [10.0, 0.0, 0.0]));
+    meshes.push(MeshData::new(
+        202,
+        "IfcColumn".to_string(),
+        vec![0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 2.0, 0.0],
+        vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+        vec![0, 1, 2],
+        [0.9, 0.1, 0.1, 1.0],
+    ));
+
+    let plan = ShapePlan::shared_shapes(&meshes, None);
+    let (_, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false, None).unwrap();
+
+    assert_eq!(
+        stats.unique_meshes, 3,
+        "1 collated template + 1 hash-shared shape + 1 unique mesh"
+    );
+    assert_eq!(
+        plan.shape_count(&meshes),
+        stats.unique_meshes,
+        "the flat route's shape count must match /optimized's unique_meshes on the same input"
     );
 }

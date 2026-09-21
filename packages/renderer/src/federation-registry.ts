@@ -17,6 +17,8 @@ export interface ModelRange {
   modelId: string;
   offset: number;       // Start of this model's global ID range
   maxExpressId: number; // Highest expressId in this model
+  reservedMaxExpressId: number;
+  publishedStart: number | null;
 }
 
 export interface GlobalIdLookup {
@@ -62,12 +64,21 @@ export class FederationRegistry {
    * @returns The offset to add to all expressIds for this model
    */
   registerModel(modelId: string, maxExpressId: number): number {
+    const existing = this.modelRanges.get(modelId);
+    if (existing) return existing.offset;
+    const offset = this.reserveModel(modelId, maxExpressId);
+    this.publishRange(modelId, 0, maxExpressId);
+    return offset;
+  }
+
+  /** Reserve a fixed local-ID envelope before progressive publication. */
+  reserveModel(modelId: string, reservedMaxExpressId: number): number {
     // Validate inputs
     if (!modelId || typeof modelId !== 'string') {
       throw new Error(`[FederationRegistry] Invalid modelId: ${modelId}`);
     }
-    if (typeof maxExpressId !== 'number' || !Number.isFinite(maxExpressId) || maxExpressId < 0) {
-      throw new Error(`[FederationRegistry] Invalid maxExpressId: ${maxExpressId} for model ${modelId}`);
+    if (typeof reservedMaxExpressId !== 'number' || !Number.isFinite(reservedMaxExpressId) || reservedMaxExpressId < 0) {
+      throw new Error(`[FederationRegistry] Invalid reservedMaxExpressId: ${reservedMaxExpressId} for model ${modelId}`);
     }
 
     // Check for duplicate registration
@@ -78,16 +89,16 @@ export class FederationRegistry {
     }
 
     // Check for overflow
-    if (this.nextOffset + maxExpressId > MAX_SAFE_OFFSET) {
+    if (this.nextOffset + reservedMaxExpressId > MAX_SAFE_OFFSET) {
       throw new Error(
         `[FederationRegistry] Cannot register model: would exceed safe ID limit. ` +
-        `Current offset: ${this.nextOffset}, model max ID: ${maxExpressId}. ` +
+        `Current offset: ${this.nextOffset}, reserved model max ID: ${reservedMaxExpressId}. ` +
         `Please unload some models first.`
       );
     }
 
     const offset = this.nextOffset;
-    const range: ModelRange = { modelId, offset, maxExpressId };
+    const range: ModelRange = { modelId, offset, maxExpressId: -1, reservedMaxExpressId, publishedStart: null };
 
     this.modelRanges.set(modelId, range);
     this.sortedRanges.push(range);
@@ -97,9 +108,38 @@ export class FederationRegistry {
     // Next model starts after this model's range (+1 gap for safety), plus
     // reserved headroom for mutation-overlay ids allocated into this model's
     // own space after load (see OVERLAY_ID_HEADROOM above).
-    this.nextOffset = offset + maxExpressId + 1 + OVERLAY_ID_HEADROOM;
+    this.nextOffset = offset + reservedMaxExpressId + 1 + OVERLAY_ID_HEADROOM;
 
     return offset;
+  }
+
+  /** Publish the next contiguous owned local range inside a reservation. */
+  publishRange(modelId: string, start: number, end: number): void {
+    const range = this.modelRanges.get(modelId);
+    if (!range) throw new Error(`[FederationRegistry] Cannot publish unknown model ${modelId}`);
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || end > range.reservedMaxExpressId) {
+      throw new Error(`[FederationRegistry] Invalid published range ${start}..${end} for ${modelId}`);
+    }
+    if (range.publishedStart === null) {
+      range.publishedStart = start;
+    } else if (start !== range.maxExpressId + 1) {
+      throw new Error(`[FederationRegistry] Published IDs for ${modelId} must be contiguous and source ordered`);
+    }
+    range.maxExpressId = end;
+  }
+
+  /** Publish derived/overlay IDs from the separately reserved headroom. */
+  publishOverlayRange(modelId: string, start: number, end: number): void {
+    const range = this.modelRanges.get(modelId);
+    if (!range) throw new Error(`[FederationRegistry] Cannot publish unknown model ${modelId}`);
+    const overlayEnd = range.reservedMaxExpressId + OVERLAY_ID_HEADROOM;
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < range.reservedMaxExpressId + 1 || end < start || end > overlayEnd) {
+      throw new Error(`[FederationRegistry] Invalid overlay range ${start}..${end} for ${modelId}`);
+    }
+    if (start !== range.maxExpressId + 1) {
+      throw new Error(`[FederationRegistry] Overlay IDs for ${modelId} must extend published ownership contiguously`);
+    }
+    range.maxExpressId = end;
   }
 
   /**
@@ -128,6 +168,9 @@ export class FederationRegistry {
     if (!range) {
       return expressId;
     }
+    if (!this.isPublished(range, expressId)) {
+      throw new Error(`[FederationRegistry] Local ID ${expressId} is not published for model ${modelId}`);
+    }
     return expressId + range.offset;
   }
 
@@ -148,7 +191,7 @@ export class FederationRegistry {
 
     // Verify the globalId is actually within this model's range
     const localId = globalId - range.offset;
-    if (localId < 0 || localId > range.maxExpressId) {
+    if (!this.isPublished(range, localId)) {
       // globalId is in the gap between models
       return null;
     }
@@ -203,8 +246,9 @@ export class FederationRegistry {
   getGlobalIdRange(modelId: string): { start: number; end: number } | null {
     const range = this.modelRanges.get(modelId);
     if (!range) return null;
+    if (range.publishedStart === null) return null;
     return {
-      start: range.offset,
+      start: range.offset + range.publishedStart,
       end: range.offset + range.maxExpressId,
     };
   }
@@ -217,7 +261,7 @@ export class FederationRegistry {
     const range = this.modelRanges.get(modelId);
     if (!range) return false;
     const localId = globalId - range.offset;
-    return localId >= 0 && localId <= range.maxExpressId;
+    return this.isPublished(range, localId);
   }
 
   /**
@@ -227,6 +271,13 @@ export class FederationRegistry {
     this.modelRanges.clear();
     this.sortedRanges = [];
     this.nextOffset = 0;
+  }
+
+  private isPublished(range: ModelRange, localId: number): boolean {
+    return range.publishedStart !== null
+      && Number.isInteger(localId)
+      && localId >= range.publishedStart
+      && localId <= range.maxExpressId;
   }
 
   /**

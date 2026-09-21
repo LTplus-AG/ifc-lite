@@ -291,11 +291,20 @@ pub(crate) struct PipeStreamParts {
     collections: std::vec::IntoIter<crate::LandXmlPipeNetworkCollection>,
     features: std::vec::IntoIter<crate::LandXmlPipeFeature>,
     networks: std::vec::IntoIter<crate::LandXmlPipeNetwork>,
-    refusals: std::vec::IntoIter<crate::LandXmlPipeRefusal>,
+    /// Source-order semantic refusals are moved only after all networks.
+    /// `Some` keeps a referenced item available for a preceding probe clone.
+    refusals: Vec<Option<crate::LandXmlPipeRefusal>>,
+    next_refusal: usize,
+    preflight_refusal_batches: std::vec::IntoIter<Vec<usize>>,
+    pending_preflight_refusals: std::vec::IntoIter<usize>,
+    pending_network: Option<crate::LandXmlPipeNetwork>,
 }
 
 impl PipeStreamParts {
-    pub(crate) fn new(document: LandXmlPipeNetworkDocument) -> Self {
+    pub(crate) fn new(
+        document: LandXmlPipeNetworkDocument,
+        preflight_refusal_batches: Vec<Vec<usize>>,
+    ) -> Self {
         let LandXmlPipeNetworkDocument {
             schema,
             version,
@@ -306,6 +315,11 @@ impl PipeStreamParts {
             networks,
             refusals,
         } = document;
+        assert_eq!(
+            networks.len(),
+            preflight_refusal_batches.len(),
+            "every retained pipe network owns one cursor preflight refusal batch"
+        );
         Self {
             header: Some(LandXmlPipeNetworkDocument {
                 schema,
@@ -320,7 +334,11 @@ impl PipeStreamParts {
             collections: collections.into_iter(),
             features: features.into_iter(),
             networks: networks.into_iter(),
-            refusals: refusals.into_iter(),
+            refusals: refusals.into_iter().map(Some).collect(),
+            next_refusal: 0,
+            preflight_refusal_batches: preflight_refusal_batches.into_iter(),
+            pending_preflight_refusals: Vec::new().into_iter(),
+            pending_network: None,
         }
     }
 
@@ -329,11 +347,37 @@ impl PipeStreamParts {
     }
 
     fn next_record(&mut self) -> Option<LandXmlMetadataRecord> {
-        self.collections
-            .next()
-            .map(LandXmlMetadataRecord::PipeCollection)
-            .or_else(|| self.features.next().map(LandXmlMetadataRecord::PipeFeature))
-            .or_else(|| self.networks.next().map(LandXmlMetadataRecord::PipeNetwork))
-            .or_else(|| self.refusals.next().map(LandXmlMetadataRecord::PipeRefusal))
+        if let Some(collection) = self.collections.next() {
+            return Some(LandXmlMetadataRecord::PipeCollection(collection));
+        }
+        if let Some(feature) = self.features.next() {
+            return Some(LandXmlMetadataRecord::PipeFeature(feature));
+        }
+        loop {
+            if let Some(index) = self.pending_preflight_refusals.next() {
+                let refusal = self
+                    .refusals
+                    .get(index)
+                    .and_then(Option::as_ref)
+                    .expect("cursor preflight refusal index remains valid")
+                    .clone();
+                return Some(LandXmlMetadataRecord::PipePreflightRefusal(refusal));
+            }
+            if let Some(network) = self.pending_network.take() {
+                return Some(LandXmlMetadataRecord::PipeNetwork(network));
+            }
+            let Some(network) = self.networks.next() else {
+                break;
+            };
+            self.pending_preflight_refusals = self
+                .preflight_refusal_batches
+                .next()
+                .expect("every retained network has a preflight refusal batch")
+                .into_iter();
+            self.pending_network = Some(network);
+        }
+        let refusal = self.refusals.get_mut(self.next_refusal)?.take();
+        self.next_refusal += 1;
+        refusal.map(LandXmlMetadataRecord::PipeRefusal)
     }
 }

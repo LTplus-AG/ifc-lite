@@ -101,6 +101,9 @@ pub enum LandXmlMetadataRecord {
     HorizontalAlignmentWarning(String),
     PipeCollection(LandXmlPipeNetworkCollection),
     PipeFeature(LandXmlPipeFeature),
+    /// Cursor-only refusal probe emitted directly before its retained network.
+    /// It never enters the reassembled semantic document.
+    PipePreflightRefusal(LandXmlPipeRefusal),
     PipeNetwork(LandXmlPipeNetwork),
     PipeRefusal(LandXmlPipeRefusal),
 }
@@ -200,6 +203,7 @@ impl LandXmlMetadataRecord {
             Self::HorizontalAlignmentWarning(_) => "horizontal_alignment_warning",
             Self::PipeCollection(_) => "pipe_collection",
             Self::PipeFeature(_) => "pipe_feature",
+            Self::PipePreflightRefusal(_) => "pipe_preflight_refusal",
             Self::PipeNetwork(_) => "pipe_network",
             Self::PipeRefusal(_) => "pipe_refusal",
         }
@@ -232,6 +236,7 @@ impl LandXmlMetadataRecord {
             Self::HorizontalAlignmentWarning(value) => serde_json::to_vec(value),
             Self::PipeCollection(value) => serde_json::to_vec(value),
             Self::PipeFeature(value) => serde_json::to_vec(value),
+            Self::PipePreflightRefusal(value) => serde_json::to_vec(value),
             Self::PipeNetwork(value) => serde_json::to_vec(value),
             Self::PipeRefusal(value) => serde_json::to_vec(value),
         }

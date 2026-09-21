@@ -237,6 +237,60 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     }
   });
 
+  it('excludes an invalid-invert pipe from the real streamed envelope before its network is measured (#5161)', async () => {
+    const withRefusedPipe = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/><Invert refPipe="bad" flowDir="out" elev="bad"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="C"><Center>0 10 0</Center><CircStruct diameter="1"/></Struct><Struct name="D"><Center>10 10 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="bad" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe><Pipe name="good" refStart="C" refEnd="D"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    await initLandXmlWasm();
+    const api = new IfcAPI();
+    try {
+      const reducer = new LandXmlStreamPreflightReducer();
+      const records: string[] = [];
+      await streamLandXmlSourceBlobWithApi(api, new Blob([withRefusedPipe]), {
+        onHeader: (header) => reducer.onHeader(header),
+        onSurface: (surface) => reducer.onSurface(surface),
+        onEvent: async (event) => {
+          if (typeof event === 'object' && event !== null && (event as { kind?: unknown }).kind === 'metadata') {
+            const record = (event as { record?: unknown }).record;
+            if (typeof record === 'string') records.push(record);
+          }
+          await reducer.onEvent(event);
+        },
+      });
+      const parsed = await parseDocument(withRefusedPipe);
+      const direct = preflightLandXmlGeometry(parsed);
+      assert.equal(direct.componentCount, 1, 'the direct pipe cursor refuses the bad route rather than falling back to Center');
+      assert.deepEqual(reducer.finish().preflight, direct);
+      assert.ok(records.indexOf('pipe_preflight_refusal') < records.indexOf('pipe_network'));
+      assert.ok(records.lastIndexOf('pipe_refusal') > records.indexOf('pipe_network'), 'the durable semantic refusal remains source ordered');
+    } finally {
+      api.free();
+    }
+  });
+
+  it('shares the 10,000-pipe stream budget across network records (#5161)', async () => {
+    const network = (networkId: number) => {
+      const pipes = Array.from({ length: 100 }, (_, pipeId) => (
+        `<Pipe name="P-${networkId}-${pipeId}" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe>`
+      )).join('');
+      return `<PipeNetwork name="storm-${networkId}" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes>${pipes}</Pipes></PipeNetwork>`;
+    };
+    const xml = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks>${Array.from({ length: 101 }, (_, index) => network(index + 1)).join('')}</PipeNetworks></LandXML>`;
+    await initLandXmlWasm();
+    const api = new IfcAPI();
+    try {
+      const reducer = new LandXmlStreamPreflightReducer();
+      await streamLandXmlSourceBlobWithApi(api, new Blob([xml]), {
+        onHeader: (header) => reducer.onHeader(header),
+        onSurface: (surface) => reducer.onSurface(surface),
+        onEvent: (event) => reducer.onEvent(event),
+      });
+      const parsed = await parseDocument(xml);
+      assert.equal(preflightLandXmlGeometry(parsed).componentCount, 10_000);
+      assert.equal(reducer.finish().preflight.componentCount, 10_000);
+    } finally {
+      api.free();
+    }
+  });
+
   it('completes a Blob stream from acknowledged meshes without a second geometry build (#5050)', async () => {
     const parsed = await parseDocument(LANDXML);
     const preflight = preflightLandXmlGeometry(parsed);

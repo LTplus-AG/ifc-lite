@@ -5,8 +5,9 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    LandXmlCancellation, LandXmlCapabilityDiagnostic, LandXmlLimits, LandXmlPipeFeature, LandXmlPipeNetwork,
-    LandXmlPipeNetworkCollection, LandXmlPipeProperties, LandXmlPipeRefusal, LandXmlSourceId,
+    LandXmlCancellation, LandXmlCapabilityDiagnostic, LandXmlLimits, LandXmlPipeFeature,
+    LandXmlPipeNetwork, LandXmlPipeNetworkCollection, LandXmlPipeProperties, LandXmlPipeRefusal,
+    LandXmlSourceId,
 };
 
 /// Shared pipe-family semantic state. Both complete input and the resumable
@@ -35,6 +36,10 @@ pub(crate) struct PipeParser<'a> {
     pub(super) features: Vec<LandXmlPipeFeature>,
     pub(super) pending_networks: Vec<NetworkBuilder>,
     pub(super) refusals: Vec<LandXmlPipeRefusal>,
+    /// Per-retained-network indexes into `refusals` for cursor-only geometry
+    /// probes. The stream emits the referenced refusal immediately before its
+    /// network, while the normal semantic refusal record keeps source order.
+    pub(super) preflight_refusal_batches: Vec<Vec<usize>>,
     pub(super) refusal_keys: HashSet<(LandXmlSourceId, String)>,
     pub(super) pipe_networks_seen: usize,
     pub(super) structures_seen: usize,

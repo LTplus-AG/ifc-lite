@@ -18,6 +18,17 @@ function mesh(expressId: number, x = 0) {
   };
 }
 
+function twoTriangleMesh(expressId: number, x = 0) {
+  return {
+    expressId,
+    positions: new Float32Array([x, 0, 0, x + 2, 0, 0, x + 2, 2, 0, x, 2, 0]),
+    normals: new Float32Array([0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0]),
+    indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
+    color: [0.42, 0.62, 0.32, 1] as [number, number, number, number],
+    origin: [0, 0, 0] as [number, number, number],
+  };
+}
+
 const sourceCoordinateInfo = {
   originShift: { x: 0, y: 0, z: 0 },
   originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 2, y: 1, z: 0 } },
@@ -67,5 +78,29 @@ describe('federated LandXML streaming plan (#5050)', () => {
     assert.equal(registry.getOffset('stale'), null);
     assert.equal(removed.length, 1);
     assert.equal(plan.preAlignment.positions.length, 0, 'rollback must release source-frame snapshots');
+  });
+
+  it('derives an unanchored frame from the largest measured component, not the aggregate envelope (#5161)', async () => {
+    const registry = new FederationRegistry();
+    const plan = new FederatedLandXmlStreamingPlan({
+      modelId: 'dominant', componentCount: 2, sourceCoordinateInfo, registry,
+      resources: { publish: () => {}, remove: () => {} }, isCurrent: () => true,
+    });
+    await plan.measure(mesh(1, 2_000_000));
+    await plan.measure(twoTriangleMesh(2, 0));
+    plan.freeze();
+    assert.deepEqual(plan.coordinateInfo.originShift, { x: 1, y: 1, z: 0 });
+  });
+
+  it('keeps the first measured component as the deterministic dominant tie-breaker (#5161)', async () => {
+    const registry = new FederationRegistry();
+    const plan = new FederatedLandXmlStreamingPlan({
+      modelId: 'dominant-tie', componentCount: 2, sourceCoordinateInfo, registry,
+      resources: { publish: () => {}, remove: () => {} }, isCurrent: () => true,
+    });
+    await plan.measure(mesh(1, 2_000_000));
+    await plan.measure(mesh(2, 0));
+    plan.freeze();
+    assert.deepEqual(plan.coordinateInfo.originShift, { x: 2_000_000.5, y: 0.5, z: 0 });
   });
 });

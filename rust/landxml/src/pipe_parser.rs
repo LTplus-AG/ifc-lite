@@ -90,6 +90,7 @@ impl<'a> PipeParser<'a> {
             features: Vec::new(),
             pending_networks: Vec::new(),
             refusals: Vec::new(),
+            preflight_refusal_batches: Vec::new(),
             refusal_keys: HashSet::new(),
             pipe_networks_seen: 0,
             structures_seen: 0,

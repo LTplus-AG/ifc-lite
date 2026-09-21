@@ -356,6 +356,43 @@ fn issue_5050_pipe_only_stream_matches_direct_pipe_document() {
 }
 
 #[test]
+fn issue_5161_pipe_preflight_refusal_precedes_its_network_without_reordering_semantics() {
+    let xml = landxml(
+        r#"<Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/><Invert refPipe="bad" flowDir="out" elev="bad"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="C"><Center>0 10 0</Center><CircStruct diameter="1"/></Struct><Struct name="D"><Center>10 10 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="bad" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe><Pipe name="good" refStart="C" refEnd="D"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks>"#,
+    );
+    let direct = parse_landxml_document(xml.as_bytes()).expect("direct source document");
+    let summary = summary_after_byte_cuts(xml.as_bytes()).expect("stream source document");
+    assert_eq!(
+        summary.metadata.terrain.pipe_networks, direct.terrain.pipe_networks,
+        "cursor-only probes must not change the durable source document"
+    );
+    let mut session = LandXmlTinStreamSession::new(LandXmlLimits::default()).expect("session");
+    let mut ignored_surface_events = Vec::new();
+    advance_and_drain(&mut session, xml.as_bytes(), &mut ignored_surface_events);
+    session.finish_cursor().expect("metadata cursor");
+    let mut events = Vec::new();
+    drain_until_idle(&mut session, &mut events);
+    let mut preflight_refusal = None;
+    let mut network = None;
+    let mut semantic_refusal = None;
+    for (index, event) in events.iter().enumerate() {
+        let LandXmlStreamEvent::Metadata(metadata) = event else {
+            continue;
+        };
+        let LandXmlMetadataStreamEvent::Record(record) = metadata.as_ref() else {
+            continue;
+        };
+        match record.as_ref() {
+            LandXmlMetadataRecord::PipePreflightRefusal(_) => preflight_refusal = Some(index),
+            LandXmlMetadataRecord::PipeNetwork(_) => network = Some(index),
+            LandXmlMetadataRecord::PipeRefusal(_) => semantic_refusal = Some(index),
+            _ => {}
+        }
+    }
+    assert!(preflight_refusal < network && network < semantic_refusal);
+}
+
+#[test]
 fn issue_5050_all_family_stream_matches_direct_semantic_totals() {
     let xml = landxml(&format!(
         r#"<Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces><CgPoints><CgPoint name="control">0 0 0</CgPoint></CgPoints><Alignments><Alignment name="a" length="1" staStart="0"><CoordGeom><Line><Start>0 0</Start><End>1 0</End></Line></CoordGeom></Alignment></Alignments>{PIPE_NETWORK}"#

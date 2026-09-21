@@ -49,6 +49,14 @@ function waitForComponentUpload(component: LandXmlStreamedComponent): Promise<vo
   });
 }
 
+/** Consume one reserved source slot without transferring rejected mesh bytes. */
+function waitForSkippedComponent(expressId: number): Promise<void> {
+  return new Promise((resolve) => {
+    acknowledgeComponent = resolve;
+    workerScope.postMessage({ skippedComponent: { expressId } });
+  });
+}
+
 function waitForSourceEvent(event: unknown): Promise<void> {
   return new Promise((resolve) => {
     acknowledgeSourceEvent = resolve;
@@ -183,9 +191,11 @@ workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer | LandXml
                 }
               } else {
                 const placed = placeComponentsInKnownRenderFrame(built.components, preflight.frame ?? { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false }, []);
-                for (const component of placed.placed) {
+                const placedComponents = new Set(placed.placed);
+                for (const component of built.components) {
                   component.mesh.expressId = nextLocalId++;
-                  await waitForComponentUpload(surfaceComponent(component));
+                  if (placedComponents.has(component)) await waitForComponentUpload(surfaceComponent(component));
+                  else await waitForSkippedComponent(component.mesh.expressId);
                 }
               }
             },

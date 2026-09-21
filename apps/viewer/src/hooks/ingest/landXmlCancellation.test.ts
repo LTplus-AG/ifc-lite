@@ -168,3 +168,77 @@ it('acknowledges each federated preflight and raw component before the next work
     Object.defineProperty(globalThis, 'Worker', { configurable: true, value: originalWorker });
   }
 });
+
+it('keeps a primary stream in its frozen frame while consuming dropped source IDs (#5161)', async () => {
+  const originalWorker = globalThis.Worker;
+  const component = {
+    expressId: 1,
+    positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+    normals: new Float32Array([0, 1, 0, 0, 1, 0, 0, 1, 0]),
+    indices: new Uint32Array([0, 1, 2]),
+    color: [0.42, 0.62, 0.32, 1] as [number, number, number, number],
+    origin: [0, 0, 0] as [number, number, number],
+  };
+  const terrain = {
+    format: 'landxml', schema: 'LandXML-1.2', capabilities: { renderable_tin: false, preserved_only_surfaces: 0, unknown_extensions: 0 }, version: '1.2', units: null, surfaces: [],
+    extensions: [], warnings: [], alignments: [], profiles: [], cross_sections: [], cross_section_surfaces: [], roadways: [], capability_diagnostics: [], preserved_only_extensions: [], pipe_networks: null,
+  };
+  class PrimaryWorker {
+    onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
+    onerror: ((event: ErrorEvent) => void) | null = null;
+    readonly posted: unknown[] = [];
+    postMessage(message: unknown): void {
+      this.posted.push(message);
+      const reply = (data: unknown) => queueMicrotask(() => this.onmessage?.({ data } as MessageEvent<unknown>));
+      if (this.posted.length === 1) reply({ preflight: {
+        componentCount: 2, frame: { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false },
+      } });
+      else if (this.posted.length === 2) reply({ component: {
+        mesh: component, surfaceName: 'grade', surfaceSourceId: 'surface-1', pipeSourceId: null, renderedFaceSourceIds: ['surface-1:face:1'],
+      } });
+      else if (this.posted.length === 3) reply({ skippedComponent: { expressId: 2 } });
+      else if (this.posted.length === 4) reply({ sourceEvent: {
+        kind: 'metadata', metadata_kind: 'header', stream: {}, terrain,
+        plan: {
+          schema: 'LandXML-1.2', version: '1.2', capability_diagnostics: [], area_unit: null, area_scale_to_square_meters: null,
+          cogo_points: [], monuments: [], plan_features: [], parcels: [], warnings: [],
+        },
+        alignments: { alignments: [], warnings: [] }, pipe_networks: {
+          schema: 'LandXML-1.2', version: '1.2', capability_diagnostics: [], root_units: null,
+          collections: [], features: [], networks: [], refusals: [],
+        },
+      } });
+      else if (this.posted.length === 5) reply({ sourceEvent: { kind: 'metadata', metadata_kind: 'end' } });
+      else if (this.posted.length === 6) reply({ ok: true, streamed: {
+        preflight: { componentCount: 2, frame: { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false } },
+      } });
+    }
+    terminate(): void {}
+  }
+  const workers: PrimaryWorker[] = [];
+  class TrackingPrimaryWorker extends PrimaryWorker {
+    constructor() { super(); workers.push(this); }
+  }
+  Object.defineProperty(globalThis, 'Worker', { configurable: true, value: TrackingPrimaryWorker as unknown as typeof Worker });
+  const uploaded: number[] = [];
+  const skipped: number[] = [];
+  try {
+    const model = await parseLandXmlViewerModelFromBlobAsync(
+      new Blob(['<LandXML/>']),
+      () => true,
+      undefined,
+      undefined,
+      (mesh) => { uploaded.push(mesh.expressId); },
+      undefined,
+      undefined,
+      undefined,
+      (slot) => { skipped.push(slot.expressId); },
+    );
+    assert.equal((workers[0]?.posted[0] as { streamFederatedPreflight?: boolean }).streamFederatedPreflight, false);
+    assert.deepEqual(uploaded, [1]);
+    assert.deepEqual(skipped, [2]);
+    assert.deepEqual(model.geometryResult.meshes.map((mesh) => mesh.expressId), [1]);
+  } finally {
+    Object.defineProperty(globalThis, 'Worker', { configurable: true, value: originalWorker });
+  }
+});

@@ -50,6 +50,7 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
   private readonly source: ModelSpatialPlacement | null;
   private readonly reference = findReferenceSpatialModel()?.placement ?? null;
   private readonly measuredBounds = createEmptyBounds();
+  private dominant: { bounds: Bounds3D; triangles: number } | null = null;
   private measured = 0;
   private transaction: LandXmlProvisionalTransaction | null = null;
   private frame: LandXmlRenderFramePlan | null = null;
@@ -96,6 +97,13 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
     const bounds = meshRenderFrameBounds(aligned);
     if (bounds === null) throw new Error('LandXML federation preflight produced non-finite component bounds');
     mergeBounds(this.measuredBounds, bounds);
+    const triangles = aligned.indices.length / 3;
+    // Match the direct LandXML frame policy: the first source component wins
+    // a triangle-count tie, rather than letting the aggregate envelope choose
+    // a distant, non-renderable origin.
+    if (this.dominant === null || triangles > this.dominant.triangles) {
+      this.dominant = { bounds, triangles };
+    }
     this.measured++;
   }
 
@@ -114,8 +122,9 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
       this.frame = { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: this.reference.coordinateInfo.hasLargeCoordinates };
       this.coordinateInfo = structuredClone(this.reference.coordinateInfo);
     } else {
-      const dominantBounds = this.measuredBounds;
-      this.frame = deriveLandXmlRenderFrameFromMeasurement(this.measuredBounds, dominantBounds);
+      const dominant = this.dominant;
+      if (dominant === null) throw new Error('LandXML federation preflight froze without a measured component');
+      this.frame = deriveLandXmlRenderFrameFromMeasurement(this.measuredBounds, dominant.bounds);
       this.coordinateInfo = createCoordinateInfo(this.measuredBounds, this.frame.originShift, this.frame.hasLargeCoordinates);
     }
     this.transaction = new LandXmlProvisionalTransaction(

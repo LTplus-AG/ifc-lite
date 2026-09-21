@@ -31,6 +31,7 @@ export interface LandXmlGeometryPayload {
 export {
   buildLandXmlStreamedPipeComponents, completeLandXmlStreamedGeometry,
   type LandXmlStreamedComponent,
+  type LandXmlStreamedSkippedComponent,
 } from './landXmlStreamCompletion.js';
 export function buildLandXmlSurfaceMesh(
   surface: LandXmlTinSurface,

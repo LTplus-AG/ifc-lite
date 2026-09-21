@@ -9,7 +9,7 @@ import type { Bounds3D } from '../../utils/localParsingUtils.js';
 import type { LandXmlPipe, LandXmlPipeNetworkDocument, LandXmlPipePart, LandXmlPipePosition, LandXmlPipeStructure } from './landXmlSemantics.js';
 
 const SIDES = 10;
-const MAX_PIPE_MESHES = 10_000;
+export const MAX_LANDXML_PIPE_MESHES = 10_000;
 const MAX_PIPE_WARNINGS = 1_000;
 
 interface Point { x: number; y: number; z: number }
@@ -119,7 +119,14 @@ export class LandXmlPipeComponentCursor {
   private stopped = false;
   private structures: Map<string, LandXmlPipeStructure> | null = null;
 
-  constructor(private readonly document: LandXmlPipeNetworkDocument | null, private readonly firstExpressId: number) {
+  constructor(
+    private readonly document: LandXmlPipeNetworkDocument | null,
+    private readonly firstExpressId: number,
+    private readonly maxMeshes = MAX_LANDXML_PIPE_MESHES,
+  ) {
+    if (!Number.isInteger(maxMeshes) || maxMeshes < 0 || maxMeshes > MAX_LANDXML_PIPE_MESHES) {
+      throw new Error('LandXML pipe cursor received an invalid mesh budget');
+    }
     if (document === null) return;
     const knownPipeIds = new Set<string>();
     for (const network of document.networks) for (const pipe of network.pipes) knownPipeIds.add(pipe.sourceId);
@@ -134,8 +141,8 @@ export class LandXmlPipeComponentCursor {
       const network = this.document.networks[this.networkIndex]!;
       if (this.structures === null) this.structures = new Map(network.structures.map((structure) => [structure.sourceId, structure]));
       while (this.pipeIndex < network.pipes.length) {
-        if (this.emitted >= MAX_PIPE_MESHES) {
-          this.warnings.push(`Stopped LandXML pipe rendering after ${MAX_PIPE_MESHES} meshes; additional pipe meshes were omitted`);
+        if (this.emitted >= this.maxMeshes) {
+          this.warnings.push(`Stopped LandXML pipe rendering after ${this.maxMeshes} meshes; additional pipe meshes were omitted`);
           this.stopped = true;
           return null;
         }

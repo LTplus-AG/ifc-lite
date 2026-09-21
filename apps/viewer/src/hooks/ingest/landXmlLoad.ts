@@ -199,6 +199,7 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
   const provisional = { value: null as LandXmlProvisionalTransaction | null };
   const federatedPlan = { value: null as FederatedLandXmlStreamingPlan | null };
   let streamedComponents = 0;
+  const hasFederatedStreamingPlan = options.openFederatedStreamingPlan !== undefined;
   try {
     const result = await parseLandXmlViewerModelFromBlobAsync(
       options.file,
@@ -220,11 +221,19 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
         provisional.value.publish(mesh);
         streamedComponents++;
       },
-      (preflight, sourceCoordinateInfo, spatialReference) => {
-        federatedPlan.value = options.openFederatedStreamingPlan?.(preflight, sourceCoordinateInfo, spatialReference) ?? null;
+      hasFederatedStreamingPlan
+        ? (preflight, sourceCoordinateInfo, spatialReference) => {
+          federatedPlan.value = options.openFederatedStreamingPlan?.(preflight, sourceCoordinateInfo, spatialReference) ?? null;
+        }
+        : undefined,
+      hasFederatedStreamingPlan ? (mesh) => federatedPlan.value?.measure(mesh) : undefined,
+      hasFederatedStreamingPlan ? () => federatedPlan.value?.freeze() : undefined,
+      (component) => {
+        if (federatedPlan.value !== null) {
+          throw new Error('LandXML federated stream skipped a component before destination alignment');
+        }
+        provisional.value?.skip(component);
       },
-      (mesh) => federatedPlan.value?.measure(mesh),
-      () => federatedPlan.value?.freeze(),
     );
     // The browser worker is terminated within the cancellation polling bound;
     // this guard also prevents a racing stale reply from mutating model state.

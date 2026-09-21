@@ -7,7 +7,7 @@
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MeshData } from '@ifc-lite/geometry';
 import { createCoordinateInfo, createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
-import { LandXmlPipeComponentCursor } from './landXmlPipeGeometry.js';
+import { LandXmlPipeComponentCursor, MAX_LANDXML_PIPE_MESHES } from './landXmlPipeGeometry.js';
 import { pipeNetworks } from './landXmlPipeWasm.js';
 import { buildLandXmlSurfaceComponents, fragmentLandXmlGeometryComponent, type LandXmlGeometryPreflight } from './landXmlIngest.js';
 import { deriveLandXmlRenderFrameFromMeasurement } from './landXmlRenderFrame.js';
@@ -77,6 +77,9 @@ export class LandXmlStreamPreflightReducer {
   private readonly measurementBounds = createEmptyBounds();
   private dominant: { bounds: Bounds3D; triangles: number } | null = null;
   private pipeHeader: Record<string, unknown> | null = null;
+  /** Cursor-only source refusals for the network which follows them. */
+  private readonly pendingPipeRefusals: unknown[] = [];
+  private emittedPipeMeshes = 0;
   private pending: PendingRecord | null = null;
   private skipped: { record: string; nextSequence: number } | null = null;
   private completed = false;
@@ -144,7 +147,9 @@ export class LandXmlStreamPreflightReducer {
       await this.pushFragment(envelope);
       return;
     }
-    if (kind !== 'end' || this.completed || this.pending !== null || this.skipped !== null) throw new Error('LandXML stream ended with invalid metadata state');
+    if (kind !== 'end' || this.completed || this.pending !== null || this.skipped !== null || this.pendingPipeRefusals.length !== 0) {
+      throw new Error('LandXML stream ended with invalid metadata state');
+    }
     this.completed = true;
   }
 
@@ -196,6 +201,10 @@ export class LandXmlStreamPreflightReducer {
   private async pushRecord(recordName: unknown, value: unknown): Promise<void> {
     if (typeof recordName !== 'string' || this.pipeHeader === null) throw new Error('LandXML stream emitted a record before metadata header');
     this.measureSourceRecord(recordName, value);
+    if (recordName === 'pipe_preflight_refusal') {
+      this.pendingPipeRefusals.push(value);
+      return;
+    }
     if (recordName === 'pipe_network') await this.measurePipeNetwork(value);
   }
 
@@ -241,7 +250,7 @@ export class LandXmlStreamPreflightReducer {
     if (typeof recordName !== 'string' || !Number.isInteger(sequence) || (sequence as number) < 0) {
       throw new Error('LandXML stream emitted an invalid metadata fragment envelope');
     }
-    if (recordName !== 'pipe_network') {
+    if (recordName !== 'pipe_network' && recordName !== 'pipe_preflight_refusal') {
       if (this.pending !== null) throw new Error('LandXML stream interleaved a discarded metadata fragment');
       if (this.skipped === null) {
         if (sequence !== 0) throw new Error('LandXML metadata fragment started at a nonzero sequence');
@@ -285,12 +294,16 @@ export class LandXmlStreamPreflightReducer {
   private async measurePipeNetwork(network: unknown): Promise<void> {
     const header = this.pipeHeader;
     if (header === null) throw new Error('LandXML pipe network arrived before its metadata header');
-    // A source refusal is always emitted for a pipe that Rust rejected before
-    // it enters a network. It cannot change a valid network's mesh envelope,
-    // so never retain the trailing refusal list just to replay it here.
-    const pipe = pipeNetworks({ ...header, networks: [network] });
-    const cursor = new LandXmlPipeComponentCursor(pipe, this.componentCount + 1);
+    const remainingPipeMeshes = MAX_LANDXML_PIPE_MESHES - this.emittedPipeMeshes;
+    const pipe = pipeNetworks({ ...header, networks: [network], refusals: this.pendingPipeRefusals });
+    // Refusal probes belong to exactly one following network and never become
+    // part of the assembled semantic document. Drop them before awaiting mesh
+    // delivery so this reducer retains neither a global refusal map nor a
+    // completed pipe document.
+    this.pendingPipeRefusals.length = 0;
+    const cursor = new LandXmlPipeComponentCursor(pipe, this.componentCount + 1, remainingPipeMeshes);
     for (let component = cursor.next(); component !== null; component = cursor.next()) {
+      this.emittedPipeMeshes++;
       for (const fragment of fragmentLandXmlGeometryComponent({
         ...component, surfaceName: component.name, surfaceSourceId: null, pipeSourceId: component.sourceId, renderedFaceSourceIds: [],
       })) await this.measure(fragment.bounds, fragment.mesh.indices.length / 3, fragment.mesh);

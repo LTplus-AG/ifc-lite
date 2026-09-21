@@ -11,7 +11,17 @@ use super::super::{convert, state::RawUnits, PipeParser};
 
 impl PipeParser<'_> {
     /// Finalize the shared parser after either pull or stream event delivery.
-    pub(crate) fn finish_stream(mut self) -> Result<LandXmlPipeNetworkDocument> {
+    pub(crate) fn finish_stream(self) -> Result<LandXmlPipeNetworkDocument> {
+        self.finish_stream_with_preflight()
+            .map(|(document, _)| document)
+    }
+
+    /// Preserve source-document output while carrying cursor-only refusal
+    /// probes for each retained network. The indexes keep the extra state
+    /// compact and never expose a presentation-only field in LandXML data.
+    pub(crate) fn finish_stream_with_preflight(
+        mut self,
+    ) -> Result<(LandXmlPipeNetworkDocument, Vec<Vec<usize>>)> {
         if self.require_pipe_networks && self.pipe_networks_seen == 0 {
             return Err(error(
                 Code::InvalidSemantic,
@@ -28,16 +38,21 @@ impl PipeParser<'_> {
             .map(convert::units)
             .transpose()
             .map_err(|message| error(Code::InvalidSemantic, message))?;
-        Ok(LandXmlPipeNetworkDocument {
-            schema: self.schema,
-            version: self.version,
-            capability_diagnostics: self.capability_diagnostics,
-            root_units,
-            collections: self.collections,
-            features: self.features,
-            networks: self.networks,
-            refusals: self.refusals,
-        })
+        debug_assert_eq!(self.networks.len(), self.preflight_refusal_batches.len());
+        let preflight_refusal_batches = self.preflight_refusal_batches;
+        Ok((
+            LandXmlPipeNetworkDocument {
+                schema: self.schema,
+                version: self.version,
+                capability_diagnostics: self.capability_diagnostics,
+                root_units,
+                collections: self.collections,
+                features: self.features,
+                networks: self.networks,
+                refusals: self.refusals,
+            },
+            preflight_refusal_batches,
+        ))
     }
 
     pub(super) fn convert_units(

@@ -23,6 +23,15 @@ export interface LandXmlStreamedComponent {
   renderedFaceSourceIds: string[];
 }
 
+/** A preflighted local mesh slot intentionally rejected by its frozen frame. */
+export interface LandXmlStreamedSkippedComponent {
+  expressId: number;
+}
+
+export interface LandXmlStreamedPipeComponents {
+  slots: Array<{ component: LandXmlStreamedComponent } | { skipped: LandXmlStreamedSkippedComponent }>;
+}
+
 function mergeBounds(target: Bounds3D, source: Bounds3D): void {
   target.min.x = Math.min(target.min.x, source.min.x);
   target.min.y = Math.min(target.min.y, source.min.y);
@@ -87,23 +96,32 @@ export function buildLandXmlStreamedPipeComponents(
   firstExpressId: number,
   preflight: LandXmlGeometryPreflight,
   placeInFrozenFrame: boolean,
-): LandXmlStreamedComponent[] {
+): LandXmlStreamedPipeComponents {
   const components = buildLandXmlPipeComponents(parsed.pipeNetworks ?? null, firstExpressId).components
     .flatMap((pipe) => fragmentLandXmlGeometryComponent({
       ...pipe, surfaceName: pipe.name, surfaceSourceId: null, pipeSourceId: pipe.sourceId, renderedFaceSourceIds: [],
     }));
-  const placed = placeInFrozenFrame
+  // Fragmentation creates more than one render component for one source pipe;
+  // assign the preflight slot before placement so a rejected middle fragment
+  // cannot compact stable local IDs for later components.
+  for (const [index, component] of components.entries()) component.mesh.expressId = firstExpressId + index;
+  const placement = placeInFrozenFrame
     ? placeComponentsInKnownRenderFrame(
       components,
       preflight.frame ?? { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false },
       [],
-    ).placed
-    : components;
-  return placed.map((component, index) => ({
-    mesh: { ...component.mesh, expressId: firstExpressId + index },
-    surfaceName: component.surfaceName,
-    surfaceSourceId: component.surfaceSourceId,
-    pipeSourceId: component.pipeSourceId,
-    renderedFaceSourceIds: component.renderedFaceSourceIds,
-  }));
+    )
+    : { placed: components, dropped: [] };
+  const placed = new Set(placement.placed);
+  return {
+    slots: components.map((component) => placed.has(component)
+      ? { component: {
+        mesh: component.mesh,
+        surfaceName: component.surfaceName,
+        surfaceSourceId: component.surfaceSourceId,
+        pipeSourceId: component.pipeSourceId,
+        renderedFaceSourceIds: component.renderedFaceSourceIds,
+      } }
+      : { skipped: { expressId: component.mesh.expressId } }),
+  };
 }

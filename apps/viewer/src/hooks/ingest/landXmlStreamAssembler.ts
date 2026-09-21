@@ -212,6 +212,10 @@ export class LandXmlStreamDocumentAssembler {
       values(pipeNetworks, pipeFields[kind]!).push(value);
       return;
     }
+    // The Rust cursor sends a refusal probe before the one network it affects
+    // so preflight can stay bounded. It is intentionally not a second source
+    // refusal: the ordinary source-ordered record arrives later.
+    if (kind === 'pipe_preflight_refusal') return;
     const planFields: Readonly<Record<string, string>> = {
       plan_cogo_point: 'cogo_points', plan_monument: 'monuments', plan_feature: 'plan_features',
       plan_parcel: 'parcels', plan_warning: 'warnings', plan_source_batch: 'source_batches',

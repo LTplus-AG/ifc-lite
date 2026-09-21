@@ -198,7 +198,7 @@ impl LandXmlTinStreamSession {
         if pipe.has_open_frames() {
             return Err(error(Code::InvalidXml, "unclosed pipe XML element"));
         }
-        let pipe = pipe.finish_stream()?;
+        let (pipe, preflight_refusal_batches) = pipe.finish_stream_with_preflight()?;
         let pipe_networks = pipe.networks.len();
         let pipe_structures = pipe
             .networks
@@ -228,7 +228,7 @@ impl LandXmlTinStreamSession {
             terrain.into_stream_parts(),
             plan,
             alignment,
-            pipe.into_stream_parts(),
+            pipe.into_stream_parts(preflight_refusal_batches),
             end,
         ));
         self.flush_pending_metadata()

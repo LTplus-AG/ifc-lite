@@ -156,6 +156,9 @@ impl MetadataReassembler {
                 header.pipe_networks.collections.push(value)
             }
             LandXmlMetadataRecord::PipeFeature(value) => header.pipe_networks.features.push(value),
+            // Cursor-only geometry probes must not mutate the durable source
+            // document or its authored refusal ordering.
+            LandXmlMetadataRecord::PipePreflightRefusal(_) => {}
             LandXmlMetadataRecord::PipeNetwork(value) => header.pipe_networks.networks.push(value),
             LandXmlMetadataRecord::PipeRefusal(value) => header.pipe_networks.refusals.push(value),
         }

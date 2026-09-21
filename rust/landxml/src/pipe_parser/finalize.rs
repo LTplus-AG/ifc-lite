@@ -26,6 +26,7 @@ type StructureConversion = (
 
 impl PipeParser<'_> {
     pub(super) fn finish_network(&mut self, network: super::state::NetworkBuilder) -> Result<()> {
+        let refusal_start = self.refusals.len();
         let source_id = network.source_id.clone();
         let source_path = network.source_path.clone();
         let Some(name) = helpers::non_empty(network.name) else {
@@ -84,6 +85,19 @@ impl PipeParser<'_> {
             &source_id,
             &source_path,
         )?;
+        // Invalid endpoint Inverts can refuse a pipe after the pipe itself was
+        // converted. Keep only indexes for this retained network so the
+        // streamed preflight can observe those refusals before measuring it;
+        // the source document keeps the original full refusal ordering.
+        let preflight_refusal_batch = self.refusals[refusal_start..]
+            .iter()
+            .enumerate()
+            .filter_map(|(offset, refusal)| {
+                pipe_paths
+                    .contains_key(&refusal.source_id)
+                    .then_some(refusal_start + offset)
+            })
+            .collect();
         self.networks.push(LandXmlPipeNetwork {
             source_id,
             source_path,
@@ -96,6 +110,7 @@ impl PipeParser<'_> {
             structures,
             pipes,
         });
+        self.preflight_refusal_batches.push(preflight_refusal_batch);
         Ok(())
     }
 

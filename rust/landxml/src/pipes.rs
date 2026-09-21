@@ -245,8 +245,11 @@ pub struct LandXmlPipeNetworkDocument {
 
 impl LandXmlPipeNetworkDocument {
     /// Split finalized pipe metadata into move-owned stream records.
-    pub(crate) fn into_stream_parts(self) -> crate::stream::metadata::PipeStreamParts {
-        crate::stream::metadata::PipeStreamParts::new(self)
+    pub(crate) fn into_stream_parts(
+        self,
+        preflight_refusal_batches: Vec<Vec<usize>>,
+    ) -> crate::stream::metadata::PipeStreamParts {
+        crate::stream::metadata::PipeStreamParts::new(self, preflight_refusal_batches)
     }
 }
 

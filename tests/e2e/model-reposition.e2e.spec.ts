@@ -4,6 +4,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import type { ViewerState } from '../../apps/viewer/src/store';
+import { snapshotRenderedPointCloud } from './federation-control-triplet.rendering';
 
 declare global {
   var __ifc_lite_viewer_store__: { getState(): ViewerState };
@@ -232,29 +233,56 @@ for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan,
   expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId)).toBe(priorSelection);
   for (let axis = 0; axis < 3; axis++) expect(anchors!.source!.point[axis] + anchors!.delta[axis]).toBeCloseTo(anchors!.target!.point[axis], 6);
   await page.keyboard.press('Escape');
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const s = globalThis.__ifc_lite_viewer_store__.getState();
     s.closeReposition(); s.setSelectedEntityId(null);
-    for (const [id, model] of s.models) if (model.pointCloudHandleId === undefined) s.setModelVisibility(id, false);
+    for (const [id, model] of s.models) if (model.loadPath !== 'point-cloud') s.setModelVisibility(id, false);
+    // Visibility is consumed by the renderer on its next frame. Waiting for
+    // two frames proves the normal GPU picker against the published scan-only
+    // scene instead of racing the stale IFC visibility buffer.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
   });
-  let selectedScan = false;
-  for (const point of candidates) {
-    await page.mouse.click(canvas!.x + point.x, canvas!.y + point.y);
-    selectedScan = await page.evaluate(() => {
-      const s = globalThis.__ifc_lite_viewer_store__.getState();
-      const scan = [...s.models.values()].find((model) => model.pointCloudHandleId !== undefined)!;
-      return s.selectedEntityId !== null && s.selectedEntityId >= scan.idOffset && s.selectedEntityId <= scan.idOffset + scan.maxExpressId;
-    });
-    if (selectedScan) break;
-  }
+  const scanHandle = await page.evaluate(() => {
+    const scan = [...globalThis.__ifc_lite_viewer_store__.getState().models.values()]
+      .find((model) => model.loadPath === 'point-cloud');
+    if (scan?.pointCloudHandleId === undefined) throw new Error('Visible scan lost its renderer handle');
+    return scan.pointCloudHandleId;
+  });
+  const renderedScan = await snapshotRenderedPointCloud(page, scanHandle, 10_000);
+  const scanCandidates = await page.evaluate((points) => {
+    const project = globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.projectToScreen!;
+    const canvas = document.querySelector('canvas');
+    if (!canvas) throw new Error('Viewer canvas missing');
+    const { width, height } = canvas.getBoundingClientRect();
+    return points.map(([x, y, z]) => project({ x, y, z }))
+      .filter((point): point is { x: number; y: number } => point !== null
+        && point.x >= 0 && point.x < width && point.y >= 0 && point.y < height);
+  }, renderedScan.points);
+  expect(scanCandidates.length, 'production-rendered scan points project into the viewport').toBeGreaterThan(0);
+  const point = scanCandidates[0]!;
+  await page.mouse.click(canvas!.x + point.x, canvas!.y + point.y);
+  // The DOM listener awaits a GPU map/readback after click dispatch. Wait for
+  // that production selection commit instead of launching overlapping picks.
+  await page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId !== null, undefined, { timeout: 10_000 });
+  const selectedScan = await page.evaluate(() => {
+    const s = globalThis.__ifc_lite_viewer_store__.getState();
+    const scan = [...s.models.values()].find((model) => model.loadPath === 'point-cloud')!;
+    return s.selectedEntityId! >= scan.idOffset && s.selectedEntityId! <= scan.idOffset + scan.maxExpressId;
+  });
   expect(selectedScan, 'normal GPU selection picks the visible translated scan').toBe(true);
   await page.evaluate(() => { const s = globalThis.__ifc_lite_viewer_store__.getState(); for (const [id] of s.models) s.setModelVisibility(id, true); });
   await openScanMove(page);
   await page.getByRole('button', { name: 'Frame both', exact: true }).click();
   await info.attach('aligned real IFC and diagnostic scan', { body: await page.screenshot(), contentType: 'image/png' });
-  await page.getByRole('button', { name: 'Undo move', exact: true }).click();
-  await page.getByRole('button', { name: 'Redo move', exact: true }).click();
-  expect(await page.evaluate(() => { const s = globalThis.__ifc_lite_viewer_store__.getState(); return [...s.models].filter(([, m]) => m.pointCloudHandleId !== undefined).map(([id]) => s.modelPlacement.placements.get(id)?.translation); })).toEqual([OFFSET.map((v) => -v)]);
+  await page.getByRole('button', { name: 'Cancel repositioning', exact: true }).click();
+  await page.keyboard.press('Control+z');
+  await page.waitForFunction(() => {
+    const s = globalThis.__ifc_lite_viewer_store__.getState();
+    const scan = [...s.models].find(([, model]) => model.loadPath === 'point-cloud');
+    return !!scan && (s.modelPlacement.placements.get(scan[0])?.translation ?? [0, 0, 0]).every((value) => value === 0);
+  });
+  await page.keyboard.press('Control+Shift+z');
+  expect(await page.evaluate(() => { const s = globalThis.__ifc_lite_viewer_store__.getState(); return [...s.models].filter(([, model]) => model.loadPath === 'point-cloud').map(([id]) => s.modelPlacement.placements.get(id)?.translation); })).toEqual([OFFSET.map((v) => -v)]);
   expect(errors).toEqual([]);
 });
 

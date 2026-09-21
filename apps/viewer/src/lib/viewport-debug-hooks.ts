@@ -39,6 +39,29 @@ export interface RenderedPointCloudSnapshot {
   points: Array<[number, number, number]>;
 }
 
+async function encodeColorFrame(framePromise: ReturnType<Renderer['captureColorFrame']>): Promise<string | null> {
+  const frame = await framePromise;
+  if (!frame) return null;
+  try {
+    const canvas = new OffscreenCanvas(frame.width, frame.height);
+    const context = canvas.getContext('2d');
+    if (!context) return null;
+    // ImageData requires ArrayBuffer-backed bytes; readback's public surface
+    // permits ArrayBufferLike, so make a short-lived owned copy at this E2E
+    // boundary rather than leaking a SharedArrayBuffer assumption into it.
+    context.putImageData(new ImageData(new Uint8ClampedArray(frame.rgba), frame.width, frame.height), 0, 0);
+    const bytes = new Uint8Array(await (await canvas.convertToBlob({ type: 'image/png' })).arrayBuffer());
+    let binary = '';
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+    }
+    return `data:image/png;base64,${btoa(binary)}`;
+  } catch (error) {
+    console.warn('[Viewport] Color-frame debug encoding failed:', error);
+    return null;
+  }
+}
+
 /** A diagnostic must never copy an unbounded retained scan into page state. */
 const RENDERED_POINT_CLOUD_DEBUG_LIMIT = 16;
 
@@ -65,6 +88,10 @@ export function installViewportDebugHooks(renderer: Renderer): void {
     gpu: renderer.getScene().getResidentGpuBytes(),
     cpuBytes: renderer.getScene().getResidentCpuBytes(),
   });
+  // Renderer-owned color evidence for hardware E2E. The RGBA bytes are copied
+  // before the production frame submits, so this avoids compositor retention
+  // and exposes no scene/model data to the browser test.
+  host.__ifc_lite_capture_color_frame__ = () => encodeColorFrame(renderer.captureColorFrame());
   host.__ifc_lite_scene_owner__ = (globalId: number): SceneOwnerSnapshot => {
     const scene = renderer.getScene();
     const flat = scene.getMeshDataPieces(globalId), instanced = scene.getInstancedMeshDataPieces(globalId);
@@ -127,6 +154,7 @@ export function installViewportDebugHooks(renderer: Renderer): void {
 export function clearViewportDebugHooks(): void {
   const host = globalThis as Record<string, unknown>;
   delete host.__ifc_lite_render_stats__;
+  delete host.__ifc_lite_capture_color_frame__;
   delete host.__ifc_lite_scene_owner__;
   delete host.__ifc_lite_scene_face_hits__;
   delete host.__ifc_lite_rendered_point_cloud__;

@@ -9,12 +9,7 @@ import type { ViewerState } from '../../apps/viewer/src/store';
 
 declare global {
   var __ifc_lite_viewer_store__: { getState(): ViewerState };
-  var __ifc_lite_render_stats__: (() => { frame: { drawCalls: number; batchesDrawn: number } }) | undefined;
-  var __ifc_lite_scene_owner__: ((globalId: number) => {
-    flat: unknown[] | null;
-    instance: boolean;
-    screen: { x: number; y: number } | null;
-  }) | undefined;
+  var __ifc_lite_capture_color_frame__: (() => Promise<string | null>) | undefined;
   var __ifc_lite_rendered_point_cloud__: ((handleId: number) => {
     pointCount: number;
     points: Point3[];
@@ -33,7 +28,7 @@ export interface RenderedModelEvidence {
   regionPixels: number | null;
   changedPixels: number | null;
   backgroundChangedPixels: number | null;
-  evidence: 'pixels' | 'scene-owner' | 'point-cloud-projection' | 'skipped';
+  evidence: 'renderer-color' | 'skipped';
 }
 
 export interface OrdinarySelection {
@@ -133,43 +128,16 @@ async function showOnlyModelAndFrame(page: Page, modelId: string): Promise<void>
 }
 
 /**
- * WebGPU canvases need not preserve their swap-chain image after the frame
- * that submitted it. When a browser gives Playwright byte-identical captures,
- * inspect the same production scene ownership and camera projection that the
- * GPU pick path consumes instead of treating compositor persistence as model
- * visibility. This is intentionally stricter than merely seeing model state.
+ * Returns a PNG emitted by the production renderer after its submitted GPU
+ * work completes. Playwright canvas screenshots read compositor state, which
+ * SwiftShader may discard; they are not a color-raster witness.
  */
-async function isolatedRendererWitness(
-  page: Page,
-  modelId: string,
-): Promise<'scene-owner' | 'point-cloud-projection' | null> {
-  return page.evaluate((id) => {
-    const state = globalThis.__ifc_lite_viewer_store__.getState();
-    const model = state.models.get(id);
-    const canvas = document.querySelector<HTMLCanvasElement>('canvas[data-viewport="main"]');
-    if (!model?.visible || !canvas) return null;
-    const rect = canvas.getBoundingClientRect();
-    const inCanvas = (screen: { x: number; y: number } | null): boolean => screen !== null
-      && screen.x >= rect.left && screen.x <= rect.right && screen.y >= rect.top && screen.y <= rect.bottom;
-    if ((model.geometryResult?.meshes.length ?? 0) > 0) {
-      const frame = globalThis.__ifc_lite_render_stats__?.().frame;
-      if (!frame || frame.drawCalls < 1 || frame.batchesDrawn < 1) return null;
-      const allResidentAndProjected = model.geometryResult!.meshes.every((mesh) => {
-        const owner = globalThis.__ifc_lite_scene_owner__?.(mesh.expressId);
-        return owner !== undefined
-          && ((owner.flat?.length ?? 0) > 0 || owner.instance)
-          && inCanvas(owner.screen);
-      });
-      return allResidentAndProjected ? 'scene-owner' : null;
-    }
-    if (model.pointCloudHandleId === undefined) return null;
-    const point = globalThis.__ifc_lite_rendered_point_cloud__?.(model.pointCloudHandleId)?.points[0];
-    if (!point) return null;
-    const screen = state.cameraCallbacks.projectToScreen?.({ x: point[0], y: point[1], z: point[2] });
-    return screen && screen.x >= 0 && screen.x <= rect.width && screen.y >= 0 && screen.y <= rect.height
-      ? 'point-cloud-projection'
-      : null;
-  }, modelId);
+async function rendererColorFrame(page: Page): Promise<Buffer> {
+  const dataUrl = await page.evaluate(async () => globalThis.__ifc_lite_capture_color_frame__?.() ?? null);
+  expect(dataUrl, 'renderer color capture is available after the viewport submits a frame').not.toBeNull();
+  const encoded = dataUrl!.match(/^data:image\/png;base64,(.+)$/);
+  expect(encoded, 'renderer color capture is a PNG data URL').not.toBeNull();
+  return Buffer.from(encoded![1]!, 'base64');
 }
 
 export async function assertIsolatedRenderedContent(page: Page, modelId: string, gpuStrict: boolean): Promise<RenderedModelEvidence> {
@@ -178,42 +146,24 @@ export async function assertIsolatedRenderedContent(page: Page, modelId: string,
     console.log(`[e2e] E2E_GPU_STRICT=0 — skipping ${modelId} isolated pixel assertion (software WebGPU)`);
     return { modelId, regionPixels: null, changedPixels: null, backgroundChangedPixels: null, evidence: 'skipped' };
   }
-  const canvas = page.locator('canvas[data-viewport="main"]');
-  await expect(canvas, 'viewer canvas').toBeVisible();
-  let renderedWitness = await isolatedRendererWitness(page, modelId);
-  await expect.poll(async () => {
-    renderedWitness = await isolatedRendererWitness(page, modelId);
-    return renderedWitness;
-  }, {
-    timeout: 2_000,
-    message: `${modelId}: isolated production geometry becomes resident and projects inside the viewport`,
-  }).not.toBeNull();
-  const renderedPng = await canvas.screenshot();
+  await expect(page.locator('canvas[data-viewport="main"]'), 'viewer canvas').toBeVisible();
+  const renderedPng = await rendererColorFrame(page);
   const rendered = decodePng(renderedPng);
   await page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
     state.setModelsVisibility([...state.models.keys()], false);
   });
   await page.waitForTimeout(250);
-  const blankPng = await canvas.screenshot();
+  const blankPng = await rendererColorFrame(page);
   const blank = decodePng(blankPng);
-  // A second blank establishes the canvas' animation/noise floor. Frame moving
-  // puts the model in this central region, unlike independently changing edges.
   await page.waitForTimeout(250);
-  const blankRepeat = decodePng(await canvas.screenshot());
+  const blankRepeat = decodePng(await rendererColorFrame(page));
   const signal = centralPixelDifference(rendered, blank), background = centralPixelDifference(blank, blankRepeat);
   const minimumSignal = Math.max(64, background.changedPixels * 3);
-  if (signal.changedPixels > minimumSignal) {
-    return { modelId, regionPixels: signal.regionPixels, changedPixels: signal.changedPixels, backgroundChangedPixels: background.changedPixels, evidence: 'pixels' };
-  }
-  // A changed but weak image is a real rendering regression. Only the proven
-  // byte-identical swap-chain capture path may use the ownership witness.
-  expect(Buffer.compare(renderedPng, blankPng),
-    `${modelId}: canvas changed without enough rendered signal`).toBe(0);
-  expect(renderedWitness,
-    `${modelId}: byte-identical WebGPU canvas capture must still have resident, projected production geometry`).not.toBeNull();
+  expect(signal.changedPixels,
+    `${modelId}: isolated renderer color frame differs from the hidden color frame above animation noise`).toBeGreaterThan(minimumSignal);
   return { modelId, regionPixels: signal.regionPixels, changedPixels: signal.changedPixels,
-    backgroundChangedPixels: background.changedPixels, evidence: renderedWitness! };
+    backgroundChangedPixels: background.changedPixels, evidence: 'renderer-color' };
 }
 
 export async function ordinaryGpuSelectControl(

@@ -183,6 +183,41 @@ fn issue_5050_stream_requires_credit_and_never_retains_unbounded_transport() {
 }
 
 #[test]
+fn issue_5050_stream_refuses_surface_records_at_configured_retention_quotas() {
+    let point_limited = landxml(
+        r#"<Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces>"#,
+    );
+    let point_limits = LandXmlLimits {
+        max_points: 2,
+        ..LandXmlLimits::default()
+    };
+    assert_eq!(
+        summary_after_byte_cuts_with_limits(point_limited.as_bytes(), point_limits.clone())
+            .expect_err("third retained point exceeds the surface/document quota")
+            .code,
+        parse_landxml_tin_with_cancel(point_limited.as_bytes(), &point_limits, None)
+            .expect_err("direct point quota")
+            .code,
+    );
+
+    let face_limited = landxml(
+        r#"<Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P><P id="4">1 1 0</P></Pnts><Faces><F>1 2 3</F><F>2 4 3</F></Faces></Definition></Surface></Surfaces>"#,
+    );
+    let face_limits = LandXmlLimits {
+        max_faces: 1,
+        ..LandXmlLimits::default()
+    };
+    assert_eq!(
+        summary_after_byte_cuts_with_limits(face_limited.as_bytes(), face_limits.clone())
+            .expect_err("second face exceeds the retained reference quota")
+            .code,
+        parse_landxml_tin_with_cancel(face_limited.as_bytes(), &face_limits, None)
+            .expect_err("direct face quota")
+            .code,
+    );
+}
+
+#[test]
 fn issue_5050_keeps_security_refusal_precedence_at_chunk_boundaries() {
     let mut session = LandXmlTinStreamSession::new(LandXmlLimits::default()).expect("session");
     let error = session

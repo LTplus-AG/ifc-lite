@@ -69,12 +69,13 @@ The opt-in `RTE_GPU_WITNESS=1` Playwright route is runnable locally. In the
 current WSL/Linux validation environment, Google Chrome 153.0.8010.36 reports
 `navigator.gpu === false` even with `--enable-gpu --enable-webgpu
 --enable-unsafe-webgpu --use-angle=default --ignore-gpu-blocklist`, so that
-route skips and makes no hardware-rendering claim. A native Windows Chrome 153
-run did acquire an identified NVIDIA Blackwell adapter, but correctly failed:
-the production route reported `Invalid CommandBuffer` validation errors during
-`Queue.Submit` and transparent screenshot readback. This is a renderer/witness
-defect, not acceptance evidence; the hardware gate remains failing until a
-native run has zero GPU errors and every pixel assertion passes.
+route skips and makes no hardware-rendering claim. The native Windows Chrome
+153 witness runs on an identified NVIDIA Blackwell adapter and passes with zero
+GPU errors. Its production framebuffer evidence includes colour, texture,
+instancing, point, anchored-line, highlight and shadow pixels; GPU/CPU pick,
+snap and centimetre-measurement agreement; clip/section parity; and 1/N model
+provenance. The site-scale shadow case caps normal bias at 0.25 m so a coarse
+whole-site map cannot lift a receiver beyond its caster.
 
 ## Inventory and migration order
 

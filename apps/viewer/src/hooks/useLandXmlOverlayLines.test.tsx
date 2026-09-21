@@ -9,7 +9,7 @@ import { act } from 'react';
 import { render, cleanup } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore, type FederatedModel } from '@/store/index.js';
-import type { LandXmlPolyline, LandXmlTinDocument } from './ingest/landXmlSemantics.js';
+import type { LandXmlAlignment, LandXmlPolyline, LandXmlTinDocument } from './ingest/landXmlSemantics.js';
 import { uploadLandXmlOverlayGuarded, useLandXmlOverlayLines } from './useLandXmlOverlayLines.js';
 
 const initialState = useViewerStore.getState();
@@ -118,6 +118,25 @@ describe('LandXML source overlay rendering (#5042)', () => {
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
     assert.equal(vertices.length, 0, 'a PntList2D stays inspectable but has no fabricated 3D overlay');
+  });
+
+  it('renders only exact authored alignment line spans with model-qualified selection (#5044)', () => {
+    const model = landXmlModel('alignment', line('terrain'));
+    const alignment: LandXmlAlignment = {
+      sourceId: 'alignment:one', ordinal: 1, name: 'Main', length: 20, staStart: 100,
+      segments: [
+        { sourceId: 'alignment:line', ordinal: 1, primitive: { kind: 'line', start: { kind: 'coordinates', point: { northing: 10, easting: 20, elevation: null } }, end: { kind: 'coordinates', point: { northing: 40, easting: 50, elevation: null } }, declaredLength: 20 } },
+        { sourceId: 'alignment:curve', ordinal: 2, primitive: { kind: 'curve', start: { kind: 'coordinates', point: { northing: 40, easting: 50, elevation: null } }, center: { kind: 'coordinates', point: { northing: 30, easting: 50, elevation: null } }, end: { kind: 'coordinates', point: { northing: 30, easting: 60, elevation: null } }, rotation: 'clockwise', radius: 10, declaredLength: 15.7 } },
+      ],
+    };
+    model.landXmlDocument!.alignments = [alignment];
+    useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: { modelId: model.id, sourceId: alignment.sourceId } });
+    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    function Probe() { vertices = useLandXmlOverlayLines(); return null; }
+    render(<Probe />);
+    assert.deepEqual([...vertices], [20, 0, -10, 50, 0, -40], 'curve is not replaced by an invented chord or tessellation');
+    act(() => useViewerStore.getState().setSelectedLandXmlSource({ modelId: model.id, sourceId: 'alignment:curve' }));
+    assert.equal(vertices.length, 0, 'a selected unsupported span has no fabricated overlay');
   });
 
   it('renders a schema-valid two-dimensional Contour at its authored elevation (#5042)', () => {

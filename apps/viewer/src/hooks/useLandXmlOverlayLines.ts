@@ -69,6 +69,20 @@ export function useLandXmlOverlayLines(): Float32Array {
       const place = (point: { x: number; y: number; z: number }) => toRenderTranslation(
         modelPointToWorkspacePoint(fromRenderTranslation(point), pointPlacement),
       );
+      // Horizontal alignment has no implied profile.  Its plan-only overlay
+      // is deliberately placed on the authored plan datum (Y=0), and only
+      // exact Line/IrregularLine source spans are emitted here. Curves and
+      // transitions need the native f64 probe API; this hook never invents a
+      // tessellation or substitutes a chord for them.
+      const appendPlanSegment = (northA: number, eastA: number, northB: number, eastB: number): void => {
+        const localA = { x: eastA * units.linearScaleToMeters - offset.x, y: -offset.y, z: -northA * units.linearScaleToMeters - offset.z };
+        const localB = { x: eastB * units.linearScaleToMeters - offset.x, y: -offset.y, z: -northB * units.linearScaleToMeters - offset.z };
+        if (![localA.x, localA.y, localA.z, localB.x, localB.y, localB.z].every(Number.isFinite)) return;
+        if (!boundsFitRenderFrame({ min: { x: Math.min(localA.x, localB.x), y: Math.min(localA.y, localB.y), z: Math.min(localA.z, localB.z) }, max: { x: Math.max(localA.x, localB.x), y: Math.max(localA.y, localB.y), z: Math.max(localA.z, localB.z) } }, { x: 0, y: 0, z: 0 })) return;
+        const [ax, ay, az] = place(localA); const [bx, by, bz] = place(localB);
+        if (!boundsFitRenderFrame({ min: { x: Math.min(ax, bx), y: Math.min(ay, by), z: Math.min(az, bz) }, max: { x: Math.max(ax, bx), y: Math.max(ay, by), z: Math.max(az, bz) } }, { x: 0, y: 0, z: 0 })) return;
+        vertices.push(ax, ay, az, bx, by, bz);
+      };
       for (const surface of document.surfaces) {
         for (const [lineKind, line] of [
           ...surface.boundaries.map((line) => ['boundary', line] as const),
@@ -113,6 +127,22 @@ export function useLandXmlOverlayLines(): Float32Array {
               max: { x: Math.max(a.x, b.x), y: Math.max(a.y, b.y), z: Math.max(a.z, b.z) },
             }, { x: 0, y: 0, z: 0 })) continue;
             vertices.push(a.x, a.y, a.z, b.x, b.y, b.z);
+          }
+        }
+      }
+      for (const alignment of document.alignments ?? []) {
+        if (selectedSource && selectedSource.modelId === model.id && selectedSource.sourceId !== alignment.sourceId && !alignment.segments.some((segment) => segment.sourceId === selectedSource.sourceId)) continue;
+        if (selectedSource && selectedSource.modelId !== model.id) continue;
+        for (const segment of alignment.segments) {
+          if (selectedSource && selectedSource.sourceId !== alignment.sourceId && selectedSource.sourceId !== segment.sourceId) continue;
+          const { primitive } = segment;
+          if (primitive.kind !== 'line' && primitive.kind !== 'irregular_line') continue;
+          if (primitive.start.kind !== 'coordinates' || primitive.end.kind !== 'coordinates') continue;
+          const points = primitive.kind === 'irregular_line'
+            ? [primitive.start.point, ...primitive.points, primitive.end.point]
+            : [primitive.start.point, primitive.end.point];
+          for (let index = 1; index < points.length; index++) {
+            appendPlanSegment(points[index - 1].northing, points[index - 1].easting, points[index].northing, points[index].easting);
           }
         }
       }

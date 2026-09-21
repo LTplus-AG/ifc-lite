@@ -5,6 +5,7 @@
 /** Frozen, main-thread-owned federation plan for streamed LandXML meshes. */
 
 import type { CoordinateInfo, GeometryResult, MeshData, ModelSpatialReference } from '@ifc-lite/geometry';
+import type { PreAlignmentSnapshot } from '../../store/types.js';
 import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import { createCoordinateInfo, createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
 import { findReferenceSpatialModel, type FederationAlignmentStatus, type ModelSpatialPlacement } from './federationAlign.js';
@@ -17,6 +18,7 @@ export interface FederatedLandXmlStreamingFinalization {
   readonly federationAlignmentStatus: FederationAlignmentStatus | 'anchor' | 'none';
   readonly sourcePlacement: ModelSpatialPlacement | null;
   readonly referencePlacement: ModelSpatialPlacement | null;
+  readonly preAlignment: PreAlignmentSnapshot;
   verify(geometry: GeometryResult): void;
 }
 
@@ -52,6 +54,7 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
   private transaction: LandXmlProvisionalTransaction | null = null;
   private frame: LandXmlRenderFramePlan | null = null;
   private retained: MeshData[] = [];
+  private readonly sourceMeshes: MeshData[] = [];
   private consumed = 0;
   private frozen = false;
   private completed = false;
@@ -73,6 +76,16 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
   get sourcePlacement(): ModelSpatialPlacement | null { return this.source; }
 
   get referencePlacement(): ModelSpatialPlacement | null { return this.reference; }
+
+  get preAlignment(): PreAlignmentSnapshot {
+    return {
+      positions: this.sourceMeshes.map((mesh) => new Float32Array(mesh.positions)),
+      normals: this.sourceMeshes.map((mesh) => new Float32Array(mesh.normals)),
+      origins: this.sourceMeshes.map((mesh) => mesh.origin ? [...mesh.origin] as [number, number, number] : undefined),
+      geometryAabbs: this.sourceMeshes.map((mesh) => mesh.geometryAabb),
+      coordinateInfo: structuredClone(this.options.sourceCoordinateInfo),
+    };
+  }
 
   /** Main-thread acknowledgement for one pass-one source component. */
   async measure(mesh: MeshData): Promise<void> {
@@ -120,6 +133,13 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
     if (!this.frozen || this.frame === null || this.transaction === null) {
       throw new Error('LandXML federation component arrived before its destination frame froze');
     }
+    const source = {
+      ...mesh,
+      positions: new Float32Array(mesh.positions),
+      normals: new Float32Array(mesh.normals),
+      ...(mesh.origin ? { origin: [...mesh.origin] as [number, number, number] } : {}),
+      ...(mesh.geometryAabb ? { geometryAabb: structuredClone(mesh.geometryAabb) } : {}),
+    };
     const aligned = await this.align(mesh);
     const bounds = meshRenderFrameBounds(aligned);
     if (bounds === null || !boundsFitRenderFrame(bounds, this.frame.originShift)) {
@@ -135,6 +155,7 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
     ];
     this.transaction.publish(aligned);
     this.retained.push(aligned);
+    this.sourceMeshes.push(source);
     this.consumed++;
   }
 

@@ -45,6 +45,8 @@ describe('federated LandXML streaming plan (#5050)', () => {
     plan.verify(geometry);
     assert.equal(uploaded.length, 2);
     assert.deepEqual(geometry.meshes.map((entry) => entry.expressId), [1, 2]);
+    assert.deepEqual(plan.preAlignment.positions.map((positions) => positions[0]), [0, 10],
+      'future anchor changes restore source-frame components, not already-aligned meshes');
   });
 
   it('rolls back a stale pass without leaving a registry range or GPU resource', async () => {

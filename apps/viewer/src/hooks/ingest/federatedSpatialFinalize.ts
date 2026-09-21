@@ -101,6 +101,7 @@ export async function finalizeFederatedSpatialPlacement(options: {
       applyLandXmlRenderedLineUpdates(renderedLines);
     }
     return {
+      preAlignment: options.federatedLandXmlStreamingPlan.preAlignment,
       federationAlignmentStatus: options.federatedLandXmlStreamingPlan.federationAlignmentStatus,
     };
   }

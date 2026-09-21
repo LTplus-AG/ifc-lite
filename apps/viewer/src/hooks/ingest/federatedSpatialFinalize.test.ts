@@ -68,6 +68,7 @@ describe('federated LandXML spatial finalization (#5048)', () => {
       federationAlignmentStatus: 'identity',
       sourcePlacement: { spatialReference: source, coordinateInfo: coordinateInfo() },
       referencePlacement: { spatialReference: target, coordinateInfo: coordinateInfo() },
+      preAlignment: { positions: [], normals: [], origins: [], geometryAabbs: [], coordinateInfo: coordinateInfo() },
       verify: () => undefined,
     };
     const geometry: GeometryResult = {

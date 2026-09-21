@@ -98,6 +98,21 @@ pub struct LandXmlPoint {
     pub elevation: f64,
 }
 
+/// One canonical planar vertex used by generated constrained terrain.
+///
+/// The source records remain in [`LandXmlSurface::points`] (and their original
+/// overlay/source-data collections).  This mapping records which of those
+/// records collapsed to the one planar vertex used by generated faces without
+/// discarding a producer's duplicate identifiers.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct LandXmlCanonicalVertex {
+    pub id: String,
+    pub northing: f64,
+    pub easting: f64,
+    pub elevation: f64,
+    pub contributor_source_ids: Vec<LandXmlSourceId>,
+}
+
 /// Coordinates from `Surface/SourceData/DataPoints`, separate from face ids.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LandXmlSourcePoint {
@@ -132,6 +147,53 @@ pub enum LandXmlRenderState {
     PreservedOnly,
     /// The source declaration is known to be unsupported.
     Unsupported,
+}
+
+/// Whether terrain faces came from the producer or the constrained adapter.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LandXmlTopologyOrigin {
+    AuthoredFaces,
+    ConstrainedTriangulation,
+    PreservedOnly,
+}
+
+/// Stable refusal category for optional constrained terrain adaptation.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LandXmlTerrainDiagnosticCode {
+    MissingOuterBoundary,
+    UnsupportedBoundarySemantics,
+    UnsupportedBreaklineSemantics,
+    MissingElevation,
+    ConflictingElevation,
+    IntersectingConstraints,
+    DegenerateConstraints,
+    WorkLimitExceeded,
+    Cancelled,
+}
+
+impl LandXmlTerrainDiagnosticCode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::MissingOuterBoundary => "LXMLT001",
+            Self::UnsupportedBoundarySemantics => "LXMLT002",
+            Self::UnsupportedBreaklineSemantics => "LXMLT003",
+            Self::MissingElevation => "LXMLT004",
+            Self::ConflictingElevation => "LXMLT005",
+            Self::IntersectingConstraints => "LXMLT006",
+            Self::DegenerateConstraints => "LXMLT007",
+            Self::WorkLimitExceeded => "LXMLT008",
+            Self::Cancelled => "LXMLT009",
+        }
+    }
+}
+
+/// Source-preserving diagnostic; a refusal never turns into guessed terrain.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LandXmlTerrainDiagnostic {
+    pub code: LandXmlTerrainDiagnosticCode,
+    pub message: String,
 }
 
 /// One preserved source line/ring (boundary, breakline, or contour).
@@ -173,7 +235,14 @@ pub struct LandXmlSurface {
     pub name: String,
     pub kind: LandXmlSurfaceKind,
     pub render_state: LandXmlRenderState,
+    pub topology_origin: LandXmlTopologyOrigin,
+    /// Set only when a faceless TIN was deliberately retained rather than
+    /// guessed into unconstrained terrain.
+    pub terrain_diagnostic: Option<LandXmlTerrainDiagnostic>,
     pub points: Vec<LandXmlPoint>,
+    /// Canonical vertices used only when `topology_origin` is
+    /// `constrained_triangulation`; source point records are never replaced.
+    pub canonical_vertices: Vec<LandXmlCanonicalVertex>,
     pub source_data_points: Vec<LandXmlSourcePoint>,
     pub faces: Vec<[String; 3]>,
     /// Mirrors `faces` by ordinal.  A face's identity remains stable when an

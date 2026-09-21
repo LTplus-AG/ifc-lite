@@ -1558,6 +1558,8 @@ dependencies = [
 name = "ifc-lite-landxml"
 version = "16.2.0"
 dependencies = [
+ "geometry-predicates",
+ "ifc-lite-geometry",
  "quick-xml",
  "serde",
  "serde_json",

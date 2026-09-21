@@ -9,6 +9,9 @@ import type { LandXmlSourceBuffer } from './landXmlIngest.js';
 import { initLandXmlWasm } from './landXmlWasmInit.js';
 import { pipeNetworks } from './landXmlPipeWasm.js';
 import { indexLandXmlPlanRecords, indexLandXmlSourceRecords } from './landXmlSemantics.js';
+import {
+  array, finite, nullableFinite, nullableString, properties, record, string, strings,
+} from './landXmlWasmDecode.js';
 import type {
   LandXmlAlignment, LandXmlCapabilityDiagnostic, LandXmlCrossSection, LandXmlCrossSectionPoint,
   LandXmlCrossSectionSurface, LandXmlGradeLine, LandXmlPolyline, LandXmlPreservedOnlyExtension,
@@ -18,35 +21,6 @@ import type {
   LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlPlanPointLocation,
   LandXmlParcelProbe, LandXmlResolvedGeometry, LandXmlResolvedMonument,
 } from './landXmlSemantics.js';
-
-function record(value: unknown, context: string): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error(`LandXML WASM returned an invalid ${context}`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function string(value: unknown, context: string): string {
-  if (typeof value !== 'string') throw new Error(`LandXML WASM returned an invalid ${context}`);
-  return value;
-}
-
-function finite(value: unknown, context: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(`LandXML WASM returned an invalid ${context}`);
-  }
-  return value;
-}
-
-function array(value: unknown, context: string): unknown[] {
-  if (!Array.isArray(value)) throw new Error(`LandXML WASM returned an invalid ${context}`);
-  return value;
-}
-
-function properties(value: unknown, context: string): Record<string, string> {
-  const raw = record(value, context);
-  return Object.fromEntries(Object.entries(raw).map(([name, property]) => [name, string(property, `${context} ${name}`)]));
-}
 
 function surfaceKind(value: unknown): LandXmlTinSurface['kind'] {
   const kind = string(value, 'surface kind');
@@ -60,6 +34,12 @@ function renderState(value: unknown): LandXmlTinSurface['renderState'] {
   throw new Error('LandXML WASM returned an invalid surface render state');
 }
 
+function topologyOrigin(value: unknown): NonNullable<LandXmlTinSurface['topologyOrigin']> {
+  const origin = string(value, 'terrain topology origin');
+  if (origin === 'authored_faces' || origin === 'constrained_triangulation' || origin === 'preserved_only') return origin;
+  throw new Error('LandXML WASM returned an invalid terrain topology origin');
+}
+
 function surface(value: unknown): LandXmlTinSurface {
   const raw = record(value, 'surface');
   return {
@@ -71,6 +51,11 @@ function surface(value: unknown): LandXmlTinSurface {
     name: string(raw.name, 'surface name'),
     kind: surfaceKind(raw.kind),
     renderState: renderState(raw.render_state),
+    topologyOrigin: raw.topology_origin === undefined ? undefined : topologyOrigin(raw.topology_origin),
+    terrainDiagnostic: raw.terrain_diagnostic === undefined || raw.terrain_diagnostic === null ? null : (() => {
+      const diagnostic = record(raw.terrain_diagnostic, 'terrain diagnostic');
+      return { code: string(diagnostic.code, 'terrain diagnostic code'), message: string(diagnostic.message, 'terrain diagnostic message') };
+    })(),
     points: array(raw.points, 'surface points').map((point, index) => {
       const parsed = record(point, `point ${index}`);
       return {
@@ -79,6 +64,16 @@ function surface(value: unknown): LandXmlTinSurface {
         northing: finite(parsed.northing, `point ${index} northing`),
         easting: finite(parsed.easting, `point ${index} easting`),
         elevation: finite(parsed.elevation, `point ${index} elevation`),
+      };
+    }),
+    canonicalVertices: raw.canonical_vertices === undefined ? undefined : array(raw.canonical_vertices, 'canonical terrain vertices').map((vertex, index) => {
+      const parsed = record(vertex, `canonical terrain vertex ${index}`);
+      return {
+        id: string(parsed.id, `canonical terrain vertex ${index} id`),
+        northing: finite(parsed.northing, `canonical terrain vertex ${index} northing`),
+        easting: finite(parsed.easting, `canonical terrain vertex ${index} easting`),
+        elevation: finite(parsed.elevation, `canonical terrain vertex ${index} elevation`),
+        contributorSourceIds: strings(parsed.contributor_source_ids, `canonical terrain vertex ${index} contributor source ids`),
       };
     }),
     sourceDataPoints: array(raw.source_data_points, 'source data points').map((point, index) => {
@@ -107,20 +102,6 @@ function surface(value: unknown): LandXmlTinSurface {
     breaklines: polylines(raw.breaklines, 'breaklines'),
     contours: polylines(raw.contours, 'contours'),
   };
-}
-
-function nullableString(value: unknown, context: string): string | null {
-  // `serde_wasm_bindgen` omits `None` struct fields rather than always
-  // materialising them as JavaScript `null`.
-  return value === null || value === undefined ? null : string(value, context);
-}
-
-function nullableFinite(value: unknown, context: string): number | null {
-  return value === null || value === undefined ? null : finite(value, context);
-}
-
-function strings(value: unknown, context: string): string[] {
-  return array(value, context).map((entry, index) => string(entry, `${context} ${index}`));
 }
 
 function profilePoint(value: unknown, context: string): LandXmlProfilePoint {

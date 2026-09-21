@@ -8444,6 +8444,7 @@
     "InitInput: type",
     "InitOutput: interface",
     "LandXmlAlignmentJs: interface",
+    "LandXmlCanonicalVertexJs: interface",
     "LandXmlCapabilityDiagnosticJs: interface",
     "LandXmlCgPointJs: interface",
     "LandXmlCrossSectionJs: interface",

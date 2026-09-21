@@ -553,6 +553,28 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.ok(viewer.warnings.some((warning) => warning.includes('bad') && warning.includes('source semantic refusal')));
   });
 
+  it('keeps one-metre endpoint conflicts visible at huge elevations while exact duplicates remain valid (#5047)', async () => {
+    const base = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 1000000000000000</Center><CircStruct diameter="1"/><Invert refPipe="P" flowDir="out" elev="1000000000000000"/><Invert refPipe="P" flowDir="out" elev="ELEVATION"/></Struct><Struct name="B"><Center>10 0 1000000000000000</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="P" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe><Pipe name="sibling" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    const conflict = base.replace('ELEVATION', '1000000000000001');
+    const parsed = await parseDocument(conflict);
+    const pipe = parsed.pipeNetworks?.networks[0]?.pipes.find((candidate) => candidate.name === 'P');
+    assert.ok(pipe);
+    assert.ok(parsed.pipeNetworks?.refusals.some((refusal) => (
+      refusal.sourceId === pipe.sourceId && refusal.message === 'conflicting authored endpoint Invert elevations'
+    )));
+    const viewer = await parseViewer(bytes(conflict));
+    assert.equal(viewer.geometryResult.meshes.length, 1, 'only the unaffected sibling renders');
+    assert.ok(viewer.warnings.some((warning) => warning.includes('P') && warning.includes('conflicting authored endpoint Invert elevations')));
+
+    const duplicates = base.replace('ELEVATION', '1000000000000000');
+    const duplicateParsed = await parseDocument(duplicates);
+    assert.equal(duplicateParsed.pipeNetworks?.refusals.length, 0);
+    assert.equal(duplicateParsed.pipeNetworks?.networks[0]?.structures[0]?.inverts.length, 1);
+    const duplicateViewer = await parseViewer(bytes(duplicates));
+    assert.equal(duplicateViewer.geometryResult.meshes.length, 2);
+    assert.equal(duplicateViewer.warnings.length, 0);
+  });
+
   it('does not fall back to a structure Center after an invalid authored endpoint invert (#5047)', async () => {
     const pipes = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/><Invert refPipe="bad" flowDir="out" elev="bad"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="C"><Center>0 10 0</Center><CircStruct diameter="1"/></Struct><Struct name="D"><Center>10 10 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="bad" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe><Pipe name="good" refStart="C" refEnd="D"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
     const parsed = await parseDocument(pipes);

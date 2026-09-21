@@ -589,7 +589,7 @@ fn issue_5047_refuses_ambiguous_or_invalid_endpoint_inverts_per_pipe() {
     );
     let conflicting = base.replace(
         r#"<Invert refPipe="P-1" flowDir="out" elev="9.5"/>"#,
-        r#"<Invert refPipe="P-1" flowDir="out" elev="1000000000000"/><Invert refPipe="P-1" flowDir="out" elev="1000000000001"/>"#,
+        r#"<Invert refPipe="P-1" flowDir="out" elev="1000000000000000"/><Invert refPipe="P-1" flowDir="out" elev="1000000000000001"/>"#,
     );
     let parsed = parse_landxml_pipe_networks(conflicting.as_bytes()).expect("conflict stays local");
     let pipe = &parsed.networks[0].pipes[0];
@@ -599,6 +599,14 @@ fn issue_5047_refuses_ambiguous_or_invalid_endpoint_inverts_per_pipe() {
             && refusal.source_path == pipe.source_path
             && refusal.message == "conflicting authored endpoint Invert elevations"
     }));
+
+    let duplicates = base.replace(
+        r#"<Invert refPipe="P-1" flowDir="out" elev="9.5"/>"#,
+        r#"<Invert refPipe="P-1" flowDir="out" elev="1000000000000000"/><Invert refPipe="P-1" flowDir="out" elev="1000000000000000"/>"#,
+    );
+    let parsed = parse_landxml_pipe_networks(duplicates.as_bytes()).expect("duplicates are safe");
+    assert_eq!(parsed.networks[0].structures[0].inverts.len(), 1);
+    assert!(parsed.refusals.is_empty());
 
     let invalid = base.replace(r#"elev="9.5""#, r#"elev="bad""#);
     let parsed = parse_landxml_pipe_networks(invalid.as_bytes()).expect("bad invert stays local");

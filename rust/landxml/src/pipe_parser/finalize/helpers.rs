@@ -39,7 +39,7 @@ pub(super) fn unique_names<'a>(
     Ok(names)
 }
 
-pub(super) fn required_reference(
+pub(in crate::pipe_parser) fn required_reference(
     reference: Option<String>,
     label: &str,
     target: &str,

@@ -565,8 +565,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             {t('mainToolbar.bcfTopics')}
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
-            checked={activeWorkspacePanels.has('ids')}
-            onCheckedChange={() => handleToggleRightPanel('ids')}
+            checked={activeWorkspacePanels.has('validation')}
+            onCheckedChange={() => handleToggleRightPanel('validation')}
           >
             <ClipboardCheck className="h-4 w-4 mr-2" />
             {t('mainToolbar.idsValidation')}

@@ -55,7 +55,7 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
     { id: 'panel:bcf', label: 'BCF Topics', ...withKey('commandPalette.panel.bcf.label'), keywords: 'collaboration topics comments viewpoint', category: 'Panels', icon: MessageSquare,
       action: () => { p.activateRightPanel('bcf'); } },
     { id: 'panel:ids', label: 'IDS Validation', ...withKey('commandPalette.panel.ids.label'), keywords: 'information delivery specification check', category: 'Panels', icon: ClipboardCheck,
-      action: () => { p.activateRightPanel('ids'); } },
+      action: () => { p.activateRightPanel('validation'); } },
     { id: 'panel:clash', label: 'Clash Detection', ...withKey('commandPalette.panel.clash.label'), keywords: 'collision interference clearance coordination clash matrix mep', category: 'Panels', icon: Crosshair,
       action: () => { p.activateRightPanel('clash'); } },
     { id: 'panel:compare', label: 'Compare Models', ...withKey('commandPalette.panel.compare.label'), keywords: 'diff revision version change added deleted modified geometry data', category: 'Panels', icon: GitCompareArrows,

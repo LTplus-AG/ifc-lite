@@ -23,7 +23,7 @@
 import type { StateCreator } from 'zustand';
 import {
   WORKSPACE_PANELS,
-  isWorkspacePanelId,
+  migratePanelId,
   getPanelDef,
   SIDEBAR_DEFAULT_WIDTH_PCT,
   type WorkspacePanelId,
@@ -85,8 +85,11 @@ function normalizeOrder(order: unknown): WorkspacePanelId[] {
   const seen = new Set<WorkspacePanelId>();
   const out: WorkspacePanelId[] = [];
   if (Array.isArray(order)) {
-    for (const id of order) {
-      if (typeof id === 'string' && isWorkspacePanelId(id) && !seen.has(id)) {
+    for (const raw of order) {
+      // A retired panel id (e.g. pre-#5138 'ids') migrates to its
+      // replacement rather than silently vanishing from a persisted order.
+      const id = typeof raw === 'string' ? migratePanelId(raw) : undefined;
+      if (id !== undefined && !seen.has(id)) {
         seen.add(id);
         out.push(id);
       }
@@ -108,8 +111,9 @@ function normalizeOrder(order: unknown): WorkspacePanelId[] {
 function normalizeHidden(hidden: unknown): WorkspacePanelId[] {
   if (!Array.isArray(hidden)) return [];
   const out = new Set<WorkspacePanelId>();
-  for (const id of hidden) {
-    if (typeof id === 'string' && isWorkspacePanelId(id) && id !== 'properties') out.add(id);
+  for (const raw of hidden) {
+    const id = typeof raw === 'string' ? migratePanelId(raw) : undefined;
+    if (id !== undefined && id !== 'properties') out.add(id);
   }
   return [...out];
 }

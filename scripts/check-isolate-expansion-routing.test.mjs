@@ -633,10 +633,10 @@ describe('check-isolate-expansion-routing: seventh channel -- setIsolatedEntitie
     assert.equal(verdict.ok, true);
   });
 
-  it('GREEN: useBCF.ts and useIDS.ts are allowlisted as REQUIRES_ROUTING_MARKER', () => {
+  it('GREEN: useBCF.ts and useValidationIsolation.ts are allowlisted as REQUIRES_ROUTING_MARKER', () => {
     for (const relPath of [
       'apps/viewer/src/hooks/useBCF.ts',
-      'apps/viewer/src/hooks/useIDS.ts',
+      'apps/viewer/src/hooks/validation/useValidationIsolation.ts',
     ]) {
       assert.equal(REQUIRES_ROUTING_MARKER.has(relPath), true, relPath);
     }
@@ -763,7 +763,7 @@ describe('check-isolate-expansion-routing: routing is checked per call site, not
 
   it('still fails an ALIASED call in a listed file with no routing anywhere (no hole opened)', () => {
     const verdict = classifyFile(
-      'apps/viewer/src/hooks/useIDS.ts',
+      'apps/viewer/src/hooks/validation/useValidationIsolation.ts',
       'const { isolateEntities: apply } = useViewerStore(); apply(rawIds);',
     );
     assert.equal(verdict.ok, false, 'per-call-site analysis is blind to aliases, so the file-level question must still run');
@@ -832,13 +832,13 @@ describe('check-isolate-expansion-routing: the hide / show / colour channels are
 
   it('an EXEMPT_ACTIONS entry with a stub reason fails rather than passing quietly', () => {
     const original = EXEMPT_ACTIONS.get('apps/viewer/src/components/viewer/LensPanel.tsx');
-    EXEMPT_ACTIONS.set('apps/viewer/src/hooks/useIDS.ts', new Map([['hideEntities', 'x']]));
+    EXEMPT_ACTIONS.set('apps/viewer/src/hooks/validation/useValidationIsolation.ts', new Map([['hideEntities', 'x']]));
     try {
-      const verdict = classifyFile('apps/viewer/src/hooks/useIDS.ts', 'state.hideEntities(rawIds);');
+      const verdict = classifyFile('apps/viewer/src/hooks/validation/useValidationIsolation.ts', 'state.hideEntities(rawIds);');
       assert.equal(verdict.ok, false);
       assert.match(verdict.reason, /no reviewable reason/);
     } finally {
-      EXEMPT_ACTIONS.delete('apps/viewer/src/hooks/useIDS.ts');
+      EXEMPT_ACTIONS.delete('apps/viewer/src/hooks/validation/useValidationIsolation.ts');
       assert.equal(EXEMPT_ACTIONS.get('apps/viewer/src/components/viewer/LensPanel.tsx'), original);
     }
   });

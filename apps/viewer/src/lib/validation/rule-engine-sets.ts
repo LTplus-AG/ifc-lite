@@ -328,7 +328,14 @@ export async function checkAggregate(
       members: acc.members,
     });
   }
-  setResults.sort((a, b) => b.members.length - a.members.length);
+  orderSetResultsForCap(setResults);
   const setResultsTruncated = setResults.length > SET_RESULT_CAP;
   return { setResults: setResults.slice(0, SET_RESULT_CAP), setResultsTruncated, entityResults };
+}
+
+/** Failing groups first, then largest first. The cap slices from the front,
+ *  so a failing group must never sit behind 1 000 passing ones — otherwise the
+ *  truncated list is all-pass and the rule reads `pass` (review on #5160). */
+export function orderSetResultsForCap(results: SetResult[]): void {
+  results.sort((a, b) => Number(a.passed) - Number(b.passed) || b.members.length - a.members.length);
 }

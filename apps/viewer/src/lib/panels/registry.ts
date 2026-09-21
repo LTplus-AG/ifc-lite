@@ -50,7 +50,7 @@ export type WorkspacePanelId =
   | 'properties'
   | 'compare'
   | 'bcf'
-  | 'ids'
+  | 'validation'
   | 'lens'
   | 'clash'
   | 'extensions'
@@ -94,7 +94,10 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   { id: 'properties', title: 'Information', short: 'Info', Icon: Info, group: 'inspect', region: 'side' },
   { id: 'compare', title: 'Compare models', short: 'Compare', Icon: GitCompareArrows, group: 'inspect', region: 'side' },
   { id: 'bcf', title: 'BCF topics', short: 'BCF', Icon: MessageSquare, group: 'review', region: 'side' },
-  { id: 'ids', title: 'IDS validation', short: 'IDS', Icon: ClipboardCheck, group: 'review', region: 'side' },
+  // Renamed from 'ids' (#5138): the panel now covers both IDS validation and
+  // rule-based information validation. Supersede = delete — `migratePanelId`
+  // below is the only place the retired id is still spelled out.
+  { id: 'validation', title: 'Data validation', short: 'Validation', Icon: ClipboardCheck, group: 'review', region: 'side' },
   { id: 'lens', title: 'Lens rules', short: 'Lens', Icon: Palette, group: 'review', region: 'side' },
   { id: 'clash', title: 'Clash detection', short: 'Clash', Icon: Crosshair, group: 'review', region: 'side' },
   { id: 'extensions', title: 'Extensions', short: 'Extensions', Icon: Puzzle, group: 'author', region: 'side' },
@@ -157,6 +160,24 @@ export function getPanelDef(id: WorkspacePanelId): WorkspacePanelDef | undefined
 /** Type guard for narrowing arbitrary strings to a known panel id. */
 export function isWorkspacePanelId(id: string): id is WorkspacePanelId {
   return PANEL_BY_ID.has(id as WorkspacePanelId);
+}
+
+/** Panel ids retired by a rename, mapped to their replacement (#5138: the
+ *  IDS panel became the Data validation panel, `'ids'` -> `'validation'`). */
+const LEGACY_PANEL_ID_MIGRATIONS: Readonly<Record<string, WorkspacePanelId>> = {
+  ids: 'validation',
+};
+
+/**
+ * Resolve a persisted panel id (sidebar order/hidden set, dock/float layout)
+ * to a live {@link WorkspacePanelId}, migrating a retired id to its
+ * replacement instead of silently dropping it. `undefined` means the id is
+ * neither current nor a known legacy alias — genuinely unrecognised, and the
+ * caller's existing "drop it" handling applies.
+ */
+export function migratePanelId(id: string): WorkspacePanelId | undefined {
+  if (isWorkspacePanelId(id)) return id;
+  return LEGACY_PANEL_ID_MIGRATIONS[id];
 }
 
 /**

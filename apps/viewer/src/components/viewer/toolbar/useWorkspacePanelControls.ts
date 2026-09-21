@@ -26,7 +26,7 @@ import { BOTTOM_PANEL_IDS, isBottomPanelOpen, type BottomPanelId } from '@/lib/p
  *  branch below could not simply hand the click to the store, so it re-derived
  *  the flag flips and lost the float / pop-out cleanup along the way. */
 export type BottomPanel = BottomPanelId;
-export type RightPanel = 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'addElement' | 'extensions' | 'sources' | 'appearance';
+export type RightPanel = 'bcf' | 'validation' | 'lens' | 'clash' | 'compare' | 'addElement' | 'extensions' | 'sources' | 'appearance';
 export type WorkspacePanel = BottomPanel | RightPanel | string;
 
 export function useWorkspacePanelControls() {
@@ -119,7 +119,7 @@ export function useWorkspacePanelControls() {
     const docked = (visible: boolean) => visible && !detached;
 
     const nextBcfVisible = panel === 'bcf' ? !docked(bcfPanelVisible) : false;
-    const nextIdsVisible = panel === 'ids' ? !docked(idsPanelVisible) : false;
+    const nextIdsVisible = panel === 'validation' ? !docked(idsPanelVisible) : false;
     const nextLensVisible = panel === 'lens' ? !docked(lensPanelVisible) : false;
     const nextClashVisible = panel === 'clash' ? !docked(clashPanelVisible) : false;
     const nextCompareVisible = panel === 'compare' ? !docked(comparePanelVisible) : false;
@@ -243,7 +243,7 @@ export function useWorkspacePanelControls() {
     const bottomFlags = { ganttPanelVisible, scriptPanelVisible, listPanelVisible, chartPanelVisible, documentPanelVisible };
     for (const id of BOTTOM_PANEL_IDS) if (isBottomPanelOpen(bottomFlags, id)) panels.add(id);
     if (bcfPanelVisible) panels.add('bcf');
-    if (idsPanelVisible) panels.add('ids');
+    if (idsPanelVisible) panels.add('validation');
     if (lensPanelVisible) panels.add('lens');
     if (clashPanelVisible) panels.add('clash');
     if (comparePanelVisible) panels.add('compare');
@@ -287,7 +287,7 @@ export function useWorkspacePanelControls() {
     if (activeWorkspacePanels.has('lists')) return 'Lists';
     if (activeWorkspacePanels.has('gantt')) return 'Schedule';
     if (activeWorkspacePanels.has('bcf')) return 'BCF Topics';
-    if (activeWorkspacePanels.has('ids')) return 'IDS Validation';
+    if (activeWorkspacePanels.has('validation')) return 'IDS Validation';
     if (activeWorkspacePanels.has('lens')) return 'Lens Rules';
     if (activeWorkspacePanels.has('clash')) return 'Clash Detection';
     if (activeWorkspacePanels.has('compare')) return 'Compare Models';

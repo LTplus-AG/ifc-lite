@@ -4,15 +4,41 @@
 
 import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import type { IDSEntityResult, IDSRequirementResult } from '@ifc-lite/ids';
+import type { EntityResult, RequirementResult, SetResult, FailureReasonCode } from '@ifc-lite/ids';
 import type { RequirementGroup } from '@/hooks/ids/idsRequirementGrouping';
 import { Badge } from '@/components/ui/badge';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { StatusIcon } from './IDSPanelStatus';
 
+/** i18n labels for the closed `FailureReasonCode` set (#5138 plan §6). */
+const FAILURE_REASON_KEYS: Record<FailureReasonCode, TranslationKey> = {
+  absent: 'validationPanel.reason.absent',
+  mismatch: 'validationPanel.reason.mismatch',
+  notNumeric: 'validationPanel.reason.notNumeric',
+  cardinality: 'validationPanel.reason.cardinality',
+  duplicate: 'validationPanel.reason.duplicate',
+  aggregate: 'validationPanel.reason.aggregate',
+  notDate: 'validationPanel.reason.notDate',
+};
+
+function isFailureReasonCode(value: string): value is FailureReasonCode {
+  return value in FAILURE_REASON_KEYS;
+}
+
+/** `failureReason` is either translated IDS text or one of the closed
+ *  `FailureReasonCode`s (rule-set reports, #5138) — translate the latter,
+ *  pass the former through verbatim. */
+export function useFailureReasonLabel(): (reason: string | undefined) => string | undefined {
+  const { t } = useTranslation();
+  return (reason) => {
+    if (reason === undefined) return undefined;
+    return isFailureReasonCode(reason) ? t(FAILURE_REASON_KEYS[reason]) : reason;
+  };
+}
+
 interface EntityResultRowProps {
-  entity: IDSEntityResult;
+  entity: EntityResult;
   onClick: () => void;
 }
 
@@ -69,17 +95,18 @@ export function EntityResultRow({ entity, onClick }: EntityResultRowProps) {
 // ============================================================================
 
 interface RequirementResultRowProps {
-  result: IDSRequirementResult;
+  result: RequirementResult;
 }
 
 function RequirementResultRow({ result }: RequirementResultRowProps) {
+  const reasonLabel = useFailureReasonLabel();
   return (
     <div className="text-xs flex items-start gap-2 py-1">
       <StatusIcon status={result.status} />
       <div className="flex-1 min-w-0">
         <div className="text-muted-foreground">{result.checkedDescription}</div>
         {result.failureReason && (
-          <div className="text-red-600 mt-0.5">{result.failureReason}</div>
+          <div className="text-red-600 mt-0.5">{reasonLabel(result.failureReason)}</div>
         )}
       </div>
     </div>
@@ -97,6 +124,7 @@ interface RequirementGroupRowProps {
 
 export function RequirementGroupRow({ group, onEntityClick }: RequirementGroupRowProps) {
   const { t, locale } = useTranslation();
+  const reasonLabel = useFailureReasonLabel();
   const [showFailures, setShowFailures] = useState(false);
   const hasFailures = group.failingEntities.length > 0;
   const status: 'pass' | 'fail' | 'not_applicable' =
@@ -157,9 +185,83 @@ export function RequirementGroupRow({ group, onEntityClick }: RequirementGroupRo
                 {entity.globalId ? ` · ${entity.globalId}` : ''}
               </span>
               {entity.failureReason && (
-                <span className="text-red-600">{entity.failureReason}</span>
+                <span className="text-red-600">{reasonLabel(entity.failureReason)}</span>
               )}
             </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Set Result Row Component (#5138 plan §6: uniqueness / aggregate checks)
+// ============================================================================
+
+interface SetResultRowProps {
+  result: SetResult;
+  onIsolate: (members: SetResult['members']) => void;
+}
+
+/** One `SetResult` (a duplicate group or an aggregate over a group) as a
+ *  collapsible row above the entity rows — it describes a GROUP, not a
+ *  single entity, so it renders above `EntityResultRow`s rather than among
+ *  them. Clicking the row isolates every member through the same
+ *  `{modelId, expressId}[]` isolate path entity rows use. */
+export function SetResultRow({ result, onIsolate }: SetResultRowProps) {
+  const { t, locale } = useTranslation();
+  const reasonLabel = useFailureReasonLabel();
+  const [showMembers, setShowMembers] = useState(false);
+
+  return (
+    <div className="rounded-md border border-border/60">
+      <div className="flex items-start gap-2 p-2">
+        <button
+          type="button"
+          className="flex-1 min-w-0 flex items-start gap-2 text-left hover:bg-muted/50 rounded-md -m-1 p-1"
+          onClick={() => setShowMembers((v) => !v)}
+          aria-expanded={showMembers}
+        >
+          <StatusIcon status={result.passed ? 'pass' : 'fail'} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant="outline" className="text-[10px] uppercase">{result.kind}</Badge>
+              <span className="text-xs truncate">{result.label}</span>
+              {result.groupKey && (
+                <span className="text-xs text-muted-foreground truncate">({result.groupKey})</span>
+              )}
+            </div>
+            <div className="text-xs text-muted-foreground mt-0.5">
+              {t('validationPanel.setResult.actualExpected', { actual: result.actual, expected: result.expected })}
+              {' · '}
+              {t('validationPanel.setResult.members', {
+                count: result.members.length,
+                countDisplay: formatLocaleNumber(locale, result.members.length),
+              })}
+              {result.failureReason && (
+                <span className="text-red-600"> · {reasonLabel(result.failureReason)}</span>
+              )}
+            </div>
+          </div>
+          {showMembers ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+        </button>
+        {result.members.length > 0 && (
+          <button
+            type="button"
+            className="shrink-0 text-xs text-primary hover:underline px-1 py-1"
+            onClick={() => onIsolate(result.members)}
+          >
+            {t('validationPanel.setResult.isolate')}
+          </button>
+        )}
+      </div>
+      {showMembers && (
+        <div className="pl-6 pr-2 pb-2 text-xs text-muted-foreground">
+          {result.members.map((m) => (
+            <div key={`${m.modelId}:${m.expressId}`} className="truncate">
+              {m.modelId}:{m.expressId}
+            </div>
           ))}
         </div>
       )}

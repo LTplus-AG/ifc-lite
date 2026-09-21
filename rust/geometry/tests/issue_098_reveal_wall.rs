@@ -156,8 +156,12 @@ fn dump_wall_mesh() {
 // number that is not a regression.
 #[cfg(not(feature = "csg_manifold_gate"))]
 const PINNED_OPEN_EDGES: Option<i64> = None;
+// #5131: 380 -> 382. The stray-shard sweep now keeps faces whose centroid is
+// within 1 mm of the reference host, so two sub-mm slivers the manifold-gate
+// fallback used to drop stay in this mesh. The other configurations did not
+// move (measured 352 with both gates, 6 with the topology gate alone).
 #[cfg(all(feature = "csg_manifold_gate", not(feature = "csg_topology_gate")))]
-const PINNED_OPEN_EDGES: Option<i64> = Some(380);
+const PINNED_OPEN_EDGES: Option<i64> = Some(382);
 #[cfg(all(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
 const PINNED_OPEN_EDGES: Option<i64> = Some(352);
 

@@ -57,7 +57,6 @@
  *   8. plato clash-math freshness (plato-check job)          -- INFO only, see below
  *   9. committed wasm .d.ts vs Rust source (build job)        -- INFO only, see below
  *   10. generate-coverage-ledger.mjs --check (node-tests, alongside gate 4; #4207)
- *   11. generate-legacy-rooted-types.mjs --check (node-tests; #4203)
  *
  * Steps deliberately NOT treated as a generated-artifact gate here, and why:
  *   - `pnpm fixtures:check` (build job) compares downloaded test-fixture

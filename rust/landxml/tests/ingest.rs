@@ -9,7 +9,22 @@ use ifc_lite_landxml::{
     LandXmlTerrainDiagnosticCode, LandXmlTopologyOrigin, LandXmlVersionCapability,
     LandXmlVerticalCurveKind, LANDXML_10_NAMESPACE, LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
 };
+use quick_xml::{events::Event, Reader};
 use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[test]
+fn pr_5106_quick_xml_events_expose_utf8_strings() {
+    let mut reader = Reader::from_str("<Point />");
+    let Event::Empty(point) = reader.read_event().expect("point event") else {
+        panic!("expected an empty point element");
+    };
+
+    assert_eq!(
+        std::any::type_name_of_val(point.name().as_ref()),
+        "str",
+        "quick-xml event names must use the 0.42 UTF-8 string API"
+    );
+}
 
 struct CancelsAfterPolls {
     cancel_after: usize,

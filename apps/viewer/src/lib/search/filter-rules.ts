@@ -129,6 +129,13 @@ export interface IfcTypeRule {
   kind: 'ifcType';
   values: string[];
   op: SetOp;
+  /** Exact-class applicability, no subtype expansion (bSI #356, deferred by
+   *  IDS to "Future 2.0+"). Default false/absent = today's behaviour
+   *  (`values` already come pre-expanded through `expandTypes` at the
+   *  chip/selector layer). Type-only here: the search evaluator
+   *  (`filter-match.ts`) has no reason to read it, only the validation
+   *  engine (#5138 PR 3) does. */
+  exactClass?: boolean;
 }
 
 export interface PredefinedTypeRule {

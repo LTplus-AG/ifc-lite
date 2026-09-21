@@ -17,7 +17,7 @@ use serde::Serialize;
 /// GET /api/v1/cache/:key - Retrieve cached result.
 ///
 /// Every parse route's response entry is JSON, EXCEPT the binary Parquet
-/// routes' bodies (`-parquet-v5`, `-parquet-v6`, `-parquet-optimized-v1`),
+/// routes' bodies (`-parquet-v5`, `-parquet-v7`, `-parquet-optimized-v2`),
 /// which this route was never meant to serve. Before #5128 it deserialized
 /// whatever it read as `ParseResponse` unconditionally: a client that found
 /// one of those keys some other way (e.g. from an `X-IFC-Metadata`

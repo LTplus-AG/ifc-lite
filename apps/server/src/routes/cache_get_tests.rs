@@ -7,7 +7,7 @@
 //!
 //! Before this, `get_cached` deserialized whatever `DiskCache::get` read as
 //! `ParseResponse` unconditionally, via `?`. A binary Parquet body cached
-//! under its real key (`-parquet-v5`, `-parquet-v6`, `-parquet-optimized-v1`)
+//! under its real key (`-parquet-v5`, `-parquet-v7`, `-parquet-optimized-v2`)
 //! is not JSON, so `serde_json::from_slice` fails, `From<serde_json::Error>`
 //! turns that into `ApiError::Internal`, and the client sees a `500` on a key
 //! that genuinely exists -- the reporter's `GET /cache/{sha}-default-parquet-optimized-v1`

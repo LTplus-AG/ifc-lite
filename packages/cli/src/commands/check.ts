@@ -83,7 +83,7 @@ export async function checkCommand(args: string[]): Promise<void> {
       process.exitCode = 2;
       return;
     }
-    models.push({ id: modelPath, filterIdentity: loaded.sha256, store: loaded.store });
+    models.push({ id: modelPath, filterIdentity: loaded.sourceFingerprint, store: loaded.store });
   }
 
   const report = await runRuleSet({ ruleSet: parsed.file, models });

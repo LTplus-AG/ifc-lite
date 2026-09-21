@@ -92,4 +92,34 @@ describe('runRuleSet — federated targeting by sourceFingerprint (#5138)', () =
     assert.equal(targetedSpec.applicableCount, 1);
     assert.ok(targetedSpec.entityResults.every((e) => e.modelId === 'm1'));
   });
+
+  it('targets naming a fingerprint that matches NO loaded model report `error` on every rule, never a silent not_applicable pass (#5138 PR 7b review)', async () => {
+    // A caller's `filterIdentity` can legitimately fail to match a rule
+    // set's saved `targets.modelFingerprints` — e.g. the CLI hashing the
+    // model differently than the viewer did when the set was authored.
+    // That mismatch must read as UNEVALUATED, not as a clean pass: with
+    // zero applicable entities and no min/maxApplicable cardinality, the
+    // old behaviour was `status: 'not_applicable'` for every rule, which a
+    // caller's exit-code logic could not distinguish from "genuinely
+    // nothing to check".
+    const storeA = await parseWall('0WallA0000000000000000A', 'Wall in A');
+    const state = stateFor([{ id: 'm1', fingerprint: 'fp-a', store: storeA }]);
+
+    const report = await runRuleSet({ ruleSet: allWallsRuleSet({ modelFingerprints: ['fp-does-not-exist'] }), models: state });
+    assert.equal(report.modelInfo.length, 0);
+    assert.equal(report.specificationResults.length, 1);
+    const spec = report.specificationResults[0];
+    assert.equal(spec.error, 'no loaded model matches the rule set targets');
+    assert.equal(spec.status, 'fail');
+    assert.equal(spec.applicableCount, 0);
+  });
+
+  it('empty/absent targets still resolve to every loaded model (unresolved-targets error is scoped to DECLARED targets)', async () => {
+    const storeA = await parseWall('0WallA0000000000000000A', 'Wall in A');
+    const state = stateFor([{ id: 'm1', fingerprint: 'fp-a', store: storeA }]);
+
+    const report = await runRuleSet({ ruleSet: allWallsRuleSet(undefined), models: state });
+    assert.equal(report.specificationResults[0].error, undefined);
+    assert.equal(report.specificationResults[0].applicableCount, 1);
+  });
 });

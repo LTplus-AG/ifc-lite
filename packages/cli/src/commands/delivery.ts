@@ -103,7 +103,7 @@ export async function deliveryCommand(args: string[]): Promise<void> {
       checks.push({ ...result, source: recipe.ids[j] });
     }
     for (let j = 0; j < recipe.resolvedRules.length; j++) {
-      const result = await runRulesCheck(declaredPath, loaded.store, recipe.resolvedRules[j]);
+      const result = await runRulesCheck(declaredPath, loaded.store, recipe.resolvedRules[j], loaded.sourceFingerprint);
       checks.push({ ...result, source: recipe.rules[j] });
     }
   }

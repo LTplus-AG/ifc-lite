@@ -166,6 +166,32 @@ describe('ifc-lite check — tri-state exit code (#5138)', () => {
     expect(process.exitCode).toBe(2);
   });
 
+  it('exit 2: targets.modelFingerprints naming a fingerprint no loaded model matches (#5138 PR 7b review)', async () => {
+    // The CLI's `filterIdentity` (`@ifc-lite/cache`'s `computeSourceFingerprint`,
+    // prefixed with the file's base name, exactly matching what the viewer
+    // stores as `FederatedModel.sourceFingerprint`) will never equal a
+    // fabricated fingerprint — this proves the mismatch reports `error`
+    // (exit 2), never a silent "nothing to check" pass (exit 0).
+    const targetedRules: RuleSetFile = {
+      version: 1,
+      name: 'targeted',
+      targets: { modelFingerprints: ['this-fingerprint-matches-nothing'] },
+      rules: [{
+        id: 'wall-named',
+        name: 'Walls must be named',
+        applicability: { groups: [{ rules: [{ kind: 'ifcType', values: ['IfcWall'], op: 'in' }], combinator: 'AND' }], authoredAs: 'chips' },
+        requirement: { kind: 'element', block: { groups: [{ rules: [{ kind: 'name', op: 'ne', value: '' }], combinator: 'AND' }], authoredAs: 'chips' } },
+      }],
+    };
+    const { modelPath, rulesPath } = writeFixtures(tmpDir(), TWO_WALLS, targetedRules);
+    const write = silenceOutput();
+    await checkCommand([modelPath, '--rules', rulesPath, '--format', 'json']);
+    const report = jsonWritten(write);
+    expect(report.modelInfo).toHaveLength(0);
+    expect(report.specificationResults[0].error).toBe('no loaded model matches the rule set targets');
+    expect(process.exitCode).toBe(2);
+  });
+
   it('table format prints one line per rule with pass/fail counts', async () => {
     const { modelPath, rulesPath } = writeFixtures(tmpDir(), TWO_WALLS, ruleSet());
     const write = silenceOutput();

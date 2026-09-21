@@ -30,10 +30,12 @@
 
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { basename } from 'node:path';
 import { IfcParser, unwrapIfcZipView, type IfcDataStore } from '@ifc-lite/parser';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
 import { IDSNamespace } from '@ifc-lite/sdk';
 import { parseRuleSetFile, runRuleSet, type EvaluatorModel } from '@ifc-lite/rules';
+import { computeSourceFingerprint } from '@ifc-lite/cache';
 import { computeValidationIssues, type ValidationIssue } from './validate.js';
 
 export type CheckStatus = 'pass' | 'fail' | 'error';
@@ -42,6 +44,17 @@ export interface LoadedModel {
   path: string;
   /** SHA-256 of the exact bytes read from disk (post ifcZIP unwrap: the STEP text actually checked). */
   sha256: string;
+  /**
+   * The SAME identity the viewer stores as `FederatedModel.sourceFingerprint`
+   * (#5138 PR 7b review) — `${basename}:${computeSourceFingerprint(bytes).hex}`,
+   * `@ifc-lite/cache`'s spread-sampled xxhash64 over the post-unwrap bytes,
+   * prefixed with the file's base name exactly as `useIfcLoader.ts` builds
+   * `modelSourceIdentity`. A `.rules.json` rule set's `targets.modelFingerprints`
+   * (saved from `RuleModelPicker`, which persists `model.sourceFingerprint`
+   * verbatim) only resolves against a headless model when this matches
+   * bit-for-bit — a SHA-256 (a different algorithm entirely) never would.
+   */
+  sourceFingerprint: string;
   store: IfcDataStore;
 }
 
@@ -75,6 +88,7 @@ export async function loadModelForDelivery(path: string): Promise<LoadedModel | 
   }
 
   const sha256 = createHash('sha256').update(bytes).digest('hex');
+  const sourceFingerprint = `${basename(path)}:${computeSourceFingerprint(bytes).hex}`;
 
   const parser = new IfcParser();
   const origLog = console.log;
@@ -85,7 +99,7 @@ export async function loadModelForDelivery(path: string): Promise<LoadedModel | 
     const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
     const store = await parser.parseColumnar(arrayBuffer, {});
     store.fileSize = bytes.byteLength;
-    return { path, sha256, store };
+    return { path, sha256, sourceFingerprint, store };
   } catch (err) {
     return { path, error: `could not be parsed: ${(err as Error).message}` };
   } finally {
@@ -335,8 +349,12 @@ export interface RulesCheckResult {
  * a rule federated across every recipe model (`targets`, `unique` scope
  * `'federation'`) is `ifc-lite check`'s job: run directly against every
  * declared model file in one invocation, not `delivery`'s per-model shape.
+ *
+ * `sourceFingerprint` is `LoadedModel.sourceFingerprint` (#5138 PR 7b
+ * review) — passed through as `filterIdentity` so a rule with `targets`
+ * resolves against this model exactly as the viewer would.
  */
-export async function runRulesCheck(modelPath: string, store: IfcDataStore, rulesPath: string): Promise<RulesCheckResult> {
+export async function runRulesCheck(modelPath: string, store: IfcDataStore, rulesPath: string, sourceFingerprint: string): Promise<RulesCheckResult> {
   const base = { type: 'rules' as const, model: modelPath, source: rulesPath };
 
   let rulesContent: string;
@@ -361,7 +379,7 @@ export async function runRulesCheck(modelPath: string, store: IfcDataStore, rule
     return { ...base, status: 'error', error: 'declares zero rules' };
   }
 
-  const evaluatorModel: EvaluatorModel = { id: modelPath, store };
+  const evaluatorModel: EvaluatorModel = { id: modelPath, filterIdentity: sourceFingerprint, store };
   let report;
   try {
     report = await runRuleSet({ ruleSet: parsed.file, models: [evaluatorModel] });

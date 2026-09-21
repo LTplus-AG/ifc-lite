@@ -194,22 +194,28 @@ the surrounding openBIM-surveyor application remains AGPL-3.0.
 Fixture tests are deliberately skip-safe on a fresh clone, but a skip is
 **unproven interoperability evidence** and cannot close #4937. Fetch the
 relevant byte with `pnpm fixtures <path>`.
+The versioned [LandXML interoperability coverage ledger](../../docs/architecture/landxml-coverage-ledger.md)
+is the source of truth for the separate evidence disposition and observed
+capability of every producer/workflow cell. Do not promote a public search hit,
+a source header, or a manifest entry into a producer-conformance claim there.
 The corpus deliberately records the current capability honestly: canonical
-Aplitop and OpenRoads roots retain their declared units but their
-alignment/profile payload is unsupported by the present TIN-only parser;
-InfraModel namespace rows are refused rather than partially interpreted.
-This does not certify successful alignment, CgPoints, or PipeNetworks
-interchange. The Civil 3D 2020 source is a repository black-box test fixture
-under the root MIT grant; it is recorded as a generic test surface, not as a
-customer deliverable or vendor conformance certification.
+Aplitop and OpenRoads roots retain their declared units and alignment/profile
+source records, but they do not create terrain, a rendered corridor, or a
+producer-wide compatibility claim. InfraModel namespace rows are refused rather
+than partially interpreted. This does not certify successful terrain, CgPoints,
+or PipeNetworks interchange. The Civil 3D 2020 source is a repository
+black-box test fixture under the root MIT grant; it is recorded as a generic
+test surface, not as a customer deliverable or vendor conformance
+certification.
 
 The CC0 `bonsai-topo-control-v1` catalogue group supplies an IFC4X3 terrain,
 LandXML 1.2 TIN/CgPoints, XYZ survey and five independently stated projected
 controls at 1 mm tolerance. Its three model files must still pass the viewer's
 canonical multi-model load path before the controlled-federation acceptance row
 is considered proven. Civil 3D 1.0/1.1 and a TBC-native export remain held.
-Civil 3D 1.2 international-foot terrain is covered; no rights-clear,
-non-customer 1.0 or 1.1 candidate was found. The public RustedGeom examples cannot become vendor
+Generic LandXML 1.2 international-foot TIN invariants are exercised; no Civil
+3D producer-conformance claim is made, and no rights-clear, non-customer 1.0
+or 1.1 candidate was found. The public RustedGeom examples cannot become vendor
 conformance evidence without an author/rights-holder attestation; no customer
 or forum upload may substitute for that grant.
 

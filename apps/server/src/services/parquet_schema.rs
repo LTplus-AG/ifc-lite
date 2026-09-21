@@ -28,7 +28,7 @@ use std::sync::Arc;
 
 /// The flat transport's mesh table.
 ///
-/// `-parquet-v7` (issue #3888): the `vertex_start`/`vertex_count` and
+/// `-parquet-v6` (issue #3888; `-parquet-v7` since #5130): the `vertex_start`/`vertex_count` and
 /// `index_start`/`index_count` columns no longer name a block this row OWNS.
 /// Several rows can point at ONE shared block — the rotation-aware shape
 /// sharing `/optimized` has carried since #3575, brought to the flat route —
@@ -128,7 +128,7 @@ pub(super) struct MeshRow<'a> {
 }
 
 /// Where one mesh row's geometry lives and how it is placed. Separate from the
-/// mesh because on `-parquet-v7` the two come apart: the ranges belong to a
+/// mesh because on the shared-shapes layout the two come apart: the ranges belong to a
 /// shape the occurrence may only borrow.
 pub(super) struct RowPlacement {
     pub v_start: u32,
@@ -228,7 +228,7 @@ pub(super) fn shared_trailing_fields() -> Vec<Field> {
 /// with `mesh_schema()` rather than folded into `shared_trailing_fields()`,
 /// because the two schemas gate it independently: this one omits it entirely
 /// when no non-identity rotation was written (wire version 2), while
-/// `mesh_schema()` always emits it from `-parquet-v7` on. It was
+/// `mesh_schema()` always emits it from `-parquet-v6` on. It was
 /// `/optimized`-ONLY until #3888 brought rotation-aware sharing to the flat
 /// route. A row-major 3x3, in the SAME Y-up
 /// frame as `origin_x/y/z`: `world = origin + R * template_position`. Nine
@@ -259,7 +259,7 @@ pub(super) fn instance_schema(include_rotation: bool) -> Arc<Schema> {
 }
 
 /// The nine row-major rotation columns appended to `instance_schema()` and, as
-/// of `-parquet-v7` (#3888), to `mesh_schema()` too (see either doc comment for
+/// of `-parquet-v6` (#3888), to `mesh_schema()` too (see either doc comment for
 /// the coordinate-frame contract).
 fn rotation_fields() -> Vec<Field> {
     (0..9)

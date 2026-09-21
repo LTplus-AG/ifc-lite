@@ -32,7 +32,7 @@ pub enum ParquetLayout {
     /// rotation-aware collator, so a model whose repeats are bit-identical but
     /// not `IfcMappedItem`/`IfcRepresentationMap` occurrences (the common case
     /// on models with no instancing metadata at all) shared nothing and paid
-    /// for nine all-identity `rot*` columns on every row for free.
+    /// for nine all-identity `rot*` columns on every row for nothing.
     #[serde(rename = "shared-shapes")]
     SharedShapes,
 }

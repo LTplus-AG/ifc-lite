@@ -15,7 +15,9 @@ const OFFSET = [10_000, 20_000, 30_000];
 /** The viewer's own point-cloud error when the GPU device died mid-load
  * (apps/viewer/src/hooks/useIfcLoader.ts). */
 const DEVICE_LOST_ERROR = /graphics device was lost during the load/;
-const DEVICE_LOST_CONSOLE = /\[WebGPU\] Device lost:|\[Renderer\] GPU device lost|CONTEXT_LOST_WEBGL/;
+// The final alternative is the renderer's documented device-loss race: the
+// device can disappear after whenReady() resolves but before stream creation.
+const DEVICE_LOST_CONSOLE = /\[WebGPU\] Device lost:|\[Renderer\] GPU device lost|CONTEXT_LOST_WEBGL|Renderer not initialized\. Call init\(\) first\./;
 
 async function load(page: Page, file: string | { name: string; mimeType: string; buffer: Buffer }, count: number) {
   const consoleStart = consoleLines.length;

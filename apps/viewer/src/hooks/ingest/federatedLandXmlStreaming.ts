@@ -179,6 +179,7 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
   rollback(): void {
     this.transaction?.rollback();
     this.retained = [];
+    this.sourceMeshes.length = 0;
   }
 
   verify(geometry: GeometryResult): void {

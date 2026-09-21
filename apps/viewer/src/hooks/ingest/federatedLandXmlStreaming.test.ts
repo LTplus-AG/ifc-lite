@@ -66,5 +66,6 @@ describe('federated LandXML streaming plan (#5050)', () => {
     plan.rollback();
     assert.equal(registry.getOffset('stale'), null);
     assert.equal(removed.length, 1);
+    assert.equal(plan.preAlignment.positions.length, 0, 'rollback must release source-frame snapshots');
   });
 });

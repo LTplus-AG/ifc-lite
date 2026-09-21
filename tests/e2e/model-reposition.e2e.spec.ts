@@ -115,8 +115,13 @@ for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan,
   await page.getByRole('button', { name: 'Frame both', exact: true }).click();
   const placement = await page.evaluate(() => {
     const s = globalThis.__ifc_lite_viewer_store__.getState();
-    return { identities: [...s.models.values()].map((model) => model.sourceContentHash), translations: [...s.models].filter(([, m]) => m.pointCloudHandleId !== undefined).map(([id]) => s.modelPlacement.placements.get(id)?.translation),
-      fixed: [...s.models].filter(([, m]) => m.pointCloudHandleId === undefined).map(([id]) => s.modelPlacement.placements.get(id)?.translation ?? [0, 0, 0]), count: s.pointCloudAssetCount };
+    // The streamed GPU handle is intentionally transient: hosted software-GPU
+    // recovery may clear it after the placement has committed. `loadPath` is
+    // the model's durable ingest identity, so CPU placement assertions must not
+    // become renderer-lifecycle assertions merely because Frame both rendered.
+    const isScan = (model: (typeof s.models extends Map<string, infer M> ? M : never)) => model.loadPath === 'point-cloud';
+    return { identities: [...s.models.values()].map((model) => model.sourceContentHash), translations: [...s.models].filter(([, model]) => isScan(model)).map(([id]) => s.modelPlacement.placements.get(id)?.translation),
+      fixed: [...s.models].filter(([, model]) => !isScan(model)).map(([id]) => s.modelPlacement.placements.get(id)?.translation ?? [0, 0, 0]), count: s.pointCloudAssetCount };
   });
   expect(placement.translations).toEqual([OFFSET.map((v) => -v)]);
   expect(placement.count).toBe(1);

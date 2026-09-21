@@ -130,14 +130,8 @@ struct LandXmlResolvedGeometryJs<'a> {
 
 fn resolved_geometry<'a>(
     plan: &'a ifc_lite_landxml::LandXmlPlanDocument,
+    resolver: &mut ifc_lite_landxml::LandXmlPlanResolver<'a>,
 ) -> Result<Vec<LandXmlResolvedGeometryJs<'a>>, ifc_lite_landxml::LandXmlError> {
-    let mut resolver = ifc_lite_landxml::LandXmlPlanResolver::new(
-        plan,
-        plan.cogo_points()
-            .len()
-            .saturating_mul(8)
-            .saturating_add(1_000),
-    );
     plan.plan_features
         .iter()
         .flat_map(|feature| feature.geometry.iter())
@@ -171,7 +165,13 @@ fn resolved_geometry<'a>(
 fn plan_adapter<'a>(
     plan: &'a ifc_lite_landxml::LandXmlPlanDocument,
 ) -> Result<LandXmlPlanDocumentJs<'a>, ifc_lite_landxml::LandXmlError> {
-    let mut monument_resolution = std::collections::HashMap::new();
+    let mut resolver = ifc_lite_landxml::LandXmlPlanResolver::new(
+        plan,
+        plan.cogo_points()
+            .len()
+            .saturating_mul(8)
+            .saturating_add(1_000),
+    );
     Ok(LandXmlPlanDocumentJs {
         version: &plan.version,
         area_unit: &plan.area_unit,
@@ -196,21 +196,22 @@ fn plan_adapter<'a>(
             .monuments
             .iter()
             .map(|monument| {
-                let point = monument.point.or_else(|| {
-                    monument.pnt_ref.as_ref().and_then(|reference| {
-                        let key = (monument.point_scope_id.clone(), reference.clone());
-                        *monument_resolution
-                            .entry(key)
-                            .or_insert_with(|| plan.resolve_monument_point(monument))
-                    })
-                });
-                LandXmlResolvedMonumentJs {
+                Ok(LandXmlResolvedMonumentJs {
                     source_id: &monument.source_id,
-                    point,
-                }
+                    point: match (&monument.point, &monument.pnt_ref) {
+                        (Some(point), _) => Some(*point),
+                        (None, Some(reference)) => resolver.resolve(
+                            monument.point_scope_id.as_ref(),
+                            &ifc_lite_landxml::LandXmlPlanPointLocation::PointReference {
+                                pnt_ref: reference.clone(),
+                            },
+                        )?,
+                        (None, None) => None,
+                    },
+                })
             })
-            .collect(),
-        resolved_geometry: resolved_geometry(plan)?,
+            .collect::<Result<Vec<_>, ifc_lite_landxml::LandXmlError>>()?,
+        resolved_geometry: resolved_geometry(plan, &mut resolver)?,
     })
 }
 

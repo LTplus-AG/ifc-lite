@@ -187,7 +187,7 @@ impl MetadataReassembler {
         header.plan.ensure_reference_index();
         let alignment_render = alignment::alignment_render_data(&header.alignments);
         let mut terrain = header.terrain;
-        terrain.pipe_networks = Some(header.pipe_networks);
+        terrain.pipe_networks = end.has_pipe_networks.then_some(header.pipe_networks);
         Ok(LandXmlStreamSummary {
             header: header.stream,
             surfaces_drained: end.surfaces_drained,

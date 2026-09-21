@@ -144,6 +144,9 @@ pub struct LandXmlMetadataStreamEnd {
     pub plan_cogo_points: usize,
     pub plan_parcels: usize,
     pub horizontal_alignments: usize,
+    /// Whether the source declared at least one PipeNetwork, including a
+    /// network retained only as a semantic refusal.
+    pub has_pipe_networks: bool,
     pub pipe_networks: usize,
     pub pipe_structures: usize,
     pub pipes: usize,

@@ -219,7 +219,7 @@ it('uses the primary frozen frame when a Worker-present federated factory declin
           collections: [], features: [], networks: [], refusals: [],
         },
       } });
-      else if (this.posted.length === 5) reply({ sourceEvent: { kind: 'metadata', metadata_kind: 'end' } });
+      else if (this.posted.length === 5) reply({ sourceEvent: { kind: 'metadata', metadata_kind: 'end', has_pipe_networks: false } });
       else if (this.posted.length === 6) reply({ ok: true, streamed: {
         preflight: { componentCount: 2, frame: { originShift: { x: 2_600_000, y: 0, z: 0 }, hasLargeCoordinates: true } },
         droppedPrimaryComponents: 1,

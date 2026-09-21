@@ -108,6 +108,37 @@ fn issue_5050_arbitrary_utf8_cuts_have_identical_typed_semantics() {
 }
 
 #[test]
+fn issue_5161_stream_summary_preserves_an_absent_pipe_family() {
+    let direct = parse_landxml_document(XML.as_bytes()).expect("direct source document");
+    let streamed = summary_after_byte_cuts(XML.as_bytes()).expect("stream source document");
+    assert_eq!(direct.terrain.pipe_networks, None);
+    assert_eq!(
+        streamed.metadata.terrain.pipe_networks,
+        direct.terrain.pipe_networks
+    );
+}
+
+#[test]
+fn issue_5161_stream_summary_preserves_a_declared_but_refused_pipe_family() {
+    let xml = landxml(
+        r#"<PipeNetworks><PipeNetwork name="broken" pipeNetType="storm"><Structs/></PipeNetwork></PipeNetworks>"#,
+    );
+    let direct = parse_landxml_document(xml.as_bytes()).expect("direct source document");
+    let streamed = summary_after_byte_cuts(xml.as_bytes()).expect("stream source document");
+    let pipes = direct
+        .terrain
+        .pipe_networks
+        .as_ref()
+        .expect("the declared pipe family remains present");
+    assert!(pipes.networks.is_empty());
+    assert!(!pipes.refusals.is_empty());
+    assert_eq!(
+        streamed.metadata.terrain.pipe_networks,
+        direct.terrain.pipe_networks
+    );
+}
+
+#[test]
 fn issue_5050_utf16_code_unit_and_surrogate_cuts_match_utf8() {
     let mut utf16 = vec![0xff, 0xfe];
     utf16.extend(XML.encode_utf16().flat_map(u16::to_le_bytes));

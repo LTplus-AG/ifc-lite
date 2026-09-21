@@ -202,7 +202,8 @@ impl LandXmlTinStreamSession {
         if pipe.has_open_frames() {
             return Err(error(Code::InvalidXml, "unclosed pipe XML element"));
         }
-        let (pipe, preflight_refusal_batches) = pipe.finish_stream_with_preflight()?;
+        let (pipe, preflight_refusal_batches, has_pipe_networks) =
+            pipe.finish_stream_with_preflight()?;
         let pipe_networks = pipe.networks.len();
         let pipe_structures = pipe
             .networks
@@ -222,6 +223,7 @@ impl LandXmlTinStreamSession {
             plan_cogo_points: plan.cogo_points().len(),
             plan_parcels: plan.parcels.len(),
             horizontal_alignments: alignment.alignments.len(),
+            has_pipe_networks,
             pipe_networks,
             pipe_structures,
             pipes,

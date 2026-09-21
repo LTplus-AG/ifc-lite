@@ -58,7 +58,7 @@ describe('LandXML Blob cursor driver (#5050)', () => {
             ? [{ kind: 'header', units: { linear_scale_to_meters: 1, elevation_scale_to_meters: 1 } }]
             : [
               { kind: 'metadata', metadata_kind: 'header', terrain: {}, pipe_networks: {} },
-              { kind: 'metadata', metadata_kind: 'end' },
+              { kind: 'metadata', metadata_kind: 'end', has_pipe_networks: false },
             ];
         },
         finishCursor: () => { pending = true; },

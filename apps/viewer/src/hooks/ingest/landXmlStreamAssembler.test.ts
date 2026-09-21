@@ -75,12 +75,13 @@ describe('LandXML streamed surface assembly (#5050)', () => {
     assembler.push({ kind: 'metadata', metadata_kind: 'record', record: 'plan_source_batch', value: { source_ids: ['p-1'] } });
     assembler.push({ kind: 'metadata', metadata_kind: 'record', record: 'alignment_render_truncated', value: true });
     const complete = assembler.push({
-      kind: 'metadata', metadata_kind: 'end',
+      kind: 'metadata', metadata_kind: 'end', has_pipe_networks: false,
     }).document;
     assert.equal((complete?.tin.surfaces as unknown[]).length, 1);
     assert.deepEqual(complete?.tin.warnings, ['kept']);
     assert.deepEqual((complete?.tin.plan as { source_batches: unknown[] }).source_batches, [{ source_ids: ['p-1'] }]);
     assert.equal(complete?.alignment_render_truncated, true);
+    assert.equal(complete?.tin.pipe_networks, null);
   });
 
   it('reassembles a legal oversized metadata record under per-event credit (#5050)', () => {
@@ -104,7 +105,8 @@ describe('LandXML streamed surface assembly (#5050)', () => {
         continued: end < encoded.byteLength, payload_utf8: Array.from(encoded.subarray(offset, end)),
       });
     }
-    const complete = assembler.push({ kind: 'metadata', metadata_kind: 'end' }).document;
+    const complete = assembler.push({ kind: 'metadata', metadata_kind: 'end', has_pipe_networks: true }).document;
     assert.deepEqual(complete?.tin.warnings, [value]);
+    assert.deepEqual((complete?.tin.pipe_networks as { networks: unknown[] }).networks, []);
   });
 });

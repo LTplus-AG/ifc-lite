@@ -13,7 +13,7 @@ impl PipeParser<'_> {
     /// Finalize the shared parser after either pull or stream event delivery.
     pub(crate) fn finish_stream(self) -> Result<LandXmlPipeNetworkDocument> {
         self.finish_stream_with_preflight()
-            .map(|(document, _)| document)
+            .map(|(document, _, _)| document)
     }
 
     /// Preserve source-document output while carrying cursor-only refusal
@@ -21,7 +21,7 @@ impl PipeParser<'_> {
     /// compact and never expose a presentation-only field in LandXML data.
     pub(crate) fn finish_stream_with_preflight(
         mut self,
-    ) -> Result<(LandXmlPipeNetworkDocument, Vec<Vec<usize>>)> {
+    ) -> Result<(LandXmlPipeNetworkDocument, Vec<Vec<usize>>, bool)> {
         if self.require_pipe_networks && self.pipe_networks_seen == 0 {
             return Err(error(
                 Code::InvalidSemantic,
@@ -40,6 +40,7 @@ impl PipeParser<'_> {
             .map_err(|message| error(Code::InvalidSemantic, message))?;
         debug_assert_eq!(self.networks.len(), self.preflight_refusal_batches.len());
         let preflight_refusal_batches = self.preflight_refusal_batches;
+        let has_pipe_networks = self.pipe_networks_seen > 0;
         Ok((
             LandXmlPipeNetworkDocument {
                 schema: self.schema,
@@ -52,6 +53,7 @@ impl PipeParser<'_> {
                 refusals: self.refusals,
             },
             preflight_refusal_batches,
+            has_pipe_networks,
         ))
     }
 

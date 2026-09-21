@@ -47,7 +47,7 @@ it('measures credited TIN surfaces without retaining the source document (#5050)
       points: [{ northing: 5_000_250, easting: 2_600_350, elevation: null }],
     } }] },
   });
-  await reducer.onEvent({ kind: 'metadata', metadata_kind: 'end' });
+  await reducer.onEvent({ kind: 'metadata', metadata_kind: 'end', has_pipe_networks: false });
   const reduced = reducer.finish();
   assert.equal(reduced.preflight.componentCount, 1);
   assert.equal(reduced.sourceCoordinateInfo.hasLargeCoordinates, true);
@@ -79,7 +79,7 @@ it('reassembles fragmented coordinate-bearing metadata before source-frame measu
       end: { kind: 'coordinates', point: { northing: 5_000_500, easting: 2_600_500, elevation: 50 } },
     } }],
   })) await reducer.onEvent(event);
-  await reducer.onEvent({ kind: 'metadata', metadata_kind: 'end' });
+  await reducer.onEvent({ kind: 'metadata', metadata_kind: 'end', has_pipe_networks: false });
   const reduced = reducer.finish();
   assert.equal(reduced.sourceCoordinateInfo.hasLargeCoordinates, true);
   assert.deepEqual(reduced.sourceCoordinateInfo.originalBounds, {

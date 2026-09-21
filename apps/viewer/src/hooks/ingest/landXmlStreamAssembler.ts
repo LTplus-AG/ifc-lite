@@ -131,7 +131,10 @@ export class LandXmlStreamDocumentAssembler {
     const plan = this.plan;
     const pipeNetworks = this.pipeNetworks;
     if (terrain === null || plan === null || alignments === null || pipeNetworks === null) throw new Error('LandXML stream ended before its metadata header');
-    terrain.pipe_networks = pipeNetworks;
+    if (typeof envelope.has_pipe_networks !== 'boolean') {
+      throw new Error('LandXML stream emitted an invalid pipe-network presence marker');
+    }
+    terrain.pipe_networks = envelope.has_pipe_networks ? pipeNetworks : null;
     const document = {
       tin: { ...terrain, plan },
       alignments,

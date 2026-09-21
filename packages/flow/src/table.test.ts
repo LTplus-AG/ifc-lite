@@ -68,6 +68,17 @@ describe('pivot', () => {
     expect(validateTable(table)).toEqual([]);
   });
 
+  it('refuses a pivot column that names the key column instead of overwriting the row identity', () => {
+    // A long-format row whose `Prop` is literally `GlobalId`: widening it
+    // would write its Value into the key column and merge two distinct things.
+    const withKeyProp: Table = { ...longFormat, rows: [...longFormat.rows, { GlobalId: 'W1', Pset: 'Pset_X', Prop: 'GlobalId', Value: 'not-an-id' }] };
+    const { table, collisions } = pivot(withKeyProp, 'GlobalId', 'Prop', 'Value');
+    expect(collisions).toBe(1);
+    expect(table.rows.map((r) => r.GlobalId)).toEqual(['W1', 'W2']);
+    expect(table.columns.map((c) => c.name)).not.toContain('not-an-id');
+    expect(validateTable(table)).toEqual([]);
+  });
+
   it('counts duplicate (row, column) pairs and keeps the last value', () => {
     const dup: Table = { ...longFormat, rows: [longFormat.rows[0], { ...longFormat.rows[0], Value: 99 }] };
     const { table, duplicates } = pivot(dup, 'GlobalId', 'Prop', 'Value');

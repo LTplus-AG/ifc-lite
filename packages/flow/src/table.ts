@@ -138,25 +138,35 @@ export function groupRows(table: Table, by: string = table.key): GroupedRows {
 /**
  * Widen a long-format table into one row per `rowKey` with a column per
  * distinct `colKey` value. The pivoted column's type is taken from the
- * `valueCol` column; a duplicate (rowKey, colKey) pair keeps the last
- * value and is reported.
+ * `valueCol` column; a duplicate (rowKey, colKey) pair keeps the last value
+ * and is reported, and a `colKey` that names the key column is refused
+ * (`collisions`) rather than overwriting the row's identity.
  */
 export function pivot(
   table: Table,
   rowKeyCol: string,
   colKeyCol: string,
   valueCol: string,
-): { table: Table; duplicates: number } {
+): { table: Table; duplicates: number; collisions: number } {
   const valueColumn = column(table, valueCol);
   const rows = new Map<GroupKey, Record<string, Cell>>();
   const colNames = new Set<string>();
   let duplicates = 0;
+  let collisions = 0;
   for (const row of table.rows) {
     const rk = row[rowKeyCol];
     const ck = row[colKeyCol];
     if (rk === null || rk === undefined || rk === '' || ck === null || ck === undefined || ck === '') continue;
     const rkey = String(rk);
     const cname = String(ck);
+    // A pivoted column named like the key column (a long-format row whose
+    // `Prop` is literally `GlobalId`) would overwrite the row's identity with
+    // its value. Two distinct things, never merged: the row is counted and
+    // skipped, not silently folded into the key.
+    if (cname === rowKeyCol) {
+      collisions += 1;
+      continue;
+    }
     colNames.add(cname);
     let target = rows.get(rkey);
     if (!target) {
@@ -171,5 +181,5 @@ export function pivot(
     keyColumn,
     ...[...colNames].map((name) => ({ name, type: valueColumn?.type ?? 'string', unit: valueColumn?.unit })),
   ];
-  return { table: { columns, rows: [...rows.values()], key: rowKeyCol }, duplicates };
+  return { table: { columns, rows: [...rows.values()], key: rowKeyCol }, duplicates, collisions };
 }

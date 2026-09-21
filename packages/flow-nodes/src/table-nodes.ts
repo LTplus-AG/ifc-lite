@@ -176,6 +176,7 @@ export const tableNodes: FlowNodeDef[] = [
     outputs: [
       { name: 'table', type: TABLE_ITEM },
       { name: 'duplicates', type: SCALAR_ITEM },
+      { name: 'collisions', type: SCALAR_ITEM },
     ],
     params: [
       { name: 'rowKey', kind: 'string', default: 'GlobalId' },
@@ -183,9 +184,10 @@ export const tableNodes: FlowNodeDef[] = [
       { name: 'value', kind: 'string', default: 'Value' },
     ],
     capabilities: [],
-    run: (_c, i, p) => {
-      const { table, duplicates } = pivot(tableOf(i.table), String(p.rowKey), String(p.columnKey), String(p.value));
-      return { table, duplicates };
+    run: (ctx, i, p) => {
+      const { table, duplicates, collisions } = pivot(tableOf(i.table), String(p.rowKey), String(p.columnKey), String(p.value));
+      if (collisions > 0) ctx.log('warn', `${collisions} row(s) name the key column "${String(p.rowKey)}" as their pivot column and were skipped`);
+      return { table, duplicates, collisions };
     },
   },
   {

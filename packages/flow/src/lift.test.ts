@@ -174,6 +174,16 @@ describe('assemble', () => {
     expect(out.get('d')).toEqual(group([['W1', ['a', null]], ['W2', ['c']]]));
   });
 
+  it('two lanes sharing a key append, never replace — a repeated driving entity keeps both outputs', () => {
+    const plan = planLift(inputs([port('e', 'item'), list([ref('W1'), ref('W1')])]), opts);
+    expect(plan.lanes.map((l) => l.laneKey)).toEqual(['W1', 'W1']);
+    const out = assemble(plan, [port('n', 'item'), port('xs', 'list')], [{ n: 1, xs: ['a'] }, { n: 2, xs: ['b'] }]);
+    expect(out.get('n')).toEqual(list([1, 2]));
+    // Before this, `branches.set` made the second lane replace the first —
+    // and only for list/group ports, so the loss depended on port access.
+    expect(out.get('xs')).toEqual(group([['W1', ['a', 'b']]]));
+  });
+
   it('refuses a list output that is not an array', () => {
     const plan = planLift(inputs([port('a', 'item'), item(1)]), opts);
     expect(() => assemble(plan, [port('xs', 'list')], [{ xs: 'nope' }])).toThrow(/must return an array/);

@@ -20,7 +20,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { checkAvailability, parseFlowDocument, runFlow, type FlowDocument, type RunResult } from '@ifc-lite/flow';
 import { createStandardRegistry, headlessFeatures, type FlowHost } from '@ifc-lite/flow-nodes';
 import { createHeadlessContext } from '../loader.js';
-import { fatal, getAllFlags, getFlag, hasFlag, printJson } from '../output.js';
+import { fatal, getAllFlags, hasFlag, printJson } from '../output.js';
 
 const USAGE = 'Usage: ifc-lite flow <run|describe|validate> <graph.flow.json> [<model.ifc>] [--input k=v]... [--out F] [--json]';
 
@@ -51,13 +51,39 @@ function positionalArgs(args: string[]): string[] {
   return out;
 }
 
-/** `--input nodeId.param=value`; values parse as JSON when they can, else as strings. */
-function parseInputs(raws: string[]): Record<string, unknown> {
+/**
+ * A value-taking flag's operand. An absent flag and a flag whose operand is
+ * missing are different things: `--out` at the end of the line, or
+ * `--out --json`, would otherwise write a file literally named `--json`.
+ */
+function requireFlagValue(args: string[], flag: string): string | undefined {
+  const idx = args.indexOf(flag);
+  if (idx === -1) return undefined;
+  const value = args[idx + 1];
+  if (value === undefined || value.startsWith('--')) fatal(`${flag} needs a value`);
+  return value;
+}
+
+/**
+ * `--input nodeId.param=value`; values parse as JSON when they can, else as
+ * strings. A key that names no declared parameter is refused rather than
+ * ignored: the scheduler silently drops unknown keys, so `--input
+ * rating=REI90` (missing the node id) would run the graph on its DEFAULTS
+ * and report success while writing the wrong value.
+ */
+function parseInputs(raws: string[], doc: FlowDocument, registry: ReturnType<typeof createStandardRegistry>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const raw of raws) {
     const eq = raw.indexOf('=');
     if (eq <= 0) fatal(`--input expects nodeId.param=value, got "${raw}"`);
     const key = raw.slice(0, eq);
+    const dot = key.lastIndexOf('.');
+    const node = dot > 0 ? doc.nodes.find((n) => n.id === key.slice(0, dot)) : undefined;
+    const param = node ? registry.get(node.type)?.params.find((p) => p.name === key.slice(dot + 1)) : undefined;
+    if (!param) {
+      const known = doc.inputs.map((i) => `${i.nodeId}.${i.param}`);
+      fatal(`--input "${key}" names no parameter${known.length > 0 ? `; this graph declares ${known.join(', ')}` : ''}`);
+    }
     const text = raw.slice(eq + 1);
     try {
       out[key] = JSON.parse(text);
@@ -117,8 +143,11 @@ export async function flowCommand(args: string[]): Promise<void> {
     const doc = await loadDocument(positional[0]);
     const availability = checkAvailability(doc, registry, headlessFeatures(Object.keys(process.env)));
     const problems = availability.filter((a) => a.status === 'unavailable' || a.status === 'unknown');
-    if (json) return printJson({ ok: problems.length === 0, nodes: availability });
-    for (const a of availability) process.stdout.write(`  ${a.status.padEnd(11)} ${a.nodeId} (${a.type})${a.reasons.length ? `: ${a.reasons.join('; ')}` : ''}\n`);
+    // The report goes out in either format FIRST, then the exit code — a
+    // `--json` run that printed `ok: false` and returned 0 let CI read an
+    // unrunnable graph as a successful validation.
+    if (json) printJson({ ok: problems.length === 0, nodes: availability });
+    else for (const a of availability) process.stdout.write(`  ${a.status.padEnd(11)} ${a.nodeId} (${a.type})${a.reasons.length ? `: ${a.reasons.join('; ')}` : ''}\n`);
     if (problems.length > 0) {
       process.stderr.write(`${problems.length} node(s) cannot run on this host\n`);
       process.exit(2);
@@ -135,25 +164,30 @@ export async function flowCommand(args: string[]): Promise<void> {
   const result = await runFlow(doc, {
     host,
     registry,
-    inputs: parseInputs(getAllFlags(args, '--input')),
+    inputs: parseInputs(getAllFlags(args, '--input'), doc, registry),
     features: headlessFeatures(Object.keys(process.env)),
     modelRevisions: { [host.defaultModelId ?? 'model']: 0 },
   });
 
-  const out = getFlag(args, '--out');
-  if (out) {
+  // A failed run can still have written through earlier nodes. Exporting
+  // that half-applied state would hand the next step a model no graph run
+  // ever produced, under a green-looking file on disk.
+  const out = requireFlagValue(args, '--out');
+  const wrote = out !== undefined && result.ok;
+  if (wrote) {
     const content = bim.export.ifc(null, { schema: (store.schemaVersion as 'IFC2X3' | 'IFC4' | 'IFC4X3' | undefined) ?? 'IFC4', includeMutations: true });
     await writeFile(out, typeof content === 'string' ? content : Buffer.from(content));
   }
 
   const summary = summarize(result);
-  if (json) printJson({ ...summary, out: out ?? null });
+  if (json) printJson({ ...summary, out: wrote ? out : null });
   else {
     process.stdout.write(`${result.ok ? 'ok' : 'FAILED'}: ${Object.entries(summary.nodes).map(([k, v]) => `${v} ${k}`).join(', ')}\n`);
     for (const o of summary.outputs) process.stdout.write(`  ${o.label}: ${JSON.stringify(o.data, (_k, v) => (v instanceof Map ? Object.fromEntries(v) : v))}\n`);
     for (const e of summary.errors) process.stderr.write(`  error ${e.nodeId}${e.laneKey ? `[${e.laneKey}]` : ''}: ${e.message}\n`);
     for (const w of summary.warnings) process.stderr.write(`  warn  ${w.nodeId}${w.laneKey ? `[${w.laneKey}]` : ''}: ${w.message}\n`);
-    if (out) process.stdout.write(`  wrote ${out}\n`);
+    if (wrote) process.stdout.write(`  wrote ${out}\n`);
+    else if (out !== undefined) process.stderr.write(`  not written: the run failed, so ${out} would hold a half-applied model\n`);
   }
   if (!result.ok) process.exit(1);
 }

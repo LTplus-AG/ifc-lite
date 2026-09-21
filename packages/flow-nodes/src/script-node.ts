@@ -16,7 +16,7 @@
 
 import { createSandbox, type Sandbox } from '@ifc-lite/sandbox';
 import type { BimContext } from '@ifc-lite/sdk';
-import { ANY_ITEM, type FlowNodeDef } from './host.js';
+import { ANY_ITEM, requireCapability, type FlowNodeDef } from './host.js';
 
 /**
  * One sandbox per (BimContext, permission set), kept for the lifetime of
@@ -37,7 +37,13 @@ function sandboxFor(bim: BimContext, permissions: Record<string, boolean>, timeo
   }
   let pending = perContext.get(key);
   if (!pending) {
-    pending = createSandbox(bim, { permissions, limits: { timeoutMs } });
+    // A rejected creation (a wasm load failure, a transient resource limit)
+    // must not be cached: every later lane would await the same rejection for
+    // the lifetime of the context, turning one hiccup into a dead node.
+    pending = createSandbox(bim, { permissions, limits: { timeoutMs } }).catch((err) => {
+      if (perContext!.get(key) === pending) perContext!.delete(key);
+      throw err;
+    });
     perContext.set(key, pending);
   }
   return pending;
@@ -62,6 +68,10 @@ export const scriptNode: FlowNodeDef = {
   reads: 'model',
   requires: { backend: ['sandbox'] },
   run: async (ctx, inputs, params) => {
+    // The node declares `model.read`; without this check a graph granted
+    // nothing still got a sandbox with query+model on, so user code could
+    // read the model through a capability the graph never had.
+    requireCapability(ctx, 'model.read');
     const grants = ctx.host.grants;
     const has = (scope: string, action: string) => !grants || grants.some((g) => g.scope === scope && g.action === action);
     const permissions = {

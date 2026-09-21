@@ -269,6 +269,13 @@ describe('topologicalOrder / documents', () => {
     expect(problems.map((p) => p.message)).toEqual(['duplicate node id "walls"', 'unknown node "ghost"', 'input area.wall has more than one incoming edge']);
   });
 
+  it('a non-finite maxCross is refused, so the cross guard cannot be disabled by NaN', () => {
+    expect(validateFlowDocument({ ...doc, maxCross: 10 })).toEqual([]);
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1]) {
+      expect(validateFlowDocument({ ...doc, maxCross: bad })).toEqual([{ path: 'maxCross', message: 'must be a finite number >= 1' }]);
+    }
+  });
+
   it('parseFlowDocument round-trips JSON and lists every problem', () => {
     expect(parseFlowDocument(JSON.stringify(doc))).toEqual(doc);
     expect(() => parseFlowDocument('{"flowVersion":1}')).toThrow(/id: must be a non-empty string[\s\S]*nodes: must be an array/);

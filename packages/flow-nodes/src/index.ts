@@ -12,7 +12,7 @@ import { viewerNodes } from './viewer-nodes.js';
 import { writeNodes } from './write-nodes.js';
 
 export type { FlowHost, FlowNodeDef } from './host.js';
-export { requireCapability, toRef, toSdkRef } from './host.js';
+export { requireCapability, toRef, toSdkRef, resolveByGlobalId, rememberGlobalId, forgetGlobalId, invalidateGlobalIdIndex } from './host.js';
 export { columnTypeOf, VALUE_TYPE_BY_COLUMN_TYPE } from './table-nodes.js';
 
 /** Every standard node, in one registry. */

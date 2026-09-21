@@ -235,16 +235,18 @@ export function assemble(plan: LiftPlan, outputs: readonly PortDef[], results: r
       continue;
     }
     const branches = new Map<GroupKey, unknown[]>();
+    // Two lanes can share a key when the driving list repeats an entity
+    // (`model.related` returning the same opening twice, a GlobalId column
+    // with repeats). Every access APPENDS into the branch; replacing would
+    // drop the earlier lane's output silently, and only for list/group
+    // ports — a loss that depends on the port's access is worse than either
+    // consistent answer.
+    const into = (k: GroupKey): unknown[] => branches.get(k) ?? branches.set(k, []).get(k)!;
     plan.lanes.forEach((lane, i) => {
       const v = results[i]?.[port.name];
-      if (access === 'item') {
-        const k = lane.branchKey ?? SINGLE_BRANCH;
-        (branches.get(k) ?? branches.set(k, []).get(k)!).push(v ?? null);
-      } else if (access === 'list') {
-        branches.set(lane.laneKey ?? SINGLE_BRANCH, [...asArray(v)]);
-      } else {
-        for (const [k, items] of asMap(v)) branches.set(`${lane.laneKey ?? SINGLE_BRANCH}|${k}`, [...items]);
-      }
+      if (access === 'item') into(lane.branchKey ?? SINGLE_BRANCH).push(v ?? null);
+      else if (access === 'list') into(lane.laneKey ?? SINGLE_BRANCH).push(...asArray(v));
+      else for (const [k, items] of asMap(v)) into(`${lane.laneKey ?? SINGLE_BRANCH}|${k}`).push(...items);
     });
     out.set(port.name, group(branches));
   }

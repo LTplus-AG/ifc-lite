@@ -5848,8 +5848,12 @@
     "VALUE_TYPE_BY_COLUMN_TYPE: const",
     "columnTypeOf: function",
     "createStandardRegistry: function",
+    "forgetGlobalId: function",
     "headlessFeatures: function",
+    "invalidateGlobalIdIndex: function",
+    "rememberGlobalId: function",
     "requireCapability: function",
+    "resolveByGlobalId: function",
     "toRef: function",
     "toSdkRef: function"
   ],

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -93,5 +93,65 @@ describe('ifc-lite flow', () => {
     expect(exit).toHaveBeenCalledWith(1);
     expect(c.err.join('')).toMatch(/nodes\[0\]\.lacing: must be one of shortest, longest, cross/);
     expect(c.err.join('')).toMatch(/unknown node "ghost"/);
+  });
+
+  it('validate --json still exits 2 when a node cannot run, and a bad --input key is refused before the run', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-'));
+    const graph = join(dir, 'secret.flow.json');
+    await writeFile(graph, JSON.stringify({
+      flowVersion: 1, id: 's', name: 's', capabilities: [], inputs: [], outputs: [],
+      nodes: [{ id: 'n', type: 'core.number', params: { value: 1 } }, { id: 'ghost', type: 'no.such.node' }],
+      edges: [],
+    }));
+    let c = capture();
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('exit'); }) as never);
+    // A JSON run printed `ok: false` and returned 0, so CI read an unrunnable graph as valid.
+    await expect(flowCommand(['validate', graph, '--json'])).rejects.toThrow('exit');
+    expect(exit).toHaveBeenCalledWith(2);
+    expect((c.json() as { ok: boolean }).ok).toBe(false);
+    vi.restoreAllMocks();
+
+    c = capture();
+    const exit2 = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('exit'); }) as never);
+    // `rating=REI90` (no node id) used to be dropped silently, running the graph on its defaults.
+    await expect(flowCommand(['run', AUDIT_FLOW, SAMPLE_IFC, '--input', 'rating=REI90', '--json'])).rejects.toThrow('exit');
+    expect(exit2).toHaveBeenCalledWith(1);
+    expect(c.err.join('')).toMatch(/--input "rating" names no parameter; this graph declares rating[.]value/);
+  });
+
+  it('a failed run writes no model, and --out with a missing operand is refused', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-'));
+    const out = join(dir, 'never.ifc');
+    const graph = join(dir, 'broken.flow.json');
+    await writeFile(graph, JSON.stringify({
+      flowVersion: 1, id: 'b', name: 'b', capabilities: [], inputs: [], outputs: [],
+      nodes: [
+        { id: 'walls', type: 'model.byType', params: { type: 'IfcWall' } },
+        { id: 'v', type: 'core.string', params: { value: 'REI60' } },
+        { id: 'set', type: 'model.setProperty', params: { pset: 'Pset_WallCommon', property: 'FireRating' } },
+        { id: 'boom', type: 'core.math', params: { op: 'divide' } },
+        { id: 'zero', type: 'core.number', params: { value: 0 } },
+      ],
+      edges: [
+        { from: ['walls', 'entities'], to: ['set', 'entity'] },
+        { from: ['v', 'value'], to: ['set', 'value'] },
+        { from: ['zero', 'value'], to: ['boom', 'a'] },
+        { from: ['zero', 'value'], to: ['boom', 'b'] },
+      ],
+    }));
+    const c = capture();
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('exit'); }) as never);
+    await expect(flowCommand(['run', graph, SAMPLE_IFC, '--out', out, '--json'])).rejects.toThrow('exit');
+    // The write node ran before the division failed; exporting that would
+    // leave a half-applied model behind a green-looking file.
+    await expect(readFile(out, 'utf-8')).rejects.toThrow();
+    expect((c.json() as { out: string | null; ok: boolean }).out).toBeNull();
+    vi.restoreAllMocks();
+
+    const c2 = capture();
+    const exit2 = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('exit'); }) as never);
+    await expect(flowCommand(['run', AUDIT_FLOW, SAMPLE_IFC, '--out'])).rejects.toThrow('exit');
+    expect(exit2).toHaveBeenCalledWith(1);
+    expect(c2.err.join('')).toMatch(/--out needs a value/);
   });
 });

@@ -177,6 +177,20 @@ describe('viewer and write nodes', () => {
     expect(CapabilityDeniedError).toBeDefined();
   });
 
+  it('the Script node is denied when the graph was not granted model.read', async () => {
+    const fake = createFakeBim();
+    const d = doc(
+      [{ id: 'sc', type: 'script.run', params: { code: '1' } }],
+      [],
+      [{ nodeId: 'sc', port: 'result', label: 'r' }],
+    );
+    // Empty grants: the node declares `model.read`, and without the check the
+    // sandbox was still built with query+model on.
+    const denied = await runFlow(d, { host: { bim: fake.bim, grants: grants('viewer.read') }, registry });
+    expect(denied.ok).toBe(false);
+    expect(denied.reports[0].error).toMatch(/Capability denied/);
+  });
+
   it('the same graph produces the same outputs in the browser and headless', async () => {
     const d = doc(
       [

@@ -49,24 +49,40 @@ export function toRef(e: EntityData): EntityRef {
 }
 
 /**
- * GlobalId → address index, built lazily per `BimContext` the first time a
- * handle arrives without a usable address (from a sidecar, a table, another
- * session). The SDK query has no GlobalId lookup, so this is one full scan,
- * then a map. A miss rebuilds once (the entity may have been created during
- * this run) before failing.
+ * GlobalId → address index, built lazily per `BimContext` with one full
+ * scan the first time a handle arrives without a usable address (from a
+ * sidecar, a table, another session). The SDK query has no GlobalId lookup.
+ * A miss is *not* a rebuild trigger — a tracked create node asks for every
+ * GlobalId it is about to mint, and each of those misses is expected —
+ * so creators register what they add with `rememberGlobalId`, and hosts
+ * call `invalidateGlobalIdIndex` when a model is loaded or removed.
  */
 const indexes = new WeakMap<BimContext, Map<string, SdkEntityRef>>();
 
-function buildIndex(bim: BimContext): Map<string, SdkEntityRef> {
-  const index = new Map<string, SdkEntityRef>();
-  for (const e of bim.query().toArray()) index.set(e.globalId, e.ref);
-  indexes.set(bim, index);
+function indexFor(bim: BimContext): Map<string, SdkEntityRef> {
+  let index = indexes.get(bim);
+  if (!index) {
+    index = new Map();
+    for (const e of bim.query().toArray()) index.set(e.globalId, e.ref);
+    indexes.set(bim, index);
+  }
   return index;
 }
 
 export function resolveByGlobalId(bim: BimContext, globalId: string): SdkEntityRef | undefined {
-  const index = indexes.get(bim) ?? buildIndex(bim);
-  return index.get(globalId) ?? buildIndex(bim).get(globalId);
+  return indexFor(bim).get(globalId);
+}
+
+export function rememberGlobalId(bim: BimContext, globalId: string, ref: SdkEntityRef): void {
+  indexFor(bim).set(globalId, ref);
+}
+
+export function forgetGlobalId(bim: BimContext, globalId: string): void {
+  indexes.get(bim)?.delete(globalId);
+}
+
+export function invalidateGlobalIdIndex(bim: BimContext): void {
+  indexes.delete(bim);
 }
 
 /**

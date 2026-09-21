@@ -98,7 +98,10 @@ export function validateFlowDocument(value: unknown): DocumentProblem[] {
   if (!str(value.id)) add('id', 'must be a non-empty string');
   if (!str(value.name)) add('name', 'must be a non-empty string');
   if (value.description !== undefined && typeof value.description !== 'string') add('description', 'must be a string');
-  if (value.maxCross !== undefined && (typeof value.maxCross !== 'number' || value.maxCross < 1)) add('maxCross', 'must be a positive number');
+  // `!Number.isFinite` first: `NaN < 1` is false, so a NaN bound would pass a
+  // one-ended check and then disable the cross guard entirely (every
+  // `size > NaN` is false).
+  if (value.maxCross !== undefined && (typeof value.maxCross !== 'number' || !Number.isFinite(value.maxCross) || value.maxCross < 1)) add('maxCross', 'must be a finite number >= 1');
 
   for (const key of ['capabilities', 'inputs', 'outputs', 'nodes', 'edges'] as const) {
     if (!Array.isArray(value[key])) add(key, 'must be an array');

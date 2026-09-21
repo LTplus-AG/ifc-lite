@@ -280,7 +280,7 @@ export class RenderPipeline {
                     ],
                 },
                 {
-                    arrayStride: 88, // mat4(64) + entityId(4) + rgba(16) + flags(4) — INSTANCE_STRIDE_BYTES
+                    arrayStride: 120, // V2: V1 record (88) + anchor high/low vec4s
                     stepMode: 'instance',
                     attributes: [
                         { shaderLocation: 3, offset: 0, format: 'float32x4' }, // instMat col0
@@ -290,6 +290,8 @@ export class RenderPipeline {
                         { shaderLocation: 7, offset: 64, format: 'uint32' }, // entityId
                         { shaderLocation: 8, offset: 68, format: 'float32x4' }, // rgba
                         { shaderLocation: 9, offset: 84, format: 'uint32' }, // flags (bit 0 = selected, bit 1 = hidden)
+                        { shaderLocation: 10, offset: 88, format: 'float32x4' }, // anchor high
+                        { shaderLocation: 11, offset: 104, format: 'float32x4' }, // anchor low
                     ],
                 },
             ],
@@ -591,7 +593,7 @@ export class RenderPipeline {
     ): void {
         // Create buffer with proper alignment:
         // viewProj (16) + model (16) + baseColor (4) + metallicRoughness (2) + padding (2)
-        // + sectionPlane/flags/clip (16) + quant(4) + RTE frame/origin(24) = 84 floats.
+        // + sectionPlane/flags/clip (16) + quant(4) + RTE frame/origin/camera(32) = 92 floats.
         const buffer = new Float32Array(MESH_UNIFORM_FLOATS);
         const flagBuffer = new Uint32Array(buffer.buffer, MESH_FLAGS_BYTE_OFFSET, 4); // flags at byte 176
 
@@ -924,7 +926,7 @@ export class RenderPipeline {
     }
 
     getUniformBufferSize(): number {
-        // 84 floats * 4 bytes: legacy material/clip/quant fields plus appended
+        // 92 floats * 4 bytes: legacy material/clip/quant fields plus appended
         // RTE view-projection and drawable high/low lanes. Must match WGSL and
         // renderer's uniformScratch length.
         return MESH_UNIFORM_BYTES;

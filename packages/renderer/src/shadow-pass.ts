@@ -393,7 +393,10 @@ export class ShadowPass {
 
   private instanceBuffer(): GPUVertexBufferLayout {
     return {
-      arrayStride: 88,
+      // V2 instance records retain the V1 matrix/flags and append a split f64
+      // occurrence anchor.  Depth must consume the same record as colour and
+      // picking or a national-grid occurrence casts from its rounded V1 pose.
+      arrayStride: 120,
       stepMode: 'instance',
       attributes: [
         { shaderLocation: 3, offset: 0, format: 'float32x4' },
@@ -402,8 +405,10 @@ export class ShadowPass {
         { shaderLocation: 6, offset: 48, format: 'float32x4' },
         // Per-occurrence flags (bit 1 = hidden), so a hidden/isolated instance
         // stops casting, matching the colour pass's discard. Offset 84 within the
-        // 88-byte INSTANCE_STRIDE_BYTES layout (mat4 + entityId + rgba + flags).
+        // V1 prefix (mat4 + entityId + rgba + flags).
         { shaderLocation: 9, offset: 84, format: 'uint32' },
+        { shaderLocation: 10, offset: 88, format: 'float32x4' },
+        { shaderLocation: 11, offset: 104, format: 'float32x4' },
       ],
     };
   }

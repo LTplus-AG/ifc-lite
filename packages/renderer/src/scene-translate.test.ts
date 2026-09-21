@@ -102,7 +102,7 @@ describe('Scene.translateMeshesForEntity', () => {
  * guarded by a cached device we don't supply, so the matrix math is exercised
  * CPU-side via the instance record + the lazily-materialized occurrence MeshData.
  */
-const INSTANCE_STRIDE = 88; // mirrors INSTANCE_STRIDE_BYTES
+const INSTANCE_STRIDE = 120; // mirrors INSTANCE_STRIDE_BYTES
 
 interface InstancedTestState {
   instancedEntityMap: Map<number, { templateIndex: number; byteOffset: number; originalColor: number[] }[]>;

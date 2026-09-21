@@ -24,10 +24,17 @@ export const mainShaderSource = `
           rteViewProj: mat4x4<f32>, // appended frame; bit 16 selects it
           drawableDeltaHigh: vec4<f32>,
           drawableDeltaLow: vec4<f32>,
+          rteCameraHigh: vec4<f32>,
+          rteCameraLow: vec4<f32>,
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
         const RTE_DRAWABLE_FLAG: u32 = ${MESH_FLAG_RTE_DRAWABLE}u;
         fn rtePosition(local: vec3<f32>) -> vec4<f32> { return vec4<f32>((local + uniforms.drawableDeltaHigh.xyz) + uniforms.drawableDeltaLow.xyz, 1.0); }
+        fn rteInstancePosition(local: vec3<f32>, anchorHigh: vec3<f32>, anchorLow: vec3<f32>) -> vec4<f32> {
+          let highDelta = anchorHigh - uniforms.rteCameraHigh.xyz;
+          let lowDelta = anchorLow - uniforms.rteCameraLow.xyz;
+          return vec4<f32>((local + highDelta) + lowDelta, 1.0);
+        }
         // Shared group(1) lighting; packing matches packEnvironmentUniforms().
         struct Environment {
           sunDirection: vec3<f32>,      // unit vector TOWARD the sun
@@ -179,6 +186,8 @@ export const mainShaderSource = `
           @location(7) instEntityId: u32,
           @location(8) instColor: vec4<f32>,
           @location(9) instSelected: u32,
+          @location(10) anchorHigh: vec4<f32>,
+          @location(11) anchorLow: vec4<f32>,
         }
 
         // 12-byte quantized vertex (issue #1682 phase 6): uint16x4 (lattice
@@ -281,7 +290,9 @@ export const mainShaderSource = `
           var output: VertexOutput;
           let instMat = mat4x4<f32>(inst.m0, inst.m1, inst.m2, inst.m3);
           let worldPos = instMat * vec4<f32>(input.position, 1.0);
-          output.position = uniforms.viewProj * worldPos;
+          let linearLocal = (instMat * vec4<f32>(input.position, 0.0)).xyz;
+          let eyePos = rteInstancePosition(linearLocal, inst.anchorHigh.xyz, inst.anchorLow.xyz).xyz;
+          output.position = uniforms.rteViewProj * vec4<f32>(eyePos, 1.0);
           // Same per-entity depth nudge as vs_main. No colour salt here: the
           // instanced path has no base-vs-overlay coincident redraw (yet), so the
           // raw picking id is enough to separate coplanar entities.
@@ -292,8 +303,8 @@ export const mainShaderSource = `
           output.entityId = inst.instEntityId;
           output.color = inst.instColor;
           output.instSelected = inst.instSelected;
-          output.eyePos = worldPos.xyz;
-          output.viewPos = (uniforms.viewProj * worldPos).xyz;
+          output.eyePos = eyePos;
+          output.viewPos = (uniforms.rteViewProj * vec4<f32>(eyePos, 1.0)).xyz;
           return output;
         }
 

@@ -159,6 +159,7 @@ import {
     MESH_FLAG_RTE_DRAWABLE,
     MESH_UNIFORM_FLOATS,
     MESH_UNIFORM_OFFSET,
+    packRteCameraOrigin,
     packRteFragmentSpace,
 } from './mesh-rte-uniforms.js';
 import type { CutPolygon2D, DrawingLine2D, LineOverlayChannel } from './section-2d-overlay.js';
@@ -2533,6 +2534,7 @@ export class Renderer {
                 const tplFlags = this.uniformScratchU32;
                 tpl.set(viewProj, 0);
                 relativeToEyeFrame.packUniforms(tpl, MESH_UNIFORM_OFFSET.rteViewProj);
+                packRteCameraOrigin(relativeToEyeFrame, tpl);
                 // Identity model matrix (positions already in world space)
                 tpl[16] = 1; tpl[17] = 0; tpl[18] = 0; tpl[19] = 0;
                 tpl[20] = 0; tpl[21] = 1; tpl[22] = 0; tpl[23] = 0;
@@ -2571,18 +2573,6 @@ export class Renderer {
                 // that same frame; mixing a local vertex with a 5,000 km f32
                 // world plane loses centimetre cuts before the comparison.
                 packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl);
-                // Instanced V1 occurrence matrices are still world-space. Keep
-                // their clip ingress in that coordinate system rather than
-                // accidentally feeding the batch RTE plane into a V1 draw.
-                // V2 anchors will remove this twin when instances join RTE.
-                const instancedTpl = new Float32Array(tpl);
-                if (sectionPlaneData) {
-                    instancedTpl[40] = sectionPlaneData.normal[0];
-                    instancedTpl[41] = sectionPlaneData.normal[1];
-                    instancedTpl[42] = sectionPlaneData.normal[2];
-                    instancedTpl[43] = sectionPlaneData.distance;
-                }
-                packClipBox(options.clipBox, instancedTpl, 48);
 
                 // Helper function to render a batch — patches color into the shared template
                 const renderBatch = (batch: typeof allBatchedMeshes[0]) => {
@@ -2720,7 +2710,7 @@ export class Renderer {
                     // shader routes per-instance opacity: opaque (or selected) occurrences
                     // draw here; translucent ones (lens/x-ray/compare overrides) are
                     // discarded and drawn in the transparent sub-pass below.
-                    this.pipeline.writeRawUniforms(instancedTpl, 0x4);
+                    this.pipeline.writeRawUniforms(tpl, MESH_FLAG_RTE_DRAWABLE | 0x4);
                     pass.setPipeline(this.pipeline.getInstancedPipeline());
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
@@ -2943,7 +2933,7 @@ export class Renderer {
                     this.scene.hasTransparentInstances() &&
                     instancedTransparentPipeline !== null
                 ) {
-                    this.pipeline.writeRawUniforms(instancedTpl, 0x4 | 0x8);
+                    this.pipeline.writeRawUniforms(tpl, MESH_FLAG_RTE_DRAWABLE | 0x4 | 0x8);
                     pass.setPipeline(instancedTransparentPipeline);
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());

@@ -73,6 +73,9 @@ export const shadowShaderSource = `
           // colour pass reads. Locations 7 (entityId) and 8 (rgba) are unused by
           // the depth pass and left unbound.
           @location(9) flags: u32,
+          // V2 split anchor, byte offsets 88 and 104 in the instance record.
+          @location(10) anchorHigh: vec4<f32>,
+          @location(11) anchorLow: vec4<f32>,
         }
 
         struct ShadowOut {
@@ -112,7 +115,12 @@ export const shadowShaderSource = `
             return out;
           }
           let instMat = mat4x4<f32>(inst.m0, inst.m1, inst.m2, inst.m3);
-          return emit(instMat * vec4<f32>(input.position, 1.0));
+          // Keep the linear placement from the V1 matrix, but restore its
+          // translation from the canonical V2 anchor. This is intentionally
+          // world-space here: the fitted light matrix remains world-space.
+          let linear = (instMat * vec4<f32>(input.position, 0.0)).xyz;
+          let anchor = inst.anchorHigh.xyz + inst.anchorLow.xyz;
+          return emit(vec4<f32>(linear + anchor, 1.0));
         }
 
         @vertex

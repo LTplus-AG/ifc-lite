@@ -6,6 +6,7 @@ import type { Mesh } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { BoundingBox } from './scene-raycaster.js';
 import { worldAabbFromPieces } from './scene-geometry.js';
+import { writeInstanceAnchor } from './instanced-render.js';
 
 type Offset = readonly [number, number, number];
 type Drawable = { origin?: [number, number, number]; bounds?: Bounds };
@@ -313,6 +314,13 @@ export class ModelTranslations {
       view.setFloat32(tByte, ttx, true);
       view.setFloat32(tByte + 4, tty, true);
       view.setFloat32(tByte + 8, ttz, true);
+      // A placement/yaw edit has no canonical f64 source transform today.
+      // Preserve V1 semantics deliberately: V2 renders the edited f32 matrix
+      // translation as its anchor rather than applying a stale decode anchor.
+      // Legacy callers/tests may still supply a V1-only record. It has no V2
+      // lane to update, and retaining its established matrix-only edit is the
+      // intended compatibility fallback.
+      if (stride >= 120) writeInstanceAnchor(view, i * stride, [ttx, tty, ttz]);
       entry.written[b0 + 9] = ttx; entry.written[b0 + 10] = tty; entry.written[b0 + 11] = ttz;
     }
     entry.offset = delta;

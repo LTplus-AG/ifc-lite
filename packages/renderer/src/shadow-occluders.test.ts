@@ -504,11 +504,11 @@ describe('ShadowPass instanced pipeline', () => {
     assert.ok(instanceLayout, 'slot-1 instance-step layout present');
     const flags = [...instanceLayout!.attributes].find((a) => a.shaderLocation === 9);
     assert.ok(flags, 'flags lane (shaderLocation 9) bound');
-    // Offset 84 within the 88-byte INSTANCE_STRIDE_BYTES layout (mat4 + id + rgba + flags).
+    // Offset 84 within the V1 prefix (mat4 + id + rgba + flags).
     assert.equal(flags!.offset, 84);
     assert.equal(flags!.format, 'uint32');
     // The mat4 columns (3..6) stay bound so the transform still arrives.
     const locs = [...instanceLayout!.attributes].map((a) => a.shaderLocation).sort((x, y) => x - y);
-    assert.deepEqual(locs, [3, 4, 5, 6, 9]);
+    assert.deepEqual(locs, [3, 4, 5, 6, 9, 10, 11]);
   });
 });

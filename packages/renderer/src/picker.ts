@@ -76,6 +76,7 @@ export class Picker {
   private pipeline: GPURenderPipeline;
   private instancedPickPipeline: GPURenderPipeline | null = null;  // GPU-instancing: pick pass for instanced occurrences; null if the backend rejected it
   private instancedPickBindGroup: GPUBindGroup | null = null;
+  private instancedUniformBuffer: GPUBuffer;
   private depthTexture: GPUTexture;
   private colorTexture: GPUTexture;
   private uniformBuffer: GPUBuffer;
@@ -90,6 +91,8 @@ export class Picker {
   // floats 28-31 (byte 112): bit 0 = sectionEnabled, bit 1 = flipped, bit 2 = clipBox.
   private readonly uniformScratch = new Float32Array(32);
   private readonly clipFlags = new Uint32Array(this.uniformScratch.buffer, 112, 4);
+  private readonly instancedUniformScratch = new Float32Array(40);
+  private readonly instancedClipFlags = new Uint32Array(this.instancedUniformScratch.buffer, 112, 4);
 
   constructor(device: WebGPUDevice, width: number = 1, height: number = 1) {
     this.webgpuDevice = device;
@@ -119,6 +122,10 @@ export class Picker {
       size: 128,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
+    this.instancedUniformBuffer = this.device.createBuffer({
+      size: 160,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
 
     // Create storage buffer for expressIds (one u32 per mesh, +1 encoding)
     // We'll upload all expressIds at once, then use instance_index to look them up
@@ -136,6 +143,8 @@ export class Picker {
           clipBoxMax: vec4<f32>,   // xyz = max corner (world), w = pad
           sectionPlane: vec4<f32>, // xyz = plane normal, w = plane distance
           clipFlags: vec4<u32>,    // x: bit0 sectionEnabled, bit1 flipped, bit2 clipBox
+          cameraHigh: vec4<f32>,
+          cameraLow: vec4<f32>,
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
         @binding(1) @group(0) var<storage, read> expressIds: array<u32>;
@@ -259,6 +268,8 @@ export class Picker {
           @location(6) m3: vec4<f32>,
           @location(7) instEntityId: u32,
           @location(8) instFlags: u32,
+          @location(9) anchorHigh: vec4<f32>,
+          @location(10) anchorLow: vec4<f32>,
         }
         struct VertexOutput {
           @builtin(position) position: vec4<f32>,
@@ -270,9 +281,12 @@ export class Picker {
         fn vs_main(input: VertexInput, inst: InstanceInput) -> VertexOutput {
           var output: VertexOutput;
           let m = mat4x4<f32>(inst.m0, inst.m1, inst.m2, inst.m3);
-          let world = m * vec4<f32>(input.position, 1.0);
-          output.position = uniforms.viewProj * world;
-          output.worldPos = world.xyz;
+          let linear = (m * vec4<f32>(input.position, 0.0)).xyz;
+          let highDelta = inst.anchorHigh.xyz - uniforms.cameraHigh.xyz;
+          let lowDelta = inst.anchorLow.xyz - uniforms.cameraLow.xyz;
+          let relative = (linear + highDelta) + lowDelta;
+          output.position = uniforms.viewProj * vec4<f32>(relative, 1.0);
+          output.worldPos = relative;
           // bit 30 = instanced marker; express id in the low 30 bits.
           output.objectId = 0x40000000u | (inst.instEntityId & 0x3FFFFFFFu);
           output.instFlags = inst.instFlags;
@@ -318,9 +332,9 @@ export class Picker {
           buffers: [
             // slot 0: template vertex (28B pos+norm+entityId) — only position read.
             { arrayStride: 28, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }] },
-            // slot 1: per-instance (88B) — mat4 + entityId + flags (colour ignored here).
+            // slot 1: V2 per-instance record — mat4 + id/colour/flags + anchor lanes.
             {
-              arrayStride: 88,
+              arrayStride: 120,
               stepMode: 'instance',
               attributes: [
                 { shaderLocation: 3, offset: 0, format: 'float32x4' },
@@ -329,6 +343,8 @@ export class Picker {
                 { shaderLocation: 6, offset: 48, format: 'float32x4' },
                 { shaderLocation: 7, offset: 64, format: 'uint32' },
                 { shaderLocation: 8, offset: 84, format: 'uint32' },
+                { shaderLocation: 9, offset: 88, format: 'float32x4' },
+                { shaderLocation: 10, offset: 104, format: 'float32x4' },
               ],
             },
           ],
@@ -339,7 +355,7 @@ export class Picker {
       });
       this.instancedPickBindGroup = this.device.createBindGroup({
         layout: this.instancedPickPipeline.getBindGroupLayout(0),
-        entries: [{ binding: 0, resource: { buffer: this.uniformBuffer } }],
+        entries: [{ binding: 0, resource: { buffer: this.instancedUniformBuffer } }],
       });
     } catch (err) {
       console.warn('[Picker] instanced pick pipeline unavailable; instanced occurrences fall back to other pick paths:', err);
@@ -461,15 +477,16 @@ export class Picker {
     // [0, 1] (1 = near, 0 = far) — same NDC convention as the camera
     // raycaster, so MathUtils.transformPoint with the inverse viewProj
     // gives the world hit position directly.
+    const rteDecoded = decoded.kind === 'point' || decoded.kind === 'instanced';
     const projectedWorld = unprojectPickSample(
-      decoded.kind === 'point' && pointRteSnapshot ? pointRteSnapshot.getViewProjection().m : viewProj,
+      rteDecoded && pointRteSnapshot ? pointRteSnapshot.getViewProjection().m : viewProj,
       sampleX,
       sampleY,
       width,
       height,
       depth,
     );
-    const worldXYZ = decoded.kind === 'point' && pointRteSnapshot
+    const worldXYZ = rteDecoded && pointRteSnapshot
       ? restoreRtePickWorld(projectedWorld, pointRteSnapshot)
       : projectedWorld;
 
@@ -489,6 +506,28 @@ export class Picker {
   private writePickUniforms(viewProj: Float32Array, clip?: PickClipState | null): void {
     packPickUniforms(viewProj, clip, this.uniformScratch, this.clipFlags);
     this.device.queue.writeBuffer(this.uniformBuffer, 0, this.uniformScratch);
+  }
+
+  /** V2 instance pick uniform: RTE projection plus clip inputs rebased in f64. */
+  private writeInstancedPickUniforms(snapshot: RelativeToEyeSnapshot, clip?: PickClipState | null): void {
+    const out = this.instancedUniformScratch;
+    packPickUniforms(snapshot.getViewProjection().m, clip, out, this.instancedClipFlags);
+    const camera = snapshot.getCameraWorld();
+    if (clip?.clipBox?.enabled) {
+      out[16] = clip.clipBox.min[0] - camera[0]; out[17] = clip.clipBox.min[1] - camera[1]; out[18] = clip.clipBox.min[2] - camera[2];
+      out[20] = clip.clipBox.max[0] - camera[0]; out[21] = clip.clipBox.max[1] - camera[1]; out[22] = clip.clipBox.max[2] - camera[2];
+    }
+    if (clip?.sectionPlane) {
+      const n = clip.sectionPlane.normal;
+      out[27] = clip.sectionPlane.distance - (camera[0] * n[0] + camera[1] * n[1] + camera[2] * n[2]);
+    }
+    for (let axis = 0; axis < 3; axis++) {
+      const high = Math.fround(camera[axis]);
+      out[32 + axis] = high;
+      out[36 + axis] = Math.fround(camera[axis] - high);
+    }
+    out[35] = 0; out[39] = 0;
+    this.device.queue.writeBuffer(this.instancedUniformBuffer, 0, out);
   }
 
   /**
@@ -667,7 +706,8 @@ export class Picker {
     // GPU-instanced occurrences — drawn into the SAME r32uint + depth target so
     // occlusion is shared with flat meshes/points. The shader writes
     // (bit30 | express id) per occurrence; the decoder returns the entity.
-    if (instancedTemplates && instancedTemplates.length > 0 && this.instancedPickPipeline && this.instancedPickBindGroup) {
+    if (instancedTemplates && instancedTemplates.length > 0 && this.instancedPickPipeline && this.instancedPickBindGroup && pointRteSnapshot) {
+      this.writeInstancedPickUniforms(pointRteSnapshot, clip);
       pass.setPipeline(this.instancedPickPipeline);
       pass.setBindGroup(0, this.instancedPickBindGroup);
       for (const it of instancedTemplates) {
@@ -739,6 +779,7 @@ export class Picker {
     this.colorTexture.destroy();
     this.depthTexture.destroy();
     this.uniformBuffer.destroy();
+    this.instancedUniformBuffer.destroy();
     this.expressIdBuffer.destroy();
     this.pointPicker?.destroy();
     this.pointPicker = null;

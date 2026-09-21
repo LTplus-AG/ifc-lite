@@ -14,7 +14,7 @@
 import type { ClipBox } from './types.js';
 import type { RelativeToEyeFrame } from './relative-to-eye.js';
 
-export const MESH_UNIFORM_FLOATS = 84;
+export const MESH_UNIFORM_FLOATS = 92;
 export const MESH_UNIFORM_BYTES = MESH_UNIFORM_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 
 export const MESH_UNIFORM_OFFSET = {
@@ -27,6 +27,7 @@ export const MESH_UNIFORM_OFFSET = {
   quantParams: 56,
   rteViewProj: 60,
   drawableDelta: 76,
+  rteCameraOrigin: 84,
 } as const;
 
 /** flags.x: vertex and fragment values are camera-relative RTE coordinates. */
@@ -84,4 +85,19 @@ export function packRteFragmentSpace(
   } else {
     out.fill(0, clipOffset, clipOffset + 8);
   }
+}
+
+/** Pack the shared camera high/low lanes used by V2 instance anchors. */
+export function packRteCameraOrigin(frame: RelativeToEyeFrame, out: Float32Array): void {
+  if (out.length < MESH_UNIFORM_FLOATS) {
+    throw new RangeError(`Mesh RTE uniform needs ${MESH_UNIFORM_FLOATS} floats.`);
+  }
+  const camera = frame.getCameraWorld();
+  for (let axis = 0; axis < 3; axis++) {
+    const high = Math.fround(camera[axis]);
+    out[MESH_UNIFORM_OFFSET.rteCameraOrigin + axis] = high;
+    out[MESH_UNIFORM_OFFSET.rteCameraOrigin + 4 + axis] = Math.fround(camera[axis] - high);
+  }
+  out[MESH_UNIFORM_OFFSET.rteCameraOrigin + 3] = 0;
+  out[MESH_UNIFORM_OFFSET.rteCameraOrigin + 7] = 0;
 }

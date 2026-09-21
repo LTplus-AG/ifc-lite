@@ -27,10 +27,10 @@
  * frame. (See instanced-render.test.ts for the GPU-free proof.)
  *
  * PRECISION: the GPU record remains an f32 matrix for V1 rendering, but the
- * decoded template origin is f64. `canonicalAnchors` therefore retain the
- * occurrence's exact f64 world anchor independently of that matrix. CPU
- * materialization (snap/measure/raycast fallback) consumes the anchor now;
- * the following GPU V2 lane can upload it without changing the producer shard.
+ * decoded template origin is f64. V2 appends a high/low f64-like world anchor
+ * to the GPU record, independently of the V1 matrix translation. CPU and GPU
+ * consumers use the same anchor; edited placements replace it with the V1
+ * translation (the documented safe fallback until editable f64 placements).
  */
 
 import { MathUtils } from './math.js';
@@ -61,12 +61,15 @@ export const SWAP_ZUP_TO_YUP: Mat4 = {
  *   [68..83] rgba (4 f32)
  *   [84..87] flags (u32 — bit 0 = selected; bit 1 = hidden)
  */
-export const INSTANCE_STRIDE_BYTES = 88;
+export const INSTANCE_STRIDE_BYTES = 120;
 
 /** Byte offset of the rgba colour within an instance record (patched by lens/IDS overlays). */
 export const INSTANCE_COLOR_OFFSET = 68;
 /** Byte offset of the flags u32 within an instance record (patched by selection/visibility). */
 export const INSTANCE_FLAGS_OFFSET = 84;
+/** V2: two vec4 lanes hold the f64-like Y-up occurrence anchor. */
+export const INSTANCE_ANCHOR_HIGH_OFFSET = 88;
+export const INSTANCE_ANCHOR_LOW_OFFSET = 104;
 /** flags bit 0 — this occurrence is selected (blue highlight in the shader). */
 export const INSTANCE_FLAG_SELECTED = 1;
 /** flags bit 1 — this occurrence is hidden (hide/isolate); the shader discards it
@@ -175,6 +178,7 @@ export function writeInstanceRecord(
   entityId: number,
   color: readonly [number, number, number, number],
   flags = 0,
+  anchor: readonly [number, number, number] = [instanceMatrix[12], instanceMatrix[13], instanceMatrix[14]],
 ): void {
   for (let j = 0; j < 16; j++) {
     dv.setFloat32(byteOffset + j * 4, instanceMatrix[j], true);
@@ -184,6 +188,22 @@ export function writeInstanceRecord(
     dv.setFloat32(byteOffset + INSTANCE_COLOR_OFFSET + j * 4, color[j], true);
   }
   dv.setUint32(byteOffset + INSTANCE_FLAGS_OFFSET, flags >>> 0, true);
+  writeInstanceAnchor(dv, byteOffset, anchor);
+}
+
+/** Write V2's high/low anchor lanes without touching selection/colour fields. */
+export function writeInstanceAnchor(
+  dv: DataView,
+  byteOffset: number,
+  anchor: readonly [number, number, number],
+): void {
+  for (let axis = 0; axis < 3; axis++) {
+    const high = Math.fround(anchor[axis]);
+    dv.setFloat32(byteOffset + INSTANCE_ANCHOR_HIGH_OFFSET + axis * 4, high, true);
+    dv.setFloat32(byteOffset + INSTANCE_ANCHOR_LOW_OFFSET + axis * 4, Math.fround(anchor[axis] - high), true);
+  }
+  dv.setFloat32(byteOffset + INSTANCE_ANCHOR_HIGH_OFFSET + 12, 0, true);
+  dv.setFloat32(byteOffset + INSTANCE_ANCHOR_LOW_OFFSET + 12, 0, true);
 }
 
 /**
@@ -230,7 +250,7 @@ export function prepareInstancedRender(shard: DecodedInstancedShard): InstancedR
       const mat = composeInstanceMatrix(inst.transform, tmpl.origin);
       const anchor = composeInstanceAnchor(inst.transform, tmpl.origin);
       // flags = 0: every occurrence starts unselected.
-      writeInstanceRecord(dv, i * INSTANCE_STRIDE_BYTES, mat, inst.entityId, inst.color, 0);
+      writeInstanceRecord(dv, i * INSTANCE_STRIDE_BYTES, mat, inst.entityId, inst.color, 0, anchor);
       entityIds[i] = inst.entityId >>> 0;
       canonicalAnchors.set(anchor, i * 3);
       canonicalMatrixTranslations.set([mat[12], mat[13], mat[14]], i * 3);

@@ -264,3 +264,47 @@ describe('runRuleSet — caseSensitive default (#5138, bSI #346)', () => {
     assert.equal(entityByName(looseReport.specificationResults[0], 'Basement level 1').passed, true);
   });
 });
+
+describe('runRuleSet — classification code-or-name (#5138 review)', () => {
+  // A classification ref carries BOTH a code (identification) and a name;
+  // `matchClassificationRule` (filter-match.ts) already matches against
+  // EITHER, and `readSubject`'s classification case (read-subject.ts) must
+  // surface both values too, not pick one and drop the other (review
+  // finding: `r.identification ?? r.name` silently discarded the name
+  // whenever a code was present).
+  const CLASSIFIED_WALL_IFC = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1= IFCPROJECT('0Proj000000000000000009',$,'Proj',$,$,$,$,(#20),#30);
+#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);
+#21= IFCAXIS2PLACEMENT3D(#22,$,$);
+#22= IFCCARTESIANPOINT((0.,0.,0.));
+#30= IFCUNITASSIGNMENT((#31));
+#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#40= IFCLOCALPLACEMENT($,#21);
+#500= IFCWALL('0WallX0000000000000009A',$,'Classified Wall',$,$,#40,$,'tag',$);
+#510= IFCCLASSIFICATION('SysX',$,$,'FireRatingSystem',$,$,$);
+#511= IFCCLASSIFICATIONREFERENCE($,'123','Fire rating',#510,$);
+#512= IFCRELASSOCIATESCLASSIFICATION('0RelC00000000000000512',$,$,$,(#500),#511);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+  async function parseClassifiedWall(): Promise<IfcDataStore> {
+    const bytes = new TextEncoder().encode(CLASSIFIED_WALL_IFC);
+    return new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  }
+
+  it('classification eq matches EITHER the identification/code or the name', async () => {
+    const store = await parseClassifiedWall();
+    const byName = await run(store, elementRuleSet(Rule.classification('', 'eq', 'Fire rating')));
+    assert.equal(entityByName(byName.specificationResults[0], 'Classified Wall').passed, true, 'name match');
+
+    const byCode = await run(store, elementRuleSet(Rule.classification('', 'eq', '123')));
+    assert.equal(entityByName(byCode.specificationResults[0], 'Classified Wall').passed, true, 'code match');
+  });
+});

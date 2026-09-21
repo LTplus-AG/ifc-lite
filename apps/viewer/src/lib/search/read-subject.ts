@@ -171,11 +171,18 @@ export function readSubject(subject: Subject, ctx: ReadSubjectContext): SubjectV
       const refs = extractClassificationsOnDemand(store, expressId).filter(
         (r) => !r.unresolved && (!sys || (r.system ?? '').toLowerCase() === sys),
       );
-      // One value per ref: the code when it has one, else the name — the
-      // same "code OR name" pair `matchClassificationRule` compares against,
-      // collapsed to a single representative string per ref for uniqueness/
-      // grouping purposes (a rule can still match either via its op).
-      return fromStrings(refs.map((r) => r.identification ?? r.name));
+      // BOTH the code AND the name per ref, not one-or-the-other — review
+      // finding: classification matching is code OR name
+      // (`matchClassificationRule`, filter-match.ts), so a rule matching
+      // either value must see it here too. A ref with `{identification:
+      // '123', name:'Fire rating'}` contributes TWO values; deduped so a
+      // ref whose code and name happen to be identical doesn't double-count.
+      const values = new Set<string>();
+      for (const r of refs) {
+        if (r.identification) values.add(r.identification);
+        if (r.name) values.add(r.name);
+      }
+      return fromStrings([...values]);
     }
     case 'material': {
       const names = new Set<string>();

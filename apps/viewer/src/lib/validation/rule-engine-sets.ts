@@ -35,6 +35,19 @@ export function describeSubject(subject: Subject): string {
   }
 }
 
+/**
+ * Fold a raw subject value into a bucket/group key. `globalId` is NEVER
+ * case-folded, `caseSensitive` or not — review finding: same rule
+ * `filter-ops.ts`'s `globalIdOpMatches` already applies (a GlobalId is a
+ * 22-char base64 GUID where case IS the identity; folding it would merge
+ * two genuinely different elements' ids, e.g. `abc`/`ABC`, into one
+ * "duplicate").
+ */
+function foldKey(value: string, subjectKind: Subject['kind'], caseSensitive: boolean): string {
+  if (subjectKind === 'globalId') return value;
+  return caseSensitive ? value : value.toLowerCase();
+}
+
 /** Shared with `rule-engine-compare.ts`. */
 export function baseRow(el: FilteredElement, passed: boolean, result: RequirementResult): EntityResult {
   return {
@@ -94,7 +107,7 @@ export async function checkUnique(
         for (const raw of subject.values) {
           const s = String(raw);
           if (s.trim().length === 0) continue;
-          const key = opts.caseSensitive ? s : s.toLowerCase();
+          const key = foldKey(s, requirement.subject.kind, opts.caseSensitive);
           let bucket = scoped.get(key);
           if (!bucket) scoped.set(key, (bucket = []));
           bucket.push({ el, value: s });
@@ -192,7 +205,7 @@ function groupKeysOf(
   for (const raw of subject.values) {
     const s = String(raw);
     if (s.trim().length === 0) continue;
-    const key = caseSensitive ? s : s.toLowerCase();
+    const key = foldKey(s, requirement.groupBy.subject.kind, caseSensitive);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({ key, label: s });
@@ -227,7 +240,7 @@ async function seedUniverse(
     for (const raw of subject.values) {
       const s = String(raw);
       if (s.trim().length === 0) continue;
-      const key = caseSensitive ? s : s.toLowerCase();
+      const key = foldKey(s, requirement.groupBy.subject.kind, caseSensitive);
       if (!groups.has(key)) groups.set(key, newAccumulator(s));
     }
   }

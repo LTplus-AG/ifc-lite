@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { FederationRegistry } from '../../../../packages/renderer/src/federation-registry.js';
-import { previewPreparedOverlayGlobalId, toPublishedGlobalId } from './federation-overlay-publication.js';
+import { previewPreparedOverlayGlobalId, publishPreparedOverlayRange, toPublishedGlobalId } from './federation-overlay-publication.js';
 
 describe('mutation overlay federation publication', () => {
   it('publishes contiguous authored records before resolving a new entity in a two-model session (#5050)', () => {
@@ -61,6 +61,10 @@ describe('mutation overlay federation publication', () => {
     assert.equal(registry.fromGlobalId(103), null, 'previewed IDs remain unpickable before their transaction commits');
     assert.throws(() => registry.toGlobalId('editable', 103), /not published/);
     assert.deepEqual(registry.fromGlobalId(otherOffset + 1), { modelId: 'other', expressId: 1 });
+    const views = new Map([['editable', { getNewEntity: (id: number) => created.some(entity => entity.expressId === id) ? { expressId: id } : null }]]);
+    publishPreparedOverlayRange(registry, models, views, 'editable', created);
+    assert.equal(registry.toGlobalId('editable', 101), 101);
+    assert.equal(registry.toGlobalId('editable', 103), 103);
     assert.throws(
       () => previewPreparedOverlayGlobalId(registry, models, 'editable', [{ expressId: 101 }, { expressId: 103 }], 103),
       /contiguous/,

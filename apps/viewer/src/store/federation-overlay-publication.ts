@@ -83,15 +83,45 @@ export function previewPreparedOverlayGlobalId(
   created: readonly { expressId: number }[],
   expressId: number,
 ): number {
-  const model = models.get(modelId);
-  const start = created[0]?.expressId;
-  const end = created.at(-1)?.expressId;
-  if (model === undefined || !Number.isSafeInteger(expressId) || !Number.isSafeInteger(start)
-    || !Number.isSafeInteger(end) || start <= model.maxExpressId || expressId < start || expressId > end) {
+  const { start, end } = preparedOverlayRange(models, modelId, created);
+  if (!Number.isSafeInteger(expressId) || expressId < start || expressId > end) {
     throw new Error('Invalid detached overlay range.');
   }
+  return registry.previewOverlayGlobalId(modelId, start, end, expressId);
+}
+
+/** Publish an exact detached batch only after every committed row is live. */
+export function publishPreparedOverlayRange(
+  registry: OverlayPublicationRegistry,
+  models: ReadonlyMap<string, OverlayPublicationModel>,
+  views: ReadonlyMap<string, OverlayPublicationView>,
+  modelId: string,
+  created: readonly { expressId: number }[],
+): void {
+  const { start, end } = preparedOverlayRange(models, modelId, created);
+  const view = views.get(modelId);
+  if (view === undefined) throw new Error('The committed overlay view is unavailable.');
+  for (let localId = start; localId <= end; localId++) {
+    if (view.getNewEntity(localId) === null) throw new Error('Committed overlay IDs must remain contiguous and owned.');
+  }
+  registry.publishOverlayRange(modelId, start, end);
+}
+
+function preparedOverlayRange(
+  models: ReadonlyMap<string, OverlayPublicationModel>,
+  modelId: string,
+  created: readonly { expressId: number }[],
+): { start: number; end: number } {
+  const model = models.get(modelId);
+  const first = created[0], last = created.at(-1);
+  if (model === undefined || first === undefined || last === undefined
+    || !Number.isSafeInteger(first.expressId) || !Number.isSafeInteger(last.expressId)
+    || first.expressId <= model.maxExpressId) {
+    throw new Error('Invalid detached overlay range.');
+  }
+  const start = first.expressId, end = last.expressId;
   for (let index = 0; index < created.length; index++) {
     if (created[index].expressId !== start + index) throw new Error('Detached overlay IDs must be contiguous and source ordered.');
   }
-  return registry.previewOverlayGlobalId(modelId, start, end, expressId);
+  return { start, end };
 }

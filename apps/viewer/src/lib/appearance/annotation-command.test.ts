@@ -79,6 +79,18 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
     );
     assert.equal(useViewerStore.getState().undoStacks.get('annotation')?.length ?? 0, 0);
     assert.equal(modelAppearanceAssets.exportResources('annotation').resources.size, 0);
+    const failingCommitRenderer = { ...renderer, prepareAuthoredOwner(parts: readonly MeshData[]) {
+      const staged = renderer.prepareAuthoredOwner(parts);
+      return { commit() { throw new Error('injected GPU commit failure'); }, dispose() { staged.dispose(); } };
+    } } as unknown as Renderer;
+    await assert.rejects(commitTexturedProduct('annotation', asset.id, { ...native, objectId: native.annotationId }, containerId, failingCommitRenderer, captureAppearanceSource(view)), /injected GPU commit/);
+    assert.equal(view.getNewEntities().length, 0);
+    assert.equal(view.peekNextExpressId(), allocationBefore);
+    assert.throws(
+      () => federationRegistry.toGlobalId('annotation', native.annotationId),
+      /not published/,
+      'a failed GPU installation must not publish its committed-but-rolled-back overlay IDs',
+    );
     const result = await commitTexturedProduct('annotation', asset.id, { ...native, objectId: native.annotationId }, containerId, renderer, captureAppearanceSource(view));
     assert.equal(result.expressId, native.annotationId);
     assert.equal(federationRegistry.toGlobalId('annotation', native.annotationId), result.globalId);
@@ -131,6 +143,28 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
     assert.equal(hierarchy.getContainingSpace(native.annotationId), containerId === 51 ? 51 : null);
     assert.equal(hierarchy.elementToContainer?.get(native.annotationId), containerId);
     assert.equal(useViewerStore.getState().models.get('annotation')!.geometryResult!.meshes.length, 1);
+    const nextNative = JSON.parse(new TextDecoder().decode(api.planAnnotationPlane(source, JSON.stringify({
+      schema: 'IFC4', sourceRevision: appearanceRevision('annotation'), nextExpressId: view.peekNextExpressId(),
+      containerId, GlobalId: '0hhhhhhhhhhhhhhhhhhhhh', containmentGlobalId: '0bbbbbbbbbbbbbbbbbbbbb',
+      Name: 'Second registered plan', imageUri: asset.exportName,
+      frame: { origin: [4, 3, 4], axisU: [1, 0, 0], axisV: [0, 0, 1], sizeMetres: [2, 1] },
+    })))) as AnnotationPlanePlan;
+    assert.equal(nextNative.plan.created[0]?.expressId, native.plan.created.at(-1)!.expressId + 1,
+      'the second real-WASM plan starts after the first containment row');
+    const second = await commitTexturedProduct('annotation', asset.id, { ...nextNative, objectId: nextNative.annotationId }, containerId, renderer, captureAppearanceSource(view));
+    for (const row of [...native.plan.created, ...nextNative.plan.created]) {
+      assert.equal(federationRegistry.toGlobalId('annotation', row.expressId), idOffset + row.expressId,
+        'the full batch, including containment, is published before the next annotation stages');
+    }
+    assert.equal(meshes.size, 2);
+    useViewerStore.getState().undo('annotation');
+    assert.equal(meshes.size, 1);
+    assert.equal(view.getNewEntity(second.expressId), null);
+    assert.equal(federationRegistry.toGlobalId('annotation', second.expressId), second.globalId,
+      'published ownership remains stable while undo removes the live record');
+    useViewerStore.getState().redo('annotation');
+    assert.equal(meshes.size, 2);
+    assert.equal(view.getNewEntity(second.expressId)?.expressId, second.expressId);
   } finally { api.free(); globalThis.createImageBitmap = oldDecode; }
 });
 

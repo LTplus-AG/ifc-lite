@@ -5,7 +5,7 @@ import { captureAppearanceDependencies, planAuthoredResourceCleanup } from '@ifc
 import { StoreEditor } from '@ifc-lite/mutations';
 import { equivalentAppearanceGeometry, federationRegistry, type Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
-import { previewPreparedOverlayGlobalId } from '@/store/federation-overlay-publication';
+import { previewPreparedOverlayGlobalId, publishPreparedOverlayRange } from '@/store/federation-overlay-publication';
 import { entityRefToString } from '@/store/types';
 import type { MeshData } from '@ifc-lite/geometry';
 import { setTexturedProductMembership } from './textured-product-hierarchy';
@@ -98,9 +98,6 @@ export async function commitAuthoredProduct(modelId: string, assetIds: readonly 
     validate();
     const next = publication(true);
     prepared.commit();
-    if (state.toGlobalId(modelId, native.objectId) !== globalId) {
-      throw new Error('Federation ownership changed while preparing the object.');
-    }
     const after = captureAppearanceDependencies(data, view, roots);
     modelAppearanceAssets.registerAuthored(modelId, owner.id, assets);
     modelAppearanceAssets.authoredLifecycle.track(modelId, owner.id, {
@@ -147,8 +144,12 @@ export async function commitAuthoredProduct(modelId: string, assetIds: readonly 
     });
     gpu.commit(); installed = true; captureRendered();
     membership(true); hierarchyInstalled = true;
-    published = true;
     record(next);
+    // This is deliberately last: every mutable/GPU/history operation has
+    // succeeded, and preview validation already proved this exact envelope is
+    // the registry's next contiguous range. No rolled-back command burns IDs.
+    publishPreparedOverlayRange(federationRegistry, state.models, state.mutationViews, modelId, applied.created);
+    published = true;
     return { expressId: native.objectId, globalId };
   } catch (error) {
     if (!published) {

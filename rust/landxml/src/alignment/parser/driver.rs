@@ -18,7 +18,6 @@ use crate::{
         attr, attributes, character_references, error, split_name, unescape, Attributes, Result,
     },
     LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlVersionCapability,
-    LANDXML_12_NAMESPACE,
 };
 
 impl Parser<'_> {
@@ -82,8 +81,9 @@ impl Parser<'_> {
             }
             self.root_seen = true;
             validate_root(local, namespace, attr(&attrs, "version"))?;
+            self.target_namespace = namespace.map(str::to_owned);
         }
-        let target = namespace == Some(LANDXML_12_NAMESPACE);
+        let target = namespace == self.target_namespace.as_deref();
         self.frames.push(Frame {
             local: local.to_owned(),
             target,
@@ -361,15 +361,17 @@ fn validate_root(local: &str, namespace: Option<&str>, version: Option<&str>) ->
         return Err(invalid("root element is not LandXML"));
     }
     match classify_landxml_version(namespace, version) {
-        LandXmlVersionCapability::LandXml12Tin => Ok(()),
+        LandXmlVersionCapability::LandXml10Tin
+        | LandXmlVersionCapability::LandXml11Tin
+        | LandXmlVersionCapability::LandXml12Tin
+        | LandXmlVersionCapability::LandXml10VersionMismatch
+        | LandXmlVersionCapability::LandXml11VersionMismatch
+        | LandXmlVersionCapability::LandXml12VersionMismatch => Ok(()),
         LandXmlVersionCapability::LandXml10Unsupported
-        | LandXmlVersionCapability::LandXml11Unsupported => Err(error(
+        | LandXmlVersionCapability::LandXml11Unsupported
+        | LandXmlVersionCapability::LandXml12Unsupported => Err(error(
             Code::UnsupportedVersion,
-            "LandXML alignment parsing supports version 1.2 only",
-        )),
-        LandXmlVersionCapability::LandXml12VersionMismatch => Err(error(
-            Code::UnsupportedVersion,
-            "LandXML 1.2 namespace requires version=\"1.2\"",
+            "LandXML namespaces require a known version declaration",
         )),
         LandXmlVersionCapability::NotLandXml => Err(error(
             Code::UnsupportedNamespace,

@@ -30,7 +30,7 @@ extern "C" {
 const LANDXML_TYPES: &str = r#"
 export interface LandXmlTinDocumentJs {
   format: "landxml";
-  schema: "LandXML-1.2";
+  schema: "LandXML-1.0" | "LandXML-1.1" | "LandXML-1.2";
   capabilities: { renderable_tin: boolean; preserved_only_surfaces: number; unknown_extensions: number };
   version: string;
   /** serde_wasm_bindgen omits an absent Rust Option field rather than serializing null. */

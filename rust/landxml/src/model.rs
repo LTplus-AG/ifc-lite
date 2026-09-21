@@ -63,23 +63,59 @@ impl std::error::Error for LandXmlError {}
 
 /// Capability selected from the root LandXML namespace and version attribute.
 ///
-/// The parser deliberately supports TIN ingestion for 1.2 only. Earlier
-/// versions remain explicit states instead of being misclassified as arbitrary
-/// XML, so callers can show an actionable refusal and add a future adapter
-/// without changing classification semantics.
+/// The namespace selects the element grammar. A declared version remains
+/// source provenance: known mismatches are accepted with a diagnostic rather
+/// than silently reclassifying the source.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LandXmlVersionCapability {
     NotLandXml,
+    /// A 1.0 namespace without a known LandXML version declaration.
     LandXml10Unsupported,
+    /// A 1.1 namespace without a known LandXML version declaration.
     LandXml11Unsupported,
+    LandXml10Tin,
+    LandXml11Tin,
     LandXml12Tin,
+    LandXml10VersionMismatch,
+    LandXml11VersionMismatch,
     LandXml12VersionMismatch,
+    /// A 1.2 namespace without a known LandXML version declaration.
+    LandXml12Unsupported,
 }
 
 impl LandXmlVersionCapability {
     pub const fn supports_tin_ingestion(self) -> bool {
-        matches!(self, Self::LandXml12Tin)
+        matches!(
+            self,
+            Self::LandXml10Tin
+                | Self::LandXml11Tin
+                | Self::LandXml12Tin
+                | Self::LandXml10VersionMismatch
+                | Self::LandXml11VersionMismatch
+                | Self::LandXml12VersionMismatch
+        )
+    }
+
+    pub const fn schema(self) -> Option<&'static str> {
+        match self {
+            Self::LandXml10Tin | Self::LandXml10VersionMismatch => Some("LandXML-1.0"),
+            Self::LandXml11Tin | Self::LandXml11VersionMismatch => Some("LandXML-1.1"),
+            Self::LandXml12Tin | Self::LandXml12VersionMismatch => Some("LandXML-1.2"),
+            Self::NotLandXml
+            | Self::LandXml10Unsupported
+            | Self::LandXml11Unsupported
+            | Self::LandXml12Unsupported => None,
+        }
+    }
+
+    pub const fn has_compatibility_version_mismatch(self) -> bool {
+        matches!(
+            self,
+            Self::LandXml10VersionMismatch
+                | Self::LandXml11VersionMismatch
+                | Self::LandXml12VersionMismatch
+        )
     }
 }
 

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { modelDisplayLabels } from '@/lib/model-labels.js';
+import { isLandXmlSchema } from '@/hooks/ingest/landXmlSemantics.js';
 import { stepExportProgress } from '@/lib/export/step-progress.js';
 import { prepareAppearanceSerialization } from '@/lib/appearance/serialization.js';
 import { packagePortableIfcAsync, assertPortableMergeSupported } from '@/lib/export/portable-ifc';
@@ -181,9 +182,9 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     [models, selectedModelId, legacyIfcDataStore, legacyGeometryResult],
   );
   const selectedRoomView = selectedModelId ? getMutationView(selectedModelId) ?? undefined : undefined;
-  const selectedLandXml = selectedModel?.sourceSchema === 'LandXML-1.2';
+  const selectedLandXml = selectedModel?.sourceSchema !== undefined && isLandXmlSchema(selectedModel.sourceSchema);
   const mergedLandXml = exportScope === 'merged'
-    && Array.from(models.values()).some((model) => model.sourceSchema === 'LandXML-1.2');
+    && Array.from(models.values()).some((model) => model.sourceSchema !== undefined && isLandXmlSchema(model.sourceSchema));
   const canExportIfc = !selectedLandXml && !mergedLandXml;
   // Mutation deltas are source-independent JSON; only full IFC synthesis is refused.
   const exportAllowed = canExportIfc || (changesOnly && !isIfc5);

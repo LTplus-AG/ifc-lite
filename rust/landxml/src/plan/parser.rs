@@ -19,7 +19,7 @@ use crate::{
         Attributes, Result,
     },
     LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlLimits, LandXmlSourceId,
-    LandXmlUnits, LandXmlVersionCapability, LANDXML_12_NAMESPACE,
+    LandXmlUnits, LandXmlVersionCapability,
 };
 
 mod actions;
@@ -112,6 +112,7 @@ struct Parser<'a> {
     pub(super) area_unit: Option<String>,
     pub(super) area_scale_to_square_meters: Option<f64>,
     pub(super) version: String,
+    pub(super) target_namespace: Option<String>,
     pub(super) root_seen: bool,
     pub(super) cogo_points: Vec<LandXmlCgPoint>,
     pub(super) reference_index: LandXmlPlanReferenceIndex,
@@ -145,6 +146,7 @@ impl<'a> Parser<'a> {
             area_unit: None,
             area_scale_to_square_meters: None,
             version: String::new(),
+            target_namespace: None,
             root_seen: false,
             cogo_points: Vec::new(),
             reference_index: LandXmlPlanReferenceIndex::default(),

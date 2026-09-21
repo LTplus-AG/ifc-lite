@@ -29,6 +29,8 @@ function decide(overrides = {}, { meminfo = basicBuilder } = {}) {
     }
     const result = spawnSync(
       'bash',
+      // `${VITE_SOURCEMAP:-}` is bash parameter expansion inside a bash -c string, not a JS template
+      // eslint-disable-next-line no-template-curly-in-string
       ['-c', '. scripts/lib/vercel-sourcemaps.sh; if configure_vercel_sourcemaps >/dev/null; then on=1; else on=0; fi; printf "%s\\t%s" "$on" "${VITE_SOURCEMAP:-}"'],
       { cwd: root, env, encoding: 'utf8' },
     );

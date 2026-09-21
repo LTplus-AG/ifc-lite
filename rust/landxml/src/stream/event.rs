@@ -51,4 +51,7 @@ pub struct LandXmlStreamSummary {
     pub surfaces_drained: usize,
     pub renderable_surfaces: usize,
     pub preserved_surfaces: usize,
+    pub plan_cogo_points: usize,
+    pub plan_parcels: usize,
+    pub horizontal_alignments: usize,
 }

@@ -7,7 +7,7 @@
 mod inspection;
 mod model;
 mod numeric;
-mod parser;
+pub(crate) mod parser;
 
 pub use inspection::LandXmlCantProbe;
 pub use model::*;

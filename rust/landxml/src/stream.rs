@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-//! Resumable LandXML transport driven by the canonical terrain state machine.
-
 mod decoder;
 mod event;
 mod token;
@@ -26,10 +24,10 @@ pub const MAX_LANDXML_STREAM_INPUT_CHUNK_BYTES: usize = 1024 * 1024;
 pub const MAX_LANDXML_STREAM_DRAIN_BYTES: usize = 1024 * 1024;
 const MAX_FRAGMENT_PAYLOAD_BYTES: usize = 192 * 1024;
 
-/// `advance` accepts arbitrary raw cuts. `drain` gives a sink actual byte
-/// credits; finished terrain records are moved out of the parser immediately.
 pub struct LandXmlTinStreamSession {
     parser: Option<Parser<'static>>,
+    plan: Option<crate::plan::parser::Parser<'static>>,
+    alignment: Option<crate::alignment::parser::Parser<'static>>,
     reader: Reader<BufReader<TokenFeed>>,
     feed: TokenFeed,
     decoder: Decoder,
@@ -50,6 +48,18 @@ impl LandXmlTinStreamSession {
         reader.config_mut().trim_text(false);
         Ok(Self {
             parser: Some(Parser::new(&limits, None)),
+            plan: Some(crate::plan::parser::Parser::new_stream(
+                crate::LandXmlPlanLimits {
+                    xml: limits.clone(),
+                    ..Default::default()
+                },
+            )),
+            alignment: Some(crate::alignment::parser::Parser::new_stream(
+                crate::alignment::LandXmlAlignmentLimits {
+                    xml: limits.clone(),
+                    ..Default::default()
+                },
+            )),
             reader,
             feed,
             decoder: Decoder::new(&limits)?,
@@ -129,11 +139,24 @@ impl LandXmlTinStreamSession {
             .ok_or_else(|| error(Code::InvalidSemantic, "LandXML units were not declared"))?;
         self.closed = true;
         self.parser.take().expect("open parser").finish()?;
+        let plan = self.plan.take().expect("open plan parser");
+        if plan.has_open_frames() {
+            return Err(error(Code::InvalidXml, "unclosed plan XML element"));
+        }
+        let plan = plan.document();
+        let alignment = self.alignment.take().expect("open alignment parser");
+        if alignment.has_open_frames() {
+            return Err(error(Code::InvalidXml, "unclosed alignment XML element"));
+        }
+        let alignment = alignment.finish()?;
         Ok(LandXmlStreamSummary {
             header,
             surfaces_drained: self.surfaces_drained,
             renderable_surfaces: self.renderable_surfaces,
             preserved_surfaces: self.preserved_surfaces,
+            plan_cogo_points: plan.cogo_points.len(),
+            plan_parcels: plan.parcels.len(),
+            horizontal_alignments: alignment.alignments.len(),
         })
     }
 
@@ -141,6 +164,8 @@ impl LandXmlTinStreamSession {
         self.token.clear();
         self.queue.clear();
         self.parser.take();
+        self.plan.take();
+        self.alignment.take();
         self.closed = true;
     }
     pub fn header(&self) -> Option<LandXmlStreamHeader> {
@@ -224,7 +249,15 @@ impl LandXmlTinStreamSession {
                     format!("XML reader ended while consuming token {token_debug:?}"),
                 ));
             }
-            self.parser().consume_event(event)?;
+            self.parser().consume_event(event.clone())?;
+            self.plan
+                .as_mut()
+                .expect("open plan parser")
+                .consume_event(event.clone())?;
+            self.alignment
+                .as_mut()
+                .expect("open alignment parser")
+                .consume_event(event)?;
             break;
         }
         self.emit_header_and_surfaces()

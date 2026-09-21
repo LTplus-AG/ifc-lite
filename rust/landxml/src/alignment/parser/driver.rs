@@ -288,7 +288,7 @@ impl Parser<'_> {
         }
         Ok(())
     }
-    pub(super) fn finish(self) -> Result<super::super::LandXmlAlignmentDocument> {
+    pub(crate) fn finish(self) -> Result<super::super::LandXmlAlignmentDocument> {
         if !self.root_seen || !self.root_closed {
             return Err(error(
                 Code::InvalidXml,

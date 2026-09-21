@@ -91,3 +91,23 @@ fn issue_5050_keeps_security_refusal_precedence_at_chunk_boundaries() {
         .expect_err("doctype refused");
     assert_eq!(error.code, LandXmlDiagnosticCode::DtdForbidden);
 }
+
+#[test]
+fn issue_5050_mixed_plan_and_alignment_fanout_matches_direct_family_counts() {
+    let xml = br#"<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><CgPoints><CgPoint name="control">0 0 0</CgPoint></CgPoints><Alignments><Alignment name="a" length="1" staStart="0"><CoordGeom><Line><Start>0 0</Start><End>1 0</End></Line></CoordGeom></Alignment></Alignments></LandXML>"#;
+    let direct_plan = ifc_lite_landxml::parse_landxml_plan(xml).expect("plan");
+    let direct_alignment =
+        ifc_lite_landxml::alignment::parse_landxml_alignments_optional(xml).expect("alignment");
+    let mut session = LandXmlTinStreamSession::new(LandXmlLimits::default()).expect("session");
+    for byte in xml {
+        session
+            .advance(std::slice::from_ref(byte))
+            .expect("byte advance");
+    }
+    let summary = session.finish().expect("finish");
+    assert_eq!(summary.plan_cogo_points, direct_plan.cogo_points().len());
+    assert_eq!(
+        summary.horizontal_alignments,
+        direct_alignment.alignments.len()
+    );
+}

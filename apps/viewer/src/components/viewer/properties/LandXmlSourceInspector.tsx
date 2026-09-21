@@ -315,7 +315,7 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
         <p><span className="font-semibold">{t('properties.landXmlSource.kind')}:</span> {record.kind}</p>
         {terrain && <p><span className="font-semibold">{t('properties.landXmlSource.renderState')}:</span> {record.surface.renderState}</p>}
         {document && <p><span className="font-semibold">{t('properties.landXmlSource.capabilities')}:</span> {JSON.stringify(document.capabilities)}</p>}
-        {document?.warnings.map((warning, index) => <p key={`${warning}-${index}`} role="alert" className="text-amber-800 dark:text-amber-200">Source refusal: {warning}</p>)}
+        {document?.warnings.map((warning, index) => <p key={`${warning}-${index}`} role="alert" className="text-amber-800 dark:text-amber-200">{t('properties.landXmlSource.sourceRefusal', { warning })}</p>)}
         {sourceCount && <p><span className="font-semibold">{t('properties.landXmlSource.counts')}:</span> {t('properties.landXmlSource.countsValue', { ...sourceCount })}</p>}
         {record.kind === 'face' && <p><span className="font-semibold">{t('properties.landXmlSource.facePoints')}:</span> {record.pointIds.join(', ')}</p>}
         {record.kind === 'point' && <p><span className="font-semibold">{t('properties.landXmlSource.pointCoordinates')}:</span> {record.point.northing}, {record.point.easting}, {record.point.elevation}</p>}

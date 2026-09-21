@@ -8,7 +8,7 @@ use super::{
 };
 
 mod measure;
-mod references;
+pub mod references;
 mod topology;
 use measure::{arc_delta, cross, distance, finite_measure, finite_point, finite_sum, same_point};
 use topology::segments_intersect;

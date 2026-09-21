@@ -2,11 +2,93 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::{cell::Ref, collections::HashSet};
+use std::{
+    cell::Ref,
+    collections::{HashMap, HashSet},
+};
 
 use super::{LandXmlPlanDocument, LandXmlPlanPoint, LandXmlPlanPointLocation, TopologyBudget};
 use crate::plan::model::LandXmlPlanReferenceIndex;
 use crate::LandXmlMonument;
+
+/// One document-scoped resolver used by bulk adapters. Cached failures are as
+/// important as points: dangling, ambiguous and cyclic aliases must not be
+/// retraversed for every dependent geometry record.
+pub struct LandXmlPlanResolver<'a> {
+    document: &'a LandXmlPlanDocument,
+    cache: HashMap<(Option<crate::LandXmlSourceId>, String), Option<LandXmlPlanPoint>>,
+    work: usize,
+    max_work: usize,
+}
+impl<'a> LandXmlPlanResolver<'a> {
+    pub fn new(document: &'a LandXmlPlanDocument, max_work: usize) -> Self {
+        Self {
+            document,
+            cache: HashMap::new(),
+            work: 0,
+            max_work,
+        }
+    }
+    pub fn resolve(
+        &mut self,
+        scope: Option<&crate::LandXmlSourceId>,
+        location: &LandXmlPlanPointLocation,
+    ) -> std::result::Result<Option<LandXmlPlanPoint>, crate::LandXmlError> {
+        let LandXmlPlanPointLocation::PointReference { pnt_ref } = location else {
+            return Ok(match location {
+                LandXmlPlanPointLocation::Coordinates { point, .. } => Some(*point),
+                _ => None,
+            });
+        };
+        let first = (scope.cloned(), pnt_ref.clone());
+        if let Some(value) = self.cache.get(&first) {
+            return Ok(*value);
+        }
+        let index = self
+            .document
+            .reference_index_with(|| Ok::<(), crate::LandXmlError>(()))?;
+        let mut key = first.clone();
+        let mut path = Vec::new();
+        let mut seen = HashSet::new();
+        let result = loop {
+            if self.work >= self.max_work {
+                return Err(crate::LandXmlError::new(
+                    crate::LandXmlDiagnosticCode::LimitExceeded,
+                    "COGO bulk resolution work limit exceeded",
+                ));
+            }
+            self.work += 1;
+            if let Some(value) = self.cache.get(&key) {
+                break *value;
+            }
+            let Some(position) = self
+                .document
+                .lookup_reference(&index, key.0.as_ref(), &key.1)
+            else {
+                break None;
+            };
+            if !seen.insert(position) {
+                break None;
+            }
+            path.push(key.clone());
+            let Some(point) = self.document.cogo_points().get(position) else {
+                break None;
+            };
+            if let Some(value) = point.point {
+                break Some(value);
+            }
+            let Some(reference) = point.pnt_ref.clone() else {
+                break None;
+            };
+            key = (Some(point.scope_id.clone()), reference);
+        };
+        for item in path {
+            self.cache.insert(item, result);
+        }
+        self.cache.insert(first, result);
+        Ok(result)
+    }
+}
 
 impl LandXmlPlanDocument {
     /// Resolve a COGO reference in its producer scope, falling back only when

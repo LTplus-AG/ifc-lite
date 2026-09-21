@@ -17,6 +17,7 @@ pub use model::{
     LandXmlParcelState, LandXmlPlanDocument, LandXmlPlanFeature, LandXmlPlanGeometry,
     LandXmlPlanPoint, LandXmlPlanPointLocation, LandXmlPlanSourceBatch,
 };
+pub use numeric::references::LandXmlPlanResolver;
 pub use parser::{parse_landxml_plan, parse_landxml_plan_with_cancel, LandXmlPlanLimits};
 
 /// The durable LandXML source document joins terrain and plan semantics from

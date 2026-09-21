@@ -130,7 +130,14 @@ struct LandXmlResolvedGeometryJs<'a> {
 
 fn resolved_geometry<'a>(
     plan: &'a ifc_lite_landxml::LandXmlPlanDocument,
-) -> Vec<LandXmlResolvedGeometryJs<'a>> {
+) -> Result<Vec<LandXmlResolvedGeometryJs<'a>>, ifc_lite_landxml::LandXmlError> {
+    let mut resolver = ifc_lite_landxml::LandXmlPlanResolver::new(
+        plan,
+        plan.cogo_points()
+            .len()
+            .saturating_mul(8)
+            .saturating_add(1_000),
+    );
     plan.plan_features
         .iter()
         .flat_map(|feature| feature.geometry.iter())
@@ -139,25 +146,33 @@ fn resolved_geometry<'a>(
                 .iter()
                 .flat_map(|parcel| parcel.loops.iter().flatten()),
         )
-        .map(|geometry| LandXmlResolvedGeometryJs {
-            source_id: &geometry.source_id,
-            start: plan.resolve_point(geometry.point_scope_id.as_ref(), &geometry.start),
-            end: plan.resolve_point(geometry.point_scope_id.as_ref(), &geometry.end),
-            center: geometry
-                .center
-                .as_ref()
-                .and_then(|point| plan.resolve_point(geometry.point_scope_id.as_ref(), point)),
-            pi: geometry
-                .pi
-                .as_ref()
-                .and_then(|point| plan.resolve_point(geometry.point_scope_id.as_ref(), point)),
+        .map(|geometry| {
+            Ok(LandXmlResolvedGeometryJs {
+                source_id: &geometry.source_id,
+                start: resolver.resolve(geometry.point_scope_id.as_ref(), &geometry.start)?,
+                end: resolver.resolve(geometry.point_scope_id.as_ref(), &geometry.end)?,
+                center: geometry
+                    .center
+                    .as_ref()
+                    .map(|point| resolver.resolve(geometry.point_scope_id.as_ref(), point))
+                    .transpose()?
+                    .flatten(),
+                pi: geometry
+                    .pi
+                    .as_ref()
+                    .map(|point| resolver.resolve(geometry.point_scope_id.as_ref(), point))
+                    .transpose()?
+                    .flatten(),
+            })
         })
         .collect()
 }
 
-fn plan_adapter<'a>(plan: &'a ifc_lite_landxml::LandXmlPlanDocument) -> LandXmlPlanDocumentJs<'a> {
+fn plan_adapter<'a>(
+    plan: &'a ifc_lite_landxml::LandXmlPlanDocument,
+) -> Result<LandXmlPlanDocumentJs<'a>, ifc_lite_landxml::LandXmlError> {
     let mut monument_resolution = std::collections::HashMap::new();
-    LandXmlPlanDocumentJs {
+    Ok(LandXmlPlanDocumentJs {
         version: &plan.version,
         area_unit: &plan.area_unit,
         area_scale_to_square_meters: plan.area_scale_to_square_meters,
@@ -195,8 +210,8 @@ fn plan_adapter<'a>(plan: &'a ifc_lite_landxml::LandXmlPlanDocument) -> LandXmlP
                 }
             })
             .collect(),
-        resolved_geometry: resolved_geometry(plan),
-    }
+        resolved_geometry: resolved_geometry(plan)?,
+    })
 }
 
 #[wasm_bindgen]
@@ -211,7 +226,8 @@ impl IfcAPI {
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         let result = LandXmlDocumentJs {
             terrain: &document.terrain,
-            plan: plan_adapter(&document.plan),
+            plan: plan_adapter(&document.plan)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?,
         };
         let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
         result

@@ -39,8 +39,10 @@ impl Parser<'_> {
         }
         let authored_faces = !surface.faces.is_empty();
         // A refusal is source-preserving: do not retain a partial collection
-        // of synthetic vertices while marking the source preserved-only.
-        let source_surface = surface.clone();
+        // of synthetic vertices while marking the source preserved-only. An
+        // authored TIN cannot enter synthesis, so it never needs this second
+        // complete surface allocation on the streamed handoff path.
+        let source_surface = (!authored_faces).then(|| surface.clone());
         let terrain_diagnostic = crate::terrain::adapt_faceless_tin(
             &mut surface,
             &self.limits,
@@ -50,7 +52,7 @@ impl Parser<'_> {
             &mut self.work,
         )?;
         if terrain_diagnostic.is_some() {
-            surface = source_surface;
+            surface = source_surface.expect("only faceless TIN synthesis can refuse");
         }
         let topology_origin = if authored_faces {
             crate::LandXmlTopologyOrigin::AuthoredFaces

@@ -101,9 +101,9 @@ pub fn parse_landxml_tin_with_cancel(
                 parser.start(&start)?;
                 parser.end(None)?;
             }
-            Event::End(end) => parser.end(Some(end.name().as_ref()))?,
-            Event::Text(text) => parser.text(text.as_ref())?,
-            Event::CData(text) => parser.cdata(text.as_ref())?,
+            Event::End(end) => parser.end(Some(end.name().as_ref().as_bytes()))?,
+            Event::Text(text) => parser.text(text.as_ref().as_bytes())?,
+            Event::CData(text) => parser.cdata(text.as_ref().as_bytes())?,
             Event::DocType(_) => return Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
             Event::Eof => break,
             _ => {}
@@ -122,7 +122,7 @@ impl Parser<'_> {
             return Err(error(Code::LimitExceeded, "XML depth limit exceeded"));
         }
         let name = start.name();
-        let (_, local, prefix) = split_name(name.as_ref(), self.limits.max_name_bytes)?;
+        let (_, local, prefix) = split_name(name.as_ref().as_bytes(), self.limits.max_name_bytes)?;
         let (attributes, namespaces, references) = attributes(start, self.limits)?;
         self.check_cancel_and_work(attributes.len())?;
         self.check_character_references(references)?;

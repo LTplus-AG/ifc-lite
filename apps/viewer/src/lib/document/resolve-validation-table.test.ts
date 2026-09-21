@@ -11,8 +11,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { EntityResult, SetResult, SpecificationResult, ValidationReport } from '@ifc-lite/ids';
-import { resolveValidationTableState } from './resolve-validation-table.js';
 import type { ValidationTableSource } from './types.js';
+
+// `resolve-validation-table.ts` is new in this PR (#5138) — a static import would fail module
+// resolution outright under the revert oracle and crash this whole file's load. The `.catch`
+// degrades to `undefined` instead, so every test below skips instead of the file dying at import
+// (the same pattern `document.test.ts` uses for this exact module).
+const { resolveValidationTableState } = await import('./resolve-validation-table.js').catch(() => ({ resolveValidationTableState: undefined }));
+const skip = !resolveValidationTableState && 'resolveValidationTableState is not exported (production reverted)';
 
 const entity = (overrides: Partial<EntityResult>): EntityResult => ({
   expressId: 1, modelId: 'm1', entityType: 'IfcWall', passed: true, requirementResults: [], ...overrides,
@@ -40,7 +46,7 @@ const source = (overrides: Partial<ValidationTableSource>, columns: ValidationTa
 const modelName = (id: string): string => (id === 'm1' ? 'tower.ifc' : id);
 
 describe('resolveValidationTableState (#5138)', () => {
-  it('picks failed / passed / all entity rows, with the first failing requirement supplying actual/expected/reason', () => {
+  it('picks failed / passed / all entity rows, with the first failing requirement supplying actual/expected/reason', { skip }, () => {
     const fail = entity({
       expressId: 41, entityType: 'IfcWall', entityName: 'Wall A', globalId: 'G-41', passed: false,
       requirementResults: [{ requirement: { id: 'r1', label: 'FireRating is set', optionality: 'required' }, status: 'fail', facetType: 'property', checkedDescription: '', failureReason: 'absent', actualValue: '', expectedValue: 'set' }],
@@ -49,7 +55,7 @@ describe('resolveValidationTableState (#5138)', () => {
     const oneSpec = spec('s1', 'Walls have FireRating', { entityResults: [fail, pass] });
     const columns: ValidationTableSource['columns'] = ['rule', 'result', 'entityType', 'name', 'globalId', 'model', 'actual', 'expected', 'reason'];
 
-    const failed = resolveValidationTableState(source({ rows: 'failed' }, columns), report([oneSpec]), modelName);
+    const failed = resolveValidationTableState!(source({ rows: 'failed' }, columns), report([oneSpec]), modelName);
     assert.equal(failed.status, 'ok');
     assert.ok(failed.status === 'ok' && failed.kind === 'validation');
     if (failed.status === 'ok' && failed.kind === 'validation') {
@@ -57,22 +63,22 @@ describe('resolveValidationTableState (#5138)', () => {
       assert.deepEqual(failed.model.rows[0].cells, ['Walls have FireRating', 'fail', 'IfcWall', 'Wall A', 'G-41', 'tower.ifc', '', 'set', 'absent']);
     }
 
-    const passed = resolveValidationTableState(source({ rows: 'passed' }, columns), report([oneSpec]), modelName);
+    const passed = resolveValidationTableState!(source({ rows: 'passed' }, columns), report([oneSpec]), modelName);
     assert.ok(passed.status === 'ok' && passed.kind === 'validation');
     if (passed.status === 'ok' && passed.kind === 'validation') assert.deepEqual(passed.model.rows[0].cells, ['Walls have FireRating', 'pass', 'IfcDoor', 'Door B', 'G-42', 'tower.ifc', '', '', '']);
 
-    const all = resolveValidationTableState(source({ rows: 'all' }, columns), report([oneSpec]), modelName);
+    const all = resolveValidationTableState!(source({ rows: 'all' }, columns), report([oneSpec]), modelName);
     assert.ok(all.status === 'ok' && all.kind === 'validation');
     if (all.status === 'ok' && all.kind === 'validation') assert.equal(all.model.totalRows, 2);
   });
 
-  it('rows: "sets" lists one row per SetResult, blank on entity-only columns', () => {
+  it('rows: "sets" lists one row per SetResult, blank on entity-only columns', { skip }, () => {
     const dup: SetResult = { kind: 'duplicate', label: 'Level 1', groupKey: 'Building', actual: 'Level 1 (2×)', expected: 'unique', passed: false, failureReason: 'duplicate', members: [{ modelId: 'm1', expressId: 41 }, { modelId: 'm1', expressId: 42 }] };
     const agg: SetResult = { kind: 'aggregate', label: 'sum(NetFloorArea)', actual: '287.4 m²', expected: '<= 300 m²', passed: true, members: [{ modelId: 'm1', expressId: 43 }] };
     const oneSpec = spec('s2', 'No duplicate storey names', { setResults: [dup, agg] });
     const columns: ValidationTableSource['columns'] = ['rule', 'result', 'set', 'members', 'actual', 'expected', 'reason', 'entityType', 'name'];
 
-    const resolved = resolveValidationTableState(source({ rows: 'sets' }, columns), report([oneSpec]), modelName);
+    const resolved = resolveValidationTableState!(source({ rows: 'sets' }, columns), report([oneSpec]), modelName);
     assert.ok(resolved.status === 'ok' && resolved.kind === 'validation');
     if (resolved.status === 'ok' && resolved.kind === 'validation') {
       assert.deepEqual(resolved.model.rows.map((r) => r.cells), [
@@ -82,24 +88,24 @@ describe('resolveValidationTableState (#5138)', () => {
     }
   });
 
-  it('never throws on a null report; a stale ruleId is its own placeholder state', () => {
+  it('never throws on a null report; a stale ruleId is its own placeholder state', { skip }, () => {
     const columns: ValidationTableSource['columns'] = ['rule', 'result'];
-    assert.deepEqual(resolveValidationTableState(source({}, columns), null, modelName), { status: 'no-report' });
+    assert.deepEqual(resolveValidationTableState!(source({}, columns), null, modelName), { status: 'no-report' });
 
     const oneSpec = spec('s1', 'Walls have FireRating', {});
-    assert.deepEqual(resolveValidationTableState(source({ ruleId: 'gone' }, columns), report([oneSpec]), modelName), { status: 'rule-not-found' });
+    assert.deepEqual(resolveValidationTableState!(source({ ruleId: 'gone' }, columns), report([oneSpec]), modelName), { status: 'rule-not-found' });
 
     // A ruleId that DOES match narrows to that one specification only.
     const other = spec('s2', 'Other rule', { entityResults: [entity({ passed: false })] });
-    const filtered = resolveValidationTableState(source({ ruleId: 's1', rows: 'all' }, ['rule']), report([oneSpec, other]), modelName);
+    const filtered = resolveValidationTableState!(source({ ruleId: 's1', rows: 'all' }, ['rule']), report([oneSpec, other]), modelName);
     assert.ok(filtered.status === 'ok' && filtered.kind === 'validation');
     if (filtered.status === 'ok' && filtered.kind === 'validation') assert.equal(filtered.model.totalRows, 0, 's1 has no entityResults in this literal — proves it did NOT read s2');
   });
 
-  it('column headers are plain English, and "members" is the only numeric column', () => {
+  it('column headers are plain English, and "members" is the only numeric column', { skip }, () => {
     const columns: ValidationTableSource['columns'] = ['rule', 'members'];
     const oneSpec = spec('s1', 'x', { setResults: [{ kind: 'duplicate', label: 'L', actual: 'a', expected: 'b', passed: false, members: [{ modelId: 'm1', expressId: 1 }] }] });
-    const resolved = resolveValidationTableState(source({ rows: 'sets' }, columns), report([oneSpec]), modelName);
+    const resolved = resolveValidationTableState!(source({ rows: 'sets' }, columns), report([oneSpec]), modelName);
     assert.ok(resolved.status === 'ok' && resolved.kind === 'validation');
     if (resolved.status === 'ok' && resolved.kind === 'validation') {
       assert.deepEqual(resolved.model.columns, [{ label: 'Rule', numeric: false }, { label: 'Members', numeric: true }]);

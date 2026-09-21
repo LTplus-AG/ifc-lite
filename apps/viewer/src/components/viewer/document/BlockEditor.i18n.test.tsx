@@ -14,7 +14,8 @@ import type { BCFTopic } from '@ifc-lite/bcf';
 import { cleanup, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { BindingContext } from '@/lib/document/bindings';
-import type { ChartBlock, ImageBlock, SpacerBlock, TextBlock, TopicBlock } from '@/lib/document/types';
+import type { ChartBlock, ImageBlock, SpacerBlock, TableBlock, TextBlock, TopicBlock } from '@/lib/document/types';
+import { LIST_PRESETS } from '@/lib/lists';
 import { BlockEditor } from './BlockEditor.js';
 
 const BINDINGS: BindingContext = { models: [], activeModelId: null, today: new Date(0) };
@@ -43,6 +44,12 @@ const TEST_LOCALE: Catalogue = {
   'document.block.topicNotLoaded': '{guid} (nicht geladen)',
   'document.block.pickTopicOption': 'Thema wählen…',
   'document.block.topicSnapshotLabel': 'Ansichtspunkt-Schnappschuss',
+  'document.block.kindTable': 'Tabelle',
+  'document.block.tableReplaceOption': '{name} — ersetzen mit…',
+  'document.block.tableEditInLists': 'In Listen bearbeiten',
+  'document.block.tableRowsLabel': 'Zeilen',
+  'document.block.tableSummary': '{columns} Spalten · {view}',
+  'document.block.tableViewFlat': 'eine Zeile je Element',
 };
 
 afterEach(() => {
@@ -125,6 +132,26 @@ describe('BlockEditor localization (#4918)', () => {
     assert.equal(ui.textContent?.includes('Thema'), true);
     assert.equal(ui.textContent?.includes('guid-123 (nicht geladen)'), true, 'the guid is kept verbatim inside the translated template');
     assert.equal(ui.textContent?.includes('Ansichtspunkt-Schnappschuss'), true);
+  });
+
+  it('translates the table block (#5142): kind badge, the replace-with option keeping the list name, the rows label and the summary', () => {
+    const list = { ...LIST_PRESETS[0], id: 'copy-1' };
+    const block: TableBlock = { kind: 'table', id: 'b6', source: { kind: 'list', list, fromListId: LIST_PRESETS[0].id } };
+    const ui = render(
+      <BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} onChange={noop} onMove={noop} onRemove={noop} />,
+    );
+    assert.equal(ui.textContent?.includes(`${list.name} — replace with…`), true, 'the list name is model content, not translated');
+    assert.equal(ui.textContent?.includes('Edit in Lists'), true);
+    assert.equal(ui.textContent?.includes(`${list.columns.length} columns · one row per element`), true);
+
+    registerLocale('block-editor-x-table', TEST_LOCALE);
+    act(() => setLocale('block-editor-x-table'));
+
+    assert.equal(ui.querySelector('[data-block-editor]')?.textContent?.includes('Tabelle'), true);
+    assert.equal(ui.textContent?.includes(`${list.name} — ersetzen mit…`), true, 'the list name stays literal inside the translated template');
+    assert.equal(ui.textContent?.includes('In Listen bearbeiten'), true);
+    assert.equal(ui.textContent?.includes('Zeilen'), true);
+    assert.equal(ui.textContent?.includes(`${list.columns.length} Spalten · eine Zeile je Element`), true);
   });
 
   it('translates the spacer block\'s kind badge', () => {

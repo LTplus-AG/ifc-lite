@@ -16,8 +16,10 @@ import { useViewerStore } from '@/store';
 import type { BindingContext } from '@/lib/document/bindings';
 import type { DocumentSpec } from '@/lib/document/types';
 import { applyChartFilter } from '@/lib/charts/source-filter';
+import type { TableState } from '@/lib/document/resolve-table';
 import { useChartDatasets } from '../charts/useChartDatasets';
 import { useChartSourceFilters } from '../charts/useChartSourceFilters';
+import { useDocumentTables } from './useDocumentTables';
 
 export interface DocumentData {
   bindings: BindingContext;
@@ -28,6 +30,8 @@ export interface DocumentData {
    *  `Aggregation`, so the message is the only thing that distinguishes them. */
   chartMessages: Map<string, string>;
   topics: Map<string, BCFTopic>;
+  /** Table block id → its list run (#5142); preview and PDF print the same rows. */
+  tables: ReadonlyMap<string, TableState>;
 }
 
 const ALL_SCOPE = { kind: 'all' as const };
@@ -84,6 +88,7 @@ export function useDocumentData(document: DocumentSpec | null): DocumentData {
   }, [document, datasets, sourceFilters]);
 
   const topics = useMemo(() => bcfProject?.topics ?? new Map<string, BCFTopic>(), [bcfProject]);
+  const tables = useDocumentTables(document);
 
-  return { bindings, aggregations, chartMessages, topics };
+  return { bindings, aggregations, chartMessages, topics, tables };
 }

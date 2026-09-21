@@ -17,13 +17,31 @@ import { compileNameMatcher, isNamePattern } from '@ifc-lite/lists';
 import type { NumericOp, SetOp, StringOp, TextKind, ValueOp } from './filter-rules.js';
 
 /**
- * Lower-case a candidate that may be undefined at runtime — crash-safety
- * only (#1195). Does NOT decide what "no value" means to an operator:
- * `undefined` (absent) vs `''` (explicitly empty) is a real distinction a
- * caller must resolve before calling this — see `stringOpMatches` (#4930).
+ * Trailing options accepted by every op-matching function below (#5138 PR 3).
+ * Omitted entirely = today's behaviour EXACTLY: search, saved filters and
+ * clash presets never pass this, so they fold case unconditionally (like
+ * `fold()` always did before this flag existed) and compare numbers with the
+ * historical absolute `1e-9` epsilon. Only the information-validation engine
+ * passes it, with `caseSensitive: rule.caseSensitive ?? true` (IDS parity,
+ * bSI #346) and `tolerance: rule.tolerance ?? 1e-6` (relative, bSI #418).
  */
-function lower(s: string | null | undefined): string {
-  return (s ?? '').toLowerCase();
+export interface OpMatchOptions {
+  caseSensitive?: boolean;
+  tolerance?: number;
+}
+
+/**
+ * Fold a candidate that may be undefined at runtime — crash-safety only
+ * (#1195) — to lower-case UNLESS `caseSensitive` is `true`. Does NOT decide
+ * what "no value" means to an operator: `undefined` (absent) vs `''`
+ * (explicitly empty) is a real distinction a caller must resolve before
+ * calling this — see `stringOpMatches` (#4930). `caseSensitive` omitted (the
+ * only path before #5138 PR 3) always folds, so this is byte-for-byte the
+ * historical `lower()` for every existing caller.
+ */
+function fold(s: string | null | undefined, caseSensitive?: boolean): string {
+  const v = s ?? '';
+  return caseSensitive ? v : v.toLowerCase();
 }
 
 /**
@@ -67,9 +85,14 @@ export function regexOpMatches(candidate: string, value: string, kind: TextKind 
   return compileNameMatcher(literal)(candidate ?? '');
 }
 
-export function setOpMatches(op: SetOp, candidate: string, values: readonly string[]): boolean {
-  const c = lower(candidate);
-  const hit = values.some((v) => lower(v) === c);
+export function setOpMatches(
+  op: SetOp,
+  candidate: string,
+  values: readonly string[],
+  opts?: OpMatchOptions,
+): boolean {
+  const c = fold(candidate, opts?.caseSensitive);
+  const hit = values.some((v) => fold(v, opts?.caseSensitive) === c);
   return op === 'in' ? hit : !hit;
 }
 
@@ -95,6 +118,7 @@ export function stringOpMatches(
   candidate: string | undefined,
   value: string,
   valueKind?: TextKind,
+  opts?: OpMatchOptions,
 ): boolean {
   if (candidate === undefined) {
     switch (op) {
@@ -109,8 +133,8 @@ export function stringOpMatches(
         return true;
     }
   }
-  const a = lower(candidate);
-  const b = lower(value);
+  const a = fold(candidate, opts?.caseSensitive);
+  const b = fold(value, opts?.caseSensitive);
   switch (op) {
     case 'eq':          return a === b;
     case 'ne':          return a !== b;
@@ -134,6 +158,7 @@ export function matchStringAnyNone(
   candidates: readonly (string | undefined)[],
   value: string,
   valueKind?: TextKind,
+  opts?: OpMatchOptions,
 ): boolean {
   if (candidates.length === 0) return false;
   switch (op) {
@@ -141,17 +166,37 @@ export function matchStringAnyNone(
     case 'contains':
     case 'startsWith':
     case 'matches':
-      return candidates.some((c) => stringOpMatches(op, c, value, valueKind));
+      return candidates.some((c) => stringOpMatches(op, c, value, valueKind, opts));
     case 'ne':
-      return candidates.every((c) => stringOpMatches('eq', c, value) === false);
+      return candidates.every((c) => stringOpMatches('eq', c, value, undefined, opts) === false);
     case 'notContains':
-      return candidates.every((c) => stringOpMatches('contains', c, value) === false);
+      return candidates.every((c) => stringOpMatches('contains', c, value, undefined, opts) === false);
     case 'notMatches':
-      return candidates.every((c) => stringOpMatches('matches', c, value, valueKind) === false);
+      return candidates.every((c) => stringOpMatches('matches', c, value, valueKind, opts) === false);
   }
 }
 
-export function numericOpMatches(op: NumericOp, candidate: number, value: number): boolean {
+/**
+ * `opts.tolerance` (relative, bSI #418 — e.g. `1e-6`) replaces the absolute
+ * `1e-9` epsilon below for `eq`/`ne` and widens `gte`/`lte` to accept a value
+ * within tolerance of the boundary; `gt`/`lt` stay strict (a tolerant strict
+ * inequality would let a value equal to the boundary pass both `gt` and its
+ * own negation's neighbour). Omitted `opts`/`tolerance` = today's absolute-
+ * epsilon behaviour, unchanged.
+ */
+export function numericOpMatches(op: NumericOp, candidate: number, value: number, opts?: OpMatchOptions): boolean {
+  const tol = opts?.tolerance;
+  if (tol !== undefined) {
+    const eps = tol * Math.max(Math.abs(candidate), Math.abs(value), 1);
+    switch (op) {
+      case 'eq':  return Math.abs(candidate - value) <= eps;
+      case 'ne':  return Math.abs(candidate - value) > eps;
+      case 'gt':  return candidate > value;
+      case 'gte': return candidate >= value - eps;
+      case 'lt':  return candidate < value;
+      case 'lte': return candidate <= value + eps;
+    }
+  }
   // The Rust side uses 1e-9 as the epsilon for eq/ne. Match it here for
   // IDS-style parity — IFC quantities are stored as IFC4 IfcReal so the
   // tolerance is large enough to absorb f32→f64 rounding from the parser.
@@ -177,14 +222,15 @@ export function valueOpMatches(
   psetVal: string,
   ruleVal: string,
   valueKind?: TextKind,
+  opts?: OpMatchOptions,
 ): boolean {
   switch (op) {
     case 'isSet':       return (psetVal ?? '').length > 0;
     case 'isNotSet':    return (psetVal ?? '').length === 0;
-    case 'eq':          return lower(psetVal) === lower(ruleVal);
-    case 'ne':          return lower(psetVal) !== lower(ruleVal);
-    case 'contains':    return lower(psetVal).includes(lower(ruleVal));
-    case 'notContains': return !lower(psetVal).includes(lower(ruleVal));
+    case 'eq':          return fold(psetVal, opts?.caseSensitive) === fold(ruleVal, opts?.caseSensitive);
+    case 'ne':          return fold(psetVal, opts?.caseSensitive) !== fold(ruleVal, opts?.caseSensitive);
+    case 'contains':    return fold(psetVal, opts?.caseSensitive).includes(fold(ruleVal, opts?.caseSensitive));
+    case 'notContains': return !fold(psetVal, opts?.caseSensitive).includes(fold(ruleVal, opts?.caseSensitive));
     case 'matches':     return regexOpMatches(psetVal, ruleVal, valueKind);
     case 'notMatches':  return !regexOpMatches(psetVal, ruleVal, valueKind);
     case 'gt':
@@ -194,7 +240,7 @@ export function valueOpMatches(
       const cv = Number.parseFloat(psetVal);
       const rv = Number.parseFloat(ruleVal);
       if (!Number.isFinite(cv) || !Number.isFinite(rv)) return false;
-      return numericOpMatches(op, cv, rv);
+      return numericOpMatches(op, cv, rv, opts);
     }
   }
 }

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { ChevronDown, ChevronRight, FilePlus, Focus, Pencil, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, FilePlus, Focus, Pencil, Plus, Trash2, X } from 'lucide-react';
 import type { Clash } from '@ifc-lite/clash';
 import { useTranslation } from '@/i18n';
 
@@ -17,6 +17,7 @@ interface ClashGroupHeaderProps {
   onToggle: (key: string) => void;
   onFocus: (groupId: string) => void;
   onCreateBcf: (groupId: string) => void;
+  onAddToGroup: (groupId: string) => void;
   onRename: (groupId: string, label: string) => void;
   onRemove: (groupId: string) => void;
 }
@@ -32,6 +33,7 @@ export function ClashGroupHeader({
   onToggle,
   onFocus,
   onCreateBcf,
+  onAddToGroup,
   onRename,
   onRemove,
 }: ClashGroupHeaderProps) {
@@ -53,6 +55,9 @@ export function ClashGroupHeader({
         <div className="flex items-center pr-1">
           <button className="p-1 text-muted-foreground hover:text-foreground" title={t('clashGroups.focus')} onClick={() => onFocus(manualGroupId)}>
             <Focus className="h-3.5 w-3.5" />
+          </button>
+          <button className="p-1 text-muted-foreground hover:text-foreground" title={t('clashGroups.addToGroup')} onClick={() => onAddToGroup(manualGroupId)}>
+            <Plus className="h-3.5 w-3.5" />
           </button>
           <button className="p-1 text-muted-foreground hover:text-foreground" title={t('clashGroups.createBcf')} disabled={creatingTopic} onClick={() => onCreateBcf(manualGroupId)}>
             <FilePlus className="h-3.5 w-3.5" />

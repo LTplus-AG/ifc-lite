@@ -494,8 +494,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   const {
     sections: manualSections, groupCount: manualGroupCount, membersById: manualMembersById,
     selected: selectedClashes, checkedIds: checkedClashIds, setCheckedIds: setCheckedClashIds,
-    dialog: groupDialog, setDialog: setGroupDialog, openCreate: openCreateGroupDialog,
-    submitDialog: submitGroupDialog, removeGroup: removeManualGroup,
+    dialog: groupDialog, setDialog: setGroupDialog, openCreate: openCreateGroupDialog, openAddToGroup,
+    submitDialog: submitGroupDialog, removeGroup: removeManualGroup, dialogProps,
     removeMember: removeManualGroupMember, createBcfTopic: createBcfTopicForGroup,
   } = useManualClashGroups({
     clashes: result?.clashes, visibleClashes, sortBy, focusMode, focusClashes, creatingTopic, setCreatingTopic,
@@ -1189,6 +1189,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                       creatingTopic={creatingTopic}
                       onToggle={toggleSection}
                       onFocus={(groupId) => focusClashes(manualMembersById.get(groupId) ?? [], focusMode)}
+                      onAddToGroup={(g) => (openAddToGroup(g), showManualGroups())}
                       onCreateBcf={(groupId) => { void createBcfTopicForGroup(groupId); }}
                       onRename={(groupId, label) => setGroupDialog({ mode: 'rename', groupId, initialName: label })}
                       onRemove={removeManualGroup}
@@ -1292,8 +1293,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       </div>
       <ClashManualGroupDialog
         open={groupDialog !== null}
-        initialName={groupDialog?.initialName ?? ''}
-        memberCount={groupDialog?.mode === 'create' ? selectedClashes.length : 0}
+        initialName={dialogProps.initialName}
+        memberCount={dialogProps.memberCount}
         mode={groupDialog?.mode ?? 'create'}
         onOpenChange={(open) => { if (!open) setGroupDialog(null); }}
         onSubmit={submitGroupDialog}

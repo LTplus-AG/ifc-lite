@@ -88,7 +88,7 @@ afterEach(async () => {
   useViewerStore.setState({ clashResult: null, clashGroups: null, bcfProject: null });
 });
 
-describe('ClashPanel manual groups (#4921)', () => {
+describe('ClashPanel manual groups (#4921, #5122)', () => {
   it('creates, renames, edits, and ungroups a persisted expandable group', async () => {
     const checkboxes = [...container!.querySelectorAll('input[type="checkbox"]')]
       .filter((input) => input.getAttribute('aria-label')?.startsWith('Select clash '));
@@ -188,5 +188,77 @@ describe('ClashPanel manual groups (#4921)', () => {
     assert.equal(closeRequested, false);
     assert.ok(document.body.querySelector('input[maxlength="100"]'),
       'the entered name remains available for retry');
+  });
+
+  it('adds a clash to an existing group (#5122)', async () => {
+    const checkboxes = [...container!.querySelectorAll('input[type="checkbox"]')]
+      .filter((input) => input.getAttribute('aria-label')?.startsWith('Select clash '));
+    assert.equal(checkboxes.length, 2, 'each pair row must offer grouping selection');
+
+    // Create initial group with first clash
+    await act(async () => {
+      (checkboxes[0] as HTMLInputElement).click();
+    });
+    const groupButton = buttonWithText('Group selected (1)');
+    assert.ok(groupButton.disabled, 'create button requires 2+ clashes');
+
+    // Deselect and select both for initial group creation
+    await act(async () => {
+      (checkboxes[0] as HTMLInputElement).click();
+    });
+    await act(async () => {
+      for (const checkbox of checkboxes) (checkbox as HTMLInputElement).click();
+    });
+    await act(async () => buttonWithText('Group selected (2)').click());
+    await setDialogName('Riser coordination');
+    await act(async () => buttonWithText('Create group').click());
+
+    const initialStored = JSON.parse(localStorage.getItem(MANUAL_CLASH_GROUPS_KEY) ?? 'null') as { groups: Array<{ name: string; members: unknown[] }> };
+    assert.equal(initialStored.groups[0].members.length, 2, 'initial group has 2 members');
+
+    // Now we have result() with 2 clashes (c1, c2). Let's create a third result for testing adds.
+    const extendedResult: ClashResult = {
+      clashes: [clash('c1', 1, 2), clash('c2', 3, 4), clash('c3', 5, 6)],
+      summary: summarizeClashes([clash('c1', 1, 2), clash('c2', 3, 4), clash('c3', 5, 6)]),
+      rulesRun: [{ id: 'coordination', name: 'Coordination', a: 'IfcWall', b: 'IfcPipeSegment', mode: 'hard' }],
+      settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
+    };
+    await act(async () => {
+      useViewerStore.setState({ clashResult: extendedResult });
+    });
+
+    // Get the "Add" button from the group header
+    const addButton = container!.querySelector('button[title="Add selected clashes to this group"]');
+    assert.ok(addButton instanceof HTMLButtonElement, 'add-to-group button must render');
+
+    // Select the new clash (c3)
+    const newCheckboxes = [...container!.querySelectorAll('input[type="checkbox"]')]
+      .filter((input) => input.getAttribute('aria-label')?.startsWith('Select clash '));
+    assert.equal(newCheckboxes.length, 3, 'must have 3 checkboxes for 3 clashes');
+
+    // Find and click the checkbox for c3
+    const c3Checkbox = newCheckboxes.find((cb) => {
+      const label = cb.getAttribute('aria-label') ?? '';
+      return label.includes('c3');
+    });
+    assert.ok(c3Checkbox instanceof HTMLInputElement, 'c3 checkbox must exist');
+    await act(async () => {
+      c3Checkbox.click();
+    });
+
+    // Click the Add button
+    await act(async () => {
+      addButton.click();
+    });
+
+    // The dialog should appear with "Add to Riser coordination" message
+    const dialogButton = buttonWithText('Add');
+    await act(async () => {
+      dialogButton.click();
+    });
+
+    const afterAdd = JSON.parse(localStorage.getItem(MANUAL_CLASH_GROUPS_KEY) ?? 'null') as { groups: Array<{ name: string; members: unknown[] }> };
+    assert.equal(afterAdd.groups[0].members.length, 3, 'group now has 3 members after add');
+    assert.equal(afterAdd.groups[0].name, 'Riser coordination', 'group name unchanged');
   });
 });

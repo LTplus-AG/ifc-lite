@@ -28,6 +28,9 @@ fn point_on_segment(point: [f64; 2], a: [f64; 2], b: [f64; 2]) -> bool {
 /// values still produce the retained-data diagnostic.
 fn elevations_agree(actual: f64, expected: f64, start: f64, end: f64) -> bool {
     const MAX_AFFINE_ROUNDING_UNITS: f64 = 8.0;
+    if !(actual.is_finite() && expected.is_finite() && start.is_finite() && end.is_finite()) {
+        return false;
+    }
     let scale = actual
         .abs()
         .max(expected.abs())
@@ -35,6 +38,47 @@ fn elevations_agree(actual: f64, expected: f64, start: f64, end: f64) -> bool {
         .max(end.abs())
         .max(1.0);
     (actual - expected).abs() <= MAX_AFFINE_ROUNDING_UNITS * f64::EPSILON * scale
+}
+
+/// Interpolate without first subtracting endpoint elevations: finite endpoint
+/// values of opposite sign can make that difference overflow even though the
+/// affine result is finite. The factors form a convex combination because the
+/// caller has already established that the vertex is on the closed segment.
+fn interpolate_elevation(start: f64, end: f64, t: f64) -> Option<f64> {
+    if !t.is_finite() {
+        return None;
+    }
+    let fraction = t.clamp(0.0, 1.0);
+    let expected = (1.0 - fraction) * start + fraction * end;
+    expected.is_finite().then_some(expected)
+}
+
+/// Calculate a segment fraction in scaled coordinates so finite coordinate
+/// differences and their squared length cannot overflow before interpolation.
+fn segment_fraction(point: [f64; 2], start: [f64; 2], end: [f64; 2]) -> Option<f64> {
+    let scale = point[0]
+        .abs()
+        .max(point[1].abs())
+        .max(start[0].abs())
+        .max(start[1].abs())
+        .max(end[0].abs())
+        .max(end[1].abs())
+        .max(1.0);
+    if !scale.is_finite() {
+        return None;
+    }
+    let dx = end[0] / scale - start[0] / scale;
+    let dy = end[1] / scale - start[1] / scale;
+    let (numerator, denominator) = if dx.abs() >= dy.abs() {
+        (point[0] / scale - start[0] / scale, dx)
+    } else {
+        (point[1] / scale - start[1] / scale, dy)
+    };
+    if denominator == 0.0 {
+        return None;
+    }
+    let fraction = numerator / denominator;
+    fraction.is_finite().then_some(fraction.clamp(0.0, 1.0))
 }
 
 /// Verify the Z that a collinear split vertex would inherit before topology
@@ -49,19 +93,18 @@ pub(super) fn validate_split_elevations(
         let (end_northing, end_easting, end_elevation) = vertices[b];
         let start_xy = [start_easting, start_northing];
         let end_xy = [end_easting, end_northing];
-        let dx = end_xy[0] - start_xy[0];
-        let dy = end_xy[1] - start_xy[1];
-        let length_squared = dx * dx + dy * dy;
         for (index, &(northing, easting, elevation)) in vertices.iter().enumerate() {
             progress().map_err(SplitElevationValidationError::Progress)?;
             if index == a || index == b || !point_on_segment([easting, northing], start_xy, end_xy)
             {
                 continue;
             }
-            let t = ((easting - start_easting) * dx + (northing - start_northing) * dy)
-                / length_squared;
-            let expected = start_elevation + (end_elevation - start_elevation) * t;
-            if !elevations_agree(elevation, expected, start_elevation, end_elevation) {
+            let fraction = segment_fraction([easting, northing], start_xy, end_xy);
+            let expected = fraction
+                .and_then(|value| interpolate_elevation(start_elevation, end_elevation, value));
+            if !expected.is_some_and(|value| {
+                elevations_agree(elevation, value, start_elevation, end_elevation)
+            }) {
                 return Err(SplitElevationValidationError::Diagnostic(LandXmlTerrainDiagnostic {
                     code: TerrainCode::ConflictingElevation,
                     message: "a collinear constraint vertex has an elevation inconsistent with its segment".to_owned(),

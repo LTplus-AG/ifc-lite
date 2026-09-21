@@ -266,6 +266,28 @@ fn issue_5043_accepts_affine_split_elevation_rounding_on_exact_constraints(
 }
 
 #[test]
+fn issue_5043_refuses_overflowing_affine_split_elevation_conflicts(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // The mathematical midpoint of each horizontal boundary edge is zero.
+    // Computing `end - start` first overflows for these finite endpoints and
+    // used to make the comparison accept `inf <= inf`.
+    let source = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="overflow"><Definition surfType="TIN"><Boundaries><Boundary bndType="outer"><PntList3D>0 0 -1e308 0 10 1e308 10 10 1e308 10 0 -1e308</PntList3D></Boundary></Boundaries><Breaklines><Breakline brkType="standard"><PntList3D>0 5 1e307 10 5 1e307</PntList3D></Breakline></Breaklines></Definition></Surface></Surfaces></LandXML>"#
+    );
+    let parsed = parse(source.as_bytes())?;
+    let surface = &parsed.surfaces[0];
+    assert_eq!(
+        surface.topology_origin,
+        LandXmlTopologyOrigin::PreservedOnly
+    );
+    assert_eq!(
+        surface.terrain_diagnostic.as_ref().map(|value| value.code),
+        Some(LandXmlTerrainDiagnosticCode::ConflictingElevation)
+    );
+    Ok(())
+}
+
+#[test]
 fn issue_5043_preserves_faceless_tin_on_conflicting_elevation_or_crossing_constraints(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let boundary = r#"<Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></Boundary></Boundaries>"#;

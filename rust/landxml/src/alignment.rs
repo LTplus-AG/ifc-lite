@@ -14,5 +14,6 @@ pub use model::*;
 pub use numeric::{LandXmlAlignmentProbe, LandXmlNumericDiagnostic, LandXmlStationMapping};
 pub use parser::{
     parse_landxml_alignments, parse_landxml_alignments_optional,
-    parse_landxml_alignments_with_cancel, LandXmlAlignmentLimits,
+    parse_landxml_alignments_optional_with_cancel, parse_landxml_alignments_with_cancel,
+    LandXmlAlignmentLimits,
 };

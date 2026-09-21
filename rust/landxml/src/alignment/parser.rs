@@ -54,6 +54,15 @@ pub fn parse_landxml_alignments(input: &[u8]) -> Result<LandXmlAlignmentDocument
 pub fn parse_landxml_alignments_optional(input: &[u8]) -> Result<LandXmlAlignmentDocument> {
     parse_landxml_alignments_inner(input, &LandXmlAlignmentLimits::default(), None, false)
 }
+/// Parse a source with explicit resource limits while allowing terrain-only
+/// documents to return an empty alignment collection.
+pub fn parse_landxml_alignments_optional_with_cancel(
+    input: &[u8],
+    limits: &LandXmlAlignmentLimits,
+    cancelled: Option<&dyn LandXmlCancellation>,
+) -> Result<LandXmlAlignmentDocument> {
+    parse_landxml_alignments_inner(input, limits, cancelled, false)
+}
 /// Parse alignment source records with cancellation and explicit record limits.
 pub fn parse_landxml_alignments_with_cancel(
     input: &[u8],

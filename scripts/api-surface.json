@@ -8454,6 +8454,7 @@
     "LandXmlCantStationJs: interface",
     "LandXmlExtensionJs: interface",
     "LandXmlPlanPointJs: interface",
+    "LandXmlParseOptionsJs: interface",
     "LandXmlPointJs: interface",
     "LandXmlPointLocationJs: type",
     "LandXmlPolylineJs: interface",

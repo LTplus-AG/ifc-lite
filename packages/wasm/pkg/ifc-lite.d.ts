@@ -56,6 +56,7 @@ export interface LandXmlUnsupportedTransitionJs { source_id: string; spi_type: s
 export interface LandXmlAlignmentProbeJs { alignment_source_id: string; segment_source_id: string; geometric_distance: number; station: { geometric_distance: number; displayed_back: number; displayed_ahead: number; is_equation_boundary: boolean }; northing: number; easting: number; tangent_northing: number; tangent_easting: number; }
 /** Neighbouring authored CantStation records; values are never interpolated. */
 export interface LandXmlAlignmentInspectionJs { cant?: { internal_station: number; station: { geometric_distance: number; displayed_back: number; displayed_ahead: number; is_equation_boundary: boolean }; previous?: LandXmlCantStationJs; next?: LandXmlCantStationJs }; superelevations: LandXmlSuperelevationJs[]; }
+export interface LandXmlParseOptionsJs { maxBytes?: number; maxDepth?: number; maxTextBytes?: number; maxPoints?: number; maxFaces?: number; maxWork?: number; maxAlignments?: number; maxAlignmentSegments?: number; maxAlignmentPoints?: number; maxStationEquations?: number; maxCantStations?: number; maxSuperelevationEvents?: number; cancelled?: boolean; }
 
 
 
@@ -715,6 +716,13 @@ export class IfcAPI {
      * handle either form and mixed documents uniformly.
      */
     parseLandXmlSourceBytes(data: Uint8Array): LandXmlSourceDocumentJs;
+    /**
+     * Parse a source with explicit hostile-input bounds. Passing
+     * `cancelled: true` refuses before entering WASM; in-flight browser
+     * cancellation is performed by terminating the worker that owns this
+     * synchronous operation.
+     */
+    parseLandXmlSourceBytesWithOptions(data: Uint8Array, options: any): LandXmlSourceDocumentJs;
     /**
      * Parse a LandXML 1.2 TIN document from its original bytes.
      *
@@ -2261,6 +2269,7 @@ export interface InitOutput {
     readonly ifcapi_parseGridLines: (a: number, b: number, c: number) => number;
     readonly ifcapi_parseGridLinesInFrame: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_parseLandXmlSourceBytes: (a: number, b: number, c: number, d: number) => void;
+    readonly ifcapi_parseLandXmlSourceBytesWithOptions: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_parseLandXmlTinBytes: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_parseSymbolicRepresentations: (a: number, b: number, c: number) => number;
     readonly ifcapi_parseSymbolicRepresentationsInFrame: (a: number, b: number, c: number, d: number, e: number) => void;

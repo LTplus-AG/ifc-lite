@@ -12,11 +12,12 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Renderer } from '@ifc-lite/renderer';
+import { Renderer, type PickResult } from '@ifc-lite/renderer';
 import {
   COMMON_ORIGIN, LARGE_ORIGIN, PICK_CSS_X, PICK_CSS_Y, CPU_PICK_CSS_X, CPU_PICK_CSS_Y, GEOMETRIC_TOLERANCE_METRES,
-  baseReport, distance, instancedShard, largeExtentMesh, type RteGpuWitnessReport, witnessMesh,
+  baseReport, distance, instancedShard, largeExtentMesh, shadowCasterMesh, type PickEvidence, type RteGpuWitnessReport, witnessMesh,
 } from './RteGpuWitnessFixtures';
+import { isForeground, screenshotDifference, screenshotPixel } from './RteGpuWitnessPixels';
 
 declare global {
   interface Window {
@@ -29,18 +30,14 @@ function publish(report: RteGpuWitnessReport): void {
   window.__ifc_lite_rte_gpu_witness__ = report;
 }
 
-/** Read a production `Renderer.captureScreenshot()` pixel without touching the
- * WebGPU canvas directly (2D `getImageData` is forbidden on it). */
-async function screenshotPixel(dataUrl: string | null, x: number, y: number): Promise<[number, number, number, number] | null> {
-  if (!dataUrl) return null;
-  const bitmap = await createImageBitmap(await (await fetch(dataUrl)).blob());
-  const probe = new OffscreenCanvas(bitmap.width, bitmap.height);
-  const context = probe.getContext('2d');
-  if (!context) throw new Error('2D screenshot probe context is unavailable.');
-  context.drawImage(bitmap, 0, 0);
-  const pixel = context.getImageData(x, y, 1, 1).data;
-  bitmap.close();
-  return [pixel[0], pixel[1], pixel[2], pixel[3]];
+function pickEvidence(pick: PickResult | null): PickEvidence | null {
+  if (!pick) return null;
+  return {
+    expressId: pick.expressId,
+    ...(pick.modelIndex === undefined ? {} : { modelIndex: pick.modelIndex }),
+    ...(pick.geometryItemId === undefined ? {} : { geometryItemId: pick.geometryItemId }),
+    ...(pick.worldXYZ === undefined ? {} : { worldXYZ: [pick.worldXYZ.x, pick.worldXYZ.y, pick.worldXYZ.z] as [number, number, number] }),
+  };
 }
 
 async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessReport> {
@@ -74,7 +71,7 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     flat.geometryItemId = 70_101;
     textured.modelIndex = 12;
     textured.geometryItemId = 70_102;
-    renderer.loadGeometry([flat, textured, largeExtentMesh()]);
+    renderer.loadGeometry([flat, textured, shadowCasterMesh(), largeExtentMesh()]);
     const device = renderer.getGPUDevice();
     if (!device) throw new Error('Renderer initialized without a live GPU device.');
     renderer.getScene().addInstancedShard(device, instancedShard());
@@ -97,7 +94,8 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     const camera = renderer.getCamera();
     camera.setPosition(COMMON_ORIGIN[0], COMMON_ORIGIN[1], COMMON_ORIGIN[2] + 60);
     camera.setTarget(COMMON_ORIGIN[0], COMMON_ORIGIN[1], COMMON_ORIGIN[2]);
-    renderer.render({ clearColor: [0.02, 0.02, 0.02, 1] });
+    const sunEnvironment = { sunDirection: [0.4, 1, 0.35] as [number, number, number] };
+    renderer.render({ clearColor: [0.02, 0.02, 0.02, 1], environment: sunEnvironment });
     await device.queue.onSubmittedWorkDone();
     const lineScreenshot = await renderer.captureScreenshot();
     const linePixel = await screenshotPixel(lineScreenshot, PICK_CSS_X, PICK_CSS_Y);
@@ -126,58 +124,80 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
         [cpuRay.intersection.point.x, cpuRay.intersection.point.y, cpuRay.intersection.point.z],
       )
       : null;
-    // The measurement oracle deliberately stays in the source f64 frame.
-    const measurementResidualMetres = Math.abs(distance(
-      [source.origin[0] - 10, source.origin[1] - 8, source.origin[2]],
-      [source.origin[0] + 10, source.origin[1] - 8, source.origin[2]],
-    ) - 20);
+    // A second production ray/pick pair is only 1.5625 cm away. Measurement
+    // compares those independently reconstructed f64 intersections; it is not
+    // a fixture-coordinate arithmetic proxy.
+    const centimetreTarget: [number, number, number] = [COMMON_ORIGIN[0] + 0.015625, COMMON_ORIGIN[1], COMMON_ORIGIN[2]];
+    camera.setPosition(centimetreTarget[0], centimetreTarget[1], centimetreTarget[2] + 60);
+    camera.setTarget(...centimetreTarget);
+    renderer.render({ clearColor: [0.02, 0.02, 0.02, 1], environment: sunEnvironment });
+    await device.queue.onSubmittedWorkDone();
+    const centimetreGpuPick = await renderer.pick(PICK_CSS_X, PICK_CSS_Y);
+    const centimetreCpuRay = renderer.raycastScene(CPU_PICK_CSS_X, CPU_PICK_CSS_Y);
+    const measurementResidualMetres = pick?.worldXYZ && cpuRay && centimetreGpuPick?.worldXYZ && centimetreCpuRay
+      ? Math.abs(
+        distance([pick.worldXYZ.x, pick.worldXYZ.y, pick.worldXYZ.z], [centimetreGpuPick.worldXYZ.x, centimetreGpuPick.worldXYZ.y, centimetreGpuPick.worldXYZ.z])
+        - distance([cpuRay.intersection.point.x, cpuRay.intersection.point.y, cpuRay.intersection.point.z], [centimetreCpuRay.intersection.point.x, centimetreCpuRay.intersection.point.y, centimetreCpuRay.intersection.point.z]),
+      )
+      : null;
+    camera.setPosition(COMMON_ORIGIN[0], COMMON_ORIGIN[1], COMMON_ORIGIN[2] + 60);
+    camera.setTarget(COMMON_ORIGIN[0], COMMON_ORIGIN[1], COMMON_ORIGIN[2]);
     const pipeline = renderer.getPipeline();
     if (!pipeline) throw new Error('Renderer did not retain its production pipeline.');
     renderer.getScene().setColorOverrides(new Map([[101, [0.8, 0.1, 1, 1]]]), device, pipeline);
-    renderer.render({ clearColor: [0.02, 0.02, 0.02, 1] });
+    renderer.render({ clearColor: [0.02, 0.02, 0.02, 1], environment: sunEnvironment });
     await device.queue.onSubmittedWorkDone();
     // Sample inside the face but away from the yellow alignment segment.
-    const colorPixel = await screenshotPixel(await renderer.captureScreenshot(), PICK_CSS_X, PICK_CSS_Y + 60);
+    const colorScreenshot = await renderer.captureScreenshot();
+    const colorPixel = await screenshotPixel(colorScreenshot, PICK_CSS_X, PICK_CSS_Y + 60);
 
     camera.setPosition(COMMON_ORIGIN[0] - 24, COMMON_ORIGIN[1], COMMON_ORIGIN[2] + 60);
     camera.setTarget(COMMON_ORIGIN[0] - 24, COMMON_ORIGIN[1], COMMON_ORIGIN[2]);
-    renderer.render({ clearColor: [0.02, 0.02, 0.02, 1] });
+    renderer.render({ clearColor: [0.02, 0.02, 0.02, 1], environment: sunEnvironment });
     await device.queue.onSubmittedWorkDone();
-    const texturedPick = (await renderer.pick(PICK_CSS_X, PICK_CSS_Y))?.expressId ?? null;
+    const texturedScreenshot = await renderer.captureScreenshot();
+    const texturedPixel = await screenshotPixel(texturedScreenshot, PICK_CSS_X, PICK_CSS_Y);
+    const texturedPick = await renderer.pick(PICK_CSS_X, PICK_CSS_Y);
     camera.setPosition(COMMON_ORIGIN[0] + 24, COMMON_ORIGIN[1], COMMON_ORIGIN[2] + 60);
     camera.setTarget(COMMON_ORIGIN[0] + 24, COMMON_ORIGIN[1], COMMON_ORIGIN[2]);
-    renderer.render({ clearColor: [0.02, 0.02, 0.02, 1] });
+    renderer.render({ clearColor: [0.02, 0.02, 0.02, 1], environment: sunEnvironment });
     await device.queue.onSubmittedWorkDone();
-    const instancedPick = (await renderer.pick(PICK_CSS_X, PICK_CSS_Y))?.expressId ?? null;
+    const instancedScreenshot = await renderer.captureScreenshot();
+    const instancedPixel = await screenshotPixel(instancedScreenshot, PICK_CSS_X, PICK_CSS_Y);
+    const instancedPick = await renderer.pick(PICK_CSS_X, PICK_CSS_Y);
     camera.setPosition(COMMON_ORIGIN[0] + 6, COMMON_ORIGIN[1], COMMON_ORIGIN[2] + 61);
     camera.setTarget(COMMON_ORIGIN[0] + 6, COMMON_ORIGIN[1], COMMON_ORIGIN[2] + 1);
-    renderer.render({ clearColor: [0.02, 0.02, 0.02, 1] });
+    renderer.render({ clearColor: [0.02, 0.02, 0.02, 1], environment: sunEnvironment });
     await device.queue.onSubmittedWorkDone();
-    const pointPick = (await renderer.pick(PICK_CSS_X, PICK_CSS_Y))?.expressId ?? null;
+    const pointScreenshot = await renderer.captureScreenshot();
+    const pointPixel = await screenshotPixel(pointScreenshot, PICK_CSS_X, PICK_CSS_Y);
+    const pointPick = await renderer.pick(PICK_CSS_X, PICK_CSS_Y);
     const pointCrop = {
       enabled: true,
       min: [COMMON_ORIGIN[0] - 1, COMMON_ORIGIN[1] - 1, COMMON_ORIGIN[2] + 2] as [number, number, number],
       max: [COMMON_ORIGIN[0] + 12, COMMON_ORIGIN[1] + 12, COMMON_ORIGIN[2] + 12] as [number, number, number],
     };
-    renderer.render({ clipBox: pointCrop });
+    renderer.render({ clipBox: pointCrop, environment: sunEnvironment });
     await device.queue.onSubmittedWorkDone();
     const pointCropClick = (await renderer.pick(PICK_CSS_X, PICK_CSS_Y)) === null;
     const pointCropRectangle = (await renderer.pickRect(PICK_CSS_X - 12, PICK_CSS_Y - 12, PICK_CSS_X + 12, PICK_CSS_Y + 12)).size === 0;
     camera.setPosition(COMMON_ORIGIN[0], COMMON_ORIGIN[1], COMMON_ORIGIN[2] + 60);
     camera.setTarget(COMMON_ORIGIN[0], COMMON_ORIGIN[1], COMMON_ORIGIN[2]);
 
+    renderer.render({ clearColor: [0.02, 0.02, 0.02, 1], environment: sunEnvironment });
+    await device.queue.onSubmittedWorkDone();
+    const unselectedScreenshot = await renderer.captureScreenshot();
+
+    renderer.render({ selectedId: 101, clearColor: [0.02, 0.02, 0.02, 1], environment: sunEnvironment });
+    await device.queue.onSubmittedWorkDone();
+    const highlightScreenshot = await renderer.captureScreenshot();
+    const highlightPixels = await screenshotDifference(unselectedScreenshot, highlightScreenshot);
     renderer.render({
-      selectedId: 101,
-      sunShadows: { enabled: true, resolution: 512 },
-      clearColor: [0.02, 0.02, 0.02, 1],
+      sunShadows: { enabled: true, resolution: 512 }, clearColor: [0.02, 0.02, 0.02, 1], environment: sunEnvironment,
     });
     await device.queue.onSubmittedWorkDone();
-    const shadowDrawCalls = renderer.getFrameStats()?.drawCalls ?? 0;
-    const commonInstancedDrawn = renderer.getFrameStats()?.instancedDrawn ?? 0;
-
-    renderer.render({ selectedId: 101, clearColor: [0.02, 0.02, 0.02, 1] });
-    await device.queue.onSubmittedWorkDone();
-    const highlightDrawCalls = renderer.getFrameStats()?.drawCalls ?? 0;
+    const shadowScreenshot = await renderer.captureScreenshot();
+    const shadowPixels = await screenshotDifference(unselectedScreenshot, shadowScreenshot);
 
     // The picker must consume the same RTE fragment-space crop and custom
     // section plane that the production render used. The central flat triangle
@@ -187,10 +207,10 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
       min: [COMMON_ORIGIN[0] - 30, COMMON_ORIGIN[1] - 30, COMMON_ORIGIN[2] + 1] as [number, number, number],
       max: [COMMON_ORIGIN[0] + 30, COMMON_ORIGIN[1] + 30, COMMON_ORIGIN[2] + 30] as [number, number, number],
     };
-    renderer.render({ clipBox: crop });
+    renderer.render({ clipBox: crop, environment: sunEnvironment });
     await device.queue.onSubmittedWorkDone();
     const clippedPick = (await renderer.pick(PICK_CSS_X, PICK_CSS_Y)) === null;
-    renderer.render({ sectionPlane: { axis: 'front', position: 50, enabled: true, normal: [0, 0, 1], distance: COMMON_ORIGIN[2] - 1 } });
+    renderer.render({ sectionPlane: { axis: 'front', position: 50, enabled: true, normal: [0, 0, 1], distance: COMMON_ORIGIN[2] - 1 }, environment: sunEnvironment });
     await device.queue.onSubmittedWorkDone();
     const sectionPick = (await renderer.pick(PICK_CSS_X, PICK_CSS_Y)) === null;
 
@@ -199,9 +219,11 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     // loss behind the national-grid common translation fixture.
     camera.setPosition(LARGE_ORIGIN[0], LARGE_ORIGIN[1], LARGE_ORIGIN[2] + 15_000);
     camera.setTarget(LARGE_ORIGIN[0], LARGE_ORIGIN[1], LARGE_ORIGIN[2]);
-    renderer.render({ clearColor: [0.02, 0.02, 0.02, 1] });
+    renderer.render({ clearColor: [0.02, 0.02, 0.02, 1], environment: sunEnvironment });
     await device.queue.onSubmittedWorkDone();
-    const largeExtentDrawCalls = renderer.getFrameStats()?.drawCalls ?? 0;
+    const largeExtentScreenshot = await renderer.captureScreenshot();
+    const largeExtentPixel = await screenshotPixel(largeExtentScreenshot, PICK_CSS_X, PICK_CSS_Y);
+    const largeExtentPick = await renderer.pick(PICK_CSS_X, PICK_CSS_Y);
     const screenshot = await renderer.captureScreenshot();
     const diagnostics = renderer.getDiagnostics();
 
@@ -213,14 +235,21 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     report.evidence = {
       canvasPixels: { width: canvas.width, height: canvas.height },
       pickPixel: { x: PICK_CSS_X, y: PICK_CSS_Y },
-      pick: pick ? { expressId: pick.expressId, ...(pick.worldXYZ ? { worldXYZ: pick.worldXYZ } : {}) } : null,
-      texturedPick,
-      instancedPick,
-      pointPick,
+      pick: pickEvidence(pick),
+      texturedPick: pickEvidence(texturedPick),
+      instancedPick: pickEvidence(instancedPick),
+      pointPick: pickEvidence(pointPick),
+      largeExtentPick: pickEvidence(largeExtentPick),
       pointCropClick,
       pointCropRectangle,
       linePixel,
+      texturedPixel,
+      instancedPixel,
+      pointPixel,
+      largeExtentPixel,
       colorPixel,
+      highlightPixels,
+      shadowPixels,
       cpuRay: cpuRayEvidence,
       sourceResidualMetres,
       pickResidualMetres,
@@ -228,38 +257,34 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
       snapResidualMetres,
       measurementResidualMetres,
       provenanceStable: pick?.expressId === 101 && pick.geometryItemId === 70_101
+        && pick.modelIndex === 11 && texturedPick?.expressId === 102 && texturedPick.modelIndex === 12
         && cpuRayEvidence?.expressId === 101 && magnetic.intersection?.expressId === 101
         && magnetic.intersection?.geometryItemId === 70_101,
       families: {
-        flat: renderer.getScene().getMeshData(101)?.origin?.[0] === COMMON_ORIGIN[0],
-        textured: texturedPick === 102 && renderer.getScene().getResidentGpuBytes().textured > 0,
-        quantized: quantized && renderer.getScene().getBatchedMeshes().some((batch) => batch.quantized !== undefined),
-        instanced: commonInstancedDrawn > 0,
-        point: pointPick === 105 && renderer.getPointCloudAssetCount() === 1,
+        flat: pick?.expressId === 101 && isForeground(linePixel),
+        textured: texturedPick?.expressId === 102 && texturedPick.modelIndex === 12 && isForeground(texturedPixel),
+        quantized: quantized && renderer.getScene().isMeshQuantized(flat) && pick?.expressId === 101 && isForeground(linePixel),
+        instanced: instancedPick?.expressId === 103 && isForeground(instancedPixel),
+        point: pointPick?.expressId === 105 && isForeground(pointPixel),
         anchoredLine: linePixel !== null && linePixel[0] > linePixel[2],
-        color: colorPixel !== null && colorPixel[0] > colorPixel[1]
-          && renderer.getScene().getColorOverrides()?.get(101)?.[0] === 0.8,
-        shadow: shadowDrawCalls > 0,
+        color: colorPixel !== null && colorPixel[0] > colorPixel[1],
+        shadow: shadowPixels !== null && shadowPixels.changedPixels > 0 && shadowPixels.maxChannelDelta > 1,
         picker: pick?.expressId === 101,
-        highlight: highlightDrawCalls > 0,
+        highlight: highlightPixels !== null && highlightPixels.changedPixels > 0 && highlightPixels.maxChannelDelta > 1,
         section: sectionPick,
         crop: clippedPick && pointCropClick && pointCropRectangle,
         farOrigin: sourceResidualMetres <= GEOMETRIC_TOLERANCE_METRES,
-        largeExtent: largeExtentDrawCalls > 0,
+        largeExtent: largeExtentPick?.expressId === 104 && isForeground(largeExtentPixel),
         cpuRay: cpuRayEvidence?.expressId === 101,
         snap: magnetic.snapTarget !== null || cpuRay?.snap !== undefined,
         measurement: measurementResidualMetres <= GEOMETRIC_TOLERANCE_METRES,
         identityProvenance: pick?.expressId === 101 && pick.geometryItemId === 70_101
+          && pick.modelIndex === 11 && texturedPick?.expressId === 102 && texturedPick.modelIndex === 12
           && cpuRayEvidence?.expressId === 101 && magnetic.intersection?.expressId === 101
           && magnetic.intersection?.geometryItemId === 70_101,
       },
-      quantized: quantized && renderer.getScene().getBatchedMeshes().some((batch) => batch.quantized !== undefined),
-      instancedDrawn: commonInstancedDrawn,
-      pointAssets: renderer.getPointCloudAssetCount(),
       clippedPick,
       sectionPick,
-      shadowDrawCalls,
-      highlightDrawCalls,
       screenshotBytes: screenshot?.length ?? 0,
       diagnostics: {
         gpuErrors: diagnostics.gpuErrors,
@@ -269,15 +294,10 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
       },
     };
     const passed = Object.values(report.evidence.families).every(Boolean)
-      && report.evidence.quantized
-      && report.evidence.instancedDrawn > 0
-      && report.evidence.pointAssets === 1
       && report.evidence.clippedPick
       && report.evidence.pointCropClick
       && report.evidence.pointCropRectangle
       && report.evidence.sectionPick
-      && report.evidence.shadowDrawCalls > 0
-      && report.evidence.highlightDrawCalls > 0
       && report.evidence.screenshotBytes > 100
       && report.evidence.sourceResidualMetres <= GEOMETRIC_TOLERANCE_METRES
       && report.evidence.pickResidualMetres !== null

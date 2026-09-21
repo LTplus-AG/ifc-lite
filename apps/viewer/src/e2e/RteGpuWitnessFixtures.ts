@@ -5,6 +5,7 @@
 /** #5049 witness fixtures and its serialisable evidence contract. */
 
 import type { DecodedInstancedShard, MeshData } from '@ifc-lite/renderer';
+import type { Rgba } from './RteGpuWitnessPixels';
 
 export const COMMON_ORIGIN: [number, number, number] = [5_000_000.015625, 100, -50];
 export const LARGE_ORIGIN: [number, number, number] = [5_020_000.015625, 100, -50];
@@ -27,14 +28,21 @@ export interface RteGpuWitnessReport {
   evidence?: {
     canvasPixels: { width: number; height: number };
     pickPixel: { x: number; y: number };
-    pick: { expressId: number; worldXYZ?: [number, number, number] } | null;
-    texturedPick: number | null;
-    instancedPick: number | null;
-    pointPick: number | null;
+    pick: PickEvidence | null;
+    texturedPick: PickEvidence | null;
+    instancedPick: PickEvidence | null;
+    pointPick: PickEvidence | null;
+    largeExtentPick: PickEvidence | null;
     pointCropClick: boolean;
     pointCropRectangle: boolean;
-    linePixel: [number, number, number, number] | null;
-    colorPixel: [number, number, number, number] | null;
+    linePixel: Rgba | null;
+    texturedPixel: Rgba | null;
+    instancedPixel: Rgba | null;
+    pointPixel: Rgba | null;
+    largeExtentPixel: Rgba | null;
+    colorPixel: Rgba | null;
+    highlightPixels: PixelDifference | null;
+    shadowPixels: PixelDifference | null;
     cpuRay: { expressId: number; point: [number, number, number] } | null;
     sourceResidualMetres: number;
     pickResidualMetres: number | null;
@@ -43,16 +51,23 @@ export interface RteGpuWitnessReport {
     measurementResidualMetres: number | null;
     provenanceStable: boolean;
     families: Record<string, boolean>;
-    quantized: boolean;
-    instancedDrawn: number;
-    pointAssets: number;
     clippedPick: boolean;
     sectionPick: boolean;
-    shadowDrawCalls: number;
-    highlightDrawCalls: number;
     screenshotBytes: number;
     diagnostics: { gpuErrors: number; errors: number; lastGpuError: string; lastError: string };
   };
+}
+
+export interface PickEvidence {
+  expressId: number;
+  modelIndex?: number;
+  geometryItemId?: number;
+  worldXYZ?: [number, number, number];
+}
+
+export interface PixelDifference {
+  changedPixels: number;
+  maxChannelDelta: number;
 }
 
 export function witnessMesh(expressId: number, origin: [number, number, number], color: [number, number, number, number], textured = false): MeshData {
@@ -78,6 +93,17 @@ export function largeExtentMesh(): MeshData {
     positions: new Float32Array([-span / 2, -span / 2, 0, span / 2, -span / 2, 0, 0, span / 2, 0]),
     normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
     color: [0.3, 0.6, 1, 1], origin: LARGE_ORIGIN,
+  };
+}
+
+/** A vertical occluder over the flat witness receiver. Its shadow is compared
+ * against an otherwise identical production framebuffer, not a draw counter. */
+export function shadowCasterMesh(): MeshData {
+  return {
+    expressId: 106,
+    positions: new Float32Array([6, -3, 0, 6, 3, 0, 6, 0, 8]),
+    normals: new Float32Array([1, 0, 0, 1, 0, 0, 1, 0, 0]),
+    indices: new Uint32Array([0, 1, 2]), color: [0.7, 0.7, 0.7, 1], origin: COMMON_ORIGIN,
   };
 }
 

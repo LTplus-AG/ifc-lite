@@ -39,6 +39,9 @@ export interface RenderedPointCloudSnapshot {
   points: Array<[number, number, number]>;
 }
 
+/** A diagnostic must never copy an unbounded retained scan into page state. */
+const RENDERED_POINT_CLOUD_DEBUG_LIMIT = 16;
+
 function snapshot(part: MeshData): ScenePartSnapshot {
   const sourceTriangles: number[] = [];
   for (let triangle = 0; triangle < part.indices.length / 3; triangle++) {
@@ -103,14 +106,15 @@ export function installViewportDebugHooks(renderer: Renderer): void {
   };
   // Streamed point data is GPU-resident, while the bounded cache retains the
   // same post-Y-up decode points for product features such as scan sections.
-  // Apply the renderer's live matrix here rather than making E2E recreate
-  // alignment, RTC, or manual-placement math outside the production path.
+  // This read-only diagnostic returns only a small prefix and applies the
+  // renderer's live matrix, rather than making E2E recreate alignment, RTC,
+  // or manual-placement math outside the production path.
   host.__ifc_lite_rendered_point_cloud__ = (handleId: number): RenderedPointCloudSnapshot | null => {
     const sample = getPointCloudScanSample(handleId);
     if (!sample) return null;
     const matrix = renderer.getPointCloudTransform({ id: handleId });
     const points: Array<[number, number, number]> = [];
-    for (let index = 0; index < sample.count; index++) {
+    for (let index = 0; index < Math.min(sample.count, RENDERED_POINT_CLOUD_DEBUG_LIMIT); index++) {
       const offset = index * 3;
       const raw = { x: sample.positions[offset]!, y: sample.positions[offset + 1]!, z: sample.positions[offset + 2]! };
       const placed = matrix ? MathUtils.transformPoint({ m: matrix }, raw) : raw;

@@ -149,6 +149,13 @@ fn issue_5051_civil3d_2020_international_foot_tin_preserves_source_and_definitio
     let surface = document.surfaces.first().expect("Civil 3D source must retain its surface");
     assert!(!surface.points.is_empty(), "Pnts must not be fabricated away");
     assert!(!surface.faces.is_empty(), "Faces must not be fabricated away");
+    assert!(
+        !surface.breaklines.is_empty(),
+        "SourceData Breaklines must remain available to downstream tools"
+    );
+    let units = document.units.expect("Civil 3D source declares Imperial units");
+    assert_eq!(units.linear_unit, "foot");
+    assert_eq!(units.linear_scale_to_meters, 0.3048);
     assert!(document.capabilities.renderable_tin, "the recorded TIN must remain renderable");
 }
 

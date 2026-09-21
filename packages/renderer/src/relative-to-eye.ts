@@ -218,23 +218,40 @@ export class RelativeToEyeFrame {
   private cameraWorld: [number, number, number] = [0, 0, 0];
   private viewProj: Mat4 = MathUtils.identity();
   private renderEpoch = 0;
+  private available = true;
+
+  /** Unsupported camera poses must never expose a previous frame as current. */
+  invalidate(): void { this.available = false; this.renderEpoch++; }
+
+  isAvailable(): boolean { return this.available; }
+
+  private requireAvailable(): void {
+    if (!this.available) throw new RangeError('RTE camera frame is outside the supported envelope.');
+  }
 
   /** Update the frame from the f64 camera pose and the normal camera matrices. */
   update(camera: Vec3, projection: Mat4, view: Mat4): void {
-    this.cameraWorld = [camera.x, camera.y, camera.z];
-    validateRteSourcePoint(this.cameraWorld);
-    this.viewProj = translationFreeViewProjection(projection, view);
+    const cameraWorld: [number, number, number] = [camera.x, camera.y, camera.z];
+    validateRteSourcePoint(cameraWorld);
+    const viewProj = translationFreeViewProjection(projection, view);
+    if (!viewProj.m.every(Number.isFinite)) throw new RangeError('RTE matrix must be finite.');
+    // Publish atomically: a rejected update changes neither epoch nor inputs.
+    this.cameraWorld = cameraWorld;
+    this.viewProj = viewProj;
+    this.available = true;
     this.renderEpoch++;
   }
 
   /** f64 source camera position; copied so an external caller cannot mutate it. */
   getCameraWorld(): [number, number, number] {
+    this.requireAvailable();
     return [...this.cameraWorld];
   }
 
   /** The projection to use after WGSL has made a vertex relative to this eye. */
   getViewProjection(): Mat4 {
-    return this.viewProj;
+    this.requireAvailable();
+    return { m: new Float32Array(this.viewProj.m) };
   }
 
   /** Monotonic snapshot identity for asynchronous GPU work and readback. */
@@ -248,6 +265,7 @@ export class RelativeToEyeFrame {
    * camera origin or matrix used to decode that work's readback.
    */
   snapshot(): RelativeToEyeSnapshot {
+    this.requireAvailable();
     return new RelativeToEyeSnapshot(this.renderEpoch, this.cameraWorld, this.viewProj);
   }
 
@@ -257,6 +275,7 @@ export class RelativeToEyeFrame {
    * f64 camera-relative delta through the separate per-draw uniform.
    */
   packUniforms(out: Float32Array, floatOffset = 0): void {
+    this.requireAvailable();
     if (out.length < floatOffset + RTE_FRAME_FLOATS) {
       throw new RangeError(`RTE frame needs ${RTE_FRAME_FLOATS} floats at offset ${floatOffset}.`);
     }
@@ -269,6 +288,7 @@ export class RelativeToEyeFrame {
    * This payload is camera-dependent and is invalid after any camera reframe.
    */
   packDrawableOrigin(origin: WorldPoint, out: Float32Array, floatOffset = 0): void {
+    this.requireAvailable();
     // Validate the original source origin before subtraction: a camera at the
     // boundary could otherwise make an out-of-range drawable look harmless.
     packDrawableDelta(origin, this.cameraWorld, out, floatOffset);
@@ -281,6 +301,7 @@ export class RelativeToEyeFrame {
    * precision.
    */
   worldToRelative(world: WorldPoint): [number, number, number] {
+    this.requireAvailable();
     return [
       world[0] - this.cameraWorld[0],
       world[1] - this.cameraWorld[1],

@@ -44,9 +44,13 @@ Screen-space agreement is at most 0.5 physical pixel for colour/overlay edges
 and at most 1 physical pixel for asynchronous ID/depth picking, measured at
 the active drawing-buffer resolution.
 
-The camera position, target and up vector must be finite; the existing
-degenerate-pose fallback remains the only exception to a non-zero
-position-target separation. The RTE frame is rebuilt after every accepted pose,
+The authored camera pose remains observable even when malformed. The RTE
+frame uses the same scrubbed effective eye as `lookAt`, so malformed setters
+remain non-throwing and CPU picking agrees with the matrix fallback. A finite
+eye outside the supported envelope marks the frame unavailable: consumers
+cannot accidentally read the preceding frame as current. Direct RTE updates
+validate before publication, and matrix getters return owned copies.
+The RTE frame is rebuilt after every accepted pose,
 projection, viewport or model-placement change and carries the render epoch
 used by asynchronous pick readback. Perspective/orthographic near/far guards
 remain in `camera-matrices.ts`; RTE never relaxes their finite-range checks.
@@ -60,6 +64,16 @@ evidence. Record browser, adapter, OS, pixel ratio and readback values in the
 implementation PR.
 
 ## Inventory and migration order
+
+The first production consumer is `CameraProjection`: screen projection forms
+the f64 world-minus-eye delta before applying the shared translation-free
+matrix; perspective unprojection inverts that matrix directly and returns an
+f64 source-space ray. Orthographic rays retain their shared f64 `viewBasis`.
+Camera tests exercise centimetre separation and source-plane intersections
+under a common five-million-metre translation in both projection modes.
+This proves the CPU camera slice, not agreement with every GPU pass. The
+format-neutral georeferencing work in #5048 is still an unmerged dependency;
+this slice changes neither authored coordinates nor model/source identities.
 
 | Family | Current absolute boundary | RTE completion criterion |
 | --- | --- | --- |

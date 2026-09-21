@@ -25,8 +25,10 @@ import { ensureParseFor, getParseFor, subscribeToParseCache } from './symbolic-p
 import { useOverlayChannelGate } from './useOverlayChannelGate.js';
 import {
   buildSymbolicLineChannels,
+  symbolicLineVertexData,
   type SymbolicLineChannels,
   type SymbolicLineChannelsEntry,
+  type SymbolicLineVertices,
 } from './symbolic-line-channels.js';
 import {
   buildSymbolicRichChannels,

@@ -15,10 +15,13 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { runRuleSet, type RuleEngineProgress } from '@/lib/validation/rule-engine';
 import type { RuleSetFile } from '@/lib/validation/rule-set';
-import { importRuleSetFile, exportRuleSet } from '@/lib/validation/rule-set-io';
-import { addRecentRuleSet, loadRecentRuleSets, type RecentRuleSet } from '@/lib/validation/recent-rule-sets';
+import { importRuleSetFile, exportRuleSet, parseRuleSetFile } from '@/lib/validation/rule-set-io';
+import {
+  addRecentRuleSet, loadRecentRuleSets, removeRecentRuleSet, type RecentRuleSet,
+} from '@/lib/validation/recent-rule-sets';
 import { useValidationEpoch } from './useValidationEpoch';
 
 function blankRuleSet(): RuleSetFile {
@@ -30,8 +33,15 @@ export interface UseInformationValidationResult {
   setFile: (next: RuleSetFile) => void;
   /** Start authoring a brand new, empty rule set. */
   newRuleSet: () => void;
-  /** Parse a picked `.rules.json` File; `ok: false` carries a message to show. */
+  /** Parse a picked `.rules.json` File; `ok: false` carries a message to show
+   *  (also written to `error`, so a caller that only checks `error` still
+   *  sees it). */
   openFromFile: (file: File) => Promise<{ ok: boolean; error?: string }>;
+  /** Load a "Recent rule sets" entry by re-parsing its cached content.
+   *  Never throws: a corrupt entry (bad JSON, or JSON that no longer parses
+   *  as a rule set) is reported through `error` and dropped from the cache
+   *  rather than left to fail silently or the next time it is clicked. */
+  loadFromRecent: (entry: RecentRuleSet) => void;
   /** Download the current file and cache its content under "Recent". */
   save: () => void;
   /** True while showing the editor again after a report already landed
@@ -48,6 +58,7 @@ export interface UseInformationValidationResult {
 }
 
 export function useInformationValidation(): UseInformationValidationResult {
+  const { t } = useTranslation();
   const [file, setFileState] = useState<RuleSetFile | null>(null);
   const [editing, setEditing] = useState(false);
   const [running, setRunning] = useState(false);
@@ -71,12 +82,34 @@ export function useInformationValidation(): UseInformationValidationResult {
 
   const openFromFile = useCallback(async (pickedFile: File): Promise<{ ok: boolean; error?: string }> => {
     const result = await importRuleSetFile(pickedFile);
-    if (!result.ok) return { ok: false, error: result.error };
+    if (!result.ok) {
+      setError(result.error);
+      return { ok: false, error: result.error };
+    }
     setFile(result.file);
     setEditing(true);
     setRecentRuleSets(addRecentRuleSet(result.file.name, JSON.stringify(result.file, null, 2)));
     return { ok: true };
   }, [setFile]);
+
+  const loadFromRecent = useCallback((entry: RecentRuleSet) => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(entry.content);
+    } catch {
+      setError(t('validationPanel.error.corruptRecent', { name: entry.name }));
+      setRecentRuleSets(removeRecentRuleSet(entry.name));
+      return;
+    }
+    const result = parseRuleSetFile(parsed);
+    if (!result.ok) {
+      setError(t('validationPanel.error.corruptRecent', { name: entry.name }));
+      setRecentRuleSets(removeRecentRuleSet(entry.name));
+      return;
+    }
+    setFile(result.file);
+    setEditing(true);
+  }, [setFile, t]);
 
   const save = useCallback(() => {
     if (!file) return;
@@ -118,17 +151,22 @@ export function useInformationValidation(): UseInformationValidationResult {
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       if (!stillWanted(myEpoch)) return;
-      setError(err instanceof Error ? err.message : 'Validation failed');
+      // A caught engine exception's own message is arbitrary runtime text
+      // (not catalogued, same posture as `idsError`'s plain-string branch —
+      // see `resolveValidationTarget.ts`'s `IdsErrorState` doc); only the
+      // FALLBACK, shown when there is no such message, is a fixed
+      // user-visible string and goes through the catalogue.
+      setError(err instanceof Error ? err.message : t('validationPanel.error.validationFailed'));
     } finally {
       if (stillWanted(myEpoch)) {
         setRunning(false);
         setProgress(null);
       }
     }
-  }, [file, bumpEpoch, stillWanted, setIdsValidationReport]);
+  }, [file, bumpEpoch, stillWanted, setIdsValidationReport, t]);
 
   return {
-    file, setFile, newRuleSet, openFromFile, save,
+    file, setFile, newRuleSet, openFromFile, loadFromRecent, save,
     editing, setEditing, run, cancel, running, progress, error, recentRuleSets,
   };
 }

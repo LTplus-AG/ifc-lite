@@ -36,13 +36,12 @@ const STATIC_KEYS = ALL_KEYS.filter((key) => {
 });
 // `setResult.truncated` needs thousands of duplicate groups to render
 // (rule-engine-sets.ts's cap) — not reachable from a small fixture.
-// `saveAsPrompt` is a `window.prompt()` MESSAGE argument, never rendered
-// into the DOM at all (jsdom's `prompt()` has no UI) — its value happens to
-// collide with `validationEditor.ruleSetEditor.namePlaceholder`'s "Rule set
-// name" (a DIFFERENT catalogue's key, rendered as an <input> placeholder),
-// which would otherwise register a false match here. Both are documented
-// gaps, not oversights.
-const NOT_FIXTURE_REACHABLE: Key[] = ['validationPanel.setResult.truncated', 'validationPanel.saveAsPrompt'];
+// `error.validationFailed` is the fallback `useInformationValidation.run()`
+// uses when `runRuleSet` throws something that is not an `Error` instance —
+// the real engine never does that, so a fixture cannot reach it without
+// poking the hook's internals rather than exercising real behaviour.
+// Both are documented gaps, not oversights.
+const NOT_FIXTURE_REACHABLE: Key[] = ['validationPanel.setResult.truncated', 'validationPanel.error.validationFailed'];
 
 const mark = (key: Key) => `⟦${key}|${String(validationPanelEn[key])}⟧`;
 /** For a TEMPLATED key (`{param}` placeholders), the mark's `{param}` tokens
@@ -259,7 +258,7 @@ describe('ValidationPanel localization (#5138)', () => {
     assert.deepEqual(unaccounted, [], 'key not rendered by the fixtures — extend them or document the gap');
   });
 
-  it('the entry cards and running/results states retranslate live', async () => {
+  it('the entry cards, header toggle, and running/results states retranslate live', async () => {
     registerLocale('validation-panel-pseudo-2', PSEUDO);
     const ui = render(<ValidationPanel onClose={() => {}} />);
     act(() => setLocale('validation-panel-pseudo-2'));
@@ -269,6 +268,15 @@ describe('ValidationPanel localization (#5138)', () => {
     assert.ok(text.includes(mark('validationPanel.entry.rulesTitle')), 'rules entry card must retranslate');
     const closeButton = ui.querySelector('button[aria-label]');
     assert.ok(closeButton, 'expected the panel header close button (rendered because onClose is provided)');
+
+    // The empty state has no toggle yet (nothing to switch between); picking
+    // a source reveals the persistent header toggle, retranslated live.
+    const idsEntry = ui.querySelector('[data-testid="validation-entry-ids"]');
+    assert.ok(idsEntry, 'expected the IDS validation entry card');
+    click(idsEntry as Element);
+    const toggleText = ui.textContent ?? '';
+    assert.ok(toggleText.includes(mark('validationPanel.toggle.ids')), 'toggle.ids must retranslate');
+    assert.ok(toggleText.includes(mark('validationPanel.toggle.rules')), 'toggle.rules must retranslate');
 
     // Retranslate the standalone running state too.
     setLocale('en');

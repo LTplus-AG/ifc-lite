@@ -8,6 +8,11 @@
  * validation (new rule set / open `.rules.json` / a "Recent rule sets"
  * list). Split out of `ValidationPanel.tsx` to keep the orchestrator under
  * its line budget.
+ *
+ * `InformationValidationEntry` (the rules card's body) is exported
+ * separately: once a source is chosen the persistent header toggle can
+ * switch to "Information validation" with no rule set loaded yet, and that
+ * state reuses this exact content rather than a second copy of it.
  */
 
 import { useRef } from 'react';
@@ -42,17 +47,21 @@ function EntryCard({ icon, title, description, onClick, testId }: EntryCardProps
   );
 }
 
-interface ValidationPanelEmptyProps {
-  onSelectIds: () => void;
+export interface InformationValidationEntryProps {
   onOpenRuleSetFile: (file: File) => Promise<{ ok: boolean; error?: string }>;
   onNewRuleSet: () => void;
   onLoadRecent: (entry: RecentRuleSet) => void;
   recentRuleSets: readonly RecentRuleSet[];
+  /** Shown when a "Recent" entry or a picked file failed to load. */
+  error?: string | null;
 }
 
-export function ValidationPanelEmpty({
-  onSelectIds, onOpenRuleSetFile, onNewRuleSet, onLoadRecent, recentRuleSets,
-}: ValidationPanelEmptyProps) {
+/** New / Open / Recent — the whole "Information validation" entry body,
+ *  reused both as a card (empty state) and standalone (the header toggle's
+ *  "Information validation" side with no rule set loaded yet). */
+export function InformationValidationEntry({
+  onOpenRuleSetFile, onNewRuleSet, onLoadRecent, recentRuleSets, error = null,
+}: InformationValidationEntryProps) {
   const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -61,6 +70,70 @@ export function ValidationPanelEmpty({
     e.target.value = '';
     if (file) await onOpenRuleSetFile(file);
   };
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-1">
+        <ListChecks className="h-4 w-4" />
+        <span className="font-medium text-sm">{t('validationPanel.entry.rulesTitle')}</span>
+      </div>
+      <p className="text-xs text-muted-foreground mb-3">{t('validationPanel.entry.rulesDescription')}</p>
+      <div className="flex items-center gap-2">
+        <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5" onClick={onNewRuleSet}>
+          <Plus className="h-3.5 w-3.5" />
+          {t('validationPanel.entry.newRuleSet')}
+        </Button>
+        <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => fileInputRef.current?.click()}>
+          <Upload className="h-3.5 w-3.5" />
+          {t('validationPanel.entry.openRuleSet')}
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".rules.json,.json"
+          className="hidden"
+          onChange={(e) => { void handleFileSelect(e); }}
+        />
+      </div>
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      {recentRuleSets.length > 0 && (
+        <div className="mt-3">
+          <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+            {t('validationPanel.entry.recent')}
+          </h4>
+          <ul className="flex flex-col gap-1">
+            {recentRuleSets.map((entry) => (
+              <li key={entry.name}>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left text-xs hover:bg-muted/60 truncate"
+                  onClick={() => onLoadRecent(entry)}
+                >
+                  <FileJson className="h-3 w-3 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{entry.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ValidationPanelEmptyProps {
+  onSelectIds: () => void;
+  onOpenRuleSetFile: (file: File) => Promise<{ ok: boolean; error?: string }>;
+  onNewRuleSet: () => void;
+  onLoadRecent: (entry: RecentRuleSet) => void;
+  recentRuleSets: readonly RecentRuleSet[];
+  error?: string | null;
+}
+
+export function ValidationPanelEmpty({
+  onSelectIds, onOpenRuleSetFile, onNewRuleSet, onLoadRecent, recentRuleSets, error,
+}: ValidationPanelEmptyProps) {
+  const { t } = useTranslation();
 
   return (
     <div className="flex flex-col gap-4 p-4" {...tourAnchor(TOUR_ANCHORS.validationEntry)}>
@@ -72,49 +145,13 @@ export function ValidationPanelEmpty({
         onClick={onSelectIds}
       />
       <div className="rounded-lg border border-border p-4">
-        <div className="flex items-center gap-2 mb-1">
-          <ListChecks className="h-4 w-4" />
-          <span className="font-medium text-sm">{t('validationPanel.entry.rulesTitle')}</span>
-        </div>
-        <p className="text-xs text-muted-foreground mb-3">{t('validationPanel.entry.rulesDescription')}</p>
-        <div className="flex items-center gap-2">
-          <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5" onClick={onNewRuleSet}>
-            <Plus className="h-3.5 w-3.5" />
-            {t('validationPanel.entry.newRuleSet')}
-          </Button>
-          <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => fileInputRef.current?.click()}>
-            <Upload className="h-3.5 w-3.5" />
-            {t('validationPanel.entry.openRuleSet')}
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".rules.json,.json"
-            className="hidden"
-            onChange={(e) => { void handleFileSelect(e); }}
-          />
-        </div>
-        {recentRuleSets.length > 0 && (
-          <div className="mt-3">
-            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-              {t('validationPanel.entry.recent')}
-            </h4>
-            <ul className="flex flex-col gap-1">
-              {recentRuleSets.map((entry) => (
-                <li key={entry.name}>
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left text-xs hover:bg-muted/60 truncate"
-                    onClick={() => onLoadRecent(entry)}
-                  >
-                    <FileJson className="h-3 w-3 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{entry.name}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        <InformationValidationEntry
+          onOpenRuleSetFile={onOpenRuleSetFile}
+          onNewRuleSet={onNewRuleSet}
+          onLoadRecent={onLoadRecent}
+          recentRuleSets={recentRuleSets}
+          error={error}
+        />
       </div>
     </div>
   );

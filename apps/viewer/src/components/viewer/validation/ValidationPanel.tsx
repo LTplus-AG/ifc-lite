@@ -5,36 +5,40 @@
 /**
  * `ValidationPanel` — the Data validation panel (#5138 plan §6), the panel
  * that replaced the `ids` registry entry and closes #5138. Orchestrates
- * four states for the "Information validation" (rule-set) path — `empty`,
- * `authoring`, `running`, `results` — while the "IDS validation" path stays
- * the existing, self-contained `IDSPanel` (its own empty/loading/results
- * states are unchanged).
+ * four states for the "Information validation" (rule-set) path — `empty`
+ * (no rule set yet), `authoring`, `running`, `results` — while the "IDS
+ * validation" path stays the existing, self-contained `IDSPanel` (embedded:
+ * its own empty/loading/results sub-states are unchanged, only its outer
+ * title/close chrome is suppressed in favour of this panel's own).
  *
- * `effectiveSource` resolves which body to show: an explicit entry-card
- * click for this mount, or — reopening the panel with state already live —
- * whichever source has one (an IDS document, or a rule set being authored /
- * already run). Kept deliberately sticky: `IDSPanel` and the rules states
- * below each own their OWN empty sub-state (e.g. "no IDS loaded" /
- * "no rules yet"), so this orchestrator never needs to bounce back to the
- * two-card chooser once a source is picked.
+ * The empty state (no source picked at all, no content on either side) is
+ * the two entry cards. Once a source is picked — by an entry-card click, or
+ * because one already has content on mount — a persistent header TOGGLE
+ * (IDS validation | Information validation) stays visible so the user can
+ * switch sources at any time without losing either side's state: `IDSPanel`
+ * keeps its own document/report in the store regardless of which side is on
+ * screen, and `useInformationValidation`'s rule-set/report state is equally
+ * unaffected by which side is displayed.
  */
 
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { IDSPanel } from '@/components/viewer/IDSPanel';
 import { IDSPanelResults } from '@/components/viewer/IDSPanelResults';
 import { RuleSetEditor } from './RuleSetEditor';
-import { ValidationPanelEmpty } from './ValidationPanel.empty';
+import { ValidationPanelEmpty, InformationValidationEntry } from './ValidationPanel.empty';
 import { useInformationValidation } from '@/hooks/validation/useInformationValidation';
 import { useValidationResults } from '@/hooks/validation/useValidationResults';
 import type { RecentRuleSet } from '@/lib/validation/recent-rule-sets';
-import { parseRuleSetFile, exportRuleSet } from '@/lib/validation/rule-set-io';
 import type { RuleModelPickerModel } from './RuleModelPicker';
+
+type Source = 'ids' | 'rules';
 
 interface ValidationPanelProps {
   onClose?: () => void;
@@ -48,28 +52,25 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
   const validationSource = useViewerStore((s) => s.validationSource);
   const storeModels = useViewerStore((s) => s.models);
 
-  const [activeSource, setActiveSource] = useState<'ids' | 'rules' | null>(null);
-  // `info.file` is local React state, lost on remount (e.g. switching to
-  // another sidebar panel and back) — a landed rules REPORT survives in the
-  // store regardless, so it counts as evidence of the 'rules' path too, even
-  // though re-entering "Edit rules" after such a remount has nothing to
-  // populate the editor with (a known gap; see PR report).
-  const effectiveSource: 'ids' | 'rules' | null =
-    activeSource === 'ids' || (activeSource === null && idsDocument) ? 'ids'
-    : activeSource === 'rules' || (activeSource === null && (info.file || validationSource === 'rules')) ? 'rules'
-    : null;
+  const [activeSource, setActiveSource] = useState<Source | null>(null);
+  // Default, before any explicit pick: whichever side already has content,
+  // IDS first. `info.file` is local React state, lost on remount (e.g.
+  // switching to another sidebar panel and back) — a landed rules REPORT
+  // survives in the store regardless, so it counts as evidence of the
+  // 'rules' path too, even though re-entering "Edit rules" after such a
+  // remount has nothing to populate the editor with (a known gap; see PR
+  // report). Once the user (or this default) picks a source, the toggle
+  // below drives it explicitly and this fallback no longer applies.
+  const effectiveSource: Source | null =
+    activeSource ?? (idsDocument ? 'ids' : (info.file || validationSource === 'rules') ? 'rules' : null);
 
   const modelsForPicker: RuleModelPickerModel[] = [...storeModels.values()].map((m) => ({
     id: m.id, name: m.name, sourceFingerprint: m.sourceFingerprint,
   }));
 
   const handleLoadRecent = (entry: RecentRuleSet) => {
-    const parsed = parseRuleSetFile(JSON.parse(entry.content) as unknown);
-    if (parsed.ok) {
-      info.setFile(parsed.file);
-      info.setEditing(true);
-      setActiveSource('rules');
-    }
+    info.loadFromRecent(entry);
+    setActiveSource('rules');
   };
 
   const handleOpenRuleSetFile = async (file: File) => {
@@ -93,22 +94,24 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
           onNewRuleSet={handleNewRuleSet}
           onLoadRecent={handleLoadRecent}
           recentRuleSets={info.recentRuleSets}
+          error={info.error}
         />
       </div>
     );
   }
 
-  if (effectiveSource === 'ids') {
-    return <IDSPanel onClose={onClose} />;
-  }
-
-  // Information validation (rule-set) path.
+  // Information validation (rule-set) sub-states.
   const hasResults = validationSource === 'rules' && results.report !== null && !info.editing && !info.running;
 
   return (
     <div className="h-full flex flex-col bg-background">
       <PanelHeader title={t('validationPanel.title')} onClose={onClose} />
-      {info.running ? (
+      <SourceToggle active={effectiveSource} onChange={setActiveSource} />
+      {effectiveSource === 'ids' ? (
+        <div className="flex-1 min-h-0 flex flex-col">
+          <IDSPanel embedded />
+        </div>
+      ) : info.running ? (
         <RunningState progress={info.progress} totalRules={info.file?.rules.length ?? 0} onCancel={info.cancel} />
       ) : hasResults ? (
         <div className="flex-1 min-h-0 flex flex-col">
@@ -123,11 +126,18 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
             onEntityClick={(modelId, expressId) => results.focusEntity(modelId, expressId)}
           />
         </div>
+      ) : info.file ? (
+        <AuthoringState info={info} models={modelsForPicker} />
       ) : (
-        <AuthoringState
-          info={info}
-          models={modelsForPicker}
-        />
+        <div className="flex-1 min-h-0 overflow-auto p-4">
+          <InformationValidationEntry
+            onOpenRuleSetFile={handleOpenRuleSetFile}
+            onNewRuleSet={handleNewRuleSet}
+            onLoadRecent={handleLoadRecent}
+            recentRuleSets={info.recentRuleSets}
+            error={info.error}
+          />
+        </div>
       )}
     </div>
   );
@@ -146,6 +156,36 @@ function PanelHeader({ title, onClose }: { title: string; onClose?: () => void }
   );
 }
 
+/** Persistent source switch (issue #5138's core UX ask): visible in every
+ *  non-empty state so the user can move between IDS validation and
+ *  Information validation without losing either side's state. */
+function SourceToggle({ active, onChange }: { active: Source; onChange: (source: Source) => void }) {
+  const { t } = useTranslation();
+  const options: [Source, TranslationKey][] = [
+    ['ids', 'validationPanel.toggle.ids'],
+    ['rules', 'validationPanel.toggle.rules'],
+  ];
+  return (
+    <div className="flex items-center gap-1 px-3 py-1.5 border-b" role="tablist">
+      {options.map(([source, labelKey]) => (
+        <button
+          key={source}
+          type="button"
+          role="tab"
+          aria-selected={active === source}
+          onClick={() => onChange(source)}
+          className={cn(
+            'rounded px-2 py-1 text-xs transition-colors',
+            active === source ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted',
+          )}
+        >
+          {t(labelKey)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 interface AuthoringStateProps {
   info: ReturnType<typeof useInformationValidation>;
   models: RuleModelPickerModel[];
@@ -154,13 +194,6 @@ interface AuthoringStateProps {
 function AuthoringState({ info, models }: AuthoringStateProps) {
   const { t } = useTranslation();
   if (!info.file) return null;
-  const saveAs = () => {
-    const name = window.prompt(t('validationPanel.saveAsPrompt'), info.file?.name ?? '');
-    if (!name || !info.file) return;
-    const renamed = { ...info.file, name };
-    info.setFile(renamed);
-    exportRuleSet(renamed);
-  };
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -171,9 +204,6 @@ function AuthoringState({ info, models }: AuthoringStateProps) {
       <div className="flex items-center gap-2 p-3 border-t">
         <Button type="button" size="sm" variant="outline" className="h-8" onClick={info.save}>
           {t('validationPanel.save')}
-        </Button>
-        <Button type="button" size="sm" variant="outline" className="h-8" onClick={saveAs}>
-          {t('validationPanel.saveAs')}
         </Button>
         <div className="flex-1" />
         <Button type="button" size="sm" className="h-8" onClick={() => { void info.run(); }} disabled={info.file.rules.length === 0}>

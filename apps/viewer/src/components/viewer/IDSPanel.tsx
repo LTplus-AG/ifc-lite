@@ -34,12 +34,19 @@ import { IDSPanelStates, IDSValidationProgress } from './IDSPanelStates';
 
 interface IDSPanelProps {
   onClose?: () => void;
+  /** True when mounted inside `ValidationPanel`'s shared header (#5138):
+   *  the title and close button are ValidationPanel's job then, so this
+   *  hides IDSPanel's own copies of them. The load-new/clear action buttons
+   *  stay — they are IDS-specific actions, not chrome. Defaults to false,
+   *  so every existing standalone usage (and every IDSPanel.*.test.tsx) is
+   *  unaffected. */
+  embedded?: boolean;
 }
 // ============================================================================
 // Main Panel Component
 // ============================================================================
 
-export function IDSPanel({ onClose }: IDSPanelProps) {
+export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
   const { t, locale } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -160,69 +167,77 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
 
   return (
     <div className="h-full flex flex-col bg-background">
-      {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b">
-        <div className="flex items-center gap-2">
-          <FileText className="h-4 w-4" />
-          <span className="font-medium text-sm">{t('idsPanel.title')}</span>
-        </div>
-        <div className="flex items-center gap-1">
-          {/* Load New IDS */}
-          {document && (
-            <>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".ids,.xml"
-                className="hidden"
-                onChange={handleFileSelect}
-              />
+      {/* Header — dropped entirely when embedded with no document: nothing
+          of it (title, load/clear actions) applies yet, and ValidationPanel's
+          own header + toggle already sit above this. */}
+      {(!embedded || document) && (
+        <div className="flex items-center justify-between p-3 border-b">
+          <div className="flex items-center gap-2">
+            {!embedded && (
+              <>
+                <FileText className="h-4 w-4" />
+                <span className="font-medium text-sm">{t('idsPanel.title')}</span>
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            {/* Load New IDS */}
+            {document && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".ids,.xml"
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      aria-label={t('idsPanel.loadNew')}
+                      onClick={() => { void handleLoadIdsClick(); }}
+                    >
+                      <Upload className="h-3 w-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{t('idsPanel.loadNew')}</TooltipContent>
+                </Tooltip>
+              </>
+            )}
+
+            {/* Clear */}
+            {document && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-7 w-7 p-0"
-                    aria-label={t('idsPanel.loadNew')}
-                    onClick={() => { void handleLoadIdsClick(); }}
+                    aria-label={t('idsPanel.clear')}
+                    onClick={() => {
+                      clearIDS();
+                      clearValidation();
+                    }}
                   >
-                    <Upload className="h-3 w-3" />
+                    <Trash2 className="h-3 w-3" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{t('idsPanel.loadNew')}</TooltipContent>
+                <TooltipContent>{t('idsPanel.clear')}</TooltipContent>
               </Tooltip>
-            </>
-          )}
+            )}
 
-          {/* Clear */}
-          {document && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0"
-                  aria-label={t('idsPanel.clear')}
-                  onClick={() => {
-                    clearIDS();
-                    clearValidation();
-                  }}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{t('idsPanel.clear')}</TooltipContent>
-            </Tooltip>
-          )}
-
-          {/* Close */}
-          {onClose && (
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={t('idsPanel.close')} onClick={onClose}>
-              <X className="h-4 w-4" />
-            </Button>
-          )}
+            {/* Close */}
+            {onClose && !embedded && (
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={t('idsPanel.close')} onClick={onClose}>
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Error Display */}
       {error && (

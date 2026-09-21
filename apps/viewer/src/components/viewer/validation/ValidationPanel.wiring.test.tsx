@@ -25,8 +25,10 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import type { IDSDocument } from '@ifc-lite/ids';
 import { cleanup, click, render } from '@/test/render.js';
 import { useViewerStore, type FederatedModel } from '@/store';
+import { addRecentRuleSet } from '@/lib/validation/recent-rule-sets';
 import { ValidationPanel } from './ValidationPanel.js';
 
 const WALLS_IFC = `ISO-10303-21;
@@ -90,6 +92,16 @@ function ruleSetFile(): File {
   return new File([RULE_SET_JSON], 'fixture.rules.json', { type: 'application/json' });
 }
 
+function idsDocumentFixture(): IDSDocument {
+  return {
+    info: { title: 'Wiring IDS fixture', version: '1.0' },
+    specifications: [{
+      id: 'spec-a', name: 'Wall requirements', ifcVersions: ['IFC4'],
+      applicability: { facets: [] }, requirements: [],
+    }],
+  };
+}
+
 async function selectFile(input: HTMLInputElement, file: File): Promise<void> {
   Object.defineProperty(input, 'files', { value: [file], configurable: true });
   await act(async () => {
@@ -131,8 +143,10 @@ describe('ValidationPanel wiring (#5138)', () => {
     const entry = ui.querySelector('[data-testid="validation-entry-ids"]');
     assert.ok(entry, 'expected the IDS validation entry card');
     click(entry as Element);
+    // IDSPanel's own title is suppressed when embedded (ValidationPanel's
+    // header + toggle is the only chrome) — its EMPTY-STATE BODY still is.
     assert.match(ui.textContent ?? '', /No IDS Loaded/);
-    assert.match(ui.textContent ?? '', /IDS Validation/);
+    assert.match(ui.textContent ?? '', /Load an IDS/);
   });
 
   it('opening and running a real two-rule rule set lands a source.kind: "rules" report the panel renders', async () => {
@@ -177,5 +191,47 @@ describe('ValidationPanel wiring (#5138)', () => {
 
     // "Edit rules" is offered from the results state, keeping the report.
     assert.match(text, /Edit rules/);
+  });
+
+  it('the header toggle switches sources without losing either side\'s state', () => {
+    useViewerStore.setState({ idsDocument: idsDocumentFixture() });
+    const ui = render(<ValidationPanel />);
+
+    // An IDS document is loaded, so the panel defaults to the IDS side.
+    assert.match(ui.textContent ?? '', /Wiring IDS fixture/);
+
+    const rulesToggle = [...ui.querySelectorAll('button[role="tab"]')].find((b) => b.textContent === 'Information validation');
+    assert.ok(rulesToggle, 'expected the "Information validation" toggle button');
+    click(rulesToggle!);
+
+    // No rule set loaded yet on this side — the New/Open entry, not a blank pane.
+    assert.match(ui.textContent ?? '', /New rule set/);
+    assert.match(ui.textContent ?? '', /Open \.rules\.json/);
+    assert.doesNotMatch(ui.textContent ?? '', /Wiring IDS fixture/, 'the IDS document title must not leak into the rules side');
+
+    const idsToggle = [...ui.querySelectorAll('button[role="tab"]')].find((b) => b.textContent === 'IDS validation');
+    assert.ok(idsToggle);
+    click(idsToggle!);
+
+    // Toggling back: the IDS document is still there, untouched by the round trip.
+    assert.match(ui.textContent ?? '', /Wiring IDS fixture/);
+    assert.strictEqual(useViewerStore.getState().idsDocument?.info.title, 'Wiring IDS fixture');
+  });
+
+  it('a corrupt "Recent rule sets" entry reports an error and is dropped, not silently ignored', () => {
+    addRecentRuleSet('Corrupt entry', '{not valid json');
+    const ui = render(<ValidationPanel />);
+    const recentButton = [...ui.querySelectorAll('button')].find((b) => b.textContent?.includes('Corrupt entry'));
+    assert.ok(recentButton, 'expected the corrupt entry to still be listed under Recent rule sets');
+    click(recentButton!);
+
+    assert.match(ui.textContent ?? '', /could not be loaded/);
+    // Dropped from the cache — a second render doesn't offer it again.
+    const rerendered = render(<ValidationPanel />);
+    assert.strictEqual(
+      [...rerendered.querySelectorAll('button')].some((b) => b.textContent?.includes('Corrupt entry')),
+      false,
+      'the corrupt entry must be removed from Recent rule sets after failing to load',
+    );
   });
 });

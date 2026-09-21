@@ -72,3 +72,20 @@ export function addRecentRuleSet(name: string, content: string): RecentRuleSet[]
   }
   return next;
 }
+
+/** Drop the entry named `name` (a cached file that turned out to be
+ *  unreadable — corrupt JSON, or JSON that fails `parseRuleSetFile`).
+ *  Returns the resulting list so callers can refresh UI without a
+ *  second read. */
+export function removeRecentRuleSet(name: string): RecentRuleSet[] {
+  const storage = optionalLocalStorage();
+  const next = loadRecentRuleSets().filter((e) => e.name !== name);
+  if (storage) {
+    try {
+      storage.setItem(STORAGE_KEY, JSON.stringify(next));
+    } catch (error) {
+      console.warn(`[ifc-lite] recent rule sets could not be written to "${STORAGE_KEY}".`, error);
+    }
+  }
+  return next;
+}

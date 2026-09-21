@@ -21,10 +21,11 @@ export const validationPanelEn = {
   'validationPanel.entry.openRuleSet': 'Open .rules.json',
   'validationPanel.entry.recent': 'Recent rule sets',
 
+  'validationPanel.toggle.ids': 'IDS validation',
+  'validationPanel.toggle.rules': 'Information validation',
+
   'validationPanel.editRules': 'Edit rules',
   'validationPanel.save': 'Save',
-  'validationPanel.saveAs': 'Save as',
-  'validationPanel.saveAsPrompt': 'Rule set name',
   'validationPanel.run': 'Run',
   'validationPanel.cancel': 'Cancel',
 
@@ -33,6 +34,9 @@ export const validationPanelEn = {
   'validationPanel.running.requirements': 'Checking requirements…',
 
   'validationPanel.results.validatedAgainst': 'Validated against: {models}',
+
+  'validationPanel.error.validationFailed': 'Validation failed',
+  'validationPanel.error.corruptRecent': '"{name}" could not be loaded — it may be corrupted. It has been removed from Recent rule sets.',
 
   'validationPanel.setResult.heading': 'Set-level results',
   'validationPanel.setResult.actualExpected': '{actual} (expected {expected})',

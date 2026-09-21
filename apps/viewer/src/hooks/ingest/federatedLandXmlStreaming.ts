@@ -84,6 +84,7 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
       origins: this.sourceMeshes.map((mesh) => mesh.origin ? [...mesh.origin] as [number, number, number] : undefined),
       geometryAabbs: this.sourceMeshes.map((mesh) => mesh.geometryAabb),
       coordinateInfo: structuredClone(this.options.sourceCoordinateInfo),
+      instancedGeometryAabbs: undefined,
     };
   }
 

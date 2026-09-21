@@ -262,7 +262,7 @@ export function buildLandXmlSurfaceComponents(
     // A connected TIN island is a semantic unit, not a renderer allocation.
     // Cut its upload work before mesh construction so a legal high-valence
     // island never creates an oversized pre-transfer typed array.
-    const pending: string[][][] = [];
+    const pending: LandXmlTinSurface['faces'][] = [];
     for (let end = faces.length; end > 0; end -= MAX_LANDXML_SURFACE_COMPONENT_TRIANGLES) {
       pending.push(faces.slice(Math.max(0, end - MAX_LANDXML_SURFACE_COMPONENT_TRIANGLES), end));
     }

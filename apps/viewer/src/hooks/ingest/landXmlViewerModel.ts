@@ -239,13 +239,14 @@ export function parseLandXmlViewerModelFromBlobAsync(
       if (!finish()) return;
       if (event.data.ok && 'streamed' in event.data) {
         try {
+          const streamed = event.data.streamed;
           if (streamedSource === null) throw new Error('LandXML worker ended without a credited source document');
           const parsed = readLandXmlSourceDocument(streamedSource);
           sourceAssembler.abort();
           const pipeComponents = buildLandXmlStreamedPipeComponents(
             parsed,
             streamedComponents.length + 1,
-            event.data.streamed.preflight,
+            streamed.preflight,
             onFederatedPreflight === undefined,
           );
           const publishPipes = async (): Promise<void> => {
@@ -257,11 +258,11 @@ export function parseLandXmlViewerModelFromBlobAsync(
             }
           };
           publishPipes().then(() => {
-            if (streamedComponents.length !== event.data.streamed.preflight.componentCount) {
+            if (streamedComponents.length !== streamed.preflight.componentCount) {
               throw new Error('LandXML second pass did not reproduce its preflight component envelope');
             }
             resolve(attachSyntheticStore(
-              completeLandXmlStreamedGeometry(parsed, streamedComponents, event.data.streamed.preflight),
+              completeLandXmlStreamedGeometry(parsed, streamedComponents, streamed.preflight),
               file.size,
             ));
           }).catch((error: unknown) => {

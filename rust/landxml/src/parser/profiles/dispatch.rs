@@ -12,6 +12,9 @@ use crate::{
 };
 
 use super::super::{Capture, Code, PairListTarget, Parser};
+use super::references::{
+    ambiguous_reference, missing_reference, unique_reference, ReferenceResolution,
+};
 
 impl Parser<'_> {
     pub(in super::super) fn start_road_semantics(
@@ -357,51 +360,5 @@ impl Parser<'_> {
             ),
         })?;
         Ok(())
-    }
-}
-
-enum ReferenceResolution {
-    Missing,
-    Ambiguous,
-}
-
-fn unique_reference(
-    source_ids: &HashMap<String, Vec<LandXmlSourceId>>,
-    reference: &str,
-) -> std::result::Result<LandXmlSourceId, ReferenceResolution> {
-    match source_ids.get(reference).map(Vec::as_slice) {
-        Some([source_id]) => Ok(source_id.clone()),
-        Some(_) => Err(ReferenceResolution::Ambiguous),
-        None => Err(ReferenceResolution::Missing),
-    }
-}
-
-fn missing_reference(
-    source_id: &LandXmlSourceId,
-    source_path: &str,
-    source_kind: &str,
-    reference_kind: &str,
-    reference: &str,
-) -> LandXmlCapabilityDiagnostic {
-    LandXmlCapabilityDiagnostic {
-        code: LandXmlCapabilityDiagnosticCode::MissingReference,
-        source_id: Some(source_id.clone()),
-        source_path: source_path.to_owned(),
-        message: format!("{source_kind} references unknown {reference_kind} \"{reference}\""),
-    }
-}
-
-fn ambiguous_reference(
-    source_id: &LandXmlSourceId,
-    source_path: &str,
-    source_kind: &str,
-    reference_kind: &str,
-    reference: &str,
-) -> LandXmlCapabilityDiagnostic {
-    LandXmlCapabilityDiagnostic {
-        code: LandXmlCapabilityDiagnosticCode::AmbiguousReference,
-        source_id: Some(source_id.clone()),
-        source_path: source_path.to_owned(),
-        message: format!("{source_kind} references ambiguous {reference_kind} \"{reference}\""),
     }
 }

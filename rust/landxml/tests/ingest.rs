@@ -1301,10 +1301,14 @@ fn issue_5045_parsed_circular_curves_validate_length_units_and_large_scale_endpo
 #[test]
 fn issue_5045_parsed_circular_curves_stay_stable_for_shallow_and_near_parallel_grades(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let source = |before: f64, after: f64, length: f64, radius: f64| {
+    let source_at = |station: f64, before: f64, after: f64, length: f64, radius: f64| {
         format!(
-            r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="A" length="2000" staStart="0"><Profile><ProfAlign name="design"><PVI>0 {before:.15}</PVI><CircCurve length="{length:.15}" radius="{radius:.15}">1000 0</CircCurve><PVI>2000 {after:.15}</PVI></ProfAlign></Profile></Alignment></Alignments></LandXML>"#,
+            r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="A" length="{alignment_length:.17e}" staStart="0"><Profile><ProfAlign name="design"><PVI>0 {before:.17e}</PVI><CircCurve length="{length:.17e}" radius="{radius:.17e}">{station:.17e} 0</CircCurve><PVI>{alignment_length:.17e} {after:.17e}</PVI></ProfAlign></Profile></Alignment></Alignments></LandXML>"#,
+            alignment_length = station * 2.0,
         )
+    };
+    let source = |before: f64, after: f64, length: f64, radius: f64| {
+        source_at(1000.0, before, after, length, radius)
     };
     let shallow = parse(source(-0.000001, 0.000002, 10.0, 1.0e10).as_bytes())?;
     let shallow_profile = &shallow.profiles[0];
@@ -1361,6 +1365,31 @@ fn issue_5045_parsed_circular_curves_stay_stable_for_shallow_and_near_parallel_g
         .evaluate_elevation_at(1000.0)?
         .expect("opposing steep curve evaluates at its PVI");
     assert!((opposing_elevation / 1.0e16 - 1.0).abs() < 1.0e-12);
+
+    let same_sign_overflow = parse(source_at(1.0, -1.0e154, 2.0e154, 0.375, 1.0e308).as_bytes())?;
+    assert!(same_sign_overflow.profiles[0]
+        .evaluate_elevation_at(1.0)?
+        .is_some());
+    let opposing_overflow = parse(source_at(1.0, 1.0e308, 1.0e308, 0.2, 0.1).as_bytes())?;
+    assert!(opposing_overflow.profiles[0]
+        .evaluate_elevation_at(1.0)?
+        .is_some());
+    let reversed_same_sign = parse(source_at(1.0, 1.0e154, -2.0e154, 0.375, 1.0e308).as_bytes())?;
+    assert!(reversed_same_sign.profiles[0]
+        .evaluate_elevation_at(1.0)?
+        .is_some());
+    let reversed_opposing = parse(source_at(1.0, -1.0e308, -1.0e308, 0.2, 0.1).as_bytes())?;
+    assert!(reversed_opposing.profiles[0]
+        .evaluate_elevation_at(1.0)?
+        .is_some());
+
+    let tiny = parse(source_at(1.0e-12, 0.0, 1.0e-15, 9.99999500000375e-16, 1.0e-12).as_bytes())?;
+    assert!(tiny.profiles[0].evaluate_elevation_at(1.0e-12)?.is_some());
+    let invalid_tiny = parse(source_at(1.0e-12, 0.0, 1.0e-15, 7.0e-15, 1.0e-12).as_bytes())?;
+    assert_eq!(
+        invalid_tiny.profiles[0].evaluate_elevation_at(1.0e-12),
+        Err(ifc_lite_landxml::LandXmlProfileEvaluationError::InconsistentCircularCurve),
+    );
 
     let near_parallel = parse(source(-100.0, 100.000001, 98.51853225045078, 1.0e11).as_bytes())?;
     assert!(near_parallel.profiles[0]

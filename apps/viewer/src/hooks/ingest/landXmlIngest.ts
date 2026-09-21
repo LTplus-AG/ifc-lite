@@ -5,7 +5,7 @@
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { createCoordinateInfo, type Bounds3D } from '../../utils/localParsingUtils.js';
 import { MAX_RENDER_FRAME_ORIGIN_METRES, placeComponentsInRenderFrame } from './landXmlRenderFrame.js';
-import type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
+import type { LandXmlPointLocation, LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
 
 export type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
 
@@ -54,6 +54,24 @@ function sourceCoordinateInfo(parsed: LandXmlTinDocument): GeometryResult['coord
         ? Number(line.properties.elev)
         : undefined;
       for (const [northing, easting, elevation] of line.points) add(northing, easting, elevation ?? contourElevation);
+    }
+  }
+  // Alignment plan coordinates are intentionally retained as f64 source
+  // semantics. They may be 2D, in which case zero is only a frame anchor
+  // (not an invented profile/elevation probe or rendered vertex).
+  const addLocation = (location: LandXmlPointLocation): void => {
+    if (location.kind === 'coordinates') add(location.point.northing, location.point.easting, location.point.elevation ?? 0);
+  };
+  for (const alignment of parsed.alignments ?? []) {
+    for (const segment of alignment.segments) {
+      const { primitive } = segment;
+      addLocation(primitive.start);
+      addLocation(primitive.end);
+      if (primitive.kind === 'curve') addLocation(primitive.center);
+      if (primitive.kind === 'spiral' || primitive.kind === 'unsupported_spiral') addLocation(primitive.pi);
+      if (primitive.kind === 'irregular_line') {
+        for (const point of primitive.points) add(point.northing, point.easting, point.elevation ?? 0);
+      }
     }
   }
   if (!Number.isFinite(bounds.min.x)) return createCoordinateInfo({ min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } });

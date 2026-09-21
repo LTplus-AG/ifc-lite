@@ -4,8 +4,8 @@
 
 use ifc_lite_landxml::{
     alignment::{
-        parse_landxml_alignments_with_cancel, LandXmlAlignmentLimits, LandXmlPointLocation,
-        LandXmlSuperelevationEventKind,
+        parse_landxml_alignments_optional, parse_landxml_alignments_with_cancel,
+        LandXmlAlignmentLimits, LandXmlPointLocation, LandXmlSuperelevationEventKind,
     },
     LandXmlCancellationFlag, LandXmlDiagnosticCode,
 };
@@ -269,4 +269,13 @@ fn issue_5044_counts_speed_stations_and_reference_only_align_pis_against_caps() 
             LandXmlDiagnosticCode::LimitExceeded
         );
     }
+}
+
+#[test]
+fn issue_5044_source_adapter_retains_empty_alignment_collection_for_tin_only_documents() {
+    let document = parse_landxml_alignments_optional(
+        br#"<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Surfaces/></LandXML>"#,
+    )
+    .expect("a terrain-only LandXML source remains a valid mixed-source input");
+    assert!(document.alignments.is_empty());
 }

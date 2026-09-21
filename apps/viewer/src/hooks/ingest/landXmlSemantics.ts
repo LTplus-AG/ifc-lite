@@ -51,6 +51,25 @@ export interface LandXmlTinDocument {
   extensions: Array<{ namespace: string; localName: string; path: string }>;
   warnings: string[];
   rendering: { meshProvenance: LandXmlMeshProvenance[]; surfaceCounts: LandXmlSurfaceCounts[] };
+  /** Horizontal source geometry remains a semantic record, never synthetic IFC. */
+  alignments?: LandXmlAlignment[];
+}
+
+export interface LandXmlPlanPoint { northing: number; easting: number; elevation: number | null }
+export type LandXmlPointLocation = { kind: 'coordinates'; point: LandXmlPlanPoint } | { kind: 'point_reference'; pntRef: string };
+export interface LandXmlAlignmentSegment { sourceId: string; ordinal: number; primitive: LandXmlAlignmentPrimitive }
+export type LandXmlAlignmentPrimitive =
+  | { kind: 'line'; start: LandXmlPointLocation; end: LandXmlPointLocation; declaredLength: number | null }
+  | { kind: 'irregular_line'; start: LandXmlPointLocation; end: LandXmlPointLocation; points: LandXmlPlanPoint[]; declaredLength: number | null }
+  | { kind: 'curve'; start: LandXmlPointLocation; center: LandXmlPointLocation; end: LandXmlPointLocation; rotation: 'clockwise' | 'counter_clockwise'; radius: number | null; declaredLength: number | null }
+  | { kind: 'spiral' | 'unsupported_spiral'; start: LandXmlPointLocation; pi: LandXmlPointLocation; end: LandXmlPointLocation; spiType: string; declaredLength: number };
+export interface LandXmlAlignment {
+  sourceId: string;
+  ordinal: number;
+  name: string;
+  length: number;
+  staStart: number;
+  segments: LandXmlAlignmentSegment[];
 }
 
 export interface LandXmlSourceRef { modelId: string; sourceId: string }
@@ -77,7 +96,9 @@ export type LandXmlSourceRecord =
   | { kind: 'point'; surface: LandXmlTinSurface; point: LandXmlTinSurface['points'][number] }
   | { kind: 'source-data-point'; surface: LandXmlTinSurface; point: LandXmlTinSurface['sourceDataPoints'][number] }
   | { kind: 'face'; surface: LandXmlTinSurface; pointIds: readonly [string, string, string] }
-  | { kind: 'boundary' | 'breakline' | 'contour'; surface: LandXmlTinSurface; line: LandXmlPolyline };
+  | { kind: 'boundary' | 'breakline' | 'contour'; surface: LandXmlTinSurface; line: LandXmlPolyline }
+  | { kind: 'alignment'; alignment: LandXmlAlignment }
+  | { kind: 'alignment-segment'; alignment: LandXmlAlignment; segment: LandXmlAlignmentSegment };
 
 export interface LandXmlSourceModel { landXmlDocument?: LandXmlTinDocument }
 
@@ -89,6 +110,11 @@ export interface LandXmlPickFederation {
 
 /** Resolve source data without relying on a renderer or IFC identifier. */
 export function findLandXmlSourceRecord(document: LandXmlTinDocument, sourceId: string): LandXmlSourceRecord | null {
+  for (const alignment of document.alignments ?? []) {
+    if (alignment.sourceId === sourceId) return { kind: 'alignment', alignment };
+    const segment = alignment.segments.find((candidate) => candidate.sourceId === sourceId);
+    if (segment) return { kind: 'alignment-segment', alignment, segment };
+  }
   for (const surface of document.surfaces) {
     if (surface.sourceId === sourceId) return { kind: 'surface', surface };
     const point = surface.points.find((candidate) => candidate.sourceId === sourceId);

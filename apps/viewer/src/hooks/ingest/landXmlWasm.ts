@@ -6,7 +6,10 @@
 
 import init, { IfcAPI } from '@ifc-lite/wasm';
 import type { LandXmlSourceBuffer } from './landXmlIngest.js';
-import type { LandXmlPolyline, LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
+import type {
+  LandXmlAlignment, LandXmlAlignmentPrimitive, LandXmlAlignmentSegment, LandXmlPlanPoint,
+  LandXmlPointLocation, LandXmlPolyline, LandXmlTinDocument, LandXmlTinSurface,
+} from './landXmlSemantics.js';
 
 interface NodeModuleApi {
   createRequire(url: string): { resolve(specifier: string): string };
@@ -186,12 +189,72 @@ export function readLandXmlTinDocument(value: unknown): LandXmlTinDocument {
     }),
     warnings: array(raw.warnings, 'warnings').map((warning, index) => string(warning, `warning ${index}`)),
     rendering: { meshProvenance: [], surfaceCounts: [] },
+    alignments: [],
   };
+}
+
+function optionalFinite(value: unknown, context: string): number | null {
+  return value === undefined || value === null ? null : finite(value, context);
+}
+
+function planPoint(value: unknown, context: string): LandXmlPlanPoint {
+  const raw = record(value, context);
+  return { northing: finite(raw.northing, `${context} northing`), easting: finite(raw.easting, `${context} easting`), elevation: optionalFinite(raw.elevation, `${context} elevation`) };
+}
+
+function pointLocation(value: unknown, context: string): LandXmlPointLocation {
+  const raw = record(value, context);
+  const kind = string(raw.kind, `${context} kind`);
+  if (kind === 'coordinates') return { kind, point: planPoint(raw.point, `${context} point`) };
+  if (kind === 'point_reference') return { kind, pntRef: string(raw.pnt_ref, `${context} pntRef`) };
+  throw new Error(`LandXML WASM returned an invalid ${context} kind`);
+}
+
+function primitive(value: unknown, context: string): LandXmlAlignmentPrimitive {
+  const raw = record(value, context);
+  const kind = string(raw.kind, `${context} kind`);
+  const start = pointLocation(raw.start, `${context} start`);
+  const end = pointLocation(raw.end, `${context} end`);
+  if (kind === 'line') return { kind, start, end, declaredLength: optionalFinite(raw.declared_length, `${context} length`) };
+  if (kind === 'irregular_line') return { kind, start, end, declaredLength: optionalFinite(raw.declared_length, `${context} length`), points: array(raw.points, `${context} points`).map((point, index) => planPoint(point, `${context} point ${index}`)) };
+  if (kind === 'curve') {
+    const rotation = string(raw.rotation, `${context} rotation`);
+    if (rotation !== 'clockwise' && rotation !== 'counter_clockwise') throw new Error(`LandXML WASM returned an invalid ${context} rotation`);
+    return { kind, start, end, center: pointLocation(raw.center, `${context} center`), rotation, radius: optionalFinite(raw.radius, `${context} radius`), declaredLength: optionalFinite(raw.declared_length, `${context} length`) };
+  }
+  if (kind === 'spiral' || kind === 'unsupported_spiral') return { kind, start, end, pi: pointLocation(raw.pi, `${context} PI`), spiType: string(raw.spi_type, `${context} type`), declaredLength: finite(raw.declared_length, `${context} length`) };
+  throw new Error(`LandXML WASM returned an invalid ${context} primitive`);
+}
+
+function alignment(value: unknown, index: number): LandXmlAlignment {
+  const raw = record(value, `alignment ${index}`);
+  return {
+    sourceId: string(raw.source_id, `alignment ${index} source id`), ordinal: finite(raw.ordinal, `alignment ${index} ordinal`),
+    name: string(raw.name, `alignment ${index} name`), length: finite(raw.length, `alignment ${index} length`), staStart: finite(raw.sta_start, `alignment ${index} staStart`),
+    segments: array(raw.segments, `alignment ${index} segments`).map((segment, segmentIndex): LandXmlAlignmentSegment => {
+      const parsed = record(segment, `alignment ${index} segment ${segmentIndex}`);
+      return { sourceId: string(parsed.source_id, `alignment ${index} segment ${segmentIndex} source id`), ordinal: finite(parsed.ordinal, `alignment ${index} segment ${segmentIndex} ordinal`), primitive: primitive(parsed.primitive, `alignment ${index} segment ${segmentIndex} primitive`) };
+    }),
+  };
+}
+
+/** Read the one WASM source document used for terrain-only, alignment-only, and mixed files. */
+export function readLandXmlSourceDocument(value: unknown): LandXmlTinDocument {
+  const raw = record(value, 'source document');
+  const document = readLandXmlTinDocument(raw.tin);
+  const alignmentDocument = record(raw.alignments, 'alignment document');
+  document.alignments = array(alignmentDocument.alignments, 'alignments').map(alignment);
+  return document;
 }
 
 /** Parse original XML bytes using an API already owned by the calling realm. */
 export function parseLandXmlTinWithApi(api: IfcAPI, buffer: LandXmlSourceBuffer): LandXmlTinDocument {
   return readLandXmlTinDocument(api.parseLandXmlTinBytes(new Uint8Array(buffer)));
+}
+
+/** Parse every supported source family through one typed WASM operation. */
+export function parseLandXmlSourceWithApi(api: IfcAPI, buffer: LandXmlSourceBuffer): LandXmlTinDocument {
+  return readLandXmlSourceDocument(api.parseLandXmlSourceBytes(new Uint8Array(buffer)));
 }
 
 /** Worker-less hosts use the same raw-byte WASM parser, not a TS fallback. */
@@ -200,6 +263,16 @@ export async function parseLandXmlTinInCurrentRealm(buffer: LandXmlSourceBuffer)
   const api = new IfcAPI();
   try {
     return parseLandXmlTinWithApi(api, buffer);
+  } finally {
+    api.free();
+  }
+}
+
+export async function parseLandXmlSourceInCurrentRealm(buffer: LandXmlSourceBuffer): Promise<LandXmlTinDocument> {
+  await initLandXmlWasm();
+  const api = new IfcAPI();
+  try {
+    return parseLandXmlSourceWithApi(api, buffer);
   } finally {
     api.free();
   }

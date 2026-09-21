@@ -47,18 +47,33 @@ impl Default for LandXmlAlignmentLimits {
 pub fn parse_landxml_alignments(input: &[u8]) -> Result<LandXmlAlignmentDocument> {
     parse_landxml_alignments_with_cancel(input, &LandXmlAlignmentLimits::default(), None)
 }
+/// Parse a LandXML source while retaining an empty alignment collection when
+/// the document contains terrain-only content. This is for format adapters
+/// that own both source families; callers needing an alignment require the
+/// strict [`parse_landxml_alignments`] entry point above.
+pub fn parse_landxml_alignments_optional(input: &[u8]) -> Result<LandXmlAlignmentDocument> {
+    parse_landxml_alignments_inner(input, &LandXmlAlignmentLimits::default(), None, false)
+}
 /// Parse alignment source records with cancellation and explicit record limits.
 pub fn parse_landxml_alignments_with_cancel(
     input: &[u8],
     limits: &LandXmlAlignmentLimits,
     cancelled: Option<&dyn LandXmlCancellation>,
 ) -> Result<LandXmlAlignmentDocument> {
+    parse_landxml_alignments_inner(input, limits, cancelled, true)
+}
+fn parse_landxml_alignments_inner(
+    input: &[u8],
+    limits: &LandXmlAlignmentLimits,
+    cancelled: Option<&dyn LandXmlCancellation>,
+    require_alignment: bool,
+) -> Result<LandXmlAlignmentDocument> {
     if input.len() > limits.xml.max_bytes {
         return Err(error(Code::InputTooLarge, "input exceeds byte limit"));
     }
     let input = normalize_encoding(input, &limits.xml, cancelled)?;
     preflight_xml_tokens(&input, &limits.xml, cancelled)?;
-    let mut parser = Parser::new(limits, cancelled);
+    let mut parser = Parser::new(limits, cancelled, require_alignment);
     let mut reader = Reader::from_reader(input.as_slice());
     reader.config_mut().trim_text(false);
     let mut buffer = Vec::new();
@@ -138,11 +153,13 @@ pub(super) struct Parser<'a> {
     pub(super) warnings: Vec<String>,
     pub(super) root_seen: bool,
     pub(super) root_closed: bool,
+    pub(super) require_alignment: bool,
 }
 impl<'a> Parser<'a> {
     fn new(
         limits: &'a LandXmlAlignmentLimits,
         cancelled: Option<&'a dyn LandXmlCancellation>,
+        require_alignment: bool,
     ) -> Self {
         Self {
             limits,
@@ -162,6 +179,7 @@ impl<'a> Parser<'a> {
             warnings: Vec::new(),
             root_seen: false,
             root_closed: false,
+            require_alignment,
         }
     }
 }

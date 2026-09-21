@@ -36,6 +36,24 @@ export interface LandXmlSourcePointJs { source_id: string; ordinal: number; sour
 /** serde_wasm_bindgen omits absent Rust Option fields rather than serializing null. */
 export interface LandXmlPolylineJs { source_id: string; ordinal: number; name?: string; kind?: string; source_path: string; properties: Record<string, string>; coordinate_dimension: 2 | 3; points: number[][]; point_source_ids: string[]; }
 export interface LandXmlExtensionJs { namespace: string; local_name: string; path: string; }
+export interface LandXmlSourceDocumentJs { tin: LandXmlTinDocumentJs; alignments: LandXmlAlignmentDocumentJs; }
+export interface LandXmlAlignmentDocumentJs { units?: LandXmlUnitsJs; alignments: LandXmlAlignmentJs[]; warnings: string[]; }
+export interface LandXmlUnitsJs { linear_unit: string; elevation_unit: string; linear_scale_to_meters: number; elevation_scale_to_meters: number; }
+export interface LandXmlAlignmentJs { source_id: string; ordinal: number; name: string; length: number; sta_start: number; start?: LandXmlPointLocationJs; align_pis: LandXmlAlignmentPiJs[]; segments: LandXmlAlignmentSegmentJs[]; station_equations: LandXmlStationEquationJs[]; cant?: LandXmlCantJs; superelevations: LandXmlSuperelevationJs[]; unsupported_transitions: LandXmlUnsupportedTransitionJs[]; }
+export type LandXmlPointLocationJs = { kind: "coordinates"; point: LandXmlPlanPointJs } | { kind: "point_reference"; pnt_ref: string };
+export interface LandXmlPlanPointJs { northing: number; easting: number; elevation?: number; }
+export interface LandXmlAlignmentPiJs { source_id: string; location: LandXmlPointLocationJs; }
+export type LandXmlAlignmentSegmentJs = { source_id: string; ordinal: number; primitive: LandXmlAlignmentPrimitiveJs };
+export type LandXmlAlignmentPrimitiveJs = { kind: "line"; start: LandXmlPointLocationJs; end: LandXmlPointLocationJs; declared_length?: number } | { kind: "irregular_line"; start: LandXmlPointLocationJs; end: LandXmlPointLocationJs; points: LandXmlPlanPointJs[]; declared_length?: number } | { kind: "curve"; start: LandXmlPointLocationJs; center: LandXmlPointLocationJs; end: LandXmlPointLocationJs; pi?: LandXmlPointLocationJs; rotation: "clockwise" | "counter_clockwise"; radius?: number; declared_length?: number } | { kind: "spiral" | "unsupported_spiral"; start: LandXmlPointLocationJs; pi: LandXmlPointLocationJs; end: LandXmlPointLocationJs; spi_type: string; radius_start: LandXmlRadiusJs; radius_end: LandXmlRadiusJs; rotation: "clockwise" | "counter_clockwise"; declared_length: number };
+export type LandXmlRadiusJs = { finite: number } | "infinite";
+export interface LandXmlStationEquationJs { source_id: string; sta_internal: number; sta_ahead: number; sta_back?: number; sta_increment?: string; }
+export interface LandXmlCantJs { source_id: string; name: string; gauge: number; rotation_point?: string; equilibrium_constant?: number; applied_cant_constant?: number; stations: LandXmlCantStationJs[]; speed_stations: LandXmlSpeedStationJs[]; }
+export interface LandXmlCantStationJs { source_id: string; station: number; applied_cant: number; equilibrium_cant?: number; curvature: "clockwise" | "counter_clockwise"; cant_deficiency?: number; cant_excess?: number; rate_of_change_of_applied_cant_over_time?: number; rate_of_change_of_applied_cant_over_length?: number; rate_of_change_of_cant_deficiency_over_time?: number; cant_gradient?: number; speed?: number; transition_type?: string; adverse?: boolean; }
+export interface LandXmlSpeedStationJs { source_id: string; station: number; speed: number; }
+export interface LandXmlSuperelevationJs { source_id: string; sta_start?: number; sta_end?: number; events: LandXmlSuperelevationEventJs[]; }
+export interface LandXmlSuperelevationEventJs { source_id: string; kind: string; value?: string; }
+export interface LandXmlUnsupportedTransitionJs { source_id: string; spi_type: string; spiral: Extract<LandXmlAlignmentPrimitiveJs, { kind: "spiral" }>; reason: string; }
+export interface LandXmlAlignmentProbeJs { alignment_source_id: string; segment_source_id: string; geometric_distance: number; station: { geometric_distance: number; displayed_back: number; displayed_ahead: number; is_equation_boundary: boolean }; northing: number; easting: number; tangent_northing: number; tangent_easting: number; }
 
 
 
@@ -683,6 +701,13 @@ export class IfcAPI {
      */
     parseGridLinesInFrame(content: string, frame: RtcFrame): Float32Array;
     /**
+     * Parse all currently supported LandXML source families from the original
+     * bytes. Terrain-only and alignment-only sources both return an honest
+     * empty sibling collection, allowing the viewer's single load path to
+     * handle either form and mixed documents uniformly.
+     */
+    parseLandXmlSourceBytes(data: Uint8Array): LandXmlSourceDocumentJs;
+    /**
      * Parse a LandXML 1.2 TIN document from its original bytes.
      *
      * The object is an owned serialization of the semantic document. Errors
@@ -769,6 +794,13 @@ export class IfcAPI {
      * report (convertible paths, omissions with extent, exact/raster-only).
      */
     preparePdfVectorPage(request_json: string): Uint8Array;
+    /**
+     * Evaluate one supported horizontal-alignment source span at an exact
+     * f64 distance. The binding reuses the native validator, so malformed
+     * deserialized records, discontinuities, unresolved references, and
+     * unsupported transition domains are rejected rather than approximated.
+     */
+    probeLandXmlAlignmentAtDistance(data: Uint8Array, alignment_source_id: string, distance: number, offset_right: number): LandXmlAlignmentProbeJs;
     /**
      * Process geometry for a subset of pre-scanned entities → flat
      * MeshCollection. Takes raw bytes + pre-pass data from buildPrePassOnce.
@@ -2219,6 +2251,7 @@ export interface InitOutput {
     readonly ifcapi_parseGridAxesInFrame: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_parseGridLines: (a: number, b: number, c: number) => number;
     readonly ifcapi_parseGridLinesInFrame: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly ifcapi_parseLandXmlSourceBytes: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_parseLandXmlTinBytes: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_parseSymbolicRepresentations: (a: number, b: number, c: number) => number;
     readonly ifcapi_parseSymbolicRepresentationsInFrame: (a: number, b: number, c: number, d: number, e: number) => void;
@@ -2230,6 +2263,7 @@ export interface InitOutput {
     readonly ifcapi_planPdfFillAnnotation: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_planPointTransfer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number) => void;
     readonly ifcapi_preparePdfVectorPage: (a: number, b: number, c: number, d: number) => void;
+    readonly ifcapi_probeLandXmlAlignmentAtDistance: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_processGeometryBatch: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number) => number;
     readonly ifcapi_processGeometryBatchFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number) => number;
     readonly ifcapi_processGeometryBatchInstanced: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number, c1: number) => void;

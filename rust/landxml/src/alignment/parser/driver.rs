@@ -298,7 +298,7 @@ impl Parser<'_> {
                 "document must contain exactly one root element",
             ));
         }
-        if self.alignments.is_empty() {
+        if self.require_alignment && self.alignments.is_empty() {
             return Err(invalid("document contains no Alignments"));
         }
         Ok(super::super::LandXmlAlignmentDocument {

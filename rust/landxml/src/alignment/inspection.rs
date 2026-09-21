@@ -13,7 +13,7 @@ use super::{
 ///
 /// LandXML preserves producer-specific transition semantics. This type exposes
 /// the exact neighboring records instead of silently interpolating one.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub struct LandXmlCantProbe {
     pub internal_station: f64,
     pub station: LandXmlStationMapping,

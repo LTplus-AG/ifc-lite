@@ -27,7 +27,7 @@ pub(super) type Result<T> = std::result::Result<T, LandXmlNumericDiagnostic>;
 
 /// All station labels at a geometric boundary. Equations deliberately retain
 /// both sides: a displayed label can be duplicated or a numeric gap can occur.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
 pub struct LandXmlStationMapping {
     pub geometric_distance: f64,
     pub displayed_back: f64,
@@ -35,7 +35,7 @@ pub struct LandXmlStationMapping {
     pub is_equation_boundary: bool,
 }
 /// A source-level pick/probe result, independent of renderer chunks and IFC.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub struct LandXmlAlignmentProbe {
     pub alignment_source_id: LandXmlSourceId,
     pub segment_source_id: LandXmlSourceId,

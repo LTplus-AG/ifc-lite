@@ -23,6 +23,8 @@ function recordName(record: LandXmlSourceRecord): string {
     case 'point': return record.point.id;
     case 'source-data-point': return `Source point ${record.point.ordinal}`;
     case 'face': return record.pointIds.join(', ');
+    case 'alignment': return record.alignment.name;
+    case 'alignment-segment': return `Segment ${record.segment.ordinal}`;
     default: return record.line.name ?? record.line.sourceId;
   }
 }
@@ -33,6 +35,8 @@ function recordPath(record: LandXmlSourceRecord): string {
     case 'point': return `${record.surface.sourcePath}/Definition/Pnts/P[@id="${record.point.id}"]`;
     case 'face': return `${record.surface.sourcePath}/Definition/Faces/F`;
     case 'source-data-point': return record.point.sourcePath;
+    case 'alignment': return `LandXML/Alignments/Alignment[${record.alignment.ordinal}]`;
+    case 'alignment-segment': return `LandXML/Alignments/Alignment[${record.alignment.ordinal}]/CoordGeom`;
     default: return record.line.sourcePath;
   }
 }
@@ -86,6 +90,30 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
   useEffect(() => setNavigationPage(0), [selected.modelId, selected.sourceId]);
 
   if (!record) return null;
+  if (record.kind === 'alignment' || record.kind === 'alignment-segment') {
+    const alignment = record.alignment;
+    const pages = Math.ceil((alignment.segments.length + 1) / NAVIGATION_PAGE_SIZE);
+    const page = Math.min(navigationPage, pages - 1);
+    const firstItem = page * NAVIGATION_PAGE_SIZE;
+    const items = [
+      { label: `Alignment: ${alignment.name}`, sourceId: alignment.sourceId },
+      ...alignment.segments.map((segment) => ({ label: `Segment ${segment.ordinal}: ${segment.primitive.kind}`, sourceId: segment.sourceId })),
+    ].slice(firstItem, firstItem + NAVIGATION_PAGE_SIZE);
+    return (
+      <div className="h-full overflow-auto border-l-2 border-zinc-200 bg-white dark:border-zinc-800 dark:bg-black" data-landxml-source-inspector>
+        <div className="space-y-2 border-b-2 border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-black">
+          <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">LandXML Alignment</p>
+          <h3 className="truncate text-sm font-bold uppercase tracking-tight text-zinc-900 dark:text-zinc-100">{recordName(record)}</h3>
+          <p className="break-all font-mono text-xs text-zinc-500">{recordPath(record)}</p>
+        </div>
+        <div className="divide-y divide-zinc-100 py-2 dark:divide-zinc-900">
+          {items.map((item) => <button key={item.sourceId} type="button" className="block w-full px-4 py-2 text-left text-xs text-zinc-700 dark:text-zinc-300" onClick={() => onSelect({ modelId: selected.modelId, sourceId: item.sourceId })}>{item.label}</button>)}
+        </div>
+        {pages > 1 && <div className="flex items-center justify-between border-t border-zinc-200 px-4 py-2 text-xs dark:border-zinc-800"><button type="button" disabled={page === 0} onClick={() => setNavigationPage(page - 1)}>Previous</button><span>{page + 1} / {pages}</span><button type="button" disabled={page + 1 >= pages} onClick={() => setNavigationPage(page + 1)}>Next</button></div>}
+        <div className="space-y-2 p-4 text-xs text-zinc-700 dark:text-zinc-300"><p>Length: {alignment.length}</p><p>Start station: {alignment.staStart}</p><p>Segments: {alignment.segments.length}</p></div>
+      </div>
+    );
+  }
   const document = models.get(selected.modelId)?.landXmlDocument;
   const sourceCount = document?.rendering.surfaceCounts.find((counts) => counts.surfaceSourceId === record.surface.sourceId);
   const pages = Math.ceil(navigationCount(record.surface) / NAVIGATION_PAGE_SIZE);

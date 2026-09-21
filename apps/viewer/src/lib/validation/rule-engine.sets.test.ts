@@ -176,6 +176,47 @@ describe('runRuleSet — aggregate (#5138, plan §4.6)', () => {
     assert.equal(assembly2!.passed, false, 'count 0 fails gte 1');
     assert.equal(assembly2!.actual, '0');
   });
+
+  it('aggregate.count.groupBy.material: an element with two materials lands in BOTH groups (plan §3, review)', async () => {
+    // Wall M1 carries Concrete AND Brick (two IfcRelAssociatesMaterial), so
+    // it must contribute to BOTH groups — plan §3: "an element contributes
+    // to every key it carries" for multi-valued groupBy subjects.
+    const body = `
+#910= IFCMATERIAL('Concrete',$,$);
+#911= IFCMATERIAL('Brick',$,$);
+#920= IFCWALL('0Wall0000000000000000920',$,'Wall M1',$,$,#40,$,'tag',$);
+#921= IFCRELASSOCIATESMATERIAL('0RelM00000000000000921',$,$,$,(#920),#910);
+#922= IFCRELASSOCIATESMATERIAL('0RelM00000000000000922',$,$,$,(#920),#911);
+#930= IFCWALL('0Wall0000000000000000930',$,'Wall M2',$,$,#40,$,'tag',$);
+#931= IFCRELASSOCIATESMATERIAL('0RelM00000000000000931',$,$,$,(#930),#910);
+#940= IFCWALL('0Wall0000000000000000940',$,'Wall M3',$,$,#40,$,'tag',$);
+#941= IFCRELASSOCIATESMATERIAL('0RelM00000000000000941',$,$,$,(#940),#911);
+`;
+    const store = await parse(body);
+    const rule: InformationRule = {
+      id: 'r1', name: 'walls per material',
+      applicability: { groups: [{ rules: [Rule.ifcType(['IfcWall'])], combinator: 'AND' }], authoredAs: 'chips' },
+      requirement: {
+        kind: 'aggregate', fn: 'count',
+        groupBy: { subject: { kind: 'material' } },
+        op: 'gte', value: 1,
+      },
+    };
+    const report = await run({ m1: store }, { version: 1, name: 'test', rules: [rule] });
+    const groups = report.specificationResults[0].setResults ?? [];
+    assert.equal(groups.length, 2, 'two material groups: Concrete and Brick');
+
+    const concrete = groups.find((g) => g.groupKey === 'Concrete');
+    const brick = groups.find((g) => g.groupKey === 'Brick');
+    assert.ok(concrete && brick);
+    assert.equal(concrete!.actual, '2', 'Concrete: Wall M1 + Wall M2');
+    assert.equal(brick!.actual, '2', 'Brick: Wall M1 + Wall M3');
+
+    const concreteIds = concrete!.members.map((m) => m.expressId).sort((a, b) => a - b);
+    const brickIds = brick!.members.map((m) => m.expressId).sort((a, b) => a - b);
+    assert.deepEqual(concreteIds, [920, 930], 'Wall M1 (920) appears in the Concrete group alongside Wall M2 (930)');
+    assert.deepEqual(brickIds, [920, 940], 'Wall M1 (920) ALSO appears in the Brick group, alongside Wall M3 (940)');
+  });
 });
 
 // ── compare (plan §4.7) ──────────────────────────────────────────────────────

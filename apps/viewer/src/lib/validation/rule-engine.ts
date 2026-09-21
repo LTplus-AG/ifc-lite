@@ -16,34 +16,29 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { exactTypeName } from '@ifc-lite/data';
-import type {
-  EntityResult,
-  IDSCardinalityResult,
-  IDSValidationSummary,
-  SpecificationResult,
-  ValidationModelInfo,
-  ValidationReport,
+import {
+  calculateSummary,
+  type EntityResult,
+  type IDSCardinalityResult,
+  type SpecificationResult,
+  type ValidationModelInfo,
+  type ValidationReport,
 } from '@ifc-lite/ids';
 
 import type { IfcTypeRule } from '../search/filter-rules.js';
 import { setOpMatches } from '../search/filter-ops.js';
 import { evaluateFilterGroupsFederated } from '../search/filter-evaluate-groups.js';
 import type { EvaluatorModel, FilteredElement } from '../search/filter-evaluate.js';
-import { throwAbort, yieldToEventLoop } from '../search/filter-evaluate-yield.js';
+import { throwAbort } from '../search/filter-evaluate-yield.js';
 import { evaluatorModelsFromState, type ModelTagState } from '../model-tags/evaluator-models.js';
 
 import type { InformationRule, RuleBlock, RuleSetFile, RuleSetTargets } from './rule-set.js';
 import { checkElementForEntity, type ValidationOpts } from './rule-engine-requirements.js';
-import { checkAggregate, checkCompare, checkUnique, type SetCheckOutcome } from './rule-engine-sets.js';
+import { checkAggregate, checkUnique, type SetCheckOutcome } from './rule-engine-sets.js';
+import { checkCompare } from './rule-engine-compare.js';
+import { maybeYieldChunk, finalProgress, type RuleEngineProgress } from './rule-engine-chunk.js';
 
-const ENTITY_CHUNK_SIZE = 2_000;
-
-export interface RuleEngineProgress {
-  ruleIndex: number;
-  phase: 'applicability' | 'requirements';
-  done: number;
-  total: number;
-}
+export type { RuleEngineProgress };
 
 export interface RunRuleSetOptions {
   ruleSet: RuleSetFile;
@@ -158,42 +153,10 @@ async function runElementRequirement(
     const el = applicable[i];
     const store = storesById.get(el.modelId);
     if (store) out.push(checkElementForEntity(ruleId, block, el, store, opts));
-    if ((i + 1) % ENTITY_CHUNK_SIZE === 0) {
-      if (signal?.aborted) throwAbort(signal);
-      onProgress?.({ ruleIndex, phase: 'requirements', done: i + 1, total: applicable.length });
-      await yieldToEventLoop();
-    }
+    await maybeYieldChunk(i + 1, applicable.length, ruleIndex, signal, onProgress);
   }
-  onProgress?.({ ruleIndex, phase: 'requirements', done: applicable.length, total: applicable.length });
+  finalProgress(applicable.length, ruleIndex, onProgress);
   return out;
-}
-
-/** Same algorithm as `packages/ids/src/validation/validator.ts`'s
- *  `calculateSummary` (private there) — kept in sync by hand since the rule
- *  engine is a second producer of the same `IDSValidationSummary` shape. */
-function calculateSummary(specificationResults: readonly SpecificationResult[]): IDSValidationSummary {
-  let passedSpecifications = 0;
-  let failedSpecifications = 0;
-  let totalEntitiesChecked = 0;
-  let totalEntitiesPassed = 0;
-  let totalEntitiesFailed = 0;
-  for (const r of specificationResults) {
-    if (r.status === 'pass') passedSpecifications++;
-    else if (r.status === 'fail') failedSpecifications++;
-    totalEntitiesChecked += r.applicableCount;
-    totalEntitiesPassed += r.passedCount;
-    totalEntitiesFailed += r.failedCount;
-  }
-  const overallPassRate = totalEntitiesChecked > 0 ? Math.floor((totalEntitiesPassed / totalEntitiesChecked) * 100) : 100;
-  return {
-    totalSpecifications: specificationResults.length,
-    passedSpecifications,
-    failedSpecifications,
-    totalEntitiesChecked,
-    totalEntitiesPassed,
-    totalEntitiesFailed,
-    overallPassRate,
-  };
 }
 
 function finalizeSpecification(
@@ -258,6 +221,10 @@ export async function runRuleSet(options: RunRuleSetOptions): Promise<Validation
     if (signal?.aborted) throwAbort(signal);
     const rule = ruleSet.rules[ruleIndex];
     const opts: ValidationOpts = { caseSensitive: rule.caseSensitive ?? true, tolerance: rule.tolerance ?? 1e-6 };
+    // Tracked outside the `try` so the `catch` can report the REAL applicable
+    // count when applicability itself succeeded and only the requirement
+    // check threw — `0` is reserved for when applicability never resolved.
+    let applicableCount = 0;
 
     try {
       const applicableRaw = await evaluateFilterGroupsFederated(targetModels, rule.applicability.groups, {
@@ -266,7 +233,7 @@ export async function runRuleSet(options: RunRuleSetOptions): Promise<Validation
         onProgress: (done, total) => onProgress?.({ ruleIndex, phase: 'applicability', done, total }),
       });
       const applicable = applyExactClassFilter(applicableRaw, exactClassRulesOf(rule.applicability), storesById, opts);
-      const applicableCount = applicable.length;
+      applicableCount = applicable.length;
       const cardinalityResult = checkCardinality(rule.cardinality, applicableCount);
 
       let outcome: SetCheckOutcome;
@@ -279,13 +246,13 @@ export async function runRuleSet(options: RunRuleSetOptions): Promise<Validation
           break;
         }
         case 'unique':
-          outcome = checkUnique(rule.id, rule.requirement, applicable, storesById, opts);
+          outcome = await checkUnique(rule.id, rule.requirement, applicable, storesById, opts, ruleIndex, signal, onProgress);
           break;
         case 'aggregate':
-          outcome = await checkAggregate(rule.id, rule.requirement, applicable, storesById, targetModels, opts);
+          outcome = await checkAggregate(rule.id, rule.requirement, applicable, storesById, targetModels, opts, ruleIndex, signal, onProgress);
           break;
         case 'compare':
-          outcome = checkCompare(rule.id, rule.requirement, applicable, storesById, opts);
+          outcome = await checkCompare(rule.id, rule.requirement, applicable, storesById, opts, ruleIndex, signal, onProgress);
           break;
       }
 
@@ -293,7 +260,7 @@ export async function runRuleSet(options: RunRuleSetOptions): Promise<Validation
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') throw err;
       const message = err instanceof Error ? err.message : String(err);
-      specificationResults.push(finalizeSpecification(rule, 0, undefined, { entityResults: [] }, message));
+      specificationResults.push(finalizeSpecification(rule, applicableCount, undefined, { entityResults: [] }, message));
     }
   }
 

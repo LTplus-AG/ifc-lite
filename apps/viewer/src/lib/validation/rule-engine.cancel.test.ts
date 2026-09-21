@@ -67,7 +67,65 @@ function stateFor(store: IfcDataStore): ModelTagState {
   };
 }
 
+// Reuses `rule-engine.limit.test.ts`'s 6 000-wall generator shape — large
+// enough to exceed `rule-engine-chunk.ts`'s `ENTITY_CHUNK_SIZE` (2 000), so
+// `checkUnique`'s own chunk-boundary abort check (added on review: plan §4
+// item 10 applies to EVERY requirement kind, not only `element`) has a real
+// boundary to land on partway through the requirement-checking phase, not
+// just during applicability.
+const UNIQUE_WALL_COUNT = 6_000;
+
+function generateWallsStepFor(count: number): string {
+  const lines: string[] = [
+    'ISO-10303-21;',
+    'HEADER;',
+    "FILE_DESCRIPTION((''),'2;1');",
+    "FILE_NAME('t','',(''),(''),'','','');",
+    "FILE_SCHEMA(('IFC4'));",
+    'ENDSEC;',
+    'DATA;',
+    "#1= IFCPROJECT('0Proj000000000000000001',$,'Proj',$,$,$,$,(#20),#30);",
+    "#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);",
+    '#21= IFCAXIS2PLACEMENT3D(#22,$,$);',
+    '#22= IFCCARTESIANPOINT((0.,0.,0.));',
+    '#30= IFCUNITASSIGNMENT((#31));',
+    '#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);',
+    '#40= IFCLOCALPLACEMENT($,#21);',
+  ];
+  for (let i = 0; i < count; i++) {
+    const id = 1000 + i;
+    const gid = `0Wall${String(i).padStart(17, '0')}`;
+    lines.push(`#${id}= IFCWALL('${gid}',$,'Wall ${i}',$,$,#40,$,'tag',$);`);
+  }
+  lines.push('ENDSEC;', 'END-ISO-10303-21;', '');
+  return lines.join('\n');
+}
+
+async function parseUniqueWalls(): Promise<IfcDataStore> {
+  const bytes = new TextEncoder().encode(generateWallsStepFor(UNIQUE_WALL_COUNT));
+  return new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+}
+
 describe('runRuleSet — cancellation (#5138)', () => {
+  it('aborting mid-unique (6 000-wall fixture) rejects with AbortError and never resolves with a report', async () => {
+    const store = await parseUniqueWalls();
+    const rule: InformationRule = {
+      id: 'r1', name: 'unique names',
+      applicability: { groups: [{ rules: [Rule.ifcType(['IfcWall'])], combinator: 'AND' }], authoredAs: 'chips' },
+      requirement: { kind: 'unique', subject: { kind: 'name' } },
+    };
+    const ruleSet: RuleSetFile = { version: 1, name: 'test', rules: [rule] };
+    const controller = new AbortController();
+
+    let resolvedReport: unknown = 'NEVER_ASSIGNED';
+    const promise = runRuleSet({ ruleSet, models: stateFor(store), signal: controller.signal })
+      .then((report) => { resolvedReport = report; return report; });
+    controller.abort();
+
+    await assert.rejects(promise, (err: unknown) => err instanceof DOMException && err.name === 'AbortError');
+    assert.equal(resolvedReport, 'NEVER_ASSIGNED', 'the report must never resolve after an abort mid-unique either');
+  });
+
   it('aborting mid-run rejects with AbortError and never resolves with a report', async () => {
     const store = await parseGeneratedWalls();
     const rule: InformationRule = {

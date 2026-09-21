@@ -3,28 +3,29 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Set-level requirement checking (#5138 PR 3) — `unique` (plan §4.5),
- * `aggregate` (§4.6) and `compare` (§4.7). Unlike `element` (per-entity,
- * `rule-engine-requirements.ts`), `unique`/`aggregate` produce `SetResult`s
- * describing a GROUP of entities; `compare` is per-entity like `element`
- * but reads two `Subject`s instead of matching one against an operand, so
- * it lives here beside the other new requirement kinds rather than in the
- * `element` module.
+ * Set-level requirement checking (#5138 PR 3) — `unique` (plan §4.5) and
+ * `aggregate` (§4.6). Unlike `element` (per-entity, `rule-engine-
+ * requirements.ts`), these produce `SetResult`s describing a GROUP of
+ * entities. `compare` (§4.7) is per-entity like `element`, not a set kind —
+ * it lives in `rule-engine-compare.ts` (split out once this file crossed the
+ * module-size budget), reusing `describeSubject`/`baseRow` from here.
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { CheckKind, EntityResult, FailureReasonCode, RequirementResult, SetResult } from '@ifc-lite/ids';
+import type { EntityResult, FailureReasonCode, RequirementResult, SetResult } from '@ifc-lite/ids';
 import { collectSpatialAncestors } from '@ifc-lite/data';
 import { numericOpMatches } from '../search/filter-ops.js';
 import { evaluateFilterGroupsFederated } from '../search/filter-evaluate-groups.js';
 import type { FilteredElement, EvaluatorModel } from '../search/filter-evaluate.js';
 import { readSubject } from '../search/read-subject.js';
-import type { Subject, UniqueRequirement, AggregateRequirement, CompareRequirement } from './rule-set.js';
+import type { Subject, UniqueRequirement, AggregateRequirement } from './rule-set.js';
 import { OP_LABEL, type ValidationOpts } from './rule-engine-requirements.js';
+import { maybeYieldChunk, finalProgress, type RuleEngineProgress } from './rule-engine-chunk.js';
 
 const SET_RESULT_CAP = 1_000;
 
-function describeSubject(subject: Subject): string {
+/** Shared with `rule-engine-compare.ts` (same `Subject` label rendering). */
+export function describeSubject(subject: Subject): string {
   switch (subject.kind) {
     case 'property': return `${subject.setName}.${subject.propertyName}`;
     case 'quantity': return `${subject.setName}.${subject.quantityName}`;
@@ -34,7 +35,8 @@ function describeSubject(subject: Subject): string {
   }
 }
 
-function baseRow(el: FilteredElement, passed: boolean, result: RequirementResult): EntityResult {
+/** Shared with `rule-engine-compare.ts`. */
+export function baseRow(el: FilteredElement, passed: boolean, result: RequirementResult): EntityResult {
   return {
     expressId: el.expressId,
     modelId: el.modelId,
@@ -58,43 +60,50 @@ export interface SetCheckOutcome {
   setResultsTruncated?: boolean;
 }
 
-export function checkUnique(
+export async function checkUnique(
   requirementId: string,
   requirement: UniqueRequirement,
   applicable: readonly FilteredElement[],
   storesById: ReadonlyMap<string, IfcDataStore>,
   opts: ValidationOpts,
-): SetCheckOutcome {
+  ruleIndex: number,
+  signal: AbortSignal | undefined,
+  onProgress: ((p: RuleEngineProgress) => void) | undefined,
+): Promise<SetCheckOutcome> {
   const label = `unique(${describeSubject(requirement.subject)})`;
   const perModel = requirement.scope === 'perModel';
   const entityResults: EntityResult[] = [];
   // scope key ('' for federation, else modelId) -> folded value -> members.
   const buckets = new Map<string, Map<string, { el: FilteredElement; value: string }[]>>();
 
-  for (const el of applicable) {
+  for (let i = 0; i < applicable.length; i++) {
+    const el = applicable[i];
     const store = storesById.get(el.modelId);
-    if (!store) continue;
-    const subject = readSubject(requirement.subject, { store, expressId: el.expressId });
-    if (!subject.present) {
-      entityResults.push(baseRow(el, false, {
-        requirement: { id: requirementId, label, optionality: 'required' },
-        status: 'fail', facetType: 'unique', checkedDescription: label,
-        failureReason: 'absent', actualValue: '""', expectedValue: 'unique',
-      }));
-      continue;
+    if (store) {
+      const subject = readSubject(requirement.subject, { store, expressId: el.expressId });
+      if (!subject.present) {
+        entityResults.push(baseRow(el, false, {
+          requirement: { id: requirementId, label, optionality: 'required' },
+          status: 'fail', facetType: 'unique', checkedDescription: label,
+          failureReason: 'absent', actualValue: '""', expectedValue: 'unique',
+        }));
+      } else {
+        const scopeKey = perModel ? el.modelId : '';
+        let scoped = buckets.get(scopeKey);
+        if (!scoped) buckets.set(scopeKey, (scoped = new Map()));
+        for (const raw of subject.values) {
+          const s = String(raw);
+          if (s.trim().length === 0) continue;
+          const key = opts.caseSensitive ? s : s.toLowerCase();
+          let bucket = scoped.get(key);
+          if (!bucket) scoped.set(key, (bucket = []));
+          bucket.push({ el, value: s });
+        }
+      }
     }
-    const scopeKey = perModel ? el.modelId : '';
-    let scoped = buckets.get(scopeKey);
-    if (!scoped) buckets.set(scopeKey, (scoped = new Map()));
-    for (const raw of subject.values) {
-      const s = String(raw);
-      if (s.trim().length === 0) continue;
-      const key = opts.caseSensitive ? s : s.toLowerCase();
-      let bucket = scoped.get(key);
-      if (!bucket) scoped.set(key, (bucket = []));
-      bucket.push({ el, value: s });
-    }
+    await maybeYieldChunk(i + 1, applicable.length, ruleIndex, signal, onProgress);
   }
+  finalProgress(applicable.length, ruleIndex, onProgress);
 
   const dupGroups: { value: string; members: { el: FilteredElement; value: string }[] }[] = [];
   for (const scoped of buckets.values()) {
@@ -155,22 +164,40 @@ function directParentOf(store: IfcDataStore, expressId: number): number | undefi
   return collectSpatialAncestors(store.relationships, expressId)[0];
 }
 
-function groupKeyOf(
+/**
+ * Every group key `el` contributes to — plural, per plan §3: "an element
+ * contributes to every key it carries", so a multi-valued `groupBy` subject
+ * (`material`, `classification`) lands the same element in EVERY matching
+ * group, not just its first value. `parent` stays single-valued (an element
+ * has exactly one direct spatial parent); everything else de-dupes an
+ * element's own repeated values so one element can't double-count itself
+ * into the SAME group twice.
+ */
+function groupKeysOf(
   requirement: AggregateRequirement,
   el: FilteredElement,
   store: IfcDataStore,
   caseSensitive: boolean,
-): { key: string; label: string } | undefined {
-  if (!requirement.groupBy) return { key: '*', label: '' };
+): { key: string; label: string }[] {
+  if (!requirement.groupBy) return [{ key: '*', label: '' }];
   if (requirement.groupBy.subject.kind === 'parent') {
     const parentId = directParentOf(store, el.expressId);
-    if (parentId === undefined) return undefined;
-    return { key: `${el.modelId}:${parentId}`, label: store.entities.getName(parentId) };
+    if (parentId === undefined) return [];
+    return [{ key: `${el.modelId}:${parentId}`, label: store.entities.getName(parentId) }];
   }
   const subject = readSubject(requirement.groupBy.subject, { store, expressId: el.expressId });
-  if (!subject.present) return undefined;
-  const raw = String(subject.values[0]);
-  return { key: caseSensitive ? raw : raw.toLowerCase(), label: raw };
+  if (!subject.present) return [];
+  const out: { key: string; label: string }[] = [];
+  const seen = new Set<string>();
+  for (const raw of subject.values) {
+    const s = String(raw);
+    if (s.trim().length === 0) continue;
+    const key = caseSensitive ? s : s.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, label: s });
+  }
+  return out;
 }
 
 /** Seed every group the `universe` block defines with an EMPTY accumulator,
@@ -213,6 +240,9 @@ export async function checkAggregate(
   storesById: ReadonlyMap<string, IfcDataStore>,
   models: ReadonlyArray<EvaluatorModel>,
   opts: ValidationOpts,
+  ruleIndex: number,
+  signal: AbortSignal | undefined,
+  onProgress: ((p: RuleEngineProgress) => void) | undefined,
 ): Promise<SetCheckOutcome> {
   const label = `${requirement.fn}(${requirement.subject ? describeSubject(requirement.subject) : ''})`;
   const groups = new Map<string, Accumulator>();
@@ -224,25 +254,44 @@ export async function checkAggregate(
     status: 'fail', facetType: 'aggregate', checkedDescription: label,
     failureReason: reason, actualValue: reason === 'absent' ? '""' : '(non-numeric)', expectedValue: 'numeric',
   });
+  const accFor = (key: string, groupLabel: string): Accumulator => {
+    let acc = groups.get(key);
+    if (!acc) groups.set(key, (acc = newAccumulator(groupLabel)));
+    return acc;
+  };
 
-  for (const el of applicable) {
+  for (let i = 0; i < applicable.length; i++) {
+    const el = applicable[i];
     const store = storesById.get(el.modelId);
-    if (!store) continue;
-    const groupKey = groupKeyOf(requirement, el, store, opts.caseSensitive);
-    if (!groupKey) continue;
-    let acc = groups.get(groupKey.key);
-    if (!acc) groups.set(groupKey.key, (acc = newAccumulator(groupKey.label)));
-    acc.members.push({ modelId: el.modelId, expressId: el.expressId });
-
-    if (requirement.fn === 'count') { acc.count++; continue; }
-    const subject = readSubject(requirement.subject!, { store, expressId: el.expressId });
-    if (!subject.present) { acc.skipped++; entityResults.push(excludedRow(el, 'absent')); continue; }
-    const nums = subject.values.map(Number).filter(Number.isFinite);
-    if (nums.length === 0) { acc.skipped++; entityResults.push(excludedRow(el, 'notNumeric')); continue; }
-    acc.count++;
-    for (const n of nums) { acc.sum += n; if (n < acc.min) acc.min = n; if (n > acc.max) acc.max = n; }
-    if (subject.unit) acc.units.add(subject.unit);
+    if (store) {
+      const groupKeys = groupKeysOf(requirement, el, store, opts.caseSensitive);
+      if (groupKeys.length > 0) {
+        if (requirement.fn === 'count') {
+          for (const gk of groupKeys) {
+            const acc = accFor(gk.key, gk.label);
+            acc.members.push({ modelId: el.modelId, expressId: el.expressId });
+            acc.count++;
+          }
+        } else {
+          const subject = readSubject(requirement.subject!, { store, expressId: el.expressId });
+          const nums = subject.present ? subject.values.map(Number).filter(Number.isFinite) : [];
+          const reason: FailureReasonCode | undefined = !subject.present ? 'absent' : nums.length === 0 ? 'notNumeric' : undefined;
+          for (const gk of groupKeys) {
+            const acc = accFor(gk.key, gk.label);
+            acc.members.push({ modelId: el.modelId, expressId: el.expressId });
+            if (reason) { acc.skipped++; continue; }
+            acc.count++;
+            for (const n of nums) { acc.sum += n; if (n < acc.min) acc.min = n; if (n > acc.max) acc.max = n; }
+            if (subject.unit) acc.units.add(subject.unit);
+          }
+          // One entity row per excluded ELEMENT (not per group it belongs to).
+          if (reason) entityResults.push(excludedRow(el, reason));
+        }
+      }
+    }
+    await maybeYieldChunk(i + 1, applicable.length, ruleIndex, signal, onProgress);
   }
+  finalProgress(applicable.length, ruleIndex, onProgress);
 
   const setResults: SetResult[] = [];
   for (const acc of groups.values()) {
@@ -269,67 +318,4 @@ export async function checkAggregate(
   setResults.sort((a, b) => b.members.length - a.members.length);
   const setResultsTruncated = setResults.length > SET_RESULT_CAP;
   return { setResults: setResults.slice(0, SET_RESULT_CAP), setResultsTruncated, entityResults };
-}
-
-// ── compare (plan §4.7) ──────────────────────────────────────────────────────
-
-/** ISO-8601 date or date-time — plan §4.7. No locale formats, no
- *  `IfcCalendarDate` reconstruction (deferred, plan §10). */
-const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/;
-
-export function checkCompare(
-  requirementId: string,
-  requirement: CompareRequirement,
-  applicable: readonly FilteredElement[],
-  storesById: ReadonlyMap<string, IfcDataStore>,
-  opts: ValidationOpts,
-): { entityResults: EntityResult[] } {
-  const expected = `${describeSubject(requirement.left)} ${OP_LABEL[requirement.op]} ${describeSubject(requirement.right)}`;
-  const facetType: CheckKind = 'compare';
-  const entityResults: EntityResult[] = [];
-
-  for (const el of applicable) {
-    const store = storesById.get(el.modelId);
-    if (!store) continue;
-    const ctx = { store, expressId: el.expressId };
-    const left = readSubject(requirement.left, ctx);
-    const right = readSubject(requirement.right, ctx);
-    let passed = false;
-    let reason: FailureReasonCode | undefined;
-    let actual: string;
-
-    if (!left.present || !right.present) {
-      reason = 'absent';
-      actual = `${left.present ? String(left.values[0]) : '""'} ⟂ ${right.present ? String(right.values[0]) : '""'}`;
-    } else if ((requirement.valueType ?? 'number') === 'date') {
-      const lv = String(left.values[0]);
-      const rv = String(right.values[0]);
-      actual = `${lv} ⟂ ${rv}`;
-      const lOk = ISO_DATE_RE.test(lv) && Number.isFinite(Date.parse(lv));
-      const rOk = ISO_DATE_RE.test(rv) && Number.isFinite(Date.parse(rv));
-      if (!lOk || !rOk) {
-        reason = 'notDate';
-      } else {
-        passed = numericOpMatches(requirement.op, Date.parse(lv), Date.parse(rv));
-        reason = passed ? undefined : 'mismatch';
-      }
-    } else {
-      const lv = Number(left.values[0]);
-      const rv = Number(right.values[0]);
-      actual = `${left.values[0]} ⟂ ${right.values[0]}`;
-      if (!Number.isFinite(lv) || !Number.isFinite(rv)) {
-        reason = 'notNumeric';
-      } else {
-        passed = numericOpMatches(requirement.op, lv, rv, opts);
-        reason = passed ? undefined : 'mismatch';
-      }
-    }
-
-    entityResults.push(baseRow(el, passed, {
-      requirement: { id: requirementId, label: expected, optionality: 'required' },
-      status: passed ? 'pass' : 'fail', facetType, checkedDescription: expected,
-      failureReason: passed ? undefined : reason, actualValue: actual, expectedValue: expected,
-    }));
-  }
-  return { entityResults };
 }

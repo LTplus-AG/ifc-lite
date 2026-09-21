@@ -317,7 +317,7 @@ async function projectUnobscuredControl(page: Page, control: { id: string; local
       // the named, visible control rather than waiting for another face to
       // vacate its hitbox.
       await page.getByRole('button', { name: view, exact: true }).click({ force: true });
-      await page.waitForTimeout(250);
+      await page.waitForTimeout(500);
     }
     const projected = await page.evaluate((point) => globalThis.__ifc_lite_viewer_store__.getState()
       .cameraCallbacks.projectToScreen!(point), canonicalToRender(control.local));
@@ -338,21 +338,21 @@ async function projectUnobscuredControl(page: Page, control: { id: string; local
   throw new Error(`${control.id}: no ViewCube orientation exposes the control on the viewport canvas`);
 }
 
-async function hoverVisibleControl(
-  page: Page, panel: Locator, canvas: NonNullable<Awaited<ReturnType<Locator['boundingBox']>>>,
-  projected: { x: number; y: number }, modelName: string, controlId: string,
+async function clickVisibleControl(
+  page: Page, canvas: NonNullable<Awaited<ReturnType<Locator['boundingBox']>>>,
+  projected: { x: number; y: number }, accepts: () => Promise<boolean>, controlId: string, role: 'source' | 'target',
 ): Promise<{ x: number; y: number }> {
   // The visual splat and point-cloud ray index use independent pixel rounding.
-  // Move within the same 12 px screen-space snap aperture, and select only
-  // after the real Reposition prompt confirms the constrained model hover.
-  const prompt = panel.locator('p[role="status"]').first();
+  // Click within the same visible snap aperture until the real Reposition
+  // panel accepts the constrained source/target role. A rejected click leaves
+  // picking active, so this is precisely the user-facing recovery path.
   for (const [dx, dy] of [[0, 0], [4, 0], [-4, 0], [0, 4], [0, -4], [6, 6], [-6, -6]]) {
     const candidate = { x: canvas.x + projected.x + dx, y: canvas.y + projected.y + dy };
-    await page.mouse.move(candidate.x, candidate.y);
-    await page.waitForTimeout(40);
-    if ((await prompt.textContent())?.includes(modelName)) return candidate;
+    await page.mouse.click(candidate.x, candidate.y);
+    await page.waitForTimeout(75);
+    if (await accepts()) return candidate;
   }
-  throw new Error(`${controlId}: Reposition did not hover an eligible ${modelName} point within the visible snap aperture`);
+  throw new Error(`${controlId}: Reposition did not accept an eligible ${role} point within the visible snap aperture`);
 }
 
 async function pickControlThroughRenderer(
@@ -368,14 +368,14 @@ async function pickControlThroughRenderer(
   expect(canvas, 'viewer canvas').not.toBeNull();
   await panel.getByRole('button', { name: 'Pick source point', exact: true }).click();
   await expect.poll(() => page.locator('canvas').evaluate((element) => element.style.cursor)).toBe('crosshair');
-  const sourceScreen = await hoverVisibleControl(page, panel, canvas!, projected!, moving.name, control.id);
-  await page.mouse.click(sourceScreen.x, sourceScreen.y);
   const targetButton = panel.getByRole('button', { name: 'Pick target point', exact: true });
+  await clickVisibleControl(page, canvas!, projected!, () => targetButton.isEnabled(), control.id, 'source');
   await expect(targetButton, `${control.id}: source role accepts the constrained visible hover`).toBeEnabled();
   await targetButton.click();
   await page.waitForTimeout(300); // allow the source-pick effect to hand off to target-pick mode
-  const targetScreen = await hoverVisibleControl(page, panel, canvas!, projected!, reference.name, control.id);
-  await page.mouse.click(targetScreen.x, targetScreen.y);
+  await clickVisibleControl(page, canvas!, projected!, () => page.evaluate((referenceId) =>
+    globalThis.__ifc_lite_viewer_store__.getState().modelPlacement.preview?.target?.modelId === referenceId,
+  reference.id), control.id, 'target');
   const picked = await page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
     const preview = state.modelPlacement.preview;

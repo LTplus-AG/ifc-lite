@@ -76,7 +76,8 @@ import { pointCloudSpatialReferenceFromMetadata, preparePointCloudSpatialLoad } 
 import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
 import { getGlobalRenderer } from './useBCF.js';
 import { federationRegistry } from '@ifc-lite/renderer';
-import { LandXmlProvisionalTransaction } from './ingest/landXmlProvisionalTransaction.js';
+import type { FederatedLandXmlStreamingFinalization } from './ingest/federatedLandXmlStreaming.js';
+import { openFederatedLandXmlStreamingPlan, openPrimaryLandXmlProvisional } from './ingest/landXmlGpuTransactions.js';
 import { extractModelSpatialPlacement, findReferenceSpatialModel } from './ingest/federationAlign.js';
 import { finalizeFederatedSpatialPlacement } from './ingest/federatedSpatialFinalize.js';
 import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment, type PointCloudSourceUnit } from './ingest/pointCloudAlignment.js';
@@ -508,7 +509,7 @@ export function useIfcLoader() {
         dataStore: IfcDataStore | null,
         geometryResult: GeometryResult | null,
         schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5',
-        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number; landXmlDocument?: import('./ingest/landXmlSemantics.js').LandXmlTinDocument; sourceSchema?: 'LandXML-1.2'; spatialReference?: ModelSpatialReference; postAlignmentReframe?: boolean } & Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>, // #3927, per-call-site like buildModelLoadReportPatch's doc explains
+        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number; landXmlDocument?: import('./ingest/landXmlSemantics.js').LandXmlTinDocument; sourceSchema?: 'LandXML-1.2'; spatialReference?: ModelSpatialReference; postAlignmentReframe?: boolean; federatedLandXmlStreamingPlan?: FederatedLandXmlStreamingFinalization } & Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>, // #3927, per-call-site like buildModelLoadReportPatch's doc explains
         // GPU-instancing shard bytes (#1912), forwarded explicitly rather than
         // closed over: the WASM streaming section's `allInstancedShards` is
         // declared ~800 lines below this closure, so a plain closure read would
@@ -550,6 +551,7 @@ export function useIfcLoader() {
             dataStore, geometry: geometryResult, modelId, fileName: file.name,
             spatialReference: patch?.spatialReference, landXmlDocument: patch?.landXmlDocument,
             postAlignmentReframe: patch?.postAlignmentReframe,
+            federatedLandXmlStreamingPlan: patch?.federatedLandXmlStreamingPlan,
             isCurrent: () => loadSessionRef.current === currentSession, setProgress,
           });
           if (!spatialFinalize) return;
@@ -697,18 +699,10 @@ export function useIfcLoader() {
         });
         await loadLandXmlModel({ file, fileSizeMB, targetKind: target.kind, totalStartTime, wasHidden: wasHidden(),
           isCurrent: () => loadSessionRef.current === currentSession, setProgress, setGeometryStreamingActive, setLoading,
-          openProvisional: target.kind === 'primary' ? (preflight) => {
-            if (preflight.componentCount === 0 || preflight.frame === null) return null;
-            const renderer = getGlobalRenderer();
-            if (!renderer) throw new Error('Renderer not initialised for LandXML provisional publication');
-            return new LandXmlProvisionalTransaction(modelId, preflight.componentCount, preflight.frame, federationRegistry, {
-              publish: (mesh) => {
-                const outcome = renderer.addMeshes([mesh], true);
-                if (!outcome.ok) throw new Error(`LandXML provisional GPU upload failed: ${outcome.reason}`);
-              },
-              remove: (globalExpressIds) => { renderer.getScene().removeMeshesForEntities(globalExpressIds); },
-            });
-          } : undefined,
+          openProvisional: target.kind === 'primary' ? (preflight) => openPrimaryLandXmlProvisional(modelId, preflight) : undefined,
+          openFederatedStreamingPlan: target.kind === 'federated'
+            ? (preflight, sourceCoordinateInfo, spatialReference) => openFederatedLandXmlStreamingPlan(modelId, preflight, sourceCoordinateInfo, spatialReference, () => loadSessionRef.current === currentSession)
+            : undefined,
           onPrimary: (r) => { setGeometryResult(r.geometryResult); setIfcDataStore(r.dataStore); }, finalize: finalizeModel,
           onError: (message) => { updateModel(modelId, { loadState: 'error', loadError: message }); setError(`LandXML parsing failed: ${message}`); },
         });

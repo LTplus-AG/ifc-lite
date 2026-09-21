@@ -13,6 +13,7 @@ import { reframeLandXmlGeometry } from './landXmlLoad';
 import { alignGeometryToReference, extractModelSpatialPlacement, findReferenceSpatialModel } from './federationAlign';
 import { capturePreAlignment } from './federationRealign';
 import { applyLandXmlRenderedLineUpdates, buildLandXmlRenderedLineUpdates } from './landXmlSpatialLines';
+import type { FederatedLandXmlStreamingFinalization } from './federatedLandXmlStreaming';
 
 export interface FederatedSpatialFinalizeResult {
   preAlignment?: PreAlignmentSnapshot;
@@ -72,9 +73,21 @@ export async function finalizeFederatedSpatialPlacement(options: {
   spatialReference?: ModelSpatialReference;
   landXmlDocument?: LandXmlTinDocument;
   postAlignmentReframe?: boolean;
+  federatedLandXmlStreamingPlan?: FederatedLandXmlStreamingFinalization;
   isCurrent(): boolean;
   setProgress(progress: { phase: string; percent: number }): void;
 }): Promise<FederatedSpatialFinalizeResult | null> {
+  // #5050 has already aligned, clipped, and transaction-published every
+  // component under a frozen main-thread plan. Re-running the historic
+  // aggregate finalizer would both move it twice and race a second GPU upload.
+  // Keep this verification here so every federated format still crosses the
+  // one canonical finalization seam.
+  if (options.federatedLandXmlStreamingPlan) {
+    options.federatedLandXmlStreamingPlan.verify(options.geometry);
+    return {
+      federationAlignmentStatus: options.federatedLandXmlStreamingPlan.federationAlignmentStatus,
+    };
+  }
   const reference = findReferenceSpatialModel()?.placement ?? null;
   const mutation = useViewerStore.getState().georefMutations.get(options.modelId);
   const parsed = options.spatialReference

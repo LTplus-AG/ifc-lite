@@ -83,3 +83,56 @@ it('holds the second cursor pass until main has acknowledged preflight (#5050)',
     Object.defineProperty(globalThis, 'Worker', { configurable: true, value: originalWorker });
   }
 });
+
+it('acknowledges each federated preflight and raw component before the next worker phase (#5050)', async () => {
+  const originalWorker = globalThis.Worker;
+  let worker: FederatedWorker | null = null;
+  const component = {
+    expressId: 1, positions: new Float32Array([0, 0, 0]), normals: new Float32Array([0, 1, 0]),
+    indices: new Uint32Array([0, 0, 0]), color: [0.42, 0.62, 0.32, 1], origin: [0, 0, 0],
+  };
+  class FederatedWorker {
+    onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
+    onerror: ((event: ErrorEvent) => void) | null = null;
+    readonly posted: unknown[] = [];
+    constructor() { worker = this; }
+    postMessage(message: unknown): void {
+      this.posted.push(message);
+      const reply = (data: unknown) => queueMicrotask(() => this.onmessage?.({ data } as MessageEvent<unknown>));
+      if (this.posted.length === 1) reply({
+        preflight: { componentCount: 1, frame: null }, sourceCoordinateInfo: {
+          originShift: { x: 0, y: 0, z: 0 }, originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+          shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } }, hasLargeCoordinates: false,
+        },
+      });
+      else if (this.posted.length === 2) reply({ preflightComponent: component });
+      else if (this.posted.length === 3) reply({ preflightComplete: true });
+      else if (this.posted.length === 4) reply({ component });
+      else if (this.posted.length === 5) reply({ ok: false, error: 'stop after federated acknowledgements' });
+    }
+    terminate(): void {}
+  }
+  Object.defineProperty(globalThis, 'Worker', { configurable: true, value: FederatedWorker as unknown as typeof Worker });
+  const phases: string[] = [];
+  try {
+    const pending = parseLandXmlViewerModelFromBlobAsync(
+      new Blob(['<LandXML/>']),
+      () => true,
+      undefined,
+      undefined,
+      () => { phases.push('raw'); },
+      () => { phases.push('preflight'); },
+      () => { phases.push('measure'); },
+      () => { phases.push('freeze'); },
+    );
+    await assert.rejects(pending, /stop after federated acknowledgements/);
+    assert.deepEqual(phases, ['preflight', 'measure', 'freeze', 'raw']);
+    assert.deepEqual((worker?.posted[0] as { streamFederatedPreflight?: boolean }).streamFederatedPreflight, true);
+    assert.deepEqual(worker?.posted.slice(1), [
+      { type: 'preflight-approved' }, { type: 'component-uploaded' },
+      { type: 'preflight-approved' }, { type: 'component-uploaded' },
+    ]);
+  } finally {
+    Object.defineProperty(globalThis, 'Worker', { configurable: true, value: originalWorker });
+  }
+});

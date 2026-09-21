@@ -67,6 +67,29 @@ export class LandXmlProvisionalTransaction {
     }
   }
 
+  /**
+   * Consume a source-ordered component which the frozen destination frame
+   * rejected.  It still becomes an owned (but intentionally unmeshed) local
+   * id so later components retain their preflight identities.
+   */
+  skip(mesh: Pick<MeshData, 'expressId'>): void {
+    this.ensureOpen();
+    const localId = this.nextLocalId;
+    if (localId > this.reservedMaxExpressId) {
+      throw new Error('LandXML second pass exceeded its preflight ID envelope');
+    }
+    if (mesh.expressId !== localId) {
+      throw new Error('LandXML second pass violated preflight component ordering');
+    }
+    try {
+      this.registry.publishRange(this.modelId, localId, localId);
+      this.nextLocalId++;
+    } catch (error) {
+      this.rollback();
+      throw error;
+    }
+  }
+
   /** The second pass must reproduce the exact preflight component count. */
   commit(): void {
     this.ensureOpen();

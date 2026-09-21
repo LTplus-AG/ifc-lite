@@ -14,6 +14,7 @@ import type { LandXmlTinDocument } from './landXmlSemantics.js';
 import { MAX_RENDER_FRAME_ORIGIN_METRES, meshFitsRenderFrame, meshRenderFrameBounds } from './landXmlRenderFrame.js';
 import { LandXmlProvisionalTransaction } from './landXmlProvisionalTransaction.js';
 import { markLandXmlGpuUploaded } from './landXmlGpuOwnership.js';
+import { type FederatedLandXmlStreamingFinalization, FederatedLandXmlStreamingPlan } from './federatedLandXmlStreaming.js';
 
 interface LandXmlLoadOptions {
   file: File;
@@ -26,6 +27,11 @@ interface LandXmlLoadOptions {
   setGeometryStreamingActive(active: boolean): void;
   setLoading(loading: boolean): void;
   openProvisional?(preflight: LandXmlGeometryPreflight): LandXmlProvisionalTransaction | null;
+  openFederatedStreamingPlan?(
+    preflight: LandXmlGeometryPreflight,
+    sourceCoordinateInfo: CoordinateInfo,
+    spatialReference?: ModelSpatialReference,
+  ): FederatedLandXmlStreamingPlan | null;
   onPrimary(result: LandXmlViewerModel): void;
   finalize(
     dataStore: IfcDataStore,
@@ -37,6 +43,7 @@ interface LandXmlLoadOptions {
       sourceSchema?: 'LandXML-1.2';
       spatialReference?: ModelSpatialReference;
       postAlignmentReframe?: boolean;
+      federatedLandXmlStreamingPlan?: FederatedLandXmlStreamingFinalization;
     },
   ): Promise<void>;
   onError(message: string): void;
@@ -73,6 +80,13 @@ function recomputeRenderedFaceCounts(document: LandXmlTinDocument): void {
   for (const counts of document.rendering.surfaceCounts) {
     counts.renderedFaces = renderedBySurface.get(counts.surfaceSourceId) ?? 0;
   }
+}
+
+function retainFederatedStreamedProvenance(document: LandXmlTinDocument, meshes: readonly GeometryResult['meshes'][number][]): void {
+  const retainedIds = new Set(meshes.map((mesh) => mesh.expressId));
+  document.rendering.meshProvenance = document.rendering.meshProvenance
+    .filter((provenance) => retainedIds.has(provenance.meshExpressId));
+  recomputeRenderedFaceCounts(document);
 }
 
 /** Recompute counts and frame metadata from the meshes that survived reframing. */
@@ -160,6 +174,7 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
   options.setProgress({ phase: 'Parsing LandXML TIN surfaces', percent: 10 });
   options.setGeometryStreamingActive(false);
   let provisional: LandXmlProvisionalTransaction | null = null;
+  let federatedPlan: FederatedLandXmlStreamingPlan | null = null;
   let streamedComponents = 0;
   try {
     const result = await parseLandXmlViewerModelFromBlobAsync(
@@ -177,15 +192,22 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
         provisional = options.openProvisional?.(preflight) ?? null;
       },
       (mesh) => {
+        if (federatedPlan !== null) return federatedPlan.publish(mesh);
         if (provisional === null) return;
         provisional.publish(mesh);
         streamedComponents++;
       },
+      (preflight, sourceCoordinateInfo, spatialReference) => {
+        federatedPlan = options.openFederatedStreamingPlan?.(preflight, sourceCoordinateInfo, spatialReference) ?? null;
+      },
+      (mesh) => federatedPlan?.measure(mesh),
+      () => federatedPlan?.freeze(),
     );
     // The browser worker is terminated within the cancellation polling bound;
     // this guard also prevents a racing stale reply from mutating model state.
     if (!options.isCurrent()) {
       provisional?.rollback();
+      federatedPlan?.rollback();
       return;
     }
     if (provisional !== null) {
@@ -199,6 +221,11 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
       }
       provisional.commit();
     }
+    if (federatedPlan !== null) {
+      federatedPlan.complete(result.geometryResult);
+      retainFederatedStreamedProvenance(result.semanticDocument, result.geometryResult.meshes);
+      for (const mesh of result.geometryResult.meshes) markLandXmlGpuUploaded(mesh);
+    }
     if (options.targetKind === 'primary') options.onPrimary(result);
     await options.finalize(result.dataStore, result.geometryResult, result.schemaVersion, {
       loadPath: 'landxml',
@@ -208,6 +235,7 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
       // first clips a correctly georeferenced Swiss TIN against an unrelated
       // local IFC render frame before it can be brought into that frame.
       ...(options.targetKind === 'federated' ? { postAlignmentReframe: true } : {}),
+      ...(federatedPlan ? { federatedLandXmlStreamingPlan: federatedPlan } : {}),
       ...(result.spatialReference ? { spatialReference: result.spatialReference } : {}),
     });
     if (!options.isCurrent()) return;
@@ -224,6 +252,7 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
     options.setLoading(false);
   } catch (error) {
     provisional?.rollback();
+    federatedPlan?.rollback();
     if (!options.isCurrent()) return;
     console.error('[useIfc] LandXML parsing failed:', error);
     const message = error instanceof Error ? error.message : String(error);

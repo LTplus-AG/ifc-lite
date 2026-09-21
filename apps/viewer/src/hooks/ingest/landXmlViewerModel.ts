@@ -10,8 +10,7 @@ import { parseLandXmlSourceBlobWithApi } from './landXmlBlobCursor.js';
 import { initLandXmlWasm } from './landXmlWasmInit.js';
 import { IfcAPI } from '@ifc-lite/wasm';
 import { spatialMetadataFromLandXml, spatialReferenceFromSourceMetadata } from './sourceSpatialReference.js';
-import type { ModelSpatialReference } from '@ifc-lite/geometry';
-import type { MeshData } from '@ifc-lite/geometry';
+import type { CoordinateInfo, ModelSpatialReference, MeshData } from '@ifc-lite/geometry';
 
 export interface LandXmlViewerModel extends LandXmlGeometryPayload {
   dataStore: IfcDataStore;
@@ -107,6 +106,9 @@ export function parseLandXmlViewerModelFromBlobAsync(
   onProgress?: (loadedBytes: number, totalBytes: number) => void,
   onPreflight?: (preflight: LandXmlGeometryPreflight) => void | Promise<void>,
   onComponent?: (mesh: MeshData) => void | Promise<void>,
+  onFederatedPreflight?: (preflight: LandXmlGeometryPreflight, sourceCoordinateInfo: CoordinateInfo, spatialReference?: ModelSpatialReference) => void | Promise<void>,
+  onPreflightComponent?: (mesh: MeshData) => void | Promise<void>,
+  onPreflightComplete?: () => void | Promise<void>,
 ): Promise<LandXmlViewerModel> {
   if (typeof Worker === 'undefined') {
     if (!isCurrent()) return Promise.reject(new Error('LandXML parsing cancelled'));
@@ -147,7 +149,9 @@ export function parseLandXmlViewerModelFromBlobAsync(
       | { ok: true; payload: LandXmlGeometryPayload }
       | { ok: false; error: string }
       | { progress: { loadedBytes: number; totalBytes: number } }
-      | { preflight: LandXmlGeometryPreflight }
+      | { preflight: LandXmlGeometryPreflight; sourceCoordinateInfo?: CoordinateInfo; spatialReference?: ModelSpatialReference }
+      | { preflightComponent: MeshData }
+      | { preflightComplete: true }
       | { component: MeshData }
     >) => {
       if ('progress' in event.data) {
@@ -155,7 +159,28 @@ export function parseLandXmlViewerModelFromBlobAsync(
         return;
       }
       if ('preflight' in event.data) {
-        Promise.resolve(onPreflight?.(event.data.preflight)).then(() => {
+        const federatedPreflight = onFederatedPreflight === undefined
+          ? undefined
+          : event.data.sourceCoordinateInfo === undefined
+            ? Promise.reject(new Error('LandXML worker omitted federation source coordinates'))
+            : onFederatedPreflight(event.data.preflight, event.data.sourceCoordinateInfo, event.data.spatialReference);
+        Promise.resolve(onPreflight?.(event.data.preflight)).then(() => federatedPreflight).then(() => {
+          if (!finished) worker.postMessage({ type: 'preflight-approved' });
+        }).catch((error: unknown) => {
+          if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
+        });
+        return;
+      }
+      if ('preflightComponent' in event.data) {
+        Promise.resolve(onPreflightComponent?.(event.data.preflightComponent)).then(() => {
+          if (!finished) worker.postMessage({ type: 'component-uploaded' });
+        }).catch((error: unknown) => {
+          if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
+        });
+        return;
+      }
+      if ('preflightComplete' in event.data) {
+        Promise.resolve(onPreflightComplete?.()).then(() => {
           if (!finished) worker.postMessage({ type: 'preflight-approved' });
         }).catch((error: unknown) => {
           if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
@@ -183,6 +208,6 @@ export function parseLandXmlViewerModelFromBlobAsync(
     }
     // Blob structured cloning preserves the backing file handle; it does not
     // transfer or duplicate the full LandXML byte payload.
-    worker.postMessage({ file });
+    worker.postMessage({ file, streamFederatedPreflight: onFederatedPreflight !== undefined });
   });
 }

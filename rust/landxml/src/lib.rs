@@ -12,6 +12,7 @@ mod capture;
 mod limits;
 mod model;
 mod parser;
+mod plan;
 mod pipe_parser;
 mod pipes;
 mod preflight;
@@ -28,7 +29,7 @@ pub use model::{
     LandXmlSurface, LandXmlSurfaceKind, LandXmlTinDocument, LandXmlUnits, LandXmlVersionCapability,
 };
 pub use parser::{
-    classify_landxml_version, parse_landxml_document, parse_landxml_tin, parse_landxml_tin_with_cancel,
+    classify_landxml_version, parse_landxml_tin, parse_landxml_tin_with_cancel,
     LANDXML_10_NAMESPACE, LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
 };
 pub use profile::{
@@ -38,6 +39,13 @@ pub use profile::{
     LandXmlGradeLine, LandXmlPreservedOnlyExtension, LandXmlPreservedOnlyExtensionKind,
     LandXmlProfile, LandXmlProfileEvaluationError, LandXmlProfileKind, LandXmlProfilePoint,
     LandXmlRoadway, LandXmlVerticalCurve, LandXmlVerticalCurveKind,
+};
+pub use plan::{
+    parse_landxml_document, parse_landxml_plan, parse_landxml_plan_with_cancel, LandXmlCgPoint,
+    LandXmlDocument, LandXmlGeometryKind, LandXmlMonument, LandXmlParcel, LandXmlParcelProbe,
+    LandXmlParcelState, LandXmlPlanDocument, LandXmlPlanFeature, LandXmlPlanGeometry,
+    LandXmlPlanLimits, LandXmlPlanPoint, LandXmlPlanPointLocation, LandXmlPlanResolver,
+    LandXmlPlanSourceBatch,
 };
 pub use pipe_parser::{parse_landxml_pipe_networks, parse_landxml_pipe_networks_with_cancel};
 pub use pipes::{

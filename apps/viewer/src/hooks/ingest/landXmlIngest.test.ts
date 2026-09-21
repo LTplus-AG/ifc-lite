@@ -169,6 +169,18 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.match(parsed.warnings[0], /Unsupported Grid/);
   });
 
+  it('retains COGO and analytic plan records from the canonical WASM document (#5046)', async () => {
+    const parsed = await parseDocument(LANDXML.replace(
+      '</Surfaces>',
+      `</Surfaces><CgPoints><CgPoint name="control">5000000 2600000 100</CgPoint></CgPoints>
+      <PlanFeatures><PlanFeature name="right-of-way"><CoordGeom><Line><Start pntRef="control"/><End>5000010 2600010 102</End></Line></CoordGeom></PlanFeature></PlanFeatures>
+      <Parcels><Parcel name="lot"><CoordGeom><Line><Start pntRef="control"/><End>5000010 2600010</End></Line></CoordGeom></Parcel></Parcels>`,
+    ));
+    assert.equal(parsed.plan?.cogoPoints[0].name, 'control');
+    assert.equal(parsed.plan?.planFeatures[0].geometry[0].kind, 'line');
+    assert.equal(parsed.plan?.parcels[0].name, 'lot');
+  });
+
   it('keeps source selection stable after geometry is partitioned (#5042)', async () => {
     const parsed = await parseDocument(LANDXML.replace(
       '</Faces>',
@@ -411,6 +423,20 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     const result = await parseViewer(bytes(imperial));
     const info = result.geometryResult.coordinateInfo.originalBounds;
     assert.ok(Math.abs(info.max.y - 6) < 1e-12, 'elevation uses the schema-default meter scale');
+  });
+
+  it('retains the authored frame of geometry-free 2D contours (#5046)', async () => {
+    const contourOnly = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+      <Units><Metric linearUnit="meter" elevationUnit="meter"/></Units>
+      <Surfaces><Surface name="contours"><Definition surfType="TIN"/><SourceData><Contours>
+        <Contour name="100" elev="100"><PntList2D>5000000 2600000 5000010 2600010</PntList2D></Contour>
+      </Contours></SourceData></Surface></Surfaces>
+    </LandXML>`;
+    const result = await parseViewer(bytes(contourOnly));
+    const bounds = result.geometryResult.coordinateInfo.originalBounds;
+    assert.deepEqual(bounds.min, { x: 2_600_000, y: 100, z: -5_000_010 });
+    assert.deepEqual(bounds.max, { x: 2_600_010, y: 100, z: -5_000_000 });
+    assert.equal(result.geometryResult.coordinateInfo.hasLargeCoordinates, true);
   });
 
   it('preserves the stable Rust error code for unsupported units', async () => {

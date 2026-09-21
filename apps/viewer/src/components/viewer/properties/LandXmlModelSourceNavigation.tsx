@@ -4,7 +4,12 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from '@/i18n';
-import type { LandXmlPipeNetworkDocument, LandXmlSourceRef, LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics';
+import {
+  landXmlPlanSourcePage,
+  type LandXmlPipeNetworkDocument,
+  type LandXmlSourceRef,
+  type LandXmlTinDocument,
+} from '@/hooks/ingest/landXmlSemantics';
 
 const PAGE_SIZE = 100;
 const DIAGNOSTIC_PAGE_SIZE = 20;
@@ -105,6 +110,7 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
   const [overlayPage, setOverlayPage] = useState(0);
   const [recordPage, setRecordPage] = useState(0);
   const [diagnosticPage, setDiagnosticPage] = useState(0);
+  const [planPage, setPlanPage] = useState(0);
   const [pipePage, setPipePage] = useState(0);
   const pages = Math.max(1, Math.ceil(document.surfaces.length / PAGE_SIZE));
   const page = Math.min(surfacePage, pages - 1);
@@ -144,6 +150,9 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
     boundedDiagnosticPage * DIAGNOSTIC_PAGE_SIZE,
     (boundedDiagnosticPage + 1) * DIAGNOSTIC_PAGE_SIZE,
   ), [boundedDiagnosticPage, document.capabilityDiagnostics]);
+  const planRecords = useMemo(() => landXmlPlanSourcePage(document, planPage * PAGE_SIZE, PAGE_SIZE), [document, planPage]);
+  const planPages = Math.max(1, Math.ceil(planRecords.total / PAGE_SIZE));
+  const boundedPlanPage = Math.min(planPage, planPages - 1);
   const pipeCount = useMemo(() => pipeRecordCount(document.pipeNetworks), [document.pipeNetworks]);
   const pipePages = Math.max(1, Math.ceil(pipeCount / PAGE_SIZE));
   const boundedPipePage = Math.min(pipePage, pipePages - 1);
@@ -157,6 +166,7 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
     setOverlayPage(0);
     setRecordPage(0);
     setDiagnosticPage(0);
+    setPlanPage(0);
     setPipePage(0);
   }, [modelId, document]);
 
@@ -177,6 +187,10 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
       {records.length === 0 ? <div className="px-3 py-2 text-xs text-zinc-500">{t('properties.landXmlSource.noReviewRecords')}</div> : records.map((record) => <RecordButton key={record.sourceId} item={record} modelId={modelId} selected={selected} onSelect={onSelect} />)}
       <Pager page={boundedRecordPage} pages={recordPages} setPage={setRecordPage} />
     </NavigationSection>
+    {planRecords.total > 0 && <NavigationSection title={t('properties.modelMetadata.sourcePlanRecords')}>
+      {planRecords.sourceIds.map((sourceId) => <RecordButton key={sourceId} item={{ label: sourceId, sourceId }} modelId={modelId} selected={selected} onSelect={onSelect} />)}
+      <Pager page={boundedPlanPage} pages={planPages} setPage={setPlanPage} />
+    </NavigationSection>}
     <NavigationSection title={t('properties.landXmlSource.diagnostics')}>
       {diagnostics.length === 0 ? <div className="px-3 py-2 text-xs text-zinc-500">{t('properties.landXmlSource.noDiagnostics')}</div> : diagnostics.map((diagnostic, index) => <div key={`${diagnostic.sourceId ?? 'document'}:${diagnostic.code}:${index}`} className="px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
         <span className="font-mono">{diagnostic.code}</span><span className="mx-1">—</span>{diagnostic.message}

@@ -40,7 +40,7 @@ pub fn parse_landxml_tin(input: &[u8]) -> Result<LandXmlTinDocument> {
 /// TIN and pipe semantics deliberately keep their specialised bounded parsers,
 /// but consumers receive one document and therefore cannot accidentally load
 /// pipe records through a second ingestion path.
-pub fn parse_landxml_document(input: &[u8]) -> Result<LandXmlTinDocument> {
+pub(crate) fn parse_landxml_document(input: &[u8]) -> Result<LandXmlTinDocument> {
     let mut document = parse_landxml_tin(input)?;
     match crate::parse_landxml_pipe_networks(input) {
         Ok(networks) => document.pipe_networks = Some(networks),

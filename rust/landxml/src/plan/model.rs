@@ -212,7 +212,12 @@ pub struct LandXmlPlanSourceBatch {
 /// Durable COGO and plan records joined to the canonical LandXML document.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LandXmlPlanDocument {
+    /// Namespace-selected grammar used to parse this source, independent from
+    /// the producer's declared version string.
+    pub schema: String,
     pub version: String,
+    /// Compatibility observations retained for direct plan-parser consumers.
+    pub capability_diagnostics: Vec<crate::LandXmlCapabilityDiagnostic>,
     pub units: Option<LandXmlUnits>,
     pub area_unit: Option<String>,
     pub area_scale_to_square_meters: Option<f64>,

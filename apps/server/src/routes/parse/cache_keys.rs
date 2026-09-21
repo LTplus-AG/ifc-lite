@@ -243,6 +243,19 @@ pub(crate) async fn has_current_data_model(cache: &DiskCache, cache_key: &str) -
     has_entry(cache, &data_model_cache_key(cache_key)).await
 }
 
+/// Whether the optimized-Parquet metadata header is cached for `cache_key`.
+///
+/// The cheap pre-filter for the optimized route's `?sha256=` probe (#5128),
+/// mirroring [`has_parquet_metadata`] for the flat route: a few hundred bytes,
+/// against the body's whole-model size. It is never the decision --
+/// [`super::parquet_optimized_replay::try_cached_optimized_parquet`] still
+/// makes that, and a metadata entry present with no body beside it (or no
+/// symbolic sidecar) still falls through to the 404 the probe answers on a
+/// miss.
+pub(crate) async fn has_optimized_metadata(cache: &DiskCache, cache_key: &str) -> bool {
+    has_entry(cache, &parquet_optimized_metadata_cache_key(cache_key)).await
+}
+
 /// Whether the Parquet metadata header is cached for `cache_key`.
 ///
 /// The cheap half of "is this replayable": the header is a few hundred bytes,

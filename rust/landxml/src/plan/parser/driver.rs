@@ -62,25 +62,31 @@ impl Parser<'_> {
             if local != "LandXML" {
                 return Err(error(Code::InvalidSemantic, "root element is not LandXML"));
             }
-            match classify_landxml_version(namespace, attr(&attributes, "version")) {
-                LandXmlVersionCapability::LandXml12Tin => {}
-                LandXmlVersionCapability::NotLandXml => {
-                    return Err(error(
+            let capability = classify_landxml_version(namespace, attr(&attributes, "version"));
+            if !capability.supports_tin_ingestion() {
+                return Err(match capability {
+                    LandXmlVersionCapability::NotLandXml => error(
                         Code::UnsupportedNamespace,
                         "root namespace is not a recognized LandXML namespace",
-                    ));
-                }
-                _ => {
-                    return Err(error(
+                    ),
+                    _ => error(
                         Code::UnsupportedVersion,
-                        "COGO and plan parsing requires exact LandXML 1.2",
-                    ));
-                }
+                        "COGO and plan parsing requires a supported LandXML namespace and version",
+                    ),
+                });
             }
+            self.schema = capability
+                .schema()
+                .expect("supported capability has a schema")
+                .to_owned();
             self.version = attr(&attributes, "version").unwrap_or_default().to_owned();
+            if let Some(diagnostic) = compatibility_version_diagnostic(capability, &self.version) {
+                self.capability_diagnostics.push(diagnostic);
+            }
+            self.target_namespace = namespace.map(str::to_owned);
             self.root_seen = true;
         }
-        let target = namespace == Some(LANDXML_12_NAMESPACE);
+        let target = namespace == self.target_namespace.as_deref();
         self.frames.push(Frame {
             local: local.to_owned(),
             target,

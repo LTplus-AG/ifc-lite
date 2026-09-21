@@ -4,11 +4,12 @@
 
 /** Strict decoder for Rust-owned LandXML plan and COGO records. */
 
-import { indexLandXmlPlanRecords } from './landXmlSemantics.js';
+import { indexLandXmlPlanRecords, isLandXmlSchema } from './landXmlSemantics.js';
 import type {
-  LandXmlCgPoint, LandXmlMonument, LandXmlParcel, LandXmlParcelProbe, LandXmlPlanDocument,
-  LandXmlPlanFeature, LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlPlanPointLocation,
-  LandXmlResolvedGeometry, LandXmlResolvedMonument,
+  LandXmlCapabilityDiagnostic, LandXmlCgPoint, LandXmlMonument, LandXmlParcel,
+  LandXmlParcelProbe, LandXmlPlanDocument, LandXmlPlanFeature, LandXmlPlanGeometry,
+  LandXmlPlanPoint, LandXmlPlanPointLocation, LandXmlResolvedGeometry,
+  LandXmlResolvedMonument,
 } from './landXmlSemantics.js';
 
 function record(value: unknown, context: string): Record<string, unknown> {
@@ -132,7 +133,22 @@ function plan(value: unknown): LandXmlPlanDocument {
     return { sourceId: string(parsed.source_id, `resolved geometry ${index} source id`), start: resolved('start'), end: resolved('end'), center: resolved('center'), pi: resolved('pi') };
   });
   const result: LandXmlPlanDocument = {
-    version: string(raw.version, 'plan version'), areaUnit: nullableString(raw.area_unit, 'plan area unit'), areaScaleToSquareMeters: nullableFinite(raw.area_scale_to_square_meters, 'plan area scale'),
+    schema: (() => {
+      const schema = string(raw.schema, 'plan schema');
+      if (!isLandXmlSchema(schema)) throw new Error('LandXML WASM returned an invalid plan schema');
+      return schema;
+    })(),
+    version: string(raw.version, 'plan version'),
+    capabilityDiagnostics: array(raw.capability_diagnostics, 'plan capability diagnostics').map((value, index): LandXmlCapabilityDiagnostic => {
+      const diagnostic = record(value, `plan capability diagnostic ${index}`);
+      return {
+        code: string(diagnostic.code, `plan capability diagnostic ${index} code`),
+        sourceId: nullableString(diagnostic.source_id, `plan capability diagnostic ${index} source id`),
+        sourcePath: string(diagnostic.source_path, `plan capability diagnostic ${index} source path`),
+        message: string(diagnostic.message, `plan capability diagnostic ${index} message`),
+      };
+    }),
+    areaUnit: nullableString(raw.area_unit, 'plan area unit'), areaScaleToSquareMeters: nullableFinite(raw.area_scale_to_square_meters, 'plan area scale'),
     cogoPoints, monuments, planFeatures: features, parcels,
     warnings: array(raw.warnings, 'plan warnings').map((warning, index) => string(warning, `plan warning ${index}`)),
     sourceBatches: array(raw.source_batches, 'plan source batches').map((batch, index) => {
@@ -152,4 +168,3 @@ function plan(value: unknown): LandXmlPlanDocument {
 
 export const decodeLandXmlPlan = plan;
 export const decodeLandXmlPlanPoint = planPoint;
-

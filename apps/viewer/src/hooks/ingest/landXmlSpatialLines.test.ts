@@ -51,7 +51,8 @@ describe('LandXML federated overlay coordinates (#5048)', () => {
     const start: LandXmlPlanPoint = { northing: 0, easting: 1010, elevation: 0 };
     const end: LandXmlPlanPoint = { northing: 0, easting: 1011, elevation: 0 };
     parsed.plan = {
-      version: '1.2', areaUnit: null, areaScaleToSquareMeters: null,
+      schema: 'LandXML-1.2', version: '1.2', capabilityDiagnostics: [],
+      areaUnit: null, areaScaleToSquareMeters: null,
       cogoPoints: [{ sourceId: 'cogo', scopeId: 'scope', ordinal: 1, name: 'P', code: null,
         description: null, point: marker, pntRef: null, properties: {} }],
       monuments: [],

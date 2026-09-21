@@ -53,7 +53,7 @@ const TYPE_CONFIG = {
   perf: { icon: Zap, className: 'text-blue-500' },
 } as const;
 
-function PrivacyBanner() {
+export function PrivacyBanner() { // exported for ViewportWelcomeCard.privacy.test.tsx (#5119): the start screen renders the same key
   const { t } = useTranslation(); const [expanded, setExpanded] = useState(false);
 
   return (

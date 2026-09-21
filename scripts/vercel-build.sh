@@ -133,7 +133,11 @@ fi
 # process turbo spawns (it is a limit, not a reservation), and is listed in
 # turbo.json `globalPassThroughEnv` so strict env mode forwards it without
 # touching task hashes. Set VERCEL_NODE_MAX_OLD_SPACE_MB in the project env to
-# override; an explicit --max-old-space-size already in NODE_OPTIONS wins.
+# override. A --max-old-space-size already in NODE_OPTIONS is kept only when
+# it fits that budget: Vercel's own build image exports
+# `--max_old_space_size=8192`, and deferring to it put an 8 GB heap ceiling in
+# an 8 GB container — V8 never throttled and the kernel OOM-killed vite at
+# "rendering chunks" (exit 137) on 51c36ecd9 / 707cc22a0 / 6c01865b8 (#5132).
 # shellcheck source=lib/vercel-node-heap.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/vercel-node-heap.sh"
 configure_vercel_node_heap

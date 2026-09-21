@@ -6,8 +6,8 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     capture::Capture, xml::Attributes, LandXmlAlignment, LandXmlCancellation,
-    LandXmlCapabilityDiagnostic, LandXmlCrossSection, LandXmlCrossSectionSurface, LandXmlExtension,
-    LandXmlCoordinateSystem, LandXmlLimits, LandXmlPoint, LandXmlPolyline,
+    LandXmlCapabilityDiagnostic, LandXmlCoordinateSystem, LandXmlCrossSection,
+    LandXmlCrossSectionSurface, LandXmlExtension, LandXmlLimits, LandXmlPoint, LandXmlPolyline,
     LandXmlPreservedOnlyExtension, LandXmlProfile, LandXmlRoadway, LandXmlSourceId, LandXmlSurface,
     LandXmlSurfaceKind, LandXmlUnits,
 };
@@ -36,6 +36,8 @@ pub(super) struct Parser<'a> {
     pub(super) surfaces: Vec<LandXmlSurface>,
     pub(super) extensions: Vec<LandXmlExtension>,
     pub(super) warnings: Vec<String>,
+    pub(super) schema: String,
+    pub(super) target_namespace: Option<String>,
     pub(super) surface_ordinal: usize,
     pub(super) version: String,
     pub(super) root_seen: bool,

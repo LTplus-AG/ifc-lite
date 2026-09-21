@@ -57,7 +57,7 @@ describe('normalizeClassMask (#1783)', () => {
 });
 
 describe('writePointCloudUniforms class-mask packing (#1783)', () => {
-  it('writes the 8 mask words at u32 slots 68..75 and zeroes reserved flags.w', () => {
+  it('writes the 8 mask words at u32 slots 68..75 and clears crop flags.w', () => {
     const scratch = new Float32Array(POINT_UNIFORM_SIZE / 4);
     const scratchU32 = new Uint32Array(scratch.buffer);
     let wroteWords = 0;
@@ -106,7 +106,7 @@ describe('writePointCloudUniforms class-mask packing (#1783)', () => {
     writePointCloudUniforms(device, scratch, scratchU32, node, inputs);
 
     assert.strictEqual(scratchU32[56], 42, 'flags.x = expressId');
-    assert.strictEqual(scratchU32[59], 0, 'flags.w is reserved since the 256-bit mask');
+    assert.strictEqual(scratchU32[59], 0, 'flags.w is clear when crop is absent');
     for (let w = 0; w < CLASS_MASK_WORDS; w++) {
       assert.strictEqual(scratchU32[68 + w], classMask[w], `mask word ${w}`);
     }

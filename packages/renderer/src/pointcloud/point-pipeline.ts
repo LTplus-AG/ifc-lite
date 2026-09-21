@@ -30,7 +30,7 @@ import { pointShaderSource } from './point-shader.wgsl.js';
  *   [16..31] model    (mat4x4)
  *   [32..35] drawableDeltaHigh (RTE vec4)
  *   [36..39] drawableDeltaLow (RTE vec4)
- *   [40..75] point style, clipping and class data (existing fields shifted by 8)
+ *   [40..83] point style, clipping, class data and RTE crop bounds
  */
 // 17 vec4 slots × 16 bytes = 272. Was 208 before extras (PR-G's
 // stride cull) and deviationRange (PR-H's BIM↔scan heatmap) both
@@ -38,7 +38,7 @@ import { pointShaderSource } from './point-shader.wgsl.js';
 // 32 bits in flags.w to the full 256-bit LAS range (#1783) — keeping
 // them separate avoids overloading the flags / colourOverride slots
 // and stays std140-friendly.
-export const POINT_UNIFORM_SIZE = 304;
+export const POINT_UNIFORM_SIZE = 336;
 export const POINT_VERTEX_BYTES = 24;
 /** Number of vertices emitted per splat (two triangles forming a quad). */
 export const POINT_QUAD_VERTS = 6;

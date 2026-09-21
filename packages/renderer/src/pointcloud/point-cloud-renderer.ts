@@ -39,6 +39,7 @@ import {
   type PointSizeMode,
 } from './point-cloud-uniforms.js';
 import type { RelativeToEyeFrame } from '../relative-to-eye.js';
+import type { ClipBox } from '../types.js';
 
 export interface ResolvedSectionPlane {
   normal: [number, number, number];
@@ -67,6 +68,8 @@ export interface PointCloudDrawState {
   relativeToEyeFrame: RelativeToEyeFrame;
   /** Section plane already resolved by the main render path. */
   sectionPlane?: ResolvedSectionPlane | null;
+  /** Crop box from the main mesh pass; packed in the same RTE camera frame. */
+  clipBox?: ClipBox | null;
   /** Viewport size in pixels — needed by the splat shader to convert
    *  pixel sizes into clip-space offsets. */
   viewport?: { width: number; height: number };
@@ -407,6 +410,7 @@ export class PointCloudRenderer {
           sectionNormal: normal,
           sectionDist: distance,
           sectionEnabled: enabled,
+          clipBox: state.clipBox,
           heightMin,
           heightMax,
           viewportW,

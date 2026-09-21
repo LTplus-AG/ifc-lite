@@ -14,6 +14,7 @@ import { POINT_UNIFORM_SIZE } from './point-pipeline.js';
 import type { PointCloudNode } from './point-cloud-node.js';
 import { isUsableModelMatrix } from './point-cloud-node.js';
 import type { RelativeToEyeFrame } from '../relative-to-eye.js';
+import type { ClipBox } from '../types.js';
 
 export type PointColorMode =
   | 'rgb'
@@ -80,6 +81,8 @@ export interface PointUniformInputs {
   sectionNormal: [number, number, number];
   sectionDist: number;
   sectionEnabled: boolean;
+  /** Crop box shared with the mesh pass; narrowed only after f64 eye subtraction. */
+  clipBox?: ClipBox | null;
   heightMin: number;
   heightMax: number;
   viewportW: number;
@@ -153,13 +156,12 @@ export function writePointCloudUniforms(
   // when non-zero so the federation registry can relabel a streamed
   // asset post-upload (its per-vertex entityId attribute is baked
   // at upload and would otherwise stay at the synthetic local ID).
-  // flags.w (u32 slot 59) is reserved — the class-visibility mask
-  // moved to its own 8-word block below when it grew to cover the
-  // full 0..255 LAS class range (#1783).
+  // flags.w (u32 slot 59) = crop enabled; class visibility lives in its
+  // own 256-bit block below.
   uU32[56] = node.meta.expressId >>> 0;
   uU32[57] = inputs.sectionEnabled ? 1 : 0;
   uU32[58] = inputs.roundShape ? 1 : 0;
-  uU32[59] = 0;
+  uU32[59] = inputs.clipBox?.enabled ? 1 : 0;
   // extras (u32 slots 60..63) — extras.x = previewStride, yzw reserved.
   uU32[60] = inputs.previewStride >>> 0;
   uU32[61] = 0;
@@ -174,6 +176,20 @@ export function writePointCloudUniforms(
   // bit (i % 32) of word (i / 32) set → class i shown.
   for (let w = 0; w < CLASS_MASK_WORDS; w++) {
     uU32[68 + w] = inputs.classMask[w] ?? 0xFFFFFFFF;
+  }
+  // Crop bounds follow classMask at floats 76..83. Point worldPos is already
+  // eye-relative, so subtract before f32 narrowing just as the mesh ABI does.
+  if (inputs.clipBox?.enabled) {
+    u[76] = inputs.clipBox.min[0] - camera[0];
+    u[77] = inputs.clipBox.min[1] - camera[1];
+    u[78] = inputs.clipBox.min[2] - camera[2];
+    u[79] = 0;
+    u[80] = inputs.clipBox.max[0] - camera[0];
+    u[81] = inputs.clipBox.max[1] - camera[1];
+    u[82] = inputs.clipBox.max[2] - camera[2];
+    u[83] = 0;
+  } else {
+    u.fill(0, 76, 84);
   }
 
   // Pass the typed array directly — TypeScript widens `.buffer` to

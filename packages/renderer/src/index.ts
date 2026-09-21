@@ -3126,6 +3126,7 @@ export class Renderer {
                     sectionPlane: sectionPlaneData
                         ? { ...sectionPlaneData, flipped: options.sectionPlane?.flipped === true }
                         : null,
+                    clipBox: options.clipBox,
                     viewport: { width: this.canvas.width, height: this.canvas.height },
                 });
             }

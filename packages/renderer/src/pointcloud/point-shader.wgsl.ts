@@ -51,6 +51,9 @@ export const pointShaderSource = `
       // 256-bit LAS class-visibility bitmask packed as 8 u32 words
       // (two vec4s). Bit (i % 32) of word (i / 32) set → class i shown.
       classMask: array<vec4<u32>, 2>,
+      // Eye-relative crop bounds; flags.w enables this branch.
+      cropBoxMin: vec4<f32>,
+      cropBoxMax: vec4<f32>,
     }
     @binding(0) @group(0) var<uniform> uniforms: PointUniforms;
 
@@ -280,6 +283,12 @@ export const pointShaderSource = `
       if (uniforms.flags.y == 1u) {
         let d = dot(uniforms.sectionPlane.xyz, input.worldPos) - uniforms.sectionPlane.w;
         if (d > 0.0) {
+          discard;
+        }
+      }
+
+      if (uniforms.flags.w == 1u) {
+        if (any(input.worldPos < uniforms.cropBoxMin.xyz) || any(input.worldPos > uniforms.cropBoxMax.xyz)) {
           discard;
         }
       }

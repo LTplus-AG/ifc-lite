@@ -1473,7 +1473,11 @@ export function Viewport({
     if (!renderer || !isInitialized) return;
     renderer.setLineOverlay(
       'alignment',
-      alignmentVertices3D.length === 0 ? null : alignmentVertices3D,
+      (alignmentVertices3D instanceof Float32Array
+        ? alignmentVertices3D.length === 0
+        : alignmentVertices3D.localVertices.length === 0)
+        ? null
+        : alignmentVertices3D,
     );
   }, [alignmentVertices3D, isInitialized]);
 

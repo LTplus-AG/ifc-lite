@@ -32,6 +32,19 @@ import type { RtcFrame } from '@ifc-lite/geometry';
 
 const EMPTY_F32 = new Float32Array(0);
 
+/** Renderer-compatible local line buffer. Kept structural to avoid making the
+ * viewer import a renderer implementation module just for a public payload. */
+export interface AnchoredAlignmentLines {
+  localVertices: Float32Array;
+  origin: [number, number, number];
+}
+
+export type AlignmentLines3D = Float32Array | AnchoredAlignmentLines;
+
+/** Keep ordinary building-scale output byte-compatible; national-grid offsets
+ * are uploaded as local vertices plus an f64 anchor. */
+const RTE_ANCHOR_THRESHOLD_METRES = 100_000;
+
 // ─── Shared parse cache ──────────────────────────────────────────────────────
 // One WASM walk per source/frame pair; cached so compatible re-renders and
 // federated views don't re-parse.
@@ -116,7 +129,7 @@ function useActiveStores(): { id: string; store: IfcDataStore }[] {
  * RTC-subtracted, metres). Returns a stable empty array when no model carries
  * an alignment. Always parses (no toggle) — see the file header.
  */
-export function useAlignmentLines3D(): Float32Array {
+export function useAlignmentLines3D(): AlignmentLines3D {
   const stores = useActiveStores();
   const placement = useViewerStore((state) => state.modelPlacement);
   const [version, setVersion] = useState(0);
@@ -132,7 +145,7 @@ export function useAlignmentLines3D(): Float32Array {
 
   return useMemo(() => {
     void version; // depend on parse-completion ticks
-    const arrays: Float32Array[] = [];
+    const arrays: { vertices: Float32Array; delta: [number, number, number] }[] = [];
     let total = 0;
     for (const { id, store } of stores) {
       const rtc = overlayRtcContextFor(store);
@@ -143,18 +156,45 @@ export function useAlignmentLines3D(): Float32Array {
       const cached = PARSE_CACHE.get(key);
       if (cached && cached.length > 0) {
         const delta = toRenderTranslation(displayedTranslation(placement, id));
-        arrays.push(delta.some((value) => value !== 0) ? cached.map((value, index) => value + delta[index % 3]) : cached);
+        arrays.push({ vertices: cached, delta });
         total += cached.length;
       }
     }
     if (total === 0) return EMPTY_F32;
-    if (arrays.length === 1) return arrays[0];
+    const needsAnchor = arrays.some(({ delta }) => delta.some((value) => Math.abs(value) >= RTE_ANCHOR_THRESHOLD_METRES));
+    if (!needsAnchor) {
+      if (arrays.length === 1) {
+        const { vertices, delta } = arrays[0];
+        return delta.some((value) => value !== 0) ? vertices.map((value, index) => value + delta[index % 3]) : vertices;
+      }
+      const merged = new Float32Array(total);
+      let offset = 0;
+      for (const { vertices, delta } of arrays) {
+        if (delta.some((value) => value !== 0)) {
+          for (let i = 0; i < vertices.length; i++) merged[offset + i] = vertices[i] + delta[i % 3];
+        } else {
+          merged.set(vertices, offset);
+        }
+        offset += vertices.length;
+      }
+      return merged;
+    }
+
+    // Anchor all source frames before Float32 materialisation. The first
+    // translated source defines the common local frame; source deltas are
+    // subtracted in f64 so a 15.625 mm placement residual survives the line
+    // upload. A camera cannot render arbitrarily separated sources in one RTE
+    // frame, and the renderer deliberately rejects such an invalid frame.
+    const anchorSource = arrays.find(({ delta }) => delta.some((value) => Math.abs(value) >= RTE_ANCHOR_THRESHOLD_METRES));
+    const origin = [...(anchorSource?.delta ?? arrays[0].delta)] as [number, number, number];
     const merged = new Float32Array(total);
     let offset = 0;
-    for (const a of arrays) {
-      merged.set(a, offset);
-      offset += a.length;
+    for (const { vertices, delta } of arrays) {
+      for (let i = 0; i < vertices.length; i++) {
+        merged[offset + i] = vertices[i] + delta[i % 3] - origin[i % 3];
+      }
+      offset += vertices.length;
     }
-    return merged;
+    return { localVertices: merged, origin };
   }, [stores, version, placement]);
 }

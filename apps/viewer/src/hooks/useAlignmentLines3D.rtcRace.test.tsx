@@ -69,7 +69,8 @@ it('keeps a late frame-A alignment reply from replacing the observable frame-B r
   } as never);
 
   function Probe() {
-    return <output>{JSON.stringify(Array.from(useAlignmentLines3D()))}</output>;
+    const lines = useAlignmentLines3D();
+    return <output>{JSON.stringify(Array.from(lines instanceof Float32Array ? lines : lines.localVertices))}</output>;
   }
 
   try {

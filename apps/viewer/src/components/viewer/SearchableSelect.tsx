@@ -17,6 +17,7 @@ import { createPortal } from 'react-dom';
 import { Search, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePortalContainer } from '@/components/ui/portal-container';
+import { useTranslation } from '@/i18n';
 
 /** Popup's own CSS `max-h` ceiling — the flip/clamp math never exceeds this,
  *  even when there's abundant space, so the popup stays a sane size. */
@@ -146,6 +147,7 @@ export function SearchableSelect({
   className?: string;
   displayFn?: (v: string) => string;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
   const [anchor, setAnchor] = useState<SearchableSelectAnchor | null>(null);
@@ -234,7 +236,7 @@ export function SearchableSelect({
           !value && 'text-zinc-400 dark:text-zinc-500',
         )}
       >
-        <span className="truncate">{value ? display(value) : (placeholder ?? 'Select...')}</span>
+        <span className="truncate">{value ? display(value) : (placeholder ?? t('searchableSelect.defaultPlaceholder'))}</span>
         <ChevronDown className="h-3 w-3 flex-shrink-0 opacity-50" />
       </button>
       {showPopup && triggerRef.current && createPortal(
@@ -276,14 +278,14 @@ export function SearchableSelect({
                 type="text"
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
-                placeholder="Search..."
+                placeholder={t('searchableSelect.searchPlaceholder')}
                 className="flex-1 text-xs bg-transparent border-0 outline-none text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
               />
             </div>
           )}
           <div className="overflow-y-auto flex-1">
             {filtered.length === 0 && (
-              <div className="px-2 py-1.5 text-xs text-muted-foreground">No matches</div>
+              <div className="px-2 py-1.5 text-xs text-muted-foreground">{t('searchableSelect.noMatches')}</div>
             )}
             {filtered.map(opt => (
               <button

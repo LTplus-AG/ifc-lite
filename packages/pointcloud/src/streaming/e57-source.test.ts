@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
-import { E57StreamingSource } from './e57-source.js';
+import { E57StreamingSource, inspectE57SpatialMetadata } from './e57-source.js';
 import { decodeE57 } from '../formats/e57.js';
 import { logicalToPhysical, physicalToLogical } from '../formats/e57-page.js';
 import type { DecodedPointChunk } from '../types.js';
@@ -122,6 +122,7 @@ function buildE57(
     : '';
   const xml = `<?xml version="1.0" encoding="UTF-8"?>`
     + `<e57Root type="Structure">`
+    + `<coordinateMetadata type="String">PROJCRS["LV95",ID["EPSG",2056]],VERTCRS["LN02",ID["EPSG",5729]]</coordinateMetadata>`
     + `<data3D type="Vector">`
     + (opts.emptyData3D ? '' : `<vectorChild type="Structure">`
       + `<guid type="String">{scan-1}</guid>`
@@ -268,6 +269,40 @@ describe('E57StreamingSource', () => {
   for (let i = 0; i < 50; i++) {
     points.push({ x: i * 0.5, y: i * 0.25 - 5, z: -i, r: i % 256, g: (i * 2) % 256, b: (i * 3) % 256 });
   }
+
+  it('publishes declared coordinateMetadata before the first point chunk (#5048)', async () => {
+    const { blob } = buildE57(points, { pageSize: 256, pointsPerPacket: 8 });
+    const info = await new E57StreamingSource(blob).open();
+    expect(info.spatialMetadata).toEqual({
+      horizontalId: 'EPSG:2056', verticalId: 'EPSG:5729',
+      wkt: 'PROJCRS["LV95",ID["EPSG",2056]],VERTCRS["LN02",ID["EPSG",5729]]',
+      provenance: 'E57 coordinateMetadata',
+    });
+  });
+
+  it('preflights CRS metadata without decoding a point chunk (#5048)', async () => {
+    const { blob } = buildE57(points, { pageSize: 256, pointsPerPacket: 8 });
+    await expect(inspectE57SpatialMetadata(blob)).resolves.toEqual({
+      horizontalId: 'EPSG:2056', verticalId: 'EPSG:5729',
+      wkt: 'PROJCRS["LV95",ID["EPSG",2056]],VERTCRS["LN02",ID["EPSG",5729]]',
+      provenance: 'E57 coordinateMetadata',
+    });
+  });
+
+  it('cancels E57 CRS preflight before opening a bounded XML read (#5048)', async () => {
+    const { blob } = buildE57(points, { pageSize: 256, pointsPerPacket: 8 });
+    const controller = new AbortController();
+    controller.abort();
+    await expect(inspectE57SpatialMetadata(blob, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('refuses a hostile declared XML length before allocating or decoding (#5048)', async () => {
+    const { blob } = buildE57(points, { pageSize: 256, pointsPerPacket: 8 });
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    // Header is inside page 0, and xmlLogicalLength is u64 at byte 32.
+    new DataView(bytes.buffer).setBigUint64(32, 1024n * 1024n * 1024n, true);
+    await expect(inspectE57SpatialMetadata(new Blob([bytes]))).rejects.toThrow('safety limit');
+  });
 
   it('streams positions + colours identical to the whole-file decoder', async () => {
     const { blob, physical } = buildE57(points, { pageSize: 256, pointsPerPacket: 8 });

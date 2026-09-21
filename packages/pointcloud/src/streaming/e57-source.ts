@@ -37,7 +37,6 @@ import {
   parseE57FileHeader,
   physicalToLogical,
   readU64LE,
-  stripPageCrc,
 } from '../formats/e57-page.js';
 import {
   parseE57Xml,
@@ -46,16 +45,22 @@ import {
   type PrototypeField,
 } from '../formats/e57-xml.js';
 import { BlobByteSource } from './blob-source.js';
+import { assertE57XmlMetadataBounds, spatialMetadataFromE57Xml } from './e57-metadata.js';
+import { readE57LogicalRange } from './e57-logical-range.js';
 import type {
   DownsampleHint,
   PointSourceInfo,
+  PointSourceSpatialMetadata,
   StreamingPointSource,
 } from './types.js';
+
+export { inspectE57SpatialMetadata } from './e57-metadata.js';
 
 /** 1 MiB — always ≥ any single packet (E57 packets are ≤ 64 KiB). */
 const MIN_WINDOW_BYTES = 1 << 20;
 /** 16 MiB — caps peak window memory per `next()`. */
 const MAX_WINDOW_BYTES = 16 << 20;
+/** XML is control-plane metadata; a larger section is rejected before allocation. */
 
 /** Pre-resolved plan for one Data3D scan, built once in `open()`. */
 interface ScanPlan {
@@ -97,6 +102,7 @@ export class E57StreamingSource implements StreamingPointSource {
   private hasColor = false;
   private hasIntensity = false;
   private hasClassification = false;
+  private spatialMetadata?: PointSourceSpatialMetadata;
 
   // Streaming cursor.
   private scanIdx = 0;
@@ -145,11 +151,14 @@ export class E57StreamingSource implements StreamingPointSource {
       ? header.fileLogicalSize
       : physicalToLogical(this.bytes.size, header.pageSize);
 
-    const xmlLogical = await readLogicalRange(
+    assertE57XmlMetadataBounds(header.xmlLogicalLength, this.fileLogicalSize);
+    const xmlLogical = await readE57LogicalRange(
       this.bytes, header.xmlLogicalOffset, header.xmlLogicalLength, header.pageSize,
+      signal,
     );
     abortIfAborted(signal);
     const xmlText = new TextDecoder().decode(xmlLogical);
+    this.spatialMetadata = spatialMetadataFromE57Xml(xmlText);
     const entries = parseE57Xml(xmlText);
     if (entries.length === 0) {
       throw new Error('E57: file contains no Data3D scans');
@@ -230,7 +239,7 @@ export class E57StreamingSource implements StreamingPointSource {
         this.recordsWritten = scan.recordCount;
         continue;
       }
-      let window = await readLogicalRange(this.bytes, this.logCursor, windowLen, this.pageSize);
+      let window = await readE57LogicalRange(this.bytes, this.logCursor, windowLen, this.pageSize);
       abortIfAborted(signal);
       if (window.length === 0) {
         this.recordsWritten = scan.recordCount;
@@ -246,7 +255,7 @@ export class E57StreamingSource implements StreamingPointSource {
         const peek0 = peekPacketHeader(view, 0);
         const atEof = this.logCursor + window.length >= this.fileLogicalSize;
         if (peek0.packetLength > window.length && !atEof) {
-          window = await readLogicalRange(this.bytes, this.logCursor, peek0.packetLength, this.pageSize);
+          window = await readE57LogicalRange(this.bytes, this.logCursor, peek0.packetLength, this.pageSize);
           abortIfAborted(signal);
           view = new DataView(window.buffer, window.byteOffset, window.byteLength);
         }
@@ -331,7 +340,7 @@ export class E57StreamingSource implements StreamingPointSource {
     signal?: AbortSignal,
   ): Promise<number> {
     const sectionLogical = physicalToLogical(entry.binaryFileOffset, pageSize);
-    const headerBytes = await readLogicalRange(this.bytes, sectionLogical, 32, pageSize);
+    const headerBytes = await readE57LogicalRange(this.bytes, sectionLogical, 32, pageSize);
     abortIfAborted(signal);
     if (headerBytes.length < 32) {
       throw new Error(
@@ -378,43 +387,17 @@ export class E57StreamingSource implements StreamingPointSource {
       hasClassification: this.hasClassification,
       hasIntensity: this.hasIntensity,
       label: this.label,
+      ...(this.spatialMetadata ? { spatialMetadata: this.spatialMetadata } : {}),
     };
   }
 }
 
 /**
- * Read a LOGICAL byte range [logStart, logStart+logLength) from a
- * CRC-paged E57 file. Reads the covering physical page span, strips the
- * 4-byte per-page CRC tails, and returns the requested logical slice.
- *
- * Returns fewer bytes than requested (or empty) near EOF — callers treat
- * a short read as "scan ends here".
+ * Read only the E57 file header and CRC-paged XML section to discover declared
+ * CRS metadata before a caller chooses a decode origin. This deliberately
+ * shares `readLogicalRange` with the streaming source: metadata inspection is
+ * not a second decoder and never reads point packets.
  */
-async function readLogicalRange(
-  src: BlobByteSource,
-  logStart: number,
-  logLength: number,
-  pageSize: number,
-): Promise<Uint8Array> {
-  if (logLength <= 0) return new Uint8Array(0);
-  const payloadPerPage = pageSize - 4;
-  const firstPage = Math.floor(logStart / payloadPerPage);
-  const logicalPageStart = firstPage * payloadPerPage;
-  const physicalStart = firstPage * pageSize;
-  const logEnd = logStart + logLength;
-  // Page containing the last byte we need (inclusive).
-  const lastPage = Math.floor((logEnd - 1) / payloadPerPage);
-  const physicalEnd = (lastPage + 1) * pageSize; // exclusive; read() clamps to size
-  const physical = await src.read(physicalStart, physicalEnd);
-  if (physical.length === 0) return new Uint8Array(0);
-  // `physical` starts on a page boundary, so stripPageCrc treats byte 0
-  // as a page start correctly. A clamped (EOF) tail is handled by
-  // stripPageCrc's partial-page logic.
-  const logical = stripPageCrc(physical, pageSize);
-  const rel = logStart - logicalPageStart;
-  if (rel >= logical.length) return new Uint8Array(0);
-  return logical.subarray(rel, Math.min(rel + logLength, logical.length));
-}
 
 /**
  * Take every `stride`-th record from a decoded packet (phased by the

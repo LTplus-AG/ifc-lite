@@ -24,7 +24,7 @@ import {
   rebaseOriginByRtcDelta,
   rtcRebaseDeltaFor,
 } from '@ifc-lite/geometry/rtc-rebase';
-import { chooseSharedRtcOffset } from '@ifc-lite/geometry/world-frame';
+import { chooseSharedRtcOffset, federationFrameInfo } from '@ifc-lite/geometry/world-frame';
 import type { Vec3 } from '@ifc-lite/geometry';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore, type FederatedModel } from '../../store/index.js';
@@ -62,6 +62,30 @@ function convergeSnapshot(snapshot: PreAlignmentSnapshot, anchor: Readonly<Vec3>
 let lastRefusalKey = '';
 
 /**
+ * A geometry-free LandXML document still renders authored boundary, breakline
+ * and contour overlays. Those overlays are absolute survey coordinates, so
+ * their sole render-frame input is `coordinateInfo`; unlike a mesh there is
+ * no origin to translate. Copy the settled mesh-bearing model's full frame
+ * instead of relying on an RTC offset, because native adapters may establish
+ * a frame with `originShift` alone.
+ */
+function adoptMeshlessLandXmlFrame(
+  settled: ReadonlyArray<readonly [string, FederatedModel]>,
+): string[] {
+  const meshBearing = settled.filter(([, model]) => (model.geometryResult?.meshes.length ?? 0) > 0);
+  const frame = federationFrameInfo(meshBearing.map(([, model]) => model));
+  if (!frame) return [];
+  const adopted: string[] = [];
+  for (const [modelId, model] of settled) {
+    const geometry = model.geometryResult;
+    if (model.sourceSchema !== 'LandXML-1.2' || !geometry || geometry.meshes.length !== 0) continue;
+    geometry.coordinateInfo = structuredClone(frame);
+    adopted.push(modelId);
+  }
+  return adopted;
+}
+
+/**
  * Converge every settled federated model onto the federation's RTC anchor
  * (the earliest-loaded settled model with a `wasmRtcOffset`). A no-op while
  * no settled model has one.
@@ -75,8 +99,12 @@ export function convergeFederationRtcFrame(): void {
   const settled = [...models].filter(
     (entry): entry is [string, FederatedModel] => hasSettledGeometry(entry[1] as FederatedModel),
   );
+  const adoptedIds = adoptMeshlessLandXmlFrame(settled);
   const anchor = chooseSharedRtcOffset(settled.map(([, model]) => model));
-  if (!anchor) return;
+  if (!anchor) {
+    for (const modelId of adoptedIds) useViewerStore.getState().updateModel(modelId, {});
+    return;
+  }
 
   // Refuse up front per model, so the spatial index of a model that will
   // not move is never withdrawn.
@@ -121,7 +149,10 @@ export function convergeFederationRtcFrame(): void {
     if (key !== lastRefusalKey) toast.info(message);
     lastRefusalKey = key;
   }
-  if (moved.length === 0) return;
+  if (moved.length === 0) {
+    for (const modelId of adoptedIds) useViewerStore.getState().updateModel(modelId, {});
+    return;
+  }
 
   // A model's HEADING rides the move for free — a yaw and a pure translation
   // commute, so the already-baked vertices are still correct. What does not is
@@ -143,7 +174,7 @@ export function convergeFederationRtcFrame(): void {
   // the merged-mesh cache and GPU buffers rebuild from them.
   useViewerStore.getState().bumpGeometryContentVersion();
   for (const [modelId, model] of settled) {
-    if (!moved.includes(model.geometryResult!)) continue;
+    if (!moved.includes(model.geometryResult!) && !adoptedIds.includes(modelId)) continue;
     // Re-wrap the entry so subscribers keyed on `models` see the change.
     useViewerStore.getState().updateModel(modelId, {});
     if (model.ifcDataStore) {

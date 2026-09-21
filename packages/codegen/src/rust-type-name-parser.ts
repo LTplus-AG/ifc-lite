@@ -13,12 +13,12 @@ export function generateTypeNameParser(schema: ExpressSchema): string {
             return known;
         }
         if s.bytes().all(|b| b.is_ascii() && !b.is_ascii_lowercase()) {
-            return Self::Unknown(crc32_hash(s));
+            return Self::Unknown(UnknownIfcType::new(s.to_owned()));
         }
         // Keep Unicode uppercase expansion and the exact unknown-type CRC.
         let upper = s.to_uppercase();
         Self::from_canonical_name(&upper)
-            .unwrap_or_else(|| Self::Unknown(crc32_hash(&upper)))
+            .unwrap_or_else(|| Self::Unknown(UnknownIfcType::new(upper)))
     }
 
     fn from_canonical_name(s: &str) -> Option<Self> {

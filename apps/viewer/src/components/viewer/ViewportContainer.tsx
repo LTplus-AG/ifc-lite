@@ -17,6 +17,7 @@ import {
 } from './dragOverlayState';
 import { ViewportOverlays } from './ViewportOverlays';
 import { WebGpuDisabledCaption, WebGpuTroubleshootingDetails, webGpuBannerBlurb } from './WebGpuTroubleshooting';
+import { useTranslation } from '@/i18n';
 import { MergeLayersBanner } from './MergeLayersBanner';
 import { GeometryModeBanner } from './GeometryModeBanner';
 import { LevelDisplayIndicator } from './LevelDisplayIndicator';
@@ -68,6 +69,20 @@ import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
 import { isMeshVisibleInViewMode, meshClassIsPlaced, meshIsNonOccurrence } from '@/lib/type-view-visibility';
 
+/** Plain CSS text, not UI copy — kept as a module-level constant (rather than
+ *  an inline `<style>{`…`}</style>` template literal) so the i18n literal
+ *  gate, which only inspects JSX-child string LITERALS, never mistakes a
+ *  keyframe declaration for translatable prose. */
+const FLOAT_SLOW_KEYFRAMES = `
+  @keyframes float-slow {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-6px) rotate(1deg); }
+  }
+  .animate-float-slow {
+    animation: float-slow 5s ease-in-out infinite;
+  }
+`;
+
 export function ViewportContainer() {
   // Drive Stacked / Solo / Exploded level display from the slice.
   // Mount-once hook — it self-gates on mode + gap + model changes.
@@ -102,6 +117,11 @@ export function ViewportContainer() {
   const [showTroubleshooting, setShowTroubleshooting] = useState(false);
   const [recentFiles, setRecentFiles] = useState<RecentFileEntry[]>([]);
   const webgpu = useWebGPU();
+  // `webGpuBannerBlurb` is a plain function, not a component — pass this
+  // component's own `t` so the banner headline re-renders on a live locale
+  // switch instead of reading the registry's non-reactive `resolve` default
+  // (review on #5086).
+  const { t } = useTranslation();
 
   const viewerStoreApi = getViewerStoreApi();
   const viewportStoreState = useSyncExternalStore(
@@ -938,7 +958,7 @@ export function ViewportContainer() {
           <div className="pointer-events-none absolute inset-0 z-50 bg-primary/10 backdrop-blur-[2px] flex items-center justify-center p-8">
             <div className="border-4 border-dashed border-primary bg-white/90 dark:bg-black/90 p-12 max-w-2xl w-full text-center shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(255,255,255,1)] transition-all">
               <Upload className="h-20 w-20 mx-auto text-primary mb-6" />
-              <p className="text-3xl font-black uppercase tracking-tight text-primary">Drop File to Load</p>
+              <p className="text-3xl font-black uppercase tracking-tight text-primary">{t('viewportLighting.container.emptyState.dropOverlay.title')}</p>
             </div>
           </div>
         )}
@@ -968,10 +988,10 @@ export function ViewportContainer() {
 
                 <div className="flex-1 min-w-0">
                   <h3 className="font-black text-lg uppercase tracking-wider text-[#f7768e] mb-1">
-                    WebGPU Not Available
+                    {t('viewportLighting.container.emptyState.webgpuBanner.heading')}
                   </h3>
                   <p className="font-mono text-sm text-[#a9b1d6] leading-relaxed">
-                    {webGpuBannerBlurb(webgpu.category)}
+                    {webGpuBannerBlurb(webgpu.category, t)}
                     {webgpu.reason && (
                       <span className="block mt-1 text-[#565f89]">
                         {webgpu.reason}
@@ -985,11 +1005,11 @@ export function ViewportContainer() {
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-mono uppercase tracking-wide border border-[#3b4261] text-[#7aa2f7] hover:border-[#7aa2f7] hover:bg-[#7aa2f7]/10 transition-colors"
                     >
-                      Check Browser Support
+                      {t('viewportLighting.container.emptyState.webgpuBanner.checkBrowserSupport')}
                       <ExternalLink className="h-3 w-3" />
                     </a>
                     <span className="inline-flex items-center px-3 py-1 text-xs font-mono text-[#565f89] border border-[#3b4261]">
-                      Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 18+
+                      {t('viewportLighting.container.emptyState.webgpuBanner.supportedBrowsers')}
                     </span>
                   </div>
 
@@ -999,7 +1019,9 @@ export function ViewportContainer() {
                     className="mt-4 flex items-center gap-2 text-xs font-mono uppercase tracking-wide text-[#ff9e64] hover:text-[#e0af68] transition-colors"
                   >
                     <ChevronDown className={`h-4 w-4 transition-transform ${showTroubleshooting ? 'rotate-180' : ''}`} />
-                    {showTroubleshooting ? 'Hide' : 'Show'} Troubleshooting
+                    {showTroubleshooting
+                      ? t('viewportLighting.container.emptyState.webgpuBanner.hideTroubleshooting')
+                      : t('viewportLighting.container.emptyState.webgpuBanner.showTroubleshooting')}
                   </button>
 
                   {showTroubleshooting && (
@@ -1023,15 +1045,7 @@ export function ViewportContainer() {
           {/* Main Card */}
           <div {...tourAnchor(TOUR_ANCHORS.emptyStateCard)} className="max-w-md w-full bg-white dark:bg-[#16161e] border border-zinc-300 dark:border-[#3b4261] p-8 flex flex-col items-center transition-transform hover:-translate-y-1 duration-200 shadow-lg">
             
-            <style>{`
-              @keyframes float-slow {
-                0%, 100% { transform: translateY(0px) rotate(0deg); }
-                50% { transform: translateY(-6px) rotate(1deg); }
-              }
-              .animate-float-slow {
-                animation: float-slow 5s ease-in-out infinite;
-              }
-            `}</style>
+            <style>{FLOAT_SLOW_KEYFRAMES}</style>
 
             {/* Logo Section */}
             <div className="mb-10 relative group/logo cursor-pointer">
@@ -1045,17 +1059,17 @@ export function ViewportContainer() {
               <div className="relative z-10 animate-float-slow transition-transform duration-300 group-hover/logo:scale-110">
                 <img 
                   src="/logo.png" 
-                  alt="IFClite Logo" 
+                  alt={t('viewportLighting.container.emptyState.logoAlt')}
                   className="h-28 w-auto drop-shadow-lg"
                 />
               </div>
             </div>
 
             <h2 className="text-3xl font-black tracking-tighter text-center mb-2 text-zinc-900 dark:text-[#a9b1d6]">
-              IFClite
+              {t('viewportLighting.container.emptyState.title')}
             </h2>
             <p className="text-zinc-500 dark:text-[#565f89] font-mono text-sm text-center mb-8 border-b border-zinc-200 dark:border-[#3b4261] pb-4 w-full">
-              IFC toolkit for the open web
+              {t('viewportLighting.container.emptyState.tagline')}
             </p>
 
             {/*
@@ -1077,17 +1091,23 @@ export function ViewportContainer() {
               }`}
             >
               <Upload className={`h-4 w-4 transition-transform ${webgpu.supported ? 'group-hover:-translate-y-0.5' : ''}`} />
-              <span>{webgpu.checking ? 'Checking WebGPU...' : webgpu.supported ? 'Open .ifc file' : 'WebGPU Required'}</span>
+              <span>
+                {webgpu.checking
+                  ? t('viewportLighting.container.emptyState.openButton.checking')
+                  : webgpu.supported
+                    ? t('viewportLighting.container.emptyState.openButton.open')
+                    : t('viewportLighting.container.emptyState.openButton.required')}
+              </span>
             </button>
 
             <p className="mt-2.5 text-[11px] font-mono text-center text-zinc-400 dark:text-[#565f89]">
-              {webgpu.supported ? 'or drag & drop anywhere' : <WebGpuDisabledCaption />}
+              {webgpu.supported ? t('viewportLighting.container.emptyState.dragDropHint') : <WebGpuDisabledCaption />}
             </p>
 
             {/* Subtle "or" rule — anchors the symmetry between the two tracks */}
             <div className="mt-5 mb-5 w-full flex items-center gap-3 text-[10px] font-mono uppercase tracking-[0.22em] text-zinc-400 dark:text-[#565f89]">
               <span className="h-px flex-1 bg-zinc-200 dark:bg-[#3b4261]" />
-              <span>or</span>
+              <span>{t('viewportLighting.container.emptyState.orDivider')}</span>
               <span className="h-px flex-1 bg-zinc-200 dark:bg-[#3b4261]" />
             </div>
 
@@ -1108,7 +1128,7 @@ export function ViewportContainer() {
                 }`}
               >
                 <PackagePlus className="h-3 w-3 transition-transform group-enabled:group-hover:-translate-y-0.5" />
-                <span>Start blank</span>
+                <span>{t('viewportLighting.container.emptyState.startBlank')}</span>
               </button>
               <button
                 type="button"
@@ -1124,20 +1144,20 @@ export function ViewportContainer() {
                 {/* Provider-neutral: this opens the Cloud Sources panel, which
                     lists every registered provider. Naming one vendor on the
                     front door stopped being accurate at the second provider. */}
-                <span>Open from cloud</span>
+                <span>{t('viewportLighting.container.emptyState.openFromCloud')}</span>
               </button>
               <a
                 href="/mcp"
                 className="group inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border border-dashed border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#7a82a5] hover:border-primary hover:text-primary transition-all cursor-pointer"
               >
                 <Sparkles className="h-3 w-3 transition-transform group-hover:-translate-y-0.5" />
-                <span>Drive with any LLM</span>
+                <span>{t('viewportLighting.container.emptyState.driveWithLlm')}</span>
                 <ArrowUpRight className="h-2.5 w-2.5 opacity-60 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
               </a>
             </div>
 
             <p className="mt-1.5 text-[10px] font-mono text-center text-zinc-400 dark:text-[#565f89]">
-              new untitled project · or LLM via MCP
+              {t('viewportLighting.container.emptyState.footerCaption')}
             </p>
 
             {/* First-run tour invite — needs loadFile, so it shares the
@@ -1148,7 +1168,7 @@ export function ViewportContainer() {
               <div className="mt-6 w-full border-t border-zinc-200 dark:border-[#3b4261] pt-4">
                 <div className="mb-3 flex items-center gap-2 text-xs font-mono uppercase tracking-[0.2em] text-zinc-400 dark:text-[#565f89]">
                   <Clock3 className="h-3.5 w-3.5" />
-                  <span>Recent Files</span>
+                  <span>{t('viewportLighting.container.emptyState.recentFiles.heading')}</span>
                 </div>
                 <div className="flex flex-col gap-2">
                   {recentFiles.map((file) => (
@@ -1196,15 +1216,15 @@ export function ViewportContainer() {
             </div>
             <div className="min-w-0 flex-1">
               <h3 className="font-bold uppercase text-sm tracking-wide text-zinc-900 dark:text-[#a9b1d6]">
-                <span className="mr-2 rounded-sm bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground">New</span>
-                Layers
+                <span className="mr-2 rounded-sm bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground">{t('viewportLighting.container.emptyState.layersPromo.badge')}</span>
+                {t('viewportLighting.container.emptyState.layersPromo.title')}
               </h3>
               <p className="text-xs font-mono text-zinc-500 dark:text-[#565f89]">
-                Version your model like code: layers, drafts, merges, reviews
+                {t('viewportLighting.container.emptyState.layersPromo.description')}
               </p>
             </div>
             <span className="text-xs font-mono font-bold text-primary group-hover:translate-x-0.5 transition-transform">
-              Try the demo stack &rarr;
+              {t('viewportLighting.container.emptyState.layersPromo.cta')}
             </span>
           </button>
 
@@ -1220,12 +1240,12 @@ export function ViewportContainer() {
               rel="noopener noreferrer"
               className="group inline-flex items-center gap-2 text-xs font-mono px-3 py-1.5 bg-zinc-100 dark:bg-[#1f2335] border border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#565f89] hover:border-primary hover:text-primary transition-colors"
             >
-              <span>New here?</span>
-              <span className="font-bold text-primary group-hover:translate-x-0.5 transition-transform">ifclite.dev →</span>
+              <span>{t('viewportLighting.container.emptyState.footer.discoverPrompt')}</span>
+              <span className="font-bold text-primary group-hover:translate-x-0.5 transition-transform">{t('viewportLighting.container.emptyState.footer.discoverLink')}</span>
             </a>
             <div className="flex items-center gap-2 text-xs font-mono px-3 py-1.5 bg-zinc-100 dark:bg-[#1f2335] border border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#565f89]">
               <Command className="h-3 w-3" />
-              <span>SHORTCUTS</span>
+              <span>{t('viewportLighting.container.emptyState.footer.shortcutsLabel')}</span>
               <span className="px-1.5 ml-1 font-bold text-primary bg-primary/20">?</span>
             </div>
           </div>
@@ -1251,9 +1271,9 @@ export function ViewportContainer() {
           <div className="bg-white dark:bg-[#1a1b26] border-4 border-dashed border-[#9ece6a] p-8 shadow-2xl">
             <div className="text-center">
               <Plus className="h-12 w-12 mx-auto text-[#9ece6a] mb-4" />
-              <p className="text-xl font-black uppercase text-[#9ece6a]">Add Model to Scene</p>
+              <p className="text-xl font-black uppercase text-[#9ece6a]">{t('viewportLighting.container.dropOverlay.addModelTitle')}</p>
               <p className="text-sm font-mono text-zinc-500 dark:text-[#565f89] mt-2">
-                Drop to federate with {models.size} existing model{models.size !== 1 ? 's' : ''}
+                {t('viewportLighting.container.dropOverlay.addModelSubtitle', { count: models.size })}
               </p>
             </div>
           </div>

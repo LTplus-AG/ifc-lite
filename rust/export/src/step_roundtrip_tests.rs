@@ -234,7 +234,7 @@ fn assert_round_trip(label: &str, content: &[u8]) {
         before.model.entities.len()
     );
 
-    let written = export_step(content, &StepOptions::default());
+    let written = export_step(content, &StepOptions::default()).unwrap();
     let after = snapshot(written.as_bytes());
 
     if let Some(diff) = first_difference(&before, &after) {
@@ -334,7 +334,7 @@ fn a_changed_global_id_is_caught() {
             }],
             ..StepOptions::default()
         },
-    );
+    ).unwrap();
     let diff = first_difference(&before, &snapshot(written.as_bytes()))
         .expect("a rewritten GlobalId must be caught");
     assert!(
@@ -366,7 +366,7 @@ fn an_added_property_set_is_caught() {
             }],
             ..StepOptions::default()
         },
-    );
+    ).unwrap();
     assert!(
         first_difference(&before, &snapshot(written.as_bytes())).is_some(),
         "a property set that is not in the source must be caught"
@@ -413,7 +413,7 @@ fn a_moved_georeference_is_caught() {
             }],
             ..StepOptions::default()
         },
-    );
+    ).unwrap();
     let diff = first_difference(&before, &snapshot(written.as_bytes()))
         .expect("a moved false easting must be caught");
     assert!(
@@ -455,7 +455,7 @@ fn a_dropped_entity_is_caught() {
             included: Some(keep),
             ..StepOptions::default()
         },
-    );
+    ).unwrap();
     let diff = first_difference(&before, &snapshot(written.as_bytes()))
         .expect("an entity missing from the output must be caught");
     assert!(
@@ -500,7 +500,7 @@ fn subset_export_of_third_party_products_dangles_no_reference() {
             included: Some(roots.clone()),
             ..StepOptions::default()
         },
-    );
+    ).unwrap();
 
     let out_bytes = written.as_bytes();
     let mut present: HashSet<u32> = HashSet::new();

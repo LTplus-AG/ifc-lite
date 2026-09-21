@@ -39,20 +39,21 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { KmzAltitudeMode } from '@/lib/geo/kmz-exporter';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
+import { useTranslation } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 
 interface KmzExportDialogProps {
   trigger?: React.ReactNode;
 }
 
-const ERROR_MESSAGE: Record<KmzBuildError, string> = {
-  'not-georeferenced':
-    'This model has no georeferencing (IfcMapConversion / projected CRS), so it has no real-world location to place in Google Earth. Add a location in the Georeferencing panel first.',
-  unprojectable:
-    'The model is georeferenced but its coordinate system could not be projected to WGS84.',
-  'no-geometry': 'This model has no geometry to export.',
+const ERROR_MESSAGE_KEY: Record<KmzBuildError, TranslationKey> = {
+  'not-georeferenced': 'geometryExport.kmz.notGeoreferencedError',
+  unprojectable: 'geometryExport.kmz.unprojectableError',
+  'no-geometry': 'geometryExport.kmz.noGeometryError',
 };
 
 export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
+  const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const georefMutations = useViewerStore((s) => s.georefMutations);
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);
@@ -95,14 +96,14 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
       // else to wrongly include, so `null` (no filter) is correct.
       list.push({
         id: '__legacy__',
-        name: 'Current Model',
+        name: t('geometryExport.shared.currentModelFallbackName'),
         geometryResult: legacyGeometryResult,
         dataStore: legacyDataStore,
         instancedModelRange: null,
       });
     }
     return list;
-  }, [models, legacyGeometryResult, legacyDataStore]);
+  }, [models, legacyGeometryResult, legacyDataStore, t]);
 
   // Pick a default AND repair a stale selection: when the loaded models change
   // (federated add/remove, model swap), an id that no longer matches any model
@@ -156,26 +157,28 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
       });
 
       if (typeof result === 'string') {
-        setExportResult({ success: false, message: ERROR_MESSAGE[result] });
-        toast.error('KMZ export failed');
+        setExportResult({ success: false, message: t(ERROR_MESSAGE_KEY[result]) });
+        toast.error(t('geometryExport.kmz.exportFailedToast'));
         return;
       }
 
       const blob = new Blob([new Uint8Array(result)], { type: 'application/vnd.google-earth.kmz' });
       downloadBlob(blob, `${baseName}.kmz`);
-      const msg = `Exported KMZ (${(blob.size / 1024).toFixed(0)} KB)`;
+      const msg = t('geometryExport.kmz.exportedMessage', { sizeKb: (blob.size / 1024).toFixed(0) });
       setExportResult({ success: true, message: msg });
       toast.success(msg);
       posthog.capture('export_completed', { format: 'kmz', size_kb: Math.round(blob.size / 1024) });
     } catch (err) {
       console.error('KMZ export failed:', err);
-      const errMsg = `KMZ export failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
+      const errMsg = t('geometryExport.kmz.failedMessage', {
+        reason: err instanceof Error ? err.message : t('geometryExport.shared.unknownError'),
+      });
       setExportResult({ success: false, message: errMsg });
       toast.error(errMsg);
     } finally {
       setIsExporting(false);
     }
-  }, [selectedModel, selectedModelId, georefMutations, altitudeMode]);
+  }, [selectedModel, selectedModelId, georefMutations, altitudeMode, t]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -183,7 +186,7 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
         {trigger || (
           <Button variant="outline" size="sm">
             <Globe2 className="h-4 w-4 mr-2" />
-            Export KMZ
+            {t('geometryExport.kmz.triggerButton')}
           </Button>
         )}
       </DialogTrigger>
@@ -191,11 +194,10 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Globe2 className="h-5 w-5" />
-            Export KMZ for Google Earth Pro
+            {t('geometryExport.kmz.dialogTitle')}
           </DialogTitle>
           <DialogDescription>
-            Places the model at its real-world location, embedded as COLLADA. Requires a
-            georeferenced model.
+            {t('geometryExport.kmz.dialogDescription')}
           </DialogDescription>
         </DialogHeader>
 
@@ -204,19 +206,18 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
               model — only Earth Pro (desktop) can. Web users should export GLB instead. */}
           <Alert>
             <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Opens in Google Earth Pro (desktop)</AlertTitle>
+            <AlertTitle>{t('geometryExport.kmz.webNoticeTitle')}</AlertTitle>
             <AlertDescription>
-              Google Earth on the web cannot show 3D models from a KMZ. For Earth on the web,
-              use Export GLB and import it via the web app&apos;s Import 3D model option.
+              {t('geometryExport.kmz.webNoticeDescription')}
             </AlertDescription>
           </Alert>
 
           {modelList.length > 1 && (
             <div className="flex items-center gap-4">
-              <Label className="w-32">Model</Label>
+              <Label className="w-32">{t('geometryExport.kmz.modelLabel')}</Label>
               <Select value={selectedModelId} onValueChange={setSelectedModelId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select model" />
+                  <SelectValue placeholder={t('geometryExport.kmz.selectModelPlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
                   {modelList.map((m) => {
@@ -233,14 +234,14 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
           )}
 
           <div className="flex items-center gap-4">
-            <Label className="w-32 text-muted-foreground">Output</Label>
-            <Badge variant="secondary">Google Earth</Badge>
-            <span className="text-xs text-muted-foreground">.kmz</span>
+            <Label className="w-32 text-muted-foreground">{t('geometryExport.kmz.outputLabel')}</Label>
+            <Badge variant="secondary">{t('geometryExport.kmz.outputFormat')}</Badge>
+            <span className="text-xs text-muted-foreground">{t('geometryExport.kmz.fileExtension')}</span>
           </div>
 
           <div className="flex items-start gap-4">
             <Label className="w-32 pt-2" htmlFor="kmz-altitude-mode">
-              Placement
+              {t('geometryExport.kmz.placementLabel')}
             </Label>
             <div className="flex flex-1 flex-col gap-1">
               <Select
@@ -251,19 +252,18 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="clampToGround">Rest on ground</SelectItem>
-                  <SelectItem value="absolute">True elevation (MSL)</SelectItem>
+                  <SelectItem value="clampToGround">{t('geometryExport.kmz.placementClampToGround')}</SelectItem>
+                  <SelectItem value="absolute">{t('geometryExport.kmz.placementAbsolute')}</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
                 {altitudeMode === 'clampToGround'
-                  ? 'Drapes the model on the terrain so it never floats. Recommended.'
-                  : "Places the model at its orthogonal height above sea level. Use only when the model's elevation is a true MSL value."}
+                  ? t('geometryExport.kmz.placementClampHint')
+                  : t('geometryExport.kmz.placementAbsoluteHint')}
               </p>
               {altitudeMode === 'clampToGround' && suggestTrueElevation && (
                 <p className="text-xs text-amber-600 dark:text-amber-400">
-                  This model appears to carry absolute elevations in its geometry, so True
-                  elevation (MSL) will place it correctly here.
+                  {t('geometryExport.kmz.suggestTrueElevationHint')}
                 </p>
               )}
             </div>
@@ -272,7 +272,7 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
           {exportResult && (
             <Alert variant={exportResult.success ? 'default' : 'destructive'}>
               {exportResult.success ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-              <AlertTitle>{exportResult.success ? 'Success' : 'Error'}</AlertTitle>
+              <AlertTitle>{exportResult.success ? t('geometryExport.kmz.successTitle') : t('geometryExport.kmz.errorTitle')}</AlertTitle>
               <AlertDescription>{exportResult.message}</AlertDescription>
             </Alert>
           )}
@@ -280,18 +280,18 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
+            {t('geometryExport.kmz.cancelButton')}
           </Button>
           <Button onClick={handleExport} disabled={isExporting || !selectedModel}>
             {isExporting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Exporting...
+                {t('geometryExport.kmz.exportingButton')}
               </>
             ) : (
               <>
                 <Globe2 className="h-4 w-4 mr-2" />
-                Export
+                {t('geometryExport.kmz.exportButton')}
               </>
             )}
           </Button>

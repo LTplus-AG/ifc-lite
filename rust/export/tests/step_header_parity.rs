@@ -103,7 +103,7 @@ fn rust_step_header_matches_shared_vectors() {
             ..StepOptions::default()
         };
 
-        let got = header_lines(&export_step(ifc.as_bytes(), &opts));
+        let got = header_lines(&export_step(ifc.as_bytes(), &opts).unwrap());
         assert_eq!(got, want, "case `{name}`");
     }
 }

@@ -59,7 +59,10 @@ options menus' own labels, tool buttons, the selection action cluster, and
 the meta cluster (theme, info). It deliberately does not cover the shared
 command surfaces the ribbon also renders — camera commands, the export menu,
 workspace-panel toggle lists, and the class-visibility body — those are
-slice 2 of the #4918 sweep.
+slice 2 of the #4918 sweep. The #4918 grab-bag slice added one more key,
+`mainToolbar.editModeShortcutHint` ('E'): the bare keyboard-shortcut letter
+next to the Edit-mode toggle trips the gate the same way the Measure
+catalogue's bare "m" unit symbol does (see below).
 
 The shared-commands catalogue (#4918 slice 2) covers the command lists both
 `MainToolbar` and the ribbon render from: the export registry
@@ -91,7 +94,11 @@ The Measure tool catalogue (#4918 slice 6, tools) covers `MeasurePanel.tsx`,
 and the shared georeferenced readout `measure-modes/geo-readout.tsx`
 (`measure.en.ts`). Measurement unit *symbols* (`m`, `m²`, `mm`, `°`) stay
 literal in these files by this slice's own scope, distinct from the gate's
-allowlist. The Space Sketch tool catalogue (`space-sketch.en.ts`) covers
+allowlist — except the bare "m" JSX text node next to the live geo readout,
+which trips the gate despite the symbol allowlist (a single ASCII letter with
+no modifier glyph isn't a recognized cluster) and was keyed as
+`measure.geo.unitMeters` by the #4918 grab-bag slice, filling in a key this
+slice had reserved with a comment but left unadded. The Space Sketch tool catalogue (`space-sketch.en.ts`) covers
 `SpaceSketchOverlay.tsx` and its `space-sketch/` popovers, canvas, and
 reopen pill. The wall-split tool catalogue (`split-tool.en.ts`) covers
 `SplitNumericInput.tsx` and `SplitOverlay.tsx`. `SectionPanel.tsx`'s one
@@ -122,7 +129,13 @@ per-row tag strip and its tag editor dialog (`ModelRowTags`,
 (`HierarchySortControl`, whose `SORT_OPTIONS` table carries `labelKey`s the
 same way `camera-commands.ts` does), and the Building Storeys display
 controls (`StoreyDisplayControls`). Row NAMES, TYPE NAMES and TAG NAMES are
-model content, not literals, and stay out of the catalogue.
+model content, not literals, and stay out of the catalogue. The same
+catalogue's `hierarchy.panel.*` keys (#4918 slice: panel outer chrome) cover
+`HierarchyPanel.tsx`'s own shell around that tree: the loading/no-model
+empty states, the search field, the grouping-mode tab strip and Groups
+sub-filter chips, the section header per grouping mode, the storey/class-
+filter/type-isolation footer chips and their clear controls, and the
+resize-divider hint.
 
 The properties catalogue (#4918 slice 4) covers the Properties panel's own
 chrome: the entity header actions, the assembly/spatial-location badges,
@@ -135,7 +148,14 @@ surfaces, and the Gantt task edit card. IFC EXPRESS attribute names
 `Description`, …) rendered as `GeorefRow`/`MaterialRow` labels keep the
 house rule's exact schema spelling and stay out of the catalogue, same as
 property/pset/material/classification/schedule NAMES and VALUES, which are
-model content.
+model content. The same catalogue's `properties.panel.*` keys (#4918 slice:
+panel outer chrome) cover `PropertiesPanel.tsx`'s own chrome that is not one
+of those extracted cards: the empty state, the entity header's merge-layers
+badge and world-coordinates disclosure, the IFC Attributes / Structure /
+Zones collapsible sections and their inline attribute editor, the
+Properties/Quantities/bSDD/Raw STEP tabs and each tab's empty state, the
+occurrence/type/material property section labels, and the unified-storey
+multi-entity view.
 
 The appearance-panel catalogue (#4918 slice 4, split across
 `appearance-panel.en.ts`, `appearance-workflows.en.ts`, and
@@ -173,7 +193,13 @@ per-row tag strip and its tag editor dialog (`ModelRowTags`,
 (`HierarchySortControl`, whose `SORT_OPTIONS` table carries `labelKey`s the
 same way `camera-commands.ts` does), and the Building Storeys display
 controls (`StoreyDisplayControls`). Row NAMES, TYPE NAMES and TAG NAMES are
-model content, not literals, and stay out of the catalogue.
+model content, not literals, and stay out of the catalogue. The same
+catalogue's `hierarchy.panel.*` keys (#4918 slice: panel outer chrome) cover
+`HierarchyPanel.tsx`'s own shell around that tree: the loading/no-model
+empty states, the search field, the grouping-mode tab strip and Groups
+sub-filter chips, the section header per grouping mode, the storey/class-
+filter/type-isolation footer chips and their clear controls, and the
+resize-divider hint.
 
 The properties catalogue (#4918 slice 4) covers the Properties panel's own
 chrome: the entity header actions, the assembly/spatial-location badges,
@@ -186,14 +212,32 @@ surfaces, and the Gantt task edit card. IFC EXPRESS attribute names
 `Description`, …) rendered as `GeorefRow`/`MaterialRow` labels keep the
 house rule's exact schema spelling and stay out of the catalogue, same as
 property/pset/material/classification/schedule NAMES and VALUES, which are
-model content.
+model content. The same catalogue's `properties.panel.*` keys (#4918 slice:
+panel outer chrome) cover `PropertiesPanel.tsx`'s own chrome that is not one
+of those extracted cards: the empty state, the entity header's merge-layers
+badge and world-coordinates disclosure, the IFC Attributes / Structure /
+Zones collapsible sections and their inline attribute editor, the
+Properties/Quantities/bSDD/Raw STEP tabs and each tab's empty state, the
+occurrence/type/material property section labels, and the unified-storey
+multi-entity view.
 The IDS-panel catalogue (#4918 viewer-panels slice) covers `IDSPanel.tsx` and
 the extracted validation progress, result-summary, filtering, isolation,
-focus, specification, requirement, and entity chrome (`ids-panel.en.ts`).
-The existing `IDSAuditSummary`, correction, report-export, and BCF-export
-dialogs remain separate follow-up surfaces. IDS document titles/descriptions,
-specification names, entity names/types/GlobalIds, requirement descriptions,
-and failure details remain model/document content supplied by the IDS engine.
+focus, specification, requirement, and entity chrome (`ids-panel.en.ts`). A
+follow-up slice extended the same `idsPanel.*` catalogue to its four sibling
+surfaces: `IDSCorrectionDialog.tsx` (the scalar-property correction dialog —
+title, description, the "nothing to correct" alert, the requirement/value
+form, the failed-entities list, and the applied/failed result summary),
+`IDSExportDialog.tsx` (the BCF export settings dialog — topic-grouping
+options and their hint text, the four toggle switches, and progress/footer
+controls), `IDSAuditSummary.tsx` (the auditing/clean-document states, the
+counts-strip severity words moved to a `labelKey`/`pluralLabelKey` pair on
+`SEVERITY_TOKENS` the same way `sectionConstants.ts`'s `AXIS_INFO` does, the
+filter tabs, and the issue-row "path"/"facet" field labels), and
+`IDSReportExportButton.tsx` (the format dropdown's own labels, moved to a
+`FORMAT_LABEL_KEYS` map with the same pattern, its aria-label, and the
+export-format tooltip). IDS document titles/descriptions, specification
+names, entity names/types/GlobalIds, requirement descriptions, and failure
+details remain model/document content supplied by the IDS engine.
 The clash-detection catalogue (#4918 viewer-panels slice) covers
 `ClashPanel.tsx`: the header and help disclosure, the detection controls
 (mode/tol/gap, run buttons, live progress), the result-summary toolbar
@@ -278,6 +322,27 @@ root, and `ui/` (a companion slice covers `extensions/**`):
   the command-palette catalogue's tour entries.
 - `viewer-shell.en.ts` covers the components root's `ChunkErrorBoundary`
   fallback and the shared `ui/dialog.tsx` primitive's sr-only close label.
+
+The sidebar/shell-chrome catalogue (#4918 slice, `shell-chrome.en.ts`,
+prefixed `shellChrome.<component>.*` with a small `shellChrome.shared.*` for
+strings genuinely reused across two of these files) is a sibling to
+`viewer-shell.en.ts` — kept in its own file under a distinct prefix purely to
+avoid any key collision, not because the scope differs. It covers the
+unified sidebar's activity rail and its customize popover
+(`ActivityBar.tsx`, `CustomizeSidebar.tsx`), the docked-pane host and its
+resize handle and split controls (`SidebarDock.tsx`, `SidebarPanelHost.tsx`),
+the floating/edge-snapped panel window and the popped-out OS/PiP window
+chrome (`FloatingPanel.tsx`, `PanelWindowHost.tsx`), `ViewerLayout.tsx`'s own
+top-level chrome (the safe-mode banner and the mobile bottom-sheet host's
+floating Hierarchy/Properties buttons), `StatusBar.tsx`, and
+`MobileToolbar.tsx`. Panel NAMES/TITLES sourced from the panels registry
+(`@/lib/panels/registry`, outside this slice) are runtime data passed as
+`{title}` interpolation params, same reasoning as every other slice treating
+a registry-owned label as data rather than UI copy owned by the component
+that renders it. `FPS`/`WebGPU` and the `ifclite.dev` link text are routed
+through `t()` so the ending gate does not see them as untranslated JSX
+literals, same reasoning the WebGPU-troubleshooting catalogue documents for
+technical strings a translator is expected to leave unchanged.
 
 The chat catalogue (#4918 chat slice, `chat.en.ts`) covers `ChatPanel.tsx`'s
 own chrome (header controls, the BYOK-needed banner, clear-confirmation
@@ -482,6 +547,302 @@ the hover-target kind (vertex/edge/face/point/origin/bounds) and the
 source/target pick role are internal enums whose display words moved to
 the same data-table `labelKey` pattern `sectionConstants.ts`'s
 `AXIS_INFO` and slice 2's command registries use.
+
+The export-dialog catalogue (#4918 slice: export/panel outer chrome,
+`export-dialog.en.ts`) covers `ExportDialog.tsx`'s own chrome: the trigger
+button, the dialog title/description, the scope/mixed-units/model/schema
+selectors, the schema-conversion warning, the output indicator, every
+option switch and its hint text (visible-only, include-geometry,
+apply-property-changes, changes-only, IFC5-only-known-properties), the
+pending-changes banner, the export-progress readout, the success/error
+result banner, and the footer cancel/export controls. Schema version codes
+(`IFC2X3`, `IFC4`, …) and file extensions remain exact identifiers and
+stay out of the catalogue. This is a sibling to `PropertiesPanel.tsx`'s and
+`HierarchyPanel.tsx`'s own `*.panel.*` outer-chrome keys documented above —
+all three files' INNER content (the extracted property/quantity cards, the
+tree row/node chrome) was already covered by an earlier slice; this slice
+covers the panel/dialog SHELL around them.
+
+The WebGPU-troubleshooting catalogue (#4918 slice: webgpu/script,
+`webgpu-troubleshooting.en.ts`) covers `WebGpuTroubleshooting.tsx` in full:
+the empty-state disabled-file caption, the category-branched banner
+headline, the collapsible troubleshooting steps for each
+`WebGPUUnavailableReason` category (insecure origin, browser not exposing
+WebGPU, and the blocklist/Firefox/Safari/verify-status block), and the
+always-shown CLI/MCP fallback notice. The banner headline is resolved by a
+plain function, not a component, so it takes a `t: typeof resolve = resolve`
+default parameter straight from the locale registry (`@/i18n/registry`)
+instead of the `useTranslation()` hook — the same non-hook translator shape
+`bulk-property-value.ts` already uses. Browser flag names, config paths, and
+CLI incantations are catalogued like every other literal in this file even
+though a translator is expected to leave them unchanged, the same reasoning
+the clash-tools catalogue documents for a composite IFC class-selector
+pattern.
+
+The Script-tool chrome catalogue (#4918 slice: webgpu/script,
+`script-panel.en.ts`) covers `ScriptPanel.tsx`'s own chrome: the header
+(default title, saved-script selector, AI-chat toggle, close), the
+post-authoring "install as tool" banner, the run/save/save-as-tool/undo/
+redo/new-script/reset-sandbox toolbar and its tooltips, the execution
+status indicators, the output console (the QuickJS sandbox hint, "Fix with
+LLM", the return-value label, and the empty state), and the delete
+confirmation dialog. `useScriptState` (the consolidated Zustand selector)
+and `formatLogArgs` (a pure log-argument formatter) moved to a sibling
+`scriptPanelState.ts` purely to keep `ScriptPanel.tsx` under its
+module-size budget after localizing its JSX — neither needs `useTranslation()`,
+since neither renders anything. `'Untitled Script'`, the default name a
+newly created script gets, stays literal: the moment it is saved it becomes
+persisted, user-renamable data, the same reasoning the search-modal
+catalogue documents for a created list's default `name: 'Filter result'`.
+
+The zones/rooms catalogue (#4918 zones slice, `zones-panel.en.ts`, prefix
+`zonesPanel.*`) covers five files: `ZonesPanel.tsx` (author + manage location
+zones, issue #1810), its straddler-volume companions
+`ZoneApportionSummary.tsx` and `ZoneVolumeBreakdown.tsx` (issue #2508), the
+export/write-back surface `ZoneWriteBackControl.tsx`, and — grouped into this
+slice for its file-count rather than its topic — `RoomPanel.tsx`, the
+collaboration room roster ("room" there means a live collab session, not an
+IFC spatial room). Zone NAMES the user assigns, generated-set default names
+(`'Untitled set'`, `'Storeys'`) that become renamable data the instant they
+are created, and export file names remain runtime content and stay out of
+the catalogue. `RoomPanel.tsx`'s `STATUS_META`/`SEEDING_META` (connection dot)
+and `ROLE_META` (collab role badge) moved to the same data-table-plus-
+`labelKey` pattern `sectionConstants.ts`'s `AXIS_INFO` and the clash-panel
+severity/review-status tables use; `ZonesPanel.tsx`'s `ZoneRow` Center/Size
+field-label tuples moved to arrays of translation keys for the same reason.
+Multi-clause status lines built from independent optional counts (the
+apportionment coverage footer, the geometry-export success toast) render
+each clause as its own translated span/branch joined by a plain, letter-free
+' · ' separator rather than concatenating translated fragments in code, the
+same reasoning `ClashRevisionCompareDialog.tsx`'s `warningLines()` and the
+layers catalogue's `checkEvidence.summary` already document.
+
+The Data Connector catalogue (#4918 slice, `data-connector.en.ts`, prefix
+`dataConnector.*`) covers `DataConnector.tsx`'s own chrome: the trigger
+button, the dialog header and step indicator, the target-model and
+CSV-file pickers, the data-preview table caption, the entity-matching
+controls (match-by/CSV-column/property-set/property-name fields), the
+property-mapping list (its header actions, empty state, column headers,
+and per-row field placeholders and value-type options), the
+match-results/import-progress/import-complete/error alerts, and the
+footer's preview/import buttons. CSV column NAMES, sample cell VALUES,
+and model NAMES are runtime content and stay as interpolation params.
+`GlobalId` and `EXPRESS ID` describe IFC's own match-by mechanisms and
+keep their exact technical spelling, same house rule as every other IFC
+EXPRESS name in this sweep — only routed through `t()` so the ending gate
+does not see them as untranslated JSX literals. Thrown `Error` messages
+surfaced only through `err.message`, never rendered as their own JSX
+literal, stay English, same as the rest of this sweep's panels.
+
+The geometry-export dialogs catalogue (#4918 slice: geometry export,
+`geometry-export-dialogs.en.ts`, sub-namespaced `geometryExport.glb.*` /
+`geometryExport.kmz.*` / `geometryExport.usd.*` / `geometryExport.energy.*` /
+`geometryExport.editCard.*` in one file to keep the five owning components'
+own PR small) covers `GLBExportDialog.tsx`, `KmzExportDialog.tsx`,
+`UsdExportDialog.tsx`, `EnergyModelExportDialog.tsx`, and the Properties
+panel's inline `GeometryEditCard.tsx` — grouped into the same file as the
+four export dialogs purely because it is a small slice sibling, not because
+it shares any export machinery with them. A `geometryExport.shared.*`
+prefix holds the handful of strings identical across dialogs (the
+`'Current Model'` fallback display name, the `'Unknown error'` fallback
+reason, and the `'Geometry engine unavailable'` wasm-boundary error) rather
+than duplicating each per sub-namespace. File format names (GLB, glTF, KMZ,
+COLLADA, USD, USDA, OpenUSD, HBJSON, DFJSON, Honeybee, Dragonfly, Ladybug
+Tools), IFC EXPRESS names (`IfcSurfaceStyleRendering`, `DiffuseColour`,
+`SurfaceColour`, `IfcMapConversion`, `IfcSpace`, `OrthogonalHeight`), USD
+scene-description attribute literals (`upAxis`, `metersPerUnit`, `Xform`,
+`UsdGeomMesh`, `UsdPreviewSurface`, `purpose = "guide"`), and axis/unit
+symbols (X, Y, Z, m, °) stay literal per the house rule, passed as
+interpolation params rather than translated. A thrown `Error`'s own
+`.message` (surfaced from the wasm geometry engine or an unexpected
+exception) is likewise interpolated as a parameter, never translated
+itself — it is engine content, not UI chrome.
+
+The grab-bag catalogue (#4918 final wave, `misc-panels-b.en.ts`, one key
+prefix per component) covers the last group of small standalone files the
+sweep's earlier slices left uncovered: `PointCloudPanel.tsx`,
+`PointCloudClasses.tsx`, and `PointCloudLegend.tsx` (the point-cloud
+rendering controls, per-ASPRS-class visibility list, and intensity/height
+ramp legends — the `COLOR_MODES`/`SIZE_MODES` tables moved to the same
+`labelKey`/`hintKey`-per-row pattern `sectionConstants.ts`'s `AXIS_INFO`
+uses); `ModelTagRuleEditor.tsx` (the shared `modelTag` chip rule editor,
+whose fragmented unresolved-tag warning became one templated plural
+message); `FederationSetupControls.tsx` (the save/reopen federation-setup
+dialog, including its `confidenceBadge()` match-confidence table);
+`ShareDialog.tsx` and `ShareScopeField.tsx` (the accountless link-sharing
+dialog and its multi-model scope picker, including the `ROLE_OPTIONS` table
+and every derived caption/notice the dialog renders); `LoadReportPanel.tsx`
+(the per-model geometry load-warning report, including its `statusLabel()`
+table and per-entity summary line); `GeometryModeBanner.tsx` (the
+reload-to-apply Fast/Exact geometry banner); `FilterRuleControls.tsx` (the
+shared AND/OR combinator toggle and "Add rule" menu); `GeometryAxisRow.tsx`
+(the Geometry edit card's X/Y/Z nudge row); `LevelDisplayIndicator.tsx` (the
+Exploded/Solo viewport chip); `TextAnnotationEditor.tsx` (the 2D-drawing
+text annotation inline editor); `presence/PeerPresenceLayer.tsx` (the live
+collaborator-cursor DOM overlay); `BottomStrip.tsx`'s detach grip;
+`SaveMarkupToModelButton.tsx` and `ExportChangesButton.tsx` (the two
+dedicated export-adjacent toolbar buttons); and `SearchableSelect.tsx` (the
+searchable dropdown `LensPanel`'s editors use). `EntityContextMenu.tsx`
+contributes only its default-direction duplicate row's own literal text —
+the rest of that menu's per-action `label` props are plain JSX attributes
+the gate below does not police and remain out of this slice's scope, same
+reasoning the main-toolbar and shared-commands catalogues already document
+for labels owned by shared command surfaces. Toast/console messages that
+never reach the DOM (`FederationSetupControls.tsx`'s and
+`ExportChangesButton.tsx`'s `toast.*` calls, `SaveMarkupToModelButton.tsx`'s
+`refusalText()`) are deliberately left English, same reasoning several
+earlier slices already document for copy that is not on-screen chrome.
+Point-cloud ASPRS CLASS names (`lasClassificationName()`) are model content
+loaded from the scan and stay out of the catalogue, same house rule as an
+IFC class/property/tag NAME anywhere else in this sweep.
+
+The Info dialog catalogue (#4918 slice: keyboard shortcuts,
+`keyboard-shortcuts.en.ts`) covers `KeyboardShortcutsDialog.tsx` in full —
+exported under that legacy name though it renders all four Info tabs, not
+only Shortcuts: the header (title, MCP cross-link CTA) and footer
+("Press ? to toggle this panel"), the tab strip, the About tab (the
+privacy disclosure's intro/WASM link/verification line, the app name,
+version, homepage/docs/GitHub/report-issue links, license, and the
+package-count disclosure), the What's New tab (the current-version banner,
+per-release version/viewer-badge/change-count, and the Feature/Fix/Perf
+legend), and the Shortcuts tab's own "Learn more" row. Shortcut CATEGORY
+names, DESCRIPTIONS, and key-combination glyphs (`⌘`, `Ctrl`, `⇧`) come
+from `KEYBOARD_SHORTCUTS` (`@/hooks/keyboard-shortcuts-list`) and stay out
+of the catalogue as model content, same reasoning as every other data
+table in this sweep; the `F12` key name in the privacy disclosure is
+likewise routed through `t()` without translation, the same house rule
+that keeps `GlobalId` and IFC EXPRESS names spelled exactly while still
+satisfying the ending gate. `LearnTab.tsx` (the fourth tab) has its own
+catalogue outside this slice.
+
+The drawing-underlay catalogue (#4918 slice: keyboard shortcuts + drawing
+underlay, `drawing-underlay.en.ts`, prefix `drawingUnderlay.*`) covers two
+siblings under one namespace because they are the same 2D-drawing-overlay
+feature: `settings.*` is `DrawingSettingsPanel.tsx`'s graphic-override
+presets and custom-rule editor, and `dxf.*` is `DxfUnderlayPanel.tsx`'s
+imported-DXF reference-underlay manager (issue #1782/#1929/#2043),
+including its per-layer hide/show titles, the warnings/skipped-entities
+disclosures, the opacity control, and the tri-state "Align to model
+georeference" toggle and its auto/on/off hint text. IFC class NAMES
+(`COMMON_IFC_TYPES`), the line-weight preset table, and DXF layer/file
+NAMES from the imported drawing remain model or registry runtime data and
+stay out of the catalogue; the `mm` unit suffix is routed through `t()`
+without translation, same reasoning as the `F12` key name above.
+
+The Cesium / geo-basemap catalogue (#4918 slice: cesiumgeo, `cesium-geo.en.ts`)
+covers the geospatial-basemap feature area's five files:
+`CesiumPlacementEditor.tsx` (the drag-to-move georeference gizmo and its
+floating panel — header, delta readouts, the map-absolute guard warning,
+the nudge/height/rotate control clusters, and the apply/reset actions),
+`CustomBasemapEditor.tsx` and `CustomTilesetEditor.tsx` (the custom XYZ-tile
+and 3D-Tiles input surfaces under the Sun & Sky panel's Base map selector,
+including their third-party-privacy disclosures), `CesiumOverlay.tsx` (the
+globe's own loading/error/basemap-warning banners), and `AxisHelper.tsx`
+(the 3D axis-triad labels). `Eastings`, `Northings`, and `OrthogonalHeight`
+are exact `IfcMapConversion` EXPRESS attribute names used as bare field
+labels — the same house rule `GeoreferencingPanel.tsx`'s `GeorefRow` labels
+already follow — and stay literal wherever a label uses them bare; a full
+sentence that happens to mention one (the drag-gizmo's tooltip titles, the
+panel's own usage hint) is still one catalogued message. `Delta E/N/Z/R`
+and `XAxis angle` are UI-chosen abbreviations rather than schema spelling,
+so they are catalogued. The nudge-button glyphs (`N+`, `E-`, `Z+`, `R-`, …)
+and the axis-triad's `X`/`Y`/`Z` letters are catalogued too even though a
+translator is expected to leave them unchanged, the same reasoning the
+WebGPU-troubleshooting catalogue documents for browser flag names. The
+`Remove` button shared verbatim by the basemap and tileset editors uses one
+`cesiumGeo.shared.removeButton` key rather than two copies, the same
+pattern the BCF-panel catalogue's `bcf.shared.*` prefix uses. A saved
+basemap/tileset URL is runtime data; the example URLs shown as field
+placeholders are this slice's own copy and are catalogued like any other
+placeholder.
+
+The viewport/lighting catalogue (#4918 slice: viewport/lighting,
+`viewport-lighting.en.ts`) covers the 3D-viewport chrome and the Sun & Sky
+lighting controls across seven files: `ViewportContainer.tsx` (the no-model
+welcome/empty state, its WebGPU-unavailable banner, and the loaded-model
+"Add Model" drop overlay), `ViewportOverlays.tsx` (the mobile touch-nav
+cluster, the selected-storey count, and the per-model basepoint toggle),
+`Viewport.tsx`'s own renderer-init failure fallback, `FlySpeedIndicator.tsx`'s
+fly-mode HUD, and the Sun & Sky panel's own chrome plus its two sub-panels
+(`SunSkyPanel.tsx`, `ShadowControls.tsx`, `SunTimeControls.tsx`).
+`SunSkyPanel.tsx`'s `CONTEXT_SOURCES`/`SWEEP_MODES` select-option tables
+moved their `label`/`hint` fields to `labelKey`/`hintKey`, the same
+data-table-plus-`labelKey` pattern `sectionConstants.ts`'s `AXIS_INFO` and
+this sweep's other select tables use — component `label` props are not
+policed by the ending gate below, but leaving those two dropdowns hardcoded
+while the rest of the panel translated would read as two languages in one
+panel. `ShadowControls.tsx`'s `resolutionLabel` takes the same non-hook
+`t: typeof resolve = resolve` default parameter `bulk-property-value.ts`
+already uses, since it is a plain formatting function, not a component. The
+pluralized "Drop to federate with N existing model(s)" and "N storeys"
+states are single templated messages selected by count, never assembled
+fragments, the same reasoning this sweep's other counted states already
+document. `ViewportContainer.tsx`'s inline `<style>{`@keyframes…`}`</style>`
+CSS moved to a module-level `FLOAT_SLOW_KEYFRAMES` constant — plain CSS, not
+translatable prose, but the AST gate cannot tell a keyframe declaration from
+JSX text sitting in a `{'…'}` child position, so it stayed a false positive
+until moved out of that position entirely. A selected storey's own NAME, and
+a loaded model's own displayed name, remain runtime content and stay out of
+the catalogue.
+
+The grab-bag catalogue (#4918 slice: standalone panels, part 1,
+`misc-panels-a.en.ts`) bundles five otherwise-unrelated one-off dialogs/panels
+under their own key prefixes purely for PR-count efficiency:
+`BasketPresentationDock.tsx` (`basketPresentationDock.*`, the pinboard
+"Presentation" dock's header, source/visibility/save/play-all controls, the
+saved-view strip, and the resize handle), `DeviationPanel.tsx`
+(`deviationPanel.*`, the BIM/scan deviation heatmap's compute button, stats
+line, range slider, and legend, plus its `setError` messages), the pre-export
+`ExportChangesReviewDialog.tsx` (`exportChangesReviewDialog.*`, the summary
+line and the per-change-kind/value-fallback labels `describeChangeKind` and
+`describeEntity` now resolve rather than returning bare English strings — the
+former threads the component's own `t` since it runs at render time inside
+`groups.map`, the latter takes an optional non-hook translator like
+`webGpuBannerBlurb` since it runs once inside `buildReviewGroups`, outside any
+component), `ScanSectionPanel.tsx` (`scanSectionPanel.*`, the point-cloud scan
+overlay's toggle, thickness/opacity sliders, and status footnote), and
+`SpaceMousePanel.tsx` (`spaceMousePanel.*`, the 3Dconnexion device panel's
+connect/disconnect, sensitivity, and diagnostics readout). Several
+counted-fragment JSX expressions were combined into single templated messages
+per the house rule against fragmenting a translated message — the basket
+dock's `{count} in basket`, the deviation stats line, the SpaceMouse
+diagnostics report line — rather than left split across raw JSX text and a
+bare unit suffix; `spaceMousePanel.layoutLine` and
+`exportChangesReviewDialog.changesSummary` instead nest a second `t()` call
+for a sub-label (the layout source, the model count) inside their own
+template, the same shape `RoomPanel.tsx`'s `statusRoom` already uses.
+`spaceMousePanel.headerLabel` / `deviceNameFallback` / `connectButton` keep
+the literal English word `SpaceMouse` as their catalogue value — a device
+name, not translated prose, per the house rule — routed through `t()` only so
+the ending gate does not see it as an unconverted JSX literal, the same
+reasoning the geometry-export and webgpu-troubleshooting catalogues document
+for a technical string a translator is expected to leave unchanged.
+
+The sheet/title-block and PDF-view catalogue (#4918 sheets/PDF slice,
+`sheets-pdf.en.ts`) covers five files behind one `sheetsPdf.*` namespace,
+split by owning surface: `TitleBlockEditor.tsx` (`sheetsPdf.titleBlock.*`,
+the field-editor dialog's standard/custom-field forms, logo upload, and
+revision history), `SheetSetupPanel.tsx` (`sheetsPdf.sheetSetup.*`, the
+paper/frame/scale/title-block/scale-bar sections and the saved-templates
+list — its `FRAME_STYLE_OPTIONS`/`TITLE_BLOCK_LAYOUT_OPTIONS` tables moved
+to the same data-table-plus-`labelKey` pattern `sectionConstants.ts`'s
+`AXIS_INFO` uses), and the to-scale 3D-view PDF export dialog's three files
+(`sheetsPdf.pdfView.*`): `PdfViewExportDialog.tsx`, its appearance controls
+`PdfViewAppearanceSection.tsx`, and its page-size/oversize/projection
+notices `PdfViewPageNotices.tsx`. `describeShadingResolution` (a plain
+function, not a component) takes the same `t: typeof resolve = resolve`
+default-parameter shape `bulk-property-value.ts` and
+`WebGpuTroubleshooting.tsx` use. Several readouts in `SheetSetupPanel.tsx`
+and `PdfViewPageNotices.tsx` were fixed-fragment concatenations (e.g.
+`'Estimated page: ' + width + ' x ' + height + ...`); each became one
+complete message per branch (fits an ISO sheet / does not / not available
+yet) rather than assembled from translated pieces, the same reasoning the
+layers and clash-tools catalogues already document for a multi-clause
+status line. Title-block field VALUES the user types, field LABELS (preset
+data from `@ifc-lite/drawing-2d` or a user-chosen custom label), revision
+author/date/description content, saved-template NAMES, and paper size
+NAMES/millimetre/dpi figures remain model or unit/symbol content per the
+house rule and stay out of the catalogue — only interpolated as params.
 
 **The sweep's ending gate:** `scripts/check-i18n-literals.mjs` walks the
 TypeScript AST of every `apps/viewer/src/components/**/*.tsx` file for

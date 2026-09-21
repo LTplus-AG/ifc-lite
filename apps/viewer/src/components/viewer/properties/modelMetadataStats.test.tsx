@@ -18,8 +18,10 @@ import { createRoot, type Root } from 'react-dom/client';
 import { federationRegistry } from '@ifc-lite/renderer';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store/types.js';
+import type { LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics.js';
 import { ModelMetadataPanel } from './ModelMetadataPanel.js';
 import { registerLocale, setLocale } from '@/i18n';
+import { useViewerStore } from '@/store';
 
 const TYPES = new Map<number, string>([
   [1, 'IFCWALL'],
@@ -152,5 +154,32 @@ describe('ModelMetadataPanel — Elements with Geometry', () => {
   it('keeps the shape filter provisional while geometry is streaming', () => {
     const container = render(model({ geometryResult: null, loadState: 'streaming-geometry' }));
     assert.equal(statistic(container, 'Elements with Geometry'), '7');
+  });
+
+  it('opens preserved-only LandXML surface records, even when they have no overlay or mesh (#5042)', () => {
+    const landXmlDocument: LandXmlTinDocument = {
+      format: 'landxml', schema: 'LandXML-1.2', version: '1.2',
+      capabilities: { renderableTin: false, preservedOnlySurfaces: 1, unknownExtensions: 0 },
+      units: null,
+      surfaces: [{
+        sourceId: 'volume-surface', ordinal: 1, sourcePath: 'LandXML/Surfaces/Surface[1]',
+        properties: { name: 'Volume check' }, definitionProperties: { surfType: 'VOLUME' },
+        name: 'Volume check', kind: 'volume', renderState: 'preserved_only',
+        points: [], sourceDataPoints: [], faces: [], faceSourceIds: [], faceVisibility: [], hiddenFaceCount: 0,
+        boundaries: [], breaklines: [], contours: [],
+      }],
+      extensions: [], warnings: [], alignments: [], profiles: [], crossSections: [], crossSectionSurfaces: [], roadways: [], capabilityDiagnostics: [], preservedOnlyExtensions: [], rendering: { meshProvenance: [], surfaceCounts: [{
+        surfaceSourceId: 'volume-surface', sourcePoints: 0, sourceFaces: 0, hiddenFaces: 0,
+        renderedFaces: 0, droppedDegenerateFaces: 0, droppedPrecisionFaces: 0, droppedReframeFaces: 0,
+      }] },
+    };
+    const container = render(model({
+      id: 'landxml-source', name: 'volume.xml', sourceSchema: 'LandXML-1.2', landXmlDocument,
+      geometryResult: null, loadState: 'complete',
+    }));
+    const surface = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Volume check'));
+    assert.ok(surface, 'the source-surface list includes non-rendered records, not only line overlays');
+    act(() => surface.click());
+    assert.deepEqual(useViewerStore.getState().selectedLandXmlSource, { modelId: 'landxml-source', sourceId: 'volume-surface' });
   });
 });

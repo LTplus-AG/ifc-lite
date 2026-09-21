@@ -11,6 +11,114 @@ export interface RtcFrame {
 
 
 
+export interface LandXmlTinDocumentJs {
+    format: "landxml";
+    schema: "LandXML-1.2";
+    capabilities: { renderable_tin: boolean; preserved_only_surfaces: number; unknown_extensions: number };
+    version: string;
+    /** serde_wasm_bindgen omits an absent Rust Option field rather than serializing null. */
+    units?: { linear_unit: string; elevation_unit: string; linear_scale_to_meters: number; elevation_scale_to_meters: number };
+    surfaces: LandXmlSurfaceJs[];
+    pipe_networks?: LandXmlPipeNetworkDocumentJs;
+    extensions: LandXmlExtensionJs[];
+    warnings: string[];
+    alignments: LandXmlAlignmentSummaryJs[]; profiles: LandXmlProfileJs[];
+    cross_sections: LandXmlCrossSectionJs[]; cross_section_surfaces: LandXmlCrossSectionSurfaceJs[];
+    roadways: LandXmlRoadwayJs[]; capability_diagnostics: LandXmlCapabilityDiagnosticJs[];
+    preserved_only_extensions: LandXmlPreservedOnlyExtensionJs[];
+    /** COGO, parcel and plan-feature records from the same source bytes. */
+    plan: LandXmlPlanDocumentJs;
+}
+export interface LandXmlPlanDocumentJs {
+    version: string; area_unit?: string; area_scale_to_square_meters?: number;
+    cogo_points: LandXmlCgPointJs[]; monuments: LandXmlMonumentJs[];
+    plan_features: LandXmlPlanFeatureJs[]; parcels: LandXmlParcelJs[]; warnings: string[];
+    source_batches: LandXmlPlanSourceBatchJs[]; parcel_probes: LandXmlParcelProbeJs[];
+    resolved_monuments: LandXmlResolvedMonumentJs[]; resolved_geometry: LandXmlResolvedGeometryJs[];
+}
+export interface LandXmlPlanSourceBatchJs { source_ids: string[]; }
+export interface LandXmlParcelProbeJs { source_id: string; state: { kind: "analytic" } | { kind: "preserved_only"; reason: string }; perimeter_in_declared_linear_units?: number; area_in_declared_square_units?: number; declared_area?: number; declared_perimeter?: number; perimeter_in_meters?: number; area_in_square_meters?: number; }
+export interface LandXmlResolvedMonumentJs { source_id: string; point?: LandXmlPlanPointJs; }
+export interface LandXmlResolvedGeometryJs { source_id: string; start?: LandXmlPlanPointJs; end?: LandXmlPlanPointJs; center?: LandXmlPlanPointJs; pi?: LandXmlPlanPointJs; }
+export interface LandXmlPlanPointJs { northing: number; easting: number; elevation?: number; }
+export interface LandXmlCgPointJs { source_id: string; scope_id: string; ordinal: number; name?: string; code?: string; description?: string; point?: LandXmlPlanPointJs; pnt_ref?: string; properties: Record<string, string>; }
+export interface LandXmlMonumentJs { source_id: string; point_scope_id?: string; ordinal: number; name?: string; code?: string; description?: string; pnt_ref?: string; point?: LandXmlPlanPointJs; properties: Record<string, string>; }
+export interface LandXmlPlanFeatureJs { source_id: string; ordinal: number; name?: string; code?: string; description?: string; properties: Record<string, string>; locations: LandXmlPlanPointLocationJs[]; geometry: LandXmlPlanGeometryJs[]; }
+export interface LandXmlParcelJs { source_id: string; ordinal: number; name?: string; code?: string; description?: string; title?: string; declared_area?: number; declared_perimeter?: number; declared_area_unit?: string; properties: Record<string, string>; loops: LandXmlPlanGeometryJs[][]; preservation_reason?: string; }
+export interface LandXmlPlanGeometryJs { source_id: string; ordinal: number; kind: "line" | "curve" | "irregular_line"; point_scope_id?: string; start: LandXmlPlanPointLocationJs; end: LandXmlPlanPointLocationJs; center?: LandXmlPlanPointLocationJs; pi?: LandXmlPlanPointLocationJs; intermediate_points: LandXmlPlanPointJs[]; rotation?: string; radius?: number; declared_length?: number; properties: Record<string, string>; }
+export type LandXmlPlanPointLocationJs = { kind: "coordinates"; point: LandXmlPlanPointJs; pnt_ref?: string } | { kind: "point_reference"; pnt_ref: string };
+export interface LandXmlSurfaceJs {
+    source_id: string; ordinal: number; source_path: string;
+    properties: Record<string, string>; definition_properties: Record<string, string>;
+    name: string; kind: "tin" | "grid" | "volume" | "other";
+    render_state: "rendered" | "preserved_only" | "unsupported";
+    topology_origin: "authored_faces" | "constrained_triangulation" | "preserved_only";
+    terrain_diagnostic?: { code: "missing_outer_boundary" | "unsupported_boundary_semantics" | "unsupported_breakline_semantics" | "missing_elevation" | "conflicting_elevation" | "intersecting_constraints" | "degenerate_constraints" | "work_limit_exceeded" | "cancelled"; message: string };
+    points: LandXmlPointJs[]; canonical_vertices: LandXmlCanonicalVertexJs[]; source_data_points: LandXmlSourcePointJs[];
+    faces: [string, string, string][]; face_source_ids: string[]; face_visibility: boolean[];
+    hidden_face_count: number; boundaries: LandXmlPolylineJs[]; breaklines: LandXmlPolylineJs[]; contours: LandXmlPolylineJs[];
+}
+export interface LandXmlPointJs { source_id: string; id: string; northing: number; easting: number; elevation: number; }
+export interface LandXmlCanonicalVertexJs { id: string; northing: number; easting: number; elevation: number; contributor_source_ids: string[]; }
+export interface LandXmlSourcePointJs { source_id: string; ordinal: number; source_path: string; coordinate_dimension: 2 | 3; coordinates: number[]; }
+/** serde_wasm_bindgen omits absent Rust Option fields rather than serializing null. */
+export interface LandXmlPolylineJs { source_id: string; ordinal: number; name?: string; kind?: string; source_path: string; properties: Record<string, string>; coordinate_dimension: 2 | 3; points: number[][]; point_source_ids: string[]; }
+export interface LandXmlExtensionJs { namespace: string; local_name: string; path: string; }
+export interface LandXmlSourceDocumentJs { tin: LandXmlTinDocumentJs; alignments: LandXmlAlignmentDocumentJs; alignment_render_spans: LandXmlAlignmentRenderSpanJs[]; alignment_render_refusals: LandXmlAlignmentRenderRefusalJs[]; alignment_render_truncated: boolean; }
+export interface LandXmlAlignmentRenderSpanJs { source_id: string; points: LandXmlPlanPointJs[]; }
+export interface LandXmlAlignmentRenderRefusalJs { source_id: string; message: string; }
+export interface LandXmlAlignmentDocumentJs { units?: LandXmlUnitsJs; alignments: LandXmlAlignmentJs[]; warnings: string[]; }
+export interface LandXmlUnitsJs { linear_unit: string; elevation_unit: string; linear_scale_to_meters: number; elevation_scale_to_meters: number; }
+/** Terrain-parser alignment linkage; use LandXmlAlignmentDocumentJs for complete alignment semantics. */
+export interface LandXmlAlignmentSummaryJs { source_id: string; ordinal: number; name: string; length: number; sta_start: number; profile_source_ids: string[]; cross_section_source_ids: string[]; }
+export interface LandXmlAlignmentJs { source_id: string; ordinal: number; name: string; length: number; sta_start: number; start?: LandXmlPointLocationJs; align_pis: LandXmlAlignmentPiJs[]; segments: LandXmlAlignmentSegmentJs[]; station_equations: LandXmlStationEquationJs[]; cant?: LandXmlCantJs; superelevations: LandXmlSuperelevationJs[]; unsupported_transitions: LandXmlUnsupportedTransitionJs[]; }
+export type LandXmlPointLocationJs = { kind: "coordinates"; point: LandXmlPlanPointJs } | { kind: "point_reference"; pnt_ref: string };
+export interface LandXmlAlignmentPiJs { source_id: string; location: LandXmlPointLocationJs; }
+export type LandXmlAlignmentSegmentJs = { source_id: string; ordinal: number; primitive: LandXmlAlignmentPrimitiveJs };
+export interface LandXmlSpiralJs { start: LandXmlPointLocationJs; pi: LandXmlPointLocationJs; end: LandXmlPointLocationJs; spi_type: string; radius_start: LandXmlRadiusJs; radius_end: LandXmlRadiusJs; rotation: "clockwise" | "counter_clockwise"; declared_length: number; }
+export type LandXmlAlignmentPrimitiveJs = { kind: "line"; start: LandXmlPointLocationJs; end: LandXmlPointLocationJs; declared_length?: number } | { kind: "irregular_line"; start: LandXmlPointLocationJs; end: LandXmlPointLocationJs; points: LandXmlPlanPointJs[]; declared_length?: number } | { kind: "curve"; start: LandXmlPointLocationJs; center: LandXmlPointLocationJs; end: LandXmlPointLocationJs; pi?: LandXmlPointLocationJs; rotation: "clockwise" | "counter_clockwise"; radius?: number; declared_length?: number } | ({ kind: "spiral" } & LandXmlSpiralJs) | ({ kind: "unsupported_spiral" } & LandXmlSpiralJs);
+export type LandXmlRadiusJs = { finite: number } | "infinite";
+export interface LandXmlStationEquationJs { source_id: string; sta_internal: number; sta_ahead: number; sta_back?: number; sta_increment?: string; }
+export interface LandXmlCantJs { source_id: string; name: string; gauge: number; rotation_point?: string; equilibrium_constant?: number; applied_cant_constant?: number; stations: LandXmlCantStationJs[]; speed_stations: LandXmlSpeedStationJs[]; }
+export interface LandXmlCantStationJs { source_id: string; station: number; applied_cant: number; equilibrium_cant?: number; curvature: "clockwise" | "counter_clockwise"; cant_deficiency?: number; cant_excess?: number; rate_of_change_of_applied_cant_over_time?: number; rate_of_change_of_applied_cant_over_length?: number; rate_of_change_of_cant_deficiency_over_time?: number; cant_gradient?: number; speed?: number; transition_type?: string; adverse?: boolean; }
+export interface LandXmlSpeedStationJs { source_id: string; station: number; speed: number; }
+export interface LandXmlSuperelevationJs { source_id: string; sta_start?: number; sta_end?: number; events: LandXmlSuperelevationEventJs[]; }
+export interface LandXmlSuperelevationEventJs { source_id: string; kind: string; value?: string; }
+/** `spiral` is the Rust LandXmlSpiral payload, not a tagged primitive enum. */
+export interface LandXmlUnsupportedTransitionJs { source_id: string; spi_type: string; spiral: LandXmlSpiralJs; reason: string; }
+export interface LandXmlAlignmentProbeJs { alignment_source_id: string; segment_source_id: string; geometric_distance: number; station: { geometric_distance: number; displayed_back: number; displayed_ahead: number; is_equation_boundary: boolean }; northing: number; easting: number; tangent_northing: number; tangent_easting: number; }
+export type LandXmlAlignmentProbesJs = LandXmlAlignmentProbeJs[];
+/** Neighbouring authored CantStation records; values are never interpolated. */
+export interface LandXmlAlignmentInspectionJs { cant?: { internal_station: number; station: { geometric_distance: number; displayed_back: number; displayed_ahead: number; is_equation_boundary: boolean }; previous?: LandXmlCantStationJs; next?: LandXmlCantStationJs }; superelevations: LandXmlSuperelevationJs[]; superelevation_block_count: number; superelevation_event_count: number; superelevation_truncated: boolean; }
+export interface LandXmlParseOptionsJs { maxBytes?: number; maxDepth?: number; maxTextBytes?: number; maxPoints?: number; maxFaces?: number; maxWork?: number; maxAlignments?: number; maxAlignmentSegments?: number; maxAlignmentPoints?: number; maxStationEquations?: number; maxCantStations?: number; maxSuperelevationEvents?: number; cancelled?: boolean; }
+export interface LandXmlProfilePointJs { source_id: string; station: number; elevation?: number; }
+export interface LandXmlGradeLineJs { source_id: string; parent_profile_source_id: string; ordinal: number; points: LandXmlProfilePointJs[]; }
+export interface LandXmlVerticalCurveJs { source_id: string; parent_profile_source_id: string; kind: "parabolic" | "unsymmetrical_parabolic" | "circular"; station: number; elevation?: number; length?: number; length_in?: number; length_out?: number; radius?: number; }
+export interface LandXmlProfileJs { source_id: string; parent_alignment_source_id: string; ordinal: number; name: string; kind: "design" | "sampled"; pvis: LandXmlProfilePointJs[]; vertical_curves: LandXmlVerticalCurveJs[]; grade_lines: LandXmlGradeLineJs[]; }
+export interface LandXmlCrossSectionJs { source_id: string; parent_alignment_source_id: string; ordinal: number; station: number; surface_source_ids: string[]; }
+export interface LandXmlCrossSectionPointJs { source_id: string; data_format: "offset_elevation" | "slope_distance"; offset?: number; elevation?: number; slope?: number; distance?: number; pnt_ref?: string; alignment_ref?: string; align_ref_station?: number; alignment_source_id?: string; plan_feature_ref?: string; plan_feature_ref_station?: number; parcel_ref?: string; parcel_ref_station?: number; }
+export interface LandXmlCrossSectionSegmentJs { source_id: string; parent_surface_source_id: string; ordinal: number; points: LandXmlCrossSectionPointJs[]; }
+export interface LandXmlCrossSectionSurfaceJs { source_id: string; parent_cross_section_source_id: string; kind: "sampled" | "design"; name?: string; segments: LandXmlCrossSectionSegmentJs[]; points: LandXmlCrossSectionPointJs[]; }
+export interface LandXmlRoadwayJs { source_id: string; ordinal: number; name: string; alignment_refs: string[]; alignment_source_ids: string[]; surface_refs: string[]; surface_source_ids: string[]; grade_model_refs: string[]; }
+export interface LandXmlCapabilityDiagnosticJs { code: string; source_id?: string; source_path: string; message: string; }
+export interface LandXmlPreservedOnlyExtensionJs { source_id: string; parent_source_id?: string; local_name: string; source_path: string; kind: "corridor" | "string_line"; }
+export interface LandXmlPipeUnitsJs { linear_unit: string; elevation_unit: string; diameter_unit: string; width_unit: string; height_unit: string; flow_unit?: string; linear_scale_to_meters: number; elevation_scale_to_meters: number; diameter_scale_to_meters: number; width_scale_to_meters: number; height_scale_to_meters: number; }
+export interface LandXmlPipeNetworkDocumentJs { version: string; root_units?: LandXmlPipeUnitsJs; collections: LandXmlPipeCollectionJs[]; features: LandXmlPipeFeatureJs[]; networks: LandXmlPipeNetworkJs[]; refusals: LandXmlPipeRefusalJs[]; }
+export interface LandXmlPipeCollectionJs { source_id: string; source_path: string; properties: Record<string, string>; }
+export interface LandXmlPipeFeatureJs { source_id: string; source_path: string; owner_source_id: string; properties: Record<string, string>; }
+export interface LandXmlPipeRefusalJs { source_id: string; source_path: string; code: string; message: string; }
+export interface LandXmlPipeMeasureJs { value: number; unit: string; meters: number; }
+export interface LandXmlPipePositionJs { northing: number; easting: number; northing_meters: number; easting_meters: number; elevation?: LandXmlPipeMeasureJs; }
+export interface LandXmlPipeFlowJs { source_id: string; source_path: string; unit?: string; flow_in?: number; loss_in?: number; loss_out?: number; properties: Record<string, string>; }
+export interface LandXmlPipeInvertJs { source_id: string; source_path: string; pipe_source_id: string; flow_direction: string; elevation: LandXmlPipeMeasureJs; properties: Record<string, string>; }
+export interface LandXmlPipePartJs { kind: "circular" | "elliptical" | "egg" | "rectangular"; properties: Record<string, string>; diameter?: LandXmlPipeMeasureJs; span?: LandXmlPipeMeasureJs; width?: LandXmlPipeMeasureJs; height?: LandXmlPipeMeasureJs; thickness?: LandXmlPipeMeasureJs; material?: string; }
+export interface LandXmlStructurePartJs { kind: "circular" | "rectangular" | "inlet" | "outlet" | "connection"; properties: Record<string, string>; diameter?: LandXmlPipeMeasureJs; length?: LandXmlPipeMeasureJs; width?: LandXmlPipeMeasureJs; thickness?: LandXmlPipeMeasureJs; material?: string; }
+export interface LandXmlPipeNetworkJs { source_id: string; source_path: string; name: string; pipe_network_type: string; properties: Record<string, string>; features: LandXmlPipeFeatureJs[]; structure_units?: LandXmlPipeUnitsJs; pipe_units?: LandXmlPipeUnitsJs; structures: LandXmlPipeStructureJs[]; pipes: LandXmlPipeJs[]; }
+export interface LandXmlPipeStructureJs { source_id: string; source_path: string; name: string; properties: Record<string, string>; units: LandXmlPipeUnitsJs; center: LandXmlPipePositionJs; part: LandXmlStructurePartJs; rim_elevation?: LandXmlPipeMeasureJs; sump_elevation?: LandXmlPipeMeasureJs; inverts: LandXmlPipeInvertJs[]; flow?: LandXmlPipeFlowJs; }
+export interface LandXmlPipeJs { source_id: string; source_path: string; name: string; properties: Record<string, string>; units: LandXmlPipeUnitsJs; connectivity: { start_structure_source_id: string; end_structure_source_id: string }; part: LandXmlPipePartJs; geometry: { kind: "straight" | "pass_through"; point?: LandXmlPipePositionJs }; length?: LandXmlPipeMeasureJs; flow?: LandXmlPipeFlowJs; }
+
+
+
 /**
  * The overlap solid of one clashing pair, or the reason there is none.
  */
@@ -612,6 +720,12 @@ export class IfcAPI {
      */
     getPipelineDiagnostics(): any;
     /**
+     * Inspect authored cant and superelevation records at a physical distance.
+     * Cant exposes bracketing source records only; no transition value is
+     * fabricated. Superelevation blocks preserve their authored bounds.
+     */
+    inspectLandXmlAlignmentAtDistance(data: Uint8Array, alignment_source_id: string, distance: number): LandXmlAlignmentInspectionJs;
+    /**
      * Create and initialize the IFC API
      */
     constructor();
@@ -655,12 +769,26 @@ export class IfcAPI {
      */
     parseGridLinesInFrame(content: string, frame: RtcFrame): Float32Array;
     /**
+     * Parse all currently supported LandXML source families from the original
+     * bytes. Terrain-only and alignment-only sources both return an honest
+     * empty sibling collection, allowing the viewer's single load path to
+     * handle either form and mixed documents uniformly.
+     */
+    parseLandXmlSourceBytes(data: Uint8Array): LandXmlSourceDocumentJs;
+    /**
+     * Parse a source with explicit hostile-input bounds. Passing
+     * `cancelled: true` refuses before entering WASM; in-flight browser
+     * cancellation is performed by terminating the worker that owns this
+     * synchronous operation.
+     */
+    parseLandXmlSourceBytesWithOptions(data: Uint8Array, options: any): LandXmlSourceDocumentJs;
+    /**
      * Parse a LandXML 1.2 TIN document from its original bytes.
      *
      * The object is an owned serialization of the semantic document. Errors
      * deliberately use `LandXmlError::Display`, including its stable LXML code.
      */
-    parseLandXmlTinBytes(data: Uint8Array): any;
+    parseLandXmlTinBytes(data: Uint8Array): LandXmlTinDocumentJs;
     /**
      * Parse IFC file and extract symbolic representations (Plan,
      * Annotation, FootPrint, Axis). These are 2D curves used for
@@ -741,6 +869,19 @@ export class IfcAPI {
      * report (convertible paths, omissions with extent, exact/raster-only).
      */
     preparePdfVectorPage(request_json: string): Uint8Array;
+    /**
+     * Evaluate one supported horizontal-alignment source span at an exact
+     * f64 distance. The binding reuses the native validator, so malformed
+     * deserialized records, discontinuities, unresolved references, and
+     * unsupported transition domains are rejected rather than approximated.
+     */
+    probeLandXmlAlignmentAtDistance(data: Uint8Array, alignment_source_id: string, distance: number, offset_right: number): LandXmlAlignmentProbeJs;
+    /**
+     * Evaluate a bounded set of physical locations carrying a displayed
+     * station label. A duplicate label is real, never collapsed; an
+     * excessive number is refused rather than allocated synchronously.
+     */
+    probeLandXmlAlignmentAtStation(data: Uint8Array, alignment_source_id: string, station: number, offset_right: number): LandXmlAlignmentProbesJs;
     /**
      * Process geometry for a subset of pre-scanned entities → flat
      * MeshCollection. Takes raw bytes + pre-pass data from buildPrePassOnce.
@@ -2183,6 +2324,7 @@ export interface InitOutput {
     readonly ifcapi_finalizePrepassStylesFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number) => void;
     readonly ifcapi_getMemory: (a: number) => number;
     readonly ifcapi_getPipelineDiagnostics: (a: number) => number;
+    readonly ifcapi_inspectLandXmlAlignmentAtDistance: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly ifcapi_is_ready: (a: number) => number;
     readonly ifcapi_new: () => number;
     readonly ifcapi_parseAlignmentLines: (a: number, b: number, c: number) => number;
@@ -2191,6 +2333,8 @@ export interface InitOutput {
     readonly ifcapi_parseGridAxesInFrame: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_parseGridLines: (a: number, b: number, c: number) => number;
     readonly ifcapi_parseGridLinesInFrame: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly ifcapi_parseLandXmlSourceBytes: (a: number, b: number, c: number, d: number) => void;
+    readonly ifcapi_parseLandXmlSourceBytesWithOptions: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_parseLandXmlTinBytes: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_parseSymbolicRepresentations: (a: number, b: number, c: number) => number;
     readonly ifcapi_parseSymbolicRepresentationsInFrame: (a: number, b: number, c: number, d: number, e: number) => void;
@@ -2202,6 +2346,8 @@ export interface InitOutput {
     readonly ifcapi_planPdfFillAnnotation: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_planPointTransfer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number) => void;
     readonly ifcapi_preparePdfVectorPage: (a: number, b: number, c: number, d: number) => void;
+    readonly ifcapi_probeLandXmlAlignmentAtDistance: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
+    readonly ifcapi_probeLandXmlAlignmentAtStation: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_processGeometryBatch: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number) => number;
     readonly ifcapi_processGeometryBatchFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number) => number;
     readonly ifcapi_processGeometryBatchInstanced: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number, c1: number) => void;

@@ -11,7 +11,7 @@ use crate::generated::legacy_attribute_names::LEGACY_ATTRIBUTE_NAMES;
 use crate::generated::IfcType;
 
 /// Information about a legacy entity
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct LegacyEntityInfo {
     /// The IFC4x3 base type this legacy entity maps to
     pub base_type: IfcType,

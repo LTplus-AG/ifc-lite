@@ -9,10 +9,9 @@
  *
  * Extracted from useIfc.ts for better separation of concerns
  */
-
 import { useCallback, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { useViewerStore, type FederatedModel } from '@/store';
+import { type FederatedModel, useViewerStore } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
 import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
 import { planCacheWrite, decideMeshOnlyCacheHit, decideSourceTierCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
@@ -39,6 +38,7 @@ import {
   type GeometryDiagnostics,
   type SkippedHungElements,
   type StallPhaseHandle,
+  type ModelSpatialReference,
   DEFAULT_HUNG_JOB_TIMEOUT_MS,
 } from '@ifc-lite/geometry';
 import { resolveResourceRetryTier } from '../lib/resource-retry.js';
@@ -47,7 +47,6 @@ import { buildSpatialIndexGuarded, buildSpatialIndexForModel } from '../utils/lo
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { forwardEntityIndexTo, createSourceFingerprintCell, type EntityIndexSink } from './entityIndexHandoff.js';
 import { type GeometryData } from '@ifc-lite/cache';
-
 import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE, getDynamicBatchConfig } from '../utils/ifcConfig.js';
 import {
   calculateMeshBounds,
@@ -56,7 +55,6 @@ import {
   calculateStoreyHeights,
 } from '../utils/localParsingUtils.js';
 import { applyColorUpdatesToMeshes } from './meshColorUpdates.js';
-
 // Cache hook
 import { useIfcCache, getCached, deleteCached } from './useIfcCache.js';
 
@@ -74,12 +72,13 @@ import {
   type GeometryProcessorDisposer,
 } from './ingest/geometryHandleDisposal.js';
 import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIngest.js';
+import { pointCloudSpatialReferenceFromMetadata, preparePointCloudSpatialLoad } from './ingest/pointCloudSpatialLoad.js';
 import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
 import { getGlobalRenderer } from './useBCF.js';
-import { extractModelGeoref, alignGeometryToReference, findReferenceGeorefModel } from './ingest/federationAlign.js';
-import { capturePreAlignment } from './ingest/federationRealign.js';
-import type { PreAlignmentSnapshot } from '../store/index.js';
+import { extractModelSpatialPlacement, findReferenceSpatialModel } from './ingest/federationAlign.js';
+import { finalizeFederatedSpatialPlacement } from './ingest/federatedSpatialFinalize.js';
 import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment, type PointCloudSourceUnit } from './ingest/pointCloudAlignment.js';
+import { realignPointCloudsToAnchor } from './ingest/pointCloudAlignmentRealign.js';
 import { toast } from '../components/ui/toast.js';
 import { posthog } from '../lib/analytics.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
@@ -88,7 +87,6 @@ import { visibilityWitness } from '../utils/visibilityWitness.js';
 import { buildModelLoadedPayload, captureModelLoaded, clearModelLoadedSnapshot, snapshotFromGeometry } from '../utils/loadTelemetry.js';
 import { classifyLoadError, errorCaptureProps, type LoadErrorKind } from '../lib/load-errors.js';
 import { formatLoadError } from '../lib/load-error-message.js';
-
 /**
  * The skip-tiny-cuts flag is no longer a hard constant: it is derived per-load
  * from the user's geometry-fidelity mode (`fast` vs `exact`, see
@@ -155,7 +153,6 @@ function getGeometryStreamWatchdogMs(
     fileSizeMB,
   });
 }
-
 /**
  * Upper bound on the "let the last batch paint" frame wait at stream complete.
  * Generous on purpose: on a heavy final batch a *visible* tab's next frame can
@@ -503,7 +500,7 @@ export function useIfcLoader() {
         dataStore: IfcDataStore | null,
         geometryResult: GeometryResult | null,
         schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5',
-        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number } & Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>, // #3927, per-call-site like buildModelLoadReportPatch's doc explains
+        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number; landXmlDocument?: import('./ingest/landXmlSemantics.js').LandXmlTinDocument; sourceSchema?: 'LandXML-1.2'; spatialReference?: ModelSpatialReference; postAlignmentReframe?: boolean } & Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>, // #3927, per-call-site like buildModelLoadReportPatch's doc explains
         // GPU-instancing shard bytes (#1912), forwarded explicitly rather than
         // closed over: the WASM streaming section's `allInstancedShards` is
         // declared ~800 lines below this closure, so a plain closure read would
@@ -524,12 +521,12 @@ export function useIfcLoader() {
         if (patch?.pointCloudHandleId === undefined && dataStore && geometryResult) {
           const st = useViewerStore.getState();
           if (st.pointCloudAssetCount > 0 && !hasRegisteredPointCloudAlignment()) {
-            const ownGeoref = extractModelGeoref(
+            const ownPlacement = extractModelSpatialPlacement(
               dataStore,
               geometryResult.coordinateInfo,
               st.georefMutations.get(modelId),
             );
-            if (ownGeoref && computePointCloudAlignment(ownGeoref)) {
+            if (ownPlacement && computePointCloudAlignment(ownPlacement)) {
               toast.info(
                 'Point clouds loaded before this model keep their raw coordinates — '
                 + 'reload the scan to align it with the model georeference.',
@@ -541,53 +538,14 @@ export function useIfcLoader() {
           if (!dataStore || !geometryResult) {
             throw new Error('Federated model is missing its data store or geometry');
           }
-          // Georef alignment against the federation anchor (resolved live from
-          // the store, exactly as the former addModel finalize did).
-          const referenceGeoref = findReferenceGeorefModel()?.georef ?? null;
-          const parsedGeorefMutations = useViewerStore.getState().georefMutations.get(modelId);
-          const parsedGeoref = extractModelGeoref(dataStore, geometryResult.coordinateInfo, parsedGeorefMutations);
-          // The snapshot `realignFederation` later restores from. Captured by
-          // the same function that restores it (ingest/federationRealign.ts) so
-          // the two cannot cover different fields — #1891's world boxes are
-          // re-framed by the alignment exactly like the positions and normals,
-          // and a snapshot that misses one lets a later re-align transform it a
-          // second time.
-          let preAlignment: PreAlignmentSnapshot | undefined;
-          let federationAlignmentStatus: FederatedModel['federationAlignmentStatus'] = 'none';
-          if (referenceGeoref && parsedGeoref) {
-            setProgress({ phase: 'Aligning georeferenced model', percent: 90 });
-            preAlignment = capturePreAlignment(geometryResult);
-            const status = await alignGeometryToReference(geometryResult, parsedGeoref, referenceGeoref);
-            // Stale-guard-after-await sweep: `alignGeometryToReference` is real
-            // reprojection work — the only await in the federated branch (every
-            // write below it, registerModelOffset/addModel/buildSpatialIndex-
-            // ForModel/appendInstancedShards/relabelPointCloudAsset, is
-            // synchronous, so one check here covers the whole branch). Nothing
-            // has been acquired yet at this point — no offset registered, no
-            // model added, no spatial index built, no renderer asset relabeled
-            // — so, exactly like the IFCX branch above, there is nothing to
-            // unwind: write nothing and return.
-            if (loadSessionRef.current !== currentSession) {
-              console.warn(`[useIfc] federated finalize ABORTED after alignment: stale session (mine=${currentSession}, current=${loadSessionRef.current}) — alignment result discarded`);
-              return;
-            }
-            federationAlignmentStatus = status;
-            if (status === 'reprojected') {
-              toast.info(
-                `Reprojected "${file.name}" from ${parsedGeoref.projectedCRS.name} `
-                + `to ${referenceGeoref.projectedCRS.name} for federation alignment.`,
-              );
-            } else if (status === 'failed') {
-              toast.error(
-                `Could not align "${file.name}" with the federation anchor — `
-                + `${parsedGeoref.projectedCRS.name} → ${referenceGeoref.projectedCRS.name} `
-                + 'reprojection failed. The model is shown in its own local frame and may '
-                + 'appear at the wrong real-world position.',
-              );
-            }
-          } else if (parsedGeoref) {
-            federationAlignmentStatus = 'anchor';
-          }
+          const spatialFinalize = await finalizeFederatedSpatialPlacement({
+            dataStore, geometry: geometryResult, modelId, fileName: file.name,
+            spatialReference: patch?.spatialReference, landXmlDocument: patch?.landXmlDocument,
+            postAlignmentReframe: patch?.postAlignmentReframe,
+            isCurrent: () => loadSessionRef.current === currentSession, setProgress,
+          });
+          if (!spatialFinalize) return;
+          const { preAlignment, federationAlignmentStatus } = spatialFinalize;
 
           // Federation registry: transform expressIds to globally-unique ids.
           const maxExpressId = getMaxExpressId(dataStore, geometryResult.meshes);
@@ -600,6 +558,7 @@ export function useIfcLoader() {
             for (const mesh of geometryResult.meshes) {
               applyFederationOffsetToMesh(mesh, idOffset);
             }
+            for (const mesh of patch?.landXmlDocument?.rendering.meshProvenance ?? []) mesh.meshExpressId += idOffset;
             for (const asset of geometryResult.pointClouds ?? []) asset.expressId = asset.expressId + idOffset;
             // #924/#1912: instanced-ONLY entities (no flat mesh, so the loop
             // above never touches them) carry the same RAW ids the worker
@@ -634,6 +593,8 @@ export function useIfcLoader() {
             name: target.name ?? file.name,
             sourceFingerprint: modelSourceIdentity, sourceContentHash: placementIdentity,
             ifcDataStore: dataStore,
+            landXmlDocument: patch?.landXmlDocument,
+            sourceSchema: patch?.sourceSchema,
             geometryResult,
             visible: target.visible ?? true,
             collapsed: target.collapsed ?? (useViewerStore.getState().models.size > 0),
@@ -645,11 +606,25 @@ export function useIfcLoader() {
             idOffset,
             maxExpressId,
             pointCloudHandleId: patch?.pointCloudHandleId,
+            ...(patch?.spatialReference ? { spatialReference: patch.spatialReference } : {}),
             preAlignment,
             federationAlignmentStatus,
             ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
           };
           useViewerStore.getState().addModel(federatedModel);
+          // The registry also holds scans that arrived before any compatible
+          // anchor. Once this model is visible to `findReferenceSpatialModel`,
+          // recompute all scan matrices atomically against the live anchor.
+          // A renderer failure is contained to the scan operation: its registry
+          // transaction restores every prior GPU transform, while this valid
+          // IFC model remains loaded and the user gets an actionable warning.
+          try {
+            realignPointCloudsToAnchor(getGlobalRenderer(), findReferenceSpatialModel()?.placement ?? null);
+            useViewerStore.getState().setPointCloudAlignmentAvailable(hasRegisteredPointCloudAlignment());
+          } catch (error) {
+            console.error('[useIfc] point-cloud anchor realignment failed:', error);
+            toast.error('Point-cloud realignment failed; existing scan transforms were restored.');
+          }
           // Spatial index AFTER id offset + alignment (final ids + world positions)
           // and AFTER addModel so it attaches to THIS model, not the active slot.
           buildSpatialIndexForModel(geometryResult.meshes, modelId, dataStore);
@@ -676,6 +651,8 @@ export function useIfcLoader() {
 
         updateModel(modelId, {
           ifcDataStore: dataStore,
+          landXmlDocument: patch?.landXmlDocument,
+          sourceSchema: patch?.sourceSchema,
           geometryResult,
           schemaVersion,
           idOffset,
@@ -684,6 +661,7 @@ export function useIfcLoader() {
           cacheState: patch?.cacheState ?? 'none',
           loadError: patch?.loadError ?? null,
           pointCloudHandleId: patch?.pointCloudHandleId,
+          ...(patch?.spatialReference ? { spatialReference: patch.spatialReference } : {}),
           ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
         });
       };
@@ -804,7 +782,7 @@ export function useIfcLoader() {
         const setClassCounts = useViewerStore.getState().setPointCloudClassCounts;
         // IfcMapConversion alignment (issue #1804): reuse the SAME
         // reference-model georef federated IFC loads already align to
-        // (`findReferenceGeorefModel`) — a point cloud aligns to whichever
+        // (`findReferenceSpatialModel`) — a point cloud aligns to whichever
         // model is the federation anchor, not necessarily the one just
         // dropped. `null` (no loaded model has a usable IfcMapConversion)
         // leaves the scan at its raw native coordinates, unchanged from
@@ -820,8 +798,12 @@ export function useIfcLoader() {
         // metres by spec (ASTM E2807) and PCD/PLY/PTS/XYZ have no format
         // convention so metres is the documented assumption here too.
         const sourceUnit: PointCloudSourceUnit = format === 'las' || format === 'laz' ? 'mapUnit' : 'metre';
-        const reference = findReferenceGeorefModel();
-        const alignment = reference ? computePointCloudAlignment(reference.georef, sourceUnit) : null;
+        let { sourceSpatialReference, alignment } = await preparePointCloudSpatialLoad(
+          file, format, sourceUnit, () => loadSessionRef.current === currentSession,
+        );
+        // Never publish a decoded source reference, alignment availability, or
+        // metadata-refusal toast after its owning load has been superseded.
+        if (loadSessionRef.current !== currentSession) return;
         const setAlignmentAvailable = useViewerStore.getState().setPointCloudAlignmentAvailable;
         const alignmentEnabled = useViewerStore.getState().pointCloudAlignmentEnabled;
         const ingest = ingestPointCloud({
@@ -832,8 +814,12 @@ export function useIfcLoader() {
           renderer,
           onProgress: setProgress,
           onAssetCountDelta: incCount,
-          alignment: alignment ?? undefined,
+          alignment,
           alignmentEnabled,
+          spatialReference: sourceSpatialReference,
+          onSpatialMetadata: (metadata) => {
+            sourceSpatialReference ??= pointCloudSpatialReferenceFromMetadata(format, metadata);
+          },
           // Session-guard the histogram writes: a superseded stream
           // keeps publishing periodic counts until `done` settles, and
           // an unguarded write would repopulate phantom classes after
@@ -935,7 +921,12 @@ export function useIfcLoader() {
         }
         await finalizeModel(ingest.dataStore, ingest.geometryResult, ingest.schemaVersion, {
           pointCloudHandleId: ingest.rendererHandle.id, loadPath: 'point-cloud',
+          ...(sourceSpatialReference ? { spatialReference: sourceSpatialReference } : {}),
         });
+        // finalizeModel may await federated alignment. Its completion belongs
+        // to this session only; do not publish completion telemetry/UI state
+        // into a newer load after that await.
+        if (loadSessionRef.current !== currentSession) return;
         void identifyLoadedPlacementSource(modelId, file);
         setProgress({ phase: 'Complete', percent: 100 });
         // Snapshot: points, not meshes - the ingest GeometryResult's zero

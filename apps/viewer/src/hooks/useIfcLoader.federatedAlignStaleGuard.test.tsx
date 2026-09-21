@@ -57,7 +57,7 @@
  * `IfcMapConversion`/`IfcProjectedCRS` pair on its own. `finalizeModel`
  * merges the dataStore's (here: absent) georeference with
  * `useViewerStore`'s per-model `georefMutations` map
- * (`extractModelGeoref(dataStore, coordinateInfo, georefMutations.get(modelId))`),
+ * (`extractModelSpatialPlacement(dataStore, coordinateInfo, georefMutations.get(modelId))`),
  * and `mergeProjectedCRS`/`mergeMapConversion`
  * (`lib/geo/effective-georef.ts`) build a complete `ProjectedCRS`/
  * `MapConversion` from the mutation alone when the dataStore has none. This
@@ -216,11 +216,11 @@ describe('useIfcLoader — a superseded federated add must not overwrite the sto
     useViewerStore.setState({
       georefMutations: new Map([
         ['ref-model', {
-          projectedCRS: { name: 'EPSG:9999902', mapUnit: 'METRE', mapUnitScale: 1 },
+          projectedCRS: { name: 'EPSG:9999902', verticalDatum: 'EPSG:5729', mapUnit: 'METRE', mapUnitScale: 1 },
           mapConversion: { eastings: 1000, northings: 2000, orthogonalHeight: 0, xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1 },
         }],
         ['model-a', {
-          projectedCRS: { name: 'EPSG:9999901', mapUnit: 'METRE', mapUnitScale: 1 },
+          projectedCRS: { name: 'EPSG:9999901', verticalDatum: 'EPSG:5729', mapUnit: 'METRE', mapUnitScale: 1 },
           mapConversion: { eastings: 500, northings: 800, orthogonalHeight: 0, xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1 },
         }],
       ]),

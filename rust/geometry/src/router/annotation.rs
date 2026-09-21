@@ -72,7 +72,7 @@ impl GeometryRouter {
             Ok(mesh)
         })();
         if result.is_err() {
-            self.record_unsupported_item(item.ifc_type);
+            self.record_unsupported_item(item.ifc_type.clone());
         }
         result
     }

@@ -86,7 +86,7 @@ export {
 } from './packed-instanced-decoder.js';
 
 export * from './types.js';
-
+export * from './spatial-reference.js';
 import { IfcLiteBridge } from './ifc-lite-bridge.js';
 import { notifyIfWasmAssetUnavailable } from './wasm-asset-error.js';
 import { BufferBuilder } from './buffer-builder.js';

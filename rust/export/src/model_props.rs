@@ -71,39 +71,6 @@ const COMMON_ATTRIBUTES: [&str; 7] = [
     "Representation",
 ];
 
-/// IFC4.2 added the facility/bridge spatial classes before IFC4.3 added
-/// `IfcFacilityPart.UsageType`, and IFC4.1/4.2 `IfcAlignment` still carried
-/// `Axis` at slot 7 ahead of `PredefinedType` (the IFC4X3 layout dropped
-/// `Axis`). Keep the released transitional positional surfaces explicit so
-/// the later canonical registry cannot shift `PredefinedType`.
-fn ifc4x2_infrastructure_attribute_names(raw_type_name: &str) -> Option<&'static [&'static str]> {
-    const ALIGNMENT: &[&str] = &[
-        "GlobalId", "OwnerHistory", "Name", "Description", "ObjectType", "ObjectPlacement",
-        "Representation", "Axis", "PredefinedType",
-    ];
-    const FACILITY: &[&str] = &[
-        "GlobalId", "OwnerHistory", "Name", "Description", "ObjectType", "ObjectPlacement",
-        "Representation", "LongName", "CompositionType",
-    ];
-    const BRIDGE: &[&str] = &[
-        "GlobalId", "OwnerHistory", "Name", "Description", "ObjectType", "ObjectPlacement",
-        "Representation", "LongName", "CompositionType", "PredefinedType",
-    ];
-    if raw_type_name.eq_ignore_ascii_case("IFCALIGNMENT") {
-        Some(ALIGNMENT)
-    } else if raw_type_name.eq_ignore_ascii_case("IFCFACILITY")
-        || raw_type_name.eq_ignore_ascii_case("IFCFACILITYPART")
-    {
-        Some(FACILITY)
-    } else if raw_type_name.eq_ignore_ascii_case("IFCBRIDGE")
-        || raw_type_name.eq_ignore_ascii_case("IFCBRIDGEPART")
-    {
-        Some(BRIDGE)
-    } else {
-        None
-    }
-}
-
 /// Render the attributes an entity's own IFC class declares, by schema name.
 ///
 /// These are not property sets and no `IfcRelDefinesByProperties` points at
@@ -112,15 +79,10 @@ fn ifc4x2_infrastructure_attribute_names(raw_type_name: &str) -> Option<&'static
 /// cannot see them however inheritance is configured.
 ///
 /// `raw_type_name` is the STEP keyword as written in the file (e.g.
-/// `"IFCDOORSTYLE"`), used ONLY to look up a legacy (IFC2X3/IFC4,
-/// removed-by-IFC4X3) entity's own attribute names (#4203) — `entity`'s own
-/// `ifc_type` field is decoded via a bare `IfcType::from_str` and is
-/// `Unknown` for exactly those entities, which used to make this function
-/// return an empty `Vec` for every legacy class, silently (the class still
-/// got a row — `model.rs` resolves the DISPLAY type legacy-aware — it just
-/// lost its own-class attributes). If the source registry and explicit legacy
-/// metadata both lack the class, no names are emitted: borrowing canonical
-/// IFC4X3 names could silently relabel an older record's positional values.
+/// `"IFCDOORSTYLE"`). Its source-schema registry, rather than the merged
+/// canonical universe, determines its positional attribute names. Unknown
+/// source schemas and entities emit no names rather than borrowing another
+/// version's layout.
 ///
 /// Values reuse [`render_value`], so a rendered attribute reads the same as a
 /// property with the same underlying type, and anything it declines (entity
@@ -130,20 +92,7 @@ pub(super) fn render_attributes(
     entity: &DecodedEntity, raw_type_name: &str, source_schema: Option<&str>,
 ) -> Vec<PropValue> {
     let names: &[&str] = source_schema
-        .and_then(|schema| {
-            ifc_lite_core::attribute_names_for_schema(schema, raw_type_name)
-                .or_else(|| {
-                    super::uses_ifc4_attribute_layout(schema)
-                        .then(|| {
-                            // Transitional (IFC4.1/4.2) layouts first: they are the
-                            // only source for classes the bundled IFC4 EXPRESS lacks.
-                            ifc4x2_infrastructure_attribute_names(raw_type_name)
-                                .or_else(|| ifc_lite_core::attribute_names_for_schema("IFC4", raw_type_name))
-                                .or_else(|| ifc_lite_core::legacy_attribute_names(raw_type_name))
-                        })
-                        .flatten()
-                })
-        })
+        .and_then(|schema| ifc_lite_core::attribute_names_for_schema(schema, raw_type_name))
         .unwrap_or(&[]);
     let mut out = Vec::new();
     for (i, name) in names.iter().enumerate() {
@@ -224,7 +173,7 @@ pub(super) fn decode_quantity_set(decoder: &mut EntityDecoder, def: &DecodedEnti
     let quants = decoder.resolve_ref_list(quantities_attr).ok()?;
     let mut quantities = Vec::new();
     for q in &quants {
-        if let Some(kind) = quantity_kind(q.ifc_type) {
+        if let Some(kind) = quantity_kind(q.ifc_type.clone()) {
             let qname = match q.get(0).and_then(|a| a.as_string()) {
                 Some(n) if !n.is_empty() => n.to_string(),
                 _ => continue,

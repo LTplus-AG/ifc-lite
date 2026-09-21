@@ -734,7 +734,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
             }
             entity_jobs.push(EntityJob {
                 id,
-                ifc_type,
+                ifc_type: ifc_type.clone(),
                 start,
                 end,
                 product_definition_shape_id: None,
@@ -762,7 +762,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
             let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
             entity_jobs.push(EntityJob {
                 id,
-                ifc_type,
+                ifc_type: ifc_type.clone(),
                 start,
                 end,
                 product_definition_shape_id: None,
@@ -844,11 +844,11 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
         ) {
             entity_jobs.push(EntityJob {
                 id: *type_id,
-                ifc_type: *ifc_type,
+                ifc_type: ifc_type.clone(),
                 start: *start,
                 end: *end,
                 product_definition_shape_id: None,
-                element_color: crate::style::default_color_for_type(*ifc_type).to_array(),
+                element_color: crate::style::default_color_for_type(ifc_type.clone()).to_array(),
                 global_id: None,
                 name: None,
                 presentation_layer: None,

@@ -55,6 +55,14 @@ describe('detectActions', () => {
     }
   });
 
+  it('reports LandXML source schema instead of its internal IFC store compatibility', () => {
+    const events = detectActions(makeState(), makeState({
+      models: new Map([['terrain', { schemaVersion: 'IFC4', sourceSchema: 'LandXML-1.2', ifcDataStore: { entityCount: 0 }, fileSize: 12 }]]),
+    }));
+    assert.equal(events[0].intent, 'model.load');
+    if (events[0].intent === 'model.load') assert.equal(events[0].params.schema, 'LandXML-1.2');
+  });
+
   it('emits model.unload when a model is removed', () => {
     const prev = makeState({
       models: new Map([['m1', { schemaVersion: 'IFC4', ifcDataStore: null, fileSize: 0 }]]),

@@ -27,6 +27,9 @@ import { resolveUnrepresentedEntity } from './schema-untranslatable.js';
 import { BY_NAME_ATTR_REMAP_TYPES, remapRenamedAttributesByName } from './schema-converter-attr-remap.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
+import { referencesAnyExpressId } from './step-ref-scan.js';
+
+export { computeWithheldRefIds } from './schema-untranslatable.js';
 
 export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
 
@@ -73,6 +76,26 @@ const IFC4_TO_IFC2X3: Map<string, string> = new Map([
   // (schema-converter-attr-remap.ts) also reconciles them by name.
   ['IFCDOORTYPE', 'IFCDOORSTYLE'],
   ['IFCWINDOWTYPE', 'IFCWINDOWSTYLE'],
+  // Structural analysis domain (#4206): IfcStructuralLoadCase, IfcStructuralCurveAction
+  // and IfcStructuralSurfaceAction are all IfcRoot subtypes with a real IFC2X3
+  // target under a DIFFERENT name. Left unmapped, `resolveUnrepresentedEntity`
+  // silently replaced every one with an IFCPROXY — losing the GlobalId, the
+  // applied load reference and the load/action classification even though
+  // IFC2X3 has a real (if differently shaped) target for each.
+  // IfcStructuralLoadCase(IFC4) has no IFC2X3 counterpart of its own name;
+  // IFC2X3 folds load cases into `IfcStructuralLoadGroup` with
+  // `PredefinedType=.LOAD_CASE.` and no `SelfWeightCoefficients` slot — a
+  // strict attribute-name prefix, so the trim path below reconciles it
+  // without help from `BY_NAME_ATTR_REMAP_TYPES`.
+  ['IFCSTRUCTURALLOADCASE', 'IFCSTRUCTURALLOADGROUP'],
+  // IfcStructuralCurveAction/SurfaceAction(IFC4) rename to
+  // IfcStructuralLinearAction/PlanarAction(IFC2X3): both carry the same
+  // attributes through `GlobalOrLocal`/`DestabilizingLoad`, but IFC2X3 then
+  // inserts an optional `CausedBy` before `ProjectedOrTrue` where IFC4
+  // appends `PredefinedType` instead, so neither list is a positional prefix
+  // of the other — `BY_NAME_ATTR_REMAP_TYPES` reconciles both by name.
+  ['IFCSTRUCTURALCURVEACTION', 'IFCSTRUCTURALLINEARACTION'],
+  ['IFCSTRUCTURALSURFACEACTION', 'IFCSTRUCTURALPLANARACTION'],
   // IFC4X3 spatial structure → IFC2X3 equivalents
   ['IFCFACILITY', 'IFCBUILDING'],
   ['IFCFACILITYPART', 'IFCBUILDINGSTOREY'],
@@ -220,7 +243,7 @@ function chainMaps(
 // the full inherited+direct positional list (verified to match STEP counts:
 // IfcWall 8→9, IfcDoor 10→13, IfcMaterial 1→3, …).
 const ATTR_NAME_TABLES = new Map<IfcSchemaVersion, Map<string, readonly string[]>>();
-function attrNameTable(schema: IfcSchemaVersion): Map<string, readonly string[]> | null {
+export function attrNameTable(schema: IfcSchemaVersion): Map<string, readonly string[]> | null {
   let table = ATTR_NAME_TABLES.get(schema);
   if (table) return table;
   let entities: readonly IfcEntityInfo[] | null = null;
@@ -244,7 +267,7 @@ function attrNameTable(schema: IfcSchemaVersion): Map<string, readonly string[]>
  *
  * Callers pass the shorter schema's list first, whichever direction they run in.
  */
-function isStrictAttrPrefix(shorter: readonly string[], longer: readonly string[]): boolean {
+export function isStrictAttrPrefix(shorter: readonly string[], longer: readonly string[]): boolean {
   if (shorter.length >= longer.length) return false;
   for (let i = 0; i < shorter.length; i++) {
     if (shorter[i] !== longer[i]) return false;
@@ -280,7 +303,14 @@ function requireTopLevelAttributes(attrsRaw: string): string[] {
  *   history they reuse (#4686) and collects what they could not settle.
  *   Omitted, a throwaway stands in, so the generated table's own defaults are
  *   still written but the OwnerHistory reuse and both counts are lost.
- * @returns Converted line (entities without valid target representation become IFCPROXY placeholders)
+ * @param withheldRefIds - Express ids this export is OMITTING outright
+ *   ({@link computeWithheldRefIds}, #4206) — a record whose attributes name
+ *   one is redirected to the same "no representation" resolution as its own
+ *   unmapped type would get, so it cannot ship a now-dangling `#N`.
+ * @returns Converted line (entities without valid target representation become
+ *   IFCPROXY placeholders), or `null` when this record itself is one of the
+ *   narrow set `resolveUnrepresentedEntity` can safely OMIT rather than throw
+ *   for — the caller must not write a `null` result.
  */
 export function convertStepLine(
   line: string,
@@ -288,9 +318,11 @@ export function convertStepLine(
   toSchema: IfcSchemaVersion,
   random?: RandomSource,
   slots?: Ifc2x3SlotFill,
-): string {
+  withheldRefIds?: ReadonlySet<number>,
+): string | null {
   if (fromSchema === toSchema) return line;
-  const converted = convertRecord(line, fromSchema, toSchema, random);
+  const converted = convertRecord(line, fromSchema, toSchema, random, withheldRefIds);
+  if (converted === null) return null;
   return toSchema === 'IFC2X3' ? (slots ?? new Ifc2x3SlotFill()).apply(converted) : converted;
 }
 
@@ -301,7 +333,8 @@ function convertRecord(
   fromSchema: IfcSchemaVersion,
   toSchema: IfcSchemaVersion,
   random?: RandomSource,
-): string {
+  withheldRefIds?: ReadonlySet<number>,
+): string | null {
   // Parse: #ID=TYPE(attrs);  — tolerate whitespace around `=` and before the
   // type (some exporters, e.g. Tekla, write `#34498= IFCOPENINGELEMENT(...)`).
   // Without this those lines passed through unconverted, so neither type renames
@@ -320,6 +353,16 @@ function convertRecord(
 
   // Convert entity type
   const newType = convertEntityType(entityType, fromSchema, toSchema);
+
+  // A record whose attribute list references an id this export is OMITTING
+  // (`withheldRefIds`, #4206) cannot carry that reference forward, no matter
+  // how cleanly this record's OWN type would otherwise convert — a renamed
+  // record left pointing at a `#N` with no line is worse than an honest
+  // proxy. Checked before `shouldSkipEntity` and the attribute-table lookup
+  // below so it wins over both.
+  if (withheldRefIds && withheldRefIds.size > 0 && referencesAnyExpressId(attrsRaw, withheldRefIds)) {
+    return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
+  }
 
   // Replace entities that have no valid representation in the target schema
   // with IFCPROXY placeholders to preserve EXPRESS IDs and prevent dangling references
@@ -384,7 +427,7 @@ function convertRecord(
   // attribute mismatch, handled below) has no representation in `toSchema` at
   // all — see `resolveUnrepresentedEntity` for why it can't just pass through.
   if (srcAttrs && targetTable && !tgtAttrs) {
-    return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random);
+    return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
   }
   if (srcAttrs && tgtAttrs) {
     if (isStrictAttrPrefix(tgtAttrs, srcAttrs)) {
@@ -413,7 +456,7 @@ function convertRecord(
  * Alignment entities are valid in IFC4X3 and IFC5, so they are only skipped
  * when targeting older schemas (IFC2X3, IFC4).
  */
-function shouldSkipEntity(entityType: string, toSchema: IfcSchemaVersion): boolean {
+export function shouldSkipEntity(entityType: string, toSchema: IfcSchemaVersion): boolean {
   // Alignment entities are native to IFC4X3 and IFC5 — preserve them
   if (toSchema === 'IFC4X3' || toSchema === 'IFC5') {
     return false;

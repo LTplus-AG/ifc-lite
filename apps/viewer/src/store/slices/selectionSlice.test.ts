@@ -392,6 +392,12 @@ describe('SelectionSlice', () => {
       assert.strictEqual(state.selectedModelId, 'model-1');
     });
 
+    it('setSelectedEntityId(null) clears a stale LandXML source selection (#5042)', () => {
+      state.setSelectedLandXmlSource({ modelId: 'terrain', sourceId: 'landxml:surface:1' });
+      state.setSelectedEntityId(null);
+      assert.strictEqual(state.selectedLandXmlSource, null);
+    });
+
     it('setSelectedModelId clears the multi-model entity channels and the primary id', () => {
       state.setSelectedEntity({ modelId: 'model-1', expressId: 7 });
       state.setSelectedEntities([

@@ -22,12 +22,16 @@ use crate::step_text::{
 };
 
 /// Export the parsed model in `content` as a STEP/IFC string.
-pub fn export_step(content: &[u8], opts: &StepOptions) -> String {
-    export_step_with_stats(content, opts).0
+///
+/// Errs when a source entity's (possibly renamed) type has no representation
+/// at all in an explicit `opts.schema` target and is not an `IfcRoot`
+/// subtype either — see [`crate::schema_unrepresented`] (#5116).
+pub fn export_step(content: &[u8], opts: &StepOptions) -> std::io::Result<String> {
+    export_step_with_stats(content, opts).map(|(s, _)| s)
 }
 
 /// Like [`export_step`] but also returns coverage stats.
-pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, StepStats) {
+pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> std::io::Result<(String, StepStats)> {
     // Presized for a full re-export, where the output is within a small factor
     // of the source. Not for a subset: 200 MB filtered to a few records would
     // reserve 200 MB, and on wasm that linear memory never comes back.
@@ -37,11 +41,15 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
     };
     // `emit`, not `export_step_to_writer`: a `Vec` needs no buffering, and
     // wrapping one memcpys the whole output through a 1 MiB window for nothing.
-    let stats = emit(content, opts, &mut buf).expect("a Vec accepts every write");
+    // A Vec's `Write` impl cannot fail for I/O reasons, so an `Err` here is
+    // always a schema-conversion failure (`emit` also propagates those through
+    // this same `io::Result`, see `schema_unrepresented::UnrepresentedEntityError`'s
+    // `From` impl) — genuinely fallible now, unlike the `.expect` this replaced.
+    let stats = emit(content, opts, &mut buf)?;
     // Every byte came from the source by way of `from_utf8_lossy`, or from a
     // `format!`, so this validates rather than converts.
     let out = String::from_utf8(buf).expect("the writer emits UTF-8");
-    (out, stats)
+    Ok((out, stats))
 }
 
 /// [`export_step_with_stats`], writing as it goes instead of returning the file.
@@ -203,16 +211,14 @@ fn emit<W: std::io::Write>(
                     None => raw.into_owned(),
                 };
                 if converting {
-                    out.write_all(
-                        crate::schema_convert::convert_step_line(
-                            &edited,
-                            &source_schema,
-                            &schema,
-                            *id,
-                            &mut slot_fill,
-                        )
-                        .as_bytes(),
+                    let converted = crate::schema_convert::convert_step_line(
+                        &edited,
+                        &source_schema,
+                        &schema,
+                        *id,
+                        &mut slot_fill,
                     )?;
+                    out.write_all(converted.as_bytes())?;
                 } else {
                     out.write_all(edited.as_bytes())?;
                 }
@@ -236,16 +242,14 @@ fn emit<W: std::io::Write>(
             let edited = apply_attr_mutations_counted(&raw, &muts, &mut attribute_edits_refused);
             let renumbered = renumber(&edited, *copy_id);
             if converting {
-                out.write_all(
-                    crate::schema_convert::convert_step_line(
-                        &renumbered,
-                        &source_schema,
-                        &schema,
-                        *copy_id,
-                        &mut slot_fill,
-                    )
-                    .as_bytes(),
+                let converted = crate::schema_convert::convert_step_line(
+                    &renumbered,
+                    &source_schema,
+                    &schema,
+                    *copy_id,
+                    &mut slot_fill,
                 )?;
+                out.write_all(converted.as_bytes())?;
             } else {
                 out.write_all(renumbered.as_bytes())?;
             }

@@ -9,6 +9,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { TextAnnotation2D } from '@/store/slices/drawing2DSlice';
+import { useTranslation } from '@/i18n';
 
 interface TextAnnotationEditorProps {
   /** The text annotation being edited */
@@ -29,6 +30,7 @@ export function TextAnnotationEditor({
   onConfirm,
   onCancel,
 }: TextAnnotationEditorProps): React.ReactElement {
+  const { t } = useTranslation();
   const [text, setText] = useState(annotation.text);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Guard against blur firing during the initial click that created this editor.
@@ -94,7 +96,7 @@ export function TextAnnotationEditor({
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}
         onBlur={handleBlur}
-        placeholder="Type annotation text..."
+        placeholder={t('textAnnotationEditor.placeholder')}
         className="min-w-[120px] max-w-[300px] min-h-[32px] px-2 py-1 text-sm border-2 border-blue-500 rounded resize shadow-lg outline-none"
         rows={2}
         style={{
@@ -105,7 +107,7 @@ export function TextAnnotationEditor({
         }}
       />
       <div className="text-[10px] text-muted-foreground mt-0.5 bg-white/80 px-1 rounded">
-        Enter to confirm · Shift+Enter for newline · Esc to cancel
+        {t('textAnnotationEditor.hint')}
       </div>
     </div>
   );

@@ -9,6 +9,7 @@
  */
 
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { useTranslation } from '@/i18n';
 
 interface AxisHelperProps {
   rotationX?: number;
@@ -20,6 +21,7 @@ export interface AxisHelperRef {
 }
 
 export const AxisHelper = forwardRef<AxisHelperRef, AxisHelperProps>(({ rotationX = -25, rotationY = 45 }, ref) => {
+  const { t } = useTranslation();
   const size = 50;
   const axisLength = 20;
   const labelOffset = 26;
@@ -112,7 +114,7 @@ export const AxisHelper = forwardRef<AxisHelperRef, AxisHelperProps>(({ rotation
             transformStyle: 'preserve-3d',
           }}
         >
-          X
+          {t('cesiumGeo.axisHelper.labelX')}
         </div>
 
         {/* Z Axis - Blue (pointing up in IFC) - this is WebGL Y */}
@@ -136,7 +138,7 @@ export const AxisHelper = forwardRef<AxisHelperRef, AxisHelperProps>(({ rotation
             transformStyle: 'preserve-3d',
           }}
         >
-          Z
+          {t('cesiumGeo.axisHelper.labelZ')}
         </div>
 
         {/* Y Axis - Green (pointing into screen in IFC) - this is WebGL -Z */}
@@ -161,7 +163,7 @@ export const AxisHelper = forwardRef<AxisHelperRef, AxisHelperProps>(({ rotation
             transformStyle: 'preserve-3d',
           }}
         >
-          Y
+          {t('cesiumGeo.axisHelper.labelY')}
         </div>
 
         {/* Origin point */}

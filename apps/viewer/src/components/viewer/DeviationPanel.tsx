@@ -17,6 +17,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { placementSnapshot, placementSnapshotIsCurrent } from '@/lib/model-placement/placement-snapshot';
 import { noteDeviationWrite } from '@/lib/model-placement/preview-analysis';
@@ -29,6 +30,7 @@ export interface DeviationPanelProps {
 }
 
 export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
+  const { t } = useTranslation();
   const halfRange = useViewerStore((s) => s.pointCloudDeviationHalfRange);
   const setHalfRange = useViewerStore((s) => s.setPointCloudDeviationHalfRange);
   const computed = useViewerStore((s) => s.pointCloudDeviationComputed);
@@ -47,7 +49,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
   const handleCompute = useCallback(async () => {
     const renderer = getGlobalRenderer();
     if (!renderer) {
-      setError('Renderer not initialised yet.');
+      setError(t('deviationPanel.rendererNotReadyError'));
       return;
     }
     setError(null);
@@ -58,16 +60,16 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
       noteDeviationWrite(renderer);
       const result = await renderer.computeDeviations({ maxRange: 1.0 });
       if (!placementSnapshotIsCurrent(placement, useViewerStore.getState())) {
-        setError('Model positions changed during computation. Compute deviation again.'); return;
+        setError(t('deviationPanel.positionsChangedError')); return;
       }
       const dt = performance.now() - t0;
       if (result.pointsProcessed === 0) {
-        setError('No points processed — load a point cloud first.');
+        setError(t('deviationPanel.noPointsError'));
         setRunning(false);
         return;
       }
       if (result.bvhTriangles === 0) {
-        setError('No mesh geometry in the scene — load an IFC first.');
+        setError(t('deviationPanel.noMeshError'));
         setRunning(false);
         return;
       }
@@ -91,7 +93,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
     } finally {
       setRunning(false);
     }
-  }, [halfRange, setHalfRange, setColorMode, setComputed]);
+  }, [halfRange, setHalfRange, setColorMode, setComputed, t]);
 
   // Auto-compute when the user switches to the Deviation colour mode and a
   // result isn't ready. Selecting the mode alone only points the splat shader
@@ -120,7 +122,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
   return (
     <div className="flex flex-col gap-1 mt-1 pt-1 border-t border-border/40">
       <span className="text-[9px] uppercase text-muted-foreground tracking-wider">
-        Deviation (BIM ↔ scan)
+        {t('deviationPanel.sectionLabel')}
       </span>
       <button
         type="button"
@@ -132,18 +134,24 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
             ? 'bg-muted text-muted-foreground'
             : 'bg-teal-600 text-white hover:bg-teal-500 disabled:opacity-50',
         )}
-        title={`Build BVH from ${triangleCount.toLocaleString()} triangles, then signed-distance every loaded point against the nearest surface`}
+        title={t('deviationPanel.computeButtonTitle', { count: triangleCount.toLocaleString() })}
       >
-        {running ? 'Computing…' : computed ? 'Recompute' : 'Compute deviation'}
+        {running
+          ? t('deviationPanel.computingLabel')
+          : computed
+            ? t('deviationPanel.recomputeLabel')
+            : t('deviationPanel.computeLabel')}
       </button>
       {error && (
         <span className="text-[10px] text-destructive">{error}</span>
       )}
       {stats && (
         <div className="text-[10px] text-muted-foreground">
-          {stats.points.toLocaleString()} pts vs.{' '}
-          {stats.triangles.toLocaleString()} tris in{' '}
-          {Math.round(stats.durationMs)} ms
+          {t('deviationPanel.statsLine', {
+            points: stats.points.toLocaleString(),
+            triangles: stats.triangles.toLocaleString(),
+            duration: Math.round(stats.durationMs),
+          })}
         </div>
       )}
 
@@ -153,7 +161,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
               (logarithmic feel via the millimetre conversion). */}
           <label className="flex items-center gap-2 mt-1">
             <span className="text-[10px] text-muted-foreground w-12 shrink-0">
-              ±{(halfRange * 1000).toFixed(halfRange < 0.01 ? 1 : 0)}mm
+              {t('deviationPanel.sliderValueLabel', { value: (halfRange * 1000).toFixed(halfRange < 0.01 ? 1 : 0) })}
             </span>
             <input
               type="range"
@@ -163,8 +171,8 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
               value={Math.round(halfRange * 1000)}
               onChange={(e) => setHalfRange(Number(e.target.value) / 1000)}
               className="flex-1 h-1 accent-teal-600 cursor-pointer"
-              title="Deviation half-range in millimetres — values past ±this map to the ramp endpoints"
-              aria-label="Deviation range half-width"
+              title={t('deviationPanel.rangeSliderTitle')}
+              aria-label={t('deviationPanel.rangeSliderAriaLabel')}
             />
           </label>
 
@@ -174,12 +182,12 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
             style={{
               background: 'linear-gradient(to right, rgb(26,77,217), rgb(242,242,242), rgb(217,51,26))',
             }}
-            aria-label="Deviation ramp from negative (blue) to positive (red)"
+            aria-label={t('deviationPanel.rampAriaLabel')}
           />
           <div className="flex justify-between text-[9px] text-muted-foreground">
-            <span>−{(halfRange * 1000).toFixed(0)}mm (inside)</span>
+            <span>{t('deviationPanel.legendMinLabel', { value: (halfRange * 1000).toFixed(0) })}</span>
             <span>0</span>
-            <span>+{(halfRange * 1000).toFixed(0)}mm (outside)</span>
+            <span>{t('deviationPanel.legendMaxLabel', { value: (halfRange * 1000).toFixed(0) })}</span>
           </div>
 
           {colorMode !== 'deviation' && (
@@ -188,7 +196,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
               onClick={() => setColorMode('deviation')}
               className="text-[10px] text-teal-600 hover:text-teal-500 underline text-left mt-0.5"
             >
-              Switch colour mode to Deviation
+              {t('deviationPanel.switchToDeviationButton')}
             </button>
           )}
         </>

@@ -2,77 +2,35 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::collections::{HashMap, HashSet};
-
-use quick_xml::{
-    events::{BytesStart, Event},
-    Reader,
-};
-
 use crate::{
-    capture::Capture,
+    capture::{Capture, PairListTarget, PolylineCategory, ProfileCurveCapture},
     preflight::preflight_xml_tokens,
     semantics::{positive_id, references, triple, units},
     xml::{
         attr, attributes, character_references, error, normalize_encoding, required, split_name,
-        unescape, Result,
+        Result,
     },
-    LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlLimits, LandXmlPoint,
-    LandXmlSourceId, LandXmlSurface, LandXmlTinDocument, LandXmlUnits,
+    LandXmlCancellation, LandXmlCapabilities, LandXmlDiagnosticCode as Code, LandXmlExtension,
+    LandXmlCoordinateSystem, LandXmlLimits, LandXmlPoint, LandXmlPolyline, LandXmlRenderState,
+    LandXmlSourceId, LandXmlSurface, LandXmlSurfaceKind, LandXmlTinDocument,
 };
-
+use quick_xml::{
+    events::{BytesStart, Event},
+    Reader,
+};
+mod capture;
+mod document;
 mod finalize;
+mod limits;
+mod path;
+mod profiles;
+pub(crate) mod state;
+mod text;
+mod version;
 
-pub const LANDXML_10_NAMESPACE: &str = "http://www.landxml.org/schema/LandXML-1.0";
-pub const LANDXML_11_NAMESPACE: &str = "http://www.landxml.org/schema/LandXML-1.1";
-pub const LANDXML_12_NAMESPACE: &str = "http://www.landxml.org/schema/LandXML-1.2";
-
-/// Classify known LandXML roots without relaxing the strict 1.2 ingest policy.
-pub fn classify_landxml_version(
-    namespace: Option<&str>,
-    version: Option<&str>,
-) -> crate::LandXmlVersionCapability {
-    use crate::LandXmlVersionCapability as Capability;
-
-    match namespace {
-        Some(LANDXML_10_NAMESPACE) => Capability::LandXml10Unsupported,
-        Some(LANDXML_11_NAMESPACE) => Capability::LandXml11Unsupported,
-        Some(LANDXML_12_NAMESPACE) if version == Some("1.2") => Capability::LandXml12Tin,
-        Some(LANDXML_12_NAMESPACE) => Capability::LandXml12VersionMismatch,
-        _ => Capability::NotLandXml,
-    }
-}
-
-#[derive(Clone)]
-struct Frame {
-    local: String,
-    target: bool,
-    namespaces: HashMap<String, String>,
-}
-struct SurfaceBuilder {
-    name: String,
-    tin: bool,
-    points: Vec<LandXmlPoint>,
-    ids: HashSet<String>,
-    faces: Vec<[String; 3]>,
-}
-struct Parser<'a> {
-    limits: &'a LandXmlLimits,
-    cancelled: Option<&'a dyn LandXmlCancellation>,
-    work: usize,
-    character_references: usize,
-    references: usize,
-    surfaces_seen: usize,
-    points_seen: usize,
-    faces_seen: usize,
-    frames: Vec<Frame>,
-    units: Option<LandXmlUnits>,
-    surface: Option<SurfaceBuilder>,
-    capture: Option<Capture>,
-    surfaces: Vec<LandXmlSurface>,
-    warnings: Vec<String>,
-    surface_ordinal: usize,
-}
+use state::{retained_properties, Frame, Parser, SurfaceBuilder};
+pub use version::*;
+pub(crate) use document::parse_landxml_document;
 
 /// Parse exact LandXML 1.2 TIN semantics with default resource limits.
 pub fn parse_landxml_tin(input: &[u8]) -> Result<LandXmlTinDocument> {
@@ -101,11 +59,31 @@ pub fn parse_landxml_tin_with_cancel(
         faces_seen: 0,
         frames: Vec::new(),
         units: None,
+        coordinate_system: None,
         surface: None,
         capture: None,
         surfaces: Vec::new(),
+        extensions: Vec::new(),
         warnings: Vec::new(),
         surface_ordinal: 0,
+        version: String::new(),
+        root_seen: false,
+        root_closed: false,
+        profile_points_seen: 0,
+        vertical_curves_seen: 0,
+        cross_section_points_seen: 0,
+        alignment: None,
+        profile: None,
+        cross_section: None,
+        cross_section_surface: None,
+        alignments: Vec::new(),
+        profiles: Vec::new(),
+        cross_sections: Vec::new(),
+        cross_section_surfaces: Vec::new(),
+        roadways: Vec::new(),
+        capability_diagnostics: Vec::new(),
+        preserved_only_extensions: Vec::new(),
+        active_roadway_source_id: None,
     };
     let mut reader = Reader::from_reader(input.as_slice());
     reader.config_mut().trim_text(false);
@@ -123,7 +101,7 @@ pub fn parse_landxml_tin_with_cancel(
             }
             Event::End(end) => parser.end(Some(end.name().as_ref()))?,
             Event::Text(text) => parser.text(text.as_ref())?,
-            Event::CData(text) => parser.text(text.as_ref())?,
+            Event::CData(text) => parser.cdata(text.as_ref())?,
             Event::DocType(_) => return Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
             Event::Eof => break,
             _ => {}
@@ -137,37 +115,6 @@ pub fn parse_landxml_tin_with_cancel(
 }
 
 impl Parser<'_> {
-    fn check_cancel_and_work(&mut self, added: usize) -> Result<()> {
-        if self
-            .cancelled
-            .is_some_and(LandXmlCancellation::is_cancelled)
-        {
-            return Err(error(Code::Cancelled, "ingestion cancelled"));
-        }
-        self.work = self
-            .work
-            .checked_add(added)
-            .ok_or_else(|| error(Code::LimitExceeded, "work limit exceeded"))?;
-        if self.work > self.limits.max_work {
-            return Err(error(Code::LimitExceeded, "work limit exceeded"));
-        }
-        Ok(())
-    }
-
-    fn check_character_references(&mut self, added: usize) -> Result<()> {
-        self.character_references = self
-            .character_references
-            .checked_add(added)
-            .ok_or_else(|| error(Code::LimitExceeded, "character reference limit exceeded"))?;
-        if self.character_references > self.limits.max_character_references {
-            return Err(error(
-                Code::LimitExceeded,
-                "character reference limit exceeded",
-            ));
-        }
-        Ok(())
-    }
-
     fn start(&mut self, start: &BytesStart<'_>) -> Result<()> {
         if self.frames.len() >= self.limits.max_depth {
             return Err(error(Code::LimitExceeded, "XML depth limit exceeded"));
@@ -180,10 +127,19 @@ impl Parser<'_> {
         let mut inherited = self
             .frames
             .last()
-            .map_or_else(HashMap::new, |frame| frame.namespaces.clone());
+            .map_or_else(std::collections::HashMap::new, |frame| {
+                frame.namespaces.clone()
+            });
         inherited.extend(namespaces);
         let namespace = inherited.get(prefix).map(String::as_str);
         if self.frames.is_empty() {
+            if self.root_seen {
+                return Err(error(
+                    Code::InvalidXml,
+                    "LandXML document has multiple root elements",
+                ));
+            }
+            self.root_seen = true;
             if local != "LandXML" {
                 return Err(error(Code::InvalidSemantic, "root element is not LandXML"));
             }
@@ -214,17 +170,84 @@ impl Parser<'_> {
                     ));
                 }
             }
+            self.version = required(&attributes, "version", "LandXML")?.to_owned();
         }
         let target = namespace == Some(LANDXML_12_NAMESPACE);
+        let sibling_ordinal = self.frames.last_mut().map_or(1, |parent| {
+            let ordinal = parent
+                .child_ordinals
+                .entry((target, local.to_owned()))
+                .or_insert(0);
+            *ordinal += 1;
+            *ordinal
+        });
+        // Record one root per unknown extension subtree.  This preserves the
+        // producer-visible shape without recursively copying unbounded vendor
+        // payloads, and never mistakes an extension's `Surface` for LandXML.
+        let extension_root = !target
+            && !self.frames.is_empty()
+            && self.frames.last().is_some_and(|frame| frame.target);
+        if extension_root {
+            if self.extensions.len() >= self.limits.max_extensions {
+                return Err(error(
+                    Code::LimitExceeded,
+                    "extension record limit exceeded",
+                ));
+            }
+            self.extensions.push(LandXmlExtension {
+                namespace: namespace.unwrap_or("").to_owned(),
+                local_name: local.to_owned(),
+                path: self.path_with(local),
+            });
+        }
         self.frames.push(Frame {
             local: local.to_owned(),
             target,
+            sibling_ordinal,
+            child_ordinals: std::collections::HashMap::new(),
+            overlay_name: matches!(local, "Boundary" | "Breakline" | "Contour")
+                .then(|| attr(&attributes, "name").map(str::to_owned))
+                .flatten(),
+            overlay_kind: matches!(local, "Boundary" | "Breakline" | "Contour")
+                .then(|| {
+                    attr(&attributes, "bndType")
+                        .or_else(|| attr(&attributes, "brkType"))
+                        .or_else(|| attr(&attributes, "contType"))
+                        .map(str::to_owned)
+                })
+                .flatten(),
+            overlay_properties: matches!(local, "Boundary" | "Breakline" | "Contour")
+                .then(|| retained_properties(&attributes))
+                .unwrap_or_default(),
             namespaces: inherited,
         });
         if !target {
+            if local == "Corridor" {
+                self.record_preserved_only(
+                    local,
+                    crate::LandXmlPreservedOnlyExtensionKind::Corridor,
+                )?;
+            } else if local == "StringLine" {
+                self.record_preserved_only(
+                    local,
+                    crate::LandXmlPreservedOnlyExtensionKind::StringLine,
+                )?;
+            }
             return Ok(());
         }
         match local {
+            "CoordinateSystem" if self.is_path(&["LandXML", "CoordinateSystem"]) => {
+                if self.coordinate_system.is_some() {
+                    self.warnings.push(
+                        "LandXML declares multiple root CoordinateSystem records; retained the last declaration"
+                            .to_owned(),
+                    );
+                }
+                self.coordinate_system = Some(LandXmlCoordinateSystem {
+                    horizontal_datum: attr(&attributes, "horizontalDatum").map(|value| value.to_owned()),
+                    vertical_datum: attr(&attributes, "verticalDatum").map(|value| value.to_owned()),
+                });
+            }
             "Surface" if self.is_path(&["LandXML", "Surfaces", "Surface"]) => {
                 if self.surfaces_seen >= self.limits.max_surfaces {
                     return Err(error(Code::LimitExceeded, "surface limit exceeded"));
@@ -232,15 +255,33 @@ impl Parser<'_> {
                 self.surfaces_seen += 1;
                 self.surface = Some(SurfaceBuilder {
                     name: required(&attributes, "name", "Surface")?.to_owned(),
-                    tin: false,
+                    kind: LandXmlSurfaceKind::Other,
                     points: Vec::new(),
-                    ids: HashSet::new(),
+                    canonical_vertices: Vec::new(),
+                    source_data_points: Vec::new(),
+                    ids: std::collections::HashSet::new(),
                     faces: Vec::new(),
+                    face_visibility: Vec::new(),
+                    hidden_face_count: 0,
+                    boundaries: Vec::new(),
+                    breaklines: Vec::new(),
+                    contours: Vec::new(),
+                    properties: retained_properties(&attributes),
+                    definition_properties: crate::LandXmlProperties::new(),
                 })
             }
             "Definition" if self.is_path(&["LandXML", "Surfaces", "Surface", "Definition"]) => {
                 if let Some(surface) = &mut self.surface {
-                    surface.tin = attr(&attributes, "surfType") == Some("TIN");
+                    surface.definition_properties = retained_properties(&attributes);
+                    surface.kind = match attr(&attributes, "surfType")
+                        .map(str::to_ascii_uppercase)
+                        .as_deref()
+                    {
+                        Some("TIN") => LandXmlSurfaceKind::Tin,
+                        Some("GRID") => LandXmlSurfaceKind::Grid,
+                        Some("VOLUME") => LandXmlSurfaceKind::Volume,
+                        _ => LandXmlSurfaceKind::Other,
+                    };
                 }
             }
             "Metric" | "Imperial" if self.is_path(&["LandXML", "Units", local]) => {
@@ -253,7 +294,10 @@ impl Parser<'_> {
                 self.units = Some(units(&attributes)?)
             }
             "P" if self.is_path(&["LandXML", "Surfaces", "Surface", "Definition", "Pnts", "P"])
-                && self.surface.as_ref().is_some_and(|surface| surface.tin) =>
+                && self
+                    .surface
+                    .as_ref()
+                    .is_some_and(|surface| surface.kind == LandXmlSurfaceKind::Tin) =>
             {
                 self.capture = Some(Capture::Point {
                     id: positive_id(required(&attributes, "id", "point")?)?,
@@ -268,7 +312,10 @@ impl Parser<'_> {
                 "Definition",
                 "Faces",
                 "F",
-            ]) && self.surface.as_ref().is_some_and(|surface| surface.tin) =>
+            ]) && self
+                .surface
+                .as_ref()
+                .is_some_and(|surface| surface.kind == LandXmlSurfaceKind::Tin) =>
             {
                 self.capture = Some(Capture::Face {
                     depth: self.frames.len(),
@@ -276,8 +323,34 @@ impl Parser<'_> {
                     hidden: matches!(attr(&attributes, "i"), Some("1" | "true")),
                 })
             }
+            "PntList3D" | "PntList2D" if self.source_data_point_dimension().is_some() => {
+                self.capture = Some(Capture::SourcePoints {
+                    depth: self.frames.len(),
+                    text: String::new(),
+                    source_path: self.capture_path(),
+                    coordinate_dimension: self
+                        .source_data_point_dimension()
+                        .expect("guarded above"),
+                })
+            }
+            "PntList3D" | "PntList2D" if self.overlay_category().is_some() => {
+                let overlay = self.frames.get(self.frames.len().saturating_sub(2));
+                self.capture = Some(Capture::Polyline {
+                    depth: self.frames.len(),
+                    text: String::new(),
+                    category: self.overlay_category().expect("guarded above"),
+                    name: overlay.and_then(|frame| frame.overlay_name.clone()),
+                    kind: overlay.and_then(|frame| frame.overlay_kind.clone()),
+                    properties: overlay.map_or_else(crate::LandXmlProperties::new, |frame| {
+                        frame.overlay_properties.clone()
+                    }),
+                    source_path: self.capture_path(),
+                    coordinate_dimension: if local == "PntList3D" { 3 } else { 2 },
+                })
+            }
             _ => {}
         }
+        self.start_road_semantics(local, &attributes)?;
         Ok(())
     }
 
@@ -303,70 +376,11 @@ impl Parser<'_> {
         if self.is_path(&["LandXML", "Surfaces", "Surface"]) {
             self.finish_surface()?;
         }
+        self.finish_road_element()?;
+        let closes_root = self.frames.len() == 1;
         self.frames.pop();
-        Ok(())
-    }
-
-    fn text(&mut self, bytes: &[u8]) -> Result<()> {
-        if bytes.len() > self.limits.max_text_bytes {
-            return Err(error(Code::LimitExceeded, "text limit exceeded"));
-        }
-        self.check_cancel_and_work(bytes.len())?;
-        let text =
-            std::str::from_utf8(bytes).map_err(|_| error(Code::InvalidXml, "text is not UTF-8"))?;
-        self.check_character_references(character_references(text))?;
-        let text = unescape(text)?;
-        if let Some(capture) = &mut self.capture {
-            let target = match capture {
-                Capture::Point { text, .. } | Capture::Face { text, .. } => text,
-            };
-            if target.len() + text.len() > self.limits.max_text_bytes {
-                return Err(error(Code::LimitExceeded, "captured text limit exceeded"));
-            }
-            target.push_str(&text);
-        }
-        Ok(())
-    }
-
-    fn finish_capture(&mut self) -> Result<()> {
-        let capture = self.capture.take().expect("capture checked");
-        let surface = self
-            .surface
-            .as_mut()
-            .ok_or_else(|| error(Code::InvalidSemantic, "geometry outside Surface"))?;
-        match capture {
-            Capture::Point { id, text, .. } => {
-                if self.points_seen >= self.limits.max_points {
-                    return Err(error(Code::LimitExceeded, "point limit exceeded"));
-                }
-                if !surface.ids.insert(id.clone()) {
-                    return Err(error(Code::InvalidSemantic, "duplicate point id"));
-                }
-                let values = triple(&text, "point")?;
-                surface.points.push(LandXmlPoint {
-                    id,
-                    northing: values[0],
-                    easting: values[1],
-                    elevation: values[2],
-                });
-                self.points_seen += 1;
-            }
-            Capture::Face { text, hidden, .. } if !hidden => {
-                if self.faces_seen >= self.limits.max_faces {
-                    return Err(error(Code::LimitExceeded, "face limit exceeded"));
-                }
-                self.references = self
-                    .references
-                    .checked_add(3)
-                    .ok_or_else(|| error(Code::LimitExceeded, "reference limit exceeded"))?;
-                if self.references > self.limits.max_references {
-                    return Err(error(Code::LimitExceeded, "reference limit exceeded"));
-                }
-                let refs = references(&text)?;
-                surface.faces.push(refs);
-                self.faces_seen += 1;
-            }
-            Capture::Face { .. } => {}
+        if closes_root {
+            self.root_closed = true;
         }
         Ok(())
     }

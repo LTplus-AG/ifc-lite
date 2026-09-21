@@ -18,7 +18,7 @@ fn export_step_round_trips_a_backslash_carrying_schema_label_through_source_sche
 
     let source = b"ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC\\\\4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
 
-    let (step, _stats) = export_step_with_stats(source, &StepOptions::default());
+    let (step, _stats) = export_step_with_stats(source, &StepOptions::default()).unwrap();
     let schema_line = step
         .lines()
         .find(|l| l.starts_with("FILE_SCHEMA("))
@@ -123,7 +123,7 @@ fn property_synthesis_round_trips_apostrophe_and_backslash_per_spec() {
             }],
             ..StepOptions::default()
         },
-    );
+    ).unwrap();
 
     // Locate the synthesized IFCPROPERTYSET line and pull its (still-quoted)
     // name field: `IFCPROPERTYSET('<guid>',$,'<pset_name>',$,(...))` — the
@@ -254,7 +254,7 @@ fn export_step_with_stats_reports_refused_refs_in_a_filtered_export() {
     let (_step, stats) = export_step_with_stats(
         source,
         &StepOptions { included: Some(vec![1]), ..StepOptions::default() },
-    );
+    ).unwrap();
     assert_eq!(
         stats.refused_refs, 1,
         "the oversized reference on #1 must be counted, not silently dropped (#3752)"
@@ -264,7 +264,7 @@ fn export_step_with_stats_reports_refused_refs_in_a_filtered_export() {
     let (_step, control_stats) = export_step_with_stats(
         source,
         &StepOptions { included: Some(vec![2]), ..StepOptions::default() },
-    );
+    ).unwrap();
     assert_eq!(
         control_stats.refused_refs, 0,
         "an ordinary reference must not be counted as refused"
@@ -314,7 +314,7 @@ fn export_step_counts_a_refused_attribute_edit() {
         }],
         ..Default::default()
     };
-    let (step, stats) = export_step_with_stats(source, &opts);
+    let (step, stats) = export_step_with_stats(source, &opts).unwrap();
     assert_eq!(stats.attribute_edits_refused, 1);
     assert!(
         step.contains("#1=IFCWALL('g',$,IFCLABEL('a's'),$,IFCLABEL('b's'),#5,#6,'T',.SOLIDWALL.);"),
@@ -327,7 +327,7 @@ fn export_step_counts_a_refused_attribute_edit() {
 
     // The control, so a zero above is not merely "this export never edits".
     let control_source = b"ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCWALL('g',$,IFCLABEL('a''s'),$,IFCLABEL('b''s'),#5,#6,'T',.SOLIDWALL.);\nENDSEC;\nEND-ISO-10303-21;\n";
-    let (control_step, control_stats) = export_step_with_stats(control_source, &opts);
+    let (control_step, control_stats) = export_step_with_stats(control_source, &opts).unwrap();
     assert_eq!(control_stats.attribute_edits_refused, 0);
     assert!(
         control_step.contains("'NEWDESC'"),
@@ -384,7 +384,7 @@ fn export_step_counts_an_attribute_edit_past_the_arity() {
         }],
         ..Default::default()
     };
-    let (step, stats) = export_step_with_stats(source, &opts);
+    let (step, stats) = export_step_with_stats(source, &opts).unwrap();
     assert_eq!(stats.attribute_edits_refused, 1, "the out-of-range edit must be reported");
     assert!(!step.contains("New Name"), "and must not be in the output; got:\n{step}");
     assert!(
@@ -431,7 +431,7 @@ fn export_step_keeps_an_encoded_newline_in_a_header_field() {
     use crate::step::{export_step_with_stats, StepOptions};
 
     let source = b"ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('line1\\X2\\000A\\X0\\line2'),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
-    let (step, _stats) = export_step_with_stats(source, &StepOptions::default());
+    let (step, _stats) = export_step_with_stats(source, &StepOptions::default()).unwrap();
     let line = step
         .lines()
         .find(|l| l.starts_with("FILE_DESCRIPTION("))

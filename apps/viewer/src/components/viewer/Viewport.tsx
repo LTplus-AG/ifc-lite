@@ -40,12 +40,7 @@ import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
 import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../utils/gpuBudgetConfig.js';
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
-import {
-  unionEntityBounds,
-  getThemeClearColor,
-  hasPendingMeasurementState,
-  type BoundingBox3D,
-} from '../../utils/viewportUtils.js';
+import { unionEntityBounds, getThemeClearColor, hasPendingMeasurementState, type BoundingBox3D } from '../../utils/viewportUtils.js';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
 import { installViewportDebugHooks, clearViewportDebugHooks } from '@/lib/viewport-debug-hooks';
 import { expandToGeometryBearingIds } from '../../utils/aggregation.js';
@@ -69,10 +64,13 @@ import {
 } from '../../hooks/useSymbolicAnnotations.js';
 import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
 import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
+import { useLandXmlRendererOverlay } from '../../hooks/useLandXmlOverlayLines.js';
+import { selectLandXmlViewportPick } from './landXmlViewportSelection.js';
 import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
 import { subscribeViewportHealth } from './device-loss-report.js';
 import { runGpuUpload } from './gpu-upload-guard.js';
 import { anchorWorldLineVertices } from '@/lib/renderer/line-overlay-rte';
+import { useTranslation } from '@/i18n';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -112,6 +110,7 @@ export function Viewport({
   const rendererRef = useRef<Renderer | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
+  const { t } = useTranslation();
 
   const focusViewportForKeyboardShortcuts = useCallback(() => {
     const canvas = canvasRef.current;
@@ -200,6 +199,7 @@ export function Viewport({
     }
 
     const globalId = pickResult.expressId;
+    if (selectLandXmlViewportPick(currentState, globalId)) return;
     const resolvedRef = resolveEntityRef(globalId);
 
     // Set globalId for renderer (highlighting uses globalIds directly)
@@ -1519,6 +1519,8 @@ export function Viewport({
     uploadDxfLines3DGuarded(renderer, dxfLines3D);
   }, [dxfLines3D, isInitialized]);
 
+  useLandXmlRendererOverlay(rendererRef, isInitialized);
+
   // Upload IfcAnnotation text + fill data for the WebGPU symbolic overlay
   // pipelines. Map the hook's per-annotation records into the SymbolicFillInput
   // / SymbolicTextInput shape the renderer expects. Empty arrays clear cleanly.
@@ -1805,11 +1807,9 @@ export function Viewport({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
               </svg>
             </div>
-            <p className="font-semibold text-sm">3D Rendering Failed</p>
+            <p className="font-semibold text-sm">{t('viewportLighting.viewport.renderFailed.title')}</p>
             <p className="text-xs text-muted-foreground">{initError}</p>
-            <p className="text-xs text-muted-foreground">
-              Try using Chrome 113+, Edge 113+, or Safari 18+ with WebGPU support.
-            </p>
+            <p className="text-xs text-muted-foreground">{t('viewportLighting.viewport.renderFailed.browserHint')}</p>
           </div>
         </div>
       )}

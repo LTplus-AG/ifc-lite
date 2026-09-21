@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { toast } from '@/components/ui/toast';
 import { downloadFile } from '@/lib/export/download';
 import {
@@ -155,14 +156,26 @@ export function useReviewGroups(
   // as the paint, before the user sees anything — the refused-confirm refresh
   // this state exists for is unaffected, since `setGroups` is still called
   // from ordinary event handlers there, not from this effect.
+  // `revision` (#4918 review finding, macroscope on this PR): `describeEntity`
+  // resolves its labels through the module-level `resolve` at BUILD time, so
+  // a locale switch while the review is open needs this effect to rebuild
+  // `groups` too, or the entity labels stay in the old locale while the
+  // dialog's own `t()`-driven chrome and `describeChangeKind(c, t)` (which
+  // both re-read the CURRENT locale on every render) retranslate around
+  // them — `revision` (not just `locale`) so an active-catalogue swap
+  // (`registerLocale` overwriting the locale currently in use, not only a
+  // `setLocale` call) also triggers a rebuild, matching what `useTranslation`
+  // itself documents as its own re-render trigger.
+  const { revision } = useTranslation();
   const [groups, setGroups] = useState<ModelReviewGroup[]>([]);
   useLayoutEffect(() => {
     setGroups(reviewOpen ? buildReviewGroups(useViewerStore.getState().mutationViews, changed) : []);
-  }, [reviewOpen, changed]);
+  }, [reviewOpen, changed, revision]);
   return [groups, setGroups];
 }
 
 export function ExportChangesButton({ className }: ExportChangesButtonProps) {
+  const { t } = useTranslation();
   // Subscribe to everything that can change the pending-changes count so the
   // badge stays live. `mutationVersion` bumps on every property / quantity /
   // attribute / georef mutation; schedule edits are watched explicitly.
@@ -309,8 +322,8 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
 
   const tooltip =
     modelCount > 1
-      ? `Export changes in ${modelCount} models (${totalCount} changes)`
-      : `Export IFC with ${totalCount} change${totalCount === 1 ? '' : 's'} applied`;
+      ? t('exportChangesButton.tooltipMulti', { models: modelCount, count: totalCount })
+      : t('exportChangesButton.tooltipSingle', { count: totalCount });
 
   return (
     <>
@@ -337,7 +350,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
             ) : (
               <Download className="h-4 w-4 mr-2" />
             )}
-            Export Changes
+            {t('exportChangesButton.buttonLabel')}
             <Badge className="ml-2 text-xs bg-amber-500 text-white border-transparent hover:bg-amber-500">
               {totalCount}
             </Badge>

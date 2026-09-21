@@ -22,9 +22,17 @@ pub(crate) fn preflight_xml_tokens(
     let mut poller = CancellationPoller::new(cancelled);
     poller.check()?;
     let mut index = 0;
+    let mut element_depth = 0usize;
     while index < input.len() {
         if input[index] != b'<' {
+            let start = index;
             scan_text(input, &mut index, limits.max_text_bytes, &mut poller)?;
+            if element_depth == 0 && !input[start..index].iter().copied().all(is_xml_s) {
+                return Err(error(
+                    Code::InvalidXml,
+                    "LandXML document has non-whitespace content outside its root element",
+                ));
+            }
             continue;
         }
         if input[index..].starts_with(b"<!--") {
@@ -43,6 +51,12 @@ pub(crate) fn preflight_xml_tokens(
                 limits.max_text_bytes,
                 &mut poller,
             )?;
+            if element_depth == 0 {
+                return Err(error(
+                    Code::InvalidXml,
+                    "LandXML document has CDATA outside its root element",
+                ));
+            }
         } else if input[index..].starts_with(b"<?") {
             scan_terminated(input, &mut index, b"?>", markup_limit, &mut poller)?;
         } else if input[index..].starts_with(b"<!DOCTYPE") {
@@ -51,10 +65,33 @@ pub(crate) fn preflight_xml_tokens(
             // XML for quick-xml to classify without a false DTD refusal.
             return Err(error(Code::DtdForbidden, "DOCTYPE is not allowed"));
         } else {
+            let start = index;
             scan_markup(input, &mut index, markup_limit, &mut poller)?;
+            update_element_depth(&input[start..index], &mut element_depth);
         }
     }
     Ok(())
+}
+
+/// Track only enough XML structure to recognize raw content outside the root.
+/// Quick-xml remains the authoritative parser for element names and malformed
+/// markup; this lexical pass intentionally does not duplicate that grammar.
+fn update_element_depth(markup: &[u8], element_depth: &mut usize) {
+    if markup.starts_with(b"</") {
+        *element_depth = element_depth.saturating_sub(1);
+    } else if !markup.starts_with(b"<!") && !is_empty_element(markup) {
+        *element_depth = element_depth.saturating_add(1);
+    }
+}
+
+fn is_empty_element(markup: &[u8]) -> bool {
+    markup
+        .strip_suffix(b">")
+        .is_some_and(|body| body.iter().rev().copied().find(|byte| !is_xml_s(*byte)) == Some(b'/'))
+}
+
+fn is_xml_s(byte: u8) -> bool {
+    matches!(byte, b' ' | b'\t' | b'\r' | b'\n')
 }
 
 fn max_markup_bytes(limits: &LandXmlLimits) -> Result<usize> {

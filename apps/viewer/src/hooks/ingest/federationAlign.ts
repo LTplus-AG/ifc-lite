@@ -5,9 +5,6 @@
 /**
  * Georeferencing / federation alignment helpers.
  *
- * Extracted verbatim from useIfcFederation.ts so the unified model-load path
- * (useIfcLoader's finalizeModel) can reuse them without a circular dependency.
- * The extraction was behaviour-preserving; keep the issue-#595 / issue-#658
  * comments, which encode subtle alignment behaviour. Since then, #2526 routed
  * every read of a model's MapConversion through `effectiveConv` (the
  * map-absolute guard); that is the only deliberate change to the maths.
@@ -15,16 +12,19 @@
 
 import {
   type IfcDataStore,
-  type MapConversion,
-  type ProjectedCRS,
 } from '@ifc-lite/parser';
-import type { CoordinateInfo } from '@ifc-lite/geometry';
+import {
+  localViewerToProjected,
+  projectedToLocalViewer,
+  type CoordinateInfo,
+  type ModelSpatialReference,
+} from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '../../store/index.js';
 import { getEffectiveGeoreference, hasStandardGeoreferencing, type GeorefMutationDataLike } from '../../lib/geo/effective-georef.js';
-import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from '../../lib/geo/geo-scale.js';
-import { effectiveMapConversionForGeometry } from '../../lib/geo/map-absolute.js';
-import { resolveProjection } from '../../lib/geo/reproject.js';
+import { resolveProjectionId } from '../../lib/geo/reproject.js';
 import { totalYupOffset } from '../../lib/geo/coordinate-frame.js';
+import { buildSpatialAlignmentTransform, isIdentitySpatialTransform } from './federationSpatialTransform.js';
+import { spatialReferenceFromIfc } from '../../lib/geo/ifc-spatial-reference.js';
 import {
   alignEntityWorldAabbs,
   applyAffineTransform,
@@ -36,63 +36,31 @@ import {
   type EntityBoundsAccumulator,
 } from './federationAlignAabb.js';
 import { alignNormals } from './alignment-normals.js';
+import { projectedUnitToMetres } from './projected-units.js';
+import { canonicalRendererPlacement } from './federationCanonicalReference.js';
+import { emptyAlignedCoordinateInfo } from './federationEmptyFrame.js';
 import proj4 from 'proj4';
 
 type FederatedGeometryResult = NonNullable<FederatedModel['geometryResult']>;
 
-export interface ModelGeoref {
-  mapConversion: MapConversion;
-  projectedCRS: ProjectedCRS;
-  lengthUnitScale: number;
+/** One format-neutral model placement record used by every federation path. */
+export interface ModelSpatialPlacement {
+  spatialReference: ModelSpatialReference;
   coordinateInfo?: CoordinateInfo;
 }
 
-function getMapUnitScale(georef: ModelGeoref): number {
-  return resolveMapUnitToMetreScale(georef.projectedCRS.mapUnitScale, georef.lengthUnitScale ?? 1);
-}
-
-/**
- * The conversion the alignment maths must apply for this model: the authored
- * one, unless the model's geometry already sits at the declared map anchor —
- * the map-absolute double-georeferencing signature (#2526) — in which case
- * the neutralised (zero-offset, identity-rotation) conversion reads the
- * geometry's absolute coordinates through instead of transforming them twice.
- */
-function effectiveConv(georef: ModelGeoref): MapConversion {
-  return effectiveMapConversionForGeometry(
-    georef.mapConversion,
-    getMapUnitScale(georef),
-    georef.coordinateInfo,
-  );
-}
-
-function getAxis(georef: ModelGeoref): {
-  a: number; o: number; scaleX: number; scaleY: number; scaleZ: number; denom: number;
-} {
-  const conversion = effectiveConv(georef);
-  const a = conversion.xAxisAbscissa ?? 1;
-  const o = conversion.xAxisOrdinate ?? 0;
-  // Use the effective horizontal scale: viewer geometry is already in metres,
-  // so applying IfcMapConversion.Scale raw would double-scale — see issue #595.
-  const lengthUnitScale = georef.lengthUnitScale ?? 1;
-  const mapUnitScale = resolveMapUnitToMetreScale(georef.projectedCRS.mapUnitScale, lengthUnitScale);
-  const { x: scaleX, y: scaleY, z: scaleZ } = getEffectiveAxisScales(conversion, mapUnitScale, lengthUnitScale);
-  const denom = Math.max(a * a + o * o, 1e-12);
-  return { a, o, scaleX, scaleY, scaleZ, denom };
-}
-
-export function extractModelGeoref(
+export function extractModelSpatialPlacement(
   dataStore: IfcDataStore,
   coordinateInfo?: CoordinateInfo,
   mutations?: GeorefMutationDataLike,
-): ModelGeoref | null {
+): ModelSpatialPlacement | null {
   const georef = getEffectiveGeoreference(dataStore, coordinateInfo, mutations);
   // Only TRUE georeferencing (real IfcMapConversion + IfcProjectedCRS) may drive
   // federation alignment. A file with no IfcMapConversion gets a synthesised
   // `source: 'siteLocation'` georef (EPSG:4326 from IfcSite RefLatitude/Longitude/
   // Elevation) so it can still be pinned on the location map — but those are
   // geographic degrees plus a raw, un-unit-scaled site elevation, not a projected
-  // metric frame. buildGeorefAlignmentTransform assumes projected eastings/
+  // metric frame. The neutral placement resolver assumes projected eastings/
   // northings/height in metres, so feeding it site data places the second model
   // kilometres away: the BIMcollab ARC/STR pair share a site GUID but carry
   // RefElevation 0 vs 20000 mm, and the height term lands ARC ~20 km below STR.
@@ -103,19 +71,14 @@ export function extractModelGeoref(
     return null;
   }
   return {
-    mapConversion: georef.mapConversion,
-    projectedCRS: georef.projectedCRS,
-    lengthUnitScale: georef.lengthUnitScale,
     coordinateInfo,
+    spatialReference: spatialReferenceFromIfc({
+      mapConversion: georef.mapConversion,
+      projectedCRS: georef.projectedCRS,
+      lengthUnitScale: georef.lengthUnitScale,
+      coordinateInfo,
+    }),
   };
-}
-
-function crsKey(crs: ProjectedCRS): string {
-  return `${crs.name ?? ''}|${crs.geodeticDatum ?? ''}|${crs.mapProjection ?? ''}|${crs.mapZone ?? ''}`.toUpperCase();
-}
-
-function canAlignInSameProjectedCrs(a: ModelGeoref, b: ModelGeoref): boolean {
-  return crsKey(a.projectedCRS) === crsKey(b.projectedCRS);
 }
 
 function emptyBounds() {
@@ -143,94 +106,38 @@ function updateBounds(bounds: ReturnType<typeof emptyBounds>, x: number, y: numb
   return true;
 }
 
-function buildGeorefAlignmentTransform(source: ModelGeoref, reference: ModelGeoref): AffineTransform3D | null {
-  // Map-absolute geometry (#2526): per-model effective conversion, matching
-  // the axis pair getAxis() resolves from the same guard.
-  const sourceConv = effectiveConv(source);
-  const refConv = effectiveConv(reference);
-  const sourceAxis = getAxis(source);
-  const refAxis = getAxis(reference);
-  const refDenomX = refAxis.scaleX * refAxis.denom;
-  const refDenomY = refAxis.scaleY * refAxis.denom;
-  if (Math.abs(refDenomX) < 1e-12 || Math.abs(refDenomY) < 1e-12
-    || Math.abs(refAxis.scaleZ) < 1e-12) return null;
-
-  const sourceMapUnitScale = getMapUnitScale(source);
-  const refMapUnitScale = getMapUnitScale(reference);
-  const sourceOffset = totalYupOffset(source.coordinateInfo);
-  const refOffset = totalYupOffset(reference.coordinateInfo);
-
-  const eVx = sourceAxis.scaleX * sourceAxis.a;
-  const eVz = sourceAxis.scaleY * sourceAxis.o;
-  const eC = sourceConv.eastings * sourceMapUnitScale
-    + sourceAxis.scaleX * sourceAxis.a * sourceOffset.x
-    + sourceAxis.scaleY * sourceAxis.o * sourceOffset.z
-    - refConv.eastings * refMapUnitScale;
-
-  const nVx = sourceAxis.scaleX * sourceAxis.o;
-  const nVz = -sourceAxis.scaleY * sourceAxis.a;
-  const nC = sourceConv.northings * sourceMapUnitScale
-    + sourceAxis.scaleX * sourceAxis.o * sourceOffset.x
-    - sourceAxis.scaleY * sourceAxis.a * sourceOffset.z
-    - refConv.northings * refMapUnitScale;
-
-  const hC = sourceConv.orthogonalHeight * sourceMapUnitScale
-    + sourceAxis.scaleZ * sourceOffset.y
-    - refConv.orthogonalHeight * refMapUnitScale;
-
-  const xVx = (refAxis.a * eVx + refAxis.o * nVx) / refDenomX;
-  const xVz = (refAxis.a * eVz + refAxis.o * nVz) / refDenomX;
-  const xC = (refAxis.a * eC + refAxis.o * nC) / refDenomX - refOffset.x;
-
-  const yVx = (-refAxis.o * eVx + refAxis.a * nVx) / refDenomY;
-  const yVz = (-refAxis.o * eVz + refAxis.a * nVz) / refDenomY;
-  // NOTE: the refOffset handling is intentionally asymmetric between X and Z and
-  // must NOT be "symmetrised". refOffset is subtracted from the FINAL viewer
-  // coordinate on every axis. X maps positively (`tx = +xC`), so its offset is
-  // folded into xC above. Z maps to the NEGATED north axis (`tz = -yC`), so its
-  // offset is applied after the negation, leaving yC offset-free here. This
-  // matches alignGeometryAcrossCrs: alignedZ = refWorldZ - refOffset.z with
-  // refWorldZ = -ifcYr. Folding -refOffset.z into yC would flip its sign.
-  const yC = (-refAxis.o * eC + refAxis.a * nC) / refDenomY;
-
-  return {
-    m00: xVx,
-    m01: 0,
-    m02: xVz,
-    tx: xC,
-    m10: 0,
-    m11: sourceAxis.scaleZ / refAxis.scaleZ,
-    m12: 0,
-    ty: hC / refAxis.scaleZ - refOffset.y,
-    m20: -yVx,
-    m21: 0,
-    m22: -yVz,
-    tz: -yC - refOffset.z,
-  };
-}
-
-function isIdentityTransform(transform: AffineTransform3D): boolean {
-  const eps = 1e-7;
-  return Math.abs(transform.m00 - 1) < eps
-    && Math.abs(transform.m01) < eps
-    && Math.abs(transform.m02) < eps
-    && Math.abs(transform.tx) < eps
-    && Math.abs(transform.m10) < eps
-    && Math.abs(transform.m11 - 1) < eps
-    && Math.abs(transform.m12) < eps
-    && Math.abs(transform.ty) < eps
-    && Math.abs(transform.m20) < eps
-    && Math.abs(transform.m21) < eps
-    && Math.abs(transform.m22 - 1) < eps
-    && Math.abs(transform.tz) < eps;
-}
-
 function applyAlignmentTransformAndUpdateBounds(
   geometry: FederatedGeometryResult,
   transform: AffineTransform3D,
   sourceInfo?: CoordinateInfo,
   referenceInfo?: CoordinateInfo,
-): void {
+): boolean {
+  // Same-CRS alignment is just as destructive as a proj4 hop.  Stage the
+  // entire result before publishing it: a NaN, f32 overflow, or an exception
+  // while updating dependent bounds must never leave half a model aligned.
+  const originalPositions = geometry.meshes.map((mesh) => new Float32Array(mesh.positions));
+  const originalOrigins = geometry.meshes.map((mesh) => mesh.origin ? [...mesh.origin] as [number, number, number] : undefined);
+  const originalNormals: Array<Float32Array<ArrayBufferLike>> = geometry.meshes
+    .map((mesh) => new Float32Array(mesh.normals));
+  const originalAabbs = geometry.meshes.map((mesh) => mesh.geometryAabb ? structuredClone(mesh.geometryAabb) : undefined);
+  const originalCoordinateInfo = structuredClone(geometry.coordinateInfo);
+  const originalInstancedAabbs = geometry.instancedGeometryAabbs
+    ? new Map(geometry.instancedGeometryAabbs)
+    : undefined;
+  const restoreSourceFrame = () => {
+    for (let index = 0; index < geometry.meshes.length; index++) {
+      const mesh = geometry.meshes[index];
+      mesh.positions = originalPositions[index];
+      mesh.origin = originalOrigins[index];
+      mesh.normals = originalNormals[index]!;
+      if (originalAabbs[index]) mesh.geometryAabb = structuredClone(originalAabbs[index]);
+      else delete mesh.geometryAabb;
+    }
+    geometry.coordinateInfo = structuredClone(originalCoordinateInfo);
+    geometry.instancedGeometryAabbs = originalInstancedAabbs
+      ? new Map(originalInstancedAabbs)
+      : undefined;
+  };
   const bounds = emptyBounds();
   let found = false;
   // Per-entity running bounds of the ALIGNED vertices — the re-measured world
@@ -239,46 +146,79 @@ function applyAlignmentTransformAndUpdateBounds(
   // arrived with a box are accumulated; the rest are not given one.
   const entityBounds = new Map<number, EntityBoundsAccumulator>();
 
+  const stagedMeshes: Array<{
+    positions: Float32Array;
+    origin: [number, number, number];
+    normals: Float32Array<ArrayBufferLike>;
+  }> = [];
   for (const mesh of geometry.meshes) {
     const positions = mesh.positions;
-    // Positions may be in the element's local frame (world = origin + position)
-    // on the wasm path. Fold the per-mesh origin into the world coord BEFORE the
-    // alignment affine; the result is written as absolute reference-frame coords
-    // and the stale origin is cleared below (else the renderer's model-matrix
-    // translate would double-count it). No-op when origin is absent/[0,0,0].
+    // Keep each mesh's local frame local.  Folding a million-metre origin into
+    // f32 positions destroys centimetre detail; affine linear terms apply to
+    // residual positions while the translated origin stays a f64 tuple.
     const o = mesh.origin;
     const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
+    const transformedOrigin = applyAffineTransform(transform, ox, oy, oz);
+    if (!transformedOrigin.every(Number.isFinite)) {
+      restoreSourceFrame();
+      console.warn('[ifc-lite] Same-CRS alignment refused: mesh origin is non-finite.');
+      return false;
+    }
+    const staged = new Float32Array(positions.length);
     const entityBox = mesh.geometryAabb ? entityBoundsFor(entityBounds, mesh.expressId) : null;
     for (let i = 0; i < positions.length; i += 3) {
-      const x = positions[i] + ox;
-      const y = positions[i + 1] + oy;
-      const z = positions[i + 2] + oz;
-      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
-        continue;
+      const localX = positions[i];
+      const localY = positions[i + 1];
+      const localZ = positions[i + 2];
+      if (!Number.isFinite(localX) || !Number.isFinite(localY) || !Number.isFinite(localZ)) {
+        restoreSourceFrame();
+        console.warn('[ifc-lite] Same-CRS alignment refused: source contains a non-finite vertex.');
+        return false;
       }
 
-      // Inlined `applyAffineTransform` — this runs per vertex and must not
-      // allocate a tuple each time. Keep the two in step; the aligned-box
-      // tests in federationAlign.test.ts assert against these very positions.
+      // Transform the WORLD vertex, then subtract a separately transformed
+      // local origin. Applying the affine to `position` alone cancels the
+      // source origin (and loses the exact 2.6Mm+centimetre scan case).
+      const x = localX + ox, y = localY + oy, z = localZ + oz;
       const alignedX = transform.m00 * x + transform.m01 * y + transform.m02 * z + transform.tx;
       const alignedY = transform.m10 * x + transform.m11 * y + transform.m12 * z + transform.ty;
       const alignedZ = transform.m20 * x + transform.m21 * y + transform.m22 * z + transform.tz;
-      positions[i] = alignedX;
-      positions[i + 1] = alignedY;
-      positions[i + 2] = alignedZ;
-      found = updateBounds(bounds, alignedX, alignedY, alignedZ) || found;
-      // Read back the STORED f32, not the f64 above, so the entity's box bounds
-      // the mesh as it now exists rather than the arithmetic that produced it.
-      if (entityBox) extendEntityBounds(entityBox, positions[i], positions[i + 1], positions[i + 2]);
+      const residualX = Math.fround(alignedX - transformedOrigin[0]);
+      const residualY = Math.fround(alignedY - transformedOrigin[1]);
+      const residualZ = Math.fround(alignedZ - transformedOrigin[2]);
+      if (!Number.isFinite(residualX) || !Number.isFinite(residualY) || !Number.isFinite(residualZ)) {
+        restoreSourceFrame();
+        console.warn('[ifc-lite] Same-CRS alignment refused: f32 output would overflow.');
+        return false;
+      }
+      staged[i] = residualX;
+      staged[i + 1] = residualY;
+      staged[i + 2] = residualZ;
+      found = updateBounds(
+        bounds,
+        transformedOrigin[0] + staged[i],
+        transformedOrigin[1] + staged[i + 1],
+        transformedOrigin[2] + staged[i + 2],
+      ) || found;
+      // Read the staged f32 residual back with its f64 origin, so bounds match
+      // the actual mesh representation rather than ideal arithmetic.
+      if (entityBox) extendEntityBounds(entityBox,
+        transformedOrigin[0] + staged[i],
+        transformedOrigin[1] + staged[i + 1],
+        transformedOrigin[2] + staged[i + 2]);
     }
-    // Positions are now absolute in the reference viewer frame; drop the stale
-    // local-frame origin so downstream consumers don't re-add it.
-    if (o) mesh.origin = [0, 0, 0];
 
     const normals = mesh.normals;
-    if (normals && normals.length >= 3) {
-      alignNormals(normals, transform);
+    const stagedNormals: Float32Array<ArrayBufferLike> = new Float32Array(normals);
+    if (normals.length >= 3) {
+      alignNormals(stagedNormals, transform);
+      if (![...stagedNormals].every(Number.isFinite)) {
+        restoreSourceFrame();
+        console.warn('[ifc-lite] Same-CRS alignment refused: normal transform produced a non-finite value.');
+        return false;
+      }
     }
+    stagedMeshes.push({ positions: staged, origin: [transformedOrigin[0], transformedOrigin[1], transformedOrigin[2]], normals: stagedNormals });
   }
 
   // The per-entity world boxes (#1891) describe the vertices just rewritten, so
@@ -288,28 +228,41 @@ function applyAlignmentTransformAndUpdateBounds(
   // coords, hence the offset strip/re-apply, and the reference offset is the
   // one the model now carries (set on `coordinateInfo` below).
   const referenceOffset = totalYupOffset(referenceInfo);
-  alignEntityWorldAabbs(
-    geometry,
-    toAbsoluteFrameMap(
-      (x, y, z) => applyAffineTransform(transform, x, y, z),
-      totalYupOffset(sourceInfo),
-      referenceOffset,
-    ),
-    finishEntityBounds(entityBounds, referenceOffset),
-  );
+  try {
+    for (const [index, mesh] of geometry.meshes.entries()) {
+      const staged = stagedMeshes[index];
+      mesh.positions = staged.positions;
+      mesh.origin = staged.origin;
+      mesh.normals = staged.normals;
+    }
+    alignEntityWorldAabbs(
+      geometry,
+      toAbsoluteFrameMap(
+        (x, y, z) => applyAffineTransform(transform, x, y, z),
+        totalYupOffset(sourceInfo),
+        referenceOffset,
+      ),
+      finishEntityBounds(entityBounds, referenceOffset),
+    );
 
-  // These vertices have been re-baked into a new affine frame. Preserve the
-  // legacy offsets needed to interpret them, but deliberately drop
-  // `wasmRtcFrame`: it describes the source bytes' mesh-parse frame and would
-  // be false provenance for overlays parsed after this mutation.
-  geometry.coordinateInfo = {
-    originShift: referenceInfo?.originShift ?? { x: 0, y: 0, z: 0 },
-    originalBounds: found ? bounds : zeroBounds(),
-    shiftedBounds: found ? bounds : zeroBounds(),
-    hasLargeCoordinates: referenceInfo?.hasLargeCoordinates ?? false,
-    wasmRtcOffset: referenceInfo?.wasmRtcOffset,
-    buildingRotation: referenceInfo?.buildingRotation,
-  };
+    // These vertices have been re-baked into a new affine frame. Preserve the
+    // legacy offsets needed to interpret them, but deliberately drop
+    // `wasmRtcFrame`: it describes the source bytes' mesh-parse frame and would
+    // be false provenance for overlays parsed after this mutation.
+    geometry.coordinateInfo = {
+      originShift: referenceInfo?.originShift ?? { x: 0, y: 0, z: 0 },
+      originalBounds: found ? bounds : zeroBounds(),
+      shiftedBounds: found ? bounds : zeroBounds(),
+      hasLargeCoordinates: referenceInfo?.hasLargeCoordinates ?? false,
+      wasmRtcOffset: referenceInfo?.wasmRtcOffset,
+      buildingRotation: referenceInfo?.buildingRotation,
+    };
+    return true;
+  } catch (error) {
+    restoreSourceFrame();
+    console.warn('[ifc-lite] Same-CRS alignment aborted; restored the complete source frame.', error);
+    return false;
+  }
 }
 
 /**
@@ -326,37 +279,58 @@ function applyAlignmentTransformAndUpdateBounds(
  *   projected    ──(reference MapConversion inverse)▶  IFC(Zup, reference)
  *   IFC(ref)     ──(axis swap, reference RTC/shift)─▶  viewer(Yup, reference frame)
  *
- * Vertical: height passes through unchanged. Browser-side proj4 has no vertical
- * datum transforms (no NTv2/gtx grids), so cross-CRS vertical mismatches are
- * left for the user to resolve via the per-model orthogonalHeight editor.
+ * Vertical: height passes through unchanged only after the caller proves both
+ * references declare the same vertical CRS. Browser-side proj4 has no vertical
+ * datum transforms (no NTv2/gtx grids), so unknown or mismatched vertical
+ * references are refused for explicit manual placement instead.
  *
  * Normals are NOT rotated. Cross-CRS rotations between projected systems in the
  * same locality are sub-degree, and recomputing per-vertex would require a
  * Jacobian per mesh — acceptable trade-off for now, document if it bites.
  */
-async function alignGeometryAcrossCrs(
-  geometry: FederatedGeometryResult,
-  source: ModelGeoref,
-  reference: ModelGeoref,
-): Promise<boolean> {
-  const sourceProjDef = await resolveProjection(source.projectedCRS);
-  const refProjDef = await resolveProjection(reference.projectedCRS);
+async function alignGeometryAcrossCrs(geometry: FederatedGeometryResult, source: ModelSpatialPlacement,
+  reference: ModelSpatialPlacement, allowEmptyGeometry: boolean): Promise<boolean> {
+  // Reprojection is all-or-nothing.  Publishing a mesh with even one source
+  // vertex left in its old CRS creates geometry that no later re-alignment can
+  // repair: its pre-alignment snapshot contains one object in two frames.
+  // Keep the originals until every vertex has a target coordinate.
+  const originalPositions = geometry.meshes.map((mesh) => new Float32Array(mesh.positions));
+  const originalOrigins = geometry.meshes.map((mesh) => mesh.origin ? [...mesh.origin] as [number, number, number] : undefined);
+  const originalAabbs = geometry.meshes.map((mesh) => mesh.geometryAabb ? structuredClone(mesh.geometryAabb) : undefined);
+  const originalCoordinateInfo = structuredClone(geometry.coordinateInfo);
+  const originalInstancedAabbs = geometry.instancedGeometryAabbs
+    ? new Map(geometry.instancedGeometryAabbs)
+    : undefined;
+  const restoreSourceFrame = () => {
+    for (let index = 0; index < geometry.meshes.length; index++) {
+      geometry.meshes[index].positions = originalPositions[index];
+      geometry.meshes[index].origin = originalOrigins[index];
+      const aabb = originalAabbs[index];
+      if (aabb) geometry.meshes[index].geometryAabb = structuredClone(aabb);
+      else delete geometry.meshes[index].geometryAabb;
+    }
+    geometry.coordinateInfo = structuredClone(originalCoordinateInfo);
+    geometry.instancedGeometryAabbs = originalInstancedAabbs
+      ? new Map(originalInstancedAabbs)
+      : undefined;
+  };
+  const sourceCrs = source.spatialReference.horizontal?.id;
+  const referenceCrs = reference.spatialReference.horizontal?.id;
+  if (!sourceCrs || !referenceCrs) return false;
+  // Browser proj4 only supplies a horizontal operation. An absent or different
+  // vertical datum is not safe to carry through unchanged; leave the model in
+  // its own frame for the explicit manual-placement workflow instead.
+  if (!source.spatialReference.vertical || !reference.spatialReference.vertical
+    || source.spatialReference.vertical.id !== reference.spatialReference.vertical.id) return false;
+  const sourceProjDef = await resolveProjectionId(sourceCrs);
+  const refProjDef = await resolveProjectionId(referenceCrs);
   if (!sourceProjDef || !refProjDef) return false;
+  const sourceProjectedUnit = projectedUnitToMetres(sourceProjDef);
+  const referenceProjectedUnit = projectedUnitToMetres(refProjDef);
+  if (!sourceProjectedUnit || !referenceProjectedUnit) return false;
 
-  const sourceMapUnitScale = getMapUnitScale(source);
-  const refMapUnitScale = getMapUnitScale(reference);
-  const sourceAxis = getAxis(source);
-  const refAxis = getAxis(reference);
   const sourceOffset = totalYupOffset(source.coordinateInfo);
   const refOffset = totalYupOffset(reference.coordinateInfo);
-
-  const refDenomX = refAxis.scaleX * refAxis.denom;
-  const refDenomY = refAxis.scaleY * refAxis.denom;
-  if ([refDenomX, refDenomY, refAxis.scaleZ].some((value) => Math.abs(value) < 1e-12)) return false;
-
-  // Map-absolute geometry (#2526): same per-model guard as the same-CRS path.
-  const sourceConv = effectiveConv(source);
-  const refConv = effectiveConv(reference);
 
   const bounds = emptyBounds();
   let found = false;
@@ -366,14 +340,6 @@ async function alignGeometryAcrossCrs(
   // Per-entity running bounds of the reprojected vertices — see the same-CRS
   // path above and federationAlignAabb.ts.
   const entityBounds = new Map<number, EntityBoundsAccumulator>();
-  // Entities where at least one vertex would not reproject. proj4 answers
-  // `Infinity` for a point outside the target projection's domain, and that is
-  // per POINT: an outlying vertex can stay in the source frame while the rest
-  // of its element moves. The element's mesh then spans two coordinate frames,
-  // so its measurement is withdrawn and it loses its box entirely rather than
-  // publishing one that covers only the half that moved.
-  const partiallyReprojected = new Set<number>();
-
   /**
    * One point from the source model's viewer frame into the reference model's,
    * via both MapConversions and a proj4 hop. Returns null when the hop failed
@@ -388,30 +354,22 @@ async function alignGeometryAcrossCrs(
     vy: number,
     vz: number,
   ): [number, number, number] | null => {
-    // viewer(Y-up, source-local) → world(Y-up) → IFC(Z-up, source)
-    const wx = vx + sourceOffset.x;
-    const wy = vy + sourceOffset.y;
-    const wz = vz + sourceOffset.z;
-    const ifcXs = wx;
-    const ifcYs = -wz;
-    const ifcZs = wy;
-
-    // IFC(source) → source projected (apply source MapConversion)
-    const eS = sourceConv.eastings * sourceMapUnitScale
-      + sourceAxis.a * sourceAxis.scaleX * ifcXs
-      - sourceAxis.o * sourceAxis.scaleY * ifcYs;
-    const nS = sourceConv.northings * sourceMapUnitScale
-      + sourceAxis.o * sourceAxis.scaleX * ifcXs
-      + sourceAxis.a * sourceAxis.scaleY * ifcYs;
-    const hS = sourceConv.orthogonalHeight * sourceMapUnitScale + sourceAxis.scaleZ * ifcZs;
+    // Source viewer frame → source projected frame.  The adapter owns all
+    // format-specific units, axes and map-operation semantics.
+    const projectedSource = localViewerToProjected(source.spatialReference, [vx, vy, vz], sourceOffset);
+    if (!projectedSource) return null;
+    const [eS, nS, hS] = projectedSource;
 
     // source projected → reference projected via proj4
     let eR: number;
     let nR: number;
     try {
-      const projected = proj4(sourceProjDef, refProjDef, [eS, nS]);
-      eR = projected[0];
-      nR = projected[1];
+      const projected = proj4(sourceProjDef, refProjDef, [
+        eS / sourceProjectedUnit,
+        nS / sourceProjectedUnit,
+      ]);
+      eR = projected[0] * referenceProjectedUnit;
+      nR = projected[1] * referenceProjectedUnit;
     } catch (error) {
       if (firstProjError == null) firstProjError = error;
       return null;
@@ -420,18 +378,14 @@ async function alignGeometryAcrossCrs(
     // Height transformed under identity (no vertical datum hop in browser).
     const hR = hS;
 
-    // reference projected → IFC(reference): invert reference MapConversion
-    const dE = eR - refConv.eastings * refMapUnitScale;
-    const dN = nR - refConv.northings * refMapUnitScale;
-    const ifcXr = (refAxis.a * dE + refAxis.o * dN) / refDenomX;
-    const ifcYr = (-refAxis.o * dE + refAxis.a * dN) / refDenomY;
-    const ifcZr = (hR - refConv.orthogonalHeight * refMapUnitScale) / refAxis.scaleZ;
-
-    // IFC(Z-up, reference) → world(Y-up) → viewer(Y-up, reference-local)
-    return [ifcXr - refOffset.x, ifcZr - refOffset.y, -ifcYr - refOffset.z];
+    // Reference projected frame → reference viewer frame through the same
+    // neutral inverse used by same-CRS and point-cloud placement.
+    const target = projectedToLocalViewer(reference.spatialReference, [eR, nR, hR], refOffset);
+    return target ? [target[0], target[1], target[2]] : null;
   };
 
-  for (const mesh of geometry.meshes) {
+  const stagedMeshes: Array<{ positions: Float32Array; origin: [number, number, number] } | undefined> = new Array(geometry.meshes.length);
+  for (const [meshIndex, mesh] of geometry.meshes.entries()) {
     const positions = mesh.positions;
     // Fold the per-element local-frame origin into the world coord before the
     // reprojection (proj4 is nonlinear, so it must run on the absolute world
@@ -440,50 +394,105 @@ async function alignGeometryAcrossCrs(
     const o = mesh.origin;
     const oox = o ? o[0] : 0, ooy = o ? o[1] : 0, ooz = o ? o[2] : 0;
     const entityBox = mesh.geometryAabb ? entityBoundsFor(entityBounds, mesh.expressId) : null;
-    let meshPartiallyReprojected = false;
+    const alignedVertices: Array<readonly [number, number, number]> = [];
     for (let i = 0; i < positions.length; i += 3) {
       const vx = positions[i] + oox;
       const vy = positions[i + 1] + ooy;
       const vz = positions[i + 2] + ooz;
-      if (!Number.isFinite(vx) || !Number.isFinite(vy) || !Number.isFinite(vz)) continue;
+      if (!Number.isFinite(vx) || !Number.isFinite(vy) || !Number.isFinite(vz)) {
+        restoreSourceFrame();
+        console.warn('[ifc-lite] Cross-CRS alignment refused: source contains a non-finite vertex.');
+        return false;
+      }
 
       attempts += 1;
       const aligned = toReferenceFrame(vx, vy, vz);
       if (!aligned) {
         projFailures += 1;
-        meshPartiallyReprojected = true;
-        continue;
+        restoreSourceFrame();
+        console.warn(
+          `[ifc-lite] Cross-CRS alignment refused: ${projFailures}/${attempts} vertex transforms failed; `
+          + 'the model remains wholly in its source frame.',
+          firstProjError,
+        );
+        return false;
       }
       const [alignedX, alignedY, alignedZ] = aligned;
-
-      positions[i] = alignedX;
-      positions[i + 1] = alignedY;
-      positions[i + 2] = alignedZ;
       found = updateBounds(bounds, alignedX, alignedY, alignedZ) || found;
-      // The STORED f32, so the box bounds the mesh as it now exists.
-      if (entityBox) extendEntityBounds(entityBox, positions[i], positions[i + 1], positions[i + 2]);
+      alignedVertices.push(aligned);
+      if (entityBox) extendEntityBounds(entityBox, alignedX, alignedY, alignedZ);
     }
-    if (meshPartiallyReprojected) partiallyReprojected.add(mesh.expressId);
-    // Positions are now absolute in the reference viewer frame; drop the stale
-    // local-frame origin so downstream consumers don't re-add it.
-    if (o) mesh.origin = [0, 0, 0];
+    if (alignedVertices.length === 0) continue;
+
+    // Keep the derived frame local: writing absolute ~million-metre positions
+    // to f32 loses centimetres. Transform the source origin when it exists;
+    // otherwise seed the local frame at the first transformed vertex.
+    const transformedOrigin = o
+      ? toReferenceFrame(oox, ooy, ooz)
+      : alignedVertices[0];
+    if (!transformedOrigin) {
+      restoreSourceFrame();
+      console.warn('[ifc-lite] Cross-CRS alignment refused: mesh origin could not be transformed.');
+      return false;
+    }
+    const staged = new Float32Array(positions.length);
+    for (let index = 0; index < alignedVertices.length; index += 1) {
+      const vertex = alignedVertices[index];
+      const x = vertex[0] - transformedOrigin[0];
+      const y = vertex[1] - transformedOrigin[1];
+      const z = vertex[2] - transformedOrigin[2];
+      const nx = Math.fround(x), ny = Math.fround(y), nz = Math.fround(z);
+      if (!Number.isFinite(nx) || !Number.isFinite(ny) || !Number.isFinite(nz)) {
+        restoreSourceFrame();
+        console.warn('[ifc-lite] Cross-CRS alignment refused: f32 output would overflow.');
+        return false;
+      }
+      const base = index * 3;
+      staged[base] = nx; staged[base + 1] = ny; staged[base + 2] = nz;
+    }
+    stagedMeshes[meshIndex] = { positions: staged, origin: [transformedOrigin[0], transformedOrigin[1], transformedOrigin[2]] };
   }
 
   if (!found) {
+    if (allowEmptyGeometry && attempts === 0) {
+      geometry.coordinateInfo = emptyAlignedCoordinateInfo(originalCoordinateInfo, reference.coordinateInfo);
+      return true;
+    }
+    restoreSourceFrame();
     console.warn(
       `[ifc-lite] Cross-CRS alignment failed: ${projFailures}/${attempts} `
-      + `vertex transforms failed for ${source.projectedCRS.name} → ${reference.projectedCRS.name}; `
+      + `vertex transforms failed for ${sourceCrs} → ${referenceCrs}; `
       + 'no vertices were successfully reprojected. Leaving geometry untouched.',
       firstProjError,
     );
     return false;
   }
 
+  if (projFailures > 0) {
+    restoreSourceFrame();
+    console.warn(
+      `[ifc-lite] Cross-CRS alignment refused: ${projFailures}/${attempts} vertex transforms failed; `
+      + 'the model remains wholly in its source frame.',
+      firstProjError,
+    );
+    return false;
+  }
+
+  // Nothing has been published yet. Commit the complete staged vertex result
+  // before updating dependent boxes/frame metadata; any exception below rolls
+  // every touched field back through `restoreSourceFrame`.
+  try {
+    for (const [index, mesh] of geometry.meshes.entries()) {
+      const staged = stagedMeshes[index];
+      if (!staged) continue;
+      mesh.positions = staged.positions;
+      mesh.origin = staged.origin;
+    }
+
   // Same trip for the per-entity world boxes (#1891): meshed entities re-measured
   // from the reprojected vertices, the instanced-only channel corner-transformed
   // (proj4 is nonlinear, so those eight corners are reprojected individually and
   // the AABB re-derived from the results) — see federationAlignAabb.ts.
-  for (const expressId of partiallyReprojected) entityBounds.delete(expressId);
   alignEntityWorldAabbs(
     geometry,
     toAbsoluteFrameMap(toReferenceFrame, sourceOffset, refOffset),
@@ -502,15 +511,12 @@ async function alignGeometryAcrossCrs(
     buildingRotation: reference.coordinateInfo?.buildingRotation,
   };
 
-  if (projFailures > 0) {
-    console.warn(
-      `[ifc-lite] Cross-CRS alignment: ${projFailures}/${attempts} vertex transforms `
-      + `failed from ${source.projectedCRS.name} to ${reference.projectedCRS.name}. `
-      + 'Those vertices are left at their original positions.',
-      firstProjError,
-    );
+    return true;
+  } catch (error) {
+    restoreSourceFrame();
+    console.warn('[ifc-lite] Cross-CRS alignment aborted; restored the complete source frame.', error);
+    return false;
   }
-  return true;
 }
 
 export type FederationAlignmentStatus = 'same-crs' | 'reprojected' | 'identity' | 'failed';
@@ -522,22 +528,23 @@ export type FederationAlignmentStatus = 'same-crs' | 'reprojected' | 'identity' 
  */
 export async function alignGeometryToReference(
   geometry: FederatedGeometryResult,
-  source: ModelGeoref,
-  reference: ModelGeoref,
+  source: ModelSpatialPlacement,
+  reference: ModelSpatialPlacement,
+  options: { allowEmptyGeometry?: boolean } = {},
 ): Promise<FederationAlignmentStatus> {
-  if (canAlignInSameProjectedCrs(source, reference)) {
-    const transform = buildGeorefAlignmentTransform(source, reference);
+  if (source.spatialReference.horizontal?.id === reference.spatialReference.horizontal?.id) {
+    const transform = buildSpatialAlignmentTransform(source, reference);
     if (!transform) return 'failed';
-    if (isIdentityTransform(transform)) return 'identity';
-    applyAlignmentTransformAndUpdateBounds(
+    if (isIdentitySpatialTransform(transform)) return 'identity';
+    const applied = applyAlignmentTransformAndUpdateBounds(
       geometry,
       transform,
       source.coordinateInfo,
       reference.coordinateInfo,
     );
-    return 'same-crs';
+    return applied ? 'same-crs' : 'failed';
   }
-  const ok = await alignGeometryAcrossCrs(geometry, source, reference);
+  const ok = await alignGeometryAcrossCrs(geometry, source, reference, options.allowEmptyGeometry === true);
   return ok ? 'reprojected' : 'failed';
 }
 
@@ -551,18 +558,22 @@ export async function alignGeometryToReference(
  *      a stable anchor across loads while letting the user override when they
  *      want a different model to drive the world frame).
  */
-export function findReferenceGeorefModel(): { modelId: string; georef: ModelGeoref } | null {
+export function findReferenceSpatialModel(): { modelId: string; placement: ModelSpatialPlacement } | null {
   const state = useViewerStore.getState();
   const override = state.anchorModelIdOverride;
   if (override) {
     const model = state.models.get(override) as FederatedModel | undefined;
+    if (model?.spatialReference && model.geometryResult
+      && model.spatialReference.horizontal && model.spatialReference.vertical) {
+      return { modelId: override, placement: canonicalRendererPlacement({ spatialReference: model.spatialReference, coordinateInfo: model.geometryResult.coordinateInfo }) };
+    }
     if (model?.ifcDataStore && model.geometryResult) {
-      const georef = extractModelGeoref(
+      const placement = extractModelSpatialPlacement(
         model.ifcDataStore,
         model.geometryResult.coordinateInfo,
         state.georefMutations.get(override),
       );
-      if (georef) return { modelId: override, georef };
+      if (placement) return { modelId: override, placement: canonicalRendererPlacement(placement) };
     }
     // Fall through if the override no longer resolves — keeps loads
     // recoverable even if the user removed the anchor they had pinned.
@@ -571,13 +582,17 @@ export function findReferenceGeorefModel(): { modelId: string; georef: ModelGeor
   const modelEntries = Array.from(state.models.entries()) as Array<[string, FederatedModel]>;
   const sorted = [...modelEntries].sort(([, a], [, b]) => (a.loadedAt ?? 0) - (b.loadedAt ?? 0));
   for (const [modelId, model] of sorted) {
+    if (model.spatialReference && model.geometryResult
+      && model.spatialReference.horizontal && model.spatialReference.vertical) {
+      return { modelId, placement: canonicalRendererPlacement({ spatialReference: model.spatialReference, coordinateInfo: model.geometryResult.coordinateInfo }) };
+    }
     if (!model.ifcDataStore || !model.geometryResult) continue;
-    const georef = extractModelGeoref(
+    const placement = extractModelSpatialPlacement(
       model.ifcDataStore,
       model.geometryResult.coordinateInfo,
       state.georefMutations.get(modelId),
     );
-    if (georef) return { modelId, georef };
+    if (placement) return { modelId, placement: canonicalRendererPlacement(placement) };
   }
   return null;
 }

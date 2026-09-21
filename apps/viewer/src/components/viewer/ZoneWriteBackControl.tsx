@@ -29,6 +29,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from '@/components/ui/toast';
+import { useTranslation } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
 import { useZoneWriteBack } from '@/hooks/useZoneWriteBack';
 import { useZoneSpatialZones } from '@/hooks/useZoneSpatialZones';
 import { useZoneTableExport, type ZoneTableFormat } from '@/hooks/useZoneTableExport';
@@ -44,6 +46,7 @@ import {
 const BASES: readonly VolumeBasis[] = ['mesh', 'net', 'gross', 'unqualified'];
 
 export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
+  const { t } = useTranslation();
   const [basis, setBasis] = useState<VolumeBasis>('mesh');
   const { write, remove } = useZoneWriteBack();
   const { emit: emitZones, remove: removeZones } = useZoneSpatialZones();
@@ -67,19 +70,27 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
     try {
       const result = await exportTable(zoneSet, basis, format);
       if (result.blocked === 'no-members') {
-        toast.info('No element is in a zone of this set, so the table would be empty');
+        toast.info(t('zonesPanel.writeBack.noMembersTableMessage'));
         return;
       }
+      // Said rather than left to be discovered by summing a column.
       toast.success(
-        `Exported ${result.rows.toLocaleString()} row(s) for ${result.elements.toLocaleString()} element(s)`
-        // Said rather than left to be discovered by summing a column.
-        + (result.unmeasured > 0 ? `, ${result.unmeasured.toLocaleString()} with no volume and a stated reason` : ''),
+        result.unmeasured > 0
+          ? t('zonesPanel.writeBack.tableExportSuccessUnmeasured', {
+              rows: result.rows.toLocaleString(),
+              elements: result.elements.toLocaleString(),
+              unmeasured: result.unmeasured.toLocaleString(),
+            })
+          : t('zonesPanel.writeBack.tableExportSuccess', {
+              rows: result.rows.toLocaleString(),
+              elements: result.elements.toLocaleString(),
+            }),
       );
     } catch (error) {
       // Parquet loads its wasm writer on demand, so this is the one export here
       // that can fail for a reason outside the model.
       console.error('[zones] table export failed', error);
-      toast.error(`Could not export the table: ${error instanceof Error ? error.message : 'unknown error'}`);
+      toast.error(t('zonesPanel.writeBack.tableExportError', { message: error instanceof Error ? error.message : 'unknown error' }));
     } finally {
       // In a `finally` so a Parquet writer that fails to load does not leave
       // both buttons dead for the rest of the session.
@@ -92,7 +103,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
     <div className="space-y-1 rounded border-t pt-1.5">
       <div className="flex items-center gap-1">
         <Select value={basis} onValueChange={(v) => setBasis(v as VolumeBasis)}>
-          <SelectTrigger className="h-6 w-[104px] text-[11px]" aria-label="Volume basis">
+          <SelectTrigger className="h-6 w-[104px] text-[11px]" aria-label={t('zonesPanel.writeBack.volumeBasisAriaLabel')}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -105,52 +116,60 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           variant="outline"
           size="sm"
           className="h-6 flex-1 text-[11px]"
-          title={`Write this set's zone assignment onto the elements as ${zonePropertySetName(zoneSet.name)}`}
+          title={t('zonesPanel.writeBack.writeButtonTitle', { psetName: zonePropertySetName(zoneSet.name) })}
           onClick={() => {
             const result = write(zoneSet, basis);
             if (result.blocked === 'collab-role') {
-              toast.error('Your role in this session is read-only, so nothing was written');
+              toast.error(t('zonesPanel.writeBack.collabReadOnlyWrite'));
               return;
             }
             if (result.blocked === 'duplicate-set-name') {
               // Both set names carry the display name, so two sets sharing one
               // would write to the same place and each would clear the other's
               // numbers. Renaming is the user's call, not this run's.
-              toast.error(`Another zone set is also called "${zoneSet.name}". Rename one before writing.`);
+              toast.error(t('zonesPanel.writeBack.duplicateSetNameWrite', { name: zoneSet.name }));
               return;
             }
             if (result.summary.written === 0) {
-              toast.info('No element is in a zone of this set, so nothing was written');
+              toast.info(t('zonesPanel.writeBack.noMembersWrite'));
               return;
             }
             const { written, withVolumes, refused } = result.summary;
             toast.success(
-              `Wrote ${written.toLocaleString()} element(s): ${withVolumes.toLocaleString()} with volumes`
-              + (refused > 0 ? `, ${refused.toLocaleString()} with a stated reason instead` : ''),
+              refused > 0
+                ? t('zonesPanel.writeBack.writeSuccessRefused', {
+                    written: written.toLocaleString(),
+                    withVolumes: withVolumes.toLocaleString(),
+                    refused: refused.toLocaleString(),
+                  })
+                : t('zonesPanel.writeBack.writeSuccess', {
+                    written: written.toLocaleString(),
+                    withVolumes: withVolumes.toLocaleString(),
+                  }),
             );
           }}
         >
           <FileOutput className="h-3 w-3 mr-1" />
-          Write to model
+          {t('zonesPanel.writeBack.writeButtonLabel')}
         </Button>
         <Button
           variant="ghost"
           size="icon"
           className="h-6 w-6"
-          title={`Remove ${zonePropertySetName(zoneSet.name)} from every element of this set`}
-          aria-label="Remove zone properties"
+          title={t('zonesPanel.writeBack.removePropsTitle', { psetName: zonePropertySetName(zoneSet.name) })}
+          aria-label={t('zonesPanel.writeBack.removePropsAriaLabel')}
           onClick={() => {
             const { removed, blocked } = remove(zoneSet);
             if (blocked === 'collab-role') {
-              toast.error('Your role in this session is read-only, so nothing was removed');
+              toast.error(t('zonesPanel.writeBack.collabReadOnlyRemove'));
               return;
             }
             if (blocked === 'duplicate-set-name') {
-              toast.error(`Another zone set is also called "${zoneSet.name}". Rename one before removing.`);
+              toast.error(t('zonesPanel.writeBack.duplicateSetNameRemove', { name: zoneSet.name }));
               return;
             }
-            if (removed === 0) toast.info('Nothing to remove for this set');
-            else toast.success(`Removed the zone property set from ${removed.toLocaleString()} element(s)`);
+            if (removed === 0) toast.info(t('zonesPanel.writeBack.nothingToRemove'));
+            else toast.success(t('zonesPanel.writeBack.removeSuccess', { removed: removed.toLocaleString() }));
           }}
         >
           <Undo2 className="h-3 w-3" />
@@ -171,11 +190,11 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
             size="sm"
             className="h-6 flex-1 text-[11px]"
             disabled={exportingTable !== null}
-            title={`Download the per-element breakdown for this set as ${format.toUpperCase()}, one row per element and zone`}
+            title={t('zonesPanel.writeBack.downloadTableTitle', { format: format.toUpperCase() })}
             onClick={() => { void runTableExport(format); }}
           >
             <Sheet className="h-3 w-3 mr-1" />
-            {exportingTable === format ? 'Building...' : format.toUpperCase()}
+            {exportingTable === format ? t('zonesPanel.writeBack.buildingLabel') : format.toUpperCase()}
           </Button>
         ))}
       </div>
@@ -184,25 +203,25 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           variant="outline"
           size="sm"
           className="h-6 flex-1 text-[11px]"
-          title="Emit the zones themselves as IfcSpatialZone entities, each referencing the elements it contains"
+          title={t('zonesPanel.writeBack.emitZonesTitle')}
           onClick={() => {
             const result = emitZones(zoneSet);
             if (result.blocked === 'collab-role') {
-              toast.error('Your role in this session is read-only, so nothing was emitted');
+              toast.error(t('zonesPanel.writeBack.collabReadOnlyEmit'));
               return;
             }
             if (result.blocked === 'no-members') {
               toast.info(
                 result.staleRemoved > 0
-                  ? `No element is in a zone of this set any more, so ${result.staleRemoved.toLocaleString()} emitted zone(s) were removed`
-                  : 'No element is in a zone of this set, so there is nothing to reference',
+                  ? t('zonesPanel.writeBack.staleRemovedOnly', { staleRemoved: result.staleRemoved.toLocaleString() })
+                  : t('zonesPanel.writeBack.noMembersEmit'),
               );
               return;
             }
             if (result.blocked === 'duplicate-set-name') {
               // The set's name is what identifies its zones in the FILE, so two
               // sets sharing one would each delete the other's on the next run.
-              toast.error(`Another zone set is also called "${zoneSet.name}". Rename one before emitting.`);
+              toast.error(t('zonesPanel.writeBack.duplicateSetNameEmit', { name: zoneSet.name }));
               return;
             }
             const written = result.models.filter((m) => m.zonesEmitted > 0);
@@ -216,41 +235,51 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
             if (written.length === 0) {
               // A model with no parsed store is skipped without a refusal, so
               // without this the click produces no feedback at all.
-              if (refused.length === 0) toast.info('No loaded model could take the zones');
+              if (refused.length === 0) toast.info(t('zonesPanel.writeBack.noModelForZones'));
               return;
             }
             const zones = written.reduce((sum, m) => sum + m.zonesEmitted, 0);
             const elements = written.reduce((sum, m) => sum + m.elementsReferenced, 0);
             const replaced = written.reduce((sum, m) => sum + m.zonesReplaced, 0);
+            const successKey: TranslationKey = replaced > 0 && result.staleRemoved > 0
+              ? 'zonesPanel.writeBack.emitSuccessReplacedStale'
+              : replaced > 0
+                ? 'zonesPanel.writeBack.emitSuccessReplaced'
+                : result.staleRemoved > 0
+                  ? 'zonesPanel.writeBack.emitSuccessStale'
+                  : 'zonesPanel.writeBack.emitSuccess';
             toast.success(
-              `Emitted ${zones.toLocaleString()} IfcSpatialZone(s) across ${written.length} model(s), `
-              + `referencing ${elements.toLocaleString()} element(s)`
-              + (replaced > 0 ? `, replacing ${replaced.toLocaleString()} from an earlier run` : '')
-              + (result.staleRemoved > 0 ? `, and clearing ${result.staleRemoved.toLocaleString()} from a model this set no longer reaches` : ''),
+              t(successKey, {
+                zones: zones.toLocaleString(),
+                models: written.length,
+                elements: elements.toLocaleString(),
+                replaced: replaced.toLocaleString(),
+                staleRemoved: result.staleRemoved.toLocaleString(),
+              }),
             );
           }}
         >
           <Box className="h-3 w-3 mr-1" />
-          Emit zones as IfcSpatialZone
+          {t('zonesPanel.writeBack.emitZonesLabel')}
         </Button>
         <Button
           variant="ghost"
           size="icon"
           className="h-6 w-6"
-          title="Remove the IfcSpatialZone entities emitted for this set"
-          aria-label="Remove emitted spatial zones"
+          title={t('zonesPanel.writeBack.removeEmittedTitle')}
+          aria-label={t('zonesPanel.writeBack.removeEmittedAriaLabel')}
           onClick={() => {
             const { removed, blocked } = removeZones(zoneSet);
             if (blocked === 'collab-role') {
-              toast.error('Your role in this session is read-only, so nothing was removed');
+              toast.error(t('zonesPanel.writeBack.collabReadOnlyRemove'));
               return;
             }
             if (blocked === 'duplicate-set-name') {
-              toast.error(`Another zone set is also called "${zoneSet.name}". Rename one before removing.`);
+              toast.error(t('zonesPanel.writeBack.duplicateSetNameRemove', { name: zoneSet.name }));
               return;
             }
-            if (removed === 0) toast.info('No emitted zones to remove for this set');
-            else toast.success(`Removed ${removed.toLocaleString()} IfcSpatialZone(s)`);
+            if (removed === 0) toast.info(t('zonesPanel.writeBack.removeEmittedNone'));
+            else toast.success(t('zonesPanel.writeBack.removeEmittedSuccess', { removed: removed.toLocaleString() }));
           }}
         >
           <Undo2 className="h-3 w-3" />

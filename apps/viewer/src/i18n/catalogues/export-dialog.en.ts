@@ -1,0 +1,62 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { TranslationValue } from '../types';
+
+/**
+ * `ExportDialog.tsx`'s own chrome (#4918 slice: export/panel outer chrome):
+ * the trigger button, dialog title/description, scope/mixed-units/model/
+ * schema selectors, the schema-conversion warning, the output indicator,
+ * every option switch and its hint text, the pending-changes banner, the
+ * progress readout, the success/error result banner, and the footer
+ * cancel/export controls. Schema version codes (`IFC2X3`, `IFC4`, …) and
+ * file extensions remain exact identifiers and stay out of this catalogue.
+ */
+export const exportDialogEn = {
+  'exportDialog.trigger': 'Export IFC',
+  'exportDialog.title': 'Export IFC File',
+  'exportDialog.description.ifc5': 'Export model data and geometry, including current workspace placement',
+  'exportDialog.description.default': 'Export authored model coordinates and property modifications. Workspace repositioning is saved separately.',
+  'exportDialog.scopeLabel': 'Scope',
+  'exportDialog.scope.single': 'Single Model',
+  'exportDialog.scope.merged': 'Merged (All Models)',
+  'exportDialog.mixedUnitsLabel': 'Mixed units',
+  'exportDialog.unitReconciliation.auto': 'Keep each unit (separate projects)',
+  'exportDialog.unitReconciliation.normalize': 'Normalize to first model',
+  'exportDialog.unitReconciliation.assumeShared': 'Assume shared unit',
+  'exportDialog.modelLabel': 'Model',
+  'exportDialog.selectModelPlaceholder': 'Select model',
+  'exportDialog.schemaLabel': 'Schema',
+  'exportDialog.schemaOption.ifc5Alpha': 'IFC5 (Alpha)',
+  'exportDialog.currentSchemaSuffix': ' (current)',
+  'exportDialog.schemaUpgradeTitle': 'Schema Upgrade',
+  'exportDialog.schemaDowngradeTitle': 'Schema Downgrade',
+  'exportDialog.conversionSummary': 'Converting from {source} to {target}.',
+  'exportDialog.schemaDowngradeNote': 'Some data may be lost in the conversion to an older schema.',
+  'exportDialog.schemaUpgradeNote': 'Entity types will be mapped to the newer schema.',
+  'exportDialog.outputLabel': 'Output',
+  'exportDialog.visibleOnlyLabel': 'Export Visible Only',
+  'exportDialog.visibleOnlyHint': 'Only include entities currently visible in the 3D view',
+  'exportDialog.includeGeometryLabel': 'Include Geometry',
+  'exportDialog.applyMutationsLabel': 'Apply Property Changes',
+  'exportDialog.changesOnlyLabel': 'Changes Only',
+  'exportDialog.changesOnlyHint.ifc5': 'Export as IFCX overlay with mutations only',
+  'exportDialog.changesOnlyHint.default': 'Export mutations as JSON delta',
+  'exportDialog.onlyKnownPropertiesLabel': 'Only Known IFC5 Properties',
+  'exportDialog.onlyKnownPropertiesHint': 'Skip properties without an official IFC5 schema (avoids viewer warnings)',
+  'exportDialog.pendingChangesTitle': 'Pending Changes',
+  'exportDialog.pendingChangesDescription': {
+    one: '{countDisplay} entity has been modified',
+    other: '{countDisplay} entities have been modified',
+  },
+  'exportDialog.progressCount': '{processed} / {total} entities',
+  'exportDialog.resultSuccessTitle': 'Success',
+  'exportDialog.resultErrorTitle': 'Error',
+  'exportDialog.cancelButton': 'Cancel',
+  'exportDialog.exportingLabel': 'Exporting...',
+  'exportDialog.exportButton': 'Export',
+  'exportDialog.landXml.title': 'LandXML cannot be exported as IFC',
+  'exportDialog.landXml.description': 'Its terrain records remain in their original source format; no IFC entities are synthesized for export.',
+  'exportDialog.landXml.error': 'LandXML is source geometry, not IFC. Export the original LandXML file instead.',
+} as const satisfies Record<string, TranslationValue>;

@@ -5,7 +5,6 @@
 /**
  * Shared types for the viewer store
  */
-
 // ============================================================================
 // Measurement Types
 // ============================================================================
@@ -207,10 +206,8 @@ export interface EdgeLockState {
 // ============================================================================
 // Section Plane Types
 // ============================================================================
-
 /** Semantic axis names: down (Y), front (Z), side (X) for intuitive user experience */
 export type SectionPlaneAxis = 'down' | 'front' | 'side';
-
 // Re-export the renderer's canonical cap-styling types so the viewer store and
 // the WebGPU renderer share a single source of truth. Adding a new hatch
 // pattern only requires editing `packages/renderer/src/section-cap-style.ts`.
@@ -220,7 +217,7 @@ import type { SectionCapStyle } from '@ifc-lite/renderer';
 // at the renderer's `Camera`, so the store shares the renderer's own type.
 export type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
 import type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
-
+import type { LandXmlTinDocument } from '../hooks/ingest/landXmlSemantics.js';
 /**
  * Custom (face-picked) plane override. When present, the renderer uses
  * `normal` + `distance` directly and ignores `axis` / `position`. The
@@ -462,7 +459,7 @@ export interface CameraCallbacks {
 // ============================================================================
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData } from '@ifc-lite/geometry';
+import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData, ModelSpatialReference } from '@ifc-lite/geometry';
 import type { ModelLoadReportFields } from '../lib/loadReport'; // #3927 load report
 /**
  * Compound identifier for entities across multiple models.
@@ -502,7 +499,6 @@ export type MetadataLoadState =
   | 'error';
 
 export type ModelSourceFile = File;
-
 /** Complete model container for federation */
 /**
  * A federated model's geometry as it stood before alignment re-baked it.
@@ -561,8 +557,14 @@ export interface FederatedModel extends ModelLoadReportFields {
   sourceContentHash?: string; // Full-content identity for workspace placements.
   /** Parsed IFC data model */
   ifcDataStore: IfcDataStore | null;
+  /** Non-IFC source semantics, kept outside the IFC data store by design. */
+  landXmlDocument?: LandXmlTinDocument;
+  /** Truthful source schema; `schemaVersion` remains the compatibility store schema. */
+  sourceSchema?: 'LandXML-1.2';
   /** Pre-tessellated geometry (with globalIds, not original expressIds) */
   geometryResult: GeometryResult | null;
+  /** Format-neutral declared source frame for non-IFC geometry (LandXML/scans). */
+  spatialReference?: ModelSpatialReference;
   /** Model-level visibility toggle */
   visible: boolean;
   /** UI collapse state in hierarchy panel */
@@ -655,32 +657,7 @@ export interface FederatedModel extends ModelLoadReportFields {
  * a published API is free to fail loudly at the corruption site. Keep the
  * two in step on *bugs*, not on contract.
  */
-export function entityRefToString(ref: EntityRef): string {
-  return `${ref.modelId}:${ref.expressId}`;
-}
-
-/** Parse string back to EntityRef */
-export function stringToEntityRef(str: string): EntityRef {
-  const colonIndex = str.indexOf(':');
-  if (colonIndex === -1) {
-    // Invalid format - return a sentinel value
-    return { modelId: '', expressId: -1 };
-  }
-  const modelId = str.substring(0, colonIndex);
-  const expressId = parseInt(str.substring(colonIndex + 1), 10);
-  // Handle NaN case (malformed expressId)
-  if (Number.isNaN(expressId)) {
-    return { modelId, expressId: -1 };
-  }
-  return { modelId, expressId };
-}
-
-/** Check if two EntityRefs are equal */
-export function entityRefEquals(a: EntityRef | null, b: EntityRef | null): boolean {
-  if (a === null && b === null) return true;
-  if (a === null || b === null) return false;
-  return a.modelId === b.modelId && a.expressId === b.expressId;
-}
+export { entityRefEquals, entityRefToString, stringToEntityRef } from './entity-ref.js';
 
 /**
  * Type guard to check if a data store has IFC5 schema version.

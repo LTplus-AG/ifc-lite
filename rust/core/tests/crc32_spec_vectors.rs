@@ -23,12 +23,24 @@ use ifc_lite_core::IfcType;
 /// Hash `name` with the generated `crc32_hash`, via the only public route to it.
 fn unknown_hash(name: &str) -> u32 {
     match IfcType::from_str(name) {
-        IfcType::Unknown(hash) => hash,
+        IfcType::Unknown(unknown) => unknown.id(),
         known => panic!(
             "{name:?} was expected to be an unknown type (so that it reaches \
              crc32_hash), but it parsed as {known:?}"
         ),
     }
+}
+
+#[test]
+fn unknown_types_keep_their_normalized_keyword_and_do_not_reconstruct_from_id() {
+    let parsed = IfcType::from_str("ifc_vendor_widget");
+    let IfcType::Unknown(unknown) = &parsed else {
+        panic!("vendor keyword unexpectedly resolved to a schema type");
+    };
+    assert_eq!(unknown.as_str(), "IFC_VENDOR_WIDGET");
+    assert_eq!(parsed.as_str(), "IFC_VENDOR_WIDGET");
+    assert_eq!(parsed.name(), "IFC_VENDOR_WIDGET");
+    assert_eq!(IfcType::from_id(unknown.id()), None);
 }
 
 /// Independent, bit-at-a-time reference implementation of CRC-32/ISO-HDLC,

@@ -4,6 +4,15 @@
 
 import type { DecodedPointChunk, PointCloudBBox } from '../types.js';
 
+/** Explicit CRS metadata read from the source, never inferred from coordinates. */
+export interface PointSourceSpatialMetadata {
+  horizontalId?: string;
+  verticalId?: string;
+  /** Source WKT retained verbatim even when it declares only one CRS component. */
+  wkt?: string;
+  provenance: string;
+}
+
 /** Aggregate metadata returned from `StreamingPointSource.open()`. */
 export interface PointSourceInfo {
   /** Total points the source will emit if it streams to completion. */
@@ -18,6 +27,8 @@ export interface PointSourceInfo {
   hasIntensity: boolean;
   /** Free-form display label (filename, URL, etc.). */
   label?: string;
+  /** Source-declared CRS metadata, available before the first decoded chunk. */
+  spatialMetadata?: PointSourceSpatialMetadata;
 }
 
 /**

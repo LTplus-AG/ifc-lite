@@ -24,6 +24,7 @@ import {
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import { Rule, type Combinator, type FilterRule } from '@/lib/search/filter-rules';
+import { useTranslation } from '@/i18n';
 import { RULE_KIND_LABEL } from './filter-rule-labels';
 
 export function CombinatorToggle({
@@ -33,10 +34,11 @@ export function CombinatorToggle({
   value: Combinator;
   onChange: (next: Combinator) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className="inline-flex rounded border border-zinc-200 bg-white p-0.5 text-[11px] dark:border-zinc-800 dark:bg-zinc-950"
-      title="AND requires every rule to match. OR matches any rule."
+      title={t('filterRuleControls.combinatorTitle')}
     >
       {(['AND', 'OR'] as const).map((c) => (
         <button
@@ -58,21 +60,22 @@ export function CombinatorToggle({
 
 export function AddRuleMenu({
   onAdd,
-  label = 'Add rule',
+  label,
 }: {
   onAdd: (kind: FilterRule['kind']) => void;
   label?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="sm" className="h-7 gap-1 self-start text-xs">
           <Plus className="h-3 w-3" />
-          {label}
+          {label ?? t('filterRuleControls.addRuleDefaultLabel')}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
-        <DropdownMenuLabel className="text-[10px] uppercase">Filter dimension</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-[10px] uppercase">{t('filterRuleControls.filterDimensionLabel')}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {(Object.keys(RULE_KIND_LABEL) as FilterRule['kind'][]).map((k) => (
           <DropdownMenuItem key={k} onSelect={() => onAdd(k)}>

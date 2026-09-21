@@ -54,7 +54,9 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
+import { narrowNonRelPositionalRefLists } from './nonrel-positional-ref-narrowing.js';
 import { STYLE_RESCUE_TYPES } from './style-closure.js';
+import { NONREL_REF_LIST_TYPES } from './nonrel-ref-list-types.js';
 import { styleEntityWithheldWarning } from './step-export-types.js';
 import { applySourceLineMutationsReported } from './step-attribute-mutations.js';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
@@ -302,6 +304,37 @@ export function writeSourceEntityLines(
           continue;
         }
         nextEntityText = filtered;
+      } else if (mayNameOmittedRefs && NONREL_REF_LIST_TYPES.has(effectiveRelType)) {
+        // `IfcCostItem.CostValues`/`.CostQuantities`, `IfcAppliedValue`/
+        // `IfcCostValue.Components`, `IfcPhysicalComplexQuantity.HasQuantities`
+        // (`nonrel-ref-list-types.ts`): direct LIST attributes on a
+        // non-relationship class that name other entities, outside both
+        // branches above. A session deletion of a listed member reaches this
+        // line exactly as it reaches an `IFCREL*` line's list attributes.
+        //
+        // NOT the same function as the two branches above: these classes also
+        // carry bare, single-valued positional refs inherited from `IfcRoot`
+        // (`OwnerHistory`) or their own attributes (`IfcAppliedValue
+        // .UnitBasis`), and `filterHiddenRefsFromRelationshipLine`'s bare-ref
+        // rule withholds the WHOLE line for those — correct for an `IFCREL*`
+        // association, wrong here: it would delete the cost item itself over
+        // an unrelated deleted OwnerHistory and dangle every OTHER entity
+        // that names it, a regression against the untouched line
+        // `upstream/main` ships today. `narrowNonRelPositionalRefLists`
+        // (`nonrel-positional-ref-narrowing.ts`) is the narrow sibling that only ever
+        // narrows a list — never withholds — for exactly this reason; see its
+        // doc for the full argument, including why an emptied list becomes
+        // `$` (optional attribute), or is left untouched (mandatory attribute
+        // — e.g. `HasQuantities`), rather than withholding the record. It
+        // needs `effectiveRelType` and `pass.sourceSchema` to answer that: the
+        // optional/mandatory distinction is schema- and version-dependent
+        // (`IfcCostItem` does not even declare these attributes in IFC2X3).
+        nextEntityText = narrowNonRelPositionalRefLists(
+          nextEntityText,
+          isOmittedFromOutput,
+          effectiveRelType,
+          pass.sourceSchema,
+        );
       }
 
       // Past every branch that can withhold this line, so the pipeline's own
@@ -326,7 +359,8 @@ export function writeSourceEntityLines(
 
       // Apply schema conversion if exporting to a different schema version
       if (pass.converting) {
-        pass.entities.push(convertStepLine(nextEntityText, pass.sourceSchema, pass.schema, options.guidRandom, pass.slotFill));
+        const converted = convertStepLine(nextEntityText, pass.sourceSchema, pass.schema, options.guidRandom, pass.slotFill, pass.withheldRefIds);
+        if (converted !== null) pass.entities.push(converted);
       } else {
         pass.entities.push(nextEntityText);
       }

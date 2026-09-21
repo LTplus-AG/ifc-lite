@@ -50,12 +50,14 @@ import { toast } from '@/components/ui/toast';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { downloadBlob, buildExportFilename, stripExtension } from '@/lib/export/download';
 import { isUsdExportableModel, resolveUsdExportBytes } from './usd-export-source';
+import { useTranslation } from '@/i18n';
 
 interface UsdExportDialogProps {
   trigger?: React.ReactNode;
 }
 
 export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
+  const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const getMutationView = useViewerStore((s) => s.getMutationView);
 
@@ -114,7 +116,7 @@ export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
         await processor.init();
         const result = processor.exportUsd(bytes);
         if (result === null) {
-          throw new Error('Geometry engine unavailable');
+          throw new Error(t('geometryExport.shared.geometryEngineUnavailableError'));
         }
         usd = result;
       } finally {
@@ -126,18 +128,20 @@ export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
       const blob = new Blob([usd as BlobPart], { type: 'text/plain' });
       downloadBlob(blob, buildExportFilename(stripExtension(selectedModel.name), 'usda'));
 
-      const msg = `Exported USD (${(blob.size / 1024).toFixed(0)} KB)`;
+      const msg = t('geometryExport.usd.exportedMessage', { sizeKb: (blob.size / 1024).toFixed(0) });
       setExportResult({ success: true, message: msg });
       toast.success(msg);
     } catch (err) {
       console.error('USD export failed:', err);
-      const errMsg = `USD export failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
+      const errMsg = t('geometryExport.usd.failedMessage', {
+        reason: err instanceof Error ? err.message : t('geometryExport.shared.unknownError'),
+      });
       setExportResult({ success: false, message: errMsg });
       toast.error(errMsg);
     } finally {
       setIsExporting(false);
     }
-  }, [selectedModel, getMutationView]);
+  }, [selectedModel, getMutationView, t]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -145,7 +149,7 @@ export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
         {trigger || (
           <Button variant="outline" size="sm">
             <Download className="h-4 w-4 mr-2" />
-            Export USD
+            {t('geometryExport.usd.triggerButton')}
           </Button>
         )}
       </DialogTrigger>
@@ -153,10 +157,10 @@ export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Download className="h-5 w-5" />
-            Export USD (OpenUSD)
+            {t('geometryExport.usd.dialogTitle')}
           </DialogTitle>
           <DialogDescription>
-            A real Z-up OpenUSD ASCII (<code>.usda</code>) stage for usdview / Blender / Omniverse
+            {t('geometryExport.usd.dialogDescription', { usdaExt: '.usda' })}
           </DialogDescription>
         </DialogHeader>
 
@@ -164,10 +168,10 @@ export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
           {/* Model selector — only shown when multiple are loaded */}
           {modelList.length > 1 && (
             <div className="flex items-center gap-4">
-              <Label className="w-32">Model</Label>
+              <Label className="w-32">{t('geometryExport.usd.modelLabel')}</Label>
               <Select value={selectedModelId} onValueChange={setSelectedModelId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select model" />
+                  <SelectValue placeholder={t('geometryExport.usd.selectModelPlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
                   {modelList.map((m) => {
@@ -187,26 +191,28 @@ export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
 
           {/* Output format indicator */}
           <div className="flex items-center gap-4">
-            <Label className="w-32 text-muted-foreground">Output</Label>
-            <Badge variant="secondary">OpenUSD Stage</Badge>
-            <span className="text-xs text-muted-foreground">.usda</span>
+            <Label className="w-32 text-muted-foreground">{t('geometryExport.usd.outputLabel')}</Label>
+            <Badge variant="secondary">{t('geometryExport.usd.outputFormat')}</Badge>
+            <span className="text-xs text-muted-foreground">{t('geometryExport.usd.fileExtension')}</span>
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Emits a Z-up USD stage (<code>upAxis = "Z"</code>, <code>metersPerUnit = 1</code>)
-            mirroring the IFC spatial hierarchy as <code>Xform</code> prims, with
-            <code>UsdGeomMesh</code> geometry, <code>UsdPreviewSurface</code> materials, and IFC
-            metadata as custom attributes. Repeated mapped geometry is authored once as a
-            referenced prototype; openings and spaces are tagged <code>purpose = "guide"</code>.
-            Distinct from IFCX, which is USD-flavored JSON rather than a USD file.
+            {t('geometryExport.usd.blurb', {
+              upAxis: 'upAxis = "Z"',
+              metersPerUnit: 'metersPerUnit = 1',
+              xform: 'Xform',
+              usdGeomMesh: 'UsdGeomMesh',
+              usdPreviewSurface: 'UsdPreviewSurface',
+              purposeGuide: 'purpose = "guide"',
+            })}
           </p>
 
           {!selectedModel && (
             <Alert>
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>No source available</AlertTitle>
+              <AlertTitle>{t('geometryExport.usd.noSourceTitle')}</AlertTitle>
               <AlertDescription>
-                USD export needs the original IFC file. Re-open the model from disk to enable it.
+                {t('geometryExport.usd.noSourceDescription')}
               </AlertDescription>
             </Alert>
           )}
@@ -218,7 +224,7 @@ export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
               ) : (
                 <AlertCircle className="h-4 w-4" />
               )}
-              <AlertTitle>{exportResult.success ? 'Success' : 'Error'}</AlertTitle>
+              <AlertTitle>{exportResult.success ? t('geometryExport.usd.successTitle') : t('geometryExport.usd.errorTitle')}</AlertTitle>
               <AlertDescription>{exportResult.message}</AlertDescription>
             </Alert>
           )}
@@ -226,18 +232,18 @@ export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
+            {t('geometryExport.usd.cancelButton')}
           </Button>
           <Button onClick={handleExport} disabled={isExporting || !selectedModel}>
             {isExporting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Exporting...
+                {t('geometryExport.usd.exportingButton')}
               </>
             ) : (
               <>
                 <Download className="h-4 w-4 mr-2" />
-                Export
+                {t('geometryExport.usd.exportButton')}
               </>
             )}
           </Button>

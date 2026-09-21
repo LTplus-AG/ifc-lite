@@ -22,12 +22,12 @@ import {
 };
 
 /**
- * `Section2DOverlayRenderer` is ONE nullable GPU object backing six buffer
+ * `Section2DOverlayRenderer` is ONE nullable GPU object backing seven buffer
  * families. Nothing pinned its ownership rules until this file: the clash-box
- * family (#1277) was the sixth added and was silently missing from `dispose()`,
- * so its vertex buffer leaked on every renderer teardown while the whole suite
- * stayed green. These tests count `createBuffer` against `destroy()` so the
- * seventh family cannot repeat it.
+ * family (#1277) was once silently missing from `dispose()`, so its vertex
+ * buffer leaked on every renderer teardown while the whole suite stayed green.
+ * These tests count `createBuffer` against `destroy()` so another family cannot
+ * repeat it.
  */
 
 interface FakeBuffer extends GPUBuffer {
@@ -136,7 +136,7 @@ type Family = {
   draw: (r: Section2DOverlayRenderer, p: GPURenderPassEncoder, vp: Float32Array) => void;
 };
 
-// The four named channels come from `LINE_OVERLAY_CHANNELS` itself, so a fifth
+// The named channels come from `LINE_OVERLAY_CHANNELS` itself, so another
 // channel is covered by every test below the moment it joins that list —
 // nobody has to remember to add a row here. The clash box is spelled out
 // because it is not a channel: its own colour, its own entry points.
@@ -562,17 +562,17 @@ describe('Section2DOverlayRenderer: section-cut draw gating', () => {
 });
 
 /**
- * Six draws, six uniform records.
+ * Seven draw sites, seven uniform records.
  *
- * `Section2DOverlayRenderer` encodes the cut cap and up to five world-space
+ * `Section2DOverlayRenderer` encodes the cut cap and up to six world-space
  * line families into ONE render pass (`renderer-overlays.ts` calls them one
  * after another), and each needs different uniforms. They all wrote byte 0 of
  * one 160-byte buffer. `queue.writeBuffer` is a *queue* operation: it is
  * applied before the command buffer that references the buffer executes,
  * wherever in the encoding it was issued. So the last write before submit is
- * what all six draws read — the clash box's magenta bleeding onto every other
+ * what all seven draw sites read — the clash box's magenta bleeding onto every other
  * overlay, and the cap's fill colour and hatch replaced by the zeroed tail a
- * line draw writes. Pre-existing on `origin/main`, where the same six draws
+ * line draw writes. Pre-existing on `origin/main`, where the same draw sites
  * write `this.uniformBuffer` at offset 0.
  */
 describe('Section2DOverlayRenderer: one uniform record per draw (#2456)', () => {
@@ -594,22 +594,22 @@ describe('Section2DOverlayRenderer: one uniform record per draw (#2456)', () => 
     drawWholeFrame(renderer, pass);
 
     // One uniform write per draw site: the cap (which its fill and outline
-    // share by design) plus the five families.
+    // share by design) plus the six families.
     const uniformOffsets = writes.slice(uniformWritesBefore).map((w) => w.offset);
     assert.strictEqual(uniformOffsets.length, SECTION_2D_UNIFORM_SLOT_COUNT);
     assert.strictEqual(
       new Set(uniformOffsets).size,
       SECTION_2D_UNIFORM_SLOT_COUNT,
-      `the six draws must not share a record; offsets were ${JSON.stringify(uniformOffsets)}`,
+      `the seven draw sites must not share a record; offsets were ${JSON.stringify(uniformOffsets)}`,
     );
 
     // …and every bound record must be one that was actually written for it.
-    // 7 binds: cap fill + cap outline (same slot) + five families.
+    // 8 binds: cap fill + cap outline (same slot) + six families.
     assert.strictEqual(binds.length, SECTION_2D_UNIFORM_SLOT_COUNT + 1);
     assert.strictEqual(
       new Set(binds).size,
       SECTION_2D_UNIFORM_SLOT_COUNT,
-      'the cap fill and outline share slot 0; the five families do not share anything',
+      'the cap fill and outline share slot 0; the six families do not share anything',
     );
     for (const offset of binds) {
       assert.ok(uniformOffsets.includes(offset), `nothing was written to bound offset ${offset}`);
@@ -664,7 +664,7 @@ describe('Section2DOverlayRenderer: one uniform record per draw (#2456)', () => 
     assert.deepStrictEqual(
       Array.from(settled.data.slice(F, F + 4)).map((v) => Math.round(v * 100) / 100),
       Array.from(CAP_STYLE_HATCHED.fillColor),
-      'the cap fill colour must survive the five line draws encoded after it',
+      'the cap fill colour must survive the six line draws encoded after it',
     );
     assert.strictEqual(
       settled.data[SECTION_2D_UNIFORM_SLOTS.params],

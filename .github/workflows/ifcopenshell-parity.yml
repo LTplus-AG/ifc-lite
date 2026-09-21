@@ -97,7 +97,7 @@ jobs:
         name: No geometry changes - parity diff not applicable
         run: echo "No geometry/processing/core/python/parity-tooling changes; parity diff skipped (check reports success)."
       - if: steps.filter.outputs.geometry == 'true'
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-05
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-05
         with:
           toolchain: stable
       - if: steps.filter.outputs.geometry == 'true'
@@ -146,7 +146,7 @@ jobs:
           # Jobs install external packages afterwards and never push; do not
           # leave the GITHUB_TOKEN in the local git config for them to read.
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-05
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-05
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2

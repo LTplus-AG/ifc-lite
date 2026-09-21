@@ -13,6 +13,7 @@
 
 import { useState } from 'react';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import {
   probeTileAccess,
   validateCustomBasemap,
@@ -24,6 +25,7 @@ const FIELD_CLASS = 'w-full bg-muted/40 rounded px-1.5 py-1 border text-foregrou
 const LABEL_CLASS = 'text-[9px] uppercase tracking-wider text-muted-foreground';
 
 export function CustomBasemapEditor() {
+  const { t } = useTranslation();
   const stored = useViewerStore((s) => s.cesiumCustomBasemap);
   const saveBasemap = useViewerStore((s) => s.setCesiumCustomBasemap);
 
@@ -74,44 +76,44 @@ export function CustomBasemapEditor() {
   return (
     <div className="flex flex-col gap-1 pt-1 border-t">
       <label className="flex flex-col gap-0.5">
-        <span className={LABEL_CLASS}>Tile URL template</span>
+        <span className={LABEL_CLASS}>{t('cesiumGeo.basemap.urlLabel')}</span>
         <input
-          aria-label="Tile URL template"
+          aria-label={t('cesiumGeo.basemap.urlLabel')}
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://example.org/tiles/{z}/{x}/{y}.png"
+          placeholder={t('cesiumGeo.basemap.urlPlaceholder')}
           spellCheck={false}
           className={FIELD_CLASS}
         />
       </label>
 
       <label className="flex flex-col gap-0.5">
-        <span className={LABEL_CLASS}>Attribution (required)</span>
+        <span className={LABEL_CLASS}>{t('cesiumGeo.basemap.attributionLabel')}</span>
         <input
-          aria-label="Attribution"
+          aria-label={t('cesiumGeo.basemap.attributionAriaLabel')}
           value={credit}
           onChange={(e) => setCredit(e.target.value)}
-          placeholder="Imagery © provider, CC BY 4.0"
+          placeholder={t('cesiumGeo.basemap.attributionPlaceholder')}
           className={FIELD_CLASS}
         />
       </label>
 
       <div className="flex gap-1">
         <label className="flex flex-col gap-0.5 flex-1">
-          <span className={LABEL_CLASS}>Attribution link</span>
+          <span className={LABEL_CLASS}>{t('cesiumGeo.basemap.attributionLinkLabel')}</span>
           <input
-            aria-label="Attribution link"
+            aria-label={t('cesiumGeo.basemap.attributionLinkLabel')}
             value={creditUrl}
             onChange={(e) => setCreditUrl(e.target.value)}
-            placeholder="https://…/licence"
+            placeholder={t('cesiumGeo.basemap.attributionLinkPlaceholder')}
             spellCheck={false}
             className={FIELD_CLASS}
           />
         </label>
         <label className="flex flex-col gap-0.5 w-16">
-          <span className={LABEL_CLASS}>Max zoom</span>
+          <span className={LABEL_CLASS}>{t('cesiumGeo.basemap.maxZoomLabel')}</span>
           <input
-            aria-label="Maximum zoom"
+            aria-label={t('cesiumGeo.basemap.maxZoomAriaLabel')}
             value={maximumLevel}
             onChange={(e) => setMaximumLevel(e.target.value)}
             placeholder="19"
@@ -125,7 +127,7 @@ export function CustomBasemapEditor() {
           pan. That is what a basemap is for, but it should be the pasting
           user's deliberate choice rather than something they discover. */}
       <p className="text-[9px] leading-tight text-muted-foreground">
-        Tiles are requested straight from this server, so it sees where you pan and zoom.
+        {t('cesiumGeo.basemap.privacyNote')}
       </p>
 
       <div className="flex items-center gap-1">
@@ -135,7 +137,7 @@ export function CustomBasemapEditor() {
           disabled={checking}
           className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase bg-primary text-primary-foreground disabled:opacity-50"
         >
-          {checking ? 'Checking…' : 'Save basemap'}
+          {checking ? t('cesiumGeo.basemap.checkingButton') : t('cesiumGeo.basemap.saveButton')}
         </button>
         {stored && (
           <button
@@ -143,7 +145,7 @@ export function CustomBasemapEditor() {
             onClick={onRemove}
             className="px-2 py-0.5 rounded text-[10px] uppercase text-muted-foreground hover:bg-muted hover:text-foreground"
           >
-            Remove
+            {t('cesiumGeo.shared.removeButton')}
           </button>
         )}
       </div>
@@ -162,7 +164,7 @@ export function CustomBasemapEditor() {
       )}
       {probe?.status === 'ok' && !probe.concerning && (
         <p role="status" className="text-[9px] leading-tight text-muted-foreground">
-          {probe.message ?? 'Saved. This server allows browser access.'}
+          {probe.message ?? t('cesiumGeo.basemap.okStatus')}
         </p>
       )}
     </div>

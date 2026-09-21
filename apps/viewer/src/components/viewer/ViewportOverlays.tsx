@@ -24,6 +24,7 @@ import { BasepointOverlay } from './BasepointOverlay';
 import { PointCloudPanel } from './PointCloudPanel';
 import { FlySpeedIndicator } from './FlySpeedIndicator';
 import { Crosshair } from 'lucide-react';
+import { useTranslation } from '@/i18n';
 
 /**
  * Overlay chrome drawn on top of the 3D viewport.
@@ -57,6 +58,7 @@ export function ViewportOverlays({
   const setOnCameraRotationChange = useViewerStore((s) => s.setOnCameraRotationChange);
   const setOnScaleChange = useViewerStore((s) => s.setOnScaleChange);
   const { ifcDataStore, models } = useIfc();
+  const { t } = useTranslation();
 
   // Cesium state
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
@@ -202,29 +204,29 @@ export function ViewportOverlays({
         >
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" aria-label="Home view" className="min-h-[44px] min-w-[44px]" onClick={handleHome}>
+              <Button variant="ghost" size="icon-sm" aria-label={t('viewportLighting.overlays.mobileNav.homeAria')} className="min-h-[44px] min-w-[44px]" onClick={handleHome}>
                 <Home className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="left">Home (H)</TooltipContent>
+            <TooltipContent side="left">{t('viewportLighting.overlays.mobileNav.homeTooltip')}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" aria-label="Zoom in" className="min-h-[44px] min-w-[44px]" onClick={handleZoomIn}>
+              <Button variant="ghost" size="icon-sm" aria-label={t('viewportLighting.overlays.mobileNav.zoomInAria')} className="min-h-[44px] min-w-[44px]" onClick={handleZoomIn}>
                 <ZoomIn className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="left">Zoom In (+)</TooltipContent>
+            <TooltipContent side="left">{t('viewportLighting.overlays.mobileNav.zoomInTooltip')}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" aria-label="Zoom out" className="min-h-[44px] min-w-[44px]" onClick={handleZoomOut}>
+              <Button variant="ghost" size="icon-sm" aria-label={t('viewportLighting.overlays.mobileNav.zoomOutAria')} className="min-h-[44px] min-w-[44px]" onClick={handleZoomOut}>
                 <ZoomOut className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="left">Zoom Out (-)</TooltipContent>
+            <TooltipContent side="left">{t('viewportLighting.overlays.mobileNav.zoomOutTooltip')}</TooltipContent>
           </Tooltip>
         </div>
       )}
@@ -268,7 +270,7 @@ export function ViewportOverlays({
             <span className="font-medium">
               {storeyNames.length === 1
                 ? storeyNames[0]
-                : `${storeyNames.length} storeys`}
+                : t('viewportLighting.overlays.storeyCount', { count: storeyNames.length })}
             </span>
           </div>
         </div>
@@ -334,6 +336,7 @@ function BasepointToggleButton() {
   const showModelBasepoints = useViewerStore((s) => s.showModelBasepoints);
   const toggleShowModelBasepoints = useViewerStore((s) => s.toggleShowModelBasepoints);
   const modelCount = useViewerStore((s) => s.models.size);
+  const { t } = useTranslation();
   if (modelCount === 0) return null;
   return (
     <Tooltip>
@@ -341,7 +344,7 @@ function BasepointToggleButton() {
         <button
           type="button"
           onClick={toggleShowModelBasepoints}
-          aria-label={showModelBasepoints ? 'Hide model basepoints' : 'Show model basepoints'}
+          aria-label={showModelBasepoints ? t('viewportLighting.overlays.basepointToggle.hide') : t('viewportLighting.overlays.basepointToggle.showAria')}
           className={cn(
             'h-6 w-6 inline-flex items-center justify-center border transition-colors',
             showModelBasepoints
@@ -354,7 +357,7 @@ function BasepointToggleButton() {
         </button>
       </TooltipTrigger>
       <TooltipContent side="top" className="text-xs">
-        {showModelBasepoints ? 'Hide model basepoints' : 'Show model basepoints (IFC 0,0,0)'}
+        {showModelBasepoints ? t('viewportLighting.overlays.basepointToggle.hide') : t('viewportLighting.overlays.basepointToggle.showTooltip')}
       </TooltipContent>
     </Tooltip>
   );

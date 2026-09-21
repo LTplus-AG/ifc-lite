@@ -32,11 +32,14 @@ import { computeModelStats } from './modelMetadataStats';
 import { useTranslation } from '@/i18n';
 import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
 import { EXPRESS_DESCRIPTION_ATTRIBUTE, EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
+import { LandXmlModelSourceNavigation } from './LandXmlModelSourceNavigation';
 
 /** Model metadata panel - displays file info, schema version, entity counts, etc. */
 export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
   const { t, locale, revision } = useTranslation();
   const dataStore = model.ifcDataStore;
+  const selectedLandXmlSource = useViewerStore((state) => state.selectedLandXmlSource);
+  const setSelectedLandXmlSource = useViewerStore((state) => state.setSelectedLandXmlSource);
   // Display-unit converter overrides (issue #1573 proposal 2).
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   const fromGlobalId = useViewerStore((s) => s.fromGlobalId);
@@ -136,6 +139,17 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
     if (!dataStore) return { names: [], unresolved: false };
     return extractClassificationSystemsOnDemand(dataStore as IfcDataStore);
   }, [dataStore]);
+  const landXmlStats = useMemo(() => {
+    const surfaces = model.landXmlDocument?.surfaces ?? [];
+    return {
+      surfaces: surfaces.length,
+      points: surfaces.reduce((total, surface) => total + surface.points.length + surface.sourceDataPoints.length, 0),
+      overlays: surfaces.reduce(
+        (total, surface) => total + surface.boundaries.length + surface.breaklines.length + surface.contours.length,
+        0,
+      ),
+    };
+  }, [model.landXmlDocument]);
 
   return (
     <div className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
@@ -149,14 +163,14 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
             <h3 className="font-bold text-sm truncate uppercase tracking-tight text-zinc-900 dark:text-zinc-100">
               {model.name}
             </h3>
-            <p className="text-xs font-mono text-zinc-500 dark:text-zinc-400">{t('properties.modelMetadata.ifcModel')}</p>
+            <p className="text-xs font-mono text-zinc-500 dark:text-zinc-400">{model.sourceSchema ? t('properties.modelMetadata.sourceModel') : t('properties.modelMetadata.ifcModel')}</p>
           </div>
         </div>
 
         {/* Schema badge */}
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-mono bg-primary/10 border border-primary/30 px-2 py-1 text-primary font-bold uppercase">
-            {model.schemaVersion}
+            {model.sourceSchema ?? model.schemaVersion}
           </span>
         </div>
       </div>
@@ -269,44 +283,53 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
           </div>
         )}
 
-        {/* Entity Statistics */}
+        {/* IFC entity statistics or truthful source-record counts. */}
         <div className="border-b border-zinc-200 dark:border-zinc-800">
           <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50">
             <h4 className="font-bold text-xs uppercase tracking-wide text-zinc-700 dark:text-zinc-300">
-              {t('properties.modelMetadata.statisticsHeading')}
+              {model.sourceSchema ? t('properties.modelMetadata.sourceStatisticsHeading') : t('properties.modelMetadata.statisticsHeading')}
             </h4>
           </div>
           <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
             <div className="flex items-center gap-3 px-3 py-2">
               <Database className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-              <span className="text-xs text-zinc-500">{t('properties.modelMetadata.totalEntities')}</span>
+              <span className="text-xs text-zinc-500">{model.sourceSchema ? t('properties.modelMetadata.sourceSurfaces') : t('properties.modelMetadata.totalEntities')}</span>
               <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto">
-                {dataStore?.entityCount != null ? formatLocaleNumber(locale, dataStore.entityCount) : t('properties.modelMetadata.notAvailable')}
+                {model.sourceSchema ? formatLocaleNumber(locale, landXmlStats.surfaces) : dataStore?.entityCount != null ? formatLocaleNumber(locale, dataStore.entityCount) : t('properties.modelMetadata.notAvailable')}
               </span>
             </div>
             <div className="flex items-center gap-3 px-3 py-2">
               <Layers className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-              <span className="text-xs text-zinc-500">{t('properties.modelMetadata.buildingStoreys')}</span>
+              <span className="text-xs text-zinc-500">{model.sourceSchema ? t('properties.modelMetadata.sourcePoints') : t('properties.modelMetadata.buildingStoreys')}</span>
               <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto">
-                {formatLocaleNumber(locale, stats.storeys)}
+                {formatLocaleNumber(locale, model.sourceSchema ? landXmlStats.points : stats.storeys)}
               </span>
             </div>
             <div className="flex items-center gap-3 px-3 py-2">
               <Building2 className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-              <span className="text-xs text-zinc-500">{t('properties.modelMetadata.elementsWithGeometry')}</span>
+              <span className="text-xs text-zinc-500">{model.sourceSchema ? t('properties.modelMetadata.sourceOverlays') : t('properties.modelMetadata.elementsWithGeometry')}</span>
               <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto">
-                {formatLocaleNumber(locale, stats.elementsWithGeometry)}
+                {formatLocaleNumber(locale, model.sourceSchema ? landXmlStats.overlays : stats.elementsWithGeometry)}
               </span>
             </div>
-            <div className="flex items-center gap-3 px-3 py-2">
-              <Hash className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-              <span className="text-xs text-zinc-500">{t('properties.modelMetadata.maxExpressId')}</span>
-              <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto">
-                {formatLocaleNumber(locale, model.maxExpressId)}
-              </span>
-            </div>
+            {!model.sourceSchema && (
+              <div className="flex items-center gap-3 px-3 py-2">
+                <Hash className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                <span className="text-xs text-zinc-500">{t('properties.modelMetadata.maxExpressId')}</span>
+                <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 ml-auto">
+                  {formatLocaleNumber(locale, model.maxExpressId)}
+                </span>
+              </div>
+            )}
           </div>
         </div>
+
+        {model.sourceSchema && model.landXmlDocument && <LandXmlModelSourceNavigation
+          modelId={model.id}
+          document={model.landXmlDocument}
+          selected={selectedLandXmlSource}
+          onSelect={setSelectedLandXmlSource}
+        />}
 
         {/* Classification Systems — lists every system found in this
             model (not just one), matching the request that a model can

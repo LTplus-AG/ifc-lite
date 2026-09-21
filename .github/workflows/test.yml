@@ -596,7 +596,7 @@ jobs:
       # lane, but make its formatter dependency explicit rather than relying
       # on a runner image incidental.
       - name: Install Rust formatter for codegen freshness
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-05
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-05
         with:
           toolchain: stable
           components: rustfmt
@@ -1530,6 +1530,14 @@ jobs:
       # cannot leave the committed Rust table stale while CI stays green.
       - name: Check legacy rooted-type freshness
         run: node scripts/generate-legacy-rooted-types.mjs --check
+      # `IFC2X3_ENTITY_NAMES` (#5116) is the Rust schema converter's "does
+      # this type have any representation at all in IFC2X3" table, generated
+      # from the same TS entity table the TypeScript converter's
+      # `attrNameTable('IFC2X3')` reads. Check it here for the same reason as
+      # the rooted-type table above: a schema refresh could otherwise leave
+      # the committed Rust table stale while CI stays green.
+      - name: Check IFC2X3 entity-name table freshness
+        run: node scripts/generate-ifc2x3-entity-names.mjs --check
       # The IFC2X3 required-slot table both schema converters read on a
       # downgrade (#4714) is generated from the EXPRESS-derived IFC2X3 registry
       # into BOTH languages. Check it here so a schema refresh cannot leave one
@@ -2349,7 +2357,7 @@ jobs:
       # high enough: >=1.93.0 needed, got 1.93.0-nightly"). The gate invokes it
       # as `cargo +stable semver-checks`, so this only has to exist.
       - name: Install stable Rust
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-05
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-05
         with:
           toolchain: stable
 

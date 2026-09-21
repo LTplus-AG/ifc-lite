@@ -4,27 +4,31 @@
 
 import { ExternalLink } from 'lucide-react';
 import type { WebGPUUnavailableReason } from '@/hooks/useWebGPU';
+import { useTranslation } from '@/i18n';
+import { resolve } from '@/i18n/registry';
 
 /** One-line caption under the disabled "Open .ifc file" button on the empty-state card. */
 export function WebGpuDisabledCaption() {
+  const { t } = useTranslation();
   return (
     <>
-      file upload disabled — the toolkit still works from the{' '}
+      {t('webgpuTroubleshooting.disabledCaption.intro')}{' '}
       <a
         href="https://ifclite.dev/docs/guide/cli/"
         target="_blank"
         rel="noopener noreferrer"
         className="text-primary hover:underline"
       >
-        CLI
-      </a>{" or the "}
+        {t('webgpuTroubleshooting.disabledCaption.cliLink')}
+      </a>{' '}
+      {t('webgpuTroubleshooting.disabledCaption.orThe')}{' '}
       <a
         href="https://ifclite.dev/docs/guide/mcp/"
         target="_blank"
         rel="noopener noreferrer"
         className="text-primary hover:underline"
       >
-        MCP server
+        {t('webgpuTroubleshooting.disabledCaption.mcpLink')}
       </a>
     </>
   );
@@ -37,16 +41,23 @@ export function WebGpuDisabledCaption() {
  * whose real problem is an insecure origin, which cannot be fixed by any
  * browser setting. See useWebGPU.ts for what each category can and cannot
  * observe.
+ *
+ * A plain function, not a component — it cannot call `useTranslation()` —
+ * so it resolves directly against the locale registry, the same
+ * `t: typeof resolve = resolve` shape `bulk-property-value.ts` uses.
  */
-export function webGpuBannerBlurb(category: WebGPUUnavailableReason | null): string {
+export function webGpuBannerBlurb(
+  category: WebGPUUnavailableReason | null,
+  t: typeof resolve = resolve,
+): string {
   switch (category) {
     case 'insecure-context':
-      return "This page isn't loaded over a secure connection, so no browser exposes WebGPU here — that says nothing about whether your device can run it.";
+      return t('webgpuTroubleshooting.banner.insecureContext');
     case 'no-api':
-      return 'Your browser does not expose the WebGPU API on this page. This viewer requires WebGPU for the 3D viewport.';
+      return t('webgpuTroubleshooting.banner.noApi');
     case 'no-gpu':
     default:
-      return 'This viewer requires WebGPU, and your browser could not create a GPU adapter here.';
+      return t('webgpuTroubleshooting.banner.noGpu');
   }
 }
 
@@ -67,80 +78,123 @@ export function WebGpuTroubleshootingDetails({
 }: {
   category: WebGPUUnavailableReason | null;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="mt-4 p-4 bg-[#1f2335] border border-[#3b4261] text-xs font-mono space-y-4">
       {category === 'insecure-context' ? (
         <div>
-          <h4 className="font-bold text-[#ff9e64] uppercase tracking-wide mb-2">Insecure Origin</h4>
+          <h4 className="font-bold text-[#ff9e64] uppercase tracking-wide mb-2">
+            {t('webgpuTroubleshooting.insecureOrigin.heading')}
+          </h4>
           <p className="text-[#a9b1d6]">
-            WebGPU is only available on a secure context: an{' '}
-            <code className="bg-[#16161e] px-1.5 py-0.5">https://</code> URL, or{' '}
-            <code className="bg-[#16161e] px-1.5 py-0.5">http://localhost</code>. Open this page over
-            HTTPS, or via <code className="bg-[#16161e] px-1.5 py-0.5">localhost</code> if you are
-            running it yourself — plain HTTP on an IP address or hostname disables WebGPU in every
-            browser, regardless of your GPU.
+            {t('webgpuTroubleshooting.insecureOrigin.textStart')}{' '}
+            <code className="bg-[#16161e] px-1.5 py-0.5">
+              {t('webgpuTroubleshooting.insecureOrigin.httpsScheme')}
+            </code>{' '}
+            {t('webgpuTroubleshooting.insecureOrigin.urlOr')}{' '}
+            <code className="bg-[#16161e] px-1.5 py-0.5">
+              {t('webgpuTroubleshooting.insecureOrigin.httpLocalhost')}
+            </code>
+            {t('webgpuTroubleshooting.insecureOrigin.openOverHttps')}{' '}
+            <code className="bg-[#16161e] px-1.5 py-0.5">
+              {t('webgpuTroubleshooting.insecureOrigin.localhostWord')}
+            </code>{' '}
+            {t('webgpuTroubleshooting.insecureOrigin.runningYourself')}
           </p>
         </div>
       ) : category === 'no-api' ? (
         <div>
           <h4 className="font-bold text-[#ff9e64] uppercase tracking-wide mb-2">
-            Browser Not Exposing WebGPU
+            {t('webgpuTroubleshooting.noApi.heading')}
           </h4>
           <p className="text-[#a9b1d6] mb-2">
-            The page is secure, but this browser still doesn't offer{' '}
-            <code className="bg-[#16161e] px-1.5 py-0.5">navigator.gpu</code>. We can't tell which of
-            these applies from here — check the ones that fit your setup:
+            {t('webgpuTroubleshooting.noApi.textStart')}{' '}
+            <code className="bg-[#16161e] px-1.5 py-0.5">
+              {t('webgpuTroubleshooting.noApi.navigatorGpu')}
+            </code>
+            {t('webgpuTroubleshooting.noApi.checkSetup')}
           </p>
           <ul className="list-disc list-inside text-[#a9b1d6] space-y-1">
+            <li>{t('webgpuTroubleshooting.noApi.embeddedWebview')}</li>
             <li>
-              An embedded webview (an in-app browser, an Electron/CEF shell) that doesn't ship WebGPU
-              — try opening this page in a standalone Chrome, Edge, Firefox, or Safari window instead.
+              {t('webgpuTroubleshooting.noApi.enterprisePolicyStart')}{' '}
+              <code className="bg-[#16161e] px-1.5 py-0.5">
+                {t('webgpuTroubleshooting.noApi.chromePolicyPath')}
+              </code>{' '}
+              {t('webgpuTroubleshooting.noApi.forA')}
+              <code className="bg-[#16161e] px-1.5 py-0.5">
+                {t('webgpuTroubleshooting.noApi.defaultWebGpuAccess')}
+              </code>{' '}
+              {t('webgpuTroubleshooting.noApi.hardwareAccelRestriction')}
             </li>
-            <li>
-              An enterprise or MDM policy disabling WebGPU — check{' '}
-              <code className="bg-[#16161e] px-1.5 py-0.5">chrome://policy</code> for a
-              <code className="bg-[#16161e] px-1.5 py-0.5">DefaultWebGPUAccess</code> or
-              hardware-acceleration restriction.
-            </li>
-            <li>A browser older than Chrome/Edge 113, Firefox 141, or Safari 26.</li>
+            <li>{t('webgpuTroubleshooting.noApi.olderBrowser')}</li>
           </ul>
         </div>
       ) : (
         <>
           <div>
-            <h4 className="font-bold text-[#ff9e64] uppercase tracking-wide mb-2">Blocklist Override</h4>
-            <p className="text-[#a9b1d6] mb-2">
-              WebGPU may be disabled due to GPU/driver blocklist. Try these flags:
-            </p>
+            <h4 className="font-bold text-[#ff9e64] uppercase tracking-wide mb-2">
+              {t('webgpuTroubleshooting.noGpu.blocklistHeading')}
+            </h4>
+            <p className="text-[#a9b1d6] mb-2">{t('webgpuTroubleshooting.noGpu.blocklistIntro')}</p>
             <div className="space-y-1 text-[#7dcfff]">
-              <p><code className="bg-[#16161e] px-1.5 py-0.5">chrome://flags/#enable-unsafe-webgpu</code> → Enable</p>
-              <p><code className="bg-[#16161e] px-1.5 py-0.5">chrome://flags/#ignore-gpu-blocklist</code> → Enable</p>
+              <p>
+                <code className="bg-[#16161e] px-1.5 py-0.5">
+                  {t('webgpuTroubleshooting.noGpu.flagUnsafeWebgpu')}
+                </code>{' '}
+                {t('webgpuTroubleshooting.noGpu.enableFlagArrow')}
+              </p>
+              <p>
+                <code className="bg-[#16161e] px-1.5 py-0.5">
+                  {t('webgpuTroubleshooting.noGpu.flagIgnoreBlocklist')}
+                </code>{' '}
+                {t('webgpuTroubleshooting.noGpu.enableFlagArrow')}
+              </p>
             </div>
           </div>
 
           <div>
-            <h4 className="font-bold text-[#bb9af7] uppercase tracking-wide mb-2">Firefox</h4>
-            <p className="text-[#a9b1d6] mb-2">
-              WebGPU enabled by default in Firefox 141+. For older versions:
-            </p>
+            <h4 className="font-bold text-[#bb9af7] uppercase tracking-wide mb-2">
+              {t('webgpuTroubleshooting.firefox.heading')}
+            </h4>
+            <p className="text-[#a9b1d6] mb-2">{t('webgpuTroubleshooting.firefox.intro')}</p>
             <p className="text-[#7dcfff]">
-              <code className="bg-[#16161e] px-1.5 py-0.5">about:config</code> → <code className="bg-[#16161e] px-1.5 py-0.5">dom.webgpu.enabled</code> → true
+              <code className="bg-[#16161e] px-1.5 py-0.5">
+                {t('webgpuTroubleshooting.firefox.aboutConfig')}
+              </code>{' '}
+              →{' '}
+              <code className="bg-[#16161e] px-1.5 py-0.5">
+                {t('webgpuTroubleshooting.firefox.domWebgpuEnabled')}
+              </code>{' '}
+              {t('webgpuTroubleshooting.firefox.arrowTrue')}
             </p>
           </div>
 
           <div>
-            <h4 className="font-bold text-[#9ece6a] uppercase tracking-wide mb-2">Safari</h4>
-            <p className="text-[#a9b1d6]">
-              Safari → Settings → Feature Flags → Enable "WebGPU"
-            </p>
+            <h4 className="font-bold text-[#9ece6a] uppercase tracking-wide mb-2">
+              {t('webgpuTroubleshooting.safari.heading')}
+            </h4>
+            <p className="text-[#a9b1d6]">{t('webgpuTroubleshooting.safari.instructions')}</p>
           </div>
 
           <div>
-            <h4 className="font-bold text-[#7aa2f7] uppercase tracking-wide mb-2">Verify Status</h4>
-            <p className="text-[#a9b1d6] mb-2">Check your GPU status page:</p>
+            <h4 className="font-bold text-[#7aa2f7] uppercase tracking-wide mb-2">
+              {t('webgpuTroubleshooting.verifyStatus.heading')}
+            </h4>
+            <p className="text-[#a9b1d6] mb-2">{t('webgpuTroubleshooting.verifyStatus.intro')}</p>
             <div className="space-y-1 text-[#7dcfff]">
-              <p>Chrome/Edge: <code className="bg-[#16161e] px-1.5 py-0.5">chrome://gpu</code></p>
-              <p>Firefox: <code className="bg-[#16161e] px-1.5 py-0.5">about:support</code></p>
+              <p>
+                {t('webgpuTroubleshooting.verifyStatus.chromeEdgeLabel')}{' '}
+                <code className="bg-[#16161e] px-1.5 py-0.5">
+                  {t('webgpuTroubleshooting.verifyStatus.chromeGpuPath')}
+                </code>
+              </p>
+              <p>
+                {t('webgpuTroubleshooting.verifyStatus.firefoxLabel')}{' '}
+                <code className="bg-[#16161e] px-1.5 py-0.5">
+                  {t('webgpuTroubleshooting.verifyStatus.aboutSupportPath')}
+                </code>
+              </p>
             </div>
           </div>
 
@@ -150,7 +204,7 @@ export function WebGpuTroubleshootingDetails({
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 text-[#7aa2f7] hover:underline"
           >
-            Full Troubleshooting Guide
+            {t('webgpuTroubleshooting.fullGuideLink')}
             <ExternalLink className="h-3 w-3" />
           </a>
         </>
@@ -171,18 +225,23 @@ export function WebGpuTroubleshootingDetails({
  * yet.
  */
 function WebGpuFallbackNotice({ category }: { category: WebGPUUnavailableReason | null }) {
+  const { t } = useTranslation();
   const intro =
     category === 'no-gpu'
-      ? 'If none of the above helped, this is likely a hardware or driver limit (blocklisted GPU, a VM/remote session with no GPU passthrough, or missing Vulkan/Metal/D3D12 drivers) — no browser flag fixes that.'
-      : "Even once that's sorted, the 3D viewport is the only part of ifc-lite that needs WebGPU.";
+      ? t('webgpuTroubleshooting.restOfToolkit.introNoGpu')
+      : t('webgpuTroubleshooting.restOfToolkit.introOther');
   return (
     <div className="mt-4 pt-4 border-t border-[#3b4261] text-xs font-mono space-y-2">
-      <h4 className="font-bold text-[#9ece6a] uppercase tracking-wide">Rest Of The Toolkit</h4>
+      <h4 className="font-bold text-[#9ece6a] uppercase tracking-wide">
+        {t('webgpuTroubleshooting.restOfToolkit.heading')}
+      </h4>
       <p className="text-[#a9b1d6]">
-        {intro} The rest of the toolkit runs on the CPU with no browser at all:
+        {intro} {t('webgpuTroubleshooting.restOfToolkit.cpuLine')}
       </p>
       <p className="text-[#7dcfff]">
-        <code className="bg-[#16161e] px-1.5 py-0.5">npx @ifc-lite/cli query model.ifc --type IfcWall</code>
+        <code className="bg-[#16161e] px-1.5 py-0.5">
+          {t('webgpuTroubleshooting.restOfToolkit.cliCommand')}
+        </code>
       </p>
       <p className="flex flex-wrap gap-x-4 gap-y-1">
         <a
@@ -191,7 +250,7 @@ function WebGpuFallbackNotice({ category }: { category: WebGPUUnavailableReason 
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-[#7aa2f7] hover:underline"
         >
-          CLI Toolkit Docs
+          {t('webgpuTroubleshooting.restOfToolkit.cliDocsLink')}
           <ExternalLink className="h-3 w-3" />
         </a>
         <a
@@ -200,7 +259,7 @@ function WebGpuFallbackNotice({ category }: { category: WebGPUUnavailableReason 
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-[#7aa2f7] hover:underline"
         >
-          MCP Server Docs
+          {t('webgpuTroubleshooting.restOfToolkit.mcpDocsLink')}
           <ExternalLink className="h-3 w-3" />
         </a>
       </p>

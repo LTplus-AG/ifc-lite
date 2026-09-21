@@ -37,6 +37,7 @@ export const selectionTeardown = defineSliceTeardown(
     'selectedEntitiesSet',
     'selectedEntities',
     'selectedModelId',
+    'selectedLandXmlSource',
   ],
   {
     'session-reset': (_scope, state) => ({
@@ -54,6 +55,7 @@ export const selectionTeardown = defineSliceTeardown(
       selectedEntitiesSet: new Set<string>(),
       selectedEntities: [],
       selectedModelId: null,
+      selectedLandXmlSource: null,
     }),
     // `clearAllModels` removes EVERY model, so — unlike `model-removed`,
     // which must filter the `EntityRef`-keyed half by `modelId` to spare a
@@ -76,6 +78,7 @@ export const selectionTeardown = defineSliceTeardown(
       selectedEntitiesSet: new Set<string>(),
       selectedEntities: [],
       selectedModelId: null,
+      selectedLandXmlSource: null,
     }),
     'model-removed': (scope, state) => {
       const { modelId, isStale } = scope;
@@ -106,6 +109,7 @@ export const selectionTeardown = defineSliceTeardown(
         // resync path. One implementation now, so it takes the purge's reading.
         state.selectedModelId === modelId;
       const refsTouched = entityRefsTouched || state.activeStorey?.modelId === modelId;
+      const landXmlTouched = state.selectedLandXmlSource?.modelId === modelId;
 
       // ── Global-id half ──────────────────────────────────────────────────────
       // These key off `globalId`, not `modelId` — they don't carry which model an
@@ -144,6 +148,7 @@ export const selectionTeardown = defineSliceTeardown(
                 state.selectedModelId === modelId ? null : state.selectedModelId,
             }
           : {}),
+        ...(landXmlTouched ? { selectedLandXmlSource: null } : {}),
         ...(idsTouched
           ? {
               selectedEntityId:

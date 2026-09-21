@@ -7,6 +7,7 @@ import { Boxes, Triangle, CheckCircle2, AlertCircle, Loader2 } from 'lucide-reac
 import { Separator } from '@/components/ui/separator';
 import { formatNumber, formatBytes } from '@/lib/utils';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
 import { FlavorIndicator } from '@/components/extensions/FlavorIndicator';
@@ -27,6 +28,7 @@ interface CountedModel {
 }
 
 export function StatusBar() {
+  const { t } = useTranslation();
   const { loading, geometryResult, ifcDataStore, models } = useIfc();
   const progress = useViewerStore((s) => s.progress);
   const error = useViewerStore((s) => s.error);
@@ -232,11 +234,11 @@ export function StatusBar() {
       {/* Left: Status */}
       <div className="flex items-center gap-3">
         {loading ? (
-          <span className="text-primary">{progress?.phase || 'Loading...'}</span>
+          <span className="text-primary">{progress?.phase || t('shellChrome.statusBar.loadingFallback')}</span>
         ) : error ? (
           <span className="text-destructive">{error}</span>
         ) : (
-          <span>Ready</span>
+          <span>{t('shellChrome.statusBar.ready')}</span>
         )}
         {/* Cancel button — only visible while a long-running stream
             (LAS/LAZ/PLY/PCD/E57) is in flight. The loader hooks
@@ -246,9 +248,9 @@ export function StatusBar() {
             type="button"
             onClick={() => activeStreamCanceller()}
             className="px-2 py-0.5 rounded border border-destructive/40 text-destructive text-[10px] uppercase tracking-wider hover:bg-destructive hover:text-destructive-foreground transition-colors"
-            title="Cancel the active point cloud stream"
+            title={t('shellChrome.statusBar.cancelStreamTitle')}
           >
-            Cancel
+            {t('shellChrome.statusBar.cancelButton')}
           </button>
         )}
       </div>
@@ -262,7 +264,7 @@ export function StatusBar() {
             {selectedStoreys.size > 0 && totalObjects !== visibleElements && (
               <span className="opacity-60"> / {formatNumber(totalObjects)}</span>
             )}
-            {' '}elements
+            {' '}{t('shellChrome.statusBar.elementsCount', { count: visibleElements })}
           </span>
         </div>
 
@@ -270,14 +272,16 @@ export function StatusBar() {
 
         <div className="flex items-center gap-1.5">
           <Triangle className="h-3.5 w-3.5" />
-          <span>{formatNumber(triangleCount)} tris</span>
+          <span>
+            {formatNumber(triangleCount)} {t('shellChrome.statusBar.trisCount', { count: triangleCount })}
+          </span>
         </div>
       </div>
 
       {/* Right: Performance */}
       <div className="flex items-center gap-3">
         <span className={fps < 30 ? 'text-destructive' : fps < 50 ? 'text-yellow-500' : ''}>
-          {fps} FPS
+          {fps} {t('shellChrome.statusBar.fpsUnit')}
         </span>
 
         {memory > 0 && (
@@ -298,7 +302,13 @@ export function StatusBar() {
             <AlertCircle className="h-3.5 w-3.5 text-[#f7768e]" />
           )}
           <span className={!webgpu.supported && !webgpu.checking ? 'text-[#f7768e]' : ''}>
-            {webgpu.checking ? 'Checking...' : webgpu.supported ? 'WebGPU' : 'No WebGPU'}
+            {t(
+              webgpu.checking
+                ? 'shellChrome.statusBar.webgpuChecking'
+                : webgpu.supported
+                  ? 'shellChrome.statusBar.webgpuLabel'
+                  : 'shellChrome.statusBar.noWebgpuLabel',
+            )}
           </span>
         </div>
 
@@ -308,7 +318,7 @@ export function StatusBar() {
 
         <Separator orientation="vertical" className="h-3.5" />
 
-        <span className="opacity-60">v{__APP_VERSION__}</span>
+        <span className="opacity-60">{t('shellChrome.statusBar.appVersion', { version: __APP_VERSION__ })}</span>
 
         <Separator orientation="vertical" className="h-3.5" />
 
@@ -317,9 +327,9 @@ export function StatusBar() {
           target="_blank"
           rel="noopener noreferrer"
           className="opacity-60 hover:opacity-100 hover:text-primary transition-opacity"
-          aria-label="Visit ifclite.dev — about, docs, and packages"
+          aria-label={t('shellChrome.statusBar.ifcliteAriaLabel')}
         >
-          ifclite.dev →
+          {t('shellChrome.statusBar.ifcliteLinkLabel')}
         </a>
       </div>
 

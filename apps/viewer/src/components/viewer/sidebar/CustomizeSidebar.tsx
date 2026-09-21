@@ -22,9 +22,11 @@ import { useEffect, useRef, useState } from 'react';
 import { GripVertical, Eye, EyeOff, RotateCcw, Lock, ChevronUp, ChevronDown, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
 
 export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const order = useViewerStore((s) => s.sidebarOrder);
   const hiddenIds = useViewerStore((s) => s.sidebarHiddenIds);
   const reorder = useViewerStore((s) => s.reorderSidebarPanel);
@@ -85,20 +87,20 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
       ref={ref}
       role="group"
       tabIndex={-1}
-      aria-label="Customize sidebar panels"
+      aria-label={t('shellChrome.customizeSidebar.ariaLabel')}
       className="absolute bottom-2 right-14 z-40 w-64 rounded-lg border border-border bg-popover text-popover-foreground shadow-2xl overflow-hidden outline-none"
     >
       <div className="flex items-center justify-between px-3 h-9 border-b border-border bg-muted/40">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Customize sidebar
+          {t('shellChrome.shared.customizeSidebar')}
         </span>
         <button
           type="button"
           onClick={() => resetLayout()}
-          title="Reset to default order + show all"
+          title={t('shellChrome.customizeSidebar.resetTitle')}
           className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
         >
-          <RotateCcw className="h-3 w-3" /> Reset
+          <RotateCcw className="h-3 w-3" /> {t('shellChrome.customizeSidebar.resetLabel')}
         </button>
       </div>
 
@@ -142,7 +144,7 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
                 type="button"
                 disabled={index === 0}
                 onClick={() => prevShown && reorder(id, order.indexOf(prevShown))}
-                aria-label={`Move ${def.title} up`}
+                aria-label={t('shellChrome.customizeSidebar.moveUp', { title: def.title })}
                 className="h-6 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-25 disabled:pointer-events-none transition-colors"
               >
                 <ChevronUp className="h-3.5 w-3.5" />
@@ -151,7 +153,7 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
                 type="button"
                 disabled={index === shownIds.length - 1}
                 onClick={() => nextShown && reorder(id, order.indexOf(nextShown))}
-                aria-label={`Move ${def.title} down`}
+                aria-label={t('shellChrome.customizeSidebar.moveDown', { title: def.title })}
                 className="h-6 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-25 disabled:pointer-events-none transition-colors"
               >
                 <ChevronDown className="h-3.5 w-3.5" />
@@ -160,8 +162,16 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
                 type="button"
                 disabled={locked}
                 onClick={() => setShown(id, false)}
-                aria-label={locked ? `${def.title} is always shown` : `Hide ${def.title}`}
-                title={locked ? 'Always shown' : 'Hide from sidebar'}
+                aria-label={
+                  locked
+                    ? t('shellChrome.customizeSidebar.alwaysShownAriaLabel', { title: def.title })
+                    : t('shellChrome.customizeSidebar.hideAriaLabel', { title: def.title })
+                }
+                title={t(
+                  locked
+                    ? 'shellChrome.customizeSidebar.alwaysShownTitle'
+                    : 'shellChrome.customizeSidebar.hideFromSidebarTitle',
+                )}
                 className={cn(
                   'h-6 w-6 inline-flex items-center justify-center rounded transition-colors',
                   locked ? 'opacity-30' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -177,7 +187,7 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
         {hiddenList.length > 0 && (
           <>
             <div className="mt-1 px-3 pt-2 pb-1 border-t border-border/60 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Hidden
+              {t('shellChrome.customizeSidebar.hiddenSectionHeader')}
             </div>
             {hiddenList.map((id) => {
               const def = getPanelDef(id);
@@ -191,12 +201,12 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
                   <button
                     type="button"
                     onClick={() => setShown(id, true)}
-                    aria-label={`Show ${def.title}`}
-                    title="Show in sidebar"
+                    aria-label={t('shellChrome.customizeSidebar.showAriaLabel', { title: def.title })}
+                    title={t('shellChrome.customizeSidebar.showInSidebarTitle')}
                     className="h-6 inline-flex items-center gap-1 rounded px-1.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                   >
                     <Plus className="h-3.5 w-3.5" />
-                    Show
+                    {t('shellChrome.customizeSidebar.showLabel')}
                   </button>
                 </div>
               );
@@ -206,7 +216,7 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="px-3 py-1.5 border-t border-border text-[10px] text-muted-foreground select-none">
-        Drag a row to reorder. Hide moves a panel to Hidden; Show brings it back.
+        {t('shellChrome.customizeSidebar.footerHint')}
       </div>
     </div>
   );

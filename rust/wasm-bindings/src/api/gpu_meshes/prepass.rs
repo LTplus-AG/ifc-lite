@@ -72,7 +72,7 @@ impl IfcAPI {
         // Serialize jobs as flat Uint32Array: [id, start, end, id, start, end, ...]
         let jobs_flat = js_sys::Uint32Array::new_with_length((total_jobs * 3) as u32);
         let mut idx = 0u32;
-        for &(id, start, end, _ifc_type) in pre_pass
+        for &(id, start, end, _) in pre_pass
             .simple_jobs
             .iter()
             .chain(pre_pass.complex_jobs.iter())
@@ -672,7 +672,7 @@ impl IfcAPI {
             let akey_router = GeometryRouter::new(); // not drained: meshes nothing (issue_3821_auxiliary_routers_mesh_nothing.rs)
             let rest = &buffered_jobs[first_n..];
             super::affinity_chunks::emit_affinity_chunks(rest, chunk_size,
-                |&(id, _s, _e, _t)| match akey_decoder.decode_by_id(id) {
+                |&(id, _s, _e, _)| match akey_decoder.decode_by_id(id) {
                     Ok(ent) => akey_router
                         .geometry_routing_key(&ent, &mut akey_decoder)
                         .map(fold_u128_to_u32)

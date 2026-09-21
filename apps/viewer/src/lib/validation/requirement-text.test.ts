@@ -109,3 +109,13 @@ describe('requirement-text — parse errors name the offending token (#5138)', (
     assert.match(result.error, /extra-junk/);
   });
 });
+
+describe('#5138 parentheses body', () => {
+  it('rejects a second token inside the parentheses instead of dropping it', () => {
+    for (const text of ['sum(Foo Bar) > 1', 'unique(Foo Bar)', 'count(Name x) >= 1']) {
+      const r = parseRequirementText(text);
+      assert.equal(r.ok, false, text);
+      if (!r.ok) assert.match(r.error, /inside the parentheses/);
+    }
+  });
+});

@@ -68,6 +68,25 @@ describe('renderer color-frame readback (#5051 strict GPU evidence)', () => {
     }]);
   });
 
+  it('releases the staging buffer when encoding its texture copy throws', () => {
+    let buffer: FakeBuffer | null = null;
+    const device = {
+      createBuffer: ({ size }: { size: number }) => {
+        buffer = fakeBuffer(size);
+        return buffer;
+      },
+    } as unknown as GPUDevice;
+    const encoder = {
+      copyTextureToBuffer() { throw new Error('copy rejected'); },
+    } as unknown as GPUCommandEncoder;
+
+    assert.throws(
+      () => encodeRendererColorFrameReadback(device, encoder, {} as GPUTexture, 2, 2, 'rgba8unorm'),
+      /copy rejected/,
+    );
+    assert.strictEqual(buffer!.destroys, 1, 'ownership cannot leak before the copy descriptor returns');
+  });
+
   it('normalizes BGRA mapped bytes to RGBA and releases the temporary buffer', async () => {
     let buffer: FakeBuffer | null = null;
     const device = {

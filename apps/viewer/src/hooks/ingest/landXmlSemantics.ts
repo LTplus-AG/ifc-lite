@@ -75,16 +75,21 @@ export interface LandXmlCapabilityDiagnostic { code: string; sourceId: string | 
 export interface LandXmlPreservedOnlyExtension { sourceId: string; parentSourceId: string | null; localName: string; sourcePath: string; kind: 'corridor' | 'string_line' }
 export interface LandXmlPipeMeasure { value: number; unit: string; meters: number }
 export interface LandXmlPipePosition { northing: number; easting: number; northingMeters: number; eastingMeters: number; elevation: LandXmlPipeMeasure | null }
-export interface LandXmlPipePart { kind: string; diameter?: LandXmlPipeMeasure; span?: LandXmlPipeMeasure; width?: LandXmlPipeMeasure; height?: LandXmlPipeMeasure }
+export interface LandXmlPipeUnits { linearUnit: string; elevationUnit: string; diameterUnit: string; widthUnit: string; heightUnit: string; flowUnit: string | null; linearScaleToMeters: number; elevationScaleToMeters: number; diameterScaleToMeters: number; widthScaleToMeters: number; heightScaleToMeters: number }
+export interface LandXmlPipeFlow { sourceId: string; sourcePath: string; unit: string | null; flowIn: number | null; lossIn: number | null; lossOut: number | null; properties: Record<string, string> }
+export interface LandXmlPipeInvert { sourceId: string; sourcePath: string; pipeSourceId: string; flowDirection: string; elevation: LandXmlPipeMeasure; properties: Record<string, string> }
+export interface LandXmlPipePart { kind: 'circular' | 'elliptical' | 'egg' | 'rectangular'; properties: Record<string, string>; diameter?: LandXmlPipeMeasure; span?: LandXmlPipeMeasure; width?: LandXmlPipeMeasure; height?: LandXmlPipeMeasure; thickness?: LandXmlPipeMeasure; material: string | null }
+export interface LandXmlStructurePart { kind: 'circular' | 'rectangular' | 'inlet' | 'outlet' | 'connection'; properties: Record<string, string>; diameter?: LandXmlPipeMeasure; length?: LandXmlPipeMeasure; width?: LandXmlPipeMeasure; thickness?: LandXmlPipeMeasure; material: string | null }
 export interface LandXmlPipe {
   sourceId: string; sourcePath: string; name: string; properties: Record<string, string>;
-  connectivity: { startStructureSourceId: string; endStructureSourceId: string };
-  part: LandXmlPipePart; geometry: { kind: string; point: LandXmlPipePosition | null };
+  units: LandXmlPipeUnits; connectivity: { startStructureSourceId: string; endStructureSourceId: string };
+  part: LandXmlPipePart; geometry: { kind: 'straight' | 'pass_through'; point: LandXmlPipePosition | null }; length: LandXmlPipeMeasure | null; flow: LandXmlPipeFlow | null;
 }
-export interface LandXmlPipeStructure { sourceId: string; sourcePath: string; name: string; properties: Record<string, string>; center: LandXmlPipePosition }
+export interface LandXmlPipeStructure { sourceId: string; sourcePath: string; name: string; properties: Record<string, string>; units: LandXmlPipeUnits; center: LandXmlPipePosition; part: LandXmlStructurePart; rimElevation: LandXmlPipeMeasure | null; sumpElevation: LandXmlPipeMeasure | null; inverts: LandXmlPipeInvert[]; flow: LandXmlPipeFlow | null }
 export interface LandXmlPipeFeature { sourceId: string; sourcePath: string; ownerSourceId: string; properties: Record<string, string> }
-export interface LandXmlPipeNetwork { sourceId: string; sourcePath: string; name: string; properties: Record<string, string>; structures: LandXmlPipeStructure[]; pipes: LandXmlPipe[]; features: LandXmlPipeFeature[] }
-export interface LandXmlPipeNetworkDocument { networks: LandXmlPipeNetwork[]; features: LandXmlPipeFeature[]; refusals: Array<{ sourceId: string; sourcePath: string; code: string; message: string }> }
+export interface LandXmlPipeNetwork { sourceId: string; sourcePath: string; name: string; pipeNetworkType: string; properties: Record<string, string>; structureUnits: LandXmlPipeUnits | null; pipeUnits: LandXmlPipeUnits | null; structures: LandXmlPipeStructure[]; pipes: LandXmlPipe[]; features: LandXmlPipeFeature[] }
+export interface LandXmlPipeNetworkCollection { sourceId: string; sourcePath: string; properties: Record<string, string> }
+export interface LandXmlPipeNetworkDocument { version: string; rootUnits: LandXmlPipeUnits | null; collections: LandXmlPipeNetworkCollection[]; networks: LandXmlPipeNetwork[]; features: LandXmlPipeFeature[]; refusals: Array<{ sourceId: string; sourcePath: string; code: string; message: string }> }
 
 export interface LandXmlSourceRef { modelId: string; sourceId: string }
 
@@ -126,7 +131,9 @@ export type LandXmlSourceRecord =
   | { kind: 'preserved-extension'; extension: LandXmlPreservedOnlyExtension }
   | { kind: 'pipe'; pipe: LandXmlPipe }
   | { kind: 'pipe-structure'; structure: LandXmlPipeStructure }
-  | { kind: 'pipe-feature'; feature: LandXmlPipeFeature };
+  | { kind: 'pipe-feature'; feature: LandXmlPipeFeature }
+  | { kind: 'pipe-network'; network: LandXmlPipeNetwork }
+  | { kind: 'pipe-network-collection'; collection: LandXmlPipeNetworkCollection };
 
 export interface LandXmlSourceModel { landXmlDocument?: LandXmlTinDocument }
 
@@ -154,7 +161,11 @@ function sourceRecordIndex(document: LandXmlTinDocument): LandXmlSourceRecordInd
   for (const crossSectionSurface of document.crossSectionSurfaces) index.roots.set(crossSectionSurface.sourceId, { kind: 'cross-section-surface', crossSectionSurface });
   for (const roadway of document.roadways) index.roots.set(roadway.sourceId, { kind: 'roadway', roadway });
   for (const extension of document.preservedOnlyExtensions) index.roots.set(extension.sourceId, { kind: 'preserved-extension', extension });
+  for (const collection of document.pipeNetworks?.collections ?? []) {
+    index.roots.set(collection.sourceId, { kind: 'pipe-network-collection', collection });
+  }
   for (const network of document.pipeNetworks?.networks ?? []) {
+    index.roots.set(network.sourceId, { kind: 'pipe-network', network });
     for (const pipe of network.pipes) index.roots.set(pipe.sourceId, { kind: 'pipe', pipe });
     for (const structure of network.structures) index.roots.set(structure.sourceId, { kind: 'pipe-structure', structure });
     for (const feature of network.features) index.roots.set(feature.sourceId, { kind: 'pipe-feature', feature });

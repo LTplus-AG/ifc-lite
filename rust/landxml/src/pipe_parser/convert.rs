@@ -56,11 +56,16 @@ pub(super) fn position(
         return Err("Center pntRef is unsupported without a CgPoints adapter".to_owned());
     }
     let values = finite_values(&input.text, "Center", 2, 3)?;
+    let northing_meters = values[0] * units.linear_scale_to_meters;
+    let easting_meters = values[1] * units.linear_scale_to_meters;
+    if !northing_meters.is_finite() || !easting_meters.is_finite() {
+        return Err("scaled Center coordinates must be finite".to_owned());
+    }
     Ok(LandXmlPipePosition {
         northing: values[0],
         easting: values[1],
-        northing_meters: values[0] * units.linear_scale_to_meters,
-        easting_meters: values[1] * units.linear_scale_to_meters,
+        northing_meters,
+        easting_meters,
         elevation: values
             .get(2)
             .copied()

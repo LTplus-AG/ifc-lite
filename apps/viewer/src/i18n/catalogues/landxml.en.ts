@@ -11,6 +11,7 @@ export const landXmlEn = {
   'properties.modelMetadata.sourceOverlays': 'Source Overlays',
   'properties.modelMetadata.sourceSurfaceRecords': 'Source Surfaces',
   'properties.modelMetadata.sourcePipeRecords': 'Pipe Records',
+  'properties.modelMetadata.sourcePipeNetworks': 'Pipe Networks',
   'properties.modelMetadata.noSourceOverlays': 'No boundary, breakline or contour records.',
   'properties.landXmlSource.heading': 'LandXML Source',
   'properties.landXmlSource.navigation': 'Source Navigation',

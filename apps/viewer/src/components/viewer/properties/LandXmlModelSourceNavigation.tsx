@@ -118,6 +118,8 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
   const pipePages = Math.max(1, Math.ceil(pipes.length / PAGE_SIZE));
   const boundedPipePage = Math.min(pipePage, pipePages - 1);
   const visiblePipes = pipes.slice(boundedPipePage * PAGE_SIZE, (boundedPipePage + 1) * PAGE_SIZE);
+  const networks = document.pipeNetworks?.networks ?? [];
+  const collections = document.pipeNetworks?.collections ?? [];
 
   useEffect(() => {
     setSurfacePage(0);
@@ -139,6 +141,10 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
     {pipes.length > 0 && <NavigationSection title={t('properties.modelMetadata.sourcePipeRecords')}>
       {visiblePipes.map((pipe) => <RecordButton key={pipe.sourceId} item={{ label: pipe.name, sourceId: pipe.sourceId, detail: pipe.geometry.kind }} modelId={modelId} selected={selected} onSelect={onSelect} />)}
       <Pager page={boundedPipePage} pages={pipePages} setPage={setPipePage} />
+    </NavigationSection>}
+    {(networks.length > 0 || collections.length > 0) && <NavigationSection title={t('properties.modelMetadata.sourcePipeNetworks')}>
+      {collections.map((collection) => <RecordButton key={collection.sourceId} item={{ label: collection.sourceId, sourceId: collection.sourceId, detail: 'collection' }} modelId={modelId} selected={selected} onSelect={onSelect} />)}
+      {networks.map((network) => <RecordButton key={network.sourceId} item={{ label: network.name, sourceId: network.sourceId, detail: network.pipeNetworkType }} modelId={modelId} selected={selected} onSelect={onSelect} />)}
     </NavigationSection>}
     <NavigationSection title={t('properties.landXmlSource.reviewRecords')}>
       {records.length === 0 ? <div className="px-3 py-2 text-xs text-zinc-500">{t('properties.landXmlSource.noReviewRecords')}</div> : records.map((record) => <RecordButton key={record.sourceId} item={record} modelId={modelId} selected={selected} onSelect={onSelect} />)}

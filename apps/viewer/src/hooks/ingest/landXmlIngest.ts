@@ -7,9 +7,7 @@ import { createCoordinateInfo, type Bounds3D } from '../../utils/localParsingUti
 import { MAX_RENDER_FRAME_ORIGIN_METRES, placeComponentsInRenderFrame } from './landXmlRenderFrame.js';
 import type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
 import { buildLandXmlPipeComponents } from './landXmlPipeGeometry.js';
-
 export type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
-
 export type LandXmlSourceBuffer = ArrayBuffer | SharedArrayBuffer;
 
 export interface LandXmlGeometryPayload {
@@ -348,7 +346,9 @@ export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometr
     }
     droppedBySurface.set(surface.sourceId, { degenerate: degenerateFaces, precision: unrepresentableFaces });
   }
-  for (const pipe of buildLandXmlPipeComponents(parsed.pipeNetworks ?? null, components.length + 1)) {
+  const pipeGeometry = buildLandXmlPipeComponents(parsed.pipeNetworks ?? null, components.length + 1);
+  warnings.push(...pipeGeometry.warnings);
+  for (const pipe of pipeGeometry.components) {
     components.push({ ...pipe, surfaceName: pipe.name, surfaceSourceId: null, pipeSourceId: pipe.sourceId, renderedFaceSourceIds: [] });
   }
   if (components.length === 0) {

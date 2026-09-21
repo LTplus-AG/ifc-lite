@@ -529,3 +529,28 @@ fn issue_5047_preserves_pipe_network_collection_and_feature_metadata() {
         parsed.networks[0].pipes[0].source_id
     );
 }
+
+#[test]
+fn issue_5047_refuses_scaled_center_overflow_without_discarding_siblings() {
+    let source = document(
+        r#"<Metric linearUnit="kilometer"/>"#,
+        r#"<Pipe name="P-1" refStart="MH-1" refEnd="MH-2"><CircPipe diameter="1"/></Pipe>"#,
+    )
+    .replace("<Center>0 0 10</Center>", "<Center>0 1e308 10</Center>")
+    .replace("</Structs>", "<Struct name=\"MH-3\"><Center>1 1 1</Center><CircStruct diameter=\"1\"/></Struct></Structs>");
+    let parsed = parse_landxml_pipe_networks(source.as_bytes()).expect("one overflowing Struct stays local");
+    assert_eq!(parsed.networks[0].structures.len(), 2);
+    assert!(parsed.refusals.iter().any(|refusal| refusal.message.contains("scaled Center coordinates")));
+}
+
+#[test]
+fn issue_5047_does_not_adopt_feature_through_unknown_wrapper() {
+    let source = document(
+        r#"<Metric linearUnit="meter"/>"#,
+        r#"<Pipe name="P-1" refStart="MH-1" refEnd="MH-2"><CircPipe diameter="1"/><Unexpected><Feature><Property label="foreign" value="no"/></Feature></Unexpected><Feature><Property label="direct" value="yes"/></Feature></Pipe>"#,
+    );
+    let parsed = parse_landxml_pipe_networks(source.as_bytes()).expect("unexpected wrapper is not an XML failure");
+    assert_eq!(parsed.features.len(), 1);
+    assert_eq!(parsed.features[0].properties.get("direct"), Some(&"yes".to_owned()));
+    assert!(!parsed.features.iter().any(|feature| feature.properties.contains_key("foreign")));
+}

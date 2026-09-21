@@ -442,10 +442,57 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
   it('renders validated pipe routes in metres and retains model-qualified provenance (#5047)', async () => {
     const pipes = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Imperial linearUnit="foot" diameterUnit="inch"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>0 10 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="straight" refStart="A" refEnd="B"><CircPipe diameter="12"/></Pipe><Pipe name="route" refStart="A" refEnd="B"><CircPipe diameter="12"/><Center>5 5 0</Center></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
     const parsed = await parseDocument(pipes);
-    assert.equal(parsed.pipeNetworks?.networks[0].pipes[0].part.diameter?.meters, 0.3048);
+    assert.ok(Math.abs((parsed.pipeNetworks?.networks[0].pipes[0].part.diameter?.meters ?? 0) - 0.3048) < Number.EPSILON);
     assert.equal(parsed.pipeNetworks?.networks[0].structures[1].center.eastingMeters, 3.048);
     const viewer = await parseViewer(bytes(pipes));
     assert.equal(viewer.geometryResult.meshes.length, 2, 'straight and declared pass-through routes each render once');
     assert.equal(viewer.semanticDocument.rendering.meshProvenance.every((mesh) => mesh.pipeSourceId !== undefined), true);
+  });
+
+  it('renders rectangular pipes with authored width and height rather than a circular fallback (#5047)', async () => {
+    const pipes = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter" widthUnit="meter" heightUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="box" refStart="A" refEnd="B"><RectPipe width="2" height="10"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    const viewer = await parseViewer(bytes(pipes));
+    const mesh = viewer.geometryResult.meshes[0];
+    const world = Array.from(mesh.positions).reduce((bounds, value, index) => {
+      const axis = index % 3, coordinate = value + mesh.origin[axis];
+      bounds.min[axis] = Math.min(bounds.min[axis], coordinate); bounds.max[axis] = Math.max(bounds.max[axis], coordinate);
+      return bounds;
+    }, { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] });
+    assert.equal(world.max[0] - world.min[0], 2);
+    assert.equal(world.max[1] - world.min[1], 10);
+    const ellipse = await parseViewer(bytes(pipes.replace('<RectPipe width="2" height="10"/>', '<ElliPipe span="2" height="10"/>')));
+    const ellipseWorld = Array.from(ellipse.geometryResult.meshes[0].positions).reduce((bounds, value, index) => {
+      const axis = index % 3, coordinate = value + ellipse.geometryResult.meshes[0].origin[axis];
+      bounds.min[axis] = Math.min(bounds.min[axis], coordinate); bounds.max[axis] = Math.max(bounds.max[axis], coordinate);
+      return bounds;
+    }, { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] });
+    assert.ok(Math.abs((ellipseWorld.max[0] - ellipseWorld.min[0]) - 2) < 1e-6);
+    assert.ok(Math.abs((ellipseWorld.max[1] - ellipseWorld.min[1]) - 9.510565) < 1e-5, 'the ten-sided ellipse follows its authored height, not a 2 m circle');
+    const egg = await parseViewer(bytes(pipes.replace('<RectPipe width="2" height="10"/>', '<EggPipe span="2" height="10"/>')));
+    assert.equal(egg.geometryResult.meshes.length, 0);
+    assert.ok(egg.warnings.some((warning) => warning.includes('Egg pipe cross-section is retained but not rendered')));
+  });
+
+  it('refuses incomplete pipe routes locally without fabricating a partial segment (#5047)', async () => {
+    const pipes = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="C"><Center>0 10 0</Center><CircStruct diameter="1"/></Struct><Struct name="D"><Center>10 10 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="bad-center" refStart="A" refEnd="B"><CircPipe diameter="1"/><Center>5 0</Center></Pipe><Pipe name="bad-start" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe><Pipe name="good" refStart="C" refEnd="D"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    const parsed = await parseDocument(pipes);
+    assert.equal(parsed.pipeNetworks?.networks[0].pipes.length, 3, 'source semantics remain inspectable');
+    const viewer = await parseViewer(bytes(pipes));
+    assert.equal(viewer.geometryResult.meshes.length, 2, 'the valid sibling and ordinary complete pipe render');
+    assert.ok(viewer.warnings.some((warning) => warning.includes('bad-center') && warning.includes('every endpoint')));
+
+    const missingStart = pipes.replace('<Center>0 0 0</Center>', '<Center>0 0</Center>');
+    const missingStartViewer = await parseViewer(bytes(missingStart));
+    assert.equal(missingStartViewer.geometryResult.meshes.length, 1, 'a 2D start Center never creates a partial route');
+    assert.ok(missingStartViewer.warnings.some((warning) => warning.includes('bad-start')));
+  });
+
+  it('uses pipe-specific endpoint inverts when an authored structure Center is two-dimensional (#5047)', async () => {
+    const pipes = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0</Center><CircStruct diameter="1"/><Invert refPipe="P" flowDir="out" elev="4"/></Struct><Struct name="B"><Center>10 0</Center><CircStruct diameter="1"/><Invert refPipe="P" flowDir="in" elev="2"/></Struct></Structs><Pipes><Pipe name="P" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    const viewer = await parseViewer(bytes(pipes));
+    assert.equal(viewer.geometryResult.meshes.length, 1);
+    const mesh = viewer.geometryResult.meshes[0];
+    const elevations = Array.from(mesh.positions).filter((_, index) => index % 3 === 1).map((value) => value + mesh.origin[1]);
+    assert.ok(Math.min(...elevations) < 2.1 && Math.max(...elevations) > 3.9, 'the endpoint route follows the per-pipe invert elevations');
   });
 });

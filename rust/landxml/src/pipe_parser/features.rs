@@ -19,10 +19,13 @@ impl PipeParser<'_> {
         {
             return None;
         }
-        if let Some(feature) = self.features_open.last() {
+        let parent = self.frames.get(self.frames.len().saturating_sub(2))?.local.as_str();
+        if parent == "Feature"
+            && self.features_open.last().is_some_and(|feature| feature.depth + 1 == self.frames.len())
+        {
+            let feature = self.features_open.last().expect("checked active Feature");
             return Some((feature.source_id.clone(), feature.source_path.clone()));
         }
-        let parent = self.frames.get(self.frames.len().saturating_sub(2))?.local.as_str();
         if let Some(pipe) = self.pipe.as_ref() {
             if matches!(parent, "CircPipe" | "ElliPipe" | "EggPipe" | "RectPipe" | "Channel" | "PipeFlow") {
                 let suffix = parent.to_ascii_lowercase();
@@ -31,7 +34,10 @@ impl PipeParser<'_> {
                     format!("{}/{}", pipe.source_path, parent),
                 ));
             }
-            return Some((pipe.source_id.clone(), pipe.source_path.clone()));
+            if parent == "Pipe" {
+                return Some((pipe.source_id.clone(), pipe.source_path.clone()));
+            }
+            return None;
         }
         if let Some(structure) = self.structure.as_ref() {
             if matches!(parent, "CircStruct" | "RectStruct" | "InletStruct" | "OutletStruct" | "Connection" | "StructFlow") {
@@ -41,7 +47,10 @@ impl PipeParser<'_> {
                     format!("{}/{}", structure.source_path, parent),
                 ));
             }
-            return Some((structure.source_id.clone(), structure.source_path.clone()));
+            if parent == "Struct" {
+                return Some((structure.source_id.clone(), structure.source_path.clone()));
+            }
+            return None;
         }
         if let Some(network) = self.network.as_ref() {
             if parent == "Structs" {
@@ -56,11 +65,17 @@ impl PipeParser<'_> {
                     format!("{}/Pipes[{}]", network.source_path, network.pipe_collection),
                 ));
             }
-            return Some((network.source_id.clone(), network.source_path.clone()));
+            if parent == "PipeNetwork" {
+                return Some((network.source_id.clone(), network.source_path.clone()));
+            }
+            return None;
         }
-        self.collections
-            .last()
-            .map(|collection| (collection.source_id.clone(), collection.source_path.clone()))
+        if parent == "PipeNetworks" {
+            return self.collections
+                .last()
+                .map(|collection| (collection.source_id.clone(), collection.source_path.clone()));
+        }
+        None
     }
 
     pub(super) fn feature_property_path(&self) -> bool {

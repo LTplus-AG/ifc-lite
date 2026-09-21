@@ -164,7 +164,8 @@ describe('DocumentPanel over a parsed model (#4594)', () => {
     const doc: DocumentSpec = { version: DOCUMENT_VERSION, id: 'doc-tbl', name: 'Imported', page: { size: 'A4', orientation: 'portrait' }, blocks: [
       { kind: 'table', id: 'tb', source: { kind: 'list', list: { ...LIST_PRESETS[0], id: 'copy' }, fromListId: LIST_PRESETS[0].id } },
     ] };
-    useViewerStore.setState({ documents: [doc], activeDocumentId: doc.id });
+    // No model loaded: the list cannot run, which is a settled state the export must report.
+    useViewerStore.setState({ documents: [doc], activeDocumentId: doc.id, models: new Map(), activeModelId: null, ifcDataStore: null });
     const ui = render(<><DocumentPanel pdfSeams={seams} /><Toaster /></>);
     await settle();
     click(ui.querySelector('[data-document-export]')!);

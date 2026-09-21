@@ -167,8 +167,4 @@ export const documentEn = {
   },
   'document.table.total': 'Total ({count})',
   'document.panel.exportPreparingTables': 'Running lists…',
-  'document.panel.problemTables': {
-    one: '{countDisplay} table not printed',
-    other: '{countDisplay} tables not printed',
-  },
 } as const satisfies Record<string, TranslationValue>;

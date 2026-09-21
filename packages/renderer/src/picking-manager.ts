@@ -15,6 +15,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { PickOptions, PickResult, PickClipState } from './types.js';
 import type { PointPickNode } from './point-picker.js';
 import type { GpuUploadOutcome } from './gpu-upload-guard.js';
+import { capturePointRteSnapshot, isPointRteSnapshotCurrent } from './pick-rte-snapshot.js';
 
 /**
  * Supplied by the renderer when point clouds are loaded — returns the
@@ -232,6 +233,12 @@ export class PickingManager {
         // visibility is binary and assets are tiny in count).
         const pointNodes = pointSnap?.nodes ?? undefined;
         const pointSizing = pointSnap?.sizing ?? undefined;
+        // The point pass projects in this immutable RTE frame. Never decode a
+        // delayed readback with a later camera placement: that turns a valid
+        // click into an absolute-coordinate jump after navigation.
+        const pointRteSnapshot = pointNodes?.length
+            ? capturePointRteSnapshot(this.camera)
+            : undefined;
         const result = await this.picker.pick(
             scaledX,
             scaledY,
@@ -243,7 +250,12 @@ export class PickingManager {
             pointSizing,
             this.scene.getInstancedTemplates(),
             clip,
+            pointRteSnapshot,
         );
+        if (pointRteSnapshot
+            && !isPointRteSnapshotCurrent(this.camera, pointRteSnapshot)) {
+            return null;
+        }
         return result;
     }
 
@@ -326,6 +338,7 @@ export class PickingManager {
             // that nothing else on this path can supply — point assets have no
             // entry in `boundingBoxes` at all.
             let pointHits: Set<number>;
+            const pointRteSnapshot = capturePointRteSnapshot(this.camera);
             try {
                 pointHits = await this.picker.pickRect(
                     sx0, sy0, sx1, sy1,
@@ -336,6 +349,7 @@ export class PickingManager {
                     cpuPointSnap.sizing,
                     undefined,
                     clip,
+                    pointRteSnapshot,
                 );
             } catch (err) {
                 // `picker.pickRect` rethrows any readback failure that is not a
@@ -343,6 +357,9 @@ export class PickingManager {
                 // branch could not throw at all before the point pass was added,
                 // so degrade to them instead of failing the whole rectangle select.
                 console.warn('[PickingManager] point-cloud rect pick failed; returning bounding-box hits only:', err);
+                return boxHits;
+            }
+            if (pointRteSnapshot && !isPointRteSnapshotCurrent(this.camera, pointRteSnapshot)) {
                 return boxHits;
             }
             for (const id of pointHits) boxHits.add(id);
@@ -353,7 +370,10 @@ export class PickingManager {
         meshes = meshes.filter((m) => isEntityVisible(m.expressId, options?.hiddenIds, options?.isolatedIds));
         const viewProj = this.camera.getViewProjMatrix().m;
         const pointSnap = this.pointPickProvider?.() ?? null;
-        return this.picker.pickRect(
+        const pointRteSnapshot = pointSnap?.nodes.length
+            ? capturePointRteSnapshot(this.camera)
+            : undefined;
+        const hits = await this.picker.pickRect(
             sx0, sy0, sx1, sy1,
             this.canvas.width, this.canvas.height,
             meshes,
@@ -362,6 +382,10 @@ export class PickingManager {
             pointSnap?.sizing ?? undefined,
             this.scene.getInstancedTemplates(),
             clip,
+            pointRteSnapshot,
         );
+        return pointRteSnapshot && !isPointRteSnapshotCurrent(this.camera, pointRteSnapshot)
+            ? new Set()
+            : hits;
     }
 }

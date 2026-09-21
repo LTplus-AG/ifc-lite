@@ -19,11 +19,15 @@
 
 import type { WebGPUDevice } from './device.js';
 import { POINT_QUAD_VERTS, POINT_VERTEX_BYTES } from './pointcloud/point-pipeline.js';
+import type { RelativeToEyeSnapshot } from './relative-to-eye.js';
+import { relativeToEyeWgsl } from './shaders/relative-to-eye.wgsl.js';
 
 export interface PointPickNode {
   expressId: number;
   modelIndex?: number;
   model?: Float32Array;
+  /** Exact placement retained by the point-cloud owner until this draw. */
+  rteOrigin?: [number, number, number];
   chunks: ReadonlyArray<{ vertexBuffer: GPUBuffer; pointCount: number }>;
 }
 
@@ -72,7 +76,7 @@ export function decodePickSample(value: number): DecodedPickSample {
 }
 
 // View projection + viewport/sizing/id/section + per-asset model matrix.
-const UNIFORM_BYTES = 192;
+const UNIFORM_BYTES = 224;
 const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
 export class PointPicker {
@@ -99,6 +103,7 @@ export class PointPicker {
 
     const shader = this.device.createShaderModule({
       code: `
+${relativeToEyeWgsl}
 struct U {
   viewProj: mat4x4<f32>,
   viewport: vec4<f32>,        // x, y = w, h; z, w = unused
@@ -110,6 +115,8 @@ struct U {
   entityIdOverride: vec4<u32>,
   section: vec4<f32>,         // xyz = plane normal, w = plane distance
   model: mat4x4<f32>,
+  drawableDeltaHigh: vec4<f32>,
+  drawableDeltaLow: vec4<f32>,
 }
 @binding(0) @group(0) var<uniform> u: U;
 
@@ -137,7 +144,16 @@ fn vs_main(input: VIn, @builtin(vertex_index) vId: u32) -> VOut {
   );
   let corner = corners[vId];
 
-  let world = u.model * vec4<f32>(input.position, 1.0);
+  let absoluteWorld = u.model * vec4<f32>(input.position, 1.0);
+  // Flag w selects the canonical RTE projection. The CPU formed the
+  // drawable-camera delta in f64; this shader never subtracts two rounded
+  // map-grid origins.
+  let rteWorld = rteWorldPosition(absoluteWorld.xyz, RteDrawableUniform(
+    u.drawableDeltaHigh,
+    u.drawableDeltaLow,
+  ));
+  let useRte = u.entityIdOverride.w != 0u;
+  let world = select(absoluteWorld, rteWorld, useRte);
   var clip = u.viewProj * world;
 
   let sizeMode = u32(u.sizing.x);
@@ -246,6 +262,7 @@ fn fs_main(input: VOut) -> @location(0) u32 {
     viewport: { width: number; height: number },
     sizing: { sizeMode: 0 | 1 | 2; worldRadius: number; pointSizePx: number; clickTolerancePx: number },
     section?: { normal: [number, number, number]; distance: number; flipped: boolean } | null,
+    relativeToEye?: RelativeToEyeSnapshot,
   ): void {
     if (this.destroyed || nodes.length === 0) return;
     pass.setPipeline(this.pipeline);
@@ -265,7 +282,9 @@ fn fs_main(input: VOut) -> @location(0) u32 {
           entries: [{ binding: 0, resource: { buffer } }] }) };
         this.uniforms.push(uniform);
       }
-      this.writeUniforms(uniform.buffer, node.model, viewProj, viewport, sizing, node.expressId >>> 0, section);
+      this.writeUniforms(
+        uniform.buffer, node, viewProj, viewport, sizing, node.expressId >>> 0, section, relativeToEye,
+      );
       pass.setBindGroup(0, uniform.bindGroup);
       for (const chunk of node.chunks) {
         if (chunk.pointCount === 0) continue;
@@ -277,16 +296,17 @@ fn fs_main(input: VOut) -> @location(0) u32 {
 
   private writeUniforms(
     buffer: GPUBuffer,
-    model: Float32Array | undefined,
+    node: PointPickNode,
     viewProj: Float32Array,
     viewport: { width: number; height: number },
     sizing: { sizeMode: number; worldRadius: number; pointSizePx: number; clickTolerancePx: number },
     entityIdOverride: number,
     section?: { normal: [number, number, number]; distance: number; flipped: boolean } | null,
+    relativeToEye?: RelativeToEyeSnapshot,
   ): void {
     const u = this.uniformScratch;
     const u32 = this.uniformU32;
-    u.set(viewProj.subarray(0, 16), 0);
+    u.set((relativeToEye?.getViewProjection().m ?? viewProj).subarray(0, 16), 0);
     u[16] = Math.max(1, viewport.width);
     u[17] = Math.max(1, viewport.height);
     u[18] = 0;
@@ -300,13 +320,26 @@ fn fs_main(input: VOut) -> @location(0) u32 {
     u32[24] = entityIdOverride >>> 0;
     u32[25] = section ? 1 : 0;
     u32[26] = section?.flipped ? 1 : 0;
-    u32[27] = 0;
+    u32[27] = relativeToEye ? 1 : 0;
     // section plane (vec4<f32>) at float offset 28..31.
     u[28] = section ? section.normal[0] : 0;
     u[29] = section ? section.normal[1] : 0;
     u[30] = section ? section.normal[2] : 0;
-    u[31] = section ? section.distance : 0;
-    u.set(model ?? IDENTITY, 32);
+    const camera = relativeToEye?.getCameraWorld();
+    u[31] = section
+      ? section.distance - (camera
+        ? section.normal[0] * camera[0] + section.normal[1] * camera[1] + section.normal[2] * camera[2]
+        : 0)
+      : 0;
+    u.set(node.model ?? IDENTITY, 32);
+    if (relativeToEye) {
+      // The point render path keeps translation out of the f32 matrix too.
+      // Do the same for picking, otherwise its splats drift from visible ones.
+      u[44] = 0; u[45] = 0; u[46] = 0;
+      relativeToEye.packDrawableOrigin(node.rteOrigin ?? [node.model?.[12] ?? 0, node.model?.[13] ?? 0, node.model?.[14] ?? 0], u, 48);
+    } else {
+      u.fill(0, 48, 56);
+    }
     this.device.queue.writeBuffer(buffer, 0, u.buffer, u.byteOffset, UNIFORM_BYTES);
   }
 

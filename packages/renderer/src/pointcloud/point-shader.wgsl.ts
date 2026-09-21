@@ -22,7 +22,10 @@
  * Round shape: fragment discards corners outside the unit disc, so
  * splats render as circles (not squares) at any size > ~3 px.
  */
+import { relativeToEyeWgsl } from '../shaders/relative-to-eye.wgsl.js';
+
 export const pointShaderSource = `
+    ${relativeToEyeWgsl}
     struct PointUniforms {
       viewProj: mat4x4<f32>,
       model: mat4x4<f32>,
@@ -166,7 +169,11 @@ export const pointShaderSource = `
       let localWorld = (uniforms.model * vec4<f32>(input.position, 1.0)).xyz;
       // The CPU forms this delta in f64, then splits it. Never subtract two
       // independently rounded map-grid origins in the point shader.
-      let worldPos = (localWorld + uniforms.drawableDeltaHigh.xyz) + uniforms.drawableDeltaLow.xyz;
+      let drawable = RteDrawableUniform(
+        uniforms.drawableDeltaHigh,
+        uniforms.drawableDeltaLow,
+      );
+      let worldPos = rteWorldPosition(localWorld, drawable).xyz;
       var clipPos = uniforms.viewProj * vec4<f32>(worldPos, 1.0);
 
       // Compute splat half-extent in pixels for the active size mode.

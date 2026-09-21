@@ -441,6 +441,7 @@ export class PointCloudRenderer {
     expressId: number;
     modelIndex?: number;
     model?: Float32Array;
+    rteOrigin?: [number, number, number];
     chunks: Array<{ vertexBuffer: GPUBuffer; pointCount: number }>;
   }> {
     return buildPickNodeSources(this.nodes.values());
@@ -459,7 +460,7 @@ export class PointCloudRenderer {
     modelIndex?: number;
     index: PointCloudSpatialIndex;
     classMask: Uint32Array;
-    model?: Float32Array;
+    model?: Float32Array | Float64Array;
   }> {
     // `classMask` is a live reference — read synchronously within one
     // query, and `setOptions` replaces (never mutates in place) the array.

@@ -12,35 +12,8 @@ import { resolvePickSample, resolvePickedExpressId } from './pick-resolve.js';
 import type { InstancedTemplateGPU } from './scene.js';
 import { PointPicker, decodePickSample, type PointPickNode } from './point-picker.js';
 import { packPickUniforms } from './pick-uniforms.js';
-import { MathUtils } from './math.js';
-
-/**
- * Reproject a pick coordinate (px, depth in [0, 1]) into world space
- * using the inverse view-projection matrix.
- *
- * Reverse-Z: depth=1 is the near plane, depth=0 is far. A depth of
- * exactly 0 means the click missed every drawn primitive (depth was
- * never written, so the clear value sticks), and we return null.
- *
- * Pixel coords use the WebGPU/screen convention (origin top-left, y
- * increases downward); NDC y is inverted to match the camera's
- * projection matrix.
- */
-function unprojectPickSample(
-  viewProj: Float32Array,
-  pickX: number,
-  pickY: number,
-  width: number,
-  height: number,
-  depth: number,
-): { x: number; y: number; z: number } | null {
-  if (!Number.isFinite(depth) || depth <= 0) return null;
-  const ndcX = ((pickX + 0.5) / width) * 2 - 1;
-  const ndcY = 1 - ((pickY + 0.5) / height) * 2;
-  const inv = MathUtils.invert({ m: viewProj });
-  if (!inv) return null;
-  return MathUtils.transformPoint(inv, { x: ndcX, y: ndcY, z: depth });
-}
+import type { RelativeToEyeSnapshot } from './relative-to-eye.js';
+import { restoreRtePickWorld, unprojectPickSample } from './pick-world-position.js';
 
 /**
  * Whether a rejected `mapAsync` readback means "the GPU resource went away"
@@ -403,9 +376,12 @@ export class Picker {
     pointSizing?: PointPickSizing,
     instancedTemplates?: readonly InstancedTemplateGPU[],
     clip?: PickClipState | null,
+    pointRteSnapshot?: RelativeToEyeSnapshot,
   ): Promise<PickResult | null> {
     if (this.destroyed) return null;
-    const encoder = this.renderPickPass(width, height, meshes, viewProj, pointNodes, pointSizing, instancedTemplates, clip);
+    const encoder = this.renderPickPass(
+      width, height, meshes, viewProj, pointNodes, pointSizing, instancedTemplates, clip, pointRteSnapshot,
+    );
 
     // Clamp the texel origin to the texture bounds. Math.floor(x/y) can
     // be -1 or equal to width/height on border clicks (and on
@@ -485,7 +461,17 @@ export class Picker {
     // [0, 1] (1 = near, 0 = far) — same NDC convention as the camera
     // raycaster, so MathUtils.transformPoint with the inverse viewProj
     // gives the world hit position directly.
-    const worldXYZ = unprojectPickSample(viewProj, sampleX, sampleY, width, height, depth);
+    const projectedWorld = unprojectPickSample(
+      decoded.kind === 'point' && pointRteSnapshot ? pointRteSnapshot.getViewProjection().m : viewProj,
+      sampleX,
+      sampleY,
+      width,
+      height,
+      depth,
+    );
+    const worldXYZ = decoded.kind === 'point' && pointRteSnapshot
+      ? restoreRtePickWorld(projectedWorld, pointRteSnapshot)
+      : projectedWorld;
 
     // Which entity (and which representation item) the sample landed on is a
     // pure lookup — see resolvePickSample.
@@ -531,6 +517,7 @@ export class Picker {
     pointSizing?: PointPickSizing,
     instancedTemplates?: readonly InstancedTemplateGPU[],
     clip?: PickClipState | null,
+    pointRteSnapshot?: RelativeToEyeSnapshot,
   ): Promise<Set<number>> {
     if (this.destroyed) return new Set();
     // Normalise + clip rect to texture bounds.
@@ -542,7 +529,9 @@ export class Picker {
     const rectH = hy - ly + 1;
     if (rectW <= 0 || rectH <= 0) return new Set();
 
-    const encoder = this.renderPickPass(width, height, meshes, viewProj, pointNodes, pointSizing, instancedTemplates, clip);
+    const encoder = this.renderPickPass(
+      width, height, meshes, viewProj, pointNodes, pointSizing, instancedTemplates, clip, pointRteSnapshot,
+    );
 
     // copyTextureToBuffer requires bytesPerRow to be a multiple of 256.
     // r32uint = 4 bytes per texel. Round up to nearest 256.
@@ -616,6 +605,7 @@ export class Picker {
     pointSizing?: PointPickSizing,
     instancedTemplates?: readonly InstancedTemplateGPU[],
     clip?: PickClipState | null,
+    pointRteSnapshot?: RelativeToEyeSnapshot,
   ): GPUCommandEncoder {
     if (this.colorTexture.width !== width || this.colorTexture.height !== height) {
       this.colorTexture.destroy();
@@ -700,7 +690,7 @@ export class Picker {
         worldRadius: sz.worldRadius,
         pointSizePx: sz.pointSizePx,
         clickTolerancePx: sz.clickTolerancePx ?? 2,
-      }, clip?.sectionPlane ?? null);
+      }, clip?.sectionPlane ?? null, pointRteSnapshot);
     }
     pass.end();
     return encoder;

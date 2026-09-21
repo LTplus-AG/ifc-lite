@@ -15,7 +15,7 @@ export class PointCloudPlacements {
   private entry(node: PointCloudNode): Placement {
     let entry = this.placements.get(node);
     if (!entry) {
-      entry = { baseline: new Float64Array(node.model ?? IDENTITY), translation: [0, 0, 0] };
+      entry = { baseline: new Float64Array(node.placement ?? node.model ?? IDENTITY), translation: [0, 0, 0] };
       this.placements.set(node, entry);
     }
     return entry;
@@ -47,6 +47,10 @@ export class PointCloudPlacements {
 
   private apply(node: PointCloudNode, entry: Placement): void {
     const matrix = this.matrix(entry);
+    // This is the sole canonical placement. CPU callers must never recover a
+    // source coordinate from `node.model`: at 5,000 km that f32 translation
+    // rounds a 2.5 cm residual away before snap/measurement sees it.
+    node.placement = matrix;
     node.rteOrigin = [matrix[12], matrix[13], matrix[14]];
     // The legacy CPU picker accepts an f32 matrix. Rendering consumes the
     // exact `rteOrigin` above, so this narrowing cannot erase visible detail.
@@ -77,7 +81,7 @@ export function unionPointCloudBounds(nodes: Iterable<PointCloudNode | undefined
   const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
   for (const node of nodes) {
     if (!node || node.pointCount === 0) continue;
-    const bounds = transformAabb(node.bounds, node.model);
+    const bounds = transformAabb(node.bounds, node.placement ?? node.model);
     if (![...bounds.min, ...bounds.max].every(Number.isFinite)) continue;
     for (let axis = 0; axis < 3; axis++) {
       min[axis] = Math.min(min[axis], bounds.min[axis]);

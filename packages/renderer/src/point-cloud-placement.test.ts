@@ -7,6 +7,7 @@ import { Renderer } from './index.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import { PointCloudPlacements } from './pointcloud/point-cloud-placement.js';
 import { transformAabb, type PointCloudNode } from './pointcloud/point-cloud-node.js';
+import { toLocalFrameRay } from './pointcloud/point-cloud-ray-transform.js';
 
   (globalThis as Record<string, unknown>).GPUShaderStage = { VERTEX: 1, FRAGMENT: 2 };
   (globalThis as Record<string, unknown>).GPUBufferUsage = { VERTEX: 32, COPY_DST: 8, UNIFORM: 64, STORAGE: 128 };
@@ -60,6 +61,24 @@ describe('pointcloud import/manual transform composition (#4226)', () => {
     // GPU picking remains f32-compatible, but the active render path reads
     // this f64 value before it forms the camera-relative high/low pair.
     assert.deepEqual(node.rteOrigin, [5_000_000.015625, 0, 0]);
+  });
+
+  it('keeps the exact f64 placement through the CPU snap transform (#5049)', () => {
+    const node = {} as PointCloudNode;
+    const placements = new PointCloudPlacements();
+    placements.align(node, new Float64Array([
+      1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0,
+      5_000_000.015625, 0, 0, 1,
+    ]));
+    const local = toLocalFrameRay(
+      { x: 5_000_000, y: 0, z: 0 },
+      { x: 1, y: 0, z: 0 },
+      node.placement,
+    );
+    assert.ok(local, 'a translated placement needs a local snap ray');
+    assert.equal(local.origin.x, -0.015625);
+    assert.equal(local.toWorld({ x: 0.025, y: 0, z: 0 }).x, 5_000_000.040625);
+    assert.equal(node.model![12], 5_000_000, 'GPU-only f32 matrix is not used for CPU reconstruction');
   });
 });
 

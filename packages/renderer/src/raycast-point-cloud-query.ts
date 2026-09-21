@@ -31,7 +31,7 @@ export interface PointCloudRaySource {
    * alignment while the shader draws it somewhere else — see
    * `point-cloud-ray-transform.ts`.
    */
-  model?: Float32Array;
+  model?: Float32Array | Float64Array;
 }
 
 /** Supplied by the renderer once point clouds are loaded; empty/null disables point snapping. */

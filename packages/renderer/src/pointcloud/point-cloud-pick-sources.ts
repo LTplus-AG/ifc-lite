@@ -14,6 +14,7 @@ export interface PickSourceNodeLike {
   pointCount: number;
   meta: { expressId: number; modelIndex?: number };
   model?: Float32Array;
+  rteOrigin?: [number, number, number];
   chunks: Array<{ vertexBuffer: GPUBuffer; pointCount: number }>;
 }
 
@@ -21,6 +22,7 @@ export interface PickNodeSource {
   expressId: number;
   modelIndex?: number;
   model?: Float32Array;
+  rteOrigin?: [number, number, number];
   chunks: Array<{ vertexBuffer: GPUBuffer; pointCount: number }>;
 }
 
@@ -35,6 +37,7 @@ export function buildPickNodeSources<TNode extends PickSourceNodeLike>(
       expressId: node.meta.expressId,
       modelIndex: node.meta.modelIndex,
       model: node.model,
+      rteOrigin: node.rteOrigin,
       chunks: node.chunks.map((c) => ({ vertexBuffer: c.vertexBuffer, pointCount: c.pointCount })),
     });
   }

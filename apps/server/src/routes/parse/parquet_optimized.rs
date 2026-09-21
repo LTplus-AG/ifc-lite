@@ -10,8 +10,8 @@
 
 use super::cache_keys::request_cache_key;
 use super::parquet_optimized_replay::{
-    cache_optimized_response, optimized_parquet_response, try_cached_optimized_parquet,
-    OptimizedParquetMetadataHeader,
+    cache_optimized_response, optimized_parquet_response, replay_optimized_by_client_hash,
+    try_cached_optimized_parquet, OptimizedParquetMetadataHeader,
 };
 use super::{cache_symbolic_data_off_runtime, extract_file, ParseQuery};
 use crate::error::ApiError;
@@ -39,11 +39,37 @@ use ifc_lite_processing::{
 /// - `normals=true` - Include normals (default: false, compute on client)
 ///
 /// Typical compression: 3-5x smaller than basic Parquet, 50-75x smaller than JSON.
+///
+/// ## Two ways to ask
+///
+/// With a multipart `file` body: the normal path. The cache key is the
+/// SHA-256 of the RECEIVED bytes, so a `sha256` query parameter sent alongside
+/// a body is IGNORED, same as the flat route.
+///
+/// With `?sha256={hex}` and no body: a probe (issue #5128), the same contract
+/// the flat route's `?sha256=` probe has (issue #3901). It replays the cached
+/// response if, and only if, every entry the replay needs already exists
+/// under that key, and otherwise answers `404` meaning "upload it". See
+/// [`replay_optimized_by_client_hash`].
 pub async fn parse_parquet_optimized(
     State(state): State<AppState>,
     Query(query): Query<ParseQuery>,
-    mut multipart: Multipart,
+    multipart: Option<Multipart>,
 ) -> Result<Response, ApiError> {
+    let tessellation_quality = query.resolved_tessellation_quality()?;
+
+    // Hash-only probe: no body was sent, so there is nothing to extract and
+    // nothing to parse. Checked before the admission gate below only because
+    // that gate reserves an upload that does not exist -- the probe takes
+    // admission itself, on the hit path where it has real work to bound.
+    let Some(mut multipart) = multipart else {
+        let Some(sha256) = query.sha256.as_deref() else {
+            // No body and no hash: there is nothing to identify a file with.
+            return Err(ApiError::MissingFile);
+        };
+        return replay_optimized_by_client_hash(&state, &query, tessellation_quality, sha256).await;
+    };
+
     // Extract file from multipart
     // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
     // upload is buffered, reserving the max upload size since multipart rarely
@@ -56,7 +82,6 @@ pub async fn parse_parquet_optimized(
     let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
 
     // Generate cache key (include opening filter so different modes get different cache entries)
-    let tessellation_quality = query.resolved_tessellation_quality()?;
     let cache_key = request_cache_key(&data, &query, tessellation_quality);
 
     // Cache first, before any processing (issue #3889). The optimized route is

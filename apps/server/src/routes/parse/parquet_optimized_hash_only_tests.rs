@@ -1,0 +1,164 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! `POST /api/v1/parse/parquet/optimized?sha256=...` with NO request body
+//! (issue #5128), the same shape as the flat route's probe (issue #3901,
+//! `parquet_stream_hash_only_tests.rs`).
+//!
+//! Before this, the optimized route had no way to be asked for a cached
+//! response by hash at all: `parse_parquet_optimized` took `Multipart`
+//! unconditionally, so a bare `?sha256=` request with no body failed
+//! multipart parsing before the handler ever ran, and every other route this
+//! issue's reporter tried (`cache/check`, `cache/geometry`, `cache/{key}`)
+//! either does not know about this artifact or 500s on it.
+
+use super::*;
+use crate::services::cache::DiskCache;
+use serde_json::Value;
+
+/// SHA-256 of `content`, in the hex shape the cache key is built from.
+fn digest(content: &[u8]) -> String {
+    DiskCache::generate_key(content)
+}
+
+/// Drive the route with a `sha256` query parameter and NO multipart body at
+/// all: no `Content-Type`, no bytes.
+async fn hash_only_request(state: &AppState, sha256: &str) -> axum::response::Response {
+    let request = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/parse/parquet/optimized?sha256={sha256}"))
+        .body(Body::empty())
+        .unwrap();
+    build_router(state.clone()).oneshot(request).await.unwrap()
+}
+
+/// Read a response into `(status, X-IFC-Metadata, body)`, matching
+/// `post_to`'s shape so hash-only and upload responses compare directly.
+async fn read_response(response: axum::response::Response) -> (StatusCode, String, Vec<u8>) {
+    let status = response.status();
+    let metadata = response
+        .headers()
+        .get("X-IFC-Metadata")
+        .map(|v| v.to_str().unwrap().to_string())
+        .unwrap_or_default();
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    (status, metadata, body.to_vec())
+}
+
+/// The shape guard. The hash is concatenated into a cache key, so a value
+/// that is not a bare digest is a caller-shaped key: `sha256=<key>-datamodel-v6`
+/// would address another request's data-model slot through the optimized
+/// reader. Anything but 64 lowercase hex characters is a `400`, not a lookup.
+#[tokio::test]
+async fn optimized_probe_rejects_non_digest_with_400() {
+    let state = test_state("optimized-hash-shape").await;
+    let real = digest(MINIMAL_IFC.as_bytes());
+    for bogus in [
+        "not-a-hash",
+        // Right alphabet, wrong length.
+        "abc123",
+        // A well-formed digest with a namespace suffix glued on.
+        &format!("{real}-default-datamodel-v6"),
+        // Uppercase: `DiskCache::generate_key` only ever emits lowercase.
+        &real.to_uppercase(),
+    ] {
+        let response = hash_only_request(&state, bogus).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "{bogus} must be rejected on shape, not looked up"
+        );
+    }
+}
+
+/// Property: nothing cached means `404` and no parse ran.
+///
+/// `404` is the status `GET /api/v1/cache/check/{hash}` already uses for
+/// "upload it" (and what the flat route's own probe answers), so a client
+/// that understands one understands the other. The second half is what stops
+/// the parameter from becoming a way to make the server do work for a body it
+/// never received: after the miss, nothing is cached under the key the hash
+/// names.
+#[tokio::test]
+async fn optimized_probe_404_when_nothing_cached() {
+    let state = test_state("optimized-hash-miss").await;
+    let hash = digest(MINIMAL_IFC.as_bytes());
+
+    let (status, _, body) = read_response(hash_only_request(&state, &hash).await).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let json: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["code"], serde_json::json!("NOT_FOUND"));
+    assert!(
+        json["error"].as_str().unwrap_or("").contains("multipart"),
+        "the miss has to tell the client to send the body, got {json}"
+    );
+
+    let cache_key = format!("{hash}-default");
+    for suffix in [
+        "-parquet-optimized-v1",
+        "-parquet-optimized-metadata-v2",
+        "-symbolic-v4",
+    ] {
+        assert!(
+            matches!(
+                state.cache.get_bytes(&format!("{cache_key}{suffix}")).await,
+                Ok(None)
+            ),
+            "a hash-only miss must not have parsed or cached anything ({suffix})"
+        );
+    }
+}
+
+/// The headline property: a hash-only hit is indistinguishable from the
+/// upload that warmed the entry -- same status, same `X-IFC-Metadata` header
+/// (`optimization_stats` included), same body bytes.
+#[tokio::test]
+async fn optimized_probe_replays_after_upload() {
+    let state = test_state("optimized-hash-replay").await;
+    let content = MINIMAL_IFC.as_bytes();
+
+    let (status, upload_metadata, upload_body) = post_optimized(&state, content).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        !upload_body.is_empty(),
+        "the live parse must return a payload"
+    );
+
+    let hash = digest(content);
+    let (status, probe_metadata, probe_body) =
+        read_response(hash_only_request(&state, &hash).await).await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "a warm entry must be replayable from the hash alone"
+    );
+    assert_eq!(
+        probe_metadata, upload_metadata,
+        "a hash-only hit must report the same X-IFC-Metadata header"
+    );
+    assert_eq!(
+        probe_body, upload_body,
+        "a hash-only hit must replay the same bytes an upload hit produced"
+    );
+}
+
+/// Neither a body nor a hash: there is nothing to identify a file with. Making
+/// the multipart body optional must not turn a request with neither into a
+/// `500` or a hang -- it is the same `400 MISSING_FILE` a body with no `file`
+/// field already answers.
+#[tokio::test]
+async fn a_request_with_neither_body_nor_hash_is_a_missing_file() {
+    let state = test_state("optimized-hash-neither").await;
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/parse/parquet/optimized")
+        .body(Body::empty())
+        .unwrap();
+    let response = build_router(state.clone()).oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["code"], serde_json::json!("MISSING_FILE"));
+}

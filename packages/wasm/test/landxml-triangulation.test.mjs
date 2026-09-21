@@ -134,6 +134,13 @@ describe('@ifc-lite/wasm constrained LandXML terrain (#5043)', () => {
       assert.ok(hasGeneratedEdge(affineSurface, [0, 1], [10, 1]));
       assert.ok(Math.abs(generatedArea(affineSurface) - 490) < 1e-9);
 
+      const translatedAffineSplit = `<LandXML xmlns="${namespace}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="translated"><Definition surfType="TIN"><Boundaries><Boundary bndType="outer"><PntList3D>0 1000000 0 0 1000049 49 10 1000049 49 10 1000000 0</PntList3D></Boundary></Boundaries><Breaklines><Breakline brkType="standard"><PntList3D>0 1000001 1 10 1000001 1</PntList3D></Breakline></Breaklines></Definition></Surface></Surfaces></LandXML>`;
+      const translatedSurface = api.parseLandXmlTinBytes(bytes.encode(translatedAffineSplit)).surfaces[0];
+      assert.equal(translatedSurface.topology_origin, 'constrained_triangulation');
+      assert.equal(translatedSurface.terrain_diagnostic, undefined);
+      assert.ok(hasGeneratedEdge(translatedSurface, [0, 1000001], [10, 1000001]));
+      assert.ok(Math.abs(generatedArea(translatedSurface) - 490) < 1e-9);
+
       const overflowingAffineConflict = `<LandXML xmlns="${namespace}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="overflow"><Definition surfType="TIN"><Boundaries><Boundary bndType="outer"><PntList3D>0 0 -1e308 0 10 1e308 10 10 1e308 10 0 -1e308</PntList3D></Boundary></Boundaries><Breaklines><Breakline brkType="standard"><PntList3D>0 5 1e307 10 5 1e307</PntList3D></Breakline></Breaklines></Definition></Surface></Surfaces></LandXML>`;
       const overflowingSurface = api.parseLandXmlTinBytes(bytes.encode(overflowingAffineConflict)).surfaces[0];
       assert.equal(overflowingSurface.topology_origin, 'preserved_only');

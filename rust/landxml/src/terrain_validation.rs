@@ -53,9 +53,23 @@ fn interpolate_elevation(start: f64, end: f64, t: f64) -> Option<f64> {
     expected.is_finite().then_some(expected)
 }
 
-/// Calculate a segment fraction in scaled coordinates so finite coordinate
-/// differences and their squared length cannot overflow before interpolation.
+/// Calculate a segment fraction without discarding local detail from a large
+/// translation. Fall back to scaled coordinates only when direct finite
+/// differences or their squared length overflow.
 fn segment_fraction(point: [f64; 2], start: [f64; 2], end: [f64; 2]) -> Option<f64> {
+    let dx = end[0] - start[0];
+    let dy = end[1] - start[1];
+    let point_dx = point[0] - start[0];
+    let point_dy = point[1] - start[1];
+    let numerator = point_dx * dx + point_dy * dy;
+    let denominator = dx * dx + dy * dy;
+    if numerator.is_finite() && denominator.is_finite() && denominator > 0.0 {
+        let fraction = numerator / denominator;
+        if fraction.is_finite() {
+            return Some(fraction.clamp(0.0, 1.0));
+        }
+    }
+
     let scale = point[0]
         .abs()
         .max(point[1].abs())
@@ -67,17 +81,17 @@ fn segment_fraction(point: [f64; 2], start: [f64; 2], end: [f64; 2]) -> Option<f
     if !scale.is_finite() {
         return None;
     }
-    let dx = end[0] / scale - start[0] / scale;
-    let dy = end[1] / scale - start[1] / scale;
-    let (numerator, denominator) = if dx.abs() >= dy.abs() {
-        (point[0] / scale - start[0] / scale, dx)
+    let scaled_dx = end[0] / scale - start[0] / scale;
+    let scaled_dy = end[1] / scale - start[1] / scale;
+    let (scaled_numerator, scaled_denominator) = if scaled_dx.abs() >= scaled_dy.abs() {
+        (point[0] / scale - start[0] / scale, scaled_dx)
     } else {
-        (point[1] / scale - start[1] / scale, dy)
+        (point[1] / scale - start[1] / scale, scaled_dy)
     };
-    if denominator == 0.0 {
+    if scaled_denominator == 0.0 {
         return None;
     }
-    let fraction = numerator / denominator;
+    let fraction = scaled_numerator / scaled_denominator;
     fraction.is_finite().then_some(fraction.clamp(0.0, 1.0))
 }
 

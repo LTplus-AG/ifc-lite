@@ -266,6 +266,31 @@ fn issue_5043_accepts_affine_split_elevation_rounding_on_exact_constraints(
 }
 
 #[test]
+fn issue_5043_preserves_affine_split_elevations_after_large_translation(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // The same 49 m local geometry as the binary64 regression above, shifted
+    // to a realistic projected easting. Its local one-metre split must not be
+    // lost while guarding genuinely overflowing coordinate differences.
+    let source = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="translated"><Definition surfType="TIN"><Boundaries><Boundary bndType="outer"><PntList3D>0 1000000 0 0 1000049 49 10 1000049 49 10 1000000 0</PntList3D></Boundary></Boundaries><Breaklines><Breakline brkType="standard"><PntList3D>0 1000001 1 10 1000001 1</PntList3D></Breakline></Breaklines></Definition></Surface></Surfaces></LandXML>"#
+    );
+    let parsed = parse(source.as_bytes())?;
+    let surface = &parsed.surfaces[0];
+    assert_eq!(
+        surface.topology_origin,
+        LandXmlTopologyOrigin::ConstrainedTriangulation
+    );
+    assert_eq!(surface.terrain_diagnostic, None);
+    assert!(has_generated_edge(
+        surface,
+        [0.0, 1_000_001.0],
+        [10.0, 1_000_001.0]
+    ));
+    assert!((generated_area(surface) - 490.0).abs() < 1e-9);
+    Ok(())
+}
+
+#[test]
 fn issue_5043_refuses_overflowing_affine_split_elevation_conflicts(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // The mathematical midpoint of each horizontal boundary edge is zero.

@@ -97,7 +97,7 @@ pub use fast_parse::{
 };
 pub use generated::{
     attribute_names_for_schema, entity_info_for_schema, is_subtype_of_for_schema, IfcType,
-    SchemaEntityInfo, IFC_TYPES,
+    SchemaEntityInfo, UnknownIfcType, IFC_TYPES,
 };
 pub use georef::{GeoRefExtractor, GeoRefSource, GeoReference};
 pub use limits::{RtcVerdict, MAX_MAPPED_ITEM_DEPTH, MAX_PLACEMENT_DEPTH};

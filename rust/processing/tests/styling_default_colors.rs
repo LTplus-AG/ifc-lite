@@ -101,7 +101,7 @@ fn bare_elements_render_the_canonical_default_color() {
             .find(|m| m.express_id == id)
             .unwrap_or_else(|| panic!("element #{id} ({ty:?}) produced no mesh; got: {seen:?}"));
 
-        let expected = default_color_for_type(ty).to_array();
+        let expected = default_color_for_type(ty.clone()).to_array();
         assert!(
             approx_eq(mesh.color, expected),
             "#{id} {ty:?}: expected canonical default {expected:?}, got {:?}",

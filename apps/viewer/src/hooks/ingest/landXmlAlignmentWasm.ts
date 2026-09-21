@@ -6,7 +6,7 @@
 
 import { IfcAPI } from '@ifc-lite/wasm';
 import type { LandXmlSourceBuffer } from './landXmlIngest.js';
-import { initLandXmlWasm } from './landXmlWasm.js';
+import { initLandXmlWasm } from './landXmlWasmInit.js';
 import type { LandXmlCantStation, LandXmlSuperelevation } from './landXmlSemantics.js';
 
 export interface LandXmlAlignmentProbeResult {

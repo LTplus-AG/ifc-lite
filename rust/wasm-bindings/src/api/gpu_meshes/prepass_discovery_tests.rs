@@ -169,7 +169,7 @@ fn a_span_past_the_content_is_an_unnamed_record_not_a_panic() {
         .buffered_jobs
         .iter()
         .filter(|&&(id, _, _, _)| id == beam_id)
-        .map(|&(_, _, _, ty)| ty)
+        .map(|(_, _, _, ty)| ty.clone())
         .collect();
     assert_eq!(
         labelled,
@@ -293,7 +293,7 @@ fn sharded_column_discovery_labels_a_legacy_type_candidate_with_its_base_type() 
         .type_candidate_spans
         .iter()
         .filter(|&&(id, _, _, _)| id == style_id)
-        .map(|&(_, _, _, ty)| ty)
+        .map(|(_, _, _, ty)| ty.clone())
         .collect();
     assert_eq!(
         labelled,
@@ -344,7 +344,7 @@ fn sharded_column_discovery_labels_a_legacy_geometry_job_with_its_base_type() {
         .buffered_jobs
         .iter()
         .filter(|&&(id, _, _, _)| id == beam_id)
-        .map(|&(_, _, _, ty)| ty)
+        .map(|(_, _, _, ty)| ty.clone())
         .collect();
     assert_eq!(
         labelled,

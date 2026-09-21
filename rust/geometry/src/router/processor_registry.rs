@@ -130,12 +130,12 @@ impl ProcessorRegistry {
         if let Some(processor) = self.overrides.get(ifc_type) {
             return Some(processor);
         }
-        let index = slot(*ifc_type)?;
+        let index = slot(ifc_type.clone())?;
         Some(self.defaults[index].get_or_init(|| create(index, schema)))
     }
 
     pub(super) fn insert(&mut self, ifc_type: IfcType, processor: Rc<dyn GeometryProcessor>) {
-        self.overrides.insert(ifc_type, processor);
+        self.overrides.insert(ifc_type.clone(), processor);
         if let Some(index) = slot(ifc_type) {
             // Match eager map replacement: an instance loses its failure log
             // and allocation when its last supported type is overridden.

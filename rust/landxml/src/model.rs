@@ -209,6 +209,18 @@ pub struct LandXmlTinDocument {
     pub surfaces: Vec<LandXmlSurface>,
     pub extensions: Vec<LandXmlExtension>,
     pub warnings: Vec<String>,
+    /// Horizontal alignments are source records, separate from terrain TINs.
+    pub alignments: Vec<crate::LandXmlAlignment>,
+    /// Design and sampled profiles retain their distinct LandXML source kinds.
+    pub profiles: Vec<crate::LandXmlProfile>,
+    pub cross_sections: Vec<crate::LandXmlCrossSection>,
+    pub cross_section_surfaces: Vec<crate::LandXmlCrossSectionSurface>,
+    pub roadways: Vec<crate::LandXmlRoadway>,
+    pub capability_diagnostics: Vec<crate::LandXmlCapabilityDiagnostic>,
+    pub preserved_only_extensions: Vec<crate::LandXmlPreservedOnlyExtension>,
+    /// Pipe networks are retained in the same canonical source document as
+    /// terrain. Their absence means this LandXML source did not declare one.
+    pub pipe_networks: Option<crate::LandXmlPipeNetworkDocument>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

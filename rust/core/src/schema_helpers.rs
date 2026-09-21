@@ -279,8 +279,8 @@ pub fn type_product_ifc_type(type_name: &str) -> Option<IfcType> {
 /// `DecodedEntity.ifc_type` comes from a bare [`IfcType::from_str`]. Supported
 /// legacy names now arrive as exact variants and are remapped before the early
 /// return below. A genuinely unknown name still becomes `IfcType::Unknown`,
-/// which stores a **CRC32 hash, not the name**, so the record is the only place
-/// its keyword still exists.
+/// which owns its normalized keyword alongside its CRC32 ID. The raw record is
+/// only the fallback when a decoder has not retained a recoverable keyword.
 ///
 /// `decoded` is returned unchanged when it is already a known type, so the
 /// scan is paid only by entities that need it, and when the record is

@@ -42,7 +42,7 @@ const NEUTRAL_GRAY: [f32; 4] = [0.8, 0.8, 0.8, 1.0];
 /// Snapshot of the historical `wasm-bindings` table
 /// (`rust/wasm-bindings/src/api/styling.rs:970`, 2026-06).
 /// `None` => the type fell through to the neutral-gray default.
-fn wasm_default(t: IfcType) -> [f32; 4] {
+fn wasm_default(t: &IfcType) -> [f32; 4] {
     match t {
         IfcType::IfcWall | IfcType::IfcWallStandardCase => [0.85, 0.85, 0.85, 1.0],
         IfcType::IfcSlab => [0.7, 0.7, 0.7, 1.0],
@@ -65,7 +65,7 @@ fn wasm_default(t: IfcType) -> [f32; 4] {
 
 /// Snapshot of the historical `processing` table
 /// (`rust/processing/src/processor.rs:2140`, 2026-06).
-fn processing_default(t: IfcType) -> [f32; 4] {
+fn processing_default(t: &IfcType) -> [f32; 4] {
     match t {
         IfcType::IfcWall | IfcType::IfcWallStandardCase => [0.85, 0.85, 0.85, 1.0],
         IfcType::IfcSlab => [0.7, 0.7, 0.7, 1.0],
@@ -118,17 +118,17 @@ const CONTESTED: &[IfcType] = &[
     IfcType::IfcBuildingElementProxy,
 ];
 
-fn is_contested(t: IfcType) -> bool {
-    CONTESTED.contains(&t)
+fn is_contested(t: &IfcType) -> bool {
+    CONTESTED.contains(t)
 }
 
 #[test]
 fn union_agrees_with_both_tables_on_uncontested_types() {
-    for &t in MAPPED_TYPES {
+    for t in MAPPED_TYPES {
         if is_contested(t) {
             continue;
         }
-        let canonical = default_color_for_type(t).to_array();
+        let canonical = default_color_for_type(t.clone()).to_array();
         assert_eq!(
             canonical,
             wasm_default(t),
@@ -154,13 +154,13 @@ fn union_picks_the_documented_winner_for_contested_types() {
     ];
 
     for (t, expected, from_wasm) in cases {
-        let canonical = default_color_for_type(t).to_array();
+        let canonical = default_color_for_type(t.clone()).to_array();
         assert_eq!(canonical, expected, "{t:?}: unexpected canonical value");
 
         let winner = if from_wasm {
-            wasm_default(t)
+            wasm_default(&t)
         } else {
-            processing_default(t)
+            processing_default(&t)
         };
         assert_eq!(canonical, winner, "{t:?}: canonical must equal the chosen source table");
     }
@@ -168,7 +168,7 @@ fn union_picks_the_documented_winner_for_contested_types() {
     // FurnishingElement specifically must NOT keep processing's darker brown.
     assert_ne!(
         default_color_for_type(IfcType::IfcFurnishingElement).to_array(),
-        processing_default(IfcType::IfcFurnishingElement),
+        processing_default(&IfcType::IfcFurnishingElement),
         "furnishing must change away from processing's [0.5,0.35,0.2,1]"
     );
 }
@@ -178,13 +178,13 @@ fn exactly_four_types_change_per_table() {
     // Guard rail: the migration must touch ONLY the four contested types.
     let wasm_deltas: Vec<IfcType> = MAPPED_TYPES
         .iter()
-        .copied()
-        .filter(|&t| default_color_for_type(t).to_array() != wasm_default(t))
+        .filter(|&t| default_color_for_type(t.clone()).to_array() != wasm_default(t))
+        .cloned()
         .collect();
     let processing_deltas: Vec<IfcType> = MAPPED_TYPES
         .iter()
-        .copied()
-        .filter(|&t| default_color_for_type(t).to_array() != processing_default(t))
+        .filter(|&t| default_color_for_type(t.clone()).to_array() != processing_default(t))
+        .cloned()
         .collect();
 
     // vs wasm: StairFlight + BuildingElementProxy gain a non-default value.

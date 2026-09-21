@@ -6,7 +6,7 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import { createCoordinateInfo } from '../../utils/localParsingUtils.js';
 import type { LandXmlPointLocation, LandXmlTinDocument } from './landXmlSemantics.js';
 
-/** Establish a source-coordinate frame even when the document has no mesh. */
+/** Derive a federation frame even when LandXML has no renderable TIN mesh. */
 export function sourceCoordinateInfo(parsed: LandXmlTinDocument): GeometryResult['coordinateInfo'] {
   if (parsed.units === null) return createCoordinateInfo({ min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } });
   const bounds = { min: { x: Infinity, y: Infinity, z: Infinity }, max: { x: -Infinity, y: -Infinity, z: -Infinity } };
@@ -19,20 +19,33 @@ export function sourceCoordinateInfo(parsed: LandXmlTinDocument): GeometryResult
   };
   for (const surface of parsed.surfaces) {
     for (const point of surface.points) add(point.northing, point.easting, point.elevation);
-    for (const line of [...surface.boundaries, ...surface.breaklines, ...surface.contours]) {
-      const elevation = line.coordinateDimension === 2 && line.properties.elev !== undefined ? Number(line.properties.elev) : undefined;
-      for (const [northing, easting, value] of line.points) add(northing, easting, value ?? elevation);
+    for (const lines of [surface.boundaries, surface.breaklines]) {
+      for (const line of lines) {
+        for (const point of line.points) if (point.length === 3) add(point[0]!, point[1]!, point[2]);
+      }
+    }
+    for (const contour of surface.contours) {
+      const authoredElevation = contour.properties.elev?.trim();
+      const contourElevation = authoredElevation ? Number(authoredElevation) : undefined;
+      for (const point of contour.points) {
+        add(point[0]!, point[1]!, point.length === 3 ? point[2] : contourElevation);
+      }
     }
   }
-  const addLocation = (location: LandXmlPointLocation): void => { if (location.kind === 'coordinates') add(location.point.northing, location.point.easting, location.point.elevation ?? 0); };
-  for (const alignment of parsed.alignments ?? []) for (const { primitive } of alignment.segments) {
+  for (const point of parsed.plan?.cogoPoints ?? []) if (point.point) add(point.point.northing, point.point.easting, point.point.elevation ?? 0);
+  for (const monument of parsed.plan?.resolvedMonuments ?? []) if (monument.point) add(monument.point.northing, monument.point.easting, monument.point.elevation ?? 0);
+  for (const geometry of parsed.plan?.resolvedGeometry ?? []) for (const point of [geometry.start, geometry.end, geometry.center, geometry.pi]) if (point) add(point.northing, point.easting, point.elevation ?? 0);
+  const addLocation = (location: LandXmlPointLocation): void => {
+    if (location.kind === 'coordinates') add(location.point.northing, location.point.easting, location.point.elevation ?? 0);
+  };
+  for (const alignment of parsed.alignments) for (const { primitive } of alignment.segments ?? []) {
     addLocation(primitive.start); addLocation(primitive.end);
     if (primitive.kind === 'curve') addLocation(primitive.center);
     if (primitive.kind === 'spiral' || primitive.kind === 'unsupported_spiral') addLocation(primitive.pi);
     if (primitive.kind === 'irregular_line') for (const point of primitive.points) add(point.northing, point.easting, point.elevation ?? 0);
   }
   if (!Number.isFinite(bounds.min.x)) return createCoordinateInfo({ min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } });
-  const maxAbs = Math.max(Math.abs(bounds.min.x), Math.abs(bounds.min.y), Math.abs(bounds.min.z), Math.abs(bounds.max.x), Math.abs(bounds.max.y), Math.abs(bounds.max.z));
+  const maxAbs = Math.max(...[bounds.min.x, bounds.min.y, bounds.min.z, bounds.max.x, bounds.max.y, bounds.max.z].map(Math.abs));
   const hasLargeCoordinates = maxAbs > 10_000;
   const originShift = hasLargeCoordinates ? { x: bounds.min.x / 2 + bounds.max.x / 2, y: bounds.min.y / 2 + bounds.max.y / 2, z: bounds.min.z / 2 + bounds.max.z / 2 } : { x: 0, y: 0, z: 0 };
   return createCoordinateInfo(bounds, originShift, hasLargeCoordinates);

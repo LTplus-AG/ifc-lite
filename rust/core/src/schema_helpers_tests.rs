@@ -515,7 +515,7 @@ fn an_unreadable_record_changes_nothing() {
     let unknown = IfcType::from_str("IFCNOTAREALENTITY");
     assert!(matches!(unknown, IfcType::Unknown(_)));
     for record in [&b""[..], &b"garbage with no equals or paren"[..], &b"#1="[..], &b"#1=("[..]] {
-        assert_eq!(legacy_aware_ifc_type_from_record(unknown, record), unknown);
+        assert_eq!(legacy_aware_ifc_type_from_record(unknown.clone(), record), unknown);
     }
 }
 

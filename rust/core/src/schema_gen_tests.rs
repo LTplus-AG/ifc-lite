@@ -216,14 +216,14 @@ mod ifc_types_catalog {
     /// back would produce a catalog that silently omits those classes.
     #[test]
     fn every_entry_round_trips_through_its_name() {
-        for &t in IFC_TYPES {
+        for t in IFC_TYPES {
             let name = t.name();
             assert_eq!(
                 IfcType::from_str(&name.to_uppercase()),
-                t,
+                t.clone(),
                 "{name} did not round-trip"
             );
-            assert_eq!(IfcType::from_id(t.id()), t, "{name} did not round-trip by id");
+            assert_eq!(IfcType::from_id(t.id()), Some(t.clone()), "{name} did not round-trip by id");
         }
     }
 
@@ -231,8 +231,8 @@ mod ifc_types_catalog {
     #[test]
     fn the_catalog_is_a_set_of_real_entities() {
         let mut seen = std::collections::HashSet::new();
-        for &t in IFC_TYPES {
-            assert!(seen.insert(t.name()), "{} appears twice", t.name());
+        for t in IFC_TYPES {
+            assert!(seen.insert(t.known_as_str()), "{} appears twice", t.name());
             assert!(
                 !matches!(t, IfcType::Unknown(_)),
                 "Unknown is the absence of a type, not one of them"
@@ -247,12 +247,12 @@ mod ifc_types_catalog {
     /// rather than a guess about names.
     #[test]
     fn every_parent_is_itself_in_the_catalog() {
-        let known: std::collections::HashSet<&str> = IFC_TYPES.iter().map(|t| t.name()).collect();
-        for &t in IFC_TYPES {
+        let known: std::collections::HashSet<&str> = IFC_TYPES.iter().filter_map(IfcType::known_as_str).collect();
+        for t in IFC_TYPES {
             let mut cur = t.parent();
             while let Some(p) = cur {
                 assert!(
-                    known.contains(p.name()),
+                    known.contains(p.known_as_str().expect("catalog parent is known")),
                     "{} has an ancestor {} outside the catalog",
                     t.name(),
                     p.name()
@@ -275,17 +275,17 @@ mod ifc_types_catalog {
             876,
             "the IFC4X3 catalog has an unexpected entity count"
         );
-        let by_name: std::collections::HashMap<&str, IfcType> =
-            IFC_TYPES.iter().map(|t| (t.name(), *t)).collect();
+        let by_name: std::collections::HashMap<String, IfcType> =
+            IFC_TYPES.iter().map(|t| (t.name().to_string(), t.clone())).collect();
         for name in ["IfcWall", "IfcSlab", "IfcDoor", "IfcWindow", "IfcBuildingStorey"] {
-            let t = by_name[name];
+            let t = by_name[name].clone();
             assert!(!t.is_abstract(), "{name} is instantiable");
-            assert!(t.is_subtype_of(by_name["IfcProduct"]), "{name} is a product");
+            assert!(t.is_subtype_of(by_name["IfcProduct"].clone()), "{name} is a product");
         }
         assert!(by_name["IfcProduct"].is_abstract());
         assert_eq!(
             by_name["IfcWallStandardCase"].parent(),
-            Some(by_name["IfcWall"]),
+            Some(by_name["IfcWall"].clone()),
             "the supertype chain is what makes ancestor mapping a fact"
         );
     }
@@ -364,7 +364,7 @@ mod attribute_names {
     /// would make `attribute_index` return the first of two real positions.
     #[test]
     fn every_type_has_a_consistent_attribute_list() {
-        for &t in IFC_TYPES {
+        for t in IFC_TYPES {
             let names = t.attribute_names();
             let mut seen = std::collections::HashSet::new();
             for n in names {
@@ -396,9 +396,9 @@ mod attribute_names {
 // and the public Unicode-normalized CRC for unknown names.
 #[test]
 fn type_name_normalization_preserves_catalog_and_unknown_unicode_3987() {
-    for &ty in crate::IFC_TYPES {
+    for ty in crate::IFC_TYPES {
         for spelling in [ty.name().to_string(), ty.name().to_uppercase(), ty.name().to_lowercase()] {
-            assert_eq!(IfcType::from_str(&spelling), ty, "{spelling}");
+            assert_eq!(IfcType::from_str(&spelling), ty.clone(), "{spelling}");
         }
     }
     // Independent bitwise IEEE CRC32 oracle, avoiding the generated table.
@@ -444,6 +444,11 @@ fn type_name_normalization_preserves_catalog_and_unknown_unicode_3987() {
         ("ifcé", "IFCÉ"),
         ("ifcı", "IFCI"),
     ] {
-        assert_eq!(IfcType::from_str(input), IfcType::Unknown(crc32(uppercase.as_bytes())), "{input}");
+        let parsed = IfcType::from_str(input);
+        let IfcType::Unknown(unknown) = parsed else {
+            panic!("{input} unexpectedly resolved to a schema type");
+        };
+        assert_eq!(unknown.as_str(), uppercase, "{input}");
+        assert_eq!(unknown.id(), crc32(uppercase.as_bytes()), "{input}");
     }
 }

@@ -516,7 +516,7 @@ impl GeometryRouter {
                         false,
                         texture_index,
                     ) {
-                        self.record_unsupported_item(nested_item.ifc_type);
+                        self.record_unsupported_item(nested_item.ifc_type.clone());
                         crate::diag::diag_debug!(
                             { item_id = nested_item.id, ifc_type = ?nested_item.ifc_type,
                               error = %_e, "skipping unsupported nested geometry item" }
@@ -615,7 +615,7 @@ impl GeometryRouter {
                     }
                 }
                 Err(_e) => {
-                    self.record_unsupported_item(item.ifc_type);
+                    self.record_unsupported_item(item.ifc_type.clone());
                     crate::diag::diag_debug!(
                         { item_id = item.id, ifc_type = ?item.ifc_type, error = %_e,
                           "skipping unsupported geometry item" }
@@ -909,7 +909,7 @@ impl GeometryRouter {
         // Rebase their f64 loop coordinates before the planar tessellator
         // narrows them to f32; subtracting after processor output is too late.
         if matches!(item.ifc_type, IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace)
-            && !self.processors.has_override(item.ifc_type)
+            && !self.processors.has_override(item.ifc_type.clone())
             && self.has_rtc_offset()
             && self.representation_item_uses_raw_large_coordinates(item, decoder)
         {

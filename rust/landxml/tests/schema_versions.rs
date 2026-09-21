@@ -35,6 +35,7 @@ fn issue_5051_routes_10_and_11_through_every_bounded_source_family() {
     for (namespace, version, schema) in [
         (LANDXML_10_NAMESPACE, "1.0", "LandXML-1.0"),
         (LANDXML_11_NAMESPACE, "1.1", "LandXML-1.1"),
+        (LANDXML_12_NAMESPACE, "1.2", "LandXML-1.2"),
     ] {
         let xml = source(namespace, version);
         let document = parse_landxml_document(xml.as_bytes()).expect("synthetic source document");
@@ -52,27 +53,21 @@ fn issue_5051_routes_10_and_11_through_every_bounded_source_family() {
                 .len(),
             1
         );
-        assert_eq!(
-            parse_landxml_pipe_networks(xml.as_bytes())
-                .expect("pipes")
-                .networks
-                .len(),
-            1
-        );
-        assert_eq!(
-            parse_landxml_plan(xml.as_bytes())
-                .expect("plan")
-                .cogo_points()
-                .len(),
-            1
-        );
-        assert_eq!(
-            parse_landxml_alignments_optional(xml.as_bytes())
-                .expect("alignments")
-                .alignments
-                .len(),
-            1
-        );
+        let pipes = parse_landxml_pipe_networks(xml.as_bytes()).expect("pipes");
+        assert_eq!(pipes.schema, schema);
+        assert_eq!(pipes.version, version);
+        assert!(pipes.capability_diagnostics.is_empty());
+        assert_eq!(pipes.networks.len(), 1);
+        let plan = parse_landxml_plan(xml.as_bytes()).expect("plan");
+        assert_eq!(plan.schema, schema);
+        assert_eq!(plan.version, version);
+        assert!(plan.capability_diagnostics.is_empty());
+        assert_eq!(plan.cogo_points().len(), 1);
+        let alignments = parse_landxml_alignments_optional(xml.as_bytes()).expect("alignments");
+        assert_eq!(alignments.schema, schema);
+        assert_eq!(alignments.version, version);
+        assert!(alignments.capability_diagnostics.is_empty());
+        assert_eq!(alignments.alignments.len(), 1);
     }
 }
 
@@ -97,6 +92,31 @@ fn issue_5051_records_known_namespace_version_mismatches_without_rewriting_prove
                     && diagnostic.source_id.is_none()
                     && diagnostic.source_path == "LandXML"
             }));
+        let plan = parse_landxml_plan(xml.as_bytes()).expect("compatible plan");
+        assert_eq!(plan.schema, schema);
+        assert_eq!(plan.version, declared_version);
+        assert!(plan.capability_diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == LandXmlCapabilityDiagnosticCode::SchemaVersionMismatch
+                && diagnostic.source_id.is_none()
+                && diagnostic.source_path == "LandXML"
+        }));
+        let pipes = parse_landxml_pipe_networks(xml.as_bytes()).expect("compatible pipes");
+        assert_eq!(pipes.schema, schema);
+        assert_eq!(pipes.version, declared_version);
+        assert!(pipes.capability_diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == LandXmlCapabilityDiagnosticCode::SchemaVersionMismatch
+                && diagnostic.source_id.is_none()
+                && diagnostic.source_path == "LandXML"
+        }));
+        let alignments =
+            parse_landxml_alignments_optional(xml.as_bytes()).expect("compatible alignments");
+        assert_eq!(alignments.schema, schema);
+        assert_eq!(alignments.version, declared_version);
+        assert!(alignments.capability_diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == LandXmlCapabilityDiagnosticCode::SchemaVersionMismatch
+                && diagnostic.source_id.is_none()
+                && diagnostic.source_path == "LandXML"
+        }));
     }
 }
 

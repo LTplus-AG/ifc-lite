@@ -12,7 +12,7 @@ use super::{
     Capture, Frame, Parser,
 };
 use crate::{
-    classify_landxml_version,
+    classify_landxml_version, compatibility_version_diagnostic,
     semantics::units,
     xml::{
         attr, attributes, character_references, error, split_name, unescape, Attributes, Result,
@@ -80,7 +80,17 @@ impl Parser<'_> {
                 ));
             }
             self.root_seen = true;
-            validate_root(local, namespace, attr(&attrs, "version"))?;
+            let capability = validate_root(local, namespace, attr(&attrs, "version"))?;
+            self.schema = capability
+                .schema()
+                .expect("supported capability has a schema")
+                .to_owned();
+            self.version = attr(&attrs, "version")
+                .expect("supported capability has a version")
+                .to_owned();
+            if let Some(diagnostic) = compatibility_version_diagnostic(capability, &self.version) {
+                self.capability_diagnostics.push(diagnostic);
+            }
             self.target_namespace = namespace.map(str::to_owned);
         }
         let target = namespace == self.target_namespace.as_deref();
@@ -299,6 +309,9 @@ impl Parser<'_> {
             return Err(invalid("document contains no Alignments"));
         }
         Ok(super::super::LandXmlAlignmentDocument {
+            schema: self.schema,
+            version: self.version,
+            capability_diagnostics: self.capability_diagnostics,
             units: self.units,
             alignments: self.alignments,
             warnings: self.warnings,
@@ -356,17 +369,22 @@ fn outside_root_text(root_closed: bool, text: &str, cdata: bool) -> Result<()> {
         format!("LandXML document has {kind} {location} its root element"),
     ))
 }
-fn validate_root(local: &str, namespace: Option<&str>, version: Option<&str>) -> Result<()> {
+fn validate_root(
+    local: &str,
+    namespace: Option<&str>,
+    version: Option<&str>,
+) -> Result<LandXmlVersionCapability> {
     if local != "LandXML" {
         return Err(invalid("root element is not LandXML"));
     }
-    match classify_landxml_version(namespace, version) {
+    let capability = classify_landxml_version(namespace, version);
+    match capability {
         LandXmlVersionCapability::LandXml10Tin
         | LandXmlVersionCapability::LandXml11Tin
         | LandXmlVersionCapability::LandXml12Tin
         | LandXmlVersionCapability::LandXml10VersionMismatch
         | LandXmlVersionCapability::LandXml11VersionMismatch
-        | LandXmlVersionCapability::LandXml12VersionMismatch => Ok(()),
+        | LandXmlVersionCapability::LandXml12VersionMismatch => Ok(capability),
         LandXmlVersionCapability::LandXml10Unsupported
         | LandXmlVersionCapability::LandXml11Unsupported
         | LandXmlVersionCapability::LandXml12Unsupported => Err(error(

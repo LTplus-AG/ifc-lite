@@ -37,6 +37,7 @@ pub use parser::{
     classify_landxml_version, parse_landxml_tin, parse_landxml_tin_with_cancel,
     LANDXML_10_NAMESPACE, LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
 };
+pub(crate) use parser::compatibility_version_diagnostic;
 pub use profile::{
     LandXmlAlignment, LandXmlCapabilityDiagnostic, LandXmlCapabilityDiagnosticCode,
     LandXmlCrossSection, LandXmlCrossSectionPoint, LandXmlCrossSectionPointDataFormat,

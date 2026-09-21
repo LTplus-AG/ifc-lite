@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { LandXmlCapabilityDiagnostic, LandXmlSchema } from './landXmlSemantics.js';
+
 export interface LandXmlPipeMeasure { value: number; unit: string; meters: number }
 export interface LandXmlPipePosition { northing: number; easting: number; northingMeters: number; eastingMeters: number; elevation: LandXmlPipeMeasure | null }
 export interface LandXmlPipeUnits { linearUnit: string; elevationUnit: string; diameterUnit: string; widthUnit: string; heightUnit: string; flowUnit: string | null; linearScaleToMeters: number; elevationScaleToMeters: number; diameterScaleToMeters: number; widthScaleToMeters: number; heightScaleToMeters: number }
@@ -18,7 +20,13 @@ export interface LandXmlPipeStructure { sourceId: string; sourcePath: string; na
 export interface LandXmlPipeFeature { sourceId: string; sourcePath: string; ownerSourceId: string; properties: Record<string, string> }
 export interface LandXmlPipeNetwork { sourceId: string; sourcePath: string; name: string; pipeNetworkType: string; properties: Record<string, string>; structureUnits: LandXmlPipeUnits | null; pipeUnits: LandXmlPipeUnits | null; structures: LandXmlPipeStructure[]; pipes: LandXmlPipe[]; features: LandXmlPipeFeature[] }
 export interface LandXmlPipeNetworkCollection { sourceId: string; sourcePath: string; properties: Record<string, string> }
-export interface LandXmlPipeNetworkDocument { version: string; rootUnits: LandXmlPipeUnits | null; collections: LandXmlPipeNetworkCollection[]; networks: LandXmlPipeNetwork[]; features: LandXmlPipeFeature[]; refusals: Array<{ sourceId: string; sourcePath: string; code: string; message: string }> }
+export interface LandXmlPipeNetworkDocument {
+  schema: LandXmlSchema; version: string;
+  capabilityDiagnostics: LandXmlCapabilityDiagnostic[];
+  rootUnits: LandXmlPipeUnits | null; collections: LandXmlPipeNetworkCollection[];
+  networks: LandXmlPipeNetwork[]; features: LandXmlPipeFeature[];
+  refusals: Array<{ sourceId: string; sourcePath: string; code: string; message: string }>;
+}
 
 export interface LandXmlMeshProvenance {
   meshExpressId: number;

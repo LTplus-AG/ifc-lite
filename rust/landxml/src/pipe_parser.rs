@@ -3,11 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::{
-    classify_landxml_version,
+    classify_landxml_version, compatibility_version_diagnostic,
     preflight::preflight_xml_tokens,
     xml::{attr, attributes, error, normalize_encoding, split_name, Result},
-    LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlLimits, LandXmlPipeNetworkDocument,
-    LandXmlPipeRefusal, LandXmlSourceId,
+    LandXmlCancellation, LandXmlCapabilityDiagnostic, LandXmlDiagnosticCode as Code, LandXmlLimits,
+    LandXmlPipeNetworkDocument, LandXmlPipeRefusal, LandXmlSourceId,
 };
 use quick_xml::{
     events::{BytesStart, Event},
@@ -33,6 +33,9 @@ struct PipeParser<'a> {
     character_references: usize,
     frames: Vec<Frame>,
     root_units: Option<RawUnits>,
+    schema: String,
+    version: String,
+    capability_diagnostics: Vec<LandXmlCapabilityDiagnostic>,
     target_namespace: Option<String>,
     root_seen: bool,
     root_closed: bool,
@@ -81,6 +84,9 @@ pub fn parse_landxml_pipe_networks_with_cancel(
         character_references: 0,
         frames: Vec::new(),
         root_units: None,
+        schema: String::new(),
+        version: String::new(),
+        capability_diagnostics: Vec::new(),
         target_namespace: None,
         root_seen: false,
         root_closed: false,
@@ -173,6 +179,16 @@ impl PipeParser<'_> {
                         "pipe ingestion requires a supported LandXML namespace and version",
                     ),
                 });
+            }
+            self.schema = capability
+                .schema()
+                .expect("supported capability has a schema")
+                .to_owned();
+            self.version = attr(&attributes, "version")
+                .expect("supported capability has a version")
+                .to_owned();
+            if let Some(diagnostic) = compatibility_version_diagnostic(capability, &self.version) {
+                self.capability_diagnostics.push(diagnostic);
             }
             self.target_namespace = namespace.map(str::to_owned);
             self.root_seen = true;

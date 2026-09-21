@@ -143,6 +143,22 @@ export function runLandXmlContracts(api, test) {
     assert.equal(document.units, undefined);
   });
 
+  test('LandXML WASM preserves namespace-selected schema provenance across source families (#5051)', () => {
+    const mismatch = (xml) => xml.replace('LandXML-1.2', 'LandXML-1.1');
+    const source = api.parseLandXmlSourceBytes(new TextEncoder().encode(mismatch(PLAN_XML)));
+    for (const document of [source.tin, source.tin.plan, source.alignments]) {
+      assert.equal(document.schema, 'LandXML-1.1');
+      assert.equal(document.version, '1.2');
+      assert.ok(document.capability_diagnostics.some((diagnostic) => (
+        diagnostic.code === 'schema_version_mismatch' && diagnostic.source_path === 'LandXML'
+      )));
+    }
+    const pipes = api.parseLandXmlTinBytes(new TextEncoder().encode(mismatch(PIPE_XML))).pipe_networks;
+    assert.equal(pipes.schema, 'LandXML-1.1');
+    assert.equal(pipes.version, '1.2');
+    assert.ok(pipes.capability_diagnostics.some((diagnostic) => diagnostic.code === 'schema_version_mismatch'));
+  });
+
   test('LandXML plan adapter exposes Rust resolution, probes and bounded batches', () => {
     const document = api.parseLandXmlTinBytes(new TextEncoder().encode(PLAN_XML));
     assert.deepEqual(document.plan.resolved_monuments, [{

@@ -111,7 +111,9 @@ export interface LandXmlResolvedGeometry {
   renderedPoints?: [number, number, number][]; renderedPointState?: 'aligned' | 'suppressed';
 }
 export interface LandXmlPlanDocument {
-  version: string; areaUnit: string | null; areaScaleToSquareMeters: number | null;
+  schema: LandXmlSchema; version: string;
+  capabilityDiagnostics: LandXmlCapabilityDiagnostic[];
+  areaUnit: string | null; areaScaleToSquareMeters: number | null;
   cogoPoints: LandXmlCgPoint[]; monuments: LandXmlMonument[]; planFeatures: LandXmlPlanFeature[];
   parcels: LandXmlParcel[]; warnings: string[];
   /** Rust-created partitions consumed by the one shared plan line overlay. */

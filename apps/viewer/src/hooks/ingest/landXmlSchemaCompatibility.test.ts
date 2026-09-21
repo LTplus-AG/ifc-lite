@@ -38,10 +38,11 @@ describe('LandXML schema compatibility (#5051)', () => {
       ['http://www.landxml.org/schema/LandXML-1.1', '1.2', 'LandXML-1.1'],
       ['http://www.landxml.org/schema/LandXML-1.2', '1.0', 'LandXML-1.2'],
     ]) {
-      const document = await parseLandXmlSourceInCurrentRealm(source(namespace, version));
-      assert.equal(document.schema, schema);
-      assert.equal(document.version, version);
-      assert.ok(document.capabilityDiagnostics.some((diagnostic) => (
+      const model = await parseLandXmlViewerModelAsync(source(namespace, version));
+      assert.equal(model.semanticDocument.schema, schema);
+      assert.equal(model.semanticDocument.version, version);
+      assert.equal(model.geometryResult.meshes.length, 1);
+      assert.ok(model.semanticDocument.capabilityDiagnostics.some((diagnostic) => (
         diagnostic.code === 'schema_version_mismatch' && diagnostic.sourcePath === 'LandXML'
       )));
     }

@@ -75,7 +75,14 @@ impl Parser<'_> {
                     ),
                 });
             }
+            self.schema = capability
+                .schema()
+                .expect("supported capability has a schema")
+                .to_owned();
             self.version = attr(&attributes, "version").unwrap_or_default().to_owned();
+            if let Some(diagnostic) = compatibility_version_diagnostic(capability, &self.version) {
+                self.capability_diagnostics.push(diagnostic);
+            }
             self.target_namespace = namespace.map(str::to_owned);
             self.root_seen = true;
         }

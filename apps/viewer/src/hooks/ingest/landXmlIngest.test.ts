@@ -107,7 +107,8 @@ it('reports pipe mesh truncation even after ordinary warning capacity is exhaust
   const validPipes = Array.from({ length: 10_001 }, (_, index) => pipe(index));
   const refusedPipes = Array.from({ length: 1_000 }, (_, index) => pipe(20_000 + index));
   const document: LandXmlPipeNetworkDocument = {
-    version: '1.2', rootUnits: units, collections: [], features: [],
+    schema: 'LandXML-1.2', version: '1.2', capabilityDiagnostics: [],
+    rootUnits: units, collections: [], features: [],
     networks: [{
       sourceId: 'network', sourcePath: '/network', name: 'network', pipeNetworkType: '', properties: {},
       structureUnits: units, pipeUnits: units, structures: [structure('start', 0), structure('end', 1)],

@@ -15,6 +15,9 @@
 import type { ReportPageSetup } from '@ifc-lite/charts';
 import { pageBox, REPORT_MARGIN } from '../export/report/compose.js';
 import { CHART_BLOCK_HEIGHT_DEFAULT, type BlockWidth, type TextBlock } from './types.js';
+import { tableChunkHeight, tableRowsPerChunk, TABLE_CAPTION_HEIGHT, TABLE_TITLE_HEIGHT, type ResolvedTableBlock } from './compose-table.js';
+
+export type { ResolvedTableBlock } from './compose-table.js';
 
 const HEADER_HEIGHT = 30;
 const FOOTER_HEIGHT = 24;
@@ -60,7 +63,8 @@ export type ResolvedBlock =
   | { kind: 'image'; id: string; height: number; align: 'left' | 'center' | 'right'; caption?: string; /** natural width / height */ aspect: number; width?: BlockWidth }
   | { kind: 'chart'; id: string; title: string; subtitle: string; hasData: boolean; snapshot: boolean; height?: number; width?: BlockWidth }
   | { kind: 'topic'; id: string; title: string; lines: string[]; /** null when there is no snapshot to print */ snapshotAspect: number | null }
-  | { kind: 'spacer'; id: string; height: number };
+  | { kind: 'spacer'; id: string; height: number }
+  | ResolvedTableBlock;
 
 /** `true` when `block` may pair with an adjacent `'half'` block into one row (#4940) — chart and image only. */
 function isHalfPairable(block: ResolvedBlock): block is (Extract<ResolvedBlock, { kind: 'chart' | 'image' }>) & { width: 'half' } {
@@ -72,7 +76,11 @@ export type DrawnItem =
   | { kind: 'image'; blockId: string; x: number; y: number; w: number; h: number }
   | { kind: 'chart'; blockId: string; x: number; y: number; w: number; h: number }
   | { kind: 'snapshot'; blockId: string; x: number; y: number; w: number; h: number }
-  | { kind: 'topic-snapshot'; blockId: string; x: number; y: number; w: number; h: number };
+  | { kind: 'topic-snapshot'; blockId: string; x: number; y: number; w: number; h: number }
+  /** One page's worth of a table block's rows (#5138): the chunk itself, since — unlike an image or
+   *  chart, which draw the SAME content on whichever page they land on — a table's body differs per
+   *  page, so it cannot be re-looked-up from `blockId` alone the way `placeImage`/the chart case do. */
+  | { kind: 'table'; blockId: string; x: number; y: number; w: number; head: string[]; body: string[][] };
 
 export interface DocumentPage {
   index: number;
@@ -300,6 +308,45 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
           ty += lineH;
         }
         y = Math.max(ty, page.items.some((i) => i.kind === 'topic-snapshot' && i.blockId === block.id) ? snapshotBottom : ty) + BLOCK_GAP;
+        break;
+      }
+      case 'table': {
+        if (block.title) {
+          ensure(TABLE_TITLE_HEIGHT);
+          page.items.push({ kind: 'text', x: REPORT_MARGIN, y: y + 11, size: 11, bold: true, gray: 0, text: block.title });
+          y += TABLE_TITLE_HEIGHT;
+        }
+        if (block.placeholderMessage) {
+          ensure(TABLE_CAPTION_HEIGHT);
+          page.items.push({ kind: 'text', x: REPORT_MARGIN, y: y + 9, size: 9, bold: false, gray: 130, text: block.placeholderMessage });
+          y += TABLE_CAPTION_HEIGHT;
+        } else if (block.rows.length === 0) {
+          ensure(TABLE_CAPTION_HEIGHT);
+          page.items.push({ kind: 'text', x: REPORT_MARGIN, y: y + 9, size: 9, bold: false, gray: 130, text: 'No rows matched.' });
+          y += TABLE_CAPTION_HEIGHT;
+        } else {
+          // Chunked by how many rows fit the room left on the CURRENT page, header repeated per
+          // chunk, a row never split: once a chunk cannot fit even one row, a fresh page gives it
+          // the full frame (mirrors `ensure`, but the capacity itself is dynamic per chunk).
+          let idx = 0;
+          while (idx < block.rows.length) {
+            if (tableChunkHeight(1) > bottom - y) newPage();
+            const capacity = tableRowsPerChunk(bottom - y);
+            const chunk = block.rows.slice(idx, idx + capacity);
+            page.items.push({ kind: 'table', blockId: block.id, x: REPORT_MARGIN, y, w: contentW, head: block.headers, body: chunk });
+            y += tableChunkHeight(chunk.length);
+            idx += chunk.length;
+            if (idx < block.rows.length) newPage();
+          }
+        }
+        if (block.caption || block.truncated) {
+          ensure(TABLE_CAPTION_HEIGHT);
+          const truncationNote = block.truncated ? `Showing the first ${block.rows.length.toLocaleString()} rows; more rows matched.` : '';
+          const text = block.caption && truncationNote ? `${block.caption} (${truncationNote})` : block.caption || truncationNote;
+          page.items.push({ kind: 'text', x: REPORT_MARGIN, y: y + 9, size: 8, bold: false, gray: 130, text });
+          y += TABLE_CAPTION_HEIGHT;
+        }
+        y += BLOCK_GAP;
         break;
       }
     }

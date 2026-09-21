@@ -8,13 +8,13 @@
  */
 import { newChartSpec } from '../charts/presets.js';
 import { freshBlockId, freshDocumentId } from './persistence.js';
-import type { DocumentBlock, DocumentSpec, TextBlock } from './types.js';
+import { DOCUMENT_VERSION, type DocumentBlock, type DocumentSpec, type TableBlock, type TableColumnId, type TableRowsMode, type TextBlock } from './types.js';
 
 const text = (style: TextBlock['style'], value: string): TextBlock => ({ kind: 'text', id: freshBlockId(), style, text: value });
 
 export function blankDocument(): DocumentSpec {
   return {
-    version: 2,
+    version: DOCUMENT_VERSION,
     id: freshDocumentId(),
     name: 'Untitled document',
     page: { size: 'A4', orientation: 'portrait' },
@@ -32,7 +32,33 @@ export function coverSheetDocument(): DocumentSpec {
     { kind: 'chart', id: freshBlockId(), chart: newChartSpec(), snapshot: true },
     text('body', 'Issued {Today}.'),
   ];
-  return { version: 2, id: freshDocumentId(), name: 'Cover sheet', page: { size: 'A4', orientation: 'portrait' }, blocks };
+  return { version: DOCUMENT_VERSION, id: freshDocumentId(), name: 'Cover sheet', page: { size: 'A4', orientation: 'portrait' }, blocks };
+}
+
+/** Default columns for a fresh table block, per rows mode (#5138): entity rows lead with what to
+ *  triage an element by, set rows with what identifies the group and its violation. */
+export const DEFAULT_TABLE_COLUMNS: Record<TableRowsMode, TableColumnId[]> = {
+  failed: ['rule', 'result', 'entityType', 'name', 'globalId', 'reason'],
+  passed: ['rule', 'result', 'entityType', 'name', 'globalId'],
+  all: ['rule', 'result', 'entityType', 'name', 'globalId'],
+  sets: ['rule', 'result', 'set', 'members', 'actual', 'expected', 'reason'],
+};
+
+/**
+ * Append a validation-results table block to `document` (#5138): the helper
+ * both the "Insert table" menu entry and, from a different panel, the
+ * results panel's "Insert results table" affordance (PR 4) call — a pure
+ * function so either caller can pass it straight to `upsertDocument`.
+ */
+export function insertValidationTableBlock(document: DocumentSpec, options: { ruleId?: string; rows?: TableRowsMode } = {}): DocumentSpec {
+  const rows = options.rows ?? 'failed';
+  const block: TableBlock = {
+    kind: 'table',
+    id: freshBlockId(),
+    source: { kind: 'validation', ruleId: options.ruleId, rows },
+    columns: DEFAULT_TABLE_COLUMNS[rows],
+  };
+  return { ...document, blocks: [...document.blocks, block] };
 }
 
 export const DOCUMENT_PRESETS: ReadonlyArray<{ name: string; create: () => DocumentSpec }> = [

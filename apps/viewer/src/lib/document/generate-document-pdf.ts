@@ -10,12 +10,22 @@
  */
 import type { Aggregation } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
+import type { ValidationReport } from '@ifc-lite/ids';
 import { REPORT_MARGIN } from '../export/report/compose.js';
 import type { ReportDoc, ReportPdfSeams } from '../export/report/generate-report-pdf.js';
 import { dataUrlToBytes } from '../export/download.js';
 import { renderTemplate, type BindingContext } from './bindings.js';
 import { composeDocument, estimateTextWidth, type DocumentLayout, type ResolvedBlock } from './compose.js';
-import type { DocumentSpec } from './types.js';
+import { resolveTableRows } from './table-rows.js';
+import type { DocumentSpec, TableColumnId } from './types.js';
+
+/** Plain-English headers for a printed table (#5138): the PDF, like the rest of this file's own
+ *  fallback strings ("No data for this chart.", "3D snapshot unavailable."), is not localized — only
+ *  the interactive preview/editor are (`DocumentPreview.tsx`, `BlockEditor.tsx`). */
+const TABLE_COLUMN_LABEL: Record<TableColumnId, string> = {
+  rule: 'Rule', result: 'Result', entityType: 'Entity type', name: 'Name', globalId: 'GlobalId',
+  model: 'Model', actual: 'Actual', expected: 'Expected', reason: 'Reason', set: 'Set', members: 'Members',
+};
 
 export interface DocumentPdfSeams extends ReportPdfSeams {
   /** Natural size of an image (data URL); the layout keeps its aspect ratio. */
@@ -36,6 +46,8 @@ export interface DocumentPdfInput {
   snapshotIds: (blockId: string) => readonly number[];
   /** BCF topics by GUID. */
   topics: Map<string, BCFTopic>;
+  /** The store's validation report (#5138), read at print time; `null` when none has run. */
+  validationReport: ValidationReport | null;
 }
 
 export interface DocumentPdfResult {
@@ -142,6 +154,21 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
           }
         }
         blocks.push({ kind: 'topic', id: block.id, title: topic.title, lines: topicLines(topic), snapshotAspect });
+        break;
+      }
+      case 'table': {
+        const modelName = (modelId: string): string => input.bindings.models.find((m) => m.id === modelId)?.name ?? modelId;
+        const resolved = resolveTableRows(block, input.validationReport, modelName);
+        const placeholderMessage = resolved.placeholderReason === 'no-report'
+          ? 'No validation report yet — run validation, then export again.'
+          : resolved.placeholderReason === 'rule-not-found'
+            ? 'The rule this table refers to is not in the current validation report.'
+            : undefined;
+        blocks.push({
+          kind: 'table', id: block.id, title: block.title, caption: block.caption,
+          columns: block.columns, headers: block.columns.map((c) => TABLE_COLUMN_LABEL[c]),
+          rows: resolved.rows, truncated: resolved.truncated, placeholderMessage,
+        });
         break;
       }
     }
@@ -257,6 +284,9 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
           placeImage(doc, topic ? topicSnapshotDataUrl(topic) : null, topic ? `viewpoint of "${topic.title}"` : 'viewpoint', item, result);
           break;
         }
+        case 'table':
+          doc.table({ startY: item.y, margin: { left: item.x, right: REPORT_MARGIN }, head: [item.head], body: item.body });
+          break;
       }
     }
   }

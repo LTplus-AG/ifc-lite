@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Renderer } from '@ifc-lite/renderer';
 import {
-  COMMON_ORIGIN, LARGE_ORIGIN, PICK_CSS_X, PICK_CSS_Y, GEOMETRIC_TOLERANCE_METRES,
+  COMMON_ORIGIN, LARGE_ORIGIN, PICK_CSS_X, PICK_CSS_Y, CPU_PICK_CSS_X, CPU_PICK_CSS_Y, GEOMETRIC_TOLERANCE_METRES,
   baseReport, distance, instancedShard, largeExtentMesh, type RteGpuWitnessReport, witnessMesh,
 } from './RteGpuWitnessFixtures';
 
@@ -57,15 +57,23 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     const adapter = renderer.getAdapterInfo();
     report.system.adapter = adapter;
     const adapterText = `${adapter?.vendor ?? ''} ${adapter?.architecture ?? ''}`.toLowerCase();
-    if (!adapter?.vendor || /swiftshader|software|llvmpipe|warp/.test(adapterText)) {
+    const hardwareVendor = /nvidia|amd|intel|apple|qualcomm|arm|imagination/;
+    if (!adapter?.vendor || !hardwareVendor.test(adapterText) || /swiftshader|software|llvmpipe|warp/.test(adapterText)) {
       report.status = 'skipped';
-      report.reason = 'Hardware adapter identity is unavailable or software-rendered; SwiftShader is not acceptance evidence.';
+      report.reason = 'A positively identified hardware adapter is required; unknown and software adapters (including SwiftShader) are not acceptance evidence.';
       return report;
     }
+    report.system.hardwareVerified = true;
 
     const quantized = await renderer.enableQuantizedBatches();
     const flat = witnessMesh(101, COMMON_ORIGIN, [1, 0.15, 0.1, 1]);
     const textured = witnessMesh(102, [COMMON_ORIGIN[0] - 24, COMMON_ORIGIN[1], COMMON_ORIGIN[2]], [1, 1, 1, 1], true);
+    // Two owning models with distinct derived representation-item provenance:
+    // the pick/readback must not collapse them into a batch/material identity.
+    flat.modelIndex = 11;
+    flat.geometryItemId = 70_101;
+    textured.modelIndex = 12;
+    textured.geometryItemId = 70_102;
     renderer.loadGeometry([flat, textured, largeExtentMesh()]);
     const device = renderer.getGPUDevice();
     if (!device) throw new Error('Renderer initialized without a live GPU device.');
@@ -95,7 +103,7 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     const linePixel = await screenshotPixel(lineScreenshot, PICK_CSS_X, PICK_CSS_Y);
 
     const pick = await renderer.pick(PICK_CSS_X, PICK_CSS_Y);
-    const cpuRay = renderer.raycastScene(PICK_CSS_X, PICK_CSS_Y, {
+    const cpuRay = renderer.raycastScene(CPU_PICK_CSS_X, CPU_PICK_CSS_Y, {
       snapOptions: {
         snapToVertices: true,
         snapToEdges: true,
@@ -103,7 +111,7 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
         screenSnapRadius: 24,
       },
     });
-    const magnetic = renderer.raycastSceneMagnetic(PICK_CSS_X, PICK_CSS_Y, {
+    const magnetic = renderer.raycastSceneMagnetic(CPU_PICK_CSS_X, CPU_PICK_CSS_Y, {
       edge: null,
       meshExpressId: null,
       lockStrength: 0,
@@ -146,6 +154,15 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     renderer.render({ clearColor: [0.02, 0.02, 0.02, 1] });
     await device.queue.onSubmittedWorkDone();
     const pointPick = (await renderer.pick(PICK_CSS_X, PICK_CSS_Y))?.expressId ?? null;
+    const pointCrop = {
+      enabled: true,
+      min: [COMMON_ORIGIN[0] - 1, COMMON_ORIGIN[1] - 1, COMMON_ORIGIN[2] + 2] as [number, number, number],
+      max: [COMMON_ORIGIN[0] + 12, COMMON_ORIGIN[1] + 12, COMMON_ORIGIN[2] + 12] as [number, number, number],
+    };
+    renderer.render({ clipBox: pointCrop });
+    await device.queue.onSubmittedWorkDone();
+    const pointCropClick = (await renderer.pick(PICK_CSS_X, PICK_CSS_Y)) === null;
+    const pointCropRectangle = (await renderer.pickRect(PICK_CSS_X - 12, PICK_CSS_Y - 12, PICK_CSS_X + 12, PICK_CSS_Y + 12)).size === 0;
     camera.setPosition(COMMON_ORIGIN[0], COMMON_ORIGIN[1], COMMON_ORIGIN[2] + 60);
     camera.setTarget(COMMON_ORIGIN[0], COMMON_ORIGIN[1], COMMON_ORIGIN[2]);
 
@@ -173,7 +190,7 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     renderer.render({ clipBox: crop });
     await device.queue.onSubmittedWorkDone();
     const clippedPick = (await renderer.pick(PICK_CSS_X, PICK_CSS_Y)) === null;
-    renderer.render({ sectionPlane: { axis: 'front', position: 50, enabled: true, normal: [0, 0, 1], distance: COMMON_ORIGIN[2] + 1 } });
+    renderer.render({ sectionPlane: { axis: 'front', position: 50, enabled: true, normal: [0, 0, 1], distance: COMMON_ORIGIN[2] - 1 } });
     await device.queue.onSubmittedWorkDone();
     const sectionPick = (await renderer.pick(PICK_CSS_X, PICK_CSS_Y)) === null;
 
@@ -200,6 +217,8 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
       texturedPick,
       instancedPick,
       pointPick,
+      pointCropClick,
+      pointCropRectangle,
       linePixel,
       colorPixel,
       cpuRay: cpuRayEvidence,
@@ -208,7 +227,9 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
       CPUAndGpuAgree: gpuCpuResidual <= GEOMETRIC_TOLERANCE_METRES,
       snapResidualMetres,
       measurementResidualMetres,
-      provenanceStable: pick?.expressId === 101 && cpuRayEvidence?.expressId === 101 && magnetic.intersection?.expressId === 101,
+      provenanceStable: pick?.expressId === 101 && pick.geometryItemId === 70_101
+        && cpuRayEvidence?.expressId === 101 && magnetic.intersection?.expressId === 101
+        && magnetic.intersection?.geometryItemId === 70_101,
       families: {
         flat: renderer.getScene().getMeshData(101)?.origin?.[0] === COMMON_ORIGIN[0],
         textured: texturedPick === 102 && renderer.getScene().getResidentGpuBytes().textured > 0,
@@ -222,13 +243,15 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
         picker: pick?.expressId === 101,
         highlight: highlightDrawCalls > 0,
         section: sectionPick,
-        crop: clippedPick,
+        crop: clippedPick && pointCropClick && pointCropRectangle,
         farOrigin: sourceResidualMetres <= GEOMETRIC_TOLERANCE_METRES,
         largeExtent: largeExtentDrawCalls > 0,
         cpuRay: cpuRayEvidence?.expressId === 101,
         snap: magnetic.snapTarget !== null || cpuRay?.snap !== undefined,
         measurement: measurementResidualMetres <= GEOMETRIC_TOLERANCE_METRES,
-        identityProvenance: pick?.expressId === 101 && cpuRayEvidence?.expressId === 101 && magnetic.intersection?.expressId === 101,
+        identityProvenance: pick?.expressId === 101 && pick.geometryItemId === 70_101
+          && cpuRayEvidence?.expressId === 101 && magnetic.intersection?.expressId === 101
+          && magnetic.intersection?.geometryItemId === 70_101,
       },
       quantized: quantized && renderer.getScene().getBatchedMeshes().some((batch) => batch.quantized !== undefined),
       instancedDrawn: commonInstancedDrawn,
@@ -250,6 +273,8 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
       && report.evidence.instancedDrawn > 0
       && report.evidence.pointAssets === 1
       && report.evidence.clippedPick
+      && report.evidence.pointCropClick
+      && report.evidence.pointCropRectangle
       && report.evidence.sectionPick
       && report.evidence.shadowDrawCalls > 0
       && report.evidence.highlightDrawCalls > 0

@@ -12,10 +12,12 @@ import { expect, test } from '@playwright/test';
 interface WitnessReport {
   status: 'pending' | 'passed' | 'skipped' | 'failed';
   reason?: string;
-  system: { adapter: { vendor?: string; architecture?: string } | null; devicePixelRatio: number };
+  system: { adapter: { vendor?: string; architecture?: string } | null; devicePixelRatio: number; hardwareVerified: boolean };
   evidence?: {
     canvasPixels: { width: number; height: number };
     pickPixel: { x: number; y: number };
+    pointCropClick: boolean;
+    pointCropRectangle: boolean;
     sourceResidualMetres: number;
     pickResidualMetres: number | null;
     CPUAndGpuAgree: boolean;
@@ -55,6 +57,7 @@ test('production RTE GPU witness at 5,000 km (#5049)', async ({ page }, info) =>
   if (report.status === 'skipped') test.skip(true, report.reason ?? 'Hardware adapter was not available.');
   expect(report.status, report.reason).toBe('passed');
   expect(report.system.adapter?.vendor, 'real adapter vendor').toBeTruthy();
+  expect(report.system.hardwareVerified, 'positively identified hardware adapter').toBe(true);
   expect(report.evidence).toBeDefined();
   expect(report.evidence?.canvasPixels).toEqual({ width: 640, height: 480 });
   expect(report.evidence?.pickPixel).toEqual({ x: 320, y: 240 });
@@ -70,6 +73,8 @@ test('production RTE GPU witness at 5,000 km (#5049)', async ({ page }, info) =>
   expect(report.evidence?.instancedDrawn).toBeGreaterThan(0);
   expect(report.evidence?.pointAssets).toBe(1);
   expect(report.evidence?.clippedPick).toBe(true);
+  expect(report.evidence?.pointCropClick, 'point click obeys crop').toBe(true);
+  expect(report.evidence?.pointCropRectangle, 'point marquee obeys crop').toBe(true);
   expect(report.evidence?.sectionPick).toBe(true);
   expect(report.evidence?.shadowDrawCalls).toBeGreaterThan(0);
   expect(report.evidence?.highlightDrawCalls).toBeGreaterThan(0);

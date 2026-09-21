@@ -10,6 +10,9 @@ export const COMMON_ORIGIN: [number, number, number] = [5_000_000.015625, 100, -
 export const LARGE_ORIGIN: [number, number, number] = [5_020_000.015625, 100, -50];
 export const PICK_CSS_X = 320;
 export const PICK_CSS_Y = 240;
+/** GPU pick addresses the pixel at floor(CSS); CPU ray samples its centre. */
+export const CPU_PICK_CSS_X = PICK_CSS_X + 0.5;
+export const CPU_PICK_CSS_Y = PICK_CSS_Y + 0.5;
 export const GEOMETRIC_TOLERANCE_METRES = 0.03;
 
 type WitnessStatus = 'pending' | 'passed' | 'skipped' | 'failed';
@@ -17,7 +20,7 @@ type WitnessStatus = 'pending' | 'passed' | 'skipped' | 'failed';
 export interface RteGpuWitnessReport {
   status: WitnessStatus;
   reason?: string;
-  system: { userAgent: string; platform: string; devicePixelRatio: number; adapter: { vendor?: string; architecture?: string } | null };
+  system: { userAgent: string; platform: string; devicePixelRatio: number; adapter: { vendor?: string; architecture?: string } | null; hardwareVerified: boolean };
   tolerance: { geometricMetres: number; pixel: number };
   commonTranslation: readonly [number, number, number];
   largeLocalExtentMetres: number;
@@ -28,6 +31,8 @@ export interface RteGpuWitnessReport {
     texturedPick: number | null;
     instancedPick: number | null;
     pointPick: number | null;
+    pointCropClick: boolean;
+    pointCropRectangle: boolean;
     linePixel: [number, number, number, number] | null;
     colorPixel: [number, number, number, number] | null;
     cpuRay: { expressId: number; point: [number, number, number] } | null;
@@ -98,7 +103,7 @@ export function distance(a: readonly number[], b: readonly number[]): number {
 export function baseReport(): RteGpuWitnessReport {
   return {
     status: 'pending',
-    system: { userAgent: navigator.userAgent, platform: navigator.platform, devicePixelRatio: window.devicePixelRatio, adapter: null },
+    system: { userAgent: navigator.userAgent, platform: navigator.platform, devicePixelRatio: window.devicePixelRatio, adapter: null, hardwareVerified: false },
     tolerance: { geometricMetres: GEOMETRIC_TOLERANCE_METRES, pixel: 1 },
     commonTranslation: COMMON_ORIGIN, largeLocalExtentMetres: 8_192,
   };

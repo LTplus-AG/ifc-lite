@@ -22,6 +22,7 @@ import type {
   ValidationProgress,
   TranslationService,
   PartOfRelation,
+  SpecificationResult,
 } from '../types.js';
 import { checkFacet, facetPasses, filterByFacet } from '../facets/index.js';
 import { ApplicabilityPropertyIndex } from './property-index.js';
@@ -699,11 +700,10 @@ function checkCardinality(
   };
 }
 
-/**
- * Calculate validation summary
- */
-function calculateSummary(
-  specificationResults: IDSSpecificationResult[]
+/** Exported (#5138 PR 3): the rule engine is a second `SpecificationResult[]`
+ *  producer needing the identical summary algorithm. */
+export function calculateSummary(
+  specificationResults: readonly SpecificationResult[]
 ): IDSValidationSummary {
   let totalSpecifications = specificationResults.length;
   let passedSpecifications = 0;

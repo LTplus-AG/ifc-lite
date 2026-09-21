@@ -5928,6 +5928,7 @@
     "ValidatorOptions: interface",
     "auditIDSDocument: function",
     "auditIDSStructure: function",
+    "calculateSummary: function",
     "checkAttributeFacet: function",
     "checkClassificationFacet: function",
     "checkEntityFacet: function",

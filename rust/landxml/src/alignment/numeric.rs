@@ -8,7 +8,7 @@ mod geometry;
 
 use super::{LandXmlAlignment, LandXmlAlignmentSegment, LandXmlStationEquation};
 use crate::LandXmlSourceId;
-use geometry::{evaluate_segment, segment_length};
+use geometry::{evaluate_segment, segment_endpoints, validate_segment};
 
 pub(super) const EPSILON: f64 = 1e-9;
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -50,6 +50,7 @@ pub struct LandXmlAlignmentProbe {
 impl LandXmlAlignment {
     /// Maps physical distance to displayed station without conflating the two.
     pub fn station_at_distance(&self, distance: f64) -> Result<LandXmlStationMapping> {
+        validate_numeric_alignment(self)?;
         if !distance.is_finite() || distance < -EPSILON || distance > self.length + EPSILON {
             return Err(diagnostic(
                 &self.source_id,
@@ -57,7 +58,6 @@ impl LandXmlAlignment {
                 "geometric distance is outside the alignment",
             ));
         }
-        validate_station_equations(self)?;
         station_mapping(
             &self.source_id,
             self.sta_start,
@@ -67,6 +67,7 @@ impl LandXmlAlignment {
     }
     /// Returns every physical distance matching a displayed station. Empty is a station gap.
     pub fn distances_for_station(&self, station: f64) -> Result<Vec<f64>> {
+        validate_numeric_alignment(self)?;
         if !station.is_finite() {
             return Err(diagnostic(
                 &self.source_id,
@@ -74,7 +75,6 @@ impl LandXmlAlignment {
                 "station must be finite",
             ));
         }
-        validate_station_equations(self)?;
         let mut boundaries = vec![self.sta_start];
         boundaries.extend(
             self.station_equations
@@ -108,6 +108,7 @@ impl LandXmlAlignment {
         distance: f64,
         offset_right: f64,
     ) -> Result<LandXmlAlignmentProbe> {
+        validate_numeric_alignment(self)?;
         if !offset_right.is_finite() {
             return Err(diagnostic(
                 &self.source_id,
@@ -153,12 +154,16 @@ impl LandXmlAlignment {
     }
     fn segment_at_distance(&self, distance: f64) -> Result<(&LandXmlAlignmentSegment, f64)> {
         let mut start = 0.0;
-        for segment in &self.segments {
-            let length = segment_length(segment)?;
-            if distance <= start + length + EPSILON {
+        for (index, segment) in self.segments.iter().enumerate() {
+            let length = validate_segment(segment)?;
+            let end = start + length;
+            // A shared boundary belongs to the following authored span. This
+            // keeps source provenance deterministic at a station equation and
+            // avoids returning a prior segment after its geometric end.
+            if distance < end - EPSILON || index + 1 == self.segments.len() {
                 return Ok((segment, (distance - start).clamp(0.0, length)));
             }
-            start += length;
+            start = end;
         }
         Err(diagnostic(
             &self.source_id,
@@ -166,6 +171,69 @@ impl LandXmlAlignment {
             "no primitive covers geometric distance",
         ))
     }
+}
+fn validate_numeric_alignment(alignment: &LandXmlAlignment) -> Result<()> {
+    valid_alignment_length(alignment)?;
+    let end = finite_add(
+        &alignment.source_id,
+        alignment.sta_start,
+        alignment.length,
+        "alignment station range overflows",
+    )?;
+    if alignment.segments.is_empty() {
+        return Err(diagnostic(
+            &alignment.source_id,
+            "LXMLA224",
+            "alignment has no numeric geometry",
+        ));
+    }
+    let mut total: f64 = 0.0;
+    let mut previous_end = None;
+    for segment in &alignment.segments {
+        let length = validate_segment(segment)?;
+        let (start, finish) = segment_endpoints(segment)?;
+        if let Some(previous) = previous_end {
+            if planar_distance(previous, start) > geometry_tolerance(total.max(length)) {
+                return Err(diagnostic(
+                    &segment.source_id,
+                    "LXMLA225",
+                    "ordered alignment segments are discontinuous",
+                ));
+            }
+        }
+        total = finite_add(
+            &alignment.source_id,
+            total,
+            length,
+            "alignment segment lengths overflow",
+        )?;
+        previous_end = Some(finish);
+    }
+    if (alignment.length - total).abs() > geometry_tolerance(alignment.length.max(total)) {
+        return Err(diagnostic(
+            &alignment.source_id,
+            "LXMLA226",
+            "alignment length is inconsistent with ordered segment spans",
+        ));
+    }
+    validate_station_equations(alignment, end)
+}
+fn valid_alignment_length(alignment: &LandXmlAlignment) -> Result<()> {
+    if !alignment.length.is_finite() || alignment.length <= EPSILON {
+        return Err(diagnostic(
+            &alignment.source_id,
+            "LXMLA200",
+            "alignment length must be positive and finite",
+        ));
+    }
+    if !alignment.sta_start.is_finite() {
+        return Err(diagnostic(
+            &alignment.source_id,
+            "LXMLA200",
+            "alignment start station must be finite",
+        ));
+    }
+    Ok(())
 }
 fn station_mapping(
     source_id: &LandXmlSourceId,
@@ -218,11 +286,14 @@ fn station_mapping(
         is_equation_boundary: false,
     })
 }
-fn validate_station_equations(alignment: &LandXmlAlignment) -> Result<()> {
-    let end = alignment.sta_start + alignment.length;
+fn validate_station_equations(alignment: &LandXmlAlignment, end: f64) -> Result<()> {
     let mut previous = alignment.sta_start;
+    let mut displayed = alignment.sta_start;
+    let mut direction = 1.0;
     for (index, equation) in alignment.station_equations.iter().enumerate() {
         if !equation.sta_internal.is_finite()
+            || !equation.sta_ahead.is_finite()
+            || equation.sta_back.is_some_and(|value| !value.is_finite())
             || equation.sta_internal > end + EPSILON
             || (index == 0 && equation.sta_internal < previous - EPSILON)
             || (index > 0 && equation.sta_internal <= previous + EPSILON)
@@ -233,9 +304,57 @@ fn validate_station_equations(alignment: &LandXmlAlignment) -> Result<()> {
                 "station equations must lie on the alignment and be strictly ordered",
             ));
         }
+        let expected_back = finite_add(
+            &alignment.source_id,
+            displayed,
+            direction * (equation.sta_internal - previous),
+            "station equation derived station overflows",
+        )?;
+        if equation.sta_back.is_some_and(|back| {
+            (back - expected_back).abs() > station_tolerance(back, expected_back)
+        }) {
+            return Err(diagnostic(
+                &equation.source_id,
+                "LXMLA227",
+                "StaEquation staBack is inconsistent with the preceding station axis",
+            ));
+        }
         previous = equation.sta_internal;
+        displayed = equation.sta_ahead;
+        direction = equation_direction(equation);
     }
+    let _ = finite_add(
+        &alignment.source_id,
+        displayed,
+        direction * (end - previous),
+        "station equation derived station overflows",
+    )?;
     Ok(())
+}
+fn finite_add(
+    source_id: &LandXmlSourceId,
+    left: f64,
+    right: f64,
+    message: &'static str,
+) -> Result<f64> {
+    let value = left + right;
+    if value.is_finite() {
+        Ok(value)
+    } else {
+        Err(diagnostic(source_id, "LXMLA228", message))
+    }
+}
+fn planar_distance(
+    left: crate::alignment::LandXmlPlanPoint,
+    right: crate::alignment::LandXmlPlanPoint,
+) -> f64 {
+    (right.northing - left.northing).hypot(right.easting - left.easting)
+}
+fn geometry_tolerance(length: f64) -> f64 {
+    (length * 1e-6).max(1e-6)
+}
+fn station_tolerance(left: f64, right: f64) -> f64 {
+    left.abs().max(right.abs()).mul_add(1e-12, EPSILON)
 }
 fn equation_direction(equation: &LandXmlStationEquation) -> f64 {
     if equation.sta_increment.as_deref() == Some("decreasing") {

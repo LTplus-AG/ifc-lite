@@ -24,6 +24,47 @@ pub(super) fn segment_length(segment: &LandXmlAlignmentSegment) -> Result<f64> {
     };
     valid_length(&segment.source_id, length)
 }
+/// Validates every numeric field a probe could rely on, even when records
+/// arrived through deserialization instead of the XML parser.
+pub(super) fn validate_segment(segment: &LandXmlAlignmentSegment) -> Result<f64> {
+    let length = segment_length(segment)?;
+    match &segment.primitive {
+        LandXmlAlignmentPrimitive::Line(_) | LandXmlAlignmentPrimitive::IrregularLine(_) => {}
+        LandXmlAlignmentPrimitive::Curve(value) => {
+            curve_geometry(&segment.source_id, value)?;
+        }
+        LandXmlAlignmentPrimitive::Spiral(value) => {
+            if value.spi_type == "clothoid" {
+                // This is a bounded numerical approximation, not a claim of
+                // general exactness for arbitrary LandXML transitions.
+                validate_clothoid_domain(&segment.source_id, value)?;
+                evaluate_clothoid(&segment.source_id, value, 0.0)?;
+            }
+        }
+        LandXmlAlignmentPrimitive::UnsupportedSpiral(_) => {}
+    }
+    Ok(length)
+}
+pub(super) fn segment_endpoints(
+    segment: &LandXmlAlignmentSegment,
+) -> Result<(LandXmlPlanPoint, LandXmlPlanPoint)> {
+    let id = &segment.source_id;
+    match &segment.primitive {
+        LandXmlAlignmentPrimitive::Line(value) => {
+            Ok((coordinates(id, &value.start)?, coordinates(id, &value.end)?))
+        }
+        LandXmlAlignmentPrimitive::IrregularLine(value) => {
+            Ok((coordinates(id, &value.start)?, coordinates(id, &value.end)?))
+        }
+        LandXmlAlignmentPrimitive::Curve(value) => {
+            Ok((coordinates(id, &value.start)?, coordinates(id, &value.end)?))
+        }
+        LandXmlAlignmentPrimitive::Spiral(value)
+        | LandXmlAlignmentPrimitive::UnsupportedSpiral(value) => {
+            Ok((coordinates(id, &value.start)?, coordinates(id, &value.end)?))
+        }
+    }
+}
 pub(super) fn evaluate_segment(
     segment: &LandXmlAlignmentSegment,
     distance: f64,
@@ -118,6 +159,7 @@ fn evaluate_clothoid(
         curvature(id, value.radius_start)?,
         curvature(id, value.radius_end)?,
     );
+    validate_clothoid_domain(id, value)?;
     let signed = value.rotation.sign();
     let local_end = clothoid_integral(length, length, signed * k0, signed * k1)?;
     // Work in conventional (Easting, Northing) coordinates. LandXML text is
@@ -172,12 +214,22 @@ fn curve_geometry(
     }
     let start_angle = (start.northing - center.northing).atan2(start.easting - center.easting);
     let end_angle = (end.northing - center.northing).atan2(end.easting - center.easting);
-    let sweep = if distance_between(start, end) <= geometry_tolerance(radius) {
+    // Only a genuinely coincident endpoint declares a full circle. A merely
+    // close endpoint is a short arc and must retain its authored sweep.
+    let sweep = if distance_between(start, end) <= EPSILON {
         value.rotation.sign() * std::f64::consts::TAU
     } else {
         sweep(start_angle, end_angle, value.rotation)
     };
-    let length = valid_length(id, value.declared_length.unwrap_or(radius * sweep.abs()))?;
+    let geometric_length = radius * sweep.abs();
+    let length = valid_length(id, value.declared_length.unwrap_or(geometric_length))?;
+    if (length - geometric_length).abs() > geometry_tolerance(length.max(geometric_length)) {
+        return Err(diagnostic(
+            id,
+            "LXMLA220",
+            "curve declared length is inconsistent with radius and sweep",
+        ));
+    }
     Ok((start_angle, sweep, length, center, radius))
 }
 fn line_length(id: &LandXmlSourceId, value: &LandXmlLine) -> Result<f64> {
@@ -194,15 +246,19 @@ fn line_length(id: &LandXmlSourceId, value: &LandXmlLine) -> Result<f64> {
 }
 fn irregular_length(id: &LandXmlSourceId, value: &LandXmlIrregularLine) -> Result<f64> {
     let points = irregular_vertices(id, value)?;
-    valid_length(
-        id,
-        value.declared_length.unwrap_or_else(|| {
-            points
-                .windows(2)
-                .map(|pair| distance_between(pair[0], pair[1]))
-                .sum()
-        }),
-    )
+    let geometric_length: f64 = points
+        .windows(2)
+        .map(|pair| distance_between(pair[0], pair[1]))
+        .sum();
+    let length = valid_length(id, value.declared_length.unwrap_or(geometric_length))?;
+    if (length - geometric_length).abs() > geometry_tolerance(length.max(geometric_length)) {
+        return Err(diagnostic(
+            id,
+            "LXMLA221",
+            "irregular line declared length is inconsistent with its authored polyline",
+        ));
+    }
+    Ok(length)
 }
 fn irregular_vertices(
     id: &LandXmlSourceId,
@@ -210,27 +266,25 @@ fn irregular_vertices(
 ) -> Result<Vec<LandXmlPlanPoint>> {
     let start = coordinates(id, &value.start)?;
     let end = coordinates(id, &value.end)?;
-    let mut interior = value.points.clone();
-    while interior
-        .first()
-        .is_some_and(|point| distance_between(*point, start) <= EPSILON)
-    {
-        interior.remove(0);
-    }
-    while interior
-        .last()
-        .is_some_and(|point| distance_between(*point, end) <= EPSILON)
-    {
-        interior.pop();
-    }
-    let mut vertices = Vec::with_capacity(interior.len() + 2);
+    let first_interior = value
+        .points
+        .iter()
+        .position(|point| distance_between(*point, start) > EPSILON)
+        .unwrap_or(value.points.len());
+    let last_interior = value
+        .points
+        .iter()
+        .rposition(|point| distance_between(*point, end) > EPSILON)
+        .map_or(first_interior, |index| index.saturating_add(1));
+    let mut vertices = Vec::with_capacity(last_interior.saturating_sub(first_interior) + 2);
     vertices.push(start);
-    for point in interior {
+    for point in &value.points[first_interior..last_interior] {
+        ensure_finite_point(id, *point)?;
         if vertices
             .last()
-            .is_none_or(|previous| distance_between(*previous, point) > EPSILON)
+            .is_none_or(|previous| distance_between(*previous, *point) > EPSILON)
         {
-            vertices.push(point);
+            vertices.push(*point);
         }
     }
     if vertices
@@ -258,13 +312,46 @@ fn geometry_tolerance(length: f64) -> f64 {
 }
 fn coordinates(id: &LandXmlSourceId, value: &LandXmlPointLocation) -> Result<LandXmlPlanPoint> {
     match value {
-        LandXmlPointLocation::Coordinates { point } => Ok(*point),
+        LandXmlPointLocation::Coordinates { point } => {
+            ensure_finite_point(id, *point)?;
+            Ok(*point)
+        }
         LandXmlPointLocation::PointReference { .. } => Err(diagnostic(
             id,
             "LXMLA211",
             "pntRef requires the later COGO resolver",
         )),
     }
+}
+fn ensure_finite_point(id: &LandXmlSourceId, point: LandXmlPlanPoint) -> Result<()> {
+    if point.northing.is_finite()
+        && point.easting.is_finite()
+        && point.elevation.is_none_or(f64::is_finite)
+    {
+        Ok(())
+    } else {
+        Err(diagnostic(
+            id,
+            "LXMLA222",
+            "primitive coordinate must be finite",
+        ))
+    }
+}
+fn validate_clothoid_domain(id: &LandXmlSourceId, value: &LandXmlSpiral) -> Result<()> {
+    let length = valid_length(id, value.declared_length)?;
+    let k0 = curvature(id, value.radius_start)?;
+    let k1 = curvature(id, value.radius_end)?;
+    // Eight-point quadrature is deliberately restricted to this documented,
+    // tested turn domain. Outside it the source is retained, but evaluation
+    // refuses to fabricate a precision guarantee.
+    if (k0 * length).abs().max((k1 * length).abs()) > 2.0 {
+        return Err(diagnostic(
+            id,
+            "LXMLA223",
+            "clothoid exceeds the supported bounded quadrature domain",
+        ));
+    }
+    Ok(())
 }
 fn curvature(id: &LandXmlSourceId, value: LandXmlRadius) -> Result<f64> {
     match value {

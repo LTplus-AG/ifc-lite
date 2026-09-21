@@ -74,6 +74,13 @@ impl Parser<'_> {
         inherited.extend(namespaces);
         let namespace = inherited.get(prefix).map(String::as_str);
         if self.frames.is_empty() {
+            if self.root_seen {
+                return Err(error(
+                    Code::InvalidXml,
+                    "LandXML document has multiple root elements",
+                ));
+            }
+            self.root_seen = true;
             validate_root(local, namespace, attr(&attrs, "version"))?;
         }
         let target = namespace == Some(LANDXML_12_NAMESPACE);
@@ -82,6 +89,16 @@ impl Parser<'_> {
             target,
             namespaces: inherited,
         });
+        if self
+            .capture
+            .as_ref()
+            .is_some_and(|capture| self.frames.len() > capture.depth())
+        {
+            return Err(error(
+                Code::InvalidSemantic,
+                "captured alignment value may not contain descendant elements",
+            ));
+        }
         if target {
             self.semantic_start(local, &attrs)?;
         }
@@ -186,7 +203,11 @@ impl Parser<'_> {
         if frame.target {
             self.semantic_end(&frame.local)?;
         }
+        let closes_root = self.frames.len() == 1;
         self.frames.pop();
+        if closes_root {
+            self.root_closed = true;
+        }
         Ok(())
     }
     fn semantic_end(&mut self, local: &str) -> Result<()> {
@@ -231,6 +252,9 @@ impl Parser<'_> {
         let text =
             std::str::from_utf8(bytes).map_err(|_| error(Code::InvalidXml, "text is not UTF-8"))?;
         self.check_character_references(character_references(text))?;
+        if self.frames.is_empty() {
+            return outside_root_text(self.root_closed, text, false);
+        }
         let text = unescape(text)?;
         if let Some(capture) = &mut self.capture {
             let target = match capture {
@@ -245,7 +269,35 @@ impl Parser<'_> {
         }
         Ok(())
     }
+    pub(super) fn cdata(&mut self, bytes: &[u8]) -> Result<()> {
+        self.check(bytes.len())?;
+        let text = std::str::from_utf8(bytes)
+            .map_err(|_| error(Code::InvalidXml, "CDATA is not UTF-8"))?;
+        if self.frames.is_empty() {
+            return outside_root_text(self.root_closed, text, true);
+        }
+        if let Some(capture) = &mut self.capture {
+            let target = match capture {
+                Capture::Point { text, .. }
+                | Capture::PointList { text, .. }
+                | Capture::Superelevation { text, .. } => text,
+            };
+            if target.len().saturating_add(text.len()) > self.limits.xml.max_text_bytes {
+                return Err(limit("captured text limit exceeded"));
+            }
+            // CDATA is literal text. In particular, `&amp;` must reach the
+            // numeric parser unchanged rather than being entity-decoded.
+            target.push_str(text);
+        }
+        Ok(())
+    }
     pub(super) fn finish(self) -> Result<super::super::LandXmlAlignmentDocument> {
+        if !self.root_seen || !self.root_closed {
+            return Err(error(
+                Code::InvalidXml,
+                "document must contain exactly one root element",
+            ));
+        }
         if self.alignments.is_empty() {
             return Err(invalid("document contains no Alignments"));
         }
@@ -287,6 +339,25 @@ impl Parser<'_> {
             && self.frames[4].target
             && self.frames[5].target
     }
+}
+fn outside_root_text(root_closed: bool, text: &str, cdata: bool) -> Result<()> {
+    if !cdata
+        && text
+            .bytes()
+            .all(|byte| matches!(byte, b' ' | b'\t' | b'\r' | b'\n'))
+    {
+        return Ok(());
+    }
+    let location = if root_closed { "after" } else { "before" };
+    let kind = if cdata {
+        "CDATA"
+    } else {
+        "non-whitespace content"
+    };
+    Err(error(
+        Code::InvalidXml,
+        format!("LandXML document has {kind} {location} its root element"),
+    ))
 }
 fn validate_root(local: &str, namespace: Option<&str>, version: Option<&str>) -> Result<()> {
     if local != "LandXML" {

@@ -215,3 +215,58 @@ fn issue_5044_requires_target_namespace_on_every_primitive_frame() {
         ifc_lite_landxml::alignment::LandXmlAlignmentPrimitive::Curve(_)
     ));
 }
+
+#[test]
+fn issue_5044_alignment_parser_has_one_root_literal_cdata_and_leaf_only_captures() {
+    let root = r#"<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Alignments><Alignment name="a" length="1" staStart="0"><CoordGeom><Line><Start>0 0</Start><End>1 0</End></Line></CoordGeom></Alignment></Alignments></LandXML>"#;
+    for invalid in [
+        format!("{root}{root}"),
+        format!("before{root}"),
+        root.replace(
+            "<Start>0 0</Start>",
+            "<Start><vendor:value xmlns:vendor=\"urn:vendor\">0 0</vendor:value></Start>",
+        ),
+    ] {
+        assert!(
+            parse_landxml_alignments_with_cancel(
+                invalid.as_bytes(),
+                &LandXmlAlignmentLimits::default(),
+                None,
+            )
+            .is_err(),
+            "non-document or nested capture is refused"
+        );
+    }
+    let cdata = root.replace("<Start>0 0</Start>", "<Start><![CDATA[0 &amp; 0]]></Start>");
+    assert!(
+        parse_landxml_alignments_with_cancel(
+            cdata.as_bytes(),
+            &LandXmlAlignmentLimits::default(),
+            None,
+        )
+        .is_err(),
+        "CDATA remains literal rather than entity-decoded"
+    );
+}
+
+#[test]
+fn issue_5044_counts_speed_stations_and_reference_only_align_pis_against_caps() {
+    let xml = r#"<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Alignments><Alignment name="a" length="1" staStart="0"><CoordGeom><Line><Start>0 0</Start><End>1 0</End></Line></CoordGeom><AlignPIs><AlignPI pntRef="one"/><AlignPI pntRef="two"/></AlignPIs><Cant name="c" gauge="1"><SpeedStation station="0" speed="1"/><SpeedStation station="1" speed="1"/></Cant></Alignment></Alignments></LandXML>"#;
+    for limits in [
+        LandXmlAlignmentLimits {
+            max_alignment_points: 3,
+            ..LandXmlAlignmentLimits::default()
+        },
+        LandXmlAlignmentLimits {
+            max_cant_stations: 1,
+            ..LandXmlAlignmentLimits::default()
+        },
+    ] {
+        assert_eq!(
+            parse_landxml_alignments_with_cancel(xml.as_bytes(), &limits, None)
+                .expect_err("all authored records share their cap")
+                .code,
+            LandXmlDiagnosticCode::LimitExceeded
+        );
+    }
+}

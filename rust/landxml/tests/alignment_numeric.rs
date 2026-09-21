@@ -440,6 +440,159 @@ fn issue_5044_decreasing_station_equation_maps_forward_and_inverse() {
 }
 
 #[test]
+fn issue_5044_rejects_invalid_or_overflowing_public_alignment_records_before_clamping() {
+    let line = LandXmlAlignmentSegment {
+        source_id: id("line"),
+        ordinal: 1,
+        primitive: LandXmlAlignmentPrimitive::Line(LandXmlLine {
+            start: point(0.0, 0.0),
+            end: point(10.0, 0.0),
+            declared_length: Some(10.0),
+        }),
+    };
+    for length in [-1.0, 0.0, f64::NAN, f64::INFINITY] {
+        assert_eq!(
+            alignment(vec![line.clone()], length)
+                .station_at_distance(0.0)
+                .expect_err("malformed deserialized length is refused")
+                .code,
+            "LXMLA200"
+        );
+    }
+    let overflowing_line = LandXmlAlignmentSegment {
+        source_id: id("overflowing-line"),
+        ordinal: 1,
+        primitive: LandXmlAlignmentPrimitive::Line(LandXmlLine {
+            start: point(0.0, 0.0),
+            end: point(f64::MAX, 0.0),
+            declared_length: Some(f64::MAX),
+        }),
+    };
+    let mut overflowing = alignment(vec![overflowing_line], f64::MAX);
+    overflowing.sta_start = f64::MAX;
+    assert_eq!(
+        overflowing
+            .station_at_distance(0.0)
+            .expect_err("derived station range must remain finite")
+            .code,
+        "LXMLA228"
+    );
+}
+
+#[test]
+fn issue_5044_refuses_declared_arc_polyline_and_alignment_span_mismatches() {
+    let curve = LandXmlAlignmentSegment {
+        source_id: id("bad-curve"),
+        ordinal: 1,
+        primitive: LandXmlAlignmentPrimitive::Curve(LandXmlCurve {
+            start: point(10.0, 0.0),
+            center: point(0.0, 0.0),
+            end: point(0.0, 10.0),
+            pi: None,
+            rotation: LandXmlRotation::Clockwise,
+            radius: Some(10.0),
+            declared_length: Some(10.0),
+        }),
+    };
+    assert_eq!(
+        alignment(vec![curve], 10.0)
+            .probe_at_distance(0.0, 0.0)
+            .expect_err("arc length must agree with radius and sweep")
+            .code,
+        "LXMLA220"
+    );
+    let irregular = LandXmlAlignmentSegment {
+        source_id: id("bad-irregular"),
+        ordinal: 1,
+        primitive: LandXmlAlignmentPrimitive::IrregularLine(LandXmlIrregularLine {
+            start: point(0.0, 0.0),
+            end: point(10.0, 10.0),
+            points: vec![LandXmlPlanPoint {
+                northing: 0.0,
+                easting: 10.0,
+                elevation: None,
+            }],
+            declared_length: Some(10.0),
+        }),
+    };
+    assert_eq!(
+        alignment(vec![irregular], 10.0)
+            .probe_at_distance(0.0, 0.0)
+            .expect_err("polyline length must agree with its vertices")
+            .code,
+        "LXMLA221"
+    );
+    let line = |source: &str, start: f64, end: f64| LandXmlAlignmentSegment {
+        source_id: id(source),
+        ordinal: 1,
+        primitive: LandXmlAlignmentPrimitive::Line(LandXmlLine {
+            start: point(start, 0.0),
+            end: point(end, 0.0),
+            declared_length: Some(end - start),
+        }),
+    };
+    assert_eq!(
+        alignment(vec![line("one", 0.0, 10.0)], 11.0)
+            .probe_at_distance(0.0, 0.0)
+            .expect_err("alignment span must agree with primitive spans")
+            .code,
+        "LXMLA226"
+    );
+    assert_eq!(
+        alignment(vec![line("one", 0.0, 10.0), line("two", 20.0, 30.0)], 20.0)
+            .probe_at_distance(10.0, 0.0)
+            .expect_err("discontinuous spans cannot fabricate a probe")
+            .code,
+        "LXMLA225"
+    );
+}
+
+#[test]
+fn issue_5044_boundary_station_uses_following_span_and_staback_is_bidirectionally_consistent() {
+    let line = |source: &str, ordinal, start: f64, end: f64| LandXmlAlignmentSegment {
+        source_id: id(source),
+        ordinal,
+        primitive: LandXmlAlignmentPrimitive::Line(LandXmlLine {
+            start: point(start, 0.0),
+            end: point(end, 0.0),
+            declared_length: Some(end - start),
+        }),
+    };
+    let mut value = alignment(
+        vec![line("one", 1, 0.0, 10.0), line("two", 2, 10.0, 20.0)],
+        20.0,
+    );
+    value.station_equations = vec![LandXmlStationEquation {
+        source_id: id("eq"),
+        sta_internal: 110.0,
+        sta_back: Some(110.0),
+        sta_ahead: 500.0,
+        sta_increment: Some("decreasing".to_owned()),
+    }];
+    assert_eq!(
+        value
+            .probe_at_distance(10.0, 0.0)
+            .expect("following span")
+            .segment_source_id,
+        id("two")
+    );
+    assert_eq!(
+        value
+            .distances_for_station(490.0)
+            .expect("reverse decreasing station"),
+        vec![20.0]
+    );
+    value.station_equations[0].sta_back = Some(109.0);
+    assert_eq!(
+        value
+            .distances_for_station(109.0)
+            .expect_err("staBack cannot contradict the forward axis")
+            .code,
+        "LXMLA227"
+    );
+}
+
+#[test]
 fn issue_5044_non_clothoid_transition_is_never_coerced_to_a_line() {
     let spiral = LandXmlAlignmentSegment {
         source_id: id("landxml:alignment:1:segment:unsupported"),

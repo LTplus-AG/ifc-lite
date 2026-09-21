@@ -75,7 +75,7 @@ pub fn parse_landxml_alignments_with_cancel(
             }
             Event::End(value) => parser.end(Some(value.name().as_ref()))?,
             Event::Text(value) => parser.text(value.as_ref())?,
-            Event::CData(value) => parser.text(value.as_ref())?,
+            Event::CData(value) => parser.cdata(value.as_ref())?,
             Event::DocType(_) => return Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
             Event::Eof => break,
             _ => {}
@@ -136,6 +136,8 @@ pub(super) struct Parser<'a> {
     pub(super) alignment: Option<state::AlignmentBuilder>,
     pub(super) capture: Option<Capture>,
     pub(super) warnings: Vec<String>,
+    pub(super) root_seen: bool,
+    pub(super) root_closed: bool,
 }
 impl<'a> Parser<'a> {
     fn new(
@@ -158,6 +160,8 @@ impl<'a> Parser<'a> {
             alignment: None,
             capture: None,
             warnings: Vec::new(),
+            root_seen: false,
+            root_closed: false,
         }
     }
 }

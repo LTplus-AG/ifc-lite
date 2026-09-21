@@ -214,6 +214,9 @@ impl Parser<'_> {
     }
 
     pub(super) fn push_speed_station(&mut self, attrs: &Attributes) -> Result<()> {
+        if self.cant_stations_seen >= self.limits.max_cant_stations {
+            return Err(limit("CantStation and SpeedStation limit exceeded"));
+        }
         let cant = self
             .alignment
             .as_mut()
@@ -221,6 +224,7 @@ impl Parser<'_> {
             .cant
             .as_mut()
             .ok_or_else(|| invalid("SpeedStation outside Cant"))?;
+        self.cant_stations_seen += 1;
         let ordinal = cant.cant.speed_stations.len() + 1;
         cant.cant.speed_stations.push(LandXmlSpeedStation {
             source_id: LandXmlSourceId(format!("{}:speed:{ordinal}", cant.cant.source_id.0)),
@@ -259,12 +263,10 @@ impl Parser<'_> {
             .take()
             .ok_or_else(|| invalid("missing capture"))?;
         match &capture {
-            Capture::Point { pnt_ref: None, .. } => self.reserve_alignment_points(1)?,
-            Capture::Point {
-                pnt_ref: Some(_),
-                text,
-                ..
-            } if !text.trim().is_empty() => self.reserve_alignment_points(1)?,
+            // A pntRef-only AlignPI is still a source record. Count it with
+            // coordinate leaves so an attacker cannot evade the cap by using
+            // references instead of literal coordinates.
+            Capture::Point { .. } => self.reserve_alignment_points(1)?,
             Capture::PointList {
                 dimension, text, ..
             } => {
@@ -274,10 +276,7 @@ impl Parser<'_> {
                 }
                 self.reserve_alignment_points(value_count / dimension)?;
             }
-            Capture::Point {
-                pnt_ref: Some(_), ..
-            }
-            | Capture::Superelevation { .. } => {}
+            Capture::Superelevation { .. } => {}
         }
         let alignment = self
             .alignment

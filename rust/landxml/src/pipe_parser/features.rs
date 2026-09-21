@@ -27,50 +27,66 @@ impl PipeParser<'_> {
             return Some((feature.source_id.clone(), feature.source_path.clone()));
         }
         if let Some(pipe) = self.pipe.as_ref() {
-            if matches!(parent, "CircPipe" | "ElliPipe" | "EggPipe" | "RectPipe" | "Channel" | "PipeFlow") {
+            if parent == "Pipe" && self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork", "Pipes", "Pipe", "Feature"]) {
+                return Some((pipe.source_id.clone(), pipe.source_path.clone()));
+            }
+            if matches!(parent, "CircPipe" | "ElliPipe" | "EggPipe" | "RectPipe" | "Channel")
+                && self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork", "Pipes", "Pipe", parent, "Feature"])
+            {
                 let suffix = parent.to_ascii_lowercase();
                 return Some((
                     LandXmlSourceId(format!("{}:{suffix}", pipe.source_id.0)),
                     format!("{}/{}", pipe.source_path, parent),
                 ));
             }
-            if parent == "Pipe" {
-                return Some((pipe.source_id.clone(), pipe.source_path.clone()));
+            if parent == "PipeFlow"
+                && self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork", "Pipes", "Pipe", "PipeFlow", "Feature"])
+            {
+                let flow = pipe.flow.as_ref()?;
+                return Some((flow.source_id.clone(), flow.source_path.clone()));
             }
             return None;
         }
         if let Some(structure) = self.structure.as_ref() {
-            if matches!(parent, "CircStruct" | "RectStruct" | "InletStruct" | "OutletStruct" | "Connection" | "StructFlow") {
+            if parent == "Struct" && self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork", "Structs", "Struct", "Feature"]) {
+                return Some((structure.source_id.clone(), structure.source_path.clone()));
+            }
+            if matches!(parent, "CircStruct" | "RectStruct" | "InletStruct" | "OutletStruct" | "Connection")
+                && self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork", "Structs", "Struct", parent, "Feature"])
+            {
                 let suffix = parent.to_ascii_lowercase();
                 return Some((
                     LandXmlSourceId(format!("{}:{suffix}", structure.source_id.0)),
                     format!("{}/{}", structure.source_path, parent),
                 ));
             }
-            if parent == "Struct" {
-                return Some((structure.source_id.clone(), structure.source_path.clone()));
+            if parent == "StructFlow"
+                && self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork", "Structs", "Struct", "StructFlow", "Feature"])
+            {
+                let flow = structure.flow.as_ref()?;
+                return Some((flow.source_id.clone(), flow.source_path.clone()));
             }
             return None;
         }
         if let Some(network) = self.network.as_ref() {
-            if parent == "Structs" {
+            if parent == "Structs" && self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork", "Structs", "Feature"]) {
                 return Some((
                     LandXmlSourceId(format!("{}:structs:{}", network.source_id.0, network.structure_collection)),
                     format!("{}/Structs[{}]", network.source_path, network.structure_collection),
                 ));
             }
-            if parent == "Pipes" {
+            if parent == "Pipes" && self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork", "Pipes", "Feature"]) {
                 return Some((
                     LandXmlSourceId(format!("{}:pipes:{}", network.source_id.0, network.pipe_collection)),
                     format!("{}/Pipes[{}]", network.source_path, network.pipe_collection),
                 ));
             }
-            if parent == "PipeNetwork" {
+            if parent == "PipeNetwork" && self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork", "Feature"]) {
                 return Some((network.source_id.clone(), network.source_path.clone()));
             }
             return None;
         }
-        if parent == "PipeNetworks" {
+        if parent == "PipeNetworks" && self.is_path(&["LandXML", "PipeNetworks", "Feature"]) {
             return self.collections
                 .last()
                 .map(|collection| (collection.source_id.clone(), collection.source_path.clone()));

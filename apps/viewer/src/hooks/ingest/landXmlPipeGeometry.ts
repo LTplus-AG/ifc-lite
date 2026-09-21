@@ -84,7 +84,13 @@ function meshForRoute(route: Point[], shape: CrossSection, expressId: number): {
   }
   for (let index = 0; index < normals.length; index += 3) {
     const length = Math.hypot(sums[index], sums[index + 1], sums[index + 2]);
-    if (length > Number.EPSILON) { normals[index] = sums[index] / length; normals[index + 1] = sums[index + 1] / length; normals[index + 2] = sums[index + 2] / length; }
+    // The cross-product can be much smaller than Number.EPSILON for a valid
+    // authored micro-pipe. Normalize every representable finite vector rather
+    // than turning its lighting normal into zero.
+    if (!Number.isFinite(length) || length === 0) return null;
+    normals[index] = sums[index] / length;
+    normals[index + 1] = sums[index + 1] / length;
+    normals[index + 2] = sums[index + 2] / length;
   }
   return { mesh: { expressId, positions, normals, indices: new Uint32Array(indices), color: [0.2, 0.48, 0.8, 1], origin: [origin.x, origin.y, origin.z] }, bounds: { min, max } };
 }

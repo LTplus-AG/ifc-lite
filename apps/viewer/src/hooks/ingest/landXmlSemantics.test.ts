@@ -26,12 +26,14 @@ function document(sourceId: string, meshExpressId = 1): LandXmlTinDocument {
 function pipeDocument(meshExpressId = 1): LandXmlTinDocument {
   const result = document('landxml:surface:1:face:1', meshExpressId);
   result.pipeNetworks = {
+    version: '1.2', rootUnits: null, collections: [],
     networks: [{
-      sourceId: 'landxml:pipe-network:1', sourcePath: 'LandXML/PipeNetworks/PipeNetwork[1]', name: 'storm', properties: {}, features: [],
+      sourceId: 'landxml:pipe-network:1', sourcePath: 'LandXML/PipeNetworks/PipeNetwork[1]', name: 'storm', pipeNetworkType: 'storm', properties: {}, structureUnits: null, pipeUnits: null, features: [],
       structures: [],
       pipes: [{
         sourceId: 'landxml:pipe-network:1:pipe:1', sourcePath: 'LandXML/PipeNetworks/PipeNetwork[1]/Pipes/Pipe[1]', name: 'P-1', properties: {},
-        connectivity: { startStructureSourceId: 'A', endStructureSourceId: 'B' }, part: { kind: 'circular' }, geometry: { kind: 'straight', point: null },
+        units: { linearUnit: 'meter', elevationUnit: 'meter', diameterUnit: 'meter', widthUnit: 'meter', heightUnit: 'meter', flowUnit: null, linearScaleToMeters: 1, elevationScaleToMeters: 1, diameterScaleToMeters: 1, widthScaleToMeters: 1, heightScaleToMeters: 1 },
+        connectivity: { startStructureSourceId: 'A', endStructureSourceId: 'B' }, part: { kind: 'circular', properties: {}, material: null }, geometry: { kind: 'straight', point: null }, length: null, flow: null,
       }],
     }],
     features: [], refusals: [],

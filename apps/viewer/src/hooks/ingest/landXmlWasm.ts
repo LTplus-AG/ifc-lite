@@ -226,6 +226,12 @@ function structureKind(value: unknown, context: string): 'circular' | 'rectangul
   throw new Error(`LandXML WASM returned an invalid ${context}`);
 }
 
+function pipeGeometryKind(value: unknown, context: string): 'straight' | 'pass_through' {
+  const kind = string(value, context);
+  if (kind === 'straight' || kind === 'pass_through') return kind;
+  throw new Error(`LandXML WASM returned an invalid ${context}`);
+}
+
 function pipeNetworks(value: unknown): LandXmlPipeNetworkDocument | null {
   if (value === null || value === undefined) return null;
   const raw = record(value, 'pipe networks');
@@ -250,8 +256,7 @@ function pipeNetworks(value: unknown): LandXmlPipeNetworkDocument | null {
       }),
       pipes: array(network.pipes, `pipe network ${index} pipes`).map((value, itemIndex) => {
         const pipe = record(value, `pipe ${itemIndex}`), connectivity = record(pipe.connectivity, `pipe ${itemIndex} connectivity`), part = record(pipe.part, `pipe ${itemIndex} part`), geometry = record(pipe.geometry, `pipe ${itemIndex} geometry`);
-        const geometryKind = string(geometry.kind, `pipe ${itemIndex} geometry kind`);
-        if (geometryKind !== 'straight' && geometryKind !== 'pass_through') throw new Error(`LandXML WASM returned an invalid pipe ${itemIndex} geometry kind`);
+        const geometryKind = pipeGeometryKind(geometry.kind, `pipe ${itemIndex} geometry kind`);
         return { sourceId: string(pipe.source_id, `pipe ${itemIndex} source id`), sourcePath: string(pipe.source_path, `pipe ${itemIndex} source path`), name: string(pipe.name, `pipe ${itemIndex} name`), properties: properties(pipe.properties, `pipe ${itemIndex} properties`), units: pipeUnits(pipe.units, `pipe ${itemIndex} units`), connectivity: { startStructureSourceId: string(connectivity.start_structure_source_id, `pipe ${itemIndex} start`), endStructureSourceId: string(connectivity.end_structure_source_id, `pipe ${itemIndex} end`) }, part: { kind: pipeKind(part.kind, `pipe ${itemIndex} part kind`), properties: properties(part.properties, `pipe ${itemIndex} part properties`), diameter: nullableMeasure(part.diameter, `pipe ${itemIndex} diameter`) ?? undefined, span: nullableMeasure(part.span, `pipe ${itemIndex} span`) ?? undefined, width: nullableMeasure(part.width, `pipe ${itemIndex} width`) ?? undefined, height: nullableMeasure(part.height, `pipe ${itemIndex} height`) ?? undefined, thickness: nullableMeasure(part.thickness, `pipe ${itemIndex} thickness`) ?? undefined, material: nullableString(part.material, `pipe ${itemIndex} material`) }, geometry: { kind: geometryKind, point: geometry.point === null || geometry.point === undefined ? null : pipePosition(geometry.point, `pipe ${itemIndex} route point`) }, length: nullableMeasure(pipe.length, `pipe ${itemIndex} length`), flow: flow(pipe.flow, `pipe ${itemIndex} flow`) };
       }),
     };

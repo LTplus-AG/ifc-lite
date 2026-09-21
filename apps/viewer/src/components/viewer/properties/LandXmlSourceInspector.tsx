@@ -9,6 +9,7 @@ import {
   type LandXmlSourceModel,
   type LandXmlSourceRecord,
   type LandXmlSourceRef,
+  type LandXmlTinSurface,
 } from '@/hooks/ingest/landXmlSemantics';
 import { semanticDetailRows, semanticNavigationAt, semanticNavigationCount } from './landXmlSemanticInspection.js';
 

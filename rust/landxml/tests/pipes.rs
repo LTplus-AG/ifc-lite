@@ -356,6 +356,9 @@ fn issue_5047_features_preserve_namespace_ownership_nesting_and_sibling_ordinals
     ).replace(
         "<PipeNetworks>",
         "<PipeNetworks><Feature><Property label=\"network-collection\" value=\"yes\"/></Feature>",
+    ).replace(
+        "<StructFlow lossIn=\"0.1\" lossOut=\"0.2\"/>",
+        "<StructFlow lossIn=\"0.1\" lossOut=\"0.2\"><Feature><Property label=\"structure-flow\" value=\"yes\"/></Feature></StructFlow>",
     );
     let parsed = parse_landxml_pipe_networks(source.as_bytes()).expect("features are source metadata");
     let pipe = &parsed.networks[0].pipes[0];
@@ -365,11 +368,34 @@ fn issue_5047_features_preserve_namespace_ownership_nesting_and_sibling_ordinals
     let flow_feature = parsed.features.iter().find(|feature| feature.properties.contains_key("flow")).expect("PipeFlow Feature");
     assert!(circ_feature.source_path.ends_with("CircPipe/Feature[1]"));
     assert!(flow_feature.source_path.ends_with("PipeFlow/Feature[1]"));
+    assert_eq!(flow_feature.owner_source_id, pipe.flow.as_ref().expect("PipeFlow").source_id);
+    let structure_flow_feature = parsed.features.iter().find(|feature| feature.properties.contains_key("structure-flow")).expect("StructFlow Feature");
+    assert_eq!(structure_flow_feature.owner_source_id, parsed.networks[0].structures[0].flow.as_ref().expect("StructFlow").source_id);
     let outer = parsed.features.iter().find(|feature| feature.properties.contains_key("outer")).expect("outer feature");
     let inner = parsed.features.iter().find(|feature| feature.properties.contains_key("inner")).expect("inner feature");
     assert_eq!(inner.owner_source_id, outer.source_id);
     assert!(parsed.features.iter().any(|feature| feature.properties.contains_key("collection")));
     assert!(parsed.features.iter().any(|feature| feature.properties.contains_key("network-collection")));
+}
+
+#[test]
+fn issue_5047_features_require_the_complete_legal_pipe_ancestry() {
+    let source = document(
+        r#"<Metric linearUnit="meter"/>"#,
+        r#"<Pipe name="P-1" refStart="MH-1" refEnd="MH-2"><CircPipe diameter="1"><Unexpected><Feature><Property label="bad-pipe" value="yes"/></Feature></Unexpected></CircPipe></Pipe>"#,
+    )
+    .replace(
+        "<Structs>",
+        "<Structs><Unexpected><Feature><Property label=\"bad-structs\" value=\"yes\"/></Feature></Unexpected>",
+    )
+    .replace(
+        "<PipeNetworks>",
+        "<PipeNetworks><Unexpected><Feature><Property label=\"bad-collection\" value=\"yes\"/></Feature></Unexpected>",
+    );
+    let parsed = parse_landxml_pipe_networks(source.as_bytes()).expect("unexpected wrappers stay local");
+    assert!(parsed.features.is_empty(), "a wrapper must not forge a pipe feature owner");
+    assert!(parsed.networks[0].features.is_empty());
+    assert!(parsed.collections[0].properties.is_empty());
 }
 
 #[test]

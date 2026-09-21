@@ -74,6 +74,12 @@ function assertSectionNormals(mesh: { normals: Float32Array }): void {
   assert.ok(normals.some((value, index) => index % 3 === 1 && Math.abs(value) > 0.05));
 }
 
+function worldCoordinate(value: number, origin: readonly number[] | undefined, axis: number): number {
+  const offset = origin?.[axis];
+  if (offset === undefined) throw new Error(`mesh origin is missing axis ${axis}`);
+  return value + offset;
+}
+
 describe('LandXML content dispatch (#5041)', () => {
   it('recognizes default and prefixed roots without claiming generic XML', () => {
     assert.equal(isLandXmlContent(new Uint8Array(bytes(LANDXML))), true);
@@ -463,8 +469,9 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     const pipes = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter" widthUnit="meter" heightUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="box" refStart="A" refEnd="B"><RectPipe width="2" height="10"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
     const viewer = await parseViewer(bytes(pipes));
     const mesh = viewer.geometryResult.meshes[0];
+    assert.ok(mesh);
     const world = Array.from(mesh.positions).reduce((bounds, value, index) => {
-      const axis = index % 3, coordinate = value + mesh.origin[axis];
+      const axis = index % 3, coordinate = worldCoordinate(value, mesh.origin, axis);
       bounds.min[axis] = Math.min(bounds.min[axis], coordinate); bounds.max[axis] = Math.max(bounds.max[axis], coordinate);
       return bounds;
     }, { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] });
@@ -472,17 +479,38 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.equal(world.max[1] - world.min[1], 10);
     assertSectionNormals(mesh);
     const ellipse = await parseViewer(bytes(pipes.replace('<RectPipe width="2" height="10"/>', '<ElliPipe span="2" height="10"/>')));
-    const ellipseWorld = Array.from(ellipse.geometryResult.meshes[0].positions).reduce((bounds, value, index) => {
-      const axis = index % 3, coordinate = value + ellipse.geometryResult.meshes[0].origin[axis];
+    const ellipseMesh = ellipse.geometryResult.meshes[0];
+    assert.ok(ellipseMesh);
+    const ellipseWorld = Array.from(ellipseMesh.positions).reduce((bounds, value, index) => {
+      const axis = index % 3, coordinate = worldCoordinate(value, ellipseMesh.origin, axis);
       bounds.min[axis] = Math.min(bounds.min[axis], coordinate); bounds.max[axis] = Math.max(bounds.max[axis], coordinate);
       return bounds;
     }, { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] });
     assert.ok(Math.abs((ellipseWorld.max[0] - ellipseWorld.min[0]) - 2) < 1e-6);
     assert.ok(Math.abs((ellipseWorld.max[1] - ellipseWorld.min[1]) - 9.510565) < 1e-5, 'the ten-sided ellipse follows its authored height, not a 2 m circle');
-    assertSectionNormals(ellipse.geometryResult.meshes[0]);
+    assertSectionNormals(ellipseMesh);
     const egg = await parseViewer(bytes(pipes.replace('<RectPipe width="2" height="10"/>', '<EggPipe span="2" height="10"/>')));
     assert.equal(egg.geometryResult.meshes.length, 0);
     assert.ok(egg.warnings.some((warning) => warning.includes('Egg pipe cross-section is retained but not rendered')));
+  });
+
+  it('keeps finite non-zero normals for representable micro-pipes (#5047)', async () => {
+    const pipes = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="micro" refStart="A" refEnd="B"><CircPipe diameter="1e-20"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    const viewer = await parseViewer(bytes(pipes));
+    const mesh = viewer.geometryResult.meshes[0];
+    assert.ok(mesh);
+    assertSectionNormals(mesh);
+  });
+
+  it('does not forge pipe feature owners through unexpected wrappers in the real WASM contract (#5047)', async () => {
+    const pipes = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks><Unexpected><Feature><Property label="bad-collection" value="yes"/></Feature></Unexpected><PipeNetwork name="storm" pipeNetType="storm"><Structs><Unexpected><Feature><Property label="bad-structs" value="yes"/></Feature></Unexpected><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="P" refStart="A" refEnd="B"><CircPipe diameter="1"><Unexpected><Feature><Property label="bad-pipe" value="yes"/></Feature></Unexpected></CircPipe><Feature><Property label="direct" value="yes"/></Feature></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    const parsed = await parseDocument(pipes);
+    const allFeatures = [
+      ...(parsed.pipeNetworks?.features ?? []),
+      ...(parsed.pipeNetworks?.networks.flatMap((network) => network.features) ?? []),
+    ];
+    assert.deepEqual(allFeatures.map((feature) => feature.properties.direct), ['yes']);
+    assert.equal(allFeatures.some((feature) => Object.keys(feature.properties).some((key) => key.startsWith('bad-'))), false);
   });
 
   it('refuses incomplete pipe routes locally without fabricating a partial segment (#5047)', async () => {
@@ -504,7 +532,8 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     const viewer = await parseViewer(bytes(pipes));
     assert.equal(viewer.geometryResult.meshes.length, 1);
     const mesh = viewer.geometryResult.meshes[0];
-    const elevations = Array.from(mesh.positions).filter((_, index) => index % 3 === 1).map((value) => value + mesh.origin[1]);
+    assert.ok(mesh);
+    const elevations = Array.from(mesh.positions).filter((_, index) => index % 3 === 1).map((value) => worldCoordinate(value, mesh.origin, 1));
     assert.ok(Math.min(...elevations) < 2.1 && Math.max(...elevations) > 3.9, 'the endpoint route follows the per-pipe invert elevations');
   });
 });

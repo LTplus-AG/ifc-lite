@@ -179,13 +179,13 @@ describe('LandXML source overlay rendering (#5042)', () => {
     const geometry = {
       sourceId: 'rounded-arc', ordinal: 1, kind: 'curve' as const, pointScopeId: null,
       start: { kind: 'coordinates' as const, point: point(0, 250), pntRef: null },
-      end: { kind: 'coordinates' as const, point: point(250, 0), pntRef: null },
+      end: { kind: 'coordinates' as const, point: point(249.999, 0.001), pntRef: null },
       center: { kind: 'coordinates' as const, point: point(0, 0), pntRef: null },
       pi: null, intermediatePoints: [], rotation: 'ccw', radius: 250,
       declaredLength: 392.699, properties: {},
     };
-    const resolved = { start: point(0, 250), end: point(250, 0), center: point(0, 0) };
-    assert.ok(planPolyline(geometry, resolved), 'ordinary decimal rounding remains renderable');
+    const resolved = { start: point(0, 250), end: point(249.999, 0.001), center: point(0, 0) };
+    assert.ok(planPolyline(geometry, resolved), 'millimetre-rounded coordinates and length remain renderable');
     assert.equal(planPolyline({ ...geometry, declaredLength: 390 }, resolved), null,
       'a metre-scale disagreement remains a refusal');
   });

@@ -304,8 +304,7 @@ pub fn stream_export_model_with_options(
     // Pass 2 — emit a row per IfcProduct occurrence, resolving its property/quantity sets.
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        // Filter on the STEP keyword *before* decoding, skipping the millions of
-        // non-product geometry primitives. The three exporter-only stratum
+        // Filter on the STEP keyword before decoding, skipping non-product geometry primitives. The three exporter-only stratum
         // spellings are explicit product compatibility aliases: they keep their
         // owned exact keyword rather than being relabelled as a nearby EXPRESS
         // entity, while still receiving the row their geometry needs.

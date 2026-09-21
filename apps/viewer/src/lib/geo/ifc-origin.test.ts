@@ -99,10 +99,11 @@ describe('computeIfcOriginViewerPosition (#5048)', () => {
     // is unavailable. These UTM definitions are bundled and deterministic.
     const sourceDef = '+proj=utm +zone=31 +datum=WGS84 +units=m +no_defs';
     const targetDef = '+proj=utm +zone=32 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs';
-    const sourceProjected: readonly [number, number, number] = [500000, 5700000, 0];
+    const sourceProjected: [number, number, number] = [500000, 5700000, 0];
     const [targetE, targetN] = proj4(sourceDef, targetDef, sourceProjected);
     const anchor = frame(conversion(targetE, targetN), crs('EPSG:25832'));
     const other = frame(conversion(500000, 5700000), crs('EPSG:32631'));
+    assert.ok(anchor.spatialReference);
     const raw = projectedToLocalViewer(anchor.spatialReference, sourceProjected);
     assert.ok(raw);
     assert.ok(Math.hypot(raw[0], raw[2]) > 100_000,

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
-import type { LandXmlGeometryPayload, LandXmlSourceBuffer } from './landXmlIngest.js';
+import type { LandXmlGeometryPayload, LandXmlGeometryPreflight, LandXmlSourceBuffer } from './landXmlIngest.js';
 import { parseLandXmlGeometry, preflightLandXmlGeometry } from './landXmlIngest.js';
 import { parseLandXmlSourceInCurrentRealm } from './landXmlWasm.js';
 import { parseLandXmlSourceBlobWithApi } from './landXmlBlobCursor.js';
@@ -104,6 +104,7 @@ export function parseLandXmlViewerModelFromBlobAsync(
   file: Blob,
   isCurrent: () => boolean = () => true,
   onProgress?: (loadedBytes: number, totalBytes: number) => void,
+  onPreflight?: (preflight: LandXmlGeometryPreflight) => void | Promise<void>,
 ): Promise<LandXmlViewerModel> {
   if (typeof Worker === 'undefined') {
     if (!isCurrent()) return Promise.reject(new Error('LandXML parsing cancelled'));
@@ -114,6 +115,7 @@ export function parseLandXmlViewerModelFromBlobAsync(
           isCurrent,
           onProgress: (loadedBytes, totalBytes) => onProgress?.(loadedBytes, totalBytes * 2),
         }));
+        await onPreflight?.(preflight);
         const parsed = await parseLandXmlSourceBlobWithApi(api, file, {
           isCurrent,
           onProgress: (loadedBytes, totalBytes) => onProgress?.(totalBytes + loadedBytes, totalBytes * 2),
@@ -142,7 +144,21 @@ export function parseLandXmlViewerModelFromBlobAsync(
     worker.onmessage = (event: MessageEvent<
       | { ok: true; payload: LandXmlGeometryPayload }
       | { ok: false; error: string }
+      | { progress: { loadedBytes: number; totalBytes: number } }
+      | { preflight: LandXmlGeometryPreflight }
     >) => {
+      if ('progress' in event.data) {
+        onProgress?.(event.data.progress.loadedBytes, event.data.progress.totalBytes);
+        return;
+      }
+      if ('preflight' in event.data) {
+        Promise.resolve(onPreflight?.(event.data.preflight)).then(() => {
+          if (!finished) worker.postMessage({ type: 'preflight-approved' });
+        }).catch((error: unknown) => {
+          if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
+        });
+        return;
+      }
       if (!finish()) return;
       if (event.data.ok) resolve(attachSyntheticStore(event.data.payload, file.size));
       else reject(new Error(event.data.error));

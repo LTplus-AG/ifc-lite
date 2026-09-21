@@ -3,12 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import init, { IfcAPI } from '@ifc-lite/wasm';
-import { parseLandXmlGeometry, preflightLandXmlGeometry, type LandXmlGeometryPayload, type LandXmlSourceBuffer } from './landXmlIngest.js';
+import { parseLandXmlGeometry, preflightLandXmlGeometry, type LandXmlGeometryPayload, type LandXmlGeometryPreflight, type LandXmlSourceBuffer } from './landXmlIngest.js';
 import { parseLandXmlSourceWithApi } from './landXmlWasm.js';
 import { parseLandXmlSourceBlobWithApi } from './landXmlBlobCursor.js';
 
 const workerScope = self as unknown as {
-  onmessage: ((event: MessageEvent<LandXmlSourceBuffer>) => void) | null;
+  onmessage: ((event: MessageEvent<LandXmlSourceBuffer | LandXmlBlobWorkerRequest | LandXmlWorkerContinue>) => void) | null;
   postMessage(message: unknown, transfer?: Transferable[]): void;
 };
 
@@ -16,11 +16,31 @@ interface LandXmlBlobWorkerRequest {
   file: Blob;
 }
 
+interface LandXmlWorkerContinue { type: 'preflight-approved' }
+
+function isContinue(value: unknown): value is LandXmlWorkerContinue {
+  return typeof value === 'object' && value !== null && (value as { type?: unknown }).type === 'preflight-approved';
+}
+
+let approvePreflight: (() => void) | null = null;
+
+function waitForPreflightApproval(preflight: LandXmlGeometryPreflight): Promise<void> {
+  return new Promise((resolve) => {
+    approvePreflight = resolve;
+    workerScope.postMessage({ preflight });
+  });
+}
+
 function isBlobRequest(value: unknown): value is LandXmlBlobWorkerRequest {
   return typeof value === 'object' && value !== null && 'file' in value && (value as { file?: unknown }).file instanceof Blob;
 }
 
-workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer | LandXmlBlobWorkerRequest>): Promise<void> => {
+workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer | LandXmlBlobWorkerRequest | LandXmlWorkerContinue>): Promise<void> => {
+  if (isContinue(event.data)) {
+    approvePreflight?.();
+    approvePreflight = null;
+    return;
+  }
   try {
     // A worker owns a separate WASM instance. Pass the original bytes directly:
     // ArrayBuffers are transferred by the client and SharedArrayBuffers remain shared.
@@ -37,6 +57,7 @@ workerScope.onmessage = async (event: MessageEvent<LandXmlSourceBuffer | LandXml
           const preflight = preflightLandXmlGeometry(await parseLandXmlSourceBlobWithApi(api, event.data.file, {
             onProgress: (loadedBytes, totalBytes) => workerScope.postMessage({ progress: { loadedBytes, totalBytes: totalBytes * 2 } }),
           }));
+          await waitForPreflightApproval(preflight);
           const secondPass = await parseLandXmlSourceBlobWithApi(api, event.data.file, {
             onProgress: (loadedBytes, totalBytes) => workerScope.postMessage({ progress: { loadedBytes: totalBytes + loadedBytes, totalBytes: totalBytes * 2 } }),
           });

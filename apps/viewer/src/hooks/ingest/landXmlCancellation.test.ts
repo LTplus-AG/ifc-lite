@@ -4,7 +4,7 @@
 
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseLandXmlViewerModelAsync } from './landXmlViewerModel.js';
+import { parseLandXmlViewerModelAsync, parseLandXmlViewerModelFromBlobAsync } from './landXmlViewerModel.js';
 
 it('refuses stale worker-less LandXML parsing before initializing WASM (#5041)', async () => {
   const originalWorker = globalThis.Worker;
@@ -40,6 +40,45 @@ it('terminates LandXML worker parsing within the cancellation polling bound (#50
     await assert.rejects(pending, /LandXML parsing cancelled/);
     assert.equal(terminated, 1);
     assert.ok(performance.now() - started < 250, 'cancellation must not wait for synchronous WASM completion');
+  } finally {
+    Object.defineProperty(globalThis, 'Worker', { configurable: true, value: originalWorker });
+  }
+});
+
+it('holds the second cursor pass until main has acknowledged preflight (#5050)', async () => {
+  const originalWorker = globalThis.Worker;
+  let worker: PreflightWorker | null = null;
+  class PreflightWorker {
+    onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
+    onerror: ((event: ErrorEvent) => void) | null = null;
+    readonly posted: unknown[] = [];
+    constructor() { worker = this; }
+    postMessage(message: unknown): void {
+      this.posted.push(message);
+      if (this.posted.length === 1) queueMicrotask(() => this.onmessage?.({ data: {
+        preflight: { componentCount: 1, frame: { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false } },
+      } } as MessageEvent<unknown>));
+    }
+    terminate(): void {}
+  }
+  Object.defineProperty(globalThis, 'Worker', { configurable: true, value: PreflightWorker as unknown as typeof Worker });
+  let approve: (() => void) | undefined;
+  try {
+    const pending = parseLandXmlViewerModelFromBlobAsync(
+      new Blob(['<LandXML/>']),
+      () => true,
+      undefined,
+      () => new Promise<void>((resolve) => { approve = resolve; }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(worker?.posted.length, 1, 'worker must not begin pass two before reservation approval');
+    approve?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.deepEqual(worker?.posted[1], { type: 'preflight-approved' });
+    worker?.onmessage?.({ data: { ok: false, error: 'stop after handshake' } } as MessageEvent<unknown>);
+    await assert.rejects(pending, /stop after handshake/);
   } finally {
     Object.defineProperty(globalThis, 'Worker', { configurable: true, value: originalWorker });
   }

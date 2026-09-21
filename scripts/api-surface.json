@@ -8453,6 +8453,7 @@
     "LandXmlAlignmentRenderRefusalJs: interface",
     "LandXmlAlignmentRenderSpanJs: interface",
     "LandXmlAlignmentSegmentJs: type",
+    "LandXmlAlignmentSummaryJs: interface",
     "LandXmlCantJs: interface",
     "LandXmlCantStationJs: interface",
     "LandXmlCapabilityDiagnosticJs: interface",

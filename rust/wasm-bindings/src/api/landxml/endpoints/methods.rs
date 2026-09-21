@@ -222,9 +222,13 @@ impl IfcAPI {
             {
                 continue;
             }
-            let mut retained = value.clone();
             let remaining = MAX_INTERACTIVE_SUPERELEVATION_EVENTS - retained_events;
-            retained.events.truncate(remaining);
+            let retained = ifc_lite_landxml::alignment::LandXmlSuperelevation {
+                source_id: value.source_id.clone(),
+                sta_start: value.sta_start,
+                sta_end: value.sta_end,
+                events: value.events.iter().take(remaining).cloned().collect(),
+            };
             retained_events += retained.events.len();
             superelevations.push(retained);
         }

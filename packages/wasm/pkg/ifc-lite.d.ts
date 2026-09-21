@@ -22,7 +22,7 @@ export interface LandXmlTinDocumentJs {
     pipe_networks?: LandXmlPipeNetworkDocumentJs;
     extensions: LandXmlExtensionJs[];
     warnings: string[];
-    alignments: LandXmlAlignmentJs[]; profiles: LandXmlProfileJs[];
+    alignments: LandXmlAlignmentSummaryJs[]; profiles: LandXmlProfileJs[];
     cross_sections: LandXmlCrossSectionJs[]; cross_section_surfaces: LandXmlCrossSectionSurfaceJs[];
     roadways: LandXmlRoadwayJs[]; capability_diagnostics: LandXmlCapabilityDiagnosticJs[];
     preserved_only_extensions: LandXmlPreservedOnlyExtensionJs[];
@@ -66,6 +66,8 @@ export interface LandXmlAlignmentRenderSpanJs { source_id: string; points: LandX
 export interface LandXmlAlignmentRenderRefusalJs { source_id: string; message: string; }
 export interface LandXmlAlignmentDocumentJs { units?: LandXmlUnitsJs; alignments: LandXmlAlignmentJs[]; warnings: string[]; }
 export interface LandXmlUnitsJs { linear_unit: string; elevation_unit: string; linear_scale_to_meters: number; elevation_scale_to_meters: number; }
+/** Terrain-parser alignment linkage; use LandXmlAlignmentDocumentJs for complete alignment semantics. */
+export interface LandXmlAlignmentSummaryJs { source_id: string; ordinal: number; name: string; length: number; sta_start: number; profile_source_ids: string[]; cross_section_source_ids: string[]; }
 export interface LandXmlAlignmentJs { source_id: string; ordinal: number; name: string; length: number; sta_start: number; profile_source_ids: string[]; cross_section_source_ids: string[]; start?: LandXmlPointLocationJs; align_pis: LandXmlAlignmentPiJs[]; segments: LandXmlAlignmentSegmentJs[]; station_equations: LandXmlStationEquationJs[]; cant?: LandXmlCantJs; superelevations: LandXmlSuperelevationJs[]; unsupported_transitions: LandXmlUnsupportedTransitionJs[]; }
 export type LandXmlPointLocationJs = { kind: "coordinates"; point: LandXmlPlanPointJs } | { kind: "point_reference"; pnt_ref: string };
 export interface LandXmlAlignmentPiJs { source_id: string; location: LandXmlPointLocationJs; }

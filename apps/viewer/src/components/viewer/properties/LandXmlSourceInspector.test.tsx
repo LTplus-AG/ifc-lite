@@ -263,4 +263,12 @@ describe('LandXmlSourceInspector (#5042)', () => {
     assert.equal(last.items.length, 100);
     assert.equal(last.items[99].sourceId, 'event-9999');
   });
+
+  it('clamps a stale superelevation page when a new probe has fewer applicable events (#5044)', () => {
+    const page = superelevationEventPage([{ sourceId: 'later', staStart: 5, staEnd: 5, events: [
+      { sourceId: 'only-event', kind: 'full_superelev', value: '0.04' },
+    ] }], 100);
+    assert.equal(page.total, 1);
+    assert.deepEqual(page.items.map((event) => event.sourceId), ['only-event']);
+  });
 });

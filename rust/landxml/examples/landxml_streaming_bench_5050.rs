@@ -10,11 +10,12 @@
 //! timings are reported as evidence for the machine which ran it.
 
 use ifc_lite_landxml::{
-    parse_landxml_document, LandXmlDocument, LandXmlLimits, LandXmlMetadataStreamEvent,
-    LandXmlStreamEvent, LandXmlSurface, LandXmlTinDocument, LandXmlTinStreamSession,
-    MAX_LANDXML_STREAM_DRAIN_BYTES, MAX_LANDXML_STREAM_QUEUED_BYTES,
+    parse_landxml_document, LandXmlDocument, LandXmlLimits, LandXmlMetadataRecord,
+    LandXmlMetadataStreamEvent, LandXmlStreamEvent, LandXmlSurface, LandXmlSurfaceComponent,
+    LandXmlTinDocument, LandXmlTinStreamSession, MAX_LANDXML_STREAM_DRAIN_BYTES,
+    MAX_LANDXML_STREAM_QUEUED_BYTES, MAX_LANDXML_STREAM_QUEUED_EVENTS,
 };
-use std::{error::Error, fmt::Write, time::Instant};
+use std::{collections::HashSet, error::Error, fmt::Write, time::Instant};
 
 const INPUT_CHUNK_BYTES: usize = 64 * 1024;
 const LARGE_TIN_SIDE: usize = 300;
@@ -60,6 +61,11 @@ impl Shape {
 struct StreamStats {
     surface_fragments: usize,
     metadata_records: usize,
+    delivered_shape: Shape,
+    ended_surface_ids: HashSet<String>,
+    surface_end_events: usize,
+    cogo_point_records: usize,
+    metadata_end_events: usize,
     end_surfaces: Option<usize>,
     end_cogo_points: Option<usize>,
     queue_peak_bytes: usize,
@@ -108,9 +114,30 @@ fn run_case(case: &Case) -> Result<(), Box<dyn Error>> {
         "{} stream completion COGO count",
         case.name
     );
-    assert!(
-        stream.surface_fragments >= case.expected.surfaces,
-        "{} emitted a terminal surface fragment per surface",
+    assert_eq!(
+        stream.delivered_shape, case.expected,
+        "{} streamed component delivery",
+        case.name
+    );
+    assert_eq!(
+        stream.surface_end_events, case.expected.surfaces,
+        "{} surface End event count",
+        case.name
+    );
+    assert_eq!(
+        stream.ended_surface_ids.len(),
+        case.expected.surfaces,
+        "{} distinct completed surface IDs",
+        case.name
+    );
+    assert_eq!(
+        stream.cogo_point_records, NON_TERRAIN_COGO_POINTS,
+        "{} delivered COGO records",
+        case.name
+    );
+    assert_eq!(
+        stream.metadata_end_events, 1,
+        "{} metadata End event count",
         case.name
     );
     assert!(
@@ -121,6 +148,11 @@ fn run_case(case: &Case) -> Result<(), Box<dyn Error>> {
     assert!(
         stream.queue_peak_bytes <= MAX_LANDXML_STREAM_QUEUED_BYTES,
         "{} exceeded the credited transport queue",
+        case.name
+    );
+    assert!(
+        stream.queue_peak_events <= MAX_LANDXML_STREAM_QUEUED_EVENTS,
+        "{} exceeded the credited transport event cap",
         case.name
     );
 
@@ -190,13 +222,47 @@ fn observe_event(event: LandXmlStreamEvent, stats: &mut StreamStats) {
             stats.largest_transport_payload_bytes = stats
                 .largest_transport_payload_bytes
                 .max(fragment.payload_utf8.len());
+            if !fragment.continued {
+                match fragment.component {
+                    LandXmlSurfaceComponent::Start
+                    | LandXmlSurfaceComponent::CanonicalVertices
+                    | LandXmlSurfaceComponent::SourceDataPoints => {}
+                    LandXmlSurfaceComponent::Points => stats.delivered_shape.points += 1,
+                    LandXmlSurfaceComponent::Faces => stats.delivered_shape.faces += 1,
+                    LandXmlSurfaceComponent::Boundaries => {
+                        stats.delivered_shape.boundaries += 1;
+                    }
+                    LandXmlSurfaceComponent::Breaklines => {
+                        stats.delivered_shape.breaklines += 1;
+                    }
+                    LandXmlSurfaceComponent::Contours => stats.delivered_shape.contours += 1,
+                    LandXmlSurfaceComponent::End => {
+                        stats.delivered_shape.surfaces += 1;
+                        stats.surface_end_events += 1;
+                        stats.ended_surface_ids.insert(fragment.source_id);
+                    }
+                }
+            }
         }
         LandXmlStreamEvent::Metadata(event) => match *event {
             LandXmlMetadataStreamEvent::End(end) => {
+                stats.metadata_end_events += 1;
                 stats.end_surfaces = Some(end.surfaces_drained);
                 stats.end_cogo_points = Some(end.plan_cogo_points);
             }
-            _ => stats.metadata_records += 1,
+            LandXmlMetadataStreamEvent::Record(record) => {
+                stats.metadata_records += 1;
+                if matches!(record.as_ref(), LandXmlMetadataRecord::PlanCogoPoint(_)) {
+                    stats.cogo_point_records += 1;
+                }
+            }
+            LandXmlMetadataStreamEvent::RecordFragment(fragment) => {
+                stats.metadata_records += 1;
+                if fragment.record == "plan_cogo_point" && !fragment.continued {
+                    stats.cogo_point_records += 1;
+                }
+            }
+            LandXmlMetadataStreamEvent::Header(_) => {}
         },
         LandXmlStreamEvent::Header(_) => {}
     }

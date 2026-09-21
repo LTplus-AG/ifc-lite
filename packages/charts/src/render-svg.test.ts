@@ -65,7 +65,7 @@ describe('buildEChartsOption', () => {
   });
 
   it('renders elementCount as a large numeric display using graphics component', () => {
-    const elementCountAgg = aggregate({ id: 'ec', title: 'Total Elements', source: 'elements', type: 'elementCount', dimension: '', measure: { agg: 'count' } }, ds);
+    const elementCountAgg = aggregate({ id: 'ec', title: 'Total Elements', source: 'elements', type: 'elementCount', measure: { agg: 'count' } }, ds);
     const option = buildEChartsOption({ aggregation: elementCountAgg, width: 400, height: 300 });
     expect(option.graphic).toBeDefined();
     const graphic = option.graphic as { elements: Array<{ type: string; style: { text: string; font: string } }> };

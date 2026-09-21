@@ -265,7 +265,7 @@ describe('aggregate invariants', () => {
 
   it('creates a single bucket for elementCount, counting all elements', async () => {
     const ds = await parsedDataset();
-    const agg = aggregate({ id: 'ec', title: 'All Elements', source: 'elements', type: 'elementCount', dimension: '', measure: { agg: 'count' } }, ds);
+    const agg = aggregate({ id: 'ec', title: 'All Elements', source: 'elements', type: 'elementCount', measure: { agg: 'count' } }, ds);
     expect(agg.categories).toHaveLength(1);
     expect(agg.categories[0].label).toBe('Total');
     expect(agg.categories[0].count).toBe(5);
@@ -280,8 +280,29 @@ describe('aggregate invariants', () => {
   it('elementCount respects the slice option to count only selected elements', async () => {
     const ds = await parsedDataset();
     const selectedIds = new Set([41, 42, 44]);
-    const agg = aggregate({ id: 'ec', title: 'Selected', source: 'elements', type: 'elementCount', dimension: '', measure: { agg: 'count' } }, ds, { slice: selectedIds });
+    const agg = aggregate({ id: 'ec', title: 'Selected', source: 'elements', type: 'elementCount', measure: { agg: 'count' } }, ds, { slice: selectedIds });
     expect(agg.categories[0].count).toBe(3);
     expect([...agg.categories[0].ids].sort()).toEqual([41, 42, 44]);
+  });
+
+  // Regression (#5151): a chart switched from a sum-measured type (e.g. a
+  // bar chart summing "Area") to elementCount used to keep the stale
+  // `{ agg: 'sum', column }` measure — nothing normalized it away before it
+  // reached `aggregate()`. The elementCount branch read `spec.measure.agg`
+  // and only counted a row when it was literally `'count'`, so every row
+  // added zero and a five-row dataset displayed as a Total of 0 even though
+  // `count`/`ids` still reported 5 correctly. This is the "adds zero"
+  // failure the maintainer review named; `aggregate()` must ignore
+  // `measure` entirely for elementCount, so no caller — editor or library —
+  // can reproduce it by constructing this spec directly.
+  it('elementCount ignores a stale non-count measure instead of adding zero for every row', () => {
+    const ds = dataset([['Type', 'category'], ['Area', 'number']], [
+      [[1], ['Wall', 10]], [[2], ['Wall', 2.5]], [[3], ['Slab', 7]], [[4], ['Slab', 4]], [[5], ['Door', 1]],
+    ]);
+    const staleMeasure: ChartSpec = { id: 'ec', title: 'Total', source: 'elements', type: 'elementCount', measure: { agg: 'sum', column: 'Area' } };
+    const agg = aggregate(staleMeasure, ds);
+    expect(agg.total).toBe(5);
+    expect(agg.categories[0].value).toBe(5);
+    expect(agg.categories[0].count).toBe(5);
   });
 });

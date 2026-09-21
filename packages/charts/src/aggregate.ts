@@ -174,8 +174,16 @@ export function aggregate(spec: ChartSpec, dataset: ChartDataset, options: Aggre
     let total = 0;
     for (const row of dataset.rows) {
       if (!rowInSlice(row, options.slice)) continue;
-      const measure = spec.measure.agg === 'count' ? 1 : 0;
-      total += measure;
+      // elementCount always counts matching rows — it never sums a measure
+      // column. `spec.measure` normally reads `{ agg: 'count' }` (validation
+      // requires it), but a chart switched from a sum-based type keeps
+      // whatever stale measure it had until it is saved again (the editor
+      // resets it — `ChartEditor.tsx`'s `setType` — but nothing stops a
+      // library caller from constructing the spec directly). Reading
+      // `spec.measure.agg` here would make a stale `sum` measure add zero
+      // for every row instead of counting it (#5151); ignoring it entirely
+      // makes that divergence impossible regardless of caller.
+      total += 1;
       for (let i = 0; i < row.ids.length; i++) ids.add(row.ids[i]);
     }
     const color = '#3b82f6'; // Default blue

@@ -50,6 +50,33 @@ export interface ChartEditorProps {
 }
 
 /**
+ * The editor's working copy of a chart spec. `ChartSpec` (types.ts) is a
+ * discriminated union — `elementCount` may not carry a `dimension` at all —
+ * but the form below mutates `type` and `dimension` independently as the
+ * user turns dials, which a union can't represent mid-edit without a cast at
+ * every call site. The draft keeps `dimension` as a plain string (empty
+ * means "none chosen yet") for exactly that reason; `draftToSpec` is the one
+ * place that sentinel is resolved back into the real contract, on save.
+ */
+type ChartDraft = Omit<ChartSpec, 'type' | 'dimension'> & { type: ChartType; dimension: string };
+
+function specToDraft(spec: ChartSpec): ChartDraft {
+  return { ...spec, dimension: spec.dimension ?? '' };
+}
+
+/** The inverse of `specToDraft` — the only place a draft's empty-string
+ *  `dimension` sentinel is resolved into the public contract: dropped
+ *  entirely for `elementCount`, kept as a real column id otherwise. Also
+ *  where a stale non-count measure carried over from a bucketed chart type
+ *  is normalized away, so a saved `elementCount` chart can never disagree
+ *  with what `aggregate()` actually does with it (#5151). */
+function draftToSpec(draft: ChartDraft): ChartSpec {
+  const { type, dimension, measure, ...rest } = draft;
+  if (type === 'elementCount') return { ...rest, type, measure: measure.agg === 'count' ? measure : { agg: 'count' } };
+  return { ...rest, type, dimension, measure };
+}
+
+/**
  * The columns the draft can bind to. Other charts' IFC field columns are
  * hidden; the draft's own field is a synthesized column, NOT a column of the
  * shared dataset: an unsaved edit must never rebuild the dashboard's
@@ -57,7 +84,7 @@ export interface ChartEditorProps {
  * live selection against the result (#4833). The resolved display unit is
  * the card's concern once saved; here the binding's own unit labels the sum.
  */
-export function editorColumns(dataset: ChartDataset, draft: ChartSpec): ChartDatasetColumn[] {
+export function editorColumns(dataset: ChartDataset, draft: ChartDraft): ChartDatasetColumn[] {
   if (draft.source !== 'elements') return dataset.columns;
   const builtIn = dataset.columns.filter((column) => !column.id.startsWith('ifc-field:'));
   return draft.elementField ? [...builtIn, elementFieldColumn(draft.elementField)] : builtIn;
@@ -73,7 +100,7 @@ function dimensionColumns(type: ChartType, columns: readonly ChartDatasetColumn[
 
 export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCatalog, elementFieldCatalogLoading }: ChartEditorProps) {
   const { t } = useTranslation();
-  const [draft, setDraft] = useState<ChartSpec>(spec);
+  const [draft, setDraft] = useState<ChartDraft>(() => specToDraft(spec));
   const schemaVersion = useActiveSchemaVersion();
   const [filterText, setFilterText] = useState(spec.filter?.selector ?? '');
   const [filterFeedback, setFilterFeedback] = useState<SelectorFeedback | null>(null);
@@ -109,7 +136,7 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
   const setElementField = (elementField: ElementFieldBinding | undefined): void => {
     const oldId = draft.elementField ? elementFieldColumnId(draft.elementField) : undefined;
     const nextId = elementField ? elementFieldColumnId(elementField) : undefined;
-    const next: ChartSpec = { ...draft, elementField };
+    const next: ChartDraft = { ...draft, elementField };
     if (nextId && elementField?.valueKind === 'number') {
       next.type = 'histogram';
       next.dimension = nextId;
@@ -136,12 +163,16 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
   };
 
   const setType = (type: ChartType): void => {
-    const next = { ...draft, type };
+    const next: ChartDraft = { ...draft, type };
     const allowed = dimensionColumns(type, columns);
     if (type === 'elementCount') {
-      // elementCount doesn't use dimension or stackBy
+      // elementCount doesn't use dimension, stackBy, or a sum measure — a
+      // stale `{ agg: 'sum', column }` from a type this chart used to be
+      // would otherwise survive the switch and, unless something normalizes
+      // it back to count, add zero for every row once saved (#5151).
       next.dimension = '';
       next.stackBy = undefined;
+      next.measure = { agg: 'count' };
     } else {
       // Other types need a valid dimension
       if (!allowed.some((c) => c.id === next.dimension)) next.dimension = allowed[0]?.id ?? next.dimension;
@@ -164,7 +195,7 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
         }
         if (!valid) return;
         const filter = filterApplicable && trimSelectorWhitespace(filterText).length > 0 ? { selector: trimSelectorWhitespace(filterText) } : undefined;
-        onSave({ ...draft, title: draft.title.trim(), filter });
+        onSave(draftToSpec({ ...draft, title: draft.title.trim(), filter }));
       }}
     >
       <label className="flex flex-col gap-0.5">

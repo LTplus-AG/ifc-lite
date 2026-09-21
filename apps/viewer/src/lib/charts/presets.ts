@@ -19,17 +19,24 @@ export function freshId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${counter}`;
 }
 
+/** A new chart, `bar`-by-default. `elementCount` never carries a
+ *  `dimension` (types.ts's discriminated union forbids it), so an override
+ *  to that type drops whatever default/override `dimension` would otherwise
+ *  merge in, instead of producing a spec the contract rejects (#5151). */
 export function newChartSpec(overrides: Partial<ChartSpec> = {}): ChartSpec {
-  return {
+  const base = {
     id: freshId('chart'),
     title: 'Elements by type',
-    source: 'elements',
-    type: 'bar',
-    dimension: ELEMENT_COLUMNS.ifcType,
-    measure: { agg: 'count' },
+    source: 'elements' as const,
+    measure: { agg: 'count' as const },
     topN: 12,
-    ...overrides,
   };
+  if (overrides.type === 'elementCount') {
+    const { dimension: _omitted, ...rest } = overrides;
+    return { ...base, ...rest, type: 'elementCount' };
+  }
+  const { type, ...restOverrides } = overrides;
+  return { ...base, dimension: ELEMENT_COLUMNS.ifcType, ...restOverrides, type: type ?? 'bar' } as ChartSpec;
 }
 
 export function modelOverviewDashboard(): DashboardSpec {

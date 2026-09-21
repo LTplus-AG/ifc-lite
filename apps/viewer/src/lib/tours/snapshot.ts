@@ -26,7 +26,7 @@ export function captureUiSnapshot(store: ViewerStoreApi): UiSnapshot {
   return {
     sidebarMode: s.sidebarMode,
     openSidePanel: s.bcfPanelVisible ? 'bcf'
-      : s.idsPanelVisible ? 'ids'
+      : s.idsPanelVisible ? 'validation'
       : s.lensPanelVisible ? 'lens'
       : s.clashPanelVisible ? 'clash'
       : s.comparePanelVisible ? 'compare'

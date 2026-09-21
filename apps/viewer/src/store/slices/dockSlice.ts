@@ -16,7 +16,7 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { WorkspacePanelId } from '@/lib/panels/registry';
+import { migratePanelId, type WorkspacePanelId } from '@/lib/panels/registry';
 
 /** Where a floating panel is anchored. `free` uses {@link FloatingPanelState.x/y}. */
 export type SnapZone = 'free' | 'left' | 'right' | 'bottom';
@@ -51,7 +51,7 @@ function loadPersisted(): FloatingPanelState[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
+    const valid = parsed.filter(
       (p): p is FloatingPanelState =>
         !!p && typeof p === 'object'
         && typeof p.id === 'string'
@@ -59,6 +59,15 @@ function loadPersisted(): FloatingPanelState[] {
         && Number.isFinite(p.x) && Number.isFinite(p.y)
         && Number.isFinite(p.w) && Number.isFinite(p.h),
     );
+    // A retired panel id (e.g. pre-#5138 'ids') migrates to its replacement
+    // rather than floating a panel the registry no longer knows how to render.
+    // An id that is neither current nor a known legacy alias is dropped.
+    const out: FloatingPanelState[] = [];
+    for (const p of valid) {
+      const id = migratePanelId(p.id);
+      if (id !== undefined) out.push(id === p.id ? p : { ...p, id });
+    }
+    return out;
   } catch (error) {
     console.warn('[dock] ignoring malformed persisted panel layout:', error);
     return [];

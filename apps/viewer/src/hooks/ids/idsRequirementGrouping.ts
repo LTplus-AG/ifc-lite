@@ -6,18 +6,19 @@
  * IDS Requirement Grouping — pure helpers to re-slice a specification's
  * per-entity results by requirement ("check") instead of by entity.
  *
- * An `IDSSpecificationResult` carries `entityResults: IDSEntityResult[]`,
- * each with a `requirementResults: IDSRequirementResult[]` produced by
- * iterating the SAME `spec.requirements` array for every entity
- * (`validateEntityRequirements` in `packages/ids/src/validation/validator.ts`).
- * The validator also reuses that same `IDSRequirement` object (not a
- * per-entity clone) for every entity it checks, so
- * `requirementResult.requirement.id` (assigned once at parse time as
- * `req-${index}`, see `packages/ids/src/parser/xml-parser.ts`) is a
- * stable key to group by ACROSS entities within one specification.
- * It is only unique within a specification, not across specifications —
- * grouping must stay scoped to one `IDSSpecificationResult` at a time,
- * which is how every caller here uses it.
+ * A specification result carries `entityResults: EntityResult[]` (the
+ * generalised report shape, #5138 — `IDSEntityResult` for an IDS document,
+ * a plain `EntityResult` for a rule-set run), each with a
+ * `requirementResults: RequirementResult[]` produced by iterating the SAME
+ * requirement list for every entity (`validateEntityRequirements` in
+ * `packages/ids/src/validation/validator.ts` for IDS;
+ * `rule-engine-requirements.ts` for rule sets). Both producers reuse the
+ * same requirement object (not a per-entity clone) for every entity they
+ * check, so `requirementResult.requirement.id` is a stable key to group by
+ * ACROSS entities within one specification. It is only unique within a
+ * specification, not across specifications — grouping must stay scoped to
+ * one specification result at a time, which is how every caller here uses
+ * it.
  *
  * `not_applicable` is excluded from both the numerator and the
  * denominator of every rate computed here, mirroring how the validator
@@ -33,8 +34,9 @@
  */
 
 import type {
-  IDSEntityResult,
-  IDSRequirementResult,
+  EntityResult,
+  RequirementSummary,
+  CheckKind,
 } from '@ifc-lite/ids';
 
 /** One failing entity, flattened with the failure detail for a single requirement. */
@@ -53,8 +55,8 @@ export interface RequirementFailingEntity {
 export interface RequirementGroup {
   /** `requirement.id`, stable across entities within one specification. */
   key: string;
-  requirement: IDSRequirementResult['requirement'];
-  facetType: IDSRequirementResult['facetType'];
+  requirement: RequirementSummary;
+  facetType: CheckKind;
   checkedDescription: string;
   passedCount: number;
   failedCount: number;
@@ -81,7 +83,7 @@ export interface CheckStats {
  * per-requirement alignment the counts depend on.
  */
 export function groupRequirementResults(
-  entityResults: readonly IDSEntityResult[]
+  entityResults: readonly EntityResult[]
 ): RequirementGroup[] {
   const groups = new Map<string, RequirementGroup>();
 
@@ -150,7 +152,7 @@ export function groupRequirementResults(
  * put the entity-level rate above the check-level one. Both directions are
  * pinned in idsRequirementGrouping.test.ts.
  */
-export function computeCheckStats(entityResults: readonly IDSEntityResult[]): CheckStats {
+export function computeCheckStats(entityResults: readonly EntityResult[]): CheckStats {
   let passedChecks = 0;
   let failedChecks = 0;
   let notApplicableChecks = 0;

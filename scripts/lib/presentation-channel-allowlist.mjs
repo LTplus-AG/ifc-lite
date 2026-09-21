@@ -67,12 +67,13 @@ export const REQUIRES_ROUTING_MARKER = new Set([
   // AUTHORING tool recorded, not guaranteed geometry-bearing in this
   // renderer.
   'apps/viewer/src/hooks/useBCF.ts',
-  // The IDS row-focus isolate (`installFocusIsolation`) and set-level
-  // isolate (`installSetIsolation`, the failed/passed/involved buttons):
-  // both isolate ids an IDS specification's applicability filter matched,
-  // which can be any IFC class, including a geometry-less assembly -- the
-  // same shape as LensPanel/SearchModal.filter's rule-matched ids.
-  'apps/viewer/src/hooks/useIDS.ts',
+  // The validation row-focus isolate (`installFocusIsolation`) and set-level
+  // isolate (`installSetIsolation`, the failed/passed/involved buttons),
+  // shared by IDS and rule-set reports since #5138 split them out of
+  // `useIDS.ts`: both isolate ids an applicability filter matched, which can
+  // be any IFC class, including a geometry-less assembly -- the same shape
+  // as LensPanel/SearchModal.filter's rule-matched ids.
+  'apps/viewer/src/hooks/validation/useValidationIsolation.ts',
   // The SDK/MCP isolate() channel: #3382 landed the routing fix and #3338
   // moved its union policy into the shared `resolvePresentationIds`, so this
   // now genuinely routes and belongs here instead of NO_MARKER_REQUIRED.

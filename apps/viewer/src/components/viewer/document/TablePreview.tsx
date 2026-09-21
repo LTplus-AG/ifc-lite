@@ -12,7 +12,7 @@
 import { useMemo } from 'react';
 import { useTranslation } from '@/i18n';
 import { localeCount } from '@/i18n/intlFormat';
-import { flattenExportModel, tableMessageKind, type TableRowRole, type TableState } from '@/lib/document/resolve-table';
+import { flattenExportModel, flattenRawModel, tableMessageKind, type TableRowRole, type TableState } from '@/lib/document/resolve-table';
 import { tableTitle } from '@/lib/document/generate-document-pdf';
 import { TABLE_ROWS_DEFAULT, type TableBlock } from '@/lib/document/types';
 import { DOCUMENT_PREVIEW_MUTED_TEXT_CLASS } from './preview-theme';
@@ -32,12 +32,16 @@ export interface TablePreviewProps {
 export function TablePreview({ block, state }: TablePreviewProps) {
   const { t, locale } = useTranslation();
   const title = tableTitle(block);
-  const table = useMemo(() => (state?.status === 'ok'
-    ? flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, {
-      more: (n) => t('document.table.moreRows', localeCount(locale, n)),
-      total: (count) => t('document.table.total', { count: count.toLocaleString(locale) }),
-    })
-    : null), [state, block.maxRows, t, locale]);
+  const table = useMemo(() => {
+    if (state?.status !== 'ok') return null;
+    const labels = {
+      more: (n: number) => t('document.table.moreRows', localeCount(locale, n)),
+      total: (count: number) => t('document.table.total', { count: count.toLocaleString(locale) }),
+    };
+    return state.kind === 'validation'
+      ? flattenRawModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, labels)
+      : flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, labels);
+  }, [state, block.maxRows, t, locale]);
 
   // The same state → message decision the PDF makes (`tableMessageKind`), worded from the catalogue.
   const kind = tableMessageKind(state);
@@ -45,7 +49,10 @@ export function TablePreview({ block, state }: TablePreviewProps) {
     : kind === 'error' ? ((state?.status === 'error' && state.message.trim()) || t('document.table.error'))
       : kind === 'resolving' ? t('document.table.resolving')
         : kind === 'no-model' ? t('document.table.noModel')
-          : t('document.table.noRows');
+          : kind === 'no-report' ? t('document.table.noReport')
+            : kind === 'rule-not-found' ? t('document.table.ruleNotFound')
+              // "No rows" reads differently per source: a list matched nothing, a validation table's rule/rows filter did.
+              : (state?.status === 'ok' && state.kind === 'validation' ? t('document.table.validationNoRows') : t('document.table.noRows'));
 
   return (
     <div data-block-table>

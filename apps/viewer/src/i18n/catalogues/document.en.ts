@@ -139,6 +139,10 @@ export const documentEn = {
 
   // Table block (#5142): TableBlockEditor.tsx, TablePreview.tsx, DocumentPanel.tsx.
   'document.addBlock.table': 'Table (from a list)',
+  'document.block.tableSourceLabel': 'Source',
+  'document.block.tableSourceAriaLabel': 'Table source',
+  'document.block.tableSourceList': 'List',
+  'document.block.tableSourceValidation': 'Validation results',
   'document.block.tableReplaceAriaLabel': 'List this table prints',
   'document.block.tableReplaceOption': '{name} — replace with…',
   'document.block.tableSavedGroup': 'Saved lists',
@@ -167,4 +171,20 @@ export const documentEn = {
   },
   'document.table.total': 'Total ({count})',
   'document.panel.exportPreparingTables': 'Running lists…',
+
+  // Validation-results table source (#5138): ValidationSourceEditor in TableBlockEditor.tsx, and
+  // the placeholder states TablePreview.tsx shows in place of rows.
+  'document.block.tableValidationRowsLabel': 'Rows',
+  'document.block.tableValidationRowsAriaLabel': 'Which rows to show',
+  'document.block.tableValidationRowsFailed': 'Failed entities',
+  'document.block.tableValidationRowsPassed': 'Passed entities',
+  'document.block.tableValidationRowsAll': 'All entities',
+  'document.block.tableValidationRowsSets': 'Sets (uniqueness / aggregate)',
+  'document.block.tableRuleLabel': 'Rule',
+  'document.block.tableRuleAriaLabel': 'Filter to one rule',
+  'document.block.tableRuleAll': 'Every rule',
+  'document.block.tableColumnsLabel': 'Columns',
+  'document.table.noReport': 'No validation report yet — run validation, then this table fills in.',
+  'document.table.ruleNotFound': 'The rule this table refers to is not in the current validation report.',
+  'document.table.validationNoRows': 'No rows match this rule.',
 } as const satisfies Record<string, TranslationValue>;

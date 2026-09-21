@@ -28,9 +28,23 @@ export interface ReportDoc {
   addImage: (bytes: Uint8Array, format: 'PNG' | 'JPEG', x: number, y: number, w: number, h: number) => void;
   /** Draw an SVG string into the box (svg2pdf); a raster fallback is the caller's business. */
   svg: (svg: string, x: number, y: number, w: number, h: number) => Promise<void>;
-  table: (args: { startY: number; margin: { left: number; right: number }; head: string[][]; body: string[][] }) => void;
+  table: (args: ReportTableArgs) => void;
   pageCount: () => number;
   output: () => Blob;
+}
+
+/** A row of a document table block (#5142): data, group header, grand total, or the "… n more" line. */
+export type ReportTableRowRole = 'row' | 'group' | 'total' | 'more';
+
+export interface ReportTableArgs {
+  startY: number;
+  margin: { left: number; right: number };
+  head: string[][];
+  body: string[][];
+  /** Fixed column widths + alignment (#5142); replaces the bucket table's hard-coded right-aligned 2nd/3rd column. */
+  columns?: Array<{ width: number; align: 'left' | 'right' }>;
+  /** Parallel to `body`; a row with no entry is a data row. */
+  rowRoles?: ReportTableRowRole[];
 }
 
 export interface ReportPdfSeams {
@@ -98,12 +112,32 @@ export async function browserReportSeams(capture: SnapshotCapture | null, theme:
             host.remove();
           }
         },
-        table: ({ startY, margin, head, body }) => {
+        table: ({ startY, margin, head, body, columns, rowRoles }) => {
+          const columnStyles: Record<number, { halign?: 'left' | 'right'; cellWidth?: number }> = columns
+            ? Object.fromEntries(columns.map((c, i) => [i, { halign: c.align, cellWidth: c.width }]))
+            : { 1: { halign: 'right' }, 2: { halign: 'right' } };
           autoTable(doc, {
             startY, margin: { ...margin, top: REPORT_MARGIN, bottom: REPORT_MARGIN }, head, body,
-            styles: { fontSize: 8, cellPadding: 2, overflow: 'ellipsize', lineColor: [226, 232, 240], lineWidth: 0.5 },
+            // `minCellHeight` pins the row to the height the document composer counts with
+            // (`TABLE_ROW_HEIGHT`, #5142): 8pt × 1.15 + 2 × 2pt padding. `pageBreak: 'avoid'` is
+            // the belt to that: the composer only ever hands over a chunk that fits.
+            styles: { fontSize: 8, cellPadding: 2, minCellHeight: 13.2, overflow: 'ellipsize', lineColor: [226, 232, 240], lineWidth: 0.5 },
             headStyles: { fillColor: [51, 65, 85], textColor: 255, fontStyle: 'bold' },
-            columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
+            columnStyles,
+            pageBreak: columns ? 'avoid' : 'auto',
+            didParseCell: rowRoles
+              ? (data) => {
+                  if (data.section !== 'body') return;
+                  const role = rowRoles[data.row.index];
+                  if (role === 'group' || role === 'total') {
+                    data.cell.styles.fontStyle = 'bold';
+                    data.cell.styles.fillColor = [241, 245, 249];
+                  } else if (role === 'more') {
+                    data.cell.styles.fontStyle = 'italic';
+                    data.cell.styles.textColor = [150, 150, 150];
+                  }
+                }
+              : undefined,
           });
         },
         pageCount: () => doc.getNumberOfPages(),

@@ -36,6 +36,7 @@ export const documentEn = {
   'document.block.kindChart': 'Chart',
   'document.block.kindTopic': 'BCF topic',
   'document.block.kindSpacer': 'Spacer',
+  'document.block.kindTable': 'Table',
   'document.block.styleLabel': 'Style',
   'document.block.textStyleAriaLabel': 'Text style',
   'document.block.textStyleTitle': 'Title',

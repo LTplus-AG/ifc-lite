@@ -15,7 +15,8 @@ import type { ReportDoc, ReportPdfSeams } from '../export/report/generate-report
 import { dataUrlToBytes } from '../export/download.js';
 import { renderTemplate, type BindingContext } from './bindings.js';
 import { composeDocument, estimateTextWidth, type DocumentLayout, type ResolvedBlock } from './compose.js';
-import type { DocumentSpec } from './types.js';
+import { flattenExportModel, type TableLabels, type TableState } from './resolve-table.js';
+import { TABLE_ROWS_DEFAULT, type DocumentSpec, type TableBlock } from './types.js';
 
 export interface DocumentPdfSeams extends ReportPdfSeams {
   /** Natural size of an image (data URL); the layout keeps its aspect ratio. */
@@ -36,6 +37,8 @@ export interface DocumentPdfInput {
   snapshotIds: (blockId: string) => readonly number[];
   /** BCF topics by GUID. */
   topics: Map<string, BCFTopic>;
+  /** Table block id → its list run (#5142); a block with no entry prints as still resolving. */
+  tables: Map<string, TableState>;
 }
 
 export interface DocumentPdfResult {
@@ -48,7 +51,26 @@ export interface DocumentPdfResult {
   snapshotFailures: string[];
   /** Images jsPDF could not decode; the page says so in their place. */
   imageFailures: string[];
+  /** Table blocks whose list did not run (no model, still resolving, or an error); the page says so in their place. */
+  tableFailures: string[];
 }
+
+/** The English the PDF prints for a table block's rows, like every other string this module prints. */
+export const TABLE_PDF_LABELS: TableLabels = {
+  more: (n) => `… ${n.toLocaleString()} more row${n === 1 ? '' : 's'}`,
+  total: (count) => `Total (${count.toLocaleString()})`,
+};
+
+/** What a table block prints in place of its rows, by state; `null` when it has rows to print. */
+export function tableMessage(state: TableState | undefined): string | null {
+  if (!state || state.status === 'resolving') return 'Table not ready: the list is still running.';
+  if (state.status === 'no-model') return 'Load a model to fill this table.';
+  if (state.status === 'error') return state.message;
+  return state.model.totals.count === 0 ? 'No rows match this list.' : null;
+}
+
+/** The title a table block prints: its own, or the list's name. */
+export const tableTitle = (block: TableBlock): string => block.title?.trim() || block.source.list.name;
 
 /** The browser's image measure: decode the data URL. */
 export function browserImageSize(dataUrl: string): Promise<{ w: number; h: number }> {
@@ -87,7 +109,7 @@ export function topicSnapshotDataUrl(topic: BCFTopic): string | null {
 }
 
 /** Resolve every block against the model — what the composer and the preview share. */
-export async function resolveBlocks(input: DocumentPdfInput, imageSize: DocumentPdfSeams['imageSize'], result: Pick<DocumentPdfResult, 'unresolved' | 'missingTopics'>): Promise<ResolvedBlock[]> {
+export async function resolveBlocks(input: DocumentPdfInput, imageSize: DocumentPdfSeams['imageSize'], result: Pick<DocumentPdfResult, 'unresolved' | 'missingTopics' | 'tableFailures'>): Promise<ResolvedBlock[]> {
   const blocks: ResolvedBlock[] = [];
   for (const block of input.document.blocks) {
     switch (block.kind) {
@@ -121,6 +143,18 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
       }
       case 'spacer': {
         blocks.push({ kind: 'spacer', id: block.id, height: block.height });
+        break;
+      }
+      case 'table': {
+        const state = input.tables.get(block.id);
+        const message = tableMessage(state);
+        if (message !== null || state?.status !== 'ok') {
+          if (state?.status !== 'ok') result.tableFailures.push(block.id);
+          blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, message: message ?? undefined, columns: [], rows: [] });
+          break;
+        }
+        const flat = flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS);
+        blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, columns: flat.columns, rows: flat.rows });
         break;
       }
       case 'topic': {
@@ -180,7 +214,7 @@ function placeImage(doc: ReportDoc, dataUrl: string | null, label: string, box: 
 }
 
 export async function generateDocumentPdf(input: DocumentPdfInput, seams: DocumentPdfSeams): Promise<DocumentPdfResult> {
-  const result: DocumentPdfResult = { blob: new Blob(), pages: 0, unresolved: [], missingTopics: [], snapshotFailures: [], imageFailures: [] };
+  const result: DocumentPdfResult = { blob: new Blob(), pages: 0, unresolved: [], missingTopics: [], snapshotFailures: [], imageFailures: [], tableFailures: [] };
   const format = input.document.page.size === 'A3' ? 'a3' : 'a4';
   const doc = await seams.createDoc(format, input.document.page.orientation);
   const blocks = await resolveBlocks(input, seams.imageSize, result);
@@ -257,6 +291,17 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
           placeImage(doc, topic ? topicSnapshotDataUrl(topic) : null, topic ? `viewpoint of "${topic.title}"` : 'viewpoint', item, result);
           break;
         }
+        case 'table':
+          // One chunk per call; the composer cut it to fit, so autotable never breaks the page itself.
+          doc.table({
+            startY: item.y,
+            margin: { left: item.x, right: layout.size.w - item.x - item.w },
+            head: [item.columns.map((c) => c.label)],
+            body: item.rows.map((r) => r.cells),
+            columns: item.columns.map((c) => ({ width: c.width, align: c.align })),
+            rowRoles: item.rows.map((r) => r.role),
+          });
+          break;
       }
     }
   }

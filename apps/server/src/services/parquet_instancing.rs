@@ -15,6 +15,55 @@
 use crate::types::MeshData;
 use ifc_lite_geometry::{collate_refs_in_basis, InstanceMeshRef, Matrix4};
 use rustc_hash::FxHashMap;
+use std::hash::{Hash, Hasher};
+
+/// Content-hash fallback used by BOTH writers: `collate_rotation_aware_placements`
+/// runs first, this catches what it did not place. Two meshes with bit-identical
+/// (origin-relative) positions, indices AND normals collapse onto one shape.
+///
+/// Normals are keyed because the flat layout emits the shared shape's normals
+/// for every occurrence; `/optimized` ships none, so the stricter key can only
+/// split a group whose normals differ, which the pipeline never produces
+/// (normals derive from positions/indices) — no `/optimized` behaviour change.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct MeshGeometryKey {
+    /// Hash of the quantized positions.
+    positions_hash: u64,
+    /// Hash of the indices.
+    indices_hash: u64,
+    /// Hash of the normals.
+    normals_hash: u64,
+}
+
+/// Compute a fast hash of a u32 slice.
+fn hash_u32_slice(data: &[u32]) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    let mut hasher = DefaultHasher::new();
+    for item in data {
+        item.hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+/// Compute a fast hash of a f32 slice (using bit representation).
+fn hash_f32_slice(data: &[f32]) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    let mut hasher = DefaultHasher::new();
+    for item in data {
+        // Convert f32 to bits for hashing (handles NaN consistently)
+        item.to_bits().hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+/// Build the content-hash key for one mesh's (origin-relative) geometry.
+pub(crate) fn mesh_geometry_key(mesh: &MeshData) -> MeshGeometryKey {
+    MeshGeometryKey {
+        positions_hash: hash_f32_slice(&mesh.positions),
+        indices_hash: hash_u32_slice(&mesh.indices),
+        normals_hash: hash_f32_slice(&mesh.normals),
+    }
+}
 
 /// The frame this route's baked vertices are in, relative to the native frame
 /// `MeshData::instance` describes: `Rᵀ · T(-rtc)`, read straight off the

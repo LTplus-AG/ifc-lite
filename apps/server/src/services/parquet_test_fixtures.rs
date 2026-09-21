@@ -6,7 +6,7 @@
 //!
 //! ONE definition of the rotated-repeat fixture, because two of the tests using
 //! it assert the same claim about different writers: `/optimized` dedups three
-//! rotated occurrences of one shape (#3575) and the flat `-parquet-v6` route
+//! rotated occurrences of one shape (#3575) and the flat shared-shapes route
 //! shares them (#3888), and "the flat route shares exactly what the optimized
 //! route shares" only means something while both are handed the same meshes.
 //! Two copies of `bake_triangle` that drifted would leave both tests green and

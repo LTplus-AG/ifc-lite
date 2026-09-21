@@ -96,9 +96,17 @@ function parenSpan(s: string, fn: string): [number, number] {
   if (open < 0 || close < 0) throw new TextError(`expected "${fn}(...)" in ${JSON.stringify(s)}`);
   return [open, close];
 }
+/** The whole `(...)` body must be one subject — `sum(Foo Bar)` used to parse
+ *  `Foo` and silently drop `Bar` (review on #5144). */
+function parseParenSubject(s: string, open: number, close: number): Subject {
+  const [subject, end] = parseSubject(s, open + 1);
+  const leftover = s.slice(end, close).trim();
+  if (leftover !== '') throw new TextError(`unexpected ${JSON.stringify(leftover)} inside the parentheses`);
+  return subject;
+}
 function parseUnique(s: string): UniqueRequirement {
   const [open, close] = parenSpan(s, 'unique');
-  const [subject] = parseSubject(s, open + 1);
+  const subject = parseParenSubject(s, open, close);
   const rest = s.slice(close + 1).trim();
   if (rest === '') return { kind: 'unique', subject };
   if (rest === 'perModel') return { kind: 'unique', subject, scope: 'perModel' };
@@ -107,7 +115,7 @@ function parseUnique(s: string): UniqueRequirement {
 function parseAggregate(s: string, fn: AggregateRequirement['fn']): AggregateRequirement {
   const [open, close] = parenSpan(s, fn);
   const inner = s.slice(open + 1, close).trim();
-  const subject = inner === '' ? undefined : parseSubject(inner, 0)[0];
+  const subject = inner === '' ? undefined : parseParenSubject(s, open, close);
   const [op, afterOp] = parseOp(s, close + 1);
   const [value, afterValue] = parseNumber(s, afterOp);
   let i = afterValue;

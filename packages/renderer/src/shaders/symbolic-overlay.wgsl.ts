@@ -63,8 +63,9 @@ struct Camera {
   // zero screen extent and the tag becomes invisible.
   cameraRight: vec4<f32>,
   cameraUp:    vec4<f32>,
-  // Split f64 camera world position. The per-instance f64 anchor is split
-  // identically, so subtraction happens before either quantity is narrowed.
+  // Retained for the 208-byte symbolic-text uniform ABI. RTE text now packs
+  // its drawable-minus-camera delta on the CPU rather than subtracting these
+  // independently rounded absolute values in WGSL.
   cameraHigh: vec4<f32>,
   cameraLow:  vec4<f32>,
 };
@@ -114,10 +115,10 @@ struct InstIn {
   // glyphs override with a larger value so the bubble stays proportional
   // to the tag at every zoom level.
   @location(10) targetPxOverride: f32,
-  // Split canonical f64 text-label anchor. anchorHigh.w == 1 selects the
+  // CPU-packed drawable-minus-camera delta. deltaHigh.w == 1 selects the
   // RTE route; old world-f32 records retain a zero flag and the old route.
-  @location(11) anchorHigh: vec4<f32>,
-  @location(12) anchorLow: vec4<f32>,
+  @location(11) deltaHigh: vec4<f32>,
+  @location(12) deltaLow: vec4<f32>,
 };
 
 struct VsOut {
@@ -125,6 +126,17 @@ struct VsOut {
   @location(0) uv:    vec2<f32>,
   @location(1) color: vec4<f32>,
 };
+
+fn rteClipPosition(
+  local: vec3<f32>, high: vec3<f32>, low: vec3<f32>, viewProj: mat4x4<f32>,
+) -> vec4<f32> {
+  // Do not first reconstruct a million-metre f32 position: that addition can
+  // discard centimetre low lanes before projection. Transform high/local and
+  // low independently, then combine them in clip space where projection has
+  // reduced or cancelled the coordinate scale. A final raw f32 eye vector
+  // still cannot represent a sub-ULP residual at the ±1,000,000 m boundary.
+  return viewProj * vec4<f32>(local + high, 1.0) + viewProj * vec4<f32>(low, 0.0);
+}
 
 @vertex
 fn vs_main(in: VsIn, inst: InstIn) -> VsOut {
@@ -140,23 +152,18 @@ fn vs_main(in: VsIn, inst: InstIn) -> VsOut {
   // regardless of view angle, so screen-space scaling stays correct in
   // top-down / ground / oblique views.
   let isBillboard = inst.billboard > 0.5;
-  let isRte = inst.anchorHigh.w == 1.0;
-  // These are eye-relative coordinates for anchored records and world
-  // coordinates for legacy records. This select keeps both ABI generations
-  // valid in one draw, rather than globally switching the projection.
-  let rteAnchor =
-      (inst.anchorHigh.xyz - camera.cameraHigh.xyz)
-    + (inst.anchorLow.xyz - camera.cameraLow.xyz);
-  let labelAnchor = select(inst.anchor, rteAnchor, isRte);
+  let isRte = inst.deltaHigh.w == 1.0;
+  // The f64 CPU path has already formed the drawable-camera delta. Project
+  // split terms independently so projection can retain low residuals.
   let scaleProbeAxis = select(vec3<f32>(0.0, 1.0, 0.0), camera.cameraUp.xyz, isBillboard);
   let aClip = select(
     camera.viewProj * vec4<f32>(inst.anchor, 1.0),
-    camera.rteViewProj * vec4<f32>(labelAnchor, 1.0),
+    rteClipPosition(vec3<f32>(0.0), inst.deltaHigh.xyz, inst.deltaLow.xyz, camera.rteViewProj),
     isRte,
   );
   let bClip = select(
     camera.viewProj * vec4<f32>(inst.anchor + scaleProbeAxis, 1.0),
-    camera.rteViewProj * vec4<f32>(labelAnchor + scaleProbeAxis, 1.0),
+    rteClipPosition(scaleProbeAxis, inst.deltaHigh.xyz, inst.deltaLow.xyz, camera.rteViewProj),
     isRte,
   );
   let aNdc = aClip.xy / max(abs(aClip.w), 1e-4);
@@ -183,9 +190,8 @@ fn vs_main(in: VsIn, inst: InstIn) -> VsOut {
   // Anchored producers retain a small glyph-local origin; legacy producers
   // retain the original absolute origin and derive its local offset here.
   let authoredLocalOffset = select(inst.origin - inst.anchor, inst.origin, isRte);
-  let authoredWorldPos =
-      labelAnchor
-    + authoredLocalOffset * scale
+  let authoredLocalPos =
+      authoredLocalOffset * scale
     + inst.rightAxis * scale * u
     + inst.upAxis    * scale * v;
 
@@ -197,13 +203,13 @@ fn vs_main(in: VsIn, inst: InstIn) -> VsOut {
   let bbOffsetY = inst.glyphOffsetSize.y;
   let bbWidth   = inst.glyphOffsetSize.z;
   let bbHeight  = inst.glyphOffsetSize.w;
-  let billboardWorldPos =
-      labelAnchor
-    + (camera.cameraRight.xyz * bbOffsetX + camera.cameraUp.xyz * bbOffsetY) * scale
+  let billboardLocalPos =
+      (camera.cameraRight.xyz * bbOffsetX + camera.cameraUp.xyz * bbOffsetY) * scale
     + (camera.cameraRight.xyz * bbWidth   * u
      + camera.cameraUp.xyz    * bbHeight  * v) * scale;
 
-  let worldPos = select(authoredWorldPos, billboardWorldPos, isBillboard);
+  let glyphLocalPos = select(authoredLocalPos, billboardLocalPos, isBillboard);
+  let worldPos = inst.anchor + glyphLocalPos;
 
   // UV: lerp atlas bounds. Note v inverted (atlas top is v=0).
   let uMix = mix(inst.uvBounds.x, inst.uvBounds.z, u);
@@ -212,7 +218,7 @@ fn vs_main(in: VsIn, inst: InstIn) -> VsOut {
   var out: VsOut;
   let clip = select(
     camera.viewProj * vec4<f32>(worldPos, 1.0),
-    camera.rteViewProj * vec4<f32>(worldPos, 1.0),
+    rteClipPosition(glyphLocalPos, inst.deltaHigh.xyz, inst.deltaLow.xyz, camera.rteViewProj),
     isRte,
   );
   // Reverse-Z decal nudge for text coplanar with model faces (issue #812

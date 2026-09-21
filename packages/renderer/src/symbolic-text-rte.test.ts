@@ -7,6 +7,7 @@ import assert from 'node:assert';
 
 import { SymbolicTextPipeline } from './symbolic-overlay-pipelines.js';
 import type { SymbolicTextAtlas } from './symbolic-text-atlas.js';
+import { SYMBOLIC_TEXT_WGSL } from './shaders/symbolic-overlay.wgsl.js';
 
 // Node has no WebGPU globals. The production pipeline only consumes these
 // numeric flags while this test captures the real upload and draw descriptors.
@@ -68,11 +69,15 @@ function makeDevice(): {
 }
 
 describe('SymbolicTextPipeline anchored instance ABI (#5049)', () => {
-  it('keeps a 5,000-km centimetre residual through its instance and RTE draw uniforms', () => {
+  it('packs an f64 drawable-minus-camera text delta once before GPU upload (#5152)', () => {
     const { device, writes, getPipeline } = makeDevice();
     const pipeline = new SymbolicTextPipeline(device, 'bgra8unorm', 1, makeAtlas());
     pipeline.upload([{
-      origin: [5_000_000.245, 100, -50],
+      // This is deliberately near the ±1,000,000 m RTE boundary. Splitting
+      // label and camera absolutes independently gives high/low lanes
+      // (1_000_000, -0.075); the f64 delta must instead become
+      // (999_999.9375, -0.0125) before it reaches the GPU.
+      origin: [10_999_999.945, 10_999_999.9575, -50],
       worldPos: [0.03, -0.02, 0.01],
       dirX: 1,
       dirZ: 0,
@@ -90,24 +95,53 @@ describe('SymbolicTextPipeline anchored instance ABI (#5049)', () => {
       [0, 1, 0],
       14,
       new Float32Array(16).fill(2),
-      [5_000_000.25, 100, -50],
+      [10_000_000.05, 10_000_000, -50],
     );
 
-    const instance = writes.find((write) => write.length === 35);
+    const delta = writes.filter((write) => write.length === 8).at(-1);
+    const staticInstance = writes.find((write) => write.length === 27);
     const uniform = writes.find((write) => write.length === 52);
-    assert.ok(instance, 'the widened production text instance was not uploaded');
+    assert.ok(delta, 'the dynamic production text delta was not uploaded');
+    assert.ok(staticInstance, 'the static production text instance was not uploaded');
     assert.ok(uniform, 'the dual-projection text draw uniform was not uploaded');
-    const residual = (instance[27] + instance[31]) - (uniform[44] + uniform[48]);
-    assert.ok(Math.abs(residual - 0.025) < 1e-7, `lost text anchor residual: ${residual}`);
-    assert.strictEqual(instance[30], 1, 'anchored records must select the RTE shader route');
+    assert.ok(Math.abs(delta[0] - 999_999.9375) < 1e-7, `wrong CPU-packed high delta: ${delta[0]}`);
+    assert.ok(Math.abs(delta[4] + 0.0125) < 1e-7, `wrong CPU-packed low delta: ${delta[4]}`);
+    assert.strictEqual(delta[3], 1, 'anchored records must select the RTE shader route after delta packing');
     assert.strictEqual(uniform[0], 1, 'legacy labels retain the global view-projection');
     assert.strictEqual(uniform[16], 2, 'anchored labels receive the RTE view-projection');
 
-    const attributes = getPipeline()?.buffers?.[1]?.attributes ?? [];
+    // Emulate the shader's f32 clip arithmetic for an orientation whose X
+    // clip component is `world.x - world.y`. Reconstituting the two eye-space
+    // components first rounds their shared 999,999.9375 m high term and
+    // cancels to zero; projecting high and low independently preserves the
+    // 1.25 cm residual in the actual clip calculation.
+    const f32 = Math.fround;
+    const projectedSplit = f32(f32(delta[0] - delta[1]) + f32(delta[4] - delta[5]));
+    const collapsedBeforeProjection = f32(f32(delta[0] + delta[4]) - f32(delta[1] + delta[5]));
+    const expectedClip = f32((10_999_999.975 - 10_000_000.05) - (10_999_999.9375 - 10_000_000));
+    assert.equal(projectedSplit, expectedClip, 'the split low lane reaches the projected coordinate');
+    assert.notEqual(collapsedBeforeProjection, expectedClip, 'the old reconstructed f32 position loses the low lane');
+    assert.equal(f32(delta[0] + delta[4]), delta[0], 'a raw million-metre f32 eye vector cannot itself retain this low lane');
+    assert.match(
+      SYMBOLIC_TEXT_WGSL,
+      /viewProj \* vec4<f32>\(local \+ high, 1\.0\) \+ viewProj \* vec4<f32>\(low, 0\.0\)/,
+      'the live WGSL must project high/local and low terms separately',
+    );
+
+    const staticWritesBeforeLegacyDraw = writes.filter((write) => write.length === 27).length;
+    pipeline.render(pass, new Float32Array(16).fill(1), 800, 600, [1, 0, 0], [0, 1, 0]);
+    const legacyDelta = writes.filter((write) => write.length === 8).at(-1);
+    assert.ok(legacyDelta);
+    assert.equal(legacyDelta[3], 0, 'an RTE-less render returns anchored labels to the legacy world projection');
+    assert.equal(writes.filter((write) => write.length === 27).length, staticWritesBeforeLegacyDraw,
+      'camera motion updates only the compact delta stream, not the atlas layout');
+    assert.equal(staticInstance[17], Math.fround(10_999_999.975), 'legacy record retains its world-space f32 anchor');
+
+    const attributes = getPipeline()?.buffers?.[2]?.attributes ?? [];
     assert.deepStrictEqual(
-      attributes.slice(-2).map((attribute) => [attribute.shaderLocation, attribute.offset]),
-      [[11, 27 * 4], [12, 31 * 4]],
-      'the live pipeline must consume both split-anchor lanes',
+      attributes.map((attribute) => [attribute.shaderLocation, attribute.offset]),
+      [[11, 0], [12, 4 * 4]],
+      'the live pipeline must consume both CPU-packed delta lanes from the compact stream',
     );
   });
 });

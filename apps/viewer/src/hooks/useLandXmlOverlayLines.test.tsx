@@ -332,11 +332,16 @@ describe('LandXML source overlay rendering (#5042)', () => {
 
   it('keeps terrain and COGO source overlays anchored until the shared RTE boundary (#5049)', () => {
     const terrain = line('survey-boundary');
-    terrain.points = [[0, 50_000, 0], [1, 50_001, 0]];
+    // A 1 cm segment at a 50 km survey easting: putting these directly in a
+    // Float32Array changes the measured separation, while the renderer RTE
+    // payload must retain the source anchor and the independently narrowed
+    // local centimetre. Do not reconstruct this from the result below: that
+    // would only prove the helper's own algebra, not its GPU payload.
+    terrain.points = [[0, 50_000.015625, 0], [0, 50_000.025625, 0]];
     const model = landXmlModel('anchored-terrain', terrain);
     planOverlay(model);
     const cogo = model.landXmlDocument!.plan!.cogoPoints[0].point!;
-    cogo.easting = 50_000;
+    cogo.easting = 50_000.015625;
     cogo.northing = 0;
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
     let vertices: RendererLineVertices = new Float32Array();
@@ -347,9 +352,16 @@ describe('LandXML source overlay rendering (#5042)', () => {
       assert.fail('large but renderable source coordinates must not narrow into world f32');
     }
     const partitions: readonly AnchoredRendererLineVertices[] = 'localVertices' in vertices ? [vertices] : vertices;
-    assert.ok(partitions.some((partition) => partition.origin[0] >= 50_000));
+    const terrainPartition = partitions.find((partition) => partition.origin[0] === 50_000.015625);
+    assert.ok(terrainPartition, 'the source easting remains the GPU drawable anchor');
+    if (!terrainPartition) return;
+    assert.ok(
+      terrainPartition.localVertices.some((coordinate) => Math.abs(coordinate - 0.01) < 1e-8),
+      `the source centimetre must be uploaded as a local f32 residual, got ${Array.from(terrainPartition.localVertices)}`,
+    );
+    const absoluteF32Separation = Math.fround(50_000.025625) - Math.fround(50_000.015625);
+    assert.notEqual(absoluteF32Separation, Math.fround(0.01), 'an absolute f32 upload demonstrably loses this source separation');
     assert.ok(partitions.every((partition) => partition.localVertices.every(Number.isFinite)));
-    assert.ok(worldVertices(vertices).some((coordinate) => coordinate === 50_000));
   });
 
   it('keeps overlays aligned with committed and preview model translations', () => {

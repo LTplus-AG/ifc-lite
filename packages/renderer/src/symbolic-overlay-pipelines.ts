@@ -20,22 +20,18 @@ import {
   SYMBOLIC_TEXT_WGSL,
 } from './shaders/symbolic-overlay.wgsl.js';
 import { PIPELINE_CONSTANTS } from './constants.js';
-import { packRteDrawableDelta } from './relative-to-eye.js';
+import { packRteDrawableDelta, type WorldPoint } from './relative-to-eye.js';
 import { parseBoxAlignment, triangulateFillTo } from './symbolic-overlay-geometry.js';
 export { parseBoxAlignment } from './symbolic-overlay-geometry.js';
 
 const FILL_VERTEX_STRIDE_BYTES = (3 + 4) * 4; // pos.xyz + color.rgba, 4 bytes each
-const TEXT_INSTANCE_STRIDE_BYTES = (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1 + 4 + 1 + 4 + 4) * 4;
-// origin.xyz + rightAxis.xyz + upAxis.xyz + uvBounds.xyzw + color.rgba
-// + anchor.xyz + capHeight (shared per text label, used by the shader to
-//   compute a single screen-space scale for every glyph in the row)
-// + billboard (1 = use camera-aligned axes, 0 = authored — IfcGridAxis only)
-// + glyphOffsetSize.xyzw (baseline-relative 2D atlas-pixel offset + size
-//   in world units; only consulted on the billboard branch)
-// + targetPxOverride (per-instance screen-pixel target cap height; 0 falls
-//   back to the uniform default — grid bubble glyphs use a larger value
-//   than tag text so the bubble stays proportional at all zoom levels).
-
+const TEXT_INSTANCE_FLOATS = 3 + 3 + 3 + 4 + 4 + 3 + 1 + 1 + 4 + 1;
+const TEXT_INSTANCE_STRIDE_BYTES = TEXT_INSTANCE_FLOATS * 4;
+const TEXT_RTE_DELTA_FLOATS = 8;
+const TEXT_RTE_DELTA_STRIDE_BYTES = TEXT_RTE_DELTA_FLOATS * 4;
+// Static glyph fields: origin, axes, UV/color, label anchor, cap height,
+// billboard, glyph offset/size and target override (108 B/glyph). A separate
+// dynamic RTE delta stream updates only 32 B/glyph per camera frame.
 // Uniform: global viewProj (64 B) + RTE viewProj (64 B) + viewport/target
 // (16 B) + camera basis (32 B) + f64 camera split (32 B) = 208 B. Keeping
 // both projections is deliberate: a mixed legacy/anchored upload must keep
@@ -299,11 +295,16 @@ export class SymbolicTextPipeline {
   private uniformBuffer: GPUBuffer | null = null;
   private cornerBuffer: GPUBuffer | null = null;
   private instanceBuffer: GPUBuffer | null = null;
+  private rteDeltaBuffer: GPUBuffer | null = null;
   private atlasTexture: GPUTexture | null = null;
   private atlasView: GPUTextureView | null = null;
   private sampler: GPUSampler | null = null;
   private bindGroup: GPUBindGroup | null = null;
   private instanceCount = 0;
+  /** CPU-side dynamic delta stream; never derived from f32 instance lanes. */
+  private rteDeltaData: Float32Array | null = null;
+  /** Canonical f64 world anchors, one entry per glyph instance (`null` is legacy). */
+  private instanceAnchors: Array<WorldPoint | null> = [];
   private uploadedAtlasVersion = -1;
 
   constructor(
@@ -354,8 +355,7 @@ export class SymbolicTextPipeline {
             attributes: [{ shaderLocation: 0, offset: 0, format: 'uint32' }],
           },
           // Per-instance: origin + rightAxis + upAxis + uvBounds + color
-          // + anchor + capHeight + billboard + glyphOffsetSize + targetPxOverride
-          // + split f64 anchor (high/low; high.w selects the RTE projection).
+          // + anchor + capHeight + billboard + glyphOffsetSize + targetPxOverride.
           {
             arrayStride: TEXT_INSTANCE_STRIDE_BYTES,
             stepMode: 'instance',
@@ -370,8 +370,15 @@ export class SymbolicTextPipeline {
               { shaderLocation: 8,  offset: (3 + 3 + 3 + 4 + 4 + 3 + 1) * 4,           format: 'float32'   }, // billboard
               { shaderLocation: 9,  offset: (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1) * 4,       format: 'float32x4' }, // glyphOffsetSize
               { shaderLocation: 10, offset: (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1 + 4) * 4,   format: 'float32'   }, // targetPxOverride
-              { shaderLocation: 11, offset: (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1 + 4 + 1) * 4, format: 'float32x4' }, // anchorHigh + RTE flag
-              { shaderLocation: 12, offset: (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1 + 4 + 1 + 4) * 4, format: 'float32x4' }, // anchorLow
+            ],
+          },
+          {
+            // Per-frame f64-split drawable-minus-camera delta.
+            arrayStride: TEXT_RTE_DELTA_STRIDE_BYTES,
+            stepMode: 'instance',
+            attributes: [
+              { shaderLocation: 11, offset: 0, format: 'float32x4' },
+              { shaderLocation: 12, offset: 4 * 4, format: 'float32x4' },
             ],
           },
         ],
@@ -488,7 +495,13 @@ export class SymbolicTextPipeline {
       this.instanceBuffer.destroy();
       this.instanceBuffer = null;
     }
+    if (this.rteDeltaBuffer) {
+      this.rteDeltaBuffer.destroy();
+      this.rteDeltaBuffer = null;
+    }
     this.instanceCount = 0;
+    this.rteDeltaData = null;
+    this.instanceAnchors = [];
 
     if (texts.length === 0) return;
 
@@ -507,8 +520,7 @@ export class SymbolicTextPipeline {
       glyphOffsetSize: [number, number, number, number];
       // 0 → use renderer global default; otherwise override (in screen px).
       targetPxOverride: number;
-      anchorHigh: [number, number, number, number];
-      anchorLow: [number, number, number, number];
+      rteAnchor: WorldPoint | null;
     }> = [];
 
     for (const text of texts) {
@@ -582,8 +594,6 @@ export class SymbolicTextPipeline {
         const ox = anchored ? ux * px0 * wScale : ax + ux * px0 * wScale;
         const oy = anchored ? pyBottom * wScale : ay + pyBottom * wScale;
         const oz = anchored ? uz * px0 * wScale : az + uz * px0 * wScale;
-        const hx = Math.fround(ax), hy = Math.fround(ay), hz = Math.fround(az);
-
         layouts.push({
           origin: [ox, oy, oz],
           rightAxis: [ux * widthWorld, 0, uz * widthWorld],
@@ -592,7 +602,9 @@ export class SymbolicTextPipeline {
           color: tint,
           // Shared per-label anchor (text.worldPos) lets the shader compute
           // one screen-space scale and apply it uniformly across all glyphs.
-          anchor: anchored ? [0, 0, 0] : [ax, ay, az],
+          // Retain a world-f32 anchor for the legacy projection. The dynamic
+          // RTE draw rewrites the final two lanes from rteAnchor below.
+          anchor: [ax, ay, az],
           capHeight: heightWorld,
           billboard: text.billboard ? 1.0 : 0.0,
           // Per-glyph offset + size in world units. The shader uses these
@@ -605,8 +617,7 @@ export class SymbolicTextPipeline {
             heightGlyphAtlas * wScale, // glyph height
           ],
           targetPxOverride: text.targetPx ?? 0,
-          anchorHigh: [hx, hy, hz, anchored ? 1 : 0],
-          anchorLow: [Math.fround(ax - hx), Math.fround(ay - hy), Math.fround(az - hz), 0],
+          rteAnchor: anchored ? [ax, ay, az] : null,
         });
       }
     }
@@ -614,7 +625,7 @@ export class SymbolicTextPipeline {
     if (layouts.length === 0) return;
 
     // Pack into a Float32Array.
-    const stride = TEXT_INSTANCE_STRIDE_BYTES / 4;
+    const stride = TEXT_INSTANCE_FLOATS;
     const data = new Float32Array(layouts.length * stride);
     let off = 0;
     for (const l of layouts) {
@@ -631,10 +642,7 @@ export class SymbolicTextPipeline {
       data[off + 22] = l.glyphOffsetSize[0]; data[off + 23] = l.glyphOffsetSize[1];
       data[off + 24] = l.glyphOffsetSize[2]; data[off + 25] = l.glyphOffsetSize[3];
       data[off + 26] = l.targetPxOverride;
-      data[off + 27] = l.anchorHigh[0]; data[off + 28] = l.anchorHigh[1];
-      data[off + 29] = l.anchorHigh[2]; data[off + 30] = l.anchorHigh[3];
-      data[off + 31] = l.anchorLow[0]; data[off + 32] = l.anchorLow[1];
-      data[off + 33] = l.anchorLow[2]; data[off + 34] = l.anchorLow[3];
+      this.instanceAnchors.push(l.rteAnchor);
       off += stride;
     }
 
@@ -644,12 +652,33 @@ export class SymbolicTextPipeline {
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
     this.device.queue.writeBuffer(this.instanceBuffer, 0, data);
+    this.rteDeltaData = new Float32Array(layouts.length * TEXT_RTE_DELTA_FLOATS);
+    this.rteDeltaBuffer = this.device.createBuffer({
+      label: 'symbolic-text-rte-deltas',
+      size: this.rteDeltaData.byteLength,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+    this.device.queue.writeBuffer(this.rteDeltaBuffer, 0, this.rteDeltaData);
     this.instanceCount = layouts.length;
   }
 
-  hasGeometry(): boolean {
-    return this.instanceCount > 0;
+  /** Pack each f64 anchor against this frame's camera via the shared RTE contract. */
+  private updateRteInstanceDeltas(camera: WorldPoint | undefined): void {
+    if (!this.rteDeltaBuffer || !this.rteDeltaData || this.instanceAnchors.length === 0) return;
+    for (let index = 0; index < this.instanceAnchors.length; index++) {
+      const offset = index * TEXT_RTE_DELTA_FLOATS;
+      const anchor = this.instanceAnchors[index];
+      if (anchor && camera) {
+        packRteDrawableDelta(anchor, camera, this.rteDeltaData, offset);
+        this.rteDeltaData[offset + 3] = 1;
+      } else {
+        this.rteDeltaData.fill(0, offset, offset + TEXT_RTE_DELTA_FLOATS);
+      }
+    }
+    this.device.queue.writeBuffer(this.rteDeltaBuffer, 0, this.rteDeltaData);
   }
+
+  hasGeometry(): boolean { return this.instanceCount > 0; }
 
   render(
     pass: GPURenderPassEncoder,
@@ -662,7 +691,7 @@ export class SymbolicTextPipeline {
     rteViewProj?: Float32Array,
     rteCamera?: readonly [number, number, number],
   ): void {
-    if (!this.pipeline || !this.uniformBuffer || !this.cornerBuffer || !this.instanceBuffer) return;
+    if (!this.pipeline || !this.uniformBuffer || !this.cornerBuffer || !this.instanceBuffer || !this.rteDeltaBuffer) return;
     if (this.instanceCount === 0) return;
     this.syncAtlasTexture();
     this.ensureBindGroup();
@@ -698,21 +727,29 @@ export class SymbolicTextPipeline {
         uniformData[48 + axis] = Math.fround(rteCamera[axis] - high);
       }
     }
+    // RTE text consumes CPU-packed per-instance drawable deltas. Retain the
+    // camera split slots above for the established 208-byte uniform ABI.
+    this.updateRteInstanceDeltas(rteViewProj && rteCamera ? rteCamera : undefined);
     this.device.queue.writeBuffer(this.uniformBuffer, 0, uniformData);
 
     pass.setPipeline(this.pipeline);
     pass.setBindGroup(0, this.bindGroup);
     pass.setVertexBuffer(0, this.cornerBuffer);
     pass.setVertexBuffer(1, this.instanceBuffer);
+    pass.setVertexBuffer(2, this.rteDeltaBuffer);
     pass.draw(4, this.instanceCount);
   }
 
   destroy(): void {
     if (this.instanceBuffer) this.instanceBuffer.destroy();
+    if (this.rteDeltaBuffer) this.rteDeltaBuffer.destroy();
     if (this.cornerBuffer) this.cornerBuffer.destroy();
     if (this.uniformBuffer) this.uniformBuffer.destroy();
     if (this.atlasTexture) this.atlasTexture.destroy();
     this.instanceBuffer = null;
+    this.rteDeltaBuffer = null;
+    this.rteDeltaData = null;
+    this.instanceAnchors = [];
     this.cornerBuffer = null;
     this.uniformBuffer = null;
     this.atlasTexture = null;

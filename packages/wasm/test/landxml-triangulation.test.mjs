@@ -124,6 +124,15 @@ describe('@ifc-lite/wasm constrained LandXML terrain (#5043)', () => {
         const elevation = vertices.reduce((sum, point, index) => sum + weights[index] * point.elevation, 0);
         assert.ok(Math.abs(elevation - (northing + 2 * easting)) < 1e-9, 'barycentric known-slope elevation is preserved');
       }
+
+      // z = easting gives an exact source height of 1 at this split vertex,
+      // although binary64 affine interpolation rounds it to 0.9999999999999999.
+      const affineSplit = `<LandXML xmlns="${namespace}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="affine"><Definition surfType="TIN"><Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 49 49 10 49 49 10 0 0</PntList3D></Boundary></Boundaries><Breaklines><Breakline brkType="standard"><PntList3D>0 1 1 10 1 1</PntList3D></Breakline></Breaklines></Definition></Surface></Surfaces></LandXML>`;
+      const affineSurface = api.parseLandXmlTinBytes(bytes.encode(affineSplit)).surfaces[0];
+      assert.equal(affineSurface.topology_origin, 'constrained_triangulation');
+      assert.equal(affineSurface.terrain_diagnostic, undefined);
+      assert.ok(hasGeneratedEdge(affineSurface, [0, 1], [10, 1]));
+      assert.ok(Math.abs(generatedArea(affineSurface) - 490) < 1e-9);
     } finally {
       api.free?.();
     }

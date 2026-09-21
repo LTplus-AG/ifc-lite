@@ -21,6 +21,22 @@ fn point_on_segment(point: [f64; 2], a: [f64; 2], b: [f64; 2]) -> bool {
         && point[1] <= a[1].max(b[1])
 }
 
+/// Affine interpolation entails a multiply and an add, so equality is not a
+/// sound comparison even when a producer supplied the mathematically exact
+/// elevation. Keep this limited to a handful of rounding units rather than a
+/// geometry tolerance: topology remains exact and materially different Z
+/// values still produce the retained-data diagnostic.
+fn elevations_agree(actual: f64, expected: f64, start: f64, end: f64) -> bool {
+    const MAX_AFFINE_ROUNDING_UNITS: f64 = 8.0;
+    let scale = actual
+        .abs()
+        .max(expected.abs())
+        .max(start.abs())
+        .max(end.abs())
+        .max(1.0);
+    (actual - expected).abs() <= MAX_AFFINE_ROUNDING_UNITS * f64::EPSILON * scale
+}
+
 /// Verify the Z that a collinear split vertex would inherit before topology
 /// normalisation changes a producer's constraint graph.
 pub(super) fn validate_split_elevations(
@@ -45,7 +61,7 @@ pub(super) fn validate_split_elevations(
             let t = ((easting - start_easting) * dx + (northing - start_northing) * dy)
                 / length_squared;
             let expected = start_elevation + (end_elevation - start_elevation) * t;
-            if elevation != expected {
+            if !elevations_agree(elevation, expected, start_elevation, end_elevation) {
                 return Err(SplitElevationValidationError::Diagnostic(LandXmlTerrainDiagnostic {
                     code: TerrainCode::ConflictingElevation,
                     message: "a collinear constraint vertex has an elevation inconsistent with its segment".to_owned(),

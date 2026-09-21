@@ -14,6 +14,7 @@
 
 import { PropertyValueType } from '@ifc-lite/data';
 import { groupRows, pivot, validateTable, type Cell, type Column, type ColumnType, type EntityRef, type GroupKey, type Row, type Table } from '@ifc-lite/flow';
+import { findPropertyInSets } from '@ifc-lite/query';
 import { ANY_GROUP, ENTITY_LIST, SCALAR_ITEM, SCALAR_LIST, TABLE_ITEM, entityOf, requireCapability, toSdkRef, type FlowNodeDef } from './host.js';
 
 const COLUMN_TYPE_BY_VALUE_TYPE: Readonly<Record<number, ColumnType>> = {
@@ -92,7 +93,9 @@ export const tableNodes: FlowNodeDef[] = [
             types.set(path, 'label');
             continue;
           }
-          const prop = psets.find((s) => s.name === parsed.pset)?.properties.find((q) => q.name === parsed.prop);
+          // An entity can carry two same-named sets (type + occurrence); the
+          // property may live on the second, so search across all of them.
+          const prop = findPropertyInSets(psets, parsed.pset, parsed.prop);
           row[path] = prop?.value ?? null;
           if (prop && !types.has(path)) types.set(path, columnTypeOf(prop.type));
         }

@@ -22,6 +22,7 @@
     "@ifc-lite/data": "workspace:^",
     "@ifc-lite/extensions": "workspace:^",
     "@ifc-lite/flow": "workspace:^",
+    "@ifc-lite/query": "workspace:^",
     "@ifc-lite/sandbox": "workspace:^",
     "@ifc-lite/sdk": "workspace:^"
   },

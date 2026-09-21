@@ -1164,6 +1164,9 @@ importers:
       '@ifc-lite/flow':
         specifier: workspace:^
         version: link:../flow
+      '@ifc-lite/query':
+        specifier: workspace:^
+        version: link:../query
       '@ifc-lite/sandbox':
         specifier: workspace:^
         version: link:../sandbox

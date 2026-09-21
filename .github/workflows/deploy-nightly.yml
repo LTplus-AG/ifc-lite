@@ -333,6 +333,9 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           SHA: ${{ steps.advance.outputs.sha }}
           TEAM_ID: team_xdwayIMVKBKZcFLC0NiQTXIA
+          # The numeric GitHub repository id Vercel's `gitSource` wants when
+          # this step has to create the deployment itself (see below).
+          REPO_ID: ${{ github.repository_id }}
         run: |
           set -euo pipefail
           # Default to NOT verified, so every path that fails to prove a
@@ -381,6 +384,39 @@ jobs:
           pending="ifc-lite ifc-lite-viewer-embed ifc-lite-dev"
           api_errors=""
           declare -A bad_polls=()
+          # A MISSED WEBHOOK IS RECOVERED, NOT REPORTED (#5132). The advance
+          # step moves `production` through the GitHub API and Vercel's Git
+          # integration is expected to build it; on 2026-09-21 11:08 the ref
+          # moved to dd4746304 and none of the three projects ever created a
+          # deployment for it, so twenty minutes of polling saw nothing and the
+          # run failed with production frozen. A project that still has NO
+          # deployment for the SHA after `MISSING_POLLS_BEFORE_TRIGGER` polls
+          # (Vercel normally has one QUEUED within seconds of the push) gets one
+          # created here through the same API this step reads with, from the
+          # same ref and commit the integration would have used. Once per
+          # project; a late webhook build alongside it is harmless, the READY
+          # rule below picks whichever finishes. A token that may only read
+          # cannot create one — that is logged and the poll goes on, so the
+          # final diagnostic still names the missing project.
+          MISSING_POLLS_BEFORE_TRIGGER=5
+          declare -A missing_polls=()
+          declare -A triggered=()
+          trigger_production_build() {
+            local project="$1" body resp code
+            body="$(jq -cn --arg p "$project" --arg sha "$SHA" --argjson repo "${REPO_ID:-0}" \
+              '{name: $p, project: $p, target: "production",
+                gitSource: {type: "github", repoId: $repo, ref: "production", sha: $sha}}')"
+            resp="$(curl -sS --max-time 20 -w '\n%{http_code}' -X POST \
+              -H "Authorization: Bearer $VERCEL_TOKEN" -H 'Content-Type: application/json' \
+              "https://api.vercel.com/v13/deployments?teamId=$TEAM_ID&forceNew=1&skipAutoDetectionConfirmation=1" \
+              -d "$body" 2>/dev/null || true)"
+            code="$(printf '%s' "$resp" | tail -n1)"
+            if [ "$code" = "200" ] || [ "$code" = "201" ]; then
+              echo "::warning::$project: Vercel created no production deployment for $SHA after the ref move; created one via the API ($(printf '%s' "$resp" | sed '$d' | jq -r '.url // .id' 2>/dev/null || true))"
+            else
+              echo "::warning::$project: Vercel created no production deployment for $SHA and creating one via the API failed (HTTP ${code:-000}): $(printf '%s' "$resp" | sed '$d' | jq -r '.error.message // .' 2>/dev/null | head -c 300)"
+            fi
+          }
           # Bounded by WALL CLOCK, not only by polls (#4917 review): three
           # serial API calls per poll can each take up to --max-time, so a poll
           # count alone could outrun the 30-min job timeout and lose the final
@@ -443,7 +479,17 @@ jobs:
                   # "" (not created yet), QUEUED, INITIALIZING, BUILDING.
                   bad_polls[$project]=0
                   still="$still $project"
-                  [ -n "$state" ] && echo "  $project: production deployment $state, waiting for READY"
+                  if [ -n "$state" ]; then
+                    missing_polls[$project]=0
+                    echo "  $project: production deployment $state, waiting for READY"
+                  else
+                    missing_polls[$project]=$(( ${missing_polls[$project]:-0} + 1 ))
+                    echo "  $project: no production deployment for $SHA yet (poll ${missing_polls[$project]}/$MISSING_POLLS_BEFORE_TRIGGER before creating one)"
+                    if [ "${missing_polls[$project]}" -ge "$MISSING_POLLS_BEFORE_TRIGGER" ] && [ -z "${triggered[$project]:-}" ]; then
+                      triggered[$project]=1
+                      trigger_production_build "$project"
+                    fi
+                  fi
                   ;;
               esac
             done
@@ -461,6 +507,9 @@ jobs:
             echo "::error::No READY production deployment for $SHA on:$pending"
             echo "::error::If the API answered, check each project's Production Branch is"
             echo "::error::'production' and its Ignored Build Step still exits 1 for production."
+            echo "::error::A project that never created a deployment was given one via the API"
+            echo "::error::above; if that failed too, VERCEL_TOKEN cannot deploy and the project's"
+            echo "::error::Git integration must be checked in the dashboard."
             exit 1
           fi
           echo "verified=true" >> "$GITHUB_OUTPUT"

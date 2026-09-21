@@ -277,3 +277,50 @@ export async function parseLandXmlSourceInCurrentRealm(buffer: LandXmlSourceBuff
     api.free();
   }
 }
+
+export interface LandXmlAlignmentProbeResult {
+  segmentSourceId: string;
+  distance: number;
+  northing: number;
+  easting: number;
+  displayedBack: number;
+  displayedAhead: number;
+}
+
+export interface LandXmlAlignmentInspectionResult {
+  previousCantStation: number | null;
+  nextCantStation: number | null;
+  superelevationCount: number;
+}
+
+/** Invoke native f64 alignment probing from an original source buffer. */
+export async function probeLandXmlAlignmentAtDistance(
+  buffer: LandXmlSourceBuffer, alignmentSourceId: string, distance: number, offsetRight = 0,
+): Promise<LandXmlAlignmentProbeResult> {
+  await initLandXmlWasm();
+  const api = new IfcAPI();
+  try {
+    const raw = record(api.probeLandXmlAlignmentAtDistance(new Uint8Array(buffer), alignmentSourceId, distance, offsetRight), 'alignment probe');
+    const station = record(raw.station, 'alignment probe station');
+    return { segmentSourceId: string(raw.segment_source_id, 'alignment probe segment'), distance: finite(raw.geometric_distance, 'alignment probe distance'), northing: finite(raw.northing, 'alignment probe northing'), easting: finite(raw.easting, 'alignment probe easting'), displayedBack: finite(station.displayed_back, 'alignment probe station back'), displayedAhead: finite(station.displayed_ahead, 'alignment probe station ahead') };
+  } finally {
+    api.free();
+  }
+}
+
+/** Inspect only authored cant/superelevation records; no value interpolation occurs. */
+export async function inspectLandXmlAlignmentAtDistance(
+  buffer: LandXmlSourceBuffer, alignmentSourceId: string, distance: number,
+): Promise<LandXmlAlignmentInspectionResult> {
+  await initLandXmlWasm();
+  const api = new IfcAPI();
+  try {
+    const raw = record(api.inspectLandXmlAlignmentAtDistance(new Uint8Array(buffer), alignmentSourceId, distance), 'alignment inspection');
+    const cant = raw.cant === undefined || raw.cant === null ? null : record(raw.cant, 'cant inspection');
+    const previous = cant?.previous === undefined || cant.previous === null ? null : record(cant.previous, 'previous CantStation');
+    const next = cant?.next === undefined || cant.next === null ? null : record(cant.next, 'next CantStation');
+    return { previousCantStation: previous === null ? null : finite(previous.station, 'previous CantStation station'), nextCantStation: next === null ? null : finite(next.station, 'next CantStation station'), superelevationCount: array(raw.superelevations, 'superelevations').length };
+  } finally {
+    api.free();
+  }
+}

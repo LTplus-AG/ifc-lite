@@ -100,7 +100,7 @@ export type LandXmlSourceRecord =
   | { kind: 'alignment'; alignment: LandXmlAlignment }
   | { kind: 'alignment-segment'; alignment: LandXmlAlignment; segment: LandXmlAlignmentSegment };
 
-export interface LandXmlSourceModel { landXmlDocument?: LandXmlTinDocument }
+export interface LandXmlSourceModel { landXmlDocument?: LandXmlTinDocument; sourceFile?: File }
 
 /** The federation resolver capability needed to turn a renderer id into a source model. */
 export interface LandXmlPickFederation {

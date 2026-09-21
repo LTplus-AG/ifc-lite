@@ -1224,7 +1224,24 @@ export class LandXmlTinStreamSession {
      */
     drain(max_bytes: number): any;
     finish(): any;
+    /**
+     * Start the resumable metadata cursor. Consumers must continue draining
+     * until [`Self::output_pending`] is false, then abort/free the session.
+     */
+    finishCursor(): void;
     header(): any;
+    /**
+     * Whether the host must grant more credited output drain capacity.
+     */
+    outputPending(): boolean;
+    /**
+     * Exact serialized transport bytes currently retained by the Rust queue.
+     */
+    queuedBytes(): number;
+    /**
+     * Complete credited transport records currently retained by the Rust queue.
+     */
+    queuedEvents(): number;
 }
 
 /**
@@ -2400,7 +2417,11 @@ export interface InitOutput {
     readonly landxmltinstreamsession_advanceChunk: (a: number, b: number, c: number, d: number) => void;
     readonly landxmltinstreamsession_drain: (a: number, b: number, c: number) => void;
     readonly landxmltinstreamsession_finish: (a: number, b: number) => void;
+    readonly landxmltinstreamsession_finishCursor: (a: number, b: number) => void;
     readonly landxmltinstreamsession_header: (a: number, b: number) => void;
+    readonly landxmltinstreamsession_outputPending: (a: number) => number;
+    readonly landxmltinstreamsession_queuedBytes: (a: number) => number;
+    readonly landxmltinstreamsession_queuedEvents: (a: number) => number;
     readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly meshcollection_buildingRotation: (a: number, b: number) => void;
     readonly meshcollection_diagnostics: (a: number) => number;

@@ -74,6 +74,45 @@ impl LandXmlTinStreamSession {
         json(summary, "stream summary")
     }
 
+    /// Start the resumable metadata cursor. Consumers must continue draining
+    /// until [`Self::output_pending`] is false, then abort/free the session.
+    #[wasm_bindgen(js_name = finishCursor)]
+    pub fn finish_cursor(&mut self) -> Result<(), JsValue> {
+        self.stream
+            .as_mut()
+            .ok_or_else(|| JsValue::from_str("LandXML stream session is closed"))?
+            .finish_cursor()
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    /// Whether the host must grant more credited output drain capacity.
+    #[wasm_bindgen(js_name = outputPending)]
+    pub fn output_pending(&self) -> bool {
+        self.stream
+            .as_ref()
+            .is_some_and(ifc_lite_landxml::LandXmlTinStreamSession::output_pending)
+    }
+
+    /// Exact serialized transport bytes currently retained by the Rust queue.
+    #[wasm_bindgen(js_name = queuedBytes)]
+    pub fn queued_bytes(&self) -> u32 {
+        self.stream
+            .as_ref()
+            .map_or(0, ifc_lite_landxml::LandXmlTinStreamSession::queued_bytes)
+            .try_into()
+            .unwrap_or(u32::MAX)
+    }
+
+    /// Complete credited transport records currently retained by the Rust queue.
+    #[wasm_bindgen(js_name = queuedEvents)]
+    pub fn queued_events(&self) -> u32 {
+        self.stream
+            .as_ref()
+            .map_or(0, ifc_lite_landxml::LandXmlTinStreamSession::queued_events)
+            .try_into()
+            .unwrap_or(u32::MAX)
+    }
+
     pub fn abort(&mut self) {
         if let Some(mut stream) = self.stream.take() {
             stream.abort();

@@ -27,12 +27,6 @@ export interface TableBlockEditorProps {
   onChange: (block: TableBlock) => void;
 }
 
-/** The block's copy of `list`, with the toast that says what the copy cannot keep. */
-function copyOf(list: ListDefinition, warn: (key: 'document.block.tableSelectionDropped') => void): ListDefinition {
-  if (list.expressIdsByModel) warn('document.block.tableSelectionDropped');
-  return listCopyForDocument(list, freshListCopyId());
-}
-
 export function TableBlockEditor({ block, onChange }: TableBlockEditorProps) {
   const { t } = useTranslation();
   const listDefinitions = useViewerStore((s) => s.listDefinitions);
@@ -48,9 +42,10 @@ export function TableBlockEditor({ block, onChange }: TableBlockEditorProps) {
   }, [block.source.fromListId, listDefinitions]);
   const originNewer = origin !== null && origin.updatedAt > list.updatedAt;
 
-  const warn = (key: 'document.block.tableSelectionDropped'): void => { toast.info(t(key)); };
   const replaceWith = (picked: ListDefinition): void => {
-    onChange({ ...block, source: { kind: 'list', list: copyOf(picked, warn), fromListId: picked.id } });
+    // The copy cannot keep a selection snapshot (see `ListTableSource.list`); say so when one is dropped.
+    if (picked.expressIdsByModel) toast.info(t('document.block.tableSelectionDropped'));
+    onChange({ ...block, source: { kind: 'list', list: listCopyForDocument(picked, freshListCopyId()), fromListId: picked.id } });
   };
   const editInLists = (): void => {
     // Saving in the panel updates the saved list the copy came from; a copy of a preset (or of a

@@ -23,7 +23,6 @@ import type { DocumentSpec, TableBlock } from '@/lib/document/types';
 import type { TableState } from '@/lib/document/resolve-table';
 import { runListFederated } from '@/lib/lists/run-list';
 import { buildExportModel } from '@/lib/lists/export/model';
-import { compareCells } from '@/lib/lists/group-sort';
 import { detectNumericColumns } from '../lists/list-table-utils';
 import { useListProviders } from '../lists/useListProviders';
 
@@ -99,18 +98,14 @@ export function useDocumentTables(document: DocumentSpec | null): ReadonlyMap<st
         let state: TableState;
         try {
           if (!list) throw new Error('list definition missing');
+          // `executeList` already applied the list's `sortBy` per model; the export model is built
+          // exactly as the Lists panel builds it for its own export.
           const result = runListFederated(list, pairs, useViewerStore.getState());
-          // The panel's table sorts before it exports; the engine returns rows in scan order.
-          const sortIdx = list.sortBy ? result.columns.findIndex((c) => c.id === list.sortBy!.columnId) : -1;
-          const rows = sortIdx >= 0
-            ? [...result.rows].sort((a, b) => compareCells(a.values[sortIdx], b.values[sortIdx]) * (list.sortBy!.direction === 'asc' ? 1 : -1))
-            : result.rows;
           const model = buildExportModel({
             title: list.name,
             columns: result.columns,
-            rows,
+            rows: result.rows,
             grouping: list.grouping,
-            sort: sortIdx >= 0 ? { colIdx: sortIdx, dir: list.sortBy!.direction } : null,
             numericCols: detectNumericColumns(result.columns, result.rows),
             columnWidths: [],
             generatedAt: new Date().toLocaleString(),

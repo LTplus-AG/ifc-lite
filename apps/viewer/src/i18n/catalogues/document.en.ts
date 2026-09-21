@@ -160,6 +160,7 @@ export const documentEn = {
   'document.table.resolving': 'Running the list…',
   'document.table.noModel': 'Load a model to fill this table.',
   'document.table.noRows': 'No rows match this list.',
+  'document.table.error': 'The list could not be run.',
   'document.table.moreRows': {
     one: '… {countDisplay} more row',
     other: '… {countDisplay} more rows',

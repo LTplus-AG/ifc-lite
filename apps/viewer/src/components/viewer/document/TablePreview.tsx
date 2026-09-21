@@ -12,7 +12,8 @@
 import { useMemo } from 'react';
 import { useTranslation } from '@/i18n';
 import { localeCount } from '@/i18n/intlFormat';
-import { flattenExportModel, type TableRowRole, type TableState } from '@/lib/document/resolve-table';
+import { flattenExportModel, tableMessageKind, type TableRowRole, type TableState } from '@/lib/document/resolve-table';
+import { tableTitle } from '@/lib/document/generate-document-pdf';
 import { TABLE_ROWS_DEFAULT, type TableBlock } from '@/lib/document/types';
 import { DOCUMENT_PREVIEW_MUTED_TEXT_CLASS } from './preview-theme';
 
@@ -30,7 +31,7 @@ export interface TablePreviewProps {
 
 export function TablePreview({ block, state }: TablePreviewProps) {
   const { t, locale } = useTranslation();
-  const title = block.title?.trim() || block.source.list.name;
+  const title = tableTitle(block);
   const table = useMemo(() => (state?.status === 'ok'
     ? flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, {
       more: (n) => t('document.table.moreRows', localeCount(locale, n)),
@@ -38,11 +39,13 @@ export function TablePreview({ block, state }: TablePreviewProps) {
     })
     : null), [state, block.maxRows, t, locale]);
 
-  const message = !state || state.status === 'resolving' ? t('document.table.resolving')
-    : state.status === 'no-model' ? t('document.table.noModel')
-      : state.status === 'error' ? state.message
-        : table && table.totalRows === 0 ? t('document.table.noRows')
-          : null;
+  // The same state → message decision the PDF makes (`tableMessageKind`), worded from the catalogue.
+  const kind = tableMessageKind(state);
+  const message = kind === null ? null
+    : kind === 'error' ? ((state?.status === 'error' && state.message.trim()) || t('document.table.error'))
+      : kind === 'resolving' ? t('document.table.resolving')
+        : kind === 'no-model' ? t('document.table.noModel')
+          : t('document.table.noRows');
 
   return (
     <div data-block-table>

@@ -101,7 +101,7 @@ export interface LandXmlUnsupportedTransitionJs { source_id: string; spi_type: s
 export interface LandXmlAlignmentProbeJs { alignment_source_id: string; segment_source_id: string; geometric_distance: number; station: { geometric_distance: number; displayed_back: number; displayed_ahead: number; is_equation_boundary: boolean }; northing: number; easting: number; tangent_northing: number; tangent_easting: number; }
 export type LandXmlAlignmentProbesJs = LandXmlAlignmentProbeJs[];
 /** Neighbouring authored CantStation records; values are never interpolated. */
-export interface LandXmlAlignmentInspectionJs { cant?: { internal_station: number; station: { geometric_distance: number; displayed_back: number; displayed_ahead: number; is_equation_boundary: boolean }; previous?: LandXmlCantStationJs; next?: LandXmlCantStationJs }; superelevations: LandXmlSuperelevationJs[]; }
+export interface LandXmlAlignmentInspectionJs { cant?: { internal_station: number; station: { geometric_distance: number; displayed_back: number; displayed_ahead: number; is_equation_boundary: boolean }; previous?: LandXmlCantStationJs; next?: LandXmlCantStationJs }; superelevations: LandXmlSuperelevationJs[]; superelevation_block_count: number; superelevation_event_count: number; superelevation_truncated: boolean; }
 export interface LandXmlParseOptionsJs { maxBytes?: number; maxDepth?: number; maxTextBytes?: number; maxPoints?: number; maxFaces?: number; maxWork?: number; maxAlignments?: number; maxAlignmentSegments?: number; maxAlignmentPoints?: number; maxStationEquations?: number; maxCantStations?: number; maxSuperelevationEvents?: number; cancelled?: boolean; }
 export interface LandXmlProfilePointJs { source_id: string; station: number; elevation?: number; }
 export interface LandXmlGradeLineJs { source_id: string; parent_profile_source_id: string; ordinal: number; points: LandXmlProfilePointJs[]; }
@@ -131,7 +131,7 @@ export interface LandXmlPipeJs { source_id: string; source_path: string; name: s
 "#;
 
 #[derive(Serialize)]
-struct LandXmlDocumentJs<'a> {
+pub(super) struct LandXmlDocumentJs<'a> {
     #[serde(flatten)]
     terrain: &'a ifc_lite_landxml::LandXmlTinDocument,
     plan: LandXmlPlanDocumentJs<'a>,

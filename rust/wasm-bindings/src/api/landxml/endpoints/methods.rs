@@ -37,12 +37,17 @@ impl IfcAPI {
         &self,
         data: &[u8],
     ) -> Result<LandXmlSourceDocumentJs, JsValue> {
-        let tin = ifc_lite_landxml::parse_landxml_tin(data)
+        let parsed = ifc_lite_landxml::parse_landxml_document(data)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         let alignments = ifc_lite_landxml::alignment::parse_landxml_alignments_optional(data)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         let (alignment_render_spans, alignment_render_refusals, alignment_render_truncated) =
             alignment_render_data(&alignments);
+        let tin = LandXmlDocumentJs {
+            terrain: &parsed.terrain,
+            plan: plan_adapter(&parsed.plan)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?,
+        };
         let document = LandXmlSourceDocument {
             tin,
             alignments,
@@ -74,7 +79,13 @@ impl IfcAPI {
                 JsValue::from_str(&format!("LXML004: invalid parser options: {error}"))
             })?;
         let (xml_limits, alignment_limits) = options.limits()?;
-        let tin = ifc_lite_landxml::parse_landxml_tin_with_cancel(data, &xml_limits, None)
+        let terrain = ifc_lite_landxml::parse_landxml_tin_with_cancel(data, &xml_limits, None)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let plan_limits = ifc_lite_landxml::LandXmlPlanLimits {
+            xml: xml_limits.clone(),
+            ..Default::default()
+        };
+        let plan = ifc_lite_landxml::parse_landxml_plan_with_cancel(data, &plan_limits, None)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         let alignments =
             ifc_lite_landxml::alignment::parse_landxml_alignments_optional_with_cancel(
@@ -85,6 +96,10 @@ impl IfcAPI {
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         let (alignment_render_spans, alignment_render_refusals, alignment_render_truncated) =
             alignment_render_data(&alignments);
+        let tin = LandXmlDocumentJs {
+            terrain: &terrain,
+            plan: plan_adapter(&plan).map_err(|error| JsValue::from_str(&error.to_string()))?,
+        };
         let document = LandXmlSourceDocument {
             tin,
             alignments,
@@ -183,16 +198,46 @@ impl IfcAPI {
             .iter()
             .find(|value| value.source_id.0 == alignment_source_id)
             .ok_or_else(|| JsValue::from_str("LXMLA229: alignment source id was not found"))?;
+        alignment
+            .station_at_distance(distance)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let internal_station = alignment.sta_start + distance;
+        let mut superelevations = Vec::new();
+        let mut superelevation_block_count = 0usize;
+        let mut superelevation_event_count = 0usize;
+        let mut retained_events = 0usize;
+        for value in &alignment.superelevations {
+            if value
+                .sta_start
+                .is_some_and(|start| internal_station < start)
+                || value.sta_end.is_some_and(|end| internal_station > end)
+            {
+                continue;
+            }
+            superelevation_block_count = superelevation_block_count.saturating_add(1);
+            superelevation_event_count =
+                superelevation_event_count.saturating_add(value.events.len());
+            if superelevations.len() >= MAX_INTERACTIVE_SUPERELEVATION_BLOCKS
+                || retained_events >= MAX_INTERACTIVE_SUPERELEVATION_EVENTS
+            {
+                continue;
+            }
+            let mut retained = value.clone();
+            let remaining = MAX_INTERACTIVE_SUPERELEVATION_EVENTS - retained_events;
+            retained.events.truncate(remaining);
+            retained_events += retained.events.len();
+            superelevations.push(retained);
+        }
         let inspection = LandXmlAlignmentInspection {
             cant: alignment
                 .cant_at_distance(distance)
                 .map_err(|error| JsValue::from_str(&error.to_string()))?,
-            superelevations: alignment
-                .superelevations_at_distance(distance)
-                .map_err(|error| JsValue::from_str(&error.to_string()))?
-                .into_iter()
-                .cloned()
-                .collect(),
+            superelevations,
+            superelevation_block_count,
+            superelevation_event_count,
+            superelevation_truncated: superelevation_block_count
+                > MAX_INTERACTIVE_SUPERELEVATION_BLOCKS
+                || superelevation_event_count > retained_events,
         };
         let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
         inspection

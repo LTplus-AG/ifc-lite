@@ -28,6 +28,12 @@ export interface LandXmlCantStation {
   rateOfChangeOfCantDeficiencyOverTime?: number | null; cantGradient?: number | null; speed?: number | null;
   transitionType: string | null; adverse?: boolean | null;
 }
+export interface LandXmlSpeedStation { sourceId: string; station: number; speed: number }
+export interface LandXmlCant {
+  sourceId: string; name: string; gauge: number; rotationPoint: string | null;
+  equilibriumConstant: number | null; appliedCantConstant: number | null;
+  stations: LandXmlCantStation[]; speedStations: LandXmlSpeedStation[];
+}
 export interface LandXmlSuperelevationEvent { sourceId: string; kind: string; value: string | null }
 export interface LandXmlSuperelevation {
   sourceId: string; staStart: number | null; staEnd: number | null; events: LandXmlSuperelevationEvent[];
@@ -45,6 +51,7 @@ export interface LandXmlAlignment {
   sourceId: string; ordinal: number; name: string; length: number; staStart: number;
   profileSourceIds: string[]; crossSectionSourceIds: string[]; segments: LandXmlAlignmentSegment[];
   start?: LandXmlPointLocation | null; alignPis?: LandXmlAlignmentPi[]; stationEquations?: LandXmlStationEquation[];
+  cant?: LandXmlCant | null;
   cantStations: LandXmlCantStation[]; superelevations: LandXmlSuperelevation[];
   unsupportedTransitions: LandXmlUnsupportedTransition[];
 }

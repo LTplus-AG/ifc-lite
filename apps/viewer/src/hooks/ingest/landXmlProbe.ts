@@ -61,6 +61,10 @@ export function probeLandXmlAlignmentInWorker(
       return;
     }
     const transferable = typeof SharedArrayBuffer === 'undefined' || !(buffer instanceof SharedArrayBuffer);
-    worker.postMessage({ buffer, ...request }, transferable ? [buffer] : []);
+    try {
+      worker.postMessage({ buffer, ...request }, transferable ? [buffer] : []);
+    } catch (cause) {
+      if (finish()) reject(cause);
+    }
   });
 }

@@ -7,6 +7,7 @@
 import { IfcAPI } from '@ifc-lite/wasm';
 import type { LandXmlSourceBuffer } from './landXmlIngest.js';
 import { initLandXmlWasm } from './landXmlWasmInit.js';
+import { decodeLandXmlCantStation } from './landXmlAlignmentDocumentWasm.js';
 import type { LandXmlCantStation, LandXmlSuperelevation } from './landXmlSemantics.js';
 
 export interface LandXmlAlignmentProbeResult {
@@ -22,6 +23,9 @@ export interface LandXmlAlignmentInspectionResult {
   previousCantStation: LandXmlCantStation | null;
   nextCantStation: LandXmlCantStation | null;
   superelevations: LandXmlSuperelevation[];
+  superelevationBlockCount: number;
+  superelevationEventCount: number;
+  superelevationTruncated: boolean;
 }
 
 function record(value: unknown, context: string): Record<string, unknown> {
@@ -105,13 +109,17 @@ export function inspectLandXmlAlignmentAtDistanceWithApi(
   const cant = raw.cant === undefined || raw.cant === null ? null : record(raw.cant, 'cant inspection');
   const previous = cant?.previous === undefined || cant.previous === null ? null : record(cant.previous, 'previous CantStation');
   const next = cant?.next === undefined || cant.next === null ? null : record(cant.next, 'next CantStation');
-  const cantStation = (value: Record<string, unknown> | null, context: string): LandXmlCantStation | null => value === null ? null : {
-    sourceId: string(value.source_id, `${context} source id`), station: finite(value.station, `${context} station`),
-    appliedCant: finite(value.applied_cant, `${context} applied cant`), equilibriumCant: optionalFinite(value.equilibrium_cant, `${context} equilibrium cant`), transitionType: nullableString(value.transition_type, `${context} transition type`),
-  };
+  const cantStation = (value: Record<string, unknown> | null, context: string): LandXmlCantStation | null => value === null ? null : decodeLandXmlCantStation(value, context);
   const superelevations: LandXmlSuperelevation[] = array(raw.superelevations, 'superelevations').map((value, index) => {
     const parsed = record(value, `superelevation ${index}`);
     return { sourceId: string(parsed.source_id, `superelevation ${index} source id`), staStart: optionalFinite(parsed.sta_start, `superelevation ${index} start`), staEnd: optionalFinite(parsed.sta_end, `superelevation ${index} end`), events: array(parsed.events, `superelevation ${index} events`).map((event, eventIndex) => { const parsedEvent = record(event, `superelevation ${index} event ${eventIndex}`); return { sourceId: string(parsedEvent.source_id, `superelevation ${index} event ${eventIndex} source id`), kind: string(parsedEvent.kind, `superelevation ${index} event ${eventIndex} kind`), value: nullableString(parsedEvent.value, `superelevation ${index} event ${eventIndex} value`) }; }) };
   });
-  return { previousCantStation: cantStation(previous, 'previous CantStation'), nextCantStation: cantStation(next, 'next CantStation'), superelevations };
+  return {
+    previousCantStation: cantStation(previous, 'previous CantStation'),
+    nextCantStation: cantStation(next, 'next CantStation'),
+    superelevations,
+    superelevationBlockCount: finite(raw.superelevation_block_count, 'superelevation block count'),
+    superelevationEventCount: finite(raw.superelevation_event_count, 'superelevation event count'),
+    superelevationTruncated: raw.superelevation_truncated === true,
+  };
 }

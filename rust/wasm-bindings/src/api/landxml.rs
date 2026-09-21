@@ -14,8 +14,8 @@ use wasm_bindgen::{prelude::*, JsCast};
 mod endpoints;
 
 #[derive(Serialize)]
-struct LandXmlSourceDocument {
-    tin: ifc_lite_landxml::LandXmlTinDocument,
+struct LandXmlSourceDocument<'a> {
+    tin: endpoints::LandXmlDocumentJs<'a>,
     alignments: ifc_lite_landxml::alignment::LandXmlAlignmentDocument,
     alignment_render_spans: Vec<ifc_lite_landxml::alignment::LandXmlAlignmentRenderSpan>,
     alignment_render_refusals: Vec<LandXmlAlignmentRenderRefusal>,
@@ -30,6 +30,8 @@ struct LandXmlAlignmentRenderRefusal {
 const ALIGNMENT_RENDER_POINTS_PER_SPAN: usize = 65;
 const MAX_ALIGNMENT_RENDER_POINTS: usize = 250_000;
 const MAX_ALIGNMENT_RENDER_REFUSALS: usize = 1_024;
+const MAX_INTERACTIVE_SUPERELEVATION_BLOCKS: usize = 128;
+const MAX_INTERACTIVE_SUPERELEVATION_EVENTS: usize = 100;
 
 fn alignment_render_data(
     document: &ifc_lite_landxml::alignment::LandXmlAlignmentDocument,
@@ -72,6 +74,9 @@ fn alignment_render_data(
 struct LandXmlAlignmentInspection {
     cant: Option<ifc_lite_landxml::alignment::LandXmlCantProbe>,
     superelevations: Vec<ifc_lite_landxml::alignment::LandXmlSuperelevation>,
+    superelevation_block_count: usize,
+    superelevation_event_count: usize,
+    superelevation_truncated: bool,
 }
 /// JS-facing limits deliberately expose only allocation-relevant ceilings.
 /// Parser defaults remain in force for omitted fields.

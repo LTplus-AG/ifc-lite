@@ -279,3 +279,13 @@ fn issue_5044_source_adapter_retains_empty_alignment_collection_for_tin_only_doc
     .expect("a terrain-only LandXML source remains a valid mixed-source input");
     assert!(document.alignments.is_empty());
 }
+
+#[test]
+fn issue_5044_profile_only_alignment_retains_its_source_record() {
+    let xml = r#"<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Alignments><Alignment name="profile route" length="10" staStart="0"><Profile><ProfAlign name="design"><PVI>0 1</PVI><PVI>10 2</PVI></ProfAlign></Profile></Alignment></Alignments></LandXML>"#;
+    let document =
+        parse_landxml_alignments_optional(xml.as_bytes()).expect("profile-only alignment");
+    assert_eq!(document.alignments.len(), 1);
+    assert_eq!(document.alignments[0].name, "profile route");
+    assert!(document.alignments[0].segments.is_empty());
+}

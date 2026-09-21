@@ -3,13 +3,32 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useEffect, useState } from 'react';
-import type { LandXmlSourceModel, LandXmlSourceRecord, LandXmlSourceRef } from '@/hooks/ingest/landXmlSemantics';
+import type { LandXmlSourceModel, LandXmlSourceRecord, LandXmlSourceRef, LandXmlSuperelevation } from '@/hooks/ingest/landXmlSemantics';
 import type { LandXmlAlignmentInspectionResult, LandXmlAlignmentProbeResult } from '@/hooks/ingest/landXmlAlignmentWasm';
 import { probeLandXmlAlignmentInWorker } from '@/hooks/ingest/landXmlProbe';
 
 const PAGE_SIZE = 100;
 type AlignmentRecord = Extract<LandXmlSourceRecord, { kind: 'alignment' | 'alignment-segment' | 'unsupported-transition' }>;
 type NavigationItem = { label: string; sourceId: string };
+type SuperelevationEventItem = { sourceId: string; blockSourceId: string; label: string };
+
+export function superelevationEventPage(values: LandXmlSuperelevation[], offset: number): { total: number; items: SuperelevationEventItem[] } {
+  const total = values.reduce((sum, value) => sum + value.events.length, 0);
+  const items: SuperelevationEventItem[] = [];
+  let cursor = 0;
+  for (const value of values) {
+    const localStart = Math.max(0, offset - cursor);
+    const available = value.events.length - localStart;
+    if (available > 0 && items.length < PAGE_SIZE) {
+      for (const event of value.events.slice(localStart, localStart + PAGE_SIZE - items.length)) {
+        items.push({ sourceId: event.sourceId, blockSourceId: value.sourceId, label: `${event.kind}${event.value === null ? '' : `=${event.value}`}` });
+      }
+    }
+    cursor += value.events.length;
+    if (items.length === PAGE_SIZE) break;
+  }
+  return { total, items };
+}
 
 function navigationCount(record: AlignmentRecord): number {
   return 1 + record.alignment.segments.length + record.alignment.unsupportedTransitions.length;
@@ -36,6 +55,7 @@ export function LandXmlAlignmentSourceInspector({ modelId, sourceFile, record, o
   onSelect(ref: LandXmlSourceRef): void;
 }) {
   const [navigationPage, setNavigationPage] = useState(0);
+  const [superelevationPage, setSuperelevationPage] = useState(0);
   const [probe, setProbe] = useState<LandXmlAlignmentProbeResult | null>(null);
   const [inspection, setInspection] = useState<LandXmlAlignmentInspectionResult | null>(null);
   const [mode, setMode] = useState<'distance' | 'station'>('distance');
@@ -45,7 +65,7 @@ export function LandXmlAlignmentSourceInspector({ modelId, sourceFile, record, o
   const [error, setError] = useState<string | null>(null);
   const alignment = record.alignment;
 
-  useEffect(() => setNavigationPage(0), [modelId, alignment.sourceId]);
+  useEffect(() => { setNavigationPage(0); setSuperelevationPage(0); }, [modelId, alignment.sourceId]);
   useEffect(() => {
     if (!sourceFile) { setProbe(null); setInspection(null); return; }
     let active = true;
@@ -73,6 +93,12 @@ export function LandXmlAlignmentSourceInspector({ modelId, sourceFile, record, o
   const count = navigationCount(record), pages = Math.max(1, Math.ceil(count / PAGE_SIZE));
   const page = Math.min(navigationPage, pages - 1), first = page * PAGE_SIZE;
   const items = Array.from({ length: Math.min(PAGE_SIZE, count - first) }, (_, index) => navigationAt(record, first + index));
+  const internalStation = probe === null ? null : alignment.staStart + probe.distance;
+  const applicableSuperelevations = internalStation === null ? [] : alignment.superelevations.filter((value) =>
+    (value.staStart === null || internalStation >= value.staStart)
+    && (value.staEnd === null || internalStation <= value.staEnd));
+  const eventPage = superelevationEventPage(applicableSuperelevations, superelevationPage * PAGE_SIZE);
+  const eventPages = Math.max(1, Math.ceil(eventPage.total / PAGE_SIZE));
   return <div className="h-full overflow-auto border-l-2 border-zinc-200 bg-white dark:border-zinc-800 dark:bg-black" data-landxml-source-inspector>
     <div className="space-y-2 border-b-2 border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-black">
       <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">LandXML Alignment</p>
@@ -83,12 +109,13 @@ export function LandXmlAlignmentSourceInspector({ modelId, sourceFile, record, o
     {pages > 1 && <div className="flex items-center justify-between border-t border-zinc-200 px-4 py-2 text-xs dark:border-zinc-800"><button type="button" disabled={page === 0} onClick={() => setNavigationPage(page - 1)}>Previous</button><span>{page + 1} / {pages}</span><button type="button" disabled={page + 1 >= pages} onClick={() => setNavigationPage(page + 1)}>Next</button></div>}
     <div className="space-y-2 p-4 text-xs text-zinc-700 dark:text-zinc-300">
       <p>Length: {alignment.length}</p><p>Start station: {alignment.staStart}</p><p>Segments: {alignment.segments.length}</p>
+      {alignment.cant && <><p>Cant: {alignment.cant.name}; gauge {alignment.cant.gauge}; rotation point {alignment.cant.rotationPoint ?? 'unspecified'}</p><p>Cant constants: equilibrium {alignment.cant.equilibriumConstant ?? 'unspecified'}; applied {alignment.cant.appliedCantConstant ?? 'unspecified'}; speed stations {alignment.cant.speedStations.length}</p></>}
       <label className="block">Probe by <select aria-label="Probe mode" value={mode} onChange={(event) => setMode(event.target.value === 'station' ? 'station' : 'distance')}><option value="distance">geometric distance</option><option value="station">displayed station</option></select></label>
       {mode === 'distance' ? <label className="block">Distance <input aria-label="Geometric distance" type="number" value={distanceInput} onChange={(event) => setDistanceInput(event.target.value)} /></label> : <label className="block">Station <input aria-label="Displayed station" type="number" value={stationInput} onChange={(event) => setStationInput(event.target.value)} /></label>}
       <label className="block">Right offset <input aria-label="Right offset" type="number" value={offsetInput} onChange={(event) => setOffsetInput(event.target.value)} /></label>
       {error && <p role="alert" className="text-red-700 dark:text-red-300">Probe unavailable: {error}</p>}
       {probe && <><p>Probe: {probe.northing}, {probe.easting}</p><p>Displayed station: {probe.displayedBack} / {probe.displayedAhead}</p><p>Probe span: {probe.segmentSourceId}</p></>}
-      {inspection && <><p>Authored CantStation bracket: {inspection.previousCantStation ? `${inspection.previousCantStation.station} (applied ${inspection.previousCantStation.appliedCant})` : 'none'} / {inspection.nextCantStation ? `${inspection.nextCantStation.station} (applied ${inspection.nextCantStation.appliedCant})` : 'none'}</p><p>Authored Superelevation: {inspection.superelevations.map((value) => `${value.staStart ?? 'open'}–${value.staEnd ?? 'open'}: ${value.events.map((event) => `${event.kind}${event.value === null ? '' : `=${event.value}`}`).join(', ')}`).join('; ') || 'none'}</p></>}
+      {inspection && <><p>Authored CantStation bracket: {inspection.previousCantStation ? `${inspection.previousCantStation.station} (applied ${inspection.previousCantStation.appliedCant})` : 'none'} / {inspection.nextCantStation ? `${inspection.nextCantStation.station} (applied ${inspection.nextCantStation.appliedCant})` : 'none'}</p><p>Authored Superelevation events: {eventPage.total}</p>{eventPage.items.map((event) => <p key={event.sourceId}>{event.blockSourceId}: {event.label}</p>)}{eventPages > 1 && <div className="flex items-center justify-between"><button type="button" disabled={superelevationPage === 0} onClick={() => setSuperelevationPage(superelevationPage - 1)}>Previous events</button><span>{superelevationPage + 1} / {eventPages}</span><button type="button" disabled={superelevationPage + 1 >= eventPages} onClick={() => setSuperelevationPage(superelevationPage + 1)}>Next events</button></div>}</>}
     </div>
   </div>;
 }

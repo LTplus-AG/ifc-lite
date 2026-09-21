@@ -8,6 +8,7 @@ import { describe, it } from 'node:test';
 import { render, click, cleanup } from '@/test/render.js';
 import { LandXmlSourceInspector } from './LandXmlSourceInspector.js';
 import { LandXmlModelSourceNavigation } from './LandXmlModelSourceNavigation.js';
+import { superelevationEventPage } from './LandXmlAlignmentSourceInspector.js';
 import type { LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics';
 
 function document(pointCount = 1): LandXmlTinDocument {
@@ -251,5 +252,15 @@ describe('LandXmlSourceInspector (#5042)', () => {
     assert.match(collection.textContent ?? '', /root linear unit: meter/);
     assert.match(collection.textContent ?? '', /collection/);
     cleanup();
+  });
+
+  it('pages hostile superelevation event sets without materializing a UI-sized result (#5044)', () => {
+    const events = Array.from({ length: 10_000 }, (_, index) => ({ sourceId: `event-${index}`, kind: 'full_superelev', value: `${index}` }));
+    const first = superelevationEventPage([{ sourceId: 'super', staStart: null, staEnd: null, events }], 0);
+    const last = superelevationEventPage([{ sourceId: 'super', staStart: null, staEnd: null, events }], 9_900);
+    assert.equal(first.total, 10_000);
+    assert.equal(first.items.length, 100);
+    assert.equal(last.items.length, 100);
+    assert.equal(last.items[99].sourceId, 'event-9999');
   });
 });

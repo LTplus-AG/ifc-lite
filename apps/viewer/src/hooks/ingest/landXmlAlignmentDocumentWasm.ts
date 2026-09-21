@@ -6,7 +6,7 @@
 
 import type {
   LandXmlAlignment, LandXmlAlignmentPi, LandXmlAlignmentPrimitive, LandXmlAlignmentSegment,
-  LandXmlCantStation, LandXmlPlanPoint, LandXmlPointLocation, LandXmlRadius,
+  LandXmlCant, LandXmlCantStation, LandXmlPlanPoint, LandXmlPointLocation, LandXmlRadius,
   LandXmlStationEquation, LandXmlSuperelevation, LandXmlUnsupportedTransition,
 } from './landXmlSemantics.js';
 
@@ -69,14 +69,25 @@ function primitive(value: unknown, context: string): LandXmlAlignmentPrimitive {
   throw new Error(`LandXML WASM returned an invalid ${context} primitive`);
 }
 
+export function decodeLandXmlCantStation(value: unknown, context: string): LandXmlCantStation {
+  const parsed = record(value, context);
+  return { sourceId: string(parsed.source_id, `${context} source id`), station: finite(parsed.station, `${context} station`), appliedCant: finite(parsed.applied_cant, `${context} applied cant`), equilibriumCant: optionalFinite(parsed.equilibrium_cant, `${context} equilibrium cant`), curvature: rotation(parsed.curvature, `${context} curvature`), cantDeficiency: optionalFinite(parsed.cant_deficiency, `${context} cant deficiency`), cantExcess: optionalFinite(parsed.cant_excess, `${context} cant excess`), rateOfChangeOfAppliedCantOverTime: optionalFinite(parsed.rate_of_change_of_applied_cant_over_time, `${context} applied cant time rate`), rateOfChangeOfAppliedCantOverLength: optionalFinite(parsed.rate_of_change_of_applied_cant_over_length, `${context} applied cant length rate`), rateOfChangeOfCantDeficiencyOverTime: optionalFinite(parsed.rate_of_change_of_cant_deficiency_over_time, `${context} deficiency time rate`), cantGradient: optionalFinite(parsed.cant_gradient, `${context} gradient`), speed: optionalFinite(parsed.speed, `${context} speed`), transitionType: nullableString(parsed.transition_type, `${context} transition type`), adverse: optionalBoolean(parsed.adverse, `${context} adverse flag`) };
+}
+
 export function decodeLandXmlAlignment(value: unknown, index: number, semantic?: LandXmlAlignment): LandXmlAlignment {
   const raw = record(value, `alignment ${index}`);
   const cant = raw.cant === undefined || raw.cant === null ? null : record(raw.cant, `alignment ${index} cant`);
-  const cantStations: LandXmlCantStation[] = cant === null ? [] : array(cant.stations, `alignment ${index} cant stations`).map((station, stationIndex) => {
-    const parsed = record(station, `alignment ${index} cant station ${stationIndex}`);
-    const context = `alignment ${index} cant station ${stationIndex}`;
-    return { sourceId: string(parsed.source_id, `${context} source id`), station: finite(parsed.station, `${context} station`), appliedCant: finite(parsed.applied_cant, `${context} applied cant`), equilibriumCant: optionalFinite(parsed.equilibrium_cant, `${context} equilibrium cant`), curvature: rotation(parsed.curvature, `${context} curvature`), cantDeficiency: optionalFinite(parsed.cant_deficiency, `${context} cant deficiency`), cantExcess: optionalFinite(parsed.cant_excess, `${context} cant excess`), rateOfChangeOfAppliedCantOverTime: optionalFinite(parsed.rate_of_change_of_applied_cant_over_time, `${context} applied cant time rate`), rateOfChangeOfAppliedCantOverLength: optionalFinite(parsed.rate_of_change_of_applied_cant_over_length, `${context} applied cant length rate`), rateOfChangeOfCantDeficiencyOverTime: optionalFinite(parsed.rate_of_change_of_cant_deficiency_over_time, `${context} deficiency time rate`), cantGradient: optionalFinite(parsed.cant_gradient, `${context} gradient`), speed: optionalFinite(parsed.speed, `${context} speed`), transitionType: nullableString(parsed.transition_type, `${context} transition type`), adverse: optionalBoolean(parsed.adverse, `${context} adverse flag`) };
-  });
+  const cantStations: LandXmlCantStation[] = cant === null ? [] : array(cant.stations, `alignment ${index} cant stations`).map((station, stationIndex) => decodeLandXmlCantStation(station, `alignment ${index} cant station ${stationIndex}`));
+  const decodedCant: LandXmlCant | null = cant === null ? null : {
+    sourceId: string(cant.source_id, `alignment ${index} cant source id`),
+    name: string(cant.name, `alignment ${index} cant name`),
+    gauge: finite(cant.gauge, `alignment ${index} cant gauge`),
+    rotationPoint: nullableString(cant.rotation_point, `alignment ${index} cant rotation point`),
+    equilibriumConstant: optionalFinite(cant.equilibrium_constant, `alignment ${index} cant equilibrium constant`),
+    appliedCantConstant: optionalFinite(cant.applied_cant_constant, `alignment ${index} cant applied constant`),
+    stations: cantStations,
+    speedStations: array(cant.speed_stations, `alignment ${index} speed stations`).map((value, stationIndex) => { const station = record(value, `alignment ${index} speed station ${stationIndex}`); return { sourceId: string(station.source_id, `alignment ${index} speed station ${stationIndex} source id`), station: finite(station.station, `alignment ${index} speed station ${stationIndex} station`), speed: finite(station.speed, `alignment ${index} speed station ${stationIndex} speed`) }; }),
+  };
   const superelevations: LandXmlSuperelevation[] = array(raw.superelevations, `alignment ${index} superelevations`).map((value, itemIndex) => {
     const parsed = record(value, `alignment ${index} superelevation ${itemIndex}`);
     return { sourceId: string(parsed.source_id, `alignment ${index} superelevation ${itemIndex} source id`), staStart: optionalFinite(parsed.sta_start, `alignment ${index} superelevation ${itemIndex} start`), staEnd: optionalFinite(parsed.sta_end, `alignment ${index} superelevation ${itemIndex} end`), events: array(parsed.events, `alignment ${index} superelevation ${itemIndex} events`).map((event, eventIndex) => { const item = record(event, `alignment ${index} superelevation ${itemIndex} event ${eventIndex}`); return { sourceId: string(item.source_id, 'superelevation event source id'), kind: string(item.kind, 'superelevation event kind'), value: nullableString(item.value, 'superelevation event value') }; }) };
@@ -91,6 +102,6 @@ export function decodeLandXmlAlignment(value: unknown, index: number, semantic?:
   return {
     sourceId: string(raw.source_id, `alignment ${index} source id`), ordinal: finite(raw.ordinal, `alignment ${index} ordinal`), name: string(raw.name, `alignment ${index} name`), length: finite(raw.length, `alignment ${index} length`), staStart: finite(raw.sta_start, `alignment ${index} staStart`), profileSourceIds: semantic?.profileSourceIds ?? [], crossSectionSourceIds: semantic?.crossSectionSourceIds ?? [], start: raw.start === undefined || raw.start === null ? null : pointLocation(raw.start, `alignment ${index} start`), alignPis, stationEquations,
     segments: array(raw.segments, `alignment ${index} segments`).map((segment, itemIndex): LandXmlAlignmentSegment => { const parsed = record(segment, `alignment ${index} segment ${itemIndex}`); return { sourceId: string(parsed.source_id, `alignment ${index} segment ${itemIndex} source id`), ordinal: finite(parsed.ordinal, `alignment ${index} segment ${itemIndex} ordinal`), primitive: primitive(parsed.primitive, `alignment ${index} segment ${itemIndex} primitive`) }; }),
-    cantStations, superelevations, unsupportedTransitions,
+    cant: decodedCant, cantStations, superelevations, unsupportedTransitions,
   };
 }

@@ -240,9 +240,6 @@ impl Parser<'_> {
                 .take()
                 .ok_or_else(|| invalid("missing Alignment"))?
                 .alignment;
-            if alignment.segments.is_empty() && alignment.unsupported_transitions.is_empty() {
-                return Err(invalid("Alignment has no supported geometry"));
-            }
             self.alignments.push(alignment);
         }
         Ok(())

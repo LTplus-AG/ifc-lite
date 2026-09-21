@@ -9,7 +9,8 @@ import { connectedFaceComponents } from './landXmlIngest.js';
 import { buildLandXmlPipeComponents } from './landXmlPipeGeometry.js';
 import { findLandXmlSourceRecord, type LandXmlPipeNetworkDocument } from './landXmlSemantics.js';
 import { isLandXmlContent } from './landXmlSniff.js';
-import { parseLandXmlTinInCurrentRealm } from './landXmlWasm.js';
+import { parseLandXmlSourceInCurrentRealm, parseLandXmlTinInCurrentRealm } from './landXmlWasm.js';
+import { inspectLandXmlAlignmentAtDistance } from './landXmlAlignmentWasm.js';
 
 const LANDXML = `<?xml version="1.0" encoding="UTF-8"?>
 <LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
@@ -179,6 +180,59 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.equal(parsed.plan?.cogoPoints[0].name, 'control');
     assert.equal(parsed.plan?.planFeatures[0].geometry[0].kind, 'line');
     assert.equal(parsed.plan?.parcels[0].name, 'lot');
+  });
+
+  it('decodes the complete alignment endpoint and rebuilds its source index (#5044)', async () => {
+    const parsed = await parseLandXmlSourceInCurrentRealm(bytes(`<?xml version="1.0"?>
+      <LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+        <Units><Metric linearUnit="meter" elevationUnit="meter"/></Units>
+        <CgPoints><CgPoint name="control">0 0 0</CgPoint></CgPoints>
+        <Alignments><Alignment name="route" length="10" staStart="0"><CoordGeom>
+          <Line length="10"><Start>0 0</Start><End>0 10</End></Line>
+        </CoordGeom><Cant name="rail" gauge="1.435" rotationPoint="center" equilibriumConstant="11" appliedCantConstant="12">
+          <CantStation station="0" appliedCant="20" equilibriumCant="22" curvature="ccw" cantDeficiency="2" cantExcess="3" rateOfChangeOfAppliedCantOverTime="4" rateOfChangeOfAppliedCantOverLength="5" rateOfChangeOfCantDeficiencyOverTime="6" cantGradient="7" speed="8" transitionType="linear" adverse="true"/>
+          <SpeedStation station="0" speed="90"/>
+        </Cant></Alignment></Alignments>
+      </LandXML>`));
+    assert.equal(parsed.plan?.cogoPoints[0]?.name, 'control');
+    assert.equal(parsed.alignments[0]?.segments.length, 1);
+    const cant = parsed.alignments[0]?.cant;
+    assert.equal(cant?.name, 'rail');
+    assert.equal(cant?.gauge, 1.435);
+    assert.equal(cant?.rotationPoint, 'center');
+    assert.equal(cant?.equilibriumConstant, 11);
+    assert.equal(cant?.appliedCantConstant, 12);
+    assert.equal(cant?.stations[0]?.cantGradient, 7);
+    assert.equal(cant?.stations[0]?.adverse, true);
+    assert.equal(cant?.speedStations[0]?.speed, 90);
+    const inspection = await inspectLandXmlAlignmentAtDistance(bytes(`<?xml version="1.0"?>
+      <LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Alignments><Alignment name="route" length="10" staStart="0"><CoordGeom><Line length="10"><Start>0 0</Start><End>0 10</End></Line></CoordGeom><Cant name="rail" gauge="1.435"><CantStation station="0" appliedCant="20" curvature="ccw" cantGradient="7" adverse="true"/></Cant></Alignment></Alignments></LandXML>`), parsed.alignments[0].sourceId, 0);
+    assert.equal(inspection.previousCantStation?.cantGradient, 7);
+    assert.equal(inspection.previousCantStation?.adverse, true);
+    const alignment = findLandXmlSourceRecord(parsed, parsed.alignments[0].sourceId);
+    assert.equal(alignment?.kind, 'alignment');
+    assert.equal(alignment?.kind === 'alignment' ? alignment.alignment.segments.length : 0, 1);
+    assert.equal(findLandXmlSourceRecord(parsed, parsed.alignments[0].segments[0].sourceId)?.kind, 'alignment-segment');
+  });
+
+  it('keeps a profile-only alignment valid through the complete source endpoint (#5044/#5045)', async () => {
+    const parsed = await parseLandXmlSourceInCurrentRealm(bytes(`<?xml version="1.0"?>
+      <LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units>
+        <Alignments><Alignment name="profile route" length="10" staStart="0"><Profile><ProfAlign name="design"><PVI>0 1</PVI><PVI>10 2</PVI></ProfAlign></Profile></Alignment></Alignments>
+      </LandXML>`));
+    assert.equal(parsed.alignments[0]?.name, 'profile route');
+    assert.equal(parsed.alignments[0]?.segments.length, 0);
+    assert.equal(parsed.profiles[0]?.pvis.length, 2);
+  });
+
+  it('bounds hostile real-WASM superelevation inspection results (#5044)', async () => {
+    const events = Array.from({ length: 10_000 }, (_, index) => `<FullSuperelev>${index}</FullSuperelev>`).join('');
+    const xml = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Alignments><Alignment name="route" length="10" staStart="0"><CoordGeom><Line length="10"><Start>0 0</Start><End>0 10</End></Line></CoordGeom><Superelevation staStart="0" staEnd="10">${events}</Superelevation></Alignment></Alignments></LandXML>`;
+    const parsed = await parseLandXmlSourceInCurrentRealm(bytes(xml));
+    const inspection = await inspectLandXmlAlignmentAtDistance(bytes(xml), parsed.alignments[0].sourceId, 5);
+    assert.equal(inspection.superelevationEventCount, 10_000);
+    assert.equal(inspection.superelevations[0]?.events.length, 100);
+    assert.equal(inspection.superelevationTruncated, true);
   });
 
   it('keeps source selection stable after geometry is partitioned (#5042)', async () => {

@@ -10,7 +10,7 @@ import { initLandXmlWasm } from './landXmlWasmInit.js';
 import { pipeNetworks } from './landXmlPipeWasm.js';
 import { decodeLandXmlAlignment } from './landXmlAlignmentDocumentWasm.js';
 import { decodeLandXmlPlan, decodeLandXmlPlanPoint } from './landXmlPlanWasm.js';
-import { indexLandXmlSourceRecords } from './landXmlSemantics.js';
+import { clearLandXmlSourceRecordIndex, indexLandXmlSourceRecords } from './landXmlSemantics.js';
 import type {
   LandXmlAlignment, LandXmlAlignmentPi, LandXmlAlignmentPrimitive, LandXmlAlignmentSegment, LandXmlCantStation,
   LandXmlCapabilityDiagnostic, LandXmlCrossSection, LandXmlCrossSectionPoint,
@@ -262,6 +262,7 @@ export function readLandXmlSourceDocument(value: unknown): LandXmlTinDocument {
   const raw = record(value, 'source document');
   const document = readLandXmlTinDocument(raw.tin);
   const alignmentDocument = record(raw.alignments, 'alignment document');
+  clearLandXmlSourceRecordIndex(document);
   document.alignments = array(alignmentDocument.alignments, 'alignments')
     .map((value, index) => decodeLandXmlAlignment(value, index, document.alignments[index]));
   const renderPoints = new Map<string, LandXmlPlanPoint[]>();

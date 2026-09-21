@@ -15,6 +15,8 @@ export const PICK_CSS_Y = 240;
 export const CPU_PICK_CSS_X = PICK_CSS_X + 0.5;
 export const CPU_PICK_CSS_Y = PICK_CSS_Y + 0.5;
 export const GEOMETRIC_TOLERANCE_METRES = 0.03;
+/** A 1.5625cm witness must not pass after an absolute-f32 collapse. */
+export const MEASUREMENT_TOLERANCE_METRES = 0.005;
 
 type WitnessStatus = 'pending' | 'passed' | 'skipped' | 'failed';
 
@@ -22,7 +24,7 @@ export interface RteGpuWitnessReport {
   status: WitnessStatus;
   reason?: string;
   system: { userAgent: string; platform: string; devicePixelRatio: number; adapter: { vendor?: string; architecture?: string } | null; hardwareVerified: boolean };
-  tolerance: { geometricMetres: number; pixel: number };
+  tolerance: { geometricMetres: number; measurementMetres: number; pixel: number };
   commonTranslation: readonly [number, number, number];
   largeLocalExtentMetres: number;
   evidence?: {
@@ -49,6 +51,8 @@ export interface RteGpuWitnessReport {
     CPUAndGpuAgree: boolean;
     snapResidualMetres: number | null;
     measurementResidualMetres: number | null;
+    measurementCpuMetres: number | null;
+    measurementGpuMetres: number | null;
     provenanceStable: boolean;
     families: Record<string, boolean>;
     clippedPick: boolean;
@@ -111,8 +115,10 @@ export function instancedShard(): DecodedInstancedShard {
   // Native IFC Z-up origin maps to the same Y-up common translation as flat meshes.
   return {
     templates: [{
-      positions: new Float32Array([-3, -3, 0, 3, -3, 0, 0, 3, 0]),
-      normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+      // Native IFC Z-up: this becomes a viewer XY face after Z-up→Y-up, not
+      // the edge-on XZ triangle that a top-down witness could not observe.
+      positions: new Float32Array([-3, 0, -3, 3, 0, -3, 0, 0, 3]),
+      normals: new Float32Array([0, -1, 0, 0, -1, 0, 0, -1, 0]), indices: new Uint32Array([0, 1, 2]),
       origin: [COMMON_ORIGIN[0] + 24, -COMMON_ORIGIN[2], COMMON_ORIGIN[1]],
     }],
     instances: [{
@@ -130,7 +136,7 @@ export function baseReport(): RteGpuWitnessReport {
   return {
     status: 'pending',
     system: { userAgent: navigator.userAgent, platform: navigator.platform, devicePixelRatio: window.devicePixelRatio, adapter: null, hardwareVerified: false },
-    tolerance: { geometricMetres: GEOMETRIC_TOLERANCE_METRES, pixel: 1 },
+    tolerance: { geometricMetres: GEOMETRIC_TOLERANCE_METRES, measurementMetres: MEASUREMENT_TOLERANCE_METRES, pixel: 1 },
     commonTranslation: COMMON_ORIGIN, largeLocalExtentMetres: 8_192,
   };
 }

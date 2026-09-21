@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Renderer, type PickResult } from '@ifc-lite/renderer';
 import {
-  COMMON_ORIGIN, LARGE_ORIGIN, PICK_CSS_X, PICK_CSS_Y, CPU_PICK_CSS_X, CPU_PICK_CSS_Y, GEOMETRIC_TOLERANCE_METRES,
+  COMMON_ORIGIN, LARGE_ORIGIN, PICK_CSS_X, PICK_CSS_Y, CPU_PICK_CSS_X, CPU_PICK_CSS_Y, GEOMETRIC_TOLERANCE_METRES, MEASUREMENT_TOLERANCE_METRES,
   baseReport, distance, instancedShard, largeExtentMesh, shadowCasterMesh, type PickEvidence, type RteGpuWitnessReport, witnessMesh,
 } from './RteGpuWitnessFixtures';
 import { isForeground, screenshotDifference, screenshotPixel } from './RteGpuWitnessPixels';
@@ -134,12 +134,12 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     await device.queue.onSubmittedWorkDone();
     const centimetreGpuPick = await renderer.pick(PICK_CSS_X, PICK_CSS_Y);
     const centimetreCpuRay = renderer.raycastScene(CPU_PICK_CSS_X, CPU_PICK_CSS_Y);
-    const measurementResidualMetres = pick?.worldXYZ && cpuRay && centimetreGpuPick?.worldXYZ && centimetreCpuRay
-      ? Math.abs(
-        distance([pick.worldXYZ.x, pick.worldXYZ.y, pick.worldXYZ.z], [centimetreGpuPick.worldXYZ.x, centimetreGpuPick.worldXYZ.y, centimetreGpuPick.worldXYZ.z])
-        - distance([cpuRay.intersection.point.x, cpuRay.intersection.point.y, cpuRay.intersection.point.z], [centimetreCpuRay.intersection.point.x, centimetreCpuRay.intersection.point.y, centimetreCpuRay.intersection.point.z]),
-      )
-      : null;
+    const measurementGpuMetres = pick?.worldXYZ && centimetreGpuPick?.worldXYZ
+      ? distance([pick.worldXYZ.x, pick.worldXYZ.y, pick.worldXYZ.z], [centimetreGpuPick.worldXYZ.x, centimetreGpuPick.worldXYZ.y, centimetreGpuPick.worldXYZ.z]) : null;
+    const measurementCpuMetres = cpuRay && centimetreCpuRay
+      ? distance([cpuRay.intersection.point.x, cpuRay.intersection.point.y, cpuRay.intersection.point.z], [centimetreCpuRay.intersection.point.x, centimetreCpuRay.intersection.point.y, centimetreCpuRay.intersection.point.z]) : null;
+    const measurementResidualMetres = measurementGpuMetres !== null && measurementCpuMetres !== null
+      ? Math.abs(measurementGpuMetres - measurementCpuMetres) : null;
     camera.setPosition(COMMON_ORIGIN[0], COMMON_ORIGIN[1], COMMON_ORIGIN[2] + 60);
     camera.setTarget(COMMON_ORIGIN[0], COMMON_ORIGIN[1], COMMON_ORIGIN[2]);
     const pipeline = renderer.getPipeline();
@@ -258,17 +258,22 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
       CPUAndGpuAgree: gpuCpuResidual <= GEOMETRIC_TOLERANCE_METRES,
       snapResidualMetres,
       measurementResidualMetres,
+      measurementCpuMetres,
+      measurementGpuMetres,
       provenanceStable: pick?.expressId === 101 && pick.geometryItemId === 70_101
         && pick.modelIndex === 11 && texturedPick?.expressId === 102 && texturedPick.modelIndex === 12
         && cpuRayEvidence?.expressId === 101 && magnetic.intersection?.expressId === 101
         && magnetic.intersection?.geometryItemId === 70_101,
       families: {
         flat: pick?.expressId === 101 && isForeground(linePixel),
-        textured: texturedPick?.expressId === 102 && texturedPick.modelIndex === 12 && isForeground(texturedPixel),
+        textured: texturedPick?.expressId === 102 && texturedPick.modelIndex === 12 && texturedPixel !== null
+          && texturedPixel[2] > texturedPixel[0] + 20 && texturedPixel[2] > texturedPixel[1] + 20,
         quantized: quantized && renderer.getScene().isMeshQuantized(flat) && pick?.expressId === 101 && isForeground(linePixel),
-        instanced: instancedPick?.expressId === 103 && isForeground(instancedPixel),
-        point: pointPick?.expressId === 105 && isForeground(pointPixel),
-        anchoredLine: linePixel !== null && linePixel[0] > linePixel[2],
+        instanced: instancedPick?.expressId === 103 && instancedPixel !== null
+          && instancedPixel[2] > instancedPixel[0] + 20 && instancedPixel[1] > instancedPixel[0] + 20,
+        point: pointPick?.expressId === 105 && pointPixel !== null
+          && pointPixel[1] > pointPixel[0] + 20 && pointPixel[2] > pointPixel[0] + 20,
+        anchoredLine: linePixel !== null && linePixel[0] > 80 && linePixel[1] > 80 && linePixel[2] + 30 < linePixel[0],
         color: colorPixel !== null && colorPixel[0] > colorPixel[1],
         shadow: shadowPixels !== null && shadowPixels.changedPixels > 0 && shadowPixels.maxChannelDelta > 1,
         picker: pick?.expressId === 101,
@@ -278,8 +283,11 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
         farOrigin: sourceResidualMetres <= GEOMETRIC_TOLERANCE_METRES,
         largeExtent: largeExtentPick?.expressId === 104 && isForeground(largeExtentPixel),
         cpuRay: cpuRayEvidence?.expressId === 101,
-        snap: magnetic.snapTarget !== null || cpuRay?.snap !== undefined,
-        measurement: measurementResidualMetres <= GEOMETRIC_TOLERANCE_METRES,
+        snap: (magnetic.snapTarget !== null || cpuRay?.snap !== undefined) && snapResidualMetres !== null
+          && snapResidualMetres <= GEOMETRIC_TOLERANCE_METRES,
+        measurement: measurementResidualMetres !== null && measurementResidualMetres <= MEASUREMENT_TOLERANCE_METRES
+          && measurementCpuMetres !== null && measurementCpuMetres >= 0.01
+          && measurementGpuMetres !== null && measurementGpuMetres >= 0.01,
         identityProvenance: pick?.expressId === 101 && pick.geometryItemId === 70_101
           && pick.modelIndex === 11 && texturedPick?.expressId === 102 && texturedPick.modelIndex === 12
           && cpuRayEvidence?.expressId === 101 && magnetic.intersection?.expressId === 101

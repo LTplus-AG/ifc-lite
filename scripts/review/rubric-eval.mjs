@@ -52,8 +52,7 @@ import { notApplicableClasses } from './lib/defect-classes.mjs';
 // test drives them by name. The split is the module-size budget, not a change
 // of interface.
 import { matches, score } from './lib/eval-score.mjs';
-import { available as jevAvailable } from './lib/jev-client.mjs';
-import { semanticMatcher } from './lib/semantic-match.mjs';
+import { resolveMatchers } from './lib/semantic-match.mjs';
 export { matches, score } from './lib/eval-score.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -363,27 +362,14 @@ async function main() {
 
     // TWO MATCHERS, ONE AUTHORITATIVE. With TYPESAFE_API_KEY the semantic
     // matcher (./lib/semantic-match.mjs) decides recall and the stem rule is
-    // printed beside it, because the two disagree on exactly the cases that
-    // matter: on the shipped eval the stem rule credited 29 pairs of which 6
-    // were the defect. Without the key nothing changes from before.
-    let forValidated = matches;
-    let forPosted = matches;
-    let semanticNote = 'stem matcher (set TYPESAFE_API_KEY for the semantic matcher)';
-    if (jevAvailable()) {
-      const sem = await semanticMatcher([...validatedResults, ...results], { fallback: matches, log: (m) => console.log(`  ${m}`) });
-      // validatedResults come first in the array handed to the resolver, so the
-      // posted results' case index is offset by their count.
-      const offset = validatedResults.length;
-      forValidated = sem.matcher;
-      forPosted = (e, f, b, ctx) => sem.matcher(e, f, b, { ...ctx, caseIndex: ctx.caseIndex + offset });
-      semanticNote = `semantic matcher, ${sem.calls} TypeSafe call(s)${sem.failures ? `, ${sem.failures} fell back to stems` : ''}`;
-    }
-    const validatedScore = score(validatedResults, { matcher: forValidated });
-    const s = score(results, { matcher: forPosted });
-    const stemScore = forPosted === matches ? null : score(results);
-    console.log(`\nRubric: ${rubric}   model: ${model}   matcher: ${semanticNote}`);
+    // printed beside it: on the shipped eval the stem rule credited 29 pairs
+    // of which 6 were the defect. Without the key nothing changes from before.
+    const m = await resolveMatchers(validatedResults, results, { fallback: matches, log: (msg) => console.log(`  ${msg}`) });
+    const validatedScore = score(validatedResults, { matcher: m.forValidated });
+    const s = score(results, { matcher: m.forPosted });
+    console.log(`\nRubric: ${rubric}   model: ${model}   matcher: ${m.note}`);
     for (const l of s.lines) console.log(l);
-    if (stemScore) console.log(`\n  (stem matcher would report POSTED recall ${stemScore.recall}; the semantic number above is the one that counts)`);
+    if (m.semantic) console.log(`\n  (stem matcher would report POSTED recall ${score(results).recall}; the semantic number above is the one that counts)`);
     // A case whose review never validated contributes zero to recall, and a recall
     // number is not readable without knowing how many of those there were.
     const noReview = results.filter((r) => r.verdict === null).length;
@@ -409,9 +395,5 @@ async function main() {
   }
 }
 
-if (process.argv[1] && process.argv[1].endsWith('rubric-eval.mjs')) {
-  main().catch((err) => {
-    console.error(err?.stack ?? err);
-    process.exit(1);
-  });
-}
+// Async now (the semantic matcher awaits the network); a rejection must still exit non-zero.
+if (process.argv[1] && process.argv[1].endsWith('rubric-eval.mjs')) main().catch((err) => { console.error(err?.stack ?? err); process.exit(1); });

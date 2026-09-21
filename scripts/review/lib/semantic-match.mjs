@@ -26,7 +26,7 @@
  * measured 0 of.
  */
 
-import { noul, systemOne } from './jev-client.mjs';
+import { available, noul, systemOne } from './jev-client.mjs';
 
 /** Above this, a finding counts as having surfaced the defect. Chosen on the bench, not a universal constant. */
 export const MATCH_THRESHOLD = 0.5;
@@ -99,4 +99,24 @@ export async function semanticMatcher(cases, { env, fetchImpl, fallback, log = (
     return fallback ? fallback(expected, findings, body) : { hit: false, by: null };
   };
   return { matcher, calls, failures };
+}
+
+/**
+ * What rubric-eval.mjs needs, in one call: a matcher for the validated results
+ * and one for the posted results (the resolver sees both arrays concatenated,
+ * validated first, so the posted case index is offset), plus a note for the
+ * log. With no key both matchers are the stem rule and the note says so.
+ */
+export async function resolveMatchers(validatedResults, results, { env = process.env, fetchImpl, fallback, log = () => {} } = {}) {
+  if (!available(env)) {
+    return { forValidated: fallback, forPosted: fallback, semantic: false, note: 'stem matcher (set TYPESAFE_API_KEY for the semantic matcher)' };
+  }
+  const sem = await semanticMatcher([...validatedResults, ...results], { env, fetchImpl, fallback, log });
+  const offset = validatedResults.length;
+  return {
+    forValidated: sem.matcher,
+    forPosted: (e, f, b, ctx) => sem.matcher(e, f, b, { ...ctx, caseIndex: ctx.caseIndex + offset }),
+    semantic: true,
+    note: `semantic matcher, ${sem.calls} TypeSafe call(s)${sem.failures ? `, ${sem.failures} fell back to stems` : ''}`,
+  };
 }

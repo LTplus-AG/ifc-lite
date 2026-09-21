@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { available, systemOne, ENDPOINT } from './lib/jev-client.mjs';
-import { buildMatchRequest, semanticMatches, semanticMatcher, MATCH_THRESHOLD } from './lib/semantic-match.mjs';
+import { buildMatchRequest, semanticMatches, semanticMatcher, resolveMatchers, MATCH_THRESHOLD } from './lib/semantic-match.mjs';
 import { matches, score } from './lib/eval-score.mjs';
 
 const ENV = { TYPESAFE_API_KEY: 'test-key' };
@@ -102,4 +102,20 @@ test('systemOne retries a 429 and surfaces a 4xx without retrying', async () => 
   let m = 0;
   await assert.rejects(() => systemOne({ state: {}, questions: {}, env: ENV, fetchImpl: async () => { m += 1; return { ok: false, status: 422, text: async () => 'bad question' }; } }), /HTTP 422/);
   assert.equal(m, 1);
+});
+
+test('resolveMatchers hands back the stem rule without a key, and offset-aware semantic matchers with one', async () => {
+  const validated = [{ pr: 1, body: null, expected: [EXPECTED], verdict: 'findings', findings: [F_OTHER], notApplicable: [] }];
+  const posted = [{ pr: 1, body: null, expected: [EXPECTED], verdict: 'findings', findings: [F_SAME], notApplicable: [] }];
+  const off = await resolveMatchers(validated, posted, { env: {}, fallback: matches, fetchImpl: () => { throw new Error('must not be called'); } });
+  assert.equal(off.semantic, false);
+  assert.equal(off.forValidated, matches);
+  assert.match(off.note, /stem matcher/);
+  // Validated first, posted second: the posted matcher must look up index 1, not 0.
+  const on = await resolveMatchers(validated, posted, { env: ENV, fallback: matches, fetchImpl: stubFetch({ same_0: 0.9 }) });
+  assert.equal(on.semantic, true);
+  assert.match(on.note, /2 TypeSafe call/);
+  assert.equal(score(validated, { matcher: on.forValidated }).hits, 1);
+  assert.equal(score(posted, { matcher: on.forPosted }).hits, 1);
+  assert.match(score(posted, { matcher: on.forPosted }).lines.join('\n'), /a\.ts|check-review-posted\.mjs:533 \(P 0\.90\)/);
 });

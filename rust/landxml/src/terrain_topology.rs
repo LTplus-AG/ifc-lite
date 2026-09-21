@@ -6,6 +6,7 @@ use crate::{
     LandXmlCanonicalVertex, LandXmlLimits, LandXmlPoint, LandXmlPolyline, LandXmlSourceId,
     LandXmlTerrainDiagnostic, LandXmlTerrainDiagnosticCode as TerrainCode,
 };
+use ifc_lite_geometry::TerrainCdtError;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) struct Vertex {
@@ -24,12 +25,28 @@ pub(super) struct CandidateVertex {
     pub(super) source_id: LandXmlSourceId,
 }
 
+/// A source-rule refusal remains a diagnostic, while a bounded terrain pass
+/// must be allowed to stop immediately when its caller runs out of work or
+/// cancels.  Keeping those outcomes distinct lets the parser preserve source
+/// data for a malformed ring without disguising cancellation as bad input.
+pub(super) enum TopologyValidationError {
+    Diagnostic(LandXmlTerrainDiagnostic),
+    Progress(TerrainCdtError),
+}
+
 fn diagnostic(code: TerrainCode, message: impl Into<String>) -> LandXmlTerrainDiagnostic {
-    LandXmlTerrainDiagnostic { code, message: message.into() }
+    LandXmlTerrainDiagnostic {
+        code,
+        message: message.into(),
+    }
 }
 
 fn bits(value: f64) -> u64 {
-    if value == 0.0 { 0 } else { value.to_bits() }
+    if value == 0.0 {
+        0
+    } else {
+        value.to_bits()
+    }
 }
 
 pub(super) fn add_vertex(
@@ -42,20 +59,43 @@ pub(super) fn add_vertex(
     let key = (bits(candidate.northing), bits(candidate.easting));
     if let Some(&(index, known_elevation)) = locations.get(&key) {
         if known_elevation != candidate.elevation {
-            return Err(diagnostic(TerrainCode::ConflictingElevation, "coincident terrain vertices have conflicting elevations"));
+            return Err(diagnostic(
+                TerrainCode::ConflictingElevation,
+                "coincident terrain vertices have conflicting elevations",
+            ));
         }
-        vertices[index].contributors.push(candidate.source_id.clone());
+        vertices[index]
+            .contributors
+            .push(candidate.source_id.clone());
         if retain_point {
-            surface.points.push(LandXmlPoint { source_id: candidate.source_id, id: candidate.id, northing: candidate.northing, easting: candidate.easting, elevation: candidate.elevation });
+            surface.points.push(LandXmlPoint {
+                source_id: candidate.source_id,
+                id: candidate.id,
+                northing: candidate.northing,
+                easting: candidate.easting,
+                elevation: candidate.elevation,
+            });
         }
         return Ok(index);
     }
     let index = vertices.len();
     locations.insert(key, (index, candidate.elevation));
-    vertices.push(Vertex { id: candidate.id.clone(), northing: candidate.northing, easting: candidate.easting, elevation: candidate.elevation, contributors: vec![candidate.source_id.clone()] });
+    vertices.push(Vertex {
+        id: candidate.id.clone(),
+        northing: candidate.northing,
+        easting: candidate.easting,
+        elevation: candidate.elevation,
+        contributors: vec![candidate.source_id.clone()],
+    });
     surface.ids.insert(candidate.id.clone());
     if retain_point {
-        surface.points.push(LandXmlPoint { source_id: candidate.source_id, id: candidate.id, northing: candidate.northing, easting: candidate.easting, elevation: candidate.elevation });
+        surface.points.push(LandXmlPoint {
+            source_id: candidate.source_id,
+            id: candidate.id,
+            northing: candidate.northing,
+            easting: candidate.easting,
+            elevation: candidate.elevation,
+        });
     }
     Ok(index)
 }
@@ -67,23 +107,52 @@ pub(super) fn line_vertices(
     surface: &mut crate::parser::state::SurfaceBuilder,
 ) -> Result<Vec<usize>, LandXmlTerrainDiagnostic> {
     if line.coordinate_dimension != 3 {
-        return Err(diagnostic(TerrainCode::MissingElevation, "constrained terrain requires PntList3D boundary and breakline elevations"));
+        return Err(diagnostic(
+            TerrainCode::MissingElevation,
+            "constrained terrain requires PntList3D boundary and breakline elevations",
+        ));
     }
     let mut indexes = Vec::with_capacity(line.points.len());
     for (ordinal, values) in line.points.iter().enumerate() {
-        let Some((&northing, rest)) = values.split_first() else { unreachable!() };
-        let Some((&easting, rest)) = rest.split_first() else { unreachable!() };
-        let Some(&elevation) = rest.first() else { unreachable!() };
-        indexes.push(add_vertex(vertices, locations, surface, CandidateVertex {
-            northing, easting, elevation, id: format!("terrain:{}:{}", line.source_id.0, ordinal + 1), source_id: line.point_source_ids[ordinal].clone(),
-        }, true)?);
+        let Some((&northing, rest)) = values.split_first() else {
+            unreachable!()
+        };
+        let Some((&easting, rest)) = rest.split_first() else {
+            unreachable!()
+        };
+        let Some(&elevation) = rest.first() else {
+            unreachable!()
+        };
+        indexes.push(add_vertex(
+            vertices,
+            locations,
+            surface,
+            CandidateVertex {
+                northing,
+                easting,
+                elevation,
+                id: format!("terrain:{}:{}", line.source_id.0, ordinal + 1),
+                source_id: line.point_source_ids[ordinal].clone(),
+            },
+            true,
+        )?);
     }
     Ok(indexes)
 }
 
 fn orient(a: &Vertex, b: &Vertex, c: &Vertex) -> i32 {
-    let value = geometry_predicates::orient2d([a.easting, a.northing], [b.easting, b.northing], [c.easting, c.northing]);
-    if value > 0.0 { 1 } else if value < 0.0 { -1 } else { 0 }
+    let value = geometry_predicates::orient2d(
+        [a.easting, a.northing],
+        [b.easting, b.northing],
+        [c.easting, c.northing],
+    );
+    if value > 0.0 {
+        1
+    } else if value < 0.0 {
+        -1
+    } else {
+        0
+    }
 }
 
 fn on_segment(a: &Vertex, b: &Vertex, point: &Vertex) -> bool {
@@ -108,10 +177,15 @@ fn edges_touch(a: &Vertex, b: &Vertex, c: &Vertex, d: &Vertex) -> bool {
 
 /// Boundary rings are simple polygons, not general PSLGs: unlike breaklines,
 /// an edge may not acquire a non-adjacent vertex contact.
-fn validate_simple_ring(ring: &[usize], vertices: &[Vertex]) -> Result<(), LandXmlTerrainDiagnostic> {
+fn validate_simple_ring(
+    ring: &[usize],
+    vertices: &[Vertex],
+    progress: &mut dyn FnMut() -> Result<(), TerrainCdtError>,
+) -> Result<(), TopologyValidationError> {
     for left in 0..ring.len() {
         let next = (left + 1) % ring.len();
         for right in 0..left {
+            progress().map_err(TopologyValidationError::Progress)?;
             let right_next = (right + 1) % ring.len();
             if left == right || left == right_next || next == right || next == right_next {
                 continue;
@@ -127,49 +201,100 @@ fn validate_simple_ring(ring: &[usize], vertices: &[Vertex]) -> Result<(), LandX
                     && orient(c, d, a) != orient(c, d, b)
                     && orient(c, d, a) != 0
                     && orient(c, d, b) != 0;
-                return Err(diagnostic(
-                    if proper { TerrainCode::IntersectingConstraints } else { TerrainCode::DegenerateConstraints },
-                    if proper { "boundary edges intersect" } else { "boundary is not a simple ring" },
-                ));
+                return Err(TopologyValidationError::Diagnostic(diagnostic(
+                    if proper {
+                        TerrainCode::IntersectingConstraints
+                    } else {
+                        TerrainCode::DegenerateConstraints
+                    },
+                    if proper {
+                        "boundary edges intersect"
+                    } else {
+                        "boundary is not a simple ring"
+                    },
+                )));
             }
         }
     }
     Ok(())
 }
 
-pub(super) fn ring_edges(ring: &[usize], vertices: &[Vertex], segments: &mut Vec<(usize, usize)>) -> Result<(), LandXmlTerrainDiagnostic> {
+pub(super) fn ring_edges(
+    ring: &[usize],
+    vertices: &[Vertex],
+    segments: &mut Vec<(usize, usize)>,
+    progress: &mut dyn FnMut() -> Result<(), TerrainCdtError>,
+) -> Result<(), TopologyValidationError> {
     let mut ring = ring.to_vec();
-    if ring.first() == ring.last() { ring.pop(); }
+    if ring.first() == ring.last() {
+        ring.pop();
+    }
     if ring.len() < 3 || ring.windows(2).any(|pair| pair[0] == pair[1]) {
-        return Err(diagnostic(TerrainCode::DegenerateConstraints, "boundary is degenerate"));
+        return Err(TopologyValidationError::Diagnostic(diagnostic(
+            TerrainCode::DegenerateConstraints,
+            "boundary is degenerate",
+        )));
     }
-    if ring.iter().copied().collect::<BTreeSet<_>>().len() != ring.len() {
-        return Err(diagnostic(TerrainCode::DegenerateConstraints, "boundary repeats a nonconsecutive vertex"));
+    let mut unique = BTreeSet::new();
+    for &vertex in &ring {
+        progress().map_err(TopologyValidationError::Progress)?;
+        unique.insert(vertex);
     }
-    validate_simple_ring(&ring, vertices)?;
-    for index in 0..ring.len() { segments.push((ring[index], ring[(index + 1) % ring.len()])); }
+    if unique.len() != ring.len() {
+        return Err(TopologyValidationError::Diagnostic(diagnostic(
+            TerrainCode::DegenerateConstraints,
+            "boundary repeats a nonconsecutive vertex",
+        )));
+    }
+    validate_simple_ring(&ring, vertices, progress)?;
+    for index in 0..ring.len() {
+        progress().map_err(TopologyValidationError::Progress)?;
+        segments.push((ring[index], ring[(index + 1) % ring.len()]));
+    }
     Ok(())
 }
 
-pub(super) fn point_in_ring(point: [f64; 2], ring: &[usize], vertices: &[Vertex]) -> bool {
+/// Classify a point against a source ring while charging every traversed edge.
+/// Generated-face filtering can otherwise hide an unbounded `faces × rings ×
+/// edges` pass behind a single per-face progress poll.
+pub(super) fn point_in_ring(
+    point: [f64; 2],
+    ring: &[usize],
+    vertices: &[Vertex],
+    progress: &mut dyn FnMut() -> Result<(), TerrainCdtError>,
+) -> Result<bool, TerrainCdtError> {
     let mut inside = false;
     for index in 0..ring.len() {
+        progress()?;
         let a = &vertices[ring[index]];
         let b = &vertices[ring[(index + 1) % ring.len()]];
         if (a.northing > point[1]) != (b.northing > point[1])
-            && point[0] < (b.easting - a.easting) * (point[1] - a.northing) / (b.northing - a.northing) + a.easting {
+            && point[0]
+                < (b.easting - a.easting) * (point[1] - a.northing) / (b.northing - a.northing)
+                    + a.easting
+        {
             inside = !inside;
         }
     }
-    inside
+    Ok(inside)
 }
 
 pub(super) fn terrain_work_fits(limits: &LandXmlLimits, work_seen: usize, work: usize) -> bool {
-    work_seen.checked_add(work).and_then(|value| value.checked_add(64)).is_some_and(|value| value < limits.max_work)
+    work_seen
+        .checked_add(work)
+        .and_then(|value| value.checked_add(64))
+        .is_some_and(|value| value < limits.max_work)
 }
 
 pub(super) fn canonical_vertices(vertices: Vec<Vertex>) -> Vec<LandXmlCanonicalVertex> {
-    vertices.into_iter().map(|vertex| LandXmlCanonicalVertex {
-        id: vertex.id, northing: vertex.northing, easting: vertex.easting, elevation: vertex.elevation, contributor_source_ids: vertex.contributors,
-    }).collect()
+    vertices
+        .into_iter()
+        .map(|vertex| LandXmlCanonicalVertex {
+            id: vertex.id,
+            northing: vertex.northing,
+            easting: vertex.easting,
+            elevation: vertex.elevation,
+            contributor_source_ids: vertex.contributors,
+        })
+        .collect()
 }

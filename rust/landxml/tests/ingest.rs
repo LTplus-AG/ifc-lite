@@ -5,9 +5,9 @@
 use ifc_lite_landxml::{
     classify_landxml_version, parse_landxml_tin_with_cancel, LandXmlCancellation,
     LandXmlCancellationFlag, LandXmlCapabilityDiagnosticCode, LandXmlCrossSectionPointDataFormat,
-    LandXmlDiagnosticCode, LandXmlLimits, LandXmlProfileKind, LandXmlTerrainDiagnosticCode,
-    LandXmlTopologyOrigin, LandXmlVersionCapability, LandXmlVerticalCurveKind,
-    LANDXML_10_NAMESPACE, LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
+    LandXmlDiagnosticCode, LandXmlLimits, LandXmlProfileKind, LandXmlSurface,
+    LandXmlTerrainDiagnosticCode, LandXmlTopologyOrigin, LandXmlVersionCapability,
+    LandXmlVerticalCurveKind, LANDXML_10_NAMESPACE, LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -20,6 +20,45 @@ fn faceless_tin(boundaries: &str, breaklines: &str, faces: &str) -> String {
     format!(
         r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 10 0</P><P id="3">10 10 0</P><P id="4">10 0 0</P></Pnts>{faces}{boundaries}{breaklines}</Definition></Surface></Surfaces></LandXML>"#
     )
+}
+
+fn generated_area(surface: &LandXmlSurface) -> f64 {
+    let points: std::collections::HashMap<_, _> = surface
+        .points
+        .iter()
+        .map(|point| (point.id.as_str(), point))
+        .collect();
+    surface
+        .faces
+        .iter()
+        .map(|face| {
+            let [a, b, c] = [
+                points[face[0].as_str()],
+                points[face[1].as_str()],
+                points[face[2].as_str()],
+            ];
+            ((b.northing - a.northing) * (c.easting - a.easting)
+                - (b.easting - a.easting) * (c.northing - a.northing))
+                .abs()
+                * 0.5
+        })
+        .sum()
+}
+
+fn has_generated_edge(surface: &LandXmlSurface, a: [f64; 2], b: [f64; 2]) -> bool {
+    let points: std::collections::HashMap<_, _> = surface
+        .points
+        .iter()
+        .map(|point| (point.id.as_str(), point))
+        .collect();
+    surface.faces.iter().any(|face| {
+        (0..3).any(|index| {
+            let first = points[face[index].as_str()];
+            let second = points[face[(index + 1) % 3].as_str()];
+            ([first.northing, first.easting] == a && [second.northing, second.easting] == b)
+                || ([first.northing, first.easting] == b && [second.northing, second.easting] == a)
+        })
+    })
 }
 
 #[test]
@@ -87,6 +126,121 @@ fn issue_5043_triangulates_faceless_tin_with_holes_breaklines_and_triangle_prove
         }),
         "the generated mesh must retain the standard breakline as a constraint edge"
     );
+    // Exact plan area proves the hole was excluded without overlap or a gap;
+    // all outer, hole, and breakline rules must be actual mesh edges, so no
+    // emitted face can cut across a declared constraint (#5043).
+    assert!((generated_area(surface) - 96.0).abs() < 1e-9);
+    for (a, b) in [
+        ([0.0, 0.0], [0.0, 2.0]),
+        ([0.0, 2.0], [0.0, 10.0]),
+        ([0.0, 10.0], [10.0, 10.0]),
+        ([10.0, 10.0], [10.0, 2.0]),
+        ([10.0, 2.0], [10.0, 0.0]),
+        ([10.0, 0.0], [0.0, 0.0]),
+        ([4.0, 4.0], [4.0, 6.0]),
+        ([4.0, 6.0], [6.0, 6.0]),
+        ([6.0, 6.0], [6.0, 4.0]),
+        ([6.0, 4.0], [4.0, 4.0]),
+        ([0.0, 2.0], [10.0, 2.0]),
+    ] {
+        assert!(
+            has_generated_edge(surface, a, b),
+            "missing constrained edge {a:?}–{b:?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn issue_5043_triangulates_disconnected_outers_and_recovers_split_boundary_breaklines(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let disconnected = r#"<Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 2 0 2 2 0 2 0 0</PntList3D></Boundary><Boundary bndType="outer"><PntList3D>10 10 0 10 12 0 12 12 0 12 10 0</PntList3D></Boundary></Boundaries>"#;
+    let parsed = parse(faceless_tin(disconnected, "", "").as_bytes())?;
+    let surface = &parsed.surfaces[0];
+    assert_eq!(
+        surface.topology_origin,
+        LandXmlTopologyOrigin::ConstrainedTriangulation
+    );
+    assert!(
+        (generated_area(surface) - 8.0).abs() < 1e-9,
+        "two 2 m² islands only"
+    );
+
+    let outer = r#"<Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></Boundary></Boundaries>"#;
+    let split = r#"<Breaklines><Breakline brkType="standard"><PntList3D>0 5 0 10 5 0</PntList3D></Breakline></Breaklines>"#;
+    let parsed = parse(faceless_tin(outer, split, "").as_bytes())?;
+    let surface = &parsed.surfaces[0];
+    for (a, b) in [
+        ([0.0, 0.0], [0.0, 5.0]),
+        ([0.0, 5.0], [0.0, 10.0]),
+        ([0.0, 5.0], [10.0, 5.0]),
+        ([10.0, 0.0], [10.0, 5.0]),
+        ([10.0, 5.0], [10.0, 10.0]),
+    ] {
+        assert!(
+            has_generated_edge(surface, a, b),
+            "split constraint edge {a:?}–{b:?}"
+        );
+    }
+    assert!((generated_area(surface) - 100.0).abs() < 1e-9);
+    Ok(())
+}
+
+#[test]
+fn issue_5043_preserves_positive_near_collinear_slope_faces_and_repeat_determinism(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let outer = r#"<Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 10 20 10 10 30 10 0 10</PntList3D></Boundary></Boundaries>"#;
+    let near_collinear = r#"<Breaklines><Breakline brkType="standard"><PntList3D>0 5 10 5 5.000000000001 15.000000000002 10 5 20</PntList3D></Breakline></Breaklines>"#;
+    let source = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="slope"><Definition surfType="TIN">{outer}{near_collinear}</Definition></Surface></Surfaces></LandXML>"#
+    );
+    let first = parse(source.as_bytes())?;
+    let second = parse(source.as_bytes())?;
+    assert_eq!(
+        first, second,
+        "identical source has deterministic generated topology"
+    );
+    let surface = &first.surfaces[0];
+    assert!((generated_area(surface) - 100.0).abs() < 1e-9);
+    let points: std::collections::HashMap<_, _> = surface
+        .points
+        .iter()
+        .map(|point| (point.id.as_str(), point))
+        .collect();
+    for face in &surface.faces {
+        let vertices = [
+            points[face[0].as_str()],
+            points[face[1].as_str()],
+            points[face[2].as_str()],
+        ];
+        let signed_area = (vertices[1].northing - vertices[0].northing)
+            * (vertices[2].easting - vertices[0].easting)
+            - (vertices[1].easting - vertices[0].easting)
+                * (vertices[2].northing - vertices[0].northing);
+        assert!(
+            signed_area.abs() > 1e-12,
+            "near-collinear face remains non-degenerate"
+        );
+        // Barycentric interpolation over the known z = northing + 2·easting
+        // plane must reproduce the same height for every generated triangle.
+        let weights = [0.2, 0.3, 0.5];
+        let northing = weights
+            .iter()
+            .zip(vertices)
+            .map(|(weight, point)| weight * point.northing)
+            .sum::<f64>();
+        let easting = weights
+            .iter()
+            .zip(vertices)
+            .map(|(weight, point)| weight * point.easting)
+            .sum::<f64>();
+        let elevation = weights
+            .iter()
+            .zip(vertices)
+            .map(|(weight, point)| weight * point.elevation)
+            .sum::<f64>();
+        assert!((elevation - (northing + 2.0 * easting)).abs() < 1e-9);
+    }
     Ok(())
 }
 
@@ -192,32 +346,61 @@ fn issue_5043_refuses_collinear_elevation_conflicts_and_overlapping_breaklines(
 fn issue_5043_refuses_pinched_and_bow_tie_outer_rings() -> Result<(), Box<dyn std::error::Error>> {
     let pinched = r#"<Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 10 0 10 10 0 0 10 0 10 0 0</PntList3D></Boundary></Boundaries>"#;
     let parsed = parse(faceless_tin(pinched, "", "").as_bytes())?;
-    assert_eq!(parsed.surfaces[0].terrain_diagnostic.as_ref().map(|value| value.code), Some(LandXmlTerrainDiagnosticCode::DegenerateConstraints));
+    assert_eq!(
+        parsed.surfaces[0]
+            .terrain_diagnostic
+            .as_ref()
+            .map(|value| value.code),
+        Some(LandXmlTerrainDiagnosticCode::DegenerateConstraints)
+    );
     let bow_tie = r#"<Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 10 10 0 0 10 0 10 0 0</PntList3D></Boundary></Boundaries>"#;
     let parsed = parse(faceless_tin(bow_tie, "", "").as_bytes())?;
-    assert_eq!(parsed.surfaces[0].terrain_diagnostic.as_ref().map(|value| value.code), Some(LandXmlTerrainDiagnosticCode::IntersectingConstraints));
+    assert_eq!(
+        parsed.surfaces[0]
+            .terrain_diagnostic
+            .as_ref()
+            .map(|value| value.code),
+        Some(LandXmlTerrainDiagnosticCode::IntersectingConstraints)
+    );
     Ok(())
 }
 
 #[test]
-fn issue_5043_refuses_a_boundary_vertex_touching_a_nonadjacent_edge() -> Result<(), Box<dyn std::error::Error>> {
+fn issue_5043_refuses_a_boundary_vertex_touching_a_nonadjacent_edge(
+) -> Result<(), Box<dyn std::error::Error>> {
     let touching = r#"<Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 4 0 4 4 0 0 2 0 4 0 0</PntList3D></Boundary></Boundaries>"#;
     let parsed = parse(faceless_tin(touching, "", "").as_bytes())?;
     assert_eq!(
-        parsed.surfaces[0].terrain_diagnostic.as_ref().map(|value| value.code),
+        parsed.surfaces[0]
+            .terrain_diagnostic
+            .as_ref()
+            .map(|value| value.code),
         Some(LandXmlTerrainDiagnosticCode::DegenerateConstraints),
     );
     Ok(())
 }
 
 #[test]
-fn issue_5043_keeps_source_data_vertices_resolvable_by_generated_faces() -> Result<(), Box<dyn std::error::Error>> {
-    let source = format!(r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="grade"><Definition surfType="TIN"><Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></Boundary></Boundaries></Definition><SourceData><DataPoints><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></DataPoints></SourceData></Surface></Surfaces></LandXML>"#);
+fn issue_5043_keeps_source_data_vertices_resolvable_by_generated_faces(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="grade"><Definition surfType="TIN"><Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></Boundary></Boundaries></Definition><SourceData><DataPoints><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></DataPoints></SourceData></Surface></Surfaces></LandXML>"#
+    );
     let parsed = parse(source.as_bytes())?;
     let surface = &parsed.surfaces[0];
-    let ids: std::collections::HashSet<_> = surface.points.iter().map(|point| point.id.as_str()).collect();
-    assert!(surface.faces.iter().flatten().all(|id| ids.contains(id.as_str())));
-    assert!(surface.points.iter().any(|point| point.id.starts_with("terrain:landxml:surface:1:source-point:")));
+    let ids: std::collections::HashSet<_> = surface
+        .points
+        .iter()
+        .map(|point| point.id.as_str())
+        .collect();
+    assert!(surface
+        .faces
+        .iter()
+        .flatten()
+        .all(|id| ids.contains(id.as_str())));
+    assert!(surface.points.iter().any(|point| point
+        .id
+        .starts_with("terrain:landxml:surface:1:source-point:")));
     Ok(())
 }
 
@@ -296,10 +479,12 @@ fn issue_5043_rejects_unaffordable_split_elevation_work_before_the_quadratic_sca
         .map(|index| format!("<P id=\"{}\">{index} 0 0</P>", index + 1))
         .collect::<String>();
     let breaklines = (0..9_000)
-        .map(|index| format!(
+        .map(|index| {
+            format!(
             "<Breakline brkType=\"standard\"><PntList3D>{index} 0 0 {} 0 0</PntList3D></Breakline>",
             index + 1,
-        ))
+        )
+        })
         .collect::<String>();
     let source = format!(
         r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts>{points}</Pnts><Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></Boundary></Boundaries><Breaklines>{breaklines}</Breaklines></Definition></Surface></Surfaces></LandXML>"#,
@@ -313,6 +498,36 @@ fn issue_5043_rejects_unaffordable_split_elevation_work_before_the_quadratic_sca
         None,
     )
     .expect("preflight work refusal preserves the source document");
+    assert_eq!(
+        parsed.surfaces[0]
+            .terrain_diagnostic
+            .as_ref()
+            .map(|value| value.code),
+        Some(LandXmlTerrainDiagnosticCode::WorkLimitExceeded),
+    );
+}
+
+#[test]
+fn issue_5043_rejects_unaffordable_simple_ring_work_before_pairwise_topology_checks() {
+    // A malformed 601-vertex boundary needs ~180k edge-pair checks.  The
+    // parser must decline it from the topology preflight instead of entering
+    // an uninterruptible quadratic simple-ring validation pass.
+    let ring = (0..=600)
+        .map(|index| format!("{index} 0 0"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let boundary = format!(
+        "<Boundaries><Boundary bndType=\"outer\"><PntList3D>{ring}</PntList3D></Boundary></Boundaries>"
+    );
+    let parsed = parse_landxml_tin_with_cancel(
+        faceless_tin(&boundary, "", "").as_bytes(),
+        &LandXmlLimits {
+            max_work: 10_000,
+            ..LandXmlLimits::default()
+        },
+        None,
+    )
+    .expect("optional terrain refusal preserves the source record");
     assert_eq!(
         parsed.surfaces[0]
             .terrain_diagnostic

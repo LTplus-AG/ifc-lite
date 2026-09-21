@@ -74,10 +74,11 @@ export const TABLE_ROWS_DEFAULT = 50;
 export const TABLE_ROWS_MAX = 500;
 
 /**
- * Where a table block's rows come from (#5142). One kind today; the
- * discriminator is where a validation-results table (#5138) plugs in.
+ * Where a table block's rows come from: a copy of a list (#5142), or the
+ * store's live validation report (#5138) — the discriminator #5142 left
+ * room for.
  */
-export type TableSource = ListTableSource;
+export type TableSource = ListTableSource | ValidationTableSource;
 
 export interface ListTableSource {
   kind: 'list';
@@ -92,12 +93,49 @@ export interface ListTableSource {
   fromListId?: string;
 }
 
-/** A list printed as a table (#5142): head + rows, paginated with the head repeated. */
+/** Which rows a validation-results table prints (#5138). `'sets'` lists one row per `SetResult` (uniqueness/aggregate check) instead of per entity. */
+export type ValidationRowsMode = 'failed' | 'passed' | 'all' | 'sets';
+
+/** Every column a validation-results table can show; `resolve-validation-table.ts` picks values by these ids. */
+export type TableColumnId =
+  | 'rule' | 'result' | 'entityType' | 'name' | 'globalId' | 'model'
+  | 'actual' | 'expected' | 'reason' | 'set' | 'members';
+
+export const TABLE_COLUMN_IDS: readonly TableColumnId[] = [
+  'rule', 'result', 'entityType', 'name', 'globalId', 'model', 'actual', 'expected', 'reason', 'set', 'members',
+];
+
+/**
+ * A table block fed by the store's validation report (#5138), resolved at
+ * render/print time — never a snapshot copied into the document — so a
+ * document opened after re-validating shows THAT run's rows, and one whose
+ * report is stale or absent says so instead of printing yesterday's rows.
+ */
+export interface ValidationTableSource {
+  kind: 'validation';
+  /** Narrows to one specification/rule; every rule when absent. */
+  ruleId?: string;
+  rows: ValidationRowsMode;
+  columns: TableColumnId[];
+}
+
+/**
+ * A table printed from either source (#5142, #5138): head + rows, paginated
+ * with the head repeated. `TableBlock`'s own shape has not changed since
+ * `DOCUMENT_VERSION` 3 added it — `source` grew a second member of its
+ * existing union, the same kind of change `migrateDocumentSpec` already
+ * treats as a no-op (a block gains a variant, not a field), so adding
+ * `ValidationTableSource` here is NOT a version bump: an older-but-still-v3
+ * viewer that has never seen `source.kind: 'validation'` still validates
+ * every other block in the file correctly, and only refuses the one block
+ * it cannot print — the version number would not have told it anything a
+ * per-block structural check does not already say better.
+ */
 export interface TableBlock {
   kind: 'table';
   id: string;
   source: TableSource;
-  /** Printed above the table; empty → the list's name. */
+  /** Printed above the table; empty → the list's name (list source) or "Validation results" (validation source). */
   title?: string;
   caption?: string;
   /** Data rows printed before "… n more rows"; 1..TABLE_ROWS_MAX, default TABLE_ROWS_DEFAULT. */
@@ -216,12 +254,14 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
   return errors;
 }
 
-/** Structural check of a table block (#5142); the list engine validates the definition's meaning at run time. */
+const VALIDATION_ROWS_MODES = ['failed', 'passed', 'all', 'sets'];
+
+/** Structural check of a table block (#5142, #5138); the list engine / validation report reading validates the definition's meaning at run time. */
 function validateTableBlock(block: Record<string, unknown>, at: string, errors: DocumentValidationError[]): void {
   const source = block.source;
-  if (!isRecord(source) || source.kind !== 'list') {
-    errors.push({ path: `${at}.source`, message: 'expected source.kind list' });
-  } else {
+  if (!isRecord(source) || (source.kind !== 'list' && source.kind !== 'validation')) {
+    errors.push({ path: `${at}.source`, message: 'expected source.kind list | validation' });
+  } else if (source.kind === 'list') {
     const list = source.list;
     const columnsOk = isRecord(list) && Array.isArray(list.columns) && list.columns.every((c: unknown) => isRecord(c) && isString(c.id));
     if (!isRecord(list) || !isString(list.id) || list.id.length === 0 || !isString(list.name) || !Array.isArray(list.entityTypes) || !Array.isArray(list.conditions) || !columnsOk) {
@@ -230,6 +270,12 @@ function validateTableBlock(block: Record<string, unknown>, at: string, errors: 
       errors.push({ path: `${at}.source.list.expressIdsByModel`, message: 'not allowed in a document' });
     }
     if (source.fromListId !== undefined && !isString(source.fromListId)) errors.push({ path: `${at}.source.fromListId`, message: 'expected a string' });
+  } else {
+    if (source.ruleId !== undefined && !isString(source.ruleId)) errors.push({ path: `${at}.source.ruleId`, message: 'expected a string' });
+    if (!VALIDATION_ROWS_MODES.includes(source.rows as string)) errors.push({ path: `${at}.source.rows`, message: `expected ${VALIDATION_ROWS_MODES.join(' | ')}` });
+    if (!Array.isArray(source.columns) || source.columns.length === 0 || !source.columns.every((c: unknown) => TABLE_COLUMN_IDS.includes(c as TableColumnId))) {
+      errors.push({ path: `${at}.source.columns`, message: `expected a non-empty array of ${TABLE_COLUMN_IDS.join(' | ')}` });
+    }
   }
   if (block.title !== undefined && !isString(block.title)) errors.push({ path: `${at}.title`, message: 'expected a string' });
   if (block.caption !== undefined && !isString(block.caption)) errors.push({ path: `${at}.caption`, message: 'expected a string' });

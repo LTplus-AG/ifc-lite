@@ -4,7 +4,10 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { LandXmlSurfaceFragmentAssembler, type LandXmlSurfaceStreamFragment } from './landXmlStreamAssembler.js';
+import {
+  LandXmlStreamDocumentAssembler, LandXmlSurfaceFragmentAssembler,
+  type LandXmlSurfaceStreamFragment,
+} from './landXmlStreamAssembler.js';
 
 const encode = (value: unknown): number[] => Array.from(new TextEncoder().encode(JSON.stringify(value)));
 const fragment = (
@@ -45,5 +48,33 @@ describe('LandXML streamed surface assembly (#5050)', () => {
     assembler.abort();
     assert.equal(assembler.hasPendingSurface, false);
     assert.equal(assembler.pendingBytes, 0);
+  });
+
+  it('keeps streamed surfaces until the adapter-complete metadata End arrives', () => {
+    const assembler = new LandXmlStreamDocumentAssembler();
+    const start = {
+      kind: 'surface', source_id: 'surface-1', component: 'start', sequence: 0, continued: false,
+      payload_utf8: encode({ ordinal: 1, source_path: 'p', properties: {}, definition_properties: {}, name: 'grade', kind: 'tin', render_state: 'rendered', topology_origin: 'authored_faces', terrain_diagnostic: null, hidden_face_count: 0 }),
+    };
+    assembler.push(start);
+    const surface = assembler.push({ kind: 'surface', source_id: 'surface-1', component: 'end', sequence: 0, continued: false, payload_utf8: [] }).surface;
+    assert.equal(surface?.source_id, 'surface-1');
+    const terrain = {
+      format: 'landxml', schema: 'LandXML-1.2', capabilities: {}, version: '1.2', units: null, surfaces: [],
+      extensions: [], warnings: [], alignments: [], profiles: [], cross_sections: [], cross_section_surfaces: [], roadways: [], capability_diagnostics: [], preserved_only_extensions: [], pipe_networks: null,
+    };
+    const header = assembler.push({
+      kind: 'metadata', metadata_kind: 'header', stream: {}, terrain,
+      plan: {}, alignments: { alignments: [], warnings: [] }, pipe_networks: { collections: [], features: [], networks: [], refusals: [] },
+    });
+    assert.equal(header.document, null);
+    assembler.push({ kind: 'metadata', metadata_kind: 'record', record: 'terrain_warning', value: 'kept' });
+    const complete = assembler.push({
+      kind: 'metadata', metadata_kind: 'end',
+      metadata_adapter: { plan: { cogo_points: [] }, alignment_render_spans: [], alignment_render_refusals: [], alignment_render_truncated: false },
+    }).document;
+    assert.equal((complete?.tin.surfaces as unknown[]).length, 1);
+    assert.deepEqual(complete?.tin.warnings, ['kept']);
+    assert.deepEqual(complete?.tin.plan, { cogo_points: [] });
   });
 });

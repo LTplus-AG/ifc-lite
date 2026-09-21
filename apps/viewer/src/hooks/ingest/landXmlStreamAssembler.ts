@@ -201,3 +201,139 @@ export class LandXmlSurfaceFragmentAssembler {
     this.pending = null;
   }
 }
+
+function values(target: Record<string, unknown>, field: string): unknown[] {
+  const value = target[field];
+  if (!Array.isArray(value)) throw new Error(`LandXML metadata header has an invalid ${field} collection`);
+  return value;
+}
+
+function text(value: unknown, context: string): string {
+  if (typeof value !== 'string') throw new Error(`LandXML stream emitted an invalid ${context}`);
+  return value;
+}
+
+/** Complete raw source shape accepted by `readLandXmlSourceDocument`. */
+export interface LandXmlAssembledSourceDocument {
+  tin: Record<string, unknown>;
+  alignments: Record<string, unknown>;
+  alignment_render_spans: unknown;
+  alignment_render_refusals: unknown;
+  alignment_render_truncated: unknown;
+}
+
+/**
+ * Reassembles the renderer-independent stream wire without reparsing source
+ * bytes. Surfaces are yielded immediately and are also retained for the
+ * compatibility semantic document returned at metadata End.
+ */
+export class LandXmlStreamDocumentAssembler {
+  private readonly surface = new LandXmlSurfaceFragmentAssembler();
+  private readonly surfaces: LandXmlAssembledSurface[] = [];
+  private terrain: Record<string, unknown> | null = null;
+  private alignments: Record<string, unknown> | null = null;
+  private pipeNetworks: Record<string, unknown> | null = null;
+  private completed = false;
+
+  get pendingSurfaceBytes(): number { return this.surface.pendingBytes; }
+
+  push(event: unknown): { surface: LandXmlAssembledSurface | null; document: LandXmlAssembledSourceDocument | null } {
+    const envelope = object(event, 'stream event');
+    const kind = text(envelope.kind, 'stream event kind');
+    if (kind === 'header') return { surface: null, document: null };
+    if (kind === 'surface') {
+      if (this.completed) throw new Error('LandXML stream emitted a surface after metadata End');
+      const complete = this.surface.push({
+        source_id: text(envelope.source_id, 'surface source id'),
+        component: text(envelope.component, 'surface component') as LandXmlSurfaceStreamComponent,
+        sequence: typeof envelope.sequence === 'number' ? envelope.sequence : Number.NaN,
+        continued: envelope.continued === true,
+        payload_utf8: envelope.payload_utf8,
+      });
+      if (complete !== null) {
+        this.surfaces.push(complete);
+        const terrain = this.terrain;
+        if (terrain !== null) values(terrain, 'surfaces').push(complete);
+      }
+      return { surface: complete, document: null };
+    }
+    if (kind !== 'metadata') throw new Error('LandXML stream emitted an unknown event kind');
+    const metadataKind = text(envelope.metadata_kind, 'metadata event kind');
+    if (metadataKind === 'header') {
+      if (this.terrain !== null || this.completed) throw new Error('LandXML stream emitted multiple metadata headers');
+      this.terrain = { ...object(envelope.terrain, 'terrain metadata header') };
+      values(this.terrain, 'surfaces').push(...this.surfaces);
+      this.alignments = { ...object(envelope.alignments, 'alignment metadata header') };
+      this.pipeNetworks = { ...object(envelope.pipe_networks, 'pipe metadata header') };
+      return { surface: null, document: null };
+    }
+    if (metadataKind === 'record') {
+      this.pushMetadataRecord(text(envelope.record, 'metadata record kind'), envelope.value);
+      return { surface: null, document: null };
+    }
+    if (metadataKind !== 'end' || this.completed) throw new Error('LandXML stream emitted an invalid metadata End');
+    if (this.surface.hasPendingSurface) throw new Error('LandXML stream ended with an incomplete surface');
+    const terrain = this.terrain;
+    const alignments = this.alignments;
+    const pipeNetworks = this.pipeNetworks;
+    if (terrain === null || alignments === null || pipeNetworks === null) throw new Error('LandXML stream ended before its metadata header');
+    terrain.pipe_networks = pipeNetworks;
+    const adapter = object(envelope.metadata_adapter, 'metadata End adapter');
+    const document = {
+      tin: { ...terrain, plan: adapter.plan },
+      alignments,
+      alignment_render_spans: adapter.alignment_render_spans,
+      alignment_render_refusals: adapter.alignment_render_refusals,
+      alignment_render_truncated: adapter.alignment_render_truncated,
+    };
+    this.completed = true;
+    return { surface: null, document };
+  }
+
+  abort(): void {
+    this.surface.abort();
+    this.surfaces.length = 0;
+    this.terrain = null;
+    this.alignments = null;
+    this.pipeNetworks = null;
+    this.completed = true;
+  }
+
+  private pushMetadataRecord(kind: string, value: unknown): void {
+    const terrain = this.terrain;
+    const alignments = this.alignments;
+    const pipeNetworks = this.pipeNetworks;
+    if (terrain === null || alignments === null || pipeNetworks === null || this.completed) {
+      throw new Error('LandXML metadata record arrived outside a cursor session');
+    }
+    const terrainFields: Readonly<Record<string, string>> = {
+      terrain_extension: 'extensions', terrain_warning: 'warnings', terrain_alignment: 'alignments',
+      terrain_profile: 'profiles', terrain_cross_section: 'cross_sections',
+      terrain_cross_section_surface: 'cross_section_surfaces', terrain_roadway: 'roadways',
+      terrain_capability_diagnostic: 'capability_diagnostics', terrain_preserved_only_extension: 'preserved_only_extensions',
+    };
+    const pipeFields: Readonly<Record<string, string>> = {
+      pipe_collection: 'collections', pipe_feature: 'features', pipe_network: 'networks', pipe_refusal: 'refusals',
+    };
+    if (kind in terrainFields) {
+      values(terrain, terrainFields[kind]!).push(value);
+      return;
+    }
+    if (kind in pipeFields) {
+      values(pipeNetworks, pipeFields[kind]!).push(value);
+      return;
+    }
+    if (kind === 'horizontal_alignment') {
+      values(alignments, 'alignments').push(value);
+      return;
+    }
+    if (kind === 'horizontal_alignment_warning') {
+      values(alignments, 'warnings').push(value);
+      return;
+    }
+    // Plan records were folded into the bounded End adapter, where the
+    // canonical resolver and parcel probes run exactly once.
+    if (kind.startsWith('plan_')) return;
+    throw new Error(`LandXML stream emitted an unknown metadata record ${kind}`);
+  }
+}

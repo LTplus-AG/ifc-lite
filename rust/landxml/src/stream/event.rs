@@ -111,7 +111,7 @@ pub struct LandXmlMetadataStreamEnd {
 
 /// Resumable metadata events delivered through [`LandXmlStreamEvent::Metadata`].
 #[derive(Clone, Debug, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "metadata_kind", rename_all = "snake_case")]
 pub enum LandXmlMetadataStreamEvent {
     Header(LandXmlMetadataStreamHeader),
     Record(LandXmlMetadataRecord),

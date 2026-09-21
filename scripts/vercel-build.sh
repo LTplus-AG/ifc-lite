@@ -101,17 +101,24 @@ echo "   filter:    $FILTER"
 # when a CLI key is actually present, i.e. only when the maps will be uploaded
 # and then deleted. With no key, nothing changes from today's build at all.
 #
+# AND only on a machine that can afford them (#5132): generating the maps is
+# the bundler's largest native allocation, and on the basic 8 GB builder it is
+# what OOM-kills vite at "rendering chunks" even with the heap capped below.
+# scripts/lib/vercel-sourcemaps.sh holds the rule (keys present AND >= 12 GB
+# of RAM, or VERCEL_SOURCEMAPS=1/0 to force either way) so an Enhanced builder
+# gets symbolicated traces back without another code change.
+#
 # Required Vercel project env to enable:
 #   POSTHOG_CLI_API_KEY   personal API key (phx_...) with
 #                         `error tracking write` + `organization read` scopes
 #                         -> https://eu.posthog.com/settings/user-api-keys
 #   POSTHOG_CLI_ENV_ID    PostHog project id (199147)
 #   POSTHOG_CLI_HOST      https://eu.posthog.com   (EU cloud)
-if [ -n "${POSTHOG_CLI_API_KEY:-}" ] && [ -n "${POSTHOG_CLI_ENV_ID:-}" ]; then
-  export VITE_SOURCEMAP=1
-  echo "🗺️  Source maps ENABLED (POSTHOG_CLI_API_KEY + POSTHOG_CLI_ENV_ID present) — will upload then delete"
-else
-  echo "🗺️  Source maps disabled (need both POSTHOG_CLI_API_KEY and POSTHOG_CLI_ENV_ID) — traces stay minified"
+# shellcheck source=lib/vercel-sourcemaps.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/vercel-sourcemaps.sh"
+SOURCEMAPS_ON=0
+if configure_vercel_sourcemaps; then
+  SOURCEMAPS_ON=1
 fi
 
 # ── Node heap for the viewer bundle ─────────────────────────────────────────
@@ -133,7 +140,11 @@ fi
 # process turbo spawns (it is a limit, not a reservation), and is listed in
 # turbo.json `globalPassThroughEnv` so strict env mode forwards it without
 # touching task hashes. Set VERCEL_NODE_MAX_OLD_SPACE_MB in the project env to
-# override; an explicit --max-old-space-size already in NODE_OPTIONS wins.
+# override. A --max-old-space-size already in NODE_OPTIONS is kept only when
+# it fits that budget: Vercel's own build image exports
+# `--max_old_space_size=8192`, and deferring to it put an 8 GB heap ceiling in
+# an 8 GB container — V8 never throttled and the kernel OOM-killed vite at
+# "rendering chunks" (exit 137) on 51c36ecd9 / 707cc22a0 / 6c01865b8 (#5132).
 # shellcheck source=lib/vercel-node-heap.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/vercel-node-heap.sh"
 configure_vercel_node_heap
@@ -151,7 +162,7 @@ build_status=$?
 # ALWAYS sweep leftover maps out of the output afterwards — a failed upload must
 # not silently publish them.
 OUT_DIR="apps/viewer/dist"
-if [ $build_status -eq 0 ] && [ -n "${POSTHOG_CLI_API_KEY:-}" ] && [ -n "${POSTHOG_CLI_ENV_ID:-}" ] && [ -d "$OUT_DIR" ]; then
+if [ $build_status -eq 0 ] && [ "$SOURCEMAPS_ON" = 1 ] && [ -n "${POSTHOG_CLI_API_KEY:-}" ] && [ -n "${POSTHOG_CLI_ENV_ID:-}" ] && [ -d "$OUT_DIR" ]; then
   # This repo builds with rolldown-vite, which emits the .map files but NOT the
   # trailing `//# sourceMappingURL=` comment. posthog-cli documents that it
   # locates maps via that comment (see its --public-path-prefix flag: "we need

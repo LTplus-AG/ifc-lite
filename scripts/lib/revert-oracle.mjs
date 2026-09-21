@@ -46,9 +46,6 @@ export { cargoRunner } from './revert-oracle-cargo.mjs';
 
 /** Paths no test can observe: release/CI/docs, and Playwright e2e specs (`tests/e2e/**`, root `turbo test` has no runner; the viewer-e2e lanes own them -- see revert-oracle.test.mjs). */
 const IGNORED_PREFIXES = ['.changeset/', '.github/', 'docs/', '.vscode/', 'tests/e2e/'];
-// `playwright.config.ts` is read by `playwright test` alone -- the same runner
-// the oracle cannot drive for `tests/e2e/**` -- so a change to it is as
-// unobservable here as the specs it configures (#5147).
 const IGNORED_EXACT = new Set(['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'Cargo.lock', 'rust/python/Cargo.lock', 'CHANGELOG.md', 'playwright.config.ts']);
 const IGNORED_SUFFIXES = ['.md', '.mdx', '.txt', '.snap.orig'];
 

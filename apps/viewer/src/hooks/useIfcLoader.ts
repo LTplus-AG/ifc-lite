@@ -455,7 +455,7 @@ export function useIfcLoader() {
       const fileSize = file.size;
       const fileSizeMB = fileSize / (1024 * 1024);
       // LandXML finalizes before the full-buffer detector below.
-      let format: ReturnType<typeof detectFormat> | 'landxml' = isLandXmlFileName(file.name)
+      let format: ReturnType<typeof detectFormat> | NonNullable<ReturnType<typeof detectPointCloudFormat>> | 'landxml' = isLandXmlFileName(file.name)
         ? 'landxml'
         : 'unknown';
       let loadedBufferByteLength = fileSize;

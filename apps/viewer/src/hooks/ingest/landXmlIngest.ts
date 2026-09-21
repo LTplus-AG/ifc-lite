@@ -219,12 +219,14 @@ export function preflightLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeo
     throw new Error('LandXML has renderable TIN topology but no Units declaration');
   }
   let componentCount = 0;
-  let dominant: LandXmlGeometryComponent | null = null;
+  // Object indirection keeps the measurement callback's mutation visible to
+  // TypeScript's control-flow analysis after the surface loops complete.
+  const dominant: { value: LandXmlGeometryComponent | null } = { value: null };
   const sourceBounds = createEmptyBounds();
   const measure = (component: LandXmlGeometryComponent): void => {
     componentCount++;
     mergeLandXmlBounds(sourceBounds, component.bounds);
-    if (dominant === null || component.mesh.indices.length > dominant.mesh.indices.length) dominant = component;
+    if (dominant.value === null || component.mesh.indices.length > dominant.value.mesh.indices.length) dominant.value = component;
   };
   for (const surface of renderableSurfaces) {
     const built = buildLandXmlSurfaceComponents(surface, parsed.units!, componentCount + 1);
@@ -234,7 +236,7 @@ export function preflightLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeo
   for (const component of pipes.components) measure({
     ...component, surfaceName: component.name, surfaceSourceId: null, pipeSourceId: component.sourceId, renderedFaceSourceIds: [],
   });
-  return { componentCount, frame: dominant === null ? null : deriveLandXmlRenderFrameFromMeasurement(sourceBounds, dominant.bounds) };
+  return { componentCount, frame: dominant.value === null ? null : deriveLandXmlRenderFrameFromMeasurement(sourceBounds, dominant.value.bounds) };
 }
 
 /** Build one surface's exact render components without assigning global ids. */

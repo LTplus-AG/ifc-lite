@@ -146,6 +146,9 @@ export class LandXmlSurfaceFragmentAssembler {
     if (fragment.continued) return null;
     const value = payload(pending.chunks, pending.bytes);
     this.pending = null;
+    if (pending.component === 'end') {
+      throw new Error('LandXML stream emitted an End payload outside its terminal fragment');
+    }
     this.apply(pending.component, value);
     return null;
   }

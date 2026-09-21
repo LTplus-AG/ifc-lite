@@ -173,8 +173,11 @@ export function reframeLandXmlGeometry(geometry: GeometryResult, document: LandX
 export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<void> {
   options.setProgress({ phase: 'Parsing LandXML TIN surfaces', percent: 10 });
   options.setGeometryStreamingActive(false);
-  let provisional: LandXmlProvisionalTransaction | null = null;
-  let federatedPlan: FederatedLandXmlStreamingPlan | null = null;
+  // The callbacks run after this stack frame has yielded to the worker. Keep
+  // their mutable state in cells so both TypeScript and the error finalizer
+  // observe the same live transaction.
+  const provisional = { value: null as LandXmlProvisionalTransaction | null };
+  const federatedPlan = { value: null as FederatedLandXmlStreamingPlan | null };
   let streamedComponents = 0;
   try {
     const result = await parseLandXmlViewerModelFromBlobAsync(
@@ -189,40 +192,40 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
       },
       (preflight) => {
         if (!options.isCurrent()) throw new Error('LandXML parsing cancelled');
-        provisional = options.openProvisional?.(preflight) ?? null;
+        provisional.value = options.openProvisional?.(preflight) ?? null;
       },
       (mesh) => {
-        if (federatedPlan !== null) return federatedPlan.publish(mesh);
-        if (provisional === null) return;
-        provisional.publish(mesh);
+        if (federatedPlan.value !== null) return federatedPlan.value.publish(mesh);
+        if (provisional.value === null) return;
+        provisional.value.publish(mesh);
         streamedComponents++;
       },
       (preflight, sourceCoordinateInfo, spatialReference) => {
-        federatedPlan = options.openFederatedStreamingPlan?.(preflight, sourceCoordinateInfo, spatialReference) ?? null;
+        federatedPlan.value = options.openFederatedStreamingPlan?.(preflight, sourceCoordinateInfo, spatialReference) ?? null;
       },
-      (mesh) => federatedPlan?.measure(mesh),
-      () => federatedPlan?.freeze(),
+      (mesh) => federatedPlan.value?.measure(mesh),
+      () => federatedPlan.value?.freeze(),
     );
     // The browser worker is terminated within the cancellation polling bound;
     // this guard also prevents a racing stale reply from mutating model state.
     if (!options.isCurrent()) {
-      provisional?.rollback();
-      federatedPlan?.rollback();
+      provisional.value?.rollback();
+      federatedPlan.value?.rollback();
       return;
     }
-    if (provisional !== null) {
-      for (const mesh of result.geometryResult.meshes.slice(streamedComponents)) provisional.publish(mesh);
+    if (provisional.value !== null) {
+      for (const mesh of result.geometryResult.meshes.slice(streamedComponents)) provisional.value.publish(mesh);
       for (const mesh of result.geometryResult.meshes) {
-        mesh.expressId += provisional.idOffset;
+        mesh.expressId += provisional.value.idOffset;
         markLandXmlGpuUploaded(mesh);
       }
       for (const provenance of result.semanticDocument.rendering.meshProvenance) {
-        provenance.meshExpressId += provisional.idOffset;
+        provenance.meshExpressId += provisional.value.idOffset;
       }
-      provisional.commit();
+      provisional.value.commit();
     }
-    if (federatedPlan !== null) {
-      federatedPlan.complete(result.geometryResult);
+    if (federatedPlan.value !== null) {
+      federatedPlan.value.complete(result.geometryResult);
       retainFederatedStreamedProvenance(result.semanticDocument, result.geometryResult.meshes);
       for (const mesh of result.geometryResult.meshes) markLandXmlGpuUploaded(mesh);
     }
@@ -235,7 +238,7 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
       // first clips a correctly georeferenced Swiss TIN against an unrelated
       // local IFC render frame before it can be brought into that frame.
       ...(options.targetKind === 'federated' ? { postAlignmentReframe: true } : {}),
-      ...(federatedPlan ? { federatedLandXmlStreamingPlan: federatedPlan } : {}),
+      ...(federatedPlan.value ? { federatedLandXmlStreamingPlan: federatedPlan.value } : {}),
       ...(result.spatialReference ? { spatialReference: result.spatialReference } : {}),
     });
     if (!options.isCurrent()) return;
@@ -251,8 +254,8 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
     }, snapshotFromGeometry(options.fileSizeMB, result.geometryResult));
     options.setLoading(false);
   } catch (error) {
-    provisional?.rollback();
-    federatedPlan?.rollback();
+    provisional.value?.rollback();
+    federatedPlan.value?.rollback();
     if (!options.isCurrent()) return;
     console.error('[useIfc] LandXML parsing failed:', error);
     const message = error instanceof Error ? error.message : String(error);

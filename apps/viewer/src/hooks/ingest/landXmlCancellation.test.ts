@@ -47,12 +47,12 @@ it('terminates LandXML worker parsing within the cancellation polling bound (#50
 
 it('holds the second cursor pass until main has acknowledged preflight (#5050)', async () => {
   const originalWorker = globalThis.Worker;
-  let worker: PreflightWorker | null = null;
+  const workers: PreflightWorker[] = [];
   class PreflightWorker {
     onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
     onerror: ((event: ErrorEvent) => void) | null = null;
     readonly posted: unknown[] = [];
-    constructor() { worker = this; }
+    constructor() { workers.push(this); }
     postMessage(message: unknown): void {
       this.posted.push(message);
       if (this.posted.length === 1) queueMicrotask(() => this.onmessage?.({ data: {
@@ -73,13 +73,13 @@ it('holds the second cursor pass until main has acknowledged preflight (#5050)',
     await Promise.resolve();
     await Promise.resolve();
     await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
-    assert.equal(worker?.posted.length, 1, 'worker must not begin pass two before reservation approval');
+    assert.equal(workers[0]?.posted.length, 1, 'worker must not begin pass two before reservation approval');
     approve?.();
     await Promise.resolve();
     await Promise.resolve();
     await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
-    assert.deepEqual(worker?.posted[1], { type: 'preflight-approved' });
-    worker?.onmessage?.({ data: { ok: false, error: 'stop after handshake' } } as MessageEvent<unknown>);
+    assert.deepEqual(workers[0]?.posted[1], { type: 'preflight-approved' });
+    workers[0]?.onmessage?.({ data: { ok: false, error: 'stop after handshake' } } as MessageEvent<unknown>);
     await assert.rejects(pending, /stop after handshake/);
   } finally {
     Object.defineProperty(globalThis, 'Worker', { configurable: true, value: originalWorker });
@@ -115,7 +115,7 @@ it('rejects and terminates when a synchronous preflight callback fails (#5050)',
 
 it('acknowledges each federated preflight and raw component before the next worker phase (#5050)', async () => {
   const originalWorker = globalThis.Worker;
-  let worker: FederatedWorker | null = null;
+  const workers: FederatedWorker[] = [];
   const component = {
     expressId: 1, positions: new Float32Array([0, 0, 0]), normals: new Float32Array([0, 1, 0]),
     indices: new Uint32Array([0, 0, 0]), color: [0.42, 0.62, 0.32, 1], origin: [0, 0, 0],
@@ -124,7 +124,7 @@ it('acknowledges each federated preflight and raw component before the next work
     onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
     onerror: ((event: ErrorEvent) => void) | null = null;
     readonly posted: unknown[] = [];
-    constructor() { worker = this; }
+    constructor() { workers.push(this); }
     postMessage(message: unknown): void {
       this.posted.push(message);
       const reply = (data: unknown) => queueMicrotask(() => this.onmessage?.({ data } as MessageEvent<unknown>));
@@ -156,8 +156,8 @@ it('acknowledges each federated preflight and raw component before the next work
     );
     await assert.rejects(pending, /stop after federated acknowledgements/);
     assert.deepEqual(phases, ['preflight', 'measure', 'freeze', 'raw']);
-    assert.deepEqual((worker?.posted[0] as { streamFederatedPreflight?: boolean }).streamFederatedPreflight, true);
-    assert.deepEqual(worker?.posted.slice(1), [
+    assert.deepEqual((workers[0]?.posted[0] as { streamFederatedPreflight?: boolean }).streamFederatedPreflight, true);
+    assert.deepEqual(workers[0]?.posted.slice(1), [
       { type: 'preflight-approved' }, { type: 'component-uploaded' },
       { type: 'preflight-approved' }, { type: 'component-uploaded' },
     ]);

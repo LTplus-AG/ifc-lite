@@ -86,7 +86,6 @@ export function parseLandXmlViewerModelAsync(
       | { progress: { loadedBytes: number; totalBytes: number } }
     >) => {
       if ('progress' in event.data) {
-        onProgress?.(event.data.progress.loadedBytes, event.data.progress.totalBytes);
         return;
       }
       if (!finish()) return;
@@ -169,17 +168,18 @@ export function parseLandXmlViewerModelFromBlobAsync(
         return;
       }
       if ('preflight' in event.data) {
+        const { preflight, sourceCoordinateInfo, spatialReference } = event.data;
         const federatedPreflight = (): void | Promise<void> => {
           if (onFederatedPreflight === undefined) return;
-          if (event.data.sourceCoordinateInfo === undefined) {
+          if (sourceCoordinateInfo === undefined) {
             throw new Error('LandXML worker omitted federation source coordinates');
           }
-          return onFederatedPreflight(event.data.preflight, event.data.sourceCoordinateInfo, event.data.spatialReference);
+          return onFederatedPreflight(preflight, sourceCoordinateInfo, spatialReference);
         };
         // `Promise.resolve(cb())` evaluates `cb` first, so use the guarded
         // helper to turn a synchronous renderer/reservation failure into the
         // same rejection path as an asynchronous callback failure.
-        invokeCallback(() => onPreflight?.(event.data.preflight)).then(() => invokeCallback(federatedPreflight)).then(() => {
+        invokeCallback(() => onPreflight?.(preflight)).then(() => invokeCallback(federatedPreflight)).then(() => {
           if (!finished) worker.postMessage({ type: 'preflight-approved' });
         }).catch((error: unknown) => {
           if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
@@ -187,7 +187,8 @@ export function parseLandXmlViewerModelFromBlobAsync(
         return;
       }
       if ('preflightComponent' in event.data) {
-        invokeCallback(() => onPreflightComponent?.(event.data.preflightComponent)).then(() => {
+        const { preflightComponent } = event.data;
+        invokeCallback(() => onPreflightComponent?.(preflightComponent)).then(() => {
           if (!finished) worker.postMessage({ type: 'component-uploaded' });
         }).catch((error: unknown) => {
           if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
@@ -203,7 +204,8 @@ export function parseLandXmlViewerModelFromBlobAsync(
         return;
       }
       if ('component' in event.data) {
-        invokeCallback(() => onComponent?.(event.data.component)).then(() => {
+        const { component } = event.data;
+        invokeCallback(() => onComponent?.(component)).then(() => {
           if (!finished) worker.postMessage({ type: 'component-uploaded' });
         }).catch((error: unknown) => {
           if (finish()) reject(error instanceof Error ? error : new Error(String(error)));

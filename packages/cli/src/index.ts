@@ -51,11 +51,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readCliVersion } from './version.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
 // package.json sits one level above both `src/` and `dist/`.
-const VERSION = readCliVersion(join(__dirname, '..', 'package.json'));
+const VERSION = readCliVersion(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'));
 
 const HELP = `
   ifc-lite v${VERSION} — BIM toolkit for the terminal

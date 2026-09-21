@@ -353,6 +353,7 @@ describe('model rotation reaches the geometry every render path reads (#4869)', 
       const state = useViewerStore.getState();
       await withModelRotationsUnbaked(() => realignFederationModels({
         models: [...state.models] as Array<[string, FederatedModel]>, anchorModelId: 'ifc',
+        anchorModel: state.models.get('ifc') as FederatedModel,
         anchorGeoref: {
           spatialReference: {
             source: { axes: ['east', 'up', 'south'], horizontalUnitToMetres: 1, verticalUnitToMetres: 1 },

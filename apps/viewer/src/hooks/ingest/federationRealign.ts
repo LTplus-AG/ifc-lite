@@ -75,6 +75,11 @@ export interface RealignFederationParams<M extends RealignableModel> {
   getModel?: (modelId: string) => M | undefined;
   anchorModelId: string;
   /**
+   * The anchor record selected when this request was queued. A queued pass
+   * must never adopt a replacement record for the same ID as its destination.
+   */
+  anchorModel: M;
+  /**
    * The anchor's georeference as the caller resolved it. Its `coordinateInfo`
    * is re-pointed at the anchor's restored frame before anything is aligned —
    * see {@link RealignFederationResult.anchorGeoref}.
@@ -234,35 +239,37 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
   try {
     // The anchor FIRST, and restored rather than skipped (#2007).
     const anchorModel = models.find(([modelId]) => modelId === anchorModelId)?.[1];
+    // `models` is intentionally read only after this pass owns the queue, so
+    // a queued request sees prior passes' snapshots. Its anchor is different:
+    // it was selected before queuing, and may since have been removed or
+    // replaced. Never fall back to that request's old placement and mutate a
+    // new federation against it (#5048).
+    if (!anchorModel || anchorModel !== params.anchorModel) return stale();
     const anchorGeometry = anchorModel?.geometryResult;
-    if (anchorModel) {
-      if (!transactionIsLive() || !isLive(anchorModelId)) return stale();
-      if (anchorGeometry) {
-        const snapshot = anchorModel.preAlignment;
-        if (snapshot) {
-          restorePreAlignment(anchorGeometry, snapshot);
-          movedModelIds.push(anchorModelId);
-        }
+    if (!transactionIsLive() || !isLive(anchorModelId)) return stale();
+    if (anchorGeometry) {
+      const snapshot = anchorModel.preAlignment;
+      if (snapshot) {
+        restorePreAlignment(anchorGeometry, snapshot);
+        movedModelIds.push(anchorModelId);
       }
-      // Snapshots CLEARED, not kept: a restored anchor is its own pre-alignment
-      // state, so a surviving snapshot is a second, stale copy of it — which is
-      // how every previous defect in this path started. Clearing also restores
-      // the invariant the loader documents ("undefined for the anchor itself")
-      // and drops the geometry-sized copies.
-      if (!commit(anchorModelId, {
-        preAlignment: undefined,
-        federationAlignmentStatus: 'anchor',
-      })) return stale();
-      if (anchorModel.landXmlDocument) landXmlUpdates.push(clearLandXmlRenderedLineUpdates(anchorModel.landXmlDocument));
     }
+    // Snapshots CLEARED, not kept: a restored anchor is its own pre-alignment
+    // state, so a surviving snapshot is a second, stale copy of it — which is
+    // how every previous defect in this path started. Clearing also restores
+    // the invariant the loader documents ("undefined for the anchor itself")
+    // and drops the geometry-sized copies.
+    if (!commit(anchorModelId, {
+      preAlignment: undefined,
+      federationAlignmentStatus: 'anchor',
+    })) return stale();
+    if (anchorModel.landXmlDocument) landXmlUpdates.push(clearLandXmlRenderedLineUpdates(anchorModel.landXmlDocument));
 
     // Re-extract AFTER restoring the anchor. This is not equivalent to replacing
     // just `coordinateInfo`: the IFC adapter's map-absolute guard derives its
     // local operation from that frame, so keeping the operation captured before
     // restore can align A→B→A through B's neutralised conversion.
-    const rawAnchorGeoref = anchorModel
-      ? resolveGeoref(anchorModelId, anchorModel)
-      : params.anchorGeoref;
+    const rawAnchorGeoref = resolveGeoref(anchorModelId, anchorModel);
     if (!rawAnchorGeoref) {
       throw new Error('Cannot re-align federation: the restored anchor no longer has a valid spatial reference');
     }

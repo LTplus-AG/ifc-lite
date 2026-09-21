@@ -145,6 +145,7 @@ async function realign(models: Map<string, TestModel>, anchorModelId: string) {
   return realignFederationModels<TestModel>({
     models: Array.from(models.entries()),
     anchorModelId,
+    anchorModel: anchor,
     // Resolved BEFORE the call, exactly as `findReferenceGeorefModel` does it —
     // so this georef carries the anchor's frame as it stands pre-restore.
     anchorGeoref: resolveGeoref(anchorModelId, anchor),
@@ -468,6 +469,7 @@ describe('realignFederationModels — switching the anchor back restores it (#20
     const result = await realignFederationModels<TestModel>({
       models: Array.from(models.entries()),
       anchorModelId: 'X',
+      anchorModel: anchor,
       anchorGeoref: resolveGeoref('X', anchor),
       resolveGeoref: (modelId, m) => (modelId === 'A' ? null : resolveGeoref(modelId, m)),
       updateModel: applyPatch(models),
@@ -571,6 +573,7 @@ describe('realignFederationModels — switching the anchor back restores it (#20
     const result = await realignFederationModels<TestModel>({
       models: Array.from(models.entries()),
       anchorModelId: 'X',
+      anchorModel: anchor,
       anchorGeoref: resolveGeoref('X', anchor),
       resolveGeoref,
       updateModel: applyPatch(models),
@@ -595,12 +598,12 @@ describe('realignFederationModels — switching the anchor back restores it (#20
         : resolved;
     };
     const older = realignFederationModels<TestModel>({
-      models: Array.from(models.entries()), anchorModelId: 'B', anchorGeoref: resolveGeoref('B', b),
+      models: Array.from(models.entries()), anchorModelId: 'B', anchorModel: b, anchorGeoref: resolveGeoref('B', b),
       resolveGeoref: oldResolve, updateModel: applyPatch(models), isCurrent: () => oldCurrent,
     });
     oldCurrent = false;
     const newer = realignFederationModels<TestModel>({
-      models: Array.from(models.entries()), anchorModelId: 'X', anchorGeoref: resolveGeoref('X', x),
+      models: Array.from(models.entries()), anchorModelId: 'X', anchorModel: x, anchorGeoref: resolveGeoref('X', x),
       resolveGeoref, updateModel: applyPatch(models),
     });
     const [stale, latest] = await Promise.all([older, newer]);
@@ -627,6 +630,7 @@ describe('realignFederationModels — switching the anchor back restores it (#20
       models: () => Array.from(models.entries()) as Array<[string, TestModel]>,
       getModel: (modelId: string) => models.get(modelId),
       anchorModelId: 'X',
+      anchorModel: models.get('X')!,
       anchorGeoref: resolveGeoref('X', models.get('X')!),
       resolveGeoref,
       updateModel: updateImmutable,
@@ -638,6 +642,37 @@ describe('realignFederationModels — switching the anchor back restores it (#20
     ]);
     assert.equal(worldPositionsOf(models.get('B')!.geometryResult!.meshes[0])[0], 101,
       'the queued same-CRS pass must restore B\'s live snapshot, never capture the first baked x=101 as baseline');
+  });
+
+  it('does not adopt an anchor replaced before its queued transaction owns the federation (#5048)', async () => {
+    const x = model([boxMesh(83, [1, 0, 0])], coordinateInfo(), georef({ eastings: 100 }));
+    const b = model([boxMesh(84, [2, 0, 0])], coordinateInfo(), georef({ eastings: 200 }));
+    const models = new Map<string, TestModel>([['X', x], ['B', b]]);
+    const replacement = model([boxMesh(85, [9100, 0, 0])], coordinateInfo(), georef({ eastings: 9100 }));
+    const beforeReplacement = new Float32Array(replacement.geometryResult!.meshes[0].positions);
+
+    // The first request occupies the serial queue but aborts at entry. The
+    // X request is therefore queued while X is still the selected record,
+    // then X is replaced before that request gets ownership.
+    const blocker = realignFederationModels<TestModel>({
+      models: () => Array.from(models.entries()) as Array<[string, TestModel]>,
+      getModel: (modelId) => models.get(modelId),
+      anchorModelId: 'B', anchorModel: b, anchorGeoref: resolveGeoref('B', b),
+      resolveGeoref, updateModel: applyPatch(models), isCurrent: () => false,
+    });
+    const queued = realignFederationModels<TestModel>({
+      models: () => Array.from(models.entries()) as Array<[string, TestModel]>,
+      getModel: (modelId) => models.get(modelId),
+      anchorModelId: 'X', anchorModel: models.get('X')!, anchorGeoref: resolveGeoref('X', models.get('X')!),
+      resolveGeoref, updateModel: applyPatch(models),
+    });
+    models.set('X', replacement);
+
+    const [, result] = await Promise.all([blocker, queued]);
+    assert.equal(result.stale, true, 'a queued pass cannot use a replacement anchor record');
+    assert.equal(replacement.federationAlignmentStatus, 'none', 'the replacement must not receive an anchor patch');
+    assertBytesEqual(replacement.geometryResult!.meshes[0].positions, beforeReplacement,
+      'the replacement geometry must remain untouched before the stale fence');
   });
 
   it('does not roll back over a replacement model that arrives during a CRS await (#5048)', async () => {
@@ -664,7 +699,7 @@ describe('realignFederationModels — switching the anchor back restores it (#20
     const result = await realignFederationModels<TestModel>({
       models: () => Array.from(models.entries()) as Array<[string, TestModel]>,
       getModel: (modelId) => models.get(modelId),
-      anchorModelId: 'X', anchorGeoref: resolveGeoref('X', x),
+      anchorModelId: 'X', anchorModel: x, anchorGeoref: resolveGeoref('X', x),
       resolveGeoref: resolveWithReplacement, updateModel: updateImmutable,
     });
 
@@ -701,7 +736,7 @@ describe('realignFederationModels — switching the anchor back restores it (#20
     const stale = await realignFederationModels<TestModel>({
       models: () => Array.from(models.entries()) as Array<[string, TestModel]>,
       getModel: (modelId) => models.get(modelId),
-      anchorModelId: 'X', anchorGeoref: resolveGeoref('X', x),
+      anchorModelId: 'X', anchorModel: x, anchorGeoref: resolveGeoref('X', x),
       resolveGeoref: resolveWithRename, updateModel: updateImmutable,
     });
 
@@ -715,7 +750,7 @@ describe('realignFederationModels — switching the anchor back restores it (#20
     const fresh = await realignFederationModels<TestModel>({
       models: () => Array.from(models.entries()) as Array<[string, TestModel]>,
       getModel: (modelId) => models.get(modelId),
-      anchorModelId: 'X', anchorGeoref: resolveGeoref('X', x),
+      anchorModelId: 'X', anchorModel: models.get('X')!, anchorGeoref: resolveGeoref('X', models.get('X')!),
       resolveGeoref, updateModel: updateImmutable,
     });
     assert.equal(fresh.stale, false);
@@ -746,7 +781,7 @@ describe('realignFederationModels — switching the anchor back restores it (#20
     const result = await realignFederationModels<TestModel>({
       models: () => Array.from(models.entries()) as Array<[string, TestModel]>,
       getModel: (modelId) => models.get(modelId),
-      anchorModelId: 'X', anchorGeoref: resolveGeoref('X', x),
+      anchorModelId: 'X', anchorModel: x, anchorGeoref: resolveGeoref('X', x),
       resolveGeoref: resolveWithAnchorReplacement, updateModel: updateImmutable,
     });
 
@@ -778,7 +813,7 @@ describe('realignFederationModels — switching the anchor back restores it (#20
     const result = await realignFederationModels<TestModel>({
       models: () => Array.from(models.entries()) as Array<[string, TestModel]>,
       getModel: (modelId) => models.get(modelId),
-      anchorModelId: 'X', anchorGeoref: resolveGeoref('X', x),
+      anchorModelId: 'X', anchorModel: x, anchorGeoref: resolveGeoref('X', x),
       resolveGeoref: resolveWithAnchorRemoval, updateModel: updateImmutable,
     });
 

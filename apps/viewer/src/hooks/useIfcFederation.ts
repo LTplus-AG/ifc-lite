@@ -236,6 +236,7 @@ export function useIfcFederation(
       models: () => Array.from(useViewerStore.getState().models.entries()) as Array<[string, FederatedModel]>,
       getModel: (modelId) => useViewerStore.getState().models.get(modelId),
       anchorModelId: referenceSelection.modelId,
+      anchorModel: state.models.get(referenceSelection.modelId),
       anchorGeoref: referenceSelection.placement,
       resolveGeoref: (modelId, model) => (
         model.geometryResult && model.spatialReference

@@ -62,7 +62,14 @@ export async function finalizeFederatedSpatialPlacement(options: {
     const status = await alignGeometryToReference(options.geometry, parsed, reference);
     if (!options.isCurrent()) return null;
     federationAlignmentStatus = status;
-    if (options.landXmlDocument && (status === 'same-crs' || status === 'reprojected')) {
+    // An identity spatial transform leaves vertices untouched, but the model
+    // has nevertheless entered the reference frame. Commit that frame before
+    // the LandXML render-frame pass below: reframing from the old source RTC
+    // would translate an already destination-relative mesh a second time.
+    if (status === 'identity' && reference.coordinateInfo) {
+      options.geometry.coordinateInfo = structuredClone(reference.coordinateInfo);
+    }
+    if (options.landXmlDocument && (status === 'same-crs' || status === 'reprojected' || status === 'identity')) {
       const renderedLines = await buildLandXmlRenderedLineUpdates(
         options.landXmlDocument,
         parsed.spatialReference, reference.spatialReference, reference.coordinateInfo,

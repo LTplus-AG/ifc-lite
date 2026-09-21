@@ -392,6 +392,23 @@ describe('ModelTranslations yaw (#4890)', () => {
     return [0, 1, 2].map((i) => local[0] * c0[i] + local[1] * c1[i] + local[2] * c2[i] + t[i]) as [number, number, number];
   }
 
+  it('keeps canonical f64 instance anchors through a centimetre model move at 5,000 km (#5049)', () => {
+    const translations = new ModelTranslations(), data = new ArrayBuffer(120), view = new DataView(data);
+    writeRecord(view, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [5_000_000, 0, 0]);
+    const anchors = new Float64Array([5_000_000.015625, 0, 0]);
+    const matrixTranslations = new Float32Array([5_000_000, 0, 0]);
+    translations.placeInstances(data, 7, 120, anchors, matrixTranslations);
+
+    translations.set(7, [0.01, 0, 0]);
+    translations.placeInstances(data, 7, 120, anchors, matrixTranslations);
+    assert.equal(anchors[0], 5_000_000.025625, 'f64 residual survives the model translation');
+    assert.equal(matrixTranslations[0], view.getFloat32(48, true), 'materialization baseline follows the V1 matrix write');
+
+    translations.set(7, [0, 0, 0]);
+    translations.placeInstances(data, 7, 120, anchors, matrixTranslations);
+    assert.equal(anchors[0], 5_000_000.015625, 'undo returns to the exact source anchor');
+  });
+
   it('maps a template corner to the point the yaw formula predicts (37.4deg, off-origin pivot, then translate)', () => {
     const translations = new ModelTranslations(), data = new ArrayBuffer(STRIDE), view = new DataView(data);
     writeRecord(view, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [4, 2, -3]);

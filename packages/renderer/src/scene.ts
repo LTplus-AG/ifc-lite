@@ -3169,7 +3169,13 @@ export class Scene {
 
       // instanceBuffer is already the interleaved mat4 + entityId + rgba block
       // (INSTANCE_STRIDE_BYTES per occurrence) from prepareInstancedRender.
-      this.modelTranslations.placeInstances(t.instanceBuffer, modelIndex, INSTANCE_STRIDE_BYTES);
+      this.modelTranslations.placeInstances(
+        t.instanceBuffer,
+        modelIndex,
+        INSTANCE_STRIDE_BYTES,
+        t.canonicalAnchors,
+        t.canonicalMatrixTranslations,
+      );
       const instSize = t.instanceCount * INSTANCE_STRIDE_BYTES;
       const instanceBuffer = device.createBuffer({
         size: instSize,

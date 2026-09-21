@@ -200,6 +200,17 @@ fn issue_5043_refuses_pinched_and_bow_tie_outer_rings() -> Result<(), Box<dyn st
 }
 
 #[test]
+fn issue_5043_refuses_a_boundary_vertex_touching_a_nonadjacent_edge() -> Result<(), Box<dyn std::error::Error>> {
+    let touching = r#"<Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 4 0 4 4 0 0 2 0 4 0 0</PntList3D></Boundary></Boundaries>"#;
+    let parsed = parse(faceless_tin(touching, "", "").as_bytes())?;
+    assert_eq!(
+        parsed.surfaces[0].terrain_diagnostic.as_ref().map(|value| value.code),
+        Some(LandXmlTerrainDiagnosticCode::DegenerateConstraints),
+    );
+    Ok(())
+}
+
+#[test]
 fn issue_5043_keeps_source_data_vertices_resolvable_by_generated_faces() -> Result<(), Box<dyn std::error::Error>> {
     let source = format!(r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="grade"><Definition surfType="TIN"><Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></Boundary></Boundaries></Definition><SourceData><DataPoints><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></DataPoints></SourceData></Surface></Surfaces></LandXML>"#);
     let parsed = parse(source.as_bytes())?;

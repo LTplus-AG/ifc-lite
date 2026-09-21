@@ -10,6 +10,7 @@
 //! the IFC kernel to LandXML (or another source format).
 
 use crate::Point2;
+use rustc_hash::FxHashSet;
 
 /// Failure to build a constrained terrain mesh.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -62,9 +63,11 @@ pub fn triangulate_terrain_pslg_with_progress(
     {
         return Err(TerrainCdtError::InvalidInput);
     }
-    for (index, point) in points.iter().enumerate() {
+    let mut seen = FxHashSet::default();
+    for point in points {
         progress()?;
-        if points[..index].contains(point) {
+        let key = (if point[0] == 0.0 { 0 } else { point[0].to_bits() }, if point[1] == 0.0 { 0 } else { point[1].to_bits() });
+        if !seen.insert(key) {
             return Err(TerrainCdtError::InvalidInput);
         }
     }
@@ -73,17 +76,20 @@ pub fn triangulate_terrain_pslg_with_progress(
     // into a harmless-looking deduplicated edge set.
     validate_original_segments(points, segments, progress)?;
     let segments = split_segments_at_vertices(points, segments, progress)?;
-    let source: Vec<Point2<f64>> = points
-        .iter()
-        .map(|point| Point2::new(point[0], point[1]))
-        .collect();
+    let mut source = Vec::with_capacity(points.len());
+    for point in points {
+        progress()?;
+        source.push(Point2::new(point[0], point[1]));
+    }
     let Some((output, indices)) = crate::cdt::triangulate_pslg_with_progress(&source, &segments, progress)? else {
         return Err(TerrainCdtError::ConstraintsUnrecoverable);
     };
-    Ok(TerrainCdtMesh {
-        points: output.into_iter().map(|point| [point.x, point.y]).collect(),
-        indices,
-    })
+    let mut output_points = Vec::with_capacity(output.len());
+    for point in output {
+        progress()?;
+        output_points.push([point.x, point.y]);
+    }
+    Ok(TerrainCdtMesh { points: output_points, indices })
 }
 
 fn validate_original_segments(

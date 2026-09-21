@@ -70,6 +70,34 @@ describe('@ifc-lite/wasm constrained LandXML terrain (#5043)', () => {
     }
   });
 
+  it('refuses a boundary vertex touching a nonadjacent boundary edge through the real binding', async (t) => {
+    if (!existsSync(wasmPath) || !existsSync(wasmJsPath)) { t.skip('wasm bundle not built — run `bash scripts/build-wasm.sh` first'); return; }
+    const { initSync, IfcAPI } = await import(wasmJsPath);
+    initSync(readFileSync(wasmPath));
+    const api = new IfcAPI();
+    try {
+      const original = '<Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></Boundary></Boundaries>';
+      const touching = '<Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 4 0 4 4 0 0 2 0 4 0 0</PntList3D></Boundary></Boundaries>';
+      const surface = api.parseLandXmlTinBytes(bytes.encode(document().replace(original, touching))).surfaces[0];
+      assert.equal(surface.terrain_diagnostic?.code, 'degenerate_constraints');
+      assert.equal(surface.topology_origin, 'preserved_only');
+    } finally { api.free?.(); }
+  });
+
+  it('keeps legal boundary breakline junctions and near-collinear elevations renderable', async (t) => {
+    if (!existsSync(wasmPath) || !existsSync(wasmJsPath)) { t.skip('wasm bundle not built — run `bash scripts/build-wasm.sh` first'); return; }
+    const { initSync, IfcAPI } = await import(wasmJsPath);
+    initSync(readFileSync(wasmPath));
+    const api = new IfcAPI();
+    try {
+      const junction = '<Breaklines><Breakline brkType="standard"><PntList3D>0 5 0 5 5.000000000001 2</PntList3D></Breakline></Breaklines>';
+      const surface = api.parseLandXmlTinBytes(bytes.encode(document(junction))).surfaces[0];
+      assert.equal(surface.topology_origin, 'constrained_triangulation');
+      assert.ok(surface.faces.length >= 2);
+      assert.equal(surface.points.find((point) => point.northing === 5 && point.easting === 5.000000000001)?.elevation, 2);
+    } finally { api.free?.(); }
+  });
+
   it('keeps SourceData-generated face references resolvable through the real binding', async (t) => {
     if (!existsSync(wasmPath) || !existsSync(wasmJsPath)) { t.skip('wasm bundle not built — run `bash scripts/build-wasm.sh` first'); return; }
     const { initSync, IfcAPI } = await import(wasmJsPath);

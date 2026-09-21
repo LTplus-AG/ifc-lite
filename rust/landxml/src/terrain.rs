@@ -2,28 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+#[path = "terrain_topology.rs"]
+mod terrain_topology;
+
+use self::terrain_topology::{add_vertex, canonical_vertices, line_vertices, point_in_ring, ring_edges, terrain_work_fits, CandidateVertex};
 use crate::terrain_validation::{validate_split_elevations, SplitElevationValidationError};
 use crate::{
-    xml::error, LandXmlCancellation, LandXmlCanonicalVertex, LandXmlDiagnosticCode as Code,
-    LandXmlError, LandXmlLimits, LandXmlPoint, LandXmlPolyline, LandXmlSourceId,
+    xml::error, LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlError, LandXmlLimits,
     LandXmlSurfaceKind, LandXmlTerrainDiagnostic, LandXmlTerrainDiagnosticCode as TerrainCode,
 };
 use ifc_lite_geometry::{triangulate_terrain_pslg_with_progress, TerrainCdtError};
-use std::collections::{BTreeMap, BTreeSet};
-struct Vertex {
-    id: String,
-    northing: f64,
-    easting: f64,
-    elevation: f64,
-    contributors: Vec<LandXmlSourceId>,
-}
-struct CandidateVertex {
-    northing: f64,
-    easting: f64,
-    elevation: f64,
-    id: String,
-    source_id: LandXmlSourceId,
-}
 
 fn diagnostic(code: TerrainCode, message: impl Into<String>) -> LandXmlTerrainDiagnostic {
     LandXmlTerrainDiagnostic {
@@ -32,155 +20,6 @@ fn diagnostic(code: TerrainCode, message: impl Into<String>) -> LandXmlTerrainDi
     }
 }
 
-fn bits(value: f64) -> u64 {
-    if value == 0.0 {
-        0
-    } else {
-        value.to_bits()
-    }
-}
-
-fn add_vertex(
-    vertices: &mut Vec<Vertex>,
-    locations: &mut BTreeMap<(u64, u64), (usize, f64)>,
-    surface: &mut super::parser::state::SurfaceBuilder,
-    candidate: CandidateVertex,
-    retain_point: bool,
-) -> Result<usize, LandXmlTerrainDiagnostic> {
-    let key = (bits(candidate.northing), bits(candidate.easting));
-    if let Some(&(index, known_elevation)) = locations.get(&key) {
-        if known_elevation != candidate.elevation {
-            return Err(diagnostic(
-                TerrainCode::ConflictingElevation,
-                "coincident terrain vertices have conflicting elevations",
-            ));
-        }
-        vertices[index]
-            .contributors
-            .push(candidate.source_id.clone());
-        if retain_point {
-            surface.points.push(LandXmlPoint {
-                source_id: candidate.source_id,
-                id: candidate.id,
-                northing: candidate.northing,
-                easting: candidate.easting,
-                elevation: candidate.elevation,
-            });
-        }
-        return Ok(index);
-    }
-    let index = vertices.len();
-    locations.insert(key, (index, candidate.elevation));
-    vertices.push(Vertex {
-        id: candidate.id.clone(),
-        northing: candidate.northing,
-        easting: candidate.easting,
-        elevation: candidate.elevation,
-        contributors: vec![candidate.source_id.clone()],
-    });
-    surface.ids.insert(candidate.id.clone());
-    if retain_point {
-        surface.points.push(LandXmlPoint {
-            source_id: candidate.source_id,
-            id: candidate.id,
-            northing: candidate.northing,
-            easting: candidate.easting,
-            elevation: candidate.elevation,
-        });
-    }
-    Ok(index)
-}
-
-fn line_vertices(
-    line: &LandXmlPolyline,
-    vertices: &mut Vec<Vertex>,
-    locations: &mut BTreeMap<(u64, u64), (usize, f64)>,
-    surface: &mut super::parser::state::SurfaceBuilder,
-) -> Result<Vec<usize>, LandXmlTerrainDiagnostic> {
-    if line.coordinate_dimension != 3 {
-        return Err(diagnostic(
-            TerrainCode::MissingElevation,
-            "constrained terrain requires PntList3D boundary and breakline elevations",
-        ));
-    }
-    let mut indexes = Vec::with_capacity(line.points.len());
-    for (ordinal, values) in line.points.iter().enumerate() {
-        let Some((&northing, rest)) = values.split_first() else {
-            unreachable!()
-        };
-        let Some((&easting, rest)) = rest.split_first() else {
-            unreachable!()
-        };
-        let Some(&elevation) = rest.first() else {
-            unreachable!()
-        };
-        let id = format!("terrain:{}:{}", line.source_id.0, ordinal + 1);
-        indexes.push(add_vertex(
-            vertices,
-            locations,
-            surface,
-            CandidateVertex {
-                northing,
-                easting,
-                elevation,
-                id,
-                source_id: line.point_source_ids[ordinal].clone(),
-            },
-            true,
-        )?);
-    }
-    Ok(indexes)
-}
-
-fn ring_edges(
-    ring: &[usize],
-    segments: &mut Vec<(usize, usize)>,
-) -> Result<(), LandXmlTerrainDiagnostic> {
-    let mut ring = ring.to_vec();
-    if ring.first() == ring.last() {
-        ring.pop();
-    }
-    if ring.len() < 3 || ring.windows(2).any(|pair| pair[0] == pair[1]) {
-        return Err(diagnostic(
-            TerrainCode::DegenerateConstraints,
-            "boundary is degenerate",
-        ));
-    }
-    if ring.iter().copied().collect::<BTreeSet<_>>().len() != ring.len() {
-        return Err(diagnostic(TerrainCode::DegenerateConstraints, "boundary repeats a nonconsecutive vertex"));
-    }
-    for index in 0..ring.len() {
-        segments.push((ring[index], ring[(index + 1) % ring.len()]));
-    }
-    Ok(())
-}
-
-fn point_in_ring(point: [f64; 2], ring: &[usize], vertices: &[Vertex]) -> bool {
-    let mut inside = false;
-    for index in 0..ring.len() {
-        let a = &vertices[ring[index]];
-        let b = &vertices[ring[(index + 1) % ring.len()]];
-        let crosses = (a.northing > point[1]) != (b.northing > point[1]);
-        if crosses
-            && point[0]
-                < (b.easting - a.easting) * (point[1] - a.northing) / (b.northing - a.northing)
-                    + a.easting
-        {
-            inside = !inside;
-        }
-    }
-    inside
-}
-
-/// Refuse a known-unaffordable quadratic scan before entering it. The scan
-/// itself still charges/polls every comparison: this only avoids spending a
-/// whole cancellation quantum proving a limit we can calculate up front.
-fn terrain_work_fits(limits: &LandXmlLimits, work_seen: usize, work: usize) -> bool {
-    work_seen
-        .checked_add(work)
-        .and_then(|value| value.checked_add(64))
-        .is_some_and(|value| value < limits.max_work)
-}
 
 /// Add generated faces only when every source rule can be proven as a PSLG.
 pub(super) fn adapt_faceless_tin(
@@ -195,7 +34,7 @@ pub(super) fn adapt_faceless_tin(
         return Ok(None);
     }
     let mut vertices = Vec::new();
-    let mut locations = BTreeMap::new();
+    let mut locations = std::collections::BTreeMap::new();
     for point in surface.points.clone() {
         if let Err(value) = add_vertex(
             &mut vertices,
@@ -256,7 +95,7 @@ pub(super) fn adapt_faceless_tin(
                 )))
             }
         }
-        if let Err(value) = ring_edges(&ring, &mut segments) {
+        if let Err(value) = ring_edges(&ring, &vertices, &mut segments) {
             return Ok(Some(value));
         }
     }
@@ -454,15 +293,6 @@ pub(super) fn adapt_faceless_tin(
         .face_visibility
         .extend(std::iter::repeat_n(true, generated_faces.len()));
     surface.faces.extend(generated_faces);
-    surface.canonical_vertices = vertices
-        .into_iter()
-        .map(|vertex| LandXmlCanonicalVertex {
-            id: vertex.id,
-            northing: vertex.northing,
-            easting: vertex.easting,
-            elevation: vertex.elevation,
-            contributor_source_ids: vertex.contributors,
-        })
-        .collect();
+    surface.canonical_vertices = canonical_vertices(vertices);
     Ok(None)
 }

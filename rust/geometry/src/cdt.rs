@@ -316,7 +316,7 @@ impl Cdt {
         if !cdt.enforce_constraints_with_progress(progress)? {
             return Ok(None);
         }
-        cdt.restore_constrained_delaunay();
+        cdt.restore_constrained_delaunay_with_progress(progress)?;
         Ok(Some(cdt))
     }
 
@@ -681,9 +681,22 @@ impl Cdt {
     /// triangle to test for the Delaunay (empty-circumcircle) condition.
     /// Constraint edges are skipped. Diagonal flips never touch constraints.
     fn legalize(&mut self, stack: &mut Vec<(usize, usize)>) {
+        let _ = self.legalize_with_progress(stack, &mut || Ok(()));
+    }
+
+    /// Progress-aware form used by untrusted terrain PSLGs. Keep the ordinary
+    /// insertion callers on the same deterministic stack order.
+    fn legalize_with_progress(
+        &mut self,
+        stack: &mut Vec<(usize, usize)>,
+        progress: &mut dyn FnMut() -> Result<(), crate::terrain_cdt::TerrainCdtError>,
+    ) -> Result<(), crate::terrain_cdt::TerrainCdtError> {
         let mut guard = 0usize;
         while let Some((ti, e)) = stack.pop() {
             guard += 1;
+            if guard.is_multiple_of(64) {
+                progress()?;
+            }
             if guard > 4_000_000 {
                 break;
             }
@@ -728,6 +741,7 @@ impl Cdt {
             }
             self.flip(ti, opp, a, b, apex, q, stack);
         }
+        Ok(())
     }
 
     /// Flip shared edge `a-b` of triangles `ti=(…apex…)` / `opp=(…q…)` to the
@@ -1112,16 +1126,20 @@ impl Cdt {
 
     /// Restore the Delaunay property everywhere EXCEPT across constraint edges
     /// (constrained Delaunay). Pushes every non-constraint edge once.
-    fn restore_constrained_delaunay(&mut self) {
+    fn restore_constrained_delaunay_with_progress(
+        &mut self,
+        progress: &mut dyn FnMut() -> Result<(), crate::terrain_cdt::TerrainCdtError>,
+    ) -> Result<(), crate::terrain_cdt::TerrainCdtError> {
         let mut stack: Vec<(usize, usize)> = Vec::new();
         for ti in 0..self.tris.len() {
+            progress()?;
             if self.tris[ti].alive {
                 for e in 0..3 {
                     stack.push((ti, e));
                 }
             }
         }
-        self.legalize(&mut stack);
+        self.legalize_with_progress(&mut stack, progress)
     }
 
     // ─────────────────────── domain classification ────────────────────────

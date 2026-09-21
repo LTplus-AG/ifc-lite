@@ -1,0 +1,26 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import {
+  MAX_RENDER_FRAME_LOCAL_EXTENT_METRES,
+  boundsFitRenderFrame,
+} from './landXmlRenderFrame.js';
+
+describe('LandXML render frame acceptance (#5049)', () => {
+  it('accepts a centimetre-scale component at a 5,000-km survey origin', () => {
+    assert.equal(boundsFitRenderFrame({
+      min: { x: 5_000_000.015625, y: 20, z: -4 },
+      max: { x: 5_000_000.025625, y: 20.01, z: -3.99 },
+    }, { x: 0, y: 0, z: 0 }), true);
+  });
+
+  it('refuses only a component wider than the streaming local envelope', () => {
+    assert.equal(boundsFitRenderFrame({
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: MAX_RENDER_FRAME_LOCAL_EXTENT_METRES + 1, y: 1, z: 1 },
+    }, { x: 5_000_000, y: 0, z: 0 }), false);
+  });
+});

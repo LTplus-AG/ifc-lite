@@ -4,7 +4,7 @@
 
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { createCoordinateInfo, type Bounds3D } from '../../utils/localParsingUtils.js';
-import { MAX_RENDER_FRAME_ORIGIN_METRES, placeComponentsInRenderFrame } from './landXmlRenderFrame.js';
+import { MAX_RENDER_FRAME_LOCAL_EXTENT_METRES, placeComponentsInRenderFrame } from './landXmlRenderFrame.js';
 import { sourceCoordinateInfo } from './landXmlSourceFrame.js';
 import type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
 import { buildLandXmlPipeComponents } from './landXmlPipeGeometry.js';
@@ -315,7 +315,7 @@ export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometr
 
   const { placed, dropped: reframeDropped, bounds, originShift, hasLargeCoordinates } = placeComponentsInRenderFrame(components, warnings);
   if (placed.length === 0) {
-    throw new Error(`LandXML document has no surface components whose full Y-up bounds fit within the ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km render-frame limit`);
+    throw new Error(`LandXML document has no surface components whose local extent fits within the ${MAX_RENDER_FRAME_LOCAL_EXTENT_METRES / 1000} km render-frame limit`);
   }
   const meshes = placed.map((component, index) => ({ ...component.mesh, expressId: index + 1 }));
   const surfaceNames = [...new Set(placed.map((component) => component.surfaceName))];

@@ -6,10 +6,12 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
 
 /**
- * f32 model translations retain roughly 6 cm precision at this distance. A
- * larger render-frame coordinate is refused rather than rendered inaccurately.
+ * A single LandXML mesh may only span this much in its local f32 vertex
+ * buffer. The streaming geometry path partitions bounded mesh data below this
+ * emergency envelope; far source origins are carried by mesh anchors and RTE,
+ * so they are not a reason to reject a compact survey component.
  */
-export const MAX_RENDER_FRAME_ORIGIN_METRES = 1_000_000;
+export const MAX_RENDER_FRAME_LOCAL_EXTENT_METRES = 1_000_000;
 
 interface RenderFrameComponent {
   mesh: MeshData;
@@ -25,18 +27,24 @@ function mergeBounds(target: Bounds3D, source: Bounds3D): void {
   target.max.z = Math.max(target.max.z, source.max.z);
 }
 
-/** Whether every extent of a source-space component fits after a frame shift. */
+/** Whether a component fits one precision-safe local vertex batch. */
 export function boundsFitRenderFrame(
   bounds: Bounds3D,
-  originShift: Readonly<{ x: number; y: number; z: number }>,
+  _originShift: Readonly<{ x: number; y: number; z: number }>,
 ): boolean {
+  const coordinates = [
+    bounds.min.x, bounds.min.y, bounds.min.z,
+    bounds.max.x, bounds.max.y, bounds.max.z,
+  ];
+  if (!coordinates.every(Number.isFinite)) return false;
   return [
-    bounds.min.x - originShift.x, bounds.min.y - originShift.y, bounds.min.z - originShift.z,
-    bounds.max.x - originShift.x, bounds.max.y - originShift.y, bounds.max.z - originShift.z,
-  ].every((coordinate) => Number.isFinite(coordinate) && Math.abs(coordinate) <= MAX_RENDER_FRAME_ORIGIN_METRES);
+    bounds.max.x - bounds.min.x,
+    bounds.max.y - bounds.min.y,
+    bounds.max.z - bounds.min.z,
+  ].every((extent) => extent <= MAX_RENDER_FRAME_LOCAL_EXTENT_METRES);
 }
 
-/** Place mesh components in one precise shared GPU frame, rejecting distant islands. */
+/** Place mesh components in one precise shared GPU frame, rejecting only over-wide local batches. */
 export function placeComponentsInRenderFrame<T extends RenderFrameComponent>(
   components: T[],
   warnings: string[],
@@ -77,7 +85,7 @@ export function placeComponentsInRenderFrame<T extends RenderFrameComponent>(
     mergeBounds(bounds, component.bounds);
   }
   if (dropped.length > 0) {
-    warnings.push(`Skipped ${dropped.length} surface component(s) whose full Y-up bounds exceed ${MAX_RENDER_FRAME_ORIGIN_METRES / 1000} km from the model render frame because they cannot be placed precisely`);
+    warnings.push(`Skipped ${dropped.length} surface component(s) whose local extent exceeds ${MAX_RENDER_FRAME_LOCAL_EXTENT_METRES / 1000} km; split it into precision-safe render batches`);
   }
   return { placed, dropped, bounds, originShift, hasLargeCoordinates };
 }

@@ -34,6 +34,8 @@
 export const shadowShaderSource = `
         struct Light {
           lightViewProj: mat4x4<f32>,
+          cameraHigh: vec4<f32>,
+          cameraLow: vec4<f32>,
         }
         @binding(0) @group(0) var<uniform> light: Light;
 
@@ -42,6 +44,8 @@ export const shadowShaderSource = `
           // xyz = lattice-aligned quantMin (batch-origin-relative), w = step.
           // Read only by vs_shadow_quantized; zero for the other paths.
           quantParams: vec4<f32>,
+          originHigh: vec4<f32>,
+          originLow: vec4<f32>,
         }
         @binding(1) @group(0) var<uniform> draw: Draw;
 
@@ -83,23 +87,25 @@ export const shadowShaderSource = `
           @location(0) worldPos: vec3<f32>,
         }
 
-        fn emit(worldPos: vec4<f32>) -> ShadowOut {
+        fn emit(eyePos: vec4<f32>) -> ShadowOut {
           var out: ShadowOut;
-          out.position = light.lightViewProj * worldPos;
-          out.worldPos = worldPos.xyz;
+          out.position = light.lightViewProj * eyePos;
+          out.worldPos = eyePos.xyz;
           return out;
         }
 
         @vertex
         fn vs_shadow_flat(input: FlatIn) -> ShadowOut {
-          return emit(draw.model * vec4<f32>(input.position, 1.0));
+          let linear = (draw.model * vec4<f32>(input.position, 0.0)).xyz;
+          return emit(vec4<f32>((linear + draw.originHigh.xyz) + draw.originLow.xyz, 1.0));
         }
 
         @vertex
         fn vs_shadow_quantized(input: QuantIn) -> ShadowOut {
           let p = draw.quantParams.xyz
             + vec3<f32>(f32(input.q.x), f32(input.q.y), f32(input.q.z)) * draw.quantParams.w;
-          return emit(draw.model * vec4<f32>(p, 1.0));
+          let linear = (draw.model * vec4<f32>(p, 0.0)).xyz;
+          return emit(vec4<f32>((linear + draw.originHigh.xyz) + draw.originLow.xyz, 1.0));
         }
 
         @vertex
@@ -119,13 +125,15 @@ export const shadowShaderSource = `
           // translation from the canonical V2 anchor. This is intentionally
           // world-space here: the fitted light matrix remains world-space.
           let linear = (instMat * vec4<f32>(input.position, 0.0)).xyz;
-          let anchor = inst.anchorHigh.xyz + inst.anchorLow.xyz;
-          return emit(vec4<f32>(linear + anchor, 1.0));
+          let highDelta = inst.anchorHigh.xyz - light.cameraHigh.xyz;
+          let lowDelta = inst.anchorLow.xyz - light.cameraLow.xyz;
+          return emit(vec4<f32>((linear + highDelta) + lowDelta, 1.0));
         }
 
         @vertex
         fn vs_shadow_textured(input: FlatIn) -> ShadowOut {
-          return emit(draw.model * vec4<f32>(input.position, 1.0));
+          let linear = (draw.model * vec4<f32>(input.position, 0.0)).xyz;
+          return emit(vec4<f32>((linear + draw.originHigh.xyz) + draw.originLow.xyz, 1.0));
         }
 
         // Clipped variant: discard before the depth write, so a clipped-away

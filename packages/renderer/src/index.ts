@@ -2136,8 +2136,20 @@ export class Renderer {
                     } else {
                         this.shadowPass.setResolution(resolution);
                     }
-                    const boundsMin: [number, number, number] = [bounds.min.x, bounds.min.y, bounds.min.z];
-                    const boundsMax: [number, number, number] = [bounds.max.x, bounds.max.y, bounds.max.z];
+                    // The light matrix is evaluated against the same
+                    // eye-relative positions as every main-family vertex. Keep
+                    // the fit in that small frame too: composing a world-space
+                    // f32 light matrix at a 5,000-km grid coordinate destroys
+                    // both shadow depth and the receiver comparison residual.
+                    const shadowEye = relativeToEyeFrame.getCameraWorld();
+                    const sourceBoundsMin: [number, number, number] = [bounds.min.x, bounds.min.y, bounds.min.z];
+                    const sourceBoundsMax: [number, number, number] = [bounds.max.x, bounds.max.y, bounds.max.z];
+                    const boundsMin: [number, number, number] = [
+                        bounds.min.x - shadowEye[0], bounds.min.y - shadowEye[1], bounds.min.z - shadowEye[2],
+                    ];
+                    const boundsMax: [number, number, number] = [
+                        bounds.max.x - shadowEye[0], bounds.max.y - shadowEye[1], bounds.max.z - shadowEye[2],
+                    ];
                     // Lateral shadow fit. AT REST: fit to the camera frustum
                     // clipped to the model (maintainer #1) so a small building on
                     // a large site keeps sharp shadows instead of spending the
@@ -2160,9 +2172,13 @@ export class Renderer {
                             aspect: this.canvas.height > 0 ? this.canvas.width / this.canvas.height : 1,
                             ortho: this.camera.getProjectionMode() === 'orthographic',
                             orthoHalfHeight: this.camera.getOrthoSize(),
-                            boundsMin,
-                            boundsMax,
-                        }) ?? undefined;
+                            boundsMin: sourceBoundsMin,
+                            boundsMax: sourceBoundsMax,
+                        })?.map((corner) => ({
+                            x: corner.x - shadowEye[0],
+                            y: corner.y - shadowEye[1],
+                            z: corner.z - shadowEye[2],
+                        }));
                     }
                     const sun = resolveEnvironment(options.environment).sunDirection;
                     const fit = fitSunLightMatrix({ sunDirection: sun, boundsMin, boundsMax, focusCorners });
@@ -2200,7 +2216,7 @@ export class Renderer {
                         box: options.clipBox?.enabled
                             ? { min: options.clipBox.min, max: options.clipBox.max }
                             : null,
-                    });
+                    }, { cameraWorld: shadowEye });
 
                     // Shadow uniform: light matrix + sampling params. The kernel
                     // width follows the sun's angular size (physical, ~0.53°

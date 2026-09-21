@@ -265,6 +265,10 @@ interface DeviceRecord {
   pipelines: { label: string; hasFragment: boolean; buffers?: readonly GPUVertexBufferLayout[] }[];
   /** Last data written to the buffer labelled 'shadow-clip-uniform'. */
   clipWrite: Float32Array | null;
+  /** Last packed per-draw RTE payload (the real dynamic uniform write). */
+  drawWrite: Float32Array | null;
+  /** Light matrix + instanced camera high/low payload. */
+  lightWrite: Float32Array | null;
 }
 
 function mockShadowDevice(rec?: DeviceRecord): GPUDevice {
@@ -274,6 +278,12 @@ function mockShadowDevice(rec?: DeviceRecord): GPUDevice {
         rec.clipWrite = new Float32Array(
           (data as Float32Array).slice() as unknown as ArrayLike<number>,
         );
+      }
+      if (rec && buffer?.label === 'shadow-per-draw-uniform') {
+        rec.drawWrite = new Float32Array((data as Float32Array).slice() as unknown as ArrayLike<number>);
+      }
+      if (rec && buffer?.label === 'shadow-light-uniform') {
+        rec.lightWrite = new Float32Array((data as Float32Array).slice() as unknown as ArrayLike<number>);
       }
     },
   };
@@ -366,6 +376,30 @@ describe('ShadowPass.render', () => {
     // Each draw binds a distinct 256-aligned dynamic offset.
     assert.deepEqual(rec.dynamicOffsets, [0, 256, 512, 768]);
   });
+
+  it('packs a 5,000-km origin as a centimetre eye-relative residual (#5049)', () => {
+    const dev: DeviceRecord = { pipelines: [], clipWrite: null, drawWrite: null, lightWrite: null };
+    const pass = new ShadowPass(mockShadowDevice(dev), 1024);
+    const draw = collectShadowOccluders({ batches: [flatBatch(1)], instanced: [], textured: [] })[0];
+    draw.origin = [5_000_000.015625, 0, 0];
+    pass.render(
+      mockEncoder(emptyRecord()),
+      { m: new Float32Array(16) },
+      [draw],
+      null,
+      { cameraWorld: [5_000_000, 0, 0] },
+    );
+
+    assert.ok(dev.drawWrite, 'the depth pass must upload its per-draw RTE uniform');
+    // originHigh starts at float 20 and originLow at 24. This is the exact
+    // CPU->GPU payload the shadow vertex shader evaluates, not a helper-only
+    // approximation. 15.625 mm survives at a national-grid coordinate.
+    const residual = dev.drawWrite![20] + dev.drawWrite![24];
+    assert.ok(Math.abs(residual - 0.015625) < 1e-8, `shadow origin residual became ${residual}`);
+    assert.equal(dev.drawWrite![12], 0, 'absolute model translation must not leak into the f32 matrix');
+    assert.ok(dev.lightWrite, 'instanced shadow anchors need the same camera split');
+    assert.equal(dev.lightWrite![16] + dev.lightWrite![20], 5_000_000);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -380,7 +414,7 @@ describe('ShadowPass clipping', () => {
   const box = { min: [-1, -2, -3] as const, max: [4, 5, 6] as const };
 
   it('stays fragment-less (depth-only) when nothing is clipped', () => {
-    const dev: DeviceRecord = { pipelines: [], clipWrite: null };
+    const dev: DeviceRecord = { pipelines: [], clipWrite: null, drawWrite: null, lightWrite: null };
     const rec = emptyRecord();
     const pass = new ShadowPass(mockShadowDevice(dev), 1024);
     pass.render(mockEncoder(rec), { m: new Float32Array(16) }, draws(), null);
@@ -392,7 +426,7 @@ describe('ShadowPass clipping', () => {
   });
 
   it('routes every path through a clipping pipeline when a section plane is on', () => {
-    const dev: DeviceRecord = { pipelines: [], clipWrite: null };
+    const dev: DeviceRecord = { pipelines: [], clipWrite: null, drawWrite: null, lightWrite: null };
     const rec = emptyRecord();
     const pass = new ShadowPass(mockShadowDevice(dev), 1024);
     pass.render(mockEncoder(rec), { m: new Float32Array(16) }, draws(), { section });
@@ -410,7 +444,7 @@ describe('ShadowPass clipping', () => {
   });
 
   it('packs the section plane and its flipped bit like the colour pass', () => {
-    const dev: DeviceRecord = { pipelines: [], clipWrite: null };
+    const dev: DeviceRecord = { pipelines: [], clipWrite: null, drawWrite: null, lightWrite: null };
     const pass = new ShadowPass(mockShadowDevice(dev), 1024);
     pass.render(mockEncoder(emptyRecord()), { m: new Float32Array(16) }, draws(), { section });
 
@@ -425,7 +459,7 @@ describe('ShadowPass clipping', () => {
   });
 
   it('packs the clip box bounds and enable bit', () => {
-    const dev: DeviceRecord = { pipelines: [], clipWrite: null };
+    const dev: DeviceRecord = { pipelines: [], clipWrite: null, drawWrite: null, lightWrite: null };
     const pass = new ShadowPass(mockShadowDevice(dev), 1024);
     pass.render(mockEncoder(emptyRecord()), { m: new Float32Array(16) }, draws(), { box });
 
@@ -436,7 +470,7 @@ describe('ShadowPass clipping', () => {
   });
 
   it('builds the clipping pipelines once, on the first clipped frame', () => {
-    const dev: DeviceRecord = { pipelines: [], clipWrite: null };
+    const dev: DeviceRecord = { pipelines: [], clipWrite: null, drawWrite: null, lightWrite: null };
     const pass = new ShadowPass(mockShadowDevice(dev), 1024);
     assert.equal(dev.pipelines.length, 4, 'construction builds only the depth-only set');
 
@@ -495,7 +529,7 @@ describe('classifyBatchVisibility', () => {
 
 describe('ShadowPass instanced pipeline', () => {
   it('binds the per-occurrence flags lane so a hidden instance can be culled in-shader', () => {
-    const dev: DeviceRecord = { pipelines: [], clipWrite: null };
+    const dev: DeviceRecord = { pipelines: [], clipWrite: null, drawWrite: null, lightWrite: null };
     new ShadowPass(mockShadowDevice(dev), 1024);
 
     const inst = dev.pipelines.find((p) => p.label === 'shadow-pipeline-vs_shadow_instanced');

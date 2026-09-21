@@ -24,6 +24,7 @@
 
 import type { Mat4 } from './types.js';
 import { shadowShaderSource } from './shaders/shadow.wgsl.js';
+import { packRteOrigin, type WorldPoint } from './relative-to-eye.js';
 
 /** Which geometry path an occluder draw came from — selects the pipeline. */
 export type ShadowDrawKind = 'flat' | 'quantized' | 'instanced' | 'textured';
@@ -63,12 +64,23 @@ export interface ShadowOccluderDraw {
    * flat/quantized/textured paths; ignored for the instanced path.
    */
   model?: Float32Array;
+  /**
+   * Canonical f64 drawable origin. The depth pass subtracts the frame camera
+   * before narrowing, exactly like the colour/pick paths.  If absent, the
+   * model translation is retained as the legacy origin.
+   */
+  origin?: WorldPoint;
   /** Dequantization params [minX, minY, minZ, step]; quantized path only. */
   quantParams?: readonly [number, number, number, number];
   /** Slot-1 per-occurrence instance buffer; instanced path only. */
   instanceBuffer?: GPUBuffer;
   /** Instance count; instanced path only. */
   instanceCount?: number;
+}
+
+/** The camera-owned RTE inputs for one shadow submission. */
+export interface ShadowRteFrame {
+  cameraWorld: WorldPoint;
 }
 
 /**
@@ -91,8 +103,8 @@ export interface ShadowClip {
   } | null;
 }
 
-/** Bytes of the per-draw uniform: mat4 model (64) + vec4 quantParams (16). */
-const PER_DRAW_BYTES = 80;
+/** Bytes of the per-draw uniform: linear model + quant params + split RTE origin. */
+const PER_DRAW_BYTES = 112;
 
 /** Bytes of the clip uniform: sectionPlane + boxMin + boxMax + flags (4 vec4). */
 const CLIP_BYTES = 64;
@@ -119,7 +131,8 @@ export class ShadowPass {
   private pipelineLayout: GPUPipelineLayout;
 
   private lightBuffer: GPUBuffer;
-  private lightScratch = new Float32Array(16);
+  /** Light matrix + camera high/low for instanced anchors. */
+  private lightScratch = new Float32Array(24);
 
   /** Clip uniform (floats 0..11) with the flag word aliased as u32 (word 12). */
   private clipBuffer: GPUBuffer;
@@ -149,7 +162,7 @@ export class ShadowPass {
 
     this.lightBuffer = device.createBuffer({
       label: 'shadow-light-uniform',
-      size: 64,
+      size: 96,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -231,14 +244,16 @@ export class ShadowPass {
     lightViewProj: Mat4,
     draws: readonly ShadowOccluderDraw[],
     clip?: ShadowClip | null,
+    rte?: ShadowRteFrame | null,
   ): void {
     if (this.destroyed) return;
 
     // Shared light matrix — one write per frame.
-    this.lightScratch.set(lightViewProj.m);
+    this.lightScratch.set(lightViewProj.m, 0);
+    packRteOrigin(rte?.cameraWorld ?? [0, 0, 0], this.lightScratch, 16);
     this.device.queue.writeBuffer(this.lightBuffer, 0, this.lightScratch);
 
-    const clipping = this.writeClipUniform(clip);
+    const clipping = this.writeClipUniform(clip, rte);
     if (clipping && !this.clipPipelines) this.clipPipelines = this.createPipelineSet(true);
     const pipelines = clipping && this.clipPipelines ? this.clipPipelines : this.pipelines;
 
@@ -259,13 +274,25 @@ export class ShadowPass {
       const d = draws[i];
       const base = i * strideFloats;
       if (d.model) this.drawScratch.set(d.model, base);
-      // else leave identity-ish zero; only the instanced path omits model and
-      // it never reads draw.model.
+      // Translation is always supplied through the f64 origin lanes below.
+      // Retaining it in the f32 model matrix would add a 5,000-km number before
+      // the RTE subtraction and erase the centimetre residual we are preserving.
+      this.drawScratch[base + 12] = 0;
+      this.drawScratch[base + 13] = 0;
+      this.drawScratch[base + 14] = 0;
+      this.drawScratch[base + 15] = 1;
       const q = d.quantParams;
       this.drawScratch[base + 16] = q ? q[0] : 0;
       this.drawScratch[base + 17] = q ? q[1] : 0;
       this.drawScratch[base + 18] = q ? q[2] : 0;
       this.drawScratch[base + 19] = q ? q[3] : 0;
+      const origin = d.origin ?? [d.model?.[12] ?? 0, d.model?.[13] ?? 0, d.model?.[14] ?? 0] as const;
+      const camera = rte?.cameraWorld ?? [0, 0, 0] as const;
+      packRteOrigin(
+        [origin[0] - camera[0], origin[1] - camera[1], origin[2] - camera[2]],
+        this.drawScratch,
+        base + 20,
+      );
     }
     if (draws.length > 0) {
       this.device.queue.writeBuffer(
@@ -321,26 +348,27 @@ export class ShadowPass {
    * the caller uses that to pick the clipping pipelines. Writes only when
    * clipping: with nothing cut the uniform is never read.
    */
-  private writeClipUniform(clip: ShadowClip | null | undefined): boolean {
+  private writeClipUniform(clip: ShadowClip | null | undefined, rte?: ShadowRteFrame | null): boolean {
     const section = clip?.section;
     const box = clip?.box;
     if (!section && !box) return false;
 
     const s = this.clipScratch;
+    const camera = rte?.cameraWorld ?? [0, 0, 0] as const;
     s.fill(0);
     if (section) {
       s[0] = section.normal[0];
       s[1] = section.normal[1];
       s[2] = section.normal[2];
-      s[3] = section.distance;
+      s[3] = section.distance - (camera[0] * section.normal[0] + camera[1] * section.normal[1] + camera[2] * section.normal[2]);
     }
     if (box) {
-      s[4] = box.min[0];
-      s[5] = box.min[1];
-      s[6] = box.min[2];
-      s[8] = box.max[0];
-      s[9] = box.max[1];
-      s[10] = box.max[2];
+      s[4] = box.min[0] - camera[0];
+      s[5] = box.min[1] - camera[1];
+      s[6] = box.min[2] - camera[2];
+      s[8] = box.max[0] - camera[0];
+      s[9] = box.max[1] - camera[1];
+      s[10] = box.max[2] - camera[2];
     }
     // flags.x — bit 0 section enabled, bit 1 flipped, bit 2 clip box enabled.
     this.clipFlags[12] = (section ? 1 : 0) | (section?.flipped ? 2 : 0) | (box ? 4 : 0);

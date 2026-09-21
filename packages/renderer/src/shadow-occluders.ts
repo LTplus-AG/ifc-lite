@@ -180,6 +180,7 @@ export function collectShadowOccluders(
       indexBuffer: batch.indexBuffer,
       indexCount: batch.indexCount,
       model: originModelMatrix(batch.origin),
+      origin: batch.origin,
       quantParams: q ? [q.min[0], q.min[1], q.min[2], q.step] : undefined,
     });
   }
@@ -206,6 +207,7 @@ export function collectShadowOccluders(
       indexBuffer: tm.indexBuffer,
       indexCount: tm.indexCount,
       model: originModelMatrix(tm.origin),
+      origin: tm.origin,
     });
   }
 
@@ -224,6 +226,7 @@ export function collectShadowOccluders(
       indexBuffer: mesh.indexBuffer,
       indexCount: mesh.indexCount,
       model: mesh.transform.m,
+      origin: mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]],
     });
   }
 

@@ -91,7 +91,7 @@ export const mainShaderSource = `
           vec2<f32>( 0.896,  0.412), vec2<f32>(-0.322, -0.933), vec2<f32>(-0.792, -0.598),
         );
 
-        fn sunShadowFactor(worldPos: vec3<f32>, N: vec3<f32>, fragCoord: vec2<f32>) -> f32 {
+        fn sunShadowFactor(eyePos: vec3<f32>, N: vec3<f32>, fragCoord: vec2<f32>) -> f32 {
           if (shadowU.params.y < 0.5) { return 1.0; }
           // The diffuse sun term is TWO-SIDED (abs(dot(N, sun)) in the shading
           // below), so a face whose stabilized normal points away from the sun is
@@ -102,7 +102,7 @@ export const mainShaderSource = `
           // direct sun onto interior faces the roof occludes (#2670 review).
           let L = normalize(env.sunDirection);
           let Ns = N * select(-1.0, 1.0, dot(N, L) >= 0.0);
-          let biased = worldPos + Ns * shadowU.params.z;
+          let biased = eyePos + Ns * shadowU.params.z;
           let clip = shadowU.lightViewProj * vec4<f32>(biased, 1.0);
           let ndc = clip.xyz / clip.w;
           let uv = vec2<f32>(ndc.x * 0.5 + 0.5, ndc.y * -0.5 + 0.5);
@@ -512,7 +512,7 @@ export const mainShaderSource = `
 
           // Combine all lighting. Only the DIRECT sun term is occluded by cast
           // shadows (#2670); ambient/fill/rim are indirect and stay unshadowed.
-          let sunShadow = sunShadowFactor(input.worldPos, N, input.position.xy);
+          let sunShadow = sunShadowFactor(input.eyePos, N, input.position.xy);
           let lightTerm = ambient + env.sunColor * (diffuseSun * sunShadow) + vec3<f32>(diffuseFill + rim);
           var color = baseColor * lightTerm;
 

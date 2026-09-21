@@ -103,7 +103,7 @@ describe('IFC2X3 downgrade settles the slots IFC2X3 requires a value in (#4714)'
       "#1=IFCDOORTYPE('1abcdefghijklmnopqrstu',$,'D',$,$,$,$,$,$,.DOOR.,.SINGLE_SWING_LEFT.,$,$);",
       'IFC4',
       'IFC2X3',
-    );
+    )!;
     expect(line).toContain('IFCDOORSTYLE(');
     expect(slot(line, 8)).toBe('.SINGLE_SWING_LEFT.');
     expect(slot(line, 9)).toBe('.NOTDEFINED.');
@@ -118,7 +118,7 @@ describe('IFC2X3 downgrade settles the slots IFC2X3 requires a value in (#4714)'
       "#10=IFCFOOTING('2O2Fr$t4X7Zf8NOew3FLOH',#5,'F',$,$,$,$,$,$);",
       'IFC4',
       'IFC2X3',
-    );
+    )!;
     expect(slot(line, 8), line).toBe('.NOTDEFINED.');
     // The four-argument form takes the same branch; pinned so "both forms" in
     // the changeset is a claim a test carries rather than one a reader checks.
@@ -127,7 +127,7 @@ describe('IFC2X3 downgrade settles the slots IFC2X3 requires a value in (#4714)'
       'IFC4',
       'IFC2X3',
       undefined,
-    );
+    )!;
     expect(slot(seeded, 8), seeded).toBe('.NOTDEFINED.');
   });
 
@@ -136,7 +136,7 @@ describe('IFC2X3 downgrade settles the slots IFC2X3 requires a value in (#4714)'
       "#10=IFCFOOTING('2O2Fr$t4X7Zf8NOew3FLOH',$,'F',$,$,$,$,$,$);",
       'IFC2X3',
       'IFC4',
-    );
+    )!;
     expect(slot(line, 8)).toBe('$');
   });
 

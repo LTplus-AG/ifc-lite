@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import type { ModelSpatialReference } from '@ifc-lite/geometry';
 import { applyLandXmlRenderedLineUpdates, buildLandXmlRenderedLineUpdates } from './landXmlSpatialLines.js';
-import type { LandXmlPlanPoint, LandXmlTinDocument } from './landXmlSemantics.js';
+import type { LandXmlAlignment, LandXmlPlanPoint, LandXmlTinDocument } from './landXmlSemantics.js';
 
 function reference(
   eastings: number, northings: number, height: number, horizontal = 'EPSG:2056',
@@ -74,6 +74,28 @@ describe('LandXML federated overlay coordinates (#5048)', () => {
     assert.deepStrictEqual(parsed.plan.resolvedGeometry[0].renderedPoints, [[10, 0, 0], [11, 0, 0]]);
     assert.deepStrictEqual([marker.easting, start.easting, end.easting], [1010, 1010, 1011],
       'derived alignment never rewrites authored plan coordinates');
+  });
+
+  it('rebuilds horizontal alignment spans into the federation anchor frame (#5044, #5048)', async () => {
+    const parsed = document();
+    const start: LandXmlPlanPoint = { northing: 0, easting: 1010, elevation: 0 };
+    const end: LandXmlPlanPoint = { northing: 0, easting: 1011, elevation: 0 };
+    parsed.alignments = [{
+      sourceId: 'alignment', ordinal: 1, name: 'road', length: 1, staStart: 0,
+      profileSourceIds: [], crossSectionSourceIds: [], start: { kind: 'coordinates', point: start },
+      alignPis: [], stationEquations: [], cant: null, cantStations: [], superelevations: [],
+      unsupportedTransitions: [], segments: [{ sourceId: 'alignment:segment:1', ordinal: 1,
+        primitive: { kind: 'line', start: { kind: 'coordinates', point: start },
+          end: { kind: 'coordinates', point: end }, declaredLength: 1 } }],
+    } satisfies LandXmlAlignment];
+
+    const updates = await buildLandXmlRenderedLineUpdates(
+      parsed, reference(0, 0, 0), reference(1000, 0, 0), undefined,
+    );
+    applyLandXmlRenderedLineUpdates(updates);
+
+    assert.deepStrictEqual(parsed.alignments[0].segments[0].renderedPoints, [[10, 0, 0], [11, 0, 0]]);
+    assert.deepStrictEqual([start.easting, end.easting], [1010, 1011], 'authored alignment stays immutable');
   });
 
   it('uses absolute authored N/E/H points once, without adding source RTC a second time', async () => {

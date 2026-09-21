@@ -9,6 +9,7 @@
 //! coordinate systems, mesh partitioning, and presentation.
 
 mod capture;
+pub mod alignment;
 mod limits;
 mod model;
 mod parser;

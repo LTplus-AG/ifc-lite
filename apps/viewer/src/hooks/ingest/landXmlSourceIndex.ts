@@ -63,6 +63,14 @@ export function indexLandXmlSourceRecords(document: LandXmlTinDocument): void {
   const index = sourceRecordIndex(document);
   if (index.complete) return;
   for (const [sourceId, record] of index.roots) index.records.set(sourceId, record);
+  for (const alignment of document.alignments) {
+    for (const segment of alignment.segments ?? []) {
+      index.records.set(segment.sourceId, { kind: 'alignment-segment', alignment, segment });
+    }
+    for (const transition of alignment.unsupportedTransitions ?? []) {
+      index.records.set(transition.sourceId, { kind: 'unsupported-transition', alignment, transition });
+    }
+  }
   for (const profile of document.profiles) {
     for (const point of profile.pvis) index.records.set(point.sourceId, { kind: 'profile-point', profile, point });
     for (const curve of profile.verticalCurves) index.records.set(curve.sourceId, { kind: 'vertical-curve', profile, curve });

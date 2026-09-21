@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from '@/i18n';
 import {
   landXmlPlanSourcePage,
+  type LandXmlAlignment,
   type LandXmlPipeNetworkDocument,
   type LandXmlSourceRef,
   type LandXmlTinDocument,
@@ -13,6 +14,29 @@ import {
 
 const PAGE_SIZE = 100;
 const DIAGNOSTIC_PAGE_SIZE = 20;
+
+function alignmentNavigationCount(alignments: readonly LandXmlAlignment[]): number {
+  return alignments.reduce(
+    (count, alignment) => count + 1 + alignment.segments.length + alignment.unsupportedTransitions.length,
+    0,
+  );
+}
+
+/** Return one model-navigation item without building rows for every alignment span. */
+function alignmentNavigationAt(alignments: readonly LandXmlAlignment[], itemIndex: number): NavigationRecord {
+  let index = itemIndex;
+  for (const alignment of alignments) {
+    if (index === 0) return { label: `Alignment: ${alignment.name}`, sourceId: alignment.sourceId };
+    index -= 1;
+    const segment = alignment.segments[index];
+    if (segment) return { label: `Segment ${segment.ordinal}`, sourceId: segment.sourceId, detail: segment.primitive.kind };
+    index -= alignment.segments.length;
+    const transition = alignment.unsupportedTransitions[index];
+    if (transition) return { label: `Refused ${transition.spiType}`, sourceId: transition.sourceId, detail: transition.reason };
+    index -= alignment.unsupportedTransitions.length;
+  }
+  throw new Error(`LandXML model alignment navigation index ${itemIndex} is outside retained records`);
+}
 
 interface LandXmlModelSourceNavigationProps {
   modelId: string;
@@ -57,16 +81,16 @@ function pipeRecordPage(document: LandXmlPipeNetworkDocument | null | undefined,
 }
 
 function sourceRecordCount(document: LandXmlTinDocument): number {
-  return document.alignments.length + document.profiles.length + document.crossSections.length
+  return alignmentNavigationCount(document.alignments) + document.profiles.length + document.crossSections.length
     + document.crossSectionSurfaces.length + document.roadways.length + document.preservedOnlyExtensions.length;
 }
 
 /** Return one semantic record by index without copying a large source collection. */
 function sourceRecordAt(document: LandXmlTinDocument, itemIndex: number): NavigationRecord {
   let index = itemIndex;
-  const alignment = document.alignments[index];
-  if (alignment) return { label: `Alignment: ${alignment.name}`, sourceId: alignment.sourceId };
-  index -= document.alignments.length;
+  const alignmentCount = alignmentNavigationCount(document.alignments);
+  if (index < alignmentCount) return alignmentNavigationAt(document.alignments, index);
+  index -= alignmentCount;
   const profile = document.profiles[index];
   if (profile) return { label: `Profile: ${profile.name}`, sourceId: profile.sourceId, detail: profile.kind };
   index -= document.profiles.length;

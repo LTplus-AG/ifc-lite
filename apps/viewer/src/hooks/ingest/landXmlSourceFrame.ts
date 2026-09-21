@@ -4,7 +4,7 @@
 
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { createCoordinateInfo } from '../../utils/localParsingUtils.js';
-import type { LandXmlTinDocument } from './landXmlSemantics.js';
+import type { LandXmlPointLocation, LandXmlTinDocument } from './landXmlSemantics.js';
 
 /** Derive a federation frame even when LandXML has no renderable TIN mesh. */
 export function sourceCoordinateInfo(parsed: LandXmlTinDocument): GeometryResult['coordinateInfo'] {
@@ -35,6 +35,15 @@ export function sourceCoordinateInfo(parsed: LandXmlTinDocument): GeometryResult
   for (const point of parsed.plan?.cogoPoints ?? []) if (point.point) add(point.point.northing, point.point.easting, point.point.elevation ?? 0);
   for (const monument of parsed.plan?.resolvedMonuments ?? []) if (monument.point) add(monument.point.northing, monument.point.easting, monument.point.elevation ?? 0);
   for (const geometry of parsed.plan?.resolvedGeometry ?? []) for (const point of [geometry.start, geometry.end, geometry.center, geometry.pi]) if (point) add(point.northing, point.easting, point.elevation ?? 0);
+  const addLocation = (location: LandXmlPointLocation): void => {
+    if (location.kind === 'coordinates') add(location.point.northing, location.point.easting, location.point.elevation ?? 0);
+  };
+  for (const alignment of parsed.alignments) for (const { primitive } of alignment.segments ?? []) {
+    addLocation(primitive.start); addLocation(primitive.end);
+    if (primitive.kind === 'curve') addLocation(primitive.center);
+    if (primitive.kind === 'spiral' || primitive.kind === 'unsupported_spiral') addLocation(primitive.pi);
+    if (primitive.kind === 'irregular_line') for (const point of primitive.points) add(point.northing, point.easting, point.elevation ?? 0);
+  }
   if (!Number.isFinite(bounds.min.x)) return createCoordinateInfo({ min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } });
   const maxAbs = Math.max(...[bounds.min.x, bounds.min.y, bounds.min.z, bounds.max.x, bounds.max.y, bounds.max.z].map(Math.abs));
   const hasLargeCoordinates = maxAbs > 10_000;

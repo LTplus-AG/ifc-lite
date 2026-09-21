@@ -15,7 +15,7 @@
  */
 
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
-import { deterministicGlobalId, getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
+import { deterministicGlobalId, getInheritanceChainAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
 import type { IfcSchemaVersion } from './schema-converter.js';
 
 /**
@@ -47,7 +47,19 @@ export function isRootedEntityType(type: string): boolean {
  * cannot take the same fallback: IFCPROXY is an IfcProduct, not an
  * IfcRepresentationItem or resource type, so substituting one there swaps one
  * illegal file for a differently-illegal one, and dropping the line would
- * leave the referencing entity's `#N` dangling. Throws instead of guessing.
+ * leave the referencing entity's `#N` dangling — UNLESS the caller can prove
+ * no surviving line still names it, which is exactly what
+ * {@link WITHHOLDABLE_UNROOTED_TYPES} plus `schema-converter.ts`'s
+ * `withheldRefIds` check together establish for one type (#4206). Every
+ * other non-rooted type still throws instead of guessing.
+ *
+ * @param allowOmit - True only from a caller that ALSO redirects every
+ *   referrer of a withheld id through this same function
+ *   (`schema-converter.ts`'s `convertRecord`, when its caller supplied
+ *   `withheldRefIds`). `merged-exporter.ts`'s federated path does not yet
+ *   compute that set in its own (offset, remapped) id space, so it omits
+ *   this argument and keeps the unconditional throw — proving the omission
+ *   is safe there is future work, not assumed.
  */
 export function resolveUnrepresentedEntity(
   prefix: string,
@@ -55,13 +67,15 @@ export function resolveUnrepresentedEntity(
   attrsRaw: string,
   toSchema: IfcSchemaVersion,
   random?: RandomSource,
-): string {
+  allowOmit = false,
+): string | null {
   if (isRootedEntityType(entityType)) {
     const guid = random
       ? generateIfcGuid(random)
       : deterministicGlobalId(`ifcproxy:${prefix}${entityType}(${attrsRaw})`);
     return `${prefix}IFCPROXY('${guid}',$,'${entityType}',$,$,$,$,.NOTDEFINED.,$);`;
   }
+  if (allowOmit && WITHHOLDABLE_UNROOTED_TYPES.has(entityType)) return null;
   throw new Error(
     `Cannot convert ${prefix}${entityType}(${attrsRaw}) to ${toSchema}: ${entityType} has no ` +
     `representation in ${toSchema} and is not an IfcRoot subtype, so it can be neither dropped ` +
@@ -70,3 +84,53 @@ export function resolveUnrepresentedEntity(
     `before targeting ${toSchema}.`,
   );
 }
+
+/**
+ * Non-rooted types whose OWN record — not merely a value referencing it —
+ * is safe to OMIT from an IFC2X3 export instead of throwing (#4206).
+ *
+ * The default above (throw) exists because dropping an arbitrary non-rooted
+ * line risks leaving some OTHER record's reference to it dangling, and this
+ * function sees one line at a time — it has no way to know. Adding a type
+ * here is only safe when EVERY legal reference to it is provably re-routed
+ * through this same function too, so no surviving record can end up naming
+ * an id this export omitted.
+ *
+ * `IfcStructuralLoadConfiguration` qualifies: the EXPRESS schema restricts
+ * every legal reference to it to exactly one slot family —
+ * `IfcStructuralActivity.AppliedLoad` on the structural action/reaction
+ * types — and `schema-converter.ts`'s `convertRecord` forces every one of
+ * those through this same "no representation" resolution whenever its
+ * `AppliedLoad` names a withheld id (`withheldRefIds`, computed once per
+ * export from every `IfcStructuralLoadConfiguration` id the source store
+ * holds — see `computeWithheldRefIds`). A rooted referrer becomes an
+ * IFCPROXY the same way any other unrepresented rooted type does; nothing
+ * survives the export still pointing at the omitted `IfcStructuralLoadConfiguration`.
+ *
+ * Do not add another type here without the same end-to-end guarantee: this
+ * set is exactly as safe as the caller's `withheldRefIds` computation is
+ * complete for it.
+ */
+export const WITHHOLDABLE_UNROOTED_TYPES: ReadonlySet<string> = new Set(['IFCSTRUCTURALLOADCONFIGURATION']);
+
+/**
+ * Every express id, across `WITHHOLDABLE_UNROOTED_TYPES`, that an export
+ * targeting `toSchema` will omit — computed once per export and threaded
+ * through `convertStepLine` as `withheldRefIds` so a referencing record can
+ * be redirected to the same fallback BEFORE it ships a now-dangling `#N`.
+ * Empty (and free to compute) for any schema other than IFC2X3: nothing in
+ * `WITHHOLDABLE_UNROOTED_TYPES` is currently unrepresented anywhere else.
+ */
+export function computeWithheldRefIds(
+  dataStore: Pick<IfcDataStore, 'entityIndex'>,
+  toSchema: IfcSchemaVersion,
+): ReadonlySet<number> {
+  if (toSchema !== 'IFC2X3') return EMPTY_ID_SET;
+  const ids = new Set<number>();
+  for (const type of WITHHOLDABLE_UNROOTED_TYPES) {
+    for (const id of dataStore.entityIndex.byType.get(type) ?? []) ids.add(id);
+  }
+  return ids;
+}
+
+const EMPTY_ID_SET: ReadonlySet<number> = new Set();

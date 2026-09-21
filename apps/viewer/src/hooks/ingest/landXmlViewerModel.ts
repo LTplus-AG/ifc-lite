@@ -5,7 +5,7 @@
 import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
 import type { LandXmlGeometryPayload, LandXmlSourceBuffer } from './landXmlIngest.js';
 import { parseLandXmlGeometry } from './landXmlIngest.js';
-import { parseLandXmlTinInCurrentRealm } from './landXmlWasm.js';
+import { parseLandXmlSourceInCurrentRealm } from './landXmlWasm.js';
 import { spatialMetadataFromLandXml, spatialReferenceFromSourceMetadata } from './sourceSpatialReference.js';
 import type { ModelSpatialReference } from '@ifc-lite/geometry';
 
@@ -46,7 +46,7 @@ export function parseLandXmlViewerModelAsync(
 ): Promise<LandXmlViewerModel> {
   if (typeof Worker === 'undefined') {
     if (!isCurrent()) return Promise.reject(new Error('LandXML parsing cancelled'));
-    return parseLandXmlTinInCurrentRealm(buffer).then((parsed) => {
+    return parseLandXmlSourceInCurrentRealm(buffer).then((parsed) => {
       if (!isCurrent()) throw new Error('LandXML parsing cancelled');
       return attachSyntheticStore(parseLandXmlGeometry(parsed), buffer.byteLength);
     });

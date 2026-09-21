@@ -8,8 +8,12 @@ import type {
   LandXmlPipeNetworkCollection, LandXmlPipeNetworkDocument, LandXmlPipeStructure,
   LandXmlSurfaceCounts,
 } from './landXmlDocumentTypes.js';
+import type {
+  LandXmlAlignment, LandXmlAlignmentSegment, LandXmlUnsupportedTransition,
+} from './landXmlAlignmentSemantics.js';
 import { findLandXmlSourceRecord } from './landXmlSourceIndex.js';
 export type * from './landXmlDocumentTypes.js';
+export type * from './landXmlAlignmentSemantics.js';
 export {
   clearLandXmlSourceRecordIndex, findLandXmlSourceRecord, indexLandXmlPlanRecords,
   indexLandXmlSourceRecords, landXmlPlanChildPage, landXmlPlanSourcePage,
@@ -144,7 +148,6 @@ export interface LandXmlTinDocument {
   rendering: { meshProvenance: LandXmlMeshProvenance[]; surfaceCounts: LandXmlSurfaceCounts[] };
 }
 
-export interface LandXmlAlignment { sourceId: string; ordinal: number; name: string; length: number; staStart: number; profileSourceIds: string[]; crossSectionSourceIds: string[] }
 export interface LandXmlProfilePoint { sourceId: string; station: number; elevation: number | null }
 export interface LandXmlGradeLine { sourceId: string; parentProfileSourceId: string; ordinal: number; points: LandXmlProfilePoint[] }
 export interface LandXmlVerticalCurve { sourceId: string; parentProfileSourceId: string; kind: 'parabolic' | 'unsymmetrical_parabolic' | 'circular'; station: number; elevation: number | null; length: number | null; lengthIn: number | null; lengthOut: number | null; radius: number | null }
@@ -165,6 +168,8 @@ export type LandXmlSourceRecord =
   | { kind: 'face'; surface: LandXmlTinSurface; pointIds: readonly [string, string, string] }
   | { kind: 'boundary' | 'breakline' | 'contour'; surface: LandXmlTinSurface; line: LandXmlPolyline }
   | { kind: 'alignment'; alignment: LandXmlAlignment }
+  | { kind: 'alignment-segment'; alignment: LandXmlAlignment; segment: LandXmlAlignmentSegment }
+  | { kind: 'unsupported-transition'; alignment: LandXmlAlignment; transition: LandXmlUnsupportedTransition }
   | { kind: 'profile'; profile: LandXmlProfile }
   | { kind: 'profile-point'; profile: LandXmlProfile; point: LandXmlProfilePoint }
   | { kind: 'vertical-curve'; profile: LandXmlProfile; curve: LandXmlVerticalCurve }
@@ -187,7 +192,7 @@ export type LandXmlSourceRecord =
   | { kind: 'pipe-network'; network: LandXmlPipeNetwork }
   | { kind: 'pipe-network-collection'; collection: LandXmlPipeNetworkCollection };
 
-export interface LandXmlSourceModel { landXmlDocument?: LandXmlTinDocument }
+export interface LandXmlSourceModel { landXmlDocument?: LandXmlTinDocument; sourceFile?: File }
 
 /** The federation resolver capability needed to turn a renderer id into a source model. */
 export interface LandXmlPickFederation {

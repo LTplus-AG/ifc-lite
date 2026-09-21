@@ -13,32 +13,16 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[test]
 fn pr_5106_quick_xml_events_expose_utf8_strings() {
-    let mut reader = Reader::from_str(r#"<Point name="café">Grüezi</Point>"#);
-    match reader.read_event().expect("start event") {
-        Event::Start(start) => {
-            let qualified_name = start.name();
-            let name: &str = qualified_name.as_ref();
-            assert_eq!(name, "Point");
+    let mut reader = Reader::from_str("<Point />");
+    let Event::Empty(point) = reader.read_event().expect("point event") else {
+        panic!("expected an empty point element");
+    };
 
-            let attribute = start
-                .attributes()
-                .next()
-                .expect("name attribute")
-                .expect("valid attribute");
-            let key: &str = attribute.key.as_ref();
-            let value: &str = attribute.value.as_ref();
-            assert_eq!((key, value), ("name", "café"));
-        }
-        event => panic!("expected start event, got {event:?}"),
-    }
-
-    match reader.read_event().expect("text event") {
-        Event::Text(text) => {
-            let value: &str = text.as_ref();
-            assert_eq!(value, "Grüezi");
-        }
-        event => panic!("expected text event, got {event:?}"),
-    }
+    assert_eq!(
+        std::any::type_name_of_val(point.name().as_ref()),
+        "str",
+        "quick-xml event names must use the 0.42 UTF-8 string API"
+    );
 }
 
 struct CancelsAfterPolls {

@@ -120,7 +120,8 @@ describe('LandXmlSourceInspector (#5042)', () => {
       cantStations: [], superelevations: [], unsupportedTransitions: [{ sourceId: 'segment-99:refusal', sourceSourceId: 'segment-99', spiType: 'bloss', reason: 'retained but unsupported' }] }];
     const props = { modelId: 'alignment-model', document: source, selected: null, onSelect: () => {} };
     const ui = render(<LandXmlModelSourceNavigation {...props} />);
-    assert.equal(ui.querySelectorAll('button').length, 106, 'one hundred alignment rows plus controls and retained surface/overlay rows are mounted');
+    const alignmentRows = [...ui.querySelectorAll('button')].filter((button) => /^(Alignment:|Segment |Refused )/.test(button.textContent ?? ''));
+    assert.equal(alignmentRows.length, 100, 'only one bounded page of alignment rows is mounted');
     const next = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Next');
     assert.ok(next);
     click(next);

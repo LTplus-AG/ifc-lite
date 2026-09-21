@@ -112,6 +112,39 @@ fn issue_5044_arc_has_independent_interior_and_tangent_probe() {
 }
 
 #[test]
+fn issue_5044_render_samples_reuse_the_canonical_curve_evaluator() {
+    let quarter = std::f64::consts::FRAC_PI_2 * 10.0;
+    let curve = LandXmlAlignmentSegment {
+        source_id: id("render-arc"),
+        ordinal: 1,
+        primitive: LandXmlAlignmentPrimitive::Curve(LandXmlCurve {
+            start: point(10.0, 0.0),
+            center: point(0.0, 0.0),
+            end: point(0.0, 10.0),
+            pi: Some(point(10.0, 10.0)),
+            rotation: LandXmlRotation::Clockwise,
+            radius: Some(10.0),
+            declared_length: Some(quarter),
+        }),
+    };
+    let span = curve
+        .render_span(3)
+        .expect("valid curve samples")
+        .expect("curve is renderable");
+    assert_eq!(span.source_id, id("render-arc"));
+    assert_eq!(span.points.len(), 3);
+    assert!((span.points[1].northing - 2.0_f64.sqrt() * 5.0).abs() < 1e-9);
+    assert!((span.points[1].easting - 2.0_f64.sqrt() * 5.0).abs() < 1e-9);
+    assert_eq!(
+        curve
+            .render_span(1)
+            .expect_err("unbounded request refused")
+            .code,
+        "LXMLA231"
+    );
+}
+
+#[test]
 fn issue_5044_full_circle_and_radius_validation_do_not_invent_geometry() {
     let circle = LandXmlAlignmentSegment {
         source_id: id("circle"),
@@ -655,6 +688,11 @@ fn issue_5044_non_clothoid_transition_is_never_coerced_to_a_line() {
             .code,
         "LXMLA209"
     );
+    assert!(alignment.segments[0]
+        .render_span(65)
+        .expect_err("unsupported named transition is not rendered")
+        .code
+        .starts_with("LXMLA"));
 }
 
 #[test]
@@ -690,6 +728,10 @@ fn issue_5044_unsupported_transition_keeps_its_span_and_source_identity() {
         ],
         30.0,
     );
+    assert!(alignment.segments[1]
+        .render_span(65)
+        .expect("preserved transition remains non-renderable")
+        .is_none());
     assert_eq!(
         alignment
             .probe_at_distance(15.0, 0.0)

@@ -12,8 +12,8 @@ mod parser;
 pub use inspection::LandXmlCantProbe;
 pub use model::*;
 pub use numeric::{
-    LandXmlAlignmentProbe, LandXmlNumericDiagnostic, LandXmlStationMapping,
-    MAX_INTERACTIVE_STATION_PROBES,
+    LandXmlAlignmentProbe, LandXmlAlignmentRenderSpan, LandXmlNumericDiagnostic,
+    LandXmlStationMapping, MAX_INTERACTIVE_STATION_PROBES,
 };
 pub use parser::{
     parse_landxml_alignments, parse_landxml_alignments_optional,

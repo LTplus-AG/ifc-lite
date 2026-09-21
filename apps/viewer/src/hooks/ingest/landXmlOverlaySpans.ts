@@ -67,8 +67,11 @@ export function collectLandXmlOverlaySpans(state: Pick<ViewerState, 'models' | '
       for (const segment of alignment.segments) {
         if (selected && selected.sourceId !== alignment.sourceId && selected.sourceId !== segment.sourceId) continue;
         const primitive = segment.primitive;
-        if ((primitive.kind !== 'line' && primitive.kind !== 'irregular_line') || primitive.start.kind !== 'coordinates' || primitive.end.kind !== 'coordinates') continue;
-        const points = primitive.kind === 'irregular_line' ? [primitive.start.point, ...primitive.points, primitive.end.point] : [primitive.start.point, primitive.end.point];
+        if (primitive.kind === 'unsupported_spiral' || primitive.start.kind !== 'coordinates' || primitive.end.kind !== 'coordinates') continue;
+        const points = primitive.kind === 'irregular_line'
+          ? [primitive.start.point, ...primitive.points, primitive.end.point]
+          : primitive.kind === 'line' ? [primitive.start.point, primitive.end.point] : segment.renderPoints;
+        if (!points || points.length < 2) continue;
         for (let index = 1; index < points.length; index++) append({ modelId: model.id, sourceId: segment.sourceId }, { x: points[index - 1].easting * units.linearScaleToMeters - offset.x, y: -offset.y, z: -points[index - 1].northing * units.linearScaleToMeters - offset.z }, { x: points[index].easting * units.linearScaleToMeters - offset.x, y: -offset.y, z: -points[index].northing * units.linearScaleToMeters - offset.z });
       }
     }

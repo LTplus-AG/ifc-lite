@@ -1,15 +1,15 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
 /** Stable, non-IFC LandXML records retained beside the render meshes. */
 import type {
   LandXmlMeshProvenance, LandXmlPipe, LandXmlPipeFeature, LandXmlPipeNetwork,
   LandXmlPipeNetworkCollection, LandXmlPipeNetworkDocument, LandXmlPipeStructure,
   LandXmlSurfaceCounts,
 } from './landXmlDocumentTypes.js';
+import type { LandXmlAlignment, LandXmlAlignmentSegment, LandXmlUnsupportedTransition } from './landXmlAlignmentSemantics.js';
 export type * from './landXmlDocumentTypes.js';
-
+export type * from './landXmlAlignmentSemantics.js';
 export interface LandXmlPolyline {
   sourceId: string;
   ordinal: number;
@@ -21,7 +21,6 @@ export interface LandXmlPolyline {
   points: number[][];
   pointSourceIds: string[];
 }
-
 export interface LandXmlTinSurface {
   sourceId: string;
   ordinal: number;
@@ -41,7 +40,6 @@ export interface LandXmlTinSurface {
   breaklines: LandXmlPolyline[];
   contours: LandXmlPolyline[];
 }
-
 export interface LandXmlPlanPoint { northing: number; easting: number; elevation: number | null }
 export type LandXmlPlanPointLocation =
   | { kind: 'coordinates'; point: LandXmlPlanPoint; pntRef: string | null }
@@ -125,53 +123,6 @@ export interface LandXmlTinDocument {
   plan?: LandXmlPlanDocument;
   pipeNetworks?: LandXmlPipeNetworkDocument | null;
   rendering: { meshProvenance: LandXmlMeshProvenance[]; surfaceCounts: LandXmlSurfaceCounts[] };
-}
-
-export type LandXmlPointLocation = { kind: 'coordinates'; point: LandXmlPlanPoint } | { kind: 'point_reference'; pntRef: string };
-export interface LandXmlAlignmentSegment { sourceId: string; ordinal: number; primitive: LandXmlAlignmentPrimitive }
-export interface LandXmlCantStation {
-  sourceId: string;
-  station: number;
-  appliedCant: number;
-  equilibriumCant: number | null;
-  transitionType: string | null;
-}
-export interface LandXmlSuperelevationEvent { sourceId: string; kind: string; value: string | null }
-export interface LandXmlSuperelevation {
-  sourceId: string;
-  staStart: number | null;
-  staEnd: number | null;
-  events: LandXmlSuperelevationEvent[];
-}
-/**
- * A refusal is a distinct navigable record, even when it describes the same
- * authored primitive as its retained segment. `sourceSourceId` preserves that
- * XML identity while `sourceId` remains unique in the viewer's source index.
- */
-export interface LandXmlUnsupportedTransition {
-  sourceId: string;
-  sourceSourceId: string;
-  spiType: string;
-  reason: string;
-}
-export type LandXmlAlignmentPrimitive =
-  | { kind: 'line'; start: LandXmlPointLocation; end: LandXmlPointLocation; declaredLength: number | null }
-  | { kind: 'irregular_line'; start: LandXmlPointLocation; end: LandXmlPointLocation; points: LandXmlPlanPoint[]; declaredLength: number | null }
-  | { kind: 'curve'; start: LandXmlPointLocation; center: LandXmlPointLocation; end: LandXmlPointLocation; rotation: 'clockwise' | 'counter_clockwise'; radius: number | null; declaredLength: number | null }
-  | { kind: 'spiral' | 'unsupported_spiral'; start: LandXmlPointLocation; pi: LandXmlPointLocation; end: LandXmlPointLocation; spiType: string; declaredLength: number };
-export interface LandXmlAlignment {
-  sourceId: string;
-  ordinal: number;
-  name: string;
-  length: number;
-  staStart: number;
-  profileSourceIds: string[];
-  crossSectionSourceIds: string[];
-  segments: LandXmlAlignmentSegment[];
-  /** Authored records are retained for source navigation and inspection. */
-  cantStations: LandXmlCantStation[];
-  superelevations: LandXmlSuperelevation[];
-  unsupportedTransitions: LandXmlUnsupportedTransition[];
 }
 
 export interface LandXmlProfilePoint { sourceId: string; station: number; elevation: number | null }

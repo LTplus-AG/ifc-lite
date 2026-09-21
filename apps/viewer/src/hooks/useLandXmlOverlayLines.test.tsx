@@ -144,7 +144,7 @@ describe('LandXML source overlay rendering (#5042)', () => {
       profileSourceIds: [], crossSectionSourceIds: [],
       segments: [
         { sourceId: 'alignment:line', ordinal: 1, primitive: { kind: 'line', start: { kind: 'coordinates', point: { northing: 10, easting: 20, elevation: null } }, end: { kind: 'coordinates', point: { northing: 40, easting: 50, elevation: null } }, declaredLength: 20 } },
-        { sourceId: 'alignment:curve', ordinal: 2, primitive: { kind: 'curve', start: { kind: 'coordinates', point: { northing: 40, easting: 50, elevation: null } }, center: { kind: 'coordinates', point: { northing: 30, easting: 50, elevation: null } }, end: { kind: 'coordinates', point: { northing: 30, easting: 60, elevation: null } }, rotation: 'clockwise', radius: 10, declaredLength: 15.7 } },
+        { sourceId: 'alignment:curve', ordinal: 2, primitive: { kind: 'curve', start: { kind: 'coordinates', point: { northing: 40, easting: 50, elevation: null } }, center: { kind: 'coordinates', point: { northing: 30, easting: 50, elevation: null } }, end: { kind: 'coordinates', point: { northing: 30, easting: 60, elevation: null } }, rotation: 'clockwise', radius: 10, declaredLength: 15.7 }, renderPoints: [{ northing: 40, easting: 50, elevation: null }, { northing: 37, easting: 57, elevation: null }, { northing: 30, easting: 60, elevation: null }] },
       ],
       cantStations: [], superelevations: [], unsupportedTransitions: [],
     };
@@ -153,9 +153,9 @@ describe('LandXML source overlay rendering (#5042)', () => {
     let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
-    assert.deepEqual([...vertices], [20, 0, -10, 50, 0, -40], 'curve is not replaced by an invented chord or tessellation');
+    assert.deepEqual([...vertices], [20, 0, -10, 50, 0, -40, 50, 0, -40, 57, 0, -37, 57, 0, -37, 60, 0, -30], 'curve uses canonical Rust-evaluated display samples');
     act(() => useViewerStore.getState().setSelectedLandXmlSource({ modelId: model.id, sourceId: 'alignment:curve' }));
-    assert.equal(vertices.length, 0, 'a selected unsupported span has no fabricated overlay');
+    assert.deepEqual([...vertices], [50, 0, -40, 57, 0, -37, 57, 0, -37, 60, 0, -30], 'every sampled piece keeps the selected segment source ID');
   });
 
   it('renders a schema-valid two-dimensional Contour at its authored elevation (#5042)', () => {

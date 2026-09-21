@@ -12,12 +12,8 @@ import {
   type LandXmlSourceRecord,
   type LandXmlSourceRef,
 } from '@/hooks/ingest/landXmlSemantics';
-import {
-  type LandXmlAlignmentInspectionResult,
-  type LandXmlAlignmentProbeResult,
-} from '@/hooks/ingest/landXmlAlignmentWasm';
-import { probeLandXmlAlignmentInWorker } from '@/hooks/ingest/landXmlProbe';
 import { semanticDetailRows, semanticNavigationAt, semanticNavigationCount } from './landXmlSemanticInspection.js';
+import { LandXmlAlignmentSourceInspector } from './LandXmlAlignmentSourceInspector.js';
 
 interface LandXmlSourceInspectorProps {
   models: ReadonlyMap<string, LandXmlSourceModel>;
@@ -129,23 +125,6 @@ function navigationAt(surface: LandXmlSurfaceRecord, itemIndex: number, t: Trans
   throw new Error(`LandXML source navigation index ${itemIndex} is outside the retained surface records`);
 }
 
-function alignmentNavigationCount(alignment: Extract<LandXmlSourceRecord, { kind: 'alignment' }>['alignment']): number {
-  return 1 + alignment.segments.length + alignment.unsupportedTransitions.length;
-}
-
-function alignmentNavigationAt(
-  alignment: Extract<LandXmlSourceRecord, { kind: 'alignment' }>['alignment'], itemIndex: number,
-): NavigationItem {
-  if (itemIndex === 0) return { label: `Alignment: ${alignment.name}`, sourceId: alignment.sourceId };
-  let index = itemIndex - 1;
-  const segment = alignment.segments[index];
-  if (segment) return { label: `Segment ${segment.ordinal}: ${segment.primitive.kind}`, sourceId: segment.sourceId };
-  index -= alignment.segments.length;
-  const transition = alignment.unsupportedTransitions[index];
-  if (transition) return { label: `Refused ${transition.spiType} transition: ${transition.reason}`, sourceId: transition.sourceId };
-  throw new Error(`LandXML alignment navigation index ${itemIndex} is outside the retained alignment records`);
-}
-
 function surfacePropertyRows(properties: Record<string, string>): Array<readonly [string, string]> {
   return Object.entries(properties).sort(([left], [right]) => left.localeCompare(right));
 }
@@ -205,13 +184,6 @@ function engineeringRows(record: LandXmlSourceRecord, rootLinearUnit: string | u
 export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSourceInspectorProps) {
   const { t } = useTranslation();
   const [navigationPage, setNavigationPage] = useState(0);
-  const [alignmentProbe, setAlignmentProbe] = useState<LandXmlAlignmentProbeResult | null>(null);
-  const [alignmentInspection, setAlignmentInspection] = useState<LandXmlAlignmentInspectionResult | null>(null);
-  const [probeMode, setProbeMode] = useState<'distance' | 'station'>('distance');
-  const [distanceInput, setDistanceInput] = useState('0');
-  const [stationInput, setStationInput] = useState('');
-  const [offsetInput, setOffsetInput] = useState('0');
-  const [probeError, setProbeError] = useState<string | null>(null);
   const record = useMemo(
     () => findLandXmlModelSourceRecord(models, selected),
     [models, selected],
@@ -219,73 +191,9 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
 
   useEffect(() => setNavigationPage(0), [selected.modelId, selected.sourceId]);
 
-  useEffect(() => {
-    const model = models.get(selected.modelId);
-    const document = model?.landXmlDocument;
-    const selectedAlignment = document?.alignments?.find((alignment) => alignment.sourceId === selected.sourceId)
-      ?? document?.alignments?.find((alignment) => alignment.segments.some((segment) => segment.sourceId === selected.sourceId)
-        || alignment.unsupportedTransitions.some((transition) => transition.sourceId === selected.sourceId));
-    if (!selectedAlignment || !model?.sourceFile) {
-      setAlignmentProbe(null); setAlignmentInspection(null); return;
-    }
-    let active = true;
-    const controller = new AbortController();
-    const distance = Number(distanceInput);
-    const station = Number(stationInput);
-    const offset = Number(offsetInput);
-    const validInput = Number.isFinite(offset) && (probeMode === 'distance' ? Number.isFinite(distance) : Number.isFinite(station));
-    if (!validInput) {
-      setAlignmentProbe(null); setAlignmentInspection(null); setProbeError('Enter finite numeric probe values.');
-      return () => { active = false; };
-    }
-    void model.sourceFile.arrayBuffer().then((buffer) => probeLandXmlAlignmentInWorker(buffer, {
-      alignmentSourceId: selectedAlignment.sourceId,
-      mode: probeMode,
-      value: probeMode === 'distance' ? distance : station,
-      offsetRight: offset,
-    }, controller.signal)).then(({ probes, inspection }) => {
-      const probe = probes[0];
-      if (!probe) throw new Error('The displayed station is in a station-equation gap.');
-      if (active) { setAlignmentProbe(probe); setAlignmentInspection(inspection); setProbeError(probes.length > 1 ? `Station resolves to ${probes.length} physical distances; showing the first.` : null); }
-    }).catch((error: unknown) => {
-      console.error('[LandXmlSourceInspector] alignment probe failed:', error);
-      if (active) { setAlignmentProbe(null); setAlignmentInspection(null); setProbeError(error instanceof Error ? error.message : 'LandXML alignment probe failed.'); }
-    });
-    return () => { active = false; controller.abort(); };
-  }, [models, selected.modelId, selected.sourceId, probeMode, distanceInput, stationInput, offsetInput]);
-
   if (!record) return null;
   if (record.kind === 'alignment' || record.kind === 'alignment-segment' || record.kind === 'unsupported-transition') {
-    const alignment = record.alignment;
-    const pages = Math.max(1, Math.ceil(alignmentNavigationCount(alignment) / NAVIGATION_PAGE_SIZE));
-    const page = Math.min(navigationPage, pages - 1);
-    const firstItem = page * NAVIGATION_PAGE_SIZE;
-    const items = Array.from(
-      { length: Math.min(NAVIGATION_PAGE_SIZE, alignmentNavigationCount(alignment) - firstItem) },
-      (_, index) => alignmentNavigationAt(alignment, firstItem + index),
-    );
-    return (
-      <div className="h-full overflow-auto border-l-2 border-zinc-200 bg-white dark:border-zinc-800 dark:bg-black" data-landxml-source-inspector>
-        <div className="space-y-2 border-b-2 border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-black">
-          <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">LandXML Alignment</p>
-          <h3 className="truncate text-sm font-bold uppercase tracking-tight text-zinc-900 dark:text-zinc-100">{recordName(record, t)}</h3>
-          <p className="break-all font-mono text-xs text-zinc-500">{recordPath(record)}</p>
-        </div>
-        <div className="divide-y divide-zinc-100 py-2 dark:divide-zinc-900">
-          {items.map((item) => <button key={item.sourceId} type="button" className="block w-full px-4 py-2 text-left text-xs text-zinc-700 dark:text-zinc-300" onClick={() => onSelect({ modelId: selected.modelId, sourceId: item.sourceId })}>{item.label}</button>)}
-        </div>
-        {pages > 1 && <div className="flex items-center justify-between border-t border-zinc-200 px-4 py-2 text-xs dark:border-zinc-800"><button type="button" disabled={page === 0} onClick={() => setNavigationPage(page - 1)}>Previous</button><span>{page + 1} / {pages}</span><button type="button" disabled={page + 1 >= pages} onClick={() => setNavigationPage(page + 1)}>Next</button></div>}
-        <div className="space-y-2 p-4 text-xs text-zinc-700 dark:text-zinc-300">
-          <p>Length: {alignment.length}</p><p>Start station: {alignment.staStart}</p><p>Segments: {alignment.segments.length}</p>
-          <label className="block">Probe by <select aria-label="Probe mode" value={probeMode} onChange={(event) => setProbeMode(event.target.value === 'station' ? 'station' : 'distance')}><option value="distance">geometric distance</option><option value="station">displayed station</option></select></label>
-          {probeMode === 'distance' ? <label className="block">Distance <input aria-label="Geometric distance" type="number" value={distanceInput} onChange={(event) => setDistanceInput(event.target.value)} /></label> : <label className="block">Station <input aria-label="Displayed station" type="number" value={stationInput} onChange={(event) => setStationInput(event.target.value)} /></label>}
-          <label className="block">Right offset <input aria-label="Right offset" type="number" value={offsetInput} onChange={(event) => setOffsetInput(event.target.value)} /></label>
-          {probeError && <p role="alert" className="text-red-700 dark:text-red-300">Probe unavailable: {probeError}</p>}
-          {alignmentProbe && <><p>Probe: {alignmentProbe.northing}, {alignmentProbe.easting}</p><p>Displayed station: {alignmentProbe.displayedBack} / {alignmentProbe.displayedAhead}</p><p>Probe span: {alignmentProbe.segmentSourceId}</p></>}
-          {alignmentInspection && <><p>Authored CantStation bracket: {alignmentInspection.previousCantStation ? `${alignmentInspection.previousCantStation.station} (applied ${alignmentInspection.previousCantStation.appliedCant})` : 'none'} / {alignmentInspection.nextCantStation ? `${alignmentInspection.nextCantStation.station} (applied ${alignmentInspection.nextCantStation.appliedCant})` : 'none'}</p><p>Authored Superelevation: {alignmentInspection.superelevations.map((value) => `${value.staStart ?? 'open'}–${value.staEnd ?? 'open'}: ${value.events.map((event) => `${event.kind}${event.value === null ? '' : `=${event.value}`}`).join(', ')}`).join('; ') || 'none'}</p></>}
-        </div>
-      </div>
-    );
+    return <LandXmlAlignmentSourceInspector modelId={selected.modelId} sourceFile={models.get(selected.modelId)?.sourceFile} record={record} onSelect={onSelect} />;
   }
   const document = models.get(selected.modelId)?.landXmlDocument;
   const terrain = terrainRecord(record);

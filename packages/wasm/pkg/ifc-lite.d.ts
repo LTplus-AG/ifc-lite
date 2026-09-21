@@ -61,7 +61,9 @@ export interface LandXmlSourcePointJs { source_id: string; ordinal: number; sour
 /** serde_wasm_bindgen omits absent Rust Option fields rather than serializing null. */
 export interface LandXmlPolylineJs { source_id: string; ordinal: number; name?: string; kind?: string; source_path: string; properties: Record<string, string>; coordinate_dimension: 2 | 3; points: number[][]; point_source_ids: string[]; }
 export interface LandXmlExtensionJs { namespace: string; local_name: string; path: string; }
-export interface LandXmlSourceDocumentJs { tin: LandXmlTinDocumentJs; alignments: LandXmlAlignmentDocumentJs; }
+export interface LandXmlSourceDocumentJs { tin: LandXmlTinDocumentJs; alignments: LandXmlAlignmentDocumentJs; alignment_render_spans: LandXmlAlignmentRenderSpanJs[]; alignment_render_refusals: LandXmlAlignmentRenderRefusalJs[]; alignment_render_truncated: boolean; }
+export interface LandXmlAlignmentRenderSpanJs { source_id: string; points: LandXmlPlanPointJs[]; }
+export interface LandXmlAlignmentRenderRefusalJs { source_id: string; message: string; }
 export interface LandXmlAlignmentDocumentJs { units?: LandXmlUnitsJs; alignments: LandXmlAlignmentJs[]; warnings: string[]; }
 export interface LandXmlUnitsJs { linear_unit: string; elevation_unit: string; linear_scale_to_meters: number; elevation_scale_to_meters: number; }
 export interface LandXmlAlignmentJs { source_id: string; ordinal: number; name: string; length: number; sta_start: number; profile_source_ids: string[]; cross_section_source_ids: string[]; start?: LandXmlPointLocationJs; align_pis: LandXmlAlignmentPiJs[]; segments: LandXmlAlignmentSegmentJs[]; station_equations: LandXmlStationEquationJs[]; cant?: LandXmlCantJs; superelevations: LandXmlSuperelevationJs[]; unsupported_transitions: LandXmlUnsupportedTransitionJs[]; }

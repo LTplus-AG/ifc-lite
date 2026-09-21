@@ -1530,6 +1530,14 @@ jobs:
       # cannot leave the committed Rust table stale while CI stays green.
       - name: Check legacy rooted-type freshness
         run: node scripts/generate-legacy-rooted-types.mjs --check
+      # `IFC2X3_ENTITY_NAMES` (#5116) is the Rust schema converter's "does
+      # this type have any representation at all in IFC2X3" table, generated
+      # from the same TS entity table the TypeScript converter's
+      # `attrNameTable('IFC2X3')` reads. Check it here for the same reason as
+      # the rooted-type table above: a schema refresh could otherwise leave
+      # the committed Rust table stale while CI stays green.
+      - name: Check IFC2X3 entity-name table freshness
+        run: node scripts/generate-ifc2x3-entity-names.mjs --check
       # The IFC2X3 required-slot table both schema converters read on a
       # downgrade (#4714) is generated from the EXPRESS-derived IFC2X3 registry
       # into BOTH languages. Check it here so a schema refresh cannot leave one

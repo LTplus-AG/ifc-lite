@@ -48,6 +48,7 @@ mod schema_detect;
 mod schema_ifc2x3_slots;
 mod schema_owner_history;
 mod schema_pad;
+mod schema_unrepresented;
 pub use schema_pad::padded_type_universe;
 mod shades;
 pub mod source_header;

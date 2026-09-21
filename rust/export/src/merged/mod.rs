@@ -191,6 +191,16 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     // for why this is a diagnostic about the source file, not a completeness
     // gap in the merge (#3752).
     let mut refused_refs_total = 0usize;
+    // #5116: a non-rooted type with no representation in the target schema
+    // (e.g. `IfcCartesianPointList3D` downgraded to IFC2X3) cannot become an
+    // `IFCPROXY` either, so `convert_step_line` errs instead of guessing.
+    // `export_merged_models` has no fallible signature to propagate that
+    // through today, and this is common enough real-world input (any IFC4
+    // model with tessellated geometry) that panicking here would abort a
+    // merge that the SINGLE-model path only ever silently mis-converted —
+    // a regression, not an improvement. Counted here and kept as the prior
+    // (pass-through-unchanged) behavior instead; see the fallback below.
+    let mut unrepresented_types_kept: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     // `None`: the emit loop below re-resolves model 0 at i == 0 and is the
     // scan that gets reported (CodeRabbit, PR #3766).
     let first = ModelIndex::build(models[0].content);
@@ -322,13 +332,39 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 // GlobalId, so two models sharing a source-local id must not seed the
                 // same placeholder (Greptile P1). rewrite_refs already offset the
                 // line's own `#id`, so this keeps the proxy guid consistent with it.
-                crate::schema_convert::convert_step_line(
+                //
+                // Falls back to the UNCONVERTED line on `Err`, not `?`/panic:
+                // unlike the single-model `step.rs` path (which already threads a
+                // `Result` out through `std::io::Result`), `export_merged`/
+                // `export_merged_models` have no fallible signature at all, and
+                // giving them one is a separate, deliberate API change this fix
+                // does not make -- the same scope choice the TypeScript twin's
+                // `merged-exporter.ts` documents for its own withholding
+                // optimization (#5114). Unlike a rare edge case, a non-rooted type
+                // with no target representation is COMMON real-world input (any
+                // IFC4 model with tessellated geometry -- IfcCartesianPointList3D,
+                // IfcTriangulatedFaceSet, IfcIndexedPolyCurve -- has one), so
+                // panicking here would abort a merge the single-model path only
+                // ever silently mis-converted before #5116: a regression, not an
+                // improvement, and unrecoverable through the wasm ABI (no
+                // unwinding). Keeping the prior pass-through behavior and
+                // reporting it in `stats.warnings` is a real fix for every OTHER
+                // type (rooted-proxy and renamed types both now convert
+                // correctly here too) without a new abort path for the one this
+                // signature genuinely cannot express yet.
+                match crate::schema_convert::convert_step_line(
                     &after_guid,
                     &source_schema,
                     &schema,
                     id.saturating_add(offset),
                     &mut slot_fill,
-                )
+                ) {
+                    Ok(text) => text,
+                    Err(e) => {
+                        unrepresented_types_kept.insert(e.entity_type);
+                        after_guid.clone()
+                    }
+                }
             } else {
                 after_guid
             };
@@ -386,6 +422,18 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         // represent.
         stats.warnings.push(format!(
             "{refused_refs_total} reference(s) above the u32 express-id bound were refused (see issue #3421) while resolving model reference closures."
+        ));
+    }
+
+    if !unrepresented_types_kept.is_empty() {
+        // #5116: kept pass-through, not proxied or dropped -- see the fallback
+        // above. Names every affected TYPE (not every occurrence) so this stays
+        // readable on a large merge with many instances of the same type.
+        stats.warnings.push(format!(
+            "{} entity type(s) have no representation in {schema} and are not IfcRoot subtypes, \
+             so the merge kept them unconverted instead of guessing (see issue #5116): {}.",
+            unrepresented_types_kept.len(),
+            unrepresented_types_kept.into_iter().collect::<Vec<_>>().join(", ")
         ));
     }
 

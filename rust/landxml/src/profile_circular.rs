@@ -182,18 +182,50 @@ pub(crate) fn circular_rise(
             &[horizontal_distance],
             &[geometry.radius, geometry.cosine_in],
         );
-    let root = 1.0 - 2.0 * geometry.incoming_grade * u - u * u;
+    let linear = signed_scaled_product(geometry.incoming_grade, u);
+    let quadratic = scaled_ratio(&[u, u], &[]);
+    let root = 1.0 - linear - linear - quadratic;
     if !u.is_finite() || root < -1.0e-12 {
         return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
     }
-    let rise = scaled_ratio(&[horizontal_distance], &[geometry.cosine_in])
-        * (2.0 * geometry.sine_in + geometry.cosine_in * u)
-        / (1.0 + root.max(0.0).sqrt());
+    let rise = if root.is_finite() {
+        // Keep the compensating factors in one exponent-aware ratio. In
+        // particular, `horizontal_distance / cosine_in` can overflow while
+        // its product with the local sine delta remains finite.
+        scaled_ratio(
+            &[
+                horizontal_distance,
+                2.0 * geometry.sine_in + geometry.cosine_in * u,
+            ],
+            &[geometry.cosine_in, 1.0 + root.max(0.0).sqrt()],
+        )
+    } else {
+        // Near a vertical incoming tangent, `cos(theta) / cosine_in` is not
+        // representable even though the circle itself is. Work in the unit
+        // tangent coordinates instead: q is the outgoing sine after the
+        // separately-represented k*dx increment, and the rationalized rise
+        // avoids subtracting the two nearly equal cosines.
+        let delta_sine =
+            geometry.curvature.signum() * scaled_ratio(&[horizontal_distance], &[geometry.radius]);
+        let sine_out = geometry.sine_in + delta_sine;
+        if !delta_sine.is_finite() || !sine_out.is_finite() || sine_out.abs() > 1.0 {
+            return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
+        }
+        let cosine_out = ((1.0 - sine_out.abs()) * (1.0 + sine_out.abs())).sqrt();
+        scaled_ratio(
+            &[horizontal_distance, geometry.sine_in + sine_out],
+            &[geometry.cosine_in + cosine_out],
+        )
+    };
     if rise.is_finite() {
         Ok(rise)
     } else {
         Err(LandXmlProfileEvaluationError::NonFiniteEvaluation)
     }
+}
+
+fn signed_scaled_product(left: f64, right: f64) -> f64 {
+    left.signum() * right.signum() * scaled_ratio(&[left.abs(), right.abs()], &[])
 }
 
 #[cfg(test)]

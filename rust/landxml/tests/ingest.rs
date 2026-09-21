@@ -1429,6 +1429,46 @@ fn issue_5045_parsed_circular_curves_stay_stable_for_shallow_and_near_parallel_g
         .evaluate_elevation_at(0.0)?
         .is_some());
 
+    // #5045: the scaled root includes a finite `2 * grade * u` term even
+    // though `2 * grade` itself overflows. These are parsed source f64s,
+    // rather than an internal synthetic geometry, to cover the declaration
+    // validation and the PVI placement together.
+    let root_length = 1.527_777_777_777_78e-309;
+    let forward_root = parse(centered(-1.0e308, 1.2e308, root_length, 1.0e308).as_bytes())?;
+    let forward_at_pvi = forward_root.profiles[0]
+        .evaluate_elevation_at(0.0)?
+        .expect("forward overflow-root curve evaluates at its PVI");
+    assert!((forward_at_pvi / 0.003_795_737_491_389_808 - 1.0).abs() < 2.0e-12);
+    let forward_start = -8.333_333_333_333e-310;
+    let forward_end = 6.944_444_444_444e-310;
+    let forward_elevation = |station| {
+        forward_root.profiles[0]
+            .evaluate_elevation_at(station)
+            .unwrap()
+            .unwrap()
+    };
+    // The endpoints meet the finite tangent lines and the interior does not
+    // collapse to either tangent when the horizontal spans are subnormal.
+    assert!((forward_elevation(forward_start) + 0.083_333_333_333).abs() < 2.0e-10);
+    assert!((forward_elevation(forward_end) - 0.083_333_333_333).abs() < 2.0e-10);
+    assert!(forward_elevation(-4.0e-310) < forward_at_pvi);
+    assert!(forward_elevation(4.0e-310) > forward_at_pvi);
+    let reverse_root = parse(centered(-1.2e308, 1.0e308, root_length, 1.0e308).as_bytes())?;
+    let reverse_at_pvi = reverse_root.profiles[0]
+        .evaluate_elevation_at(0.0)?
+        .expect("reverse overflow-root curve evaluates at its PVI");
+    assert!((reverse_at_pvi / -0.003_795_737_491_389_808 - 1.0).abs() < 2.0e-12);
+    let reverse_elevation = |station| {
+        reverse_root.profiles[0]
+            .evaluate_elevation_at(station)
+            .unwrap()
+            .unwrap()
+    };
+    assert!((reverse_elevation(-6.944_444_444_444e-310) + 0.083_333_333_333).abs() < 2.0e-10);
+    assert!((reverse_elevation(8.333_333_333_333e-310) - 0.083_333_333_333).abs() < 2.0e-10);
+    assert!(reverse_elevation(-4.0e-310) < reverse_at_pvi);
+    assert!(reverse_elevation(4.0e-310) > reverse_at_pvi);
+
     let near_parallel = parse(source(-100.0, 100.000001, 98.51853225045078, 1.0e11).as_bytes())?;
     assert!(near_parallel.profiles[0]
         .evaluate_elevation_at(1000.0)?

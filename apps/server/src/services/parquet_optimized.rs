@@ -23,7 +23,6 @@ use parquet::basic::Compression;
 use parquet::file::properties::WriterProperties;
 use parquet::schema::types::ColumnPath;
 use rustc_hash::FxHashMap;
-use std::hash::{Hash, Hasher};
 use std::io::Cursor;
 use std::sync::Arc;
 
@@ -31,49 +30,12 @@ use super::parquet::check_u32_len;
 use super::ParquetError;
 
 use crate::services::parquet_instancing::{
-    collate_rotation_aware_placements, optimized_wire_version, rotation_zup_to_yup,
-    IDENTITY_ROTATION,
+    collate_rotation_aware_placements, mesh_geometry_key, optimized_wire_version,
+    rotation_zup_to_yup, MeshGeometryKey, IDENTITY_ROTATION,
 };
 
 /// Vertex multiplier for integer quantization. 10,000 = 0.1mm precision.
 pub const VERTEX_MULTIPLIER: f32 = 10_000.0;
-
-/// Hash key for mesh geometry (for deduplication).
-#[derive(Clone, PartialEq, Eq)]
-struct MeshGeometryKey {
-    /// Quantized positions as bytes for hashing
-    positions_hash: u64,
-    /// Quantized indices hash
-    indices_hash: u64,
-}
-
-impl Hash for MeshGeometryKey {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.positions_hash.hash(state);
-        self.indices_hash.hash(state);
-    }
-}
-
-/// Compute a fast hash of a u32 slice.
-fn hash_u32_slice(data: &[u32]) -> u64 {
-    use std::collections::hash_map::DefaultHasher;
-    let mut hasher = DefaultHasher::new();
-    for item in data {
-        item.hash(&mut hasher);
-    }
-    hasher.finish()
-}
-
-/// Compute a fast hash of a f32 slice (using bit representation).
-fn hash_f32_slice(data: &[f32]) -> u64 {
-    use std::collections::hash_map::DefaultHasher;
-    let mut hasher = DefaultHasher::new();
-    for item in data {
-        // Convert f32 to bits for hashing (handles NaN consistently)
-        item.to_bits().hash(&mut hasher);
-    }
-    hasher.finish()
-}
 
 /// Quantize a float position to integer (0.1mm precision).
 #[inline]
@@ -181,10 +143,7 @@ fn serialize_to_parquet_optimized(
                 (idx, zup_to_yup_f64(placement.origin_zup), rotation_zup_to_yup(&placement.rotation_zup))
             }
             None => {
-                let geo_key = MeshGeometryKey {
-                    positions_hash: hash_f32_slice(&mesh.positions),
-                    indices_hash: hash_u32_slice(&mesh.indices),
-                };
+                let geo_key = mesh_geometry_key(mesh);
                 let idx = *mesh_lookup.entry(geo_key).or_insert_with(|| {
                     let idx = unique_meshes.len() as u32;
                     unique_meshes.push(mesh);

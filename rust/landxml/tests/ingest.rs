@@ -216,6 +216,22 @@ fn preserves_only_the_root_landxml_coordinate_system_as_structured_metadata() ->
 }
 
 #[test]
+fn duplicate_root_coordinate_system_preserves_prior_last_declaration_behavior() -> Result<(), Box<dyn std::error::Error>> {
+    let valid = String::from_utf8(document("grade")).expect("fixture is UTF-8");
+    let input = valid.replace(
+        "<Units>",
+        r#"<CoordinateSystem horizontalDatum="EPSG:2056"/><CoordinateSystem horizontalDatum="EPSG:25832"/><Units>"#,
+    );
+    let parsed = parse(input.as_bytes())?;
+    assert_eq!(
+        parsed.coordinate_system.and_then(|value| value.horizontal_datum),
+        Some("EPSG:25832".to_owned()),
+    );
+    assert!(parsed.warnings.iter().any(|warning| warning.contains("retained the last declaration")));
+    Ok(())
+}
+
+#[test]
 fn retains_geometry_free_documents_as_honest_source_records(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let xml = format!(

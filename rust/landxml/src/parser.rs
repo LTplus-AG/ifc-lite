@@ -238,7 +238,10 @@ impl Parser<'_> {
         match local {
             "CoordinateSystem" if self.is_path(&["LandXML", "CoordinateSystem"]) => {
                 if self.coordinate_system.is_some() {
-                    return Err(error(Code::InvalidSemantic, "LandXML may declare CoordinateSystem only once"));
+                    self.warnings.push(
+                        "LandXML declares multiple root CoordinateSystem records; retained the last declaration"
+                            .to_owned(),
+                    );
                 }
                 self.coordinate_system = Some(LandXmlCoordinateSystem {
                     horizontal_datum: attr(&attributes, "horizontalDatum").map(|value| value.to_owned()),

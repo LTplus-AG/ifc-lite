@@ -31,6 +31,7 @@ afterEach(() => {
 it('keeps rebuilt IFCx count when stale streamed handles are cleaned after recovery (#4885)', () => {
   let inlineCount = 0, streamedPresent = true;
   const removed: number[] = [];
+  const visibility: Array<readonly [number, boolean]> = [];
   const renderer = {
     setPointClouds: (assets: readonly PointCloudAsset[]) => { inlineCount = assets.length; },
     getPointCloudAssetCount: () => inlineCount + (streamedPresent ? 1 : 0),
@@ -38,6 +39,7 @@ it('keeps rebuilt IFCx count when stale streamed handles are cleaned after recov
       removed.push(handle.id);
       if (handle.id === 7) streamedPresent = false;
     },
+    setPointCloudVisibility: (handle: { id: number }, visible: boolean) => { visibility.push([handle.id, visible]); },
     setPointCloudOptions: () => {},
     setEdlOptions: () => {},
     getModelBounds: () => null,
@@ -66,6 +68,7 @@ it('keeps rebuilt IFCx count when stale streamed handles are cleaned after recov
   root = createRoot(host);
   act(() => root?.render(<Probe />));
   assert.strictEqual(useViewerStore.getState().pointCloudAssetCount, 2);
+  assert.deepStrictEqual(visibility, [[7, true]], 'the lifecycle mirrors streamed-model visibility to the renderer');
 
   // Device recovery has already dropped streamed GPU assets. It clones the
   // IFCx owner (so sync uploads it) and removes the stale streamed handle.

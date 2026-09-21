@@ -37,6 +37,12 @@
       var BACKSTOP_MS = 30000; // silent-hang backstop (entry JS is multi-MB)
       var ERROR_DEBOUNCE_MS = 800;
       var healed = false;
+      // The watchdog answers one question only: did this document ever mount?
+      // React may later empty #root while a user reload/navigation tears the
+      // document down, or while a heavy model load yields between commits. Once
+      // mounted, that transient empty state must never be mistaken for a boot
+      // failure or the recovery reload will discard an in-flight file open.
+      var mountedOnce = false;
 
       function warn(msg) { if (typeof console !== 'undefined') console.warn('[boot-self-heal] ' + msg); }
 
@@ -98,9 +104,18 @@
         var r = document.getElementById('root');
         return !!(r && r.childElementCount > 0);
       }
+      function observeMount() {
+        if (!mounted()) return false;
+        mountedOnce = true;
+        recordAttempts(0);
+        return true;
+      }
       function heal(reason) {
         if (healed) return;
-        if (mounted()) { recordAttempts(0); return; } // app is actually up — nothing to do
+        // A successful mount is monotonic for this document. Do not inspect a
+        // later teardown-shaped DOM and turn an ordinary reload into a second,
+        // destructive boot-recovery reload (#5124).
+        if (mountedOnce || observeMount()) return;
         var n = attempts();
         if (n >= MAX) return;                       // avoid reload loops on a real outage
         // A stale __vdpl pin is the most likely cause of an entry/asset 404, so
@@ -135,11 +150,11 @@
       // Clear the guard once the app mounts, so a later deploy in the same
       // session can self-heal again (and a recovered reload resets the counter).
       function watchMount() {
-        if (mounted()) { recordAttempts(0); return; }
+        if (observeMount()) return;
         var root = document.getElementById('root');
         if (!root || typeof MutationObserver === 'undefined') return;
         var mo = new MutationObserver(function () {
-          if (mounted()) { recordAttempts(0); mo.disconnect(); }
+          if (observeMount()) mo.disconnect();
         });
         mo.observe(root, { childList: true });
       }

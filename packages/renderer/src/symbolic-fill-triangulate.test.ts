@@ -96,6 +96,19 @@ const SQUARE_4 = [0, 0, 4, 0, 4, 4, 0, 4];
 const HOLE_2 = [1, 1, 1, 3, 3, 3, 3, 1];
 
 describe('SymbolicFillPipeline — IfcAnnotationFillArea holes (#2516)', () => {
+  it('keeps a 5,000-km centimetre residual in its anchored per-partition draw (#5049)', () => {
+    const { device, writes } = makeDevice();
+    const pipeline = new SymbolicFillPipeline(device, 'bgra8unorm', 1);
+    pipeline.upload([{
+      ...fill([0, 0, 1, 0, 0, 1], [], 0),
+      origin: [5_000_000.255, 20, -4],
+    }]);
+    const pass = { setPipeline() {}, setBindGroup() {}, setVertexBuffer() {}, draw() {} } as unknown as GPURenderPassEncoder;
+    pipeline.render(pass, new Float32Array(16), new Float32Array(16).fill(1), [5_000_000.25, 20, -4]);
+    const uniform = writes[writes.length - 1];
+    assert.ok(Math.abs(uniform[32] + uniform[36] - 0.005) < 1e-7);
+    assert.strictEqual(uniform[35], 1);
+  });
   it('subtracts an inner bound from the fill it is nested in', () => {
     const stream = upload([fill([...SQUARE_4, ...HOLE_2], [4])]);
     const area = uploadedArea(stream);

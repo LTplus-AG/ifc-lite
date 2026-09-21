@@ -642,7 +642,7 @@ describe('Section2DOverlayRenderer: one uniform record per draw (#2456)', () => 
     renderer.drawClashBoxLines3D(pass, new Float32Array(16).fill(0));
 
     const offsets = writes.slice(before).map((w) => w.offset);
-    const stride = 192; // ceil(160 / 64) * 64
+    const stride = 256; // ceil(256 / 64) * 64
     for (const o of offsets) {
       assert.strictEqual(o % 64, 0, `offset ${o} is not 64-byte aligned`);
     }

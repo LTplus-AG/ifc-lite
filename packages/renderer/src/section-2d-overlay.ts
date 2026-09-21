@@ -46,6 +46,7 @@ import {
 import {
   WorldLineBuffer,
   type SectionLinePipelineResources,
+  type AnchoredLineVertices,
 } from './section-2d-line-buffer.js';
 
 export type { CutPolygon2D, DrawingLine2D, SectionCustomPlane } from './section-2d-lift.js';
@@ -442,7 +443,7 @@ export class Section2DOverlayRenderer {
    * leaves the other three exactly as they were — that independence is the
    * whole point of having channels rather than one merged buffer.
    */
-  setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | null): void {
+  setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | AnchoredLineVertices | null): void {
     if (vertices === null) {
       // Deliberately no `init()`: clearing destroys a buffer that only an
       // upload could have created, so a clear before first use must not be
@@ -467,12 +468,12 @@ export class Section2DOverlayRenderer {
   drawLineOverlay(
     pass: GPURenderPassEncoder,
     viewProj: Float32Array,
-    channel: LineOverlayChannel,
+    channel: LineOverlayChannel, rteViewProj?: Float32Array, camera?: readonly [number, number, number],
   ): void {
     this.init();
     const resources = this.lineResources();
     if (!resources) return;
-    this.lineOverlays[channel].draw(pass, resources, viewProj, this.overlayLineColor);
+    this.lineOverlays[channel].draw(pass, resources, viewProj, this.overlayLineColor, rteViewProj, camera);
   }
 
   /** Colour for the clash-overlap box (its own, not the shared overlay colour). */

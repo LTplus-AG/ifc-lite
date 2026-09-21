@@ -58,6 +58,7 @@ import { projectedBoundsRange } from './render-section-plane.js';
 import { drawSectionOverlays, type ModelBounds } from './render-section-draw.js';
 import type { RenderOptions } from './types.js';
 import type { DeviceRecoveryOmission } from './device-recovery.js';
+import type { AnchoredLineVertices } from './section-2d-line-buffer.js';
 
 /**
  * The slice of `Renderer` the overlays need. Deliberately four methods wide:
@@ -83,7 +84,9 @@ export interface OverlayDrawContext {
     modelBounds: ModelBounds | null;
     camera: Camera;
     canvasWidth: number;
-    canvasHeight: number;
+  canvasHeight: number;
+  rteViewProj?: Float32Array;
+  rteCamera?: readonly [number, number, number];
 }
 
 /**
@@ -195,7 +198,7 @@ export class RendererOverlays {
         if (overlay) {
             for (const channel of LINE_OVERLAY_CHANNELS) {
                 if (overlay.hasLineOverlay(channel)) {
-                    overlay.drawLineOverlay(pass, viewProj, channel);
+                    overlay.drawLineOverlay(pass, viewProj, channel, ctx.rteViewProj, ctx.rteCamera);
                 }
             }
             if (overlay.hasClashBoxLines3D()) {
@@ -294,10 +297,10 @@ export class RendererOverlays {
     }
 
     /** See `Renderer.setLineOverlay` for the published contract. */
-    setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | null): void {
+    setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | AnchoredLineVertices | null): void {
         if (!this.section2DOverlayRenderer) return;
         this.section2DOverlayRenderer.setLineOverlay(channel, vertices);
-        if (vertices !== null && CHANNEL_EXPANDS_MODEL_BOUNDS[channel]) {
+        if (vertices instanceof Float32Array && CHANNEL_EXPANDS_MODEL_BOUNDS[channel]) {
             // Mirrors the point-cloud upload path (`addPointClouds`,
             // `setPointClouds`): without `syncCameraSceneBounds` the frustum
             // excludes the cluster and it is clipped away even when the camera

@@ -35,12 +35,19 @@ export interface SectionLinePipelineResources {
   uniformStride: number;
 }
 
+/** Opt-in canonical overlay geometry. Legacy f32 world lines must not claim this precision. */
+export interface AnchoredLineVertices {
+  localVertices: Float32Array;
+  origin: readonly [number, number, number];
+}
+
 /** Minimum floats for one line segment: two 3-float vertices. */
 const FLOATS_PER_SEGMENT = 6;
 
 export class WorldLineBuffer {
   private buffer: GPUBuffer | null = null;
   private count = 0;
+  private anchor: readonly [number, number, number] | null = null;
 
   /**
    * @param uniformSlot Index of this family's record in the shared uniform
@@ -68,18 +75,21 @@ export class WorldLineBuffer {
    * float from a flattener should cost the caller the incomplete tail segment,
    * not the entire grid / DXF / annotation layer.
    */
-  upload(device: GPUDevice, vertices: Float32Array): void {
+  upload(device: GPUDevice, vertices: Float32Array | AnchoredLineVertices): void {
     this.clear();
-    const usableFloats = Math.floor(vertices.length / FLOATS_PER_SEGMENT) * FLOATS_PER_SEGMENT;
+    const anchor = vertices instanceof Float32Array ? null : vertices.origin;
+    const source = vertices instanceof Float32Array ? vertices : vertices.localVertices;
+    const usableFloats = Math.floor(source.length / FLOATS_PER_SEGMENT) * FLOATS_PER_SEGMENT;
     if (usableFloats === 0) return;
 
-    const data = usableFloats === vertices.length ? vertices : vertices.subarray(0, usableFloats);
+    const data = usableFloats === source.length ? source : source.subarray(0, usableFloats);
     this.buffer = device.createBuffer({
       size: data.byteLength,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
     device.queue.writeBuffer(this.buffer, 0, data);
     this.count = usableFloats / 3;
+    this.anchor = anchor;
   }
 
   /** Destroy the buffer and reset the count. Safe to call repeatedly. */
@@ -89,6 +99,7 @@ export class WorldLineBuffer {
       this.buffer = null;
     }
     this.count = 0;
+    this.anchor = null;
   }
 
   has(): boolean {
@@ -116,12 +127,24 @@ export class WorldLineBuffer {
     resources: SectionLinePipelineResources,
     viewProj: Float32Array,
     color: readonly [number, number, number, number],
+    rteViewProj?: Float32Array,
+    camera?: readonly [number, number, number],
   ): void {
     if (!this.buffer || this.count === 0) return;
 
     const byteOffset = this.uniformSlot * resources.uniformStride;
     const uniforms = new Float32Array(SECTION_2D_UNIFORM_FLOATS);
     uniforms.set(viewProj, SECTION_2D_UNIFORM_SLOTS.viewProj);
+    if (this.anchor && rteViewProj && camera) {
+      uniforms.set(rteViewProj, SECTION_2D_UNIFORM_SLOTS.rteViewProj);
+      for (let axis = 0; axis < 3; axis++) {
+        const delta = this.anchor[axis] - camera[axis];
+        const high = Math.fround(delta);
+        uniforms[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh + axis] = high;
+        uniforms[SECTION_2D_UNIFORM_SLOTS.originDeltaLow + axis] = Math.fround(delta - high);
+      }
+      uniforms[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh + 3] = 1;
+    }
     // planeOffset stays 0 — vertices are already in world space.
     uniforms.set(color, SECTION_2D_UNIFORM_SLOTS.lineColor);
     resources.device.queue.writeBuffer(resources.uniformBuffer, byteOffset, uniforms);

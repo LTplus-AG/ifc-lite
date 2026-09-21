@@ -3128,6 +3128,8 @@ export class Renderer {
                 camera: this.camera,
                 canvasWidth: this.canvas.width,
                 canvasHeight: this.canvas.height,
+                rteViewProj: relativeToEyeFrame.getViewProjection().m,
+                rteCamera: relativeToEyeFrame.getCameraWorld(),
             });
 
             pass.end();
@@ -3491,7 +3493,7 @@ export class Renderer {
      * extent", NOT "is it behind a visibility toggle" — annotations sit behind
      * `ifcAnnotationsVisible` too.
      */
-    setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | null): void {
+    setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | { localVertices: Float32Array; origin: [number, number, number] } | null): void {
         this.overlays.setLineOverlay(channel, vertices);
     }
 

@@ -5,6 +5,8 @@
 use crate::LandXmlProfileEvaluationError;
 
 pub(crate) struct CircularGeometry {
+    pub(crate) radius: f64,
+    pub(crate) incoming_grade: f64,
     pub(crate) curvature: f64,
     pub(crate) sine_in: f64,
     pub(crate) cosine_in: f64,
@@ -97,6 +99,8 @@ pub(crate) fn circular_geometry(
         return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
     }
     Ok(CircularGeometry {
+        radius,
+        incoming_grade,
         curvature,
         sine_in,
         cosine_in,
@@ -128,6 +132,24 @@ fn scaled_ratio(numerators: &[f64], denominators: &[f64]) -> f64 {
         mantissa /= part;
         exponent -= power;
     }
+    scale_binary(mantissa, exponent)
+}
+
+fn scale_binary(mut mantissa: f64, mut exponent: i32) -> f64 {
+    while exponent > 1023 {
+        mantissa *= 2.0_f64.powi(1023);
+        exponent -= 1023;
+        if !mantissa.is_finite() {
+            return mantissa;
+        }
+    }
+    while exponent < -1022 {
+        mantissa *= 2.0_f64.powi(-1022);
+        exponent += 1022;
+        if mantissa == 0.0 {
+            return 0.0;
+        }
+    }
     mantissa * 2.0_f64.powi(exponent)
 }
 
@@ -155,16 +177,18 @@ pub(crate) fn circular_rise(
     geometry: &CircularGeometry,
     horizontal_distance: f64,
 ) -> Result<f64, LandXmlProfileEvaluationError> {
-    let delta_sine = geometry.curvature * horizontal_distance;
-    let cosine_squared = geometry.cosine_in * geometry.cosine_in
-        - 2.0 * geometry.sine_in * delta_sine
-        - delta_sine * delta_sine;
-    if !delta_sine.is_finite() || cosine_squared < -1.0e-12 {
+    let u = geometry.curvature.signum()
+        * scaled_ratio(
+            &[horizontal_distance],
+            &[geometry.radius, geometry.cosine_in],
+        );
+    let root = 1.0 - 2.0 * geometry.incoming_grade * u - u * u;
+    if !u.is_finite() || root < -1.0e-12 {
         return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
     }
-    let cosine_at_station = cosine_squared.max(0.0).sqrt();
-    let denominator = geometry.cosine_in + cosine_at_station;
-    let rise = horizontal_distance * (2.0 * geometry.sine_in + delta_sine) / denominator;
+    let rise = scaled_ratio(&[horizontal_distance], &[geometry.cosine_in])
+        * (2.0 * geometry.sine_in + geometry.cosine_in * u)
+        / (1.0 + root.max(0.0).sqrt());
     if rise.is_finite() {
         Ok(rise)
     } else {

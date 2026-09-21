@@ -11,7 +11,7 @@ use super::IfcAPI;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::{prelude::*, JsCast};
 
-mod endpoints;
+pub(crate) mod endpoints;
 
 #[derive(Serialize)]
 struct LandXmlSourceDocument<'a> {

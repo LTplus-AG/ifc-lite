@@ -60,6 +60,25 @@ pub struct LandXmlTinStreamSession {
     closed: bool,
 }
 
+/// Reassembles move-owned metadata cursor events for adapters that still need
+/// a complete semantic document at their compatibility boundary.
+#[derive(Default)]
+pub struct LandXmlMetadataStreamAssembler {
+    inner: metadata::MetadataReassembler,
+}
+
+impl LandXmlMetadataStreamAssembler {
+    /// Consume one event emitted through [`LandXmlStreamEvent::Metadata`].
+    pub fn push(&mut self, event: LandXmlMetadataStreamEvent) -> Result<(), LandXmlError> {
+        self.inner.push(event)
+    }
+
+    /// Return the reassembled summary after its single end event.
+    pub fn finish(self) -> Result<LandXmlStreamSummary, LandXmlError> {
+        self.inner.finish()
+    }
+}
+
 impl LandXmlTinStreamSession {
     pub fn new(limits: LandXmlLimits) -> Result<Self, LandXmlError> {
         let feed = TokenFeed::new();
@@ -231,7 +250,7 @@ impl LandXmlTinStreamSession {
     // TODO(remove-by: #5050 worker cursor migration, owner: LandXML)
     pub fn finish(&mut self) -> Result<LandXmlStreamSummary, LandXmlError> {
         self.finish_cursor()?;
-        let mut reassembler = metadata::MetadataReassembler::default();
+        let mut reassembler = LandXmlMetadataStreamAssembler::default();
         while self.output_pending() {
             for event in self.drain(MAX_LANDXML_STREAM_DRAIN_BYTES)? {
                 let LandXmlStreamEvent::Metadata(event) = event else {

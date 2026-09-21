@@ -190,10 +190,14 @@ export class ClashSolidPipeline {
     // The on-demand WASM intersection path returns canonical Float64 world
     // coordinates. Anchor it automatically; a Float32 world stream stays on
     // the legacy route unless its producer explicitly provides an origin.
-    const origin = input.origin ?? (input.positions instanceof Float64Array && input.positions.length >= 3
+    const autoOrigin = !input.origin && input.positions instanceof Float64Array && input.positions.length >= 3
       ? [input.positions[0], input.positions[1], input.positions[2]] as [number, number, number]
-      : undefined);
-    const data = expandTriangles(input, origin);
+      : undefined;
+    // Explicit origins mean the producer has already supplied local vertices.
+    // Only auto-anchored Float64 *world* positions are rebased here; subtracting
+    // an explicit origin again displaces the solid by an entire national-grid
+    // coordinate.
+    const data = expandTriangles(input, autoOrigin);
     if (data.length === 0) return;
 
     this.vertexBuffer = this.device.createBuffer({
@@ -203,7 +207,7 @@ export class ClashSolidPipeline {
     });
     this.device.queue.writeBuffer(this.vertexBuffer, 0, data);
     this.vertexCount = data.length / (VERTEX_STRIDE_BYTES / 4);
-    this.origin = origin;
+    this.origin = input.origin ?? autoOrigin;
   }
 
   hasGeometry(): boolean {

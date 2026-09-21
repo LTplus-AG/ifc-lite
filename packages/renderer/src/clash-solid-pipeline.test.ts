@@ -86,6 +86,18 @@ describe('expandTriangles', () => {
     assert.deepEqual([...out.slice(0, 3)], [1.5, 2.5, 3.5]);
   });
 
+  it('does not subtract an explicit local-origin clash stream twice (#5049)', () => {
+    const input: ClashSolidInput = {
+      positions: new Float32Array([0.01, 0.02, 0, 0.03, 0.02, 0, 0.01, 0.04, 0]),
+      origin: [5_000_000.255, 20, -4],
+      indices: new Uint32Array([0, 1, 2]),
+      color: [1, 0, 0, 1],
+    };
+    const out = expandTriangles(input);
+    assertCloseArray([...out.slice(0, 3)], [0.01, 0.02, 0]);
+    assertCloseArray([...out.slice(7, 10)], [0.03, 0.02, 0]);
+  });
+
   it('an empty index list yields an empty stream', () => {
     const input: ClashSolidInput = {
       positions: new Float32Array([0, 0, 0]),

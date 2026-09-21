@@ -84,6 +84,22 @@ export async function finalizeFederatedSpatialPlacement(options: {
   // one canonical finalization seam.
   if (options.federatedLandXmlStreamingPlan) {
     options.federatedLandXmlStreamingPlan.verify(options.geometry);
+    // Geometry was aligned and installed one component at a time before this
+    // common seam. Source-derived line overlays have no GPU transaction of
+    // their own, so they must still cross the canonical finalizer once the
+    // complete semantic document is available.
+    const source = options.federatedLandXmlStreamingPlan.sourcePlacement;
+    const reference = options.federatedLandXmlStreamingPlan.referencePlacement;
+    if (options.landXmlDocument && source && reference) {
+      const renderedLines = await buildLandXmlRenderedLineUpdates(
+        options.landXmlDocument,
+        source.spatialReference,
+        reference.spatialReference,
+        reference.coordinateInfo,
+      );
+      if (!options.isCurrent()) return null;
+      applyLandXmlRenderedLineUpdates(renderedLines);
+    }
     return {
       federationAlignmentStatus: options.federatedLandXmlStreamingPlan.federationAlignmentStatus,
     };

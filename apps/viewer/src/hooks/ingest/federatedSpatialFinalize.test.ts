@@ -10,6 +10,7 @@ import { fixtureModel } from '@/test/store-fixture.js';
 import { useViewerStore, type FederatedModel } from '../../store/index.js';
 import type { LandXmlTinDocument } from './landXmlSemantics.js';
 import { finalizeFederatedSpatialPlacement } from './federatedSpatialFinalize.js';
+import type { FederatedLandXmlStreamingFinalization } from './federatedLandXmlStreaming.js';
 
 function coordinateInfo(rtcX?: number): CoordinateInfo {
   return {
@@ -58,6 +59,32 @@ function document(): LandXmlTinDocument {
 beforeEach(() => useViewerStore.getState().clearAllModels());
 
 describe('federated LandXML spatial finalization (#5048)', () => {
+  it('still rebuilds source-derived overlays after streamed component alignment (#5050)', async () => {
+    const landXml = document();
+    const source = spatialReference(0);
+    const target = spatialReference(0);
+    const streamingPlan: FederatedLandXmlStreamingFinalization = {
+      coordinateInfo: coordinateInfo(),
+      federationAlignmentStatus: 'identity',
+      sourcePlacement: { spatialReference: source, coordinateInfo: coordinateInfo() },
+      referencePlacement: { spatialReference: target, coordinateInfo: coordinateInfo() },
+      verify: () => undefined,
+    };
+    const geometry: GeometryResult = {
+      meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: coordinateInfo(),
+    };
+
+    const result = await finalizeFederatedSpatialPlacement({
+      dataStore: {} as IfcDataStore, geometry, modelId: 'terrain', fileName: 'terrain.xml',
+      landXmlDocument: landXml, federatedLandXmlStreamingPlan: streamingPlan,
+      isCurrent: () => true, setProgress: () => undefined,
+    });
+
+    assert.equal(result?.federationAlignmentStatus, 'identity');
+    assert.deepEqual(landXml.surfaces[0].breaklines[0].renderedPoints, [[100, 0, 0]],
+      'streaming must not skip semantic overlays after publishing component meshes');
+  });
+
   it('publishes transformed overlays for a mesh-free cross-CRS document', async () => {
     const anchor = fixtureModel('anchor') as FederatedModel;
     anchor.geometryResult = { meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: coordinateInfo() };

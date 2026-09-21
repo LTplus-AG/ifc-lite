@@ -15,6 +15,8 @@ import { LandXmlProvisionalTransaction, type LandXmlFederationReservation, type 
 export interface FederatedLandXmlStreamingFinalization {
   readonly coordinateInfo: CoordinateInfo;
   readonly federationAlignmentStatus: FederationAlignmentStatus | 'anchor' | 'none';
+  readonly sourcePlacement: ModelSpatialPlacement | null;
+  readonly referencePlacement: ModelSpatialPlacement | null;
   verify(geometry: GeometryResult): void;
 }
 
@@ -67,6 +69,10 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
   get federationAlignmentStatus(): FederatedLandXmlStreamingFinalization['federationAlignmentStatus'] {
     return this.alignmentStatus;
   }
+
+  get sourcePlacement(): ModelSpatialPlacement | null { return this.source; }
+
+  get referencePlacement(): ModelSpatialPlacement | null { return this.reference; }
 
   /** Main-thread acknowledgement for one pass-one source component. */
   async measure(mesh: MeshData): Promise<void> {

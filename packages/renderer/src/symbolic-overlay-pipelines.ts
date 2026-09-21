@@ -52,6 +52,8 @@ export interface SymbolicFillInput {
   /** Vertex indices marking the start of each hole. Empty = no holes. */
   holesOffsets: Uint32Array;
   worldY: number;
+  /** Opt-in f64 anchor. points/worldY are local to it; legacy inputs omit it. */
+  origin?: [number, number, number];
   /** Straight-alpha RGBA in [0..1]. The shader premultiplies. */
   color: [number, number, number, number];
   /** Does this fill DEFINE the model's extent? Default true; see `uploadFills` (#3359). */
@@ -102,8 +104,7 @@ export class SymbolicFillPipeline {
   private bindGroupLayout: GPUBindGroupLayout | null = null;
   private uniformBuffer: GPUBuffer | null = null;
   private bindGroup: GPUBindGroup | null = null;
-  private vertexBuffer: GPUBuffer | null = null;
-  private vertexCount = 0;
+  private partitions: Array<{ vertexBuffer: GPUBuffer; vertexCount: number; origin?: [number, number, number] }> = [];
 
   constructor(device: GPUDevice, presentationFormat: GPUTextureFormat, sampleCount: number = 1) {
     this.device = device;
@@ -188,7 +189,7 @@ export class SymbolicFillPipeline {
 
     this.uniformBuffer = this.device.createBuffer({
       label: 'symbolic-fill-camera',
-      size: 64,
+      size: 160,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -213,54 +214,56 @@ export class SymbolicFillPipeline {
     this.init();
 
     // Drop the previous buffer eagerly so swapping models doesn't accumulate.
-    if (this.vertexBuffer) {
-      this.vertexBuffer.destroy();
-      this.vertexBuffer = null;
-    }
-    this.vertexCount = 0;
+    for (const partition of this.partitions) partition.vertexBuffer.destroy();
+    this.partitions = [];
 
     if (fills.length === 0) return;
 
-    // Triangulate everything into one big flat vertex stream.
-    const stream: number[] = [];
+    const legacy: number[] = [];
     for (const fill of fills) {
+      const stream: number[] = [];
       triangulateFillTo(stream, fill);
+      if (fill.origin) this.addPartition(stream, fill.origin); else legacy.push(...stream);
     }
-    if (stream.length === 0) return;
-
-    const data = new Float32Array(stream);
-    this.vertexBuffer = this.device.createBuffer({
-      label: 'symbolic-fill-vbuf',
-      size: data.byteLength,
-      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-    });
-    this.device.queue.writeBuffer(this.vertexBuffer, 0, data);
-    this.vertexCount = data.length / (FILL_VERTEX_STRIDE_BYTES / 4);
+    this.addPartition(legacy);
   }
 
   hasGeometry(): boolean {
-    return this.vertexCount > 0;
+    return this.partitions.length > 0;
   }
 
-  render(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
-    if (!this.pipeline || !this.uniformBuffer || !this.bindGroup || !this.vertexBuffer) return;
-    if (this.vertexCount === 0) return;
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, viewProj);
+  private addPartition(stream: number[], origin?: [number, number, number]): void {
+    if (stream.length === 0) return;
+    const data = new Float32Array(stream);
+    const vertexBuffer = this.device.createBuffer({ label: 'symbolic-fill-vbuf', size: data.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
+    this.device.queue.writeBuffer(vertexBuffer, 0, data);
+    this.partitions.push({ vertexBuffer, vertexCount: data.length / (FILL_VERTEX_STRIDE_BYTES / 4), origin });
+  }
+
+  render(pass: GPURenderPassEncoder, viewProj: Float32Array, rteViewProj?: Float32Array, camera?: readonly [number, number, number]): void {
+    if (!this.pipeline || !this.uniformBuffer || !this.bindGroup) return;
     pass.setPipeline(this.pipeline);
     pass.setBindGroup(0, this.bindGroup);
-    pass.setVertexBuffer(0, this.vertexBuffer);
-    pass.draw(this.vertexCount);
+    for (const partition of this.partitions) {
+      const uniform = new Float32Array(40); uniform.set(viewProj);
+      if (partition.origin && rteViewProj && camera) {
+        uniform.set(rteViewProj, 16);
+        for (let axis = 0; axis < 3; axis++) { const delta = partition.origin[axis] - camera[axis]; const high = Math.fround(delta); uniform[32 + axis] = high; uniform[36 + axis] = Math.fround(delta - high); }
+        uniform[35] = 1;
+      }
+      this.device.queue.writeBuffer(this.uniformBuffer, 0, uniform);
+      pass.setVertexBuffer(0, partition.vertexBuffer); pass.draw(partition.vertexCount);
+    }
   }
 
   destroy(): void {
-    if (this.vertexBuffer) this.vertexBuffer.destroy();
+    for (const partition of this.partitions) partition.vertexBuffer.destroy();
     if (this.uniformBuffer) this.uniformBuffer.destroy();
-    this.vertexBuffer = null;
+    this.partitions = [];
     this.uniformBuffer = null;
     this.bindGroup = null;
     this.bindGroupLayout = null;
     this.pipeline = null;
-    this.vertexCount = 0;
   }
 }
 

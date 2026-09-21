@@ -190,7 +190,7 @@ export class RendererOverlays {
         //
         // Order: fills (background) → lines (outlines on top) →
         // texts (labels above everything).
-        this.symbolic.drawFills(pass, viewProj);
+        this.symbolic.drawFills(pass, viewProj, ctx.rteViewProj, ctx.rteCamera);
         // `LINE_OVERLAY_CHANNELS` is in draw order: annotation, alignment,
         // grid, DXF. All four share the overlay colour and the line pipeline,
         // so the order only decides who wins a depth tie.

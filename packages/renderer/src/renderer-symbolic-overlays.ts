@@ -69,9 +69,9 @@ export class SymbolicOverlays {
     }
 
     /** Background layer: painted before the 3D line overlays. */
-    drawFills(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
+    drawFills(pass: GPURenderPassEncoder, viewProj: Float32Array, rteViewProj?: Float32Array, rteCamera?: readonly [number, number, number]): void {
         if (this.fillPipeline?.hasGeometry()) {
-            this.fillPipeline.render(pass, viewProj);
+            this.fillPipeline.render(pass, viewProj, rteViewProj, rteCamera);
         }
     }
 

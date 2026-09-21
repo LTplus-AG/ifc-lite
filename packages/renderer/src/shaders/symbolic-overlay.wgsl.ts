@@ -13,6 +13,9 @@
 export const SYMBOLIC_FILL_WGSL = /* wgsl */ `
 struct Camera {
   viewProj: mat4x4<f32>,
+  rteViewProj: mat4x4<f32>,
+  originHigh: vec4<f32>,
+  originLow: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> camera: Camera;
@@ -30,7 +33,9 @@ struct VsOut {
 @vertex
 fn vs_main(in: VsIn) -> VsOut {
   var out: VsOut;
-  out.clipPos = camera.viewProj * vec4<f32>(in.position, 1.0);
+  let global = camera.viewProj * vec4<f32>(in.position, 1.0);
+  let relative = (in.position + camera.originHigh.xyz) + camera.originLow.xyz;
+  out.clipPos = select(global, camera.rteViewProj * vec4<f32>(relative, 1.0), camera.originHigh.w == 1.0);
   out.color   = in.color;
   return out;
 }

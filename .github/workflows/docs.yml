@@ -44,7 +44,7 @@ jobs:
         # when the toolchain advances — pinning to a `stable`-branch SHA
         # would silently break the build the next time stable ships.
         # See dtolnay/rust-toolchain README and PR #692 Codex review.
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-05
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-05
         with:
           toolchain: stable
 

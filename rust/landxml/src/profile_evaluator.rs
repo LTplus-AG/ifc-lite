@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+use crate::profile_circular::circular_geometry;
 use crate::{
     LandXmlProfile, LandXmlProfileEvaluationError, LandXmlProfileKind, LandXmlVerticalCurve,
     LandXmlVerticalCurveKind,
@@ -277,41 +278,23 @@ fn evaluate_circular(
     length: Option<f64>,
     radius: Option<f64>,
 ) -> Result<Option<f64>, LandXmlProfileEvaluationError> {
-    let Some(total) = length.filter(|value| value.is_finite() && *value > 0.0) else {
-        return Err(LandXmlProfileEvaluationError::InvalidCurveDeclaration);
-    };
-    let Some(radius) = radius.filter(|value| value.is_finite() && *value > 0.0) else {
-        return Err(LandXmlProfileEvaluationError::InvalidCurveDeclaration);
-    };
-    let sine_in = incoming_grade.atan().sin();
-    let sine_out = outgoing_grade.atan().sin();
-    let change = sine_out - sine_in;
-    if change.abs() <= f64::EPSILON {
-        return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
-    }
-    let curvature = change.signum() / radius;
-    if (change - curvature * total).abs() > 1.0e-8_f64.max(total * 1.0e-8) {
-        return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
-    }
-    let (start, end) = circular_bounds(
-        pvi_station,
-        incoming_grade,
-        outgoing_grade,
-        length,
-        Some(radius),
-    )?;
+    let geometry = circular_geometry(incoming_grade, outgoing_grade, length, radius)?;
+    let (start, end) =
+        circular_bounds(pvi_station, incoming_grade, outgoing_grade, length, radius)?;
     let start_relative_to_pvi = start - pvi_station;
     if station < start || station > end {
         return Ok(None);
     }
-    let sine = sine_in + curvature * (station - start);
+    let sine = geometry.sine_in + geometry.curvature * (station - start);
     if sine.abs() > 1.0 + 1.0e-12 {
         return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
     }
     finite_elevation(
         pvi_elevation
             + incoming_grade * start_relative_to_pvi
-            + ((1.0 - sine_in * sine_in).sqrt() - (1.0 - sine * sine).max(0.0).sqrt()) / curvature,
+            + ((1.0 - geometry.sine_in * geometry.sine_in).sqrt()
+                - (1.0 - sine * sine).max(0.0).sqrt())
+                / geometry.curvature,
     )
 }
 
@@ -322,29 +305,16 @@ fn circular_bounds(
     length: Option<f64>,
     radius: Option<f64>,
 ) -> Result<(f64, f64), LandXmlProfileEvaluationError> {
-    let Some(total) = length.filter(|value| value.is_finite() && *value > 0.0) else {
-        return Err(LandXmlProfileEvaluationError::InvalidCurveDeclaration);
-    };
-    let Some(radius) = radius.filter(|value| value.is_finite() && *value > 0.0) else {
-        return Err(LandXmlProfileEvaluationError::InvalidCurveDeclaration);
-    };
-    let sine_in = incoming_grade.atan().sin();
-    let sine_out = outgoing_grade.atan().sin();
-    let change = sine_out - sine_in;
-    if change.abs() <= f64::EPSILON {
-        return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
-    }
-    let curvature = change.signum() / radius;
-    if (change - curvature * total).abs() > 1.0e-8_f64.max(total * 1.0e-8) {
-        return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
-    }
-    let rise = ((1.0 - sine_in * sine_in).sqrt() - (1.0 - sine_out * sine_out).sqrt()) / curvature;
+    let geometry = circular_geometry(incoming_grade, outgoing_grade, length, radius)?;
+    let rise = ((1.0 - geometry.sine_in * geometry.sine_in).sqrt()
+        - (1.0 - geometry.sine_out * geometry.sine_out).sqrt())
+        / geometry.curvature;
     let grade_change = outgoing_grade - incoming_grade;
     if !rise.is_finite() || !grade_change.is_finite() || grade_change.abs() <= f64::EPSILON {
         return Err(LandXmlProfileEvaluationError::NonFiniteEvaluation);
     }
-    let start_relative_to_pvi = (rise - outgoing_grade * total) / grade_change;
-    let end_relative_to_pvi = start_relative_to_pvi + total;
+    let start_relative_to_pvi = (rise - outgoing_grade * geometry.length) / grade_change;
+    let end_relative_to_pvi = start_relative_to_pvi + geometry.length;
     if !start_relative_to_pvi.is_finite() || !end_relative_to_pvi.is_finite() {
         return Err(LandXmlProfileEvaluationError::NonFiniteEvaluation);
     }

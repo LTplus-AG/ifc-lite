@@ -1262,6 +1262,43 @@ fn issue_5045_circular_curves_use_tangent_bounds_and_reject_inconsistent_inputs(
 }
 
 #[test]
+fn issue_5045_parsed_circular_curves_validate_length_units_and_large_scale_endpoints(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use ifc_lite_landxml::LandXmlProfileEvaluationError;
+
+    let source = |radius: f64| {
+        format!(
+            r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="A" length="20000" staStart="0"><Profile><ProfAlign name="design"><PVI>0 0</PVI><CircCurve length="10000" radius="{radius:.12}">10000 0</CircCurve><PVI>20000 1000</PVI></ProfAlign></Profile></Alignment></Alignments></LandXML>"#,
+        )
+    };
+    let invalid = parse(source(100_480.0).as_bytes())?;
+    assert_eq!(
+        invalid.profiles[0].evaluate_elevation_at(10_000.0),
+        Err(LandXmlProfileEvaluationError::InconsistentCircularCurve),
+        "sine residuals must be converted to length before tolerancing",
+    );
+
+    let outgoing_grade = 0.1_f64;
+    let sine_out = outgoing_grade.atan().sin();
+    let radius = 10_000.0 / sine_out;
+    let valid = parse(source(radius).as_bytes())?;
+    let profile = &valid.profiles[0];
+    let rise = radius * (1.0 - (1.0 - sine_out * sine_out).sqrt());
+    let end = 10_000.0 + (rise - outgoing_grade * 10_000.0) / outgoing_grade + 10_000.0;
+    let elevation = |station| profile.evaluate_elevation_at(station).unwrap().unwrap();
+    let at_end = elevation(end);
+    assert!((at_end - outgoing_grade * (end - 10_000.0)).abs() < 1.0e-8);
+    let epsilon = 1.0e-4;
+    let incoming_slope = (at_end - elevation(end - epsilon)) / epsilon;
+    let outgoing_slope = (elevation(end + epsilon) - at_end) / epsilon;
+    assert!(
+        (incoming_slope - outgoing_slope).abs() < 1.0e-7,
+        "endpoint tangent slopes differ: {incoming_slope} vs {outgoing_slope}"
+    );
+    Ok(())
+}
+
+#[test]
 fn issue_5045_refuses_nonfinite_profile_results_and_invalid_curve_extents(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use ifc_lite_landxml::LandXmlProfileEvaluationError;

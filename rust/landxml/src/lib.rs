@@ -14,6 +14,7 @@ mod model;
 mod parser;
 mod preflight;
 mod profile;
+mod profile_circular;
 mod profile_evaluator;
 mod semantics;
 mod xml;

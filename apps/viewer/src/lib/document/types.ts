@@ -14,7 +14,7 @@
 import type { ChartSpec, ReportPageSetup } from '@ifc-lite/charts';
 import type { ListDefinition } from '@ifc-lite/lists';
 
-export const DOCUMENT_VERSION = 3;
+export const DOCUMENT_VERSION = 4;
 
 /** A block that can sit two-up in a row (#4940): `'half'` only takes effect when the block right after it is also a chart/image at `'half'`; unpaired, it prints full width. */
 export type BlockWidth = 'full' | 'half';
@@ -121,15 +121,16 @@ export interface ValidationTableSource {
 
 /**
  * A table printed from either source (#5142, #5138): head + rows, paginated
- * with the head repeated. `TableBlock`'s own shape has not changed since
- * `DOCUMENT_VERSION` 3 added it — `source` grew a second member of its
- * existing union, the same kind of change `migrateDocumentSpec` already
- * treats as a no-op (a block gains a variant, not a field), so adding
- * `ValidationTableSource` here is NOT a version bump: an older-but-still-v3
- * viewer that has never seen `source.kind: 'validation'` still validates
- * every other block in the file correctly, and only refuses the one block
- * it cannot print — the version number would not have told it anything a
- * per-block structural check does not already say better.
+ * with the head repeated. `DOCUMENT_VERSION` 3 -> 4 added `ValidationTableSource`
+ * as a second member of `source`'s union (review finding: this WAS first
+ * shipped without a bump, on the theory that a per-block structural check
+ * already says more than the version number would — but a v3-only reader's
+ * `validateTableBlock` only knows `source.kind === 'list'`, and reports an
+ * unrecognized `'validation'` source as a broken list — "expected
+ * source.kind list" — misdiagnosing the whole document instead of refusing
+ * the one block it cannot print as what it actually is: newer than this
+ * reader understands). The bump fixes that: an older reader now sees
+ * `version: 4 > DOCUMENT_VERSION` and reports "newer version" up front.
  */
 export interface TableBlock {
   kind: 'table';
@@ -163,17 +164,19 @@ export function isHalfPairable(block: DocumentBlock): block is (ChartBlock | Ima
 }
 
 /**
- * `.ifclite-document.json` version 1 -> 2 (#4940) -> 3 (#5142): the shape
- * did not change for existing blocks (v2 added optional `width`/`height`
- * on chart/image, text styles and the spacer block; v3 added the table
- * block), so an older document is the current one with the version number
+ * `.ifclite-document.json` version 1 -> 2 (#4940) -> 3 (#5142) -> 4 (#5138):
+ * every step is additive for existing blocks/sources (v2 added optional
+ * `width`/`height` on chart/image, text styles and the spacer block; v3
+ * added the table block over a list; v4 added the table block's validation
+ * source), so an older document is the current one with the version number
  * bumped. The bump is still made, so an older viewer refuses a file with a
- * block it cannot print instead of silently dropping it. Anything that is
- * not a recognizable older document passes through unchanged so
- * `validateDocumentSpec` reports the real problem.
+ * block/source it cannot print instead of misreporting it as broken (see
+ * the comment on `TableBlock`). Anything that is not a recognizable older
+ * document passes through unchanged so `validateDocumentSpec` reports the
+ * real problem.
  */
 export function migrateDocumentSpec(raw: unknown): unknown {
-  if (!isRecord(raw) || (raw.version !== 1 && raw.version !== 2)) return raw;
+  if (!isRecord(raw) || (raw.version !== 1 && raw.version !== 2 && raw.version !== 3)) return raw;
   return { ...raw, version: DOCUMENT_VERSION };
 }
 
@@ -189,7 +192,13 @@ const isString = (v: unknown): v is string => typeof v === 'string';
 export function validateDocumentSpec(input: unknown): DocumentValidationError[] {
   const errors: DocumentValidationError[] = [];
   if (!isRecord(input)) return [{ path: '', message: 'expected an object' }];
-  if (input.version !== DOCUMENT_VERSION) errors.push({ path: 'version', message: `expected version ${DOCUMENT_VERSION}` });
+  if (input.version !== DOCUMENT_VERSION) {
+    // A version above what this viewer knows is a distinct, more useful message than the generic
+    // mismatch: the file is not broken, this viewer is just older than it (review finding, #5138).
+    errors.push(typeof input.version === 'number' && input.version > DOCUMENT_VERSION
+      ? { path: 'version', message: `saved by a newer version of ifc-lite (document version ${input.version}); this viewer knows up to version ${DOCUMENT_VERSION}` }
+      : { path: 'version', message: `expected version ${DOCUMENT_VERSION}` });
+  }
   if (!isString(input.id) || input.id.length === 0) errors.push({ path: 'id', message: 'expected a non-empty string' });
   if (!isString(input.name)) errors.push({ path: 'name', message: 'expected a string' });
   const page = input.page;

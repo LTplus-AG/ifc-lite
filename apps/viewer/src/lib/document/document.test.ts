@@ -163,9 +163,26 @@ describe('document file', () => {
     assert.equal(imported.blocks.length, doc.blocks.length);
     imported.blocks.forEach((b, i) => assert.notEqual(b.id, doc.blocks[i].id));
     assert.equal((imported.blocks[0] as { text: string }).text, '{IfcProject.LongName}');
-    assert.throws(() => parseDocumentFile(JSON.stringify({ ...doc, version: 4 })), /Not a document file: version expected version 3/);
+    assert.throws(() => parseDocumentFile(JSON.stringify({ ...doc, version: 5 })), /Not a document file: version saved by a newer version of ifc-lite \(document version 5\); this viewer knows up to version 4/);
     const broken = { ...doc, blocks: [{ kind: 'image', id: 'i', dataUrl: 'http://x/logo.png', height: 0, align: 'middle', caption: {} }] };
     assert.deepEqual(validateDocumentSpec(broken).map((e) => e.path), ['blocks[0].dataUrl', 'blocks[0].height', 'blocks[0].align', 'blocks[0].caption']);
+  });
+
+  it('a version above what this viewer knows reports "newer version", not a generic mismatch (#5138 review)', () => {
+    const newer = validateDocumentSpec({ ...coverSheetDocument(), version: 5 });
+    assert.deepEqual(newer.map((e) => e.path), ['version']);
+    assert.match(newer[0].message, /newer version of ifc-lite/);
+    // A too-OLD or malformed version keeps the generic message — it is not "newer", it is wrong.
+    const older = validateDocumentSpec({ ...coverSheetDocument(), version: 1 });
+    assert.deepEqual(older.map((e) => e.message), [`expected version ${DOCUMENT_VERSION}`]);
+  });
+
+  it('a version-3 document (#5142, before the table block\'s validation source existed) still migrates and loads', () => {
+    const listTable = { kind: 'table', id: 'tb', source: { kind: 'list', list: { id: 'l', name: 'Walls', createdAt: 0, updatedAt: 0, entityTypes: [], conditions: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }] }, fromListId: 'preset-wall-schedule' } };
+    const v3Doc = { version: 3, id: 'd3', name: 'Old table doc', page: { size: 'A4', orientation: 'portrait' }, blocks: [listTable] };
+    const imported = parseDocumentFile(JSON.stringify(v3Doc));
+    assert.equal(imported.version, DOCUMENT_VERSION);
+    assert.deepEqual(validateDocumentSpec(imported), []);
   });
 
   it('migrates a version 1 or 2 file to the current version and validates the #4940 fields', { skip: !migrateDocumentSpec && 'migrateDocumentSpec is not exported (production reverted)' }, () => {
@@ -173,11 +190,13 @@ describe('document file', () => {
     assert.deepEqual(migrateDocumentSpec!(v1), { ...v1, version: DOCUMENT_VERSION });
     const imported = parseDocumentFile(JSON.stringify(v1));
     assert.equal(imported.version, DOCUMENT_VERSION);
-    // A v2 file (#4940) is a v3 file with the number bumped (#5142: the table block is additive).
+    // A v2 file (#4940) and a v3 file (#5142) are both the current version with the number bumped
+    // (#5138: the table block's validation source is additive, the same way v2's fields were).
     assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 2 }), { ...v1, version: DOCUMENT_VERSION });
+    assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 3 }), { ...v1, version: DOCUMENT_VERSION });
     // Anything not a recognizable older document (already current, a later version, malformed) passes through unchanged.
     assert.deepEqual(migrateDocumentSpec!({ ...v1, version: DOCUMENT_VERSION }), { ...v1, version: DOCUMENT_VERSION });
-    assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 4 }), { ...v1, version: 4 });
+    assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 5 }), { ...v1, version: 5 });
     assert.equal(migrateDocumentSpec!(null), null);
 
     const spacer = { kind: 'spacer', id: 's', height: 20 };

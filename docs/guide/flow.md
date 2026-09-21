@@ -86,7 +86,7 @@ for tables `table.groupRows` and `table.pivot`.
 - `lacing`, `tracking` and `trackingKey` are per node. Positions (`pos`) live in the file;
   tracked element sets do not.
 
-The full fixture is `tests/fixtures/flows/fire-rating-audit.flow.json`.
+The full fixture is `packages/cli/src/__fixtures__/flows/fire-rating-audit.flow.json`, which the CLI test runs end to end.
 
 ## Where a node can run
 

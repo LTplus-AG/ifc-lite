@@ -12,7 +12,7 @@ import { createHeadlessContext } from '../loader.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SAMPLE_IFC = resolve(here, '../../../../apps/viewer/public/samples/building-architecture.ifc');
-const AUDIT_FLOW = resolve(here, '../../../../tests/fixtures/flows/fire-rating-audit.flow.json');
+const AUDIT_FLOW = resolve(here, '../__fixtures__/flows/fire-rating-audit.flow.json');
 
 function capture() {
   const out: string[] = [];

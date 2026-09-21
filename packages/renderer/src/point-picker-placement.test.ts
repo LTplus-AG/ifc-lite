@@ -69,3 +69,26 @@ it('packs a point-pick origin relative to the immutable camera frame (#5049)', (
   assert.equal(packed[44], 0, 'translation is excluded from the f32 model lane');
   picker.destroy();
 });
+
+it('packs an RTE-relative crop box for both click and marquee point picks (#5049)', () => {
+  Object.assign(globalThis, { GPUShaderStage: { VERTEX: 1, FRAGMENT: 2 }, GPUBufferUsage: { UNIFORM: 64, COPY_DST: 8 } });
+  const writes: Float32Array[] = [];
+  const device = {
+    createBindGroupLayout: () => ({}), createPipelineLayout: () => ({}), createShaderModule: () => ({}), createRenderPipeline: () => ({}),
+    createBuffer: () => ({ destroy() {} }), createBindGroup: () => ({}),
+    queue: { writeBuffer(_buffer: GPUBuffer, _offset: number, data: Float32Array) { writes.push(new Float32Array(data)); } },
+  } as unknown as GPUDevice;
+  const picker = new PointPicker({ getDevice: () => device } as WebGPUDevice);
+  const pass = { setPipeline() {}, setVertexBuffer() {}, setBindGroup() {}, draw() {} } as unknown as GPURenderPassEncoder;
+  const frame = new RelativeToEyeFrame();
+  frame.update({ x: 5_000_000, y: 20, z: -10 }, MathUtils.identity(), MathUtils.identity());
+  picker.drawIntoPass(pass, [{ expressId: 7, rteOrigin: [5_000_000.015625, 20, -10], chunks: [{ vertexBuffer: {} as GPUBuffer, pointCount: 1 }] }],
+    new Float32Array(MathUtils.identity().m), { width: 256, height: 256 },
+    { sizeMode: 0, worldRadius: 1, pointSizePx: 4, clickTolerancePx: 2 }, null, frame.snapshot(),
+    { enabled: true, min: [5_000_000.01, 19, -11], max: [5_000_000.02, 21, -9] });
+  const packed = writes[0];
+  assert.equal(new Uint32Array(packed.buffer)[27], 3, 'RTE and crop bits are both enabled');
+  assert.equal(packed[56], 0.009999999776482582);
+  assert.equal(packed[60], 0.019999999552965164);
+  picker.destroy();
+});

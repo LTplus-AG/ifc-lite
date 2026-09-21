@@ -20,6 +20,7 @@
 import type { WebGPUDevice } from './device.js';
 import { POINT_QUAD_VERTS, POINT_VERTEX_BYTES } from './pointcloud/point-pipeline.js';
 import type { RelativeToEyeSnapshot } from './relative-to-eye.js';
+import type { ClipBox } from './types.js';
 import { relativeToEyeWgsl } from './shaders/relative-to-eye.wgsl.js';
 
 export interface PointPickNode {
@@ -76,7 +77,7 @@ export function decodePickSample(value: number): DecodedPickSample {
 }
 
 // View projection + viewport/sizing/id/section + per-asset model matrix.
-const UNIFORM_BYTES = 224;
+const UNIFORM_BYTES = 256;
 const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
 export class PointPicker {
@@ -117,6 +118,8 @@ struct U {
   model: mat4x4<f32>,
   drawableDeltaHigh: vec4<f32>,
   drawableDeltaLow: vec4<f32>,
+  clipBoxMin: vec4<f32>,
+  clipBoxMax: vec4<f32>,
 }
 @binding(0) @group(0) var<uniform> u: U;
 
@@ -152,7 +155,7 @@ fn vs_main(input: VIn, @builtin(vertex_index) vId: u32) -> VOut {
     u.drawableDeltaHigh,
     u.drawableDeltaLow,
   ));
-  let useRte = u.entityIdOverride.w != 0u;
+  let useRte = (u.entityIdOverride.w & 1u) != 0u;
   let world = select(absoluteWorld, rteWorld, useRte);
   var clip = u.viewProj * world;
 
@@ -206,6 +209,13 @@ fn fs_main(input: VOut) -> @location(0) u32 {
     let side = select(1.0, -1.0, u.entityIdOverride.z != 0u);
     let d = (dot(u.section.xyz, input.worldPos) - u.section.w) * side;
     if (d > 0.0) {
+      discard;
+    }
+  }
+  // Crop uses the same eye-relative frame as the RTE position. Without this
+  // point click and marquee selection can return points the colour pass cut.
+  if ((u.entityIdOverride.w & 2u) != 0u) {
+    if (any(input.worldPos < u.clipBoxMin.xyz) || any(input.worldPos > u.clipBoxMax.xyz)) {
       discard;
     }
   }
@@ -263,6 +273,7 @@ fn fs_main(input: VOut) -> @location(0) u32 {
     sizing: { sizeMode: 0 | 1 | 2; worldRadius: number; pointSizePx: number; clickTolerancePx: number },
     section?: { normal: [number, number, number]; distance: number; flipped: boolean } | null,
     relativeToEye?: RelativeToEyeSnapshot,
+    clipBox?: ClipBox | null,
   ): void {
     if (this.destroyed || nodes.length === 0) return;
     pass.setPipeline(this.pipeline);
@@ -283,7 +294,7 @@ fn fs_main(input: VOut) -> @location(0) u32 {
         this.uniforms.push(uniform);
       }
       this.writeUniforms(
-        uniform.buffer, node, viewProj, viewport, sizing, node.expressId >>> 0, section, relativeToEye,
+        uniform.buffer, node, viewProj, viewport, sizing, node.expressId >>> 0, section, relativeToEye, clipBox,
       );
       pass.setBindGroup(0, uniform.bindGroup);
       for (const chunk of node.chunks) {
@@ -303,6 +314,7 @@ fn fs_main(input: VOut) -> @location(0) u32 {
     entityIdOverride: number,
     section?: { normal: [number, number, number]; distance: number; flipped: boolean } | null,
     relativeToEye?: RelativeToEyeSnapshot,
+    clipBox?: ClipBox | null,
   ): void {
     const u = this.uniformScratch;
     const u32 = this.uniformU32;
@@ -320,7 +332,7 @@ fn fs_main(input: VOut) -> @location(0) u32 {
     u32[24] = entityIdOverride >>> 0;
     u32[25] = section ? 1 : 0;
     u32[26] = section?.flipped ? 1 : 0;
-    u32[27] = relativeToEye ? 1 : 0;
+    u32[27] = (relativeToEye ? 1 : 0) | (clipBox?.enabled ? 2 : 0);
     // section plane (vec4<f32>) at float offset 28..31.
     u[28] = section ? section.normal[0] : 0;
     u[29] = section ? section.normal[1] : 0;
@@ -339,6 +351,14 @@ fn fs_main(input: VOut) -> @location(0) u32 {
       relativeToEye.packDrawableOrigin(node.rteOrigin ?? [node.model?.[12] ?? 0, node.model?.[13] ?? 0, node.model?.[14] ?? 0], u, 48);
     } else {
       u.fill(0, 48, 56);
+    }
+    const cameraWorld = relativeToEye?.getCameraWorld();
+    if (clipBox?.enabled) {
+      const cameraX = cameraWorld?.[0] ?? 0, cameraY = cameraWorld?.[1] ?? 0, cameraZ = cameraWorld?.[2] ?? 0;
+      u[56] = clipBox.min[0] - cameraX; u[57] = clipBox.min[1] - cameraY; u[58] = clipBox.min[2] - cameraZ; u[59] = 0;
+      u[60] = clipBox.max[0] - cameraX; u[61] = clipBox.max[1] - cameraY; u[62] = clipBox.max[2] - cameraZ; u[63] = 0;
+    } else {
+      u.fill(0, 56, 64);
     }
     this.device.queue.writeBuffer(buffer, 0, u.buffer, u.byteOffset, UNIFORM_BYTES);
   }

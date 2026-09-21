@@ -311,7 +311,6 @@
    462 packages/renderer/src/scene-raycaster.ts
   4229 packages/renderer/src/scene.ts
    639 packages/renderer/src/section-2d-overlay.ts
-   514 packages/renderer/src/section-plane.ts
    639 packages/renderer/src/shaders/main.wgsl.ts
    454 packages/renderer/src/shadow-pass.ts
    768 packages/renderer/src/snap-detector.ts

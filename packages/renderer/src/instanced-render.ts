@@ -26,13 +26,12 @@
  * Rust (`verify_recomposition`), this lands instanced + flat geometry in one
  * frame. (See instanced-render.test.ts for the GPU-free proof.)
  *
- * PRECISION: the per-instance matrix is f32, so its translation jitters at
- * national-grid magnitudes (the f32-collapse the local-frame work targets). Fine
- * for building-local models; an f64 per-instance origin is the path for
- * georef-scale. That would be IFNS v3: v2 and header word 7 are both spent —
- * word 7 now carries the instance record stride (#2985), and an f64 origin is a
- * per-instance field, so it appends as trailing field 2 behind `itemId` and
- * moves the stride from 92 to 116 rather than claiming a header word. */
+ * PRECISION: the GPU record remains an f32 matrix for V1 rendering, but the
+ * decoded template origin is f64. V2 appends high/low lanes to the record.
+ * CPU records retain a split world anchor, while each render submission replaces
+ * the GPU copy with the f64 drawable-minus-camera delta. This keeps colour,
+ * picking, and shadows in one precision contract without GPU world subtraction.
+ */
 
 import { MathUtils } from './math.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
@@ -62,12 +61,15 @@ export const SWAP_ZUP_TO_YUP: Mat4 = {
  *   [68..83] rgba (4 f32)
  *   [84..87] flags (u32 — bit 0 = selected; bit 1 = hidden)
  */
-export const INSTANCE_STRIDE_BYTES = 88;
+export const INSTANCE_STRIDE_BYTES = 120;
 
 /** Byte offset of the rgba colour within an instance record (patched by lens/IDS overlays). */
 export const INSTANCE_COLOR_OFFSET = 68;
 /** Byte offset of the flags u32 within an instance record (patched by selection/visibility). */
 export const INSTANCE_FLAGS_OFFSET = 84;
+/** V2: two vec4 lanes hold a split Y-up source anchor on CPU, submission delta on GPU. */
+export const INSTANCE_ANCHOR_HIGH_OFFSET = 88;
+export const INSTANCE_ANCHOR_LOW_OFFSET = 104;
 /** flags bit 0 — this occurrence is selected (blue highlight in the shader). */
 export const INSTANCE_FLAG_SELECTED = 1;
 /** flags bit 1 — this occurrence is hidden (hide/isolate); the shader discards it
@@ -107,6 +109,26 @@ export function composeInstanceMatrix(
   return instMat.m;
 }
 
+/**
+ * Canonical f64 world anchor for one occurrence's template origin. The IFNS
+ * transform coefficients are f32 by format, but evaluating them against the
+ * template's f64 origin before narrowing preserves the source residual that a
+ * composed f32 translation loses at national-grid offsets. Result is renderer
+ * Y-up, matching `composeInstanceMatrix` and every CPU consumer.
+ */
+export function composeInstanceAnchor(
+  transformRowMajor: Float32Array,
+  origin: readonly [number, number, number],
+): [number, number, number] {
+  const x = transformRowMajor[0] * origin[0] + transformRowMajor[1] * origin[1]
+    + transformRowMajor[2] * origin[2] + transformRowMajor[3];
+  const y = transformRowMajor[4] * origin[0] + transformRowMajor[5] * origin[1]
+    + transformRowMajor[6] * origin[2] + transformRowMajor[7];
+  const z = transformRowMajor[8] * origin[0] + transformRowMajor[9] * origin[1]
+    + transformRowMajor[10] * origin[2] + transformRowMajor[11];
+  return [x, z, -y];
+}
+
 /** A unique template + the interleaved per-instance buffer for its occurrences. */
 export interface InstancedRenderTemplate {
   /** Index of this template within its source shard (diagnostic only). */
@@ -135,6 +157,12 @@ export interface InstancedRenderTemplate {
    *  picker. This is host-query data: it answers "which entity produced this
    *  piece", never "how is it drawn". */
   itemIds?: Uint32Array;
+  /** f64 Y-up occurrence source anchors, xyz per instance-buffer record.
+   * The GPU record is refreshed from this sidecar as an RTE delta per draw. */
+  canonicalAnchors: Float64Array;
+  /** Matrix translations paired with canonicalAnchors so interactive placement
+   * preserves the authoritative f64 source anchor. */
+  canonicalMatrixTranslations: Float32Array;
 }
 
 /**
@@ -149,6 +177,7 @@ export function writeInstanceRecord(
   entityId: number,
   color: readonly [number, number, number, number],
   flags = 0,
+  anchor: readonly [number, number, number] = [instanceMatrix[12], instanceMatrix[13], instanceMatrix[14]],
 ): void {
   for (let j = 0; j < 16; j++) {
     dv.setFloat32(byteOffset + j * 4, instanceMatrix[j], true);
@@ -158,6 +187,23 @@ export function writeInstanceRecord(
     dv.setFloat32(byteOffset + INSTANCE_COLOR_OFFSET + j * 4, color[j], true);
   }
   dv.setUint32(byteOffset + INSTANCE_FLAGS_OFFSET, flags >>> 0, true);
+  writeInstanceAnchor(dv, byteOffset, anchor);
+}
+
+/** Write V2's split source-anchor lanes without touching selection/colour fields.
+ * The renderer overwrites the GPU copy per submission with an RTE delta. */
+export function writeInstanceAnchor(
+  dv: DataView,
+  byteOffset: number,
+  anchor: readonly [number, number, number],
+): void {
+  for (let axis = 0; axis < 3; axis++) {
+    const high = Math.fround(anchor[axis]);
+    dv.setFloat32(byteOffset + INSTANCE_ANCHOR_HIGH_OFFSET + axis * 4, high, true);
+    dv.setFloat32(byteOffset + INSTANCE_ANCHOR_LOW_OFFSET + axis * 4, Math.fround(anchor[axis] - high), true);
+  }
+  dv.setFloat32(byteOffset + INSTANCE_ANCHOR_HIGH_OFFSET + 12, 0, true);
+  dv.setFloat32(byteOffset + INSTANCE_ANCHOR_LOW_OFFSET + 12, 0, true);
 }
 
 /**
@@ -192,6 +238,8 @@ export function prepareInstancedRender(shard: DecodedInstancedShard): InstancedR
     const buffer = new ArrayBuffer(insts.length * INSTANCE_STRIDE_BYTES);
     const dv = new DataView(buffer);
     const entityIds = new Uint32Array(insts.length);
+    const canonicalAnchors = new Float64Array(insts.length * 3);
+    const canonicalMatrixTranslations = new Float32Array(insts.length * 3);
     // The shard's stride already answered "does anything here name an item"
     // (the encoder derives it from the data), so a model with none pays no
     // per-template allocation and no zero-fill for a column that would be all
@@ -200,9 +248,12 @@ export function prepareInstancedRender(shard: DecodedInstancedShard): InstancedR
     for (let i = 0; i < insts.length; i++) {
       const inst = insts[i];
       const mat = composeInstanceMatrix(inst.transform, tmpl.origin);
+      const anchor = composeInstanceAnchor(inst.transform, tmpl.origin);
       // flags = 0: every occurrence starts unselected.
-      writeInstanceRecord(dv, i * INSTANCE_STRIDE_BYTES, mat, inst.entityId, inst.color, 0);
+      writeInstanceRecord(dv, i * INSTANCE_STRIDE_BYTES, mat, inst.entityId, inst.color, 0, anchor);
       entityIds[i] = inst.entityId >>> 0;
+      canonicalAnchors.set(anchor, i * 3);
+      canonicalMatrixTranslations.set([mat[12], mat[13], mat[14]], i * 3);
       if (itemIds) itemIds[i] = (inst.itemId ?? 0) >>> 0;
     }
 
@@ -216,6 +267,8 @@ export function prepareInstancedRender(shard: DecodedInstancedShard): InstancedR
       instanceCount: insts.length,
       entityIds,
       itemIds,
+      canonicalAnchors,
+      canonicalMatrixTranslations,
     });
   }
   return out;

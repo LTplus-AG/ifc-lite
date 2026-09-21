@@ -41,13 +41,22 @@ export async function maybeYieldChunk(
   await yieldToEventLoop();
 }
 
-/** Final progress tick for the residual (post-loop, since `maybeYieldChunk`
- *  only fires ON a chunk boundary and the last partial chunk never hits
- *  one). */
+/**
+ * Final progress tick for the residual (post-loop, since `maybeYieldChunk`
+ * only fires ON a chunk boundary and the last partial chunk never hits
+ * one) — and the LAST abort check before a checker returns its outcome.
+ * Without this, an abort issued from inside an `onProgress` callback AT a
+ * chunk boundary (e.g. `done=2000` of 2001) lands after `maybeYieldChunk`'s
+ * own `signal.aborted` check already passed, and the tiny residual chunk
+ * (element 2001) never hits another boundary — so the run would silently
+ * finish and resolve instead of rejecting (review finding).
+ */
 export function finalProgress(
   total: number,
   ruleIndex: number,
+  signal: AbortSignal | undefined,
   onProgress: ((p: RuleEngineProgress) => void) | undefined,
 ): void {
+  if (signal?.aborted) throwAbort(signal);
   onProgress?.({ ruleIndex, phase: 'requirements', done: total, total });
 }

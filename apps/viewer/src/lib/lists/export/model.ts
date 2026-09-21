@@ -102,6 +102,24 @@ export interface BuildModelInput {
   unitDisplayOverrides?: Record<string, string>;
 }
 
+/** A group header's first cell: the label indented one step per nesting level, with the member count. */
+export function groupHeaderLabel(group: Pick<ExportGroup, 'label' | 'count' | 'level'>, indent = '    '): string {
+  return `${indent.repeat(group.level)}${group.label}  (${group.count})`;
+}
+
+/**
+ * The grand-total row over `cols` as raw cells: `label` first, the schedule
+ * view's Count under `__count`, each summed column's total, `null` elsewhere.
+ * Writers format (`displayCell`) or keep the numbers (Excel) as they do rows.
+ */
+export function totalsRowCells(model: ExportModel, cols: ExportColumn[], label: string): CellValue[] {
+  return cols.map((c, i) => {
+    if (i === 0) return label;
+    if (model.schedule && c.id === '__count') return model.totals.count;
+    return c.summed ? model.totals.sums[c.id] : null;
+  });
+}
+
 /** Format a cell for text-based exports (CSV/PDF). Excel keeps raw numbers. */
 export function displayCell(value: CellValue): string {
   if (value === null || value === undefined) return '';

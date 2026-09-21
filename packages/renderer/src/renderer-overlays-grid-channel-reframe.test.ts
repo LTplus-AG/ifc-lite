@@ -83,6 +83,8 @@ function makeHarness() {
         getModelBounds: () => modelBoundsTracker.get(),
         expandModelBoundsWithFlatVertices: (positions, stride) =>
             modelBoundsTracker.expandWithFlatVertices(positions, stride),
+        expandModelBoundsWithAnchoredLineVertices: (positions, origin, stride) =>
+            modelBoundsTracker.expandWithAnchoredVertices(positions, origin, stride),
         syncCameraSceneBounds: () => {
             const b = modelBoundsTracker.get();
             if (b) camera.setSceneBounds(b);

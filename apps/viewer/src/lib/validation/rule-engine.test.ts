@@ -185,6 +185,55 @@ describe('runRuleSet — element requirement, nine issue operators (#5138)', () 
     assert.match(entityByName(spec, 'Wall A').requirementResults[0].expectedValue ?? '', />=\s*0\.25.*<=\s*0\.35/);
   });
 
+  it('the gte+lte fold only applies in an AND group — in OR the two rules stay independent alternatives (review)', async () => {
+    // Same pair as the "between" test above (Width gte 0.25, lte 0.35), but
+    // combinator: 'OR'. Wall B's Width is 0.2 — fails gte 0.25, but on its
+    // own satisfies lte 0.35, so an OR group must pass it (0.2 is not being
+    // asked to sit BETWEEN the bounds, it only has to clear one). Folding
+    // this into a single `between` check (as the AND case correctly does)
+    // would wrongly require BOTH and fail it.
+    const store = await parseWalls();
+    const orRule: InformationRule = {
+      id: 'r1', name: 'or-pair',
+      applicability: wallApplicability(),
+      requirement: {
+        kind: 'element',
+        block: {
+          groups: [{
+            rules: [
+              Rule.quantity('Qto_WallBaseQuantities', 'Width', 'gte', 0.25),
+              Rule.quantity('Qto_WallBaseQuantities', 'Width', 'lte', 0.35),
+            ],
+            combinator: 'OR',
+          }],
+          authoredAs: 'chips',
+        },
+      },
+    };
+    const orReport = await run(store, { version: 1, name: 'test', rules: [orRule] });
+    assert.equal(entityByName(orReport.specificationResults[0], 'Wall B').passed, true, '0.2 satisfies lte 0.35 on its own in an OR group');
+
+    const andRule: InformationRule = {
+      id: 'r1', name: 'and-pair',
+      applicability: wallApplicability(),
+      requirement: {
+        kind: 'element',
+        block: {
+          groups: [{
+            rules: [
+              Rule.quantity('Qto_WallBaseQuantities', 'Width', 'gte', 0.25),
+              Rule.quantity('Qto_WallBaseQuantities', 'Width', 'lte', 0.35),
+            ],
+            combinator: 'AND',
+          }],
+          authoredAs: 'chips',
+        },
+      },
+    };
+    const andReport = await run(store, { version: 1, name: 'test', rules: [andRule] });
+    assert.equal(entityByName(andReport.specificationResults[0], 'Wall B').passed, false, 'the same pair in an AND group folds to between and fails (0.2 < 0.25)');
+  });
+
   it('notNumeric: a numeric op against the non-numeric FireRating string', async () => {
     const store = await parseWalls();
     const report = await run(store, elementRuleSet(Rule.property('Pset_WallCommon', 'FireRating', 'gt', '5')));
@@ -262,5 +311,49 @@ describe('runRuleSet — caseSensitive default (#5138, bSI #346)', () => {
     const loose = elementRuleSet(Rule.name('eq', 'Basement Level 1'), { caseSensitive: false });
     const looseReport = await run(store, loose);
     assert.equal(entityByName(looseReport.specificationResults[0], 'Basement level 1').passed, true);
+  });
+});
+
+describe('runRuleSet — classification code-or-name (#5138 review)', () => {
+  // A classification ref carries BOTH a code (identification) and a name;
+  // `matchClassificationRule` (filter-match.ts) already matches against
+  // EITHER, and `readSubject`'s classification case (read-subject.ts) must
+  // surface both values too, not pick one and drop the other (review
+  // finding: `r.identification ?? r.name` silently discarded the name
+  // whenever a code was present).
+  const CLASSIFIED_WALL_IFC = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1= IFCPROJECT('0Proj000000000000000009',$,'Proj',$,$,$,$,(#20),#30);
+#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);
+#21= IFCAXIS2PLACEMENT3D(#22,$,$);
+#22= IFCCARTESIANPOINT((0.,0.,0.));
+#30= IFCUNITASSIGNMENT((#31));
+#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#40= IFCLOCALPLACEMENT($,#21);
+#500= IFCWALL('0WallX0000000000000009A',$,'Classified Wall',$,$,#40,$,'tag',$);
+#510= IFCCLASSIFICATION('SysX',$,$,'FireRatingSystem',$,$,$);
+#511= IFCCLASSIFICATIONREFERENCE($,'123','Fire rating',#510,$);
+#512= IFCRELASSOCIATESCLASSIFICATION('0RelC00000000000000512',$,$,$,(#500),#511);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+  async function parseClassifiedWall(): Promise<IfcDataStore> {
+    const bytes = new TextEncoder().encode(CLASSIFIED_WALL_IFC);
+    return new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  }
+
+  it('classification eq matches EITHER the identification/code or the name', async () => {
+    const store = await parseClassifiedWall();
+    const byName = await run(store, elementRuleSet(Rule.classification('', 'eq', 'Fire rating')));
+    assert.equal(entityByName(byName.specificationResults[0], 'Classified Wall').passed, true, 'name match');
+
+    const byCode = await run(store, elementRuleSet(Rule.classification('', 'eq', '123')));
+    assert.equal(entityByName(byCode.specificationResults[0], 'Classified Wall').passed, true, 'code match');
   });
 });

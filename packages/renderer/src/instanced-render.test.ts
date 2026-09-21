@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import {
   composeInstanceMatrix,
+  composeInstanceAnchor,
   writeInstanceRecord,
   prepareInstancedRender,
   foldOccurrenceWorldBox,
@@ -87,6 +88,14 @@ function expectedRenderCoord(
 }
 
 describe('composeInstanceMatrix — frame correctness vs the flat path', () => {
+  it('keeps a canonical centimetre residual at a 5,000 km template origin (#5049)', () => {
+    const origin: [number, number, number] = [5_000_000.01, -2_000_000.02, 30.03];
+    const anchor = composeInstanceAnchor(rowMajorTranslation(0.02, 0.04, -0.06), origin);
+    // Native [5000000.03, -1999999.98, 29.97] → Y-up [x, z, -y].
+    assertClose(anchor, [5_000_000.03, 29.97, 1_999_999.98], 'f64 occurrence anchor', 1e-8);
+    const v1 = composeInstanceMatrix(rowMajorTranslation(0.02, 0.04, -0.06), origin);
+    assert.notEqual(v1[12], anchor[0], 'the V1 f32 matrix demonstrably loses the residual');
+  });
   it('identity rel_k + origin: only the Z-up→Y-up swap of (origin + p)', () => {
     const relK = rowMajorIdentity();
     const origin: [number, number, number] = [1, 2, 3];
@@ -135,14 +144,14 @@ describe('composeInstanceMatrix — frame correctness vs the flat path', () => {
 });
 
 describe('writeInstanceRecord — GPU buffer byte layout', () => {
-  it('packs mat4(0..63) + entityId(64) + rgba(68..83), little-endian', () => {
+  it('packs the V1 prefix plus a split f64-like occurrence anchor, little-endian', () => {
     const buf = new ArrayBuffer(INSTANCE_STRIDE_BYTES);
     const dv = new DataView(buf);
     const mat = new Float32Array(16);
     for (let i = 0; i < 16; i++) mat[i] = i + 0.5;
     writeInstanceRecord(dv, 0, mat, 4242, [0.1, 0.2, 0.3, 0.4], INSTANCE_FLAG_SELECTED);
 
-    assert.strictEqual(INSTANCE_STRIDE_BYTES, 88);
+    assert.strictEqual(INSTANCE_STRIDE_BYTES, 120);
     for (let i = 0; i < 16; i++) {
       assert.ok(Math.abs(dv.getFloat32(i * 4, true) - (i + 0.5)) < 1e-6, `mat[${i}]`);
     }
@@ -155,6 +164,9 @@ describe('writeInstanceRecord — GPU buffer byte layout', () => {
       );
     }
     assert.strictEqual(dv.getUint32(INSTANCE_FLAGS_OFFSET, true), INSTANCE_FLAG_SELECTED, 'flags');
+    // Default anchor is the V1 translation, preserving edited-placement fallback.
+    assert.strictEqual(dv.getFloat32(88, true), mat[12]);
+    assert.strictEqual(dv.getFloat32(104, true), 0);
   });
 
   it('defaults flags to 0 (unselected) when omitted', () => {
@@ -203,12 +215,12 @@ describe('prepareInstancedRender — grouping + buffer assembly', () => {
     assertClose(applyColMajor(mat, p), swap([origin0[0] + p[0], origin0[1] + p[1], origin0[2] + p[2]]), 'template0 inst0');
   });
 
-  // #2985. The item id is CPU-side only: the GPU per-instance record stays 88
+  // #2985. The item id is CPU-side only: the GPU per-instance record has a V2
   // bytes, because that layout is shading data packed identically by the
   // pipeline, shadow pass and picker, and the item id answers a host query
   // ("which entity produced this piece"), not a shading one. So it must appear
   // in `itemIds` and NOT in `instanceBuffer` — and the buffer's byte length is
-  // the check that says so, since a widened record would still "work".
+  // the check that says so, since an item-id widening would still "work".
   //
   // `carriesItemIds` comes off the shard's declared stride, and the encoder
   // derives that from the data — so a shard that says false has no ids to lose

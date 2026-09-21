@@ -86,10 +86,11 @@ export const CAMERA_CONSTANTS = {
 
 export const PIPELINE_CONSTANTS = {
   // Buffer layout (bytes) - must match WGSL shader expectations.
-  // 56 floats: viewProj(16)+model(16)+baseColor(4)+metallicRoughness/pad(4)+
-  // sectionPlane(4)+flags(4)+clipBoxMin(4)+clipBoxMax(4) = 224 bytes.
+  // 60 floats: viewProj(16)+model(16)+baseColor(4)+metallicRoughness/pad(4)+
+  // sectionPlane(4)+flags(4)+clipBoxMin(4)+clipBoxMax(4)+quantParams(4)+
+  // RTE view-projection(16)+drawable high/low(8) = 336 bytes.
   /** Total uniform buffer size */
-  UNIFORM_BUFFER_SIZE: 224,
+  UNIFORM_BUFFER_SIZE: 336,
   /** Byte offset for flags in uniform buffer */
   FLAGS_BYTE_OFFSET: 176,
 

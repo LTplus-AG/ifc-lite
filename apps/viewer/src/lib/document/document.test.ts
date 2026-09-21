@@ -19,14 +19,24 @@ import { largestBucketIds } from '../charts/buckets.js';
 import { generateDocumentPdf, topicLines, type DocumentPdfSeams } from './generate-document-pdf.js';
 import { parseDocumentFile } from './persistence.js';
 import { blankDocument, coverSheetDocument } from './presets.js';
-import { validateDocumentSpec, type DocumentSpec } from './types.js';
+import { DOCUMENT_VERSION, validateDocumentSpec, type DocumentSpec, type TableBlock } from './types.js';
 import { elementsDataset } from '@ifc-lite/charts';
+import { IfcTypeEnum } from '@ifc-lite/data';
+import type { ListDefinition } from '@ifc-lite/lists';
+import { createListDataProvider } from '../lists/adapter.js';
+import { runListFederated } from '../lists/run-list.js';
+import { buildExportModel } from '../lists/export/model.js';
+import { detectNumericColumns } from '../../components/viewer/lists/list-table-utils.js';
 
 // `migrateDocumentSpec` is imported dynamically (#4940 revert-oracle finding): a *static* `import
 // { migrateDocumentSpec }` fails ES module resolution outright when production is reverted to a
 // state that does not export it yet, crashing this entire file's load — not just the one test
 // that needs it. A dynamic import degrades to `undefined` instead, so only that test skips.
 const migrateDocumentSpec: typeof import('./types.js').migrateDocumentSpec | undefined = (await import('./types.js')).migrateDocumentSpec;
+// Same reason for the table block's exports (#5142): the assertions below must still RUN with
+// production reverted, so a reverted `validateDocumentSpec` fails them by assertion rather than
+// this whole file dying at import.
+const tableExports: Partial<Pick<typeof import('./types.js'), 'TABLE_ROWS_MAX' | 'listCopyForDocument'>> = await import('./types.js');
 
 const ifc = (project: string, wallName: string, fireRating: string): string => `ISO-10303-21;
 HEADER;
@@ -152,25 +162,28 @@ describe('document file', () => {
     assert.equal(imported.blocks.length, doc.blocks.length);
     imported.blocks.forEach((b, i) => assert.notEqual(b.id, doc.blocks[i].id));
     assert.equal((imported.blocks[0] as { text: string }).text, '{IfcProject.LongName}');
-    assert.throws(() => parseDocumentFile(JSON.stringify({ ...doc, version: 3 })), /Not a document file: version expected version 2/);
+    assert.throws(() => parseDocumentFile(JSON.stringify({ ...doc, version: 4 })), /Not a document file: version expected version 3/);
     const broken = { ...doc, blocks: [{ kind: 'image', id: 'i', dataUrl: 'http://x/logo.png', height: 0, align: 'middle', caption: {} }] };
     assert.deepEqual(validateDocumentSpec(broken).map((e) => e.path), ['blocks[0].dataUrl', 'blocks[0].height', 'blocks[0].align', 'blocks[0].caption']);
   });
 
-  it('migrates a version 1 file to version 2 and validates the new fields (#4940)', { skip: !migrateDocumentSpec && 'migrateDocumentSpec is not exported (production reverted)' }, () => {
+  it('migrates a version 1 or 2 file to the current version and validates the #4940 fields', { skip: !migrateDocumentSpec && 'migrateDocumentSpec is not exported (production reverted)' }, () => {
     const v1 = { ...coverSheetDocument(), version: 1 };
-    assert.deepEqual(migrateDocumentSpec!(v1), { ...v1, version: 2 });
+    assert.deepEqual(migrateDocumentSpec!(v1), { ...v1, version: DOCUMENT_VERSION });
     const imported = parseDocumentFile(JSON.stringify(v1));
-    assert.equal(imported.version, 2);
-    // Anything not a recognizable v1 document (e.g. already at a later version, or malformed) passes through unchanged.
-    assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 2 }), { ...v1, version: 2 });
+    assert.equal(imported.version, DOCUMENT_VERSION);
+    // A v2 file (#4940) is a v3 file with the number bumped (#5142: the table block is additive).
+    assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 2 }), { ...v1, version: DOCUMENT_VERSION });
+    // Anything not a recognizable older document (already current, a later version, malformed) passes through unchanged.
+    assert.deepEqual(migrateDocumentSpec!({ ...v1, version: DOCUMENT_VERSION }), { ...v1, version: DOCUMENT_VERSION });
+    assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 4 }), { ...v1, version: 4 });
     assert.equal(migrateDocumentSpec!(null), null);
 
     const spacer = { kind: 'spacer', id: 's', height: 20 };
     const halfChart = { kind: 'chart', id: 'c1', chart: coverSheetDocument().blocks.find((b) => b.kind === 'chart')!.chart, snapshot: false, height: 300, width: 'half' };
     const halfImage = { kind: 'image', id: 'i1', dataUrl: `data:image/png;base64,${btoa('x')}`, height: 60, align: 'left', width: 'half' };
     const caption = { kind: 'text', id: 't1', style: 'caption', text: 'a caption' };
-    const v2 = { version: 2, id: 'd2', name: 'V2', page: { size: 'A4', orientation: 'portrait' }, blocks: [caption, halfChart, halfImage, spacer] };
+    const v2 = { version: DOCUMENT_VERSION, id: 'd2', name: 'V2', page: { size: 'A4', orientation: 'portrait' }, blocks: [caption, halfChart, halfImage, spacer] };
     assert.deepEqual(validateDocumentSpec(v2), []);
 
     // half only valid on chart/image; a text block rejects it (structural: `width` is not a text field).
@@ -379,33 +392,33 @@ describe('compose', () => {
   });
 });
 
-describe('generateDocumentPdf', () => {
-  function recordingSeams(): { seams: DocumentPdfSeams; calls: Array<{ op: string; args: unknown[] }> } {
-    const calls: Array<{ op: string; args: unknown[] }> = [];
-    let pages = 1;
-    const seams: DocumentPdfSeams = {
-      createDoc: async (format, orientation) => {
-        calls.push({ op: 'create', args: [format, orientation] });
-        return {
-          addPage: () => { pages += 1; },
-          setFont: () => {}, setFontSize: () => {}, setTextColor: () => {},
-          text: (t, x, y) => calls.push({ op: 'text', args: [t, x, y] }),
-          addImage: (bytes, format, x, y, w, h) => calls.push({ op: 'image', args: [bytes.length, format, x, y, w, h] }),
-          svg: async (svg) => { calls.push({ op: 'svg', args: [svg] }); },
-          table: () => {},
-          pageCount: () => pages,
-          output: () => new Blob(['pdf']),
-        };
-      },
-      renderSvg: (agg, w, h) => `<svg data-buckets="${agg.categories.length}" width="${w}" height="${h}"></svg>`,
-      capture: async (ids) => new Uint8Array(ids.length),
-      theme: { text: '#000', mutedText: '#666', axis: '#999', grid: '#eee', background: 'transparent', fontFamily: 'Helvetica' },
-      now: () => new Date('2026-09-12T10:00:00Z'),
-      imageSize: async () => ({ w: 300, h: 100 }),
-    };
-    return { seams, calls };
-  }
+function recordingSeams(): { seams: DocumentPdfSeams; calls: Array<{ op: string; args: unknown[] }> } {
+  const calls: Array<{ op: string; args: unknown[] }> = [];
+  let pages = 1;
+  const seams: DocumentPdfSeams = {
+    createDoc: async (format, orientation) => {
+      calls.push({ op: 'create', args: [format, orientation] });
+      return {
+        addPage: () => { pages += 1; },
+        setFont: () => {}, setFontSize: () => {}, setTextColor: () => {},
+        text: (t, x, y) => calls.push({ op: 'text', args: [t, x, y] }),
+        addImage: (bytes, format, x, y, w, h) => calls.push({ op: 'image', args: [bytes.length, format, x, y, w, h] }),
+        svg: async (svg) => { calls.push({ op: 'svg', args: [svg] }); },
+        table: (args) => calls.push({ op: 'table', args: [args] }),
+        pageCount: () => pages,
+        output: () => new Blob(['pdf']),
+      };
+    },
+    renderSvg: (agg, w, h) => `<svg data-buckets="${agg.categories.length}" width="${w}" height="${h}"></svg>`,
+    capture: async (ids) => new Uint8Array(ids.length),
+    theme: { text: '#000', mutedText: '#666', axis: '#999', grid: '#eee', background: 'transparent', fontFamily: 'Helvetica' },
+    now: () => new Date('2026-09-12T10:00:00Z'),
+    imageSize: async () => ({ w: 300, h: 100 }),
+  };
+  return { seams, calls };
+}
 
+describe('generateDocumentPdf', () => {
   it('prints resolved text, the chart SVG with its snapshot, the logo, a topic, and reports what did not resolve', async () => {
     const store = ctx.models[0].store;
     const dataset = elementsDataset([{ store, toGlobalId: (id) => id, name: 'tower.ifc' }]);
@@ -413,7 +426,7 @@ describe('generateDocumentPdf', () => {
     const agg: Aggregation = aggregate(chart.chart, dataset);
     const topic: BCFTopic = { guid: 'topic-1', title: 'Clash at grid B', topicStatus: 'Open', priority: 'High', creationDate: '2026-09-01T00:00:00Z', creationAuthor: 'Ada', comments: [], viewpoints: [{ guid: 'vp', snapshot: `data:image/png;base64,${btoa('png')}` }] };
     const doc: DocumentSpec = {
-      version: 2, id: 'd', name: 'Cover', page: { size: 'A3', orientation: 'landscape' },
+      version: DOCUMENT_VERSION, id: 'd', name: 'Cover', page: { size: 'A3', orientation: 'landscape' },
       blocks: [
         { kind: 'text', id: 't1', style: 'title', text: '{IfcProject.Name} — {Today}' },
         { kind: 'text', id: 't2', style: 'body', text: 'Roof: {IfcBuildingStorey["Roof"].Name}' },
@@ -424,7 +437,7 @@ describe('generateDocumentPdf', () => {
       ],
     };
     const { seams, calls } = recordingSeams();
-    const result = await generateDocumentPdf({ document: doc, bindings: ctx, aggregations: new Map([['chart-1', agg]]), chartMessages: new Map(), snapshotIds: () => [41, 42], topics: new Map([['topic-1', topic]]) }, seams);
+    const result = await generateDocumentPdf({ document: doc, bindings: ctx, aggregations: new Map([['chart-1', agg]]), chartMessages: new Map(), snapshotIds: () => [41, 42], topics: new Map([['topic-1', topic]]), tables: new Map() }, seams);
     assert.deepEqual(calls[0], { op: 'create', args: ['a3', 'landscape'] });
     const texts = calls.filter((c) => c.op === 'text').map((c) => String(c.args[0]));
     assert.ok(texts.includes('Tower — 2026-09-12'), texts.join(' | '));
@@ -445,8 +458,90 @@ describe('generateDocumentPdf', () => {
 
   it('a blank document prints one page with its title binding resolved', async () => {
     const { seams, calls } = recordingSeams();
-    const result = await generateDocumentPdf({ document: blankDocument(), bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map() }, seams);
+    const result = await generateDocumentPdf({ document: blankDocument(), bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), tables: new Map() }, seams);
     assert.equal(result.pages, 1);
     assert.ok(calls.some((c) => c.op === 'text' && c.args[0] === 'Tower'));
+  });
+});
+
+describe('table block (#5142)', () => {
+  const listOf = (extra: Partial<ListDefinition> = {}): ListDefinition => ({
+    id: 'list-walls', name: 'Walls', createdAt: 0, updatedAt: 0, entityTypes: [IfcTypeEnum.IfcWall], conditions: [],
+    columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }, { id: 'storey', source: 'spatial', propertyName: 'Storey' }, { id: 'fr', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating' }],
+    ...extra,
+  });
+  const tableBlock = (extra: Partial<TableBlock> = {}): TableBlock => ({ kind: 'table', id: 'tb', source: { kind: 'list', list: listOf(), fromListId: 'preset-wall-schedule' }, ...extra });
+  const docWith = (blocks: DocumentSpec['blocks']): DocumentSpec => ({ version: DOCUMENT_VERSION, id: 'd', name: 'Walls report', page: { size: 'A4', orientation: 'portrait' }, blocks });
+
+  it('validates the block, refuses a selection snapshot, and re-identifies the embedded list copy on import', () => {
+    assert.deepEqual(validateDocumentSpec(docWith([tableBlock({ maxRows: 20, title: 'T', caption: 'C' })])), []);
+    const bad = (block: unknown) => validateDocumentSpec(docWith([block as TableBlock])).map((e) => e.path);
+    assert.deepEqual(bad({ ...tableBlock(), maxRows: 0 }), ['blocks[0].maxRows']);
+    assert.deepEqual(bad({ ...tableBlock(), maxRows: (tableExports.TABLE_ROWS_MAX ?? 500) + 1 }), ['blocks[0].maxRows']);
+    assert.deepEqual(bad({ ...tableBlock(), maxRows: 2.5 }), ['blocks[0].maxRows']);
+    assert.deepEqual(bad({ ...tableBlock(), source: { kind: 'elements' } }), ['blocks[0].source']);
+    assert.deepEqual(bad({ ...tableBlock(), source: { kind: 'list', list: { ...listOf(), columns: undefined } } }), ['blocks[0].source.list']);
+    assert.deepEqual(bad({ ...tableBlock(), source: { kind: 'list', list: { ...listOf(), expressIdsByModel: { m: [1] } } } }), ['blocks[0].source.list.expressIdsByModel']);
+    assert.deepEqual(bad({ kind: 'table', id: 'x' }), ['blocks[0].source']);
+    assert.deepEqual(validateDocumentSpec(docWith([{ kind: 'rows' } as unknown as TableBlock])).map((e) => e.message), ['expected a non-empty string', 'expected text | image | chart | topic | spacer | table']);
+
+    const imported = parseDocumentFile(JSON.stringify(docWith([tableBlock()])));
+    const block = imported.blocks[0] as TableBlock;
+    assert.notEqual(block.id, 'tb');
+    assert.notEqual(block.source.list.id, 'list-walls', 'the copy never shares an id with a library list');
+    assert.equal(block.source.fromListId, 'preset-wall-schedule', 'the back-pointer is kept');
+    assert.equal(block.source.list.columns.length, 3);
+  });
+
+  it('listCopyForDocument drops the selection snapshot and takes the given id', { skip: !tableExports.listCopyForDocument && 'listCopyForDocument is not exported (production reverted)' }, () => {
+    const copy = tableExports.listCopyForDocument!(listOf({ expressIdsByModel: { m: [41] }, modelTagScope: { op: 'hasAny', tagIds: ['t'] } }), 'copy-1');
+    assert.equal(copy.id, 'copy-1');
+    assert.equal('expressIdsByModel' in copy, false);
+    assert.deepEqual(copy.modelTagScope, { op: 'hasAny', tagIds: ['t'] }, 'a tag scope survives reloads and is kept');
+  });
+
+  it('prints the list run over the model as a table through the seam, with column widths and row roles; a block without a run says so', async () => {
+    const model = ctx.models[0];
+    const pairs = [{ modelId: model.id, provider: createListDataProvider(model.store, model.name), store: model.store }];
+    const grouping = { columnId: 'storey', columnIds: ['storey'], sumColumnIds: [] };
+    const result = runListFederated(listOf({ grouping }), pairs, { models: new Map([[model.id, {}]]), modelTags: new Map(), modelTagAssignments: new Map() });
+    const exportModel = buildExportModel({ title: 'Walls', columns: result.columns, rows: result.rows, grouping, numericCols: detectNumericColumns(result.columns, result.rows), columnWidths: [], generatedAt: 'now' });
+    const doc = docWith([tableBlock({ maxRows: 1, caption: 'Fire ratings' }), tableBlock({ id: 'tb2', title: 'Pending' })]);
+    const { seams, calls } = recordingSeams();
+    const pdf = await generateDocumentPdf({ document: doc, bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), tables: new Map([['tb', { status: 'ok', model: exportModel }]]) }, seams);
+    const tables = calls.filter((c) => c.op === 'table').map((c) => c.args[0] as { head: string[][]; body: string[][]; columns: Array<{ width: number; align: string }>; rowRoles: string[] });
+    assert.equal(tables.length, 1);
+    assert.deepEqual(tables[0].head, [['Name', 'Storey', 'FireRating']]);
+    // Both walls sit on Level 1: one group header, one data row (maxRows 1), then "… 1 more row".
+    assert.deepEqual(tables[0].rowRoles, ['group', 'row', 'more']);
+    assert.equal(tables[0].body[0][0], 'Level 1  (2)');
+    assert.deepEqual(tables[0].body[1], ['Wall A', 'Level 1', 'REI60']);
+    assert.equal(tables[0].body[2][0], '… 1 more row');
+    assert.equal(tables[0].columns.length, 3);
+    const texts = calls.filter((c) => c.op === 'text').map((c) => String(c.args[0]));
+    assert.ok(texts.includes('Walls') && texts.includes('Fire ratings') && texts.includes('Pending'));
+    assert.ok(texts.includes('Table not ready: the list is still running.'));
+    assert.deepEqual(pdf.tableFailures, ['tb2']);
+
+    // The schedule view with a sum: one row per storey with a Count column, then the totals row carrying the element count under Count.
+    const scheduleGrouping = { columnId: 'storey', columnIds: ['storey'], sumColumnIds: ['fr'], view: 'schedule' as const };
+    const scheduleResult = runListFederated(listOf({ grouping: scheduleGrouping }), pairs, { models: new Map([[model.id, {}]]), modelTags: new Map(), modelTagAssignments: new Map() });
+    const scheduleModel = buildExportModel({ title: 'Walls', columns: scheduleResult.columns, rows: scheduleResult.rows, grouping: scheduleGrouping, numericCols: detectNumericColumns(scheduleResult.columns, scheduleResult.rows), columnWidths: [], generatedAt: 'now' });
+    const sched = recordingSeams();
+    await generateDocumentPdf({ document: docWith([tableBlock({ id: 'tb4' })]), bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), tables: new Map([['tb4', { status: 'ok', model: scheduleModel }]]) }, sched.seams);
+    const schedTable = sched.calls.find((c) => c.op === 'table')!.args[0] as { head: string[][]; body: string[][]; rowRoles: string[] };
+    assert.deepEqual(schedTable.head, [['Storey', 'Count', 'FireRating']]);
+    assert.deepEqual(schedTable.body.map((r) => r[0]), ['Level 1', 'Total (2)']);
+    assert.equal(schedTable.body[1][1], '2', 'the totals row counts elements under Count');
+    assert.deepEqual(schedTable.rowRoles, ['row', 'total']);
+
+    // An engine error whose message is empty (review finding) prints a generic error line, not an empty grid.
+    const empty = recordingSeams();
+    const errDoc = docWith([tableBlock({ id: 'tb3' })]);
+    const errPdf = await generateDocumentPdf({ document: errDoc, bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), tables: new Map([['tb3', { status: 'error', message: '' }]]) }, empty.seams);
+    assert.equal(empty.calls.filter((c) => c.op === 'table').length, 0);
+    assert.ok(empty.calls.some((c) => c.op === 'text' && c.args[0] === 'The list could not be run.'));
+    assert.deepEqual(errPdf.tableFailures, ['tb3']);
+    assert.equal(pdf.pages, 1);
   });
 });

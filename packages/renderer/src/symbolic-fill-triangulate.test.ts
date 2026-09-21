@@ -96,6 +96,44 @@ const SQUARE_4 = [0, 0, 4, 0, 4, 4, 0, 4];
 const HOLE_2 = [1, 1, 1, 3, 3, 3, 3, 1];
 
 describe('SymbolicFillPipeline — IfcAnnotationFillArea holes (#2516)', () => {
+  it('keeps a 5,000-km centimetre residual in its anchored per-partition draw (#5049)', () => {
+    const { device, writes } = makeDevice();
+    const pipeline = new SymbolicFillPipeline(device, 'bgra8unorm', 1);
+    pipeline.upload([{
+      ...fill([0, 0, 1, 0, 0, 1], [], 0),
+      origin: [5_000_000.255, 20, -4],
+    }]);
+    const pass = { setPipeline() {}, setBindGroup() {}, setVertexBuffer() {}, draw() {} } as unknown as GPURenderPassEncoder;
+    pipeline.render(pass, new Float32Array(16), new Float32Array(16).fill(1), [5_000_000.25, 20, -4]);
+    const uniform = writes[writes.length - 1];
+    assert.ok(Math.abs(uniform[32] + uniform[36] - 0.005) < 1e-7);
+    assert.strictEqual(uniform[35], 1);
+  });
+
+  it('uses distinct uniform bindings for anchored and legacy partitions in one pass (#5049)', () => {
+    const { device, writes } = makeDevice();
+    const pipeline = new SymbolicFillPipeline(device, 'bgra8unorm', 1);
+    pipeline.upload([
+      { ...fill([0, 0, 1, 0, 0, 1], [], 0), origin: [5_000_000.255, 20, -4] },
+      fill([0, 0, 1, 0, 0, 1], [], 7),
+    ]);
+    const bindings: GPUBindGroup[] = [];
+    const pass = {
+      setPipeline() {},
+      setBindGroup(_index: number, binding: GPUBindGroup) { bindings.push(binding); },
+      setVertexBuffer() {},
+      draw() {},
+    } as unknown as GPURenderPassEncoder;
+    pipeline.render(pass, new Float32Array(16).fill(2), new Float32Array(16).fill(3), [5_000_000.25, 20, -4]);
+
+    assert.strictEqual(bindings.length, 2, 'both partitions are drawn in the encoded pass');
+    assert.notStrictEqual(bindings[0], bindings[1], 'each partition retains its own queued uniform resource');
+    const uniforms = writes.filter(write => write.length === 40);
+    assert.strictEqual(uniforms.length, 2, 'one uniform upload per partition');
+    assert.strictEqual(uniforms[0][35], 1, 'anchored partition selects RTE projection');
+    assert.strictEqual(uniforms[1][35], 0, 'legacy world-f32 partition retains global projection');
+    assert.ok(Math.abs(uniforms[0][32] + uniforms[0][36] - 0.005) < 1e-7, 'anchor residual remains intact');
+  });
   it('subtracts an inner bound from the fill it is nested in', () => {
     const stream = upload([fill([...SQUARE_4, ...HOLE_2], [4])]);
     const area = uploadedArea(stream);

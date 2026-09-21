@@ -315,7 +315,12 @@ function evaluateGroup(group: FilterGroup, ctx: ReadSubjectContext, opts: Valida
   if (elementRules.length !== group.rules.length) {
     throw new Error(`rule-engine: applicability-only rule kind used in an element requirement (group has ${group.rules.length - elementRules.length} such rule(s))`);
   }
-  const items = foldBetweenPairs(elementRules);
+  // `between` is a gte+lte pair AND'd on the identical subject (plan §5's
+  // operator table) — only a shorthand within an AND group. In an OR group
+  // the two rules are independent alternatives (`Width >= 0.25` OR `Width
+  // <= 0.35` — 0.20 satisfies the second on its own), so folding them would
+  // silently require BOTH, changing what the group matches (review finding).
+  const items = group.combinator === 'AND' ? foldBetweenPairs(elementRules) : elementRules;
   const outcomes = items.map((item) =>
     'kind' in item && item.kind === 'between' ? evaluateBetween(item, ctx, opts) : checkFilterRule(item, ctx, opts),
   );

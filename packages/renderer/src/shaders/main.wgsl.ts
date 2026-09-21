@@ -7,6 +7,10 @@
  * Features: PBR lighting, section plane clipping, selection highlight,
  * glass fresnel, ACES tone mapping, screen-space edge enhancement.
  */
+import { MESH_FLAG_RTE_DRAWABLE } from '../mesh-rte-uniforms.js';
+import { mainRteWgsl, mainShadowWgsl } from './main-rte-shadow.wgsl.js';
+import { relativeToEyeWgsl } from './relative-to-eye.wgsl.js';
+
 export const mainShaderSource = `
         struct Uniforms {
           viewProj: mat4x4<f32>,
@@ -18,16 +22,18 @@ export const mainShaderSource = `
           flags: vec4<u32>,             // x = isSelected, y = section/clip bits, z = edgeEnabled, w = edgeIntensityMilli
           clipBoxMin: vec4<f32>,        // xyz = clip-box min corner (world), w = pad
           clipBoxMax: vec4<f32>,        // xyz = clip-box max corner (world), w = pad
-          // Quantized-vertex dequantization (issue #1682 phase 6):
-          // xyz = lattice-aligned quantMin (batch-origin-relative), w = step.
-          // Only read by vs_main_quantized; zero elsewhere.
-          quantParams: vec4<f32>,
+          quantParams: vec4<f32>, // local min xyz, lattice step w
+          rteViewProj: mat4x4<f32>, // appended frame; bit 16 selects it
+          drawableDeltaHigh: vec4<f32>,
+          drawableDeltaLow: vec4<f32>,
+          rteCameraHigh: vec4<f32>,
+          rteCameraLow: vec4<f32>,
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
-
-        // Global lighting environment — one buffer shared by every mesh in
-        // the pass (bound once per frame at group(1)). Field packing must
-        // match packEnvironmentUniforms() in environment.ts.
+        const RTE_DRAWABLE_FLAG: u32 = ${MESH_FLAG_RTE_DRAWABLE}u;
+        ${relativeToEyeWgsl}
+        ${mainRteWgsl}
+        // Shared group(1) lighting; packing matches packEnvironmentUniforms().
         struct Environment {
           sunDirection: vec3<f32>,      // unit vector TOWARD the sun
           sunIntensity: f32,
@@ -44,88 +50,7 @@ export const mainShaderSource = `
         }
         @binding(0) @group(1) var<uniform> env: Environment;
 
-        // Sun shadow map (#2670, Phase 2b) at group(1). The depth map, a
-        // comparison sampler, and the light matrix + params. Bound on every
-        // main-family pipeline; sampling is gated by shadowU.params.y (enabled),
-        // so when shadows are off this reads the 1×1 dummy and returns 1.0.
-        @binding(1) @group(1) var shadowMap: texture_depth_2d;
-        @binding(2) @group(1) var shadowCmp: sampler_comparison;
-        struct Shadow {
-          lightViewProj: mat4x4<f32>,
-          // x = texelSize (1/resolution), y = enabled (0/1),
-          // z = normalBias (world units), w = pcfRadius (texels).
-          params: vec4<f32>,
-          // x = depthBias (reverse-Z clip units, nudges toward lit).
-          params2: vec4<f32>,
-        }
-        @binding(3) @group(1) var<uniform> shadowU: Shadow;
-
-        // Fraction of the sun reaching this surface point (1 = lit, 0 = fully
-        // shadowed). Normal-offset + slope-scaled bias defeats acne without
-        // peter-panning; the penumbra is sampled with a 12-tap Poisson disk
-        // ROTATED per pixel (interleaved gradient noise). A fixed grid kernel
-        // undersamples a wide penumbra and breaks into discrete bands (the
-        // "tripled shadow" at high softness); a rotated disk turns that banding
-        // into fine dither that reads as smooth at any softness.
-        // textureSampleCompareLevel is used (not ...Compare) so it is legal in
-        // this non-uniform control flow.
-        const SHADOW_POISSON = array<vec2<f32>, 12>(
-          vec2<f32>(-0.326, -0.406), vec2<f32>(-0.840, -0.074), vec2<f32>(-0.696,  0.457),
-          vec2<f32>(-0.203,  0.621), vec2<f32>( 0.962, -0.195), vec2<f32>( 0.473, -0.480),
-          vec2<f32>( 0.519,  0.767), vec2<f32>( 0.185, -0.893), vec2<f32>( 0.507,  0.064),
-          vec2<f32>( 0.896,  0.412), vec2<f32>(-0.322, -0.933), vec2<f32>(-0.792, -0.598),
-        );
-
-        fn sunShadowFactor(worldPos: vec3<f32>, N: vec3<f32>, fragCoord: vec2<f32>) -> f32 {
-          if (shadowU.params.y < 0.5) { return 1.0; }
-          // The diffuse sun term is TWO-SIDED (abs(dot(N, sun)) in the shading
-          // below), so a face whose stabilized normal points away from the sun is
-          // still lit. Orient the normal toward the sun before biasing: otherwise
-          // the normal-offset push (params.z) moves the sample AWAY from the light
-          // (deeper behind the surface), and the slope term below collapses to its
-          // max (NdotL→0), together biasing the compare toward "lit" — which leaks
-          // direct sun onto interior faces the roof occludes (#2670 review).
-          let L = normalize(env.sunDirection);
-          let Ns = N * select(-1.0, 1.0, dot(N, L) >= 0.0);
-          let biased = worldPos + Ns * shadowU.params.z;
-          let clip = shadowU.lightViewProj * vec4<f32>(biased, 1.0);
-          let ndc = clip.xyz / clip.w;
-          let uv = vec2<f32>(ndc.x * 0.5 + 0.5, ndc.y * -0.5 + 0.5);
-          let inBounds = uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 && ndc.z > 0.0;
-          if (!inBounds) { return 1.0; }
-          // Slope-scaled depth bias: at a grazing sun the receiver's light-space
-          // depth changes fast across the kernel, so a constant bias can't clear
-          // the whole footprint and the surface rings with moiré. Grow the bias
-          // as the surface tilts away from the sun (NdotL → 0) and with the
-          // kernel width. The hardware slope bias in the depth pass covers the
-          // occluder side; this covers the receiver side.
-          let NdotL = max(dot(Ns, L), 0.0);
-          let slope = clamp(sqrt(max(1.0 - NdotL * NdotL, 0.0)) / max(NdotL, 0.1), 1.0, 12.0);
-          let refDepth = ndc.z + shadowU.params2.x * slope * (1.0 + shadowU.params.w);
-          let radius = shadowU.params.x * shadowU.params.w;  // penumbra, uv units
-          // Per-pixel rotation (interleaved gradient noise) dithers the disk so
-          // the discrete taps never line up into bands.
-          let ign = fract(52.9829189 * fract(dot(fragCoord, vec2<f32>(0.06711056, 0.00583715))));
-          let ang = ign * 6.2831853;
-          let cr = cos(ang);
-          let sr = sin(ang);
-          var sum = 0.0;
-          for (var i = 0; i < 12; i = i + 1) {
-            let p = SHADOW_POISSON[i];
-            let off = vec2<f32>(p.x * cr - p.y * sr, p.x * sr + p.y * cr) * radius;
-            sum = sum + textureSampleCompareLevel(shadowMap, shadowCmp, uv + off, refDepth);
-          }
-          let pcf = sum / 12.0;
-          // Terminator fade. On a surface nearly PARALLEL to the sun rays
-          // (NdotL → 0, e.g. a vertical wall under a midday sun) the receiver
-          // straddles the shadow threshold, so the rotated-disk taps randomly
-          // pass/fail and the wall breaks into salt-and-pepper speckle. The
-          // direct sun term is near zero there anyway, so fade the cast shadow
-          // smoothly toward lit as the surface goes grazing: a clean gradient
-          // replaces the ripple (#2670).
-          let graze = smoothstep(0.0, 0.3, NdotL);
-          return mix(1.0, pcf, graze);
-        }
+        ${mainShadowWgsl}
 
         struct VertexInput {
           @location(0) position: vec3<f32>,
@@ -151,6 +76,12 @@ export const mainShaderSource = `
           // vs_instanced writes the per-instance flag from the instance buffer, so a
           // single selected occurrence highlights without re-drawing.
           @location(5) @interpolate(flat) instSelected: u32,
+          // Camera-relative position for fragment operations that compare
+          // geometry to section/crop boundaries or take derivatives. This is
+          // intentionally separate from worldPos: shadow maps still consume
+          // their established world-space light matrix until their depth pass
+          // is migrated as one transaction.
+          @location(6) eyePos: vec3<f32>,
         }
 
         // Per-instance vertex-buffer inputs (slot 1, stepMode 'instance') used by
@@ -172,6 +103,8 @@ export const mainShaderSource = `
           @location(7) instEntityId: u32,
           @location(8) instColor: vec4<f32>,
           @location(9) instSelected: u32,
+          @location(10) anchorHigh: vec4<f32>,
+          @location(11) anchorLow: vec4<f32>,
         }
 
         // 12-byte quantized vertex (issue #1682 phase 6): uint16x4 (lattice
@@ -202,7 +135,9 @@ export const mainShaderSource = `
         fn shadeFlatVertex(localPos: vec3<f32>, localNormal: vec3<f32>, entityId: u32) -> VertexOutput {
           var output: VertexOutput;
           let worldPos = uniforms.model * vec4<f32>(localPos, 1.0);
-          output.position = uniforms.viewProj * worldPos;
+          let eyePos = rtePosition(localPos).xyz;
+          let rte = (uniforms.flags.x & RTE_DRAWABLE_FLAG) != 0u;
+          output.position = select(uniforms.viewProj * worldPos, uniforms.rteViewProj * vec4<f32>(eyePos, 1.0), rte);
           // Anti z-fighting depth nudge — see vs_main's comment.
           let colorSalt = (entityId >> 24u) * 2654435761u;
           let zHash = (((entityId & 0x00FFFFFFu) ^ colorSalt) * 2654435761u) & 255u;
@@ -212,7 +147,8 @@ export const mainShaderSource = `
           output.entityId = entityId;
           output.color = uniforms.baseColor;
           output.instSelected = 0u;
-          output.viewPos = (uniforms.viewProj * worldPos).xyz;
+          output.eyePos = eyePos;
+          output.viewPos = select((uniforms.viewProj * worldPos).xyz, (uniforms.rteViewProj * vec4<f32>(eyePos, 1.0)).xyz, rte);
           return output;
         }
 
@@ -227,7 +163,9 @@ export const mainShaderSource = `
         fn vs_main(input: VertexInput, @builtin(instance_index) instanceIndex: u32) -> VertexOutput {
           var output: VertexOutput;
           let worldPos = uniforms.model * vec4<f32>(input.position, 1.0);
-          output.position = uniforms.viewProj * worldPos;
+          let eyePos = rtePosition(input.position).xyz;
+          let rte = (uniforms.flags.x & RTE_DRAWABLE_FLAG) != 0u;
+          output.position = select(uniforms.viewProj * worldPos, uniforms.rteViewProj * vec4<f32>(eyePos, 1.0), rte);
           // Anti z-fighting: deterministic depth nudge.
           // Knuth multiplicative hash spreads sequential IDs across 0-255 so
           // coplanar faces from different entities always get distinct depths.
@@ -252,8 +190,9 @@ export const mainShaderSource = `
           output.entityId = input.entityId;
           output.color = uniforms.baseColor;
           output.instSelected = 0u;  // flat path selects via uniforms.flags.x
+          output.eyePos = eyePos;
           // Store view-space position for edge detection
-          output.viewPos = (uniforms.viewProj * worldPos).xyz;
+          output.viewPos = select((uniforms.viewProj * worldPos).xyz, (uniforms.rteViewProj * vec4<f32>(eyePos, 1.0)).xyz, rte);
           return output;
         }
 
@@ -268,7 +207,9 @@ export const mainShaderSource = `
           var output: VertexOutput;
           let instMat = mat4x4<f32>(inst.m0, inst.m1, inst.m2, inst.m3);
           let worldPos = instMat * vec4<f32>(input.position, 1.0);
-          output.position = uniforms.viewProj * worldPos;
+          let linearLocal = (instMat * vec4<f32>(input.position, 0.0)).xyz;
+          let eyePos = rteInstancePosition(linearLocal, inst.anchorHigh.xyz, inst.anchorLow.xyz).xyz;
+          output.position = uniforms.rteViewProj * vec4<f32>(eyePos, 1.0);
           // Same per-entity depth nudge as vs_main. No colour salt here: the
           // instanced path has no base-vs-overlay coincident redraw (yet), so the
           // raw picking id is enough to separate coplanar entities.
@@ -279,7 +220,8 @@ export const mainShaderSource = `
           output.entityId = inst.instEntityId;
           output.color = inst.instColor;
           output.instSelected = inst.instSelected;
-          output.viewPos = (uniforms.viewProj * worldPos).xyz;
+          output.eyePos = eyePos;
+          output.viewPos = (uniforms.rteViewProj * vec4<f32>(eyePos, 1.0)).xyz;
           return output;
         }
 
@@ -326,6 +268,12 @@ export const mainShaderSource = `
 
         @fragment
         fn fs_main(input: VertexOutput) -> FragmentOutput {
+          // The flat/quantized/textured mesh paths submit this in one
+          // camera-relative frame. Do all camera-local fragment arithmetic in
+          // that frame; otherwise the RTE vertex precision is thrown away at
+          // section/crop/derivative ingress. Instanced geometry is not yet
+          // anchored, so its worldPos remains the authoritative input.
+          let fragmentPos = select(input.worldPos, input.eyePos, (uniforms.flags.x & RTE_DRAWABLE_FLAG) != 0u);
           // Per-instance hide/isolate: bit 1 of the instance flags lane marks a hidden
           // occurrence. Discard it so it neither draws nor writes depth (and the pick
           // pass applies the same discard, so it isn't pickable). vs_main writes
@@ -355,7 +303,7 @@ export const mainShaderSource = `
             let planeDistance = uniforms.sectionPlane.w;
             let flipped = (uniforms.flags.y & 2u) == 2u;
             let side = select(1.0, -1.0, flipped);
-            let distToPlane = (dot(input.worldPos, planeNormal) - planeDistance) * side;
+            let distToPlane = (dot(fragmentPos, planeNormal) - planeDistance) * side;
             if (distToPlane > 0.0) {
               discard;
             }
@@ -363,7 +311,7 @@ export const mainShaderSource = `
           // Clip box (section / crop box): discard fragments OUTSIDE the AABB.
           // flags.y bit 2 = clip-box enabled.
           if ((uniforms.flags.y & 4u) != 0u) {
-            let p = input.worldPos;
+            let p = fragmentPos;
             if (any(p < uniforms.clipBoxMin.xyz) || any(p > uniforms.clipBoxMax.xyz)) {
               discard;
             }
@@ -403,7 +351,7 @@ export const mainShaderSource = `
           // We still fall back to the vertex normal when derivatives
           // are unavailable (extreme polygon degeneracy where dpdx /
           // dpdy collapse to zero — practically never on real geometry).
-          let faceN = cross(dpdx(input.worldPos), dpdy(input.worldPos));
+          let faceN = cross(dpdx(fragmentPos), dpdy(fragmentPos));
           let fLen2 = dot(faceN, faceN);
           var N: vec3<f32>;
           if (fLen2 > 1e-10) {
@@ -474,7 +422,7 @@ export const mainShaderSource = `
 
           // Combine all lighting. Only the DIRECT sun term is occluded by cast
           // shadows (#2670); ambient/fill/rim are indirect and stay unshadowed.
-          let sunShadow = sunShadowFactor(input.worldPos, N, input.position.xy);
+          let sunShadow = sunShadowFactor(input.eyePos, N, input.position.xy);
           let lightTerm = ambient + env.sunColor * (diffuseSun * sunShadow) + vec3<f32>(diffuseFill + rim);
           var color = baseColor * lightTerm;
 
@@ -543,7 +491,7 @@ export const mainShaderSource = `
           var finalAlpha = select(input.color.a, 1.0, isSelected || emphasizedOverlay);
           if (finalAlpha < 0.99 && !isSelected && !isOverlay) {
             // Calculate view direction for fresnel
-            let V = normalize(-input.worldPos);
+            let V = normalize(-fragmentPos);
             let NdotV = max(dot(N, V), 0.0);
 
             // Enhanced fresnel effect - stronger at edges (grazing angles)

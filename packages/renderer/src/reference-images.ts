@@ -92,17 +92,31 @@ export class ReferenceImageManager implements ReferenceImages {
     this.host.requestRender();
   }
   destroy(): void { this.clear(); this.pipeline = null; this.device = null; }
-  draw(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
+  draw(
+    pass: GPURenderPassEncoder,
+    viewProj: Float32Array,
+    rteViewProj?: Float32Array,
+    rteCamera?: readonly [number, number, number],
+  ): void {
     if (!this.images.size) return;
     const depth = (image: ReferenceGpuImage): number => {
       const c = image.input.corners;
       const x = (c[0][0]+c[2][0])/2, y = (c[0][1]+c[2][1])/2, z = (c[0][2]+c[2][2])/2;
-      return (viewProj[2]*x+viewProj[6]*y+viewProj[10]*z+viewProj[14]) /
-        (viewProj[3]*x+viewProj[7]*y+viewProj[11]*z+viewProj[15]);
+      if (rteViewProj && rteCamera) {
+        const px = x - rteCamera[0], py = y - rteCamera[1], pz = z - rteCamera[2];
+        return (rteViewProj[2]*px+rteViewProj[6]*py+rteViewProj[10]*pz+rteViewProj[14]) /
+          (rteViewProj[3]*px+rteViewProj[7]*py+rteViewProj[11]*pz+rteViewProj[15]);
+      }
+      const projection = viewProj;
+      const px = x, py = y, pz = z;
+      return (projection[2]*px+projection[6]*py+projection[10]*pz+projection[14]) /
+        (projection[3]*px+projection[7]*py+projection[11]*pz+projection[15]);
     };
     // Reverse-Z, far to near for translucent references; BIM depth still tests
     // each fragment. Intersecting transparent planes have ordinary alpha-sort limits.
-    for (const image of [...this.images.values()].sort((a, b) => depth(a)-depth(b))) image.draw(pass, viewProj);
+    for (const image of [...this.images.values()].sort((a, b) => depth(a)-depth(b))) {
+      image.draw(pass, viewProj, rteViewProj, rteCamera);
+    }
   }
   async pick(x: number, y: number, options?: PickOptions): Promise<ReferenceImageHit | null> {
     if (!this.images.size) return null;

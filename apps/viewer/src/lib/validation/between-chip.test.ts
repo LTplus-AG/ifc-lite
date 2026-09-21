@@ -63,6 +63,25 @@ describe('between-chip fold/unfold (#5138)', () => {
     assert.deepEqual(folded, rules);
   });
 
+  it('folds an lte-before-gte pair (#5157 review) — fold then unfold is identity, exactly two rules', () => {
+    // The `lte` is not itself a `gte`, so a single combined pass would push
+    // it as a plain rule before ever seeing its `gte` partner two entries
+    // later, then ALSO fold it into the chip when the `gte` is reached —
+    // the same rule emitted twice, unfolding to three rules instead of two.
+    const lte = Rule.quantity('Qto_WallBaseQuantities', 'Width', 'lte', 300);
+    const gte = Rule.quantity('Qto_WallBaseQuantities', 'Width', 'gte', 100);
+    const folded = foldBetweenPairs([lte, gte]);
+    assert.equal(folded.length, 1);
+    assert.ok(isBetweenChip(folded[0]));
+    if (isBetweenChip(folded[0])) {
+      assert.equal(folded[0].min.value, 100);
+      assert.equal(folded[0].max.value, 300);
+    }
+    const unfolded = unfoldBetweenChips(folded);
+    assert.equal(unfolded.length, 2);
+    assert.deepEqual(unfolded, [gte, lte]);
+  });
+
   it('preserves rule order around a folded pair', () => {
     const before = Rule.name('contains', 'Wall');
     const gte = Rule.quantity('Qto_WallBaseQuantities', 'Width', 'gte', 100);

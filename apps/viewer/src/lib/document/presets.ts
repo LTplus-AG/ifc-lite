@@ -8,13 +8,13 @@
  */
 import { newChartSpec } from '../charts/presets.js';
 import { freshBlockId, freshDocumentId } from './persistence.js';
-import type { DocumentBlock, DocumentSpec, TextBlock } from './types.js';
+import { DOCUMENT_VERSION, type DocumentBlock, type DocumentSpec, type TextBlock } from './types.js';
 
 const text = (style: TextBlock['style'], value: string): TextBlock => ({ kind: 'text', id: freshBlockId(), style, text: value });
 
 export function blankDocument(): DocumentSpec {
   return {
-    version: 2,
+    version: DOCUMENT_VERSION,
     id: freshDocumentId(),
     name: 'Untitled document',
     page: { size: 'A4', orientation: 'portrait' },
@@ -32,7 +32,7 @@ export function coverSheetDocument(): DocumentSpec {
     { kind: 'chart', id: freshBlockId(), chart: newChartSpec(), snapshot: true },
     text('body', 'Issued {Today}.'),
   ];
-  return { version: 2, id: freshDocumentId(), name: 'Cover sheet', page: { size: 'A4', orientation: 'portrait' }, blocks };
+  return { version: DOCUMENT_VERSION, id: freshDocumentId(), name: 'Cover sheet', page: { size: 'A4', orientation: 'portrait' }, blocks };
 }
 
 export const DOCUMENT_PRESETS: ReadonlyArray<{ name: string; create: () => DocumentSpec }> = [

@@ -1,0 +1,147 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/** #5049 witness fixtures and its serialisable evidence contract. */
+
+import type { DecodedInstancedShard, MeshData } from '@ifc-lite/geometry';
+import type { Rgba } from './RteGpuWitnessPixels';
+
+export const COMMON_ORIGIN: [number, number, number] = [5_000_000.015625, 100, -50];
+export const LARGE_ORIGIN: [number, number, number] = [5_020_000.015625, 100, -50];
+export const PICK_CSS_X = 320;
+export const PICK_CSS_Y = 240;
+/** GPU pick addresses the pixel at floor(CSS); CPU ray samples its centre. */
+export const CPU_PICK_CSS_X = PICK_CSS_X + 0.5;
+export const CPU_PICK_CSS_Y = PICK_CSS_Y + 0.5;
+export const GEOMETRIC_TOLERANCE_METRES = 0.03;
+/** A 1.5625cm witness must not pass after an absolute-f32 collapse. */
+export const MEASUREMENT_TOLERANCE_METRES = 0.005;
+
+type WitnessStatus = 'pending' | 'passed' | 'skipped' | 'failed';
+
+export interface RteGpuWitnessReport {
+  status: WitnessStatus;
+  reason?: string;
+  system: { userAgent: string; platform: string; devicePixelRatio: number; adapter: { vendor?: string; architecture?: string } | null; hardwareVerified: boolean };
+  tolerance: { geometricMetres: number; measurementMetres: number; pixel: number };
+  commonTranslation: readonly [number, number, number];
+  largeLocalExtentMetres: number;
+  evidence?: {
+    canvasPixels: { width: number; height: number };
+    pickPixel: { x: number; y: number };
+    pick: PickEvidence | null;
+    texturedPick: PickEvidence | null;
+    instancedPick: PickEvidence | null;
+    pointPick: PickEvidence | null;
+    largeExtentPick: PickEvidence | null;
+    pointCropClick: boolean;
+    pointCropRectangle: boolean;
+    linePixel: Rgba | null;
+    texturedPixel: Rgba | null;
+    instancedPixel: Rgba | null;
+    pointPixel: Rgba | null;
+    largeExtentPixel: Rgba | null;
+    colorPixel: Rgba | null;
+    highlightPixels: PixelDifference | null;
+    shadowPixels: PixelDifference | null;
+    cpuRay: { expressId: number; point: [number, number, number] } | null;
+    sourceResidualMetres: number;
+    pickResidualMetres: number | null;
+    CPUAndGpuAgree: boolean;
+    snapResidualMetres: number | null;
+    measurementResidualMetres: number | null;
+    measurementCpuMetres: number | null;
+    measurementGpuMetres: number | null;
+    provenanceStable: boolean;
+    families: Record<string, boolean>;
+    clippedPick: boolean;
+    sectionPick: boolean;
+    screenshotBytes: number;
+    diagnostics: { gpuErrors: number; errors: number; lastGpuError: string; lastError: string };
+  };
+}
+
+export interface PickEvidence {
+  expressId: number;
+  modelIndex?: number;
+  geometryItemId?: number;
+  worldXYZ?: [number, number, number];
+}
+
+export interface PixelDifference {
+  changedPixels: number;
+  maxChannelDelta: number;
+}
+
+export function witnessMesh(expressId: number, origin: [number, number, number], color: [number, number, number, number], textured = false): MeshData {
+  const result: MeshData = {
+    expressId,
+    positions: new Float32Array([-10, -8, 0, 10, -8, 0, 0, 10, 0]),
+    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    indices: new Uint32Array([0, 1, 2]), color, origin,
+  };
+  if (textured) {
+    result.uvs = new Float32Array([0, 0, 1, 0, 0.5, 1]);
+    result.texture = { width: 2, height: 2, rgba: new Uint8Array([
+      32, 255, 64, 255, 255, 255, 32, 255, 32, 64, 255, 255, 255, 32, 255, 255,
+    ]), repeatS: false, repeatT: false };
+  }
+  return result;
+}
+
+export function largeExtentMesh(): MeshData {
+  const span = 8_192;
+  return {
+    expressId: 104,
+    positions: new Float32Array([-span / 2, -span / 2, 0, span / 2, -span / 2, 0, 0, span / 2, 0]),
+    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+    color: [0.3, 0.6, 1, 1], origin: LARGE_ORIGIN,
+  };
+}
+
+/** A vertical occluder over the flat witness receiver. Its shadow is compared
+ * against an otherwise identical production framebuffer, not a draw counter. */
+export function shadowCasterMesh(): MeshData {
+  return {
+    expressId: 106,
+    // A raised, parallel triangle puts an unambiguous footprint on the flat
+    // receiver below it for a vertical sun. The hardware assertion therefore
+    // distinguishes an empty/bad shadow map from a merely off-screen cast.
+    // Offset left of the centre so its footprint changes the framebuffer
+    // without covering the central pick/line or point-crop witness samples.
+    positions: new Float32Array([-7, -3, 8, -1, -3, 8, -4, 3, 8]),
+    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    indices: new Uint32Array([0, 1, 2]), color: [0.7, 0.7, 0.7, 1], origin: COMMON_ORIGIN,
+  };
+}
+
+export function instancedShard(): DecodedInstancedShard {
+  // Native IFC Z-up origin maps to the same Y-up common translation as flat meshes.
+  return {
+    templates: [{
+      // Native IFC Z-up: this becomes a viewer XY face after Z-up→Y-up, not
+      // the edge-on XZ triangle that a top-down witness could not observe.
+      positions: new Float32Array([-3, 0, -3, 3, 0, -3, 0, 0, 3]),
+      normals: new Float32Array([0, -1, 0, 0, -1, 0, 0, -1, 0]), indices: new Uint32Array([0, 1, 2]),
+      origin: [COMMON_ORIGIN[0] + 24, -COMMON_ORIGIN[2], COMMON_ORIGIN[1]],
+    }],
+    instances: [{
+      templateIndex: 0, entityId: 103, color: [0.1, 0.8, 1, 1],
+      transform: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
+    }], carriesItemIds: false,
+  };
+}
+
+export function distance(a: readonly number[], b: readonly number[]): number {
+  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+}
+
+export function baseReport(): RteGpuWitnessReport {
+  return {
+    status: 'pending',
+    system: { userAgent: navigator.userAgent, platform: navigator.platform, devicePixelRatio: window.devicePixelRatio, adapter: null, hardwareVerified: false },
+    tolerance: { geometricMetres: GEOMETRIC_TOLERANCE_METRES, measurementMetres: MEASUREMENT_TOLERANCE_METRES, pixel: 1 },
+    commonTranslation: COMMON_ORIGIN, largeLocalExtentMetres: 8_192,
+  };
+}

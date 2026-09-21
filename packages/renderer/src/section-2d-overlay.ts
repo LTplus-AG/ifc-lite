@@ -23,6 +23,7 @@
  */
 
 import { PIPELINE_CONSTANTS } from './constants.js';
+import { packRteDrawableDelta } from './relative-to-eye.js';
 import {
   SECTION_2D_CAP_FILL_WGSL,
   SECTION_2D_OVERLAY_LINE_WGSL,
@@ -45,66 +46,17 @@ import {
 import {
   WorldLineBuffer,
   type SectionLinePipelineResources,
+  type LineVertices,
 } from './section-2d-line-buffer.js';
+import {
+  LINE_OVERLAY_CHANNELS,
+  type LineOverlayChannel,
+  type Section2DOverlayOptions,
+} from './section-2d-types.js';
 
 export type { CutPolygon2D, DrawingLine2D, SectionCustomPlane } from './section-2d-lift.js';
-
-/**
- * The standalone world-space line overlays, in draw order.
- *
- * Each channel is an independent vertex buffer sharing one line pipeline and one shared overlay
- * colour; only the buffer read and the uniform slot bound distinguish them — naming them makes a
- * sixth channel six table rows, not eight methods. Five of six refuse to compile if skipped;
- * the sixth, `SECTION_2D_UNIFORM_SLOT_COUNT`, derives from `SECTION_2D_UNIFORM_SLOT_INDEX`, so
- * the buffer follows it automatically (#3342 was a hand-written count, one short).
- *
- * Not enforced: each draw site binding its OWN slot. A test pins the index dense, but a channel
- * reusing an existing slot constant passes it while two sites overwrite each other's `lineColor`
- * (#2456).
- *
- * Clash box/contact lines are deliberately NOT a channel: they draw in their own colour via
- * `setClashOverlapBox` / `setClashContactLines`.
- */
-export const LINE_OVERLAY_CHANNELS = ['annotation', 'alignment', 'grid', 'dxf', 'terrain'] as const;
-
-/** One of {@link LINE_OVERLAY_CHANNELS}. */
-export type LineOverlayChannel = (typeof LINE_OVERLAY_CHANNELS)[number];
-
-export interface Section2DOverlayCapStyle {
-  fillColor:         [number, number, number, number];
-  strokeColor:       [number, number, number, number];
-  patternId:         number;   // 0..7, matches HATCH_PATTERN_IDS in section-cap.ts
-  spacingPx:         number;
-  angleRad:          number;
-  widthPx:           number;
-  secondaryAngleRad: number;
-}
-
-export interface Section2DOverlayOptions {
-  axis: 'down' | 'front' | 'side';  // Semantic axis: down (Y), front (Z), side (X)
-  position: number; // 0-100 percentage
-  bounds: {
-    min: { x: number; y: number; z: number };
-    max: { x: number; y: number; z: number };
-  };
-  viewProj: Float32Array;
-  flipped?: boolean;
-  min?: number;  // Optional override for min range
-  max?: number;  // Optional override for max range
-  /**
-   * If provided, the 2D overlay's polygon fills render as the 3D section
-   * cap with this screen-space hatch style. If omitted or `showFills` is
-   * false, the filled hatch is skipped.
-   */
-  capStyle?: Section2DOverlayCapStyle;
-  showFills?: boolean;
-  /**
-   * Whether to draw the polygon outline + hidden lines on the cap. Users
-   * can turn surfaces and outlines on/off independently. Defaults to true
-   * so existing call sites keep showing outlines.
-   */
-  showOutlines?: boolean;
-}
+export { LINE_OVERLAY_CHANNELS } from './section-2d-types.js';
+export type { LineOverlayChannel, Section2DOverlayCapStyle, Section2DOverlayOptions } from './section-2d-types.js';
 
 export class Section2DOverlayRenderer {
   private device: GPUDevice;
@@ -133,6 +85,8 @@ export class Section2DOverlayRenderer {
   private fillIndexCount = 0;
   private lineVertexBuffer: GPUBuffer | null = null;
   private lineVertexCount = 0;
+  /** f64 cap anchor retained separately from the local cap vertices. */
+  private capAnchor: [number, number, number] | null = null;
 
   /**
    * One world-space vertex buffer per {@link LineOverlayChannel}, each on its
@@ -373,8 +327,24 @@ export class Section2DOverlayRenderer {
     this.clearGeometry();
 
     const lift = createSectionLift(axis, planePosition, flipped, customPlane);
+    const planeAnchor: [number, number, number] = customPlane
+      ? [...customPlane.origin]
+      : axis === 'side' ? [planePosition, 0, 0]
+        : axis === 'down' ? [0, planePosition, 0] : [0, 0, planePosition];
+    // The plane-coordinate anchor was enough when every model was near the
+    // origin. At a survey offset it leaves both in-plane coordinates absolute
+    // in the f32 vertex buffer, collapsing centimetre cap edges. Anchor at an
+    // actual lifted point instead, while retaining the old plane point for an
+    // empty upload that produces no vertex buffer to draw.
+    const firstPoint = polygons.find((polygon) => polygon.polygon.outer.length > 0)?.polygon.outer[0]
+      ?? lines[0]?.line.start;
+    const anchor = firstPoint ? lift(firstPoint.x, firstPoint.y) : planeAnchor;
 
-    const fill = buildCapFillGeometry(polygons, lift);
+    // Lift/subtract while the coordinates are JS f64. Building a world-space
+    // Float32Array first then subtracting the cap anchor loses centimetre
+    // detail in both the plane normal and its in-plane axes at national-grid
+    // offsets.
+    const fill = buildCapFillGeometry(polygons, lift, anchor);
     if (fill) {
       this.fillVertexBuffer = this.device.createBuffer({
         size: fill.vertices.byteLength,
@@ -390,7 +360,7 @@ export class Section2DOverlayRenderer {
       this.fillIndexCount = fill.indices.length;
     }
 
-    const outline = buildDrawingOutlineVertices(polygons, lines, lift);
+    const outline = buildDrawingOutlineVertices(polygons, lines, lift, anchor);
     if (outline) {
       this.lineVertexBuffer = this.device.createBuffer({
         size: outline.byteLength,
@@ -399,6 +369,7 @@ export class Section2DOverlayRenderer {
       this.device.queue.writeBuffer(this.lineVertexBuffer, 0, outline);
       this.lineVertexCount = outline.length / 3;  // Each vertex is 3 floats
     }
+    this.capAnchor = anchor;
   }
 
   /**
@@ -419,6 +390,7 @@ export class Section2DOverlayRenderer {
     }
     this.fillIndexCount = 0;
     this.lineVertexCount = 0;
+    this.capAnchor = null;
   }
 
   /**
@@ -442,7 +414,7 @@ export class Section2DOverlayRenderer {
    * leaves every other channel exactly as it was — that independence is the
    * whole point of having channels rather than one merged buffer.
    */
-  setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | null): void {
+  setLineOverlay(channel: LineOverlayChannel, vertices: LineVertices | null): void {
     if (vertices === null) {
       // Deliberately no `init()`: clearing destroys a buffer that only an
       // upload could have created, so a clear before first use must not be
@@ -467,12 +439,12 @@ export class Section2DOverlayRenderer {
   drawLineOverlay(
     pass: GPURenderPassEncoder,
     viewProj: Float32Array,
-    channel: LineOverlayChannel,
+    channel: LineOverlayChannel, rteViewProj?: Float32Array, camera?: readonly [number, number, number],
   ): void {
     this.init();
     const resources = this.lineResources();
     if (!resources) return;
-    this.lineOverlays[channel].draw(pass, resources, viewProj, this.overlayLineColor);
+    this.lineOverlays[channel].draw(pass, resources, viewProj, this.overlayLineColor, rteViewProj, camera);
   }
 
   /** Colour for the clash-overlap box (its own, not the shared overlay colour). */
@@ -485,7 +457,7 @@ export class Section2DOverlayRenderer {
    * world space (12 AABB edges = 24 vertices). Separate buffer + colour from the
    * other overlays. Pass an empty array to clear. (#1277)
    */
-  uploadClashBoxLines3D(vertices: Float32Array): void {
+  uploadClashBoxLines3D(vertices: LineVertices): void {
     this.init();
     this.clashBoxLines.upload(this.device, vertices);
   }
@@ -499,11 +471,16 @@ export class Section2DOverlayRenderer {
   }
 
   /** Draw the clash-overlap box in its own colour. Same line pipeline. (#1277) */
-  drawClashBoxLines3D(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
+  drawClashBoxLines3D(
+    pass: GPURenderPassEncoder,
+    viewProj: Float32Array,
+    rteViewProj?: Float32Array,
+    camera?: readonly [number, number, number],
+  ): void {
     this.init();
     const resources = this.lineResources();
     if (!resources) return;
-    this.clashBoxLines.draw(pass, resources, viewProj, this.clashBoxLineColor);
+    this.clashBoxLines.draw(pass, resources, viewProj, this.clashBoxLineColor, rteViewProj, camera);
   }
 
   /**
@@ -542,13 +519,29 @@ export class Section2DOverlayRenderer {
     // `fillPipeline` above. There is no stencil test; the fill is restricted
     // to the actual cap polygons by the triangle-plane intersection geometry
     // `SectionCutter` produces, not by a stencil gate.
-    const offset: [number, number, number] = [0, 0, 0];
+    // Cap vertices are stored relative to capAnchor so that the RTE path can
+    // retain their small in-plane residuals. The legacy view-projection path
+    // still transforms world coordinates, however, so it must add that anchor
+    // back through planeOffset. Leaving it zero placed every rebased legacy
+    // cap around the world origin. Do not combine the two: RTE adds this same
+    // anchor as an f64 split drawable delta below.
+    const capAnchor = this.capAnchor;
+    const rteViewProj = options.rteViewProj;
+    const rteCamera = options.rteCamera;
+    const offset: [number, number, number] = capAnchor === null || (rteViewProj !== undefined && rteCamera !== undefined)
+      ? [0, 0, 0]
+      : capAnchor;
 
     // Update uniforms. Field offsets come from SECTION_2D_UNIFORM_SLOTS, which
     // sits next to the WGSL struct it describes.
     const S = SECTION_2D_UNIFORM_SLOTS;
     const uniforms = new Float32Array(SECTION_2D_UNIFORM_FLOATS);
     uniforms.set(viewProj, S.viewProj);
+    if (capAnchor !== null && rteViewProj !== undefined && rteCamera !== undefined) {
+      uniforms.set(rteViewProj, S.rteViewProj);
+      packRteDrawableDelta(capAnchor, rteCamera, uniforms, S.originDeltaHigh);
+      uniforms[S.originDeltaHigh + 3] = 1;
+    }
     uniforms.set(this.overlayLineColor, S.lineColor); // section-cut outline colour
     uniforms[S.planeOffset + 0] = offset[0];
     uniforms[S.planeOffset + 1] = offset[1];

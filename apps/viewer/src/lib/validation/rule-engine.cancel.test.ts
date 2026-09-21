@@ -106,6 +106,13 @@ async function parseUniqueWalls(): Promise<IfcDataStore> {
   return new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
 }
 
+// One over ENTITY_CHUNK_SIZE (2 000, rule-engine-chunk.ts) — the residual
+// chunk (element 2001) never hits another `maybeYieldChunk` boundary.
+async function parseUniqueWalls2001(): Promise<IfcDataStore> {
+  const bytes = new TextEncoder().encode(generateWallsStepFor(2_001));
+  return new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+}
+
 describe('runRuleSet — cancellation (#5138)', () => {
   it('aborting mid-unique (6 000-wall fixture) rejects with AbortError and never resolves with a report', async () => {
     const store = await parseUniqueWalls();
@@ -146,5 +153,35 @@ describe('runRuleSet — cancellation (#5138)', () => {
 
     await assert.rejects(promise, (err: unknown) => err instanceof DOMException && err.name === 'AbortError');
     assert.equal(resolvedReport, 'NEVER_ASSIGNED', 'the report must never resolve after an abort — no partial report is ever produced');
+  });
+
+  it('aborting from inside onProgress AT the last chunk boundary still rejects (review: the residual was never abort-checked)', async () => {
+    // 2001 applicable elements, ENTITY_CHUNK_SIZE 2000: `maybeYieldChunk`'s
+    // OWN abort check at done=2000 runs BEFORE onProgress is invoked, so
+    // aborting synchronously FROM WITHIN that callback is only visible on
+    // the NEXT check — the 2001st element never hits another chunk boundary
+    // (2001 % 2000 !== 0), so without `finalProgress` also checking the
+    // signal, the run would silently finish and resolve.
+    const store = await parseUniqueWalls2001();
+    const rule: InformationRule = {
+      id: 'r1', name: 'every wall',
+      applicability: { groups: [{ rules: [Rule.ifcType(['IfcWall'])], combinator: 'AND' }], authoredAs: 'chips' },
+      requirement: { kind: 'element', block: { groups: [{ rules: [Rule.name('contains', '')], combinator: 'AND' }], authoredAs: 'chips' } },
+    };
+    const ruleSet: RuleSetFile = { version: 1, name: 'test', rules: [rule] };
+    const controller = new AbortController();
+
+    let resolvedReport: unknown = 'NEVER_ASSIGNED';
+    const promise = runRuleSet({
+      ruleSet,
+      models: stateFor(store),
+      signal: controller.signal,
+      onProgress: (p) => {
+        if (p.phase === 'requirements' && p.done === 2000) controller.abort();
+      },
+    }).then((report) => { resolvedReport = report; return report; });
+
+    await assert.rejects(promise, (err: unknown) => err instanceof DOMException && err.name === 'AbortError');
+    assert.equal(resolvedReport, 'NEVER_ASSIGNED', 'a late abort at the residual chunk must still reject, not resolve');
   });
 });

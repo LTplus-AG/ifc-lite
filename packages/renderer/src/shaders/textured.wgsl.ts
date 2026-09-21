@@ -48,26 +48,28 @@ function deriveTexturedShader(): string {
     'uniform binding',
   );
 
-  // 2. UV vertex attribute on VertexInput. Placed at @location(10), NOT 3-9:
+  // 2. UV vertex attribute on VertexInput. Placed at @location(12), NOT 3-11:
   //    main.wgsl also declares vs_instanced + InstanceInput at vertex-input
-  //    @location 3..9 (mat4 3-6, entityId 7, colour 8, selected flag 9), which
+  //    @location 3..11 (mat4 3-6, entityId 7, colour 8, selected flag 9,
+  //    RTE anchor high/low 10-11), which
   //    this derived module still contains (unused by the textured pipeline). A uv
-  //    in 3..9 would collide with InstanceInput in vs_instanced's input interface
-  //    = a shader-creation error. @10 is clear of both the per-vertex inputs
-  //    (0..2) and the per-instance inputs (3..9). The textured pipeline's slot-0
-  //    uv attribute uses shaderLocation 10 to match.
+  //    in 3..11 would collide with InstanceInput in vs_instanced's input interface
+  //    = a shader-creation error. @12 is clear of both the per-vertex inputs
+  //    (0..2) and the per-instance inputs (3..11). The textured pipeline's slot-0
+  //    uv attribute uses shaderLocation 12 to match.
   s = replaceOnce(
     s,
     '          @location(2) entityId: u32,\n        }\n\n        struct VertexOutput {',
-    '          @location(2) entityId: u32,\n          @location(10) uv: vec2<f32>,\n        }\n\n        struct VertexOutput {',
+    '          @location(2) entityId: u32,\n          @location(12) uv: vec2<f32>,\n        }\n\n        struct VertexOutput {',
     'VertexInput uv',
   );
 
-  // 3. UV interpolant on VertexOutput (after the @location(5) instSelected varying).
+  // 3. UV interpolant on VertexOutput. Location 6 is the main shader's
+  // camera-relative fragment position (#5049), so texture UVs stay at 7.
   s = replaceOnce(
     s,
-    '          @location(5) @interpolate(flat) instSelected: u32,\n        }',
-    '          @location(5) @interpolate(flat) instSelected: u32,\n          @location(6) uv: vec2<f32>,\n        }',
+    '          @location(6) eyePos: vec3<f32>,\n        }',
+    '          @location(6) eyePos: vec3<f32>,\n          @location(7) uv: vec2<f32>,\n        }',
     'VertexOutput uv',
   );
 

@@ -83,6 +83,6 @@ export async function checkCompare(
     }));
     await maybeYieldChunk(i + 1, applicable.length, ruleIndex, signal, onProgress);
   }
-  finalProgress(applicable.length, ruleIndex, onProgress);
+  finalProgress(applicable.length, ruleIndex, signal, onProgress);
   return { entityResults };
 }

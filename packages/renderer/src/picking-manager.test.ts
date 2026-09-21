@@ -235,6 +235,12 @@ describe('PickingManager', () => {
 
       const camera = {
         getViewProjMatrix: () => ({ m: new Float32Array(16) }),
+        getRelativeToEyeFrame: () => ({
+          getViewProjection: () => ({ m: new Float32Array(16) }),
+          getCameraWorld: () => [0, 0, 0] as [number, number, number],
+          getRenderEpoch: () => 1,
+          snapshot: () => ({ renderEpoch: 1 }),
+        }),
         unprojectToRay: () => ({ origin: { x: 0, y: 0, z: 0 }, direction: { x: 0, y: 0, z: -1 } }),
       };
 

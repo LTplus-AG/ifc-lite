@@ -175,6 +175,19 @@ it('moves symbolic lines and their clipping elevation together, including loose 
   assert.deepEqual(source.loose[0].line.start, { x: 0, y: 0 });
 });
 
+it('keeps a placed symbolic fill local to its f64 national-grid anchor for 3D RTE (#5049)', () => {
+  const source = createEmptyParseResult();
+  source.looseFills.push({
+    points: new Float32Array([0, 0, 0.01, 0, 0, 0.01]),
+    holesOffsets: new Uint32Array(), color: [1, 1, 1, 1], ownerId: 1,
+  });
+  const moved = placedSymbols(source, [5_000_000.015625, 0, 0], 0)!;
+  const fill = [...moved.byStorey.values()][0].fills[0];
+  assert.equal(fill.rteOrigin?.[0], 5_000_000.015625);
+  assert.strictEqual(fill.rteLocalPoints, source.looseFills[0].points);
+  assert.ok(Math.abs(fill.rteLocalPoints![2] - 0.01) < 1e-8);
+});
+
 it('refuses an asynchronous analysis result after a contributing model moves or disappears (#4226)', () => {
   const state = { models: new Map([['a', {}], ['b', {}]]), modelPlacement: emptyPlacementState(), pointCloudAlignmentEnabled: true };
   const snapshot = placementSnapshot(state, ['a']);

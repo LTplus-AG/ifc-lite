@@ -97,4 +97,33 @@ describe('RuleSetEditor — "between" folding (#5138)', () => {
     const chips = [...container.querySelectorAll('span')].filter((el) => el.textContent === 'Between');
     assert.equal(chips.length, 0);
   });
+
+  it('an lte-before-gte pair (#5157 review) still folds to one chip, and unfolds to exactly two rules', () => {
+    const rule = baseRule();
+    if (rule.requirement.kind === 'element') {
+      // Same pair as `baseRule`, stored lte-first — a bug fixed after
+      // review pushed the lte as a plain rule immediately (since it is not
+      // itself a `gte`) and ALSO folded it into the chip once the `gte`
+      // was reached, so it rendered fine but unfolded to three rules.
+      rule.requirement.block.groups[0].rules = [
+        { kind: 'quantity', setName: 'Qto_WallBaseQuantities', quantityName: 'Width', op: 'lte', value: 300 },
+        { kind: 'quantity', setName: 'Qto_WallBaseQuantities', quantityName: 'Width', op: 'gte', value: 100 },
+      ];
+    }
+    let current = fileWithRule(rule);
+    const onChange = (next: RuleSetFile) => { current = next; };
+    const container = render(<RuleSetEditor file={current} onChange={onChange} models={[]} />);
+
+    const chips = [...container.querySelectorAll('span')].filter((el) => el.textContent === 'Between');
+    assert.equal(chips.length, 1, 'expected exactly one folded "Between" chip regardless of storage order');
+
+    // Nudging the max input re-emits the block through onChange — assert
+    // the unfold produced exactly two rules, not three.
+    const maxInput = container.querySelector('input[aria-label="Range maximum"]') as HTMLInputElement;
+    type(maxInput, '400');
+    const requirement = current.rules[0].requirement;
+    assert.equal(requirement.kind, 'element');
+    if (requirement.kind !== 'element') return;
+    assert.equal(requirement.block.groups[0].rules.length, 2, 'unfold must emit exactly two rules, not three');
+  });
 });

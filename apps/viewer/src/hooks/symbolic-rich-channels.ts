@@ -42,6 +42,9 @@ import { resolveBucketY } from './useSymbolicAnnotations.js';
  * `height` is in world units.
  */
 export interface AnnotationText3D {
+  /** Canonical f64 anchor; the renderer projects this separately from glyph-local offsets. */
+  origin: [number, number, number];
+  /** Small local label offset from `origin` (currently zero for parsed labels). */
   worldPos: [number, number, number];
   dirX: number;
   dirZ: number;
@@ -74,6 +77,8 @@ export interface AnnotationFill3D {
   points: Float32Array;
   holesOffsets: Uint32Array;
   worldY: number;
+  /** f64 anchor when this fill came from a placed source-local ring. */
+  origin?: [number, number, number];
   color: [number, number, number, number];
   hatching?: AnnotationFill2D['hatching'];
   /** False for grid bubble fills. See [`AnnotationText3D.definesExtent`] (#3359). */
@@ -136,7 +141,12 @@ export function buildSymbolicRichChannels(
       // here puts line 1 below line 0 on screen for any side/oblique
       // 3D view of the floor plan.
       texts.push({
-        worldPos: [t.x, y + (t.lineYOffset ?? 0), t.y],
+        // One source label gets one canonical anchor. Keeping its local
+        // position at zero prevents a 5,000-km source coordinate from ever
+        // entering the f32 instance origin, while preserving f64 parser
+        // coordinates until the RTE split at GPU ingress.
+        origin: [t.x, y + (t.lineYOffset ?? 0), t.y],
+        worldPos: [0, 0, 0],
         dirX: t.dirX,
         dirZ: t.dirY,
         height: t.height,
@@ -154,9 +164,10 @@ export function buildSymbolicRichChannels(
       // omitted, and only for an exact owner/item match in this model.
       if (f.geometryItemId !== undefined && isMeshedFill?.(f.ownerId, f.geometryItemId)) return;
       fills.push({
-        points: f.points,
+        points: f.rteLocalPoints ?? f.points,
         holesOffsets: f.holesOffsets,
-        worldY: y,
+        worldY: f.rteOrigin ? y - f.rteOrigin[1] : y,
+        origin: f.rteOrigin,
         color: f.color,
         hatching: f.hatching,
         definesExtent,

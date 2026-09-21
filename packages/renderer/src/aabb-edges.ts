@@ -31,3 +31,23 @@ export function aabbEdgeLineList(
   }
   return out;
 }
+
+/**
+ * The same twelve edges in a local f32 frame.  Clash diagnostics receive
+ * world-f64 bounds, so materialising their corners as absolute f32 values at a
+ * national-grid coordinate would collapse a centimetre-wide interference box
+ * before the renderer can apply its RTE contract.
+ */
+export function anchoredAabbEdgeLineList(
+  min: readonly [number, number, number],
+  max: readonly [number, number, number],
+): { localVertices: Float32Array; origin: [number, number, number] } {
+  const origin: [number, number, number] = [min[0], min[1], min[2]];
+  return {
+    localVertices: aabbEdgeLineList(
+      [0, 0, 0],
+      [max[0] - origin[0], max[1] - origin[1], max[2] - origin[2]],
+    ),
+    origin,
+  };
+}

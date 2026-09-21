@@ -164,6 +164,23 @@ describe('buildCapFillGeometry', () => {
     assert.ok(Math.abs(triangulatedArea(geom.vertices, geom.indices) - 4) < 1e-5);
   });
 
+  it('issue #5049 narrows only anchor-local cap and outline residuals at 5,000 km', () => {
+    const anchor: [number, number, number] = [5_000_000.255, -2_000_000.125, 12];
+    const lift = createSectionLift('front', 0, false, {
+      origin: anchor,
+      tangent: [1, 0, 0],
+      bitangent: [0, 1, 0],
+    });
+    const polygon = poly([[0.01, 0.02], [0.03, 0.02], [0.01, 0.04]]);
+    const cap = buildCapFillGeometry([polygon], lift, anchor);
+    const outline = buildDrawingOutlineVertices([polygon], [], lift, anchor);
+    assert.ok(cap && outline);
+    const capOffsets = Array.from(cap.vertices.filter((_, i) => i % FLOATS_PER_VERTEX < 3));
+    assert.ok(capOffsets.some(value => Math.abs(value - 0.01) < 1e-7), 'fill retains x centimetre residual');
+    assert.ok(capOffsets.some(value => Math.abs(value - 0.02) < 1e-7), 'fill retains in-plane y residual');
+    assert.ok(Array.from(outline).some(value => Math.abs(value - 0.03) < 1e-7), 'outline retains its in-plane residual');
+  });
+
   it('tags colourless polygons with the sentinel alpha -1 so the shader uses the cap style', () => {
     const geom = buildCapFillGeometry(
       [poly([[0, 0], [1, 0], [1, 1]])],

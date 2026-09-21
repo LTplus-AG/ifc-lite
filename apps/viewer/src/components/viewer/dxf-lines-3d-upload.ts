@@ -3,10 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { runGpuUpload } from './gpu-upload-guard.js';
+import type { AnchoredRendererLineVertices } from '@/lib/renderer/line-overlay-rte';
 
 /** The slice of `Renderer` the DXF 3D upload effect needs. */
 export interface DxfLines3DUploadTarget {
-  setLineOverlay(channel: 'dxf', vertices: Float32Array | null): void;
+  setLineOverlay(channel: 'dxf', vertices: Float32Array | AnchoredRendererLineVertices | readonly AnchoredRendererLineVertices[] | null): void;
 }
 
 /**
@@ -26,9 +27,14 @@ export interface DxfLines3DUploadTarget {
  */
 export function uploadDxfLines3DGuarded(
   renderer: DxfLines3DUploadTarget,
-  vertices: Float32Array,
+  vertices: Float32Array | AnchoredRendererLineVertices | readonly AnchoredRendererLineVertices[],
 ): void {
-  if (vertices.length === 0) {
+  const vertexCount = vertices instanceof Float32Array
+    ? vertices.length
+    : 'localVertices' in vertices
+      ? vertices.localVertices.length
+      : vertices.reduce((count, partition) => count + partition.localVertices.length, 0);
+  if (vertexCount === 0) {
     renderer.setLineOverlay('dxf', null);
     return;
   }

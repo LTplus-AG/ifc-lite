@@ -11,6 +11,7 @@ import type { Vec3 } from './types.js';
 import type { CameraInternalState } from './camera-state.js';
 import { MathUtils, viewBasis } from './math.js';
 import { DEFAULT_ORTHO_SIZE, isUsableBounds } from './camera-guards.js';
+import type { RelativeToEyeFrame } from './relative-to-eye.js';
 
 /**
  * One NDC axis: `screen / extent * scale + offset`, degrading to the centre
@@ -34,6 +35,7 @@ export class CameraProjection {
   constructor(
     private readonly state: CameraInternalState,
     private readonly updateMatrices: () => void,
+    private readonly relativeToEyeFrame: RelativeToEyeFrame,
   ) {}
 
   /**
@@ -44,14 +46,17 @@ export class CameraProjection {
    * @returns Screen coordinates { x, y } or null if behind camera
    */
   projectToScreen(worldPos: Vec3, canvasWidth: number, canvasHeight: number): { x: number; y: number } | null {
-    // Transform world position by view-projection matrix
-    const m = this.state.viewProjMatrix.m;
+    if (!this.relativeToEyeFrame.isAvailable()) return null;
+    // Preserve the authored f64 residual before the f32 rotation/projection.
+    const [x, y, z] = this.relativeToEyeFrame.worldToRelative([worldPos.x, worldPos.y, worldPos.z]);
+    if (![x, y, z, canvasWidth, canvasHeight].every(Number.isFinite)) return null;
+    const m = this.relativeToEyeFrame.getViewProjection().m;
 
-    // Manual matrix-vector multiplication for vec4(worldPos, 1.0)
-    const clipX = m[0] * worldPos.x + m[4] * worldPos.y + m[8] * worldPos.z + m[12];
-    const clipY = m[1] * worldPos.x + m[5] * worldPos.y + m[9] * worldPos.z + m[13];
-    const clipZ = m[2] * worldPos.x + m[6] * worldPos.y + m[10] * worldPos.z + m[14];
-    const clipW = m[3] * worldPos.x + m[7] * worldPos.y + m[11] * worldPos.z + m[15];
+    // Manual matrix-vector multiplication for vec4(eyeRelative, 1.0).
+    const clipX = m[0] * x + m[4] * y + m[8] * z + m[12];
+    const clipY = m[1] * x + m[5] * y + m[9] * z + m[13];
+    const clipZ = m[2] * x + m[6] * y + m[10] * z + m[14];
+    const clipW = m[3] * x + m[7] * y + m[11] * z + m[15];
 
     // Check if behind camera
     if (clipW <= 0) {
@@ -136,8 +141,10 @@ export class CameraProjection {
     // Perspective: ray origin is always the camera position
     // Direction is computed through the screen point
 
-    // Invert the view-projection matrix
-    const invViewProj = MathUtils.invert(this.state.viewProjMatrix);
+    if (!this.relativeToEyeFrame.isAvailable()) return { origin: { ...basis.eye }, direction: basis.forward };
+    // Inverting a matrix with absolute f32 translation destroys nearby ray
+    // offsets at survey coordinates. Unproject directly into the shared eye frame.
+    const invViewProj = MathUtils.invert(this.relativeToEyeFrame.getViewProjection());
     if (!invViewProj) {
       // Fallback: return ray from camera position towards target
       return { origin: { ...basis.eye }, direction: basis.forward };
@@ -145,18 +152,14 @@ export class CameraProjection {
 
     // Unproject a point at some depth to get a point on the ray
     // Using z=0.5 (midpoint in Reverse-Z: 1.0=near, 0.0=far) to get a finite point
-    const worldPoint = MathUtils.transformPoint(invViewProj, { x: ndcX, y: ndcY, z: 0.5 });
+    const relativePoint = MathUtils.transformPoint(invViewProj, { x: ndcX, y: ndcY, z: 0.5 });
 
     // Ray origin is the scrubbed camera position — the same one the view
     // matrix's translation row uses, so the ray belongs to the frame on
     // screen rather than to a pose that was never rendered.
-    const origin = { ...basis.eye };
-    const raw = {
-      x: worldPoint.x - origin.x,
-      y: worldPoint.y - origin.y,
-      z: worldPoint.z - origin.z,
-    };
-    const direction = MathUtils.normalize(raw);
+    const [x, y, z] = this.relativeToEyeFrame.getCameraWorld();
+    const origin = { x, y, z };
+    const direction = MathUtils.normalize(relativePoint);
     // `normalize` is total — it returns the zero vector for everything it
     // cannot normalize — and a zero-length direction is a ray that hits
     // nothing, the same silent miss the NaN origin produced. Two inputs land
@@ -165,9 +168,9 @@ export class CameraProjection {
     //
     //  - the inverted matrix is ill-conditioned enough that the unprojected
     //    point lands on the eye, leaving nothing to normalize;
-    //  - `raw` is non-finite. `MathUtils.invert` stores its result in a
+    //  - the unprojected relative point is non-finite. `MathUtils.invert` stores its result in a
     //    `Float32Array`, so an inverse component past 3.4e38 saturates to
-    //    `Infinity` and `transformPoint` carries that into `worldPoint`. A
+    //    `Infinity` and `transformPoint` carries that into the relative point. A
     //    lower bound admits `Infinity` (it is not *below* the floor), and
     //    `Infinity / Infinity` is NaN while the finite components divide to
     //    `0` — so the direction came back `{NaN, 0, -0}`, which is neither

@@ -202,6 +202,23 @@ describe('Camera.setRotation (absolute orientation)', () => {
     assert.ok(Number.isFinite(camera.getPosition().x));
   });
 
+  it('does not cancel an accepted animation when a target-invalid rotation is rejected', () => {
+    // #5152: validation used to happen after animator.reset(), so a malformed
+    // target silently cancelled a prior valid SET_VIEW even though the rejected
+    // rotation promises to leave camera state untouched.
+    withStubbedFrameClock((advance) => {
+      const camera = new Camera();
+      camera.setPresetView('top', { min: { x: -10, y: -10, z: -10 }, max: { x: 10, y: 10, z: 10 } });
+      camera.setTarget(NaN, 0, 0);
+
+      camera.setRotation(45, 20);
+      advance(16);
+
+      assert.strictEqual(camera.update(16), true, 'the prior animation must still be active');
+      assert.ok(Number.isFinite(camera.getPosition().x), 'the live animation restores its finite target');
+    });
+  });
+
   it('rejects non-finite angles instead of writing a NaN pose', () => {
     const camera = new Camera();
     camera.setRotation(30, 10);

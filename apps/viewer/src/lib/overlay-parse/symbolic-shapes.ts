@@ -78,6 +78,14 @@ export interface AnnotationFill2D {
   /** Direct source fill item, retained for precise 3D mesh/overlay routing. */
   geometryItemId?: number;
   points: Float32Array;
+  /**
+   * The source-local ring retained when a federated placement is applied.
+   * The 2D drawing still reads `points`; the 3D RTE path uses this pair so a
+   * national-grid placement is never first rounded into world f32.
+   */
+  rteLocalPoints?: Float32Array;
+  /** Exact renderer-world anchor paired with {@link rteLocalPoints}. */
+  rteOrigin?: [number, number, number];
   holesOffsets: Uint32Array;
   color: [number, number, number, number];
   /** Express ID of the owning IfcAnnotation / IfcGridAxis entity (per-entity hide). */

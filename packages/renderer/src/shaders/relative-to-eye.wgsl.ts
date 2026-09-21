@@ -1,0 +1,40 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Shared WGSL half of the renderer RTE contract.
+ *
+ * A pass owns its binding declarations, but imports this verbatim into its
+ * shader source and uses `rteWorldPosition` before projection.  The layouts
+ * match `RelativeToEyeFrame.packUniforms` and `packRteOrigin` exactly: a
+ * translation-free `viewProj` per frame, then two vec4 drawable-camera delta
+ * lanes per draw. Origins are world/source f64 values on the CPU; `local` is
+ * the element-local f32 vertex already resident in a vertex buffer.
+ */
+export const relativeToEyeWgsl = `
+struct RteFrameUniform {
+  // Camera translation is intentionally absent. This projects positions
+  // returned by rteWorldPosition, which are already relative to the eye.
+  viewProj: mat4x4<f32>,
+}
+
+struct RteDrawableUniform {
+  // CPU computes (drawable origin - camera origin) in f64 and splits it.
+  // This data must be refreshed whenever the RTE camera frame changes.
+  drawableDeltaHigh: vec4<f32>,
+  drawableDeltaLow: vec4<f32>,
+}
+
+fn rteWorldPosition(
+  local: vec3<f32>,
+  drawable: RteDrawableUniform,
+) -> vec4<f32> {
+  // Do not subtract a camera origin here: this delta was formed in CPU f64.
+  let highDelta = drawable.drawableDeltaHigh.xyz;
+  let lowDelta = drawable.drawableDeltaLow.xyz;
+  // A drawable template can span kilometres. Keep local with high first;
+  // The local-plus-(high-plus-low) association is not equivalent in f32.
+  return vec4<f32>((local + highDelta) + lowDelta, 1.0);
+}
+`;

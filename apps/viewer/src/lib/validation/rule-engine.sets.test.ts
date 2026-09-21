@@ -98,6 +98,29 @@ describe('runRuleSet — unique (#5138, plan §4.5)', () => {
     const pmSpec = perModel.specificationResults[0];
     assert.equal(pmSpec.setResults?.length ?? 0, 0, 'perModel scope: one Office per model is not a duplicate');
   });
+
+  it('unique(globalId) with caseSensitive:false does NOT fold case — GlobalIds differing only by case stay distinct', async () => {
+    // Review finding: `globalId` identity is always case-sensitive, the
+    // same rule `filter-ops.ts`'s `globalIdOpMatches` already applies — a
+    // `unique`/`groupBy` key must never case-fold it even when the rule's
+    // own `caseSensitive` flag is false.
+    const GUID_UPPER = '0WallCASEID000000000A';
+    const GUID_LOWER = '0wallcaseid000000000a';
+    const store = await parse(`
+#601= IFCWALL('${GUID_UPPER}',$,'Wall Upper',$,$,#40,$,'tag',$);
+#602= IFCWALL('${GUID_LOWER}',$,'Wall Lower',$,$,#40,$,'tag',$);
+`);
+    const rule: InformationRule = {
+      id: 'r1', name: 'unique globalId',
+      applicability: { groups: [{ rules: [Rule.ifcType(['IfcWall'])], combinator: 'AND' }], authoredAs: 'chips' },
+      requirement: { kind: 'unique', subject: { kind: 'globalId' } },
+      caseSensitive: false,
+    };
+    const report = await run({ m1: store }, { version: 1, name: 'test', rules: [rule] });
+    const spec = report.specificationResults[0];
+    assert.equal(spec.setResults?.length ?? 0, 0, 'two GlobalIds differing only by case are NOT a duplicate');
+    assert.ok(!spec.entityResults.some((e) => e.requirementResults[0].failureReason === 'duplicate'));
+  });
 });
 
 // ── aggregate (plan §4.6) ────────────────────────────────────────────────────

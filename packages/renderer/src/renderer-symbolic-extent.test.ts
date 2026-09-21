@@ -31,17 +31,29 @@ interface Harness {
     /** What the fake pipelines were told to draw. */
     uploadedFills: readonly SymbolicFillInput[][];
     uploadedTexts: readonly SymbolicTextInput[][];
+    anchoredBounds: readonly { local: Float32Array; origin: readonly [number, number, number] }[];
 }
 
 function makeHarness(): Harness {
     const expanded: Float32Array[] = [];
     const uploadedFills: SymbolicFillInput[][] = [];
     const uploadedTexts: SymbolicTextInput[][] = [];
+    const anchoredBounds: Array<{ local: Float32Array; origin: readonly [number, number, number] }> = [];
     let syncs = 0;
     let renders = 0;
 
     const host: SymbolicOverlayHost = {
         expandModelBoundsWithFlatVertices: (positions) => { expanded.push(positions); },
+        expandModelBoundsWithAnchoredLineVertices: (positions, origin) => {
+            anchoredBounds.push({ local: positions, origin });
+            const world = new Float32Array(positions.length);
+            for (let index = 0; index < positions.length; index += 3) {
+                world[index] = positions[index] + origin[0];
+                world[index + 1] = positions[index + 1] + origin[1];
+                world[index + 2] = positions[index + 2] + origin[2];
+            }
+            expanded.push(world);
+        },
         syncCameraSceneBounds: () => { syncs++; },
         requestRender: () => { renders++; },
     };
@@ -62,6 +74,7 @@ function makeHarness(): Harness {
         expanded,
         uploadedFills,
         uploadedTexts,
+        anchoredBounds,
         cameraSyncs: () => syncs,
         renderRequests: () => renders,
     };
@@ -165,6 +178,27 @@ describe('symbolic uploads: definesExtent decides what frames the scene (issue 3
         assert.deepStrictEqual(h.expanded, []);
         assert.strictEqual(h.cameraSyncs(), 0);
         assert.strictEqual(h.renderRequests(), 2);
+    });
+
+    it('keeps anchored fill and text bounds in f64 instead of narrowing reconstructed world coordinates (#5049)', () => {
+        const h = makeHarness();
+        const origin: [number, number, number] = [5_000_000.015625, 20, -4];
+        h.symbolic.uploadFills([{
+            points: new Float32Array([0, 0, 0.01, 0, 0, 0.01]),
+            holesOffsets: new Uint32Array(), worldY: 0, origin, color: [1, 1, 1, 1],
+        }]);
+        h.symbolic.uploadTexts([{
+            origin, worldPos: [0.01, 0, 0], dirX: 1, dirZ: 0, height: 1,
+            content: 'A', alignment: 'bottom-left',
+        }]);
+
+        assert.equal(h.anchoredBounds.length, 2);
+        assert.strictEqual(h.anchoredBounds[0].origin, origin);
+        assert.strictEqual(h.anchoredBounds[1].origin, origin);
+        assert.ok(Array.from(h.anchoredBounds[0].local).some((value) => Math.abs(value - 0.01) < 1e-8));
+        assert.ok(Math.abs(h.anchoredBounds[1].local[0] - 0.01) < 1e-8);
+        assert.equal(Math.fround(origin[0] + 0.01), Math.fround(origin[0]),
+            'the witness would collapse if bounds reconstructed absolute f32 coordinates');
     });
 
     it('a call before init() changes nothing and asks for nothing', () => {

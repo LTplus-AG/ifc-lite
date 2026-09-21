@@ -60,7 +60,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSymbolicLineChannels } from './symbolic-line-channels.js';
+import { buildSymbolicLineChannels, type SymbolicLineVertices } from './symbolic-line-channels.js';
 import { buildSymbolicRichChannels } from './symbolic-rich-channels.js';
 import {
   buildParseResult,
@@ -143,9 +143,14 @@ const BAND_OVER_FALLBACK = { clipEnabled: true, clipPos: FALLBACK_Y, clipDepth: 
 const GRID_ONLY = { enabled: false, effectiveGridEnabled: true, fallbackY: FALLBACK_Y };
 
 /** Every x coordinate in a flat `[x, y, z, …]` line list. */
-function xs(buffer: Float32Array): number[] {
+function xs(buffer: SymbolicLineVertices): number[] {
   const out: number[] = [];
-  for (let i = 0; i < buffer.length; i += 3) out.push(buffer[i]);
+  const partitions = buffer instanceof Float32Array
+    ? [{ localVertices: buffer, origin: [0, 0, 0] as const }]
+    : 'localVertices' in buffer ? [buffer] : buffer;
+  for (const { localVertices, origin } of partitions) {
+    for (let i = 0; i < localVertices.length; i += 3) out.push(localVertices[i]! + origin[0]);
+  }
   return out;
 }
 
@@ -208,7 +213,7 @@ describe('the grid section-clip band filters gridByStorey buckets (issues #862, 
     });
 
     assert.deepEqual(texts.map((t) => t.content), ['BUCKET']);
-    assert.deepEqual(texts.map((t) => t.worldPos[1]), [BUCKET_Y], 'lifted to its own storey, not the fallback');
+    assert.deepEqual(texts.map((t) => t.origin[1]), [BUCKET_Y], 'lifted to its own storey, not the fallback');
     assert.deepEqual(fills.map((f) => f.worldY), [BUCKET_Y]);
   });
 

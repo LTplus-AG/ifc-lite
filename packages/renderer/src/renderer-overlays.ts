@@ -53,11 +53,13 @@ import {
 import { SymbolicOverlays } from './renderer-symbolic-overlays.js';
 import type { SymbolicFillInput, SymbolicTextInput } from './symbolic-overlay-pipelines.js';
 import { ClashSolidPipeline, type ClashSolidInput } from './clash-solid-pipeline.js';
-import { aabbEdgeLineList } from './aabb-edges.js';
+import { anchoredAabbEdgeLineList } from './aabb-edges.js';
 import { projectedBoundsRange } from './render-section-plane.js';
 import { drawSectionOverlays, type ModelBounds } from './render-section-draw.js';
+import type { RelativeToEyeFrame } from './relative-to-eye.js';
 import type { RenderOptions } from './types.js';
 import type { DeviceRecoveryOmission } from './device-recovery.js';
+import { lineVertexFloatCount, type LineVertices } from './section-2d-line-buffer.js';
 
 /**
  * The slice of `Renderer` the overlays need. Deliberately narrow:
@@ -69,6 +71,12 @@ export interface OverlayHost {
     getModelBounds(): ModelBounds | null;
     /** Grow (or seed) the model AABB from a flat `[x,y,z,...]` buffer. */
     expandModelBoundsWithFlatVertices(positions: Float32Array, stride: number): void;
+    /** Fold f32-local overlay vertices through their source f64 anchor. */
+    expandModelBoundsWithAnchoredLineVertices(
+        positions: Float32Array,
+        origin: readonly [number, number, number],
+        stride: number,
+    ): void;
     /** Push the current model AABB to the camera's near/far fit. */
     syncCameraSceneBounds(): void;
     /** Mark the viewport dirty for the next animation frame. */
@@ -84,6 +92,9 @@ export interface OverlayDrawContext {
     camera: Camera;
     canvasWidth: number;
     canvasHeight: number;
+    relativeToEyeFrame?: RelativeToEyeFrame;
+    rteViewProj?: Float32Array;
+    rteCamera?: readonly [number, number, number];
 }
 
 /**
@@ -189,7 +200,7 @@ export class RendererOverlays {
         //
         // Order: fills (background) → lines (outlines on top) →
         // texts (labels above everything).
-        this.symbolic.drawFills(pass, viewProj);
+        this.symbolic.drawFills(pass, viewProj, ctx.rteViewProj, ctx.rteCamera);
         // `LINE_OVERLAY_CHANNELS` is in draw order: annotation, alignment,
         // grid, DXF, LandXML. All share the overlay colour and the line pipeline,
         // so the order only decides who wins a depth tie.
@@ -197,11 +208,11 @@ export class RendererOverlays {
         if (overlay) {
             for (const channel of LINE_OVERLAY_CHANNELS) {
                 if (overlay.hasLineOverlay(channel)) {
-                    overlay.drawLineOverlay(pass, viewProj, channel);
+                    overlay.drawLineOverlay(pass, viewProj, channel, ctx.rteViewProj, ctx.rteCamera);
                 }
             }
             if (overlay.hasClashBoxLines3D()) {
-                overlay.drawClashBoxLines3D(pass, viewProj);
+                overlay.drawClashBoxLines3D(pass, viewProj, ctx.rteViewProj, ctx.rteCamera);
             }
         }
         // Drawn after the box/contact lines and — crucially — after every
@@ -209,9 +220,17 @@ export class RendererOverlays {
         // overlap volume shows opaque through both ghosted parents rather
         // than being buried inside them.
         if (this.clashSolidPipeline?.hasGeometry()) {
-            this.clashSolidPipeline.render(pass, viewProj);
+            this.clashSolidPipeline.render(pass, viewProj, ctx.rteViewProj, ctx.rteCamera);
         }
-        this.symbolic.drawTexts(pass, viewProj, ctx.canvasWidth, ctx.canvasHeight, camera);
+        this.symbolic.drawTexts(
+            pass,
+            viewProj,
+            ctx.canvasWidth,
+            ctx.canvasHeight,
+            camera,
+            ctx.rteViewProj,
+            ctx.rteCamera,
+        );
     }
 
     /** See `Renderer.uploadSection2DOverlay` for the published contract. */
@@ -296,15 +315,23 @@ export class RendererOverlays {
     }
 
     /** See `Renderer.setLineOverlay` for the published contract. */
-    setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | null): void {
+    setLineOverlay(channel: LineOverlayChannel, vertices: LineVertices | null): void {
         if (!this.section2DOverlayRenderer) return;
         this.section2DOverlayRenderer.setLineOverlay(channel, vertices);
-        if (vertices !== null && CHANNEL_EXPANDS_MODEL_BOUNDS[channel]) {
+        if (CHANNEL_EXPANDS_MODEL_BOUNDS[channel] && vertices) {
             // Mirrors the point-cloud upload path (`addPointClouds`,
             // `setPointClouds`): without `syncCameraSceneBounds` the frustum
             // excludes the cluster and it is clipped away even when the camera
             // points straight at it. See CHANNEL_EXPANDS_MODEL_BOUNDS.
-            this.host.expandModelBoundsWithFlatVertices(vertices, 3);
+            if (vertices instanceof Float32Array) {
+                this.host.expandModelBoundsWithFlatVertices(vertices, 3);
+            } else if ('localVertices' in vertices) {
+                this.host.expandModelBoundsWithAnchoredLineVertices(vertices.localVertices, vertices.origin, 3);
+            } else {
+                for (const partition of vertices) {
+                    this.host.expandModelBoundsWithAnchoredLineVertices(partition.localVertices, partition.origin, 3);
+                }
+            }
             this.host.syncCameraSceneBounds();
         }
         // Rendering is dirty-flag gated (#2442): a channel that changed has to
@@ -325,7 +352,7 @@ export class RendererOverlays {
             return;
         }
         this.section2DOverlayRenderer.setClashBoxLineColor(box.color);
-        this.section2DOverlayRenderer.uploadClashBoxLines3D(aabbEdgeLineList(box.min, box.max));
+        this.section2DOverlayRenderer.uploadClashBoxLines3D(anchoredAabbEdgeLineList(box.min, box.max));
         this.host.requestRender();
     }
 
@@ -334,10 +361,10 @@ export class RendererOverlays {
      * clash-box line buffer, so only one of this / setClashOverlapBox shows.
      */
     setClashContactLines(
-        lines: { vertices: Float32Array; color: [number, number, number, number] } | null,
+        lines: { vertices: LineVertices; color: [number, number, number, number] } | null,
     ): void {
         if (!this.section2DOverlayRenderer) return;
-        if (!lines || lines.vertices.length === 0) {
+        if (!lines || lineVertexFloatCount(lines.vertices) === 0) {
             this.section2DOverlayRenderer.clearClashBoxLines3D();
             this.host.requestRender();
             return;

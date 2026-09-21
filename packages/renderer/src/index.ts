@@ -141,7 +141,7 @@ import { Picker } from './picker.js';
 import { reportableItemId } from './pick-resolve.js';
 import { MathUtils, viewBasis } from './math.js';
 import type { Vec3 as Vec3Type } from './types.js';
-import { FrustumUtils } from '@ifc-lite/spatial';
+import { isRteAabbVisible, rteFrustum, sourceFrustumFromRte } from './rte-frustum.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type {
     RenderOptions,
@@ -154,11 +154,16 @@ import type {
 } from './types.js';
 import { VisualEnhancementResolver } from './visual-enhancement.js';
 import { packClipBox } from './clip-box.js';
+import {
+    MESH_FLAGS_BYTE_OFFSET,
+    MESH_FLAG_RTE_DRAWABLE,
+    MESH_UNIFORM_FLOATS,
+    MESH_UNIFORM_OFFSET,
+    packRteCameraOrigin,
+    packRteFragmentSpace,
+} from './mesh-rte-uniforms.js';
 import type { CutPolygon2D, DrawingLine2D, LineOverlayChannel } from './section-2d-overlay.js';
-import type {
-  SymbolicFillInput,
-  SymbolicTextInput,
-} from './symbolic-overlay-pipelines.js';
+import type { SymbolicFillInput, SymbolicTextInput } from './symbolic-overlay-pipelines.js';
 import { RendererOverlays } from './renderer-overlays.js';
 import { resolveSectionPlaneFrame } from './render-section-plane.js';
 import type { Intersection } from './raycaster.js';
@@ -178,8 +183,11 @@ import { SkyPass } from './sky-pass.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
 import { resolveEnvironment } from './environment.js';
 import { ShadowPass, resolveShadowMapResolution } from './shadow-pass.js';
-import { fitSunLightMatrix, cameraFrustumFocusCorners } from './shadow-light-matrix.js';
-import { collectShadowOccluders, classifyBatchVisibility, DEFAULT_MIN_CAST_ALPHA } from './shadow-occluders.js';
+import { fitSunLightMatrix, cameraFrustumFocusCorners, resolveShadowNormalBiasMetres } from './shadow-light-matrix.js';
+import { collectShadowOccluders } from './shadow-occluders.js';
+import { uploadInstancedRteDeltas } from './instanced-rte.js';
+import { shadowOccluderBatches } from './shadow-occluder-batches.js';
+import { captureRendererScreenshot } from './renderer-screenshot.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { XRayAlpha, XRayEpochTracker, type AlphaBatchLike } from './xray-alpha.js';
 import { PartialBatchRequests } from './partial-batch-requests.js';
@@ -234,6 +242,8 @@ export class Renderer {
         getModelBounds: () => this.getModelBounds(),
         expandModelBoundsWithFlatVertices: (positions, stride) =>
             this.modelBoundsTracker.expandWithFlatVertices(positions, stride),
+        expandModelBoundsWithAnchoredLineVertices: (positions, origin, stride) =>
+            this.modelBoundsTracker.expandWithAnchoredVertices(positions, origin, stride),
         syncCameraSceneBounds: () => {
             if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
         },
@@ -488,13 +498,9 @@ export class Renderer {
     // users can confirm the slider is operating on the intended range.
     private _loggedSectionBounds: boolean = false;
 
-    // Pooled per-frame buffers to avoid GC pressure from per-batch Float32Array allocations
-    // A single 224-byte uniform buffer (56 floats) is reused for all batches/meshes within a frame
-    // (48 floats viewProj…flags + 8 floats clipBoxMin/clipBoxMax)
-    // 60 floats = the WGSL Uniforms struct incl. quantParams (see
-    // pipeline.getUniformBufferSize).
-    private readonly uniformScratch = new Float32Array(60);
-    private readonly uniformScratchU32 = new Uint32Array(this.uniformScratch.buffer, 176, 4);
+    // One 336-byte buffer serves all frame batches/meshes (84 floats including RTE lanes).
+    private readonly uniformScratch = new Float32Array(MESH_UNIFORM_FLOATS);
+    private readonly uniformScratchU32 = new Uint32Array(this.uniformScratch.buffer, MESH_FLAGS_BYTE_OFFSET, 4);
 
     // What the last render() actually clipped, so the GPU picker can mirror it and
     // section/crop-clipped geometry stays unpickable, not just invisible. Updated
@@ -1328,67 +1334,7 @@ export class Renderer {
         device: GPUDevice,
         hasVisibilityFiltering: boolean,
     ): BatchedMesh[] {
-        const all = this.scene.getBatchedMeshes();
-        if (!hasVisibilityFiltering) {
-            for (const batch of all) this.noteShadowOccluderResidency(batch);
-            return all;
-        }
-        const pipeline = this.pipeline;
-
-        const out: BatchedMesh[] = [];
-        for (const batch of all) {
-            const vis = classifyBatchVisibility(batch.expressIds, options.hiddenIds, options.isolatedIds);
-            if (vis.kind === 'none') continue; // fully hidden → does not cast
-            if (vis.kind === 'all') {
-                this.noteShadowOccluderResidency(batch);
-                out.push(batch); // fully visible → its own buffers
-                continue;
-            }
-            // Partially hidden. Transparent parents don't cast (collector's alpha
-            // filter) — skip rather than build a wasted, divergent-key clone.
-            if (batch.color[3] < DEFAULT_MIN_CAST_ALPHA) continue;
-            // The partial sub-batch is built from the PARENT's CPU meshData, so a
-            // cold parent yields nothing until it is restored. Queue that restore
-            // here too: the colour pass only queues it for parents inside its own
-            // frustum, but an up-sun occluder behind the camera still has to cast.
-            this.noteShadowOccluderResidency(batch);
-            // Opaque partial: reuse the colour pass's cached sub-batch. The key is
-            // visibility-content-independent; `_partialBatchEpoch` invalidates it on
-            // any hide/isolate or override change, so the clone is always current.
-            // Without a pipeline the renderer isn't drawing, so skip (the shadow
-            // pass won't run either); casting the whole parent would be wrong.
-            if (!pipeline) continue;
-            const sub = this.scene.getOrCreatePartialBatch(
-                `${batch.colorKey}:${batch.id}`,
-                batch.colorKey,
-                vis.visibleIds,
-                device,
-                pipeline,
-                this._partialBatchEpoch,
-            );
-            // A cold parent yields an empty partial (its residency restore is queued
-            // above); skip this frame — the collector drops zero-index draws anyway,
-            // and the subset casts once resident.
-            if (sub && sub.indexCount > 0) out.push(sub);
-        }
-        return out;
-    }
-
-    /**
-     * Keep a shadow occluder batch resident so it does not thin out silently on
-     * large models under the GPU residency budget (#2670 review). The depth pass
-     * reads these batches' buffers, but that read did not count as usage, so an
-     * up-sun occluder outside the colour frustum aged into an eviction candidate.
-     * Transparent batches never cast (the collector's alpha filter), so their
-     * residency is irrelevant here.
-     */
-    private noteShadowOccluderResidency(batch: BatchedMesh): void {
-        if (batch.color[3] < DEFAULT_MIN_CAST_ALPHA) return;
-        if (batch.gpuResident === false) {
-            this.scene.requestBatchResidency(batch);
-        } else {
-            this.scene.recordBatchDrawn(batch);
-        }
+        return shadowOccluderBatches(this.scene, options, device, hasVisibilityFiltering, this.pipeline, this._partialBatchEpoch);
     }
 
     /** Guarded entry point (#4885) for the unguarded body below. */
@@ -1414,18 +1360,17 @@ export class Renderer {
         const interleavedU32 = new Uint32Array(interleavedRaw);
 
         // Build this individual mesh (selection highlight + GPU object-id picker)
-        // in ABSOLUTE world space so it renders with an identity model matrix.
+        // in the same small local frame as its source batch.
         // CRITICAL: replicate the BATCH's exact two-step f32 path so the highlight
         // is bit-coincident with its source surface (no z-fight, no depth bias):
         //   batch stores  s = f32(local + (origin - sharedOrigin))   [merge]
-        //   batch shader  world = f32(f32(sharedOrigin) + s)         [draw]
-        // We compute the same `world` here. When there's no shared origin yet
-        // (legacy / pre-batch), fall back to a plain f64 fold (local + origin).
+        //   batch shader  RTE = sharedOrigin - eye + s               [draw]
+        // We retain `s` and the canonical origin separately. When there is no
+        // shared origin, retain the piece origin instead of folding it in.
         const o = meshData.origin;
         const so = this.scene.getSharedFrameOrigin(meshData.modelIndex, meshData);
         const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
         const fr = Math.fround;
-        const sox = so ? fr(so[0]) : null, soy = so ? fr(so[1]) : 0, soz = so ? fr(so[2]) : 0;
         const dx = so ? (ox - so[0]) : ox, dy = so ? (oy - so[1]) : oy, dz = so ? (oz - so[2]) : oz;
         // Quantized batches (issue #1682 phase 6) render lattice-snapped
         // positions: the shader's quantMin + q*step is exactly the lattice
@@ -1442,9 +1387,9 @@ export class Renderer {
         for (let i = 0; i < vertexCount; i++) {
             const base = i * 7;
             const posBase = i * 3;
-            interleaved[base] = so ? fr((sox as number) + snap(fr(p[posBase] + dx))) : snap(p[posBase] + dx);
-            interleaved[base + 1] = so ? fr(soy + snap(fr(p[posBase + 1] + dy))) : snap(p[posBase + 1] + dy);
-            interleaved[base + 2] = so ? fr(soz + snap(fr(p[posBase + 2] + dz))) : snap(p[posBase + 2] + dz);
+            interleaved[base] = so ? snap(fr(p[posBase] + dx)) : snap(p[posBase]);
+            interleaved[base + 1] = so ? snap(fr(p[posBase + 1] + dy)) : snap(p[posBase + 1]);
+            interleaved[base + 2] = so ? snap(fr(p[posBase + 2] + dz)) : snap(p[posBase + 2]);
             const hasNormals = meshData.normals.length > 0;
             interleaved[base + 3] = hasNormals ? meshData.normals[posBase] : 0;
             interleaved[base + 4] = hasNormals ? meshData.normals[posBase + 1] : 0;
@@ -1477,7 +1422,9 @@ export class Renderer {
         });
         device.queue.writeBuffer(indexBuffer, 0, meshData.indices);
 
-        // Add to scene with identity transform (positions already in world space).
+        // Keep the hydrated mesh in its decoded local frame.  Folding this
+        // origin back into f32 vertices used to make selection/highlight the
+        // only mesh path that lost centimetres at national-grid coordinates.
         // Flagged `hydrated` so it can be freed when its entity leaves the
         // selection — these duplicate geometry already drawn by a batch and would
         // otherwise accumulate + double-draw (see Scene.disposeHydratedMeshesExcept).
@@ -1492,7 +1439,14 @@ export class Renderer {
             vertexBuffer,
             indexBuffer,
             indexCount: meshData.indices.length,
-            transform: MathUtils.identity(),
+            transform: (() => {
+                const transform = MathUtils.identity();
+                transform.m[12] = so ? so[0] : ox;
+                transform.m[13] = so ? so[1] : oy;
+                transform.m[14] = so ? so[2] : oz;
+                return transform;
+            })(),
+            rteOrigin: so ? [so[0], so[1], so[2]] : [ox, oy, oz],
             color: meshData.color,
             hydrated: true,
         });
@@ -1732,6 +1686,13 @@ export class Renderer {
 
         const device = this.device.getDevice();
         const viewProj = this.camera.getViewProjMatrix().m;
+        const relativeToEyeFrame = this.camera.getRelativeToEyeFrame();
+        // Culling must share the translation-free RTE frame used by every GPU
+        // pass. `sourceFrustum` is the f64 plane equivalent for the immutable
+        // source-space BVH; render-time boxes stay eye-relative below.
+        const rteCullFrustum = rteFrustum(relativeToEyeFrame);
+        const rteCullCamera = relativeToEyeFrame.getCameraWorld();
+        const sourceCullFrustum = sourceFrustumFromRte(rteCullFrustum, rteCullCamera);
         // Frame stats (issue #1682): geometry draw calls + per-frame cull
         // outcomes, snapshotted into _lastFrameStats before queue.submit.
         let frameDrawCalls = 0;
@@ -1901,8 +1862,7 @@ export class Renderer {
         // Frustum culling (if enabled and spatial index available)
         if (options.enableFrustumCulling && options.spatialIndex) {
             try {
-                const frustum = FrustumUtils.fromViewProjMatrix(viewProj);
-                const visibleIds = new Set(options.spatialIndex.queryFrustum(frustum));
+                const visibleIds = new Set(options.spatialIndex.queryFrustum(sourceCullFrustum));
                 meshes = meshes.filter(mesh => visibleIds.has(mesh.expressId));
             } catch (error) {
                 // Fallback: render all meshes if frustum culling fails
@@ -2034,12 +1994,14 @@ export class Renderer {
                 : null;
 
             // Reuse pooled scratch buffer for per-mesh uniform writes
-            const meshBuf = this.uniformScratch;
-            const meshFlags = this.uniformScratchU32;
-            for (const mesh of allMeshes) {
-                if (mesh.uniformBuffer) {
-                    meshBuf.set(viewProj, 0);
-                    meshBuf.set(mesh.transform.m, 16);
+                const meshBuf = this.uniformScratch;
+                const meshFlags = this.uniformScratchU32;
+                for (const mesh of allMeshes) {
+                    if (mesh.uniformBuffer) {
+                        meshBuf.set(viewProj, 0);
+                        relativeToEyeFrame.packUniforms(meshBuf, MESH_UNIFORM_OFFSET.rteViewProj);
+                        packRteCameraOrigin(relativeToEyeFrame, meshBuf);
+                        meshBuf.set(mesh.transform.m, 16);
 
                     // Check if mesh is selected (single or multi-selection)
                     // For multi-model support: also check modelIndex if provided
@@ -2080,6 +2042,14 @@ export class Renderer {
                     meshFlags[2] = edgeEnabledU32;
                     meshFlags[3] = edgeIntensityMilliU32;
 
+                    // Individual meshes retain their origin and share the RTE
+                    // fragment contract with colour batches.
+                    packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, meshBuf);
+                    const meshOrigin = mesh.rteOrigin
+                        ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
+                    relativeToEyeFrame.packDrawableOrigin(meshOrigin, meshBuf, MESH_UNIFORM_OFFSET.drawableDelta);
+                    meshFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
+
                     device.queue.writeBuffer(mesh.uniformBuffer, 0, meshBuf);
                 }
             }
@@ -2113,8 +2083,16 @@ export class Renderer {
                     } else {
                         this.shadowPass.setResolution(resolution);
                     }
-                    const boundsMin: [number, number, number] = [bounds.min.x, bounds.min.y, bounds.min.z];
-                    const boundsMax: [number, number, number] = [bounds.max.x, bounds.max.y, bounds.max.z];
+                    // Fit shadows in the same eye-relative frame as vertices.
+                    const shadowEye = relativeToEyeFrame.getCameraWorld();
+                    const sourceBoundsMin: [number, number, number] = [bounds.min.x, bounds.min.y, bounds.min.z];
+                    const sourceBoundsMax: [number, number, number] = [bounds.max.x, bounds.max.y, bounds.max.z];
+                    const boundsMin: [number, number, number] = [
+                        bounds.min.x - shadowEye[0], bounds.min.y - shadowEye[1], bounds.min.z - shadowEye[2],
+                    ];
+                    const boundsMax: [number, number, number] = [
+                        bounds.max.x - shadowEye[0], bounds.max.y - shadowEye[1], bounds.max.z - shadowEye[2],
+                    ];
                     // Lateral shadow fit. AT REST: fit to the camera frustum
                     // clipped to the model (maintainer #1) so a small building on
                     // a large site keeps sharp shadows instead of spending the
@@ -2137,9 +2115,13 @@ export class Renderer {
                             aspect: this.canvas.height > 0 ? this.canvas.width / this.canvas.height : 1,
                             ortho: this.camera.getProjectionMode() === 'orthographic',
                             orthoHalfHeight: this.camera.getOrthoSize(),
-                            boundsMin,
-                            boundsMax,
-                        }) ?? undefined;
+                            boundsMin: sourceBoundsMin,
+                            boundsMax: sourceBoundsMax,
+                        })?.map((corner) => ({
+                            x: corner.x - shadowEye[0],
+                            y: corner.y - shadowEye[1],
+                            z: corner.z - shadowEye[2],
+                        }));
                     }
                     const sun = resolveEnvironment(options.environment).sunDirection;
                     const fit = fitSunLightMatrix({ sunDirection: sun, boundsMin, boundsMax, focusCorners });
@@ -2177,7 +2159,7 @@ export class Renderer {
                         box: options.clipBox?.enabled
                             ? { min: options.clipBox.min, max: options.clipBox.max }
                             : null,
-                    });
+                    }, { cameraWorld: shadowEye });
 
                     // Shadow uniform: light matrix + sampling params. The kernel
                     // width follows the sun's angular size (physical, ~0.53°
@@ -2188,7 +2170,7 @@ export class Renderer {
                     const texelWorld = (2 * fit.orthoHalfWidth) / resolution;
                     const sunAngleDeg = shadowOpts.sunAngleDeg ?? 0.53;
                     const pcfRadius = Math.min(Math.max(sunAngleDeg * 3.0, 0.75), 8.0);
-                    const normalBias = texelWorld * (2.0 + pcfRadius);
+                    const normalBias = resolveShadowNormalBiasMetres(texelWorld, pcfRadius);
                     const s = this.shadowScratch;
                     s.set(fit.lightViewProj.m, 0);
                     s[16] = 1 / resolution;  // texelSize
@@ -2335,7 +2317,7 @@ export class Renderer {
             if (allBatchedMeshes.length > 0 || this.scene.getTexturedMeshes().length > 0 || this.scene.getInstancedTemplates().length > 0) {
                 // Frustum culling for batched meshes - skip entire batches outside the camera view
                 // This is the primary performance optimization for large models (200K+ meshes)
-                const frustum = FrustumUtils.fromViewProjMatrix(viewProj);
+                const frustum = rteCullFrustum;
 
                 // Contribution culling (issue #1682): skip batches whose world
                 // AABB projects below a pixel threshold. Disabled unless the
@@ -2429,7 +2411,7 @@ export class Renderer {
                     // Frustum culling: skip batches entirely outside the camera view
                     if (batch.bounds) {
                         const batchAABB = { min: batch.bounds.min, max: batch.bounds.max };
-                        if (!FrustumUtils.isAABBVisible(frustum, batchAABB)) {
+                        if (!isRteAabbVisible(frustum, batchAABB, rteCullCamera)) {
                             frameBatchesFrustumCulled++;
                             continue; // Entire batch is off-screen
                         }
@@ -2531,6 +2513,8 @@ export class Renderer {
                 const tpl = this.uniformScratch;
                 const tplFlags = this.uniformScratchU32;
                 tpl.set(viewProj, 0);
+                relativeToEyeFrame.packUniforms(tpl, MESH_UNIFORM_OFFSET.rteViewProj);
+                packRteCameraOrigin(relativeToEyeFrame, tpl);
                 // Identity model matrix (positions already in world space)
                 tpl[16] = 1; tpl[17] = 0; tpl[18] = 0; tpl[19] = 0;
                 tpl[20] = 0; tpl[21] = 1; tpl[22] = 0; tpl[23] = 0;
@@ -2564,6 +2548,11 @@ export class Renderer {
                     tplClipBit;
                 tplFlags[2] = edgeEnabledU32;
                 tplFlags[3] = edgeIntensityMilliU32;
+                // Flat/quantized/textured batches enter WGSL in the single
+                // camera-relative frame. Their fragment clip inputs must use
+                // that same frame; mixing a local vertex with a 5,000 km f32
+                // world plane loses centimetre cuts before the comparison.
+                packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl);
 
                 // Helper function to render a batch — patches color into the shared template
                 const renderBatch = (batch: typeof allBatchedMeshes[0]) => {
@@ -2585,6 +2574,11 @@ export class Renderer {
                     tpl[28] = o ? o[0] : 0;
                     tpl[29] = o ? o[1] : 0;
                     tpl[30] = o ? o[2] : 0;
+                    // The regular model matrix remains for absolute-space
+                    // fragment work (section/shadow); vertex projection uses
+                    // this f64-subtracted high/low origin instead.
+                    relativeToEyeFrame.packDrawableOrigin(o ?? [0, 0, 0], tpl, MESH_UNIFORM_OFFSET.drawableDelta);
+                    tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
                     // Quantized dequantization params (issue #1682 phase 6);
                     // zeroed for f32 batches (their pipelines ignore them).
@@ -2672,7 +2666,7 @@ export class Renderer {
                     const kept: InstancedTemplateGPU[] = [];
                     for (const it of instancedTemplates) {
                         if (it.bounds) {
-                            if (!FrustumUtils.isAABBVisible(frustum, it.bounds)) {
+                            if (!isRteAabbVisible(frustum, it.bounds, rteCullCamera)) {
                                 frameInstancedFrustumCulled++;
                                 continue;
                             }
@@ -2692,11 +2686,12 @@ export class Renderer {
                     visibleInstanced = kept;
                 }
                 if (visibleInstanced.length > 0) {
+                    uploadInstancedRteDeltas(device, visibleInstanced, relativeToEyeFrame.getCameraWorld());
                     // Opaque instanced pass. flags.x bit 2 marks "instanced pass" so the
                     // shader routes per-instance opacity: opaque (or selected) occurrences
                     // draw here; translucent ones (lens/x-ray/compare overrides) are
                     // discarded and drawn in the transparent sub-pass below.
-                    this.pipeline.writeRawUniforms(tpl, 0x4);
+                    this.pipeline.writeRawUniforms(tpl, MESH_FLAG_RTE_DRAWABLE | 0x4);
                     pass.setPipeline(this.pipeline.getInstancedPipeline());
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
@@ -2755,6 +2750,8 @@ export class Renderer {
                         // drew every textured occurrence collapsed toward the
                         // world origin.
                         tpl[28] = tm.origin[0]; tpl[29] = tm.origin[1]; tpl[30] = tm.origin[2];
+                        relativeToEyeFrame.packDrawableOrigin(tm.origin, tpl, MESH_UNIFORM_OFFSET.drawableDelta);
+                        tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
                         tpl[32] = txOverride ? txOverride[0] : tm.color[0];
                         tpl[33] = txOverride ? txOverride[1] : tm.color[1];
                         tpl[34] = txOverride ? txOverride[2] : tm.color[2];
@@ -2917,7 +2914,7 @@ export class Renderer {
                     this.scene.hasTransparentInstances() &&
                     instancedTransparentPipeline !== null
                 ) {
-                    this.pipeline.writeRawUniforms(tpl, 0x4 | 0x8);
+                    this.pipeline.writeRawUniforms(tpl, MESH_FLAG_RTE_DRAWABLE | 0x4 | 0x8);
                     pass.setPipeline(instancedTransparentPipeline);
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
@@ -2970,6 +2967,10 @@ export class Renderer {
                             tplClipBit;
                         tplFlags[2] = edgeEnabledU32;
                         tplFlags[3] = edgeIntensityMilliU32;
+                        packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl);
+                        const transparentOrigin = mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
+                        relativeToEyeFrame.packDrawableOrigin(transparentOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta);
+                        tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
                         device.queue.writeBuffer(mesh.uniformBuffer, 0, tpl);
 
@@ -3028,6 +3029,10 @@ export class Renderer {
                         tplClipBit;
                     tplFlags[2] = edgeEnabledU32;
                     tplFlags[3] = edgeIntensityMilliU32;
+                    packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl);
+                    const selectedOrigin = mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
+                    relativeToEyeFrame.packDrawableOrigin(selectedOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta);
+                    tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
                     device.queue.writeBuffer(mesh.uniformBuffer, 0, tpl);
 
@@ -3076,10 +3081,12 @@ export class Renderer {
             // viewport size to convert pixel sizes into clip-space offsets.
             if (this.pointCloudRenderer && this.pointCloudRenderer.hasAssets()) {
                 this.pointCloudRenderer.draw(pass, {
-                    viewProj,
+                    viewProj: relativeToEyeFrame.getViewProjection().m,
+                    relativeToEyeFrame,
                     sectionPlane: sectionPlaneData
                         ? { ...sectionPlaneData, flipped: options.sectionPlane?.flipped === true }
                         : null,
+                    clipBox: options.clipBox,
                     viewport: { width: this.canvas.width, height: this.canvas.height },
                 });
             }
@@ -3087,7 +3094,12 @@ export class Renderer {
             // Section-plane gizmo, 2D section cap and every standalone 3D
             // overlay (annotation / alignment / grid / DXF / clash / symbolic
             // text). One draw call into the pass — see RendererOverlays.draw().
-            this.referenceImages.draw(pass, viewProj);
+            this.referenceImages.draw(
+                pass,
+                viewProj,
+                relativeToEyeFrame.getViewProjection().m,
+                relativeToEyeFrame.getCameraWorld(),
+            );
             this.overlays.draw(pass, {
                 options,
                 viewProj,
@@ -3095,6 +3107,9 @@ export class Renderer {
                 camera: this.camera,
                 canvasWidth: this.canvas.width,
                 canvasHeight: this.canvas.height,
+                relativeToEyeFrame,
+                rteViewProj: relativeToEyeFrame.getViewProjection().m,
+                rteCamera: relativeToEyeFrame.getCameraWorld(),
             });
 
             pass.end();
@@ -3458,7 +3473,7 @@ export class Renderer {
      * extent", NOT "is it behind a visibility toggle" — annotations sit behind
      * `ifcAnnotationsVisible` too.
      */
-    setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | null): void {
+    setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | { localVertices: Float32Array; origin: [number, number, number] } | readonly { localVertices: Float32Array; origin: [number, number, number] }[] | null): void {
         this.overlays.setLineOverlay(channel, vertices);
     }
 
@@ -3482,7 +3497,7 @@ export class Renderer {
      * buffer, so only one of this / setClashOverlapBox is shown at a time.
      */
     setClashContactLines(
-        lines: { vertices: Float32Array; color: [number, number, number, number] } | null,
+        lines: { vertices: Float32Array | { localVertices: Float32Array; origin: [number, number, number] } | readonly { localVertices: Float32Array; origin: [number, number, number] }[]; color: [number, number, number, number] } | null,
     ): void {
         this.overlays.setClashContactLines(lines);
     }
@@ -3497,7 +3512,7 @@ export class Renderer {
      * one, box/lines as the fallback when it didn't).
      */
     setClashIntersectionSolid(
-        solid: { positions: Float32Array | Float64Array; indices: Uint32Array; color: [number, number, number, number] } | null,
+        solid: { positions: Float32Array | Float64Array; origin?: [number, number, number]; indices: Uint32Array; color: [number, number, number, number] } | null,
     ): void {
         this.overlays.setClashIntersectionSolid(solid);
     }
@@ -3593,24 +3608,7 @@ export class Renderer {
      * @returns PNG data URL or null if capture failed
      */
     async captureScreenshot(): Promise<string | null> {
-        if (!this.device.isInitialized()) {
-            console.warn('[Renderer] Cannot capture screenshot: not initialized');
-            return null;
-        }
-
-        try {
-            // Wait for any pending GPU work to complete before capturing
-            // This ensures we capture the fully rendered frame
-            const device = this.device.getDevice();
-            await device.queue.onSubmittedWorkDone();
-
-            // Capture exactly what's displayed on the canvas
-            const dataUrl = this.canvas.toDataURL('image/png');
-            return dataUrl;
-        } catch (error) {
-            console.error('[Renderer] Screenshot capture failed:', error);
-            return null;
-        }
+        return captureRendererScreenshot(this.device, this.canvas);
     }
 
     /**

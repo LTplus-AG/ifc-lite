@@ -45,6 +45,18 @@ it('omits only the exact meshed owner/item from 3D while retaining all 2D fills 
     '3D routing must not mutate the cached 2D drawing');
 });
 
+it('forwards a placed fill through the renderer f64 anchor contract (#5049)', () => {
+  const cached = parsed();
+  const fill = cached.looseFills[0] ?? [...cached.byStorey.values()].flatMap((bucket) => bucket.fills)[0];
+  assert.ok(fill, 'fixture must expose a fill in one symbolic bucket');
+  fill.rteLocalPoints = new Float32Array([0, 0, 0.01, 0, 0, 0.01]);
+  fill.rteOrigin = [5_000_000.015625, 20, -4];
+  const result = buildSymbolicRichChannels([{ cached }], params);
+  assert.strictEqual(result.fills[0].points, fill.rteLocalPoints);
+  assert.deepEqual(result.fills[0].origin, fill.rteOrigin);
+  assert.equal(result.fills[0].worldY, -17, 'the source storey Y is local to the anchor');
+});
+
 it('keeps federated collisions and unknown/empty mesh provenance visible (#4459)', () => {
   const a = parsed(), b = parsed();
   const result = buildSymbolicRichChannels([

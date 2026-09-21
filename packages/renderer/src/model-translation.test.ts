@@ -42,7 +42,7 @@ function recordingGpu() {
 }
 
 describe('whole-model renderer placement (#4226)', () => {
-  it('uploads extracted merged geometry against its source batch frame (#5010)', () => {
+  it('uploads extracted merged geometry in its source batch frame without losing the RTE anchor (#5010, #5049)', () => {
     const renderer = new Renderer({ width: 256, height: 256,
       getBoundingClientRect: () => ({ width: 256, height: 256 }) } as unknown as HTMLCanvasElement);
     const uploaded = new WeakMap<GPUBuffer, ArrayBuffer>();
@@ -83,9 +83,11 @@ describe('whole-model renderer placement (#4226)', () => {
     const written = new Float32Array(bytes);
     const origin = source.origin!;
     const relative = Math.fround(extracted.positions[0] + extracted.origin![0] - origin[0]);
-    const expected = Math.fround(Math.fround(origin[0]) + Math.round(relative * 1024) / 1024);
+    const expected = Math.round(relative * 1024) / 1024;
     assert.strictEqual(written[0], expected,
-      'the real upload uses the source batch frame and quantized lattice, not a derived fallback frame');
+      'the real upload retains the source batch-relative quantized lattice');
+    assert.deepEqual(hydrated.rteOrigin, origin,
+      'the canonical 800,000 km source anchor reaches the RTE draw instead of being folded into f32 vertices');
   });
 
   for (const streaming of [false, true]) it(`frames later uploads in their pre-existing placement (streaming: ${streaming}, #4226)`, () => {
@@ -389,6 +391,23 @@ describe('ModelTranslations yaw (#4890)', () => {
     const t = [view.getFloat32(48, true), view.getFloat32(52, true), view.getFloat32(56, true)];
     return [0, 1, 2].map((i) => local[0] * c0[i] + local[1] * c1[i] + local[2] * c2[i] + t[i]) as [number, number, number];
   }
+
+  it('keeps canonical f64 instance anchors through a centimetre model move at 5,000 km (#5049)', () => {
+    const translations = new ModelTranslations(), data = new ArrayBuffer(120), view = new DataView(data);
+    writeRecord(view, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [5_000_000, 0, 0]);
+    const anchors = new Float64Array([5_000_000.015625, 0, 0]);
+    const matrixTranslations = new Float32Array([5_000_000, 0, 0]);
+    translations.placeInstances(data, 7, 120, anchors, matrixTranslations);
+
+    translations.set(7, [0.01, 0, 0]);
+    translations.placeInstances(data, 7, 120, anchors, matrixTranslations);
+    assert.equal(anchors[0], 5_000_000.025625, 'f64 residual survives the model translation');
+    assert.equal(matrixTranslations[0], view.getFloat32(48, true), 'materialization baseline follows the V1 matrix write');
+
+    translations.set(7, [0, 0, 0]);
+    translations.placeInstances(data, 7, 120, anchors, matrixTranslations);
+    assert.equal(anchors[0], 5_000_000.015625, 'undo returns to the exact source anchor');
+  });
 
   it('maps a template corner to the point the yaw formula predicts (37.4deg, off-origin pivot, then translate)', () => {
     const translations = new ModelTranslations(), data = new ArrayBuffer(STRIDE), view = new DataView(data);

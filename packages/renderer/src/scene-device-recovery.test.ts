@@ -362,7 +362,7 @@ describe('Scene device recovery (#4885)', () => {
     assert.strictEqual(scene.getInstancedTemplates()[0].selectedCount, 1);
     assert.deepStrictEqual([...scene.getInstancedEntityIds()], [42]);
     const flags = second.writes
-      .filter(write => write.offset % 88 === 84)
+      .filter(write => write.offset % 120 === 84)
       .map(write => new DataView(write.data.buffer, write.data.byteOffset, write.data.byteLength).getUint32(0, true));
     assert.deepStrictEqual(flags, [3], 'selected and hidden flags must survive the global override rebuild');
   });
@@ -377,7 +377,7 @@ describe('Scene device recovery (#4885)', () => {
     const second = device();
     scene.restoreGpuResourcesAfterRecovery(second.gpu, {} as RenderPipeline);
     const colors = second.writes
-      .filter(write => write.offset % 88 === 68)
+      .filter(write => write.offset % 120 === 68)
       .map(write => [...new Float32Array(write.data.buffer)]);
 
     assert.strictEqual(colors.length, 2);

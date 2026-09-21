@@ -410,7 +410,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.equal(result.warnings.some((warning) => /degenerate face|render frame/.test(warning)), false);
   });
 
-  it('skips a disconnected component the shared render frame cannot place precisely', async () => {
+  it('refuses a compact disconnected component beyond the shared RTE envelope (#5049)', async () => {
     const withDistantSmallFace = LANDXML
       .replace(
         '</Pnts>',
@@ -424,8 +424,8 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.equal(result.geometryResult.totalTriangles, 1);
     assert.deepEqual(result.geometryResult.meshes[0].origin, [0, 0, 0]);
     assert.deepEqual(result.geometryResult.coordinateInfo.originShift, { x: 2_600_005, y: 101, z: -5_000_005 });
-    assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 2_600_010, 'skipped components do not stretch the frame bounds');
-    assert.ok(result.warnings.some((warning) => /Skipped 1 surface component\(s\) whose full Y-up bounds exceed 1000 km/.test(warning)));
+    assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 2_600_010);
+    assert.equal(result.warnings.some((warning) => /Skipped 1 LandXML surface component.*shared render-frame envelope/.test(warning)), true);
     assert.equal(result.semanticDocument.rendering.surfaceCounts[0].droppedReframeFaces, 1);
   });
 
@@ -451,20 +451,20 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     });
   });
 
-  it('rejects a connected component whose full Y-up bounds exceed one f32 frame', async () => {
+  it('rejects a connected component whose local extent exceeds one precision-safe batch', async () => {
     const connectedAcrossSurveyRange = LANDXML
       .replace(
         '</Pnts>',
         `<P id="50">900000000 800000000 700000000</P>
          <P id="51">900000000 800000001 700000000</P>
          <P id="52">900000001 800000000 700000000</P>
-         <P id="60">900001000 800001000 700000100</P></Pnts>`,
+         <P id="60">902000000 802000000 700000100</P></Pnts>`,
       )
       .replace('</Faces>', '<F>50 51 52</F><F>30 50 60</F></Faces>');
     await assert.rejects(
       parseViewer(bytes(connectedAcrossSurveyRange)),
-      /no surface components whose full Y-up bounds fit within the 1000 km render-frame limit/,
-      'a connected component cannot be partially registered after its full extent exceeds one f32 frame',
+      /no surface components within the 1000 km shared render-frame envelope/,
+      'a connected component cannot be partially registered after its local extent exceeds one precision-safe batch',
     );
   });
 

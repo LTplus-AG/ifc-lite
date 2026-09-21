@@ -82,6 +82,12 @@ function renderState(value: unknown): LandXmlTinSurface['renderState'] {
   throw new Error('LandXML WASM returned an invalid surface render state');
 }
 
+function topologyOrigin(value: unknown): NonNullable<LandXmlTinSurface['topologyOrigin']> {
+  const origin = string(value, 'terrain topology origin');
+  if (origin === 'authored_faces' || origin === 'constrained_triangulation' || origin === 'preserved_only') return origin;
+  throw new Error('LandXML WASM returned an invalid terrain topology origin');
+}
+
 function surface(value: unknown): LandXmlTinSurface {
   const raw = record(value, 'surface');
   return {
@@ -93,6 +99,11 @@ function surface(value: unknown): LandXmlTinSurface {
     name: string(raw.name, 'surface name'),
     kind: surfaceKind(raw.kind),
     renderState: renderState(raw.render_state),
+    topologyOrigin: topologyOrigin(raw.topology_origin),
+    terrainDiagnostic: raw.terrain_diagnostic === undefined || raw.terrain_diagnostic === null ? null : (() => {
+      const diagnostic = record(raw.terrain_diagnostic, 'terrain diagnostic');
+      return { code: string(diagnostic.code, 'terrain diagnostic code'), message: string(diagnostic.message, 'terrain diagnostic message') };
+    })(),
     points: array(raw.points, 'surface points').map((point, index) => {
       const parsed = record(point, `point ${index}`);
       return {

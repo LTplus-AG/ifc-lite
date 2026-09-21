@@ -86,6 +86,7 @@ mod contour_grid_guard;
 /// Deterministic Constrained Delaunay Triangulation + bounded Ruppert
 /// min-angle refinement. Backs the quality triangulators in `triangulation`.
 mod cdt;
+mod terrain_cdt;
 /// Candidate contact normals for the `clash_solid` trust gate — the directions
 /// its thickness measurement is taken along. Internal to that gate, so it stays
 /// private; split out only to keep `clash_solid` inside the size ratchet.
@@ -218,6 +219,7 @@ pub use profile_extractor::{extract_profiles, extract_profiles_with_diagnostics,
 pub use profile_skip::SkippedProfile;
 pub use profiles::ProfileProcessor;
 pub use cdt::take_cdt_recovery_fallbacks;
+pub use terrain_cdt::{triangulate_terrain_pslg, TerrainCdtError, TerrainCdtMesh};
 pub use kernel::plane_weld::take_plane_weld_stats;
 pub use router::take_bool2d_stats;
 pub use router::{take_prism_defers, take_prism_stats};

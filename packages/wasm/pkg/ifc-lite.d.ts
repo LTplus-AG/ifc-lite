@@ -31,6 +31,8 @@ export interface LandXmlSurfaceJs {
     properties: Record<string, string>; definition_properties: Record<string, string>;
     name: string; kind: "tin" | "grid" | "volume" | "other";
     render_state: "rendered" | "preserved_only" | "unsupported";
+    topology_origin: "authored_faces" | "constrained_triangulation" | "preserved_only";
+    terrain_diagnostic?: { code: "missing_outer_boundary" | "unsupported_boundary_semantics" | "unsupported_breakline_semantics" | "missing_elevation" | "conflicting_elevation" | "intersecting_constraints" | "degenerate_constraints" | "work_limit_exceeded" | "cancelled"; message: string };
     points: LandXmlPointJs[]; source_data_points: LandXmlSourcePointJs[];
     faces: [string, string, string][]; face_source_ids: string[]; face_visibility: boolean[];
     hidden_face_count: number; boundaries: LandXmlPolylineJs[]; breaklines: LandXmlPolylineJs[]; contours: LandXmlPolylineJs[];

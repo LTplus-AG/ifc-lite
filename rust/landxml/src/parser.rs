@@ -23,7 +23,7 @@ mod finalize;
 mod limits;
 mod path;
 mod profiles;
-mod state;
+pub(crate) mod state;
 mod text;
 mod version;
 

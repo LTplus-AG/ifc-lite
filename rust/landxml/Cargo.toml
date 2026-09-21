@@ -16,6 +16,7 @@ categories = ["parser-implementations", "data-structures"]
 [dependencies]
 quick-xml = "0.38"
 serde = { version = "1.0", features = ["derive"] }
+ifc-lite-geometry.workspace = true
 
 [lints]
 workspace = true

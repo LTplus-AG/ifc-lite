@@ -17,13 +17,15 @@ mod profile;
 mod profile_circular;
 mod profile_evaluator;
 mod semantics;
+mod terrain;
 mod xml;
 
 pub use limits::{LandXmlCancellation, LandXmlCancellationFlag, LandXmlLimits};
 pub use model::{
     LandXmlCapabilities, LandXmlDiagnosticCode, LandXmlError, LandXmlExtension, LandXmlPoint,
     LandXmlPolyline, LandXmlProperties, LandXmlRenderState, LandXmlSourceId, LandXmlSourcePoint,
-    LandXmlSurface, LandXmlSurfaceKind, LandXmlTinDocument, LandXmlUnits, LandXmlVersionCapability,
+    LandXmlSurface, LandXmlSurfaceKind, LandXmlTerrainDiagnostic, LandXmlTerrainDiagnosticCode,
+    LandXmlTinDocument, LandXmlTopologyOrigin, LandXmlUnits, LandXmlVersionCapability,
 };
 pub use parser::{
     classify_landxml_version, parse_landxml_tin, parse_landxml_tin_with_cancel,

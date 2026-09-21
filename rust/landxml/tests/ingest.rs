@@ -5,14 +5,162 @@
 use ifc_lite_landxml::{
     classify_landxml_version, parse_landxml_tin_with_cancel, LandXmlCancellation,
     LandXmlCancellationFlag, LandXmlCapabilityDiagnosticCode, LandXmlCrossSectionPointDataFormat,
-    LandXmlDiagnosticCode, LandXmlLimits, LandXmlProfileKind, LandXmlVersionCapability,
-    LandXmlVerticalCurveKind, LANDXML_10_NAMESPACE, LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
+    LandXmlDiagnosticCode, LandXmlLimits, LandXmlProfileKind, LandXmlTerrainDiagnosticCode,
+    LandXmlTopologyOrigin, LandXmlVersionCapability, LandXmlVerticalCurveKind,
+    LANDXML_10_NAMESPACE, LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 struct CancelsAfterPolls {
     cancel_after: usize,
     polls: AtomicUsize,
+}
+
+fn faceless_tin(boundaries: &str, breaklines: &str, faces: &str) -> String {
+    format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 10 0</P><P id="3">10 10 0</P><P id="4">10 0 0</P></Pnts>{faces}{boundaries}{breaklines}</Definition></Surface></Surfaces></LandXML>"#
+    )
+}
+
+#[test]
+fn issue_5043_triangulates_faceless_tin_with_holes_breaklines_and_triangle_provenance(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let boundaries = r#"<Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></Boundary><Boundary bndType="hole"><PntList3D>4 4 0 4 6 0 6 6 0 6 4 0</PntList3D></Boundary></Boundaries>"#;
+    let breaklines = r#"<Breaklines><Breakline brkType="standard"><PntList3D>0 2 1 10 2 1</PntList3D></Breakline></Breaklines>"#;
+    let parsed = parse(faceless_tin(boundaries, breaklines, "").as_bytes())?;
+    let surface = &parsed.surfaces[0];
+    assert_eq!(
+        surface.topology_origin,
+        LandXmlTopologyOrigin::ConstrainedTriangulation
+    );
+    assert_eq!(
+        surface.render_state,
+        ifc_lite_landxml::LandXmlRenderState::Rendered
+    );
+    assert!(!surface.faces.is_empty());
+    assert_eq!(surface.faces.len(), surface.face_source_ids.len());
+    assert!(surface
+        .face_source_ids
+        .iter()
+        .all(|id| id.0.contains(":triangle:")));
+    let point_by_id: std::collections::HashMap<_, _> = surface
+        .points
+        .iter()
+        .map(|point| (point.id.as_str(), point))
+        .collect();
+    for face in &surface.faces {
+        let points = [
+            point_by_id[face[0].as_str()],
+            point_by_id[face[1].as_str()],
+            point_by_id[face[2].as_str()],
+        ];
+        let northing = (points[0].northing + points[1].northing + points[2].northing) / 3.0;
+        let easting = (points[0].easting + points[1].easting + points[2].easting) / 3.0;
+        assert!(
+            !(4.0 < northing && northing < 6.0 && 4.0 < easting && easting < 6.0),
+            "triangle centroid is in the hole"
+        );
+    }
+    let constrained_breakline = [
+        surface
+            .points
+            .iter()
+            .find(|point| point.northing == 0.0 && point.easting == 2.0)
+            .expect("breakline start")
+            .id
+            .as_str(),
+        surface
+            .points
+            .iter()
+            .find(|point| point.northing == 10.0 && point.easting == 2.0)
+            .expect("breakline end")
+            .id
+            .as_str(),
+    ];
+    assert!(
+        surface.faces.iter().any(|face| {
+            (0..3).any(|index| {
+                let edge = [&face[index][..], &face[(index + 1) % 3][..]];
+                edge == constrained_breakline
+                    || edge == [constrained_breakline[1], constrained_breakline[0]]
+            })
+        }),
+        "the generated mesh must retain the standard breakline as a constraint edge"
+    );
+    Ok(())
+}
+
+#[test]
+fn issue_5043_preserves_faceless_tin_on_conflicting_elevation_or_crossing_constraints(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let boundary = r#"<Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></Boundary></Boundaries>"#;
+    let conflicting = r#"<Breaklines><Breakline brkType="standard"><PntList3D>0 0 2 10 10 2</PntList3D></Breakline></Breaklines>"#;
+    let parsed = parse(faceless_tin(boundary, conflicting, "").as_bytes())?;
+    assert_eq!(
+        parsed.surfaces[0].topology_origin,
+        LandXmlTopologyOrigin::PreservedOnly
+    );
+    assert_eq!(
+        parsed.surfaces[0]
+            .terrain_diagnostic
+            .as_ref()
+            .map(|value| value.code),
+        Some(LandXmlTerrainDiagnosticCode::ConflictingElevation)
+    );
+    let crossing = r#"<Breaklines><Breakline brkType="standard"><PntList3D>0 0 0 10 10 0</PntList3D></Breakline><Breakline brkType="standard"><PntList3D>0 10 0 10 0 0</PntList3D></Breakline></Breaklines>"#;
+    let parsed = parse(faceless_tin(boundary, crossing, "").as_bytes())?;
+    assert_eq!(
+        parsed.surfaces[0]
+            .terrain_diagnostic
+            .as_ref()
+            .map(|value| value.code),
+        Some(LandXmlTerrainDiagnosticCode::IntersectingConstraints)
+    );
+    Ok(())
+}
+
+#[test]
+fn issue_5043_never_retriangulates_authored_faces_and_bounds_faceless_work(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let unsupported = r#"<Boundaries><Boundary bndType="mystery"><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></Boundary></Boundaries>"#;
+    let authored = r#"<Faces><F>1 2 3</F></Faces>"#;
+    let parsed = parse(faceless_tin(unsupported, "", authored).as_bytes())?;
+    assert_eq!(
+        parsed.surfaces[0].topology_origin,
+        LandXmlTopologyOrigin::AuthoredFaces
+    );
+    assert_eq!(
+        parsed.surfaces[0].faces,
+        vec![["1".to_owned(), "2".to_owned(), "3".to_owned()]]
+    );
+    let outer = r#"<Boundaries><Boundary bndType="outer"><PntList3D>0 0 0 0 10 0 10 10 0 10 0 0</PntList3D></Boundary></Boundaries>"#;
+    let many_breaklines = format!(
+        "<Breaklines>{}</Breaklines>",
+        (0..40)
+            .map(|index| format!(
+                "<Breakline brkType=\"standard\"><PntList3D>0 {} 0 10 {} 0</PntList3D></Breakline>",
+                index + 20,
+                index + 20
+            ))
+            .collect::<String>()
+    );
+    let limits = LandXmlLimits {
+        max_work: 1_000,
+        ..LandXmlLimits::default()
+    };
+    let parsed = parse_landxml_tin_with_cancel(
+        faceless_tin(outer, &many_breaklines, "").as_bytes(),
+        &limits,
+        None,
+    )?;
+    assert_eq!(
+        parsed.surfaces[0]
+            .terrain_diagnostic
+            .as_ref()
+            .map(|value| value.code),
+        Some(LandXmlTerrainDiagnosticCode::WorkLimitExceeded)
+    );
+    Ok(())
 }
 
 impl CancelsAfterPolls {

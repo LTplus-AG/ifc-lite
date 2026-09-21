@@ -134,6 +134,53 @@ pub enum LandXmlRenderState {
     Unsupported,
 }
 
+/// Whether terrain faces came from the producer or the constrained adapter.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LandXmlTopologyOrigin {
+    AuthoredFaces,
+    ConstrainedTriangulation,
+    PreservedOnly,
+}
+
+/// Stable refusal category for optional constrained terrain adaptation.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LandXmlTerrainDiagnosticCode {
+    MissingOuterBoundary,
+    UnsupportedBoundarySemantics,
+    UnsupportedBreaklineSemantics,
+    MissingElevation,
+    ConflictingElevation,
+    IntersectingConstraints,
+    DegenerateConstraints,
+    WorkLimitExceeded,
+    Cancelled,
+}
+
+impl LandXmlTerrainDiagnosticCode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::MissingOuterBoundary => "LXMLT001",
+            Self::UnsupportedBoundarySemantics => "LXMLT002",
+            Self::UnsupportedBreaklineSemantics => "LXMLT003",
+            Self::MissingElevation => "LXMLT004",
+            Self::ConflictingElevation => "LXMLT005",
+            Self::IntersectingConstraints => "LXMLT006",
+            Self::DegenerateConstraints => "LXMLT007",
+            Self::WorkLimitExceeded => "LXMLT008",
+            Self::Cancelled => "LXMLT009",
+        }
+    }
+}
+
+/// Source-preserving diagnostic; a refusal never turns into guessed terrain.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LandXmlTerrainDiagnostic {
+    pub code: LandXmlTerrainDiagnosticCode,
+    pub message: String,
+}
+
 /// One preserved source line/ring (boundary, breakline, or contour).
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LandXmlPolyline {
@@ -173,6 +220,10 @@ pub struct LandXmlSurface {
     pub name: String,
     pub kind: LandXmlSurfaceKind,
     pub render_state: LandXmlRenderState,
+    pub topology_origin: LandXmlTopologyOrigin,
+    /// Set only when a faceless TIN was deliberately retained rather than
+    /// guessed into unconstrained terrain.
+    pub terrain_diagnostic: Option<LandXmlTerrainDiagnostic>,
     pub points: Vec<LandXmlPoint>,
     pub source_data_points: Vec<LandXmlSourcePoint>,
     pub faces: Vec<[String; 3]>,

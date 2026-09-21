@@ -13,6 +13,7 @@ import {
   type LandXmlSourceRef,
 } from '@/hooks/ingest/landXmlSemantics';
 import { semanticDetailRows, semanticNavigationAt, semanticNavigationCount } from './landXmlSemanticInspection.js';
+import { LandXmlAlignmentSourceInspector } from './LandXmlAlignmentSourceInspector.js';
 
 interface LandXmlSourceInspectorProps {
   models: ReadonlyMap<string, LandXmlSourceModel>;
@@ -28,6 +29,8 @@ function recordName(record: LandXmlSourceRecord, t: Translate): string {
     case 'point': return record.point.id;
     case 'source-data-point': return t('properties.landXmlSource.sourcePointName', { ordinal: record.point.ordinal });
     case 'face': return record.pointIds.join(', ');
+    case 'alignment-segment': return `Segment ${record.segment.ordinal}`;
+    case 'unsupported-transition': return `Unsupported ${record.transition.spiType} transition`;
     case 'boundary': case 'breakline': case 'contour': return record.line.name ?? record.line.sourceId;
     case 'pipe': return record.pipe.name;
     case 'pipe-structure': return record.structure.name;
@@ -60,6 +63,8 @@ function recordPath(record: LandXmlSourceRecord): string {
     case 'point': return `${record.surface.sourcePath}/Definition/Pnts/P[@id="${record.point.id}"]`;
     case 'face': return `${record.surface.sourcePath}/Definition/Faces/F`;
     case 'source-data-point': return record.point.sourcePath;
+    case 'alignment-segment': return `LandXML/Alignments/Alignment[${record.alignment.ordinal}]/CoordGeom`;
+    case 'unsupported-transition': return `LandXML/Alignments/Alignment[${record.alignment.ordinal}]/CoordGeom`;
     case 'boundary': case 'breakline': case 'contour': return record.line.sourcePath;
     case 'pipe': return record.pipe.sourcePath;
     case 'pipe-structure': return record.structure.sourcePath;
@@ -187,6 +192,9 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
   useEffect(() => setNavigationPage(0), [selected.modelId, selected.sourceId]);
 
   if (!record) return null;
+  if (record.kind === 'alignment' || record.kind === 'alignment-segment' || record.kind === 'unsupported-transition') {
+    return <LandXmlAlignmentSourceInspector modelId={selected.modelId} sourceFile={models.get(selected.modelId)?.sourceFile} record={record} onSelect={onSelect} />;
+  }
   const document = models.get(selected.modelId)?.landXmlDocument;
   const terrain = terrainRecord(record);
   if (record.kind === 'pipe' || record.kind === 'pipe-structure' || record.kind === 'pipe-feature' || record.kind === 'pipe-network' || record.kind === 'pipe-network-collection') {
@@ -307,6 +315,7 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
         <p><span className="font-semibold">{t('properties.landXmlSource.kind')}:</span> {record.kind}</p>
         {terrain && <p><span className="font-semibold">{t('properties.landXmlSource.renderState')}:</span> {record.surface.renderState}</p>}
         {document && <p><span className="font-semibold">{t('properties.landXmlSource.capabilities')}:</span> {JSON.stringify(document.capabilities)}</p>}
+        {document?.warnings.map((warning, index) => <p key={`${warning}-${index}`} role="alert" className="text-amber-800 dark:text-amber-200">{t('properties.landXmlSource.sourceRefusal', { warning })}</p>)}
         {sourceCount && <p><span className="font-semibold">{t('properties.landXmlSource.counts')}:</span> {t('properties.landXmlSource.countsValue', { ...sourceCount })}</p>}
         {record.kind === 'face' && <p><span className="font-semibold">{t('properties.landXmlSource.facePoints')}:</span> {record.pointIds.join(', ')}</p>}
         {record.kind === 'point' && <p><span className="font-semibold">{t('properties.landXmlSource.pointCoordinates')}:</span> {record.point.northing}, {record.point.easting}, {record.point.elevation}</p>}

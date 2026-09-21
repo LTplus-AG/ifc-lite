@@ -4,6 +4,7 @@
 import type { PickOptions, PickResult, Renderer } from '@ifc-lite/renderer';
 import { useViewerStore, type ViewerState } from '@/store';
 import { referenceFrameStatus } from '@/lib/appearance/reference-runtime/frame.js';
+import { pickLandXmlOverlayLine } from './landXmlOverlayPick.js';
 
 const requests = new WeakMap<HTMLCanvasElement, number>();
 const touchClicks = new WeakMap<HTMLCanvasElement, { time: number; x: number; y: number }>();
@@ -71,5 +72,12 @@ export async function selectViewportTarget(options: {
   const pick = await renderer.pick(x, y, pickOptions);
   if (!current()) return;
   useViewerStore.getState().selectAppearanceReference(null);
+  if (!pick) {
+    const sourceRef = pickLandXmlOverlayLine(useViewerStore.getState(), camera, x, y, rect.width, rect.height);
+    if (sourceRef) {
+      useViewerStore.getState().setSelectedLandXmlSource(sourceRef);
+      return;
+    }
+  }
   options.onIfc(pick);
 }

@@ -25,7 +25,6 @@ interface WorldPoint {
   z: number;
 }
 
-
 export function connectedFaceComponents(
   faces: LandXmlTinSurface['faces'],
 ): Array<LandXmlTinSurface['faces']> {

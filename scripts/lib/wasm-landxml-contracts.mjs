@@ -17,6 +17,9 @@ const XML_WITHOUT_UNITS = `<?xml version="1.0" encoding="UTF-8"?>
   <Surfaces><Surface name="preserved"><Definition surfType="VOLUME"/></Surface></Surfaces>
 </LandXML>`;
 
+const ALIGNMENT_XML = `<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="main" length="11" staStart="100"><CoordGeom><Line length="10"><Start>0 0</Start><End>10 0</End></Line><Spiral spiType="bloss" radiusStart="INF" radiusEnd="50" rot="ccw" length="1"><Start>10 0</Start><PI>10.5 0</PI><End>11 0</End></Spiral></CoordGeom><Cant name="rail" gauge="1"><CantStation station="100" appliedCant="2" curvature="ccw"/></Cant><Superelevation staStart="100" staEnd="110"><FullSuperelev>0.06</FullSuperelev></Superelevation></Alignment></Alignments></LandXML>`;
+const ALIGNMENT_CURVE_XML = `<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="curve" length="15.707963267948966" staStart="0"><CoordGeom><Curve rot="cw" radius="10" length="15.707963267948966"><Start>0 0</Start><Center>0 10</Center><End>10 10</End><PI>10 0</PI></Curve></CoordGeom><AlignPIs><AlignPI>10 0</AlignPI></AlignPIs><StaEquation staInternal="5" staBack="5" staAhead="105" staIncrement="increasing"/></Alignment></Alignments></LandXML>`;
+
 const XML_WITH_PROFILE_REVIEW = `<?xml version="1.0" encoding="UTF-8"?>
 <LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
   <Units><Metric linearUnit="meter"/></Units>
@@ -273,6 +276,31 @@ export function runLandXmlContracts(api, test) {
       () => api.parseLandXmlTinBytes(new TextEncoder().encode(XML.replace('linearUnit="meter"', 'linearUnit="bogus"'))),
       /LXML009: unsupported LandXML unit/,
     );
+  });
+
+  test('LandXML alignment WASM contract tags refused spirals and exposes authored inspection', () => {
+    const source = api.parseLandXmlSourceBytes(new TextEncoder().encode(ALIGNMENT_XML));
+    const alignment = source.alignments.alignments[0];
+    assert.equal('profile_source_ids' in alignment, false, 'full alignment must not claim terrain-summary linkage fields');
+    assert.equal('cross_section_source_ids' in alignment, false, 'full alignment must not claim terrain-summary linkage fields');
+    assert.ok(Array.isArray(source.tin.alignments[0].profile_source_ids), 'terrain summary retains profile linkage');
+    assert.ok(Array.isArray(source.tin.alignments[0].cross_section_source_ids), 'terrain summary retains cross-section linkage');
+    assert.equal(alignment.unsupported_transitions[0].spiral.spi_type, 'bloss');
+    assert.equal(alignment.segments[1].primitive.kind, 'unsupported_spiral');
+    assert.equal(alignment.cant.stations[0].applied_cant, 2);
+    const inspection = api.inspectLandXmlAlignmentAtDistance(new TextEncoder().encode(ALIGNMENT_XML), alignment.source_id, 0);
+    assert.equal(inspection.cant.previous.applied_cant, 2);
+    assert.equal(inspection.superelevations[0].events[0].value, '0.06');
+    const probes = api.probeLandXmlAlignmentAtStation(new TextEncoder().encode(ALIGNMENT_XML), alignment.source_id, 105, 0);
+    assert.equal(probes.length, 1);
+    assert.equal(probes[0].geometric_distance, 5);
+    const curveSource = api.parseLandXmlSourceBytes(new TextEncoder().encode(ALIGNMENT_CURVE_XML));
+    assert.equal(curveSource.alignment_render_spans.length, 1);
+    assert.equal(curveSource.alignment_render_spans[0].points.length, 65);
+    assert.equal(curveSource.alignment_render_spans[0].source_id, curveSource.alignments.alignments[0].segments[0].source_id);
+    assert.equal(curveSource.alignments.alignments[0].segments[0].primitive.pi.point.northing, 10);
+    assert.equal(curveSource.alignments.alignments[0].align_pis[0].location.point.easting, 0);
+    assert.equal(curveSource.alignments.alignments[0].station_equations[0].sta_ahead, 105);
   });
 
   test('LandXML raw-byte parser exposes profile review semantics through WASM', () => {

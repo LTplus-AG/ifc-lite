@@ -2,11 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it } from 'node:test';
+import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 
-import { computeSourceFingerprint, computeSourceFingerprintFromBlob } from './sourceFingerprint.js';
-import { buildGeometryCacheKey } from './geometryCacheKey.js';
+import { computeSourceFingerprint, computeSourceFingerprintFromBlob } from './source-fingerprint.js';
 
 /**
  * Reference implementation of the OLD, weak fingerprint this PR replaces: FNV-1a
@@ -73,23 +72,17 @@ describe('computeSourceFingerprint', () => {
     const b = a.slice(0);
     new Uint8Array(b)[32 * 1024] ^= 0xff;
 
-    // The old weak key collides: same length + same first/last 4KB.
+    // The old weak key collides: same length + same first/last 4KB. (The
+    // viewer's `hooks/geometryCacheKey.test.ts` carries the matching
+    // integration assertion that this collision, and its resolution, holds
+    // through `buildGeometryCacheKey` too.)
     assert.equal(oldWeakFingerprint(a), oldWeakFingerprint(b));
-    assert.equal(
-      buildGeometryCacheKey(a.byteLength, oldWeakFingerprint(a), false),
-      buildGeometryCacheKey(b.byteLength, oldWeakFingerprint(b), false),
-      'sanity: the two files DO collide on the old weak key',
-    );
 
     // The strengthened fingerprint distinguishes them → different cache key →
     // the second file is NOT served the first file's cached geometry.
     const fpA = computeSourceFingerprint(a);
     const fpB = computeSourceFingerprint(b);
     assert.notEqual(fpA.hex, fpB.hex);
-    assert.notEqual(
-      buildGeometryCacheKey(a.byteLength, fpA.hex, false),
-      buildGeometryCacheKey(b.byteLength, fpB.hex, false),
-    );
   });
 
   it('detects a genuinely different INTERIOR (same header/footer/length) the old key missed', () => {

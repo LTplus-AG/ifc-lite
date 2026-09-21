@@ -65,7 +65,7 @@ import { posthog } from '@/lib/analytics';
 import { CACHE_SIZE_THRESHOLD } from '@/utils/ifcConfig.js';
 import { GEOM_TIER_STORAGE_KEY, type GeometryMode } from '@/store/geometryFidelity.js';
 import { resolveLoadTessellationTier } from '@/store/constants.js';
-import { computeSourceFingerprint } from './sourceFingerprint.js';
+import { computeSourceFingerprint } from '@ifc-lite/cache';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { setCached } from '../services/cacheService.js';
 import { useIfcLoader } from './useIfcLoader.js';

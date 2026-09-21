@@ -62,7 +62,7 @@ export const CACHE_MAX_SOURCE_SIZE = 150 * 1024 * 1024;
  *  the `fallbackSourceBuffer` path `loadFromCache` already supports), so repeat
  *  opens skip the 10-90s parse+mesh while keeping full feature fidelity.
  *
- *  The spread-sampled cache key (`sourceFingerprint.ts`) only keys the lookup;
+ *  The spread-sampled cache key (`@ifc-lite/cache`'s `source-fingerprint.ts`) only keys the lookup;
  *  because it hydrates cached geometry against the FRESH buffer, a hit is
  *  VALIDATED by the source File's `lastModified` (mtime guard) plus a TRUE
  *  full-file hash re-checked off the main thread (see

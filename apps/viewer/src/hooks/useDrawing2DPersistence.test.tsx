@@ -46,7 +46,7 @@ import type { FederatedModel } from '@/store';
 import { useDrawing2DPersistence, notifyDrawing2DSectionConfig } from './useDrawing2DPersistence.js';
 import { loadDrawing2DEntry, clearAllDrawing2DEntries } from '@/store/slices/drawing2DSlice.persistence.js';
 import { computeFullSourceHashFromBlob } from '@/utils/sourceContentHash.js';
-import { computeSourceFingerprint } from './sourceFingerprint.js';
+import { computeSourceFingerprint } from '@ifc-lite/cache';
 import type { Measure2DResult } from '@/store/slices/drawing2DSlice.js';
 import type { DrawingSheet, SectionConfig } from '@ifc-lite/drawing-2d';
 
@@ -394,7 +394,7 @@ describe('A → B → A round trip — MUTATION TARGET: Bug 4', () => {
 
 // ─── Fingerprint-collision regression (PR #4159 review thread) ────────────
 //
-// `hooks/sourceFingerprint.ts`'s window-sampled fingerprint FALSE-HITS a
+// `@ifc-lite/cache`'s `source-fingerprint.ts`'s window-sampled fingerprint FALSE-HITS a
 // byte-length-preserving edit that lands entirely in its sampler gap (proven
 // by `sourceFingerprint.test.ts`'s 'FALSE-HITS …' test, same construction
 // reused here). Before this fix, this module used THAT fingerprint as the

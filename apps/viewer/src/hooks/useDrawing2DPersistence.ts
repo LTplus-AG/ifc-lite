@@ -59,7 +59,7 @@ const sourceHashes = new WeakMap<File, string | null>();
  * window-sampled fingerprint `services/ifc-cache.ts` keys its geometry cache
  * on: that sampler is a deliberately O(1) cache-lookup key with a proven
  * blind spot (an edit landing between its sample windows is invisible to
- * it — see `hooks/sourceFingerprint.ts`'s docs), safe there only because a
+ * it — see `@ifc-lite/cache`'s `source-fingerprint.ts`'s docs), safe there only because a
  * false key-hit is still gated by an mtime guard and this same full hash as
  * a background revalidation layer. Markup restore has no such second gate —
  * whatever this resolves to is used directly as the `localStorage` key — so

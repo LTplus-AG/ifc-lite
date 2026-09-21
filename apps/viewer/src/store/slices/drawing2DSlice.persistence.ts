@@ -19,7 +19,7 @@
  * ## The scoping key
  * The key is the model's TRUE full-content hash
  * (`utils/sourceContentHash.ts`'s `computeFullSourceHashFromBlob`, SHA-256) —
- * NOT `hooks/sourceFingerprint.ts`'s window-sampled fingerprint, which has a
+ * NOT `@ifc-lite/cache`'s `source-fingerprint.ts`'s window-sampled fingerprint, which has a
  * proven blind spot (an edit between its sample windows is invisible to it)
  * safe only where an mtime guard and a full-hash revalidation still gate a
  * false hit — guards this module lacks, so its key must be

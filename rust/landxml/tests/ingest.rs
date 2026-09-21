@@ -1423,6 +1423,12 @@ fn issue_5045_parsed_circular_curves_stay_stable_for_shallow_and_near_parallel_g
     assert!((left - at_end).abs() < 3.0e105);
     assert!((right - at_end).abs() < 3.0e105);
 
+    let adjacent = 1.0e307_f64.next_up();
+    let adjacent_curve = parse(centered(-1.0e307, adjacent, 1.24e-322, 1.0e308).as_bytes())?;
+    assert!(adjacent_curve.profiles[0]
+        .evaluate_elevation_at(0.0)?
+        .is_some());
+
     let near_parallel = parse(source(-100.0, 100.000001, 98.51853225045078, 1.0e11).as_bytes())?;
     assert!(near_parallel.profiles[0]
         .evaluate_elevation_at(1000.0)?

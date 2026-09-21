@@ -195,3 +195,31 @@ pub(crate) fn circular_rise(
         Err(LandXmlProfileEvaluationError::NonFiniteEvaluation)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{scale_binary, scaled_ratio};
+
+    #[test]
+    fn scale_binary_preserves_normal_and_subnormal_exponents() {
+        for exponent in [-1022, -1023, -1050, -1074] {
+            let value = scale_binary(1.0, exponent);
+            assert!(
+                value.is_finite() && value > 0.0,
+                "2^{exponent} must survive"
+            );
+        }
+        assert_eq!(scale_binary(1.0, -1074).to_bits(), 1);
+        assert_eq!(scale_binary(1.0, -1075), 0.0);
+        assert!(scale_binary(1.0, 1023).is_finite());
+        assert!(scale_binary(2.0, 1023).is_infinite());
+    }
+
+    #[test]
+    fn scaled_ratio_delays_underflow_until_the_final_result() {
+        let min = scaled_ratio(&[1.0, 2.0_f64.powi(-1022)], &[2.0_f64.powi(52)]);
+        assert_eq!(min.to_bits(), 1);
+        let negative = scale_binary(-1.5, -1074);
+        assert!(negative.is_sign_negative());
+    }
+}

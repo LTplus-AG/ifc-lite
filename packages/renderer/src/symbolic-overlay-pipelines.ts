@@ -23,7 +23,7 @@ import { PIPELINE_CONSTANTS } from './constants.js';
 import { triangulateRings, type Pt } from './fill-triangulate.js';
 
 const FILL_VERTEX_STRIDE_BYTES = (3 + 4) * 4; // pos.xyz + color.rgba, 4 bytes each
-const TEXT_INSTANCE_STRIDE_BYTES = (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1 + 4 + 1) * 4;
+const TEXT_INSTANCE_STRIDE_BYTES = (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1 + 4 + 1 + 4 + 4) * 4;
 // origin.xyz + rightAxis.xyz + upAxis.xyz + uvBounds.xyzw + color.rgba
 // + anchor.xyz + capHeight (shared per text label, used by the shader to
 //   compute a single screen-space scale for every glyph in the row)
@@ -34,9 +34,12 @@ const TEXT_INSTANCE_STRIDE_BYTES = (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1 + 4 + 1) * 4;
 //   back to the uniform default — grid bubble glyphs use a larger value
 //   than tag text so the bubble stays proportional at all zoom levels).
 
-// Uniform: viewProj (64 B) + viewportAndTarget (16 B) + cameraRight (16 B)
-// + cameraUp (16 B) = 112 B.
-const TEXT_UNIFORM_BYTES = 112;
+// Uniform: global viewProj (64 B) + RTE viewProj (64 B) + viewport/target
+// (16 B) + camera basis (32 B) + f64 camera split (32 B) = 208 B. Keeping
+// both projections is deliberate: a mixed legacy/anchored upload must keep
+// legacy world-f32 labels on the original matrix while anchored labels use the
+// eye-relative matrix selected by their instance record.
+const TEXT_UNIFORM_BYTES = 208;
 // Default target glyph cap height in physical pixels. Roughly matches a
 // 13–14px body font at 1× DPR — readable at any zoom without dominating
 // the model. Authored IFC text height is ignored in screen space, but the
@@ -64,6 +67,12 @@ export interface SymbolicFillInput {
 
 export interface SymbolicTextInput {
   worldPos: [number, number, number];
+  /**
+   * Opt-in canonical f64 label anchor. When supplied, `worldPos` is a small
+   * local offset from this origin; legacy callers omit it and retain their
+   * world-f32 projection path without a fabricated precision claim.
+   */
+  origin?: [number, number, number];
   /** Baseline direction (X axis in 3D world space). */
   dirX: number;
   dirZ: number;
@@ -334,7 +343,8 @@ export class SymbolicTextPipeline {
             attributes: [{ shaderLocation: 0, offset: 0, format: 'uint32' }],
           },
           // Per-instance: origin + rightAxis + upAxis + uvBounds + color
-          // + anchor + capHeight + billboard + glyphOffsetSize + targetPxOverride.
+          // + anchor + capHeight + billboard + glyphOffsetSize + targetPxOverride
+          // + split f64 anchor (high/low; high.w selects the RTE projection).
           {
             arrayStride: TEXT_INSTANCE_STRIDE_BYTES,
             stepMode: 'instance',
@@ -349,6 +359,8 @@ export class SymbolicTextPipeline {
               { shaderLocation: 8,  offset: (3 + 3 + 3 + 4 + 4 + 3 + 1) * 4,           format: 'float32'   }, // billboard
               { shaderLocation: 9,  offset: (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1) * 4,       format: 'float32x4' }, // glyphOffsetSize
               { shaderLocation: 10, offset: (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1 + 4) * 4,   format: 'float32'   }, // targetPxOverride
+              { shaderLocation: 11, offset: (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1 + 4 + 1) * 4, format: 'float32x4' }, // anchorHigh + RTE flag
+              { shaderLocation: 12, offset: (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1 + 4 + 1 + 4) * 4, format: 'float32x4' }, // anchorLow
             ],
           },
         ],
@@ -484,6 +496,8 @@ export class SymbolicTextPipeline {
       glyphOffsetSize: [number, number, number, number];
       // 0 → use renderer global default; otherwise override (in screen px).
       targetPxOverride: number;
+      anchorHigh: [number, number, number, number];
+      anchorLow: [number, number, number, number];
     }> = [];
 
     for (const text of texts) {
@@ -550,9 +564,14 @@ export class SymbolicTextPipeline {
         const heightGlyphWorld = heightGlyphAtlas * wScale;
 
         // Bottom-left origin of the glyph quad in world space.
-        const ox = text.worldPos[0] + ux * px0 * wScale;
-        const oy = text.worldPos[1] + pyBottom * wScale;
-        const oz = text.worldPos[2] + uz * px0 * wScale;
+        const anchored = text.origin !== undefined;
+        const ax = anchored ? text.origin![0] + text.worldPos[0] : text.worldPos[0];
+        const ay = anchored ? text.origin![1] + text.worldPos[1] : text.worldPos[1];
+        const az = anchored ? text.origin![2] + text.worldPos[2] : text.worldPos[2];
+        const ox = anchored ? ux * px0 * wScale : ax + ux * px0 * wScale;
+        const oy = anchored ? pyBottom * wScale : ay + pyBottom * wScale;
+        const oz = anchored ? uz * px0 * wScale : az + uz * px0 * wScale;
+        const hx = Math.fround(ax), hy = Math.fround(ay), hz = Math.fround(az);
 
         layouts.push({
           origin: [ox, oy, oz],
@@ -562,7 +581,7 @@ export class SymbolicTextPipeline {
           color: tint,
           // Shared per-label anchor (text.worldPos) lets the shader compute
           // one screen-space scale and apply it uniformly across all glyphs.
-          anchor: [text.worldPos[0], text.worldPos[1], text.worldPos[2]],
+          anchor: anchored ? [0, 0, 0] : [ax, ay, az],
           capHeight: heightWorld,
           billboard: text.billboard ? 1.0 : 0.0,
           // Per-glyph offset + size in world units. The shader uses these
@@ -575,6 +594,8 @@ export class SymbolicTextPipeline {
             heightGlyphAtlas * wScale, // glyph height
           ],
           targetPxOverride: text.targetPx ?? 0,
+          anchorHigh: [hx, hy, hz, anchored ? 1 : 0],
+          anchorLow: [Math.fround(ax - hx), Math.fround(ay - hy), Math.fround(az - hz), 0],
         });
       }
     }
@@ -599,6 +620,10 @@ export class SymbolicTextPipeline {
       data[off + 22] = l.glyphOffsetSize[0]; data[off + 23] = l.glyphOffsetSize[1];
       data[off + 24] = l.glyphOffsetSize[2]; data[off + 25] = l.glyphOffsetSize[3];
       data[off + 26] = l.targetPxOverride;
+      data[off + 27] = l.anchorHigh[0]; data[off + 28] = l.anchorHigh[1];
+      data[off + 29] = l.anchorHigh[2]; data[off + 30] = l.anchorHigh[3];
+      data[off + 31] = l.anchorLow[0]; data[off + 32] = l.anchorLow[1];
+      data[off + 33] = l.anchorLow[2]; data[off + 34] = l.anchorLow[3];
       off += stride;
     }
 
@@ -623,6 +648,8 @@ export class SymbolicTextPipeline {
     cameraRight: readonly [number, number, number],
     cameraUp: readonly [number, number, number],
     targetGlyphPx: number = DEFAULT_TEXT_TARGET_PX,
+    rteViewProj?: Float32Array,
+    rteCamera?: readonly [number, number, number],
   ): void {
     if (!this.pipeline || !this.uniformBuffer || !this.cornerBuffer || !this.instanceBuffer) return;
     if (this.instanceCount === 0) return;
@@ -631,24 +658,35 @@ export class SymbolicTextPipeline {
     if (!this.bindGroup) return;
 
     // Pack the uniform:
-    //   [0..15]  viewProj                (64 B)
-    //   [16..19] (viewportW, viewportH, targetPx, pad)
-    //   [20..23] cameraRight.xyz + pad
-    //   [24..27] cameraUp.xyz + pad
+    //   [0..15]  legacy world-f32 viewProj
+    //   [16..31] anchored RTE viewProj
+    //   [32..35] (viewportW, viewportH, targetPx, pad)
+    //   [36..39] cameraRight.xyz + pad
+    //   [40..43] cameraUp.xyz + pad
+    //   [44..47] camera high.xyz + pad
+    //   [48..51] camera low.xyz + pad
     const uniformData = new Float32Array(TEXT_UNIFORM_BYTES / 4);
     uniformData.set(viewProj, 0);
-    uniformData[16] = viewportPxWidth;
-    uniformData[17] = viewportPxHeight;
-    uniformData[18] = targetGlyphPx;
-    uniformData[19] = 0;
-    uniformData[20] = cameraRight[0];
-    uniformData[21] = cameraRight[1];
-    uniformData[22] = cameraRight[2];
-    uniformData[23] = 0;
-    uniformData[24] = cameraUp[0];
-    uniformData[25] = cameraUp[1];
-    uniformData[26] = cameraUp[2];
-    uniformData[27] = 0;
+    uniformData.set(rteViewProj ?? viewProj, 16);
+    uniformData[32] = viewportPxWidth;
+    uniformData[33] = viewportPxHeight;
+    uniformData[34] = targetGlyphPx;
+    uniformData[35] = 0;
+    uniformData[36] = cameraRight[0];
+    uniformData[37] = cameraRight[1];
+    uniformData[38] = cameraRight[2];
+    uniformData[39] = 0;
+    uniformData[40] = cameraUp[0];
+    uniformData[41] = cameraUp[1];
+    uniformData[42] = cameraUp[2];
+    uniformData[43] = 0;
+    if (rteCamera) {
+      for (let axis = 0; axis < 3; axis++) {
+        const high = Math.fround(rteCamera[axis]);
+        uniformData[44 + axis] = high;
+        uniformData[48 + axis] = Math.fround(rteCamera[axis] - high);
+      }
+    }
     this.device.queue.writeBuffer(this.uniformBuffer, 0, uniformData);
 
     pass.setPipeline(this.pipeline);

@@ -360,11 +360,11 @@ describe('grid bubbles draw without defining the model extent (issue 3359)', () 
     // stale answer is a wrong NUMBER here, not an empty list that a filter
     // somewhere upstream could also explain.
     const loose = await sample({ enabled: false, gridEnabled: true }, NaN);
-    assert.deepEqual(loose.texts.map((t) => t.worldPos[1]), [0], 'the NaN fixture lifts to fallbackY');
+    assert.deepEqual(loose.texts.map((t) => t.origin[1]), [0], 'the NaN fixture lifts to fallbackY');
 
     const bucketed = await sample({ enabled: false, gridEnabled: true }, 3);
     assert.deepEqual(
-      bucketed.texts.map((t) => t.worldPos[1]),
+      bucketed.texts.map((t) => t.origin[1]),
       [3],
       'the second fixture must reach the parse; 0 here means the first parse was reused',
     );

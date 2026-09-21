@@ -208,7 +208,7 @@ describe('the grid section-clip band filters gridByStorey buckets (issues #862, 
     });
 
     assert.deepEqual(texts.map((t) => t.content), ['BUCKET']);
-    assert.deepEqual(texts.map((t) => t.worldPos[1]), [BUCKET_Y], 'lifted to its own storey, not the fallback');
+    assert.deepEqual(texts.map((t) => t.origin[1]), [BUCKET_Y], 'lifted to its own storey, not the fallback');
     assert.deepEqual(fills.map((f) => f.worldY), [BUCKET_Y]);
   });
 

@@ -212,7 +212,15 @@ export class RendererOverlays {
         if (this.clashSolidPipeline?.hasGeometry()) {
             this.clashSolidPipeline.render(pass, viewProj);
         }
-        this.symbolic.drawTexts(pass, viewProj, ctx.canvasWidth, ctx.canvasHeight, camera);
+        this.symbolic.drawTexts(
+            pass,
+            viewProj,
+            ctx.canvasWidth,
+            ctx.canvasHeight,
+            camera,
+            ctx.rteViewProj,
+            ctx.rteCamera,
+        );
     }
 
     /** See `Renderer.uploadSection2DOverlay` for the published contract. */

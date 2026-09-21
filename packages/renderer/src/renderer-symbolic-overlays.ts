@@ -82,6 +82,8 @@ export class SymbolicOverlays {
         canvasWidth: number,
         canvasHeight: number,
         camera: Camera,
+        rteViewProj?: Float32Array,
+        rteCamera?: readonly [number, number, number],
     ): void {
         if (!this.textPipeline?.hasGeometry()) return;
         // Pass viewport pixel dimensions so the shader can scale glyphs
@@ -116,6 +118,9 @@ export class SymbolicOverlays {
             canvasHeight,
             [basis.right.x, basis.right.y, basis.right.z],
             [basis.up.x, basis.up.y, basis.up.z],
+            undefined,
+            rteViewProj,
+            rteCamera,
         );
     }
 
@@ -181,7 +186,7 @@ export class SymbolicOverlays {
         // and the rewrite lost it, which matters here: "every text waived" is
         // this change's own scenario (annotations off, grid on).
         if (texts.length === 0) { this.host.requestRender(); return; }
-        // Text origins are single points. Written straight into a worst-case
+        // Text anchors are single points. Written straight into a worst-case
         // buffer and passed on as a subarray: filtering first would allocate a
         // second array holding every framing text just to read its length, and
         // annotation-heavy models push thousands.
@@ -189,9 +194,12 @@ export class SymbolicOverlays {
         let n = 0;
         for (const t of texts) {
             if (t.definesExtent === false) continue;
-            buf[n * 3 + 0] = t.worldPos[0];
-            buf[n * 3 + 1] = t.worldPos[1];
-            buf[n * 3 + 2] = t.worldPos[2];
+            const x = t.origin ? t.origin[0] + t.worldPos[0] : t.worldPos[0];
+            const y = t.origin ? t.origin[1] + t.worldPos[1] : t.worldPos[1];
+            const z = t.origin ? t.origin[2] + t.worldPos[2] : t.worldPos[2];
+            buf[n * 3 + 0] = x;
+            buf[n * 3 + 1] = y;
+            buf[n * 3 + 2] = z;
             n++;
         }
         if (n > 0) {

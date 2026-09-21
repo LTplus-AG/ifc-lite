@@ -42,6 +42,9 @@ import { resolveBucketY } from './useSymbolicAnnotations.js';
  * `height` is in world units.
  */
 export interface AnnotationText3D {
+  /** Canonical f64 anchor; the renderer projects this separately from glyph-local offsets. */
+  origin: [number, number, number];
+  /** Small local label offset from `origin` (currently zero for parsed labels). */
   worldPos: [number, number, number];
   dirX: number;
   dirZ: number;
@@ -136,7 +139,12 @@ export function buildSymbolicRichChannels(
       // here puts line 1 below line 0 on screen for any side/oblique
       // 3D view of the floor plan.
       texts.push({
-        worldPos: [t.x, y + (t.lineYOffset ?? 0), t.y],
+        // One source label gets one canonical anchor. Keeping its local
+        // position at zero prevents a 5,000-km source coordinate from ever
+        // entering the f32 instance origin, while preserving f64 parser
+        // coordinates until the RTE split at GPU ingress.
+        origin: [t.x, y + (t.lineYOffset ?? 0), t.y],
+        worldPos: [0, 0, 0],
         dirX: t.dirX,
         dirZ: t.dirY,
         height: t.height,

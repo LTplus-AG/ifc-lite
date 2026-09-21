@@ -51,6 +51,9 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 export const SYMBOLIC_TEXT_WGSL = /* wgsl */ `
 struct Camera {
   viewProj: mat4x4<f32>,
+  // Legacy labels keep using viewProj. Anchored labels select this
+  // translation-free eye-relative matrix per instance.
+  rteViewProj: mat4x4<f32>,
   // x = viewport width in physical pixels, y = viewport height
   // z = target glyph cap-height in screen pixels, w = padding
   viewportAndTarget: vec4<f32>,
@@ -60,6 +63,10 @@ struct Camera {
   // zero screen extent and the tag becomes invisible.
   cameraRight: vec4<f32>,
   cameraUp:    vec4<f32>,
+  // Split f64 camera world position. The per-instance f64 anchor is split
+  // identically, so subtraction happens before either quantity is narrowed.
+  cameraHigh: vec4<f32>,
+  cameraLow:  vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> camera: Camera;
@@ -107,6 +114,10 @@ struct InstIn {
   // glyphs override with a larger value so the bubble stays proportional
   // to the tag at every zoom level.
   @location(10) targetPxOverride: f32,
+  // Split canonical f64 text-label anchor. anchorHigh.w == 1 selects the
+  // RTE route; old world-f32 records retain a zero flag and the old route.
+  @location(11) anchorHigh: vec4<f32>,
+  @location(12) anchorLow: vec4<f32>,
 };
 
 struct VsOut {
@@ -129,9 +140,25 @@ fn vs_main(in: VsIn, inst: InstIn) -> VsOut {
   // regardless of view angle, so screen-space scaling stays correct in
   // top-down / ground / oblique views.
   let isBillboard = inst.billboard > 0.5;
+  let isRte = inst.anchorHigh.w == 1.0;
+  // These are eye-relative coordinates for anchored records and world
+  // coordinates for legacy records. This select keeps both ABI generations
+  // valid in one draw, rather than globally switching the projection.
+  let rteAnchor =
+      (inst.anchorHigh.xyz - camera.cameraHigh.xyz)
+    + (inst.anchorLow.xyz - camera.cameraLow.xyz);
+  let labelAnchor = select(inst.anchor, rteAnchor, isRte);
   let scaleProbeAxis = select(vec3<f32>(0.0, 1.0, 0.0), camera.cameraUp.xyz, isBillboard);
-  let aClip = camera.viewProj * vec4<f32>(inst.anchor, 1.0);
-  let bClip = camera.viewProj * vec4<f32>(inst.anchor + scaleProbeAxis, 1.0);
+  let aClip = select(
+    camera.viewProj * vec4<f32>(inst.anchor, 1.0),
+    camera.rteViewProj * vec4<f32>(labelAnchor, 1.0),
+    isRte,
+  );
+  let bClip = select(
+    camera.viewProj * vec4<f32>(inst.anchor + scaleProbeAxis, 1.0),
+    camera.rteViewProj * vec4<f32>(labelAnchor + scaleProbeAxis, 1.0),
+    isRte,
+  );
   let aNdc = aClip.xy / max(abs(aClip.w), 1e-4);
   let bNdc = bClip.xy / max(abs(bClip.w), 1e-4);
   let unitYPx = length(bNdc - aNdc) * camera.viewportAndTarget.y * 0.5;
@@ -153,9 +180,11 @@ fn vs_main(in: VsIn, inst: InstIn) -> VsOut {
   // Non-billboard: authored axes (text lies in the floor plane of its
   // annotation — IFC convention). Billboard: camera-aligned axes (text
   // always faces the camera — grid-tag convention).
-  let authoredLocalOffset = inst.origin - inst.anchor;
+  // Anchored producers retain a small glyph-local origin; legacy producers
+  // retain the original absolute origin and derive its local offset here.
+  let authoredLocalOffset = select(inst.origin - inst.anchor, inst.origin, isRte);
   let authoredWorldPos =
-      inst.anchor
+      labelAnchor
     + authoredLocalOffset * scale
     + inst.rightAxis * scale * u
     + inst.upAxis    * scale * v;
@@ -169,7 +198,7 @@ fn vs_main(in: VsIn, inst: InstIn) -> VsOut {
   let bbWidth   = inst.glyphOffsetSize.z;
   let bbHeight  = inst.glyphOffsetSize.w;
   let billboardWorldPos =
-      inst.anchor
+      labelAnchor
     + (camera.cameraRight.xyz * bbOffsetX + camera.cameraUp.xyz * bbOffsetY) * scale
     + (camera.cameraRight.xyz * bbWidth   * u
      + camera.cameraUp.xyz    * bbHeight  * v) * scale;
@@ -181,7 +210,11 @@ fn vs_main(in: VsIn, inst: InstIn) -> VsOut {
   let vMix = mix(inst.uvBounds.w, inst.uvBounds.y, v);
 
   var out: VsOut;
-  let clip = camera.viewProj * vec4<f32>(worldPos, 1.0);
+  let clip = select(
+    camera.viewProj * vec4<f32>(worldPos, 1.0),
+    camera.rteViewProj * vec4<f32>(worldPos, 1.0),
+    isRte,
+  );
   // Reverse-Z decal nudge for text coplanar with model faces (issue #812
   // follow-up: "30", "1.49" etc. flickering against the terrain). The
   // pipeline-level depthBiasSlopeScale collapses to ~0 for billboard

@@ -43,6 +43,7 @@ import { selectEvictions, type ResidencyShell, type ColdGeometryProvider } from 
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 import { translateSceneModel, rotateSceneModelInstances, releaseInstanceVertices, refreshTexturedBounds } from './scene-model-translation.js';
 import { ModelTranslations, type ModelYaw } from './model-translation.js';
+import { unionInstancedWorldAabb as unionInstanceBounds } from './scene-instance-bounds.js';
 import { DerivedMeshProvenance } from './scene-derived-mesh-provenance.js';
 import { rebuildSceneBatches } from './scene-batch-rebuild.js';
 import {
@@ -3294,47 +3295,11 @@ export class Scene {
     this.instancedGhostDirty = true;
   }
 
-  /** Transform a template's local AABB by an occurrence's column-major mat4 (read
-   *  from the packed instance record at `matOffset`) and union the world box into
-   *  boundingBoxes[eid]. Returns the occurrence's world box so the caller can also
-   *  fold it into the template's cull metadata. */
-  private unionInstancedWorldAabb(
-    eid: number,
-    dv: DataView,
-    matOffset: number,
-    lmnx: number, lmny: number, lmnz: number,
-    lmxx: number, lmxy: number, lmxz: number,
-  ): { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number } {
-    const m0 = dv.getFloat32(matOffset + 0, true), m1 = dv.getFloat32(matOffset + 4, true), m2 = dv.getFloat32(matOffset + 8, true);
-    const m4 = dv.getFloat32(matOffset + 16, true), m5 = dv.getFloat32(matOffset + 20, true), m6 = dv.getFloat32(matOffset + 24, true);
-    const m8 = dv.getFloat32(matOffset + 32, true), m9 = dv.getFloat32(matOffset + 36, true), m10 = dv.getFloat32(matOffset + 40, true);
-    const m12 = dv.getFloat32(matOffset + 48, true), m13 = dv.getFloat32(matOffset + 52, true), m14 = dv.getFloat32(matOffset + 56, true);
-    let minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-    for (let c = 0; c < 8; c++) {
-      const x = (c & 1) ? lmxx : lmnx, y = (c & 2) ? lmxy : lmny, z = (c & 4) ? lmxz : lmnz;
-      const wx = m0 * x + m4 * y + m8 * z + m12;
-      const wy = m1 * x + m5 * y + m9 * z + m13;
-      const wz = m2 * x + m6 * y + m10 * z + m14;
-      if (wx < minX) minX = wx; if (wy < minY) minY = wy; if (wz < minZ) minZ = wz;
-      if (wx > maxX) maxX = wx; if (wy > maxY) maxY = wy; if (wz > maxZ) maxZ = wz;
-    }
-    const existing = this.boundingBoxes.get(eid);
-    if (existing) {
-      existing.min.x = Math.min(existing.min.x, minX);
-      existing.min.y = Math.min(existing.min.y, minY);
-      existing.min.z = Math.min(existing.min.z, minZ);
-      existing.max.x = Math.max(existing.max.x, maxX);
-      existing.max.y = Math.max(existing.max.y, maxY);
-      existing.max.z = Math.max(existing.max.z, maxZ);
-    } else {
-      this.boundingBoxes.set(eid, { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } });
-    }
-    return { minX, minY, minZ, maxX, maxY, maxZ };
+  private unionInstancedWorldAabb(eid: number, dv: DataView, matOffset: number, lmnx: number, lmny: number, lmnz: number, lmxx: number, lmxy: number, lmxz: number): { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number } {
+    return unionInstanceBounds(this.boundingBoxes, eid, dv, matOffset, lmnx, lmny, lmnz, lmxx, lmxy, lmxz);
   }
 
-  /** True if `expressId` is a GPU-instanced occurrence (lives only in the instanced
-   *  shard, not the flat meshDataMap). CPU consumers use this to decide whether to
-   *  fall back to the instanced accessors below. */
+  /** True when `expressId` has a GPU-instanced occurrence. */
   isInstancedEntity(expressId: number): boolean {
     return this.instancedEntityMap.has(expressId);
   }

@@ -1318,6 +1318,38 @@ fn issue_5045_parsed_circular_curves_stay_stable_for_shallow_and_near_parallel_g
     assert!((shallow_elevation(995.0) + 5.0e-9).abs() < 1.0e-12);
     assert!((shallow_elevation(1005.0) - 1.0e-8).abs() < 1.0e-12);
 
+    let extreme = parse(source(-100.0, 100.00000000000003, 27.34438611211513, 1.0e18).as_bytes())?;
+    let extreme_profile = &extreme.profiles[0];
+    let extreme_elevation = |station| {
+        extreme_profile
+            .evaluate_elevation_at(station)
+            .unwrap()
+            .unwrap()
+    };
+    assert!((extreme_elevation(999.0) + 0.1).abs() < 1.0e-9);
+    assert!(extreme_elevation(1000.0).abs() < 1.0e-10);
+    assert!((extreme_elevation(1001.0) - 0.1).abs() < 1.0e-9);
+    let epsilon = 1.0e-4;
+    let left_slope = (extreme_elevation(1000.0) - extreme_elevation(1000.0 - epsilon)) / epsilon;
+    let right_slope = (extreme_elevation(1000.0 + epsilon) - extreme_elevation(1000.0)) / epsilon;
+    assert!((left_slope - right_slope).abs() < 1.0e-9);
+    let incoming_grade = 0.1_f64;
+    let outgoing_grade = 0.10000000000000003_f64;
+    let half_angle =
+        (outgoing_grade - incoming_grade).atan2(1.0 + incoming_grade * outgoing_grade) / 2.0;
+    let tangent_length = half_angle.tan() * 1.0e18;
+    let start = 1000.0 - tangent_length / incoming_grade.hypot(1.0);
+    let end = 1000.0 + tangent_length / outgoing_grade.hypot(1.0);
+    let start_slope = (extreme_elevation(start + epsilon) - extreme_elevation(start)) / epsilon;
+    let end_slope = (extreme_elevation(end) - extreme_elevation(end - epsilon)) / epsilon;
+    assert!((start_slope - incoming_grade).abs() < 1.0e-8);
+    assert!((end_slope - outgoing_grade).abs() < 1.0e-8);
+    let inconsistent_extreme = parse(source(-100.0, 100.00000000000003, 100.0, 1.0e18).as_bytes())?;
+    assert_eq!(
+        inconsistent_extreme.profiles[0].evaluate_elevation_at(1000.0),
+        Err(ifc_lite_landxml::LandXmlProfileEvaluationError::InconsistentCircularCurve),
+    );
+
     let near_parallel = parse(source(-100.0, 100.000001, 98.51853222109241, 1.0e11).as_bytes())?;
     assert!(near_parallel.profiles[0]
         .evaluate_elevation_at(1000.0)?

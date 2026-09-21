@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use crate::profile_circular::{circular_geometry, cosine_difference};
+use crate::profile_circular::{circular_geometry, circular_rise};
 use crate::{
     LandXmlProfile, LandXmlProfileEvaluationError, LandXmlProfileKind, LandXmlVerticalCurve,
     LandXmlVerticalCurveKind,
@@ -285,14 +285,11 @@ fn evaluate_circular(
     if station < start || station > end {
         return Ok(None);
     }
-    let sine = geometry.sine_in + geometry.curvature * (station - start);
-    if sine.abs() > 1.0 + 1.0e-12 {
-        return Err(LandXmlProfileEvaluationError::InconsistentCircularCurve);
-    }
+    let horizontal_distance = station - start;
     finite_elevation(
         pvi_elevation
             + incoming_grade * start_relative_to_pvi
-            + cosine_difference(geometry.sine_in, sine) / geometry.curvature,
+            + circular_rise(&geometry, horizontal_distance)?,
     )
 }
 

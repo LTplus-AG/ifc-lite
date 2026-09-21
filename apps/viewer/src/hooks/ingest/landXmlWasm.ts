@@ -12,14 +12,11 @@ import { decodeLandXmlAlignment } from './landXmlAlignmentDocumentWasm.js';
 import { decodeLandXmlPlan, decodeLandXmlPlanPoint } from './landXmlPlanWasm.js';
 import { clearLandXmlSourceRecordIndex, indexLandXmlSourceRecords } from './landXmlSemantics.js';
 import type {
-  LandXmlAlignment, LandXmlAlignmentPi, LandXmlAlignmentPrimitive, LandXmlAlignmentSegment, LandXmlCantStation,
+  LandXmlAlignment,
   LandXmlCapabilityDiagnostic, LandXmlCrossSection, LandXmlCrossSectionPoint,
   LandXmlCrossSectionSurface, LandXmlGradeLine, LandXmlPolyline, LandXmlPreservedOnlyExtension,
   LandXmlProfile, LandXmlProfilePoint, LandXmlRoadway, LandXmlTinDocument, LandXmlTinSurface,
-  LandXmlSuperelevation, LandXmlUnsupportedTransition, LandXmlVerticalCurve,
-  LandXmlCgPoint, LandXmlMonument, LandXmlParcel, LandXmlPlanDocument, LandXmlPlanFeature,
-  LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlPlanPointLocation, LandXmlPointLocation,
-  LandXmlParcelProbe, LandXmlRadius, LandXmlResolvedGeometry, LandXmlResolvedMonument, LandXmlStationEquation,
+  LandXmlVerticalCurve, LandXmlPlanPoint,
 } from './landXmlSemantics.js';
 
 function record(value: unknown, context: string): Record<string, unknown> {

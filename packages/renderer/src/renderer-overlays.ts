@@ -56,6 +56,7 @@ import { ClashSolidPipeline, type ClashSolidInput } from './clash-solid-pipeline
 import { anchoredAabbEdgeLineList } from './aabb-edges.js';
 import { projectedBoundsRange } from './render-section-plane.js';
 import { drawSectionOverlays, type ModelBounds } from './render-section-draw.js';
+import type { RelativeToEyeFrame } from './relative-to-eye.js';
 import type { RenderOptions } from './types.js';
 import type { DeviceRecoveryOmission } from './device-recovery.js';
 import type { AnchoredLineVertices } from './section-2d-line-buffer.js';
@@ -84,9 +85,10 @@ export interface OverlayDrawContext {
     modelBounds: ModelBounds | null;
     camera: Camera;
     canvasWidth: number;
-  canvasHeight: number;
-  rteViewProj?: Float32Array;
-  rteCamera?: readonly [number, number, number];
+    canvasHeight: number;
+    relativeToEyeFrame?: RelativeToEyeFrame;
+    rteViewProj?: Float32Array;
+    rteCamera?: readonly [number, number, number];
 }
 
 /**

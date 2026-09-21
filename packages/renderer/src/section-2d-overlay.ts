@@ -23,6 +23,7 @@
  */
 
 import { PIPELINE_CONSTANTS } from './constants.js';
+import { packRteDrawableDelta } from './relative-to-eye.js';
 import {
   SECTION_2D_CAP_FILL_WGSL,
   SECTION_2D_OVERLAY_LINE_WGSL,
@@ -84,7 +85,7 @@ export class Section2DOverlayRenderer {
   private fillIndexCount = 0;
   private lineVertexBuffer: GPUBuffer | null = null;
   private lineVertexCount = 0;
-  /** Canonical section-plane origin retained separately from local cap vertices. */
+  /** f64 cap anchor retained separately from the local cap vertices. */
   private capAnchor: [number, number, number] | null = null;
 
   /**
@@ -326,10 +327,18 @@ export class Section2DOverlayRenderer {
     this.clearGeometry();
 
     const lift = createSectionLift(axis, planePosition, flipped, customPlane);
-    const anchor: [number, number, number] = customPlane
+    const planeAnchor: [number, number, number] = customPlane
       ? [...customPlane.origin]
       : axis === 'side' ? [planePosition, 0, 0]
         : axis === 'down' ? [0, planePosition, 0] : [0, 0, planePosition];
+    // The plane-coordinate anchor was enough when every model was near the
+    // origin. At a survey offset it leaves both in-plane coordinates absolute
+    // in the f32 vertex buffer, collapsing centimetre cap edges. Anchor at an
+    // actual lifted point instead, while retaining the old plane point for an
+    // empty upload that produces no vertex buffer to draw.
+    const firstPoint = polygons.find((polygon) => polygon.polygon.outer.length > 0)?.polygon.outer[0]
+      ?? lines[0]?.line.start;
+    const anchor = firstPoint ? lift(firstPoint.x, firstPoint.y) : planeAnchor;
 
     // Lift/subtract while the coordinates are JS f64. Building a world-space
     // Float32Array first then subtracting the cap anchor loses centimetre
@@ -519,12 +528,7 @@ export class Section2DOverlayRenderer {
     uniforms.set(viewProj, S.viewProj);
     if (this.capAnchor && options.rteViewProj && options.rteCamera) {
       uniforms.set(options.rteViewProj, S.rteViewProj);
-      for (let axis = 0; axis < 3; axis++) {
-        const delta = this.capAnchor[axis] - options.rteCamera[axis];
-        const high = Math.fround(delta);
-        uniforms[S.originDeltaHigh + axis] = high;
-        uniforms[S.originDeltaLow + axis] = Math.fround(delta - high);
-      }
+      packRteDrawableDelta(this.capAnchor, options.rteCamera, uniforms, S.originDeltaHigh);
       uniforms[S.originDeltaHigh + 3] = 1;
     }
     uniforms.set(this.overlayLineColor, S.lineColor); // section-cut outline colour

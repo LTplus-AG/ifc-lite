@@ -3110,6 +3110,7 @@ export class Renderer {
                 camera: this.camera,
                 canvasWidth: this.canvas.width,
                 canvasHeight: this.canvas.height,
+                relativeToEyeFrame,
                 rteViewProj: relativeToEyeFrame.getViewProjection().m,
                 rteCamera: relativeToEyeFrame.getCameraWorld(),
             });

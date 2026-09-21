@@ -10,6 +10,8 @@ import { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
 import type { SectionPlaneRenderer } from './section-plane.js';
 import type { Section2DOverlayRenderer } from './section-2d-overlay.js';
 import type { Camera } from './camera.js';
+import { MathUtils } from './math.js';
+import { RelativeToEyeFrame } from './relative-to-eye.js';
 import type { RenderOptions } from './types.js';
 
 /**
@@ -82,6 +84,17 @@ describe('the extracted section draw keeps its parameters (#2451 review)', () =>
 
         assert.strictEqual(s.gizmoDraws[0].params.isPreview, true);
         assert.strictEqual(s.capDraws.length, 0, 'a preview plane has no cut to cap');
+    });
+
+    it('routes the camera-owned RTE frame to the preview gizmo (#5049)', () => {
+        const s = makeStubs();
+        const frame = new RelativeToEyeFrame();
+        frame.update({ x: 5_000_000, y: 0, z: 0 }, MathUtils.identity(), MathUtils.identity());
+        drawSectionOverlays(PASS, s.gizmo, s.cap, {
+            ...ctxFor({ axis: 'down', position: 50, enabled: false }),
+            relativeToEyeFrame: frame,
+        });
+        assert.strictEqual(s.gizmoDraws[0].params.relativeToEyeFrame, frame);
     });
 
     it('skips the cap while the overlay has no geometry', () => {

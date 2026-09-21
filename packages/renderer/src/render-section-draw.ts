@@ -26,6 +26,7 @@
 import type { SectionPlaneRenderer } from './section-plane.js';
 import type { Section2DOverlayRenderer } from './section-2d-overlay.js';
 import { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
+import type { RelativeToEyeFrame } from './relative-to-eye.js';
 import type { RenderOptions } from './types.js';
 
 /** World-space AABB in the renderer's Y-up frame. */
@@ -38,6 +39,8 @@ export type ModelBounds = {
 export interface SectionDrawContext {
     options: RenderOptions;
     viewProj: Float32Array;
+    /** The camera-owned f64/RTE frame used by the preview gizmo. */
+    relativeToEyeFrame?: RelativeToEyeFrame;
     rteViewProj?: Float32Array;
     rteCamera?: readonly [number, number, number];
     /** The bounds this frame resolved the section slider against. */
@@ -67,7 +70,7 @@ export function drawSectionOverlays(
                 axis: options.sectionPlane.axis,
                 position: options.sectionPlane.position,
                 bounds: modelBounds,
-                viewProj,
+                relativeToEyeFrame: ctx.relativeToEyeFrame,
                 isPreview: !options.sectionPlane.enabled, // Preview mode when not enabled
                 min: options.sectionPlane.min,
                 max: options.sectionPlane.max,

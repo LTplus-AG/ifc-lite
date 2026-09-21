@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { SectionPlaneRenderer } from './section-plane.js';
+import { calculateSectionPlaneVerticesFromNormal } from './section-plane-geometry.js';
 
 /**
  * The face-picked section gizmo's quad is the SECOND consumer of
@@ -34,21 +34,12 @@ import { SectionPlaneRenderer } from './section-plane.js';
 const BOUNDS = { min: { x: -20, y: 0, z: -10 }, max: { x: 20, y: 10, z: 10 } };
 
 /**
- * `calculatePlaneVerticesFromNormal` is a pure function of its three
- * arguments — it touches no GPU object and no instance field — so it can be
- * exercised on a bare prototype. Reaching it through `draw()` instead would
- * need a `GPUDevice`, three pipelines and a render pass, none of which
- * participate in the arithmetic under test.
+ * The pure f64 geometry helper touches no GPU state. Reaching it through
+ * `draw()` instead would need a `GPUDevice`, pipelines and a render pass,
+ * none of which participate in the normal validation under test.
  */
-function quadFor(normal: [number, number, number], distance = 5): Float32Array {
-    const bare = Object.create(SectionPlaneRenderer.prototype) as {
-        calculatePlaneVerticesFromNormal(
-            normal: [number, number, number],
-            distance: number,
-            bounds: typeof BOUNDS,
-        ): Float32Array;
-    };
-    return bare.calculatePlaneVerticesFromNormal(normal, distance, BOUNDS);
+function quadFor(normal: [number, number, number], distance = 5): Float64Array {
+    return calculateSectionPlaneVerticesFromNormal(normal, distance, BOUNDS);
 }
 
 /** Six vertices of five floats: x, y, z, u, v. */

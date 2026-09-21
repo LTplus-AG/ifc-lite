@@ -7,16 +7,32 @@
  */
 
 import { PIPELINE_CONSTANTS } from './constants.js';
-import { planeBasis } from './section-plane-basis.js';
+import { RTE_FRAME_FLOATS, RTE_ORIGIN_FLOATS, type RelativeToEyeFrame } from './relative-to-eye.js';
+import { relativeToEyeWgsl } from './shaders/relative-to-eye.wgsl.js';
+import {
+  calculateSectionPlaneVertices,
+  calculateSectionPlaneVerticesFromNormal,
+  type SectionPlaneAxis,
+  type SectionPlaneBounds,
+} from './section-plane-geometry.js';
+
+/** Float offsets matching the WGSL `Uniforms` record below. */
+export const SECTION_PLANE_UNIFORM_SLOTS = {
+  rteViewProj: 0,
+  planeColor: RTE_FRAME_FLOATS,
+  drawableDelta: RTE_FRAME_FLOATS + 4,
+} as const;
+export const SECTION_PLANE_UNIFORM_FLOATS = RTE_FRAME_FLOATS + 4 + RTE_ORIGIN_FLOATS;
 
 export interface SectionPlaneRenderOptions {
-  axis: 'down' | 'front' | 'side';  // Semantic axis names: down (Y), front (Z), side (X)
+  axis: SectionPlaneAxis;  // Semantic axis names: down (Y), front (Z), side (X)
   position: number; // 0-100 percentage
-  bounds: {
-    min: { x: number; y: number; z: number };
-    max: { x: number; y: number; z: number };
-  };
-  viewProj: Float32Array;
+  bounds: SectionPlaneBounds;
+  /**
+   * The camera-owned translation-free frame. Its f64 camera coordinate is
+   * used to form the drawable delta before either value reaches the GPU.
+   */
+  relativeToEyeFrame?: RelativeToEyeFrame;
   /**
    * Declared but never read. `SectionPlaneRenderer.render()` never consults
    * it, so the gizmo quad looks identical either way — this field cannot
@@ -82,10 +98,11 @@ export class SectionPlaneRenderer {
 
     // Create shader for section plane rendering
     const shaderModule = this.device.createShaderModule({
-      code: `
+      code: `${relativeToEyeWgsl}
         struct Uniforms {
-          viewProj: mat4x4<f32>,
+          rteFrame: RteFrameUniform,
           planeColor: vec4<f32>,
+          drawable: RteDrawableUniform,
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
 
@@ -97,7 +114,7 @@ export class SectionPlaneRenderer {
         @vertex
         fn vs_main(@location(0) position: vec3<f32>, @location(1) uv: vec2<f32>) -> VertexOutput {
           var output: VertexOutput;
-          output.position = uniforms.viewProj * vec4<f32>(position, 1.0);
+          output.position = uniforms.rteFrame.viewProj * rteWorldPosition(position, uniforms.drawable);
           output.uv = uv;
           return output;
         }
@@ -250,7 +267,7 @@ export class SectionPlaneRenderer {
 
     // Create uniform buffer
     this.uniformBuffer = this.device.createBuffer({
-      size: 80, // mat4x4 (64) + vec4 (16) = 80 bytes
+      size: SECTION_PLANE_UNIFORM_FLOATS * 4,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -278,10 +295,10 @@ export class SectionPlaneRenderer {
       return;
     }
 
-    const { axis, position, bounds, viewProj, isPreview, min: minOverride, max: maxOverride, normal, distance } = options;
+    const { axis, position, bounds, relativeToEyeFrame, isPreview, min: minOverride, max: maxOverride, normal, distance } = options;
 
     // Only draw section plane in preview mode - hide it during active cutting
-    if (!isPreview) {
+    if (!isPreview || !relativeToEyeFrame) {
       return;
     }
 
@@ -293,37 +310,44 @@ export class SectionPlaneRenderer {
     // Calculate plane vertices based on axis and bounds, OR from an
     // arbitrary normal+distance when face-pick has provided one.
     const vertices = hasExplicitPlane
-      ? this.calculatePlaneVerticesFromNormal(normal!, distance!, bounds)
-      : this.calculatePlaneVertices(axis, position, bounds, 0, minOverride, maxOverride);
-    this.device.queue.writeBuffer(this.vertexBuffer, 0, vertices);
+      ? calculateSectionPlaneVerticesFromNormal(normal!, distance!, bounds)
+      : calculateSectionPlaneVertices(axis, position, bounds, minOverride, maxOverride);
+    const origin: [number, number, number] = [vertices[0], vertices[1], vertices[2]];
+    const local = new Float32Array(vertices.length);
+    for (let i = 0; i < vertices.length; i += 5) {
+      local[i] = vertices[i] - origin[0]; local[i + 1] = vertices[i + 1] - origin[1]; local[i + 2] = vertices[i + 2] - origin[2];
+      local[i + 3] = vertices[i + 3]; local[i + 4] = vertices[i + 4];
+    }
+    this.device.queue.writeBuffer(this.vertexBuffer, 0, local);
 
     // Update uniforms
-    const uniforms = new Float32Array(20);
-    uniforms.set(viewProj, 0);
+    const uniforms = new Float32Array(SECTION_PLANE_UNIFORM_FLOATS);
+    relativeToEyeFrame.packUniforms(uniforms, SECTION_PLANE_UNIFORM_SLOTS.rteViewProj);
+    relativeToEyeFrame.packDrawableOrigin(origin, uniforms, SECTION_PLANE_UNIFORM_SLOTS.drawableDelta);
 
     // Axis-specific colors for better identification.
     // down (Y) = light blue, front (Z) = green, side (X) = orange.
     // Custom (face-picked) planes pick up a violet that won't be confused
     // with any cardinal preset.
     if (hasExplicitPlane) {
-      uniforms[16] = 0.612; // R - #9C6BDE (violet)
-      uniforms[17] = 0.420; // G
-      uniforms[18] = 0.871; // B
+      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor] = 0.612; // R - #9C6BDE (violet)
+      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor + 1] = 0.420;
+      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor + 2] = 0.871;
     } else if (axis === 'down') {
-      uniforms[16] = 0.012; // R - #03A9F4
-      uniforms[17] = 0.663; // G
-      uniforms[18] = 0.957; // B
+      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor] = 0.012; // R - #03A9F4
+      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor + 1] = 0.663; // G
+      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor + 2] = 0.957; // B
     } else if (axis === 'front') {
-      uniforms[16] = 0.298; // R - #4CAF50
-      uniforms[17] = 0.686; // G
-      uniforms[18] = 0.314; // B
+      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor] = 0.298; // R - #4CAF50
+      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor + 1] = 0.686; // G
+      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor + 2] = 0.314; // B
     } else {
-      uniforms[16] = 1.0;   // R - #FF9800
-      uniforms[17] = 0.596; // G
-      uniforms[18] = 0.0;   // B
+      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor] = 1.0;   // R - #FF9800
+      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor + 1] = 0.596; // G
+      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor + 2] = 0.0;   // B
     }
     // Preview mode opacity
-    uniforms[19] = 0.25;
+    uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor + 3] = 0.25;
     this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
 
     // Draw section plane with preview pipeline (respects depth)
@@ -331,172 +355,6 @@ export class SectionPlaneRenderer {
     pass.setBindGroup(0, this.bindGroup);
     pass.setVertexBuffer(0, this.vertexBuffer);
     pass.draw(6); // 2 triangles
-  }
-
-  private calculatePlaneVertices(
-    axis: 'down' | 'front' | 'side',
-    position: number,
-    bounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } },
-    inset: number = 0,  // 0 = full size, 0.15 = 15% smaller on each side
-    minOverride?: number,
-    maxOverride?: number
-  ): Float32Array {
-    const { min, max } = bounds;
-
-    // Calculate base size with 10% padding for preview
-    const basePadding = 0.1;
-    const effectiveScale = (1 + basePadding) * (1 - inset * 2);
-    const sizeX = (max.x - min.x) * effectiveScale;
-    const sizeY = (max.y - min.y) * effectiveScale;
-    const sizeZ = (max.z - min.z) * effectiveScale;
-    const centerX = (min.x + max.x) / 2;
-    const centerY = (min.y + max.y) / 2;
-    const centerZ = (min.z + max.z) / 2;
-
-    // Calculate the plane position along the axis
-    const t = position / 100;
-    const axisIdx = axis === 'side' ? 'x' : axis === 'down' ? 'y' : 'z';
-    const axisMin = minOverride ?? min[axisIdx];
-    const axisMax = maxOverride ?? max[axisIdx];
-
-    let vertices: number[] = [];
-
-    if (axis === 'side') {
-      // Side = X axis (YZ plane)
-      const x = axisMin + t * (axisMax - axisMin);
-      const halfY = sizeY / 2;
-      const halfZ = sizeZ / 2;
-      // Quad facing X axis (vertices in YZ plane)
-      vertices = [
-        // Triangle 1
-        x, centerY - halfY, centerZ - halfZ, 0, 0,
-        x, centerY + halfY, centerZ - halfZ, 1, 0,
-        x, centerY + halfY, centerZ + halfZ, 1, 1,
-        // Triangle 2
-        x, centerY - halfY, centerZ - halfZ, 0, 0,
-        x, centerY + halfY, centerZ + halfZ, 1, 1,
-        x, centerY - halfY, centerZ + halfZ, 0, 1,
-      ];
-    } else if (axis === 'down') {
-      // Down = Y axis (XZ plane) - horizontal cut
-      const y = axisMin + t * (axisMax - axisMin);
-      const halfX = sizeX / 2;
-      const halfZ = sizeZ / 2;
-      // Quad facing Y axis (vertices in XZ plane)
-      vertices = [
-        // Triangle 1
-        centerX - halfX, y, centerZ - halfZ, 0, 0,
-        centerX + halfX, y, centerZ - halfZ, 1, 0,
-        centerX + halfX, y, centerZ + halfZ, 1, 1,
-        // Triangle 2
-        centerX - halfX, y, centerZ - halfZ, 0, 0,
-        centerX + halfX, y, centerZ + halfZ, 1, 1,
-        centerX - halfX, y, centerZ + halfZ, 0, 1,
-      ];
-    } else {
-      // Front = Z axis (XY plane)
-      const z = axisMin + t * (axisMax - axisMin);
-      const halfX = sizeX / 2;
-      const halfY = sizeY / 2;
-      // Quad facing Z axis (vertices in XY plane)
-      vertices = [
-        // Triangle 1
-        centerX - halfX, centerY - halfY, z, 0, 0,
-        centerX + halfX, centerY - halfY, z, 1, 0,
-        centerX + halfX, centerY + halfY, z, 1, 1,
-        // Triangle 2
-        centerX - halfX, centerY - halfY, z, 0, 0,
-        centerX + halfX, centerY + halfY, z, 1, 1,
-        centerX - halfX, centerY + halfY, z, 0, 1,
-      ];
-    }
-
-    return new Float32Array(vertices);
-  }
-
-  /**
-   * Build a 6-vertex (two-triangle) preview quad for an arbitrary plane
-   * defined by `dot(p, normal) = distance`. The quad is centred on the
-   * foot of the perpendicular from the bounds centre, oriented via
-   * `planeBasis(normal)` (the same basis the cap renderer uses), and
-   * sized from the bounds' diagonal so it stays visible no matter how
-   * the plane is tilted relative to the model.
-   */
-  private calculatePlaneVerticesFromNormal(
-    normal: [number, number, number],
-    distance: number,
-    bounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } },
-  ): Float32Array {
-    const { min, max } = bounds;
-
-    // Defensive renormalisation: callers may pass mesh face normals that
-    // have drifted from unit length by quantisation.
-    let nx = normal[0]; let ny = normal[1]; let nz = normal[2];
-    const nlen = Math.hypot(nx, ny, nz);
-    if (!(nlen >= 1e-6 && nlen < Infinity)) {
-      // Degenerate; emit a zeroed buffer so nothing is drawn rather than
-      // poisoning the GPU with NaN positions.
-      //
-      // The finiteness half is not decoration (#2489): `nlen < 1e-6` was
-      // false for BOTH a NaN length and an infinite one, so a non-finite
-      // component fell straight through to `nx /= nlen` and made every
-      // vertex below NaN. #2442 closed that input for the clip uniform, but
-      // it resolves `RenderOptions.sectionPlane` and the gizmo does not —
-      // `drawSectionOverlays` hands this method the raw, unresolved
-      // `options.sectionPlane.normal`, so this is the second consumer of the
-      // same public field and it needs its own guard.
-      return new Float32Array(30);
-    }
-    nx /= nlen; ny /= nlen; nz /= nlen;
-    const d = distance / nlen;
-
-    // Foot of the perpendicular from the bounds centre to the plane —
-    // anchors the gizmo near the model even when the plane equation
-    // would otherwise place the origin foot far away.
-    const cx = (min.x + max.x) / 2;
-    const cy = (min.y + max.y) / 2;
-    const cz = (min.z + max.z) / 2;
-    const s = d - (cx * nx + cy * ny + cz * nz);
-    const px = cx + nx * s;
-    const py = cy + ny * s;
-    const pz = cz + nz * s;
-
-    // In-plane basis from the shared helper — the cap renderer uses the
-    // same one, so the gizmo grid aligns with the cap hatch axes.
-    const { tangent, bitangent } = planeBasis([nx, ny, nz]);
-    const ux = tangent[0],   uy = tangent[1],   uz = tangent[2];
-    const vx = bitangent[0], vy = bitangent[1], vz = bitangent[2];
-
-    // 10% padding past the bounds diagonal — same visual scale as the
-    // cardinal-axis quad's `(1 + basePadding)` factor.
-    const dx = max.x - min.x;
-    const dy = max.y - min.y;
-    const dz = max.z - min.z;
-    const half = 0.55 * Math.hypot(dx, dy, dz);
-
-    const p0x = px - ux * half - vx * half;
-    const p0y = py - uy * half - vy * half;
-    const p0z = pz - uz * half - vz * half;
-    const p1x = px + ux * half - vx * half;
-    const p1y = py + uy * half - vy * half;
-    const p1z = pz + uz * half - vz * half;
-    const p2x = px + ux * half + vx * half;
-    const p2y = py + uy * half + vy * half;
-    const p2z = pz + uz * half + vz * half;
-    const p3x = px - ux * half + vx * half;
-    const p3y = py - uy * half + vy * half;
-    const p3z = pz - uz * half + vz * half;
-
-    return new Float32Array([
-      // Triangle 1
-      p0x, p0y, p0z, 0, 0,
-      p1x, p1y, p1z, 1, 0,
-      p2x, p2y, p2z, 1, 1,
-      // Triangle 2
-      p0x, p0y, p0z, 0, 0,
-      p2x, p2y, p2z, 1, 1,
-      p3x, p3y, p3z, 0, 1,
-    ]);
   }
 
   /**

@@ -15,6 +15,7 @@ import { Rule, evaluateFilterRules, parseRuleSetFile, runRuleSet } from '@ifc-li
 import type { IfcDataStore } from '@ifc-lite/parser';
 
 declare const store: IfcDataStore;
+declare const ruleSetJson: string; // the text of a saved `<name>.rules.json`
 
 // Evaluate an ad-hoc filter against one model.
 const matches = evaluateFilterRules('model-1', store, [Rule.ifcType(['IfcWall'])], 'AND');

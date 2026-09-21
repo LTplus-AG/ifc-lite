@@ -38,7 +38,9 @@ function document(): LandXmlTinDocument {
         points: [[2003, 1002, 24]], pointSourceIds: [],
       }],
     }],
-    extensions: [], warnings: [], rendering: { meshProvenance: [], surfaceCounts: [] },
+    extensions: [], warnings: [], alignments: [], profiles: [], crossSections: [],
+    crossSectionSurfaces: [], roadways: [], capabilityDiagnostics: [],
+    preservedOnlyExtensions: [], rendering: { meshProvenance: [], surfaceCounts: [] },
   };
 }
 

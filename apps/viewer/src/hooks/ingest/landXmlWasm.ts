@@ -9,6 +9,7 @@ import type { LandXmlSourceBuffer } from './landXmlIngest.js';
 import { initLandXmlWasm } from './landXmlWasmInit.js';
 import { pipeNetworks } from './landXmlPipeWasm.js';
 import { indexLandXmlPlanRecords, indexLandXmlSourceRecords } from './landXmlSemantics.js';
+import { array, finite, properties, record, string } from './landXmlWasmValues.js';
 import type {
   LandXmlAlignment, LandXmlCapabilityDiagnostic, LandXmlCrossSection, LandXmlCrossSectionPoint,
   LandXmlCrossSectionSurface, LandXmlGradeLine, LandXmlPolyline, LandXmlPreservedOnlyExtension,
@@ -18,35 +19,6 @@ import type {
   LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlPlanPointLocation,
   LandXmlParcelProbe, LandXmlResolvedGeometry, LandXmlResolvedMonument,
 } from './landXmlSemantics.js';
-
-function record(value: unknown, context: string): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error(`LandXML WASM returned an invalid ${context}`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function string(value: unknown, context: string): string {
-  if (typeof value !== 'string') throw new Error(`LandXML WASM returned an invalid ${context}`);
-  return value;
-}
-
-function finite(value: unknown, context: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(`LandXML WASM returned an invalid ${context}`);
-  }
-  return value;
-}
-
-function array(value: unknown, context: string): unknown[] {
-  if (!Array.isArray(value)) throw new Error(`LandXML WASM returned an invalid ${context}`);
-  return value;
-}
-
-function properties(value: unknown, context: string): Record<string, string> {
-  const raw = record(value, context);
-  return Object.fromEntries(Object.entries(raw).map(([name, property]) => [name, string(property, `${context} ${name}`)]));
-}
 
 function surfaceKind(value: unknown): LandXmlTinSurface['kind'] {
   const kind = string(value, 'surface kind');

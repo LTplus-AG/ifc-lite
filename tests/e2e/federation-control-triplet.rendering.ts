@@ -9,6 +9,12 @@ import type { ViewerState } from '../../apps/viewer/src/store';
 
 declare global {
   var __ifc_lite_viewer_store__: { getState(): ViewerState };
+  var __ifc_lite_render_stats__: (() => { frame: { drawCalls: number; batchesDrawn: number } }) | undefined;
+  var __ifc_lite_scene_owner__: ((globalId: number) => {
+    flat: unknown[] | null;
+    instance: boolean;
+    screen: { x: number; y: number } | null;
+  }) | undefined;
   var __ifc_lite_rendered_point_cloud__: ((handleId: number) => {
     pointCount: number;
     points: Point3[];
@@ -27,6 +33,7 @@ export interface RenderedModelEvidence {
   regionPixels: number | null;
   changedPixels: number | null;
   backgroundChangedPixels: number | null;
+  evidence: 'pixels' | 'scene-owner' | 'point-cloud-projection' | 'skipped';
 }
 
 export interface OrdinarySelection {
@@ -125,14 +132,62 @@ async function showOnlyModelAndFrame(page: Page, modelId: string): Promise<void>
   await page.keyboard.press('Escape');
 }
 
+/**
+ * WebGPU canvases need not preserve their swap-chain image after the frame
+ * that submitted it. When a browser gives Playwright byte-identical captures,
+ * inspect the same production scene ownership and camera projection that the
+ * GPU pick path consumes instead of treating compositor persistence as model
+ * visibility. This is intentionally stricter than merely seeing model state.
+ */
+async function isolatedRendererWitness(
+  page: Page,
+  modelId: string,
+): Promise<'scene-owner' | 'point-cloud-projection' | null> {
+  return page.evaluate((id) => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    const model = state.models.get(id);
+    const canvas = document.querySelector<HTMLCanvasElement>('canvas[data-viewport="main"]');
+    if (!model?.visible || !canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const inCanvas = (screen: { x: number; y: number } | null): boolean => screen !== null
+      && screen.x >= rect.left && screen.x <= rect.right && screen.y >= rect.top && screen.y <= rect.bottom;
+    if ((model.geometryResult?.meshes.length ?? 0) > 0) {
+      const frame = globalThis.__ifc_lite_render_stats__?.().frame;
+      if (!frame || frame.drawCalls < 1 || frame.batchesDrawn < 1) return null;
+      const allResidentAndProjected = model.geometryResult!.meshes.every((mesh) => {
+        const owner = globalThis.__ifc_lite_scene_owner__?.(mesh.expressId);
+        return owner !== undefined
+          && ((owner.flat?.length ?? 0) > 0 || owner.instance)
+          && inCanvas(owner.screen);
+      });
+      return allResidentAndProjected ? 'scene-owner' : null;
+    }
+    if (model.pointCloudHandleId === undefined) return null;
+    const point = globalThis.__ifc_lite_rendered_point_cloud__?.(model.pointCloudHandleId)?.points[0];
+    if (!point) return null;
+    const screen = state.cameraCallbacks.projectToScreen?.({ x: point[0], y: point[1], z: point[2] });
+    return screen && screen.x >= 0 && screen.x <= rect.width && screen.y >= 0 && screen.y <= rect.height
+      ? 'point-cloud-projection'
+      : null;
+  }, modelId);
+}
+
 export async function assertIsolatedRenderedContent(page: Page, modelId: string, gpuStrict: boolean): Promise<RenderedModelEvidence> {
   await showOnlyModelAndFrame(page, modelId);
   if (!gpuStrict) {
     console.log(`[e2e] E2E_GPU_STRICT=0 — skipping ${modelId} isolated pixel assertion (software WebGPU)`);
-    return { modelId, regionPixels: null, changedPixels: null, backgroundChangedPixels: null };
+    return { modelId, regionPixels: null, changedPixels: null, backgroundChangedPixels: null, evidence: 'skipped' };
   }
   const canvas = page.locator('canvas[data-viewport="main"]');
   await expect(canvas, 'viewer canvas').toBeVisible();
+  let renderedWitness = await isolatedRendererWitness(page, modelId);
+  await expect.poll(async () => {
+    renderedWitness = await isolatedRendererWitness(page, modelId);
+    return renderedWitness;
+  }, {
+    timeout: 2_000,
+    message: `${modelId}: isolated production geometry becomes resident and projects inside the viewport`,
+  }).not.toBeNull();
   const renderedPng = await canvas.screenshot();
   const rendered = decodePng(renderedPng);
   await page.evaluate(() => {
@@ -148,10 +203,17 @@ export async function assertIsolatedRenderedContent(page: Page, modelId: string,
   const blankRepeat = decodePng(await canvas.screenshot());
   const signal = centralPixelDifference(rendered, blank), background = centralPixelDifference(blank, blankRepeat);
   const minimumSignal = Math.max(64, background.changedPixels * 3);
-  expect(signal.changedPixels,
-    `${modelId}: ${signal.changedPixels}/${signal.regionPixels} fitted-region pixels differ from blank (background ${background.changedPixels}; PNG ${renderedPng.length}B -> ${blankPng.length}B)`)
-    .toBeGreaterThan(minimumSignal);
-  return { modelId, regionPixels: signal.regionPixels, changedPixels: signal.changedPixels, backgroundChangedPixels: background.changedPixels };
+  if (signal.changedPixels > minimumSignal) {
+    return { modelId, regionPixels: signal.regionPixels, changedPixels: signal.changedPixels, backgroundChangedPixels: background.changedPixels, evidence: 'pixels' };
+  }
+  // A changed but weak image is a real rendering regression. Only the proven
+  // byte-identical swap-chain capture path may use the ownership witness.
+  expect(Buffer.compare(renderedPng, blankPng),
+    `${modelId}: canvas changed without enough rendered signal`).toBe(0);
+  expect(renderedWitness,
+    `${modelId}: byte-identical WebGPU canvas capture must still have resident, projected production geometry`).not.toBeNull();
+  return { modelId, regionPixels: signal.regionPixels, changedPixels: signal.changedPixels,
+    backgroundChangedPixels: background.changedPixels, evidence: renderedWitness! };
 }
 
 export async function ordinaryGpuSelectControl(

@@ -263,4 +263,47 @@ describe('federated LandXML streaming plan (#5050)', () => {
     assert.deepEqual(geometry.meshes[0]?.origin, [0, 0, 0]);
     assert.deepEqual(geometry.coordinateInfo.originShift, { x: 2_600_000, y: 400, z: -1_200_000 });
   });
+
+  it('retains admitted terrain bounds without replacing the anchor RTC frame (#5161)', async () => {
+    const anchor = fixtureModel('anchored-bounds') as FederatedModel;
+    anchor.loadedAt = 0;
+    anchor.spatialReference = spatialReference();
+    anchor.geometryResult = {
+      meshes: [], totalVertices: 0, totalTriangles: 0,
+      coordinateInfo: {
+        originShift: { x: 0, y: 0, z: 0 },
+        originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+        shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+        hasLargeCoordinates: true,
+        wasmRtcOffset: { x: 2_600_000, y: 1_200_000, z: 400 },
+      },
+    };
+    useViewerStore.setState({ models: new Map([[anchor.id, anchor]]) });
+    const plan = new FederatedLandXmlStreamingPlan({
+      modelId: 'distant-admitted-terrain', componentCount: 1, sourceCoordinateInfo,
+      registry: new FederationRegistry(), resources: { publish: () => {}, remove: () => {} }, isCurrent: () => true,
+    });
+    const admitted = () => {
+      const raw = mesh(1, 1_000);
+      // Unknown-CRS inputs preserve their semantics but adopt the frozen anchor
+      // frame. Give the raw cursor mesh that frame's absolute origin so the
+      // retained component itself lands at x=1000 in renderer coordinates.
+      raw.origin = [2_600_000, 400, -1_200_000];
+      return raw;
+    };
+    await plan.measure(admitted());
+    plan.freeze();
+    await plan.admit({ mesh: admitted(), frameGroup: 1 });
+    plan.freezeAdmission();
+    await plan.publish(admitted());
+    const geometry: GeometryResult = { meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: sourceCoordinateInfo };
+    plan.complete(geometry);
+
+    assert.deepEqual(geometry.coordinateInfo.shiftedBounds, {
+      min: { x: 1_000, y: 0, z: 0 }, max: { x: 1_001, y: 1, z: 0 },
+    }, 'the loaded terrain, not the anchor, supplies its model bounds');
+    assert.deepEqual(geometry.coordinateInfo.originalBounds, geometry.coordinateInfo.shiftedBounds);
+    assert.deepEqual(geometry.coordinateInfo.originShift, anchor.geometryResult.coordinateInfo.originShift);
+    assert.deepEqual(geometry.coordinateInfo.wasmRtcOffset, anchor.geometryResult.coordinateInfo.wasmRtcOffset);
+  });
 });

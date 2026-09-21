@@ -13,6 +13,7 @@ import { findReferenceSpatialModel, type FederationAlignmentStatus, type ModelSp
 import { alignLandXmlComponent } from './federationComponentAlignment.js';
 import { boundsFitLandXmlPrecisionBatch, boundsFitRenderFrame, deriveLandXmlRenderFrameFromMeasurement, meshRenderFrameBounds, type LandXmlRenderFramePlan } from './landXmlRenderFrame.js';
 import { LandXmlProvisionalTransaction, type LandXmlFederationReservation, type LandXmlProvisionalResources } from './landXmlProvisionalTransaction.js';
+import { mergeBounds, resetBounds, sourceBoundsFromShifted } from './federatedLandXmlStreamingBounds.js';
 
 export interface FederatedLandXmlStreamingFinalization {
   readonly coordinateInfo: CoordinateInfo;
@@ -34,24 +35,6 @@ interface FederatedLandXmlStreamingOptions {
   registry: LandXmlFederationReservation;
   resources: LandXmlProvisionalResources;
   isCurrent(): boolean;
-}
-
-function mergeBounds(target: Bounds3D, source: Bounds3D): void {
-  target.min.x = Math.min(target.min.x, source.min.x);
-  target.min.y = Math.min(target.min.y, source.min.y);
-  target.min.z = Math.min(target.min.z, source.min.z);
-  target.max.x = Math.max(target.max.x, source.max.x);
-  target.max.y = Math.max(target.max.y, source.max.y);
-  target.max.z = Math.max(target.max.z, source.max.z);
-}
-
-function resetBounds(bounds: Bounds3D): void {
-  bounds.min.x = Infinity;
-  bounds.min.y = Infinity;
-  bounds.min.z = Infinity;
-  bounds.max.x = -Infinity;
-  bounds.max.y = -Infinity;
-  bounds.max.z = -Infinity;
 }
 
 /**
@@ -246,7 +229,18 @@ export class FederatedLandXmlStreamingPlan implements FederatedLandXmlStreamingF
     if (this.options.componentCount > 0 && this.admissionAccepted === 0) {
       throw new Error('LandXML federation preflight rejected every render component');
     }
-    if (!this.fallbackFrame) {
+    if (this.fallbackFrame) {
+      // The anchor supplies only the durable render-frame metadata. Its own
+      // bounds describe a different model, so keeping them would make this
+      // terrain frame to the anchor instead of its admitted geometry. Meshes
+      // are already in the shared renderer frame here; retain those exact
+      // bounds while preserving the anchor's origin/RTC provenance.
+      this.coordinateInfo = {
+        ...structuredClone(this.fallbackFrame),
+        originalBounds: sourceBoundsFromShifted(this.admittedBounds, this.fallbackFrame.originShift),
+        shiftedBounds: structuredClone(this.admittedBounds),
+      };
+    } else {
       this.coordinateInfo = createCoordinateInfo(
         this.admittedBounds,
         this.frame!.originShift,

@@ -27,6 +27,7 @@ export const clashGroupsEn = {
     one: '{count} selected clash will be added to {name}.',
     other: '{count} selected clashes will be added to {name}.',
   },
+  'clashGroups.alreadyGroupedError': 'Remove already-grouped clashes from their current group before adding them elsewhere.',
   'clashGroups.name': 'Group name',
   'clashGroups.cancel': 'Cancel',
   'clashGroups.create': 'Create group',

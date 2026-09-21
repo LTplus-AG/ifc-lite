@@ -24,6 +24,7 @@ import {
 import { CLASH_COLOR_A, CLASH_COLOR_B, clashColorToBcfArgb } from '@/lib/clash/clash-colors';
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import { sortClashes, type Clash, type ClashSeverity, type ClashSortBy } from '@ifc-lite/clash';
+import { useTranslation } from '@/i18n';
 
 const SEVERITY_ORDER: ClashSeverity[] = ['critical', 'major', 'minor', 'info'];
 const SEVERITY_COLOR: Record<ClashSeverity, string> = {
@@ -86,6 +87,7 @@ export function useManualClashGroups({
   const addTopic = useViewerStore((state) => state.addTopic);
   const addViewpoint = useViewerStore((state) => state.addViewpoint);
   const setBcfPanelVisible = useViewerStore((state) => state.setBcfPanelVisible);
+  const { t } = useTranslation();
 
   useEffect(() => setCheckedIds(new Set()), [clashes]);
 
@@ -153,7 +155,7 @@ export function useManualClashGroups({
     if (selected.length === 0) return;
     const claimed = new Set(resolved.flatMap((group) => group.members.map((member) => member.id)));
     if (selected.some((clash) => claimed.has(clash.id))) {
-      toast.error('Remove already-grouped clashes from their current group before adding them elsewhere.');
+      toast.error(t('clashGroups.alreadyGroupedError'));
       return;
     }
     setDialog({ mode: 'addToGroup', groupId });

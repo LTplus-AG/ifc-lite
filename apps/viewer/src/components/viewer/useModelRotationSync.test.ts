@@ -360,7 +360,16 @@ describe('model rotation reaches the geometry every render path reads (#4869)', 
             confidence: 'unknown',
           },
         } satisfies ModelSpatialPlacement,
-        resolveGeoref: () => null, updateModel: state.updateModel,
+        // A real re-alignment re-extracts the anchor after its baseline has
+        // been restored. Keep this focused rotation test faithful to that
+        // contract while leaving the non-anchor intentionally unreferenced.
+        resolveGeoref: (modelId) => modelId === 'ifc' ? {
+          spatialReference: {
+            source: { axes: ['east', 'up', 'south'], horizontalUnitToMetres: 1, verticalUnitToMetres: 1 },
+            confidence: 'unknown',
+          },
+        } satisfies ModelSpatialPlacement : null,
+        updateModel: state.updateModel,
       }));
 
       const after = useViewerStore.getState().models.get('second') as FederatedModel;

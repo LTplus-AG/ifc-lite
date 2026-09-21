@@ -94,11 +94,14 @@ describe('computeIfcOriginViewerPosition (#5048)', () => {
 
   it('reprojects a canonical cross-CRS origin through the neutral map conversions', async () => {
     const proj4 = (await import('proj4')).default;
-    const rdDef = '+proj=sterea +lat_0=52.1561605555556 +lon_0=5.38763888888889 +k=0.9999079 +x_0=155000 +y_0=463000 +ellps=bessel +towgs84=565.4171,50.3319,465.5524,1.9342,-1.6677,9.1019,4.0725 +units=m +no_defs';
-    const utmDef = '+proj=utm +zone=31 +datum=WGS84 +units=m +no_defs';
-    const [utmE, utmN] = proj4(rdDef, utmDef, [155000, 463000]);
-    const anchor = frame(conversion(155000, 463000), crs('EPSG:28992'));
-    const other = frame(conversion(utmE, utmN), crs('EPSG:25831'));
+    // Keep this invariant offline: national-grid transforms can require a
+    // browser-fetched precision grid, which is intentionally refused when it
+    // is unavailable. These UTM definitions are bundled and deterministic.
+    const sourceDef = '+proj=utm +zone=31 +datum=WGS84 +units=m +no_defs';
+    const targetDef = '+proj=utm +zone=31 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs';
+    const [targetE, targetN] = proj4(sourceDef, targetDef, [500000, 5700000]);
+    const anchor = frame(conversion(targetE, targetN), crs('EPSG:25831'));
+    const other = frame(conversion(500000, 5700000), crs('EPSG:32631'));
     const out = await computeIfcOriginViewerPosition(other, anchor);
     assert.ok(out);
     assert.strictEqual(out.source, 'anchor');

@@ -19,6 +19,7 @@ use quick_xml::{
     Reader,
 };
 mod capture;
+mod document;
 mod finalize;
 mod limits;
 mod path;
@@ -29,26 +30,11 @@ mod version;
 
 use state::{retained_properties, Frame, Parser, SurfaceBuilder};
 pub use version::*;
+pub(crate) use document::parse_landxml_document;
 
 /// Parse exact LandXML 1.2 TIN semantics with default resource limits.
 pub fn parse_landxml_tin(input: &[u8]) -> Result<LandXmlTinDocument> {
     parse_landxml_tin_with_cancel(input, &LandXmlLimits::default(), None)
-}
-
-/// Parse the canonical LandXML source document used by all runtime adapters.
-///
-/// TIN and pipe semantics deliberately keep their specialised bounded parsers,
-/// but consumers receive one document and therefore cannot accidentally load
-/// pipe records through a second ingestion path.
-pub(crate) fn parse_landxml_document(input: &[u8]) -> Result<LandXmlTinDocument> {
-    let mut document = parse_landxml_tin(input)?;
-    match crate::parse_landxml_pipe_networks(input) {
-        Ok(networks) => document.pipe_networks = Some(networks),
-        Err(error) if error.code == Code::InvalidSemantic
-            && error.message == "document contains no PipeNetwork records" => {}
-        Err(error) => return Err(error),
-    }
-    Ok(document)
 }
 
 /// Parse exact LandXML 1.2 TIN semantics with host limits and cancellation.

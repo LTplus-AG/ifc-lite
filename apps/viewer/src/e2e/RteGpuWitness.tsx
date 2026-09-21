@@ -94,7 +94,9 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     const camera = renderer.getCamera();
     camera.setPosition(COMMON_ORIGIN[0], COMMON_ORIGIN[1], COMMON_ORIGIN[2] + 60);
     camera.setTarget(COMMON_ORIGIN[0], COMMON_ORIGIN[1], COMMON_ORIGIN[2]);
-    const sunEnvironment = { sunDirection: [0.4, 1, 0.35] as [number, number, number] };
+    // The raised parallel caster has a stable, visible footprint under this
+    // vertical sun, avoiding a grazing-vector fixture that casts off receiver.
+    const sunEnvironment = { sunDirection: [0, 0, 1] as [number, number, number] };
     renderer.render({ clearColor: [0.02, 0.02, 0.02, 1], environment: sunEnvironment });
     await device.queue.onSubmittedWorkDone();
     const lineScreenshot = await renderer.captureScreenshot();
@@ -118,10 +120,20 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     if (!source?.origin) throw new Error('Flat RTE source was not retained by the production scene.');
     const sourceResidualMetres = Math.abs(source.origin[0] - COMMON_ORIGIN[0]);
     const pickResidualMetres = pick?.worldXYZ ? Math.abs(pick.worldXYZ.z - COMMON_ORIGIN[2]) : null;
-    const snapResidualMetres = cpuRay?.snap
+    // A central face hit is deliberately not a snap point: its closest vertex
+    // is metres away. Project a known source-space vertex and require the
+    // snap detector to reconstruct that exact f64 coordinate instead.
+    const snapVertex = { x: COMMON_ORIGIN[0], y: COMMON_ORIGIN[1] + 10, z: COMMON_ORIGIN[2] };
+    const snapScreen = camera.projectToScreen(snapVertex, canvas.width, canvas.height);
+    const snappedVertex = snapScreen
+      ? renderer.raycastScene(snapScreen.x, snapScreen.y, {
+        snapOptions: { snapToVertices: true, snapToEdges: false, snapToFaces: false, screenSnapRadius: 24 },
+      })
+      : null;
+    const snapResidualMetres = snappedVertex?.snap
       ? distance(
-        [cpuRay.snap.position.x, cpuRay.snap.position.y, cpuRay.snap.position.z],
-        [cpuRay.intersection.point.x, cpuRay.intersection.point.y, cpuRay.intersection.point.z],
+        [snappedVertex.snap.position.x, snappedVertex.snap.position.y, snappedVertex.snap.position.z],
+        [snapVertex.x, snapVertex.y, snapVertex.z],
       )
       : null;
     // A second production ray/pick pair is only 1.5625 cm away. Measurement
@@ -165,6 +177,9 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     const instancedScreenshot = await renderer.captureScreenshot();
     const instancedPixel = await screenshotPixel(instancedScreenshot, PICK_CSS_X, PICK_CSS_Y);
     const instancedPick = await renderer.pick(PICK_CSS_X, PICK_CSS_Y);
+    // The anchored-line family was sampled above. Clear it before the point
+    // family so the yellow line cannot occupy the point's centre pixel.
+    renderer.setLineOverlay('alignment', null);
     camera.setPosition(COMMON_ORIGIN[0] + 6, COMMON_ORIGIN[1], COMMON_ORIGIN[2] + 61);
     camera.setTarget(COMMON_ORIGIN[0] + 6, COMMON_ORIGIN[1], COMMON_ORIGIN[2] + 1);
     renderer.render({ clearColor: [0.02, 0.02, 0.02, 1], environment: sunEnvironment });
@@ -265,8 +280,11 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
         && magnetic.intersection?.geometryItemId === 70_101,
       families: {
         flat: pick?.expressId === 101 && isForeground(linePixel),
+        // The sampled centre is the bilinear mix of the fixture's green/cyan
+        // texels, so it must retain its green-dominant textured swatch rather
+        // than merely proving a non-transparent screenshot exists.
         textured: texturedPick?.expressId === 102 && texturedPick.modelIndex === 12 && texturedPixel !== null
-          && texturedPixel[2] > texturedPixel[0] + 20 && texturedPixel[2] > texturedPixel[1] + 20,
+          && texturedPixel[1] > texturedPixel[0] + 8 && texturedPixel[1] > texturedPixel[2] + 20,
         quantized: quantized && pick?.expressId === 101 && isForeground(linePixel),
         instanced: instancedPick?.expressId === 103 && instancedPixel !== null
           && instancedPixel[2] > instancedPixel[0] + 20 && instancedPixel[1] > instancedPixel[0] + 20,
@@ -282,7 +300,7 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
         farOrigin: sourceResidualMetres <= GEOMETRIC_TOLERANCE_METRES,
         largeExtent: largeExtentPick?.expressId === 104 && isForeground(largeExtentPixel),
         cpuRay: cpuRayEvidence?.expressId === 101,
-        snap: (magnetic.snapTarget !== null || cpuRay?.snap !== undefined) && snapResidualMetres !== null
+        snap: snappedVertex?.snap !== undefined && snapResidualMetres !== null
           && snapResidualMetres <= GEOMETRIC_TOLERANCE_METRES,
         measurement: measurementResidualMetres !== null && measurementResidualMetres <= MEASUREMENT_TOLERANCE_METRES
           && measurementCpuMetres !== null && measurementCpuMetres >= 0.01

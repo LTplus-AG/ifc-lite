@@ -14,6 +14,7 @@ import { useViewerStore } from '@/store';
 import { emptyPlacementState } from '@/lib/model-placement/state';
 import { __setOverlayWorkerFactoryForTest } from '@/lib/overlay-parse';
 import { useAlignmentLines3D } from './useAlignmentLines3D.js';
+import { rendererLineVertexData } from '@/lib/renderer/line-overlay-rte.js';
 
 let root: Root | null = null;
 let container: HTMLElement | null = null;
@@ -70,7 +71,7 @@ it('keeps a late frame-A alignment reply from replacing the observable frame-B r
 
   function Probe() {
     const lines = useAlignmentLines3D();
-    return <output>{JSON.stringify(Array.from(lines instanceof Float32Array ? lines : lines.localVertices))}</output>;
+    return <output>{JSON.stringify(Array.from(rendererLineVertexData(lines)))}</output>;
   }
 
   try {

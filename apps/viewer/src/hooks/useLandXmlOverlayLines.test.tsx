@@ -13,8 +13,17 @@ import type { LandXmlAlignment, LandXmlPolyline, LandXmlTinDocument } from './in
 import { planPolyline } from './ingest/landXmlPlanGeometry.js';
 import { uploadLandXmlOverlayGuarded, useLandXmlOverlayLines } from './useLandXmlOverlayLines.js';
 import { pickLandXmlOverlayLine } from '@/components/viewer/landXmlOverlayPick.js';
+import type { AnchoredRendererLineVertices, RendererLineVertices } from '@/lib/renderer/line-overlay-rte.js';
 
 const initialState = useViewerStore.getState();
+
+function worldVertices(vertices: RendererLineVertices): number[] {
+  if (vertices instanceof Float32Array) return [...vertices];
+  const partitions = 'localVertices' in vertices ? [vertices] : vertices;
+  return partitions.flatMap((partition) => Array.from(partition.localVertices, (coordinate, index) => (
+    coordinate + partition.origin[index % 3]!
+  )));
+}
 
 afterEach(() => {
   cleanup();
@@ -92,10 +101,10 @@ function planOverlay(model: FederatedModel, cogoNorthing = 2): void {
 
 describe('LandXML source overlay rendering (#5042)', () => {
   it('clears the terrain channel when a GPU upload throws', () => {
-    const calls: Array<Float32Array | null> = [];
+    const calls: Array<RendererLineVertices | null> = [];
     let first = true;
     const renderer = {
-      setLineOverlay(_channel: 'terrain', vertices: Float32Array | null) {
+      setLineOverlay(_channel: 'terrain', vertices: RendererLineVertices | null) {
         calls.push(vertices);
         if (first) {
           first = false;
@@ -112,19 +121,19 @@ describe('LandXML source overlay rendering (#5042)', () => {
     const one = landXmlModel('one', line('same-source'), { x: 1, y: 2, z: 3 });
     const two = landXmlModel('two', line('same-source'), { x: 100, y: 200, z: 300 });
     useViewerStore.setState({ ...fixtureModels(one, two), selectedLandXmlSource: null });
-    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    let vertices: RendererLineVertices = new Float32Array();
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
 
     assert.deepEqual(
-      [...vertices].map((value) => Number(value.toFixed(4))),
+      worldVertices(vertices).map((value) => Number(value.toFixed(4))),
       [19, 28, -13, 49, 58, -43, -80, -170, -310, -50, -140, -340],
       'all unselected records render in their own published frame',
     );
 
     act(() => useViewerStore.getState().setSelectedLandXmlSource({ modelId: 'two', sourceId: 'same-source' }));
     assert.deepEqual(
-      [...vertices],
+      worldVertices(vertices),
       [-80, -170, -310, -50, -140, -340],
       'same local source IDs cannot select the other federated model',
     );
@@ -135,10 +144,10 @@ describe('LandXML source overlay rendering (#5042)', () => {
     source.renderedPoints = [[101, 202, 303], [104, 205, 306]];
     const model = landXmlModel('cross-crs', source, { x: 9_999, y: 9_999, z: 9_999 });
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
-    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    let vertices: RendererLineVertices = new Float32Array();
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
-    assert.deepEqual([...vertices], [101, 202, 303, 104, 205, 306]);
+    assert.deepEqual(worldVertices(vertices), [101, 202, 303, 104, 205, 306]);
     assert.deepEqual(source.points, [[10, 20, 30], [40, 50, 60]], 'inspection retains authored coordinates');
   });
 
@@ -153,14 +162,14 @@ describe('LandXML source overlay rendering (#5042)', () => {
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: {
       modelId: model.id, sourceId: 'cogo',
     } });
-    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    let vertices: RendererLineVertices = new Float32Array();
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
-    assert.deepEqual([...vertices].map((value) => Object.is(value, -0) ? 0 : value),
+    assert.deepEqual(worldVertices(vertices).map((value) => Object.is(value, -0) ? 0 : value),
       [9.75, 0, 0, 10.25, 0, 0, 10, 0, -0.25, 10, 0, 0.25]);
 
     act(() => useViewerStore.getState().setSelectedLandXmlSource({ modelId: model.id, sourceId: 'curve' }));
-    assert.deepEqual([...vertices].map((value) => Object.is(value, -0) ? 0 : value), [20, 0, 0, 21, 0, 0]);
+    assert.deepEqual(worldVertices(vertices).map((value) => Object.is(value, -0) ? 0 : value), [20, 0, 0, 21, 0, 0]);
     assert.equal(plan.cogoPoints[0].point!.easting, 2, 'source COGO coordinates remain authored');
   });
 
@@ -170,10 +179,10 @@ describe('LandXML source overlay rendering (#5042)', () => {
     source.renderedPointState = 'suppressed';
     const model = landXmlModel('suppressed-cross-crs', source);
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
-    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    let vertices: RendererLineVertices = new Float32Array();
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
-    assert.equal(vertices.length, 0, 'an unsafe line has no source-frame fallback after its surface aligned');
+    assert.equal(worldVertices(vertices).length, 0, 'an unsafe line has no source-frame fallback after its surface aligned');
   });
 
   it('accepts millimetre-rounded authored curve lengths but rejects topology mismatches (#5048)', () => {
@@ -195,10 +204,10 @@ describe('LandXML source overlay rendering (#5042)', () => {
   it('does not lift a two-dimensional source list to an invented elevation', () => {
     const model = landXmlModel('two-dimensional', line('flat', 2));
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: { modelId: model.id, sourceId: 'flat' } });
-    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    let vertices: RendererLineVertices = new Float32Array();
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
-    assert.equal(vertices.length, 0, 'a PntList2D stays inspectable but has no fabricated 3D overlay');
+    assert.equal(worldVertices(vertices).length, 0, 'a PntList2D stays inspectable but has no fabricated 3D overlay');
   });
 
   it('renders only exact authored alignment line spans with model-qualified selection (#5044)', () => {
@@ -214,12 +223,12 @@ describe('LandXML source overlay rendering (#5042)', () => {
     };
     model.landXmlDocument!.alignments = [alignment];
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: { modelId: model.id, sourceId: alignment.sourceId } });
-    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    let vertices: RendererLineVertices = new Float32Array();
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
-    assert.deepEqual([...vertices], [20, 0, -10, 50, 0, -40, 50, 0, -40, 57, 0, -37, 57, 0, -37, 60, 0, -30], 'curve uses canonical Rust-evaluated display samples');
+    assert.deepEqual(worldVertices(vertices), [20, 0, -10, 50, 0, -40, 50, 0, -40, 57, 0, -37, 57, 0, -37, 60, 0, -30], 'curve uses canonical Rust-evaluated display samples');
     act(() => useViewerStore.getState().setSelectedLandXmlSource({ modelId: model.id, sourceId: 'alignment:curve' }));
-    assert.deepEqual([...vertices], [50, 0, -40, 57, 0, -37, 57, 0, -37, 60, 0, -30], 'every sampled piece keeps the selected segment source ID');
+    assert.deepEqual(worldVertices(vertices), [50, 0, -40, 57, 0, -37, 57, 0, -37, 60, 0, -30], 'every sampled piece keeps the selected segment source ID');
   });
 
   it('renders a schema-valid two-dimensional Contour at its authored elevation (#5042)', () => {
@@ -230,12 +239,12 @@ describe('LandXML source overlay rendering (#5042)', () => {
       linearUnit: 'foot', elevationUnit: 'foot', linearScaleToMeters: 0.3048, elevationScaleToMeters: 0.3048,
     };
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: { modelId: model.id, sourceId: contour.sourceId } });
-    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    let vertices: RendererLineVertices = new Float32Array();
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
 
     const expected = [5.096, 28.48, -6.048, 14.24, 28.48, -15.192];
-    for (const [index, coordinate] of vertices.entries()) {
+    for (const [index, coordinate] of worldVertices(vertices).entries()) {
       assert.ok(Math.abs(coordinate - expected[index]) < 0.000_01,
         'elev is retained in source units and converted through elevationScaleToMeters');
     }
@@ -246,13 +255,13 @@ describe('LandXML source overlay rendering (#5042)', () => {
   it('removes overlays with federated model visibility', () => {
     const model = landXmlModel('hidden-terrain', line('boundary'));
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
-    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    let vertices: RendererLineVertices = new Float32Array();
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
-    assert.ok(vertices.length > 0);
+    assert.ok(worldVertices(vertices).length > 0);
 
     act(() => useViewerStore.getState().setModelVisibility(model.id, false));
-    assert.equal(vertices.length, 0, 'hidden models cannot retain source overlays');
+    assert.equal(worldVertices(vertices).length, 0, 'hidden models cannot retain source overlays');
   });
 
   it('keeps a mounted hidden or selection-filtered span unpickable (#5044)', () => {
@@ -276,10 +285,10 @@ describe('LandXML source overlay rendering (#5042)', () => {
     distant.points = [[0, 0, 0], [0, 2_000_000, 0]];
     const model = landXmlModel('distant-overlay', distant);
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
-    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    let vertices: RendererLineVertices = new Float32Array();
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
-    assert.equal(vertices.length, 0, 'unsafe segments are refused rather than quantized into f32');
+    assert.equal(worldVertices(vertices).length, 0, 'unsafe segments are refused before line RTE partitioning');
   });
 
   it('does not throw while rejecting finite overlays outside the safe pre-rotation frame', () => {
@@ -290,41 +299,63 @@ describe('LandXML source overlay rendering (#5042)', () => {
       linearUnit: 'kilometer', elevationUnit: 'kilometer', linearScaleToMeters: 1000, elevationScaleToMeters: 1000,
     };
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
-    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    let vertices: RendererLineVertices = new Float32Array();
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     assert.doesNotThrow(() => render(<Probe />));
-    assert.equal(vertices.length, 0, 'scaled coordinates that overflow are rejected before placement');
+    assert.equal(worldVertices(vertices).length, 0, 'scaled coordinates that overflow are rejected before placement');
   });
 
   it('tessellates supported plan curves and COGO/monument markers in the shared buffer (#5046)', () => {
     const model = landXmlModel('plan-overlay', line('terrain'));
     planOverlay(model);
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: { modelId: model.id, sourceId: 'curve' } });
-    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    let vertices: RendererLineVertices = new Float32Array();
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
-    assert.ok(vertices.length > 6, 'the curve emits bounded tessellation rather than a skipped chord');
-    assert.ok([...vertices].every(Number.isFinite), 'the shared f32 upload contains only finite values');
+    assert.ok(worldVertices(vertices).length > 6, 'the curve emits bounded tessellation rather than a skipped chord');
+    assert.ok(worldVertices(vertices).every(Number.isFinite), 'the shared f32 upload contains only finite values');
 
     act(() => useViewerStore.getState().setSelectedLandXmlSource({ modelId: model.id, sourceId: 'monument' }));
-    assert.equal(vertices.length, 12, 'a resolved monument has two visible marker segments under its source ID');
+    assert.equal(worldVertices(vertices).length, 12, 'a resolved monument has two visible marker segments under its source ID');
   });
 
   it('refuses finite 1e40 plan values before they become f32 Infinity (#5046)', () => {
     const model = landXmlModel('huge-plan-overlay', line('terrain'));
     planOverlay(model, 1e40);
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: { modelId: model.id, sourceId: 'cogo' } });
-    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    let vertices: RendererLineVertices = new Float32Array();
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
-    assert.equal(vertices.length, 0);
-    assert.ok([...vertices].every(Number.isFinite));
+    assert.equal(worldVertices(vertices).length, 0);
+    assert.ok(worldVertices(vertices).every(Number.isFinite));
+  });
+
+  it('keeps terrain and COGO source overlays anchored until the shared RTE boundary (#5049)', () => {
+    const terrain = line('survey-boundary');
+    terrain.points = [[0, 50_000, 0], [1, 50_001, 0]];
+    const model = landXmlModel('anchored-terrain', terrain);
+    planOverlay(model);
+    const cogo = model.landXmlDocument!.plan!.cogoPoints[0].point!;
+    cogo.easting = 50_000;
+    cogo.northing = 0;
+    useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
+    let vertices: RendererLineVertices = new Float32Array();
+    function Probe() { vertices = useLandXmlOverlayLines(); return null; }
+    render(<Probe />);
+
+    if (vertices instanceof Float32Array) {
+      assert.fail('large but renderable source coordinates must not narrow into world f32');
+    }
+    const partitions: readonly AnchoredRendererLineVertices[] = 'localVertices' in vertices ? [vertices] : vertices;
+    assert.ok(partitions.some((partition) => partition.origin[0] >= 50_000));
+    assert.ok(partitions.every((partition) => partition.localVertices.every(Number.isFinite)));
+    assert.ok(worldVertices(vertices).some((coordinate) => coordinate === 50_000));
   });
 
   it('keeps overlays aligned with committed and preview model translations', () => {
     const model = landXmlModel('moved-terrain', line('boundary'));
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
-    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    let vertices: RendererLineVertices = new Float32Array();
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
 
@@ -333,16 +364,16 @@ describe('LandXML source overlay rendering (#5042)', () => {
       state.openReposition([model.id]);
       state.previewModelTranslation([5, 6, 7]);
     });
-    assert.deepEqual([...vertices], [25, 37, -16, 55, 67, -46]);
+    assert.deepEqual(worldVertices(vertices), [25, 37, -16, 55, 67, -46]);
 
     act(() => useViewerStore.getState().applyModelTranslation());
-    assert.deepEqual([...vertices], [25, 37, -16, 55, 67, -46]);
+    assert.deepEqual(worldVertices(vertices), [25, 37, -16, 55, 67, -46]);
   });
 
   it('keeps overlays aligned with model rotation', () => {
     const model = landXmlModel('rotated-terrain', line('boundary'));
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
-    let vertices: Float32Array<ArrayBufferLike> = new Float32Array();
+    let vertices: RendererLineVertices = new Float32Array();
     function Probe() { vertices = useLandXmlOverlayLines(); return null; }
     render(<Probe />);
 
@@ -353,7 +384,7 @@ describe('LandXML source overlay rendering (#5042)', () => {
       }]]),
       revision: state.modelPlacement.revision + 1,
     } })));
-    assert.deepEqual([...vertices], [-10, 30, -20, -40, 60, -50]);
+    assert.deepEqual(worldVertices(vertices).map((value) => Number(value.toFixed(8))), [-10, 30, -20, -40, 60, -50]);
   });
 
   it('clears source selection on model switch and unload', () => {

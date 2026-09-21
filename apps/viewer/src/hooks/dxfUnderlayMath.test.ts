@@ -390,7 +390,9 @@ describe('dxfUnderlayToWorldLines3D (issue #2043)', () => {
     assert.equal(result.length, 2);
     assert.equal(result[0].origin[0], 5_000_000.125);
     assert.equal(result[1].origin[0], 5_004_500.125);
-    assert.ok(result.every((partition) => partition.localVertices.every((coordinate) => Math.abs(coordinate) <= 8_192)));
+    assert.ok(result.every((partition: { localVertices: Float32Array }) => (
+      partition.localVertices.every((coordinate: number) => Math.abs(coordinate) <= 8_192)
+    )));
   });
   const entry = (paths: DxfUnderlayState['underlay']['layers'][number]['paths']): DxfUnderlayState => ({
     id: 'u1',

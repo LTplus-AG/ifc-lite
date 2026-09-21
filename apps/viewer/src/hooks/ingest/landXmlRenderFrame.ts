@@ -69,13 +69,12 @@ function componentFitsPrecisionBatch(bounds: Bounds3D): boolean {
 /**
  * Place parsed mesh components in their model-local frame.
  *
- * Initial ingestion retains disconnected survey islands: their mesh origins
- * stay f64 until the renderer establishes a camera-relative draw frame. The
- * bounded shared-frame guard belongs to federation reframe
- * (`reframeLandXmlGeometry`), where a second model would otherwise silently
- * move an already-published frame. Keeping those responsibilities separate
- * preserves compact disconnected components without admitting a remote
- * federated model.
+ * Every accepted component must fit the same shared-frame envelope. The mesh
+ * and instanced RTE paths both pack drawable-minus-camera deltas with this
+ * limit, so admitting a remote disconnected island here would only defer an
+ * unavoidable render failure until draw submission. This applies equally to
+ * primary and federated loads; federation must never be the first place a
+ * model discovers that it was not renderable.
  */
 export function placeComponentsInRenderFrame<T extends RenderFrameComponent>(
   components: T[],
@@ -107,6 +106,7 @@ export function placeComponentsInRenderFrame<T extends RenderFrameComponent>(
     .filter((group): group is string => group !== undefined));
   for (const component of components) {
     if (!componentFitsPrecisionBatch(component.bounds)
+      || !boundsFitRenderFrame(component.bounds, originShift)
       || (component.frameGroup !== undefined && rejectedGroups.has(component.frameGroup))) {
       dropped.push(component);
       continue;

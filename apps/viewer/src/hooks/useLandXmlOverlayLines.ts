@@ -14,17 +14,22 @@ import { modelPointToWorkspacePoint } from '@/lib/model-placement/rotation';
 import { fromRenderTranslation, toRenderTranslation } from '@/lib/model-placement/translation';
 import { planPolyline } from './ingest/landXmlPlanGeometry.js';
 import { boundsFitRenderFrame } from './ingest/landXmlRenderFrame.js';
+import {
+  anchorWorldLineVertices,
+  rendererLineVertexData,
+  type RendererLineVertices,
+} from '@/lib/renderer/line-overlay-rte';
 
 export interface LandXmlOverlayUploadTarget {
-  setLineOverlay(channel: 'terrain', vertices: Float32Array | null): void;
+  setLineOverlay(channel: 'terrain', vertices: RendererLineVertices | null): void;
 }
 
 /** Contain a terrain-line GPU upload and discard a partial buffer on failure. */
 export function uploadLandXmlOverlayGuarded(
   renderer: LandXmlOverlayUploadTarget,
-  vertices: Float32Array,
+  vertices: RendererLineVertices,
 ): void {
-  if (vertices.length === 0) {
+  if (rendererLineVertexData(vertices).length === 0) {
     renderer.setLineOverlay('terrain', null);
     return;
   }
@@ -89,7 +94,7 @@ function appendPlacedSegment(
  * schema-defined `elev` attribute is lifted using that authored elevation;
  * other two-dimensional lists remain inspectable without invented geometry.
  */
-export function useLandXmlOverlayLines(): Float32Array {
+export function useLandXmlOverlayLines(): RendererLineVertices {
   const models = useViewerStore((state) => state.models);
   const selectedSource = useViewerStore((state) => state.selectedLandXmlSource);
   const placement = useViewerStore((state) => state.modelPlacement);
@@ -162,7 +167,10 @@ export function useLandXmlOverlayLines(): Float32Array {
         }
       }
     }
-    return new Float32Array(vertices);
+    // Surface boundaries, breaklines, contours, COGO markers and plan
+    // geometry all arrive here. Do not turn their absolute survey values into
+    // f32; split them into the renderer's bounded anchored line contract.
+    return anchorWorldLineVertices(vertices);
   }, [models, selectedSource, placement]);
 }
 

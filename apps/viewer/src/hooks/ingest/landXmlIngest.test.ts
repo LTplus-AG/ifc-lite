@@ -410,7 +410,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.equal(result.warnings.some((warning) => /degenerate face|render frame/.test(warning)), false);
   });
 
-  it('keeps a compact disconnected component at a far survey origin (#5049)', async () => {
+  it('refuses a compact disconnected component beyond the shared RTE envelope (#5049)', async () => {
     const withDistantSmallFace = LANDXML
       .replace(
         '</Pnts>',
@@ -420,13 +420,13 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
       )
       .replace('</Faces>', '<F>50 51 52</F></Faces>');
     const result = await parseViewer(bytes(withDistantSmallFace));
-    assert.equal(result.geometryResult.meshes.length, 2);
-    assert.equal(result.geometryResult.totalTriangles, 2);
+    assert.equal(result.geometryResult.meshes.length, 1);
+    assert.equal(result.geometryResult.totalTriangles, 1);
     assert.deepEqual(result.geometryResult.meshes[0].origin, [0, 0, 0]);
     assert.deepEqual(result.geometryResult.coordinateInfo.originShift, { x: 2_600_005, y: 101, z: -5_000_005 });
-    assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 800_000_001);
-    assert.equal(result.warnings.some((warning) => /local extent exceeds/.test(warning)), false);
-    assert.equal(result.semanticDocument.rendering.surfaceCounts[0].droppedReframeFaces, 0);
+    assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 2_600_010);
+    assert.equal(result.warnings.some((warning) => /Skipped 1 LandXML surface component.*shared render-frame envelope/.test(warning)), true);
+    assert.equal(result.semanticDocument.rendering.surfaceCounts[0].droppedReframeFaces, 1);
   });
 
   it('removes the survey translation before GPU upload and retains it as frame metadata', async () => {
@@ -463,7 +463,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
       .replace('</Faces>', '<F>50 51 52</F><F>30 50 60</F></Faces>');
     await assert.rejects(
       parseViewer(bytes(connectedAcrossSurveyRange)),
-      /no surface components whose local extent fits within the 1000 km render-frame limit/,
+      /no surface components within the 1000 km shared render-frame envelope/,
       'a connected component cannot be partially registered after its local extent exceeds one precision-safe batch',
     );
   });

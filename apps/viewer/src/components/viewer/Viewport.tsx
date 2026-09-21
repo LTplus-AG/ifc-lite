@@ -69,7 +69,7 @@ import { selectLandXmlViewportPick } from './landXmlViewportSelection.js';
 import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
 import { subscribeViewportHealth } from './device-loss-report.js';
 import { runGpuUpload } from './gpu-upload-guard.js';
-import { anchorWorldLineVertices } from '@/lib/renderer/line-overlay-rte';
+import { anchorWorldLineVertices, rendererLineVertexData } from '@/lib/renderer/line-overlay-rte';
 import { useTranslation } from '@/i18n';
 
 interface ViewportProps {
@@ -1473,7 +1473,7 @@ export function Viewport({
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
-    const empty = alignmentVertices3D instanceof Float32Array ? alignmentVertices3D.length === 0 : alignmentVertices3D.localVertices.length === 0;
+    const empty = rendererLineVertexData(alignmentVertices3D).length === 0;
     renderer.setLineOverlay('alignment', empty ? null : alignmentVertices3D);
   }, [alignmentVertices3D, isInitialized]);
 

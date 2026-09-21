@@ -11,7 +11,7 @@ import { toast } from '../../components/ui/toast.js';
 import { parseLandXmlViewerModelAsync, type LandXmlViewerModel } from './landXmlViewerModel.js';
 import type { LandXmlSourceBuffer } from './landXmlIngest.js';
 import type { LandXmlSchema, LandXmlTinDocument } from './landXmlSemantics.js';
-import { MAX_RENDER_FRAME_ORIGIN_METRES, meshFitsRenderFrame, meshRenderFrameBounds } from './landXmlRenderFrame.js';
+import { MAX_RENDER_FRAME_LOCAL_EXTENT_METRES, meshFitsRenderFrame, meshRenderFrameBounds } from './landXmlRenderFrame.js';
 
 interface LandXmlLoadOptions {
   buffer: LandXmlSourceBuffer;

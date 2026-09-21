@@ -63,6 +63,19 @@ test is a structural CPU/WGSL reflection gate rather than a substitute for that
 evidence. Record browser, adapter, OS, pixel ratio and readback values in the
 implementation PR.
 
+### Local hardware-witness status
+
+The opt-in `RTE_GPU_WITNESS=1` Playwright route is runnable locally. In the
+current WSL/Linux validation environment, Google Chrome 153.0.8010.36 reports
+`navigator.gpu === false` even with `--enable-gpu --enable-webgpu
+--enable-unsafe-webgpu --use-angle=default --ignore-gpu-blocklist`, so that
+route skips and makes no hardware-rendering claim. A native Windows Chrome 153
+run did acquire an identified NVIDIA Blackwell adapter, but correctly failed:
+the production route reported `Invalid CommandBuffer` validation errors during
+`Queue.Submit` and transparent screenshot readback. This is a renderer/witness
+defect, not acceptance evidence; the hardware gate remains failing until a
+native run has zero GPU errors and every pixel assertion passes.
+
 ## Inventory and migration order
 
 The first production consumer is `CameraProjection`: screen projection forms

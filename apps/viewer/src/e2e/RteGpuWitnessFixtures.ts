@@ -105,8 +105,13 @@ export function largeExtentMesh(): MeshData {
 export function shadowCasterMesh(): MeshData {
   return {
     expressId: 106,
-    positions: new Float32Array([6, -3, 0, 6, 3, 0, 6, 0, 8]),
-    normals: new Float32Array([1, 0, 0, 1, 0, 0, 1, 0, 0]),
+    // A raised, parallel triangle puts an unambiguous footprint on the flat
+    // receiver below it for a vertical sun. The hardware assertion therefore
+    // distinguishes an empty/bad shadow map from a merely off-screen cast.
+    // Offset left of the centre so its footprint changes the framebuffer
+    // without covering the central pick/line or point-crop witness samples.
+    positions: new Float32Array([-7, -3, 8, -1, -3, 8, -4, 3, 8]),
+    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
     indices: new Uint32Array([0, 1, 2]), color: [0.7, 0.7, 0.7, 1], origin: COMMON_ORIGIN,
   };
 }

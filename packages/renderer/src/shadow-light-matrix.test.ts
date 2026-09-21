@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { fitSunLightMatrix, cameraFrustumFocusCorners } from './shadow-light-matrix.js';
+import { fitSunLightMatrix, cameraFrustumFocusCorners, MAX_SHADOW_NORMAL_BIAS_METRES, resolveShadowNormalBiasMetres } from './shadow-light-matrix.js';
 import type { Mat4, Vec3 } from './types.js';
 
 /** Transform a world point by a column-major Mat4, returning clip-space xyzw. */
@@ -30,6 +30,10 @@ const UNIT_BOX = {
 };
 
 describe('fitSunLightMatrix', () => {
+  it('bounds whole-site normal bias without changing ordinary texel scaling (#5049)', () => {
+    assert.equal(resolveShadowNormalBiasMetres(0.01, 1.5), 0.035);
+    assert.equal(resolveShadowNormalBiasMetres(40, 1.5), MAX_SHADOW_NORMAL_BIAS_METRES);
+  });
   it('maps the whole model AABB inside the shadow clip cube', () => {
     const fit = fitSunLightMatrix({
       sunDirection: [0.4, 1, 0.3],
@@ -168,4 +172,3 @@ describe('cameraFrustumFocusCorners', () => {
     assert.equal(cameraFrustumFocusCorners(away), null);
   });
 });
-

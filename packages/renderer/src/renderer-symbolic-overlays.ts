@@ -31,6 +31,12 @@ import {
  */
 export interface SymbolicOverlayHost {
     expandModelBoundsWithFlatVertices(positions: Float32Array, stride: number): void;
+    /** Fold f32-local symbolic data through its f64 RTE anchor. */
+    expandModelBoundsWithAnchoredLineVertices(
+        positions: Float32Array,
+        origin: readonly [number, number, number],
+        stride: number,
+    ): void;
     syncCameraSceneBounds(): void;
     requestRender(): void;
 }
@@ -164,7 +170,14 @@ export class SymbolicOverlays {
                 lifted[j + 1] = fill.worldY;
                 lifted[j + 2] = pts[i + 1];
             }
-            this.host.expandModelBoundsWithFlatVertices(lifted, 3);
+            if (fill.origin) {
+                // Keep the f64 anchor separate from the local f32 ring. In
+                // particular, `origin + point` must not be rounded back into
+                // an absolute Float32Array just for camera bounds.
+                this.host.expandModelBoundsWithAnchoredLineVertices(lifted, fill.origin, 3);
+            } else {
+                this.host.expandModelBoundsWithFlatVertices(lifted, 3);
+            }
             expanded = true;
         }
         // Only re-fit the camera when something actually moved the bounds. The
@@ -191,19 +204,30 @@ export class SymbolicOverlays {
         // second array holding every framing text just to read its length, and
         // annotation-heavy models push thousands.
         const buf = new Float32Array(texts.length * 3);
-        let n = 0;
+        let legacyCount = 0;
+        let expanded = false;
         for (const t of texts) {
             if (t.definesExtent === false) continue;
-            const x = t.origin ? t.origin[0] + t.worldPos[0] : t.worldPos[0];
-            const y = t.origin ? t.origin[1] + t.worldPos[1] : t.worldPos[1];
-            const z = t.origin ? t.origin[2] + t.worldPos[2] : t.worldPos[2];
-            buf[n * 3 + 0] = x;
-            buf[n * 3 + 1] = y;
-            buf[n * 3 + 2] = z;
-            n++;
+            if (t.origin) {
+                // `worldPos` is explicitly local to `origin`. Preserve that
+                // f64 reconstruction for bounds instead of narrowing the sum.
+                this.host.expandModelBoundsWithAnchoredLineVertices(
+                    new Float32Array(t.worldPos), t.origin, 3,
+                );
+                expanded = true;
+                continue;
+            }
+            const [x, y, z] = t.worldPos;
+            buf[legacyCount * 3 + 0] = x;
+            buf[legacyCount * 3 + 1] = y;
+            buf[legacyCount * 3 + 2] = z;
+            legacyCount++;
         }
-        if (n > 0) {
-            this.host.expandModelBoundsWithFlatVertices(buf.subarray(0, n * 3), 3);
+        if (legacyCount > 0) {
+            this.host.expandModelBoundsWithFlatVertices(buf.subarray(0, legacyCount * 3), 3);
+            expanded = true;
+        }
+        if (expanded) {
             this.host.syncCameraSceneBounds();
         }
         this.host.requestRender();

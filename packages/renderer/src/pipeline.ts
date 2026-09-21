@@ -544,11 +544,11 @@ export class RenderPipeline {
                             { shaderLocation: 0, offset: 0, format: 'float32x3' },
                             { shaderLocation: 1, offset: 12, format: 'float32x3' },
                             { shaderLocation: 2, offset: 24, format: 'uint32' },
-                            // uv at @location(10): main.wgsl's vs_instanced/InstanceInput
-                            // occupy vertex-input @location 3..9 in this derived module,
+                            // uv at @location(12): main.wgsl's vs_instanced/InstanceInput
+                            // occupy vertex-input @location 3..11 in this derived module,
                             // so the textured uv lane moves clear of them (see
                             // textured.wgsl.ts). Byte offset (28) is unchanged.
-                            { shaderLocation: 10, offset: 28, format: 'float32x2' },
+                            { shaderLocation: 12, offset: 28, format: 'float32x2' },
                         ],
                     },
                 ],
@@ -566,7 +566,6 @@ export class RenderPipeline {
             },
             multisample: { count: this.sampleCount },
         } as GPURenderPipelineDescriptor);
-
         // Create bind group using the explicit bind group layout
         this.bindGroup = this.device.createBindGroup({
             layout: this.bindGroupLayout,

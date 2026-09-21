@@ -9,6 +9,7 @@ import { sourceCoordinateInfo } from './landXmlSourceFrame.js';
 import type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
 import { buildLandXmlPipeComponents } from './landXmlPipeGeometry.js';
 import { pipeRefusalWarnings } from './landXmlPipeWarnings.js';
+import { precisionFaceBatches } from './landXmlPrecisionBatches.js';
 export type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
 export type LandXmlSourceBuffer = ArrayBuffer | SharedArrayBuffer;
 export interface LandXmlGeometryPayload {
@@ -262,8 +263,9 @@ export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometr
     let unrepresentableFaces = 0;
     const faceSourceId = new Map(surface.faces.map((face, index) => [face, surface.faceSourceIds[index]]));
     const visibleFaces = surface.faces.filter((_, index) => surface.faceVisibility[index]);
-    for (const faces of connectedFaceComponents(visibleFaces)) {
-      const pending = [faces];
+    for (const connectedFaces of connectedFaceComponents(visibleFaces)) {
+      for (const faces of precisionFaceBatches(surface, connectedFaces, parsed.units!.linearScaleToMeters, parsed.units!.elevationScaleToMeters)) {
+        const pending = [faces];
       while (pending.length > 0) {
         const currentFaces = pending.pop()!;
         const result = buildSurfaceMesh(
@@ -286,6 +288,7 @@ export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometr
           pending.push(currentFaces.slice(0, middle), currentFaces.slice(middle));
         } else {
           unrepresentableFaces++;
+        }
         }
       }
     }
@@ -315,7 +318,10 @@ export function parseLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeometr
 
   const { placed, dropped: reframeDropped, bounds, originShift, hasLargeCoordinates } = placeComponentsInRenderFrame(components);
   if (placed.length === 0) {
-    throw new Error(`LandXML document has no surface components whose local extent fits within the ${MAX_RENDER_FRAME_LOCAL_EXTENT_METRES / 1000} km render-frame limit`);
+    throw new Error(`LandXML document has no surface components within the ${MAX_RENDER_FRAME_LOCAL_EXTENT_METRES / 1000} km shared render-frame envelope`);
+  }
+  if (reframeDropped.length > 0) {
+    warnings.push(`Skipped ${reframeDropped.length} LandXML surface component(s) outside the ${MAX_RENDER_FRAME_LOCAL_EXTENT_METRES / 1000} km shared render-frame envelope`);
   }
   const meshes = placed.map((component, index) => ({ ...component.mesh, expressId: index + 1 }));
   const surfaceNames = [...new Set(placed.map((component) => component.surfaceName))];

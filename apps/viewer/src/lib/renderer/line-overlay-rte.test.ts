@@ -13,7 +13,7 @@ describe('anchored line overlay bounds (#5049)', () => {
     if (!Array.isArray(payload)) return;
     assert.equal(payload.length, 2);
     for (const partition of payload) {
-      assert.ok(partition.localVertices.every((coordinate) => Math.abs(coordinate) <= MAX_ANCHORED_LINE_EXTENT_METRES));
+      assert.ok(partition.localVertices.every((coordinate: number) => Math.abs(coordinate) <= MAX_ANCHORED_LINE_EXTENT_METRES));
     }
     assert.equal(payload[0].origin[0], 5_000_000.125);
     assert.equal(payload[1].origin[0], 5_004_500.125);
@@ -48,6 +48,7 @@ describe('anchored line overlay bounds (#5049)', () => {
   });
 
   it('rejects non-finite world values before creating a GPU payload (#5049)', () => {
-    assert.throws(() => anchorWorldLineVertices([0, 0, 0, Number.NaN, 0, 0]), /finite/);
+    const invalid: number[] = [0, 0, 0, Number.NaN, 0, 0];
+    assert.throws(() => anchorWorldLineVertices(invalid), /finite/);
   });
 });

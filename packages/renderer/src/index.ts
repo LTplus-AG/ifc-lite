@@ -183,7 +183,7 @@ import { SkyPass } from './sky-pass.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
 import { resolveEnvironment } from './environment.js';
 import { ShadowPass, resolveShadowMapResolution } from './shadow-pass.js';
-import { fitSunLightMatrix, cameraFrustumFocusCorners } from './shadow-light-matrix.js';
+import { fitSunLightMatrix, cameraFrustumFocusCorners, resolveShadowNormalBiasMetres } from './shadow-light-matrix.js';
 import { collectShadowOccluders } from './shadow-occluders.js';
 import { uploadInstancedRteDeltas } from './instanced-rte.js';
 import { shadowOccluderBatches } from './shadow-occluder-batches.js';
@@ -2181,7 +2181,7 @@ export class Renderer {
                     const texelWorld = (2 * fit.orthoHalfWidth) / resolution;
                     const sunAngleDeg = shadowOpts.sunAngleDeg ?? 0.53;
                     const pcfRadius = Math.min(Math.max(sunAngleDeg * 3.0, 0.75), 8.0);
-                    const normalBias = texelWorld * (2.0 + pcfRadius);
+                    const normalBias = resolveShadowNormalBiasMetres(texelWorld, pcfRadius);
                     const s = this.shadowScratch;
                     s.set(fit.lightViewProj.m, 0);
                     s[16] = 1 / resolution;  // texelSize

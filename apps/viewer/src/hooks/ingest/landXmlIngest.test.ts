@@ -234,7 +234,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.deepEqual(streamed.semanticDocument.surfaces, direct.semanticDocument.surfaces);
     assert.deepEqual(streamed.semanticDocument.capabilities, direct.semanticDocument.capabilities);
     assert.deepEqual(streamed.semanticDocument.warnings, direct.semanticDocument.warnings);
-    assert.equal(streamed.semanticDocument.pipeNetworks?.networks.length, 0);
+    assert.deepEqual(streamed.semanticDocument.pipeNetworks, direct.semanticDocument.pipeNetworks);
   });
 
   it('uses the exact discard-after-measurement frame on the second pass (#5050)', async () => {

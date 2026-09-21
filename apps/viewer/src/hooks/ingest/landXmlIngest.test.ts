@@ -577,14 +577,16 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     );
   });
 
-  it('rejects a LandXML 1.1 namespace even when the version attribute says 1.2', async () => {
-    await assert.rejects(
-      parseDocument(LANDXML.replace(
-        'http://www.landxml.org/schema/LandXML-1.2',
-        'http://www.landxml.org/schema/LandXML-1.1',
-      )),
-      /LXML008: LandXML 1.1 is recognized but TIN ingestion supports 1.2 only/,
-    );
+  it('uses the recognized namespace grammar while preserving a declared-version mismatch', async () => {
+    const parsed = await parseDocument(LANDXML.replace(
+      'http://www.landxml.org/schema/LandXML-1.2',
+      'http://www.landxml.org/schema/LandXML-1.1',
+    ));
+    assert.equal(parsed.schema, 'LandXML-1.1');
+    assert.equal(parsed.version, '1.2');
+    assert.ok(parsed.capabilityDiagnostics.some((diagnostic) => (
+      diagnostic.code === 'schema_version_mismatch' && diagnostic.sourcePath === 'LandXML'
+    )));
   });
 
   it('requires the exact LandXML 1.2 namespace', async () => {

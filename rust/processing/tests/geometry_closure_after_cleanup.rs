@@ -176,7 +176,7 @@ fn produce_all(content: &[u8]) -> Vec<(u32, ProducedElementMeshes)> {
         let Ok(entity) = decoder.decode_at_with_id(id, start, end) else {
             continue;
         };
-        let ifc_type = entity.ifc_type;
+        let ifc_type = entity.ifc_type.clone();
         out.push((
             id,
             produce_element_meshes(

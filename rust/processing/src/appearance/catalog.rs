@@ -56,7 +56,7 @@ pub fn catalog_appearance(bytes: &[u8], request: &AppearanceCatalogRequest) -> R
     let mut products = BTreeMap::<u32, (IfcType, BTreeSet<u32>)>::new();
     let mut missing = BTreeSet::new();
     for &id in &request.product_ids {
-        match source.types.get(&id).copied() {
+        match source.types.get(&id).cloned() {
             Some(class) if class.is_subtype_of(IfcType::IfcProduct) => { products.entry(id).or_insert((class, BTreeSet::new())); }
             _ => { missing.insert(id); }
         }
@@ -77,7 +77,7 @@ pub fn catalog_appearance(bytes: &[u8], request: &AppearanceCatalogRequest) -> R
         }
         if owners.is_empty() { continue; }
         let type_id = relation.get_ref(5).ok_or_else(|| format!("Missing IfcRelDefinesByType #{id} RelatingType"))?;
-        let class = source.types.get(&type_id).copied().filter(|class| class.is_subtype_of(IfcType::IfcTypeObject))
+        let class = source.types.get(&type_id).cloned().filter(|class| class.is_subtype_of(IfcType::IfcTypeObject))
             .ok_or_else(|| format!("Invalid IfcRelDefinesByType #{id} RelatingType #{type_id}"))?;
         if let std::collections::btree_map::Entry::Vacant(entry) = types.entry(type_id) {
             let entity = source.entity(type_id)?;

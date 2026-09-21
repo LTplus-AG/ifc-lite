@@ -148,7 +148,7 @@ impl BooleanClippingProcessor {
         // to keep its own six-arm copy of that table; `IfcPolygonalFaceSet`,
         // the tessellated cutter Bonsai/IfcOpenShell emits for a wall clipped
         // by a roof, was never in it and the wall rendered up to the ridge.
-        match operand.ifc_type {
+        match &operand.ifc_type {
             // `CsgSolidProcessor::process` builds a FRESH BooleanClippingProcessor
             // for a boolean TreeRootExpression, so routing through it used to reset
             // both `depth` and the cycle guard. `#10 IfcBooleanResult -> FirstOperand
@@ -182,7 +182,7 @@ impl BooleanClippingProcessor {
                 // Recursive case with depth tracking
                 self.process_with_depth(operand, decoder, &self.schema, depth + 1, quality, visited)
             }
-            other => match builtin_processor(other, &self.schema) {
+            other => match builtin_processor(other.clone(), &self.schema) {
                 Some(processor) => {
                     processor.process(operand, decoder, &self.schema, quality).map(|m| (m, false))
                 }

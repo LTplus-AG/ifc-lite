@@ -43,13 +43,13 @@ fn job_type_for(keyword: &str) -> Option<IfcType> {
         .simple_jobs
         .iter()
         .chain(pre_pass.complex_jobs.iter())
-        .map(|&(_, _, _, ty)| ty)
+        .map(|(_, _, _, ty)| ty.clone())
         .next()
 }
 
 #[test]
 fn legacy_keywords_are_not_scheduled_as_unknown() {
-    for &(keyword, expected) in LEGACY_WITH_GEOMETRY {
+    for &(keyword, ref expected) in LEGACY_WITH_GEOMETRY {
         // These two do DIFFERENT jobs, and only the second is anti-vacuity.
         // The first pins WHICH branch is under test: were the keyword to move
         // to the spatial-container exception branch, that branch is also
@@ -70,19 +70,19 @@ fn legacy_keywords_are_not_scheduled_as_unknown() {
             "{keyword} must retain its exact name"
         );
         assert_ne!(
-            exact, expected,
+            exact, expected.clone(),
             "{keyword} must remain distinct from its processing base"
         );
         assert_eq!(
             legacy_aware_ifc_type(keyword),
-            expected,
+            expected.clone(),
             "table sanity: {keyword}"
         );
 
         let scheduled = job_type_for(keyword)
             .unwrap_or_else(|| panic!("{keyword} must be scheduled as a geometry job"));
         assert_eq!(
-            scheduled, expected,
+            scheduled, expected.clone(),
             "{keyword} was scheduled as {scheduled:?}; a job labelled Unknown(crc32) \
              cannot be recovered downstream because Unknown stores the hash, not the name"
         );

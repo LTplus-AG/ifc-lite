@@ -4,8 +4,9 @@
 
 use ifc_lite_landxml::{
     classify_landxml_version, parse_landxml_tin_with_cancel, LandXmlCancellation,
-    LandXmlCancellationFlag, LandXmlDiagnosticCode, LandXmlLimits, LandXmlVersionCapability,
-    LANDXML_10_NAMESPACE, LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
+    LandXmlCancellationFlag, LandXmlCapabilityDiagnosticCode, LandXmlCrossSectionPointDataFormat,
+    LandXmlDiagnosticCode, LandXmlLimits, LandXmlProfileKind, LandXmlVersionCapability,
+    LandXmlVerticalCurveKind, LANDXML_10_NAMESPACE, LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -34,6 +35,27 @@ impl LandXmlCancellation for CancelsAfterPolls {
 
 fn document(surface_name: &str) -> Vec<u8> {
     format!(r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="{surface_name}"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces></LandXML>"#).into_bytes()
+}
+
+fn road_document() -> Vec<u8> {
+    format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="terrain"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces><Alignments><Alignment name="A" length="300" staStart="100"><CoordGeom/><Profile><ProfAlign name="design"><PVI>100 20</PVI><ParaCurve length="40">140 21</ParaCurve><CircCurve length="30" radius="250">180 23</CircCurve><UnsymParaCurve lengthIn="10" lengthOut="20">220 24</UnsymParaCurve></ProfAlign><ProfSurf name="ground"><PntList2D>100 19 150 20</PntList2D><PntList2D>200 22 250 23</PntList2D></ProfSurf><ProfSurf name="survey"><PntList2D>100 18 300 25</PntList2D></ProfSurf></Profile><CrossSects><CrossSect sta="140"><CrossSectSurf name="existing"><PntList2D>-5 19 0 20 5 19</PntList2D><PntList2D>10 18 15 17</PntList2D></CrossSectSurf><DesignCrossSectSurf name="pavement"><CrossSectPnt alignRef="A">-4 20</CrossSectPnt><CrossSectPnt>4 20.5</CrossSectPnt></DesignCrossSectSurf></CrossSect></CrossSects></Alignment></Alignments><Roadways><Roadway name="Route 1" alignmentRefs="A missing" surfaceRefs="terrain absent" gradeModelRefs="grade"/><Roadway name="Route 2" alignmentRefs="A"><Lanes/></Roadway></Roadways></LandXML>"#
+    )
+    .into_bytes()
+}
+
+fn cross_section_document(points: &str) -> Vec<u8> {
+    format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="A" length="300" staStart="100"><CoordGeom/><CrossSects><CrossSect sta="140"><DesignCrossSectSurf name="pavement">{points}</DesignCrossSectSurf></CrossSect></CrossSects></Alignment></Alignments></LandXML>"#
+    )
+    .into_bytes()
+}
+
+fn extension_document() -> Vec<u8> {
+    format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" xmlns:ext="urn:vendor" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="A" length="1" staStart="0"><CoordGeom/></Alignment></Alignments><Roadways><Roadway name="Route" alignmentRefs="A"><Lanes/><ext:Corridor/><ext:StringLine/></Roadway></Roadways></LandXML>"#
+    )
+    .into_bytes()
 }
 
 fn utf16_document(little_endian: bool) -> Vec<u8> {
@@ -696,4 +718,861 @@ fn issue_5042_rejects_empty_or_whitespace_only_documents() {
             LandXmlDiagnosticCode::InvalidXml
         );
     }
+}
+
+#[test]
+fn preserves_distinct_profiles_curves_sections_and_roadway_associations(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed = parse(&road_document())?;
+    assert_eq!(parsed.alignments.len(), 1);
+    let alignment = &parsed.alignments[0];
+    assert_eq!(alignment.name, "A");
+    assert_eq!(alignment.sta_start, 100.0);
+    assert_eq!(
+        alignment.profile_source_ids.len(),
+        3,
+        "multiple profiles stay attached to one alignment"
+    );
+    assert_eq!(parsed.profiles.len(), 3);
+    assert_eq!(parsed.profiles[0].kind, LandXmlProfileKind::Design);
+    assert_eq!(parsed.profiles[1].kind, LandXmlProfileKind::Sampled);
+    assert_eq!(parsed.profiles[2].kind, LandXmlProfileKind::Sampled);
+    assert_eq!(parsed.profiles[0].pvis.len(), 4);
+    assert_eq!(parsed.profiles[0].vertical_curves.len(), 3);
+    assert_eq!(
+        parsed.profiles[0].vertical_curves[0].kind,
+        LandXmlVerticalCurveKind::Parabolic
+    );
+    assert_eq!(parsed.profiles[0].vertical_curves[0].station, 140.0);
+    assert_eq!(parsed.profiles[0].vertical_curves[0].length, Some(40.0));
+    assert_eq!(
+        parsed.profiles[0].vertical_curves[1].kind,
+        LandXmlVerticalCurveKind::Circular
+    );
+    assert_eq!(parsed.profiles[0].vertical_curves[1].radius, Some(250.0));
+    assert_eq!(
+        parsed.profiles[0].vertical_curves[2].kind,
+        LandXmlVerticalCurveKind::UnsymmetricalParabolic
+    );
+    assert_eq!(parsed.profiles[0].vertical_curves[2].length_in, Some(10.0));
+    assert_eq!(parsed.profiles[1].grade_lines.len(), 2);
+    assert_eq!(parsed.cross_sections.len(), 1);
+    assert_eq!(parsed.cross_sections[0].station, 140.0);
+    assert_eq!(
+        parsed.cross_sections[0].parent_alignment_source_id,
+        alignment.source_id
+    );
+    assert_eq!(parsed.cross_section_surfaces.len(), 2);
+    assert_eq!(
+        parsed.cross_section_surfaces[0].segments.len(),
+        2,
+        "section gaps remain split"
+    );
+    assert_eq!(
+        parsed.cross_section_surfaces[1].points[0].offset,
+        Some(-4.0)
+    );
+    assert_eq!(
+        parsed.cross_section_surfaces[1].points[0].elevation,
+        Some(20.0)
+    );
+    assert_eq!(
+        parsed.cross_section_surfaces[1].points[0].alignment_source_id,
+        Some(alignment.source_id.clone())
+    );
+    assert_eq!(parsed.roadways.len(), 2);
+    assert_eq!(
+        parsed.roadways[0].alignment_source_ids,
+        vec![alignment.source_id.clone()]
+    );
+    assert_eq!(
+        parsed.roadways[0].surface_source_ids,
+        vec![parsed.surfaces[0].source_id.clone()]
+    );
+    assert!(parsed
+        .capability_diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == LandXmlCapabilityDiagnosticCode::MissingReference));
+    assert!(
+        parsed.preserved_only_extensions.is_empty(),
+        "core CoordGeom and ordinary Roadway children are not corridor/stringline extensions"
+    );
+    assert!(
+        parsed
+            .capability_diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code
+                == LandXmlCapabilityDiagnosticCode::SectionDiscontinuity)
+    );
+    Ok(())
+}
+
+#[test]
+fn records_missing_elevation_without_fabricating_zero() -> Result<(), Box<dyn std::error::Error>> {
+    let source = String::from_utf8(road_document())?
+        .replace("<PVI>100 20</PVI>", "<PVI>100</PVI>")
+        .replace(
+            "<CrossSectPnt alignRef=\"A\">-4 20</CrossSectPnt>",
+            "<CrossSectPnt alignRef=\"A\">-4</CrossSectPnt>",
+        );
+    let parsed = parse(source.as_bytes())?;
+    assert_eq!(parsed.profiles[0].pvis[0].elevation, None);
+    assert_eq!(parsed.cross_section_surfaces[1].points[0].elevation, None);
+    assert_eq!(
+        parsed
+            .capability_diagnostics
+            .iter()
+            .filter(
+                |diagnostic| diagnostic.code == LandXmlCapabilityDiagnosticCode::MissingElevation
+            )
+            .count(),
+        2
+    );
+    Ok(())
+}
+
+#[test]
+fn preserves_profile_review_data_when_no_tin_surface_is_present(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = String::from_utf8(road_document())?;
+    let without_tin = source.replace(
+        "<Surfaces><Surface name=\"terrain\"><Definition surfType=\"TIN\"><Pnts><P id=\"1\">0 0 0</P><P id=\"2\">0 1 0</P><P id=\"3\">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces>",
+        "",
+    );
+    let parsed = parse(without_tin.as_bytes())?;
+    assert!(parsed.surfaces.is_empty());
+    assert_eq!(parsed.profiles.len(), 3);
+    assert_eq!(parsed.cross_sections.len(), 1);
+    assert_eq!(parsed.roadways.len(), 2);
+    Ok(())
+}
+
+#[test]
+fn applies_profile_section_and_roadway_limits_before_output_growth() {
+    for limits in [
+        LandXmlLimits {
+            max_profiles: 0,
+            ..LandXmlLimits::default()
+        },
+        LandXmlLimits {
+            max_vertical_curves: 0,
+            ..LandXmlLimits::default()
+        },
+        LandXmlLimits {
+            max_cross_sections: 0,
+            ..LandXmlLimits::default()
+        },
+        LandXmlLimits {
+            max_cross_section_points: 1,
+            ..LandXmlLimits::default()
+        },
+        LandXmlLimits {
+            max_roadways: 1,
+            ..LandXmlLimits::default()
+        },
+    ] {
+        assert_eq!(
+            parse_landxml_tin_with_cancel(&road_document(), &limits, None)
+                .unwrap_err()
+                .code,
+            LandXmlDiagnosticCode::LimitExceeded
+        );
+    }
+}
+
+#[test]
+fn issue_5045_cross_section_point_retains_slope_references_and_coordinate_precedence(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed = parse(&cross_section_document(
+        r#"<CrossSectPnt dataFormat="Slope Distance" pntRef="survey-1" alignRef="A" alignRefStation="123.5" planFeatureRef="pf-1" planFeatureRefStation="124" parcelRef="parcel-1" parcelRefStation="125">0.035 12</CrossSectPnt><CrossSectPnt pntRef="survey-only" alignRef="A" alignRefStation="126"/><CrossSectPnt pntRef="fallback">-4 20</CrossSectPnt>"#,
+    ))?;
+    let points = &parsed.cross_section_surfaces[0].points;
+    let slope = &points[0];
+    assert_eq!(
+        slope.data_format,
+        LandXmlCrossSectionPointDataFormat::SlopeDistance
+    );
+    assert_eq!(slope.slope, Some(0.035));
+    assert_eq!(slope.distance, Some(12.0));
+    assert_eq!(slope.offset, None);
+    assert_eq!(slope.align_ref_station, Some(123.5));
+    assert_eq!(
+        slope.alignment_source_id,
+        Some(parsed.alignments[0].source_id.clone())
+    );
+    assert_eq!(slope.plan_feature_ref.as_deref(), Some("pf-1"));
+    assert_eq!(slope.plan_feature_ref_station, Some(124.0));
+    assert_eq!(slope.parcel_ref.as_deref(), Some("parcel-1"));
+    assert_eq!(slope.parcel_ref_station, Some(125.0));
+
+    let reference_only = &points[1];
+    assert_eq!(reference_only.pnt_ref.as_deref(), Some("survey-only"));
+    assert_eq!(reference_only.offset, None);
+    assert_eq!(reference_only.elevation, None);
+    assert_eq!(reference_only.align_ref_station, Some(126.0));
+
+    let coordinates_win = &points[2];
+    assert_eq!(coordinates_win.pnt_ref.as_deref(), Some("fallback"));
+    assert_eq!(coordinates_win.offset, Some(-4.0));
+    assert_eq!(coordinates_win.elevation, Some(20.0));
+    assert!(parsed.capability_diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == LandXmlCapabilityDiagnosticCode::UnsupportedSlopeDistance
+    }));
+    assert!(parsed.capability_diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == LandXmlCapabilityDiagnosticCode::UnresolvedPointReference
+            && diagnostic.source_id == Some(reference_only.source_id.clone())
+    }));
+    assert!(parsed.capability_diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == LandXmlCapabilityDiagnosticCode::UnsupportedPlanFeatureReference
+    }));
+    assert!(parsed.capability_diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == LandXmlCapabilityDiagnosticCode::UnsupportedParcelReference
+    }));
+    assert!(!parsed.capability_diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == LandXmlCapabilityDiagnosticCode::MissingElevation
+            && diagnostic.source_id == Some(reference_only.source_id.clone())
+    }));
+    Ok(())
+}
+
+#[test]
+fn issue_5045_only_actual_corridor_and_stringline_extensions_are_preserved(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed = parse(&extension_document())?;
+    assert_eq!(parsed.preserved_only_extensions.len(), 2);
+    assert_eq!(
+        parsed.preserved_only_extensions[0].kind,
+        ifc_lite_landxml::LandXmlPreservedOnlyExtensionKind::Corridor
+    );
+    assert_eq!(
+        parsed.preserved_only_extensions[1].kind,
+        ifc_lite_landxml::LandXmlPreservedOnlyExtensionKind::StringLine
+    );
+    assert!(parsed
+        .preserved_only_extensions
+        .iter()
+        .all(|extension| extension.local_name != "CoordGeom" && extension.local_name != "Lanes"));
+    let limits = LandXmlLimits {
+        max_preserved_only_extensions: 0,
+        ..LandXmlLimits::default()
+    };
+    assert_eq!(
+        parse_landxml_tin_with_cancel(&extension_document(), &limits, None)
+            .unwrap_err()
+            .code,
+        LandXmlDiagnosticCode::LimitExceeded
+    );
+    Ok(())
+}
+
+#[test]
+fn issue_5045_preflights_profile_and_section_point_counts_before_point_vectors_grow() {
+    let profile = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="A" length="1" staStart="0"><Profile><ProfSurf name="ground"><PntList2D>0 0 1 1</PntList2D></ProfSurf></Profile></Alignment></Alignments></LandXML>"#
+    );
+    let profile_limits = LandXmlLimits {
+        max_profile_points: 1,
+        ..LandXmlLimits::default()
+    };
+    assert_eq!(
+        parse_landxml_tin_with_cancel(profile.as_bytes(), &profile_limits, None)
+            .unwrap_err()
+            .code,
+        LandXmlDiagnosticCode::LimitExceeded
+    );
+    let section_limits = LandXmlLimits {
+        max_cross_section_points: 1,
+        ..LandXmlLimits::default()
+    };
+    assert_eq!(
+        parse_landxml_tin_with_cancel(
+            &cross_section_document(
+                "<CrossSectPnt>0 0</CrossSectPnt><CrossSectPnt>1 1</CrossSectPnt>"
+            ),
+            &section_limits,
+            None,
+        )
+        .unwrap_err()
+        .code,
+        LandXmlDiagnosticCode::LimitExceeded
+    );
+}
+
+#[test]
+fn issue_5045_bounds_and_cancels_missing_grade_diagnostics() {
+    let source = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="A" length="1" staStart="0"><Profile><ProfSurf name="ground"><PntList2D>{}</PntList2D></ProfSurf></Profile></Alignment></Alignments></LandXML>"#,
+        "0"
+    );
+    let limits = LandXmlLimits {
+        max_capability_diagnostics: 0,
+        ..LandXmlLimits::default()
+    };
+    assert_eq!(
+        parse_landxml_tin_with_cancel(source.as_bytes(), &limits, None)
+            .unwrap_err()
+            .code,
+        LandXmlDiagnosticCode::LimitExceeded
+    );
+    let cancellable_source = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="A" length="1" staStart="0"><Profile><ProfAlign name="design">{}</ProfAlign></Profile></Alignment></Alignments></LandXML>"#,
+        "<PVI>0</PVI>".repeat(2_000)
+    );
+    let cancellation = CancelsAfterPolls::new(20);
+    assert_eq!(
+        parse_landxml_tin_with_cancel(
+            cancellable_source.as_bytes(),
+            &LandXmlLimits::default(),
+            Some(&cancellation)
+        )
+        .unwrap_err()
+        .code,
+        LandXmlDiagnosticCode::Cancelled
+    );
+}
+
+#[test]
+fn issue_5045_charges_roadway_and_section_reference_attributes() {
+    let roadway = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Roadways><Roadway name="route" alignmentRefs="a" surfaceRefs="ground" gradeModelRefs="grade"/></Roadways></LandXML>"#
+    );
+    let limits = LandXmlLimits {
+        max_references: 2,
+        ..LandXmlLimits::default()
+    };
+    assert_eq!(
+        parse_landxml_tin_with_cancel(roadway.as_bytes(), &limits, None)
+            .unwrap_err()
+            .code,
+        LandXmlDiagnosticCode::LimitExceeded
+    );
+    let section =
+        cross_section_document(r#"<CrossSectPnt pntRef="p" alignRef="A">0 1</CrossSectPnt>"#);
+    let limits = LandXmlLimits {
+        max_references: 1,
+        ..LandXmlLimits::default()
+    };
+    assert_eq!(
+        parse_landxml_tin_with_cancel(&section, &limits, None)
+            .unwrap_err()
+            .code,
+        LandXmlDiagnosticCode::LimitExceeded
+    );
+}
+
+#[test]
+fn issue_5045_refuses_roadway_diagnostics_at_the_configured_low_budget() {
+    let source = format!(
+        r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Roadways><Roadway name="route" alignmentRefs="missing-a missing-b" surfaceRefs="missing-s" gradeModelRefs="missing-grade"/></Roadways></LandXML>"#
+    );
+    for max_capability_diagnostics in [0, 1] {
+        let cancellation = CancelsAfterPolls::new(200);
+        let limits = LandXmlLimits {
+            max_capability_diagnostics,
+            ..LandXmlLimits::default()
+        };
+        assert_eq!(
+            parse_landxml_tin_with_cancel(source.as_bytes(), &limits, Some(&cancellation))
+                .unwrap_err()
+                .code,
+            LandXmlDiagnosticCode::LimitExceeded,
+            "diagnostic budget {max_capability_diagnostics} must reject while finalizing the first excess reference"
+        );
+    }
+}
+
+#[test]
+fn issue_5045_evaluates_grade_parabolic_and_circular_vertical_geometry() {
+    use ifc_lite_landxml::{
+        LandXmlProfile, LandXmlProfilePoint, LandXmlSourceId, LandXmlVerticalCurve,
+    };
+
+    let points = |outgoing_elevation| {
+        vec![
+            LandXmlProfilePoint {
+                source_id: LandXmlSourceId("before".to_owned()),
+                station: 0.0,
+                elevation: Some(0.0),
+            },
+            LandXmlProfilePoint {
+                source_id: LandXmlSourceId("pvi".to_owned()),
+                station: 50.0,
+                elevation: Some(0.0),
+            },
+            LandXmlProfilePoint {
+                source_id: LandXmlSourceId("after".to_owned()),
+                station: 100.0,
+                elevation: Some(outgoing_elevation),
+            },
+        ]
+    };
+    let profile = |kind, radius, outgoing_elevation| LandXmlProfile {
+        source_id: LandXmlSourceId("profile".to_owned()),
+        parent_alignment_source_id: LandXmlSourceId("alignment".to_owned()),
+        ordinal: 1,
+        name: "design".to_owned(),
+        kind: LandXmlProfileKind::Design,
+        pvis: points(outgoing_elevation),
+        grade_lines: Vec::new(),
+        vertical_curves: vec![LandXmlVerticalCurve {
+            source_id: LandXmlSourceId("curve".to_owned()),
+            parent_profile_source_id: LandXmlSourceId("profile".to_owned()),
+            kind,
+            station: 50.0,
+            elevation: Some(0.0),
+            length: Some(20.0),
+            length_in: None,
+            length_out: None,
+            radius,
+        }],
+    };
+
+    let parabolic = profile(LandXmlVerticalCurveKind::Parabolic, None, 20.0);
+    assert_eq!(
+        parabolic.evaluate_elevation_at(20.0).unwrap(),
+        Some(0.0),
+        "plain PVI grade is linear away from the curve"
+    );
+    assert!((parabolic.evaluate_elevation_at(50.0).unwrap().unwrap() - 1.0).abs() < 1.0e-12);
+
+    // Independent circular probe from a circle tangent to both PVI lines.
+    // The PVI lies off the midpoint for the grade change; the evaluator must
+    // derive those tangent bounds instead of assuming 10 m either side.
+    let circular = profile(
+        LandXmlVerticalCurveKind::Circular,
+        Some(100.0),
+        10.0 / 0.96_f64.sqrt(),
+    );
+    let outgoing_grade = 10.0 / (50.0 * 0.96_f64.sqrt());
+    let tangent_start = (100.0 - 9_600.0_f64.sqrt() - outgoing_grade * 20.0) / outgoing_grade;
+    let local_station = -tangent_start;
+    let expected = 100.0 - (10_000.0 - local_station * local_station).sqrt();
+    let actual = circular.evaluate_elevation_at(50.0).unwrap().unwrap();
+    assert!(
+        (actual - expected).abs() < 1.0e-10,
+        "actual={actual}, expected={expected}"
+    );
+}
+
+#[test]
+fn issue_5045_unsymmetrical_parabolas_preserve_both_tangents_and_c1_join() {
+    use ifc_lite_landxml::{
+        LandXmlProfile, LandXmlProfilePoint, LandXmlSourceId, LandXmlVerticalCurve,
+    };
+
+    let profile = |pvi_elevation, after_elevation| LandXmlProfile {
+        source_id: LandXmlSourceId("profile".to_owned()),
+        parent_alignment_source_id: LandXmlSourceId("alignment".to_owned()),
+        ordinal: 1,
+        name: "design".to_owned(),
+        kind: LandXmlProfileKind::Design,
+        pvis: vec![
+            LandXmlProfilePoint {
+                source_id: LandXmlSourceId("before".to_owned()),
+                station: 0.0,
+                elevation: Some(0.0),
+            },
+            LandXmlProfilePoint {
+                source_id: LandXmlSourceId("pvi".to_owned()),
+                station: 50.0,
+                elevation: Some(pvi_elevation),
+            },
+            LandXmlProfilePoint {
+                source_id: LandXmlSourceId("after".to_owned()),
+                station: 100.0,
+                elevation: Some(after_elevation),
+            },
+        ],
+        grade_lines: Vec::new(),
+        vertical_curves: vec![LandXmlVerticalCurve {
+            source_id: LandXmlSourceId("curve".to_owned()),
+            parent_profile_source_id: LandXmlSourceId("profile".to_owned()),
+            kind: LandXmlVerticalCurveKind::UnsymmetricalParabolic,
+            station: 50.0,
+            elevation: Some(pvi_elevation),
+            length: None,
+            length_in: Some(20.0),
+            length_out: Some(40.0),
+            radius: None,
+        }],
+    };
+    for (pvi_elevation, after_elevation, incoming_grade, outgoing_grade) in
+        [(5.0, 0.0, 0.1, -0.1), (-5.0, 0.0, -0.1, 0.1)]
+    {
+        let curve = profile(pvi_elevation, after_elevation);
+        let elevation = |station| curve.evaluate_elevation_at(station).unwrap().unwrap();
+        assert!((elevation(30.0) - (pvi_elevation - incoming_grade * 20.0)).abs() < 1.0e-12);
+        assert!((elevation(90.0) - (pvi_elevation + outgoing_grade * 40.0)).abs() < 1.0e-12);
+        let epsilon = 1.0e-5;
+        let left_slope = (elevation(50.0) - elevation(50.0 - epsilon)) / epsilon;
+        let right_slope = (elevation(50.0 + epsilon) - elevation(50.0)) / epsilon;
+        assert!((left_slope - right_slope).abs() < 1.0e-7);
+        let start_slope = (elevation(30.0 + epsilon) - elevation(30.0)) / epsilon;
+        let end_slope = (elevation(90.0) - elevation(90.0 - epsilon)) / epsilon;
+        assert!((start_slope - incoming_grade).abs() < 1.0e-7);
+        assert!((end_slope - outgoing_grade).abs() < 1.0e-7);
+    }
+}
+
+#[test]
+fn issue_5045_circular_curves_use_tangent_bounds_and_reject_inconsistent_inputs() {
+    use ifc_lite_landxml::{
+        LandXmlProfile, LandXmlProfileEvaluationError, LandXmlProfilePoint, LandXmlSourceId,
+        LandXmlVerticalCurve,
+    };
+
+    let circular = |length, radius| LandXmlProfile {
+        source_id: LandXmlSourceId("profile".to_owned()),
+        parent_alignment_source_id: LandXmlSourceId("alignment".to_owned()),
+        ordinal: 1,
+        name: "design".to_owned(),
+        kind: LandXmlProfileKind::Design,
+        pvis: vec![
+            LandXmlProfilePoint {
+                source_id: LandXmlSourceId("before".to_owned()),
+                station: 0.0,
+                elevation: Some(0.0),
+            },
+            LandXmlProfilePoint {
+                source_id: LandXmlSourceId("pvi".to_owned()),
+                station: 50.0,
+                elevation: Some(0.0),
+            },
+            LandXmlProfilePoint {
+                source_id: LandXmlSourceId("after".to_owned()),
+                station: 100.0,
+                elevation: Some(10.0 / 0.96_f64.sqrt()),
+            },
+        ],
+        grade_lines: Vec::new(),
+        vertical_curves: vec![LandXmlVerticalCurve {
+            source_id: LandXmlSourceId("curve".to_owned()),
+            parent_profile_source_id: LandXmlSourceId("profile".to_owned()),
+            kind: LandXmlVerticalCurveKind::Circular,
+            station: 50.0,
+            elevation: Some(0.0),
+            length: Some(length),
+            length_in: None,
+            length_out: None,
+            radius: Some(radius),
+        }],
+    };
+    let curve = circular(20.0, 100.0);
+    let elevation = |station| curve.evaluate_elevation_at(station).unwrap().unwrap();
+    let outgoing_grade = 10.0 / (50.0 * 0.96_f64.sqrt());
+    let start = 50.0 + ((100.0 - 9_600.0_f64.sqrt() - outgoing_grade * 20.0) / outgoing_grade);
+    let end = start + 20.0;
+    assert!(elevation(start).abs() < 1.0e-10);
+    assert!((elevation(end) - outgoing_grade * (end - 50.0)).abs() < 1.0e-10);
+    let epsilon = 1.0e-5;
+    let start_slope = (elevation(start + epsilon) - elevation(start)) / epsilon;
+    let end_slope = (elevation(end) - elevation(end - epsilon)) / epsilon;
+    assert!(start_slope.abs() < 1.0e-7);
+    assert!((end_slope - outgoing_grade).abs() < 1.0e-7);
+    assert_eq!(
+        circular(19.0, 100.0).evaluate_elevation_at(50.0),
+        Err(LandXmlProfileEvaluationError::InconsistentCircularCurve),
+    );
+}
+
+#[test]
+fn issue_5045_parsed_circular_curves_validate_length_units_and_large_scale_endpoints(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use ifc_lite_landxml::LandXmlProfileEvaluationError;
+
+    let source = |radius: f64| {
+        format!(
+            r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="A" length="20000" staStart="0"><Profile><ProfAlign name="design"><PVI>0 0</PVI><CircCurve length="10000" radius="{radius:.12}">10000 0</CircCurve><PVI>20000 1000</PVI></ProfAlign></Profile></Alignment></Alignments></LandXML>"#,
+        )
+    };
+    let invalid = parse(source(100_480.0).as_bytes())?;
+    assert_eq!(
+        invalid.profiles[0].evaluate_elevation_at(10_000.0),
+        Err(LandXmlProfileEvaluationError::InconsistentCircularCurve),
+        "sine residuals must be converted to length before tolerancing",
+    );
+
+    let outgoing_grade = 0.1_f64;
+    let sine_out = outgoing_grade.atan().sin();
+    let radius = 10_000.0 / sine_out;
+    let valid = parse(source(radius).as_bytes())?;
+    let profile = &valid.profiles[0];
+    let rise = radius * (1.0 - (1.0 - sine_out * sine_out).sqrt());
+    let end = 10_000.0 + (rise - outgoing_grade * 10_000.0) / outgoing_grade + 10_000.0;
+    let elevation = |station| profile.evaluate_elevation_at(station).unwrap().unwrap();
+    let at_end = elevation(end);
+    assert!((at_end - outgoing_grade * (end - 10_000.0)).abs() < 1.0e-8);
+    let epsilon = 1.0e-4;
+    let incoming_slope = (at_end - elevation(end - epsilon)) / epsilon;
+    let outgoing_slope = (elevation(end + epsilon) - at_end) / epsilon;
+    assert!(
+        (incoming_slope - outgoing_slope).abs() < 1.0e-7,
+        "endpoint tangent slopes differ: {incoming_slope} vs {outgoing_slope}"
+    );
+    Ok(())
+}
+
+#[test]
+fn issue_5045_parsed_circular_curves_stay_stable_for_shallow_and_near_parallel_grades(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source_at = |station: f64, before: f64, after: f64, length: f64, radius: f64| {
+        format!(
+            r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="A" length="{alignment_length:.17e}" staStart="0"><Profile><ProfAlign name="design"><PVI>0 {before:.17e}</PVI><CircCurve length="{length:.17e}" radius="{radius:.17e}">{station:.17e} 0</CircCurve><PVI>{alignment_length:.17e} {after:.17e}</PVI></ProfAlign></Profile></Alignment></Alignments></LandXML>"#,
+            alignment_length = station * 2.0,
+        )
+    };
+    let source = |before: f64, after: f64, length: f64, radius: f64| {
+        source_at(1000.0, before, after, length, radius)
+    };
+    let shallow = parse(source(-0.000001, 0.000002, 10.0, 1.0e10).as_bytes())?;
+    let shallow_profile = &shallow.profiles[0];
+    let shallow_elevation = |station| {
+        shallow_profile
+            .evaluate_elevation_at(station)
+            .unwrap()
+            .unwrap()
+    };
+    assert!(shallow_elevation(1000.0).is_finite());
+    assert!((shallow_elevation(995.0) + 5.0e-9).abs() < 1.0e-12);
+    assert!((shallow_elevation(1005.0) - 1.0e-8).abs() < 1.0e-12);
+
+    let extreme = parse(source(-100.0, 100.00000000000003, 27.34438611211513, 1.0e18).as_bytes())?;
+    let extreme_profile = &extreme.profiles[0];
+    let extreme_elevation = |station| {
+        extreme_profile
+            .evaluate_elevation_at(station)
+            .unwrap()
+            .unwrap()
+    };
+    assert!((extreme_elevation(999.0) + 0.1).abs() < 1.0e-9);
+    assert!(extreme_elevation(1000.0).abs() < 1.0e-10);
+    assert!((extreme_elevation(1001.0) - 0.1).abs() < 1.0e-9);
+    let epsilon = 1.0e-4;
+    let left_slope = (extreme_elevation(1000.0) - extreme_elevation(1000.0 - epsilon)) / epsilon;
+    let right_slope = (extreme_elevation(1000.0 + epsilon) - extreme_elevation(1000.0)) / epsilon;
+    assert!((left_slope - right_slope).abs() < 1.0e-9);
+    let incoming_grade = 0.1_f64;
+    let outgoing_grade = 0.10000000000000003_f64;
+    let half_angle =
+        (outgoing_grade - incoming_grade).atan2(1.0 + incoming_grade * outgoing_grade) / 2.0;
+    let tangent_length = half_angle.tan() * 1.0e18;
+    let start = 1000.0 - tangent_length / incoming_grade.hypot(1.0);
+    let end = 1000.0 + tangent_length / outgoing_grade.hypot(1.0);
+    let start_slope = (extreme_elevation(start + epsilon) - extreme_elevation(start)) / epsilon;
+    let end_slope = (extreme_elevation(end) - extreme_elevation(end - epsilon)) / epsilon;
+    assert!((start_slope - incoming_grade).abs() < 1.0e-8);
+    assert!((end_slope - outgoing_grade).abs() < 1.0e-8);
+    for length in [0.001_f64, 1.0, 20.0, 25.0, 30.0, 35.0, 60.0, 70.0] {
+        let inconsistent_extreme =
+            parse(source(-100.0, 100.00000000000003, length, 1.0e18).as_bytes())?;
+        assert_eq!(
+            inconsistent_extreme.profiles[0].evaluate_elevation_at(1000.0),
+            Err(ifc_lite_landxml::LandXmlProfileEvaluationError::InconsistentCircularCurve),
+        );
+    }
+
+    let steep = parse(source(-1.0e11, 2.0e11, 37.5, 1.0e18).as_bytes())?;
+    assert!(steep.profiles[0].evaluate_elevation_at(1000.0)?.is_some());
+
+    let opposing = parse(source(1.0e19, 1.0e19, 2.0, 1.0).as_bytes())?;
+    let opposing_elevation = opposing.profiles[0]
+        .evaluate_elevation_at(1000.0)?
+        .expect("opposing steep curve evaluates at its PVI");
+    assert!((opposing_elevation / 1.0e16 - 1.0).abs() < 1.0e-12);
+
+    let same_sign_overflow = parse(source_at(1.0, -1.0e154, 2.0e154, 0.375, 1.0e308).as_bytes())?;
+    assert!(same_sign_overflow.profiles[0]
+        .evaluate_elevation_at(1.0)?
+        .is_some());
+    let opposing_overflow = parse(source_at(1.0, 1.0e308, 1.0e308, 0.2, 0.1).as_bytes())?;
+    assert!(opposing_overflow.profiles[0]
+        .evaluate_elevation_at(1.0)?
+        .is_some());
+    let reversed_same_sign = parse(source_at(1.0, 1.0e154, -2.0e154, 0.375, 1.0e308).as_bytes())?;
+    assert!(reversed_same_sign.profiles[0]
+        .evaluate_elevation_at(1.0)?
+        .is_some());
+    let reversed_opposing = parse(source_at(1.0, -1.0e308, -1.0e308, 0.2, 0.1).as_bytes())?;
+    assert!(reversed_opposing.profiles[0]
+        .evaluate_elevation_at(1.0)?
+        .is_some());
+
+    let tiny = parse(source_at(1.0e-12, 0.0, 1.0e-15, 9.99999500000375e-16, 1.0e-12).as_bytes())?;
+    assert!(tiny.profiles[0].evaluate_elevation_at(1.0e-12)?.is_some());
+    let invalid_tiny = parse(source_at(1.0e-12, 0.0, 1.0e-15, 7.0e-15, 1.0e-12).as_bytes())?;
+    assert_eq!(
+        invalid_tiny.profiles[0].evaluate_elevation_at(1.0e-12),
+        Err(ifc_lite_landxml::LandXmlProfileEvaluationError::InconsistentCircularCurve),
+    );
+
+    let centered = |before: f64, after: f64, length: f64, radius: f64| {
+        format!(
+            r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="A" length="2" staStart="-1"><Profile><ProfAlign name="design"><PVI>-1 {before:.17e}</PVI><CircCurve length="{length:.17e}" radius="{radius:.17e}">0 0</CircCurve><PVI>1 {after:.17e}</PVI></ProfAlign></Profile></Alignment></Alignments></LandXML>"#,
+        )
+    };
+    let subnormal = parse(centered(0.0, 1.0, 7.071067811865473e-309, 1.0e-308).as_bytes())?;
+    for station in [-4.0e-309, 0.0, 4.0e-309] {
+        assert!(subnormal.profiles[0]
+            .evaluate_elevation_at(station)?
+            .is_some());
+    }
+    let invalid_subnormal = parse(centered(0.0, 1.0, 7.0e-309, 1.0e-308).as_bytes())?;
+    assert_eq!(
+        invalid_subnormal.profiles[0].evaluate_elevation_at(0.0),
+        Err(ifc_lite_landxml::LandXmlProfileEvaluationError::InconsistentCircularCurve)
+    );
+
+    let rise_extreme = parse(centered(-1.0e200, 2.0e200, 3.75e-93, 1.0e308).as_bytes())?;
+    let elevation = |station| {
+        rise_extreme.profiles[0]
+            .evaluate_elevation_at(station)
+            .unwrap()
+            .unwrap()
+    };
+    assert!((elevation(0.0) / 4.28932188134525e106 - 1.0).abs() < 1.0e-12);
+    let end = 1.25e-93;
+    let left = elevation(1.24e-93);
+    let at_end = elevation(end);
+    let right = elevation(1.26e-93);
+    assert!((left - at_end).abs() < 3.0e105);
+    assert!((right - at_end).abs() < 3.0e105);
+
+    let adjacent = 1.0e307_f64.next_up();
+    let adjacent_curve = parse(centered(-1.0e307, adjacent, 1.24e-322, 1.0e308).as_bytes())?;
+    assert!(adjacent_curve.profiles[0]
+        .evaluate_elevation_at(0.0)?
+        .is_some());
+
+    // #5045: the scaled root includes a finite `2 * grade * u` term even
+    // though `2 * grade` itself overflows. These are parsed source f64s,
+    // rather than an internal synthetic geometry, to cover the declaration
+    // validation and the PVI placement together.
+    let root_length = 1.527_777_777_777_78e-309;
+    let forward_root = parse(centered(-1.0e308, 1.2e308, root_length, 1.0e308).as_bytes())?;
+    let forward_at_pvi = forward_root.profiles[0]
+        .evaluate_elevation_at(0.0)?
+        .expect("forward overflow-root curve evaluates at its PVI");
+    assert!((forward_at_pvi / 0.003_795_737_491_389_808 - 1.0).abs() < 2.0e-12);
+    let forward_start = -8.333_333_333_333e-310;
+    let forward_end = 6.944_444_444_444e-310;
+    let forward_elevation = |station| {
+        forward_root.profiles[0]
+            .evaluate_elevation_at(station)
+            .unwrap()
+            .unwrap()
+    };
+    // The endpoints meet the finite tangent lines and the interior does not
+    // collapse to either tangent when the horizontal spans are subnormal.
+    assert!((forward_elevation(forward_start) + 0.083_333_333_333).abs() < 2.0e-10);
+    assert!((forward_elevation(forward_end) - 0.083_333_333_333).abs() < 2.0e-10);
+    assert!(forward_elevation(-4.0e-310) < forward_at_pvi);
+    assert!(forward_elevation(4.0e-310) > forward_at_pvi);
+    let reverse_root = parse(centered(-1.2e308, 1.0e308, root_length, 1.0e308).as_bytes())?;
+    let reverse_at_pvi = reverse_root.profiles[0]
+        .evaluate_elevation_at(0.0)?
+        .expect("reverse overflow-root curve evaluates at its PVI");
+    assert!((reverse_at_pvi / -0.003_795_737_491_389_808 - 1.0).abs() < 2.0e-12);
+    let reverse_elevation = |station| {
+        reverse_root.profiles[0]
+            .evaluate_elevation_at(station)
+            .unwrap()
+            .unwrap()
+    };
+    assert!((reverse_elevation(-6.944_444_444_444e-310) + 0.083_333_333_333).abs() < 2.0e-10);
+    assert!((reverse_elevation(8.333_333_333_333e-310) - 0.083_333_333_333).abs() < 2.0e-10);
+    assert!(reverse_elevation(-4.0e-310) < reverse_at_pvi);
+    assert!(reverse_elevation(4.0e-310) > reverse_at_pvi);
+
+    // #5045: signed factors pass through the exponent-aware ratio unchanged.
+    // This descending circle used to receive the magnitude of the rise and
+    // jump from the curve end to its outgoing tangent.
+    let descending = parse(source(100.0, -200.0, 20.0, 207.012_729_872_537_2).as_bytes())?;
+    let descending_elevation = |station| {
+        descending.profiles[0]
+            .evaluate_elevation_at(station)
+            .unwrap()
+            .unwrap()
+    };
+    assert!((descending_elevation(1000.0) + 0.250_139_238_895_676_7).abs() < 2.0e-13);
+    let descending_end = 1_009.926_825_350_344_4;
+    assert!((descending_elevation(descending_end) + 1.985_365_070_068_875_4).abs() < 2.0e-12);
+    assert!(
+        (descending_elevation(descending_end + 1.0e-6)
+            - (-0.2 * (descending_end + 1.0e-6 - 1000.0)))
+            .abs()
+            < 2.0e-12
+    );
+    assert!(descending_elevation(995.0) > descending_elevation(1000.0));
+    assert!(descending_elevation(1005.0) < descending_elevation(1000.0));
+
+    let negative_mirror = parse(centered(1.0e308, -1.2e308, root_length, 1.0e308).as_bytes())?;
+    let negative_mirror_elevation = |station| {
+        negative_mirror.profiles[0]
+            .evaluate_elevation_at(station)
+            .unwrap()
+            .unwrap()
+    };
+    assert!((negative_mirror_elevation(0.0) / -0.003_795_737_491_389_808 - 1.0).abs() < 2.0e-12);
+    assert!(negative_mirror_elevation(-4.0e-310) > negative_mirror_elevation(0.0));
+    assert!(negative_mirror_elevation(4.0e-310) < negative_mirror_elevation(0.0));
+
+    let near_parallel = parse(source(-100.0, 100.000001, 98.51853225045078, 1.0e11).as_bytes())?;
+    assert!(near_parallel.profiles[0]
+        .evaluate_elevation_at(1000.0)?
+        .is_some());
+
+    for (incoming_grade, outgoing_grade) in [
+        (0.1_f64, 0.2_f64),
+        (0.2_f64, 0.1_f64),
+        (-0.2_f64, -0.1_f64),
+        (-0.1_f64, -0.2_f64),
+    ] {
+        let sine_change = outgoing_grade.atan().sin() - incoming_grade.atan().sin();
+        let radius = 20.0 / sine_change.abs();
+        let profile = parse(
+            source(
+                -1000.0 * incoming_grade,
+                1000.0 * outgoing_grade,
+                20.0,
+                radius,
+            )
+            .as_bytes(),
+        )?;
+        assert!(profile.profiles[0].evaluate_elevation_at(1000.0)?.is_some());
+    }
+    Ok(())
+}
+
+#[test]
+fn issue_5045_refuses_nonfinite_profile_results_and_invalid_curve_extents(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use ifc_lite_landxml::LandXmlProfileEvaluationError;
+
+    let source = |profile: &str| {
+        format!(
+            r#"<LandXML xmlns="{LANDXML_12_NAMESPACE}" version="1.2"><Units><Metric linearUnit="meter"/></Units><Alignments><Alignment name="A" length="100" staStart="0"><Profile><ProfAlign name="design">{profile}</ProfAlign></Profile></Alignment></Alignments></LandXML>"#,
+        )
+    };
+    let overflow = parse(source("<PVI>0 -1e308</PVI><PVI>1 1e308</PVI>").as_bytes())?;
+    assert_eq!(
+        overflow.profiles[0].evaluate_elevation_at(0.5),
+        Err(LandXmlProfileEvaluationError::NonFiniteEvaluation),
+        "finite source values must never leak an infinite elevation",
+    );
+    let overlapping = parse(source("<PVI>0 0</PVI><ParaCurve length=\"80\">40 4</ParaCurve><ParaCurve length=\"80\">60 0</ParaCurve><PVI>100 4</PVI>").as_bytes())?;
+    assert_eq!(
+        overlapping.profiles[0].evaluate_elevation_at(80.0),
+        Err(LandXmlProfileEvaluationError::InvalidCurveDeclaration),
+        "overlapping vertical-curve extents are not a continuous alignment",
+    );
+    let overlong = parse(
+        source("<PVI>0 0</PVI><ParaCurve length=\"1000\">50 5</ParaCurve><PVI>100 0</PVI>")
+            .as_bytes(),
+    )?;
+    assert_eq!(
+        overlong.profiles[0].evaluate_elevation_at(-100.0),
+        Err(LandXmlProfileEvaluationError::InvalidCurveDeclaration),
+        "curve extents must stay between their adjacent tangent PVIs",
+    );
+    Ok(())
 }

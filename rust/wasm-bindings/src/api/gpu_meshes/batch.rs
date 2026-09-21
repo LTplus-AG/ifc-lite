@@ -429,7 +429,7 @@ impl IfcAPI {
             // across Rust and TS and would have paid marshalling cost on every
             // job to fix the few that are legacy.
             let ifc_type = ifc_lite_core::legacy_aware_ifc_type_from_record(
-                entity.ifc_type,
+                entity.ifc_type.clone(),
                 content.get(start..end).unwrap_or_default(),
             );
 

@@ -130,7 +130,7 @@ impl GeometryRouter {
                 match self.process_mapped_item_cached(&item, decoder) {
                     Ok(sub_mesh) => untextured.merge(&sub_mesh), // already scaled inside the cached path
                     Err(_e) => {
-                        self.record_unsupported_item(item.ifc_type);
+                        self.record_unsupported_item(item.ifc_type.clone());
                         crate::diag::diag_debug!(
                             { item_id = item.id, error = %_e,
                               "skipping unsupported nested IfcMappedItem in representation map" }
@@ -174,7 +174,7 @@ impl GeometryRouter {
                         untextured.merge(&sub_mesh);
                     }
                     Err(_e) => {
-                        self.record_unsupported_item(item.ifc_type);
+                        self.record_unsupported_item(item.ifc_type.clone());
                         crate::diag::diag_debug!(
                             { item_id = item.id, ifc_type = ?item.ifc_type,
                               error = %_e, "skipping unsupported representation-map item" }
@@ -189,7 +189,7 @@ impl GeometryRouter {
                     }
                 },
                 None => {
-                    self.record_unsupported_item(item.ifc_type);
+                    self.record_unsupported_item(item.ifc_type.clone());
                     crate::diag::diag_debug!(
                         { item_id = item.id, ifc_type = ?item.ifc_type,
                           "skipping unsupported representation-map item (no processor)" }

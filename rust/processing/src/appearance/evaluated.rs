@@ -165,7 +165,7 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
         let body_id=body.id;
         entities.insert(body.id,Arc::new(body));
         source.decoder.inject_shared_cache(&entities);
-        for entity in &plan.created { source.types.insert(entity.express_id,entities[&entity.express_id].ifc_type); }
+        for entity in &plan.created { source.types.insert(entity.express_id,entities[&entity.express_id].ifc_type.clone()); }
         for old in old_items { if let Some(parents)=source.incoming.get_mut(&old) {parents.remove(&body_id);} }
         source.incoming.insert(coordinates,items.iter().copied().collect());
         for &(face,styled_row) in std::iter::once(&(item,styled)).chain(retained.as_ref()) {

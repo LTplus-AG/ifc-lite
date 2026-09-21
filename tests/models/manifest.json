@@ -674,6 +674,90 @@
       "size": 14951
     },
     {
+      "path": "landxml/producers/3d-win-6.6.4-m3-road-alignment.xml",
+      "sha256": "65d14a5934da307600ee9cd119972fddcca5720cd9f229135cb5cbcc08245c92",
+      "size": 7119,
+      "provenance": {
+        "source": { "blob_url": "https://github.com/buildingSMART-Finland/InfraModel/blob/eb2720b8b909d44f18ee4f84acfb113322405a87/examples/M3_Road/0000_Alignments/M3_RS-CL.tg.xml", "commit": "eb2720b8b909d44f18ee4f84acfb113322405a87", "sha256": "65d14a5934da307600ee9cd119972fddcca5720cd9f229135cb5cbcc08245c92", "fetched_at": "2026-09-20" },
+        "license": { "spdx": "CC-BY-4.0", "url": "https://creativecommons.org/licenses/by/4.0/", "attribution": "buildingSMART Finland InfraModel contributors" },
+        "modification": { "status": "unmodified" },
+        "no_customer_data": true
+      },
+      "producer": { "name": "3D-Win", "version": "6.6.4", "export_settings": "InfraModel 4.0.3 road alignment export" },
+      "landxml": { "schema": "InfraModel 4.0.3 (LandXML 1.2 profile)", "namespace": "http://www.inframodel.fi/inframodel", "units": "metric (meter)", "crs": "EPSG:3875; vertical N2000" },
+      "feature_inventory": [{ "feature": "road alignment and profile", "expected_capability": "refused" }]
+    },
+    {
+      "path": "landxml/producers/3d-win-6.6.4-m3-rockbed-terrain.xml",
+      "sha256": "8a32a56fceffc494e4270d482d4034d376b54e860ecb63195cb767e2845f02c1",
+      "size": 385964,
+      "provenance": {
+        "source": { "blob_url": "https://github.com/buildingSMART-Finland/InfraModel/blob/eb2720b8b909d44f18ee4f84acfb113322405a87/examples/M3_Road/9004_Terrain_models/M3_Rockbed_survey.mm.xml", "commit": "eb2720b8b909d44f18ee4f84acfb113322405a87", "sha256": "8a32a56fceffc494e4270d482d4034d376b54e860ecb63195cb767e2845f02c1", "fetched_at": "2026-09-20" },
+        "license": { "spdx": "CC-BY-4.0", "url": "https://creativecommons.org/licenses/by/4.0/", "attribution": "buildingSMART Finland InfraModel contributors" },
+        "modification": { "status": "unmodified" },
+        "no_customer_data": true
+      },
+      "producer": { "name": "3D-Win", "version": "6.6.4", "export_settings": "InfraModel 4.0.3 rockbed survey terrain export" },
+      "landxml": { "schema": "InfraModel 4.0.3 (LandXML 1.2 profile)", "namespace": "http://www.inframodel.fi/inframodel", "units": "metric (meter)", "crs": "EPSG:3875; vertical N2000" },
+      "feature_inventory": [{ "feature": "TIN SourceData, Breaklines, Pnts, and Faces", "expected_capability": "refused" }]
+    },
+    {
+      "path": "landxml/producers/3d-win-6.6.4-m3-lighting-cgpoints.xml",
+      "sha256": "1adfefa81f5e7593be530ae0189348a9d877e3674094122a4c978694eeef92e1",
+      "size": 7417,
+      "provenance": {
+        "source": { "blob_url": "https://github.com/buildingSMART-Finland/InfraModel/blob/eb2720b8b909d44f18ee4f84acfb113322405a87/examples/M3_Road/3300_Lighting/Lightning_columns.xy.xml", "commit": "eb2720b8b909d44f18ee4f84acfb113322405a87", "sha256": "1adfefa81f5e7593be530ae0189348a9d877e3674094122a4c978694eeef92e1", "fetched_at": "2026-09-20" },
+        "license": { "spdx": "CC-BY-4.0", "url": "https://creativecommons.org/licenses/by/4.0/", "attribution": "buildingSMART Finland InfraModel contributors" },
+        "modification": { "status": "unmodified" },
+        "no_customer_data": true
+      },
+      "producer": { "name": "3D-Win", "version": "6.6.4", "export_settings": "InfraModel 4.0.3 lighting CgPoints export" },
+      "landxml": { "schema": "InfraModel 4.0.3 (LandXML 1.2 profile)", "namespace": "http://www.inframodel.fi/inframodel", "units": "metric (meter)", "crs": "EPSG:3875; vertical N2000" },
+      "feature_inventory": [{ "feature": "CgPoints", "expected_capability": "refused" }]
+    },
+    {
+      "path": "landxml/producers/aplitop-mdt-8.0-alignment.xml",
+      "sha256": "895b0932fcc887685eb766f9be47bf3fb21be716c47bf8071494af321be7ac16",
+      "size": 5491,
+      "provenance": {
+        "source": { "blob_url": "https://github.com/bSI-InfraRoom/IFC-infra-unit-test/blob/bc13603cc4899084edbf9f1d9151443a7fb4cf0e/Alignment-Aplitop-1/UT-Alignment-Aplitop-1.xml", "commit": "bc13603cc4899084edbf9f1d9151443a7fb4cf0e", "sha256": "895b0932fcc887685eb766f9be47bf3fb21be716c47bf8071494af321be7ac16", "fetched_at": "2026-09-20" },
+        "license": { "spdx": "CC-BY-4.0", "url": "https://creativecommons.org/licenses/by/4.0/", "attribution": "original authors, as designated by IFC-infra-unit-test LICENSE.txt" },
+        "modification": { "status": "unmodified" },
+        "no_customer_data": true
+      },
+      "producer": { "name": "Aplitop MDT", "version": "8.0", "export_settings": "LandXML 1.2 alignment/profile export" },
+      "landxml": { "schema": "LandXML 1.2", "namespace": "http://www.landxml.org/schema/LandXML-1.2", "units": "metric (meter)", "crs": "not-declared" },
+      "feature_inventory": [{ "feature": "alignment, profile, lines, curves, and spirals", "expected_capability": "unsupported" }]
+    },
+    {
+      "path": "landxml/producers/bentley-openroads-designer-10.09-us-survey-foot-alignment.xml",
+      "sha256": "57b37fdb3d63a1cfebd2af14646c60f78d566b2908b21b91ea5d411f7eb50740",
+      "size": 2487,
+      "provenance": {
+        "source": { "blob_url": "https://github.com/bSI-InfraRoom/IFC-infra-unit-test/blob/bc13603cc4899084edbf9f1d9151443a7fb4cf0e/Alignment-INDOT/PR_Twin_Branch_section_alignment.xml", "commit": "bc13603cc4899084edbf9f1d9151443a7fb4cf0e", "sha256": "57b37fdb3d63a1cfebd2af14646c60f78d566b2908b21b91ea5d411f7eb50740", "fetched_at": "2026-09-20" },
+        "license": { "spdx": "CC-BY-4.0", "url": "https://creativecommons.org/licenses/by/4.0/", "attribution": "original authors, as designated by IFC-infra-unit-test LICENSE.txt" },
+        "modification": { "status": "unmodified" },
+        "no_customer_data": true
+      },
+      "producer": { "name": "OpenRoads Designer", "version": "10.09.00.91", "export_settings": "LandXML 1.2 US-survey-foot alignment/profile export" },
+      "landxml": { "schema": "LandXML 1.2", "namespace": "http://www.landxml.org/schema/LandXML-1.2", "units": "USSurveyFoot", "crs": "not-declared" },
+      "feature_inventory": [{ "feature": "alignment, profile, lines, and curves", "expected_capability": "unsupported" }]
+    },
+    {
+      "path": "landxml/producers/trimble-novapoint-21.354-drainage.xml",
+      "sha256": "bf13d686b9ce69a83d52d5f7ae8afb0746f1b0c4b43ca94a46f59c7725bc7de6",
+      "size": 13446,
+      "provenance": {
+        "source": { "blob_url": "https://github.com/bSI-InfraRoom/IFC-infra-unit-test/blob/bc13603cc4899084edbf9f1d9151443a7fb4cf0e/DrainageSystem-1/DrainageSystem-1-1.xml", "commit": "bc13603cc4899084edbf9f1d9151443a7fb4cf0e", "sha256": "bf13d686b9ce69a83d52d5f7ae8afb0746f1b0c4b43ca94a46f59c7725bc7de6", "fetched_at": "2026-09-20" },
+        "license": { "spdx": "CC-BY-4.0", "url": "https://creativecommons.org/licenses/by/4.0/", "attribution": "original authors, as designated by IFC-infra-unit-test LICENSE.txt" },
+        "modification": { "status": "unmodified" },
+        "no_customer_data": true
+      },
+      "producer": { "name": "Trimble Novapoint", "version": "21.354.0.0", "export_settings": "InfraModel 4.0.3 drainage PipeNetworks export" },
+      "landxml": { "schema": "InfraModel 4.0.3 (LandXML 1.2 profile)", "namespace": "http://www.inframodel.fi/inframodel", "units": "metric (meter)", "crs": "EPSG:3878; vertical EPSG:3900" },
+      "feature_inventory": [{ "feature": "PipeNetworks, Structs, and Pipes", "expected_capability": "refused" }]
+    },
+    {
       "path": "issues/1007_roof_brep_opening_winding.ifc",
       "sha256": "1740106fe498b12e36b09a4d752d4de538559fbbfadb5aa339e3150ffaf19592",
       "size": 129717

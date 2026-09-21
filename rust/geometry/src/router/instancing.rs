@@ -114,7 +114,7 @@ impl GeometryRouter {
                                 mesh.merge(&sub_mesh);
                             }
                             Err(_e) => {
-                                self.record_unsupported_item(sub_item.ifc_type);
+                                self.record_unsupported_item(sub_item.ifc_type.clone());
                                 crate::diag::diag_debug!(
                                     { item_id = sub_item.id, ifc_type = ?sub_item.ifc_type,
                                       error = %_e, "skipping unsupported shared-source item" }
@@ -129,7 +129,7 @@ impl GeometryRouter {
                             }
                         },
                         None => {
-                            self.record_unsupported_item(sub_item.ifc_type);
+                            self.record_unsupported_item(sub_item.ifc_type.clone());
                             crate::diag::diag_debug!(
                                 { item_id = sub_item.id, ifc_type = ?sub_item.ifc_type,
                                   "skipping unsupported shared-source item (no processor)" }

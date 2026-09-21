@@ -104,8 +104,8 @@ describe('generateRust — schema.rs IfcType enum', () => {
   });
 
   it('maps from_id on the CRC32 id', () => {
-    expect(rust.schema).toContain(`${crc32('IfcWall')} => Self::IfcWall,`);
-    expect(rust.schema).toContain('_ => Self::Unknown(id),');
+    expect(rust.schema).toContain(`${crc32('IfcWall')} => Some(Self::IfcWall),`);
+    expect(rust.schema).toContain('_ => None,');
   });
 
   it('id() round-trips the same constant that type_ids.rs exports', () => {
@@ -119,8 +119,10 @@ describe('generateRust — schema.rs IfcType enum', () => {
 
   it('emits a parent() arm only for entities that declare SUBTYPE OF', () => {
     expect(rust.schema).toContain('Self::IfcWall => Some(Self::IfcRoot),');
-    // IfcRoot is the root: no supertype, so no arm — it falls through to None.
-    expect(rust.schema).not.toContain('Self::IfcRoot => Some(');
+    // IfcRoot is the root: its parent() arm falls through to the shared None.
+    const parentBody = rust.schema.split('pub fn parent(&self) -> Option<Self> {')[1]
+      .split('    /// Check if this type is a subtype')[0];
+    expect(parentBody).not.toContain('Self::IfcRoot => Some(');
   });
 
   it('emits is_abstract() arms only for ABSTRACT entities', () => {

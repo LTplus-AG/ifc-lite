@@ -169,7 +169,7 @@ pub fn extract_profiles_with_diagnostics<T: AsRef<[u8]> + ?Sized>(content: &T, m
             };
 
             for item in &items {
-                if is_extruded_area_solid(item.ifc_type) {
+                if is_extruded_area_solid(item.ifc_type.clone()) {
                     match extract_extruded_solid(
                         id,
                         &ifc_type_name,
@@ -326,7 +326,7 @@ fn extract_mapped_item_profiles(
     };
 
     for sub_item in &items {
-        if is_extruded_area_solid(sub_item.ifc_type) {
+        if is_extruded_area_solid(sub_item.ifc_type.clone()) {
             match extract_extruded_solid(
                 element_id,
                 ifc_type,

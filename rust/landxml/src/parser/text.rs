@@ -64,7 +64,10 @@ impl Parser<'_> {
                 Capture::Point { text, .. }
                 | Capture::Face { text, .. }
                 | Capture::SourcePoints { text, .. }
-                | Capture::Polyline { text, .. } => text,
+                | Capture::Polyline { text, .. }
+                | Capture::ProfilePoint { text, .. }
+                | Capture::PairList { text, .. }
+                | Capture::CrossSectionPoint { text, .. } => text,
             };
             if target.len() + text.len() > self.limits.max_text_bytes {
                 return Err(error(Code::LimitExceeded, "captured text limit exceeded"));

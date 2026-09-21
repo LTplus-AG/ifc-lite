@@ -48,6 +48,18 @@ pub struct LandXmlLimits {
     pub max_character_references: usize,
     /// Maximum LandXML `Surface` records, including non-TIN surfaces we skip.
     pub max_surfaces: usize,
+    /// Maximum LandXML `PipeNetwork` records, including refused networks.
+    pub max_pipe_networks: usize,
+    /// Maximum pipe-network `Struct` records across a document.
+    pub max_pipe_structures: usize,
+    /// Maximum pipe-network `Pipe` records across a document.
+    pub max_pipes: usize,
+    /// Maximum `Invert` records across a document.
+    pub max_pipe_inverts: usize,
+    /// Maximum `PipeFlow` and `StructFlow` records across a document.
+    pub max_pipe_flows: usize,
+    /// Maximum element-level semantic refusals retained for a document.
+    pub max_pipe_refusals: usize,
     /// Maximum preserved roots from foreign XML namespaces.
     pub max_extensions: usize,
     /// Maximum coordinate records across the whole source document, including
@@ -56,6 +68,25 @@ pub struct LandXmlLimits {
     /// Maximum visible face records across the whole source document.
     pub max_faces: usize,
     pub max_references: usize,
+    /// Maximum source alignments retained for profile and section review.
+    pub max_alignments: usize,
+    /// Maximum `ProfAlign` and `ProfSurf` records across all alignments.
+    pub max_profiles: usize,
+    /// Maximum PVI and sampled grade-line points across all profiles.
+    pub max_profile_points: usize,
+    /// Maximum advertised vertical curves across all profiles.
+    pub max_vertical_curves: usize,
+    /// Maximum cross-sections across all alignments.
+    pub max_cross_sections: usize,
+    /// Maximum cross-section surfaces and their vertices.
+    pub max_cross_section_surfaces: usize,
+    pub max_cross_section_points: usize,
+    /// Maximum roadway association records.
+    pub max_roadways: usize,
+    /// Maximum bounded preserved-only corridor/stringline extension roots.
+    pub max_preserved_only_extensions: usize,
+    /// Maximum capability records retained while parsing incomplete source data.
+    pub max_capability_diagnostics: usize,
     pub max_work: usize,
 }
 
@@ -70,10 +101,26 @@ impl Default for LandXmlLimits {
             max_text_bytes: 1024 * 1024,
             max_character_references: 100_000,
             max_surfaces: 100_000,
+            max_pipe_networks: 100_000,
+            max_pipe_structures: 5_000_000,
+            max_pipes: 5_000_000,
+            max_pipe_inverts: 10_000_000,
+            max_pipe_flows: 10_000_000,
+            max_pipe_refusals: 1_000_000,
             max_extensions: 100_000,
             max_points: 5_000_000,
             max_faces: 10_000_000,
             max_references: 30_000_000,
+            max_alignments: 100_000,
+            max_profiles: 1_000_000,
+            max_profile_points: 10_000_000,
+            max_vertical_curves: 5_000_000,
+            max_cross_sections: 5_000_000,
+            max_cross_section_surfaces: 10_000_000,
+            max_cross_section_points: 20_000_000,
+            max_roadways: 100_000,
+            max_preserved_only_extensions: 1_000_000,
+            max_capability_diagnostics: 1_000_000,
             max_work: 100_000_000,
         }
     }

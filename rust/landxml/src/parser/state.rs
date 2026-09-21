@@ -4,7 +4,55 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::{xml::Attributes, LandXmlPoint, LandXmlPolyline, LandXmlSurfaceKind};
+use crate::{
+    capture::Capture, xml::Attributes, LandXmlAlignment, LandXmlCancellation,
+    LandXmlCapabilityDiagnostic, LandXmlCrossSection, LandXmlCrossSectionSurface, LandXmlExtension,
+    LandXmlCoordinateSystem, LandXmlLimits, LandXmlPoint, LandXmlPolyline,
+    LandXmlPreservedOnlyExtension, LandXmlProfile, LandXmlRoadway, LandXmlSourceId, LandXmlSurface,
+    LandXmlSurfaceKind, LandXmlUnits,
+};
+
+use super::profiles::{
+    AlignmentBuilder, CrossSectionBuilder, CrossSectionSurfaceBuilder, ProfileBuilder,
+};
+
+pub(super) struct Parser<'a> {
+    pub(super) limits: &'a LandXmlLimits,
+    pub(super) cancelled: Option<&'a dyn LandXmlCancellation>,
+    pub(super) work: usize,
+    pub(super) character_references: usize,
+    pub(super) references: usize,
+    pub(super) surfaces_seen: usize,
+    pub(super) points_seen: usize,
+    pub(super) faces_seen: usize,
+    pub(super) profile_points_seen: usize,
+    pub(super) vertical_curves_seen: usize,
+    pub(super) cross_section_points_seen: usize,
+    pub(super) frames: Vec<Frame>,
+    pub(super) units: Option<LandXmlUnits>,
+    pub(super) coordinate_system: Option<LandXmlCoordinateSystem>,
+    pub(super) surface: Option<SurfaceBuilder>,
+    pub(super) capture: Option<Capture>,
+    pub(super) surfaces: Vec<LandXmlSurface>,
+    pub(super) extensions: Vec<LandXmlExtension>,
+    pub(super) warnings: Vec<String>,
+    pub(super) surface_ordinal: usize,
+    pub(super) version: String,
+    pub(super) root_seen: bool,
+    pub(super) root_closed: bool,
+    pub(super) alignment: Option<AlignmentBuilder>,
+    pub(super) profile: Option<ProfileBuilder>,
+    pub(super) cross_section: Option<CrossSectionBuilder>,
+    pub(super) cross_section_surface: Option<CrossSectionSurfaceBuilder>,
+    pub(super) alignments: Vec<LandXmlAlignment>,
+    pub(super) profiles: Vec<LandXmlProfile>,
+    pub(super) cross_sections: Vec<LandXmlCrossSection>,
+    pub(super) cross_section_surfaces: Vec<LandXmlCrossSectionSurface>,
+    pub(super) roadways: Vec<LandXmlRoadway>,
+    pub(super) capability_diagnostics: Vec<LandXmlCapabilityDiagnostic>,
+    pub(super) preserved_only_extensions: Vec<LandXmlPreservedOnlyExtension>,
+    pub(super) active_roadway_source_id: Option<LandXmlSourceId>,
+}
 
 #[derive(Clone)]
 pub(super) struct Frame {

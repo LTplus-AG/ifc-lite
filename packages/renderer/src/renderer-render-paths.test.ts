@@ -10,6 +10,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { RenderOptions, BatchedMesh, Mesh } from './types.js';
 import type { Scene } from './scene.js';
 import { DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
+import { rteRelativePositionF32 } from './relative-to-eye.js';
 
 /**
  * Drives the REAL render() loop against a stub GPU so the frame-lifecycle
@@ -270,7 +271,7 @@ function makeHarness(): Harness {
                     case 'needsResize': return () => false;
                     case 'getSampleCount': return () => 1;
                     case 'getMultisampleTextureView': return () => null;
-                    case 'getUniformBufferSize': return () => 240;
+                    case 'getUniformBufferSize': return () => 336;
                     case 'getQuantizedPipelineVariant': return () => null;
                     default: return () => ({});
                 }
@@ -1044,6 +1045,17 @@ function translationFor(h: Harness, uniformBuffer: unknown): number[] | null {
     return null;
 }
 
+/** RTE drawable delta lanes appended after the legacy + quantized uniform ABI. */
+function rteDeltaFor(h: Harness, uniformBuffer: unknown): Float32Array | null {
+    for (let i = h.stats.writes.length - 1; i >= 0; i--) {
+        const w = h.stats.writes[i];
+        if (w.buffer === uniformBuffer && w.floats.length >= 84) {
+            return w.floats.slice(76, 84);
+        }
+    }
+    return null;
+}
+
 describe('textured sub-pass carries the per-element origin (#1973)', () => {
     const ORIGIN: [number, number, number] = [12.5, 10.5, -3.25];
 
@@ -1091,6 +1103,50 @@ describe('textured sub-pass carries the per-element origin (#1973)', () => {
 
         assert.deepStrictEqual(translationFor(h, textured[0].uniformBuffer), ORIGIN);
         assert.deepStrictEqual(translationFor(h, textured[1].uniformBuffer), other);
+    });
+
+    it('keeps a centimetre residual at a 5,000 km textured origin (#5049)', () => {
+        const h = makeHarness();
+        const origin: [number, number, number] = [5_000_000.015625, 0, 0];
+        const textured = seedTextured(h, [texturedTriangle(1, origin)]);
+        h.renderer['camera'].setPosition(5_000_000, 0, 10);
+        h.renderer['camera'].setTarget(5_000_000, 0, 0);
+
+        h.stats.writes.length = 0;
+        h.render();
+
+        const packed = rteDeltaFor(h, textured[0].uniformBuffer);
+        assert.ok(packed, 'textured draw must upload RTE high/low origin lanes');
+        assert.equal(rteRelativePositionF32([0, 0, 0], packed)[0], 0.015625);
+    });
+});
+
+describe('batched RTE draw uniforms (#5049)', () => {
+    it('uses one high/low camera-relative origin for flat and quantized batches', () => {
+        const h = makeHarness();
+        const scene = sceneOf(h);
+        const device = h.renderer['device'].getDevice();
+        scene.appendToBatches([triangle(1, [0.4, 0.5, 0.6, 1])], device, h.renderer['pipeline'] as never, false);
+        const batch = scene.getBatchedMeshes()[0];
+        batch.origin = [5_000_000.015625, 0, 0];
+        batch.bounds = undefined;
+        batch.quantized = { min: [1, 2, 3], step: 0.001 };
+        h.renderer['camera'].setPosition(5_000_000, 0, 10);
+        h.renderer['camera'].setTarget(5_000_000, 0, 0);
+
+        h.stats.writes.length = 0;
+        h.render();
+
+        const packed = rteDeltaFor(h, batch.uniformBuffer);
+        assert.ok(packed, 'flat batch must receive the appended RTE lanes');
+        assert.equal(rteRelativePositionF32([0, 0, 0], packed)[0], 0.015625);
+        let write: { buffer: unknown; floats: Float32Array } | undefined;
+        for (const candidate of h.stats.writes) {
+            if (candidate.buffer === batch.uniformBuffer) write = candidate;
+        }
+        assert.ok(write, 'batch draw must upload its uniform block');
+        assert.equal(new Uint32Array(write.floats.buffer)[44] & 0x10000, 0x10000);
+        assert.deepStrictEqual(Array.from(write.floats.slice(56, 60)), [1, 2, 3, Math.fround(0.001)]);
     });
 });
 

@@ -127,7 +127,7 @@ export class RenderPipeline {
         // Create uniform buffer for camera matrices, PBR material, section plane + clip box
         // Layout: viewProj (64 bytes) + model (64 bytes) + baseColor (16 bytes) + metallicRoughness (8 bytes) +
         //         sectionPlane (16 bytes: vec3 normal + float distance) + flags (16 bytes) +
-        //         clipBoxMin (16 bytes) + clipBoxMax (16 bytes) = 224 bytes
+        //         clipBoxMin/max + quant params + appended RTE frame/origin = 336 bytes
         // WebGPU requires uniform buffers to be aligned to 16 bytes
         this.uniformBuffer = this.device.createBuffer({
             size: this.getUniformBufferSize(), // keep in lockstep with the WGSL Uniforms struct
@@ -590,8 +590,8 @@ export class RenderPipeline {
     ): void {
         // Create buffer with proper alignment:
         // viewProj (16) + model (16) + baseColor (4) + metallicRoughness (2) + padding (2)
-        // + sectionPlane (4) + flags (4 u32) + clipBoxMin (4) + clipBoxMax (4) = 56 floats = 224 bytes
-        const buffer = new Float32Array(56);
+        // + sectionPlane/flags/clip (16) + quant(4) + RTE frame/origin(24) = 84 floats.
+        const buffer = new Float32Array(84);
         const flagBuffer = new Uint32Array(buffer.buffer, 176, 4); // flags at byte 176
 
         // viewProj: mat4x4<f32> at offset 0 (16 floats)
@@ -643,7 +643,7 @@ export class RenderPipeline {
     }
 
     /**
-     * Write a raw 56-float (224-byte) uniform block into the SHARED uniform
+     * Write a raw 84-float (336-byte) uniform block into the SHARED uniform
      * buffer, whose bind group is `getBindGroup()`. Used by the GPU-instancing
      * pass, which reuses the frame's viewProj + section + flags from the
      * renderer's prebuilt template (model + baseColor are unused — vs_instanced
@@ -923,10 +923,10 @@ export class RenderPipeline {
     }
 
     getUniformBufferSize(): number {
-        // 60 floats * 4 bytes: section plane + clip box + quantParams
-        // (issue #1682 phase 6). Must match the WGSL Uniforms struct and the
+        // 84 floats * 4 bytes: legacy material/clip/quant fields plus appended
+        // RTE view-projection and drawable high/low lanes. Must match WGSL and
         // renderer's uniformScratch length.
-        return 240;
+        return 336;
     }
 
     private destroyed = false;

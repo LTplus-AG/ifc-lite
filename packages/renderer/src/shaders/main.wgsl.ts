@@ -18,16 +18,15 @@ export const mainShaderSource = `
           flags: vec4<u32>,             // x = isSelected, y = section/clip bits, z = edgeEnabled, w = edgeIntensityMilli
           clipBoxMin: vec4<f32>,        // xyz = clip-box min corner (world), w = pad
           clipBoxMax: vec4<f32>,        // xyz = clip-box max corner (world), w = pad
-          // Quantized-vertex dequantization (issue #1682 phase 6):
-          // xyz = lattice-aligned quantMin (batch-origin-relative), w = step.
-          // Only read by vs_main_quantized; zero elsewhere.
-          quantParams: vec4<f32>,
+          quantParams: vec4<f32>, // local min xyz, lattice step w
+          rteViewProj: mat4x4<f32>, // appended frame; bit 16 selects it
+          drawableDeltaHigh: vec4<f32>,
+          drawableDeltaLow: vec4<f32>,
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
-
-        // Global lighting environment — one buffer shared by every mesh in
-        // the pass (bound once per frame at group(1)). Field packing must
-        // match packEnvironmentUniforms() in environment.ts.
+        const RTE_DRAWABLE_FLAG: u32 = 65536u;
+        fn rtePosition(local: vec3<f32>) -> vec4<f32> { return vec4<f32>((local + uniforms.drawableDeltaHigh.xyz) + uniforms.drawableDeltaLow.xyz, 1.0); }
+        // Shared group(1) lighting; packing matches packEnvironmentUniforms().
         struct Environment {
           sunDirection: vec3<f32>,      // unit vector TOWARD the sun
           sunIntensity: f32,
@@ -202,7 +201,7 @@ export const mainShaderSource = `
         fn shadeFlatVertex(localPos: vec3<f32>, localNormal: vec3<f32>, entityId: u32) -> VertexOutput {
           var output: VertexOutput;
           let worldPos = uniforms.model * vec4<f32>(localPos, 1.0);
-          output.position = uniforms.viewProj * worldPos;
+          output.position = select(uniforms.viewProj * worldPos, uniforms.rteViewProj * rtePosition(localPos), (uniforms.flags.x & RTE_DRAWABLE_FLAG) != 0u);
           // Anti z-fighting depth nudge — see vs_main's comment.
           let colorSalt = (entityId >> 24u) * 2654435761u;
           let zHash = (((entityId & 0x00FFFFFFu) ^ colorSalt) * 2654435761u) & 255u;
@@ -227,7 +226,7 @@ export const mainShaderSource = `
         fn vs_main(input: VertexInput, @builtin(instance_index) instanceIndex: u32) -> VertexOutput {
           var output: VertexOutput;
           let worldPos = uniforms.model * vec4<f32>(input.position, 1.0);
-          output.position = uniforms.viewProj * worldPos;
+          output.position = select(uniforms.viewProj * worldPos, uniforms.rteViewProj * rtePosition(input.position), (uniforms.flags.x & RTE_DRAWABLE_FLAG) != 0u);
           // Anti z-fighting: deterministic depth nudge.
           // Knuth multiplicative hash spreads sequential IDs across 0-255 so
           // coplanar faces from different entities always get distinct depths.

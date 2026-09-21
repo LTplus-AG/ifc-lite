@@ -489,11 +489,11 @@ export class Renderer {
     private _loggedSectionBounds: boolean = false;
 
     // Pooled per-frame buffers to avoid GC pressure from per-batch Float32Array allocations
-    // A single 224-byte uniform buffer (56 floats) is reused for all batches/meshes within a frame
-    // (48 floats viewProj…flags + 8 floats clipBoxMin/clipBoxMax)
-    // 60 floats = the WGSL Uniforms struct incl. quantParams (see
+    // A single 336-byte uniform buffer is reused for all batches/meshes within a frame.
+    // 84 floats includes legacy material/clip/quant fields plus the RTE frame
+    // and drawable high/low lanes (see
     // pipeline.getUniformBufferSize).
-    private readonly uniformScratch = new Float32Array(60);
+    private readonly uniformScratch = new Float32Array(84);
     private readonly uniformScratchU32 = new Uint32Array(this.uniformScratch.buffer, 176, 4);
 
     // What the last render() actually clipped, so the GPU picker can mirror it and
@@ -2525,6 +2525,7 @@ export class Renderer {
                 const tpl = this.uniformScratch;
                 const tplFlags = this.uniformScratchU32;
                 tpl.set(viewProj, 0);
+                relativeToEyeFrame.packUniforms(tpl, 60);
                 // Identity model matrix (positions already in world space)
                 tpl[16] = 1; tpl[17] = 0; tpl[18] = 0; tpl[19] = 0;
                 tpl[20] = 0; tpl[21] = 1; tpl[22] = 0; tpl[23] = 0;
@@ -2579,6 +2580,11 @@ export class Renderer {
                     tpl[28] = o ? o[0] : 0;
                     tpl[29] = o ? o[1] : 0;
                     tpl[30] = o ? o[2] : 0;
+                    // The regular model matrix remains for absolute-space
+                    // fragment work (section/shadow); vertex projection uses
+                    // this f64-subtracted high/low origin instead.
+                    relativeToEyeFrame.packDrawableOrigin(o ?? [0, 0, 0], tpl, 76);
+                    tplFlags[0] |= 0x10000;
 
                     // Quantized dequantization params (issue #1682 phase 6);
                     // zeroed for f32 batches (their pipelines ignore them).
@@ -2749,6 +2755,8 @@ export class Renderer {
                         // drew every textured occurrence collapsed toward the
                         // world origin.
                         tpl[28] = tm.origin[0]; tpl[29] = tm.origin[1]; tpl[30] = tm.origin[2];
+                        relativeToEyeFrame.packDrawableOrigin(tm.origin, tpl, 76);
+                        tplFlags[0] |= 0x10000;
                         tpl[32] = txOverride ? txOverride[0] : tm.color[0];
                         tpl[33] = txOverride ? txOverride[1] : tm.color[1];
                         tpl[34] = txOverride ? txOverride[2] : tm.color[2];

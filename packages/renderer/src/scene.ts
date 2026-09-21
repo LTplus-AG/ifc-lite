@@ -58,6 +58,8 @@ import {
   INSTANCE_STRIDE_BYTES,
   INSTANCE_COLOR_OFFSET,
   INSTANCE_FLAGS_OFFSET,
+  INSTANCE_ANCHOR_HIGH_OFFSET,
+  INSTANCE_ANCHOR_LOW_OFFSET,
   INSTANCE_FLAG_SELECTED,
   INSTANCE_FLAG_HIDDEN,
 } from './instanced-render.js';
@@ -1626,11 +1628,37 @@ export class Scene {
       dv.setFloat32(b + 48, tx, true);
       dv.setFloat32(b + 52, ty, true);
       dv.setFloat32(b + 56, tz, true);
+      const record = b / INSTANCE_STRIDE_BYTES;
+      const anchorOffset = record * 3;
+      const ax = dv.getFloat32(b + INSTANCE_ANCHOR_HIGH_OFFSET, true) + dv.getFloat32(b + INSTANCE_ANCHOR_LOW_OFFSET, true) + dx;
+      const ay = dv.getFloat32(b + INSTANCE_ANCHOR_HIGH_OFFSET + 4, true) + dv.getFloat32(b + INSTANCE_ANCHOR_LOW_OFFSET + 4, true) + dy;
+      const az = dv.getFloat32(b + INSTANCE_ANCHOR_HIGH_OFFSET + 8, true) + dv.getFloat32(b + INSTANCE_ANCHOR_LOW_OFFSET + 8, true) + dz;
+      for (const [axis, value] of [ax, ay, az].entries()) {
+        const high = Math.fround(value);
+        dv.setFloat32(b + INSTANCE_ANCHOR_HIGH_OFFSET + axis * 4, high, true);
+        dv.setFloat32(b + INSTANCE_ANCHOR_LOW_OFFSET + axis * 4, Math.fround(value - high), true);
+      }
+      if (cpu.canonicalAnchors) {
+        cpu.canonicalAnchors[anchorOffset] = ax;
+        cpu.canonicalAnchors[anchorOffset + 1] = ay;
+        cpu.canonicalAnchors[anchorOffset + 2] = az;
+      }
+      if (cpu.canonicalMatrixTranslations) {
+        cpu.canonicalMatrixTranslations[anchorOffset] = tx;
+        cpu.canonicalMatrixTranslations[anchorOffset + 1] = ty;
+        cpu.canonicalMatrixTranslations[anchorOffset + 2] = tz;
+      }
       // Push only the 12 translation bytes to the GPU buffer (in place). Guarded
       // on the cached device so CPU-only tests still exercise the matrix math.
       if (device) {
         const gpu = this.instancedTemplates[occ.templateIndex]?.instanceBuffer;
-        if (gpu) device.queue.writeBuffer(gpu, b + 48, new Float32Array([tx, ty, tz]));
+        if (gpu) {
+          device.queue.writeBuffer(gpu, b + 48, new Float32Array([tx, ty, tz]));
+          device.queue.writeBuffer(gpu, b + INSTANCE_ANCHOR_HIGH_OFFSET, new Float32Array([
+            dv.getFloat32(b + INSTANCE_ANCHOR_HIGH_OFFSET, true), dv.getFloat32(b + INSTANCE_ANCHOR_HIGH_OFFSET + 4, true), dv.getFloat32(b + INSTANCE_ANCHOR_HIGH_OFFSET + 8, true), 0,
+            dv.getFloat32(b + INSTANCE_ANCHOR_LOW_OFFSET, true), dv.getFloat32(b + INSTANCE_ANCHOR_LOW_OFFSET + 4, true), dv.getFloat32(b + INSTANCE_ANCHOR_LOW_OFFSET + 8, true), 0,
+          ]));
+        }
       }
       moved = true;
     }

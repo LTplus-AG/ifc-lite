@@ -20,7 +20,6 @@ import type {
   EntityResult,
   IDSCardinalityResult,
   IDSValidationSummary,
-  SetResult,
   SpecificationResult,
   ValidationModelInfo,
   ValidationReport,

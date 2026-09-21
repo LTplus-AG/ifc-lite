@@ -23,7 +23,7 @@ import { useIDS } from '@/hooks/useIDS';
 import { openGenericFileDialog } from '@/services/file-dialog';
 import { useViewerStore } from '@/store';
 import { endIdsRowFocusPresentation } from '@/lib/ids/visibility-ownership';
-import { IDSCorrectionDialog } from './IDSCorrectionDialog';
+import { IDSCorrectionDialog, getCorrectableRequirements } from './IDSCorrectionDialog';
 import { useTranslation } from '@/i18n';
 import { IDSPanelResults } from './IDSPanelResults';
 import { IDSPanelStates, IDSValidationProgress } from './IDSPanelStates';
@@ -100,6 +100,22 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
   const correctionSpecResult = report?.specificationResults.find(
     (s) => s.specification.id === correctionSpecId
   );
+
+  // Only a scalar property requirement with an exact pset/property name is
+  // correctable (#3929) — auto-correct is IDS-only (#5138: a rule-set spec
+  // has no `IDSRequirement.facet` to read a pset/property name off), so this
+  // is computed here, where `report` is still IDS-typed, rather than inside
+  // the now-generalised `SpecificationCard`.
+  const correctableSpecIds = useMemo(() => {
+    if (!report) return undefined;
+    const out = new Set<string>();
+    for (const specResult of report.specificationResults) {
+      if (specResult.failedCount > 0 && getCorrectableRequirements(specResult).length > 0) {
+        out.add(specResult.specification.id);
+      }
+    }
+    return out;
+  }, [report]);
 
   // Handle file selection
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -230,13 +246,17 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
           onLoadClick={() => { void handleLoadIdsClick(); }}
         />
         <IDSPanelResults
-          ids={ids}
+          results={ids}
+          runValidation={runValidation}
+          auditReport={ids.auditReport}
           multiModel={idsMultiModel}
           models={idsModelList}
           pendingModelId={pendingModelId}
           setPendingModelId={setPendingModelId}
+          validating={loading}
           onEntityClick={handleEntityClick}
           onCorrect={setCorrectionSpecId}
+          correctableSpecIds={correctableSpecIds}
         />
       </div>
 

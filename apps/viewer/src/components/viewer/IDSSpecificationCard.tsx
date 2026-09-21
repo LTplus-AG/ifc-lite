@@ -4,7 +4,7 @@
 
 import { useMemo, useState } from 'react';
 import { Building2, ChevronDown, ChevronRight, Wrench } from 'lucide-react';
-import type { IDSSpecificationResult } from '@ifc-lite/ids';
+import type { SpecificationResult, SetResult } from '@ifc-lite/ids';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Separator } from '@/components/ui/separator';
@@ -12,17 +12,20 @@ import { groupRequirementResults, computeCheckStats } from '@/hooks/ids/idsRequi
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
-import { EntityResultRow, RequirementGroupRow } from './IDSResultRows';
+import { EntityResultRow, RequirementGroupRow, SetResultRow } from './IDSResultRows';
 import { PassRateBar, StatusIcon } from './IDSPanelStatus';
-import { getCorrectableRequirements } from './IDSCorrectionDialog';
 
 interface SpecificationCardProps {
-  result: IDSSpecificationResult;
+  result: SpecificationResult;
   isActive: boolean;
   onSelect: () => void;
   onEntityClick: (modelId: string, expressId: number) => void;
   filterMode: 'all' | 'failed' | 'passed';
-  onCorrect: () => void;
+  onIsolateSet: (members: SetResult['members']) => void;
+  /** IDS-only (#3929 auto-correct); absent/false hides the action entirely —
+   *  a rule-set spec has no correctable IDS facet to write through. */
+  onCorrect?: () => void;
+  correctable?: boolean;
 }
 
 export function SpecificationCard({
@@ -31,7 +34,9 @@ export function SpecificationCard({
   onSelect,
   onEntityClick,
   filterMode,
+  onIsolateSet,
   onCorrect,
+  correctable = false,
 }: SpecificationCardProps) {
   const { t, locale } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -65,13 +70,13 @@ export function SpecificationCard({
   }, [requirementGroups, filterMode]);
   const applicableChecks = checkStats.passedChecks + checkStats.failedChecks;
 
-  // Only a scalar property requirement with an exact pset/property name is
-  // correctable (#3929) — computed lazily so a spec with no failures (or no
-  // correctable shape) never renders the action.
-  const hasCorrectable = useMemo(
-    () => result.failedCount > 0 && getCorrectableRequirements(result).length > 0,
-    [result]
-  );
+  // #5138: set-level (uniqueness/aggregate) results — never populated by
+  // IDS, so this section only ever renders for a rule-set report.
+  const setResults = result.setResults ?? [];
+  const duplicateGroupCount = setResults.filter((s) => s.kind === 'duplicate' && !s.passed).length;
+  const failedAggregateCount = setResults.filter((s) => s.kind === 'aggregate' && !s.passed).length;
+
+  const hasCorrectable = correctable && result.failedCount > 0;
 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
@@ -139,10 +144,26 @@ export function SpecificationCard({
                     })}
                   </div>
                 )}
+                {/* #5138: set-level (uniqueness/aggregate) failures — never
+                    populated by IDS, so this line only appears for a
+                    rule-set report that has one of these requirement kinds. */}
+                {(duplicateGroupCount > 0 || failedAggregateCount > 0) && (
+                  <div className="mt-1 text-xs text-red-600">
+                    {duplicateGroupCount > 0 && t('validationPanel.setResult.duplicateGroupsSummary', {
+                      count: duplicateGroupCount,
+                      countDisplay: formatLocaleNumber(locale, duplicateGroupCount),
+                    })}
+                    {duplicateGroupCount > 0 && failedAggregateCount > 0 && ' · '}
+                    {failedAggregateCount > 0 && t('validationPanel.setResult.aggregateFailuresSummary', {
+                      count: failedAggregateCount,
+                      countDisplay: formatLocaleNumber(locale, failedAggregateCount),
+                    })}
+                  </div>
+                )}
               </div>
             </button>
           </CollapsibleTrigger>
-          {hasCorrectable && (
+          {hasCorrectable && onCorrect && (
             <Button
               variant="outline"
               size="sm"
@@ -170,6 +191,25 @@ export function SpecificationCard({
             )}
           </div>
         </CollapsibleContent>
+
+        {/* Set Results (#5138: uniqueness/aggregate groups) — above the
+            entity rows, since a SetResult describes a GROUP, not one entity. */}
+        {setResults.length > 0 && (
+          <CollapsibleContent>
+            <Separator />
+            <div className="p-2 pt-1 text-xs font-medium text-muted-foreground">{t('validationPanel.setResult.heading')}</div>
+            <div className="p-2 pt-0 space-y-1">
+              {setResults.map((set, idx) => (
+                <SetResultRow key={`${set.kind}:${set.label}:${idx}`} result={set} onIsolate={onIsolateSet} />
+              ))}
+              {result.setResultsTruncated && (
+                <div className="p-1 text-xs text-muted-foreground text-center">
+                  {t('validationPanel.setResult.truncated')}
+                </div>
+              )}
+            </div>
+          </CollapsibleContent>
+        )}
 
         {/* Entity Results */}
         <CollapsibleContent>

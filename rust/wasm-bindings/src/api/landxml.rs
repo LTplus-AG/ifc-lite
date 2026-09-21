@@ -289,8 +289,9 @@ impl IfcAPI {
             })
     }
 
-    /// Evaluate every physical location carrying a displayed station label.
-    /// A duplicate label is a real station-equation result, never collapsed.
+    /// Evaluate a bounded set of physical locations carrying a displayed
+    /// station label. A duplicate label is real, never collapsed; an
+    /// excessive number is refused rather than allocated synchronously.
     #[wasm_bindgen(js_name = probeLandXmlAlignmentAtStation)]
     pub fn probe_landxml_alignment_at_station(
         &self,
@@ -306,13 +307,13 @@ impl IfcAPI {
             .iter()
             .find(|value| value.source_id.0 == alignment_source_id)
             .ok_or_else(|| JsValue::from_str("LXMLA229: alignment source id was not found"))?;
-        let probes: Result<Vec<_>, _> = alignment
-            .distances_for_station(station)
-            .map_err(|error| JsValue::from_str(&error.to_string()))?
-            .into_iter()
-            .map(|distance| alignment.probe_at_distance(distance, offset_right))
-            .collect();
-        let probes = probes.map_err(|error: ifc_lite_landxml::alignment::LandXmlNumericDiagnostic| JsValue::from_str(&error.to_string()))?;
+        let probes = alignment
+            .probes_at_station(
+                station,
+                offset_right,
+                ifc_lite_landxml::alignment::MAX_INTERACTIVE_STATION_PROBES,
+            )
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
         let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
         probes
             .serialize(&serializer)

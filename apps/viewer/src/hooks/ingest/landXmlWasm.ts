@@ -7,9 +7,9 @@
 import init, { IfcAPI } from '@ifc-lite/wasm';
 import type { LandXmlSourceBuffer } from './landXmlIngest.js';
 import type {
-  LandXmlAlignment, LandXmlAlignmentPrimitive, LandXmlAlignmentSegment, LandXmlCantStation, LandXmlPlanPoint,
+  LandXmlAlignment, LandXmlAlignmentPrimitive, LandXmlAlignmentSegment, LandXmlPlanPoint,
   LandXmlPointLocation, LandXmlPolyline, LandXmlTinDocument, LandXmlTinSurface,
-  LandXmlSuperelevation, LandXmlUnsupportedTransition,
+  LandXmlUnsupportedTransition,
 } from './landXmlSemantics.js';
 
 interface NodeModuleApi {
@@ -20,7 +20,7 @@ interface NodeFsApi {
   readFile(path: string): Promise<Uint8Array>;
 }
 
-async function initLandXmlWasm(): Promise<void> {
+export async function initLandXmlWasm(): Promise<void> {
   const process = (globalThis as { process?: { versions?: { node?: string } } }).process;
   if (!process?.versions?.node) {
     await init();
@@ -254,7 +254,8 @@ function alignment(value: unknown, index: number): LandXmlAlignment {
   });
   const unsupportedTransitions: LandXmlUnsupportedTransition[] = array(raw.unsupported_transitions, `alignment ${index} unsupported transitions`).map((value, transitionIndex) => {
     const parsed = record(value, `alignment ${index} unsupported transition ${transitionIndex}`);
-    return { sourceId: string(parsed.source_id, `alignment ${index} unsupported transition ${transitionIndex} source id`), spiType: string(parsed.spi_type, `alignment ${index} unsupported transition ${transitionIndex} type`), reason: string(parsed.reason, `alignment ${index} unsupported transition ${transitionIndex} reason`) };
+    const sourceSourceId = string(parsed.source_id, `alignment ${index} unsupported transition ${transitionIndex} source id`);
+    return { sourceId: `${sourceSourceId}:refusal`, sourceSourceId, spiType: string(parsed.spi_type, `alignment ${index} unsupported transition ${transitionIndex} type`), reason: string(parsed.reason, `alignment ${index} unsupported transition ${transitionIndex} reason`) };
   });
   return {
     sourceId: string(raw.source_id, `alignment ${index} source id`), ordinal: finite(raw.ordinal, `alignment ${index} ordinal`),
@@ -302,78 +303,6 @@ export async function parseLandXmlSourceInCurrentRealm(buffer: LandXmlSourceBuff
   const api = new IfcAPI();
   try {
     return parseLandXmlSourceWithApi(api, buffer);
-  } finally {
-    api.free();
-  }
-}
-
-export interface LandXmlAlignmentProbeResult {
-  segmentSourceId: string;
-  distance: number;
-  northing: number;
-  easting: number;
-  displayedBack: number;
-  displayedAhead: number;
-}
-
-export interface LandXmlAlignmentInspectionResult {
-  previousCantStation: LandXmlCantStation | null;
-  nextCantStation: LandXmlCantStation | null;
-  superelevations: LandXmlSuperelevation[];
-}
-
-/** Invoke native f64 alignment probing from an original source buffer. */
-export async function probeLandXmlAlignmentAtDistance(
-  buffer: LandXmlSourceBuffer, alignmentSourceId: string, distance: number, offsetRight = 0,
-): Promise<LandXmlAlignmentProbeResult> {
-  await initLandXmlWasm();
-  const api = new IfcAPI();
-  try {
-    const raw = record(api.probeLandXmlAlignmentAtDistance(new Uint8Array(buffer), alignmentSourceId, distance, offsetRight), 'alignment probe');
-    const station = record(raw.station, 'alignment probe station');
-    return { segmentSourceId: string(raw.segment_source_id, 'alignment probe segment'), distance: finite(raw.geometric_distance, 'alignment probe distance'), northing: finite(raw.northing, 'alignment probe northing'), easting: finite(raw.easting, 'alignment probe easting'), displayedBack: finite(station.displayed_back, 'alignment probe station back'), displayedAhead: finite(station.displayed_ahead, 'alignment probe station ahead') };
-  } finally {
-    api.free();
-  }
-}
-
-/** Resolve a displayed station to every physical position retained by equations. */
-export async function probeLandXmlAlignmentAtStation(
-  buffer: LandXmlSourceBuffer, alignmentSourceId: string, station: number, offsetRight = 0,
-): Promise<LandXmlAlignmentProbeResult[]> {
-  await initLandXmlWasm();
-  const api = new IfcAPI();
-  try {
-    return array(api.probeLandXmlAlignmentAtStation(new Uint8Array(buffer), alignmentSourceId, station, offsetRight), 'alignment station probes').map((value, index) => {
-      const raw = record(value, `alignment station probe ${index}`);
-      const mappedStation = record(raw.station, `alignment station probe ${index} station`);
-      return { segmentSourceId: string(raw.segment_source_id, `alignment station probe ${index} segment`), distance: finite(raw.geometric_distance, `alignment station probe ${index} distance`), northing: finite(raw.northing, `alignment station probe ${index} northing`), easting: finite(raw.easting, `alignment station probe ${index} easting`), displayedBack: finite(mappedStation.displayed_back, `alignment station probe ${index} station back`), displayedAhead: finite(mappedStation.displayed_ahead, `alignment station probe ${index} station ahead`) };
-    });
-  } finally {
-    api.free();
-  }
-}
-
-/** Inspect only authored cant/superelevation records; no value interpolation occurs. */
-export async function inspectLandXmlAlignmentAtDistance(
-  buffer: LandXmlSourceBuffer, alignmentSourceId: string, distance: number,
-): Promise<LandXmlAlignmentInspectionResult> {
-  await initLandXmlWasm();
-  const api = new IfcAPI();
-  try {
-    const raw = record(api.inspectLandXmlAlignmentAtDistance(new Uint8Array(buffer), alignmentSourceId, distance), 'alignment inspection');
-    const cant = raw.cant === undefined || raw.cant === null ? null : record(raw.cant, 'cant inspection');
-    const previous = cant?.previous === undefined || cant.previous === null ? null : record(cant.previous, 'previous CantStation');
-    const next = cant?.next === undefined || cant.next === null ? null : record(cant.next, 'next CantStation');
-    const cantStation = (value: Record<string, unknown> | null, context: string): LandXmlCantStation | null => value === null ? null : {
-      sourceId: string(value.source_id, `${context} source id`), station: finite(value.station, `${context} station`),
-      appliedCant: finite(value.applied_cant, `${context} applied cant`), equilibriumCant: optionalFinite(value.equilibrium_cant, `${context} equilibrium cant`), transitionType: nullableString(value.transition_type, `${context} transition type`),
-    };
-    const superelevations: LandXmlSuperelevation[] = array(raw.superelevations, 'superelevations').map((value, index) => {
-      const parsed = record(value, `superelevation ${index}`);
-      return { sourceId: string(parsed.source_id, `superelevation ${index} source id`), staStart: optionalFinite(parsed.sta_start, `superelevation ${index} start`), staEnd: optionalFinite(parsed.sta_end, `superelevation ${index} end`), events: array(parsed.events, `superelevation ${index} events`).map((event, eventIndex) => { const parsedEvent = record(event, `superelevation ${index} event ${eventIndex}`); return { sourceId: string(parsedEvent.source_id, `superelevation ${index} event ${eventIndex} source id`), kind: string(parsedEvent.kind, `superelevation ${index} event ${eventIndex} kind`), value: nullableString(parsedEvent.value, `superelevation ${index} event ${eventIndex} value`) }; }) };
-    });
-    return { previousCantStation: cantStation(previous, 'previous CantStation'), nextCantStation: cantStation(next, 'next CantStation'), superelevations };
   } finally {
     api.free();
   }

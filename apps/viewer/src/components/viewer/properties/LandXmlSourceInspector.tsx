@@ -9,14 +9,13 @@ import {
   type LandXmlSourceModel,
   type LandXmlSourceRecord,
   type LandXmlSourceRef,
+  type LandXmlTinSurface,
 } from '@/hooks/ingest/landXmlSemantics';
 import {
-  inspectLandXmlAlignmentAtDistance,
-  probeLandXmlAlignmentAtDistance,
-  probeLandXmlAlignmentAtStation,
   type LandXmlAlignmentInspectionResult,
   type LandXmlAlignmentProbeResult,
-} from '@/hooks/ingest/landXmlWasm';
+} from '@/hooks/ingest/landXmlAlignmentWasm';
+import { probeLandXmlAlignmentInWorker } from '@/hooks/ingest/landXmlProbe';
 
 interface LandXmlSourceInspectorProps {
   models: ReadonlyMap<string, LandXmlSourceModel>;
@@ -54,13 +53,13 @@ const NAVIGATION_PAGE_SIZE = 100;
 
 type NavigationItem = { label: string; sourceId: string };
 
-function navigationCount(surface: LandXmlSourceRecord['surface']): number {
+function navigationCount(surface: LandXmlTinSurface): number {
   return 1 + surface.points.length + surface.sourceDataPoints.length + surface.faceSourceIds.length
     + surface.boundaries.length + surface.breaklines.length + surface.contours.length;
 }
 
 /** Materialize one page only: survey surfaces may contain millions of points. */
-function navigationAt(surface: LandXmlSourceRecord['surface'], itemIndex: number): NavigationItem {
+function navigationAt(surface: LandXmlTinSurface, itemIndex: number): NavigationItem {
   if (itemIndex === 0) return { label: `Surface: ${surface.name}`, sourceId: surface.sourceId };
   let index = itemIndex - 1;
   const point = surface.points[index];
@@ -81,6 +80,23 @@ function navigationAt(surface: LandXmlSourceRecord['surface'], itemIndex: number
   const contour = surface.contours[index];
   if (contour) return { label: `Contour: ${contour.name ?? contour.ordinal}`, sourceId: contour.sourceId };
   throw new Error(`LandXML source navigation index ${itemIndex} is outside the retained surface records`);
+}
+
+function alignmentNavigationCount(alignment: Extract<LandXmlSourceRecord, { kind: 'alignment' }>['alignment']): number {
+  return 1 + alignment.segments.length + alignment.unsupportedTransitions.length;
+}
+
+function alignmentNavigationAt(
+  alignment: Extract<LandXmlSourceRecord, { kind: 'alignment' }>['alignment'], itemIndex: number,
+): NavigationItem {
+  if (itemIndex === 0) return { label: `Alignment: ${alignment.name}`, sourceId: alignment.sourceId };
+  let index = itemIndex - 1;
+  const segment = alignment.segments[index];
+  if (segment) return { label: `Segment ${segment.ordinal}: ${segment.primitive.kind}`, sourceId: segment.sourceId };
+  index -= alignment.segments.length;
+  const transition = alignment.unsupportedTransitions[index];
+  if (transition) return { label: `Refused ${transition.spiType} transition: ${transition.reason}`, sourceId: transition.sourceId };
+  throw new Error(`LandXML alignment navigation index ${itemIndex} is outside the retained alignment records`);
 }
 
 function surfacePropertyRows(properties: Record<string, string>): Array<readonly [string, string]> {
@@ -115,6 +131,7 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
       setAlignmentProbe(null); setAlignmentInspection(null); return;
     }
     let active = true;
+    const controller = new AbortController();
     const distance = Number(distanceInput);
     const station = Number(stationInput);
     const offset = Number(offsetInput);
@@ -123,32 +140,32 @@ export function LandXmlSourceInspector({ models, selected, onSelect }: LandXmlSo
       setAlignmentProbe(null); setAlignmentInspection(null); setProbeError('Enter finite numeric probe values.');
       return () => { active = false; };
     }
-    void model.sourceFile.arrayBuffer().then(async (buffer) => {
-      const probes = probeMode === 'distance'
-        ? [await probeLandXmlAlignmentAtDistance(buffer, selectedAlignment.sourceId, distance, offset)]
-        : await probeLandXmlAlignmentAtStation(buffer, selectedAlignment.sourceId, station, offset);
+    void model.sourceFile.arrayBuffer().then((buffer) => probeLandXmlAlignmentInWorker(buffer, {
+      alignmentSourceId: selectedAlignment.sourceId,
+      mode: probeMode,
+      value: probeMode === 'distance' ? distance : station,
+      offsetRight: offset,
+    }, controller.signal)).then(({ probes, inspection }) => {
       const probe = probes[0];
       if (!probe) throw new Error('The displayed station is in a station-equation gap.');
-      const inspection = await inspectLandXmlAlignmentAtDistance(buffer, selectedAlignment.sourceId, probe.distance);
       if (active) { setAlignmentProbe(probe); setAlignmentInspection(inspection); setProbeError(probes.length > 1 ? `Station resolves to ${probes.length} physical distances; showing the first.` : null); }
     }).catch((error: unknown) => {
       console.error('[LandXmlSourceInspector] alignment probe failed:', error);
       if (active) { setAlignmentProbe(null); setAlignmentInspection(null); setProbeError(error instanceof Error ? error.message : 'LandXML alignment probe failed.'); }
     });
-    return () => { active = false; };
+    return () => { active = false; controller.abort(); };
   }, [models, selected.modelId, selected.sourceId, probeMode, distanceInput, stationInput, offsetInput]);
 
   if (!record) return null;
   if (record.kind === 'alignment' || record.kind === 'alignment-segment' || record.kind === 'unsupported-transition') {
     const alignment = record.alignment;
-    const pages = Math.ceil((alignment.segments.length + 1) / NAVIGATION_PAGE_SIZE);
+    const pages = Math.max(1, Math.ceil(alignmentNavigationCount(alignment) / NAVIGATION_PAGE_SIZE));
     const page = Math.min(navigationPage, pages - 1);
     const firstItem = page * NAVIGATION_PAGE_SIZE;
-    const items = [
-      { label: `Alignment: ${alignment.name}`, sourceId: alignment.sourceId },
-      ...alignment.segments.map((segment) => ({ label: `Segment ${segment.ordinal}: ${segment.primitive.kind}`, sourceId: segment.sourceId })),
-      ...alignment.unsupportedTransitions.map((transition) => ({ label: `Refused ${transition.spiType} transition: ${transition.reason}`, sourceId: transition.sourceId })),
-    ].slice(firstItem, firstItem + NAVIGATION_PAGE_SIZE);
+    const items = Array.from(
+      { length: Math.min(NAVIGATION_PAGE_SIZE, alignmentNavigationCount(alignment) - firstItem) },
+      (_, index) => alignmentNavigationAt(alignment, firstItem + index),
+    );
     return (
       <div className="h-full overflow-auto border-l-2 border-zinc-200 bg-white dark:border-zinc-800 dark:bg-black" data-landxml-source-inspector>
         <div className="space-y-2 border-b-2 border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-black">

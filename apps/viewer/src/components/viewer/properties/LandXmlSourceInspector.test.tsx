@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { render, click, cleanup } from '@/test/render.js';
 import { LandXmlSourceInspector } from './LandXmlSourceInspector.js';
+import { LandXmlModelSourceNavigation } from './LandXmlModelSourceNavigation.js';
 import type { LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics';
 
 function document(pointCount = 1): LandXmlTinDocument {
@@ -72,14 +73,30 @@ describe('LandXmlSourceInspector (#5042)', () => {
     const source = document();
     source.alignments = [{ sourceId: 'alignment', ordinal: 1, name: 'Main', length: 10, staStart: 0,
       segments: [{ sourceId: 'transition', ordinal: 1, primitive: { kind: 'unsupported_spiral', start: { kind: 'coordinates', point: { northing: 0, easting: 0, elevation: null } }, pi: { kind: 'coordinates', point: { northing: 5, easting: 5, elevation: null } }, end: { kind: 'coordinates', point: { northing: 10, easting: 0, elevation: null } }, spiType: 'bloss', declaredLength: 10 } }],
-      cantStations: [], superelevations: [], unsupportedTransitions: [{ sourceId: 'transition', spiType: 'bloss', reason: 'retained but unsupported' }] }];
+      cantStations: [], superelevations: [], unsupportedTransitions: [{ sourceId: 'transition:refusal', sourceSourceId: 'transition', spiType: 'bloss', reason: 'retained but unsupported' }] }];
     const selected: string[] = [];
     const ui = render(<LandXmlSourceInspector models={new Map([['alignment-model', { landXmlDocument: source }]])} selected={{ modelId: 'alignment-model', sourceId: 'alignment' }} onSelect={(ref) => selected.push(ref.sourceId)} />);
     assert.match(ui.textContent ?? '', /Refused bloss/);
     const refusal = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Refused bloss'));
     assert.ok(refusal);
     click(refusal);
-    assert.deepEqual(selected, ['transition']);
+    assert.deepEqual(selected, ['transition:refusal']);
+    cleanup();
+  });
+
+  it('paginates alignment spans and the refusal without mounting every record (#5044)', () => {
+    const source = document();
+    const primitive = { kind: 'line' as const, start: { kind: 'coordinates' as const, point: { northing: 0, easting: 0, elevation: null } }, end: { kind: 'coordinates' as const, point: { northing: 10, easting: 0, elevation: null } }, declaredLength: 10 };
+    source.alignments = [{ sourceId: 'alignment', ordinal: 1, name: 'Main', length: 990, staStart: 0,
+      segments: Array.from({ length: 99 }, (_, index) => ({ sourceId: `segment-${index + 1}`, ordinal: index + 1, primitive })),
+      cantStations: [], superelevations: [], unsupportedTransitions: [{ sourceId: 'segment-99:refusal', sourceSourceId: 'segment-99', spiType: 'bloss', reason: 'retained but unsupported' }] }];
+    const props = { modelId: 'alignment-model', document: source, selected: null, onSelect: () => {} };
+    const ui = render(<LandXmlModelSourceNavigation {...props} />);
+    assert.equal(ui.querySelectorAll('button').length, 106, 'one hundred alignment rows plus controls and retained surface/overlay rows are mounted');
+    const next = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Next');
+    assert.ok(next);
+    click(next);
+    assert.ok([...ui.querySelectorAll('button')].some((button) => button.textContent?.includes('Refused bloss')), 'the final refusal occupies its own navigable page');
     cleanup();
   });
 });

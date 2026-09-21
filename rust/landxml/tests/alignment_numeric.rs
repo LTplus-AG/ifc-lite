@@ -7,6 +7,7 @@ use ifc_lite_landxml::alignment::{
     LandXmlCantStation, LandXmlCurve, LandXmlIrregularLine, LandXmlLine, LandXmlPlanPoint,
     LandXmlPointLocation, LandXmlRadius, LandXmlRotation, LandXmlSpiral, LandXmlStationEquation,
     LandXmlSuperelevation, LandXmlSuperelevationEvent, LandXmlSuperelevationEventKind,
+    MAX_INTERACTIVE_STATION_PROBES,
 };
 use ifc_lite_landxml::LandXmlSourceId;
 
@@ -362,6 +363,44 @@ fn issue_5044_station_equations_keep_gaps_and_duplicate_labels_explicit() {
             .expect_err("ambiguous label")
             .code,
         "LXMLA205"
+    );
+}
+
+#[test]
+fn issue_5044_displayed_station_probe_has_exact_linear_work_cap_and_refusal() {
+    // Each reset makes displayed station 100 occur at another physical
+    // distance. This is the duplicate-equation shape that previously caused
+    // every output probe to revalidate all 10,000 equations.
+    const MATCHES: usize = 10_000;
+    let line = LandXmlAlignmentSegment {
+        source_id: id("line"),
+        ordinal: 1,
+        primitive: LandXmlAlignmentPrimitive::Line(LandXmlLine {
+            start: point(0.0, 0.0),
+            end: point(MATCHES as f64, 0.0),
+            declared_length: Some(MATCHES as f64),
+        }),
+    };
+    let mut alignment = alignment(vec![line], MATCHES as f64);
+    alignment.station_equations = (1..MATCHES)
+        .map(|index| LandXmlStationEquation {
+            source_id: id(&format!("eq:{index}")),
+            sta_internal: 100.0 + index as f64,
+            sta_ahead: 100.0,
+            sta_back: Some(101.0),
+            sta_increment: Some("increasing".to_owned()),
+        })
+        .collect();
+
+    let all = alignment.distances_for_station(100.0).expect("all matches");
+    assert_eq!(all.len(), MATCHES, "one result per physical location");
+    assert_eq!((all[0], all[MATCHES - 1]), (0.0, (MATCHES - 1) as f64));
+    assert_eq!(
+        alignment
+            .probes_at_station(100.0, 0.0, MAX_INTERACTIVE_STATION_PROBES)
+            .expect_err("the interactive work/output cap is a stated refusal")
+            .code,
+        "LXMLA230",
     );
 }
 

@@ -4,10 +4,36 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '@/i18n';
-import type { LandXmlSourceRef, LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics';
+import type { LandXmlAlignment, LandXmlSourceRef, LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics';
 
 const SURFACE_PAGE_SIZE = 100;
 const OVERLAY_PAGE_SIZE = 100;
+const ALIGNMENT_PAGE_SIZE = 100;
+
+type AlignmentNavigationItem = { label: string; sourceId: string; name: string };
+
+function alignmentNavigationCount(alignments: readonly LandXmlAlignment[]): number {
+  return alignments.reduce(
+    (count, alignment) => count + 1 + alignment.segments.length + alignment.unsupportedTransitions.length,
+    0,
+  );
+}
+
+/** Return one model-navigation item without building rows for every alignment span. */
+function alignmentNavigationAt(alignments: readonly LandXmlAlignment[], itemIndex: number): AlignmentNavigationItem {
+  let index = itemIndex;
+  for (const alignment of alignments) {
+    if (index === 0) return { label: 'Alignment', sourceId: alignment.sourceId, name: alignment.name };
+    index -= 1;
+    const segment = alignment.segments[index];
+    if (segment) return { label: `Segment ${segment.ordinal}`, sourceId: segment.sourceId, name: segment.primitive.kind };
+    index -= alignment.segments.length;
+    const transition = alignment.unsupportedTransitions[index];
+    if (transition) return { label: `Refused ${transition.spiType}`, sourceId: transition.sourceId, name: transition.reason };
+    index -= alignment.unsupportedTransitions.length;
+  }
+  throw new Error(`LandXML model alignment navigation index ${itemIndex} is outside retained records`);
+}
 
 interface LandXmlModelSourceNavigationProps {
   modelId: string;
@@ -21,6 +47,7 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
   const { t } = useTranslation();
   const [surfacePage, setSurfacePage] = useState(0);
   const [overlayPage, setOverlayPage] = useState(0);
+  const [alignmentPage, setAlignmentPage] = useState(0);
   const pages = Math.max(1, Math.ceil(document.surfaces.length / SURFACE_PAGE_SIZE));
   const page = Math.min(surfacePage, pages - 1);
   const surfaces = useMemo(() => document.surfaces.slice(
@@ -53,15 +80,21 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
     }
     return pageRecords;
   }, [boundedOverlayPage, document.surfaces]);
-  const alignments = useMemo(() => document.alignments?.flatMap((alignment) => [
-    { label: 'Alignment', sourceId: alignment.sourceId, name: alignment.name },
-    ...alignment.segments.map((segment) => ({ label: `Segment ${segment.ordinal}`, sourceId: segment.sourceId, name: segment.primitive.kind })),
-    ...alignment.unsupportedTransitions.map((transition) => ({ label: `Refused ${transition.spiType}`, sourceId: transition.sourceId, name: transition.reason })),
-  ]) ?? [], [document.alignments]);
+  const alignmentCount = alignmentNavigationCount(document.alignments ?? []);
+  const alignmentPages = Math.max(1, Math.ceil(alignmentCount / ALIGNMENT_PAGE_SIZE));
+  const boundedAlignmentPage = Math.min(alignmentPage, alignmentPages - 1);
+  const alignments = useMemo(() => {
+    const first = boundedAlignmentPage * ALIGNMENT_PAGE_SIZE;
+    return Array.from(
+      { length: Math.min(ALIGNMENT_PAGE_SIZE, alignmentCount - first) },
+      (_, index) => alignmentNavigationAt(document.alignments ?? [], first + index),
+    );
+  }, [alignmentCount, boundedAlignmentPage, document.alignments]);
 
   useEffect(() => {
     setSurfacePage(0);
     setOverlayPage(0);
+    setAlignmentPage(0);
   }, [modelId, document]);
 
   return <>
@@ -120,6 +153,11 @@ export function LandXmlModelSourceNavigation({ modelId, document, selected, onSe
           </button>;
         })}
       </div>
+      {alignmentPages > 1 && <div className="flex items-center justify-between border-t border-zinc-200 px-3 py-2 text-xs dark:border-zinc-800">
+        <button type="button" disabled={boundedAlignmentPage === 0} onClick={() => setAlignmentPage(boundedAlignmentPage - 1)}>{t('properties.landXmlSource.previous')}</button>
+        <span>{t('properties.landXmlSource.page', { current: boundedAlignmentPage + 1, total: alignmentPages })}</span>
+        <button type="button" disabled={boundedAlignmentPage + 1 >= alignmentPages} onClick={() => setAlignmentPage(boundedAlignmentPage + 1)}>{t('properties.landXmlSource.next')}</button>
+      </div>}
     </div>
   </>;
 }

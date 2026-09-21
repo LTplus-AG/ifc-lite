@@ -821,8 +821,9 @@ export class IfcAPI {
      */
     probeLandXmlAlignmentAtDistance(data: Uint8Array, alignment_source_id: string, distance: number, offset_right: number): LandXmlAlignmentProbeJs;
     /**
-     * Evaluate every physical location carrying a displayed station label.
-     * A duplicate label is a real station-equation result, never collapsed.
+     * Evaluate a bounded set of physical locations carrying a displayed
+     * station label. A duplicate label is real, never collapsed; an
+     * excessive number is refused rather than allocated synchronously.
      */
     probeLandXmlAlignmentAtStation(data: Uint8Array, alignment_source_id: string, station: number, offset_right: number): LandXmlAlignmentProbesJs;
     /**

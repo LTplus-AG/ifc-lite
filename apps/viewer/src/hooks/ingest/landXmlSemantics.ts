@@ -72,7 +72,17 @@ export interface LandXmlSuperelevation {
   staEnd: number | null;
   events: LandXmlSuperelevationEvent[];
 }
-export interface LandXmlUnsupportedTransition { sourceId: string; spiType: string; reason: string }
+/**
+ * A refusal is a distinct navigable record, even when it describes the same
+ * authored primitive as its retained segment. `sourceSourceId` preserves that
+ * XML identity while `sourceId` remains unique in the viewer's source index.
+ */
+export interface LandXmlUnsupportedTransition {
+  sourceId: string;
+  sourceSourceId: string;
+  spiType: string;
+  reason: string;
+}
 export type LandXmlAlignmentPrimitive =
   | { kind: 'line'; start: LandXmlPointLocation; end: LandXmlPointLocation; declaredLength: number | null }
   | { kind: 'irregular_line'; start: LandXmlPointLocation; end: LandXmlPointLocation; points: LandXmlPlanPoint[]; declaredLength: number | null }

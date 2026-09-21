@@ -2,287 +2,32 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-//! Bounded, encoding-aware incremental transport for canonical LandXML TIN
-//! semantics.
-//!
-//! The driver deliberately feeds `Parser` only events produced by quick-xml.
-//! It therefore shares namespace, QName, source-id, constrained-terrain and
-//! diagnostic behaviour with `parse_landxml_tin_with_cancel` instead of
-//! reimplementing XML matching at the transport boundary.
+//! Resumable LandXML transport driven by the canonical terrain state machine.
 
-use std::{
-    cell::RefCell,
-    collections::VecDeque,
-    io::{BufReader, Read},
-    rc::Rc,
-};
-
-use quick_xml::{events::Event, Reader};
-use serde::Serialize;
+mod decoder;
+mod event;
+mod token;
 
 use crate::{
-    parser::Parser,
-    xml::{check_declared_encoding, error, Encoding},
-    LandXmlDiagnosticCode as Code, LandXmlError, LandXmlLimits, LandXmlSurface, LandXmlUnits,
+    parser::Parser, xml::error, LandXmlDiagnosticCode as Code, LandXmlError, LandXmlLimits,
+    LandXmlSurface,
 };
+use decoder::Decoder;
+pub use event::{
+    LandXmlStreamEvent, LandXmlStreamHeader, LandXmlStreamSummary, LandXmlSurfaceComponent,
+    LandXmlSurfaceFragment,
+};
+use quick_xml::{events::Event, Reader};
+use serde::Serialize;
+use std::{collections::VecDeque, io::BufReader};
+use token::{TokenFeed, TokenKind};
 
-/// A source chunk is never allowed to make the worker retain an unbounded
-/// postMessage payload.  `drain` further subdivides semantic records.
 pub const MAX_LANDXML_STREAM_INPUT_CHUNK_BYTES: usize = 1024 * 1024;
-/// Largest requested semantic drain in bytes.
 pub const MAX_LANDXML_STREAM_DRAIN_BYTES: usize = 1024 * 1024;
 const MAX_FRAGMENT_PAYLOAD_BYTES: usize = 192 * 1024;
-const DECLARATION_BYTES: usize = 1024;
 
-/// Facts which are safe to publish only after root namespace and units were
-/// validated by the canonical parser.
-#[derive(Clone, Debug, Serialize)]
-pub struct LandXmlStreamHeader {
-    pub version: String,
-    pub units: LandXmlUnits,
-}
-
-/// Typed portions of a surface.  Consumers reassemble records by
-/// `(source_id, component, sequence)`; a component is never a renderer id.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum LandXmlSurfaceComponent {
-    Start,
-    Points,
-    CanonicalVertices,
-    SourceDataPoints,
-    Faces,
-    Boundaries,
-    Breaklines,
-    Contours,
-    End,
-}
-
-/// A bounded byte fragment of one typed semantic component. `payload_utf8`
-/// contains JSON record bytes. It may end between records only when a single
-/// source record itself exceeds the drain cap; `continued` then makes that
-/// explicit rather than rejecting an otherwise valid large surface.
-#[derive(Clone, Debug, Serialize)]
-pub struct LandXmlSurfaceFragment {
-    pub source_id: String,
-    pub component: LandXmlSurfaceComponent,
-    pub sequence: usize,
-    pub continued: bool,
-    pub payload_utf8: Vec<u8>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum LandXmlStreamEvent {
-    Header(LandXmlStreamHeader),
-    Surface(LandXmlSurfaceFragment),
-}
-
-/// Bounded final facts, intentionally not a fake complete `LandXmlTinDocument`.
-/// Surface payloads were already drained; metadata families remain owned by
-/// their specialised complete-document APIs until they gain equivalent event
-/// sinks.
-#[derive(Clone, Debug, Serialize)]
-pub struct LandXmlStreamSummary {
-    pub header: LandXmlStreamHeader,
-    pub surfaces_drained: usize,
-    pub renderable_surfaces: usize,
-    pub preserved_surfaces: usize,
-}
-
-enum TokenKind {
-    Text,
-    Markup { quote: Option<u8> },
-}
-
-/// A one-token-at-a-time byte source for quick-xml.  The `Reader` retains its
-/// authoritative element stack across calls, while the transport scanner
-/// ensures it is never asked to interpret an incomplete token as EOF.
-#[derive(Clone)]
-struct TokenFeed(Rc<RefCell<VecDeque<u8>>>);
-
-impl TokenFeed {
-    fn new() -> Self {
-        Self(Rc::new(RefCell::new(VecDeque::new())))
-    }
-    fn push(&self, bytes: Vec<u8>) {
-        self.0.borrow_mut().extend(bytes);
-    }
-}
-
-impl Read for TokenFeed {
-    fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
-        let mut bytes = self.0.borrow_mut();
-        let length = output.len().min(bytes.len());
-        for target in &mut output[..length] {
-            *target = bytes.pop_front().expect("length bounded");
-        }
-        Ok(length)
-    }
-}
-
-/// Owned decoder state. Raw input and normalised output each have independent
-/// quotas, and UTF-16 code units/surrogates can span arbitrary transport cuts.
-struct Decoder {
-    encoding: Option<Encoding>,
-    undecided: Vec<u8>,
-    utf16_tail: Option<u8>,
-    high_surrogate: Option<u16>,
-    declaration: Vec<u8>,
-    raw_seen: usize,
-    normalized_seen: usize,
-    max_raw: usize,
-    max_normalized: usize,
-}
-
-impl Decoder {
-    fn new(limits: &LandXmlLimits) -> Result<Self, LandXmlError> {
-        let max_normalized = limits
-            .max_bytes
-            .checked_mul(3)
-            .and_then(|value| value.checked_div(2))
-            .ok_or_else(|| error(Code::LimitExceeded, "normalized byte limit overflow"))?;
-        Ok(Self {
-            encoding: None,
-            undecided: Vec::new(),
-            utf16_tail: None,
-            high_surrogate: None,
-            declaration: Vec::new(),
-            raw_seen: 0,
-            normalized_seen: 0,
-            max_raw: limits.max_bytes,
-            max_normalized,
-        })
-    }
-
-    fn push(&mut self, chunk: &[u8]) -> Result<Vec<u8>, LandXmlError> {
-        self.raw_seen = self
-            .raw_seen
-            .checked_add(chunk.len())
-            .ok_or_else(|| error(Code::InputTooLarge, "input exceeds byte limit"))?;
-        if self.raw_seen > self.max_raw {
-            return Err(error(Code::InputTooLarge, "input exceeds byte limit"));
-        }
-        self.undecided.extend_from_slice(chunk);
-        self.detect()?;
-        let Some(encoding) = self.encoding else {
-            return Ok(Vec::new());
-        };
-        let pending = std::mem::take(&mut self.undecided);
-        let output = match encoding {
-            Encoding::Utf8 => self.decode_utf8(&pending)?,
-            Encoding::Utf16Le | Encoding::Utf16Be => self.decode_utf16(&pending, encoding)?,
-        };
-        self.account(&output)?;
-        Ok(output)
-    }
-
-    fn finish(&mut self) -> Result<(), LandXmlError> {
-        self.detect()?;
-        if self.encoding.is_none() {
-            return Err(error(Code::InvalidXml, "LandXML document is empty"));
-        }
-        if !self.undecided.is_empty() {
-            return Err(error(Code::InvalidXml, "input is not valid UTF-8"));
-        }
-        if self.utf16_tail.is_some() {
-            return Err(error(
-                Code::InvalidXml,
-                "UTF-16 input has an odd byte length",
-            ));
-        }
-        if self.high_surrogate.is_some() {
-            return Err(error(Code::InvalidXml, "input is not valid UTF-16"));
-        }
-        check_declared_encoding(&self.declaration, self.encoding.expect("checked encoding"))
-    }
-
-    fn detect(&mut self) -> Result<(), LandXmlError> {
-        if self.encoding.is_some() || self.undecided.is_empty() {
-            return Ok(());
-        }
-        let bytes = &self.undecided;
-        let (encoding, skip) = match bytes.as_slice() {
-            [0xef, 0xbb, 0xbf, ..] => (Encoding::Utf8, 3),
-            [0xff, 0xfe, ..] => (Encoding::Utf16Le, 2),
-            [0xfe, 0xff, ..] => (Encoding::Utf16Be, 2),
-            [b'<', 0, ..] => (Encoding::Utf16Le, 0),
-            [0, b'<', ..] => (Encoding::Utf16Be, 0),
-            [0xef] | [0xef, 0xbb] | [0xff] | [0xfe] | [b'<'] | [0] => return Ok(()),
-            _ => (Encoding::Utf8, 0),
-        };
-        self.undecided.drain(..skip);
-        self.encoding = Some(encoding);
-        Ok(())
-    }
-
-    fn decode_utf8(&mut self, input: &[u8]) -> Result<Vec<u8>, LandXmlError> {
-        // Retain at most three trailing bytes, so a scalar may cross chunks.
-        let complete = match std::str::from_utf8(input) {
-            Ok(_) => input.len(),
-            Err(error) if error.error_len().is_none() => error.valid_up_to(),
-            Err(_) => return Err(error(Code::InvalidXml, "input is not valid UTF-8")),
-        };
-        let output = input[..complete].to_vec();
-        self.undecided.extend_from_slice(&input[complete..]);
-        Ok(output)
-    }
-
-    fn decode_utf16(&mut self, input: &[u8], encoding: Encoding) -> Result<Vec<u8>, LandXmlError> {
-        let mut bytes = Vec::with_capacity(input.len() + usize::from(self.utf16_tail.is_some()));
-        if let Some(tail) = self.utf16_tail.take() {
-            bytes.push(tail);
-        }
-        bytes.extend_from_slice(input);
-        if bytes.len() % 2 == 1 {
-            self.utf16_tail = bytes.pop();
-        }
-        let mut output = String::new();
-        for pair in bytes.chunks_exact(2) {
-            let unit = match encoding {
-                Encoding::Utf16Le => u16::from_le_bytes([pair[0], pair[1]]),
-                Encoding::Utf16Be => u16::from_be_bytes([pair[0], pair[1]]),
-                Encoding::Utf8 => unreachable!(),
-            };
-            if let Some(high) = self.high_surrogate.take() {
-                if !(0xdc00..=0xdfff).contains(&unit) {
-                    return Err(error(Code::InvalidXml, "input is not valid UTF-16"));
-                }
-                let scalar = 0x1_0000 + (u32::from(high - 0xd800) << 10) + u32::from(unit - 0xdc00);
-                output.push(
-                    char::from_u32(scalar)
-                        .ok_or_else(|| error(Code::InvalidXml, "input is not valid UTF-16"))?,
-                );
-            } else if (0xd800..=0xdbff).contains(&unit) {
-                self.high_surrogate = Some(unit);
-            } else if (0xdc00..=0xdfff).contains(&unit) {
-                return Err(error(Code::InvalidXml, "input is not valid UTF-16"));
-            } else {
-                output.push(char::from_u32(u32::from(unit)).expect("valid non-surrogate scalar"));
-            }
-        }
-        Ok(output.into_bytes())
-    }
-
-    fn account(&mut self, output: &[u8]) -> Result<(), LandXmlError> {
-        self.normalized_seen = self
-            .normalized_seen
-            .checked_add(output.len())
-            .ok_or_else(|| error(Code::LimitExceeded, "normalized byte limit exceeded"))?;
-        if self.normalized_seen > self.max_normalized {
-            return Err(error(Code::LimitExceeded, "normalized byte limit exceeded"));
-        }
-        if self.declaration.len() < DECLARATION_BYTES {
-            let remaining = DECLARATION_BYTES - self.declaration.len();
-            self.declaration
-                .extend_from_slice(&output[..output.len().min(remaining)]);
-        }
-        Ok(())
-    }
-}
-
-/// Resumable semantic driver. `advance` accepts arbitrary raw byte cuts;
-/// callers repeatedly call `drain` to honour the renderer's actual credits.
+/// `advance` accepts arbitrary raw cuts. `drain` gives a sink actual byte
+/// credits; finished terrain records are moved out of the parser immediately.
 pub struct LandXmlTinStreamSession {
     parser: Option<Parser<'static>>,
     reader: Reader<BufReader<TokenFeed>>,
@@ -383,8 +128,6 @@ impl LandXmlTinStreamSession {
             .header()
             .ok_or_else(|| error(Code::InvalidSemantic, "LandXML units were not declared"))?;
         self.closed = true;
-        // Run final semantic resolution (including roadway references) using
-        // the retained tiny name index, then deliberately drop its remainder.
         self.parser.take().expect("open parser").finish()?;
         Ok(LandXmlStreamSummary {
             header,
@@ -400,14 +143,12 @@ impl LandXmlTinStreamSession {
         self.parser.take();
         self.closed = true;
     }
-
     pub fn header(&self) -> Option<LandXmlStreamHeader> {
         self.parser
             .as_ref()?
             .header()
             .map(|(version, units)| LandXmlStreamHeader { version, units })
     }
-
     fn parser(&mut self) -> &mut Parser<'static> {
         self.parser.as_mut().expect("open stream parser")
     }
@@ -465,9 +206,6 @@ impl LandXmlTinStreamSession {
         let token_debug = String::from_utf8_lossy(&token).into_owned();
         let text_token = !token.starts_with(b"<");
         self.feed.push(token);
-        // A text event otherwise makes `Reader` observe transport EOF while
-        // looking ahead for the next '<'.  A harmless XML comment gives it a
-        // real delimiter without ever asking it to parse an incomplete tag.
         if text_token {
             self.feed.push(b"<!--ifc-lite-stream-pad-->".to_vec());
         }

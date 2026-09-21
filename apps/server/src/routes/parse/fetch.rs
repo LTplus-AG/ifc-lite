@@ -21,19 +21,38 @@ use axum::{
 /// GET /api/v1/parse/data-model/:cache_key
 ///
 /// Fetch the data model for a previously parsed file.
-/// Returns the data model Parquet data if available (may still be processing).
 ///
 /// Response:
 /// - 200: Data model Parquet binary
-/// - 202: Data model still processing (client should retry)
-/// - 404: Cache key not found
+/// - 202: A fill IS running for this key right now (client should retry)
+/// - 404: Nothing cached for this key and nothing filling it (issue #5129:
+///   `/parse/parquet/optimized` never triggers a data-model write, so before
+///   this a client that called only that route polled 202 forever -- the
+///   response read as "still processing" for a key nothing was processing)
 pub async fn get_data_model(
     State(state): State<AppState>,
     axum::extract::Path(cache_key): axum::extract::Path<String>,
 ) -> Result<Response, ApiError> {
+    // Checked on BOTH sides of the (awaited, disk-I/O) cache read, not once,
+    // and answering 202 if EITHER saw it (issue #5134 review): a single
+    // check before the read leaves the read's whole await window open for a
+    // fill to begin and go unnoticed, and a single check after leaves the
+    // window before the read open the same way in the other direction --
+    // either alone can land on a 404 for a fill that is (or was, moments
+    // ago) genuinely in progress. `fetchDataModel` treats 404 as terminal, so
+    // that false negative does not just cost a retry, it stops the client
+    // from ever asking again. A real background fill's begin-to-drop span is
+    // milliseconds to seconds of real parse/serialize/write work, so the
+    // residual window -- a fill starting AND finishing its own drop entirely
+    // between these two checks -- is negligible; closing it fully would need
+    // a lock spanning both the in-memory marker and the disk read, which is
+    // disproportionate here.
+    let in_flight_before = state.data_model_in_flight.contains(&cache_key);
     let data_model_cache_key = data_model_cache_key(&cache_key);
+    let cached = state.cache.get_bytes(&data_model_cache_key).await?;
+    let in_flight = in_flight_before || state.data_model_in_flight.contains(&cache_key);
 
-    match state.cache.get_bytes(&data_model_cache_key).await? {
+    match cached {
         Some(data_model_parquet) => {
             tracing::info!(
                 cache_key = %cache_key,
@@ -50,10 +69,9 @@ pub async fn get_data_model(
 
             Ok(response)
         }
-        None => {
-            tracing::debug!(cache_key = %cache_key, "Data model not yet available");
+        None if in_flight => {
+            tracing::debug!(cache_key = %cache_key, "Data model fill in flight");
 
-            // Return 202 Accepted to indicate processing
             let response = Response::builder()
                 .status(StatusCode::ACCEPTED)
                 .header(header::CONTENT_TYPE, "application/json")
@@ -61,6 +79,12 @@ pub async fn get_data_model(
                 .map_err(|e| ApiError::Internal(e.to_string()))?;
 
             Ok(response)
+        }
+        None => {
+            tracing::debug!(cache_key = %cache_key, "No data model cached and none in flight for this key");
+            Err(ApiError::NotFound(format!(
+                "No data model cached for key: {cache_key}"
+            )))
         }
     }
 }

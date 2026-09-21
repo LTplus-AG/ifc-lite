@@ -57,6 +57,7 @@ async fn test_state(label: &str) -> AppState {
                 shed_pct: 85,
             },
         )),
+        data_model_in_flight: Arc::new(crate::in_flight::InFlightKeys::default()),
     }
 }
 

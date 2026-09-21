@@ -146,6 +146,43 @@ async fn optimized_probe_replays_after_upload() {
     );
 }
 
+/// The probe path applies the same #3869/#5129 rule the upload path does
+/// (`try_cached_optimized_parquet`, called from both): a hash-only request
+/// for an entry warmed before a current data model exists must 404, not
+/// replay a geometry-only response with no data model behind it. Deleting
+/// only the data-model entry (built via `data_model_cache_key`, never a
+/// literal, so a suffix bump moves this fixture with the route) simulates a
+/// cache warmed by a pre-#5129 deployment.
+#[tokio::test]
+async fn optimized_probe_requires_current_data_model() {
+    let state = test_state("optimized-hash-stale-data-model").await;
+    let content = MINIMAL_IFC.as_bytes();
+
+    let (status, _, _) = post_optimized(&state, content).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let cache_key =
+        request_cache_key(content, &ParseQuery::default(), TessellationQuality::default());
+    let dm_key = data_model_cache_key(&cache_key);
+    state
+        .cache
+        .remove(&dm_key)
+        .await
+        .expect("remove the data-model entry");
+    assert!(
+        state.cache.get_bytes(&dm_key).await.unwrap().is_none(),
+        "fixture must start with no current data model"
+    );
+
+    let hash = digest(content);
+    let response = hash_only_request(&state, &hash).await;
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "a probe for an entry with no current data model must not replay"
+    );
+}
+
 /// Neither a body nor a hash: there is nothing to identify a file with. Making
 /// the multipart body optional must not turn a request with neither into a
 /// `500` or a hang -- it is the same `400 MISSING_FILE` a body with no `file`

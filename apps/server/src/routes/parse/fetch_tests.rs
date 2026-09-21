@@ -46,6 +46,7 @@ async fn test_state(label: &str) -> AppState {
             queue_timeout: std::time::Duration::from_millis(100),
             shed_pct: 85,
         })),
+        data_model_in_flight: Arc::new(crate::in_flight::InFlightKeys::default()),
     }
 }
 
@@ -317,19 +318,50 @@ async fn get_cached_geometry_404s_when_both_missing() {
 // get_data_model
 // ---------------------------------------------------------------------------
 
-/// Unknown cache key -> 202 Accepted (still processing), never 404.
+/// Unknown cache key, no fill in flight -> 404 (issue #5129). Previously this
+/// answered 202 unconditionally, which reads as "still processing" for a key
+/// nothing was ever going to process -- exactly what happened to a client
+/// that only ever called `/parse/parquet/optimized`, which never wrote this
+/// key at all.
 #[tokio::test]
-async fn get_data_model_returns_202_when_not_yet_cached() {
+async fn get_data_model_404_when_nothing_in_flight() {
     let state = test_state("data-model-pending").await;
     let response = get(&state, "/api/v1/parse/data-model/does-not-exist").await;
-    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+/// 202 only while `InFlightKeys` actually holds the key: begin a fill, see
+/// 202, drop the guard (as the background task's `Drop` does on completion,
+/// failure, or admission-saturated early return alike), see 404. The state
+/// transition end-to-end, not just the miss case above.
+#[tokio::test]
+async fn get_data_model_202_only_while_fill_in_flight() {
+    let state = test_state("data-model-in-flight").await;
+    let cache_key = "somehash-default";
+
+    let guard = state.data_model_in_flight.begin(cache_key.to_string());
+    let response = get(&state, &format!("/api/v1/parse/data-model/{cache_key}")).await;
+    assert_eq!(
+        response.status(),
+        StatusCode::ACCEPTED,
+        "a key with a fill in flight must answer 202"
+    );
+
+    drop(guard);
+    let response = get(&state, &format!("/api/v1/parse/data-model/{cache_key}")).await;
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "once the fill ends (guard dropped) with nothing cached, the key must 404"
+    );
 }
 
 /// An entry written under the PREVIOUS payload version must not be served
 /// (issue #3860). The `rel_id` column was added to the relationships table, so
 /// a `v5` blob decodes cleanly and silently restores `RelId = 0` on every
 /// relationship row of a server-loaded model. The reader must miss it and let
-/// the file be re-parsed.
+/// the file be re-parsed. No fill is in flight for this key, so the miss is a
+/// 404 (#5129), not the pre-existing unconditional 202.
 #[tokio::test]
 async fn get_data_model_ignores_an_entry_written_under_the_previous_version() {
     let state = test_state("data-model-stale").await;
@@ -343,7 +375,7 @@ async fn get_data_model_ignores_an_entry_written_under_the_previous_version() {
     let response = get(&state, &format!("/api/v1/parse/data-model/{cache_key}")).await;
     assert_eq!(
         response.status(),
-        StatusCode::ACCEPTED,
+        StatusCode::NOT_FOUND,
         "a pre-bump data-model blob must not be served"
     );
 }

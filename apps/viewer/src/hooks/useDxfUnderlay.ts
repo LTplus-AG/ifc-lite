@@ -27,6 +27,7 @@
 import { useMemo } from 'react';
 import type { Point2D } from '@ifc-lite/drawing-2d';
 import type { GeometryResult } from '@ifc-lite/geometry';
+import type { AnchoredDxfLines3D } from './dxfUnderlayWorldLines';
 import { useViewerStore } from '@/store';
 import { buildDxfMapToWorldTransform, resolveDxfExportGeoreference } from './dxfExportGeoref';
 import {
@@ -46,7 +47,6 @@ export {
   type DxfUnderlayRenderLine,
   type DxfUnderlayRenderFill,
   type DxfUnderlayRenderText,
-  type AnchoredDxfLines3D,
 } from './dxfUnderlayMath';
 
 import type { DxfUnderlayRenderData } from './dxfUnderlayMath';

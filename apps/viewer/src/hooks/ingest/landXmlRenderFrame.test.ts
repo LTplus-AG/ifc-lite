@@ -14,7 +14,14 @@ describe('LandXML render frame acceptance (#5049)', () => {
     assert.equal(boundsFitRenderFrame({
       min: { x: 5_000_000.015625, y: 20, z: -4 },
       max: { x: 5_000_000.025625, y: 20.01, z: -3.99 },
-    }, { x: 0, y: 0, z: 0 }), true);
+    }, { x: 5_000_000.015625, y: 20, z: -4 }), true);
+  });
+
+  it('refuses a compact island outside the shared render-frame envelope (#5010)', () => {
+    assert.equal(boundsFitRenderFrame({
+      min: { x: 5_000_000.015625, y: 20, z: -4 },
+      max: { x: 5_000_000.025625, y: 20.01, z: -3.99 },
+    }, { x: 0, y: 0, z: 0 }), false);
   });
 
   it('refuses only a component wider than the streaming local envelope', () => {

@@ -24,6 +24,8 @@ import {
 } from '../lib/renderer/line-overlay-rte.js';
 import { liftTo3DLineList, resolveBucketY } from './useSymbolicAnnotations.js';
 
+const EMPTY_F32 = new Float32Array(0);
+
 /** The renderer-owned RTE line contract, or legacy world-f32 for normal sites. */
 export type SymbolicLineVertices = RendererLineVertices;
 

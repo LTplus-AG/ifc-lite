@@ -4,7 +4,7 @@
 
 /** #5049 witness fixtures and its serialisable evidence contract. */
 
-import type { DecodedInstancedShard, MeshData } from '@ifc-lite/renderer';
+import type { DecodedInstancedShard, MeshData } from '@ifc-lite/geometry';
 import type { Rgba } from './RteGpuWitnessPixels';
 
 export const COMMON_ORIGIN: [number, number, number] = [5_000_000.015625, 100, -50];

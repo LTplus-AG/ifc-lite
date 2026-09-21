@@ -8,8 +8,10 @@ import { createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.
 /**
  * A single LandXML mesh may only span this much in its local f32 vertex
  * buffer. The streaming geometry path partitions bounded mesh data below this
- * emergency envelope; far source origins are carried by mesh anchors and RTE,
- * so they are not a reason to reject a compact survey component.
+ * emergency envelope. Until every consumer has passed the hardware RTE
+ * acceptance witness, a component must also remain within that envelope of
+ * the shared frame origin: accepting a compact but arbitrarily remote island
+ * would still feed an absolute-f32 consumer elsewhere in the workflow.
  */
 export const MAX_RENDER_FRAME_LOCAL_EXTENT_METRES = 1_000_000;
 
@@ -27,21 +29,26 @@ function mergeBounds(target: Bounds3D, source: Bounds3D): void {
   target.max.z = Math.max(target.max.z, source.max.z);
 }
 
-/** Whether a component fits one precision-safe local vertex batch. */
+/** Whether a component fits one precision-safe local vertex batch and frame. */
 export function boundsFitRenderFrame(
   bounds: Bounds3D,
-  _originShift: Readonly<{ x: number; y: number; z: number }>,
+  originShift: Readonly<{ x: number; y: number; z: number }>,
 ): boolean {
   const coordinates = [
     bounds.min.x, bounds.min.y, bounds.min.z,
     bounds.max.x, bounds.max.y, bounds.max.z,
   ];
-  if (!coordinates.every(Number.isFinite)) return false;
-  return [
+  if (!coordinates.every(Number.isFinite) || !Object.values(originShift).every(Number.isFinite)) return false;
+  const extentsFit = [
     bounds.max.x - bounds.min.x,
     bounds.max.y - bounds.min.y,
     bounds.max.z - bounds.min.z,
   ].every((extent) => extent <= MAX_RENDER_FRAME_LOCAL_EXTENT_METRES);
+  const frameFit = [
+    bounds.min.x - originShift.x, bounds.min.y - originShift.y, bounds.min.z - originShift.z,
+    bounds.max.x - originShift.x, bounds.max.y - originShift.y, bounds.max.z - originShift.z,
+  ].every((coordinate) => Math.abs(coordinate) <= MAX_RENDER_FRAME_LOCAL_EXTENT_METRES);
+  return extentsFit && frameFit;
 }
 
 /** Place mesh components in one precise shared GPU frame, rejecting only over-wide local batches. */

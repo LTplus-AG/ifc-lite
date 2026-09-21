@@ -433,6 +433,8 @@ test('classifyPath: Playwright e2e specs and helpers are ignored, not runner-les
   // tests/e2e/** and used to ABORT the lane instead of judging the unit tests.
   assert.equal(classifyPath('tests/e2e/collab-share-seed.e2e.spec.ts'), 'ignored');
   assert.equal(classifyPath('tests/e2e/collab/relay.ts'), 'ignored');
+  // The Playwright config is read by that same runner and nothing else (#5147).
+  assert.equal(classifyPath('playwright.config.ts'), 'ignored');
   // Everything else under tests/ keeps its scaffolding classification, so a
   // branch whose only observer is an e2e spec still fails as UNOBSERVED.
   assert.equal(classifyPath('tests/integration.test.ts'), 'test');

@@ -112,7 +112,7 @@ pub(crate) fn json_response_cache_key(cache_key: &str) -> String {
 /// a reader looking up a key nobody writes, or worse a writer storing under a
 /// version an old reader still serves.
 ///
-/// The two layouts get SEPARATE namespaces (`-parquet-v5` / `-parquet-v6`,
+/// The two layouts get SEPARATE namespaces (`-parquet-v5` / `-parquet-v7`,
 /// from `ParquetLayout::cache_suffix`) rather than one versioned slot, and the
 /// reason is that a version bump cannot do the job here. A cache key
 /// namespaces server-side entries; it has no bearing on which client is
@@ -174,7 +174,7 @@ pub(crate) fn parquet_metadata_cache_key(
 /// file while the flat route beside it replayed from disk (issue #3889). This
 /// is that key.
 ///
-/// Deliberately a DIFFERENT namespace from `-parquet-v6`: the two routes emit
+/// Deliberately a DIFFERENT namespace from `-parquet-v7`: the two routes emit
 /// different payloads (quantized vertices, deduplicated shapes, byte colours),
 /// so a hit on one must never satisfy the other.
 ///
@@ -184,11 +184,17 @@ pub(crate) fn parquet_metadata_cache_key(
 /// covers `process_geometry_filtered_with_quality` output just as
 /// [`parquet_cache_key`] does, and that key's own `v3` -> `v4` bump was a
 /// pipeline change with no column change at all. In practice: a bump of
-/// `-parquet-v6` almost always needs a bump here too. Otherwise a warm cache
+/// `-parquet-v7` almost always needs a bump here too. Otherwise a warm cache
 /// replays a pre-change blob that the decoder reads cleanly, and the change is
 /// silently absent.
+///
+/// `v2` with #5130: `MeshGeometryKey` gained `normals_hash`. The pipeline
+/// derives normals from positions and indices, so no optimized payload is
+/// expected to change -- bumped under this key's own rule (every change to
+/// the dedup behind the payload) rather than on that invariant, at the cost
+/// of one re-parse per warm file.
 pub(crate) fn parquet_optimized_cache_key(cache_key: &str) -> String {
-    format!("{cache_key}-parquet-optimized-v1")
+    format!("{cache_key}-parquet-optimized-v2")
 }
 
 /// Build the optimized-Parquet metadata cache key for a given file cache key.

@@ -54,6 +54,8 @@ export interface LandXmlSuperelevationJs { source_id: string; sta_start?: number
 export interface LandXmlSuperelevationEventJs { source_id: string; kind: string; value?: string; }
 export interface LandXmlUnsupportedTransitionJs { source_id: string; spi_type: string; spiral: Extract<LandXmlAlignmentPrimitiveJs, { kind: "spiral" }>; reason: string; }
 export interface LandXmlAlignmentProbeJs { alignment_source_id: string; segment_source_id: string; geometric_distance: number; station: { geometric_distance: number; displayed_back: number; displayed_ahead: number; is_equation_boundary: boolean }; northing: number; easting: number; tangent_northing: number; tangent_easting: number; }
+/** Neighbouring authored CantStation records; values are never interpolated. */
+export interface LandXmlAlignmentInspectionJs { cant?: { internal_station: number; station: { geometric_distance: number; displayed_back: number; displayed_ahead: number; is_equation_boundary: boolean }; previous?: LandXmlCantStationJs; next?: LandXmlCantStationJs }; superelevations: LandXmlSuperelevationJs[]; }
 
 
 
@@ -657,6 +659,12 @@ export class IfcAPI {
      * the degenerate-backstop drop count, and the CSG failure aggregates.
      */
     getPipelineDiagnostics(): any;
+    /**
+     * Inspect authored cant and superelevation records at a physical distance.
+     * Cant exposes bracketing source records only; no transition value is
+     * fabricated. Superelevation blocks preserve their authored bounds.
+     */
+    inspectLandXmlAlignmentAtDistance(data: Uint8Array, alignment_source_id: string, distance: number): LandXmlAlignmentInspectionJs;
     /**
      * Create and initialize the IFC API
      */
@@ -2243,6 +2251,7 @@ export interface InitOutput {
     readonly ifcapi_finalizePrepassStylesFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number) => void;
     readonly ifcapi_getMemory: (a: number) => number;
     readonly ifcapi_getPipelineDiagnostics: (a: number) => number;
+    readonly ifcapi_inspectLandXmlAlignmentAtDistance: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly ifcapi_is_ready: (a: number) => number;
     readonly ifcapi_new: () => number;
     readonly ifcapi_parseAlignmentLines: (a: number, b: number, c: number) => number;

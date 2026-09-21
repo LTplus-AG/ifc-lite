@@ -16,6 +16,11 @@ struct LandXmlSourceDocument {
     tin: ifc_lite_landxml::LandXmlTinDocument,
     alignments: ifc_lite_landxml::alignment::LandXmlAlignmentDocument,
 }
+#[derive(Serialize)]
+struct LandXmlAlignmentInspection {
+    cant: Option<ifc_lite_landxml::alignment::LandXmlCantProbe>,
+    superelevations: Vec<ifc_lite_landxml::alignment::LandXmlSuperelevation>,
+}
 
 #[wasm_bindgen]
 extern "C" {
@@ -29,6 +34,8 @@ extern "C" {
     pub type LandXmlSourceDocumentJs;
     #[wasm_bindgen(typescript_type = "LandXmlAlignmentProbeJs")]
     pub type LandXmlAlignmentProbeJs;
+    #[wasm_bindgen(typescript_type = "LandXmlAlignmentInspectionJs")]
+    pub type LandXmlAlignmentInspectionJs;
 }
 
 #[wasm_bindgen(typescript_custom_section)]
@@ -76,6 +83,8 @@ export interface LandXmlSuperelevationJs { source_id: string; sta_start?: number
 export interface LandXmlSuperelevationEventJs { source_id: string; kind: string; value?: string; }
 export interface LandXmlUnsupportedTransitionJs { source_id: string; spi_type: string; spiral: Extract<LandXmlAlignmentPrimitiveJs, { kind: "spiral" }>; reason: string; }
 export interface LandXmlAlignmentProbeJs { alignment_source_id: string; segment_source_id: string; geometric_distance: number; station: { geometric_distance: number; displayed_back: number; displayed_ahead: number; is_equation_boundary: boolean }; northing: number; easting: number; tangent_northing: number; tangent_easting: number; }
+/** Neighbouring authored CantStation records; values are never interpolated. */
+export interface LandXmlAlignmentInspectionJs { cant?: { internal_station: number; station: { geometric_distance: number; displayed_back: number; displayed_ahead: number; is_equation_boundary: boolean }; previous?: LandXmlCantStationJs; next?: LandXmlCantStationJs }; superelevations: LandXmlSuperelevationJs[]; }
 "#;
 
 #[wasm_bindgen]
@@ -149,6 +158,43 @@ impl IfcAPI {
             .map(|value| value.unchecked_into())
             .map_err(|error| {
                 JsValue::from_str(&format!("LandXML probe serialization failed: {error}"))
+            })
+    }
+
+    /// Inspect authored cant and superelevation records at a physical distance.
+    /// Cant exposes bracketing source records only; no transition value is
+    /// fabricated. Superelevation blocks preserve their authored bounds.
+    #[wasm_bindgen(js_name = inspectLandXmlAlignmentAtDistance)]
+    pub fn inspect_landxml_alignment_at_distance(
+        &self,
+        data: &[u8],
+        alignment_source_id: &str,
+        distance: f64,
+    ) -> Result<LandXmlAlignmentInspectionJs, JsValue> {
+        let document = ifc_lite_landxml::alignment::parse_landxml_alignments_optional(data)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let alignment = document
+            .alignments
+            .iter()
+            .find(|value| value.source_id.0 == alignment_source_id)
+            .ok_or_else(|| JsValue::from_str("LXMLA229: alignment source id was not found"))?;
+        let inspection = LandXmlAlignmentInspection {
+            cant: alignment
+                .cant_at_distance(distance)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?,
+            superelevations: alignment
+                .superelevations_at_distance(distance)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?
+                .into_iter()
+                .cloned()
+                .collect(),
+        };
+        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+        inspection
+            .serialize(&serializer)
+            .map(|value| value.unchecked_into())
+            .map_err(|error| {
+                JsValue::from_str(&format!("LandXML inspection serialization failed: {error}"))
             })
     }
 }

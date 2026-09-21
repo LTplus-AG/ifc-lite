@@ -12,8 +12,10 @@
 //! siblings under `routes::parse` need it.
 
 use super::cache_keys::{
-    has_cached_symbolic, parquet_optimized_cache_key, parquet_optimized_metadata_cache_key,
+    data_model_cache_key, has_cached_symbolic, has_current_data_model, parquet_optimized_cache_key,
+    parquet_optimized_metadata_cache_key,
 };
+use super::parquet::DataModelStats;
 use crate::error::ApiError;
 use crate::services::OptimizedStats;
 use crate::types::{ModelMetadata, ProcessingStats};
@@ -41,6 +43,11 @@ pub(super) struct OptimizedParquetMetadataHeader {
     pub optimization_stats: OptimizedStats,
     /// Vertex multiplier for dequantization (10,000 = 0.1mm precision)
     pub vertex_multiplier: f32,
+    /// Data model statistics (issue #5129: this route now produces the data
+    /// model too, so its own header can report the same stats
+    /// `ParquetMetadataHeader` does).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_model_stats: Option<DataModelStats>,
 }
 
 /// Read a cache entry, treating an unreadable one as absent.
@@ -99,11 +106,21 @@ pub(super) fn optimized_parquet_response(
 /// The symbolic gate is not optional: this route's parse also writes the
 /// symbolic sidecar, so replaying past a missing one leaves the client's
 /// `GET /api/v1/parse/symbolic/{cache_key}` polling a key nobody writes.
+///
+/// The data-model gate (#5129) is the same #3869 rule the flat route already
+/// applies: this route now writes a data model beside the geometry, so a hit
+/// warmed BEFORE that change (or one whose data-model entry has since been
+/// bumped) must re-parse, or nothing ever writes a current one and
+/// `get_data_model` polls a key nobody writes forever.
 pub(super) async fn try_cached_optimized_parquet(
     state: &AppState,
     cache_key: &str,
 ) -> Result<Option<Response>, ApiError> {
     if !has_cached_symbolic(&state.cache, cache_key).await {
+        return Ok(None);
+    }
+
+    if !has_current_data_model(&state.cache, cache_key).await {
         return Ok(None);
     }
 
@@ -133,6 +150,22 @@ pub(super) async fn try_cached_optimized_parquet(
     );
 
     optimized_parquet_response(metadata_json, cached_body.into()).map(Some)
+}
+
+/// Cache the data model produced alongside this route's geometry (#5129).
+///
+/// Log-and-continue like `parse_parquet`'s data-model write: a write failure
+/// here must not fail the response, which already has a valid geometry
+/// payload in hand. The caller writes this BEFORE the geometry body and
+/// metadata, so a data model is never missing behind an entry the replay gate
+/// above would otherwise treat as current.
+pub(super) async fn cache_data_model(state: &AppState, cache_key: &str, bytes: &[u8]) {
+    let key = data_model_cache_key(cache_key);
+    if let Err(e) = state.cache.set_bytes(&key, bytes).await {
+        tracing::error!(error = %e, cache_key = %key, "Failed to cache data model from optimized route");
+    } else {
+        tracing::info!(cache_key = %key, size = bytes.len(), "Data model cached from optimized route");
+    }
 }
 
 /// Write the optimized body and then its metadata, stopping at the first

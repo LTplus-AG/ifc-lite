@@ -115,6 +115,16 @@ async fn post_to(state: &AppState, uri: &str, content: &[u8]) -> (StatusCode, St
     (status, metadata, body.to_vec())
 }
 
+/// GET `uri` through the full router and return its status code.
+async fn get_status(state: &AppState, uri: &str) -> StatusCode {
+    let request = Request::builder()
+        .method("GET")
+        .uri(uri)
+        .body(Body::empty())
+        .unwrap();
+    build_router(state.clone()).oneshot(request).await.unwrap().status()
+}
+
 /// The headline behaviour from #3889: a second identical request must be a
 /// disk read, not a parse.
 ///
@@ -230,6 +240,9 @@ async fn a_cached_optimized_response_does_not_satisfy_the_flat_route() {
             b"{}".as_slice(),
         ),
         (symbolic_cache_key(&cache_key), b"{}".as_slice()),
+        // #5129: the optimized route now gates its replay on a current data
+        // model too (the #3869 rule), so a hit fixture must seed one.
+        (data_model_cache_key(&cache_key), b"{}".as_slice()),
     ] {
         state
             .cache
@@ -379,6 +392,92 @@ async fn a_different_file_does_not_hit_the_first_files_optimized_entry() {
     assert_ne!(
         body, SENTINEL_BODY,
         "a different file read the first file's cached body"
+    );
+}
+
+// ---------------------------------------------------------------------
+// The route produces a data model too (issue #5129).
+// ---------------------------------------------------------------------
+
+/// The headline behaviour from #5129: before this, `/parse/parquet/optimized`
+/// never wrote a data model at all, so `GET /parse/data-model/{cache_key}`
+/// polled 202 forever after an optimized-only parse -- nothing was ever going
+/// to write that key. The data model must be written BEFORE the response
+/// (mirroring `parse_parquet`), so it is already there the instant a client
+/// receives the geometry and immediately asks for it.
+#[tokio::test]
+async fn optimized_parse_writes_data_model_before_responding() {
+    let state = test_state("writes-data-model").await;
+    let content = MINIMAL_IFC.as_bytes();
+    let cache_key = request_cache_key(content, &ParseQuery::default(), TessellationQuality::default());
+
+    let (status, metadata, _) = post_optimized(&state, content).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // No sleep, no polling: the write happens inside the handler, before it
+    // returns, so it must already be on disk once the response is in hand.
+    let dm_response = get_status(&state, &format!("/api/v1/parse/data-model/{cache_key}")).await;
+    assert_eq!(
+        dm_response,
+        StatusCode::OK,
+        "the data model must be readable immediately after the optimized parse responds"
+    );
+
+    let metadata: serde_json::Value = serde_json::from_str(&metadata).unwrap();
+    let entity_count = metadata["data_model_stats"]["entity_count"]
+        .as_u64()
+        .expect("optimized response header must carry data_model_stats.entity_count");
+    assert!(
+        entity_count > 0,
+        "the fixture declares real entities (IfcProject, IfcWall); got entity_count={entity_count}"
+    );
+}
+
+/// The #3869 rule applied to this route (#5129): a hit warmed before this
+/// route wrote data models (or one whose data-model entry has since been
+/// retired) must re-parse rather than replay, or nothing ever writes a
+/// current data model and `get_data_model` polls a key nobody writes.
+#[tokio::test]
+async fn optimized_replay_requires_current_data_model() {
+    let state = test_state("replay-requires-data-model").await;
+    let content = MINIMAL_IFC.as_bytes();
+    let cache_key = request_cache_key(content, &ParseQuery::default(), TessellationQuality::default());
+
+    let (status, _, _) = post_optimized(&state, content).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Overwrite the body with a sentinel: if the second request is a replay,
+    // it must be the deleted-data-model check that forces a re-parse here,
+    // not a body-cache miss standing in for it.
+    let body_key = parquet_optimized_cache_key(&cache_key);
+    state
+        .cache
+        .set_bytes(&body_key, SENTINEL_BODY)
+        .await
+        .expect("overwrite the cached body with a sentinel");
+
+    // Simulate a deployment that warmed this cache entry before #5129: delete
+    // the data-model key the first (real) parse just wrote.
+    let dm_key = data_model_cache_key(&cache_key);
+    state
+        .cache
+        .remove(&dm_key)
+        .await
+        .expect("remove the data-model entry");
+    assert!(
+        state.cache.get_bytes(&dm_key).await.unwrap().is_none(),
+        "fixture must start with no data model cached"
+    );
+
+    let (status, _, second_body) = post_optimized(&state, content).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_ne!(
+        second_body, SENTINEL_BODY,
+        "a body entry with no current data model must re-parse, not replay"
+    );
+    assert!(
+        state.cache.get_bytes(&dm_key).await.unwrap().is_some(),
+        "the re-parse must write a fresh data model"
     );
 }
 

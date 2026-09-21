@@ -201,8 +201,14 @@ pub(crate) fn parquet_optimized_cache_key(cache_key: &str) -> String {
 /// `v2` with #4653: the header's `metadata.georeferencing` gained the
 /// `IfcMapConversionScaled` factors. The body keeps `v1`: a metadata miss
 /// re-parses, and the parse rewrites the body in place.
+/// `v3` with #5129: the header gained `data_model_stats`, mirroring
+/// `ParquetMetadataHeader`. A `v2` header replays with the field absent, which
+/// is a correct decode (`#[serde(skip_serializing_if)]`) of a header that
+/// silently no longer describes what this route now does -- it produces a
+/// data model too. The body keeps `v1`: a metadata miss re-parses, and the
+/// parse rewrites the body (and now the data model) in place.
 pub(crate) fn parquet_optimized_metadata_cache_key(cache_key: &str) -> String {
-    format!("{cache_key}-parquet-optimized-metadata-v2")
+    format!("{cache_key}-parquet-optimized-metadata-v3")
 }
 
 /// Build the data-model cache key for a given file cache key.

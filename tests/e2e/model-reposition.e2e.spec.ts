@@ -19,9 +19,19 @@ const DEVICE_LOST_CONSOLE = /\[WebGPU\] Device lost:|\[Renderer\] GPU device los
 
 async function load(page: Page, file: string | { name: string; mimeType: string; buffer: Buffer }, count: number) {
   const consoleStart = consoleLines.length;
-  await page.locator('input[type=file]').nth(count === 1 ? 0 : 1).setInputFiles(file);
+  const pageErrorStart = pageErrorLines.length;
+  let inputFailure: unknown;
+  try {
+    // These ids are the viewer's Open/Add contract. Ordinal inputs can silently
+    // start waiting for a non-existent element after an error-boundary teardown,
+    // obscuring the GPU/page diagnostic that caused the teardown.
+    await page.locator(count === 1 ? '#file-input-open' : '#file-input-add').setInputFiles(file);
+  } catch (error) {
+    inputFailure = error;
+  }
   let outcome: 'ok' | 'device-lost' | 'timeout';
   try {
+    if (inputFailure !== undefined) throw inputFailure;
     const handle = await page.waitForFunction(({ n, deviceLost }) => {
       const state = globalThis.__ifc_lite_viewer_store__?.getState();
       if (!state) return false;
@@ -47,14 +57,16 @@ async function load(page: Page, file: string | { name: string; mimeType: string;
   }).catch((e) => ({ evaluateFailed: String(e) }));
   const name = typeof file === 'string' ? file : file.name;
   const loadConsole = consoleLines.slice(consoleStart);
-  const detail = `${JSON.stringify(snapshot)}\nconsole: ${loadConsole.slice(-40).join('\n')}`;
+  const loadPageErrors = pageErrorLines.slice(pageErrorStart);
+  const detail = `${JSON.stringify(snapshot)}\ninput: ${String(inputFailure ?? 'submitted')}\npageerror: ${loadPageErrors.slice(-20).join('\n')}\nconsole: ${loadConsole.slice(-40).join('\n')}`;
   // Hosted runners' SwiftShader WebGPU device drops under load (the IFC upload
   // that precedes the scan drop); the viewer then refuses the point-cloud
   // stream by design. That is the documented software-GPU limitation the
   // E2E_GPU_STRICT=0 mode already skips GPU assertions for — not a viewer
   // regression — so skip with the evidence attached rather than fail. A
   // strict run (real GPU) still fails here.
-  const softwareDeviceLost = outcome === 'device-lost' || loadConsole.some((line) => DEVICE_LOST_CONSOLE.test(line));
+  const softwareDeviceLost = outcome === 'device-lost'
+    || [...loadConsole, ...loadPageErrors].some((line) => DEVICE_LOST_CONSOLE.test(line));
   if (softwareDeviceLost && process.env.E2E_GPU_STRICT === '0') {
     console.warn(`[e2e] E2E_GPU_STRICT=0 — skipping: software-GPU device lost during load(${name}, ${count})`);
     test.skip(true, `hosted software-GPU device lost during load(${name}, ${count}): ${detail}`);
@@ -64,6 +76,7 @@ async function load(page: Page, file: string | { name: string; mimeType: string;
 
 /** Page console (warnings/errors) for the current test, attached to the load() timeout diagnostic. */
 let consoleLines: string[] = [];
+let pageErrorLines: string[] = [];
 
 /** Synthetic diagnostic scan, explicitly derived from a real authoring fixture.
  * The known translation is the oracle; this does not pretend to be a field scan. */
@@ -97,7 +110,12 @@ async function openScanMove(page: Page) {
 for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan, ${scanFirst ? 'scan' : 'IFC'} first (#4226)`, async ({ page }, info) => {
   test.skip(!existsSync(IFC), 'Real IFC fixture missing — run pnpm fixtures');
   const errors: string[] = [];
-  page.on('pageerror', (error) => errors.push(String(error)));
+  pageErrorLines = [];
+  page.on('pageerror', (error) => {
+    const message = String(error);
+    errors.push(message);
+    pageErrorLines.push(message);
+  });
   consoleLines = [];
   page.on('console', (message) => { if (message.type() === 'error' || message.type() === 'warning') consoleLines.push(`[${message.type()}] ${message.text().slice(0, 300)}`); });
   await page.setViewportSize({ width: 1440, height: 1000 });

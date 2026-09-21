@@ -11,6 +11,7 @@ import { initLandXmlWasm } from './landXmlWasmInit.js';
 import { IfcAPI } from '@ifc-lite/wasm';
 import { spatialMetadataFromLandXml, spatialReferenceFromSourceMetadata } from './sourceSpatialReference.js';
 import type { ModelSpatialReference } from '@ifc-lite/geometry';
+import type { MeshData } from '@ifc-lite/geometry';
 
 export interface LandXmlViewerModel extends LandXmlGeometryPayload {
   dataStore: IfcDataStore;
@@ -105,6 +106,7 @@ export function parseLandXmlViewerModelFromBlobAsync(
   isCurrent: () => boolean = () => true,
   onProgress?: (loadedBytes: number, totalBytes: number) => void,
   onPreflight?: (preflight: LandXmlGeometryPreflight) => void | Promise<void>,
+  onComponent?: (mesh: MeshData) => void | Promise<void>,
 ): Promise<LandXmlViewerModel> {
   if (typeof Worker === 'undefined') {
     if (!isCurrent()) return Promise.reject(new Error('LandXML parsing cancelled'));
@@ -146,6 +148,7 @@ export function parseLandXmlViewerModelFromBlobAsync(
       | { ok: false; error: string }
       | { progress: { loadedBytes: number; totalBytes: number } }
       | { preflight: LandXmlGeometryPreflight }
+      | { component: MeshData }
     >) => {
       if ('progress' in event.data) {
         onProgress?.(event.data.progress.loadedBytes, event.data.progress.totalBytes);
@@ -154,6 +157,14 @@ export function parseLandXmlViewerModelFromBlobAsync(
       if ('preflight' in event.data) {
         Promise.resolve(onPreflight?.(event.data.preflight)).then(() => {
           if (!finished) worker.postMessage({ type: 'preflight-approved' });
+        }).catch((error: unknown) => {
+          if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
+        });
+        return;
+      }
+      if ('component' in event.data) {
+        Promise.resolve(onComponent?.(event.data.component)).then(() => {
+          if (!finished) worker.postMessage({ type: 'component-uploaded' });
         }).catch((error: unknown) => {
           if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
         });

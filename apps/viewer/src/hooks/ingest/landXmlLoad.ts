@@ -160,6 +160,7 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
   options.setProgress({ phase: 'Parsing LandXML TIN surfaces', percent: 10 });
   options.setGeometryStreamingActive(false);
   let provisional: LandXmlProvisionalTransaction | null = null;
+  let streamedComponents = 0;
   try {
     const result = await parseLandXmlViewerModelFromBlobAsync(
       options.file,
@@ -175,6 +176,11 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
         if (!options.isCurrent()) throw new Error('LandXML parsing cancelled');
         provisional = options.openProvisional?.(preflight) ?? null;
       },
+      (mesh) => {
+        if (provisional === null) return;
+        provisional.publish(mesh);
+        streamedComponents++;
+      },
     );
     // The browser worker is terminated within the cancellation polling bound;
     // this guard also prevents a racing stale reply from mutating model state.
@@ -183,7 +189,7 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
       return;
     }
     if (provisional !== null) {
-      for (const mesh of result.geometryResult.meshes) provisional.publish(mesh);
+      for (const mesh of result.geometryResult.meshes.slice(streamedComponents)) provisional.publish(mesh);
       for (const mesh of result.geometryResult.meshes) {
         mesh.expressId += provisional.idOffset;
         markLandXmlGpuUploaded(mesh);

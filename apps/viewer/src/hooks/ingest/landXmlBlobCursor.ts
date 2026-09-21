@@ -15,7 +15,8 @@ const MAX_WASM_U32 = 0xffff_ffff;
 export interface LandXmlBlobCursorOptions {
   isCurrent?(): boolean;
   onProgress?(loadedBytes: number, totalBytes: number): void;
-  onSurface?(surface: LandXmlAssembledSurface): void;
+  onHeader?(header: unknown): void | Promise<void>;
+  onSurface?(surface: LandXmlAssembledSurface): void | Promise<void>;
 }
 
 export interface LandXmlCursorSession {
@@ -35,16 +36,18 @@ function ensureCurrent(isCurrent: (() => boolean) | undefined): void {
   if (isCurrent && !isCurrent()) throw new Error('LandXML parsing cancelled');
 }
 
-function processEvents(
+async function processEvents(
   value: unknown,
   assembler: LandXmlStreamDocumentAssembler,
-  onSurface: ((surface: LandXmlAssembledSurface) => void) | undefined,
-): LandXmlTinDocument | null {
+  onSurface: ((surface: LandXmlAssembledSurface) => void | Promise<void>) | undefined,
+  onHeader: ((header: unknown) => void | Promise<void>) | undefined,
+): Promise<LandXmlTinDocument | null> {
   if (!Array.isArray(value)) throw new Error('LandXML cursor returned an invalid drain result');
   let document: LandXmlTinDocument | null = null;
   for (const event of value) {
+    if (typeof event === 'object' && event !== null && (event as { kind?: unknown }).kind === 'header') await onHeader?.(event);
     const result = assembler.push(event);
-    if (result.surface !== null) onSurface?.(result.surface);
+    if (result.surface !== null) await onSurface?.(result.surface);
     if (result.document !== null) document = readLandXmlSourceDocument(result.document);
   }
   return document;
@@ -66,8 +69,8 @@ export async function parseLandXmlSourceBlobWithApi(
   const session = api.createLandXmlTinStreamSession(blob.size);
   const assembler = new LandXmlStreamDocumentAssembler();
   let document: LandXmlTinDocument | null = null;
-  const drain = (): void => {
-    const completed = processEvents(session.drain(LANDXML_CURSOR_CREDIT_BYTES), assembler, options.onSurface);
+  const drain = async (): Promise<void> => {
+    const completed = await processEvents(session.drain(LANDXML_CURSOR_CREDIT_BYTES), assembler, options.onSurface, options.onHeader);
     if (completed !== null) document = completed;
   };
   try {
@@ -77,12 +80,12 @@ export async function parseLandXmlSourceBlobWithApi(
       const bytes = new Uint8Array(await blob.slice(offset, end).arrayBuffer());
       ensureCurrent(options.isCurrent);
       session.advanceChunk(bytes);
-      while (session.outputPending()) drain();
+      while (session.outputPending()) await drain();
       options.onProgress?.(end, blob.size);
     }
     ensureCurrent(options.isCurrent);
     session.finishCursor();
-    while (session.outputPending()) drain();
+    while (session.outputPending()) await drain();
     ensureCurrent(options.isCurrent);
     if (document === null) throw new Error('LandXML cursor ended without metadata document');
     return document;

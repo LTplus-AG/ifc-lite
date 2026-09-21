@@ -40,7 +40,8 @@ function topologyOrigin(value: unknown): NonNullable<LandXmlTinSurface['topology
   throw new Error('LandXML WASM returned an invalid terrain topology origin');
 }
 
-function surface(value: unknown): LandXmlTinSurface {
+/** Decode one independently streamed terrain surface using the direct adapter rules. */
+export function readLandXmlTinSurface(value: unknown): LandXmlTinSurface {
   const raw = record(value, 'surface');
   return {
     sourceId: string(raw.source_id, 'surface source id'),
@@ -219,7 +220,7 @@ export function readLandXmlTinDocument(value: unknown): LandXmlTinDocument {
         ...(typeof coordinateSystem.vertical_datum === 'string' ? { verticalDatum: coordinateSystem.vertical_datum } : {}),
       },
     } : {}),
-    surfaces: array(raw.surfaces, 'surfaces').map(surface),
+    surfaces: array(raw.surfaces, 'surfaces').map(readLandXmlTinSurface),
     extensions: array(raw.extensions, 'extensions').map((extension, index) => {
       const parsed = record(extension, `extension ${index}`);
       return {

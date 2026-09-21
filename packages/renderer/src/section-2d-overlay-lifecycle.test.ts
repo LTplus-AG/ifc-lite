@@ -398,6 +398,27 @@ describe('Section2DOverlayRenderer: shared uniform buffer', () => {
     assert.deepStrictEqual(Array.from(u.slice(0, 16)), new Array(16).fill(7));
   });
 
+  it('keeps centimetre residuals at 5,000 km for anchored lines and section caps (#5049)', () => {
+    const { renderer, writes } = newRenderer();
+    const eye = [5_000_000.25, 20, -4] as const;
+    const rte = new Float32Array(16).fill(3);
+    renderer.setLineOverlay('annotation', {
+      localVertices: new Float32Array([0.01, 0, 0, 0.02, 0, 0]),
+      origin: [5_000_000.255, 20, -4],
+    });
+    const { pass } = makePass();
+    renderer.drawLineOverlay(pass, new Float32Array(16), 'annotation', rte, eye);
+    let u = lastWrite(writes);
+    assert.ok(Math.abs(u[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh] + u[SECTION_2D_UNIFORM_SLOTS.originDeltaLow] - 0.005) < 1e-7);
+    assert.strictEqual(u[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh + 3], 1);
+
+    renderer.uploadDrawing(TRIANGLE, [], 'side', 5_000_000.255);
+    renderer.draw(pass, { ...OPTIONS, viewProj: new Float32Array(16), rteViewProj: rte, rteCamera: eye, showFills: true, showOutlines: true, capStyle: CAP_STYLE });
+    u = lastWrite(writes);
+    assert.ok(Math.abs(u[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh] + u[SECTION_2D_UNIFORM_SLOTS.originDeltaLow] - 0.005) < 1e-7);
+    assert.strictEqual(u[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh + 3], 1);
+  });
+
   it('places the cap style at the capFill / capStroke / params slots', () => {
     const { renderer, writes } = newRenderer();
     renderer.uploadDrawing(

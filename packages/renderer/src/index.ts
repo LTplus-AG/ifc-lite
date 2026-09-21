@@ -1415,18 +1415,17 @@ export class Renderer {
         const interleavedU32 = new Uint32Array(interleavedRaw);
 
         // Build this individual mesh (selection highlight + GPU object-id picker)
-        // in ABSOLUTE world space so it renders with an identity model matrix.
+        // in the same small local frame as its source batch.
         // CRITICAL: replicate the BATCH's exact two-step f32 path so the highlight
         // is bit-coincident with its source surface (no z-fight, no depth bias):
         //   batch stores  s = f32(local + (origin - sharedOrigin))   [merge]
-        //   batch shader  world = f32(f32(sharedOrigin) + s)         [draw]
-        // We compute the same `world` here. When there's no shared origin yet
-        // (legacy / pre-batch), fall back to a plain f64 fold (local + origin).
+        //   batch shader  RTE = sharedOrigin - eye + s               [draw]
+        // We retain `s` and the canonical origin separately. When there is no
+        // shared origin, retain the piece origin instead of folding it in.
         const o = meshData.origin;
         const so = this.scene.getSharedFrameOrigin(meshData.modelIndex, meshData);
         const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
         const fr = Math.fround;
-        const sox = so ? fr(so[0]) : null, soy = so ? fr(so[1]) : 0, soz = so ? fr(so[2]) : 0;
         const dx = so ? (ox - so[0]) : ox, dy = so ? (oy - so[1]) : oy, dz = so ? (oz - so[2]) : oz;
         // Quantized batches (issue #1682 phase 6) render lattice-snapped
         // positions: the shader's quantMin + q*step is exactly the lattice
@@ -1443,9 +1442,9 @@ export class Renderer {
         for (let i = 0; i < vertexCount; i++) {
             const base = i * 7;
             const posBase = i * 3;
-            interleaved[base] = so ? fr((sox as number) + snap(fr(p[posBase] + dx))) : snap(p[posBase] + dx);
-            interleaved[base + 1] = so ? fr(soy + snap(fr(p[posBase + 1] + dy))) : snap(p[posBase + 1] + dy);
-            interleaved[base + 2] = so ? fr(soz + snap(fr(p[posBase + 2] + dz))) : snap(p[posBase + 2] + dz);
+            interleaved[base] = so ? snap(fr(p[posBase] + dx)) : snap(p[posBase]);
+            interleaved[base + 1] = so ? snap(fr(p[posBase + 1] + dy)) : snap(p[posBase + 1]);
+            interleaved[base + 2] = so ? snap(fr(p[posBase + 2] + dz)) : snap(p[posBase + 2]);
             const hasNormals = meshData.normals.length > 0;
             interleaved[base + 3] = hasNormals ? meshData.normals[posBase] : 0;
             interleaved[base + 4] = hasNormals ? meshData.normals[posBase + 1] : 0;
@@ -1478,7 +1477,9 @@ export class Renderer {
         });
         device.queue.writeBuffer(indexBuffer, 0, meshData.indices);
 
-        // Add to scene with identity transform (positions already in world space).
+        // Keep the hydrated mesh in its decoded local frame.  Folding this
+        // origin back into f32 vertices used to make selection/highlight the
+        // only mesh path that lost centimetres at national-grid coordinates.
         // Flagged `hydrated` so it can be freed when its entity leaves the
         // selection — these duplicate geometry already drawn by a batch and would
         // otherwise accumulate + double-draw (see Scene.disposeHydratedMeshesExcept).
@@ -1493,7 +1494,14 @@ export class Renderer {
             vertexBuffer,
             indexBuffer,
             indexCount: meshData.indices.length,
-            transform: MathUtils.identity(),
+            transform: (() => {
+                const transform = MathUtils.identity();
+                transform.m[12] = so ? so[0] : ox;
+                transform.m[13] = so ? so[1] : oy;
+                transform.m[14] = so ? so[2] : oz;
+                return transform;
+            })(),
+            rteOrigin: so ? [so[0], so[1], so[2]] : [ox, oy, oz],
             color: meshData.color,
             hydrated: true,
         });
@@ -2986,6 +2994,10 @@ export class Renderer {
                             tplClipBit;
                         tplFlags[2] = edgeEnabledU32;
                         tplFlags[3] = edgeIntensityMilliU32;
+                        packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl);
+                        const transparentOrigin = mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
+                        relativeToEyeFrame.packDrawableOrigin(transparentOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta);
+                        tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
                         device.queue.writeBuffer(mesh.uniformBuffer, 0, tpl);
 
@@ -3044,6 +3056,10 @@ export class Renderer {
                         tplClipBit;
                     tplFlags[2] = edgeEnabledU32;
                     tplFlags[3] = edgeIntensityMilliU32;
+                    packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl);
+                    const selectedOrigin = mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
+                    relativeToEyeFrame.packDrawableOrigin(selectedOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta);
+                    tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
                     device.queue.writeBuffer(mesh.uniformBuffer, 0, tpl);
 

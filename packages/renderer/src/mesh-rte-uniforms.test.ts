@@ -45,4 +45,10 @@ describe('mesh RTE fragment ingress (#5049)', () => {
     assert.match(mainShaderSource, /cross\(dpdx\(fragmentPos\), dpdy\(fragmentPos\)\)/);
     assert.match(mainShaderSource, /let p = fragmentPos;/);
   });
+
+  it('keeps individual rotation/scale linear while translating only through the RTE origin (#5049)', () => {
+    assert.match(mainShaderSource, /uniforms\.model \* vec4<f32>\(local, 0\.0\)/);
+    assert.match(mainShaderSource, /linear \+ uniforms\.drawableDeltaHigh\.xyz/);
+    assert.doesNotMatch(mainShaderSource, /fn rtePosition\(local: vec3<f32>\) -> vec4<f32> \{ return/);
+  });
 });

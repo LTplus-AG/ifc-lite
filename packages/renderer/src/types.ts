@@ -40,6 +40,10 @@ export interface Mesh {
   indexBuffer: GPUBuffer;
   indexCount: number;
   transform: Mat4;
+  /** Canonical f64-like translation used by the RTE mesh path.  It is kept
+   * separate from the GPU f32 transform so hydrated selection meshes do not
+   * reintroduce national-grid rounding after their source batch was rebased. */
+  rteOrigin?: [number, number, number];
   color: [number, number, number, number];
   material?: Material;
   // Per-mesh GPU resources for unique colors

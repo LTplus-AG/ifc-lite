@@ -29,7 +29,14 @@ export const mainShaderSource = `
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
         const RTE_DRAWABLE_FLAG: u32 = ${MESH_FLAG_RTE_DRAWABLE}u;
-        fn rtePosition(local: vec3<f32>) -> vec4<f32> { return vec4<f32>((local + uniforms.drawableDeltaHigh.xyz) + uniforms.drawableDeltaLow.xyz, 1.0); }
+        // The model matrix supplies the drawable's linear transform; its translation is
+        // deliberately excluded and supplied by the split f64-origin lanes.
+        // This keeps rotated/scaled individual and hydrated selection meshes in
+        // the same camera-relative frame as batched geometry.
+        fn rtePosition(local: vec3<f32>) -> vec4<f32> {
+          let linear = (uniforms.model * vec4<f32>(local, 0.0)).xyz;
+          return vec4<f32>((linear + uniforms.drawableDeltaHigh.xyz) + uniforms.drawableDeltaLow.xyz, 1.0);
+        }
         fn rteInstancePosition(local: vec3<f32>, anchorHigh: vec3<f32>, anchorLow: vec3<f32>) -> vec4<f32> {
           let highDelta = anchorHigh - uniforms.rteCameraHigh.xyz;
           let lowDelta = anchorLow - uniforms.rteCameraLow.xyz;

@@ -42,7 +42,7 @@ function recordingGpu() {
 }
 
 describe('whole-model renderer placement (#4226)', () => {
-  it('uploads extracted merged geometry against its source batch frame (#5010)', () => {
+  it('uploads extracted merged geometry in its source batch frame without losing the RTE anchor (#5010, #5049)', () => {
     const renderer = new Renderer({ width: 256, height: 256,
       getBoundingClientRect: () => ({ width: 256, height: 256 }) } as unknown as HTMLCanvasElement);
     const uploaded = new WeakMap<GPUBuffer, ArrayBuffer>();
@@ -83,9 +83,11 @@ describe('whole-model renderer placement (#4226)', () => {
     const written = new Float32Array(bytes);
     const origin = source.origin!;
     const relative = Math.fround(extracted.positions[0] + extracted.origin![0] - origin[0]);
-    const expected = Math.fround(Math.fround(origin[0]) + Math.round(relative * 1024) / 1024);
+    const expected = Math.round(relative * 1024) / 1024;
     assert.strictEqual(written[0], expected,
-      'the real upload uses the source batch frame and quantized lattice, not a derived fallback frame');
+      'the real upload retains the source batch-relative quantized lattice');
+    assert.deepEqual(hydrated.rteOrigin, origin,
+      'the canonical 800,000 km source anchor reaches the RTE draw instead of being folded into f32 vertices');
   });
 
   for (const streaming of [false, true]) it(`frames later uploads in their pre-existing placement (streaming: ${streaming}, #4226)`, () => {

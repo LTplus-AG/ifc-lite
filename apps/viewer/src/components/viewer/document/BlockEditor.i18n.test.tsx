@@ -34,6 +34,8 @@ const TEST_LOCALE: Catalogue = {
   'document.block.tableValidationRowsAriaLabel': 'Welche Zeilen anzeigen',
   'document.block.tableRuleAriaLabel': 'Auf eine Regel filtern',
   'document.block.tableRuleAll': 'Jede Regel',
+  'document.table.column.rule': 'Regel',
+  'document.table.column.result': 'Ergebnis',
   'document.block.styleLabel': 'Stil',
   'document.block.textStyleAriaLabel': 'Textstil',
   'document.block.insertFieldLabel': 'Feld einfügen',
@@ -170,6 +172,9 @@ describe('BlockEditor localization (#4918)', () => {
     assert.ok(ui.querySelector('select[aria-label="Which rows to show"]'));
     assert.ok(ui.querySelector('select[aria-label="Filter to one rule"]'));
     assert.equal(ui.textContent?.includes('Every rule'), true);
+    // The column-toggle checkboxes (#5138 review): one label per TableColumnId, translated.
+    assert.equal(ui.textContent?.includes('Rule'), true);
+    assert.equal(ui.textContent?.includes('Result'), true);
 
     registerLocale('block-editor-x-table-validation', TEST_LOCALE);
     act(() => setLocale('block-editor-x-table-validation'));
@@ -178,6 +183,8 @@ describe('BlockEditor localization (#4918)', () => {
     assert.ok(ui.querySelector('select[aria-label="Welche Zeilen anzeigen"]'));
     assert.ok(ui.querySelector('select[aria-label="Auf eine Regel filtern"]'));
     assert.equal(ui.textContent?.includes('Jede Regel'), true);
+    assert.equal(ui.textContent?.includes('Regel'), true, 'the "rule" column checkbox label switches with the locale');
+    assert.equal(ui.textContent?.includes('Ergebnis'), true, 'the "result" column checkbox label switches with the locale');
   });
 
   it('translates the spacer block\'s kind badge', () => {

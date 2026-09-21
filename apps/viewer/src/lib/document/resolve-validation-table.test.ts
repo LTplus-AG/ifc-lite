@@ -43,7 +43,7 @@ describe('resolveValidationTableState (#5138)', () => {
   it('picks failed / passed / all entity rows, with the first failing requirement supplying actual/expected/reason', () => {
     const fail = entity({
       expressId: 41, entityType: 'IfcWall', entityName: 'Wall A', globalId: 'G-41', passed: false,
-      requirementResults: [{ requirement: { id: 'r1', label: 'FireRating is set', optionality: 'required' }, status: 'fail', facetType: 'property', checkedDescription: '', failureReason: 'absent', actualValue: '', expectedValue: 'set' }],
+      requirementResults: [{ requirement: { id: 'r1', label: 'FireRating is set', optionality: 'required' }, status: 'fail', facetType: 'property', checkedDescription: '', failureReason: 'absent', actualValue: 'unset', expectedValue: 'set' }],
     });
     const pass = entity({ expressId: 42, entityType: 'IfcDoor', entityName: 'Door B', globalId: 'G-42', passed: true });
     const oneSpec = spec('s1', 'Walls have FireRating', { entityResults: [fail, pass] });
@@ -54,7 +54,7 @@ describe('resolveValidationTableState (#5138)', () => {
     assert.ok(failed.status === 'ok' && failed.kind === 'validation');
     if (failed.status === 'ok' && failed.kind === 'validation') {
       assert.equal(failed.model.totalRows, 1);
-      assert.deepEqual(failed.model.rows[0].cells, ['Walls have FireRating', 'fail', 'IfcWall', 'Wall A', 'G-41', 'tower.ifc', '', 'set', 'absent']);
+      assert.deepEqual(failed.model.rows[0].cells, ['Walls have FireRating', 'fail', 'IfcWall', 'Wall A', 'G-41', 'tower.ifc', 'unset', 'set', 'absent']);
     }
 
     const passed = resolveValidationTableState(source({ rows: 'passed' }, columns), report([oneSpec]), modelName);
@@ -96,13 +96,15 @@ describe('resolveValidationTableState (#5138)', () => {
     if (filtered.status === 'ok' && filtered.kind === 'validation') assert.equal(filtered.model.totalRows, 0, 's1 has no entityResults in this literal — proves it did NOT read s2');
   });
 
-  it('column headers are plain English, and "members" is the only numeric column', () => {
+  it('column headers carry the column id plus a plain-English fallback label, and "members" is the only numeric column', () => {
     const columns: ValidationTableSource['columns'] = ['rule', 'members'];
     const oneSpec = spec('s1', 'x', { setResults: [{ kind: 'duplicate', label: 'L', actual: 'a', expected: 'b', passed: false, members: [{ modelId: 'm1', expressId: 1 }] }] });
     const resolved = resolveValidationTableState(source({ rows: 'sets' }, columns), report([oneSpec]), modelName);
     assert.ok(resolved.status === 'ok' && resolved.kind === 'validation');
     if (resolved.status === 'ok' && resolved.kind === 'validation') {
-      assert.deepEqual(resolved.model.columns, [{ label: 'Rule', numeric: false }, { label: 'Members', numeric: true }]);
+      // `id` is what a translating consumer (TablePreview/TableBlockEditor) keys off; `label` is the
+      // plain-English fallback the PDF prints (review finding: keep column ids in the resolved model).
+      assert.deepEqual(resolved.model.columns, [{ id: 'rule', label: 'Rule', numeric: false }, { id: 'members', label: 'Members', numeric: true }]);
     }
   });
 });

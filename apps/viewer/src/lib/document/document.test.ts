@@ -563,7 +563,7 @@ describe('validation-results table source (#5138)', () => {
       summary: { totalSpecifications: 1, passedSpecifications: 0, failedSpecifications: 1, totalEntitiesChecked: 120, totalEntitiesPassed: 0, totalEntitiesFailed: 120, overallPassRate: 0 },
       specificationResults: [{ specification: { id: 's1', name: 'Walls have FireRating' }, status: 'fail' as const, applicableCount: 120, passedCount: 0, failedCount: 120, passRate: 0, entityResults }],
     };
-    const source: ValidationTableSource = { kind: 'validation', rows: 'failed', columns: ['rule', 'result', 'name', 'reason'] };
+    const source: ValidationTableSource = { kind: 'validation', rows: 'failed', columns: ['rule', 'result', 'name', 'globalId', 'reason'] };
     const modelName = (id: string): string => (id === 'm1' ? 'tower.ifc' : id);
     const state = resolveValidationTableState(source, report, modelName);
 
@@ -572,8 +572,17 @@ describe('validation-results table source (#5138)', () => {
     const pdf = await generateDocumentPdf({ document: doc, bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), tables: new Map([['vt', state]]) }, seams);
     const tables = calls.filter((c) => c.op === 'table').map((c) => c.args[0] as { head: string[][]; body: string[][] });
     assert.ok(tables.length >= 2, `expected several chunks, got ${tables.length}`);
-    for (const t of tables) assert.deepEqual(t.head, [['Rule', 'Result', 'Name', 'Reason']], 'every chunk repeats the same header');
-    assert.equal(tables.reduce((n, t) => n + t.body.length, 0), 120, 'every row printed exactly once, none split');
+    for (const t of tables) assert.deepEqual(t.head, [['Rule', 'Result', 'Name', 'GlobalId', 'Reason']], 'every chunk repeats the same header');
+    const bodies = tables.flatMap((t) => t.body);
+    assert.equal(bodies.length, 120, 'every row printed exactly once, none split');
+    // Every expected Name/GlobalId shows up exactly once across chunks — a stronger check than a
+    // count, which would not catch a row printed twice while another was silently dropped (review finding).
+    const names = bodies.map((r) => r[2]).sort();
+    const globalIds = bodies.map((r) => r[3]).sort();
+    const expectedNames = Array.from({ length: 120 }, (_, i) => `Wall ${i}`).sort();
+    const expectedGlobalIds = Array.from({ length: 120 }, (_, i) => `G-${i}`).sort();
+    assert.deepEqual(names, expectedNames, 'every entity name appears exactly once');
+    assert.deepEqual(globalIds, expectedGlobalIds, 'every entity GlobalId appears exactly once');
     assert.deepEqual(pdf.tableFailures, []);
   });
 

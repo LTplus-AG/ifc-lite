@@ -43,7 +43,7 @@ impl Parser<'_> {
         let source_surface = surface.clone();
         let terrain_diagnostic = crate::terrain::adapt_faceless_tin(
             &mut surface,
-            self.limits,
+            &self.limits,
             self.cancelled,
             &mut self.faces_seen,
             &mut self.references,
@@ -146,7 +146,7 @@ impl Parser<'_> {
         Ok(())
     }
 
-    pub(super) fn finish(mut self) -> Result<LandXmlTinDocument> {
+    pub(crate) fn finish(mut self) -> Result<LandXmlTinDocument> {
         if self.version.is_empty() {
             return Err(error(Code::InvalidXml, "LandXML document is empty"));
         }

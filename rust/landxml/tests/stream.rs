@@ -1,0 +1,93 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+use ifc_lite_landxml::{
+    LandXmlDiagnosticCode, LandXmlLimits, LandXmlStreamEvent, LandXmlSurfaceComponent,
+    LandXmlTinStreamSession, MAX_LANDXML_STREAM_DRAIN_BYTES,
+};
+
+const XML: &str = r#"<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces></LandXML>"#;
+
+fn drive(bytes: &[u8], cuts: impl Iterator<Item = usize>) -> Vec<LandXmlStreamEvent> {
+    let mut session = LandXmlTinStreamSession::new(LandXmlLimits::default()).expect("session");
+    let mut start = 0;
+    let mut output = Vec::new();
+    for end in cuts {
+        session.advance(&bytes[start..end]).expect("advance");
+        output.extend(
+            session
+                .drain(MAX_LANDXML_STREAM_DRAIN_BYTES)
+                .expect("drain"),
+        );
+        start = end;
+    }
+    if start < bytes.len() {
+        session.advance(&bytes[start..]).expect("tail");
+        output.extend(
+            session
+                .drain(MAX_LANDXML_STREAM_DRAIN_BYTES)
+                .expect("drain tail"),
+        );
+    }
+    let summary = session.finish().expect("finish");
+    assert_eq!(summary.surfaces_drained, 1);
+    output.extend(
+        session
+            .drain(MAX_LANDXML_STREAM_DRAIN_BYTES)
+            .expect("final drain"),
+    );
+    output
+}
+
+#[test]
+fn issue_5050_arbitrary_utf8_cuts_have_identical_typed_semantics() {
+    let bytes = XML.as_bytes();
+    let whole = drive(bytes, std::iter::empty());
+    let byte_by_byte = drive(bytes, 1..=bytes.len());
+    let irregular = drive(bytes, [1, 2, 7, 17, 65, 129, bytes.len() - 1].into_iter());
+    assert_eq!(
+        serde_json::to_value(&whole).expect("json"),
+        serde_json::to_value(&byte_by_byte).expect("json")
+    );
+    assert_eq!(
+        serde_json::to_value(&byte_by_byte).expect("json"),
+        serde_json::to_value(&irregular).expect("json")
+    );
+}
+
+#[test]
+fn issue_5050_utf16_code_unit_and_surrogate_cuts_match_utf8() {
+    let mut utf16 = vec![0xff, 0xfe];
+    utf16.extend(XML.encode_utf16().flat_map(u16::to_le_bytes));
+    let utf8 = drive(XML.as_bytes(), std::iter::empty());
+    let utf16_events = drive(&utf16, 1..=utf16.len());
+    assert_eq!(
+        serde_json::to_value(utf8).expect("json"),
+        serde_json::to_value(utf16_events).expect("json")
+    );
+}
+
+#[test]
+fn issue_5050_large_single_surface_is_fragmented_not_rejected() {
+    let points = (1..=30_000)
+        .map(|id| format!("<P id=\"{id}\">{id} {id} 0</P>"))
+        .collect::<String>();
+    let xml = format!("<LandXML xmlns=\"http://www.landxml.org/schema/LandXML-1.2\" version=\"1.2\"><Units><Metric linearUnit=\"meter\"/></Units><Surfaces><Surface name=\"large\"><Definition surfType=\"TIN\"><Pnts>{points}</Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces></LandXML>");
+    let events = drive(xml.as_bytes(), std::iter::empty());
+    assert!(events.iter().any(|event| matches!(event, LandXmlStreamEvent::Surface(fragment) if fragment.component == LandXmlSurfaceComponent::Points)));
+    assert!(events
+        .iter()
+        .all(|event| serde_json::to_vec(event).expect("serialize").len()
+            <= MAX_LANDXML_STREAM_DRAIN_BYTES));
+}
+
+#[test]
+fn issue_5050_keeps_security_refusal_precedence_at_chunk_boundaries() {
+    let mut session = LandXmlTinStreamSession::new(LandXmlLimits::default()).expect("session");
+    let error = session
+        .advance(b"<!DOCT")
+        .and_then(|_| session.advance(b"YPE LandXML [x]>"))
+        .expect_err("doctype refused");
+    assert_eq!(error.code, LandXmlDiagnosticCode::DtdForbidden);
+}

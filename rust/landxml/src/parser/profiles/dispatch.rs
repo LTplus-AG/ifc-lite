@@ -154,7 +154,7 @@ impl Parser<'_> {
                 .push(alignment.source_id.clone());
         }
         let mut surface_ids: HashMap<String, Vec<LandXmlSourceId>> =
-            HashMap::with_capacity(self.surfaces.len());
+            HashMap::with_capacity(self.surfaces.len() + self.drained_surface_refs.len());
         for index in 0..self.surfaces.len() {
             self.check_cancel_and_work(1)?;
             let surface = &self.surfaces[index];
@@ -162,6 +162,14 @@ impl Parser<'_> {
                 .entry(surface.name.clone())
                 .or_default()
                 .push(surface.source_id.clone());
+        }
+        for index in 0..self.drained_surface_refs.len() {
+            self.check_cancel_and_work(1)?;
+            let (name, source_id) = &self.drained_surface_refs[index];
+            surface_ids
+                .entry(name.clone())
+                .or_default()
+                .push(source_id.clone());
         }
         // Temporarily move these bounded collections out so each inner loop
         // can poll the parser cancellation hook without aliasing its output.

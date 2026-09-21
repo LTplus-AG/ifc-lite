@@ -6,8 +6,8 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     capture::Capture, xml::Attributes, LandXmlAlignment, LandXmlCancellation,
-    LandXmlCapabilityDiagnostic, LandXmlCrossSection, LandXmlCrossSectionSurface, LandXmlExtension,
-    LandXmlCoordinateSystem, LandXmlLimits, LandXmlPoint, LandXmlPolyline,
+    LandXmlCapabilityDiagnostic, LandXmlCoordinateSystem, LandXmlCrossSection,
+    LandXmlCrossSectionSurface, LandXmlExtension, LandXmlLimits, LandXmlPoint, LandXmlPolyline,
     LandXmlPreservedOnlyExtension, LandXmlProfile, LandXmlRoadway, LandXmlSourceId, LandXmlSurface,
     LandXmlSurfaceKind, LandXmlUnits,
 };
@@ -16,8 +16,11 @@ use super::profiles::{
     AlignmentBuilder, CrossSectionBuilder, CrossSectionSurfaceBuilder, ProfileBuilder,
 };
 
-pub(super) struct Parser<'a> {
-    pub(super) limits: &'a LandXmlLimits,
+/// The canonical semantic state machine.  Streaming hosts drive this exact
+/// parser one quick-xml event at a time; they must not grow a parallel
+/// LandXML interpretation just because transport arrives in chunks.
+pub(crate) struct Parser<'a> {
+    pub(super) limits: LandXmlLimits,
     pub(super) cancelled: Option<&'a dyn LandXmlCancellation>,
     pub(super) work: usize,
     pub(super) character_references: usize,
@@ -34,6 +37,10 @@ pub(super) struct Parser<'a> {
     pub(super) surface: Option<SurfaceBuilder>,
     pub(super) capture: Option<Capture>,
     pub(super) surfaces: Vec<LandXmlSurface>,
+    /// Minimal identity index retained after a streaming host drains complete
+    /// surfaces. Roadway finalization needs names, but must not force a second
+    /// full copy of every terrain record into the parser.
+    pub(super) drained_surface_refs: Vec<(String, LandXmlSourceId)>,
     pub(super) extensions: Vec<LandXmlExtension>,
     pub(super) warnings: Vec<String>,
     pub(super) surface_ordinal: usize,
@@ -52,6 +59,79 @@ pub(super) struct Parser<'a> {
     pub(super) capability_diagnostics: Vec<LandXmlCapabilityDiagnostic>,
     pub(super) preserved_only_extensions: Vec<LandXmlPreservedOnlyExtension>,
     pub(super) active_roadway_source_id: Option<LandXmlSourceId>,
+}
+
+impl<'a> Parser<'a> {
+    pub(crate) fn new(
+        limits: &LandXmlLimits,
+        cancelled: Option<&'a dyn LandXmlCancellation>,
+    ) -> Self {
+        Self {
+            limits: limits.clone(),
+            cancelled,
+            work: 0,
+            character_references: 0,
+            references: 0,
+            surfaces_seen: 0,
+            points_seen: 0,
+            faces_seen: 0,
+            profile_points_seen: 0,
+            vertical_curves_seen: 0,
+            cross_section_points_seen: 0,
+            frames: Vec::new(),
+            units: None,
+            coordinate_system: None,
+            surface: None,
+            capture: None,
+            surfaces: Vec::new(),
+            drained_surface_refs: Vec::new(),
+            extensions: Vec::new(),
+            warnings: Vec::new(),
+            surface_ordinal: 0,
+            version: String::new(),
+            root_seen: false,
+            root_closed: false,
+            alignment: None,
+            profile: None,
+            cross_section: None,
+            cross_section_surface: None,
+            alignments: Vec::new(),
+            profiles: Vec::new(),
+            cross_sections: Vec::new(),
+            cross_section_surfaces: Vec::new(),
+            roadways: Vec::new(),
+            capability_diagnostics: Vec::new(),
+            preserved_only_extensions: Vec::new(),
+            active_roadway_source_id: None,
+        }
+    }
+
+    pub(crate) fn take_surfaces(&mut self) -> Vec<LandXmlSurface> {
+        let surfaces = std::mem::take(&mut self.surfaces);
+        self.drained_surface_refs.extend(
+            surfaces
+                .iter()
+                .map(|surface| (surface.name.clone(), surface.source_id.clone())),
+        );
+        surfaces
+    }
+
+    pub(crate) fn has_open_frames(&self) -> bool {
+        !self.frames.is_empty()
+    }
+
+    pub(crate) fn max_text_bytes(&self) -> usize {
+        self.limits.max_text_bytes
+    }
+
+    pub(crate) fn header(&self) -> Option<(String, LandXmlUnits)> {
+        (!self.version.is_empty() && self.units.is_some()).then(|| {
+            (
+                self.version.clone(),
+                self.units.clone().expect("guarded units"),
+            )
+        })
+    }
 }
 
 #[derive(Clone)]

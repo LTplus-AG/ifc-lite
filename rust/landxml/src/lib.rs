@@ -8,19 +8,20 @@
 //! neither fabricates IFC nor creates renderer meshes; later adapters own
 //! coordinate systems, mesh partitioning, and presentation.
 
-mod capture;
 pub mod alignment;
+mod capture;
 mod limits;
 mod model;
 mod parser;
-mod plan;
 mod pipe_parser;
 mod pipes;
+mod plan;
 mod preflight;
 mod profile;
 mod profile_circular;
 mod profile_evaluator;
 mod semantics;
+mod stream;
 mod terrain;
 mod terrain_validation;
 mod xml;
@@ -37,13 +38,13 @@ pub use parser::{
     classify_landxml_version, parse_landxml_tin, parse_landxml_tin_with_cancel,
     LANDXML_10_NAMESPACE, LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
 };
-pub use profile::{
-    LandXmlAlignment, LandXmlCapabilityDiagnostic, LandXmlCapabilityDiagnosticCode,
-    LandXmlCrossSection, LandXmlCrossSectionPoint, LandXmlCrossSectionPointDataFormat,
-    LandXmlCrossSectionSegment, LandXmlCrossSectionSurface, LandXmlCrossSectionSurfaceKind,
-    LandXmlGradeLine, LandXmlPreservedOnlyExtension, LandXmlPreservedOnlyExtensionKind,
-    LandXmlProfile, LandXmlProfileEvaluationError, LandXmlProfileKind, LandXmlProfilePoint,
-    LandXmlRoadway, LandXmlVerticalCurve, LandXmlVerticalCurveKind,
+pub use pipe_parser::{parse_landxml_pipe_networks, parse_landxml_pipe_networks_with_cancel};
+pub use pipes::{
+    LandXmlPipe, LandXmlPipeConnectivity, LandXmlPipeFeature, LandXmlPipeFlow, LandXmlPipeGeometry,
+    LandXmlPipeInvert, LandXmlPipeMeasure, LandXmlPipeNetwork, LandXmlPipeNetworkCollection,
+    LandXmlPipeNetworkDocument, LandXmlPipePart, LandXmlPipePosition, LandXmlPipeProperties,
+    LandXmlPipeRefusal, LandXmlPipeSourceBatch, LandXmlPipeStructure, LandXmlPipeUnits,
+    LandXmlStructurePart,
 };
 pub use plan::{
     parse_landxml_document, parse_landxml_plan, parse_landxml_plan_with_cancel, LandXmlCgPoint,
@@ -52,11 +53,16 @@ pub use plan::{
     LandXmlPlanLimits, LandXmlPlanPoint, LandXmlPlanPointLocation, LandXmlPlanResolver,
     LandXmlPlanSourceBatch,
 };
-pub use pipe_parser::{parse_landxml_pipe_networks, parse_landxml_pipe_networks_with_cancel};
-pub use pipes::{
-    LandXmlPipe, LandXmlPipeConnectivity, LandXmlPipeFeature, LandXmlPipeFlow, LandXmlPipeGeometry,
-    LandXmlPipeInvert, LandXmlPipeMeasure, LandXmlPipeNetwork, LandXmlPipeNetworkCollection,
-    LandXmlPipeNetworkDocument, LandXmlPipePart, LandXmlPipePosition, LandXmlPipeProperties,
-    LandXmlPipeRefusal, LandXmlPipeSourceBatch, LandXmlPipeStructure, LandXmlPipeUnits,
-    LandXmlStructurePart,
+pub use profile::{
+    LandXmlAlignment, LandXmlCapabilityDiagnostic, LandXmlCapabilityDiagnosticCode,
+    LandXmlCrossSection, LandXmlCrossSectionPoint, LandXmlCrossSectionPointDataFormat,
+    LandXmlCrossSectionSegment, LandXmlCrossSectionSurface, LandXmlCrossSectionSurfaceKind,
+    LandXmlGradeLine, LandXmlPreservedOnlyExtension, LandXmlPreservedOnlyExtensionKind,
+    LandXmlProfile, LandXmlProfileEvaluationError, LandXmlProfileKind, LandXmlProfilePoint,
+    LandXmlRoadway, LandXmlVerticalCurve, LandXmlVerticalCurveKind,
+};
+pub use stream::{
+    LandXmlStreamEvent, LandXmlStreamHeader, LandXmlStreamSummary, LandXmlSurfaceComponent,
+    LandXmlSurfaceFragment, LandXmlTinStreamSession, MAX_LANDXML_STREAM_DRAIN_BYTES,
+    MAX_LANDXML_STREAM_INPUT_CHUNK_BYTES,
 };

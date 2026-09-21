@@ -6,7 +6,7 @@ use super::*;
 
 #[wasm_bindgen]
 impl IfcAPI {
-    /// Parse a LandXML 1.2 TIN document from its original bytes.
+    /// Parse a supported LandXML TIN document from its original bytes.
     ///
     /// The object is an owned serialization of the semantic document. Errors
     /// deliberately use `LandXmlError::Display`, including its stable LXML code.

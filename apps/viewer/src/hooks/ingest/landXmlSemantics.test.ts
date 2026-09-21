@@ -27,7 +27,7 @@ function document(sourceId: string, meshExpressId = 1): LandXmlTinDocument {
 function pipeDocument(meshExpressId = 1): LandXmlTinDocument {
   const result = document('landxml:surface:1:face:1', meshExpressId);
   result.pipeNetworks = {
-    version: '1.2', rootUnits: null, collections: [],
+    schema: 'LandXML-1.2', version: '1.2', capabilityDiagnostics: [], rootUnits: null, collections: [],
     networks: [{
       sourceId: 'landxml:pipe-network:1', sourcePath: 'LandXML/PipeNetworks/PipeNetwork[1]', name: 'storm', pipeNetworkType: 'storm', properties: {}, structureUnits: null, pipeUnits: null, features: [],
       structures: [],
@@ -148,7 +148,8 @@ describe('LandXML semantic selection (#5042)', () => {
   it('keeps COGO/plan selection federated and pages source records without expanding geometry (#5046)', () => {
     const terrain = document('landxml:surface:1:face:1');
     terrain.plan = {
-      version: '1.2', areaUnit: null, areaScaleToSquareMeters: null, warnings: [],
+      schema: 'LandXML-1.2', version: '1.2', capabilityDiagnostics: [],
+      areaUnit: null, areaScaleToSquareMeters: null, warnings: [],
       cogoPoints: [{ sourceId: 'landxml:CgPoint:1:control', scopeId: 'landxml:CgPoints:1', ordinal: 1, name: 'control', code: null, description: null, point: { northing: 1, easting: 2, elevation: null }, pntRef: null, properties: {} }],
       monuments: [], planFeatures: [{ sourceId: 'landxml:PlanFeature:1:road', ordinal: 1, name: 'road', code: null, description: null, properties: {}, locations: [], geometry: [] }], parcels: [],
       sourceBatches: [], parcelProbes: [], resolvedMonuments: [], resolvedGeometry: [],
@@ -163,7 +164,8 @@ describe('LandXML semantic selection (#5042)', () => {
     const terrain = document('landxml:surface:1:face:1');
     const point = (ordinal: number) => ({ sourceId: `point-${ordinal}`, scopeId: 'scope', ordinal, name: null, code: null, description: null, point: null, pntRef: null, properties: {} });
     terrain.plan = {
-      version: '1.2', areaUnit: null, areaScaleToSquareMeters: null, warnings: [],
+      schema: 'LandXML-1.2', version: '1.2', capabilityDiagnostics: [],
+      areaUnit: null, areaScaleToSquareMeters: null, warnings: [],
       cogoPoints: Array.from({ length: 1_000 }, (_, index) => point(index)),
       monuments: Array.from({ length: 1_000 }, (_, index) => ({ sourceId: `monument-${index}`, pointScopeId: null, ordinal: index, name: null, code: null, description: null, pntRef: null, point: null, properties: {} })),
       planFeatures: [], parcels: [], sourceBatches: [], parcelProbes: [], resolvedMonuments: [], resolvedGeometry: [],
@@ -191,7 +193,8 @@ describe('LandXML semantic selection (#5042)', () => {
     });
     const terrain = document('face');
     terrain.plan = {
-      version: '1.2', areaUnit: null, areaScaleToSquareMeters: null, warnings: [], cogoPoints: [], monuments: [], planFeatures: [], parcels: [parcel],
+      schema: 'LandXML-1.2', version: '1.2', capabilityDiagnostics: [],
+      areaUnit: null, areaScaleToSquareMeters: null, warnings: [], cogoPoints: [], monuments: [], planFeatures: [], parcels: [parcel],
       sourceBatches: [], parcelProbes: [], resolvedMonuments: [], resolvedGeometry: [],
       sourceRecords: new Map([['child-1999', { kind: 'plan-geometry' as const, geometry: loops[1_999][0] }]]),
     };

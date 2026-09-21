@@ -21,6 +21,7 @@ import type {
   LandXmlProfile, LandXmlProfilePoint, LandXmlRoadway, LandXmlTinDocument, LandXmlTinSurface,
   LandXmlVerticalCurve, LandXmlPlanPoint,
 } from './landXmlSemantics.js';
+import { isLandXmlSchema } from './landXmlSemantics.js';
 
 function surfaceKind(value: unknown): LandXmlTinSurface['kind'] {
   const kind = string(value, 'surface kind');
@@ -200,7 +201,11 @@ export function readLandXmlTinDocument(value: unknown): LandXmlTinDocument {
   });
   const document: LandXmlTinDocument = {
     format: string(raw.format, 'format') === 'landxml' ? 'landxml' : (() => { throw new Error('LandXML WASM returned an invalid format'); })(),
-    schema: string(raw.schema, 'schema') === 'LandXML-1.2' ? 'LandXML-1.2' : (() => { throw new Error('LandXML WASM returned an invalid schema'); })(),
+    schema: (() => {
+      const schema = string(raw.schema, 'schema');
+      if (!isLandXmlSchema(schema)) throw new Error('LandXML WASM returned an invalid schema');
+      return schema;
+    })(),
     capabilities: {
       renderableTin: capabilities.renderable_tin === true,
       preservedOnlySurfaces: finite(capabilities.preserved_only_surfaces, 'preserved-only surface count'),

@@ -213,6 +213,7 @@ pub struct LandXmlCapabilityDiagnostic {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LandXmlCapabilityDiagnosticCode {
+    SchemaVersionMismatch,
     MissingElevation,
     MissingReference,
     AmbiguousReference,

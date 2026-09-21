@@ -159,7 +159,7 @@ impl Parser<'_> {
         self.finish_road_semantics()?;
         Ok(LandXmlTinDocument {
             format: "landxml".to_owned(),
-            schema: "LandXML-1.2".to_owned(),
+            schema: self.schema,
             capabilities: LandXmlCapabilities {
                 renderable_tin: self
                     .surfaces

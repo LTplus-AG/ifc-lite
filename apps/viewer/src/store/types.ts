@@ -217,7 +217,7 @@ import type { SectionCapStyle } from '@ifc-lite/renderer';
 // at the renderer's `Camera`, so the store shares the renderer's own type.
 export type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
 import type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
-import type { LandXmlTinDocument } from '../hooks/ingest/landXmlSemantics.js';
+import type { LandXmlSchema, LandXmlTinDocument } from '../hooks/ingest/landXmlSemantics.js';
 /**
  * Custom (face-picked) plane override. When present, the renderer uses
  * `normal` + `distance` directly and ignores `axis` / `position`. The
@@ -560,7 +560,7 @@ export interface FederatedModel extends ModelLoadReportFields {
   /** Non-IFC source semantics, kept outside the IFC data store by design. */
   landXmlDocument?: LandXmlTinDocument;
   /** Truthful source schema; `schemaVersion` remains the compatibility store schema. */
-  sourceSchema?: 'LandXML-1.2';
+  sourceSchema?: LandXmlSchema;
   /** Pre-tessellated geometry (with globalIds, not original expressIds) */
   geometryResult: GeometryResult | null;
   /** Format-neutral declared source frame for non-IFC geometry (LandXML/scans). */

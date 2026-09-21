@@ -64,4 +64,51 @@ describe('convertStepLine refuses an unrepresentable non-rooted entity rather th
     const line = "#100=IFCTRIANGULATEDFACESET(#50,$,.F.,((1,2,3),(1,3,4)),$);";
     expect(convertStepLine(line, 'IFC4', 'IFC4')).toBe(line);
   });
+
+  // #4206: IfcStructuralLoadConfiguration is the ONE non-rooted type this
+  // package can omit instead of throw for -- but only from a caller that
+  // proves every referrer is redirected too, by supplying `withheldRefIds`.
+  describe('IFCSTRUCTURALLOADCONFIGURATION (#4206 withholding, scoped to callers that opt in)', () => {
+    const line = "#326=IFCSTRUCTURALLOADCONFIGURATION($,(#327,#329),((96.)));";
+
+    it('still throws with no withheldRefIds argument (control: the 5-argument form did not change)', () => {
+      expect(() => convertStepLine(line, 'IFC4', 'IFC2X3')).toThrow(/IFCSTRUCTURALLOADCONFIGURATION/);
+    });
+
+    it('is omitted (returns null, not a thrown error) once a caller supplies withheldRefIds, even an empty set', () => {
+      // Size does not gate this record's OWN fate -- an empty set still
+      // proves the CALLER's pipeline redirects referrers when asked to (real
+      // callers always pass a defined set, computed once per export, empty
+      // whenever nothing needs withholding). What decides whether THIS
+      // record is omitted is its own type having no IFC2X3 representation.
+      expect(convertStepLine(line, 'IFC4', 'IFC2X3', undefined, undefined, new Set())).toBeNull();
+    });
+
+    it('is also omitted with a non-empty, unrelated withheldRefIds set', () => {
+      // The set only needs to be non-empty to prove the caller opted in --
+      // this record's own id (#326) need not be a member of it; what makes
+      // THIS line itself get omitted is its OWN type having no IFC2X3
+      // representation, independent of what other ids are withheld.
+      const withheld = new Set([999]);
+      expect(convertStepLine(line, 'IFC4', 'IFC2X3', undefined, undefined, withheld)).toBeNull();
+    });
+
+    it('a referrer whose AppliedLoad names a withheld id is redirected to a proxy, not left dangling', () => {
+      const action = "#317=IFCSTRUCTURALCURVEACTION('guid',$,$,$,$,$,$,#326,.GLOBAL_COORDS.,.F.,$,.LINEAR.);";
+      const withheld = new Set([326]);
+      const out = convertStepLine(action, 'IFC4', 'IFC2X3', undefined, undefined, withheld);
+      expect(out).toContain('IFCPROXY');
+      expect(out).not.toContain('#326');
+      expect(out).not.toContain('IFCSTRUCTURALLINEARACTION');
+    });
+
+    it('a referrer is NOT redirected when the id it names is not in withheldRefIds (control: the check is precise, not "any structural action becomes a proxy")', () => {
+      const action = "#317=IFCSTRUCTURALCURVEACTION('guid',$,$,$,$,$,$,#900,.GLOBAL_COORDS.,.F.,$,.LINEAR.);";
+      const withheld = new Set([326]); // #900 is not withheld
+      const out = convertStepLine(action, 'IFC4', 'IFC2X3', undefined, undefined, withheld);
+      expect(out).toContain('IFCSTRUCTURALLINEARACTION');
+      expect(out).toContain('#900');
+      expect(out).not.toContain('IFCPROXY');
+    });
+  });
 });

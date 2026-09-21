@@ -303,7 +303,7 @@ describe('schema-converter', () => {
     });
 
     it('mints a well-formed IFC GlobalId', () => {
-      const guid = /IFCPROXY\('([^']*)'/.exec(convertStepLine(seg, 'IFC4X3', 'IFC4'))?.[1] ?? '';
+      const guid = /IFCPROXY\('([^']*)'/.exec(convertStepLine(seg, 'IFC4X3', 'IFC4')!)?.[1] ?? '';
       expect(isValidIfcGuid(guid), `malformed GlobalId: ${guid}`).toBe(true);
     });
 
@@ -314,16 +314,16 @@ describe('schema-converter', () => {
       // offsets each model's express ids, so the lines differ by prefix.
       const m1 = "#42=IFCALIGNMENTSEGMENT('2K5H1$Zs9CQuKQFQKQFQKQ',#1,'A',$,$,#7,#9,$);";
       const m2 = "#99=IFCALIGNMENTSEGMENT('2K5H1$Zs9CQuKQFQKQFQKQ',#1,'A',$,$,#7,#9,$);";
-      const g1 = /IFCPROXY\('([^']*)'/.exec(convertStepLine(m1, 'IFC4X3', 'IFC4'))?.[1];
-      const g2 = /IFCPROXY\('([^']*)'/.exec(convertStepLine(m2, 'IFC4X3', 'IFC4'))?.[1];
+      const g1 = /IFCPROXY\('([^']*)'/.exec(convertStepLine(m1, 'IFC4X3', 'IFC4')!)?.[1];
+      const g2 = /IFCPROXY\('([^']*)'/.exec(convertStepLine(m2, 'IFC4X3', 'IFC4')!)?.[1];
       expect(g1).toBeTruthy();
       expect(g2, 'two federated occurrences collapsed onto one GlobalId').not.toBe(g1);
     });
 
     it('distinguishes entities that differ only in their attributes', () => {
       const other = "#42=IFCALIGNMENTSEGMENT('3xJ2mQ8vT1AuVwXyZ0BcDe',#1,'B',$,$,#7,#9,$);";
-      const g1 = /IFCPROXY\('([^']*)'/.exec(convertStepLine(seg, 'IFC4X3', 'IFC4'))?.[1];
-      const g2 = /IFCPROXY\('([^']*)'/.exec(convertStepLine(other, 'IFC4X3', 'IFC4'))?.[1];
+      const g1 = /IFCPROXY\('([^']*)'/.exec(convertStepLine(seg, 'IFC4X3', 'IFC4')!)?.[1];
+      const g2 = /IFCPROXY\('([^']*)'/.exec(convertStepLine(other, 'IFC4X3', 'IFC4')!)?.[1];
       expect(g2).not.toBe(g1);
     });
 
@@ -359,7 +359,7 @@ describe('schema-converter', () => {
       // If this test ever starts failing because the values converged, that
       // is good news -- update the doc here (and the Rust twin) to say so,
       // don't just delete the assertion.
-      const guid = /IFCPROXY\('([^']*)'/.exec(convertStepLine(seg, 'IFC4X3', 'IFC4'))?.[1];
+      const guid = /IFCPROXY\('([^']*)'/.exec(convertStepLine(seg, 'IFC4X3', 'IFC4')!)?.[1];
       expect(
         guid,
         "TS's minted value for this input line changed -- update this pin (and check whether \

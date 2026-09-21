@@ -377,6 +377,12 @@ export interface ExportPass {
    *  owner history is settled by `export()` once `willBeEmitted` can answer,
    *  before either writer converts a line; the warnings join the result. */
   readonly slotFill: Ifc2x3SlotFill;
+  /** Express ids `convertStepLine` will OMIT outright this export
+   *  (`computeWithheldRefIds`, #4206) — empty unless `schema` is IFC2X3 and
+   *  the source holds an entity of a `WITHHOLDABLE_UNROOTED_TYPES` type.
+   *  Both writers thread it through so a record naming one of these ids is
+   *  redirected to the same fallback instead of shipping a dangling `#N`. */
+  readonly withheldRefIds: ReadonlySet<number>;
 
   // ---- the shared predicates (see item 1 above) ----
   readonly buildHeader: (modifications: number) => string;

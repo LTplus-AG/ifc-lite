@@ -561,3 +561,64 @@ fn merged_ifc2x3_downgrade_warns_about_required_slots_it_left() {
         stats.warnings
     );
 }
+
+/// #4206: the TS twin's `schema-converter-structural.test.ts`, ported. IFC4
+/// left `IFCSTRUCTURALLOADCASE`/`IFCSTRUCTURALCURVEACTION`/
+/// `IFCSTRUCTURALSURFACEACTION` unmapped in `map_4_to_2x3`, so every one fell
+/// through to the proxy branch -- losing the GlobalId, the applied-load
+/// reference and the load/action classification -- even though IFC2X3 has a
+/// real target for each. Input lines use the same attribute VALUES as the
+/// TS test, taken from the real Constructivity export
+/// `tests/models/ifcopenshell/structural_analysis_curve.ifc` (express ids
+/// #312, #317), so a divergence between the two "twin" implementations on
+/// the project's own canonical fixture would show up here.
+#[test]
+fn ifcstructuralloadcase_trims_to_ifcstructuralloadgroup() {
+    let line = "#312=IFCSTRUCTURALLOADCASE('2fv4DZfY55exwX8QDy8dmw',#209,'Structural Load Case #1',$,$,\
+                .LOAD_CASE.,.NOTDEFINED.,.NOTDEFINED.,1.,$,(0.,0.,0.));";
+    let out = convert_step_line(line, "IFC4", "IFC2X3", 312, &mut none());
+    assert!(!out.contains("IFCPROXY"), "must not fall back to a proxy: {out}");
+    assert_eq!(
+        out,
+        "#312=IFCSTRUCTURALLOADGROUP('2fv4DZfY55exwX8QDy8dmw',#209,'Structural Load Case #1',$,$,\
+         .LOAD_CASE.,.NOTDEFINED.,.NOTDEFINED.,1.,$);"
+    );
+}
+
+#[test]
+fn ifcstructuralcurveaction_maps_to_ifcstructurallinearaction() {
+    let line = "#317=IFCSTRUCTURALCURVEACTION('2WSwGyLsrFNA9TLOq_ifyd',#209,'Structural Curve Action #1',\
+                $,$,$,$,#326,.GLOBAL_COORDS.,.F.,$,.LINEAR.);";
+    let out = convert_step_line(line, "IFC4", "IFC2X3", 317, &mut none());
+    assert!(!out.contains("IFCPROXY"), "must not fall back to a proxy: {out}");
+    // AppliedLoad (#326) and GlobalOrLocal/DestabilizingLoad survive by
+    // name; PredefinedType (.LINEAR., IFC4-only) has no IFC2X3 slot and is
+    // dropped; CausedBy (IFC2X3-only, optional) has no IFC4 source and
+    // stays `$`.
+    assert_eq!(
+        out,
+        "#317=IFCSTRUCTURALLINEARACTION('2WSwGyLsrFNA9TLOq_ifyd',#209,'Structural Curve Action #1',\
+         $,$,$,$,#326,.GLOBAL_COORDS.,.F.,$,$);"
+    );
+}
+
+/// Control, and a DOCUMENTED pre-existing divergence from the TS twin: IFC2X3
+/// genuinely never defined a curve/surface reaction entity (only
+/// `IfcStructuralPointReaction`), same as TS. But unlike TS's
+/// `resolveUnrepresentedEntity` (proxy for a rooted type with no target,
+/// throw for a non-rooted one), this crate has NO such fallback at all --
+/// `convert_record` only renames via its hand-maintained tables or trims via
+/// `ifc2x3_attr_count`; anything neither covers passes through UNCHANGED
+/// under its original (here, IFC4-only) type name, producing a line that is
+/// not valid IFC2X3. This is a pre-existing, schema-WIDE gap (every unmapped
+/// type, not just structural ones) that predates #4206, applies equally to
+/// dozens of other IFC4-only types this crate was never taught about, and is
+/// a materially larger undertaking than porting three renames -- out of
+/// scope for this fix, filed as its own follow-up rather than attempted here.
+#[test]
+fn ifcstructuralcurvereaction_passes_through_unchanged_not_a_proxy_pre_existing_rust_gap() {
+    let line = "#2773=IFCSTRUCTURALCURVEREACTION('0SH7YcIWrB8Q4VcWjfXpnn',#209,$,$,$,$,$,#2772,\
+                .GLOBAL_COORDS.,.DISCRETE.);";
+    let out = convert_step_line(line, "IFC4", "IFC2X3", 2773, &mut none());
+    assert_eq!(out, line, "no representation, no proxy fallback either -- passes through unchanged: {out}");
+}

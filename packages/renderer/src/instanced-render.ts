@@ -27,10 +27,10 @@
  * frame. (See instanced-render.test.ts for the GPU-free proof.)
  *
  * PRECISION: the GPU record remains an f32 matrix for V1 rendering, but the
- * decoded template origin is f64. V2 appends a high/low f64-like world anchor
- * to the GPU record, independently of the V1 matrix translation. CPU and GPU
- * consumers use the same anchor; edited placements replace it with the V1
- * translation (the documented safe fallback until editable f64 placements).
+ * decoded template origin is f64. V2 appends high/low lanes to the record.
+ * CPU records retain a split world anchor, while each render submission replaces
+ * the GPU copy with the f64 drawable-minus-camera delta. This keeps colour,
+ * picking, and shadows in one precision contract without GPU world subtraction.
  */
 
 import { MathUtils } from './math.js';
@@ -67,7 +67,7 @@ export const INSTANCE_STRIDE_BYTES = 120;
 export const INSTANCE_COLOR_OFFSET = 68;
 /** Byte offset of the flags u32 within an instance record (patched by selection/visibility). */
 export const INSTANCE_FLAGS_OFFSET = 84;
-/** V2: two vec4 lanes hold the f64-like Y-up occurrence anchor. */
+/** V2: two vec4 lanes hold a split Y-up source anchor on CPU, submission delta on GPU. */
 export const INSTANCE_ANCHOR_HIGH_OFFSET = 88;
 export const INSTANCE_ANCHOR_LOW_OFFSET = 104;
 /** flags bit 0 — this occurrence is selected (blue highlight in the shader). */
@@ -157,12 +157,11 @@ export interface InstancedRenderTemplate {
    *  picker. This is host-query data: it answers "which entity produced this
    *  piece", never "how is it drawn". */
   itemIds?: Uint32Array;
-  /** f64 Y-up occurrence anchors, xyz per instance-buffer record. Kept outside
-   * the V1 GPU record so old IFNS input stays wire-compatible. */
+  /** f64 Y-up occurrence source anchors, xyz per instance-buffer record.
+   * The GPU record is refreshed from this sidecar as an RTE delta per draw. */
   canonicalAnchors: Float64Array;
-  /** V1 matrix translations paired with canonicalAnchors. A later interactive
-   * model/entity placement intentionally falls back to its edited matrix until
-   * that edit is promoted to the anchored GPU V2 record. */
+  /** Matrix translations paired with canonicalAnchors so interactive placement
+   * preserves the authoritative f64 source anchor. */
   canonicalMatrixTranslations: Float32Array;
 }
 
@@ -191,7 +190,8 @@ export function writeInstanceRecord(
   writeInstanceAnchor(dv, byteOffset, anchor);
 }
 
-/** Write V2's high/low anchor lanes without touching selection/colour fields. */
+/** Write V2's split source-anchor lanes without touching selection/colour fields.
+ * The renderer overwrites the GPU copy per submission with an RTE delta. */
 export function writeInstanceAnchor(
   dv: DataView,
   byteOffset: number,

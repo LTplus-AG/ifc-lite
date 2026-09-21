@@ -13,11 +13,9 @@ export const mainRteWgsl = `
           ));
         }
         fn rteInstancePosition(local: vec3<f32>, anchorHigh: vec3<f32>, anchorLow: vec3<f32>) -> vec4<f32> {
-          let highDelta = anchorHigh - uniforms.rteCameraHigh.xyz;
-          let lowDelta = anchorLow - uniforms.rteCameraLow.xyz;
           return rteWorldPosition(local, RteDrawableUniform(
-            vec4<f32>(highDelta, 0.0),
-            vec4<f32>(lowDelta, 0.0),
+            vec4<f32>(anchorHigh, 0.0),
+            vec4<f32>(anchorLow, 0.0),
           ));
         }`;
 

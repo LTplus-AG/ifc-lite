@@ -5,7 +5,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-  MAX_RENDER_FRAME_LOCAL_EXTENT_METRES,
   boundsFitRenderFrame,
 } from './landXmlRenderFrame.js';
 
@@ -24,10 +23,10 @@ describe('LandXML render frame acceptance (#5049)', () => {
     }, { x: 0, y: 0, z: 0 }), false);
   });
 
-  it('refuses only a component wider than the streaming local envelope', () => {
+  it('accepts a 1,500-km span centred on the shared frame (#5049)', () => {
     assert.equal(boundsFitRenderFrame({
-      min: { x: 0, y: 0, z: 0 },
-      max: { x: MAX_RENDER_FRAME_LOCAL_EXTENT_METRES + 1, y: 1, z: 1 },
-    }, { x: 5_000_000, y: 0, z: 0 }), false);
+      min: { x: -750_000, y: 0, z: 0 },
+      max: { x: 750_000, y: 1, z: 1 },
+    }, { x: 0, y: 0, z: 0 }), true);
   });
 });

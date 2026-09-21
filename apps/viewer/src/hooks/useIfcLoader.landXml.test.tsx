@@ -183,7 +183,7 @@ describe('useIfcLoader LandXML route (#4937)', () => {
     [0, 2_000_000, 'near model first'],
     [2_000_000, 0, 'distant model first'],
   ] as const) {
-    it(`keeps a compact LandXML model outside the established federation frame (${order}, #5049)`, async () => {
+    it(`refuses a compact LandXML model outside the established federation frame (${order}, #5049)`, async () => {
       await act(async () => hookApi!.loadFile(
         landXmlFile(`anchor-${primaryOffset}.xml`, primaryOffset),
         { kind: 'primary' },
@@ -197,14 +197,14 @@ describe('useIfcLoader LandXML route (#4937)', () => {
       ));
 
       const state = useViewerStore.getState();
-      assert.equal(state.models.size, 2, 'a compact far-origin terrain uses its RTE mesh anchor');
+      assert.equal(state.models.size, 1, 'the remote component must not join a frame more than 1,000 km away');
       assert.equal(state.models.get(anchor.id), anchor, 'the established model remains unchanged');
-      assert.ok(state.models.get('outside-frame')?.geometryResult);
-      assert.equal(state.error, null);
+      assert.equal(state.models.get('outside-frame'), undefined);
+      assert.match(state.error ?? '', /cannot be federated|shared render-frame envelope/);
     });
   }
 
-  it('keeps every compact reframed component regardless of survey separation (#5049)', async () => {
+  it('retains only the in-frame component with accurate LandXML provenance (#5049)', async () => {
     await act(async () => hookApi!.loadFile(landXmlFile('anchor.xml', 0), { kind: 'primary' }));
     const messages: string[] = [];
     const originalInfo = toast.info;
@@ -220,15 +220,18 @@ describe('useIfcLoader LandXML route (#4937)', () => {
 
     const model = useViewerStore.getState().models.get('partially-outside');
     assert.ok(model?.geometryResult);
-    assert.equal(model.geometryResult.meshes.length, 2);
-    assert.equal(model.geometryResult.totalVertices, 6);
-    assert.equal(model.geometryResult.totalTriangles, 2);
-    assert.ok(model.geometryResult.coordinateInfo.originalBounds.max.x > 1_000_000,
-      'far source bounds remain represented through mesh anchors');
+    assert.equal(model.geometryResult.meshes.length, 1);
+    assert.equal(model.geometryResult.totalVertices, 3);
+    assert.equal(model.geometryResult.totalTriangles, 1);
+    assert.ok(model.geometryResult.coordinateInfo.originalBounds.max.x > 900_000,
+      'the retained in-frame source bounds remain represented through mesh anchors');
+    assert.ok(model.geometryResult.coordinateInfo.originalBounds.max.x < 1_000_000,
+      'the refused remote component must not leak into retained bounds');
     const retainedCounts = model.landXmlDocument?.rendering.surfaceCounts;
     assert.ok(retainedCounts);
-    assert.deepEqual(retainedCounts.map((counts) => counts.renderedFaces), [1, 1]);
-    assert.deepEqual(retainedCounts.map((counts) => counts.droppedReframeFaces), [0, 0]);
-    assert.equal(messages.some((warning) => /local extent exceeds/.test(warning)), false);
+    assert.deepEqual(retainedCounts.map((counts) => counts.renderedFaces), [1, 0]);
+    assert.deepEqual(retainedCounts.map((counts) => counts.droppedReframeFaces), [0, 1]);
+    assert.deepEqual(model.landXmlDocument?.rendering.meshProvenance.map((mesh) => mesh.surfaceSourceId), [retainedCounts[0]!.surfaceSourceId]);
+    assert.equal(messages.some((warning) => /Skipped 1 LandXML surface component/.test(warning)), true);
   });
 });

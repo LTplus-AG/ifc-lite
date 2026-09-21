@@ -163,10 +163,7 @@ import {
     packRteFragmentSpace,
 } from './mesh-rte-uniforms.js';
 import type { CutPolygon2D, DrawingLine2D, LineOverlayChannel } from './section-2d-overlay.js';
-import type {
-  SymbolicFillInput,
-  SymbolicTextInput,
-} from './symbolic-overlay-pipelines.js';
+import type { SymbolicFillInput, SymbolicTextInput } from './symbolic-overlay-pipelines.js';
 import { RendererOverlays } from './renderer-overlays.js';
 import { resolveSectionPlaneFrame } from './render-section-plane.js';
 import type { Intersection } from './raycaster.js';
@@ -188,6 +185,7 @@ import { resolveEnvironment } from './environment.js';
 import { ShadowPass, resolveShadowMapResolution } from './shadow-pass.js';
 import { fitSunLightMatrix, cameraFrustumFocusCorners } from './shadow-light-matrix.js';
 import { collectShadowOccluders } from './shadow-occluders.js';
+import { uploadInstancedRteDeltas } from './instanced-rte.js';
 import { shadowOccluderBatches } from './shadow-occluder-batches.js';
 import { captureRendererScreenshot } from './renderer-screenshot.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
@@ -2692,6 +2690,7 @@ export class Renderer {
                     visibleInstanced = kept;
                 }
                 if (visibleInstanced.length > 0) {
+                    uploadInstancedRteDeltas(device, visibleInstanced, relativeToEyeFrame.getCameraWorld());
                     // Opaque instanced pass. flags.x bit 2 marks "instanced pass" so the
                     // shader routes per-instance opacity: opaque (or selected) occurrences
                     // draw here; translucent ones (lens/x-ray/compare overrides) are

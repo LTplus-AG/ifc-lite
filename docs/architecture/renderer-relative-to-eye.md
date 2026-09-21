@@ -79,7 +79,7 @@ this slice changes neither authored coordinates nor model/source identities.
 | --- | --- | --- |
 | Camera matrices, projection and frustum | `camera-matrices.ts`, `camera-projection.ts`, `index.ts` | Maintain f64 camera/target state; issue the translation-free matrix only to GPU consumers. CPU projection/unprojection obtains the same frame explicitly rather than silently reusing absolute `viewProj`. |
 | Flat, quantized, textured and hydrated mesh draws | `index.ts`, `pipeline.ts`, `main.wgsl.ts`, `textured.wgsl.ts`, `scene-batch-*`, `scene-derived-mesh-provenance.ts` | All use one frame uniform plus a camera-dependent packed drawable-origin delta. Shared-origin partitioning preserves source/model/geometry-item provenance; local vertex buffers and quantized dequantization stay local. Repack or reframe before every draw after a camera change. Fragment `worldPos`, section planes and crop boxes use the same relative frame. |
-| GPU instancing | `instanced-render.ts`, `main.wgsl.ts`, `picker.ts`, `shadow.wgsl.ts` | Remove national-grid translation from the f32 occurrence matrix; supply an origin per occurrence or a verified shared origin. The colour, picker and shadow records must have one identical layout, preserving canonical placed Y-up metres with scale then rotation then translation. |
+| GPU instancing | `instanced-render.ts`, `instanced-rte.ts`, `main.wgsl.ts`, `picker.ts`, `shadow.wgsl.ts` | Canonical f64 Y-up occurrence origins are retained CPU-side. Before each colour, picker and shadow submission, `instanced-rte.ts` packs the shared f64 `(drawable - camera)` delta into the V2 lanes and enforces the same source/camera envelopes; no shader subtracts independently rounded origins. |
 | Shadows | `shadow-pass.ts`, `shadow-occluders.ts`, `shadow-light-matrix.ts`, `shadow.wgsl.ts` | Rebase the light transform around the f64 camera/drawable frame rather than reintroducing an absolute f32 translation. Section/crop, height ranges, culling and shadow fit use the same source-space inputs and shadows agree with clipped colour geometry. |
 | GPU picker and rectangle selection | `picker.ts`, `pick-uniforms.ts`, `pick-resolve.ts`, `scene-rect-select.ts` | Pick rasterization and depth unprojection use the RTE frame. Capture the view/projection, camera and drawable origins plus a render epoch before asynchronous readback; reject stale samples. The decoded hit returns source f64 coordinates; no absolute f32 round trip is permitted. |
 | Point picker and point clouds | `point-picker.ts`, `pointcloud/point-*`, `point-cloud-transform.ts` | Asset transforms and point nodes provide high/low origins; screen-space splat sizing, picking and point-cloud ray transforms agree with triangle geometry. |
@@ -105,5 +105,8 @@ this slice changes neither authored coordinates nor model/source identities.
    The positive `11,000,000.025` version remains a documented *out-of-envelope*
    diagnostic, because its delta is `1,000,000.025 m`.
 
-The LandXML safety refusal remains until all five cases cover the real renderer
-paths above. It is intentionally out of scope for the foundation commit.
+LandXML accepts components spanning the shared frame when their endpoints stay
+within its envelope (for example `[-750 km, +750 km]`); local precision
+partitioning is a separate concern. A compact remote component outside the
+shared envelope remains refused, with other retained components and their
+source provenance preserved.

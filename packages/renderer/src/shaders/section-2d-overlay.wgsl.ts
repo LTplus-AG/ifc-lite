@@ -75,8 +75,16 @@ export const SECTION_2D_UNIFORM_BYTES = SECTION_2D_UNIFORM_FLOATS * 4;
  * site (rather than a bump allocator) needs no per-frame reset hook: each site
  * draws at most once per pass.
  */
-/** Max independently-anchored line partitions per channel in one pass. */
-export const SECTION_2D_MAX_LINE_PARTITIONS = 32;
+/**
+ * Max independently-anchored line partitions per channel in one pass.
+ *
+ * Spatial batching normally keeps this close to one.  The explicit 256-record
+ * ceiling still bounds the shared dynamic-uniform allocation (384 KiB at the
+ * WebGPU-guaranteed 256-byte stride) while accepting genuinely disjoint survey
+ * features instead of making the old 32-record implementation throw midway
+ * through a render submission.
+ */
+export const SECTION_2D_MAX_LINE_PARTITIONS = 256;
 
 export const SECTION_2D_UNIFORM_SLOT_INDEX = {
   /** The section cut cap: fill + outline, which share one record by design. */

@@ -21,6 +21,8 @@ export interface ShadowOccluderDraw {
   quantParams?: readonly [number, number, number, number];
   instanceBuffer?: GPUBuffer;
   instanceCount?: number;
+  /** Canonical f64 occurrence origins for an instanced draw, xyz per record. */
+  canonicalAnchors?: Float64Array;
 }
 
 /** Camera-owned RTE inputs for one shadow submission. */

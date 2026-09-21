@@ -59,11 +59,10 @@ import {
   INSTANCE_STRIDE_BYTES,
   INSTANCE_COLOR_OFFSET,
   INSTANCE_FLAGS_OFFSET,
-  INSTANCE_ANCHOR_HIGH_OFFSET,
-  INSTANCE_ANCHOR_LOW_OFFSET,
   INSTANCE_FLAG_SELECTED,
   INSTANCE_FLAG_HIDDEN,
 } from './instanced-render.js';
+import { translateInstanceRecord } from './scene-instance-translation.js';
 import { discardSceneGpuResourcesForRecovery, prepareSceneDeviceRecovery, repartitionHydratedRecoveryBucket, restoreSceneGpuResourcesAfterRecovery, type SceneDeviceRecoveryPreparation, type SceneRecoveryHost } from './scene-device-recovery.js';
 
 /** Consolidated per-bucket state — replaces six separate tracking maps. */
@@ -1619,46 +1618,15 @@ export class Scene {
     for (const occ of occurrences) {
       const cpu = this.instancedTemplateCpu[occ.templateIndex];
       if (!cpu) continue;
-      // Column-major mat4: the translation column is floats 12,13,14, i.e. bytes
-      // +48/+52/+56 of the occurrence's record (matches unionInstancedWorldAabb).
-      const dv = new DataView(cpu.instanceData);
       const b = occ.byteOffset;
-      const tx = dv.getFloat32(b + 48, true) + dx;
-      const ty = dv.getFloat32(b + 52, true) + dy;
-      const tz = dv.getFloat32(b + 56, true) + dz;
-      dv.setFloat32(b + 48, tx, true);
-      dv.setFloat32(b + 52, ty, true);
-      dv.setFloat32(b + 56, tz, true);
-      const record = b / INSTANCE_STRIDE_BYTES;
-      const anchorOffset = record * 3;
-      const ax = dv.getFloat32(b + INSTANCE_ANCHOR_HIGH_OFFSET, true) + dv.getFloat32(b + INSTANCE_ANCHOR_LOW_OFFSET, true) + dx;
-      const ay = dv.getFloat32(b + INSTANCE_ANCHOR_HIGH_OFFSET + 4, true) + dv.getFloat32(b + INSTANCE_ANCHOR_LOW_OFFSET + 4, true) + dy;
-      const az = dv.getFloat32(b + INSTANCE_ANCHOR_HIGH_OFFSET + 8, true) + dv.getFloat32(b + INSTANCE_ANCHOR_LOW_OFFSET + 8, true) + dz;
-      for (const [axis, value] of [ax, ay, az].entries()) {
-        const high = Math.fround(value);
-        dv.setFloat32(b + INSTANCE_ANCHOR_HIGH_OFFSET + axis * 4, high, true);
-        dv.setFloat32(b + INSTANCE_ANCHOR_LOW_OFFSET + axis * 4, Math.fround(value - high), true);
-      }
-      if (cpu.canonicalAnchors) {
-        cpu.canonicalAnchors[anchorOffset] = ax;
-        cpu.canonicalAnchors[anchorOffset + 1] = ay;
-        cpu.canonicalAnchors[anchorOffset + 2] = az;
-      }
-      if (cpu.canonicalMatrixTranslations) {
-        cpu.canonicalMatrixTranslations[anchorOffset] = tx;
-        cpu.canonicalMatrixTranslations[anchorOffset + 1] = ty;
-        cpu.canonicalMatrixTranslations[anchorOffset + 2] = tz;
-      }
+      const translated = translateInstanceRecord(cpu, b, [dx, dy, dz]);
       // Push only the 12 translation bytes to the GPU buffer (in place). Guarded
       // on the cached device so CPU-only tests still exercise the matrix math.
       if (device) {
         const gpu = this.instancedTemplates[occ.templateIndex]?.instanceBuffer;
         if (gpu) {
-          device.queue.writeBuffer(gpu, b + 48, new Float32Array([tx, ty, tz]));
-          device.queue.writeBuffer(gpu, b + INSTANCE_ANCHOR_HIGH_OFFSET, new Float32Array([
-            dv.getFloat32(b + INSTANCE_ANCHOR_HIGH_OFFSET, true), dv.getFloat32(b + INSTANCE_ANCHOR_HIGH_OFFSET + 4, true), dv.getFloat32(b + INSTANCE_ANCHOR_HIGH_OFFSET + 8, true), 0,
-            dv.getFloat32(b + INSTANCE_ANCHOR_LOW_OFFSET, true), dv.getFloat32(b + INSTANCE_ANCHOR_LOW_OFFSET + 4, true), dv.getFloat32(b + INSTANCE_ANCHOR_LOW_OFFSET + 8, true), 0,
-          ]));
+          device.queue.writeBuffer(gpu, b + 48, translated.translation);
+          if (translated.legacyAnchors) device.queue.writeBuffer(gpu, b + 88, translated.legacyAnchors);
         }
       }
       moved = true;
@@ -3197,6 +3165,7 @@ export class Scene {
         indexCount: t.indices.length,
         instanceBuffer,
         instanceCount: t.instanceCount,
+        canonicalAnchors: t.canonicalAnchors,
         bounds: null,
         maxOccRadius: 0,
         selectedCount: 0,

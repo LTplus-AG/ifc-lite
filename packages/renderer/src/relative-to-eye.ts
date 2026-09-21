@@ -156,6 +156,9 @@ export function packRteDrawableDelta(
   floatOffset: number,
 ): void {
   validateRteSourcePoint(origin);
+  // A finite delta alone is not enough: without validating the camera in the
+  // same source envelope, two equally invalid large coordinates could cancel.
+  validateRteSourcePoint(cameraWorld);
   const delta: [number, number, number] = [0, 0, 0];
   for (let axis = 0; axis < 3; axis++) {
     delta[axis] = origin[axis] - cameraWorld[axis];

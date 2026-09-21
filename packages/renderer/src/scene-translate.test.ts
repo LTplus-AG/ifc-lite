@@ -188,6 +188,13 @@ describe('Scene.translateInstancedEntity', () => {
     const piece = scene.getInstancedMeshDataPieces(77)![0];
     assert.strictEqual(piece.origin?.[0], 5_000_000.025, 'f64 anchor retains centimetre residual');
     assert.strictEqual(piece.positions[3], 1, 'template residual remains local f32');
+
+    // The CPU record must keep its source anchor for bounds and device recovery;
+    // only the GPU copy is converted to an RTE delta for a draw submission.
+    assert.strictEqual(scene.translateInstancedEntity(77, [0, 2, 0]), true);
+    const sourceX = dv.getFloat32(88, true) + dv.getFloat32(104, true);
+    assert.ok(Math.abs(sourceX - 5_000_000.025) < 1e-6, 'CPU source anchor keeps the residual');
+    assert.strictEqual(scene.getInstancedMeshDataPieces(77)![0].origin?.[1], 2);
   });
 
   it('is reversible (Exploded -> Stacked subtracts the same delta)', () => {

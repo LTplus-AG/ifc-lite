@@ -194,6 +194,7 @@ export function collectShadowOccluders(
       indexCount: it.indexCount,
       instanceBuffer: it.instanceBuffer,
       instanceCount: it.instanceCount,
+      canonicalAnchors: it.canonicalAnchors,
     });
   }
 

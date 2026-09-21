@@ -80,7 +80,7 @@ export const shadowShaderSource = `
           // colour pass reads. Locations 7 (entityId) and 8 (rgba) are unused by
           // the depth pass and left unbound.
           @location(9) flags: u32,
-          // V2 split anchor, byte offsets 88 and 104 in the instance record.
+          // V2 split drawable-minus-camera delta, byte offsets 88 and 104.
           @location(10) anchorHigh: vec4<f32>,
           @location(11) anchorLow: vec4<f32>,
         }
@@ -124,14 +124,12 @@ export const shadowShaderSource = `
             return out;
           }
           let instMat = mat4x4<f32>(inst.m0, inst.m1, inst.m2, inst.m3);
-          // Keep the linear placement from the V1 matrix, but restore its
-          // translation from the canonical V2 anchor. This is intentionally
-          // world-space here: the fitted light matrix remains world-space.
+          // Keep the local placement from the V1 matrix and add the shared
+          // CPU-packed drawable-minus-camera delta. The light projection uses
+          // the same RTE frame as the colour and picker submissions.
           let linear = (instMat * vec4<f32>(input.position, 0.0)).xyz;
-          let highDelta = inst.anchorHigh.xyz - light.cameraHigh.xyz;
-          let lowDelta = inst.anchorLow.xyz - light.cameraLow.xyz;
           return emit(rteWorldPosition(linear, RteDrawableUniform(
-            vec4<f32>(highDelta, 0.0), vec4<f32>(lowDelta, 0.0),
+            inst.anchorHigh, inst.anchorLow,
           )));
         }
 

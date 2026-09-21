@@ -25,6 +25,7 @@
 import type { Mat4 } from './types.js';
 import { shadowShaderSource } from './shaders/shadow.wgsl.js';
 import { packRteDrawableDelta, packRteOrigin } from './relative-to-eye.js';
+import { uploadInstancedRteDeltas } from './instanced-rte.js';
 import { packRteClipBox, rtePlaneDistance } from './rte-clip-space.js';
 import {
   resolveShadowMapResolution,
@@ -65,7 +66,7 @@ export class ShadowPass {
   private pipelineLayout: GPUPipelineLayout;
 
   private lightBuffer: GPUBuffer;
-  /** Light matrix + camera high/low for instanced anchors. */
+  /** Light matrix plus retained RTE-frame fields for the stable uniform ABI. */
   private lightScratch = new Float32Array(24);
 
   /** Clip uniform (floats 0..11) with the flag word aliased as u32 (word 12). */
@@ -191,6 +192,15 @@ export class ShadowPass {
     if (clipping && !this.clipPipelines) this.clipPipelines = this.createPipelineSet(true);
     const pipelines = clipping && this.clipPipelines ? this.clipPipelines : this.pipelines;
 
+    for (const draw of draws) {
+      if (draw.kind !== 'instanced' || !draw.instanceBuffer || !draw.instanceCount || !draw.canonicalAnchors) continue;
+      uploadInstancedRteDeltas(this.device, [{
+        instanceBuffer: draw.instanceBuffer,
+        instanceCount: draw.instanceCount,
+        canonicalAnchors: draw.canonicalAnchors,
+      }], rte?.cameraWorld ?? [0, 0, 0]);
+    }
+
     // Grow the per-draw ring if this frame needs more slots than it holds.
     if (draws.length > this.drawBufferSlots) {
       let slots = this.drawBufferSlots;
@@ -220,9 +230,9 @@ export class ShadowPass {
       this.drawScratch[base + 17] = q ? q[1] : 0;
       this.drawScratch[base + 18] = q ? q[2] : 0;
       this.drawScratch[base + 19] = q ? q[3] : 0;
-      // Instanced vertices reconstruct from their per-occurrence split anchors
-      // in `vs_shadow_instanced`; they deliberately have no single draw origin.
-      // Packing a fictitious [0,0,0] here rejects a perfectly valid 5,000-km
+      // Instanced vertices read their per-occurrence CPU-packed submission
+      // deltas in `vs_shadow_instanced`; they deliberately have no single draw
+      // origin. Packing a fictitious [0,0,0] here rejects a valid 5,000-km
       // camera before that shader can run.
       if (d.kind !== 'instanced') {
         const origin = d.origin ?? [d.model?.[12] ?? 0, d.model?.[13] ?? 0, d.model?.[14] ?? 0] as const;
@@ -350,9 +360,9 @@ export class ShadowPass {
 
   private instanceBuffer(): GPUVertexBufferLayout {
     return {
-      // V2 instance records retain the V1 matrix/flags and append a split f64
-      // occurrence anchor.  Depth must consume the same record as colour and
-      // picking or a national-grid occurrence casts from its rounded V1 pose.
+      // V2 records retain the V1 matrix/flags and append shared CPU-packed RTE
+      // deltas. Depth consumes the same record as colour and picking so a
+      // national-grid occurrence cannot cast from its rounded V1 pose.
       arrayStride: 120,
       stepMode: 'instance',
       attributes: [

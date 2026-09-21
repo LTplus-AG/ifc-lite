@@ -624,6 +624,21 @@ describe('Section2DOverlayRenderer: one uniform record per draw (#2456)', () => 
     }
   });
 
+  it('draws more than 32 independently anchored line partitions safely (#5049)', () => {
+    const { renderer, writes } = newRenderer();
+    const partitions = Array.from({ length: 40 }, (_, index) => ({
+      origin: [index * 25_000, 0, 0] as [number, number, number],
+      localVertices: new Float32Array([0, 0, 0, 1, 0, 0]),
+    }));
+    renderer.setLineOverlay('grid', partitions);
+    const { pass, calls, binds } = makePass();
+    const before = writes.length;
+    renderer.drawLineOverlay(pass, new Float32Array(16), 'grid', new Float32Array(16), [0, 0, 0]);
+    assert.equal(calls.filter((call) => call === 'draw:2').length, 40);
+    assert.equal(new Set(binds).size, 40, 'each partition receives an immutable uniform record');
+    assert.equal(writes.slice(before).length, 40);
+  });
+
   it('the clash box colour cannot reach the other families', () => {
     // The user-visible symptom, asserted on the bytes each draw binds rather
     // than on "the last write": with one shared record the grid draw bound a

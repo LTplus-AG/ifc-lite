@@ -12,6 +12,8 @@ export interface InstancedTemplateGPU {
   indexCount: number;
   instanceBuffer: GPUBuffer;
   instanceCount: number;
+  /** Canonical f64 Y-up drawable origins, xyz for each GPU record. */
+  canonicalAnchors: Float64Array;
   /** Union of the occurrences' world AABBs (null when no occurrence has a
    *  finite box — such templates are never culled). Same tuple layout as
    *  BatchedMesh.bounds so the render loop's frustum test is shared. */

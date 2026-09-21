@@ -20,6 +20,7 @@ import {
 } from './picker-rte-uniforms.js';
 import { isReadbackAbort, releaseReadbacks } from './picker-readbacks.js';
 import { relativeToEyeWgsl } from './shaders/relative-to-eye.wgsl.js';
+import { uploadInstancedRteDeltas } from './instanced-rte.js';
 
 /** Point-pick sizing parameters forwarded to the GPU pipeline. */
 export interface PointPickSizing {
@@ -251,9 +252,7 @@ export class Picker {
           var output: VertexOutput;
           let m = mat4x4<f32>(inst.m0, inst.m1, inst.m2, inst.m3);
           let linear = (m * vec4<f32>(input.position, 0.0)).xyz;
-          let highDelta = inst.anchorHigh.xyz - uniforms.cameraHigh.xyz;
-          let lowDelta = inst.anchorLow.xyz - uniforms.cameraLow.xyz;
-          let relative = rteWorldPosition(linear, RteDrawableUniform(vec4<f32>(highDelta, 0.0), vec4<f32>(lowDelta, 0.0))).xyz;
+          let relative = rteWorldPosition(linear, RteDrawableUniform(inst.anchorHigh, inst.anchorLow)).xyz;
           output.position = uniforms.viewProj * vec4<f32>(relative, 1.0);
           output.worldPos = relative;
           // bit 30 = instanced marker; express id in the low 30 bits.
@@ -301,7 +300,8 @@ export class Picker {
           buffers: [
             // slot 0: template vertex (28B pos+norm+entityId) — only position read.
             { arrayStride: 28, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }] },
-            // slot 1: V2 per-instance record — mat4 + id/colour/flags + anchor lanes.
+            // slot 1: V2 per-instance record — mat4 + id/colour/flags +
+            // CPU-packed drawable-minus-camera lanes.
             {
               arrayStride: 120,
               stepMode: 'instance',
@@ -663,6 +663,7 @@ export class Picker {
     // occlusion is shared with flat meshes/points. The shader writes
     // (bit30 | express id) per occurrence; the decoder returns the entity.
     if (instancedTemplates && instancedTemplates.length > 0 && this.instancedPickPipeline && this.instancedPickBindGroup && pointRteSnapshot) {
+      uploadInstancedRteDeltas(this.device, instancedTemplates, pointRteSnapshot.getCameraWorld());
       writeInstancedPickUniforms(
         this.device,
         this.instancedUniformBuffer,

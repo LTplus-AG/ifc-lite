@@ -55,6 +55,7 @@ function instancedTemplate(): InstancedTemplateGPU {
     indexCount: 24,
     instanceBuffer: buf('inst-inst'),
     instanceCount: 5,
+    canonicalAnchors: new Float64Array(15),
     bounds: null,
     maxOccRadius: 1,
     selectedCount: 0,
@@ -406,6 +407,10 @@ describe('ShadowPass.render', () => {
     const pass = new ShadowPass(mockShadowDevice(dev), 1024);
     const draw = collectShadowOccluders({ batches: [], instanced: [instancedTemplate()], textured: [] });
     assert.equal(draw[0].origin, undefined, 'occurrences, not the batch, own the canonical anchors');
+    draw[0]!.canonicalAnchors = Float64Array.from(
+      { length: 15 },
+      (_, index) => index % 3 === 0 ? 5_000_000 : 0,
+    );
     assert.doesNotThrow(() => pass.render(
       mockEncoder(emptyRecord()), { m: new Float32Array(16) }, draw, null,
       { cameraWorld: [5_000_000, 0, 0] },

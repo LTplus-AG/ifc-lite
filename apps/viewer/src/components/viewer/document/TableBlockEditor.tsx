@@ -8,8 +8,8 @@
  * Lists" hands the copy over as a draft, and "Update from saved list" pulls
  * the saved edit back — so this stays a picker, never a second builder.
  */
-import { useMemo } from 'react';
-import type { ListDefinition } from '@ifc-lite/lists';
+import { useEffect, useMemo, useState } from 'react';
+import { groupingColumnIds, type ListDefinition } from '@ifc-lite/lists';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
@@ -47,21 +47,33 @@ export function TableBlockEditor({ block, onChange }: TableBlockEditorProps) {
     if (picked.expressIdsByModel) toast.info(t('document.block.tableSelectionDropped'));
     onChange({ ...block, source: { kind: 'list', list: listCopyForDocument(picked, freshListCopyId()), fromListId: picked.id } });
   };
+  // A copy of a preset (or of a list this browser no longer has) edited in Lists becomes a NEW saved
+  // list; the block points at it only once it exists — cancelling in the builder must not leave the
+  // block pointing at nothing (review finding).
+  const [pendingDraftId, setPendingDraftId] = useState<string | null>(null);
+  useEffect(() => {
+    if (pendingDraftId && listDefinitions.some((d) => d.id === pendingDraftId)) {
+      setPendingDraftId(null);
+      onChange({ ...block, source: { ...block.source, fromListId: pendingDraftId } });
+    }
+  }, [pendingDraftId, listDefinitions, block, onChange]);
+
   const editInLists = (): void => {
-    // Saving in the panel updates the saved list the copy came from; a copy of a preset (or of a
-    // list this browser no longer has) becomes a new saved list, which the block then points at.
     const saved = listDefinitions.find((d) => d.id === block.source.fromListId);
-    const draftId = saved ? saved.id : crypto.randomUUID();
-    const { expressIdsByModel: _none, ...content } = list;
+    // Saving in the panel updates the saved list the copy came from — unless the saved list has moved
+    // on since the copy was taken, in which case the saved list itself is what gets edited, never
+    // overwritten by the block's older copy (review finding).
+    const { expressIdsByModel: _none, ...content } = originNewer && saved ? saved : list;
     void _none;
+    const draftId = saved ? saved.id : crypto.randomUUID();
     setPendingListDraft({ ...content, id: draftId, updatedAt: Date.now() });
-    if (!saved) onChange({ ...block, source: { ...block.source, fromListId: draftId } });
+    if (!saved) setPendingDraftId(draftId);
     setListPanelVisible(true);
     toast.info(t('document.block.tableEditInListsHint'));
   };
 
   const view = list.grouping?.view === 'schedule' ? t('document.block.tableViewSchedule')
-    : list.grouping && (list.grouping.columnIds?.length || list.grouping.columnId) ? t('document.block.tableViewGrouped')
+    : groupingColumnIds(list.grouping).length > 0 ? t('document.block.tableViewGrouped')
       : t('document.block.tableViewFlat');
 
   return (

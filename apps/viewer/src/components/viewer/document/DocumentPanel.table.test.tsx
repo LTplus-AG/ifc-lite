@@ -12,7 +12,7 @@
 import '@/test/setup-dom.js';
 import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, useState } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { DEFAULT_THEME, renderChartSvg } from '@ifc-lite/charts';
 import { IfcTypeEnum } from '@ifc-lite/data';
@@ -26,6 +26,7 @@ import type { ReportTableArgs } from '@/lib/export/report/generate-report-pdf.js
 import { DOCUMENT_VERSION, type DocumentSpec, type TableBlock } from '@/lib/document/types.js';
 import type { TableState } from '@/lib/document/resolve-table.js';
 import { DocumentPanel } from './DocumentPanel.js';
+import { TableBlockEditor } from './TableBlockEditor.js';
 import { useDocumentTables } from './useDocumentTables.js';
 
 const MINI_IFC = `ISO-10303-21;
@@ -158,6 +159,20 @@ describe('DocumentPanel table block (#5142)', () => {
     assert.equal(exportButton.disabled, false);
   });
 
+  it('a list the engine rejects shows its error in the block and does not keep Export disabled', async () => {
+    const bad = wallList({ columns: [{ id: 'c', source: 'property', psetName: 'Pset_WallCommon', propertyName: '/(a+)+$/' }] });
+    const doc = tableDoc([tableBlock('bad', bad)]);
+    useViewerStore.setState({ documents: [doc], activeDocumentId: doc.id });
+    const ui = render(<DocumentPanel />);
+    await settle();
+    const exportButton = ui.querySelector<HTMLButtonElement>('[data-document-export]')!;
+    assert.equal(exportButton.disabled, true, 'disabled while the list runs');
+    await runLists();
+    const message = ui.querySelector('[data-block-table] [data-table-message]')?.textContent ?? '';
+    assert.ok(message.length > 0 && !message.startsWith('Running'), message);
+    assert.equal(exportButton.disabled, false, 'an error is a settled state; the PDF prints it in place');
+  });
+
   it('prints the table through the seam with the list sorted as saved, and a caption; a second block over the same list shares the run', async () => {
     useViewerStore.setState({ listDefinitions: [wallList()] });
     const doc = tableDoc([tableBlock('t1', wallList(), { caption: 'All walls', maxRows: 1 }), tableBlock('t2', wallList(), { source: { kind: 'list', list: wallList({ id: 'copy-2' }), fromListId: 'saved-walls' } })]);
@@ -259,3 +274,92 @@ describe('useDocumentTables (#5142)', () => {
   });
 });
 
+
+describe('useDocumentTables — what re-runs a list and what does not (review findings)', () => {
+  beforeEach(async () => {
+    const model = await parsedModel();
+    useViewerStore.setState({ models: new Map([[model.id, model]]), activeModelId: model.id, mutationVersion: 0 });
+  });
+  afterEach(() => cleanup());
+
+  const statusOf = (ui: HTMLElement, id: string): string | null => ui.querySelector(`[data-block="${id}"]`)?.getAttribute('data-status') ?? null;
+
+  it('a streamed geometry batch (new model objects, same data stores) keeps the result; a list with a world-coordinate column re-runs', async () => {
+    const doc = tableDoc([tableBlock('plain', wallList()), tableBlock('geo', wallList({ id: 'geo-list', columns: [{ id: 'x', source: 'geometry', propertyName: 'X' }] }))]);
+    const ui = render(<TablesProbe document={doc} />);
+    await runLists();
+    assert.equal(statusOf(ui, 'plain'), 'ok');
+    assert.equal(statusOf(ui, 'geo'), 'ok');
+    // What `appendGeometryBatch` does per batch: a new Map with a new model object over the SAME store.
+    act(() => {
+      const models = new Map(useViewerStore.getState().models);
+      for (const [id, m] of models) models.set(id, { ...m, geometryResult: { meshes: [], totalTriangles: 0, totalVertices: 0, coordinateInfo: m.geometryResult?.coordinateInfo } } as typeof m);
+      useViewerStore.setState({ models });
+    });
+    assert.equal(statusOf(ui, 'plain'), 'ok', 'a pset/attribute list must not re-run per geometry batch');
+    assert.equal(statusOf(ui, 'geo'), 'resolving', 'world coordinates move with the geometry, so that list re-runs');
+    assert.equal(frames.length > 0, true, 'a run is queued for the geometry list only');
+  });
+
+  it('editing a text block does not touch the tables; replacing the model store does', async () => {
+    const doc = tableDoc([tableBlock('a', wallList())]);
+    const ui = render(<TablesProbe document={doc} />);
+    await runLists();
+    assert.equal(statusOf(ui, 'a'), 'ok');
+    const frameCount = frames.length;
+    act(() => { /* the panel re-renders with a new document object on every keystroke */ });
+    cleanup();
+    const edited: DocumentSpec = { ...doc, blocks: [{ kind: 'text', id: 't', style: 'body', text: 'typed' }, ...doc.blocks] };
+    const ui2 = render(<TablesProbe document={edited} />);
+    await runLists();
+    assert.equal(statusOf(ui2, 'a'), 'ok');
+    cleanup();
+    const reloaded = await parsedModel();
+    act(() => { useViewerStore.setState({ models: new Map([[reloaded.id, reloaded]]) }); });
+    const ui3 = render(<TablesProbe document={edited} />);
+    assert.equal(statusOf(ui3, 'a'), 'resolving', 'a different data store is a different federation');
+    assert.ok(frames.length >= frameCount, 'and queues a run');
+  });
+});
+
+describe('TableBlockEditor — Edit in Lists and the saved-list back-pointer (review findings)', () => {
+  beforeEach(async () => {
+    const model = await parsedModel();
+    useViewerStore.setState({ models: new Map([[model.id, model]]), activeModelId: model.id, listDefinitions: [], pendingListDraft: null, listPanelVisible: false });
+  });
+  afterEach(() => cleanup());
+
+  function Harness({ initial }: { initial: TableBlock }) {
+    const [block, setBlock] = useState(initial);
+    return <div><span data-from={block.source.fromListId ?? ''} /><TableBlockEditor block={block} onChange={setBlock} /></div>;
+  }
+  const fromOf = (ui: HTMLElement): string => ui.querySelector('[data-from]')?.getAttribute('data-from') ?? '';
+
+  it('hands the SAVED list to the builder when it is newer than the copy, so a save cannot roll the library back', () => {
+    const saved = wallList({ updatedAt: 10, columns: [...wallList().columns, { id: 'extra', source: 'attribute', propertyName: 'Tag' }] });
+    useViewerStore.setState({ listDefinitions: [saved] });
+    const stale = wallList({ id: 'copy-1', updatedAt: 1 }); // taken before the extra column
+    const ui = render(<Harness initial={tableBlock('t', stale, { source: { kind: 'list', list: stale, fromListId: 'saved-walls' } })} />);
+    assert.ok(ui.querySelector('[data-table-update]')?.textContent?.includes('•'), 'the newer flag shows');
+    click(ui.querySelector('[data-table-edit-in-lists]')!);
+    const draft = useViewerStore.getState().pendingListDraft!;
+    assert.equal(draft.id, 'saved-walls');
+    assert.equal(draft.columns.length, 3, 'the draft is the saved list, not the stale copy');
+    assert.equal(useViewerStore.getState().listPanelVisible, true);
+  });
+
+  it('a copy of a preset edited in Lists becomes a new saved list the block points at only once it is saved; cancelling leaves the preset pointer', () => {
+    const preset = wallList({ id: 'preset-wall-schedule', updatedAt: 0 });
+    const ui = render(<Harness initial={tableBlock('t', wallList({ id: 'copy-2', updatedAt: 0 }), { source: { kind: 'list', list: wallList({ id: 'copy-2' }), fromListId: preset.id } })} />);
+    click(ui.querySelector('[data-table-edit-in-lists]')!);
+    const draft = useViewerStore.getState().pendingListDraft!;
+    assert.notEqual(draft.id, preset.id, 'a preset is never saved under its own id');
+    assert.equal(fromOf(ui), preset.id, 'not repointed before anything is saved');
+    // Cancel in the builder: the draft is consumed, nothing saved.
+    act(() => { useViewerStore.setState({ pendingListDraft: null }); });
+    assert.equal(fromOf(ui), preset.id);
+    // Save in the builder: the list appears in the library, and the block follows it.
+    act(() => { useViewerStore.getState().addListDefinition({ ...draft }); });
+    assert.equal(fromOf(ui), draft.id);
+  });
+});

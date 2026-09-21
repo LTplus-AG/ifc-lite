@@ -86,8 +86,10 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
   const addBlock = (kind: DocumentBlock['kind']): void => {
     if (!document) return;
     const id = freshBlockId();
-    // A table starts as a copy of the first saved list, else the first preset (#5142).
+    // A table starts as a copy of the first saved list, else the first preset (#5142). The copy cannot
+    // keep a selection snapshot (see `ListTableSource.list`); say so when one is dropped.
     const seedList = listDefinitions[0] ?? LIST_PRESETS[0];
+    if (kind === 'table' && seedList.expressIdsByModel) toast.info(t('document.block.tableSelectionDropped'));
     const block: DocumentBlock = kind === 'text' ? { kind, id, text: '', style: 'body' }
       : kind === 'table' ? { kind, id, source: { kind: 'list', list: listCopyForDocument(seedList, freshListCopyId()), fromListId: seedList.id }, maxRows: TABLE_ROWS_DEFAULT }
       : kind === 'image' ? { kind, id, dataUrl: '', height: 60, align: 'left' }

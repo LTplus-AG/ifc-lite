@@ -10,11 +10,14 @@
  * and the preview must not freeze on every keystroke.
  *
  * Results are keyed by the list's content (not the block: two blocks over
- * the same list share one run) under a `dataKey` that changes whenever the
- * federation, its tags, a mutation, the zones or the unit overrides do —
- * the same inputs `useChartSourceFilters` invalidates on. A result computed
- * under an older `dataKey` is unreachable, so a reloaded model can never
- * surface rows from the model it replaced (the #4946 lesson).
+ * the same list share one run) under a `dataKey` that changes whenever
+ * something a run READS changes: the models' data stores, their tags, a
+ * mutation, the zones, the unit overrides — and the geometry only when a
+ * list has a world-coordinate column, because the store replaces
+ * `geometryResult`/`models` on every streamed batch of a load and a
+ * pset-heavy list must not re-run per batch (review finding). A result
+ * computed under an older `dataKey` is unreachable, so a reloaded model can
+ * never surface rows from the model it replaced (the #4946 lesson).
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ListDefinition } from '@ifc-lite/lists';
@@ -31,6 +34,28 @@ export function listFingerprint(list: ListDefinition): string {
   const { id: _id, name: _name, description: _description, createdAt: _c, updatedAt: _u, ...content } = list;
   void _id; void _name; void _description; void _c; void _u;
   return JSON.stringify(content);
+}
+
+/** `true` when a list reads world coordinates, whose values move with the geometry and render frame. */
+export function listReadsGeometry(list: ListDefinition): boolean {
+  return list.columns.some((c) => c.source === 'geometry') || list.conditions.some((c) => c.source === 'geometry');
+}
+
+/** Counts up each time `value` changes identity between renders. */
+function useVersionOf(value: unknown): number {
+  const ref = useRef({ value, version: 0 });
+  if (ref.current.value !== value) ref.current = { value, version: ref.current.version + 1 };
+  return ref.current.version;
+}
+
+/** The same object while every dep is `===` its predecessor; a new one otherwise. */
+function useStableKey(deps: readonly unknown[]): object {
+  const ref = useRef<{ deps: readonly unknown[]; key: object } | null>(null);
+  const prev = ref.current;
+  if (prev && prev.deps.length === deps.length && prev.deps.every((d, i) => d === deps[i])) return prev.key;
+  const next = { deps, key: {} };
+  ref.current = next;
+  return next.key;
 }
 
 const EMPTY: ReadonlyMap<string, TableState> = new Map();
@@ -53,22 +78,39 @@ const nextFrame = (fn: () => void): (() => void) => {
 };
 
 export function useDocumentTables(document: DocumentSpec | null): ReadonlyMap<string, TableState> {
-  const { pairs, modelUnits, hasData } = useListProviders();
+  const providers = useListProviders();
+  const { pairs, hasData } = providers;
+  // The run reads the LATEST providers/units (a geometry batch rebuilds them without changing rows).
+  const providersRef = useRef(providers);
+  providersRef.current = providers;
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
-  const models = useViewerStore((s) => s.models);
   const modelTags = useViewerStore((s) => s.modelTags);
   const modelTagAssignments = useViewerStore((s) => s.modelTagAssignments);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
-
-  // A fresh identity whenever anything a run reads changes: results are only valid under the key they were computed for.
-  const dataKey = useMemo<object>(() => ({}), [pairs, modelUnits, unitDisplayOverrides, models, modelTags, modelTagAssignments, mutationVersion]);
+  const zoneSets = useViewerStore((s) => s.zoneSets);
+  const zoneAssignments = useViewerStore((s) => s.zoneAssignments);
+  const zoneApportionment = useViewerStore((s) => s.zoneApportionment);
 
   const blocks = useMemo(() => (document?.blocks ?? []).filter((b): b is TableBlock => b.kind === 'table'), [document]);
+
+  // A fresh identity whenever anything a run reads changes: results are only valid under the key they were computed for.
+  // The data stores (not the model objects: a streamed batch replaces those) stand for the federation.
+  const dataKey = useStableKey([
+    pairs.length,
+    ...pairs.flatMap((p) => [p.modelId, p.store]),
+    unitDisplayOverrides, modelTags, modelTagAssignments, mutationVersion, zoneSets, zoneAssignments, zoneApportionment,
+  ]);
+  // Providers are rebuilt on every geometry batch; only a list reading world coordinates cares.
+  const geometryVersion = useVersionOf(pairs);
+
   const fingerprints = useMemo(() => {
     const byBlock = new Map<string, string>();
-    for (const b of blocks) byBlock.set(b.id, listFingerprint(b.source.list));
+    for (const b of blocks) {
+      const list = b.source.list;
+      byBlock.set(b.id, listReadsGeometry(list) ? `${listFingerprint(list)}|geometry:${geometryVersion}` : listFingerprint(list));
+    }
     return byBlock;
-  }, [blocks]);
+  }, [blocks, geometryVersion]);
   // The distinct lists to run. A document edit re-runs the effect, which then finds nothing left to do.
   const wantedList = useMemo(() => [...new Set(fingerprints.values())].sort(), [fingerprints]);
 
@@ -84,7 +126,7 @@ export function useDocumentTables(document: DocumentSpec | null): ReadonlyMap<st
     const wanted = wantedList.filter((fp) => !done.has(fp));
     if (wanted.length === 0) return;
     const definitions = new Map<string, ListDefinition>();
-    for (const b of blocks) definitions.set(listFingerprint(b.source.list), b.source.list);
+    for (const b of blocks) definitions.set(fingerprints.get(b.id)!, b.source.list);
 
     let cancelled = false;
     let cancelFrame: (() => void) | null = null;
@@ -100,7 +142,8 @@ export function useDocumentTables(document: DocumentSpec | null): ReadonlyMap<st
           if (!list) throw new Error('list definition missing');
           // `executeList` already applied the list's `sortBy` per model; the export model is built
           // exactly as the Lists panel builds it for its own export.
-          const result = runListFederated(list, pairs, useViewerStore.getState());
+          const live = providersRef.current;
+          const result = runListFederated(list, live.pairs, useViewerStore.getState());
           const model = buildExportModel({
             title: list.name,
             columns: result.columns,
@@ -109,8 +152,8 @@ export function useDocumentTables(document: DocumentSpec | null): ReadonlyMap<st
             numericCols: detectNumericColumns(result.columns, result.rows),
             columnWidths: [],
             generatedAt: new Date().toLocaleString(),
-            modelUnits,
-            unitDisplayOverrides,
+            modelUnits: live.modelUnits,
+            unitDisplayOverrides: useViewerStore.getState().unitDisplayOverrides,
           });
           state = { status: 'ok', model };
         } catch (err) {
@@ -127,7 +170,7 @@ export function useDocumentTables(document: DocumentSpec | null): ReadonlyMap<st
     };
     runAt(0);
     return () => { cancelled = true; cancelFrame?.(); };
-  }, [dataKey, wantedList, blocks, hasData, pairs, modelUnits, unitDisplayOverrides]);
+  }, [dataKey, wantedList, fingerprints, blocks, hasData]);
 
   return useMemo(() => {
     const out = new Map<string, TableState>();

@@ -14,7 +14,7 @@ keywords = ["landxml", "terrain", "tin", "xml", "aec"]
 categories = ["parser-implementations", "data-structures"]
 
 [dependencies]
-quick-xml = "0.38"
+quick-xml = "0.42"
 serde = { version = "1.0", features = ["derive"] }
 ifc-lite-geometry.workspace = true
 geometry-predicates = "0.3"

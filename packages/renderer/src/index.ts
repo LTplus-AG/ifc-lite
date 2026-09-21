@@ -154,6 +154,13 @@ import type {
 } from './types.js';
 import { VisualEnhancementResolver } from './visual-enhancement.js';
 import { packClipBox } from './clip-box.js';
+import {
+    MESH_FLAGS_BYTE_OFFSET,
+    MESH_FLAG_RTE_DRAWABLE,
+    MESH_UNIFORM_FLOATS,
+    MESH_UNIFORM_OFFSET,
+    packRteFragmentSpace,
+} from './mesh-rte-uniforms.js';
 import type { CutPolygon2D, DrawingLine2D, LineOverlayChannel } from './section-2d-overlay.js';
 import type {
   SymbolicFillInput,
@@ -493,8 +500,8 @@ export class Renderer {
     // 84 floats includes legacy material/clip/quant fields plus the RTE frame
     // and drawable high/low lanes (see
     // pipeline.getUniformBufferSize).
-    private readonly uniformScratch = new Float32Array(84);
-    private readonly uniformScratchU32 = new Uint32Array(this.uniformScratch.buffer, 176, 4);
+    private readonly uniformScratch = new Float32Array(MESH_UNIFORM_FLOATS);
+    private readonly uniformScratchU32 = new Uint32Array(this.uniformScratch.buffer, MESH_FLAGS_BYTE_OFFSET, 4);
 
     // What the last render() actually clipped, so the GPU picker can mirror it and
     // section/crop-clipped geometry stays unpickable, not just invisible. Updated
@@ -2525,7 +2532,7 @@ export class Renderer {
                 const tpl = this.uniformScratch;
                 const tplFlags = this.uniformScratchU32;
                 tpl.set(viewProj, 0);
-                relativeToEyeFrame.packUniforms(tpl, 60);
+                relativeToEyeFrame.packUniforms(tpl, MESH_UNIFORM_OFFSET.rteViewProj);
                 // Identity model matrix (positions already in world space)
                 tpl[16] = 1; tpl[17] = 0; tpl[18] = 0; tpl[19] = 0;
                 tpl[20] = 0; tpl[21] = 1; tpl[22] = 0; tpl[23] = 0;
@@ -2559,6 +2566,23 @@ export class Renderer {
                     tplClipBit;
                 tplFlags[2] = edgeEnabledU32;
                 tplFlags[3] = edgeIntensityMilliU32;
+                // Flat/quantized/textured batches enter WGSL in the single
+                // camera-relative frame. Their fragment clip inputs must use
+                // that same frame; mixing a local vertex with a 5,000 km f32
+                // world plane loses centimetre cuts before the comparison.
+                packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl);
+                // Instanced V1 occurrence matrices are still world-space. Keep
+                // their clip ingress in that coordinate system rather than
+                // accidentally feeding the batch RTE plane into a V1 draw.
+                // V2 anchors will remove this twin when instances join RTE.
+                const instancedTpl = new Float32Array(tpl);
+                if (sectionPlaneData) {
+                    instancedTpl[40] = sectionPlaneData.normal[0];
+                    instancedTpl[41] = sectionPlaneData.normal[1];
+                    instancedTpl[42] = sectionPlaneData.normal[2];
+                    instancedTpl[43] = sectionPlaneData.distance;
+                }
+                packClipBox(options.clipBox, instancedTpl, 48);
 
                 // Helper function to render a batch — patches color into the shared template
                 const renderBatch = (batch: typeof allBatchedMeshes[0]) => {
@@ -2583,8 +2607,8 @@ export class Renderer {
                     // The regular model matrix remains for absolute-space
                     // fragment work (section/shadow); vertex projection uses
                     // this f64-subtracted high/low origin instead.
-                    relativeToEyeFrame.packDrawableOrigin(o ?? [0, 0, 0], tpl, 76);
-                    tplFlags[0] |= 0x10000;
+                    relativeToEyeFrame.packDrawableOrigin(o ?? [0, 0, 0], tpl, MESH_UNIFORM_OFFSET.drawableDelta);
+                    tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
                     // Quantized dequantization params (issue #1682 phase 6);
                     // zeroed for f32 batches (their pipelines ignore them).
@@ -2696,7 +2720,7 @@ export class Renderer {
                     // shader routes per-instance opacity: opaque (or selected) occurrences
                     // draw here; translucent ones (lens/x-ray/compare overrides) are
                     // discarded and drawn in the transparent sub-pass below.
-                    this.pipeline.writeRawUniforms(tpl, 0x4);
+                    this.pipeline.writeRawUniforms(instancedTpl, 0x4);
                     pass.setPipeline(this.pipeline.getInstancedPipeline());
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
@@ -2755,8 +2779,8 @@ export class Renderer {
                         // drew every textured occurrence collapsed toward the
                         // world origin.
                         tpl[28] = tm.origin[0]; tpl[29] = tm.origin[1]; tpl[30] = tm.origin[2];
-                        relativeToEyeFrame.packDrawableOrigin(tm.origin, tpl, 76);
-                        tplFlags[0] |= 0x10000;
+                        relativeToEyeFrame.packDrawableOrigin(tm.origin, tpl, MESH_UNIFORM_OFFSET.drawableDelta);
+                        tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
                         tpl[32] = txOverride ? txOverride[0] : tm.color[0];
                         tpl[33] = txOverride ? txOverride[1] : tm.color[1];
                         tpl[34] = txOverride ? txOverride[2] : tm.color[2];
@@ -2919,7 +2943,7 @@ export class Renderer {
                     this.scene.hasTransparentInstances() &&
                     instancedTransparentPipeline !== null
                 ) {
-                    this.pipeline.writeRawUniforms(tpl, 0x4 | 0x8);
+                    this.pipeline.writeRawUniforms(instancedTpl, 0x4 | 0x8);
                     pass.setPipeline(instancedTransparentPipeline);
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());

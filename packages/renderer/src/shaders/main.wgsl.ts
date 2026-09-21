@@ -7,6 +7,8 @@
  * Features: PBR lighting, section plane clipping, selection highlight,
  * glass fresnel, ACES tone mapping, screen-space edge enhancement.
  */
+import { MESH_FLAG_RTE_DRAWABLE } from '../mesh-rte-uniforms.js';
+
 export const mainShaderSource = `
         struct Uniforms {
           viewProj: mat4x4<f32>,
@@ -24,7 +26,7 @@ export const mainShaderSource = `
           drawableDeltaLow: vec4<f32>,
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
-        const RTE_DRAWABLE_FLAG: u32 = 65536u;
+        const RTE_DRAWABLE_FLAG: u32 = ${MESH_FLAG_RTE_DRAWABLE}u;
         fn rtePosition(local: vec3<f32>) -> vec4<f32> { return vec4<f32>((local + uniforms.drawableDeltaHigh.xyz) + uniforms.drawableDeltaLow.xyz, 1.0); }
         // Shared group(1) lighting; packing matches packEnvironmentUniforms().
         struct Environment {
@@ -150,6 +152,12 @@ export const mainShaderSource = `
           // vs_instanced writes the per-instance flag from the instance buffer, so a
           // single selected occurrence highlights without re-drawing.
           @location(5) @interpolate(flat) instSelected: u32,
+          // Camera-relative position for fragment operations that compare
+          // geometry to section/crop boundaries or take derivatives. This is
+          // intentionally separate from worldPos: shadow maps still consume
+          // their established world-space light matrix until their depth pass
+          // is migrated as one transaction.
+          @location(6) eyePos: vec3<f32>,
         }
 
         // Per-instance vertex-buffer inputs (slot 1, stepMode 'instance') used by
@@ -201,7 +209,9 @@ export const mainShaderSource = `
         fn shadeFlatVertex(localPos: vec3<f32>, localNormal: vec3<f32>, entityId: u32) -> VertexOutput {
           var output: VertexOutput;
           let worldPos = uniforms.model * vec4<f32>(localPos, 1.0);
-          output.position = select(uniforms.viewProj * worldPos, uniforms.rteViewProj * rtePosition(localPos), (uniforms.flags.x & RTE_DRAWABLE_FLAG) != 0u);
+          let eyePos = rtePosition(localPos).xyz;
+          let rte = (uniforms.flags.x & RTE_DRAWABLE_FLAG) != 0u;
+          output.position = select(uniforms.viewProj * worldPos, uniforms.rteViewProj * vec4<f32>(eyePos, 1.0), rte);
           // Anti z-fighting depth nudge — see vs_main's comment.
           let colorSalt = (entityId >> 24u) * 2654435761u;
           let zHash = (((entityId & 0x00FFFFFFu) ^ colorSalt) * 2654435761u) & 255u;
@@ -211,7 +221,8 @@ export const mainShaderSource = `
           output.entityId = entityId;
           output.color = uniforms.baseColor;
           output.instSelected = 0u;
-          output.viewPos = (uniforms.viewProj * worldPos).xyz;
+          output.eyePos = eyePos;
+          output.viewPos = select((uniforms.viewProj * worldPos).xyz, (uniforms.rteViewProj * vec4<f32>(eyePos, 1.0)).xyz, rte);
           return output;
         }
 
@@ -226,7 +237,9 @@ export const mainShaderSource = `
         fn vs_main(input: VertexInput, @builtin(instance_index) instanceIndex: u32) -> VertexOutput {
           var output: VertexOutput;
           let worldPos = uniforms.model * vec4<f32>(input.position, 1.0);
-          output.position = select(uniforms.viewProj * worldPos, uniforms.rteViewProj * rtePosition(input.position), (uniforms.flags.x & RTE_DRAWABLE_FLAG) != 0u);
+          let eyePos = rtePosition(input.position).xyz;
+          let rte = (uniforms.flags.x & RTE_DRAWABLE_FLAG) != 0u;
+          output.position = select(uniforms.viewProj * worldPos, uniforms.rteViewProj * vec4<f32>(eyePos, 1.0), rte);
           // Anti z-fighting: deterministic depth nudge.
           // Knuth multiplicative hash spreads sequential IDs across 0-255 so
           // coplanar faces from different entities always get distinct depths.
@@ -251,8 +264,9 @@ export const mainShaderSource = `
           output.entityId = input.entityId;
           output.color = uniforms.baseColor;
           output.instSelected = 0u;  // flat path selects via uniforms.flags.x
+          output.eyePos = eyePos;
           // Store view-space position for edge detection
-          output.viewPos = (uniforms.viewProj * worldPos).xyz;
+          output.viewPos = select((uniforms.viewProj * worldPos).xyz, (uniforms.rteViewProj * vec4<f32>(eyePos, 1.0)).xyz, rte);
           return output;
         }
 
@@ -278,6 +292,7 @@ export const mainShaderSource = `
           output.entityId = inst.instEntityId;
           output.color = inst.instColor;
           output.instSelected = inst.instSelected;
+          output.eyePos = worldPos.xyz;
           output.viewPos = (uniforms.viewProj * worldPos).xyz;
           return output;
         }
@@ -325,6 +340,12 @@ export const mainShaderSource = `
 
         @fragment
         fn fs_main(input: VertexOutput) -> FragmentOutput {
+          // The flat/quantized/textured mesh paths submit this in one
+          // camera-relative frame. Do all camera-local fragment arithmetic in
+          // that frame; otherwise the RTE vertex precision is thrown away at
+          // section/crop/derivative ingress. Instanced geometry is not yet
+          // anchored, so its worldPos remains the authoritative input.
+          let fragmentPos = select(input.worldPos, input.eyePos, (uniforms.flags.x & RTE_DRAWABLE_FLAG) != 0u);
           // Per-instance hide/isolate: bit 1 of the instance flags lane marks a hidden
           // occurrence. Discard it so it neither draws nor writes depth (and the pick
           // pass applies the same discard, so it isn't pickable). vs_main writes
@@ -354,7 +375,7 @@ export const mainShaderSource = `
             let planeDistance = uniforms.sectionPlane.w;
             let flipped = (uniforms.flags.y & 2u) == 2u;
             let side = select(1.0, -1.0, flipped);
-            let distToPlane = (dot(input.worldPos, planeNormal) - planeDistance) * side;
+            let distToPlane = (dot(fragmentPos, planeNormal) - planeDistance) * side;
             if (distToPlane > 0.0) {
               discard;
             }
@@ -362,7 +383,7 @@ export const mainShaderSource = `
           // Clip box (section / crop box): discard fragments OUTSIDE the AABB.
           // flags.y bit 2 = clip-box enabled.
           if ((uniforms.flags.y & 4u) != 0u) {
-            let p = input.worldPos;
+            let p = fragmentPos;
             if (any(p < uniforms.clipBoxMin.xyz) || any(p > uniforms.clipBoxMax.xyz)) {
               discard;
             }
@@ -402,7 +423,7 @@ export const mainShaderSource = `
           // We still fall back to the vertex normal when derivatives
           // are unavailable (extreme polygon degeneracy where dpdx /
           // dpdy collapse to zero — practically never on real geometry).
-          let faceN = cross(dpdx(input.worldPos), dpdy(input.worldPos));
+          let faceN = cross(dpdx(fragmentPos), dpdy(fragmentPos));
           let fLen2 = dot(faceN, faceN);
           var N: vec3<f32>;
           if (fLen2 > 1e-10) {
@@ -542,7 +563,7 @@ export const mainShaderSource = `
           var finalAlpha = select(input.color.a, 1.0, isSelected || emphasizedOverlay);
           if (finalAlpha < 0.99 && !isSelected && !isOverlay) {
             // Calculate view direction for fresnel
-            let V = normalize(-input.worldPos);
+            let V = normalize(-fragmentPos);
             let NdotV = max(dot(N, V), 0.0);
 
             // Enhanced fresnel effect - stronger at edges (grazing angles)

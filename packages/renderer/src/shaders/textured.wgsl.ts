@@ -63,11 +63,12 @@ function deriveTexturedShader(): string {
     'VertexInput uv',
   );
 
-  // 3. UV interpolant on VertexOutput (after the @location(5) instSelected varying).
+  // 3. UV interpolant on VertexOutput. Location 6 is the main shader's
+  // camera-relative fragment position (#5049), so texture UVs stay at 7.
   s = replaceOnce(
     s,
-    '          @location(5) @interpolate(flat) instSelected: u32,\n        }',
-    '          @location(5) @interpolate(flat) instSelected: u32,\n          @location(6) uv: vec2<f32>,\n        }',
+    '          @location(6) eyePos: vec3<f32>,\n        }',
+    '          @location(6) eyePos: vec3<f32>,\n          @location(7) uv: vec2<f32>,\n        }',
     'VertexOutput uv',
   );
 

@@ -10,6 +10,7 @@ import { WebGPUDevice } from './device.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
 import { texturedShaderSource } from './shaders/textured.wgsl.js';
 import { packClipBox } from './clip-box.js';
+import { MESH_FLAGS_BYTE_OFFSET, MESH_UNIFORM_BYTES, MESH_UNIFORM_FLOATS } from './mesh-rte-uniforms.js';
 import {
     ENVIRONMENT_UNIFORM_SIZE,
     packEnvironmentUniforms,
@@ -591,8 +592,8 @@ export class RenderPipeline {
         // Create buffer with proper alignment:
         // viewProj (16) + model (16) + baseColor (4) + metallicRoughness (2) + padding (2)
         // + sectionPlane/flags/clip (16) + quant(4) + RTE frame/origin(24) = 84 floats.
-        const buffer = new Float32Array(84);
-        const flagBuffer = new Uint32Array(buffer.buffer, 176, 4); // flags at byte 176
+        const buffer = new Float32Array(MESH_UNIFORM_FLOATS);
+        const flagBuffer = new Uint32Array(buffer.buffer, MESH_FLAGS_BYTE_OFFSET, 4); // flags at byte 176
 
         // viewProj: mat4x4<f32> at offset 0 (16 floats)
         buffer.set(viewProj, 0);
@@ -687,10 +688,10 @@ export class RenderPipeline {
         // pass, bit 3 = transparent instanced sub-pass (the shader routes per-instance
         // opacity off these).
         if (extraFlagsX !== 0) {
-            const baseFlagsX = new Uint32Array(data.buffer, data.byteOffset + 176, 1)[0];
+            const baseFlagsX = new Uint32Array(data.buffer, data.byteOffset + MESH_FLAGS_BYTE_OFFSET, 1)[0];
             this.device.queue.writeBuffer(
                 this.uniformBuffer,
-                176,
+                MESH_FLAGS_BYTE_OFFSET,
                 new Uint32Array([baseFlagsX | extraFlagsX]),
             );
         }
@@ -926,7 +927,7 @@ export class RenderPipeline {
         // 84 floats * 4 bytes: legacy material/clip/quant fields plus appended
         // RTE view-projection and drawable high/low lanes. Must match WGSL and
         // renderer's uniformScratch length.
-        return 336;
+        return MESH_UNIFORM_BYTES;
     }
 
     private destroyed = false;

@@ -14,10 +14,12 @@
     /// theory: 1,000 distinct meshes (small triangle each), no repeats in
     /// EITHER stage, so `SharedShapes` plans `Identity` and the only
     /// difference from `Flat` is the nine identity `rot0..rot8` columns. If
-    /// `writer_props`'s dictionary encoding for `rot*` columns ever regressed
-    /// (e.g. someone drops the `!name.starts_with("rot")` exemption), those
-    /// nine constant-valued columns would be written PLAIN and this ratchet
-    /// would fail loudly instead of silently shipping a bigger file.
+    /// THIS module's `writer_props` (the flat/shared-shapes writer's, not
+    /// `parquet_optimized.rs`'s differently-implemented same-named function)
+    /// ever regressed its dictionary encoding for `rot*` columns (e.g.
+    /// someone drops the `!name.starts_with("rot")` exemption), those nine
+    /// constant-valued columns would be written PLAIN and this ratchet would
+    /// fail loudly instead of silently shipping a bigger file.
     ///
     /// Reads column-chunk `compressed_size` straight from the Parquet footer
     /// (`ColumnChunkMetaData`), not from the arrow schema, so page headers,

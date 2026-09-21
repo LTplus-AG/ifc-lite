@@ -14,7 +14,7 @@ import { runRuleSet } from './rule-engine.js';
 import type { InformationRule, RuleSetFile } from './rule-set.js';
 import { Rule } from '../search/filter-rules.js';
 import type { ModelTagState } from '../model-tags/evaluator-models.js';
-import { orderSetResultsForCap } from './rule-engine-sets.js';
+import * as sets from './rule-engine-sets.js';
 import type { SetResult } from '@ifc-lite/ids';
 
 const HEADER = `ISO-10303-21;
@@ -311,7 +311,9 @@ describe('#5138 aggregate set-result cap ordering', () => {
   it('keeps a failing group ahead of larger passing ones so truncation cannot hide it', () => {
     const mk = (passed: boolean, n: number): SetResult => ({ kind: 'aggregate', label: 'sum(x)', actual: '', expected: '', passed, members: Array.from({ length: n }, (_, i) => ({ modelId: 'm', expressId: i })) });
     const results = [mk(true, 50), mk(true, 40), mk(false, 1), mk(true, 30)];
-    orderSetResultsForCap(results);
+    // Namespace import: a reverted export fails here by assertion, not at module load (revert oracle).
+    assert.equal(typeof sets.orderSetResultsForCap, 'function');
+    sets.orderSetResultsForCap(results);
     assert.equal(results[0].passed, false);
     assert.deepEqual(results.slice(1).map((r) => r.members.length), [50, 40, 30]);
   });

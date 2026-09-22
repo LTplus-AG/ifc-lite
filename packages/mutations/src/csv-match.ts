@@ -168,13 +168,23 @@ function buildPropertyIndex(
   for (let i = 0; i < entities.count; i++) {
     const expressId = entities.expressId[i];
     const psets = mutationView.getForEntity(expressId);
+    // An entity may carry several same-named sets (a type pset and an
+    // occurrence pset), which is exactly why every one of them is scanned.
+    // When two of them hold the SAME value the entity would otherwise be
+    // indexed twice under that key, and a single-entity match would report
+    // itself as ambiguous with confidence 0.5. Duplicates ACROSS entities
+    // stay — that is real ambiguity — so the guard is per entity, per key.
+    const keyed = new Set<string>();
     for (const pset of psets) {
       if (pset.name !== strategy.psetName) continue;
       for (const prop of pset.properties) {
         if (prop.name !== strategy.propName) continue;
         if (prop.value === null || prop.value === undefined) continue;
         if (valueType === undefined) valueType = prop.type;
-        addToIndex(index, canonicalPropertyKey(prop.value, valueType), expressId);
+        const key = canonicalPropertyKey(prop.value, valueType);
+        if (keyed.has(key)) continue;
+        keyed.add(key);
+        addToIndex(index, key, expressId);
       }
     }
   }

@@ -288,6 +288,30 @@ describe('CsvConnector.match: property strategy (#5167)', () => {
     expect(result.confidence).toBe(1);
   });
 
+  it('does not report a single entity as ambiguous when its two same-named sets hold the SAME value', () => {
+    // Review finding on #5230: scanning every same-named pset is required for
+    // correctness, but an entity whose TYPE and OCCURRENCE sets both carry
+    // `Mark: "A"` was indexed twice under that key. The single real match then
+    // came back as `[1, 1]` with an ambiguity warning and confidence 0.5.
+    const { connector } = makeConnectorWithProperties([1], {
+      1: [
+        { name: 'Pset_Common', properties: [{ name: 'Mark', type: PropertyValueType.String, value: 'A' }] },
+        { name: 'Pset_Common', properties: [{ name: 'Mark', type: PropertyValueType.String, value: 'A' }] },
+      ],
+    });
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'property', psetName: 'Pset_Common', propName: 'Mark', column: 'Mark' },
+      propertyMappings: [],
+    };
+
+    const [result] = connector.match([{ Mark: 'A' }], mapping);
+
+    expect(result.matchedEntityIds).toEqual([1]);
+    expect(result.confidence).toBe(1);
+    expect(result.warnings.filter((w) => /Multiple entities/.test(w))).toEqual([]);
+  });
+
   it('flags ambiguity when the value matches more than one entity', () => {
     const { connector } = makeConnectorWithProperties([1, 2], {
       1: [{ name: 'Pset_Common', properties: [{ name: 'Mark', type: PropertyValueType.String, value: 'TYPE-A' }] }],

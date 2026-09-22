@@ -1,5 +1,15 @@
 # @ifc-lite/mutations
 
+## 2.6.0
+
+### Minor Changes
+
+- [#5230](https://github.com/LTplus-AG/ifc-lite/pull/5230) [`f87bed2`](https://github.com/LTplus-AG/ifc-lite/commit/f87bed29a52610b66b3d0ee510406ce087a66621) Thanks [@louistrue](https://github.com/louistrue)! - `CsvConnector` matches on `tag`, and `property` is implemented ([#5167](https://github.com/LTplus-AG/ifc-lite/issues/5167)).
+  
+  The `property` strategy was previously declared but warned "not yet implemented" and matched nothing. It now resolves through the mutation overlay and considers every property set sharing a name, so an entity carrying both a type and an occurrence pset of the same name matches on either. A new `tag` strategy joins on the element `Tag`.
+  
+  Matching builds one index per call instead of scanning every entity per row, and reports ambiguous matches, empty match cells, and a match column missing from the CSV header.
+
 ## 2.5.0
 
 ### Minor Changes

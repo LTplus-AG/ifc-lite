@@ -34,15 +34,58 @@ pub(crate) fn build_tube_rmf(
         return (tangents, perp1s, perp2s);
     }
 
-    for i in 0..n {
-        let t = if i == 0 {
-            (curve_points[1] - curve_points[0]).normalize()
-        } else if i == n - 1 {
-            (curve_points[i] - curve_points[i - 1]).normalize()
-        } else {
-            ((curve_points[i + 1] - curve_points[i - 1]) / 2.0).normalize()
-        };
-        tangents.push(t);
+    // A duplicate consecutive directrix point (a composite-curve segment
+    // boundary sharing an endpoint, or a plain authoring artefact) makes the
+    // finite-difference tangent at that sample a zero vector, which has no
+    // direction to `.normalize()` — that's where #5191's all-NaN mesh came
+    // from. A duplicate point is otherwise a legitimate sample, so rather
+    // than reject the solid we skip duplicates when building the point list
+    // the tangent is actually differenced over (`kept`), and every point that
+    // was dropped as a duplicate inherits the tangent computed for the
+    // distinct point it collapsed onto (`owner`). `tangents` below stays
+    // parallel to `curve_points` (length `n`) so nothing downstream needs to
+    // know duplicates existed.
+    const DEDUPE_EPS: f64 = 1e-9;
+    let mut kept: Vec<Point3<f64>> = Vec::with_capacity(n);
+    let mut owner: Vec<usize> = Vec::with_capacity(n);
+    for &p in curve_points {
+        if let Some(&last) = kept.last() {
+            if (p - last).norm() < DEDUPE_EPS {
+                owner.push(kept.len() - 1);
+                continue;
+            }
+        }
+        kept.push(p);
+        owner.push(kept.len() - 1);
+    }
+
+    let m = kept.len();
+    let kept_tangents: Vec<Vector3<f64>> = if m < 2 {
+        // Every sample collapsed onto a single point — a fully degenerate
+        // directrix with no direction to sweep along. There is no principled
+        // tangent here; fall back to a fixed axis so the caller gets a finite
+        // (if geometrically degenerate) frame instead of NaN, matching the
+        // guarded-fallback pattern in `revolved.rs`'s axis-direction handling.
+        vec![Vector3::new(1.0, 0.0, 0.0); m]
+    } else {
+        (0..m)
+            .map(|k| {
+                let t = if k == 0 {
+                    kept[1] - kept[0]
+                } else if k == m - 1 {
+                    kept[k] - kept[k - 1]
+                } else {
+                    (kept[k + 1] - kept[k - 1]) / 2.0
+                };
+                // `kept` has no consecutive duplicates by construction, so
+                // every difference above is non-zero and this normalize is safe.
+                t.normalize()
+            })
+            .collect()
+    };
+
+    for &o in &owner {
+        tangents.push(kept_tangents[o]);
     }
 
     let up0 = if tangents[0].x.abs() < 0.9 {
@@ -65,6 +108,28 @@ pub(crate) fn build_tube_rmf(
         // Anti-parallel (cos_a ≈ -1) leaves axis ill-defined, but a 180° turn
         // between consecutive samples on a swept-disk directrix is physically
         // implausible; we keep the previous frame and accept the degraded case.
+        //
+        // NaN-latching hazard (#5191): every comparison against NaN is `false`
+        // in Rust, so if `axis_norm` or `cos_a` were ever NaN this condition
+        // reads as "nearly parallel" too, and freezes `perp1`/`perp2` exactly
+        // as the legitimate degenerate case does — except forever, since a
+        // poisoned frame can never re-satisfy `cos_a < 1.0 - 1e-12` with a
+        // finite comparison again. This branch is not a general degenerate-
+        // input handler; it only knows how to preserve a frame, not to detect
+        // a poisoned one. `tangents` is guaranteed finite here by the dedupe
+        // above (duplicate directrix points no longer reach `.normalize()`),
+        // so the assert below should never fire; it exists so a future
+        // regression that reintroduces a NaN tangent fails loudly in tests
+        // instead of silently latching across every remaining ring the way
+        // #5191 did. It is a `debug_assert!` (not a hard check) so a NaN that
+        // somehow still reaches this point in a release build degrades the
+        // same way it always has rather than making the processor refuse a
+        // solid it used to render.
+        debug_assert!(
+            axis_norm.is_finite() && cos_a.is_finite(),
+            "build_tube_rmf: non-finite tangent reached the RMF guard at i={i}; \
+             this latches forever because NaN comparisons are always false"
+        );
         if axis_norm > 1e-9 && cos_a < 1.0 - 1e-12 {
             let axis = axis / axis_norm;
             let sin_a = (1.0 - cos_a * cos_a).max(0.0).sqrt();

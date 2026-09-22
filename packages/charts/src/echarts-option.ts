@@ -278,6 +278,32 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
     };
   }
 
+  if (spec.type === 'elementCount') {
+    const value = aggregation.total;
+    const width = typeof args.width === 'number' && Number.isFinite(args.width) && args.width > 0 ? args.width : DEFAULT_WIDTH;
+    const height = typeof args.height === 'number' && Number.isFinite(args.height) && args.height > 0 ? args.height : DEFAULT_HEIGHT;
+    const fontSize = Math.max(36, Math.min(72, Math.floor(Math.min(width, height) / 6)));
+    return {
+      ...base,
+      graphic: {
+        elements: [
+          {
+            type: 'text',
+            left: 'center',
+            top: 'center',
+            style: {
+              text: String(value),
+              font: `bold ${fontSize}px ${theme.fontFamily}`,
+              fill: theme.text,
+              textAlign: 'center',
+              textVerticalAlign: 'middle',
+            },
+          },
+        ],
+      },
+    };
+  }
+
   // bar / stackedBar / histogram / timeline: category x, measure y
   const stacked = spec.type === 'stackedBar';
   const labels = categories.map((c) => c.label);

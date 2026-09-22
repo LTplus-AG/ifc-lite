@@ -6,7 +6,7 @@
  * `ifc-lite flow <run|describe|validate>` — evaluate a `*.flow.json` graph
  * headlessly over the same `HeadlessBackend` every other command uses.
  *
- *   flow run      <graph.flow.json> <model.ifc> [--input k=v]... [--out F] [--json]
+ *   flow run      <graph.flow.json> <model.ifc> [--input k=v]... [--out F] [--tracking F|--no-tracking] [--json]
  *   flow describe <graph.flow.json> [--json]        inputs/outputs schema (the Hops `/io`)
  *   flow validate <graph.flow.json> [--json]        document + node availability report
  *
@@ -16,13 +16,15 @@
  * colorizes failures in the viewer validates and runs in CI unchanged.
  */
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { readFile, stat, writeFile } from 'node:fs/promises';
 import { checkAvailability, parseFlowDocument, runFlow, validateFlowWiring, type FlowDocument, type RunResult } from '@ifc-lite/flow';
 import { createStandardRegistry, headlessFeatures, type FlowHost } from '@ifc-lite/flow-nodes';
 import { createHeadlessContext } from '../loader.js';
 import { fatal, getAllFlags, hasFlag, printJson } from '../output.js';
+import { defaultTrackingPath, FileTrackingStore } from './flow-tracking.js';
 
-const USAGE = 'Usage: ifc-lite flow <run|describe|validate> <graph.flow.json> [<model.ifc>] [--input k=v]... [--out F] [--json]';
+const USAGE = 'Usage: ifc-lite flow <run|describe|validate> <graph.flow.json> [<model.ifc>] [--input k=v]... [--out F] [--tracking F | --no-tracking] [--json]';
 
 async function loadDocument(path: string | undefined): Promise<FlowDocument> {
   if (!path) fatal(USAGE);
@@ -39,7 +41,7 @@ async function loadDocument(path: string | undefined): Promise<FlowDocument> {
   }
 }
 
-const VALUE_FLAGS = new Set(['--input', '--out']);
+const VALUE_FLAGS = new Set(['--input', '--out', '--tracking']);
 
 /** Arguments that are neither flags nor the value of a value-taking flag. */
 function positionalArgs(args: string[]): string[] {
@@ -117,6 +119,7 @@ function summarize(result: RunResult) {
     outputs: result.graphOutputs.map((o) => ({ label: o.label, key: `${o.nodeId}.${o.port}`, data: o.data })),
     errors: result.log.filter((l) => l.level === 'error'),
     warnings: result.log.filter((l) => l.level === 'warn'),
+    log: result.log,
   };
 }
 
@@ -169,13 +172,29 @@ export async function flowCommand(args: string[]): Promise<void> {
   const doc = await loadDocument(graphPath);
   const { bim, store } = await createHeadlessContext(modelPath);
   const host: FlowHost = { bim, defaultModelId: bim.model.activeId() ?? undefined };
+
+  let tracking: FileTrackingStore | undefined;
+  const trackingPath = requireFlagValue(args, '--tracking') ?? defaultTrackingPath(graphPath);
+  // An existing sidecar is opened even when no node is tracked any more:
+  // that is how a set whose node was deleted gets removed from the model.
+  const wantsTracking = doc.nodes.some((n) => registry.get(n.type)?.tracked) || (await stat(trackingPath).then(() => true, () => false));
+  if (!hasFlag(args, '--no-tracking') && wantsTracking) {
+    const pin = `file:${createHash('sha256').update(await readFile(modelPath)).digest('hex')}`;
+    tracking = await FileTrackingStore.open(trackingPath, pin);
+    if (tracking.loadedPin !== undefined && tracking.loadedPin !== pin) {
+      process.stderr.write(`  warn  tracking sidecar ${tracking.path} was written against another model state; tracked elements that are missing will be re-created\n`);
+    }
+  }
+
   const result = await runFlow(doc, {
     host,
     registry,
     inputs: parseInputs(getAllFlags(args, '--input'), doc, registry),
     features: headlessFeatures(Object.keys(process.env)),
     modelRevisions: { [host.defaultModelId ?? 'model']: 0 },
+    tracking,
   });
+  const trackingWritten = tracking ? await tracking.flush() : false;
 
   // A failed run can still have written through earlier nodes. Exporting
   // that half-applied state would hand the next step a model no graph run
@@ -188,14 +207,18 @@ export async function flowCommand(args: string[]): Promise<void> {
   }
 
   const summary = summarize(result);
-  if (json) printJson({ ...summary, out: wrote ? out : null });
+  if (json) printJson({ ...summary, out: wrote ? out : null, tracking: trackingWritten ? tracking!.path : null });
   else {
     process.stdout.write(`${result.ok ? 'ok' : 'FAILED'}: ${Object.entries(summary.nodes).map(([k, v]) => `${v} ${k}`).join(', ')}\n`);
     for (const o of summary.outputs) process.stdout.write(`  ${o.label}: ${JSON.stringify(o.data, (_k, v) => (v instanceof Map ? Object.fromEntries(v) : v))}\n`);
     for (const e of summary.errors) process.stderr.write(`  error ${e.nodeId}${e.laneKey ? `[${e.laneKey}]` : ''}: ${e.message}\n`);
     for (const w of summary.warnings) process.stderr.write(`  warn  ${w.nodeId}${w.laneKey ? `[${w.laneKey}]` : ''}: ${w.message}\n`);
-    if (wrote) process.stdout.write(`  wrote ${out}\n`);
-    else if (out !== undefined) process.stderr.write(`  not written: the run failed, so ${out} would hold a half-applied model\n`);
+    if (wrote) process.stdout.write(`  wrote ${out}
+`);
+    else if (out !== undefined) process.stderr.write(`  not written: the run failed, so ${out} would hold a half-applied model
+`);
+    if (trackingWritten) process.stdout.write(`  tracking ${tracking!.path}
+`);
   }
   if (!result.ok) process.exit(1);
 }

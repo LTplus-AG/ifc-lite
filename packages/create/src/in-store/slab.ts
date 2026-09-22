@@ -25,7 +25,7 @@
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { toNativeLength, toNativePoint2, toNativePoint3, type SpatialAnchor } from './anchor.js';
-import { assertPositiveFinite, ownerHistoryRef } from './_emit-helpers.js';
+import { assertPositiveFinite, ownerHistoryRef, productGuid } from './_emit-helpers.js';
 
 export type SlabInStoreParams = SlabRectangleParams | SlabPolygonParams;
 
@@ -40,6 +40,8 @@ export interface SlabRectangleParams {
   Description?: string;
   ObjectType?: string;
   Tag?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
 }
 
 export interface SlabPolygonParams {
@@ -59,6 +61,8 @@ export interface SlabPolygonParams {
   Description?: string;
   ObjectType?: string;
   Tag?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
 }
 
 export interface SlabBuildResult {
@@ -192,7 +196,7 @@ export function addSlabToStore(
 
   // `IfcSlab.PredefinedType` only exists from IFC4 onward.
   const slabAttrs: Array<unknown> = [
-    generateIfcGuid(anchor.guidRandom),
+    productGuid(params, anchor.guidRandom),
     ownerHistoryRef(ownerHistoryId),
     params.Name ?? 'Slab',
     params.Description ?? null,

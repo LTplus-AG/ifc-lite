@@ -8,6 +8,12 @@ import type { BimBackend, EntityRef } from '../types.js';
 export class MutateNamespace {
   constructor(private backend: BimBackend) {}
 
+  /** Asynchronous batches in flight; the backend marker is held by the first and released by the last. */
+  private asyncDepth = 0;
+  private asyncLabel: string | undefined;
+  /** Synchronous batches open right now (nested `batch` calls stack). */
+  private syncDepth = 0;
+
   /** Set a property on an entity */
   setProperty(ref: EntityRef, psetName: string, propName: string, value: string | number | boolean): void {
     this.backend.mutate.setProperty(ref, psetName, propName, value);
@@ -30,10 +36,49 @@ export class MutateNamespace {
    */
   batch(label: string, fn: () => void): void {
     this.backend.mutate.batchBegin(label);
+    this.syncDepth += 1;
     try {
       fn();
     } finally {
+      this.syncDepth -= 1;
       this.backend.mutate.batchEnd(label);
+    }
+  }
+
+  /**
+   * `batch` for asynchronous work (a flow run, a fetch-then-write): the
+   * batch stays open across awaits and closes when the promise settles.
+   * Other writers on the same backend meanwhile land inside the batch.
+   *
+   * A `batchAsync` started while another is in flight — nested inside its
+   * callback or independent of it — JOINS that batch: no second marker is
+   * opened, and the one marker closes when the last of them settles. The
+   * two cases cannot be told apart without async context, and both need the
+   * same answer: their mutations interleave on the same undo stacks, so one
+   * undo step is the only grouping that leaves the model consistent. A
+   * second marker would close out of order (label mismatch) or, queued
+   * behind its parent, never open.
+   *
+   * Starting one INSIDE a synchronous `batch` is refused: the sync batch
+   * closes before the async work resumes, so its marker would be popped
+   * while the async one sits on top — a label mismatch that leaves both open.
+   */
+  async batchAsync<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    if (this.asyncDepth === 0) {
+      if (this.syncDepth > 0) throw new Error(`bim.mutate.batchAsync("${label}") cannot start inside a synchronous batch`);
+      this.backend.mutate.batchBegin(label);
+      this.asyncLabel = label;
+    }
+    this.asyncDepth += 1;
+    try {
+      return await fn();
+    } finally {
+      this.asyncDepth -= 1;
+      if (this.asyncDepth === 0) {
+        const open = this.asyncLabel!;
+        this.asyncLabel = undefined;
+        this.backend.mutate.batchEnd(open);
+      }
     }
   }
 

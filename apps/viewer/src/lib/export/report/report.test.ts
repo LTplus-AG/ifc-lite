@@ -23,7 +23,7 @@ function dataset(n: number): ChartDataset {
     fingerprint: 't',
   };
 }
-function agg(id: string, n: number, extra: Partial<ChartSpec> = {}): Aggregation {
+function agg(id: string, n: number, extra: Partial<Omit<ChartSpec, 'type' | 'dimension'>> = {}): Aggregation {
   return aggregate({ id, title: `Chart ${id}`, source: 'elements', type: 'bar', dimension: 'T', measure: { agg: 'count' }, ...extra }, dataset(n));
 }
 

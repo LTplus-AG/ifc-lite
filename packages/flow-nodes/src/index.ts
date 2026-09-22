@@ -4,6 +4,7 @@
 
 import { NodeRegistry, type HostFeatures } from '@ifc-lite/flow';
 import { coreNodes } from './core-nodes.js';
+import { elementNodes } from './element-nodes.js';
 import type { FlowHost } from './host.js';
 import { modelNodes } from './model-nodes.js';
 import { scriptNode } from './script-node.js';
@@ -14,10 +15,11 @@ import { writeNodes } from './write-nodes.js';
 export type { FlowHost, FlowNodeDef } from './host.js';
 export { requireCapability, toRef, toSdkRef, resolveByGlobalId, rememberGlobalId, forgetGlobalId, invalidateGlobalIdIndex } from './host.js';
 export { columnTypeOf, VALUE_TYPE_BY_COLUMN_TYPE } from './table-nodes.js';
+export type { ElementSpec } from './element-nodes.js';
 
 /** Every standard node, in one registry. */
 export function createStandardRegistry(): NodeRegistry<FlowHost> {
-  return new NodeRegistry<FlowHost>().registerAll([...coreNodes, ...modelNodes, ...tableNodes, ...viewerNodes, ...writeNodes, scriptNode]);
+  return new NodeRegistry<FlowHost>().registerAll([...coreNodes, ...modelNodes, ...tableNodes, ...viewerNodes, ...writeNodes, ...elementNodes, scriptNode]);
 }
 
 /** What a viewer-embedded host offers. Secrets are never available in the browser. */

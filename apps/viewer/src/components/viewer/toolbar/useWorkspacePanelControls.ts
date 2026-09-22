@@ -52,6 +52,7 @@ export function useWorkspacePanelControls() {
   const setScriptPanelVisible = useViewerStore((state) => state.setScriptPanelVisible);
   const ganttPanelVisible = useViewerStore((state) => state.ganttPanelVisible);
   const chartPanelVisible = useViewerStore((state) => state.chartPanelVisible);
+  const flowPanelVisible = useViewerStore((state) => state.flowPanelVisible);
   const documentPanelVisible = useViewerStore((state) => state.documentPanelVisible);
   const setGanttPanelVisible = useViewerStore((state) => state.setGanttPanelVisible);
   const layersPanelVisible = useViewerStore((state) => state.layersPanelVisible);
@@ -240,7 +241,7 @@ export function useWorkspacePanelControls() {
     // activity bar never had the bug because it reads `panelLocation`.
     for (const panel of floatingPanels) panels.add(panel.id);
     for (const id of poppedOutIds) panels.add(id);
-    const bottomFlags = { ganttPanelVisible, scriptPanelVisible, listPanelVisible, chartPanelVisible, documentPanelVisible };
+    const bottomFlags = { ganttPanelVisible, scriptPanelVisible, listPanelVisible, chartPanelVisible, documentPanelVisible, flowPanelVisible };
     for (const id of BOTTOM_PANEL_IDS) if (isBottomPanelOpen(bottomFlags, id)) panels.add(id);
     if (bcfPanelVisible) panels.add('bcf');
     if (idsPanelVisible) panels.add('validation');
@@ -269,6 +270,7 @@ export function useWorkspacePanelControls() {
     extensionsPanelVisible,
     ganttPanelVisible,
     chartPanelVisible,
+    flowPanelVisible,
     documentPanelVisible,
     idsPanelVisible,
     lensPanelVisible,
@@ -300,6 +302,7 @@ export function useWorkspacePanelControls() {
     if (activeWorkspacePanels.has('appearance')) return 'Appearance';
     if (activeWorkspacePanels.has('loadReport')) return 'Load Report';
     if (activeWorkspacePanels.has('cost')) return 'Cost';
+    if (activeWorkspacePanels.has('flow')) return 'Flow';
     return activeAnalysisExtension?.label ?? 'Analysis';
   }, [activeAnalysisExtension?.label, activeWorkspacePanels]);
 

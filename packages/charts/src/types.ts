@@ -44,7 +44,7 @@ export interface ChartDataset {
   fingerprint: string;
 }
 
-export type ChartType = 'bar' | 'stackedBar' | 'pie' | 'treemap' | 'histogram' | 'timeline';
+export type ChartType = 'bar' | 'stackedBar' | 'pie' | 'treemap' | 'histogram' | 'timeline' | 'elementCount';
 
 export type ChartAggregate = 'count' | 'sum';
 
@@ -94,7 +94,7 @@ export interface ChartSourceFilter {
   selector: string;
 }
 
-export interface ChartSpec {
+interface ChartSpecCommon {
   id: string;
   title: string;
   source: ChartSource;
@@ -102,9 +102,6 @@ export interface ChartSpec {
   elementField?: ElementFieldBinding;
   /** Narrows this chart's rows to those touching the matched elements, on top of the dashboard scope. */
   filter?: ChartSourceFilter;
-  type: ChartType;
-  /** Column id to bucket by. A `date` column for `timeline`, a `number` column for `histogram`. */
-  dimension: string;
   /** Second category column for `stackedBar`: one series per distinct value. */
   stackBy?: string;
   measure: ChartMeasure;
@@ -115,6 +112,28 @@ export interface ChartSpec {
   /** Histogram bin count; Sturges' rule when absent. */
   bins?: number;
 }
+
+/** Every chart type except `elementCount` buckets rows by a dimension column
+ *  and MUST declare it — there is no sentinel value that means "none". */
+export interface BucketedChartSpec extends ChartSpecCommon {
+  type: Exclude<ChartType, 'elementCount'>;
+  /** Column id to bucket by. A `date` column for `timeline`, a `number` column for `histogram`. */
+  dimension: string;
+}
+
+/** `elementCount` shows one total over the (optionally filtered/sliced)
+ *  source and never buckets by a column, so it carries no `dimension` at
+ *  all — not even an empty string (#5151). */
+export interface ElementCountChartSpec extends ChartSpecCommon {
+  type: 'elementCount';
+  dimension?: undefined;
+}
+
+/** A chart's persisted definition. Every type but `elementCount` requires a
+ *  `dimension`; `elementCount` must omit it (`aggregate()` and
+ *  `validateDashboardSpec()` both enforce this — see `aggregate.ts` and
+ *  `validate.ts`). */
+export type ChartSpec = BucketedChartSpec | ElementCountChartSpec;
 
 /** What a dashboard aggregates over; resolved by the host into a dataset
  *  scope. `list` (a saved-list scope) was removed in version 2 (#4946): the

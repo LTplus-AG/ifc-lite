@@ -35,9 +35,39 @@ export interface TrackedSet {
   /** Bumped on every `replace` run so fresh GlobalIds stay deterministic. */
   readonly generation: number;
   readonly entries: Readonly<Record<GroupKey, TrackedEntry>>;
+  /**
+   * Type of the node that made the set. Recorded so that a set whose node
+   * was deleted from the graph can still be removed from the model by that
+   * type's `remove` — without it the elements outlive the node that made
+   * them, the orphan this whole module exists to prevent.
+   */
+  readonly nodeType?: string;
 }
 
 export const TRACKING_SIDECAR_VERSION = 1;
+
+/** Shape check for a set read from storage: `load()` promises a `TrackedSet`, not whatever a hand-edited sidecar holds. */
+export function isTrackedSet(value: unknown): value is TrackedSet {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  if (typeof v.trackingKey !== 'string' || typeof v.generation !== 'number' || !Number.isInteger(v.generation)) return false;
+  if (v.nodeType !== undefined && typeof v.nodeType !== 'string') return false;
+  if (typeof v.entries !== 'object' || v.entries === null || Array.isArray(v.entries)) return false;
+  return Object.values(v.entries as Record<string, unknown>).every(
+    (e) => typeof e === 'object' && e !== null && typeof (e as TrackedEntry).globalId === 'string' && typeof (e as TrackedEntry).digest === 'string',
+  );
+}
+
+/** The `sets` record of a sidecar, or undefined when any set is malformed. */
+export function trackedSetsFrom(sets: unknown): Record<string, TrackedSet> | undefined {
+  if (typeof sets !== 'object' || sets === null || Array.isArray(sets)) return undefined;
+  const out: Record<string, TrackedSet> = {};
+  for (const [key, value] of Object.entries(sets as Record<string, unknown>)) {
+    if (!isTrackedSet(value) || value.trackingKey !== key) return undefined;
+    out[key] = value;
+  }
+  return out;
+}
 
 /** `<graph>.tracking.json` */
 export interface TrackingSidecar {
@@ -45,6 +75,32 @@ export interface TrackingSidecar {
   /** Layer stack id or file hash the sets were made against. */
   readonly pinnedTo: string;
   readonly sets: Readonly<Record<string, TrackedSet>>;
+}
+
+/** Where a run reads and writes tracked sets (a sidecar file, browser storage, memory). */
+export interface TrackingStore {
+  load(trackingKey: string): TrackedSet | undefined;
+  save(set: TrackedSet): void;
+  /** Every tracking key the store holds, so a run can find sets no node claims any more. */
+  keys(): readonly string[];
+  delete(trackingKey: string): void;
+}
+
+/** In-memory store: tests, and hosts that have not chosen a sidecar yet. */
+export class MemoryTrackingStore implements TrackingStore {
+  private readonly sets = new Map<string, TrackedSet>();
+  load(trackingKey: string): TrackedSet | undefined {
+    return this.sets.get(trackingKey);
+  }
+  save(set: TrackedSet): void {
+    this.sets.set(set.trackingKey, set);
+  }
+  keys(): readonly string[] {
+    return [...this.sets.keys()];
+  }
+  delete(trackingKey: string): void {
+    this.sets.delete(trackingKey);
+  }
 }
 
 export interface DesiredLane {

@@ -139,6 +139,10 @@ export const documentEn = {
 
   // Table block (#5142): TableBlockEditor.tsx, TablePreview.tsx, DocumentPanel.tsx.
   'document.addBlock.table': 'Table (from a list)',
+  'document.block.tableSourceLabel': 'Source',
+  'document.block.tableSourceAriaLabel': 'Table source',
+  'document.block.tableSourceList': 'List',
+  'document.block.tableSourceValidation': 'Validation results',
   'document.block.tableReplaceAriaLabel': 'List this table prints',
   'document.block.tableReplaceOption': '{name} — replace with…',
   'document.block.tableSavedGroup': 'Saved lists',
@@ -187,4 +191,35 @@ export const documentEn = {
     other: '{countDisplay} checks',
   },
   'document.preview.idsReportNoChecks': 'No checks in this report.',
+
+  // Validation-results table source (#5138): ValidationSourceEditor in TableBlockEditor.tsx, and
+  // the placeholder states TablePreview.tsx shows in place of rows.
+  'document.block.tableValidationRowsLabel': 'Rows',
+  'document.block.tableValidationRowsAriaLabel': 'Which rows to show',
+  'document.block.tableValidationRowsFailed': 'Failed entities',
+  'document.block.tableValidationRowsPassed': 'Passed entities',
+  'document.block.tableValidationRowsAll': 'All entities',
+  'document.block.tableValidationRowsSets': 'Sets (uniqueness / aggregate)',
+  'document.block.tableRuleLabel': 'Rule',
+  'document.block.tableRuleAriaLabel': 'Filter to one rule',
+  'document.block.tableRuleAll': 'Every rule',
+  'document.block.tableColumnsLabel': 'Columns',
+  'document.table.noReport': 'No validation report yet — run validation, then this table fills in.',
+  'document.table.ruleNotFound': 'The rule this table refers to is not in the current validation report.',
+  'document.table.validationNoRows': 'No rows match this rule.',
+
+  // table-column-labels.ts (#5138 review): one column header per TableColumnId, for the
+  // column-toggle editor and the on-screen table — the printed PDF keeps the plain-English
+  // VALIDATION_COLUMN_LABEL these match, unlocalized like every other PDF fallback string.
+  'document.table.column.rule': 'Rule',
+  'document.table.column.result': 'Result',
+  'document.table.column.entityType': 'Entity type',
+  'document.table.column.name': 'Name',
+  'document.table.column.globalId': 'GlobalId',
+  'document.table.column.model': 'Model',
+  'document.table.column.actual': 'Actual',
+  'document.table.column.expected': 'Expected',
+  'document.table.column.reason': 'Reason',
+  'document.table.column.set': 'Set',
+  'document.table.column.members': 'Members',
 } as const satisfies Record<string, TranslationValue>;

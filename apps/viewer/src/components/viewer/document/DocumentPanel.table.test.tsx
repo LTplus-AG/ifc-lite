@@ -23,7 +23,7 @@ import { fixtureModel } from '@/test/store-fixture.js';
 import { render, click, cleanup } from '@/test/render.js';
 import type { DocumentPdfSeams } from '@/lib/document/generate-document-pdf.js';
 import type { ReportTableArgs } from '@/lib/export/report/generate-report-pdf.js';
-import { DOCUMENT_VERSION, type DocumentSpec, type TableBlock } from '@/lib/document/types.js';
+import { DOCUMENT_VERSION, type DocumentSpec, type ListTableSource, type TableBlock } from '@/lib/document/types.js';
 import type { TableState } from '@/lib/document/resolve-table.js';
 import { DocumentPanel } from './DocumentPanel.js';
 import { TableBlockEditor } from './TableBlockEditor.js';
@@ -138,9 +138,10 @@ describe('DocumentPanel table block (#5142)', () => {
     const doc = useViewerStore.getState().documents[0];
     const block = doc.blocks.find((b): b is TableBlock => b.kind === 'table');
     assert.ok(block, 'a table block was added');
-    assert.equal(block.source.list.name, 'Wall Schedule', 'the first preset, with no saved lists');
-    assert.equal(block.source.fromListId, 'preset-wall-schedule');
-    assert.equal('expressIdsByModel' in block.source.list, false);
+    const source = block.source as ListTableSource;
+    assert.equal(source.list.name, 'Wall Schedule', 'the first preset, with no saved lists');
+    assert.equal(source.fromListId, 'preset-wall-schedule');
+    assert.equal('expressIdsByModel' in source.list, false);
     assert.ok(ui.querySelector('[data-block-kind="table"] [data-table-block-editor]'));
 
     // Before the frame fires the preview says the list is running, and Export waits for it.
@@ -331,7 +332,7 @@ describe('TableBlockEditor — Edit in Lists and the saved-list back-pointer (re
 
   function Harness({ initial }: { initial: TableBlock }) {
     const [block, setBlock] = useState(initial);
-    return <div><span data-from={block.source.fromListId ?? ''} /><TableBlockEditor block={block} onChange={setBlock} /></div>;
+    return <div><span data-from={(block.source as ListTableSource).fromListId ?? ''} /><TableBlockEditor block={block} onChange={setBlock} /></div>;
   }
   const fromOf = (ui: HTMLElement): string => ui.querySelector('[data-from]')?.getAttribute('data-from') ?? '';
 
@@ -361,5 +362,40 @@ describe('TableBlockEditor — Edit in Lists and the saved-list back-pointer (re
     // Save in the builder: the list appears in the library, and the block follows it.
     act(() => { useViewerStore.getState().addListDefinition({ ...draft }); });
     assert.equal(fromOf(ui), draft.id);
+  });
+});
+
+describe('TableBlockEditor — source-kind switch (#5138)', () => {
+  beforeEach(async () => {
+    const model = await parsedModel();
+    useViewerStore.setState({ models: new Map([[model.id, model]]), activeModelId: model.id, listDefinitions: [], idsValidationReport: null });
+  });
+  afterEach(() => cleanup());
+
+  function Harness({ initial }: { initial: TableBlock }) {
+    const [block, setBlock] = useState(initial);
+    return <TableBlockEditor block={block} onChange={setBlock} />;
+  }
+
+  it('switching between List and Validation results keeps title/caption, and each kind renders its own fields', () => {
+    const initial: TableBlock = { kind: 'table', id: 't', source: { kind: 'list', list: wallList(), fromListId: 'saved-walls' }, title: 'My table', caption: 'My caption' };
+    const ui = render(<Harness initial={initial} />);
+    assert.ok(ui.querySelector('[data-table-block-editor]'));
+    assert.equal(ui.querySelector<HTMLInputElement>('[aria-label="Table title"]')?.value, 'My table');
+    assert.equal(ui.querySelector<HTMLInputElement>('[aria-label="Table caption"]')?.value, 'My caption');
+    assert.ok(ui.querySelector('[data-table-update], [data-table-edit-in-lists]'), 'the list-specific controls render for a list source');
+    assert.equal(ui.querySelector('[data-table-columns]'), null, 'not the validation column toggles');
+
+    const sourceSelect = ui.querySelector<HTMLSelectElement>('[aria-label="Table source"]')!;
+    act(() => {
+      sourceSelect.value = 'validation';
+      sourceSelect.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+
+    assert.equal(ui.querySelector<HTMLInputElement>('[aria-label="Table title"]')?.value, 'My table', 'title survives the source switch');
+    assert.equal(ui.querySelector<HTMLInputElement>('[aria-label="Table caption"]')?.value, 'My caption', 'caption survives the source switch');
+    assert.ok(ui.querySelector('[data-table-columns]'), 'the validation column toggles render for a validation source');
+    assert.equal(ui.querySelector('[data-table-edit-in-lists]'), null, 'not the list-specific controls');
+    assert.ok(ui.querySelector('select[aria-label="Which rows to show"]'));
   });
 });

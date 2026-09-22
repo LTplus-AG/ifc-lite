@@ -27,6 +27,7 @@ import { entityForPath, pathForEntity } from './entity-paths';
 import { remoteEntityDefinition } from './remote-entity-definition';
 import { attributeNamesForStore } from './schema-attribute-names';
 import { decodeRoomAttributeValue, encodeRoomAttributeEdit } from './entity-reference-wire';
+import { rejectIfLocallyDeleted } from './remote-write-guard';
 
 /** The slice of the collab runtime this bridge needs (injected, never eager-imported). */
 export interface CollabDocApi {
@@ -209,9 +210,8 @@ export function applyRemoteAttribute(
   attrName: string,
   value: unknown,
 ): string | null {
-  // Refuses a write to a locally tombstoned entity; rationale in
-  // mutation-bridge.tombstone.test.ts (why here, not in setPositionalAttribute).
-  if (view.isDeleted(entityId)) return `entity ${entityId} is locally deleted`;
+  const tombstoned = rejectIfLocallyDeleted(view, entityId); // see remote-write-guard.ts
+  if (tombstoned) return tombstoned;
   const plainName = attrName.startsWith('bsi::ifc::prop::')
     ? attrName.slice('bsi::ifc::prop::'.length)
     : attrName;

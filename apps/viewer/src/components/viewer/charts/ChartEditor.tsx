@@ -39,6 +39,19 @@ const SOURCE_LABELS: Record<ChartSource, string> = {
   compare: 'Model compare',
 };
 
+/** One detection rule of the current clash run, for the "Clash rule" picker
+ *  (#5156) — the `ClashRule.id`/`name` pair `ClashPanel.tsx` already reads
+ *  off `result.rulesRun`, passed down rather than read from the store here
+ *  so the editor stays a plain function of its props. */
+export interface ClashRuleOption {
+  id: string;
+  name: string;
+}
+
+/** Module-level so a caller that passes no rules does not hand the memo a
+ *  fresh `[]` every render (same reasoning as `useChartDatasets`'s `NO_FIELDS`). */
+const NO_CLASH_RULES: readonly ClashRuleOption[] = [];
+
 export interface ChartEditorProps {
   spec: ChartSpec;
   datasets: Record<ChartSource, ChartDataset>;
@@ -46,6 +59,8 @@ export interface ChartEditorProps {
   onCancel: () => void;
   elementFieldCatalog: ElementFieldCatalog;
   elementFieldCatalogLoading: boolean;
+  /** The rules of the current clash run, for `filter.clashRule` (#5156). */
+  clashRuleOptions?: readonly ClashRuleOption[];
 }
 
 /**
@@ -69,12 +84,17 @@ function dimensionColumns(type: ChartType, columns: readonly ChartDatasetColumn[
   return columns.filter((c) => c.kind === 'category' || c.kind === 'boolean');
 }
 
-export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCatalog, elementFieldCatalogLoading }: ChartEditorProps) {
+export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCatalog, elementFieldCatalogLoading, clashRuleOptions = NO_CLASH_RULES }: ChartEditorProps) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<ChartSpec>(spec);
   const schemaVersion = useActiveSchemaVersion();
   const [filterText, setFilterText] = useState(spec.filter?.selector ?? '');
   const [filterFeedback, setFilterFeedback] = useState<SelectorFeedback | null>(null);
+  // '' means "All rules" — the same UI-only sentinel `stackBy`'s `<select>`
+  // already uses (`value={draft.stackBy ?? ''}`); it is never what gets
+  // persisted (#5156's `filter.clashRule` is `undefined`, not `''`, for "no
+  // filter" — see the submit handler).
+  const [clashRuleId, setClashRuleId] = useState(spec.filter?.clashRule ?? '');
   const filterApplicable = !CHART_FILTER_NOT_APPLICABLE_SOURCES.has(draft.source);
   // `null` means "no filter typed" — always valid; a real reading is either
   // ok or a refusal message (#4946's all-or-nothing rule, `readChartFilter`).
@@ -99,9 +119,10 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
     setDraft({ ...draft, source, elementField: undefined, dimension: allowed[0]?.id ?? '', stackBy: undefined, measure: { agg: 'count' } });
     // Not every source can be filtered (#4946); switching to one clears the
     // field rather than leave text behind that the next save would drop
-    // silently.
+    // silently. `clashRule` is meaningless off `clash` for the same reason.
     setFilterText('');
     setFilterFeedback(null);
+    setClashRuleId('');
   };
 
   const setElementField = (elementField: ElementFieldBinding | undefined): void => {
@@ -154,7 +175,16 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
           return;
         }
         if (!valid) return;
-        const filter = filterApplicable && trimSelectorWhitespace(filterText).length > 0 ? { selector: trimSelectorWhitespace(filterText) } : undefined;
+        const trimmedSelector = trimSelectorWhitespace(filterText);
+        // A rule id only ever narrows `clash`; picking one on any other
+        // source cannot happen through this form (the control is hidden),
+        // but a stale `clashRuleId` from a previous source must not leak
+        // into the saved spec (#5156, mirrors `elementField`'s per-source
+        // guard above).
+        const clashRule = draft.source === 'clash' && clashRuleId ? clashRuleId : undefined;
+        const filter = filterApplicable && (trimmedSelector.length > 0 || clashRule !== undefined)
+          ? { selector: trimmedSelector, clashRule }
+          : undefined;
         onSave({ ...draft, title: draft.title.trim(), filter });
       }}
     >
@@ -171,6 +201,15 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
         </label>
         {draft.source === 'elements' && (
           <ElementFieldPicker value={draft.elementField} catalog={elementFieldCatalog} loading={elementFieldCatalogLoading} className={field} onChange={setElementField} />
+        )}
+        {draft.source === 'clash' && (
+          <label className="flex flex-col gap-0.5">
+            <span className="text-muted-foreground">{t('chartEditor.clashRuleLabel')}</span>
+            <select className={field} value={clashRuleId} onChange={(e) => setClashRuleId(e.target.value)} aria-label={t('chartEditor.clashRuleAriaLabel')}>
+              <option value="">{t('chartEditor.clashRuleAllOption')}</option>
+              {clashRuleOptions.map((rule) => <option key={rule.id} value={rule.id}>{rule.name}</option>)}
+            </select>
+          </label>
         )}
         <label className="col-span-2 flex flex-col gap-0.5">
           <span className="text-muted-foreground">{t('chartEditor.sourceFilterLabel')}</span>

@@ -98,16 +98,37 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
     if (!isRecord(chart.filter)) {
       errors.push({ path: filterPath, message: 'expected { selector: string }' });
     } else {
-      str(errors, chart.filter, 'selector', filterPath);
-      // `str` only rejects an empty string; a whitespace-only one ("   ")
-      // would otherwise pass validation and then resolve to "no filter" at
-      // every consumer (they all trim), stranding the chart on "Resolving
-      // filter…" forever with no matching entry to look up (review finding).
-      if (typeof chart.filter.selector === 'string' && chart.filter.selector.length > 0 && chart.filter.selector.trim().length === 0) {
+      // `selector` is a required STRING on the type but, since #5156, may be
+      // EMPTY — a filter can now narrow by `clashRule` alone, with no
+      // selector text at all; `ChartEditor` always writes the key (possibly
+      // `''`) rather than omitting it, so this only rejects the wrong TYPE.
+      if (typeof chart.filter.selector !== 'string') {
+        errors.push({ path: `${filterPath}.selector`, message: 'expected a string' });
+      } else if (chart.filter.selector.length > 0 && chart.filter.selector.trim().length === 0) {
+        // A whitespace-only selector ("   ") would otherwise pass and then
+        // resolve to "no filter" at every consumer (they all trim),
+        // stranding the chart on "Resolving filter…" forever with no
+        // matching entry to look up (review finding).
         errors.push({ path: `${filterPath}.selector`, message: 'expected a non-empty selector' });
       }
       if (typeof chart.source === 'string' && CHART_FILTER_NOT_APPLICABLE_SOURCES.has(chart.source as ChartSource)) {
         errors.push({ path: filterPath, message: 'a source filter is not applicable to bcf or compare' });
+      }
+      // `clashRule` (#5156): absent means "every rule", same as before this
+      // field existed — never an empty string for that (an empty string
+      // would be indistinguishable from absent at every reader, which is
+      // exactly the sentinel pattern rejected in review on PR #5151).
+      let hasClashRule = false;
+      if (chart.filter.clashRule !== undefined) {
+        str(errors, chart.filter, 'clashRule', filterPath);
+        hasClashRule = typeof chart.filter.clashRule === 'string' && chart.filter.clashRule.length > 0;
+        if (typeof chart.source === 'string' && chart.source !== 'clash') {
+          errors.push({ path: `${filterPath}.clashRule`, message: 'clashRule is only valid for the clash source' });
+        }
+      }
+      const selectorActive = typeof chart.filter.selector === 'string' && chart.filter.selector.trim().length > 0;
+      if (!selectorActive && !hasClashRule) {
+        errors.push({ path: filterPath, message: 'a filter needs a non-empty selector, a clashRule, or both' });
       }
     }
   }

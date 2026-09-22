@@ -52,6 +52,10 @@ export const chartsEn = {
   'chartEditor.sourceLabelEmpty': 'Source (nothing loaded for this source yet)',
   'chartEditor.sourceLabelWithCount': 'Source ({count} rows)',
   'chartEditor.sourceAriaLabel': 'Source',
+  // ChartEditor.tsx — clash rule filter, `clash` source only (#5156)
+  'chartEditor.clashRuleLabel': 'Clash rule',
+  'chartEditor.clashRuleAriaLabel': 'Clash rule',
+  'chartEditor.clashRuleAllOption': 'All rules',
   'chartEditor.chartTypeLabel': 'Chart',
   'chartEditor.chartTypeAriaLabel': 'Chart type',
   'chartEditor.groupByLabel': 'Group by',

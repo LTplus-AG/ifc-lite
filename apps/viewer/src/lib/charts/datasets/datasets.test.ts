@@ -27,7 +27,7 @@ import { buildCompareDataset, COMPARE_COLUMNS } from './compare.js';
 import { buildElementsDataset } from './elements.js';
 import { DASHBOARD_PRESETS } from '../presets.js';
 import { createElementFieldReader } from '../element-field-reader.js';
-import { applyChartFilter, resolveChartFilter } from '../source-filter.js';
+import { applyChartFilter, applyClashRuleFilter, resolveChartFilter } from '../source-filter.js';
 import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models.js';
 import { toGlobalIdFromModels } from '@/store/globalId.js';
 
@@ -680,5 +680,69 @@ END-ISO-10303-21;`;
     const b = applyChartFilter(dataset, new Set([GID(42)]));
     assert.notEqual(a.fingerprint, b.fingerprint, 'ids.size alone would have collided {wall} and {beam}');
     assert.equal(applyChartFilter(dataset, new Set([GID(41)])).fingerprint, a.fingerprint, 'the same id set fingerprints the same');
+  });
+
+  // #5156 — building a chart from ONE clash run/check instead of every rule
+  // of the current result being counted together.
+  it('applyClashRuleFilter: narrows to one rule\'s rows, composes with applyChartFilter, and leaves an unknown dataset untouched', async () => {
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run(
+      [
+        box('0Wall00000000000000041', GID(41), 'IfcWall', [0, 0, 0], [1, 1, 1]),
+        box('0Beam00000000000000042', GID(42), 'IfcBeam', [0.5, 0, 0], [1.5, 1, 1]),
+        box('0Door00000000000000043', GID(43), 'IfcDoor', [0.8, 0, 0], [1.8, 1, 1]),
+      ],
+      [{ id: 'str', name: 'STR', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }, { id: 'arc', name: 'ARC', a: 'IfcWall', b: 'IfcDoor', mode: 'hard' }],
+    );
+    assert.equal(result.clashes.length, 2, 'two rules, one clash each');
+    useViewerStore.setState({ clashResult: result, clashGroups: null, clashReviews: new Map(), clashRunSeq: 9 });
+    const ds = buildClashDataset(useViewerStore.getState());
+    assert.equal(ds.rows.length, 2, 'unfiltered: both rules counted together — the bug #5156 reports');
+
+    const strOnly = applyClashRuleFilter(ds, 'str');
+    assert.equal(strOnly.rows.length, 1, 'narrowed to the STR rule alone');
+    assert.deepEqual([...strOnly.rows[0].ids].sort(), [GID(41), GID(42)]);
+    assert.notEqual(strOnly.fingerprint, ds.fingerprint, 'a rule-filtered dataset never reuses the unfiltered fingerprint');
+
+    const arcOnly = applyClashRuleFilter(ds, 'arc');
+    assert.equal(arcOnly.rows.length, 1, 'narrowed to the ARC rule alone');
+    assert.deepEqual([...arcOnly.rows[0].ids].sort(), [GID(41), GID(43)]);
+    assert.notEqual(arcOnly.fingerprint, strOnly.fingerprint, 'different rules fingerprint differently');
+
+    const unknownRule = applyClashRuleFilter(ds, 'not-a-real-rule-id');
+    assert.equal(unknownRule.rows.length, 0, 'an id naming no rule matches nothing — never falls back to "all"');
+
+    // Composes with the selector filter (#4946): AND, not OR.
+    const wallIds = new Set([GID(41)]);
+    const strAndWall = applyClashRuleFilter(applyChartFilter(ds, wallIds), 'str');
+    assert.equal(strAndWall.rows.length, 1);
+    const arcAndWall = applyClashRuleFilter(applyChartFilter(ds, wallIds), 'arc');
+    assert.equal(arcAndWall.rows.length, 1);
+
+    // A source with no `Rule` column (e.g. `elements`) is a silent no-op,
+    // not a thrown error — the caller (`validate.ts`) is what stops a
+    // `clashRule` from ever reaching a non-clash dataset.
+    const elementsDs = buildElementsDataset({ kind: 'all' }, useViewerStore.getState());
+    assert.deepEqual(applyClashRuleFilter(elementsDs, 'str'), elementsDs);
+  });
+
+  it('validateDashboardSpec: clashRule is only valid on a clash chart, must be non-empty, and a filter needs a selector or a clashRule (#5156)', () => {
+    const base = { version: 2 as const, id: 'd', name: 'D', scope: { kind: 'all' as const }, layout: [] };
+    const chart = (filter: unknown, source: 'clash' | 'elements' = 'clash') => ({
+      id: 'c1', title: 'C', source, type: 'bar', dimension: CLASH_COLUMNS.rule, measure: { agg: 'count' }, filter,
+    });
+
+    assert.deepEqual(validateDashboardSpec({ ...base, charts: [chart({ selector: '', clashRule: 'str' })] }), [], 'clashRule alone, no selector text, is valid');
+    assert.deepEqual(validateDashboardSpec({ ...base, charts: [chart({ selector: 'IfcWall', clashRule: 'str' })] }), [], 'both together are valid');
+
+    const emptyFilter = validateDashboardSpec({ ...base, charts: [chart({ selector: '' })] });
+    assert.equal(emptyFilter.length, 1, 'neither a selector nor a clashRule: rejected, not silently "no filter"');
+    assert.match(emptyFilter[0].message, /selector.*clashRule|clashRule.*selector/);
+
+    const emptyClashRule = validateDashboardSpec({ ...base, charts: [chart({ selector: '', clashRule: '' })] });
+    assert.ok(emptyClashRule.some((e) => e.path === '.charts[0].filter.clashRule'), 'an empty-string clashRule is rejected outright, never read as "no filter"');
+
+    const wrongSource = validateDashboardSpec({ ...base, charts: [chart({ selector: '', clashRule: 'str' }, 'elements')] });
+    assert.ok(wrongSource.some((e) => e.path === '.charts[0].filter.clashRule' && e.message.includes('only valid for the clash source')));
   });
 });

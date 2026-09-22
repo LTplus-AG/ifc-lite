@@ -166,3 +166,39 @@ describe('#4857 store-adapter cost authoring pushes CREATE_ENTITY undo', () => {
     assert.throws(() => adapter.removeCostEntity('m', 1), /Editing is disabled for your role/);
   });
 });
+
+/**
+ * #5167: the structural surface is spread in from the same kind of shared SDK
+ * factory as cost, so it needs the same collab gate and the same undo
+ * registration. Spreading it raw let a read-only participant mutate the local
+ * overlay, and left authored entities unpublished in a shared room.
+ *
+ * These live beside the cost cases deliberately: they need the identical
+ * store/room/mutation-view harness above, and duplicating it would let the two
+ * copies drift on exactly the behaviour being asserted.
+ */
+describe('#5167 store-adapter structural authoring', () => {
+  it('refuses every structural-authoring call when canCollabEdit() is false', async () => {
+    const { store } = await makeStore(() => false);
+    const adapter = createStoreAdapter(store);
+    assert.throws(
+      () => adapter.addStructuralAnalysisModel('m', { Name: 'M' }),
+      /Editing is disabled for your role/,
+    );
+    assert.throws(
+      () => adapter.addStructuralLoadGroup('m', { Name: 'G', ActionType: 'PERMANENT_G', ActionSource: 'DEAD_LOAD_G' }),
+      /Editing is disabled for your role/,
+    );
+    assert.throws(
+      () => adapter.assignToStructuralGroup('m', 1, [2]),
+      /Editing is disabled for your role/,
+    );
+  });
+
+  it('pushes a CREATE_ENTITY undo entry naming the structural type', async () => {
+    const { store, undoCalls } = await makeStore();
+    const adapter = createStoreAdapter(store);
+    const ref = adapter.addStructuralAnalysisModel('m', { Name: 'Authored' });
+    assert.deepEqual(undoCalls, [{ modelId: ref.modelId, entityId: ref.expressId, ifcType: 'IFCSTRUCTURALANALYSISMODEL' }]);
+  });
+});

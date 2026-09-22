@@ -88,6 +88,11 @@ export interface StructuralCurveMemberBuildResult {
   memberId: number;
   placementId: number;
   axisDirectionId: number;
+  /** The `IfcCartesianPoint` each `IfcVertexPoint` below is built on. Exposed
+   *  because they are owned too: a cascade delete driven by this result would
+   *  otherwise orphan both points (#5167 review). */
+  point1Id: number;
+  point2Id: number;
   vertex1Id: number;
   vertex2Id: number;
   edgeId: number;
@@ -173,6 +178,8 @@ export function addStructuralCurveMemberToStore(
     memberId,
     placementId,
     axisDirectionId,
+    point1Id: pt1Id,
+    point2Id: pt2Id,
     vertex1Id,
     vertex2Id,
     edgeId,

@@ -14,13 +14,13 @@ import type { StoreApi } from './types.js';
 
 type CostMethods = ReturnType<typeof createCostStoreBackend>;
 
-interface OverlaySnapshot {
+export interface OverlaySnapshot {
   created: ReadonlySet<number>;
   deleted: ReadonlySet<number>;
   positional: ReadonlyMap<number, string>;
 }
 
-function snapshotOverlay(view: MutablePropertyView | null): OverlaySnapshot {
+export function snapshotOverlay(view: MutablePropertyView | null): OverlaySnapshot {
   if (!view) return { created: new Set(), deleted: new Set(), positional: new Map() };
   const positional = new Map<number, string>();
   const ids = new Set([
@@ -47,19 +47,21 @@ function snapshotOverlay(view: MutablePropertyView | null): OverlaySnapshot {
  * removals, and rewritten reference slots on existing records are mirrored
  * as attribute edits carrying room paths, never local express ids.
  */
-function mirrorCostOverlayDelta(
+export function mirrorStoreOverlayDelta(
   store: StoreApi,
   modelId: string,
   editor: StoreEditor,
   dataStore: IfcDataStore,
   before: OverlaySnapshot,
+  /** Names the surface in the publish failure, e.g. 'cost' or 'structural'. */
+  label: string,
 ): void {
   const state = store.getState();
   const view = getMutationViewForModel(store, modelId);
   if (!view) return;
   const created = view.getNewEntities().map(entity => entity.expressId).filter(id => !before.created.has(id));
   if (created.length > 0 && !ensureSourceRoomEntities(store, modelId, editor, created, dataStore)) {
-    throw new Error('bim.store: the new cost entities could not be published to the room');
+    throw new Error(`bim.store: the new ${label} entities could not be published to the room`);
   }
   for (const id of view.getTombstones()) {
     if (!before.deleted.has(id)) state.mirrorEntityRemove(modelId, id);
@@ -89,13 +91,20 @@ function mirrorCostOverlayDelta(
  * marks dirty and clears the undo/redo stacks (`markCostRelationshipMutation`)
  * only when a call actually changed the overlay.
  */
-export function withCostMutationTracking(
-  methods: CostMethods,
+/**
+ * The collab gate + shared-room mirroring every factory-backed `bim.store`
+ * authoring surface needs. Cost (#4857) and structural (#5167) both spread a
+ * shared SDK factory into the adapter, which bypasses the `assertCanEdit` and
+ * room-publication path the hand-written element methods get — so the wrapper
+ * lives here once rather than being re-derived per surface.
+ */
+export function createStoreMutationTracker(
   store: StoreApi,
   resolve: (modelId: string) => { editor: StoreEditor; dataStore: IfcDataStore } | null,
-): CostMethods {
-  // Collab role gate BEFORE the local commit, once here so no tenth cost
-  // method can be added later without it.
+  label: string,
+) {
+  // Collab role gate BEFORE the local commit, once here so no method can be
+  // added later without it.
   const assertCanEdit = (): void => {
     if (!store.getState().canCollabEdit()) {
       throw new Error('Editing is disabled for your role in this shared session');
@@ -116,15 +125,24 @@ export function withCostMutationTracking(
     after(modelId, result);
     if (before) {
       const target = resolve(modelId);
-      if (target) mirrorCostOverlayDelta(store, modelId, target.editor, target.dataStore, before);
+      if (target) mirrorStoreOverlayDelta(store, modelId, target.editor, target.dataStore, before, label);
     }
     return result;
   };
   const create = <A extends [string, ...unknown[]]>(ifcType: string, fn: (...args: A) => EntityRef) =>
     tracked(fn, (_modelId, ref: EntityRef) => store.getState().pushCreateEntityUndo(ref.modelId, ref.expressId, ifcType));
-  // The backend itself reports a relationship rewrite (`markCostRelationshipMutation`)
-  // only when the overlay actually changed; the wrapper only mirrors.
+  // The backend itself reports a relationship rewrite only when the overlay
+  // actually changed; the wrapper only mirrors.
   const relationship = <A extends [string, ...unknown[]], R>(fn: (...args: A) => R) => tracked(fn, () => {});
+  return { create, relationship };
+}
+
+export function withCostMutationTracking(
+  methods: CostMethods,
+  store: StoreApi,
+  resolve: (modelId: string) => { editor: StoreEditor; dataStore: IfcDataStore } | null,
+): CostMethods {
+  const { create, relationship } = createStoreMutationTracker(store, resolve, 'cost');
   return {
     ...methods,
     addCostSchedule: create('IFCCOSTSCHEDULE', methods.addCostSchedule),

@@ -54,6 +54,7 @@ import type { StoreApi } from './types.js';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { createCostAdapter } from './cost-adapter.js';
 import { withCostMutationTracking } from './store-adapter-cost.js';
+import { withStructuralMutationTracking } from './store-adapter-structural.js';
 import { getMutationViewForModel, getOrCreateMutationView, isLegacyMutationRef, normalizeMutationModelId } from './mutation-view.js';
 import { attributeNamesForStore, referenceAttributeSlotsForStore } from '@/lib/collab/schema-attribute-names.js';
 import { encodeRoomAttributeValue, referencedExpressIds } from '@/lib/collab/entity-reference-wire.js';
@@ -187,16 +188,16 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
    * for entities authored in one to be visible to the other.
    */
   const resolveStoreModel = (modelId: string | undefined) => {
-      const requested = modelId ?? '';
-      const editor = getEditor(requested);
-      const dataStore = resolveDataStore(requested);
-      if (!editor || !dataStore) throw new Error(`bim.store: no model loaded for id "${modelId}"`);
-      const ownerHistoryId = resolveLiveOwnerHistoryId(dataStore, editor);
-      const normalized = normalizeMutationModelId(store.getState(), requested);
-      const mutationView = store.getState().getMutationView(normalized);
-      if (!mutationView) throw new Error(`bim.store: no mutation view for model id "${modelId}"`);
-      return { modelId: requested, store: dataStore, editor, mutationView, ownerHistoryId };
-    };
+    const requested = modelId ?? '';
+    const editor = getEditor(requested);
+    const dataStore = resolveDataStore(requested);
+    if (!editor || !dataStore) throw new Error(`bim.store: no model loaded for id "${modelId}"`);
+    const ownerHistoryId = resolveLiveOwnerHistoryId(dataStore, editor);
+    const normalized = normalizeMutationModelId(store.getState(), requested);
+    const mutationView = store.getState().getMutationView(normalized);
+    if (!mutationView) throw new Error(`bim.store: no mutation view for model id "${modelId}"`);
+    return { modelId: requested, store: dataStore, editor, mutationView, ownerHistoryId };
+  };
 
   return {
     addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef {
@@ -340,8 +341,15 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       return editor && dataStore ? { editor, dataStore } : null;
     }),
     // Structural authoring (#5167 S.1). Same shared resolver as cost, so an
-    // entity authored through either surface is visible to the other.
-    ...createStructuralStoreBackend(resolveStoreModel),
+    // entity authored through either surface is visible to the other, and the
+    // same collab gate + room mirroring — spreading the factory raw would let
+    // a read-only participant mutate the local overlay and would leave the
+    // authored entities unpublished in a shared room.
+    ...withStructuralMutationTracking(createStructuralStoreBackend(resolveStoreModel), store, (modelId) => {
+      const editor = getEditor(modelId);
+      const dataStore = resolveDataStore(modelId);
+      return editor && dataStore ? { editor, dataStore } : null;
+    }),
   };
 }
 

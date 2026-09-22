@@ -701,12 +701,12 @@ END-ISO-10303-21;`;
 
     const strOnly = applyClashRuleFilter(ds, 'str');
     assert.equal(strOnly.rows.length, 1, 'narrowed to the STR rule alone');
-    assert.deepEqual([...strOnly.rows[0].ids].sort(), [GID(41), GID(42)]);
+    assert.deepEqual(Array.from(strOnly.rows[0].ids).sort(), [GID(41), GID(42)]);
     assert.notEqual(strOnly.fingerprint, ds.fingerprint, 'a rule-filtered dataset never reuses the unfiltered fingerprint');
 
     const arcOnly = applyClashRuleFilter(ds, 'arc');
     assert.equal(arcOnly.rows.length, 1, 'narrowed to the ARC rule alone');
-    assert.deepEqual([...arcOnly.rows[0].ids].sort(), [GID(41), GID(43)]);
+    assert.deepEqual(Array.from(arcOnly.rows[0].ids).sort(), [GID(41), GID(43)]);
     assert.notEqual(arcOnly.fingerprint, strOnly.fingerprint, 'different rules fingerprint differently');
 
     const unknownRule = applyClashRuleFilter(ds, 'not-a-real-rule-id');

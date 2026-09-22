@@ -80,6 +80,13 @@ describe('runRuleSet — unique (#5138, plan §4.5)', () => {
     assert.equal(dupRows.length, 2);
     for (const row of dupRows) assert.equal(row.requirementResults[0].actualValue, 'Office (2×)');
     assert.equal(spec.status, 'fail');
+    // #5177 regression: `unique`'s complement arithmetic must stay exactly
+    // as it is today — every duplicate member gets a failing row, so
+    // `failedCount` reads straight off them (2 duplicates of 3 applicable).
+    assert.equal(spec.applicableCount, 3);
+    assert.equal(spec.failedCount, 2);
+    assert.equal(spec.passedCount, 1);
+    assert.equal(spec.passRate, 33);
   });
 
   it('unique.federation: the same Name in two parsed models is a duplicate; perModel scope is not', async () => {
@@ -157,11 +164,23 @@ describe('runRuleSet — aggregate (#5138, plan §4.6)', () => {
     const failSpec = failing.specificationResults[0];
     assert.equal(failSpec.setResults?.[0].passed, false, '287.4 is not > 300');
     assert.equal(failSpec.status, 'fail');
+    // #5177 regression: the group fails on its AGGREGATE value — no
+    // individual Space's own NetFloorArea is absent/non-numeric, so
+    // `entityResults` is empty. Before the fix, `failedCount` read 0 and
+    // `passRate` read 100 here despite `status: 'fail'`.
+    assert.equal(failSpec.entityResults.length, 0, 'no element is individually excluded');
+    assert.equal(failSpec.applicableCount, 3);
+    assert.equal(failSpec.failedCount, 1, 'one failing group, not zero');
+    assert.equal(failSpec.passedCount, 2);
+    assert.equal(failSpec.passRate, 66, 'must read below 100 next to a fail status');
 
     const passing = await run({ m1: store }, sumRule('gte', 287));
     const passSpec = passing.specificationResults[0];
     assert.equal(passSpec.setResults?.[0].passed, true, '287.4 >= 287');
     assert.equal(passSpec.status, 'pass');
+    assert.equal(passSpec.failedCount, 0);
+    assert.equal(passSpec.passedCount, 3);
+    assert.equal(passSpec.passRate, 100);
   });
 
   it('aggregate.count.groupBy.parent: with and without universe — the empty-group assembly only shows up (and fails) WITH universe', async () => {
@@ -188,18 +207,36 @@ describe('runRuleSet — aggregate (#5138, plan §4.6)', () => {
     }
 
     const without = await run({ m1: store }, countRule(false));
-    const withoutGroups = without.specificationResults[0].setResults ?? [];
+    const withoutSpec = without.specificationResults[0];
+    const withoutGroups = withoutSpec.setResults ?? [];
     assert.equal(withoutGroups.length, 1, 'without universe, an assembly with zero plates never appears as a group');
     assert.equal(withoutGroups[0].groupKey, 'Assembly-1');
     assert.equal(withoutGroups[0].passed, true);
+    assert.equal(withoutSpec.status, 'pass');
+    assert.equal(withoutSpec.failedCount, 0);
+    assert.equal(withoutSpec.passedCount, 1);
+    assert.equal(withoutSpec.passRate, 100);
 
     const withUniverse = await run({ m1: store }, countRule(true));
-    const withGroups = withUniverse.specificationResults[0].setResults ?? [];
+    const withSpec = withUniverse.specificationResults[0];
+    const withGroups = withSpec.setResults ?? [];
     assert.equal(withGroups.length, 2, 'with universe, Assembly-2 is seeded with an empty (count 0) group');
     const assembly2 = withGroups.find((g) => g.groupKey === 'Assembly-2');
     assert.ok(assembly2, 'Assembly-2 must appear as its own group');
     assert.equal(assembly2!.passed, false, 'count 0 fails gte 1');
     assert.equal(assembly2!.actual, '0');
+    // #5177 regression: `fn: 'count'` never writes an `EntityResult` at
+    // all (pass or fail), so `entityResults` is empty even though the
+    // Assembly-2 group failed. `applicableCount` is 1 (only Plate-1
+    // matches `IfcPlate`); Assembly-2 has ZERO members, so there is no
+    // individual applicable element to blame — before the fix this read
+    // `failedCount: 0`, `passRate: 100` next to `status: 'fail'`.
+    assert.equal(withSpec.status, 'fail');
+    assert.equal(withSpec.entityResults.length, 0, 'checkAggregate writes no rows for fn: count');
+    assert.equal(withSpec.applicableCount, 1);
+    assert.equal(withSpec.failedCount, 1, 'the one failing group, not zero');
+    assert.equal(withSpec.passedCount, 0);
+    assert.equal(withSpec.passRate, 0, 'must not read 100 next to a fail status');
   });
 
   it('aggregate.count.groupBy.material: an element with two materials lands in BOTH groups (plan §3, review)', async () => {

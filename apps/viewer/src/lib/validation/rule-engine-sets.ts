@@ -71,6 +71,19 @@ export interface SetCheckOutcome {
   entityResults: EntityResult[];
   setResults?: SetResult[];
   setResultsTruncated?: boolean;
+  /**
+   * `aggregate` only (#5177): the number of groups whose aggregate value
+   * failed the `op`/`value` test, counted BEFORE `setResults` is capped at
+   * `SET_RESULT_CAP` so it stays exact even when `setResultsTruncated` is
+   * true. `checkAggregate` writes an `EntityResult` only for a member whose
+   * OWN subject value is absent/non-numeric — never for a member of a
+   * group whose AGGREGATE fails, and never at all for `fn: 'count'` — so
+   * `entityResults` alone cannot tell `finalizeSpecification` that such a
+   * group failed. `checkUnique` needs no equivalent: every duplicate
+   * member already gets a failing `EntityResult` (`entityResults` above is
+   * complete for that kind).
+   */
+  failedGroupCount?: number;
 }
 
 export async function checkUnique(
@@ -328,9 +341,11 @@ export async function checkAggregate(
       members: acc.members,
     });
   }
+  // Counted on the FULL (pre-cap) list — see `failedGroupCount`'s doc.
+  const failedGroupCount = setResults.filter((s) => !s.passed).length;
   orderSetResultsForCap(setResults);
   const setResultsTruncated = setResults.length > SET_RESULT_CAP;
-  return { setResults: setResults.slice(0, SET_RESULT_CAP), setResultsTruncated, entityResults };
+  return { setResults: setResults.slice(0, SET_RESULT_CAP), setResultsTruncated, entityResults, failedGroupCount };
 }
 
 /** Failing groups first, then largest first. The cap slices from the front,

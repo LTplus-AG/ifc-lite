@@ -35,6 +35,39 @@ import { narrowSchemaVersion } from './schema-version.js';
 
 export type { PropertyOverride, PropertyOverlayResolver };
 
+/**
+ * Overlay entity-visibility, decoupled from `@ifc-lite/mutations` the same
+ * way `PropertyOverlayResolver` is decoupled from it (see that type's own
+ * doc) — this package has no dependency on `@ifc-lite/mutations` and this
+ * keeps it that way. `MutablePropertyView` already exposes exactly this
+ * shape (`getTombstones()`, `getNewEntities()`), so a live view can be
+ * passed straight through with no adapter; a caller that only has a
+ * structured-clone-safe snapshot (e.g. across a worker boundary) can hand
+ * in a plain object built from arrays instead.
+ *
+ * Mirrors `packages/export/src/effective-index.ts`, the reference
+ * overlay-aware index in this repo: a tombstoned id does not exist, and an
+ * overlay-created id does.
+ */
+export interface EntityVisibilityView {
+  /**
+   * Every express id tombstoned this session — deleted source entities AND
+   * ones created and then deleted in the same session (see
+   * `MutablePropertyView.getTombstones`'s own doc: the two are not
+   * distinguishable from this set alone, which is fine here because both
+   * kinds must be excluded from enumeration either way).
+   */
+  getTombstones(): ReadonlySet<number> | Set<number>;
+  /**
+   * Overlay-created entities still alive this session. A created-then-
+   * deleted entity is tombstoned (above) AND absent from this list —
+   * `MutablePropertyView.deleteEntity` removes it from `newEntities` when
+   * it forgets it — so summing "source minus tombstones" plus "this list"
+   * never double-counts or resurrects one.
+   */
+  getNewEntities(): ReadonlyArray<{ expressId: number }>;
+}
+
 // `PropertyOverride`/`PropertyOverlayResolver` are re-exported above from
 // ./property-overlay-resolver.js; the PartOf relation map and ancestor BFS
 // walk live in ./ancestors.js — see `resolvePartOfAncestors` below.
@@ -58,10 +91,19 @@ export type { PropertyOverride, PropertyOverlayResolver };
  * `getPropertyValue`/`getPropertySets` immediately, without re-parsing the
  * store. Every other read (attributes, classifications, materials, partOf)
  * is unaffected — only the two property-reading methods below consult it.
+ *
+ * `entityVisibility` is optional and, when supplied, is consulted by
+ * `getAllEntityIds` alone: a tombstoned id (deleted this session, via
+ * `store.removeEntity()`/`MutablePropertyView.deleteEntity`) is excluded,
+ * and an overlay-created id still alive is included. Omitting it — every
+ * existing call site, until wired individually — reproduces the exact
+ * pre-existing behaviour: `getAllEntityIds` reads `store.entityIndex.byId`
+ * only, with no filtering (#5184).
  */
 export function createDataAccessor(
   store: IfcDataStore,
-  propertyOverlay?: PropertyOverlayResolver
+  propertyOverlay?: PropertyOverlayResolver,
+  entityVisibility?: EntityVisibilityView
 ): IFCDataAccessor {
   // Memoize per-entity attribute extraction. extractAllEntityAttributes
   // re-parses the entity from the raw source buffer on every call, and the
@@ -205,7 +247,16 @@ export function createDataAccessor(
 
     getAllEntityIds(): number[] {
       const byId = store.entityIndex?.byId;
-      return byId ? Array.from(byId.keys()) : [];
+      const sourceIds = byId ? Array.from(byId.keys()) : [];
+      if (!entityVisibility) return sourceIds;
+
+      const tombstones = entityVisibility.getTombstones();
+      const ids = tombstones.size > 0
+        ? sourceIds.filter((id) => !tombstones.has(id))
+        : sourceIds;
+      const created = entityVisibility.getNewEntities();
+      if (created.length === 0) return ids;
+      return ids.concat(created.map((e) => e.expressId));
     },
 
     getPropertyValue(

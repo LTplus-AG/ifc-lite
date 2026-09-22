@@ -3,9 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { IfcParser } from '@ifc-lite/parser';
+import type { IfcDataStore, EntityRef } from '@ifc-lite/parser';
 import { validateIDS } from './validator.js';
 import { parseIDS } from '../parser/xml-parser.js';
-import { createDataAccessor } from '../bridge/data-accessor.js';
+import {
+  createDataAccessor,
+  type EntityVisibilityView,
+} from '../bridge/data-accessor.js';
 import { createMockAccessor } from '../facets/test-helpers.js';
 import type {
   IDSDocument,
@@ -824,5 +828,83 @@ describe('validateIDS — generalised report shape', () => {
     });
     expect(report.specificationResults[0].applicableCount).toBe(1);
     expect(report.specificationResults[0].status).toBe('pass');
+  });
+});
+
+// ============================================================================
+// Tombstone-aware enumeration (#5184)
+// ============================================================================
+
+/**
+ * Three-entity store — ids 1, 2, 3 — mirroring the issue's own executed
+ * repro (`store before delete: entityIndex.byId keys [ 1, 2, 3 ]`,
+ * `accessor.getAllEntityIds() [ 1, 2, 3 ]`, `applicableCount: 3`).
+ */
+function makeThreeWallStore(): IfcDataStore {
+  const byId = new Map<number, EntityRef>([
+    [1, { expressId: 1, type: 'IfcWall', byteOffset: 0, byteLength: 0, lineNumber: 1 }],
+    [2, { expressId: 2, type: 'IfcWall', byteOffset: 0, byteLength: 0, lineNumber: 2 }],
+    [3, { expressId: 3, type: 'IfcWall', byteOffset: 0, byteLength: 0, lineNumber: 3 }],
+  ]);
+  return {
+    schemaVersion: 'IFC4',
+    source: new Uint8Array(),
+    entities: {
+      getTypeName: (id: number) => byId.get(id)?.type,
+      getObjectType: () => undefined,
+      getName: () => undefined,
+      getGlobalId: () => undefined,
+      getDescription: () => undefined,
+    },
+    entityIndex: { byId, byType: new Map([['IFCWALL', [1, 2, 3]]]) },
+    relationships: { getRelated: () => [] },
+  } as unknown as IfcDataStore;
+}
+
+function tombstoneView(ids: number[]): EntityVisibilityView {
+  const t = new Set(ids);
+  return { getTombstones: () => t, getNewEntities: () => [] };
+}
+
+describe('validateIDS — tombstoned entity excluded from enumeration (#5184)', () => {
+  // Applicability with NO entity facet, exactly the issue's own repro
+  // shape ("a specification whose applicability has no entity facet"),
+  // so `findApplicableEntities` calls `accessor.getAllEntityIds()`
+  // directly (validator.ts's `applicabilityFacets.length === 0` branch).
+  const specWithNoEntityFacet: IDSSpecification = {
+    id: 'spec-0',
+    name: 'Every entity must have a Name',
+    ifcVersions: ['IFC4'],
+    applicability: { facets: [] },
+    // Pinned so the fix must actually change `applicableCount`, not just
+    // avoid an error: 3 source entities, minOccurs 3. Before the fix,
+    // the tombstoned entity is still counted (applicableCount 3, cardinality
+    // wrongly satisfied); after the fix it is 2 (cardinality correctly fails).
+    minOccurs: 3,
+    requirements: [
+      { id: 'req-0', facet: { type: 'attribute', name: sv('Name') }, optionality: 'optional' },
+    ],
+  };
+
+  it('applicableCount excludes the tombstoned entity (pinned: 2, not 3)', async () => {
+    const accessor = createDataAccessor(makeThreeWallStore(), undefined, tombstoneView([2]));
+    const report = await validateIDS(makeDoc([specWithNoEntityFacet]), accessor, modelInfo);
+    expect(report.specificationResults[0].applicableCount).toBe(2);
+  });
+
+  it('the cardinality message reflects the corrected count, not the pre-tombstone one', async () => {
+    const accessor = createDataAccessor(makeThreeWallStore(), undefined, tombstoneView([2]));
+    const report = await validateIDS(makeDoc([specWithNoEntityFacet]), accessor, modelInfo);
+    const cardinality = report.specificationResults[0].cardinalityResult;
+    expect(cardinality?.passed).toBe(false);
+    expect(cardinality?.actualCount).toBe(2);
+    expect(cardinality?.message).toBe('Expected at least 3, found 2');
+  });
+
+  it('an accessor built with no entityVisibility argument still counts the tombstoned id (no-regression pin)', async () => {
+    const accessor = createDataAccessor(makeThreeWallStore());
+    const report = await validateIDS(makeDoc([specWithNoEntityFacet]), accessor, modelInfo);
+    expect(report.specificationResults[0].applicableCount).toBe(3);
+    expect(report.specificationResults[0].cardinalityResult?.passed).toBe(true);
   });
 });

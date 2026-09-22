@@ -45,7 +45,11 @@ const idsValidate: Tool = {
     const xml = await loadIdsXml(input, ctx);
 
     const idsDoc = parseIDS(xml);
-    const accessor = buildIdsAccessor(m.store) as IFCDataAccessor;
+    // `m.backend.getMutationView()` is null until the first `bim.mutate.*`
+    // call (built lazily, #4857's pattern); `buildIdsAccessor` passes
+    // `undefined` on to `createDataAccessor` for that same-shape null, which
+    // is the byte-identical no-visibility-view path (#5184).
+    const accessor = buildIdsAccessor(m.store, m.backend.getMutationView() ?? undefined) as IFCDataAccessor;
     const locale = (input.locale as SupportedLocale | undefined) ?? 'en';
     const report = await validateIDS(
       idsDoc,

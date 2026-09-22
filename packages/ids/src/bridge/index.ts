@@ -18,7 +18,11 @@
  */
 
 export { createDataAccessor } from './data-accessor.js';
-export type { PropertyOverride, PropertyOverlayResolver } from './data-accessor.js';
+export type {
+  PropertyOverride,
+  PropertyOverlayResolver,
+  EntityVisibilityView,
+} from './data-accessor.js';
 export { narrowSchemaVersion } from './schema-version.js';
 export { resolveEntityMeasureScales, toRaw } from './units.js';
 export type { EntityMeasureScales } from './units.js';

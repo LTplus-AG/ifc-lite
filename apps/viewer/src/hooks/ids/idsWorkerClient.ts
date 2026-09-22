@@ -19,7 +19,10 @@ import type {
 } from '@ifc-lite/ids';
 import type { IfcSourceTransfer } from '@ifc-lite/parser';
 
-import type { PropertyOverlaySnapshot } from '@/lib/ids/property-overlay-snapshot';
+import type {
+  PropertyOverlaySnapshot,
+  EntityVisibilitySnapshot,
+} from '@/lib/ids/property-overlay-snapshot';
 
 import type {
   IdsWorkerRequest,
@@ -63,6 +66,13 @@ export interface RunInWorkerArgs {
    * unchanged no-overlay path.
    */
   propertyOverlay?: PropertyOverlaySnapshot;
+  /**
+   * The model's pending tombstones and surviving overlay-created entity
+   * ids, as plain clonable data (#5184) — see `IdsWorkerRequest`'s own
+   * field doc in the worker for why the worker needs this separately from
+   * `propertyOverlay`.
+   */
+  entityVisibility?: EntityVisibilitySnapshot;
   onProgress?: (progress: ValidationProgress) => void;
 }
 
@@ -136,6 +146,7 @@ export function runValidationInWorker(
       locale: args.locale,
       includePassingEntities: args.includePassingEntities,
       propertyOverlay: args.propertyOverlay,
+      entityVisibility: args.entityVisibility,
     };
     try {
       worker.postMessage(request);

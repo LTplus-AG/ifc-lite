@@ -122,7 +122,7 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
       if (typeof chart.filter.selector !== 'string') {
         errors.push({ path: `${filterPath}.selector`, message: 'expected a string' });
       } else if (chart.filter.selector.trim().length === 0 && !hasClashRule) {
-        errors.push({ path: `${filterPath}.selector`, message: 'expected a non-empty selector' });
+        errors.push({ path: `${filterPath}.selector`, message: 'expected a non-empty selector or clashRule' });
       }
       if (typeof chart.source === 'string' && CHART_FILTER_NOT_APPLICABLE_SOURCES.has(chart.source as ChartSource)) {
         errors.push({ path: filterPath, message: 'a source filter is not applicable to bcf or compare' });

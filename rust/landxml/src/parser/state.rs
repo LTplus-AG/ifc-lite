@@ -33,6 +33,10 @@ pub(crate) struct Parser<'a> {
     pub(super) cross_section_points_seen: usize,
     pub(super) frames: Vec<Frame>,
     pub(super) units: Option<LandXmlUnits>,
+    /// #5175: resolved once at construction from `LandXmlLimits::assumed_linear_unit`,
+    /// already validated. A declared `<Units>` element (`self.units`) always
+    /// takes priority over this; see `Parser::effective_units`.
+    pub(super) assumed_units: Option<LandXmlUnits>,
     pub(super) coordinate_system: Option<LandXmlCoordinateSystem>,
     pub(super) surface: Option<SurfaceBuilder>,
     pub(super) capture: Option<Capture>,
@@ -44,6 +48,10 @@ pub(crate) struct Parser<'a> {
     /// Capability facts survive surface draining so final metadata remains
     /// equivalent to a complete-input document without retaining surface data.
     pub(super) drained_renderable_surfaces: usize,
+    /// #5175: drained surfaces that actually put geometry on screen — the
+    /// units gate's subject, narrower than `drained_renderable_surfaces`
+    /// because a fully hidden TIN is renderable but draws nothing.
+    pub(super) drained_drawing_surfaces: usize,
     pub(super) drained_preserved_surfaces: usize,
     pub(super) extensions: Vec<LandXmlExtension>,
     pub(super) warnings: Vec<String>,
@@ -71,6 +79,7 @@ impl<'a> Parser<'a> {
     pub(crate) fn new(
         limits: &LandXmlLimits,
         cancelled: Option<&'a dyn LandXmlCancellation>,
+        assumed_units: Option<LandXmlUnits>,
     ) -> Self {
         Self {
             limits: limits.clone(),
@@ -86,12 +95,14 @@ impl<'a> Parser<'a> {
             cross_section_points_seen: 0,
             frames: Vec::new(),
             units: None,
+            assumed_units,
             coordinate_system: None,
             surface: None,
             capture: None,
             surfaces: Vec::new(),
             drained_surface_refs: Vec::new(),
             drained_renderable_surfaces: 0,
+            drained_drawing_surfaces: 0,
             drained_preserved_surfaces: 0,
             extensions: Vec::new(),
             warnings: Vec::new(),
@@ -122,6 +133,10 @@ impl<'a> Parser<'a> {
             .iter()
             .filter(|surface| surface.render_state == LandXmlRenderState::Rendered)
             .count();
+        self.drained_drawing_surfaces += surfaces
+            .iter()
+            .filter(|surface| super::finalize::surface_draws_to_scale(surface))
+            .count();
         self.drained_preserved_surfaces += surfaces
             .iter()
             .filter(|surface| surface.render_state != LandXmlRenderState::Rendered)
@@ -139,7 +154,13 @@ impl<'a> Parser<'a> {
     }
 
     pub(crate) fn header(&self) -> Option<(String, Option<LandXmlUnits>)> {
-        (!self.version.is_empty()).then(|| (self.version.clone(), self.units.clone()))
+        (!self.version.is_empty()).then(|| (self.version.clone(), self.effective_units()))
+    }
+
+    /// #5175: a declared `<Units>` element always wins; the caller-supplied
+    /// assumed unit only fills the gap when the source never declares one.
+    pub(super) fn effective_units(&self) -> Option<LandXmlUnits> {
+        self.units.clone().or_else(|| self.assumed_units.clone())
     }
 }
 

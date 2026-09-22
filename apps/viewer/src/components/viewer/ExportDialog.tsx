@@ -69,6 +69,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
 import { downloadFile, sanitizeFilename, stripExtension } from '@/lib/export/download';
+import { LandXmlExportRefusal } from './LandXmlExportRefusal.js';
 import { roomExportPathPrefix } from '@/lib/collab/room-export-paths';
 import { ExtensionExportSlot } from '@/components/extensions/ExtensionExportSlot';
 import { preferredExportModelId } from './export-model-default';
@@ -669,11 +670,10 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
 
           {/* Schema selector — this drives the output format */}
           {!exportAllowed && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>{t('exportDialog.landXml.title')}</AlertTitle>
-              <AlertDescription>{t('exportDialog.landXml.description')}</AlertDescription>
-            </Alert>
+            <LandXmlExportRefusal
+              isLandXmlSelected={selectedLandXml}
+              sourceFile={selectedLandXml ? selectedModel?.sourceFile : undefined}
+            />
           )}
           <div className="flex items-center gap-4">
             <Label className="w-32">{t('exportDialog.schemaLabel')}</Label>

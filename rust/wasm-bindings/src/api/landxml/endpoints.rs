@@ -33,8 +33,8 @@ export interface LandXmlTinDocumentJs {
   schema: "LandXML-1.0" | "LandXML-1.1" | "LandXML-1.2";
   capabilities: { renderable_tin: boolean; preserved_only_surfaces: number; unknown_extensions: number };
   version: string;
-  /** serde_wasm_bindgen omits an absent Rust Option field rather than serializing null. */
-  units?: { linear_unit: string; elevation_unit: string; linear_scale_to_meters: number; elevation_scale_to_meters: number };
+  /** serde_wasm_bindgen omits an absent Rust Option field rather than serializing null. `assumed` is true only when these units came from `LandXmlParseOptionsJs.assumedLinearUnit`, never from a declared LandXML/Units element (#5175). */
+  units?: { linear_unit: string; elevation_unit: string; linear_scale_to_meters: number; elevation_scale_to_meters: number; assumed: boolean };
   surfaces: LandXmlSurfaceJs[];
   pipe_networks?: LandXmlPipeNetworkDocumentJs;
   extensions: LandXmlExtensionJs[];
@@ -91,7 +91,8 @@ export interface LandXmlAlignmentDocumentJs {
   capability_diagnostics: LandXmlCapabilityDiagnosticJs[];
   units?: LandXmlUnitsJs; alignments: LandXmlAlignmentJs[]; warnings: string[];
 }
-export interface LandXmlUnitsJs { linear_unit: string; elevation_unit: string; linear_scale_to_meters: number; elevation_scale_to_meters: number; }
+/** `assumed` is true only when these units came from `LandXmlParseOptionsJs.assumedLinearUnit`, never from a declared LandXML/Units element (#5175). */
+export interface LandXmlUnitsJs { linear_unit: string; elevation_unit: string; linear_scale_to_meters: number; elevation_scale_to_meters: number; assumed: boolean; }
 /** Terrain-parser alignment linkage; use LandXmlAlignmentDocumentJs for complete alignment semantics. */
 export interface LandXmlAlignmentSummaryJs { source_id: string; ordinal: number; name: string; length: number; sta_start: number; profile_source_ids: string[]; cross_section_source_ids: string[]; }
 export interface LandXmlAlignmentJs { source_id: string; ordinal: number; name: string; length: number; sta_start: number; start?: LandXmlPointLocationJs; align_pis: LandXmlAlignmentPiJs[]; segments: LandXmlAlignmentSegmentJs[]; station_equations: LandXmlStationEquationJs[]; cant?: LandXmlCantJs; superelevations: LandXmlSuperelevationJs[]; unsupported_transitions: LandXmlUnsupportedTransitionJs[]; }
@@ -113,7 +114,8 @@ export interface LandXmlAlignmentProbeJs { alignment_source_id: string; segment_
 export type LandXmlAlignmentProbesJs = LandXmlAlignmentProbeJs[];
 /** Neighbouring authored CantStation records; values are never interpolated. */
 export interface LandXmlAlignmentInspectionJs { cant?: { internal_station: number; station: { geometric_distance: number; displayed_back: number; displayed_ahead: number; is_equation_boundary: boolean }; previous?: LandXmlCantStationJs; next?: LandXmlCantStationJs }; superelevations: LandXmlSuperelevationJs[]; superelevation_block_count: number; superelevation_event_count: number; superelevation_truncated: boolean; }
-export interface LandXmlParseOptionsJs { maxBytes?: number; maxDepth?: number; maxTextBytes?: number; maxPoints?: number; maxFaces?: number; maxWork?: number; maxAlignments?: number; maxAlignmentSegments?: number; maxAlignmentPoints?: number; maxStationEquations?: number; maxCantStations?: number; maxSuperelevationEvents?: number; cancelled?: boolean; }
+/** `assumedLinearUnit`: see #5175. Accepts the same tokens a declared `<Units linearUnit="...">` accepts (e.g. `"meter"`, `"foot"`, `"USSurveyFoot"`); an unknown token refuses rather than defaulting to meters. Ignored, with a warning, when the source declares its own `<Units>`. */
+export interface LandXmlParseOptionsJs { maxBytes?: number; maxDepth?: number; maxTextBytes?: number; maxPoints?: number; maxFaces?: number; maxWork?: number; maxAlignments?: number; maxAlignmentSegments?: number; maxAlignmentPoints?: number; maxStationEquations?: number; maxCantStations?: number; maxSuperelevationEvents?: number; assumedLinearUnit?: string; cancelled?: boolean; }
 export interface LandXmlProfilePointJs { source_id: string; station: number; elevation?: number; }
 export interface LandXmlGradeLineJs { source_id: string; parent_profile_source_id: string; ordinal: number; points: LandXmlProfilePointJs[]; }
 export interface LandXmlVerticalCurveJs { source_id: string; parent_profile_source_id: string; kind: "parabolic" | "unsymmetrical_parabolic" | "circular"; station: number; elevation?: number; length?: number; length_in?: number; length_out?: number; radius?: number; }

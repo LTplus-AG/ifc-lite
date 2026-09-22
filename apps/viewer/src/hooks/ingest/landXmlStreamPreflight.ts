@@ -130,10 +130,10 @@ export class LandXmlStreamPreflightReducer {
       const elevation = contour.properties.elev === undefined ? undefined : Number(contour.properties.elev);
       for (const point of contour.points) this.addSourcePoint(point[0]!, point[1]!, point.length === 3 ? point[2]! : elevation);
     }
-    const built = buildLandXmlSurfaceComponents(surface, {
-      linearUnit: 'stream', elevationUnit: 'stream', linearScaleToMeters: units.linearScaleToMeters,
-      elevationScaleToMeters: units.elevationScaleToMeters,
-    }, this.componentCount + 1);
+    // `units` is already exactly the scales the builder needs; it used to be
+    // widened here with placeholder `'stream'` unit names purely to satisfy a
+    // parameter type that asked for a whole units record (#5175).
+    const built = buildLandXmlSurfaceComponents(surface, units, this.componentCount + 1);
     // Each Rust surface record is delivered exactly once and its components
     // are emitted synchronously before the next record, making this compact
     // ordinal a replayable contiguity witness without retaining source IDs.

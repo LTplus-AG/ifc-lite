@@ -20,6 +20,7 @@ import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { flowToJson } from '@/lib/flow/persistence';
 import { flowRegistry } from '@/lib/flow/runner';
 import { FlowCanvas, useCanvasDropPosition } from './FlowCanvas';
+import { FlowExampleGallery, FlowExamplePicker } from './FlowExamples';
 import { FlowInspector } from './FlowInspector';
 import { FlowPalette } from './FlowPalette';
 import { useFlowRunner } from './useFlowRunner';
@@ -82,6 +83,17 @@ export function FlowPanel({ onClose }: { onClose: () => void }) {
     }
   };
 
+  /**
+   * Examples open as a copy under a fresh id: the library entry stays
+   * pristine, the same example can be opened twice, and the copy gets its
+   * own tracking sidecar rather than inheriting the elements another copy
+   * created.
+   */
+  const onOpenExample = (doc: FlowDocument) => {
+    if (importFlow({ ...doc, id: crypto.randomUUID() }) === null) setNotice(t('flowPanel.limitReached'));
+    else setNotice(null);
+  };
+
   const onDelete = () => {
     if (!flowDoc) return;
     if (!window.confirm(t('flowPanel.deleteConfirm', { name: flowDoc.name }))) return;
@@ -110,6 +122,7 @@ export function FlowPanel({ onClose }: { onClose: () => void }) {
           {savedFlows.map((f) => <option key={f.doc.id} value={f.doc.id}>{f.doc.name}</option>)}
         </select>
         <button type="button" className={button} onClick={onNew}>{t('flowPanel.new')}</button>
+        <FlowExamplePicker onOpen={onOpenExample} />
         <button type="button" className={button} onClick={() => fileInput.current?.click()}>{t('flowPanel.import')}</button>
         <input ref={fileInput} type="file" accept=".json,application/json" className="hidden" aria-label={t('flowPanel.importAriaLabel')} onChange={(e) => { const f = e.target.files?.[0]; if (f) void onImportFile(f); e.target.value = ''; }} />
         {flowDoc && (
@@ -139,7 +152,7 @@ export function FlowPanel({ onClose }: { onClose: () => void }) {
           </div>
         </ReactFlowProvider>
       ) : (
-        <div className="flex flex-1 items-center justify-center text-muted-foreground">{t('flowPanel.emptyCanvas')}</div>
+        <FlowExampleGallery onOpen={onOpenExample} />
       )}
 
       {(lastRun || lastError) && (

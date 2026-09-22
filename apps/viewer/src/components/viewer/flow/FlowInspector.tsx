@@ -9,20 +9,32 @@
  */
 
 import { useState } from 'react';
-import type { FlowDocument, Lacing, NodeRegistry, ParamDef, RunResult, TrackingMode } from '@ifc-lite/flow';
+import type { FlowDocument, Lacing, NodeDef, NodeRegistry, ParamDef, RunResult, TrackingMode } from '@ifc-lite/flow';
 import { useTranslation } from '@/i18n/useTranslation';
 import { removeNode, setLacing, setParam, setTracking, toggleInput, toggleOutput, updateNode } from '@/lib/flow/editor-ops';
 import { KIND_COLOR, describeData } from '@/lib/flow/view-model';
+import { FlowCodeParam } from './FlowCodeParam';
 import { FlowValuePreview } from './FlowValuePreview';
 
 const input = 'w-full min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs';
 const LACINGS: readonly Lacing[] = ['shortest', 'longest', 'cross'];
 const TRACKINGS: readonly TrackingMode[] = ['update', 'replace', 'disabled'];
 
-function ParamField({ def, value, onChange, invalidLabel }: { def: ParamDef; value: unknown; onChange: (v: unknown) => void; invalidLabel: string }) {
+function ParamField({ def, value, onChange, invalidLabel, node }: { def: ParamDef; value: unknown; onChange: (v: unknown) => void; invalidLabel: string; node: NodeDef<unknown> }) {
   const [jsonText, setJsonText] = useState<string | null>(null);
   const current = value ?? def.default;
   switch (def.kind) {
+    case 'code':
+      return (
+        <FlowCodeParam
+          def={def}
+          value={value}
+          nodeTitle={node.title}
+          inputNames={node.inputs.map((p) => p.name)}
+          outputName={node.outputs[0]?.name ?? 'result'}
+          onChange={onChange}
+        />
+      );
     case 'boolean':
       return <input type="checkbox" checked={current === true} onChange={(e) => onChange(e.target.checked)} className="accent-[#7aa2f7]" />;
     case 'number':
@@ -82,6 +94,8 @@ export function FlowInspector({ doc, registry, nodeId, lastRun, onDocChange, onS
         <div className="font-medium">{def?.title ?? node.type}</div>
         <div className="font-mono text-[10px] text-muted-foreground">{node.id} · {node.type}</div>
         {!def && <div className="text-red-400">{t('flowPanel.inspector.unknownType', { type: node.type })}</div>}
+        {/* The palette only shows the doc as a tooltip, which is unreachable once the node is on the canvas. */}
+        {def?.doc && <div className="mt-1 text-[10px] leading-snug text-muted-foreground">{def.doc}</div>}
         {def && def.capabilities.length > 0 && <div className="text-[10px] text-muted-foreground">{t('flowPanel.inspector.capabilities')}: {def.capabilities.join(', ')}</div>}
       </div>
 
@@ -103,7 +117,7 @@ export function FlowInspector({ doc, registry, nodeId, lastRun, onDocChange, onS
                     <input type="checkbox" checked={isInput} onChange={() => onDocChange(toggleInput(doc, node.id, p.name, `${node.label ?? def.title}: ${p.name}`))} className="accent-[#e0af68]" />▸
                   </label>
                 </div>
-                <ParamField def={p} value={node.params?.[p.name]} onChange={(v) => onDocChange(setParam(doc, node.id, p.name, v))} invalidLabel={t('flowPanel.inspector.jsonInvalid')} />
+                <ParamField def={p} value={node.params?.[p.name]} onChange={(v) => onDocChange(setParam(doc, node.id, p.name, v))} invalidLabel={t('flowPanel.inspector.jsonInvalid')} node={def} />
               </div>
             );
           })}

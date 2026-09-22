@@ -1,0 +1,20 @@
+{
+  "flowVersion": 1,
+  "id": "example-count-elements",
+  "name": "1 · Count elements",
+  "description": "The smallest graph that does something: pick an IFC class, count what the model holds. The class is a Player input, so it can be changed without touching the graph.",
+  "capabilities": ["model.read"],
+  "inputs": [
+    { "nodeId": "elements", "param": "type", "label": "IFC class", "kind": "scalar" }
+  ],
+  "outputs": [
+    { "nodeId": "howMany", "port": "count", "label": "Elements found" }
+  ],
+  "nodes": [
+    { "id": "elements", "type": "model.byType", "params": { "type": "IfcWall" }, "pos": [0, 0] },
+    { "id": "howMany", "type": "core.count", "pos": [300, 0] }
+  ],
+  "edges": [
+    { "from": ["elements", "entities"], "to": ["howMany", "items"] }
+  ]
+}

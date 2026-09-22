@@ -87,7 +87,7 @@ Restructuring is a small, complete set of nodes: `core.groupBy`,
 - `lacing`, `tracking` and `trackingKey` are per node. Positions (`pos`) live in the file;
   tracked element sets do not.
 
-The full fixture is `packages/cli/src/__fixtures__/flows/fire-rating-audit.flow.json`, which the CLI test runs end to end.
+The full document is `apps/viewer/src/lib/flow/examples/05-fire-rating-audit.flow.json` — the panel’s example 5, which the CLI test runs end to end.
 
 ## Creating elements, and re-running
 
@@ -145,7 +145,7 @@ import { runFlow, parseFlowDocument, MemoCache } from '@ifc-lite/flow';
 import { createStandardRegistry, BROWSER_FEATURES } from '@ifc-lite/flow-nodes';
 
 const registry = createStandardRegistry();
-const doc = parseFlowDocument(await (await fetch('/flows/fire-rating-audit.flow.json')).text());
+const doc = parseFlowDocument(await (await fetch('/flows/audit.flow.json')).text());
 const cache = new MemoCache();
 const result = await runFlow(doc, { host: { bim }, registry, features: BROWSER_FEATURES, cache });
 for (const o of result.graphOutputs) console.log(o.label, o.data);
@@ -155,10 +155,61 @@ Re-running with the same `cache` recomputes only nodes whose inputs,
 params, or model revision changed. Every write node bumps the cache's write
 generation, so reads never serve a memo taken before a write.
 
-## Script node
+## Script nodes
 
-`script.run` is the one node that executes user code. It runs in the QuickJS
-sandbox with the sandbox's `bim` API (the same one the script console and
-extensions see, which is not the full SDK), receives `inputs.a`, `inputs.b`,
-`inputs.c`, and returns its last expression. Sandbox permissions follow the
-graph's grants: mutation is enabled only when a `model.mutate` grant exists.
+Two nodes execute user code in the QuickJS sandbox, with the sandbox's `bim`
+API (the same one the script console and extensions see, which is not the
+full SDK). Both receive `inputs.a`, `inputs.b`, `inputs.c` and return the
+value of their last expression; sandbox permissions follow the graph's
+grants, so mutation is enabled only when a `model.mutate` grant exists.
+
+They differ only in the **access** their ports declare, which is what decides
+whether the runtime lifts them:
+
+| Node | Ports | Sees | Returns |
+|---|---|---|---|
+| `script.run` | `item` | one element per lane — a list on an input runs the code once per element | any value (`result`) |
+| `script.list` | `list` | the whole list at once | an array (`items`); anything else is an error |
+
+Use `script.run` for a per-element predicate or computation, and
+`script.list` when the answer depends on the whole set — sorting, ranking,
+top-N, de-duplication, comparing one element against the rest. An entity
+arrives as `{ globalId, modelId, expressId }`, which is also a `bim.*` ref.
+
+Each lane is evaluated in its own variable environment, so `const` and `let`
+in the code mean what they say and nothing carries over from the previous
+lane. The code is plain **JavaScript**, not TypeScript, and top-level
+`await` is not available.
+
+The `code` parameter is a `code` param kind rather than a plain string, which
+is the editor's cue to give it a multi-line editor: the Flow panel's
+inspector shows a monospace textarea, and the ⤢ button beside it opens the
+full CodeMirror editor (the same `bim.*` completions as the script console).
+
+## Editing a graph
+
+In the viewer's Flow panel:
+
+- **Add** nodes from the palette; drag from an output handle to an input
+  handle to connect. Incompatible ports are greyed out while dragging, and a
+  refused connection says why.
+- **Re-route** an edge by dragging either of its ends onto another port; drop
+  it on empty canvas to unplug it.
+- **Delete** an edge by clicking it (it goes dashed) and pressing Delete or
+  Backspace; the same keys delete a selected node and its edges.
+- An input takes **at most one** edge — connecting a second one replaces the
+  first — and a connection that would close a cycle is refused.
+
+## Examples
+
+The panel ships a ladder of runnable examples, from a two-node count to a
+tracked column grid, under `apps/viewer/src/lib/flow/examples/`. They open
+as an editable copy, and because they are ordinary `*.flow.json` documents
+they also run headlessly:
+
+```sh
+ifc-lite flow run apps/viewer/src/lib/flow/examples/03-quantity-takeoff.flow.json model.ifc --json
+```
+
+`packages/cli`'s `flow.test.ts` runs every one of them against a real model,
+so an example that stops working fails the build.

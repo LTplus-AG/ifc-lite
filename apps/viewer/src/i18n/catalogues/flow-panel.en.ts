@@ -24,7 +24,12 @@ export const flowPanelEn = {
   'flowPanel.running': 'Running…',
   'flowPanel.runHint': 'Run the graph; every write lands in the change set as one undo step',
   'flowPanel.close': 'Close',
-  'flowPanel.emptyCanvas': 'Add nodes from the palette, connect their ports, and run.',
+  'flowPanel.emptyCanvas': 'Add nodes from the palette, connect their ports, and run. Click an edge and press Delete to cut it, or drag either end onto another port to re-route it.',
+
+  'flowPanel.examples.open': 'Examples…',
+  'flowPanel.examples.ariaLabel': 'Open an example graph',
+  'flowPanel.examples.heading': 'Start from an example — each one runs against the loaded model, and opens as your own editable copy.',
+  'flowPanel.examples.size': '{nodes} nodes · {edges} edges',
   'flowPanel.noModel': 'Load a model to run a graph.',
 
   'flowPanel.run.ok': 'Run finished',
@@ -63,6 +68,11 @@ export const flowPanelEn = {
   'flowPanel.inspector.remove': 'Remove node',
   'flowPanel.inspector.capabilities': 'Needs',
   'flowPanel.inspector.jsonInvalid': 'Not valid JSON',
+  'flowPanel.inspector.codeHint': 'Reads {inputs}; the last expression is {output}.',
+  'flowPanel.inspector.codeAriaLabel': 'Source of the {param} parameter',
+  'flowPanel.inspector.codeExpand': 'Open in the full editor',
+  'flowPanel.inspector.codeDialogTitle': '{node} — source',
+  'flowPanel.inspector.codeLoading': 'Loading the editor…',
 
   'flowPanel.preview.empty': 'empty',
   'flowPanel.preview.more': '… {count} more',

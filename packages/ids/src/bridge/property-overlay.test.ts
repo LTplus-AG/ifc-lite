@@ -160,6 +160,52 @@ describe('createDataAccessor property overlay (#3929)', () => {
     expect(accessor.getPropertySets(3)[0].properties).toHaveLength(1);
   });
 
+  describe('a PROPERTY_MISSING correction with no dataType does not manufacture one (#5224)', () => {
+    it('creating a property on an entity with no matching pset leaves dataType undefined, not ""', () => {
+      const overrides = new Map<number, PropertyOverride[]>([
+        // Entity 2 has NO property sets at all — this hits the
+        // "no same-named set at all yet" branch (property-overlay-resolver.ts's
+        // final `result.push(...)`), which is the OTHER of the two call
+        // sites that used to default to `''`.
+        [2, [{ psetName: 'Pset_WallCommon', propName: 'FireRating', value: 'F90' }]],
+      ]);
+      const accessor = createDataAccessor(makeStore(), (id) => overrides.get(id));
+
+      const props = accessor.getPropertySets(2)[0]?.properties;
+      expect(props).toHaveLength(1);
+      // Before the fix this was `''` — falsy exactly like `undefined` at
+      // the IDS dataType gate (facets/property-facet.ts:101/363), so a
+      // dataType-constrained facet against this corrected property would
+      // silently skip the check. `undefined` keeps this case distinct
+      // from a value the caller genuinely recorded.
+      expect(props?.[0].dataType).toBeUndefined();
+      expect(props?.[0].dataType).not.toBe('');
+    });
+
+    it('creating a property on an entity with a same-named pset but not this property also leaves dataType undefined', () => {
+      const overrides = new Map<number, PropertyOverride[]>([
+        // Entity 1 has Pset_WallCommon but not LoadBearing — hits the
+        // "no same-named set carries this property yet" push() branch.
+        [1, [{ psetName: 'Pset_WallCommon', propName: 'LoadBearing', value: true }]],
+      ]);
+      const accessor = createDataAccessor(makeStore(), (id) => overrides.get(id));
+
+      const pset = accessor.getPropertySets(1).find((p) => p.name === 'Pset_WallCommon');
+      const created = pset?.properties.find((p) => p.name === 'LoadBearing');
+      expect(created).toBeDefined();
+      expect(created?.dataType).toBeUndefined();
+    });
+
+    it('supplying a dataType on the override is still carried through unchanged', () => {
+      const overrides = new Map<number, PropertyOverride[]>([
+        [2, [{ psetName: 'Pset_WallCommon', propName: 'FireRating', value: 'F90', dataType: 'IFCLABEL' }]],
+      ]);
+      const accessor = createDataAccessor(makeStore(), (id) => overrides.get(id));
+
+      expect(accessor.getPropertySets(2)[0]?.properties[0]?.dataType).toBe('IFCLABEL');
+    });
+  });
+
   describe('same-named-pset collision (two distinct Pset_WallCommon sets, #4XXX)', () => {
     it('an update corrects the value on the SET THAT ACTUALLY CARRIES the property, not the first same-named set', () => {
       const overrides = new Map<number, PropertyOverride[]>([

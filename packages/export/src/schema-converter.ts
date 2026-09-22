@@ -21,8 +21,11 @@
  */
 
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
-import { deterministicGlobalId } from '@ifc-lite/parser';
-import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
+import {
+  deterministicGlobalId,
+  getSchemaRegistryForVersion,
+  type SchemaVersionWithRegistry,
+} from '@ifc-lite/parser';
 import { resolveUnrepresentedEntity } from './schema-untranslatable.js';
 import { BY_NAME_ATTR_REMAP_TYPES, remapRenamedAttributesByName } from './schema-converter-attr-remap.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
@@ -238,21 +241,59 @@ function chainMaps(
   return result;
 }
 
+/** Schema versions {@link attrNameTable} can build a table for — the ones
+ *  `@ifc-lite/parser` generates a runtime registry for, from the EXPRESS
+ *  schema itself. */
+const REGISTRY_VERSIONS: ReadonlySet<string> = new Set(['IFC2X3', 'IFC4', 'IFC4X3']);
+function hasSchemaRegistry(schema: IfcSchemaVersion): schema is SchemaVersionWithRegistry {
+  return REGISTRY_VERSIONS.has(schema);
+}
+
 // Lazily-built UPPERCASE entity name → ordered positional attribute NAMES, per
-// schema, from the generated buildingSMART tables. `IfcEntityInfo.attributes` is
-// the full inherited+direct positional list (verified to match STEP counts:
-// IfcWall 8→9, IfcDoor 10→13, IfcMaterial 1→3, …).
+// schema, from `@ifc-lite/parser`'s EXPRESS-derived schema registries
+// (verified to match STEP counts: IfcWall 8→9, IfcDoor 10→13, IfcMaterial
+// 1→3, …).
+//
+// This used to read `@ifc-lite/data`'s `ENTITIES_IFC2X3`/`ENTITIES_IFC4`/
+// `ENTITIES_IFC4X3` — generated from buildingSMART's vendored C# `SchemaInfo`
+// source, which (issue #5204) misfiles IFC4X3-only entities (the alignment
+// domain: `IfcLinearPlacement`, `IfcOffsetCurve`,
+// `IfcTriangulatedIrregularNetwork`, …) into its IFC4 section, and gives
+// `IfcCartesianPointList2D`/`3D` an IFC4X3-only `TagList` attribute under
+// IFC4. That table is wrong in the vendored upstream source itself — not
+// something this repo's generator introduced — so an entity absent from
+// IFC4 read as present here, with a full attribute list, which made
+// `tgtAttrs` below non-null. That defeated BOTH of this function's callers:
+// the "entity has no representation in `toSchema`" `IFCPROXY` route (only
+// taken when `tgtAttrs` is falsy) and the attribute trim/pad (which needs
+// the RIGHT attribute list, not just a non-null one). 20 IFC4X3-only entity
+// types passed straight through into a file declaring `FILE_SCHEMA(('IFC4'))`
+// unconverted, and `TagList` survived an IFC4X3→IFC4 conversion.
+//
+// The EXPRESS-derived registries (`packages/parser/src/generated/
+// schema-registry*.ts`, from `packages/codegen/schemas/*.exp` — the actual
+// schema text, not a re-derivation of the same buildingSMART C# source) do
+// not have this bug: an entity is in `registry.entities` iff the EXPRESS
+// schema declares it, and its `allAttributes` list is read from the EXPRESS
+// declaration in inheritance order. Building this table from them makes an
+// entity absent from `toSchema` read as absent (`tgtAttrs` stays undefined,
+// routing to `resolveUnrepresentedEntity` below) and gives `IfcCartesianPointList3D`
+// the right attribute list per schema, with no separate existence check or
+// per-entity exclusion needed.
+//
+// IFC5 has no EXPRESS-derived registry in this repo (it is JSON-native, not
+// STEP/EXPRESS) — `null` here skips count adjustment for it, same as before.
 const ATTR_NAME_TABLES = new Map<IfcSchemaVersion, Map<string, readonly string[]>>();
 export function attrNameTable(schema: IfcSchemaVersion): Map<string, readonly string[]> | null {
   let table = ATTR_NAME_TABLES.get(schema);
   if (table) return table;
-  let entities: readonly IfcEntityInfo[] | null = null;
-  if (schema === 'IFC2X3') entities = ENTITIES_IFC2X3;
-  else if (schema === 'IFC4') entities = ENTITIES_IFC4;
-  else if (schema === 'IFC4X3') entities = ENTITIES_IFC4X3;
-  else return null; // IFC5 has no generated table — skip count adjustment
+  if (!hasSchemaRegistry(schema)) return null;
+  const registry = getSchemaRegistryForVersion(schema);
   table = new Map<string, readonly string[]>();
-  for (const e of entities) table.set(e.name.toUpperCase(), e.attributes);
+  for (const [name, meta] of Object.entries(registry.entities)) {
+    const attrs = (meta.allAttributes ?? meta.attributes).map((a) => a.name);
+    table.set(name.toUpperCase(), attrs);
+  }
   ATTR_NAME_TABLES.set(schema, table);
   return table;
 }

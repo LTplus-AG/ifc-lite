@@ -21,19 +21,28 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
+import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
 
-function table(entities: readonly IfcEntityInfo[]): Map<string, readonly string[]> {
+// Derived from `@ifc-lite/parser`'s EXPRESS-derived schema registries —
+// deliberately NOT from `@ifc-lite/data`'s `ENTITIES_IFC2X3`/`ENTITIES_IFC4`/
+// `ENTITIES_IFC4X3`, which are generated from buildingSMART's vendored C#
+// `SchemaInfo` source and (issue #5204) misfile several IFC4X3-only entities
+// into their IFC4 section — an independently-wrong ground truth would make
+// this file agree with `schema-converter.ts`'s bug instead of catching it.
+function table(version: SchemaVersionWithRegistry): Map<string, readonly string[]> {
+  const registry = getSchemaRegistryForVersion(version);
   const m = new Map<string, readonly string[]>();
-  for (const e of entities) m.set(e.name.toUpperCase(), e.attributes);
+  for (const [name, meta] of Object.entries(registry.entities)) {
+    m.set(name.toUpperCase(), (meta.allAttributes ?? meta.attributes).map((a) => a.name));
+  }
   return m;
 }
 
 const TABLES: Record<string, Map<string, readonly string[]>> = {
-  IFC2X3: table(ENTITIES_IFC2X3),
-  IFC4: table(ENTITIES_IFC4),
-  IFC4X3: table(ENTITIES_IFC4X3),
+  IFC2X3: table('IFC2X3'),
+  IFC4: table('IFC4'),
+  IFC4X3: table('IFC4X3'),
 };
 
 /** True when `short` is a strict prefix of `long` by attribute NAME. */
@@ -72,7 +81,15 @@ function isDivertedByConversion(type: string, from: IfcSchemaVersion, to: IfcSch
 const REQUIRED_SHRINKS: Partial<Record<string, readonly string[]>> = {
   'IFC2X3>IFC4': ['IFCRELDECOMPOSES', 'IFCDISTRIBUTIONCONTROLELEMENT', 'IFCLSHAPEPROFILEDEF'],
   'IFC2X3>IFC4X3': ['IFCRELDECOMPOSES', 'IFCDISTRIBUTIONCONTROLELEMENT', 'IFCLSHAPEPROFILEDEF'],
-  'IFC4>IFC4X3': ['IFCREFERENT', 'IFCCOORDINATEREFERENCESYSTEM'],
+  // IFCREFERENT is NOT in this corpus: it has no IFC4 representation at all
+  // (issue #5204 — it only ever appeared to, via the wrong buildingSMART-C#-
+  // derived table), so an EXPRESS-ground-truthed `src` table has no IFC4
+  // entry for it and it cannot enter the "shrinks" corpus. See the
+  // `IFCREFERENT`/`IFCLINEARPOSITIONINGELEMENT`/`IFCPOSITIONINGELEMENT`
+  // rename-map pin in `schema-converter-ifc4-entity-table.test.ts` for its
+  // real behaviour (it becomes IFCPROXY, like the other three protected
+  // entities).
+  'IFC4>IFC4X3': ['IFCCOORDINATEREFERENCESYSTEM'],
   'IFC4>IFC2X3': ['IFCMATERIAL', 'IFCWALLSTANDARDCASE'],
   'IFC4X3>IFC4': ['IFCANNOTATION'],
   'IFC4X3>IFC2X3': ['IFCMATERIAL'],
@@ -101,7 +118,18 @@ describe.each([
 
   it('has a non-empty derived corpus on both sides of the rule (anti-vacuity)', () => {
     expect(shrinks.length).toBeGreaterThan(0);
-    expect(notPrefix.length).toBeGreaterThan(0);
+    // IFC4 → IFC4X3 is the one pair with no real mid-list-insertion shrink:
+    // against the EXPRESS-derived tables (not the buggy `ENTITIES_IFC4` this
+    // file used before #5204 — that table spuriously matched several
+    // IFC4X3-only entities against themselves here, manufacturing a
+    // non-empty `notPrefix` corpus for a category that is actually empty),
+    // every entity IFC4X3 shortened from its IFC4 form did so by a strict
+    // trailing drop. The other five pairs keep the `toBeGreaterThan(0)` floor.
+    if (`${from}>${to}` === 'IFC4>IFC4X3') {
+      expect(notPrefix.length).toBe(0);
+    } else {
+      expect(notPrefix.length).toBeGreaterThan(0);
+    }
     const names = new Set(shrinks.map(([t]) => t));
     const missing = (REQUIRED_SHRINKS[`${from}>${to}`] ?? []).filter((t) => !names.has(t));
     expect(missing).toEqual([]);
@@ -195,10 +223,14 @@ describe('upgrades that REMOVE attributes — worked examples', () => {
     );
   });
 
-  it('IFC4 IfcReferent drops the PredefinedType IFC4X3 removed', () => {
-    const line = "#6=IFCREFERENT('guid',$,'Ref',$,$,#13,$,$,.STATION.);";
+  it('IFC4 IfcCoordinateReferenceSystem drops the VerticalDatum IFC4X3 removed', () => {
+    // Not IfcReferent, the ORIGINAL worked example here: IfcReferent has no
+    // IFC4 representation at all (#5204) — the pre-fix `schema-converter.ts`
+    // only believed otherwise because it read the wrong entity table, so
+    // this example exercised the bug, not the trim rule.
+    const line = "#6=IFCCOORDINATEREFERENCESYSTEM('CRS','desc','Datum','VDatum');";
     expect(convertStepLine(line, 'IFC4', 'IFC4X3')).toBe(
-      "#6=IFCREFERENT('guid',$,'Ref',$,$,#13,$,$);",
+      "#6=IFCCOORDINATEREFERENCESYSTEM('CRS','desc','Datum');",
     );
   });
 });

@@ -19,19 +19,28 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
+import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
 
-function table(entities: readonly IfcEntityInfo[]): Map<string, readonly string[]> {
+// Derived from `@ifc-lite/parser`'s EXPRESS-derived schema registries —
+// deliberately NOT from `@ifc-lite/data`'s `ENTITIES_IFC2X3`/`ENTITIES_IFC4`/
+// `ENTITIES_IFC4X3`, which are generated from buildingSMART's vendored C#
+// `SchemaInfo` source and (issue #5204) misfile several IFC4X3-only entities
+// into their IFC4 section — an independently-wrong ground truth would make
+// this file agree with `schema-converter.ts`'s bug instead of catching it.
+function table(version: SchemaVersionWithRegistry): Map<string, readonly string[]> {
+  const registry = getSchemaRegistryForVersion(version);
   const m = new Map<string, readonly string[]>();
-  for (const e of entities) m.set(e.name.toUpperCase(), e.attributes);
+  for (const [name, meta] of Object.entries(registry.entities)) {
+    m.set(name.toUpperCase(), (meta.allAttributes ?? meta.attributes).map((a) => a.name));
+  }
   return m;
 }
 
 const TABLES: Record<string, Map<string, readonly string[]>> = {
-  IFC2X3: table(ENTITIES_IFC2X3),
-  IFC4: table(ENTITIES_IFC4),
-  IFC4X3: table(ENTITIES_IFC4X3),
+  IFC2X3: table('IFC2X3'),
+  IFC4: table('IFC4'),
+  IFC4X3: table('IFC4X3'),
 };
 
 /** True when `short` is a strict prefix of `long` by attribute NAME. */

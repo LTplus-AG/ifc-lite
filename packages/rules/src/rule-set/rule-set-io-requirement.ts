@@ -12,6 +12,7 @@ import { parseFilterGroups, type FilterGroup } from '../filter/filter-groups.js'
 import type { FilterRule, NumericOp } from '../filter/filter-rules.js';
 import { fail, isPlainObject, unknownKeysOf, warnUnknownFields } from './rule-set-io-shared.js';
 import { parseSubject, isSingleValuedSubject } from './rule-set-io-subject.js';
+import { checkAggregateSubject } from './aggregate-requirement-invariant.js';
 
 const NUMERIC_OPS: ReadonlySet<string> = new Set<NumericOp>(['eq', 'ne', 'gt', 'gte', 'lt', 'lte']);
 const AGGREGATE_FNS = new Set(['count', 'sum', 'min', 'max', 'avg']);
@@ -88,15 +89,13 @@ function parseAggregateRequirement(r: Record<string, unknown>, where: string): A
   let subject: Subject | undefined;
   if (r.subject !== undefined) {
     subject = parseSubject(r.subject, `${where}.subject`);
-  } else if (fn !== 'count') {
-    fail(`${where}: "subject" is required unless fn is "count"`);
   }
-  // Multi-valued subjects (material/classification/parent) only make sense
-  // as a bucketing key (unique, count, groupBy) — summing/averaging a list
-  // of material names has no numeric meaning.
-  if (subject && fn !== 'count' && !isSingleValuedSubject(subject)) {
-    fail(`${where}: "${fn}" needs a single-valued subject, "${subject.kind}" is multi-valued`);
-  }
+  // Shared with the text parser (#5182) — a subject is required unless `fn`
+  // is `count`, and a present subject must be single-valued unless `fn` is
+  // `count` (multi-valued subjects like material/classification/parent only
+  // make sense as a bucketing key, not as something to sum/average).
+  const subjectError = checkAggregateSubject(fn, subject);
+  if (subjectError) fail(`${where}: ${subjectError}`);
 
   let groupBy: AggregateRequirement['groupBy'];
   if (r.groupBy !== undefined) {

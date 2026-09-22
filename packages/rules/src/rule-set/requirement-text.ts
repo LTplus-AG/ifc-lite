@@ -11,6 +11,7 @@
  */
 import type { Subject, UniqueRequirement, AggregateRequirement, CompareRequirement } from './rule-set.js';
 import type { NumericOp } from '../filter/filter-rules.js';
+import { checkAggregateSubject } from './aggregate-requirement-invariant.js';
 
 export type TextRequirement = UniqueRequirement | AggregateRequirement | CompareRequirement;
 export type RequirementTextResult = { ok: true; requirement: TextRequirement } | { ok: false; error: string };
@@ -116,6 +117,11 @@ function parseAggregate(s: string, fn: AggregateRequirement['fn']): AggregateReq
   const [open, close] = parenSpan(s, fn);
   const inner = s.slice(open + 1, close).trim();
   const subject = inner === '' ? undefined : parseParenSubject(s, open, close);
+  // Shared with the JSON parser (#5182) — same two invariants, same
+  // wording, checked before the requirement is returned so the text and
+  // JSON authoring paths can't drift on what they accept.
+  const subjectError = checkAggregateSubject(fn, subject);
+  if (subjectError) throw new TextError(subjectError);
   const [op, afterOp] = parseOp(s, close + 1);
   const [value, afterValue] = parseNumber(s, afterOp);
   let i = afterValue;

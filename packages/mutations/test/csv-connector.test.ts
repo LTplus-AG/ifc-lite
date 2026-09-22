@@ -309,7 +309,7 @@ describe('CsvConnector.match: property strategy (#5167)', () => {
 
     expect(result.matchedEntityIds).toEqual([1]);
     expect(result.confidence).toBe(1);
-    expect(result.warnings.filter((w) => /Multiple entities/.test(w))).toEqual([]);
+    expect((result.warnings ?? []).filter((w) => /Multiple entities/.test(w))).toEqual([]);
   });
 
   it('flags ambiguity when the value matches more than one entity', () => {

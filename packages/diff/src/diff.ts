@@ -165,6 +165,21 @@ export function diffModels<TRef = unknown>(
     if (useGeometry && !geometryEqual(baseEntity.geometryHash, headEntity.geometryHash)) {
       changeKinds.push('geometry');
     }
+    // Spatial re-parenting (issue #5214): compared only when BOTH sides
+    // resolved a non-empty container and they disagree. A container this
+    // adapter could not resolve on either side is not evidence of a move —
+    // reporting it as one would false-positive on every entity outside a
+    // spatial hierarchy (or on an adapter that never populates `container`)
+    // — so, like `successor-match.ts`'s `position` profile, absence is
+    // skipped rather than counted (see `EntityFingerprint.container`).
+    if (
+      considerData &&
+      baseEntity.container !== undefined &&
+      headEntity.container !== undefined &&
+      baseEntity.container !== headEntity.container
+    ) {
+      changeKinds.push('container');
+    }
 
     const entry: DiffEntry<TRef> = {
       key,

@@ -24,6 +24,8 @@ import {
   type Connection,
   type Edge,
   type EdgeChange,
+  type FinalConnectionState,
+  type HandleType,
   type IsValidConnection,
   type NodeChange,
 } from '@xyflow/react';
@@ -34,6 +36,15 @@ import { toCanvas, type CanvasEdge, type CanvasNode } from '@/lib/flow/view-mode
 import { FlowNodeView } from './FlowNodeView';
 
 const NODE_TYPES = { flow: FlowNodeView };
+
+/**
+ * Said when a reconnect is dropped on a port that will not take it. Not in
+ * the i18n catalogue with the rest of the panel's strings because the other
+ * connection refusals it shares a line with come from `editor-ops`, which is
+ * pure and has no translator; one half-translated line would read worse than
+ * a consistent English one.
+ */
+const RECONNECT_REFUSED = 'that port will not take this connection; the wire was left where it was';
 
 export interface FlowCanvasProps {
   readonly doc: FlowDocument;
@@ -113,11 +124,33 @@ export function FlowCanvas(props: FlowCanvasProps) {
 
   const onReconnectStart = useCallback(() => { reconnected.current = false; }, []);
 
-  /** Dropped on empty canvas: that is how a graph editor unplugs a wire. */
-  const onReconnectEnd = useCallback((_e: MouseEvent | TouchEvent, edge: Edge) => {
-    if (reconnected.current || !edge.targetHandle) return;
+  /**
+   * Where an unfinished reconnect leaves the wire.
+   *
+   * Dropped on empty canvas it is unplugged — that is how a graph editor
+   * unplugs a wire, and it is the only gesture that removes one end without
+   * first selecting the edge.
+   *
+   * Dropped on a port that was REFUSED it is KEPT. `onReconnect` never fires
+   * for an invalid drop, so reading "not reconnected" as "dropped on
+   * nothing" deleted the wire the user was still holding because they aimed
+   * at an incompatible port — the worst possible reading of "that did not
+   * work", and unrecoverable in one gesture. `toHandle` is set whenever a
+   * handle was under the pointer, independently of whether the connection
+   * was valid, which is exactly the distinction needed. Why the port was
+   * refused is not re-derived here: the drag already greys out every port
+   * that will not take the wire, and reconstructing the attempted edge from
+   * the callback's arguments reported the wrong end of it.
+   */
+  const onReconnectEnd = useCallback((_e: MouseEvent | TouchEvent, edge: Edge, _handleType: HandleType, state: FinalConnectionState) => {
+    if (reconnected.current) return;
+    if (state.toHandle) {
+      onConnectError(RECONNECT_REFUSED);
+      return;
+    }
+    if (!edge.targetHandle) return;
     onDocChange(disconnect(doc, edge.target, edge.targetHandle));
-  }, [doc, onDocChange]);
+  }, [doc, onDocChange, onConnectError]);
 
   /**
    * Live feedback while dragging: React Flow greys out the handles this

@@ -11,6 +11,8 @@ export class MutateNamespace {
   /** Asynchronous batches in flight; the backend marker is held by the first and released by the last. */
   private asyncDepth = 0;
   private asyncLabel: string | undefined;
+  /** Synchronous batches open right now (nested `batch` calls stack). */
+  private syncDepth = 0;
 
   /** Set a property on an entity */
   setProperty(ref: EntityRef, psetName: string, propName: string, value: string | number | boolean): void {
@@ -34,9 +36,11 @@ export class MutateNamespace {
    */
   batch(label: string, fn: () => void): void {
     this.backend.mutate.batchBegin(label);
+    this.syncDepth += 1;
     try {
       fn();
     } finally {
+      this.syncDepth -= 1;
       this.backend.mutate.batchEnd(label);
     }
   }
@@ -54,9 +58,14 @@ export class MutateNamespace {
    * undo step is the only grouping that leaves the model consistent. A
    * second marker would close out of order (label mismatch) or, queued
    * behind its parent, never open.
+   *
+   * Starting one INSIDE a synchronous `batch` is refused: the sync batch
+   * closes before the async work resumes, so its marker would be popped
+   * while the async one sits on top — a label mismatch that leaves both open.
    */
   async batchAsync<T>(label: string, fn: () => Promise<T>): Promise<T> {
     if (this.asyncDepth === 0) {
+      if (this.syncDepth > 0) throw new Error(`bim.mutate.batchAsync("${label}") cannot start inside a synchronous batch`);
       this.backend.mutate.batchBegin(label);
       this.asyncLabel = label;
     }

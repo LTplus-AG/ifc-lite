@@ -240,6 +240,17 @@ describe('tracked nodes', () => {
     expect(trackingOf(r)).toEqual({ created: 2, updated: 0, kept: 0, removed: 0 });
     expect(store.load(KEY)?.nodeType).toBe('test.place2');
 
+    // Removal succeeded but the new node then failed: the store must not still
+    // name the removed elements under the old type, or the next run retries a
+    // removal of nothing and blocks the node again.
+    const store3 = new MemoryTrackingStore();
+    const e3 = elements();
+    await runFlow(doc, { host: e3, registry: reg(['W1']), tracking: store3 });
+    const failing = await runFlow(retyped, { host: e3, registry, tracking: store3, inputs: { 'size.value': 'boom' } });
+    expect(failing.reports.find((x) => x.nodeId === 'place')?.laneErrors).toBe(2);
+    expect(e3.created.size).toBe(0);
+    expect(store3.load(KEY)).toEqual({ trackingKey: KEY, generation: 0, entries: {}, nodeType: 'test.place2' });
+
     // The old type cannot remove (unknown here): the node fails rather than overwriting the set.
     const store2 = new MemoryTrackingStore();
     store2.save({ trackingKey: KEY, generation: 0, entries: { a: { globalId: 'G', digest: 'd' } }, nodeType: 'test.vanished' });

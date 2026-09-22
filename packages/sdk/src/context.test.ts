@@ -830,6 +830,19 @@ describe('MutateNamespace', () => {
     await expect(bim.mutate.batchAsync('C', async () => { throw new Error('boom'); })).rejects.toThrow('boom');
     expect(await bim.mutate.batchAsync('D', async () => 'd')).toBe('d');
     expect(calls).toEqual(['begin C', 'end C', 'begin D', 'end D']);
+
+    // Inside a synchronous batch it is refused rather than opening a marker
+    // the sync batch would then pop out of order; a sync batch inside an
+    // async one nests fine.
+    calls.length = 0;
+    let refused: unknown;
+    bim.mutate.batch('sync', () => { bim.mutate.batchAsync('async', async () => 1).catch((e: unknown) => { refused = e; }); });
+    await Promise.resolve();
+    expect(String(refused)).toMatch(/cannot start inside a synchronous batch/);
+    expect(calls).toEqual(['begin sync', 'end sync']);
+    calls.length = 0;
+    await bim.mutate.batchAsync('outer', async () => { bim.mutate.batch('inner', () => {}); });
+    expect(calls).toEqual(['begin outer', 'begin inner', 'end inner', 'end outer']);
   });
 });
 

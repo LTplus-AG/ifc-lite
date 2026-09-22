@@ -236,13 +236,19 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       // and leave the old type's elements to nobody.
       if (previous.nodeType !== undefined && previous.nodeType !== node.type) {
         const gone = await removeSet(previous, registry, opts.host, opts.signal, log, nodeId);
-        if (gone.removed > 0) writesThisRun += 1;
+        if (gone.removed > 0) {
+          writesThisRun += 1;
+          if (opts.cache) opts.cache.writeGeneration += 1;
+        }
         if (gone.rest !== undefined) {
           opts.tracking?.save(gone.rest);
           fail(`the tracked set "${trackingKey}" was made by node type "${previous.nodeType}" and ${Object.keys(gone.rest.entries).length} of its element(s) could not be removed; give this node its own tracking key`);
           continue;
         }
+        // Persisted now, not with the node's own result: if the node fails
+        // below, the store must not still name elements that are gone.
         previous = emptyTrackedSet(trackingKey);
+        opts.tracking?.save(previous);
       }
       const desired = plan.lanes
         .filter((l) => !l.nullLane)

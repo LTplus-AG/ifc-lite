@@ -150,6 +150,13 @@ cargo test -p ifc-lite-landxml --test ingest \
   preserves_distinct_profiles_curves_sections_and_roadway_associations
 ```
 
+Acceptance run: 2026-09-22 at
+`f9ef17249792ac111e8015772ddaa24eb88a7040`. The scoped fixture check reported
+all nine files present and hash-verified; `producer_corpus` executed all four
+tests with no skips; all five `schema_versions` tests passed; and the targeted
+multiple-profile regression passed. The closing PR must link its green required
+CI and code-owner waiver ratification before this issue is closed.
+
 The test names cite #5051 and assert semantic facts rather than a byte snapshot.
 Its absence skip is intentionally not evidence of interoperability. #5051's
 revised closure gate is satisfied when every required row is either reviewed

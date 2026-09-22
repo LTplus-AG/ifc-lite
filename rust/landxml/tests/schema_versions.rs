@@ -12,22 +12,87 @@ use ifc_lite_landxml::{
 };
 
 fn source(namespace: &str, version: &str) -> String {
+    source_with_units(namespace, version, "<Metric linearUnit=\"meter\"/>")
+}
+
+fn source_with_units(namespace: &str, version: &str, units: &str) -> String {
     format!(
         r#"<LandXML xmlns="{namespace}" version="{version}">
-<Units><Metric linearUnit="meter"/></Units>
+<Units>{units}</Units>
 <Surfaces><Surface name="grade"><Definition surfType="TIN"><Pnts>
 <P id="1">0 0 0</P><P id="2">0 1 0</P><P id="3">1 0 0</P>
-</Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces>
+</Pnts><Faces><F>1 2 3</F></Faces><Breaklines><Breakline brkType="standard">
+<PntList3D>0 0 0 1 0 0</PntList3D>
+</Breakline></Breaklines></Definition><SourceData><DataPoints>
+<PntList3D>0 0 0 0 1 0 1 0 0</PntList3D>
+</DataPoints><Breaklines><Breakline brkType="standard">
+<PntList3D>0 0 0 1 0 0</PntList3D>
+</Breakline></Breaklines></SourceData></Surface></Surfaces>
 <CgPoints><CgPoint name="control">0 0 0</CgPoint></CgPoints>
 <Alignments><Alignment name="route" length="1" staStart="0"><CoordGeom>
 <Line><Start>0 0</Start><End>1 0</End></Line>
-</CoordGeom></Alignment></Alignments>
+</CoordGeom><Profile><ProfAlign name="design"><PVI>0 0</PVI><PVI>1 1</PVI>
+</ProfAlign></Profile></Alignment></Alignments>
 <PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs>
 <Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct>
 <Struct name="B"><Center>0 1 0</Center><CircStruct diameter="1"/></Struct>
 </Structs><Pipes><Pipe name="P" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe>
 </Pipes></PipeNetwork></PipeNetworks></LandXML>"#
     )
+}
+
+#[test]
+fn issue_5051_waived_producer_cells_keep_schema_units_and_tin_source_invariants() {
+    // These are rights-clear grammar vectors, not Autodesk exports. They are
+    // the replacement evidence for the dated Civil 3D corpus waivers in the
+    // coverage ledger, so every schema/unit cell must retain source topology
+    // and the exact scale consumed by downstream metric adapters.
+    for (namespace, version, schema) in [
+        (LANDXML_10_NAMESPACE, "1.0", "LandXML-1.0"),
+        (LANDXML_11_NAMESPACE, "1.1", "LandXML-1.1"),
+        (LANDXML_12_NAMESPACE, "1.2", "LandXML-1.2"),
+    ] {
+        for (units, token, scale) in [
+            ("<Metric linearUnit=\"meter\"/>", "meter", 1.0),
+            ("<Imperial linearUnit=\"foot\"/>", "foot", 0.3048),
+            (
+                "<Imperial linearUnit=\"USSurveyFoot\"/>",
+                "USSurveyFoot",
+                1200.0 / 3937.0,
+            ),
+        ] {
+            let xml = source_with_units(namespace, version, units);
+            let document = parse_landxml_document(xml.as_bytes())
+                .expect("rights-clear schema/unit replacement vector must parse");
+            let terrain = &document.terrain;
+            assert_eq!(terrain.schema, schema);
+            assert_eq!(terrain.version, version);
+            let declared_units = terrain.units.as_ref().expect("declared units");
+            assert_eq!(declared_units.linear_unit, token);
+            assert!(
+                (declared_units.linear_scale_to_meters - scale).abs() < 1e-12,
+                "{schema} {token}: unit scale changed"
+            );
+            let surface = terrain.surfaces.first().expect("TIN surface");
+            assert_eq!(surface.points.len(), 3, "{schema} {token}");
+            assert_eq!(
+                surface.faces,
+                vec![["1".to_owned(), "2".to_owned(), "3".to_owned()]]
+            );
+            assert_eq!(surface.points[1].northing, 0.0, "{schema} {token}");
+            assert_eq!(surface.points[1].easting, 1.0, "{schema} {token}");
+            assert_eq!(surface.points[2].northing, 1.0, "{schema} {token}");
+            assert_eq!(surface.points[2].easting, 0.0, "{schema} {token}");
+            assert_eq!(surface.breaklines.len(), 2, "{schema} {token}");
+            assert_eq!(
+                surface.breaklines[0].points,
+                vec![vec![0.0, 0.0, 0.0], vec![1.0, 0.0, 0.0]]
+            );
+            assert_eq!(surface.source_data_points.len(), 3, "{schema} {token}");
+            assert_eq!(terrain.profiles.len(), 1, "{schema} {token}");
+            assert!(terrain.capabilities.renderable_tin, "{schema} {token}");
+        }
+    }
 }
 
 #[test]
@@ -142,6 +207,13 @@ fn issue_5051_refuses_unknown_or_cross_grammar_root_declarations() {
             .expect_err("unknown 1.2 version")
             .code,
         LandXmlDiagnosticCode::UnsupportedVersion
+    );
+    let iso_15143_4 = source("urn:iso:std:iso:15143:-4", "1.0");
+    assert_eq!(
+        parse_landxml_tin(iso_15143_4.as_bytes())
+            .expect_err("ISO 15143-4 is a foreign grammar, not LandXML 1.2")
+            .code,
+        LandXmlDiagnosticCode::UnsupportedNamespace
     );
 }
 

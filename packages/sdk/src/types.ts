@@ -506,7 +506,7 @@ export interface AddWindowInStoreParams extends AddElementCommonParams {
 
 export type AddSpaceInStoreParams = AddSpaceRectangleParams | AddSpacePolygonParams;
 
-export interface AddSpaceRectangleParams extends AddElementCommonParams {
+export interface AddSpaceRectangleParams extends Omit<AddElementCommonParams, 'Tag'> {
   Position: [number, number, number];
   Width: number;
   Depth: number;
@@ -515,7 +515,7 @@ export interface AddSpaceRectangleParams extends AddElementCommonParams {
   LongName?: string;
 }
 
-export interface AddSpacePolygonParams extends AddElementCommonParams {
+export interface AddSpacePolygonParams extends Omit<AddElementCommonParams, 'Tag'> {
   Profile: 'polygon';
   OuterCurve: Array<[number, number]>;
   Position?: [number, number, number];

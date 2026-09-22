@@ -302,6 +302,7 @@ export function useWorkspacePanelControls() {
     if (activeWorkspacePanels.has('appearance')) return 'Appearance';
     if (activeWorkspacePanels.has('loadReport')) return 'Load Report';
     if (activeWorkspacePanels.has('cost')) return 'Cost';
+    if (activeWorkspacePanels.has('flow')) return 'Flow';
     return activeAnalysisExtension?.label ?? 'Analysis';
   }, [activeAnalysisExtension?.label, activeWorkspacePanels]);
 

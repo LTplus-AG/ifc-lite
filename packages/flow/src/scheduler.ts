@@ -19,6 +19,7 @@ import { digest, digestFlowData } from './digest.js';
 import type { FlowDocument, FlowNode } from './document.js';
 import { assemble, planLift, type LiftInput, type LiftPlan } from './lift.js';
 import { resolveParams, type LaneTracking, type LogLevel, type NodeDef, type NodeOutputs, type NodeRegistry } from './registry.js';
+import { ORPHAN_NODE_ID, removeOrphanedSets, trackingKeyOf } from './orphans.js';
 import { emptyTrackedSet, planTracking, type TrackingPlan, type TrackingStore } from './tracking.js';
 import { isAssignable, item, type FlowData } from './values.js';
 
@@ -272,7 +273,7 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
 
     // Tracked nodes: decide per lane what to do against last run's set.
     let trackingPlan: TrackingPlan | undefined;
-    const trackingKey = node.trackingKey ?? `${doc.name}/${node.label ?? node.id}`;
+    const trackingKey = trackingKeyOf(doc, node);
     if (def.tracked) {
       const previous = opts.tracking?.load(trackingKey) ?? emptyTrackedSet(trackingKey);
       const desired = plan.lanes
@@ -303,6 +304,10 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
     let laneErrors = 0;
     let nodeError: string | undefined;
     const seenLanes = new Set<string>();
+    // Lanes skipped as duplicates yield null like a failed lane but must not
+    // count as one: counting them dropped the FIRST lane's fresh entry, and
+    // the next run then planned `create` against an element that existed.
+    const skippedDuplicates = new Set<number>();
     for (const lane of plan.lanes) {
       if (opts.signal?.aborted) {
         nodeError = 'aborted';
@@ -311,6 +316,7 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       const duplicate = trackingPlan !== undefined && seenLanes.has(lane.laneKey ?? '');
       seenLanes.add(lane.laneKey ?? '');
       if (lane.nullLane || duplicate) {
+        if (duplicate) skippedDuplicates.add(results.length);
         results.push(null);
         continue;
       }
@@ -344,14 +350,16 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       }
       // A lane that failed keeps its previous entry, so the next run retries
       // it instead of forgetting an element that may still exist.
-      const failedLanes = new Set(plan.lanes.filter((l, i) => results[i] === null && !l.nullLane).map((l) => l.laneKey ?? ''));
+      const failedLanes = new Set(
+        plan.lanes.filter((l, i) => results[i] === null && !l.nullLane && !skippedDuplicates.has(i)).map((l) => l.laneKey ?? ''),
+      );
       const entries = { ...trackingPlan.next.entries };
       const previous = opts.tracking?.load(trackingKey)?.entries ?? {};
       for (const k of failedLanes) {
         if (previous[k]) entries[k] = previous[k];
         else delete entries[k];
       }
-      opts.tracking?.save({ ...trackingPlan.next, entries });
+      opts.tracking?.save({ ...trackingPlan.next, entries, nodeType: node.type });
     }
     let assembled: Map<string, FlowData>;
     try {
@@ -376,6 +384,13 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
         ? { created: trackingPlan.create.length, updated: trackingPlan.update.length, kept: trackingPlan.keep.length, removed: trackingPlan.remove.length - removeErrors }
         : undefined,
     });
+  }
+
+  const orphans = opts.signal?.aborted ? { removed: 0, errors: 0 } : await removeOrphanedSets(doc, opts.host, opts.tracking, registry, log, opts.signal);
+  if (orphans.errors > 0) failed.add(ORPHAN_NODE_ID);
+  if (orphans.removed > 0) {
+    writesThisRun += 1;
+    if (opts.cache) opts.cache.writeGeneration += 1;
   }
 
   const graphOutputs = doc.outputs.map((o) => ({ label: o.label, nodeId: o.nodeId, port: o.port, data: outputs.get(o.nodeId)?.get(o.port) }));

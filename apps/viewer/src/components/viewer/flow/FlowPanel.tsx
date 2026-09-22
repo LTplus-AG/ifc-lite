@@ -16,7 +16,8 @@ import { parseFlowDocument, type FlowDocument, type NodeReport } from '@ifc-lite
 import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
 import { addNode } from '@/lib/flow/editor-ops';
-import { BrowserTrackingStore, flowToJson } from '@/lib/flow/persistence';
+import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
+import { flowToJson } from '@/lib/flow/persistence';
 import { flowRegistry } from '@/lib/flow/runner';
 import { FlowCanvas, useCanvasDropPosition } from './FlowCanvas';
 import { FlowInspector } from './FlowInspector';
@@ -27,13 +28,7 @@ const select = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.
 const button = 'rounded border border-border px-2 py-0.5 hover:bg-muted disabled:opacity-50';
 
 function download(name: string, text: string): void {
-  const blob = new Blob([text], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${name.replace(/[^\w.-]+/g, '-') || 'flow'}.flow.json`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(new Blob([text], { type: 'application/json' }), `${sanitizeFilename(name, { fallback: 'flow' })}.flow.json`);
 }
 
 function PaletteWithDrop({ onAdd }: { onAdd: (type: string, pos: [number, number]) => void }) {
@@ -90,7 +85,6 @@ export function FlowPanel({ onClose }: { onClose: () => void }) {
   const onDelete = () => {
     if (!flowDoc) return;
     if (!window.confirm(t('flowPanel.deleteConfirm', { name: flowDoc.name }))) return;
-    BrowserTrackingStore.clear(flowDoc.id);
     deleteFlow(flowDoc.id);
   };
 

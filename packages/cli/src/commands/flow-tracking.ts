@@ -36,7 +36,9 @@ export class FileTrackingStore implements TrackingStore {
     if (text !== undefined) {
       const parsed = JSON.parse(text) as Partial<TrackingSidecar>;
       if (parsed.version !== TRACKING_SIDECAR_VERSION) throw new Error(`${path}: unsupported tracking sidecar version ${String(parsed.version)}`);
-      if (!parsed.sets || typeof parsed.sets !== 'object') throw new Error(`${path}: tracking sidecar has no "sets"`);
+      // An array is an object too; spreading `[]` yields an empty set, and
+      // the run would then re-create every element it tracked last time.
+      if (!parsed.sets || typeof parsed.sets !== 'object' || Array.isArray(parsed.sets)) throw new Error(`${path}: tracking sidecar has no "sets"`);
       store.sets = { ...parsed.sets };
       store.loadedPin = parsed.pinnedTo;
     }
@@ -49,6 +51,16 @@ export class FileTrackingStore implements TrackingStore {
 
   save(set: TrackedSet): void {
     this.sets[set.trackingKey] = set;
+    this.dirty = true;
+  }
+
+  keys(): readonly string[] {
+    return Object.keys(this.sets);
+  }
+
+  delete(trackingKey: string): void {
+    if (!(trackingKey in this.sets)) return;
+    delete this.sets[trackingKey];
     this.dirty = true;
   }
 

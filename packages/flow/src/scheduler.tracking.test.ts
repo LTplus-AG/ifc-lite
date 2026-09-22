@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FlowDocument } from './document.js';
 import { NodeRegistry, type NodeDef } from './registry.js';
+import { ORPHAN_NODE_ID } from './orphans.js';
 import { runFlow } from './scheduler.js';
 import { MemoryTrackingStore } from './tracking.js';
 import { list } from './values.js';
@@ -147,6 +148,71 @@ describe('tracked nodes', () => {
     expect(trackingOf(second)).toEqual({ created: 1, updated: 0, kept: 0, removed: 1 });
     expect(e.created.has(g1)).toBe(false);
     expect(e.created.size).toBe(1);
+  });
+
+  it('a duplicate driving entity is skipped, not counted as a failed lane that drops the first lane entry', async () => {
+    const store = new MemoryTrackingStore();
+    const e = elements();
+    const first = await runFlow(doc, { host: e, registry: reg(['W1', 'W1']), tracking: store });
+    expect(first.log.some((l) => l.message.includes('duplicate lane key'))).toBe(true);
+    expect(trackingOf(first)).toEqual({ created: 1, updated: 0, kept: 0, removed: 0 });
+    expect(store.load(KEY)?.entries.W1).toBeDefined();
+    // Before: the entry was dropped, and the re-run planned `create` against
+    // the element the first run had made.
+    const again = await runFlow(doc, { host: e, registry: reg(['W1', 'W1']), tracking: store });
+    expect(trackingOf(again)).toEqual({ created: 0, updated: 0, kept: 1, removed: 0 });
+    expect(e.created.size).toBe(1);
+  });
+
+  it('a set whose node was deleted from the graph is removed from the model and dropped from the store', async () => {
+    const store = new MemoryTrackingStore();
+    const e = elements();
+    await runFlow(doc, { host: e, registry: reg(['W1', 'W2']), tracking: store });
+    expect(store.load(KEY)?.nodeType).toBe('test.place');
+    const guids = [...e.created.keys()];
+
+    const withoutPlace: FlowDocument = { ...doc, nodes: doc.nodes.filter((n) => n.id !== 'place'), edges: [] };
+    const r = await runFlow(withoutPlace, { host: e, registry: reg(['W1', 'W2']), tracking: store });
+    expect(r.ok).toBe(true);
+    expect(r.writes).toBe(1);
+    expect(e.log.filter((l) => l.startsWith('remove:'))).toEqual(guids.map((g) => `remove:${g}`));
+    expect(e.created.size).toBe(0);
+    expect(store.keys()).toEqual([]);
+    expect(r.log.find((l) => l.nodeId === ORPHAN_NODE_ID)?.message).toContain(`removed 2 element(s) of deleted node "${KEY}"`);
+  });
+
+  it('a renamed tracking key removes the old set and creates the new one', async () => {
+    const store = new MemoryTrackingStore();
+    const e = elements();
+    await runFlow(doc, { host: e, registry: reg(['W1']), tracking: store });
+    const [old] = [...e.created.keys()];
+    const renamed: FlowDocument = { ...doc, nodes: doc.nodes.map((n) => (n.id === 'place' ? { ...n, trackingKey: 'columns/v2' } : n)) };
+    const r = await runFlow(renamed, { host: e, registry: reg(['W1']), tracking: store });
+    expect(trackingOf(r)).toEqual({ created: 1, updated: 0, kept: 0, removed: 0 });
+    expect(e.created.has(old)).toBe(false);
+    expect(store.keys()).toEqual(['columns/v2']);
+  });
+
+  it('an orphaned set whose type is unknown stays in the store, with a warning, rather than being forgotten', async () => {
+    const store = new MemoryTrackingStore();
+    store.save({ trackingKey: 'columns/gone', generation: 0, entries: { a: { globalId: 'G', digest: 'd' } }, nodeType: 'test.vanished' });
+    const e = elements();
+    const r = await runFlow(doc, { host: e, registry: reg(['W1']), tracking: store });
+    expect(r.ok).toBe(true);
+    expect(store.load('columns/gone')).toBeDefined();
+    expect(r.log.find((l) => l.nodeId === ORPHAN_NODE_ID)?.level).toBe('warn');
+  });
+
+  it('a failed orphan removal keeps the set for the next run and fails the run', async () => {
+    const store = new MemoryTrackingStore();
+    const e = elements();
+    await runFlow(doc, { host: e, registry: reg(['W1']), tracking: store });
+    const failingRemove: NodeDef<Elements> = { ...place, remove: () => { throw new Error('locked'); } };
+    const registry = new NodeRegistry<Elements>().registerAll([wallsNode(['W1']), sizeNode, failingRemove]);
+    const r = await runFlow({ ...doc, nodes: doc.nodes.filter((n) => n.id !== 'place'), edges: [] }, { host: e, registry, tracking: store });
+    expect(r.ok).toBe(false);
+    expect(store.keys()).toEqual([KEY]);
+    expect(r.log.find((l) => l.level === 'error')?.message).toContain('locked');
   });
 
   it('without a tracking store every run creates, so a caller that wants re-runs must supply one', async () => {

@@ -53,12 +53,11 @@ describe('flowSlice', () => {
     assert.equal(useViewerStore.getState().savedFlows.length, 2);
   });
 
-  it('delete closes the editor when the open graph is deleted, and clears its tracking sidecar via the panel helper', () => {
+  it('delete closes the editor when the open graph is deleted, and clears its tracking sidecar', () => {
     const id = useViewerStore.getState().createFlow('A')!;
     const tracking = new BrowserTrackingStore(id, 'content:x');
     tracking.save({ trackingKey: 'A/n', generation: 0, entries: {} });
     assert.ok(BrowserTrackingStore.read(id));
-    BrowserTrackingStore.clear(id);
     useViewerStore.getState().deleteFlow(id);
     assert.equal(useViewerStore.getState().flowDoc, null);
     assert.equal(BrowserTrackingStore.read(id), undefined);

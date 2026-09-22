@@ -787,6 +787,9 @@ describe('MutateNamespace', () => {
       expect(mutate.batchBegin).toHaveBeenCalledWith('flow run');
       expect(mutate.batchEnd).not.toHaveBeenCalled();
       await Promise.resolve();
+      // Still open after the suspension: an implementation that ran `fn()`
+      // without awaiting it would have closed the batch by now.
+      expect(mutate.batchEnd).not.toHaveBeenCalled();
       bim.mutate.setProperty({ modelId: 'm', expressId: 1 }, 'Pset', 'Prop', 1);
       return 42;
     });
@@ -795,6 +798,32 @@ describe('MutateNamespace', () => {
 
     await expect(bim.mutate.batchAsync('failing', async () => { throw new Error('boom'); })).rejects.toThrow('boom');
     expect(mutate.batchEnd).toHaveBeenLastCalledWith('failing');
+  });
+
+  it('batchAsync() serialises overlapping batches so the markers close in order', async () => {
+    const { backend, mutate } = createMockBackend();
+    const bim = createBimContext({ backend });
+    const calls: string[] = [];
+    mutate.batchBegin.mockImplementation((label: string) => { calls.push(`begin ${label}`); });
+    mutate.batchEnd.mockImplementation((label: string) => { calls.push(`end ${label}`); });
+
+    let releaseA!: () => void;
+    const a = bim.mutate.batchAsync('A', () => new Promise<string>((resolve) => { releaseA = () => resolve('a'); }));
+    const b = bim.mutate.batchAsync('B', async () => 'b');
+    await Promise.resolve();
+    // B has not opened while A is in flight.
+    expect(calls).toEqual(['begin A']);
+    releaseA();
+    expect(await a).toBe('a');
+    expect(await b).toBe('b');
+    expect(calls).toEqual(['begin A', 'end A', 'begin B', 'end B']);
+
+    // A failed batch does not block the one queued behind it.
+    const failing = bim.mutate.batchAsync('C', async () => { throw new Error('boom'); });
+    const after = bim.mutate.batchAsync('D', async () => 'd');
+    await expect(failing).rejects.toThrow('boom');
+    expect(await after).toBe('d');
+    expect(calls.slice(-4)).toEqual(['begin C', 'end C', 'begin D', 'end D']);
   });
 });
 

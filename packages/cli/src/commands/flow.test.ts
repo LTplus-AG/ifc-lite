@@ -198,5 +198,29 @@ describe('ifc-lite flow', () => {
     const third = await columnsOf(out3);
     expect(third).toHaveLength(2);
     expect(first.filter((g) => !third.includes(g))).toHaveLength(1);
+    vi.restoreAllMocks();
+
+    // Same inputs, but against the model the columns were never added to: the
+    // plan says `keep`, the elements are gone, and the run re-creates them
+    // under their GlobalIds instead of handing downstream a handle to nothing.
+    const out4 = join(dir, 'cols4.ifc');
+    c = capture();
+    await flowCommand(['run', graph, HELLO_WALL, '--input', 'xs.items=[0,4]', '--input', 'column.height=4', '--out', out4, '--json']);
+    expect(actions(c)).toEqual(['keep', 'keep']);
+    expect((c.json() as { warnings: Array<{ message: string }> }).warnings.map((w) => w.message)).toContainEqual(expect.stringMatching(/no longer in the model; re-creating/));
+    expect(await columnsOf(out4)).toEqual(third);
+    vi.restoreAllMocks();
+
+    // Deleting the tracked node from the graph removes its set on the next run.
+    const withoutAdd = JSON.parse(await readFile(graph, 'utf-8')) as { nodes: Array<{ id: string }>; edges: Array<{ from: [string, string]; to: [string, string] }>; outputs: unknown[] };
+    withoutAdd.nodes = withoutAdd.nodes.filter((n) => n.id !== 'add');
+    withoutAdd.edges = withoutAdd.edges.filter((e) => e.from[0] !== 'add' && e.to[0] !== 'add');
+    withoutAdd.outputs = [];
+    await writeFile(graph, JSON.stringify(withoutAdd));
+    const out5 = join(dir, 'cols5.ifc');
+    c = capture();
+    await flowCommand(['run', graph, out4, '--out', out5, '--json']);
+    expect(await columnsOf(out5)).toEqual([]);
+    expect(JSON.parse(await readFile(join(dir, 'columns.tracking.json'), 'utf-8')).sets).toEqual({});
   });
 });

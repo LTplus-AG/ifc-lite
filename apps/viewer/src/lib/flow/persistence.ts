@@ -97,7 +97,7 @@ export class BrowserTrackingStore implements TrackingStore {
       const raw = localStorage.getItem(TRACKING_PREFIX + graphId);
       if (!raw) return undefined;
       const parsed = JSON.parse(raw) as Partial<TrackingSidecar>;
-      if (parsed.version !== TRACKING_SIDECAR_VERSION || typeof parsed.pinnedTo !== 'string' || !parsed.sets) return undefined;
+      if (parsed.version !== TRACKING_SIDECAR_VERSION || typeof parsed.pinnedTo !== 'string' || !parsed.sets || typeof parsed.sets !== 'object' || Array.isArray(parsed.sets)) return undefined;
       return parsed as TrackingSidecar;
     } catch {
       return undefined;
@@ -114,6 +114,20 @@ export class BrowserTrackingStore implements TrackingStore {
 
   save(set: TrackedSet): void {
     this.sets[set.trackingKey] = set;
+    this.write();
+  }
+
+  keys(): readonly string[] {
+    return Object.keys(this.sets);
+  }
+
+  delete(trackingKey: string): void {
+    if (!(trackingKey in this.sets)) return;
+    delete this.sets[trackingKey];
+    this.write();
+  }
+
+  private write(): void {
     const sidecar: TrackingSidecar = { version: TRACKING_SIDECAR_VERSION, pinnedTo: this.pinnedTo, sets: this.sets };
     localStorage.setItem(TRACKING_PREFIX + this.graphId, JSON.stringify(sidecar));
   }

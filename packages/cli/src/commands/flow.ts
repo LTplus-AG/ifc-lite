@@ -17,7 +17,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, stat, writeFile } from 'node:fs/promises';
 import { checkAvailability, parseFlowDocument, runFlow, validateFlowWiring, type FlowDocument, type RunResult } from '@ifc-lite/flow';
 import { createStandardRegistry, headlessFeatures, type FlowHost } from '@ifc-lite/flow-nodes';
 import { createHeadlessContext } from '../loader.js';
@@ -174,9 +174,13 @@ export async function flowCommand(args: string[]): Promise<void> {
   const host: FlowHost = { bim, defaultModelId: bim.model.activeId() ?? undefined };
 
   let tracking: FileTrackingStore | undefined;
-  if (!hasFlag(args, '--no-tracking') && doc.nodes.some((n) => registry.get(n.type)?.tracked)) {
+  const trackingPath = requireFlagValue(args, '--tracking') ?? defaultTrackingPath(graphPath);
+  // An existing sidecar is opened even when no node is tracked any more:
+  // that is how a set whose node was deleted gets removed from the model.
+  const wantsTracking = doc.nodes.some((n) => registry.get(n.type)?.tracked) || (await stat(trackingPath).then(() => true, () => false));
+  if (!hasFlag(args, '--no-tracking') && wantsTracking) {
     const pin = `file:${createHash('sha256').update(await readFile(modelPath)).digest('hex')}`;
-    tracking = await FileTrackingStore.open(requireFlagValue(args, '--tracking') ?? defaultTrackingPath(graphPath), pin);
+    tracking = await FileTrackingStore.open(trackingPath, pin);
     if (tracking.loadedPin !== undefined && tracking.loadedPin !== pin) {
       process.stderr.write(`  warn  tracking sidecar ${tracking.path} was written against another model state; tracked elements that are missing will be re-created\n`);
     }

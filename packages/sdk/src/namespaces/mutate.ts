@@ -8,6 +8,9 @@ import type { BimBackend, EntityRef } from '../types.js';
 export class MutateNamespace {
   constructor(private backend: BimBackend) {}
 
+  /** The asynchronous batch in flight, if any; the next one queues behind it. */
+  private asyncBatch: Promise<unknown> = Promise.resolve();
+
   /** Set a property on an entity */
   setProperty(ref: EntityRef, psetName: string, propName: string, value: string | number | boolean): void {
     this.backend.mutate.setProperty(ref, psetName, propName, value);
@@ -41,14 +44,24 @@ export class MutateNamespace {
    * `batch` for asynchronous work (a flow run, a fetch-then-write): the
    * batch stays open across awaits and closes when the promise settles.
    * Other writers on the same backend meanwhile land inside the batch.
+   *
+   * Batches are serialised: a second `batchAsync` waits for the first to
+   * settle before it opens. The backend's begin/end markers are a stack, so
+   * two interleaved batches whose first opened settled first would close
+   * the second's marker and fail with a label mismatch.
    */
-  async batchAsync<T>(label: string, fn: () => Promise<T>): Promise<T> {
-    this.backend.mutate.batchBegin(label);
-    try {
-      return await fn();
-    } finally {
-      this.backend.mutate.batchEnd(label);
-    }
+  batchAsync<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    const run = this.asyncBatch.then(async () => {
+      this.backend.mutate.batchBegin(label);
+      try {
+        return await fn();
+      } finally {
+        this.backend.mutate.batchEnd(label);
+      }
+    });
+    // The previous batch's failure is its own caller's; the queue never rejects.
+    this.asyncBatch = run.catch(() => undefined);
+    return run;
   }
 
   /** Undo last mutation for a model */

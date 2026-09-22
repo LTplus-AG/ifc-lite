@@ -13,7 +13,7 @@
 
 import type { StateCreator } from 'zustand';
 import type { FlowDocument, RunResult } from '@ifc-lite/flow';
-import { canCreateFlow, isFlowWithinSizeLimit, loadSavedFlows, newFlowDocument, saveFlows, type SavedFlow } from '../../lib/flow/persistence.js';
+import { BrowserTrackingStore, canCreateFlow, isFlowWithinSizeLimit, loadSavedFlows, newFlowDocument, saveFlows, type SavedFlow } from '../../lib/flow/persistence.js';
 
 export interface FlowSlice {
   flowPanelVisible: boolean;
@@ -87,6 +87,9 @@ export const createFlowSlice: StateCreator<FlowSlice, [], [], FlowSlice> = (set,
   deleteFlow: (id) => {
     const next = get().savedFlows.filter((f) => f.doc.id !== id);
     saveFlows(next);
+    // The sidecar is the graph's; a graph deleted here and re-imported later
+    // under the same id must not inherit tracked elements it never made.
+    BrowserTrackingStore.clear(id);
     const closing = get().activeFlowId === id;
     set({ savedFlows: next, ...(closing ? { activeFlowId: null, flowDoc: null, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null } : {}) });
   },

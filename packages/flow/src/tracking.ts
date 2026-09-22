@@ -35,6 +35,13 @@ export interface TrackedSet {
   /** Bumped on every `replace` run so fresh GlobalIds stay deterministic. */
   readonly generation: number;
   readonly entries: Readonly<Record<GroupKey, TrackedEntry>>;
+  /**
+   * Type of the node that made the set. Recorded so that a set whose node
+   * was deleted from the graph can still be removed from the model by that
+   * type's `remove` — without it the elements outlive the node that made
+   * them, the orphan this whole module exists to prevent.
+   */
+  readonly nodeType?: string;
 }
 
 export const TRACKING_SIDECAR_VERSION = 1;
@@ -51,6 +58,9 @@ export interface TrackingSidecar {
 export interface TrackingStore {
   load(trackingKey: string): TrackedSet | undefined;
   save(set: TrackedSet): void;
+  /** Every tracking key the store holds, so a run can find sets no node claims any more. */
+  keys(): readonly string[];
+  delete(trackingKey: string): void;
 }
 
 /** In-memory store: tests, and hosts that have not chosen a sidecar yet. */
@@ -61,6 +71,12 @@ export class MemoryTrackingStore implements TrackingStore {
   }
   save(set: TrackedSet): void {
     this.sets.set(set.trackingKey, set);
+  }
+  keys(): readonly string[] {
+    return [...this.sets.keys()];
+  }
+  delete(trackingKey: string): void {
+    this.sets.delete(trackingKey);
   }
 }
 

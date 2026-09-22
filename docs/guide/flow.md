@@ -102,7 +102,13 @@ them. That node is **tracked**: it owns the elements it creates.
 - Per lane the runtime decides **create** (new lane), **update** (inputs
   changed: the element is replaced under the same GlobalId), or **keep**
   (nothing to write). Lanes that vanished since the last run are
-  **removed** — the orphan Dynamo leaves behind.
+  **removed** — the orphan Dynamo leaves behind. A tracked node deleted
+  from the graph (or given a new tracking key) has its whole set removed
+  on the next run.
+- An **update** replaces the product; the representation items of the
+  previous body stay in the exported file as unreferenced entities (the
+  store tombstones the product only). A stable GlobalId says the element
+  is the same one, not that the file's entity set is unchanged.
 - The tracked sets live in a sidecar, not in the graph: `ifc-lite flow
   run` writes `<graph>.tracking.json` beside the graph (`--tracking F`,
   `--no-tracking`). A graph is reusable across models; its tracked sets

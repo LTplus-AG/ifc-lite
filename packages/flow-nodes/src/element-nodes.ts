@@ -178,17 +178,21 @@ export const elementNodes: FlowNodeDef[] = [
       const storey = toSdkRef(ctx, spec.storey);
       const existing = resolveByGlobalId(ctx.host.bim, t.globalId);
       ctx.log('info', `${t.action} ${spec.kind} ${t.globalId}${existing ? ` (#${existing.expressId})` : ''}`);
-      if (t.action === 'keep') {
-        return { entity: { globalId: t.globalId, modelId: existing?.modelId, expressId: existing?.expressId } satisfies EntityRef };
+      if (t.action === 'keep' && existing) {
+        return { entity: { globalId: t.globalId, modelId: existing.modelId, expressId: existing.expressId } satisfies EntityRef };
       }
       if (t.action === 'create' && existing) {
         throw new Error(`GlobalId ${t.globalId} already exists in the model; change the node's tracking key rather than overwrite a foreign element`);
       }
-      if (t.action === 'update') {
-        if (existing) {
-          ctx.host.bim.store.removeEntity(existing);
-          forgetGlobalId(ctx.host.bim, t.globalId);
-        } else ctx.log('warn', `element ${t.globalId} was tracked but is no longer in the model; re-creating it`);
+      // `update` and a `keep` whose element is gone (deleted by hand, or the
+      // model was rebuilt from an older file) both end in a fresh element under
+      // the same GlobalId; a keep that returned a handle to nothing would read
+      // as success downstream.
+      if (t.action === 'update' && existing) {
+        ctx.host.bim.store.removeEntity(existing);
+        forgetGlobalId(ctx.host.bim, t.globalId);
+      } else if (t.action !== 'create') {
+        ctx.log('warn', `element ${t.globalId} was tracked but is no longer in the model; re-creating it`);
       }
       const ref = addSpec(ctx, storey, spec, t.globalId);
       rememberGlobalId(ctx.host.bim, t.globalId, ref);
@@ -214,7 +218,12 @@ export const elementNodes: FlowNodeDef[] = [
     requires: { backend: ['store'] },
     run: (ctx, i) => {
       requireCapability(ctx, 'model.delete');
-      return { removed: ctx.host.bim.store.removeEntity(toSdkRef(ctx, i.entity as EntityRef)) };
+      const entity = i.entity as EntityRef;
+      const removed = ctx.host.bim.store.removeEntity(toSdkRef(ctx, entity));
+      // The index would otherwise keep resolving the tombstoned address, and a
+      // later tracked create under that GlobalId would see a "foreign" element.
+      if (removed) forgetGlobalId(ctx.host.bim, entity.globalId);
+      return { removed };
     },
   },
 ];

@@ -66,4 +66,5 @@ export { nodeAvailability, checkAvailability } from './availability.js';
 export type { HostFeatures, AvailabilityStatus, NodeAvailability } from './availability.js';
 
 export { runFlow, topologicalOrder, MemoCache, FlowCycleError, DEFAULT_MAX_CROSS } from './scheduler.js';
+export { trackingKeyOf, ORPHAN_NODE_ID } from './orphans.js';
 export type { RunOptions, RunResult, RunLogEntry, NodeReport, NodeStatus, GraphOutputValue } from './scheduler.js';

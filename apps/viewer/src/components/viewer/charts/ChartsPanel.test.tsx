@@ -28,7 +28,7 @@ import { useIDS, type UseIDSResult } from '@/hooks/useIDS.js';
 import { useClash } from '@/hooks/useClash.js';
 import { installIdsFocusVisibility } from '@/hooks/ids-focus-visibility.js';
 import { useSpaceSceneFraming } from '@/components/viewer/tools/space-sketch/useSpaceSceneFraming.js';
-import { modelOverviewDashboard } from '@/lib/charts/presets.js';
+import { modelOverviewDashboard, newChartSpec } from '@/lib/charts/presets.js';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { fixtureModel } from '@/test/store-fixture.js';
@@ -259,7 +259,13 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
 
   it('enables IFC field discovery when an existing non-element chart switches to Elements (#4833)', async () => {
     const dashboard = modelOverviewDashboard();
-    dashboard.charts = [{ ...dashboard.charts[0], title: 'Clash chart', source: 'clash', dimension: 'Severity' }];
+    // `dashboard.charts[0]` is typed as the `ChartSpec` union; spreading it
+    // and then overriding only `dimension` (not `type`) leaves TS unable to
+    // rule out the `elementCount` arm, whose `dimension` may not be a string
+    // (#5151 typecheck). Stripping `type`/`dimension` first removes the
+    // union-only fields before the merge, so only the shared shape survives.
+    const { type: _clashChartType, dimension: _clashChartDimension, ...clashChartBase } = dashboard.charts[0];
+    dashboard.charts = [newChartSpec({ ...clashChartBase, title: 'Clash chart', source: 'clash', dimension: 'Severity' })];
     dashboard.layout = dashboard.layout.slice(0, 1);
     useViewerStore.setState({ dashboards: [dashboard], activeDashboardId: dashboard.id });
     const { renderer } = recordingRenderer();
@@ -1271,14 +1277,16 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
 
   it('replaces a feedback-selected overlapping bucket in the same chart (#4832)', async () => {
     const dashboard = modelOverviewDashboard();
-    dashboard.charts = [{
-      ...dashboard.charts[0],
+    // See the #5151 note above: strip the union-only fields before the merge.
+    const { type: _overlapType, dimension: _overlapDimension, ...overlapBase } = dashboard.charts[0];
+    dashboard.charts = [newChartSpec({
+      ...overlapBase,
       title: 'Overlapping rules',
       source: 'clash',
       dimension: 'Rule',
       sort: 'label',
       topN: undefined,
-    }];
+    })];
     dashboard.layout = dashboard.layout.slice(0, 1);
     const clash = (id: string, rule: string, a: number, b: number): Clash => ({
       id,
@@ -1331,9 +1339,11 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
 
   it('keeps clicked bucket identity when cross-filter removal reorders the source chart (#4832)', async () => {
     const dashboard = modelOverviewDashboard();
+    // See the #5151 note above: strip the union-only fields before the merge.
+    const { type: _severityType, dimension: _severityDimension, ...severityBase } = dashboard.charts[0];
     dashboard.charts = [
-      { ...dashboard.charts[0], title: 'Clashes by severity', source: 'clash', dimension: 'Severity', topN: undefined },
-      { ...dashboard.charts[1], title: 'Clashes by rule', source: 'clash', type: 'bar', dimension: 'Rule', sort: undefined, topN: 1 },
+      newChartSpec({ ...severityBase, title: 'Clashes by severity', source: 'clash', dimension: 'Severity', topN: undefined }),
+      newChartSpec({ ...dashboard.charts[1], title: 'Clashes by rule', source: 'clash', type: 'bar', dimension: 'Rule', sort: undefined, topN: 1 }),
     ];
     dashboard.layout = dashboard.layout.slice(0, 2);
     const clash = (id: string, rule: string, severity: Clash['severity'], a: number, b: number): Clash => ({
@@ -1469,13 +1479,15 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
 
   it('distinguishes synthetic top-N Other from a literal __other__ bucket (#4832)', async () => {
     const dashboard = modelOverviewDashboard();
-    dashboard.charts = [{
-      ...dashboard.charts[0],
+    // See the #5151 note above: strip the union-only fields before the merge.
+    const { type: _topRuleType, dimension: _topRuleDimension, ...topRuleBase } = dashboard.charts[0];
+    dashboard.charts = [newChartSpec({
+      ...topRuleBase,
       title: 'Top clash rules',
       source: 'clash',
       dimension: 'Rule',
       topN: 1,
-    }];
+    })];
     dashboard.layout = dashboard.layout.slice(0, 1);
     const clash = (id: string, rule: string, a: number, b: number): Clash => ({
       id,

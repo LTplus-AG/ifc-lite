@@ -168,6 +168,52 @@ function toBucket(acc: Accumulator, color: string): Bucket {
 }
 
 export function aggregate(spec: ChartSpec, dataset: ChartDataset, options: AggregateOptions = {}): AggregateResult {
+  // Special handling for elementCount: create a single bucket with all elements.
+  if (spec.type === 'elementCount') {
+    const ids = new Set<number>();
+    let total = 0;
+    for (const row of dataset.rows) {
+      if (!rowInSlice(row, options.slice)) continue;
+      // elementCount always counts matching rows — it never sums a measure
+      // column. `spec.measure` normally reads `{ agg: 'count' }` (validation
+      // requires it), but a chart switched from a sum-based type keeps
+      // whatever stale measure it had until it is saved again (the editor
+      // resets it — `ChartEditor.tsx`'s `setType` — but nothing stops a
+      // library caller from constructing the spec directly). Reading
+      // `spec.measure.agg` here would make a stale `sum` measure add zero
+      // for every row instead of counting it (#5151); ignoring it entirely
+      // makes that divergence impossible regardless of caller.
+      total += 1;
+      for (let i = 0; i < row.ids.length; i++) ids.add(row.ids[i]);
+    }
+    const color = '#3b82f6'; // Default blue
+    // `count` is documented as "rows in the bucket, regardless of measure"
+    // (`Bucket.count` in types.ts) and every other aggregation path keeps
+    // it that way (`acc.count += 1` above; folded into `Other` unchanged).
+    // `total` is that same row count here — use it, not `ids.size`, so a
+    // row whose ids overlap another row's doesn't silently shrink `count`
+    // relative to `value` (#5151).
+    const bucket: Bucket = { key: 'total', label: 'Total', value: total, count: total, ids: Uint32Array.from(ids), color };
+    const palette = assignColors([bucket.label], options.palette);
+    const categoryOf = new Map<number, number[]>();
+    for (const id of ids) {
+      categoryOf.set(id, [0]);
+    }
+    return {
+      spec,
+      dataFingerprint: dataset.fingerprint,
+      categories: [bucket],
+      series: [{ key: 'total', label: spec.title, buckets: [bucket] }],
+      total,
+      unbucketed: 0,
+      unmeasured: 0,
+      unsupported: 0,
+      categoryOf,
+      unit: undefined,
+      palette,
+    };
+  }
+
   const columnIndex = (id: string | undefined): number => (id ? dataset.columns.findIndex((c) => c.id === id) : -1);
   const dimension = columnIndex(spec.dimension);
   if (dimension < 0) throw new Error(`chart "${spec.id}": dimension column "${spec.dimension}" is not in the dataset`);

@@ -28,6 +28,23 @@ export class FrustumUtils {
    * Check if AABB is inside frustum
    */
   static isAABBVisible(frustum: Frustum, aabb: AABB): boolean {
+    // Fail closed on a non-finite box (NaN/Infinity from corrupt geometry)
+    // instead of letting it fall through the plane loop. Every plane
+    // comparison below is `distance < PLANE_EPSILON`, and a comparison
+    // against NaN is always false, so a NaN-bounded box would never trip
+    // the reject branch on any of the six planes and this function would
+    // return true — visible — for a box that `AABBUtils.intersects` and the
+    // raycast path both already treat as absent. Checked once, up front,
+    // rather than per-plane: it's the same six components either way, and
+    // this skips all six plane distance computations when it fires instead
+    // of running them first and discarding the result.
+    if (
+      !Number.isFinite(aabb.min[0]) || !Number.isFinite(aabb.min[1]) || !Number.isFinite(aabb.min[2]) ||
+      !Number.isFinite(aabb.max[0]) || !Number.isFinite(aabb.max[1]) || !Number.isFinite(aabb.max[2])
+    ) {
+      return false;
+    }
+
     for (const plane of frustum.planes) {
       // Find the "positive vertex" - the vertex of the AABB that is farthest
       // in the positive direction of the plane normal

@@ -333,12 +333,34 @@ describe('CsvConnector.match: property strategy (#5167)', () => {
 
     // "01" is genuinely ambiguous across these two types — it is the String
     // value verbatim AND a valid Integer 1 — so it matches both and must SAY
-    // so rather than silently picking one.
+    // so rather than silently picking one. Asserted unconditionally: a guarded
+    // assertion would pass vacuously if the Integer path were ever lost.
     const [zeroOne] = connector.match([{ Mark: '01' }], mapping);
-    expect(zeroOne.matchedEntityIds).toContain(2);
-    if (zeroOne.matchedEntityIds.length > 1) {
-      expect((zeroOne.warnings ?? []).some((w) => /Multiple entities/.test(w))).toBe(true);
+    expect([...zeroOne.matchedEntityIds].sort()).toEqual([1, 2]);
+    expect(zeroOne.confidence).toBe(0.5);
+    expect((zeroOne.warnings ?? []).some((w) => /Multiple entities/.test(w))).toBe(true);
+  });
+
+  it('refuses an Express ID cell that is not wholly a positive integer', () => {
+    // `parseInt` stops at the first non-digit, so these would have selected
+    // entity 1 and written mutations onto the wrong entity.
+    const { connector } = makeConnectorWithProperties([1, 2], {});
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'expressId', column: 'Id' },
+      propertyMappings: [],
+    };
+
+    for (const cell of ['1abc', '1.5', '1e2', '0', '-1', ' ']) {
+      const [result] = connector.match([{ Id: cell }], mapping);
+      expect(result.matchedEntityIds, `"${cell}" must not select an entity`).toEqual([]);
+      expect(
+        (result.warnings ?? []).some((w) => /Invalid Express ID|Empty match value/.test(w)),
+        `"${cell}" must be reported`,
+      ).toBe(true);
     }
+
+    const [ok] = connector.match([{ Id: ' 1 ' }], mapping);
+    expect(ok.matchedEntityIds, 'a surrounding-whitespace integer still matches').toEqual([1]);
   });
 
   it('warns per row when a present match column is blank, rather than failing silently', () => {

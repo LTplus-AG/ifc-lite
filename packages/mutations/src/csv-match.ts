@@ -266,11 +266,15 @@ export function matchRowAgainstContext(
     }
 
     case 'expressId': {
-      const expressId = parseInt(matchValue, 10);
-      if (Number.isNaN(expressId)) {
+      // `parseInt` stops at the first non-digit, so "1abc", "1.5" and "1e2"
+      // would all silently select entity 1 and the import would then write
+      // mutations onto the wrong entity. The whole trimmed cell has to be a
+      // positive decimal integer.
+      const raw = matchValue.trim();
+      if (!/^\d+$/.test(raw) || raw === '0') {
         warnings.push(`Invalid Express ID: ${matchValue}`);
       } else {
-        const ids = context.index.get(String(expressId));
+        const ids = context.index.get(String(Number(raw)));
         if (ids) matchedEntityIds.push(...ids);
       }
       break;

@@ -35,6 +35,7 @@
     "@ifc-lite/spatial": "workspace:^"
   },
   "devDependencies": {
+    "@ifc-lite/export": "workspace:^",
     "typescript": "^6.0.3",
     "vitest": "^5.0.1"
   },

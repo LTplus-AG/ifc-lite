@@ -36,7 +36,8 @@ import type {
   QueryDescriptor,
   ModelInfo,
 } from '@ifc-lite/sdk';
-import { createCostBackend, createCostStoreBackend, createEffectiveEntityCheck, createHeadlessMutateAdapter, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
+import { createCostBackend, createEffectiveEntityCheck, createHeadlessMutateAdapter, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
+import { createStoreAuthoring } from './headless-backend-store-authoring.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import {
@@ -638,18 +639,16 @@ export class HeadlessBackend implements BimBackend {
         const result = addMemberToStore(editor, anchor, params);
         return { modelId, expressId: result.memberId };
       },
-      // Cost authoring (#4857 PR A): the reparent / append / safe-delete
-      // bookkeeping lives once in `createCostStoreBackend`, reading through
-      // `this.cost` (mutation-aware) so a rel authored earlier this session
-      // is visible to the very next call.
-      ...createCostStoreBackend(
-        (modelId) => {
-          assertModel(modelId ?? '');
-          const ownerHistoryId = resolveLiveOwnerHistoryId(dataStore(), get());
-          return { modelId: modelId ?? MODEL_ID, store: dataStore(), editor: get(), mutationView: this.getOrCreateMutationView(), ownerHistoryId };
-        },
-        { data: (modelId, options) => this.cost.data(modelId, options) },
-      ),
+      // Cost (#4857) and structural (#5167 S.1) authoring share one resolver
+      // so an entity authored through either is visible to the next call on
+      // the other; see `headless-backend-store-authoring.ts`.
+      ...createStoreAuthoring({
+        assertModel, defaultModelId: MODEL_ID,
+        dataStore, editor: get,
+        mutationView: () => this.getOrCreateMutationView(),
+        ownerHistoryId: () => resolveLiveOwnerHistoryId(dataStore(), get()),
+        cost: { data: (modelId, options) => this.cost.data(modelId, options) },
+      }),
     };
   }
 

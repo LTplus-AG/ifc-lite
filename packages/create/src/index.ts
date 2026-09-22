@@ -109,6 +109,49 @@ export {
   type GenerateSpacesStoreyResult,
   type StoreyInfo,
 } from './in-store/generate-spaces-all.js';
+// Structural analysis authoring (#5167 task S.1) — IfcStructuralAnalysisModel
+// and its members/connections/loads/relationships.
+export {
+  addStructuralAnalysisModelToStore,
+  type StructuralAnalysisModelInStoreParams,
+  type StructuralAnalysisModelBuildResult,
+  type StructuralAnalysisModelType,
+} from './in-store/structural-analysis-model.js';
+export {
+  addStructuralCurveMemberToStore,
+  type StructuralCurveMemberInStoreParams,
+  type StructuralCurveMemberBuildResult,
+  type StructuralCurveMemberType,
+} from './in-store/structural-curve-member.js';
+export {
+  addStructuralPointConnectionToStore,
+  type StructuralPointConnectionInStoreParams,
+  type StructuralPointConnectionBuildResult,
+  type StructuralBoundaryConditionParams,
+} from './in-store/structural-point-connection.js';
+export {
+  addStructuralLoadGroupToStore,
+  type StructuralLoadGroupInStoreParams,
+  type StructuralLoadGroupBuildResult,
+  type StructuralLoadGroupType,
+  type StructuralActionType,
+  type StructuralActionSourceType,
+} from './in-store/structural-load-group.js';
+export {
+  addStructuralPointActionToStore,
+  addStructuralLinearActionToStore,
+  type StructuralPointActionInStoreParams,
+  type StructuralPointActionBuildResult,
+  type StructuralLinearActionInStoreParams,
+  type StructuralLinearActionBuildResult,
+  type StructuralGlobalOrLocal,
+} from './in-store/structural-action.js';
+export {
+  connectStructuralMemberToConnectionInStore,
+  connectStructuralActivityToItemInStore,
+  assignToStructuralGroupInStore,
+} from './in-store/structural-relationships.js';
+
 export {
   addDrawingMarkupToStore,
   addMeasureMarkupToStore,

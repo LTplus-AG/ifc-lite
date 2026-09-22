@@ -16,6 +16,7 @@ import type { ScheduleBackendMethods } from './schedule-types.js';
 import type { CostBackendMethods } from './cost-types.js';
 import type { SpacesBackendMethods, StyleBackendMethods } from './backend-extension-types.js';
 import type { CostStoreBackendMethods } from './store-cost-types.js';
+import type { StructuralStoreBackendMethods } from './store-structural-types.js';
 
 // ============================================================================
 // Entity References
@@ -565,12 +566,11 @@ export interface AddMemberInStoreParams extends AddElementCommonParams {
   Width: number;
   Height: number;
   PredefinedType?:
-    | 'BRACE' | 'CHORD' | 'COLLAR' | 'MEMBER' | 'MULLION' | 'PLATE'
-    | 'POST' | 'PURLIN' | 'RAFTER' | 'STRINGER' | 'STRUT' | 'STUD'
-    | 'USERDEFINED' | 'NOTDEFINED';
+    | 'BRACE' | 'CHORD' | 'COLLAR' | 'MEMBER' | 'MULLION' | 'PLATE' | 'POST'
+    | 'PURLIN' | 'RAFTER' | 'STRINGER' | 'STRUT' | 'STUD' | 'USERDEFINED' | 'NOTDEFINED';
 }
 
-export interface StoreBackendMethods extends CostStoreBackendMethods {
+export interface StoreBackendMethods extends CostStoreBackendMethods, StructuralStoreBackendMethods {
   addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef;
   removeEntity(ref: EntityRef): boolean;
   setPositionalAttribute(ref: EntityRef, index: number, value: unknown): void;

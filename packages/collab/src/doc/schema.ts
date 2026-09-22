@@ -32,6 +32,17 @@ export const TOP = {
    * that as a single implicit slot over the unqualified `/<GlobalId>` paths.
    */
   MODELS: 'models',
+  /**
+   * Per-path overlay-tombstone registry (`snapshot/overlay-tombstones.ts`):
+   * `path → boolean`, one Y.Map key per path rather than one blob key
+   * inside `META`. A root-level shared type name is looked up by name and
+   * structurally merged by Yjs, not stored as an LWW value under a parent
+   * map key, so two peers can both call `doc.getMap(OVERLAY_TOMBSTONES)`
+   * concurrently and land on the same shared instance — unlike a nested
+   * `Y.Map` lazily created under a `META` key, which would race the same
+   * way the old single-blob storage did.
+   */
+  OVERLAY_TOMBSTONES: 'overlay.tombstones.registry',
 } as const;
 
 /** Origin tag used for transactions originated by the local CollabSession. */
@@ -170,6 +181,7 @@ export function createCollabDoc(opts: { gc?: boolean } = {}): Y.Doc {
   doc.getMap(TOP.META);
   doc.getMap(TOP.ANNOTATIONS);
   doc.getMap(TOP.MODELS);
+  doc.getMap(TOP.OVERLAY_TOMBSTONES);
   return doc;
 }
 
@@ -192,6 +204,10 @@ export function metaMap(doc: Y.Doc): Y.Map<unknown> {
 
 export function modelsMap(doc: Y.Doc): Y.Map<unknown> {
   return doc.getMap(TOP.MODELS);
+}
+
+export function overlayTombstonesMap(doc: Y.Doc): Y.Map<boolean> {
+  return doc.getMap(TOP.OVERLAY_TOMBSTONES) as Y.Map<boolean>;
 }
 
 /**

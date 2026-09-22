@@ -15,27 +15,78 @@
  * contract `applyIfcxOverlay` already enforces *within* one file, across
  * calls instead: a path stays deleted until a later layer explicitly
  * revives it. See `test/apply-ifcx-overlay.test.ts`.
+ *
+ * Storage: one entry per path in a dedicated top-level `Y.Map`
+ * (`overlayTombstonesMap`, see `doc/schema.ts`), value `true` (tombstoned)
+ * or `false` (explicitly revived). Two concurrent `applyIfcxOverlay` calls
+ * that tombstone *different* paths now touch different map keys and both
+ * survive the merge; only two calls opining on the *same* path race, which
+ * is an ordinary, expected last-write-wins conflict on that path.
+ *
+ * This used to be a single JSON array under one `meta` key
+ * (`overlay.tombstonedPaths`), read-modify-written whole on every call. Two
+ * concurrent calls tombstoning different paths each overwrote the other's
+ * array wholesale, and Yjs resolved the single key last-write-wins:
+ * whichever call's array landed last silently discarded the other's path,
+ * even though both peers converged (to the same, wrong, answer). See the
+ * regression test `two concurrent overlay calls tombstoning different
+ * paths both survive the merge`.
+ *
+ * Migration: `readOverlayTombstones` still folds in that legacy array so a
+ * doc written before this change keeps blocking resurrection for the
+ * paths it already recorded — ignoring it would itself cause the
+ * resurrection this bookkeeping exists to prevent. The legacy key is only
+ * ever read, never written, from this point on: an explicit per-path
+ * `false` (recorded by `writeOverlayTombstone`) permanently overrides a
+ * stale legacy entry for that path, since the per-path map is applied
+ * after folding in the legacy array. This is a one-way, forward
+ * migration: it does not support a not-yet-upgraded peer and an upgraded
+ * peer concurrently editing the same room (the old peer only ever sees
+ * the array, which stops being written).
  */
 
 import type * as Y from 'yjs';
 
 const OVERLAY_TOMBSTONES_META_KEY = 'overlay.tombstonedPaths';
 
-/** Read the set of paths a previous `applyIfcxOverlay` call left deleted. */
-export function readOverlayTombstones(meta: Y.Map<unknown>): Set<string> {
-  const stored = meta.get(OVERLAY_TOMBSTONES_META_KEY);
-  return new Set(Array.isArray(stored) ? (stored as string[]) : []);
+/**
+ * Read the effective set of paths a previous `applyIfcxOverlay` call left
+ * deleted: the legacy array (if the doc predates the per-path registry)
+ * merged with the per-path registry, where a per-path entry always wins
+ * over the legacy array for that path.
+ */
+export function readOverlayTombstones(meta: Y.Map<unknown>, registry: Y.Map<boolean>): Set<string> {
+  const tombstones = new Set<string>();
+  const legacy = meta.get(OVERLAY_TOMBSTONES_META_KEY);
+  if (Array.isArray(legacy)) {
+    for (const path of legacy as string[]) tombstones.add(path);
+  }
+  registry.forEach((tombstoned, path) => {
+    if (tombstoned) tombstones.add(path);
+    else tombstones.delete(path);
+  });
+  return tombstones;
 }
 
-/** Persist the updated tombstone set back onto the doc's meta map. */
-export function writeOverlayTombstones(meta: Y.Map<unknown>, tombstones: Set<string>): void {
-  meta.set(OVERLAY_TOMBSTONES_META_KEY, Array.from(tombstones));
+/**
+ * Record this call's final verdict for `path` in the per-path registry.
+ * Deliberately writes a key (`true`/`false`), never `Y.Map.delete`: a
+ * `false` is a persistent "explicitly revived" record that must keep
+ * overriding a stale legacy-array entry for `path` (see module doc); a
+ * deleted key would stop doing that as soon as it merged. `writeOverlayTombstone`
+ * replaces the old whole-array `writeOverlayTombstones` — the caller writes
+ * one path per call to the registry instead of read-modify-writing one
+ * blob for every path it knows about.
+ */
+export function writeOverlayTombstone(registry: Y.Map<boolean>, path: string, deleted: boolean): void {
+  registry.set(path, deleted);
 }
 
 /** A snapshot reset starts a new entity universe, so prior overlay deletions
  * must not suppress a legitimate path in the freshly seeded snapshot. */
-export function clearOverlayTombstones(meta: Y.Map<unknown>): void {
+export function clearOverlayTombstones(meta: Y.Map<unknown>, registry: Y.Map<boolean>): void {
   meta.delete(OVERLAY_TOMBSTONES_META_KEY);
+  registry.clear();
 }
 
 /**
@@ -51,10 +102,4 @@ export function resurrectionBlocked(
   opinion: boolean | undefined,
 ): boolean {
   return opinion === undefined && tombstones.has(path);
-}
-
-/** Apply this file's final tombstone verdict for `path` to the running set. */
-export function resolveTombstoneOpinion(tombstones: Set<string>, path: string, deleted: boolean): void {
-  if (deleted) tombstones.add(path);
-  else tombstones.delete(path);
 }

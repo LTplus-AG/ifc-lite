@@ -167,8 +167,14 @@ export class BulkQueryEngine {
       const typeSet = new Set(criteria.entityTypes);
       candidates = [];
       for (let i = 0; i < this.entities.count; i++) {
-        if (typeSet.has(this.entities.typeEnum[i])) {
-          candidates.push(this.entities.expressId[i]);
+        const expressId = this.entities.expressId[i];
+        // Deletion is overlay-only (a tombstone), never written back to this
+        // base EntityTable, so a deleted entity is otherwise indistinguishable
+        // from a live one here. Filtering at enumeration — rather than in each
+        // applyAction branch — means a future action type can't reintroduce
+        // this (#5196).
+        if (typeSet.has(this.entities.typeEnum[i]) && !this.mutationView.isDeleted(expressId)) {
+          candidates.push(expressId);
         }
       }
     } else {
@@ -472,12 +478,16 @@ export class BulkQueryEngine {
   }
 
   /**
-   * Get all entity IDs
+   * Get all entity IDs, excluding those tombstoned in the mutation view. See
+   * the matching comment in `select()`'s entity-type fast path (#5196).
    */
   private getAllEntityIds(): number[] {
     const ids: number[] = [];
     for (let i = 0; i < this.entities.count; i++) {
-      ids.push(this.entities.expressId[i]);
+      const expressId = this.entities.expressId[i];
+      if (!this.mutationView.isDeleted(expressId)) {
+        ids.push(expressId);
+      }
     }
     return ids;
   }

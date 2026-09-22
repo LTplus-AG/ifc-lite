@@ -438,3 +438,105 @@ describe('BulkQueryEngine: local-edit guard (mutation-guard.ts)', () => {
     expect(view.getPropertyValue(1, 'Pset_Test', 'Prop')).toBe(42);
   });
 });
+
+/**
+ * Regression for #5196: `select()` and `getAllEntityIds()` enumerated the
+ * raw base `EntityTable` and never consulted the mutation view's
+ * tombstones, so a deleted entity was selected, counted in the preview,
+ * and written to by a bulk action — and the write survived
+ * `restoreFromTombstone` (undo of the delete), because the tombstone check
+ * lived nowhere in the enumeration.
+ */
+describe('BulkQueryEngine excludes tombstoned entities', () => {
+  it('select({entityTypes}) — the fast path — excludes a deleted entity and its match count', () => {
+    const entities = makeEntities(4); // ids 1,2,3,4, all typeEnum 10
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const engine = new BulkQueryEngine(entities, view, null, null, null);
+
+    expect(view.deleteEntity(2)).toBe(true);
+    expect(view.isDeleted(2)).toBe(true);
+
+    const ids = engine.select({ entityTypes: [10] });
+    expect(ids).toEqual([1, 3, 4]);
+
+    const preview = engine.preview({ select: { entityTypes: [10] }, action: { type: 'DELETE_PROPERTY', psetName: 'Pset_Bulk', propName: 'Flag' } });
+    expect(preview.matchedCount).toBe(3);
+    expect(preview.matchedEntityIds).not.toContain(2);
+  });
+
+  it('select({}) — the no-type-filter / getAllEntityIds path — excludes a deleted entity and its match count', () => {
+    const entities = makeEntities(4);
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const engine = new BulkQueryEngine(entities, view, null, null, null);
+
+    expect(view.deleteEntity(2)).toBe(true);
+
+    const ids = engine.select({});
+    expect(ids).toEqual([1, 3, 4]);
+
+    const preview = engine.preview({ select: {}, action: { type: 'DELETE_PROPERTY', psetName: 'Pset_Bulk', propName: 'Flag' } });
+    expect(preview.matchedCount).toBe(3);
+    expect(preview.matchedEntityIds).not.toContain(2);
+  });
+
+  it('execute() does not write to a deleted entity, and the write does not survive restoreFromTombstone (issue repro)', () => {
+    const entities = makeEntities(3); // ids 1,2,3
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const engine = new BulkQueryEngine(entities, view, null, null, null);
+
+    expect(view.deleteEntity(2)).toBe(true);
+
+    const result = engine.execute({
+      select: { entityTypes: [10] },
+      action: {
+        type: 'SET_PROPERTY',
+        psetName: 'Pset_Bulk',
+        propName: 'Flag',
+        value: true,
+        valueType: PropertyValueType.Boolean,
+      },
+    });
+
+    expect(result.affectedEntityCount).toBe(2);
+    expect(result.mutations.some((m) => m.entityId === 2)).toBe(false);
+
+    // Undo the delete — the way the issue's repro did — and confirm the
+    // deleted entity never picked up the bulk write in the first place.
+    expect(view.restoreFromTombstone(2)).toBe(true);
+    expect(view.isDeleted(2)).toBe(false);
+    expect(view.getPropertyValue(2, 'Pset_Bulk', 'Flag')).toBeNull();
+  });
+
+  it('no-regression: live (non-deleted) entities are still selected, counted, and mutated exactly as before', () => {
+    const entities = makeEntities(3);
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const engine = new BulkQueryEngine(entities, view, null, null, null);
+
+    // No deletions at all — full baseline behavior.
+    expect(engine.select({ entityTypes: [10] })).toEqual([1, 2, 3]);
+    expect(engine.select({})).toEqual([1, 2, 3]);
+
+    const preview = engine.preview({ select: {}, action: { type: 'DELETE_PROPERTY', psetName: 'Pset_Bulk', propName: 'Flag' } });
+    expect(preview.matchedCount).toBe(3);
+
+    const result = engine.execute({
+      select: { entityTypes: [10] },
+      action: {
+        type: 'SET_PROPERTY',
+        psetName: 'Pset_Bulk',
+        propName: 'Flag',
+        value: true,
+        valueType: PropertyValueType.Boolean,
+      },
+    });
+
+    expect(result.affectedEntityCount).toBe(3);
+    expect(view.getPropertyValue(1, 'Pset_Bulk', 'Flag')).toBe(true);
+    expect(view.getPropertyValue(2, 'Pset_Bulk', 'Flag')).toBe(true);
+    expect(view.getPropertyValue(3, 'Pset_Bulk', 'Flag')).toBe(true);
+  });
+});

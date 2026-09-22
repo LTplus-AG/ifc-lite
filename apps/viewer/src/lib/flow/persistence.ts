@@ -15,6 +15,7 @@
 import {
   FLOW_VERSION,
   TRACKING_SIDECAR_VERSION,
+  trackedSetsFrom,
   validateFlowDocument,
   type FlowDocument,
   type TrackedSet,
@@ -82,6 +83,12 @@ export function flowToJson(doc: FlowDocument): string {
 /** Tracked sets for one graph, pinned to the model they were made against. */
 export class BrowserTrackingStore implements TrackingStore {
   private sets: Record<string, TrackedSet>;
+  /**
+   * Set when a write to storage failed (disabled, quota): the in-memory
+   * sets are then ahead of what the next session will read, so the runner
+   * reports the run as not durable instead of treating tracking as saved.
+   */
+  persistError: string | undefined;
 
   constructor(private readonly graphId: string, private readonly pinnedTo: string) {
     this.sets = {};
@@ -97,8 +104,11 @@ export class BrowserTrackingStore implements TrackingStore {
       const raw = localStorage.getItem(TRACKING_PREFIX + graphId);
       if (!raw) return undefined;
       const parsed = JSON.parse(raw) as Partial<TrackingSidecar>;
-      if (parsed.version !== TRACKING_SIDECAR_VERSION || typeof parsed.pinnedTo !== 'string' || !parsed.sets || typeof parsed.sets !== 'object' || Array.isArray(parsed.sets)) return undefined;
-      return parsed as TrackingSidecar;
+      if (parsed.version !== TRACKING_SIDECAR_VERSION || typeof parsed.pinnedTo !== 'string') return undefined;
+      // Every set is shape-checked, not just the container: `load()` promises
+      // a `TrackedSet`, and a hand-edited value would reach the scheduler as one.
+      const sets = trackedSetsFrom(parsed.sets);
+      return sets ? { version: parsed.version, pinnedTo: parsed.pinnedTo, sets } : undefined;
     } catch {
       return undefined;
     }
@@ -129,6 +139,11 @@ export class BrowserTrackingStore implements TrackingStore {
 
   private write(): void {
     const sidecar: TrackingSidecar = { version: TRACKING_SIDECAR_VERSION, pinnedTo: this.pinnedTo, sets: this.sets };
-    localStorage.setItem(TRACKING_PREFIX + this.graphId, JSON.stringify(sidecar));
+    try {
+      localStorage.setItem(TRACKING_PREFIX + this.graphId, JSON.stringify(sidecar));
+      this.persistError = undefined;
+    } catch (err) {
+      this.persistError = err instanceof Error ? err.message : String(err);
+    }
   }
 }

@@ -49,7 +49,7 @@ export interface NodeRunContext<H> {
   readonly host: H;
   /** The lane this invocation computes, or `null` when the node was not lifted. */
   readonly laneKey: GroupKey | null;
-  /** Present on tracked nodes only. */
+  /** Present on tracked nodes' `run` only; `remove` gets the GlobalId as its argument instead. */
   readonly tracking?: LaneTracking;
   readonly signal?: AbortSignal;
   log(level: LogLevel, message: string): void;

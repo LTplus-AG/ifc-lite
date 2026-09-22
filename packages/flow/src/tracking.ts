@@ -46,6 +46,29 @@ export interface TrackedSet {
 
 export const TRACKING_SIDECAR_VERSION = 1;
 
+/** Shape check for a set read from storage: `load()` promises a `TrackedSet`, not whatever a hand-edited sidecar holds. */
+export function isTrackedSet(value: unknown): value is TrackedSet {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  if (typeof v.trackingKey !== 'string' || typeof v.generation !== 'number' || !Number.isInteger(v.generation)) return false;
+  if (v.nodeType !== undefined && typeof v.nodeType !== 'string') return false;
+  if (typeof v.entries !== 'object' || v.entries === null || Array.isArray(v.entries)) return false;
+  return Object.values(v.entries as Record<string, unknown>).every(
+    (e) => typeof e === 'object' && e !== null && typeof (e as TrackedEntry).globalId === 'string' && typeof (e as TrackedEntry).digest === 'string',
+  );
+}
+
+/** The `sets` record of a sidecar, or undefined when any set is malformed. */
+export function trackedSetsFrom(sets: unknown): Record<string, TrackedSet> | undefined {
+  if (typeof sets !== 'object' || sets === null || Array.isArray(sets)) return undefined;
+  const out: Record<string, TrackedSet> = {};
+  for (const [key, value] of Object.entries(sets as Record<string, unknown>)) {
+    if (!isTrackedSet(value) || value.trackingKey !== key) return undefined;
+    out[key] = value;
+  }
+  return out;
+}
+
 /** `<graph>.tracking.json` */
 export interface TrackingSidecar {
   readonly version: number;

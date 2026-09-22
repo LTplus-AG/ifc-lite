@@ -8,8 +8,9 @@ import type { BimBackend, EntityRef } from '../types.js';
 export class MutateNamespace {
   constructor(private backend: BimBackend) {}
 
-  /** The asynchronous batch in flight, if any; the next one queues behind it. */
-  private asyncBatch: Promise<unknown> = Promise.resolve();
+  /** Asynchronous batches in flight; the backend marker is held by the first and released by the last. */
+  private asyncDepth = 0;
+  private asyncLabel: string | undefined;
 
   /** Set a property on an entity */
   setProperty(ref: EntityRef, psetName: string, propName: string, value: string | number | boolean): void {
@@ -45,23 +46,31 @@ export class MutateNamespace {
    * batch stays open across awaits and closes when the promise settles.
    * Other writers on the same backend meanwhile land inside the batch.
    *
-   * Batches are serialised: a second `batchAsync` waits for the first to
-   * settle before it opens. The backend's begin/end markers are a stack, so
-   * two interleaved batches whose first opened settled first would close
-   * the second's marker and fail with a label mismatch.
+   * A `batchAsync` started while another is in flight — nested inside its
+   * callback or independent of it — JOINS that batch: no second marker is
+   * opened, and the one marker closes when the last of them settles. The
+   * two cases cannot be told apart without async context, and both need the
+   * same answer: their mutations interleave on the same undo stacks, so one
+   * undo step is the only grouping that leaves the model consistent. A
+   * second marker would close out of order (label mismatch) or, queued
+   * behind its parent, never open.
    */
-  batchAsync<T>(label: string, fn: () => Promise<T>): Promise<T> {
-    const run = this.asyncBatch.then(async () => {
+  async batchAsync<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    if (this.asyncDepth === 0) {
       this.backend.mutate.batchBegin(label);
-      try {
-        return await fn();
-      } finally {
-        this.backend.mutate.batchEnd(label);
+      this.asyncLabel = label;
+    }
+    this.asyncDepth += 1;
+    try {
+      return await fn();
+    } finally {
+      this.asyncDepth -= 1;
+      if (this.asyncDepth === 0) {
+        const open = this.asyncLabel!;
+        this.asyncLabel = undefined;
+        this.backend.mutate.batchEnd(open);
       }
-    });
-    // The previous batch's failure is its own caller's; the queue never rejects.
-    this.asyncBatch = run.catch(() => undefined);
-    return run;
+    }
   }
 
   /** Undo last mutation for a model */

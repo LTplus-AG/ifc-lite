@@ -57,6 +57,8 @@ export {
   trackedSetFrom,
   withTrackedSet,
   TrackingPinMismatch,
+  isTrackedSet,
+  trackedSetsFrom,
   MemoryTrackingStore,
 } from './tracking.js';
 export type { TrackedEntry, TrackedSet, TrackingSidecar, TrackingStore, DesiredLane, TrackingPlan } from './tracking.js';

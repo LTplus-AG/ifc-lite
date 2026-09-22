@@ -53,7 +53,7 @@ export async function runFlowInViewer(input: ViewerRunInput): Promise<RunResult>
   if (!parsed.ok) throw new FlowCapabilityError(parsed.errors.map((e) => e.message));
   const host: FlowHost = { bim: input.bim, grants: parsed.value, defaultModelId: input.bim.model.activeId() ?? undefined };
   const tracking = new BrowserTrackingStore(input.doc.id, input.pin);
-  return input.bim.mutate.batchAsync(`flow:${input.doc.name}`, () =>
+  const result = await input.bim.mutate.batchAsync(`flow:${input.doc.name}`, () =>
     runFlow(input.doc, {
       host,
       registry: flowRegistry(),
@@ -64,7 +64,18 @@ export async function runFlowInViewer(input: ViewerRunInput): Promise<RunResult>
       signal: input.signal,
     }),
   );
+  // The model was written but the sets were not saved: the next run would
+  // not know these elements exist. That is a failed run, not a green one.
+  if (tracking.persistError === undefined) return result;
+  return {
+    ...result,
+    ok: false,
+    log: [...result.log, { nodeId: TRACKING_NODE_ID, laneKey: null, level: 'error', message: `tracked sets could not be saved to browser storage: ${tracking.persistError}` }],
+  };
 }
+
+/** Log entries about the tracking store itself carry this in place of a node id. */
+export const TRACKING_NODE_ID = '(tracking)';
 
 /** The model changed under the graph: drop memos and the GlobalId index. */
 export function invalidateForExternalChange(bim: BimContext, cache: MemoCache): void {

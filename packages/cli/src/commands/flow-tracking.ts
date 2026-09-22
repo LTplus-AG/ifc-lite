@@ -15,7 +15,7 @@
  */
 
 import { readFile, writeFile } from 'node:fs/promises';
-import { TRACKING_SIDECAR_VERSION, type TrackedSet, type TrackingSidecar, type TrackingStore } from '@ifc-lite/flow';
+import { TRACKING_SIDECAR_VERSION, trackedSetsFrom, type TrackedSet, type TrackingSidecar, type TrackingStore } from '@ifc-lite/flow';
 
 export class FileTrackingStore implements TrackingStore {
   private sets: Record<string, TrackedSet> = {};
@@ -36,10 +36,11 @@ export class FileTrackingStore implements TrackingStore {
     if (text !== undefined) {
       const parsed = JSON.parse(text) as Partial<TrackingSidecar>;
       if (parsed.version !== TRACKING_SIDECAR_VERSION) throw new Error(`${path}: unsupported tracking sidecar version ${String(parsed.version)}`);
-      // An array is an object too; spreading `[]` yields an empty set, and
-      // the run would then re-create every element it tracked last time.
-      if (!parsed.sets || typeof parsed.sets !== 'object' || Array.isArray(parsed.sets)) throw new Error(`${path}: tracking sidecar has no "sets"`);
-      store.sets = { ...parsed.sets };
+      // Every set is shape-checked: `[]` is an object too, and a hand-edited
+      // entry would otherwise reach the scheduler as a `TrackedSet` in name only.
+      const sets = trackedSetsFrom(parsed.sets);
+      if (!sets) throw new Error(`${path}: tracking sidecar has no valid "sets"`);
+      store.sets = sets;
       store.loadedPin = parsed.pinnedTo;
     }
     return store;

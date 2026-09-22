@@ -16,12 +16,13 @@
 
 import { nodeAvailability, type HostFeatures } from './availability.js';
 import { digest, digestFlowData } from './digest.js';
-import type { FlowDocument, FlowNode } from './document.js';
-import { assemble, planLift, type LiftInput, type LiftPlan } from './lift.js';
-import { resolveParams, type LaneTracking, type LogLevel, type NodeDef, type NodeOutputs, type NodeRegistry } from './registry.js';
-import { ORPHAN_NODE_ID, removeOrphanedSets, trackingKeyOf } from './orphans.js';
+import type { FlowDocument } from './document.js';
+import { assemble, planLift, type LiftPlan } from './lift.js';
+import { resolveParams, type LaneTracking, type LogLevel, type NodeOutputs, type NodeRegistry } from './registry.js';
+import { ORPHAN_NODE_ID, removeOrphanedSets, removeSet, trackingKeyOf } from './orphans.js';
+import { noopOutputs, prepareInputs } from './prepare.js';
 import { emptyTrackedSet, planTracking, type TrackingPlan, type TrackingStore } from './tracking.js';
-import { isAssignable, item, type FlowData } from './values.js';
+import type { FlowData } from './values.js';
 
 export const DEFAULT_MAX_CROSS = 100_000;
 
@@ -136,53 +137,6 @@ export function topologicalOrder(doc: FlowDocument): string[] {
   return order;
 }
 
-interface Prepared {
-  readonly inputs: LiftInput[];
-  readonly problems: string[];
-  readonly skipped: boolean;
-}
-
-function prepareInputs(
-  doc: FlowDocument,
-  node: FlowNode,
-  def: NodeDef<unknown>,
-  registry: NodeRegistry<unknown>,
-  outputs: Map<string, Map<string, FlowData>>,
-  failed: Set<string>,
-): Prepared {
-  const problems: string[] = [];
-  let skipped = false;
-  const inputs: LiftInput[] = def.inputs.map((port) => {
-    const edge = doc.edges.find((e) => e.to[0] === node.id && e.to[1] === port.name);
-    if (!edge) {
-      if (!port.optional) problems.push(`required input "${port.name}" is not connected`);
-      return { port, data: undefined };
-    }
-    const [srcId, srcPort] = edge.from;
-    if (failed.has(srcId)) skipped = true;
-    const srcNode = doc.nodes.find((n) => n.id === srcId);
-    const srcDef = srcNode ? registry.get(srcNode.type) : undefined;
-    const srcPortDef = srcDef?.outputs.find((p) => p.name === srcPort);
-    if (!srcPortDef) problems.push(`edge from ${srcId}.${srcPort}: no such output`);
-    else if (!isAssignable(srcPortDef.type, port.type)) {
-      problems.push(`edge from ${srcId}.${srcPort} (${srcPortDef.type.kind}) cannot feed "${port.name}" (${port.type.kind})`);
-    }
-    return { port, data: outputs.get(srcId)?.get(srcPort) };
-  });
-  return { inputs, problems, skipped };
-}
-
-function noopOutputs(def: NodeDef<unknown>, inputs: readonly LiftInput[]): Map<string, FlowData> {
-  // A no-op node passes through any input whose name matches an output
-  // (so `viewer.colorize(entities) → entities` still chains), else empties.
-  const out = new Map<string, FlowData>();
-  for (const port of def.outputs) {
-    const same = inputs.find((i) => i.port.name === port.name)?.data;
-    out.set(port.name, same ?? (port.type.access === 'item' ? item(null) : port.type.access === 'list' ? { kind: 'list', items: [] } : { kind: 'group', branches: new Map() }));
-  }
-  return out;
-}
-
 export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promise<RunResult> {
   const registry = opts.registry as NodeRegistry<unknown>;
   const order = topologicalOrder(doc);
@@ -275,7 +229,21 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
     let trackingPlan: TrackingPlan | undefined;
     const trackingKey = trackingKeyOf(doc, node);
     if (def.tracked) {
-      const previous = opts.tracking?.load(trackingKey) ?? emptyTrackedSet(trackingKey);
+      let previous = opts.tracking?.load(trackingKey) ?? emptyTrackedSet(trackingKey);
+      // A set another node type made under this key is not adopted: its
+      // elements go out through THAT type's `remove`, and this node starts
+      // from an empty set. Planning against it would overwrite `nodeType`
+      // and leave the old type's elements to nobody.
+      if (previous.nodeType !== undefined && previous.nodeType !== node.type) {
+        const gone = await removeSet(previous, registry, opts.host, opts.signal, log, nodeId);
+        if (gone.removed > 0) writesThisRun += 1;
+        if (gone.rest !== undefined) {
+          opts.tracking?.save(gone.rest);
+          fail(`the tracked set "${trackingKey}" was made by node type "${previous.nodeType}" and ${Object.keys(gone.rest.entries).length} of its element(s) could not be removed; give this node its own tracking key`);
+          continue;
+        }
+        previous = emptyTrackedSet(trackingKey);
+      }
       const desired = plan.lanes
         .filter((l) => !l.nullLane)
         .map((l) => ({ laneKey: l.laneKey ?? '', digest: digest({ args: l.args, params }) }));
@@ -313,10 +281,14 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
         nodeError = 'aborted';
         break;
       }
+      if (lane.nullLane) {
+        results.push(null);
+        continue;
+      }
       const duplicate = trackingPlan !== undefined && seenLanes.has(lane.laneKey ?? '');
       seenLanes.add(lane.laneKey ?? '');
-      if (lane.nullLane || duplicate) {
-        if (duplicate) skippedDuplicates.add(results.length);
+      if (duplicate) {
+        skippedDuplicates.add(results.length);
         results.push(null);
         continue;
       }

@@ -215,6 +215,53 @@ describe('tracked nodes', () => {
     expect(r.log.find((l) => l.level === 'error')?.message).toContain('locked');
   });
 
+  it('a create that failed leaves no entry, so the next run plans create again under the same GlobalId', async () => {
+    const store = new MemoryTrackingStore();
+    const e = elements();
+    const failed = await runFlow(doc, { host: e, registry: reg(['W1']), tracking: store, inputs: { 'size.value': 'boom' } });
+    expect(failed.reports.find((r) => r.nodeId === 'place')?.laneErrors).toBe(1);
+    expect(store.load(KEY)?.entries).toEqual({});
+    const retried = await runFlow(doc, { host: e, registry: reg(['W1']), tracking: store });
+    expect(trackingOf(retried)).toEqual({ created: 1, updated: 0, kept: 0, removed: 0 });
+    expect(e.log.filter((l) => l.startsWith('create:'))).toEqual([e.log[0], e.log[0]]);
+  });
+
+  it('a set made by another node type under the same key is removed through that type, not adopted', async () => {
+    const store = new MemoryTrackingStore();
+    const e = elements();
+    await runFlow(doc, { host: e, registry: reg(['W1', 'W2']), tracking: store });
+    const guids = [...e.created.keys()];
+    const other: NodeDef<Elements> = { ...place, type: 'test.place2' };
+    const registry = new NodeRegistry<Elements>().registerAll([wallsNode(['W1', 'W2']), sizeNode, place, other]);
+    const retyped: FlowDocument = { ...doc, nodes: doc.nodes.map((n) => (n.id === 'place' ? { ...n, type: 'test.place2' } : n)) };
+    const r = await runFlow(retyped, { host: e, registry, tracking: store });
+    expect(r.ok).toBe(true);
+    expect(e.log.filter((l) => l.startsWith('remove:'))).toEqual(guids.map((g) => `remove:${g}`));
+    expect(trackingOf(r)).toEqual({ created: 2, updated: 0, kept: 0, removed: 0 });
+    expect(store.load(KEY)?.nodeType).toBe('test.place2');
+
+    // The old type cannot remove (unknown here): the node fails rather than overwriting the set.
+    const store2 = new MemoryTrackingStore();
+    store2.save({ trackingKey: KEY, generation: 0, entries: { a: { globalId: 'G', digest: 'd' } }, nodeType: 'test.vanished' });
+    const blocked = await runFlow(doc, { host: elements(), registry: reg(['W1']), tracking: store2 });
+    expect(blocked.ok).toBe(false);
+    expect(blocked.reports.find((x) => x.nodeId === 'place')?.error).toContain('give this node its own tracking key');
+    expect(store2.load(KEY)?.nodeType).toBe('test.vanished');
+  });
+
+  it('a partly failed orphan removal keeps only the entries still to remove', async () => {
+    const store = new MemoryTrackingStore();
+    const e = elements();
+    await runFlow(doc, { host: e, registry: reg(['W1', 'W2']), tracking: store });
+    const [g1, g2] = [...e.created.keys()];
+    const flaky: NodeDef<Elements> = { ...place, remove: (ctx, globalId) => { if (globalId === g2) throw new Error('locked'); ctx.host.created.delete(globalId); } };
+    const registry = new NodeRegistry<Elements>().registerAll([wallsNode(['W1', 'W2']), sizeNode, flaky]);
+    const r = await runFlow({ ...doc, nodes: doc.nodes.filter((n) => n.id !== 'place'), edges: [] }, { host: e, registry, tracking: store });
+    expect(r.ok).toBe(false);
+    expect(e.created.has(g1)).toBe(false);
+    expect(Object.values(store.load(KEY)!.entries).map((x) => x.globalId)).toEqual([g2]);
+  });
+
   it('without a tracking store every run creates, so a caller that wants re-runs must supply one', async () => {
     const e = elements();
     await runFlow(doc, { host: e, registry: reg(['W1']) });

@@ -189,7 +189,9 @@ export const elementNodes: FlowNodeDef[] = [
       // the same GlobalId; a keep that returned a handle to nothing would read
       // as success downstream.
       if (t.action === 'update' && existing) {
-        ctx.host.bim.store.removeEntity(existing);
+        // A removal the store refused leaves a live element under this
+        // GlobalId; creating a second one would make the key ambiguous.
+        if (!ctx.host.bim.store.removeEntity(existing)) throw new Error(`element ${t.globalId} (#${existing.expressId}) could not be removed for update`);
         forgetGlobalId(ctx.host.bim, t.globalId);
       } else if (t.action !== 'create') {
         ctx.log('warn', `element ${t.globalId} was tracked but is no longer in the model; re-creating it`);
@@ -201,7 +203,7 @@ export const elementNodes: FlowNodeDef[] = [
     remove: (ctx, globalId) => {
       const existing = resolveByGlobalId(ctx.host.bim, globalId);
       if (existing) {
-        ctx.host.bim.store.removeEntity(existing);
+        if (!ctx.host.bim.store.removeEntity(existing)) throw new Error(`element ${globalId} (#${existing.expressId}) could not be removed`);
         forgetGlobalId(ctx.host.bim, globalId);
       } else ctx.log('warn', `tracked element ${globalId} was already gone`);
     },

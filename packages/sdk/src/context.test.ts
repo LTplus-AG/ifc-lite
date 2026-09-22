@@ -800,30 +800,36 @@ describe('MutateNamespace', () => {
     expect(mutate.batchEnd).toHaveBeenLastCalledWith('failing');
   });
 
-  it('batchAsync() serialises overlapping batches so the markers close in order', async () => {
+  it('batchAsync() joins a batch in flight — nested or overlapping — and closes the one marker when the last settles', async () => {
     const { backend, mutate } = createMockBackend();
     const bim = createBimContext({ backend });
     const calls: string[] = [];
     mutate.batchBegin.mockImplementation((label: string) => { calls.push(`begin ${label}`); });
     mutate.batchEnd.mockImplementation((label: string) => { calls.push(`end ${label}`); });
 
+    // Nested: the inner call must not wait for the outer, which is waiting for it.
+    const nested = await bim.mutate.batchAsync('outer', async () => `outer+${await bim.mutate.batchAsync('inner', async () => 'inner')}`);
+    expect(nested).toBe('outer+inner');
+    expect(calls).toEqual(['begin outer', 'end outer']);
+
+    // Overlapping, first settles first: no second marker, so nothing closes out of order.
+    calls.length = 0;
     let releaseA!: () => void;
     const a = bim.mutate.batchAsync('A', () => new Promise<string>((resolve) => { releaseA = () => resolve('a'); }));
-    const b = bim.mutate.batchAsync('B', async () => 'b');
-    await Promise.resolve();
-    // B has not opened while A is in flight.
-    expect(calls).toEqual(['begin A']);
+    let releaseB!: () => void;
+    const b = bim.mutate.batchAsync('B', () => new Promise<string>((resolve) => { releaseB = () => resolve('b'); }));
     releaseA();
     expect(await a).toBe('a');
+    expect(calls).toEqual(['begin A']);
+    releaseB();
     expect(await b).toBe('b');
-    expect(calls).toEqual(['begin A', 'end A', 'begin B', 'end B']);
+    expect(calls).toEqual(['begin A', 'end A']);
 
-    // A failed batch does not block the one queued behind it.
-    const failing = bim.mutate.batchAsync('C', async () => { throw new Error('boom'); });
-    const after = bim.mutate.batchAsync('D', async () => 'd');
-    await expect(failing).rejects.toThrow('boom');
-    expect(await after).toBe('d');
-    expect(calls.slice(-4)).toEqual(['begin C', 'end C', 'begin D', 'end D']);
+    // A failed batch still releases the marker for the next independent one.
+    calls.length = 0;
+    await expect(bim.mutate.batchAsync('C', async () => { throw new Error('boom'); })).rejects.toThrow('boom');
+    expect(await bim.mutate.batchAsync('D', async () => 'd')).toBe('d');
+    expect(calls).toEqual(['begin C', 'end C', 'begin D', 'end D']);
   });
 });
 

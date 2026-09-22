@@ -25,7 +25,7 @@ const GEOMETRY_OUTPUT_REVISION = 2;
  *     entry. That is fine for the source-persisting tier (cached geometry + cached
  *     source are self-consistent); the source-decoupled (mesh-only) tier, which
  *     hydrates against the fresh buffer, validates a hit separately via the mtime
- *     guard + a full-file hash (see `sourceFingerprint.ts` and
+ *     guard + a full-file hash (see `@ifc-lite/cache`'s `source-fingerprint.ts` and
  *     `cacheTier.decideMeshOnlyCacheHit`).
  *   - `FORMAT_VERSION`: a format bump invalidates incompatible entries
  *   - `GEOMETRY_OUTPUT_REVISION`: corrected geometry must not hit an entry made

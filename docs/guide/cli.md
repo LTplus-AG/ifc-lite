@@ -1319,9 +1319,11 @@ for the full protocol reference.
 ### `delivery` — Repeatable Delivery Check
 
 Run a saved, versioned model-delivery check: structural validation (the same
-rules `validate` runs) and/or IDS validation (the same validator `ids`
-runs), against one or more models, in one invocation — with a consolidated
-JSON report and an optional standalone HTML report.
+rules `validate` runs), IDS validation (the same validator `ids` runs),
+and/or `.rules.json` information-validation rule sets (the same engine
+`check` runs) — any combination, against one or more models, in one
+invocation — with a consolidated JSON report and an optional standalone
+HTML report.
 
 ```bash
 ifc-lite delivery recipe.json
@@ -1336,38 +1338,49 @@ The recipe is a small JSON file, versioned alongside the models it checks:
 {
   "models": ["model.ifc"],
   "structural": true,
-  "ids": ["door-rules.ids"]
+  "ids": ["door-rules.ids"],
+  "rules": ["fire-rating.rules.json"]
 }
 ```
 
-`models` and `ids` paths resolve relative to the recipe file's own
+`models`, `ids` and `rules` paths resolve relative to the recipe file's own
 directory, not the current working directory. A recipe must declare at
-least one applicable check (`"structural": true` and/or a non-empty `"ids"`
-list) — a zero-check recipe is a fatal error rather than a silent "pass".
+least one applicable check (`"structural": true` and/or a non-empty
+`"ids"`/`"rules"` list) — a zero-check recipe is a fatal error rather than a
+silent "pass".
 
 Every check reports one of three outcomes, never folded together:
 
 - **`pass`** — the check ran and found nothing to report.
-- **`fail`** — the check ran and found a violation (a structural error, or a
-  failed IDS specification).
+- **`fail`** — the check ran and found a violation (a structural error, a
+  failed IDS specification, or a `.rules.json` rule).
 - **`error`** — the check could **not** be run: an unreadable/empty/corrupt
-  model, an unreadable or unparsable IDS file, or an IDS document declaring
-  zero specifications. An unevaluable check is never counted as a pass.
+  model, an unreadable or unparsable IDS/rules file, an IDS document
+  declaring zero specifications, a rule set declaring zero rules, or a rule
+  the engine itself could not evaluate. An unevaluable check is never
+  counted as a pass.
 
 The overall **verdict** is `pass` only when every declared check on every
-declared model passed. An unreadable model, an empty IDS ruleset, or any
-failed check all produce a `fail` verdict — a delivery check can never
-report success on zero evidence.
+declared model passed. An unreadable model, an empty IDS ruleset/rule set,
+or any failed check all produce a `fail` verdict — a delivery check can
+never report success on zero evidence.
+
+Each recipe's `rules` file runs against ONE model at a time, mirroring the
+`ids` loop — a rule federated across every model in the recipe (`targets`,
+`unique` scope `'federation'`) is [`check`](#check--rule-set-validation)'s
+job, not `delivery`'s.
 
 The consolidated report records, per model, its declared path and a SHA-256
 fingerprint of the bytes actually checked (or the load error, when
-unreadable); per check, the model, check type, source (the IDS file, for an
-`ids` check), status, and the underlying `validate`/`ids` evidence
-(issues / specification counts). Given the same recipe and the same bytes on
-disk, running `delivery` twice produces byte-identical `--json` output.
+unreadable); per check, the model, check type, source (the IDS/rules file),
+status, and the underlying `validate`/`ids`/`check` evidence
+(issues / specification / rule counts). Given the same recipe and the same
+bytes on disk, running `delivery` twice produces byte-identical `--json`
+output.
 
 A committed worked example — a passing model, a structurally-broken model,
-an unreadable model, and an IDS specification that fails — lives at
+an unreadable model, an IDS specification that fails, and a `.rules.json`
+rule that passes — lives at
 [`packages/cli/examples/delivery/`](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/cli/examples/delivery).
 
 **Flags:**
@@ -1378,6 +1391,42 @@ an unreadable model, and an IDS specification that fails — lives at
 | `--out <file>` | Write the JSON report to a file instead of stdout |
 | `--html <file>` | Additionally write a standalone HTML report to `<file>` |
 
+### `check` — Rule-Set Validation
+
+Run a `.rules.json` information-validation rule set — the SAME
+`@ifc-lite/rules` engine the viewer's Data Validation panel runs (#5138 PR
+7b) — against one or more already-parsed models, in one invocation. No
+second evaluator: a rule set authored (or exported) in the viewer runs
+identically from the terminal.
+
+```bash
+ifc-lite check model.ifc --rules fire-rating.rules.json
+ifc-lite check arch.ifc struct.ifc --rules fire-rating.rules.json --format json
+ifc-lite check model.ifc --rules fire-rating.rules.json --fail-on warning
+```
+
+Every model is loaded and parsed before any rule runs; `targets` /
+`modelTagIds` in the rule set narrow which of the loaded models a given
+rule applies to, and `unique`/`aggregate` requirements with scope
+`'federation'` (the default) see every model passed on the command line as
+one federation — the same semantics the viewer runs, unlike `delivery`'s
+`rules` field, which checks one model at a time.
+
+**Exit codes**, tri-state and never folded together:
+
+| Exit | Meaning |
+|------|---------|
+| `0` | Every rule passed (or was not applicable). |
+| `1` | At least one rule failed at a severity `--fail-on` counts. Default `--fail-on error`: `severity: "warning"` rules never fail the run by themselves; pass `--fail-on warning` to make them count too. |
+| `2` | A model could not be read/parsed, or the engine itself could not evaluate a rule (e.g. a ReDoS-rejected regex) — this always wins over `1`, since an unevaluated rule is not pass/fail evidence. |
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--rules <file>` | Path to the `.rules.json` rule set (required) |
+| `--format json\|table` | `table` (default) prints one line per rule: status, applicable/passed/failed counts, set-check failures; `json` prints the full `ValidationReport` verbatim |
+| `--fail-on error\|warning` | Which rule severities count toward exit code `1` (default `error`) |
 ---
 
 ### `flow` — Run a Node Graph Headlessly
@@ -1562,6 +1611,7 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 | `layer` | Layered change tracking over a local store (.ifc-lite/) |
 | `ref` | Manage named refs in the layer store |
 | `gym` | reset/step/reward environment loop (JSONL over stdin/stdout) |
-| `delivery` | Repeatable delivery check (structural + IDS) from a saved recipe |
+| `delivery` | Repeatable delivery check (structural + IDS + rule sets) from a saved recipe |
+| `check` | Run a .rules.json information-validation rule set (same engine as the viewer) |
 | `flow` | Evaluate a node graph headlessly |
 <!-- END GENERATED: cli-commands -->

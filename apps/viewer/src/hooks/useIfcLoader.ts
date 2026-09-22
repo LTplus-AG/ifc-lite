@@ -18,7 +18,6 @@ import { planCacheWrite, decideMeshOnlyCacheHit, decideSourceTierCacheHit, decid
 import { buildModelLoadReportPatch, type ModelLoadReportFields } from '../lib/loadReport';
 import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-source-identity';
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
-import { computeSourceFingerprint, computeSourceFingerprintFromBlob } from './sourceFingerprint.js';
 import { computeFullSourceHash } from '../utils/sourceContentHash.js';
 import { IfcParser, detectFormat, unwrapIfcZipWithResources, type IfcDataStore } from '@ifc-lite/parser';
 import { attachTextureBitmaps, type TextureBitmapStore } from '../utils/textureResources.js';
@@ -46,7 +45,7 @@ import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuff
 import { buildSpatialIndexGuarded, buildSpatialIndexForModel } from '../utils/loadingUtils.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { forwardEntityIndexTo, createSourceFingerprintCell, type EntityIndexSink } from './entityIndexHandoff.js';
-import { type GeometryData } from '@ifc-lite/cache';
+import { computeSourceFingerprint, computeSourceFingerprintFromBlob, type GeometryData } from '@ifc-lite/cache';
 import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE, getDynamicBatchConfig } from '../utils/ifcConfig.js';
 import {
   calculateMeshBounds,

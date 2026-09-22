@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "Walls must be named",
+  "description": "Delivery-check example (#5138 PR 7b): a requirement the example clean-model.ifc DOES satisfy, so the recipe demonstrates a passing rules check alongside the failing IDS check.",
+  "rules": [
+    {
+      "id": "wall-name-required",
+      "name": "Walls must have a non-empty Name",
+      "applicability": {
+        "groups": [
+          { "rules": [{ "kind": "ifcType", "values": ["IfcWall"], "op": "in" }], "combinator": "AND" }
+        ],
+        "authoredAs": "chips"
+      },
+      "requirement": {
+        "kind": "element",
+        "block": {
+          "groups": [
+            { "rules": [{ "kind": "name", "op": "ne", "value": "" }], "combinator": "AND" }
+          ],
+          "authoredAs": "chips"
+        }
+      }
+    }
+  ]
+}

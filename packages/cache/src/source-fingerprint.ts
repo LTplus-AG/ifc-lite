@@ -2,12 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { xxhash64 } from '@ifc-lite/cache';
+import { xxhash64 } from './utils/hash.js';
 
 /**
+ * Moved out of the viewer into `@ifc-lite/cache` (#5138 PR 7b review) so a
+ * headless caller (the CLI, the MCP server) can compute the SAME
+ * `EvaluatorModel.filterIdentity` the viewer stores as
+ * `FederatedModel.sourceFingerprint` — a rule set's `targets.modelFingerprints`
+ * only resolves against a model when both sides hash it identically.
+ *
  * Spread-sampled source fingerprint — a fast, strong cache KEY, NOT a full
- * content validation. `buildGeometryCacheKey` folds {@link SourceFingerprint.hex}
- * into the key so the RIGHT entry is looked up; it replaces the old
+ * content validation. `buildGeometryCacheKey` (viewer, `hooks/geometryCacheKey.ts`)
+ * folds {@link SourceFingerprint.hex} into the key so the RIGHT entry is
+ * looked up; it replaces the old
  * first-4KB+last-4KB FNV-32 fingerprint (32 bits, interior-blind) with a wider
  * 64-bit hash over a head/tail/interior spread plus the exact byte length.
  *
@@ -29,14 +36,14 @@ import { xxhash64 } from '@ifc-lite/cache';
  * A mesh-only hit is validated by the source File's `lastModified` (mtime guard:
  * any real on-disk edit bumps it → safe miss) plus a TRUE full-file content hash
  * (SHA-256, computed off the main thread and re-checked in the background to
- * catch the deliberate mtime-preserving gap edit → purge + reload). See
- * `cacheTier.decideMeshOnlyCacheHit`, `utils/sourceContentHash.ts`, and
- * `useIfcLoader`. This fingerprint's only job is to key the lookup cheaply and
- * make a false key-hit (a genuinely different file mapping to the same entry)
- * astronomically rare, so the mtime / full-hash gate almost never has to reject
- * one. It is still strictly stronger than the old weak key (proved in
- * `sourceFingerprint.test.ts`), but strength of the KEY is a performance
- * property, not the safety guarantee.
+ * catch the deliberate mtime-preserving gap edit → purge + reload). See the
+ * viewer's `hooks/cacheTier.ts` `decideMeshOnlyCacheHit`, `utils/sourceContentHash.ts`,
+ * and `hooks/useIfcLoader.ts`. This fingerprint's only job is to key the
+ * lookup cheaply and make a false key-hit (a genuinely different file
+ * mapping to the same entry) astronomically rare, so the mtime / full-hash
+ * gate almost never has to reject one. It is still strictly stronger than
+ * the old weak key (proved in `source-fingerprint.test.ts`), but strength
+ * of the KEY is a performance property, not the safety guarantee.
  */
 export interface SourceFingerprint {
   /** Filename-safe hex of {@link hash} — the content component of the cache key. */
@@ -136,4 +143,18 @@ export async function computeSourceFingerprintFromBlob(blob: Blob): Promise<Sour
     parts.push(new Uint8Array(buf));
   }
   return hashParts(parts);
+}
+
+/**
+ * The model identity a `.rules.json` rule set's `targets.modelFingerprints`
+ * is matched against (#5138): `${name}:${hex}`, exactly what the viewer
+ * stores as `FederatedModel.sourceFingerprint` (`useIfcLoader.ts` builds
+ * `modelSourceIdentity` this way). ONE definition, because the viewer, the
+ * CLI (`ifc-lite check`, `delivery`) and the MCP `check_rules` tool must all
+ * spell it the same or a rule set authored in one silently matches nothing
+ * in the others. `bytes` are the POST-unwrap bytes (an `.ifcZIP` is
+ * fingerprinted by the STEP it contains, as the viewer does).
+ */
+export function sourceModelIdentity(name: string, bytes: ArrayBuffer | Uint8Array): string {
+  return `${name}:${computeSourceFingerprint(bytes).hex}`;
 }

@@ -40,6 +40,7 @@
   },
   "dependencies": {
     "@ifc-lite/bcf": "workspace:^",
+    "@ifc-lite/cache": "workspace:^",
     "@ifc-lite/clash": "workspace:^",
     "@ifc-lite/collab": "workspace:^",
     "@ifc-lite/create": "workspace:^",
@@ -54,6 +55,7 @@
     "@ifc-lite/mutations": "workspace:^",
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/query": "workspace:^",
+    "@ifc-lite/rules": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",
     "@ifc-lite/viewer-core": "workspace:^",
     "yjs": "^13.6.32"

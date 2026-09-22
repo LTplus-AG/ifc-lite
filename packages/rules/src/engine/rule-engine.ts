@@ -219,11 +219,32 @@ export async function runRuleSet(options: RunRuleSetOptions): Promise<Validation
   for (const m of targetModels) if (m.store) storesById.set(m.id, m.store);
   const modelInfo = buildModelInfo(targetModels);
 
+  // A rule set that DECLARES targets (`modelFingerprints`/`modelTagIds`) but
+  // resolves to zero loaded models is a MISMATCH, not an empty applicable
+  // set (#5138 PR 7b review): every model tag id or fingerprint is opaque
+  // and unresolved-by-construction (`Subject` §3), so this is exactly as
+  // likely to mean "the caller's `filterIdentity`/tag set doesn't match
+  // what the rule set was authored against" as "no targeted model happens
+  // to be loaded right now" — and a silent `not_applicable` pass reads as
+  // a clean report either way. Every rule is unevaluable, not vacuously
+  // satisfied, so every rule reports `error`, the same convention
+  // `finalizeSpecification` already uses for an exception mid-evaluation.
+  const targetsDeclared = (ruleSet.targets?.modelFingerprints?.length ?? 0) > 0 || (ruleSet.targets?.modelTagIds?.length ?? 0) > 0;
+  const targetsUnresolved = targetsDeclared && targetModels.length === 0;
+
   const specificationResults: SpecificationResult[] = [];
   for (let ruleIndex = 0; ruleIndex < ruleSet.rules.length; ruleIndex++) {
     if (signal?.aborted) throwAbort(signal);
     const rule = ruleSet.rules[ruleIndex];
     const opts: ValidationOpts = { caseSensitive: rule.caseSensitive ?? true, tolerance: rule.tolerance ?? 1e-6 };
+
+    if (targetsUnresolved) {
+      specificationResults.push(finalizeSpecification(
+        rule, 0, undefined, { entityResults: [] }, 'no loaded model matches the rule set targets',
+      ));
+      continue;
+    }
+
     // Tracked outside the `try` so the `catch` can report the REAL applicable
     // count when applicability itself succeeded and only the requirement
     // check threw — `0` is reserved for when applicability never resolved.

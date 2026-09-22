@@ -46,198 +46,15 @@ import { layerCommand } from './commands/layer.js';
 import { refCommand } from './commands/ref.js';
 import { gymCommand } from './commands/gym.js';
 import { deliveryCommand } from './commands/delivery.js';
+import { checkCommand } from './commands/check.js';
 import { flowCommand } from './commands/flow.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readCliVersion } from './version.js';
+import { buildHelp } from './help.js';
 
 // package.json sits one level above both `src/` and `dist/`.
 const VERSION = readCliVersion(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'));
-
-const HELP = `
-  ifc-lite v${VERSION} — BIM toolkit for the terminal
-
-  Usage: ifc-lite <command> [options]
-
-  Commands:
-    info      <file.ifc>                          Model summary (schema, entities, storeys)
-    query     <file.ifc> [--type T] [--json]      Query entities by type/properties/quantities
-              [--select "IfcWall, Pset_WallCommon.FireRating=2HR"]  IfcOpenShell-style selector (classes union with --type; properties AND with --where)
-    props     <file.ifc> --id <N>                 All properties for a single entity
-    export    <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|hbjson|dfjson  Export data / geometry / energy model
-    schedule  <file.ifc> --type T --columns "H=path,..."  Tabular schedule of one class (csv/json/md/html)
-              [--preset door|window|space|wall|material-takeoff]  default type+columns (flags override)
-              [--where PsetName.Prop=Value] [--format csv|json|md|html]  path = attr | Pset.Prop | Qto.Qty
-              [--sort "Header[:asc|desc],..."]  multi-key row sort by column HEADER (numbers numeric, nulls last)
-              [--group-by "Header,..."]  contiguous groups, ordered by group key (asc, or --sort's dir)
-              [--subtotals "count|sum:H|avg:H|min:H|max:H,..."]  subtotal row per group + grand total
-                 (without --group-by: grand total only; CSV/md label the group column, JSON marks __row)
-              [--spec spec.json]  load a saved schedule definition (beats --preset; an explicit flag beats both)
-              [--save spec.json]  persist this invocation's resolved definition for --spec reuse
-    diagnose-geometry <file.ifc> [--json]        CSG / opening diagnostics (failures, classification)
-                      [--product ID|GUID] [--type T]  Filter worst-hosts detail to one product/type
-    extract-entities <file.ifc> --out F          Isolate entities into a small, viewable standalone IFC
-                      [--product ID|GUID] [--storey S] [--detect] [--view]  by GUID/type/storey or auto-triage
-    anonymize <file.ifc> --out F                 Export selected objects + context as an anonymized IFC
-                      [--id N,...] [--guid G,...] [--type T] [--storey S]
-                      [--keep-psets] [--keep-names] [--keep-other-names] [--keep-currency]
-                      [--no-rel-voids-element] [--no-rel-fills-element] [--no-rel-defines-by-type]
-                      [--no-rel-associates-material] [--no-rel-aggregates] [--no-rel-nests]
-                      [--connect-depth N] [--guid-map F] [--json]
-    ids       <file.ifc> <rules.ids>              Validate against IDS rules
-    bcf       <create|list|add-comment>           Work with BCF collaboration files
-    clash     <file.ifc> [--matrix] [--bcf F]      Detect geometric clashes between elements
-    create    <type> [options] --out F             Create IFC elements (30+ types)
-    eval      <file.ifc> "<expression>"           Evaluate SDK expression
-    run       <script.js> <file.ifc>              Execute a script against model
-    schema                                        Dump SDK API schema (for LLM tools)
-    merge     <f1.ifc> <f2.ifc> --out F           Merge multiple IFC files
-    convert   <file.ifc> --schema VER --out F     Convert between IFC schema versions
-    diff      <f1.ifc> <f2.ifc>                   Compare two IFC files
-              [--by-content] [--identity-out F] [--identity-in F]  Match re-GUIDed elements by content; save/replay the identity map
-              [--geometry] [--split-merge] [--successors]  Wasm mesh pass: world geometry hashes/boxes/volumes; split/merge + successor claims
-              [--lineage-out F] [--lineage-in F] [--accept F] [--key-from Tag|Pset.Prop]  Lineage for rekeying external data; authored key
-    rekey     <table.csv|json> --lineage F --out F  Carry a table keyed on old element keys across a revision
-    validate  <file.ifc>                          Structural validation checks
-    bsdd      <class|search|psets|qsets> <arg>     buildingSMART Data Dictionary lookup
-    stats     <file.ifc>                          Auto-calculated model KPIs and health check
-    mutate    <file.ifc> --id N --set P=V --out F  Modify properties/attributes and save
-    generate-spaces <file.ifc> --out F           Derive IfcSpace from walls (slab/roof-aware height)
-    ask       <file.ifc> "<question>"            Natural language BIM queries
-    view      <file.ifc> [--port N]              Interactive 3D viewer in browser
-    analyze   <file.ifc> --viewer <port>        Query + visualize analysis results
-    lod       <file.ifc> --level 0|1            Generate lightweight LOD artifacts
-    simplify  <file.ifc> --out F [--level 1..5] [--ids 1,2,...] [--json]  Demesher: simplify meshes, write lighter IFC
-    mcp       <file.ifc> [--transport stdio|http] Start an MCP server bound to one or more IFC files
-    ext       validate <path>|init <dir>          Manage IFClite extensions (Phase 0 — validate, init)
-    layer     <publish|diff|merge|log|bake|...>    Layered change tracking over a local store (.ifc-lite/)
-    ref       <list|create|move|protect>           Manage named refs in the layer store
-    gym       --model <file.ifc> | --seed <n>      reset/step/reward environment loop (JSONL over stdin/stdout)
-    delivery  <recipe.json> [--json] [--out F] [--html F]  Repeatable delivery check (structural + IDS) from a saved recipe
-              recipe: {"models":["m.ifc"],"structural":true,"ids":["rules.ids"]}, paths relative to the recipe file
-    flow      <run|describe|validate> <graph.flow.json> [<file.ifc>] [--input k=v] [--out F]  Evaluate a node graph headlessly
-
-  Options:
-    --help, -h           Show help
-    --version, -v        Show version
-    --json               Output as JSON (machine-readable)
-    --out <file>         Write output to file instead of stdout
-    --verbose            Show parser + geometry diagnostics (stderr)
-    --quiet              Errors only
-    --debug              Verbose + stack traces on error
-    --log-level <level>  error|warn|info|debug (explicit wins over shorthands)
-
-  Examples:
-    ifc-lite info model.ifc
-    ifc-lite query model.ifc --type IfcWall --json
-    ifc-lite query model.ifc --type IfcDoor --props --limit 5
-    ifc-lite query model.ifc --type IfcWall --materials --classifications --json
-    ifc-lite query model.ifc --type IfcWall --all --json
-    ifc-lite query model.ifc --type IfcWall --quantity-names
-    ifc-lite query model.ifc --type IfcWall --sum GrossSideArea
-    ifc-lite query model.ifc --type IfcWall --group-by material --json
-    ifc-lite query model.ifc --spatial --summary
-    ifc-lite query model.ifc --spatial
-    ifc-lite props model.ifc --id 42
-    ifc-lite export model.ifc --format csv --type IfcWall --columns Name,Type,GlobalId
-    ifc-lite export model.ifc --format json --type IfcWall,IfcDoor
-    ifc-lite schedule model.ifc --type IfcDoor --columns "Name=Name, Mark=Pset_DoorCommon.Reference"
-    ifc-lite schedule model.ifc --type IfcWall --columns "Name,Qto_WallBaseQuantities.NetVolume" --where Pset_WallCommon.IsExternal=true --format json
-    ifc-lite schedule model.ifc --type IfcDoor --columns "Name=Name, Fire=Pset_DoorCommon.FireRating, Area=Qto_DoorBaseQuantities.Area" --group-by Fire --sort "Area:desc" --subtotals "count, sum:Area"
-    ifc-lite schedule model.ifc --preset door
-    ifc-lite schedule model.ifc --preset material-takeoff --format json
-    ifc-lite schedule model.ifc --preset door --format md
-    ifc-lite schedule model.ifc --preset door --format html > doors.html
-    ifc-lite schedule model.ifc --preset door --save door-schedule.json
-    ifc-lite schedule model.ifc --spec door-schedule.json --format json
-    ifc-lite diagnose-geometry model.ifc --json
-    ifc-lite diagnose-geometry model.ifc --type IfcWall
-    ifc-lite diagnose-geometry model.ifc --product 0YvCT2_$X3_xJG3rzD8L_8
-    ifc-lite ids model.ifc requirements.ids --json
-    ifc-lite bcf create --title "Missing door" --out topic.bcf
-    ifc-lite clash model.ifc --matrix --json
-    ifc-lite clash model.ifc --a "IfcDuct*|IfcPipe*" --b "IfcWall*" --mode clearance --clearance 0.05
-    ifc-lite clash model.ifc --matrix --bcf clashes.bcfzip
-    ifc-lite create wall --height 3 --thickness 0.2 --start 0,0,0 --end 5,0,0 --out wall.ifc
-    ifc-lite create stair --number-of-risers 12 --riser-height 0.175 --width 1.2 --out stair.ifc
-    ifc-lite create door --width 0.9 --height 2.1 --position 0,0,0 --out door.ifc
-    ifc-lite create i-shape-beam --start 0,0,3 --end 5,0,3 --out beam.ifc
-    ifc-lite create wall --from-json --out w.ifc < params.json
-    ifc-lite create wall --pset '{"Name":"Pset_WallCommon","Properties":[{"Name":"IsExternal","NominalValue":true}]}' --out w.ifc
-    ifc-lite create wall --material '{"Name":"Concrete","Category":"Structural"}' --out w.ifc
-    ifc-lite create wall --color 0.8,0.2,0.2 --out w.ifc
-    ifc-lite eval model.ifc "bim.query().byType('IfcWall').count()"
-    ifc-lite eval model.ifc "bim.storeys().map(s => s.name)"
-    ifc-lite run analysis.js model.ifc
-    ifc-lite schema
-    ifc-lite schema --compact
-    ifc-lite merge arch.ifc struct.ifc mep.ifc --out federated.ifc
-    ifc-lite convert model.ifc --schema IFC4 --out model-ifc4.ifc
-    ifc-lite diff model-v1.ifc model-v2.ifc --json
-    ifc-lite diff model-v1.ifc model-v2.ifc --by-entity
-    ifc-lite diff model-v1.ifc model-v2.ifc --by-content --identity-out renames.json
-    ifc-lite diff model-v1.ifc model-v2.ifc --identity-in renames.json
-    ifc-lite diff model-v1.ifc model-v2.ifc --geometry --split-merge --successors --json
-    ifc-lite diff model-v1.ifc model-v2.ifc --key-from Pset_Asset.AssetId --lineage-out lineage.json
-    ifc-lite rekey costs.csv --lineage lineage.json --key-column GlobalId --out costs-v2.csv
-    ifc-lite validate model.ifc --json
-    ifc-lite bsdd class IfcWall
-    ifc-lite bsdd search "concrete wall"
-    ifc-lite bsdd psets IfcWall
-    ifc-lite ask model.ifc "how many walls?"
-    ifc-lite ask model.ifc "window-wall ratio" --json
-    ifc-lite ask model.ifc "list materials" --explain
-    ifc-lite view model.ifc
-    ifc-lite view model.ifc --port 3456
-    curl -X POST http://localhost:3456/api/command -H 'Content-Type: application/json' -d '{"action":"colorize","type":"IfcWall","color":[1,0,0,1]}'
-    ifc-lite analyze model.ifc --viewer 3456 --type IfcWall --missing "Pset_WallCommon.FireRating" --color red
-    ifc-lite analyze model.ifc --viewer 3456 --type IfcSlab --where "GrossArea>100" --color orange --isolate
-    ifc-lite analyze model.ifc --viewer 3456 --type IfcWall --heatmap "Qto_WallBaseQuantities.GrossSideArea"
-    ifc-lite analyze model.ifc --viewer 3456 --rules rules.json --json
-    ifc-lite lod model.ifc --level 0 --out model.lod0.json
-    ifc-lite lod model.ifc --level 1 --out model.glb --meta model.lod1.json
-    ifc-lite mcp model.ifc
-    ifc-lite mcp model.ifc --read-only
-    ifc-lite mcp arch.ifc struct.ifc --federate
-    ifc-lite mcp model.ifc --transport http --port 8765 --token abc
-    ifc-lite ref create main
-    ifc-lite layer publish delta.ifcx --base main --intent "Set fire ratings" --scope "model.mutate:Pset_FireSafety*@IfcWall"
-    ifc-lite layer merge blake3:abc123 --into main --preview
-    ifc-lite layer log main
-    ifc-lite layer bake main -o flat.ifcx
-    ifc-lite gym --model model.ifc --checks schema,clash
-    ifc-lite gym --model model.ifc --checks schema,clash,ids --ids rules.ids
-    ifc-lite gym --seed 42 --checks schema,clash
-
-  Pipe-friendly:
-    ifc-lite query model.ifc --type IfcWall --json | jq '.[].name'
-    ifc-lite export model.ifc --format csv --type IfcSlab > slabs.csv
-    echo '{"Start":[0,0,0],"End":[10,0,0],"Height":3}' | ifc-lite create wall --from-json --out w.ifc
-
-  Create element types:
-    wall, slab, column, beam, stair, roof, gable-roof, door, window,
-    wall-door, wall-window, ramp, railing, plate, member, footing, pile,
-    space, curtain-wall, furnishing, proxy, circular-column,
-    hollow-circular-column, i-shape-beam, l-shape-member, t-shape-member,
-    u-shape-member, rectangle-hollow-beam
-
-  gym protocol (newline-delimited JSON, one command per stdin line):
-    On start:            {"type":"reset","observation":{entityCounts,storeyCount,schema,bounds},"channels":{...}}
-    -> {"type":"step","ops":[{"op":"setProperty"|"setAttribute"|"deleteProperty", ...}]}
-    <- {"type":"reward","channels":{schema:{score,...},clash:{score,...},ids:{score,...}},"done":false}
-    -> {"type":"reset"}               reloads the pristine model, replies like the initial reset
-    -> {"type":"reset","seed":8}      episode factory: swaps to a generated World Gym benchmark
-                                      model (optional "family"/"corrupt"/"corruptRate" fields);
-                                      needs the repo checkout (tools/world-gym). Also on start via
-                                      --seed <n> [--family ...] [--corrupt|--no-corrupt|--corrupt-rate p].
-                                      Generated-episode resets add "episode":{seed,family,corrupted}.
-    -> {"type":"close"}               exits 0
-    Malformed input replies {"type":"error","message":"..."} instead of crashing.
-    v0 ops: setProperty/setAttribute/deleteProperty only (mirrors bim.mutate's method
-    names). Geometry-creating ops are out of scope for v0.
-
-  Learn more: https://ifclite.com
-`;
 
 /** Command being executed, captured for the top-level error handler. */
 let activeCommand = '';
@@ -253,7 +70,7 @@ async function main(): Promise<void> {
   const args = verbosity.rest;
 
   if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
-    process.stdout.write(HELP + '\n');
+    process.stdout.write(buildHelp(VERSION) + '\n');
     return;
   }
 
@@ -371,6 +188,9 @@ async function main(): Promise<void> {
       break;
     case 'delivery':
       await deliveryCommand(commandArgs);
+      break;
+    case 'check':
+      await checkCommand(commandArgs);
       break;
     case 'flow':
       await flowCommand(commandArgs);

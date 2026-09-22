@@ -5,7 +5,7 @@ import '@/test/setup-dom.js';
 import { Blob, File } from 'node:buffer';
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeSourceFingerprint } from '@/hooks/sourceFingerprint';
+import { computeSourceFingerprint } from '@ifc-lite/cache';
 import { placementSourceIdentity } from './source-identity';
 import { saveWorkspacePlacements, restoreWorkspacePlacements } from './persistence';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';

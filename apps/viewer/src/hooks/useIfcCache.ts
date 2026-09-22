@@ -226,7 +226,7 @@ export function useIfcCache() {
 
       // No SYNCHRONOUS full-file hash on the repeat-open path (the former
       // ~0.7-1.7s `xxhash64(fullSource)` main-thread stall). The spread-sampled
-      // cache key (`sourceFingerprint.ts`) only KEYS the lookup — it cannot see
+      // cache key (`@ifc-lite/cache`'s `source-fingerprint.ts`) only KEYS the lookup — it cannot see
       // a byte-length-preserving edit between its sample windows; staleness is
       // gated by the mtime guard + off-thread full-hash revalidation in
       // `cacheTier.ts` / `useIfcLoader` (#4269). A

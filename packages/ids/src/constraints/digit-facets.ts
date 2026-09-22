@@ -74,6 +74,33 @@ export function countDecimalDigits(decimalStr: string): {
 }
 
 /**
+ * Normalise a string `actualValue` the same way the `number` branch
+ * already is, but only when it actually needs it. A string already in
+ * fixed-point form (`"0012.3400"`) is left untouched — routing it
+ * through `parseFloat`/`toFixedDecimalString` would be a no-op for the
+ * digit count (both zero-strip identically) but would gratuitously cap
+ * it at IEEE-754 double precision for arbitrary-precision XSD
+ * `decimal` literals. Only an exponential string, which
+ * `countDecimalDigits` cannot read directly (the `e`/`E` would be
+ * counted as a digit), is parsed and re-rendered fixed-point.
+ *
+ * That parse goes through a JS double, so it is exact for the range
+ * that already governs the `number` branch (IEEE-754, ~15–17
+ * significant decimal digits) and lossy beyond it — a large
+ * exponential literal past that ceiling trades an `e`-as-digit
+ * miscount for a rounded one, not for an exact count. It does not
+ * introduce trailing-garbage risk (#5193's parser-side failure mode):
+ * the string is admitted by `isStrictNumericLiteral` first, which
+ * anchors end-to-end, so `parseFloat` never sees or silently drops
+ * trailing non-numeric characters.
+ */
+function normalizeStringLiteral(raw: string): string {
+  if (!/e/i.test(raw) || !isStrictNumericLiteral(raw)) return raw;
+  const parsed = parseFloat(raw);
+  return Number.isFinite(parsed) ? toFixedDecimalString(parsed) : raw;
+}
+
+/**
  * Whether `actualValue` satisfies a bounds constraint's
  * totalDigits/fractionDigits facets. Exported so `describe.ts` can
  * report which one actually rejected the value; `undefined` when
@@ -90,7 +117,7 @@ export function matchDigitFacets(
   const decimalStr =
     typeof actualValue === 'number'
       ? toFixedDecimalString(actualValue)
-      : String(actualValue);
+      : normalizeStringLiteral(String(actualValue));
   // The digit facets are only meaningful against a decimal lexical
   // form; a non-numeric string actual can never satisfy them.
   if (!isStrictNumericLiteral(decimalStr)) return false;

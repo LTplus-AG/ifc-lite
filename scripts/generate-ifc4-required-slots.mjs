@@ -114,10 +114,44 @@ function fillFor(attr) {
   return underlyingType(attr.type) === 'BOOLEAN' ? '.F.' : null;
 }
 
+/**
+ * `IfcCartesianPointList2D`/`3D`, excluded from this table entirely — NOT a
+ * registry gap. The two source-of-truth EXPRESS schemas this repo carries
+ * settle it directly:
+ *
+ *   packages/codegen/schemas/IFC4_ADD2_TC1.exp: `IfcCartesianPointList3D`
+ *     declares only `CoordList`. `TagList` does not appear anywhere in this
+ *     file (`grep -c TagList` = 0).
+ *   packages/codegen/schemas/IFC4X3.exp: the same entity ALSO declares
+ *     `TagList : OPTIONAL LIST [1:?] OF IfcLabel;` — IFC4X3 ADDED this
+ *     attribute; IFC4 never had it.
+ *
+ * `schema-registry.ts` (this table's own source, parsed straight from
+ * `IFC4_ADD2_TC1.exp`) is correct: 1 attribute, `CoordList`. The converter's
+ * OWN arity table, `entities-ifc4.ts` (`packages/data`, generated from a
+ * DIFFERENT upstream source — buildingSMART's C# `SchemaInfo` generator, not
+ * this repo's EXPRESS files), lists 2 — `CoordList` AND `TagList` — for BOTH
+ * `entities-ifc4.ts` and `entities-ifc4x3.ts`, identically. That is a bug in
+ * `entities-ifc4.ts` itself (it carries IFC4X3's shape into the IFC4 row),
+ * pre-existing and out of scope for #5202: `attrNameTable('IFC4')` in
+ * `schema-converter.ts` reads `entities-ifc4.ts`, so the live converter
+ * already treats this entity's IFC4 arity as 2, not 1, independent of
+ * anything in this file.
+ *
+ * Excluding these two rows costs nothing for #5202: `CoordList` is a LIST
+ * attribute (no honest fill either way) and was this entity's only required
+ * slot under the correct 1-attribute shape, so no BOOLEAN fill is lost by
+ * leaving them out. `verifyAgainstConverterTable` stays a hard, unweakened
+ * failure for every OTHER entity — this is a narrow, named exclusion, not a
+ * loosened check.
+ */
+const IFC4_DATA_TABLE_BUG_TYPES = new Set(['IFCCARTESIANPOINTLIST2D', 'IFCCARTESIANPOINTLIST3D']);
+
 function buildRows() {
   const rows = [];
   for (const [name, entity] of Object.entries(IFC4.entities)) {
     if (entity.isAbstract) continue;
+    if (IFC4_DATA_TABLE_BUG_TYPES.has(name.toUpperCase())) continue;
     const attributes = entity.allAttributes ?? [];
     const slots = [];
     attributes.forEach((attr, index) => {
@@ -133,18 +167,13 @@ function buildRows() {
 
 /**
  * The converter indexes a converted record's slots positionally, so a row's
- * REQUIRED-SLOT indexes are only usable if the registry and the converter's
- * own arity table (`attrNameTable('IFC4')`, from `entities-ifc4.ts`) agree on
- * attribute order up to and including the LAST required index this row uses.
- * A mismatch there is a hard failure rather than a silently skipped entity: a
- * wrong index would write `.F.` over a value.
- *
- * A mismatch AFTER that point is tolerated: `schema-registry.ts` (IFC4_ADD2_TC1)
- * is missing a handful of trailing OPTIONAL attributes the data package's table
- * carries — e.g. `IfcCartesianPointList2D`/`3D.TagList` — a pre-existing gap in
- * that registry, unrelated to this table. Since those attributes are optional
- * and trail every required slot this generator ever emits for the affected
- * rows, the row's own indexes stay correct regardless.
+ * indexes are only usable if the registry's attribute order is the order the
+ * converter's own arity table (`attrNameTable('IFC4')`, from
+ * `entities-ifc4.ts`) uses. Disagreement is a hard failure rather than a
+ * silently skipped entity: a wrong index writes `.F.` over a value. Same
+ * policy as `generate-ifc2x3-required-slots.mjs`'s own check — deliberately
+ * NOT relaxed; see `IFC4_DATA_TABLE_BUG_TYPES` below for the one place this
+ * generator excludes rows instead of weakening this check.
  */
 function verifyAgainstConverterTable(rows) {
   const byType = new Map();
@@ -156,12 +185,9 @@ function verifyAgainstConverterTable(rows) {
     const registryNames = (IFC4.entities[
       Object.keys(IFC4.entities).find((k) => k.toUpperCase() === row.type)
     ].allAttributes ?? []).map((a) => a.name);
-    const maxRequiredIndex = Math.max(...row.slots.map((s) => s.index));
-    const checkLen = maxRequiredIndex + 1;
     const same =
-      registryNames.length >= checkLen &&
-      converterNames.length >= checkLen &&
-      registryNames.slice(0, checkLen).every((n, i) => n === converterNames[i]);
+      registryNames.length === converterNames.length &&
+      registryNames.every((n, i) => n === converterNames[i]);
     if (!same) problems.push(`${row.type}: registry [${registryNames}] vs data [${converterNames}]`);
   }
   return problems;

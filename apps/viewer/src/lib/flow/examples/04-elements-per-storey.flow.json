@@ -1,0 +1,23 @@
+{
+  "flowVersion": 1,
+  "id": "example-elements-per-storey",
+  "name": "4 · Elements per storey",
+  "description": "Groups, without a single grouping node. `Contained elements` has an item port fed a list of storeys, so it runs once per storey and its list output reassembles into a group keyed by the storey's GlobalId. Every node downstream of it then runs once per branch — that is the whole data-tree story in one graph.",
+  "capabilities": ["model.read"],
+  "inputs": [],
+  "outputs": [
+    { "nodeId": "storeyNames", "port": "value", "label": "Storeys" },
+    { "nodeId": "howMany", "port": "count", "label": "Elements per storey" }
+  ],
+  "nodes": [
+    { "id": "storeys", "type": "model.byType", "params": { "type": "IfcBuildingStorey" }, "pos": [0, 0] },
+    { "id": "storeyNames", "type": "model.attribute", "params": { "attribute": "Name" }, "pos": [300, -100] },
+    { "id": "inside", "type": "model.contains", "pos": [300, 60] },
+    { "id": "howMany", "type": "core.count", "pos": [600, 60] }
+  ],
+  "edges": [
+    { "from": ["storeys", "entities"], "to": ["storeyNames", "entity"] },
+    { "from": ["storeys", "entities"], "to": ["inside", "container"] },
+    { "from": ["inside", "entities"], "to": ["howMany", "items"] }
+  ]
+}

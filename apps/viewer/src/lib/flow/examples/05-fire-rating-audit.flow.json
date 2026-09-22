@@ -1,8 +1,8 @@
 {
   "flowVersion": 1,
-  "id": "fire-rating-audit",
-  "name": "Fire rating audit",
-  "description": "Walls without Pset_WallCommon.FireRating are colorized and counted; a default rating can be written back.",
+  "id": "example-fire-rating-audit",
+  "name": "5 · Fire rating audit (writes)",
+  "description": "Reads a property, splits the elements on whether it is missing, paints the gaps, and writes a default rating into them. The write is capability-gated on the exact pset, and the whole run is one undo step in the viewer. The table is built after the write, so it reads back what the run just did.",
   "capabilities": ["model.read", "viewer.colorize", "model.mutate:Pset_WallCommon"],
   "inputs": [
     { "nodeId": "rating", "param": "value", "label": "Default fire rating", "kind": "scalar" }
@@ -19,7 +19,7 @@
     { "id": "missingCount", "type": "core.count", "pos": [1040, -80] },
     { "id": "color", "type": "viewer.colorize", "params": { "color": "#ff3b30" }, "pos": [1040, 40] },
     { "id": "rating", "type": "core.string", "params": { "value": "REI60" }, "pos": [1040, 180] },
-    { "id": "set", "type": "model.setProperty", "params": { "pset": "Pset_WallCommon", "property": "FireRating" }, "trackingKey": "fire-rating-audit/set", "pos": [1300, 100] },
+    { "id": "set", "type": "model.setProperty", "params": { "pset": "Pset_WallCommon", "property": "FireRating" }, "pos": [1300, 100] },
     { "id": "table", "type": "table.fromEntities", "params": { "columns": ["Name", "Pset_WallCommon.FireRating"] }, "pos": [1560, 0] }
   ],
   "edges": [

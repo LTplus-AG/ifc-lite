@@ -1,0 +1,25 @@
+{
+  "flowVersion": 1,
+  "id": "example-highlight-external",
+  "name": "2 · Highlight external walls",
+  "description": "An IfcOpenShell-style selector picks external walls, the viewer paints them and flies to them, and the graph counts them. Run headlessly the two viewer nodes report no-op and pass their entities through, so the count is the same in CI.",
+  "capabilities": ["model.read", "viewer.colorize", "viewer.fly"],
+  "inputs": [
+    { "nodeId": "walls", "param": "selector", "label": "Selector", "kind": "scalar" },
+    { "nodeId": "paint", "param": "color", "label": "Colour", "kind": "scalar" }
+  ],
+  "outputs": [
+    { "nodeId": "howMany", "port": "count", "label": "External walls" }
+  ],
+  "nodes": [
+    { "id": "walls", "type": "model.select", "params": { "selector": "IfcWall, Pset_WallCommon.IsExternal=TRUE" }, "pos": [0, 0] },
+    { "id": "paint", "type": "viewer.colorize", "params": { "color": "#4ade80" }, "pos": [300, 0] },
+    { "id": "fly", "type": "viewer.flyTo", "pos": [580, -60] },
+    { "id": "howMany", "type": "core.count", "pos": [580, 80] }
+  ],
+  "edges": [
+    { "from": ["walls", "entities"], "to": ["paint", "entities"] },
+    { "from": ["paint", "entities"], "to": ["fly", "entities"] },
+    { "from": ["paint", "entities"], "to": ["howMany", "items"] }
+  ]
+}

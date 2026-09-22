@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { copyFile, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +12,12 @@ import { createHeadlessContext } from '../loader.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SAMPLE_IFC = resolve(here, '../../../../apps/viewer/public/samples/building-architecture.ifc');
-const AUDIT_FLOW = resolve(here, '../__fixtures__/flows/fire-rating-audit.flow.json');
+// The audit graph is the viewer's shipped example, not a private copy of it:
+// an example the panel offers as "this is how it works" has to keep working,
+// and this is the run that proves it. (The sample models next to it are read
+// from the viewer's `public/` for the same reason.)
+const EXAMPLES = resolve(here, '../../../../apps/viewer/src/lib/flow/examples');
+const AUDIT_FLOW = join(EXAMPLES, '05-fire-rating-audit.flow.json');
 const COLUMNS_FLOW = resolve(here, '../__fixtures__/flows/columns-along-x.flow.json');
 const HELLO_WALL = resolve(here, '../../../../apps/viewer/public/samples/hello-wall.ifc');
 
@@ -31,7 +36,7 @@ describe('ifc-lite flow', () => {
     const c = capture();
     await flowCommand(['describe', AUDIT_FLOW, '--json']);
     const info = c.json();
-    expect(info.id).toBe('fire-rating-audit');
+    expect(info.id).toBe('example-fire-rating-audit');
     expect(info.inputs).toEqual([{ key: 'rating.value', label: 'Default fire rating', kind: 'scalar', options: undefined, default: '', paramKind: 'string' }]);
     expect(info.outputs).toEqual([
       { key: 'missingCount.count', label: 'Walls without FireRating', kind: 'scalar', access: 'item' },
@@ -155,6 +160,32 @@ describe('ifc-lite flow', () => {
     await expect(flowCommand(['run', AUDIT_FLOW, SAMPLE_IFC, '--out'])).rejects.toThrow('exit');
     expect(exit2).toHaveBeenCalledWith(1);
     expect(c2.err.join('')).toMatch(/--out needs a value/);
+  });
+
+  // Every shipped example, run for real against a real model. Validation
+  // only proves a graph is wired; this proves it computes something. An
+  // example that throws on a live model is worse than no example.
+  it('every built-in example runs headlessly against the sample model and produces its declared outputs', async () => {
+    const files = (await readdir(EXAMPLES)).filter((f) => f.endsWith('.flow.json')).sort();
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const c = capture();
+      // `--no-tracking`: the default sidecar path is beside the graph, which
+      // here is the repo's own source tree.
+      await flowCommand(['run', join(EXAMPLES, file), SAMPLE_IFC, '--no-tracking', '--json']);
+      const summary = c.json() as {
+        ok: boolean;
+        nodes: Record<string, number>;
+        outputs: Array<{ key: string; label: string; data: unknown }>;
+        log: Array<{ level: string; nodeId: string; message: string }>;
+      };
+      vi.restoreAllMocks();
+      const errors = summary.log.filter((l) => l.level === 'error').map((l) => `${l.nodeId}: ${l.message}`);
+      expect({ file, ok: summary.ok, errors }).toEqual({ file, ok: true, errors: [] });
+      expect({ file, failed: summary.nodes.error ?? 0, skipped: summary.nodes.skipped ?? 0 }).toEqual({ file, failed: 0, skipped: 0 });
+      // A declared output with no data is a graph that ran and said nothing.
+      for (const o of summary.outputs) expect({ file, key: o.key, data: o.data }).not.toEqual({ file, key: o.key, data: undefined });
+    }
   });
 
   it('a tracked creation graph re-run updates its elements in place: same GlobalIds, no adds or removes, vanished lanes removed', async () => {

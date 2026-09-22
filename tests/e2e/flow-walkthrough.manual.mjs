@@ -55,10 +55,11 @@ if (!(await state('s.flowPanelVisible'))) note('Flow ribbon button did not open 
 await page.locator('[data-flow-panel]').waitFor({ timeout: 10000 });
 await shot('flow-panel-open');
 
-// 2. Import the fixture graph (the same file the CLI test runs).
-const fixture = readFileSync(new URL('../../packages/cli/src/__fixtures__/flows/fire-rating-audit.flow.json', import.meta.url), 'utf-8');
+// 2. Import the audit graph — the panel's own example 5, and the same file
+// the CLI test runs.
+const fixture = readFileSync(new URL('../../apps/viewer/src/lib/flow/examples/05-fire-rating-audit.flow.json', import.meta.url), 'utf-8');
 await page.locator('[data-flow-panel] input[type=file]').setInputFiles({ name: 'fire-rating-audit.flow.json', mimeType: 'application/json', buffer: Buffer.from(fixture) });
-await page.waitForFunction((k) => globalThis[k].getState().flowDoc?.id === 'fire-rating-audit', STORE, { timeout: 5000 });
+await page.waitForFunction((k) => globalThis[k].getState().flowDoc?.id === 'example-fire-rating-audit', STORE, { timeout: 5000 });
 await page.waitForTimeout(800);
 const nodeCount = await page.locator('[data-flow-node]').count();
 log('canvas nodes', nodeCount);

@@ -1,0 +1,200 @@
+{
+  "flowVersion": 1,
+  "id": "example-column-grid",
+  "name": "8 · Column grid (creates elements)",
+  "description": "Cross lacing turns two coordinate lists into every X×Y combination, one column per intersection. `Add element` is tracked: it owns what it made, so a re-run with a different spacing MOVES the columns instead of adding a second grid, and a coordinate you delete takes its column with it. Its lanes are keyed by index here — the run log says so — because the driving lists are numbers, not entities.",
+  "capabilities": [
+    "model.read",
+    "model.create"
+  ],
+  "inputs": [
+    {
+      "nodeId": "xs",
+      "param": "items",
+      "label": "X positions (m)",
+      "kind": "scalar"
+    },
+    {
+      "nodeId": "ys",
+      "param": "items",
+      "label": "Y positions (m)",
+      "kind": "scalar"
+    },
+    {
+      "nodeId": "column",
+      "param": "height",
+      "label": "Column height (m)",
+      "kind": "scalar"
+    }
+  ],
+  "outputs": [
+    {
+      "nodeId": "made",
+      "port": "count",
+      "label": "Columns in the grid"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "storeys",
+      "type": "model.byType",
+      "params": {
+        "type": "IfcBuildingStorey"
+      },
+      "pos": [
+        0,
+        -120
+      ]
+    },
+    {
+      "id": "first",
+      "type": "core.first",
+      "pos": [
+        300,
+        -120
+      ]
+    },
+    {
+      "id": "xs",
+      "type": "core.list",
+      "params": {
+        "items": [
+          0,
+          4,
+          8,
+          12
+        ]
+      },
+      "pos": [
+        0,
+        60
+      ]
+    },
+    {
+      "id": "ys",
+      "type": "core.list",
+      "params": {
+        "items": [
+          0,
+          5,
+          10
+        ]
+      },
+      "pos": [
+        0,
+        180
+      ]
+    },
+    {
+      "id": "pt",
+      "type": "geometry.point",
+      "lacing": "cross",
+      "pos": [
+        300,
+        120
+      ]
+    },
+    {
+      "id": "column",
+      "type": "element.column",
+      "params": {
+        "width": 0.3,
+        "depth": 0.3,
+        "height": 3
+      },
+      "pos": [
+        620,
+        0
+      ]
+    },
+    {
+      "id": "add",
+      "type": "model.addElement",
+      "trackingKey": "example-column-grid/grid",
+      "pos": [
+        900,
+        0
+      ]
+    },
+    {
+      "id": "made",
+      "type": "core.count",
+      "pos": [
+        1180,
+        0
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": [
+        "storeys",
+        "entities"
+      ],
+      "to": [
+        "first",
+        "items"
+      ]
+    },
+    {
+      "from": [
+        "xs",
+        "items"
+      ],
+      "to": [
+        "pt",
+        "x"
+      ]
+    },
+    {
+      "from": [
+        "ys",
+        "items"
+      ],
+      "to": [
+        "pt",
+        "y"
+      ]
+    },
+    {
+      "from": [
+        "first",
+        "item"
+      ],
+      "to": [
+        "column",
+        "storey"
+      ]
+    },
+    {
+      "from": [
+        "pt",
+        "point"
+      ],
+      "to": [
+        "column",
+        "position"
+      ]
+    },
+    {
+      "from": [
+        "column",
+        "spec"
+      ],
+      "to": [
+        "add",
+        "spec"
+      ]
+    },
+    {
+      "from": [
+        "add",
+        "entity"
+      ],
+      "to": [
+        "made",
+        "items"
+      ]
+    }
+  ]
+}

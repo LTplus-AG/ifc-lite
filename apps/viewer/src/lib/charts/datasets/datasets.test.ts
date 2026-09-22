@@ -27,7 +27,7 @@ import { buildCompareDataset, COMPARE_COLUMNS } from './compare.js';
 import { buildElementsDataset } from './elements.js';
 import { DASHBOARD_PRESETS } from '../presets.js';
 import { createElementFieldReader } from '../element-field-reader.js';
-import { applyChartFilter, applyClashRuleFilter, resolveChartFilter } from '../source-filter.js';
+import { applyChartFilter, resolveChartFilter } from '../source-filter.js';
 import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models.js';
 import { toGlobalIdFromModels } from '@/store/globalId.js';
 
@@ -685,6 +685,15 @@ END-ISO-10303-21;`;
   // #5156 — building a chart from ONE clash run/check instead of every rule
   // of the current result being counted together.
   it('applyClashRuleFilter: narrows to one rule\'s rows, composes with applyChartFilter, and leaves an unknown dataset untouched', async () => {
+    // Dynamic (not static) import: reverting this slice's production change
+    // removes the `applyClashRuleFilter` export from source-filter.ts while
+    // `applyChartFilter` / `resolveChartFilter` (imported statically above)
+    // still exist on both sides. A static import of `applyClashRuleFilter`
+    // would fail the whole test FILE to load (does not provide an export
+    // named 'applyClashRuleFilter') instead of letting the assertions below
+    // fail on their own merits — see PropertyEditor.i18n.test.tsx for the
+    // same pattern used against a whole-module revert.
+    const { applyClashRuleFilter } = await import('../source-filter.js');
     const engine = createClashEngine({ backend: 'ts' });
     const result = await engine.run(
       [

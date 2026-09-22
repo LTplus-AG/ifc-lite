@@ -43,6 +43,7 @@ import {
 } from './xsd-required-string.js';
 import { generateUuid } from '@ifc-lite/encoding';
 import { viewpointFileName, type ViewpointFileName } from './writer-viewpoint-filename.js';
+import { fixZipVersionNeeded } from './writer-zip-version.js';
 
 /**
  * Write a BCFProject to a .bcfzip file
@@ -67,12 +68,10 @@ export async function writeBCF(project: BCFProject): Promise<Blob> {
     await writeTopicFolder(zip, topic, project.version, usedFolderNames);
   }
 
-  // Generate zip file
-  return zip.generateAsync({
-    type: 'blob',
-    compression: 'DEFLATE',
-    compressionOptions: { level: 6 },
-  });
+  // Generate zip file, then patch JSZip's wrong version-needed field (#3612).
+  return fixZipVersionNeeded(
+    await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } })
+  );
 }
 
 /**

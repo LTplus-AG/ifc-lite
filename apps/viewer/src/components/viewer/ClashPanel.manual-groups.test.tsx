@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { summarizeClashes, type Clash, type ClashResult } from '@ifc-lite/clash';
+import { clashReviewKey, summarizeClashes, type Clash, type ClashResult } from '@ifc-lite/clash';
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
@@ -274,25 +274,50 @@ describe('ClashPanel manual groups (#4921, #5122)', () => {
     await setDialogName('Focus test group');
     await act(async () => buttonWithText('Create group').click());
 
-    // Get the first clash ID to filter it out
-    const clashResult = useViewerStore.getState().clashResult;
-    const firstClashId = clashResult?.clashes[0].id;
-    assert.ok(firstClashId, 'first clash must exist');
+    // Once both clashes are grouped, they no longer render as top-level
+    // `row.kind === 'clash'` rows (ClashPanel.tsx), so the per-clash
+    // "Select clash " checkboxes are gone entirely — that count can't be
+    // used to observe the filter. Instead read the group header's own
+    // count badge, which display-rows.ts sets to `section.items.length`,
+    // the visibility-filtered member list computed in
+    // useManualClashGroups.ts. It must start at 2 (both members).
+    const groupHeaderCount = (): string | null => {
+      const header = container!.querySelector('button[aria-label="Collapse Focus test group"]');
+      assert.ok(header instanceof HTMLButtonElement, 'group header toggle button must render');
+      const countSpan = header.querySelector('span.tabular-nums');
+      assert.ok(countSpan, 'group header count badge must render');
+      return countSpan.textContent;
+    };
+    assert.equal(groupHeaderCount(), '2', 'group header count reflects both members before filtering');
 
-    // Filter out the first clash by excluding it from statusFilter
+    // Mark the second clash as reviewed so the status filter below keeps it
+    // visible while the first (untouched, default 'open') is hidden.
+    const clashResult = useViewerStore.getState().clashResult;
+    const secondClash = clashResult?.clashes[1];
+    assert.ok(secondClash, 'second clash must exist');
+
+    // Review status is looked up by `clashReviewKey` (rule + the two durable
+    // element keys), NOT by `Clash.id` (hooks/useClash.ts's `reviewOf`), so the
+    // map must be keyed that way for the lookup to actually hit. Mark only the
+    // second clash 'accepted' and leave the first clash without an entry, which
+    // `reviewOf` defaults to 'open'. The status filter below keeps only
+    // resolved/accepted, so this hides the first clash and keeps the second.
     await act(async () => {
       useViewerStore.setState({
         clashStatusFilter: new Set(['resolved', 'accepted']),
         clashReviews: new Map([
-          [firstClashId, { status: 'open', date: new Date() }],
+          [clashReviewKey(secondClash), { status: 'accepted', date: new Date() }],
         ]),
       });
     });
 
-    // The section should now show only 1 visible clash
-    const visibleCount = [...container!.querySelectorAll('input[type="checkbox"]')]
-      .filter((input) => input.getAttribute('aria-label')?.startsWith('Select clash ')).length;
-    assert.equal(visibleCount, 1, 'only 1 clash visible after filter');
+    // The group header count must drop to 1: this is the precondition that
+    // proves the filter genuinely narrowed the group's visible membership
+    // (section.items), as distinct from its full membership (membersById).
+    // Without this check, a filter that silently failed to apply would
+    // still leave focus selecting all four elements below, and the test
+    // would pass for the wrong reason.
+    assert.equal(groupHeaderCount(), '1', 'group header count reflects the filter narrowing visible membership');
 
     // Click the Focus button
     const focusButton = container!.querySelector('button[title="Focus every object in this group"]');

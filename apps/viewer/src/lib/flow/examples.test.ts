@@ -10,9 +10,12 @@
  * relies on (a Player input naming a real param, a declared capability
  * covering every node that needs one).
  *
- * The files are read from disk, and `examples.ts` is read as text: its
- * `?raw` imports are a Vite transform this runner does not have, so the
- * barrel can only be checked for the filenames it names.
+ * The files are also read from disk, so the barrel can be checked against
+ * the folder it is supposed to expose: `flowExamples()` is called for real
+ * (the test loader implements Vite's `?raw`), and what it returns has to be
+ * the documents that are actually there, in the order their numeric
+ * prefixes imply — a file added to the folder but not imported would
+ * otherwise be invisible in the panel and fail nothing.
  */
 
 import { describe, it } from 'node:test';
@@ -23,24 +26,25 @@ import { fileURLToPath } from 'node:url';
 import { checkAvailability, parseFlowDocument, topologicalOrder, validateFlowWiring, type FlowDocument } from '@ifc-lite/flow';
 import { hasCapability, parseCapabilities, parseCapability } from '@ifc-lite/extensions';
 import { BROWSER_FEATURES, createStandardRegistry } from '@ifc-lite/flow-nodes';
+import { flowExamples } from './examples.js';
 
 const registry = createStandardRegistry();
-const here = dirname(fileURLToPath(import.meta.url));
-const dir = join(here, 'examples');
-const barrel = readFileSync(join(here, 'examples.ts'), 'utf-8');
+const dir = join(dirname(fileURLToPath(import.meta.url)), 'examples');
 const files = readdirSync(dir).filter((f) => f.endsWith('.flow.json')).sort();
 const examples: Array<{ file: string; doc: FlowDocument }> = files.map((file) => ({ file, doc: parseFlowDocument(readFileSync(join(dir, file), 'utf-8')) }));
 
 describe('flow examples', () => {
-  it('examples.ts imports every file in the directory', () => {
-    // A file added to the folder but not to the barrel is invisible in the
-    // panel, and nothing else would fail.
-    for (const file of files) assert.match(barrel, new RegExp(`./examples/${file.replace(/\./g, '\\.')}\\?raw`), `${file} is not imported by examples.ts`);
-    assert.equal((barrel.match(/\.flow\.json\?raw/g) ?? []).length, files.length);
-    // The menu order IS the ladder, so the barrel must list them in the
-    // order their numeric prefixes imply.
-    const order = [...barrel.matchAll(/\.\/examples\/([\w.-]+\.flow\.json)\?raw/g)].map((m) => m[1]);
-    assert.deepEqual(order, files);
+  it('flowExamples() is the folder, in ladder order', () => {
+    // What the panel lists comes from the barrel's imports, not from the
+    // folder, so a file added to one and not the other is invisible in the
+    // UI and fails nothing else. Comparing ids (not filenames) keeps this
+    // honest about what the menu actually offers.
+    assert.deepEqual(flowExamples().map((d) => d.id), examples.map((e) => e.doc.id));
+    assert.equal(flowExamples().length, files.length);
+  });
+
+  it('flowExamples() parses once and hands back the same documents', () => {
+    assert.equal(flowExamples(), flowExamples(), 'the panel re-renders; re-parsing eight documents per render is not free');
   });
 
   it('every id and name is unique', () => {

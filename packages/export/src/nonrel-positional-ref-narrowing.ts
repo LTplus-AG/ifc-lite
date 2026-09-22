@@ -45,8 +45,8 @@
  * not 'no forward reference', it is a second, different kind of invalid
  * file." An earlier revision of this function answered every emptied list
  * with `()` and reproduced exactly that invalid file. The right answer is
- * NOT uniform, because the four types in `NONREL_REF_LIST_TYPES` do not
- * declare their list attribute alike:
+ * NOT uniform, because the types in `NONREL_REF_LIST_TYPES` do not all
+ * declare their list attribute alike — two examples:
  *
  *  - `IfcCostItem.CostValues` / `.CostQuantities`, `IfcAppliedValue`/
  *    `IfcCostValue.Components` are all `OPTIONAL LIST [1:?]`
@@ -91,20 +91,8 @@
 import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { readStepSlots, splitTopLevelListItems } from './step-argument-parser.js';
 import { BARE_REF_RE } from './reference-collector.js';
+import { NONREL_REF_LIST_REGISTRY_NAMES } from './nonrel-ref-list-types.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
-
-/**
- * `effectiveRelType` (the STEP type token, e.g. `IFCCOSTITEM`) to the exact
- * PascalCase key the generated schema registries use. Fixed to the same four
- * classes `NONREL_REF_LIST_TYPES` names — not a general normalizer — because
- * that is the whole set this function is ever called for.
- */
-const REGISTRY_ENTITY_NAME: Readonly<Record<string, string>> = {
-  IFCCOSTITEM: 'IfcCostItem',
-  IFCAPPLIEDVALUE: 'IfcAppliedValue',
-  IFCCOSTVALUE: 'IfcCostValue',
-  IFCPHYSICALCOMPLEXQUANTITY: 'IfcPhysicalComplexQuantity',
-};
 
 function isRegistryVersion(version: IfcSchemaVersion): version is SchemaVersionWithRegistry {
   return version === 'IFC2X3' || version === 'IFC4' || version === 'IFC4X3';
@@ -128,7 +116,7 @@ function isAggregateSlotOptional(
   slotIndex: number,
   schemaVersion: IfcSchemaVersion,
 ): boolean | undefined {
-  const registryName = REGISTRY_ENTITY_NAME[entityType];
+  const registryName = NONREL_REF_LIST_REGISTRY_NAMES.get(entityType);
   if (registryName === undefined || !isRegistryVersion(schemaVersion)) return undefined;
   const attr = getSchemaRegistryForVersion(schemaVersion).entities[registryName]?.allAttributes?.[slotIndex];
   if (attr === undefined || !(attr.isList || attr.isSet)) return undefined;

@@ -18,10 +18,10 @@ import { parseSelector } from '@ifc-lite/query';
 import { StringTable, EntityTableBuilder } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { selectorToFilterRules } from './selector-to-rules.js';
-import { Rule, type FilterRule } from './filter-rules.js';
-import { matchPropertyRule } from './filter-match.js';
-import { stringOpMatches } from './filter-ops.js';
-import { evaluateFilterRules } from './filter-evaluate.js';
+import { Rule, type FilterRule } from '@ifc-lite/rules';
+import { matchPropertyRule } from '@ifc-lite/rules';
+import { stringOpMatches } from '@ifc-lite/rules';
+import { evaluateFilterRules } from '@ifc-lite/rules';
 
 /**
  * A minimal entity table with only GlobalId populated — enough for

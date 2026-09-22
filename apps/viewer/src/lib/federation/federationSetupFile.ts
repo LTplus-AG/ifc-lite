@@ -48,7 +48,7 @@
 
 import { computeSourceFingerprint } from '../../hooks/sourceFingerprint.js';
 import type { FederatedModel } from '../../store/types.js';
-import type { ModelTag } from '../model-tags/types.js';
+import type { ModelTag } from '@ifc-lite/rules';
 import { parseModelTag } from '../model-tags/persistence.js';
 
 /** Current on-disk format version. Bump on any breaking shape change. */

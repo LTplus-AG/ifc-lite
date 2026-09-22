@@ -16,9 +16,11 @@
 import { useCallback, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
-import { runRuleSet, type RuleEngineProgress } from '@/lib/validation/rule-engine';
-import type { RuleSetFile } from '@/lib/validation/rule-set';
-import { importRuleSetFile, exportRuleSet, parseRuleSetFile } from '@/lib/validation/rule-set-io';
+import { runRuleSet, type RuleEngineProgress } from '@ifc-lite/rules';
+import type { RuleSetFile } from '@ifc-lite/rules';
+import { parseRuleSetFile } from '@ifc-lite/rules';
+import { importRuleSetFile, exportRuleSet } from '@/lib/validation/rule-set-io-browser';
+import { evaluatorModelsFromState, definedModelTagIdsOf } from '@/lib/model-tags/evaluator-models';
 import {
   addRecentRuleSet, loadRecentRuleSets, removeRecentRuleSet, type RecentRuleSet,
 } from '@/lib/validation/recent-rule-sets';
@@ -134,11 +136,15 @@ export function useInformationValidation(): UseInformationValidationResult {
     setProgress(null);
     setError(null);
     try {
+      // #5138 PR 7a: `runRuleSet` takes plain `EvaluatorModel[]` +
+      // `definedModelTagIds` now (no viewer-shaped `ModelTagState`) — the
+      // live store state is turned into that shape here, the one place the
+      // adapter (`lib/model-tags/evaluator-models.ts`) is called from.
+      const state = useViewerStore.getState();
       const report = await runRuleSet({
         ruleSet: file,
-        // `ModelTagState` is structural — the live store state already
-        // carries `models`/`modelTags`/`modelTagAssignments`/`mutationViews`.
-        models: useViewerStore.getState(),
+        models: evaluatorModelsFromState(state),
+        definedModelTagIds: definedModelTagIdsOf(state),
         signal: controller.signal,
         onProgress: (p) => { if (stillWanted(myEpoch)) setProgress(p); },
       });

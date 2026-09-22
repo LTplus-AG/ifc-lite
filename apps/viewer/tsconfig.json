@@ -33,6 +33,7 @@
       "@ifc-lite/ids": ["../../packages/ids/src"],
       "@ifc-lite/encoding": ["../../packages/encoding/src"],
       "@ifc-lite/lists": ["../../packages/lists/src"],
+      "@ifc-lite/rules": ["../../packages/rules/src"],
       "@ifc-lite/sandbox": ["../../packages/sandbox/src"],
       "@ifc-lite/sandbox/schema": ["../../packages/sandbox/src/bridge-schema"],
       "@ifc-lite/plugin-api": ["../../packages/plugin-api/src"],

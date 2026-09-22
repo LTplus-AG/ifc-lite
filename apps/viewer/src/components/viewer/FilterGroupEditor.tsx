@@ -36,8 +36,8 @@
 import { useCallback } from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { FilterRule } from '@/lib/search/filter-rules';
-import type { FilterGroup } from '@/lib/search/filter-groups';
+import type { FilterRule } from '@ifc-lite/rules';
+import type { FilterGroup } from '@ifc-lite/rules';
 import { useFilterRuleOptions } from '@/hooks/useFilterRuleOptions';
 import { AddRuleMenu, CombinatorToggle, blankRuleOfKind } from './FilterRuleControls';
 import { RuleRow } from './SearchModal.filter.editors';

@@ -25,7 +25,7 @@ import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import { RelationshipType, exactTypeName } from '@ifc-lite/data';
 import { ENTITY_ATTRIBUTES } from '@ifc-lite/lists';
 import type { ListDataProvider, ListClassificationRef, DiscoveredColumns } from '@ifc-lite/lists';
-import { resolveEntityPredefinedType } from '../entity-predefined-type.js';
+import { resolveEntityPredefinedType } from '@ifc-lite/rules';
 import { buildSpatialAncestryIndex, type SpatialAncestryIndex } from '../../utils/spatialHierarchy.js';
 import type { ZoneSet, ZoneAssignmentsByElement, ZoneApportionmentCache } from '../zones/index.js';
 import { validEntry } from '../zones/index.js';

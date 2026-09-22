@@ -23,7 +23,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
-import { Rule, type Combinator, type FilterRule } from '@/lib/search/filter-rules';
+import { Rule, type Combinator, type FilterRule } from '@ifc-lite/rules';
 import { useTranslation } from '@/i18n';
 import { RULE_KIND_LABEL } from './filter-rule-labels';
 

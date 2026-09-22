@@ -24,8 +24,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { useFilterRuleOptions } from '@/hooks/useFilterRuleOptions';
-import type { FilterRule } from '@/lib/search/filter-rules';
-import type { Subject } from '@/lib/validation/rule-set';
+import type { FilterRule } from '@ifc-lite/rules';
+import type { Subject } from '@ifc-lite/rules';
 import { useTranslation } from '@/i18n';
 
 /** Every `Subject` kind `rule-set-io-subject.ts` accepts — `model`/

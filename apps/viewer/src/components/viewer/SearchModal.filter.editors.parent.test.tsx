@@ -16,7 +16,7 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { render, cleanup, type } from '@/test/render.js';
-import type { FilterRule } from '@/lib/search/filter-rules';
+import type { FilterRule } from '@ifc-lite/rules';
 import { RuleRow } from './SearchModal.filter.editors.js';
 
 afterEach(cleanup);

@@ -18,8 +18,8 @@
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { FederatedModel } from '../../store/types.js';
 import type { ModelTagAssignments } from '../../store/slices/modelTagsSlice.js';
-import type { EvaluatorModel } from '../search/filter-evaluate.js';
-import type { ModelTag } from './types.js';
+import type { EvaluatorModel } from '@ifc-lite/rules';
+import type { ModelTag } from '@ifc-lite/rules';
 
 /** The slice of store state this reads. Structural so tests need no store. */
 export interface ModelTagState {

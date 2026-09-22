@@ -11,7 +11,7 @@
  * set shows the same surface it was authored with (plan §3).
  *
  * An `ifcType` chip's `exactClass` has no selector spelling —
- * `groupsToSelectorText` (in `lib/search/filter-groups.ts`, NOT touched by
+ * `groupsToSelectorText` (in `@ifc-lite/rules's filter-groups.ts`, NOT touched by
  * this feature) simply cannot render it, so a block that carries one is
  * forced to chips mode here, with a notice, rather than silently losing
  * the flag on a round trip through text.
@@ -19,9 +19,9 @@
 
 import { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import type { FilterRule } from '@/lib/search/filter-rules';
-import type { FilterGroup } from '@/lib/search/filter-groups';
-import type { RuleBlock } from '@/lib/validation/rule-set';
+import type { FilterRule } from '@ifc-lite/rules';
+import type { FilterGroup } from '@ifc-lite/rules';
+import type { RuleBlock } from '@ifc-lite/rules';
 import { FilterGroupEditor, type FilterGroupEditorModel, type FilterGroupEditorState } from '../FilterGroupEditor';
 import { FoldedGroupEditor } from './FoldedGroupEditor';
 import { SelectorTextEditor } from '../SelectorTextEditor';

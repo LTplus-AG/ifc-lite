@@ -14,7 +14,7 @@
  */
 
 import { X } from 'lucide-react';
-import type { FilterRule } from '@/lib/search/filter-rules';
+import type { FilterRule } from '@ifc-lite/rules';
 import { useTranslation } from '@/i18n';
 
 export function GroupTabs({

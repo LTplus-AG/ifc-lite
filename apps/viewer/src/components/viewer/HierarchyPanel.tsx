@@ -14,7 +14,7 @@ import { useViewerStore, resolveEntityRef } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { useEntityListMultiSelect, type MultiSelectItem } from '@/hooks/useEntityListMultiSelect';
-import { Rule, addHierarchyStoreyToRule, activeGroupRules, type FilterRule } from '@/lib/search/filter-rules';
+import { Rule, addHierarchyStoreyToRule, activeGroupRules, type FilterRule } from '@ifc-lite/rules';
 import { toast } from '@/components/ui/toast';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
 import { syncSourceModel } from '@/lib/sources/syncSourceModel';

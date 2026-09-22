@@ -18,7 +18,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { CLASH_RULE_PRESETS } from '@ifc-lite/clash';
 import { buildInitialPresets, presetsToStore, savePresets, type ClashPreset } from './persistence.js';
-import { Rule } from '../search/filter-rules.js';
+import { Rule } from '@ifc-lite/rules';
 import type { ClashSetFilter } from './set-filter.js';
 
 const PRESETS_KEY = 'ifc-lite-clash-presets';

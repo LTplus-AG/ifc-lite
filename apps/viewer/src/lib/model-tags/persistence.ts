@@ -13,7 +13,7 @@
  * ids a saved advanced filter references alive across a reload.
  */
 
-import { isModelTagOp, normalizeModelTagName, type ModelTag } from './types.js';
+import { isModelTagOp, normalizeModelTagName, type ModelTag } from '@ifc-lite/rules';
 
 export const MODEL_TAGS_STORAGE_KEY = 'ifc-lite:model-tags';
 

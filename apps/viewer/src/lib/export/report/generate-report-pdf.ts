@@ -185,7 +185,12 @@ async function drawChartBlock(doc: ReportDoc, block: ReportChartBlock, aggregati
     result.charts += 1;
   } else {
     doc.setTextColor(130);
-    doc.text('No data for this chart.', block.chart.x, block.chart.y + 14);
+    // `null` is a distinct claim from an `Aggregation` with zero categories
+    // (#5218): `aggregate()` never returns null, only throws or returns a
+    // full result, so `null` here can only be ChartCard's own catch — the
+    // chart is broken, not merely empty of data. Same split as the
+    // subtitle above (`compose.ts`), worded for the chart body.
+    doc.text(aggregation === null ? 'This chart could not be aggregated — edit it and re-export.' : 'No data for this chart.', block.chart.x, block.chart.y + 14);
     doc.setTextColor(0);
   }
 

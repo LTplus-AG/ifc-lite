@@ -13,7 +13,7 @@
  *
  * Units are PDF points (1/72 in). A4 = 595 × 842, A3 = 842 × 1191.
  */
-import type { Aggregation, ReportPageSetup } from '@ifc-lite/charts';
+import type { Aggregation, ChartSource, ReportPageSetup } from '@ifc-lite/charts';
 
 export const PAGE_SIZES_PT: Record<ReportPageSetup['size'], { w: number; h: number }> = {
   A4: { w: 595.28, h: 841.89 },
@@ -85,6 +85,21 @@ export function pageBox(page: ReportPageSetup): { w: number; h: number } {
 
 const plural = (n: number, word: string): string => `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
 
+/** What one row of a bucket is, by dataset (#5218): only the `elements`
+ *  source is 1:1 with elements — a clash row is a PAIR, a bcf row a TOPIC,
+ *  a schedule row a TASK, an ids row a (specification, entity) RESULT, a
+ *  compare row a diff ENTRY. Taken from each dataset's own doc comment
+ *  (`apps/viewer/src/lib/charts/datasets/*.ts`), not invented: the bucket
+ *  table's "Elements" column used to count these regardless of source. */
+const ROW_NOUN: Record<ChartSource, string> = {
+  elements: 'Elements',
+  clash: 'Clashes',
+  bcf: 'Topics',
+  schedule: 'Tasks',
+  ids: 'Results',
+  compare: 'Entries',
+};
+
 function formatValue(value: number, unit?: string): string {
   const text = Number.isInteger(value) ? value.toLocaleString() : value.toFixed(2);
   return unit ? `${text} ${unit}` : text;
@@ -100,7 +115,7 @@ export function bucketTable(aggregation: Aggregation, maxRows = TABLE_MAX_ROWS):
   ]);
   const more = aggregation.categories.length - rows.length;
   if (more > 0) rows.push([`… ${more} more`, '', '']);
-  return { head: ['Bucket', 'Elements', aggregation.spec.measure.agg === 'count' ? '' : measure], rows };
+  return { head: ['Bucket', ROW_NOUN[aggregation.spec.source], aggregation.spec.measure.agg === 'count' ? '' : measure], rows };
 }
 
 export function composeReport(input: ComposeReportInput): ReportLayout {
@@ -132,7 +147,10 @@ export function composeReport(input: ComposeReportInput): ReportLayout {
     // The table takes what is left of the page under the graphics; the
     // graphics themselves always fit an empty page, so a block that does not
     // fit here starts a new page, and its table is cut to the space there.
-    const fullTable = chart.aggregation ? bucketTable(chart.aggregation) : { head: ['Bucket', 'Elements', ''] as [string, string, string], rows: [] };
+    // No aggregation here means the chart could not aggregate at all (see
+    // the subtitle below), so there is no dataset to take a noun from and
+    // the table has no rows to print it over anyway; 'Count' is never wrong.
+    const fullTable = chart.aggregation ? bucketTable(chart.aggregation) : { head: ['Bucket', 'Count', ''] as [string, string, string], rows: [] };
     const fullH = TABLE_HEAD_HEIGHT + fullTable.rows.length * TABLE_ROW_HEIGHT;
     if (y + graphicsH + Math.min(fullH, TABLE_HEAD_HEIGHT + 3 * TABLE_ROW_HEIGHT) > bottom && page.blocks.length > 0) newPage();
     const roomForRows = Math.floor((bottom - y - graphicsH - TABLE_HEAD_HEIGHT) / TABLE_ROW_HEIGHT);
@@ -154,9 +172,16 @@ export function composeReport(input: ComposeReportInput): ReportLayout {
       kind: 'chart',
       chartId: chart.id,
       title: chart.title,
+      // `agg === null` means `aggregate()` threw (ChartCard's own catch,
+      // never a "ran and found nothing" result — see `aggregate()` in
+      // `@ifc-lite/charts`, which only ever throws or returns a full
+      // `Aggregation`, empty categories included). That is a different
+      // claim from "no data" and gets a different string, matching the
+      // on-screen card (`ChartCard.tsx`'s `subtitleFor`) word for word so
+      // the report never disagrees with what the user saw while editing.
       subtitle: agg
         ? `${plural(agg.categories.length, 'bucket')} · ${agg.spec.measure.agg === 'count' ? plural(agg.total, 'element') : `${agg.total.toLocaleString()} ${agg.unit ?? ''}`.trim()}`
-        : 'No data',
+        : 'Cannot aggregate — edit the chart',
       chart: chartBox,
       snapshot,
       table: { x: REPORT_MARGIN, y: tableY, w: contentW, rows: table.rows, head: table.head },

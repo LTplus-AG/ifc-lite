@@ -58,18 +58,73 @@ describe('composeReport', () => {
     assert.ok(a3.pages.length <= a4.pages.length);
   });
 
-  it('caps the bucket table and says how many more, and omits the snapshot box when snapshots are off or the chart is empty', () => {
+  it('caps the bucket table, says how many more, and heads the count column "Elements" for an elements-source chart', () => {
     const big = agg('big', 400);
     assert.equal(big.categories.length, 40);
     const table = bucketTable(big);
     assert.equal(table.rows.length, TABLE_MAX_ROWS + 1);
     assert.equal(table.rows.at(-1)![0], `… ${40 - TABLE_MAX_ROWS} more`);
+    assert.equal(table.head[1], 'Elements', 'the elements source is genuinely 1:1 with elements');
     const layout = composeReport({ name: 'r', page: { size: 'A4', orientation: 'landscape' }, titleBlock: {}, snapshots: false, charts: [{ id: 'big', title: 'big', aggregation: big }, { id: 'none', title: 'none', aggregation: null }], generatedAt: 'now' });
     const blocks = layout.pages.flatMap((p) => p.blocks).filter((b) => b.kind === 'chart');
     assert.equal(blocks.length, 2);
     assert.equal(blocks[0].snapshot, null);
-    assert.equal(blocks[1].subtitle, 'No data');
     assert.equal(blocks[1].table.rows.length, 0);
+  });
+
+  it('a chart whose aggregate() threw gets a subtitle distinct from a chart that legitimately ran and found nothing (#5218)', () => {
+    // `aggregate()` never returns null on its own (packages/charts/src/aggregate.ts) —
+    // it either throws (dimension/measure column gone from the dataset) or
+    // returns a full `Aggregation`, empty categories included. So
+    // `aggregation: null` here is exactly ChartCard's own catch, i.e. "this
+    // chart is broken", never "this chart ran and found nothing".
+    const empty = agg('empty', 0);
+    assert.equal(empty.categories.length, 0, 'a legitimately empty aggregation is a real object, not null');
+    const layout = composeReport({
+      name: 'r',
+      page: { size: 'A4', orientation: 'landscape' },
+      titleBlock: {},
+      snapshots: false,
+      charts: [
+        { id: 'broken', title: 'broken', aggregation: null },
+        { id: 'empty', title: 'empty', aggregation: empty },
+      ],
+      generatedAt: 'now',
+    });
+    const [broken, emptyBlock] = layout.pages.flatMap((p) => p.blocks).filter((b) => b.kind === 'chart');
+    assert.equal(broken.subtitle, 'Cannot aggregate — edit the chart');
+    assert.notEqual(emptyBlock.subtitle, broken.subtitle, 'a real, empty aggregation must not read like a broken one');
+    assert.notEqual(emptyBlock.subtitle, 'No data', 'this chart legitimately ran; its subtitle already shows 0 buckets/elements');
+  });
+
+  it('the bucket table calls a clash row a "Clashes" and a bcf row a "Topics", not "Elements" — a clash row carries two element ids (#5218)', () => {
+    const clashDs: ChartDataset = {
+      source: 'clash',
+      columns: [{ id: 'rule', label: 'Rule', kind: 'category' }],
+      // Every clash pair buckets into the same rule; a row's `ids` carries
+      // BOTH elements of the pair, so a dataset with `n` rows touches `2n`
+      // distinct elements — count-by-row and count-by-element disagree,
+      // which is exactly the shape #5218 says the old "Elements" header hid.
+      rows: Array.from({ length: 5 }, (_, i) => ({ ids: [i * 2 + 1, i * 2 + 2], values: ['Rule A'] })),
+      fingerprint: 'clash-ds',
+    };
+    const clashAgg = aggregate({ id: 'c', title: 'Clashes', source: 'clash', type: 'bar', dimension: 'rule', measure: { agg: 'count' } }, clashDs);
+    assert.equal(clashAgg.categories.length, 1);
+    assert.equal(clashAgg.categories[0].count, 5, 'one row per clash pair');
+    assert.equal(clashAgg.categories[0].ids.length, 10, 'ten distinct elements across five pairs');
+    const clashTable = bucketTable(clashAgg);
+    assert.equal(clashTable.head[1], 'Clashes');
+    assert.equal(clashTable.rows[0][1], '5', 'the printed count is pairs (rows), matching the header noun, not the 10 elements involved');
+
+    const bcfDs: ChartDataset = {
+      source: 'bcf',
+      columns: [{ id: 'status', label: 'Status', kind: 'category' }],
+      rows: Array.from({ length: 3 }, (_, i) => ({ ids: [i + 1, i + 100, i + 200], values: ['Open'] })),
+      fingerprint: 'bcf-ds',
+    };
+    const bcfAgg = aggregate({ id: 'b', title: 'Topics', source: 'bcf', type: 'bar', dimension: 'status', measure: { agg: 'count' } }, bcfDs);
+    const bcfTable = bucketTable(bcfAgg);
+    assert.equal(bcfTable.head[1], 'Topics');
   });
 });
 
@@ -134,6 +189,20 @@ describe('generateReportPdf', () => {
     assert.deepEqual(result.snapshotFailures, ['Chart a']);
     assert.ok(calls.some((c) => c.op === 'text' && c.args[0] === '3D snapshot unavailable.'));
     assert.equal(calls.filter((c) => c.op === 'image').length, 1);
+  });
+
+  it('a broken chart and a genuinely empty chart print different body text, not both "No data" (#5218)', async () => {
+    const empty = agg('empty', 0);
+    const charts = [
+      { id: 'broken', title: 'Broken chart', aggregation: null },
+      { id: 'empty', title: 'Empty chart', aggregation: empty },
+    ];
+    const { seams, calls } = recordingSeams(async () => new Uint8Array(4));
+    await generateReportPdf({ name: 'r', page: { size: 'A4', orientation: 'landscape' }, titleBlock: {}, snapshots: false, charts, snapshotIds: () => [] }, seams);
+    const texts = calls.filter((c) => c.op === 'text').map((c) => c.args[0]);
+    assert.ok(texts.includes('This chart could not be aggregated — edit it and re-export.'), `expected the broken-chart text, got: ${JSON.stringify(texts)}`);
+    assert.ok(texts.includes('No data for this chart.'), `expected the empty-chart text, got: ${JSON.stringify(texts)}`);
+    assert.ok(!texts.includes('No data'), 'the broken chart must not fall back to the bare "No data" subtitle text');
   });
 
   it('without a renderer every snapshot box says so and nothing is captured', async () => {

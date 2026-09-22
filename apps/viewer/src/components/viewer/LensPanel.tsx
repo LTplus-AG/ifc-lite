@@ -1241,7 +1241,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
   const setLensRuleIsolation = useViewerStore((s) => s.setLensRuleIsolation);
   // For footer stats — cheap primitive subscriptions
   const lensColorMapSize = useViewerStore((s) => s.lensColorMap.size);
-  const lensHiddenIdsSize = useViewerStore((s) => s.lensHiddenIds.size);
+  const lensHiddenIds = useViewerStore((s) => s.lensHiddenIds); // identity, not `.size` (#5206)
   const lensRuleCounts = useViewerStore((s) => s.lensRuleCounts);
   const lensAutoColorLegend = useViewerStore((s) => s.lensAutoColorLegend);
   // Discovered data from loaded models (classes = instant, rest = lazy)
@@ -1503,7 +1503,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
     if (plan.nextApplied.length > 0 || state.lensAppliedHiddenIds.length > 0) {
       setLensAppliedHiddenIds(plan.nextApplied);
     }
-  }, [activeLensId, lensHiddenIdsSize, hideEntities, showEntities, setLensAppliedHiddenIds]);
+  }, [activeLensId, lensHiddenIds, hideEntities, showEntities, setLensAppliedHiddenIds]);
 
   const handleExport = useCallback(() => {
     const data = exportLenses();
@@ -1681,8 +1681,8 @@ export function LensPanel({ onClose }: LensPanelProps) {
         {activeLensId
           ? t('lensPanel.footer.active', {
               colored: lensColorMapSize,
-              hidden: lensHiddenIdsSize > 0
-                ? t('lensPanel.footer.hiddenCount', { count: lensHiddenIdsSize })
+              hidden: lensHiddenIds.size > 0
+                ? t('lensPanel.footer.hiddenCount', { count: lensHiddenIds.size })
                 : t('lensPanel.footer.ghosted'),
             })
           : t('lensPanel.footer.clickToActivate')}

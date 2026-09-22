@@ -34,7 +34,7 @@ import { basename } from 'node:path';
 import { IfcParser, unwrapIfcZipView, type IfcDataStore } from '@ifc-lite/parser';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
 import { IDSNamespace } from '@ifc-lite/sdk';
-import { computeSourceFingerprint } from '@ifc-lite/cache';
+import { sourceModelIdentity } from '@ifc-lite/cache';
 import { computeValidationIssues, type ValidationIssue } from './validate.js';
 
 export type CheckStatus = 'pass' | 'fail' | 'error';
@@ -45,7 +45,7 @@ export interface LoadedModel {
   sha256: string;
   /**
    * The SAME identity the viewer stores as `FederatedModel.sourceFingerprint`
-   * (#5138 PR 7b review) — `${basename}:${computeSourceFingerprint(bytes).hex}`,
+   * (#5138 PR 7b review) — `sourceModelIdentity(basename, bytes)`,
    * `@ifc-lite/cache`'s spread-sampled xxhash64 over the post-unwrap bytes,
    * prefixed with the file's base name exactly as `useIfcLoader.ts` builds
    * `modelSourceIdentity`. A `.rules.json` rule set's `targets.modelFingerprints`
@@ -87,7 +87,7 @@ export async function loadModelForDelivery(path: string): Promise<LoadedModel | 
   }
 
   const sha256 = createHash('sha256').update(bytes).digest('hex');
-  const sourceFingerprint = `${basename(path)}:${computeSourceFingerprint(bytes).hex}`;
+  const sourceFingerprint = sourceModelIdentity(basename(path), bytes);
 
   const parser = new IfcParser();
   const origLog = console.log;

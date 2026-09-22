@@ -57,7 +57,11 @@ const checkRules: Tool = {
     const models: EvaluatorModel[] = ctx.registry
       .list()
       .filter((m) => modelAllowed(ctx.scope, m.id))
-      .map((m) => ({ id: m.id, store: m.store }));
+      // `filterIdentity` carries the model's source identity so a rule set
+      // whose `targets.modelFingerprints` were authored in the viewer resolves
+      // here too; without it every targeted rule came back unevaluable (#5138
+      // PR 7b review).
+      .map((m) => ({ id: m.id, filterIdentity: m.sourceFingerprint, store: m.store }));
     if (models.length === 0) {
       throw new ToolExecutionError({ code: ToolErrorCode.MODEL_NOT_FOUND, message: 'No models loaded. Call `model_load` first or start the server with a file path.' });
     }

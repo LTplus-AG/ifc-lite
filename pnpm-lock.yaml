@@ -1258,6 +1258,9 @@ importers:
       '@ifc-lite/bcf':
         specifier: workspace:^
         version: link:../bcf
+      '@ifc-lite/cache':
+        specifier: workspace:^
+        version: link:../cache
       '@ifc-lite/clash':
         specifier: workspace:^
         version: link:../clash

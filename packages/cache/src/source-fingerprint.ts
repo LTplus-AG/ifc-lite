@@ -144,3 +144,17 @@ export async function computeSourceFingerprintFromBlob(blob: Blob): Promise<Sour
   }
   return hashParts(parts);
 }
+
+/**
+ * The model identity a `.rules.json` rule set's `targets.modelFingerprints`
+ * is matched against (#5138): `${name}:${hex}`, exactly what the viewer
+ * stores as `FederatedModel.sourceFingerprint` (`useIfcLoader.ts` builds
+ * `modelSourceIdentity` this way). ONE definition, because the viewer, the
+ * CLI (`ifc-lite check`, `delivery`) and the MCP `check_rules` tool must all
+ * spell it the same or a rule set authored in one silently matches nothing
+ * in the others. `bytes` are the POST-unwrap bytes (an `.ifcZIP` is
+ * fingerprinted by the STEP it contains, as the viewer does).
+ */
+export function sourceModelIdentity(name: string, bytes: ArrayBuffer | Uint8Array): string {
+  return `${name}:${computeSourceFingerprint(bytes).hex}`;
+}

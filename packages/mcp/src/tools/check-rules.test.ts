@@ -16,6 +16,8 @@ import type { ToolContext } from '../context.js';
 import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER } from '../context.js';
 import { fullScope } from '../auth/scope.js';
 import { loadIfcModel } from '../loader.js';
+import { sourceModelIdentity } from '@ifc-lite/cache';
+import { readFile } from 'node:fs/promises';
 import { checkRulesTools } from './check-rules.js';
 
 const WALL_IFC = `ISO-10303-21;
@@ -82,6 +84,35 @@ describe('check_rules', () => {
     const byName = (n?: string) => spec.entityResults.find((e) => e.entityName === n);
     expect(byName('Wall A')?.passed).toBe(true);
     expect(byName(undefined)?.passed).toBe(false);
+  });
+
+
+  // The #5138 PR 7b review defect: `check_rules` mapped registry entries to
+  // `{ id, store }`, dropping the model's source identity, so EVERY rule in a
+  // viewer-authored rule set carrying `targets.modelFingerprints` came back
+  // unevaluable instead of being evaluated.
+  it('evaluates a rule set whose targets name this model by the fingerprint the viewer stores', async () => {
+    const ctx = await contextWithModel();
+    const bytes = await readFile(join(tmp, 'wall.ifc'));
+    const targeted = {
+      ...NAMED_RULE_SET,
+      targets: { modelFingerprints: [sourceModelIdentity('wall.ifc', bytes)] },
+    };
+    const result = await checkRules.handler({ rules_json: JSON.stringify(targeted) }, ctx);
+    const report = (result.structuredContent as { report: { specificationResults: Array<{ status: string; error?: string; applicableCount: number }> } }).report;
+    const spec = report.specificationResults[0];
+    expect(spec.error).toBeUndefined();
+    expect(spec.applicableCount).toBe(2);
+    expect(spec.status).toBe('fail');
+  });
+
+  it('reports a rule as unevaluable when its targets match no loaded model, never a silent pass', async () => {
+    const ctx = await contextWithModel();
+    const targeted = { ...NAMED_RULE_SET, targets: { modelFingerprints: ['wall.ifc:deadbeef'] } };
+    const result = await checkRules.handler({ rules_json: JSON.stringify(targeted) }, ctx);
+    const report = (result.structuredContent as { report: { specificationResults: Array<{ status: string; error?: string }> } }).report;
+    expect(report.specificationResults[0].error).toMatch(/no loaded model matches/i);
+    expect(report.specificationResults[0].status).toBe('fail');
   });
 
   it('rejects invalid rule-set JSON with PARSE_FAILED, never a silent empty report', async () => {

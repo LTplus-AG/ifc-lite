@@ -171,6 +171,7 @@
     "parseGLBToMeshData: function",
     "readGeometryHeadV13: function",
     "readInstancedShards: function",
+    "sourceModelIdentity: function",
     "toCacheDataStore: function",
     "xxhash64: function",
     "xxhash64Hex: function"

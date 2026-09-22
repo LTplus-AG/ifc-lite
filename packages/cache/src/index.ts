@@ -96,6 +96,7 @@ export {
   HEAD_TAIL_BYTES,
   INTERIOR_WINDOW_BYTES,
   INTERIOR_WINDOWS,
+  sourceModelIdentity,
 } from './source-fingerprint.js';
 export type { SourceFingerprint } from './source-fingerprint.js';
 

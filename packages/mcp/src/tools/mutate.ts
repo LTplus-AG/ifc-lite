@@ -47,6 +47,16 @@ function getBackend(m: ReturnType<typeof resolveModel>): HeadlessLikeBackend {
   return m.backend;
 }
 
+/**
+ * Every write tool below resolves its target entity via `resolveExpressId`,
+ * which accepts `global_id` OR `express_id` and throws `INVALID_INPUT` if
+ * neither is present. Shared here so all four schemas enforce the same
+ * constraint `resolveExpressId` already runs at execution time, instead of
+ * only one of them drifting when it changes (#5192).
+ */
+const IDENTITY_DESCRIPTION = ' Requires exactly one of `global_id` or `express_id`.';
+const IDENTITY_ANY_OF = [{ required: ['global_id'] }, { required: ['express_id'] }];
+
 function resolveExpressId(m: ReturnType<typeof resolveModel>, input: Record<string, unknown>): number {
   if (typeof input.express_id === 'number') return input.express_id;
   if (typeof input.global_id === 'string') {
@@ -108,13 +118,14 @@ const entitySetProperty: Tool = {
     type: 'object',
     properties: {
       model_id: { type: 'string' },
-      global_id: { type: 'string' },
-      express_id: { type: 'integer' },
+      global_id: { type: 'string', description: `Target entity's GlobalId.${IDENTITY_DESCRIPTION}` },
+      express_id: { type: 'integer', description: `Target entity's express id.${IDENTITY_DESCRIPTION}` },
       pset: { type: 'string', description: 'Property set name, e.g. "Pset_WallCommon".' },
       name: { type: 'string', description: 'Property name within the pset.' },
       value: { description: 'Boolean / number / string value.' },
     },
     required: ['pset', 'name'],
+    anyOf: IDENTITY_ANY_OF,
     additionalProperties: false,
   },
   handler(input, ctx) {
@@ -141,12 +152,13 @@ const entityDeleteProperty: Tool = {
     type: 'object',
     properties: {
       model_id: { type: 'string' },
-      global_id: { type: 'string' },
-      express_id: { type: 'integer' },
+      global_id: { type: 'string', description: `Target entity's GlobalId.${IDENTITY_DESCRIPTION}` },
+      express_id: { type: 'integer', description: `Target entity's express id.${IDENTITY_DESCRIPTION}` },
       pset: { type: 'string' },
       name: { type: 'string' },
     },
     required: ['pset', 'name'],
+    anyOf: IDENTITY_ANY_OF,
     additionalProperties: false,
   },
   handler(input, ctx) {
@@ -176,12 +188,13 @@ const entitySetAttribute: Tool = {
     type: 'object',
     properties: {
       model_id: { type: 'string' },
-      global_id: { type: 'string' },
-      express_id: { type: 'integer' },
+      global_id: { type: 'string', description: `Target entity's GlobalId.${IDENTITY_DESCRIPTION}` },
+      express_id: { type: 'integer', description: `Target entity's express id.${IDENTITY_DESCRIPTION}` },
       attribute: { type: 'string', enum: ['Name', 'Description', 'ObjectType', 'Tag'] },
       value: { type: 'string' },
     },
     required: ['attribute', 'value'],
+    anyOf: IDENTITY_ANY_OF,
     additionalProperties: false,
   },
   handler(input, ctx) {
@@ -243,9 +256,10 @@ const entityDelete: Tool = {
     type: 'object',
     properties: {
       model_id: { type: 'string' },
-      global_id: { type: 'string' },
-      express_id: { type: 'integer' },
+      global_id: { type: 'string', description: `Target entity's GlobalId.${IDENTITY_DESCRIPTION}` },
+      express_id: { type: 'integer', description: `Target entity's express id.${IDENTITY_DESCRIPTION}` },
     },
+    anyOf: IDENTITY_ANY_OF,
     additionalProperties: false,
   },
   handler(input, ctx) {

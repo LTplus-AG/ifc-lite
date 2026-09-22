@@ -7,6 +7,7 @@
 mod dispatch;
 mod finish;
 mod guards;
+mod references;
 mod start;
 mod values;
 

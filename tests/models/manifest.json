@@ -727,7 +727,7 @@
       },
       "producer": { "name": "Aplitop MDT", "version": "8.0", "export_settings": "LandXML 1.2 alignment/profile export" },
       "landxml": { "schema": "LandXML 1.2", "namespace": "http://www.landxml.org/schema/LandXML-1.2", "units": "metric (meter)", "crs": "not-declared" },
-      "feature_inventory": [{ "feature": "alignment, profile, lines, curves, and spirals", "expected_capability": "unsupported" }]
+      "feature_inventory": [{ "feature": "alignment, profile, lines, curves, and spirals", "expected_capability": "preserved-only" }]
     },
     {
       "path": "landxml/producers/bentley-openroads-designer-10.09-us-survey-foot-alignment.xml",
@@ -741,7 +741,7 @@
       },
       "producer": { "name": "OpenRoads Designer", "version": "10.09.00.91", "export_settings": "LandXML 1.2 US-survey-foot alignment/profile export" },
       "landxml": { "schema": "LandXML 1.2", "namespace": "http://www.landxml.org/schema/LandXML-1.2", "units": "USSurveyFoot", "crs": "not-declared" },
-      "feature_inventory": [{ "feature": "alignment, profile, lines, and curves", "expected_capability": "unsupported" }]
+      "feature_inventory": [{ "feature": "alignment, profile, lines, and curves", "expected_capability": "preserved-only" }]
     },
     {
       "path": "landxml/producers/autodesk-civil3d-2020-international-foot-tin.xml",

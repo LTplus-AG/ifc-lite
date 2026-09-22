@@ -64,6 +64,65 @@ describe('FederationRegistry - offset assignment', () => {
 });
 
 describe('FederationRegistry - toGlobalId / fromGlobalId round-trip', () => {
+  it('keeps reserved but unpublished progressive IDs unpickable', () => {
+    const reg = new FederationRegistry();
+    const offset = reg.reserveModel('landxml', 12);
+    assert.equal(offset, 0);
+    assert.equal(reg.fromGlobalId(1), null, 'reservation alone never fabricates ownership');
+    assert.throws(() => reg.toGlobalId('landxml', 1), /not published/);
+
+    reg.publishRange('landxml', 1, 3);
+    assert.equal(reg.toGlobalId('landxml', 1), 1);
+    assert.deepEqual(reg.fromGlobalId(3), { modelId: 'landxml', expressId: 3 });
+    assert.equal(reg.fromGlobalId(4), null, 'the reserved hole remains unpickable');
+  });
+
+  it('packs later models after the fixed reservation and overlay headroom', () => {
+    const reg = new FederationRegistry();
+    reg.reserveModel('landxml', 12);
+    const offset = reg.registerModel('ifc', 0);
+    assert.equal(offset, 1_000_013);
+    reg.publishRange('landxml', 1, 12);
+    assert.throws(() => reg.publishRange('landxml', 13, 13), /Invalid published range/);
+  });
+
+  it('rejects late source growth and bounds explicitly owned overlay headroom', () => {
+    const reg = new FederationRegistry();
+    reg.reserveModel('landxml', 2);
+    reg.publishRange('landxml', 1, 2);
+    reg.publishOverlayRange('landxml', 3, 1_000_002);
+    assert.deepEqual(reg.fromGlobalId(1_000_002), { modelId: 'landxml', expressId: 1_000_002 });
+    assert.throws(() => reg.publishOverlayRange('landxml', 1_000_003, 1_000_003), /Invalid overlay range/);
+    assert.throws(() => reg.publishRange('landxml', 3, 3), /Invalid published range/);
+  });
+
+  it('previews only the exact next overlay range without publishing ownership', () => {
+    const reg = new FederationRegistry();
+    reg.registerModel('editable', 3);
+    const otherOffset = reg.registerModel('other', 3);
+
+    assert.equal(reg.previewOverlayGlobalId('editable', 4, 6, 6), 6);
+    assert.equal(reg.fromGlobalId(6), null, 'a GPU staging preview must not make an ID pickable');
+    assert.throws(() => reg.toGlobalId('editable', 6), /not published/);
+    assert.deepEqual(reg.fromGlobalId(otherOffset + 2), { modelId: 'other', expressId: 2 });
+    assert.throws(
+      () => reg.previewOverlayGlobalId('editable', 5, 6, 6),
+      /contiguously/,
+      'a preview may not skip a strict ownership hole',
+    );
+  });
+
+  it('removal and reload burn only the removed reservation and preserve survivors', () => {
+    const reg = new FederationRegistry();
+    reg.reserveModel('first', 4);
+    reg.publishRange('first', 1, 2);
+    const survivor = reg.registerModel('survivor', 2);
+    reg.unregisterModel('first');
+    const reloaded = reg.reserveModel('first', 4);
+    assert.ok(reloaded > survivor);
+    assert.deepEqual(reg.fromGlobalId(survivor + 2), { modelId: 'survivor', expressId: 2 });
+  });
+
   it('round-trips expressId -> globalId -> {modelId, expressId} across multiple models', () => {
     const reg = new FederationRegistry();
     reg.registerModel('modelA', 100); // offset 0
@@ -167,6 +226,7 @@ describe('FederationRegistry - mutation-overlay id collision with the next model
     // Simulate StoreEditor's watermark allocation: the first entity added to
     // modelA after load gets local expressId 101 (maxExistingId + 1).
     const overlayLocalId = 101;
+    reg.publishOverlayRange('modelA', overlayLocalId, overlayLocalId);
     const overlayGlobalId = reg.toGlobalId('modelA', overlayLocalId);
 
     const resolved = reg.fromGlobalId(overlayGlobalId);

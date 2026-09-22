@@ -16,7 +16,7 @@
  * access, no I/O.
  */
 
-import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
+import { generateIfcGuid, isValidIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 
 const POINT_EPSILON = 1e-6;
@@ -201,12 +201,12 @@ export function ifcElementHeader(
   ownerHistoryId: number | null,
   placementId: number,
   productShapeId: number,
-  params: { Name?: string; Description?: string; ObjectType?: string; Tag?: string },
+  params: { GlobalId?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string },
   defaultName: string,
   random?: RandomSource,
 ): Array<unknown> {
   return [
-    generateIfcGuid(random),
+    productGuid(params, random),
     ownerHistoryRef(ownerHistoryId),
     params.Name ?? defaultName,
     params.Description ?? null,
@@ -215,6 +215,18 @@ export function ifcElementHeader(
     `#${productShapeId}`,
     params.Tag ?? null,
   ];
+}
+
+/**
+ * The product's GlobalId: the caller's when it supplies one (a re-runnable
+ * author such as a flow graph derives it from a stable key so a re-run
+ * updates the element instead of duplicating it), else freshly generated.
+ * A malformed GlobalId is refused rather than silently replaced.
+ */
+export function productGuid(params: { GlobalId?: string }, random?: RandomSource): string {
+  if (params.GlobalId === undefined) return generateIfcGuid(random);
+  if (!isValidIfcGuid(params.GlobalId)) throw new Error(`GlobalId "${params.GlobalId}" is not a valid 22-character IFC GUID`);
+  return params.GlobalId;
 }
 
 /** An RGB colour with channels in 0..1. */

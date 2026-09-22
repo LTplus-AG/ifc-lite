@@ -17,7 +17,8 @@ const REPO_ROOT = join(HERE, '..', '..');
 test('the REAL docs tree has no page mkdocs --strict would reject as omitted from nav (#4912)', () => {
   // #4875 added docs/guide/cost-panel.md without a nav entry; the strict site
   // build in the ifclite.dev deploy then failed and froze the nightly
-  // production advance.
+  // production advance. #5051's LandXML evidence ledger is another durable
+  // architecture page, so it must remain reachable from the same real nav.
   const gate = join(HERE, 'check-mkdocs-nav.mjs');
   assert.ok(existsSync(gate), 'the docs nav gate (scripts/docs/check-mkdocs-nav.mjs) is missing');
   const run = spawnSync(process.execPath, [gate, '--root', REPO_ROOT], { encoding: 'utf8' });

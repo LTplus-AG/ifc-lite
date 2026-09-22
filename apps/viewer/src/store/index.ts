@@ -30,6 +30,7 @@ import { createExtensionsSlice, type ExtensionsSlice } from './slices/extensions
 import { createSourcesSlice, type SourcesSlice } from './slices/sourcesSlice.js';
 import { createListSlice, type ListSlice } from './slices/listSlice.js';
 import { createChartSlice, type ChartSlice } from './slices/chartSlice.js';
+import { createFlowSlice, type FlowSlice } from './slices/flowSlice.js';
 import { createDocumentSlice, type DocumentSlice } from './slices/documentSlice.js';
 import { createPinboardSlice, type PinboardSlice } from './slices/pinboardSlice.js';
 import { createLensSlice, type LensSlice } from './slices/lensSlice.js';
@@ -100,9 +101,10 @@ export type { BCFSlice, BCFSliceState } from './slices/bcfSlice.js';
 // Re-export IDS types
 export type { IDSSlice, IDSSliceState, IDSDisplayOptions, IDSFilterMode, IDSFocusMode } from './slices/idsSlice.js';
 
-// Re-export List / Chart / Document / Pinboard types
+// Re-export List / Chart / Flow / Document / Pinboard types
 export type { ListSlice } from './slices/listSlice.js';
 export type { ChartSlice, ChartFocusMode } from './slices/chartSlice.js';
+export type { FlowSlice } from './slices/flowSlice.js';
 export type { DocumentSlice } from './slices/documentSlice.js';
 export type { PinboardSlice } from './slices/pinboardSlice.js';
 
@@ -154,6 +156,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   IDSSlice &
   ListSlice &
   ChartSlice &
+  FlowSlice &
   DocumentSlice &
   PinboardSlice &
   LensSlice &
@@ -249,6 +252,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createIdsSlice(...args),
   ...createListSlice(...args),
   ...createChartSlice(...args),
+  ...createFlowSlice(...args),
   ...createDocumentSlice(...args),
   ...createPinboardSlice(...args),
   ...createLensSlice(...args),

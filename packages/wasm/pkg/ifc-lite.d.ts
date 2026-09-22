@@ -463,6 +463,11 @@ export class IfcAPI {
      */
     clearPrePassCache(): void;
     /**
+     * Starts one owned raw-byte LandXML session. The caller must free or abort
+     * the session on every cancellation path.
+     */
+    createLandXmlTinStreamSession(max_bytes: number): LandXmlTinStreamSession;
+    /**
      * Run geometry extraction on `content` and return its typed CSG / opening
      * diagnostics (the `GeometryDiagnostics` contract) as a JS object, or
      * `undefined` when nothing diagnostic-worthy happened (no openings, no
@@ -1217,6 +1222,37 @@ export class IfcAPI {
      * Get version string
      */
     readonly version: string;
+}
+
+export class LandXmlTinStreamSession {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    abort(): void;
+    advanceChunk(data: Uint8Array): void;
+    /**
+     * Drain only after the renderer has credited this many transport bytes.
+     */
+    drain(max_bytes: number): any;
+    finish(): any;
+    /**
+     * Start the resumable metadata cursor. Consumers must continue draining
+     * until [`Self::output_pending`] is false, then abort/free the session.
+     */
+    finishCursor(): void;
+    header(): any;
+    /**
+     * Whether the host must grant more credited output drain capacity.
+     */
+    outputPending(): boolean;
+    /**
+     * Exact serialized transport bytes currently retained by the Rust queue.
+     */
+    queuedBytes(): number;
+    /**
+     * Complete credited transport records currently retained by the Rust queue.
+     */
+    queuedEvents(): number;
 }
 
 /**
@@ -2254,6 +2290,7 @@ export interface InitOutput {
     readonly __wbg_gridaxiscollection_free: (a: number, b: number) => void;
     readonly __wbg_gridaxisjs_free: (a: number, b: number) => void;
     readonly __wbg_ifcapi_free: (a: number, b: number) => void;
+    readonly __wbg_landxmltinstreamsession_free: (a: number, b: number) => void;
     readonly __wbg_meshcollection_free: (a: number, b: number) => void;
     readonly __wbg_meshdatajs_free: (a: number, b: number) => void;
     readonly __wbg_meshoutlinejs_free: (a: number, b: number) => void;
@@ -2315,6 +2352,7 @@ export interface InitOutput {
     readonly ifcapi_calibrateAppearancePlane: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_catalogAppearance: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_clearPrePassCache: (a: number) => void;
+    readonly ifcapi_createLandXmlTinStreamSession: (a: number, b: number, c: number) => void;
     readonly ifcapi_diagnoseGeometry: (a: number, b: number, c: number) => number;
     readonly ifcapi_exportCsv: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
     readonly ifcapi_exportDfjson: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
@@ -2386,6 +2424,15 @@ export interface InitOutput {
     readonly ifcapi_simplifyMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number) => void;
     readonly ifcapi_version: (a: number, b: number) => void;
     readonly intersection2d: (a: number, b: number) => number;
+    readonly landxmltinstreamsession_abort: (a: number) => void;
+    readonly landxmltinstreamsession_advanceChunk: (a: number, b: number, c: number, d: number) => void;
+    readonly landxmltinstreamsession_drain: (a: number, b: number, c: number) => void;
+    readonly landxmltinstreamsession_finish: (a: number, b: number) => void;
+    readonly landxmltinstreamsession_finishCursor: (a: number, b: number) => void;
+    readonly landxmltinstreamsession_header: (a: number, b: number) => void;
+    readonly landxmltinstreamsession_outputPending: (a: number) => number;
+    readonly landxmltinstreamsession_queuedBytes: (a: number) => number;
+    readonly landxmltinstreamsession_queuedEvents: (a: number) => number;
     readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly meshcollection_buildingRotation: (a: number, b: number) => void;
     readonly meshcollection_diagnostics: (a: number) => number;

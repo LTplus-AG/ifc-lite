@@ -24,6 +24,8 @@
   "packages/encoding": 0,
   "packages/export": 2,
   "packages/extensions": 4,
+  "packages/flow": 0,
+  "packages/flow-nodes": 0,
   "packages/geometry": 7,
   "packages/ids": 9,
   "packages/ifcx": 7,

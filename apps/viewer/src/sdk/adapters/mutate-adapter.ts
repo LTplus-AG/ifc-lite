@@ -5,8 +5,15 @@
 import { propertyValueTypeOf, type EntityRef, type MutateBackendMethods } from '@ifc-lite/sdk';
 import type { StoreApi } from './types.js';
 import { getOrCreateMutationView, normalizeMutationModelId } from './mutation-view.js';
+import { mutationsSince, newMutationBatchId, undoStackLengths } from '../../store/slices/mutation-batch-tags.js';
 
 export function createMutateAdapter(store: StoreApi): MutateBackendMethods {
+  // Open `bim.mutate.batch()` scopes, innermost last. A scope remembers the
+  // undo-stack lengths when it opened; on close, everything pushed since —
+  // property, attribute, positional and store/create mutations alike — is
+  // tagged with one batch id so undo / redo revert it as one step. Nested
+  // scopes fold into the outermost one: the outer tag is written last.
+  const openBatches: Array<{ label: string; lengths: Map<string, number> }> = [];
   return {
     setProperty(ref: EntityRef, psetName: string, propName: string, value: string | number | boolean) {
       const state = store.getState();
@@ -52,13 +59,18 @@ export function createMutateAdapter(store: StoreApi): MutateBackendMethods {
       }
       return false;
     },
-    batchBegin() {
-      // TODO: Implement batch grouping when the mutation store supports it.
-      // For now, individual mutations each create their own undo step.
-      return undefined;
+    batchBegin(label: string) {
+      openBatches.push({ label, lengths: undoStackLengths(store.getState().undoStacks) });
     },
-    batchEnd() {
-      return undefined;
+    batchEnd(label: string) {
+      const scope = openBatches.pop();
+      if (!scope) return;
+      if (scope.label !== label) {
+        openBatches.push(scope);
+        throw new Error(`bim.mutate.batchEnd("${label}") does not match the open batch "${scope.label}"`);
+      }
+      const state = store.getState();
+      state.tagMutationBatch?.(mutationsSince(state.undoStacks, scope.lengths), newMutationBatchId());
     },
   };
 }

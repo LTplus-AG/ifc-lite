@@ -9,6 +9,7 @@ import type { ViewerState } from '../../apps/viewer/src/store';
 
 declare global {
   var __ifc_lite_viewer_store__: { getState(): ViewerState };
+  var __ifc_lite_capture_color_frame__: (() => Promise<string | null>) | undefined;
   var __ifc_lite_rendered_point_cloud__: ((handleId: number) => {
     pointCount: number;
     points: Point3[];
@@ -27,6 +28,7 @@ export interface RenderedModelEvidence {
   regionPixels: number | null;
   changedPixels: number | null;
   backgroundChangedPixels: number | null;
+  evidence: 'renderer-color' | 'skipped';
 }
 
 export interface OrdinarySelection {
@@ -125,33 +127,42 @@ async function showOnlyModelAndFrame(page: Page, modelId: string): Promise<void>
   await page.keyboard.press('Escape');
 }
 
+/**
+ * Returns a PNG emitted by the production renderer after its submitted GPU
+ * work completes. Playwright canvas screenshots read compositor state, which
+ * SwiftShader may discard; they are not a color-raster witness.
+ */
+async function rendererColorFrame(page: Page): Promise<Buffer> {
+  const dataUrl = await page.evaluate(async () => globalThis.__ifc_lite_capture_color_frame__?.() ?? null);
+  expect(dataUrl, 'renderer color capture is available after the viewport submits a frame').not.toBeNull();
+  const encoded = dataUrl!.match(/^data:image\/png;base64,(.+)$/);
+  expect(encoded, 'renderer color capture is a PNG data URL').not.toBeNull();
+  return Buffer.from(encoded![1]!, 'base64');
+}
 export async function assertIsolatedRenderedContent(page: Page, modelId: string, gpuStrict: boolean): Promise<RenderedModelEvidence> {
   await showOnlyModelAndFrame(page, modelId);
   if (!gpuStrict) {
     console.log(`[e2e] E2E_GPU_STRICT=0 — skipping ${modelId} isolated pixel assertion (software WebGPU)`);
-    return { modelId, regionPixels: null, changedPixels: null, backgroundChangedPixels: null };
+    return { modelId, regionPixels: null, changedPixels: null, backgroundChangedPixels: null, evidence: 'skipped' };
   }
-  const canvas = page.locator('canvas[data-viewport="main"]');
-  await expect(canvas, 'viewer canvas').toBeVisible();
-  const renderedPng = await canvas.screenshot();
+  await expect(page.locator('canvas[data-viewport="main"]'), 'viewer canvas').toBeVisible();
+  const renderedPng = await rendererColorFrame(page);
   const rendered = decodePng(renderedPng);
   await page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
     state.setModelsVisibility([...state.models.keys()], false);
   });
   await page.waitForTimeout(250);
-  const blankPng = await canvas.screenshot();
+  const blankPng = await rendererColorFrame(page);
   const blank = decodePng(blankPng);
-  // A second blank establishes the canvas' animation/noise floor. Frame moving
-  // puts the model in this central region, unlike independently changing edges.
   await page.waitForTimeout(250);
-  const blankRepeat = decodePng(await canvas.screenshot());
+  const blankRepeat = decodePng(await rendererColorFrame(page));
   const signal = centralPixelDifference(rendered, blank), background = centralPixelDifference(blank, blankRepeat);
   const minimumSignal = Math.max(64, background.changedPixels * 3);
   expect(signal.changedPixels,
-    `${modelId}: ${signal.changedPixels}/${signal.regionPixels} fitted-region pixels differ from blank (background ${background.changedPixels}; PNG ${renderedPng.length}B -> ${blankPng.length}B)`)
-    .toBeGreaterThan(minimumSignal);
-  return { modelId, regionPixels: signal.regionPixels, changedPixels: signal.changedPixels, backgroundChangedPixels: background.changedPixels };
+    `${modelId}: isolated renderer color frame differs from the hidden color frame above animation noise`).toBeGreaterThan(minimumSignal);
+  return { modelId, regionPixels: signal.regionPixels, changedPixels: signal.changedPixels,
+    backgroundChangedPixels: background.changedPixels, evidence: 'renderer-color' };
 }
 
 export async function ordinaryGpuSelectControl(

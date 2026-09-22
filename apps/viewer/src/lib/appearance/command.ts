@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { captureAppearanceDependencies, planAuthoredResourceCleanup } from '@ifc-lite/export';
 import { StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
-import type { Renderer } from '@ifc-lite/renderer';
+import { federationRegistry, type Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
+import { preparePreparedOverlayPublication } from '@/store/federation-overlay-publication';
 import { geometryWithAppearance } from './command-geometry.js';
 import { trackAppearanceCommandResources } from './command-resources.js';
 import { replayAppearanceEntitiesInDraft } from './apply-plan.js';
@@ -81,6 +82,7 @@ export async function commitAppearance(
     if (options.signal?.aborted) throw new DOMException('Appearance application was cancelled.', 'AbortError');
   };
   let preparation: Awaited<ReturnType<typeof prepareAppearanceEntities>>;
+  let publishOverlay: (() => void) | null = null;
   try {
     abort();
     options.onProgress?.('preparing');
@@ -108,6 +110,9 @@ export async function commitAppearance(
     }
     source.validate(view);
     prepared.commit();
+    // Verify federation publication while every later command step remains
+    // reversible; only invoke the returned action after GPU token commit.
+    publishOverlay = preparePreparedOverlayPublication(federationRegistry, state, modelId, applied.created);
     // No await or store publication may occur between this temporary IFC install
     // and GPU/history publication. Any guard/resource failure restores the overlay.
     const afterGuard = captureAppearanceDependencies(model.ifcDataStore, view, roots);
@@ -164,6 +169,8 @@ export async function commitAppearance(
     const publication = geometryPublication(modelId, geometry);
     const commitGpu = preview.prepareCommit(groups);
     changes.push(...commitGpu());
+    // Preflight above proved this cannot expose a partial or unowned range.
+    publishOverlay?.();
     // IFC + GPU are ready. Publish the geometry and history entry together so
     // observers never see new IFC history paired with the old render buffers.
     published = true;

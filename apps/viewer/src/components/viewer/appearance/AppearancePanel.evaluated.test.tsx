@@ -19,6 +19,7 @@ import { appearanceInstanceScene } from '@/test/appearance-instance-scene.js';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { texturedProductSource, texturedProductPng as png } from '@/test/textured-product-fixture.js';
 import { useViewerStore } from '@/store';
+import { toPreparedOverlayGlobalId } from '@/store/federation-overlay-publication.js';
 import { modelIndices } from '@/lib/model-placement/model-indices.js';
 import { getGlobalRenderer, setGlobalRendererRef } from '@/hooks/useBCF';
 import { appearanceAssets, modelAppearanceAssets } from '@/lib/appearance/model-assets.js';
@@ -179,7 +180,10 @@ for (const instanced of [false, true]) for (const pageSource of [false, true]) f
     await act(async () => button('Compare original').click());
     assert.equal(readParts(selection)![0].geometryItemId,globalId(11));
     await act(async () => button('Show preview').click());
-    assert.equal(readParts(selection)![0].geometryItemId,globalId(plan.conversions![0].geometryItemId));
+    const previewId = toPreparedOverlayGlobalId(
+      federationRegistry, useViewerStore.getState(), 'evaluated', plan.created, plan.conversions![0].geometryItemId,
+    );
+    assert.equal(readParts(selection)![0].geometryItemId, previewId);
 
     await act(async () => button('Apply').click());
     await until(() => (useViewerStore.getState().undoStacks.get('evaluated')?.length ?? 0) === 1);

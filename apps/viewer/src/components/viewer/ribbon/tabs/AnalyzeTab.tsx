@@ -9,7 +9,7 @@
  * `useWorkspacePanelControls`, shared with the classic toolbar.
  */
 
-import { Issue, List, Compare, Layer, Clash, Check, Script, Schedule, Coloring, Zones, LoadReport, Chart, Document, Cost } from '@/icons';
+import { Issue, List, Compare, Layer, Clash, Check, Script, Schedule, Coloring, Zones, LoadReport, Chart, Document, Cost, Flow } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
@@ -148,6 +148,13 @@ export function AnalyzeTab() {
           tooltip={t('ribbon.analyze.scriptTooltip')}
           active={activeWorkspacePanels.has('script')}
           onClick={() => handleToggleBottomPanel('script')}
+        />
+        <RibbonLargeButton
+          icon={Flow}
+          label={t('ribbon.analyze.flow')}
+          tooltip={t('ribbon.analyze.flowTooltip')}
+          active={activeWorkspacePanels.has('flow')}
+          onClick={() => handleToggleBottomPanel('flow')}
         />
       </RibbonGroup>
 

@@ -238,3 +238,5 @@ pub struct LandXmlAlignmentDocument {
     pub alignments: Vec<LandXmlAlignment>,
     pub warnings: Vec<String>,
 }
+
+impl LandXmlAlignmentDocument {}

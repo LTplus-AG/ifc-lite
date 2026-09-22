@@ -85,7 +85,7 @@ export type { ResidencyShell, ColdGeometryProvider } from './residency.js';
 export { simplifyIndicesByClustering, lodCellSizeForBounds, LOD_MIN_TRIANGLES, LOD_CELL_FRACTION } from './lod-simplify.js';
 export { quantizeInterleaved, octEncode, octDecode, QUANT_STEP, MAX_QUANT_EXTENT, QUANT_BYTES_PER_VERTEX } from './quantize.js';
 export type { QuantizedVertexData } from './quantize.js';
-export { sumResidentGpuBytes } from './render-stats.js';
+export { sumResidentGpuBytes } from './render-stats.js'; export type { RendererColorFrame } from './renderer-color-readback.js';
 
 // The hide/isolate rule and its change detection, shared with consumers that
 // render the model outside this package's pipeline (the Cesium world view,
@@ -188,6 +188,7 @@ import { collectShadowOccluders } from './shadow-occluders.js';
 import { uploadInstancedRteDeltas } from './instanced-rte.js';
 import { shadowOccluderBatches } from './shadow-occluder-batches.js';
 import { captureRendererScreenshot } from './renderer-screenshot.js';
+import { beginRendererColorFrameCapture, cancelRendererColorFrame, discardRendererColorFrameReadback, encodeRendererColorFrameCapture, requestRendererColorFrame, retryRendererColorFrame, settleRendererColorFrameCapture, type RendererColorFrame, type RendererColorFrameCapture } from './renderer-color-readback.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { XRayAlpha, XRayEpochTracker, type AlphaBatchLike } from './xray-alpha.js';
 import { PartialBatchRequests } from './partial-batch-requests.js';
@@ -453,8 +454,6 @@ export class Renderer {
     private _lastFrameStats: FrameStats | null = null;
     private _renderErrorCount: number = 0;
     private _lastRenderError: string = '';
-
-
     // Dirty flag: set by requestRender(), consumed by the animation loop.
     // Centralises all render scheduling — callers never call render() directly.
     private _renderRequested: boolean = false;
@@ -837,7 +836,7 @@ export class Renderer {
         // Latched: only the current device's `device.lost` signal is a replacement loss; anything else is a duplicate report.
         if (this.deviceLost) { if (options.fromDevicePromise) this.deviceLossSequence++; return; }
         this.deviceLossSequence++;
-        this.deviceLost = true;
+        this.deviceLost = true; cancelRendererColorFrame(this);
         this.recovery.lostReferenceImages = this.referenceImages.hasImages();
         this.referenceImages.destroy();
         this.deviceLostGeneration = this.initGeneration;
@@ -1609,7 +1608,7 @@ export class Renderer {
         // A lost device leaves every pipeline/buffer dead; rendering would only
         // emit a stream of validation errors. Stay quiet until re-init.
         if (this.deviceLost) {
-            this._renderSkipCount++;
+            this._renderSkipCount++; cancelRendererColorFrame(this);
             return;
         }
         try {
@@ -1620,6 +1619,7 @@ export class Renderer {
             // inside renderFrame), so "did not throw" is not the same question
             // as "did not fail" — see `frameContainedThrow`.
             if (!this.frameContainedThrow) this.consecutiveDegradedFrames = 0;
+            retryRendererColorFrame(this, () => this.requestRender());
         } catch (error) {
             // Safari (26.5) reports device loss SYNCHRONOUSLY: a call against a
             // dead device throws `InvalidStateError` instead of — or long
@@ -1633,7 +1633,7 @@ export class Renderer {
             // and the rAF loop's own upload/residency guards), not "take the
             // host down with us".
             this._renderSkipCount++;
-            this.containFrameThrow(error, 'frame');
+            this.containFrameThrow(error, 'frame'); cancelRendererColorFrame(this);
         }
     }
 
@@ -1906,7 +1906,8 @@ export class Renderer {
             }
             return; // Skip this frame, context will be reconfigured next frame
         }
-
+        let colorCapture: RendererColorFrameCapture | null = null;
+        let colorReadback: ReturnType<typeof encodeRendererColorFrameCapture> | null = null;
         try {
             const clearColor = options.clearColor
                 ? (Array.isArray(options.clearColor)
@@ -1914,6 +1915,7 @@ export class Renderer {
                     : options.clearColor)
                 : { r: 0.1, g: 0.1, b: 0.1, a: 1 };
 
+            colorCapture = beginRendererColorFrameCapture(this, currentTexture, this.canvas.width, this.canvas.height, this.device.getFormat());
             const textureView = currentTexture.createView();
             const objectIdView = this.pipeline.getObjectIdTextureView();
 
@@ -3160,8 +3162,12 @@ export class Renderer {
                 );
             }
 
+            colorReadback = colorCapture && encodeRendererColorFrameCapture(device, encoder, colorCapture);
             device.queue.submit([encoder.finish()]);
-
+            if (colorReadback && colorCapture) {
+                settleRendererColorFrameCapture(this, colorCapture, colorReadback);
+                colorCapture = null; colorReadback = null;
+            }
             this._lastFrameStats = {
                 drawCalls: frameDrawCalls,
                 batchesDrawn: frameBatchesDrawn,
@@ -3186,6 +3192,7 @@ export class Renderer {
                 this.drainErrorScope(device);
             }
         } catch (error) {
+            discardRendererColorFrameReadback(colorReadback);
             // Balance the validation scope if we threw before popping it above —
             // an unpopped scope would capture every later frame's errors silently.
             // drainErrorScope logs a pop rejection (device loss) rather than
@@ -3218,6 +3225,7 @@ export class Renderer {
             // true })`, and that throws a `RangeError` — which is exactly why
             // the discriminator keys on the TYPE and not on "a frame threw".
             this.containFrameThrow(error, 'encode');
+            cancelRendererColorFrame(this);
         }
     }
 
@@ -3602,14 +3610,9 @@ export class Renderer {
         return this.device.getDevice();
     }
 
-    /**
-     * Capture a screenshot of the current view
-     * Waits for GPU work to complete and captures exactly what's displayed
-     * @returns PNG data URL or null if capture failed
-     */
-    async captureScreenshot(): Promise<string | null> {
-        return captureRendererScreenshot(this.device, this.canvas);
-    }
+    captureScreenshot(): Promise<string | null> { return captureRendererScreenshot(this.device, this.canvas); }
+    /** Capture the next submitted frame's bounded color pixels, not compositor state. */
+    captureColorFrame(): Promise<RendererColorFrame | null> { return requestRendererColorFrame(this, !this.destroyed && !this.deviceLost && this.device.isInitialized(), () => this.requestRender()); }
 
     /**
      * Destroy the renderer and release all GPU resources.
@@ -3644,7 +3647,7 @@ export class Renderer {
      */
     destroy(): void {
         this.initGeneration++;
-        this.destroyed = true;
+        this.destroyed = true; cancelRendererColorFrame(this);
         this.teardown();
         this.rejectReadyWaiters(rendererDestroyedError());
     }
@@ -3658,7 +3661,7 @@ export class Renderer {
         // Nothing below survives this call, so `whenReady()` / `isReady()` must
         // go back to waiting. Set first: every release below is synchronous, but
         // the flag is what a caller holding a live reference actually reads.
-        this.ready = false;
+        this.ready = false; cancelRendererColorFrame(this);
 
         // Scene mesh GPU buffers
         if (clearScene) {

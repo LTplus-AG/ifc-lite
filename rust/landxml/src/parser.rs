@@ -29,15 +29,16 @@ mod text;
 mod version;
 
 pub(crate) use document::parse_landxml_document;
-use state::{retained_properties, Frame, Parser, SurfaceBuilder};
+pub(crate) use state::Parser;
+use state::{retained_properties, Frame, SurfaceBuilder};
 pub use version::*;
 
-/// Parse supported LandXML TIN semantics with default resource limits.
+/// Parse exact LandXML 1.2 TIN semantics with default resource limits.
 pub fn parse_landxml_tin(input: &[u8]) -> Result<LandXmlTinDocument> {
     parse_landxml_tin_with_cancel(input, &LandXmlLimits::default(), None)
 }
 
-/// Parse supported LandXML TIN semantics with host limits and cancellation.
+/// Parse exact LandXML 1.2 TIN semantics with host limits and cancellation.
 pub fn parse_landxml_tin_with_cancel(
     input: &[u8],
     limits: &LandXmlLimits,
@@ -48,45 +49,7 @@ pub fn parse_landxml_tin_with_cancel(
     }
     let input = normalize_encoding(input, limits, cancelled)?;
     preflight_xml_tokens(&input, limits, cancelled)?;
-    let mut parser = Parser {
-        limits,
-        cancelled,
-        work: 0,
-        character_references: 0,
-        references: 0,
-        surfaces_seen: 0,
-        points_seen: 0,
-        faces_seen: 0,
-        frames: Vec::new(),
-        units: None,
-        coordinate_system: None,
-        surface: None,
-        capture: None,
-        surfaces: Vec::new(),
-        extensions: Vec::new(),
-        warnings: Vec::new(),
-        schema: String::new(),
-        target_namespace: None,
-        surface_ordinal: 0,
-        version: String::new(),
-        root_seen: false,
-        root_closed: false,
-        profile_points_seen: 0,
-        vertical_curves_seen: 0,
-        cross_section_points_seen: 0,
-        alignment: None,
-        profile: None,
-        cross_section: None,
-        cross_section_surface: None,
-        alignments: Vec::new(),
-        profiles: Vec::new(),
-        cross_sections: Vec::new(),
-        cross_section_surfaces: Vec::new(),
-        roadways: Vec::new(),
-        capability_diagnostics: Vec::new(),
-        preserved_only_extensions: Vec::new(),
-        active_roadway_source_id: None,
-    };
+    let mut parser = Parser::new(limits, cancelled);
     let mut reader = Reader::from_reader(input.as_slice());
     reader.config_mut().trim_text(false);
     let mut buffer = Vec::new();
@@ -95,19 +58,10 @@ pub fn parse_landxml_tin_with_cancel(
         let event = reader
             .read_event_into(&mut buffer)
             .map_err(|_| error(Code::InvalidXml, "malformed XML"))?;
-        match event {
-            Event::Start(start) => parser.start(&start)?,
-            Event::Empty(start) => {
-                parser.start(&start)?;
-                parser.end(None)?;
-            }
-            Event::End(end) => parser.end(Some(end.name().as_ref().as_bytes()))?,
-            Event::Text(text) => parser.text(text.as_ref().as_bytes())?,
-            Event::CData(text) => parser.cdata(text.as_ref().as_bytes())?,
-            Event::DocType(_) => return Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
-            Event::Eof => break,
-            _ => {}
+        if matches!(event, Event::Eof) {
+            break;
         }
+        parser.consume_event(event)?;
         buffer.clear();
     }
     if !parser.frames.is_empty() {
@@ -117,13 +71,29 @@ pub fn parse_landxml_tin_with_cancel(
 }
 
 impl Parser<'_> {
+    /// Consume an event emitted by quick-xml.  Kept crate-visible so the
+    /// chunk driver and the complete reader share all semantic transitions.
+    pub(crate) fn consume_event(&mut self, event: Event<'_>) -> Result<()> {
+        match event {
+            Event::Start(start) => self.start(&start),
+            Event::Empty(start) => {
+                self.start(&start)?;
+                self.end(None)
+            }
+            Event::End(end) => self.end(Some(end.name().as_ref().as_bytes())),
+            Event::Text(text) => self.text(text.as_ref().as_bytes()),
+            Event::CData(text) => self.cdata(text.as_ref().as_bytes()),
+            Event::DocType(_) => Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
+            _ => Ok(()),
+        }
+    }
     fn start(&mut self, start: &BytesStart<'_>) -> Result<()> {
         if self.frames.len() >= self.limits.max_depth {
             return Err(error(Code::LimitExceeded, "XML depth limit exceeded"));
         }
         let name = start.name();
         let (_, local, prefix) = split_name(name.as_ref().as_bytes(), self.limits.max_name_bytes)?;
-        let (attributes, namespaces, references) = attributes(start, self.limits)?;
+        let (attributes, namespaces, references) = attributes(start, &self.limits)?;
         self.check_cancel_and_work(attributes.len())?;
         self.check_character_references(references)?;
         let mut inherited = self

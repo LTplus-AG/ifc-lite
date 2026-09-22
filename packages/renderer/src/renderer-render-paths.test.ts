@@ -75,6 +75,8 @@ interface Harness {
         /** label of every `beginRenderPass` in call order (so a test can assert
          *  the sun shadow depth pass IS or is NOT encoded). */
         passes: string[];
+        /** number of GPU textures allocated after the harness is constructed */
+        createdTextures: number;
         /** label of every texture whose `destroy()` fired (shadow depth-texture
          *  release on toggle-off). */
         destroyedTextures: string[];
@@ -84,6 +86,8 @@ interface Harness {
         textureMode: 'texture' | 'null';
         /** make command encoding throw (mid-encode device fault) */
         encodeThrows: boolean;
+        /** make queue.submit() throw after the color readback has been encoded */
+        submitThrows: boolean;
         /** make popErrorScope() reject (device lost while scope pending) */
         popRejects: boolean;
         /**
@@ -110,9 +114,9 @@ interface Harness {
 }
 
 function makeHarness(): Harness {
-    const stats: Harness['stats'] = { push: 0, pop: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], commands: [], passes: [], destroyedTextures: [] };
+    const stats: Harness['stats'] = { push: 0, pop: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], commands: [], passes: [], createdTextures: 0, destroyedTextures: [] };
     const knobs: Harness['knobs'] = {
-        textureMode: 'texture', encodeThrows: false, popRejects: false, gpuDead: false,
+        textureMode: 'texture', encodeThrows: false, submitThrows: false, popRejects: false, gpuDead: false,
         deferMaps: false,
     };
     const parkedMaps: { resolve: () => void; reject: (e: unknown) => void }[] = [];
@@ -197,7 +201,7 @@ function makeHarness(): Harness {
         },
         writeTexture() { /* no-op */ },
         copyExternalImageToTexture() { /* no-op */ },
-        submit() { /* no-op */ },
+        submit() { if (knobs.submitThrows) throw new Error('boom on submit'); },
         onSubmittedWorkDone() { return Promise.resolve(); },
     };
     const fakeGpuDevice = new Proxy({} as Record<string | symbol, unknown>, {
@@ -215,12 +219,15 @@ function makeHarness(): Harness {
                 case 'createCommandEncoder': return () => encoder;
                 case 'createBuffer': return (desc: { size: number }) => makeBuffer(desc);
                 case 'createBindGroup': return () => ({});
-                case 'createTexture': return (desc: { label?: string; size: { width: number; height: number } }) => ({
-                    width: desc.size.width,
-                    height: desc.size.height,
-                    createView: () => ({}),
-                    destroy() { stats.destroyedTextures.push(desc.label ?? ''); },
-                });
+                case 'createTexture': return (desc: { label?: string; size: { width: number; height: number } }) => {
+                    stats.createdTextures++;
+                    return {
+                        width: desc.size.width,
+                        height: desc.size.height,
+                        createView: () => ({}),
+                        destroy() { stats.destroyedTextures.push(desc.label ?? ''); },
+                    };
+                };
                 // Picker builds real pipelines in its constructor and binds
                 // through the auto layout, so both arms must return objects.
                 case 'createShaderModule': return () => ({});
@@ -405,6 +412,111 @@ describe('render() error-scope balance', () => {
         } finally {
             warn.mock.restore();
         }
+    });
+});
+
+describe('captureColorFrame() lifecycle (#5051 strict GPU evidence)', () => {
+    it('coalesces concurrent callers into one bounded next-frame readback', async () => {
+        const h = makeHarness();
+        const first = h.renderer.captureColorFrame();
+        const second = h.renderer.captureColorFrame();
+        assert.strictEqual(first, second, 'only one in-flight color capture may allocate GPU readback memory');
+        const texturesBefore = h.stats.createdTextures;
+
+        h.renderer.consumeRenderRequest();
+        h.render();
+        const frame = await first;
+
+        assert.ok(frame, 'the submitted production frame resolves its color copy');
+        assert.deepStrictEqual([frame.width, frame.height], [256, 256]);
+        assert.strictEqual(h.stats.mapAsync, 1, 'exactly one color buffer is mapped');
+        assert.strictEqual(h.stats.createdTextures, texturesBefore, 'capture reuses the canvas texture at every viewport size');
+        assert.strictEqual(h.renderer.peekRenderRequest(), false, 'capture reuses the presented frame without scheduling another');
+    });
+
+    it('retries a transient context skip but bounds unavailable-frame polling', async () => {
+        const h = makeHarness();
+        h.knobs.textureMode = 'null';
+        const pending = h.renderer.captureColorFrame();
+
+        h.renderer.consumeRenderRequest();
+        h.render();
+        assert.strictEqual(h.renderer.peekRenderRequest(), true, 'one unavailable canvas texture requests another frame');
+
+        h.knobs.textureMode = 'texture';
+        h.renderer.consumeRenderRequest();
+        h.render();
+        assert.ok(await pending, 'the next submitted production frame resolves actual color bytes');
+
+        const unavailable = makeHarness();
+        unavailable.knobs.textureMode = 'null';
+        const bounded = unavailable.renderer.captureColorFrame();
+        for (let attempt = 0; attempt <= 3; attempt++) {
+            unavailable.renderer.consumeRenderRequest();
+            unavailable.render();
+        }
+        assert.strictEqual(await bounded, null, 'three transient retries never create a perpetual requestAnimationFrame loop');
+        assert.strictEqual(unavailable.renderer.peekRenderRequest(), false, 'the bounded capture releases its final dirty request');
+    });
+
+    it('settles a pending color capture on teardown, device loss, or a contained encode failure', async () => {
+        const destroyed = makeHarness();
+        const pendingDestroy = destroyed.renderer.captureColorFrame();
+        destroyed.renderer.destroy();
+        assert.strictEqual(await pendingDestroy, null, 'destroy cannot leave an E2E capture promise suspended');
+
+        const lost = makeHarness();
+        const pendingLoss = lost.renderer.captureColorFrame();
+        const lossWarn = mock.method(console, 'warn', () => undefined);
+        try {
+            lost.renderer['handleDeviceLost']({ message: 'driver reset', reason: 'unknown' });
+        } finally {
+            lossWarn.mock.restore();
+        }
+        assert.strictEqual(await pendingLoss, null, 'device loss cannot leave an E2E capture promise suspended');
+
+        const inFlight = makeHarness();
+        inFlight.knobs.deferMaps = true;
+        const pendingInFlightLoss = inFlight.renderer.captureColorFrame();
+        inFlight.renderer.consumeRenderRequest();
+        inFlight.render();
+        assert.strictEqual(inFlight.pendingMaps(), 1, 'the loss lands while the submitted color readback is mapped');
+        const warn = mock.method(console, 'warn', () => undefined);
+        try {
+            inFlight.renderer['handleDeviceLost']({ message: 'driver reset', reason: 'unknown' });
+            assert.strictEqual(await pendingInFlightLoss, null, 'device loss settles an already-submitted capture without another frame');
+        } finally {
+            warn.mock.restore();
+            inFlight.settlePendingMaps();
+            await inFlight.settle();
+        }
+        const failed = makeHarness();
+        failed.knobs.encodeThrows = true;
+        const pendingFailure = failed.renderer.captureColorFrame();
+        failed.render();
+        assert.strictEqual(await pendingFailure, null, 'a contained render failure cannot publish partial color evidence');
+
+        const submitFailure = makeHarness();
+        const beforeReadback = submitFailure.stats.createdBuffers.length;
+        submitFailure.knobs.submitThrows = true;
+        const pendingSubmitFailure = submitFailure.renderer.captureColorFrame();
+        submitFailure.render();
+        assert.strictEqual(await pendingSubmitFailure, null, 'a failed submit cannot publish partial color evidence');
+        assert.strictEqual(
+            submitFailure.stats.createdBuffers.at(-1)!.destroyed,
+            1,
+            'the current frame readback buffer is freed when queue.submit() throws',
+        );
+        assert.strictEqual(submitFailure.stats.createdBuffers.length, beforeReadback + 1, 'the assertion observes the color readback, not setup buffers');
+    });
+
+    it('settles an unencoded capture when re-initialization tears down the active GPU stack', async () => {
+        const h = makeHarness();
+        const pending = h.renderer.captureColorFrame();
+        h.renderer['device'].init = async () => { throw new Error('replacement init failed'); };
+
+        await assert.rejects(h.renderer.init(), /replacement init failed/);
+        assert.strictEqual(await pending, null, 'a failed replacement cannot strand a capture owned by the old stack');
     });
 });
 

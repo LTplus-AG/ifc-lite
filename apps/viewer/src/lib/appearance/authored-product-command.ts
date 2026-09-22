@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { captureAppearanceDependencies, planAuthoredResourceCleanup } from '@ifc-lite/export';
 import { StoreEditor } from '@ifc-lite/mutations';
-import { equivalentAppearanceGeometry, type Renderer } from '@ifc-lite/renderer';
+import { equivalentAppearanceGeometry, federationRegistry, type Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
+import { previewPreparedOverlayGlobalId, publishPreparedOverlayRange } from '@/store/federation-overlay-publication';
 import { entityRefToString } from '@/store/types';
 import type { MeshData } from '@ifc-lite/geometry';
 import { setTexturedProductMembership } from './textured-product-hierarchy';
@@ -43,11 +44,8 @@ export async function commitAuthoredProduct(modelId: string, assetIds: readonly 
   let preparation: Awaited<ReturnType<typeof prepareAppearanceEntities>> | undefined;
   let gpu: ReturnType<Renderer['prepareAuthoredOwner']> | undefined;
   let expectedGeometry: MeshData[] | undefined;
-  const captureRendered = () => {
-    expectedGeometry = renderer.getScene().getMeshDataPieces(globalId)?.map(part => ({ ...part, origin: part.origin && [...part.origin] }));
-  };
+  let stagedGlobalId: number | undefined;
   let installed = false, hierarchyInstalled = false, published = false;
-  const globalId = state.toGlobalId(modelId, native.objectId);
   const hierarchy = data.spatialHierarchy;
   const membership = (present: boolean) => {
     if (hierarchy) setTexturedProductMembership(hierarchy, containerId, native.objectId, present);
@@ -57,8 +55,26 @@ export async function commitAuthoredProduct(modelId: string, assetIds: readonly 
     const bitmaps = new Map<string, ImageBitmap>();
     for (const id of assets) bitmaps.set(id, await appearanceAssets.decode(id, owner, options.signal));
     validate();
+    options.onProgress?.('preparing');
+    preparation = await prepareAppearanceEntities(state.storeEditors.get(modelId) ?? new StoreEditor(data, view), view, plan, appearanceRevision(modelId), options);
+    validate();
+    const { prepared, applied } = preparation;
+    const firstCreatedId = applied.created[0]?.expressId;
+    if (!Number.isSafeInteger(firstCreatedId) || firstCreatedId <= 0) throw new Error('The authored overlay has no valid first ID.');
+    // Existing mutation commands can have committed live rows that no caller
+    // has resolved through federation yet. Reconcile only their prefix via
+    // the canonical state path; detached `prepared` rows are not visible here.
+    state.toGlobalId(modelId, firstCreatedId - 1);
+    const toStagedGlobalId = (expressId: number) => previewPreparedOverlayGlobalId(
+      federationRegistry, state.models, modelId, applied.created, expressId,
+    );
+    const globalId = toStagedGlobalId(native.objectId);
+    stagedGlobalId = globalId;
     const createdMeshes = native.meshes.map(mesh => authoredProductMesh(state, modelId, native, mesh,
-      mesh.texture ? bitmaps.get(byUri.get(mesh.texture.url)!) : undefined));
+      mesh.texture ? bitmaps.get(byUri.get(mesh.texture.url)!) : undefined, toStagedGlobalId));
+    const captureRendered = () => {
+      expectedGeometry = renderer.getScene().getMeshDataPieces(globalId)?.map(part => ({ ...part, origin: part.origin && [...part.origin] }));
+    };
     const publication = (present: boolean): AppearanceHistoryPublication => {
       const now = useViewerStore.getState(), current = now.models.get(modelId);
       if (!current?.geometryResult) throw new Error('The target model was removed.');
@@ -81,10 +97,6 @@ export async function commitAuthoredProduct(modelId: string, assetIds: readonly 
           selectedEntities: now.selectedEntities.filter(ref => ref.modelId !== modelId || ref.expressId !== native.objectId) } : {}),
         ...(now.activeModelId === modelId ? { geometryResult } : {}) };
     };
-    options.onProgress?.('preparing');
-    preparation = await prepareAppearanceEntities(state.storeEditors.get(modelId) ?? new StoreEditor(data, view), view, plan, appearanceRevision(modelId), options);
-    validate();
-    const { prepared, applied } = preparation;
     const roots = new Set([containerId, ...plan.created.map(row => row.expressId)]);
     const before = captureAppearanceDependencies(data, view, roots);
     gpu = renderer.prepareAuthoredOwner(createdMeshes);
@@ -138,13 +150,17 @@ export async function commitAuthoredProduct(modelId: string, assetIds: readonly 
     });
     gpu.commit(); installed = true; captureRendered();
     membership(true); hierarchyInstalled = true;
+    // Publish before the synchronous history notification. Subscribers must
+    // never observe a visible authored model with only a prefix of its batch
+    // owned by federation, and failures before this point still roll back.
+    publishPreparedOverlayRange(federationRegistry, state.models, state.mutationViews, modelId, applied.created);
     published = true;
     record(next);
     return { expressId: native.objectId, globalId };
   } catch (error) {
     if (!published) {
       preparation?.prepared.rollback();
-      if (installed) renderer.getScene().removeMeshesForEntities([globalId]);
+      if (installed && stagedGlobalId !== undefined) renderer.getScene().removeMeshesForEntities([stagedGlobalId]);
       if (hierarchyInstalled) membership(false);
       modelAppearanceAssets.unregisterAuthored(modelId, owner.id);
       modelAppearanceAssets.authoredLifecycle.forget(modelId, owner.id);

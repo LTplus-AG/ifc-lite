@@ -27,6 +27,50 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## LandXML credited-stream acceptance (#5050)
+
+The native, generated-source acceptance harness is deliberately independent of
+fixture downloads and browser scheduling:
+
+```bash
+cargo test --release --package ifc-lite-landxml \
+  --test landxml_streaming_bench_5050 -- --ignored --nocapture
+```
+
+It generates and validates four production-shaped documents: a 90,000-point /
+178,802-face TIN, 20,000 references to one high-valence vertex, 256 small
+surfaces, and a TIN with one boundary plus 24 breaklines and 24 contours. Each
+document also has 32 COGO points, so final non-terrain metadata delivery is
+part of the measured completion boundary. Shape/count assertions and credited
+queue invariants are acceptance checks; there are intentionally no time or
+throughput thresholds.
+
+`whole_ms` ends when `parse_landxml_document` returns its complete terrain and
+plan document. `stream_ms` ends only after 64 KiB input chunks have received
+credit, `finish_cursor` has run, and the final `Metadata::End` event has been
+drained. Throughput uses source bytes over those respective walls. `queue_peak`
+is the session's actual serialized transport queue (`queued_bytes`), which is
+bounded by the **512 KiB** credit cap. It is not a memory measurement.
+
+The three retained columns are portable semantic-payload proxies, not RSS or
+allocator high-water marks: `retained_surface_or_event_proxy` is the larger of
+the direct parser's largest serialized `LandXmlSurface` and a single streamed
+surface payload; `retained_nonterrain_proxy` is the serialized plan document;
+and `retained_document_proxy` is the complete direct document. They make the
+important distinction between the tiny credited transport queue and retained
+surface/document state without claiming portable process-memory precision.
+
+Measured once on 2026-09-22 from `0830cc5b7fbc3139089fb67447fb6fd08bf38581`,
+Rust `1.93.0-nightly`, Linux 6.6.87.1 WSL2 x86_64, release profile (warm build
+and OS cache; timings are evidence, not a comparison baseline):
+
+| Case | Input | Whole / stream ms | Whole / stream MiB/s | Surfaces / points / faces | Boundary / breakline / contour / COGO | Queue peak | Retained surface-or-event / non-terrain / document proxy |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| large TIN | 6.28 MiB | 338.943 / 640.688 | 18.52 / 9.80 | 1 / 90,000 / 178,802 | 0 / 0 / 0 / 32 | 3.36 KiB (4 events) | 19.76 MiB / 8.00 KiB / 19.77 MiB |
+| high-valence references | 876.20 KiB | 49.869 / 91.681 | 17.16 / 9.33 | 1 / 20,001 / 20,000 | 0 / 0 / 0 / 32 | 3.36 KiB (4 events) | 3.10 MiB / 8.00 KiB / 3.11 MiB |
+| many surfaces | 52.13 KiB | 3.206 / 5.975 | 15.88 / 8.52 | 256 / 1,024 / 512 | 0 / 0 / 0 / 32 | 3.36 KiB (4 events) | 954 B / 8.00 KiB / 246.09 KiB |
+| boundary/breakline/contour | 5.48 KiB | 0.280 / 0.472 | 19.09 / 11.34 | 1 / 4 / 2 | 1 / 24 / 24 / 32 | 5.92 KiB (4 events) | 19.71 KiB / 8.00 KiB / 28.21 KiB |
+
 ## Schema-specific crate-private registries (#4203, #4996)
 
 Selecting generated per-schema attribute tables by the source file's schema

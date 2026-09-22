@@ -28,7 +28,7 @@ import { WebGPUDevice } from './device.js';
 
 // `configureContext()` reads GPUTextureUsage.RENDER_ATTACHMENT, which node
 // does not define. Same stub as device-adapter-info.test.ts.
-(globalThis as Record<string, unknown>).GPUTextureUsage ??= { RENDER_ATTACHMENT: 0x10 };
+(globalThis as Record<string, unknown>).GPUTextureUsage ??= { COPY_SRC: 0x01, RENDER_ATTACHMENT: 0x10 };
 
 const savedNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
 
@@ -70,11 +70,11 @@ function installNavigator(adapter: unknown): void {
   });
 }
 
-function makeCanvas(): HTMLCanvasElement {
+function makeCanvas(onConfigure?: (configuration: GPUCanvasConfiguration) => void): HTMLCanvasElement {
   return {
     width: 256,
     height: 256,
-    getContext: () => ({ configure: () => { /* accepted */ } }),
+    getContext: () => ({ configure: (configuration: GPUCanvasConfiguration) => onConfigure?.(configuration) }),
   } as unknown as HTMLCanvasElement;
 }
 
@@ -127,6 +127,22 @@ async function withCapturedWarnings(fn: () => Promise<void>): Promise<string[]> 
 }
 
 describe('WebGPUDevice requestDevice staging — an adapter that accepts everything', () => {
+  it('configures the presented canvas texture as a bounded-readback source', async () => {
+    const { adapter } = makeRecordingAdapter([], () => []);
+    installNavigator(adapter);
+    const configurations: GPUCanvasConfiguration[] = [];
+
+    const device = new WebGPUDevice();
+    await device.init(makeCanvas((configuration) => configurations.push(configuration)));
+
+    assert.equal(configurations.length, 1);
+    assert.equal(
+      configurations[0]!.usage,
+      GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+      'color capture must reuse the presented texture instead of allocating a viewport-sized witness',
+    );
+  });
+
   it('asks for the raised buffer limits AND the timestamp-query feature in one request', async () => {
     const { adapter, calls } = makeRecordingAdapter(['timestamp-query'], (d) => d?.requiredFeatures ?? []);
     installNavigator(adapter);

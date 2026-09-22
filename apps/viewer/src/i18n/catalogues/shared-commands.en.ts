@@ -99,6 +99,7 @@ export const sharedCommandsEn = {
   'workspacePanels.bottom.lists': 'Lists',
   'workspacePanels.bottom.gantt': 'Schedule (Gantt)',
   'workspacePanels.bottom.charts': 'Charts',
+  'workspacePanels.bottom.flow': 'Flow',
   'workspacePanels.bottom.document': 'Document',
 
   'workspacePanels.authorLabel': 'Author',

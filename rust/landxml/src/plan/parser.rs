@@ -73,23 +73,13 @@ pub fn parse_landxml_plan_with_cancel(
     reader.config_mut().trim_text(false);
     let mut buffer = Vec::new();
     loop {
-        parser.check(1)?;
-        match reader
+        let event = reader
             .read_event_into(&mut buffer)
-            .map_err(|_| error(Code::InvalidXml, "malformed XML"))?
-        {
-            Event::Start(value) => parser.start(&value)?,
-            Event::Empty(value) => {
-                parser.start(&value)?;
-                parser.end(None)?;
-            }
-            Event::End(value) => parser.end(Some(value.name().as_ref().as_bytes()))?,
-            Event::Text(value) => parser.text(value.as_ref().as_bytes())?,
-            Event::CData(value) => parser.cdata(value.as_ref().as_bytes())?,
-            Event::DocType(_) => return Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
-            Event::Eof => break,
-            _ => {}
+            .map_err(|_| error(Code::InvalidXml, "malformed XML"))?;
+        if matches!(event, Event::Eof) {
+            break;
         }
+        parser.consume_event(event)?;
         buffer.clear();
     }
     if !parser.root_seen {
@@ -101,8 +91,11 @@ pub fn parse_landxml_plan_with_cancel(
     Ok(parser.document())
 }
 
-struct Parser<'a> {
-    pub(super) limits: &'a LandXmlPlanLimits,
+// Child action modules need the builders while the one-pass driver needs only
+// the opaque parser type and its methods.
+#[allow(private_interfaces)]
+pub(crate) struct Parser<'a> {
+    pub(super) limits: LandXmlPlanLimits,
     pub(super) cancelled: Option<&'a dyn LandXmlCancellation>,
     pub(super) work: usize,
     pub(super) characters: usize,
@@ -136,9 +129,9 @@ struct Parser<'a> {
     pub(super) parcel_ordinal: usize,
 }
 impl<'a> Parser<'a> {
-    fn new(limits: &'a LandXmlPlanLimits, cancelled: Option<&'a dyn LandXmlCancellation>) -> Self {
+    fn new(limits: &LandXmlPlanLimits, cancelled: Option<&'a dyn LandXmlCancellation>) -> Self {
         Self {
-            limits,
+            limits: limits.clone(),
             cancelled,
             work: 0,
             characters: 0,
@@ -187,5 +180,31 @@ impl<'a> Parser<'a> {
             return Err(error(Code::LimitExceeded, "work limit exceeded"));
         }
         Ok(())
+    }
+
+    pub(crate) fn consume_event(&mut self, event: Event<'_>) -> Result<()> {
+        self.check(1)?;
+        match event {
+            Event::Start(value) => self.start(&value),
+            Event::Empty(value) => {
+                self.start(&value)?;
+                self.end(None)
+            }
+            Event::End(value) => self.end(Some(value.name().as_ref().as_bytes())),
+            Event::Text(value) => self.text(value.as_ref().as_bytes()),
+            Event::CData(value) => self.cdata(value.as_ref().as_bytes()),
+            Event::DocType(_) => Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
+            _ => Ok(()),
+        }
+    }
+
+    pub(crate) fn has_open_frames(&self) -> bool {
+        !self.frames.is_empty()
+    }
+}
+
+impl Parser<'static> {
+    pub(crate) fn new_stream(limits: LandXmlPlanLimits) -> Self {
+        Self::new(&limits, None)
     }
 }

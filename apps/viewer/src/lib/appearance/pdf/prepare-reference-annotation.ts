@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { generateIfcGuid } from '@ifc-lite/encoding';
-import type { Renderer } from '@ifc-lite/renderer';
+import { federationRegistry, type Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
+import { toPreparedOverlayGlobalId } from '@/store/federation-overlay-publication';
 import { toRenderTranslation } from '@/lib/model-placement/translation';
 import { computeFullSourceHash } from '@/utils/sourceContentHash';
 import { prepareAuthoredProduct } from '../prepare-authored-product';
@@ -117,7 +118,14 @@ export async function checkPdfReferenceVectors(referenceId: string,
           throw new Error('The PDF annotation exceeds the bounded vector preview budget. Use Image for this drawing.');
         }
         const native = { ...result, objectId: result.annotationId };
-        const meshes = native.meshes.map(mesh => authoredProductMesh(useViewerStore.getState(), modelId, native, mesh));
+        const state = useViewerStore.getState();
+        // The review mesh is backed by a detached plan, not a committed
+        // mutation overlay. Use its exact virtual range for GPU identity so
+        // it cannot accidentally publish or pick an uncommitted annotation.
+        const toGlobalId = (expressId: number) => toPreparedOverlayGlobalId(
+          federationRegistry, state, modelId, native.plan.created, expressId,
+        );
+        const meshes = native.meshes.map(mesh => authoredProductMesh(state, modelId, native, mesh, undefined, toGlobalId));
         const u = placed.axisU, v = placed.axisV;
         const initialPlane = { up: toRenderTranslation(v), normal: toRenderTranslation([
           u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]) };

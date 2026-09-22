@@ -1427,6 +1427,46 @@ one federation — the same semantics the viewer runs, unlike `delivery`'s
 | `--rules <file>` | Path to the `.rules.json` rule set (required) |
 | `--format json\|table` | `table` (default) prints one line per rule: status, applicable/passed/failed counts, set-check failures; `json` prints the full `ValidationReport` verbatim |
 | `--fail-on error\|warning` | Which rule severities count toward exit code `1` (default `error`) |
+---
+
+### `flow` — Run a Node Graph Headlessly
+
+Evaluate a `*.flow.json` node graph (see [Flow graphs](flow.md)) against a model with the same
+`@ifc-lite/flow-nodes` library the viewer's editor uses. Viewer nodes (`viewer.colorize`, …)
+run as no-ops headlessly and pass their entities through, so a graph that highlights failures in
+the viewer runs unchanged in CI.
+
+```bash
+# Player-style inputs override node params; --out writes the model with the graph's mutations
+ifc-lite flow run audit.flow.json model.ifc --input rating.value=REI90 --out audited.ifc --json
+
+# The graph's inputs/outputs schema (what a Player form or a Hops-style caller needs)
+ifc-lite flow describe audit.flow.json --json
+
+# Document validation plus a per-node availability report for this host
+ifc-lite flow validate audit.flow.json
+```
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `run <graph> <file.ifc>` | Evaluate the graph. `--input <nodeId.param=value>` (repeatable; JSON values parse, others are strings), `--out <file>` (IFC with the run's mutations applied), `--tracking <file>` / `--no-tracking` (element sets of tracked creation nodes; default `<graph>.tracking.json` beside the graph), `--json` |
+| `describe <graph>` | Print declared inputs (with param defaults) and outputs (with value kind and access). `--json` |
+| `validate <graph>` | Validate the document's wiring against the node registry (unknown types, missing ports, type-incompatible edges, unconnected required inputs, `inputs`/`outputs` markers that name nothing) and report each node as `ok`, `noop`, `unavailable` or `unknown` on this host. Exit 2 on any wiring problem or unrunnable node. `--json` |
+
+`run` exits 1 when any node failed; per-lane errors inside a lifted node do not fail the run
+(the lane yields `null`) and are listed under `errors` in the summary. Secrets are resolved from
+environment variables; a node that requires one the host lacks is reported as `unavailable`.
+
+A graph with a tracked creation node (`model.addElement`) re-run on its own output updates the
+elements it made — same GlobalIds, changed geometry — and removes the ones whose lanes vanished:
+
+```bash
+ifc-lite flow run columns.flow.json model.ifc --out v1.ifc
+ifc-lite flow run columns.flow.json v1.ifc --input column.height=4 --out v2.ifc
+ifc-lite diff v1.ifc v2.ifc --by-entity --json   # 0 added, 0 removed
+```
 
 ## Output Modes
 
@@ -1572,4 +1612,5 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 | `ref` | Manage named refs in the layer store |
 | `gym` | reset/step/reward environment loop (JSONL over stdin/stdout) |
 | `delivery` | Repeatable delivery check (structural + IDS) from a saved recipe |
+| `flow` | Evaluate a node graph headlessly |
 <!-- END GENERATED: cli-commands -->

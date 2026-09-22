@@ -47,16 +47,14 @@ import { refCommand } from './commands/ref.js';
 import { gymCommand } from './commands/gym.js';
 import { deliveryCommand } from './commands/delivery.js';
 import { checkCommand } from './commands/check.js';
+import { flowCommand } from './commands/flow.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readCliVersion } from './version.js';
 import { buildHelp } from './help.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
 // package.json sits one level above both `src/` and `dist/`.
-const VERSION = readCliVersion(join(__dirname, '..', 'package.json'));
+const VERSION = readCliVersion(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'));
 
 /** Command being executed, captured for the top-level error handler. */
 let activeCommand = '';
@@ -193,6 +191,9 @@ async function main(): Promise<void> {
       break;
     case 'check':
       await checkCommand(commandArgs);
+      break;
+    case 'flow':
+      await flowCommand(commandArgs);
       break;
     default:
       process.stderr.write(`Unknown command: ${command}\n`);

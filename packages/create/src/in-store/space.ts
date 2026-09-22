@@ -19,15 +19,7 @@
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { toNativeLength, type SpatialAnchor } from './anchor.js';
-import {
-  assertPositiveFinite,
-  emitBodyRepresentation,
-  emitExtrudedSolid,
-  emitLocalPlacement,
-  emitPolygonProfile,
-  emitRectangleProfile,
-  ownerHistoryRef,
-} from './_emit-helpers.js';
+import { assertPositiveFinite, emitBodyRepresentation, emitExtrudedSolid, emitLocalPlacement, emitPolygonProfile, emitRectangleProfile, ownerHistoryRef, productGuid } from './_emit-helpers.js';
 
 export type SpaceInStoreParams = SpaceRectangleParams | SpacePolygonParams;
 
@@ -50,6 +42,8 @@ export interface SpaceRectangleParams {
   Profile?: 'rectangle';
   Name?: string;
   LongName?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
   Description?: string;
   ObjectType?: string;
   /**
@@ -74,6 +68,8 @@ export interface SpacePolygonParams {
   Height: number;
   Name?: string;
   LongName?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
   Description?: string;
   ObjectType?: string;
   /** See SpaceRectangleParams.PredefinedType. */
@@ -170,7 +166,7 @@ export function addSpaceToStore(
   //   (IFC2X3 IfcInternalOrExternalEnum), ElevationWithFlooring
   // INTERNAL is a valid value in both enums, so it makes a safe default.
   const attrs: Array<unknown> = [
-    generateIfcGuid(anchor.guidRandom),
+    productGuid(params, anchor.guidRandom),
     ownerHistoryRef(anchor.ownerHistoryId),
     params.Name ?? 'Space',
     params.Description ?? null,

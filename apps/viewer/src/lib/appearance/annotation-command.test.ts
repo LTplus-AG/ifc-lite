@@ -39,6 +39,7 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
   const api = new IfcAPI();
   const oldDecode = globalThis.createImageBitmap;
   globalThis.createImageBitmap = (async () => ({ width: 1, height: 1, close() {} })) as typeof createImageBitmap;
+  let unsubscribe: (() => void) | undefined;
   try {
     const data = await new IfcParser().parseColumnar(source.buffer as ArrayBuffer);
     data.spatialHierarchy = rebuildSpatialHierarchy(data.entities, data.relationships);
@@ -53,6 +54,9 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
     useViewerStore.setState({ models: new Map([...(federated ? [['other', fixtureModel('other')] as const] : []), ['annotation', model]]), activeModelId: 'annotation',
       geometryResult: geometry, mutationViews: new Map([['annotation', view]]), storeEditors: new Map([['annotation', editor]]),
       undoStacks: new Map(), redoStacks: new Map(), dirtyModels: new Set(), mutationVersion: 0, collabRoomId: null });
+    const priorOverlay = editor.addEntity('IfcColourRgb', [null, 1, 0, 0]);
+    assert.equal(priorOverlay.expressId, 54);
+    assert.throws(() => federationRegistry.toGlobalId('annotation', priorOverlay.expressId), /not published/);
     const asset = await appearanceAssets.add(png, { owner: { kind: 'draft', id: 'test' } });
     const native = JSON.parse(new TextDecoder().decode(api.planAnnotationPlane(source, JSON.stringify({
       schema: 'IFC4', sourceRevision: appearanceRevision('annotation'), nextExpressId: view.peekNextExpressId(),
@@ -60,6 +64,17 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
       Name: 'Registered plan', imageUri: asset.exportName,
       frame: { origin: [2, 3, 4], axisU: [1, 0, 0], axisV: [0, 0, 1], sizeMetres: [2, 1] },
     })))) as AnnotationPlanePlan;
+    let publishedRows = [...native.plan.created], observerChecks = 0;
+    unsubscribe = useViewerStore.subscribe((current, previous) => {
+      const undoCount = current.undoStacks.get('annotation')?.length ?? 0;
+      if (undoCount <= (previous.undoStacks.get('annotation')?.length ?? 0)) return;
+      for (const row of publishedRows) {
+        assert.equal(current.toGlobalId('annotation', row.expressId), idOffset + row.expressId,
+          'history observers see every committed annotation row as federation-owned');
+        assert.equal(federationRegistry.toGlobalId('annotation', row.expressId), idOffset + row.expressId);
+      }
+      observerChecks++;
+    });
     const meshes = new Map<number, MeshData>();
     // GPU transport only is substituted; native rows, mutation history and export are real.
     const renderer = { prepareAuthoredOwner(parts: readonly MeshData[]) {
@@ -70,12 +85,34 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
     const allocationBefore = view.peekNextExpressId();
     const failingRenderer = { ...renderer, prepareAuthoredOwner() { throw new Error('injected GPU preparation failure'); } } as unknown as Renderer;
     await assert.rejects(commitTexturedProduct('annotation', asset.id, { ...native, objectId: native.annotationId }, containerId, failingRenderer, captureAppearanceSource(view)), /injected GPU/);
-    assert.equal(view.getNewEntities().length, 0);
+    assert.equal(view.getNewEntities().length, 1);
+    assert.equal(view.getNewEntity(priorOverlay.expressId)?.expressId, priorOverlay.expressId);
     assert.equal(view.peekNextExpressId(), allocationBefore);
+    assert.equal(federationRegistry.toGlobalId('annotation', priorOverlay.expressId), idOffset + priorOverlay.expressId,
+      'the canonical resolver reconciles only the existing committed overlay prefix');
+    assert.throws(
+      () => federationRegistry.toGlobalId('annotation', native.annotationId),
+      /not published/,
+      'a detached GPU preparation must not publish its provisional overlay IDs',
+    );
     assert.equal(useViewerStore.getState().undoStacks.get('annotation')?.length ?? 0, 0);
     assert.equal(modelAppearanceAssets.exportResources('annotation').resources.size, 0);
+    const failingCommitRenderer = { ...renderer, prepareAuthoredOwner(parts: readonly MeshData[]) {
+      const staged = renderer.prepareAuthoredOwner(parts);
+      return { commit() { throw new Error('injected GPU commit failure'); }, dispose() { staged.dispose(); } };
+    } } as unknown as Renderer;
+    await assert.rejects(commitTexturedProduct('annotation', asset.id, { ...native, objectId: native.annotationId }, containerId, failingCommitRenderer, captureAppearanceSource(view)), /injected GPU commit/);
+    assert.equal(view.getNewEntities().length, 1);
+    assert.equal(view.getNewEntity(priorOverlay.expressId)?.expressId, priorOverlay.expressId);
+    assert.equal(view.peekNextExpressId(), allocationBefore);
+    assert.throws(
+      () => federationRegistry.toGlobalId('annotation', native.annotationId),
+      /not published/,
+      'a failed GPU installation must not publish its committed-but-rolled-back overlay IDs',
+    );
     const result = await commitTexturedProduct('annotation', asset.id, { ...native, objectId: native.annotationId }, containerId, renderer, captureAppearanceSource(view));
     assert.equal(result.expressId, native.annotationId);
+    assert.equal(federationRegistry.toGlobalId('annotation', native.annotationId), result.globalId);
     assert.equal(useViewerStore.getState().resolveGlobalIdFromModels(result.globalId)?.expressId, native.annotationId);
     assert.equal(meshes.size, 1);
     const hierarchy = data.spatialHierarchy;
@@ -125,7 +162,31 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
     assert.equal(hierarchy.getContainingSpace(native.annotationId), containerId === 51 ? 51 : null);
     assert.equal(hierarchy.elementToContainer?.get(native.annotationId), containerId);
     assert.equal(useViewerStore.getState().models.get('annotation')!.geometryResult!.meshes.length, 1);
-  } finally { api.free(); globalThis.createImageBitmap = oldDecode; }
+    const nextNative = JSON.parse(new TextDecoder().decode(api.planAnnotationPlane(source, JSON.stringify({
+      schema: 'IFC4', sourceRevision: appearanceRevision('annotation'), nextExpressId: view.peekNextExpressId(),
+      containerId, GlobalId: '0hhhhhhhhhhhhhhhhhhhhh', containmentGlobalId: '0bbbbbbbbbbbbbbbbbbbbb',
+      Name: 'Second registered plan', imageUri: asset.exportName,
+      frame: { origin: [4, 3, 4], axisU: [1, 0, 0], axisV: [0, 0, 1], sizeMetres: [2, 1] },
+    })))) as AnnotationPlanePlan;
+    assert.equal(nextNative.plan.created[0]?.expressId, native.plan.created.at(-1)!.expressId + 1,
+      'the second real-WASM plan starts after the first containment row');
+    publishedRows = [...publishedRows, ...nextNative.plan.created];
+    const second = await commitTexturedProduct('annotation', asset.id, { ...nextNative, objectId: nextNative.annotationId }, containerId, renderer, captureAppearanceSource(view));
+    for (const row of [...native.plan.created, ...nextNative.plan.created]) {
+      assert.equal(federationRegistry.toGlobalId('annotation', row.expressId), idOffset + row.expressId,
+        'the full batch, including containment, is published before the next annotation stages');
+    }
+    assert.equal(meshes.size, 2);
+    useViewerStore.getState().undo('annotation');
+    assert.equal(meshes.size, 1);
+    assert.equal(view.getNewEntity(second.expressId), null);
+    assert.equal(federationRegistry.toGlobalId('annotation', second.expressId), second.globalId,
+      'published ownership remains stable while undo removes the live record');
+    useViewerStore.getState().redo('annotation');
+    assert.equal(meshes.size, 2);
+    assert.equal(view.getNewEntity(second.expressId)?.expressId, second.expressId);
+    assert.ok(observerChecks >= 2, 'both authored commits notified observers only after their full batches were published');
+  } finally { unsubscribe?.(); api.free(); globalThis.createImageBitmap = oldDecode; }
 });
 
 test('reference frame preserves all four corners and rejects a warped quad (#4308)', () => {

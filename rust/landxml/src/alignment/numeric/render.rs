@@ -14,7 +14,7 @@ use crate::{
 
 /// A bounded display polyline for one analytic source primitive. Numeric
 /// probes remain authoritative; these samples exist only for overlay/picking.
-#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+#[derive(Clone, Debug, serde::Deserialize, PartialEq, serde::Serialize)]
 pub struct LandXmlAlignmentRenderSpan {
     pub source_id: LandXmlSourceId,
     pub points: Vec<LandXmlPlanPoint>,

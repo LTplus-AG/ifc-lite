@@ -174,7 +174,7 @@ pub(crate) fn normalize_encoding(
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-enum Encoding {
+pub(crate) enum Encoding {
     Utf8,
     Utf16Le,
     Utf16Be,
@@ -254,7 +254,7 @@ fn utf16_unit(input: &[u8], index: usize, encoding: Encoding) -> u16 {
     }
 }
 
-fn check_declared_encoding(input: &[u8], detected: Encoding) -> Result<()> {
+pub(crate) fn check_declared_encoding(input: &[u8], detected: Encoding) -> Result<()> {
     const DECLARATION_LIMIT: usize = 1024;
     let declaration = input
         .get(..input.len().min(DECLARATION_LIMIT))

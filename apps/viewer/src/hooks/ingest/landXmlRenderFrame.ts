@@ -17,11 +17,41 @@ export const MAX_RENDER_FRAME_LOCAL_EXTENT_METRES = 1_000_000;
 /** Current name retained by federation callers; see the local-extent note above. */
 export const MAX_RENDER_FRAME_ORIGIN_METRES = MAX_RENDER_FRAME_LOCAL_EXTENT_METRES;
 
+/** Canonical parse and streamed-completion diagnostic for frozen-frame drops. */
+export function landXmlRenderFrameWarning(droppedComponents: number): string {
+  return `Skipped ${droppedComponents} LandXML surface component(s) outside the ${MAX_RENDER_FRAME_LOCAL_EXTENT_METRES / 1000} km shared render-frame envelope`;
+}
+
 interface RenderFrameComponent {
   mesh: MeshData;
   bounds: Bounds3D;
   /** Components split from one connected surface must be accepted atomically. */
   frameGroup?: string;
+}
+
+/** Stable frame chosen during the cursor's geometry-free preflight pass. */
+export interface LandXmlRenderFramePlan {
+  originShift: { x: number; y: number; z: number };
+  hasLargeCoordinates: boolean;
+}
+
+/** Derive the exact frame after a preflight has retained only bounds probes. */
+export function deriveLandXmlRenderFrameFromMeasurement(
+  sourceBounds: Bounds3D,
+  dominantBounds: Bounds3D,
+): LandXmlRenderFramePlan {
+  const maxAbs = Math.max(
+    Math.abs(sourceBounds.min.x), Math.abs(sourceBounds.min.y), Math.abs(sourceBounds.min.z),
+    Math.abs(sourceBounds.max.x), Math.abs(sourceBounds.max.y), Math.abs(sourceBounds.max.z),
+  );
+  const hasLargeCoordinates = maxAbs > 10_000;
+  return hasLargeCoordinates
+    ? { originShift: {
+      x: (dominantBounds.min.x + dominantBounds.max.x) / 2,
+      y: (dominantBounds.min.y + dominantBounds.max.y) / 2,
+      z: (dominantBounds.min.z + dominantBounds.max.z) / 2,
+    }, hasLargeCoordinates }
+    : { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates };
 }
 
 function mergeBounds(target: Bounds3D, source: Bounds3D): void {
@@ -57,7 +87,8 @@ export function boundsFitRenderFrame(
  * the precision pipeline has partitioned it, but raw connected geometry cannot
  * be narrowed safely by merely changing its origin.
  */
-function componentFitsPrecisionBatch(bounds: Bounds3D): boolean {
+/** Whether one RTE-local mesh can preserve its full f32 spatial extent. */
+export function boundsFitLandXmlPrecisionBatch(bounds: Bounds3D): boolean {
   const span = Math.max(
     bounds.max.x - bounds.min.x,
     bounds.max.y - bounds.min.y,
@@ -78,34 +109,37 @@ function componentFitsPrecisionBatch(bounds: Bounds3D): boolean {
  */
 export function placeComponentsInRenderFrame<T extends RenderFrameComponent>(
   components: T[],
+  warnings: string[] = [],
 ): { placed: T[]; dropped: T[]; bounds: Bounds3D; originShift: { x: number; y: number; z: number }; hasLargeCoordinates: boolean } {
   const sourceBounds = createEmptyBounds();
   for (const component of components) mergeBounds(sourceBounds, component.bounds);
-  const maxAbs = Math.max(
-    Math.abs(sourceBounds.min.x), Math.abs(sourceBounds.min.y), Math.abs(sourceBounds.min.z),
-    Math.abs(sourceBounds.max.x), Math.abs(sourceBounds.max.y), Math.abs(sourceBounds.max.z),
-  );
-  const hasLargeCoordinates = maxAbs > 10_000;
-  if (!hasLargeCoordinates) {
-    return { placed: components, dropped: [], bounds: sourceBounds, originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates };
-  }
   const dominant = components.reduce((best, component) => (
     component.mesh.indices.length > best.mesh.indices.length ? component : best
   ));
-  const originShift = {
-    x: (dominant.bounds.min.x + dominant.bounds.max.x) / 2,
-    y: (dominant.bounds.min.y + dominant.bounds.max.y) / 2,
-    z: (dominant.bounds.min.z + dominant.bounds.max.z) / 2,
-  };
+  return placeComponentsInKnownRenderFrame(
+    components,
+    deriveLandXmlRenderFrameFromMeasurement(sourceBounds, dominant.bounds),
+    warnings,
+  );
+}
+
+/** Apply a frame selected by an earlier bounded preflight pass. */
+export function placeComponentsInKnownRenderFrame<T extends RenderFrameComponent>(
+  components: T[],
+  frame: LandXmlRenderFramePlan,
+  warnings: string[],
+): { placed: T[]; dropped: T[]; bounds: Bounds3D; originShift: { x: number; y: number; z: number }; hasLargeCoordinates: boolean } {
+  const originShift = frame.originShift;
   const placed: T[] = [];
   const dropped: T[] = [];
   const bounds = createEmptyBounds();
   const rejectedGroups = new Set(components
-    .filter((component) => !componentFitsPrecisionBatch(component.bounds))
+    .filter((component) => !boundsFitLandXmlPrecisionBatch(component.bounds)
+      || !boundsFitRenderFrame(component.bounds, originShift))
     .map((component) => component.frameGroup)
     .filter((group): group is string => group !== undefined));
   for (const component of components) {
-    if (!componentFitsPrecisionBatch(component.bounds)
+    if (!boundsFitLandXmlPrecisionBatch(component.bounds)
       || !boundsFitRenderFrame(component.bounds, originShift)
       || (component.frameGroup !== undefined && rejectedGroups.has(component.frameGroup))) {
       dropped.push(component);
@@ -120,7 +154,20 @@ export function placeComponentsInRenderFrame<T extends RenderFrameComponent>(
     placed.push(component);
     mergeBounds(bounds, component.bounds);
   }
-  return { placed, dropped, bounds, originShift, hasLargeCoordinates };
+  if (dropped.length > 0) {
+    warnings.push(landXmlRenderFrameWarning(dropped.length));
+  }
+  return { placed, dropped, bounds, originShift, hasLargeCoordinates: frame.hasLargeCoordinates };
+}
+
+/** Derive the canonical dominant-component frame without allocating geometry. */
+export function deriveLandXmlRenderFrame<T extends RenderFrameComponent>(components: readonly T[]): LandXmlRenderFramePlan {
+  const sourceBounds = createEmptyBounds();
+  for (const component of components) mergeBounds(sourceBounds, component.bounds);
+  const dominant = components.reduce((best, component) => (
+    component.mesh.indices.length > best.mesh.indices.length ? component : best
+  ));
+  return deriveLandXmlRenderFrameFromMeasurement(sourceBounds, dominant.bounds);
 }
 
 /** Return one mesh's complete bounds in its current render frame. */

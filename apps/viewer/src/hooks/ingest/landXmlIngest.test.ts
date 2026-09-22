@@ -5,8 +5,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcAPI } from '@ifc-lite/wasm';
-import { parseLandXmlViewerModelAsync } from './landXmlViewerModel.js';
-import { connectedFaceComponents } from './landXmlIngest.js';
+import { FederationRegistry } from '@ifc-lite/renderer';
+import { parseLandXmlViewerModelAsync, parseLandXmlViewerModelFromBlobAsync } from './landXmlViewerModel.js';
+import {
+  buildLandXmlStreamedPipeComponents, completeLandXmlStreamedGeometry, connectedFaceComponents,
+  fragmentLandXmlGeometryComponent, MAX_LANDXML_COMPONENT_TRANSFER_BYTES,
+  buildLandXmlSurfaceComponents, parseLandXmlGeometry, preflightLandXmlGeometry,
+} from './landXmlIngest.js';
 import { buildLandXmlPipeComponents } from './landXmlPipeGeometry.js';
 import { findLandXmlSourceRecord, type LandXmlPipeNetworkDocument } from './landXmlSemantics.js';
 import { isLandXmlContent } from './landXmlSniff.js';
@@ -15,6 +20,9 @@ import {
 } from './landXmlWasm.js';
 import { inspectLandXmlAlignmentAtDistance } from './landXmlAlignmentWasm.js';
 import { initLandXmlWasm } from './landXmlWasmInit.js';
+import { streamLandXmlSourceBlobWithApi } from './landXmlBlobCursor.js';
+import { LandXmlStreamPreflightReducer } from './landXmlStreamPreflight.js';
+import { FederatedLandXmlStreamingPlan } from './federatedLandXmlStreaming.js';
 
 const LANDXML = `<?xml version="1.0" encoding="UTF-8"?>
 <LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
@@ -44,6 +52,11 @@ const LANDXML = `<?xml version="1.0" encoding="UTF-8"?>
       </Definition>
     </Surface>
   </Surfaces>
+</LandXML>`;
+
+const XML_WITHOUT_UNITS = `<?xml version="1.0" encoding="UTF-8"?>
+<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+  <Surfaces><Surface name="cut-fill"><Definition surfType="VOLUME"/></Surface></Surfaces>
 </LandXML>`;
 
 function bytes(text: string): ArrayBuffer {
@@ -123,6 +136,32 @@ it('reports pipe mesh truncation even after ordinary warning capacity is exhaust
   assert.match(result.warnings.at(-1) ?? '', /Stopped LandXML pipe rendering after 10000 meshes/);
 });
 
+it('fragments high-valence component transfers below cursor credit without losing stable face provenance (#5050)', () => {
+  const triangleCount = 20_000;
+  const positions = new Float32Array(triangleCount * 9);
+  const normals = new Float32Array(triangleCount * 9);
+  const indices = new Uint32Array(triangleCount * 3);
+  for (let triangle = 0; triangle < triangleCount; triangle++) {
+    const vertex = triangle * 3;
+    positions.set([triangle, 0, 0, triangle, 1, 0, triangle + 0.5, 0, 1], vertex * 3);
+    normals.set([0, 1, 0, 0, 1, 0, 0, 1, 0], vertex * 3);
+    indices.set([vertex, vertex + 1, vertex + 2], triangle * 3);
+  }
+  const fragments = fragmentLandXmlGeometryComponent({
+    mesh: { expressId: 1, positions, normals, indices, color: [0.42, 0.62, 0.32, 1], origin: [0, 0, 0] },
+    bounds: { min: { x: 0, y: 0, z: 0 }, max: { x: triangleCount, y: 1, z: 1 } },
+    surfaceName: 'high-valence', surfaceSourceId: 'surface-high', pipeSourceId: null,
+    renderedFaceSourceIds: Array.from({ length: triangleCount }, (_, index) => `face-${index}`),
+  });
+  assert.ok(fragments.length > 1);
+  assert.ok(fragments.every((fragment) => (
+    fragment.mesh.positions.byteLength + fragment.mesh.normals.byteLength + fragment.mesh.indices.byteLength
+      <= MAX_LANDXML_COMPONENT_TRANSFER_BYTES
+  )));
+  assert.equal(fragments.reduce((total, fragment) => total + fragment.mesh.indices.length / 3, 0), triangleCount);
+  assert.deepEqual(fragments.flatMap((fragment) => fragment.renderedFaceSourceIds), Array.from({ length: triangleCount }, (_, index) => `face-${index}`));
+});
+
 describe('LandXML content dispatch (#5041)', () => {
   it('recognizes default and prefixed roots without claiming generic XML', () => {
     assert.equal(isLandXmlContent(new Uint8Array(bytes(LANDXML))), true);
@@ -158,6 +197,220 @@ describe('LandXML content dispatch (#5041)', () => {
 });
 
 describe('LandXML 1.2 TIN ingest (#4937)', () => {
+  it('matches direct geometry through the bounded Blob cursor (#5050)', async () => {
+    const direct = await parseViewer(bytes(LANDXML));
+    const streamed = await parseLandXmlViewerModelFromBlobAsync(new Blob([LANDXML]));
+    assert.deepEqual(
+      streamed.geometryResult.meshes.map((mesh) => ({
+        expressId: mesh.expressId, positions: Array.from(mesh.positions), indices: Array.from(mesh.indices), origin: mesh.origin,
+      })),
+      direct.geometryResult.meshes.map((mesh) => ({
+        expressId: mesh.expressId, positions: Array.from(mesh.positions), indices: Array.from(mesh.indices), origin: mesh.origin,
+      })),
+    );
+    assert.deepEqual(streamed.semanticDocument.plan, direct.semanticDocument.plan);
+  });
+
+  it('preserves a unitless VOLUME source through the real WASM cursor (#5161)', async () => {
+    const direct = await parseViewer(bytes(XML_WITHOUT_UNITS));
+    const streamed = await parseLandXmlViewerModelFromBlobAsync(new Blob([XML_WITHOUT_UNITS]));
+    await initLandXmlWasm();
+    const api = new IfcAPI();
+    try {
+      const reducer = new LandXmlStreamPreflightReducer();
+      await streamLandXmlSourceBlobWithApi(api, new Blob([XML_WITHOUT_UNITS]), {
+        onHeader: (header) => reducer.onHeader(header),
+        onSurface: (surface) => reducer.onSurface(surface),
+        onEvent: (event) => reducer.onEvent(event),
+      });
+      assert.equal(reducer.finish().preflight.componentCount, 0);
+    } finally {
+      api.free();
+    }
+    assert.equal(direct.semanticDocument.units, null);
+    assert.equal(streamed.semanticDocument.units, null);
+    assert.equal(streamed.semanticDocument.surfaces[0]?.renderState, 'preserved_only');
+    assert.equal(streamed.geometryResult.meshes.length, 0);
+    assert.deepEqual(streamed.semanticDocument.surfaces, direct.semanticDocument.surfaces);
+    assert.deepEqual(streamed.semanticDocument.capabilities, direct.semanticDocument.capabilities);
+    assert.deepEqual(streamed.semanticDocument.warnings, direct.semanticDocument.warnings);
+    assert.deepEqual(streamed.semanticDocument.pipeNetworks, direct.semanticDocument.pipeNetworks);
+  });
+
+  it('uses the exact discard-after-measurement frame on the second pass (#5050)', async () => {
+    const parsed = await parseDocument(LANDXML.replace(
+      '</Faces>', '<F>10 20 30</F></Faces>',
+    ));
+    const preflight = preflightLandXmlGeometry(parsed);
+    const direct = parseLandXmlGeometry(parsed);
+    const secondPass = parseLandXmlGeometry(parsed, preflight);
+    assert.equal(preflight.componentCount, secondPass.geometryResult.meshes.length);
+    assert.deepEqual(secondPass.geometryResult.coordinateInfo, direct.geometryResult.coordinateInfo);
+    assert.deepEqual(
+      secondPass.geometryResult.meshes.map((mesh) => [mesh.expressId, mesh.origin, Array.from(mesh.indices)]),
+      direct.geometryResult.meshes.map((mesh) => [mesh.expressId, mesh.origin, Array.from(mesh.indices)]),
+    );
+  });
+
+  it('matches direct preflight from the real credited first-pass reducer (#5050)', async () => {
+    await initLandXmlWasm();
+    const api = new IfcAPI();
+    try {
+      const withPipe = LANDXML.replace('</LandXML>', `<PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>5000000 2600000 100</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>5000010 2600000 100</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="P" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`);
+      const reducer = new LandXmlStreamPreflightReducer();
+      await streamLandXmlSourceBlobWithApi(api, new Blob([withPipe]), {
+        onHeader: (header) => reducer.onHeader(header),
+        onSurface: (surface) => reducer.onSurface(surface),
+        onEvent: (event) => reducer.onEvent(event),
+      });
+      const parsed = await parseDocument(withPipe);
+      assert.deepEqual(reducer.finish().preflight, preflightLandXmlGeometry(parsed));
+    } finally {
+      api.free();
+    }
+  });
+
+  it('excludes an invalid-invert pipe from the real streamed envelope before its network is measured (#5161)', async () => {
+    const withRefusedPipe = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/><Invert refPipe="bad" flowDir="out" elev="bad"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="C"><Center>0 10 0</Center><CircStruct diameter="1"/></Struct><Struct name="D"><Center>10 10 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="bad" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe><Pipe name="good" refStart="C" refEnd="D"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    await initLandXmlWasm();
+    const api = new IfcAPI();
+    try {
+      const reducer = new LandXmlStreamPreflightReducer();
+      const records: string[] = [];
+      await streamLandXmlSourceBlobWithApi(api, new Blob([withRefusedPipe]), {
+        onHeader: (header) => reducer.onHeader(header),
+        onSurface: (surface) => reducer.onSurface(surface),
+        onEvent: async (event) => {
+          if (typeof event === 'object' && event !== null && (event as { kind?: unknown }).kind === 'metadata') {
+            const record = (event as { record?: unknown }).record;
+            if (typeof record === 'string') records.push(record);
+          }
+          await reducer.onEvent(event);
+        },
+      });
+      const parsed = await parseDocument(withRefusedPipe);
+      const direct = preflightLandXmlGeometry(parsed);
+      assert.equal(direct.componentCount, 1, 'the direct pipe cursor refuses the bad route rather than falling back to Center');
+      assert.deepEqual(reducer.finish().preflight, direct);
+      assert.ok(records.indexOf('pipe_preflight_refusal') < records.indexOf('pipe_network'));
+      assert.ok(records.lastIndexOf('pipe_refusal') > records.indexOf('pipe_network'), 'the durable semantic refusal remains source ordered');
+    } finally {
+      api.free();
+    }
+  });
+
+  it('shares the 10,000-pipe stream budget across network records (#5161)', async () => {
+    const network = (networkId: number) => {
+      const pipes = Array.from({ length: 100 }, (_, pipeId) => (
+        `<Pipe name="P-${networkId}-${pipeId}" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe>`
+      )).join('');
+      return `<PipeNetwork name="storm-${networkId}" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes>${pipes}</Pipes></PipeNetwork>`;
+    };
+    const xml = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><PipeNetworks>${Array.from({ length: 101 }, (_, index) => network(index + 1)).join('')}</PipeNetworks></LandXML>`;
+    await initLandXmlWasm();
+    const api = new IfcAPI();
+    try {
+      const reducer = new LandXmlStreamPreflightReducer();
+      await streamLandXmlSourceBlobWithApi(api, new Blob([xml]), {
+        onHeader: (header) => reducer.onHeader(header),
+        onSurface: (surface) => reducer.onSurface(surface),
+        onEvent: (event) => reducer.onEvent(event),
+      });
+      const parsed = await parseDocument(xml);
+      assert.equal(preflightLandXmlGeometry(parsed).componentCount, 10_000);
+      assert.equal(reducer.finish().preflight.componentCount, 10_000);
+    } finally {
+      api.free();
+    }
+  });
+
+  it('completes a Blob stream from acknowledged meshes without a second geometry build (#5050)', async () => {
+    const parsed = await parseDocument(LANDXML);
+    const preflight = preflightLandXmlGeometry(parsed);
+    const direct = parseLandXmlGeometry(parsed, preflight);
+    const streamed = completeLandXmlStreamedGeometry(parsed, direct.geometryResult.meshes.map((mesh) => {
+      const provenance = direct.semanticDocument.rendering.meshProvenance.find((entry) => entry.meshExpressId === mesh.expressId);
+      if (provenance === undefined) throw new Error('direct mesh is missing provenance');
+      return {
+        mesh, surfaceName: parsed.surfaces.find((surface) => surface.sourceId === provenance.surfaceSourceId)?.name ?? 'pipe',
+        surfaceSourceId: provenance.surfaceSourceId || null,
+        pipeSourceId: provenance.pipeSourceId ?? null,
+        renderedFaceSourceIds: provenance.renderedFaceSourceIds,
+      };
+    }), preflight);
+    assert.equal(streamed.geometryResult.meshes[0], direct.geometryResult.meshes[0]);
+    assert.deepEqual(streamed.geometryResult.coordinateInfo, direct.geometryResult.coordinateInfo);
+    assert.deepEqual(streamed.semanticDocument.rendering.meshProvenance, direct.semanticDocument.rendering.meshProvenance);
+  });
+
+  it('retains builder diagnostics and frozen-frame refusal counts at stream completion (#5161)', async () => {
+    const parsed = await parseDocument(LANDXML.replace('</Faces>', '<F>10 10 10</F></Faces>'));
+    const preflight = preflightLandXmlGeometry(parsed);
+    const direct = parseLandXmlGeometry(parsed, preflight);
+    const streamed = completeLandXmlStreamedGeometry(
+      parsed,
+      direct.geometryResult.meshes.map((mesh) => {
+        const provenance = direct.semanticDocument.rendering.meshProvenance.find((entry) => entry.meshExpressId === mesh.expressId);
+        if (provenance === undefined) throw new Error('direct mesh is missing provenance');
+        return {
+          mesh, surfaceName: parsed.surfaces[0]!.name, surfaceSourceId: provenance.surfaceSourceId,
+          pipeSourceId: provenance.pipeSourceId ?? null, renderedFaceSourceIds: provenance.renderedFaceSourceIds,
+        };
+      }),
+      preflight,
+      new Map([[parsed.surfaces[0]!.sourceId, {
+        surfaceSourceId: parsed.surfaces[0]!.sourceId, surfaceName: parsed.surfaces[0]!.name,
+        droppedDegenerateFaces: 1, droppedPrecisionFaces: 0, hasNoRenderableFaces: false,
+      }]]),
+      [{ expressId: 99, surfaceSourceId: parsed.surfaces[0]!.sourceId, renderedFaceSourceIds: ['refused-face'] }],
+    );
+    assert.deepEqual(streamed.semanticDocument.rendering.surfaceCounts[0], {
+      ...direct.semanticDocument.rendering.surfaceCounts[0], droppedReframeFaces: 1,
+    });
+    assert.ok(streamed.warnings.some((warning) => /Skipped 1 degenerate face/.test(warning)));
+  });
+
+  it('matches the direct frozen-frame warning after two real-WASM surface records are credited (#5161)', async () => {
+    const source = LANDXML.replace('</Surfaces>', `<Surface name="far"><Definition surfType="TIN"><Pnts>
+      <P id="101">0 800000000 0</P><P id="102">0 800000001 0</P><P id="103">1 800000000 0</P>
+    </Pnts><Faces><F>101 102 103</F></Faces></Definition></Surface></Surfaces>`);
+    const parsed = await parseDocument(source);
+    const preflight = preflightLandXmlGeometry(parsed);
+    const direct = parseLandXmlGeometry(parsed, preflight);
+    const nearProvenance = direct.semanticDocument.rendering.meshProvenance[0];
+    if (nearProvenance === undefined) throw new Error('near surface was unexpectedly refused');
+    const far = parsed.surfaces[2]!;
+    const streamed = completeLandXmlStreamedGeometry(
+      parsed,
+      direct.geometryResult.meshes.map((mesh) => ({
+        mesh, surfaceName: parsed.surfaces[0]!.name, surfaceSourceId: nearProvenance.surfaceSourceId,
+        pipeSourceId: null, renderedFaceSourceIds: nearProvenance.renderedFaceSourceIds,
+      })),
+      preflight,
+      new Map(),
+      [{ expressId: 2, surfaceSourceId: far.sourceId, renderedFaceSourceIds: far.faceSourceIds }],
+      [],
+      1,
+    );
+    assert.deepEqual(streamed.warnings, direct.warnings);
+    assert.deepEqual(streamed.semanticDocument.rendering.surfaceCounts, direct.semanticDocument.rendering.surfaceCounts);
+  });
+
+  it('retains pipe-builder refusal warnings at real-WASM streamed completion (#5161)', async () => {
+    const source = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter" widthUnit="meter" heightUnit="meter"/></Units><PipeNetworks><PipeNetwork name="storm" pipeNetType="storm"><Structs><Struct name="A"><Center>0 0 0</Center><CircStruct diameter="1"/></Struct><Struct name="B"><Center>10 0 0</Center><CircStruct diameter="1"/></Struct></Structs><Pipes><Pipe name="egg" refStart="A" refEnd="B"><EggPipe span="2" height="10"/></Pipe><Pipe name="good" refStart="A" refEnd="B"><CircPipe diameter="1"/></Pipe></Pipes></PipeNetwork></PipeNetworks></LandXML>`;
+    const parsed = await parseDocument(source);
+    const preflight = preflightLandXmlGeometry(parsed);
+    const direct = parseLandXmlGeometry(parsed, preflight);
+    const pipes = buildLandXmlStreamedPipeComponents(parsed, 1, preflight, true);
+    const components = pipes.slots.flatMap((slot) => 'component' in slot ? [slot.component] : []);
+    const skipped = pipes.slots.flatMap((slot) => 'skipped' in slot ? [slot.skipped] : []);
+    const streamed = completeLandXmlStreamedGeometry(
+      parsed, components, preflight, new Map(), skipped, pipes.warnings, pipes.droppedComponentCount,
+    );
+    assert.deepEqual(streamed.warnings, direct.warnings);
+    assert.ok(streamed.warnings.some((warning) => warning.includes('Egg pipe cross-section is retained but not rendered')));
+  });
+
   it('loads persisted pre-triangulation surface records without new optional fields (#5043)', async () => {
     await initLandXmlWasm();
     const api = new IfcAPI();
@@ -410,7 +663,7 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
     assert.equal(result.warnings.some((warning) => /degenerate face|render frame/.test(warning)), false);
   });
 
-  it('refuses a compact disconnected component beyond the shared RTE envelope (#5049)', async () => {
+  it('atomically refuses a source surface when one disconnected component misses the shared RTE envelope (#5161)', async () => {
     const withDistantSmallFace = LANDXML
       .replace(
         '</Pnts>',
@@ -419,14 +672,11 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
          <P id="52">900000001 800000000 700000000</P></Pnts>`,
       )
       .replace('</Faces>', '<F>50 51 52</F></Faces>');
-    const result = await parseViewer(bytes(withDistantSmallFace));
-    assert.equal(result.geometryResult.meshes.length, 1);
-    assert.equal(result.geometryResult.totalTriangles, 1);
-    assert.deepEqual(result.geometryResult.meshes[0].origin, [0, 0, 0]);
-    assert.deepEqual(result.geometryResult.coordinateInfo.originShift, { x: 2_600_005, y: 101, z: -5_000_005 });
-    assert.equal(result.geometryResult.coordinateInfo.originalBounds.max.x, 2_600_010);
-    assert.equal(result.warnings.some((warning) => /Skipped 1 LandXML surface component.*shared render-frame envelope/.test(warning)), true);
-    assert.equal(result.semanticDocument.rendering.surfaceCounts[0].droppedReframeFaces, 1);
+    await assert.rejects(
+      parseViewer(bytes(withDistantSmallFace)),
+      /no surface components within the 1000 km shared render-frame envelope/,
+      'primary and federated loads must refuse the complete source group rather than split its semantic surface',
+    );
   });
 
   it('removes the survey translation before GPU upload and retains it as frame metadata', async () => {
@@ -466,6 +716,29 @@ describe('LandXML 1.2 TIN ingest (#4937)', () => {
       /no surface components within the 1000 km shared render-frame envelope/,
       'a connected component cannot be partially registered after its local extent exceeds one precision-safe batch',
     );
+  });
+
+  it('rejects a real-WASM 1,500-km source component before federated publication (#5161)', async () => {
+    const xml = `<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter"/></Units><Surfaces><Surface name="wide"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 1500000 0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces></LandXML>`;
+    const parsed = await parseDocument(xml);
+    const component = buildLandXmlSurfaceComponents(parsed.surfaces[0]!, parsed.units!, 1).components[0]!;
+    assert.equal(component.bounds.max.x - component.bounds.min.x, 1_500_000);
+    assert.throws(() => parseLandXmlGeometry(parsed), /no surface components within the 1000 km/);
+
+    const registry = new FederationRegistry();
+    const plan = new FederatedLandXmlStreamingPlan({
+      modelId: 'real-wasm-wide', componentCount: 1,
+      sourceCoordinateInfo: {
+        originShift: { x: 0, y: 0, z: 0 }, originalBounds: component.bounds,
+        shiftedBounds: component.bounds, hasLargeCoordinates: true,
+      },
+      registry, resources: { publish: () => {}, remove: () => {} }, isCurrent: () => true,
+    });
+    await plan.measure(component.mesh);
+    plan.freeze();
+    await plan.admit({ mesh: component.mesh, frameGroup: 1 });
+    assert.throws(() => plan.freezeAdmission(), /rejected every render component/);
+    assert.equal(registry.getOffset('real-wasm-wide'), null);
   });
 
   it('walks a high-valence face fan without rescanning its shared point adjacency (#4937)', () => {

@@ -8,13 +8,16 @@ import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import { captureModelLoaded, snapshotFromGeometry } from '../../utils/loadTelemetry.js';
 import { createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
 import { toast } from '../../components/ui/toast.js';
-import { parseLandXmlViewerModelAsync, type LandXmlViewerModel } from './landXmlViewerModel.js';
-import type { LandXmlSourceBuffer } from './landXmlIngest.js';
+import { parseLandXmlViewerModelFromBlobAsync, type LandXmlViewerModel } from './landXmlViewerModel.js';
+import type { LandXmlGeometryPreflight } from './landXmlIngest.js';
 import type { LandXmlSchema, LandXmlTinDocument } from './landXmlSemantics.js';
-import { MAX_RENDER_FRAME_LOCAL_EXTENT_METRES, meshFitsRenderFrame, meshRenderFrameBounds } from './landXmlRenderFrame.js';
+import { landXmlRenderFrameWarning, MAX_RENDER_FRAME_LOCAL_EXTENT_METRES, meshFitsRenderFrame, meshRenderFrameBounds } from './landXmlRenderFrame.js';
+import { LandXmlProvisionalTransaction } from './landXmlProvisionalTransaction.js';
+import { markLandXmlGpuUploaded } from './landXmlGpuOwnership.js';
+import { type FederatedLandXmlStreamingFinalization, FederatedLandXmlStreamingPlan } from './federatedLandXmlStreaming.js';
 
 interface LandXmlLoadOptions {
-  buffer: LandXmlSourceBuffer;
+  file: File;
   fileSizeMB: number;
   targetKind: 'primary' | 'federated';
   totalStartTime: number;
@@ -23,6 +26,12 @@ interface LandXmlLoadOptions {
   setProgress(progress: { phase: string; percent: number }): void;
   setGeometryStreamingActive(active: boolean): void;
   setLoading(loading: boolean): void;
+  openProvisional?(preflight: LandXmlGeometryPreflight): LandXmlProvisionalTransaction | null;
+  openFederatedStreamingPlan?(
+    preflight: LandXmlGeometryPreflight,
+    sourceCoordinateInfo: CoordinateInfo,
+    spatialReference?: ModelSpatialReference,
+  ): FederatedLandXmlStreamingPlan | null;
   onPrimary(result: LandXmlViewerModel): void;
   finalize(
     dataStore: IfcDataStore,
@@ -34,9 +43,30 @@ interface LandXmlLoadOptions {
       sourceSchema?: LandXmlSchema;
       spatialReference?: ModelSpatialReference;
       postAlignmentReframe?: boolean;
+      federatedLandXmlStreamingPlan?: FederatedLandXmlStreamingFinalization;
     },
   ): Promise<void>;
   onError(message: string): void;
+}
+
+interface LandXmlRollbackOwnership { rollback(): void }
+
+/**
+ * A finalizer may suspend for CRS alignment after streamed ownership commits.
+ * Re-check liveness at that exact boundary and release both reservations
+ * before any model-visible success effects are allowed to run.
+ */
+export async function awaitLandXmlFinalization(
+  finalization: Promise<void>,
+  isCurrent: () => boolean,
+  provisional: LandXmlRollbackOwnership | null,
+  federatedPlan: LandXmlRollbackOwnership | null,
+): Promise<boolean> {
+  await finalization;
+  if (isCurrent()) return true;
+  provisional?.rollback();
+  federatedPlan?.rollback();
+  return false;
 }
 
 function shiftBounds(
@@ -70,6 +100,18 @@ function recomputeRenderedFaceCounts(document: LandXmlTinDocument): void {
   for (const counts of document.rendering.surfaceCounts) {
     counts.renderedFaces = renderedBySurface.get(counts.surfaceSourceId) ?? 0;
   }
+}
+
+function retainFederatedStreamedProvenance(document: LandXmlTinDocument, meshes: readonly GeometryResult['meshes'][number][]): void {
+  const retainedIds = new Set(meshes.map((mesh) => mesh.expressId));
+  for (const provenance of document.rendering.meshProvenance) {
+    if (retainedIds.has(provenance.meshExpressId)) continue;
+    const counts = document.rendering.surfaceCounts.find((count) => count.surfaceSourceId === provenance.surfaceSourceId);
+    if (counts) counts.droppedReframeFaces += provenance.renderedFaceSourceIds.length;
+  }
+  document.rendering.meshProvenance = document.rendering.meshProvenance
+    .filter((provenance) => retainedIds.has(provenance.meshExpressId));
+  recomputeRenderedFaceCounts(document);
 }
 
 /** Recompute counts and frame metadata from the meshes that survived reframing. */
@@ -156,13 +198,91 @@ export function reframeLandXmlGeometry(geometry: GeometryResult, document: LandX
 export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<void> {
   options.setProgress({ phase: 'Parsing LandXML TIN surfaces', percent: 10 });
   options.setGeometryStreamingActive(false);
+  // The callbacks run after this stack frame has yielded to the worker. Keep
+  // their mutable state in cells so both TypeScript and the error finalizer
+  // observe the same live transaction.
+  const provisional = { value: null as LandXmlProvisionalTransaction | null };
+  const federatedPlan = { value: null as FederatedLandXmlStreamingPlan | null };
+  let streamedComponents = 0;
+  const hasFederatedStreamingPlan = options.openFederatedStreamingPlan !== undefined;
   try {
-    const result = await parseLandXmlViewerModelAsync(options.buffer, options.isCurrent);
+    const result = await parseLandXmlViewerModelFromBlobAsync(
+      options.file,
+      options.isCurrent,
+      (loadedBytes, totalBytes) => {
+        if (!options.isCurrent()) return;
+        options.setProgress({
+          phase: 'Streaming LandXML TIN surfaces',
+          percent: Math.min(90, 10 + Math.round((loadedBytes / totalBytes) * 80)),
+        });
+      },
+      (preflight) => {
+        if (!options.isCurrent()) throw new Error('LandXML parsing cancelled');
+        provisional.value = options.openProvisional?.(preflight) ?? null;
+      },
+      (mesh) => {
+        if (federatedPlan.value !== null) return federatedPlan.value.publish(mesh);
+        if (provisional.value === null) return;
+        provisional.value.publish(mesh);
+        streamedComponents++;
+      },
+      hasFederatedStreamingPlan
+        ? (preflight, sourceCoordinateInfo, spatialReference) => {
+          federatedPlan.value = options.openFederatedStreamingPlan?.(preflight, sourceCoordinateInfo, spatialReference) ?? null;
+          return federatedPlan.value !== null;
+        }
+        : undefined,
+      hasFederatedStreamingPlan ? (component) => federatedPlan.value?.measure(component.mesh) : undefined,
+      hasFederatedStreamingPlan ? () => federatedPlan.value?.freeze() : undefined,
+      hasFederatedStreamingPlan ? (component) => federatedPlan.value?.admit(component) : undefined,
+      hasFederatedStreamingPlan ? () => federatedPlan.value?.freezeAdmission() : undefined,
+      (component) => {
+        if (federatedPlan.value !== null) {
+          throw new Error('LandXML federated stream skipped a component before destination alignment');
+        }
+        provisional.value?.skip(component);
+      },
+    );
     // The browser worker is terminated within the cancellation polling bound;
     // this guard also prevents a racing stale reply from mutating model state.
-    if (!options.isCurrent()) return;
+    if (!options.isCurrent()) {
+      provisional.value?.rollback();
+      federatedPlan.value?.rollback();
+      return;
+    }
+    if (provisional.value !== null) {
+      if (streamedComponents === 0) {
+        // Worker-less Blob loads still reserve the exact measured envelope.
+        // Their direct completion may have refused frame slots, so replay the
+        // original source order and consume each gap rather than compacting
+        // surviving mesh identities before committing the reservation.
+        const bySourceId = new Map(result.geometryResult.meshes.map((mesh) => [mesh.expressId, mesh]));
+        for (let expressId = 1; expressId <= provisional.value.reservedMaxExpressId; expressId++) {
+          const mesh = bySourceId.get(expressId);
+          if (mesh === undefined) provisional.value.skip({ expressId });
+          else provisional.value.publish(mesh);
+        }
+      } else {
+        for (const mesh of result.geometryResult.meshes.slice(streamedComponents)) provisional.value.publish(mesh);
+      }
+      for (const mesh of result.geometryResult.meshes) {
+        mesh.expressId += provisional.value.idOffset;
+        markLandXmlGpuUploaded(mesh);
+      }
+      for (const provenance of result.semanticDocument.rendering.meshProvenance) {
+        provenance.meshExpressId += provisional.value.idOffset;
+      }
+      provisional.value.commit();
+    }
+    if (federatedPlan.value !== null) {
+      federatedPlan.value.complete(result.geometryResult);
+      retainFederatedStreamedProvenance(result.semanticDocument, result.geometryResult.meshes);
+      const dropped = federatedPlan.value.droppedComponentCount;
+      if (dropped > 0) result.warnings.push(landXmlRenderFrameWarning(dropped));
+      for (const mesh of result.geometryResult.meshes) markLandXmlGpuUploaded(mesh);
+    }
     if (options.targetKind === 'primary') options.onPrimary(result);
-    await options.finalize(result.dataStore, result.geometryResult, result.schemaVersion, {
+    const finalization = options.finalize(result.dataStore, result.geometryResult, result.schemaVersion, {
       loadPath: 'landxml',
       landXmlDocument: result.semanticDocument,
       sourceSchema: result.semanticDocument.schema,
@@ -170,9 +290,10 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
       // first clips a correctly georeferenced Swiss TIN against an unrelated
       // local IFC render frame before it can be brought into that frame.
       ...(options.targetKind === 'federated' ? { postAlignmentReframe: true } : {}),
+      ...(federatedPlan.value ? { federatedLandXmlStreamingPlan: federatedPlan.value } : {}),
       ...(result.spatialReference ? { spatialReference: result.spatialReference } : {}),
     });
-    if (!options.isCurrent()) return;
+    if (!(await awaitLandXmlFinalization(finalization, options.isCurrent, provisional.value, federatedPlan.value))) return;
     for (const warning of result.warnings) toast.info(warning);
     options.setProgress({ phase: 'Complete', percent: 100 });
     captureModelLoaded({
@@ -185,6 +306,8 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
     }, snapshotFromGeometry(options.fileSizeMB, result.geometryResult));
     options.setLoading(false);
   } catch (error) {
+    provisional.value?.rollback();
+    federatedPlan.value?.rollback();
     if (!options.isCurrent()) return;
     console.error('[useIfc] LandXML parsing failed:', error);
     const message = error instanceof Error ? error.message : String(error);

@@ -10,9 +10,10 @@ import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import type { LandXmlTinDocument } from './landXmlSemantics';
 import { reframeLandXmlGeometry } from './landXmlLoad';
-import { alignGeometryToReference, extractModelSpatialPlacement, findReferenceSpatialModel } from './federationAlign';
+import { alignGeometryToReference, extractModelSpatialPlacement, findReferenceSpatialModel, type ModelSpatialPlacement } from './federationAlign';
 import { capturePreAlignment } from './federationRealign';
 import { applyLandXmlRenderedLineUpdates, buildLandXmlRenderedLineUpdates } from './landXmlSpatialLines';
+import type { FederatedLandXmlStreamingFinalization } from './federatedLandXmlStreaming';
 
 export interface FederatedSpatialFinalizeResult {
   preAlignment?: PreAlignmentSnapshot;
@@ -63,6 +64,22 @@ function hasLandXmlSpatialRecords(document: LandXmlTinDocument | undefined): boo
     || plan.resolvedGeometry.length > 0));
 }
 
+/** Keep the streamed and aggregate federation warnings word-for-word alike. */
+function reportFederationAlignmentOutcome(
+  status: FederatedModel['federationAlignmentStatus'],
+  fileName: string,
+  source: ModelSpatialPlacement,
+  reference: ModelSpatialPlacement,
+): void {
+  const sourceCrs = source.spatialReference.horizontal?.id ?? 'unknown CRS';
+  const targetCrs = reference.spatialReference.horizontal?.id ?? 'unknown CRS';
+  if (status === 'reprojected') {
+    toast.info(`Reprojected "${fileName}" from ${sourceCrs} to ${targetCrs} for federation alignment.`);
+  } else if (status === 'failed') {
+    toast.error(`Could not align "${fileName}" with the federation anchor — ${sourceCrs} → ${targetCrs} reprojection failed. The model is shown in its own local frame and may appear at the wrong real-world position.`);
+  }
+}
+
 /** Apply the one source-neutral placement path before IDs become globally visible. */
 export async function finalizeFederatedSpatialPlacement(options: {
   dataStore: IfcDataStore;
@@ -72,9 +89,46 @@ export async function finalizeFederatedSpatialPlacement(options: {
   spatialReference?: ModelSpatialReference;
   landXmlDocument?: LandXmlTinDocument;
   postAlignmentReframe?: boolean;
+  federatedLandXmlStreamingPlan?: FederatedLandXmlStreamingFinalization;
   isCurrent(): boolean;
   setProgress(progress: { phase: string; percent: number }): void;
 }): Promise<FederatedSpatialFinalizeResult | null> {
+  // #5050 has already aligned, clipped, and transaction-published every
+  // component under a frozen main-thread plan. Re-running the historic
+  // aggregate finalizer would both move it twice and race a second GPU upload.
+  // Keep this verification here so every federated format still crosses the
+  // one canonical finalization seam.
+  if (options.federatedLandXmlStreamingPlan) {
+    options.federatedLandXmlStreamingPlan.verify(options.geometry);
+    // Geometry was aligned and installed one component at a time before this
+    // common seam. Source-derived line overlays have no GPU transaction of
+    // their own, so they must still cross the canonical finalizer once the
+    // complete semantic document is available.
+    const source = options.federatedLandXmlStreamingPlan.sourcePlacement;
+    const reference = options.federatedLandXmlStreamingPlan.referencePlacement;
+    if (options.landXmlDocument && source && reference) {
+      const renderedLines = await buildLandXmlRenderedLineUpdates(
+        options.landXmlDocument,
+        source.spatialReference,
+        reference.spatialReference,
+        reference.coordinateInfo,
+      );
+      if (!options.isCurrent()) return null;
+      applyLandXmlRenderedLineUpdates(renderedLines);
+    }
+    if (source && reference) {
+      reportFederationAlignmentOutcome(
+        options.federatedLandXmlStreamingPlan.federationAlignmentStatus,
+        options.fileName,
+        source,
+        reference,
+      );
+    }
+    return {
+      preAlignment: options.federatedLandXmlStreamingPlan.preAlignment,
+      federationAlignmentStatus: options.federatedLandXmlStreamingPlan.federationAlignmentStatus,
+    };
+  }
   const reference = findReferenceSpatialModel()?.placement ?? null;
   const mutation = useViewerStore.getState().georefMutations.get(options.modelId);
   const parsed = options.spatialReference
@@ -105,13 +159,7 @@ export async function finalizeFederatedSpatialPlacement(options: {
       if (!options.isCurrent()) return null;
       applyLandXmlRenderedLineUpdates(renderedLines);
     }
-    const source = parsed.spatialReference.horizontal?.id ?? 'unknown CRS';
-    const target = reference.spatialReference.horizontal?.id ?? 'unknown CRS';
-    if (status === 'reprojected') {
-      toast.info(`Reprojected "${options.fileName}" from ${source} to ${target} for federation alignment.`);
-    } else if (status === 'failed') {
-      toast.error(`Could not align "${options.fileName}" with the federation anchor — ${source} → ${target} reprojection failed. The model is shown in its own local frame and may appear at the wrong real-world position.`);
-    }
+    reportFederationAlignmentOutcome(status, options.fileName, parsed, reference);
   } else if (parsed) {
     federationAlignmentStatus = 'anchor';
   }

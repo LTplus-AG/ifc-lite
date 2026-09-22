@@ -17,28 +17,7 @@
  * which keeps this module free of heavy imports.
  */
 
-import {
-  Info,
-  GitCompareArrows,
-  MessageSquare,
-  ClipboardCheck,
-  Palette,
-  Crosshair,
-  Puzzle,
-  Terminal,
-  CalendarRange,
-  Table2,
-  ListTree,
-  Users,
-  Cloud,
-  Layers as LayersIcon,
-  Box,
-  FileWarning,
-  BarChart3,
-  FileText,
-  Coins,
-  type LucideIcon,
-} from 'lucide-react';
+import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, FileText, FileWarning, GitCompareArrows, Info, Layers as LayersIcon, ListTree, MessageSquare, Palette, Puzzle, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
 
 /** Every panel reachable from the unified sidebar rail. `properties` is the
  *  Information panel (the right pane's default fallback). Each panel opens in
@@ -64,6 +43,7 @@ export type WorkspacePanelId =
   | 'loadReport'
   | 'appearance'
   | 'charts'
+  | 'flow'
   | 'document'
   | 'cost';
 
@@ -132,6 +112,8 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // Charts bound to the model, bidirectional with the 3D view (#3944). Bottom
   // strip like Lists / Schedule; the table in `bottom-panels.ts` carries it.
   { id: 'charts', title: 'Charts', short: 'Charts', Icon: BarChart3, group: 'work', region: 'bottom', prefersWide: true },
+  // Node-graph editor over the SDK (#5167): the same `*.flow.json` the CLI runs. Bottom strip, table-driven like Charts.
+  { id: 'flow', title: 'Flow', short: 'Flow', Icon: Workflow, group: 'author', region: 'bottom', prefersWide: true },
   // A free-form page over the model — text with bindings, logos, charts, BCF topics — printed to PDF (#4594).
   { id: 'document', title: 'Document', short: 'Document', Icon: FileText, group: 'work', region: 'bottom', prefersWide: true },
   // Read-only IFC 5D cost inspector: schedule/item tree + detail (#4858). APPENDED

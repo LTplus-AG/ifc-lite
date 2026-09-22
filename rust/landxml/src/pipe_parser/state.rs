@@ -2,9 +2,56 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use crate::{LandXmlPipeProperties, LandXmlSourceId};
+use crate::{
+    LandXmlCancellation, LandXmlCapabilityDiagnostic, LandXmlLimits, LandXmlPipeFeature,
+    LandXmlPipeNetwork, LandXmlPipeNetworkCollection, LandXmlPipeProperties, LandXmlPipeRefusal,
+    LandXmlSourceId,
+};
+
+/// Shared pipe-family semantic state. Both complete input and the resumable
+/// driver deliver quick-xml events to this one machine.
+pub(crate) struct PipeParser<'a> {
+    pub(super) limits: LandXmlLimits,
+    pub(super) cancelled: Option<&'a dyn LandXmlCancellation>,
+    pub(super) require_pipe_networks: bool,
+    pub(super) work: usize,
+    pub(super) character_references: usize,
+    pub(super) frames: Vec<Frame>,
+    pub(super) root_units: Option<RawUnits>,
+    pub(super) schema: String,
+    pub(super) version: String,
+    pub(super) capability_diagnostics: Vec<LandXmlCapabilityDiagnostic>,
+    pub(super) target_namespace: Option<String>,
+    pub(super) root_seen: bool,
+    pub(super) root_closed: bool,
+    pub(super) network: Option<NetworkBuilder>,
+    pub(super) structure: Option<StructureBuilder>,
+    pub(super) pipe: Option<PipeBuilder>,
+    pub(super) capture: Option<PositionCapture>,
+    pub(super) features_open: Vec<FeatureBuilder>,
+    pub(super) networks: Vec<LandXmlPipeNetwork>,
+    pub(super) collections: Vec<LandXmlPipeNetworkCollection>,
+    pub(super) features: Vec<LandXmlPipeFeature>,
+    pub(super) pending_networks: Vec<NetworkBuilder>,
+    pub(super) refusals: Vec<LandXmlPipeRefusal>,
+    /// Per-retained-network indexes into `refusals` for cursor-only geometry
+    /// probes. The stream emits the referenced refusal immediately before its
+    /// network, while the normal semantic refusal record keeps source order.
+    pub(super) preflight_refusal_batches: Vec<Vec<usize>>,
+    pub(super) refusal_keys: HashSet<(LandXmlSourceId, String)>,
+    pub(super) pipe_networks_seen: usize,
+    pub(super) structures_seen: usize,
+    pub(super) pipes_seen: usize,
+    pub(super) inverts_seen: usize,
+    pub(super) flows_seen: usize,
+    pub(super) points_seen: usize,
+    pub(super) references_seen: usize,
+    pub(super) pipe_network_collections: usize,
+    pub(super) network_ordinal: usize,
+    pub(super) feature_ordinals: HashMap<LandXmlSourceId, usize>,
+}
 
 #[derive(Clone)]
 pub(super) struct Frame {

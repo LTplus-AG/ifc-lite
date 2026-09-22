@@ -31,9 +31,16 @@ import {
   QUERY_REL_TYPE_MAP,
   resolveEffectiveEntityRecord,
 } from '@ifc-lite/parser';
-import { applyAttributeMutationsToEntityData, getMutationViewForModel, mergeAttributeMutations } from './mutation-view.js';
+import {
+  applyAttributeMutationsToEntityData,
+  getMutationViewForModel,
+  mergeAttributeMutations,
+  overlayProperties,
+  overlayQuantities,
+} from './mutation-view.js';
 import { effectiveMutationRelationships, foldMutationRelated } from './query-overlay-relations.js';
 import { foldRelationshipData } from './query-relationship-fold.js';
+import { foldOverlayCreatedEntities } from './query-overlay-entities.js';
 import { isProductType } from './query-entity-filter.js';
 import { evaluateFilterGroups } from '../../lib/search/filter-evaluate-groups.js';
 import { totalRuleCount } from '../../lib/search/filter-groups.js';
@@ -94,6 +101,8 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
     const model = getModelForRef(state, ref.modelId);
     if (!model?.ifcDataStore) return [];
 
+    const overlay = overlayProperties(store, ref.modelId, ref.expressId);
+    if (overlay !== undefined) return overlay;
     const node = new EntityNode(model.ifcDataStore, ref.expressId);
     return node.properties().map((pset) => ({
       name: pset.name,
@@ -123,6 +132,8 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
     const model = getModelForRef(state, ref.modelId);
     if (!model?.ifcDataStore) return [];
 
+    const overlay = overlayQuantities(store, ref.modelId, ref.expressId);
+    if (overlay !== undefined) return overlay;
     const node = new EntityNode(model.ifcDataStore, ref.expressId);
     return node.quantities().map(qset => ({
       name: qset.name,
@@ -198,6 +209,8 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
     for (const [modelId, model] of modelEntries) {
       if (!model?.ifcDataStore) continue;
 
+      const view = getMutationViewForModel(store, modelId);
+
       let entityIds: number[];
       if (descriptor.types && descriptor.types.length > 0) {
         // Expand types to every schema-declared descendant (IfcWall →
@@ -223,6 +236,9 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
       }
       for (const expressId of entityIds) {
         if (expressId === 0) continue;
+        // Tombstoned this session — matches `entityData`/`entities` and the
+        // CLI/MCP siblings' `isDeleted` check.
+        if (view?.isDeleted(expressId)) continue;
         const node = new EntityNode(model.ifcDataStore, expressId);
         results.push(applyAttributeMutationsToEntityData(store, modelId, expressId, {
           ref: { modelId, expressId },
@@ -233,6 +249,11 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
           objectType: node.objectType,
         }));
       }
+      // Overlay-created entities join the same result set under the same type
+      // rules, so a wall created this session shows up in a query for walls
+      // before export.
+      const schemaVersion = model.ifcDataStore.schemaVersion;
+      results.push(...foldOverlayCreatedEntities(view, modelId, descriptor.types, schemaVersion, isProductType, getEntityData));
     }
 
     // Apply property filters
@@ -321,8 +342,13 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
           definedModelTagIds: definedModelTagIdsOf(state),
         },
       );
+      const view = getMutationViewForModel(store, modelId);
       for (const m of matched) {
         if (m.expressId === 0) continue;
+        // Tombstoned this session — `evaluateFilterGroups` matches straight
+        // off `ifcDataStore` and has no notion of the overlay, so a wall the
+        // user deleted still comes back as a match here unless excluded.
+        if (view?.isDeleted(m.expressId)) continue;
         const node = new EntityNode(model.ifcDataStore, m.expressId);
         results.push(applyAttributeMutationsToEntityData(store, modelId, m.expressId, {
           ref: { modelId, expressId: m.expressId },

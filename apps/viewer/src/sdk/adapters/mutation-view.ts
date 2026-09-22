@@ -4,7 +4,7 @@
 
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { extractPropertiesOnDemand, extractQuantitiesOnDemand, getAttributeNamesForSchema, normalizeIfcTypeName } from '@ifc-lite/parser';
-import type { EntityAttributeData, EntityData } from '@ifc-lite/sdk';
+import type { EntityAttributeData, EntityData, PropertySetData, QuantitySetData } from '@ifc-lite/sdk';
 import type { ViewerState } from '../../store/index.js';
 import { resolveBaseAttributeValue } from '../../utils/configureMutationView.js';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
@@ -118,6 +118,41 @@ export function applyAttributeMutationsToEntityData(
     }
   }
   return next;
+}
+
+/**
+ * `getProperties`'s overlay half — matches `packages/cli/src/query-overlay.ts`'s
+ * `overlayProperties`. Once a mutation view exists at all, it is the whole
+ * answer for every entity (mutated or not): `getForEntity` already merges the
+ * on-demand base data with any SET/DELETE mutations, the same merge
+ * `StepExporter` reads for `bim.export.ifc()`. `undefined` means only "no
+ * mutation view yet" (a session that has made no edits) — the one case that
+ * still falls through to the parsed store; a deleted entity answers `[]`.
+ */
+export function overlayProperties(store: StoreApi, modelId: string, expressId: number): PropertySetData[] | undefined {
+  const view = getMutationViewForModel(store, modelId);
+  if (!view) return undefined;
+  if (view.isDeleted(expressId)) return [];
+  return view.getForEntity(expressId).map((pset) => ({
+    name: pset.name,
+    globalId: pset.globalId,
+    properties: pset.properties.map((p) => ({
+      name: p.name,
+      type: p.type,
+      value: p.value as string | number | boolean | null,
+    })),
+  }));
+}
+
+/** `getQuantities`'s overlay half — see {@link overlayProperties}. */
+export function overlayQuantities(store: StoreApi, modelId: string, expressId: number): QuantitySetData[] | undefined {
+  const view = getMutationViewForModel(store, modelId);
+  if (!view) return undefined;
+  if (view.isDeleted(expressId)) return [];
+  return view.getQuantitiesForEntity(expressId).map((qset) => ({
+    name: qset.name,
+    quantities: qset.quantities.map((q) => ({ name: q.name, type: q.type, value: q.value })),
+  }));
 }
 
 export function mergeAttributeMutations(

@@ -11,6 +11,20 @@ import type { LandXmlGeometryPreflight } from './landXmlIngest.js';
 import { FederatedLandXmlStreamingPlan } from './federatedLandXmlStreaming.js';
 import { LandXmlProvisionalTransaction } from './landXmlProvisionalTransaction.js';
 
+/**
+ * A provisional GPU upload failed. Distinct from the invariant errors
+ * `LandXmlProvisionalTransaction.publish` raises (preflight ID envelope,
+ * component ordering) — those are programming errors and must stay fatal,
+ * while this one is environmental (an exhausted, lost, or software-emulated
+ * device) and the load can complete without the provisional fast path (#5175).
+ */
+export class LandXmlProvisionalUploadError extends Error {
+  constructor(reason: string) {
+    super(`LandXML provisional GPU upload failed: ${reason}`);
+    this.name = 'LandXmlProvisionalUploadError';
+  }
+}
+
 function resources() {
   const renderer = getGlobalRenderer();
   // `isReady()` matters as much as existence (#5175). The renderer instance is
@@ -23,7 +37,7 @@ function resources() {
   return {
     publish: (mesh: import('@ifc-lite/geometry').MeshData) => {
       const outcome = renderer.addMeshes([mesh], true);
-      if (!outcome.ok) throw new Error(`LandXML provisional GPU upload failed: ${outcome.reason}`);
+      if (!outcome.ok) throw new LandXmlProvisionalUploadError(outcome.reason);
     },
     remove: (globalExpressIds: readonly number[]) => { renderer.getScene().removeMeshesForEntities(globalExpressIds); },
   };

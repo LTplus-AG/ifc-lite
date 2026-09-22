@@ -19,7 +19,8 @@ import { largestBucketIds } from '../charts/buckets.js';
 import { generateDocumentPdf, topicLines, type DocumentPdfSeams } from './generate-document-pdf.js';
 import { parseDocumentFile } from './persistence.js';
 import { blankDocument, coverSheetDocument } from './presets.js';
-import { DOCUMENT_VERSION, validateDocumentSpec, type DocumentSpec, type TableBlock } from './types.js';
+import { resolveValidationTableState } from './resolve-validation-table.js';
+import { DOCUMENT_VERSION, validateDocumentSpec, type DocumentSpec, type ListTableSource, type TableBlock, type ValidationTableSource } from './types.js';
 import { elementsDataset } from '@ifc-lite/charts';
 import { IfcTypeEnum } from '@ifc-lite/data';
 import type { ListDefinition } from '@ifc-lite/lists';
@@ -162,9 +163,26 @@ describe('document file', () => {
     assert.equal(imported.blocks.length, doc.blocks.length);
     imported.blocks.forEach((b, i) => assert.notEqual(b.id, doc.blocks[i].id));
     assert.equal((imported.blocks[0] as { text: string }).text, '{IfcProject.LongName}');
-    assert.throws(() => parseDocumentFile(JSON.stringify({ ...doc, version: 4 })), /Not a document file: version expected version 3/);
+    assert.throws(() => parseDocumentFile(JSON.stringify({ ...doc, version: 5 })), /Not a document file: version saved by a newer version of ifc-lite \(document version 5\); this viewer knows up to version 4/);
     const broken = { ...doc, blocks: [{ kind: 'image', id: 'i', dataUrl: 'http://x/logo.png', height: 0, align: 'middle', caption: {} }] };
     assert.deepEqual(validateDocumentSpec(broken).map((e) => e.path), ['blocks[0].dataUrl', 'blocks[0].height', 'blocks[0].align', 'blocks[0].caption']);
+  });
+
+  it('a version above what this viewer knows reports "newer version", not a generic mismatch (#5138 review)', () => {
+    const newer = validateDocumentSpec({ ...coverSheetDocument(), version: 5 });
+    assert.deepEqual(newer.map((e) => e.path), ['version']);
+    assert.match(newer[0].message, /newer version of ifc-lite/);
+    // A too-OLD or malformed version keeps the generic message — it is not "newer", it is wrong.
+    const older = validateDocumentSpec({ ...coverSheetDocument(), version: 1 });
+    assert.deepEqual(older.map((e) => e.message), [`expected version ${DOCUMENT_VERSION}`]);
+  });
+
+  it('a version-3 document (#5142, before the table block\'s validation source existed) still migrates and loads', () => {
+    const listTable = { kind: 'table', id: 'tb', source: { kind: 'list', list: { id: 'l', name: 'Walls', createdAt: 0, updatedAt: 0, entityTypes: [], conditions: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }] }, fromListId: 'preset-wall-schedule' } };
+    const v3Doc = { version: 3, id: 'd3', name: 'Old table doc', page: { size: 'A4', orientation: 'portrait' }, blocks: [listTable] };
+    const imported = parseDocumentFile(JSON.stringify(v3Doc));
+    assert.equal(imported.version, DOCUMENT_VERSION);
+    assert.deepEqual(validateDocumentSpec(imported), []);
   });
 
   it('migrates a version 1 or 2 file to the current version and validates the #4940 fields', { skip: !migrateDocumentSpec && 'migrateDocumentSpec is not exported (production reverted)' }, () => {
@@ -172,11 +190,13 @@ describe('document file', () => {
     assert.deepEqual(migrateDocumentSpec!(v1), { ...v1, version: DOCUMENT_VERSION });
     const imported = parseDocumentFile(JSON.stringify(v1));
     assert.equal(imported.version, DOCUMENT_VERSION);
-    // A v2 file (#4940) is a v3 file with the number bumped (#5142: the table block is additive).
+    // A v2 file (#4940) and a v3 file (#5142) are both the current version with the number bumped
+    // (#5138: the table block's validation source is additive, the same way v2's fields were).
     assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 2 }), { ...v1, version: DOCUMENT_VERSION });
+    assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 3 }), { ...v1, version: DOCUMENT_VERSION });
     // Anything not a recognizable older document (already current, a later version, malformed) passes through unchanged.
     assert.deepEqual(migrateDocumentSpec!({ ...v1, version: DOCUMENT_VERSION }), { ...v1, version: DOCUMENT_VERSION });
-    assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 4 }), { ...v1, version: 4 });
+    assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 5 }), { ...v1, version: 5 });
     assert.equal(migrateDocumentSpec!(null), null);
 
     const spacer = { kind: 'spacer', id: 's', height: 20 };
@@ -487,10 +507,11 @@ describe('table block (#5142)', () => {
 
     const imported = parseDocumentFile(JSON.stringify(docWith([tableBlock()])));
     const block = imported.blocks[0] as TableBlock;
+    const source = block.source as ListTableSource;
     assert.notEqual(block.id, 'tb');
-    assert.notEqual(block.source.list.id, 'list-walls', 'the copy never shares an id with a library list');
-    assert.equal(block.source.fromListId, 'preset-wall-schedule', 'the back-pointer is kept');
-    assert.equal(block.source.list.columns.length, 3);
+    assert.notEqual(source.list.id, 'list-walls', 'the copy never shares an id with a library list');
+    assert.equal(source.fromListId, 'preset-wall-schedule', 'the back-pointer is kept');
+    assert.equal(source.list.columns.length, 3);
   });
 
   it('listCopyForDocument drops the selection snapshot and takes the given id', { skip: !tableExports.listCopyForDocument && 'listCopyForDocument is not exported (production reverted)' }, () => {
@@ -543,5 +564,79 @@ describe('table block (#5142)', () => {
     assert.ok(empty.calls.some((c) => c.op === 'text' && c.args[0] === 'The list could not be run.'));
     assert.deepEqual(errPdf.tableFailures, ['tb3']);
     assert.equal(pdf.pages, 1);
+  });
+});
+
+describe('validation-results table source (#5138)', () => {
+  const docWith = (blocks: DocumentSpec['blocks']): DocumentSpec => ({ version: DOCUMENT_VERSION, id: 'd', name: 'Validation report', page: { size: 'A4', orientation: 'portrait' }, blocks });
+
+  it('a validation table with 120 failing entities paginates through compose-table with the head repeated on every chunk', async () => {
+    const entityResults = Array.from({ length: 120 }, (_, i) => ({
+      expressId: i, modelId: 'm1', entityType: 'IfcWall', entityName: `Wall ${i}`, globalId: `G-${i}`, passed: false,
+      requirementResults: [{ requirement: { id: 'r1', label: 'FireRating is set', optionality: 'required' as const }, status: 'fail' as const, facetType: 'property' as const, checkedDescription: '', failureReason: 'absent' }],
+    }));
+    const report = {
+      source: { kind: 'rules' as const, ruleSet: { name: 'Rule set' } },
+      modelInfo: [{ modelId: 'm1', schemaVersion: 'IFC4', entityCount: 120 }],
+      timestamp: new Date('2026-09-21T00:00:00Z'),
+      summary: { totalSpecifications: 1, passedSpecifications: 0, failedSpecifications: 1, totalEntitiesChecked: 120, totalEntitiesPassed: 0, totalEntitiesFailed: 120, overallPassRate: 0 },
+      specificationResults: [{ specification: { id: 's1', name: 'Walls have FireRating' }, status: 'fail' as const, applicableCount: 120, passedCount: 0, failedCount: 120, passRate: 0, entityResults }],
+    };
+    const source: ValidationTableSource = { kind: 'validation', rows: 'failed', columns: ['rule', 'result', 'name', 'globalId', 'reason'] };
+    const modelName = (id: string): string => (id === 'm1' ? 'tower.ifc' : id);
+    const state = resolveValidationTableState(source, report, modelName);
+
+    const doc = docWith([{ kind: 'table', id: 'vt', source, maxRows: 500 }]);
+    const { seams, calls } = recordingSeams();
+    const pdf = await generateDocumentPdf({ document: doc, bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), tables: new Map([['vt', state]]) }, seams);
+    const tables = calls.filter((c) => c.op === 'table').map((c) => c.args[0] as { head: string[][]; body: string[][] });
+    assert.ok(tables.length >= 2, `expected several chunks, got ${tables.length}`);
+    for (const t of tables) assert.deepEqual(t.head, [['Rule', 'Result', 'Name', 'GlobalId', 'Reason']], 'every chunk repeats the same header');
+    const bodies = tables.flatMap((t) => t.body);
+    assert.equal(bodies.length, 120, 'every row printed exactly once, none split');
+    // Every expected Name/GlobalId shows up exactly once across chunks — a stronger check than a
+    // count, which would not catch a row printed twice while another was silently dropped (review finding).
+    const names = bodies.map((r) => r[2]).sort();
+    const globalIds = bodies.map((r) => r[3]).sort();
+    const expectedNames = Array.from({ length: 120 }, (_, i) => `Wall ${i}`).sort();
+    const expectedGlobalIds = Array.from({ length: 120 }, (_, i) => `G-${i}`).sort();
+    assert.deepEqual(names, expectedNames, 'every entity name appears exactly once');
+    assert.deepEqual(globalIds, expectedGlobalIds, 'every entity GlobalId appears exactly once');
+    assert.deepEqual(pdf.tableFailures, []);
+  });
+
+  it('a stale ruleId and an absent report each print their own placeholder — never a crash', async () => {
+    const source: ValidationTableSource = { kind: 'validation', ruleId: 'gone', rows: 'failed', columns: ['rule'] };
+    const modelName = (id: string): string => id;
+    const absentState = resolveValidationTableState(source, null, modelName);
+    const doc = docWith([{ kind: 'table', id: 'vt1', source }]);
+    const { seams, calls } = recordingSeams();
+    const pdf = await generateDocumentPdf({ document: doc, bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), tables: new Map([['vt1', absentState]]) }, seams);
+    const texts = calls.filter((c) => c.op === 'text').map((c) => String(c.args[0]));
+    assert.ok(texts.includes('No validation report yet — run validation, then export again.'));
+    assert.deepEqual(pdf.tableFailures, ['vt1']);
+
+    const emptyReport = {
+      source: { kind: 'rules' as const, ruleSet: { name: 'x' } }, modelInfo: [], timestamp: new Date(0),
+      summary: { totalSpecifications: 1, passedSpecifications: 0, failedSpecifications: 1, totalEntitiesChecked: 0, totalEntitiesPassed: 0, totalEntitiesFailed: 0, overallPassRate: 0 },
+      specificationResults: [{ specification: { id: 'other', name: 'Other' }, status: 'fail' as const, applicableCount: 0, passedCount: 0, failedCount: 0, passRate: 0, entityResults: [] }],
+    };
+    const staleState = resolveValidationTableState(source, emptyReport, modelName);
+    const staleDoc = docWith([{ kind: 'table', id: 'vt2', source }]);
+    const staleResult = await generateDocumentPdf({ document: staleDoc, bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), tables: new Map([['vt2', staleState]]) }, seams);
+    assert.deepEqual(staleResult.tableFailures, ['vt2']);
+  });
+
+  it('an older document with only a list-sourced table block (no validation source anywhere) still validates and loads (#5142 compat)', () => {
+    const list: ListDefinition = {
+      id: 'list-walls', name: 'Walls', createdAt: 0, updatedAt: 0, entityTypes: [IfcTypeEnum.IfcWall], conditions: [],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+    };
+    const oldDoc = docWith([{ kind: 'table', id: 'tb', source: { kind: 'list', list, fromListId: 'preset-wall-schedule' }, maxRows: 10 }]);
+    assert.deepEqual(validateDocumentSpec(oldDoc), [], 'a document that only ever names source.kind "list" still validates cleanly');
+    const imported = parseDocumentFile(JSON.stringify(oldDoc));
+    const source = (imported.blocks[0] as TableBlock).source as ListTableSource;
+    assert.equal(source.kind, 'list');
+    assert.equal(source.list.name, 'Walls');
   });
 });

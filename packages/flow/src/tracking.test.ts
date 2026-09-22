@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { isValidIfcGuid } from '@ifc-lite/encoding';
 import { digest, trackingGuid } from './digest.js';
-import { emptyTrackedSet, planTracking, trackedSetFrom, TrackingPinMismatch, withTrackedSet } from './tracking.js';
+import { emptyTrackedSet, isTrackedSet, planTracking, trackedSetFrom, trackedSetsFrom, TrackingPinMismatch, withTrackedSet } from './tracking.js';
 
 describe('trackingGuid', () => {
   it('is a valid IFC GUID, deterministic, and independent of anything session-scoped', () => {
@@ -86,5 +86,20 @@ describe('tracking sidecar', () => {
     const old = withTrackedSet(undefined, 'stack:abc', set);
     const repinned = withTrackedSet(old, 'stack:def', emptyTrackedSet('g/beams'));
     expect(Object.keys(repinned.sets)).toEqual(['g/beams']);
+  });
+});
+
+describe('sidecar set validation', () => {
+  it('accepts well-formed sets keyed by their tracking key and refuses anything else', () => {
+    const good = { 'a/b': { trackingKey: 'a/b', generation: 0, entries: { k: { globalId: 'G', digest: 'd' } }, nodeType: 't' } };
+    expect(trackedSetsFrom(good)).toEqual(good);
+    expect(trackedSetsFrom({})).toEqual({});
+    expect(trackedSetsFrom([])).toBeUndefined();
+    expect(trackedSetsFrom(null)).toBeUndefined();
+    expect(trackedSetsFrom({ 'a/b': 'stale' })).toBeUndefined();
+    expect(trackedSetsFrom({ 'a/b': { trackingKey: 'other', generation: 0, entries: {} } })).toBeUndefined();
+    expect(trackedSetsFrom({ 'a/b': { trackingKey: 'a/b', generation: 0, entries: { k: { globalId: 'G' } } } })).toBeUndefined();
+    expect(trackedSetsFrom({ 'a/b': { trackingKey: 'a/b', generation: 1.5, entries: {} } })).toBeUndefined();
+    expect(isTrackedSet({ trackingKey: 'a', generation: 0, entries: [] })).toBe(false);
   });
 });

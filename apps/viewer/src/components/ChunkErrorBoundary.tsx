@@ -45,6 +45,7 @@ const NIGHT_TONE = { fg: '#ede4d3', dim: '#9c9486' } as const;
 const CHUNK_LABEL_KEYS = {
   'Appearance panel': 'viewerShell.chunkLabel.appearancePanel',
   'Charts panel': 'viewerShell.chunkLabel.chartsPanel',
+  'Flow panel': 'viewerShell.chunkLabel.flowPanel',
   'Document panel': 'viewerShell.chunkLabel.documentPanel',
   'Layers panel': 'viewerShell.chunkLabel.layersPanel',
   'MCP page': 'viewerShell.chunkLabel.mcpPage',

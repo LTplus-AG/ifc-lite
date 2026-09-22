@@ -33,6 +33,7 @@ import {
 } from '@ifc-lite/parser';
 import { applyAttributeMutationsToEntityData, getMutationViewForModel, mergeAttributeMutations } from './mutation-view.js';
 import { effectiveMutationRelationships, foldMutationRelated } from './query-overlay-relations.js';
+import { overlayProperties, overlayQuantities } from './query-adapter-overlay.js';
 import { foldRelationshipData } from './query-relationship-fold.js';
 import { isProductType } from './query-entity-filter.js';
 import { evaluateFilterGroups } from '../../lib/search/filter-evaluate-groups.js';
@@ -94,6 +95,10 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
     const model = getModelForRef(state, ref.modelId);
     if (!model?.ifcDataStore) return [];
 
+    // The overlay is the whole answer once it exists (see query-adapter-overlay.ts).
+    const overlaid = overlayProperties(getMutationViewForModel(store, ref.modelId), ref);
+    if (overlaid) return overlaid;
+
     const node = new EntityNode(model.ifcDataStore, ref.expressId);
     return node.properties().map((pset) => ({
       name: pset.name,
@@ -122,6 +127,9 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
     const state = store.getState();
     const model = getModelForRef(state, ref.modelId);
     if (!model?.ifcDataStore) return [];
+
+    const overlaid = overlayQuantities(getMutationViewForModel(store, ref.modelId), ref);
+    if (overlaid) return overlaid;
 
     const node = new EntityNode(model.ifcDataStore, ref.expressId);
     return node.quantities().map(qset => ({

@@ -19,7 +19,7 @@
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
-import { assertPositiveFinite, ownerHistoryRef } from './_emit-helpers.js';
+import { assertPositiveFinite, ownerHistoryRef, productGuid } from './_emit-helpers.js';
 
 export interface ColumnInStoreParams {
   /** Base centre of the column, in storey-local coordinates (metres). */
@@ -35,6 +35,8 @@ export interface ColumnInStoreParams {
   Description?: string;
   ObjectType?: string;
   Tag?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
 }
 
 /**
@@ -133,7 +135,7 @@ export function addColumnToStore(
   // onward — IFC2X3 has no such attribute, so emitting `.COLUMN.` there
   // would produce an invalid 9-arg entity record.
   const columnAttrs: Array<unknown> = [
-    generateIfcGuid(anchor.guidRandom),
+    productGuid(params, anchor.guidRandom),
     ownerHistoryRef(ownerHistoryId),
     params.Name ?? 'Column',
     params.Description ?? null,

@@ -70,9 +70,10 @@ export function parseDocumentFile(text: string): DocumentSpec {
   return {
     ...spec,
     id: freshDocumentId(),
-    // A table block's embedded list is re-identified too (#5142): it is a copy, and must never
-    // share an id with a list in this browser's library.
-    blocks: spec.blocks.map((b) => (b.kind === 'table'
+    // A table block over a list embeds a copy of it (#5142), re-identified too: it must never
+    // share an id with a list already in this browser's library. A validation-results table
+    // (#5138) has no embedded list — only its own block id changes.
+    blocks: spec.blocks.map((b) => (b.kind === 'table' && b.source.kind === 'list'
       ? { ...b, id: freshBlockId(), source: { ...b.source, list: { ...b.source.list, id: freshListCopyId() } } }
       : { ...b, id: freshBlockId() })),
   };

@@ -38,6 +38,8 @@ export interface MemberInStoreParams {
   Description?: string;
   ObjectType?: string;
   Tag?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
 }
 
 export interface MemberBuildResult {

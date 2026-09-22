@@ -778,6 +778,72 @@ describe('MutateNamespace', () => {
     bim.mutate.undo('model-1');
     expect(mutate.undo).toHaveBeenCalledWith('model-1');
   });
+
+  it('batchAsync() keeps the batch open across awaits and closes it on rejection too', async () => {
+    const { backend, mutate } = createMockBackend();
+    const bim = createBimContext({ backend });
+
+    const value = await bim.mutate.batchAsync('flow run', async () => {
+      expect(mutate.batchBegin).toHaveBeenCalledWith('flow run');
+      expect(mutate.batchEnd).not.toHaveBeenCalled();
+      await Promise.resolve();
+      // Still open after the suspension: an implementation that ran `fn()`
+      // without awaiting it would have closed the batch by now.
+      expect(mutate.batchEnd).not.toHaveBeenCalled();
+      bim.mutate.setProperty({ modelId: 'm', expressId: 1 }, 'Pset', 'Prop', 1);
+      return 42;
+    });
+    expect(value).toBe(42);
+    expect(mutate.batchEnd).toHaveBeenCalledWith('flow run');
+
+    await expect(bim.mutate.batchAsync('failing', async () => { throw new Error('boom'); })).rejects.toThrow('boom');
+    expect(mutate.batchEnd).toHaveBeenLastCalledWith('failing');
+  });
+
+  it('batchAsync() joins a batch in flight — nested or overlapping — and closes the one marker when the last settles', async () => {
+    const { backend, mutate } = createMockBackend();
+    const bim = createBimContext({ backend });
+    const calls: string[] = [];
+    mutate.batchBegin.mockImplementation((label: string) => { calls.push(`begin ${label}`); });
+    mutate.batchEnd.mockImplementation((label: string) => { calls.push(`end ${label}`); });
+
+    // Nested: the inner call must not wait for the outer, which is waiting for it.
+    const nested = await bim.mutate.batchAsync('outer', async () => `outer+${await bim.mutate.batchAsync('inner', async () => 'inner')}`);
+    expect(nested).toBe('outer+inner');
+    expect(calls).toEqual(['begin outer', 'end outer']);
+
+    // Overlapping, first settles first: no second marker, so nothing closes out of order.
+    calls.length = 0;
+    let releaseA!: () => void;
+    const a = bim.mutate.batchAsync('A', () => new Promise<string>((resolve) => { releaseA = () => resolve('a'); }));
+    let releaseB!: () => void;
+    const b = bim.mutate.batchAsync('B', () => new Promise<string>((resolve) => { releaseB = () => resolve('b'); }));
+    releaseA();
+    expect(await a).toBe('a');
+    expect(calls).toEqual(['begin A']);
+    releaseB();
+    expect(await b).toBe('b');
+    expect(calls).toEqual(['begin A', 'end A']);
+
+    // A failed batch still releases the marker for the next independent one.
+    calls.length = 0;
+    await expect(bim.mutate.batchAsync('C', async () => { throw new Error('boom'); })).rejects.toThrow('boom');
+    expect(await bim.mutate.batchAsync('D', async () => 'd')).toBe('d');
+    expect(calls).toEqual(['begin C', 'end C', 'begin D', 'end D']);
+
+    // Inside a synchronous batch it is refused rather than opening a marker
+    // the sync batch would then pop out of order; a sync batch inside an
+    // async one nests fine.
+    calls.length = 0;
+    let refused: unknown;
+    bim.mutate.batch('sync', () => { bim.mutate.batchAsync('async', async () => 1).catch((e: unknown) => { refused = e; }); });
+    await Promise.resolve();
+    expect(String(refused)).toMatch(/cannot start inside a synchronous batch/);
+    expect(calls).toEqual(['begin sync', 'end sync']);
+    calls.length = 0;
+    await bim.mutate.batchAsync('outer', async () => { bim.mutate.batch('inner', () => {}); });
+    expect(calls).toEqual(['begin outer', 'begin inner', 'end inner', 'end outer']);
+  });
 });
 
 describe('LensNamespace', () => {

@@ -17,25 +17,56 @@ import { displayCell, groupHeaderLabel, totalsRowCells, type ExportModel } from 
 export type TableRowRole = 'row' | 'group' | 'total' | 'more';
 
 /**
- * A table block's data as the preview and the PDF see it: the list is run
- * asynchronously (a pset-heavy list over a large federation takes seconds),
- * and a block whose run has not finished — or could not run — prints that
- * instead of stale or empty rows.
+ * A pre-flatten table body any non-list source can produce (#5138): already
+ * flat rows (no grouping/schedule concept), so turning it into a
+ * `FlattenedTable` is just the row cap and "… n more" line a list's own flat
+ * rows already get — see `flattenRawModel`.
+ */
+export interface RawTableModel {
+  columns: TableColumnOut[];
+  /** Every matching row, uncapped; role is always `'row'`. */
+  rows: TableRowOut[];
+  totalRows: number;
+}
+
+/** `flattenExportModel`'s cap + "… n more" tail, for a source that is already flat (#5138) — no groups, no schedule, no totals row. */
+export function flattenRawModel(model: RawTableModel, maxRows: number, labels: TableLabels): FlattenedTable {
+  const cap = Math.max(1, Math.floor(maxRows));
+  const rows = model.rows.slice(0, cap);
+  const more = Math.max(0, model.totalRows - rows.length);
+  if (more > 0) rows.push({ cells: model.columns.map((_, i) => (i === 0 ? labels.more(more) : '')), role: 'more' });
+  return { columns: model.columns, rows, more, totalRows: model.totalRows };
+}
+
+/**
+ * A table block's data as the preview and the PDF see it: a list run is
+ * asynchronous (a pset-heavy list over a large federation takes seconds)
+ * and prints "resolving" until it settles; a validation-results table (#5138)
+ * resolves synchronously from the store's report, so it never has a
+ * `'resolving'` state of its own — only `'ok'`, or one of the two states
+ * that are specific to it (`'no-report'`, `'rule-not-found'`). The two `'ok'`
+ * members share the `status` so every existing list-only check (`state.status
+ * === 'ok'`) still narrows the way it always did; `kind` (present only on
+ * the validation member) is the second discriminant a consumer that must
+ * tell them apart switches on.
  */
 export type TableState =
   | { status: 'resolving' }
-  | { status: 'ok'; model: ExportModel }
+  | { status: 'ok'; kind?: 'list'; model: ExportModel }
+  | { status: 'ok'; kind: 'validation'; model: RawTableModel }
   | { status: 'error'; message: string }
-  | { status: 'no-model' };
+  | { status: 'no-model' }
+  | { status: 'no-report' }
+  | { status: 'rule-not-found' };
 
 /** Why a table block prints a message instead of rows; `null` when it has rows. Shared by the preview (i18n) and the PDF (English). */
-export type TableMessageKind = 'resolving' | 'no-model' | 'error' | 'no-rows';
+export type TableMessageKind = 'resolving' | 'no-model' | 'error' | 'no-rows' | 'no-report' | 'rule-not-found';
 
 export function tableMessageKind(state: TableState | undefined): TableMessageKind | null {
   if (!state || state.status === 'resolving') return 'resolving';
-  if (state.status === 'no-model') return 'no-model';
-  if (state.status === 'error') return 'error';
-  return state.model.totals.count === 0 ? 'no-rows' : null;
+  if (state.status !== 'ok') return state.status;
+  const count = state.kind === 'validation' ? state.model.totalRows : state.model.totals.count;
+  return count === 0 ? 'no-rows' : null;
 }
 
 export interface TableRowOut {
@@ -44,6 +75,10 @@ export interface TableRowOut {
 }
 
 export interface TableColumnOut {
+  /** Set only for a source whose columns are a fixed, known set (#5138: validation's `TableColumnId`)
+   *  rather than free-form user-authored labels (a list's own column names) — lets a consumer
+   *  translate the header instead of printing `label` (English) verbatim. */
+  id?: string;
   label: string;
   numeric: boolean;
 }

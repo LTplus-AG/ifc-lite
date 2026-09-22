@@ -38,10 +38,19 @@ export interface ParamDef {
 
 export type LogLevel = 'info' | 'warn' | 'error';
 
+/** What a tracked write node must do for this lane (see `tracking.ts`). */
+export interface LaneTracking {
+  readonly action: 'create' | 'update' | 'keep';
+  /** The element's GlobalId: stable across runs for the same tracking key + lane key. */
+  readonly globalId: string;
+}
+
 export interface NodeRunContext<H> {
   readonly host: H;
   /** The lane this invocation computes, or `null` when the node was not lifted. */
   readonly laneKey: GroupKey | null;
+  /** Present on tracked nodes' `run` only; `remove` gets the GlobalId as its argument instead. */
+  readonly tracking?: LaneTracking;
   readonly signal?: AbortSignal;
   log(level: LogLevel, message: string): void;
 }
@@ -73,6 +82,13 @@ export interface NodeDef<H = unknown, P = Readonly<Record<string, unknown>>> {
   };
   /** Name of the `item` input whose `EntityRef` value keys lanes (defaults to the first entity item port). */
   readonly laneKeyPort?: string;
+  /**
+   * A tracked node owns the elements it creates: the scheduler plans each
+   * lane as create / update / keep against the node's tracked set and calls
+   * `remove` for lanes that vanished since the last run.
+   */
+  readonly tracked?: boolean;
+  remove?(ctx: NodeRunContext<H>, globalId: string): void | Promise<void>;
   run(ctx: NodeRunContext<H>, inputs: Readonly<Record<string, unknown>>, params: P): NodeOutputs | Promise<NodeOutputs>;
 }
 

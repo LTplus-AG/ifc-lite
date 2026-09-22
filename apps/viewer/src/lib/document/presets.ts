@@ -8,7 +8,7 @@
  */
 import { newChartSpec } from '../charts/presets.js';
 import { freshBlockId, freshDocumentId } from './persistence.js';
-import { DOCUMENT_VERSION, type DocumentBlock, type DocumentSpec, type TextBlock } from './types.js';
+import { DOCUMENT_VERSION, TABLE_ROWS_DEFAULT, type DocumentBlock, type DocumentSpec, type TableBlock, type TableColumnId, type ValidationRowsMode, type TextBlock } from './types.js';
 
 const text = (style: TextBlock['style'], value: string): TextBlock => ({ kind: 'text', id: freshBlockId(), style, text: value });
 
@@ -55,3 +55,29 @@ export const FIELD_SUGGESTIONS: ReadonlyArray<{ path: string; label: string }> =
   { path: 'Count[IfcSpace]', label: 'Number of spaces' },
   { path: 'Today', label: "Today's date" },
 ];
+
+/** Default columns for a fresh validation-results table block, per rows mode (#5138): entity rows
+ *  lead with what to triage an element by, set rows with what identifies the group and its violation. */
+export const DEFAULT_VALIDATION_COLUMNS: Record<ValidationRowsMode, TableColumnId[]> = {
+  failed: ['rule', 'result', 'entityType', 'name', 'globalId', 'reason'],
+  passed: ['rule', 'result', 'entityType', 'name', 'globalId'],
+  all: ['rule', 'result', 'entityType', 'name', 'globalId'],
+  sets: ['rule', 'result', 'set', 'members', 'actual', 'expected', 'reason'],
+};
+
+/**
+ * Append a validation-results table block to `document` (#5138): the helper
+ * both the TableBlockEditor's source-kind switch and, from a different
+ * panel, the results panel's "Insert results table" affordance (PR 4) call
+ * — a pure function so either caller can pass it straight to `upsertDocument`.
+ */
+export function insertValidationTableBlock(document: DocumentSpec, options: { ruleId?: string; rows?: ValidationRowsMode } = {}): DocumentSpec {
+  const rows = options.rows ?? 'failed';
+  const block: TableBlock = {
+    kind: 'table',
+    id: freshBlockId(),
+    source: { kind: 'validation', ruleId: options.ruleId, rows, columns: DEFAULT_VALIDATION_COLUMNS[rows] },
+    maxRows: TABLE_ROWS_DEFAULT,
+  };
+  return { ...document, blocks: [...document.blocks, block] };
+}

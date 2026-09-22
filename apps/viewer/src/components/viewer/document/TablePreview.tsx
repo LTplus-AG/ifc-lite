@@ -12,10 +12,10 @@
 import { useMemo } from 'react';
 import { useTranslation } from '@/i18n';
 import { localeCount } from '@/i18n/intlFormat';
-import { flattenExportModel, tableMessageKind, type TableRowRole, type TableState } from '@/lib/document/resolve-table';
-import { tableTitle } from '@/lib/document/generate-document-pdf';
-import { TABLE_ROWS_DEFAULT, type TableBlock } from '@/lib/document/types';
+import { flattenExportModel, flattenRawModel, tableMessageKind, type TableRowRole, type TableState } from '@/lib/document/resolve-table';
+import { TABLE_ROWS_DEFAULT, type TableBlock, type TableColumnId } from '@/lib/document/types';
 import { DOCUMENT_PREVIEW_MUTED_TEXT_CLASS } from './preview-theme';
+import { TABLE_COLUMN_LABEL_KEY } from './table-column-labels';
 
 const ROW_CLASS: Record<TableRowRole, string> = {
   row: '',
@@ -31,13 +31,20 @@ export interface TablePreviewProps {
 
 export function TablePreview({ block, state }: TablePreviewProps) {
   const { t, locale } = useTranslation();
-  const title = tableTitle(block);
-  const table = useMemo(() => (state?.status === 'ok'
-    ? flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, {
-      more: (n) => t('document.table.moreRows', localeCount(locale, n)),
-      total: (count) => t('document.table.total', { count: count.toLocaleString(locale) }),
-    })
-    : null), [state, block.maxRows, t, locale]);
+  // The PDF's `tableTitle` fallback ("Validation results") is plain English on purpose (every other
+  // PDF fallback string is); the on-screen preview is interactive UI, so it translates its own
+  // fallback instead of calling that helper (#5138 review).
+  const title = block.title?.trim() || (block.source.kind === 'list' ? block.source.list.name : t('document.block.tableSourceValidation'));
+  const table = useMemo(() => {
+    if (state?.status !== 'ok') return null;
+    const labels = {
+      more: (n: number) => t('document.table.moreRows', localeCount(locale, n)),
+      total: (count: number) => t('document.table.total', { count: count.toLocaleString(locale) }),
+    };
+    return state.kind === 'validation'
+      ? flattenRawModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, labels)
+      : flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, labels);
+  }, [state, block.maxRows, t, locale]);
 
   // The same state → message decision the PDF makes (`tableMessageKind`), worded from the catalogue.
   const kind = tableMessageKind(state);
@@ -45,7 +52,10 @@ export function TablePreview({ block, state }: TablePreviewProps) {
     : kind === 'error' ? ((state?.status === 'error' && state.message.trim()) || t('document.table.error'))
       : kind === 'resolving' ? t('document.table.resolving')
         : kind === 'no-model' ? t('document.table.noModel')
-          : t('document.table.noRows');
+          : kind === 'no-report' ? t('document.table.noReport')
+            : kind === 'rule-not-found' ? t('document.table.ruleNotFound')
+              // "No rows" reads differently per source: a list matched nothing, a validation table's rule/rows filter did.
+              : (state?.status === 'ok' && state.kind === 'validation' ? t('document.table.validationNoRows') : t('document.table.noRows'));
 
   return (
     <div data-block-table>
@@ -56,7 +66,7 @@ export function TablePreview({ block, state }: TablePreviewProps) {
         <table className="w-full border-collapse text-[8px] leading-tight" data-table-rows={table.rows.length}>
           <thead>
             <tr>
-              {table.columns.map((c, i) => <th key={i} className={`border border-neutral-200 bg-slate-700 px-1 py-0.5 font-semibold text-white ${c.numeric ? 'text-right' : 'text-left'}`}>{c.label}</th>)}
+              {table.columns.map((c, i) => <th key={i} className={`border border-neutral-200 bg-slate-700 px-1 py-0.5 font-semibold text-white ${c.numeric ? 'text-right' : 'text-left'}`}>{c.id ? t(TABLE_COLUMN_LABEL_KEY[c.id as TableColumnId]) : c.label}</th>)}
             </tr>
           </thead>
           <tbody>

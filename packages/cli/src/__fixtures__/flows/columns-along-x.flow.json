@@ -1,0 +1,29 @@
+{
+  "flowVersion": 1,
+  "id": "columns-along-x",
+  "name": "Columns along X",
+  "description": "One column per X position on the first storey; re-runs update the same columns.",
+  "capabilities": ["model.read", "model.create"],
+  "inputs": [
+    { "nodeId": "xs", "param": "items", "label": "X positions (m)", "kind": "scalar" },
+    { "nodeId": "column", "param": "height", "label": "Column height (m)", "kind": "scalar" }
+  ],
+  "outputs": [{ "nodeId": "add", "port": "entity", "label": "Columns" }],
+  "nodes": [
+    { "id": "storeys", "type": "model.byType", "params": { "type": "IfcBuildingStorey" }, "pos": [0, 0] },
+    { "id": "first", "type": "core.first", "pos": [260, 0] },
+    { "id": "xs", "type": "core.list", "params": { "items": [0, 4, 8] }, "pos": [0, 160] },
+    { "id": "y", "type": "core.number", "params": { "value": 0 }, "pos": [0, 260] },
+    { "id": "pt", "type": "geometry.point", "pos": [260, 200] },
+    { "id": "column", "type": "element.column", "params": { "width": 0.3, "depth": 0.3, "height": 3 }, "pos": [520, 100] },
+    { "id": "add", "type": "model.addElement", "trackingKey": "columns-along-x/columns", "pos": [780, 100] }
+  ],
+  "edges": [
+    { "from": ["storeys", "entities"], "to": ["first", "items"] },
+    { "from": ["xs", "items"], "to": ["pt", "x"] },
+    { "from": ["y", "value"], "to": ["pt", "y"] },
+    { "from": ["first", "item"], "to": ["column", "storey"] },
+    { "from": ["pt", "point"], "to": ["column", "position"] },
+    { "from": ["column", "spec"], "to": ["add", "spec"] }
+  ]
+}

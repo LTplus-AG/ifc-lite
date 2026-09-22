@@ -47,6 +47,7 @@ export { default as Layer } from '~icons/viewer/layer';
 export { default as Clash } from '~icons/viewer/clash';
 export { default as Check } from '~icons/viewer/check';
 export { default as Script } from '~icons/viewer/script';
+export { default as Flow } from '~icons/viewer/flow';
 export { default as Coloring } from '~icons/viewer/coloring';
 export { default as Schedule } from '~icons/viewer/schedule';
 export { default as Chart } from '~icons/viewer/chart';

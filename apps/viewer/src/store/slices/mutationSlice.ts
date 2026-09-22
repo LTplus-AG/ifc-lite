@@ -77,6 +77,7 @@ import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
 import type { Point2D } from '@/lib/polygon-clip.js';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
 import { replayAppearanceHistory } from '@/lib/appearance/history.js';
+import { newMutationBatchId, withMutationBatchTags } from './mutation-batch-tags.js';
 
 /**
  * IFC-space directions for {@link MutationSlice.duplicateEntity}.
@@ -390,6 +391,8 @@ export interface MutationSlice extends CostUndoMethods {
     modelId: string,
     updates: Array<{ entityId: number; index: number; value: IfcAttributeValue }>,
   ) => string | null;
+  /** Tag already-recorded mutations as one undo batch (SDK `bim.mutate.batch`). */
+  tagMutationBatch: (mutationIds: readonly string[], batchId: string) => void;
   /**
    * Tombstone an entity (existing source entity) or forget it (overlay-only).
    * Returns true if the entity was known to the store or overlay.
@@ -1547,19 +1550,21 @@ export const createMutationSlice: StateCreator<
 
   setPositionalAttributesBatch: (modelId, updates) => {
     if (updates.length === 0) return null;
-    // Generate the batch id once; every mutation created below
-    // gets tagged with it so the undo / redo handlers can group
-    // them. `crypto.randomUUID` is available in every browser the
-    // viewer supports and avoids the collision risk of
-    // Date.now() + Math.random concatenation.
-    const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    const tags = new Map(get().mutationBatchTags);
+    // One batch id for every mutation created below, so the undo / redo
+    // handlers group them.
+    const batchId = newMutationBatchId();
+    const ids: string[] = [];
     for (const { entityId, index, value } of updates) {
       const mutation = get().setPositionalAttribute(modelId, entityId, index, value);
-      if (mutation) tags.set(mutation.id, batchId);
+      if (mutation) ids.push(mutation.id);
     }
-    set({ mutationBatchTags: tags });
+    get().tagMutationBatch(ids, batchId);
     return batchId;
+  },
+
+  tagMutationBatch: (mutationIds, batchId) => {
+    if (mutationIds.length === 0) return;
+    set((s) => ({ mutationBatchTags: withMutationBatchTags(s.mutationBatchTags, mutationIds, batchId) }));
   },
 
   translateEntity: (modelId, expressId, delta, batchId) => {
@@ -2654,12 +2659,8 @@ export const createMutationSlice: StateCreator<
     if (undoStack.length === 0) return;
 
     const mutation = undoStack[undoStack.length - 1];
-    // Batch awareness: if the mutation we're about to undo was
-    // tagged as part of a batch (via setPositionalAttributesBatch),
-    // we want one Ctrl+Z to undo every mutation in that batch.
-    // The tail-recurse at the end of this action handles that —
-    // capture the batchId here, undo this single mutation, then
-    // if the next top still shares the batchId, recurse.
+    // Batch awareness (see mutation-batch-tags.ts): capture the batchId, undo
+    // this one mutation, then tail-recurse while the next top shares it.
     const batchId = state.mutationBatchTags.get(mutation.id);
 
     // Handle georef mutations directly on georefMutations map
@@ -2850,10 +2851,7 @@ export const createMutationSlice: StateCreator<
       };
     });
 
-    // Tail-recurse for the rest of the batch (if any). Reading
-    // the stack via get() picks up the just-set state. Stops as
-    // soon as the next top mutation either doesn't exist or
-    // belongs to a different batch.
+    // Tail-recurse for the rest of the batch; get() sees the just-set state.
     if (batchId !== undefined) {
       const nextStack = get().undoStacks.get(modelId) || [];
       if (nextStack.length > 0) {

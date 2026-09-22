@@ -24,6 +24,7 @@ import {
 import { CLASH_COLOR_A, CLASH_COLOR_B, clashColorToBcfArgb } from '@/lib/clash/clash-colors';
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import { sortClashes, type Clash, type ClashSeverity, type ClashSortBy } from '@ifc-lite/clash';
+import { useTranslation } from '@/i18n';
 
 const SEVERITY_ORDER: ClashSeverity[] = ['critical', 'major', 'minor', 'info'];
 const SEVERITY_COLOR: Record<ClashSeverity, string> = {
@@ -40,7 +41,13 @@ export interface ManualClashSection {
 
 export type ManualGroupDialog =
   | { mode: 'create'; initialName: string }
-  | { mode: 'rename'; initialName: string; groupId: string };
+  | { mode: 'rename'; initialName: string; groupId: string }
+  | { mode: 'addToGroup'; groupId: string };
+
+export interface DialogProps {
+  initialName: string;
+  memberCount: number;
+}
 
 interface UseManualClashGroupsOptions {
   clashes: readonly Clash[] | undefined;
@@ -51,6 +58,14 @@ interface UseManualClashGroupsOptions {
   creatingTopic: boolean;
   setCreatingTopic: Dispatch<SetStateAction<boolean>>;
   showGroups: () => void;
+}
+
+function getDialogProps(dialog: ManualGroupDialog | null, selectedCount: number, sections: ManualClashSection[]): DialogProps {
+  if (!dialog) return { initialName: '', memberCount: 0 };
+  if (dialog.mode === 'create') return { initialName: dialog.initialName, memberCount: selectedCount };
+  if (dialog.mode === 'rename') return { initialName: dialog.initialName, memberCount: 0 };
+  const group = sections.find((s) => s.manualGroupId === dialog.groupId);
+  return { initialName: group?.label ?? '', memberCount: selectedCount };
 }
 
 export function useManualClashGroups({
@@ -72,6 +87,7 @@ export function useManualClashGroups({
   const addTopic = useViewerStore((state) => state.addTopic);
   const addViewpoint = useViewerStore((state) => state.addViewpoint);
   const setBcfPanelVisible = useViewerStore((state) => state.setBcfPanelVisible);
+  const { t } = useTranslation();
 
   useEffect(() => setCheckedIds(new Set()), [clashes]);
 
@@ -135,10 +151,31 @@ export function useManualClashGroups({
     });
   }, [selected, definitions, resolved]);
 
+  const openAddToGroup = useCallback((groupId: string): void => {
+    if (selected.length === 0) return;
+    const claimed = new Set(resolved.flatMap((group) => group.members.map((member) => member.id)));
+    if (selected.some((clash) => claimed.has(clash.id))) {
+      toast.error(t('clashGroups.alreadyGroupedError'));
+      return;
+    }
+    setDialog({ mode: 'addToGroup', groupId });
+  }, [selected, resolved]);
+
   const submitDialog = useCallback((name: string): boolean => {
     if (!dialog) return false;
     if (dialog.mode === 'rename') {
       return commit(definitions.map((group) => group.id === dialog.groupId ? { ...group, name } : group));
+    }
+    if (dialog.mode === 'addToGroup') {
+      const next = definitions.map((group) => group.id === dialog.groupId
+        ? { ...group, members: [...group.members, ...selected.map(manualClashMember)] }
+        : group);
+      if (commit(next)) {
+        setCheckedIds(new Set());
+        showGroups();
+        return true;
+      }
+      return false;
     }
     const next = [...definitions, {
       id: `manual-${crypto.randomUUID()}`,
@@ -230,6 +267,11 @@ export function useManualClashGroups({
   }, [creatingTopic, resolved, setCreatingTopic, focusClashes, focusMode, setBcfProject,
     bcfAuthor, createViewpointFromState, headerFilesForViewpoints, addTopic, addViewpoint, setBcfPanelVisible]);
 
+  const dialogProps = useMemo(
+    () => getDialogProps(dialog, selected.length, sections),
+    [dialog, selected.length, sections],
+  );
+
   return {
     sections,
     groupCount: sections.filter((section) => section.manualGroupId).length,
@@ -239,7 +281,9 @@ export function useManualClashGroups({
     setCheckedIds,
     dialog,
     setDialog,
+    dialogProps,
     openCreate,
+    openAddToGroup,
     submitDialog,
     removeGroup,
     removeMember,

@@ -38,7 +38,8 @@ import { ClashSettingsDialog } from '@/components/viewer/ClashSettingsDialog';
 import { ClashRevisionCompareDialog } from '@/components/viewer/ClashRevisionCompareDialog';
 import { ClashManualGroupDialog } from '@/components/viewer/ClashManualGroupDialog';
 import { useManualClashGroups } from '@/components/viewer/useManualClashGroups';
-import { ClashGroupHeader, ClashGroupingCheckbox, RemoveFromClashGroupButton } from '@/components/viewer/ClashManualGroupControls';
+import { ClashGroupingCheckbox, RemoveFromClashGroupButton } from '@/components/viewer/ClashManualGroupControls';
+import { ClashGroupHeaderWithActions } from '@/components/viewer/ClashGroupHeaderWithActions';
 import { ClashResultSummary, type ClashResultView } from '@/components/viewer/ClashResultSummary';
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import { duplicateSetSections } from '@/lib/clash/duplicate-set-sections';
@@ -494,8 +495,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   const {
     sections: manualSections, groupCount: manualGroupCount, membersById: manualMembersById,
     selected: selectedClashes, checkedIds: checkedClashIds, setCheckedIds: setCheckedClashIds,
-    dialog: groupDialog, setDialog: setGroupDialog, openCreate: openCreateGroupDialog,
-    submitDialog: submitGroupDialog, removeGroup: removeManualGroup,
+    dialog: groupDialog, setDialog: setGroupDialog, openCreate: openCreateGroupDialog, openAddToGroup,
+    submitDialog: submitGroupDialog, removeGroup: removeManualGroup, dialogProps,
     removeMember: removeManualGroupMember, createBcfTopic: createBcfTopicForGroup,
   } = useManualClashGroups({
     clashes: result?.clashes, visibleClashes, sortBy, focusMode, focusClashes, creatingTopic, setCreatingTopic,
@@ -1179,19 +1180,18 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                   style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${v.start}px)` }}
                 >
                   {row.kind === 'group' ? (
-                    <ClashGroupHeader
-                      sectionKey={row.key}
-                      label={row.label}
-                      color={row.color}
-                      count={row.count}
+                    <ClashGroupHeaderWithActions
+                      section={row}
                       collapsed={collapsed.has(row.key)}
-                      manualGroupId={row.manualGroupId}
                       creatingTopic={creatingTopic}
+                      focusMode={focusMode} membersById={manualMembersById}
                       onToggle={toggleSection}
-                      onFocus={(groupId) => focusClashes(manualMembersById.get(groupId) ?? [], focusMode)}
+                      onFocus={focusClashes}
+                      onAddToGroup={openAddToGroup}
                       onCreateBcf={(groupId) => { void createBcfTopicForGroup(groupId); }}
                       onRename={(groupId, label) => setGroupDialog({ mode: 'rename', groupId, initialName: label })}
                       onRemove={removeManualGroup}
+                      showGroups={showManualGroups}
                     />
                   ) : row.kind === 'detail' ? (
                     <div className="border-t border-border/40 pb-1.5">
@@ -1292,8 +1292,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       </div>
       <ClashManualGroupDialog
         open={groupDialog !== null}
-        initialName={groupDialog?.initialName ?? ''}
-        memberCount={groupDialog?.mode === 'create' ? selectedClashes.length : 0}
+        initialName={dialogProps.initialName}
+        memberCount={dialogProps.memberCount}
         mode={groupDialog?.mode ?? 'create'}
         onOpenChange={(open) => { if (!open) setGroupDialog(null); }}
         onSubmit={submitGroupDialog}

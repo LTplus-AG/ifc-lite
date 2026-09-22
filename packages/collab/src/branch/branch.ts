@@ -127,8 +127,19 @@ export interface MergeReport {
    * that entity untouched. Always `0` for the `'ops'` strategy, which
    * applies the branch's Y update directly and propagates deletions like
    * any other Yjs change.
+   *
+   * `null` when this cannot be computed at all: the count depends on the
+   * branch's fork-time entity snapshot (`forkEntitySnapshots`), which is
+   * keyed by `branch.session.doc`'s object identity and populated only by
+   * `forkSession`. A `branch` whose session was rebuilt around a
+   * different `Y.Doc` object with equivalent content — a reload, a second
+   * tab, a server-side merge job reconstructing the session — has no
+   * entry, and there is no way to tell "no fork snapshot available" apart
+   * from "checked, found zero" without this case existing on the wire.
+   * `null` reports that honestly instead of a confident, possibly wrong,
+   * `0`.
    */
-  droppedDeletions: number;
+  droppedDeletions: number | null;
 }
 
 /**
@@ -176,11 +187,16 @@ export function mergeBranch(
   // at fork time (`forkEntitySnapshots`) — that rules out entities the
   // parent created *after* the fork, which are also absent from the
   // branch doc but were never "deleted" by anything.
+  //
+  // `forkIds` is `undefined` whenever `branch.session.doc` is not the
+  // exact object `forkSession` seeded (see the `droppedDeletions` doc
+  // above) — report `null`, not a confident `0`, for that case.
   const forkIds = forkEntitySnapshots.get(branch.session.doc);
   const parentEntitiesBefore = entitiesMap(parent.doc);
   const branchEntitiesNow = entitiesMap(branch.session.doc);
-  let droppedDeletions = 0;
+  let droppedDeletions: number | null = null;
   if (forkIds) {
+    droppedDeletions = 0;
     for (const id of forkIds) {
       if (!branchEntitiesNow.has(id) && parentEntitiesBefore.has(id)) {
         droppedDeletions++;
@@ -189,8 +205,36 @@ export function mergeBranch(
   }
 
   const ifcx = snapshotToIfcx(branch.session.doc);
+  // Defect fix: a path present in the branch's snapshot only because the
+  // branch never touched it since fork (no `ifclite::deleted` opinion,
+  // no edit — it is simply still there) must not resurrect it in
+  // `parent` when `parent` deleted that same path after the fork through
+  // ordinary live editing (`deleteEntity`, not a prior `applyIfcxOverlay`
+  // call). `overlay-tombstones.ts` only remembers deletions THIS
+  // function's own overlay calls made; a plain `deleteEntity` on `parent`
+  // never registers there, so `applyIfcxOverlay` sees a path the parent
+  // doc lacks and — correctly, for its general contract — creates it.
+  //
+  // Restricting the drop to `path ∈ forkIds` matters: it only ever
+  // removes a node the branch fork-inherited and left untouched, never
+  // one the branch created after the fork (not in `forkIds`, always
+  // merges) nor one the branch itself deleted (already absent from the
+  // snapshot entirely, so there is no node to drop). A branch that
+  // deletes-then-recreates the same path after fork is indistinguishable
+  // from "never touched it" on the wire — the snapshot only ever emits
+  // current state — so this guard also drops that revival when the
+  // parent independently deleted the same path; the parent's post-fork
+  // deletion wins. That is a real, currently unresolved ambiguity, not a
+  // silent bug: nothing before this change could tell the two cases
+  // apart either, and this makes resurrection-by-default the case that
+  // no longer happens silently.
+  const filteredData = ifcx.data.filter((node) => {
+    const path = (node as { path?: string }).path;
+    if (!path) return true;
+    return !(forkIds?.has(path) && !parentEntitiesBefore.has(path));
+  });
   const before = Y.encodeStateAsUpdate(parent.doc);
-  applyIfcxOverlay(parent.doc, ifcx);
+  applyIfcxOverlay(parent.doc, { ...ifcx, data: filteredData });
   const after = Y.encodeStateAsUpdate(parent.doc);
   return {
     strategy,

@@ -360,3 +360,160 @@ describe("mergeBranch('layer') cannot propagate branch deletions (documented lim
     parent.dispose();
   });
 });
+
+// Regression coverage for the resurrection defect: `snapshotToIfcx` emits
+// the branch's ENTIRE current entity set, including paths the branch never
+// touched since fork. `applyIfcxOverlay` creates any path in that snapshot
+// the parent lacks. If the PARENT deletes an entity after the fork through
+// ordinary live editing (`deleteEntity`, not via `applyIfcxOverlay`), that
+// deletion never reaches `overlay-tombstones.ts` — it is only populated by
+// prior `applyIfcxOverlay` calls — so an unrelated 'layer' merge silently
+// recreates the entity the parent deleted.
+describe("mergeBranch('layer') does not resurrect a parent-side post-fork deletion", () => {
+  it('does not recreate an entity the parent deleted after fork when the branch never touched it', async () => {
+    const parent = await createCollabSession({
+      roomId: 'resurrection-repro',
+      user: { id: 'louis', name: 'Louis' },
+      provider: 'memory',
+    });
+    parent.transact(() => createEntity(parent.doc, 'door-1', { ifcClass: 'IfcDoor' }));
+
+    const branch = await forkSession(parent, { name: 'unrelated-branch-edit' });
+    // Branch never touches 'door-1' at all — it is present in the
+    // branch's snapshot solely because the branch inherited it from fork.
+    branch.session.transact(() =>
+      createEntity(branch.session.doc, 'window-1', { ifcClass: 'IfcWindow' }),
+    );
+
+    // Parent deletes the entity through ordinary live editing, not via
+    // applyIfcxOverlay — so the tombstone registry never learns about it.
+    parent.transact(() => deleteEntity(parent.doc, 'door-1'));
+    expect(entitiesMap(parent.doc).has('door-1')).toBe(false);
+
+    mergeBranch(parent, branch, 'layer');
+
+    // The unrelated branch edit still lands...
+    expect(entitiesMap(parent.doc).has('window-1')).toBe(true);
+    // ...but the parent-side deletion is NOT undone by the merge.
+    expect(entitiesMap(parent.doc).has('door-1')).toBe(false);
+
+    branch.session.dispose();
+    parent.dispose();
+  });
+
+  it('still creates an entity the branch created after fork, even at a path the parent never had', async () => {
+    // Negative case for the guard above: it must only ever suppress a
+    // path that existed on the branch AT FORK TIME. A brand-new
+    // branch-created entity is not in `forkIds` and must always merge.
+    const parent = await createCollabSession({
+      roomId: 'resurrection-guard-new-entity',
+      user: { id: 'louis', name: 'Louis' },
+      provider: 'memory',
+    });
+    parent.transact(() => createEntity(parent.doc, 'wall-1', { ifcClass: 'IfcWall' }));
+
+    const branch = await forkSession(parent, { name: 'add-new-entity' });
+    branch.session.transact(() =>
+      createEntity(branch.session.doc, 'brand-new', { ifcClass: 'IfcFurniture' }),
+    );
+
+    mergeBranch(parent, branch, 'layer');
+
+    expect(entitiesMap(parent.doc).has('brand-new')).toBe(true);
+
+    branch.session.dispose();
+    parent.dispose();
+  });
+
+  it('still overlays an edit onto an entity that exists on both sides at merge time', async () => {
+    // Negative case: the guard only drops a node when the PARENT lacks
+    // the path at merge time. An entity present on both sides must still
+    // be overlaid normally.
+    const parent = await createCollabSession({
+      roomId: 'resurrection-guard-both-present',
+      user: { id: 'louis', name: 'Louis' },
+      provider: 'memory',
+    });
+    parent.transact(() => createEntity(parent.doc, 'wall-2', { ifcClass: 'IfcWall' }));
+
+    const branch = await forkSession(parent, { name: 'rename-wall-2' });
+    branch.session.transact(() =>
+      setAttribute(branch.session.doc, 'wall-2', 'ifclite::name', 'Renamed'),
+    );
+
+    mergeBranch(parent, branch, 'layer');
+
+    expect(getAttribute(parent.doc, 'wall-2', 'ifclite::name')).toBe('Renamed');
+
+    branch.session.dispose();
+    parent.dispose();
+  });
+});
+
+// Regression coverage for the `droppedDeletions` honesty defect: the
+// fork-time entity snapshot is a `WeakMap<Y.Doc, ReadonlySet<string>>`
+// keyed by object identity, populated only by `forkSession`. A branch
+// session rebuilt around a different `Y.Doc` object with equivalent
+// content — the shape of a reload, a second tab, or a server-side merge
+// job reconstructing a session — has no entry, and `droppedDeletions` must
+// report that it cannot know rather than a confident, possibly wrong `0`.
+describe("mergeBranch('layer') droppedDeletions reports null when the fork snapshot is unavailable", () => {
+  it('reports null when branch.session.doc is a different object than forkSession seeded', async () => {
+    const parent = await createCollabSession({
+      roomId: 'dropped-deletions-reload-repro',
+      user: { id: 'louis', name: 'Louis' },
+      provider: 'memory',
+    });
+    parent.transact(() => createEntity(parent.doc, 'wall', { ifcClass: 'IfcWall' }));
+
+    const originalBranch = await forkSession(parent, { name: 'reload-repro' });
+    originalBranch.session.transact(() => deleteEntity(originalBranch.session.doc, 'wall'));
+
+    // Simulate a reload: rebuild an equivalent session around a brand-new
+    // Y.Doc object carrying the same content, the way `session.ts`'s
+    // `opts.doc ?? createCollabDoc()` does on reconnect.
+    const reconstructedDoc = new Y.Doc();
+    Y.applyUpdate(reconstructedDoc, Y.encodeStateAsUpdate(originalBranch.session.doc));
+    const reconstructedSession = await createCollabSession({
+      roomId: originalBranch.session.roomId,
+      user: { id: 'louis', name: 'Louis' },
+      provider: 'memory',
+      doc: reconstructedDoc,
+    });
+    const reloadedBranch = {
+      session: reconstructedSession,
+      parentRoomId: originalBranch.parentRoomId,
+      branchName: originalBranch.branchName,
+    };
+
+    const report = mergeBranch(parent, reloadedBranch, 'layer');
+
+    // Honest "unknown", not a wrong "0" — the actual dropped-deletion
+    // count here is 1 (the branch's deletion of 'wall'), but the fork
+    // snapshot needed to compute that is unavailable for this doc object.
+    expect(report.droppedDeletions).toBeNull();
+
+    originalBranch.session.dispose();
+    reconstructedSession.dispose();
+    parent.dispose();
+  });
+
+  it('still reports a number (not null) for the same-object case', async () => {
+    const parent = await createCollabSession({
+      roomId: 'dropped-deletions-same-object',
+      user: { id: 'louis', name: 'Louis' },
+      provider: 'memory',
+    });
+    parent.transact(() => createEntity(parent.doc, 'wall', { ifcClass: 'IfcWall' }));
+
+    const branch = await forkSession(parent, { name: 'same-object' });
+    branch.session.transact(() => deleteEntity(branch.session.doc, 'wall'));
+
+    const report = mergeBranch(parent, branch, 'layer');
+
+    expect(report.droppedDeletions).toBe(1);
+
+    branch.session.dispose();
+    parent.dispose();
+  });
+});

@@ -40,6 +40,9 @@ export class FileTrackingStore implements TrackingStore {
       // entry would otherwise reach the scheduler as a `TrackedSet` in name only.
       const sets = trackedSetsFrom(parsed.sets);
       if (!sets) throw new Error(`${path}: tracking sidecar has no valid "sets"`);
+      // A sidecar without a pin cannot be checked against the model, and
+      // adopting it silently would skip the very warning the pin exists for.
+      if (typeof parsed.pinnedTo !== 'string') throw new Error(`${path}: tracking sidecar has no "pinnedTo"`);
       store.sets = sets;
       store.loadedPin = parsed.pinnedTo;
     }

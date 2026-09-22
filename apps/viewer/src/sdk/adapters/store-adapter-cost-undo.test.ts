@@ -201,4 +201,17 @@ describe('#5167 store-adapter structural authoring', () => {
     const ref = adapter.addStructuralAnalysisModel('m', { Name: 'Authored' });
     assert.deepEqual(undoCalls, [{ modelId: ref.modelId, entityId: ref.expressId, ifcType: 'IFCSTRUCTURALANALYSISMODEL' }]);
   });
+
+  it('pushes a CREATE_ENTITY undo entry for the relationship rows too', async () => {
+    // Unlike the cost relationship methods, which rewrite existing rows, each
+    // of these AUTHORS a new IfcRel* entity and returns its ref. Routing them
+    // through the no-op relationship wrapper left those rows unreachable by
+    // undo (#5167 review).
+    const { store, undoCalls } = await makeStore();
+    const adapter = createStoreAdapter(store);
+    const model = adapter.addStructuralAnalysisModel('m', { Name: 'M' });
+    undoCalls.length = 0;
+    const rel = adapter.assignToStructuralGroup('m', model.expressId, [model.expressId]);
+    assert.deepEqual(undoCalls, [{ modelId: rel.modelId, entityId: rel.expressId, ifcType: 'IFCRELASSIGNSTOGROUP' }]);
+  });
 });

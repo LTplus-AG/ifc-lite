@@ -10,8 +10,6 @@
  *
  * Composed into one spread so `headless-backend.ts` gains a surface, not a
  * line, each time another factory-backed store surface is added to the SDK.
- * Reads (`bim.cost`, `bim.structural`) are unaffected and already observe
- * whatever `entity_create` authored.
  */
 
 import type { CostStoreBackendMethods, StructuralStoreBackendMethods } from '@ifc-lite/sdk';

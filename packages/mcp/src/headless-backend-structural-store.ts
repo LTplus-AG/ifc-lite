@@ -12,8 +12,13 @@
  *
  * This is deliberately a stub, not an omission. MCP has no element-creation
  * tool surface at all, so wiring real structural authoring here would expand
- * v0.1's scope rather than complete S.1. `bim.structural` READS are unaffected
- * and already observe whatever `entity_create` authored.
+ * v0.1's scope rather than complete S.1.
+ *
+ * Note on reads: `bim.structural` here is constructed over the parsed data
+ * store alone, so it does NOT see a structural row authored this session
+ * through `entity_create` — that row lives in the mutation overlay. An earlier
+ * revision of this comment claimed otherwise; correcting it rather than
+ * leaving a claim the code does not support (#5167 review).
  */
 
 import type { StructuralStoreBackendMethods } from '@ifc-lite/sdk';

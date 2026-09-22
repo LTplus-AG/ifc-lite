@@ -75,6 +75,17 @@ export interface StructuralPointActionBuildResult {
   loadId: number;
 }
 
+/**
+ * An action whose load carries no component at all is not a load: it
+ * serializes an `IfcStructuralLoad*` with every value `$` and reports success,
+ * so a caller that forgot to supply one gets a silently weightless model
+ * (#5167 review). Refusing here keeps the absence from reading as success.
+ */
+function assertLoadHasComponent(builder: string, components: ReadonlyArray<number | undefined>): void {
+  if (components.some((value) => value !== undefined)) return;
+  throw new Error(`${builder}: supply at least one force or moment component; an action with no load component is not a load`);
+}
+
 export function addStructuralPointActionToStore(
   editor: StoreEditor,
   anchor: Pick<SpatialAnchor, 'ownerHistoryId' | 'guidRandom' | 'schema'>,
@@ -83,6 +94,10 @@ export function addStructuralPointActionToStore(
   if (anchor.schema === 'IFC2X3') {
     throw new Error('addStructuralPointActionToStore: IFC2X3 has no IfcStructuralPointAction — target IFC4 or later');
   }
+  assertLoadHasComponent('addStructuralPointActionToStore', [
+    params.ForceX, params.ForceY, params.ForceZ,
+    params.MomentX, params.MomentY, params.MomentZ,
+  ]);
   const loadId = editor.addEntity('IfcStructuralLoadSingleForce', [
     params.LoadName ?? null,
     params.ForceX ?? null,
@@ -142,6 +157,10 @@ export function addStructuralLinearActionToStore(
   if (anchor.schema === 'IFC2X3') {
     throw new Error('addStructuralLinearActionToStore: IFC2X3 has no IfcStructuralLinearAction — target IFC4 or later');
   }
+  assertLoadHasComponent('addStructuralLinearActionToStore', [
+    params.LinearForceX, params.LinearForceY, params.LinearForceZ,
+    params.LinearMomentX, params.LinearMomentY, params.LinearMomentZ,
+  ]);
   const loadId = editor.addEntity('IfcStructuralLoadLinearForce', [
     params.LoadName ?? null,
     params.LinearForceX ?? null,

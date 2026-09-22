@@ -28,7 +28,7 @@ export function withStructuralMutationTracking(
   store: StoreApi,
   resolve: (modelId: string) => { editor: StoreEditor; dataStore: IfcDataStore } | null,
 ): StructuralMethods {
-  const { create, relationship } = createStoreMutationTracker(store, resolve, 'structural');
+  const { create } = createStoreMutationTracker(store, resolve, 'structural');
   return {
     ...methods,
     addStructuralAnalysisModel: create('IFCSTRUCTURALANALYSISMODEL', methods.addStructuralAnalysisModel),
@@ -37,8 +37,13 @@ export function withStructuralMutationTracking(
     addStructuralLoadGroup: create('IFCSTRUCTURALLOADGROUP', methods.addStructuralLoadGroup),
     addStructuralPointAction: create('IFCSTRUCTURALPOINTACTION', methods.addStructuralPointAction),
     addStructuralLinearAction: create('IFCSTRUCTURALLINEARACTION', methods.addStructuralLinearAction),
-    connectStructuralMemberToConnection: relationship(methods.connectStructuralMemberToConnection),
-    connectStructuralActivityToItem: relationship(methods.connectStructuralActivityToItem),
-    assignToStructuralGroup: relationship(methods.assignToStructuralGroup),
+    // These are creates, not rewrites. Unlike the cost relationship methods —
+    // which edit existing rows and clear unsafe undo history via
+    // `markCostRelationshipMutation` — each of these authors a NEW `IfcRel*`
+    // entity and returns its ref, so it needs its own CREATE_ENTITY undo entry
+    // or the row is left unreachable by undo (#5167 review).
+    connectStructuralMemberToConnection: create('IFCRELCONNECTSSTRUCTURALMEMBER', methods.connectStructuralMemberToConnection),
+    connectStructuralActivityToItem: create('IFCRELCONNECTSSTRUCTURALACTIVITY', methods.connectStructuralActivityToItem),
+    assignToStructuralGroup: create('IFCRELASSIGNSTOGROUP', methods.assignToStructuralGroup),
   };
 }

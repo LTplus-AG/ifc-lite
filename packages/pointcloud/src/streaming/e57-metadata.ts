@@ -36,7 +36,11 @@ export async function inspectE57SpatialMetadata(blob: Blob, signal?: AbortSignal
   if (header.pageSize <= 4) throw new Error(`E57: invalid pageSize ${header.pageSize}`);
   const logicalSize = header.fileLogicalSize > 0 ? header.fileLogicalSize : physicalToLogical(bytes.size, header.pageSize);
   assertBoundedXml(header.xmlLogicalLength, logicalSize);
-  const xml = await readE57LogicalRange(bytes, header.xmlLogicalOffset, header.xmlLogicalLength, header.pageSize, signal);
+  // `strict: true` — a short read here must surface as truncation, not as
+  // "no CRS": see the cross-caller doc on `readE57LogicalRange`.
+  const xml = await readE57LogicalRange(
+    bytes, header.xmlLogicalOffset, header.xmlLogicalLength, header.pageSize, signal, { strict: true },
+  );
   throwIfAborted(signal);
   return spatialMetadataFromE57Xml(new TextDecoder().decode(xml));
 }

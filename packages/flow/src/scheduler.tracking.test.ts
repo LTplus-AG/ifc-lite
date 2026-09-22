@@ -296,4 +296,60 @@ describe('tracked nodes', () => {
     expect(trackingOf(r)).toEqual({ created: 1, updated: 0, kept: 0, removed: 0 });
     expect(e.created.size).toBe(1);
   });
+
+  // Issue #5197: `remove` is optional on `NodeDef`, and nothing makes
+  // `tracked: true` imply it. A vanished lane whose node type simply has no
+  // `remove` hook must land in the same place as one whose `remove` threw
+  // (see the test above) — orphans.ts's `removeSet` guard already treats
+  // the two identically; the scheduler's own remove loop must too.
+  describe('a tracked node type with no remove hook at all (#5197)', () => {
+    // `place` always defines `remove`; strip the property rather than set it
+    // to `undefined`, so this matches a real registration that never wrote one.
+    const { remove: _unused, ...noRemoveBase } = place;
+    const noRemove: NodeDef<Elements> = noRemoveBase;
+    const regNoRemove = (walls: string[]) => new NodeRegistry<Elements>().registerAll([wallsNode(walls), sizeNode, noRemove]);
+
+    it('vanished lanes stay in the model, are not counted as removed, and keep their tracking entry for a retry', async () => {
+      const store = new MemoryTrackingStore();
+      const e = elements();
+
+      await runFlow(doc, { host: e, registry: regNoRemove(['W1', 'W2', 'W3']), tracking: store });
+      expect(e.created.size).toBe(3);
+      const guidsBefore = [...e.created.keys()].sort();
+      expect(Object.keys(store.load(KEY)!.entries).sort()).toEqual(['W1', 'W2', 'W3']);
+
+      const r = await runFlow(doc, { host: e, registry: regNoRemove(['W1']), tracking: store });
+      expect(r.ok).toBe(true);
+
+      // 1. Still in the model — nothing ran to remove them.
+      expect(e.created.size).toBe(3);
+      expect([...e.created.keys()].sort()).toEqual(guidsBefore);
+
+      // 2. NOT counted as removed: the bug reported `removed: 2` here
+      // because `def.remove?.()` on an absent hook is a silent no-op.
+      expect(trackingOf(r)).toEqual({ created: 0, updated: 0, kept: 1, removed: 0 });
+
+      // 3. Their entries are RETAINED in the tracking store, not dropped —
+      // the bug persisted `trackingPlan.next`, which already excluded them,
+      // so a later run could never retry the removal.
+      expect(Object.keys(store.load(KEY)!.entries).sort()).toEqual(['W1', 'W2', 'W3']);
+
+      // A warning names the condition, mirroring orphans.ts's `removeSet` guard.
+      expect(r.log.some((l) => l.nodeId === 'place' && l.level === 'warn' && l.message.includes('no remove hook'))).toBe(true);
+    });
+
+    it('a later run can still retry: once the node regains a remove hook, the retained entries are removed normally', async () => {
+      const store = new MemoryTrackingStore();
+      const e = elements();
+      await runFlow(doc, { host: e, registry: regNoRemove(['W1', 'W2']), tracking: store });
+      await runFlow(doc, { host: e, registry: regNoRemove([]), tracking: store });
+      expect(Object.keys(store.load(KEY)!.entries).sort()).toEqual(['W1', 'W2']);
+
+      // The node is re-registered with its remove hook restored.
+      const retried = await runFlow(doc, { host: e, registry: reg([]), tracking: store });
+      expect(trackingOf(retried)).toEqual({ created: 0, updated: 0, kept: 0, removed: 2 });
+      expect(e.created.size).toBe(0);
+      expect(store.load(KEY)?.entries ?? {}).toEqual({});
+    });
+  });
 });

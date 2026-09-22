@@ -317,21 +317,32 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       continue;
     }
     let removeErrors = 0;
+    let removeSkipped = 0;
     const failedRemovals: string[] = [];
     if (trackingPlan) {
-      for (const gone of trackingPlan.remove) {
-        try {
-          await def.remove?.(makeCtx(gone.laneKey), gone.globalId);
-        } catch (err) {
-          removeErrors += 1;
-          failedRemovals.push(gone.laneKey);
-          log.push({ nodeId, laneKey: gone.laneKey, level: 'error', message: `remove ${gone.globalId}: ${err instanceof Error ? err.message : String(err)}` });
+      if (trackingPlan.remove.length > 0 && !def.remove) {
+        // No remove hook: mirror orphans.ts's removeSet guard. Warn, count
+        // zero removed, and treat every vanished lane like a failed removal
+        // so its entry is retained below instead of being dropped as if it
+        // had actually been removed.
+        removeSkipped = trackingPlan.remove.length;
+        log.push({ nodeId, laneKey: null, level: 'warn', message: `node type "${node.type}" has no remove hook; ${trackingPlan.remove.length} element(s) stay in the model` });
+        for (const gone of trackingPlan.remove) failedRemovals.push(gone.laneKey);
+      } else {
+        for (const gone of trackingPlan.remove) {
+          try {
+            await def.remove?.(makeCtx(gone.laneKey), gone.globalId);
+          } catch (err) {
+            removeErrors += 1;
+            failedRemovals.push(gone.laneKey);
+            log.push({ nodeId, laneKey: gone.laneKey, level: 'error', message: `remove ${gone.globalId}: ${err instanceof Error ? err.message : String(err)}` });
+          }
         }
       }
       // A lane that failed keeps its previous entry, so the next run retries
       // it instead of forgetting an element that may still exist. A vanished
-      // lane whose removal threw is the same case: still in the model, so
-      // still in the set.
+      // lane whose removal threw, or whose node has no remove hook at all,
+      // is the same case: still in the model, so still in the set.
       const failedLanes = new Set([
         ...plan.lanes.filter((l, i) => results[i] === null && !l.nullLane && !skippedDuplicates.has(i)).map((l) => l.laneKey ?? ''),
         ...failedRemovals,
@@ -364,7 +375,7 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       missing: plan.missing,
       warnings: plan.warnings,
       tracking: trackingPlan
-        ? { created: trackingPlan.create.length, updated: trackingPlan.update.length, kept: trackingPlan.keep.length, removed: trackingPlan.remove.length - removeErrors }
+        ? { created: trackingPlan.create.length, updated: trackingPlan.update.length, kept: trackingPlan.keep.length, removed: trackingPlan.remove.length - removeErrors - removeSkipped }
         : undefined,
     });
   }

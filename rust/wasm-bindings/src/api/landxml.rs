@@ -33,9 +33,15 @@ struct LandXmlAlignmentInspection {
 }
 /// JS-facing limits deliberately expose only allocation-relevant ceilings.
 /// Parser defaults remain in force for omitted fields.
+///
+/// `pub(super)`: the streaming session binding (`super::landxml_stream`)
+/// reuses this exact shape rather than inventing a second options type, so
+/// `assumedLinearUnit` (#5175) and every other option here reach the
+/// viewer's actual LandXML load path, not just the non-streaming
+/// `parseLandXmlSourceBytesWithOptions` entry point (#5175 step A.3).
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct LandXmlParseOptions {
+pub(super) struct LandXmlParseOptions {
     max_bytes: Option<usize>,
     max_depth: Option<usize>,
     max_text_bytes: Option<usize>,
@@ -48,6 +54,13 @@ struct LandXmlParseOptions {
     max_station_equations: Option<usize>,
     max_cant_stations: Option<usize>,
     max_superelevation_events: Option<usize>,
+    /// #5175: an explicit, audited linear unit to assume when the source
+    /// declares no `LandXML/Units` element at all. Absent by default, which
+    /// keeps the LXML009 refusal in force. Accepts the same tokens a
+    /// declared `<Units linearUnit="...">` accepts; an unknown token is the
+    /// identical "unsupported LandXML unit" refusal, never a silent meter
+    /// fallback. A declared `<Units>` element always wins over this field.
+    assumed_linear_unit: Option<String>,
     /// A worker can report cancellation before entering synchronous WASM. Once
     /// parsing starts, the worker termination path remains the cancellation
     /// mechanism because JS cannot interrupt a synchronous wasm invocation.
@@ -55,7 +68,7 @@ struct LandXmlParseOptions {
 }
 
 impl LandXmlParseOptions {
-    fn limits(
+    pub(super) fn limits(
         self,
     ) -> Result<
         (
@@ -67,7 +80,10 @@ impl LandXmlParseOptions {
         if self.cancelled == Some(true) {
             return Err(JsValue::from_str("LXML005: ingestion cancelled"));
         }
-        let mut xml = ifc_lite_landxml::LandXmlLimits::default();
+        let mut xml = ifc_lite_landxml::LandXmlLimits {
+            assumed_linear_unit: self.assumed_linear_unit.clone(),
+            ..Default::default()
+        };
         for (target, value) in [
             (&mut xml.max_bytes, self.max_bytes),
             (&mut xml.max_depth, self.max_depth),

@@ -69,11 +69,15 @@ pub struct LandXmlTinStreamSession {
 
 impl LandXmlTinStreamSession {
     pub fn new(limits: LandXmlLimits) -> Result<Self, LandXmlError> {
+        // #5175: validate a caller-supplied assumed-unit override up front,
+        // the same as the non-streaming entry point, so a bad token refuses
+        // at session construction rather than partway through a stream.
+        let assumed_units = crate::semantics::resolve_assumed_units(&limits)?;
         let feed = TokenFeed::new();
         let mut reader = Reader::from_reader(BufReader::new(feed.clone()));
         reader.config_mut().trim_text(false);
         Ok(Self {
-            parser: Some(Parser::new(&limits, None)),
+            parser: Some(Parser::new(&limits, None, assumed_units)),
             plan: Some(crate::plan::parser::Parser::new_stream(
                 crate::LandXmlPlanLimits {
                     xml: limits.clone(),

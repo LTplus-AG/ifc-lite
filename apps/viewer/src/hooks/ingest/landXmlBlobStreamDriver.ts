@@ -54,6 +54,7 @@ function streamUnits(header: unknown): NonNullable<LandXmlTinDocument['units']> 
     elevation_unit?: unknown;
     linear_scale_to_meters?: unknown;
     elevation_scale_to_meters?: unknown;
+    assumed?: unknown;
   };
   if (typeof raw.linear_unit !== 'string' || typeof raw.elevation_unit !== 'string') {
     throw new Error('LandXML stream header has invalid unit names');
@@ -67,6 +68,11 @@ function streamUnits(header: unknown): NonNullable<LandXmlTinDocument['units']> 
     elevationUnit: raw.elevation_unit,
     linearScaleToMeters: raw.linear_scale_to_meters,
     elevationScaleToMeters: raw.elevation_scale_to_meters,
+    // #5175: read the provenance the header actually carries. Hardcoding
+    // `false` here would silently strip it on the streaming path — the exact
+    // path the viewer loads through — so a surface drawn at an operator-chosen
+    // scale would claim the producer declared it.
+    assumed: raw.assumed === true,
   };
 }
 

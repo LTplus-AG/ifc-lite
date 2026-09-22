@@ -13,7 +13,13 @@ import { LandXmlProvisionalTransaction } from './landXmlProvisionalTransaction.j
 
 function resources() {
   const renderer = getGlobalRenderer();
-  if (!renderer) return null;
+  // `isReady()` matters as much as existence (#5175). The renderer instance is
+  // created before `init()` resolves, so a LandXML file dropped in the first
+  // moments after page load reached `addMeshes` on an uninitialized device and
+  // threw "Renderer not initialized. Call init() first." — which failed the
+  // ENTIRE load, not just the provisional fast path. Declining the provisional
+  // here lets the normal publish happen once the device is up.
+  if (!renderer || !renderer.isReady()) return null;
   return {
     publish: (mesh: import('@ifc-lite/geometry').MeshData) => {
       const outcome = renderer.addMeshes([mesh], true);

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SYNTHETIC FIXTURE - not a vendor export, and not evidence of interoperability
+  with any producer. Hand-authored for issue #5175 to give the units contract a
+  renderable subject: a LandXML 1.2 TIN that DOES declare <Units>, so it must
+  load and publish a mesh on every parse path.
+
+  Deliberately not georeferenced: no <CoordinateSystem> and a small local
+  engineering grid, so a smoke test over this file exercises the units contract
+  and mesh publication without also entangling relative-to-eye precision. The
+  georeferenced case is covered separately by the bonsai-topo-control-v1
+  federation fixture in tests/models/manifest.json.
+
+  Point text is "northing easting elevation" per LandXML 1.2 - the order this
+  repo parses (rust/landxml/src/parser/capture.rs). A 3x3 grid at 10 m spacing
+  gives 9 points and 8 triangles.
+-->
+<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2" date="2026-09-22" time="00:00:00">
+  <Units>
+    <Metric areaUnit="squareMeter" linearUnit="meter" volumeUnit="cubicMeter" temperatureUnit="celsius" pressureUnit="milliBars"/>
+  </Units>
+  <Project name="ifc-lite synthetic terrain"/>
+  <Application name="ifc-lite" version="1.0"/>
+  <Surfaces>
+    <Surface name="Synthetic_Terrain" desc="Synthetic 3x3 TIN, metric, not georeferenced">
+      <Definition surfType="TIN">
+        <Pnts>
+          <P id="1">0.000 0.000 100.000</P>
+          <P id="2">0.000 10.000 100.500</P>
+          <P id="3">0.000 20.000 101.250</P>
+          <P id="4">10.000 0.000 100.750</P>
+          <P id="5">10.000 10.000 101.400</P>
+          <P id="6">10.000 20.000 102.100</P>
+          <P id="7">20.000 0.000 101.600</P>
+          <P id="8">20.000 10.000 102.350</P>
+          <P id="9">20.000 20.000 103.050</P>
+        </Pnts>
+        <Faces>
+          <F>1 2 4</F>
+          <F>2 5 4</F>
+          <F>2 3 5</F>
+          <F>3 6 5</F>
+          <F>4 5 7</F>
+          <F>5 8 7</F>
+          <F>5 6 8</F>
+          <F>6 9 8</F>
+        </Faces>
+      </Definition>
+    </Surface>
+  </Surfaces>
+</LandXML>

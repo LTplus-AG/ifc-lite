@@ -299,6 +299,13 @@ pub struct LandXmlUnits {
     pub elevation_unit: String,
     pub linear_scale_to_meters: f64,
     pub elevation_scale_to_meters: f64,
+    /// #5175: `true` when these units were never declared in the source and
+    /// were instead supplied by the caller as an explicit, audited
+    /// assumption (`LandXmlLimits::assumed_linear_unit`). `false` for every
+    /// unit record read from a source `<Units>` element. A consumer must be
+    /// able to tell the two apart without re-parsing; never collapse this
+    /// into a warning string or drop it on the way to a serialized surface.
+    pub assumed: bool,
 }
 
 /// Source-owned CRS declarations from LandXML 1.2's root CoordinateSystem.

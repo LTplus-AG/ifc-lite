@@ -34,6 +34,25 @@ replacement tests, the remaining uncertainty, and a trigger to revisit. No row
 below is silently waived. A waiver narrows the acceptance claim to the stated
 grammar invariant; it never turns synthetic input into vendor certification.
 
+## Cross-cutting precondition: declared units (#5175)
+
+Every `rendered` capability below is conditional on the source declaring `LandXML/Units` with a
+`linearUnit`. A numeric surface that would be drawn to scale is refused with `LXML009` when the
+declaration is absent, on every parse path — streaming and non-streaming alike, so a file cannot
+render on one path and be refused on another. Preserved-only records remain inspectable without
+units, because nothing about them is drawn to scale.
+
+The unit is never inferred from coordinate magnitude. Where a reviewed, caller-supplied assumed
+unit is used instead, it is carried as provenance and is distinguishable from a declared unit by
+any consumer of the parsed document; an assumed unit never upgrades a row's evidence disposition
+here, because the assumption is the operator's, not the producer's.
+
+This is a precondition, not a capability row: it constrains every row rather than describing a
+workflow. The invariant is pinned by `rust/landxml/tests/units_required_5175.rs` and, in the
+browser, by `tests/e2e/landxml-units-smoke.e2e.spec.ts` over a synthetic units-qualified TIN
+(`apps/viewer/public/samples/terrain-tin-metric.xml`). That fixture is synthetic and proves the
+invariant only — per the rule stated above, it certifies no vendor export.
+
 ## Verified public corpus
 
 The fixture manifest contains the immutable blob URL, source and fixture hash,

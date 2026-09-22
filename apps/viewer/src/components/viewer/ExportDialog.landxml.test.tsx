@@ -102,3 +102,76 @@ describe('ExportDialog LandXML source fidelity (#5042)', () => {
     assert.equal(exportButton().disabled, true, 'a mixed IFC/LandXML merge cannot fabricate terrain IFC entities');
   });
 });
+
+/**
+ * #5175: the refusal above tells the user to export the original LandXML file
+ * instead. Before this, no such route existed anywhere in the viewer — the
+ * message promised an action the UI could not perform.
+ */
+describe('ExportDialog LandXML source-format export (#5175)', () => {
+  function sourceButton(): HTMLButtonElement | undefined {
+    return [...document.querySelectorAll('button')]
+      .find((candidate) => candidate.textContent?.trim() === 'Download original LandXML');
+  }
+
+  /**
+   * Observes the real save-as path: `downloadBlob` builds an object URL and
+   * clicks an anchor carrying the filename. Patching those two seams records
+   * what was actually offered to the browser rather than asserting on a stub's
+   * return value. `revokeObjectURL` stays installed because `downloadBlob`
+   * defers it behind a timer that outlives the restore.
+   */
+  function captureDownload(run: () => void): { filename: string; bytes?: Blob } {
+    const originalCreate = URL.createObjectURL;
+    const originalClick = HTMLAnchorElement.prototype.click;
+    let filename = '';
+    let bytes: Blob | undefined;
+    URL.createObjectURL = ((blob: Blob) => { bytes = blob; return 'blob:landxml-test'; }) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+    HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) { filename = this.download; };
+    try {
+      run();
+    } finally {
+      URL.createObjectURL = originalCreate;
+      HTMLAnchorElement.prototype.click = originalClick;
+    }
+    return { filename, bytes };
+  }
+
+  it('offers the retained source bytes under the producer filename', () => {
+    const terrain = landXmlModel('survey.xml');
+    terrain.sourceFile = new File(['<LandXML/>'], 'Example_Terrain.xml', { type: 'application/xml' });
+    useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
+    render(<ExportDialog />);
+    openDialog();
+
+    const button = sourceButton();
+    assert.ok(button, 'the refusal offers the source-format route it points users at');
+
+    const { filename, bytes } = captureDownload(() => click(button));
+    assert.equal(filename, 'Example_Terrain.xml', 'the producer filename and extension survive');
+    assert.equal(bytes, terrain.sourceFile, 'the original bytes are served, not a re-synthesis');
+  });
+
+  it('states plainly when the original bytes are no longer held', () => {
+    const terrain = landXmlModel('survey.xml');
+    delete terrain.sourceFile;
+    useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
+    render(<ExportDialog />);
+    openDialog();
+
+    assert.equal(sourceButton(), undefined, 'no action is offered that cannot be performed');
+    assert.match(document.body.textContent ?? '', /original file is no longer held in memory/);
+  });
+
+  it('does not offer a source download for a non-LandXML model', () => {
+    const authored = fixtureModel('building.ifc');
+    authored.schemaVersion = 'IFC4';
+    authored.sourceFile = new File(['ISO-10303-21;'], 'building.ifc');
+    useViewerStore.setState({ ...fixtureModels(authored), dirtyModels: new Set() });
+    render(<ExportDialog />);
+    openDialog();
+
+    assert.equal(sourceButton(), undefined, 'the route belongs to the LandXML refusal, not to every export');
+  });
+});

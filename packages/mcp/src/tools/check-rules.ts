@@ -53,6 +53,12 @@ const checkRules: Tool = {
     if (!parsed.ok) {
       throw new ToolExecutionError({ code: ToolErrorCode.PARSE_FAILED, message: `Rule set is invalid: ${parsed.error}` });
     }
+    // Nothing to check is not a pass: an empty rule set would come back as
+    // `0/0 rules passed` (review on #5171). `ifc-lite check` and `delivery`
+    // refuse the same shape.
+    if (parsed.file.rules.length === 0) {
+      throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'Rule set declares zero rules — nothing to check.' });
+    }
 
     const models: EvaluatorModel[] = ctx.registry
       .list()

@@ -71,6 +71,10 @@ export async function checkCommand(args: string[]): Promise<void> {
 
   const parsed = parseRuleSetFile(rulesJson);
   if (!parsed.ok) fatal(`Rules file "${rulesPath}" is invalid: ${parsed.error}`);
+  // A rule set with no rules evaluates nothing and would report `0/0 rules
+  // passed` with exit 0 — a clean bill of health for a check that never ran.
+  // `delivery` already refuses this shape; so does `check` (review on #5171).
+  if (parsed.file.rules.length === 0) fatal(`Rules file "${rulesPath}" declares zero rules — nothing to check.`);
 
   // Every model is loaded before any rule runs — an unreadable model is
   // `error` (exit 2), never a report silently scoped down to the models

@@ -120,6 +120,13 @@ describe('check_rules', () => {
     await expect(checkRules.handler({ rules_json: '{ not json' }, ctx)).rejects.toThrow(/not valid JSON/);
   });
 
+  it('rejects a rule set with zero rules instead of reporting 0/0 passed (review on #5171)', async () => {
+    const ctx = await contextWithModel();
+    await expect(
+      checkRules.handler({ rules_json: JSON.stringify({ version: 1, name: 'empty', rules: [] }) }, ctx),
+    ).rejects.toThrow(/zero rules/i);
+  });
+
   it('rejects when no model is loaded, never runs the engine against nothing', async () => {
     const ctx: ToolContext = {
       registry: new InMemoryModelRegistry(),

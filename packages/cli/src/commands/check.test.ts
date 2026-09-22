@@ -192,6 +192,17 @@ describe('ifc-lite check — tri-state exit code (#5138)', () => {
     expect(process.exitCode).toBe(2);
   });
 
+  it('refuses a rule set with zero rules instead of reporting 0/0 passed (review on #5171)', async () => {
+    const { modelPath, rulesPath } = writeFixtures(tmpDir(), TWO_WALLS, { version: 1, name: 'empty', rules: [] });
+    silenceOutput();
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('__fatal__'); }) as unknown as (code?: string | number | null) => never);
+    try {
+      await expect(checkCommand([modelPath, '--rules', rulesPath, '--format', 'json'])).rejects.toThrow('__fatal__');
+    } finally {
+      exitSpy.mockRestore();
+    }
+  });
+
   it('table format prints one line per rule with pass/fail counts', async () => {
     const { modelPath, rulesPath } = writeFixtures(tmpDir(), TWO_WALLS, ruleSet());
     const write = silenceOutput();

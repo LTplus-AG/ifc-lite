@@ -175,6 +175,7 @@ nav:
     - Documents: guide/documents.md
     - Solar Analysis: guide/solar.md
     - Scripting SDK: guide/scripting-sdk.md
+    - Flow Graphs: guide/flow.md
   - Customization:
     - Extensions: guide/extensions.md
     - Authoring Extensions: guide/extension-authoring.md

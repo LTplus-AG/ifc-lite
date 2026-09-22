@@ -46,15 +46,13 @@ import { layerCommand } from './commands/layer.js';
 import { refCommand } from './commands/ref.js';
 import { gymCommand } from './commands/gym.js';
 import { deliveryCommand } from './commands/delivery.js';
+import { flowCommand } from './commands/flow.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readCliVersion } from './version.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
 // package.json sits one level above both `src/` and `dist/`.
-const VERSION = readCliVersion(join(__dirname, '..', 'package.json'));
+const VERSION = readCliVersion(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'));
 
 const HELP = `
   ifc-lite v${VERSION} — BIM toolkit for the terminal
@@ -117,6 +115,7 @@ const HELP = `
     gym       --model <file.ifc> | --seed <n>      reset/step/reward environment loop (JSONL over stdin/stdout)
     delivery  <recipe.json> [--json] [--out F] [--html F]  Repeatable delivery check (structural + IDS) from a saved recipe
               recipe: {"models":["m.ifc"],"structural":true,"ids":["rules.ids"]}, paths relative to the recipe file
+    flow      <run|describe|validate> <graph.flow.json> [<file.ifc>] [--input k=v] [--out F]  Evaluate a node graph headlessly
 
   Options:
     --help, -h           Show help
@@ -372,6 +371,9 @@ async function main(): Promise<void> {
       break;
     case 'delivery':
       await deliveryCommand(commandArgs);
+      break;
+    case 'flow':
+      await flowCommand(commandArgs);
       break;
     default:
       process.stderr.write(`Unknown command: ${command}\n`);

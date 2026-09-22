@@ -39,6 +39,8 @@ on:
       - 'packages/encoding/**'
       - 'packages/export/**'
       - 'packages/extensions/**'
+      - 'packages/flow/**'
+      - 'packages/flow-nodes/**'
       - 'packages/geometry/**'
       - 'packages/ids/**'
       - 'packages/ifcx/**'

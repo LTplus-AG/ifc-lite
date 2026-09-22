@@ -85,6 +85,18 @@
       "@ifc-lite/regex-guard/*": [
         "packages/regex-guard/dist/*"
       ],
+      "@ifc-lite/flow": [
+        "packages/flow/dist/index.d.ts"
+      ],
+      "@ifc-lite/flow/*": [
+        "packages/flow/dist/*"
+      ],
+      "@ifc-lite/flow-nodes": [
+        "packages/flow-nodes/dist/index.d.ts"
+      ],
+      "@ifc-lite/flow-nodes/*": [
+        "packages/flow-nodes/dist/*"
+      ],
       "@ifc-lite/ids": [
         "packages/ids/dist/index.d.ts"
       ],

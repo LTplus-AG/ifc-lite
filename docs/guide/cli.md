@@ -1378,6 +1378,38 @@ an unreadable model, and an IDS specification that fails — lives at
 | `--out <file>` | Write the JSON report to a file instead of stdout |
 | `--html <file>` | Additionally write a standalone HTML report to `<file>` |
 
+---
+
+### `flow` — Run a Node Graph Headlessly
+
+Evaluate a `*.flow.json` node graph (see [Flow graphs](flow.md)) against a model with the same
+`@ifc-lite/flow-nodes` library the viewer's editor uses. Viewer nodes (`viewer.colorize`, …)
+run as no-ops headlessly and pass their entities through, so a graph that highlights failures in
+the viewer runs unchanged in CI.
+
+```bash
+# Player-style inputs override node params; --out writes the model with the graph's mutations
+ifc-lite flow run audit.flow.json model.ifc --input rating.value=REI90 --out audited.ifc --json
+
+# The graph's inputs/outputs schema (what a Player form or a Hops-style caller needs)
+ifc-lite flow describe audit.flow.json --json
+
+# Document validation plus a per-node availability report for this host
+ifc-lite flow validate audit.flow.json
+```
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `run <graph> <file.ifc>` | Evaluate the graph. `--input <nodeId.param=value>` (repeatable; JSON values parse, others are strings), `--out <file>` (IFC with the run's mutations applied), `--json` |
+| `describe <graph>` | Print declared inputs (with param defaults) and outputs (with value kind and access). `--json` |
+| `validate <graph>` | Validate the document's wiring against the node registry (unknown types, missing ports, type-incompatible edges, unconnected required inputs, `inputs`/`outputs` markers that name nothing) and report each node as `ok`, `noop`, `unavailable` or `unknown` on this host. Exit 2 on any wiring problem or unrunnable node. `--json` |
+
+`run` exits 1 when any node failed; per-lane errors inside a lifted node do not fail the run
+(the lane yields `null`) and are listed under `errors` in the summary. Secrets are resolved from
+environment variables; a node that requires one the host lacks is reported as `unavailable`.
+
 ## Output Modes
 
 Every command supports structured output:
@@ -1522,4 +1554,5 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 | `ref` | Manage named refs in the layer store |
 | `gym` | reset/step/reward environment loop (JSONL over stdin/stdout) |
 | `delivery` | Repeatable delivery check (structural + IDS) from a saved recipe |
+| `flow` | Evaluate a node graph headlessly |
 <!-- END GENERATED: cli-commands -->

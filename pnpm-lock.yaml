@@ -796,6 +796,12 @@ importers:
       '@ifc-lite/extensions':
         specifier: workspace:^
         version: link:../extensions
+      '@ifc-lite/flow':
+        specifier: workspace:^
+        version: link:../flow
+      '@ifc-lite/flow-nodes':
+        specifier: workspace:^
+        version: link:../flow-nodes
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../geometry
@@ -1117,6 +1123,56 @@ importers:
       fflate:
         specifier: ^0.8.2
         version: 0.8.3
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.1
+        version: 26.6.2
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.0
+        version: 4.1.11(@edge-runtime/vm@3.2.0)(@types/node@26.6.2)(happy-dom@20.14.5)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))
+
+  packages/flow:
+    dependencies:
+      '@ifc-lite/encoding':
+        specifier: workspace:*
+        version: link:../encoding
+      '@noble/hashes':
+        specifier: ^2.4.0
+        version: 2.4.0
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.1
+        version: 26.6.2
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.0
+        version: 4.1.11(@edge-runtime/vm@3.2.0)(@types/node@26.6.2)(happy-dom@20.14.5)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))
+
+  packages/flow-nodes:
+    dependencies:
+      '@ifc-lite/data':
+        specifier: workspace:^
+        version: link:../data
+      '@ifc-lite/extensions':
+        specifier: workspace:^
+        version: link:../extensions
+      '@ifc-lite/flow':
+        specifier: workspace:^
+        version: link:../flow
+      '@ifc-lite/query':
+        specifier: workspace:^
+        version: link:../query
+      '@ifc-lite/sandbox':
+        specifier: workspace:^
+        version: link:../sandbox
+      '@ifc-lite/sdk':
+        specifier: workspace:^
+        version: link:../sdk
     devDependencies:
       '@types/node':
         specifier: ^26.6.1

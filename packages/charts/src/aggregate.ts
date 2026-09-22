@@ -187,7 +187,13 @@ export function aggregate(spec: ChartSpec, dataset: ChartDataset, options: Aggre
       for (let i = 0; i < row.ids.length; i++) ids.add(row.ids[i]);
     }
     const color = '#3b82f6'; // Default blue
-    const bucket: Bucket = { key: 'total', label: 'Total', value: total, count: ids.size, ids: Uint32Array.from(ids), color };
+    // `count` is documented as "rows in the bucket, regardless of measure"
+    // (`Bucket.count` in types.ts) and every other aggregation path keeps
+    // it that way (`acc.count += 1` above; folded into `Other` unchanged).
+    // `total` is that same row count here — use it, not `ids.size`, so a
+    // row whose ids overlap another row's doesn't silently shrink `count`
+    // relative to `value` (#5151).
+    const bucket: Bucket = { key: 'total', label: 'Total', value: total, count: total, ids: Uint32Array.from(ids), color };
     const palette = assignColors([bucket.label], options.palette);
     const categoryOf = new Map<number, number[]>();
     for (const id of ids) {

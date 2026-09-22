@@ -305,4 +305,26 @@ describe('aggregate invariants', () => {
     expect(agg.categories[0].value).toBe(5);
     expect(agg.categories[0].count).toBe(5);
   });
+
+  // Regression (#5151): `Bucket.count` is documented ("Rows in the bucket,
+  // regardless of measure") and every other path keeps `count` as a ROW
+  // count (`acc.count += 1`), independent from `value`/`ids.size`. The
+  // elementCount branch instead set `count: ids.size` — a DEDUPLICATED
+  // element-id count — while `value`/`total` stayed a row count. Two rows
+  // that carry the same element id (e.g. two schedule tasks touching one
+  // element) make row count and unique-id count genuinely diverge: 3 rows,
+  // 2 unique ids.
+  it('elementCount keeps count as a row count, not a unique-id count, when rows share an id', () => {
+    const ds = dataset([['Type', 'category']], [
+      [[1], ['Wall']],
+      [[1], ['Wall']], // same element id as row 1 — a second task/row referencing it
+      [[2], ['Door']],
+    ]);
+    const spec: ChartSpec = { id: 'ec', title: 'Total', source: 'elements', type: 'elementCount', measure: { agg: 'count' } };
+    const agg = aggregate(spec, ds);
+    expect(agg.total).toBe(3);
+    expect(agg.categories[0].value).toBe(3);
+    expect(agg.categories[0].count).toBe(3); // rows, not the 2 unique ids
+    expect([...agg.categories[0].ids].sort()).toEqual([1, 2]);
+  });
 });

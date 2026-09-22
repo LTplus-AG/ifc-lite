@@ -13,6 +13,16 @@
  * validation so the report reflects reality rather than an assumed
  * success — a correction that fails to apply is reported per-entity, not
  * swallowed.
+ *
+ * `specResult` itself is a captured, one-time audit snapshot — nothing
+ * re-runs validation just because the model changed underneath it. An
+ * entity deleted after the audit (with this dialog closed; no race needed)
+ * would otherwise still be listed, selected and clickable here (#5200).
+ * `getCorrectableRequirements` is given the active `MutablePropertyView`'s
+ * `isDeleted` check and drops tombstoned entities before they reach
+ * `failedEntities` — the list, the selection count, and `handleApply`'s
+ * write set all derive from that one filtered array, so there is nothing
+ * left to silently skip at apply time.
  */
 
 import { useCallback, useMemo, useState } from 'react';
@@ -63,11 +73,25 @@ export interface CorrectableRequirement {
   facetDataType?: string;
 }
 
-export function getCorrectableRequirements(specResult: IDSSpecificationResult): CorrectableRequirement[] {
+/**
+ * `specResult` is a captured, one-time audit snapshot (`IDSPanel` re-runs
+ * validation only on explicit user action), so an entity deleted after the
+ * audit ran is otherwise indistinguishable here from a live failing one
+ * (#5200). `isDeleted`, when given, drops such entities before they ever
+ * reach `failedEntities` — the dialog's list, its selection count, and
+ * `handleApply`'s write set all derive from this one function's output, so
+ * filtering here keeps all three honest by construction rather than
+ * requiring a second check at apply time.
+ */
+export function getCorrectableRequirements(
+  specResult: IDSSpecificationResult,
+  isDeleted?: (expressId: number) => boolean,
+): CorrectableRequirement[] {
   const byId = new Map<string, CorrectableRequirement>();
   const rejected = new Set<string>();
 
   for (const entity of specResult.entityResults) {
+    if (isDeleted?.(entity.expressId)) continue;
     for (const reqResult of entity.requirementResults) {
       if (reqResult.status !== 'fail') continue;
       const id = reqResult.requirement.id;
@@ -124,8 +148,21 @@ export function IDSCorrectionDialog({
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
   const setStoreProperty = useViewerStore((s) => s.setProperty);
+  // Subscribed so a deletion that happens while the dialog is CLOSED (the
+  // #5200 repro — no race needed) is reflected the next time it opens, and
+  // so a delete somehow reachable while it's open drops the row live. Only
+  // re-derives `correctable` from the already-computed `specResult` — it
+  // does NOT re-run IDS validation, which stays gated on explicit
+  // user action / `onRevalidate`.
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
-  const correctable = useMemo(() => getCorrectableRequirements(specResult), [specResult]);
+  const correctable = useMemo(() => {
+    const mutationView = getMutationView(modelId);
+    return getCorrectableRequirements(
+      specResult,
+      mutationView ? (expressId) => mutationView.isDeleted(expressId) : undefined,
+    );
+  }, [specResult, modelId, getMutationView, mutationVersion]);
 
   const [requirementId, setRequirementId] = useState<string | null>(correctable[0]?.requirementId ?? null);
   const activeRequirement = correctable.find((r) => r.requirementId === requirementId) ?? correctable[0] ?? null;

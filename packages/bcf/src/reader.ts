@@ -158,6 +158,38 @@ function assertArchiveWithinLimits(zip: JSZip, maxEntries: number, maxExpandedBy
 }
 
 /**
+ * Normalise a zip entry's relative path to forward-slash separators for
+ * matching topic-folder and in-folder (viewpoint/snapshot) paths.
+ *
+ * The ZIP spec mandates `/`, but a real historical Windows-originated zip
+ * writer can emit `\` instead, and BCF is an interop format specifically
+ * consumed from other vendors' tools. JSZip does not normalise this itself
+ * (unlike a leading `./`, which it strips before `reader.ts` ever sees the
+ * name). This package's own writer (writer.ts) only ever emits forward
+ * slashes, so only the reader needs to tolerate the backslash form -- the
+ * standard "tolerant reader, strict writer" interop split.
+ */
+function normalizeZipPath(path: string): string {
+  return path.replace(/\\/g, '/');
+}
+
+/**
+ * Build a normalised-path -> entry lookup so a topic-folder or
+ * viewpoint/snapshot path constructed from an already-normalised folder name
+ * (e.g. `${topicFolder}/markup.bcf`) still finds a backslash-separated entry.
+ * `zip.file()` matches the entry's ORIGINAL path exactly, so it would miss a
+ * `guid\markup.bcf` entry when asked for `guid/markup.bcf` even after the
+ * folder itself was discovered via {@link normalizeZipPath}.
+ */
+function buildNormalizedFileIndex(zip: JSZip): Map<string, JSZip.JSZipObject> {
+  const index = new Map<string, JSZip.JSZipObject>();
+  zip.forEach((relativePath, entry) => {
+    index.set(normalizeZipPath(relativePath), entry);
+  });
+  return index;
+}
+
+/**
  * Parse a BCF file (.bcfzip) into a BCFProject
  *
  * @param file - BCF file as File, Blob, or ArrayBuffer
@@ -202,7 +234,8 @@ export async function readBCF(
   const { projectId, name, extensions } = await readProjectFile(zip, budget);
 
   // Read topics
-  const topics = await readTopics(zip, budget, version.versionId);
+  const fileIndex = buildNormalizedFileIndex(zip);
+  const topics = await readTopics(zip, fileIndex, budget, version.versionId);
 
   return {
     version: version.versionId,
@@ -271,23 +304,48 @@ async function readProjectFile(zip: JSZip, budget: ExpansionBudget): Promise<{
 /**
  * Read all topics from the BCF archive
  */
-async function readTopics(zip: JSZip, budget: ExpansionBudget, versionId: '2.1' | '3.0'): Promise<Map<string, BCFTopic>> {
+async function readTopics(
+  zip: JSZip,
+  fileIndex: Map<string, JSZip.JSZipObject>,
+  budget: ExpansionBudget,
+  versionId: '2.1' | '3.0',
+): Promise<Map<string, BCFTopic>> {
   const topics = new Map<string, BCFTopic>();
 
-  // Find all topic folders (folders with markup.bcf)
+  // Find all topic folders (folders with markup.bcf). Matching runs against
+  // the normalised (forward-slash) path so a backslash-separated archive's
+  // folders are discoverable (see normalizeZipPath).
   const topicFolders = new Set<string>();
+  // markup.bcf entries present in the archive that no topic folder claimed --
+  // e.g. one nested more than one segment deep, or sitting at the archive
+  // root with no folder at all. A non-empty list here means the archive HAS
+  // topics that this reader could not place, which must not read as "zero
+  // topics" with no signal (see the warning below).
+  const unclaimedMarkupEntries: string[] = [];
 
   zip.forEach((relativePath: string) => {
-    const match = relativePath.match(/^([^/]+)\/markup\.bcf$/i);
+    const normalized = normalizeZipPath(relativePath);
+    const match = normalized.match(/^([^/]+)\/markup\.bcf$/i);
     if (match) {
       topicFolders.add(match[1]);
+    } else if (/(?:^|\/)markup\.bcf$/i.test(normalized)) {
+      unclaimedMarkupEntries.push(relativePath);
     }
   });
+
+  if (unclaimedMarkupEntries.length > 0) {
+    console.warn(
+      `Found ${unclaimedMarkupEntries.length} markup.bcf ` +
+        `${unclaimedMarkupEntries.length === 1 ? 'entry' : 'entries'} that no topic folder ` +
+        `claimed (expected exactly "<topic-guid>/markup.bcf"): ${unclaimedMarkupEntries.join(', ')}. ` +
+        `These topics were not read.`,
+    );
+  }
 
   // Parse each topic
   for (const topicGuid of topicFolders) {
     try {
-      const topic = await readTopic(zip, topicGuid, budget, versionId);
+      const topic = await readTopic(zip, fileIndex, topicGuid, budget, versionId);
       if (topic) {
         // A second topic folder whose internal Topic/@Guid collides with one
         // already parsed must not silently overwrite it in the map -- that
@@ -317,8 +375,17 @@ async function readTopics(zip: JSZip, budget: ExpansionBudget, versionId: '2.1' 
 /**
  * Read a single topic from the BCF archive
  */
-async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudget, versionId: '2.1' | '3.0'): Promise<BCFTopic | null> {
-  const markupFile = zip.file(`${topicFolder}/markup.bcf`);
+async function readTopic(
+  zip: JSZip,
+  fileIndex: Map<string, JSZip.JSZipObject>,
+  topicFolder: string,
+  budget: ExpansionBudget,
+  versionId: '2.1' | '3.0',
+): Promise<BCFTopic | null> {
+  // Looked up through fileIndex, not zip.file(), so a topic folder discovered
+  // from a backslash-separated entry (normalised down to `topicFolder`) still
+  // resolves back to its original entry (see buildNormalizedFileIndex).
+  const markupFile = fileIndex.get(`${topicFolder}/markup.bcf`);
   if (!markupFile) {
     return null;
   }
@@ -385,7 +452,7 @@ async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudge
   const comments = parseComments(markupContent);
 
   // Parse viewpoints
-  const viewpoints = await parseViewpoints(zip, topicFolder, markupContent, budget, versionId);
+  const viewpoints = await parseViewpoints(zip, fileIndex, topicFolder, markupContent, budget, versionId);
 
   return {
     guid,
@@ -610,6 +677,7 @@ function parseComments(markupContent: string): BCFComment[] {
  */
 async function parseViewpoints(
   zip: JSZip,
+  fileIndex: Map<string, JSZip.JSZipObject>,
   topicFolder: string,
   markupContent: string,
   budget: ExpansionBudget,
@@ -686,18 +754,21 @@ async function parseViewpoints(
     }
   }
 
-  // Find viewpoint files directly in the folder
+  // Find viewpoint files directly in the folder. Matched and stored as
+  // normalised (forward-slash) paths, so every downstream fileIndex lookup
+  // below stays consistent for a backslash-separated archive.
   const viewpointFiles: string[] = [];
   zip.forEach((relativePath: string) => {
-    if (relativePath.startsWith(`${topicFolder}/`) && relativePath.endsWith('.bcfv')) {
-      viewpointFiles.push(relativePath);
+    const normalized = normalizeZipPath(relativePath);
+    if (normalized.startsWith(`${topicFolder}/`) && normalized.endsWith('.bcfv')) {
+      viewpointFiles.push(normalized);
     }
   });
 
   // Parse each viewpoint file
   for (const viewpointPath of viewpointFiles) {
     try {
-      const viewpointFile = zip.file(viewpointPath);
+      const viewpointFile = fileIndex.get(viewpointPath);
       if (!viewpointFile) continue;
 
       const viewpointContent = await readEntryCapped(viewpointFile, 'string', budget);
@@ -712,7 +783,7 @@ async function parseViewpoints(
         // First, try the snapshot filename from markup.bcf
         if (viewpointInfo?.snapshotFile) {
           const snapshotPath = `${topicFolder}/${viewpointInfo.snapshotFile}`;
-          snapshotFile = zip.file(snapshotPath);
+          snapshotFile = fileIndex.get(snapshotPath) ?? null;
           if (viewpointInfo.snapshotFile.toLowerCase().endsWith('.jpg') ||
               viewpointInfo.snapshotFile.toLowerCase().endsWith('.jpeg')) {
             snapshotFormat = 'jpeg';
@@ -747,7 +818,7 @@ async function parseViewpoints(
           ];
 
           for (const path of pathsToTry) {
-            snapshotFile = zip.file(path);
+            snapshotFile = fileIndex.get(path) ?? null;
             if (snapshotFile) {
               if (path.toLowerCase().endsWith('.jpg') || path.toLowerCase().endsWith('.jpeg')) {
                 snapshotFormat = 'jpeg';
@@ -773,7 +844,7 @@ async function parseViewpoints(
 
   // If no viewpoint files found, check for default snapshot
   if (viewpoints.length === 0) {
-    const defaultSnapshot = zip.file(`${topicFolder}/snapshot.png`) || zip.file(`${topicFolder}/snapshot.jpg`);
+    const defaultSnapshot = fileIndex.get(`${topicFolder}/snapshot.png`) ?? fileIndex.get(`${topicFolder}/snapshot.jpg`) ?? null;
     if (defaultSnapshot) {
       const isJpg = defaultSnapshot.name.toLowerCase().endsWith('.jpg');
       const snapshotData = await readEntryCapped(defaultSnapshot, 'uint8array', budget);

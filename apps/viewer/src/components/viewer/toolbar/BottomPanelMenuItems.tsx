@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { BarChart3, CalendarClock, FileCode2, FileSpreadsheet, FileText, type LucideIcon } from 'lucide-react';
+import { BarChart3, CalendarClock, FileCode2, FileSpreadsheet, FileText, Workflow, type LucideIcon } from 'lucide-react';
 import { DropdownMenuCheckboxItem, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
@@ -18,6 +18,7 @@ const ITEMS: ReadonlyArray<{ id: BottomPanelId; labelKey: TranslationKey; Icon: 
   { id: 'gantt', labelKey: 'workspacePanels.bottom.gantt', Icon: CalendarClock },
   { id: 'charts', labelKey: 'workspacePanels.bottom.charts', Icon: BarChart3 },
   { id: 'document', labelKey: 'workspacePanels.bottom.document', Icon: FileText },
+  { id: 'flow', labelKey: 'workspacePanels.bottom.flow', Icon: Workflow },
 ];
 
 export function BottomPanelMenuItems({ active, onToggle }: {

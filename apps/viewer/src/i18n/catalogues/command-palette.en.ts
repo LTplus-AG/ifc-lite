@@ -86,6 +86,7 @@ export const commandPaletteEn = {
   'commandPalette.panel.lists.label': 'Entity Lists',
   'commandPalette.panel.gantt.label': 'Construction Schedule (Gantt)',
   'commandPalette.panel.charts.label': 'Charts',
+  'commandPalette.panel.flow.label': 'Flow',
   'commandPalette.panel.document.label': 'Document',
   'commandPalette.panel.properties.label': 'Information',
   'commandPalette.panel.tree.label': 'Hierarchy',

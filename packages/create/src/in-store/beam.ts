@@ -23,7 +23,7 @@ import type { StoreEditor } from '@ifc-lite/mutations';
 import { vecCross, vecNorm, assertFinitePoint3 } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
-import { assertPositiveFinite, ownerHistoryRef } from './_emit-helpers.js';
+import { assertPositiveFinite, ownerHistoryRef, productGuid } from './_emit-helpers.js';
 
 export interface BeamInStoreParams {
   Start: [number, number, number];
@@ -36,6 +36,8 @@ export interface BeamInStoreParams {
   Description?: string;
   ObjectType?: string;
   Tag?: string;
+  /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+  GlobalId?: string;
 }
 
 export interface BeamBuildResult {
@@ -138,7 +140,7 @@ export function addBeamToStore(
 
   // `IfcBeam.PredefinedType` only exists from IFC4 onward.
   const beamAttrs: Array<unknown> = [
-    generateIfcGuid(anchor.guidRandom),
+    productGuid(params, anchor.guidRandom),
     ownerHistoryRef(ownerHistoryId),
     params.Name ?? 'Beam',
     params.Description ?? null,

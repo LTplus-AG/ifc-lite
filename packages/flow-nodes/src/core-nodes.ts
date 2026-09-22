@@ -180,6 +180,32 @@ export const coreNodes: FlowNodeDef[] = [
     },
   },
   {
+    type: 'core.first',
+    title: 'First',
+    category: 'core',
+    doc: 'The first item of a list, or null when the list is empty.',
+    inputs: [{ name: 'items', type: ANY_LIST }],
+    outputs: [{ name: 'item', type: ANY_ITEM }],
+    params: [],
+    capabilities: [],
+    run: (_c, i) => ({ item: (i.items as unknown[])[0] ?? null }),
+  },
+  {
+    type: 'core.item',
+    title: 'Item at',
+    category: 'core',
+    doc: 'The item at an index (negative counts from the end), or null when out of range.',
+    inputs: [{ name: 'items', type: ANY_LIST }],
+    outputs: [{ name: 'item', type: ANY_ITEM }],
+    params: [{ name: 'index', kind: 'number', default: 0 }],
+    capabilities: [],
+    run: (_c, i, p) => {
+      const items = i.items as unknown[];
+      const idx = num(p.index, 'index');
+      return { item: items.at(idx) ?? null };
+    },
+  },
+  {
     type: 'core.wrap',
     title: 'Wrap',
     category: 'core',

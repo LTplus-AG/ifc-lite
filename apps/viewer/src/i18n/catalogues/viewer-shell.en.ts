@@ -16,6 +16,7 @@ export const viewerShellEn = {
   'viewerShell.chunkError.reload': 'Reload',
   'viewerShell.chunkLabel.appearancePanel': 'Appearance panel',
   'viewerShell.chunkLabel.chartsPanel': 'Charts panel',
+  'viewerShell.chunkLabel.flowPanel': 'Flow panel',
   'viewerShell.chunkLabel.documentPanel': 'Document panel',
   'viewerShell.chunkLabel.layersPanel': 'Layers panel',
   'viewerShell.chunkLabel.mcpPage': 'MCP page',

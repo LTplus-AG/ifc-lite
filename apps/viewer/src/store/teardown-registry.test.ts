@@ -29,6 +29,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  */
 const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'documentPanelVisible', // #4594 documents: templates survive, the panel closes
+  'flowPanelVisible', 'flowRunning', 'flowLastRun', 'flowLastError', // #5167 flow: graphs survive, the last run holds handles of the outgoing model
   'chartPanelVisible', 'chartSelectionRevision', 'chartSlice', 'chartSliceSource', 'chartSliceBuckets', 'chartVisibilityOwned', 'chartVisibilityRevision', // #3944 charts: the slice is renderer ids of the outgoing model; the claim is on a shared channel
   'modelTagAssignments', 'modelTagView', // #4215 model tags: assignments and the Models-section view die with the federation, definitions survive
   'appearanceReferences', 'referenceUndo', 'referenceRedo', 'referenceRevision', 'selectedAppearanceReferenceId', // #4308 drawing workspace lifecycle
@@ -93,6 +94,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
 
 /** The same, for `all-models-cleared`. */
 const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
+  'flowLastRun', 'flowLastError', // #5167 flow: the last run's outputs hold handles into the cleared models
   'chartSelectionRevision', 'chartSlice', 'chartSliceSource', 'chartSliceBuckets', 'chartVisibilityOwned', 'chartVisibilityRevision', // #3944 charts
   'modelTagAssignments', 'modelTagView', // #4215 model tags: assignments and the Models-section view die with the federation, definitions survive
   'modelPlacement', 'repositionNudge', 'repositionOpen', 'placementStaleMeasurements', // #4226 workspace placement lifecycle
@@ -145,6 +147,7 @@ const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
  */
 const PINNED_MODEL_REMOVED_KEYS: readonly string[] = [
   'modelTagAssignments', // #4215 model tags: assignments die with the model, definitions survive
+  'flowLastRun', 'flowLastError', // #5167 flow: the last run's outputs hold handles into the removed model
   'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'annotation2DCursorPos', 'classFilter',
   'cloudAnnotation2DPoints', 'cloudAnnotations2D', 'contextMenu', 'drawing2DDisplayOptions', 'geometryResult',
   'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel',
@@ -215,6 +218,7 @@ function modelRemovedFixture() {
  */
 const PINNED_OWNED_KEYS: readonly string[] = [
   'documentPanelVisible', // #4594 documents
+  'flowPanelVisible', 'flowRunning', 'flowLastRun', 'flowLastError', // #5167 flow
   'chartPanelVisible', 'chartSelectionRevision', 'chartSlice', 'chartSliceSource', 'chartSliceBuckets', 'chartVisibilityOwned', 'chartVisibilityRevision', // #3944 charts
   'modelTagAssignments', 'modelTagView', // #4215 model tags: assignments and the Models-section view die with the federation, definitions survive
   'appearanceReferences', 'referenceUndo', 'referenceRedo', 'referenceRevision', 'selectedAppearanceReferenceId', // #4308 drawing workspace lifecycle

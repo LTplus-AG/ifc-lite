@@ -146,6 +146,8 @@ export const ribbonToolbarEn = {
   'ribbon.analyze.chartsTooltip': 'Charts bound to the model — click a bar to select it in 3D',
   'ribbon.analyze.document': 'Document',
   'ribbon.analyze.documentTooltip': 'A page over the model — text with live labels, logos, charts, BCF topics — printed to PDF',
+  'ribbon.analyze.flow': 'Flow',
+  'ribbon.analyze.flowTooltip': 'Node graphs over the model — query, edit, create; the same graph runs in CI',
   'ribbon.analyze.script': 'Script',
   'ribbon.analyze.scriptTooltip': 'Script editor',
   'ribbon.analyze.styleGroup': 'Style',

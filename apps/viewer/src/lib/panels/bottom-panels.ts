@@ -20,7 +20,7 @@
  */
 
 /** Bottom-strip panel ids, in display precedence. Append only. */
-export const BOTTOM_PANEL_IDS = ['gantt', 'script', 'lists', 'charts', 'document'] as const;
+export const BOTTOM_PANEL_IDS = ['gantt', 'script', 'lists', 'charts', 'document', 'flow'] as const;
 
 export type BottomPanelId = (typeof BOTTOM_PANEL_IDS)[number];
 
@@ -31,6 +31,7 @@ export const BOTTOM_PANEL_FLAG = {
   lists: 'listPanelVisible',
   charts: 'chartPanelVisible',
   document: 'documentPanelVisible',
+  flow: 'flowPanelVisible',
 } as const satisfies Record<BottomPanelId, string>;
 
 export type BottomPanelFlag = (typeof BOTTOM_PANEL_FLAG)[BottomPanelId];
@@ -42,6 +43,7 @@ export const BOTTOM_PANEL_SETTER = {
   lists: 'setListPanelVisible',
   charts: 'setChartPanelVisible',
   document: 'setDocumentPanelVisible',
+  flow: 'setFlowPanelVisible',
 } as const satisfies Record<BottomPanelId, string>;
 
 /** The slice of store state the bottom strip reads. */

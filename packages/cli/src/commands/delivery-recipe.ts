@@ -45,11 +45,19 @@ export interface DeliveryRecipe {
   models: string[];
   structural: boolean;
   ids: string[];
-  rules: string[];
+  /**
+   * Optional, and not only because a recipe file may omit it: making it
+   * required would break every existing consumer constructing a
+   * `DeliveryRecipe` literal (review on #5171). The loader defaults it to
+   * `[]`, so `ResolvedDeliveryRecipe` below still carries a total value.
+   */
+  rules?: string[];
 }
 
 /** A recipe with every `models`/`ids`/`rules` path resolved to an absolute path. */
-export interface ResolvedDeliveryRecipe extends DeliveryRecipe {
+export interface ResolvedDeliveryRecipe extends Omit<DeliveryRecipe, 'rules'> {
+  /** Declared `rules`, defaulted to `[]` when the recipe omitted the field. */
+  rules: string[];
   /** Absolute path to the recipe file itself. */
   recipePath: string;
   /** `models`, resolved to absolute paths, in declared order. */

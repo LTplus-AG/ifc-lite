@@ -84,7 +84,14 @@ export async function runClash(
 
   const clashes: Clash[] = [];
   const ruleCoverage: ClashRuleCoverage[] = [];
-  const seen = new Set<string>();
+  // Maps a clash id to its index in `clashes`, not just membership: a kernel's
+  // broad phase MAY hand the narrow phase several candidate pairs for the same
+  // (A, B) entity pair (e.g. one entity split across several geometry
+  // sub-prims, each tested against the same `b` — see `broad.ts`'s cross-group
+  // loop). Keeping only membership and skipping every later duplicate would
+  // silently keep whichever submesh's record happened to be produced first,
+  // which can be the shallower — or entirely clean — one. See `mostSevere`.
+  const seen = new Map<string, number>();
   let droppedPairs = 0;
   // A single GLOBAL candidate-pair budget across the whole run (not per rule),
   // so `maxCandidatePairs` is an honest end-to-end guardrail.
@@ -181,8 +188,30 @@ export async function runClash(
         }
 
         const id = clashId(elA, elB, rule.id);
-        if (seen.has(id)) continue;
-        seen.add(id);
+        const existingIndex = seen.get(id);
+        if (existingIndex !== undefined) {
+          // A second record for an (A, B) entity pair already reported once
+          // this rule — keep whichever is more severe rather than whichever
+          // was produced first (#5194). `mostSevere` mirrors the ranking
+          // `analysis.ts` uses to prioritise a finished result: status first
+          // (a real clash outranks a mere touch), penetration depth / gap
+          // second.
+          if (!mostSevere(rec, clashes[existingIndex])) continue;
+          clashes[existingIndex] = {
+            id,
+            a: toRef(elA),
+            b: toRef(elB),
+            rule: rule.id,
+            status: rec.status,
+            distance: rec.distance,
+            distanceKind: rec.distanceKind,
+            point: rec.point,
+            bounds: rec.bounds,
+            severity: rule.severity ?? inferClashSeverity(elA.tag, elB.tag),
+          };
+          continue;
+        }
+        seen.set(id, clashes.length);
 
         clashes.push({
           id,
@@ -231,6 +260,29 @@ function withoutMembership(rule: ClashRule): ClashRule {
 
 function toRef(el: ClashElement): ClashElementRef {
   return { key: el.key, ref: el.ref, model: el.model, tag: el.tag, name: el.name };
+}
+
+/**
+ * Whether `candidate` is at least as severe as `current`, for two narrow-phase
+ * verdicts on the SAME (A, B) entity pair.
+ *
+ * Lower rank = more severe, matching `analysis.ts`'s `SEVERITY_RANK` /
+ * `penetrationDepth` convention used to prioritise a finished result: a real
+ * clash (`hard` or `clearance`) outranks a mere `touch`, and `hard`/`clearance`
+ * never coexist for one rule (fixed by `rule.mode`), so their relative rank
+ * never actually competes. Within the same status, `narrow.ts`/`depth.ts`
+ * assign `distance` so the smaller value is always the worse one: `hard`
+ * carries the SIGNED penetration depth (negative, deeper = smaller), while
+ * `clearance`/`touch` carry the unsigned gap (smaller = closer = worse).
+ */
+function mostSevere(
+  candidate: Pick<Clash, 'status' | 'distance'>,
+  current: Pick<Clash, 'status' | 'distance'>,
+): boolean {
+  const rank: Record<Clash['status'], number> = { hard: 0, clearance: 0, touch: 1 };
+  const rankDiff = rank[candidate.status] - rank[current.status];
+  if (rankDiff !== 0) return rankDiff < 0;
+  return candidate.distance < current.distance;
 }
 
 /** Stable, deterministic clash identity from the two durable keys + rule. */

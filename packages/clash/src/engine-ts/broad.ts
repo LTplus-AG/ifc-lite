@@ -26,16 +26,23 @@ export function candidatePairs(
   const pairs: Array<[number, number]> = [];
 
   if (groupB) {
-    const seen = new Set<string>();
+    // No entity-identity dedup here. Deduping candidate PAIRS by
+    // (a.model, a.key, b.model, b.key) before the narrow phase ran used to
+    // collapse every sub-prim of a split entity onto whichever one the BVH
+    // reached first — so a broad-phase false positive submesh could claim
+    // the (A, B) slot and hide a sibling submesh that genuinely clashes
+    // (#5194). Every candidate the broad phase finds is now tested; entity
+    // identity is deduped once, downstream, AFTER the narrow phase has
+    // decided each submesh's verdict, keeping the more severe one — see
+    // `mostSevere` in `orchestrator.ts`, which already deduped by the same
+    // (model, key) identity via `clashId` for an unrelated reason and is the
+    // single place both kernels' records converge.
     for (let j = 0; j < groupB.length; j += 1) {
       const b = groupB[j];
       const hits = bvh.queryAABB(inflate(b.bounds, margin));
       for (const i of hits) {
         const a = groupA[i];
         if (isSameEntity(a, b)) continue;
-        const dedup = orderKey(a.model, a.key, b.model, b.key);
-        if (seen.has(dedup)) continue;
-        seen.add(dedup);
         pairs.push([i, j]);
       }
     }
@@ -74,10 +81,4 @@ export function candidatePairs(
 function isSameEntity(a: Pick<ClashElement, 'key' | 'ref' | 'model'>, b: Pick<ClashElement, 'key' | 'ref' | 'model'>): boolean {
   if (a.model !== b.model) return false;
   return a.key === b.key || a.ref === b.ref;
-}
-
-function orderKey(modelA: string, keyA: string, modelB: string, keyB: string): string {
-  const a = `${modelA} ${keyA}`;
-  const b = `${modelB} ${keyB}`;
-  return a < b ? `${a} ${b}` : `${b} ${a}`;
 }

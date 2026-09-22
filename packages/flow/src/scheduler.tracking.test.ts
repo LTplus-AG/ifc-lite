@@ -215,6 +215,22 @@ describe('tracked nodes', () => {
     expect(r.log.find((l) => l.level === 'error')?.message).toContain('locked');
   });
 
+  it('a vanished lane whose removal threw keeps its entry, so the next run retries the removal', async () => {
+    const store = new MemoryTrackingStore();
+    const e = elements();
+    await runFlow(doc, { host: e, registry: reg(['W1', 'W2']), tracking: store });
+    const [g1] = [...e.created.keys()];
+    const locked: NodeDef<Elements> = { ...place, remove: (ctx, globalId) => { if (globalId === g1) throw new Error('locked'); ctx.host.created.delete(globalId); } };
+    const registry = new NodeRegistry<Elements>().registerAll([wallsNode(['W2']), sizeNode, locked]);
+    const r = await runFlow(doc, { host: e, registry, tracking: store });
+    expect(r.reports.find((x) => x.nodeId === 'place')?.laneErrors).toBe(1);
+    expect(Object.keys(store.load(KEY)!.entries).sort()).toEqual(['W1', 'W2']);
+    const retried = await runFlow(doc, { host: e, registry: reg(['W2']), tracking: store });
+    expect(trackingOf(retried)).toEqual({ created: 0, updated: 0, kept: 1, removed: 1 });
+    expect(e.created.has(g1)).toBe(false);
+    expect(Object.keys(store.load(KEY)!.entries)).toEqual(['W2']);
+  });
+
   it('a create that failed leaves no entry, so the next run plans create again under the same GlobalId', async () => {
     const store = new MemoryTrackingStore();
     const e = elements();

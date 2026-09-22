@@ -317,20 +317,25 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       continue;
     }
     let removeErrors = 0;
+    const failedRemovals: string[] = [];
     if (trackingPlan) {
       for (const gone of trackingPlan.remove) {
         try {
           await def.remove?.(makeCtx(gone.laneKey), gone.globalId);
         } catch (err) {
           removeErrors += 1;
+          failedRemovals.push(gone.laneKey);
           log.push({ nodeId, laneKey: gone.laneKey, level: 'error', message: `remove ${gone.globalId}: ${err instanceof Error ? err.message : String(err)}` });
         }
       }
       // A lane that failed keeps its previous entry, so the next run retries
-      // it instead of forgetting an element that may still exist.
-      const failedLanes = new Set(
-        plan.lanes.filter((l, i) => results[i] === null && !l.nullLane && !skippedDuplicates.has(i)).map((l) => l.laneKey ?? ''),
-      );
+      // it instead of forgetting an element that may still exist. A vanished
+      // lane whose removal threw is the same case: still in the model, so
+      // still in the set.
+      const failedLanes = new Set([
+        ...plan.lanes.filter((l, i) => results[i] === null && !l.nullLane && !skippedDuplicates.has(i)).map((l) => l.laneKey ?? ''),
+        ...failedRemovals,
+      ]);
       const entries = { ...trackingPlan.next.entries };
       const previous = opts.tracking?.load(trackingKey)?.entries ?? {};
       for (const k of failedLanes) {

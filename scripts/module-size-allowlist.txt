@@ -121,7 +121,7 @@
    916 apps/viewer/src/components/viewer/useMouseControls.ts
    683 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1815 apps/viewer/src/components/viewer/Viewport.tsx
-  1190 apps/viewer/src/components/viewer/ViewportContainer.tsx
+  1194 apps/viewer/src/components/viewer/ViewportContainer.tsx
    508 apps/viewer/src/components/viewer/ZonesPanel.tsx
    847 apps/viewer/src/hooks/ids/idsExportService.ts
    598 apps/viewer/src/hooks/ingest/federationAlign.ts
@@ -134,7 +134,7 @@
   1041 apps/viewer/src/hooks/useDrawingGeneration.ts
    586 apps/viewer/src/hooks/useIfcCache.ts
    667 apps/viewer/src/hooks/useIfcFederation.ts
-  2219 apps/viewer/src/hooks/useIfcLoader.ts
+  2234 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
    445 apps/viewer/src/hooks/useKeyboardShortcuts.ts
    467 apps/viewer/src/hooks/useSymbolicAnnotations.ts

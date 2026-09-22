@@ -19,6 +19,13 @@ export interface LandXmlBlobCursorOptions {
   onSurface?(surface: LandXmlAssembledSurface): void | Promise<void>;
   /** Receives the original credited WASM event without source-document assembly. */
   onEvent?(event: unknown): void | Promise<void>;
+  /**
+   * #5175: opt-in linear unit for a source that declares no `<Units>`. A
+   * declared `<Units>` always wins and pushes a warning; an unknown token
+   * refuses rather than defaulting to meters. Forwarded verbatim to
+   * `LandXmlCursorApi.createLandXmlTinStreamSession`'s parse options.
+   */
+  assumedLinearUnit?: string;
 }
 
 async function processStreamingEvents(
@@ -59,7 +66,10 @@ export async function streamLandXmlSourceBlobWithApi(
   if (!Number.isSafeInteger(blob.size) || blob.size <= 0 || blob.size > MAX_WASM_U32) {
     throw new Error('LandXML source size is outside the WASM cursor limit');
   }
-  const session = api.createLandXmlTinStreamSession(blob.size);
+  const session = api.createLandXmlTinStreamSession(
+    blob.size,
+    options.assumedLinearUnit === undefined ? undefined : { assumedLinearUnit: options.assumedLinearUnit },
+  );
   const surface = new LandXmlSurfaceFragmentAssembler();
   const drain = async (): Promise<void> => {
     await processStreamingEvents(session.drain(LANDXML_CURSOR_CREDIT_BYTES), surface, options.onSurface, options.onHeader, options.onEvent);
@@ -96,7 +106,10 @@ export interface LandXmlCursorSession {
 }
 
 export interface LandXmlCursorApi {
-  createLandXmlTinStreamSession(maxBytes: number): LandXmlCursorSession;
+  createLandXmlTinStreamSession(
+    maxBytes: number,
+    options?: { assumedLinearUnit?: string } | null,
+  ): LandXmlCursorSession;
 }
 
 function ensureCurrent(isCurrent: (() => boolean) | undefined): void {

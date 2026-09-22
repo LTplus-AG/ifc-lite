@@ -23,6 +23,13 @@ interface LandXmlLoadOptions {
   targetKind: 'primary' | 'federated';
   totalStartTime: number;
   wasHidden: boolean;
+  /**
+   * #5175: opt-in linear unit for a source with no declared `<Units>`. Absent
+   * by default, so a unitless source refuses exactly as it did before this
+   * option existed; the viewer supplies it only on a user-chosen retry after
+   * that refusal.
+   */
+  assumedLinearUnit?: string;
   isCurrent(): boolean;
   setProgress(progress: { phase: string; percent: number }): void;
   setGeometryStreamingActive(active: boolean): void;
@@ -256,6 +263,7 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
         }
         provisional.value?.skip(component);
       },
+      options.assumedLinearUnit,
     );
     // The browser worker is terminated within the cancellation polling bound;
     // this guard also prevents a racing stale reply from mutating model state.

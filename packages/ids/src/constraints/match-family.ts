@@ -27,9 +27,9 @@ import {
   isBooleanLiteral,
 } from './comparators.js';
 import { isNumericXsdBase, isBooleanXsdBase } from './xsd-cast.js';
-import { translateXsdRegex } from './xsd-regex.js';
+import { translateXsdRegex, SUBTRACTION_UNSUPPORTED_REASON } from './xsd-regex.js';
 import { matchDigitFacets } from './digit-facets.js';
-import { assertGuardedRegexPattern } from '@ifc-lite/regex-guard';
+import { assertGuardedRegexPattern, UnsafeRegexPatternError } from '@ifc-lite/regex-guard';
 
 /** Tolerance for the bounds matcher's exclusive comparators. */
 export const NUMERIC_TOLERANCE = 1e-6;
@@ -187,17 +187,38 @@ function buildPatternRegex(
   // `validateSpecification`, which turns the thrown error into a
   // failed specification result.
   assertGuardedRegexPattern(xsdPattern);
-  // XSD char-class subtraction `[a-z-[aeiou]]` has no JS equivalent;
-  // approximate as the positive class (drop the exclusion) so the rest
-  // of the pattern still evaluates, matching long-standing behaviour.
-  const desubtracted = xsdPattern.replace(
-    /\[([^\]]+)-\[[^\]]+\]\]/g,
-    '[$1]'
-  );
   // Shared XSD → JS translation: `\i`/`\c`/`\d`/`\w` (and their
   // negations) map to Unicode property escapes, and verbatim `\p{…}`
   // classes pass through — both require the `u` flag for full fidelity.
-  const { pattern } = translateXsdRegex(desubtracted);
+  //
+  // Translate the pattern exactly as authored, before any rewriting —
+  // translating an already-desubtracted string would report
+  // `supported: true`, since the subtraction is gone by then.
+  const { pattern, supported, reason } = translateXsdRegex(xsdPattern);
+  // XSD character-class subtraction (`[a-z-[aeiou]]`) has no JS
+  // equivalent. Unlike the other approximated constructs below, its
+  // failure mode is silent *inversion* rather than silent breadth: the
+  // exclusion is exactly what the pattern was written to enforce, so
+  // dropping it makes the pattern accept the values it names as
+  // invalid (issue #5183: a consonants-only pattern accepted
+  // `"aeiou"`). Refuse the pattern instead — the document auditor
+  // (`audit/coherence`'s `compileXsdRegex`, which calls this same
+  // shared translator) already warns the author about exactly this
+  // construct; a runtime match against real model data must agree
+  // with that warning rather than silently evaluate a wrong
+  // approximation of it. This throws `UnsafeRegexPatternError`, which
+  // `validateSpecification` turns into a failed specification result
+  // instead of a silent pass.
+  //
+  // Other unsupported constructs (an unrepresentable `\p{…}` block
+  // escape, a negated class escape inside `[ … ]`) keep the existing,
+  // more permissive approximation (an any-character placeholder) —
+  // their failure mode is over-matching some values, not silently
+  // reversing the author's intent, and the coherence auditor already
+  // flags them for review independently of this runtime check.
+  if (!supported && reason === SUBTRACTION_UNSUPPORTED_REASON) {
+    throw new UnsafeRegexPatternError(xsdPattern, reason);
+  }
   // IDS patterns must match the entire lexical value. Wrapping in a
   // non-capturing group anchors top-level alternation correctly
   // (`a|b` → `^(?:a|b)$`, not `^a|b$`). Case-insensitive matching is

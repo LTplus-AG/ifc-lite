@@ -53,6 +53,17 @@ const ANY_OUTSIDE_CLASS = '[\\s\\S]';
 const ANY_INSIDE_CLASS = '\\s\\S';
 
 /**
+ * `TranslateResult.reason` when the pattern uses XSD character-class
+ * subtraction (`[a-z-[aeiou]]`). Exported so a caller that needs to
+ * distinguish this specific construct — rather than "some construct is
+ * unsupported" in general — doesn't have to duplicate the message
+ * string (see `matchPattern`'s fail-closed check, which refuses only
+ * a subtraction pattern rather than every approximated construct).
+ */
+export const SUBTRACTION_UNSUPPORTED_REASON =
+  'XSD character-class subtraction is not supported in JS regex';
+
+/**
  * Translate the XSD pattern. Returns the JS-compatible pattern plus a
  * `supported` flag — when `false`, callers should warn / treat the
  * result leniently (an untranslatable construct was approximated).
@@ -108,7 +119,7 @@ export function translateXsdRegex(pattern: string): TranslateResult {
     if (ch === '[' && !inClass) {
       // Char-class subtraction `[a-z-[aeiou]]` has no JS equivalent.
       if (/^\[[^\]]*-\[/.test(pattern.slice(i))) {
-        flag('XSD character-class subtraction is not supported in JS regex');
+        flag(SUBTRACTION_UNSUPPORTED_REASON);
       }
       inClass = true;
       out += ch;

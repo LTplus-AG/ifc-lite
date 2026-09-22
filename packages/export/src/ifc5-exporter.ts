@@ -29,13 +29,7 @@ import { getEffectiveEntityIndex } from './effective-index.js';
 import { Ifc5AppearanceWriter } from './ifc5-appearance.js';
 import { IFCX_APPEARANCE_SCHEMAS, type IfcxEncodedImage } from '@ifc-lite/ifcx';
 import { buildMaterialAttribute } from './ifc5-material.js';
-import {
-  collectRequiredImports,
-  generateUuid,
-  IFC5_KNOWN_PROP_NAMES,
-  stepTypeToClassName,
-  stripNodePathPrefix,
-} from './ifc5-export-helpers.js';
+import { collectRequiredImports, generateUuid, IFC5_KNOWN_PROP_NAMES, recordIfEmptyPset, stepTypeToClassName, stripNodePathPrefix, type UnrepresentedPropertySet } from './ifc5-export-helpers.js';
 import { addClassificationAttribute } from './ifc5-classification.js';
 import { buildIfc5TreeScope, type Ifc5TreeScope } from './ifc5-tree-scope.js';
 
@@ -93,6 +87,9 @@ export interface Ifc5ExportResult {
     propertyCount: number;
     meshCount: number;
     fileSize: number;
+    /** Psets the exporter could not represent (see {@link recordIfEmptyPset}, #5201); check this is 0 before treating the export as complete. `unrepresentedPropertySets` names each one. */
+    skippedCount: number;
+    unrepresentedPropertySets: UnrepresentedPropertySet[];
   };
 }
 
@@ -225,6 +222,7 @@ export class Ifc5Exporter {
     const emittedIds = new Set<number>();
     let propertyCount = 0;
     let meshCount = 0;
+    const unrepresentedPropertySets: UnrepresentedPropertySet[] = [];
 
     const { entities, strings } = this.dataStore;
 
@@ -281,7 +279,7 @@ export class Ifc5Exporter {
 
       // Properties
       if (options.includeProperties !== false) {
-        const props = this.getPropertiesForEntity(expressId, options);
+        const props = this.getPropertiesForEntity(expressId, options, unrepresentedPropertySets);
         for (const [key, value] of Object.entries(props)) {
           attributes[key] = value;
           propertyCount++;
@@ -399,6 +397,8 @@ export class Ifc5Exporter {
         propertyCount,
         meshCount,
         fileSize: new TextEncoder().encode(content).length,
+        skippedCount: unrepresentedPropertySets.length,
+        unrepresentedPropertySets,
       },
     };
   }
@@ -552,12 +552,9 @@ export class Ifc5Exporter {
   // Properties
   // --------------------------------------------------------------------------
 
-  /**
-   * Get properties for an entity, converted to IFCX attribute format.
-   */
+  /** Get properties for an entity, converted to IFCX attribute format; skips an empty pset via {@link recordIfEmptyPset} (#5201). */
   private getPropertiesForEntity(
-    entityId: number,
-    options: Ifc5ExportOptions,
+    entityId: number, options: Ifc5ExportOptions, unrepresentedPropertySets: UnrepresentedPropertySet[],
   ): Record<string, unknown> {
     const result: Record<string, unknown> = {};
 
@@ -565,6 +562,7 @@ export class Ifc5Exporter {
     if (this.mutationView && options.applyMutations !== false) {
       const psets = this.mutationView.getForEntity(entityId);
       for (const pset of psets) {
+        if (recordIfEmptyPset(pset, entityId, unrepresentedPropertySets)) continue;
         for (const prop of pset.properties) {
           if (options.onlyKnownProperties !== false && !IFC5_KNOWN_PROP_NAMES.has(prop.name)) continue;
           const key = `bsi::ifc::prop::${prop.name}`;
@@ -574,6 +572,7 @@ export class Ifc5Exporter {
     } else if (this.dataStore.properties) {
       const psets = this.dataStore.properties.getForEntity(entityId);
       for (const pset of psets) {
+        if (recordIfEmptyPset(pset, entityId, unrepresentedPropertySets)) continue;
         for (const prop of pset.properties) {
           if (options.onlyKnownProperties !== false && !IFC5_KNOWN_PROP_NAMES.has(prop.name)) continue;
           const key = `bsi::ifc::prop::${prop.name}`;

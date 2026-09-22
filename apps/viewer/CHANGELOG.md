@@ -1,5 +1,50 @@
 # @ifc-lite/viewer
 
+## 3.0.0
+
+### Major Changes
+
+- [#5084](https://github.com/LTplus-AG/ifc-lite/pull/5084) [`86ffd75`](https://github.com/LTplus-AG/ifc-lite/commit/86ffd751cc783dfc4ee7a9b55508d5c75b844178) Thanks [@louistrue](https://github.com/louistrue)! - Preserve durable LandXML terrain source records alongside render meshes: stable
+  surface/point/face IDs, boundary, breakline and contour overlays, explicit
+  TIN/GRID/volume render states, and bounded vendor-extension metadata.
+  Keep IFC export fail-closed for source-only terrain while retaining JSON mutation deltas.
+
+- [#5071](https://github.com/LTplus-AG/ifc-lite/pull/5071) [`18833c8`](https://github.com/LTplus-AG/ifc-lite/commit/18833c86af7d8ff9699970c4440d90b2235ef2f7) Thanks [@louistrue](https://github.com/louistrue)! - Expose bounded raw-byte LandXML 1.2 TIN ingestion through `IfcAPI.parseLandXmlTinBytes`, including stable `LXML` diagnostics and XML encoding handling in Rust, and route viewer LandXML loading through the canonical WASM-backed path.
+
+### Minor Changes
+
+- [#5099](https://github.com/LTplus-AG/ifc-lite/pull/5099) [`9b910f4`](https://github.com/LTplus-AG/ifc-lite/commit/9b910f4ad0a187addead0f578b81e332287f0ea3) Thanks [@louistrue](https://github.com/louistrue)! - Retain bounded LandXML horizontal-alignment source semantics, canonical Rust-evaluated curve and clothoid overlay samples, exact station probes, and authored cant and superelevation inspection.
+
+- [#5102](https://github.com/LTplus-AG/ifc-lite/pull/5102) [`bde27c5`](https://github.com/LTplus-AG/ifc-lite/commit/bde27c581e242f8479147e865b17a5ff6a0dc436) Thanks [@louistrue](https://github.com/louistrue)! - Expose validated LandXML PipeNetwork records in the canonical WASM document
+  contract, and render inspectable, model-qualified pipe routes through the
+  viewer’s normal primary and federated load path.
+
+### Patch Changes
+
+- [#5140](https://github.com/LTplus-AG/ifc-lite/pull/5140) [`d3e08d5`](https://github.com/LTplus-AG/ifc-lite/commit/d3e08d545224bacd81d95201dc2ee0f33af5dea2) Thanks [@louistrue](https://github.com/louistrue)! - IDS panel: audit errors no longer block validation. A document the strict parser accepted can be validated against the model even when the audit flags non-standard property names or dataTypes inside standard property sets ([#5123](https://github.com/LTplus-AG/ifc-lite/issues/5123)); the issues stay listed next to the Run button with a note that the check runs regardless. Documents the parser rejects still cannot be validated.
+
+- [#5124](https://github.com/LTplus-AG/ifc-lite/pull/5124) [`65d088e`](https://github.com/LTplus-AG/ifc-lite/commit/65d088e3aa7dddc4f27eacf133b4ded33c7aed5d) Thanks [@louistrue](https://github.com/louistrue)! - Expose resident point-cloud visibility control so viewer model visibility also
+  excludes streamed scans from drawing, framing, and point picking.
+- Updated dependencies [[`b785770`](https://github.com/LTplus-AG/ifc-lite/commit/b7857709a31f958601f1c4c9af09e5a95f81300e), [`a11c090`](https://github.com/LTplus-AG/ifc-lite/commit/a11c090d0c86a9241bb67ce42822be5b6a631196), [`bb17a78`](https://github.com/LTplus-AG/ifc-lite/commit/bb17a78703ee090969136613fd64103dbf30d218), [`51c36ec`](https://github.com/LTplus-AG/ifc-lite/commit/51c36ecd9051769be7762d711bff705ef76866aa), [`3b0c496`](https://github.com/LTplus-AG/ifc-lite/commit/3b0c496bc2789c56812bfce40021e2beb2eb830e), [`9739441`](https://github.com/LTplus-AG/ifc-lite/commit/9739441c1d0bd36c92bd492013c141b8a8f4a990), [`0eafae1`](https://github.com/LTplus-AG/ifc-lite/commit/0eafae1cb19e70828815c658a6ee3c14f9c4c8a8), [`f87bed2`](https://github.com/LTplus-AG/ifc-lite/commit/f87bed29a52610b66b3d0ee510406ce087a66621), [`04b5467`](https://github.com/LTplus-AG/ifc-lite/commit/04b54673aa1a888ebf8f5d2f48b27558d3e6c4f0), [`0ee73f7`](https://github.com/LTplus-AG/ifc-lite/commit/0ee73f70b0aa08c811e37fe3b2c20fe176d3d8f1), [`0ee73f7`](https://github.com/LTplus-AG/ifc-lite/commit/0ee73f70b0aa08c811e37fe3b2c20fe176d3d8f1), [`bef4149`](https://github.com/LTplus-AG/ifc-lite/commit/bef41495ccdcf1dbc8e5024f633c74b44ccef137), [`04ef10f`](https://github.com/LTplus-AG/ifc-lite/commit/04ef10fef50f8e53e96430741afc27a69ebff906), [`3eaf48c`](https://github.com/LTplus-AG/ifc-lite/commit/3eaf48cd8cf10ee117be4086f78224a21e4960c8), [`9b910f4`](https://github.com/LTplus-AG/ifc-lite/commit/9b910f4ad0a187addead0f578b81e332287f0ea3), [`30984b4`](https://github.com/LTplus-AG/ifc-lite/commit/30984b4abecb838c132e5823ad51455a6ee0c15a), [`bde27c5`](https://github.com/LTplus-AG/ifc-lite/commit/bde27c581e242f8479147e865b17a5ff6a0dc436), [`b6ac473`](https://github.com/LTplus-AG/ifc-lite/commit/b6ac4730babff9ba78fa06bae8f98c14958c0cea), [`b9d0ff6`](https://github.com/LTplus-AG/ifc-lite/commit/b9d0ff6eab8dca015497c6e8e0598b81ee81a43d), [`b9d0ff6`](https://github.com/LTplus-AG/ifc-lite/commit/b9d0ff6eab8dca015497c6e8e0598b81ee81a43d), [`86ffd75`](https://github.com/LTplus-AG/ifc-lite/commit/86ffd751cc783dfc4ee7a9b55508d5c75b844178), [`829b566`](https://github.com/LTplus-AG/ifc-lite/commit/829b566988aabe0ed3676b7df6082d3169df8830), [`18833c8`](https://github.com/LTplus-AG/ifc-lite/commit/18833c86af7d8ff9699970c4440d90b2235ef2f7), [`8356b8e`](https://github.com/LTplus-AG/ifc-lite/commit/8356b8ea43968a291cb8117736bf8cb4e9c4cdfa), [`35e54fc`](https://github.com/LTplus-AG/ifc-lite/commit/35e54fc20bc8a7632b9caec26cdb820e1ee0c0b7), [`35e54fc`](https://github.com/LTplus-AG/ifc-lite/commit/35e54fc20bc8a7632b9caec26cdb820e1ee0c0b7), [`1a0971c`](https://github.com/LTplus-AG/ifc-lite/commit/1a0971c1f75ad9af1845aa67987532f85ac2dccb), [`f2d9c78`](https://github.com/LTplus-AG/ifc-lite/commit/f2d9c78b2b72264493847adea03ee80167e42242), [`a2d99b7`](https://github.com/LTplus-AG/ifc-lite/commit/a2d99b7ead4e07c11000ea3392e9a1f43d91ded6), [`06a336d`](https://github.com/LTplus-AG/ifc-lite/commit/06a336d512fc4470cb7372b33a5f8eea2aa1c070), [`816114a`](https://github.com/LTplus-AG/ifc-lite/commit/816114ad21120e3bd84394e080c44e6679ae959d), [`0eafae1`](https://github.com/LTplus-AG/ifc-lite/commit/0eafae1cb19e70828815c658a6ee3c14f9c4c8a8), [`3a2b62f`](https://github.com/LTplus-AG/ifc-lite/commit/3a2b62f2d36bfb740c3551e86e8641d7e8f596b5), [`3be90af`](https://github.com/LTplus-AG/ifc-lite/commit/3be90af6fa5b0446f6077ddff92873f68b58a7c0), [`b0d489e`](https://github.com/LTplus-AG/ifc-lite/commit/b0d489ea7270b84c1d373b5e340fc09ba0c798e6), [`65d088e`](https://github.com/LTplus-AG/ifc-lite/commit/65d088e3aa7dddc4f27eacf133b4ded33c7aed5d)]:
+  - @ifc-lite/charts@0.5.0
+  - @ifc-lite/wasm@9.3.0
+  - @ifc-lite/server-client@3.0.1
+  - @ifc-lite/mcp@0.19.0
+  - @ifc-lite/cache@3.6.0
+  - @ifc-lite/create@2.8.0
+  - @ifc-lite/sdk@7.0.0
+  - @ifc-lite/mutations@2.6.0
+  - @ifc-lite/flow@0.2.0
+  - @ifc-lite/flow-nodes@0.2.0
+  - @ifc-lite/ids@2.0.0
+  - @ifc-lite/renderer@4.0.0
+  - @ifc-lite/export@4.6.0
+  - @ifc-lite/geometry@7.5.0
+  - @ifc-lite/pointcloud@0.10.0
+  - @ifc-lite/rules@0.2.0
+  - @ifc-lite/sandbox@2.6.1
+  - @ifc-lite/ifcx@4.1.3
+
 ## 2.0.0
 
 ### Major Changes

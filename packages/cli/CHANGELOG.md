@@ -1,5 +1,44 @@
 # @ifc-lite/cli
 
+## 0.35.0
+
+### Minor Changes
+
+- [#5168](https://github.com/LTplus-AG/ifc-lite/pull/5168) [`0ee73f7`](https://github.com/LTplus-AG/ifc-lite/commit/0ee73f70b0aa08c811e37fe3b2c20fe176d3d8f1) Thanks [@louistrue](https://github.com/louistrue)! - `ifc-lite flow <run|describe|validate>`: evaluate a `*.flow.json` node graph headlessly with the standard `@ifc-lite/flow-nodes` library — Player-style `--input` overrides, `--out` to write the model with the run's mutations, a describe schema for callers, a per-node availability report, and a `<graph>.tracking.json` sidecar so re-runs of tracked creation graphs update elements instead of duplicating them.
+
+- [#5171](https://github.com/LTplus-AG/ifc-lite/pull/5171) [`9739441`](https://github.com/LTplus-AG/ifc-lite/commit/9739441c1d0bd36c92bd492013c141b8a8f4a990) Thanks [@louistrue](https://github.com/louistrue)! - CLI/MCP parity for `.rules.json` information-validation rule sets ([#5138](https://github.com/LTplus-AG/ifc-lite/issues/5138) PR 7b), running the same `@ifc-lite/rules` engine (`runRuleSet`) the viewer's Data Validation panel runs — no second evaluator, no parity fixture. New `ifc-lite check <model.ifc>... --rules <file.rules.json> [--format json|table] [--fail-on error|warning]`, exit `0` all pass / `1` any fail / `2` any rule error or unreadable input. `ifc-lite delivery` recipes gain an additive `rules: string[]` field (tri-state `pass`/`fail`/`error`, mirroring `ids`). New MCP tool `check_rules` wraps the same engine against every model in scope.
+  
+  `@ifc-lite/cache` gains `computeSourceFingerprint`/`computeSourceFingerprintFromBlob` plus `sourceModelIdentity(name, bytes)` — the single definition of the `${name}:${hex}` string a rule set's targets are matched against, shared by the CLI and the MCP tool so they cannot drift (moved from the viewer's `hooks/sourceFingerprint.ts`, review finding on [#5171](https://github.com/LTplus-AG/ifc-lite/issues/5171)): a rule set's `targets.modelFingerprints` is saved from the viewer's `FederatedModel.sourceFingerprint`, so a headless caller (the CLI, the MCP server) needs the SAME spread-sampled xxhash64 to resolve it — a SHA-256 of the full bytes, what `ifc-lite check`/`delivery` used before this fix, can never match it. `@ifc-lite/viewer` is a private, unpublished app and gets no changeset entry of its own — its import of this code moved from a local hook to `@ifc-lite/cache`, an internal refactor with no published-API surface of its own.
+
+- [#5090](https://github.com/LTplus-AG/ifc-lite/pull/5090) [`3a2b62f`](https://github.com/LTplus-AG/ifc-lite/commit/3a2b62f2d36bfb740c3551e86e8641d7e8f596b5) Thanks [@louistrue](https://github.com/louistrue)! - Fix silent structural-analysis data loss on IFC4 → IFC2X3 conversion: `IfcStructuralLoadCase`, `IfcStructuralCurveAction` and `IfcStructuralSurfaceAction` now map to their real IFC2X3 targets (`IfcStructuralLoadGroup`, `IfcStructuralLinearAction`, `IfcStructuralPlanarAction`) instead of becoming generic `IFCPROXY` placeholders. Add `analyzeConversionLoss`/`classifyEntityTypeConversion` (`@ifc-lite/export`), a per-type schema-conversion loss report computed without attempting the export, so a type with no representation at all in the target schema is named — with its express ids and the attributes it cannot carry — instead of surfacing as an uncaught exception from the middle of a full export. `ifc-lite convert` now prints this report and refuses cleanly, before writing any file, when the source contains a type the target schema cannot represent at all. Add the missing `structural_data` MCP tool so an MCP client can read the structural analysis model, matching the CLI/SDK/viewer coverage `bim.structural` already had.
+
+- [#5231](https://github.com/LTplus-AG/ifc-lite/pull/5231) [`b0d489e`](https://github.com/LTplus-AG/ifc-lite/commit/b0d489ea7270b84c1d373b5e340fc09ba0c798e6) Thanks [@louistrue](https://github.com/louistrue)! - Structural analysis authoring ([#5167](https://github.com/LTplus-AG/ifc-lite/issues/5167)).
+  
+  `@ifc-lite/create` gains in-store builders for `IfcStructuralAnalysisModel`, `IfcStructuralCurveMember`, `IfcStructuralPointConnection`, `IfcStructuralLoadGroup`/`IfcStructuralLoadCase`, `IfcStructuralPointAction` and `IfcStructuralLinearAction`, plus `IfcRelConnectsStructuralMember`, `IfcRelConnectsStructuralActivity` and `IfcRelAssignsToGroup`. Each entity owns its representation outright — nothing is shared between entities — and every build result exposes the express ids it owns.
+  
+  **Breaking for SDK backend implementers:** `StoreBackendMethods` now extends `StructuralStoreBackendMethods`, adding nine required members. Any external implementation of that interface stops compiling until it supplies them (the in-repo CLI, viewer and MCP backends are updated here). Nothing else in the SDK surface changed shape.
+  
+  `bim.store.addStructural*` reaches them through a shared `createStructuralStoreBackend` factory, wired into the CLI backend and the viewer store adapter from the same per-call resolution the cost surface uses, so an entity authored through either is visible to the next call on the other. MCP v0.1 authors through `entity_create` and refuses these explicitly.
+
+### Patch Changes
+
+- Updated dependencies [[`a11c090`](https://github.com/LTplus-AG/ifc-lite/commit/a11c090d0c86a9241bb67ce42822be5b6a631196), [`51c36ec`](https://github.com/LTplus-AG/ifc-lite/commit/51c36ecd9051769be7762d711bff705ef76866aa), [`3b0c496`](https://github.com/LTplus-AG/ifc-lite/commit/3b0c496bc2789c56812bfce40021e2beb2eb830e), [`9739441`](https://github.com/LTplus-AG/ifc-lite/commit/9739441c1d0bd36c92bd492013c141b8a8f4a990), [`0eafae1`](https://github.com/LTplus-AG/ifc-lite/commit/0eafae1cb19e70828815c658a6ee3c14f9c4c8a8), [`f87bed2`](https://github.com/LTplus-AG/ifc-lite/commit/f87bed29a52610b66b3d0ee510406ce087a66621), [`04b5467`](https://github.com/LTplus-AG/ifc-lite/commit/04b54673aa1a888ebf8f5d2f48b27558d3e6c4f0), [`0ee73f7`](https://github.com/LTplus-AG/ifc-lite/commit/0ee73f70b0aa08c811e37fe3b2c20fe176d3d8f1), [`0ee73f7`](https://github.com/LTplus-AG/ifc-lite/commit/0ee73f70b0aa08c811e37fe3b2c20fe176d3d8f1), [`bef4149`](https://github.com/LTplus-AG/ifc-lite/commit/bef41495ccdcf1dbc8e5024f633c74b44ccef137), [`04ef10f`](https://github.com/LTplus-AG/ifc-lite/commit/04ef10fef50f8e53e96430741afc27a69ebff906), [`3eaf48c`](https://github.com/LTplus-AG/ifc-lite/commit/3eaf48cd8cf10ee117be4086f78224a21e4960c8), [`9b910f4`](https://github.com/LTplus-AG/ifc-lite/commit/9b910f4ad0a187addead0f578b81e332287f0ea3), [`30984b4`](https://github.com/LTplus-AG/ifc-lite/commit/30984b4abecb838c132e5823ad51455a6ee0c15a), [`bde27c5`](https://github.com/LTplus-AG/ifc-lite/commit/bde27c581e242f8479147e865b17a5ff6a0dc436), [`b6ac473`](https://github.com/LTplus-AG/ifc-lite/commit/b6ac4730babff9ba78fa06bae8f98c14958c0cea), [`b9d0ff6`](https://github.com/LTplus-AG/ifc-lite/commit/b9d0ff6eab8dca015497c6e8e0598b81ee81a43d), [`86ffd75`](https://github.com/LTplus-AG/ifc-lite/commit/86ffd751cc783dfc4ee7a9b55508d5c75b844178), [`829b566`](https://github.com/LTplus-AG/ifc-lite/commit/829b566988aabe0ed3676b7df6082d3169df8830), [`18833c8`](https://github.com/LTplus-AG/ifc-lite/commit/18833c86af7d8ff9699970c4440d90b2235ef2f7), [`8356b8e`](https://github.com/LTplus-AG/ifc-lite/commit/8356b8ea43968a291cb8117736bf8cb4e9c4cdfa), [`35e54fc`](https://github.com/LTplus-AG/ifc-lite/commit/35e54fc20bc8a7632b9caec26cdb820e1ee0c0b7), [`06a336d`](https://github.com/LTplus-AG/ifc-lite/commit/06a336d512fc4470cb7372b33a5f8eea2aa1c070), [`816114a`](https://github.com/LTplus-AG/ifc-lite/commit/816114ad21120e3bd84394e080c44e6679ae959d), [`0eafae1`](https://github.com/LTplus-AG/ifc-lite/commit/0eafae1cb19e70828815c658a6ee3c14f9c4c8a8), [`3a2b62f`](https://github.com/LTplus-AG/ifc-lite/commit/3a2b62f2d36bfb740c3551e86e8641d7e8f596b5), [`3be90af`](https://github.com/LTplus-AG/ifc-lite/commit/3be90af6fa5b0446f6077ddff92873f68b58a7c0), [`b0d489e`](https://github.com/LTplus-AG/ifc-lite/commit/b0d489ea7270b84c1d373b5e340fc09ba0c798e6)]:
+  - @ifc-lite/wasm@9.3.0
+  - @ifc-lite/mcp@0.19.0
+  - @ifc-lite/cache@3.6.0
+  - @ifc-lite/create@2.8.0
+  - @ifc-lite/sdk@7.0.0
+  - @ifc-lite/mutations@2.6.0
+  - @ifc-lite/flow@0.2.0
+  - @ifc-lite/flow-nodes@0.2.0
+  - @ifc-lite/ids@2.0.0
+  - @ifc-lite/export@4.6.0
+  - @ifc-lite/geometry@7.5.0
+  - @ifc-lite/rules@0.2.0
+  - @ifc-lite/sandbox@2.6.1
+  - @ifc-lite/viewer-core@0.2.21
+  - @ifc-lite/ifcx@4.1.3
+
 ## 0.34.0
 
 ### Minor Changes

@@ -1,5 +1,11 @@
 # @ifc-lite/pointcloud
 
+## 0.10.0
+
+### Minor Changes
+
+- [#5112](https://github.com/LTplus-AG/ifc-lite/pull/5112) [`35e54fc`](https://github.com/LTplus-AG/ifc-lite/commit/35e54fc20bc8a7632b9caec26cdb820e1ee0c0b7) Thanks [@louistrue](https://github.com/louistrue)! - Expose explicit E57 `coordinateMetadata` CRS identifiers through streaming source-open metadata before point decoding begins.
+
 ## 0.9.0
 
 ### Minor Changes

@@ -1,5 +1,40 @@
 # @ifc-lite/ids
 
+## 2.0.0
+
+### Major Changes
+
+- [#5149](https://github.com/LTplus-AG/ifc-lite/pull/5149) [`04ef10f`](https://github.com/LTplus-AG/ifc-lite/commit/04ef10fef50f8e53e96430741afc27a69ebff906) Thanks [@louistrue](https://github.com/louistrue)! - Generalise the validation report shape (issue [#5138](https://github.com/LTplus-AG/ifc-lite/issues/5138)) so a future rule-set
+  ("information validation") engine can share it with IDS validation.
+  
+  **Breaking**: `IDSValidationReport.document` moved to `source.document`
+  (`source: { kind: 'ids'; document: IDSDocument }`), and `modelInfo` is now
+  an array (`ValidationModelInfo[]`) instead of a single object. JSON exports
+  of a report now include `source`/`modelInfo` in the new shape.
+  
+  Added exports: `ValidationSource`, `SpecificationSummary`,
+  `RequirementSummary`, `CheckKind`, `FailureReasonCode`, `SetResult`,
+  `RequirementResult`, `EntityResult`, `SpecificationResult`,
+  `ValidationReport`, `ValidationModelInfo`.
+  
+  `IDSSpecificationResult`, `IDSEntityResult`, `IDSRequirementResult` and
+  `IDSModelInfo` are unchanged in spirit (kept as narrowings/aliases of the
+  new general types) — existing IDS-only code keeps working once the report
+  literals it builds carry `source`/`modelInfo[]` instead of
+  `document`/`modelInfo`.
+
+### Minor Changes
+
+- [#5160](https://github.com/LTplus-AG/ifc-lite/pull/5160) [`bef4149`](https://github.com/LTplus-AG/ifc-lite/commit/bef41495ccdcf1dbc8e5024f633c74b44ccef137) Thanks [@louistrue](https://github.com/louistrue)! - Export `calculateSummary` from `packages/ids/src/validation/validator.ts`
+  (issue [#5138](https://github.com/LTplus-AG/ifc-lite/issues/5138) PR 3). The viewer's rule engine is a second producer of
+  `ValidationReport`/`IDSValidationSummary` over the same general
+  `SpecificationResult[]` shape and needs the identical pass/fail-rollup
+  algorithm — one exported function instead of two copies that could drift.
+  Its parameter type widened from `IDSSpecificationResult[]` to
+  `readonly SpecificationResult[]` (a proper supertype, per the existing
+  `IDSSpecificationResult`-is-a-`SpecificationResult` narrowing), so every
+  existing call site keeps compiling unchanged.
+
 ## 1.17.4
 
 ### Patch Changes

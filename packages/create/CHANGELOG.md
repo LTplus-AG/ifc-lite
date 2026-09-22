@@ -1,5 +1,24 @@
 # @ifc-lite/create
 
+## 2.8.0
+
+### Minor Changes
+
+- [#5170](https://github.com/LTplus-AG/ifc-lite/pull/5170) [`0eafae1`](https://github.com/LTplus-AG/ifc-lite/commit/0eafae1cb19e70828815c658a6ee3c14f9c4c8a8) Thanks [@louistrue](https://github.com/louistrue)! - In-store element builders (`addWallToStore`, `addColumnToStore`, … and the matching `bim.store.add*` params) accept an explicit `GlobalId`. A re-runnable author such as a flow graph derives it from a stable key so a re-run updates the element instead of duplicating it; relationships keep their own generated GUIDs, and a malformed GlobalId is refused. The naming quartet every in-store element shares is now one exported `AddElementCommonParams` the params extend.
+
+- [#5231](https://github.com/LTplus-AG/ifc-lite/pull/5231) [`b0d489e`](https://github.com/LTplus-AG/ifc-lite/commit/b0d489ea7270b84c1d373b5e340fc09ba0c798e6) Thanks [@louistrue](https://github.com/louistrue)! - Structural analysis authoring ([#5167](https://github.com/LTplus-AG/ifc-lite/issues/5167)).
+  
+  `@ifc-lite/create` gains in-store builders for `IfcStructuralAnalysisModel`, `IfcStructuralCurveMember`, `IfcStructuralPointConnection`, `IfcStructuralLoadGroup`/`IfcStructuralLoadCase`, `IfcStructuralPointAction` and `IfcStructuralLinearAction`, plus `IfcRelConnectsStructuralMember`, `IfcRelConnectsStructuralActivity` and `IfcRelAssignsToGroup`. Each entity owns its representation outright — nothing is shared between entities — and every build result exposes the express ids it owns.
+  
+  **Breaking for SDK backend implementers:** `StoreBackendMethods` now extends `StructuralStoreBackendMethods`, adding nine required members. Any external implementation of that interface stops compiling until it supplies them (the in-repo CLI, viewer and MCP backends are updated here). Nothing else in the SDK surface changed shape.
+  
+  `bim.store.addStructural*` reaches them through a shared `createStructuralStoreBackend` factory, wired into the CLI backend and the viewer store adapter from the same per-call resolution the cost surface uses, so an entity authored through either is visible to the next call on the other. MCP v0.1 authors through `entity_create` and refuses these explicitly.
+
+### Patch Changes
+
+- Updated dependencies [[`f87bed2`](https://github.com/LTplus-AG/ifc-lite/commit/f87bed29a52610b66b3d0ee510406ce087a66621)]:
+  - @ifc-lite/mutations@2.6.0
+
 ## 2.7.0
 
 ### Minor Changes

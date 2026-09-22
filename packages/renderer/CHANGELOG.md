@@ -1,5 +1,37 @@
 # @ifc-lite/renderer
 
+## 4.0.0
+
+### Major Changes
+
+- [#5161](https://github.com/LTplus-AG/ifc-lite/pull/5161) [`b9d0ff6`](https://github.com/LTplus-AG/ifc-lite/commit/b9d0ff6eab8dca015497c6e8e0598b81ee81a43d) Thanks [@louistrue](https://github.com/louistrue)! - Add explicit bounded federation ID reservations and source-ordered publication for progressive model ingestion.
+
+- [#5084](https://github.com/LTplus-AG/ifc-lite/pull/5084) [`86ffd75`](https://github.com/LTplus-AG/ifc-lite/commit/86ffd751cc783dfc4ee7a9b55508d5c75b844178) Thanks [@louistrue](https://github.com/louistrue)! - Preserve durable LandXML terrain source records alongside render meshes: stable
+  surface/point/face IDs, boundary, breakline and contour overlays, explicit
+  TIN/GRID/volume render states, and bounded vendor-extension metadata.
+  Keep IFC export fail-closed for source-only terrain while retaining JSON mutation deltas.
+
+### Minor Changes
+
+- [#5172](https://github.com/LTplus-AG/ifc-lite/pull/5172) [`f2d9c78`](https://github.com/LTplus-AG/ifc-lite/commit/f2d9c78b2b72264493847adea03ee80167e42242) Thanks [@louistrue](https://github.com/louistrue)! - Expose bounded renderer-owned color-frame capture for strict GPU rendering evidence.
+
+- [#5152](https://github.com/LTplus-AG/ifc-lite/pull/5152) [`a2d99b7`](https://github.com/LTplus-AG/ifc-lite/commit/a2d99b7ead4e07c11000ea3392e9a1f43d91ded6) Thanks [@louistrue](https://github.com/louistrue)! - Add the renderer-owned relative-to-eye precision contract used to migrate all
+  GPU and CPU coordinate paths safely to large georeferenced source frames.
+  Use the shared frame for CPU camera projection and perspective picking rays,
+  preserve non-throwing malformed-pose behavior, and isolate matrix ownership.
+  Instanced colour, picker and shadow submissions now share CPU f64
+  drawable-minus-camera packing, and line overlays spatially batch compact
+  segments while supporting bounded disjoint partition submissions.
+
+- [#5124](https://github.com/LTplus-AG/ifc-lite/pull/5124) [`65d088e`](https://github.com/LTplus-AG/ifc-lite/commit/65d088e3aa7dddc4f27eacf133b4ded33c7aed5d) Thanks [@louistrue](https://github.com/louistrue)! - Expose resident point-cloud visibility control so viewer model visibility also
+  excludes streamed scans from drawing, framing, and point picking.
+
+### Patch Changes
+
+- [#5067](https://github.com/LTplus-AG/ifc-lite/pull/5067) [`1a0971c`](https://github.com/LTplus-AG/ifc-lite/commit/1a0971c1f75ad9af1845aa67987532f85ac2dccb) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a stale point-cloud stream destroying a live asset after a device-loss recovery. Point-cloud handle ids are allocated by a per-instance counter that restarts at 1 on the replacement `PointCloudRenderer` that teardown builds, so a still-in-flight stream from before the teardown could carry a handle whose id had been reissued to a new, live asset; a late removal call from that stale stream then deleted the live one. The replacement renderer is now seeded with the outgoing instance's watermark, so an id is never reissued across a teardown and a stale handle resolves to nothing. `removePointCloudAsset` itself is unchanged, and normal removal of a live asset, including bounds recomputation, behaves exactly as before.
+- Updated dependencies [[`35e54fc`](https://github.com/LTplus-AG/ifc-lite/commit/35e54fc20bc8a7632b9caec26cdb820e1ee0c0b7)]:
+  - @ifc-lite/geometry@7.5.0
+
 ## 3.2.0
 
 ### Minor Changes

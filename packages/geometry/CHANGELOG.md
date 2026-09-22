@@ -1,5 +1,17 @@
 # @ifc-lite/geometry
 
+## 7.5.0
+
+### Minor Changes
+
+- [#5112](https://github.com/LTplus-AG/ifc-lite/pull/5112) [`35e54fc`](https://github.com/LTplus-AG/ifc-lite/commit/35e54fc20bc8a7632b9caec26cdb820e1ee0c0b7) Thanks [@louistrue](https://github.com/louistrue)! - Add format-neutral, immutable spatial-reference and f64 placement primitives
+  for federation and source-format adapters.
+
+### Patch Changes
+
+- Updated dependencies [[`a11c090`](https://github.com/LTplus-AG/ifc-lite/commit/a11c090d0c86a9241bb67ce42822be5b6a631196), [`51c36ec`](https://github.com/LTplus-AG/ifc-lite/commit/51c36ecd9051769be7762d711bff705ef76866aa), [`3b0c496`](https://github.com/LTplus-AG/ifc-lite/commit/3b0c496bc2789c56812bfce40021e2beb2eb830e), [`3eaf48c`](https://github.com/LTplus-AG/ifc-lite/commit/3eaf48cd8cf10ee117be4086f78224a21e4960c8), [`9b910f4`](https://github.com/LTplus-AG/ifc-lite/commit/9b910f4ad0a187addead0f578b81e332287f0ea3), [`30984b4`](https://github.com/LTplus-AG/ifc-lite/commit/30984b4abecb838c132e5823ad51455a6ee0c15a), [`bde27c5`](https://github.com/LTplus-AG/ifc-lite/commit/bde27c581e242f8479147e865b17a5ff6a0dc436), [`b6ac473`](https://github.com/LTplus-AG/ifc-lite/commit/b6ac4730babff9ba78fa06bae8f98c14958c0cea), [`b9d0ff6`](https://github.com/LTplus-AG/ifc-lite/commit/b9d0ff6eab8dca015497c6e8e0598b81ee81a43d), [`86ffd75`](https://github.com/LTplus-AG/ifc-lite/commit/86ffd751cc783dfc4ee7a9b55508d5c75b844178), [`829b566`](https://github.com/LTplus-AG/ifc-lite/commit/829b566988aabe0ed3676b7df6082d3169df8830), [`18833c8`](https://github.com/LTplus-AG/ifc-lite/commit/18833c86af7d8ff9699970c4440d90b2235ef2f7), [`816114a`](https://github.com/LTplus-AG/ifc-lite/commit/816114ad21120e3bd84394e080c44e6679ae959d), [`3be90af`](https://github.com/LTplus-AG/ifc-lite/commit/3be90af6fa5b0446f6077ddff92873f68b58a7c0)]:
+  - @ifc-lite/wasm@9.3.0
+
 ## 7.4.0
 
 ### Minor Changes

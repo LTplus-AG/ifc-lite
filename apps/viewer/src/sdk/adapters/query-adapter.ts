@@ -35,6 +35,7 @@ import { applyAttributeMutationsToEntityData, getMutationViewForModel, mergeAttr
 import { effectiveMutationRelationships, foldMutationRelated } from './query-overlay-relations.js';
 import { overlayProperties, overlayQuantities } from './query-adapter-overlay.js';
 import { foldRelationshipData } from './query-relationship-fold.js';
+import { foldOverlayCreatedEntities } from './query-overlay-entities.js';
 import { isProductType } from './query-entity-filter.js';
 import { evaluateFilterGroups } from '@ifc-lite/rules';
 import { totalRuleCount } from '@ifc-lite/rules';
@@ -206,6 +207,8 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
     for (const [modelId, model] of modelEntries) {
       if (!model?.ifcDataStore) continue;
 
+      const view = getMutationViewForModel(store, modelId);
+
       let entityIds: number[];
       if (descriptor.types && descriptor.types.length > 0) {
         // Expand types to every schema-declared descendant (IfcWall →
@@ -231,6 +234,9 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
       }
       for (const expressId of entityIds) {
         if (expressId === 0) continue;
+        // Tombstoned this session — matches `entityData`/`entities` and the
+        // CLI/MCP siblings' `isDeleted` check.
+        if (view?.isDeleted(expressId)) continue;
         const node = new EntityNode(model.ifcDataStore, expressId);
         results.push(applyAttributeMutationsToEntityData(store, modelId, expressId, {
           ref: { modelId, expressId },
@@ -241,6 +247,11 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
           objectType: node.objectType,
         }));
       }
+      // Overlay-created entities join the same result set under the same type
+      // rules, so a wall created this session shows up in a query for walls
+      // before export.
+      const schemaVersion = model.ifcDataStore.schemaVersion;
+      results.push(...foldOverlayCreatedEntities(view, modelId, descriptor.types, schemaVersion, isProductType, getEntityData));
     }
 
     // Apply property filters
@@ -329,8 +340,19 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
           definedModelTagIds: definedModelTagIdsOf(state),
         },
       );
+      const view = getMutationViewForModel(store, modelId);
       for (const m of matched) {
         if (m.expressId === 0) continue;
+        // Tombstoned this session — `evaluateFilterGroups` matches straight
+        // off `ifcDataStore` and has no notion of the overlay, so a wall the
+        // user deleted still comes back as a match here unless excluded.
+        // Deliberately NOT folding overlay-created entities here (unlike
+        // `queryEntities()`): matches come from `evaluateFilterGroups`
+        // running rules against `ifcDataStore`, and there is no mechanism to
+        // evaluate those rules against a synthetic created entity. The CLI's
+        // own implementation is `entitiesMatchingActiveFilter: () => null`
+        // for the same reason — no reference to fold against exists.
+        if (view?.isDeleted(m.expressId)) continue;
         const node = new EntityNode(model.ifcDataStore, m.expressId);
         results.push(applyAttributeMutationsToEntityData(store, modelId, m.expressId, {
           ref: { modelId, expressId: m.expressId },

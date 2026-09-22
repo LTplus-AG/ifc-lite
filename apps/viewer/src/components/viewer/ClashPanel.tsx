@@ -38,7 +38,7 @@ import { ClashSettingsDialog } from '@/components/viewer/ClashSettingsDialog';
 import { ClashRevisionCompareDialog } from '@/components/viewer/ClashRevisionCompareDialog';
 import { ClashManualGroupDialog } from '@/components/viewer/ClashManualGroupDialog';
 import { useManualClashGroups } from '@/components/viewer/useManualClashGroups';
-import { ClashGroupHeader, ClashGroupingCheckbox, RemoveFromClashGroupButton } from '@/components/viewer/ClashManualGroupControls';
+import { ClashGroupingCheckbox, RemoveFromClashGroupButton } from '@/components/viewer/ClashManualGroupControls';
 import { ClashGroupHeaderWithActions } from '@/components/viewer/ClashGroupHeaderWithActions';
 import { ClashResultSummary, type ClashResultView } from '@/components/viewer/ClashResultSummary';
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';

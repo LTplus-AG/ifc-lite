@@ -46,6 +46,9 @@ import {
 } from '@/lib/collab/identity';
 import {
   attachRemoteApply, applyRemoteAttribute,
+  applyRemoteProperty,
+  applyRemotePropertyDelete,
+  applyRemotePsetDelete,
   mirrorAttribute,
   mirrorEntityDelete,
   mirrorPlacement,
@@ -850,27 +853,45 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // Room paths, never activeModelId, select the model because expressIds are
     // model-local. Resolution fails closed until registration; reconstruct then
     // rebuilds from the CRDT.
-    const rejectRemoteAttribute = (rejected: string) => {
-      console.warn('[collab] rejected remote attribute:', rejected);
-      set({ collabGeometryNotice: `A collaborative attribute could not be applied: ${rejected}` });
+    // Shared rejection reporter for every `applyRemote*` helper (attributes,
+    // properties, property deletes, pset deletes, entity creation) — one
+    // user-visible signal for "a peer's write was refused because the local
+    // entity is tombstoned", so a peer whose write is dropped isn't met with
+    // silence (#5187).
+    const reportRemoteWriteRejected = (rejected: string) => {
+      console.warn('[collab] rejected remote write:', rejected);
+      set({ collabGeometryNotice: `A collaborative edit could not be applied: ${rejected}` });
     };
     remoteApplyTeardown = attachRemoteApply(docApi!, session, (path) => roomEntityTargetForPath(get(), path), {
       onEntityCreate: ({ modelId, store }, entityPath, ifcClass, attributes, sourceExpressId) => {
         const view = roomMutationViewFor(get(), modelId);
         if (view && createRemoteOverlayEntity(store, view, entityPath, ifcClass, attributes,
-          rejectRemoteAttribute, sourceExpressId))
+          reportRemoteWriteRejected, sourceExpressId))
           set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
+      // Routed through `applyRemoteProperty` (mutation-bridge.ts), which
+      // refuses the write if the entity is a local tombstone — otherwise the
+      // write survives into `newPsets`/`propertyMutations` and resurfaces the
+      // moment the local delete is undone (#5187; same hazard `onAttribute`
+      // was already guarded against via `applyRemoteAttribute`).
       onProperty: (modelId, entityId, pset, prop, value, type) => {
         const view = roomMutationViewFor(get(), modelId);
         if (!view) return;
-        view.setProperty(entityId, pset, prop, value, type);
+        const rejected = applyRemoteProperty(view, entityId, pset, prop, value, type);
+        if (rejected) {
+          reportRemoteWriteRejected(rejected);
+          return;
+        }
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       onPropertyDelete: (modelId, entityId, pset, prop) => {
         const view = roomMutationViewFor(get(), modelId);
         if (!view) return;
-        view.deleteProperty(entityId, pset, prop);
+        const rejected = applyRemotePropertyDelete(view, entityId, pset, prop);
+        if (rejected) {
+          reportRemoteWriteRejected(rejected);
+          return;
+        }
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       // A peer's whole Pset vanished (its last property was deleted, which
@@ -880,7 +901,11 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       onPsetDelete: (modelId, entityId, pset) => {
         const view = roomMutationViewFor(get(), modelId);
         if (!view) return;
-        view.deletePropertySet(entityId, pset);
+        const rejected = applyRemotePsetDelete(view, entityId, pset);
+        if (rejected) {
+          reportRemoteWriteRejected(rejected);
+          return;
+        }
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       onAttribute: (modelId, entityId, attrName, value) => {
@@ -888,7 +913,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
         if (!view || !store) return;
         const rejected = applyRemoteAttribute(view, store, entityId, attrName, value); // #4931
         if (rejected) {
-          rejectRemoteAttribute(rejected);
+          reportRemoteWriteRejected(rejected);
           return;
         }
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));

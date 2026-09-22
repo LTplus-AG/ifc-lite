@@ -202,6 +202,21 @@ export type ScalarValue = string | number | boolean | null;
  * Not `MutablePropertyView.removeAttributeMutation`: that falls back to the
  * room model's last full-reconstruct value, a stale PRIOR value, not "absent".
  */
+/**
+ * Refuses a write to a locally tombstoned entity; rationale in
+ * `mutation-bridge.tombstone.test.ts` (why here, in the collab boundary
+ * helpers, and not inside `MutablePropertyView`'s own write methods — those
+ * are also called unconditionally by undo/redo replay, which must NOT be
+ * refused). Every `applyRemote*` helper below routes through this one
+ * function so the check has a single definition (#5187: `onProperty`,
+ * `onPropertyDelete` and `onPsetDelete` each called the view directly with
+ * no check of their own, which is how three of the five got out of sync
+ * with `onAttribute`).
+ */
+function rejectIfLocallyDeleted(view: MutablePropertyView, entityId: number): string | null {
+  return view.isDeleted(entityId) ? `entity ${entityId} is locally deleted` : null;
+}
+
 export function applyRemoteAttribute(
   view: MutablePropertyView,
   store: IfcDataStore,
@@ -209,9 +224,8 @@ export function applyRemoteAttribute(
   attrName: string,
   value: unknown,
 ): string | null {
-  // Refuses a write to a locally tombstoned entity; rationale in
-  // mutation-bridge.tombstone.test.ts (why here, not in setPositionalAttribute).
-  if (view.isDeleted(entityId)) return `entity ${entityId} is locally deleted`;
+  const tombstoned = rejectIfLocallyDeleted(view, entityId);
+  if (tombstoned) return tombstoned;
   const plainName = attrName.startsWith('bsi::ifc::prop::')
     ? attrName.slice('bsi::ifc::prop::'.length)
     : attrName;
@@ -229,6 +243,48 @@ export function applyRemoteAttribute(
     return decoded.reason;
   }
   if (value !== null && value !== undefined) view.setAttribute(entityId, plainName, String(value));
+  return null;
+}
+
+/** Apply an inbound `onProperty` write to the room model's `MutablePropertyView`,
+ * refusing it (see `rejectIfLocallyDeleted`) if the target entity is a local
+ * tombstone — otherwise the write survives an undo of that delete (#5187). */
+export function applyRemoteProperty(
+  view: MutablePropertyView,
+  entityId: number,
+  pset: string,
+  prop: string,
+  value: ScalarValue,
+  type: PropertyValueType,
+): string | null {
+  const rejected = rejectIfLocallyDeleted(view, entityId);
+  if (rejected) return rejected;
+  view.setProperty(entityId, pset, prop, value, type);
+  return null;
+}
+
+/** Apply an inbound `onPropertyDelete`; same tombstone guard as {@link applyRemoteProperty}. */
+export function applyRemotePropertyDelete(
+  view: MutablePropertyView,
+  entityId: number,
+  pset: string,
+  prop: string,
+): string | null {
+  const rejected = rejectIfLocallyDeleted(view, entityId);
+  if (rejected) return rejected;
+  view.deleteProperty(entityId, pset, prop);
+  return null;
+}
+
+/** Apply an inbound `onPsetDelete`; same tombstone guard as {@link applyRemoteProperty}. */
+export function applyRemotePsetDelete(
+  view: MutablePropertyView,
+  entityId: number,
+  pset: string,
+): string | null {
+  const rejected = rejectIfLocallyDeleted(view, entityId);
+  if (rejected) return rejected;
+  view.deletePropertySet(entityId, pset);
   return null;
 }
 

@@ -182,6 +182,26 @@ describe('matchConstraint — pattern', () => {
     expect(matchConstraint(pat('\\p{IsBasicLatin}+'), 'Hello')).toBe(true);
   });
 
+  it('refuses a pattern using XSD character-class subtraction rather than dropping the exclusion (#5183)', () => {
+    // `[a-z-[aeiou]]` ("lowercase, excluding vowels") has no JS
+    // equivalent. Dropping the exclusion and matching `[a-z]` instead
+    // made the pattern accept exactly the values it was written to
+    // exclude — a consonants-only pattern accepted "aeiou". Refusing
+    // the pattern (UnsafeRegexPatternError, which `validateSpecification`
+    // turns into a failed specification) is the fail-closed behaviour;
+    // this is the executed repro from the issue.
+    expect(() => matchConstraint(pat('[a-z-[aeiou]]+'), 'aeiou')).toThrow(
+      /XSD character-class subtraction is not supported in JS regex/
+    );
+    // Not just the excluded value — the whole construct is refused,
+    // including for values that would have passed even without the
+    // exclusion (proves this isn't accidentally conditioned on the
+    // value under test).
+    expect(() => matchConstraint(pat('[a-z-[aeiou]]+'), 'xyz')).toThrow(
+      /XSD character-class subtraction is not supported in JS regex/
+    );
+  });
+
   it('anchors top-level alternation across the whole value', () => {
     // `^a|b$` would match a left-anchored "a" or right-anchored "b";
     // the matcher wraps the pattern so the alternation spans the value.

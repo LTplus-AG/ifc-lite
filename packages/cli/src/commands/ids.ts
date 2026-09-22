@@ -23,8 +23,28 @@ interface ValidatorSummary {
   overallPassRate: number;
 }
 
+/** Flags that consume the following argument, so it is never mistaken for a
+ *  positional file path. `--locale de file.ifc rules.ids` would otherwise
+ *  have the naive `args.filter(a => !a.startsWith('-'))` idiom swallow `de`
+ *  as `ifcPath` (see diff.ts's `VALUE_FLAGS` / mcp.ts's `MCP_VALUE_FLAGS`
+ *  for the same fix applied elsewhere in this package). */
+const VALUE_FLAGS = new Set(['--locale']);
+
+function idsPositionals(args: string[]): string[] {
+  const positional: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg.startsWith('-')) {
+      if (VALUE_FLAGS.has(arg)) i++;
+      continue;
+    }
+    positional.push(arg);
+  }
+  return positional;
+}
+
 export async function idsCommand(args: string[]): Promise<void> {
-  const positional = args.filter(a => !a.startsWith('-'));
+  const positional = idsPositionals(args);
   if (positional.length < 2) fatal('Usage: ifc-lite ids <file.ifc> <rules.ids> [--json]');
 
   const [ifcPath, idsPath] = positional;

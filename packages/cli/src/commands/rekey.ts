@@ -130,8 +130,30 @@ export function rekeyRows(rows: Row[], keyColumn: string, lineage: ReturnType<ty
   };
 }
 
+/** Flags that consume the following argument, so it is never mistaken for the
+ *  positional table path. `--lineage lineage.json table.csv --out out.json`
+ *  would otherwise have the naive `args.filter(a => !a.startsWith('-'))`
+ *  idiom capture `lineage.json` as `positional[0]` and silently drop the real
+ *  table path (same trap diff.ts's `VALUE_FLAGS` / mcp.ts's
+ *  `MCP_VALUE_FLAGS` / ids.ts's `VALUE_FLAGS` fix elsewhere in this
+ *  package). */
+const VALUE_FLAGS = new Set(['--lineage', '--out', '--key-column', '--policy', '--orphans']);
+
+function rekeyPositionals(args: string[]): string[] {
+  const positional: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg.startsWith('-')) {
+      if (VALUE_FLAGS.has(arg)) i++;
+      continue;
+    }
+    positional.push(arg);
+  }
+  return positional;
+}
+
 export async function rekeyCommand(args: string[]): Promise<void> {
-  const positional = args.filter((a) => !a.startsWith('-'));
+  const positional = rekeyPositionals(args);
   const tablePath = positional[0];
   const lineagePath = getFlag(args, '--lineage');
   const outPath = getFlag(args, '--out');

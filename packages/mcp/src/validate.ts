@@ -7,8 +7,16 @@
  *
  * We only support the keywords our hand-authored tool schemas use:
  *   type, properties, required, items, enum, minimum, maximum,
- *   minLength, maxLength, minItems, maxItems, default, oneOf, anyOf,
+ *   minLength, maxLength, minItems, maxItems, default, anyOf,
  *   additionalProperties.
+ *
+ * `anyOf` is checked against the *original* input (not `walk`'s
+ * default-filled/type-narrowed copy of it), and only requires ONE branch to
+ * validate cleanly; it does not merge a matching branch's own defaults or
+ * error paths into the result. We deliberately do not support `oneOf`
+ * (exactly-one-of): none of our schemas need "match precisely one branch,
+ * reject on more than one", and getting that half-implemented is worse than
+ * not offering it.
  *
  * That's enough to surface clear `INVALID_INPUT` errors back to the LLM
  * without bringing in `ajv` (and its 200+ KB of metaschema) or zod.
@@ -50,13 +58,34 @@ function walk(schema: JsonSchema, input: unknown, path: string, errors: Validati
     return input;
   }
 
-  if (matchesType('object', input) && schema.properties) {
+  // Checked against the ORIGINAL input, not the default-filled/narrowed copy
+  // this function otherwise builds — a branch only has to describe a shape
+  // that matches, e.g. `{ required: ['global_id'] }` with no `properties` of
+  // its own. Any ONE matching branch is enough (unlike `oneOf`, which we do
+  // not implement — see the file header).
+  if (schema.anyOf && schema.anyOf.length > 0) {
+    const matchesAny = schema.anyOf.some((sub) => {
+      const subErrors: ValidationIssue[] = [];
+      walk(sub, input, path, subErrors);
+      return subErrors.length === 0;
+    });
+    if (!matchesAny) {
+      errors.push({
+        path,
+        message: `Expected input at '${path}' to satisfy at least one of ${schema.anyOf.length} anyOf branch(es)`,
+      });
+    }
+  }
+
+  if (matchesType('object', input)) {
     const obj = input as Record<string, unknown>;
     const result: Record<string, unknown> = { ...obj };
-    for (const [key, sub] of Object.entries(schema.properties)) {
-      const childPath = `${path}.${key}`;
-      const value = walk(sub, obj[key], childPath, errors);
-      if (value !== undefined) result[key] = value;
+    if (schema.properties) {
+      for (const [key, sub] of Object.entries(schema.properties)) {
+        const childPath = `${path}.${key}`;
+        const value = walk(sub, obj[key], childPath, errors);
+        if (value !== undefined) result[key] = value;
+      }
     }
     if (schema.required) {
       for (const key of schema.required) {

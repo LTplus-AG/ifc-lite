@@ -103,4 +103,55 @@ describe('validateInput', () => {
     expect(r.valid).toBe(false);
     expect(r.errors[0].message).toMatch(/longer than 3/);
   });
+
+  // #5192: `anyOf` is documented and declared on `JsonSchema` but `walk()`
+  // never read it, so a schema using it to express "one of these two
+  // identity fields" silently validated everything.
+  describe('anyOf', () => {
+    const identitySchema = {
+      type: 'object' as const,
+      properties: {
+        global_id: { type: 'string' as const },
+        express_id: { type: 'integer' as const },
+      },
+      anyOf: [{ required: ['global_id'] }, { required: ['express_id'] }],
+    };
+
+    it('rejects input matching no anyOf branch', () => {
+      const r = validateInput(identitySchema, {});
+      expect(r.valid).toBe(false);
+      expect(r.errors[0].path).toBe('$');
+      expect(r.errors[0].message).toMatch(/at least one of 2 anyOf branch/);
+    });
+
+    it('accepts input matching exactly one anyOf branch', () => {
+      expect(validateInput(identitySchema, { global_id: 'g1' }).valid).toBe(true);
+      expect(validateInput(identitySchema, { express_id: 42 }).valid).toBe(true);
+    });
+
+    // What distinguishes `anyOf` from `oneOf`: matching MULTIPLE branches is
+    // still valid. `oneOf` is deliberately not implemented (see validate.ts
+    // header), so this also pins that an over-eager "exactly one" check
+    // never crept in.
+    it('accepts input matching more than one anyOf branch', () => {
+      const r = validateInput(identitySchema, { global_id: 'g1', express_id: 42 });
+      expect(r.valid).toBe(true);
+    });
+
+    it('names the failing path in the error message so a caller can act on it', () => {
+      const nested = {
+        type: 'object' as const,
+        properties: {
+          target: {
+            type: 'object' as const,
+            properties: { global_id: { type: 'string' as const }, express_id: { type: 'integer' as const } },
+            anyOf: [{ required: ['global_id'] }, { required: ['express_id'] }],
+          },
+        },
+      };
+      const r = validateInput(nested, { target: {} });
+      expect(r.valid).toBe(false);
+      expect(r.errors[0].path).toBe('$.target');
+    });
+  });
 });

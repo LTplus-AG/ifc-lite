@@ -92,13 +92,24 @@ export interface EntityVisibilityView {
  * store. Every other read (attributes, classifications, materials, partOf)
  * is unaffected — only the two property-reading methods below consult it.
  *
- * `entityVisibility` is optional and, when supplied, is consulted by
- * `getAllEntityIds` alone: a tombstoned id (deleted this session, via
- * `store.removeEntity()`/`MutablePropertyView.deleteEntity`) is excluded,
- * and an overlay-created id still alive is included. Omitting it — every
- * existing call site, until wired individually — reproduces the exact
- * pre-existing behaviour: `getAllEntityIds` reads `store.entityIndex.byId`
- * only, with no filtering (#5184).
+ * `entityVisibility` is optional and, when supplied, is consulted by both
+ * enumeration methods — `getAllEntityIds` AND `getEntitiesByType` (#5184;
+ * the latter is the dominant path in practice, since any IDS spec with a
+ * `simpleValue`/`enumeration` entity-name applicability routes through it
+ * via `filterByEntityFacet`, not through `getAllEntityIds`): a tombstoned
+ * id (deleted this session, via `store.removeEntity()`/
+ * `MutablePropertyView.deleteEntity`) is excluded from both. An
+ * overlay-created id still alive is appended by `getAllEntityIds` only —
+ * `getEntitiesByType` has no way to know a new entity's type, since
+ * nothing in this accessor consults the overlay for `getEntityType`
+ * either (see the created-entity gap noted below); the IFC2X3
+ * mapped-alias path (`filterByEntityFacet` returning `undefined` for an
+ * alias name) already falls back to a full scan through
+ * `getAllEntityIds`, so it was — and remains — tombstone-safe without
+ * any change here. Omitting `entityVisibility` — every existing call
+ * site, until wired individually — reproduces the exact pre-existing
+ * behaviour: both methods read `store.entityIndex` only, with no
+ * filtering.
  */
 export function createDataAccessor(
   store: IfcDataStore,
@@ -242,7 +253,13 @@ export function createDataAccessor(
 
     getEntitiesByType(typeName: string): number[] {
       const ids = store.entityIndex?.byType?.get(typeName.toUpperCase());
-      return ids ? Array.from(ids) : [];
+      const sourceIds = ids ? Array.from(ids) : [];
+      if (!entityVisibility) return sourceIds;
+
+      const tombstones = entityVisibility.getTombstones();
+      return tombstones.size > 0
+        ? sourceIds.filter((id) => !tombstones.has(id))
+        : sourceIds;
     },
 
     getAllEntityIds(): number[] {

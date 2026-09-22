@@ -71,3 +71,34 @@ describe('createDataAccessor — getAllEntityIds with entityVisibility (#5184)',
     expect(accessor.getAllEntityIds().slice().sort((a, b) => a - b)).toEqual([1, 2, 3]);
   });
 });
+
+/**
+ * `getEntitiesByType` (#5184 follow-up): the dominant real-world path —
+ * `entity-facet.ts`'s `simpleValue`/`enumeration` broadphase filter calls
+ * this, not `getAllEntityIds`, for any IDS spec that names an entity type
+ * directly. Isolated unit coverage at the accessor level, independent of
+ * the validator end-to-end tests in `validator.test.ts`.
+ */
+describe('createDataAccessor — getEntitiesByType with entityVisibility (#5184 follow-up)', () => {
+  it('excludes a tombstoned entity of the requested type', () => {
+    const accessor = createDataAccessor(makeStore(), undefined, view([2]));
+    expect(accessor.getEntitiesByType('IfcWall').slice().sort((a, b) => a - b)).toEqual([1, 3]);
+  });
+
+  it('an entityVisibility view with NO tombstones still returns every live entity of the type (no-regression pin against over-exclusion)', () => {
+    const accessor = createDataAccessor(makeStore(), undefined, view([]));
+    expect(accessor.getEntitiesByType('IfcWall').slice().sort((a, b) => a - b)).toEqual([1, 2, 3]);
+  });
+
+  it('an accessor built with no third argument reproduces the exact pre-#5184 behaviour (no-regression pin)', () => {
+    const accessor = createDataAccessor(makeStore());
+    expect(accessor.getEntitiesByType('IfcWall').slice().sort((a, b) => a - b)).toEqual([1, 2, 3]);
+  });
+
+  it('a type name with no entities returns an empty array, entityVisibility supplied or not', () => {
+    const withView = createDataAccessor(makeStore(), undefined, view([2]));
+    const withoutView = createDataAccessor(makeStore());
+    expect(withView.getEntitiesByType('IfcDoor')).toEqual([]);
+    expect(withoutView.getEntitiesByType('IfcDoor')).toEqual([]);
+  });
+});

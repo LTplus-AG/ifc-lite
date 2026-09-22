@@ -18,10 +18,33 @@ import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, IFC_DATA_TYPES, type I
 // inheritance walk must consult more than the IFC4 registry the parser's
 // codegen pinned. Later schemas win on name collision (a non-issue in
 // practice because the modern schemas are supersets).
+//
+// `ENTITIES_IFC4` (from `@ifc-lite/data`, vendored from buildingSMART's C#
+// `SchemaInfo` source) misfiles 24 entities from a draft alignment
+// extension into its IFC4 section (issue #5204) — e.g.
+// `IfcAlignment2DHorizontal`, `IfcOffsetCurve`, `IfcLinearPlacement`. These
+// are not draft names for real IFC4X3 entities either: `ENTITIES_IFC4X3`
+// (generated from the SAME buggy C# source but for IFC4X3) does not carry
+// them under these names — the finalized IFC4X3 alignment domain renamed
+// them (`IfcAlignmentHorizontal`, not `IfcAlignment2DHorizontal`). So
+// nothing here overrides the bad IFC4 entries, and folding them into the
+// union unfiltered made `isKnownType`/`isInstantiable`/
+// `getAttributeNamesAcrossSchemas` treat phantom entity names — absent from
+// every bundled schema — as real, with a fabricated attribute list
+// (confirmed by execution: `isKnownType('IfcAlignment2DHorizontal')` read
+// `true` with attrs `['StartDistAlong', 'Segments']` before this filter).
+//
+// `packages/parser/src/generated/schema-registry.ts` (`SCHEMA_REGISTRY`,
+// imported above) is generated from the EXPRESS schema itself, not the
+// buggy C# dump, so it is the existence oracle: an `ENTITIES_IFC4` row only
+// joins the union if the EXPRESS-derived registry also declares that name.
+// `ENTITIES_IFC2X3`/`ENTITIES_IFC4X3` are untouched — #5204 implicates only
+// the IFC4 table.
 const ENTITY_INFO_BY_UPPER: Map<string, IfcEntityInfo> = (() => {
     const map = new Map<string, IfcEntityInfo>();
     for (const list of [ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3]) {
         for (const entity of list) {
+            if (list === ENTITIES_IFC4 && !(entity.name in SCHEMA_REGISTRY.entities)) continue;
             map.set(entity.name.toUpperCase(), entity);
         }
     }

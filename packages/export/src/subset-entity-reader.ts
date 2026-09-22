@@ -19,7 +19,7 @@
  */
 
 import type { IfcSourceBytes } from '@ifc-lite/parser';
-import { getAttributeNamesAcrossSchemas, resolveEntityNameAlias } from '@ifc-lite/parser';
+import { getAttributeNamesAcrossSchemas, getSchemaRegistryForVersion, resolveEntityNameAlias } from '@ifc-lite/parser';
 import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
 import { createSourceRefReader, decodeRange } from './source-ref-bounds.js';
 import { readStepSlots } from './step-argument-parser.js';
@@ -87,13 +87,38 @@ export type SourceStepSchema = 'IFC2X3' | 'IFC4' | 'IFC4X3';
 
 const ATTRIBUTE_NAMES_BY_SCHEMA: Readonly<Record<SourceStepSchema, ReadonlyMap<string, readonly string[]>>> = {
   IFC2X3: attributeTableByUpperName(ENTITIES_IFC2X3),
-  IFC4: attributeTableByUpperName(ENTITIES_IFC4),
+  IFC4: attributeTableByUpperName(ENTITIES_IFC4, getSchemaRegistryForVersion('IFC4').entities),
   IFC4X3: attributeTableByUpperName(ENTITIES_IFC4X3),
 };
 
-function attributeTableByUpperName(table: readonly IfcEntityInfo[]): Map<string, readonly string[]> {
+/**
+ * `ENTITIES_IFC4` (vendored from buildingSMART's C# `SchemaInfo` source,
+ * issue #5204) gives `IfcCartesianPointList2D`/`3D` a `TagList` attribute
+ * IFC4 has never had, and misfiles 24 draft-alignment-extension entities as
+ * IFC4-valid that no real IFC4 STEP file can contain. `expressEntities`, when
+ * given (only for the `IFC4` table — #5204 implicates only that one), is the
+ * EXPRESS-derived registry (`@ifc-lite/parser`'s `getSchemaRegistryForVersion`,
+ * the same oracle `packages/export/src/schema-converter.ts`'s `attrNameTable`
+ * uses): a row only survives if the registry also declares that entity, and
+ * its attribute list is always the EXPRESS-derived one, so a scrub/anonymize
+ * caller resolving `attrIndex('IfcCartesianPointList3D', 'CoordList', 'IFC4')`
+ * (or any name for one of the 24 phantom entities) reads the same slot layout
+ * a real IFC4 STEP record actually has.
+ */
+function attributeTableByUpperName(
+  table: readonly IfcEntityInfo[],
+  expressEntities?: Readonly<Record<string, { attributes: { name: string }[]; allAttributes?: { name: string }[] }>>,
+): Map<string, readonly string[]> {
   const map = new Map<string, readonly string[]>();
-  for (const entity of table) map.set(entity.name.toUpperCase(), entity.attributes);
+  for (const entity of table) {
+    if (expressEntities) {
+      const meta = expressEntities[entity.name];
+      if (!meta) continue;
+      map.set(entity.name.toUpperCase(), (meta.allAttributes ?? meta.attributes).map((a) => a.name));
+      continue;
+    }
+    map.set(entity.name.toUpperCase(), entity.attributes);
+  }
   return map;
 }
 

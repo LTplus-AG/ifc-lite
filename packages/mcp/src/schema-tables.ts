@@ -23,12 +23,45 @@
  */
 
 import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
-import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
+import { getAttributeNamesAcrossSchemas, getSchemaRegistryForVersion } from '@ifc-lite/parser';
+
+/**
+ * `ENTITIES_IFC4` (vendored from buildingSMART's C# `SchemaInfo` source) is
+ * wrong for IFC4 in two ways (issue #5204): it gives `IfcCartesianPointList2D`/
+ * `3D` a `TagList` attribute IFC4 has never had, and it misfiles 24 entities
+ * from a draft alignment extension — `IfcAlignment2DHorizontal`,
+ * `IfcLinearPlacement`, `IfcOffsetCurve`, … — that exist under NO name in
+ * either the real IFC4 schema or (renamed) the finalized IFC4X3 one. Read
+ * directly, `entityInfoInSchema('IfcCartesianPointList3D', 'IFC4')` answered
+ * `TagList` as a real attribute, and `entityInfoInSchema('IfcAlignment2DHorizontal',
+ * 'IFC4')` answered a full attribute list for an entity that is not IFC4-valid —
+ * exactly the query this table exists to answer for an MCP client.
+ *
+ * `@ifc-lite/parser`'s `getSchemaRegistryForVersion('IFC4')` is generated from
+ * the EXPRESS schema itself (the same oracle `packages/export/src/
+ * schema-converter.ts`'s `attrNameTable` uses after #5204's fix), so it is
+ * ground truth for "does IFC4 declare this entity, and with which attributes":
+ * an `ENTITIES_IFC4` row only survives into `SCHEMA_TABLES` if the EXPRESS
+ * registry also declares that name, and its attribute list is always the
+ * EXPRESS-derived one, not the vendored one. `predefinedTypes`/`source`/
+ * `typeEntity` are kept as `ENTITIES_IFC4` had them — the EXPRESS registry
+ * does not carry those fields, and no consumer of this table reads them for
+ * an IFC4 row. `ENTITIES_IFC2X3`/`ENTITIES_IFC4X3` are untouched — #5204
+ * implicates only the IFC4 table.
+ */
+const IFC4_EXPRESS_ENTITIES = getSchemaRegistryForVersion('IFC4').entities;
+const ENTITIES_IFC4_CORRECTED: readonly IfcEntityInfo[] = ENTITIES_IFC4
+  .filter((entity) => entity.name in IFC4_EXPRESS_ENTITIES)
+  .map((entity) => {
+    const meta = IFC4_EXPRESS_ENTITIES[entity.name];
+    const attrs = (meta?.allAttributes ?? meta?.attributes)?.map((a) => a.name);
+    return attrs ? { ...entity, attributes: attrs } : entity;
+  });
 
 /** Bundled schemas, oldest first. */
 const SCHEMA_TABLES: ReadonlyArray<readonly [string, readonly IfcEntityInfo[]]> = [
   ['IFC2X3', ENTITIES_IFC2X3],
-  ['IFC4', ENTITIES_IFC4],
+  ['IFC4', ENTITIES_IFC4_CORRECTED],
   ['IFC4X3', ENTITIES_IFC4X3],
 ];
 

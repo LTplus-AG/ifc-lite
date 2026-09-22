@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { PropertyValueType } from '@ifc-lite/data';
 import { CsvConnector, MutablePropertyView, MutationGuardError, type DataMapping } from '../src/index.js';
 
@@ -32,6 +32,48 @@ function makeConnector(rows: Array<{ expressId: number; globalId: string; name: 
   const { entities, strings } = makeEntities(rows);
   const view = new MutablePropertyView(null, 'model-1');
   view.setOnDemandExtractor(() => []);
+  const connector = new CsvConnector(entities, view, strings);
+  return { connector, view };
+}
+
+/**
+ * Same fixture shape as {@link makeEntities}, plus an optional `getTag` —
+ * the entity-table read path the `tag` match strategy (#5167) uses.
+ */
+function makeConnectorWithTags(
+  rows: Array<{ expressId: number; globalId: string; name: string; tag?: string }>
+) {
+  const { entities, strings } = makeEntities(rows);
+  const tagByExpressId = new Map(rows.map((r) => [r.expressId, r.tag ?? '']));
+  entities.getTag = (expressId: number) => tagByExpressId.get(expressId) ?? '';
+  const view = new MutablePropertyView(null, 'model-1');
+  view.setOnDemandExtractor(() => []);
+  const connector = new CsvConnector(entities, view, strings);
+  return { connector, view };
+}
+
+/**
+ * Fixture for the `property` match strategy (#5167): each entity's property
+ * sets come from `MutablePropertyView`'s on-demand extractor, matching how
+ * the connector actually reads them in production (`getForEntity`, with
+ * pending mutations applied).
+ */
+function makeConnectorWithProperties(
+  entityIds: number[],
+  psetsByEntity: Record<
+    number,
+    Array<{ name: string; properties: Array<{ name: string; type: PropertyValueType; value: unknown }> }>
+  >
+) {
+  const rows = entityIds.map((id) => ({ expressId: id, globalId: `guid-${id}`, name: `Entity ${id}` }));
+  const { entities, strings } = makeEntities(rows);
+  const view = new MutablePropertyView(null, 'model-1');
+  view.setOnDemandExtractor((entityId) =>
+    (psetsByEntity[entityId] ?? []).map((pset) => ({
+      name: pset.name,
+      properties: pset.properties.map((p) => ({ name: p.name, type: p.type, value: p.value })),
+    }))
+  );
   const connector = new CsvConnector(entities, view, strings);
   return { connector, view };
 }
@@ -146,6 +188,193 @@ describe('CsvConnector.match (matchRow)', () => {
     expect(result.matchedEntityIds).toEqual([]);
     expect(result.confidence).toBe(0);
     expect(result.warnings).toEqual(['Empty match value in column "GlobalId"']);
+  });
+
+  it('warns once (not per row) when the match column is missing from the CSV header entirely', () => {
+    const { connector } = makeConnector([{ expressId: 1, globalId: 'guid-a', name: 'Wall A' }]);
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'globalId', column: 'GlobalId' },
+      propertyMappings: [],
+    };
+
+    // Every row is missing the "GlobalId" key entirely -- a different CSV
+    // shape from "the column exists but this cell is blank".
+    const rows = [{ OtherColumn: 'x' }, { OtherColumn: 'y' }, { OtherColumn: 'z' }];
+    const results = connector.match(rows, mapping);
+
+    const allWarnings = results.flatMap((r) => r.warnings ?? []);
+    expect(allWarnings).toEqual(['Match column "GlobalId" not found in CSV header']);
+    expect(results.every((r) => r.matchedEntityIds.length === 0)).toBe(true);
+  });
+});
+
+/**
+ * #5167 task 3.1: the `tag` strategy matches on the IFC `Tag` attribute (the
+ * usual join key from a fabrication/scheduling spreadsheet).
+ */
+describe('CsvConnector.match: tag strategy (#5167)', () => {
+  it('matches by the Tag attribute', () => {
+    const { connector } = makeConnectorWithTags([
+      { expressId: 1, globalId: 'guid-a', name: 'Wall A', tag: 'P1-001' },
+      { expressId: 2, globalId: 'guid-b', name: 'Wall B', tag: 'P1-002' },
+    ]);
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'tag', column: 'Mark' },
+      propertyMappings: [],
+    };
+
+    const [result] = connector.match([{ Mark: 'P1-002' }], mapping);
+
+    expect(result.matchedEntityIds).toEqual([2]);
+    expect(result.confidence).toBe(1);
+  });
+
+  it('a pending Tag attribute overlay edit wins over the base value', () => {
+    const { connector, view } = makeConnectorWithTags([
+      { expressId: 1, globalId: 'guid-a', name: 'Wall A', tag: 'BASE-TAG' },
+    ]);
+    view.setAttribute(1, 'Tag', 'OVERLAY-TAG');
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'tag', column: 'Mark' },
+      propertyMappings: [],
+    };
+
+    // The overlay edit, not the base EntityTable.getTag() value, is what a
+    // CSV import matched right after an in-session Tag edit must honour.
+    const [result] = connector.match([{ Mark: 'OVERLAY-TAG' }], mapping);
+    expect(result.matchedEntityIds).toEqual([1]);
+
+    const [staleResult] = connector.match([{ Mark: 'BASE-TAG' }], mapping);
+    expect(staleResult.matchedEntityIds).toEqual([]);
+  });
+});
+
+/**
+ * #5167 task 3.1: the `property` strategy matches on the value of an
+ * existing `psetName.propName`, reading through `MutablePropertyView`'s
+ * overlay (`getForEntity`) rather than a raw property table.
+ */
+describe('CsvConnector.match: property strategy (#5167)', () => {
+  it('matches through the SECOND same-named property set (type + occurrence), not just the first', () => {
+    // Two entities each carry a TYPE-level and an OCCURRENCE-level
+    // "Pset_Common", same name, different Mark values -- the shape
+    // scripts/check-pset-name-find*.mjs exists to catch a two-step `.find`
+    // getting wrong. 'OCC-2' only lives on entity 2's SECOND same-named
+    // pset; a `psets.find(s => s.name === X)?.properties.find(...)` would
+    // only ever see the FIRST 'Pset_Common' (Mark=TYPE-A) and report this
+    // row unmatched.
+    const { connector } = makeConnectorWithProperties([1, 2], {
+      1: [
+        { name: 'Pset_Common', properties: [{ name: 'Mark', type: PropertyValueType.String, value: 'TYPE-A' }] },
+        { name: 'Pset_Common', properties: [{ name: 'Mark', type: PropertyValueType.String, value: 'OCC-1' }] },
+      ],
+      2: [
+        { name: 'Pset_Common', properties: [{ name: 'Mark', type: PropertyValueType.String, value: 'TYPE-A' }] },
+        { name: 'Pset_Common', properties: [{ name: 'Mark', type: PropertyValueType.String, value: 'OCC-2' }] },
+      ],
+    });
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'property', psetName: 'Pset_Common', propName: 'Mark', column: 'Mark' },
+      propertyMappings: [],
+    };
+
+    const [result] = connector.match([{ Mark: 'OCC-2' }], mapping);
+
+    expect(result.matchedEntityIds).toEqual([2]);
+    expect(result.confidence).toBe(1);
+  });
+
+  it('flags ambiguity when the value matches more than one entity', () => {
+    const { connector } = makeConnectorWithProperties([1, 2], {
+      1: [{ name: 'Pset_Common', properties: [{ name: 'Mark', type: PropertyValueType.String, value: 'TYPE-A' }] }],
+      2: [{ name: 'Pset_Common', properties: [{ name: 'Mark', type: PropertyValueType.String, value: 'TYPE-A' }] }],
+    });
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'property', psetName: 'Pset_Common', propName: 'Mark', column: 'Mark' },
+      propertyMappings: [],
+    };
+
+    const [result] = connector.match([{ Mark: 'TYPE-A' }], mapping);
+
+    expect(result.matchedEntityIds).toEqual([1, 2]);
+    expect(result.confidence).toBe(0.5);
+    expect(result.warnings).toEqual(['Multiple entities (2) matched for value "TYPE-A"']);
+  });
+
+  it('warns and reports zero confidence for an empty match value', () => {
+    const { connector } = makeConnectorWithProperties([1], {
+      1: [{ name: 'Pset_Common', properties: [{ name: 'Mark', type: PropertyValueType.String, value: 'A' }] }],
+    });
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'property', psetName: 'Pset_Common', propName: 'Mark', column: 'Mark' },
+      propertyMappings: [],
+    };
+
+    const [result] = connector.match([{ Mark: '' }], mapping);
+
+    expect(result.matchedEntityIds).toEqual([]);
+    expect(result.confidence).toBe(0);
+    expect(result.warnings).toEqual(['Empty match value in column "Mark"']);
+  });
+
+  it('compares a Real property type-aware, not by raw string identity ("60.0" vs stored 60)', () => {
+    const { connector } = makeConnectorWithProperties([1], {
+      1: [{ name: 'Pset_Common', properties: [{ name: 'Area', type: PropertyValueType.Real, value: 60 }] }],
+    });
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'property', psetName: 'Pset_Common', propName: 'Area', column: 'Area' },
+      propertyMappings: [],
+    };
+
+    const [result] = connector.match([{ Area: '60.0' }], mapping);
+
+    expect(result.matchedEntityIds).toEqual([1]);
+  });
+
+  it('skips (does not fabricate a match for) a malformed Real cell, same PARSE_INVALID contract as generateMutations', () => {
+    const { connector } = makeConnectorWithProperties([1], {
+      1: [{ name: 'Pset_Common', properties: [{ name: 'Area', type: PropertyValueType.Real, value: 60 }] }],
+    });
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'property', psetName: 'Pset_Common', propName: 'Area', column: 'Area' },
+      propertyMappings: [],
+    };
+
+    const [result] = connector.match([{ Area: 'N/A' }], mapping);
+
+    expect(result.matchedEntityIds).toEqual([]);
+    expect(result.warnings?.some((w) => w.includes('Area') && w.includes('N/A'))).toBe(true);
+  });
+
+  it('builds the index ONCE per match() call, not once per row (proves indexing, not a per-row scan)', () => {
+    const { connector, view } = makeConnectorWithProperties([1, 2, 3], {
+      1: [{ name: 'Pset_Common', properties: [{ name: 'Mark', type: PropertyValueType.String, value: 'A' }] }],
+      2: [{ name: 'Pset_Common', properties: [{ name: 'Mark', type: PropertyValueType.String, value: 'B' }] }],
+      3: [{ name: 'Pset_Common', properties: [{ name: 'Mark', type: PropertyValueType.String, value: 'C' }] }],
+    });
+    const getForEntitySpy = vi.spyOn(view, 'getForEntity');
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'property', psetName: 'Pset_Common', propName: 'Mark', column: 'Mark' },
+      propertyMappings: [],
+    };
+
+    // 3 entities, 5 rows. A per-row linear scan would read every entity's
+    // properties once per row (15 calls, O(rows × entities)); the indexed
+    // strategy reads each entity exactly once regardless of row count.
+    const rows = [{ Mark: 'A' }, { Mark: 'B' }, { Mark: 'C' }, { Mark: 'A' }, { Mark: 'B' }];
+    const results = connector.match(rows, mapping);
+
+    expect(getForEntitySpy).toHaveBeenCalledTimes(3);
+    expect(results.map((r) => r.matchedEntityIds)).toEqual([[1], [2], [3], [1], [2]]);
   });
 });
 

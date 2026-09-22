@@ -27,6 +27,7 @@ import { collectStyleEntities, STYLE_RESCUE_TYPES } from './style-closure.js';
 import { collectGeoreferencingEntities } from './georef-closure.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { firstWrittenOwnerHistoryRef, Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
+import { Ifc4SlotFill } from './schema-converter-ifc4-slots.js';
 import { assembleStepBytes, assembleStepBlob } from './step-file-assembly.js';
 import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type ExportEntityRef } from './entity-iteration.js';
 import { StepExporter } from './step-exporter.js';
@@ -515,6 +516,7 @@ export class MergedExporter {
     let normalizedModelCount = 0;
     const normalizeWarnings = new Set<string>();
     const slotFill = new Ifc2x3SlotFill(); // slots IFC2X3 requires (#4686, #4714)
+    const ifc4Slots = new Ifc4SlotFill(); // slots IFC4 requires (#5202)
 
     for (const model of models) {
       const offset = setup.modelOffsets.get(model.id)!;
@@ -539,7 +541,7 @@ export class MergedExporter {
         if (!written(expressId)) continue;
         const line = this.renderEntity(
           expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode,
-          visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill,
+          visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots,
         );
         if (line !== null) allEntityLines.push(line);
       }
@@ -547,6 +549,7 @@ export class MergedExporter {
       isFirstModel = false;
     }
     for (const warning of slotFill.warnings()) normalizeWarnings.add(warning);
+    for (const warning of ifc4Slots.warnings()) normalizeWarnings.add(warning);
 
     // Assemble final file as Uint8Array chunks to avoid V8 string length limit
     if (onProgress) onProgress({ phase: 'assembling', percent: 0.9, entitiesProcessed: allEntityLines.length, entitiesTotal: allEntityLines.length });
@@ -644,6 +647,7 @@ export class MergedExporter {
     const normalizeWarnings = new Set<string>();
     const YIELD_INTERVAL = 2000;
     const slotFill = new Ifc2x3SlotFill(); // slots IFC2X3 requires (#4686, #4714)
+    const ifc4Slots = new Ifc4SlotFill(); // slots IFC4 requires (#5202)
 
     if (onProgress) onProgress({ phase: 'preparing', percent: 0, entitiesProcessed: 0, entitiesTotal: totalEntities });
 
@@ -680,7 +684,7 @@ export class MergedExporter {
 
         const line = this.renderEntity(
           expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode,
-          visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill,
+          visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots,
         );
         if (line !== null) allEntityLines.push(line);
 
@@ -705,6 +709,7 @@ export class MergedExporter {
       isFirstModel = false;
     }
     for (const warning of slotFill.warnings()) normalizeWarnings.add(warning);
+    for (const warning of ifc4Slots.warnings()) normalizeWarnings.add(warning);
 
     // Assembly phase
     if (onProgress) {
@@ -1198,6 +1203,7 @@ export class MergedExporter {
     completeIndex: CompleteEntityIndex,
     includedIds: ReadonlySet<number> | null,
     slotFill: Ifc2x3SlotFill,
+    ifc4Slots: Ifc4SlotFill,
   ): string | null {
     let entityText = decodeRange(source, entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength);
 
@@ -1280,7 +1286,7 @@ export class MergedExporter {
       // "proxy or throw" contract rather than risk a wrong omission in the wrong
       // id space; the same LoadConfiguration/AppliedLoad case that would omit in
       // `StepExporter` still throws here, unchanged from before this fix.
-      const converted = convertStepLine(finalText, sourceSchema, targetSchema, undefined, slotFill);
+      const converted = convertStepLine(finalText, sourceSchema, targetSchema, undefined, slotFill, undefined, ifc4Slots);
       if (converted === null) {
         throw new Error(`Internal error: schema conversion of #${localId + offset}=${entityRef.type} returned null with no withheldRefIds supplied.`);
       }

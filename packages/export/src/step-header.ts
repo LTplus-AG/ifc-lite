@@ -108,6 +108,7 @@ export function assembleExportResult(pass: ExportPass): StepExportResult {
   const { modifiedEntityCount, warnings: deltaWarnings } = pass.modifications.settle();
   pass.warnings.push(...deltaWarnings);
   pass.warnings.push(...pass.slotFill.warnings());
+  pass.warnings.push(...pass.ifc4Slots.warnings());
 
   // Assemble final file as Uint8Array chunks to avoid V8 string length limit.
   // The header is built last so its provenance item reflects the real count.

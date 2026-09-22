@@ -26,6 +26,7 @@ import { resolveUnrepresentedEntity } from './schema-untranslatable.js';
 import { BY_NAME_ATTR_REMAP_TYPES, remapRenamedAttributesByName } from './schema-converter-attr-remap.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
+import { Ifc4SlotFill } from './schema-converter-ifc4-slots.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 
 export { computeWithheldRefIds } from './schema-untranslatable.js';
@@ -300,7 +301,20 @@ function requireTopLevelAttributes(attrsRaw: string): string[] {
  * @param slots - This package's exporters pass one; it carries the owner
  *   history they reuse (#4686) and collects what they could not settle.
  *   Omitted, a throwaway stands in, so the generated table's own defaults are
- *   still written but the OwnerHistory reuse and both counts are lost.
+ *   still written but the OwnerHistory reuse and both counts are lost. Only
+ *   consulted when `toSchema === 'IFC2X3'`.
+ * @param ifc4Slots - The IFC4 twin of `slots` (#5202): fills BOOLEAN required
+ *   slots IFC4X3/IFC5 left optional-and-`$`, and counts every other one
+ *   (including enums) that stays `$` under IFC4's stricter cardinality.
+ *   Omitted, a throwaway stands in, so the fill still happens but the count
+ *   is lost. Only consulted when `toSchema === 'IFC4'` AND `fromSchema` is
+ *   `'IFC4X3'` or `'IFC5'` — the only directions #5202 documents the
+ *   optional-in-source/mandatory-in-IFC4 mismatch for. IFC2X3 → IFC4 is a
+ *   separate, already-well-tested upgrade path
+ *   (`schema-converter-door-window-type.test.ts` pins it byte-for-byte) and
+ *   is deliberately left alone: IFC2X3's OWN mandatory/optional shape was
+ *   never audited for this table, so applying it there risked silently
+ *   rewriting an already-correct conversion rather than fixing a gap.
  * @param withheldRefIds - Express ids this export is OMITTING outright
  *   ({@link computeWithheldRefIds}, #4206) — a record whose attributes name
  *   one is redirected to the same "no representation" resolution as its own
@@ -317,11 +331,16 @@ export function convertStepLine(
   random?: RandomSource,
   slots?: Ifc2x3SlotFill,
   withheldRefIds?: ReadonlySet<number>,
+  ifc4Slots?: Ifc4SlotFill,
 ): string | null {
   if (fromSchema === toSchema) return line;
   const converted = convertRecord(line, fromSchema, toSchema, random, withheldRefIds);
   if (converted === null) return null;
-  return toSchema === 'IFC2X3' ? (slots ?? new Ifc2x3SlotFill()).apply(converted) : converted;
+  if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
+  if (toSchema === 'IFC4' && (fromSchema === 'IFC4X3' || fromSchema === 'IFC5')) {
+    return (ifc4Slots ?? new Ifc4SlotFill()).apply(converted);
+  }
+  return converted;
 }
 
 /** {@link convertStepLine} before the IFC2X3 required-slot fills, between two

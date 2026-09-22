@@ -393,8 +393,25 @@ async function validateSpecification(
     status = 'fail';
   }
 
-  const passRate =
-    totalEntities > 0 ? Math.floor((passedCount / totalEntities) * 100) : 100;
+  let passRate =
+    totalEntities > 0
+      ? Math.floor((passedCount / totalEntities) * 100)
+      : status === 'fail'
+        ? 0
+        : 100;
+
+  // `passRate` above is derived from `passedCount`/`totalEntities` alone,
+  // same as `status`'s `failedCount` branch — but `status` also fails on
+  // `cardinalityResult`, which `passRate` never sees (#5212). A spec whose
+  // matched entities ALL individually satisfy their requirements while the
+  // *set* is too large/small (e.g. `maxOccurs: 2` with 3 matches, no
+  // per-entity failures) computed `passedCount === totalEntities`, so the
+  // formula above lands on 100 even though `status` is `'fail'`. Clamp
+  // only that disagreement: a spec with genuine per-entity failures already
+  // reports a `passRate < 100` from the formula above and is left alone.
+  if (status === 'fail' && passRate === 100) {
+    passRate = 0;
+  }
 
   return {
     specification: spec,
@@ -724,10 +741,21 @@ export function calculateSummary(
     totalEntitiesFailed += result.failedCount;
   }
 
-  const overallPassRate =
+  let overallPassRate =
     totalEntitiesChecked > 0
       ? Math.floor((totalEntitiesPassed / totalEntitiesChecked) * 100)
       : 100;
+
+  // Same disagreement as the per-spec `passRate` (#5212), one level up: a
+  // cardinality-failed spec whose matched entities all individually pass
+  // contributes fully to `totalEntitiesPassed` and nothing to
+  // `totalEntitiesFailed`, so the aggregate can land on 100 while
+  // `failedSpecifications > 0` in the same summary object. Clamp only that
+  // disagreement — a summary where some entity failures are already
+  // counted keeps its real (already-under-100) aggregate rate.
+  if (failedSpecifications > 0 && overallPassRate === 100) {
+    overallPassRate = 0;
+  }
 
   return {
     totalSpecifications,

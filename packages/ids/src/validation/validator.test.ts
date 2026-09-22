@@ -75,6 +75,9 @@ describe('validateIDS — all entities passing', () => {
     expect(report.specificationResults[0].applicableCount).toBe(2);
     expect(report.specificationResults[0].passedCount).toBe(2);
     expect(report.specificationResults[0].failedCount).toBe(0);
+    // No-regression pin (#5212): a genuinely passing spec still reports 100.
+    expect(report.specificationResults[0].passRate).toBe(100);
+    expect(report.summary.overallPassRate).toBe(100);
   });
 });
 
@@ -394,6 +397,29 @@ describe('validateIDS — cardinality', () => {
     expect(specResult.status).toBe('fail');
   });
 
+  // Issue #5212: `minOccurs: 1` with zero matching entities used to report
+  // `passRate: 100` (the `totalEntities === 0` default) next to
+  // `status: 'fail'` — both at the per-spec and the report-summary level.
+  it('#5212 — minOccurs unmet with zero matches reports passRate 0, not 100', async () => {
+    const accessor = createMockAccessor([
+      { expressId: 1, type: 'IfcSlab' }, // no walls
+    ]);
+
+    const spec = makeSpec({
+      minOccurs: 1,
+      requirements: [],
+    });
+
+    const report = await validateIDS(makeDoc([spec]), accessor, modelInfo);
+    const specResult = report.specificationResults[0];
+    expect(specResult.status).toBe('fail');
+    expect(specResult.applicableCount).toBe(0);
+    expect(specResult.passRate).toBe(0);
+
+    expect(report.summary.failedSpecifications).toBe(1);
+    expect(report.summary.overallPassRate).toBe(0);
+  });
+
   it('fails when entity count exceeds maxOccurs', async () => {
     const accessor = createMockAccessor([
       { expressId: 1, type: 'IfcWall', name: 'W1' },
@@ -411,6 +437,37 @@ describe('validateIDS — cardinality', () => {
     expect(specResult.cardinalityResult!.passed).toBe(false);
     expect(specResult.cardinalityResult!.message).toContain('at most 2');
     expect(specResult.status).toBe('fail');
+  });
+
+  // Issue #5212: three walls that each individually satisfy their (empty)
+  // requirements, but exceed `maxOccurs: 2` — `passedCount === totalEntities
+  // === 3` made the old formula land on `passRate: 100` while `status` was
+  // `'fail'`, and `failedSpecifications: 1` / `overallPassRate: 100`
+  // disagreed in the same summary object.
+  it('#5212 — maxOccurs exceeded with no per-entity failures reports passRate 0, not 100', async () => {
+    const accessor = createMockAccessor([
+      { expressId: 1, type: 'IfcWall', name: 'W1' },
+      { expressId: 2, type: 'IfcWall', name: 'W2' },
+      { expressId: 3, type: 'IfcWall', name: 'W3' },
+    ]);
+
+    const spec = makeSpec({
+      maxOccurs: 2,
+      requirements: [],
+    });
+
+    const report = await validateIDS(makeDoc([spec]), accessor, modelInfo);
+    const specResult = report.specificationResults[0];
+    expect(specResult.status).toBe('fail');
+    expect(specResult.applicableCount).toBe(3);
+    expect(specResult.passedCount).toBe(3);
+    expect(specResult.failedCount).toBe(0);
+    expect(specResult.passRate).toBe(0);
+
+    expect(report.summary.failedSpecifications).toBe(1);
+    expect(report.summary.totalEntitiesPassed).toBe(3);
+    expect(report.summary.totalEntitiesFailed).toBe(0);
+    expect(report.summary.overallPassRate).toBe(0);
   });
 
   it('returns undefined cardinality when no minOccurs/maxOccurs set', async () => {
@@ -464,6 +521,13 @@ describe('validateIDS — not applicable', () => {
     const report = await validateIDS(makeDoc([spec]), accessor, modelInfo);
     expect(report.specificationResults[0].status).toBe('not_applicable');
     expect(report.specificationResults[0].applicableCount).toBe(0);
+    // Documented behaviour (#5212): `not_applicable` is left at the
+    // `totalEntities === 0` default of 100, unlike the `'fail'` branch
+    // (minOccurs unmet) above, which is now 0. `not_applicable` is a
+    // third state distinct from a real pass, and collapsing it into 100
+    // is still arguably misleading — see the fix's changeset/PR notes for
+    // why this was left as a value-only, shape-preserving fix.
+    expect(report.specificationResults[0].passRate).toBe(100);
   });
 });
 

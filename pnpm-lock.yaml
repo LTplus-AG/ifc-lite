@@ -444,6 +444,9 @@ importers:
       '@ifc-lite/bcf':
         specifier: workspace:^
         version: link:../../packages/bcf
+      '@ifc-lite/bcf-api':
+        specifier: workspace:^
+        version: link:../../packages/bcf-api
       '@ifc-lite/cache':
         specifier: workspace:^
         version: link:../../packages/cache
@@ -480,6 +483,12 @@ importers:
       '@ifc-lite/extensions':
         specifier: workspace:^
         version: link:../../packages/extensions
+      '@ifc-lite/flow':
+        specifier: workspace:^
+        version: link:../../packages/flow
+      '@ifc-lite/flow-nodes':
+        specifier: workspace:^
+        version: link:../../packages/flow-nodes
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../../packages/geometry
@@ -504,9 +513,15 @@ importers:
       '@ifc-lite/mutations':
         specifier: workspace:^
         version: link:../../packages/mutations
+      '@ifc-lite/oauth-pkce':
+        specifier: workspace:^
+        version: link:../../packages/oauth-pkce
       '@ifc-lite/parser':
         specifier: workspace:^
         version: link:../../packages/parser
+      '@ifc-lite/plugin-api':
+        specifier: workspace:^
+        version: link:../../packages/plugin-api
       '@ifc-lite/pointcloud':
         specifier: workspace:^
         version: link:../../packages/pointcloud
@@ -516,6 +531,9 @@ importers:
       '@ifc-lite/renderer':
         specifier: workspace:^
         version: link:../../packages/renderer
+      '@ifc-lite/rules':
+        specifier: workspace:^
+        version: link:../../packages/rules
       '@ifc-lite/sandbox':
         specifier: workspace:^
         version: link:../../packages/sandbox
@@ -528,6 +546,15 @@ importers:
       '@ifc-lite/solar':
         specifier: workspace:^
         version: link:../../packages/solar
+      '@ifc-lite/source-dalux':
+        specifier: workspace:^
+        version: link:../../packages/source-dalux
+      '@ifc-lite/source-dropbox':
+        specifier: workspace:^
+        version: link:../../packages/source-dropbox
+      '@ifc-lite/source-msgraph':
+        specifier: workspace:^
+        version: link:../../packages/source-msgraph
       '@ifc-lite/spatial':
         specifier: workspace:^
         version: link:../../packages/spatial

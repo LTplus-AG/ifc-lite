@@ -89,13 +89,13 @@ fixture provenance and none changes a matrix row above:
 | [`nathancrews/LandXML2glTF`](https://github.com/nathancrews/LandXML2glTF) / [LandXML.org samples](http://www.landxml.org/webapps/landxmlsamples.aspx) | 2026-09-21 | Possible producer headers, but no file-level non-customer-data provenance and redistribution attestation for the candidate bytes. |
 | [WFLHD design-data policy](https://highways.dot.gov/federal-lands/pddm/wfl/release-digital-design-data-3d-models) and [solicitations](https://highways.dot.gov/federal-lands/business/construction-contracting) | 2026-09-21 | Establishes OpenRoads terrain/alignment workflow, not permission to redistribute a concrete attachment. |
 | [swisstopo OGD](https://www.swisstopo.admin.ch/en/height-model-swisssurface3d) | 2026-09-21 | Usable with attribution after a concrete download review; optional federation expansion only, because #5124 already covers the required independent-control workflow. |
-| GitHub code searches linked from the [#5051 acceptance decision](https://github.com/LTplus-AG/ifc-lite/issues/5051#issuecomment-5766908841) | 2026-09-21 | Search hits are discovery leads until exact bytes, root/file rights, producer attribution, and non-customer-data review are recorded. |
+| GitHub code-search findings summarized in the [#5051 acceptance research decision](https://github.com/LTplus-AG/ifc-lite/issues/5051#issuecomment-5766908841) | 2026-09-21 | Search hits are discovery leads until exact bytes, root/file rights, producer attribution, and non-customer-data review are recorded. |
 
 ## Dated waiver decisions
 
-The following are the revised #5051 acceptance criteria, decided 2026-09-22
-by repository maintainer `@louistrue` in the
-[#5051 acceptance decision](https://github.com/LTplus-AG/ifc-lite/issues/5051#issuecomment-5766908841).
+The following are the revised #5051 waiver decisions, dated 2026-09-22 by
+repository maintainer `@louistrue` after the 2026-09-21
+[#5051 acceptance and research decision](https://github.com/LTplus-AG/ifc-lite/issues/5051#issuecomment-5766908841).
 The closing PR's code-owner review ratifies the implementation of that decision;
 it must not be recorded as complete before that review is submitted. The
 waivers replace the unavailable-corpus requirement only. They do not permit a

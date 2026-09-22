@@ -476,6 +476,70 @@ fn overlapping_groups_yield_one_record_per_unordered_pair() {
     );
 }
 
+/// Two tiny, far-apart triangles that together give a wide AABB — the AABB
+/// overlaps a target while neither triangle does. Same shape as the
+/// TS-side `dumbbellElement` fixture in `packages/clash/src/regression.test.ts`
+/// (unmerged `fix-5194-clash-candidate-dedup` branch) and
+/// `packages/clash/src/differential.test.ts`'s #5220 case: one sub-prim of a
+/// split entity that is a broad-phase false positive.
+fn dumbbell_mesh(cx_near: f32, cx_far: f32) -> (Vec<f32>, Vec<u32>, Vec<f32>) {
+    let eps = 0.01f32;
+    #[rustfmt::skip]
+    let positions = vec![
+        cx_near, 0.0, 0.0, cx_near + eps, 0.0, 0.0, cx_near, eps, 0.0,
+        cx_far, 0.0, 0.0, cx_far + eps, 0.0, 0.0, cx_far, eps, 0.0,
+    ];
+    let indices = vec![0u32, 1, 2, 3, 4, 5];
+    // Bounds padded by a fixed margin around the two triangle centers (not the
+    // triangles' own eps-sized extent) — matching the TS fixture exactly.
+    let margin = 0.05f32;
+    let aabb = vec![cx_near - margin, -margin, -margin, cx_far + margin, margin, margin];
+    (positions, indices, aabb)
+}
+
+#[test]
+fn candidate_pairs_dedups_by_global_index_not_entity_key_5220() {
+    // #5220 part 2 / #5194: the TS engine's now-removed cross-group broad-phase
+    // dedup collapsed candidate pairs by entity KEY before the narrow phase, so
+    // when a same-key false-positive submesh (A1, the dumbbell) was visited
+    // before the genuinely-clashing submesh (A2) for the same target B, A2's
+    // real candidate pair against B was dropped along with A1's spurious one.
+    // The Rust session has no key concept at all — `candidate_pairs` dedups
+    // strictly by GLOBAL ELEMENT INDEX pair (`(a_global, b_global)`, see
+    // `session.rs`), so A1-B and A2-B are always distinct pairs and this
+    // failure mode cannot occur here. This pins that claim: A2 must clash with
+    // B regardless of whether the false-positive A1 precedes or follows it in
+    // `group_a`.
+    //
+    // B: box at x=10, half-extent 1 -> spans [9, 11].
+    // A2: box at x=10.5, half-extent 1 -> genuinely interpenetrates B.
+    // A1: dumbbell spanning ~[0.45, 20.55] in its AABB (overlaps B's broad
+    // phase) but whose actual triangles (near x=0.5 and x=20.5) are nowhere
+    // near B.
+    let b = box_mesh([10.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+    let a2 = box_mesh([10.5, 0.0, 0.0], [1.0, 1.0, 1.0]);
+    let a1 = dumbbell_mesh(0.5, 20.5);
+
+    // [A1, A2, B] order.
+    let session = session_of(&[a1.clone(), a2.clone(), b.clone()]);
+    let result = session.run_rule(&[0, 1], &[2], HARD, 0.001, 0.0, false);
+    assert_eq!(
+        result.records.len(),
+        1,
+        "A2 must clash with B even with the false-positive A1 listed first, got {:?}",
+        result.records.iter().map(|r| (r.a, r.b)).collect::<Vec<_>>()
+    );
+    assert_eq!(result.records[0].a, 1);
+    assert_eq!(result.records[0].b, 2);
+
+    // [A2, A1, B] order — same result regardless of which submesh comes first.
+    let session2 = session_of(&[a2, a1, b]);
+    let result2 = session2.run_rule(&[0, 1], &[2], HARD, 0.001, 0.0, false);
+    assert_eq!(result2.records.len(), 1);
+    assert_eq!(result2.records[0].a, 0);
+    assert_eq!(result2.records[0].b, 2);
+}
+
 /// Triangular prism: footprint (0,0)-(2,0)-(0,2), extruded z 0 -> 1. The
 /// slanted face makes most of the expected distances irrational, so a
 /// wrong-but-close candidate set cannot coincidentally reproduce them.

@@ -9,11 +9,15 @@
 //! already world-space, so no transform is applied.
 
 use crate::aabb::Aabb;
-use crate::bvh::Bvh;
+use crate::bvh::{js_max, js_min, Bvh};
 use crate::obb::{detect_obb, MeshLike, Obb};
 use crate::triangle::closest_pt_point_triangle;
 use crate::vec3::{cross, dist_sq, dot, sub, Vec3};
 use std::cell::RefCell;
+
+#[cfg(test)]
+#[path = "tri_mesh_tests.rs"]
+mod tri_mesh_tests;
 
 /// Fixed ray direction for point-in-solid tests: `normalize([1, √3, √5])`.
 /// NON-axis-aligned so the ray never grazes axis-aligned box edges/vertices
@@ -360,6 +364,22 @@ impl MeshLike for TriMesh {
     }
 }
 
+/// Bounds of a single triangle, byte-for-behaviour matching `tri-mesh.ts`'s
+/// `triBounds`, which builds this from `Math.min`/`Math.max` over the three
+/// vertices. `Math.min`/`Math.max` propagate a NaN operand; Rust's `f64::min`/
+/// `f64::max` silently drop it and fabricate finite bounds from the other two
+/// vertices instead, which would keep a NaN-corrupted triangle queryable in
+/// the per-triangle BVH below (#5220). `js_min`/`js_max` (`bvh.rs`) restore
+/// the propagating behaviour, so a NaN vertex NaNs this triangle's leaf
+/// bounds and `Aabb::intersects` (NaN comparisons are false on every axis)
+/// excludes it from every query — deliberately: this mirrors the TS engine's
+/// (safe, parity-preserving) behaviour rather than refusing loudly, unlike
+/// `bvh.rs`'s `compute_bounds`, which instead SKIPS a NaN contribution so one
+/// corrupt entity's bounds don't poison its BVH siblings. The two functions
+/// answer different questions — `compute_bounds` aggregates many independent
+/// entities and must not let one bad entity blind the others; `tri_bounds`
+/// derives one triangle's own bounds from its own three vertices, so there is
+/// no innocent sibling to protect and propagating (matching TS) is correct.
 fn tri_bounds(positions: &[f64], indices: &[u32], t: usize) -> Aabb {
     let o = t * 3;
     let va = vertex(positions, indices[o]);
@@ -367,14 +387,14 @@ fn tri_bounds(positions: &[f64], indices: &[u32], t: usize) -> Aabb {
     let vc = vertex(positions, indices[o + 2]);
     Aabb::new(
         [
-            va[0].min(vb[0]).min(vc[0]),
-            va[1].min(vb[1]).min(vc[1]),
-            va[2].min(vb[2]).min(vc[2]),
+            js_min(js_min(va[0], vb[0]), vc[0]),
+            js_min(js_min(va[1], vb[1]), vc[1]),
+            js_min(js_min(va[2], vb[2]), vc[2]),
         ],
         [
-            va[0].max(vb[0]).max(vc[0]),
-            va[1].max(vb[1]).max(vc[1]),
-            va[2].max(vb[2]).max(vc[2]),
+            js_max(js_max(va[0], vb[0]), vc[0]),
+            js_max(js_max(va[1], vb[1]), vc[1]),
+            js_max(js_max(va[2], vb[2]), vc[2]),
         ],
     )
 }

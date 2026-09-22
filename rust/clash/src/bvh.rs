@@ -15,9 +15,12 @@ use crate::vec3::Vec3;
 /// `Math.max` semantics, which differ from Rust's `f64::max` on NaN: JS
 /// propagates the NaN, Rust returns the non-NaN operand. The slab test below
 /// must reject NaN geometry exactly the way the TS BVH does, or the two kernels
-/// disagree on meshes with NaN coordinates.
+/// disagree on meshes with NaN coordinates. `pub(crate)` so `tri_mesh.rs`'s
+/// `tri_bounds` (per-triangle leaf bounds, matching `tri-mesh.ts`'s
+/// `Math.min`/`Math.max`-based `triBounds`) can share this instead of
+/// reimplementing it — see #5220.
 #[inline]
-fn js_max(a: f64, b: f64) -> f64 {
+pub(crate) fn js_max(a: f64, b: f64) -> f64 {
     if a.is_nan() || b.is_nan() {
         f64::NAN
     } else if a > b {
@@ -29,7 +32,7 @@ fn js_max(a: f64, b: f64) -> f64 {
 
 /// `Math.min` semantics — see [`js_max`].
 #[inline]
-fn js_min(a: f64, b: f64) -> f64 {
+pub(crate) fn js_min(a: f64, b: f64) -> f64 {
     if a.is_nan() || b.is_nan() {
         f64::NAN
     } else if a < b {

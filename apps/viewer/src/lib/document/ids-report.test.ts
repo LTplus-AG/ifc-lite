@@ -23,7 +23,7 @@ import type { SpecificationResult, ValidationReport } from '@ifc-lite/ids';
 import { idsReportBlockFromReport } from './ids-report.js';
 
 /** A `SpecificationResult` with deliberately distinct passed/failed counts, so a passed/failed swap is detectable. */
-function spec(overrides: Partial<SpecificationResult> & { id: string; name: string }): SpecificationResult {
+function spec(overrides: Partial<SpecificationResult> & { id: string; name: string; description?: string }): SpecificationResult {
   return {
     specification: { id: overrides.id, name: overrides.name, description: overrides.description },
     status: 'fail',

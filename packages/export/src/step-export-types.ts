@@ -32,6 +32,7 @@ import type { EffectiveEntityIndex } from './effective-index.js';
 // erases.
 import type { createSourceRefReader } from './source-ref-bounds.js';
 import type { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
+import type { Ifc4SlotFill } from './schema-converter-ifc4-slots.js';
 
 /**
  * Options for STEP export
@@ -377,6 +378,10 @@ export interface ExportPass {
    *  owner history is settled by `export()` once `willBeEmitted` can answer,
    *  before either writer converts a line; the warnings join the result. */
   readonly slotFill: Ifc2x3SlotFill;
+  /** The IFC4 twin of {@link slotFill} (#5202): fills BOOLEAN required slots
+   *  an IFC4X3/IFC5 source left optional-and-`$`, and counts every other one
+   *  (including enums) that stays `$` under IFC4's stricter cardinality. */
+  readonly ifc4Slots: Ifc4SlotFill;
   /** Express ids `convertStepLine` will OMIT outright this export
    *  (`computeWithheldRefIds`, #4206) — empty unless `schema` is IFC2X3 and
    *  the source holds an entity of a `WITHHOLDABLE_UNROOTED_TYPES` type.

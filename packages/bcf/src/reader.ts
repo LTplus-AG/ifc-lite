@@ -268,18 +268,23 @@ async function readProjectFile(zip: JSZip, budget: ExpansionBudget): Promise<{
   };
 }
 
+// True under a macOS "__MACOSX" shadow dir -- excluded below so any-depth matching can't manufacture a phantom topic from its resource forks.
+function isMacOsxShadowPath(folderPath: string): boolean {
+  return /(?:^|\/)__MACOSX(?:\/|$)/i.test(folderPath);
+}
+
 /**
  * Read all topics from the BCF archive
  */
 async function readTopics(zip: JSZip, budget: ExpansionBudget, versionId: '2.1' | '3.0'): Promise<Map<string, BCFTopic>> {
   const topics = new Map<string, BCFTopic>();
 
-  // Find all topic folders (folders with markup.bcf)
+  // Topic folders, matched at ANY depth (a zipped-folder archive nests one level deeper than root, #5213); dedup on parsed Guid below (#3960) handles collisions across depths.
   const topicFolders = new Set<string>();
 
   zip.forEach((relativePath: string) => {
-    const match = relativePath.match(/^([^/]+)\/markup\.bcf$/i);
-    if (match) {
+    const match = relativePath.match(/^(.+)\/markup\.bcf$/i);
+    if (match && !isMacOsxShadowPath(match[1])) {
       topicFolders.add(match[1]);
     }
   });
@@ -686,10 +691,11 @@ async function parseViewpoints(
     }
   }
 
-  // Find viewpoint files directly in the folder
+  // Find viewpoint files; extension matched case-insensitively like the
+  // topic-folder regex's `/i` above -- `viewpoint.BCFV` was silently lost.
   const viewpointFiles: string[] = [];
   zip.forEach((relativePath: string) => {
-    if (relativePath.startsWith(`${topicFolder}/`) && relativePath.endsWith('.bcfv')) {
+    if (relativePath.startsWith(`${topicFolder}/`) && relativePath.toLowerCase().endsWith('.bcfv')) {
       viewpointFiles.push(relativePath);
     }
   });

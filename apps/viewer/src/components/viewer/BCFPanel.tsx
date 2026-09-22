@@ -44,7 +44,7 @@ import { BCFCreateTopicForm } from './bcf/BCFCreateTopicForm';
 import { BCFServerControl } from './bcf/BCFServerControl';
 import { openGenericFileDialog } from '@/services/file-dialog';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
-import { warnIfNoModelLoaded } from './bcf/bcfImportGuidance';
+import { warnIfNoModelLoaded, warnIfImportTruncated } from './bcf/bcfImportGuidance';
 import { useSectionViewpointCapture } from '@/hooks/bcf/useSectionViewpointCapture';
 // ============================================================================
 // Main BCF Panel Component
@@ -158,9 +158,26 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
     try {
       setBcfLoading(true);
       setBcfError(null);
-      const project = await readBCF(file);
+      // readBCF reports a dropped topic/viewpoint via console.warn rather
+      // than throwing (see warnIfImportTruncated), so the only way to know
+      // an import was truncated is to capture what it warns during this one
+      // call -- restored immediately after, success or failure, so nothing
+      // else's console.warn is ever attributed to the import (#5213).
+      const originalWarn = console.warn;
+      let readWarningCount = 0;
+      console.warn = (...args: unknown[]) => {
+        readWarningCount++;
+        originalWarn(...args);
+      };
+      let project;
+      try {
+        project = await readBCF(file);
+      } finally {
+        console.warn = originalWarn;
+      }
       setBcfProject(project);
       warnIfNoModelLoaded(useViewerStore.getState().models.size);
+      warnIfImportTruncated(readWarningCount);
     } catch (error) {
       console.error('Failed to import BCF:', error);
       setBcfError(error instanceof Error ? error.message : t('bcf.panel.importError'));

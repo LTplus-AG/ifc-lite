@@ -60,16 +60,16 @@ and `retained_document_proxy` is the complete direct document. They make the
 important distinction between the tiny credited transport queue and retained
 surface/document state without claiming portable process-memory precision.
 
-Measured once on 2026-09-22 from `0aa3c9b8fa0377a91e20db6c5472b74a5c895c6b`,
+Measured once on 2026-09-22 from `0830cc5b7fbc3139089fb67447fb6fd08bf38581`,
 Rust `1.93.0-nightly`, Linux 6.6.87.1 WSL2 x86_64, release profile (warm build
 and OS cache; timings are evidence, not a comparison baseline):
 
 | Case | Input | Whole / stream ms | Whole / stream MiB/s | Surfaces / points / faces | Boundary / breakline / contour / COGO | Queue peak | Retained surface-or-event / non-terrain / document proxy |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| large TIN | 6.28 MiB | 361.758 / 660.362 | 17.35 / 9.50 | 1 / 90,000 / 178,802 | 0 / 0 / 0 / 32 | 3.36 KiB (4 events) | 19.76 MiB / 8.00 KiB / 19.77 MiB |
-| high-valence references | 876.20 KiB | 46.324 / 87.976 | 18.47 / 9.73 | 1 / 20,001 / 20,000 | 0 / 0 / 0 / 32 | 3.36 KiB (4 events) | 3.10 MiB / 8.00 KiB / 3.11 MiB |
-| many surfaces | 52.13 KiB | 3.068 / 5.934 | 16.59 / 8.58 | 256 / 1,024 / 512 | 0 / 0 / 0 / 32 | 3.36 KiB (4 events) | 954 B / 8.00 KiB / 246.09 KiB |
-| boundary/breakline/contour | 5.48 KiB | 0.278 / 0.496 | 19.27 / 10.79 | 1 / 4 / 2 | 1 / 24 / 24 / 32 | 5.92 KiB (4 events) | 19.71 KiB / 8.00 KiB / 28.21 KiB |
+| large TIN | 6.28 MiB | 338.943 / 640.688 | 18.52 / 9.80 | 1 / 90,000 / 178,802 | 0 / 0 / 0 / 32 | 3.36 KiB (4 events) | 19.76 MiB / 8.00 KiB / 19.77 MiB |
+| high-valence references | 876.20 KiB | 49.869 / 91.681 | 17.16 / 9.33 | 1 / 20,001 / 20,000 | 0 / 0 / 0 / 32 | 3.36 KiB (4 events) | 3.10 MiB / 8.00 KiB / 3.11 MiB |
+| many surfaces | 52.13 KiB | 3.206 / 5.975 | 15.88 / 8.52 | 256 / 1,024 / 512 | 0 / 0 / 0 / 32 | 3.36 KiB (4 events) | 954 B / 8.00 KiB / 246.09 KiB |
+| boundary/breakline/contour | 5.48 KiB | 0.280 / 0.472 | 19.09 / 11.34 | 1 / 4 / 2 | 1 / 24 / 24 / 32 | 5.92 KiB (4 events) | 19.71 KiB / 8.00 KiB / 28.21 KiB |
 
 ## Schema-specific crate-private registries (#4203, #4996)
 

@@ -25,6 +25,7 @@ import { freshBlockId, freshListCopyId } from '@/lib/document/persistence';
 import { LIST_PRESETS } from '@/lib/lists';
 import { newChartSpec } from '@/lib/charts/presets';
 import { largestBucketIds } from '@/lib/charts/buckets';
+import { idsReportBlockFromReport } from '@/lib/document/ids-report';
 import { listCopyForDocument, TABLE_ROWS_DEFAULT, type DocumentBlock, type DocumentSpec } from '@/lib/document/types';
 import { browserImageSize, generateDocumentPdf, type DocumentPdfSeams } from '@/lib/document/generate-document-pdf';
 import { browserReportSeams } from '@/lib/export/report/generate-report-pdf';
@@ -61,6 +62,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
   const setActiveDocumentId = useViewerStore((s) => s.setActiveDocumentId);
   const dashboards = useViewerStore((s) => s.dashboards);
   const listDefinitions = useViewerStore((s) => s.listDefinitions);
+  const idsValidationReport = useViewerStore((s) => s.idsValidationReport);
 
   useEffect(() => { ensureActiveDocument(); }, [documents, activeDocumentId]);
 
@@ -95,7 +97,8 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
       : kind === 'image' ? { kind, id, dataUrl: '', height: 60, align: 'left' }
         : kind === 'chart' ? { kind, id, chart: charts[0]?.chart ? { ...charts[0].chart, id: freshBlockId() } : newChartSpec(), snapshot: false }
           : kind === 'spacer' ? { kind, id, height: 20 }
-            : { kind, id, guid: [...data.topics.keys()][0] ?? '', snapshot: true };
+            : kind === 'ids-report' ? (idsValidationReport ? idsReportBlockFromReport(idsValidationReport, id) : { kind, id, sourceName: '', generatedAt: new Date().toISOString(), summary: { checked: 0, passed: 0, failed: 0, passRate: 100 }, checks: [] })
+              : { kind, id, guid: [...data.topics.keys()][0] ?? '', snapshot: true };
     setBlocks([...document.blocks, block]);
     setSelectedBlockId(id);
   };
@@ -190,6 +193,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
             <DropdownMenuItem onSelect={() => addBlock('topic')} disabled={data.topics.size === 0} title={data.topics.size === 0 ? t('document.addBlock.topicDisabledTitle') : undefined}>{t('document.addBlock.topic')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('spacer')}>{t('document.addBlock.spacer')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('table')}>{t('document.addBlock.table')}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => addBlock('ids-report')} disabled={!idsValidationReport} title={idsValidationReport ? undefined : t('document.addBlock.idsReportDisabledTitle')}>{t('document.addBlock.idsReport')}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={busy || tablesResolving || !document || document.blocks.length === 0} aria-busy={tablesResolving || undefined} onClick={() => void exportPdf()} title={t('document.panel.exportTitle')} data-document-export>
@@ -214,6 +218,7 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
                   bindings={data.bindings}
                   topics={data.topics}
                   charts={charts}
+                  idsValidationReport={idsValidationReport}
                   onChange={(next) => setBlocks(document.blocks.map((b) => (b.id === block.id ? next : b)))}
                   onMove={(delta) => {
                     const target = index + delta;

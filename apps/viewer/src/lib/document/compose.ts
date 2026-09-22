@@ -16,6 +16,7 @@ import type { ReportPageSetup } from '@ifc-lite/charts';
 import { pageBox, REPORT_MARGIN } from '../export/report/compose.js';
 import { CHART_BLOCK_HEIGHT_DEFAULT, type BlockWidth, type TextBlock } from './types.js';
 import { layoutTable, type LayoutCursor, type TableColumnLayout, type TableLayoutBlock, type TextDrawnItem } from './compose-table.js';
+import { layoutIdsReport, type IdsReportLayoutBlock } from './compose-ids-report.js';
 import type { TableRowOut } from './resolve-table.js';
 
 const HEADER_HEIGHT = 30;
@@ -63,7 +64,8 @@ export type ResolvedBlock =
   | { kind: 'chart'; id: string; title: string; subtitle: string; hasData: boolean; snapshot: boolean; height?: number; width?: BlockWidth }
   | { kind: 'topic'; id: string; title: string; lines: string[]; /** null when there is no snapshot to print */ snapshotAspect: number | null }
   | { kind: 'spacer'; id: string; height: number }
-  | ({ kind: 'table' } & TableLayoutBlock);
+  | ({ kind: 'table' } & TableLayoutBlock)
+  | ({ kind: 'ids-report' } & IdsReportLayoutBlock);
 
 /** `true` when `block` may pair with an adjacent `'half'` block into one row (#4940) — chart and image only. */
 function isHalfPairable(block: ResolvedBlock): block is (Extract<ResolvedBlock, { kind: 'chart' | 'image' }>) & { width: 'half' } {
@@ -299,6 +301,10 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       }
       case 'table': {
         layoutTable(block, cursor, contentW, input.measure, BLOCK_GAP);
+        break;
+      }
+      case 'ids-report': {
+        layoutIdsReport(block, cursor, contentW, BLOCK_GAP);
         break;
       }
       case 'topic': {

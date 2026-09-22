@@ -162,7 +162,7 @@ describe('document file', () => {
     assert.equal(imported.blocks.length, doc.blocks.length);
     imported.blocks.forEach((b, i) => assert.notEqual(b.id, doc.blocks[i].id));
     assert.equal((imported.blocks[0] as { text: string }).text, '{IfcProject.LongName}');
-    assert.throws(() => parseDocumentFile(JSON.stringify({ ...doc, version: 4 })), /Not a document file: version expected version 3/);
+    assert.throws(() => parseDocumentFile(JSON.stringify({ ...doc, version: 99 })), new RegExp(`Not a document file: version expected version ${DOCUMENT_VERSION}`));
     const broken = { ...doc, blocks: [{ kind: 'image', id: 'i', dataUrl: 'http://x/logo.png', height: 0, align: 'middle', caption: {} }] };
     assert.deepEqual(validateDocumentSpec(broken).map((e) => e.path), ['blocks[0].dataUrl', 'blocks[0].height', 'blocks[0].align', 'blocks[0].caption']);
   });
@@ -172,11 +172,11 @@ describe('document file', () => {
     assert.deepEqual(migrateDocumentSpec!(v1), { ...v1, version: DOCUMENT_VERSION });
     const imported = parseDocumentFile(JSON.stringify(v1));
     assert.equal(imported.version, DOCUMENT_VERSION);
-    // A v2 file (#4940) is a v3 file with the number bumped (#5142: the table block is additive).
+    // A v2 file (#4940) is a v3+ file with the number bumped (#5142/#5125: the table and IDS report blocks are additive).
     assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 2 }), { ...v1, version: DOCUMENT_VERSION });
     // Anything not a recognizable older document (already current, a later version, malformed) passes through unchanged.
     assert.deepEqual(migrateDocumentSpec!({ ...v1, version: DOCUMENT_VERSION }), { ...v1, version: DOCUMENT_VERSION });
-    assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 4 }), { ...v1, version: 4 });
+    assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 99 }), { ...v1, version: 99 });
     assert.equal(migrateDocumentSpec!(null), null);
 
     const spacer = { kind: 'spacer', id: 's', height: 20 };
@@ -483,7 +483,7 @@ describe('table block (#5142)', () => {
     assert.deepEqual(bad({ ...tableBlock(), source: { kind: 'list', list: { ...listOf(), columns: undefined } } }), ['blocks[0].source.list']);
     assert.deepEqual(bad({ ...tableBlock(), source: { kind: 'list', list: { ...listOf(), expressIdsByModel: { m: [1] } } } }), ['blocks[0].source.list.expressIdsByModel']);
     assert.deepEqual(bad({ kind: 'table', id: 'x' }), ['blocks[0].source']);
-    assert.deepEqual(validateDocumentSpec(docWith([{ kind: 'rows' } as unknown as TableBlock])).map((e) => e.message), ['expected a non-empty string', 'expected text | image | chart | topic | spacer | table']);
+    assert.deepEqual(validateDocumentSpec(docWith([{ kind: 'rows' } as unknown as TableBlock])).map((e) => e.message), ['expected a non-empty string', 'expected text | image | chart | topic | spacer | table | ids-report']);
 
     const imported = parseDocumentFile(JSON.stringify(docWith([tableBlock()])));
     const block = imported.blocks[0] as TableBlock;

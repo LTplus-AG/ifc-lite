@@ -210,6 +210,20 @@ describe('rule-set-io — rejections (#5138)', () => {
     assert.equal(result.ok, true);
   });
 
+  // #5182 no-regression pin: the JSON parser already rejected this before
+  // the text parser was brought into line with a shared check.
+  it('"sum" with no subject is rejected ("subject" required unless fn is "count")', () => {
+    const raw = fullRuleSet();
+    raw.rules = [{
+      id: 'bad', name: 'bad', applicability: emptyBlock(),
+      requirement: { kind: 'aggregate', fn: 'sum', op: 'gt', value: 300 },
+    }];
+    const result = parseRuleSetFile(raw);
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.match(result.error, /"subject" is required unless fn is "count"/);
+  });
+
   it('version: 2 is rejected (this build only understands 1)', () => {
     const raw = { ...fullRuleSet(), version: 2 };
     const result = parseRuleSetFile(raw);

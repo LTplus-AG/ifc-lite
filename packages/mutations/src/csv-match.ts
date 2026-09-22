@@ -59,8 +59,19 @@ type StringLookup = { get(idx: number): string } | null;
  */
 interface MatchContext {
   index: Map<string, number[]>;
-  valueType: PropertyValueType;
+  /**
+   * Every distinct `PropertyValueType` the indexed property was stored under.
+   * A pset property is not guaranteed to carry one type across entities, so a
+   * single captured type would canonicalize an unrelated value into the same
+   * key — an Integer `1` and a String `"01"` both becoming `"1"`.
+   */
+  valueTypes: PropertyValueType[];
   columnMissing: boolean;
+}
+
+/** Index key that keeps values of different declared types apart. */
+function typedKey(type: PropertyValueType, canonical: string): string {
+  return `${type}\u0000${canonical}`;
 }
 
 function addToIndex(index: Map<string, number[]>, key: string, expressId: number): void {
@@ -161,9 +172,9 @@ function buildPropertyIndex(
   entities: EntityTable,
   mutationView: MutablePropertyView,
   strategy: Extract<MatchStrategy, { type: 'property' }>
-): { index: Map<string, number[]>; valueType: PropertyValueType } {
+): { index: Map<string, number[]>; valueTypes: PropertyValueType[] } {
   const index = new Map<string, number[]>();
-  let valueType: PropertyValueType | undefined;
+  const valueTypes = new Set<PropertyValueType>();
 
   for (let i = 0; i < entities.count; i++) {
     const expressId = entities.expressId[i];
@@ -180,8 +191,9 @@ function buildPropertyIndex(
       for (const prop of pset.properties) {
         if (prop.name !== strategy.propName) continue;
         if (prop.value === null || prop.value === undefined) continue;
-        if (valueType === undefined) valueType = prop.type;
-        const key = canonicalPropertyKey(prop.value, valueType);
+        valueTypes.add(prop.type);
+        // Keyed by the property's OWN declared type, never the first one seen.
+        const key = typedKey(prop.type, canonicalPropertyKey(prop.value, prop.type));
         if (keyed.has(key)) continue;
         keyed.add(key);
         addToIndex(index, key, expressId);
@@ -189,7 +201,10 @@ function buildPropertyIndex(
     }
   }
 
-  return { index, valueType: valueType ?? PropertyValueType.String };
+  return {
+    index,
+    valueTypes: valueTypes.size > 0 ? [...valueTypes] : [PropertyValueType.String],
+  };
 }
 
 /**
@@ -208,13 +223,13 @@ export function buildMatchContext(
     rows.length > 0 && !rows.some((row) => Object.prototype.hasOwnProperty.call(row, strategy.column));
 
   if (strategy.type === 'property') {
-    const { index, valueType } = buildPropertyIndex(entities, mutationView, strategy);
-    return { index, valueType, columnMissing };
+    const { index, valueTypes } = buildPropertyIndex(entities, mutationView, strategy);
+    return { index, valueTypes, columnMissing };
   }
 
   return {
     index: buildSimpleIndex(entities, mutationView, strings, strategy),
-    valueType: PropertyValueType.String,
+    valueTypes: [PropertyValueType.String],
     columnMissing,
   };
 }
@@ -271,16 +286,29 @@ export function matchRowAgainstContext(
       // Malformed-cell contract mirrors generateMutations: a Real/Integer
       // cell that isn't a number is SKIPPED with a warning, never coerced
       // to a fabricated match (see csv-parse-value.ts's PARSE_INVALID doc).
-      const parsed = parseValue(matchValue, context.valueType);
-      if (parsed === PARSE_INVALID) {
+      // The property may be stored under several declared types across
+      // entities; try each, and only report a parse failure when the cell is
+      // unusable for ALL of them. An entity is collected at most once even if
+      // two of its typed keys resolve to the same cell.
+      const seen = new Set<number>();
+      let parsedAny = false;
+      for (const type of context.valueTypes) {
+        const parsed = parseValue(matchValue, type);
+        if (parsed === PARSE_INVALID) continue;
+        parsedAny = true;
+        for (const id of context.index.get(typedKey(type, canonicalPropertyKey(parsed, type))) ?? []) {
+          if (seen.has(id)) continue;
+          seen.add(id);
+          matchedEntityIds.push(id);
+        }
+      }
+      if (!parsedAny) {
         warnings.push(
           `Row ${rowIndex}: could not parse "${matchValue}" in column "${strategy.column}" as ` +
-            `${PropertyValueType[context.valueType]} for property match ${strategy.psetName}.${strategy.propName}`
+            `${context.valueTypes.map((t) => PropertyValueType[t]).join('/')} for property match ` +
+            `${strategy.psetName}.${strategy.propName}`
         );
-        break;
       }
-      const ids = context.index.get(canonicalPropertyKey(parsed, context.valueType));
-      if (ids) matchedEntityIds.push(...ids);
       break;
     }
   }

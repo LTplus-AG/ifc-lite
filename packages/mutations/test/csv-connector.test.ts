@@ -312,6 +312,56 @@ describe('CsvConnector.match: property strategy (#5167)', () => {
     expect((result.warnings ?? []).filter((w) => /Multiple entities/.test(w))).toEqual([]);
   });
 
+  it('keeps values of different declared types apart (Integer 1 vs String "01")', () => {
+    // Review finding on #5230: the index captured the FIRST property type it
+    // saw and canonicalized every later value with it, so an Integer `1` and a
+    // String `"01"` collapsed to the same key and a CSV `"1"` matched both.
+    const { connector } = makeConnectorWithProperties([1, 2], {
+      1: [{ name: 'Pset_Common', properties: [{ name: 'Mark', type: PropertyValueType.Integer, value: 1 }] }],
+      2: [{ name: 'Pset_Common', properties: [{ name: 'Mark', type: PropertyValueType.String, value: '01' }] }],
+    });
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'property', psetName: 'Pset_Common', propName: 'Mark', column: 'Mark' },
+      propertyMappings: [],
+    };
+
+    // The reported defect: "1" must not reach the String "01" entity.
+    const [one] = connector.match([{ Mark: '1' }], mapping);
+    expect(one.matchedEntityIds).toEqual([1]);
+    expect(one.confidence).toBe(1);
+
+    // "01" is genuinely ambiguous across these two types — it is the String
+    // value verbatim AND a valid Integer 1 — so it matches both and must SAY
+    // so rather than silently picking one.
+    const [zeroOne] = connector.match([{ Mark: '01' }], mapping);
+    expect(zeroOne.matchedEntityIds).toContain(2);
+    if (zeroOne.matchedEntityIds.length > 1) {
+      expect((zeroOne.warnings ?? []).some((w) => /Multiple entities/.test(w))).toBe(true);
+    }
+  });
+
+  it('warns per row when a present match column is blank, rather than failing silently', () => {
+    // Review finding on #5230 claimed an all-blank present column yields zero
+    // matches with no warning. It does warn: `parse` writes every header key,
+    // so the column is correctly "present" and each blank cell is reported.
+    const { connector } = makeConnectorWithProperties([1], {
+      1: [{ name: 'Pset_Common', properties: [{ name: 'Mark', type: PropertyValueType.String, value: 'A' }] }],
+    });
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'property', psetName: 'Pset_Common', propName: 'Mark', column: 'Mark' },
+      propertyMappings: [],
+    };
+
+    const results = connector.match([{ Mark: '' }, { Mark: '   ' }], mapping);
+
+    expect(results.map((r) => r.matchedEntityIds)).toEqual([[], []]);
+    for (const result of results) {
+      expect((result.warnings ?? []).some((w) => /Empty match value/.test(w))).toBe(true);
+    }
+  });
+
   it('flags ambiguity when the value matches more than one entity', () => {
     const { connector } = makeConnectorWithProperties([1, 2], {
       1: [{ name: 'Pset_Common', properties: [{ name: 'Mark', type: PropertyValueType.String, value: 'TYPE-A' }] }],

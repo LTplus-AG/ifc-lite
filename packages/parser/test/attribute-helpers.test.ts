@@ -19,6 +19,10 @@ import {
   getReferences,
   getString,
   getStringList,
+  isCompleteStepNumericLiteral,
+  isMalformedNumericLiteral,
+  isOverflowingNumericLiteral,
+  isUnrepresentableNumericValue,
 } from '../src/attribute-helpers.js';
 
 describe('getString', () => {
@@ -58,6 +62,101 @@ describe('getNumber', () => {
     expect(getNumber(undefined)).toBeUndefined();
     expect(getNumber(true)).toBeUndefined();
     expect(getNumber([1])).toBeUndefined();
+  });
+
+  // #5193: `getNumber` carried the identical `parseFloat` truncation hazard
+  // as `parseAttributeValue` (entity-extractor.ts) -- dormant today because
+  // the extractor now refuses the corrupted token before `getNumber` ever
+  // sees it, but this is direct coverage of the helper's own contract, the
+  // same one its callers (georef-map-conversion.ts, material-layer-reader.ts)
+  // rely on for their eastings/northings/thickness reads.
+  it('refuses a corrupted literal (dropped comma) rather than truncating it', () => {
+    expect(getNumber('1.52.3')).toBeUndefined();
+  });
+
+  it('refuses trailing garbage rather than truncating it', () => {
+    expect(getNumber('1.5abc')).toBeUndefined();
+  });
+
+  it('still parses every legal STEP REAL form to its exact value', () => {
+    expect(getNumber('1.')).toBe(1);
+    expect(getNumber('.5')).toBe(0.5);
+    expect(getNumber('1.E3')).toBe(1000);
+    expect(getNumber('+1.5')).toBe(1.5);
+  });
+
+  it('still refuses an overflowing literal (unchanged behaviour)', () => {
+    expect(getNumber('1.0E400')).toBeUndefined();
+  });
+});
+
+describe('isCompleteStepNumericLiteral', () => {
+  it('accepts every legal STEP REAL/INTEGER form the issue pins', () => {
+    expect(isCompleteStepNumericLiteral('1.')).toBe(true);
+    expect(isCompleteStepNumericLiteral('.5')).toBe(true);
+    expect(isCompleteStepNumericLiteral('1.E3')).toBe(true);
+    expect(isCompleteStepNumericLiteral('+1.5')).toBe(true);
+    expect(isCompleteStepNumericLiteral('123')).toBe(true);
+    expect(isCompleteStepNumericLiteral('-3')).toBe(true);
+    // Grammatically complete even though the double range cannot hold it --
+    // overflow is a SEPARATE hazard this predicate is not responsible for.
+    expect(isCompleteStepNumericLiteral('1.0E400')).toBe(true);
+  });
+
+  it('rejects a token whose parseFloat-consumed prefix does not cover it all', () => {
+    expect(isCompleteStepNumericLiteral('1.52.3')).toBe(false);
+    expect(isCompleteStepNumericLiteral('1.5abc')).toBe(false);
+  });
+
+  it('rejects a sign or a bare dot with no digit anywhere', () => {
+    expect(isCompleteStepNumericLiteral('+')).toBe(false);
+    expect(isCompleteStepNumericLiteral('-')).toBe(false);
+    expect(isCompleteStepNumericLiteral('.')).toBe(false);
+    expect(isCompleteStepNumericLiteral('')).toBe(false);
+  });
+
+  it('rejects an exponent marker with no digit after it', () => {
+    expect(isCompleteStepNumericLiteral('1.E')).toBe(false);
+    expect(isCompleteStepNumericLiteral('1.E+')).toBe(false);
+  });
+});
+
+describe('isMalformedNumericLiteral / isOverflowingNumericLiteral / isUnrepresentableNumericValue', () => {
+  it('flags a dropped-comma or trailing-garbage token as malformed, not overflowing', () => {
+    expect(isMalformedNumericLiteral('1.52.3')).toBe(true);
+    expect(isMalformedNumericLiteral('1.5abc')).toBe(true);
+    expect(isOverflowingNumericLiteral('1.52.3')).toBe(false);
+  });
+
+  it('does not flag an ordinary enumeration or identifier as malformed', () => {
+    // These fail isCompleteStepNumericLiteral too, but they never looked
+    // like a number attempt in the first place -- flagging them would warn
+    // on every enum-typed attribute in a file.
+    expect(isMalformedNumericLiteral('.T.')).toBe(false);
+    expect(isMalformedNumericLiteral('.UNSPECIFIED.')).toBe(false);
+    expect(isMalformedNumericLiteral('*')).toBe(false);
+    expect(isMalformedNumericLiteral('SOMEENUM')).toBe(false);
+  });
+
+  it('does not flag a legal literal as malformed', () => {
+    for (const legal of ['1.', '.5', '1.E3', '+1.5', '1.0E400']) {
+      expect(isMalformedNumericLiteral(legal)).toBe(false);
+    }
+  });
+
+  it('isUnrepresentableNumericValue is true for both the malformed and the overflowing case', () => {
+    expect(isUnrepresentableNumericValue('1.52.3')).toBe(true);
+    expect(isUnrepresentableNumericValue('1.5abc')).toBe(true);
+    expect(isUnrepresentableNumericValue('1.0E400')).toBe(true);
+    expect(isUnrepresentableNumericValue(Infinity)).toBe(true);
+  });
+
+  it('isUnrepresentableNumericValue is false for every legal literal and for absence', () => {
+    for (const legal of ['1.', '.5', '1.E3', '+1.5', '123']) {
+      expect(isUnrepresentableNumericValue(legal)).toBe(false);
+    }
+    expect(isUnrepresentableNumericValue(null)).toBe(false);
+    expect(isUnrepresentableNumericValue(undefined)).toBe(false);
   });
 });
 

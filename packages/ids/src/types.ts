@@ -483,8 +483,16 @@ export interface IFCDataAccessor {
 export interface PropertyValueResult {
   /** The value */
   value: string | number | boolean | null;
-  /** The data type (e.g., "IFCLABEL", "IFCREAL") */
-  dataType: string;
+  /**
+   * The data type (e.g., "IFCLABEL", "IFCREAL"), or `undefined` when no
+   * dataType is recorded for this property — deliberately, for a
+   * multi-typed `IfcPropertyTableValue`/list/enumeration (see
+   * `PropertySetInfo['properties'][number]['dataType']`'s doc), or because
+   * a caller creating the property via an IDS correction didn't supply
+   * one. Distinct from `''`, which no producer in this codebase emits
+   * for this field as of #5224.
+   */
+  dataType: string | undefined;
   /** The property set name */
   propertySetName: string;
   /** The property name */
@@ -499,7 +507,23 @@ export interface PropertySetInfo {
   properties: Array<{
     name: string;
     value: string | number | boolean | null;
-    dataType: string;
+    /**
+     * The IDS dataType token (e.g. `"IFCLABEL"`), or `undefined` when
+     * none is recorded. `undefined` here means "the source genuinely
+     * doesn't know the type" — a multi-typed `IfcPropertyTableValue`
+     * (parser leaves it unset on purpose so the IDS dataType gate falls
+     * through to a value-only match, matching upstream ifctester), a
+     * multi-valued list/enumeration, an `IfcDoorPanelProperties`-style
+     * predefined attribute with no per-attribute schema lookup, or an
+     * IDS correction that created a new property without specifying a
+     * dataType. `facets/property-facet.ts`'s dataType gate treats
+     * `undefined` as "skip this constraint" for all of these — it has
+     * no way to tell them apart (see ifc-lite issue #5224). Do not
+     * default this to `''`: that was the #5224 bug (an accidental
+     * producer manufacturing `''`, indistinguishable from a real IFCLABEL
+     * value's absence, instead of leaving the field genuinely unset).
+     */
+    dataType: string | undefined;
     /**
      * Optional list of individual values for multi-valued IFC properties
      * (`IfcPropertyEnumeratedValue`, `IfcPropertyListValue`). When set,

@@ -721,12 +721,17 @@ END-ISO-10303-21;`;
     const unknownRule = applyClashRuleFilter(ds, 'not-a-real-rule-id');
     assert.equal(unknownRule.rows.length, 0, 'an id naming no rule matches nothing — never falls back to "all"');
 
-    // Composes with the selector filter (#4946): AND, not OR.
-    const wallIds = new Set([GID(41)]);
-    const strAndWall = applyClashRuleFilter(applyChartFilter(ds, wallIds), 'str');
-    assert.equal(strAndWall.rows.length, 1);
-    const arcAndWall = applyClashRuleFilter(applyChartFilter(ds, wallIds), 'arc');
-    assert.equal(arcAndWall.rows.length, 1);
+    // Composes with the selector filter (#4946): AND, not OR. GID(41) (the
+    // wall) is on both rows, so selecting it alone would pass this
+    // assertion pair even if `applyChartFilter` were a no-op — the rule
+    // filter narrows to 1 row on its own. GID(42) (the beam) is only on the
+    // `str` row, so selecting it distinguishes the two: `str` still has a
+    // row to narrow, `arc` has none left once the selector has run.
+    const beamIds = new Set([GID(42)]);
+    const strAndBeam = applyClashRuleFilter(applyChartFilter(ds, beamIds), 'str');
+    assert.equal(strAndBeam.rows.length, 1);
+    const arcAndBeam = applyClashRuleFilter(applyChartFilter(ds, beamIds), 'arc');
+    assert.equal(arcAndBeam.rows.length, 0, 'the beam-only selector removes the arc row before the rule filter ever runs');
 
     // A source with no `Rule` column (e.g. `elements`) is a silent no-op,
     // not a thrown error — the caller (`validate.ts`) is what stops a
@@ -753,5 +758,29 @@ END-ISO-10303-21;`;
 
     const wrongSource = validateDashboardSpec({ ...base, charts: [chart({ selector: '', clashRule: 'str' }, 'elements')] });
     assert.ok(wrongSource.some((e) => e.path === '.charts[0].filter.clashRule' && e.message.includes('only valid for the clash source')));
+  });
+
+  it('validateDashboardSpec: a whitespace-only selector is rejected even alongside a clashRule (#5176)', () => {
+    const base = { version: 2 as const, id: 'd', name: 'D', scope: { kind: 'all' as const }, layout: [] };
+    const chart = (filter: unknown, source: 'clash' | 'elements' = 'clash') => ({
+      id: 'c1', title: 'C', source, type: 'bar', dimension: CLASH_COLUMNS.rule, measure: { agg: 'count' }, filter,
+    });
+
+    // `''` is the editor's unset sentinel: accepted when a real `clashRule`
+    // narrows the chart instead.
+    assert.deepEqual(validateDashboardSpec({ ...base, charts: [chart({ selector: '', clashRule: 'str' })] }), [], "the editor's empty-string sentinel is accepted alongside clashRule");
+
+    // `'   '` is never the sentinel — a human or an import wrote it — and it
+    // trims to "no filter" at every consumer, so it is rejected regardless
+    // of `clashRule`.
+    const whitespaceWithRule = validateDashboardSpec({ ...base, charts: [chart({ selector: '   ', clashRule: 'str' })] });
+    assert.equal(whitespaceWithRule.length, 1, 'a whitespace-only selector is rejected even with a clashRule present');
+    assert.equal(whitespaceWithRule[0].path, '.charts[0].filter.selector');
+
+    const whitespaceNoRule = validateDashboardSpec({ ...base, charts: [chart({ selector: '   ' })] });
+    assert.equal(whitespaceNoRule.length, 1, 'a whitespace-only selector is rejected with no clashRule too');
+    assert.equal(whitespaceNoRule[0].path, '.charts[0].filter.selector');
+
+    assert.deepEqual(validateDashboardSpec({ ...base, charts: [chart({ selector: 'real', clashRule: 'str' })] }), [], 'a real selector alongside clashRule is accepted');
   });
 });

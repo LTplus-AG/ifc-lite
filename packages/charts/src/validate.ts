@@ -111,17 +111,20 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
         }
       }
       // `selector` is a required STRING on the type but, since #5156, may be
-      // EMPTY when `clashRule` narrows the chart instead — a filter can now
-      // narrow by `clashRule` alone, with no selector text at all;
-      // `ChartEditor` always writes the key (possibly `''`) rather than
-      // omitting it, so an unset `clashRule` still needs a real selector.
-      // Reported once, at `.selector`, whether the string is empty or
-      // whitespace-only ("   " would otherwise pass and then resolve to "no
-      // filter" at every consumer — they all trim — stranding the chart on
-      // "Resolving filter…" forever with no entry to find; review finding).
+      // the EMPTY string when `clashRule` narrows the chart instead — a
+      // filter can now narrow by `clashRule` alone, with no selector text at
+      // all. `ChartEditor` always writes the key (possibly `''`) rather than
+      // omitting it, so that exact sentinel is relaxed when `clashRule` is
+      // present. A selector that is non-empty but WHITESPACE-only is still
+      // rejected regardless of `clashRule`: `''` and `'   '` arrive from
+      // different places — the editor's unset sentinel vs. a human or an
+      // import — so only the former gets the relaxation. Whitespace would
+      // otherwise trim to "no filter" at every consumer — they all trim —
+      // stranding the chart on "Resolving filter…" forever with no entry to
+      // find; the original review finding this preserves.
       if (typeof chart.filter.selector !== 'string') {
         errors.push({ path: `${filterPath}.selector`, message: 'expected a string' });
-      } else if (chart.filter.selector.trim().length === 0 && !hasClashRule) {
+      } else if (chart.filter.selector.length === 0 ? !hasClashRule : chart.filter.selector.trim().length === 0) {
         errors.push({ path: `${filterPath}.selector`, message: 'expected a non-empty selector or clashRule' });
       }
       if (typeof chart.source === 'string' && CHART_FILTER_NOT_APPLICABLE_SOURCES.has(chart.source as ChartSource)) {

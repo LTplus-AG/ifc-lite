@@ -1611,6 +1611,7 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 | `layer` | Layered change tracking over a local store (.ifc-lite/) |
 | `ref` | Manage named refs in the layer store |
 | `gym` | reset/step/reward environment loop (JSONL over stdin/stdout) |
-| `delivery` | Repeatable delivery check (structural + IDS) from a saved recipe |
+| `delivery` | Repeatable delivery check (structural + IDS + rule sets) from a saved recipe |
+| `check` | Run a .rules.json information-validation rule set (same engine as the viewer) |
 | `flow` | Evaluate a node graph headlessly |
 <!-- END GENERATED: cli-commands -->

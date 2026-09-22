@@ -125,10 +125,14 @@ function genPackageIndex(currentDoc) {
  * literal into a name + one-line-description table.
  */
 function genCliCommands() {
-  const cliSrc = readFileSync(join(ROOT, 'packages', 'cli', 'src', 'index.ts'), 'utf-8');
-  const helpMatch = cliSrc.match(/const HELP = `([\s\S]*?)`;/);
+  // The help text lives in `help.ts`'s `buildHelp(version)` since #5138 PR 7b
+  // split it out of `index.ts` (module-size cap). Reading the wrong file threw
+  // and took the whole generator down, so this names its real home.
+  const helpPath = join(ROOT, 'packages', 'cli', 'src', 'help.ts');
+  const cliSrc = readFileSync(helpPath, 'utf-8');
+  const helpMatch = cliSrc.match(/return `([\s\S]*?)`;/);
   if (!helpMatch) {
-    throw new Error('Could not find the HELP template literal in packages/cli/src/index.ts');
+    throw new Error('Could not find the help template literal in packages/cli/src/help.ts');
   }
   const help = helpMatch[1];
   const commandsBlock = help.match(/\n {2}Commands:\n([\s\S]*?)\n {2}Options:/);

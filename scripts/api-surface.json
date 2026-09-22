@@ -5838,6 +5838,7 @@
     "trackedSetFrom: function",
     "trackingGuid: function",
     "validateFlowDocument: function",
+    "validateFlowWiring: function",
     "validateTable: function",
     "withTrackedSet: function"
   ],

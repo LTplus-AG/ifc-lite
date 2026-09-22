@@ -17,7 +17,7 @@
  */
 
 import { readFile, writeFile } from 'node:fs/promises';
-import { checkAvailability, parseFlowDocument, runFlow, type FlowDocument, type RunResult } from '@ifc-lite/flow';
+import { checkAvailability, parseFlowDocument, runFlow, validateFlowWiring, type FlowDocument, type RunResult } from '@ifc-lite/flow';
 import { createStandardRegistry, headlessFeatures, type FlowHost } from '@ifc-lite/flow-nodes';
 import { createHeadlessContext } from '../loader.js';
 import { fatal, getAllFlags, hasFlag, printJson } from '../output.js';
@@ -141,15 +141,23 @@ export async function flowCommand(args: string[]): Promise<void> {
 
   if (sub === 'validate') {
     const doc = await loadDocument(positional[0]);
+    // Wiring first: `parseFlowDocument` is registry-free, so a declared
+    // output naming a port no node has would otherwise validate clean and
+    // then produce nothing at run time.
+    const wiring = validateFlowWiring(doc, registry);
     const availability = checkAvailability(doc, registry, headlessFeatures(Object.keys(process.env)));
     const problems = availability.filter((a) => a.status === 'unavailable' || a.status === 'unknown');
     // The report goes out in either format FIRST, then the exit code — a
     // `--json` run that printed `ok: false` and returned 0 let CI read an
     // unrunnable graph as a successful validation.
-    if (json) printJson({ ok: problems.length === 0, nodes: availability });
-    else for (const a of availability) process.stdout.write(`  ${a.status.padEnd(11)} ${a.nodeId} (${a.type})${a.reasons.length ? `: ${a.reasons.join('; ')}` : ''}\n`);
-    if (problems.length > 0) {
-      process.stderr.write(`${problems.length} node(s) cannot run on this host\n`);
+    if (json) printJson({ ok: problems.length === 0 && wiring.length === 0, wiring, nodes: availability });
+    else {
+      for (const w of wiring) process.stdout.write(`  wiring      ${w.path}: ${w.message}\n`);
+      for (const a of availability) process.stdout.write(`  ${a.status.padEnd(11)} ${a.nodeId} (${a.type})${a.reasons.length ? `: ${a.reasons.join('; ')}` : ''}\n`);
+    }
+    if (problems.length > 0 || wiring.length > 0) {
+      if (wiring.length > 0) process.stderr.write(`${wiring.length} wiring problem(s)\n`);
+      if (problems.length > 0) process.stderr.write(`${problems.length} node(s) cannot run on this host\n`);
       process.exit(2);
     }
     return;

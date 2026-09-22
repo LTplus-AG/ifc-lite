@@ -60,6 +60,7 @@ export {
 } from './tracking.js';
 export type { TrackedEntry, TrackedSet, TrackingSidecar, DesiredLane, TrackingPlan } from './tracking.js';
 
+export { validateFlowWiring } from './wiring.js';
 export { nodeAvailability, checkAvailability } from './availability.js';
 export type { HostFeatures, AvailabilityStatus, NodeAvailability } from './availability.js';
 

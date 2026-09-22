@@ -1404,7 +1404,7 @@ ifc-lite flow validate audit.flow.json
 |------------|---------|
 | `run <graph> <file.ifc>` | Evaluate the graph. `--input <nodeId.param=value>` (repeatable; JSON values parse, others are strings), `--out <file>` (IFC with the run's mutations applied), `--json` |
 | `describe <graph>` | Print declared inputs (with param defaults) and outputs (with value kind and access). `--json` |
-| `validate <graph>` | Validate the document and report each node as `ok`, `noop`, `unavailable` or `unknown` on this host. Exit 2 when a node cannot run. `--json` |
+| `validate <graph>` | Validate the document's wiring against the node registry (unknown types, missing ports, type-incompatible edges, unconnected required inputs, `inputs`/`outputs` markers that name nothing) and report each node as `ok`, `noop`, `unavailable` or `unknown` on this host. Exit 2 on any wiring problem or unrunnable node. `--json` |
 
 `run` exits 1 when any node failed; per-lane errors inside a lifted node do not fail the run
 (the lane yields `null`) and are listed under `errors` in the summary. Secrets are resolved from

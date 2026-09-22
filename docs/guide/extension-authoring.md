@@ -21,7 +21,7 @@ my-tool/
         └── hello.js
 ```
 
-The scaffolded `hello.js` contributes one command (`ext.starter.hello`) and prints a greeting to the console. It passes `ext validate` as-is, but note the scaffold uses `export default async function hello(ctx)`; before it will run in the sandbox you must convert that to a plain top-level `async function hello(ctx)` (see [Writing entry code](#writing-entry-code) - entry files allow no `export` and no `import`). Validate it:
+The scaffolded `hello.js` contributes one command (`ext.starter.hello`) and returns a fixed greeting. It follows the entry-script contract as scaffolded: a plain top-level `function run(ctx)`, no `export`, no `ctx.log`/`ctx.notify` (see [Writing entry code](#writing-entry-code) - entry files allow no `export` and no `import`, and `ctx` is `{ bim }`). Validate it:
 
 ```bash
 npx @ifc-lite/cli ext validate my-tool

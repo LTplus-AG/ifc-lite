@@ -49,7 +49,7 @@ import type {
   EntityRef,
   StoreBackendMethods,
 } from '@ifc-lite/sdk';
-import { createCostStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
+import { createCostStoreBackend, createStructuralStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import type { StoreApi } from './types.js';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { createCostAdapter } from './cost-adapter.js';
@@ -179,6 +179,24 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     }
     return { modelId: normalizedModelId, expressId };
   }
+
+  /**
+   * One per-call resolution shared by the cost and structural store factories
+   * (#5167 S.1). Extracted rather than duplicated: two copies would drift on
+   * the mutation-view lookup, and both surfaces must resolve the same editor
+   * for entities authored in one to be visible to the other.
+   */
+  const resolveStoreModel = (modelId: string | undefined) => {
+      const requested = modelId ?? '';
+      const editor = getEditor(requested);
+      const dataStore = resolveDataStore(requested);
+      if (!editor || !dataStore) throw new Error(`bim.store: no model loaded for id "${modelId}"`);
+      const ownerHistoryId = resolveLiveOwnerHistoryId(dataStore, editor);
+      const normalized = normalizeMutationModelId(store.getState(), requested);
+      const mutationView = store.getState().getMutationView(normalized);
+      if (!mutationView) throw new Error(`bim.store: no mutation view for model id "${modelId}"`);
+      return { modelId: requested, store: dataStore, editor, mutationView, ownerHistoryId };
+    };
 
   return {
     addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef {
@@ -316,21 +334,14 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       return buildElement('addMember', modelId, storeyExpressId,
         (editor, anchor) => addMemberToStore(editor, anchor, params as MemberInStoreParams).memberId);
     },
-    ...withCostMutationTracking(createCostStoreBackend((modelId: string | undefined) => {
-      const requested = modelId ?? '';
-      const editor = getEditor(requested);
-      const dataStore = resolveDataStore(requested);
-      if (!editor || !dataStore) throw new Error(`bim.store: no model loaded for id "${modelId}"`);
-      const ownerHistoryId = resolveLiveOwnerHistoryId(dataStore, editor);
-      const normalized = normalizeMutationModelId(store.getState(), requested);
-      const mutationView = store.getState().getMutationView(normalized);
-      if (!mutationView) throw new Error(`bim.store: no mutation view for model id "${modelId}"`);
-      return { modelId: requested, store: dataStore, editor, mutationView, ownerHistoryId };
-    }, costAdapter, modelId => store.getState().markCostRelationshipMutation(modelId)), store, (modelId) => {
+    ...withCostMutationTracking(createCostStoreBackend(resolveStoreModel, costAdapter, modelId => store.getState().markCostRelationshipMutation(modelId)), store, (modelId) => {
       const editor = getEditor(modelId);
       const dataStore = resolveDataStore(modelId);
       return editor && dataStore ? { editor, dataStore } : null;
     }),
+    // Structural authoring (#5167 S.1). Same shared resolver as cost, so an
+    // entity authored through either surface is visible to the other.
+    ...createStructuralStoreBackend(resolveStoreModel),
   };
 }
 

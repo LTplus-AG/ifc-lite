@@ -5,6 +5,12 @@
 import { isInstantiable, isKnownType, normalizeIfcTypeName } from '@ifc-lite/parser';
 import type {
   CostItemParams, CostQuantityParams, CostScheduleParams, CostValueParams,
+  StructuralAnalysisModelInStoreParams,
+  StructuralCurveMemberInStoreParams,
+  StructuralLinearActionInStoreParams,
+  StructuralLoadGroupInStoreParams,
+  StructuralPointActionInStoreParams,
+  StructuralPointConnectionInStoreParams,
 } from '@ifc-lite/create';
 import type {
   AddBeamInStoreParams,
@@ -279,5 +285,64 @@ export class StoreNamespace {
    */
   removeCostEntity(modelId: string, expressId: number, options?: { detach?: boolean }): void {
     this.backend.store.removeCostEntity(modelId, expressId, options);
+  }
+
+  // -- Structural analysis authoring on a loaded model (#5167 task S.1) ------
+  // `bim.structural.*` is read-only; these methods are the write side, for
+  // scripts (SDK / CLI / MCP / sandbox) that author an analytical model.
+
+  /** Add an IfcStructuralAnalysisModel. Not storey-anchored (IfcGroup, no geometry). */
+  addStructuralAnalysisModel(modelId: string, params: StructuralAnalysisModelInStoreParams): EntityRef {
+    return this.backend.store.addStructuralAnalysisModel(modelId, params);
+  }
+
+  /**
+   * Add an IfcStructuralCurveMember between `params.Start` and `params.End`,
+   * anchored to a storey for its ObjectPlacement. Emits an
+   * IfcTopologyRepresentation (IfcEdge between two IfcVertexPoints) as its
+   * analytical line geometry.
+   */
+  addStructuralCurveMember(modelId: string, storeyExpressId: number, params: StructuralCurveMemberInStoreParams): EntityRef {
+    return this.backend.store.addStructuralCurveMember(modelId, storeyExpressId, params);
+  }
+
+  /** Add an IfcStructuralPointConnection at `params.Position`, optionally with an IfcBoundaryNodeCondition. */
+  addStructuralPointConnection(modelId: string, storeyExpressId: number, params: StructuralPointConnectionInStoreParams): EntityRef {
+    return this.backend.store.addStructuralPointConnection(modelId, storeyExpressId, params);
+  }
+
+  /** Add an IfcStructuralLoadGroup, or an IfcStructuralLoadCase when `params.SelfWeightCoefficients` is given. */
+  addStructuralLoadGroup(modelId: string, params: StructuralLoadGroupInStoreParams): EntityRef {
+    return this.backend.store.addStructuralLoadGroup(modelId, params);
+  }
+
+  /** Add an IfcStructuralPointAction carrying an IfcStructuralLoadSingleForce. */
+  addStructuralPointAction(modelId: string, params: StructuralPointActionInStoreParams): EntityRef {
+    return this.backend.store.addStructuralPointAction(modelId, params);
+  }
+
+  /** Add an IfcStructuralLinearAction carrying an IfcStructuralLoadLinearForce. */
+  addStructuralLinearAction(modelId: string, params: StructuralLinearActionInStoreParams): EntityRef {
+    return this.backend.store.addStructuralLinearAction(modelId, params);
+  }
+
+  /** Link a structural member to a structural connection via IfcRelConnectsStructuralMember. */
+  connectStructuralMemberToConnection(modelId: string, memberExpressId: number, connectionExpressId: number): EntityRef {
+    return this.backend.store.connectStructuralMemberToConnection(modelId, memberExpressId, connectionExpressId);
+  }
+
+  /** Apply a structural action/reaction to the member or connection it acts on via IfcRelConnectsStructuralActivity. */
+  connectStructuralActivityToItem(modelId: string, itemExpressId: number, activityExpressId: number): EntityRef {
+    return this.backend.store.connectStructuralActivityToItem(modelId, itemExpressId, activityExpressId);
+  }
+
+  /**
+   * Assign members/connections into an analysis model, or activities into a
+   * load group, via IfcRelAssignsToGroup — the relationship
+   * `bim.structural.analysisModels()[i].itemGlobalIds` and
+   * `bim.structural.loadGroups()[i].activityGlobalIds` read back.
+   */
+  assignToStructuralGroup(modelId: string, groupExpressId: number, objectExpressIds: number[]): EntityRef {
+    return this.backend.store.assignToStructuralGroup(modelId, groupExpressId, objectExpressIds);
   }
 }

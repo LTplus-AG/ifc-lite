@@ -178,7 +178,7 @@ describe('ifc-lite flow', () => {
     expect(actions(c)).toEqual(['create', 'create', 'create']);
     const first = await columnsOf(out1);
     expect(first).toHaveLength(3);
-    expect(JSON.parse(await readFile(join(dir, 'columns.tracking.json'), 'utf-8')).sets['columns-along-x/columns'].entries).toHaveProperty('0'); // @source-text-assertion-ok the sidecar is this run's own output
+    expect(JSON.parse(await readFile(join(dir, 'columns.tracking.json'), 'utf-8')).sets['columns-along-x/columns'].entries).toHaveProperty('0');
     vi.restoreAllMocks();
 
     c = capture();
@@ -189,7 +189,7 @@ describe('ifc-lite flow', () => {
     // the file as orphaned, unreferenced solids: `store.removeEntity` tombstones
     // the product only — a store-level cleanup tracked separately.)
     const step2 = await readFile(out2, 'utf-8');
-    expect(step2.match(/IFCEXTRUDEDAREASOLID\([^)]*,4\.\)/g)).toHaveLength(3); // @source-text-assertion-ok the model is this run's own output
+    expect(step2.match(/IFCEXTRUDEDAREASOLID\([^)]*,4\.\)/g)).toHaveLength(3);
     vi.restoreAllMocks();
 
     c = capture();

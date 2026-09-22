@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Headed Chrome walkthrough of the Flow panel (#5167) against a dev server.
 // Not a CI test: it drives the real UI — the React Flow canvas, the run
 // against the loaded model, the change set and its single undo step — and

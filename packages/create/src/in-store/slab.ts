@@ -24,6 +24,7 @@
 
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
+import { assertFinitePoint3 } from '../ifc-creator-math.js';
 import { toNativeLength, toNativePoint2, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import { assertPositiveFinite, ownerHistoryRef, productGuid } from './_emit-helpers.js';
 
@@ -127,6 +128,9 @@ export function addSlabToStore(
   const { ownerHistoryId, bodyContextId, storeyId, storeyPlacementId } = anchor;
 
   assertPositiveFinite([params.Thickness], 'addSlabToStore: Thickness must be positive');
+  if (params.Position !== undefined) {
+    assertFinitePoint3({ Position: params.Position }, 'addSlabToStore');
+  }
   if (!isPolygonParams(params)) {
     assertPositiveFinite(
       [params.Width, params.Depth],

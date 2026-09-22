@@ -274,16 +274,6 @@ describe('ClashPanel manual groups (#4921, #5122)', () => {
     await setDialogName('Focus test group');
     await act(async () => buttonWithText('Create group').click());
 
-    let focusedClashes: Clash[] = [];
-    await act(async () => {
-      useViewerStore.setState({
-        focusClashes: (clashes: readonly Clash[]) => {
-          focusedClashes = [...clashes];
-          return null;
-        },
-      });
-    });
-
     // Get the first clash ID to filter it out
     const clashResult = useViewerStore.getState().clashResult;
     const firstClashId = clashResult?.clashes[0].id;
@@ -311,7 +301,17 @@ describe('ClashPanel manual groups (#4921, #5122)', () => {
       focusButton.click();
     });
 
-    // Focus should include BOTH group members, not just the visible one
-    assert.equal(focusedClashes.length, 2, 'focus includes full membership (both clashes), not just visible ones');
+    // Focus should include BOTH group members, not just the visible one. The
+    // real `focusClashGroup` pipeline (group-focus.ts) writes every resolved
+    // element into the store's `selectedEntityIds`, so that is the observable
+    // signal here rather than a stubbed `focusClashes` — `focusClashes` is a
+    // `useClash()` closure, not store state, so a `setState` stub is never
+    // read by the real click handler.
+    const selectedEntityIds = useViewerStore.getState().selectedEntityIds;
+    assert.deepEqual(
+      [...selectedEntityIds].sort((a, b) => a - b),
+      [1, 2, 3, 4],
+      'focus selects all four elements of both group members, not just the visible clash\'s pair',
+    );
   });
 });

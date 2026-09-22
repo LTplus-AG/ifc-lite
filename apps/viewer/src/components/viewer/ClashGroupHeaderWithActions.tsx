@@ -4,11 +4,11 @@
 
 import type { Clash } from '@ifc-lite/clash';
 import { ClashGroupHeader } from './ClashManualGroupControls';
-import type { ManualClashSection } from './useManualClashGroups';
 import type { ClashFocusMode } from '@/hooks/useClash';
+import type { ClashGroupRow } from '@/lib/clash/display-rows';
 
 interface ClashGroupHeaderWithActionsProps {
-  section: ManualClashSection;
+  section: ClashGroupRow;
   collapsed: boolean;
   creatingTopic: boolean;
   focusMode: ClashFocusMode;

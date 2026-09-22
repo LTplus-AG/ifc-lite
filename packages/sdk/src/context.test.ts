@@ -117,6 +117,18 @@ function createMockBackend() {
     assignToCostItem: vi.fn((modelId: string) => ({ modelId, expressId: 206 })),
     setCostItemValues: vi.fn(),
     removeCostEntity: vi.fn(),
+    // #5167 S.1: `StoreBackendMethods` gained the structural authoring surface,
+    // and this hand-built mock must satisfy it or the typecheck lane fails
+    // (vitest does not typecheck, so the package's own suite stays green).
+    addStructuralAnalysisModel: vi.fn((modelId: string) => ({ modelId, expressId: 300 })),
+    addStructuralCurveMember: vi.fn((modelId: string) => ({ modelId, expressId: 301 })),
+    addStructuralPointConnection: vi.fn((modelId: string) => ({ modelId, expressId: 302 })),
+    addStructuralLoadGroup: vi.fn((modelId: string) => ({ modelId, expressId: 303 })),
+    addStructuralPointAction: vi.fn((modelId: string) => ({ modelId, expressId: 304 })),
+    addStructuralLinearAction: vi.fn((modelId: string) => ({ modelId, expressId: 305 })),
+    connectStructuralMemberToConnection: vi.fn((modelId: string) => ({ modelId, expressId: 306 })),
+    connectStructuralActivityToItem: vi.fn((modelId: string) => ({ modelId, expressId: 307 })),
+    assignToStructuralGroup: vi.fn((modelId: string) => ({ modelId, expressId: 308 })),
   };
   const spatial = {
     queryBounds: vi.fn((_modelId: string, _bounds: AABB): EntityRef[] => []),

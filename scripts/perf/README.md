@@ -33,8 +33,8 @@ The native, generated-source acceptance harness is deliberately independent of
 fixture downloads and browser scheduling:
 
 ```bash
-cargo run --release --package ifc-lite-landxml \
-  --example landxml_streaming_bench_5050
+cargo test --release --package ifc-lite-landxml \
+  --test landxml_streaming_bench_5050 -- --ignored --nocapture
 ```
 
 It generates and validates four production-shaped documents: a 90,000-point /

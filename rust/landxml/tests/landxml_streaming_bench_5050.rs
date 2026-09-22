@@ -73,7 +73,9 @@ struct StreamStats {
     largest_transport_payload_bytes: usize,
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+#[test]
+#[ignore = "generated production-scale acceptance benchmark; run explicitly"]
+fn issue_5050_streaming_acceptance_benchmark() -> Result<(), Box<dyn Error>> {
     println!(
         "#5050 native LandXML acceptance (input chunks: {INPUT_CHUNK_BYTES} bytes; queue cap: {MAX_LANDXML_STREAM_QUEUED_BYTES} bytes)"
     );

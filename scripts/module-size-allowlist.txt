@@ -64,7 +64,7 @@
    758 apps/viewer/src/components/viewer/AddElementPanel.tsx
    508 apps/viewer/src/components/viewer/BasketPresentationDock.tsx
    428 apps/viewer/src/components/viewer/bcf/BCFTopicDetail.tsx
-   539 apps/viewer/src/components/viewer/BCFPanel.tsx
+   540 apps/viewer/src/components/viewer/BCFPanel.tsx
   1028 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
    486 apps/viewer/src/components/viewer/CesiumOverlay.tsx
   1098 apps/viewer/src/components/viewer/CesiumPlacementEditor.tsx
@@ -189,7 +189,7 @@
    405 apps/viewer/vite.config.ts
    788 packages/bcf/src/ids-reporter.ts
    495 packages/bcf/src/overlay-renderer.ts
-   801 packages/bcf/src/reader.ts
+   806 packages/bcf/src/reader.ts
    627 packages/bcf/src/viewpoint.ts
    753 packages/bcf/src/writer.ts
    439 packages/clash/src/bcf-bridge.ts

@@ -31,7 +31,6 @@ import { posthog } from '@/lib/analytics';
 import { useTranslation } from '@/i18n';
 import type { BCFTopic, BCFViewpoint } from '@ifc-lite/bcf';
 import {
-  readBCF,
   writeBCF,
   createBCFProject,
   createBCFTopic,
@@ -44,7 +43,7 @@ import { BCFCreateTopicForm } from './bcf/BCFCreateTopicForm';
 import { BCFServerControl } from './bcf/BCFServerControl';
 import { openGenericFileDialog } from '@/services/file-dialog';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
-import { warnIfNoModelLoaded } from './bcf/bcfImportGuidance';
+import { readBCFWithDiagnostics, warnIfNoModelLoaded, warnIfImportTruncated, warnIfUnsupportedVersion } from './bcf/bcfImportGuidance';
 import { useSectionViewpointCapture } from '@/hooks/bcf/useSectionViewpointCapture';
 // ============================================================================
 // Main BCF Panel Component
@@ -158,9 +157,11 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
     try {
       setBcfLoading(true);
       setBcfError(null);
-      const project = await readBCF(file);
+      const { project, readWarningCount, versionWarning } = await readBCFWithDiagnostics(file);
       setBcfProject(project);
       warnIfNoModelLoaded(useViewerStore.getState().models.size);
+      warnIfImportTruncated(readWarningCount);
+      warnIfUnsupportedVersion(versionWarning);
     } catch (error) {
       console.error('Failed to import BCF:', error);
       setBcfError(error instanceof Error ? error.message : t('bcf.panel.importError'));

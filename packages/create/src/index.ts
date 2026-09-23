@@ -28,6 +28,24 @@
 
 export { IfcCreator } from './ifc-creator.js';
 
+// Terrain & survey emitters (IFC4X3) — the entity set the LandXML→IFC v1
+// mapping needs. See `docs/architecture/landxml-to-ifc-mapping.md`.
+export type {
+  GeoreferencingParams, SurveyPointParams, SurveyPropertySetParams,
+  TerrainSurfaceParams, TerrainSurfaceResult,
+} from './ifc-creator-terrain.js';
+
+// LandXML → IFC4X3 v1. Contract: `docs/architecture/landxml-to-ifc-mapping.md`.
+export {
+  LANDXML_IFC_MAPPING_VERSION, landXmlGlobalId, landXmlToIfc, type LandXmlIfcOptions,
+} from './landxml/landxml-to-ifc.js';
+export {
+  TRANSVERSE_MERCATOR_BOUNDS, checkCoordinateOrder, type CrsPlausibilityBounds,
+} from './landxml/coordinate-plausibility.js';
+export { collectRefusals, isMappableSurface, refusalReason } from './landxml/refusals.js';
+export type * from './landxml/source-types.js';
+export type * from './landxml/result-types.js';
+
 // In-store builders — emit elements into an existing parsed IfcDataStore
 // via a `StoreEditor` overlay (closes the merge-roundtrip gap from #592).
 export { addColumnToStore, type ColumnInStoreParams, type ColumnBuildResult } from './in-store/column.js';

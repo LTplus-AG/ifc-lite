@@ -6,18 +6,23 @@
 
 # LandXML → IFC mapping specification (v1, proposed)
 
-Status: **proposed — not implemented**. Version 0.1, 2026-09-22.
+Status: **accepted — v1 in implementation**. Version 1.0, 2026-09-23.
+(Version 0.1, 2026-09-22, was the proposal; §9 records what changed on acceptance.)
 Issues: [#5175](https://github.com/LTplus-AG/ifc-lite/issues/5175) (export honesty),
 [#4937](https://github.com/LTplus-AG/ifc-lite/issues/4937) (native LandXML).
 
 This document exists because #5175 requires that an opt-in LandXML→IFC mapping be
 *defined and reviewed before it is built*, rather than an implicit `Ifc*` projection
-invented to satisfy an export button. Nothing here ships until this document is
-reviewed and accepted.
+invented to satisfy an export button.
 
-Until then the current behaviour stands and is correct: the viewer refuses IFC export
-for any model whose `sourceSchema` is LandXML, for both the selected and the merged
-scope (`apps/viewer/src/components/viewer/ExportDialog.tsx`, pinned by
+It has now been reviewed and accepted with the four resolutions in §9. Implementation
+follows this document; anything not written here is not in v1, and a change to the
+mapping is a change to this document first.
+
+Until the v1 export path ships in the viewer, the current behaviour stands and is
+correct: the viewer refuses IFC export for any model whose `sourceSchema` is LandXML,
+for both the selected and the merged scope
+(`apps/viewer/src/components/viewer/ExportDialog.tsx`, pinned by
 `ExportDialog.landxml.test.tsx`).
 
 ## 1. What this mapping is, and is not
@@ -82,11 +87,12 @@ This does not block the mapping. What it does justify is a cheap defensive check
 failure mode is silent: a transposed source still produces a well-formed mesh (a transpose is a
 reflection), so it renders — in the wrong place — and every count-based assertion passes.
 
-Recommended, in the exporter's pre-flight and in the loader:
+Decided for v1 (§9.1) — in the exporter's pre-flight and in the loader:
 
 1. When a CRS is declared, test the coordinates against that CRS's valid easting/northing ranges
-   and refuse (or warn prominently) when the values can only be the other way round. For
-   EPSG:3006 a 6.4-million value can only be a northing.
+   and **warn prominently** — never refuse, never auto-correct — when the values can only be the
+   other way round. For EPSG:3006 a 6.4-million value can only be a northing. §9.1 is why this
+   warns rather than refuses.
 2. Offer an explicit, user-confirmed "swap northing/easting" toggle, recorded as provenance
    exactly like the units override, for operators who must consume a known-faulty source.
 3. **Rejected:** producer-sniffing on `Project/Application/@name` — unmaintainable, and it
@@ -163,8 +169,9 @@ common case, not an edge case.
 
 GlobalIds are derived deterministically from the LandXML source id
 (`landxml:surface:3`, `landxml:surface:3:point:41`, …) so that re-exporting an
-unchanged source produces an unchanged file and `ifc-lite diff` is meaningful. Use the
-existing deterministic GUID helper; do not mint random GUIDs. The source id is already
+unchanged source produces an unchanged file and `ifc-lite diff` is meaningful. The
+derivation is `uuidToIfcGuid(uuidFromSeed(sourceId))` — see §10. Do not mint random
+GUIDs. The source id is already
 stable and already the crate's semantic identity — this is the property that makes it
 usable here.
 
@@ -227,15 +234,103 @@ Fixture rows added for this work follow the manifest-v2 provenance requirements,
 synthetic fixtures are marked synthetic. Per the coverage ledger's rule, a synthetic
 fixture proves an invariant and never certifies a vendor export.
 
-## 9. Open questions for review
+## 9. Review resolutions
 
-1. §2.2 — is the CRS-range plausibility check in scope for v1, or a separate hardening issue?
-2. Is `IfcGeographicElement`/`.TERRAIN.` the right carrier, or should terrain hang off
-   `IfcSite` directly? `IfcSite` can carry its own representation; using it would avoid
-   an element with no real-world counterpart, but loses the ability to carry several
-   named surfaces from one file.
-3. Should `CgPoint` become `IfcAnnotation`/`.SURVEY.` (matches the observed control) or
-   `IfcReferent` (arguably more correct for survey control in IFC4X3)? v1 proposes
-   `IfcAnnotation` specifically because it is what the available control uses.
-4. Is a mapping that cannot represent alignments worth shipping, given that two of the
-   reviewed producer fixtures are alignment-only and would export nothing?
+The four questions the v0.1 proposal left open, and how they were decided on 2026-09-23.
+Recorded rather than deleted: the reasoning is the part that a later change has to argue
+against.
+
+### 9.1 CRS-range plausibility check — **in v1, as a loud warning, never a refusal**
+
+Question: is the §2.2 check in scope for v1, or a separate hardening issue?
+
+Decided: in v1. It warns prominently; it does not refuse and it does not auto-correct.
+
+A transposed source is silent by construction (§2.2) — it renders, and every count-based
+assertion passes — so deferring the check means shipping a path whose worst failure is
+invisible. Warning rather than refusing is the deliberate half: the check is a
+plausibility test against a declared CRS's bounds, not a proof, and a refusal built on a
+heuristic would block legitimate edge-of-zone data. The user is told, loudly, and decides.
+
+Consequences for the implementation:
+
+- The check runs only where a CRS is declared and its easting/northing bounds are known.
+  With no declared CRS there is no test and no warning — magnitude alone never triggers it
+  (§2.2 closing line).
+- The warning names the coordinate that is implausible and the bound it violates, e.g.
+  *"northing 6 407 123 is outside EPSG:3006's easting range — the source may be written
+  easting-first"*. A warning a user cannot act on is noise.
+- It appears in the export report **and** in the pre-flight the dialog shows before the
+  user commits (§6), not only in the produced file.
+- The user-confirmed swap toggle (§2.2 item 2) remains v1 scope and is recorded as
+  provenance (§7) exactly like the units override.
+
+### 9.2 Terrain carrier — **`IfcGeographicElement` / `.TERRAIN.`**
+
+Question: `IfcGeographicElement`/`.TERRAIN.`, or hang terrain off `IfcSite` directly?
+
+Decided: `IfcGeographicElement` with `PredefinedType = .TERRAIN.`, one per surface,
+contained in a single `IfcSite`.
+
+The deciding argument is the one the question itself names: a LandXML file routinely
+carries several named surfaces (existing ground, design, a subgrade), and `IfcSite` can
+carry only one representation. Collapsing them onto the site would either drop surfaces
+or merge distinct records into one mesh, and §5's rule is that nothing is silently
+dropped. The objection — that this introduces an element with no real-world counterpart —
+is real but weaker: `.TERRAIN.` is precisely what `IfcGeographicElementTypeEnum` provides
+for, and the surface's LandXML name survives as the element's `Name`, which is what makes
+the output navigable in a consuming tool.
+
+### 9.3 `CgPoint` carrier — **`IfcAnnotation` / `.SURVEY.`**
+
+Question: `IfcAnnotation`/`.SURVEY.` (matches the observed control) or `IfcReferent`?
+
+Decided: `IfcAnnotation` with `PredefinedType = .SURVEY.`, plus one `IfcPropertySet` per
+point.
+
+`IfcReferent` is arguably the more correct IFC4X3 answer for survey control, and this is
+the resolution most likely to be revisited. It is not v1 for a concrete reason:
+`IfcReferent` is defined in terms of positions **along an alignment**, and v1 has no
+alignments (§9.4). Emitting referents with nothing to refer to would be a worse claim than
+emitting annotations. `IfcAnnotation`/`.SURVEY.` is also what the one available control
+uses (§8.2), which makes the output directly comparable to something outside this repo —
+the only independent check the survey path has.
+
+Revisit when alignments land: if v2 maps `Alignments`, `IfcReferent` becomes available in
+its intended sense and this decision should be re-argued rather than inherited.
+
+### 9.4 Shipping without alignments — **yes, ship v1; refuse alignments by name**
+
+Question: is a mapping that cannot represent alignments worth shipping, given that two of
+the reviewed producer fixtures are alignment-only and would export nothing?
+
+Decided: yes. Alignments are refused **by name** (§5), and an alignment-only file refuses
+outright rather than producing an empty IFC.
+
+That last clause is the whole answer to the objection. The failure mode the question
+worries about is a user exporting an alignment-only file and receiving a valid, empty,
+useless IFC — so v1 does not do that. A file with no in-scope record refuses with a
+message naming what it contains and why that is not covered, which is strictly more useful
+than an empty file and honest in the same way §6 requires of partial coverage.
+
+For the terrain and survey files that v1 *does* cover — the majority of the reviewed
+fixtures — withholding the mapping until `IfcAlignment` is done would delay a correct,
+bounded capability behind a substantially larger independent piece of work. Alignments
+remain a follow-up with their own review (§5).
+
+## 10. Implementation notes
+
+Recorded during implementation; they constrain the code but do not change the mapping.
+
+- **Deterministic GUIDs (§4.3).** `uuidFromSeed` (`@ifc-lite/encoding`) composed with
+  `uuidToIfcGuid` is the derivation. §4.3's "existing deterministic GUID helper" did not
+  resolve to a single function when it was written: `uuidFromSeed` produces an
+  RFC-4122-shaped UUID from a seed string, and `uuidToIfcGuid` compresses it to the
+  22-character `IfcGloballyUniqueId`. The seed is the source id verbatim
+  (`landxml:surface:3`), so the identity scheme is the crate's, not a second one.
+- **Where the converter lives.** `packages/create/src/landxml/`, reached through
+  `@ifc-lite/create`. It declares its own minimal structural input type rather than
+  importing the viewer's `LandXmlTinDocument`, so the converter is testable without the
+  viewer and the viewer's document type structurally satisfies it. A package that needs
+  the viewer to be unit-tested is not a package.
+- **Target schema tag.** `IFC4X3`, per §3. `IfcCreator` already accepts that tag.

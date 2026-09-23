@@ -50,6 +50,9 @@ import {
   emitRelAssignsToProduct, emitSIUnit,
 } from './ifc-creator-cost.js';
 import { emitElementQuantity, emitPropertySet, type DefinitionContext } from './ifc-creator-definitions.js';
+import { createTerrainWriter, type TerrainContext, type TerrainWriter } from './ifc-creator-terrain.js';
+import { emitRelFillsElement, emitSpatialRelationships } from './ifc-creator-relationships.js';
+import { emitDefaultStyle, emitStyledItems } from './ifc-creator-styles.js';
 import { generateIfcGuid, isValidIfcGuid } from '@ifc-lite/encoding';
 
 // ============================================================================
@@ -99,6 +102,14 @@ export class IfcCreator {
   private dirX = 0;
   private worldPlacementId = 0;
   private unitAssignmentId = 0;
+
+  // Products contained directly in the site rather than a storey: terrain and
+  // survey annotations have no storey, and inventing one would put them on a
+  // datum the source never declared.
+  private siteElements: number[] = [];
+  private georeferenced = false;
+  /** The length `IfcNamedUnit` `IfcProjectedCRS.MapUnit` points at. */
+  private lengthUnitId = 0;
 
   // Guard against repeated toIfc() calls (relationships are not idempotent)
   private finalized = false;
@@ -1542,6 +1553,53 @@ export class IfcCreator {
   }
 
   // ============================================================================
+  // Public API — Terrain & survey (IFC4X3, LandXML→IFC mapping)
+  // ============================================================================
+
+  /**
+   * The terrain/survey authoring surface: TIN surfaces, survey points, their
+   * property sets and the file's georeferencing.
+   *
+   * One accessor rather than four methods on this class, because every one of
+   * them needs the same four creator internals and nothing else — see
+   * `ifc-creator-terrain.ts`, which owns both the emitters and the doc comments
+   * for each call.
+   */
+  terrain(): TerrainWriter {
+    return createTerrainWriter(this.terrainContext(), {
+      trackSiteProduct: (expressId, type, name) => {
+        this.siteElements.push(expressId);
+        this.entities.push({ expressId, type, Name: name });
+      },
+      lengthUnitRef: () => `#${this.lengthUnitId}`,
+      siteId: () => this.siteId,
+      claimGeoreferencing: () => {
+        if (this.georeferenced) {
+          throw new Error('setGeoreferencing: already called — a file has at most one IfcMapConversion for its model context');
+        }
+        this.georeferenced = true;
+      },
+    });
+  }
+
+  /** The creator hooks `ifc-creator-terrain.ts`'s emitters need. */
+  private terrainContext(): TerrainContext {
+    return {
+      emit: this.emitEntity,
+      newGlobalId: () => this.newGlobalId(),
+      ownerRef: `#${this.ownerHistoryId}`,
+      modelContextRef: `#${this.contextId}`,
+      bodyContextRef: `#${this.subContextBody}`,
+      sitePlacementRef: `#${this.worldPlacementId}`,
+      assertSchema: (feature: string) => {
+        if (this.schema !== 'IFC4X3') {
+          throw new Error(`${feature} requires the IFC4X3 schema — IfcTriangulatedIrregularNetwork and the survey/terrain predefined types do not exist in ${this.schema}`);
+        }
+      },
+    };
+  }
+
+  // ============================================================================
   // Public API — Properties & Quantities
   // ============================================================================
 
@@ -2027,7 +2085,7 @@ ENDSEC;
     this.unitAssignmentId = this.buildUnits(params.LengthUnit ?? 'METRE', params.Currency);
 
     // Default surface style — light grey with some specularity
-    this.defaultStyleId = this.buildDefaultStyle();
+    this.defaultStyleId = emitDefaultStyle({ emit: this.emitEntity });
 
     // IfcProject
     this.projectId = this.id();
@@ -2084,68 +2142,22 @@ ENDSEC;
       units.push(emitMonetaryUnit(currency, this.emitEntity));
     }
 
+    this.lengthUnitId = lengthUnitId;
+
     const assignmentId = this.id();
     this.line(assignmentId, 'IFCUNITASSIGNMENT', `(${units.map(id => `#${id}`).join(',')})`);
 
     return assignmentId;
   }
 
-  /** Create a default IfcSurfaceStyle with a neutral colour (RGB 0.75, 0.73, 0.68) */
-  private buildDefaultStyle(): number {
-    // IfcColourRgb — warm concrete grey
-    const colourId = this.id();
-    this.line(colourId, 'IFCCOLOURRGB', `$,0.75,0.73,0.68`);
-
-    // IfcSurfaceStyleRendering — surface + specular
-    const renderingId = this.id();
-    this.line(renderingId, 'IFCSURFACESTYLERENDERING',
-      `#${colourId},0.,$,$,$,$,IFCNORMALISEDRATIOMEASURE(0.5),IFCSPECULAREXPONENT(64.),.NOTDEFINED.`);
-
-    // IfcSurfaceStyle
-    const styleId = this.id();
-    this.line(styleId, 'IFCSURFACESTYLE', `'Default',.BOTH.,(#${renderingId})`);
-
-    return styleId;
-  }
-
-  /** Create all IfcStyledItem entities — custom colour or default per element */
+  /**
+   * Create all `IfcStyledItem` rows — a custom colour where one was assigned,
+   * the default grey otherwise. See `ifc-creator-styles.ts`.
+   */
   private finalizeStyles(): void {
-    // Cache: colour key → styleId so identical colours share one style entity
-    const styleCache = new Map<string, number>();
-    for (const [elementId, solidIds] of this.elementSolids) {
-      const color = this.elementColors.get(elementId);
-      let styleId: number;
-      if (color) {
-        const key = `${color.name}|${color.rgb.join(',')}`;
-        const cached = styleCache.get(key);
-        if (cached !== undefined) {
-          styleId = cached;
-        } else {
-          styleId = this.buildColorStyle(color.name, color.rgb);
-          styleCache.set(key, styleId);
-        }
-      } else {
-        styleId = this.defaultStyleId;
-      }
-      for (const solidId of solidIds) {
-        const styledItemId = this.id();
-        this.line(styledItemId, 'IFCSTYLEDITEM', `#${solidId},(#${styleId}),$`);
-      }
-    }
-  }
-
-  /** Create a named IfcSurfaceStyle with the given RGB colour */
-  private buildColorStyle(name: string, rgb: [number, number, number]): number {
-    const colourId = this.id();
-    this.line(colourId, 'IFCCOLOURRGB', `$,${num(rgb[0])},${num(rgb[1])},${num(rgb[2])}`);
-
-    const renderingId = this.id();
-    this.line(renderingId, 'IFCSURFACESTYLERENDERING',
-      `#${colourId},0.,$,$,$,$,IFCNORMALISEDRATIOMEASURE(0.5),IFCSPECULAREXPONENT(64.),.NOTDEFINED.`);
-
-    const styleId = this.id();
-    this.line(styleId, 'IFCSURFACESTYLE', `'${esc(name)}',.BOTH.,(#${renderingId})`);
-    return styleId;
+    emitStyledItems(this.elementSolids, this.elementColors, this.defaultStyleId, {
+      emit: this.emitEntity,
+    });
   }
 
   // ============================================================================
@@ -2751,41 +2763,23 @@ ENDSEC;
   // ============================================================================
 
   private finalizeRelationships(): void {
-    this.addIfcRelAggregates(this.projectId, [this.siteId]);
-    this.addIfcRelAggregates(this.siteId, [this.buildingId]);
-
-    if (this.storeyIds.length > 0) {
-      this.addIfcRelAggregates(this.buildingId, this.storeyIds);
-    }
-
-    for (const [storeyId, elementIds] of this.storeyElements) {
-      if (elementIds.length > 0) {
-        this.addIfcRelContainedInSpatialStructure(storeyId, elementIds);
-      }
-    }
-  }
-
-  private addIfcRelAggregates(relatingId: number, relatedIds: number[]): void {
-    const relId = this.id();
-    const globalId = this.newGlobalId();
-    const refs = relatedIds.map(id => `#${id}`).join(',');
-    this.line(relId, 'IFCRELAGGREGATES',
-      `'${globalId}',#${this.ownerHistoryId},$,$,#${relatingId},(${refs})`);
-  }
-
-  private addIfcRelContainedInSpatialStructure(storeyId: number, elementIds: number[]): void {
-    const relId = this.id();
-    const globalId = this.newGlobalId();
-    const refs = elementIds.map(id => `#${id}`).join(',');
-    this.line(relId, 'IFCRELCONTAINEDINSPATIALSTRUCTURE',
-      `'${globalId}',#${this.ownerHistoryId},$,$,(${refs}),#${storeyId}`);
+    emitSpatialRelationships({
+      emit: this.emitEntity,
+      newGlobalId: () => this.newGlobalId(),
+      ownerRef: `#${this.ownerHistoryId}`,
+      projectId: this.projectId,
+      siteId: this.siteId,
+      buildingId: this.buildingId,
+      storeyIds: this.storeyIds,
+      storeyElements: this.storeyElements,
+      siteElements: this.siteElements,
+    });
   }
 
   private addIfcRelFillsElement(openingId: number, fillingId: number): void {
-    const relId = this.id();
-    const globalId = this.newGlobalId();
-    this.line(relId, 'IFCRELFILLSELEMENT',
-      `'${globalId}',#${this.ownerHistoryId},$,$,#${openingId},#${fillingId}`);
+    emitRelFillsElement(openingId, fillingId, {
+      emit: this.emitEntity, newGlobalId: () => this.newGlobalId(), ownerRef: `#${this.ownerHistoryId}`,
+    });
   }
 
   // ============================================================================

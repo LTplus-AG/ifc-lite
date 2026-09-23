@@ -1064,17 +1064,19 @@ The existing prepass can publish the exact full-byte source key through a fresh 
   carries **`was_hidden`**; once it has 17 days of history, filter on
   `was_hidden != true` instead, which excludes the artifact without blinding the
   metric.
-- **`BVH.build` is a synchronous main-thread block that grows as O(N log^2 N)**
-  (`packages/spatial/src/bvh.ts`, measured 2026-08-08, M-series, warmed, best of
-  3): 21 ms @ 6.7k meshes, 296 ms @ 60k, 826 ms @ 120k, **1715 ms @ 200k**
-  (3-5x that on a mid-range laptop). `buildSpatialIndexAsync` time-slices only
-  phase 1 (the linear bounds pass) and calls phase 2 "fast enough
-  synchronously"; phase 2 re-`sort()`s the index slice at *every* node, so the
-  comparator runs 68 -> 132 times per mesh as N goes 6.7k -> 200k. NOT SHIPPED and
-  not the cause of any open issue — recorded so the number does not get
-  re-measured. The fix, if wanted, is a presorted-per-axis build (O(N log N))
-  plus slicing phase 2; BVH query results are exact AABB tests at the leaves, so
-  a different tree shape is output-equivalent and can be asserted as such.
+- **BVH construction no longer sorts every subtree synchronously** (#5252).
+  The old `BVH.build` re-sorted each node's index slice and blocked the main
+  thread during phase 2. A bounded median selection now builds the same exact
+  leaf set with expected O(N log N) work; a heap-sort fallback bounds adversarial
+  partitions. The async builder also slices phase 2, yielding through a timer
+  while visible so Chromium can paint, and through the existing scheduler while
+  hidden so background timer throttling does not stall the load. Keep exact
+  query equivalence against brute-force AABB tests as the correctness oracle:
+  tree shape and node order may change. A phase-2 microbench cannot establish a
+  load win; use interleaved cold browser loads of the same IFC and compare
+  spatial readiness, total load, mesh counts and visible-frame progress. The
+  initial Holter browser cohort confirmed frame progress and no 14-second load,
+  but concurrent host jobs made its small timing delta inconclusive.
 
 ### Source and buffer ownership during WASM prepass (#3989)
 

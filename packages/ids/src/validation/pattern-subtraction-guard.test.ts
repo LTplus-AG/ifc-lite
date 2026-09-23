@@ -4,14 +4,13 @@
 
 /**
  * End-to-end: a requirement whose `xs:pattern` facet uses XSD
- * character-class subtraction (`[a-z-[aeiou]]`) must surface as a
- * FAILED specification naming the unsupported construct, never as a
- * silent PASS — issue #5183. The matcher used to drop the exclusion
- * and evaluate the positive class instead, so a consonants-only
- * pattern accepted `"aeiou"`, the exact value it was written to
- * reject. See `buildPatternRegex`'s `UnsafeRegexPatternError` throw in
- * `constraints/match-family.ts` and `validateSpecification`'s catch of
- * it in `validator.ts`.
+ * character-class subtraction (`[a-z-[aeiou]]`) must reject exactly the
+ * values it excludes (#5183). The matcher used to drop the exclusion and
+ * evaluate the positive class instead, so a consonants-only pattern
+ * accepted `"aeiou"`, the exact value it was written to reject. It is now
+ * translated exactly (`translateSubtraction` in
+ * `constraints/xsd-regex.ts`); a subtraction that cannot be delimited is
+ * refused and surfaces as a failed specification naming the construct.
  */
 
 import { validateIDS } from './validator.js';
@@ -43,49 +42,57 @@ const modelInfo: IDSModelInfo = {
   entityCount: 2,
 };
 
-describe('validateIDS — xs:pattern with XSD character-class subtraction', () => {
-  it('fails the specification and names the unsupported construct, not a silent pass', async () => {
+function namePatternSpec(pattern: string): IDSSpecification {
+  return {
+    id: 'spec-0',
+    name: 'Name pattern',
+    ifcVersions: ['IFC4'],
+    applicability: {
+      facets: [{ type: 'entity', name: sv('IFCWALL') }],
+    },
+    requirements: [
+      {
+        id: 'req-0',
+        facet: {
+          type: 'attribute',
+          name: sv('Name'),
+          value: patternConstraint(pattern),
+        },
+        optionality: 'required',
+      },
+    ],
+  };
+}
+
+describe('validateIDS — xs:pattern with XSD character-class subtraction (#5183)', () => {
+  it('fails the excluded value and passes an allowed one, with no error', async () => {
     const accessor = createMockAccessor([
-      // Nothing but vowels — exactly what a consonants-only pattern
-      // must reject. Under the old desubtraction the pattern silently
-      // became `[a-z]+` and this value passed.
+      // Nothing but vowels: exactly what a consonants-only pattern must
+      // reject. Under the old desubtraction this value passed.
       { expressId: 1, type: 'IfcWall', name: 'aeiou' },
+      { expressId: 2, type: 'IfcWall', name: 'xyz' },
     ]);
 
-    const spec: IDSSpecification = {
-      id: 'spec-0',
-      name: 'Consonants-only name pattern',
-      ifcVersions: ['IFC4'],
-      applicability: {
-        facets: [{ type: 'entity', name: sv('IFCWALL') }],
-      },
-      requirements: [
-        {
-          id: 'req-0',
-          facet: {
-            type: 'attribute',
-            name: sv('Name'),
-            value: patternConstraint('[a-z-[aeiou]]+'),
-          },
-          optionality: 'required',
-        },
-      ],
-    };
-
-    const report = await validateIDS(makeDoc([spec]), accessor, modelInfo);
+    const report = await validateIDS(makeDoc([namePatternSpec('[a-z-[aeiou]]+')]), accessor, modelInfo);
     const result = report.specificationResults[0];
 
-    // The core assertion: NOT a silent pass. A conformance validator
-    // that approximated the pattern wrongly would report this
-    // non-compliant value as compliant.
+    expect(result.error).toBeUndefined();
     expect(result.status).toBe('fail');
-    expect(result.error).toBeDefined();
-    // Names the construct, so an author can rewrite the pattern rather
-    // than guess — reuses the coherence auditor's wording for the same
-    // construct (`audit/coherence/regex.ts`'s `checkPattern`).
+    expect(result.failedCount).toBe(1);
+    expect(result.passedCount).toBe(1);
+    const failed = result.entityResults.find((e) => !e.passed);
+    expect(failed?.expressId).toBe(1);
+  });
+
+  it('a subtraction that cannot be delimited fails the specification and names the construct', async () => {
+    const accessor = createMockAccessor([{ expressId: 1, type: 'IfcWall', name: 'xyz' }]);
+
+    const report = await validateIDS(makeDoc([namePatternSpec('[a-z-[aeiou]+')]), accessor, modelInfo);
+    const result = report.specificationResults[0];
+
+    expect(result.status).toBe('fail');
     expect(result.error).toMatch(/XSD character-class subtraction is not supported in JS regex/);
     expect(report.summary.failedSpecifications).toBe(1);
-    expect(report.summary.passedSpecifications).toBe(0);
   });
 
   it('a pattern without subtraction is unaffected', async () => {

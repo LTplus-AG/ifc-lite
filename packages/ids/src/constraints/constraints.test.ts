@@ -182,22 +182,24 @@ describe('matchConstraint — pattern', () => {
     expect(matchConstraint(pat('\\p{IsBasicLatin}+'), 'Hello')).toBe(true);
   });
 
-  it('refuses a pattern using XSD character-class subtraction rather than dropping the exclusion (#5183)', () => {
-    // `[a-z-[aeiou]]` ("lowercase, excluding vowels") has no JS
-    // equivalent. Dropping the exclusion and matching `[a-z]` instead
-    // made the pattern accept exactly the values it was written to
-    // exclude — a consonants-only pattern accepted "aeiou". Refusing
-    // the pattern (UnsafeRegexPatternError, which `validateSpecification`
-    // turns into a failed specification) is the fail-closed behaviour;
-    // this is the executed repro from the issue.
-    expect(() => matchConstraint(pat('[a-z-[aeiou]]+'), 'aeiou')).toThrow(
-      /XSD character-class subtraction is not supported in JS regex/
-    );
-    // Not just the excluded value — the whole construct is refused,
-    // including for values that would have passed even without the
-    // exclusion (proves this isn't accidentally conditioned on the
-    // value under test).
-    expect(() => matchConstraint(pat('[a-z-[aeiou]]+'), 'xyz')).toThrow(
+  it('evaluates XSD character-class subtraction exactly instead of dropping the exclusion (#5183)', () => {
+    // `[a-z-[aeiou]]` is "lowercase, excluding vowels". Dropping the
+    // exclusion made a consonants-only pattern accept "aeiou".
+    const consonants = pat('[a-z-[aeiou]]+');
+    expect(matchConstraint(consonants, 'aeiou')).toBe(false);
+    expect(matchConstraint(consonants, 'xyz')).toBe(true);
+    expect(matchConstraint(consonants, 'xaz')).toBe(false);
+    // Nested: a-z minus (b-y minus c) = a, c, z.
+    const nested = pat('[a-z-[b-y-[c]]]+');
+    expect(matchConstraint(nested, 'acz')).toBe(true);
+    expect(matchConstraint(nested, 'b')).toBe(false);
+    // XSD escapes in either set, and the rest of the pattern around it.
+    expect(matchConstraint(pat('W-[\\w-[\\d]]{2}'), 'W-ab')).toBe(true);
+    expect(matchConstraint(pat('W-[\\w-[\\d]]{2}'), 'W-a1')).toBe(false);
+  });
+
+  it('refuses a subtraction it cannot delimit rather than guessing (#5183)', () => {
+    expect(() => matchConstraint(pat('[a-z-[aeiou]+'), 'xyz')).toThrow(
       /XSD character-class subtraction is not supported in JS regex/
     );
   });

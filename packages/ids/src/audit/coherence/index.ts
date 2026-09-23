@@ -289,9 +289,9 @@ function checkBounds(
  * escape codes to JS regex equivalents (cf. upstream `XmlRegex.cs`).
  *
  * Translation handles `\i`/`\c`/`\d`/`\w` and their negations via
- * Unicode property escapes (compiled with the `u` flag). Char-class
- * subtraction (`[a-z-[aeiou]]`) is XSD-only and surfaces as
- * `W_REGEX_UNVERIFIED`. Any remaining syntactic errors are real
+ * Unicode property escapes (compiled with the `u` flag), and char-class
+ * subtraction (`[a-z-[aeiou]]`) as a negative lookahead. A construct that
+ * can only be approximated surfaces as `W_REGEX_UNVERIFIED`. Any remaining syntactic errors are real
  * authoring mistakes and surface as `E_RESTRICTION_EMPTY` (upstream
  * Report 109).
  */

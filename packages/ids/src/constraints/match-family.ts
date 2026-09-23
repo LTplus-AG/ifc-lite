@@ -190,32 +190,17 @@ function buildPatternRegex(
   // Shared XSD → JS translation: `\i`/`\c`/`\d`/`\w` (and their
   // negations) map to Unicode property escapes, and verbatim `\p{…}`
   // classes pass through — both require the `u` flag for full fidelity.
-  //
-  // Translate the pattern exactly as authored, before any rewriting —
-  // translating an already-desubtracted string would report
-  // `supported: true`, since the subtraction is gone by then.
+  // XSD character-class subtraction (`[a-z-[aeiou]]`) is translated
+  // exactly (a negative lookahead, see `translateSubtraction`). One that
+  // cannot be delimited is refused rather than approximated: dropping the
+  // exclusion would make the pattern accept exactly the values it was
+  // written to exclude (#5183). `UnsafeRegexPatternError` becomes a failed
+  // specification result in `validateSpecification`, never a silent pass.
+  // Other unsupported constructs (an unrepresentable `\p{…}` block escape,
+  // a negated class escape inside `[ … ]`) keep their permissive
+  // any-character placeholder: they over-match rather than invert intent,
+  // and the coherence auditor flags them.
   const { pattern, supported, reason } = translateXsdRegex(xsdPattern);
-  // XSD character-class subtraction (`[a-z-[aeiou]]`) has no JS
-  // equivalent. Unlike the other approximated constructs below, its
-  // failure mode is silent *inversion* rather than silent breadth: the
-  // exclusion is exactly what the pattern was written to enforce, so
-  // dropping it makes the pattern accept the values it names as
-  // invalid (issue #5183: a consonants-only pattern accepted
-  // `"aeiou"`). Refuse the pattern instead — the document auditor
-  // (`audit/coherence`'s `compileXsdRegex`, which calls this same
-  // shared translator) already warns the author about exactly this
-  // construct; a runtime match against real model data must agree
-  // with that warning rather than silently evaluate a wrong
-  // approximation of it. This throws `UnsafeRegexPatternError`, which
-  // `validateSpecification` turns into a failed specification result
-  // instead of a silent pass.
-  //
-  // Other unsupported constructs (an unrepresentable `\p{…}` block
-  // escape, a negated class escape inside `[ … ]`) keep the existing,
-  // more permissive approximation (an any-character placeholder) —
-  // their failure mode is over-matching some values, not silently
-  // reversing the author's intent, and the coherence auditor already
-  // flags them for review independently of this runtime check.
   if (!supported && reason === SUBTRACTION_UNSUPPORTED_REASON) {
     throw new UnsafeRegexPatternError(xsdPattern, reason);
   }

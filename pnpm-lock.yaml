@@ -1374,6 +1374,12 @@ importers:
       '@ifc-lite/extensions':
         specifier: workspace:^
         version: link:../extensions
+      '@ifc-lite/flow':
+        specifier: workspace:^
+        version: link:../flow
+      '@ifc-lite/flow-nodes':
+        specifier: workspace:^
+        version: link:../flow-nodes
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../geometry

@@ -48,6 +48,8 @@
     "@ifc-lite/diff": "workspace:^",
     "@ifc-lite/export": "workspace:^",
     "@ifc-lite/extensions": "workspace:^",
+    "@ifc-lite/flow": "workspace:^",
+    "@ifc-lite/flow-nodes": "workspace:^",
     "@ifc-lite/geometry": "workspace:^",
     "@ifc-lite/ids": "workspace:^",
     "@ifc-lite/ifcx": "workspace:^",

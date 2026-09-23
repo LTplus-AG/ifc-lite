@@ -64,6 +64,9 @@ export {
 export type { TrackedEntry, TrackedSet, TrackingSidecar, TrackingStore, DesiredLane, TrackingPlan } from './tracking.js';
 
 export { validateFlowWiring } from './wiring.js';
+
+export { describeFlowIO, declaredInputKeys, resolveDeclaredParam, unknownInputKeys } from './introspect.js';
+export type { FlowIO, FlowInputInfo, FlowOutputInfo } from './introspect.js';
 export { nodeAvailability, checkAvailability } from './availability.js';
 export type { HostFeatures, AvailabilityStatus, NodeAvailability } from './availability.js';
 

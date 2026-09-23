@@ -4,7 +4,7 @@
 
 /**
  * Where `entities-ifc4.ts` (C# `SchemaInfo`) disagrees with the IFC4 EXPRESS
- * schema (#5204). Applied by `../entities-ifc4-express.ts`.
+ * schema (#5204). Applied by `./entities-ifc4-express.ts`.
  *
  * DO NOT EDIT - regenerate with
  *   node scripts/generate-ifc4-express-corrections.mjs

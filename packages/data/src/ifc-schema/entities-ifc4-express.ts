@@ -28,7 +28,7 @@
 
 import type { IfcEntityInfo } from './types.js';
 import { ENTITIES_IFC4 } from './generated/entities-ifc4.js';
-import { IFC4_EXPRESS_OVERRIDES, IFC4_UNDECLARED_ENTITIES } from './generated/ifc4-express-corrections.js';
+import { IFC4_EXPRESS_OVERRIDES, IFC4_UNDECLARED_ENTITIES } from './ifc4-express-corrections.js';
 
 export const ENTITIES_IFC4_EXPRESS: readonly IfcEntityInfo[] = ENTITIES_IFC4
   .filter((entity) => !IFC4_UNDECLARED_ENTITIES.has(entity.name))

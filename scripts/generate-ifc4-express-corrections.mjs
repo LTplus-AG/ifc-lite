@@ -4,7 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Generate `packages/data/src/ifc-schema/generated/ifc4-express-corrections.ts`:
+ * Generate `packages/data/src/ifc-schema/ifc4-express-corrections.ts`:
  * where `@ifc-lite/data`'s C#-derived IFC4 entity table disagrees with the IFC4
  * EXPRESS schema (#5204).
  *
@@ -60,7 +60,7 @@ if (!process.env.IFC4_EXPRESS_CORRECTIONS_TSX) {
 }
 
 const SRC_REL = 'packages/data/src/ifc-schema/generated/entities-ifc4.ts';
-const OUT_REL = 'packages/data/src/ifc-schema/generated/ifc4-express-corrections.ts';
+const OUT_REL = 'packages/data/src/ifc-schema/ifc4-express-corrections.ts';
 
 const { SCHEMA_REGISTRY: IFC4 } = await import(
   pathToFileURL(join(ROOT, 'packages/parser/src/generated/schema-registry.ts')).href
@@ -97,7 +97,7 @@ const lines = [
   '',
   '/**',
   ' * Where `entities-ifc4.ts` (C# `SchemaInfo`) disagrees with the IFC4 EXPRESS',
-  ' * schema (#5204). Applied by `../entities-ifc4-express.ts`.',
+  ' * schema (#5204). Applied by `./entities-ifc4-express.ts`.',
   ' *',
   ' * DO NOT EDIT - regenerate with',
   ' *   node scripts/generate-ifc4-express-corrections.mjs',

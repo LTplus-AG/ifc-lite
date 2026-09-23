@@ -27,6 +27,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { act } from 'react';
 import { render, cleanup, click, type as typeInto, advance } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
@@ -185,7 +186,9 @@ describe('IDSCorrectionDialog — stale audit snapshot vs. deleted entities (#52
     const view = new MutablePropertyView(null, MODEL_ID);
     useViewerStore.getState().registerMutationView(MODEL_ID, view);
     assert.equal(view.deleteEntity(2), true, 'entity 2 must tombstone');
-    useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 });
+    act(() => {
+      useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 });
+    });
 
     const specResult = specResultWith([entityResult(1, 'Wall A'), entityResult(2, 'Wall B')]);
 
@@ -221,6 +224,36 @@ describe('IDSCorrectionDialog — stale audit snapshot vs. deleted entities (#52
 
     const summary = document.body.textContent ?? '';
     assert.match(summary, /1/, 'the reported count must reflect the ONE entity actually written to, not the original 2');
+  });
+
+  it('drops a deleted entity from an explicit selection while the dialog is open', async () => {
+    seedStore();
+    const view = new MutablePropertyView(null, MODEL_ID);
+    useViewerStore.getState().registerMutationView(MODEL_ID, view);
+    render(
+      <IDSCorrectionDialog
+        open
+        onOpenChange={() => {}}
+        specResult={specResultWith([entityResult(1, 'Wall A'), entityResult(2, 'Wall B')])}
+        modelId={MODEL_ID}
+        onRevalidate={async () => {}}
+      />,
+    );
+    await advance(0);
+
+    const firstCheckbox = [...document.body.querySelectorAll('input[type="checkbox"]')][0] as HTMLInputElement;
+    click(firstCheckbox); // Explicitly select only Wall B.
+    assert.match(applyButton().textContent ?? '', /Apply to 1/);
+
+    assert.equal(view.deleteEntity(2), true);
+    act(() => {
+      useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 });
+    });
+    await advance(0);
+
+    assert.deepEqual(checkboxLabelsText().map((t) => t.trim()), ['Wall A']);
+    assert.match(applyButton().textContent ?? '', /Apply to 0/);
+    assert.equal(applyButton().disabled, true);
   });
 });
 

@@ -148,12 +148,7 @@ export function IDSCorrectionDialog({
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
   const setStoreProperty = useViewerStore((s) => s.setProperty);
-  // Subscribed so a deletion that happens while the dialog is CLOSED (the
-  // #5200 repro — no race needed) is reflected the next time it opens, and
-  // so a delete somehow reachable while it's open drops the row live. Only
-  // re-derives `correctable` from the already-computed `specResult` — it
-  // does NOT re-run IDS validation, which stays gated on explicit
-  // user action / `onRevalidate`.
+  // Recompute from the audit snapshot when overlay deletions change (#5200).
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
   const correctable = useMemo(() => {
@@ -174,7 +169,10 @@ export function IDSCorrectionDialog({
   const [applyError, setApplyError] = useState<string | null>(null);
 
   const failedEntities = activeRequirement?.failedEntities ?? [];
-  const effectiveSelection = selectedIds ?? new Set(failedEntities.map((e) => e.expressId));
+  const liveIds = new Set(failedEntities.map((e) => e.expressId));
+  const effectiveSelection = selectedIds
+    ? new Set([...selectedIds].filter((id) => liveIds.has(id)))
+    : liveIds;
 
   const toggleEntity = useCallback((expressId: number) => {
     setSelectedIds((prev) => {

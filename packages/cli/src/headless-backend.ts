@@ -40,7 +40,7 @@ import { createCostBackend, createEffectiveEntityCheck, createHeadlessMutateAdap
 import { createStoreAuthoring } from './headless-backend-store-authoring.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor, storeHasSourceEntity } from '@ifc-lite/mutations';
-import type { EntityTable } from '@ifc-lite/data';
+import type { TableAccess } from '@ifc-lite/flow-nodes';
 import {
   addBeamToStore,
   addColumnToStore,
@@ -521,20 +521,13 @@ export class HeadlessBackend implements BimBackend {
   }
 
   /**
-   * Entity table + mutation view + string lookup for this backend's one
-   * model — the bulk access `@ifc-lite/flow-nodes`' `table.joinByKey` needs
-   * to reuse `@ifc-lite/mutations`' `csv-match.ts` tag/property index
-   * builder (issue #5167 phase 3.2, #5230) instead of re-implementing it.
-   * Mirrors the `bim.cost` resolver above: same lazily-created overlay,
-   * same "assert the model id, then hand back the raw table" shape.
+   * The bulk entity-table access `table.joinByKey` needs to reuse
+   * `@ifc-lite/mutations`' `csv-match.ts` tag/property index (#5167, #5230)
+   * rather than re-implement it. Same lazily-created overlay as `bim.cost`.
    */
-  tableAccess(modelId?: string): { entities: EntityTable; mutationView: MutablePropertyView; strings: { get(idx: number): string } | null } {
+  tableAccess(modelId?: string): TableAccess {
     if (modelId) this.assertKnownModelId(modelId);
-    return {
-      entities: this.dataStore.entities,
-      mutationView: this.getOrCreateMutationView(),
-      strings: this.dataStore.strings ?? null,
-    };
+    return { entities: this.dataStore.entities, mutationView: this.getOrCreateMutationView(), strings: this.dataStore.strings ?? null };
   }
 
   private getOrCreateStoreEditor(): StoreEditor {

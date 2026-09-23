@@ -60,8 +60,10 @@ export function advertisedInputSchema(schema: JsonSchema): JsonSchema {
   return advertised;
 }
 
-function walk(schema: JsonSchema, input: unknown, path: string, errors: ValidationIssue[]): unknown {
-  if (input === undefined && schema.default !== undefined) {
+// `fillDefaults` is off while an `anyOf` branch is only being tested: a
+// branch's result is discarded, so a default must not be what lets it pass.
+function walk(schema: JsonSchema, input: unknown, path: string, errors: ValidationIssue[], fillDefaults = true): unknown {
+  if (fillDefaults && input === undefined && schema.default !== undefined) {
     input = clone(schema.default);
   }
   if (input === undefined || input === null) return input;
@@ -84,7 +86,7 @@ function walk(schema: JsonSchema, input: unknown, path: string, errors: Validati
   if (schema.anyOf && schema.anyOf.length > 0) {
     const branchErrors = schema.anyOf.map((sub) => {
       const subErrors: ValidationIssue[] = [];
-      walk(sub, input, path, subErrors);
+      walk(sub, input, path, subErrors, false);
       return subErrors;
     });
     if (!branchErrors.some((b) => b.length === 0)) {
@@ -101,13 +103,15 @@ function walk(schema: JsonSchema, input: unknown, path: string, errors: Validati
     if (schema.properties) {
       for (const [key, sub] of Object.entries(schema.properties)) {
         const childPath = `${path}.${key}`;
-        const value = walk(sub, obj[key], childPath, errors);
+        const value = walk(sub, obj[key], childPath, errors, fillDefaults);
         if (value !== undefined) result[key] = value;
       }
     }
     if (schema.required) {
       for (const key of schema.required) {
-        if (result[key] === undefined) {
+        // `null` counts as missing: every handler reads an absent and a null
+        // field alike, so `{ global_id: null }` must not satisfy a required id.
+        if (result[key] === undefined || result[key] === null) {
           errors.push({ path: `${path}.${key}`, message: 'Required property missing' });
         }
       }
@@ -132,7 +136,7 @@ function walk(schema: JsonSchema, input: unknown, path: string, errors: Validati
       errors.push({ path, message: `Array longer than ${schema.maxItems} item(s)` });
     }
     if (schema.items) {
-      return arr.map((item, i) => walk(schema.items as JsonSchema, item, `${path}[${i}]`, errors));
+      return arr.map((item, i) => walk(schema.items as JsonSchema, item, `${path}[${i}]`, errors, fillDefaults));
     }
     return arr;
   }

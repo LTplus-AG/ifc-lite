@@ -157,6 +157,25 @@ describe('validateInput', () => {
       expect(r.errors[0].path).toBe('$.target');
     });
 
+    // A null id reads as absent in every handler, so it must not satisfy the
+    // branch that requires it (review of #5192).
+    it('does not let a null value satisfy a required branch', () => {
+      expect(validateInput(identitySchema, { global_id: null }).valid).toBe(false);
+      expect(validateInput(identitySchema, { global_id: null, express_id: 7 }).valid).toBe(true);
+    });
+
+    // A branch's result is discarded, so a default must not be what makes it
+    // match (review of #5192).
+    it('does not let a branch default satisfy anyOf', () => {
+      const schema = {
+        type: 'object' as const,
+        properties: { a: { type: 'string' as const } },
+        anyOf: [{ properties: { a: { type: 'string' as const, default: 'x' } }, required: ['a'] }],
+      };
+      expect(validateInput(schema, {}).valid).toBe(false);
+      expect(validateInput(schema, { a: 'y' }).valid).toBe(true);
+    });
+
     // The Anthropic Messages API 400s a tool whose input_schema has a root
     // anyOf/oneOf/allOf, so tools/list must not publish it (#5192).
     it('advertisedInputSchema drops only the root anyOf', () => {

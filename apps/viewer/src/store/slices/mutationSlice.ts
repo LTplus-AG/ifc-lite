@@ -52,7 +52,7 @@ import { createCostUndoMutations, mirrorCreateEntityRedo, mirrorSourceEntityRest
 import { stashAndPruneEntityMesh, restoreStashedEntityMesh, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
 import { pruneMutationHistory } from './mutation-history-prune.js';
-import { invalidateRedoPatch, isTargetTombstoned } from './mutation-redo-remote-guard.js';
+import { invalidateHistoryPatch, isTargetTombstoned } from './mutation-redo-remote-guard.js';
 import type { TypeViewMode } from '../constants.js';
 import {
   resolvePlacementChain,
@@ -684,7 +684,7 @@ export interface MutationSlice extends CostUndoMethods {
   canUndo: (modelId: string) => boolean;
   /** Check if redo is available */
   canRedo: (modelId: string) => boolean;
-  /** Drops `entityId`'s redo entries — see mutation-redo-remote-guard.ts (#5223). */ invalidateRedoForEntity: (modelId: string, entityId: number) => void;
+  /** Clears history for a peer-edited entity (#5223). */ invalidateHistoryForEntity: (modelId: string, entityId: number) => void;
 
   // Actions - Change Sets
   /** Create a new change set */
@@ -2665,7 +2665,6 @@ export const createMutationSlice: StateCreator<
     // this one mutation, then tail-recurse while the next top shares it.
     const batchId = state.mutationBatchTags.get(mutation.id);
 
-    // Handle georef mutations directly on georefMutations map
     if (mutation.type === 'UPDATE_ATTRIBUTE' && mutation.attributeName?.startsWith('georef.')) {
       const parts = mutation.attributeName.split('.');
       const entity = parts[1] as 'projectedCRS' | 'mapConversion';
@@ -2710,7 +2709,9 @@ export const createMutationSlice: StateCreator<
     if (!view) return;
 
     // Apply inverse mutation (skipHistory=true); skip onto a peer-deleted entity (#5223, see mutation-redo-remote-guard.ts)
-    if (isTargetTombstoned(view, mutation)) { /* no-op */ } else if (mutation.type === 'UPDATE_PROPERTY' || mutation.type === 'CREATE_PROPERTY') {
+    if (isTargetTombstoned(view, mutation)) {
+      set({ collabGeometryNotice: 'An element was removed by a collaborator. Its local history was skipped.' });
+    } else if (mutation.type === 'UPDATE_PROPERTY' || mutation.type === 'CREATE_PROPERTY') {
       // Decide by mutation TYPE, not by `oldValue === null`: a property can have
       // a null (unset) value yet still have existed before the edit (an unset
       // Boolean). Undoing a CREATE removes the property; undoing an UPDATE
@@ -2853,7 +2854,6 @@ export const createMutationSlice: StateCreator<
       };
     });
 
-    // Tail-recurse for the rest of the batch; get() sees the just-set state.
     if (batchId !== undefined) {
       const nextStack = get().undoStacks.get(modelId) || [];
       if (nextStack.length > 0) {
@@ -2874,7 +2874,6 @@ export const createMutationSlice: StateCreator<
     const mutation = redoStack[redoStack.length - 1];
     const batchId = state.mutationBatchTags.get(mutation.id);
 
-    // Handle georef mutations directly
     if (mutation.type === 'UPDATE_ATTRIBUTE' && mutation.attributeName?.startsWith('georef.')) {
       const parts = mutation.attributeName.split('.');
       const entity = parts[1] as 'projectedCRS' | 'mapConversion';
@@ -2919,7 +2918,9 @@ export const createMutationSlice: StateCreator<
     if (!view) return;
 
     // Re-apply mutation (skipHistory=true); same tombstone guard as undo() (#5223)
-    if (isTargetTombstoned(view, mutation)) { /* no-op */ } else if (mutation.type === 'UPDATE_PROPERTY' || mutation.type === 'CREATE_PROPERTY') {
+    if (isTargetTombstoned(view, mutation)) {
+      set({ collabGeometryNotice: 'An element was removed by a collaborator. Its local history was skipped.' });
+    } else if (mutation.type === 'UPDATE_PROPERTY' || mutation.type === 'CREATE_PROPERTY') {
       if (mutation.psetName && mutation.propName && mutation.newValue !== undefined) {
         view.setProperty(
           mutation.entityId,
@@ -3028,10 +3029,6 @@ export const createMutationSlice: StateCreator<
       };
     });
 
-    // Tail-recurse for the rest of the batch — mirror of the
-    // undo handler's batch tail. Stops as soon as the next top
-    // of the redo stack either doesn't exist or belongs to a
-    // different batch.
     if (batchId !== undefined) {
       const nextStack = get().redoStacks.get(modelId) || [];
       if (nextStack.length > 0) {
@@ -3053,7 +3050,7 @@ export const createMutationSlice: StateCreator<
     return stack ? stack.length > 0 : false;
   },
 
-  invalidateRedoForEntity: (modelId, entityId) => set((s) => invalidateRedoPatch(s.redoStacks, modelId, entityId)),
+  invalidateHistoryForEntity: (modelId, entityId) => set((s) => invalidateHistoryPatch(s.undoStacks, s.redoStacks, s.mutationBatchTags, s.mutationMeshTranslations, modelId, entityId)),
   // Change Sets
   createChangeSet: (name) => {
     const id = generateChangeSetId();

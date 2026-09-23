@@ -2,37 +2,39 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * A remote peer's write never touches the local undo/redo stacks
- * (`collabSlice.ts`'s inbound handlers apply it directly to the model), but a
- * queued local `redo()` still replays a value captured before that write —
- * silently overwriting the peer's edit (#5223). This module is the shared fix
- * for both directions:
- *
- *   - `filterRedoForEntity`: drop that entity's entries from the redo stack
- *     the moment a remote write lands on it (called from collabSlice.ts).
- *   - `isTargetTombstoned`: refuse to replay ANY queued undo/redo entry (not
- *     just redo) onto an entity a remote peer has since deleted — the
- *     fallback for an entry queued in the same tick as the delete, before
- *     `filterRedoForEntity` could drop it.
- */
+import type { Mutation, MutablePropertyView } from '@ifc-lite/mutations';
+import type { MutationMeshTranslation } from './mutation-history-prune.js';
 
-import type { Mutation } from '@ifc-lite/mutations';
-import type { MutablePropertyView } from '@ifc-lite/mutations';
+/** Peer edits invalidate local history for the same entity in both directions.
+ * A queued undo is just as capable of overwriting a peer's write as redo. */
+export function invalidateHistoryPatch(
+  undoStacks: Map<string, Mutation[]>, redoStacks: Map<string, Mutation[]>,
+  batchTags: Map<string, string>, meshTranslations: Map<string, MutationMeshTranslation>,
+  modelId: string, entityId: number,
+) {
+  const undo = undoStacks.get(modelId) ?? [];
+  const redo = redoStacks.get(modelId) ?? [];
+  const nextUndo = undo.filter((m) => m.entityId !== entityId);
+  const nextRedo = redo.filter((m) => m.entityId !== entityId);
+  if (nextUndo.length === undo.length && nextRedo.length === redo.length) return {};
 
-/** A zustand `set()` patch dropping `entityId`'s entries from `modelId`'s redo
- * stack, or `{}` (no-op) if nothing changed. */
-export function invalidateRedoPatch(
-  redoStacks: Map<string, Mutation[]>, modelId: string, entityId: number,
-): { redoStacks?: Map<string, Mutation[]> } {
-  const current = redoStacks.get(modelId);
-  if (!current || current.length === 0) return {};
-  const filtered = current.filter((m) => m.entityId !== entityId);
-  return filtered.length === current.length ? {} : { redoStacks: new Map(redoStacks).set(modelId, filtered) };
+  const removed = [...undo, ...redo].filter((m) => m.entityId === entityId);
+  const nextTags = new Map(batchTags);
+  const nextTranslations = new Map(meshTranslations);
+  for (const mutation of removed) {
+    nextTags.delete(mutation.id);
+    nextTranslations.delete(mutation.id);
+  }
+  return {
+    undoStacks: new Map(undoStacks).set(modelId, nextUndo),
+    redoStacks: new Map(redoStacks).set(modelId, nextRedo),
+    mutationBatchTags: nextTags,
+    mutationMeshTranslations: nextTranslations,
+    collabGeometryNotice: 'A collaborator changed an element. Its local undo and redo history was cleared.',
+  };
 }
 
-/** CREATE_ENTITY/DELETE_ENTITY are exempt: they ARE the entity's own
- * lifecycle transition and must run regardless of tombstone state. */
+/** Lifecycle mutations are allowed to cross a tombstone; other writes are not. */
 export function isTargetTombstoned(view: MutablePropertyView, mutation: Mutation): boolean {
   return mutation.type !== 'CREATE_ENTITY'
     && mutation.type !== 'DELETE_ENTITY'

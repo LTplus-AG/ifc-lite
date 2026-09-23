@@ -2,26 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * github.com/LTplus-AG/ifc-lite/issues/5223: "Redo silently overwrites a
- * collaborator's edit with a stale local value."
- *
- * Repro shape (from the issue, executed here with a real, stateful
- * `MutablePropertyView` and the real `createMutationSlice`, not a spy):
- * set a property A -> B locally, undo it (B's mutation sits on the redo
- * stack), apply the write a remote peer's collab handler would make to the
- * SAME field, then redo — the peer's value must survive.
- *
- * `collabSlice.ts`'s `onProperty`/`onPropertyDelete`/`onPsetDelete`/
- * `onAttribute`/`onPlacement`/`onEntityDelete` handlers now each call
- * `invalidateRedoForEntity(modelId, entityId)` right after applying the
- * inbound write — this file exercises that mechanism directly (the
- * handlers themselves need a live `CollabSession`/`CollabDocApi` to
- * construct, which is why `collabSlice.gates.test.ts` also stops at the
- * synchronous surface and documents the async half as uncovered).
- * `remoteWrite()` below stands in for "the collab handler ran": it does
- * exactly what each handler does — write the view, then invalidate.
- */
+/** #5223: peer writes invalidate queued local undo and redo for that entity.
+ * Use a real mutation view and slice so replay writes remain observable. */
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -75,16 +57,41 @@ function buildSlice() {
 
 /** Stands in for what a `collabSlice` remote-apply handler does: write the
  * room model's view directly (no local undo, no echo — collabSlice.ts's
- * documented contract), then invalidate any queued redo for that entity. */
+ * documented contract), then invalidate queued local history for that entity. */
 function remoteApplyProperty(
   s: ViewerState & MutationSlice, view: MutablePropertyView,
   entityId: number, pset: string, prop: string, value: string,
 ) {
   view.setProperty(entityId, pset, prop, value, PropertyValueType.String);
-  s.invalidateRedoForEntity(MODEL, entityId);
+  s.invalidateHistoryForEntity(MODEL, entityId);
 }
 
 describe('redo vs. an inbound remote edit (#5223)', () => {
+  it('undo must not overwrite a newer peer property write, and reports the conflict', () => {
+    const { view, state } = buildSlice();
+    state().setProperty(MODEL, 1, 'Pset_Test', 'P', 'B');
+    assert.equal(state().canUndo(MODEL), true);
+
+    remoteApplyProperty(state(), view, 1, 'Pset_Test', 'P', 'REMOTE');
+    assert.equal(state().canUndo(MODEL), false);
+    assert.match(state().collabGeometryNotice ?? '', /local undo and redo history was cleared/);
+    state().undo(MODEL);
+    assert.equal(view.getPropertyValue(1, 'Pset_Test', 'P'), 'REMOTE');
+  });
+
+  it('clears mutation-keyed batch and mesh metadata with invalidated history', () => {
+    const { view, state } = buildSlice();
+    state().setProperty(MODEL, 1, 'Pset_Test', 'P', 'B');
+    const mutation = state().undoStacks.get(MODEL)?.[0];
+    assert.ok(mutation);
+    state().mutationBatchTags.set(mutation.id, 'batch');
+    state().mutationMeshTranslations.set(mutation.id, { globalId: 1, rendererDelta: [1, 0, 0] });
+
+    remoteApplyProperty(state(), view, 1, 'Pset_Test', 'P', 'REMOTE');
+    assert.equal(state().mutationBatchTags.has(mutation.id), false);
+    assert.equal(state().mutationMeshTranslations.has(mutation.id), false);
+  });
+
   it('RED/GREEN: redo must not overwrite a peer property write with the stale local value', () => {
     const { view, state } = buildSlice();
     let s = state();
@@ -116,7 +123,7 @@ describe('redo vs. an inbound remote edit (#5223)', () => {
 
     // What the collab `onAttribute` handler does: write, then invalidate.
     view.setAttribute(1, 'Name', 'peer-name');
-    state().invalidateRedoForEntity(MODEL, 1);
+    state().invalidateHistoryForEntity(MODEL, 1);
     assert.equal(attrOf(), 'peer-name', 'peer write landed');
 
     s = state();

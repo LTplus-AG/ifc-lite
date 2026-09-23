@@ -34,7 +34,6 @@ import {
   SEED_ORIGIN,
   assertSchemaInvariants,
   metaMap,
-  overlayTombstonesMap,
 } from '../doc/schema.js';
 import { inflateStructuredAttributes } from './structured-attrs.js';
 import type { ModelSlotRef } from '../doc/model-slot.js';
@@ -95,7 +94,7 @@ export function seedFromIfcx(doc: Y.Doc, input: IfcxInput, opts: SeedOptions = {
       // Overlay tombstones describe deletions in the discarded entity
       // universe; retaining them would block a same-path entity in this
       // freshly seeded snapshot.
-      clearOverlayTombstones(meta, overlayTombstonesMap(doc));
+      clearOverlayTombstones(doc);
     }
 
     // Stash file-level metadata so we can re-emit it during snapshotting —
@@ -296,8 +295,7 @@ export function applyIfcxOverlay(
     if (file.imports) meta.set('imports', file.imports);
     if (file.schemas) meta.set('schemas', file.schemas);
 
-    const registry = overlayTombstonesMap(doc);
-    const tombstonesFromEarlierCalls = readOverlayTombstones(meta, registry);
+    const tombstonesFromEarlierCalls = readOverlayTombstones(doc);
 
     // Composition resolves `ifclite::deleted` after every node in the
     // layer has been applied — the strongest (last) opinion wins — so a
@@ -322,7 +320,7 @@ export function applyIfcxOverlay(
       // Per-path write: two concurrent calls tombstoning different paths
       // now touch different registry keys and both survive the merge
       // (see overlay-tombstones.ts module doc).
-      writeOverlayTombstone(registry, path, deleted);
+      writeOverlayTombstone(doc, path, deleted);
     }
   }, opts.origin ?? SEED_ORIGIN);
 

@@ -33,14 +33,9 @@ export const TOP = {
    */
   MODELS: 'models',
   /**
-   * Per-path overlay-tombstone registry (`snapshot/overlay-tombstones.ts`):
-   * `path → boolean`, one Y.Map key per path rather than one blob key
-   * inside `META`. A root-level shared type name is looked up by name and
-   * structurally merged by Yjs, not stored as an LWW value under a parent
-   * map key, so two peers can both call `doc.getMap(OVERLAY_TOMBSTONES)`
-   * concurrently and land on the same shared instance — unlike a nested
-   * `Y.Map` lazily created under a `META` key, which would race the same
-   * way the old single-blob storage did.
+   * Per-path overlay-tombstone registry (`path → boolean`), owned by
+   * `snapshot/overlay-tombstones.ts`. Root-level, not nested under `META`,
+   * so concurrent peers merge into one map instead of racing (#5219).
    */
   OVERLAY_TOMBSTONES: 'overlay.tombstones.registry',
 } as const;
@@ -204,10 +199,6 @@ export function metaMap(doc: Y.Doc): Y.Map<unknown> {
 
 export function modelsMap(doc: Y.Doc): Y.Map<unknown> {
   return doc.getMap(TOP.MODELS);
-}
-
-export function overlayTombstonesMap(doc: Y.Doc): Y.Map<boolean> {
-  return doc.getMap(TOP.OVERLAY_TOMBSTONES) as Y.Map<boolean>;
 }
 
 /**

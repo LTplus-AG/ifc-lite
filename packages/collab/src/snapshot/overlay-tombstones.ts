@@ -17,7 +17,7 @@
  * revives it. See `test/apply-ifcx-overlay.test.ts`.
  *
  * Storage: one entry per path in a dedicated top-level `Y.Map`
- * (`overlayTombstonesMap`, see `doc/schema.ts`), value `true` (tombstoned)
+ * (`TOP.OVERLAY_TOMBSTONES`, see `doc/schema.ts`), value `true` (tombstoned)
  * or `false` (explicitly revived). Two concurrent `applyIfcxOverlay` calls
  * that tombstone *different* paths now touch different map keys and both
  * survive the merge; only two calls opining on the *same* path race, which
@@ -46,8 +46,20 @@
  */
 
 import type * as Y from 'yjs';
+import { TOP, metaMap } from '../doc/schema.js';
 
 const OVERLAY_TOMBSTONES_META_KEY = 'overlay.tombstonedPaths';
+
+/**
+ * The per-path registry. A ROOT-level shared type on purpose: Yjs looks a
+ * root type up by name and merges it structurally, so two peers that both
+ * create it concurrently land on one map. A `Y.Map` nested under a `meta`
+ * key would be an LWW value that merely looks structural — two peers each
+ * lazily creating it would race exactly like the old single array did.
+ */
+function registry(doc: Y.Doc): Y.Map<boolean> {
+  return doc.getMap<boolean>(TOP.OVERLAY_TOMBSTONES);
+}
 
 /**
  * Read the effective set of paths a previous `applyIfcxOverlay` call left
@@ -55,13 +67,13 @@ const OVERLAY_TOMBSTONES_META_KEY = 'overlay.tombstonedPaths';
  * merged with the per-path registry, where a per-path entry always wins
  * over the legacy array for that path.
  */
-export function readOverlayTombstones(meta: Y.Map<unknown>, registry: Y.Map<boolean>): Set<string> {
+export function readOverlayTombstones(doc: Y.Doc): Set<string> {
   const tombstones = new Set<string>();
-  const legacy = meta.get(OVERLAY_TOMBSTONES_META_KEY);
+  const legacy = metaMap(doc).get(OVERLAY_TOMBSTONES_META_KEY);
   if (Array.isArray(legacy)) {
     for (const path of legacy as string[]) tombstones.add(path);
   }
-  registry.forEach((tombstoned, path) => {
+  registry(doc).forEach((tombstoned, path) => {
     if (tombstoned) tombstones.add(path);
     else tombstones.delete(path);
   });
@@ -78,15 +90,15 @@ export function readOverlayTombstones(meta: Y.Map<unknown>, registry: Y.Map<bool
  * one path per call to the registry instead of read-modify-writing one
  * blob for every path it knows about.
  */
-export function writeOverlayTombstone(registry: Y.Map<boolean>, path: string, deleted: boolean): void {
-  registry.set(path, deleted);
+export function writeOverlayTombstone(doc: Y.Doc, path: string, deleted: boolean): void {
+  registry(doc).set(path, deleted);
 }
 
 /** A snapshot reset starts a new entity universe, so prior overlay deletions
  * must not suppress a legitimate path in the freshly seeded snapshot. */
-export function clearOverlayTombstones(meta: Y.Map<unknown>, registry: Y.Map<boolean>): void {
-  meta.delete(OVERLAY_TOMBSTONES_META_KEY);
-  registry.clear();
+export function clearOverlayTombstones(doc: Y.Doc): void {
+  metaMap(doc).delete(OVERLAY_TOMBSTONES_META_KEY);
+  registry(doc).clear();
 }
 
 /**

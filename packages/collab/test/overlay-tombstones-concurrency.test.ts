@@ -36,6 +36,7 @@ function layer(data: IfcxFile['data']): IfcxFile {
       author: 'test',
       timestamp: '2020-01-01T00:00:00Z',
     },
+    imports: [],
     schemas: {},
     data,
   };

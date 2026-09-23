@@ -195,3 +195,15 @@ fn rmf_no_duplicates_matches_pre_fix_geometry() {
     assert!((positions[1] as f64 - expected.y).abs() < 1e-6, "{}", positions[1]);
     assert!((positions[2] as f64 - expected.z).abs() < 1e-6, "{}", positions[2]);
 }
+
+// #5191 review: `build_tube_rmf` has two callers (swept disk and surface-curve
+// sweeps), so the gate that keeps NaN out of the frame is a shared helper.
+#[test]
+fn directrix_gate_refuses_non_finite_and_empty_extent() {
+    let p = |x: f64| Point3::new(x, 0.0, 0.0);
+    assert!(directrix_is_sweepable(&[p(0.0), p(f64::NAN)]).is_err());
+    assert!(directrix_is_sweepable(&[p(f64::INFINITY), p(1.0)]).is_err());
+    assert!(!directrix_is_sweepable(&[p(0.0), p(0.0), p(0.0)]).unwrap());
+    assert!(!directrix_is_sweepable(&[p(0.0)]).unwrap());
+    assert!(directrix_is_sweepable(&[p(0.0), p(0.0), p(1.0)]).unwrap());
+}

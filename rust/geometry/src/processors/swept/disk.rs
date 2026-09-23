@@ -14,6 +14,17 @@ use crate::router::GeometryProcessor;
 /// tangent purposes: their difference has no usable direction (#5191).
 const TUBE_DEDUPE_EPS: f64 = 1e-9;
 
+/// Gate every directrix before `build_tube_rmf` (#5191). A non-finite sample
+/// is a load error: it would put NaN into every frame the RMF propagates to.
+/// Fewer than two distinct samples (including all-coincident, which would
+/// otherwise fabricate a flat disc from the end caps) sweeps nothing.
+pub(crate) fn directrix_is_sweepable(points: &[Point3<f64>]) -> Result<bool> {
+    if points.iter().any(|p| !(p.x.is_finite() && p.y.is_finite() && p.z.is_finite())) {
+        return Err(Error::geometry("swept solid directrix has a non-finite coordinate".to_string()));
+    }
+    Ok(points.iter().any(|p| (p - points[0]).norm() >= TUBE_DEDUPE_EPS))
+}
+
 /// Build a rotation-minimising frame (RMF) for sweeping a circular cross-section
 /// along `curve_points`. Returns `(tangents, perp1s, perp2s)`, each of length
 /// `curve_points.len()`.
@@ -27,6 +38,8 @@ const TUBE_DEDUPE_EPS: f64 = 1e-9;
 /// by rotating it from `tangents[i-1]` onto `tangents[i]` (the minimum rotation
 /// that aligns them). When consecutive tangents are parallel the frame stays
 /// untouched.
+///
+/// Precondition: `curve_points` passed [`directrix_is_sweepable`].
 pub(crate) fn build_tube_rmf(
     curve_points: &[Point3<f64>],
 ) -> (Vec<Vector3<f64>>, Vec<Vector3<f64>>, Vec<Vector3<f64>>) {
@@ -105,7 +118,7 @@ pub(crate) fn build_tube_rmf(
         // NaN-latching hazard (#5191): NaN comparisons are false, so a NaN
         // tangent also reads as "nearly parallel" and freezes a poisoned frame
         // for every later ring. Finite tangents are a precondition, held by the
-        // dedupe above and by `process` refusing non-finite directrix points.
+        // dedupe above and by `directrix_is_sweepable` refusing non-finite points.
         if axis_norm > 1e-9 && cos_a < 1.0 - 1e-12 {
             let axis = axis / axis_norm;
             let sin_a = (1.0 - cos_a * cos_a).max(0.0).sqrt();
@@ -327,28 +340,7 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
                 .get_curve_points(&directrix, decoder, quality)?
         };
 
-        if curve_points.len() < 2 {
-            return Ok(Mesh::new()); // Not enough points
-        }
-        // A non-finite sample would put NaN into every ring the RMF frame
-        // propagates to (#5191: NaN comparisons are always false, so the
-        // frame-refresh guard latches on it). Refuse it as a load error rather
-        // than emit a NaN mesh.
-        if curve_points
-            .iter()
-            .any(|p| !(p.x.is_finite() && p.y.is_finite() && p.z.is_finite()))
-        {
-            return Err(Error::geometry(
-                "SweptDiskSolid directrix has a non-finite coordinate".to_string(),
-            ));
-        }
-        // Every sample coincident (#5191): no direction to sweep along, and
-        // meshing it would fabricate a flat disc from the two end caps. Same
-        // outcome as a directrix with too few points.
-        if curve_points
-            .iter()
-            .all(|p| (p - curve_points[0]).norm() < TUBE_DEDUPE_EPS)
-        {
+        if !directrix_is_sweepable(&curve_points)? {
             return Ok(Mesh::new());
         }
 

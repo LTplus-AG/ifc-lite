@@ -55,7 +55,7 @@ function ownerOf(node) {
       if (ts.isVariableDeclaration(holder) || ts.isPropertyAssignment(holder)) {
         owners.push(holder.name.getText());
       } else if (ts.isCallExpression(holder)) {
-        owners.push(callbackSite(holder));
+        owners.push(`${callbackSite(holder)}:arg${holder.arguments.indexOf(parent)}`);
       } else {
         owners.push('<anonymous>');
       }

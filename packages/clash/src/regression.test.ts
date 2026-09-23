@@ -44,8 +44,7 @@ function makeResult(clashes: Clash[]): ClashResult {
   };
 }
 
-function boxElement(key: string, tag: string, cx: number): ClashElement {
-  const h = 0.5;
+function boxElement(key: string, tag: string, cx: number, h = 0.5): ClashElement {
   const v = [
     cx - h, -h, -h, cx + h, -h, -h, cx + h, h, -h, cx - h, h, -h,
     cx - h, -h, h, cx + h, -h, h, cx + h, h, h, cx - h, h, h,
@@ -156,5 +155,155 @@ describe('regression: self-clash skips same-key (same-entity) pairs', () => {
       { id: 'self', name: 'wall self-clash', a: 'IfcWall', mode: 'hard' },
     ]);
     expect(result.summary.total).toBe(0);
+  });
+});
+
+/**
+ * A "dumbbell" element: two tiny, far-apart triangles that together give a
+ * wide AABB — the AABB overlaps a target while neither triangle does. Models
+ * one sub-prim of a split entity that is a broad-phase false positive.
+ */
+function dumbbellElement(key: string, tag: string, cxNear: number, cxFar: number): ClashElement {
+  const eps = 0.01;
+  const positions = new Float32Array([
+    cxNear, 0, 0, cxNear + eps, 0, 0, cxNear, eps, 0,
+    cxFar, 0, 0, cxFar + eps, 0, 0, cxFar, eps, 0,
+  ]);
+  const indices = new Uint32Array([0, 1, 2, 3, 4, 5]);
+  // Bounds padded by a fixed 0.05 margin around the two triangle centers
+  // (NOT the triangles' own eps-sized extent) — matching the issue's own
+  // executed repro bit-for-bit ([0.45, 20.55] for cxNear=0.5, cxFar=20.5).
+  // This is deliberately exact: the broad-phase BVH's traversal/hit order
+  // for two same-sized candidate leaves is sensitive to their bounds at the
+  // float level, and reproducing the issue's order-dependence reliably
+  // depends on matching its geometry, not just its shape.
+  const margin = 0.05;
+  return {
+    key, ref: refFromKey(key), model: 'm', tag, positions, indices,
+    bounds: { min: [cxNear - margin, -margin, -margin], max: [cxFar + margin, margin, margin] },
+  };
+}
+
+describe('regression: cross-group broad-phase dedup does not drop a real clash (#5194)', () => {
+  // Numbers match the issue's own executed repro exactly:
+  // B: box at x=10, half-extent 1 -> spans [9, 11].
+  // A2: box at x=10.5, half-extent 1 -> genuinely interpenetrates B.
+  // A1: dumbbell whose AABB spans ~[0.45, 20.55] and overlaps B, but whose
+  // actual triangles (near x=0.5 and x=20.5) are nowhere near B — an ordinary
+  // broad-phase false positive the narrow phase correctly rejects alone.
+  // A1 and A2 share one key: one entity split across sub-prims.
+  function buildElements() {
+    const b = boxElement('B', 'IfcBeam', 10, 1);
+    const a1 = dumbbellElement('A', 'IfcWall', 0.5, 20.5);
+    const a2 = boxElement('A', 'IfcWall', 10.5, 1);
+    return { a1, a2, b };
+  }
+
+  it('sanity: the dumbbell alone does not clash with B', async () => {
+    const { a1, b } = buildElements();
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run([a1, b], [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }]);
+    expect(result.summary.total).toBe(0);
+  });
+
+  it('sanity: the genuinely-overlapping submesh alone clashes with B', async () => {
+    const { a2, b } = buildElements();
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run([a2, b], [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }]);
+    expect(result.summary.total).toBe(1);
+    expect(result.clashes[0].status).toBe('hard');
+  });
+
+  it('reports the clash regardless of element order — [A1, A2, B]', async () => {
+    const { a1, a2, b } = buildElements();
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run([a1, a2, b], [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }]);
+    expect(result.summary.total).toBe(1);
+    expect(result.clashes[0].status).toBe('hard');
+  });
+
+  it('reports the clash regardless of element order — [A2, A1, B]', async () => {
+    const { a1, a2, b } = buildElements();
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run([a2, a1, b], [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }]);
+    expect(result.summary.total).toBe(1);
+    expect(result.clashes[0].status).toBe('hard');
+  });
+});
+
+describe('regression: cross-group entity dedup still reports one record per pair (no-regression pin)', () => {
+  // B: box at x=10, half-extent 0.5 -> spans [9.5, 10.5].
+  // aShallow: box at x=9.6, half-extent 0.5 -> spans [9.1, 10.1]; overlap
+  // with B is [9.5, 10.1], a 0.6 m penetration.
+  // aDeep: box at x=10.05, half-extent 0.5 -> spans [9.55, 10.55]; overlap
+  // with B is [9.55, 10.5], a 0.95 m penetration — the more severe of the
+  // two. Deliberately at a HIGHER x than aShallow (not lower): the broad
+  // phase's BVH traverses candidates by spatial position, not by insertion
+  // order, so a fixture where "more severe" also happened to mean "lower x"
+  // would pass under a naive first-wins dedup by spatial coincidence, not
+  // because severity was actually being compared.
+  // Both share key "A": one entity, two sub-prims, BOTH genuinely clash with
+  // B at different depths. Removing the pre-narrow broad-phase dedup must
+  // not turn this into two reported clashes, and the survivor must be
+  // decided by severity, not by which element the caller listed first or by
+  // spatial traversal order.
+  function buildElements() {
+    const b = boxElement('B', 'IfcBeam', 10);
+    const aShallow = boxElement('A', 'IfcWall', 9.6);
+    const aDeep = boxElement('A', 'IfcWall', 10.05);
+    return { aShallow, aDeep, b };
+  }
+
+  async function singleDistance(a: ClashElement, b: ClashElement) {
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run([a, b], [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }]);
+    return result.clashes[0]?.distance;
+  }
+
+  it('keeps the deeper submesh when the SHALLOWER one is listed first', async () => {
+    const { aShallow, aDeep, b } = buildElements();
+    const shallowDistance = await singleDistance(aShallow, b);
+    const deepDistance = await singleDistance(aDeep, b);
+    expect(shallowDistance).toBeDefined();
+    expect(deepDistance).toBeDefined();
+    // Sanity on the fixture itself (hard-clash `distance` is the signed
+    // penetration depth, negative — more negative is deeper).
+    expect(deepDistance!).toBeLessThan(shallowDistance!);
+
+    const engine = createClashEngine({ backend: 'ts' });
+    // aShallow listed BEFORE aDeep: a first-wins dedup would wrongly keep
+    // the shallower record.
+    const result = await engine.run(
+      [aShallow, aDeep, b],
+      [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }],
+    );
+    expect(result.summary.total).toBe(1);
+    expect(result.clashes[0].status).toBe('hard');
+    expect(result.clashes[0].distance).toBe(deepDistance);
+  });
+
+  it('keeps the deeper submesh when the DEEPER one is listed first', async () => {
+    const { aShallow, aDeep, b } = buildElements();
+    const deepDistance = await singleDistance(aDeep, b);
+
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run(
+      [aDeep, aShallow, b],
+      [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }],
+    );
+    expect(result.summary.total).toBe(1);
+    expect(result.clashes[0].status).toBe('hard');
+    expect(result.clashes[0].distance).toBe(deepDistance);
+  });
+});
+
+describe('regression: ordinary cross-group two-element detection is unchanged', () => {
+  it('still reports exactly one clash for a plain A-vs-B overlap', async () => {
+    const a = boxElement('A', 'IfcWall', 0);
+    const b = boxElement('B', 'IfcDuctSegment', 0.6);
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run([a, b], [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard' }]);
+    expect(result.summary.total).toBe(1);
+    expect(result.clashes[0].status).toBe('hard');
   });
 });

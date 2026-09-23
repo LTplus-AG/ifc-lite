@@ -144,7 +144,8 @@ export function RequirementEditor({ requirement, onChange, models, schemaVersion
             onChange={(e) => onChange({ ...requirement, unit: e.target.value })}
             placeholder={t('validationEditor.unit.unitPlaceholder')}
             aria-label={t('validationEditor.unit.unitAriaLabel')}
-            className="h-7 w-20 text-xs font-mono"
+            aria-invalid={requirement.unit.trim().length === 0}
+            className={`h-7 w-20 text-xs font-mono ${requirement.unit.trim().length === 0 ? 'border-red-500' : ''}`}
           />
         </div>
       )}

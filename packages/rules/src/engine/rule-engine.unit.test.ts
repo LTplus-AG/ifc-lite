@@ -137,6 +137,14 @@ describe('unit requirement (#5300)', () => {
     }
   });
 
+  it('a blank unit is reported as the rule\'s error, not as every element failing (review, #5306)', async () => {
+    const store = await parse();
+    const report = await runRuleSet({ ruleSet: unitRule({ kind: 'unit', subject: width, unit: '  ' }), models: [{ id: 'm1', store }] });
+    const [spec] = report.specificationResults;
+    assert.equal(spec.error, 'the unit requirement names no unit');
+    assert.equal(spec.entityResults.length, 0);
+  });
+
   it('is case-sensitive about the unit itself (mm is not Mm)', async () => {
     const { byName } = await verdicts({ kind: 'unit', subject: width, unit: 'MM' });
     assert.equal(byName['Wall A'].passed, false);

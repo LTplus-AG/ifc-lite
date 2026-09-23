@@ -45,6 +45,9 @@ export async function checkUnit(
   onProgress: ((p: RuleEngineProgress) => void) | undefined,
 ): Promise<{ entityResults: EntityResult[] }> {
   const wanted = normalizeUnitSymbol(requirement.unit);
+  // A blank unit is an unfinished rule, not a check every element fails:
+  // report it as the rule's error (`rule-engine.ts`'s per-rule guard).
+  if (wanted.length === 0) throw new Error('the unit requirement names no unit');
   const label = `${describeSubject(requirement.subject)} recorded in ${wanted}`;
   const facetType = requirement.subject.kind;
   const entityResults: EntityResult[] = [];
@@ -65,7 +68,8 @@ export async function checkUnit(
         .map((value, index) => ({ value: String(value), unit: subject.valueUnits?.[index] }))
         .filter((v) => v.value.trim().length > 0);
       actual = recorded.map((v) => `${v.value} ${unitLabel(v.unit)}`).join('; ');
-      passed = recorded.every((v) => v.unit !== undefined && normalizeUnitSymbol(v.unit) === wanted);
+      passed = recorded.length > 0
+        && recorded.every((v) => v.unit !== undefined && normalizeUnitSymbol(v.unit) === wanted);
       reason = passed ? undefined : 'mismatch';
     } else {
       reason = 'absent';

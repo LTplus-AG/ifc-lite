@@ -21,6 +21,22 @@ function creator4x3(): IfcCreator {
   return new IfcCreator({ Name: 'Terrain Test', Schema: 'IFC4X3' });
 }
 
+/**
+ * Enter through the creator's public seam, asserting the seam itself first.
+ *
+ * Two reasons this is a function rather than a bare `creator.terrain()` at
+ * each call site. It states, once, that `terrain()` is the only supported way
+ * in — the emitters are not exported for direct use. And when the accessor is
+ * absent it fails with that sentence instead of a bare
+ * `TypeError: creator.terrain is not a function`, which reads as a broken test
+ * rather than as the missing API it actually is.
+ */
+function terrainOf(creator: IfcCreator): ReturnType<IfcCreator['terrain']> {
+  const seam = (creator as { terrain?: unknown }).terrain;
+  expect(typeof seam, 'IfcCreator.terrain() is the seam these tests enter through').toBe('function');
+  return creator.terrain();
+}
+
 /** A small, valid TIN: a unit-ish square split into two triangles. */
 const SQUARE_SURFACE: TerrainSurfaceParams = {
   Name: 'Existing Ground',
@@ -91,7 +107,7 @@ function flagsOf(content: string, tinId: number): number[] {
 describe('IfcCreator.terrain()', () => {
   it('writes a terrain surface as CartesianPointList3D -> TriangulatedIrregularNetwork -> ShapeRepresentation(Body,Tessellation) -> ProductDefinitionShape -> GeographicElement/.TERRAIN.', () => {
     const creator = creator4x3();
-    const { elementId, tinId, coordinateListId } = creator.terrain().addSurface(SQUARE_SURFACE);
+    const { elementId, tinId, coordinateListId } = terrainOf(creator).addSurface(SQUARE_SURFACE);
     const { content } = creator.toIfc();
 
     expect(fullLine(content, coordinateListId)).toBe(
@@ -117,7 +133,7 @@ describe('IfcCreator.terrain()', () => {
 
   it('writes Closed as the literal .F., not $ — NotClosed : Closed = FALSE fails open on $', () => {
     const creator = creator4x3();
-    const { tinId } = creator.terrain().addSurface(SQUARE_SURFACE);
+    const { tinId } = terrainOf(creator).addSurface(SQUARE_SURFACE);
     const { content } = creator.toIfc();
 
     // Attribute order: Coordinates, Normals, Closed, CoordIndex, PnIndex, Flags.
@@ -129,7 +145,7 @@ describe('IfcCreator.terrain()', () => {
 
   it('Flags is non-empty by default, a supplied Flags is written verbatim, and invalid Flags throw', () => {
     const creator = creator4x3();
-    const writer = creator.terrain();
+    const writer = terrainOf(creator);
 
     const defaultSurface = writer.addSurface(SQUARE_SURFACE);
     const customSurface = writer.addSurface({ ...SQUARE_SURFACE, Flags: [3, 7] });
@@ -146,7 +162,7 @@ describe('IfcCreator.terrain()', () => {
 
   it('writes CoordIndex 1-based and verbatim from Triangles', () => {
     const creator = creator4x3();
-    const { tinId, coordinateListId } = creator.terrain().addSurface({
+    const { tinId, coordinateListId } = terrainOf(creator).addSurface({
       Name: 'Distinct Vertices',
       Coordinates: [
         [111, 211, 1],
@@ -169,7 +185,7 @@ describe('IfcCreator.terrain()', () => {
 
   it('rejects invalid surface input with a message naming the violated constraint', () => {
     const creator = creator4x3();
-    const writer = creator.terrain();
+    const writer = terrainOf(creator);
     const valid = SQUARE_SURFACE;
 
     expect(() => writer.addSurface({ ...valid, Coordinates: [] }))
@@ -190,7 +206,7 @@ describe('IfcCreator.terrain()', () => {
 
   it('contains terrain and survey products in the site, not a storey', () => {
     const creator = creator4x3();
-    const writer = creator.terrain();
+    const writer = terrainOf(creator);
     const { elementId } = writer.addSurface(SQUARE_SURFACE);
     const surveyId = writer.addSurveyPoint({ Name: 'CP1', Location: [1, 2, 3] });
     const { content } = creator.toIfc();
@@ -212,7 +228,7 @@ describe('IfcCreator.terrain()', () => {
 
   it('writes a survey point as IfcAnnotation/.SURVEY. with the coordinate in the placement, not the representation', () => {
     const creator = creator4x3();
-    const surveyId = creator.terrain().addSurveyPoint({ Name: 'CP7', Location: [123.4, 567.8, 9.1] });
+    const surveyId = terrainOf(creator).addSurveyPoint({ Name: 'CP7', Location: [123.4, 567.8, 9.1] });
     const { content } = creator.toIfc();
 
     const annotationLine = fullLine(content, surveyId);
@@ -250,7 +266,7 @@ describe('IfcCreator.terrain()', () => {
 
   it('writes a property set as IfcPropertySet + IfcRelDefinesByProperties, every value as IFCLABEL, preserving a leading zero', () => {
     const creator = creator4x3();
-    const writer = creator.terrain();
+    const writer = terrainOf(creator);
     const surveyId = writer.addSurveyPoint({ Name: 'CP1', Location: [0, 0, 0] });
     const psetId = writer.addPropertySet(surveyId, {
       Name: 'LandXML Attributes',
@@ -283,7 +299,7 @@ describe('IfcCreator.terrain()', () => {
 
   it('setGeoreferencing writes IfcProjectedCRS + IfcMapConversion (SourceCRS = model context, TargetCRS = the projected CRS), defaults MapUnit to the file length unit, refuses a second call, and refuses an empty Name', () => {
     const creator = creator4x3();
-    const writer = creator.terrain();
+    const writer = terrainOf(creator);
     const { crsId, mapConversionId } = writer.setGeoreferencing({
       Name: 'EPSG:2056',
       Eastings: 2600000,
@@ -308,13 +324,13 @@ describe('IfcCreator.terrain()', () => {
     expect(argsOf(content, mapConversionId).startsWith(`#${contextId},#${crsId},`)).toBe(true);
 
     const freshCreator = creator4x3();
-    expect(() => freshCreator.terrain().setGeoreferencing({ Name: '' })).toThrow(/Name is empty/);
+    expect(() => terrainOf(freshCreator).setGeoreferencing({ Name: '' })).toThrow(/Name is empty/);
   });
 
   it('throws on a non-IFC4X3 schema for addSurface, addSurveyPoint and setGeoreferencing, naming the schema', () => {
     for (const schema of ['IFC4', 'IFC2X3'] as const) {
       const creator = new IfcCreator({ Name: 'Wrong Schema', Schema: schema });
-      const writer = creator.terrain();
+      const writer = terrainOf(creator);
       const namesTheSchema = new RegExp(`in ${schema}$`);
 
       expect(() => writer.addSurface(SQUARE_SURFACE)).toThrow(namesTheSchema);

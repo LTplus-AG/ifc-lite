@@ -1,0 +1,12 @@
+{
+  "purpose": "Investigate Holter time/RSS variability; unchanged binary A/A control alongside multipart flat candidate, not a retry replacing prior cohort",
+  "rounds": 10,
+  "order": "rotate A,B,C each round",
+  "A": "/tmp/ifc-cold-41de/decode-probe-base",
+  "B": "/tmp/ifc-cold-41de/decode-probe-base",
+  "C": "/tmp/ifc-cold-41de/multipart-flat-probe-candidate",
+  "hashes": {
+    "/tmp/ifc-cold-41de/decode-probe-base": "e5f0558088d515d55c503a13101d98154dc49e0eb1fce9d4552a829fe2229f03",
+    "/tmp/ifc-cold-41de/multipart-flat-probe-candidate": "08292650a2784a7cf047951fae4770c7fb41c81d7b668a8e29bb8456378b6acf"
+  }
+}

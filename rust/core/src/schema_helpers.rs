@@ -327,6 +327,14 @@ fn compute_is_simple(upper: &str) -> bool {
                 | IfcType::IfcAnnotation
                 | IfcType::IfcVirtualElement
                 | IfcType::IfcBuildingElementProxy
+                // IFC2X3-only keywords the registry parents outside the arms
+                // above (#5180). `IfcProxy` sits on IfcProduct, not on
+                // IfcBuildingElementProxy; `IfcEquipmentElement` sits on
+                // IfcElement although its IFC4 successors are all
+                // IfcDistributionElement subtypes. The retired legacy table
+                // routed them through those two types, so both were deferred.
+                | IfcType::IfcProxy
+                | IfcType::IfcEquipmentElement
         );
 
     !is_secondary

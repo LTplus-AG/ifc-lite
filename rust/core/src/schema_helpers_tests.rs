@@ -178,14 +178,13 @@ fn legacy_keyword_geometry_predicates_match_pre_retirement_intent_5180() {
         );
     }
 
-    // `is_simple_geometry_type` for IFCPROXY and IFCEQUIPMENTELEMENT is
-    // deliberately NOT asserted here. The old table's mapping made both
-    // `false` (deferred geometry batch); the new registry resolution makes
-    // both `true` (eager first-frame batch), and #5180 is open on the
-    // maintainer's call for which behaviour is wanted. Pinning today's
-    // value would freeze a change nobody has approved. Once #5180 is
-    // resolved, add:
-    //
-    //     assert_eq!(is_simple_geometry_type("IFCPROXY"), <ruling>);
-    //     assert_eq!(is_simple_geometry_type("IFCEQUIPMENTELEMENT"), <ruling>);
+    // `is_simple_geometry_type` for IFCPROXY and IFCEQUIPMENTELEMENT: the
+    // retirement flipped both to `true` (eager first-frame batch) with no
+    // decision behind it. The pre-retirement value `false` (deferred, like
+    // IfcBuildingElementProxy and IfcDistributionElement) is the intended one.
+    assert!(!is_simple_geometry_type("IFCPROXY"), "IFCPROXY: is_simple_geometry_type");
+    assert!(
+        !is_simple_geometry_type("IFCEQUIPMENTELEMENT"),
+        "IFCEQUIPMENTELEMENT: is_simple_geometry_type"
+    );
 }

@@ -891,6 +891,35 @@ fn issue_5046_never_fabricates_multi_loop_curve_topology_from_sampled_chords() {
 }
 
 #[test]
+fn issue_5179_sums_outer_and_oppositely_wound_hole_to_a_single_analytic_area() {
+    // Outer ring: 10x10 square, listed counter-clockwise, twice-area = 200
+    // (area 100). Hole: 3x3 square wound the opposite way (clockwise),
+    // twice-area = -18 (area 9). Every reading of the hole/island convention
+    // agrees the combined parcel area is outer - hole = 91, distinguishable
+    // from 100, 109, and any plausible "always add" mis-sum.
+    let parsed = parse(&document(
+        r#"<Parcels><Parcel name="square-with-hole"><CoordGeom>
+          <Line><Start>0 0</Start><End>10 0</End></Line>
+          <Line><Start>10 0</Start><End>10 10</End></Line>
+          <Line><Start>10 10</Start><End>0 10</End></Line>
+          <Line><Start>0 10</Start><End>0 0</End></Line>
+        </CoordGeom><CoordGeom>
+          <Line><Start>2 2</Start><End>2 5</End></Line>
+          <Line><Start>2 5</Start><End>5 5</End></Line>
+          <Line><Start>5 5</Start><End>5 2</End></Line>
+          <Line><Start>5 2</Start><End>2 2</End></Line>
+        </CoordGeom></Parcel></Parcels>"#,
+    ));
+    let probe = parsed.probe_parcel(&parsed.parcels[0]);
+    assert_eq!(probe.state, LandXmlParcelState::Analytic);
+    assert!(
+        (probe.area_in_declared_square_units.expect("combined area") - 91.0).abs() < 1e-9,
+        "outer (100) minus oppositely-wound hole (9) must be 91, got {:?}",
+        probe.area_in_declared_square_units
+    );
+}
+
+#[test]
 fn issue_5046_limits_single_loop_curve_fills_to_an_arc_and_closing_line() {
     let cases = [
         (

@@ -1,0 +1,1 @@
+{"status":"interrupted without verdict","reason":"CPU-bound exhaustive spatial matching; replaced with multiplicity-aware exact oriented triangle matching before the unchanged spatial tolerance fallback","productFailure":false,"observer":"compare-usd-spatial-all.py","replacement":"compare-usd-exact-fast.py"}

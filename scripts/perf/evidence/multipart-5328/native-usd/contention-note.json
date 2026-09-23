@@ -1,0 +1,4 @@
+{
+  "status": "NOT a qualified otherwise-idle cohort",
+  "observation": "An unrelated checkout /tmp/ifc-lite-5249-filter-schema ran Turbo/viewer work during the later rounds. No task-owned build/test overlapped. All original samples retained; do not use these timings to qualify a win or causal regression."
+}

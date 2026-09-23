@@ -1,0 +1,4 @@
+{
+  "status": "aborted early without qualification",
+  "reason": "Unrelated Turbo/viewer work was observed again immediately at launch. Interrupted own observer rather than collecting a knowingly contended timing cohort. Any partial records are retained."
+}

@@ -1956,3 +1956,17 @@ within run variation and target geometry-streaming was flat: no demonstrated
 browser speedup. The adapter was SwiftShader; RSS sampling is a coarse sum of
 owned processes through a fixed post-readiness tail, not cache-settled memory.
 See [evidence and measurement limits](evidence/spline-5321/README.md).
+
+
+## Multipart mapped occurrences: parked (#5328)
+
+An opt-in prototype kept per-source-part identity through canonical production,
+WASM shard recovery and the native USD consumer. Fixture-backed workspace tests,
+strict clippy, real WASM contracts and independent composed-USD geometry checks
+passed. No meaningful complete-load benefit was qualified: native flat Holter
+signals reversed across an A/A-controlled follow-up, native export timings were
+mixed and later overlapped unrelated host work, and a browser timing attempt was
+interrupted for the same contention. Smaller serialized output is not a load
+win. Preserve the rejected source, observer failures, completed functional checks
+and every timing cohort in [the experiment record](evidence/multipart-5328/README.md).
+No runtime change from this prototype ships.

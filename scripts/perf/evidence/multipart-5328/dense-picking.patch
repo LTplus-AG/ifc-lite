@@ -1,0 +1,14 @@
+--- a/scripts/perf/browser-cold-ab.mts
++++ b/scripts/perf/browser-cold-ab.mts
+@@ -350,8 +350,9 @@
+           const renderer = m.r();
+           const canvas = renderer.getCanvas();
+           const rect = canvas.getBoundingClientRect();
+-          for (const fy of [0.5,0.4,0.6,0.3,0.7]) {
+-            for (const fx of [0.5,0.4,0.6,0.3,0.7]) {
++          const samples=[0.5,...Array.from({length:15},(_,i)=>[0.5-(i+1)*0.02,0.5+(i+1)*0.02]).flat()];
++          for (const fy of samples) {
++            for (const fx of samples) {
+               const x=rect.width*fx, y=rect.height*fy;
+               const hit = await renderer.pick(x,y);
+               if (hit && hit.expressId > 0) return {hit,x:rect.left+x,y:rect.top+y};

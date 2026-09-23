@@ -34,7 +34,7 @@ it('publishes spatial queries at the moved position and prevents a late source b
   const s = useViewerStore.getState();
   s.openReposition(['m']); s.previewModelTranslation([10, 20, 30]); s.applyModelTranslation();
   invalidateSpatialIndex(data);
-  await Promise.resolve();
+  await new Promise<void>(resolve => setTimeout(resolve, 0));
   assert.equal(data.spatialIndex, undefined, 'completion of the old build cannot republish source coordinates');
   buildSpatialIndexForModel([mesh], 'm', data);
   const index = await waitForPublication(

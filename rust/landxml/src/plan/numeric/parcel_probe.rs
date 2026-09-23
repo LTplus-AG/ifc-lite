@@ -5,7 +5,7 @@
 use super::{
     measure::{finite_measure, finite_sum},
     parcel_measure::probe_loop,
-    topology::segments_intersect,
+    topology::{point_in_loop, segments_intersect},
     LandXmlParcel, LandXmlParcelProbe, LandXmlParcelState, LandXmlPlanDocument,
     LandXmlPlanGeometry, LandXmlPlanPoint, LandXmlPlanPointLocation, LandXmlPlanResolver,
     ParcelProbeWork,
@@ -221,7 +221,8 @@ fn probe_parcel_with_work<W: ParcelProbeWork>(
         return Ok(preserved(parcel, "multi-loop boundary with curves"));
     }
     let mut perimeter = 0.0;
-    let mut twice_area = 0.0;
+    // Per loop: |twice signed area| and its edge range in `all_segments`.
+    let mut loop_areas = Vec::with_capacity(parcel.loops.len());
     let mut all_segments = Vec::new();
     for loop_geometry in &parcel.loops {
         if !supports_analytic_curve_loop(loop_geometry) {
@@ -234,16 +235,36 @@ fn probe_parcel_with_work<W: ParcelProbeWork>(
             return Ok(preserved(parcel, "self-intersecting boundary"));
         }
         perimeter = finite_sum(perimeter, loop_probe.perimeter)?;
-        twice_area = finite_sum(twice_area, loop_probe.twice_area)?;
         if segments_intersect(&all_segments, &loop_probe.segments, work)? {
             return Ok(preserved(parcel, "cross-loop or retraced boundary"));
         }
+        let start = all_segments.len();
         all_segments.extend(loop_probe.segments);
+        loop_areas.push((loop_probe.twice_area.abs(), start..all_segments.len()));
     }
     if parcel.loops.is_empty() {
         return Ok(preserved(parcel, "missing CoordGeom boundary"));
     }
-    if twice_area == 0.0 {
+    // #5179 (maintainer ruling): winding carries no meaning for parcel loops.
+    // Loops cannot cross or touch (checked above), so each lies wholly inside
+    // or outside every other. A loop nested inside an odd number of the
+    // parcel's other loops is a hole; every other loop is a filled part, so
+    // disjoint loops add whatever their winding.
+    let mut twice_area = 0.0;
+    for (index, (area, range)) in loop_areas.iter().enumerate() {
+        let probe_point = all_segments[range.start].0;
+        let mut is_hole = false;
+        for (other_index, (_, other)) in loop_areas.iter().enumerate() {
+            if other_index != index
+                && point_in_loop(probe_point, &all_segments[other.clone()], work)?
+            {
+                is_hole = !is_hole;
+            }
+        }
+        let signed = if is_hole { -*area } else { *area };
+        twice_area = finite_sum(twice_area, signed)?;
+    }
+    if twice_area <= 0.0 {
         return Ok(preserved(parcel, "zero-area boundary"));
     }
     let coordinate_area = finite_measure(twice_area.abs() * 0.5)?;

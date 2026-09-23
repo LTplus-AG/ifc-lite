@@ -124,3 +124,26 @@ pub(super) fn on_segment(
         && point.easting >= start.easting.min(end.easting) - EPSILON
         && point.easting <= start.easting.max(end.easting) + EPSILON
 }
+
+/// Even-odd ray cast (+easting) of `point` against a closed straight-edged
+/// loop (#5179). Callers guarantee `point` is not on the loop: parcel loops
+/// never touch, so a vertex of one lies strictly inside or outside another.
+pub(super) fn point_in_loop<W: ParcelProbeWork>(
+    point: LandXmlPlanPoint,
+    segments: &[(LandXmlPlanPoint, LandXmlPlanPoint)],
+    budget: &mut W,
+) -> std::result::Result<bool, crate::LandXmlError> {
+    let mut inside = false;
+    for (a, b) in segments {
+        budget.check()?;
+        if (a.northing > point.northing) != (b.northing > point.northing) {
+            let crossing = a.easting
+                + (point.northing - a.northing) * (b.easting - a.easting)
+                    / (b.northing - a.northing);
+            if point.easting < crossing {
+                inside = !inside;
+            }
+        }
+    }
+    Ok(inside)
+}

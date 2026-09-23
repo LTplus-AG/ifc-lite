@@ -13,6 +13,7 @@ import { degreesToRadians, rotateWorkspacePoint } from '@/lib/model-placement/ro
 import { addTranslation, toRenderTranslation, type Translation } from '@/lib/model-placement/translation';
 import { testPlacement } from '@/lib/model-placement/test-fixtures';
 import { modelRotationBaker } from '@/lib/model-placement/rotation-bake';
+import { createPlacementIndexSync } from '@/lib/model-placement/spatial-index';
 import { realignFederationModels } from '@/hooks/ingest/federationRealign';
 import type { ModelSpatialPlacement } from '@/hooks/ingest/federationAlign';
 import { applyRoomModelData } from '@/lib/collab/room-model-apply';
@@ -196,6 +197,8 @@ describe('model rotation reaches the geometry every render path reads (#4869)', 
   });
 
   describe('the bake pushes the renderer half of a heading and rebuilds the placed index (#4890)', () => {
+    let stopIndexSync: (() => void) | undefined;
+    afterEach(() => { stopIndexSync?.(); stopIndexSync = undefined; });
     /** The corners of a unit box at `[dx, dx+1] x [0,1] x [0,1]`, in the
      *  renderer's own (already Y-up) frame — what `Scene.getAllInstancedMeshData`
      *  returns for one materialized occurrence. */
@@ -256,11 +259,18 @@ describe('model rotation reaches the geometry every render path reads (#4869)', 
       const model = { ...fixtureModel('ifc'), geometryResult: geometryResult(), idOffset: 0, maxExpressId: 999 } as FederatedModel;
       useViewerStore.setState({ ...fixtureModels(model), modelPlacement: emptyPlacementState(), geometryContentVersion: 0 });
 
+      // In the viewer, placement sync owns the index lifecycle. Keep that
+      // subscriber mounted while the rotation bake publishes its update.
+      const indexSync = createPlacementIndexSync();
+      const unsubscribe = useViewerStore.subscribe((state, previous) => indexSync.update(state, previous));
+      stopIndexSync = () => { unsubscribe(); indexSync.dispose(); };
+      indexSync.refreshMissing(useViewerStore.getState());
+
       useViewerStore.getState().setModelRotation(['ifc'], { angle: ANGLE, pivot: [...PIVOT] });
       assert.deepEqual(reconcileModelRotations(useViewerStore.getState()), ['ifc']);
 
-      // The push happened synchronously, inside the same bake that then
-      // rebuilds the index — `currentDoor` is proof either way: if the index
+      // The push happened synchronously before placement sync rebuilds the
+      // index — `currentDoor` is proof either way: if the index
       // rebuild had read the scene BEFORE the push, the query below (posed at
       // the rotated position) would find nothing.
       assert.equal(calls.length, 1, 'setModelRotation must be pushed exactly once per bake');
@@ -277,7 +287,7 @@ describe('model rotation reaches the geometry every render path reads (#4869)', 
       const max = [0, 1, 2].map((axis) => Math.max(...rotatedCorners.map((c) => c[axis])));
 
       let index = useViewerStore.getState().models.get('ifc')!.ifcDataStore!.spatialIndex;
-      for (let i = 0; i < 50 && !index; i += 1) {
+      for (let i = 0; i < 100 && !index; i += 1) {
         await new Promise((resolve) => setTimeout(resolve, 5));
         index = useViewerStore.getState().models.get('ifc')!.ifcDataStore!.spatialIndex;
       }

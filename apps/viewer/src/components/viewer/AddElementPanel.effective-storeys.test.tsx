@@ -118,6 +118,44 @@ describe('Add Element uses live storeys (#5249)', () => {
     assert.equal(chosenStorey, createdId);
   });
 
+  it('raycasts an empty-space click against an overlay-created storey Elevation (#5249)', async () => {
+    const createdId = await editedStoreys();
+    const store = useViewerStore.getState().models.get(MODEL_ID)?.ifcDataStore;
+    assert.ok(store);
+    const placements: Array<{ storeyId: number; position: [number, number, number] }> = [];
+    useViewerStore.setState({
+      addColumn: (_modelId, storeyId, params) => {
+        placements.push({ storeyId, position: params.Position });
+        return { expressId: 502 };
+      },
+    } as Partial<ReturnType<typeof useViewerStore.getState>>);
+    const canvas = document.createElement('canvas');
+    canvas.width = 800;
+    canvas.height = 600;
+    const ctx = {
+      canvas,
+      renderer: {
+        raycastSceneMagnetic: () => ({ intersection: null, snapTarget: null }),
+        getCanvas: () => canvas,
+        getCamera: () => ({ unprojectToRay: () => ({
+          origin: { x: 0, y: 10, z: 0 }, direction: { x: 1, y: -1, z: 0 },
+        }) }),
+      },
+      mouseState: { isDragging: false, isPanning: false, lastX: 0, lastY: 0, button: 0, startX: 0, startY: 0, didDrag: false },
+      activeToolRef: { current: 'addElement' },
+      edgeLockStateRef: { current: { edge: null, meshExpressId: null, lockStrength: 0 } },
+      snapEnabledRef: { current: false },
+      hiddenEntitiesRef: { current: new Set<number>() },
+      isolatedEntitiesRef: { current: null },
+    } as unknown as MouseHandlerContext;
+
+    await handleSelectionClick(ctx, { clientX: 0, clientY: 0 } as MouseEvent);
+    assert.equal(placements.length, 1);
+    const placed = placements[0]!;
+    assert.equal(placed.storeyId, createdId);
+    assert.ok(Math.abs(placed.position[0] - (10 - 3 * (store.lengthUnitScale ?? 1))) < 1e-9);
+  });
+
   it('uses named Name edits and lets a positional null clear that name', async () => {
     const createdId = await editedStoreys();
     const view = useViewerStore.getState().mutationViews.get(MODEL_ID);

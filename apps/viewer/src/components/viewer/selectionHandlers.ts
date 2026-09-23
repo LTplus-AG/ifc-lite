@@ -23,7 +23,7 @@ import { displayedTranslation, placementFor } from '@/lib/model-placement/state.
 import { resolve as translate } from '@/i18n/registry';
 import { fromRenderTranslation, toRenderTranslation, type Translation } from '@/lib/model-placement/translation.js';
 import { modelPointToWorkspacePoint, workspacePointToModelFrame } from '@/lib/model-placement/rotation.js';
-import { selectEffectiveStoreyId } from './add-element-storeys.js';
+import { effectiveStoreyElevation, selectEffectiveStoreyId } from './add-element-storeys.js';
 
 /**
  * Handle click event for selection (single click and double click).
@@ -479,7 +479,7 @@ function resolveStoreyFloorY(): number {
   if (!ds) return 0;
   const storeyId = resolveStoreyExpressId(modelId, state.addElementStoreyId);
   if (storeyId === null) return 0;
-  const elev = ds.spatialHierarchy?.storeyElevations?.get(storeyId) ?? 0;
+  const elev = effectiveStoreyElevation(ds, state.mutationViews.get(modelId), storeyId);
   return elev + displayedTranslation(state.modelPlacement, modelId)[2];
 }
 

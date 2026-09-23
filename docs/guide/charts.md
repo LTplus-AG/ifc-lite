@@ -8,10 +8,10 @@ A chart is a **dataset** plus a **spec**. The dataset has one row per thing bein
 
 | Field | Meaning |
 |-------|---------|
-| Chart | `bar`, `stackedBar`, `pie`, `treemap`, `histogram` (bins a number column), `timeline` (buckets a date column into ISO weeks) |
+| Chart | `bar`, `stackedBar`, `pie`, `treemap`, `histogram` (bins a number column), `timeline` (buckets a date column into ISO weeks), or `elementCount` (one row total) |
 | Group by | The column whose distinct values become the buckets |
 | Stack by | For a stacked bar: a second category column, one series per value |
-| Measure | `count` of rows, or the `sum` of a number column |
+| Measure | `count` of rows, or the `sum` of an independently chosen number column; Element Count always counts |
 | Top N | Keep the N largest buckets and fold the rest into one grey **Other** bucket (which still carries every element it stands for) |
 | Order | Largest first, or by label (dates and histogram bins are always chronological / ascending) |
 
@@ -21,7 +21,7 @@ Because a bucket keeps its element ids, the bidirectional link needs no support 
 
 | Source | One row per | Columns | A bucket selects |
 |--------|-------------|---------|------------------|
-| **Elements** | geometry-bearing element instance across every loaded model | `IFC type`, `Storey`, `Model`, `Name`, plus one exact IFC attribute or property selected in the chart editor | the elements |
+| **Elements** | geometry-bearing element instance across every loaded model | `IFC type`, `Storey`, `Model`, `Name`, plus exact IFC fields chosen for grouping and measuring | the elements |
 | **Clash results** | clash of the current run (after exclusions) | `Rule`, `Severity`, `Detection` (hard / clearance / touch), `Review status`, `Type A`, `Type B`, `Type pair`, `Model A`, `Model B`, `Storey`, `Distance` (m, for a penetration histogram), `Group` | both elements of every clash in it |
 | **BCF topics** | topic of the loaded project | `Status`, `Type`, `Priority`, `Assigned to`, `Stage`, `Labels`, `Author`, `Due` (overdue / this week / later / none), `Age` (days), and the dates `Created`, `Modified`, `Due date`, `Closed` | the components of the topics' viewpoints that are loaded |
 | **Schedule tasks** | task of the active schedule | `Task`, `Status`, `Phase at cursor` (not started / in progress / done, following the 4D playback), `Task type`, `Critical`, `Milestone`, `Duration` (days), `Products`, and the dates `Start`, `Finish` | the tasks' products |
@@ -35,6 +35,8 @@ The dashboard's **scope** applies to the elements source and decides which eleme
 ### Source filter
 
 Every chart also has its own **Source filter**: the same [selector syntax](./selector-syntax.md) the search Filter tab's Selector field reads (`IfcWall`, `Pset_WallCommon.FireRating=/REI.*/`), typed once per chart and run on top of the dashboard scope. It is read and evaluated through the exact same path the Filter tab uses — there is no second matcher — so a chart's filter and a search filter never disagree about what an IFC class or property means.
+
+Choose **Add rule** in the chart editor to build the source filter with the same rule controls as the search Filter tab. This includes Model Tag and other rules that have no selector spelling. An existing selector is converted to editable rules when every term can be read. Switching back to **Selector** fills the text field only when the rules have a faithful selector representation; otherwise it starts with an empty field. Saving a rule filter stores its rule groups in `filter.groups` and leaves `filter.selector` empty. Charts saved before this option continue to use their selector text.
 
 The filter is **applicable to Elements, Clash results, Schedule tasks and IDS results**, and keeps a row if ANY of its elements matches (a clash keeps a row if either of its two elements matches; a schedule task keeps a row if any of its products matches, so a task with no matching product drops). It is **not applicable to BCF topics or Model compare** — a BCF row's "elements" are a viewpoint's component GUIDs (often none loaded) and a compare row straddles two revisions, so a selector has nothing well-defined to narrow; the editor disables the field for those two sources with a note, and a saved dashboard is refused if one carries a filter anyway.
 
@@ -51,7 +53,7 @@ For an **Elements** chart, **Element field** can stay on the built-in columns or
 | **IFC quantity** | exact `IfcElementQuantity` and quantity names (`Qto_WallBaseQuantities.NetVolume`) | a number in the project unit, summable and histogrammable; the occurrence's quantity, else its defining type's |
 | **Material / classification / type / spatial** | `Material` (every associated material name, joined), `Type name` (the defining `IfcTypeObject` via `IfcRelDefinesByType`), `Classification` for any system or one discovered system (the reference's identification, else its name), and the `Container`, `Building`, `Site` or `Project` the element sits in | categories |
 
-A **Filter** box narrows set and field names, so a model with hundreds of property sets stays pickable. Filter matching ignores case, but the selected names are the exact IFC names, including dots and slashes. For example, selecting `Pset_WallCommon.FireRating` makes its distinct values available to **Group by**; a consistently numeric property or any quantity can also drive **Sum** or a histogram.
+A **Filter** box narrows set and field names, so a model with hundreds of property sets stays pickable. Filter matching ignores case, but the selected names are the exact IFC names, including dots and slashes. For example, selecting `Pset_WallCommon.FireRating` makes its distinct values available to **Group by**; a consistently numeric property or any quantity can also drive **Sum** or a histogram. **Measure** independently offers discovered numeric IFC fields, so a chart can group by Material and sum `Qto_WallBaseQuantities.NetVolume`, or group by storey and sum area. Bar, stacked bar, pie, treemap, histogram and timeline charts use the same measure choice; Element Count remains a row count. A missing quantity contributes no volume and is reported in the card subtitle. Material grouping uses the element's material association and its element-level quantity: a multi-material element is grouped under the combined material label, not split into per-material volumes.
 
 Occurrence properties take precedence. If the occurrence does not carry the selected property, its first defining type is consulted; an explicit empty/null occurrence value or a deleted property stays missing and suppresses inheritance. Attribute values are read only from the occurrence, and only attributes the loaded schema declares as scalar values are offered — a reference attribute (an `IfcDirection`, a placement) or a collection is not a value, whatever its STEP slot holds. `0`, `false`, and identifiers such as `"001"` remain real values.
 

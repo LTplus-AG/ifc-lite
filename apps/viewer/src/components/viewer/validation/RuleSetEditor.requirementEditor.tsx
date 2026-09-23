@@ -4,7 +4,7 @@
 
 /**
  * `RequirementEditor` — the per-kind requirement fields (#5138 plan §6):
- * a segmented control for Element / Unique / Aggregate / Compare, then
+ * a segmented control for Element / Unique / Aggregate / Compare / Unit, then
  * the fields that kind needs. Switching kind keeps the CURRENT rule's
  * `applicability` untouched — only `requirement` changes — the invariant
  * `RuleSetEditor.kinds.test.tsx` locks in.
@@ -28,9 +28,11 @@ import { SubjectPicker } from './SubjectPicker';
 import type { FilterGroupEditorModel } from '../FilterGroupEditor';
 import { useTranslation } from '@/i18n';
 
-const KINDS = ['element', 'unique', 'aggregate', 'compare'] as const;
+const KINDS = ['element', 'unique', 'aggregate', 'compare', 'unit'] as const;
 type RequirementKind = (typeof KINDS)[number];
 const AGGREGATE_FNS = ['count', 'sum', 'min', 'max', 'avg'] as const;
+/** The subjects that carry a unit (#5300). */
+const UNIT_SUBJECT_KINDS = ['property', 'quantity'] as const;
 
 function emptyBlock(): RuleBlock {
   return { groups: [{ rules: [], combinator: 'AND' }], authoredAs: 'chips' };
@@ -42,6 +44,7 @@ function blankRequirementOfKind(kind: RequirementKind): Requirement {
     case 'unique': return { kind: 'unique', subject: { kind: 'name' } };
     case 'aggregate': return { kind: 'aggregate', fn: 'count', op: 'gte', value: 1 };
     case 'compare': return { kind: 'compare', left: { kind: 'name' }, right: { kind: 'name' }, op: 'eq' };
+    case 'unit': return { kind: 'unit', subject: { kind: 'quantity', setName: '', quantityName: '' }, unit: '' };
   }
 }
 
@@ -125,7 +128,29 @@ export function RequirementEditor({ requirement, onChange, models, schemaVersion
         </div>
       )}
 
-      {requirement.kind !== 'element' && (
+      {requirement.kind === 'unit' && (
+        <div className="flex flex-wrap items-center gap-2">
+          <SubjectPicker
+            subject={requirement.subject}
+            onChange={(subject) => {
+              if (subject.kind === 'property' || subject.kind === 'quantity') onChange({ ...requirement, subject });
+            }}
+            onlyKinds={UNIT_SUBJECT_KINDS}
+            aria-label={t('validationEditor.unit.subjectAriaLabel')}
+          />
+          <span className="text-xs text-muted-foreground">{t('validationEditor.unit.recordedIn')}</span>
+          <Input
+            value={requirement.unit}
+            onChange={(e) => onChange({ ...requirement, unit: e.target.value })}
+            placeholder={t('validationEditor.unit.unitPlaceholder')}
+            aria-label={t('validationEditor.unit.unitAriaLabel')}
+            aria-invalid={requirement.unit.trim().length === 0}
+            className={`h-7 w-20 text-xs font-mono ${requirement.unit.trim().length === 0 ? 'border-red-500' : ''}`}
+          />
+        </div>
+      )}
+
+      {requirement.kind !== 'element' && requirement.kind !== 'unit' && (
         <RequirementTextField requirement={requirement} onChange={onChange} />
       )}
     </div>

@@ -55,6 +55,11 @@ interface CompareRunControlsProps {
    *  pair) — the warning must not claim geometry changes are undetectable
    *  while the panel's own rows report placement-driven ones. */
   placementOnlyGeometry: boolean;
+  /** #5312 (#5214 finding 2, warn half): either the A/B picker or the
+   *  currently-shown result's compared pair has unsaved viewer edits, so
+   *  Compare's data channel is reading the file as loaded rather than the
+   *  edited state. Warn only — this does not make Compare read the overlay. */
+  unsavedEditsWarning: boolean;
   excludedTypes: string[];
   changedTypeCounts: ChangedTypeCount[];
   onAddExcludedType: (type: string) => void;
@@ -83,6 +88,7 @@ export function CompareRunControls({
   error,
   geometryUnavailable,
   placementOnlyGeometry,
+  unsavedEditsWarning,
   excludedTypes,
   changedTypeCounts,
   onAddExcludedType,
@@ -188,6 +194,12 @@ export function CompareRunControls({
       </Button>
 
       {error && <p className="text-xs text-[#f7768e]">{error}</p>}
+
+      {unsavedEditsWarning && (
+        <p className="text-xs text-[#e0af68]">
+          {t('comparePanel.runControls.unsavedEditsWarning')}
+        </p>
+      )}
 
       {geometryUnavailable && scope !== 'data' && (
         <p className="text-xs text-[#e0af68]">

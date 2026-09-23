@@ -149,15 +149,24 @@ impl ClashSession {
 
     /// Run one rule.
     ///
-    /// `group_a` / `group_b` are GLOBAL element indices. An empty `group_b`
-    /// requests a self-clash within `group_a` (pairs with `i < j` by position
-    /// in `group_a`). `mode`: `0` = hard, `1` = clearance. Records carry GLOBAL
-    /// element indices.
+    /// `group_a` / `group_b` are GLOBAL element indices. `group_b` is
+    /// `None` for a self-clash within `group_a` (pairs with `i < j` by
+    /// position in `group_a`), and `Some` for a two-sided rule. `Some(&[])`
+    /// is a two-sided rule whose B side matched nothing, and yields no
+    /// pairs -- it is NOT a self-clash (#5354).
+    ///
+    /// The distinction has to be carried in the type: encoding self-clash as
+    /// an empty `group_b` made "the caller named a B side that matched
+    /// nothing" and "the caller named no B side" the same call, so a rule
+    /// filtered down to an empty B silently ran as A-vs-A.
+    ///
+    /// `mode`: `0` = hard, `1` = clearance. Records carry GLOBAL element
+    /// indices.
     #[allow(clippy::too_many_arguments)]
     pub fn run_rule(
         &self,
         group_a: &[u32],
-        group_b: &[u32],
+        group_b: Option<&[u32]>,
         mode: u8,
         tolerance: f64,
         clearance: f64,
@@ -209,21 +218,26 @@ impl ClashSession {
 
     /// Broad-phase candidate global-index pairs.
     ///
-    /// Builds a BVH over `group_a`'s element AABBs. For a group pair, each
-    /// `group_b` element queries inflated by `margin`; duplicates are removed
-    /// and identical element indices are skipped. For self-clash (`group_b`
-    /// empty) each `group_a` element queries the BVH, keeping pairs whose
-    /// position in `group_a` satisfies `i < j`.
+    /// Builds a BVH over `group_a`'s element AABBs. For a two-sided rule
+    /// (`Some`), each `group_b` element queries inflated by `margin`;
+    /// duplicates are removed and identical element indices are skipped. For
+    /// a self-clash (`None`) each `group_a` element queries the BVH, keeping
+    /// pairs whose position in `group_a` satisfies `i < j`.
     fn candidate_pairs(
         &self,
         group_a_in: &[u32],
-        group_b_in: &[u32],
+        group_b_in: Option<&[u32]>,
         margin: f64,
     ) -> Vec<(u32, u32)> {
         // Defensively drop any out-of-range global indices at the public boundary.
+        // The filter runs INSIDE the `Some` arm on purpose: filtering first and
+        // then branching on emptiness would turn a two-sided rule whose B
+        // indices are all out of range back into a self-clash, which is the
+        // same conflation as #5354 by another route.
         let n = self.elements.len() as u32;
         let group_a: Vec<u32> = group_a_in.iter().copied().filter(|&g| g < n).collect();
-        let group_b: Vec<u32> = group_b_in.iter().copied().filter(|&g| g < n).collect();
+        let group_b: Option<Vec<u32>> =
+            group_b_in.map(|b| b.iter().copied().filter(|&g| g < n).collect());
         if group_a.is_empty() {
             return Vec::new();
         }
@@ -239,7 +253,7 @@ impl ClashSession {
 
         let mut pairs: Vec<(u32, u32)> = Vec::new();
 
-        if !group_b.is_empty() {
+        if let Some(group_b) = group_b {
             let mut seen: HashSet<(u32, u32)> = HashSet::new();
             for &b_global in &group_b {
                 let b_aabb = self.elements[b_global as usize].aabb;

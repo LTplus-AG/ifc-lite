@@ -17,6 +17,7 @@ import {
 } from '@ifc-lite/data';
 import type { SpatialHierarchy } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { discoverFilterSchema, discoverPropertyAndQuantitySchema, discoverFilterValues } from './filter-schema.js';
 
 interface EntityRow {
@@ -125,7 +126,10 @@ function buildStore(args: {
     entityCount: args.entities.length,
     parseTime: 0,
     source: new Uint8Array(0),
-    entityIndex: { byId: { ranges: new Uint32Array(0), index: new Map() }, byType },
+    entityIndex: {
+      byId: new Map(args.entities.map((entity) => [entity.expressId, { type: entity.type }])),
+      byType,
+    },
     strings,
     entities,
     properties,
@@ -184,6 +188,18 @@ describe('discoverFilterSchema — basic pass', () => {
     });
     const schema = discoverFilterSchema(store);
     assert.deepStrictEqual(schema.storeys, [['Roof', null]]);
+  });
+
+  it('reads live storey edits from columns when a server-hydrated store has no STEP bytes (#5249)', () => {
+    const store = buildStore({
+      entities: [{ expressId: 42, type: 'IFCBUILDINGSTOREY', globalId: '', name: 'Old level' }],
+      storeys: [{ id: 42, name: 'Old level', elevation: 1 }],
+    });
+    const view = new MutablePropertyView(store.properties, 'm1');
+    view.setAttribute(42, 'Name', 'Live level');
+    view.setPositionalAttribute(42, 9, { real: 4 });
+
+    assert.deepStrictEqual(discoverFilterSchema(store, view).storeys, [['Live level', 4]]);
   });
 });
 

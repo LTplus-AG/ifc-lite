@@ -17,6 +17,7 @@
  * report agree.
  */
 import { format } from 'echarts/core';
+import { elementFieldLabel } from './element-field.js';
 import type { Aggregation, Bucket, ChartItem } from './types.js';
 
 /** The tokens a host reads off its stylesheet; ECharts has no CSS variables. */
@@ -139,7 +140,10 @@ function packPrintLegend(labels: readonly string[], width: number, font: string)
 
 function measureLabel(aggregation: Aggregation): string {
   const { measure } = aggregation.spec;
-  return measure.agg === 'count' ? 'Count' : `Sum of ${measure.column ?? ''}`;
+  if (measure.agg === 'count') return 'Count';
+  const field = aggregation.spec.measureField;
+  const label = field ? elementFieldLabel(field) : measure.column ?? '';
+  return `Sum of ${label}`;
 }
 
 /** Selected flags for one series: category indices apply to every series, items only to their own. */

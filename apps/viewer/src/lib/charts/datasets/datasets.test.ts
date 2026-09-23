@@ -16,6 +16,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { clashReviewKey, createClashEngine, type ClashElement } from '@ifc-lite/clash';
 import { addViewpointToTopic, createBCFProject, createBCFTopic, createViewpoint, readBCF, writeBCF } from '@ifc-lite/bcf';
 import { aggregate, elementFieldColumnId, validateDashboardSpec, type ElementFieldBinding } from '@ifc-lite/charts';
+import { Rule } from '@ifc-lite/rules';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { fixtureModel } from '@/test/store-fixture.js';
@@ -27,7 +28,7 @@ import { buildCompareDataset, COMPARE_COLUMNS } from './compare.js';
 import { buildElementsDataset } from './elements.js';
 import { DASHBOARD_PRESETS } from '../presets.js';
 import { createElementFieldReader } from '../element-field-reader.js';
-import { applyChartFilter, resolveChartFilter } from '../source-filter.js';
+import { applyChartFilter, chartElementFilterKey, resolveChartFilter } from '../source-filter.js';
 import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models.js';
 import { toGlobalIdFromModels } from '@/store/globalId.js';
 
@@ -629,6 +630,37 @@ END-ISO-10303-21;`;
     assert.equal(clashDs.rows.length, 1);
     const filteredClash = applyChartFilter(clashDs, ids as Set<number>);
     assert.equal(filteredClash.rows.length, 1, 'the clash keeps its row: ids [wall, beam] any-matches the filtered wall');
+  });
+
+  it('source filter: a model-tag rule narrows a federated chart to the tagged model (#4946)', async () => {
+    const state = useViewerStore.getState();
+    const first = state.models.get('m1')!;
+    const second = { ...first, id: 'm2', idOffset: 2_000_000 };
+    const models = new Map([['m1', first], ['m2', second]]);
+    useViewerStore.setState({
+      models,
+      modelTags: new Map([['structure', { id: 'structure', name: 'Structure' }]]),
+      modelTagAssignments: new Map([['m1', new Set(['structure'])]]),
+    });
+    const live = useViewerStore.getState();
+    const ids = await resolveChartFilter(
+      evaluatorModelsFromState(live),
+      { selector: '', groups: [{ combinator: 'AND', rules: [Rule.modelTag('hasAny', ['structure'])] }] },
+      (modelId, expressId) => toGlobalIdFromModels(live.models, modelId, expressId),
+      { limit: 2_000, definedModelTagIds: new Set(['structure']) },
+    );
+    assert.ok(ids);
+    assert.ok(ids.has(GID(41)), 'tagged model matches');
+    assert.equal(ids.has(2_000_041), false, 'untagged model does not match');
+    const dataset = buildElementsDataset({ kind: 'all' }, live);
+    assert.equal(applyChartFilter(dataset, ids).rows.length, 3, 'only the tagged model contributes chart rows');
+  });
+
+  it('source filter: selector text cannot collide with a rule-group cache key (#4946 review)', () => {
+    const groups = [{ combinator: 'AND' as const, rules: [Rule.ifcType(['IfcWall'], 'in')] }];
+    const ruleKey = chartElementFilterKey({ selector: '', groups });
+    assert.ok(ruleKey);
+    assert.notEqual(chartElementFilterKey({ selector: ruleKey }), ruleKey);
   });
 
   it('source filter: a refused reading (no rule, unsupported syntax, or a parse error) THROWS instead of narrowing on the readable part', async () => {

@@ -13,11 +13,12 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BarChart3, Plus, X } from 'lucide-react';
-import { trimSelectorWhitespace } from '@ifc-lite/query';
+import { chartElementFilterKey } from '@/lib/charts/source-filter';
 import { elementFieldColumnId, type Aggregation, type ChartScope, type ChartSpec, type DashboardLayoutItem, type DashboardSpec } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
+import { chartElementFields } from '@/lib/charts/chart-fields';
 import type { ChartFocusMode } from '@/store/slices/chartSlice';
 import { DASHBOARD_PRESETS, modelOverviewDashboard, newChartSpec } from '@/lib/charts/presets';
 import { ChartCard } from './ChartCard';
@@ -86,12 +87,7 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
   // Only SAVED charts decide which IFC fields the shared datasets carry. The
   // editor's draft binds to a synthesized column of its own (`editorColumns`),
   // so picking through fields never rebuilds every card's dataset (#4833).
-  const elementFields = useMemo(() => {
-    const fields = (dashboard?.charts ?? [])
-      .filter((chart) => chart.source === 'elements')
-      .flatMap((chart) => chart.elementField ? [chart.elementField] : []);
-    return [...new Map(fields.map((field) => [elementFieldColumnId(field), field])).values()];
-  }, [dashboard]);
+  const elementFields = useMemo(() => chartElementFields(dashboard?.charts ?? []), [dashboard]);
   const datasets = useChartDatasets(scope, elementFields);
   // The editor can switch sources without replacing its outer `editing` seed;
   // keep discovery available for the whole edit session so Clash → Elements
@@ -149,9 +145,8 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
     if (!dashboard) return;
     const exists = dashboard.charts.some((c) => c.id === spec.id);
     const previous = dashboard.charts.find((c) => c.id === spec.id);
-    const previousField = previous?.elementField ? elementFieldColumnId(previous.elementField) : '';
-    const nextField = spec.elementField ? elementFieldColumnId(spec.elementField) : '';
-    if (previous && (previous.source !== spec.source || previousField !== nextField) && chartSliceSource === spec.id && chartSlice && chartSliceBuckets) {
+    const fieldsOf = (chart: ChartSpec) => JSON.stringify([chart.elementField, chart.measureField].map((field) => field ? elementFieldColumnId(field) : null));
+    if (previous && (previous.source !== spec.source || fieldsOf(previous) !== fieldsOf(spec)) && chartSliceSource === spec.id && chartSlice && chartSliceBuckets) {
       link.clearSelectionIfOwned(spec.id, chartSlice, chartSliceBuckets);
     }
     const charts = exists ? dashboard.charts.map((c) => (c.id === spec.id ? spec : c)) : [...dashboard.charts, spec];
@@ -174,12 +169,12 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
     const spec = dashboard?.charts.find((c) => c.id === id);
     if (!spec) return null;
     // Trimmed-empty is no filter, consistent with ChartCard (review finding).
-    const filterText = spec.filter && trimSelectorWhitespace(spec.filter.selector).length > 0 ? spec.filter.selector : undefined;
+    const filterKey = chartElementFilterKey(spec.filter);
     return (
       <ChartCard
         spec={spec}
         dataset={datasets[spec.source]}
-        filterState={filterText ? sourceFilters.get(filterText) : undefined}
+        filterState={filterKey ? sourceFilters.get(filterKey) : undefined}
         link={link}
         renderer={renderer}
         onEdit={() => setEditing(spec)}

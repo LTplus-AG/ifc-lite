@@ -25,10 +25,12 @@ const SAMPLE_IFC = join(__dirname, '../../../../apps/viewer/public/samples/hello
 describe('analyzeCommand --out', () => {
   let stdoutSpy: ReturnType<typeof vi.spyOn>;
   let stderrSpy: ReturnType<typeof vi.spyOn>;
+  let fetchSpy: MockInstance<typeof fetch>;
 
   afterEach(() => {
     stdoutSpy?.mockRestore();
     stderrSpy?.mockRestore();
+    fetchSpy?.mockRestore();
   });
 
   it('writes match results as JSON to --out instead of stdout', async () => {
@@ -36,6 +38,7 @@ describe('analyzeCommand --out', () => {
     const out = join(dir, 'results.json');
     stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
 
     await analyzeCommand([SAMPLE_IFC, '--viewer', '3456', '--type', 'IfcWall', '--color', 'red', '--out', out]);
 
@@ -44,6 +47,7 @@ describe('analyzeCommand --out', () => {
     const written = JSON.parse(await readFile(out, 'utf-8'));
     expect(Array.isArray(written)).toBe(true);
     expect(written[0]).toMatchObject({ rule: 'IfcWall' });
+    expect(fetchSpy).toHaveBeenCalledWith('http://localhost:3456/api/command', expect.objectContaining({ method: 'POST' }));
 
     // --out must suppress the stdout JSON payload — it goes to the file, not both places.
     const stdoutCalls = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0]));
@@ -53,11 +57,13 @@ describe('analyzeCommand --out', () => {
   it('still prints JSON to stdout when --out is absent (baseline, unchanged by the fix)', async () => {
     stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
 
     await analyzeCommand([SAMPLE_IFC, '--viewer', '3456', '--type', 'IfcWall', '--color', 'red', '--json']);
 
     const stdoutCalls = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
     expect(stdoutCalls).toContain('"rule"');
+    expect(fetchSpy).toHaveBeenCalledWith('http://localhost:3456/api/command', expect.objectContaining({ method: 'POST' }));
   });
 });
 

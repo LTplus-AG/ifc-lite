@@ -113,6 +113,8 @@ export const comparePanelEn = {
     'Neither model has mesh geometry fingerprints (loaded outside the WASM mesh path), so SHAPE changes can’t be detected. Placement-driven moves and data changes are still compared.',
   'comparePanel.runControls.geometryUnavailableFull':
     'One model has no geometry fingerprints (loaded outside the WASM mesh path), so geometry changes can’t be detected. Data changes are still accurate — switch to the Data scope for reliable results.',
+  'comparePanel.runControls.unsavedEditsWarning':
+    'A or B has unsaved viewer edits. Compare reads the file as loaded, not those edits — export or undo first for an accurate comparison.',
 
   // CompareSuggestions
   'comparePanel.suggestions.classChangedTitle': 'The IFC class changed on the way',

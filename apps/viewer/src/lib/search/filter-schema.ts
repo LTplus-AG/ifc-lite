@@ -10,22 +10,25 @@
  * model so the chip UI can populate dropdowns instead of free-text
  * inputs (the single largest UX gap in the existing visual builder).
  *
- * Cheap parts (storeys, ifcTypes) read straight from already-built
- * indexes. Pset / Qto schema requires touching on-demand extractors,
+ * Cheap parts (storeys, ifcTypes) read the effective entity index. Pset /
+ * Qto schema requires touching on-demand extractors,
  * so it is split out as `discoverPropertyAndQuantitySchema` — the
  * caller decides when to pay that cost (e.g. behind a "Show all
  * properties" expander rather than on every modal open).
  */
 
 import {
-  extractPropertiesOnDemand,
-  extractQuantitiesOnDemand,
   extractClassificationsOnDemand,
   extractAllMaterialsOnDemand,
   type IfcDataStore,
 } from '@ifc-lite/parser';
-import { stringifyValue, materialMatchCandidates } from '@ifc-lite/rules';
+import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
+import {
+  stringifyValue, materialMatchCandidates, ownPropertySetsFor, quantitySetsFor,
+  attributesFor, mutatedAttributeValue,
+} from '@ifc-lite/rules';
 import { resolveEntityPredefinedType } from '@ifc-lite/rules';
+import { canonicalEffectiveType, effectiveCandidateIds, effectiveStoreyOption } from './filter-schema-effective.js';
 
 export interface FilterSchema {
   /** [storeyName, elevationMeters | null] sorted by name. */
@@ -68,29 +71,29 @@ export interface PsetQtoSchema {
 }
 
 /**
- * Cheap pass — uses already-materialised indexes. Safe to call on every
- * modal open / chip-edit.
+ * Cheap pass over one model's current entity set. Safe to call when the
+ * model or its mutation version changes.
  */
-export function discoverFilterSchema(store: IfcDataStore): FilterSchema {
+export function discoverFilterSchema(
+  store: IfcDataStore,
+  view?: MutablePropertyView | null,
+): FilterSchema {
   return {
-    storeys: collectStoreys(store),
-    ifcTypes: collectIfcTypes(store),
+    storeys: discoverFilterStoreys(store, view),
+    ifcTypes: collectIfcTypes(store, view),
   };
 }
 
-function collectStoreys(store: IfcDataStore): Array<[string, number | null]> {
-  const hierarchy = store.spatialHierarchy;
-  if (!hierarchy) return [];
+export function discoverFilterStoreys(store: IfcDataStore, view?: MutablePropertyView | null): Array<[string, number | null]> {
   const out: Array<[string, number | null]> = [];
-  // Iterate byStorey keys (== storey expressIds). Keep one entry per
-  // unique storey *name* — duplicates would confuse the chip dropdown
-  // even though the underlying storey IDs differ.
+  // Keep one entry per unique storey name, even when several live storeys
+  // share it. Source deletions/retypes and overlay creations are all folded.
   const seen = new Map<string, number | null>();
-  for (const storeyId of hierarchy.byStorey.keys()) {
-    const name = store.entities.getName(storeyId);
-    if (!name) continue;
+  for (const { expressId } of iterateEffectiveEntityIds(store, view, ['IFCBUILDINGSTOREY'])) {
+    const option = effectiveStoreyOption(store, view, expressId);
+    if (!option) continue;
+    const [name, elevation] = option;
     if (seen.has(name)) continue;
-    const elevation = hierarchy.storeyElevations.get(storeyId) ?? null;
     seen.set(name, elevation);
   }
   for (const [name, elev] of seen) out.push([name, elev]);
@@ -98,31 +101,25 @@ function collectStoreys(store: IfcDataStore): Array<[string, number | null]> {
   return out;
 }
 
-function collectIfcTypes(store: IfcDataStore): string[] {
-  const types = new Set<string>();
-  // entityIndex.byType maps the UPPERCASE STEP type name to expressIds.
-  // Resolve the canonical (PascalCase) form per-entity via getTypeName
-  // so the chip dropdown shows "IfcWall" rather than "IFCWALL".
-  for (const ids of store.entityIndex.byType.values()) {
-    if (ids.length === 0) continue;
-    const sample = ids[0];
-    const canonical = store.entities.getTypeName(sample);
-    if (canonical) types.add(canonical);
+function collectIfcTypes(store: IfcDataStore, view: MutablePropertyView | null | undefined): string[] {
+  const rawTypes = new Set<string>();
+  for (const { type } of iterateEffectiveEntityIds(store, view)) {
+    rawTypes.add(type);
   }
-  const out = Array.from(types);
+  const out = Array.from(new Set(Array.from(rawTypes, canonicalEffectiveType)));
   out.sort();
   return out;
 }
 
 /**
  * Expensive pass — walks every entity that has an on-demand pset/qto
- * map entry and extracts the set/property names. Run once per model
- * lifetime (cache the result in the slice). For a 100K-entity model
+ * map entry and extracts the set/property names. Cache per model and
+ * mutation version in the slice. For a 100K-entity model
  * this is still ~milliseconds because we read the map keys, not values.
  *
  * For the value-extraction path (turning each property into a chip
  * value dropdown) the caller should sample a bounded subset of
- * entities — full enumeration is O(entities × props) and would defeat
+ * entities — extracting every value is O(entities × props) and would defeat
  * the on-demand laziness.
  */
 export function discoverPropertyAndQuantitySchema(
@@ -133,19 +130,20 @@ export function discoverPropertyAndQuantitySchema(
    *  entities - so a pset attached to an entity missing from the on-demand map
    *  is still found. Empty/omitted = whole-model discovery. (#1462) */
   typeFilter?: readonly string[],
+  view?: MutablePropertyView | null,
 ): PsetQtoSchema {
   const psetMap = new Map<string, Set<string>>();
   const qtoMap = new Map<string, Map<string, string>>();
 
   const addPsets = (entityId: number) => {
-    for (const set of extractPropertiesOnDemand(store, entityId)) {
+    for (const set of ownPropertySetsFor(store, entityId, view ?? undefined)) {
       let bucket = psetMap.get(set.name);
       if (!bucket) { bucket = new Set(); psetMap.set(set.name, bucket); }
       for (const p of set.properties) bucket.add(p.name);
     }
   };
   const addQtos = (entityId: number) => {
-    for (const set of extractQuantitiesOnDemand(store, entityId)) {
+    for (const set of quantitySetsFor(store, entityId, view ?? undefined)) {
       let bucket = qtoMap.get(set.name);
       if (!bucket) { bucket = new Map(); qtoMap.set(set.name, bucket); }
       // Unit isn't carried in the on-demand quantity row today - emit "" so the
@@ -158,7 +156,7 @@ export function discoverPropertyAndQuantitySchema(
   // huge type can't stall - psets are uniform across instances, so a sample
   // captures the full set.
   const scopedIds = typeFilter && typeFilter.length > 0
-    ? collectTypeScopedIds(store, typeFilter, TYPE_SCOPED_CAP)
+    ? collectTypeScopedIds(store, typeFilter, TYPE_SCOPED_CAP, view)
     : null;
   if (scopedIds) {
     for (const id of scopedIds) { addPsets(id); addQtos(id); }
@@ -169,38 +167,39 @@ export function discoverPropertyAndQuantitySchema(
   // narrowed to entities that declare any pset). For each, extract
   // names only; values are intentionally not collected here.
   if (store.onDemandPropertyMap) {
-    for (const entityId of store.onDemandPropertyMap.keys()) addPsets(entityId);
+    for (const entityId of effectiveCandidateIds(store, view, store.onDemandPropertyMap.keys(), 100_000)) addPsets(entityId);
   }
 
   if (store.onDemandQuantityMap) {
-    for (const entityId of store.onDemandQuantityMap.keys()) addQtos(entityId);
+    for (const entityId of effectiveCandidateIds(store, view, store.onDemandQuantityMap.keys(), 100_000)) addQtos(entityId);
   }
 
   // Fallback for stores without on-demand maps (e.g. server-loaded models):
-  // scan the entity column using the pre-built property / quantity tables so
+  // scan the effective entity set using the pre-built property / quantity tables so
   // discovery stays complete on every load path. Capped to stay bounded.
   if ((!store.onDemandPropertyMap && store.properties) || (!store.onDemandQuantityMap && store.quantities)) {
-    const col = store.entities.expressId;
-    const CAP = 100_000;
-    for (let i = 0, seen = 0; i < col.length && seen < CAP; i++) {
-      const entityId = col[i];
-      if (!entityId) continue;
-      seen++;
-      if (!store.onDemandPropertyMap && store.properties) {
-        for (const set of store.properties.getForEntity(entityId) ?? []) {
-          let bucket = psetMap.get(set.name);
-          if (!bucket) { bucket = new Set(); psetMap.set(set.name, bucket); }
-          for (const p of set.properties) bucket.add(p.name);
-        }
-      }
-      if (!store.onDemandQuantityMap && store.quantities) {
-        for (const set of store.quantities.getForEntity(entityId) ?? []) {
-          let bucket = qtoMap.get(set.name);
-          if (!bucket) { bucket = new Map(); qtoMap.set(set.name, bucket); }
-          for (const q of set.quantities) {
-            if (!bucket.has(q.name)) bucket.set(q.name, '');
-          }
-        }
+    let seen = 0;
+    for (const { expressId } of iterateEffectiveEntityIds(store, view)) {
+      if (!store.onDemandPropertyMap && store.properties) addPsets(expressId);
+      if (!store.onDemandQuantityMap && store.quantities) addQtos(expressId);
+      if (++seen >= 100_000) break;
+    }
+  }
+
+  // An existing entity can receive a new set without gaining an on-demand
+  // map key. Read current overlay changes rather than append-only history so
+  // undo and delete do not leave stale suggestions behind.
+  if (view) {
+    const propertyIds = new Set<number>();
+    const quantityIds = new Set<number>();
+    for (const change of view.getEffectiveChanges()) {
+      if (change.kind === 'property' || change.kind === 'pset-added' || change.kind === 'pset-deleted') propertyIds.add(change.entityId);
+      if (change.kind === 'quantity' || change.kind === 'qset-added' || change.kind === 'qset-deleted') quantityIds.add(change.entityId);
+    }
+    if (propertyIds.size || quantityIds.size) {
+      for (const { expressId } of iterateEffectiveEntityIds(store, view)) {
+        if (propertyIds.has(expressId)) addPsets(expressId);
+        if (quantityIds.has(expressId)) addQtos(expressId);
       }
     }
   }
@@ -212,23 +211,26 @@ export function discoverPropertyAndQuantitySchema(
  *  type's instances, so a bounded sample captures the full set cheaply. */
 const TYPE_SCOPED_CAP = 5_000;
 
-/** Up to `cap` express ids drawn from the `byType` buckets of the requested
- *  canonical type names. `byType` is keyed UPPERCASE (STEP), so uppercase at
- *  the boundary. */
+/** Up to `cap` live express ids for the requested canonical type names. */
 function collectTypeScopedIds(
   store: IfcDataStore,
   typeNames: readonly string[],
   cap: number,
+  view: MutablePropertyView | null | undefined,
 ): number[] {
-  const byType = store.entityIndex.byType;
-  if (!byType || byType.size === 0) return [];
   const out: number[] = [];
-  for (const name of typeNames) {
-    const bucket = byType.get(name.toUpperCase());
-    if (!bucket) continue;
-    for (const id of bucket) {
-      out.push(id);
-      if (out.length >= cap) return out;
+  for (const { expressId } of iterateEffectiveEntityIds(store, view, typeNames)) {
+    out.push(expressId);
+    if (out.length >= cap) break;
+  }
+  if (view) {
+    const edited = new Set(view.getEffectiveChanges().map((change) => change.entityId));
+    const seen = new Set(out);
+    for (const { expressId } of iterateEffectiveEntityIds(store, view, typeNames)) {
+      if (edited.has(expressId) && !seen.has(expressId)) {
+        out.push(expressId);
+        seen.add(expressId);
+      }
     }
   }
   return out;
@@ -270,7 +272,10 @@ const MAX_VALUES_PER_KEY = 200;
  * stride over the entity column) and collects distinct values. Run lazily
  * and cache the result in the slice, like {@link discoverPropertyAndQuantitySchema}.
  */
-export function discoverFilterValues(store: IfcDataStore): FilterValueSchema {
+export function discoverFilterValues(
+  store: IfcDataStore,
+  view?: MutablePropertyView | null,
+): FilterValueSchema {
   const materials = new Set<string>();
   const systems = new Set<string>();
   const classifications = new Set<string>();
@@ -285,7 +290,7 @@ export function discoverFilterValues(store: IfcDataStore): FilterValueSchema {
   // second IfcRelAssociatesMaterial carries the value would otherwise be
   // invisible here even though `material=` already matched it (#4780 gap,
   // one level deeper).
-  for (const id of cappedKeys(store.onDemandMaterialMap, store, VALUE_SAMPLE_CAP)) {
+  for (const id of cappedKeys(store.onDemandMaterialMap, store, view, VALUE_SAMPLE_CAP)) {
     for (const info of extractAllMaterialsOnDemand(store, id)) {
       for (const name of materialMatchCandidates(info)) {
         materials.add(name);
@@ -295,13 +300,16 @@ export function discoverFilterValues(store: IfcDataStore): FilterValueSchema {
 
   // PredefinedType has no on-demand map, so stride the entity column. Each read
   // re-parses the entity's attributes (bounded by VALUE_SAMPLE_CAP). (#1462)
-  for (const id of cappedKeys(undefined, store, VALUE_SAMPLE_CAP)) {
-    const pt = resolveEntityPredefinedType(store, id);
+  for (const id of cappedKeys(undefined, store, view, VALUE_SAMPLE_CAP)) {
+    const authored = view?.getNewEntity(id)
+      ? attributesFor(store, id, view).find((a) => a.name === 'PredefinedType')?.value
+      : mutatedAttributeValue(view ?? undefined, id, 'PredefinedType');
+    const pt = typeof authored === 'string' ? authored : resolveEntityPredefinedType(store, id);
     // USERDEFINED/NOTDEFINED carry no discriminating value - skip the noise.
     if (pt && pt !== 'USERDEFINED' && pt !== 'NOTDEFINED') predefinedTypes.add(pt);
   }
 
-  for (const id of cappedKeys(store.onDemandClassificationMap, store, VALUE_SAMPLE_CAP)) {
+  for (const id of cappedKeys(store.onDemandClassificationMap, store, view, VALUE_SAMPLE_CAP)) {
     for (const ref of extractClassificationsOnDemand(store, id)) {
       if (ref.system) systems.add(ref.system);
       if (ref.identification) classifications.add(ref.identification);
@@ -309,8 +317,8 @@ export function discoverFilterValues(store: IfcDataStore): FilterValueSchema {
     }
   }
 
-  for (const id of cappedKeys(store.onDemandPropertyMap, store, VALUE_SAMPLE_CAP)) {
-    for (const set of extractPropertiesOnDemand(store, id)) {
+  for (const id of cappedKeys(store.onDemandPropertyMap, store, view, VALUE_SAMPLE_CAP)) {
+    for (const set of ownPropertySetsFor(store, id, view ?? undefined)) {
       for (const p of set.properties) {
         const v = stringifyValue(p.value).trim();
         if (!v) continue;
@@ -333,27 +341,15 @@ export function discoverFilterValues(store: IfcDataStore): FilterValueSchema {
 }
 
 /**
- * Up to `cap` entity ids to sample. Prefers the keys of the supplied
- * on-demand map (entities that actually have that data), else strides over
- * the full entity column so the sample is spread across the model.
+ * Up to `cap` live entity ids to sample. Prefers the supplied on-demand map
+ * keys, then spreads the sample over the effective model when that map is
+ * absent. Creations remain candidates in either case.
  */
 function cappedKeys(
   map: ReadonlyMap<number, unknown> | undefined,
   store: IfcDataStore,
+  view: MutablePropertyView | null | undefined,
   cap: number,
 ): number[] {
-  const out: number[] = [];
-  if (map && map.size > 0) {
-    for (const id of map.keys()) {
-      out.push(id);
-      if (out.length >= cap) break;
-    }
-    return out;
-  }
-  const col = store.entities.expressId;
-  const stride = Math.max(1, Math.floor(col.length / cap));
-  for (let i = 0; i < col.length && out.length < cap; i += stride) {
-    if (col[i]) out.push(col[i]);
-  }
-  return out;
+  return effectiveCandidateIds(store, view, map && map.size > 0 ? map.keys() : undefined, cap);
 }

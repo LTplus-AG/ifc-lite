@@ -1,0 +1,160 @@
+   Compiling ifc-lite-core v17.3.0 (/tmp/ifc-export-spikes/candidate/rust/core)
+   Compiling ifc-lite-geometry v17.3.0 (/tmp/ifc-export-spikes/candidate/rust/geometry)
+   Compiling ifc-lite-processing v17.3.0 (/tmp/ifc-export-spikes/candidate/rust/processing)
+   Compiling ifc-lite-export v17.3.0 (/tmp/ifc-export-spikes/candidate/rust/export)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 37.84s
+     Running unittests src/lib.rs (/tmp/ifc-cold-41de/multipart-target/debug/deps/ifc_lite_export-4e9a867693e973ea)
+
+running 78 tests
+test frame::frame_tests::a_rotation_about_ifc_up_becomes_the_same_rotation_about_gltf_up ... ok
+test gltf::conformance_tests::f32_export_is_structurally_conformant ... ok
+test gltf::conformance_tests::from_meshes_export_is_structurally_conformant ... ok
+test gltf::conformance_tests::quantized_export_is_structurally_conformant ... ok
+test gltf::conformance_tests::streaming_bounded_export_is_structurally_conformant ... ok
+test gltf::conformance_tests::streaming_bounded_quantized_export_is_structurally_conformant ... ok
+test gltf::matrix::tests::affine_inverse_rejects_singular_placement ... ok
+test gltf::matrix::tests::baked_basis_reads_the_coordinate_space_tag_not_the_site_placement ... ok
+test gltf::matrix::tests::compose_world_meta_applies_canonical_then_local_then_transform ... ok
+test gltf::matrix::tests::occurrence_matrix_reconstructs_a_translated_sibling_under_a_yawed_site ... ok
+test gltf::matrix::tests::occurrence_matrix_reconstructs_rotated_instance_under_national_grid_rtc ... ok
+test gltf::matrix::tests::zero_rtc_places_non_identity_occurrence ... ok
+test gltf::site_placement_tests::every_export_path_agrees_where_the_model_is ... ok
+test gltf::tests::a_georeferenced_rotated_sibling_still_instances ... ok
+test gltf::tests::a_mixed_group_instances_its_exact_members_and_flattens_the_rigid_one ... ok
+test gltf::tests::a_yawed_site_still_instances_its_repeated_shape ... ok
+test gltf::tests::alpha_channel_is_never_srgb_decoded ... ok
+test gltf::tests::base_color_factor_control_endpoints_are_unchanged ... ok
+test gltf::tests::base_color_factor_is_srgb_decoded_to_linear ... ok
+test gltf::tests::bounded_glb_with_index_is_byte_identical ... ok
+test gltf::tests::default_tessellation_quality_is_the_golden_medium ... ok
+test gltf::tests::duplex_exports_valid_glb ... ok
+test gltf::tests::emissive_option_sets_emissive_factor_to_base_colour ... ok
+test gltf::tests::emissive_takes_precedence_over_unlit ... ok
+test gltf::tests::every_glb_entry_point_fails_closed_on_geometryless_model ... ok
+test gltf::tests::export_is_byte_deterministic ... ok
+test gltf::tests::from_meshes_assembles_valid_glb ... ok
+test gltf::tests::from_meshes_glb_preserves_source_welded_vertices ... ok
+test gltf::tests::geom_color_key_distinguishes_color_only ... ok
+test gltf::tests::geom_color_key_distinguishes_indices_only ... ok
+test gltf::tests::geom_color_key_distinguishes_normals_only ... ok
+test gltf::tests::geom_color_key_distinguishes_one_position_bit ... ok
+test gltf::tests::geom_color_key_is_stable_for_bit_identical_meshes ... ok
+test gltf::tests::geom_color_key_length_frame_prevents_split_aliasing ... ok
+test gltf::tests::glb_container_size_does_not_truncate ... ok
+test gltf::tests::glb_nodes_have_export_rows_for_legacy_products ... ok
+test gltf::tests::gltf_streaming_with_index_is_byte_identical ... ok
+test gltf::tests::index_u16_boundary_in_memory ... ok
+test gltf::tests::index_u16_boundary_streaming_bounded ... ok
+test gltf::tests::index_u32_promote_in_memory ... ok
+test gltf::tests::index_u32_promote_streaming_bounded ... ok
+test gltf::tests::instanced_occurrences_reconstruct_world_positions ... ok
+test gltf::tests::isolation_three_states_over_a_real_fixture ... ok
+test gltf::tests::mesh_visible_empty_isolated_set_is_indistinguishable_from_no_filter_bug_repro ... ok
+test gltf::tests::mesh_visible_hidden_excludes_only_the_listed_express_id ... ok
+test gltf::tests::mesh_visible_hidden_types_excludes_the_whole_class ... ok
+test gltf::tests::metadata_and_isolation ... ok
+test gltf::tests::multibuffer_is_deterministic ... ok
+test gltf::tests::multibuffer_quantized_roundtrips ... ok
+test gltf::tests::multibuffer_splits_and_matches_single_glb ... ok
+test gltf::tests::nodes_carry_global_id_and_model_id ... ok
+test gltf::tests::opaque_material_omits_alpha_mode ... ok
+test gltf::tests::project_glb_size_matches_bounded_output ... ok
+test gltf::tests::quantization_roundtrip_precision ... ok
+test gltf::tests::quantized_glb_is_byte_deterministic ... ok
+test gltf::tests::quantized_glb_is_structurally_valid ... ok
+test gltf::tests::quantized_glb_matches_f32_world_bounds ... ok
+test gltf::tests::quantized_normal_compensation_survives_nonuniform_scale ... ok
+test gltf::tests::streaming_bounded_is_byte_identical_on_flat_models ... ok
+test gltf::tests::streaming_bounded_preserves_world_geometry_on_instanced_model ... ok
+test gltf::tests::streaming_bounded_quantized_is_byte_identical_on_flat_models ... ok
+test gltf::tests::streaming_bounded_quantized_preserves_world_geometry_on_instanced_model ... ok
+test gltf::tests::streaming_bounded_shares_a_repeated_shape ... ok
+test gltf::tests::tessellation_quality_reaches_the_exporter_and_changes_the_mesh ... ok
+test gltf::tests::the_bounded_path_counts_identities_not_colour_buckets ... ok
+test gltf::tests::the_bounded_path_reports_the_groups_it_could_not_verify ... ok
+test gltf::tests::the_bounded_path_shares_at_least_as_much ... ok
+test gltf::tests::the_streamed_mesh_plan_stays_small ... ok
+test gltf::tests::too_large_error_code_and_message ... ok
+test gltf::tests::try_from_meshes_matches_infallible_on_valid_input ... ok
+test gltf::tests::try_from_meshes_rejects_an_index_past_its_own_mesh ... ok
+test gltf::tests::try_from_meshes_rejects_counts_past_buffers ... ok
+test gltf::tests::try_from_meshes_rejects_empty_input ... ok
+test gltf::tests::try_from_meshes_rejects_index_counts_past_buffer ... ok
+test gltf::tests::try_from_meshes_rejects_short_normals ... ok
+test gltf::tests::unlit_option_emits_khr_materials_unlit ... ok
+test gltf::tests::with_index_glb_is_byte_identical ... ok
+test usd::tests::usd_and_gltf_agree_on_every_material_colour ... ok
+
+test result: ok. 78 passed; 0 failed; 0 ignored; 0 measured; 408 filtered out; finished in 23.68s
+
+     Running tests/csv_cell_parity.rs (/tmp/ifc-cold-41de/multipart-target/debug/deps/csv_cell_parity-a728fb1adbd6814f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/deterministic_global_id_parity.rs (/tmp/ifc-cold-41de/multipart-target/debug/deps/deterministic_global_id_parity-9403113c13c0ad6a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/issue_2323_step_escapes.rs (/tmp/ifc-cold-41de/multipart-target/debug/deps/issue_2323_step_escapes-3b37faaa0feb756a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/issue_4118_site_rotation_instancing.rs (/tmp/ifc-cold-41de/multipart-target/debug/deps/issue_4118_site_rotation_instancing-b465a07dd39f24c4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/issue_4660_merged_keyword_case.rs (/tmp/ifc-cold-41de/multipart-target/debug/deps/issue_4660_merged_keyword_case-531e49612cd8eb2e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/issue_4707_typed_value_name_case.rs (/tmp/ifc-cold-41de/multipart-target/debug/deps/issue_4707_typed_value_name_case-a3b228e2475a3fd7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/nonfinite_mesh_input.rs (/tmp/ifc-cold-41de/multipart-target/debug/deps/nonfinite_mesh_input-964ac8b45ce099e6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/rooted_type_parity.rs (/tmp/ifc-cold-41de/multipart-target/debug/deps/rooted_type_parity-c40bdcf60ed8150e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/schema_upconvert_parity.rs (/tmp/ifc-cold-41de/multipart-target/debug/deps/schema_upconvert_parity-1493d6079a8b52d1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/source_header_comments.rs (/tmp/ifc-cold-41de/multipart-target/debug/deps/source_header_comments-4e6c95b93614a4e1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/step_escape_parity.rs (/tmp/ifc-cold-41de/multipart-target/debug/deps/step_escape_parity-381f008d496674b1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/step_header_parity.rs (/tmp/ifc-cold-41de/multipart-target/debug/deps/step_header_parity-9bfaf8b8a614eb98)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s

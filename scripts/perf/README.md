@@ -844,22 +844,30 @@ Orientation reuses deterministic edge adjacency, triangle filters compact their 
 Entries below are tagged individually: CANDIDATE (measured once, not validated end-to-end),
 SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the section as
 "all unshipped".
-- **GLB export computes georeferencing nobody on that path reads** (CANDIDATE — the cost is
-  measured, the fix is not designed): `process_geometry`'s metadata block always runs the
-  georeferencing extraction, and `rust/export` has no reference to
-  `metadata.georeferencing` anywhere. The streaming GLB paths run the pipeline twice, so a
-  large export pays it twice. After the index sharing above, what remains is the scan and
-  decode: roughly 280 ms per pass on a 327 MB fixture, so about 560 ms on a streaming
-  export. The field cannot simply go — the server serves it — so this needs an opt-out on
-  the options struct, defaulting to on, plus a per-exporter audit. That is its own review
-  unit and its own measurement, which is why it is not in the PR that shipped the sharing.
-- **Brotli -q11 on the served bundle** (CANDIDATE — unvalidated): a single local estimate
-  suggested Vercel serves ~1266 KB where brotli -q11 reaches ~947 KB (~25% smaller cold
-  download). NOT confirmed against the real served response — Vercel controls its own
-  on-the-fly compression and may override a precompressed asset, so this may not be
-  realizable without platform support. Before claiming it: measure the actual
-  `Content-Encoding`/transfer size of the deployed `.wasm` before vs after, on a clean
-  deploy. Treat the 25% as preliminary context only.
+- **GLB export trailing georeferencing** (PARKED after #5357 spike): export
+  still does not consume the returned georeferencing metadata, but the old
+  whole-file scan explanation is obsolete: extraction now reuses scan candidates.
+  Property-set candidate decoding remains. A suppression prototype preserved the
+  tested complete GLBs, including site/RTC behavior; its shared-host timings do
+  not establish an end-to-end win. A production opt-out must be export-scoped
+  and preserve public options compatibility. See the
+  [source, observations and qualification limits](evidence/export-delivery-5357/README.md).
+- **Bounded GLB geometry replay** (PARKED after #5357 spike): disk-backed replay
+  through the existing writer removes the second meshing pass and preserved
+  tested whole artifacts across CSG, large-coordinate and heavy models, with
+  quantization on and off. It introduces scratch-disk I/O and failure modes;
+  the Linux prototype deliberately has no production error contract. Keep it as
+  the strongest native-export follow-up, requiring an explicit scratch policy,
+  typed errors and uncontended full-export timing/memory qualification before
+  shipping. It does not accelerate normal browser model loading. Evidence and
+  the unapplied patch are in the same archive above.
+- **Brotli quality 11 on the served bundle** (PARKED after #5357 observation):
+  the actual deployed WASM response already negotiates Brotli and compiles in
+  Chrome. Recompressing those same decoded bytes locally leaves potential
+  transfer savings, but there was no authenticated preview to verify altered
+  delivery. Actual response headers, transfer/body sizes and byte-identity checks
+  are archived above. No deployed improvement or whole-viewer cold-load win is
+  claimed; local compressed size alone still cannot qualify this lever.
 - **Parser worker's unused WASM compile** (SHIPPED, PR #1851): NOT the "compile outside
   the shared memo" this was first framed as. Verified: on the streaming cold-load path
   (`waitForEntityIndex`, every file >=2 MB) the parser worker eager-compiled the ~3.9 MB
@@ -1956,3 +1964,36 @@ within run variation and target geometry-streaming was flat: no demonstrated
 browser speedup. The adapter was SwiftShader; RSS sampling is a coarse sum of
 owned processes through a fixed post-readiness tail, not cache-settled memory.
 See [evidence and measurement limits](evidence/spline-5321/README.md).
+
+
+## Multipart mapped occurrences: parked (#5328)
+
+An opt-in prototype kept per-source-part identity through canonical production,
+WASM shard recovery and the native USD consumer. Fixture-backed workspace tests,
+strict clippy, real WASM contracts and independent composed-USD geometry checks
+passed. No meaningful complete-load benefit was qualified: native flat Holter
+signals reversed across an A/A-controlled follow-up, native export timings were
+mixed and later overlapped unrelated host work, and a browser timing attempt was
+interrupted for the same contention. Smaller serialized output is not a load
+win. Preserve the rejected source, observer failures, completed functional checks
+and every timing cohort in [the experiment record](evidence/multipart-5328/README.md).
+No runtime change from this prototype ships.
+
+## Edge-grazing half-space cap repair (#5314)
+
+The cap builder now ignores triangles that collapse after its section-vertex
+weld. This reaches edge-grazing `IfcHalfSpaceSolid` cuts; the inline #30 and
+Holter #148571 regression tests show a closed section with the analytic prism
+volume. Five alternating fresh-process base-vs-branch native
+`perf_probe --iters 5 --json --fingerprint` pairs covered AC20-FZK-Haus,
+ISSUE_129 and Holter. AC20's ordered mesh fingerprint and counts stayed
+byte-identical. ISSUE_129 and Holter emitted more vertices and triangles from
+the intended caps, with stable but changed ordered fingerprints on every run.
+Parse, geometry and total times varied widely on the shared WSL host; paired
+samples crossed in both directions. The run establishes neither a speed gain
+nor a regression. The numeric A/B evidence lives in the PR, not this ledger.
+
+The lesson is that a small boundary-accounting guard can repair many reused
+Boolean items. Full-load counts and ordered fingerprints reveal its reach
+where a single-element test cannot, while variable host timing should not be
+sold as a speed verdict.

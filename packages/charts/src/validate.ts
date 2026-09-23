@@ -9,6 +9,9 @@
  * library, and it reports every problem at once with a JSON-pointer-ish path.
  */
 import type { ChartSource, ChartType, DashboardSpec, ReportSpec } from './types.js';
+import { isFilterGroup } from '@ifc-lite/rules';
+import { elementFieldColumnId } from './element-field.js';
+import type { ElementFieldBinding } from './types.js';
 
 export interface DashboardValidationError {
   path: string;
@@ -56,13 +59,15 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
   str(errors, chart, 'title', path);
   if (typeof chart.source !== 'string' || !SOURCES.has(chart.source)) errors.push({ path: `${path}.source`, message: `expected one of ${[...SOURCES].join(', ')}` });
   if (typeof chart.type !== 'string' || !TYPES.has(chart.type)) errors.push({ path: `${path}.type`, message: `expected one of ${[...TYPES].join(', ')}` });
-  if (chart.elementField !== undefined) {
-    const fieldPath = `${path}.elementField`;
-    if (!isRecord(chart.elementField)) {
+  for (const key of ['elementField', 'measureField'] as const) {
+    if (chart[key] === undefined) continue;
+    const fieldPath = `${path}.${key}`;
+    if (!isRecord(chart[key])) {
       errors.push({ path: fieldPath, message: 'expected an IFC field binding object' });
     } else {
-      const field = chart.elementField;
-      if (chart.source !== 'elements') errors.push({ path: fieldPath, message: 'elementField is only valid for the elements source' });
+      const field = chart[key];
+      if (chart.source !== 'elements') errors.push({ path: fieldPath, message: `${key} is only valid for the elements source` });
+      if (key === 'measureField' && field.valueKind !== 'number') errors.push({ path: `${fieldPath}.valueKind`, message: 'measureField must be numeric' });
       if (field.valueKind !== 'category' && field.valueKind !== 'number' && field.valueKind !== 'boolean') {
         errors.push({ path: `${fieldPath}.valueKind`, message: 'expected category, number, or boolean' });
       }
@@ -122,10 +127,19 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
       // otherwise trim to "no filter" at every consumer — they all trim —
       // stranding the chart on "Resolving filter…" forever with no entry to
       // find; the original review finding this preserves.
+      const groups = chart.filter.groups;
+      let hasGroups = false;
+      if (groups !== undefined) {
+        if (!Array.isArray(groups) || groups.length === 0 || !groups.every(isFilterGroup) || groups.some((g) => g.rules.length === 0)) {
+          errors.push({ path: `${filterPath}.groups`, message: 'expected non-empty filter groups with rules' });
+        } else {
+          hasGroups = true;
+        }
+      }
       if (typeof chart.filter.selector !== 'string') {
         errors.push({ path: `${filterPath}.selector`, message: 'expected a string' });
-      } else if (chart.filter.selector.length === 0 ? !hasClashRule : chart.filter.selector.trim().length === 0) {
-        errors.push({ path: `${filterPath}.selector`, message: 'expected a non-empty selector or clashRule' });
+      } else if (chart.filter.selector.length === 0 ? !hasClashRule && !hasGroups : chart.filter.selector.trim().length === 0 || hasGroups) {
+        errors.push({ path: `${filterPath}.selector`, message: 'expected one of selector, groups, or clashRule' });
       }
       if (typeof chart.source === 'string' && CHART_FILTER_NOT_APPLICABLE_SOURCES.has(chart.source as ChartSource)) {
         errors.push({ path: filterPath, message: 'a source filter is not applicable to bcf or compare' });
@@ -142,11 +156,18 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
   }
   str(errors, chart, 'stackBy', path, true);
   if (chart.type === 'stackedBar' && typeof chart.stackBy !== 'string') errors.push({ path: `${path}.stackBy`, message: 'a stackedBar needs stackBy' });
+  if (chart.type === 'stackedBar' && chart.stackBy === chart.dimension) errors.push({ path: `${path}.stackBy`, message: 'stackBy must differ from dimension' });
   const measure = chart.measure;
   if (!isRecord(measure) || (measure.agg !== 'count' && measure.agg !== 'sum')) {
     errors.push({ path: `${path}.measure`, message: 'expected { agg: "count" | "sum", column? }' });
   } else if (measure.agg === 'sum') {
     str(errors, measure, 'column', `${path}.measure`);
+    if (isRecord(chart.measureField) && typeof chart.measureField.kind === 'string'
+      && ['attribute', 'property', 'quantity', 'material', 'classification', 'type', 'spatial'].includes(chart.measureField.kind)
+      && typeof measure.column === 'string'
+      && measure.column !== elementFieldColumnId(chart.measureField as ElementFieldBinding)) {
+      errors.push({ path: `${path}.measureField`, message: 'measureField must match the summed column' });
+    }
     // A chart switched to elementCount from a sum-measured type must not
     // keep the stale measure: `aggregate()` ignores it defensively (so it
     // can never silently add zero), but a spec that still declares `sum`
@@ -154,10 +175,25 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
     // let a mismatched contract round-trip through save/load.
     if (chart.type === 'elementCount') errors.push({ path: `${path}.measure`, message: 'elementCount only supports { agg: "count" }' });
   }
+  if (chart.measureField !== undefined && (!isRecord(measure) || measure.agg !== 'sum')) {
+    errors.push({ path: `${path}.measureField`, message: 'measureField requires a sum measure' });
+  }
   if (chart.sort !== undefined && chart.sort !== 'value' && chart.sort !== 'label') errors.push({ path: `${path}.sort`, message: 'expected "value" or "label"' });
   num(errors, chart, 'topN', path, true);
+  if (typeof chart.topN === 'number' && Number.isFinite(chart.topN) && (!Number.isInteger(chart.topN) || chart.topN < 0)) {
+    errors.push({ path: `${path}.topN`, message: 'expected a non-negative integer' });
+  }
   num(errors, chart, 'bins', path, true);
-  if (typeof chart.bins === 'number' && chart.bins < 1) errors.push({ path: `${path}.bins`, message: 'expected at least 1 bin' });
+  if (typeof chart.bins === 'number' && Number.isFinite(chart.bins) && (!Number.isInteger(chart.bins) || chart.bins < 1)) {
+    errors.push({ path: `${path}.bins`, message: 'expected a positive integer' });
+  }
+}
+
+/** Validate one copied or imported chart without inventing a dashboard wrapper. */
+export function validateChartSpec(spec: unknown): DashboardValidationError[] {
+  const errors: DashboardValidationError[] = [];
+  validateChart(spec, '', errors);
+  return errors;
 }
 
 /** Every problem in a dashboard/report spec; an empty array means it is one. */

@@ -1,0 +1,242 @@
+[
+  {
+    "fixture": "ara3d/AC20-FZK-Haus.ifc",
+    "mode": "float",
+    "arm": "base",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "e6cd86a5b97ab8c09e0a9b995b38717f3414c17e372628d5f94afb12389202eb"
+  },
+  {
+    "fixture": "ara3d/AC20-FZK-Haus.ifc",
+    "mode": "float",
+    "arm": "spool",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "e6cd86a5b97ab8c09e0a9b995b38717f3414c17e372628d5f94afb12389202eb"
+  },
+  {
+    "fixture": "ara3d/AC20-FZK-Haus.ifc",
+    "mode": "float",
+    "arm": "skip-georef",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "e6cd86a5b97ab8c09e0a9b995b38717f3414c17e372628d5f94afb12389202eb"
+  },
+  {
+    "fixture": "ara3d/AC20-FZK-Haus.ifc",
+    "mode": "quantize",
+    "arm": "base",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "e425a417941b97cdf85fceeb6fecc1bfe529ebdc62c90aef0ee4517a523977bd"
+  },
+  {
+    "fixture": "ara3d/AC20-FZK-Haus.ifc",
+    "mode": "quantize",
+    "arm": "spool",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "e425a417941b97cdf85fceeb6fecc1bfe529ebdc62c90aef0ee4517a523977bd"
+  },
+  {
+    "fixture": "ara3d/AC20-FZK-Haus.ifc",
+    "mode": "quantize",
+    "arm": "skip-georef",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "e425a417941b97cdf85fceeb6fecc1bfe529ebdc62c90aef0ee4517a523977bd"
+  },
+  {
+    "fixture": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+    "mode": "float",
+    "arm": "base",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "64147bfa7305e627f81126c2e2bc35a3d1f2f02cdfb9f6dc81d82a132473ea90"
+  },
+  {
+    "fixture": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+    "mode": "float",
+    "arm": "spool",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "64147bfa7305e627f81126c2e2bc35a3d1f2f02cdfb9f6dc81d82a132473ea90"
+  },
+  {
+    "fixture": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+    "mode": "float",
+    "arm": "skip-georef",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "64147bfa7305e627f81126c2e2bc35a3d1f2f02cdfb9f6dc81d82a132473ea90"
+  },
+  {
+    "fixture": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+    "mode": "quantize",
+    "arm": "base",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "e1220540f5ae76ae2b7df99839d17b7bfef6a4907d049a437ed05fa0a3bad9ea"
+  },
+  {
+    "fixture": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+    "mode": "quantize",
+    "arm": "spool",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "e1220540f5ae76ae2b7df99839d17b7bfef6a4907d049a437ed05fa0a3bad9ea"
+  },
+  {
+    "fixture": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+    "mode": "quantize",
+    "arm": "skip-georef",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "e1220540f5ae76ae2b7df99839d17b7bfef6a4907d049a437ed05fa0a3bad9ea"
+  },
+  {
+    "fixture": "ara3d/ISSUE_098_R8_F1_MAB_AR_M3_XX_XXX_MO_7000.IFC",
+    "mode": "float",
+    "arm": "base",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "909c44dd30bcadb7c9b02f3c16fa569ec716dd961af67411e5a7a212c3af694c"
+  },
+  {
+    "fixture": "ara3d/ISSUE_098_R8_F1_MAB_AR_M3_XX_XXX_MO_7000.IFC",
+    "mode": "float",
+    "arm": "spool",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "909c44dd30bcadb7c9b02f3c16fa569ec716dd961af67411e5a7a212c3af694c"
+  },
+  {
+    "fixture": "ara3d/ISSUE_098_R8_F1_MAB_AR_M3_XX_XXX_MO_7000.IFC",
+    "mode": "float",
+    "arm": "skip-georef",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "909c44dd30bcadb7c9b02f3c16fa569ec716dd961af67411e5a7a212c3af694c"
+  },
+  {
+    "fixture": "ara3d/ISSUE_098_R8_F1_MAB_AR_M3_XX_XXX_MO_7000.IFC",
+    "mode": "quantize",
+    "arm": "base",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "4efb367f3e330d6a4e8dc39c660db2d2f7566ddc518105788f3ad2fa89dbc7df"
+  },
+  {
+    "fixture": "ara3d/ISSUE_098_R8_F1_MAB_AR_M3_XX_XXX_MO_7000.IFC",
+    "mode": "quantize",
+    "arm": "spool",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "4efb367f3e330d6a4e8dc39c660db2d2f7566ddc518105788f3ad2fa89dbc7df"
+  },
+  {
+    "fixture": "ara3d/ISSUE_098_R8_F1_MAB_AR_M3_XX_XXX_MO_7000.IFC",
+    "mode": "quantize",
+    "arm": "skip-georef",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "4efb367f3e330d6a4e8dc39c660db2d2f7566ddc518105788f3ad2fa89dbc7df"
+  },
+  {
+    "fixture": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+    "mode": "float",
+    "arm": "base",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "652c64f79e90b70d4c55d0bf3a74232246933535d08d8de003965acb3a1a6c3b"
+  },
+  {
+    "fixture": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+    "mode": "float",
+    "arm": "spool",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "652c64f79e90b70d4c55d0bf3a74232246933535d08d8de003965acb3a1a6c3b"
+  },
+  {
+    "fixture": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+    "mode": "float",
+    "arm": "skip-georef",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "652c64f79e90b70d4c55d0bf3a74232246933535d08d8de003965acb3a1a6c3b"
+  },
+  {
+    "fixture": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+    "mode": "quantize",
+    "arm": "base",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "da006d81a390b9d3028ae5e8664956ab57353c44ee482ce346bb458ac9b76700"
+  },
+  {
+    "fixture": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+    "mode": "quantize",
+    "arm": "spool",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "da006d81a390b9d3028ae5e8664956ab57353c44ee482ce346bb458ac9b76700"
+  },
+  {
+    "fixture": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+    "mode": "quantize",
+    "arm": "skip-georef",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "da006d81a390b9d3028ae5e8664956ab57353c44ee482ce346bb458ac9b76700"
+  },
+  {
+    "fixture": "issues/472_2222.ifc",
+    "mode": "float",
+    "arm": "base",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "e633f26f6b381deed3160927c93f85544f1137b63d420d845646f509eb339398"
+  },
+  {
+    "fixture": "issues/472_2222.ifc",
+    "mode": "float",
+    "arm": "spool",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "e633f26f6b381deed3160927c93f85544f1137b63d420d845646f509eb339398"
+  },
+  {
+    "fixture": "issues/472_2222.ifc",
+    "mode": "float",
+    "arm": "skip-georef",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "e633f26f6b381deed3160927c93f85544f1137b63d420d845646f509eb339398"
+  },
+  {
+    "fixture": "issues/472_2222.ifc",
+    "mode": "quantize",
+    "arm": "base",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "bedadb65f94fd08303a20d19e744d152c828eb9bfe74c0e1af7bd27aa196039d"
+  },
+  {
+    "fixture": "issues/472_2222.ifc",
+    "mode": "quantize",
+    "arm": "spool",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "bedadb65f94fd08303a20d19e744d152c828eb9bfe74c0e1af7bd27aa196039d"
+  },
+  {
+    "fixture": "issues/472_2222.ifc",
+    "mode": "quantize",
+    "arm": "skip-georef",
+    "exit": 0,
+    "qualification": "functional only: known concurrent builds/other host work",
+    "sha256": "bedadb65f94fd08303a20d19e744d152c828eb9bfe74c0e1af7bd27aa196039d"
+  }
+]

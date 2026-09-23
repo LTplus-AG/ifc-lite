@@ -182,7 +182,7 @@ ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	12381	SweptSolid
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	32810	SweptSolid	3	3207	0	0	3	0	3	-
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	34385	SweptSolid	0	1436	0	0	0	-	0	1486458247
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	36735	SweptSolid	0	2274	0	0	0	-	0	136222143
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	57084	SweptSolid	22	84	0	0	0	12	22	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	57084	SweptSolid	22	84	0	0	0	0	22	-
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	57776	SweptSolid	0	224	0	0	36	-	0	6569300
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	57944	Clipping	0	202	0	0	0	-	0	7092467
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	58297	Clipping	0	386	0	0	0	-	0	5854729
@@ -410,7 +410,7 @@ ara3d/S_Office_Integrated Design Archi.ifc	89624	SweptSolid	0	232	0	0	0	-	0	9674
 ara3d/S_Office_Integrated Design Archi.ifc	90617	Curve2D	0	0	0	0	0	-	0	0
 ara3d/S_Office_Integrated Design Archi.ifc	91291	CSG	0	182	1	0	0	-	0	75770
 ara3d/S_Office_Integrated Design Archi.ifc	91968	CSG	0	120	0	0	0	-	0	76182
-ara3d/S_Office_Integrated Design Archi.ifc	92642	CSG	12	68	1	0	13	12	13	-
+ara3d/S_Office_Integrated Design Archi.ifc	92642	CSG	12	68	1	0	13	9	13	-
 ara3d/S_Office_Integrated Design Archi.ifc	93316	CSG	0	64	0	0	0	-	0	1124166
 ara3d/S_Office_Integrated Design Archi.ifc	93990	CSG	0	108	0	0	0	-	0	124089
 ara3d/S_Office_Integrated Design Archi.ifc	94664	CSG	4	160	0	0	4	4	4	-
@@ -506,7 +506,7 @@ ara3d/S_Office_Integrated Design Archi.ifc	930704	SweptSolid	0	32	0	0	0	-	0	1390
 ara3d/S_Office_Integrated Design Archi.ifc	951036	Curve2D	0	0	0	0	0	-	0	0
 ara3d/S_Office_Integrated Design Archi.ifc	951723	CSG	0	216	0	0	0	-	0	55347
 ara3d/S_Office_Integrated Design Archi.ifc	952413	CSG	0	216	0	0	0	-	0	55954
-ara3d/S_Office_Integrated Design Archi.ifc	953100	CSG	3	137	1	0	3	3	3	-
+ara3d/S_Office_Integrated Design Archi.ifc	953100	CSG	3	137	1	0	3	0	3	-
 ara3d/S_Office_Integrated Design Archi.ifc	953787	CSG	0	116	0	0	0	-	0	726268
 ara3d/S_Office_Integrated Design Archi.ifc	954474	CSG	13	225	0	0	4	7	13	-
 ara3d/S_Office_Integrated Design Archi.ifc	955161	CSG	0	216	0	0	0	-	0	78399
@@ -1006,7 +1006,7 @@ issues/841_house_stack_overflow.ifc	1118	SweptSolid	0	60	0	0	0	-	0	569540
 issues/841_house_stack_overflow.ifc	1166	SweptSolid	0	36	0	0	0	-	0	1914121
 issues/841_house_stack_overflow.ifc	1362	Clipping	0	92	0	0	0	-	0	6379215
 issues/841_house_stack_overflow.ifc	1878	Clipping	0	114	0	0	0	-	0	13371611
-issues/841_house_stack_overflow.ifc	2152	Clipping	55	236	1	0	6	4	55	-
+issues/841_house_stack_overflow.ifc	2152	Clipping	55	236	1	0	6	3	55	-
 issues/841_house_stack_overflow.ifc	2797	Clipping	0	44	0	0	0	-	0	5717671
 issues/841_house_stack_overflow.ifc	3698	Clipping	0	68	0	0	0	-	0	5599761
 issues/841_house_stack_overflow.ifc	4148	Clipping	0	142	0	0	0	-	0	9474529
@@ -1023,7 +1023,7 @@ issues/845_wall_elemented_case.ifc	146	SweptSolid	0	200	0	0	0	-	7	106412
 issues/845_wall_elemented_case.ifc	148	unknown	0	0	0	0	0	-	0	0
 issues/853_slab_pocket.ifc	303	SweptSolid	0	260	0	0	0	-	0	1185753
 issues/953_trimmed_curve_cartesian_arc.ifc	1112	Brep	0	98	0	0	0	-	0	179976376
-issues/960_house_segmented_roof_clip.ifc	2152	Clipping	55	236	1	0	6	4	55	-
+issues/960_house_segmented_roof_clip.ifc	2152	Clipping	55	236	1	0	6	3	55	-
 issues/960_house_segmented_roof_clip.ifc	2797	Clipping	0	44	0	0	0	-	0	5717671
 issues/960_house_segmented_roof_clip.ifc	4148	Clipping	0	142	0	0	0	-	0	9474529
 issues/960_house_segmented_roof_clip.ifc	4374	Clipping	0	62	0	0	0	-	0	3266357
@@ -1045,14 +1045,14 @@ various/01_Snowdon_Towers_Sample_Structural(1).ifc	2411	SweptSolid	0	1406	0	0	0	
 various/01_Snowdon_Towers_Sample_Structural(1).ifc	3051	SweptSolid	0	48	0	0	0	-	0	17064424
 various/01_Snowdon_Towers_Sample_Structural(1).ifc	3110	SweptSolid	0	112	0	0	0	-	0	15343750
 various/01_Snowdon_Towers_Sample_Structural(1).ifc	3394	Clipping	0	32	0	0	0	-	0	23838922
-various/01_Snowdon_Towers_Sample_Structural(1).ifc	25758	SweptSolid	40	308	0	0	40	50	40	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	25758	SweptSolid	40	308	0	0	40	48	40	-
 various/01_Snowdon_Towers_Sample_Structural(1).ifc	26830	SweptSolid	0	32	0	0	0	-	0	1908287
 various/01_Snowdon_Towers_Sample_Structural(1).ifc	27921	Clipping	0	32	0	0	0	-	0	3589668
 various/01_Snowdon_Towers_Sample_Structural(1).ifc	45444	SweptSolid	0	64	0	0	0	-	0	60715441
 various/01_Snowdon_Towers_Sample_Structural(1).ifc	45708	SweptSolid	0	176	0	0	0	-	0	94347540
 various/01_Snowdon_Towers_Sample_Structural(1).ifc	45774	Clipping	0	40	0	0	0	-	0	6060437
 various/01_Snowdon_Towers_Sample_Structural(1).ifc	71367	SweptSolid	0	216	0	0	0	-	0	100102011
-various/01_Snowdon_Towers_Sample_Structural(1).ifc	81962	SweptSolid	136	784	0	0	136	158	136	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	81962	SweptSolid	136	784	0	0	136	146	136	-
 various/01_Snowdon_Towers_Sample_Structural(1).ifc	100256	SweptSolid	0	84	0	0	0	-	0	109010502
 various/01_Snowdon_Towers_Sample_Structural(1).ifc	100536	SweptSolid	0	176	0	0	0	-	0	94377035
 various/01_Snowdon_Towers_Sample_Structural(1).ifc	124547	SweptSolid	0	968	0	0	0	-	0	13250360
@@ -1098,7 +1098,7 @@ various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	183	SweptSolid	0	28	0	0	0	-	0
 various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	214	SweptSolid	0	32	0	0	0	-	0	2719651
 various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	276	SweptSolid	0	72	0	0	0	-	0	79259689
 various/issue-604-door.ifc	55	SweptSolid	0	28	0	0	0	-	0	843048
-various/rvt01.ifc	5941	Tessellation	26	252	0	0	20	11	44	-
+various/rvt01.ifc	5941	Tessellation	26	252	0	0	20	8	44	-
 various/rvt01.ifc	6073	Tessellation	8	158	0	0	8	8	23	-
 various/rvt01.ifc	6163	SweptSolid	0	184	0	0	0	-	8	1725143
 various/rvt01.ifc	6243	SweptSolid	8	72	0	0	8	8	24	-
@@ -1110,7 +1110,7 @@ various/rvt01.ifc	6724	SweptSolid	30	186	0	0	31	8	36	-
 various/rvt01.ifc	6810	SweptSolid	28	232	0	0	28	42	46	-
 various/rvt01.ifc	6934	SweptSolid	0	356	1	0	0	-	10	3552955
 various/rvt01.ifc	7013	SweptSolid	8	64	0	0	8	8	24	-
-various/rvt01.ifc	7075	SweptSolid	18	100	0	0	12	13	40	-
+various/rvt01.ifc	7075	SweptSolid	18	100	0	0	12	8	40	-
 various/rvt01.ifc	7137	SweptSolid	52	170	1	0	32	0	57	-
 various/rvt01.ifc	7216	SweptSolid	0	180	0	0	0	-	7	1047958
 various/rvt01.ifc	7295	SweptSolid	0	188	0	0	0	-	4	180758
@@ -1133,17 +1133,17 @@ various/rvt01.ifc	11110	Tessellation	0	120	0	0	0	-	0	20862
 various/rvt01.ifc	11168	Tessellation	6	110	0	0	0	0	6	-
 various/rvt01.ifc	11232	Tessellation	0	144	0	0	0	-	0	39336
 various/rvt01.ifc	11304	Tessellation	0	128	0	0	0	-	0	9525
-various/rvt01.ifc	11477	Tessellation	33	159	1	0	18	3	33	-
+various/rvt01.ifc	11477	Tessellation	33	159	1	0	18	0	33	-
 various/rvt01.ifc	11563	Tessellation	12	156	1	0	15	0	12	-
-various/rvt01.ifc	11627	Tessellation	9	163	0	0	13	6	9	-
-various/rvt01.ifc	11690	Tessellation	19	139	1	0	19	6	19	-
+various/rvt01.ifc	11627	Tessellation	9	163	0	0	13	0	9	-
+various/rvt01.ifc	11690	Tessellation	19	139	1	0	19	0	19	-
 various/rvt01.ifc	11753	Tessellation	28	140	1	0	13	0	36	-
 various/rvt01.ifc	11803	SweptSolid	0	104	0	0	0	-	0	451981
 various/rvt01.ifc	12235	SweptSolid	0	24	0	0	0	-	0	723933
 various/rvt01.ifc	12345	SweptSolid	0	172	0	0	0	-	8	702236
-various/rvt01.ifc	12449	Tessellation	27	235	1	0	21	9	36	-
+various/rvt01.ifc	12449	Tessellation	27	235	1	0	21	0	36	-
 various/rvt01.ifc	13735	SweptSolid	8	72	0	0	8	24	24	-
-various/rvt01.ifc	13797	Tessellation	88	398	1	0	105	45	148	-
+various/rvt01.ifc	13797	Tessellation	88	398	1	0	105	41	148	-
 various/rvt01.ifc	14014	SweptSolid	8	72	0	0	8	8	24	-
 various/rvt01.ifc	14132	SweptSolid	50	140	1	0	50	8	66	-
 various/rvt01.ifc	14194	SweptSolid	8	72	0	0	8	8	24	-
@@ -1184,8 +1184,8 @@ various/rvt01.ifc	32081	SweptSolid	0	220	0	0	0	-	17	131568
 various/rvt01.ifc	33639	SweptSolid	24	200	0	0	24	24	54	-
 various/rvt01.ifc	37278	Tessellation	0	110	0	0	0	-	0	3923
 various/rvt01.ifc	37347	Tessellation	6	182	0	0	6	0	6	-
-various/rvt01.ifc	37455	Tessellation	13	274	1	0	39	3	21	-
+various/rvt01.ifc	37455	Tessellation	13	274	1	0	39	0	21	-
 various/rvt01.ifc	37570	SweptSolid	0	112	0	0	0	-	16	40318
 various/rvt01.ifc	38680	Tessellation	19	187	0	0	19	0	23	-
 various/rvt01.ifc	38745	SweptSolid	0	24	0	0	0	-	2	121740
-various/rvt01.ifc	38800	SweptSolid	18	208	0	0	18	14	29	-
+various/rvt01.ifc	38800	SweptSolid	18	208	0	0	18	8	29	-

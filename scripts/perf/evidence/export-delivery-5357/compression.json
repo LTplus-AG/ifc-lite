@@ -1,0 +1,10 @@
+{
+  "decoded_bytes": 8186389,
+  "served_br_bytes": 2511418,
+  "served_gzip_bytes": 2746614,
+  "local_q11_bytes": 1818432,
+  "br_identity": true,
+  "gzip_identity": true,
+  "sha256": "779cbfe8d12ab00aaf2e1cacc38130278687ac42939a2d02eb9627c68d762e20",
+  "caveat": "Local recompression only; no changed deployment or end-to-end cold-load claim."
+}

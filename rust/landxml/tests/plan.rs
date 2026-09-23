@@ -891,32 +891,55 @@ fn issue_5046_never_fabricates_multi_loop_curve_topology_from_sampled_chords() {
 }
 
 #[test]
-fn issue_5179_sums_outer_and_oppositely_wound_hole_to_a_single_analytic_area() {
-    // Outer ring: 10x10 square, listed counter-clockwise, twice-area = 200
-    // (area 100). Hole: 3x3 square wound the opposite way (clockwise),
-    // twice-area = -18 (area 9). Every reading of the hole/island convention
-    // agrees the combined parcel area is outer - hole = 91, distinguishable
-    // from 100, 109, and any plausible "always add" mis-sum.
-    let parsed = parse(&document(
-        r#"<Parcels><Parcel name="square-with-hole"><CoordGeom>
-          <Line><Start>0 0</Start><End>10 0</End></Line>
-          <Line><Start>10 0</Start><End>10 10</End></Line>
-          <Line><Start>10 10</Start><End>0 10</End></Line>
-          <Line><Start>0 10</Start><End>0 0</End></Line>
-        </CoordGeom><CoordGeom>
-          <Line><Start>2 2</Start><End>2 5</End></Line>
-          <Line><Start>2 5</Start><End>5 5</End></Line>
-          <Line><Start>5 5</Start><End>5 2</End></Line>
-          <Line><Start>5 2</Start><End>2 2</End></Line>
-        </CoordGeom></Parcel></Parcels>"#,
-    ));
-    let probe = parsed.probe_parcel(&parsed.parcels[0]);
-    assert_eq!(probe.state, LandXmlParcelState::Analytic);
-    assert!(
-        (probe.area_in_declared_square_units.expect("combined area") - 91.0).abs() < 1e-9,
-        "outer (100) minus oppositely-wound hole (9) must be 91, got {:?}",
-        probe.area_in_declared_square_units
-    );
+fn issue_5179_multi_loop_parcel_area_follows_nesting_not_winding() {
+    // Maintainer ruling on #5179: disjoint loops are disjoint parts (area =
+    // sum of |loop area|), a loop is a hole only when geometrically nested in
+    // another loop of the same parcel, and winding decides nothing.
+    /// Square `CoordGeom` with lower-left corner (x, y) and side `s`,
+    /// wound counter-clockwise when `ccw`, clockwise otherwise.
+    fn square(x: f64, y: f64, s: f64, ccw: bool) -> String {
+        let mut corners = [(x, y), (x + s, y), (x + s, y + s), (x, y + s)];
+        if !ccw {
+            corners.reverse();
+        }
+        let lines: String = (0..4)
+            .map(|i| {
+                let (a, b) = (corners[i], corners[(i + 1) % 4]);
+                format!("<Line><Start>{} {}</Start><End>{} {}</End></Line>", a.0, a.1, b.0, b.1)
+            })
+            .collect();
+        format!("<CoordGeom>{lines}</CoordGeom>")
+    }
+    let cases: [(&str, Vec<String>, f64); 6] = [
+        ("hole wound opposite", vec![square(0.0, 0.0, 10.0, true), square(2.0, 2.0, 3.0, false)], 91.0),
+        ("hole wound the same way", vec![square(0.0, 0.0, 10.0, true), square(2.0, 2.0, 3.0, true)], 91.0),
+        ("hole listed first", vec![square(2.0, 2.0, 3.0, false), square(0.0, 0.0, 10.0, true)], 91.0),
+        ("disjoint, same winding", vec![square(0.0, 0.0, 10.0, true), square(20.0, 0.0, 3.0, true)], 109.0),
+        ("disjoint, opposite winding", vec![square(0.0, 0.0, 10.0, true), square(20.0, 0.0, 3.0, false)], 109.0),
+        // Equal opposite-wound disjoint loops used to cancel to 0 and be
+        // dropped as "zero-area boundary".
+        ("equal disjoint, opposite winding", vec![square(0.0, 0.0, 10.0, true), square(20.0, 0.0, 10.0, false)], 200.0),
+    ];
+    for (label, loops, expected) in cases {
+        let parsed = parse(&document(&format!(
+            r#"<Parcels><Parcel name="p">{}</Parcel></Parcels>"#,
+            loops.concat()
+        )));
+        let probe = parsed.probe_parcel(&parsed.parcels[0]);
+        assert_eq!(probe.state, LandXmlParcelState::Analytic, "{label}");
+        let area = probe.area_in_declared_square_units.expect("combined area");
+        assert!((area - expected).abs() < 1e-9, "{label}: expected {expected}, got {area}");
+    }
+
+    // An island inside a hole is a filled part again: 100 - 36 + 4 = 68.
+    let parsed = parse(&document(&format!(
+        r#"<Parcels><Parcel name="island">{}{}{}</Parcel></Parcels>"#,
+        square(0.0, 0.0, 10.0, true),
+        square(2.0, 2.0, 6.0, true),
+        square(4.0, 4.0, 2.0, false),
+    )));
+    let area = parsed.probe_parcel(&parsed.parcels[0]).area_in_declared_square_units;
+    assert!((area.expect("island area") - 68.0).abs() < 1e-9, "island in hole: got {area:?}");
 }
 
 #[test]

@@ -11,13 +11,16 @@
  *
  * The shape is plain JSON: it is what `.ifclite-document.json` carries.
  */
-import type { ChartSpec, ReportPageSetup } from '@ifc-lite/charts';
+import { validateChartSpec, type ChartSpec, type ReportPageSetup } from '@ifc-lite/charts';
 import type { ListDefinition } from '@ifc-lite/lists';
 
-export const DOCUMENT_VERSION = 5;
+export const DOCUMENT_VERSION = 6;
 
-/** A block that can sit two-up in a row (#4940): `'half'` only takes effect when the block right after it is also a chart/image at `'half'`; unpaired, it prints full width. */
+/** A block that can sit two-up in a row (#4940); an unpaired half block prints full width. */
 export type BlockWidth = 'full' | 'half';
+export type TextFont = 'helvetica' | 'times' | 'courier';
+export const TEXT_SIZE_MIN = 6;
+export const TEXT_SIZE_MAX = 48;
 
 export interface TextBlock {
   kind: 'text';
@@ -25,6 +28,10 @@ export interface TextBlock {
   /** Template text; `{path}` placeholders resolve against the model (see `bindings.ts`). */
   text: string;
   style: 'title' | 'heading' | 'subheading' | 'body' | 'small' | 'caption';
+  /** Optional overrides of the chosen style; PDF standard fonts need no embedded asset. */
+  font?: TextFont;
+  fontSize?: number;
+  width?: BlockWidth;
 }
 
 export interface ImageBlock {
@@ -36,7 +43,7 @@ export interface ImageBlock {
   height: number;
   align: 'left' | 'center' | 'right';
   caption?: string;
-  /** `'half'` pairs this block with the next half chart/image into one row (#4940). Default `'full'`. */
+  /** `'half'` pairs this block with the next half text/chart/image into one row (#4940). Default `'full'`. */
   width?: BlockWidth;
 }
 
@@ -49,7 +56,7 @@ export interface ChartBlock {
   snapshot: boolean;
   /** Printed height in points, 120-600 (#4940). Default 220. */
   height?: number;
-  /** `'half'` pairs this block with the next half chart/image into one row (#4940). Default `'full'`. */
+  /** `'half'` pairs this block with the next half text/chart/image into one row (#4940). Default `'full'`. */
   width?: BlockWidth;
 }
 
@@ -169,19 +176,10 @@ export interface ValidationTableSource {
   columns: TableColumnId[];
 }
 
-/**
- * A table printed from either source (#5142, #5138): head + rows, paginated
- * with the head repeated. `DOCUMENT_VERSION` 3 -> 4 added `ValidationTableSource`
- * as a second member of `source`'s union (review finding: this WAS first
- * shipped without a bump, on the theory that a per-block structural check
- * already says more than the version number would — but a v3-only reader's
- * `validateTableBlock` only knows `source.kind === 'list'`, and reports an
- * unrecognized `'validation'` source as a broken list — "expected
- * source.kind list" — misdiagnosing the whole document instead of refusing
- * the one block it cannot print as what it actually is: newer than this
- * reader understands). The bump fixes that: an older reader now sees
- * `version: 4 > DOCUMENT_VERSION` and reports "newer version" up front.
- */
+/** A paginated table (#5142, #5138), with its head repeated on each page.
+ * Version 4 introduced validation sources; the version bump makes older
+ * readers report "newer version" instead of misdiagnosing the block as a
+ * broken list (review finding, #5138). */
 export interface TableBlock {
   kind: 'table';
   id: string;
@@ -208,17 +206,18 @@ export interface DocumentSpec {
   blocks: DocumentBlock[];
 }
 
-/** `true` when `block` may pair with an adjacent `'half'` block into one row — chart and image only (#4940). */
-export function isHalfPairable(block: DocumentBlock): block is (ChartBlock | ImageBlock) & { width: 'half' } {
-  return (block.kind === 'chart' || block.kind === 'image') && block.width === 'half';
+/** Shared pairing rule for saved, resolved, and preview blocks. */
+export function isHalfPairable<T extends { kind: string }>(block: T): block is T & { kind: 'text' | 'chart' | 'image'; width: 'half' } {
+  return (block.kind === 'text' || block.kind === 'chart' || block.kind === 'image') && 'width' in block && block.width === 'half';
 }
 
 /**
- * `.ifclite-document.json` version 1 -> 2 (#4940) -> 3 (#5142) -> 4 (#5138) -> 5 (#5125):
+ * `.ifclite-document.json` version 1 -> 2 (#4940) -> 3 (#5142) -> 4 (#5138) -> 5 (#5125) -> 6 (#4940 follow ups):
  * every step is additive for existing blocks/sources (v2 added optional
  * `width`/`height` on chart/image, text styles and the spacer block; v3
  * added the table block over a list; v4 added the table block's validation
- * source; v5 added the separate IDS report block), so an older document is
+ * source; v5 added the separate IDS report block; v6 adds text font, size,
+ * and half-width layout), so an older document is
  * the current one with the version number bumped. The bump is still made,
  * so an older viewer refuses a file with a block/source it cannot print
  * instead of misreporting it as broken (see the comment on `TableBlock`).
@@ -226,7 +225,7 @@ export function isHalfPairable(block: DocumentBlock): block is (ChartBlock | Ima
  * unchanged so `validateDocumentSpec` reports the real problem.
  */
 export function migrateDocumentSpec(raw: unknown): unknown {
-  if (!isRecord(raw) || (raw.version !== 1 && raw.version !== 2 && raw.version !== 3 && raw.version !== 4)) return raw;
+  if (!isRecord(raw) || (raw.version !== 1 && raw.version !== 2 && raw.version !== 3 && raw.version !== 4 && raw.version !== 5)) return raw;
   return { ...raw, version: DOCUMENT_VERSION };
 }
 
@@ -277,6 +276,9 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
       case 'text':
         if (!isString(block.text)) errors.push({ path: `${at}.text`, message: 'expected a string' });
         if (!TEXT_STYLE_NAMES.includes(block.style as string)) errors.push({ path: `${at}.style`, message: `expected ${TEXT_STYLE_NAMES.join(' | ')}` });
+        if (block.font !== undefined && block.font !== 'helvetica' && block.font !== 'times' && block.font !== 'courier') errors.push({ path: `${at}.font`, message: 'expected helvetica | times | courier' });
+        if (block.fontSize !== undefined && (typeof block.fontSize !== 'number' || !Number.isFinite(block.fontSize) || block.fontSize < TEXT_SIZE_MIN || block.fontSize > TEXT_SIZE_MAX)) errors.push({ path: `${at}.fontSize`, message: `expected a number between ${TEXT_SIZE_MIN} and ${TEXT_SIZE_MAX}` });
+        checkWidth(block, at);
         break;
       case 'image':
         if (!isString(block.dataUrl) || !/^data:image\/(png|jpeg);base64,/.test(block.dataUrl)) errors.push({ path: `${at}.dataUrl`, message: 'expected a PNG or JPEG data URL' });
@@ -286,7 +288,7 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
         checkWidth(block, at);
         break;
       case 'chart':
-        if (!isRecord(block.chart) || !isString(block.chart.id) || !isString(block.chart.title)) errors.push({ path: `${at}.chart`, message: 'expected a chart spec' });
+        for (const error of validateChartSpec(block.chart)) errors.push({ path: `${at}.chart${error.path}`, message: error.message });
         if (typeof block.snapshot !== 'boolean') errors.push({ path: `${at}.snapshot`, message: 'expected a boolean' });
         if (block.height !== undefined && (typeof block.height !== 'number' || !Number.isFinite(block.height) || block.height < CHART_BLOCK_HEIGHT_MIN || block.height > CHART_BLOCK_HEIGHT_MAX)) {
           errors.push({ path: `${at}.height`, message: `expected a number between ${CHART_BLOCK_HEIGHT_MIN} and ${CHART_BLOCK_HEIGHT_MAX}` });

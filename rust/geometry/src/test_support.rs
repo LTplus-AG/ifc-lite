@@ -13,6 +13,25 @@
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::Duration;
 
+/// Undirected edges NOT shared by exactly two triangles, vertices keyed by
+/// exact f32 bits: 0 on a closed 2-manifold whose coincident vertices share
+/// bit patterns (the extrusion and T-junction repair tests, #5313).
+#[cfg(test)]
+pub(crate) fn open_edges(m: &crate::Mesh) -> usize {
+    let key = |i: u32| {
+        let b = i as usize * 3;
+        [m.positions[b].to_bits(), m.positions[b + 1].to_bits(), m.positions[b + 2].to_bits()]
+    };
+    let mut edges: std::collections::HashMap<_, u32> = std::collections::HashMap::new();
+    for t in m.indices.chunks_exact(3) {
+        for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
+            let (ka, kb) = (key(a), key(b));
+            *edges.entry(if ka < kb { (ka, kb) } else { (kb, ka) }).or_insert(0) += 1;
+        }
+    }
+    edges.values().filter(|&&c| c != 2).count()
+}
+
 /// Receive one value from a watchdogged worker, or panic with the diagnosis
 /// that actually fits what happened.
 ///

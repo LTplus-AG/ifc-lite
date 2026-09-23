@@ -23,6 +23,8 @@ function makeEntities(rows: Array<{ expressId: number; globalId: string; name: s
     typeEnum: new Uint32Array(rows.map(() => 10)),
     globalId: new Int32Array(rows.map((r) => intern(r.globalId))),
     name: new Int32Array(rows.map((r) => intern(r.name))),
+    // The effective-entity iterator reads a row's class through the table.
+    getTypeName: () => 'IfcWall',
   } as any;
 
   return { entities, strings: { get: (idx: number) => strings[idx] } };
@@ -936,5 +938,255 @@ describe('CsvConnector: local-edit guard (mutation-guard.ts)', () => {
 
     expect(mutations).toHaveLength(1);
     expect(view.getPropertyValue(1, 'Pset_WallCommon', 'FireRating')).toBe(60);
+  });
+});
+
+describe('CsvConnector.match: tombstoned entities are excluded (#5198)', () => {
+  // Mirrors BulkQueryEngine's tombstone-enumeration fix (fix-5196-bulk-query-tombstone):
+  // deletion is overlay-only, so csv-match.ts's index-building enumeration
+  // must consult the mutation view's tombstones itself, for every strategy —
+  // including `tag` and `property`, both added by #5230/#5167 after the
+  // original (three-strategy) fix was written.
+
+  it('globalId strategy excludes a tombstoned entity from the match', () => {
+    const { connector, view } = makeConnector([
+      { expressId: 1, globalId: 'guid-a', name: 'Wall A' },
+    ]);
+    view.deleteEntity(1);
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'globalId', column: 'GlobalId' },
+      propertyMappings: [],
+    };
+
+    const [result] = connector.match([{ GlobalId: 'guid-a' }], mapping);
+
+    expect(result.matchedEntityIds).toEqual([]);
+  });
+
+  it('expressId strategy excludes a tombstoned entity from the match', () => {
+    const { connector, view } = makeConnector([
+      { expressId: 42, globalId: 'guid-a', name: 'Wall A' },
+    ]);
+    view.deleteEntity(42);
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'expressId', column: 'Id' },
+      propertyMappings: [],
+    };
+
+    const [result] = connector.match([{ Id: '42' }], mapping);
+
+    expect(result.matchedEntityIds).toEqual([]);
+  });
+
+  it('name strategy excludes a tombstoned entity from the match', () => {
+    const { connector, view } = makeConnector([
+      { expressId: 5, globalId: 'guid-a', name: 'Wall Alpha' },
+    ]);
+    view.deleteEntity(5);
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'name', column: 'Name' },
+      propertyMappings: [],
+    };
+
+    const [result] = connector.match([{ Name: 'wall alpha' }], mapping);
+
+    expect(result.matchedEntityIds).toEqual([]);
+  });
+
+  it('tag strategy excludes a tombstoned entity from the match', () => {
+    const { connector, view } = makeConnectorWithTags([
+      { expressId: 7, globalId: 'guid-a', name: 'Wall A', tag: 'P1-001' },
+    ]);
+    view.deleteEntity(7);
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'tag', column: 'Mark' },
+      propertyMappings: [],
+    };
+
+    const [result] = connector.match([{ Mark: 'P1-001' }], mapping);
+
+    expect(result.matchedEntityIds).toEqual([]);
+  });
+
+  it('property strategy excludes a tombstoned entity from the match', () => {
+    const { connector, view } = makeConnectorWithProperties([9], {
+      9: [{ name: 'Pset_Common', properties: [{ name: 'Mark', type: PropertyValueType.String, value: 'A' }] }],
+    });
+    view.deleteEntity(9);
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'property', psetName: 'Pset_Common', propName: 'Mark', column: 'Mark' },
+      propertyMappings: [],
+    };
+
+    const [result] = connector.match([{ Mark: 'A' }], mapping);
+
+    expect(result.matchedEntityIds).toEqual([]);
+  });
+
+  it('live entities of every strategy still match and still get mutations, unaffected by the filter (no-regression)', () => {
+    const { connector, view } = makeConnector([
+      { expressId: 1, globalId: 'guid-a', name: 'Wall Alpha' },
+      { expressId: 2, globalId: 'guid-b', name: 'Wall Beta' },
+      { expressId: 3, globalId: 'guid-c', name: 'Wall Gamma' },
+    ]);
+    const { connector: tagConnector, view: tagView } = makeConnectorWithTags([
+      { expressId: 4, globalId: 'guid-d', name: 'Wall Delta', tag: 'P1-004' },
+    ]);
+    const { connector: propConnector, view: propView } = makeConnectorWithProperties([5], {
+      5: [{ name: 'Pset_Common', properties: [{ name: 'Mark', type: PropertyValueType.String, value: 'A' }] }],
+    });
+
+    const byGlobalId: DataMapping = {
+      matchStrategy: { type: 'globalId', column: 'GlobalId' },
+      propertyMappings: [],
+    };
+    const byExpressId: DataMapping = {
+      matchStrategy: { type: 'expressId', column: 'Id' },
+      propertyMappings: [],
+    };
+    const byName: DataMapping = {
+      matchStrategy: { type: 'name', column: 'Name' },
+      propertyMappings: [],
+    };
+    const byTag: DataMapping = {
+      matchStrategy: { type: 'tag', column: 'Mark' },
+      propertyMappings: [],
+    };
+    const byProperty: DataMapping = {
+      matchStrategy: { type: 'property', psetName: 'Pset_Common', propName: 'Mark', column: 'Mark' },
+      propertyMappings: [],
+    };
+
+    expect(connector.match([{ GlobalId: 'guid-a' }], byGlobalId)[0].matchedEntityIds).toEqual([1]);
+    expect(connector.match([{ Id: '2' }], byExpressId)[0].matchedEntityIds).toEqual([2]);
+    expect(connector.match([{ Name: 'wall gamma' }], byName)[0].matchedEntityIds).toEqual([3]);
+    expect(tagConnector.match([{ Mark: 'P1-004' }], byTag)[0].matchedEntityIds).toEqual([4]);
+    expect(propConnector.match([{ Mark: 'A' }], byProperty)[0].matchedEntityIds).toEqual([5]);
+
+    expect(view.isDeleted(1)).toBe(false);
+    expect(view.isDeleted(2)).toBe(false);
+    expect(view.isDeleted(3)).toBe(false);
+    expect(tagView.isDeleted(4)).toBe(false);
+    expect(propView.isDeleted(5)).toBe(false);
+  });
+
+  it('full arc: match -> generateMutations -> value while deleted -> restoreFromTombstone -> the stale write is NOT there', () => {
+    const { connector, view } = makeConnector([
+      { expressId: 1, globalId: 'guid-a', name: 'Wall A' },
+    ]);
+    view.deleteEntity(1);
+    expect(view.isDeleted(1)).toBe(true);
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'globalId', column: 'GlobalId' },
+      propertyMappings: [
+        {
+          sourceColumn: 'FireRating',
+          targetPset: 'Pset_WallCommon',
+          targetProperty: 'FireRating',
+          valueType: PropertyValueType.Label,
+        },
+      ],
+    };
+
+    const matches = connector.match([{ GlobalId: 'guid-a', FireRating: 'STALE_VIA_CSV' }], mapping);
+    const mutations = connector.generateMutations(matches, mapping);
+
+    expect(mutations).toHaveLength(0);
+    expect(view.getPropertyValue(1, 'Pset_WallCommon', 'FireRating')).toBeNull();
+
+    const restored = view.restoreFromTombstone(1);
+    expect(restored).toBe(true);
+    expect(view.isDeleted(1)).toBe(false);
+
+    // The critical assertion: undoing the delete must not resurrect a write
+    // that happened while the entity was tombstoned.
+    expect(view.getPropertyValue(1, 'Pset_WallCommon', 'FireRating')).toBeNull();
+  });
+});
+
+describe('CsvConnector.match: overlay-created entities are candidates (#5198, #5249)', () => {
+  // The other direction of the same enumeration defect: an entity created this
+  // session has no base EntityTable row, so an importer that enumerates the
+  // table can never match it, however the CSV names it.
+  const WALL = (globalId: string, name: string, tag: string) =>
+    [globalId, null, name, null, null, null, null, tag, null];
+
+  const MAPPING: DataMapping = {
+    matchStrategy: { type: 'globalId', column: 'GlobalId' },
+    propertyMappings: [
+      { sourceColumn: 'FireRating', targetPset: 'Pset_WallCommon', targetProperty: 'FireRating', valueType: PropertyValueType.String },
+    ],
+  };
+
+  function withCreatedWall() {
+    const { connector, view } = makeConnectorWithTags([
+      { expressId: 1, globalId: 'guid-source', name: 'Source Wall', tag: 'S-1' },
+    ]);
+    // A live session seeds the allocator above the model's ids (StoreEditor).
+    view.setExpressIdWatermark(100);
+    const created = view.createEntity('IfcWall', WALL('guid-created', 'Created Wall', 'C-7')).expressId;
+    return { connector, view, created };
+  }
+
+  const matchOne = (connector: CsvConnector, strategy: DataMapping['matchStrategy'], row: Record<string, string>) =>
+    connector.match([row], { matchStrategy: strategy, propertyMappings: [] })[0].matchedEntityIds;
+
+  it('globalId strategy matches a created entity by its authored GlobalId', () => {
+    const { connector, created } = withCreatedWall();
+    expect(matchOne(connector, { type: 'globalId', column: 'G' }, { G: 'guid-created' })).toEqual([created]);
+    expect(matchOne(connector, { type: 'globalId', column: 'G' }, { G: 'guid-source' })).toEqual([1]);
+  });
+
+  it('expressId strategy matches a created entity by its allocated id', () => {
+    const { connector, created } = withCreatedWall();
+    expect(matchOne(connector, { type: 'expressId', column: 'Id' }, { Id: String(created) })).toEqual([created]);
+  });
+
+  it('name strategy matches a created entity by its authored Name, case-insensitively', () => {
+    const { connector, created } = withCreatedWall();
+    expect(matchOne(connector, { type: 'name', column: 'N' }, { N: 'created wall' })).toEqual([created]);
+  });
+
+  it('tag strategy matches a created entity by Tag, and a queued Tag edit wins over the authored one', () => {
+    const { connector, view, created } = withCreatedWall();
+    expect(matchOne(connector, { type: 'tag', column: 'T' }, { T: 'C-7' })).toEqual([created]);
+    view.setAttribute(created, 'Tag', 'C-8');
+    expect(matchOne(connector, { type: 'tag', column: 'T' }, { T: 'C-8' })).toEqual([created]);
+    expect(matchOne(connector, { type: 'tag', column: 'T' }, { T: 'C-7' })).toEqual([]);
+    // A second edit of the same attribute replaces the first: the overlay keys
+    // attribute edits by (entity, attribute), so only the latest is current.
+    view.setAttribute(created, 'Tag', 'C-9');
+    expect(matchOne(connector, { type: 'tag', column: 'T' }, { T: 'C-9' })).toEqual([created]);
+    expect(matchOne(connector, { type: 'tag', column: 'T' }, { T: 'C-8' })).toEqual([]);
+  });
+
+  it('property strategy matches a created entity through its overlay pset', () => {
+    const { connector, view, created } = withCreatedWall();
+    view.setProperty(created, 'Pset_Common', 'Mark', 'M-1', PropertyValueType.String);
+    expect(
+      matchOne(connector, { type: 'property', psetName: 'Pset_Common', propName: 'Mark', column: 'M' }, { M: 'M-1' }),
+    ).toEqual([created]);
+  });
+
+  it('a created-then-deleted entity matches under no strategy', () => {
+    const { connector, view, created } = withCreatedWall();
+    view.deleteEntity(created);
+    expect(matchOne(connector, { type: 'globalId', column: 'G' }, { G: 'guid-created' })).toEqual([]);
+    expect(matchOne(connector, { type: 'expressId', column: 'Id' }, { Id: String(created) })).toEqual([]);
+    expect(matchOne(connector, { type: 'tag', column: 'T' }, { T: 'C-7' })).toEqual([]);
+  });
+
+  it('full arc: importing a CSV row writes onto the created entity', () => {
+    const { connector, view, created } = withCreatedWall();
+    const matches = connector.match(connector.parse('GlobalId,FireRating\nguid-created,EI60'), MAPPING);
+    const mutations = connector.generateMutations(matches, MAPPING);
+    expect(mutations).toHaveLength(1);
+    expect(view.getPropertyValue(created, 'Pset_WallCommon', 'FireRating')).toBe('EI60');
   });
 });

@@ -20,12 +20,23 @@ export const validationPanelEn = {
   'validationPanel.entry.newRuleSet': 'New rule set',
   'validationPanel.entry.openRuleSet': 'Open .rules.json',
   'validationPanel.entry.recent': 'Recent rule sets',
+  'validationPanel.entry.importIds': 'Import IDS as rules',
 
   'validationPanel.toggle.ids': 'IDS validation',
   'validationPanel.toggle.rules': 'Information validation',
 
   'validationPanel.editRules': 'Edit rules',
   'validationPanel.save': 'Save',
+  'validationPanel.exportIds': 'Export as IDS',
+
+  'validationPanel.idsExport.summary': 'Exported {converted} of {total} rules to IDS.',
+  'validationPanel.idsExport.none': 'No rule in this set can be expressed in IDS, so nothing was exported.',
+  'validationPanel.idsExport.refusedHeading': 'Not exported',
+  'validationPanel.idsImport.summary': 'Imported {converted} of {total} IDS specifications as rules.',
+  'validationPanel.idsImport.none': 'No specification in this IDS has a rule equivalent, so nothing was imported.',
+  'validationPanel.idsImport.refusedHeading': 'Not imported',
+  'validationPanel.idsSummary.notesHeading': 'Note',
+  'validationPanel.idsSummary.dismiss': 'Dismiss',
   'validationPanel.run': 'Run',
   'validationPanel.cancel': 'Cancel',
 

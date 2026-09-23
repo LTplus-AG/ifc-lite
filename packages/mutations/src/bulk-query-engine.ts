@@ -12,6 +12,7 @@ import type { MutablePropertyView } from './mutable-property-view.js';
 import type { Mutation, PropertyValue } from './types.js';
 import { checkMutationGuard, type MutationGuard } from './mutation-guard.js';
 import { compileGuardedRegex } from '@ifc-lite/regex-guard';
+import { effectiveBulkCandidates, effectiveRootAttribute } from './bulk-query-candidates.js';
 
 /**
  * Filter operators for property values
@@ -159,23 +160,9 @@ export class BulkQueryEngine {
    * Select entities matching criteria
    */
   select(criteria: SelectionCriteria): number[] {
-    let candidates: number[];
-
-    // Fast path: filter by entity types directly during iteration instead of
-    // building the full ID list first, then filtering (avoids two passes).
-    if (criteria.entityTypes && criteria.entityTypes.length > 0) {
-      const typeSet = new Set(criteria.entityTypes);
-      candidates = [];
-      for (let i = 0; i < this.entities.count; i++) {
-        const expressId = this.entities.expressId[i];
-        // Base EntityTable retains overlay tombstones (#5196).
-        if (typeSet.has(this.entities.typeEnum[i]) && !this.mutationView.isDeleted(expressId)) {
-          candidates.push(expressId);
-        }
-      }
-    } else {
-      candidates = this.getAllEntityIds();
-    }
+    // The session's effective entities (#5196, #5249): tombstones out,
+    // creations in, a retyped entity under its new class.
+    let candidates = effectiveBulkCandidates(this.entities, this.expressIdIndex, this.mutationView, criteria.entityTypes);
 
     // Filter by storeys
     if (criteria.storeys && criteria.storeys.length > 0 && this.spatialHierarchy) {
@@ -260,25 +247,13 @@ export class BulkQueryEngine {
     // Filter by global IDs
     if (criteria.globalIds && criteria.globalIds.length > 0 && this.strings) {
       const globalIdSet = new Set(criteria.globalIds);
-      candidates = candidates.filter((id) => {
-        const idx = this.findEntityIndex(id);
-        if (idx === -1) return false;
-        const globalIdIdx = this.entities.globalId[idx];
-        const globalId = this.strings!.get(globalIdIdx);
-        return globalIdSet.has(globalId);
-      });
+      candidates = candidates.filter((id) => globalIdSet.has(this.rootAttribute(id, 'GlobalId')));
     }
 
     // Filter by name pattern
     if (criteria.namePattern && this.strings) {
       const regex = compileGuardedRegex(criteria.namePattern, 'i'); // caller-supplied: guard against ReDoS
-      candidates = candidates.filter((id) => {
-        const idx = this.findEntityIndex(id);
-        if (idx === -1) return false;
-        const nameIdx = this.entities.name[idx];
-        const name = this.strings!.get(nameIdx);
-        return regex.test(name);
-      });
+      candidates = candidates.filter((id) => regex.test(this.rootAttribute(id, 'Name')));
     }
 
     // Filter by property conditions
@@ -473,20 +448,9 @@ export class BulkQueryEngine {
     return false;
   }
 
-  /** Get all live entity IDs. */
-  private getAllEntityIds(): number[] {
-    const ids: number[] = [];
-    for (let i = 0; i < this.entities.count; i++) {
-      const expressId = this.entities.expressId[i];
-      if (!this.mutationView.isDeleted(expressId)) ids.push(expressId);
-    }
-    return ids;
-  }
-
-  /**
-   * Find the index of an entity by ID (O(1) via pre-built map)
-   */
-  private findEntityIndex(expressId: number): number {
-    return this.expressIdIndex.get(expressId) ?? -1;
+  /** Effective GlobalId / Name of a candidate (see bulk-query-candidates.ts). */
+  private rootAttribute(expressId: number, attribute: 'GlobalId' | 'Name'): string {
+    const row = this.expressIdIndex.get(expressId);
+    return effectiveRootAttribute(this.entities, this.strings!, this.mutationView, row, expressId, attribute);
   }
 }

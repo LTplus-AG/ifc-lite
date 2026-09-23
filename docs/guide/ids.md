@@ -138,7 +138,7 @@ out of scope, and is called out as such:
 | Pumps/AHUs must carry specific properties | Covered via `element` requirements (same as IDS) |
 | System/group membership (`IfcRelAssignsToGroup`) | Covered: `group` rule kind (applicability and `element` requirements), optionally scoped to a group class such as `IfcSystem` (subclasses included) |
 | Schedules, load time, CDE revision, as-built status | Out of scope — not model data |
-| Units per property | Deferred |
+| Units per property ("Width recorded in mm") | Covered: `unit` requirement kind — a property/quantity value's explicit unit, else the project unit for its measure type (#5300) |
 | Georeferencing (`IfcMapConversion`, CRS) | Deferred — model-level, not element-level |
 | Complex properties, `IfcPropertyReferenceValue` | Deferred — reads as `present:false` (absent) |
 | Negation / exceptions in applicability | Covered: `ne`/`notIn`/`notContains`/`notMatches`/`isNotSet`, OR-ed groups |
@@ -162,23 +162,31 @@ and `ne` on an absent property FAILS rather than vacuously passing — a rule
 requiring `FireRating ne '2HR'` does not pass just because `FireRating` was
 never set.
 
-## Exporting a rule set as IDS
+## Converting between rule sets and IDS
 
-`@ifc-lite/rules` exports the rules of a `.rules.json` set that IDS 1.0 can
-express. Nothing is approximated, and nothing is dropped without being reported.
+`@ifc-lite/rules` converts both ways. Nothing is approximated, and nothing is
+dropped without being reported.
 
 ```typescript
-import { ruleSetToIds, type RuleSetFile } from '@ifc-lite/rules';
+import { parseIDS } from '@ifc-lite/ids';
+import { idsToRuleSet, ruleSetToIds, type RuleSetFile } from '@ifc-lite/rules';
 
 declare const ruleSet: RuleSetFile;
+declare const idsXml: string;
 
+// Rule set -> IDS 1.0: rules IDS can express become specifications.
 const exported = ruleSetToIds(ruleSet, { ifcVersions: ['IFC4'] });
 exported.xml;      // IDS XML, or null when no rule could be exported
 exported.refused;  // [{ ruleId, ruleName, reasons: string[] }]
 exported.notes;    // caveats for the exported set as a whole
+
+// IDS -> rule set: simple specifications become rules you can extend.
+const imported = idsToRuleSet(parseIDS(idsXml));
+imported.file;     // a RuleSetFile, or null when nothing imported
+imported.refused;  // [{ specificationName, reasons: string[] }]
 ```
 
-Export covers `element` requirements and applicability built from `eq`,
+**Export** covers `element` requirements and applicability built from `eq`,
 `contains`, `startsWith`, `matches` (regex), `isSet`, `in`, and numeric bounds
 (a `between` pair becomes one restriction). The conditions can be on the IFC
 class, `PredefinedType`, attributes, properties, quantities (IDS checks those
@@ -200,6 +208,26 @@ Two caveats are reported as notes. IDS compares measure values in SI units,
 while the rule engine compares the stored value. IDS matches property-set and
 property names case-sensitively, while the engine matches literal names
 case-insensitively.
+
+**Import** covers specifications whose facets are all entity, attribute,
+property, material or classification-presence facets, with simple values,
+patterns, enumerations or numeric bounds. A property set named `Qto_…` imports
+as a `quantity` rule. An entity facet enumerating several classes imports as one `ifcType` rule with `exactClass`. Imported numeric checks carry the same SI-units note as the export. These block a specification, with the reason:
+
+- `partOf` facets
+- `optional` and `prohibited` facets
+- a property `dataType`
+- a pattern on an entity name, or a pattern or enumeration on an attribute name
+- a non-string enumeration on a PredefinedType or GlobalId, or a bound that is not a finite number
+- length or digit restrictions
+- classification codes
+- an entity facet in the requirements
+- a specification with no requirements
+
+In the viewer, the Data validation panel's Information validation side has
+**Import IDS as rules** next to **Open .rules.json**. The rule-set editor has
+**Export as IDS** next to **Save**. Both show what was converted and every
+refused rule or specification with its reasons.
 
 ## Viewer Integration
 

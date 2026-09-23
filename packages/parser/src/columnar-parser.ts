@@ -14,7 +14,7 @@ import { SpatialHierarchyBuilder } from './spatial-hierarchy-builder.js';
 import { EntityExtractor } from './entity-extractor.js';
 import { extractLengthUnitScale } from './unit-extractor.js';
 import { extractPsetsFromIds } from './on-demand-extractors.js';
-import { readQuantitySet } from './quantity-collect.js';
+import { readQuantitySet, type CollectedQuantity } from './quantity-collect.js';
 import { prepareColumnarEntities, type ColumnarEntityInput } from './columnar-entity-preparation.js';
 import type { DropCensus } from './drop-census.js';
 import { yieldToEventLoop } from './yield-to-event-loop.js';
@@ -752,7 +752,7 @@ export class ColumnarParser {
     extractQuantitiesOnDemand(
         store: IfcDataStore,
         entityId: number
-    ): Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> {
+    ): Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }> {
         // Use on-demand extraction if map is available (preferred for single-entity access)
         if (!store.onDemandQuantityMap || !store.source?.length) {
             // Fallback to pre-computed quantity table (e.g., server-parsed data)
@@ -765,7 +765,7 @@ export class ColumnarParser {
         }
 
         const extractor = new EntityExtractor(store.source);
-        const result: Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];
+        const result: Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }> = [];
 
         for (const qsetId of qsetIds) {
             const qsetRef = getEntityRefFromStore(store, qsetId);
@@ -798,7 +798,7 @@ export function extractPropertiesOnDemand(
 export function extractQuantitiesOnDemand(
     store: IfcDataStore,
     entityId: number
-): Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> {
+): Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }> {
     const parser = new ColumnarParser();
     return parser.extractQuantitiesOnDemand(store, entityId);
 }

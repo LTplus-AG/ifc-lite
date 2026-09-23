@@ -155,6 +155,8 @@ function classifyModified(
     }
   }
   if (entry.changeKinds.includes('data')) parts.push('Data changed');
+  // #5309: name the containment move rather than the generic 'Changed'.
+  if (entry.changeKinds.includes('container')) parts.push('Container changed');
 
   return { change: parts.join(', ') || 'Changed', movedDistance };
 }

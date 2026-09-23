@@ -48,6 +48,7 @@
     "check:rust-major-offset": "node scripts/check-rust-major-offset.mjs",
     "check:ifc2x3-required-slots": "node scripts/generate-ifc2x3-required-slots.mjs --check",
     "check:ifc4-express-corrections": "node scripts/generate-ifc4-express-corrections.mjs --check",
+    "check:ifc4-required-slots": "node scripts/generate-ifc4-required-slots.mjs --check",
     "lint:module-size-baseline": "node scripts/check-module-size.mjs --update",
     "check:unbounded-frame-wait": "node scripts/check-unbounded-frame-wait.mjs",
     "check:wasm-disposal": "node scripts/check-wasm-disposal.mjs",

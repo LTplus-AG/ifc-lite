@@ -66,12 +66,20 @@ function cardinalityOf(rule: InformationRule, reasons: string[]): Pick<IDSSpecif
   return {};
 }
 
+/** Why each requirement kind other than `element` has no IDS form. */
+const NON_ELEMENT_REASON: Record<Exclude<InformationRule['requirement']['kind'], 'element'>, string> = {
+  unique: 'a "unique" requirement compares values across elements; IDS checks one element at a time',
+  aggregate: 'an "aggregate" requirement totals values across elements; IDS checks one element at a time',
+  compare: 'a "compare" requirement compares two values of one element; IDS only compares a value with a fixed one',
+  unit: 'a "unit" requirement checks the unit a value is recorded in, which IDS 1.0 cannot state',
+};
+
 function ruleToSpecification(rule: InformationRule, ifcVersions: IFCVersion[]): SpecOutcome {
   const reasons: string[] = [];
   const notes: string[] = [];
 
   if (rule.requirement.kind !== 'element') {
-    reasons.push(`a "${rule.requirement.kind}" requirement checks a set of elements; IDS checks one element at a time`);
+    reasons.push(NON_ELEMENT_REASON[rule.requirement.kind]);
   }
   if (rule.severity === 'warning') {
     reasons.push('IDS has no warning severity: every failed specification is an error');

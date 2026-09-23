@@ -13,6 +13,12 @@
  * straight run; the reported length is the whole run; the answer does not move
  * when triangle emission order does) rather than a magic number, so a
  * legitimate tessellation change does not turn it into a brittle snapshot.
+ *
+ * Coverage limit: since #5313 no committed sample emits a crease as several
+ * collinear triangle edges (the only such runs were a T-junction crack on
+ * slab #52), so the run MERGING itself is exercised by the unit suite, not
+ * here. This gate still catches a crease served in fragments per piece and
+ * pins the real edges' lengths and emission-order invariance.
  */
 
 import { readFileSync, existsSync } from 'node:fs';
@@ -160,9 +166,11 @@ for (const sample of ['hello-wall.ifc', 'building-architecture.ifc', 'infra-brid
   checks++;
 }
 
-// The measured case: IfcSlab #52 of building-architecture.ifc carries a straight
-// 2.000 m opening edge at x = 5.600, y = 0.000, z = -5.000 .. -3.000. It used to
-// arrive as 0.200 / 1.800 / 1.600 / 0.200 and no cursor on it ever read 2.000.
+// The measured case: IfcSlab #52 of building-architecture.ifc, the line
+// x = 5.600, y = 0.000, z = -5.000 .. -3.000. The authored face set is closed
+// and the faces either side of the middle 1.6 m are coplanar, so the only
+// creases on the line are two 0.200 m notch edges; each must be one cache edge
+// and a cursor on it must read its full length (#2199, #5313).
 if (existsSync(join(SAMPLES, 'building-architecture.ifc'))) {
   const meshes = loadMeshes('building-architecture.ifc');
   const meshIndex = meshes.findIndex((m) => m.expressId === 52);
@@ -170,15 +178,16 @@ if (existsSync(join(SAMPLES, 'building-architecture.ifc'))) {
   const cache = buildGeometryCache(meshes[meshIndex]);
   const onLine = (v) => Math.abs(v.x - 5.6) < 1e-3 && Math.abs(v.y) < 1e-3;
   const run = cache.edges.filter((e) => onLine(e.v0) && onLine(e.v1));
-  assert.equal(run.length, 1, `slab #52 opening edge is ${run.length} cache edges, expected 1`);
-  assert.ok(Math.abs(run[0].length - 2) < 1e-3, `slab #52 opening edge reads ${run[0].length.toFixed(4)} m`);
-  console.log(`  ok slab #52 opening edge: one run of ${run[0].length.toFixed(4)} m`);
+  const lengths = run.map((e) => e.length.toFixed(4)).sort();
+  assert.deepEqual(lengths, ['0.2000', '0.2000'], `slab #52 line x=5.6 carries edges ${lengths.join(' / ')}, expected the two 0.2000 m notch creases`);
+  console.log('  ok slab #52: the x=5.6 line carries only its two 0.2000 m notch creases');
   checks++;
 
   const camera = { position: { x: 5.62, y: 5, z: -4 }, fov: Math.PI / 4 };
   const ray = { origin: camera.position, direction: { x: 0, y: -1, z: 0 } };
   const detector = new SnapDetector();
-  for (const z of [-4.5, -4.0, -3.5]) {
+  for (const edge of run) {
+    const z = (edge.v0.z + edge.v1.z) / 2;
     const point = { x: 5.62, y: 0, z };
     const result = detector.detectMagneticSnap(
       ray, meshes,
@@ -186,10 +195,12 @@ if (existsSync(join(SAMPLES, 'building-architecture.ifc'))) {
       camera, 800, { edge: null, meshExpressId: null, lockStrength: 0 }
     );
     const [a, b] = result.snapTarget?.metadata?.vertices ?? [];
+    const same = (p, q) => p && Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z) < 1e-3;
+    const hit = (same(a, edge.v0) && same(b, edge.v1)) || (same(a, edge.v1) && same(b, edge.v0));
     const reported = a && b ? Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) : NaN;
-    assert.ok(Math.abs(reported - 2) < 1e-3, `cursor z=${z} reported ${reported.toFixed(4)} m, not 2.0000`);
+    assert.ok(hit, `cursor z=${z} snapped to a ${reported.toFixed(4)} m edge that is not the crease under it`);
   }
-  console.log('  ok slab #52: every cursor along the edge reports the full 2.0000 m');
+  console.log('  ok slab #52: a cursor on either notch crease snaps to that crease');
   checks++;
 
   // Anti-#2388: reversing triangle emission order must not move a single edge.

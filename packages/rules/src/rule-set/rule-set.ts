@@ -75,7 +75,7 @@ export interface RuleBlock {
 
 export type Requirement =
   | { kind: 'element'; block: RuleBlock }     // per-element, the issue's nine operators
-  | UniqueRequirement | AggregateRequirement | CompareRequirement;
+  | UniqueRequirement | AggregateRequirement | CompareRequirement | UnitRequirement;
 
 /** A FilterRule minus its operator/operand — the exact input `readSubject` takes. */
 type SubjectOf<R> = Omit<R, 'op' | 'value' | 'values' | 'valueKind'>;
@@ -115,4 +115,17 @@ export interface CompareRequirement {
   right: Subject;
   op: NumericOp;
   valueType?: 'number' | 'date';      // default number
+}
+
+/**
+ * "Width is recorded in mm" (#5300): every value of `subject` on an
+ * applicable element must be recorded in `unit`, a display symbol as the
+ * property panel shows it (`mm`, `m`, `m²`, `m³`, `kg`, …). Per element,
+ * like `element`. IDS 1.0 cannot express this (bSI discussion #437).
+ */
+export interface UnitRequirement {
+  kind: 'unit';
+  /** A property or quantity subject; no other subject carries a unit. */
+  subject: SubjectOf<PropertyRule> | SubjectOf<QuantityRule>;
+  unit: string;
 }

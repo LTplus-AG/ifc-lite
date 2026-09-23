@@ -26,6 +26,8 @@ export interface CollectedQuantity {
     /** SI factor of this quantity's explicit `Unit`, when it declares one.
      *  An omitted unit inherits the project's unit assignment. */
     explicitUnitSiScale?: number;
+    /** Display symbol of that explicit `Unit` (`mm`, `m²`), when it resolves. */
+    explicitUnit?: string;
 }
 
 /**
@@ -177,7 +179,7 @@ export function collectQuantitiesFromRefs(
             name: qtyName,
             type: qtyType,
             value,
-            ...(unit ? { explicitUnitSiScale: unit.resolved.siScale } : {}),
+            ...(unit ? { explicitUnitSiScale: unit.resolved.siScale, explicitUnit: unit.resolved.symbol } : {}),
         });
     }
 

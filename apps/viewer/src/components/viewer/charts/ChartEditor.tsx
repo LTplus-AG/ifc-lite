@@ -10,13 +10,17 @@
 import { useMemo, useState } from 'react';
 import { HelpCircle } from 'lucide-react';
 import { trimSelectorWhitespace } from '@ifc-lite/query';
-import { CHART_FILTER_NOT_APPLICABLE_SOURCES, elementFieldColumn, elementFieldColumnId, type ChartDataset, type ChartDatasetColumn, type ChartSource, type ChartSpec, type ChartType, type ElementFieldBinding } from '@ifc-lite/charts';
+import { CHART_FILTER_NOT_APPLICABLE_SOURCES, elementFieldColumn, elementFieldColumnId, type ChartDataset, type ChartSource, type ChartSpec, type ChartType, type ElementFieldBinding } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n/useTranslation';
 import { readChartFilter } from '@/lib/charts/source-filter';
+import { useViewerStore } from '@/store';
+import { groupsToSelectorText, type FilterGroup } from '@ifc-lite/rules';
+import { FilterGroupEditor, type FilterGroupEditorState } from '../FilterGroupEditor';
 import { DOCS_URL, useActiveSchemaVersion } from '../SearchModal.filter.selector';
 import { SelectorFeedbackList, type SelectorFeedback } from '../SearchModal.filter.feedback';
 import { ElementFieldPicker } from './ElementFieldPicker';
+import { dimensionColumns, draftToSpec, editorColumns, specToDraft, type ChartDraft } from './chart-editor-draft';
 import type { ElementFieldCatalog } from '@/lib/charts/element-field-reader';
 
 const FILTER_PLACEHOLDER = 'IfcWall, Pset_WallCommon.FireRating=/REI.*/';
@@ -64,60 +68,18 @@ export interface ChartEditorProps {
   clashRuleOptions?: readonly ClashRuleOption[];
 }
 
-/**
- * The editor's working copy of a chart spec. `ChartSpec` (types.ts) is a
- * discriminated union — `elementCount` may not carry a `dimension` at all —
- * but the form below mutates `type` and `dimension` independently as the
- * user turns dials, which a union can't represent mid-edit without a cast at
- * every call site. The draft keeps `dimension` as a plain string (empty
- * means "none chosen yet") for exactly that reason; `draftToSpec` is the one
- * place that sentinel is resolved back into the real contract, on save.
- */
-type ChartDraft = Omit<ChartSpec, 'type' | 'dimension'> & { type: ChartType; dimension: string };
-
-function specToDraft(spec: ChartSpec): ChartDraft {
-  return { ...spec, dimension: spec.dimension ?? '' };
-}
-
-/** The inverse of `specToDraft` — the only place a draft's empty-string
- *  `dimension` sentinel is resolved into the public contract: dropped
- *  entirely for `elementCount`, kept as a real column id otherwise. Also
- *  where a stale non-count measure carried over from a bucketed chart type
- *  is normalized away, so a saved `elementCount` chart can never disagree
- *  with what `aggregate()` actually does with it (#5151). */
-function draftToSpec(draft: ChartDraft): ChartSpec {
-  const { type, dimension, measure, ...rest } = draft;
-  if (type === 'elementCount') return { ...rest, type, measure: measure.agg === 'count' ? measure : { agg: 'count' } };
-  return { ...rest, type, dimension, measure };
-}
-
-/**
- * The columns the draft can bind to. Other charts' IFC field columns are
- * hidden; the draft's own field is a synthesized column, NOT a column of the
- * shared dataset: an unsaved edit must never rebuild the dashboard's
- * datasets, because every card re-aggregates over them and reconciles its
- * live selection against the result (#4833). The resolved display unit is
- * the card's concern once saved; here the binding's own unit labels the sum.
- */
-export function editorColumns(dataset: ChartDataset, draft: ChartDraft): ChartDatasetColumn[] {
-  if (draft.source !== 'elements') return dataset.columns;
-  const builtIn = dataset.columns.filter((column) => !column.id.startsWith('ifc-field:'));
-  return draft.elementField ? [...builtIn, elementFieldColumn(draft.elementField)] : builtIn;
-}
-
-/** The columns a chart type can bucket by. */
-function dimensionColumns(type: ChartType, columns: readonly ChartDatasetColumn[]): ChartDatasetColumn[] {
-  if (type === 'elementCount') return []; // elementCount doesn't bucket by any dimension
-  if (type === 'histogram') return columns.filter((c) => c.kind === 'number');
-  if (type === 'timeline') return columns.filter((c) => c.kind === 'date');
-  return columns.filter((c) => c.kind === 'category' || c.kind === 'boolean');
-}
-
 export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCatalog, elementFieldCatalogLoading, clashRuleOptions = NO_CLASH_RULES }: ChartEditorProps) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<ChartDraft>(() => specToDraft(spec));
   const schemaVersion = useActiveSchemaVersion();
   const [filterText, setFilterText] = useState(spec.filter?.selector ?? '');
+  const [filterMode, setFilterMode] = useState<'selector' | 'rules'>(spec.filter?.groups?.length ? 'rules' : 'selector');
+  const [filterGroups, setFilterGroups] = useState<FilterGroup[]>(spec.filter?.groups ?? [{ combinator: 'AND', rules: [] }]);
+  const [activeFilterGroup, setActiveFilterGroup] = useState(0);
+  const models = useViewerStore((s) => s.models);
+  const modelOptions = useMemo(() => Array.from(models.values(), (model) => ({
+    id: model.id, name: model.name, sourceFingerprint: model.sourceFingerprint,
+  })), [models]);
   const [filterFeedback, setFilterFeedback] = useState<SelectorFeedback | null>(null);
   // '' means "All rules" — the same UI-only sentinel `stackBy`'s `<select>`
   // already uses (`value={draft.stackBy ?? ''}`); it is never what gets
@@ -128,28 +90,44 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
   // `null` means "no filter typed" — always valid; a real reading is either
   // ok or a refusal message (#4946's all-or-nothing rule, `readChartFilter`).
   const filterReading = useMemo(
-    () => (filterApplicable && trimSelectorWhitespace(filterText).length > 0 ? readChartFilter(filterText, { schemaVersion }) : null),
-    [filterApplicable, filterText, schemaVersion],
+    () => (filterApplicable && filterMode === 'selector' && trimSelectorWhitespace(filterText).length > 0 ? readChartFilter(filterText, { schemaVersion }) : null),
+    [filterApplicable, filterMode, filterText, schemaVersion],
   );
   const filterValid = filterReading === null || filterReading.ok;
   const columns = editorColumns(datasets[draft.source], draft);
   const rowCount = datasets[draft.source].rows.length;
   const numberColumns = columns.filter((c) => c.kind === 'number');
+  const numericFields = draft.source === 'elements' ? [
+    ...elementFieldCatalog.attributes,
+    ...[...elementFieldCatalog.properties.values()].flat(),
+    ...[...elementFieldCatalog.quantities.values()].flat(),
+  ].filter((option) => option.binding.valueKind === 'number') : [];
+  const numericFieldsById = new Map(numericFields.map((option) => [elementFieldColumnId(option.binding), option.binding]));
+  const measureOptions = new Map((draft.type === 'elementCount' ? [] : numberColumns).map((column) => [column.id, column]));
+  for (const option of draft.type === 'elementCount' ? [] : numericFields) {
+    const column = elementFieldColumn(option.binding);
+    if (!measureOptions.has(column.id)) measureOptions.set(column.id, column);
+  }
   const categoryColumns = columns.filter((c) => c.kind === 'category' || c.kind === 'boolean');
   const dims = dimensionColumns(draft.type, columns);
   const dimensionOk = draft.type === 'elementCount' || dims.some((c) => c.id === draft.dimension);
-  const measureOk = draft.measure.agg === 'count' || numberColumns.some((c) => c.id === draft.measure.column);
-  const stackOk = draft.type !== 'stackedBar' || categoryColumns.some((c) => c.id === draft.stackBy);
-  const valid = draft.title.trim().length > 0 && dimensionOk && measureOk && stackOk && filterValid;
+  const measureOk = draft.measure.agg === 'count' || measureOptions.has(draft.measure.column ?? '');
+  const stackOk = draft.type !== 'stackedBar' || (draft.stackBy !== draft.dimension && categoryColumns.some((c) => c.id === draft.stackBy));
+  const topNOk = draft.topN === undefined || (Number.isInteger(draft.topN) && draft.topN >= 0);
+  const rulesValid = filterMode !== 'rules' || filterGroups.every((g) => g.rules.length > 0) || filterGroups.every((g) => g.rules.length === 0);
+  const valid = draft.title.trim().length > 0 && dimensionOk && measureOk && stackOk && topNOk && filterValid && rulesValid;
 
   const setSource = (source: ChartSource): void => {
     const cols = datasets[source].columns;
     const allowed = dimensionColumns(draft.type, cols);
-    setDraft({ ...draft, source, elementField: undefined, dimension: allowed[0]?.id ?? '', stackBy: undefined, measure: { agg: 'count' } });
+    setDraft({ ...draft, source, elementField: undefined, measureField: undefined, dimension: allowed[0]?.id ?? '', stackBy: undefined, measure: { agg: 'count' } });
     // Not every source can be filtered (#4946); switching to one clears the
     // field rather than leave text behind that the next save would drop
     // silently. `clashRule` is meaningless off `clash` for the same reason.
     setFilterText('');
+    setFilterGroups([{ combinator: 'AND', rules: [] }]);
+    setActiveFilterGroup(0);
+    setFilterMode('selector');
     setFilterFeedback(null);
     setClashRuleId('');
   };
@@ -162,12 +140,12 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
       next.type = 'histogram';
       next.dimension = nextId;
       next.stackBy = undefined;
-      next.measure = { agg: 'count' };
+      if (oldId && next.measure.column === oldId && !next.measureField) next.measure = { agg: 'count' };
     } else if (nextId) {
       if (next.type === 'histogram' || next.type === 'timeline') next.type = 'bar';
       next.dimension = nextId;
       next.stackBy = undefined;
-      if (oldId && next.measure.column === oldId) next.measure = { agg: 'count' };
+      if (oldId && next.measure.column === oldId && !next.measureField) next.measure = { agg: 'count' };
     }
     else {
       // Back to the built-in columns: a histogram over the cleared numeric
@@ -178,7 +156,7 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
         next.dimension = columns.find((column) => column.kind === 'category')?.id ?? '';
       }
       if (oldId && next.stackBy === oldId) next.stackBy = undefined;
-      if (oldId && next.measure.column === oldId) next.measure = { agg: 'count' };
+      if (oldId && next.measure.column === oldId && !next.measureField) next.measure = { agg: 'count' };
     }
     setDraft(next);
   };
@@ -194,10 +172,13 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
       next.dimension = '';
       next.stackBy = undefined;
       next.measure = { agg: 'count' };
+      next.measureField = undefined;
     } else {
       // Other types need a valid dimension
       if (!allowed.some((c) => c.id === next.dimension)) next.dimension = allowed[0]?.id ?? next.dimension;
-      if (type === 'stackedBar' && !next.stackBy) next.stackBy = categoryColumns.find((c) => c.id !== next.dimension)?.id;
+      if (type === 'stackedBar') {
+        if (!categoryColumns.some((c) => c.id === next.stackBy && c.id !== next.dimension)) next.stackBy = categoryColumns.find((c) => c.id !== next.dimension)?.id;
+      } else next.stackBy = undefined;
     }
     setDraft(next);
   };
@@ -222,8 +203,10 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
         // into the saved spec (#5156, mirrors `elementField`'s per-source
         // guard above).
         const clashRule = draft.source === 'clash' && clashRuleId ? clashRuleId : undefined;
-        const filter = filterApplicable && (trimmedSelector.length > 0 || clashRule !== undefined)
-          ? { selector: trimmedSelector, clashRule }
+        const groups = filterMode === 'rules' && filterGroups.some((g) => g.rules.length > 0) ? filterGroups : undefined;
+        const selector = filterMode === 'selector' ? trimmedSelector : '';
+        const filter = filterApplicable && (selector.length > 0 || groups !== undefined || clashRule !== undefined)
+          ? { selector, groups, clashRule }
           : undefined;
         // draftToSpec (#5151) is still the one place that resolves the
         // `dimension`/`measure` sentinels back into the real contract —
@@ -256,11 +239,25 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
             </select>
           </label>
         )}
-        <label className="col-span-2 flex flex-col gap-0.5">
+        <div className="col-span-2 flex flex-col gap-0.5">
           <span className="text-muted-foreground">{t('chartEditor.sourceFilterLabel')}</span>
           {filterApplicable ? (
             <>
-              <div className="flex items-center gap-1">
+              <div className="flex gap-1" role="group" aria-label={t('chartEditor.sourceFilterMode')}>
+                <Button type="button" size="sm" variant={filterMode === 'selector' ? 'secondary' : 'ghost'} onClick={() => {
+                  if (filterMode === 'rules') setFilterText(groupsToSelectorText(filterGroups));
+                  setFilterMode('selector');
+                }}>{t('chartEditor.selectorMode')}</Button>
+                <Button type="button" size="sm" variant={filterMode === 'rules' ? 'secondary' : 'ghost'} onClick={() => {
+                  if (filterReading && !filterReading.ok) {
+                    setFilterFeedback({ tone: 'error', lines: [filterReading.message] });
+                    return;
+                  }
+                  if (filterMode === 'selector' && filterReading?.ok) setFilterGroups(filterReading.groups);
+                  setFilterMode('rules');
+                }}>{t('chartEditor.rulesMode')}</Button>
+              </div>
+              {filterMode === 'selector' ? <div className="flex items-center gap-1">
                 <input
                   className={`${field} flex-1 font-mono`}
                   value={filterText}
@@ -285,15 +282,19 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
                 >
                   <HelpCircle className="h-3.5 w-3.5" />
                 </a>
-              </div>
-              {filterFeedback && <SelectorFeedbackList feedback={filterFeedback} />}
+              </div> : <FilterGroupEditor groups={filterGroups} activeGroup={activeFilterGroup} models={modelOptions} onChange={(updater: (prev: FilterGroupEditorState) => FilterGroupEditorState) => {
+                const next = updater({ groups: filterGroups, activeGroup: activeFilterGroup });
+                setFilterGroups(next.groups);
+                setActiveFilterGroup(next.activeGroup);
+              }} />}
+              {filterMode === 'selector' && filterFeedback && <SelectorFeedbackList feedback={filterFeedback} />}
             </>
           ) : (
             <span className="text-[11px] text-muted-foreground">
               {t('chartEditor.sourceFilterNotApplicable', { source: SOURCE_LABELS[draft.source] })}
             </span>
           )}
-        </label>
+        </div>
         <label className="flex flex-col gap-0.5">
           <span className="text-muted-foreground">{t('chartEditor.chartTypeLabel')}</span>
           <select className={field} value={draft.type} onChange={(e) => setType(e.target.value as ChartType)} aria-label={t('chartEditor.chartTypeAriaLabel')}>
@@ -303,7 +304,11 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
         {draft.type !== 'elementCount' && (
           <label className="flex flex-col gap-0.5">
             <span className="text-muted-foreground">{t('chartEditor.groupByLabel')}</span>
-            <select className={field} value={draft.dimension} onChange={(e) => setDraft({ ...draft, dimension: e.target.value })} aria-label={t('chartEditor.groupByAriaLabel')}>
+            <select className={field} value={draft.dimension} onChange={(e) => {
+              const dimension = e.target.value;
+              setDraft({ ...draft, dimension, stackBy: draft.type === 'stackedBar' && draft.stackBy === dimension
+                ? categoryColumns.find((column) => column.id !== dimension)?.id : draft.stackBy });
+            }} aria-label={t('chartEditor.groupByAriaLabel')}>
               {!dimensionOk && <option value={draft.dimension}>—</option>}
               {dims.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
             </select>
@@ -314,7 +319,7 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
             <span className="text-muted-foreground">{t('chartEditor.stackByLabel')}</span>
             <select className={field} value={draft.stackBy ?? ''} onChange={(e) => setDraft({ ...draft, stackBy: e.target.value || undefined })} aria-label={t('chartEditor.stackByAriaLabel')}>
               <option value="">—</option>
-              {categoryColumns.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+              {categoryColumns.filter((c) => c.id !== draft.dimension).map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
             </select>
           </label>
         )}
@@ -325,12 +330,16 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
             value={draft.measure.agg === 'count' ? 'count' : `sum:${draft.measure.column ?? ''}`}
             onChange={(e) => {
               const v = e.target.value;
-              setDraft({ ...draft, measure: v === 'count' ? { agg: 'count' } : { agg: 'sum', column: v.slice(4) } });
+              const column = v.slice(4);
+              const boundField = [draft.measureField, draft.elementField].find((candidate) =>
+                candidate?.valueKind === 'number' && elementFieldColumnId(candidate) === column);
+              setDraft({ ...draft, measure: v === 'count' ? { agg: 'count' } : { agg: 'sum', column },
+                measureField: v === 'count' ? undefined : numericFieldsById.get(column) ?? boundField });
             }}
             aria-label={t('chartEditor.measureAriaLabel')}
           >
             <option value="count">{t('chartEditor.countOption')}</option>
-            {numberColumns.map((c) => <option key={c.id} value={`sum:${c.id}`}>{t('chartEditor.sumOfOption', { column: c.label, unit: c.unit ? ` (${c.unit})` : '' })}</option>)}
+            {[...measureOptions.values()].map((c) => <option key={c.id} value={`sum:${c.id}`}>{t('chartEditor.sumOfOption', { column: c.label, unit: c.unit ? ` (${c.unit})` : '' })}</option>)}
           </select>
         </label>
         {draft.type !== 'elementCount' && (
@@ -341,6 +350,7 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
                 className={field}
                 type="number"
                 min={0}
+                step={1}
                 value={draft.topN ?? ''}
                 onChange={(e) => setDraft({ ...draft, topN: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value)) })}
                 aria-label={t('chartEditor.topNAriaLabel')}

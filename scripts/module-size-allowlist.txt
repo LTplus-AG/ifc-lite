@@ -244,7 +244,7 @@
   1607 packages/export/src/merged-exporter.ts
    616 packages/export/src/parquet-exporter.ts
    999 packages/export/src/reference-collector.ts
-   528 packages/export/src/schema-converter.ts
+   526 packages/export/src/schema-converter.ts
    437 packages/extensions/src/testing/runner.ts
    638 packages/geometry/src/coordinate-handler.ts
   1695 packages/geometry/src/geometry-parallel.ts
@@ -261,7 +261,6 @@
    773 packages/ids/src/validation/validator.ts
    468 packages/ifcx/src/federated-composition.ts
    704 packages/ifcx/src/index.ts
-   415 packages/ifcx/src/writer.ts
    464 packages/lens/src/engine.ts
    426 packages/lens/src/matching.ts
    416 packages/lens/src/types.ts

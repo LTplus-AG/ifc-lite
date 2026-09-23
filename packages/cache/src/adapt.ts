@@ -100,6 +100,7 @@ function toSchemaVersion(schemaVersion: ParsedIfcStore['schemaVersion']): Schema
  * is the very remedy the README recommends for the empty property tables).
  */
 export function toCacheDataStore(store: ParsedIfcStore): CacheDataStore {
+  // @raw-entity-enumeration-ok Cache metadata counts the parsed source snapshot, not live overlay rows.
   return {
     schema: toSchemaVersion(store.schemaVersion),
     entityCount: store.entityCount || store.entities.count,

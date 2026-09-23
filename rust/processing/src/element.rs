@@ -265,7 +265,13 @@ pub fn produce_element_meshes(
         _ => None,
     };
 
+    // #858 splits a colour-mapped face set by triangle index, so its triangles
+    // must keep their order through source hygiene (#5313).
+    let keep_order = !ctx.indexed_colour_full.is_empty()
+        && element_color::element_reaches_indexed_colour(job.entity, ctx.indexed_colour_full, decoder);
+    let previous_order = router.set_preserve_triangle_order(keep_order);
     let (meshes, instance_occurrences) = produce_inner(job, ctx, decoder, router, &mut hasher);
+    router.set_preserve_triangle_order(previous_order);
 
     // Drain the router's per-element CSG diagnostics on EVERY return path so
     // a warm (batch-reused) router starts the next element clean.

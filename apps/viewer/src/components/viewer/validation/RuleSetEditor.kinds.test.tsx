@@ -16,7 +16,7 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useState } from 'react';
-import { render, cleanup, click } from '@/test/render.js';
+import { render, cleanup, click, type } from '@/test/render.js';
 import type { InformationRule, RuleSetFile } from '@ifc-lite/rules';
 import { RuleSetEditor } from './RuleSetEditor.js';
 
@@ -85,6 +85,25 @@ describe('RuleSetEditor — requirement kind switching (#5138)', () => {
     const afterElement: string = current.rules[0].requirement.kind;
     assert.equal(afterElement, 'element');
     assert.deepEqual(current.rules[0].applicability, originalApplicability);
+  });
+
+  it('the Unit kind authors { kind: "unit", subject, unit } and keeps applicability (#5300)', () => {
+    const initial: RuleSetFile = { version: 1, name: 'fixture', rules: [fixtureRule()] };
+    const originalApplicability = initial.rules[0].applicability;
+    let current = initial;
+    const container = render(<Harness initial={initial} onFileChange={(f) => { current = f; }} />);
+
+    click(kindButton(container, 'Unit'));
+    assert.deepEqual(current.rules[0].requirement, {
+      kind: 'unit', subject: { kind: 'quantity', setName: '', quantityName: '' }, unit: '',
+    });
+    assert.deepEqual(current.rules[0].applicability, originalApplicability);
+
+    const unitInput = container.querySelector('input[aria-label="Required unit"]') as HTMLInputElement | null;
+    assert.ok(unitInput, 'the required-unit field is rendered');
+    type(unitInput, 'mm');
+    const requirement = current.rules[0].requirement;
+    assert.equal(requirement.kind === 'unit' ? requirement.unit : undefined, 'mm');
   });
 
   it('an exactClass ifcType chip forces the applicability block to chips mode with a notice', () => {

@@ -1536,6 +1536,10 @@ jobs:
       # registry or table refresh must regenerate it or this fails.
       - name: Check IFC4 EXPRESS corrections freshness
         run: node scripts/generate-ifc4-express-corrections.mjs --check
+      # The IFC2X3 required-slot table's IFC4 twin (#5202): the slots IFC4 requires on a downgrade from
+      # IFC4X3/IFC5, generated from the EXPRESS-derived IFC4 registry.
+      - name: Check IFC4 required-slot table freshness
+        run: node scripts/generate-ifc4-required-slots.mjs --check
       # The server-parse root-attribute table (attr_indices.rs) is generated
       # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
       # parse resolves names against. Guard that the committed file is in sync

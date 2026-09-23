@@ -9,30 +9,7 @@
 
 use super::*;
 use crate::profile::Profile2D;
-
-/// Count UNDIRECTED edges NOT shared by exactly two triangles — 0 on a closed
-/// 2-manifold (the production watertightness contract, `param_cut_watertight`).
-/// Vertices welded by exact f32 bits (coincident verts share bit patterns).
-fn open_edges(m: &Mesh) -> usize {
-    use std::collections::HashMap;
-    let key = |i: u32| {
-        let b = i as usize * 3;
-        (
-            m.positions[b].to_bits(),
-            m.positions[b + 1].to_bits(),
-            m.positions[b + 2].to_bits(),
-        )
-    };
-    let mut edges: HashMap<_, u32> = HashMap::new();
-    for t in m.indices.chunks_exact(3) {
-        for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
-            let (ka, kb) = (key(a), key(b));
-            let e = if ka < kb { (ka, kb) } else { (kb, ka) };
-            *edges.entry(e).or_insert(0) += 1;
-        }
-    }
-    edges.values().filter(|&&c| c != 2).count()
-}
+use crate::test_support::open_edges;
 
 /// Total area of the triangles lying on the plane `z ≈ z0` (a cap), summed
 /// with |signed area| so it is winding-independent.
@@ -93,4 +70,40 @@ fn watertight_extrude_many_holes() {
             cap_area(&mesh, z)
         );
     }
+}
+
+/// #5313: a profile whose ring carries a vertex a few tens of nanometres off
+/// the chord of its neighbours (a 7.46 mm arc of a 117 m circle, discretized
+/// as A, M, C — `ifcopenshell/928-column.ifc` #107) must still extrude to a
+/// closed solid AFTER the router's hygiene pass. Earcut emits the cap sliver
+/// (A, C, M) and `clean_degenerate` drops it as sub-grid, while the side walls
+/// keep the quads A-M and M-C; before the fix that left three open edges per
+/// cap (a T-junction at M).
+#[test]
+fn near_collinear_profile_vertex_survives_hygiene_closed() {
+    use nalgebra::Point2;
+    // The arc's two chord ends and its midpoint, plus the rest of the
+    // 600 x 600 mm column outline, in the column's profile frame.
+    let (r, half) = (117.088_633_873_226_f64, 3.185e-5_f64);
+    let arc = |t: f64| Point2::new(-0.050_313 + r * (t.sin()), 0.357_631 + r * (1.0 - t.cos()));
+    let outer = vec![
+        Point2::new(-0.401_487, -0.238_639),
+        Point2::new(0.198_513, -0.238_639),
+        Point2::new(0.198_513, 0.354_490),
+        arc(-half), // A
+        arc(0.0),   // M: ~5.9e-8 m off the chord A-C
+        arc(half),  // C
+        Point2::new(-0.401_487, 0.361_361),
+    ];
+    let sagitta = r * (1.0 - half.cos());
+    assert!(sagitta < 1.0e-6, "fixture must sit below the hygiene grid (got {sagitta})");
+
+    let mut mesh = extrude_profile(&Profile2D::new(outer), 4.0, None).unwrap();
+    assert_eq!(open_edges(&mesh), 0, "raw extrusion is closed");
+    mesh.clean_degenerate_watertight();
+    assert_eq!(
+        open_edges(&mesh),
+        0,
+        "hygiene must not open a T-junction at the near-collinear profile vertex"
+    );
 }

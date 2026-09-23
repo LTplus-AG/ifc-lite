@@ -5,8 +5,8 @@
 /**
  * `ValidationPanel`'s `empty` state (#5138 plan §6): two entry cards — IDS
  * validation (mounts the existing `IDSPanel` body) and Information
- * validation (new rule set / open `.rules.json` / a "Recent rule sets"
- * list). Split out of `ValidationPanel.tsx` to keep the orchestrator under
+ * validation (new rule set / open `.rules.json` / import an IDS as rules /
+ * a "Recent rule sets" list). Split out of `ValidationPanel.tsx` to keep the orchestrator under
  * its line budget.
  *
  * `InformationValidationEntry` (the rules card's body) is exported
@@ -16,7 +16,7 @@
  */
 
 import { useRef } from 'react';
-import { ClipboardCheck, FileJson, ListChecks, Plus, Upload } from 'lucide-react';
+import { ClipboardCheck, FileInput, FileJson, ListChecks, Plus, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useTranslation } from '@/i18n';
@@ -49,6 +49,8 @@ function EntryCard({ icon, title, description, onClick, testId }: EntryCardProps
 
 export interface InformationValidationEntryProps {
   onOpenRuleSetFile: (file: File) => Promise<{ ok: boolean; error?: string }>;
+  /** Convert an IDS file's simple specifications into a new rule set (#5225). */
+  onImportIds: (file: File) => Promise<{ ok: boolean; error?: string }>;
   onNewRuleSet: () => void;
   onLoadRecent: (entry: RecentRuleSet) => void;
   recentRuleSets: readonly RecentRuleSet[];
@@ -60,15 +62,22 @@ export interface InformationValidationEntryProps {
  *  reused both as a card (empty state) and standalone (the header toggle's
  *  "Information validation" side with no rule set loaded yet). */
 export function InformationValidationEntry({
-  onOpenRuleSetFile, onNewRuleSet, onLoadRecent, recentRuleSets, error = null,
+  onOpenRuleSetFile, onImportIds, onNewRuleSet, onLoadRecent, recentRuleSets, error = null,
 }: InformationValidationEntryProps) {
   const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const idsInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (file) await onOpenRuleSetFile(file);
+  };
+
+  const handleIdsSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) await onImportIds(file);
   };
 
   return (
@@ -78,7 +87,7 @@ export function InformationValidationEntry({
         <span className="font-medium text-sm">{t('validationPanel.entry.rulesTitle')}</span>
       </div>
       <p className="text-xs text-muted-foreground mb-3">{t('validationPanel.entry.rulesDescription')}</p>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5" onClick={onNewRuleSet}>
           <Plus className="h-3.5 w-3.5" />
           {t('validationPanel.entry.newRuleSet')}
@@ -93,6 +102,18 @@ export function InformationValidationEntry({
           accept=".rules.json,.json"
           className="hidden"
           onChange={(e) => { void handleFileSelect(e); }}
+        />
+        <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => idsInputRef.current?.click()}>
+          <FileInput className="h-3.5 w-3.5" />
+          {t('validationPanel.entry.importIds')}
+        </Button>
+        <input
+          ref={idsInputRef}
+          type="file"
+          accept=".ids,.xml"
+          className="hidden"
+          data-testid="validation-import-ids-input"
+          onChange={(e) => { void handleIdsSelect(e); }}
         />
       </div>
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
@@ -124,6 +145,7 @@ export function InformationValidationEntry({
 interface ValidationPanelEmptyProps {
   onSelectIds: () => void;
   onOpenRuleSetFile: (file: File) => Promise<{ ok: boolean; error?: string }>;
+  onImportIds: (file: File) => Promise<{ ok: boolean; error?: string }>;
   onNewRuleSet: () => void;
   onLoadRecent: (entry: RecentRuleSet) => void;
   recentRuleSets: readonly RecentRuleSet[];
@@ -131,7 +153,7 @@ interface ValidationPanelEmptyProps {
 }
 
 export function ValidationPanelEmpty({
-  onSelectIds, onOpenRuleSetFile, onNewRuleSet, onLoadRecent, recentRuleSets, error,
+  onSelectIds, onOpenRuleSetFile, onImportIds, onNewRuleSet, onLoadRecent, recentRuleSets, error,
 }: ValidationPanelEmptyProps) {
   const { t } = useTranslation();
 
@@ -147,6 +169,7 @@ export function ValidationPanelEmpty({
       <div className="rounded-lg border border-border p-4">
         <InformationValidationEntry
           onOpenRuleSetFile={onOpenRuleSetFile}
+          onImportIds={onImportIds}
           onNewRuleSet={onNewRuleSet}
           onLoadRecent={onLoadRecent}
           recentRuleSets={recentRuleSets}

@@ -245,11 +245,15 @@ export class ClashSession {
     ingest(positions: Float32Array, pos_ranges: Uint32Array, indices: Uint32Array, idx_ranges: Uint32Array, aabbs: Float32Array): void;
     constructor();
     /**
-     * Run one rule. `group_a`/`group_b` are GLOBAL element indices; an empty
-     * `group_b` means a self-clash within `group_a`. `mode`: 0 = hard,
-     * 1 = clearance. Records carry GLOBAL element indices.
+     * Run one rule. `group_a`/`group_b` are GLOBAL element indices.
+     * OMIT `group_b` (pass `undefined`/`null`) for a self-clash within
+     * `group_a`; pass an array -- INCLUDING an empty one -- for a two-sided
+     * rule. An empty array is a B side that matched nothing and yields no
+     * clashes, which is why this is nullable rather than "empty means
+     * self" (#5354). `mode`: 0 = hard, 1 = clearance. Records carry GLOBAL
+     * element indices.
      */
-    runRule(group_a: Uint32Array, group_b: Uint32Array, mode: number, tolerance: number, clearance: number, report_touch: boolean): ClashRunResult;
+    runRule(group_a: Uint32Array, group_b: Uint32Array | null | undefined, mode: number, tolerance: number, clearance: number, report_touch: boolean): ClashRunResult;
 }
 
 /**

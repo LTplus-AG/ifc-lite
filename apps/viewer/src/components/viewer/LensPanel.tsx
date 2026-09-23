@@ -1286,9 +1286,9 @@ export function LensPanel({ onClose }: LensPanelProps) {
 
     // Run discovery async to not block the UI
     setTimeout(() => {
-      const { models, ifcDataStore } = useViewerStore.getState();
+      const { models, ifcDataStore, mutationViews, resolveGlobalIdFromModels } = useViewerStore.getState();
       if (models.size === 0 && !ifcDataStore) return;
-      const provider = createLensDataProvider(models, ifcDataStore);
+      const provider = createLensDataProvider(models, ifcDataStore, mutationViews, resolveGlobalIdFromModels);
       const result = discoverDataSources(provider, toDiscover);
       mergeDiscoveredData(result);
     }, 0);

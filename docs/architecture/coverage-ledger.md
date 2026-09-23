@@ -358,7 +358,7 @@ Columns:
 | IfcMechanicalFastenerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcMechanicalMaterialProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcMechanicalSteelMaterialProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcMember | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
+| IfcMember | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_5314_halfspace_edge.ifc |
 | IfcMemberType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcMetric | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcMinuteInHour | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |

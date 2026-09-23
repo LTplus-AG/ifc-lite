@@ -792,3 +792,24 @@ describe('buildCompareReport products vs type objects (headline split)', () => {
     assert.strictEqual(lines[0], 'GlobalId,Name,IfcType,Change,MovedDistance_m,Model,Match,MatchedGlobalId');
   });
 });
+
+describe('buildCompareReport - spatial re-parenting (#5309)', () => {
+  it('names a container-only change instead of the generic label', () => {
+    const fp = (modelId: string) => ({
+      key: 'MOVED_GUID_AAAAAAAAAAA',
+      ifcType: 'IfcWall',
+      dataHash: 'd',
+      ref: { modelId, localId: 1, globalId: 1, meshed: false },
+    });
+    const result = {
+      baseModelId: 'a', headModelId: 'b', baseName: 'A', headName: 'B',
+      scope: 'both', geometryUnavailable: true, excludedHiddenIds: new Set<number>(),
+      diff: {
+        scope: 'both', excludedTypes: [], byKey: new Map(),
+        counts: { added: 0, modified: 1, deleted: 0, unchanged: 0 },
+        entries: [{ key: 'MOVED_GUID_AAAAAAAAAAA', state: 'modified', changeKinds: ['container'], base: fp('a'), head: fp('b') }],
+      },
+    } as unknown as CompareResult;
+    assert.strictEqual(buildCompareReport(result, new Map()).rows[0].change, 'Container changed');
+  });
+});

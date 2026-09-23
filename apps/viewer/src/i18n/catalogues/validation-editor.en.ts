@@ -20,6 +20,7 @@ export const validationEditorEn = {
   'validationEditor.requirementKind.unique': 'Unique',
   'validationEditor.requirementKind.aggregate': 'Aggregate',
   'validationEditor.requirementKind.compare': 'Compare',
+  'validationEditor.requirementKind.unit': 'Unit',
 
   'validationEditor.severity.error': 'Error',
   'validationEditor.severity.warning': 'Warning',
@@ -90,6 +91,11 @@ export const validationEditorEn = {
   'validationEditor.compare.rightAriaLabel': 'Compare right subject',
   'validationEditor.compare.valueType.number': 'Number',
   'validationEditor.compare.valueType.date': 'Date',
+
+  'validationEditor.unit.subjectAriaLabel': 'Property or quantity whose unit is checked',
+  'validationEditor.unit.recordedIn': 'recorded in',
+  'validationEditor.unit.unitPlaceholder': 'mm',
+  'validationEditor.unit.unitAriaLabel': 'Required unit',
 
   'validationEditor.requirementText.ariaLabel': 'Requirement, as text',
 

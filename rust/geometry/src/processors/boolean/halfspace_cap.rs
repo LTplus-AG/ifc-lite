@@ -139,6 +139,12 @@ pub(crate) fn cap_half_space_clip(
             welded[mesh.indices[t * 3 + 1] as usize],
             welded[mesh.indices[t * 3 + 2] as usize],
         ];
+        // #5314: edge-grazing clips can leave slivers that collapse in the
+        // weld. A collapsed triangle contributes both directions of its
+        // remaining edge, hiding a real section boundary as an interior edge.
+        if v[0] == v[1] || v[1] == v[2] || v[2] == v[0] {
+            continue;
+        }
         for (a, b) in [(v[0], v[1]), (v[1], v[2]), (v[2], v[0])] {
             if a != b {
                 present.insert((a, b));

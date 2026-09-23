@@ -12,6 +12,7 @@
  * 3D selection is a set of buckets. The chart library only ever sees
  * `(seriesIndex, dataIndex)`; the id math lives here.
  */
+import type { FilterGroup } from '@ifc-lite/rules';
 
 export type CellValue = string | number | boolean | null;
 
@@ -92,6 +93,9 @@ export type ElementFieldBinding =
  *  rows do not stand for one element the selector can match against. */
 export interface ChartSourceFilter {
   selector: string;
+  /** Rules authored in the shared filter builder. These can express model
+   * tags and other predicates with no faithful selector spelling. */
+  groups?: FilterGroup[];
   /** Restrict a `clash` chart to ONE detection rule/run (#5156) by its
    *  `ClashRule.id` — the same id a clash row's `Rule` column already
    *  carries. Absent means every rule of the current clash result is
@@ -107,8 +111,10 @@ interface ChartSpecCommon {
   id: string;
   title: string;
   source: ChartSource;
-  /** One exact IFC attribute/property materialized beside the built-in element columns. */
+  /** IFC field used for grouping, materialized beside the built-in element columns. */
   elementField?: ElementFieldBinding;
+  /** Numeric IFC field to sum independently of the grouping field. */
+  measureField?: ElementFieldBinding;
   /** Narrows this chart's rows to those touching the matched elements, on top of the dashboard scope. */
   filter?: ChartSourceFilter;
   /** Second category column for `stackedBar`: one series per distinct value. */

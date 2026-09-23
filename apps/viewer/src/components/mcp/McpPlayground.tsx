@@ -21,11 +21,10 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from 'react';
-import { ArrowLeft, Box, ChevronDown, ChevronRight, Download, Loader2, Upload, FileText, AlertTriangle, Trash2 } from 'lucide-react';
+import { ArrowLeft, Box, ChevronDown, ChevronRight, Download, Loader2, Upload, AlertTriangle, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import { useDocumentMeta, useFonts } from './use-mcp-page';
@@ -37,6 +36,7 @@ import {
 } from './playground-dispatcher';
 import { PlaygroundChat } from './PlaygroundChat';
 import { PlaygroundViewer } from './PlaygroundViewer';
+import { ModelSummary } from './playground-model-summary';
 import type { ViewerController } from './playground-viewer-types';
 import { playgroundFiles, usePlaygroundFiles, formatBytes as formatFileBytes } from './playground-files';
 const NIGHT = '#0a0a0c';
@@ -80,6 +80,7 @@ export function McpPlayground(): ReactNode {
   useDocumentMeta(t('mcp.mcpPlayground.documentTitle'), NIGHT);
 
   const [model, setModel] = useState<LoadedPlaygroundModel | null>(null);
+  const [modelRevision, setModelRevision] = useState(0);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -92,7 +93,9 @@ export function McpPlayground(): ReactNode {
   const getDispatchContext = useCallback<() => DispatchContext>(
     () => ({
       viewer: viewerRef.current ?? null,
-      openViewerPanel: () => setViewerOpen(true), translate: t,
+      openViewerPanel: () => setViewerOpen(true),
+      onModelChanged: () => setModelRevision((revision) => revision + 1),
+      translate: t,
     }),
     [t],
   );
@@ -160,7 +163,7 @@ export function McpPlayground(): ReactNode {
             </div>
           )}
 
-          {model && <ModelSummary model={model} />}
+          {model && <ModelSummary model={model} revision={modelRevision} />}
 
           <DownloadsPanel />
 
@@ -268,7 +271,7 @@ function SampleList({
                   </p>
                 </div>
                 <span style={{ ...mono, color: PAPER_DIM }} className="shrink-0 text-[10px]">
-                  {formatBytes(s.approxBytes)}
+                  {formatFileBytes(s.approxBytes)}
                 </span>
               </button>
             </li>
@@ -321,58 +324,6 @@ function DropZone({
   );
 }
 
-// ── model summary ─────────────────────────────────────────────────────────
-
-function ModelSummary({ model }: { model: LoadedPlaygroundModel }): ReactNode {
-  const { t } = useTranslation(); const top = useMemo(() => {
-    const counts: Array<{ type: string; count: number }> = [];
-    for (const [type, ids] of model.store.entityIndex.byType) counts.push({ type, count: ids.length });
-    counts.sort((a, b) => b.count - a.count);
-    return counts.slice(0, 8);
-  }, [model]);
-
-  return (
-    <div className="flex flex-col gap-2 rounded-md border border-white/10 bg-white/[0.02] p-3">
-      <div className="flex items-center gap-2">
-        <FileText size={12} style={{ color: ACCENT }} />
-        <span className="text-[11.5px]" style={{ color: PAPER }}>
-          {model.name}
-        </span>
-      </div>
-      <dl className="grid grid-cols-3 gap-2 text-[11px]" style={{ ...mono, color: PAPER_DIM }}>
-        <div>
-          <dt className="text-[9px] uppercase tracking-[0.2em]">{t('mcp.mcpPlayground.schema')}</dt>
-          <dd style={{ color: PAPER }}>{model.store.schemaVersion}</dd>
-        </div>
-        <div>
-          <dt className="text-[9px] uppercase tracking-[0.2em]">{t('mcp.mcpPlayground.entities')}</dt>
-          <dd style={{ color: PAPER }}>{model.store.entityCount.toLocaleString()}</dd>
-        </div>
-        <div>
-          <dt className="text-[9px] uppercase tracking-[0.2em]">{t('mcp.mcpPlayground.file')}</dt>
-          <dd style={{ color: PAPER }}>{formatBytes(model.fileSize)}</dd>
-        </div>
-      </dl>
-
-      <div className="mt-1 border-t border-white/10 pt-2">
-        <div className="mb-1 text-[9px] uppercase tracking-[0.22em]" style={{ ...mono, color: PAPER_DIM }}>
-          {t('mcp.mcpPlayground.topEntityTypes')}
-        </div>
-        <ul className="flex flex-col gap-0.5">
-          {top.map((row) => (
-            <li key={row.type} className="flex items-baseline justify-between gap-2 text-[11.5px]">
-              <span className="truncate" style={{ ...mono, color: PAPER_DIM }}>
-                {row.type}
-              </span>
-              <span style={{ ...mono, color: PAPER }}>{row.count}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
-  );
-}
-
 // ── footer ─────────────────────────────────────────────────────────────────
 
 function FooterLinks(): ReactNode {
@@ -387,12 +338,6 @@ function FooterLinks(): ReactNode {
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────
-
-function formatBytes(bytes: number): string {
-  if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  if (bytes >= 1024) return (bytes / 1024).toFixed(0) + ' KB';
-  return bytes + ' B';
-}
 
 function modelIdFor(model: LoadedPlaygroundModel): string {
   // The dispatcher derives ids from the filename; we encode SAMPLES with the

@@ -8,8 +8,8 @@
  * (dashboard cards) and `useDocumentData` (document chart blocks) so a
  * document prints the same filtered numbers the panel shows.
  *
- * Identical selector text resolves ONCE per run, the same dedupe
- * `withResolvedClashSetFilters` uses for a clash set filter: "external
+ * Identical selector text or rule groups resolve ONCE per run, the same
+ * dedupe `withResolvedClashSetFilters` uses for a clash set filter: "external
  * walls" as the filter of five charts is one federation scan, not five.
  *
  * Re-runs whenever the federation or a mutation changes; while a run is in
@@ -18,12 +18,11 @@
  * matches computed against a model that has since been reloaded.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { trimSelectorWhitespace } from '@ifc-lite/query';
-import type { ChartSpec } from '@ifc-lite/charts';
+import type { ChartSourceFilter, ChartSpec } from '@ifc-lite/charts';
 import { useViewerStore, type ViewerState } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { evaluatorModelsFromState, definedModelTagIdsOf } from '@/lib/model-tags/evaluator-models';
-import { resolveChartFilter } from '@/lib/charts/source-filter';
+import { chartElementFilterKey, resolveChartFilter } from '@/lib/charts/source-filter';
 import { useActiveSchemaVersion } from '../SearchModal.filter.selector.js';
 
 export type ChartSourceFilterState =
@@ -31,8 +30,8 @@ export type ChartSourceFilterState =
   | { status: 'ok'; ids: ReadonlySet<number> }
   | { status: 'error'; message: string };
 
-/** Keyed by selector TEXT, not chart id: two charts with the same selector
- *  share one entry, so a lookup is `sourceFilters.get(spec.filter?.selector)`. */
+/** Keyed by the canonical element-filter identity, not chart id: identical
+ *  selectors or rule groups share one scan. */
 export type ChartSourceFilters = ReadonlyMap<string, ChartSourceFilterState>;
 
 const EMPTY: ChartSourceFilters = new Map();
@@ -44,20 +43,18 @@ export function useChartSourceFilters(charts: readonly ChartSpec[]): ChartSource
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const schemaVersion = useActiveSchemaVersion();
 
-  // Keyed by the RAW selector text (not trimmed): every lookup site
-  // (`ChartsPanel`, `ChartCard`, `useDocumentData`) reads `spec.filter.selector`
-  // as-is, so the map key has to match it exactly — a saved/imported
-  // dashboard whose selector carries incidental whitespace (`" IfcWall "`,
-  // validation only requires non-empty) would otherwise never find its
-  // entry and sit on "Resolving filter…" forever (review finding).
-  const selectors = useMemo(() => {
-    const set = new Set<string>();
+  // Keyed by `chartElementFilterKey`: callers use that same helper, so raw
+  // whitespace remains significant in selector identity, and a selector
+  // cannot collide with a serialized rule group (review finding).
+  const filters = useMemo(() => {
+    const byKey = new Map<string, ChartSourceFilter>();
     for (const chart of charts) {
-      const raw = chart.filter?.selector;
-      if (raw && trimSelectorWhitespace(raw).length > 0) set.add(raw);
+      const key = chartElementFilterKey(chart.filter);
+      if (key && chart.filter) byKey.set(key, chart.filter);
     }
-    return [...set];
+    return byKey;
   }, [charts]);
+  const selectors = useMemo(() => [...filters.keys()], [filters]);
 
   const [state, setState] = useState<ChartSourceFilters>(EMPTY);
   const runId = useRef(0);
@@ -120,7 +117,7 @@ export function useChartSourceFilters(charts: readonly ChartSpec[]): ChartSource
       const entries = await Promise.all(
         selectors.map(async (text): Promise<[string, ChartSourceFilterState]> => {
           try {
-            const ids = await resolveChartFilter(evaluatorModels, { selector: text }, toGlobalId, {
+            const ids = await resolveChartFilter(evaluatorModels, filters.get(text), toGlobalId, {
               schemaVersion,
               definedModelTagIds,
               limit,
@@ -136,7 +133,7 @@ export function useChartSourceFilters(charts: readonly ChartSpec[]): ChartSource
       setState(new Map(entries));
     })();
     return () => { cancelled = true; controller.abort(); };
-  }, [selectors, models, modelTags, modelTagAssignments, mutationVersion, schemaVersion]);
+  }, [selectors, filters, models, modelTags, modelTagAssignments, mutationVersion, schemaVersion]);
 
   if (!inputsMatchState) return selectors.length === 0 ? EMPTY : resolvingForSelectors;
   return state;

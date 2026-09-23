@@ -19,7 +19,7 @@ import type { TranslationValue } from '../types';
 export const documentEn = {
   'document.block.widthLabel': 'Width',
   'document.block.widthAriaLabel': 'Block width',
-  'document.block.widthTitle': 'Half pairs with the next half chart/image into one row',
+  'document.block.widthTitle': 'Half pairs with the next half text, chart, or image into one row',
   'document.block.widthFull': 'Full',
   'document.block.widthHalf': 'Half',
   'document.block.heightPtLabel': 'Height (pt)',
@@ -28,6 +28,14 @@ export const documentEn = {
   'document.block.textStyleSubheading': 'Subheading',
   'document.block.textStyleSmall': 'Small',
   'document.block.textStyleCaption': 'Caption',
+  'document.block.fontLabel': 'Font',
+  'document.block.fontAriaLabel': 'Text font',
+  'document.block.fontHelvetica': 'Helvetica',
+  'document.block.fontTimes': 'Times',
+  'document.block.fontCourier': 'Courier',
+  'document.block.fontSizeLabel': 'Size (pt)',
+  'document.block.fontSizeAriaLabel': 'Text size',
+  'document.block.fontSizeDefault': 'Style default',
 
   // BlockEditor.tsx (#4918 doc slice): the block-kind badge, and every
   // field/control each block kind renders.

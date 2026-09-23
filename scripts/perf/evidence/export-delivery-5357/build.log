@@ -1,0 +1,6 @@
+   Compiling twox-hash v2.1.4
+   Compiling ifc-lite-core v17.3.0 (/tmp/ifc-export-spikes/candidate/rust/core)
+   Compiling ifc-lite-geometry v17.3.0 (/tmp/ifc-export-spikes/candidate/rust/geometry)
+   Compiling ifc-lite-processing v17.3.0 (/tmp/ifc-export-spikes/candidate/rust/processing)
+   Compiling ifc-lite-export v17.3.0 (/tmp/ifc-export-spikes/candidate/rust/export)
+    Finished `profiling` profile [optimized + debuginfo] target(s) in 1m 08s

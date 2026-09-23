@@ -64,7 +64,7 @@ import {
 import { extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
-import { FILTER_OPERATORS, IFC_ATTRIBUTE_LABELS, IFC_TYPE_MAP } from './bulk-property-editor-options';
+import { FILTER_OPERATORS, IFC_ATTRIBUTE_LABELS, IFC_TYPE_MAP, presentTypeEnums } from './bulk-property-editor-options';
 import { parseBulkSetPropertyValue, type BulkParseResult } from './bulk-property-value';
 import { BulkExecutionResult, type BulkRuntimeFailure } from './BulkExecutionResult';
 import { BulkExecutionProgress } from './BulkExecutionProgress';
@@ -228,17 +228,8 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
         storeys.sort((a, b) => (b.elevation ?? 0) - (a.elevation ?? 0));
       }
 
-      // Type enum mapping — single pass
-      const enumToTypeName = new Map<number, string>();
-      for (let i = 0; i < entities.count; i++) {
-        const typeEnum = entities.typeEnum[i];
-        if (enumToTypeName.has(typeEnum)) continue;
-        const expressId = entities.expressId[i];
-        const typeName = entities.getTypeName(expressId);
-        if (typeName) {
-          enumToTypeName.set(typeEnum, typeName);
-        }
-      }
+      // The classes present in the model as edited (#5249).
+      const enumToTypeName = presentTypeEnums(entities, getMutationView(selectedModelId));
 
       const nameToEnums = new Map<string, number[]>();
       const presentTypes: { ifcType: string; label: string }[] = [];
@@ -265,7 +256,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     return () => {
       if (initTimerRef.current) clearTimeout(initTimerRef.current);
     };
-  }, [open, selectedModel, t, locale, revision]);
+  }, [open, selectedModel, selectedModelId, getMutationView, mutationViews, t, locale, revision]);
 
   // Ensure mutation view exists for selected model — only when dialog is open
   useEffect(() => {

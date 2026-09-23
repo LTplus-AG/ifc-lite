@@ -758,6 +758,9 @@ importers:
       '@ifc-lite/lens':
         specifier: workspace:^
         version: link:../lens
+      '@ifc-lite/rules':
+        specifier: workspace:^
+        version: link:../rules
       echarts:
         specifier: ^6.1.0
         version: 6.1.0
@@ -1374,6 +1377,12 @@ importers:
       '@ifc-lite/extensions':
         specifier: workspace:^
         version: link:../extensions
+      '@ifc-lite/flow':
+        specifier: workspace:^
+        version: link:../flow
+      '@ifc-lite/flow-nodes':
+        specifier: workspace:^
+        version: link:../flow-nodes
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../geometry

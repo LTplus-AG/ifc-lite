@@ -1,0 +1,16 @@
+{
+  "base": {
+    "source": "52d30de0ae3fc8ef6322191bd1831483b93d485f",
+    "wasmSha256": "4a8f8103ccc1b517a676f410dbb6c63a55723e9b113c1c9b70acc10511e3c85f",
+    "servedAsset": "ifc-lite_bg-Ca22hCj9.wasm",
+    "wasmMtime": 1790182439.2865868,
+    "latestRustMtime": 1790182315.1767478
+  },
+  "candidate": {
+    "source": "52da9ec0e",
+    "wasmSha256": "c15ed3a2b0a9d44649a8a3cb2b757af52e7096a381d7d2f25bd284a5f21d970b",
+    "servedAsset": "ifc-lite_bg-B4i7biYw.wasm",
+    "wasmMtime": 1790182663.935555,
+    "latestRustMtime": 1790182406.3366883
+  }
+}

@@ -32,6 +32,9 @@ export const chartsEn = {
   // ChartEditor.tsx — Source filter field (#4946)
   'chartEditor.sourceFilterLabel': 'Source filter (selector)',
   'chartEditor.sourceFilterAriaLabel': 'Source filter',
+  'chartEditor.sourceFilterMode': 'Source filter editor',
+  'chartEditor.selectorMode': 'Selector',
+  'chartEditor.rulesMode': 'Add rule',
   'chartEditor.selectorSyntaxReference': 'Selector syntax reference',
   'chartEditor.sourceFilterNotApplicable': 'Source filter is not applicable to {source}.',
   'chartCard.noSourceFilterMatches': 'No rows match this source filter.',

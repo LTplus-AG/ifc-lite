@@ -147,12 +147,32 @@ function appendExternalReferenceClassifications(
 
     let cursor = typeof a[3] === 'number' ? a[3] : undefined;
     const seen = new Set<number>();
-    while (cursor !== undefined && !seen.has(cursor)) {
+    // #5290: this walk is the `IfcExternalReferenceRelationship` twin of
+    // `@ifc-lite/parser`'s `walkClassificationChain` — same chain, same
+    // break-without-reporting defect. A dangling `cursor`, an unreadable
+    // entity, an unexpected type, or a cycle back to an already-seen id all
+    // mean "this data cannot say whether a system exists", distinct from
+    // `cursor` legitimately becoming `undefined` (`ReferencedSource`
+    // omitted — schema-legal). `info.system` is `undefined` either way, so
+    // `info.unresolved` is the only signal `resolveClassifications`'
+    // caller has to tell the two apart; without it, `c.system || ''`
+    // flattens a broken chain into a confident empty system.
+    while (cursor !== undefined) {
+      if (seen.has(cursor)) {
+        info.unresolved = true;
+        break;
+      }
       seen.add(cursor);
       const cur = store.entityIndex.byId.get(cursor);
-      if (!cur) break;
+      if (!cur) {
+        info.unresolved = true;
+        break;
+      }
       const e = ex.extractEntity(cur);
-      if (!e) break;
+      if (!e) {
+        info.unresolved = true;
+        break;
+      }
       const cu = e.type.toUpperCase();
       const ca = e.attributes || [];
       if (cu === 'IFCCLASSIFICATION') {
@@ -170,6 +190,7 @@ function appendExternalReferenceClassifications(
         cursor = typeof ca[3] === 'number' ? ca[3] : undefined;
         continue;
       }
+      info.unresolved = true;
       break;
     }
     list.push(info);

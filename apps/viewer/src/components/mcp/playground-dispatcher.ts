@@ -37,7 +37,6 @@ import {
   type BimContext,
   type EntityRef,
 } from '@ifc-lite/sdk';
-import { EntityNode } from '@ifc-lite/query';
 import {
   HeadlessLikeBackend,
   ToolErrorCode,
@@ -88,6 +87,8 @@ import { playgroundFiles } from './playground-files';
 import { playgroundUploads } from './playground-uploads';
 import { sanitizeFilename } from '../../lib/export/download';
 import { playgroundCostTools } from './playground-cost';
+import { effectiveEntities, effectiveEntityCount, effectiveGlobalIdLookup, effectiveTypeCounts } from './playground-effective';
+import { playgroundContainmentChain, playgroundSpatialHierarchy } from './playground-spatial';
 
 // ── loaded-model handle ────────────────────────────────────────────────────
 
@@ -101,6 +102,7 @@ export interface LoadedPlaygroundModel {
   bytes: Uint8Array;
   store: IfcDataStore;
   bim: BimContext;
+  backend: HeadlessLikeBackend;
 }
 
 /** Parse an IFC ArrayBuffer in the browser using the same path the
@@ -118,7 +120,7 @@ export async function parsePlaygroundModel(
   const id = filename.replace(/\.ifc$/i, '').replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase() || 'model';
   const backend = new HeadlessLikeBackend(store, filename, id);
   const bim = createBimContext({ backend });
-  return { id, name: filename, fileSize: buffer.byteLength, bytes, store, bim };
+  return { id, name: filename, fileSize: buffer.byteLength, bytes, store, bim, backend };
 }
 
 // ── tool execution ────────────────────────────────────────────────────────
@@ -158,6 +160,8 @@ export interface ToolDispatchResult {
 
 /** Optional context surfaces the dispatcher can use beyond the model. */
 export interface DispatchContext {
+  /** Refresh local model summaries after a successful entity mutation. */
+  onModelChanged?: () => void;
   /** Inline 3D viewer controller. When absent, viewer_* tools fail with
    *  UNSUPPORTED_OPERATION and ask the user to open the viewer panel. */
   viewer?: ViewerController | null;
@@ -523,27 +527,20 @@ export function topClashRows(clashes: Clash[], cap: number): {
 const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
   // ── Discovery ───────────────────────────────────────────────────────────
   async model_info(m) {
-    // entityIndex.byType keys are raw STEP storage names (IFCWALL, …) —
-    // user-facing surfaces use IFC EXPRESS PascalCase (IfcWall). Resolve
-    // through store.entities.getTypeName so the playground agrees with
-    // the rest of the MCP surface.
-    const counts: Record<string, number> = {};
-    for (const [storageType, ids] of m.store.entityIndex.byType) {
-      const pretty = (ids.length > 0 ? m.store.entities.getTypeName(ids[0]) : null) ?? storageType;
-      counts[pretty] = ids.length;
-    }
-    const top = Object.entries(counts)
+    const typeCounts = effectiveTypeCounts(m);
+    const count = [...typeCounts.values()].reduce((total, n) => total + n, 0);
+    const top = [...typeCounts]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 20)
       .map(([type, count]) => ({ type, count }));
-    const summary = `Model '${m.name}' (${m.store.schemaVersion}): ${m.store.entityCount.toLocaleString()} entities, ${formatBytes(m.fileSize)}`;
+    const summary = `Model '${m.name}' (${m.store.schemaVersion}): ${count.toLocaleString()} entities, ${formatBytes(m.fileSize)}`;
     return {
       text: summary,
       structured: {
         id: m.id,
         name: m.name,
         schema: m.store.schemaVersion,
-        entityCount: m.store.entityCount,
+        entityCount: count,
         fileSize: m.fileSize,
         typeCountsTop20: top,
       },
@@ -551,9 +548,10 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
   },
 
   async model_list(m) {
+    const count = effectiveEntityCount(m);
     return {
-      text: `1 model loaded: ${m.name} (${m.store.entityCount.toLocaleString()} entities).`,
-      structured: { models: [{ id: m.id, name: m.name, entityCount: m.store.entityCount, schema: m.store.schemaVersion }] },
+      text: `1 model loaded: ${m.name} (${count.toLocaleString()} entities).`,
+      structured: { models: [{ id: m.id, name: m.name, entityCount: count, schema: m.store.schemaVersion }] },
     };
   },
 
@@ -614,8 +612,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
       }
     } else if (groupBy === 'storey') {
       for (const e of universe()) {
-        const node = new EntityNode(m.store, e.ref.expressId);
-        const storey = node.storey();
+        const storey = m.bim.storey(e.ref);
         const key = firstNonBlank(storey?.name) ?? '(no storey)';
         counts.set(key, (counts.get(key) ?? 0) + 1);
       }
@@ -665,37 +662,17 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
   },
 
   async spatial_hierarchy(m) {
-    // Lightweight tree walk using EntityNode. The IFC spatial graph uses
-    // IfcRelAggregates for "decomposes" + IfcRelContainedInSpatialStructure
-    // for "contains" — EntityNode exposes both.
-    interface Node { expressId: number; type?: string; name?: string; children: Node[] }
-    const projects = m.store.entityIndex.byType.get('IFCPROJECT') ?? [];
-    function build(expressId: number, depth: number): Node {
-      const node = new EntityNode(m.store, expressId);
-      const out: Node = { expressId, type: node.type, name: node.name, children: [] };
-      if (depth > 6) return out; // bound the recursion for the chat budget
-      for (const child of node.decomposes()) out.children.push(build(child.expressId, depth + 1));
-      for (const child of node.contains()) out.children.push(build(child.expressId, depth + 1));
-      return out;
-    }
-    const root = projects.map((id) => build(id, 0));
-    return { text: `Spatial hierarchy for '${m.name}'.`, structured: { tree: root } };
+    const hierarchy = playgroundSpatialHierarchy(m);
+    return {
+      text: `Spatial hierarchy for '${m.name}'${hierarchy.truncated ? ' (truncated)' : ''}.`,
+      structured: hierarchy,
+    };
   },
 
   async containment_chain(m, args) {
     const ref = resolveRef(m, args);
-    const path: Array<{ expressId: number; type?: string; name?: string; globalId?: string }> = [];
-    let current: EntityNode | null = new EntityNode(m.store, ref.expressId);
-    let safety = 32;
-    while (current && safety-- > 0) {
-      const step: EntityNode = current;
-      path.push({ expressId: step.expressId, type: step.type, name: step.name, globalId: step.globalId });
-      // Walk up via spatial containment first, then aggregate parent.
-      const next: EntityNode | null = step.containedIn() ?? step.decomposedBy();
-      if (!next || path.some((p) => p.expressId === next.expressId)) break;
-      current = next;
-    }
-    return { text: `${path.length}-step containment path.`, structured: { path } };
+    const chain = playgroundContainmentChain(m, ref);
+    return { text: `${chain.path.length}-step containment path${chain.truncated ? ' (truncated)' : ''}.`, structured: chain };
   },
 
   async relationships(m, args) {
@@ -758,7 +735,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
   },
 
   async georeferencing(m) {
-    const counts = m.store.entityIndex.byType.get('IFCMAPCONVERSION') ?? [];
+    const counts = [...effectiveEntities(m, ['IFCMAPCONVERSION'])];
     return {
       text: counts.length === 0 ? 'Model has no IfcMapConversion (no georeferencing).' : `${counts.length} IfcMapConversion entity (georeferenced).`,
       structured: { hasGeoreference: counts.length > 0 },
@@ -1015,7 +992,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     if (!type) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'type is required.' });
     // Use HeadlessLikeBackend's editor — it's the same path the stdio MCP
     // takes for entity_create.
-    const editor = (m.bim as unknown as { backend: { ensureEditor(): { addEntity(t: string, a: unknown[]): { expressId: number } } } }).backend.ensureEditor();
+    const editor = m.backend.ensureEditor();
     const attrs = (args.attributes as unknown[] | undefined) ?? [];
     const ref = editor.addEntity(type, attrs as Parameters<typeof editor.addEntity>[1]);
     return { text: `Created ${type} as #${ref.expressId}.`, structured: { expressId: ref.expressId, type } };
@@ -1024,14 +1001,14 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     const ref = resolveRef(m, args);
     // The mutate namespace doesn't expose a delete on its public surface,
     // but the headless backend's mutation view does.
-    const view = (m.bim as unknown as { backend: { getMutationView(): { deleteEntity(id: number): boolean } | null } }).backend.getMutationView();
+    const view = m.backend.getMutationView();
     if (!view) throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'Mutation view unavailable.' });
     const ok = view.deleteEntity(ref.expressId);
     return { text: ok ? `Deleted #${ref.expressId}.` : `#${ref.expressId} was not in the store.`, structured: { expressId: ref.expressId, deleted: ok } };
   },
   async mutation_diff(m) {
-    const view = (m.bim as unknown as { backend: { getMutationView(): { mutationHistory?: unknown[] } | null } }).backend.getMutationView();
-    const hist = view ? (view as { mutationHistory?: unknown[] }).mutationHistory ?? [] : [];
+    const view = m.backend.getMutationView();
+    const hist = view?.getMutations() ?? [];
     return { text: `${hist.length} pending mutation(s).`, structured: { count: hist.length, mutations: hist } };
   },
   async mutation_undo(m, args) {
@@ -1181,7 +1158,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     const report = await validateIDS(doc, accessor, {
       modelId: m.id,
       schemaVersion: m.store.schemaVersion,
-      entityCount: m.store.entityCount,
+      entityCount: effectiveEntityCount(m),
     });
     const head = `IDS '${doc.info?.title ?? 'untitled'}' · ${report.summary.passedSpecifications}/${report.summary.totalSpecifications} specs passed (${report.summary.overallPassRate.toFixed(0)}%).`;
     const lines = report.specificationResults.map((s) => {
@@ -1297,8 +1274,8 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     const { left, right } = resolveDiffModels(m, args, ctx);
     const types1 = new Map<string, number>();
     const types2 = new Map<string, number>();
-    for (const [type, ids] of left.store.entityIndex.byType) types1.set(type, ids.length);
-    for (const [type, ids] of right.store.entityIndex.byType) types2.set(type, ids.length);
+    for (const [type, count] of effectiveTypeCounts(left)) types1.set(type, count);
+    for (const [type, count] of effectiveTypeCounts(right)) types2.set(type, count);
     const diffs: Array<{ type: string; left: number; right: number; delta: number }> = [];
     for (const t of new Set([...types1.keys(), ...types2.keys()])) {
       const a = types1.get(t) ?? 0;
@@ -1729,13 +1706,8 @@ function resolveRef(m: LoadedPlaygroundModel, args: Record<string, unknown>): En
     return { modelId: m.id, expressId: args.express_id };
   }
   if (typeof args.global_id === 'string') {
-    // Linear scan — fine for v1 since we only have one model in memory.
-    for (const [, ids] of m.store.entityIndex.byType) {
-      for (const id of ids) {
-        const node = new EntityNode(m.store, id);
-        if (node.globalId === args.global_id) return { modelId: m.id, expressId: id };
-      }
-    }
+    const id = effectiveGlobalIdLookup(m, args.global_id);
+    if (id !== undefined) return { modelId: m.id, expressId: id };
     throw new ToolExecutionError({
       code: ToolErrorCode.ENTITY_NOT_FOUND,
       message: `No entity with GlobalId '${args.global_id}' in this model.`,
@@ -1841,49 +1813,30 @@ function resolveDiffModels(
   return { left, right };
 }
 
-/** Surface IDS-accessor lookup failures at debug level instead of dropping
- *  them silently. A regression in EntityNode would otherwise turn into
- *  changed IDS results without any signal in devtools — debug-level logging
- *  gives an opt-in trail without polluting normal browser sessions. */
-function logIdsAccessorMiss(fn: string, id: number, err: unknown): void {
-  // eslint-disable-next-line no-console
-  console.debug(`[playground-dispatcher] IDS accessor ${fn} miss`, { expressId: id, err });
-}
-
-/** Build the IDS validator's data accessor from a loaded model. Implements
- *  the full IFCDataAccessor surface @ifc-lite/ids expects (see
- *  packages/ids/src/types.ts:384). Each method bridges to the SDK's bim
- *  namespaces or directly to EntityNode. */
+/** Build the IDS validator's data accessor from the mutation-aware SDK model. */
 function makeIdsAccessor(m: LoadedPlaygroundModel): import('@ifc-lite/ids').IFCDataAccessor {
   const ref = (id: number): EntityRef => ({ modelId: m.id, expressId: id });
   return {
     getEntityType(id) {
-      try { return new EntityNode(m.store, id).type; } catch (err) { logIdsAccessorMiss('getEntityType', id, err); return undefined; }
+      return m.bim.entity(ref(id))?.type;
     },
     getEntityName(id) {
-      try { return new EntityNode(m.store, id).name || undefined; } catch (err) { logIdsAccessorMiss('getEntityName', id, err); return undefined; }
+      return m.bim.entity(ref(id))?.name || undefined;
     },
     getGlobalId(id) {
-      try { return new EntityNode(m.store, id).globalId || undefined; } catch (err) { logIdsAccessorMiss('getGlobalId', id, err); return undefined; }
+      return m.bim.entity(ref(id))?.globalId || undefined;
     },
     getDescription(id) {
-      try { return new EntityNode(m.store, id).description || undefined; } catch (err) { logIdsAccessorMiss('getDescription', id, err); return undefined; }
+      return m.bim.entity(ref(id))?.description || undefined;
     },
     getObjectType(id) {
-      try { return new EntityNode(m.store, id).objectType || undefined; } catch (err) { logIdsAccessorMiss('getObjectType', id, err); return undefined; }
+      return m.bim.entity(ref(id))?.objectType || undefined;
     },
     getEntitiesByType(typeName) {
-      const wantedUpper = typeName.toUpperCase();
-      const out: number[] = [];
-      for (const [t, ids] of m.store.entityIndex.byType) {
-        if (t.toUpperCase() === wantedUpper) for (const id of ids) out.push(id);
-      }
-      return out;
+      return [...effectiveEntities(m, [typeName])].map(({ expressId }) => expressId);
     },
     getAllEntityIds() {
-      const out: number[] = [];
-      for (const id of m.store.entityIndex.byId.keys()) out.push(id);
-      return out;
+      return [...effectiveEntities(m)].map(({ expressId }) => expressId);
     },
     getPropertyValue(id, psetName, propName) {
       const v = m.bim.property(ref(id), psetName, propName);
@@ -1916,11 +1869,8 @@ function makeIdsAccessor(m: LoadedPlaygroundModel): import('@ifc-lite/ids').IFCD
       return lensMaterialNames(m.bim.materials(ref(id))).map((name) => ({ name }));
     },
     getParent(id) {
-      try {
-        const parent = new EntityNode(m.store, id).containedIn() ?? new EntityNode(m.store, id).decomposedBy();
-        if (!parent) return undefined;
-        return { expressId: parent.expressId, entityType: parent.type ?? '' };
-      } catch (err) { logIdsAccessorMiss('getParent', id, err); return undefined; }
+      const parent = m.bim.containedIn(ref(id)) ?? m.bim.decomposedBy(ref(id));
+      return parent ? { expressId: parent.ref.expressId, entityType: parent.type } : undefined;
     },
     getAttribute(id, attributeName) {
       const attrs = m.bim.attributes(ref(id));
@@ -1996,6 +1946,16 @@ export function anthropicToolDefinitions(): AnthropicToolDef[] {
  * the inline 3D panel (viewer_*) require it. When a non-viewer tool is
  * called the context is harmlessly ignored.
  */
+const MODEL_MUTATION_TOOLS = new Set([
+  'entity_set_property',
+  'entity_delete_property',
+  'entity_set_attribute',
+  'entity_create',
+  'entity_delete',
+  'mutation_undo',
+  'mutation_batch',
+]);
+
 export async function dispatch(
   model: LoadedPlaygroundModel,
   toolName: string,
@@ -2027,6 +1987,7 @@ export async function dispatch(
   }
   try {
     const out = await impl(model, args, ctx);
+    if (MODEL_MUTATION_TOOLS.has(toolName)) ctx.onModelChanged?.();
     return { text: out.text, textKey: out.textKey, structured: out.structured, isError: false, download: out.download };
   } catch (err) {
     if (err instanceof ToolExecutionError) {

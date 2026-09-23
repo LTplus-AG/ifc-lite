@@ -12,16 +12,19 @@
 import '@/test/setup-dom.js';
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, useEffect, useRef, useState } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { Clash, ClashResult } from '@ifc-lite/clash';
 import type { Renderer } from '@ifc-lite/renderer';
-import { aggregate, renderChartSvg, DEFAULT_THEME, type ChartDataset, type ChartItem, type EChartsOptionObject, type ElementFieldBinding, type ReportSpec } from '@ifc-lite/charts';
+import { aggregate, elementFieldColumnId, renderChartSvg, DEFAULT_THEME, type ChartDataset, type ChartItem, type EChartsOptionObject, type ElementFieldBinding, type ReportSpec } from '@ifc-lite/charts';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
 import { captureUiSnapshot, restoreUiSnapshot } from '@/lib/tours/snapshot.js';
 import { CLASH_TOUR } from '@/lib/tours/tours/clash.js';
 import type { ReportPdfSeams } from '@/lib/export/report/generate-report-pdf.js';
 import { chartAwareRendererSelectionFromStore } from '@/lib/charts/renderer-selection.js';
+import { buildElementsDataset } from '@/lib/charts/datasets/elements.js';
 import { useOverlayCompositor } from '@/components/viewer/schedule/useOverlayCompositor.js';
 import { useColorOverlaySync } from '@/components/viewer/useColorOverlaySync.js';
 import { useIDS, type UseIDSResult } from '@/hooks/useIDS.js';
@@ -365,6 +368,78 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.deepEqual([...useViewerStore.getState().selectedEntityIds].sort(), [GID(41), GID(42)]);
   });
 
+  it('sums an IFC volume quantity by material in a treemap and other bucketed charts (#5373)', async () => {
+    const ifc = MINI_IFC.replace(
+      "#121=IFCELEMENTQUANTITY('0Qto000000000000000121',$,'Qto_WallBaseQuantities',$,'BaseQuantities',(#120));",
+      "#123=IFCQUANTITYVOLUME('NetVolume',$,$,2.5,$);\n#121=IFCELEMENTQUANTITY('0Qto000000000000000121',$,'Qto_WallBaseQuantities',$,'BaseQuantities',(#120,#123));",
+    );
+    const model = await parsedModel('m1', OFFSET, ifc);
+    useViewerStore.setState({ models: new Map([[model.id, model]]) });
+    const { renderer, charts } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    await openEditorWithFamily(ui, 'relation');
+    const relation = ui.querySelector<HTMLSelectElement>('select[aria-label="IFC relation"]')!;
+    await choose(relation, [...relation.options].find((option) => option.textContent?.startsWith('Material'))!.value);
+    await choose(ui.querySelector<HTMLSelectElement>('select[aria-label="Chart type"]')!, 'treemap');
+    const measure = ui.querySelector<HTMLSelectElement>('select[aria-label="Measure"]')!;
+    const volume = [...measure.options].find((option) => option.textContent?.includes('Qto_WallBaseQuantities.NetVolume'));
+    assert.ok(volume, 'the numeric quantity is offered independently of the material grouping');
+    await choose(measure, volume.value);
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save chart')!);
+    await settle();
+
+    const saved = useViewerStore.getState().dashboards[0].charts.at(-1)!;
+    assert.equal(saved.elementField?.kind, 'material');
+    assert.equal(saved.measureField?.kind, 'quantity');
+    assert.equal(saved.measure.column, volume.value.slice(4));
+    assert.deepEqual(barData(charts.at(-1)!.options.at(-1)!).map(([name, value]) => [name, value]), [['Concrete', 5], ['Timber', 2.5]]);
+    assert.match([...ui.querySelectorAll('[data-chart-subtitle]')].at(-1)!.textContent!, /7\.5 m³/);
+    const dataset = buildElementsDataset({ kind: 'all' }, [saved.elementField!, saved.measureField!]);
+    for (const chartType of ['bar', 'pie', 'treemap', 'stackedBar'] as const) {
+      const spec = { ...saved, type: chartType, dimension: saved.dimension!, ...(chartType === 'stackedBar' ? { stackBy: 'Storey' } : {}) };
+      assert.equal(aggregate(spec, dataset).total, 7.5, `${chartType} uses the same volume sum`);
+    }
+    assert.equal(aggregate({ ...saved, type: 'histogram', dimension: saved.measure.column! }, dataset).total, 7.5);
+  });
+
+  const authoringFixture = resolve(process.cwd(), '../../tests/models/ara3d/AC20-FZK-Haus.ifc');
+  it('sums material volume from an Archicad IFC export (#5373)', { skip: !existsSync(authoringFixture) && 'Run pnpm fixtures to fetch AC20-FZK-Haus.ifc' }, async () => {
+    const bytes = readFileSync(authoringFixture);
+    const store = await new IfcParser().parseColumnar(Uint8Array.from(bytes).buffer);
+    const model = { ...fixtureModel('archicad', { idOffset: OFFSET }), name: 'AC20-FZK-Haus.ifc', ifcDataStore: store, maxExpressId: 100_000 };
+    useViewerStore.setState({ models: new Map([[model.id, model]]) });
+    const material: ElementFieldBinding = { kind: 'material', valueKind: 'category' };
+    const volume: ElementFieldBinding = { kind: 'quantity', qsetName: 'BaseQuantities', quantityName: 'NetVolume', valueKind: 'number', dataType: 'IFCVOLUMEMEASURE' };
+    const data = buildElementsDataset({ kind: 'all' }, [material, volume]);
+    const result = aggregate({ id: 'authoring-volume', title: 'Volume by material', source: 'elements', type: 'treemap',
+      elementField: material, measureField: volume, dimension: elementFieldColumnId(material),
+      measure: { agg: 'sum', column: elementFieldColumnId(volume) } }, data);
+    assert.ok(result.total > 0, 'the authored NetVolume quantities contribute to the material chart');
+    assert.ok(result.categories.some((bucket) => bucket.label !== '(none)' && bucket.value > 0));
+    assert.equal(result.total, result.categories.reduce((sum, bucket) => sum + bucket.value, 0));
+  });
+
+  it('keeps Group by and Stack by distinct when the grouping changes (#5373)', async () => {
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    await openEditorWithFamily(ui, 'attribute');
+    await choose(ui.querySelector<HTMLSelectElement>('select[aria-label="Chart type"]')!, 'stackedBar');
+    const group = ui.querySelector<HTMLSelectElement>('select[aria-label="Group by"]')!;
+    const stack = ui.querySelector<HTMLSelectElement>('select[aria-label="Stack by"]')!;
+    const originalGroup = group.value;
+    const originalStack = stack.value;
+    assert.notEqual(originalGroup, originalStack);
+    await choose(group, originalStack);
+    const nextStack = ui.querySelector<HTMLSelectElement>('select[aria-label="Stack by"]')!.value;
+    assert.notEqual(nextStack, originalStack);
+    click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save chart')!);
+    const saved = useViewerStore.getState().dashboards[0].charts.at(-1)!;
+    assert.equal(saved.dimension, originalStack);
+    assert.equal(saved.stackBy, nextStack);
+  });
+
   it('charts a quantity as a summable number in the project unit and a classification system by its codes (#4833)', async () => {
     const { renderer, charts } = recordingRenderer();
     const ui = render(<ChartsPanel renderer={renderer} />);
@@ -483,7 +558,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal(chartSelectionIsLive(expanded, [otherIdentity], new Set([4, 5])), false);
   });
 
-  it('resets an incompatible histogram and sum when its IFC field becomes categorical (#4833)', async () => {
+  it('keeps a numeric sum when its grouping field changes from a histogram to a category (#5373)', async () => {
     const numeric: ElementFieldBinding = {
       kind: 'property', psetName: 'Pset_WallCommon', propertyName: 'ReferenceLength', valueKind: 'number', dataType: 'IFCLENGTHMEASURE',
     };
@@ -523,10 +598,11 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
       property.dispatchEvent(new window.Event('change', { bubbles: true }));
     });
     assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Chart type"]')!.value, 'bar');
-    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Measure"]')!.value, 'count');
+    assert.equal(ui.querySelector<HTMLSelectElement>('select[aria-label="Measure"]')!.value, `sum:${numericId}`);
     click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save chart')!);
     const saved = useViewerStore.getState().dashboards[0].charts.at(-1)!;
-    assert.deepEqual(saved.measure, { agg: 'count' });
+    assert.deepEqual(saved.measure, { agg: 'sum', column: numericId });
+    assert.deepEqual(saved.measureField, numeric);
     assert.equal(saved.dimension, categoryId);
   });
 
@@ -1009,7 +1085,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal(state.chartVisibilityOwned, null);
     assert.equal(state.ghostExceptEntities, null);
     const subtitles = [...reopened.querySelectorAll('[data-chart-subtitle]')].map((el) => el.textContent);
-    assert.ok(subtitles.every((text) => /5 elements$/.test(text ?? '')), subtitles.join(' | '));
+    assert.ok(subtitles.every((text) => (text ?? '').endsWith('5 elements')), subtitles.join(' | '));
   });
 
   it('does not reclaim an independently replaced same-ID selection after partial federation teardown (#4832)', async () => {
@@ -1656,6 +1732,24 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.match(subtitle, /filter: IfcWall/, subtitle);
     const lastOption = charts[0].options.at(-1)!;
     assert.deepEqual(barData(lastOption).map(([name, count]) => [name, count]), [['IfcWall', 3]]);
+  });
+
+  it('a chart can convert a selector to editable filter rules and keep the same rows (#4946)', async () => {
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click(ui.querySelector<HTMLButtonElement>('button[aria-label="Edit Elements by type"]')!);
+    await settle();
+    type(ui.querySelector<HTMLInputElement>('input[aria-label="Source filter"]')!, 'IfcWall');
+    click([...ui.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === 'Add rule')!);
+    await settle();
+    assert.ok(ui.textContent?.includes('IFC Type'), 'the existing rule editor shows the parsed IFC type rule');
+    click([...ui.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === 'Save chart')!);
+    await settle();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle();
+    assert.match(ui.querySelector('[data-chart-subtitle]')!.textContent!, /3 elements/);
+    assert.equal(useViewerStore.getState().dashboards[0].charts[0].filter?.groups?.[0].rules[0].kind, 'ifcType');
   });
 
   it('a refused selector (no filterable rule) blocks Save and shows the alert instead of narrowing on the readable part (#4946)', async () => {

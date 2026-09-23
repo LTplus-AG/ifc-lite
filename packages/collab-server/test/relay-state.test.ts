@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { WebSocket } from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
 import { WebsocketProvider } from 'y-websocket';
 import { fetchRoomStateVector, stateVectorCovers } from '@ifc-lite/collab';
 import { MemoryPersistence, startCollabServer } from '../src/server.js';
@@ -53,9 +53,35 @@ describe('fetchRoomStateVector', () => {
     await handle.stop();
   }, 15_000);
 
-  it('rejects instead of hanging when the server is unreachable', async () => {
-    await expect(
-      fetchRoomStateVector('ws://127.0.0.1:9', 'nope', { WebSocketPolyfill: WebSocket, timeoutMs: 2000 }),
-    ).rejects.toThrow(/relay probe/);
+  it('rejects when the endpoint closes before the handshake (#5323)', async () => {
+    const server = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+    try {
+      await new Promise<void>((resolve) => server.once('listening', resolve));
+      server.on('connection', (socket) => socket.close());
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      await expect(
+        fetchRoomStateVector(`ws://127.0.0.1:${port}`, 'nope', { WebSocketPolyfill: WebSocket, timeoutMs: 2000 }),
+      ).rejects.toThrow(/relay probe closed before the handshake/);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
+  it('rejects within the configured bound when a relay sends no state vector (#5323)', async () => {
+    const server = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+    try {
+      await new Promise<void>((resolve) => server.once('listening', resolve));
+      const connected = new Promise<void>((resolve) => server.once('connection', () => resolve()));
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      const probe = fetchRoomStateVector(`ws://127.0.0.1:${port}`, 'nope', { WebSocketPolyfill: WebSocket, timeoutMs: 300 });
+      await Promise.all([
+        connected,
+        expect(probe).rejects.toThrow(/relay did not send its state vector in time/),
+      ]);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
   });
 });

@@ -1,0 +1,21 @@
+{
+  "candidate": "52da9ec0e",
+  "base": "52d30de0ae3fc8ef6322191bd1831483b93d485f",
+  "platform": "Linux-6.6.87.1-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+  "cpu_count": 24,
+  "os_file_cache": "uncontrolled",
+  "measurement": "fresh process, --cold --iters 1, fullLoadWallMs; RSS includes fingerprint and teardown",
+  "binaries": {
+    "base": "e5f0558088d515d55c503a13101d98154dc49e0eb1fce9d4552a829fe2229f03",
+    "candidate": "08292650a2784a7cf047951fae4770c7fb41c81d7b668a8e29bb8456378b6acf"
+  },
+  "fixtures": {
+    "issues/472_2222.ifc": "e9445d6c74f8cb593386c7cbc2e6cd206d7835e54999ca2c5a16d67364374eb2",
+    "ara3d/AC20-FZK-Haus.ifc": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+    "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131",
+    "ara3d/schependomlaan.ifc": "2c3565ca1904f2aa61adab92024cf3755b2c5b21a498144d3094d7cb58cebec7",
+    "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+    "various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc": "e91ddbbd672bbde946af14631de4c732f0cf8a7cfae5dbbf06fbeab03b5c46df",
+    "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc": "bd455803048d0dacf4af7de1027beb1968f0727cde38f22bdea65e57484ff121"
+  }
+}

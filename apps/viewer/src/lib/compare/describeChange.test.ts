@@ -377,3 +377,22 @@ describe('describeChange - a geometry-less product that was re-georeferenced', (
     assert.strictEqual(detail!.geometry!.reshaped, true);
   });
 });
+
+describe('describeChange - spatial re-parenting (#5309)', () => {
+  it('a container-only change describes the move instead of rendering nothing', async () => {
+    const store = await storeFromStep("#1=IFCWALL('1wall_a_guid_aaaaaaaaa',$,'Wall',$,$,$,$,$,.STANDARD.);");
+    const entry = modifiedEntry('IfcWall');
+    entry.changeKinds = ['container'];
+    entry.base!.container = 'Building/Storey 1';
+    entry.head!.container = 'Building/Storey 2';
+
+    const detail = describeChange(entry, modelsFor(store, store));
+    assert.deepStrictEqual(detail!.data, [{
+      category: 'attribute',
+      name: 'Spatial container',
+      before: 'Building/Storey 1',
+      after: 'Building/Storey 2',
+      kind: 'changed',
+    }]);
+  });
+});

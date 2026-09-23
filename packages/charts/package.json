@@ -21,6 +21,7 @@
   "dependencies": {
     "@ifc-lite/data": "workspace:^",
     "@ifc-lite/lens": "workspace:^",
+    "@ifc-lite/rules": "workspace:^",
     "echarts": "^6.1.0"
   },
   "devDependencies": {

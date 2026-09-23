@@ -216,6 +216,11 @@ pub struct GeometryRouter {
     /// single-solid id is in this set the router routes it to the normal flat
     /// materialize (byte-identical to instancing-off). `None`/empty ⇒ no exclusion.
     indexed_colour_split_ids: Option<Arc<FxHashSet<u32>>>,
+    /// Set per element by the producer while it meshes an element whose
+    /// triangle order is load-bearing (a face set with an `IfcIndexedColourMap`
+    /// is split by triangle index, #858). Source hygiene then stays index-only,
+    /// because the #5313 T-junction repair reorders and re-counts triangles.
+    preserve_triangle_order: std::cell::Cell<bool>,
     /// #1623 Phase 3 template-selection mode for the don't-bake path. `false`
     /// (default, NATIVE): the deterministic global template is the plan's min-id
     /// occurrence (`item.id == template_item_id`), so every occurrence resolves
@@ -267,6 +272,7 @@ impl GeometryRouter {
             skip_small_cuts: false,
             output_instancing_plan: None, // armed by `enable_output_instancing`
             indexed_colour_split_ids: None, // armed by `enable_indexed_colour_split_guard`
+            preserve_triangle_order: std::cell::Cell::new(false),
             instancing_batch_local: false, // native global-template mode by default
             instanced_sources_materialized: RefCell::new(FxHashSet::default()),
             unsupported: RefCell::new(Default::default()),
@@ -435,6 +441,14 @@ impl GeometryRouter {
     /// when the model has any indexed-colour maps; unset ⇒ no exclusion.
     pub fn enable_indexed_colour_split_guard(&mut self, ids: Arc<FxHashSet<u32>>) {
         self.indexed_colour_split_ids = Some(ids);
+    }
+
+    /// Keep source hygiene index-only for the elements meshed until this is
+    /// called again with `false`, because a caller will map their triangles back
+    /// to source faces by index (#858's per-triangle colour split). Returns the
+    /// previous setting so a caller can restore it.
+    pub fn set_preserve_triangle_order(&self, on: bool) -> bool {
+        self.preserve_triangle_order.replace(on)
     }
 
     /// Whether `geometry_id` is a mapped-source solid carrying an `IfcIndexedColourMap`

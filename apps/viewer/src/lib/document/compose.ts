@@ -14,14 +14,14 @@
  */
 import type { ReportPageSetup } from '@ifc-lite/charts';
 import { pageBox, REPORT_MARGIN } from '../export/report/compose.js';
-import { CHART_BLOCK_HEIGHT_DEFAULT, type BlockWidth, type TextBlock } from './types.js';
+import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type BlockWidth, type TextBlock, type TextFont } from './types.js';
 import { layoutTable, type LayoutCursor, type TableColumnLayout, type TableLayoutBlock, type TextDrawnItem } from './compose-table.js';
 import { layoutIdsReport, type IdsReportLayoutBlock } from './compose-ids-report.js';
 import type { TableRowOut } from './resolve-table.js';
 
 const HEADER_HEIGHT = 30;
 const FOOTER_HEIGHT = 24;
-const BLOCK_GAP = 10;
+export const BLOCK_GAP = 10;
 const CHART_HEIGHT = CHART_BLOCK_HEIGHT_DEFAULT;
 const SNAPSHOT_HEIGHT = 180;
 const TOPIC_SNAPSHOT_HEIGHT = 160;
@@ -38,7 +38,7 @@ export interface DocumentChartSizingInput {
 export function documentChartSizing(input: DocumentChartSizingInput): { height: number; sideBySide: boolean; stacked: boolean } {
   const sideBySide = input.snapshot && input.hasData && input.boxWidth >= 640;
   const stacked = input.snapshot && input.hasData && !sideBySide;
-  const overhead = 18 + (stacked ? SNAPSHOT_HEIGHT + BLOCK_GAP : 0);
+  const overhead = 32 + (stacked ? SNAPSHOT_HEIGHT + BLOCK_GAP : 0);
   const printableHeight = input.pageHeight - (REPORT_MARGIN + HEADER_HEIGHT) - (REPORT_MARGIN + FOOTER_HEIGHT);
   return {
     height: Math.max(40, Math.min(input.requestedHeight, printableHeight - overhead)),
@@ -59,18 +59,13 @@ export const TEXT_STYLES: Record<TextBlock['style'], { size: number; bold: boole
 
 /** A block after its bindings were resolved and its assets measured — what layout needs. */
 export type ResolvedBlock =
-  | { kind: 'text'; id: string; style: TextBlock['style']; text: string }
+  | { kind: 'text'; id: string; style: TextBlock['style']; text: string; font?: TextFont; fontSize?: number; width?: BlockWidth }
   | { kind: 'image'; id: string; height: number; align: 'left' | 'center' | 'right'; caption?: string; /** natural width / height */ aspect: number; width?: BlockWidth }
   | { kind: 'chart'; id: string; title: string; subtitle: string; hasData: boolean; snapshot: boolean; height?: number; width?: BlockWidth }
   | { kind: 'topic'; id: string; title: string; lines: string[]; /** null when there is no snapshot to print */ snapshotAspect: number | null }
   | { kind: 'spacer'; id: string; height: number }
   | ({ kind: 'table' } & TableLayoutBlock)
   | ({ kind: 'ids-report' } & IdsReportLayoutBlock);
-
-/** `true` when `block` may pair with an adjacent `'half'` block into one row (#4940) — chart and image only. */
-function isHalfPairable(block: ResolvedBlock): block is (Extract<ResolvedBlock, { kind: 'chart' | 'image' }>) & { width: 'half' } {
-  return (block.kind === 'chart' || block.kind === 'image') && block.width === 'half';
-}
 
 export type DrawnItem =
   | TextDrawnItem
@@ -100,14 +95,25 @@ export interface ComposeDocumentInput {
   blocks: ResolvedBlock[];
   generatedAt: string;
   /** Width of `text` at `size` points, in points. */
-  measure: (text: string, size: number, bold: boolean) => number;
+  measure: (text: string, size: number, bold: boolean, font?: TextFont) => number;
 }
 
 /** A character estimate for Helvetica — tests and the on-screen preview use it. */
 export const estimateTextWidth = (text: string, size: number, bold: boolean): number => text.length * size * (bold ? 0.56 : 0.52);
 
+/** A conservative, font-independent bound keeps preview/PDF pairing identical.
+ * Standard PDF font glyphs fit within one em; this can choose full width early,
+ * but never puts a two-column row through the footer for a wide glyph string. */
+export function halfTextFitsPage(block: Pick<TextBlock, 'style' | 'text' | 'fontSize'>, pageHeight: number, columnWidth: number): boolean {
+  const style = TEXT_STYLES[block.style];
+  const size = block.fontSize ?? style.size;
+  const lines = wrapText(block.text, columnWidth, size, style.bold, (text, fontSize) => text.length * fontSize);
+  const frameHeight = pageHeight - 2 * REPORT_MARGIN - HEADER_HEIGHT - FOOTER_HEIGHT;
+  return style.gapBefore + lines.length * size * style.lineHeight <= frameHeight;
+}
+
 /** Greedy word wrap on the measure; a word longer than the line is broken by characters. */
-export function wrapText(text: string, width: number, size: number, bold: boolean, measure: ComposeDocumentInput['measure']): string[] {
+export function wrapText(text: string, width: number, size: number, bold: boolean, measure: ComposeDocumentInput['measure'], font?: TextFont): string[] {
   const lines: string[] = [];
   for (const paragraph of text.split('\n')) {
     const words = paragraph.split(/\s+/).filter((w) => w.length > 0);
@@ -118,15 +124,15 @@ export function wrapText(text: string, width: number, size: number, bold: boolea
     let line = '';
     for (const word of words) {
       const candidate = line ? `${line} ${word}` : word;
-      if (measure(candidate, size, bold) <= width) {
+      if (measure(candidate, size, bold, font) <= width) {
         line = candidate;
         continue;
       }
       if (line) lines.push(line);
       line = word;
-      while (measure(line, size, bold) > width && line.length > 1) {
+      while (measure(line, size, bold, font) > width && line.length > 1) {
         let cut = line.length - 1;
-        while (cut > 1 && measure(line.slice(0, cut), size, bold) > width) cut -= 1;
+        while (cut > 1 && measure(line.slice(0, cut), size, bold, font) > width) cut -= 1;
         lines.push(line.slice(0, cut));
         line = line.slice(cut);
       }
@@ -225,21 +231,19 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       hasData: block.hasData,
     });
     const chartW = sideBySide ? Math.round(boxW * 0.6) - BLOCK_GAP / 2 : boxW;
-    const totalH = 18 + (sideBySide ? Math.max(chartHeight, SNAPSHOT_HEIGHT) : chartHeight + (stacked ? SNAPSHOT_HEIGHT + BLOCK_GAP : 0));
+    const totalH = 32 + (sideBySide ? Math.max(chartHeight, SNAPSHOT_HEIGHT) : chartHeight + (stacked ? SNAPSHOT_HEIGHT + BLOCK_GAP : 0));
     return {
       height: totalH,
       draw: (y) => {
-        // A half-width column must not let a long title/subtitle run into the next column (review finding).
-        // The title's own width is capped to the same room the subtitle reserves for itself
-        // (review finding: `boxW - 8` let a long title run under/into the subtitle it sits next to).
-        const title = truncateToWidth(block.title, Math.max(20, boxW - 80), 11, true, input.measure);
+        // Give each line the column width. The old 80pt subtitle slot cut ordinary totals
+        // such as "13 buckets · 12,623 elements" even on a full-width A4 chart (#4940).
+        const title = truncateToWidth(block.title, boxW - 4, 11, true, input.measure);
+        const subtitle = truncateToWidth(block.subtitle, boxW - 4, 8, false, input.measure);
         const items: DrawnItem[] = [
           { kind: 'text', x: boxX, y: y + 11, size: 11, bold: true, gray: 0, text: title },
+          { kind: 'text', x: boxX, y: y + 24, size: 8, bold: false, gray: 130, text: subtitle },
         ];
-        const subtitleX = boxX + Math.max(20, boxW - 80);
-        const subtitle = truncateToWidth(block.subtitle, Math.max(20, boxX + boxW - subtitleX - 4), 8, false, input.measure);
-        items.push({ kind: 'text', x: subtitleX, y: y + 11, size: 8, bold: false, gray: 130, text: subtitle });
-        const chartY = y + 18;
+        const chartY = y + 32;
         items.push({ kind: 'chart', blockId: block.id, x: boxX, y: chartY, w: chartW, h: chartHeight });
         if (sideBySide) items.push({ kind: 'snapshot', blockId: block.id, x: boxX + chartW + BLOCK_GAP, y: chartY, w: boxW - chartW - BLOCK_GAP, h: SNAPSHOT_HEIGHT });
         else if (stacked) items.push({ kind: 'snapshot', blockId: block.id, x: boxX, y: chartY + chartHeight + BLOCK_GAP, w: boxW, h: SNAPSHOT_HEIGHT });
@@ -248,13 +252,43 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     };
   };
 
+  const layoutText = (block: Extract<ResolvedBlock, { kind: 'text' }>, boxX: number, boxW: number) => {
+    const style = TEXT_STYLES[block.style];
+    const size = block.fontSize ?? style.size;
+    const lineH = size * style.lineHeight;
+    const lines = wrapText(block.text, boxW, size, style.bold, input.measure, block.font);
+    return { style, size, lineH, lines, height: style.gapBefore + lines.length * lineH,
+      draw: (atY: number): DrawnItem[] => lines.map((line, index) => ({ kind: 'text', x: boxX, y: atY + style.gapBefore + index * lineH + size, size, bold: style.bold, gray: style.gray, text: line, font: block.font })),
+    };
+  };
+  const layoutPairable = (block: Extract<ResolvedBlock, { kind: 'text' | 'image' | 'chart' }>, boxX: number, boxW: number) =>
+    block.kind === 'text' ? layoutText(block, boxX, boxW)
+      : block.kind === 'chart' ? layoutChart(block, boxX, boxW)
+      : layoutImage(block, boxX, boxW);
+
   for (let i = 0; i < input.blocks.length; i++) {
     const block = input.blocks[i];
+    const next = input.blocks[i + 1];
+    if (next && isHalfPairable(block) && isHalfPairable(next)) {
+      const colW = (contentW - BLOCK_GAP) / 2;
+      const textFits = (candidate: typeof block): boolean => candidate.kind !== 'text' || halfTextFitsPage(candidate, size.h, colW);
+      if (textFits(block) && textFits(next)) {
+        const a = layoutPairable(block, REPORT_MARGIN, colW);
+        const b = layoutPairable(next, REPORT_MARGIN + colW + BLOCK_GAP, colW);
+        const rowH = Math.max(a.height, b.height);
+        // An oversized text column falls back to the ordinary paginated text path.
+        if (rowH <= bottom - top) {
+          ensure(rowH + BLOCK_GAP);
+          page.items.push(...a.draw(y), ...b.draw(y));
+          y += rowH + BLOCK_GAP;
+          i += 1;
+          continue;
+        }
+      }
+    }
     switch (block.kind) {
       case 'text': {
-        const style = TEXT_STYLES[block.style];
-        const lineH = style.size * style.lineHeight;
-        const lines = wrapText(block.text, contentW, style.size, style.bold, input.measure);
+        const { style, size, lineH, lines } = layoutText(block, REPORT_MARGIN, contentW);
         if (lines.every((l) => l.length === 0)) {
           y += lineH;
           break;
@@ -264,7 +298,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
         ensure(lineH * Math.min(lines.length, 2));
         for (const line of lines) {
           if (y + lineH > bottom) newPage();
-          page.items.push({ kind: 'text', x: REPORT_MARGIN, y: y + style.size, size: style.size, bold: style.bold, gray: style.gray, text: line });
+          page.items.push({ kind: 'text', x: REPORT_MARGIN, y: y + size, size, bold: style.bold, gray: style.gray, text: line, font: block.font });
           y += lineH;
         }
         y += BLOCK_GAP;
@@ -280,19 +314,6 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       }
       case 'image':
       case 'chart': {
-        const next = input.blocks[i + 1];
-        const pairWithNext = isHalfPairable(block) && next !== undefined && isHalfPairable(next);
-        if (pairWithNext) {
-          const colW = (contentW - BLOCK_GAP) / 2;
-          const a = block.kind === 'chart' ? layoutChart(block, REPORT_MARGIN, colW) : layoutImage(block, REPORT_MARGIN, colW);
-          const b = next.kind === 'chart' ? layoutChart(next, REPORT_MARGIN + colW + BLOCK_GAP, colW) : layoutImage(next, REPORT_MARGIN + colW + BLOCK_GAP, colW);
-          const rowH = Math.max(a.height, b.height);
-          ensure(rowH + BLOCK_GAP);
-          page.items.push(...a.draw(y), ...b.draw(y));
-          y += rowH + BLOCK_GAP;
-          i += 1; // the next block was drawn as this row's second column
-          break;
-        }
         const single = block.kind === 'chart' ? layoutChart(block, REPORT_MARGIN, contentW) : layoutImage(block, REPORT_MARGIN, contentW);
         ensure(single.height + BLOCK_GAP);
         page.items.push(...single.draw(y));

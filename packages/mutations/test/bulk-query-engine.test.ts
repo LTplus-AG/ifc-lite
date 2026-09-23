@@ -540,3 +540,71 @@ describe('BulkQueryEngine excludes tombstoned entities', () => {
     expect(view.getPropertyValue(3, 'Pset_Bulk', 'Flag')).toBe(true);
   });
 });
+
+/**
+ * #5249: the other two directions of the #5196 enumeration defect. An entity
+ * created this session has no EntityTable row, and a retyped entity's row
+ * still carries its PARSED class. Both have to be answered from the overlay.
+ */
+describe('BulkQueryEngine selects the effective model (#5249)', () => {
+  const IFC_WALL = 10;
+  const IFC_COLUMN = 15;
+
+  function session() {
+    const entities = makeEntities(3); // ids 1,2,3, all IfcWall
+    const strings = ['', 'guid-1', 'Wall 1', 'guid-2', 'Wall 2', 'guid-3', 'Wall 3'];
+    for (let i = 0; i < 3; i++) {
+      entities.globalId[i] = 1 + i * 2;
+      entities.name[i] = 2 + i * 2;
+    }
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    view.setExpressIdWatermark(3);
+    const engine = new BulkQueryEngine(entities, view, null, null, { get: (i: number) => strings[i] ?? '' });
+    return { view, engine };
+  }
+
+  it('an entity created this session is selected by type, untyped, by GlobalId and by name', () => {
+    const { view, engine } = session();
+    const created = view.createEntity('IfcWall', ['guid-new', null, 'New wall']).expressId;
+
+    expect(engine.select({ entityTypes: [IFC_WALL] })).toEqual([1, 2, 3, created]);
+    expect(engine.select({})).toEqual([1, 2, 3, created]);
+    expect(engine.select({ globalIds: ['guid-new'] })).toEqual([created]);
+    expect(engine.select({ namePattern: '^New' })).toEqual([created]);
+  });
+
+  it('a bulk write reaches a created entity', () => {
+    const { view, engine } = session();
+    const created = view.createEntity('IfcColumn', ['guid-c', null, 'Column']).expressId;
+    const result = engine.execute({
+      select: { entityTypes: [IFC_COLUMN] },
+      action: { type: 'SET_PROPERTY', psetName: 'Pset_Bulk', propName: 'Flag', value: true, valueType: PropertyValueType.Boolean },
+    });
+    expect(result.mutations.map((m) => m.entityId)).toEqual([created]);
+    expect(view.getPropertyValue(created, 'Pset_Bulk', 'Flag')).toBe(true);
+  });
+
+  it('a retyped entity is selected by its new class only', () => {
+    const { view, engine } = session();
+    view.setEntityType(2, 'IfcColumn', null, 'IfcWall');
+
+    expect(engine.select({ entityTypes: [IFC_WALL] })).toEqual([1, 3]);
+    expect(engine.select({ entityTypes: [IFC_COLUMN] })).toEqual([2]);
+  });
+
+  it('a queued Name edit is what namePattern matches', () => {
+    const { view, engine } = session();
+    view.setAttribute(3, 'Name', 'Renamed');
+    expect(engine.select({ namePattern: '^Renamed$' })).toEqual([3]);
+    expect(engine.select({ namePattern: '^Wall 3$' })).toEqual([]);
+  });
+
+  it('a created-then-deleted entity is selected nowhere', () => {
+    const { view, engine } = session();
+    const created = view.createEntity('IfcWall', ['guid-new', null, 'New wall']).expressId;
+    view.deleteEntity(created);
+    expect(engine.select({ entityTypes: [IFC_WALL] })).toEqual([1, 2, 3]);
+    expect(engine.select({ globalIds: ['guid-new'] })).toEqual([]);
+  });
+});

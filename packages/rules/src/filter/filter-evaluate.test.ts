@@ -1144,8 +1144,9 @@ describe('#5249 live filter enumeration', () => {
 
     const all = await evaluateFilterRulesFederated(models, [Rule.model(['m1'])], 'AND');
     const sourceRows = Array.from(store.entities.expressId).filter((id) => id !== 0 && id !== WALL_IN_STOREY);
-    assert.deepStrictEqual(new Set(all.map(({ expressId }) => expressId)),
-      new Set([...sourceRows, created.expressId]), 'the full scan keeps the EntityTable domain');
+    assert.deepStrictEqual(all.map(({ expressId }) => expressId).sort((a, b) => a - b),
+      [...sourceRows, created.expressId].sort((a, b) => a - b),
+      'the full scan keeps the EntityTable domain without duplicate rows');
   });
 
   it('uses the effective class and relaid root attributes of a created, retyped entity', async () => {

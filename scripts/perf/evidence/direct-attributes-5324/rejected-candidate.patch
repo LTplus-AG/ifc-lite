@@ -1,0 +1,440 @@
+diff --git a/rust/core/src/decoder.rs b/rust/core/src/decoder.rs
+index b9d2045a7..fdeab7553 100644
+--- a/rust/core/src/decoder.rs
++++ b/rust/core/src/decoder.rs
+@@ -8,7 +8,7 @@
+ 
+ use crate::columnar_index::EntityIndexStore;
+ use crate::error::{Error, Result};
+-use crate::parser::{is_step_space, parse_entity, report_scan_diagnostics, EntityScanner};
++use crate::parser::{is_step_space, parse_entity_attributes, report_scan_diagnostics, EntityScanner};
+ use crate::schema_gen::{AttributeValue, DecodedEntity};
+ use rustc_hash::FxHashMap;
+ use std::sync::Arc;
+@@ -183,19 +183,13 @@ impl<'a> EntityDecoder<'a> {
+     /// take down the whole worker.
+     #[inline]
+     pub fn decode_at(&mut self, start: usize, end: usize) -> Result<DecodedEntity> {
+-        let (id, ifc_type, tokens) = self.parse_at(start, end, "decode_at")?;
++        let (id, ifc_type, attributes) = self.parse_at(start, end, "decode_at", parse_entity_attributes)?;
+ 
+         // Check cache first - return clone of inner DecodedEntity
+         if let Some(entity_arc) = self.cache.get(&id) {
+             return Ok(entity_arc.as_ref().clone());
+         }
+ 
+-        // Convert tokens to AttributeValues
+-        let attributes = tokens
+-            .iter()
+-            .map(|token| AttributeValue::from_token(token))
+-            .collect();
+-
+         let entity = DecodedEntity::new(id, ifc_type, attributes);
+         self.cache.insert(id, Arc::new(entity.clone()));
+         Ok(entity)
+@@ -212,20 +206,17 @@ impl<'a> EntityDecoder<'a> {
+     /// the result; for identical bytes it yields an identical [`DecodedEntity`] to
+     /// `decode_at`, only without the cache side effect.
+     pub fn decode_at_uncached(&self, start: usize, end: usize) -> Result<DecodedEntity> {
+-        let (id, ifc_type, tokens) = self.parse_at(start, end, "decode_at_uncached")?;
+-        let attributes = tokens
+-            .iter()
+-            .map(|token| AttributeValue::from_token(token))
+-            .collect();
++        let (id, ifc_type, attributes) = self.parse_at(start, end, "decode_at_uncached", parse_entity_attributes)?;
+         Ok(DecodedEntity::new(id, ifc_type, attributes))
+     }
+ 
+-    /// Shared full-record validation and existing error context. The returned
+-    /// tokens borrow immutable source bytes, not the decoder's entity cache.
++    /// Share span validation and error context between direct attribute
++    /// construction and the transient string projection's token target (#5324).
+     #[inline]
+-    fn parse_at(
++    fn parse_at<T>(
+         &self, start: usize, end: usize, method: &str,
+-    ) -> Result<(u32, crate::IfcType, Vec<crate::parser::Token<'a>>)> {
++        parse: impl FnOnce(&'a [u8]) -> Result<T>,
++    ) -> Result<T> {
+         let content_len = self.content.len();
+         if start > end || end > content_len {
+             return Err(Error::parse(
+@@ -237,7 +228,7 @@ impl<'a> EntityDecoder<'a> {
+             ));
+         }
+         let line = &self.content[start..end];
+-        parse_entity(line).map_err(|e| {
++        parse(line).map_err(|e| {
+             // Add bounded, lossy debug info without requiring the source to be UTF-8.
+             let cut = line.len().min(100);
+             Error::parse(
+diff --git a/rust/core/src/decoder/caches.rs b/rust/core/src/decoder/caches.rs
+index 3d8358eb8..c5480a433 100644
+--- a/rust/core/src/decoder/caches.rs
++++ b/rust/core/src/decoder/caches.rs
+@@ -30,7 +30,7 @@ impl EntityDecoder<'_> {
+             .ok_or_else(|| crate::Error::parse(0, format!("Entity #{} not found", id)))?;
+         // The SAME parser checks unused fields too. A malformed tail must fail
+         // even when Name was already readable or the parsed id is memoized.
+-        let (parsed_id, _, tokens) = self.parse_at(start, end, "decode_at_uncached")?;
++        let (parsed_id, _, tokens) = self.parse_at(start, end, "decode_at_uncached", crate::parser::parse_entity)?;
+         if let Some(entity) = self.cache.get(&parsed_id) {
+             return Ok(entity.get_string(attribute).map(str::to_owned));
+         }
+diff --git a/rust/core/src/parser/direct_attributes_tests.rs b/rust/core/src/parser/direct_attributes_tests.rs
+new file mode 100644
+index 000000000..1b395e222
+--- /dev/null
++++ b/rust/core/src/parser/direct_attributes_tests.rs
+@@ -0,0 +1,88 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++
++use super::*;
++use crate::AttributeValue;
++
++fn same_value(left: &AttributeValue, right: &AttributeValue) {
++    use AttributeValue::*;
++    match (left, right) {
++        (Float(a), Float(b)) => assert_eq!(a.to_bits(), b.to_bits()),
++        (Integer(a), Integer(b)) => assert_eq!(a, b),
++        (EntityRef(a), EntityRef(b)) => assert_eq!(a, b),
++        (String(a), String(b)) | (Enum(a), Enum(b)) => assert_eq!(a, b),
++        (List(a), List(b)) => {
++            assert_eq!(a.len(), b.len());
++            for (a, b) in a.iter().zip(b) { same_value(a, b); }
++        }
++        (Null, Null) | (Derived, Derived) => {}
++        _ => panic!("attribute variants differ"),
++    }
++}
++
++// #5324: direct construction must equal the public token conversion, including
++// exact floating-point bits and the grammar's accepted/rejected input boundary.
++fn compare(bytes: &[u8]) {
++    match (parse_entity(bytes), parse_entity_attributes(bytes)) {
++        (Ok((id, ty, tokens)), Ok((direct_id, direct_ty, attrs))) => {
++            assert_eq!((id, ty), (direct_id, direct_ty));
++            assert_eq!(tokens.len(), attrs.len());
++            for (token, attr) in tokens.iter().zip(&attrs) {
++                same_value(&AttributeValue::from_token(token), attr);
++            }
++        }
++        (Err(a), Err(b)) => assert_eq!(a.to_string(), b.to_string()),
++        _ => panic!("token and direct grammar disagree"),
++    }
++}
++
++#[test]
++fn issue_5324_direct_construction_preserves_scalars_lists_and_typed_values() {
++    for bytes in [
++        b"#1=IFCX($,*,#4294967295,+42,-42,-0.,1.25E-3,.true.);".as_slice(),
++        br"#2=IFCX('O''Brien','\X2\00E4\X0\',ifclabel('x'),IFCREAL(2.));",
++        b"#3=IFCX(( ),(/*empty*/),ifclabel(\r\n),((#1),(#2,$)));",
++        b"#4=IFCX('invalid \xff',\"double quoted\",.ENUM_2.);",
++        b"#5=IFCX(1.52.3);",
++        b"#6=IFCX(#4294967296);",
++        b"#7=IFCX('readable',(@));",
++        b"#8=IFCX('unterminated);",
++        b"#9=IFCX(1.E999999);",
++        b"#10=IFCX('valid');ignored trailing bytes",
++    ] { compare(bytes); }
++    // Independent expected values protect string escape/typed-name semantics.
++    let (_, _, attrs) = parse_entity_attributes(br"#1=IFCX('O''Brien',ifclabel('\X2\00E4\X0\'));" ).unwrap();
++    assert_eq!(attrs[0].as_string(), Some("O'Brien"));
++    let AttributeValue::List(typed) = &attrs[1] else { panic!("typed wrapper missing") };
++    assert_eq!(typed[0].as_string(), Some("IFCLABEL"));
++    assert_eq!(typed[1].as_string(), Some("ä"));
++}
++
++#[test]
++fn issue_5324_direct_construction_preserves_depth_limit() {
++    for depth in [0, 1, 16, 255, 256, 257, 300] {
++        let source = format!("#1=IFCX({}1{});", "(".repeat(depth), ")".repeat(depth));
++        compare(source.as_bytes());
++    }
++}
++
++#[test]
++fn issue_5324_real_model_attributes_match_public_token_conversion() {
++    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/models");
++    for relative in ["ara3d/AC20-FZK-Haus.ifc", "issues/472_2222.ifc", "ara3d/schependomlaan.ifc"] {
++        let path = root.join(relative);
++        if !path.exists() {
++            eprintln!("Skipping {relative}: run pnpm fixtures");
++            continue;
++        }
++        let source = std::fs::read(path).unwrap();
++        let mut scanner = crate::parser::EntityScanner::new(&source);
++        let mut compared = 0;
++        while let Some((_, _, start, end)) = scanner.next_entity() {
++            compare(&source[start..end]);
++            compared += 1;
++        }
++        assert!(compared > 0, "real fixture must exercise decoded records");
++    }
++}
+diff --git a/rust/core/src/parser/mod.rs b/rust/core/src/parser/mod.rs
+index 289fd5571..f6ac592aa 100644
+--- a/rust/core/src/parser/mod.rs
++++ b/rust/core/src/parser/mod.rs
+@@ -36,6 +36,7 @@ pub use oversized_ids::{oversized_id_report, report_oversized_ids, set_report_si
+ pub use scanner::{entity_count, nth_attribute_is_present, EntityScanner, StepListItems};
+ pub(crate) use scanner::argument_list_start;
+ pub use tokenizer::{parse_entity, Token};
++pub(crate) use tokenizer::parse_entity_attributes;
+ 
+ /// [`report_oversized_ids`] + [`report_malformed_records`] in one call — the
+ /// two diagnostics every whole-file `EntityScanner` walk in this workspace
+diff --git a/rust/core/src/parser/tokenizer.rs b/rust/core/src/parser/tokenizer.rs
+index dadce4105..5f646254a 100644
+--- a/rust/core/src/parser/tokenizer.rs
++++ b/rust/core/src/parser/tokenizer.rs
+@@ -19,6 +19,10 @@ use nom::{
+ use crate::error::{Error, Result};
+ use crate::generated::IfcType;
+ 
++#[path = "tokenizer_sink.rs"]
++mod sink;
++use sink::{AttributeSink, TokenSink, ValueSink};
++
+ /// STEP/IFC token.
+ ///
+ /// String-like tokens borrow their original bytes. Decode them only at a
+@@ -184,7 +188,7 @@ const MAX_NESTING_DEPTH: u32 = 256;
+ /// items without consuming anything, so with a bare `char(')')` any
+ /// whitespace or comment before the `)` left it unconsumed and the whole
+ /// typed value failed to parse (#3789).
+-fn typed_value_at_depth(input: &[u8], depth: u32) -> IResult<&[u8], Token<'_>> {
++fn typed_value_at_depth<'a, S: ValueSink<'a>>(input: &'a [u8], depth: u32) -> IResult<&'a [u8], S::Value> {
+     map(
+         pair(
+             // Type name (all caps with optional numbers/underscores)
+@@ -195,13 +199,13 @@ fn typed_value_at_depth(input: &[u8], depth: u32) -> IResult<&[u8], Token<'_>> {
+                 preceded(
+                     ws,
+                     separated_list0(delimited(ws, char(','), ws), move |i| {
+-                        token_at_depth(i, depth)
++                        token_at_depth::<S>(i, depth)
+                     }),
+                 ),
+                 pair(ws, char(')')),
+             ),
+         ),
+-        |(type_name, args)| Token::TypedValue(type_name, args),
++        |(type_name, args)| S::typed(type_name, args),
+     )(input)
+ }
+ 
+@@ -223,11 +227,7 @@ fn ws(input: &[u8]) -> IResult<&[u8], ()> {
+ 
+ /// Parse a token with optional surrounding whitespace
+ /// Optimized ordering: test cheapest patterns first (single-char markers)
+-fn token(input: &[u8]) -> IResult<&[u8], Token<'_>> {
+-    token_at_depth(input, 0)
+-}
+-
+-fn token_at_depth(input: &[u8], depth: u32) -> IResult<&[u8], Token<'_>> {
++fn token_at_depth<'a, S: ValueSink<'a>>(input: &'a [u8], depth: u32) -> IResult<&'a [u8], S::Value> {
+     if depth > MAX_NESTING_DEPTH {
+         return Err(nom::Err::Failure(nom::error::Error::new(
+             input,
+@@ -238,18 +238,18 @@ fn token_at_depth(input: &[u8], depth: u32) -> IResult<&[u8], Token<'_>> {
+         ws,
+         alt((
+             // Single-char markers first (O(1) check)
+-            null,       // $
+-            derived,    // *
+-            entity_ref, // # + digits
++            map(null, S::scalar),       // $
++            map(derived, S::scalar),    // *
++            map(entity_ref, S::scalar), // # + digits
+             // Then by complexity
+-            enum_value,     // .XXX.
+-            string_literal, // 'xxx'
+-            move |i| list_at_depth(i, depth + 1), // (...)
++            map(enum_value, S::scalar),     // .XXX.
++            map(string_literal, S::scalar), // 'xxx'
++            move |i| list_at_depth::<S>(i, depth + 1), // (...)
+             // Numbers: float before integer since float includes '.'
+-            float,
+-            integer,
++            map(float, S::scalar),
++            map(integer, S::scalar),
+             // IFCPARAMETERVALUE(0.) - most expensive, last
+-            move |i| typed_value_at_depth(i, depth + 1),
++            move |i| typed_value_at_depth::<S>(i, depth + 1),
+         )),
+         ws,
+     )(input)
+@@ -259,7 +259,7 @@ fn token_at_depth(input: &[u8], depth: u32) -> IResult<&[u8], Token<'_>> {
+ /// Test-only wrapper for the depth-0 entry into list.
+ #[cfg(test)]
+ fn list(input: &[u8]) -> IResult<&[u8], Token<'_>> {
+-    list_at_depth(input, 0)
++    list_at_depth::<TokenSink>(input, 0)
+ }
+ 
+ /// An EMPTY list (`( )`, `(\r\n)`, `(/* empty */)`) needs `ws` explicitly
+@@ -267,16 +267,16 @@ fn list(input: &[u8]) -> IResult<&[u8], Token<'_>> {
+ /// consuming anything, so a bare `char(')')` failed to parse past any
+ /// whitespace or comment left between the parens (#3789, same shape as
+ /// `typed_value_at_depth`'s empty-args fix).
+-fn list_at_depth(input: &[u8], depth: u32) -> IResult<&[u8], Token<'_>> {
++fn list_at_depth<'a, S: ValueSink<'a>>(input: &'a [u8], depth: u32) -> IResult<&'a [u8], S::Value> {
+     map(
+         delimited(
+             pair(char('('), ws),
+             separated_list0(delimited(ws, char(','), ws), move |i| {
+-                token_at_depth(i, depth)
++                token_at_depth::<S>(i, depth)
+             }),
+             pair(ws, char(')')),
+         ),
+-        Token::List,
++        S::list,
+     )(input)
+ }
+ 
+@@ -289,8 +289,17 @@ pub fn parse_entity<'a, T>(input: &'a T) -> Result<(u32, IfcType, Vec<Token<'a>>
+ where
+     T: AsRef<[u8]> + ?Sized,
+ {
+-    let input = input.as_ref();
+-    let result: IResult<&[u8], (u32, &[u8], Vec<Token>)> = tuple((
++    parse_entity_with_sink::<TokenSink>(input.as_ref())
++}
++
++/// Decode directly into final attributes using the same grammar (#5324).
++pub(crate) fn parse_entity_attributes(input: &[u8]) -> Result<(u32, IfcType, Vec<crate::AttributeValue>)> {
++    parse_entity_with_sink::<AttributeSink>(input)
++}
++
++#[allow(clippy::type_complexity)]
++fn parse_entity_with_sink<'a, S: ValueSink<'a>>(input: &'a [u8]) -> Result<(u32, IfcType, Vec<S::Value>)> {
++    let result: IResult<&[u8], (u32, &[u8], Vec<S::Value>)> = tuple((
+         // Entity ID: #123
+         delimited(
+             ws,
+@@ -315,7 +324,7 @@ where
+         // a bare `char(')')` failed to parse past it.
+         delimited(
+             pair(char('('), ws),
+-            separated_list0(delimited(ws, char(','), ws), token),
++            separated_list0(delimited(ws, char(','), ws), |i| token_at_depth::<S>(i, 0)),
+             tuple((ws, char(')'), ws, char(';'))),
+         ),
+     ))(input);
+@@ -325,7 +334,7 @@ where
+             let type_str = std::str::from_utf8(type_str)
+                 .map_err(|_| Error::parse(0, "Entity type is not ASCII/UTF-8"))?;
+             let ifc_type = IfcType::from_str(type_str);
+-            Ok((id, ifc_type, args))
++            Ok((id, ifc_type, S::finish(args)))
+         }
+         Err(e) => Err(Error::parse(0, format!("Failed to parse entity: {}", e))),
+     }
+@@ -334,3 +343,7 @@ where
+ #[cfg(test)]
+ #[path = "tokenizer_tests.rs"]
+ mod tokenizer_tests;
++
++#[cfg(test)]
++#[path = "direct_attributes_tests.rs"]
++mod direct_attributes_tests;
+diff --git a/rust/core/src/parser/tokenizer_sink.rs b/rust/core/src/parser/tokenizer_sink.rs
+new file mode 100644
+index 000000000..1ac1d365b
+--- /dev/null
++++ b/rust/core/src/parser/tokenizer_sink.rs
+@@ -0,0 +1,42 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++
++//! Construction targets for the single STEP grammar (#5324).
++use super::Token;
++use crate::AttributeValue;
++
++pub(super) trait ValueSink<'a> {
++    type Value;
++    fn finish(values: Vec<Self::Value>) -> Vec<Self::Value> { values }
++    fn scalar(value: Token<'a>) -> Self::Value;
++    fn list(values: Vec<Self::Value>) -> Self::Value;
++    fn typed(name: &'a [u8], values: Vec<Self::Value>) -> Self::Value;
++}
++
++pub(super) struct TokenSink;
++impl<'a> ValueSink<'a> for TokenSink {
++    type Value = Token<'a>;
++    fn scalar(value: Token<'a>) -> Self::Value { value }
++    fn list(values: Vec<Self::Value>) -> Self::Value { Token::List(values) }
++    fn typed(name: &'a [u8], values: Vec<Self::Value>) -> Self::Value {
++        Token::TypedValue(name, values)
++    }
++}
++
++pub(super) struct AttributeSink;
++impl<'a> ValueSink<'a> for AttributeSink {
++    type Value = AttributeValue;
++    fn finish(mut values: Vec<Self::Value>) -> Vec<Self::Value> {
++        // The old Token -> AttributeValue collect allocated the final lists to
++        // their exact size. nom grows geometrically; do not retain that spare
++        // capacity in every returned entity merely because construction is direct.
++        values.shrink_to_fit();
++        values
++    }
++    fn scalar(value: Token<'a>) -> Self::Value { AttributeValue::from_token(&value) }
++    fn list(values: Vec<Self::Value>) -> Self::Value { AttributeValue::List(Self::finish(values)) }
++    fn typed(name: &'a [u8], values: Vec<Self::Value>) -> Self::Value {
++        AttributeValue::from_typed_parts(name, values)
++    }
++}
+diff --git a/rust/core/src/parser/tokenizer_tests.rs b/rust/core/src/parser/tokenizer_tests.rs
+index 575e25058..870805715 100644
+--- a/rust/core/src/parser/tokenizer_tests.rs
++++ b/rust/core/src/parser/tokenizer_tests.rs
+@@ -246,7 +246,7 @@ fn comment_free_entity_decodes_unchanged() {
+ /// including a CRLF line wrap - not just adjacent as in `IFCBOOLEAN(.T.)`.
+ #[test]
+ fn test_typed_value_tolerates_crlf_before_paren() {
+-    let result = typed_value_at_depth(b"IFCPOSITIVELENGTHMEASURE\r\n(1.);", 0);
++    let result = typed_value_at_depth::<TokenSink>(b"IFCPOSITIVELENGTHMEASURE\r\n(1.);", 0);
+     assert!(result.is_ok(), "Failed to parse: {:?}", result);
+     let (rest, token) = result.unwrap();
+     assert_eq!(rest, b";");
+diff --git a/rust/core/src/schema_gen.rs b/rust/core/src/schema_gen.rs
+index 86d793e9c..45e19498e 100644
+--- a/rust/core/src/schema_gen.rs
++++ b/rust/core/src/schema_gen.rs
+@@ -100,18 +100,23 @@ impl AttributeValue {
+                 // every consumer can match uppercase literals and every exporter
+                 // emits the canonical name (#4707). Still one allocation: an
+                 // uppercase name is borrowed until `into_owned`.
+-                let name = String::from_utf8_lossy(type_name);
+-                let mut values = vec![AttributeValue::String(
+-                    crate::schema_helpers::normalise_uppercase(&name).into_owned(),
+-                )];
+-                values.extend(args.iter().map(Self::from_token));
+-                AttributeValue::List(values)
++                Self::from_typed_parts(type_name, args.iter().map(Self::from_token))
+             }
+             Token::Null => AttributeValue::Null,
+             Token::Derived => AttributeValue::Derived,
+         }
+     }
+ 
++    /// Share typed-value normalization between token and direct construction.
++    pub(crate) fn from_typed_parts(type_name: &[u8], args: impl IntoIterator<Item = Self>) -> Self {
++        let name = String::from_utf8_lossy(type_name);
++        let mut values = vec![AttributeValue::String(
++            crate::schema_helpers::normalise_uppercase(&name).into_owned(),
++        )];
++        values.extend(args);
++        AttributeValue::List(values)
++    }
++
+     /// Get as entity reference
+     #[inline]
+     pub fn as_entity_ref(&self) -> Option<u32> {

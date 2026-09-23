@@ -79,6 +79,13 @@ describe('runRuleSet — unique (#5138, plan §4.5)', () => {
     assert.equal(dupRows.length, 2);
     for (const row of dupRows) assert.equal(row.requirementResults[0].actualValue, 'Office (2×)');
     assert.equal(spec.status, 'fail');
+    // #5177 regression: `unique`'s complement arithmetic must stay exactly
+    // as it is today — every duplicate member gets a failing row, so
+    // `failedCount` reads straight off them (2 duplicates of 3 applicable).
+    assert.equal(spec.applicableCount, 3);
+    assert.equal(spec.failedCount, 2);
+    assert.equal(spec.passedCount, 1);
+    assert.equal(spec.passRate, 33);
   });
 
   it('unique.federation: the same Name in two parsed models is a duplicate; perModel scope is not', async () => {
@@ -156,11 +163,24 @@ describe('runRuleSet — aggregate (#5138, plan §4.6)', () => {
     const failSpec = failing.specificationResults[0];
     assert.equal(failSpec.setResults?.[0].passed, false, '287.4 is not > 300');
     assert.equal(failSpec.status, 'fail');
+    // #5177 regression: the group fails on its AGGREGATE value — no
+    // individual Space's own NetFloorArea is absent/non-numeric, so
+    // `entityResults` is empty. Before the fix, `failedCount` read 0 and
+    // `passRate` read 100 here despite `status: 'fail'`. All three Spaces
+    // are members of the one failing (ungrouped) set, so all three fail.
+    assert.equal(failSpec.entityResults.length, 0, 'no element is individually excluded');
+    assert.equal(failSpec.applicableCount, 3);
+    assert.equal(failSpec.failedCount, 3, 'every member of the failing set');
+    assert.equal(failSpec.passedCount, 0);
+    assert.equal(failSpec.passRate, 0, 'must read below 100 next to a fail status');
 
     const passing = await run({ m1: store }, sumRule('gte', 287));
     const passSpec = passing.specificationResults[0];
     assert.equal(passSpec.setResults?.[0].passed, true, '287.4 >= 287');
     assert.equal(passSpec.status, 'pass');
+    assert.equal(passSpec.failedCount, 0);
+    assert.equal(passSpec.passedCount, 3);
+    assert.equal(passSpec.passRate, 100);
   });
 
   it('aggregate.count.groupBy.parent: with and without universe — the empty-group assembly only shows up (and fails) WITH universe', async () => {
@@ -187,18 +207,37 @@ describe('runRuleSet — aggregate (#5138, plan §4.6)', () => {
     }
 
     const without = await run({ m1: store }, countRule(false));
-    const withoutGroups = without.specificationResults[0].setResults ?? [];
+    const withoutSpec = without.specificationResults[0];
+    const withoutGroups = withoutSpec.setResults ?? [];
     assert.equal(withoutGroups.length, 1, 'without universe, an assembly with zero plates never appears as a group');
     assert.equal(withoutGroups[0].groupKey, 'Assembly-1');
     assert.equal(withoutGroups[0].passed, true);
+    assert.equal(withoutSpec.status, 'pass');
+    assert.equal(withoutSpec.failedCount, 0);
+    assert.equal(withoutSpec.passedCount, 1);
+    assert.equal(withoutSpec.passRate, 100);
 
     const withUniverse = await run({ m1: store }, countRule(true));
-    const withGroups = withUniverse.specificationResults[0].setResults ?? [];
+    const withSpec = withUniverse.specificationResults[0];
+    const withGroups = withSpec.setResults ?? [];
     assert.equal(withGroups.length, 2, 'with universe, Assembly-2 is seeded with an empty (count 0) group');
     const assembly2 = withGroups.find((g) => g.groupKey === 'Assembly-2');
     assert.ok(assembly2, 'Assembly-2 must appear as its own group');
     assert.equal(assembly2!.passed, false, 'count 0 fails gte 1');
     assert.equal(assembly2!.actual, '0');
+    // #5177 regression: `fn: 'count'` never writes an `EntityResult` at
+    // all (pass or fail), so `entityResults` is empty even though the
+    // Assembly-2 group failed. `applicableCount` is 1 (only Plate-1
+    // matches `IfcPlate`) and Plate-1 sits in the PASSING Assembly-1 group;
+    // Assembly-2 has ZERO members, so no applicable element carries the
+    // failure. The counts say exactly that, and `passRate` still must not
+    // read 100 next to `status: 'fail'`, which it did before the fix.
+    assert.equal(withSpec.status, 'fail');
+    assert.equal(withSpec.entityResults.length, 0, 'checkAggregate writes no rows for fn: count');
+    assert.equal(withSpec.applicableCount, 1);
+    assert.equal(withSpec.failedCount, 0, 'Plate-1 is in the passing group');
+    assert.equal(withSpec.passedCount, 1);
+    assert.equal(withSpec.passRate, 0, 'must not read 100 next to a fail status');
   });
 
   it('aggregate.count.groupBy.material: an element with two materials lands in BOTH groups (plan §3, review)', async () => {
@@ -240,6 +279,102 @@ describe('runRuleSet — aggregate (#5138, plan §4.6)', () => {
     const brickIds = brick!.members.map((m) => m.expressId).sort((a, b) => a - b);
     assert.deepEqual(concreteIds, [920, 930], 'Wall M1 (920) appears in the Concrete group alongside Wall M2 (930)');
     assert.deepEqual(brickIds, [920, 940], 'Wall M1 (920) ALSO appears in the Brick group, alongside Wall M3 (940)');
+  });
+});
+
+describe('runRuleSet — aggregate counts attribute failing groups to their members (#5177)', () => {
+  // Wall M1 is Concrete AND Brick; M2 Concrete; M3 Brick; M4 Timber. With
+  // `count lte 1`, Concrete (2) and Brick (2) fail and Timber (1) passes.
+  // The failing members are {M1, M2, M3}: three DISTINCT walls, although
+  // M1 is a member of both failing groups.
+  const body = `
+#910= IFCMATERIAL('Concrete',$,$);
+#911= IFCMATERIAL('Brick',$,$);
+#912= IFCMATERIAL('Timber',$,$);
+#920= IFCWALL('0Wall0000000000000000920',$,'Wall M1',$,$,#40,$,'tag',$);
+#921= IFCRELASSOCIATESMATERIAL('0RelM00000000000000921',$,$,$,(#920),#910);
+#922= IFCRELASSOCIATESMATERIAL('0RelM00000000000000922',$,$,$,(#920),#911);
+#930= IFCWALL('0Wall0000000000000000930',$,'Wall M2',$,$,#40,$,'tag',$);
+#931= IFCRELASSOCIATESMATERIAL('0RelM00000000000000931',$,$,$,(#930),#910);
+#940= IFCWALL('0Wall0000000000000000940',$,'Wall M3',$,$,#40,$,'tag',$);
+#941= IFCRELASSOCIATESMATERIAL('0RelM00000000000000941',$,$,$,(#940),#911);
+#950= IFCWALL('0Wall0000000000000000950',$,'Wall M4',$,$,#40,$,'tag',$);
+#951= IFCRELASSOCIATESMATERIAL('0RelM00000000000000951',$,$,$,(#950),#912);
+`;
+  const rule: InformationRule = {
+    id: 'r1', name: 'at most one wall per material',
+    applicability: { groups: [{ rules: [Rule.ifcType(['IfcWall'])], combinator: 'AND' }], authoredAs: 'chips' },
+    requirement: { kind: 'aggregate', fn: 'count', groupBy: { subject: { kind: 'material' } }, op: 'lte', value: 1 },
+  };
+
+  it('failedCount is the number of distinct members of failing groups', async () => {
+    const store = await parse(body);
+    const spec = (await run({ m1: store }, { version: 1, name: 'test', rules: [rule] })).specificationResults[0];
+    assert.equal(spec.status, 'fail');
+    assert.equal(spec.applicableCount, 4);
+    assert.equal(spec.failedCount, 3, 'M1, M2, M3, with M1 counted once although it is in both failing groups');
+    assert.equal(spec.passedCount, 1, 'M4, the only member of the passing Timber group');
+    assert.equal(spec.passRate, 25);
+  });
+});
+
+describe('runRuleSet — a failing spec never reports passRate 100 (#5177)', () => {
+  const body = `
+#920= IFCWALL('0Wall0000000000000000920',$,'Wall A',$,$,#40,$,'tag',$);
+#930= IFCWALL('0Wall0000000000000000930',$,'Wall B',$,$,#40,$,'tag',$);
+`;
+  function ruleSet(type: string, cardinality: InformationRule['cardinality']): RuleSetFile {
+    const rule: InformationRule = {
+      id: 'r1', name: 'cardinality only',
+      applicability: { groups: [{ rules: [Rule.ifcType([type])], combinator: 'AND' }], authoredAs: 'chips' },
+      requirement: { kind: 'element', block: { groups: [{ rules: [Rule.ifcType([type])], combinator: 'AND' }], authoredAs: 'chips' } },
+      cardinality,
+    };
+    return { version: 1, name: 'test', rules: [rule] };
+  }
+
+  it('maxApplicable exceeded while every element passes: fail, passRate 0', async () => {
+    const store = await parse(body);
+    const spec = (await run({ m1: store }, ruleSet('IfcWall', { maxApplicable: 1 }))).specificationResults[0];
+    assert.equal(spec.status, 'fail');
+    assert.equal(spec.passedCount, 2);
+    assert.equal(spec.failedCount, 0);
+    assert.equal(spec.passRate, 0);
+  });
+
+  it('minApplicable unmet by zero matches: fail, passRate 0; a vacuous not_applicable stays 100', async () => {
+    const store = await parse(body);
+    const failing = (await run({ m1: store }, ruleSet('IfcDoor', { minApplicable: 1 }))).specificationResults[0];
+    assert.equal(failing.status, 'fail');
+    assert.equal(failing.applicableCount, 0);
+    assert.equal(failing.passRate, 0);
+
+    const vacuous = (await run({ m1: store }, ruleSet('IfcDoor', undefined))).specificationResults[0];
+    assert.equal(vacuous.status, 'not_applicable');
+    assert.equal(vacuous.passRate, 100);
+  });
+
+  it('zero applicable elements but a failing universe group: fail, not not_applicable', async () => {
+    // No IfcPlate at all, one IfcElementAssembly: the universe seeds its
+    // group with count 0, which fails `count gte 1` (review on #5263).
+    const store = await parse(`#600= IFCELEMENTASSEMBLY('0Assembly000000000000600',$,'Assembly-1',$,$,#40,$,$,$);\n`);
+    const rule: InformationRule = {
+      id: 'r1', name: 'plates per assembly',
+      applicability: { groups: [{ rules: [Rule.ifcType(['IfcPlate'])], combinator: 'AND' }], authoredAs: 'chips' },
+      requirement: {
+        kind: 'aggregate', fn: 'count',
+        groupBy: {
+          subject: { kind: 'parent' },
+          universe: { groups: [{ rules: [Rule.ifcType(['IfcElementAssembly'])], combinator: 'AND' }], authoredAs: 'chips' },
+        },
+        op: 'gte', value: 1,
+      },
+    };
+    const spec = (await run({ m1: store }, { version: 1, name: 'test', rules: [rule] })).specificationResults[0];
+    assert.equal(spec.applicableCount, 0);
+    assert.equal(spec.setResults?.[0].passed, false);
+    assert.equal(spec.status, 'fail');
+    assert.equal(spec.passRate, 0);
   });
 });
 

@@ -189,15 +189,29 @@ function finalizeSpecification(
   // only ever construct FAILING rows (plan §4.5/§4.6 — a whole federation's
   // worth of passing rows would dwarf the report for no reporting value),
   // so their `passedCount` is the complement against `applicableCount`.
+  //
+  // `aggregate` is the exception to "rows are complete for failures": it
+  // emits no row for a member of a group that fails on its aggregate value
+  // (none at all for `fn: 'count'`), so it reports the distinct failing
+  // element count alongside (#5177). Reading `failedEntities` there left a
+  // failing aggregate rule at `failedCount: 0` / `passRate: 100`.
   const isPerElementKind = rule.requirement.kind === 'element' || rule.requirement.kind === 'compare';
-  const passedCount = isPerElementKind ? passedEntities : Math.max(0, applicableCount - failedEntities);
-  const failedCount = failedEntities;
+  const failedCount = outcome.failedElementCount ?? failedEntities;
+  const passedCount = isPerElementKind ? passedEntities : Math.max(0, applicableCount - failedCount);
 
-  const anyFail = failedEntities > 0 || setsFail || cardinalityResult?.passed === false;
+  const anyFail = failedCount > 0 || setsFail || cardinalityResult?.passed === false;
+  // With zero applicable elements a `universe`-seeded aggregate group can
+  // still fail (every assembly has 0 plates), so `setsFail` counts here too.
   const status: SpecificationResult['status'] = applicableCount === 0
-    ? (cardinalityResult?.passed === false ? 'fail' : cardinalityResult?.passed === true ? 'pass' : 'not_applicable')
+    ? (cardinalityResult?.passed === false || setsFail ? 'fail' : cardinalityResult?.passed === true ? 'pass' : 'not_applicable')
     : (anyFail ? 'fail' : 'pass');
-  const passRate = applicableCount > 0 ? Math.floor((passedCount / applicableCount) * 100) : 100;
+  // A failure no applicable element carries — an unmet/exceeded cardinality,
+  // or an aggregate group seeded by `universe` with zero members — leaves the
+  // element arithmetic at 100 (or has nothing to rate). `status` and
+  // `passRate` must never disagree, so a failing spec never reads 100: the
+  // same rule `@ifc-lite/ids`'s `validateSpecification` applies (#5212).
+  const elementRate = applicableCount > 0 ? Math.floor((passedCount / applicableCount) * 100) : 100;
+  const passRate = status === 'fail' && elementRate === 100 ? 0 : elementRate;
 
   return {
     specification, status, applicableCount, passedCount, failedCount, passRate,

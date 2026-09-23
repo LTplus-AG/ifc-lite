@@ -356,8 +356,9 @@ describe('MutablePropertyView.importMutations — whole-set CREATE_QUANTITY (mut
 describe('BulkAction SET_ENTITY_TYPE', () => {
   it('applies a retype to a selected entity', () => {
     const view = new MutablePropertyView(null, 'm1');
-    // Minimal EntityTable stub — the engine only needs count + expressId here.
-    const entities = { count: 1, expressId: [42] } as unknown as ConstructorParameters<typeof BulkQueryEngine>[0];
+    // Minimal EntityTable stub: count, expressId and typeEnum (10 = IfcWall), the
+    // columns the engine's effective-candidate pass reads.
+    const entities = { count: 1, expressId: [42], typeEnum: [10] } as unknown as ConstructorParameters<typeof BulkQueryEngine>[0];
     const engine = new BulkQueryEngine(entities, view);
 
     const action: BulkAction = { type: 'SET_ENTITY_TYPE', entityType: 'IfcColumn', predefinedType: 'COLUMN' };
@@ -371,7 +372,7 @@ describe('BulkAction SET_ENTITY_TYPE', () => {
 
   it('surfaces an invalid type keyword as an error instead of recording it', () => {
     const view = new MutablePropertyView(null, 'm1');
-    const entities = { count: 1, expressId: [42] } as unknown as ConstructorParameters<typeof BulkQueryEngine>[0];
+    const entities = { count: 1, expressId: [42], typeEnum: [10] } as unknown as ConstructorParameters<typeof BulkQueryEngine>[0];
     const engine = new BulkQueryEngine(entities, view);
 
     const action: BulkAction = { type: 'SET_ENTITY_TYPE', entityType: 'Column' };

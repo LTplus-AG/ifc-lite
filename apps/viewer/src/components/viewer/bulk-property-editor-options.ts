@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { FilterOperator } from '@ifc-lite/mutations';
+import type { FilterOperator, MutablePropertyView } from '@ifc-lite/mutations';
+import { IfcTypeEnum, type EntityTable } from '@ifc-lite/data';
 import type { TranslationKey } from '@/i18n';
 import { selectPluralCategory } from '@/i18n/registry';
 
@@ -63,4 +64,30 @@ export function appliedResultKey(locale: string, mutations: number, entities: nu
   const mutationCategory = PLURAL_SUFFIX[selectPluralCategory(locale, mutations)];
   const entityCategory = PLURAL_SUFFIX[selectPluralCategory(locale, entities)];
   return `bulkPropertyEditor.applied${mutationCategory}${entityCategory}` as AppliedResultKey;
+}
+
+/**
+ * Every IfcTypeEnum present in the model as edited, with its class name: the
+ * type facets the editor offers (#5249). A class that exists only because the
+ * session created or retyped an entity into it is offered too, or the engine's
+ * effective selection (bulk-query-candidates.ts) could never be asked for it.
+ */
+export function presentTypeEnums(entities: EntityTable, view: MutablePropertyView | null): Map<number, string> {
+  const enumToTypeName = new Map<number, string>();
+  // @raw-entity-enumeration-ok collects the parsed classes present; overlay creates and retypes are added below, and a tombstone only removes a class once no instance is left, which the candidate pass answers
+  for (let i = 0; i < entities.count; i++) {
+    const typeEnum = entities.typeEnum[i];
+    if (enumToTypeName.has(typeEnum)) continue;
+    const typeName = entities.getTypeName(entities.expressId[i]);
+    if (typeName) enumToTypeName.set(typeEnum, typeName);
+  }
+  const overlayTypes = [
+    ...(view?.getNewEntities().filter((e) => !view.isDeleted(e.expressId)).map((e) => e.type) ?? []),
+    ...Array.from(view?.getTypeMutations().values() ?? [], (m) => m.newType),
+  ];
+  for (const name of overlayTypes) {
+    const typeEnum = IfcTypeEnum[name as keyof typeof IfcTypeEnum];
+    if (typeof typeEnum === 'number' && !enumToTypeName.has(typeEnum)) enumToTypeName.set(typeEnum, name);
+  }
+  return enumToTypeName;
 }

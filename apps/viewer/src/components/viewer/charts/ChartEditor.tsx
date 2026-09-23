@@ -14,6 +14,9 @@ import { CHART_FILTER_NOT_APPLICABLE_SOURCES, elementFieldColumn, elementFieldCo
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n/useTranslation';
 import { readChartFilter } from '@/lib/charts/source-filter';
+import { useViewerStore } from '@/store';
+import { groupsToSelectorText, type FilterGroup } from '@ifc-lite/rules';
+import { FilterGroupEditor, type FilterGroupEditorState } from '../FilterGroupEditor';
 import { DOCS_URL, useActiveSchemaVersion } from '../SearchModal.filter.selector';
 import { SelectorFeedbackList, type SelectorFeedback } from '../SearchModal.filter.feedback';
 import { ElementFieldPicker } from './ElementFieldPicker';
@@ -118,6 +121,13 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
   const [draft, setDraft] = useState<ChartDraft>(() => specToDraft(spec));
   const schemaVersion = useActiveSchemaVersion();
   const [filterText, setFilterText] = useState(spec.filter?.selector ?? '');
+  const [filterMode, setFilterMode] = useState<'selector' | 'rules'>(spec.filter?.groups?.length ? 'rules' : 'selector');
+  const [filterGroups, setFilterGroups] = useState<FilterGroup[]>(spec.filter?.groups ?? [{ combinator: 'AND', rules: [] }]);
+  const [activeFilterGroup, setActiveFilterGroup] = useState(0);
+  const models = useViewerStore((s) => s.models);
+  const modelOptions = useMemo(() => Array.from(models.values(), (model) => ({
+    id: model.id, name: model.name, sourceFingerprint: model.sourceFingerprint,
+  })), [models]);
   const [filterFeedback, setFilterFeedback] = useState<SelectorFeedback | null>(null);
   // '' means "All rules" — the same UI-only sentinel `stackBy`'s `<select>`
   // already uses (`value={draft.stackBy ?? ''}`); it is never what gets
@@ -128,8 +138,8 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
   // `null` means "no filter typed" — always valid; a real reading is either
   // ok or a refusal message (#4946's all-or-nothing rule, `readChartFilter`).
   const filterReading = useMemo(
-    () => (filterApplicable && trimSelectorWhitespace(filterText).length > 0 ? readChartFilter(filterText, { schemaVersion }) : null),
-    [filterApplicable, filterText, schemaVersion],
+    () => (filterApplicable && filterMode === 'selector' && trimSelectorWhitespace(filterText).length > 0 ? readChartFilter(filterText, { schemaVersion }) : null),
+    [filterApplicable, filterMode, filterText, schemaVersion],
   );
   const filterValid = filterReading === null || filterReading.ok;
   const columns = editorColumns(datasets[draft.source], draft);
@@ -140,7 +150,8 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
   const dimensionOk = draft.type === 'elementCount' || dims.some((c) => c.id === draft.dimension);
   const measureOk = draft.measure.agg === 'count' || numberColumns.some((c) => c.id === draft.measure.column);
   const stackOk = draft.type !== 'stackedBar' || categoryColumns.some((c) => c.id === draft.stackBy);
-  const valid = draft.title.trim().length > 0 && dimensionOk && measureOk && stackOk && filterValid;
+  const rulesValid = filterMode !== 'rules' || filterGroups.every((g) => g.rules.length > 0) || filterGroups.every((g) => g.rules.length === 0);
+  const valid = draft.title.trim().length > 0 && dimensionOk && measureOk && stackOk && filterValid && rulesValid;
 
   const setSource = (source: ChartSource): void => {
     const cols = datasets[source].columns;
@@ -150,6 +161,8 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
     // field rather than leave text behind that the next save would drop
     // silently. `clashRule` is meaningless off `clash` for the same reason.
     setFilterText('');
+    setFilterGroups([{ combinator: 'AND', rules: [] }]);
+    setFilterMode('selector');
     setFilterFeedback(null);
     setClashRuleId('');
   };
@@ -222,8 +235,10 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
         // into the saved spec (#5156, mirrors `elementField`'s per-source
         // guard above).
         const clashRule = draft.source === 'clash' && clashRuleId ? clashRuleId : undefined;
-        const filter = filterApplicable && (trimmedSelector.length > 0 || clashRule !== undefined)
-          ? { selector: trimmedSelector, clashRule }
+        const groups = filterMode === 'rules' && filterGroups.some((g) => g.rules.length > 0) ? filterGroups : undefined;
+        const selector = filterMode === 'selector' ? trimmedSelector : '';
+        const filter = filterApplicable && (selector.length > 0 || groups !== undefined || clashRule !== undefined)
+          ? { selector, groups, clashRule }
           : undefined;
         // draftToSpec (#5151) is still the one place that resolves the
         // `dimension`/`measure` sentinels back into the real contract —
@@ -256,11 +271,25 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
             </select>
           </label>
         )}
-        <label className="col-span-2 flex flex-col gap-0.5">
+        <div className="col-span-2 flex flex-col gap-0.5">
           <span className="text-muted-foreground">{t('chartEditor.sourceFilterLabel')}</span>
           {filterApplicable ? (
             <>
-              <div className="flex items-center gap-1">
+              <div className="flex gap-1" role="group" aria-label={t('chartEditor.sourceFilterMode')}>
+                <Button type="button" size="sm" variant={filterMode === 'selector' ? 'secondary' : 'ghost'} onClick={() => {
+                  if (filterMode === 'rules') setFilterText(groupsToSelectorText(filterGroups));
+                  setFilterMode('selector');
+                }}>{t('chartEditor.selectorMode')}</Button>
+                <Button type="button" size="sm" variant={filterMode === 'rules' ? 'secondary' : 'ghost'} onClick={() => {
+                  if (filterReading && !filterReading.ok) {
+                    setFilterFeedback({ tone: 'error', lines: [filterReading.message] });
+                    return;
+                  }
+                  if (filterMode === 'selector' && filterReading?.ok) setFilterGroups(filterReading.groups);
+                  setFilterMode('rules');
+                }}>{t('chartEditor.rulesMode')}</Button>
+              </div>
+              {filterMode === 'selector' ? <div className="flex items-center gap-1">
                 <input
                   className={`${field} flex-1 font-mono`}
                   value={filterText}
@@ -285,15 +314,19 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
                 >
                   <HelpCircle className="h-3.5 w-3.5" />
                 </a>
-              </div>
-              {filterFeedback && <SelectorFeedbackList feedback={filterFeedback} />}
+              </div> : <FilterGroupEditor groups={filterGroups} activeGroup={activeFilterGroup} models={modelOptions} onChange={(updater: (prev: FilterGroupEditorState) => FilterGroupEditorState) => {
+                const next = updater({ groups: filterGroups, activeGroup: activeFilterGroup });
+                setFilterGroups(next.groups);
+                setActiveFilterGroup(next.activeGroup);
+              }} />}
+              {filterMode === 'selector' && filterFeedback && <SelectorFeedbackList feedback={filterFeedback} />}
             </>
           ) : (
             <span className="text-[11px] text-muted-foreground">
               {t('chartEditor.sourceFilterNotApplicable', { source: SOURCE_LABELS[draft.source] })}
             </span>
           )}
-        </label>
+        </div>
         <label className="flex flex-col gap-0.5">
           <span className="text-muted-foreground">{t('chartEditor.chartTypeLabel')}</span>
           <select className={field} value={draft.type} onChange={(e) => setType(e.target.value as ChartType)} aria-label={t('chartEditor.chartTypeAriaLabel')}>

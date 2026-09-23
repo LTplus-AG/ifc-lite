@@ -9,6 +9,7 @@
  * library, and it reports every problem at once with a JSON-pointer-ish path.
  */
 import type { ChartSource, ChartType, DashboardSpec, ReportSpec } from './types.js';
+import { isFilterGroup } from '@ifc-lite/rules';
 
 export interface DashboardValidationError {
   path: string;
@@ -122,10 +123,19 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
       // otherwise trim to "no filter" at every consumer — they all trim —
       // stranding the chart on "Resolving filter…" forever with no entry to
       // find; the original review finding this preserves.
+      const groups = chart.filter.groups;
+      let hasGroups = false;
+      if (groups !== undefined) {
+        if (!Array.isArray(groups) || groups.length === 0 || !groups.every(isFilterGroup) || groups.some((g) => g.rules.length === 0)) {
+          errors.push({ path: `${filterPath}.groups`, message: 'expected non-empty filter groups with rules' });
+        } else {
+          hasGroups = true;
+        }
+      }
       if (typeof chart.filter.selector !== 'string') {
         errors.push({ path: `${filterPath}.selector`, message: 'expected a string' });
-      } else if (chart.filter.selector.length === 0 ? !hasClashRule : chart.filter.selector.trim().length === 0) {
-        errors.push({ path: `${filterPath}.selector`, message: 'expected a non-empty selector or clashRule' });
+      } else if (chart.filter.selector.length === 0 ? !hasClashRule && !hasGroups : chart.filter.selector.trim().length === 0 || hasGroups) {
+        errors.push({ path: `${filterPath}.selector`, message: 'expected one of selector, groups, or clashRule' });
       }
       if (typeof chart.source === 'string' && CHART_FILTER_NOT_APPLICABLE_SOURCES.has(chart.source as ChartSource)) {
         errors.push({ path: filterPath, message: 'a source filter is not applicable to bcf or compare' });

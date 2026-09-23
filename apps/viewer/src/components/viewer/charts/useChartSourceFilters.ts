@@ -18,12 +18,11 @@
  * matches computed against a model that has since been reloaded.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { trimSelectorWhitespace } from '@ifc-lite/query';
-import type { ChartSpec } from '@ifc-lite/charts';
+import type { ChartSourceFilter, ChartSpec } from '@ifc-lite/charts';
 import { useViewerStore, type ViewerState } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { evaluatorModelsFromState, definedModelTagIdsOf } from '@/lib/model-tags/evaluator-models';
-import { resolveChartFilter } from '@/lib/charts/source-filter';
+import { chartElementFilterKey, resolveChartFilter } from '@/lib/charts/source-filter';
 import { useActiveSchemaVersion } from '../SearchModal.filter.selector.js';
 
 export type ChartSourceFilterState =
@@ -50,14 +49,15 @@ export function useChartSourceFilters(charts: readonly ChartSpec[]): ChartSource
   // dashboard whose selector carries incidental whitespace (`" IfcWall "`,
   // validation only requires non-empty) would otherwise never find its
   // entry and sit on "Resolving filter…" forever (review finding).
-  const selectors = useMemo(() => {
-    const set = new Set<string>();
+  const filters = useMemo(() => {
+    const byKey = new Map<string, ChartSourceFilter>();
     for (const chart of charts) {
-      const raw = chart.filter?.selector;
-      if (raw && trimSelectorWhitespace(raw).length > 0) set.add(raw);
+      const key = chartElementFilterKey(chart.filter);
+      if (key && chart.filter) byKey.set(key, chart.filter);
     }
-    return [...set];
+    return byKey;
   }, [charts]);
+  const selectors = useMemo(() => [...filters.keys()], [filters]);
 
   const [state, setState] = useState<ChartSourceFilters>(EMPTY);
   const runId = useRef(0);
@@ -120,7 +120,7 @@ export function useChartSourceFilters(charts: readonly ChartSpec[]): ChartSource
       const entries = await Promise.all(
         selectors.map(async (text): Promise<[string, ChartSourceFilterState]> => {
           try {
-            const ids = await resolveChartFilter(evaluatorModels, { selector: text }, toGlobalId, {
+            const ids = await resolveChartFilter(evaluatorModels, filters.get(text), toGlobalId, {
               schemaVersion,
               definedModelTagIds,
               limit,
@@ -136,7 +136,7 @@ export function useChartSourceFilters(charts: readonly ChartSpec[]): ChartSource
       setState(new Map(entries));
     })();
     return () => { cancelled = true; controller.abort(); };
-  }, [selectors, models, modelTags, modelTagAssignments, mutationVersion, schemaVersion]);
+  }, [selectors, filters, models, modelTags, modelTagAssignments, mutationVersion, schemaVersion]);
 
   if (!inputsMatchState) return selectors.length === 0 ? EMPTY : resolvingForSelectors;
   return state;

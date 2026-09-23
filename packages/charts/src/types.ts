@@ -12,6 +12,7 @@
  * 3D selection is a set of buckets. The chart library only ever sees
  * `(seriesIndex, dataIndex)`; the id math lives here.
  */
+import type { FilterGroup } from '@ifc-lite/rules';
 
 export type CellValue = string | number | boolean | null;
 
@@ -92,6 +93,9 @@ export type ElementFieldBinding =
  *  rows do not stand for one element the selector can match against. */
 export interface ChartSourceFilter {
   selector: string;
+  /** Rules authored in the shared filter builder. These can express model
+   * tags and other predicates with no faithful selector spelling. */
+  groups?: FilterGroup[];
   /** Restrict a `clash` chart to ONE detection rule/run (#5156) by its
    *  `ClashRule.id` — the same id a clash row's `Rule` column already
    *  carries. Absent means every rule of the current clash result is

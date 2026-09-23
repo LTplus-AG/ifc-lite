@@ -160,6 +160,7 @@ describe('idsReportBlockFromReport', () => {
     const zeroChecked = spec({
       id: 'spec-zero',
       name: 'Unreachable rule',
+      status: 'pass',
       applicableCount: 0,
       passedCount: 0,
       failedCount: 0,

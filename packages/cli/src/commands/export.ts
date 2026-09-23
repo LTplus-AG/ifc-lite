@@ -221,6 +221,19 @@ export async function exportCommand(args: string[]): Promise<void> {
     process.stderr.write(`Note: --type/--storey/--where/--limit do not apply to ${format.toUpperCase()}; exporting the whole model.\n`);
   }
 
+  // csv/json write a header/empty-array with zero rows on a zero-match
+  // filter, where `ifc` below calls fatal() for the same `refs.length === 0`
+  // condition (#5209). This is not an oversight to unify: `bim.export.ifc()`
+  // and the Rust wasm exporters use an EMPTY ref array as "no isolation
+  // filter — export the whole model" (#4044/#4659/#4738, pinned by
+  // export.zero-match.test.ts) — for those formats a zero-match filter and
+  // no filter at all are the same call unless the CLI intercepts it, so the
+  // fatal() exists to stop a typo'd `--type` from silently exporting the
+  // ENTIRE model. `bim.export.csv()`/`bim.export.json()` (namespaces/export.ts)
+  // carry no such collapse: they iterate `refs` directly, so an empty array
+  // deterministically produces a zero-row report, never a whole-model dump.
+  // A zero-row CSV/JSON is exactly what "no entities matched" should look
+  // like for a tabular format, so csv/json are left to succeed here.
   switch (format) {
     case 'csv': {
       if (hasCustomColumns) {

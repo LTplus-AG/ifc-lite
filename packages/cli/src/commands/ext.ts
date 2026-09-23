@@ -267,8 +267,14 @@ async function extTestCommand(args: string[]): Promise<void> {
     bail,
   });
 
+  // A bundle with zero declared tests must not read as a pass: an empty
+  // `manifest.tests` (or one dropped by a bad merge) trivially satisfies
+  // `failed === 0`. Mirror the `checks.length > 0 && counts.fail === 0`
+  // guard used by packages/ids delivery checks/report.
+  const ok = summary.results.length > 0 && summary.failed === 0;
+
   if (json) {
-    process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ ...summary, ok }, null, 2)}\n`);
   } else {
     if (summary.results.length === 0) {
       process.stderr.write(`No tests declared in manifest.\n`);
@@ -283,7 +289,7 @@ async function extTestCommand(args: string[]): Promise<void> {
       process.stderr.write(`\n${summary.passed} passed, ${summary.failed} failed (${summary.totalDurationMs.toFixed(0)}ms total)\n`);
     }
   }
-  process.exit(summary.failed === 0 ? 0 : 1);
+  process.exit(ok ? 0 : 1);
 }
 
 // ---------------------------------------------------------------------------

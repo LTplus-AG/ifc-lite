@@ -850,15 +850,18 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // Room paths, never activeModelId, select the model because expressIds are
     // model-local. Resolution fails closed until registration; reconstruct then
     // rebuilds from the CRDT.
-    const rejectRemoteAttribute = (rejected: string) => {
-      console.warn('[collab] rejected remote attribute:', rejected);
-      set({ collabGeometryNotice: `A collaborative attribute could not be applied: ${rejected}` });
+    const rejectRemoteWrite = (rejected: string) => {
+      console.warn('[collab] rejected remote write:', rejected);
+      set({ collabGeometryNotice: `A collaborative edit could not be applied: ${rejected}` });
     };
     remoteApplyTeardown = attachRemoteApply(docApi!, session, (path) => roomEntityTargetForPath(get(), path), {
+      // Consulted by the bridge's single tombstone guard before any write (#5187).
+      isLocallyDeleted: (modelId, entityId) => roomMutationViewFor(get(), modelId)?.isDeleted(entityId) ?? false,
+      onRejectedWrite: rejectRemoteWrite,
       onEntityCreate: ({ modelId, store }, entityPath, ifcClass, attributes, sourceExpressId) => {
         const view = roomMutationViewFor(get(), modelId);
         if (view && createRemoteOverlayEntity(store, view, entityPath, ifcClass, attributes,
-          rejectRemoteAttribute, sourceExpressId))
+          rejectRemoteWrite, sourceExpressId))
           set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       onProperty: (modelId, entityId, pset, prop, value, type) => {
@@ -890,10 +893,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
         const view = roomMutationViewFor(get(), modelId), store = roomStoreFor(get(), modelId);
         if (!view || !store) return;
         const rejected = applyRemoteAttribute(view, store, entityId, attrName, value); // #4931
-        if (rejected) {
-          rejectRemoteAttribute(rejected);
-          return;
-        }
+        if (rejected) return rejectRemoteWrite(rejected);
         get().invalidateHistoryForEntity(modelId, entityId); // covers UPDATE_ATTRIBUTE/POSITIONAL history (#5223)
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },

@@ -343,6 +343,8 @@ function recordingHandlers(): RemoteApplyHandlers & {
   const calls: { fn: string; args: unknown[] }[] = [];
   return {
     calls,
+    isLocallyDeleted: () => false,
+    onRejectedWrite: (...args) => calls.push({ fn: 'onRejectedWrite', args }),
     onProperty: (...args) => calls.push({ fn: 'onProperty', args }),
     onPropertyDelete: (...args) => calls.push({ fn: 'onPropertyDelete', args }),
     onAttribute: (...args) => calls.push({ fn: 'onAttribute', args }),

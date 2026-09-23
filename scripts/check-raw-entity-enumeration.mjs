@@ -29,6 +29,7 @@ import { fileURLToPath } from 'node:url';
 import { scanRawEntityAccess, excessRawAccess, changedPathBaselines } from './lib/raw-entity-enumeration.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const REVIEWED_PATH = join(ROOT, 'scripts/raw-entity-enumeration-reviewed-files.txt');
 const SCAN_ROOTS = [
   ...readdirSync(join(ROOT, 'packages'), { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && existsSync(join(ROOT, 'packages', entry.name, 'src')))
@@ -51,6 +52,14 @@ function git(...args) {
 }
 
 function main() {
+  const reviewedFiles = new Set();
+  for (const line of readFileSync(REVIEWED_PATH, 'utf8').split(/\r?\n/)) {
+    const path = line.trim();
+    if (!path || path.startsWith('#')) continue;
+    if (reviewedFiles.has(path)) throw new Error(`Duplicate reviewed raw-access file: ${path}`);
+    reviewedFiles.add(path);
+  }
+  const seenReviewed = new Set();
   const base = git('merge-base', 'origin/main', 'HEAD');
   // A rename preserves the site's old budget. Read its old content through
   // the source path, but fingerprint it under the destination path.
@@ -71,6 +80,7 @@ function main() {
     for (const fullPath of files) {
       scannedFiles++;
       const path = relative(ROOT, fullPath).replaceAll('\\', '/');
+      if (reviewedFiles.has(path)) seenReviewed.add(path);
       const text = readFileSync(fullPath, 'utf8');
       const current = scanRawEntityAccess(path, text);
       if (current.length === 0) continue;
@@ -83,9 +93,12 @@ function main() {
       }
       totalBase += before.length;
       totalCurrent += current.length;
-      newSites.push(...excessRawAccess(before, current));
+      newSites.push(...excessRawAccess(before, current, reviewedFiles.has(path)));
       exceptions.push(...current.filter((hit) => hit.reason).map((hit) => `${path}:${hit.line}: ${hit.reason}`));
     }
+  }
+  for (const path of reviewedFiles) {
+    if (!seenReviewed.has(path)) throw new Error(`Reviewed raw-access file is missing or outside production scan: ${path}`);
   }
   for (const exception of exceptions) console.log(`raw-access exception: ${exception}`);
   if (newSites.length > 0) {
@@ -93,7 +106,7 @@ function main() {
     console.error('Route live-session queries through an effective-entity accessor, or document an intentional raw read with @raw-entity-enumeration-ok.');
     process.exitCode = 1;
   } else {
-    console.log(`check-raw-entity-enumeration: OK (${scannedFiles} source files, ${totalCurrent} current raw-access sites checked against their file baselines; ${exceptions.length} explicit exceptions)`);
+    console.log(`check-raw-entity-enumeration: OK (${scannedFiles} source files, ${totalCurrent} current raw-access sites; ${reviewedFiles.size} reviewed files require explicit exceptions; ${exceptions.length} explicit exceptions)`);
   }
 }
 

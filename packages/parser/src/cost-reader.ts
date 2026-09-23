@@ -153,6 +153,7 @@ export class CostEntityReader {
 
   ids(type: string): readonly number[] {
     const wanted = type.toUpperCase();
+    // @raw-entity-enumeration-ok this reader filters tombstones and retypes below, then adds authored records before returning ids
     const ids = this.store.entityIndex.byType.get(wanted) ?? [];
     if (!this.overlay) return ids;
     const retyped = this.retypes();

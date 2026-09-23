@@ -97,6 +97,7 @@ export function selectIterationSource(
 }
 
 function unionByType(store: IfcDataStore, names: readonly string[]): number[] | null {
+  // @raw-entity-enumeration-ok selectIterationSource reaches this source-bucket fast path only when no mutation view has pending changes
   const byType = store.entityIndex.byType;
   if (!byType || byType.size === 0) return null;
   // STEP type names are stored UPPERCASE; rule values arrive in canonical

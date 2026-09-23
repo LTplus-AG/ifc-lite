@@ -100,6 +100,7 @@ export function elementsDataset(models: readonly ElementsDatasetModel[], fields:
       return cached;
     };
     const rowIds: number[] = [];
+    // @raw-entity-enumeration-ok this package iterates its supplied table; live callers pass an effective table with tombstones and creations applied
     for (let i = 0; i < entities.count; i++) {
       if (!isElementRow(entities.flags[i])) continue;
       const expressId = entities.expressId[i];
@@ -118,6 +119,7 @@ export function elementsDataset(models: readonly ElementsDatasetModel[], fields:
         statuses: ['value', 'value', 'value', 'value', ...fieldStatuses],
       });
     }
+    // @raw-entity-enumeration-ok fingerprint the same supplied effective table whose rows were emitted above
     fingerprintParts.push(`${model.name}:${rowIds.length}/${entities.count}#${fingerprintRows(rowIds)}@${model.valueRevision ?? 0}`);
   }
   return { source: 'elements', columns, rows, fingerprint: `${uniqueFields.map(elementFieldColumnId).join(',')}|${fingerprintParts.join('|')}` };

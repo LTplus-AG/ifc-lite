@@ -1,0 +1,29 @@
+#5236 files whose raw-access census is fully classified. Every detected site
+#in these files needs an adjacent @raw-entity-enumeration-ok reason; the gate
+#does not grant an old-site baseline here. Keep a file listed after its last
+#raw access is removed so a future regression still fails.
+packages/cache/src/adapt.ts
+packages/cache/src/sections/entities.ts
+packages/cache/src/sections/entity-index.ts
+packages/charts/src/elements-dataset.ts
+packages/clash/src/adapters/step.ts
+packages/create/src/in-store/resolve-anchor.ts
+packages/create/src/in-store/style-entity-reader.ts
+packages/data/src/effective-entities.ts
+packages/export/src/ifc5-effective-rows.ts
+packages/export/src/schema-untranslatable.ts
+packages/ids/src/bridge/data-accessor.ts
+packages/ifcx/src/writer-entities.ts
+packages/ifcx/src/index.ts
+packages/mutations/src/source-entity-index.ts
+packages/parser/src/data-store-transport.ts
+packages/parser/src/cost-reader.ts
+packages/parser/src/worker-index-publication.ts
+packages/rules/src/filter/filter-iteration-source.ts
+packages/sdk/src/cost-reference-scan.ts
+apps/viewer/src/components/viewer/add-element-storeys.ts
+apps/viewer/src/components/viewer/bulk-property-editor-options.ts
+apps/viewer/src/components/viewer/properties/effective-classification-systems.ts
+apps/viewer/src/lib/compare/compareScope.ts
+apps/viewer/src/lib/lens/adapter-entities.ts
+apps/viewer/src/lib/search/filter-schema-effective.ts

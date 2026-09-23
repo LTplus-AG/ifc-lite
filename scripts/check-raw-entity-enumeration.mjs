@@ -50,6 +50,10 @@ function git(...args) {
 
 function main() {
   const base = git('merge-base', 'origin/main', 'HEAD');
+  const changedFiles = new Set([
+    ...git('diff', '--name-only', '--no-renames', base, '--', ...SCAN_ROOTS).split('\n'),
+    ...git('ls-files', '--others', '--exclude-standard', '--', ...SCAN_ROOTS).split('\n'),
+  ]);
   let totalBase = 0;
   let totalCurrent = 0;
   const newSites = [];
@@ -60,13 +64,15 @@ function main() {
     for (const fullPath of sourceFiles(fullRoot)) {
       const path = relative(ROOT, fullPath).replaceAll('\\', '/');
       const text = readFileSync(fullPath, 'utf8');
-      if (!text.includes('entityIndex') && !text.includes('entities.count')) continue;
       const current = scanRawEntityAccess(path, text);
       if (current.length === 0) continue;
-      let oldText = '';
-      try { oldText = git('show', `${base}:${path}`); }
-      catch { /* A new file has no merge-base contents; its budget is zero. */ }
-      const before = oldText ? scanRawEntityAccess(path, oldText) : [];
+      let before = current;
+      if (changedFiles.has(path)) {
+        let oldText = '';
+        try { oldText = git('show', `${base}:${path}`); }
+        catch { /* A new file has no merge-base contents; its budget is zero. */ }
+        before = oldText ? scanRawEntityAccess(path, oldText) : [];
+      }
       totalBase += before.length;
       totalCurrent += current.length;
       newSites.push(...excessRawAccess(before, current));

@@ -4,11 +4,25 @@
 
 import ts from 'typescript';
 
+function siblingOrdinal(node) {
+  const name = node.name?.getText() ?? '';
+  let ordinal = 0;
+  ts.forEachChild(node.parent, (sibling) => {
+    if (sibling === node) return true;
+    if (sibling.kind === node.kind && (sibling.name?.getText() ?? '') === name) ordinal++;
+    return undefined;
+  });
+  return ordinal;
+}
+
 function ownerOf(node) {
   const owners = [];
   for (let parent = node.parent; parent; parent = parent.parent) {
     if (ts.isMethodDeclaration(parent) || ts.isFunctionDeclaration(parent)) {
-      owners.push(parent.name?.getText() ?? '<anonymous>');
+      owners.push(`${parent.name?.getText() ?? '<anonymous>'}#${siblingOrdinal(parent)}`);
+    }
+    if (ts.isClassDeclaration(parent) || ts.isClassExpression(parent) || ts.isModuleDeclaration(parent)) {
+      owners.push(`${parent.name?.getText() ?? '<anonymous>'}#${siblingOrdinal(parent)}`);
     }
     if (ts.isArrowFunction(parent) || ts.isFunctionExpression(parent)) {
       const holder = parent.parent;

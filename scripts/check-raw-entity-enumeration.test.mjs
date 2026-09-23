@@ -22,6 +22,18 @@ test('#5236 moving a raw read between callbacks cannot reuse its old budget slot
   assert.equal(excessRawAccess(old, moved).length, 1);
 });
 
+test('#5236 same-named owners have separate budget slots', () => {
+  const old = scan('function query() { return store.entityIndex.byType; }');
+  const moved = scan('function query() { return []; } function query() { return store.entityIndex.byType; }');
+  assert.equal(excessRawAccess(old, moved).length, 1);
+});
+
+test('#5236 formatted and optional table-count reads reach the AST detector', () => {
+  const hits = scan('function count(entities) { return entities\n.count + entities?.count; }');
+  assert.equal(hits.length, 2);
+  assert.deepEqual(hits.map((hit) => hit.key.split('|')[2]), ['entities.count', 'entities.count']);
+});
+
 test('#5236 raw-access gate catches table-count loops and byId point reads', () => {
   const hits = scan('function select(entities, store) { for (let i = 0; i < entities.count; i++) use(i); store.entityIndex.byId.get(7); }');
   assert.deepEqual(hits.map((hit) => hit.key.split('|')[2]), ['entities.count', 'entityIndex.byId']);

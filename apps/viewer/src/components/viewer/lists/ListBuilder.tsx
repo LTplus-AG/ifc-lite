@@ -23,8 +23,7 @@ import { IfcTypeEnum } from '@ifc-lite/data';
 import { collectSpatialContainerNames } from '@/utils/spatialHierarchy';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
-  discoverFilterValues,
-  discoverFilterSchema,
+  discoverFilterStoreys,
   propValueKey,
 } from '@/lib/search/filter-schema';
 import type {
@@ -63,46 +62,13 @@ import {
 } from '@/lib/lists/column-edit';
 import { previewSetPattern } from './pattern-preview';
 import { useTranslation } from '@/i18n/useTranslation';
+import {
+  discoverConditionValues,
+  storesWithMutationViews,
+  type ListConditionValues,
+} from './list-builder-discovery';
 
 const NO_OPTIONS: readonly string[] = [];
-
-/**
- * Distinct model values used to suggest condition values in the chip editors.
- * Storeys are intentionally NOT here — they come cheaply from the spatial
- * index, whereas these require sampling element property/material data.
- */
-interface ListConditionValues {
-  materials: string[];
-  classifications: string[];
-  /** propValueKey(pset, prop) → distinct values. */
-  propertyValues: Map<string, string[]>;
-}
-
-/**
- * Merge per-store value discovery into one suggestion set. This is the
- * EXPENSIVE pass (samples element property/material/classification data), so
- * it's only run when a property/material/classification condition exists —
- * never for storey-only filters (storeys come from `discoverFilterSchema`).
- */
-function discoverConditionValues(stores: IfcDataStore[]): ListConditionValues {
-  const materials = new Set<string>();
-  const classifications = new Set<string>();
-  const propertyValues = new Map<string, Set<string>>();
-  for (const store of stores) {
-    const v = discoverFilterValues(store);
-    v.materials.forEach((m) => materials.add(m));
-    v.classifications.forEach((c) => classifications.add(c));
-    for (const [k, arr] of v.propertyValues) {
-      let bucket = propertyValues.get(k);
-      if (!bucket) { bucket = new Set(); propertyValues.set(k, bucket); }
-      for (const val of arr) bucket.add(val);
-    }
-  }
-  const sort = (s: Set<string>) => Array.from(s).sort();
-  const pv = new Map<string, string[]>();
-  for (const [k, s] of propertyValues) pv.set(k, sort(s));
-  return { materials: sort(materials), classifications: sort(classifications), propertyValues: pv };
-}
 
 /** Column descriptor shared by the quick-add grid. */
 interface CommonColumn {
@@ -173,14 +139,23 @@ interface ListBuilderProps {
   providers: ListDataProvider[];
   /** Backing stores for value discovery (condition value suggestions). */
   stores: IfcDataStore[];
+  /** Model IDs aligned with stores; keeps duplicate-store federation isolated. */
+  modelIds?: readonly string[];
   initial: ListDefinition | null;
   onSave: (definition: ListDefinition) => void;
   onCancel: () => void;
   onExecute: (definition: ListDefinition) => void;
 }
 
-export function ListBuilder({ providers, stores, initial, onSave, onCancel, onExecute }: ListBuilderProps) {
+export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCancel, onExecute }: ListBuilderProps) {
   const { t, locale } = useTranslation(); const [name, setName] = useState(initial?.name ?? '');
+  const models = useViewerStore((s) => s.models);
+  const mutationViews = useViewerStore((s) => s.mutationViews);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const storeViews = useMemo(
+    () => storesWithMutationViews(stores, models, mutationViews, modelIds),
+    [stores, models, mutationViews, mutationVersion, modelIds],
+  );
   const [description, setDescription] = useState(initial?.description ?? '');
   const [selectedTypes, setSelectedTypes] = useState<Set<IfcTypeEnum>>(
     new Set(initial?.entityTypes ?? [])
@@ -192,28 +167,33 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
   // Lazily-discovered distinct values for condition suggestions. This is the
   // EXPENSIVE sampling pass, so only run it when a property / material /
   // classification condition exists — storey-only filters never trigger it.
-  const [conditionValues, setConditionValues] = useState<ListConditionValues | null>(null);
+  const [conditionValuesCache, setConditionValues] = useState<{
+    version: number; source: typeof storeViews; values: ListConditionValues;
+  } | null>(null);
+  const conditionValues = conditionValuesCache?.version === mutationVersion
+    && conditionValuesCache.source === storeViews
+    ? conditionValuesCache.values : null;
   React.useEffect(() => {
     if (conditionValues || stores.length === 0) return;
     const needs = conditions.some(
       (c) => c.source === 'property' || c.source === 'material' || c.source === 'classification',
     );
     if (!needs) return;
-    setConditionValues(discoverConditionValues(stores));
-  }, [conditions, stores, conditionValues]);
+    setConditionValues({ version: mutationVersion, source: storeViews, values: discoverConditionValues(storeViews) });
+  }, [conditions, storeViews, mutationVersion, conditionValues]);
 
-  // Storey names come cheaply from the spatial index (no element sampling),
+  // Storey names come cheaply from the effective entity set (no value sampling),
   // so they're always available without the expensive value pass above.
   const storeyNames = useMemo<string[]>(() => {
     if (stores.length === 0) return [];
     const set = new Set<string>();
-    for (const store of stores) {
-      for (const [name] of discoverFilterSchema(store).storeys) set.add(name);
+    for (const { store, view } of storeViews) {
+      for (const [name] of discoverFilterStoreys(store, view)) set.add(name);
     }
     return Array.from(set).sort();
-  }, [stores]);
+  }, [storeViews, mutationVersion]);
 
-  // Spatial-filter value suggestions per level. Storey reuses the index-derived
+  // Spatial-filter value suggestions per level. Storey reuses the live
   // names above; Building / Site / Project come from a cheap spatial-tree walk
   // (only the handful of container nodes, no element sampling).
   const spatialNamesByLevel = useMemo<Record<string, string[]>>(() => {

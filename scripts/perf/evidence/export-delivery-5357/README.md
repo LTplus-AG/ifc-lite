@@ -106,6 +106,13 @@ that URL returned 404. Inspecting the deployed exporters chunk located the actua
 hashed URL used by the runtime. Only successful responses from that URL enter
 `compression.json` and `delivery.json`.
 
+`compress.mjs` reproduces the compression calculation. In a scratch directory,
+fetch `wasm-url.txt` with `curl -H 'Accept-Encoding: identity' -o identity.wasm`,
+then separately `br` to `br.wasm` and `gzip` to `gzip.wasm` (do not use curl's
+`--compressed`, which would decode the bodies). Run the script in that directory
+and compare its JSON to `compression.json`. These network requests may outlive
+the deployment asset, so the original headers/digests remain the recorded proof.
+
 Local quality-11 output cannot prove deployability: Vercel controls compression
 ([official CDN documentation](https://vercel.com/docs/how-vercel-cdn-works)).
 `vercel-account.log` records the failed authentication check; no deployment or

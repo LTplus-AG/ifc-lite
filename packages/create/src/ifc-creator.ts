@@ -287,7 +287,6 @@ export class IfcCreator {
    * Width along +X, Depth along +Y, Thickness extruded along +Z.
    */
   addIfcSlab(storeyId: number, params: SlabParams): number {
-    assertFinitePoint3({ Position: params.Position }, 'addIfcSlab');
     assertPositiveFinite({ Thickness: params.Thickness }, 'addIfcSlab');
     if (params.Width !== undefined) assertPositiveFinite({ Width: params.Width }, 'addIfcSlab');
     if (params.Depth !== undefined) assertPositiveFinite({ Depth: params.Depth }, 'addIfcSlab');
@@ -337,7 +336,6 @@ export class IfcCreator {
    * Cross-section centered, extruded upward by Height.
    */
   addIfcColumn(storeyId: number, params: ColumnParams): number {
-    assertFinitePoint3({ Position: params.Position }, 'addIfcColumn');
     assertPositiveFinite({ Width: params.Width, Depth: params.Depth, Height: params.Height }, 'addIfcColumn');
     return this.buildIfcColumn(storeyId, params);
   }
@@ -500,7 +498,6 @@ export class IfcCreator {
    * Optional Slope is in radians and creates a single slope along +X.
    */
   addIfcRoof(storeyId: number, params: RoofParams): number {
-    assertFinitePoint3({ Position: params.Position }, 'addIfcRoof');
     assertPositiveFinite({ Width: params.Width, Depth: params.Depth, Thickness: params.Thickness }, 'addIfcRoof');
     const slope = params.Slope ?? 0;
     if (!Number.isFinite(slope) || slope < 0 || slope >= Math.PI / 2) {
@@ -716,7 +713,6 @@ export class IfcCreator {
    * Create a door element. Width × Height × Thickness panel.
    */
   addIfcDoor(storeyId: number, params: DoorParams): number {
-    assertFinitePoint3({ Position: params.Position }, 'addIfcDoor');
     assertPositiveFinite({ Width: params.Width, Height: params.Height }, 'addIfcDoor');
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
@@ -751,7 +747,6 @@ export class IfcCreator {
    * Create a window element. Width × Height × Thickness frame.
    */
   addIfcWindow(storeyId: number, params: WindowParams): number {
-    assertFinitePoint3({ Position: params.Position }, 'addIfcWindow');
     assertPositiveFinite({ Width: params.Width, Height: params.Height }, 'addIfcWindow');
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
@@ -904,7 +899,6 @@ export class IfcCreator {
    * Create a plate (thin flat element, e.g. steel plate).
    */
   addIfcPlate(storeyId: number, params: PlateParams): number {
-    assertFinitePoint3({ Position: params.Position }, 'addIfcPlate');
     assertPositiveFinite({ Thickness: params.Thickness }, 'addIfcPlate');
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
@@ -1054,7 +1048,6 @@ export class IfcCreator {
    * Create a space (room volume).
    */
   addIfcSpace(storeyId: number, params: SpaceParams): number {
-    assertFinitePoint3({ Position: params.Position }, 'addIfcSpace');
     assertPositiveFinite({ Height: params.Height }, 'addIfcSpace');
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
@@ -2194,13 +2187,16 @@ ENDSEC;
   // Internal — Geometry helpers
   // ============================================================================
 
+  // Every builder's Position/Start/opening point is written here (#5217).
   private addCartesianPoint(p: Point3D): number {
+    assertFinitePoint3({ IfcCartesianPoint: p }, 'IfcCreator');
     const id = this.id();
     this.line(id, 'IFCCARTESIANPOINT', `(${num(p[0])},${num(p[1])},${num(p[2])})`);
     return id;
   }
 
   private addCartesianPoint2D(p: Point2D): number {
+    if (!p.every(Number.isFinite)) throw new Error('IfcCreator: IfcCartesianPoint must have finite coordinates');
     const id = this.id();
     this.line(id, 'IFCCARTESIANPOINT', `(${num(p[0])},${num(p[1])})`);
     return id;
@@ -2227,16 +2223,8 @@ ENDSEC;
    */
   addLocalPlacement(relativeTo: number, placement: Placement3D): number {
     const originId = this.addCartesianPoint(placement.Location);
-    let axisId: number | undefined;
-    let refDirId: number | undefined;
-
-    if (placement.Axis) {
-      axisId = this.addDirection(placement.Axis);
-    }
-    if (placement.RefDirection) {
-      refDirId = this.addDirection(placement.RefDirection);
-    }
-
+    const axisId = placement.Axis ? this.addDirection(placement.Axis) : undefined;
+    const refDirId = placement.RefDirection ? this.addDirection(placement.RefDirection) : undefined;
     const axis2Id = this.addAxis2Placement3D(originId, axisId, refDirId);
 
     const id = this.id();

@@ -1222,6 +1222,36 @@ describe('IfcCreator dimension validation', () => {
       label: 'addIfcSpace Position=[NaN,0,0]',
       build: (c, s) => c.addIfcSpace(s, { Position: [NaN, 0, 0], Width: 4, Depth: 4, Height: 2.5 }),
     },
+    // The guard lives where every point is written (`addCartesianPoint`), so
+    // builders the issue did not list are covered by the same line.
+    {
+      label: 'addIfcStair Position=[NaN,0,0]',
+      build: (c, s) => c.addIfcStair(s, { Position: [NaN, 0, 0], NumberOfRisers: 3, RiserHeight: 0.18, TreadLength: 0.28, Width: 1 }),
+    },
+    {
+      label: 'addIfcRamp Position=[0,Infinity,0]',
+      build: (c, s) => c.addIfcRamp(s, { Position: [0, Infinity, 0], Width: 1.2, Length: 5, Thickness: 0.2 }),
+    },
+    {
+      label: 'addIfcGableRoof Position=[0,0,NaN]',
+      build: (c, s) => c.addIfcGableRoof(s, { Position: [0, 0, NaN], Width: 6, Depth: 4, Thickness: 0.3, Slope: 0.5 }),
+    },
+    {
+      label: 'addIfcFooting Position=[NaN,0,0]',
+      build: (c, s) => c.addIfcFooting(s, { Position: [NaN, 0, 0], Width: 1, Depth: 1, Height: 0.5 }),
+    },
+    {
+      label: 'addIfcPile Position=[0,NaN,0]',
+      build: (c, s) => c.addIfcPile(s, { Position: [0, NaN, 0], Length: 10, Diameter: 0.4 }),
+    },
+    {
+      label: 'addIfcFurnishingElement Position=[Infinity,0,0]',
+      build: (c, s) => c.addIfcFurnishingElement(s, { Position: [Infinity, 0, 0], Width: 1, Depth: 1, Height: 1 }),
+    },
+    {
+      label: 'addIfcBuildingElementProxy Position=[0,0,NaN]',
+      build: (c, s) => c.addIfcBuildingElementProxy(s, { Position: [0, 0, NaN], Width: 1, Depth: 1, Height: 1 }),
+    },
   ];
 
   it.each(positionCases.map((c) => [c.label, c.build] as const))('rejects %s', (_label, build) => {

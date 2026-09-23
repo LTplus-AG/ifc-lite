@@ -87,6 +87,12 @@ pub(super) enum SourceHygiene {
 }
 
 impl SourceHygiene {
+    /// `self`, downgraded to `IndexOnly` while the router is told to keep
+    /// triangle order (see `GeometryRouter::set_preserve_triangle_order`).
+    fn for_router(self, router: &GeometryRouter) -> Self {
+        if router.preserve_triangle_order.get() { Self::IndexOnly } else { self }
+    }
+
     fn apply(self, mesh: &mut Mesh) {
         match self {
             Self::Watertight => mesh.clean_degenerate_watertight(),
@@ -224,7 +230,7 @@ impl GeometryRouter {
         // cleanup or promise hygienic output. See `SourceHygiene` (#5313).
         // Cut-created candidates require separate, path-specific handling. See
         // #4797.
-        hygiene.apply(&mut combined_mesh);
+        hygiene.for_router(self).apply(&mut combined_mesh);
 
         // Apply placement transformation
         self.apply_placement(element, decoder, &mut combined_mesh)?;
@@ -349,7 +355,8 @@ impl GeometryRouter {
         // and textured early-return channels clean at their own sites and are
         // not switched (#5313 left them unmeasured). See #4797.
         for sub in &mut sub_meshes.sub_meshes {
-            let own = if sub.uvs.is_some() { SourceHygiene::IndexOnly } else { hygiene };
+            let own =
+                if sub.uvs.is_some() { SourceHygiene::IndexOnly } else { hygiene.for_router(self) };
             own.apply(&mut sub.mesh);
         }
 

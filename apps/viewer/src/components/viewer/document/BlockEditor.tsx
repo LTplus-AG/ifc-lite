@@ -95,7 +95,7 @@ function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings:
         </label>
         <label className="inline-flex items-center gap-1 whitespace-nowrap text-muted-foreground">{t('document.block.fontLabel')}
           <select className={field} value={block.font ?? 'helvetica'} onChange={(e) => onChange({ ...block, font: e.target.value as TextFont })} aria-label={t('document.block.fontAriaLabel')}>
-            <option value="helvetica">Helvetica</option><option value="times">Times</option><option value="courier">Courier</option>
+            <option value="helvetica">{t('document.block.fontHelvetica')}</option><option value="times">{t('document.block.fontTimes')}</option><option value="courier">{t('document.block.fontCourier')}</option>
           </select>
         </label>
         <label className="inline-flex items-center gap-1 whitespace-nowrap text-muted-foreground">{t('document.block.fontSizeLabel')}

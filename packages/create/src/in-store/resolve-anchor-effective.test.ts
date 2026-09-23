@@ -8,6 +8,8 @@ import { IfcParser } from '@ifc-lite/parser';
 import { iterateEffectiveEntityIds, MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { addColumnToStore } from './column.js';
+import { addWallToStore } from './wall.js';
+import { generateSpacesFromWalls } from './generate-spaces.js';
 
 // Bonsai/IfcOpenShell IFC4 sample, with one parsed storey (#42).
 const SAMPLE = new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url);
@@ -57,6 +59,25 @@ describe('resolveSpatialAnchor over live entities (#5249)', () => {
     const placement = resolveSpatialAnchor(store, 42, view).storeyPlacementId;
     expect(editor.removeEntity(placement)).toBe(true);
     expect(() => resolveSpatialAnchor(store, 42, view)).toThrow(/IfcLocalPlacement/);
+  });
+
+  it('space generation rejects a deleted storey placement after finding an overlay room', async () => {
+    const { store, view, editor } = await session();
+    const anchor = resolveSpatialAnchor(store, 42, view);
+    const corners = [[100, 100], [105, 100], [105, 105], [100, 105]] as const;
+    for (let i = 0; i < corners.length; i++) {
+      const start = corners[i]!;
+      const end = corners[(i + 1) % corners.length]!;
+      addWallToStore(editor, anchor, {
+        Start: [start[0], start[1], 0], End: [end[0], end[1], 0],
+        Thickness: 0.2, Height: 3,
+      });
+    }
+    expect(editor.removeEntity(anchor.storeyPlacementId)).toBe(true);
+
+    expect(() => generateSpacesFromWalls(editor, store, 42, { minArea: 1 }, view))
+      .toThrow(/no resolvable IfcLocalPlacement/);
+    expect(editor.getNewEntities().some((entity) => entity.type === 'IfcSpace')).toBe(false);
   });
 
   it('honours named placement edits and positional clearing before authoring', async () => {

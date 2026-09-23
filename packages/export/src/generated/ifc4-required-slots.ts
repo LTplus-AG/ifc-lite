@@ -86,6 +86,8 @@ export const IFC4_REQUIRED_SLOTS: readonly Ifc4RequiredSlotRow[] = [
   ['IFCCABLESEGMENT', 9, [[0, 'GlobalId', null]]],
   ['IFCCABLESEGMENTTYPE', 10, [[0, 'GlobalId', null], [9, 'PredefinedType', null]]],
   ['IFCCARTESIANPOINT', 1, [[0, 'Coordinates', null]]],
+  ['IFCCARTESIANPOINTLIST2D', 1, [[0, 'CoordList', null]]],
+  ['IFCCARTESIANPOINTLIST3D', 1, [[0, 'CoordList', null]]],
   ['IFCCARTESIANTRANSFORMATIONOPERATOR2D', 4, [[2, 'LocalOrigin', null]]],
   ['IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM', 5, [[2, 'LocalOrigin', null]]],
   ['IFCCARTESIANTRANSFORMATIONOPERATOR3D', 5, [[2, 'LocalOrigin', null]]],

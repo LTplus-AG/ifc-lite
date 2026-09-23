@@ -515,8 +515,7 @@ export class MergedExporter {
     let federatedModelCount = 0;
     let normalizedModelCount = 0;
     const normalizeWarnings = new Set<string>();
-    const slotFill = new Ifc2x3SlotFill(); // slots IFC2X3 requires (#4686, #4714)
-    const ifc4Slots = new Ifc4SlotFill(); // slots IFC4 requires (#5202)
+    const [slotFill, ifc4Slots] = [new Ifc2x3SlotFill(), new Ifc4SlotFill()]; // required slots (#4714, #5202)
 
     for (const model of models) {
       const offset = setup.modelOffsets.get(model.id)!;
@@ -548,8 +547,7 @@ export class MergedExporter {
 
       isFirstModel = false;
     }
-    for (const warning of slotFill.warnings()) normalizeWarnings.add(warning);
-    for (const warning of ifc4Slots.warnings()) normalizeWarnings.add(warning);
+    for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings()]) normalizeWarnings.add(warning);
 
     // Assemble final file as Uint8Array chunks to avoid V8 string length limit
     if (onProgress) onProgress({ phase: 'assembling', percent: 0.9, entitiesProcessed: allEntityLines.length, entitiesTotal: allEntityLines.length });
@@ -646,8 +644,7 @@ export class MergedExporter {
     let normalizedModelCount = 0;
     const normalizeWarnings = new Set<string>();
     const YIELD_INTERVAL = 2000;
-    const slotFill = new Ifc2x3SlotFill(); // slots IFC2X3 requires (#4686, #4714)
-    const ifc4Slots = new Ifc4SlotFill(); // slots IFC4 requires (#5202)
+    const [slotFill, ifc4Slots] = [new Ifc2x3SlotFill(), new Ifc4SlotFill()]; // required slots (#4714, #5202)
 
     if (onProgress) onProgress({ phase: 'preparing', percent: 0, entitiesProcessed: 0, entitiesTotal: totalEntities });
 
@@ -708,8 +705,7 @@ export class MergedExporter {
 
       isFirstModel = false;
     }
-    for (const warning of slotFill.warnings()) normalizeWarnings.add(warning);
-    for (const warning of ifc4Slots.warnings()) normalizeWarnings.add(warning);
+    for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings()]) normalizeWarnings.add(warning);
 
     // Assembly phase
     if (onProgress) {
@@ -1195,15 +1191,13 @@ export class MergedExporter {
     source: IfcSourceBytes,
     offset: number,
     plan: ModelMergePlan,
-    sourceSchema: IfcSchemaVersion,
-    targetSchema: IfcSchemaVersion,
+    sourceSchema: IfcSchemaVersion, targetSchema: IfcSchemaVersion,
     guidToFinalId: Map<string, GuidRecord>,
     mode: ModelMode,
     hiddenProductIds: ReadonlySet<number> | null,
     completeIndex: CompleteEntityIndex,
     includedIds: ReadonlySet<number> | null,
-    slotFill: Ifc2x3SlotFill,
-    ifc4Slots: Ifc4SlotFill,
+    slotFill: Ifc2x3SlotFill, ifc4Slots: Ifc4SlotFill,
   ): string | null {
     let entityText = decodeRange(source, entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength);
 

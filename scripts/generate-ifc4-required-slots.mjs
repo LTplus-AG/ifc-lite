@@ -47,11 +47,11 @@
  * enum-typed required slot is therefore left in the "no fill" group here,
  * counted like any other unfillable required slot.
  *
- * SOURCE OF TRUTH. `packages/parser/src/generated/schema-registry.ts` (the
- * IFC4 registry) and `packages/data/src/ifc-schema/generated/entities-ifc4.ts`
- * (the converter's own positional attribute-name table) — `--check` verifies
- * the two agree on attribute order for every row, the same guarantee
- * `generate-ifc2x3-required-slots.mjs` makes for its table.
+ * SOURCE OF TRUTH. `packages/parser/src/generated/schema-registry.ts`, the
+ * EXPRESS-derived IFC4 registry. The converter's positional attribute table
+ * (`attrNameTable('IFC4')` in `schema-converter.ts`) is built from the same
+ * registry since #5204, so a row's slot indexes and the converter's agree by
+ * construction; there is no second table left to cross-check them against.
  *
  * Run: `node scripts/generate-ifc4-required-slots.mjs` to write the file,
  * `--check` to verify it is up to date.
@@ -92,9 +92,6 @@ const TS_REL = 'packages/export/src/generated/ifc4-required-slots.ts';
 const { SCHEMA_REGISTRY: IFC4 } = await import(
   pathToFileURL(join(ROOT, 'packages/parser/src/generated/schema-registry.ts')).href
 );
-const { ENTITIES_IFC4 } = await import(
-  pathToFileURL(join(ROOT, 'packages/data/src/ifc-schema/generated/entities-ifc4.ts')).href
-);
 
 /** Follow a chain of IFC4 defined types down to its EXPRESS base type. */
 function underlyingType(name) {
@@ -114,44 +111,10 @@ function fillFor(attr) {
   return underlyingType(attr.type) === 'BOOLEAN' ? '.F.' : null;
 }
 
-/**
- * `IfcCartesianPointList2D`/`3D`, excluded from this table entirely — NOT a
- * registry gap. The two source-of-truth EXPRESS schemas this repo carries
- * settle it directly:
- *
- *   packages/codegen/schemas/IFC4_ADD2_TC1.exp: `IfcCartesianPointList3D`
- *     declares only `CoordList`. `TagList` does not appear anywhere in this
- *     file (`grep -c TagList` = 0).
- *   packages/codegen/schemas/IFC4X3.exp: the same entity ALSO declares
- *     `TagList : OPTIONAL LIST [1:?] OF IfcLabel;` — IFC4X3 ADDED this
- *     attribute; IFC4 never had it.
- *
- * `schema-registry.ts` (this table's own source, parsed straight from
- * `IFC4_ADD2_TC1.exp`) is correct: 1 attribute, `CoordList`. The converter's
- * OWN arity table, `entities-ifc4.ts` (`packages/data`, generated from a
- * DIFFERENT upstream source — buildingSMART's C# `SchemaInfo` generator, not
- * this repo's EXPRESS files), lists 2 — `CoordList` AND `TagList` — for BOTH
- * `entities-ifc4.ts` and `entities-ifc4x3.ts`, identically. That is a bug in
- * `entities-ifc4.ts` itself (it carries IFC4X3's shape into the IFC4 row),
- * pre-existing and out of scope for #5202: `attrNameTable('IFC4')` in
- * `schema-converter.ts` reads `entities-ifc4.ts`, so the live converter
- * already treats this entity's IFC4 arity as 2, not 1, independent of
- * anything in this file.
- *
- * Excluding these two rows costs nothing for #5202: `CoordList` is a LIST
- * attribute (no honest fill either way) and was this entity's only required
- * slot under the correct 1-attribute shape, so no BOOLEAN fill is lost by
- * leaving them out. `verifyAgainstConverterTable` stays a hard, unweakened
- * failure for every OTHER entity — this is a narrow, named exclusion, not a
- * loosened check.
- */
-const IFC4_DATA_TABLE_BUG_TYPES = new Set(['IFCCARTESIANPOINTLIST2D', 'IFCCARTESIANPOINTLIST3D']);
-
 function buildRows() {
   const rows = [];
   for (const [name, entity] of Object.entries(IFC4.entities)) {
     if (entity.isAbstract) continue;
-    if (IFC4_DATA_TABLE_BUG_TYPES.has(name.toUpperCase())) continue;
     const attributes = entity.allAttributes ?? [];
     const slots = [];
     attributes.forEach((attr, index) => {
@@ -163,34 +126,6 @@ function buildRows() {
   }
   rows.sort((a, b) => (a.type < b.type ? -1 : a.type > b.type ? 1 : 0));
   return rows;
-}
-
-/**
- * The converter indexes a converted record's slots positionally, so a row's
- * indexes are only usable if the registry's attribute order is the order the
- * converter's own arity table (`attrNameTable('IFC4')`, from
- * `entities-ifc4.ts`) uses. Disagreement is a hard failure rather than a
- * silently skipped entity: a wrong index writes `.F.` over a value. Same
- * policy as `generate-ifc2x3-required-slots.mjs`'s own check — deliberately
- * NOT relaxed; see `IFC4_DATA_TABLE_BUG_TYPES` below for the one place this
- * generator excludes rows instead of weakening this check.
- */
-function verifyAgainstConverterTable(rows) {
-  const byType = new Map();
-  for (const entity of ENTITIES_IFC4) byType.set(entity.name.toUpperCase(), entity.attributes);
-  const problems = [];
-  for (const row of rows) {
-    const converterNames = byType.get(row.type);
-    if (converterNames === undefined) continue; // not in the converter's table at all
-    const registryNames = (IFC4.entities[
-      Object.keys(IFC4.entities).find((k) => k.toUpperCase() === row.type)
-    ].allAttributes ?? []).map((a) => a.name);
-    const same =
-      registryNames.length === converterNames.length &&
-      registryNames.every((n, i) => n === converterNames[i]);
-    if (!same) problems.push(`${row.type}: registry [${registryNames}] vs data [${converterNames}]`);
-  }
-  return problems;
 }
 
 function renderTs(rows) {
@@ -235,15 +170,6 @@ function renderTs(rows) {
 const rows = buildRows();
 if (rows.length === 0) {
   console.error('generate-ifc4-required-slots: the registry yielded ZERO rows; refusing to write.');
-  process.exit(1);
-}
-const problems = verifyAgainstConverterTable(rows);
-if (problems.length > 0) {
-  console.error(
-    'generate-ifc4-required-slots: the IFC4 registry and the converter attribute table ' +
-      'disagree on attribute ORDER, so a slot index here would name the wrong value:\n  ' +
-      problems.join('\n  '),
-  );
   process.exit(1);
 }
 

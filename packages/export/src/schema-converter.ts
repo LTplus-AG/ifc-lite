@@ -8,14 +8,6 @@
  * Handles entity type renaming and attribute rewriting when converting
  * between IFC schema versions (IFC2X3, IFC4, IFC4X3, IFC5).
  *
- * Key differences between schemas:
- * - IFC2X3 → IFC4: IfcWallStandardCase → IfcWall (with PredefinedType),
- *   spatial hierarchy changes, removed/renamed entity types
- * - IFC4 → IFC4X3: New facility types (bridge, road, railway, marine),
- *   IfcBuiltElement replaces IfcBuildingElement in some cases
- * - IFC5: Alpha spec — STEP-based with different attribute ordering,
- *   entity names largely aligned with IFC4X3 but schema header is 'IFC5'
- *
  * This module works at the STEP text level: it rewrites entity type names
  * and adjusts attribute counts via regex replacement on raw STEP lines.
  */
@@ -301,20 +293,9 @@ function requireTopLevelAttributes(attrsRaw: string): string[] {
  * @param slots - This package's exporters pass one; it carries the owner
  *   history they reuse (#4686) and collects what they could not settle.
  *   Omitted, a throwaway stands in, so the generated table's own defaults are
- *   still written but the OwnerHistory reuse and both counts are lost. Only
- *   consulted when `toSchema === 'IFC2X3'`.
- * @param ifc4Slots - The IFC4 twin of `slots` (#5202): fills BOOLEAN required
- *   slots IFC4X3/IFC5 left optional-and-`$`, and counts every other one
- *   (including enums) that stays `$` under IFC4's stricter cardinality.
- *   Omitted, a throwaway stands in, so the fill still happens but the count
- *   is lost. Only consulted when `toSchema === 'IFC4'` AND `fromSchema` is
- *   `'IFC4X3'` or `'IFC5'` — the only directions #5202 documents the
- *   optional-in-source/mandatory-in-IFC4 mismatch for. IFC2X3 → IFC4 is a
- *   separate, already-well-tested upgrade path
- *   (`schema-converter-door-window-type.test.ts` pins it byte-for-byte) and
- *   is deliberately left alone: IFC2X3's OWN mandatory/optional shape was
- *   never audited for this table, so applying it there risked silently
- *   rewriting an already-correct conversion rather than fixing a gap.
+ *   still written but the OwnerHistory reuse and both counts are lost.
+ * @param ifc4Slots - Its IFC4 twin (#5202), consulted only for IFC4X3/IFC5 →
+ *   IFC4; see `schema-converter-ifc4-slots.ts` for why IFC2X3 → IFC4 is not.
  * @param withheldRefIds - Express ids this export is OMITTING outright
  *   ({@link computeWithheldRefIds}, #4206) — a record whose attributes name
  *   one is redirected to the same "no representation" resolution as its own
@@ -337,10 +318,8 @@ export function convertStepLine(
   const converted = convertRecord(line, fromSchema, toSchema, random, withheldRefIds);
   if (converted === null) return null;
   if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
-  if (toSchema === 'IFC4' && (fromSchema === 'IFC4X3' || fromSchema === 'IFC5')) {
-    return (ifc4Slots ?? new Ifc4SlotFill()).apply(converted);
-  }
-  return converted;
+  const ifc4Target = toSchema === 'IFC4' && (fromSchema === 'IFC4X3' || fromSchema === 'IFC5');
+  return ifc4Target ? (ifc4Slots ?? new Ifc4SlotFill()).apply(converted) : converted;
 }
 
 /** {@link convertStepLine} before the IFC2X3 required-slot fills, between two

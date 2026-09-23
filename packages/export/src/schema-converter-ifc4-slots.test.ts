@@ -3,7 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
+import { IfcParser } from '@ifc-lite/parser';
 import { convertStepLine } from './schema-converter.js';
+import { StepExporter } from './step-exporter.js';
 import { Ifc4SlotFill } from './schema-converter-ifc4-slots.js';
 
 // #5202 finding 2: cardinality tightening on a downgrade to IFC4 was
@@ -65,5 +67,37 @@ describe('schema-converter: IFC4-target required slots (#5202)', () => {
   it('a same-schema conversion is still a no-op', () => {
     const line = "#50=IFCPROJECTEDCRS($,'A description',$,$,$,$,$);";
     expect(convertStepLine(line, 'IFC4', 'IFC4')).toBe(line);
+  });
+});
+
+describe('StepExporter: an IFC4X3 model exported as IFC4 reports the unfillable slot (#5202)', () => {
+  const IFC4X3_MODEL = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4X3_ADD2'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0OSuGGYUFyIf0LtE29OSuG',$,'P',$,$,$,$,$,$);
+#10=IFCPROJECTEDCRS($,'A description',$,$,$,$,$);
+ENDSEC;
+END-ISO-10303-21;`;
+
+  async function exportAs(schema: 'IFC4' | 'IFC4X3') {
+    const bytes = new TextEncoder().encode(IFC4X3_MODEL);
+    const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+    const result = new StepExporter(store).export({ schema });
+    return { text: new TextDecoder().decode(result.content), warnings: result.stats.warnings };
+  }
+
+  it('warns that IfcProjectedCRS.Name stays $ in the IFC4 file', async () => {
+    const { text, warnings } = await exportAs('IFC4');
+    expect(text).toContain("#10=IFCPROJECTEDCRS($,'A description',$,$,$,$,$);");
+    expect(warnings.some((w) => w.includes('where IFC4 requires a value') && w.includes('#5202'))).toBe(true);
+  });
+
+  it('stays quiet when no conversion to IFC4 runs', async () => {
+    const { warnings } = await exportAs('IFC4X3');
+    expect(warnings.some((w) => w.includes('#5202'))).toBe(false);
   });
 });

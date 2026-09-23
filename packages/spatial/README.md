@@ -21,6 +21,15 @@ import { buildSpatialIndexAsync } from '@ifc-lite/spatial';
 const indexAsync = await buildSpatialIndexAsync(meshes);
 ```
 
+For precomputed boxes, `BVH.buildAsync(meshesWithBounds, budgetMs, yieldToEventLoop)`
+builds the same queryable index. `budgetMs` is an approximate time budget between
+checkpoints, not a hard maximum frame time. The caller supplies an async
+`yieldToEventLoop` callback that actually schedules a timer task (for example
+`new Promise(resolve => setTimeout(resolve, 0))`); an already-resolved promise
+does not give the browser a chance to paint. If the callback rejects,
+the build rejects and does not return a partial index. `buildSpatialIndexAsync`
+supplies its own browser scheduler and defaults to a 4 ms budget.
+
 ## Raycast (entity picking)
 
 ```typescript
@@ -32,11 +41,9 @@ const origin: [number, number, number] = [0, 5, 10];
 const direction: [number, number, number] = [0, -1, 0];
 
 const hits = index.raycast(origin, direction);
-// → expressIds of meshes the ray intersects, in hit order
+// → expressIds of meshes whose bounds intersect the ray; order is unspecified
 
-if (hits.length > 0) {
-  console.log(`First hit: expressId ${hits[0]}`);
-}
+console.log(`${hits.length} broad-phase candidates`);
 ```
 
 ## AABB query (region select)

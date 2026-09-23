@@ -50,6 +50,12 @@ function rotationAboutAxis(axis: [number, number, number], angle: number): numbe
 }
 
 describe('BVH.build', () => {
+  it('rejects budgets that would disable async yielding (#5252 review)', async () => {
+    for (const budget of [NaN, Infinity, -Infinity, -1]) {
+      await expect(BVH.buildAsync(row(2049), budget, async () => {})).rejects.toThrow(RangeError);
+    }
+  });
+
   it('returns an empty index for no meshes without throwing', () => {
     const bvh = BVH.build([]);
     expect(bvh.queryAABB(box(-1e6, -1e6, -1e6, 1e6, 1e6, 1e6))).toEqual([]);
@@ -61,6 +67,32 @@ describe('BVH.build', () => {
     const bvh = BVH.build([cube(7, [0, 0, 0])]);
     expect(bvh.queryAABB(box(-1, -1, -1, 1, 1, 1))).toEqual([7]);
     expect(bvh.queryAABB(box(50, 50, 50, 51, 51, 51))).toEqual([]);
+  });
+
+  it('yields during large tree construction and preserves every finite query hit', async () => {
+    const meshes = Array.from({ length: 4096 }, (_, i) => cube(i + 1, [i % 64, Math.floor(i / 64), 0]));
+    meshes.push({ expressId: 4097, bounds: box(NaN, 0, 0, NaN, 1, 1) });
+    let yields = 0;
+    let heartbeat = false;
+    setTimeout(() => { heartbeat = true; }, 0);
+    const bvh = await BVH.buildAsync(meshes, 0, async () => {
+      yields++;
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+    });
+    expect(yields).toBeGreaterThan(1);
+    expect(heartbeat).toBe(true);
+    const hits = bvh.queryAABB(box(-1, -1, -1, 65, 65, 1));
+    expect(hits).toHaveLength(4096);
+    expect(new Set(hits).size).toBe(4096);
+    expect(hits).not.toContain(4097);
+  });
+
+  it('does not mutate caller mesh order or publish an incomplete tree after scheduling fails', async () => {
+    const meshes = row(2049);
+    const before = structuredClone(meshes);
+    await expect(BVH.buildAsync(meshes, 0, async () => { throw new Error('yield failed'); }))
+      .rejects.toThrow('yield failed');
+    expect(meshes).toEqual(before);
   });
 });
 
@@ -516,26 +548,31 @@ describe('BVH property harness — tree query vs. brute-force leaf oracle', () =
     return tmax >= 0;
   }
 
-  it('agrees with the brute-force oracle across randomized configurations (200+ queries/type)', () => {
+  it('agrees with the brute-force oracle across randomized configurations (200+ queries/type)', async () => {
     const rng = makeRng(0xC0FFEE);
     const configs = 12;
     const queriesPerConfig = 18; // 12 * 18 = 216 queries per query type, >= 200.
     let aabbChecked = 0, rayChecked = 0, frustumChecked = 0;
 
     for (let c = 0; c < configs; c++) {
-      const n = 1 + Math.floor(rng() * 25);
+      // The last configuration crosses the >1024 async partition threshold;
+      // the small cases alone exercise only its synchronous-node fast path.
+      const n = c === configs - 1 ? 2049 : 1 + Math.floor(rng() * 25);
       const mag = [1, 100, 1e5][c % 3];
       const meshes: MeshWithBounds[] = [];
       for (let i = 0; i < n; i++) meshes.push({ expressId: i + 1, bounds: randomBox(rng, mag) });
       // Occasional duplicate expressId (submeshes sharing one element id).
-      if (rng() < 0.3 && meshes.length > 1) {
+      if (meshes.length > 1 && (c === configs - 1 || rng() < 0.3)) {
         meshes.push({ expressId: meshes[0].expressId, bounds: randomBox(rng, mag) });
       }
       const bvh = BVH.build(meshes);
+      const asyncBvh = await BVH.buildAsync(meshes, 4, async () => {});
 
       for (let q = 0; q < queriesPerConfig; q++) {
         const qbox = randomBox(rng, mag * 1.5);
-        expect(bvh.queryAABB(qbox).sort((a, b) => a - b)).toEqual(bruteAABB(meshes, qbox).sort((a, b) => a - b));
+        const expectedAabb = bruteAABB(meshes, qbox).sort((a, b) => a - b);
+        expect(bvh.queryAABB(qbox).sort((a, b) => a - b)).toEqual(expectedAabb);
+        expect(asyncBvh.queryAABB(qbox).sort((a, b) => a - b)).toEqual(expectedAabb);
         aabbChecked++;
 
         const origin: [number, number, number] = [
@@ -550,6 +587,7 @@ describe('BVH property harness — tree query vs. brute-force leaf oracle', () =
           dir[axis] = rng() < 0.5 ? 1 : -1;
         }
         expect(sortedEq(bvh.raycast(origin, dir), bruteRay(meshes, origin, dir))).toBe(true);
+        expect(sortedEq(asyncBvh.raycast(origin, dir), bruteRay(meshes, origin, dir))).toBe(true);
         rayChecked++;
 
         const fb = randomBox(rng, mag * 1.5);
@@ -564,6 +602,7 @@ describe('BVH property harness — tree query vs. brute-force leaf oracle', () =
           ],
         };
         expect(sortedEq(bvh.queryFrustum(frustum), bruteFrustum(meshes, frustum))).toBe(true);
+        expect(sortedEq(asyncBvh.queryFrustum(frustum), bruteFrustum(meshes, frustum))).toBe(true);
         frustumChecked++;
       }
     }

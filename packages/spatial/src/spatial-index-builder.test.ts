@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { MeshData } from '@ifc-lite/geometry';
 import { buildSpatialIndex, buildSpatialIndexAsync } from './spatial-index-builder.js';
 import type { AABB } from './aabb.js';
@@ -164,6 +164,30 @@ describe('buildSpatialIndex — NaN-bounded mesh (#5221)', () => {
 });
 
 describe('buildSpatialIndexAsync', () => {
+  it('rejects budgets that would disable time slicing (#5252 review)', async () => {
+    const meshes = [mesh(1, [0, 0, 0])];
+    for (const budget of [NaN, Infinity, -Infinity, -1]) {
+      await expect(buildSpatialIndexAsync(meshes, budget)).rejects.toThrow(RangeError);
+    }
+  });
+
+  it('uses paint-friendly timer turns when visible and a non-timer yield when hidden', async () => {
+    const meshes = Array.from({ length: 501 }, (_, i) => mesh(i + 1, [i, 0, 0]));
+    const schedulerYield = vi.fn(async () => {});
+    vi.stubGlobal('scheduler', { yield: schedulerYield });
+    try {
+      vi.stubGlobal('document', { visibilityState: 'visible' });
+      await buildSpatialIndexAsync(meshes, 0);
+      expect(schedulerYield).not.toHaveBeenCalled();
+
+      vi.stubGlobal('document', { visibilityState: 'hidden' });
+      await buildSpatialIndexAsync(meshes, 0);
+      expect(schedulerYield).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('produces the same index as the synchronous builder', async () => {
     const meshes = Array.from({ length: 40 }, (_, i) => mesh(i + 1, [i * 5, 0, 0], 1));
     const sync = buildSpatialIndex(meshes);

@@ -15,8 +15,8 @@ import { useTranslation } from '@/i18n';
 import { renderTemplate, type BindingContext } from '@/lib/document/bindings';
 import { REPORT_THEME } from '@/lib/export/report/generate-report-pdf';
 import { topicLines, topicSnapshotDataUrl } from '@/lib/document/generate-document-pdf';
-import { pageBox } from '@/lib/export/report/compose';
-import { documentChartSizing } from '@/lib/document/compose';
+import { pageBox, REPORT_MARGIN } from '@/lib/export/report/compose';
+import { BLOCK_GAP, documentChartSizing, estimateTextWidth, halfTextFitsPage, TEXT_STYLES } from '@/lib/document/compose';
 import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type DocumentBlock, type DocumentSpec, type TextBlock } from '@/lib/document/types';
 import type { TableState } from '@/lib/document/resolve-table';
 import { DOCUMENT_PREVIEW_MUTED_TEXT_CLASS, DOCUMENT_PREVIEW_PAPER_CLASS } from './preview-theme';
@@ -46,13 +46,15 @@ const TEXT_CLASS: Record<TextBlock['style'], string> = {
   caption: 'text-[10px] text-neutral-500 whitespace-pre-wrap',
 };
 
-/** Consecutive chart/image blocks both at `width: 'half'` render two-up (#4940); everything else is its own row. */
-function groupBlocks(blocks: readonly DocumentBlock[]): Array<DocumentBlock | [DocumentBlock, DocumentBlock]> {
+/** Consecutive text/chart/image blocks both at `width: 'half'` render two-up (#4940). */
+function groupBlocks(blocks: readonly DocumentBlock[], bindings: BindingContext, pageHeight: number, contentWidth: number): Array<DocumentBlock | [DocumentBlock, DocumentBlock]> {
   const groups: Array<DocumentBlock | [DocumentBlock, DocumentBlock]> = [];
+  const colW = (contentWidth - BLOCK_GAP) / 2;
+  const fits = (block: DocumentBlock): boolean => block.kind !== 'text' || halfTextFitsPage({ ...block, text: renderTemplate(block.text, bindings).text }, pageHeight, colW, estimateTextWidth);
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
     const next = blocks[i + 1];
-    if (isHalfPairable(block) && next && isHalfPairable(next)) {
+    if (isHalfPairable(block) && next && isHalfPairable(next) && fits(block) && fits(next)) {
       groups.push([block, next]);
       i += 1;
     } else {
@@ -116,7 +118,7 @@ function Block({ block, bindings, aggregation, chartMessage, topic, table, conte
   const { t } = useTranslation();
   switch (block.kind) {
     case 'text':
-      return <div className={TEXT_CLASS[block.style]} data-block-text>{block.text.trim() ? <ResolvedText text={block.text} bindings={bindings} /> : <span className={DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}>{t('document.preview.textEmpty')}</span>}</div>;
+      return <div className={TEXT_CLASS[block.style]} style={{ fontSize: (block.fontSize ?? TEXT_STYLES[block.style].size) * scale, fontFamily: block.font === 'times' ? 'Times New Roman, serif' : block.font === 'courier' ? 'Courier New, monospace' : 'Helvetica, Arial, sans-serif' }} data-block-text>{block.text.trim() ? <ResolvedText text={block.text} bindings={bindings} /> : <span className={DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}>{t('document.preview.textEmpty')}</span>}</div>;
     case 'image': {
       const justify = block.align === 'left' ? 'justify-start' : block.align === 'right' ? 'justify-end' : 'justify-center';
       return (
@@ -145,9 +147,9 @@ function Block({ block, bindings, aggregation, chartMessage, topic, table, conte
       const subtitle = `${chartSubtitle}${block.snapshot ? ' · 3D snapshot in the PDF' : ''}`;
       return (
         <div>
-          <div className="flex min-w-0 items-baseline gap-1 text-sm font-semibold">
-            <span className="min-w-0 truncate" title={block.chart.title}>{block.chart.title}</span>
-            <span className="min-w-0 truncate text-[10px] font-normal text-neutral-500" title={subtitle}>{subtitle}</span>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold" title={block.chart.title}>{block.chart.title}</div>
+            <div className="truncate text-[10px] text-neutral-500" title={subtitle}>{subtitle}</div>
           </div>
           <ChartSvg aggregation={aggregation} message={chartMessage} width={contentWidth} height={height} />
         </div>
@@ -198,7 +200,7 @@ export function DocumentPreview({ document, bindings, aggregations, chartMessage
       >
         <div className={`mb-3 text-[9px] ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>{document.name}</div>
         <div className="flex flex-col gap-2.5">
-          {groupBlocks(document.blocks).map((group) => {
+          {groupBlocks(document.blocks, bindings, size.h, size.w - 2 * REPORT_MARGIN).map((group) => {
             const wrap = (block: DocumentBlock) => (
               <div
                 key={block.id}

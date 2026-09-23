@@ -214,6 +214,7 @@ describe('document file', () => {
     assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 2 }), { ...v1, version: DOCUMENT_VERSION });
     assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 3 }), { ...v1, version: DOCUMENT_VERSION });
     assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 4 }), { ...v1, version: DOCUMENT_VERSION });
+    assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 5 }), { ...v1, version: DOCUMENT_VERSION });
     // Anything not a recognizable older document (already current, a later version, malformed) passes through unchanged.
     assert.deepEqual(migrateDocumentSpec!({ ...v1, version: DOCUMENT_VERSION }), { ...v1, version: DOCUMENT_VERSION });
     assert.deepEqual(migrateDocumentSpec!({ ...v1, version: DOCUMENT_VERSION + 1 }), { ...v1, version: DOCUMENT_VERSION + 1 });
@@ -226,9 +227,10 @@ describe('document file', () => {
     const v2 = { version: DOCUMENT_VERSION, id: 'd2', name: 'V2', page: { size: 'A4', orientation: 'portrait' }, blocks: [caption, halfChart, halfImage, spacer] };
     assert.deepEqual(validateDocumentSpec(v2), []);
 
-    // half only valid on chart/image; a text block rejects it (structural: `width` is not a text field).
-    const textWithWidth = { ...v2, blocks: [{ kind: 'text', id: 't2', style: 'body', text: 'x', width: 'half' }] };
-    assert.deepEqual(validateDocumentSpec(textWithWidth), []); // an unknown extra property on a text block is not itself a validation error
+    const styledText = { ...v2, blocks: [{ kind: 'text', id: 't2', style: 'body', text: 'x', width: 'half', font: 'times', fontSize: 14 }] };
+    assert.deepEqual(validateDocumentSpec(styledText), []);
+    const badText = { ...v2, blocks: [{ kind: 'text', id: 't2', style: 'body', text: 'x', width: 'third', font: 'unsupported', fontSize: Infinity }] };
+    assert.deepEqual(validateDocumentSpec(badText).map((e) => e.path), ['blocks[0].font', 'blocks[0].fontSize', 'blocks[0].width']);
     const badChartHeight = { ...v2, blocks: [{ ...halfChart, height: 10 }] };
     assert.deepEqual(validateDocumentSpec(badChartHeight).map((e) => e.path), ['blocks[0].height']);
     const nonFiniteChartHeight = { ...v2, blocks: [{ ...halfChart, height: Number.NaN }] };
@@ -479,11 +481,49 @@ describe('compose', () => {
     const texts = layout.pages[0].items.filter((i): i is Extract<typeof i, { kind: 'text' }> => i.kind === 'text');
     assert.ok(!texts.some((t) => t.text === longTitle), 'the full title never appears untruncated');
     assert.ok(texts.some((t) => t.text.endsWith('…')), 'the truncated title carries an ellipsis');
-    // The title is capped to the same width the subtitle reserves for itself, so the two never overlap (review finding).
-    const chartA = layout.pages[0].items.find((i) => i.kind === 'chart' && i.blockId === 'a')!;
-    const title = texts.find((t) => t.x === chartA.x && t.y === chartA.y - 7)!; // chartY = titleY + 7 (18 - 11)
-    const subtitle = texts.find((t) => t.y === title.y && t.x > title.x)!;
-    assert.ok(subtitle.x >= title.x + estimateTextWidth(title.text, 11, true), `subtitle x=${subtitle.x} must not sit under the title text ending at ${title.x + estimateTextWidth(title.text, 11, true)}`);
+    // The title and subtitle each get their own line within the chart column.
+    const chartA = layout.pages[0].items.find((i): i is Extract<typeof i, { kind: 'chart' }> => i.kind === 'chart' && i.blockId === 'a')!;
+    const title = texts.find((t) => t.x === chartA.x && t.y === chartA.y - 21)!;
+    const subtitle = texts.find((t) => t.x === chartA.x && t.y === chartA.y - 8)!;
+    assert.ok(subtitle.y > title.y);
+    assert.ok(estimateTextWidth(title.text, 11, true) <= chartA.w);
+    assert.ok(estimateTextWidth(subtitle.text, 8, false) <= chartA.w);
+  });
+
+  it('keeps a realistic chart total visible on A4 and pairs custom-font text with a logo (#4940)', () => {
+    const subtitle = '13 buckets · 12,623 elements';
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [
+        { kind: 'text', id: 'heading', style: 'heading', text: 'Prüfbericht', font: 'times', fontSize: 16, width: 'half' },
+        { kind: 'image', id: 'logo', height: 70, align: 'right', aspect: 2, width: 'half' },
+        { kind: 'chart', id: 'c', title: 'Änderungen nach IfcClass', subtitle, hasData: true, snapshot: false },
+      ],
+    });
+    const items = layout.pages[0].items;
+    const heading = items.find((item): item is Extract<typeof item, { kind: 'text' }> => item.kind === 'text' && item.text === 'Prüfbericht');
+    const logo = items.find((item): item is Extract<typeof item, { kind: 'image' }> => item.kind === 'image');
+    const total = items.find((item): item is Extract<typeof item, { kind: 'text' }> => item.kind === 'text' && item.text === subtitle);
+    assert.ok(heading && logo && total);
+    assert.equal(heading.font, 'times');
+    assert.equal(heading.size, 16);
+    assert.ok(heading.x + estimateTextWidth(heading.text, heading.size, heading.bold) < logo.x);
+    assert.ok(total.x + estimateTextWidth(total.text, total.size, total.bold) <= layout.size.w - 40);
+  });
+
+  it('paginates overlong half-width text without pushing its paired logo through the footer (#4940)', () => {
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [
+        { kind: 'text', id: 'long', style: 'body', text: 'A long report paragraph. '.repeat(900), width: 'half' },
+        { kind: 'image', id: 'logo', height: 70, align: 'left', aspect: 2, width: 'half' },
+      ],
+    });
+    const logo = layout.pages.flatMap((page) => page.items).find((item): item is Extract<typeof item, { kind: 'image' }> => item.kind === 'image');
+    assert.ok(logo);
+    assert.equal(logo.x, 40, 'the logo falls back to its full-width row');
+    assert.ok(layout.pages.length > 1);
+    for (const page of layout.pages) for (const item of page.items) assert.ok(item.y <= layout.size.h - 64);
   });
 
   it('a long half-width image caption is truncated so it stays inside its own column (review finding, #4940)', () => {

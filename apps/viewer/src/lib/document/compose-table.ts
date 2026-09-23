@@ -14,6 +14,7 @@
  */
 import { AUTOTABLE_ROW_HEIGHT } from '../export/report/generate-report-pdf.js';
 import type { TableColumnOut, TableRowOut } from './resolve-table.js';
+import type { TextFont } from './types.js';
 
 /** 11pt bold title at `y + 11`, the same strip a chart block gets. */
 export const TABLE_TITLE_HEIGHT = 18;
@@ -46,7 +47,7 @@ export interface TableLayoutBlock {
 }
 
 /** A line of text on the page; `compose.ts` draws the same shape for every block. */
-export interface TextDrawnItem { kind: 'text'; x: number; y: number; size: number; bold: boolean; gray: number; text: string }
+export interface TextDrawnItem { kind: 'text'; x: number; y: number; size: number; bold: boolean; gray: number; text: string; font?: TextFont }
 
 export type TableDrawnItem =
   | TextDrawnItem

@@ -75,6 +75,40 @@ it('resets an image preview intrinsic aspect when its data URL changes (#4983)',
   assert.equal(second.style.height, requestedHeight, 'the old image aspect cannot constrain the replacement before it loads');
 });
 
+it('puts half-width text next to a logo and applies its PDF font controls (#4940)', () => {
+  container = document.createElement('div');
+  document.body.appendChild(container);
+  root = createRoot(container);
+  const doc: DocumentSpec = {
+    ...baseDocument,
+    blocks: [
+      { kind: 'text', id: 'heading', style: 'heading', text: 'Prüfbericht', width: 'half', font: 'times', fontSize: 16 },
+      { ...imageBlock, width: 'half' },
+    ],
+  };
+  act(() => root?.render(<DocumentPreview document={doc} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map()} chartMessages={new Map()} topics={new Map()} selectedBlockId={null} onSelectBlock={() => {}} />));
+  const row = container.querySelector('[data-preview-row]');
+  assert.ok(row);
+  assert.equal(row.querySelectorAll('[data-preview-block]').length, 2);
+  const text = row.querySelector<HTMLElement>('[data-block-text]');
+  assert.ok(text);
+  assert.match(text.style.fontFamily, /Times New Roman/);
+  assert.ok(Number.parseFloat(text.style.fontSize) > 14);
+});
+
+it('previews an overlong half-width text block as paginated full-width content (#4940)', () => {
+  container = document.createElement('div');
+  document.body.appendChild(container);
+  root = createRoot(container);
+  const doc: DocumentSpec = { ...baseDocument, blocks: [
+    { kind: 'text', id: 'long', style: 'body', text: 'A long report paragraph. '.repeat(900), width: 'half' },
+    { ...imageBlock, width: 'half' },
+  ] };
+  act(() => root?.render(<DocumentPreview document={doc} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map()} chartMessages={new Map()} topics={new Map()} selectedBlockId={null} onSelectBlock={() => {}} />));
+  assert.equal(container.querySelectorAll('[data-preview-row]').length, 0);
+  assert.equal(container.querySelectorAll('[data-preview-block]').length, 2);
+});
+
 it('clamps a tall chart to the same printable-page height as PDF composition (#4983 review)', () => {
   const chart = { id: 'chart', title: 'Tall chart', source: 'elements', type: 'bar', dimension: 'type', measure: { agg: 'count' } } as const;
   const aggregation = aggregate(chart, {
@@ -103,8 +137,8 @@ it('clamps a tall chart to the same printable-page height as PDF composition (#4
   const size = pageBox(page);
   const scale = 560 / size.w;
   // Independent page-frame invariant: 40pt margins, 30pt header, 24pt footer,
-  // and the 18pt chart title strip. Landscape is wide enough for the snapshot
+  // and the 32pt chart title/subtitle strip. Landscape is wide enough for the snapshot
   // to sit beside the chart, so it consumes no additional vertical space.
-  const expected = (size.h - 40 - 30 - 40 - 24 - 18) * scale;
+  const expected = (size.h - 40 - 30 - 40 - 24 - 32) * scale;
   assert.ok(Math.abs(Number(svg.getAttribute('height')) - expected) < 0.01, `preview SVG height ${svg.getAttribute('height')} matches the PDF clamp ${expected}`);
 });

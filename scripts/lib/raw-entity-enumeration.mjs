@@ -4,6 +4,19 @@
 
 import ts from 'typescript';
 
+/** Map a changed destination to its merge-base source path (or null if new). */
+export function changedPathBaselines(nameStatus) {
+  const paths = new Map();
+  for (const line of nameStatus.split('\n')) {
+    if (!line) continue;
+    const [status, source, destination] = line.split('\t');
+    if (status.startsWith('R')) paths.set(destination, source);
+    else if (status === 'A') paths.set(source, null);
+    else paths.set(source, source);
+  }
+  return paths;
+}
+
 function siblingOrdinal(node) {
   const name = node.name?.getText() ?? '';
   let ordinal = 0;

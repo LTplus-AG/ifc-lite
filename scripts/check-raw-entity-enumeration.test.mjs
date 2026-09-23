@@ -15,6 +15,10 @@ const excessRawAccess = (...args) => {
   assert.ok(detector, 'raw entity detector must be available');
   return detector.excessRawAccess(...args);
 };
+const changedPathBaselines = (...args) => {
+  assert.ok(detector, 'raw entity detector must be available');
+  return detector.changedPathBaselines(...args);
+};
 
 const path = 'packages/mcp/src/tools/example.ts';
 const scan = (source) => scanRawEntityAccess(path, source);
@@ -24,6 +28,13 @@ test('#5236 raw-access gate finds a new enumerator, including a duplicate in the
   const added = scan('function query(m) { for (const row of m.store.entityIndex.byType) use(row); for (const row of m.store.entityIndex.byType) use(row); }');
   assert.equal(old.length, 1);
   assert.equal(excessRawAccess(old, added).length, 1);
+});
+
+test('#5236 a renamed file keeps its source budget while a new file starts empty', () => {
+  const baselines = changedPathBaselines('R100\told.ts\trenamed.ts\nM\tedited.ts\nA\tnew.ts');
+  assert.equal(baselines.get('renamed.ts'), 'old.ts');
+  assert.equal(baselines.get('edited.ts'), 'edited.ts');
+  assert.equal(baselines.get('new.ts'), null);
 });
 
 test('#5236 moving a raw read between callbacks cannot reuse its old budget slot', () => {

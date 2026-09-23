@@ -24,7 +24,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { scanRawEntityAccess, excessRawAccess } from './lib/raw-entity-enumeration.mjs';
+import { scanRawEntityAccess, excessRawAccess, changedPathBaselines } from './lib/raw-entity-enumeration.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const SCAN_ROOTS = [
@@ -50,10 +50,12 @@ function git(...args) {
 
 function main() {
   const base = git('merge-base', 'origin/main', 'HEAD');
-  const changedFiles = new Set([
-    ...git('diff', '--name-only', '--no-renames', base, '--', ...SCAN_ROOTS).split('\n'),
-    ...git('ls-files', '--others', '--exclude-standard', '--', ...SCAN_ROOTS).split('\n'),
-  ]);
+  // A rename preserves the site's old budget. Read its old content through
+  // the source path, but fingerprint it under the destination path.
+  const changedFiles = changedPathBaselines(git('diff', '--name-status', '-M', base, '--', ...SCAN_ROOTS));
+  for (const path of git('ls-files', '--others', '--exclude-standard', '--', ...SCAN_ROOTS).split('\n')) {
+    if (path) changedFiles.set(path, null);
+  }
   let totalBase = 0;
   let totalCurrent = 0;
   const newSites = [];
@@ -69,8 +71,8 @@ function main() {
       let before = current;
       if (changedFiles.has(path)) {
         let oldText = '';
-        try { oldText = git('show', `${base}:${path}`); }
-        catch { /* A new file has no merge-base contents; its budget is zero. */ }
+        const source = changedFiles.get(path);
+        if (source) oldText = git('show', `${base}:${source}`);
         before = oldText ? scanRawEntityAccess(path, oldText) : [];
       }
       totalBase += before.length;

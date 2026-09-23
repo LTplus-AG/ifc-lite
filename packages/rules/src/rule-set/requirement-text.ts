@@ -11,7 +11,7 @@
  */
 import type { Subject, UniqueRequirement, AggregateRequirement, CompareRequirement } from './rule-set.js';
 import type { NumericOp } from '../filter/filter-rules.js';
-import { checkAggregateSubject } from './aggregate-requirement-invariant.js';
+import { checkAggregateSubject, checkCompareSubjects } from './requirement-invariants.js';
 
 export type TextRequirement = UniqueRequirement | AggregateRequirement | CompareRequirement;
 export type RequirementTextResult = { ok: true; requirement: TextRequirement } | { ok: false; error: string };
@@ -141,6 +141,8 @@ function parseCompare(s: string): CompareRequirement {
   const [left, afterLeft] = parseSubject(s, 0);
   const [op, afterOp] = parseOp(s, afterLeft);
   const [right, afterRight] = parseSubject(s, afterOp);
+  const sideError = checkCompareSubjects(left, right);
+  if (sideError) throw new TextError(`${sideError.side}: ${sideError.message}`);
   const trailing = s.slice(afterRight).trim();
   if (trailing === '') return { kind: 'compare', left, right, op };
   if (trailing === 'date') return { kind: 'compare', left, right, op, valueType: 'date' };

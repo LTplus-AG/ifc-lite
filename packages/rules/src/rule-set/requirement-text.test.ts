@@ -144,6 +144,15 @@ describe('requirement-text — aggregate subject invariant parity with the JSON 
     assert.match(result.error, /multi-valued/);
   });
 
+  it('rejects a "compare" with a multi-valued side, as the JSON parser does', () => {
+    for (const [text, side] of [['material = Name', 'left'], ['Name = classification', 'right']] as const) {
+      const result = parseRequirementText(text);
+      assert.equal(result.ok, false, text);
+      if (result.ok) continue;
+      assert.match(result.error, new RegExp(`^${side}: "compare" needs a single-valued subject`));
+    }
+  });
+
   it('still accepts "count() > 5" with no subject', () => {
     const result = parseRequirementText('count() > 5');
     assert.equal(result.ok, true);

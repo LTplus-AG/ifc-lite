@@ -162,6 +162,45 @@ and `ne` on an absent property FAILS rather than vacuously passing — a rule
 requiring `FireRating ne '2HR'` does not pass just because `FireRating` was
 never set.
 
+## Exporting a rule set as IDS
+
+`@ifc-lite/rules` exports the rules of a `.rules.json` set that IDS 1.0 can
+express. Nothing is approximated, and nothing is dropped without being reported.
+
+```typescript
+import { ruleSetToIds, type RuleSetFile } from '@ifc-lite/rules';
+
+declare const ruleSet: RuleSetFile;
+
+const exported = ruleSetToIds(ruleSet, { ifcVersions: ['IFC4'] });
+exported.xml;      // IDS XML, or null when no rule could be exported
+exported.refused;  // [{ ruleId, ruleName, reasons: string[] }]
+exported.notes;    // caveats for the exported set as a whole
+```
+
+Export covers `element` requirements and applicability built from `eq`,
+`contains`, `startsWith`, `matches` (regex), `isSet`, `in`, and numeric bounds
+(a `between` pair becomes one restriction). The conditions can be on the IFC
+class, `PredefinedType`, attributes, properties, quantities (IDS checks those
+through the property facet), materials, and classification presence. Every
+other rule is refused with each reason listed:
+
+- `unique`, `aggregate` and `compare` requirements
+- the negated operators (`ne`, `notContains`, `notMatches`, `isNotSet`, `notIn`)
+- OR, whether across groups or inside a group
+- an `ifcType` rule without `exactClass` (an IDS entity facet is exact-class)
+- `caseSensitive: false`, a non-default `tolerance`, or `severity: 'warning'`
+- `model` / `modelTag` targeting
+- storey, elevation, relating-type and parent-name conditions
+- a classification code/name value (the rule matches code OR name, IDS only the code)
+- a regex that uses JavaScript-only syntax
+- applicable-count bounds IDS 1.0 can't state
+
+Two caveats are reported as notes. IDS compares measure values in SI units,
+while the rule engine compares the stored value. IDS matches property-set and
+property names case-sensitively, while the engine matches literal names
+case-insensitively.
+
 ## Viewer Integration
 
 In the IFClite viewer, IDS validation is integrated through the Data validation panel's IDS validation entry:

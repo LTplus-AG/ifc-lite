@@ -37,7 +37,7 @@ function countEffectiveEntities(
     const authoredType = view?.getEntityTypeMutation(entity.expressId)?.newType
       ?? (entity.overlayCreated ? view?.getNewEntity(entity.expressId)?.type : undefined);
     const type = authoredType
-      ? IFC_ENTITY_NAMES[entity.type] ?? authoredType
+      ? IFC_ENTITY_NAMES[authoredType.toUpperCase()] ?? authoredType
       : store.entities.getTypeName(entity.expressId);
     if (type && type !== 'Unknown') typeCounts[type] = (typeCounts[type] ?? 0) + 1;
   }

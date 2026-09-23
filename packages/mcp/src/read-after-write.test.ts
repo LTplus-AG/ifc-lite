@@ -317,6 +317,24 @@ describe('query_entities after an edit', () => {
     expect(walls.pendingMutations).toBe(2);
   }, 30_000);
 
+  it('moves a reclassified source entity into the requested class (#5249)', async () => {
+    await session();
+    await call('entity_set_attribute', {
+      global_id: guid('WALA'), attribute: 'Name', value: 'Door A',
+    });
+    const model = ctx.registry.get('m');
+    if (!model) throw new Error('model not loaded');
+    const view = model.backend.getMutationView();
+    if (!view) throw new Error('mutation view not created');
+    view.setEntityType(72, 'IfcDoor', null, 'IfcWall');
+
+    const doors = await structured<QueryShape>('query_entities', { type: 'IfcDoor' });
+    expect(doors.entities.map((entity) => entity.expressId)).toEqual([72]);
+    expect(doors.entities[0].type).toBe('IfcDoor');
+    const walls = await structured<QueryShape>('query_entities', { type: 'IfcWall' });
+    expect(walls.entities.map((entity) => entity.expressId)).toEqual([73]);
+  }, 30_000);
+
   it('reports a renamed entity under its new name', async () => {
     await session();
     await call('entity_set_attribute', {

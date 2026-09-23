@@ -58,6 +58,7 @@ import {
 } from '@ifc-lite/parser';
 import { attributeNamesForSchema } from './schema-tables.js';
 import { EntityNode, matchesPropertyFilter } from '@ifc-lite/query';
+import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
 
 import type { CreatedEntity, PendingOverlay } from './overlay.js';
 import { authoredValue } from './authored-attribute-value.js';
@@ -99,6 +100,7 @@ export function createQueryAdapter(
   store: IfcDataStore,
   modelId: string,
   overlay: () => PendingOverlay | null,
+  mutationView: () => MutablePropertyView | null,
 ): QueryBackendMethods {
   function entityData(ref: EntityRef): EntityData | null {
     const pending = overlay();
@@ -129,6 +131,7 @@ export function createQueryAdapter(
     if (overrides.size === 0 && positional.size === 0 && !pending.effectiveType(expressId)) return data;
     const next = {
       ...data,
+      type: pending.effectiveType(expressId) ?? data.type,
       name: overrides.get('Name') ?? data.name,
       description: overrides.get('Description') ?? data.description,
       objectType: overrides.get('ObjectType') ?? data.objectType,
@@ -244,27 +247,19 @@ export function createQueryAdapter(
         ? expandTypes(descriptor.types, store.schemaVersion)
         : null;
 
-      const entityIds: number[] = [];
-      if (requested) {
-        for (const type of requested) {
-          const typeIds = store.entityIndex.byType.get(type) ?? [];
-          for (const eid of typeIds) entityIds.push(eid);
-        }
-      } else {
-        for (const [typeName, ids] of store.entityIndex.byType) {
-          if (isProductType(typeName)) {
-            for (const eid of ids) entityIds.push(eid);
-          }
-        }
-      }
-
       const results: EntityData[] = [];
-      for (const expressId of entityIds) {
-        if (expressId === 0) continue;
-        if (pending?.deleted.has(expressId)) continue;
+      for (const { expressId, type, overlayCreated } of iterateEffectiveEntityIds(store, mutationView(), requested ?? undefined)) {
+        if (!requested && !isProductType(type)) continue;
+        const ref = { modelId, expressId };
+        if (overlayCreated) {
+          const created = pending?.createdEntity(expressId);
+          if (!created) throw new Error(`Missing pending entity #${expressId} during enumeration`);
+          results.push(withOverrides(createdEntityData(created, ref, store), pending, expressId));
+          continue;
+        }
         const node = new EntityNode(store, expressId);
         results.push(withOverrides({
-          ref: { modelId, expressId },
+          ref,
           globalId: node.globalId,
           name: node.name,
           type: node.type,
@@ -272,24 +267,6 @@ export function createQueryAdapter(
           objectType: node.objectType,
         }, pending, expressId));
       }
-      // Queued entities join the same result set under the same type rules, so
-      // an agent that creates a wall and then queries for walls finds it.
-      // `createdAll`, not `created`: `model_info` and `count_entities` count
-      // every queued entity, so a typed query over the same class has to list
-      // every one of them or the two contradict each other about what exists
-      // (#2014). A queued entity with no GlobalId is still an entity; callers
-      // address it by the `expressId` every row carries.
-      const wanted = requested ? new Set(requested) : null;
-      for (const created of pending?.createdAll ?? []) {
-        const key = created.ifcType.toUpperCase();
-        if (wanted ? !wanted.has(key) : !isProductType(key)) continue;
-        results.push(withOverrides(
-          createdEntityData(created, { modelId, expressId: created.expressId }, store),
-          pending,
-          created.expressId,
-        ));
-      }
-
       let filtered = results;
       if (descriptor.filters && descriptor.filters.length > 0) {
         const propsCache = new Map<number, PropertySetData[]>();

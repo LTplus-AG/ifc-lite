@@ -387,7 +387,7 @@ describe('classifyLoadError', () => {
   // unanchored `network_unavailable` claims it — which both fingerprints it
   // together with genuine offline blips AND hands it to the benign-severity
   // downgrade in analytics-scrub.ts, silencing a real deploy failure that
-  // survived main.tsx's one-shot chunk-reload budget. #2410 removed the explicit
+  // survived bootstrap.tsx's one-shot chunk-reload budget. #2410 removed the explicit
   // exclusion that used to say so, because the whole-message anchor subsumes it
   // (the message names the module, so it is not the whole wording) — leaving
   // this test as the live gate on that anchor rather than an unreachable branch.

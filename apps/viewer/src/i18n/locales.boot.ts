@@ -5,7 +5,7 @@
 /**
  * Startup wiring for contributed locales (#4785). Every `locales/<tag>.ts`
  * (default export: a `Catalogue`) becomes a lazy chunk, loaded only when the
- * negotiated locale needs it. Side-effect import from `main.tsx`; the logic
+ * negotiated locale needs it. Side-effect import from `bootstrap.tsx`; the logic
  * lives in `locale-activation.ts`, which the node test runner can load
  * (`import.meta.glob` is a Vite transform and cannot run there).
  */

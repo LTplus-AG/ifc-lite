@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
-import { SourceHost } from './source-host';
-import { createRegisteredProviders } from './registered-providers';
+import { createContext, useContext, useState, type ReactNode } from 'react';
+import { SourceHost, type FileSourceProviderFactory } from './source-host';
+import { BUILT_IN_PROVIDER_FACTORIES } from './registered-providers';
 
 const SourceHostContext = createContext<SourceHost | null>(null);
 
@@ -19,46 +19,47 @@ export function useOptionalSourceHost(): SourceHost | null {
 }
 
 /**
- * Builds the `SourceHost` used by the whole app, registering every provider
- * from `createRegisteredProviders()`. This runs inside a top-level
- * `useMemo` wrapping the entire app, so nothing here may throw: a provider
- * whose manifest has drifted out of date, or whose constructor itself
- * misbehaves, must degrade to "this one provider is unavailable" rather than
- * white-screen the viewer. `SourceHost.register` already never throws (see
- * `source-host.ts`); the `try`/`catch` around provider *construction* here is
- * defense in depth for a provider that throws before `register` ever sees it.
- * Either way, the failure ends up in `host.getRegistrationFailures()` so a
- * settings panel can show "provider X failed to load: reason" instead of the
- * provider just silently not being there.
+ * Builds the `SourceHost` used by the whole app: the built-in providers from
+ * `registered-providers.ts` first, then any `additionalProviders` a host
+ * application supplied at bootstrap (#5228). This runs once, while the app
+ * tree mounts, so nothing here may throw: a provider whose manifest has
+ * drifted out of date, or whose constructor itself misbehaves, must degrade
+ * to "this one provider is unavailable" rather than white-screen the viewer.
+ * Each factory is constructed and registered on its own through
+ * `SourceHost.registerFactory`, so a throwing one cannot stop the built-ins or
+ * any later provider from registering, and its failure ends up in
+ * `host.getRegistrationFailures()` so the sources panel shows "provider X
+ * failed to register: reason" instead of the provider silently not being
+ * there. Built-ins go first, so a host-supplied provider reusing a built-in's
+ * name is the one refused as a duplicate.
  */
-function buildSourceHost(): SourceHost {
+export function buildSourceHost(
+  additionalProviders: readonly FileSourceProviderFactory[] = [],
+): SourceHost {
   const host = new SourceHost();
-
-  let providers: ReturnType<typeof createRegisteredProviders>;
-  try {
-    providers = createRegisteredProviders();
-  } catch (error) {
-    console.error('[source-host] Failed to construct registered providers', error);
-    return host;
-  }
-
-  for (const provider of providers) {
-    let name = '(unknown provider)';
-    try {
-      name = provider.manifest.name;
-      host.register(provider);
-    } catch (error) {
-      // register() itself is designed not to throw, but a provider's own
-      // `manifest` getter could still misbehave before register() ever runs.
-      console.error(`[source-host] Unexpected error registering "${name}"`, error);
-    }
-  }
-
+  BUILT_IN_PROVIDER_FACTORIES.forEach((factory, index) => {
+    host.registerFactory(factory, `built-in provider #${index + 1}`);
+  });
+  additionalProviders.forEach((factory, index) => {
+    host.registerFactory(factory, `host-supplied provider #${index + 1}`);
+  });
   return host;
 }
 
-export function SourceHostProvider({ children }: { children: ReactNode }) {
-  const host = useMemo(buildSourceHost, []);
+export interface SourceHostProviderProps {
+  children: ReactNode;
+  /**
+   * Extra provider factories a host application registers alongside the
+   * built-ins; see `ViewerBootstrapOptions.sourceProviders` in `bootstrap.tsx`.
+   */
+  additionalProviders?: readonly FileSourceProviderFactory[];
+}
+
+export function SourceHostProvider({ children, additionalProviders }: SourceHostProviderProps) {
+  // Bootstrap-time composition: the provider set is fixed for the app's
+  // lifetime, so a later change to `additionalProviders` is deliberately not
+  // re-read (it would construct every provider again and drop their state).
+  const [host] = useState(() => buildSourceHost(additionalProviders));
 
   return (
     <SourceHostContext value={host}>

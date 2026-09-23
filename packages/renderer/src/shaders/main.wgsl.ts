@@ -3,13 +3,28 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Main PBR rendering shader for IFC geometry.
- * Features: PBR lighting, section plane clipping, selection highlight,
- * glass fresnel, ACES tone mapping, screen-space edge enhancement.
+ * Main rendering shader for IFC geometry.
+ * Features: linear-space diffuse lighting of sRGB-authored colours, section
+ * plane clipping, selection highlight, glass fresnel, hue-preserving highlight
+ * roll-off, screen-space edge enhancement.
  */
 import { MESH_FLAG_RTE_DRAWABLE } from '../mesh-rte-uniforms.js';
+import { colorTransferWgsl } from './color-transfer.wgsl.js';
 import { mainRteWgsl, mainShadowWgsl } from './main-rte-shadow.wgsl.js';
 import { relativeToEyeWgsl } from './relative-to-eye.wgsl.js';
+
+/**
+ * Converts the environment's light intensities to linear irradiance.
+ *
+ * Those intensities were tuned by eye for a pipeline that lit sRGB values as
+ * if they were linear and brightened the result with a 2.2 gamma. Lit in
+ * linear, the same numbers would render every model far darker. The default
+ * rig delivers 0.6464 (luma) to a sun-facing horizontal surface and the
+ * default exposure is 0.85, so this factor puts that surface at irradiance
+ * 1.0, where it renders at exactly its authored colour. Every preset and user
+ * exposure is scaled by the same factor, so their relative brightness holds.
+ */
+export const IRRADIANCE_CALIBRATION = 1.82;
 
 export const mainShaderSource = `
         struct Uniforms {
@@ -49,6 +64,8 @@ export const mainShaderSource = `
           _pad2: f32,
         }
         @binding(0) @group(1) var<uniform> env: Environment;
+        const IRRADIANCE_CALIBRATION: f32 = ${IRRADIANCE_CALIBRATION};
+        ${colorTransferWgsl}
 
         ${mainShadowWgsl}
 
@@ -410,21 +427,19 @@ export const mainShaderSource = `
           let NdotRim = max(dot(N, rimLight), 0.0);
           let rim = pow(NdotRim, 4.0) * env.rimIntensity;
 
+          // The authored colour is display-referred sRGB; light it in linear.
+          // (textured.wgsl.ts anchors on the first line to multiply in the texel.)
           var baseColor = input.color.rgb;
-
-          // Detect if the color is close to white/gray (low saturation)
-          let baseGray = dot(baseColor, vec3<f32>(0.299, 0.587, 0.114));
-          let baseSaturation = length(baseColor - vec3<f32>(baseGray)) / max(baseGray, 0.001);
-          let isWhiteish = 1.0 - smoothstep(0.0, 0.3, baseSaturation);
-
-          // Darken whites/grays more to reduce washed-out appearance
-          baseColor = mix(baseColor, baseColor * 0.7, isWhiteish * 0.4);
+          baseColor = srgbToLinear(baseColor);
 
           // Combine all lighting. Only the DIRECT sun term is occluded by cast
           // shadows (#2670); ambient/fill/rim are indirect and stay unshadowed.
+          // Exposure scales the light, so the selection shade below and every
+          // later stage see one exposed irradiance.
           let sunShadow = sunShadowFactor(input.eyePos, N, input.position.xy);
           let lightTerm = ambient + env.sunColor * (diffuseSun * sunShadow) + vec3<f32>(diffuseFill + rim);
-          var color = baseColor * lightTerm;
+          let irradiance = lightTerm * (env.exposure * IRRADIANCE_CALIBRATION);
+          var color = baseColor * irradiance;
 
           // flags.x is a bitfield:
           //   bit 0 (value 1) = isSelected  → selection-highlight + force opaque
@@ -459,15 +474,16 @@ export const mainShaderSource = `
           //     selection. Re-lighting keeps that per-face brightness step, so
           //     creases read on the highlight exactly as they do unselected.
           //
-          // The luminance of lightTerm is remapped by a multiplicative gain
-          // (which preserves the per-face brightness RATIOS, so creases read
-          // as strongly as on the unselected surface) calibrated so a sunlit
-          // face hits full selection-blue, with a floor/ceiling clamp so
-          // shadowed faces only dim and bright scenes never wash out.
+          // The luminance of the exposed irradiance is used as a multiplicative
+          // gain (which preserves the per-face brightness RATIOS, so creases
+          // read as strongly as on the unselected surface). The calibration
+          // puts a sunlit face at 1.0, i.e. full selection-blue, and the
+          // floor/ceiling clamp keeps shadowed faces only dimmed and bright
+          // scenes from washing out.
           if (isSelected) {
-            let shadeLum = dot(lightTerm, vec3<f32>(0.299, 0.587, 0.114));
-            let shade = clamp(shadeLum * 1.55, 0.45, 1.2);
-            color = vec3<f32>(0.3, 0.6, 1.0) * shade;
+            let shadeLum = dot(irradiance, vec3<f32>(0.299, 0.587, 0.114));
+            let shade = clamp(shadeLum, 0.45, 1.2);
+            color = srgbToLinear(vec3<f32>(0.3, 0.6, 1.0)) * shade;
           }
 
           // flags.x bit 5 (value 32) = EMPHASIZE overlay: render the colour
@@ -506,8 +522,10 @@ export const mainShaderSource = `
             // Mix in reflection tint at edges
             color = mix(color, color * reflectionTint, reflectionStrength);
 
-            // Add realistic glass shine - brighter at edges where light reflects
-            let glassShine = fresnel * 0.12;
+            // Add realistic glass shine - brighter at edges where light reflects.
+            // Linear amount: 0.06 lifts a mid-tone about as much as the 0.12
+            // the pre-linear pipeline added in display space.
+            let glassShine = fresnel * 0.06;
             color += glassShine;
 
             // Slight desaturation at edges (glass reflects environment, not just color)
@@ -519,31 +537,10 @@ export const mainShaderSource = `
             finalAlpha = finalAlpha * 0.7;
           }
 
-          // Exposure adjustment (historic default 0.85 darkens overall)
-          color *= env.exposure;
-
-          // Contrast enhancement
-          color = (color - 0.5) * 1.15 + 0.5;
-          color = max(color, vec3<f32>(0.0));
-
-          // Saturation boost - stronger for colored surfaces, less for whites
-          let gray = dot(color, vec3<f32>(0.299, 0.587, 0.114));
-          // More saturation for colored surfaces. isWhiteish is derived from
-          // the base material colour, so for a SELECTED object it would leak a
-          // material dependence into the highlight (breaking the no-bleed-
-          // through contract). The selection blue is a fully-saturated colour,
-          // so force the colored-surface boost (1.4) when selected — keeping
-          // the highlight identical regardless of the underlying material.
-          let satBoost = select(mix(1.4, 1.1, isWhiteish), 1.4, isSelected);
-          color = mix(vec3<f32>(gray), color, satBoost);
-
-          // ACES filmic tone mapping
-          let a = 2.51;
-          let b = 0.03;
-          let c = 2.43;
-          let d = 0.59;
-          let e = 0.14;
-          color = clamp((color * (a * color + b)) / (color * (c * color + d) + e), vec3<f32>(0.0), vec3<f32>(1.0));
+          // Hue-preserving highlight roll-off (color-transfer.wgsl.ts). No
+          // contrast curve and no saturation boost: an authored colour lit at
+          // unit irradiance leaves here unchanged.
+          color = neutralCompress(color);
 
           // Subtle edge enhancement using screen-space derivatives.
           //
@@ -576,8 +573,7 @@ export const mainShaderSource = `
             color *= edgeDarken;
           }
 
-          // Gamma correction
-          color = pow(color, vec3<f32>(1.0 / 2.2));
+          color = linearToSrgb(clamp(color, vec3<f32>(0.0), vec3<f32>(1.0)));
 
           var out: FragmentOutput;
           out.color = vec4<f32>(color, finalAlpha);

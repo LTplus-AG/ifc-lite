@@ -6,10 +6,12 @@
  * Lighting environment for the main shading pipelines and the procedural
  * sky pass.
  *
- * Every field is optional; the defaults reproduce the renderer's historical
- * hardcoded look exactly (sun at normalize(0.5, 1, 0.3), hemisphere ambient,
- * 0.85 exposure), so callers that never pass `RenderOptions.environment`
- * see no visual change.
+ * Every field is optional; the defaults are the renderer's historical light
+ * rig (sun at normalize(0.5, 1, 0.3), hemisphere ambient, 0.85 exposure).
+ * Intensities stay in the units that rig was tuned in; the geometry shader
+ * converts them to linear irradiance (`IRRADIANCE_CALIBRATION` in
+ * `shaders/main.wgsl.ts`), so the default rig lights a sun-facing surface at
+ * exactly its authored colour.
  *
  * Directions are in viewer/world space (Y-up). `sunDirection` points TOWARD
  * the sun, matching the shader's `dot(N, sunDirection)` convention.
@@ -50,7 +52,7 @@ export interface LightingEnvironment {
    * Clamped to [0, 1] on resolve.
    */
   sunSoftness?: number;
-  /** Pre-tonemap exposure multiplier (historic default 0.85). */
+  /** Exposure multiplier on the light, before highlight roll-off (historic default 0.85). */
   exposure?: number;
   /**
    * Draw the procedural sky background. When false (default) the frame
@@ -179,7 +181,7 @@ export function deriveSkyGradient(sunElevation: number): SkyGradient {
   return g;
 }
 
-/** Fill in defaults; the result always renders identically to the legacy look when `env` is undefined/empty. */
+/** Fill in defaults; `env` undefined/empty resolves to the default rig. */
 export function resolveEnvironment(env?: LightingEnvironment): ResolvedEnvironment {
   const sunDirection = normalized(env?.sunDirection ?? DEFAULT_SUN_DIR);
   const derived = deriveSkyGradient(sunDirection[1]);

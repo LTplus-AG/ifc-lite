@@ -83,6 +83,22 @@ function enclosingStatement(node) {
   return node;
 }
 
+/** Child positions inside one statement distinguish moves between call args. */
+function expressionPath(node) {
+  const statement = enclosingStatement(node);
+  const positions = [];
+  for (let child = node; child !== statement && child.parent; child = child.parent) {
+    let position = 0;
+    ts.forEachChild(child.parent, (sibling) => {
+      if (sibling === child) return true;
+      position++;
+      return undefined;
+    });
+    positions.push(position);
+  }
+  return positions.reverse().join('.');
+}
+
 /** A deliberate raw read must say why immediately above its statement. */
 function rawReason(source, node) {
   const statement = enclosingStatement(node);
@@ -127,7 +143,7 @@ export function scanRawEntityAccess(path, text) {
     if (kind) {
       const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
       hits.push({
-        key: `${path}|${ownerOf(node)}@${statementPath(node)}|${kind}|${node.getText(source).replace(/\s+/g, '')}`,
+        key: `${path}|${ownerOf(node)}@${statementPath(node)}:${expressionPath(node)}|${kind}|${node.getText(source).replace(/\s+/g, '')}`,
         line,
         reason: rawReason(source, node),
       });

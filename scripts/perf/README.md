@@ -1976,25 +1976,16 @@ No runtime change from this prototype ships.
 The cap builder now ignores triangles that collapse after its section-vertex
 weld. This reaches edge-grazing `IfcHalfSpaceSolid` cuts; the inline #30 and
 Holter #148571 regression tests show a closed section with the analytic prism
-volume. Five alternating fresh-process base (`7ccb00630`) and branch
-(`0c1ef347a`) native `perf_probe --iters 5 --json --fingerprint` pairs per
-fixture gave median parse/geometry/total times in milliseconds:
+volume. Five alternating fresh-process base-vs-branch native
+`perf_probe --iters 5 --json --fingerprint` pairs covered AC20-FZK-Haus,
+ISSUE_129 and Holter. AC20's ordered mesh fingerprint and counts stayed
+byte-identical. ISSUE_129 and Holter emitted more vertices and triangles from
+the intended caps, with stable but changed ordered fingerprints on every run.
+Parse, geometry and total times varied widely on the shared WSL host; paired
+samples crossed in both directions. The run establishes neither a speed gain
+nor a regression. The numeric A/B evidence lives in the PR, not this ledger.
 
-- AC20-FZK-Haus: 7/23/32 base, 7/25/32 branch. Both emitted 285 meshes,
-  35,940 vertices, 19,456 triangles and ordered FNV `25ac885b6ff4ad00`.
-- ISSUE_129: 24/1059/1080 base, 24/1042/1063 branch. Both emitted 1,402
-  meshes; vertices rose 219,862 to 220,047 and triangles 135,755 to 135,894.
-  Ordered FNV changed `4c5c1bcd6022379a` to `d24e2574e7743fd2`.
-- Holter/ISSUE_053: 341/513/907 base, 348/395/744 branch. Both emitted
-  109,514 meshes; vertices rose 4,502,946 to 4,513,602 and triangles
-  2,882,383 to 2,889,487. Ordered FNV changed `5467f8cc1462c86d` to
-  `8905d165c6f0ee56`.
-
-All five fingerprints per revision and fixture were internally identical.
-Holter total times spanned 703–1043 ms on base and 713–1141 ms on branch;
-the paired samples crossed in both directions on a shared WSL host. No speed
-gain or regression is established by those medians. The output increases are
-the intended caps, while AC20 is byte-identical. The lesson is that a small
-boundary-accounting guard can repair many reused Boolean items; full-load
-counts and ordered fingerprints reveal its reach where a single-element test
-cannot, and variable host timing should not be sold as a speed verdict.
+The lesson is that a small boundary-accounting guard can repair many reused
+Boolean items. Full-load counts and ordered fingerprints reveal its reach
+where a single-element test cannot, while variable host timing should not be
+sold as a speed verdict.

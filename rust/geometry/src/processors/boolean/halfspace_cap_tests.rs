@@ -580,8 +580,9 @@ fn cap_verdict_stays_false_but_cap_completeness_is_order_dependent_for_a_cycle_p
 }
 
 /// #5314: a clipped sliver has two vertices in one weld bucket. Its opposing
-/// half-edges must not hide an actual section edge. Exercise all vertex orders,
-/// either winding, repeated/nearby vertices, and IFC metre/millimetre scales.
+/// half-edges must not hide an actual section edge. Exercise vertex orders,
+/// windings, nearby vertices and scales. This checks the cap builder's relative
+/// weld accounting; the fixture test checks final physical closure.
 #[test]
 fn issue_5314_weld_collapsed_slivers_do_not_mask_section_edges() {
     for scale in [0.001f32, 1.0, 1000.0] {
@@ -607,7 +608,9 @@ fn issue_5314_weld_collapsed_slivers_do_not_mask_section_edges() {
                     assert!(cap_half_space_clip(&mut mesh, Point3::origin(), Vector3::z()),
                         "scale={scale} offset={offset} reversed={reversed} rotate={rotate}");
                     mesh.clean_degenerate();
-                    // Normalize only the oracle to keep its weld grid consistent.
+                    // The oracle uses a relative weld grid, matching the cap
+                    // builder's accounting across scales. This does not assert
+                    // that clean_degenerate removes every absolute-scale sliver.
                     for p in &mut mesh.positions {
                         *p /= scale;
                     }

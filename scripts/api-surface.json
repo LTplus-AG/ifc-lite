@@ -4904,6 +4904,7 @@
     "groupPropertySetsByInstance: function",
     "groupQuantitySetsByInstance: function",
     "isBuildingLikeSpatialType: function",
+    "isCompleteStepNumericLiteral: function",
     "isEntityRef: function",
     "isEntitySubtypeOf: function",
     "isEnumValue: function",

@@ -6,7 +6,7 @@
  * Entity extractor - parses full entity content from STEP format
  */
 
-import { createLogger } from '@ifc-lite/data';
+import { createLogger, isCompleteStepNumericLiteral } from '@ifc-lite/data';
 import { decodeIfcString } from '@ifc-lite/encoding';
 import { isIndexableExpressId } from './express-id.js';
 import { entityParameters } from './step-entity-parameters.js';
@@ -344,17 +344,29 @@ export class EntityExtractor {
     //
     // Number.isFinite, not !isNaN: a STEP real whose exponent overflows the
     // IEEE-754 double range (`1.0E400`) parses to `Infinity`, and
-    // `isNaN(Infinity)` is `false`, so the old guard admitted it. From the
-    // property table a non-finite number reaches every writer, where
-    // `JSON.stringify(Infinity)` is `null` — the file loses the value with no
-    // diagnostic anywhere along the way.
+    // `isNaN(Infinity)` is `false`, so a guard of only `!isNaN` would admit
+    // it. From the property table a non-finite number reaches every writer,
+    // where `JSON.stringify(Infinity)` is `null` — the file loses the value
+    // with no diagnostic anywhere along the way.
+    //
+    // `isCompleteStepNumericLiteral`, not just `parseFloat`: `parseFloat`
+    // accepts any leading numeric prefix and silently discards the rest, so a
+    // corrupted literal with a dropped comma between two reals — `1.52.3` —
+    // parses as `1.52` with no error, and `1.5abc` parses as `1.5`. The
+    // overflow guard above catches a token that is a complete, valid literal
+    // naming an unrepresentable number; it says nothing about a token that
+    // was never a complete literal to begin with. Requiring the STEP
+    // REAL/INTEGER grammar match cover the *whole* token, not just yield a
+    // finite prefix, closes that second hole without disturbing the first.
     //
     // Falling through preserves the literal as the raw token (the branch
     // below), which is what this function already does for every other token
     // it cannot represent as a number. That keeps the data the file actually
-    // contained — a reader can still see `1.0E400`. Rejecting the attribute
-    // outright would drop data the file did contain; clamping would invent a
-    // value.
+    // contained — a reader can still see `1.0E400` or `1.52.3`. Rejecting the
+    // attribute outright would drop data the file did contain; clamping would
+    // invent a value; truncating to the parseable prefix (`1.52.3` -> `1.52`)
+    // would invent a DIFFERENT value indistinguishable downstream from a real
+    // one — the exact failure this branch exists to avoid.
     //
     // This is NOT by itself enough to say "nothing is silently dropped".
     // Preserving the string only helps consumers whose value type admits a
@@ -364,15 +376,21 @@ export class EntityExtractor {
     // which is how `quantity-collect` and `georef-extractor` turned an
     // unreadable value into a plausible `0`. Absence is detectable; a zero
     // easting is a coordinate. Both now refuse and warn instead of
-    // substituting — see `isOverflowingNumericLiteral` in
-    // `attribute-helpers.ts` and its two call sites. Any NEW `number`-typed
-    // consumer of this function's output owes the same decision.
-    const num = parseFloat(value);
-    if (Number.isFinite(num)) {
-      return num;
+    // substituting — see `isOverflowingNumericLiteral` and
+    // `isMalformedNumericLiteral` in `attribute-helpers.ts`, combined in
+    // `isUnrepresentableNumericValue`, and its call sites. Any NEW
+    // `number`-typed consumer of this function's output owes the same
+    // decision, for BOTH hazards this comment now describes, not just the
+    // overflow one it used to describe alone.
+    if (isCompleteStepNumericLiteral(value)) {
+      const num = parseFloat(value);
+      if (Number.isFinite(num)) {
+        return num;
+      }
     }
 
-    // Enumeration, non-finite numeric literal, or other identifier: the raw token.
+    // Enumeration, non-finite numeric literal, malformed numeric literal, or
+    // other identifier: the raw token.
     return value;
   }
 }

@@ -69,6 +69,7 @@ export {
   parseStepValue,
   escapeStepString,
 } from './step-serializers.js';
+export { isCompleteStepNumericLiteral } from './step-numeric-literal.js';
 export type {
   StepValue,
   EntityRef,

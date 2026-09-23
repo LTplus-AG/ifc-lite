@@ -7,6 +7,7 @@
  * Used across material, georef, and classification extractors.
  */
 
+import { isCompleteStepNumericLiteral } from '@ifc-lite/data';
 import { isIndexableExpressId } from './express-id.js';
 
 export function getString(value: unknown): string | undefined {
@@ -25,17 +26,49 @@ export function getNumber(value: unknown): number | undefined {
   // which is not a contract.
   if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
   if (typeof value === 'string') {
-    const num = parseFloat(value);
-    // Number.isFinite, not !isNaN: `parseFloat('1.0E400')` is `Infinity` and
-    // `isNaN(Infinity)` is `false`. This helper's callers (georeferencing
-    // eastings/northings/scale, material layer thickness, classification
-    // numerics) all feed exported geometry and property values, where an
-    // infinity becomes `null` on the way out of `JSON.stringify`. The
-    // signature is `number | undefined`, so the only honest answer for a
-    // value that is not a finite number is "absent".
+    const trimmed = value.trim();
+    // `isCompleteStepNumericLiteral` first: `parseFloat` accepts any leading
+    // numeric prefix and silently discards the rest, so `parseFloat('1.52.3')`
+    // (a dropped comma between two reals) is `1.52` with no error, and
+    // `parseFloat('1.5abc')` is `1.5`. Requiring the grammar match cover the
+    // whole token before trusting `parseFloat`'s result closes that hole; the
+    // `Number.isFinite` check below still catches the separate overflow
+    // hazard (`parseFloat('1.0E400')` is `Infinity`, and `isNaN(Infinity)` is
+    // `false`). This helper's callers (georeferencing eastings/northings/
+    // scale, material layer thickness, classification numerics) all feed
+    // exported geometry and property values, where an infinity becomes `null`
+    // on the way out of `JSON.stringify`. The signature is `number |
+    // undefined`, so the only honest answer for a value that is not a
+    // complete, finite numeric literal is "absent".
+    if (!isCompleteStepNumericLiteral(trimmed)) return undefined;
+    const num = parseFloat(trimmed);
     return Number.isFinite(num) ? num : undefined;
   }
   return undefined;
+}
+
+/**
+ * True when `token` starts like an attempted STEP numeric literal — a digit,
+ * or `.` immediately followed by a digit, after an optional leading sign —
+ * whether or not it turns out to be a complete one.
+ *
+ * This is the line between "corrupted number" and "ordinary non-numeric
+ * token": an enumeration or identifier such as `.T.`, `.UNSPECIFIED.`, or `*`
+ * does not start this way, so {@link isMalformedNumericLiteral} never flags
+ * it, even though it also fails {@link isCompleteStepNumericLiteral}.
+ */
+function looksLikeNumericAttempt(token: string): boolean {
+  const n = token.length;
+  let i = 0;
+  if (i < n && (token[i] === '+' || token[i] === '-')) i++;
+  if (i >= n) return false;
+  const c = token[i];
+  if (c >= '0' && c <= '9') return true;
+  if (c === '.' && i + 1 < n) {
+    const d = token[i + 1];
+    return d >= '0' && d <= '9';
+  }
+  return false;
 }
 
 /**
@@ -49,7 +82,8 @@ export function getNumber(value: unknown): number | undefined {
  * this predicate's business. Callers whose value type is `number` refuse
  * rather than substitute a plausible-looking `0`; they go through
  * {@link isUnrepresentableNumericValue}, which adds the non-finite `number`
- * case this one cannot see.
+ * case this one cannot see, and the malformed-literal case
+ * {@link isMalformedNumericLiteral} covers.
  *
  * `parseFloat`, matching `parseAttributeValue`: it is what decided the token
  * was non-finite in the first place, and `Number('1.0E400abc')` disagrees with
@@ -64,17 +98,39 @@ export function isOverflowingNumericLiteral(raw: unknown): boolean {
 }
 
 /**
- * True when `raw` states a number that cannot be represented — either the
- * overflowing token above, or an actual non-finite `number`.
+ * True when `raw` is a string that looks like an attempted STEP numeric
+ * literal but whose `parseFloat`-consumed prefix does not cover the whole
+ * token — `1.52.3` (a dropped comma fuses two reals into one token) or
+ * `1.5abc` (trailing garbage `parseFloat` silently discards). Distinct from
+ * {@link isOverflowingNumericLiteral}: an overflowing literal like `1.0E400`
+ * IS a complete, grammatically valid token, just one the double range cannot
+ * hold, so it fails this predicate and is handled by that one instead.
  *
- * The second half is not hypothetical. `getNumber` now answers `undefined` for
+ * A non-numeric enumeration or identifier (`.T.`, `.UNSPECIFIED.`, `*`) never
+ * matches: {@link looksLikeNumericAttempt} restricts this to tokens that
+ * start like a number was intended.
+ */
+export function isMalformedNumericLiteral(raw: unknown): boolean {
+  if (typeof raw !== 'string') return false;
+  const trimmed = raw.trim();
+  return looksLikeNumericAttempt(trimmed) && !isCompleteStepNumericLiteral(trimmed);
+}
+
+/**
+ * True when `raw` states a number that cannot be represented — an
+ * overflowing token, a malformed one, or an actual non-finite `number`.
+ *
+ * The last case is not hypothetical. `getNumber` now answers `undefined` for
  * `Infinity`, so every caller that ends in `?? 0` turns a non-finite number
  * into a plausible zero, and {@link isOverflowingNumericLiteral} alone cannot
  * stop it: that predicate only sees strings. The STEP extractor no longer
  * produces non-finite numbers itself, but this helper's callers are also fed
  * by hand-built entity maps, by `IfcPropertySingleValue` nominal values, and
  * by other packages' fixtures — so "the parser cannot make one" is not the
- * same as "one cannot arrive".
+ * same as "one cannot arrive". The malformed case is not hypothetical either:
+ * `parseAttributeValue` now preserves `1.52.3` as that raw string rather than
+ * truncating it, and this is the check that stops a caller's `getNumber(raw)
+ * || 0` from quietly turning it into a zero.
  *
  * Refusal is reserved for a value that is PRESENT and unrepresentable. `null`
  * / `undefined` — a `$` attribute — is ordinary absence, keeps its meaning,
@@ -82,6 +138,7 @@ export function isOverflowingNumericLiteral(raw: unknown): boolean {
  */
 export function isUnrepresentableNumericValue(raw: unknown): boolean {
   if (typeof raw === 'number') return !Number.isFinite(raw);
+  if (isMalformedNumericLiteral(raw)) return true;
   return isOverflowingNumericLiteral(raw);
 }
 

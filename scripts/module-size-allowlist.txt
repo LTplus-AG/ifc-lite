@@ -218,7 +218,7 @@
    819 packages/create/src/types.ts
   1106 packages/data/scripts/generate-ifc-schema.ts
    432 packages/data/src/property-table.ts
-   459 packages/data/src/step-serializers.ts
+   457 packages/data/src/step-serializers.ts
    508 packages/data/src/types.ts
    439 packages/diff/src/fingerprint.ts
    550 packages/drawing-2d/src/drawing-generator.ts

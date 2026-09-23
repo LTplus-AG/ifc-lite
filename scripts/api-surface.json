@@ -8286,6 +8286,7 @@
     "TextRequirement: type",
     "TypeNameRule: interface",
     "UniqueRequirement: interface",
+    "UnitRequirement: interface",
     "ValueOp: type",
     "__internal: const",
     "activeGroupRules: function",

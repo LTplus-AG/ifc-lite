@@ -7,7 +7,7 @@
  * out of `rule-set-io.ts` to stay under the module-size cap.
  */
 
-import type { RuleBlock, Requirement, Subject, UniqueRequirement, AggregateRequirement, CompareRequirement } from './rule-set.js';
+import type { RuleBlock, Requirement, Subject, UniqueRequirement, AggregateRequirement, CompareRequirement, UnitRequirement } from './rule-set.js';
 import { parseFilterGroups, type FilterGroup } from '../filter/filter-groups.js';
 import type { FilterRule, NumericOp } from '../filter/filter-rules.js';
 import { fail, isPlainObject, unknownKeysOf, warnUnknownFields } from './rule-set-io-shared.js';
@@ -73,6 +73,7 @@ export function parseRequirement(raw: unknown, where: string): Requirement {
   if (kind === 'unique') return parseUniqueRequirement(r, where);
   if (kind === 'aggregate') return parseAggregateRequirement(r, where);
   if (kind === 'compare') return parseCompareRequirement(r, where);
+  if (kind === 'unit') return parseUnitRequirement(r, where);
   fail(`${where}: unrecognised requirement kind ${JSON.stringify(kind)}`);
 }
 
@@ -130,4 +131,13 @@ function parseCompareRequirement(r: Record<string, unknown>, where: string): Com
     kind: 'compare', left, right, op: r.op as NumericOp,
     ...(r.valueType !== undefined ? { valueType: r.valueType as CompareRequirement['valueType'] } : {}),
   };
+}
+
+function parseUnitRequirement(r: Record<string, unknown>, where: string): UnitRequirement {
+  const subject = parseSubject(r.subject, `${where}.subject`);
+  if (subject.kind !== 'property' && subject.kind !== 'quantity') {
+    fail(`${where}.subject: "unit" needs a property or quantity subject, not "${subject.kind}"`);
+  }
+  if (typeof r.unit !== 'string' || r.unit.trim().length === 0) fail(`${where}: "unit" must be a non-empty string`);
+  return { kind: 'unit', subject, unit: r.unit.trim() };
 }

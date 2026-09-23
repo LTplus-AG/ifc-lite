@@ -11,19 +11,20 @@ fn bspline_basis_out_of_range_returns_zero_not_panic() {
 }
 
 #[test]
-fn bspline_basis_matches_table_for_small_degree() {
-    // The memoized table (evaluate_bspline_surface/curve's production
-    // path) must agree with the single-index accessor for every i in a
-    // realistic (low-degree, few-knot) case — regression for #4901.
+fn bspline_basis_matches_known_quadratic_partition() {
+    // #4901 / #5321: use the known quadratic partition, not one call into
+    // bspline_basis_table as the oracle for another call into the same helper.
     let knots = [0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 3.0, 3.0];
-    for i in 0..5 {
-        let direct = bspline_basis(i, 2, 1.5, &knots);
-        let table = bspline_basis_table(2, 1.5, &knots, 5);
-        assert!(
-            (direct - table[i]).abs() < 1e-12,
-            "i={i}: direct={direct} table={}",
-            table[i]
-        );
+    for (u, expected) in [
+        (0.0, [1.0, 0.0, 0.0, 0.0, 0.0]),
+        (0.5, [0.25, 0.625, 0.125, 0.0, 0.0]),
+        (1.5, [0.0, 0.125, 0.75, 0.125, 0.0]),
+        (2.5, [0.0, 0.0, 0.125, 0.625, 0.25]),
+    ] {
+        assert_eq!(bspline_basis_table(2, u, &knots, 5), expected);
+        for (i, value) in expected.into_iter().enumerate() {
+            assert_eq!(bspline_basis(i, 2, u, &knots), value, "u={u}, i={i}");
+        }
     }
 }
 /// Evaluate a B-spline surface at parameter (u, v).

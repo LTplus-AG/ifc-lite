@@ -36,7 +36,7 @@ if (parsed.ok) {
 - `evaluateFilterRules` / `evaluateFilterRulesFederated` (sync + async chunked, cancellable, multi-model) — the same Path-B evaluator the viewer's Advanced Filter and Data Validation panel use, with index prefiltering and cheap-first rule ordering for large models.
 - `parseRuleSetFile` / `serializeRuleSet` — validate and round-trip a `<name>.rules.json` file (never throws; failures come back as `{ ok: false, error }`).
 - `ruleSetToIds` — export the IDS-expressible rules of a rule set as IDS 1.0 XML. Each rule that has no exact IDS equivalent is refused with its reasons (see the [IDS guide](https://ifclite.dev/docs/guide/ids/#exporting-a-rule-set-as-ids)).
-- `runRuleSet` / `resolveTargetModels` — the information-validation engine: resolve applicability, check cardinality, dispatch `element` / `unique` / `aggregate` / `compare` requirements, and fold the result into a `@ifc-lite/ids`-shaped `ValidationReport`.
+- `runRuleSet` / `resolveTargetModels` — the information-validation engine: resolve applicability, check cardinality, dispatch `element` / `unique` / `aggregate` / `compare` / `unit` requirements, and fold the result into a `@ifc-lite/ids`-shaped `ValidationReport`.
 
 No React, no store, no DOM — every export takes plain data (`IfcDataStore`, `EvaluatorModel[]`) in and returns plain data out, so it runs the same in a browser tab and a Node CLI process.
 

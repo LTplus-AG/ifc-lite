@@ -14,7 +14,7 @@ import { EntityExtractor } from './entity-extractor.js';
 import { RelationshipType, resolvedTypeName } from '@ifc-lite/data';
 import type { PropertyValue } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
-import { readQuantitySet } from './quantity-collect.js';
+import { readQuantitySet, type CollectedQuantity } from './quantity-collect.js';
 import { appendSetsFromSecondSource, setIdentityKey } from './property-set-merge.js';
 import type { GeoreferenceInfo } from './georef-extractor.js';
 import { extractExactRelationshipEdges, type EntityRelationships } from './exact-relationship-edges.js';
@@ -64,7 +64,7 @@ export interface TypePropertyInfo {
 export interface TypeQuantityInfo {
     typeName: string;
     typeId: number;
-    quantities: Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }>;
+    quantities: Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }>;
 }
 
 /**
@@ -304,8 +304,8 @@ export function extractQsetsFromIds(
     store: IfcDataStore,
     extractor: EntityExtractor,
     qsetIds: number[]
-): Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> {
-    const result: Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];
+): Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }> {
+    const result: Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }> = [];
 
     for (const qsetId of qsetIds) {
         const qsetRef = store.entityIndex.byId.get(qsetId);
@@ -359,7 +359,7 @@ export function extractTypeQuantitiesOnDemand(
         ? typeEntity.attributes[2]
         : typeRef.type;
 
-    const allQsets: Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];
+    const allQsets: Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }> = [];
     const seenQsetKeys = new Set<string>();
     const ownSetIds = new Set<number>();
 

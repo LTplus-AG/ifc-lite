@@ -64,12 +64,16 @@ export interface SubjectPickerProps {
    *  numeric meaning). Omitted for `unique`/`count`/`groupBy`, which allow
    *  every kind. */
   singleValuedOnly?: boolean;
+  /** Only these subject kinds are offered — the `unit` requirement (#5300)
+   *  takes a property or quantity, the only subjects that carry a unit. */
+  onlyKinds?: ReadonlyArray<(typeof SUBJECT_KINDS)[number]>;
   'aria-label'?: string;
 }
 
-export function SubjectPicker({ subject, onChange, singleValuedOnly, 'aria-label': ariaLabel }: SubjectPickerProps) {
+export function SubjectPicker({ subject, onChange, singleValuedOnly, onlyKinds, 'aria-label': ariaLabel }: SubjectPickerProps) {
   const { t } = useTranslation();
-  const kinds = singleValuedOnly ? SUBJECT_KINDS.filter((k) => !MULTI_VALUED.has(k)) : SUBJECT_KINDS;
+  const kinds = SUBJECT_KINDS.filter((k) =>
+    (!singleValuedOnly || !MULTI_VALUED.has(k)) && (!onlyKinds || onlyKinds.includes(k)));
 
   // Drives the SAME lazy pset/qto/value discovery a `RuleRow` triggers —
   // pass a synthetic rule so `useFilterRuleOptions` fires its property/

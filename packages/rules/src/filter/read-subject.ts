@@ -49,7 +49,7 @@ import {
 } from '@ifc-lite/parser';
 import { RelationshipType, QuantityType, collectSpatialAncestors } from '@ifc-lite/data';
 import type { Subject } from '../rule-set/rule-set.js';
-import { nameMatches, flattenPsets, stringifyValue, defaultStoreyName, materialNamesOf } from './filter-match.js';
+import { nameMatches, stringifyValue, defaultStoreyName, materialNamesOf } from './filter-match.js';
 import { resolveEntityPredefinedType } from './entity-predefined-type.js';
 import { assignedGroupNames } from './filter-group-rule.js';
 
@@ -68,6 +68,14 @@ export interface SubjectValue {
   values: ReadonlyArray<string | number>;
   /** Quantity subjects only — the stored unit label, when known. */
   unit?: string;
+  /**
+   * Property and quantity subjects only: the unit each entry of `values` is
+   * recorded in, index for index (#5300). The value's own explicit `Unit`
+   * when the file declares one, otherwise the project unit for its measure
+   * type; `undefined` for a value that has no unit (a label, a count, an
+   * untyped property).
+   */
+  valueUnits?: ReadonlyArray<string | undefined>;
 }
 
 function fromStrings(values: ReadonlyArray<string | undefined>): SubjectValue {
@@ -97,8 +105,8 @@ const QUANTITY_MEASURE_TYPE: Partial<Record<QuantityType, string>> = {
   [QuantityType.Time]: 'IfcTimeMeasure',
 };
 
-function quantityUnitSymbol(store: IfcDataStore, quantityType: number): string | undefined {
-  const measureType = QUANTITY_MEASURE_TYPE[quantityType as QuantityType];
+/** The project's display unit for IFC measure type `measureType`, if any. */
+function projectUnitSymbol(store: IfcDataStore, measureType: string | undefined): string | undefined {
   if (!measureType || !store.source?.length || !store.entityIndex) return undefined;
   let units = projectUnitsCache.get(store);
   if (!units) {
@@ -106,6 +114,10 @@ function quantityUnitSymbol(store: IfcDataStore, quantityType: number): string |
     projectUnitsCache.set(store, units);
   }
   return units.unitForMeasure(measureType)?.symbol;
+}
+
+function quantityUnitSymbol(store: IfcDataStore, quantityType: number): string | undefined {
+  return projectUnitSymbol(store, QUANTITY_MEASURE_TYPE[quantityType as QuantityType]);
 }
 
 /** `expressId`'s type-level property sets via `IfcRelDefinesByType`, the
@@ -148,24 +160,34 @@ export function readSubject(subject: Subject, ctx: ReadSubjectContext): SubjectV
     case 'property': {
       const own = extractPropertiesOnDemand(store, expressId);
       const merged = mergeInheritedPropertySets(own, inheritedTypePsets(store, expressId));
-      const rows = flattenPsets(merged).filter(
-        (r) => nameMatches(subject.setName, r.setName, subject.setNameKind) &&
-          nameMatches(subject.propertyName, r.propertyName, subject.propertyNameKind),
-      );
-      return fromStrings(rows.map((r) => r.value));
+      const values: string[] = [];
+      const valueUnits: Array<string | undefined> = [];
+      for (const set of merged) {
+        if (!nameMatches(subject.setName, set.name, subject.setNameKind)) continue;
+        for (const p of set.properties) {
+          if (!nameMatches(subject.propertyName, p.name, subject.propertyNameKind)) continue;
+          values.push(stringifyValue(p.value));
+          // Type-inherited rows are typed without `unit`; own rows carry it.
+          const explicit = 'unit' in p && typeof p.unit === 'string' ? p.unit : undefined;
+          valueUnits.push(explicit ?? projectUnitSymbol(store, p.dataType));
+        }
+      }
+      return { ...fromStrings(values), valueUnits };
     }
     case 'quantity': {
       const values: number[] = [];
-      let unit: string | undefined;
+      const valueUnits: Array<string | undefined> = [];
       for (const qset of extractQuantitiesOnDemand(store, expressId)) {
         if (!nameMatches(subject.setName, qset.name, subject.setNameKind)) continue;
         for (const q of qset.quantities) {
           if (!nameMatches(subject.quantityName, q.name, subject.quantityNameKind)) continue;
           values.push(q.value);
-          if (unit === undefined) unit = quantityUnitSymbol(store, q.type);
+          // An explicit `IfcPhysicalSimpleQuantity.Unit` overrides the
+          // project assignment, for display as much as for the check.
+          valueUnits.push(q.explicitUnit ?? quantityUnitSymbol(store, q.type));
         }
       }
-      return { present: values.length > 0, values, unit };
+      return { present: values.length > 0, values, unit: valueUnits.find((u) => u !== undefined), valueUnits };
     }
     case 'classification': {
       const sys = subject.system?.trim().toLowerCase();

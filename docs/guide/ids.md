@@ -138,7 +138,7 @@ out of scope, and is called out as such:
 | Pumps/AHUs must carry specific properties | Covered via `element` requirements (same as IDS) |
 | System/group membership (`IfcRelAssignsToGroup`) | Covered: `group` rule kind (applicability and `element` requirements), optionally scoped to a group class such as `IfcSystem` (subclasses included) |
 | Schedules, load time, CDE revision, as-built status | Out of scope — not model data |
-| Units per property | Deferred |
+| Units per property ("Width recorded in mm") | Covered: `unit` requirement kind — a property/quantity value's explicit unit, else the project unit for its measure type (#5300) |
 | Georeferencing (`IfcMapConversion`, CRS) | Deferred — model-level, not element-level |
 | Complex properties, `IfcPropertyReferenceValue` | Deferred — reads as `present:false` (absent) |
 | Negation / exceptions in applicability | Covered: `ne`/`notIn`/`notContains`/`notMatches`/`isNotSet`, OR-ed groups |

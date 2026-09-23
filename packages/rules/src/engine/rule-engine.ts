@@ -35,6 +35,7 @@ import type { InformationRule, RuleBlock, RuleSetFile, RuleSetTargets } from '..
 import { checkElementForEntity, type ValidationOpts } from './rule-engine-requirements.js';
 import { checkAggregate, checkUnique, type SetCheckOutcome } from './rule-engine-sets.js';
 import { checkCompare } from './rule-engine-compare.js';
+import { checkUnit } from './rule-engine-unit.js';
 import { maybeYieldChunk, finalProgress, type RuleEngineProgress } from './rule-engine-chunk.js';
 
 export type { RuleEngineProgress };
@@ -184,7 +185,7 @@ function finalizeSpecification(
   const passedEntities = outcome.entityResults.filter((e) => e.passed).length;
   const setsFail = (outcome.setResults ?? []).some((s) => !s.passed);
 
-  // `element`/`compare` report every applicable entity (pass and fail), so
+  // `element`/`compare`/`unit` report every applicable entity (pass and fail), so
   // their counts read straight off `entityResults`. `unique`/`aggregate`
   // only ever construct FAILING rows (plan §4.5/§4.6 — a whole federation's
   // worth of passing rows would dwarf the report for no reporting value),
@@ -195,7 +196,8 @@ function finalizeSpecification(
   // (none at all for `fn: 'count'`), so it reports the distinct failing
   // element count alongside (#5177). Reading `failedEntities` there left a
   // failing aggregate rule at `failedCount: 0` / `passRate: 100`.
-  const isPerElementKind = rule.requirement.kind === 'element' || rule.requirement.kind === 'compare';
+  const isPerElementKind = rule.requirement.kind === 'element' || rule.requirement.kind === 'compare'
+    || rule.requirement.kind === 'unit';
   const failedCount = outcome.failedElementCount ?? failedEntities;
   const passedCount = isPerElementKind ? passedEntities : Math.max(0, applicableCount - failedCount);
 
@@ -292,6 +294,9 @@ export async function runRuleSet(options: RunRuleSetOptions): Promise<Validation
           break;
         case 'compare':
           outcome = await checkCompare(rule.id, rule.requirement, applicable, storesById, opts, ruleIndex, signal, onProgress);
+          break;
+        case 'unit':
+          outcome = await checkUnit(rule.id, rule.requirement, applicable, storesById, ruleIndex, signal, onProgress);
           break;
       }
 

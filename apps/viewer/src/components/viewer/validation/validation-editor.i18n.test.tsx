@@ -143,6 +143,15 @@ function fixtureFile(): RuleSetFile {
         applicability: anyBlock,
         requirement: { kind: 'unique', subject: { kind: 'group' } },
       },
+      {
+        id: 'r5', name: 'Widths in millimetres',
+        applicability: anyBlock,
+        requirement: {
+          kind: 'unit',
+          subject: { kind: 'quantity', setName: 'Qto_WallBaseQuantities', quantityName: 'Width' },
+          unit: '',
+        },
+      },
     ],
   };
 }
@@ -188,7 +197,7 @@ afterEach(() => {
 });
 
 describe('validation rule editor localization (#5138)', () => {
-  it('translates every static key rendered across the four requirement kinds', () => {
+  it('translates every static key rendered across the five requirement kinds', () => {
     mount();
     mountEmpty();
     // Scanning `document.body` (not just each mounted container) so a

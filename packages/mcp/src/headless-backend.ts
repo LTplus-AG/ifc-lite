@@ -92,7 +92,7 @@ export class HeadlessLikeBackend implements BimBackend {
     // overlay is passed as a getter because it is built lazily on the first
     // mutation, so a session that is only ever read stays on the store-only
     // path and pays nothing.
-    this.query = createQueryAdapter(store, modelId, () => this.pendingOverlay());
+    this.query = createQueryAdapter(store, modelId, () => this.pendingOverlay(), () => this.getMutationView());
     this.selection = this.createSelectionAdapter();
     this.visibility = { hide() {}, show() {}, isolate() {}, reset() {} };
     this.viewer = {

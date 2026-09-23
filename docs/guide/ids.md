@@ -162,23 +162,31 @@ and `ne` on an absent property FAILS rather than vacuously passing — a rule
 requiring `FireRating ne '2HR'` does not pass just because `FireRating` was
 never set.
 
-## Exporting a rule set as IDS
+## Converting between rule sets and IDS
 
-`@ifc-lite/rules` exports the rules of a `.rules.json` set that IDS 1.0 can
-express. Nothing is approximated, and nothing is dropped without being reported.
+`@ifc-lite/rules` converts both ways. Nothing is approximated, and nothing is
+dropped without being reported.
 
 ```typescript
-import { ruleSetToIds, type RuleSetFile } from '@ifc-lite/rules';
+import { parseIDS } from '@ifc-lite/ids';
+import { idsToRuleSet, ruleSetToIds, type RuleSetFile } from '@ifc-lite/rules';
 
 declare const ruleSet: RuleSetFile;
+declare const idsXml: string;
 
+// Rule set -> IDS 1.0: rules IDS can express become specifications.
 const exported = ruleSetToIds(ruleSet, { ifcVersions: ['IFC4'] });
 exported.xml;      // IDS XML, or null when no rule could be exported
 exported.refused;  // [{ ruleId, ruleName, reasons: string[] }]
 exported.notes;    // caveats for the exported set as a whole
+
+// IDS -> rule set: simple specifications become rules you can extend.
+const imported = idsToRuleSet(parseIDS(idsXml));
+imported.file;     // a RuleSetFile, or null when nothing imported
+imported.refused;  // [{ specificationName, reasons: string[] }]
 ```
 
-Export covers `element` requirements and applicability built from `eq`,
+**Export** covers `element` requirements and applicability built from `eq`,
 `contains`, `startsWith`, `matches` (regex), `isSet`, `in`, and numeric bounds
 (a `between` pair becomes one restriction). The conditions can be on the IFC
 class, `PredefinedType`, attributes, properties, quantities (IDS checks those
@@ -200,6 +208,20 @@ Two caveats are reported as notes. IDS compares measure values in SI units,
 while the rule engine compares the stored value. IDS matches property-set and
 property names case-sensitively, while the engine matches literal names
 case-insensitively.
+
+**Import** covers specifications whose facets are all entity, attribute,
+property, material or classification-presence facets, with simple values,
+patterns, enumerations or numeric bounds. A property set named `Qto_…` imports
+as a `quantity` rule. These block a specification, with the reason:
+
+- `partOf` facets
+- `optional` and `prohibited` facets
+- a property `dataType`
+- a pattern on an entity or attribute name
+- length or digit restrictions
+- classification codes
+- an entity facet in the requirements
+- a specification with no requirements
 
 ## Viewer Integration
 

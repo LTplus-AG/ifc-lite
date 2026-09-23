@@ -100,14 +100,10 @@ export type ClashFederationIdentity = ReadonlyMap<string, unknown>;
  *
  * `store.entities` — the columnar entity table (`IfcDataStore.entities`) — and
  * NOT the `ifcDataStore` wrapper around it. The wrapper is the wrong grain: it
- * is replaced by writes that move no express id at all, and the background
- * spatial-index build does exactly that on every load
- * (`utils/loadingUtils.ts` `buildSpatialIndexGuarded` publishes
- * `setIfcDataStore({ ...capturedStore })`, a shallow clone that shares this
- * very table). Keyed on the wrapper, a run that lands during that window — a
- * window every loader opens AFTER the model reports `loadState: 'complete'`,
- * so the user can and does hit Run inside it — is thrown away though every one
- * of its rows still resolves.
+ * is replaced by writes that move no express id at all: callers can publish
+ * a shallow clone through `setIfcDataStore`, preserving this very table.
+ * Keyed on the wrapper, an in-flight run would be discarded though every
+ * one of its rows still resolves.
  *
  * The table is the right grain in both directions:
  *

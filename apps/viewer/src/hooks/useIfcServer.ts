@@ -31,14 +31,12 @@ import {
   updateBoundsFromPositions,
   calculateMeshBounds,
   MAX_VALID_COORD,
-  createCoordinateInfo,
   getServerStreamIntervalMs,
 } from '../utils/localParsingUtils.js';
 
 // Server data model conversion
 import { convertServerDataModel, type ServerParseResult } from '../utils/serverDataModel.js';
 import { convertServerMesh } from '../utils/serverMesh.js';
-import { buildSpatialIndexGuarded } from '../utils/loadingUtils.js';
 
 /** Server parse result type - union of streaming and non-streaming responses */
 type ServerParseResultType = ParquetParseResponse | ParquetStreamResult | ParseResponse;
@@ -413,7 +411,6 @@ export function useIfcServer() {
           if (isStale?.()) return;
           setIfcDataStore(dataStore);
 
-          buildSpatialIndexGuarded(allMeshes, dataStore, setIfcDataStore);
         } catch (err) {
           if (!isStale?.()) {
             console.warn('[useIfc] Server data model fetch/decode failed; geometry shown without properties:', err);

@@ -369,28 +369,17 @@ describe('a normal clash run still publishes its result', () => {
   });
 
   /**
-   * The background spatial-index build (`utils/loadingUtils.ts`
-   * `buildSpatialIndexGuarded`) republishes the ACTIVE model's store as a
-   * shallow clone once the index is ready. Every loader starts it AFTER
-   * `finalizeModel(... loadState: 'complete')` — `useIfcLoader.ts:1899`,
-   * `useIfcCache.ts:450`, `useIfcServer.ts:384` — so the UI is interactive and
-   * Run is clickable while it runs, for seconds on a large model.
-   *
-   * That publish changes the store REFERENCE while leaving every express id
-   * untouched: the clone shares the entity table, so every ref the run
-   * computed still resolves and still focuses. A guard keyed on the store
-   * wrapper throws the run away here — a correct result, silently discarded,
-   * with no `clashError` to distinguish it from "no clashes found".
+   * A shallow `setIfcDataStore` publish can change the store REFERENCE
+   * without changing any express id. The clone shares the entity table, so
+   * every ref the run computed still resolves. A guard keyed on the wrapper
+   * would silently discard a valid result.
    */
   it('the background spatial-index publish mid-run must not discard the result', async () => {
     await seed(['A']);
     const store = useViewerStore.getState().models.get('A')!.ifcDataStore!;
-    // `buildSpatialIndexGuarded` guards on the ACTIVE store and writes through
-    // `setIfcDataStore`, so mirror its precondition.
+    // Mirror an active-store shallow publish during a clash run.
     useViewerStore.setState({ ifcDataStore: store });
     const unsub = tearDownMidRun(() => {
-      // Verbatim the publish at loadingUtils.ts:41-42: the index is attached to
-      // the captured store, which is then re-published as a shallow clone.
       const capturedStore = useViewerStore.getState().ifcDataStore!;
       useViewerStore.getState().setIfcDataStore({ ...capturedStore });
     });

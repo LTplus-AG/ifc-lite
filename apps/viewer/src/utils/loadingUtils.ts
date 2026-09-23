@@ -5,9 +5,7 @@
 /**
  * Shared loading utilities used across all IFC loading hooks.
  *
- * Consolidates the guarded spatial-index build pattern that was
- * duplicated across useIfcLoader, useIfcCache, useIfcServer, and
- * useIfcFederation.
+ * Builds each model's placed spatial index with stale-load guards.
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
@@ -16,50 +14,13 @@ import { buildSpatialIndexAsync } from '@ifc-lite/spatial';
 import { placedMesh } from '@/lib/model-placement/placed-geometry';
 import { displayedTranslation } from '@/lib/model-placement/state';
 import { placementSnapshot, placementSnapshotIsCurrent } from '@/lib/model-placement/placement-snapshot';
-import { useViewerStore, resolveEntityRef } from '../store/index.js';
-
-/**
- * Build a spatial index in the background (time-sliced, non-blocking)
- * with a guard against stale loads.
- *
- * The guard captures the dataStore reference and compares it to the
- * current store when the async build completes. If the store has been
- * replaced (e.g. user loaded a new file), the result is discarded.
- *
- * @param meshes - Final mesh array with correct IDs and world-space positions
- * @param dataStore - The IfcDataStore to attach the spatial index to
- * @param setIfcDataStore - Store setter to trigger re-render
- */
-export function buildSpatialIndexGuarded(
-  meshes: MeshData[],
-  dataStore: IfcDataStore,
-  setIfcDataStore: (store: IfcDataStore) => void,
-): void {
-  if (meshes.length === 0) return;
-
-  const capturedStore = dataStore, state = useViewerStore.getState();
-  const owner = [...state.models].find(([, model]) => model.ifcDataStore === capturedStore)?.[0];
-  const snapshot = placementSnapshot(state, owner ? [owner] : [], false);
-  const generation = nextSpatialIndexGeneration(dataStore);
-  const placed = meshes.map((mesh) => placedMesh(mesh, displayedTranslation(state.modelPlacement, resolveEntityRef(mesh.expressId).modelId)));
-  buildSpatialIndexAsync(placed).then(spatialIndex => {
-    const { ifcDataStore: currentStore } = useViewerStore.getState();
-    if (currentStore !== capturedStore || generations.get(dataStore) !== generation || !placementSnapshotIsCurrent(snapshot, useViewerStore.getState())) return;
-    capturedStore.spatialIndex = spatialIndex;
-    setIfcDataStore({ ...capturedStore });
-  }).catch(err => {
-    console.warn('[loadingUtils] Failed to build spatial index:', err);
-  });
-}
+import { useViewerStore } from '../store/index.js';
 
 /**
  * Build a spatial index for a specific (e.g. federated) model.
  *
- * Unlike {@link buildSpatialIndexGuarded}, this never touches the active-model
- * slot: a federated model is usually not the active one, so guarding on / writing
- * through `ifcDataStore` (`setIfcDataStore`) would either discard the index or
- * mutate the wrong model. Instead it guards on the target model still holding the
- * same store and publishes through `updateModel(modelId, ...)`.
+ * This guards on the target model still holding the same store and publishes
+ * through `updateModel(modelId, ...)`, without touching the active-model slot.
  *
  * @param meshes - Final mesh array with correct IDs and world-space positions
  * @param modelId - The federated model to attach the spatial index to
@@ -70,21 +31,23 @@ export function buildSpatialIndexForModel(
   modelId: string,
   dataStore: IfcDataStore,
   coordinates: 'source' | 'placed' = 'source',
-): void {
-  if (meshes.length === 0) return;
+): Promise<boolean> {
+  if (meshes.length === 0) return Promise.resolve(true);
 
   const initial = useViewerStore.getState(), snapshot = placementSnapshot(initial, [modelId], false);
   const generation = nextSpatialIndexGeneration(dataStore);
   const placed = coordinates === 'placed' ? meshes : meshes.map((mesh) => placedMesh(mesh, displayedTranslation(initial.modelPlacement, modelId)));
-  buildSpatialIndexAsync(placed).then(spatialIndex => {
+  return buildSpatialIndexAsync(placed).then(spatialIndex => {
     const state = useViewerStore.getState();
     const model = state.models.get(modelId);
     // Model removed, or its store was replaced since this build started.
-    if (!model || model.ifcDataStore !== dataStore || generations.get(dataStore) !== generation || !placementSnapshotIsCurrent(snapshot, state)) return;
+    if (!model || model.ifcDataStore !== dataStore || generations.get(dataStore) !== generation || !placementSnapshotIsCurrent(snapshot, state)) return false;
     dataStore.spatialIndex = spatialIndex;
     state.updateModel(modelId, { ifcDataStore: dataStore });
+    return true;
   }).catch(err => {
     console.warn('[loadingUtils] Failed to build spatial index for model:', err);
+    return false;
   });
 }
 

@@ -29,7 +29,7 @@ import type { Vec3 } from '@ifc-lite/geometry';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore, type FederatedModel } from '../../store/index.js';
 import type { PreAlignmentSnapshot } from '../../store/index.js';
-import { buildSpatialIndexForModel, invalidateSpatialIndex } from '../../utils/loadingUtils.js';
+import { invalidateSpatialIndex } from '../../utils/loadingUtils.js';
 import { hasInstancedShards } from '../../store/instancedShardModels.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import { isLandXmlSchema } from './landXmlSemantics.js';
@@ -178,8 +178,5 @@ export function convergeFederationRtcFrame(): void {
     if (!moved.includes(model.geometryResult!) && !adoptedIds.includes(modelId)) continue;
     // Re-wrap the entry so subscribers keyed on `models` see the change.
     useViewerStore.getState().updateModel(modelId, {});
-    if (model.ifcDataStore) {
-      buildSpatialIndexForModel(model.geometryResult!.meshes, modelId, model.ifcDataStore);
-    }
   }
 }

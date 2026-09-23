@@ -41,6 +41,8 @@ export function useModelPlacementSync(
   indices: ReadonlyMap<string, number> | undefined, geometry: unknown,
 ): void {
   const previewAnalysis = useRef(createPreviewAnalysis());
+  const placementIndex = useRef<ReturnType<typeof createPlacementIndexSync> | null>(null);
+  placementIndex.current ??= createPlacementIndexSync();
   useEffect(() => {
     if (!initialized || !rendererRef.current) return;
     const sync = (state: ViewerState, previous?: ViewerState) => {
@@ -48,14 +50,14 @@ export function useModelPlacementSync(
       if (renderer) syncModelPlacements(renderer, state, indices, previous);
     };
     sync(useViewerStore.getState());
-    const index = createPlacementIndexSync();
+    const index = placementIndex.current!;
     index.refreshMissing(useViewerStore.getState());
     const unsubscribe = useViewerStore.subscribe((state, previous) => {
+      index.update(state, previous);
       if (state.modelPlacement === previous.modelPlacement) return;
       sync(state, previous);
       const restored = previewAnalysis.current(state, previous, rendererRef.current!);
       if (!placementMoved(state, previous)) return;
-      index.update(state, previous);
       if (restored) { useViewerStore.setState(restored); state.resetMeasureGesture(); return; }
       useViewerStore.setState({ placementStaleMeasurements: staleMeasurementIds(state) });
       state.resetMeasureGesture();

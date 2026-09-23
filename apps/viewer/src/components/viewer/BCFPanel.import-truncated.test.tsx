@@ -90,6 +90,13 @@ async function makeCleanBcfFile(): Promise<File> {
   return new File([blob], 'clean.bcfzip', { type: 'application/octet-stream' });
 }
 
+async function makeUnsupportedVersionBcfFile(): Promise<File> {
+  const zip = new JSZip();
+  zip.file('bcf.version', '<Version VersionId="4.0"/>');
+  const buf = await zip.generateAsync({ type: 'arraybuffer' });
+  return new File([buf], 'future.bcfzip', { type: 'application/octet-stream' });
+}
+
 describe('BCFPanel import — truncation guidance (#5213)', () => {
   beforeEach(() => {
     for (const { root, container } of mounted.splice(0)) {
@@ -146,6 +153,23 @@ describe('BCFPanel import — truncation guidance (#5213)', () => {
       assert.equal(useViewerStore.getState().bcfProject?.topics.size, 1);
       assert.equal(errorMock.mock.callCount(), 0, 'no truncation toast on a clean import');
     } finally {
+      errorMock.mock.restore();
+    }
+  });
+
+  it('shows a version-specific warning without claiming that items were skipped', async () => {
+    const errorMock = mock.method(toast, 'error', () => {});
+    const warnMock = mock.method(console, 'warn', () => {});
+    try {
+      const container = renderPanel();
+      await selectFile(fileInput(container), await makeUnsupportedVersionBcfFile());
+
+      assert.equal(useViewerStore.getState().bcfProject?.version, '2.1');
+      assert.equal(errorMock.mock.callCount(), 1);
+      assert.match(String(errorMock.mock.calls[0].arguments[0]), /Unsupported BCF version: 4\.0/);
+      assert.doesNotMatch(String(errorMock.mock.calls[0].arguments[0]), /skipped/i);
+    } finally {
+      warnMock.mock.restore();
       errorMock.mock.restore();
     }
   });

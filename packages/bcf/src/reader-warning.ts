@@ -4,10 +4,15 @@
 
 export type ReportWarning = (message: string, error?: unknown) => void;
 
-export function createWarningReporter(onWarning?: (message: string) => void): ReportWarning {
+export function createWarningReporter(onWarning?: (message: string, kind: 'skipped' | 'version') => void): ReportWarning {
   return (message, error) => {
     if (error === undefined) console.warn(message);
     else console.warn(message, error);
-    onWarning?.(message);
+    onWarning?.(message, 'skipped');
   };
+}
+
+export function reportVersionWarning(message: string, onWarning?: (message: string, kind: 'skipped' | 'version') => void): void {
+  console.warn(message);
+  onWarning?.(message, 'version');
 }

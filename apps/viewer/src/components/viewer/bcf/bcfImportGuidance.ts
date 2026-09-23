@@ -3,6 +3,23 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { toast } from '@/components/ui/toast';
+import { readBCF, type BCFProject } from '@ifc-lite/bcf';
+
+export async function readBCFWithDiagnostics(file: File): Promise<{
+  project: BCFProject;
+  readWarningCount: number;
+  versionWarning?: string;
+}> {
+  let readWarningCount = 0;
+  let versionWarning: string | undefined;
+  const project = await readBCF(file, {
+    onWarning: (message, kind) => {
+      if (kind === 'version') versionWarning = message;
+      else readWarningCount++;
+    },
+  });
+  return { project, readWarningCount, versionWarning };
+}
 
 /**
  * Import always succeeds independent of what (if anything) is loaded in the
@@ -29,4 +46,9 @@ export function warnIfImportTruncated(readWarningCount: number): void {
         'skipped -- some topics or viewpoints could not be read. See the browser console for details.',
     );
   }
+}
+
+/** The reader can continue with BCF 2.1 rules for an unknown version. */
+export function warnIfUnsupportedVersion(message: string | undefined): void {
+  if (message) toast.error(`${message}. Some data may be missing.`);
 }

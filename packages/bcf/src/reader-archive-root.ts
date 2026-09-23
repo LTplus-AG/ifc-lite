@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type JSZip from 'jszip';
+import type { ReportWarning } from './reader-warning.js';
 
 export function isMacOsxShadowPath(path: string): boolean {
   return /(?:^|\/)__MACOSX(?:\/|$)/i.test(path);
@@ -23,4 +24,20 @@ export function resolveArchiveRoot(zip: JSZip): string {
       : 'Invalid BCF file: ambiguous bcf.version files');
   }
   return candidates[0];
+}
+
+/** Map each topic folder to the exact markup entry that matched it. */
+export function discoverTopicMarkupPaths(zip: JSZip, root: string, warn: ReportWarning): Map<string, string> {
+  const topicFolders = new Map<string, string>();
+  zip.forEach((relativePath) => {
+    const match = relativePath.match(/^(.+)\/markup\.bcf$/i);
+    if (match && match[1].startsWith(root) && !isMacOsxShadowPath(match[1])) {
+      if (topicFolders.has(match[1])) {
+        warn(`Multiple markup.bcf entries in ${match[1]}: keeping the first one read`);
+      } else {
+        topicFolders.set(match[1], relativePath);
+      }
+    }
+  });
+  return topicFolders;
 }

@@ -22,8 +22,8 @@ import type {
   BCFHeaderFile,
 } from './types.js';
 import { parseViewpointContent } from './reader-viewpoint-content.js';
-import { isMacOsxShadowPath, resolveArchiveRoot } from './reader-archive-root.js';
-import { createWarningReporter, type ReportWarning } from './reader-warning.js';
+import { discoverTopicMarkupPaths, resolveArchiveRoot } from './reader-archive-root.js';
+import { createWarningReporter, reportVersionWarning, type ReportWarning } from './reader-warning.js';
 
 /**
  * Resource caps guarding against a malicious (zip-bomb) .bcfzip: a tiny
@@ -168,7 +168,7 @@ function assertArchiveWithinLimits(zip: JSZip, maxEntries: number, maxExpandedBy
  */
 export async function readBCF(
   file: File | Blob | ArrayBuffer | Uint8Array,
-  limits?: { maxArchiveBytes?: number; maxEntries?: number; maxExpandedBytes?: number; onWarning?: (message: string) => void },
+  limits?: { maxArchiveBytes?: number; maxEntries?: number; maxExpandedBytes?: number; onWarning?: (message: string, kind: 'skipped' | 'version') => void },
 ): Promise<BCFProject> {
   const maxArchiveBytes = limits?.maxArchiveBytes ?? MAX_BCF_ARCHIVE_BYTES;
   const maxEntries = limits?.maxEntries ?? MAX_BCF_ENTRIES;
@@ -200,7 +200,7 @@ export async function readBCF(
   const warn = createWarningReporter(limits?.onWarning);
 
   // Read version file
-  const version = await readVersionFile(zip, budget, root);
+  const version = await readVersionFile(zip, budget, root, limits?.onWarning);
 
   // Read project file (optional)
   const { projectId, name, extensions } = await readProjectFile(zip, budget, root);
@@ -220,7 +220,12 @@ export async function readBCF(
 /**
  * Read bcf.version file
  */
-async function readVersionFile(zip: JSZip, budget: ExpansionBudget, root: string): Promise<BCFVersion> {
+async function readVersionFile(
+  zip: JSZip,
+  budget: ExpansionBudget,
+  root: string,
+  onWarning?: (message: string, kind: 'skipped' | 'version') => void,
+): Promise<BCFVersion> {
   const versionFile = zip.file(`${root}bcf.version`);
   if (!versionFile) {
     throw new Error('Invalid BCF file: missing bcf.version');
@@ -235,7 +240,7 @@ async function readVersionFile(zip: JSZip, budget: ExpansionBudget, root: string
 
   const versionId = versionMatch[1] as '2.1' | '3.0';
   if (versionId !== '2.1' && versionId !== '3.0') {
-    console.warn(`Unsupported BCF version: ${versionId}, treating as 2.1`);
+    reportVersionWarning(`Unsupported BCF version: ${versionId}, treating as 2.1`, onWarning);
   }
 
   return {
@@ -278,25 +283,19 @@ async function readProjectFile(zip: JSZip, budget: ExpansionBudget, root: string
 async function readTopics(zip: JSZip, budget: ExpansionBudget, versionId: '2.1' | '3.0', root: string, warn: ReportWarning): Promise<Map<string, BCFTopic>> {
   const topics = new Map<string, BCFTopic>();
 
-  // Topic folders, matched at ANY depth (a zipped-folder archive nests one level deeper than root, #5213); dedup on parsed Guid below (#3960) handles collisions across depths.
-  const topicFolders = new Set<string>();
-
-  zip.forEach((relativePath: string) => {
-    const match = relativePath.match(/^(.+)\/markup\.bcf$/i);
-    if (match && match[1].startsWith(root) && !isMacOsxShadowPath(match[1])) {
-      topicFolders.add(match[1]);
-    }
-  });
+  // Match at any depth so zipped project folders are read. Deduplicate on
+  // parsed Guid below when two folders refer to the same topic (#3960).
+  const topicFolders = discoverTopicMarkupPaths(zip, root, warn);
 
   // Parse each topic
-  for (const topicGuid of topicFolders) {
+  for (const [topicGuid, markupPath] of topicFolders) {
     try {
-      const topic = await readTopic(zip, topicGuid, budget, versionId, warn);
+      const topic = await readTopic(zip, topicGuid, markupPath, budget, versionId, warn);
       if (topic) {
         // A second topic folder whose internal Topic/@Guid collides with one
         // already parsed must not silently overwrite it in the map -- that
         // would drop a whole topic with no signal the caller could ever act
-        // on (#3960). Keep the first occurrence (folder set iteration order
+        // on (#3960). Keep the first occurrence (folder map iteration order
         // is insertion order, so this is deterministic) and warn, the same
         // way every other "skip this piece, keep going" decision in this
         // function is already reported.
@@ -321,8 +320,8 @@ async function readTopics(zip: JSZip, budget: ExpansionBudget, versionId: '2.1' 
 /**
  * Read a single topic from the BCF archive
  */
-async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudget, versionId: '2.1' | '3.0', warn: ReportWarning): Promise<BCFTopic | null> {
-  const markupFile = zip.file(`${topicFolder}/markup.bcf`);
+async function readTopic(zip: JSZip, topicFolder: string, markupPath: string, budget: ExpansionBudget, versionId: '2.1' | '3.0', warn: ReportWarning): Promise<BCFTopic | null> {
+  const markupFile = zip.file(markupPath);
   if (!markupFile) {
     return null;
   }

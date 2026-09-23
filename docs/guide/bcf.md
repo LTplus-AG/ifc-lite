@@ -31,13 +31,14 @@ for (const [guid, topic] of project.topics) {
 ```
 
 If a topic or viewpoint cannot be read, the reader keeps the other items and
-reports the skipped item through `onWarning`:
+reports the skipped item through `onWarning`. The callback also reports an
+unsupported version that was read using BCF 2.1 rules:
 
 ```typescript
 import { readBCF } from '@ifc-lite/bcf';
 
 const project = await readBCF(bcfBuffer, {
-  onWarning: (message) => console.warn(`BCF import: ${message}`),
+  onWarning: (message, kind) => console.warn(`BCF import ${kind}: ${message}`),
 });
 ```
 

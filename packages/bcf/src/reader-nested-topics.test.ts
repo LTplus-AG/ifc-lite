@@ -26,9 +26,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import JSZip from 'jszip';
 import { readBCF } from './reader.js';
 
-function versionFile(): string {
+function versionFile(versionId = '2.1'): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<Version VersionId="2.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><DetailedVersion>2.1</DetailedVersion></Version>`;
+<Version VersionId="${versionId}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><DetailedVersion>${versionId}</DetailedVersion></Version>`;
 }
 
 function markupFile(guid: string, title: string): string {
@@ -68,6 +68,33 @@ afterEach(() => {
 });
 
 describe('#5213: topic folder nested below archive root', () => {
+  it('reads a matched uppercase Markup.BCF entry using its actual archive path', async () => {
+    const guid = 'aaaaaaaa-1111-2222-3333-444444444444';
+    const zip = new JSZip();
+    zip.file('MyProject/bcf.version', versionFile());
+    zip.file(`MyProject/${guid}/Markup.BCF`, markupFile(guid, 'Uppercase markup'));
+
+    const project = await readBCF(await zip.generateAsync({ type: 'nodebuffer' }));
+    expect(project.topics.get(guid)?.title).toBe('Uppercase markup');
+  });
+
+  it('reports duplicate case variants of markup in one topic folder', async () => {
+    const guid = 'aaaaaaaa-1111-2222-3333-444444444444';
+    const zip = new JSZip();
+    zip.file('bcf.version', versionFile());
+    zip.file(`${guid}/markup.bcf`, markupFile(guid, 'First markup'));
+    zip.file(`${guid}/Markup.BCF`, markupFile(guid, 'Second markup'));
+    const warnings: string[] = [];
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const project = await readBCF(await zip.generateAsync({ type: 'nodebuffer' }), {
+      onWarning: (message) => warnings.push(message),
+    });
+
+    expect(project.topics.get(guid)?.title).toBe('First markup');
+    expect(warnings).toEqual([expect.stringMatching(/Multiple markup\.bcf entries/)]);
+  });
+
   it('reports a skipped duplicate topic through the import callback', async () => {
     const guid = 'aaaaaaaa-1111-2222-3333-444444444444';
     const zip = new JSZip();
@@ -144,6 +171,25 @@ describe('#5213: topic folder nested below archive root', () => {
     expect(project.topics.size).toBe(1);
     expect(project.topics.has(shadowGuid)).toBe(false);
     expect(project.topics.get(realGuid)?.title).toBe('Real topic');
+  });
+});
+
+describe('#5213: import warning categories', () => {
+  it('reports an unsupported version separately from skipped items', async () => {
+    const zip = new JSZip();
+    zip.file('bcf.version', versionFile('4.0'));
+    const warnings: Array<{ message: string; kind: 'skipped' | 'version' }> = [];
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const project = await readBCF(await zip.generateAsync({ type: 'nodebuffer' }), {
+      onWarning: (message, kind) => warnings.push({ message, kind }),
+    });
+
+    expect(project.version).toBe('2.1');
+    expect(warnings).toEqual([{
+      message: 'Unsupported BCF version: 4.0, treating as 2.1',
+      kind: 'version',
+    }]);
   });
 });
 

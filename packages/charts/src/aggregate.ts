@@ -35,7 +35,7 @@ export interface AggregateResult extends Aggregation {
 }
 
 const OTHER_LABEL = 'Other';
-const MISSING_KEY = '__missing__';
+const MISSING_STACK_KEY = '\0missing';
 
 interface Accumulator {
   key: string;
@@ -222,6 +222,7 @@ export function aggregate(spec: ChartSpec, dataset: ChartDataset, options: Aggre
     throw new Error(`chart "${spec.id}": measure column "${spec.measure.column ?? ''}" is not in the dataset`);
   }
   const stackColumn = spec.type === 'stackedBar' ? columnIndex(spec.stackBy) : -1;
+  if (spec.type === 'stackedBar' && stackColumn < 0) throw new Error(`chart "${spec.id}": stack column "${spec.stackBy}" is not in the dataset`);
   const keyer = keyerFor(spec, dataset, dimension);
 
   // categories: dimension key → accumulator (all series folded together, for ordering + ids)
@@ -265,10 +266,10 @@ export function aggregate(spec: ChartSpec, dataset: ChartDataset, options: Aggre
     if (stackColumn >= 0) {
       const raw = row.values[stackColumn];
       rowUnsupported ||= row.statuses?.[stackColumn] === 'unsupported';
-      const stackKey = raw === null || raw === undefined || raw === '' ? MISSING_KEY : String(raw);
+      const stackKey = raw === null || raw === undefined || raw === '' ? MISSING_STACK_KEY : `value:${String(raw)}`;
       let s = series.get(stackKey);
       if (!s) {
-        s = { label: stackKey === MISSING_KEY ? '(none)' : stackKey, cells: new Map() };
+        s = { label: stackKey === MISSING_STACK_KEY ? '(none)' : String(raw), cells: new Map() };
         series.set(stackKey, s);
       }
       let cell = s.cells.get(keyed.key);

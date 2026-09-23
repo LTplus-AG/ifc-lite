@@ -240,6 +240,12 @@ describe('document file', () => {
     assert.deepEqual(validateDocumentSpec(infiniteSpacer).map((e) => e.path), ['blocks[0].height']);
     const nanSpacer = { ...v2, blocks: [{ kind: 'spacer', id: 's3', height: Number.NaN }] };
     assert.deepEqual(validateDocumentSpec(nanSpacer).map((e) => e.path), ['blocks[0].height']);
+    // #5373: a copied chart uses the same spec contract as a dashboard chart.
+    const badCopiedChart = { ...halfChart, chart: { ...halfChart.chart, measureField: { kind: 'material', valueKind: 'category' } } };
+    assert.deepEqual(validateDocumentSpec({ ...v2, blocks: [badCopiedChart] }).map((e) => e.path), [
+      'blocks[0].chart.measureField.valueKind', 'blocks[0].chart.measureField',
+    ]);
+    assert.throws(() => parseDocumentFile(JSON.stringify({ ...v2, blocks: [badCopiedChart] })), /measureField/);
   });
 });
 

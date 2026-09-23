@@ -120,4 +120,35 @@ describe('bim.store.add* books what it builds', () => {
     state().redo(MODEL);
     assert.ok(listed(ref.expressId), 'redo of the add: back');
   });
+
+  it('single-model (legacy) mode books the element too, on the top-level store and geometry', async () => {
+    const bytes = new TextEncoder().encode(STEP);
+    const dataStore = await new IfcParser().parseColumnar(bytes.slice().buffer, { disableWorkerScan: true });
+    const geometry: MeshData[] = [];
+    let state = {
+      models: new Map(),
+      activeModelId: null,
+      ifcDataStore: dataStore,
+      geometryResult: { meshes: geometry, totalTriangles: 0, totalVertices: 0, coordinateInfo: {} },
+      collabRoomId: null,
+      collabRoomModels: new Map(),
+      canCollabEdit: () => true,
+      appendGeometryBatch: () => { throw new Error('legacy mode has no model entry to append onto'); },
+      setGeometryResult: (g: { meshes: MeshData[] }) => { geometry.splice(0, geometry.length, ...g.meshes); },
+      mirrorEntityCreate: () => {},
+    } as unknown as ViewerState;
+    const setState = (partial: unknown) => {
+      const updates = typeof partial === 'function' ? (partial as (s: ViewerState) => Partial<ViewerState>)(state) : partial;
+      state = { ...state, ...(updates as Partial<ViewerState>) };
+    };
+    const store: StoreApi = { getState: () => state, subscribe: () => () => {} };
+    state = { ...state, ...createMutationSlice(setState as never, () => state, {} as never) };
+
+    const ref = createStoreAdapter(store).addColumn('default', 30, { Position: [0, 0, 0], Width: 0.3, Depth: 0.3, Height: 3 });
+
+    assert.equal(ref.modelId, '__legacy__');
+    assert.equal(geometry.length, 1, 'the mesh reaches the top-level geometry');
+    assert.deepEqual((state.undoStacks.get('__legacy__') ?? []).map((m) => m.type), ['CREATE_ENTITY']);
+    assert.ok((dataStore.spatialHierarchy?.byStorey.get(30) ?? []).includes(ref.expressId));
+  });
 });

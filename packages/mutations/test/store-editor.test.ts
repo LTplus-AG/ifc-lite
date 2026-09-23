@@ -98,6 +98,16 @@ describe('StoreEditor', () => {
     expect(editor.removeEntity(26)).toBe(false);
   });
 
+  it('setEntityType accepts a deferred-index entity that hasEntity reports, recording its source type (#5222)', () => {
+    const store = makeStore(10, [25]);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+
+    expect(editor.setEntityType(25, 'IfcPropertyEnumeratedValue')).toBe(true);
+    expect(view.getEntityTypeMutation(25)?.oldType).toBe('IFCPROPERTYSINGLEVALUE');
+    expect(editor.setEntityType(26, 'IfcPropertyEnumeratedValue')).toBe(false);
+  });
+
   it('addEntity continues allocating monotonically across calls', () => {
     const store = makeStore(5);
     const view = new MutablePropertyView(null, 'm1');

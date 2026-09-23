@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { MutationStoreShape } from './types.js';
+import type { MutationEntityRef, MutationStoreShape } from './types.js';
 
 /**
  * Whether the SOURCE model's index holds `expressId`: the STEP byte index
@@ -22,5 +22,12 @@ import type { MutationStoreShape } from './types.js';
  * layer those on top.
  */
 export function storeHasSourceEntity(store: MutationStoreShape, expressId: number): boolean {
+  // @raw-entity-enumeration-ok this IS the source-index membership primitive; callers layer overlay and tombstones on top
   return store.entityIndex.byId.has(expressId) || store.deferredEntityIndex?.has(expressId) === true;
+}
+
+/** The source index record for `expressId` from either half, or `undefined`. */
+export function sourceEntityRef(store: MutationStoreShape, expressId: number): MutationEntityRef | undefined {
+  // @raw-entity-enumeration-ok same primitive as storeHasSourceEntity, returning the record instead of a boolean
+  return store.entityIndex.byId.get(expressId) ?? store.deferredEntityIndex?.get(expressId);
 }

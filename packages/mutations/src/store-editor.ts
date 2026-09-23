@@ -19,7 +19,7 @@
 
 import { prepareEntityOperations } from './prepare-entity-operations.js';
 import { highestExistingExpressId } from './express-id-watermark.js';
-import { storeHasSourceEntity } from './source-entity-index.js';
+import { sourceEntityRef, storeHasSourceEntity } from './source-entity-index.js';
 import type { EntityOperation, EntityPreparationOptions, PreparedEntityOperations } from './cooperative-operation-types.js';
 import type { MutablePropertyView } from './mutable-property-view.js';
 import { IFC_ENTITY_NAMES, QuantityType, PropertyValueType } from '@ifc-lite/data';
@@ -274,10 +274,10 @@ export class StoreEditor {
     }
 
     const newEntity = this.view.getNewEntity(expressId);
-    if (newEntity === null && !this.store.entityIndex.byId.has(expressId)) {
+    if (newEntity === null && !storeHasSourceEntity(this.store, expressId)) {
       return false;
     }
-    const oldType = newEntity?.type ?? this.store.entityIndex.byId.get(expressId)?.type;
+    const oldType = newEntity?.type ?? sourceEntityRef(this.store, expressId)?.type;
     this.view.setEntityType(expressId, canonical, options?.predefinedType ?? null, oldType);
     return true;
   }
@@ -321,13 +321,8 @@ export class StoreEditor {
     if (retype) return canonical(retype.newType);
     const created = this.view.getNewEntity(expressId);
     if (created) return canonical(created.type);
-    // Deferred property atoms occupy express ids too (see
-    // `highestExistingExpressId`) and are absent from `entityIndex.byId` —
-    // without this fallback a valid, non-deleted deferred entity id reads as
-    // "does not exist" here even though `hasEntity` (which already checks
-    // `deferredEntityIndex`) says it does.
-    const sourceType = this.store.entityIndex.byId.get(expressId)?.type
-      ?? this.store.deferredEntityIndex?.get(expressId)?.type;
+    // Both halves of the source index, like `hasEntity` (#5222).
+    const sourceType = sourceEntityRef(this.store, expressId)?.type;
     return sourceType ? canonical(sourceType) : undefined;
   }
 

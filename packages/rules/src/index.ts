@@ -44,3 +44,6 @@ export * from './rule-set/between-chip.js';
 
 // ── Validation engine: RuleSetFile + models -> ValidationReport ────────────
 export * from './engine/rule-engine.js';
+
+// ── IDS interchange: rule set -> IDS 1.0 export (#5225)
+export { ruleSetToIds, type RuleSetToIdsOptions, type RuleSetToIdsResult, type RefusedRule } from './ids/rule-set-to-ids.js';

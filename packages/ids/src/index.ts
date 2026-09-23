@@ -140,6 +140,10 @@ export {
   getConstraintMismatchReason,
 } from './constraints/index.js';
 
+// The one XSD-regex -> JS-regex translator, shared with `@ifc-lite/rules`'
+// IDS import (#5225) so an imported pattern means what the checker reads.
+export { translateXsdRegex, type TranslateResult } from './constraints/xsd-regex.js';
+
 // ============================================================================
 // Audit (IDS document correctness)
 // ============================================================================

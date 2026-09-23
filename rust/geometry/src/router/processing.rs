@@ -73,6 +73,28 @@ fn union_bounds(accumulator: &mut Option<[f32; 6]>, incoming: [f32; 6]) {
     }
 }
 
+/// Which source hygiene an element's meshes get before placement (#5313).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum SourceHygiene {
+    /// [`Mesh::clean_degenerate_watertight`]: drops slivers without opening a
+    /// T-junction. The default for output meshes.
+    Watertight,
+    /// [`Mesh::clean_degenerate`]: drops slivers, indices only. For meshes that
+    /// are about to be boolean operands (void hosts, opening cutters): moving
+    /// those inputs changed the cut on ~20 void hosts of the public corpus, so
+    /// it is a separate, measured change.
+    IndexOnly,
+}
+
+impl SourceHygiene {
+    fn apply(self, mesh: &mut Mesh) {
+        match self {
+            Self::Watertight => mesh.clean_degenerate_watertight(),
+            Self::IndexOnly => mesh.clean_degenerate(),
+        }
+    }
+}
+
 impl GeometryRouter {
     /// Process building element (IfcWall, IfcBeam, etc.) into mesh
     /// Follows the representation chain:
@@ -83,27 +105,16 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Mesh> {
-        self.process_element_impl(element, decoder, true)
+        self.process_element_with_hygiene(element, decoder, SourceHygiene::Watertight)
     }
 
-    /// [`Self::process_element`] for a mesh that is about to become a boolean
-    /// operand: a void host or an opening cutter. Runs the index-only hygiene
-    /// instead of the watertight one (#5313), so the operands the void path
-    /// cuts are unchanged by that fix; the cut paths carry their own closure
-    /// gates and census, and moving their inputs is a separate, measured change.
-    pub(crate) fn process_element_as_boolean_operand(
+    /// [`Self::process_element`] with an explicit [`SourceHygiene`]; the void
+    /// path passes `IndexOnly` for hosts and cutters.
+    pub(super) fn process_element_with_hygiene(
         &self,
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
-    ) -> Result<Mesh> {
-        self.process_element_impl(element, decoder, false)
-    }
-
-    fn process_element_impl(
-        &self,
-        element: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        keep_closed: bool,
+        hygiene: SourceHygiene,
     ) -> Result<Mesh> {
         // IfcAlignment carries its directrix curve in a dedicated `Axis`
         // attribute (IFC4X1) instead of (or in addition to) a normal
@@ -210,18 +221,10 @@ impl GeometryRouter {
         // degeneracy, while the element-local frame retains more f32 precision).
         // This is the merged-mesh router's choke point: downstream facet weld /
         // refinement passes canonicalize geometry but do not replace this input
-        // cleanup or promise hygienic output. The watertight variant drops the
-        // same slivers but splits the triangle across a dropped sliver whose
-        // apex other triangles still use, so the drop cannot open a T-junction
-        // (#5313); it may append apex copies, never removes positions. Boolean
-        // operands keep the index-only pass (see
-        // `process_element_as_boolean_operand`). Cut-created candidates require
-        // separate, path-specific handling. See #4797.
-        if keep_closed {
-            combined_mesh.clean_degenerate_watertight();
-        } else {
-            combined_mesh.clean_degenerate();
-        }
+        // cleanup or promise hygienic output. See `SourceHygiene` (#5313).
+        // Cut-created candidates require separate, path-specific handling. See
+        // #4797.
+        hygiene.apply(&mut combined_mesh);
 
         // Apply placement transformation
         self.apply_placement(element, decoder, &mut combined_mesh)?;
@@ -244,7 +247,7 @@ impl GeometryRouter {
         // (`process_element_with_submeshes_and_voids`) calls the impl below with
         // `allow_instancing = false` — a voided occurrence must materialize its cut
         // geometry, never instance an un-cut shared template.
-        self.process_element_with_submeshes_impl(element, decoder, true, None, true)
+        self.process_element_with_submeshes_impl(element, decoder, true, None, SourceHygiene::Watertight)
     }
 
     /// [`Self::process_element_with_submeshes`] with an explicit don't-bake gate.
@@ -261,7 +264,7 @@ impl GeometryRouter {
         texture_index: Option<
             &rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>,
         >,
-        keep_closed: bool,
+        hygiene: SourceHygiene,
     ) -> Result<SubMeshCollection> {
         // If a material-layer buildup is attached, try slicing single-solid
         // elements (walls / slabs with IfcMaterialLayerSetUsage) first so each
@@ -340,19 +343,14 @@ impl GeometryRouter {
         // to `process_element`'s choke point. Facet canonicalizers downstream do
         // not replace this cleanup or promise hygienic output; cut-created
         // candidates require path-specific handling. Positions are never
-        // removed, so unreferenced ones may remain, and a split across a
-        // dropped sliver may append an apex copy (#5313). (Layered/textured
-        // early-return channels clean at their own sites.) See #4797.
-        // `keep_closed` is false on the void path (these sub-meshes are about to
-        // be cut, see `process_element_as_boolean_operand`); a textured
-        // sub-mesh keeps the index-only pass because an appended apex vertex
-        // would desynchronise its parallel UV array.
+        // removed, so unreferenced ones may remain. See `SourceHygiene`
+        // (#5313); a textured sub-mesh stays `IndexOnly` because an appended
+        // apex vertex would desynchronise its parallel UV array. The layered
+        // and textured early-return channels clean at their own sites and are
+        // not switched (#5313 left them unmeasured). See #4797.
         for sub in &mut sub_meshes.sub_meshes {
-            if keep_closed && sub.uvs.is_none() {
-                sub.mesh.clean_degenerate_watertight();
-            } else {
-                sub.mesh.clean_degenerate();
-            }
+            let own = if sub.uvs.is_some() { SourceHygiene::IndexOnly } else { hygiene };
+            own.apply(&mut sub.mesh);
         }
 
         self.apply_submesh_placement(&mut sub_meshes, element, decoder)?;

@@ -8,6 +8,7 @@ mod exit_cap;
 mod exit_cap_far_field;
 mod membrane;
 
+use super::super::processing::SourceHygiene;
 use super::geom::*;
 use super::{GeometryRouter, OpeningType, NORMALIZE_EPSILON};
 use crate::{Mesh, Point3, Vector3};
@@ -96,7 +97,7 @@ impl GeometryRouter {
             // detail stays precise even far from the global origin and the AABB-overlap
             // guard sees the cutter at the host (#1297, refined per #1310 review). The
             // bounds derived below are folded to WORLD so the same relativization applies.
-            let opening_mesh = match self.process_element_as_boolean_operand(&opening_entity, decoder) {
+            let opening_mesh = match self.process_element_with_hygiene(&opening_entity, decoder, SourceHygiene::IndexOnly) {
                 Ok(m) if !m.is_empty() => m,
                 _ => continue,
             };

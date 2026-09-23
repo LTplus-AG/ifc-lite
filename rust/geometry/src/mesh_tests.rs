@@ -619,21 +619,7 @@ fn rebuilt_like_clears_welded_in_object_frame() {
     );
 }
 
-/// Open undirected edges, vertices keyed by exact f32 bits (#5313 tests).
-fn open_edges_exact(mesh: &Mesh) -> usize {
-    let key = |i: u32| {
-        let b = i as usize * 3;
-        [mesh.positions[b].to_bits(), mesh.positions[b + 1].to_bits(), mesh.positions[b + 2].to_bits()]
-    };
-    let mut edges: std::collections::HashMap<_, u32> = std::collections::HashMap::new();
-    for t in mesh.indices.chunks_exact(3) {
-        for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
-            let (ka, kb) = (key(a), key(b));
-            *edges.entry(if ka < kb { (ka, kb) } else { (kb, ka) }).or_insert(0) += 1;
-        }
-    }
-    edges.values().filter(|&&c| c != 2).count()
-}
+use crate::test_support::open_edges as open_edges_exact;
 
 /// A cap sliver (A, C, M), its cap neighbour across A-C, and a wall that uses
 /// M as a real vertex (A-M, M-C). `cap_shares_indices` picks whether the
@@ -666,13 +652,7 @@ fn t_vertex_fixture(cap_shares_indices: bool) -> Mesh {
         positions,
         normals,
         indices,
-        rtc_applied: false,
-        origin: [0.0; 3],
-        welded_in_object_frame: false,
-        plane_tags: None,
-        instance_meta: None,
-        local_bounds: None,
-        local_to_world: None,
+        ..Mesh::new()
     }
 }
 
@@ -725,13 +705,7 @@ fn watertight_clean_still_just_drops_a_flap_5313() {
         positions: pos,
         normals: vec![],
         indices: vec![0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3, 0, 1, 4],
-        rtc_applied: false,
-        origin: [0.0; 3],
-        welded_in_object_frame: false,
-        plane_tags: None,
-        instance_meta: None,
-        local_bounds: None,
-        local_to_world: None,
+        ..Mesh::new()
     };
     mesh.clean_degenerate_watertight();
     assert_eq!(mesh.indices, vec![0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3]);
@@ -763,13 +737,7 @@ fn watertight_clean_repairs_a_nested_sliver_fan_5313() {
         positions,
         normals: vec![],
         indices,
-        rtc_applied: false,
-        origin: [0.0; 3],
-        welded_in_object_frame: false,
-        plane_tags: None,
-        instance_meta: None,
-        local_bounds: None,
-        local_to_world: None,
+        ..Mesh::new()
     };
     // Patch boundary alone: A-X, X-C, A-T, T-C.
     let mut plain = mesh.clone();
@@ -796,13 +764,7 @@ fn watertight_clean_leaves_an_apex_only_touched_elsewhere_5313() {
         positions,
         normals: vec![],
         indices: vec![0, 1, 2, 1, 0, 3, 2, 4, 5],
-        rtc_applied: false,
-        origin: [0.0; 3],
-        welded_in_object_frame: false,
-        plane_tags: None,
-        instance_meta: None,
-        local_bounds: None,
-        local_to_world: None,
+        ..Mesh::new()
     };
     mesh.clean_degenerate_watertight();
     assert_eq!(mesh.indices, vec![1, 0, 3, 2, 4, 5], "sliver dropped, nothing split");

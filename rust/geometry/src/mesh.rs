@@ -747,14 +747,6 @@ impl Mesh {
             return;
         }
         let vertex_count = self.positions.len() / 3;
-        let p = |i: u32| -> [f64; 3] {
-            let i = i as usize;
-            [
-                self.positions[i * 3] as f64,
-                self.positions[i * 3 + 1] as f64,
-                self.positions[i * 3 + 2] as f64,
-            ]
-        };
         let mut kept = Vec::with_capacity(self.indices.len());
         let mut slivers: Vec<[u32; 3]> = Vec::new();
         for tri in self.indices.chunks_exact(3) {
@@ -764,23 +756,10 @@ impl Mesh {
             {
                 continue;
             }
-            let (a, b, c) = (p(tri[0]), p(tri[1]), p(tri[2]));
-            let d = |u: [f64; 3], v: [f64; 3]| {
-                ((u[0] - v[0]).powi(2) + (u[1] - v[1]).powi(2) + (u[2] - v[2]).powi(2)).sqrt()
-            };
-            let longest = d(a, b).max(d(b, c)).max(d(c, a));
-            if longest <= 0.0 {
+            let [a, b, c] = [tri[0], tri[1], tri[2]].map(|i| tjunction::pos_of(self, i));
+            let Some(height) = tjunction::height(a, b, c) else {
                 continue; // fully collapsed
-            }
-            let ux = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-            let vx = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-            let cr = [
-                ux[1] * vx[2] - ux[2] * vx[1],
-                ux[2] * vx[0] - ux[0] * vx[2],
-                ux[0] * vx[1] - ux[1] * vx[0],
-            ];
-            let area = 0.5 * (cr[0] * cr[0] + cr[1] * cr[1] + cr[2] * cr[2]).sqrt();
-            let height = 2.0 * area / longest;
+            };
             if height < h_eps {
                 slivers.push([tri[0], tri[1], tri[2]]);
                 continue; // collinear / zero-area sliver

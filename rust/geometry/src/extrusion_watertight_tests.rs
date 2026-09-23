@@ -9,30 +9,7 @@
 
 use super::*;
 use crate::profile::Profile2D;
-
-/// Count UNDIRECTED edges NOT shared by exactly two triangles — 0 on a closed
-/// 2-manifold (the production watertightness contract, `param_cut_watertight`).
-/// Vertices welded by exact f32 bits (coincident verts share bit patterns).
-fn open_edges(m: &Mesh) -> usize {
-    use std::collections::HashMap;
-    let key = |i: u32| {
-        let b = i as usize * 3;
-        (
-            m.positions[b].to_bits(),
-            m.positions[b + 1].to_bits(),
-            m.positions[b + 2].to_bits(),
-        )
-    };
-    let mut edges: HashMap<_, u32> = HashMap::new();
-    for t in m.indices.chunks_exact(3) {
-        for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
-            let (ka, kb) = (key(a), key(b));
-            let e = if ka < kb { (ka, kb) } else { (kb, ka) };
-            *edges.entry(e).or_insert(0) += 1;
-        }
-    }
-    edges.values().filter(|&&c| c != 2).count()
-}
+use crate::test_support::open_edges;
 
 /// Total area of the triangles lying on the plane `z ≈ z0` (a cap), summed
 /// with |signed area| so it is winding-independent.

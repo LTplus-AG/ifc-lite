@@ -192,6 +192,16 @@ fn issue_5321_sparse_surface_preserves_repeated_knots_and_degenerate_domains() {
 #[test]
 fn issue_5321_sparse_surface_keeps_product_threshold_and_nonfinite_semantics() {
     let cps = grid(3, 3);
+    // Exercise sparse construction too: a tiny but nonzero authored basis must
+    // survive before the product is tested. A preconstructed sparse list alone
+    // cannot catch an incorrect threshold in surface_basis.
+    let tiny = surface_basis(1, 1e-12, &[0.0, 0.0, 1.0, 1.0], 2);
+    assert_eq!(tiny, vec![(0, 1.0 - 1e-12), (1, 1e-12)]);
+    let sparse_cps = vec![vec![Point3::origin()], vec![Point3::new(3.0, 4.0, 5.0)]];
+    assert_eq!(
+        evaluate_bspline_surface(&tiny, &[(0, 1e4)], &sparse_cps, None),
+        sparse_cps[1][0] * 1e-8,
+    );
     // Tiny axis weights cannot be dropped independently: their product can pass.
     let point = evaluate_bspline_surface(&[(1, 1e-12)], &[(2, 1e4)], &cps, None);
     assert_eq!(point, cps[1][2] * 1e-8);

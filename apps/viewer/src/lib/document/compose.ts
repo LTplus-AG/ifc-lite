@@ -101,11 +101,13 @@ export interface ComposeDocumentInput {
 /** A character estimate for Helvetica — tests and the on-screen preview use it. */
 export const estimateTextWidth = (text: string, size: number, bold: boolean): number => text.length * size * (bold ? 0.56 : 0.52);
 
-/** A half-width text column too tall for one page falls back to the paginated full-width path. */
-export function halfTextFitsPage(block: Pick<TextBlock, 'style' | 'text' | 'fontSize' | 'font'>, pageHeight: number, columnWidth: number, measure: ComposeDocumentInput['measure']): boolean {
+/** A conservative, font-independent bound keeps preview/PDF pairing identical.
+ * Standard PDF font glyphs fit within one em; this can choose full width early,
+ * but never puts a two-column row through the footer for a wide glyph string. */
+export function halfTextFitsPage(block: Pick<TextBlock, 'style' | 'text' | 'fontSize'>, pageHeight: number, columnWidth: number): boolean {
   const style = TEXT_STYLES[block.style];
   const size = block.fontSize ?? style.size;
-  const lines = wrapText(block.text, columnWidth, size, style.bold, measure, block.font);
+  const lines = wrapText(block.text, columnWidth, size, style.bold, (text, fontSize) => text.length * fontSize);
   const frameHeight = pageHeight - 2 * REPORT_MARGIN - HEADER_HEIGHT - FOOTER_HEIGHT;
   return style.gapBefore + lines.length * size * style.lineHeight <= frameHeight;
 }
@@ -269,7 +271,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     const next = input.blocks[i + 1];
     if (next && isHalfPairable(block) && isHalfPairable(next)) {
       const colW = (contentW - BLOCK_GAP) / 2;
-      const textFits = (candidate: typeof block): boolean => candidate.kind !== 'text' || halfTextFitsPage(candidate, size.h, colW, input.measure);
+      const textFits = (candidate: typeof block): boolean => candidate.kind !== 'text' || halfTextFitsPage(candidate, size.h, colW);
       if (textFits(block) && textFits(next)) {
         const a = layoutPairable(block, REPORT_MARGIN, colW);
         const b = layoutPairable(next, REPORT_MARGIN + colW + BLOCK_GAP, colW);

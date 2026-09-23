@@ -526,6 +526,20 @@ describe('compose', () => {
     for (const page of layout.pages) for (const item of page.items) assert.ok(item.y <= layout.size.h - 64);
   });
 
+  it('uses the same conservative pairing decision with wide PDF glyphs as the preview (#4940 review)', () => {
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now',
+      measure: (text, size) => text.length * size * 0.95,
+      blocks: [
+        { kind: 'text', id: 'wide', style: 'body', text: Array(34).fill('W'.repeat(30)).join('\n'), width: 'half' },
+        { kind: 'image', id: 'logo', height: 70, align: 'left', aspect: 2, width: 'half' },
+      ],
+    });
+    const logo = layout.pages.flatMap((page) => page.items).find((item) => item.kind === 'image');
+    assert.ok(logo);
+    assert.equal(logo.x, 40, 'wide text does not leave the logo in a half column');
+  });
+
   it('a long half-width image caption is truncated so it stays inside its own column (review finding, #4940)', () => {
     const longCaption = 'A very long caption that would otherwise cross the gap into the next column and keep running well past the page edge';
     const layout = composeDocument({

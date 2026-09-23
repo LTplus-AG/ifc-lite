@@ -109,6 +109,18 @@ it('previews an overlong half-width text block as paginated full-width content (
   assert.equal(container.querySelectorAll('[data-preview-block]').length, 2);
 });
 
+it('uses a wide-glyph bound when pairing text with a logo (#4940 review)', () => {
+  container = document.createElement('div');
+  document.body.appendChild(container);
+  root = createRoot(container);
+  const doc: DocumentSpec = { ...baseDocument, blocks: [
+    { kind: 'text', id: 'wide', style: 'body', text: Array(34).fill('W'.repeat(30)).join('\n'), width: 'half' },
+    { ...imageBlock, width: 'half' },
+  ] };
+  act(() => root?.render(<DocumentPreview document={doc} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map()} chartMessages={new Map()} topics={new Map()} selectedBlockId={null} onSelectBlock={() => {}} />));
+  assert.equal(container.querySelectorAll('[data-preview-row]').length, 0);
+});
+
 it('clamps a tall chart to the same printable-page height as PDF composition (#4983 review)', () => {
   const chart = { id: 'chart', title: 'Tall chart', source: 'elements', type: 'bar', dimension: 'type', measure: { agg: 'count' } } as const;
   const aggregation = aggregate(chart, {

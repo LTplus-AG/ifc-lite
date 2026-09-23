@@ -16,7 +16,7 @@ import { renderTemplate, type BindingContext } from '@/lib/document/bindings';
 import { REPORT_THEME } from '@/lib/export/report/generate-report-pdf';
 import { topicLines, topicSnapshotDataUrl } from '@/lib/document/generate-document-pdf';
 import { pageBox, REPORT_MARGIN } from '@/lib/export/report/compose';
-import { BLOCK_GAP, documentChartSizing, estimateTextWidth, halfTextFitsPage, TEXT_STYLES } from '@/lib/document/compose';
+import { BLOCK_GAP, documentChartSizing, halfTextFitsPage, TEXT_STYLES } from '@/lib/document/compose';
 import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type DocumentBlock, type DocumentSpec, type TextBlock } from '@/lib/document/types';
 import type { TableState } from '@/lib/document/resolve-table';
 import { DOCUMENT_PREVIEW_MUTED_TEXT_CLASS, DOCUMENT_PREVIEW_PAPER_CLASS } from './preview-theme';
@@ -50,7 +50,7 @@ const TEXT_CLASS: Record<TextBlock['style'], string> = {
 function groupBlocks(blocks: readonly DocumentBlock[], bindings: BindingContext, pageHeight: number, contentWidth: number): Array<DocumentBlock | [DocumentBlock, DocumentBlock]> {
   const groups: Array<DocumentBlock | [DocumentBlock, DocumentBlock]> = [];
   const colW = (contentWidth - BLOCK_GAP) / 2;
-  const fits = (block: DocumentBlock): boolean => block.kind !== 'text' || halfTextFitsPage({ ...block, text: renderTemplate(block.text, bindings).text }, pageHeight, colW, estimateTextWidth);
+  const fits = (block: DocumentBlock): boolean => block.kind !== 'text' || halfTextFitsPage({ ...block, text: renderTemplate(block.text, bindings).text }, pageHeight, colW);
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
     const next = blocks[i + 1];

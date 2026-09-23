@@ -24,10 +24,21 @@ use the pinned toolchain and `cargo build --profile profiling -p ifc-lite-export
 --example bounded_spike`. `provenance.json` pins the full base, binary hashes,
 patch, fixtures and toolchain. No historical committed baseline was used.
 
-`functional.py` preserves the actual observer used, including its original local
-paths. Adapt the two root paths and binary locations to replay elsewhere. Build
+`functional-original.py.txt` preserves the original observer and its local paths.
+`functional.py` is the portable replay added during review: it discovers fixtures
+relative to the checkout (or `--fixture-root`), accepts explicit binary/output
+paths and creates missing output parents without overwriting a prior run. Build
 and freeze the baseline executable before applying the patch; then build/freeze
-the candidate separately. Set `IFC_SPIKE_SPOOL` to a fresh scratch path to enable
+the candidate separately:
+
+```sh
+python3 scripts/perf/evidence/export-delivery-5357/functional.py \
+  --base-bin /path/to/base-probe --candidate-bin /path/to/combined-probe \
+  --output /path/to/new-results
+```
+
+Use repeated `--fixture <relative/path.ifc>` flags to select a smaller corpus.
+ Set `IFC_SPIKE_SPOOL` to a fresh scratch path to enable
 replay; use `IFC_SPIKE_GEOREF=skip` for the separate suppression experiment.
 `IFC_SPIKE_GEOREF=timed` retains extraction and reports attribution only.
 
@@ -100,7 +111,22 @@ and decoded byte sizes, and successful `WebAssembly.compileStreaming` exports.
 It is a fetch/compile observation, **not** a completed worker-pool/model/render
 benchmark; connection establishment overlapped prior page navigation.
 
-`delivery.mjs` preserves that observer. The first naive static search (`discover.py`)
+`delivery-original.mjs.txt` preserves that original observer, including the
+historical disabled-sandbox launch setting. The portable `delivery.mjs` now
+resolves Playwright from the checkout, reads the adjacent pinned URL, accepts an
+optional browser executable and a required output path, and explicitly enables
+Chromium's sandbox. It has no sandbox-disabling fallback; use a non-root account
+on a host where Chromium's sandbox works. An independent live replay with that
+setting succeeded; `portable-verification.json` records the check without
+replacing the original observations.
+
+```sh
+node scripts/perf/evidence/export-delivery-5357/delivery.mjs \
+  --browser-executable /path/to/chrome --output /path/to/new-delivery.json
+```
+
+Omit `--browser-executable` to use Playwright's installed Chromium. Output files
+are never overwritten. The first naive static search (`discover.py`)
 missed backtick-quoted hashed URLs and found a non-existent un-hashed asset;
 that URL returned 404. Inspecting the deployed exporters chunk located the actual
 hashed URL used by the runtime. Only successful responses from that URL enter

@@ -1,0 +1,107 @@
+{
+  "purpose": "Review-fix replay only, not additional performance samples",
+  "native": {
+    "cwd": "/tmp",
+    "default_fixture_root_resolved": true,
+    "missing_output_parents_created": true,
+    "results": [
+      {
+        "fixture": "ara3d/AC20-FZK-Haus.ifc",
+        "mode": "float",
+        "arm": "base",
+        "exit": 0,
+        "qualification": "functional only; no timing qualification",
+        "sha256": "e6cd86a5b97ab8c09e0a9b995b38717f3414c17e372628d5f94afb12389202eb"
+      },
+      {
+        "fixture": "ara3d/AC20-FZK-Haus.ifc",
+        "mode": "float",
+        "arm": "spool",
+        "exit": 0,
+        "qualification": "functional only; no timing qualification",
+        "sha256": "e6cd86a5b97ab8c09e0a9b995b38717f3414c17e372628d5f94afb12389202eb"
+      },
+      {
+        "fixture": "ara3d/AC20-FZK-Haus.ifc",
+        "mode": "float",
+        "arm": "skip-georef",
+        "exit": 0,
+        "qualification": "functional only; no timing qualification",
+        "sha256": "e6cd86a5b97ab8c09e0a9b995b38717f3414c17e372628d5f94afb12389202eb"
+      },
+      {
+        "fixture": "ara3d/AC20-FZK-Haus.ifc",
+        "mode": "quantize",
+        "arm": "base",
+        "exit": 0,
+        "qualification": "functional only; no timing qualification",
+        "sha256": "e425a417941b97cdf85fceeb6fecc1bfe529ebdc62c90aef0ee4517a523977bd"
+      },
+      {
+        "fixture": "ara3d/AC20-FZK-Haus.ifc",
+        "mode": "quantize",
+        "arm": "spool",
+        "exit": 0,
+        "qualification": "functional only; no timing qualification",
+        "sha256": "e425a417941b97cdf85fceeb6fecc1bfe529ebdc62c90aef0ee4517a523977bd"
+      },
+      {
+        "fixture": "ara3d/AC20-FZK-Haus.ifc",
+        "mode": "quantize",
+        "arm": "skip-georef",
+        "exit": 0,
+        "qualification": "functional only; no timing qualification",
+        "sha256": "e425a417941b97cdf85fceeb6fecc1bfe529ebdc62c90aef0ee4517a523977bd"
+      }
+    ],
+    "existing_output_refused": 1,
+    "existing_results_unchanged": true
+  },
+  "browser": {
+    "chromiumSandbox": true,
+    "url": "https://www.ifclite.com/assets/dpl_CZJu5hmzxUAGZNDoBEZKrXe8sfJu/ifc-lite_bg-ufTXUNo6.wasm",
+    "status": 200,
+    "decodedBytes": 8186389,
+    "exports": 337,
+    "resources": [
+      {
+        "name": "https://www.ifclite.com/assets/dpl_CZJu5hmzxUAGZNDoBEZKrXe8sfJu/ifc-lite_bg-ufTXUNo6.wasm",
+        "entryType": "resource",
+        "startTime": 1993.640000000596,
+        "duration": 160.40499998629093,
+        "navigationId": 5968,
+        "initiatorType": "fetch",
+        "deliveryType": "",
+        "nextHopProtocol": "h2",
+        "renderBlockingStatus": "non-blocking",
+        "contentType": "",
+        "contentEncoding": "br",
+        "workerStart": 0,
+        "workerRouterEvaluationStart": 0,
+        "workerCacheLookupStart": 0,
+        "workerMatchedSourceType": "",
+        "workerFinalSourceType": "",
+        "redirectStart": 0,
+        "redirectEnd": 0,
+        "fetchStart": 1993.640000000596,
+        "domainLookupStart": 1993.640000000596,
+        "domainLookupEnd": 1993.640000000596,
+        "connectStart": 1993.640000000596,
+        "secureConnectionStart": 1993.640000000596,
+        "connectEnd": 1993.640000000596,
+        "requestStart": 2018.140000000596,
+        "responseStart": 2070.5,
+        "firstInterimResponseStart": 0,
+        "finalResponseHeadersStart": 2070.5,
+        "responseEnd": 2154.044999986887,
+        "transferSize": 2511718,
+        "encodedBodySize": 2511418,
+        "decodedBodySize": 8186389,
+        "responseStatus": 200,
+        "serverTiming": []
+      }
+    ],
+    "existing_output_refused": 1,
+    "existing_output_unchanged": true
+  }
+}

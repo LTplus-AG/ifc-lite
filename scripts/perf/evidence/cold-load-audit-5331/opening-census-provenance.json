@@ -1,0 +1,16 @@
+{
+  "purpose": "diagnostic opportunity census, not a performance comparison",
+  "source": "dafe2d7e36e0be259df0c74ac9fff238b8ec6861 plus the archived diagnostic example",
+  "base": "52d30de0ae3fc8ef6322191bd1831483b93d485f",
+  "candidatePatch": "../direct-attributes-5324/rejected-candidate.patch",
+  "features": "ifc-lite-geometry/observability",
+  "binarySha256": "9949de6008cbfafde9db743612172687a9766f5d69deea584842b6eb3d76ce59",
+  "fixtures": {
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3code-41de0393/tests/models/ara3d/AC20-FZK-Haus.ifc": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3code-41de0393/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3code-41de0393/tests/models/ara3d/schependomlaan.ifc": "2c3565ca1904f2aa61adab92024cf3755b2c5b21a498144d3094d7cb58cebec7",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3code-41de0393/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3code-41de0393/tests/models/various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc": "e91ddbbd672bbde946af14631de4c732f0cf8a7cfae5dbbf06fbeab03b5c46df",
+    "/home/louistrue/.t3/worktrees/ifc-lite/t3code-41de0393/tests/models/ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc": "bd455803048d0dacf4af7de1027beb1968f0727cde38f22bdea65e57484ff121"
+  }
+}

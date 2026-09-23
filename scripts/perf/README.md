@@ -1930,3 +1930,15 @@ within run variation and target geometry-streaming was flat: no demonstrated
 browser speedup. The adapter was SwiftShader; RSS sampling is a coarse sum of
 owned processes through a fixed post-readiness tail, not cache-settled memory.
 See [evidence and measurement limits](evidence/spline-5321/README.md).
+
+
+## Five-avenue cold-load audit (#5331)
+
+The [audit record](evidence/cold-load-audit-5331/README.md) compares current
+source and prior shipped, rejected and parked levers. Sparse spline samples
+qualified for native cold load; direct attribute construction was rejected;
+multipart mapped parts remain unqualified after correctness verification.
+Worker dependency packets have no demonstrated native counterpart, and broader
+analytic opening coverage needs a new overlap algorithm rather than a weakened
+guard. The opening census is diagnostic opportunity evidence, not saved time.
+This audit does not claim five shipped wins or a browser speedup.

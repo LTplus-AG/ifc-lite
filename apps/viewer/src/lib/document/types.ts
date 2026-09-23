@@ -11,7 +11,7 @@
  *
  * The shape is plain JSON: it is what `.ifclite-document.json` carries.
  */
-import type { ChartSpec, ReportPageSetup } from '@ifc-lite/charts';
+import { validateChartSpec, type ChartSpec, type ReportPageSetup } from '@ifc-lite/charts';
 import type { ListDefinition } from '@ifc-lite/lists';
 
 export const DOCUMENT_VERSION = 6;
@@ -288,7 +288,7 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
         checkWidth(block, at);
         break;
       case 'chart':
-        if (!isRecord(block.chart) || !isString(block.chart.id) || !isString(block.chart.title)) errors.push({ path: `${at}.chart`, message: 'expected a chart spec' });
+        for (const error of validateChartSpec(block.chart)) errors.push({ path: `${at}.chart${error.path}`, message: error.message });
         if (typeof block.snapshot !== 'boolean') errors.push({ path: `${at}.snapshot`, message: 'expected a boolean' });
         if (block.height !== undefined && (typeof block.height !== 'number' || !Number.isFinite(block.height) || block.height < CHART_BLOCK_HEIGHT_MIN || block.height > CHART_BLOCK_HEIGHT_MAX)) {
           errors.push({ path: `${at}.height`, message: `expected a number between ${CHART_BLOCK_HEIGHT_MIN} and ${CHART_BLOCK_HEIGHT_MAX}` });

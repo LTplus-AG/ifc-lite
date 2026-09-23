@@ -111,8 +111,10 @@ interface ChartSpecCommon {
   id: string;
   title: string;
   source: ChartSource;
-  /** One exact IFC attribute/property materialized beside the built-in element columns. */
+  /** IFC field used for grouping, materialized beside the built-in element columns. */
   elementField?: ElementFieldBinding;
+  /** Numeric IFC field to sum independently of the grouping field. */
+  measureField?: ElementFieldBinding;
   /** Narrows this chart's rows to those touching the matched elements, on top of the dashboard scope. */
   filter?: ChartSourceFilter;
   /** Second category column for `stackedBar`: one series per distinct value. */

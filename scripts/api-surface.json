@@ -241,6 +241,7 @@
     "registerEChartsModules: function",
     "renderChartSvg: function",
     "sturgesBins: function",
+    "validateChartSpec: function",
     "validateDashboardSpec: function"
   ],
   "@ifc-lite/clash": [

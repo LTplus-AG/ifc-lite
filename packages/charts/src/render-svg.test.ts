@@ -12,7 +12,8 @@ import { DEFAULT_THEME, UNSELECTED_OPACITY, buildEChartsOption, type EChartsOpti
 // that needs it. A dynamic import degrades to `undefined` instead, so only that test skips.
 const truncateMiddle: typeof import('./echarts-option.js').truncateMiddle | undefined = (await import('./echarts-option.js')).truncateMiddle;
 import { renderChartSvg } from './render-svg.js';
-import { validateDashboardSpec } from './validate.js';
+import { validateChartSpec, validateDashboardSpec } from './validate.js';
+import { elementFieldColumnId } from './element-field.js';
 import { migrateDashboardSpec } from './migrate.js';
 import type { ChartDataset, ChartSpec, DashboardSpec } from './types.js';
 
@@ -160,7 +161,7 @@ describe('renderChartSvg (ECharts SSR, no DOM)', () => {
     const svg = renderChartSvg({ aggregation: aggregate(bar, ds), width: 480, height: 320, theme: { ...DEFAULT_THEME, fontFamily: '"Segoe UI", ui-sans-serif, system-ui' } });
     expect(svg).toContain("'Segoe UI'");
     // Every attribute value is delimited by the double quote that opened it: no `"` may occur inside one.
-    for (const attr of svg.matchAll(/=\"([^\"]*)\"/g)) expect(attr[1]).not.toContain('"');
+    for (const attr of svg.matchAll(/="([^"]*)"/g)) expect(attr[1]).not.toContain('"');
     expect(svg).not.toContain('"Segoe UI"');
   });
 
@@ -230,6 +231,22 @@ describe('validateDashboardSpec', () => {
       expect(validateDashboardSpec({ ...good, charts: [{ ...bar, elementField }], layout: [good.layout[0]] })).toEqual([]);
     }
     expect(validateDashboardSpec({ ...good, page: { size: 'A4', orientation: 'landscape' }, titleBlock: { project: 'X' }, snapshots: true })).toEqual([]);
+  });
+
+  it('keeps a numeric measure binding tied to the summed column', () => {
+    const measureField = { kind: 'quantity', qsetName: 'Qto_WallBaseQuantities', quantityName: 'NetVolume', valueKind: 'number', dataType: 'IFCVOLUMEMEASURE' } as const;
+    const chart = { ...bar, elementField: { kind: 'material', valueKind: 'category' } as const,
+      measureField, measure: { agg: 'sum' as const, column: elementFieldColumnId(measureField) } };
+    const dashboard = { ...good, charts: [chart], layout: [good.layout[0]] };
+    expect(validateDashboardSpec(dashboard)).toEqual([]);
+    expect(validateDashboardSpec({ ...dashboard, charts: [{ ...chart, measure: { agg: 'sum', column: 'Area' } }] }).map(({ path }) => path)).toEqual(['.charts[0].measureField']);
+    expect(validateDashboardSpec({ ...dashboard, charts: [{ ...chart, measure: { agg: 'count' } }] }).map(({ path }) => path)).toEqual(['.charts[0].measureField']);
+  });
+
+  it('validates copied charts and rejects ambiguous stack and fractional controls (#5373)', () => {
+    expect(validateChartSpec(bar)).toEqual([]);
+    expect(validateChartSpec({ ...bar, type: 'stackedBar', stackBy: 'IfcType' }).map(({ path }) => path)).toEqual(['.stackBy']);
+    expect(validateChartSpec({ ...bar, topN: -1, bins: 1.5 }).map(({ path }) => path)).toEqual(['.topN', '.bins']);
   });
 
   it('rejects malformed or non-element IFC field bindings without changing dashboard version 2', () => {

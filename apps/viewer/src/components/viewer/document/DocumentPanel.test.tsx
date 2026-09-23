@@ -14,7 +14,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import { DEFAULT_THEME, renderChartSvg } from '@ifc-lite/charts';
+import { DEFAULT_THEME, elementFieldColumnId, renderChartSvg, type ChartSpec } from '@ifc-lite/charts';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { fixtureModel } from '@/test/store-fixture.js';
@@ -25,6 +25,7 @@ import { Toaster } from '@/components/ui/toast';
 import { DOCUMENT_VERSION, type DocumentSpec } from '@/lib/document/types.js';
 import { LIST_PRESETS } from '@/lib/lists';
 import { DocumentPanel, ensureActiveDocument } from './DocumentPanel.js';
+import { useDocumentData } from './useDocumentData.js';
 
 const MINI_IFC = `ISO-10303-21;
 HEADER;
@@ -57,8 +58,8 @@ ENDSEC;
 END-ISO-10303-21;
 `;
 
-async function parsedModel(): Promise<FederatedModel> {
-  const bytes = new TextEncoder().encode(MINI_IFC);
+async function parsedModel(ifc = MINI_IFC): Promise<FederatedModel> {
+  const bytes = new TextEncoder().encode(ifc);
   const store: IfcDataStore = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
   return { ...fixtureModel('m1', { idOffset: 1_000_000 }), name: 'tower.ifc', ifcDataStore: store, maxExpressId: 91 };
 }
@@ -144,6 +145,36 @@ describe('DocumentPanel over a parsed model (#4594)', () => {
     await change(ui.querySelector<HTMLSelectElement>('select[aria-label="Orientation"]')!, 'landscape');
     await settle();
     assert.equal(useViewerStore.getState().documents[1].page.orientation, 'landscape');
+  });
+
+  it('aggregates a copied material-volume chart with both IFC fields in document preview data (#5373)', async () => {
+    const ifc = MINI_IFC
+      .replace("#1=IFCPROJECT('0Project0000000000000a',$,'Tower',$,$,$,$,$,$);", "#1=IFCPROJECT('0Project0000000000000a',$,'Tower',$,$,$,$,$,#202);")
+      .replace('ENDSEC;\nEND-ISO-10303-21;', `#200=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#202=IFCUNITASSIGNMENT((#200));
+#110=IFCMATERIAL('Concrete',$,$);
+#111=IFCRELASSOCIATESMATERIAL('0Mat000000000000000111',$,$,$,(#41,#42),#110);
+#120=IFCQUANTITYVOLUME('NetVolume',$,$,2.5,$);
+#121=IFCELEMENTQUANTITY('0Qto000000000000000121',$,'Qto_WallBaseQuantities',$,'BaseQuantities',(#120));
+#122=IFCRELDEFINESBYPROPERTIES('0Rel000000000000000122',$,$,$,(#41,#42),#121);
+ENDSEC;
+END-ISO-10303-21;`);
+    const model = await parsedModel(ifc);
+    useViewerStore.setState({ models: new Map([[model.id, model]]) });
+    const measureField = { kind: 'quantity', qsetName: 'Qto_WallBaseQuantities', quantityName: 'NetVolume', valueKind: 'number', dataType: 'IFCVOLUMEMEASURE' } as const;
+    const chart: ChartSpec = { id: 'volume', title: 'Volume by material', source: 'elements', type: 'treemap',
+      elementField: { kind: 'material', valueKind: 'category' }, measureField,
+      dimension: elementFieldColumnId({ kind: 'material', valueKind: 'category' }),
+      measure: { agg: 'sum', column: elementFieldColumnId(measureField) } };
+    const doc: DocumentSpec = { version: DOCUMENT_VERSION, id: 'doc-volume', name: 'Volume', page: { size: 'A4', orientation: 'portrait' },
+      blocks: [{ kind: 'chart', id: 'chart-block', chart, snapshot: false }] };
+    function Probe() {
+      const result = useDocumentData(doc).aggregations.get('chart-block');
+      return <output data-volume-total>{result?.total ?? 'missing'}</output>;
+    }
+    const ui = render(<Probe />);
+    await settle();
+    assert.equal(ui.querySelector('[data-volume-total]')?.textContent, '5');
   });
 
   it('a table block whose list did not run prints its message in place AND is counted in the export toast, never a silent success (review finding, #5142)', async () => {

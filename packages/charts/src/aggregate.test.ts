@@ -151,6 +151,7 @@ describe('aggregate invariants', () => {
     expect(result.total).toBe(0);
     expect(result.unmeasured).toBe(2);
     expect(result.categories.map(({ count, value }) => ({ count, value }))).toEqual([{ count: 2, value: 0 }, { count: 1, value: 0 }]);
+    expect([...result.categories[0].ids]).toEqual([1, 2]);
   });
 
   it('reports unsupported scalar contributions separately from missing (#4833)', () => {
@@ -175,6 +176,22 @@ describe('aggregate invariants', () => {
     };
     const result = aggregate({ id: 'stack', title: 'Stack', source: 'elements', type: 'stackedBar', dimension: 'group', stackBy: 'stack', measure: { agg: 'count' } }, input);
     expect(result.unsupported).toBe(1);
+  });
+
+  it('keeps a real stack category named __missing__ separate from missing values (#5373)', () => {
+    const input = dataset([['group', 'category'], ['stack', 'category']], [
+      [[1], ['A', '__missing__']], [[2], ['A', null]],
+    ]);
+    const result = aggregate({ id: 'stack', title: 'Stack', source: 'elements', type: 'stackedBar', dimension: 'group', stackBy: 'stack', measure: { agg: 'count' } }, input);
+    expect(result.series.map(({ label, buckets }) => [label, [...buckets[0].ids]])).toEqual([
+      ['__missing__', [1]], ['(none)', [2]],
+    ]);
+  });
+
+  it('rejects a stacked chart when its stack column has disappeared (#5373)', () => {
+    const input = dataset([['group', 'category']], [[[1], ['A']]]);
+    expect(() => aggregate({ id: 'stack', title: 'Stack', source: 'elements', type: 'stackedBar', dimension: 'group', stackBy: 'removed', measure: { agg: 'count' } }, input))
+      .toThrow('stack column "removed" is not in the dataset');
   });
 
   it('folds the tail past topN into a grey Other bucket that still carries every id', () => {

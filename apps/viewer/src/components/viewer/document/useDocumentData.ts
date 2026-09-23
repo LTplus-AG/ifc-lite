@@ -15,6 +15,7 @@ import { useViewerStore } from '@/store';
 import type { BindingContext } from '@/lib/document/bindings';
 import type { DocumentSpec } from '@/lib/document/types';
 import { applyChartFilter, applyClashRuleFilter, chartElementFilterKey } from '@/lib/charts/source-filter';
+import { chartElementFields } from '@/lib/charts/chart-fields';
 import type { TableState } from '@/lib/document/resolve-table';
 import { useChartDatasets } from '../charts/useChartDatasets';
 import { useChartSourceFilters } from '../charts/useChartSourceFilters';
@@ -39,11 +40,12 @@ export function useDocumentData(document: DocumentSpec | null): DocumentData {
   const models = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const bcfProject = useViewerStore((s) => s.bcfProject);
-  const datasets = useChartDatasets(ALL_SCOPE);
   // Same resolution hook the Charts panel uses (#4946), so a document chart
   // block prints the SAME filtered numbers the dashboard card shows — never
   // a second, possibly-stale reading of the same selector.
   const charts = useMemo<ChartSpec[]>(() => (document?.blocks ?? []).flatMap((b) => (b.kind === 'chart' ? [b.chart] : [])), [document]);
+  const elementFields = useMemo(() => chartElementFields(charts), [charts]);
+  const datasets = useChartDatasets(ALL_SCOPE, elementFields);
   const sourceFilters = useChartSourceFilters(charts);
 
   const bindings = useMemo<BindingContext>(() => {

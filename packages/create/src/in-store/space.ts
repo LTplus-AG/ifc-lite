@@ -18,6 +18,7 @@
 
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
+import { assertFinitePoint3 } from '../ifc-creator-math.js';
 import { toNativeLength, type SpatialAnchor } from './anchor.js';
 import { assertPositiveFinite, emitBodyRepresentation, emitExtrudedSolid, emitLocalPlacement, emitPolygonProfile, emitRectangleProfile, ownerHistoryRef, productGuid } from './_emit-helpers.js';
 
@@ -131,6 +132,9 @@ export function addSpaceToStore(
   params: SpaceInStoreParams,
 ): SpaceBuildResult {
   const polygon = isPolygonParams(params);
+  if (params.Position !== undefined) {
+    assertFinitePoint3({ Position: params.Position }, 'addSpaceToStore');
+  }
   const placementOrigin: [number, number, number] = polygon
     ? params.Position ?? [0, 0, 0]
     : params.Position;

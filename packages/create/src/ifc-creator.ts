@@ -2187,13 +2187,16 @@ ENDSEC;
   // Internal — Geometry helpers
   // ============================================================================
 
+  // Every builder's Position/Start/opening point is written here (#5217).
   private addCartesianPoint(p: Point3D): number {
+    assertFinitePoint3({ IfcCartesianPoint: p }, 'IfcCreator');
     const id = this.id();
     this.line(id, 'IFCCARTESIANPOINT', `(${num(p[0])},${num(p[1])},${num(p[2])})`);
     return id;
   }
 
   private addCartesianPoint2D(p: Point2D): number {
+    if (!p.every(Number.isFinite)) throw new Error('IfcCreator: IfcCartesianPoint must have finite coordinates');
     const id = this.id();
     this.line(id, 'IFCCARTESIANPOINT', `(${num(p[0])},${num(p[1])})`);
     return id;
@@ -2220,16 +2223,8 @@ ENDSEC;
    */
   addLocalPlacement(relativeTo: number, placement: Placement3D): number {
     const originId = this.addCartesianPoint(placement.Location);
-    let axisId: number | undefined;
-    let refDirId: number | undefined;
-
-    if (placement.Axis) {
-      axisId = this.addDirection(placement.Axis);
-    }
-    if (placement.RefDirection) {
-      refDirId = this.addDirection(placement.RefDirection);
-    }
-
+    const axisId = placement.Axis ? this.addDirection(placement.Axis) : undefined;
+    const refDirId = placement.RefDirection ? this.addDirection(placement.RefDirection) : undefined;
     const axis2Id = this.addAxis2Placement3D(originId, axisId, refDirId);
 
     const id = this.id();

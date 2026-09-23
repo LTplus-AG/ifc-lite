@@ -18,6 +18,7 @@
 
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
+import { assertFinitePoint3 } from '../ifc-creator-math.js';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import { assertPositiveFinite, ownerHistoryRef, productGuid } from './_emit-helpers.js';
 
@@ -70,6 +71,7 @@ export function addColumnToStore(
 ): ColumnBuildResult {
   const { ownerHistoryId, bodyContextId, storeyId, storeyPlacementId } = anchor;
 
+  assertFinitePoint3({ Position: params.Position }, 'addColumnToStore');
   assertPositiveFinite(
     [params.Width, params.Depth, params.Height],
     'addColumnToStore: Width, Depth, and Height must be finite positive numbers',

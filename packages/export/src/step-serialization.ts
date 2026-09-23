@@ -230,15 +230,35 @@ export function serializeAttributeValue(value: string, currentToken: string): st
  * It never overrides the explicit `{ real }` marker, which is always REAL.
  */
 export function serializeStepValue(value: IfcAttributeValue, forceReal = false): string {
+  return serializeStepValueAt(value, forceReal, false);
+}
+
+/**
+ * `inList` separates the two places a non-finite number can arrive. As a
+ * whole attribute, `$` is the ISO 10303-21 token for "omitted", which is
+ * what an optional REAL slot fed `NaN` means (`IfcMapConversion.Scale`,
+ * pinned by `real-slot-non-numeric.test.ts`). As a list member there is no
+ * such reading: `$` omits a whole attribute and is not a legal element, so
+ * `IfcCartesianPoint((NaN,0,0))` would ship as `(($,0,0))`, a malformed
+ * `LIST [1:3] OF IfcLengthMeasure` (#5217). That case throws.
+ */
+function serializeStepValueAt(value: IfcAttributeValue, forceReal: boolean, inList: boolean): string {
   if (value === null || value === undefined) return '$';
   if (typeof value === 'boolean') return value ? '.T.' : '.F.';
   if (typeof value === 'number') {
-    if (!Number.isFinite(value)) return '$';
+    if (!Number.isFinite(value)) {
+      if (inList) {
+        throw new Error(
+          `Cannot write ${value} as a STEP list member: '$' omits a whole attribute and is not a legal list element`,
+        );
+      }
+      return '$';
+    }
     if (forceReal) return toStepReal(value);
     return Number.isInteger(value) ? String(value) : toStepReal(value);
   }
   if (Array.isArray(value)) {
-    return `(${value.map(v => serializeStepValue(v, forceReal)).join(',')})`;
+    return `(${value.map(v => serializeStepValueAt(v, forceReal, true)).join(',')})`;
   }
   if (typeof value === 'object' && 'real' in value) {
     // Write-only typed-real marker (see `IfcAttributeValue`): always a REAL

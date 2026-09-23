@@ -1187,6 +1187,93 @@ describe('IfcCreator dimension validation', () => {
     expect(() => build(creator, storeyId)).toThrow(/finite coordinates/);
   });
 
+  // Non-finite Position gap (LTplus-AG/ifc-lite#5217): `serializeStepValue`
+  // turns a non-finite number into `$`, which is valid syntax for an
+  // *omitted* attribute but invalid as a member of a mandatory
+  // `LIST [1:3] OF IfcLengthMeasure` (IfcCartesianPoint.Coordinates). These
+  // seven methods accepted a non-finite Position without validation, unlike
+  // addIfcWall/addIfcBeam/addIfcMember, which already guard Start/End.
+  const positionCases: Array<{ label: string; build: Build }> = [
+    {
+      label: 'addIfcColumn Position=[NaN,0,0]',
+      build: (c, s) => c.addIfcColumn(s, { Position: [NaN, 0, 0], Width: 0.3, Depth: 0.4, Height: 3 }),
+    },
+    {
+      label: 'addIfcDoor Position=[0,Infinity,0]',
+      build: (c, s) => c.addIfcDoor(s, { Position: [0, Infinity, 0], Width: 0.9, Height: 2.1 }),
+    },
+    {
+      label: 'addIfcWindow Position=[0,0,NaN]',
+      build: (c, s) => c.addIfcWindow(s, { Position: [0, 0, NaN], Width: 1.2, Height: 1.5 }),
+    },
+    {
+      label: 'addIfcSlab Position=[Infinity,0,0]',
+      build: (c, s) => c.addIfcSlab(s, { Position: [Infinity, 0, 0], Thickness: 0.2, Width: 5, Depth: 5 }),
+    },
+    {
+      label: 'addIfcRoof Position=[0,NaN,0]',
+      build: (c, s) => c.addIfcRoof(s, { Position: [0, NaN, 0], Width: 6, Depth: 4, Thickness: 0.3 }),
+    },
+    {
+      label: 'addIfcPlate Position=[0,0,Infinity]',
+      build: (c, s) => c.addIfcPlate(s, { Position: [0, 0, Infinity], Width: 1, Depth: 1, Thickness: 0.01 }),
+    },
+    {
+      label: 'addIfcSpace Position=[NaN,0,0]',
+      build: (c, s) => c.addIfcSpace(s, { Position: [NaN, 0, 0], Width: 4, Depth: 4, Height: 2.5 }),
+    },
+    // The guard lives where every point is written (`addCartesianPoint`), so
+    // builders the issue did not list are covered by the same line.
+    {
+      label: 'addIfcStair Position=[NaN,0,0]',
+      build: (c, s) => c.addIfcStair(s, { Position: [NaN, 0, 0], NumberOfRisers: 3, RiserHeight: 0.18, TreadLength: 0.28, Width: 1 }),
+    },
+    {
+      label: 'addIfcRamp Position=[0,Infinity,0]',
+      build: (c, s) => c.addIfcRamp(s, { Position: [0, Infinity, 0], Width: 1.2, Length: 5, Thickness: 0.2 }),
+    },
+    {
+      label: 'addIfcGableRoof Position=[0,0,NaN]',
+      build: (c, s) => c.addIfcGableRoof(s, { Position: [0, 0, NaN], Width: 6, Depth: 4, Thickness: 0.3, Slope: 0.5 }),
+    },
+    {
+      label: 'addIfcFooting Position=[NaN,0,0]',
+      build: (c, s) => c.addIfcFooting(s, { Position: [NaN, 0, 0], Width: 1, Depth: 1, Height: 0.5 }),
+    },
+    {
+      label: 'addIfcPile Position=[0,NaN,0]',
+      build: (c, s) => c.addIfcPile(s, { Position: [0, NaN, 0], Length: 10, Diameter: 0.4 }),
+    },
+    {
+      label: 'addIfcFurnishingElement Position=[Infinity,0,0]',
+      build: (c, s) => c.addIfcFurnishingElement(s, { Position: [Infinity, 0, 0], Width: 1, Depth: 1, Height: 1 }),
+    },
+    {
+      label: 'addIfcBuildingElementProxy Position=[0,0,NaN]',
+      build: (c, s) => c.addIfcBuildingElementProxy(s, { Position: [0, 0, NaN], Width: 1, Depth: 1, Height: 1 }),
+    },
+  ];
+
+  it.each(positionCases.map((c) => [c.label, c.build] as const))('rejects %s', (_label, build) => {
+    const creator = new IfcCreator();
+    const storeyId = creator.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
+    expect(() => build(creator, storeyId)).toThrow(/finite coordinates/);
+  });
+
+  // No-regression pin: an ordinary finite Position must still be accepted,
+  // for every one of the seven newly-guarded methods.
+  it('still accepts a finite Position for every newly-guarded method', () => {
+    const creator = new IfcCreator();
+    const storeyId = creator.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
+    expect(() => creator.addIfcColumn(storeyId, { Position: [1, 2, 0], Width: 0.3, Depth: 0.4, Height: 3 })).not.toThrow();
+    expect(() => creator.addIfcDoor(storeyId, { Position: [1, 2, 0], Width: 0.9, Height: 2.1 })).not.toThrow();
+    expect(() => creator.addIfcWindow(storeyId, { Position: [1, 2, 0], Width: 1.2, Height: 1.5 })).not.toThrow();
+    expect(() => creator.addIfcSlab(storeyId, { Position: [1, 2, 0], Thickness: 0.2, Width: 5, Depth: 5 })).not.toThrow();
+    expect(() => creator.addIfcRoof(storeyId, { Position: [1, 2, 0], Width: 6, Depth: 4, Thickness: 0.3 })).not.toThrow();
+    expect(() => creator.addIfcPlate(storeyId, { Position: [1, 2, 0], Width: 1, Depth: 1, Thickness: 0.01 })).not.toThrow();
+    expect(() => creator.addIfcSpace(storeyId, { Position: [1, 2, 0], Width: 4, Depth: 4, Height: 2.5 })).not.toThrow();
+  });
+
   // Pin the pre-existing `<= 0` behaviour: still rejected after the fix.
   it('still rejects non-positive dimensions (pre-existing behaviour, unchanged)', () => {
     const creator = new IfcCreator();

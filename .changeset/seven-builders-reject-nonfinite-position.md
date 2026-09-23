@@ -1,0 +1,5 @@
+---
+"@ifc-lite/create": minor
+---
+
+`addColumnToStore`, `addDoorToStore`, `addWindowToStore`, `addSlabToStore`, `addRoofToStore`, `addPlateToStore` and `addSpaceToStore` now reject a non-finite `Position` (`NaN`/`Infinity`), naming the field. This matches the guard `addWallToStore`/`addBeamToStore`/`addMemberToStore` already apply to `Start`/`End`. `IfcCreator` now refuses a non-finite coordinate at the single point where every `IfcCartesianPoint` is written. That covers `addIfcColumn`, `addIfcDoor`, `addIfcWindow`, `addIfcSlab`, `addIfcRoof`, `addIfcPlate` and `addIfcSpace`, plus every other builder that places a caller-supplied point (stair, ramp, gable roof, footing, pile, furnishing, proxy, hosted door and window fills, openings). Before this change, a non-finite `Position` produced an invalid file with no error: `$` inside `IfcCartesianPoint.Coordinates` on the in-store path, and a `NaN.` token on the `IfcCreator` path. Callers that pass a computed, possibly non-finite `Position` now get a thrown `Error` instead of a corrupt export.

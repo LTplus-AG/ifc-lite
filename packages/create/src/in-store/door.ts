@@ -17,6 +17,7 @@
  */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
+import { assertFinitePoint3 } from '../ifc-creator-math.js';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import {
   assertPositiveFinite,
@@ -92,6 +93,7 @@ export function addDoorToStore(
   anchor: SpatialAnchor,
   params: DoorInStoreParams,
 ): DoorBuildResult {
+  assertFinitePoint3({ Position: params.Position }, 'addDoorToStore');
   assertPositiveFinite([params.Width, params.Height], 'addDoorToStore: Width and Height must be positive');
   assertPositiveFinite(
     [params.FrameThickness ?? 0.05],

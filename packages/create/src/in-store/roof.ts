@@ -12,6 +12,7 @@
  */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
+import { assertFinitePoint3 } from '../ifc-creator-math.js';
 import { toNativeLength, toNativePoint2, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import {
   assertPositiveFinite,
@@ -73,6 +74,9 @@ export function addRoofToStore(
   params: RoofInStoreParams,
 ): RoofBuildResult {
   assertPositiveFinite([params.Thickness], 'addRoofToStore: Thickness must be positive');
+  if (params.Position !== undefined) {
+    assertFinitePoint3({ Position: params.Position }, 'addRoofToStore');
+  }
   if (!isPolygonParams(params)) {
     assertPositiveFinite(
       [params.Width, params.Depth],

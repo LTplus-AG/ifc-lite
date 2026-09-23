@@ -88,6 +88,7 @@ import { playgroundFiles } from './playground-files';
 import { playgroundUploads } from './playground-uploads';
 import { sanitizeFilename } from '../../lib/export/download';
 import { playgroundCostTools } from './playground-cost';
+import { effectiveEntities, effectiveEntityCount, effectiveGlobalIdLookup, effectiveTypeCounts } from './playground-effective';
 
 // ── loaded-model handle ────────────────────────────────────────────────────
 
@@ -101,6 +102,7 @@ export interface LoadedPlaygroundModel {
   bytes: Uint8Array;
   store: IfcDataStore;
   bim: BimContext;
+  backend: HeadlessLikeBackend;
 }
 
 /** Parse an IFC ArrayBuffer in the browser using the same path the
@@ -118,7 +120,7 @@ export async function parsePlaygroundModel(
   const id = filename.replace(/\.ifc$/i, '').replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase() || 'model';
   const backend = new HeadlessLikeBackend(store, filename, id);
   const bim = createBimContext({ backend });
-  return { id, name: filename, fileSize: buffer.byteLength, bytes, store, bim };
+  return { id, name: filename, fileSize: buffer.byteLength, bytes, store, bim, backend };
 }
 
 // ── tool execution ────────────────────────────────────────────────────────
@@ -523,27 +525,20 @@ export function topClashRows(clashes: Clash[], cap: number): {
 const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
   // ── Discovery ───────────────────────────────────────────────────────────
   async model_info(m) {
-    // entityIndex.byType keys are raw STEP storage names (IFCWALL, …) —
-    // user-facing surfaces use IFC EXPRESS PascalCase (IfcWall). Resolve
-    // through store.entities.getTypeName so the playground agrees with
-    // the rest of the MCP surface.
-    const counts: Record<string, number> = {};
-    for (const [storageType, ids] of m.store.entityIndex.byType) {
-      const pretty = (ids.length > 0 ? m.store.entities.getTypeName(ids[0]) : null) ?? storageType;
-      counts[pretty] = ids.length;
-    }
-    const top = Object.entries(counts)
+    const typeCounts = effectiveTypeCounts(m);
+    const count = [...typeCounts.values()].reduce((total, n) => total + n, 0);
+    const top = [...typeCounts]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 20)
       .map(([type, count]) => ({ type, count }));
-    const summary = `Model '${m.name}' (${m.store.schemaVersion}): ${m.store.entityCount.toLocaleString()} entities, ${formatBytes(m.fileSize)}`;
+    const summary = `Model '${m.name}' (${m.store.schemaVersion}): ${count.toLocaleString()} entities, ${formatBytes(m.fileSize)}`;
     return {
       text: summary,
       structured: {
         id: m.id,
         name: m.name,
         schema: m.store.schemaVersion,
-        entityCount: m.store.entityCount,
+        entityCount: count,
         fileSize: m.fileSize,
         typeCountsTop20: top,
       },
@@ -551,9 +546,10 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
   },
 
   async model_list(m) {
+    const count = effectiveEntityCount(m);
     return {
-      text: `1 model loaded: ${m.name} (${m.store.entityCount.toLocaleString()} entities).`,
-      structured: { models: [{ id: m.id, name: m.name, entityCount: m.store.entityCount, schema: m.store.schemaVersion }] },
+      text: `1 model loaded: ${m.name} (${count.toLocaleString()} entities).`,
+      structured: { models: [{ id: m.id, name: m.name, entityCount: count, schema: m.store.schemaVersion }] },
     };
   },
 
@@ -758,7 +754,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
   },
 
   async georeferencing(m) {
-    const counts = m.store.entityIndex.byType.get('IFCMAPCONVERSION') ?? [];
+    const counts = [...effectiveEntities(m, ['IFCMAPCONVERSION'])];
     return {
       text: counts.length === 0 ? 'Model has no IfcMapConversion (no georeferencing).' : `${counts.length} IfcMapConversion entity (georeferenced).`,
       structured: { hasGeoreference: counts.length > 0 },
@@ -1015,7 +1011,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     if (!type) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'type is required.' });
     // Use HeadlessLikeBackend's editor — it's the same path the stdio MCP
     // takes for entity_create.
-    const editor = (m.bim as unknown as { backend: { ensureEditor(): { addEntity(t: string, a: unknown[]): { expressId: number } } } }).backend.ensureEditor();
+    const editor = m.backend.ensureEditor();
     const attrs = (args.attributes as unknown[] | undefined) ?? [];
     const ref = editor.addEntity(type, attrs as Parameters<typeof editor.addEntity>[1]);
     return { text: `Created ${type} as #${ref.expressId}.`, structured: { expressId: ref.expressId, type } };
@@ -1024,14 +1020,14 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     const ref = resolveRef(m, args);
     // The mutate namespace doesn't expose a delete on its public surface,
     // but the headless backend's mutation view does.
-    const view = (m.bim as unknown as { backend: { getMutationView(): { deleteEntity(id: number): boolean } | null } }).backend.getMutationView();
+    const view = m.backend.getMutationView();
     if (!view) throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'Mutation view unavailable.' });
     const ok = view.deleteEntity(ref.expressId);
     return { text: ok ? `Deleted #${ref.expressId}.` : `#${ref.expressId} was not in the store.`, structured: { expressId: ref.expressId, deleted: ok } };
   },
   async mutation_diff(m) {
-    const view = (m.bim as unknown as { backend: { getMutationView(): { mutationHistory?: unknown[] } | null } }).backend.getMutationView();
-    const hist = view ? (view as { mutationHistory?: unknown[] }).mutationHistory ?? [] : [];
+    const view = m.backend.getMutationView();
+    const hist = view?.getMutations() ?? [];
     return { text: `${hist.length} pending mutation(s).`, structured: { count: hist.length, mutations: hist } };
   },
   async mutation_undo(m, args) {
@@ -1181,7 +1177,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     const report = await validateIDS(doc, accessor, {
       modelId: m.id,
       schemaVersion: m.store.schemaVersion,
-      entityCount: m.store.entityCount,
+      entityCount: effectiveEntityCount(m),
     });
     const head = `IDS '${doc.info?.title ?? 'untitled'}' · ${report.summary.passedSpecifications}/${report.summary.totalSpecifications} specs passed (${report.summary.overallPassRate.toFixed(0)}%).`;
     const lines = report.specificationResults.map((s) => {
@@ -1297,8 +1293,8 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     const { left, right } = resolveDiffModels(m, args, ctx);
     const types1 = new Map<string, number>();
     const types2 = new Map<string, number>();
-    for (const [type, ids] of left.store.entityIndex.byType) types1.set(type, ids.length);
-    for (const [type, ids] of right.store.entityIndex.byType) types2.set(type, ids.length);
+    for (const [type, count] of effectiveTypeCounts(left)) types1.set(type, count);
+    for (const [type, count] of effectiveTypeCounts(right)) types2.set(type, count);
     const diffs: Array<{ type: string; left: number; right: number; delta: number }> = [];
     for (const t of new Set([...types1.keys(), ...types2.keys()])) {
       const a = types1.get(t) ?? 0;
@@ -1729,13 +1725,8 @@ function resolveRef(m: LoadedPlaygroundModel, args: Record<string, unknown>): En
     return { modelId: m.id, expressId: args.express_id };
   }
   if (typeof args.global_id === 'string') {
-    // Linear scan — fine for v1 since we only have one model in memory.
-    for (const [, ids] of m.store.entityIndex.byType) {
-      for (const id of ids) {
-        const node = new EntityNode(m.store, id);
-        if (node.globalId === args.global_id) return { modelId: m.id, expressId: id };
-      }
-    }
+    const id = effectiveGlobalIdLookup(m, args.global_id);
+    if (id !== undefined) return { modelId: m.id, expressId: id };
     throw new ToolExecutionError({
       code: ToolErrorCode.ENTITY_NOT_FOUND,
       message: `No entity with GlobalId '${args.global_id}' in this model.`,
@@ -1858,32 +1849,25 @@ function makeIdsAccessor(m: LoadedPlaygroundModel): import('@ifc-lite/ids').IFCD
   const ref = (id: number): EntityRef => ({ modelId: m.id, expressId: id });
   return {
     getEntityType(id) {
-      try { return new EntityNode(m.store, id).type; } catch (err) { logIdsAccessorMiss('getEntityType', id, err); return undefined; }
+      return m.bim.entity(ref(id))?.type;
     },
     getEntityName(id) {
-      try { return new EntityNode(m.store, id).name || undefined; } catch (err) { logIdsAccessorMiss('getEntityName', id, err); return undefined; }
+      return m.bim.entity(ref(id))?.name || undefined;
     },
     getGlobalId(id) {
-      try { return new EntityNode(m.store, id).globalId || undefined; } catch (err) { logIdsAccessorMiss('getGlobalId', id, err); return undefined; }
+      return m.bim.entity(ref(id))?.globalId || undefined;
     },
     getDescription(id) {
-      try { return new EntityNode(m.store, id).description || undefined; } catch (err) { logIdsAccessorMiss('getDescription', id, err); return undefined; }
+      return m.bim.entity(ref(id))?.description || undefined;
     },
     getObjectType(id) {
-      try { return new EntityNode(m.store, id).objectType || undefined; } catch (err) { logIdsAccessorMiss('getObjectType', id, err); return undefined; }
+      return m.bim.entity(ref(id))?.objectType || undefined;
     },
     getEntitiesByType(typeName) {
-      const wantedUpper = typeName.toUpperCase();
-      const out: number[] = [];
-      for (const [t, ids] of m.store.entityIndex.byType) {
-        if (t.toUpperCase() === wantedUpper) for (const id of ids) out.push(id);
-      }
-      return out;
+      return [...effectiveEntities(m, [typeName])].map(({ expressId }) => expressId);
     },
     getAllEntityIds() {
-      const out: number[] = [];
-      for (const id of m.store.entityIndex.byId.keys()) out.push(id);
-      return out;
+      return [...effectiveEntities(m)].map(({ expressId }) => expressId);
     },
     getPropertyValue(id, psetName, propName) {
       const v = m.bim.property(ref(id), psetName, propName);

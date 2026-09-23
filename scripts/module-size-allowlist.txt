@@ -258,7 +258,7 @@
    467 packages/ids/src/facets/property-facet.ts
    597 packages/ids/src/parser/xml-parser.ts
    624 packages/ids/src/translation/service.ts
-   629 packages/ids/src/types.ts
+   635 packages/ids/src/types.ts
    770 packages/ids/src/validation/validator.ts
    468 packages/ifcx/src/federated-composition.ts
    704 packages/ifcx/src/index.ts
@@ -285,7 +285,7 @@
    920 packages/parser/src/columnar-parser.ts
    467 packages/parser/src/compact-entity-index.ts
    530 packages/parser/src/data-store-transport.ts
-   827 packages/parser/src/material-resolver.ts
+   853 packages/parser/src/material-resolver.ts
    796 packages/parser/src/on-demand-extractors.ts
    494 packages/parser/src/source-bytes.ts
    513 packages/plugin-api/src/types.ts

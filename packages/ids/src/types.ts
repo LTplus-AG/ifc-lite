@@ -521,10 +521,15 @@ export interface ClassificationInfo {
 
 /** Material information */
 export interface MaterialInfo {
-  /** Material name */
-  name: string;
+  /** Material name. Absent on an `unresolved` entry (#5227). */
+  name?: string;
   /** Material category (if available) */
   category?: string;
+  /** Materially-associated (a real IfcRelAssociatesMaterial edge), but the
+   *  material's own attributes are unreadable on this data source — a
+   *  server-parsed store with no source bytes (#5227). Distinguishes
+   *  "has material but unreadable" from a genuinely empty result. */
+  unresolved?: boolean;
 }
 
 /** Parent entity information */

@@ -263,7 +263,6 @@ export interface JsonSchema {
   minItems?: number;
   maxItems?: number;
   format?: string;
-  oneOf?: JsonSchema[];
   anyOf?: JsonSchema[];
   additionalProperties?: boolean | JsonSchema;
   [key: string]: unknown;

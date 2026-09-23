@@ -7,8 +7,23 @@
  *
  * We only support the keywords our hand-authored tool schemas use:
  *   type, properties, required, items, enum, minimum, maximum,
- *   minLength, maxLength, minItems, maxItems, default, oneOf, anyOf,
+ *   minLength, maxLength, minItems, maxItems, default, anyOf,
  *   additionalProperties.
+ *
+ * `anyOf` is checked against the *original* input (not `walk`'s
+ * default-filled/type-narrowed copy of it), and only requires ONE branch to
+ * validate cleanly; it does not merge a matching branch's own defaults or
+ * error paths into the result. We deliberately do not support `oneOf`
+ * (exactly-one-of): none of our schemas need "match precisely one branch,
+ * reject on more than one", and getting that half-implemented is worse than
+ * not offering it.
+ *
+ * A top-level `anyOf` is enforced here but NOT advertised: the Anthropic
+ * Messages API rejects a tool `input_schema` carrying `oneOf`/`allOf`/`anyOf`
+ * at the root with a 400 that fails the whole request, so every Claude-backed
+ * MCP client would lose the entire tool list over one schema.
+ * `advertisedInputSchema` strips it from what `tools/list` returns; tools state
+ * the constraint in their property descriptions instead (#5192).
  *
  * That's enough to surface clear `INVALID_INPUT` errors back to the LLM
  * without bringing in `ajv` (and its 200+ KB of metaschema) or zod.
@@ -34,8 +49,21 @@ export function validateInput(schema: JsonSchema, input: unknown): ValidationRes
   return { valid: errors.length === 0, errors, value };
 }
 
-function walk(schema: JsonSchema, input: unknown, path: string, errors: ValidationIssue[]): unknown {
-  if (input === undefined && schema.default !== undefined) {
+/**
+ * The schema `tools/list` publishes for a tool: its input schema without the
+ * root-level `anyOf` (see the file header). Nested `anyOf` is left alone —
+ * only the root is rejected by the Anthropic API.
+ */
+export function advertisedInputSchema(schema: JsonSchema): JsonSchema {
+  if (schema.anyOf === undefined) return schema;
+  const { anyOf: _enforcedServerSide, ...advertised } = schema;
+  return advertised;
+}
+
+// `fillDefaults` is off while an `anyOf` branch is only being tested: a
+// branch's result is discarded, so a default must not be what lets it pass.
+function walk(schema: JsonSchema, input: unknown, path: string, errors: ValidationIssue[], fillDefaults = true): unknown {
+  if (fillDefaults && input === undefined && schema.default !== undefined) {
     input = clone(schema.default);
   }
   if (input === undefined || input === null) return input;
@@ -50,17 +78,40 @@ function walk(schema: JsonSchema, input: unknown, path: string, errors: Validati
     return input;
   }
 
-  if (matchesType('object', input) && schema.properties) {
+  // Checked against the ORIGINAL input, not the default-filled/narrowed copy
+  // this function otherwise builds — a branch only has to describe a shape
+  // that matches, e.g. `{ required: ['global_id'] }` with no `properties` of
+  // its own. Any ONE matching branch is enough (unlike `oneOf`, which we do
+  // not implement — see the file header).
+  if (schema.anyOf && schema.anyOf.length > 0) {
+    const branchErrors = schema.anyOf.map((sub) => {
+      const subErrors: ValidationIssue[] = [];
+      walk(sub, input, path, subErrors, false);
+      return subErrors;
+    });
+    if (!branchErrors.some((b) => b.length === 0)) {
+      // Name what each branch wanted, so the caller can fix the call without
+      // reading the schema: `$.global_id: Required property missing` or ...
+      const wanted = branchErrors.map((b) => b.map((e) => `${e.path}: ${e.message}`).join('; ')).join(' OR ');
+      errors.push({ path, message: `Expected input at '${path}' to satisfy at least one anyOf branch: ${wanted}` });
+    }
+  }
+
+  if (matchesType('object', input)) {
     const obj = input as Record<string, unknown>;
     const result: Record<string, unknown> = { ...obj };
-    for (const [key, sub] of Object.entries(schema.properties)) {
-      const childPath = `${path}.${key}`;
-      const value = walk(sub, obj[key], childPath, errors);
-      if (value !== undefined) result[key] = value;
+    if (schema.properties) {
+      for (const [key, sub] of Object.entries(schema.properties)) {
+        const childPath = `${path}.${key}`;
+        const value = walk(sub, obj[key], childPath, errors, fillDefaults);
+        if (value !== undefined) result[key] = value;
+      }
     }
     if (schema.required) {
       for (const key of schema.required) {
-        if (result[key] === undefined) {
+        // `null` counts as missing: every handler reads an absent and a null
+        // field alike, so `{ global_id: null }` must not satisfy a required id.
+        if (result[key] === undefined || result[key] === null) {
           errors.push({ path: `${path}.${key}`, message: 'Required property missing' });
         }
       }
@@ -85,7 +136,7 @@ function walk(schema: JsonSchema, input: unknown, path: string, errors: Validati
       errors.push({ path, message: `Array longer than ${schema.maxItems} item(s)` });
     }
     if (schema.items) {
-      return arr.map((item, i) => walk(schema.items as JsonSchema, item, `${path}[${i}]`, errors));
+      return arr.map((item, i) => walk(schema.items as JsonSchema, item, `${path}[${i}]`, errors, fillDefaults));
     }
     return arr;
   }

@@ -28,9 +28,9 @@
  */
 
 import { writeFile } from 'node:fs/promises';
-import { EntityNode } from '@ifc-lite/query';
 import type { Mutation } from '@ifc-lite/mutations';
 import type { Tool } from './types.js';
+import { entityTargetSchema } from './entity-target-schema.js';
 import { findByGlobalId, okResult, resolveModel } from './util.js';
 import type { HeadlessLikeBackend } from '../headless-backend.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
@@ -104,19 +104,11 @@ const entitySetProperty: Tool = {
   name: 'entity_set_property',
   description: 'Set or create a property on an entity. Mutations are queued; call `export_ifc` to persist.',
   scope: 'mutate',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      model_id: { type: 'string' },
-      global_id: { type: 'string' },
-      express_id: { type: 'integer' },
-      pset: { type: 'string', description: 'Property set name, e.g. "Pset_WallCommon".' },
-      name: { type: 'string', description: 'Property name within the pset.' },
-      value: { description: 'Boolean / number / string value.' },
-    },
-    required: ['pset', 'name'],
-    additionalProperties: false,
-  },
+  inputSchema: entityTargetSchema({
+    pset: { type: 'string', description: 'Property set name, e.g. "Pset_WallCommon".' },
+    name: { type: 'string', description: 'Property name within the pset.' },
+    value: { description: 'Boolean / number / string value.' },
+  }, ['pset', 'name']),
   handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const backend = getBackend(m);
@@ -137,18 +129,10 @@ const entityDeleteProperty: Tool = {
   name: 'entity_delete_property',
   description: 'Delete a property from a Pset. Queued — persist via `export_ifc`.',
   scope: 'mutate',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      model_id: { type: 'string' },
-      global_id: { type: 'string' },
-      express_id: { type: 'integer' },
-      pset: { type: 'string' },
-      name: { type: 'string' },
-    },
-    required: ['pset', 'name'],
-    additionalProperties: false,
-  },
+  inputSchema: entityTargetSchema({
+    pset: { type: 'string' },
+    name: { type: 'string' },
+  }, ['pset', 'name']),
   handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const backend = getBackend(m);
@@ -172,18 +156,10 @@ const entitySetAttribute: Tool = {
   name: 'entity_set_attribute',
   description: 'Set a top-level IFC attribute (Name, Description, ObjectType, Tag).',
   scope: 'mutate',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      model_id: { type: 'string' },
-      global_id: { type: 'string' },
-      express_id: { type: 'integer' },
-      attribute: { type: 'string', enum: ['Name', 'Description', 'ObjectType', 'Tag'] },
-      value: { type: 'string' },
-    },
-    required: ['attribute', 'value'],
-    additionalProperties: false,
-  },
+  inputSchema: entityTargetSchema({
+    attribute: { type: 'string', enum: ['Name', 'Description', 'ObjectType', 'Tag'] },
+    value: { type: 'string' },
+  }, ['attribute', 'value']),
   handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const backend = getBackend(m);
@@ -239,15 +215,7 @@ const entityDelete: Tool = {
   name: 'entity_delete',
   description: 'Delete an entity. Note: cascades are NOT applied automatically — caller must remove dependent relationships first.',
   scope: 'mutate',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      model_id: { type: 'string' },
-      global_id: { type: 'string' },
-      express_id: { type: 'integer' },
-    },
-    additionalProperties: false,
-  },
+  inputSchema: entityTargetSchema({}),
   handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const backend = getBackend(m);

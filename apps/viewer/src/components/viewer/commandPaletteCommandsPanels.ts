@@ -173,9 +173,9 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
       action: () => { useViewerStore.getState().setAnonymizedExportRequested(true); } },
     { id: 'export:json', label: 'Export JSON', ...withKey('commandPalette.export.json.label'), keywords: 'data entities all download', category: 'Export', icon: FileJson,
       action: () => {
-        const d = useViewerStore.getState().ifcDataStore; if (!d) return;
+        const st = useViewerStore.getState(); const d = st.ifcDataStore; if (!d) return;
         try {
-          const out = buildCommandPaletteJsonEntities(d);
+          const out = buildCommandPaletteJsonEntities(d, st.activeModelId ? st.getMutationView(st.activeModelId) : null);
           downloadFile(JSON.stringify({ entities: out }, null, 2), 'model-data.json', 'application/json');
         } catch (e) { console.error(e); }
       } },

@@ -8,6 +8,7 @@ import { IfcTypeEnum, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/
 import type { FederatedModel } from './types.js';
 import { resolveExportVisibility } from './exportVisibility.js';
 import { useViewerStore } from './index.js';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 
 function createNode(expressId: number, type: IfcTypeEnum, children: SpatialNode[] = [], elements: number[] = []): SpatialNode {
   return { expressId, type, name: `Node ${expressId}`, children, elements };
@@ -172,5 +173,38 @@ describe('resolveExportVisibility', () => {
       // Intersection: only id 1 survives, not the union {1, 2}.
       assert.deepStrictEqual(result.isolatedLocalIds, new Set([1]));
     });
+  });
+});
+
+describe('typeVisibility over the model as edited (#5249)', () => {
+  beforeEach(() => {
+    useViewerStore.getState().resetViewerState();
+  });
+
+  it('a hidden class hides an entity created or retyped into it this session, not a deleted one', () => {
+    const dataStore = {
+      entityIndex: {
+        byType: new Map([['IFCSPACE', [7, 8]], ['IFCWALL', [9]]]),
+        byId: new Map([[7, { type: 'IFCSPACE' }], [8, { type: 'IFCSPACE' }], [9, { type: 'IFCWALL' }]]),
+      },
+    };
+    const view = new MutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(9);
+    const created = view.createEntity('IfcSpace', []).expressId;
+    view.deleteEntity(8);
+    view.setEntityType(9, 'IfcSpace', null, 'IfcWall');
+    useViewerStore.setState({
+      models: new Map([['m1', createFederatedModel({ ifcDataStore: dataStore as never, maxExpressId: 100 })]]),
+      mutationViews: new Map([['m1', view]]),
+      hiddenEntities: new Set(),
+      classFilter: null,
+      typeVisibility: { ...useViewerStore.getState().typeVisibility, spaces: false },
+    });
+
+    const hidden = resolveExportVisibility(useViewerStore.getState(), 'm1').hiddenLocalIds;
+    assert.ok(hidden.has(7), 'a parsed space is hidden');
+    assert.ok(hidden.has(created), 'a space created this session is hidden too');
+    assert.ok(hidden.has(9), 'a wall retyped to a space follows its new class');
+    assert.ok(!hidden.has(8), 'a deleted space is not an export candidate at all');
   });
 });

@@ -32,6 +32,12 @@ export const TOP = {
    * that as a single implicit slot over the unqualified `/<GlobalId>` paths.
    */
   MODELS: 'models',
+  /**
+   * Per-path overlay-tombstone registry (`path → boolean`), owned by
+   * `snapshot/overlay-tombstones.ts`. Root-level, not nested under `META`,
+   * so concurrent peers merge into one map instead of racing (#5219).
+   */
+  OVERLAY_TOMBSTONES: 'overlay.tombstones.registry',
 } as const;
 
 /** Origin tag used for transactions originated by the local CollabSession. */
@@ -170,6 +176,7 @@ export function createCollabDoc(opts: { gc?: boolean } = {}): Y.Doc {
   doc.getMap(TOP.META);
   doc.getMap(TOP.ANNOTATIONS);
   doc.getMap(TOP.MODELS);
+  doc.getMap(TOP.OVERLAY_TOMBSTONES);
   return doc;
 }
 

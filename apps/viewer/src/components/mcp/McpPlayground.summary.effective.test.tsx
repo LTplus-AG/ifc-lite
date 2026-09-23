@@ -50,4 +50,16 @@ it('Playground sidebar count and type rows refresh after real live entity edits 
   assert.equal(entityCount(), 1);
   assert.doesNotMatch(ui.textContent ?? '', /IfcWall/);
   assert.match(ui.textContent ?? '', /IfcDoor/);
+
+  await act(async () => {
+    const batch = await dispatch(model, 'mutation_batch', {
+      operations: [{ tool: 'entity_create', args: {
+        type: 'IfcWindow', attributes: ['0SummaryWindow00000000', null, 'Authored window'],
+      } }],
+    }, { onModelChanged: notify });
+    assert.equal(batch.isError, false, batch.text);
+  });
+  assert.equal(changeNotifications, 3);
+  assert.equal(entityCount(), 2);
+  assert.match(ui.textContent ?? '', /IfcWindow/);
 });

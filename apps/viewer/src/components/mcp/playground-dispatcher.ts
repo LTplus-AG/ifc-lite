@@ -1989,6 +1989,7 @@ const MODEL_MUTATION_TOOLS = new Set([
   'entity_create',
   'entity_delete',
   'mutation_undo',
+  'mutation_batch',
 ]);
 
 export async function dispatch(

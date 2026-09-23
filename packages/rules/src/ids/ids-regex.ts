@@ -177,6 +177,10 @@ function xsdCompiles(xsd: string): boolean {
  * value match; an unanchored side becomes `.*`.
  */
 export function jsRegexToIdsPattern(regex: JsRegex): RegexConversion {
+  // `g` and `y` are dropped because the engine drops them: `@ifc-lite/lists`'
+  // `parseRegexLiteral` compiles every operand without them (a cached,
+  // shared matcher must not carry `lastIndex` state), so `/a/y` already
+  // searches like `/a/`. `d` only adds match indices.
   const flags = regex.flags.replace(/[gyd]/g, '');
   for (const flag of flags) {
     if (flag === 'i') return { ok: false, reason: 'the "i" flag makes the pattern case-insensitive, which IDS patterns cannot be' };

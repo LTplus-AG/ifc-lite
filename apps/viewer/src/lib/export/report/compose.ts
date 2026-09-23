@@ -13,7 +13,8 @@
  *
  * Units are PDF points (1/72 in). A4 = 595 × 842, A3 = 842 × 1191.
  */
-import type { Aggregation, ChartSource, ReportPageSetup } from '@ifc-lite/charts';
+import type { Aggregation, ReportPageSetup } from '@ifc-lite/charts';
+import { countRows, rowCountHeader } from '@/lib/charts/row-noun';
 
 export const PAGE_SIZES_PT: Record<ReportPageSetup['size'], { w: number; h: number }> = {
   A4: { w: 595.28, h: 841.89 },
@@ -85,20 +86,6 @@ export function pageBox(page: ReportPageSetup): { w: number; h: number } {
 
 const plural = (n: number, word: string): string => `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
 
-/** What one row of a bucket is, by dataset (#5218): only the `elements`
- *  source is 1:1 with elements — a clash row is a PAIR, a bcf row a TOPIC,
- *  a schedule row a TASK, an ids row a (specification, entity) RESULT, a
- *  compare row a diff ENTRY. Taken from each dataset's own doc comment
- *  (`apps/viewer/src/lib/charts/datasets/*.ts`), not invented: the bucket
- *  table's "Elements" column used to count these regardless of source. */
-const ROW_NOUN: Record<ChartSource, string> = {
-  elements: 'Elements',
-  clash: 'Clashes',
-  bcf: 'Topics',
-  schedule: 'Tasks',
-  ids: 'Results',
-  compare: 'Entries',
-};
 
 function formatValue(value: number, unit?: string): string {
   const text = Number.isInteger(value) ? value.toLocaleString() : value.toFixed(2);
@@ -115,7 +102,7 @@ export function bucketTable(aggregation: Aggregation, maxRows = TABLE_MAX_ROWS):
   ]);
   const more = aggregation.categories.length - rows.length;
   if (more > 0) rows.push([`… ${more} more`, '', '']);
-  return { head: ['Bucket', ROW_NOUN[aggregation.spec.source], aggregation.spec.measure.agg === 'count' ? '' : measure], rows };
+  return { head: ['Bucket', rowCountHeader(aggregation.spec.source), aggregation.spec.measure.agg === 'count' ? '' : measure], rows };
 }
 
 export function composeReport(input: ComposeReportInput): ReportLayout {
@@ -180,7 +167,7 @@ export function composeReport(input: ComposeReportInput): ReportLayout {
       // on-screen card (`ChartCard.tsx`'s `subtitleFor`) word for word so
       // the report never disagrees with what the user saw while editing.
       subtitle: agg
-        ? `${plural(agg.categories.length, 'bucket')} · ${agg.spec.measure.agg === 'count' ? plural(agg.total, 'element') : `${agg.total.toLocaleString()} ${agg.unit ?? ''}`.trim()}`
+        ? `${plural(agg.categories.length, 'bucket')} · ${agg.spec.measure.agg === 'count' ? countRows(agg.total, agg.spec.source) : `${agg.total.toLocaleString()} ${agg.unit ?? ''}`.trim()}`
         : 'Cannot aggregate — edit the chart',
       chart: chartBox,
       snapshot,

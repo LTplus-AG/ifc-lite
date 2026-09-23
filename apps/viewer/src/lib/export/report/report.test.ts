@@ -80,6 +80,10 @@ describe('composeReport', () => {
     // chart is broken", never "this chart ran and found nothing".
     const empty = agg('empty', 0);
     assert.equal(empty.categories.length, 0, 'a legitimately empty aggregation is a real object, not null');
+    // And the broken case is real: a saved chart whose dimension column is
+    // gone (e.g. after a model swap) throws, which ChartCard turns into null.
+    const swapped: ChartDataset = { source: 'elements', columns: [{ id: 'kept', label: 'Kept', kind: 'category' }], rows: [{ ids: [1], values: ['a'] }], fingerprint: 'swapped' };
+    assert.throws(() => aggregate({ id: 'g', title: 'gone', source: 'elements', type: 'bar', dimension: 'gone', measure: { agg: 'count' } }, swapped));
     const layout = composeReport({
       name: 'r',
       page: { size: 'A4', orientation: 'landscape' },
@@ -115,6 +119,10 @@ describe('composeReport', () => {
     const clashTable = bucketTable(clashAgg);
     assert.equal(clashTable.head[1], 'Clashes');
     assert.equal(clashTable.rows[0][1], '5', 'the printed count is pairs (rows), matching the header noun, not the 10 elements involved');
+    // The subtitle states the same count, so it must use the same noun.
+    const clashLayout = composeReport({ name: 'r', page: { size: 'A4', orientation: 'landscape' }, titleBlock: {}, snapshots: false, charts: [{ id: 'c', title: 'Clashes', aggregation: clashAgg }], generatedAt: 'now' });
+    const [clashBlock] = clashLayout.pages.flatMap((p) => p.blocks).filter((b) => b.kind === 'chart');
+    assert.equal(clashBlock.subtitle, '1 bucket · 5 clashes');
 
     const bcfDs: ChartDataset = {
       source: 'bcf',

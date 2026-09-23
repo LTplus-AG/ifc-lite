@@ -62,7 +62,8 @@ import { applySourceLineMutationsReported } from './step-attribute-mutations.js'
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
 import { nominateDeliveredInPlaceEdits } from './in-place-nomination.js';
 import { decodeRange } from './source-ref-bounds.js';
-import { getPropertyIdsInSet, type PropertySetContext } from './step-property-set-readers.js';
+import type { PropertySetContext } from './step-property-set-readers.js';
+import { retainSharedAtoms } from './step-shared-atom-retention.js';
 import type { ExportPass, SourceLineMutations, StepExportOptions } from './step-exporter.js';
 
 /**
@@ -102,46 +103,6 @@ export interface SourceIterationContext {
 }
 
 /**
- * Un-skip property/quantity atoms that a surviving (non-skipped, and — under
- * visible-only export — still-included) IfcPropertySet / IfcElementQuantity
- * still references.
- *
- * When a property is edited, the modified pset is replaced and its member atoms
- * are added to `skipIds` wholesale. Because exporters deduplicate shared
- * Pset_*Common atoms (e.g. a single IsExternal / IsLoadBearing value referenced
- * by many psets), that wholesale skip can drop an atom another pset still needs.
- * This pass restores any such atom: the edited pset still emits its replacement
- * with the new value, while the shared atom stays for the psets that keep their
- * original value.
- */
-function retainSharedAtoms(
-  skipIds: Set<number>,
-  allowedEntityIds: Set<number> | null,
-  ctxOf: SourceIterationContext,
-): void {
-  if (skipIds.size === 0) return;
-  // Built once for the whole sweep rather than per container: the readers in
-  // `step-property-set-readers.ts` take the context, and this loop calls one
-  // of them once per IfcPropertySet / IfcElementQuantity in the file.
-  const ctx = ctxOf.propertySetContext();
-  const byType = ctxOf.dataStore.entityIndex.byType;
-  const containerIds = [
-    ...(byType.get('IFCPROPERTYSET') ?? []),
-    ...(byType.get('IFCELEMENTQUANTITY') ?? []),
-  ];
-  for (const containerId of containerIds) {
-    // Skipped containers are being dropped/replaced — their atoms may go.
-    if (skipIds.has(containerId)) continue;
-    // Under visible-only export a container outside the closure is not emitted,
-    // so it cannot keep an atom alive.
-    if (allowedEntityIds !== null && !allowedEntityIds.has(containerId)) continue;
-    for (const atomId of getPropertyIdsInSet(ctx, containerId)) {
-      skipIds.delete(atomId);
-    }
-  }
-}
-
-/**
  * Write every source-backed record this export keeps, into `pass.entities`.
  *
  * Mutates the pass in place and returns nothing: three later readers take its
@@ -168,7 +129,9 @@ export function writeSourceEntityLines(
   // IsExternal IfcPropertySingleValue shared by dozens of psets), so skipping a
   // shared atom would orphan every OTHER pset that still references it, leaving
   // dangling refs and an invalid file. Keep any atom a surviving container needs.
-  retainSharedAtoms(pass.skipPropertySetIds, pass.allowedEntityIds, ctx);
+  if (pass.skipPropertySetIds.size > 0) {
+    retainSharedAtoms(pass.skipPropertySetIds, pass.allowedEntityIds, pass.effective, ctx.propertySetContext());
+  }
 
   // Export original entities from source buffer, SKIPPING modified property sets
   if (!options.deltaOnly && ctx.dataStore.source) {

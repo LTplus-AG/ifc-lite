@@ -31,7 +31,7 @@ import { createCostBackend, createEffectiveEntityCheck, createHeadlessMutateAdap
 import { applyStylesInStore } from '@ifc-lite/create';
 import { unsupportedStoreAuthoring } from './headless-backend-store-stubs.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { MutablePropertyView, StoreEditor, storeHasSourceEntity } from '@ifc-lite/mutations';
 import {
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
@@ -102,11 +102,8 @@ export class HeadlessLikeBackend implements BimBackend {
     };
     this.checkEntityRef = createEffectiveEntityCheck({
       acceptedModelIds: this.acceptedModelIds,
-      // Both halves of the source index, the union every other "is it in the
-      // source model" site takes: `deferPropertyAtomIndex` keeps property atoms
-      // out of `byId`, and they are exported like any other entity.
-      hasSourceEntity: id => this.dataStore.entityIndex.byId.has(id)
-        || this.dataStore.deferredEntityIndex?.has(id) === true,
+      // Both halves of the source index (byId + deferred property atoms, #5222).
+      hasSourceEntity: id => storeHasSourceEntity(this.dataStore, id),
       overlay: () => this.mutationView,
     });
     this.mutate = createHeadlessMutateAdapter(() => this.getOrCreateMutationView(), this.checkEntityRef);

@@ -80,6 +80,24 @@ describe('StoreEditor', () => {
     expect(ref.expressId).toBe(26);
   });
 
+  // #5222: hasEntity and removeEntity must agree about existence. Both used to
+  // spell out the source-index union by hand, and removeEntity left out the
+  // deferred half, so it returned a silent `false` for a deferred property atom
+  // that hasEntity reported present, and deleted nothing.
+  it('removeEntity deletes a deferred-index entity that hasEntity reports (#5222)', () => {
+    const store = makeStore(10, [25]);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+
+    expect(editor.hasEntity(25)).toBe(true);
+    expect(editor.removeEntity(25)).toBe(true);
+    expect(view.isDeleted(25)).toBe(true);
+    expect(editor.hasEntity(25)).toBe(false);
+    // Existence is still bounded by the two indexes: an id in neither is refused.
+    expect(editor.hasEntity(26)).toBe(false);
+    expect(editor.removeEntity(26)).toBe(false);
+  });
+
   it('addEntity continues allocating monotonically across calls', () => {
     const store = makeStore(5);
     const view = new MutablePropertyView(null, 'm1');

@@ -6616,7 +6616,8 @@
     "iterateEffectiveEntityIds: function",
     "propertyKey: function",
     "quantityKey: function",
-    "setEntityTypeNormalizer: function"
+    "setEntityTypeNormalizer: function",
+    "storeHasSourceEntity: function"
   ],
   "@ifc-lite/oauth-pkce": [
     "AuthorizationCallbackResult: interface",

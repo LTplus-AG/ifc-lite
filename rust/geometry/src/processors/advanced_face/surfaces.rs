@@ -150,7 +150,9 @@ pub(crate) fn process_bspline_face(
 
     // Bound the actual cost driver (#4901): NOT the raw control-point count
     // (a real fixture legitimately carries a 207x180 = 37,260-point patch,
-    // see bspline_budget.rs) but the total work the code below will do:
+    // see bspline_budget.rs) but a conservative upper bound on total work.
+    // #5321 reuses axis tables and skips zero-support terms; retain the dense
+    // estimate so the optimization does not change which inputs are admitted:
     // - the weighted-sum loop (`evaluate_bspline_surface`), `samples * n_u * n_v`;
     // - PLUS the per-axis basis-table build (`bspline_basis_table`), which
     //   depends on `n_u` and `n_v` INDEPENDENTLY of each other and of their

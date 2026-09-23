@@ -1,0 +1,40 @@
+--- a/scripts/perf/browser-cold-ab.mts
++++ b/scripts/perf/browser-cold-ab.mts
+@@ -345,6 +345,37 @@
+         record.memory = {metric:'sum of owned Chrome-process RSS; shared pages may be double-counted',
+           peakKiB:Math.max(...memory.map(s=>s.rssKiB)), samples:memory, errors:memoryErrors,
+           tail:'2 seconds after observed readiness; cache completion not asserted'};
++        const pick = await page.evaluate(async ({bcfFile}) => {
++          const m = await import('/assets/' + bcfFile); await m.__tla;
++          const renderer = m.r();
++          const canvas = renderer.getCanvas();
++          const rect = canvas.getBoundingClientRect();
++          for (const fy of [0.5,0.4,0.6,0.3,0.7]) {
++            for (const fx of [0.5,0.4,0.6,0.3,0.7]) {
++              const x=rect.width*fx, y=rect.height*fy;
++              const hit = await renderer.pick(x,y);
++              if (hit && hit.expressId > 0) return {hit,x:rect.left+x,y:rect.top+y};
++            }
++          }
++          throw new Error('No mesh picked across central canvas grid');
++        }, {bcfFile});
++        await page.mouse.click(pick.x,pick.y);
++        let selection;
++        for(let attempt=0;attempt<100;attempt++) {
++          selection = await page.evaluate(async ({storeFile,id}) => {
++            const m=await import('/assets/'+storeFile); await m.__tla;
++            const s=m.n.getState(), ref=s.selectedEntity;
++            if (s.selectedEntityId!==id || !ref) return null;
++            const model=s.models.get(ref.modelId);
++            const type=model?.ifcDataStore?.entities.getTypeName(ref.expressId);
++            if (!type) return null;
++            return {ref,type};
++          }, {storeFile,id:pick.hit.expressId});
++          if (selection) break;
++          await page.waitForTimeout(100);
++        }
++        if (!selection) throw new Error('Canvas click did not resolve picked entity metadata');
++        record.functional={pick,selection};
+         // Separate visual artifact, captured after the observed timing boundary.
+         await page.screenshot({ path: join(RESULTS_DIR,
+           `${label}-${browserFixtureKey(fixture.name)}-r${iter}.png`) });

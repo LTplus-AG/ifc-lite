@@ -1911,3 +1911,22 @@ corpus, the correct "perf verdict" is an isolation proof (identical mesh
 counts and fingerprint, timing inside noise) rather than a speedup or
 regression claim — don't force a delta narrative onto a lever that has no
 reach into the fixtures the ledger already tracks.
+
+## Surface spline sample reuse (#5321)
+
+Surface evaluation reuses axis samples and removes only exact-zero coefficients,
+keeping the order and threshold of the dense weighted sum. A bounded sparse-sample
+cache also handles malformed knot vectors with dense support without retaining
+all their samples. The existing degree and work-admission budgets stay unchanged.
+
+Five alternating fresh-process native pairs improved full-call load on the real
+spline fixture in every pair; the four control-model medians remained within
+observed variation. Ordered mesh fingerprints, counts and diagnostics matched in
+all samples. Real WASM prepass/batch comparisons also retained exact geometry
+payloads at three detail levels. This establishes no browser speedup by itself.
+Five alternating fresh-process browser pairs per fixture completed without
+load/GPU errors on the same target and controls. Readiness changes were mixed
+within run variation and target geometry-streaming was flat: no demonstrated
+browser speedup. The adapter was SwiftShader; RSS sampling is a coarse sum of
+owned processes through a fixed post-readiness tail, not cache-settled memory.
+See [evidence and measurement limits](evidence/spline-5321/README.md).

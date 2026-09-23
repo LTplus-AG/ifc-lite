@@ -71,34 +71,32 @@ fn bspline_basis(i: usize, p: usize, u: f64, knots: &[f64]) -> f64 {
         .unwrap_or(0.0)
 }
 
-/// Evaluate a B-spline surface at parameter (u, v).
-/// When `weights` is `None` this is a standard (non-rational) evaluation.
-/// When `weights` is `Some`, rational (NURBS) normalization is applied.
+/// Keep authored index order and discard only exact zeros, NOT small values.
+/// The acceptance threshold applies to the U*V product, so filtering each axis
+/// by that threshold would change malformed/non-normalized knot behavior.
+fn surface_basis(degree: usize, t: f64, knots: &[f64], count: usize) -> Vec<(usize, f64)> {
+    bspline_basis_table(degree, t, knots, count)
+        .into_iter()
+        .enumerate()
+        .filter(|(_, value)| *value != 0.0)
+        .collect()
+}
+
+/// Evaluate the same ordered weighted sum using precomputed axis samples (#5321).
+/// Skipping a zero factor is safe even with nonfinite values on the other axis:
+/// their product is zero or NaN, neither of which passes the existing threshold.
 fn evaluate_bspline_surface(
-    u: f64,
-    v: f64,
-    u_degree: usize,
-    v_degree: usize,
+    u_basis: &[(usize, f64)],
+    v_basis: &[(usize, f64)],
     control_points: &[Vec<Point3<f64>>],
-    u_knots: &[f64],
-    v_knots: &[f64],
     weights: Option<&[Vec<f64>]>,
 ) -> Point3<f64> {
     let mut result = Point3::new(0.0, 0.0, 0.0);
     let mut weight_sum = 0.0;
-
-    // Table built once per axis per (u, v) sample, not once per (i, j)
-    // (#4901). `n_v` is the longest row, not the first, so a ragged grid
-    // still gets a valid value for every `j` a row actually has.
-    let n_u = control_points.len();
-    let n_v = control_points.iter().map(Vec::len).max().unwrap_or(0);
-    let u_table = bspline_basis_table(u_degree, u, u_knots, n_u);
-    let v_table = bspline_basis_table(v_degree, v, v_knots, n_v);
-
-    for (i, row) in control_points.iter().enumerate() {
-        let n_i = u_table.get(i).copied().unwrap_or(0.0);
-        for (j, cp) in row.iter().enumerate() {
-            let n_j = v_table.get(j).copied().unwrap_or(0.0);
+    for &(i, n_i) in u_basis {
+        let Some(row) = control_points.get(i) else { continue };
+        for &(j, n_j) in v_basis {
+            let Some(cp) = row.get(j) else { continue };
             let basis = n_i * n_j;
             if basis.abs() > 1e-10 {
                 let w = weights
@@ -114,14 +112,11 @@ fn evaluate_bspline_surface(
             }
         }
     }
-
-    // Rational normalization: divide by sum of weighted basis functions
     if weights.is_some() && weight_sum.abs() > 1e-10 {
         result.x /= weight_sum;
         result.y /= weight_sum;
         result.z /= weight_sum;
     }
-
     result
 }
 
@@ -166,26 +161,43 @@ pub(super) fn tessellate_bspline_surface(
     let v_min = v_knots[v_degree];
     let v_max = v_knots[v_knots.len() - v_degree - 1];
 
-    // Evaluate surface on a grid
-    for i in 0..=u_segments {
-        let u = u_min + (u_max - u_min) * (i as f64 / u_segments as f64);
-        // Clamp u to slightly inside the domain to avoid edge issues
-        let u = u.min(u_max - 1e-6).max(u_min);
-
-        for j in 0..=v_segments {
+    // U is reused across a row; V is reused across all rows. Store only the
+    // nonzero entries of each V sample, retaining the original summation order.
+    // Use the longest row just as the dense evaluator did for ragged grids.
+    let n_v_max = control_points.iter().map(Vec::len).max().unwrap_or(0);
+    // Malformed non-monotone knots can have dense support. Bound retained
+    // samples independently of the existing input-work limit; uncached samples
+    // use the same evaluator and are recomputed one at a time.
+    const MAX_CACHED_BASIS_ENTRIES: usize = 4096;
+    let mut remaining = MAX_CACHED_BASIS_ENTRIES;
+    let v_bases: Vec<_> = (0..=v_segments)
+        .map(|j| {
             let v = v_min + (v_max - v_min) * (j as f64 / v_segments as f64);
             let v = v.min(v_max - 1e-6).max(v_min);
-
-            let point = evaluate_bspline_surface(
-                u,
-                v,
-                u_degree,
-                v_degree,
-                control_points,
-                u_knots,
-                v_knots,
-                weights,
-            );
+            let basis = surface_basis(v_degree, v, v_knots, n_v_max);
+            let cached = if basis.len() <= remaining {
+                remaining -= basis.len();
+                Some(basis)
+            } else {
+                None
+            };
+            (v, cached)
+        })
+        .collect();
+    for i in 0..=u_segments {
+        let u = u_min + (u_max - u_min) * (i as f64 / u_segments as f64);
+        let u = u.min(u_max - 1e-6).max(u_min);
+        let u_basis = surface_basis(u_degree, u, u_knots, n_u);
+        for (j, (v, cached)) in v_bases.iter().enumerate() {
+            let scratch;
+            let v_basis = match cached {
+                Some(basis) => basis,
+                None => {
+                    scratch = surface_basis(v_degree, *v, v_knots, n_v_max);
+                    &scratch
+                }
+            };
+            let point = evaluate_bspline_surface(&u_basis, v_basis, control_points, weights);
 
             positions.push(point.x as f32);
             positions.push(point.y as f32);
@@ -234,29 +246,5 @@ pub(super) fn evaluate_bspline_curve(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn bspline_basis_out_of_range_returns_zero_not_panic() {
-        // Knot vector too short for (i, p): must contribute 0.0, not panic OOB.
-        assert_eq!(bspline_basis(5, 3, 0.5, &[0.0, 1.0]), 0.0);
-    }
-
-    #[test]
-    fn bspline_basis_matches_table_for_small_degree() {
-        // The memoized table (evaluate_bspline_surface/curve's production
-        // path) must agree with the single-index accessor for every i in a
-        // realistic (low-degree, few-knot) case — regression for #4901.
-        let knots = [0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 3.0, 3.0];
-        for i in 0..5 {
-            let direct = bspline_basis(i, 2, 1.5, &knots);
-            let table = bspline_basis_table(2, 1.5, &knots, 5);
-            assert!(
-                (direct - table[i]).abs() < 1e-12,
-                "i={i}: direct={direct} table={}",
-                table[i]
-            );
-        }
-    }
-}
+#[path = "bspline_tests.rs"]
+mod tests;

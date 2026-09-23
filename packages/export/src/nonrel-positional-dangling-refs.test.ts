@@ -496,3 +496,43 @@ describe('#5181: IfcElementQuantity.Quantities (derived, not hand-kept)', () => 
     expect(content).not.toContain('()');
   });
 });
+
+/**
+ * #5181: a type joins `NONREL_REF_LIST_TYPES` on ONE qualifying `[1:?]`
+ * attribute, but narrowing rewrites every parenthesised slot on the line.
+ * `IfcFillAreaStyleTiles` qualifies through `Tiles : SET [1:?] OF
+ * IfcStyledItem` and also carries `TilingPattern : LIST [2:2] OF IfcVector`.
+ * Each slot must be held to its OWN lower bound: narrowing `TilingPattern`
+ * to one vector would swap one dangling ref for a different invalid file.
+ */
+describe("#5181: narrowing honours each slot's own lower bound", () => {
+  const TILES_ENTRIES: Array<[number, string, string]> = [
+    [1, 'IFCDIRECTION', '#1=IFCDIRECTION((1.,0.));\n'],
+    [2, 'IFCDIRECTION', '#2=IFCDIRECTION((0.,1.));\n'],
+    [3, 'IFCVECTOR', '#3=IFCVECTOR(#1,1.);\n'],
+    [4, 'IFCVECTOR', '#4=IFCVECTOR(#2,1.);\n'],
+    [5, 'IFCSTYLEDITEM', "#5=IFCSTYLEDITEM($,(#9),'A');\n"],
+    [6, 'IFCSTYLEDITEM', "#6=IFCSTYLEDITEM($,(#9),'B');\n"],
+    [7, 'IFCFILLAREASTYLETILES', '#7=IFCFILLAREASTYLETILES((#3,#4),(#5,#6),1.);\n'],
+  ];
+
+  it('leaves a LIST [2:2] TilingPattern untouched rather than narrowing it to one member', () => {
+    const view = new MutablePropertyView(null, 'tiles-pattern-test');
+    view.deleteEntity(3);
+
+    const content = decode(new StepExporter(buildParsedStore(TILES_ENTRIES), view).export({ schema: 'IFC4' }).content);
+
+    expect(content).not.toContain('#3=IFCVECTOR');
+    expect(content).toContain('#7=IFCFILLAREASTYLETILES((#3,#4),(#5,#6),1.);');
+  });
+
+  it('still narrows the SET [1:?] Tiles list on the same line', () => {
+    const view = new MutablePropertyView(null, 'tiles-tiles-test');
+    view.deleteEntity(6);
+
+    const content = decode(new StepExporter(buildParsedStore(TILES_ENTRIES), view).export({ schema: 'IFC4' }).content);
+
+    expect(content).not.toContain('#6=IFCSTYLEDITEM');
+    expect(content).toContain('#7=IFCFILLAREASTYLETILES((#3,#4),(#5),1.);');
+  });
+});

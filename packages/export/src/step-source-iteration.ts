@@ -305,10 +305,10 @@ export function writeSourceEntityLines(
         }
         nextEntityText = filtered;
       } else if (mayNameOmittedRefs && NONREL_REF_LIST_TYPES.has(effectiveRelType)) {
-        // `IfcCostItem.CostValues`/`.CostQuantities`, `IfcAppliedValue`/
-        // `IfcCostValue.Components`, `IfcPhysicalComplexQuantity.HasQuantities`
-        // (`nonrel-ref-list-types.ts`): direct LIST attributes on a
-        // non-relationship class that name other entities, outside both
+        // `IfcCostItem.CostValues`, `IfcPropertySet.HasProperties`,
+        // `IfcElementQuantity.Quantities`, … (`nonrel-ref-list-types.ts`,
+        // derived from the schema registries — #5181): direct LIST/SET
+        // attributes on a non-relationship class that name other entities, outside both
         // branches above. A session deletion of a listed member reaches this
         // line exactly as it reaches an `IFCREL*` line's list attributes.
         //

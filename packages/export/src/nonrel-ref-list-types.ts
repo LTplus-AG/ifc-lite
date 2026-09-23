@@ -68,12 +68,13 @@
  * two-point `IfcPolyline` would narrow a valid 2-point line to an INVALID
  * 1-point one, silently, which is a worse defect than the dangling ref this
  * file exists to remove. So the derivation below additionally requires
- * `arrayBounds[0] <= 1`, matching the narrowing function's actual
- * guarantee. A future attribute this excludes for having a higher lower
- * bound needs a different fix in `narrowNonRelPositionalRefLists` itself
- * (falling back to "leave the slot untouched" once narrowing would drop
- * below the bound, the same way the mandatory-all-excluded case already
- * does) before it could safely join this set.
+ * `arrayBounds[0] <= 1` of the attribute that QUALIFIES a type. That gate
+ * is per type, but a qualifying type can still carry a second, higher-bound
+ * aggregate on the same line (`IfcFillAreaStyleTiles.TilingPattern`,
+ * `LIST [2:2]`, beside its qualifying `Tiles`), so
+ * `narrowNonRelPositionalRefLists` also reads EACH slot's own declared
+ * lower bound and leaves a slot untouched when narrowing would drop it below
+ * that bound.
  *
  * ONE MORE EXCLUSION: every `IfcTypeObject` subtype (`IfcWallType`,
  * `IfcDoorStyle`, …) is skipped ENTIRELY, not just at its

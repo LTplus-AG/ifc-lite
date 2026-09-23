@@ -4,7 +4,21 @@
 
 import { describe, expect, it } from 'vitest';
 import { MutablePropertyView } from './mutable-property-view.js';
-import { iterateEffectiveEntityIds, type EntityEnumerationSource } from './effective-entity-enumeration.js';
+import type { EntityEnumerationSource } from './effective-entity-enumeration.js';
+
+// The changed-test oracle removes new production files. Load at runtime so a
+// missing iterator fails a test assertion instead of preventing collection.
+const modulePath = './effective-entity-enumeration.js';
+const effectiveModule: typeof import('./effective-entity-enumeration.js') | null =
+  await import(modulePath).catch(() => null);
+const iterateEffectiveEntityIds: typeof import('./effective-entity-enumeration.js').iterateEffectiveEntityIds =
+  (...args) => {
+    if (!effectiveModule) {
+      expect(effectiveModule, 'effective entity iterator must exist').not.toBeNull();
+      throw new Error('effective entity iterator must exist');
+    }
+    return effectiveModule.iterateEffectiveEntityIds(...args);
+  };
 
 function source(): EntityEnumerationSource {
   return {

@@ -54,6 +54,7 @@ export interface CompleteEntityIndex {
  * directly (no wrapper allocation, identical iteration order and cost).
  */
 export function getCompleteEntityIndex(dataStore: IfcDataStore): CompleteEntityIndex {
+  // @raw-entity-enumeration-ok combines primary and deferred SOURCE records; createEffectiveEntityIndex folds in the overlay afterward
   const byId = dataStore.entityIndex.byId as unknown as CompleteEntityIndex;
   const deferred = dataStore.deferredEntityIndex as unknown as CompleteEntityIndex | undefined;
   if (!deferred || deferred.size === 0) {

@@ -26,7 +26,7 @@ import { idsReportBlockFromReport } from './ids-report.js';
 function spec(overrides: Partial<SpecificationResult> & { id: string; name: string; description?: string }): SpecificationResult {
   return {
     specification: { id: overrides.id, name: overrides.name, description: overrides.description },
-    status: 'fail',
+    status: overrides.status ?? 'fail',
     applicableCount: overrides.applicableCount ?? 0,
     passedCount: overrides.passedCount ?? 0,
     failedCount: overrides.failedCount ?? 0,

@@ -1,0 +1,26 @@
+--- a/scripts/perf/browser-cold-ab.mts
++++ b/scripts/perf/browser-cold-ab.mts
+@@ -236,7 +236,7 @@
+           if (memoryBusy) return;
+           memoryBusy = true;
+           try {
+-            const {processInfo} = await raceWithTimeout(cdp.send('SystemInfo.getProcessInfo'), 5000, 'SystemInfo.getProcessInfo');
++            const {processInfo} = await cdp.send('SystemInfo.getProcessInfo');
+             let rssKiB=0, missing=0;
+             for (const proc of processInfo) {
+               try {
+@@ -371,13 +371,7 @@
+         console.error(`browser-cold-ab: FAILED ${tag}: ${message} (evidence: ${failBase}.*)`);
+       } finally {
+         if (memoryTimer) clearInterval(memoryTimer);
+-        const memoryDrainDeadline = Date.now() + 5000;
+-        while (memoryBusy && Date.now() < memoryDrainDeadline) await sleep(10);
+-        if (memoryBusy || memoryErrors.length) {
+-          record.memorySamplerErrors = [...memoryErrors];
+-          record.error = memoryBusy ? 'Memory sampler did not settle before teardown deadline' : 'Memory sampler failed';
+-          record.ok = false;
+-        }
++        while (memoryBusy) await sleep(10);
+         // #4116: `await x.close().catch(...)` only handles a *rejection*; a
+         // close() call that never settles (observed on a 1.26 GB fixture, on
+         // both arms of two unrelated experiments) is neither resolved nor

@@ -1,0 +1,77 @@
+{
+  "wasmSha256": "57704e12a8c9c3e3e958b4602b91078b801ee97c4b25528e623eaa65e5276cf5",
+  "records": [
+    {
+      "file": "issues/472_2222.ifc",
+      "quality": "low",
+      "meshes": 21,
+      "vertices": 10393,
+      "triangles": 14132,
+      "sha256": "84ee3a65a28e45424bdd107aa2743b015cbfcb15e4532266bb07e1fd088b30a4"
+    },
+    {
+      "file": "issues/472_2222.ifc",
+      "quality": "medium",
+      "meshes": 21,
+      "vertices": 33069,
+      "triangles": 53479,
+      "sha256": "f6b44d2830a1fb653257f3c68b55fd36577cd8e382d8aeb82dedd81aa6cc6728"
+    },
+    {
+      "file": "issues/472_2222.ifc",
+      "quality": "high",
+      "meshes": 21,
+      "vertices": 116876,
+      "triangles": 207256,
+      "sha256": "372fbc693e4ae3373bded3286caa1bd2f7c85a44ea4b6d4ceaa0c29e9c40e5b9"
+    },
+    {
+      "file": "ara3d/AC20-FZK-Haus.ifc",
+      "quality": "low",
+      "meshes": 317,
+      "vertices": 57706,
+      "triangles": 32490,
+      "sha256": "fa31937b610e54eb6fef1dacfca303c90094e0df2388b451029cd1e0a3659183"
+    },
+    {
+      "file": "ara3d/AC20-FZK-Haus.ifc",
+      "quality": "medium",
+      "meshes": 317,
+      "vertices": 57706,
+      "triangles": 32490,
+      "sha256": "fa31937b610e54eb6fef1dacfca303c90094e0df2388b451029cd1e0a3659183"
+    },
+    {
+      "file": "ara3d/AC20-FZK-Haus.ifc",
+      "quality": "high",
+      "meshes": 317,
+      "vertices": 57706,
+      "triangles": 32490,
+      "sha256": "fa31937b610e54eb6fef1dacfca303c90094e0df2388b451029cd1e0a3659183"
+    },
+    {
+      "file": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "quality": "low",
+      "meshes": 1402,
+      "vertices": 190026,
+      "triangles": 114766,
+      "sha256": "985f199b87656e9810ef973dc36d9e8d55984c314075390e7c569352a6e418b2"
+    },
+    {
+      "file": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "quality": "medium",
+      "meshes": 1402,
+      "vertices": 217382,
+      "triangles": 133623,
+      "sha256": "e4414a805bfaaa09b2e982d6f4078926f0d670078f318131591a03a8bd1cf77e"
+    },
+    {
+      "file": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "quality": "high",
+      "meshes": 1402,
+      "vertices": 217382,
+      "triangles": 133623,
+      "sha256": "e4414a805bfaaa09b2e982d6f4078926f0d670078f318131591a03a8bd1cf77e"
+    }
+  ]
+}

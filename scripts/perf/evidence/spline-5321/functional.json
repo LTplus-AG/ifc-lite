@@ -1,0 +1,110 @@
+[
+  {
+    "side": "base",
+    "fixture": "472_2222.ifc",
+    "functional": {
+      "pick": {
+        "hit": {
+          "expressId": 7963,
+          "modelIndex": 0,
+          "worldXYZ": {
+            "x": 115.6242406998623,
+            "y": 2.59624617279232,
+            "z": -66.88430853582116
+          },
+          "geometryItemId": 1306
+        },
+        "x": 578.1796875,
+        "y": 423.25
+      },
+      "selection": {
+        "ref": {
+          "modelId": "6eb3eaca-7ed2-4764-9774-3962874afc20",
+          "expressId": 7963
+        },
+        "type": "IfcRamp"
+      }
+    }
+  },
+  {
+    "side": "base",
+    "fixture": "AC20-FZK-Haus.ifc",
+    "functional": {
+      "pick": {
+        "hit": {
+          "expressId": 59753,
+          "modelIndex": 0,
+          "worldXYZ": {
+            "x": 8.209132701357987,
+            "y": 4.485309180527288,
+            "z": -1.8256197860064063
+          },
+          "geometryItemId": 59737
+        },
+        "x": 578.1796875,
+        "y": 423.25
+      },
+      "selection": {
+        "ref": {
+          "modelId": "ad2a9b34-2828-4a57-9bf1-7f0c23e0a8ef",
+          "expressId": 59753
+        },
+        "type": "IfcSlab"
+      }
+    }
+  },
+  {
+    "side": "branch",
+    "fixture": "472_2222.ifc",
+    "functional": {
+      "pick": {
+        "hit": {
+          "expressId": 7963,
+          "modelIndex": 0,
+          "worldXYZ": {
+            "x": 115.38717323542758,
+            "y": 2.596761479243071,
+            "z": -95.45241425543816
+          },
+          "geometryItemId": 1306
+        },
+        "x": 578.1796875,
+        "y": 423.25
+      },
+      "selection": {
+        "ref": {
+          "modelId": "7066e03c-e88a-4257-95c5-4e73ed489eef",
+          "expressId": 7963
+        },
+        "type": "IfcRamp"
+      }
+    }
+  },
+  {
+    "side": "branch",
+    "fixture": "AC20-FZK-Haus.ifc",
+    "functional": {
+      "pick": {
+        "hit": {
+          "expressId": 59753,
+          "modelIndex": 0,
+          "worldXYZ": {
+            "x": 8.617536158085016,
+            "y": 4.825950377949102,
+            "z": -2.4164843849186184
+          },
+          "geometryItemId": 59737
+        },
+        "x": 578.1796875,
+        "y": 423.25
+      },
+      "selection": {
+        "ref": {
+          "modelId": "c8c5970a-f6b5-4b84-92e5-8c3545600ef5",
+          "expressId": 59753
+        },
+        "type": "IfcSlab"
+      }
+    }
+  }
+]

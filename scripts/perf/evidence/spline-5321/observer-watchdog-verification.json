@@ -1,0 +1,44 @@
+{
+  "stalled": [
+    {
+      "side": "run-A",
+      "ok": false,
+      "error": "Memory sampler failed",
+      "memorySamplerErrors": [
+        "Error: SystemInfo.getProcessInfo did not resolve within 5000ms",
+        "Error: SystemInfo.getProcessInfo did not resolve within 5000ms"
+      ],
+      "contextCloseError": null,
+      "browserCloseError": null
+    },
+    {
+      "side": "run-B",
+      "ok": false,
+      "error": "Memory sampler failed",
+      "memorySamplerErrors": [
+        "Error: SystemInfo.getProcessInfo did not resolve within 5000ms",
+        "Error: SystemInfo.getProcessInfo did not resolve within 5000ms"
+      ],
+      "contextCloseError": null,
+      "browserCloseError": null
+    }
+  ],
+  "healthy": [
+    {
+      "side": "run-A",
+      "ok": true,
+      "error": null,
+      "memorySamplerErrors": null,
+      "contextCloseError": null,
+      "browserCloseError": null
+    },
+    {
+      "side": "run-B",
+      "ok": true,
+      "error": null,
+      "memorySamplerErrors": null,
+      "contextCloseError": null,
+      "browserCloseError": null
+    }
+  ]
+}

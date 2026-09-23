@@ -1,0 +1,40 @@
+{
+  "base": "4e2c52f3340d6ea61b43dfb027c4df17fe82ad9e",
+  "candidate_patch_sha256": "7e7b2f9231af91eaacaaf61909d20c7f794a872fa04649a61e11ef059be0c774",
+  "binaries": {
+    "base-probe": "4db365794bae1ad07e300a30a5c3f9baafef43ce99b79cb3596ddd0de71c84ec",
+    "spool-probe": "728fa323738a4da7b91fc8bb382dad73487784f7a12162e2f7e66e6001fa86c0",
+    "combined-probe": "eb84c1836a4c6196e8d3a69c43ff482febe41924707e24de925e8ca7f8db5597"
+  },
+  "fixtures": [
+    {
+      "path": "ara3d/AC20-FZK-Haus.ifc",
+      "bytes": 2526544,
+      "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d"
+    },
+    {
+      "path": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "bytes": 12030684,
+      "sha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131"
+    },
+    {
+      "path": "ara3d/ISSUE_098_R8_F1_MAB_AR_M3_XX_XXX_MO_7000.IFC",
+      "bytes": 71743126,
+      "sha256": "debf13825f34feef820f6ecfd9d893683be0305b7002b565b47ca01668eee4f5"
+    },
+    {
+      "path": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "bytes": 177465622,
+      "sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8"
+    },
+    {
+      "path": "issues/472_2222.ifc",
+      "bytes": 6324151,
+      "sha256": "e9445d6c74f8cb593386c7cbc2e6cd206d7835e54999ca2c5a16d67364374eb2"
+    }
+  ],
+  "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)\nbinary: rustc\ncommit-hash: b6d7ff3aa71e48e2901b0900f8b5d98126b537ed\ncommit-date: 2025-11-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.93.0-nightly\nLLVM version: 21.1.5\n",
+  "profile": "profiling (inherits release, panic=unwind)",
+  "qualification": "functional observations only; known shared-host contention; no five-pair timing cohort",
+  "date_utc": "2026-09-23"
+}

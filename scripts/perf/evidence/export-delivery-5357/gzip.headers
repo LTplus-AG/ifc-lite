@@ -1,0 +1,16 @@
+HTTP/2 200
+access-control-allow-origin: *
+age: 33795
+cache-control: public, max-age=31536000, immutable
+content-disposition: inline; filename="ifc-lite_bg-ufTXUNo6.wasm"
+content-encoding: gzip
+content-type: application/wasm
+cross-origin-embedder-policy: credentialless
+cross-origin-opener-policy: same-origin
+date: Wed, 23 Sep 2026 19:47:38 GMT
+etag: W/"a43e78f05795fcbb1157d144d9c7fe1f"
+last-modified: Wed, 23 Sep 2026 10:24:23 GMT
+server: Vercel
+strict-transport-security: max-age=63072000
+x-vercel-cache: HIT
+x-vercel-id: fra1::h8l4l-1790192858502-0a6176eb9d0e

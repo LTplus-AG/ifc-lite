@@ -844,22 +844,30 @@ Orientation reuses deterministic edge adjacency, triangle filters compact their 
 Entries below are tagged individually: CANDIDATE (measured once, not validated end-to-end),
 SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the section as
 "all unshipped".
-- **GLB export computes georeferencing nobody on that path reads** (CANDIDATE — the cost is
-  measured, the fix is not designed): `process_geometry`'s metadata block always runs the
-  georeferencing extraction, and `rust/export` has no reference to
-  `metadata.georeferencing` anywhere. The streaming GLB paths run the pipeline twice, so a
-  large export pays it twice. After the index sharing above, what remains is the scan and
-  decode: roughly 280 ms per pass on a 327 MB fixture, so about 560 ms on a streaming
-  export. The field cannot simply go — the server serves it — so this needs an opt-out on
-  the options struct, defaulting to on, plus a per-exporter audit. That is its own review
-  unit and its own measurement, which is why it is not in the PR that shipped the sharing.
-- **Brotli -q11 on the served bundle** (CANDIDATE — unvalidated): a single local estimate
-  suggested Vercel serves ~1266 KB where brotli -q11 reaches ~947 KB (~25% smaller cold
-  download). NOT confirmed against the real served response — Vercel controls its own
-  on-the-fly compression and may override a precompressed asset, so this may not be
-  realizable without platform support. Before claiming it: measure the actual
-  `Content-Encoding`/transfer size of the deployed `.wasm` before vs after, on a clean
-  deploy. Treat the 25% as preliminary context only.
+- **GLB export trailing georeferencing** (PARKED after #5357 spike): export
+  still does not consume the returned georeferencing metadata, but the old
+  whole-file scan explanation is obsolete: extraction now reuses scan candidates.
+  Property-set candidate decoding remains. A suppression prototype preserved the
+  tested complete GLBs, including site/RTC behavior; its shared-host timings do
+  not establish an end-to-end win. A production opt-out must be export-scoped
+  and preserve public options compatibility. See the
+  [source, observations and qualification limits](evidence/export-delivery-5357/README.md).
+- **Bounded GLB geometry replay** (PARKED after #5357 spike): disk-backed replay
+  through the existing writer removes the second meshing pass and preserved
+  tested whole artifacts across CSG, large-coordinate and heavy models, with
+  quantization on and off. It introduces scratch-disk I/O and failure modes;
+  the Linux prototype deliberately has no production error contract. Keep it as
+  the strongest native-export follow-up, requiring an explicit scratch policy,
+  typed errors and uncontended full-export timing/memory qualification before
+  shipping. It does not accelerate normal browser model loading. Evidence and
+  the unapplied patch are in the same archive above.
+- **Brotli quality 11 on the served bundle** (PARKED after #5357 observation):
+  the actual deployed WASM response already negotiates Brotli and compiles in
+  Chrome. Recompressing those same decoded bytes locally leaves potential
+  transfer savings, but there was no authenticated preview to verify altered
+  delivery. Actual response headers, transfer/body sizes and byte-identity checks
+  are archived above. No deployed improvement or whole-viewer cold-load win is
+  claimed; local compressed size alone still cannot qualify this lever.
 - **Parser worker's unused WASM compile** (SHIPPED, PR #1851): NOT the "compile outside
   the shared memo" this was first framed as. Verified: on the streaming cold-load path
   (`waitForEntityIndex`, every file >=2 MB) the parser worker eager-compiled the ~3.9 MB

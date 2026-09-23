@@ -1,0 +1,7 @@
+{
+  "exit": 101,
+  "stdout": "",
+  "stderr": "\nthread 'main' (88845) panicked at rust/export/src/gltf/spool_spike.rs:17:26:\ncreate exclusive spike spool: Os { code: 2, kind: NotFound, message: \"No such file or directory\" }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+  "output_exists": false,
+  "purpose": "Demonstrate prototype scratch-I/O dependency and panic limitation; not a production error contract."
+}

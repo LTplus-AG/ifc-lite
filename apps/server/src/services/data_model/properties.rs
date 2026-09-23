@@ -116,9 +116,15 @@ pub(super) fn extract_property(
         }
 
         // [Name, Description, EnumerationValues (list), EnumerationReference]
+        // Carries the one type its members share (#5224).
+        "IFCPROPERTYENUMERATEDVALUE" => {
+            let members = member_list(entity.get(2));
+            let joined = members.as_ref().map(|m| m.join(", ")).unwrap_or_default();
+            (joined, "string".into(), shared_member_type(entity.get(2)), members)
+        }
+
         // [Name, Description, ListValues (list), Unit]
-        // Both carry the one type their members share (#5224).
-        "IFCPROPERTYENUMERATEDVALUE" | "IFCPROPERTYLISTVALUE" => {
+        "IFCPROPERTYLISTVALUE" => {
             let members = member_list(entity.get(2));
             let joined = members.as_ref().map(|m| m.join(", ")).unwrap_or_default();
             (joined, "string".into(), shared_member_type(entity.get(2)), members)

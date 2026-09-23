@@ -222,7 +222,7 @@ export async function parseIfcx(
   const quantities = buildQuantities(composed, pathToId, strings);
 
   const parseTime = performance.now() - startTime;
-
+  // @raw-entity-enumeration-ok parser construction reports the count of freshly composed IFCX source rows before any live mutation view exists
   return {
     entities,
     properties,
@@ -613,7 +613,7 @@ function finalizeFederatedResult(
   }
 
   const parseTime = performance.now() - startTime;
-
+  // @raw-entity-enumeration-ok federated parser construction reports the count of freshly composed IFCX source rows before any live mutation view exists
   return {
     entities,
     properties,

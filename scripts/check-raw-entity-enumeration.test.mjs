@@ -108,6 +108,17 @@ test('#5236 removal shrinks the raw-access census', () => {
   assert.deepEqual(excessRawAccess(old, scan('function query(m) { use(m); }')), []);
 });
 
+test('#5236 a reviewed file loses its old raw-access allowance', () => {
+  const old = scan('function query(store) { return store.entityIndex.byType; }');
+  assert.equal(excessRawAccess(old, old).length, 0, 'unreviewed files retain the temporary baseline');
+  assert.equal(excessRawAccess(old, old, true).length, 1, 'reviewed files require an explicit reason even for an old site');
+  const documented = scan(`function query(store) {
+    // @raw-entity-enumeration-ok source snapshot only; no live overlay can reach this helper
+    return store.entityIndex.byType;
+  }`);
+  assert.equal(excessRawAccess(old, documented, true).length, 0);
+});
+
 test('#5236 deliberate raw read needs an adjacent reason', () => {
   const intentional = scan(`function watermark(store) {
   // @raw-entity-enumeration-ok Keep tombstones so express IDs are never reused.

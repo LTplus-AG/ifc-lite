@@ -158,10 +158,12 @@ export function scanRawEntityAccess(path, text) {
 }
 
 /** Each existing site has one slot. A second copy in the same function fails. */
-export function excessRawAccess(before, after) {
+export function excessRawAccess(before, after, reviewed = false) {
   const budget = new Map();
-  for (const hit of before) {
-    if (!hit.reason) budget.set(hit.key, (budget.get(hit.key) ?? 0) + 1);
+  if (!reviewed) {
+    for (const hit of before) {
+      if (!hit.reason) budget.set(hit.key, (budget.get(hit.key) ?? 0) + 1);
+    }
   }
   const excess = [];
   for (const hit of after) {

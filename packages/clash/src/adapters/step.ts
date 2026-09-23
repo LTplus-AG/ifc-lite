@@ -153,7 +153,6 @@ function worldFramePositions(local: Float32Array, o: [number, number, number]): 
 function syntheticKey(modelId: string, expressId: number): string {
   return `expressid:${encodeURIComponent(modelId)}:${expressId}`;
 }
-
 /**
  * Whether this store carries ANY GlobalId at all — i.e. whether a total miss
  * says something about the ids we used, or only about the file.
@@ -164,6 +163,7 @@ function syntheticKey(modelId: string, expressId: number): string {
  */
 function storeHasAnyGlobalId(store: IfcDataStore): boolean {
   const { entities } = store;
+  // @raw-entity-enumeration-ok fallback source-metadata probe asks whether the parsed file carries any GlobalId, not for live clash membership
   for (let i = 0; i < entities.count; i += 1) {
     if (entities.getGlobalId(entities.expressId[i])) return true;
   }

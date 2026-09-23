@@ -43,7 +43,7 @@ export interface IdsToRuleSetResult {
 const ALL_VERSIONS_NOTE =
   'IDS specifications limited to some IFC versions were imported as rules that run on every model';
 
-type RuleOutcome = { ok: true; rule: InformationRule } | { ok: false; reasons: string[] };
+type RuleOutcome = { ok: true; rule: InformationRule; notes: string[] } | { ok: false; reasons: string[] };
 
 function cardinalityOf(spec: IDSSpecification, reasons: string[]): InformationRule['cardinality'] | undefined {
   const min = spec.minOccurs ?? 0;
@@ -58,12 +58,13 @@ function cardinalityOf(spec: IDSSpecification, reasons: string[]): InformationRu
 
 function specificationToRule(spec: IDSSpecification, id: string): RuleOutcome {
   const reasons: string[] = [];
+  const notes: string[] = [];
   const cardinality = cardinalityOf(spec, reasons);
 
   const applicability: FilterRule[] = [];
   for (const facet of spec.applicability.facets) {
     const mapped = facetToRules(facet, 'applicability');
-    if (mapped.ok) applicability.push(...mapped.rules);
+    if (mapped.ok) { applicability.push(...mapped.rules); notes.push(...(mapped.notes ?? [])); }
     else reasons.push(`applicability: ${mapped.reason}`);
   }
   if (spec.applicability.facets.length === 0) reasons.push('the applicability has no facets');
@@ -79,7 +80,7 @@ function specificationToRule(spec: IDSSpecification, id: string): RuleOutcome {
       continue;
     }
     const mapped = facetToRules(req.facet, 'requirement');
-    if (mapped.ok) requirement.push(...mapped.rules);
+    if (mapped.ok) { requirement.push(...mapped.rules); notes.push(...(mapped.notes ?? [])); }
     else reasons.push(`requirements: ${mapped.reason}`);
   }
   if (spec.requirements.length === 0) {
@@ -90,6 +91,7 @@ function specificationToRule(spec: IDSSpecification, id: string): RuleOutcome {
   const description = [spec.description, spec.instructions].filter((s): s is string => !!s).join('\n\n');
   return {
     ok: true,
+    notes,
     rule: {
       id,
       name: spec.name || id,
@@ -121,6 +123,7 @@ export function idsToRuleSet(doc: IDSDocument, options: IdsToRuleSetOptions = {}
     }
     usedIds.add(id);
     rules.push(outcome.rule);
+    for (const note of outcome.notes) notes.add(note);
     const versions = new Set<string>(spec.ifcVersions);
     if (![...ALL_VERSIONS].every((v) => versions.has(v) || (v === 'IFC4X3' && versions.has('IFC4X3_ADD2')) || (v === 'IFC4X3_ADD2' && versions.has('IFC4X3')))) {
       notes.add(ALL_VERSIONS_NOTE);

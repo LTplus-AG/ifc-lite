@@ -14,7 +14,12 @@ import type { FilterRule, NumericOp, TextKind } from '../filter/filter-rules.js'
 import { Rule } from '../filter/filter-rules.js';
 import { idsPatternToJsRegex } from './ids-regex.js';
 
-export type FacetRules = { ok: true; rules: FilterRule[] } | { ok: false; reason: string };
+export type FacetRules = { ok: true; rules: FilterRule[]; notes?: string[] } | { ok: false; reason: string };
+
+/** IDS states measure values in SI units; the engine compares them as stored (#5292 review). */
+export const SI_UNITS_NOTE =
+  'IDS states measure values in SI units; the imported rules compare them with the value as stored in the model, ' +
+  'so a numeric check on a length, area or volume only agrees with IDS for a model authored in SI units';
 
 type Role = 'applicability' | 'requirement';
 
@@ -65,6 +70,8 @@ function numericOps(c: IDSConstraint): Array<{ op: NumericOp; value: number }> |
   if (compound(c)) return 'a restriction combining several facets has no rule equivalent';
   const lengthLike = [c.length, c.minLength, c.maxLength, c.totalDigits, c.fractionDigits];
   if (lengthLike.some((v) => v !== undefined)) return 'length and digit restrictions have no rule equivalent';
+  const bounds = [c.minInclusive, c.minExclusive, c.maxInclusive, c.maxExclusive];
+  if (bounds.some((v) => v !== undefined && !Number.isFinite(v))) return 'a bound that is not a finite number';
   const ops: Array<{ op: NumericOp; value: number }> = [];
   if (c.minInclusive !== undefined) ops.push({ op: 'gte', value: c.minInclusive });
   if (c.minExclusive !== undefined) ops.push({ op: 'gt', value: c.minExclusive });
@@ -87,7 +94,10 @@ function nameOperand(c: IDSConstraint, what: string): { name: string; kind: Text
 function setValues(c: IDSConstraint, what: string): string[] | string {
   if (compound(c)) return `${what}: a restriction combining several facets has no rule equivalent`;
   if (c.type === 'simpleValue') return [c.value];
-  if (c.type === 'enumeration' && c.values.length > 0) return [...c.values];
+  if (c.type === 'enumeration' && c.values.length > 0) {
+    if (c.base && c.base !== 'xs:string') return `${what}: an enumeration of ${c.base} values has no rule equivalent`;
+    return [...c.values];
+  }
   return `${what} given as ${describe(c)} has no rule equivalent`;
 }
 
@@ -151,20 +161,29 @@ function propertyRules(facet: Extract<IDSFacet, { type: 'property' }>): FacetRul
     const qtyKinds = { setNameKind: set.kind, ...(base.kind ? { quantityNameKind: base.kind } : {}) };
     if (!facet.value) return { ok: false, reason: `${label}: a quantity presence check has no rule equivalent` };
     if (facet.value.type === 'simpleValue') {
-      const n = Number(facet.value.value);
-      if (!Number.isFinite(n)) return { ok: false, reason: `${label}: "${facet.value.value}" is not a number` };
-      return { ok: true, rules: [Rule.quantity(set.name, base.name, 'eq', n, qtyKinds)] };
+      const text = facet.value.value.trim();
+      const n = Number(text);
+      if (text === '' || !Number.isFinite(n)) return { ok: false, reason: `${label}: "${facet.value.value}" is not a number` };
+      return { ok: true, rules: [Rule.quantity(set.name, base.name, 'eq', n, qtyKinds)], notes: [SI_UNITS_NOTE] };
     }
     const ops = numericOps(facet.value);
     if (typeof ops === 'string') return { ok: false, reason: `${label}: ${ops}` };
-    return { ok: true, rules: ops.map(({ op, value }) => Rule.quantity(set.name, base.name, op, value, qtyKinds)) };
+    return {
+      ok: true,
+      rules: ops.map(({ op, value }) => Rule.quantity(set.name, base.name, op, value, qtyKinds)),
+      notes: [SI_UNITS_NOTE],
+    };
   }
 
   if (!facet.value) return { ok: true, rules: [Rule.property(set.name, base.name, 'isSet', '', kinds)] };
   if (facet.value.type === 'bounds') {
     const ops = numericOps(facet.value);
     if (typeof ops === 'string') return { ok: false, reason: `${label}: ${ops}` };
-    return { ok: true, rules: ops.map(({ op, value }) => Rule.property(set.name, base.name, op, String(value), kinds)) };
+    return {
+      ok: true,
+      rules: ops.map(({ op, value }) => Rule.property(set.name, base.name, op, String(value), kinds)),
+      notes: [SI_UNITS_NOTE],
+    };
   }
   const operand = textOperand(facet.value);
   if (typeof operand === 'string') return { ok: false, reason: `${label}: ${operand}` };

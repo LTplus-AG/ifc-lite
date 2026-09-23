@@ -212,12 +212,13 @@ case-insensitively.
 **Import** covers specifications whose facets are all entity, attribute,
 property, material or classification-presence facets, with simple values,
 patterns, enumerations or numeric bounds. A property set named `Qto_…` imports
-as a `quantity` rule. These block a specification, with the reason:
+as a `quantity` rule. An entity facet enumerating several classes imports as one `ifcType` rule with `exactClass`. Imported numeric checks carry the same SI-units note as the export. These block a specification, with the reason:
 
 - `partOf` facets
 - `optional` and `prohibited` facets
 - a property `dataType`
-- a pattern on an entity or attribute name
+- a pattern on an entity name, or a pattern or enumeration on an attribute name
+- a non-string enumeration on a PredefinedType or GlobalId, or a bound that is not a finite number
 - length or digit restrictions
 - classification codes
 - an entity facet in the requirements

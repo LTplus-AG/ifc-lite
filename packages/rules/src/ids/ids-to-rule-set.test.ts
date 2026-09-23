@@ -112,6 +112,51 @@ describe('idsToRuleSet — simple specifications (#5225)', () => {
   });
 });
 
+describe('idsToRuleSet — review follow-ups (#5292)', () => {
+  it('a pattern property-set name imports as a regex name the engine applies', async () => {
+    const { IfcParser } = await import('@ifc-lite/parser');
+    const { evaluateFilterRules } = await import('../filter/filter-evaluate.js');
+    const result = idsToRuleSet(parseIDS(ids(spec(
+      '<property cardinality="required"><propertySet><xs:restriction base="xs:string"><xs:pattern value="Pset_.*Common"/></xs:restriction></propertySet><baseName><simpleValue>FireRating</simpleValue></baseName></property>',
+    ))), { newId: () => 'p' });
+    const rules = result.file!.rules[0].requirement.kind === 'element' ? result.file!.rules[0].requirement.block.groups[0].rules : [];
+    const ifc = `ISO-10303-21;
+HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('t','',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;
+DATA;
+#1= IFCPROJECT('0Proj000000000000000001',$,'P',$,$,$,$,$,$);
+#10= IFCWALL('0Wall000000000000000010',$,'W',$,$,$,$,$,$);
+#11= IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('2HR'),$);
+#12= IFCPROPERTYSET('0Pset00000000000000012A',$,'Pset_WallCommon',$,(#11));
+#13= IFCRELDEFINESBYPROPERTIES('0Rel00000000000000013A',$,$,$,(#10),#12);
+ENDSEC;
+END-ISO-10303-21;
+`;
+    const bytes = new TextEncoder().encode(ifc);
+    const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    assert.equal(evaluateFilterRules('m', store, rules, 'AND').length, 1, 'Pset_WallCommon matches the imported Pset_.*Common');
+  });
+
+  it('notes that imported numeric bounds compare stored values, not SI values', () => {
+    const result = idsToRuleSet(parseIDS(ids(spec(
+      '<property cardinality="required"><propertySet><simpleValue>Qto_WallBaseQuantities</simpleValue></propertySet><baseName><simpleValue>Width</simpleValue></baseName><value><xs:restriction base="xs:double"><xs:minInclusive value="0.2"/></xs:restriction></value></property>',
+    ))), { newId: () => 'q' });
+    assert.ok(result.notes.some((n) => /SI units/.test(n)));
+  });
+
+  const blocked: Array<[string, string, RegExp]> = [
+    ['an empty Qto_ simple value', '<property cardinality="required"><propertySet><simpleValue>Qto_WallBaseQuantities</simpleValue></propertySet><baseName><simpleValue>Width</simpleValue></baseName><value><simpleValue> </simpleValue></value></property>', /is not a number/],
+    ['a non-finite bound', '<property cardinality="required"><propertySet><simpleValue>Qto_WallBaseQuantities</simpleValue></propertySet><baseName><simpleValue>Width</simpleValue></baseName><value><xs:restriction base="xs:double"><xs:minInclusive value="abc"/></xs:restriction></value></property>', /not a finite number|an empty bound/],
+    ['an integer PredefinedType enumeration', '<attribute cardinality="required"><name><simpleValue>PredefinedType</simpleValue></name><value><xs:restriction base="xs:integer"><xs:enumeration value="1"/><xs:enumeration value="2"/></xs:restriction></value></attribute>', /enumeration of xs:integer/],
+  ];
+  for (const [label, facet, reason] of blocked) {
+    it(`blocks ${label}`, () => {
+      const result = idsToRuleSet(parseIDS(ids(spec(facet))), { newId: () => 'x' });
+      assert.equal(result.file, null);
+      assert.ok(result.refused[0].reasons.some((r) => reason.test(r)), JSON.stringify(result.refused));
+    });
+  }
+});
+
 describe('idsToRuleSet — blocks what has no rule equivalent, with the reason (#5225)', () => {
   const property = (inner: string, attrs = 'cardinality="required"') =>
     `<property ${attrs}><propertySet><simpleValue>Pset_WallCommon</simpleValue></propertySet><baseName><simpleValue>FireRating</simpleValue></baseName>${inner}</property>`;

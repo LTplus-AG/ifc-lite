@@ -32,6 +32,24 @@ async function parseSampleWith(extra: string, patch: (source: string) => string 
 }
 
 describe('chart IFC field reader (#4833)', () => {
+  it('reads created and positional attribute values through the effective class (#5249)', async () => {
+    const store = await parseSampleWith('');
+    const view = new MutablePropertyView(store.properties, 'fixture');
+    view.setExpressIdWatermark(60000);
+    const created = view.createEntity('IfcWall',
+      ['0NewWall000000000000001', '$', 'Created wall', '$', '$', '#24', '#28', '$', '$']);
+    view.setAttribute(created.expressId, 'Name', 'Named wall');
+    view.setPositionalAttribute(created.expressId, 2, 'Positional wall');
+    view.setAttribute(52, 'Name', 'Named slab');
+    view.setPositionalAttribute(52, 2, 'Positional slab');
+    const reader = createElementFieldReader(store, view);
+    const name: ElementFieldBinding = { kind: 'attribute', attributeName: 'Name', valueKind: 'category' };
+    assert.equal(reader.read(created.expressId, name), 'Positional wall');
+    assert.equal(reader.read(52, name), 'Positional slab');
+    assert.ok(reader.discover([created.expressId]).attributes.some(({ binding }) =>
+      binding.kind === 'attribute' && binding.attributeName === 'Name'));
+  });
+
   it('uses occurrence precedence and type-only fallback on the committed authoring fixture', async () => {
     const bytes = await readFile(SAMPLE);
     const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));

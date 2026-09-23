@@ -7,6 +7,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useEffect } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { fixtureModel } from '@/test/store-fixture.js';
@@ -78,5 +79,30 @@ describe('IFC field catalog across a federation (#4833)', () => {
     // Merged observations have one answer: a field seen as text anywhere is not summable anywhere.
     assert.equal(await discoveredKind([numeric, text]), 'category');
     assert.equal(await discoveredKind([text, numeric]), 'category');
+  });
+
+  it('discovers fields from effective represented elements after a deletion and creation (#5249)', async () => {
+    const source = await parsed('edited', 0, '1.');
+    const view = new MutablePropertyView(source.ifcDataStore!.properties, source.id);
+    view.setExpressIdWatermark(102);
+    view.deleteEntity(41);
+    const created = view.createEntity('IfcWall',
+      ['0NewWall000000000000001', '$', 'Created wall', '$', '$', '#24', '#28', '$', '$']);
+    view.setProperty(created.expressId, 'Live', 'CreatedOnly', 17);
+    useViewerStore.setState({
+      models: new Map([[source.id, source]]), activeModelId: source.id,
+      mutationViews: new Map([[source.id, view]]), mutationVersion: 1,
+    });
+
+    let latest: ElementFieldCatalogState | null = null;
+    render(<CatalogProbe onState={(state) => { latest = state; }} />);
+    for (let i = 0; i < 20 && (latest === null || (latest as ElementFieldCatalogState).loading); i++) {
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
+    }
+    const catalog = (latest as ElementFieldCatalogState | null)?.catalog;
+    assert.ok(catalog, 'discovery finished');
+    assert.equal(catalog.properties.has('Probe'), false, 'deleted source row cannot contribute a field');
+    assert.ok(catalog.properties.get('Live')?.some(({ binding }) =>
+      binding.kind === 'property' && binding.propertyName === 'CreatedOnly' && binding.valueKind === 'number'));
   });
 });

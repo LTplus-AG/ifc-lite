@@ -15,6 +15,7 @@ import { EntityFlags } from '@ifc-lite/data';
 import { useViewerStore } from '@/store';
 import { createElementFieldReader, type ElementFieldCatalog } from '@/lib/charts/element-field-reader';
 import { catalogFromObservations, emptyObservations, mergeObservations } from '@/lib/charts/element-field-discovery';
+import { iterateEffectiveChartRows } from '@/lib/charts/datasets/effective-elements';
 
 export interface ElementFieldCatalogState {
   catalog: ElementFieldCatalog;
@@ -43,19 +44,20 @@ export function useElementFieldCatalog(enabled: boolean): ElementFieldCatalogSta
         if (cancelled) return;
         const store = model.ifcDataStore;
         if (!store) continue;
-        const reader = createElementFieldReader(store, mutationViews.get(model.id));
-        const { entities } = store;
-        // Walk the entity table in chunks too, so even the id scan of a very
-        // large model yields to the event loop and can be cancelled.
-        for (let start = 0; start < entities.count; start += CHUNK) {
-          const ids: number[] = [];
-          for (let i = start; i < Math.min(start + CHUNK, entities.count); i++) {
-            if ((entities.flags[i] & EntityFlags.HAS_GEOMETRY) !== 0 && (entities.flags[i] & EntityFlags.IS_TYPE) === 0) ids.push(entities.expressId[i]);
+        const view = mutationViews.get(model.id);
+        const reader = createElementFieldReader(store, view);
+        let ids: number[] = [];
+        let scanned = 0;
+        for (const row of iterateEffectiveChartRows(store, view)) {
+          if ((row.flags & EntityFlags.HAS_GEOMETRY) !== 0 && (row.flags & EntityFlags.IS_TYPE) === 0) ids.push(row.expressId);
+          if (++scanned % CHUNK === 0) {
+            if (ids.length > 0) mergeObservations(observations, reader.observe(ids));
+            ids = [];
+            await new Promise<void>((resolve) => setTimeout(resolve, 0));
+            if (cancelled) return;
           }
-          if (ids.length > 0) mergeObservations(observations, reader.observe(ids));
-          await new Promise<void>((resolve) => setTimeout(resolve, 0));
-          if (cancelled) return;
         }
+        if (ids.length > 0) mergeObservations(observations, reader.observe(ids));
       }
       if (cancelled) return;
       setState({ loading: false, catalog: catalogFromObservations(observations) });

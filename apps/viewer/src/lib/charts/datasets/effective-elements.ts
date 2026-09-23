@@ -25,30 +25,39 @@ function effectiveCreatedRecord(store: IfcDataStore, view: MutablePropertyView, 
   }, store.schemaVersion);
 }
 
-/** EntityTable-shaped chart rows after pending edits, without mutating the parsed table. */
-export function effectiveChartEntities(store: IfcDataStore, view: MutablePropertyView): ElementsEntityTable {
+export interface EffectiveChartRow {
+  expressId: number;
+  type: string;
+  flags: number;
+  overlayCreated: boolean;
+}
+
+/** The same live row membership for the dataset and the editor's chunked field scan. */
+export function* iterateEffectiveChartRows(store: IfcDataStore, view?: MutablePropertyView): IterableIterator<EffectiveChartRow> {
   const source = store.entities;
+  if (!view) {
+    for (let i = 0; i < source.count; i++) {
+      const expressId = source.expressId[i];
+      yield { expressId, type: source.getTypeName(expressId), flags: source.flags[i], overlayCreated: false };
+    }
+    return;
+  }
   const sourceFlags = new Map<number, number>();
   for (let i = 0; i < source.count; i++) sourceFlags.set(source.expressId[i], source.flags[i]);
-
-  const ids: number[] = [];
-  const flags: number[] = [];
-  const types = new Map<number, string>();
-  const createdNames = new Map<number, string>();
   const namedEdits = view.getAttributeMutationsByEntity();
   for (const { expressId, type, overlayCreated } of iterateEffectiveEntityIds(store, view, undefined, source.expressId)) {
     let rowFlags = sourceFlags.get(expressId) ?? 0;
+    let effectiveType: string;
     if (overlayCreated) {
       const record = effectiveCreatedRecord(store, view, expressId);
       if (!record) continue;
       const representation = record.attributes[record.names.indexOf('Representation')];
       rowFlags = representation !== undefined && representation !== null
         && representation !== '$' && representation !== '*' ? EntityFlags.HAS_GEOMETRY : 0;
-      createdNames.set(expressId, textValue(record.attributes[record.names.indexOf('Name')]));
-      types.set(expressId, record.type);
+      effectiveType = record.type;
     } else {
       const retyped = view.getEntityTypeMutation(expressId) !== undefined;
-      const effectiveType = retyped ? normalizeIfcTypeName(type) : source.getTypeName(expressId);
+      effectiveType = retyped ? normalizeIfcTypeName(type) : source.getTypeName(expressId);
       const namedRepresentation = namedEdits.get(expressId)?.get('Representation');
       const positional = view.getPositionalMutationsForEntity(expressId);
       if (retyped || namedRepresentation !== undefined || positional) {
@@ -64,10 +73,27 @@ export function effectiveChartEntities(store: IfcDataStore, view: MutablePropert
           }
         }
       }
-      types.set(expressId, effectiveType);
     }
-    ids.push(expressId);
-    flags.push(rowFlags);
+    yield { expressId, type: effectiveType, flags: rowFlags, overlayCreated };
+  }
+}
+
+/** EntityTable-shaped chart rows after pending edits, without mutating the parsed table. */
+export function effectiveChartEntities(store: IfcDataStore, view: MutablePropertyView): ElementsEntityTable {
+  const source = store.entities;
+  const ids: number[] = [];
+  const flags: number[] = [];
+  const types = new Map<number, string>();
+  const createdNames = new Map<number, string>();
+  const namedEdits = view.getAttributeMutationsByEntity();
+  for (const row of iterateEffectiveChartRows(store, view)) {
+    ids.push(row.expressId);
+    flags.push(row.flags);
+    types.set(row.expressId, row.type);
+    if (row.overlayCreated) {
+      const record = effectiveCreatedRecord(store, view, row.expressId);
+      if (record) createdNames.set(row.expressId, textValue(record.attributes[record.names.indexOf('Name')]));
+    }
   }
 
   const getName = (id: number): string => {

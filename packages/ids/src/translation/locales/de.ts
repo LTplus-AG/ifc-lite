@@ -189,6 +189,7 @@ export const de = {
 
     // Material failures
     materialMissing: 'Kein Material zugewiesen',
+    materialUnresolved: 'Entität hat ein Material, aber dessen Details können aus dieser Datenquelle nicht gelesen werden',
     materialValueMismatch: 'Material "{actual}" entspricht nicht dem erwarteten {expected}',
     materialValueMissingAvailable: 'Material {expected} nicht gefunden. Verfügbar: {available}',
     materialProhibited: 'Verbotenes Material "{actual}" ist zugewiesen',

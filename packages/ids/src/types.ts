@@ -525,10 +525,7 @@ export interface MaterialInfo {
   name?: string;
   /** Material category (if available) */
   category?: string;
-  /** Materially-associated (a real IfcRelAssociatesMaterial edge), but the
-   *  material's own attributes are unreadable on this data source — a
-   *  server-parsed store with no source bytes (#5227). Distinguishes
-   *  "has material but unreadable" from a genuinely empty result. */
+  /** A proven material association this data source cannot read (#5227). */
   unresolved?: boolean;
 }
 

@@ -56,6 +56,8 @@ export function formatFailureReason(result: FacetCheckResult): string {
       return field === 'presence' ? 'Whether this entity is classified cannot be determined from this data source' : 'Entity is classified, but classification details cannot be read from this data source';
     case 'MATERIAL_MISSING':
       return 'No material assigned';
+    case 'MATERIAL_UNRESOLVED':
+      return 'Entity has a material, but its details cannot be read from this data source';
     case 'MATERIAL_VALUE_MISMATCH':
       return `Material "${actual}" does not match expected ${expected}`;
     case 'PARTOF_RELATION_MISSING':

@@ -29,15 +29,8 @@ export interface MaterialInfo {
      * either, so callers must propagate both.
      */
     materials?: Array<{ name: string; category?: string }>;
-    /**
-     * True when the relationship graph proves this entity/type carries a
-     * material association, but the material's own attributes could not be
-     * read because this store has no source bytes — a server-parsed store
-     * (issue #5227). Distinguishes "materially-associated but unresolved"
-     * from "genuinely no material" (an empty result array), which are
-     * otherwise byte-identical to every caller. All other fields are left
-     * `undefined` on an unresolved entry.
-     */
+    /** The graph proves a material association, but this store has no source
+     *  bytes to read it (server-parsed, #5227). Every other field is unset. */
     unresolved?: boolean;
 }
 
@@ -144,21 +137,10 @@ export function extractAllMaterialsOnDemand(
     const defIds = resolveAllMaterialDefIds(store, entityId);
     if (defIds.length === 0) return [];
     if (!store.source?.length) {
-        // Server-parsed / source-empty store: no source bytes to decode the
-        // material definition's own attributes. The relationship graph above
-        // already proved this entity (or its type) HAS material associations —
-        // the ids resolved into `defIds` are real IfcRelAssociatesMaterial
-        // targets. Turning a material id into name/description/category/layers
-        // needs raw STEP bytes (EntityExtractor), which this store doesn't have.
-        // Previously this silently returned `[]` here, making a materially-associated
-        // element byte-identical to a genuinely unmaterialed one (issue #5227).
-        // Surface one unresolved marker per resolved id instead, so callers —
-        // the IDS bridge in particular — can tell "has material, but this data
-        // source can't say more" from "none".
-        return defIds.map((): MaterialInfo => ({ 
-            type: 'Material',
-            unresolved: true,
-        }));
+        // Server-parsed: the graph proved the association, but decoding the
+        // definition needs source bytes. A marker per association, never `[]`,
+        // which would read as "no material" (#5227, as #3948 for classifications).
+        return defIds.map((): MaterialInfo => ({ type: 'Material', unresolved: true }));
     }
     const extractor = new EntityExtractor(store.source);
     const out: MaterialInfo[] = [];

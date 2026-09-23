@@ -164,6 +164,7 @@ describe('ruleSetToIds — refuses each unmappable kind with its own reason (#52
       /storey membership/],
     ['relating type name', rule([Rule.typeName('eq', 'WT01')]), /relating type name/],
     ['parent', rule([Rule.parent('eq', 'Level 1')]), /ancestor matched by name/],
+    ['group', rule([{ kind: 'group', groupClass: 'IfcSystem', op: 'isSet', value: '' }]), /group membership .* has no IDS facet/],
     ['classification value', rule([Rule.classification('Uniclass', 'eq', 'Ss_25')]), /code OR a name/],
     ['JS-only regex', rule([Rule.name('matches', '(?<=a)b', 'regex')]), /groups starting "\(\?"/],
     ['case-insensitive regex flag', rule([Rule.name('matches', '/wall/i')]), /"i" flag/],

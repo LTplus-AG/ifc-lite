@@ -137,6 +137,10 @@ function mapRule(rule: FilterRule): Mapped {
       return { reason: 'the relating type name has no IDS facet' };
     case 'parent':
       return { reason: 'an ancestor matched by name has no IDS facet (partOf matches a class)' };
+    case 'group':
+      // IDS's partOf IfcRelAssignsToGroup names the group's exact class only:
+      // no Name match, and no subclass expansion of `groupClass`.
+      return { reason: 'group membership by name or by class-with-subclasses has no IDS facet (partOf matches one exact class)' };
     case 'globalId':
       return { facet: { type: 'attribute', name: { type: 'simpleValue', value: 'GlobalId' }, value: simpleOrEnumeration(rule.values) } };
     case 'name':

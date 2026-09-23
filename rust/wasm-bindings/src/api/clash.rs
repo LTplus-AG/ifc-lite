@@ -47,22 +47,31 @@ impl ClashSession {
             .ingest(positions, pos_ranges, indices, idx_ranges, aabbs);
     }
 
-    /// Run one rule. `group_a`/`group_b` are GLOBAL element indices; an empty
-    /// `group_b` means a self-clash within `group_a`. `mode`: 0 = hard,
-    /// 1 = clearance. Records carry GLOBAL element indices.
+    /// Run one rule. `group_a`/`group_b` are GLOBAL element indices.
+    /// OMIT `group_b` (pass `undefined`/`null`) for a self-clash within
+    /// `group_a`; pass an array -- INCLUDING an empty one -- for a two-sided
+    /// rule. An empty array is a B side that matched nothing and yields no
+    /// clashes, which is why this is nullable rather than "empty means
+    /// self" (#5354). `mode`: 0 = hard, 1 = clearance. Records carry GLOBAL
+    /// element indices.
     #[wasm_bindgen(js_name = runRule)]
     pub fn run_rule(
         &self,
         group_a: &[u32],
-        group_b: &[u32],
+        group_b: Option<Box<[u32]>>,
         mode: u8,
         tolerance: f64,
         clearance: f64,
         report_touch: bool,
     ) -> ClashRunResult {
-        let result =
-            self.inner
-                .run_rule(group_a, group_b, mode, tolerance, clearance, report_touch);
+        let result = self.inner.run_rule(
+            group_a,
+            group_b.as_deref(),
+            mode,
+            tolerance,
+            clearance,
+            report_touch,
+        );
 
         let n = result.records.len();
         let mut a = Vec::with_capacity(n);

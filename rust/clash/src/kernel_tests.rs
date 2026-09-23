@@ -257,7 +257,7 @@ fn crossing_members_report_the_real_penetration_depth() {
     let a = box_mesh([0.0, 0.0, 0.0], [2.0, 0.25, 0.25]);
     let b = box_mesh([0.0, 0.0, 0.0], [0.25, 2.0, 0.25]);
     let session = session_of(&[a, b]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1, "crossing bars are one hard clash");
     let rec = &result.records[0];
     assert_eq!(rec.status, ClashStatus::Hard);
@@ -278,7 +278,7 @@ fn sub_tolerance_aabb_penetration_is_not_promoted_to_a_hard_clash() {
     let a = box_mesh([0.0, 0.0, 0.0], [0.5, 0.5, 0.5]);
     let b = box_mesh([0.9995, 0.0, 0.0], [0.5, 0.5, 0.5]);
     let session = session_of(&[a, b]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert!(
         result.records.is_empty(),
         "a 0.5 mm overlap inside a 1 mm tolerance is a touch, got {:?}",
@@ -303,7 +303,7 @@ fn sub_precision_floor_crossing_reclassifies_as_touch_not_hard() {
     let b = box_mesh([50.0, 0.0, 60.5 - 0.00001], [0.25, 2.0, 0.25]);
     let session = session_of(&[a, b]);
 
-    let hard_only = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let hard_only = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert!(
         hard_only.records.is_empty(),
         "a sub-precision-floor crossing must not report as a hard clash, got {:?}",
@@ -314,7 +314,7 @@ fn sub_precision_floor_crossing_reclassifies_as_touch_not_hard() {
             .collect::<Vec<_>>()
     );
 
-    let with_touch = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, true);
+    let with_touch = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
     assert_eq!(with_touch.records.len(), 1, "the touch itself is real information and must still report");
     assert_eq!(with_touch.records[0].status, ClashStatus::Touch);
     assert_eq!(with_touch.records[0].distance, 0.0);
@@ -331,7 +331,7 @@ fn genuine_small_overlap_above_the_precision_floor_stays_hard() {
     let a = box_mesh([50.0, 0.0, 60.0], [2.0, 0.25, 0.25]);
     let b = box_mesh([50.0, 0.0, 60.5 - 0.0001], [0.25, 2.0, 0.25]);
     let session = session_of(&[a, b]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1, "a real overlap above the precision floor must still clash");
     assert_eq!(result.records[0].status, ClashStatus::Hard);
     assert!(
@@ -389,7 +389,7 @@ fn overlap_exactly_at_the_precision_floor_is_touch_not_hard() {
     );
 
     let session = session_of(&[a, b]);
-    let hard_only = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let hard_only = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert!(
         hard_only.records.is_empty(),
         "an overlap exactly AT the precision floor must not report as a hard clash, got {:?}",
@@ -400,7 +400,7 @@ fn overlap_exactly_at_the_precision_floor_is_touch_not_hard() {
             .collect::<Vec<_>>()
     );
 
-    let with_touch = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, true);
+    let with_touch = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
     assert_eq!(with_touch.records.len(), 1, "the boundary touch itself is real information and must still report");
     assert_eq!(with_touch.records[0].status, ClashStatus::Touch);
     assert_eq!(with_touch.records[0].distance, 0.0);
@@ -415,12 +415,12 @@ fn exact_touch_is_caught_at_tolerance_zero() {
     let a = box_mesh([0.0, 0.0, 0.0], [0.5, 0.5, 0.5]);
     let b = box_mesh([1.0, 0.0, 0.0], [0.5, 0.5, 0.5]);
     let session = session_of(&[a, b]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.0, 0.0, true);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.0, 0.0, true);
     assert_eq!(result.records.len(), 1, "an exact face touch at tolerance 0 must report");
     assert_eq!(result.records[0].status, ClashStatus::Touch);
     assert_eq!(result.records[0].distance, 0.0);
     // ...and stays suppressed when the rule does not opt in.
-    let quiet = session.run_rule(&[0, 1], &[], HARD, 0.0, 0.0, false);
+    let quiet = session.run_rule(&[0, 1], None, HARD, 0.0, 0.0, false);
     assert!(quiet.records.is_empty());
 }
 
@@ -451,10 +451,32 @@ fn run_rule_ignores_out_of_range_global_indices() {
         box_mesh([0.0, 0.0, 0.0], [0.5, 0.5, 0.5]),
         box_mesh([0.5, 0.0, 0.0], [0.5, 0.5, 0.5]),
     ]);
-    let result = session.run_rule(&[0], &[1, 99], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0], Some(&[1, 99]), HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1, "the bogus index must be dropped, not indexed");
-    let both_bogus = session.run_rule(&[7, 8], &[1], HARD, 0.001, 0.0, false);
+    let both_bogus = session.run_rule(&[7, 8], Some(&[1]), HARD, 0.001, 0.0, false);
     assert!(both_bogus.records.is_empty());
+}
+
+#[test]
+fn a_b_side_that_is_entirely_out_of_range_yields_nothing_not_a_self_clash_5354() {
+    // The out-of-range filter and the self-clash decision must not be allowed
+    // to interact. Filtering first and THEN asking "is group_b empty?" turns a
+    // two-sided rule whose B indices are all bogus into a self-clash of A --
+    // the #5354 conflation reached by a second route, and the reason
+    // `candidate_pairs` filters inside the `Some` arm.
+    //
+    // The two boxes overlap, so a self-clash here would produce a record.
+    // Kills: hoisting the `filter(|&g| g < n)` above the `Some`/`None` branch.
+    let session = session_of(&[
+        box_mesh([0.0, 0.0, 0.0], [0.5, 0.5, 0.5]),
+        box_mesh([0.5, 0.0, 0.0], [0.5, 0.5, 0.5]),
+    ]);
+    let all_bogus_b = session.run_rule(&[0, 1], Some(&[98, 99]), HARD, 0.001, 0.0, false);
+    assert!(
+        all_bogus_b.records.is_empty(),
+        "every B index was out of range, so there is no B side to clash against, got {:?}",
+        all_bogus_b.records.iter().map(|r| (r.a, r.b)).collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -467,7 +489,7 @@ fn overlapping_groups_yield_one_record_per_unordered_pair() {
         box_mesh([0.0, 0.0, 0.0], [0.5, 0.5, 0.5]),
         box_mesh([0.5, 0.0, 0.0], [0.5, 0.5, 0.5]),
     ]);
-    let result = session.run_rule(&[0, 1], &[0, 1], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], Some(&[0, 1]), HARD, 0.001, 0.0, false);
     assert_eq!(
         result.records.len(),
         1,
@@ -522,7 +544,7 @@ fn candidate_pairs_dedups_by_global_index_not_entity_key_5220() {
 
     // [A1, A2, B] order.
     let session = session_of(&[a1.clone(), a2.clone(), b.clone()]);
-    let result = session.run_rule(&[0, 1], &[2], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], Some(&[2]), HARD, 0.001, 0.0, false);
     assert_eq!(
         result.records.len(),
         1,
@@ -534,7 +556,7 @@ fn candidate_pairs_dedups_by_global_index_not_entity_key_5220() {
 
     // [A2, A1, B] order — same result regardless of which submesh comes first.
     let session2 = session_of(&[a2, a1, b]);
-    let result2 = session2.run_rule(&[0, 1], &[2], HARD, 0.001, 0.0, false);
+    let result2 = session2.run_rule(&[0, 1], Some(&[2]), HARD, 0.001, 0.0, false);
     assert_eq!(result2.records.len(), 1);
     assert_eq!(result2.records[0].a, 0);
     assert_eq!(result2.records[0].b, 2);

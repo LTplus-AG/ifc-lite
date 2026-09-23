@@ -93,7 +93,13 @@ export class WasmKernel implements ClashKernel {
     const clearance = rule.clearance ?? 0;
     const reportTouch = rule.reportTouch ?? false;
     const groupA = Uint32Array.from(groupAIdx);
-    const groupB = groupBIdx ? Uint32Array.from(groupBIdx) : new Uint32Array(0);
+    // `null` (no B side) and `[]` (a B side that matched nothing) mean
+    // different things and must stay distinguishable across the FFI: the
+    // first is a self-clash, the second has no candidate pairs at all.
+    // Collapsing both to an empty Uint32Array is what made a two-sided rule
+    // whose B side matched nothing run as a self-clash of A (#5354), so
+    // `runRule` takes a nullable group B and an EMPTY array stays empty.
+    const groupB = groupBIdx === null ? undefined : Uint32Array.from(groupBIdx);
 
     const res = this.session.runRule(groupA, groupB, mode, tolerance, clearance, reportTouch);
     const records: NarrowRecord[] = [];

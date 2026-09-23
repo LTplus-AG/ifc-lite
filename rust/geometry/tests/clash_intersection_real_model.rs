@@ -284,7 +284,7 @@ fn intersection_solid_on_the_infra_bridge_model() {
     let all: Vec<u32> = (0..elements.len() as u32).collect();
     let t_clash = Instant::now();
     // mode 0 = hard, self-clash (empty group_b), product default tolerance.
-    let result = session.run_rule(&all, &[], 0, TOLERANCE_M, 0.0, false);
+    let result = session.run_rule(&all, None, 0, TOLERANCE_M, 0.0, false);
     println!(
         "clash engine: {} records in {:.3} s (hard, tolerance {TOLERANCE_M} m, self-clash)",
         result.records.len(),

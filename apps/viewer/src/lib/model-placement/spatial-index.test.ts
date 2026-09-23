@@ -193,6 +193,28 @@ it('replaces a flat index when an instance drains during placement-sync remount 
   }
 });
 
+it('retries the same model revision after an asynchronous index build fails (#5275 review)', async () => {
+  const mesh: MeshData = { expressId: 9, positions: null as unknown as Float32Array,
+    indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1] };
+  const model = { ...fixtureModel('retry-index'), maxExpressId: 9, loadState: 'complete',
+    geometryResult: { meshes: [mesh], totalTriangles: 1 } as GeometryResult } as FederatedModel;
+  useViewerStore.setState({ ...fixtureModels(model), pendingInstancedShards: null, modelPlacement: emptyPlacementState() });
+  const sync = createPlacementIndexSync();
+  const originalWarn = console.warn;
+  let failed = false;
+  console.warn = (...args: unknown[]) => { if (String(args[0]).includes('Failed to build spatial index for model')) failed = true;
+    else originalWarn(...args); };
+  try {
+    sync.refreshMissing(useViewerStore.getState());
+    await waitForPublication(() => failed || undefined, 'failed first index build');
+    assert.equal(model.ifcDataStore!.spatialIndex, undefined);
+    mesh.positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+    sync.refreshMissing(useViewerStore.getState());
+    const index = await waitForPublication(() => model.ifcDataStore!.spatialIndex, 'retry index');
+    assert.deepEqual(index.queryAABB({ min: [0, 0, 0], max: [1, 1, 0] }), [9]);
+  } finally { sync.dispose(); console.warn = originalWarn; }
+});
+
 it('publishes an IFC index when scan alignment changes during the build (#4226)', async () => {
   const model = fixtureModel('m'), data = model.ifcDataStore!;
   const mesh: MeshData = { expressId: 1, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),

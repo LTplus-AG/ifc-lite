@@ -22,12 +22,12 @@ import { equalTranslation } from './translation';
  * already occupies), and the id-range filter alone would leak one model's
  * occurrences into the other's index — the renderer index disambiguates
  * exactly which model's template each materialized occurrence came from. */
-export function buildPlacedSpatialIndex(state: ViewerState, modelId: string): void {
+export function buildPlacedSpatialIndex(state: ViewerState, modelId: string): Promise<boolean> {
   const model = state.models.get(modelId);
-  if (!model?.ifcDataStore || !model.geometryResult) return;
+  if (!model?.ifcDataStore || !model.geometryResult) return Promise.resolve(false);
   const geometry = withInstancedMeshes(model.geometryResult, { modelId, idOffset: model.idOffset,
     maxExpressId: model.maxExpressId, rendererModelIndex: modelIndices(state.models).get(modelId) });
-  buildSpatialIndexForModel(geometry.meshes, modelId, model.ifcDataStore, 'placed');
+  return buildSpatialIndexForModel(geometry.meshes, modelId, model.ifcDataStore, 'placed');
 }
 
 /** Debounce the CPU query index, never geometry uploads. Generation guards in
@@ -70,7 +70,14 @@ export function createPlacementIndexSync() {
         const next = signature(latest, id);
         if (same(indexed.get(id), next)) continue;
         indexed.set(id, next);
-        buildPlacedSpatialIndex(latest, id);
+        void Promise.resolve().then(() => buildPlacedSpatialIndex(latest, id)).then(published => {
+          // Keep the in-flight signature to avoid repeated builds on ordinary
+          // store updates. A failed/stale build must be retryable on refresh.
+          if (!published && indexed.get(id) === next) indexed.delete(id);
+        }).catch(err => {
+          if (indexed.get(id) === next) indexed.delete(id);
+          console.warn('[spatial-index] Failed to start placed index build:', err);
+        });
       }
     }, 200);
   };

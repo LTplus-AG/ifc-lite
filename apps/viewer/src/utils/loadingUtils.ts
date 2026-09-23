@@ -31,21 +31,23 @@ export function buildSpatialIndexForModel(
   modelId: string,
   dataStore: IfcDataStore,
   coordinates: 'source' | 'placed' = 'source',
-): void {
-  if (meshes.length === 0) return;
+): Promise<boolean> {
+  if (meshes.length === 0) return Promise.resolve(true);
 
   const initial = useViewerStore.getState(), snapshot = placementSnapshot(initial, [modelId], false);
   const generation = nextSpatialIndexGeneration(dataStore);
   const placed = coordinates === 'placed' ? meshes : meshes.map((mesh) => placedMesh(mesh, displayedTranslation(initial.modelPlacement, modelId)));
-  buildSpatialIndexAsync(placed).then(spatialIndex => {
+  return buildSpatialIndexAsync(placed).then(spatialIndex => {
     const state = useViewerStore.getState();
     const model = state.models.get(modelId);
     // Model removed, or its store was replaced since this build started.
-    if (!model || model.ifcDataStore !== dataStore || generations.get(dataStore) !== generation || !placementSnapshotIsCurrent(snapshot, state)) return;
+    if (!model || model.ifcDataStore !== dataStore || generations.get(dataStore) !== generation || !placementSnapshotIsCurrent(snapshot, state)) return false;
     dataStore.spatialIndex = spatialIndex;
     state.updateModel(modelId, { ifcDataStore: dataStore });
+    return true;
   }).catch(err => {
     console.warn('[loadingUtils] Failed to build spatial index for model:', err);
+    return false;
   });
 }
 

@@ -260,8 +260,9 @@ describe('differential: WASM kernel === TS kernel', () => {
   // old cross-group broad phase deduped candidate pairs by entity KEY before
   // the narrow phase, so a1's spurious pair hid a2's real one when a1 came
   // first. The Rust session dedups by GLOBAL ELEMENT INDEX only (`session.rs`
-  // `candidate_pairs`) and never had the defect — do not "align" it to key
-  // identity. Both orders, both backends.
+  // `candidate_pairs`), so it never had the defect; keying that dedup on
+  // entity identity would reintroduce it, and this case would go red. Both
+  // orders, both backends.
   it('agrees on the #5194 same-key dumbbell shape (broad-phase false positive + a real clash)', async () => {
     const a1 = dumbbell('A', 'IfcWall', 0.5, 20.5);
     const a2 = box('A', 'IfcWall', [10.5, 0, 0], 2);

@@ -164,6 +164,13 @@ describe('buildSpatialIndex — NaN-bounded mesh (#5221)', () => {
 });
 
 describe('buildSpatialIndexAsync', () => {
+  it('rejects budgets that would disable time slicing (#5252 review)', async () => {
+    const meshes = [mesh(1, [0, 0, 0])];
+    for (const budget of [NaN, Infinity, -Infinity, -1]) {
+      await expect(buildSpatialIndexAsync(meshes, budget)).rejects.toThrow(RangeError);
+    }
+  });
+
   it('uses paint-friendly timer turns when visible and a non-timer yield when hidden', async () => {
     const meshes = Array.from({ length: 501 }, (_, i) => mesh(i + 1, [i, 0, 0]));
     const schedulerYield = vi.fn(async () => {});

@@ -53,6 +53,9 @@ export class BVH {
     budgetMs: number,
     yieldToEventLoop: () => Promise<void>,
   ): Promise<BVH> {
+    if (!Number.isFinite(budgetMs) || budgetMs < 0) {
+      throw new RangeError('budgetMs must be a finite, non-negative number');
+    }
     const bvh = new BVH();
     bvh.meshes = meshes;
     if (meshes.length === 0) return bvh;

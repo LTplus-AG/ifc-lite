@@ -55,13 +55,16 @@ export function buildSpatialIndex(meshes: MeshData[]): BVH {
  * so orbit/pan stays responsive during index construction.
  *
  * @param meshes  All mesh data
- * @param budgetMs  Max ms per chunk (default 4 — quarter of a 60fps frame)
+ * @param budgetMs  Max ms per chunk (finite and non-negative; default 4 — quarter of a 60fps frame)
  * @returns Promise that resolves to the BVH
  */
 export async function buildSpatialIndexAsync(
   meshes: MeshData[],
   budgetMs: number = 4,
 ): Promise<BVH> {
+  if (!Number.isFinite(budgetMs) || budgetMs < 0) {
+    throw new RangeError('budgetMs must be a finite, non-negative number');
+  }
   const meshesWithBounds: MeshWithBounds[] = new Array(meshes.length);
 
   // Phase 1: compute bounds in time-sliced chunks

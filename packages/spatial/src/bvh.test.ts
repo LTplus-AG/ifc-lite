@@ -50,6 +50,12 @@ function rotationAboutAxis(axis: [number, number, number], angle: number): numbe
 }
 
 describe('BVH.build', () => {
+  it('rejects budgets that would disable async yielding (#5252 review)', async () => {
+    for (const budget of [NaN, Infinity, -Infinity, -1]) {
+      await expect(BVH.buildAsync(row(2049), budget, async () => {})).rejects.toThrow(RangeError);
+    }
+  });
+
   it('returns an empty index for no meshes without throwing', () => {
     const bvh = BVH.build([]);
     expect(bvh.queryAABB(box(-1e6, -1e6, -1e6, 1e6, 1e6, 1e6))).toEqual([]);

@@ -119,3 +119,65 @@ describe('#5138 parentheses body', () => {
     }
   });
 });
+
+describe('requirement-text — aggregate subject invariant parity with the JSON parser (#5182)', () => {
+  it('rejects a subjectless non-count aggregate ("sum() > 300")', () => {
+    const result = parseRequirementText('sum() > 300');
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.match(result.error, /"subject" is required unless fn is "count"/);
+  });
+
+  it('rejects a subjectless "avg"/"min"/"max" the same way', () => {
+    for (const text of ['avg() > 1', 'min() > 1', 'max() > 1']) {
+      const result = parseRequirementText(text);
+      assert.equal(result.ok, false, text);
+      if (!result.ok) assert.match(result.error, /"subject" is required unless fn is "count"/);
+    }
+  });
+
+  it('rejects a multi-valued subject on a numeric fn ("sum(material) > 1")', () => {
+    const result = parseRequirementText('sum(material) > 1');
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.match(result.error, /needs a single-valued subject/);
+    assert.match(result.error, /multi-valued/);
+  });
+
+  it('rejects a "compare" with a multi-valued side, as the JSON parser does', () => {
+    for (const [text, side] of [['material = Name', 'left'], ['Name = classification', 'right']] as const) {
+      const result = parseRequirementText(text);
+      assert.equal(result.ok, false, text);
+      if (result.ok) continue;
+      assert.match(result.error, new RegExp(`^${side}: "compare" needs a single-valued subject`));
+    }
+  });
+
+  it('still accepts "count() > 5" with no subject', () => {
+    const result = parseRequirementText('count() > 5');
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(result.requirement, { kind: 'aggregate', fn: 'count', op: 'gt', value: 5 });
+  });
+
+  it('still accepts a legitimate "sum(Qto_X.NetArea) > 300"', () => {
+    const result = parseRequirementText('sum(Qto_X.NetArea) > 300');
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(result.requirement, {
+      kind: 'aggregate', fn: 'sum',
+      subject: { kind: 'quantity', setName: 'Qto_X', quantityName: 'NetArea' },
+      op: 'gt', value: 300,
+    });
+  });
+
+  it('still accepts "count() > 5 by material" — count over a multi-valued groupBy is fine', () => {
+    const result = parseRequirementText('count() > 5 by material');
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(result.requirement, {
+      kind: 'aggregate', fn: 'count', op: 'gt', value: 5,
+      groupBy: { subject: { kind: 'material' } },
+    });
+  });
+});

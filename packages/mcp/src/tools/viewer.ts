@@ -36,9 +36,6 @@ function requireViewer(ctx: ToolContext): ViewerManager {
 }
 
 function refsForGlobalIds(m: ReturnType<typeof resolveModel>, gids: string[]): EntityRef[] {
-  // Use the same queued-create-first, tombstone-aware resolution as the other
-  // MCP tools. The raw store scan here previously named deleted entities and
-  // could not find an entity created in this session (#5236).
   if (gids.length === 1) {
     const expressId = findByGlobalId(m, gids[0]); // early return on a single selector
     return expressId === null ? [] : [{ modelId: m.id, expressId }];

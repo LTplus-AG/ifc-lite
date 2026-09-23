@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { effectiveTreeType, type TreeOverlay } from './treeOverlay.js';
 import { GROUP_ENTITY_TYPES, groupMatchesSubFilter } from './groupEntityTypes.js';
 import type { GroupSubFilter } from './groupEntityTypes.js';
 // Re-exported so the Groups tab's callers and tests keep importing these
@@ -653,6 +654,7 @@ export function buildTypeTree(
   geometricIds?: Set<number>,
   authoredProducts?: AuthoredProduct[],
   geometryReadyModelIds?: ReadonlySet<string>,
+  overlay?: TreeOverlay,
 ): TreeNode[] {
   // Collect entities grouped by IFC class across all models
   const typeGroups = new Map<string, Array<{ expressId: number; globalId: number; name: string; modelId: string; parts?: number[] }>>();
@@ -670,6 +672,8 @@ export function buildTypeTree(
       geometricIds,
       geometryReadyModelIds?.has(modelId),
     );
+    const view = overlay?.(modelId);
+    // @raw-entity-enumeration-ok parsed rows, each passed through effectiveTreeType (deleted skipped, retype applied); created products arrive as authoredProducts
     for (let i = 0; i < dataStore.entities.count; i++) {
       const expressId = dataStore.entities.expressId[i];
       const globalId = resolveTreeGlobalId(modelId, expressId, models);
@@ -677,7 +681,8 @@ export function buildTypeTree(
       // Only include entities whose class belongs in a products tree and that
       // render — themselves, or through their IfcRelAggregates parts (a
       // geometry-less assembly).
-      const typeName = dataStore.entities.getTypeName(expressId) || 'Unknown';
+      const typeName = effectiveTreeType(view, expressId, dataStore.entities.getTypeName(expressId) || 'Unknown');
+      if (typeName === null) continue;
       const entityName = dataStore.entities.getName(expressId) || `${typeName} #${expressId}`;
       if (!assemblyGeometry.renders(typeName, expressId, globalId)) {
         if (assemblyGeometry.isOther(typeName, expressId, globalId)) {
@@ -799,6 +804,7 @@ export function buildIfcTypeTree(
   isMultiModel: boolean,
   geometricIds?: Set<number>,
   geometryReadyModelIds?: ReadonlySet<string>,
+  overlay?: TreeOverlay,
 ): TreeNode[] {
   // Collect type entities and their typed instances
   interface TypeEntry {
@@ -828,13 +834,16 @@ export function buildIfcTypeTree(
       geometryReadyModelIds?.has(modelId),
     );
 
+    const view = overlay?.(modelId);
     // Find all type entities (entities with IS_TYPE flag)
+    // @raw-entity-enumeration-ok parsed type rows, each passed through effectiveTreeType (deleted skipped, retype applied)
     for (let i = 0; i < dataStore.entities.count; i++) {
       const flags = dataStore.entities.flags[i];
       if (!(flags & EntityFlags.IS_TYPE)) continue;
 
       const expressId = dataStore.entities.expressId[i];
-      const typeClassName = dataStore.entities.getTypeName(expressId);
+      const typeClassName = effectiveTreeType(view, expressId, dataStore.entities.getTypeName(expressId));
+      if (typeClassName === null) continue;
 
       // Skip relationship entities and non-product types
       if (typeClassName.startsWith('IfcRel') || typeClassName === 'Unknown') continue;
@@ -848,7 +857,8 @@ export function buildIfcTypeTree(
         const instGlobalId = resolveTreeGlobalId(modelId, instId, models);
         // An IfcElementAssemblyType's occurrences carry no geometry of their
         // own — without this the type row reported 0 elements (#1133).
-        const instIfcType = dataStore.entities.getTypeName(instId) || 'Unknown';
+        const instIfcType = effectiveTreeType(view, instId, dataStore.entities.getTypeName(instId) || 'Unknown');
+        if (instIfcType === null) continue;
         const instName = dataStore.entities.getName(instId) || `#${instId}`;
         if (!assemblyGeometry.renders(instIfcType, instId, instGlobalId)) {
           if (assemblyGeometry.isOther(instIfcType, instId, instGlobalId)) {
@@ -1144,6 +1154,7 @@ export function buildGroupTree(
   isMultiModel: boolean,
   geometricIds?: Set<number>,
   subFilter: GroupSubFilter = 'all',
+  overlay?: TreeOverlay,
 ): TreeNode[] {
   interface MemberRow {
     expressId: number;
@@ -1189,6 +1200,7 @@ export function buildGroupTree(
       if (fallbackByType.size === 0) return;
     }
     const toGlobal = (expressId: number) => resolveTreeGlobalId(modelId, expressId, models);
+    const view = overlay?.(modelId);
 
     for (let rank = 0; rank < GROUP_ENTITY_TYPES.length; rank++) {
       const typeName = GROUP_ENTITY_TYPES[rank];
@@ -1197,7 +1209,9 @@ export function buildGroupTree(
       if (!groupIds || groupIds.length === 0) continue;
 
       for (const groupId of groupIds) {
-        const members = extractGroupMembersOnDemand(dataStore, groupId);
+        if (effectiveTreeType(view, groupId, typeName) === null) continue;
+        const members = extractGroupMembersOnDemand(dataStore, groupId)
+          .filter((member) => effectiveTreeType(view, member.id, member.type) !== null);
         // Empty group: a dead click, skip (mirror the empty-material skip).
         if (members.length === 0) continue;
 

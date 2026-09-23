@@ -245,10 +245,12 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mutationViews, models, geometricIds, mutationVersion]);
 
+
   // Build the tree data structure based on grouping mode
   // Note: hiddenEntities intentionally NOT in deps - visibility computed lazily for performance
   const treeData = useMemo(
     (): TreeNode[] => {
+      const treeOverlay = (modelId: string) => mutationViews.get(modelId); // deletes/retypes, re-run per mutationVersion (#5249)
       if (groupingMode === 'type') {
         return buildTypeTree(
           models,
@@ -258,16 +260,17 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
           classTreeIds,
           authoredProducts,
           geometryReadyModelIds,
+          treeOverlay,
         );
       }
       if (groupingMode === 'ifc-type') {
-        return buildIfcTypeTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds, geometryReadyModelIds);
+        return buildIfcTypeTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds, geometryReadyModelIds, treeOverlay);
       }
       if (groupingMode === 'material') {
         return buildMaterialTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds, geometryReadyModelIds);
       }
       if (groupingMode === 'groups') {
-        return buildGroupTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds, groupFilter);
+        return buildGroupTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds, groupFilter, treeOverlay);
       }
       return buildTreeData(
         models,
@@ -280,7 +283,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
         geometryReadyModelIds, georefMutations,
       );
     },
-    [models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, sortMode, groupingMode, geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations]
+    [models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, sortMode, groupingMode, geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations, mutationViews, mutationVersion]
   );
 
   // Filter nodes based on search

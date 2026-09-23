@@ -540,6 +540,20 @@ describe('compose', () => {
     assert.equal(logo.x, 40, 'wide text does not leave the logo in a half column');
   });
 
+  it('uses the same 10pt column gap for A3 text pairing in PDF and preview (#4940 review)', () => {
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A3', orientation: 'portrait' }, generatedAt: 'now',
+      measure: (text, size) => text.length * size * 0.99,
+      blocks: [
+        { kind: 'text', id: 'boundary', style: 'body', fontSize: 10.1, text: Array(74).fill('W'.repeat(37)).join('\n'), width: 'half' },
+        { kind: 'image', id: 'logo', height: 70, align: 'left', aspect: 2, width: 'half' },
+      ],
+    });
+    const logo = layout.pages.flatMap((page) => page.items).find((item) => item.kind === 'image');
+    assert.ok(logo);
+    assert.ok(logo.x > 40, 'boundary-width text and logo pair in the PDF');
+  });
+
   it('a long half-width image caption is truncated so it stays inside its own column (review finding, #4940)', () => {
     const longCaption = 'A very long caption that would otherwise cross the gap into the next column and keep running well past the page edge';
     const layout = composeDocument({

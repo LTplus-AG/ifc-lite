@@ -121,6 +121,20 @@ it('uses a wide-glyph bound when pairing text with a logo (#4940 review)', () =>
   assert.equal(container.querySelectorAll('[data-preview-row]').length, 0);
 });
 
+it('uses the PDF column gap for A3 boundary-width text and its logo (#4940 review)', () => {
+  container = document.createElement('div');
+  document.body.appendChild(container);
+  root = createRoot(container);
+  const doc: DocumentSpec = { ...baseDocument, page: { size: 'A3', orientation: 'portrait' }, blocks: [
+    { kind: 'text', id: 'boundary', style: 'body', fontSize: 10.1, text: Array(74).fill('W'.repeat(37)).join('\n'), width: 'half' },
+    { ...imageBlock, width: 'half' },
+  ] };
+  act(() => root?.render(<DocumentPreview document={doc} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map()} chartMessages={new Map()} topics={new Map()} selectedBlockId={null} onSelectBlock={() => {}} />));
+  const row = container.querySelector<HTMLElement>('[data-preview-row]');
+  assert.ok(row);
+  assert.ok(Math.abs(Number.parseFloat(row.style.gap) - 10 * 560 / pageBox(doc.page).w) < 0.001);
+});
+
 it('clamps a tall chart to the same printable-page height as PDF composition (#4983 review)', () => {
   const chart = { id: 'chart', title: 'Tall chart', source: 'elements', type: 'bar', dimension: 'type', measure: { agg: 'count' } } as const;
   const aggregation = aggregate(chart, {

@@ -208,11 +208,11 @@ export function DocumentPreview({ document, bindings, aggregations, chartMessage
                 onClick={() => onSelectBlock(block.id)}
                 data-preview-block={block.id}
               >
-                <Block block={block} bindings={bindings} aggregation={aggregations.get(block.id) ?? null} chartMessage={chartMessages.get(block.id)} topic={block.kind === 'topic' ? topics.get(block.guid) : undefined} table={tables?.get(block.id)} contentWidth={Array.isArray(group) ? (contentWidth - 12) / 2 : contentWidth} scale={scale} pageHeight={size.h} />
+                <Block block={block} bindings={bindings} aggregation={aggregations.get(block.id) ?? null} chartMessage={chartMessages.get(block.id)} topic={block.kind === 'topic' ? topics.get(block.guid) : undefined} table={tables?.get(block.id)} contentWidth={Array.isArray(group) ? (contentWidth - BLOCK_GAP * scale) / 2 : contentWidth} scale={scale} pageHeight={size.h} />
               </div>
             );
             return Array.isArray(group)
-              ? <div key={group[0].id} className="grid grid-cols-2 gap-3" data-preview-row>{wrap(group[0])}{wrap(group[1])}</div>
+              ? <div key={group[0].id} className="grid grid-cols-2" style={{ gap: BLOCK_GAP * scale }} data-preview-row>{wrap(group[0])}{wrap(group[1])}</div>
               : wrap(group);
           })}
           {document.blocks.length === 0 && <div className={`text-xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>{t('document.preview.emptyPage')}</div>}

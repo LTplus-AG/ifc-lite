@@ -18,6 +18,8 @@
 import type { EntityTable } from '@ifc-lite/data';
 import { PropertyValueType } from '@ifc-lite/data';
 import type { MutablePropertyView } from './mutable-property-view.js';
+import { iterateEffectiveEntityIds } from './effective-entity-enumeration.js';
+import { createdEntityStringAttribute } from './created-entity-attributes.js';
 import type { PropertyValue } from './types.js';
 import { PARSE_INVALID, parseValue } from './csv-parse-value.js';
 
@@ -117,6 +119,32 @@ function resolveTag(entities: EntityTable, mutationView: MutablePropertyView, ex
   return entities.getTag?.(expressId) ?? '';
 }
 
+/** No parsed index here: `CsvConnector` holds only the `EntityTable`. */
+const NO_INDEX = { byType: new Map<string, readonly number[]>(), byId: { get: () => undefined } };
+
+/**
+ * The session's effective candidates (#5198, #5249): every `EntityTable` row
+ * except a tombstoned entity, plus every overlay-created entity, from the
+ * shared effective-entity iterator with the table's rows as its source
+ * domain. No match strategy, including one added later, can then match a
+ * deleted entity or miss a created one. Deletion is overlay-only and never
+ * written back to the table, which is why enumerating the table directly got
+ * both directions wrong. `rowOf` answers the column row of a source entity,
+ * and `undefined` for an overlay-created one, which has no row.
+ */
+function effectiveCandidates(
+  entities: EntityTable,
+  mutationView: MutablePropertyView,
+): { ids: number[]; rowOf(expressId: number): number | undefined } {
+  const rows = new Map<number, number>();
+  entities.expressId.forEach((expressId, row) => rows.set(expressId, row));
+  const ids = Array.from(
+    iterateEffectiveEntityIds({ entityIndex: NO_INDEX, entities }, mutationView, undefined, rows.keys()),
+    ({ expressId }) => expressId,
+  );
+  return { ids, rowOf: (expressId) => rows.get(expressId) };
+}
+
 function buildSimpleIndex(
   entities: EntityTable,
   mutationView: MutablePropertyView,
@@ -124,21 +152,31 @@ function buildSimpleIndex(
   strategy: Extract<MatchStrategy, { type: 'globalId' | 'expressId' | 'name' | 'tag' }>
 ): Map<string, number[]> {
   const index = new Map<string, number[]>();
-  for (let i = 0; i < entities.count; i++) {
-    const expressId = entities.expressId[i];
+  const { ids, rowOf } = effectiveCandidates(entities, mutationView);
+  for (const expressId of ids) {
+    const row = rowOf(expressId);
+    // No table row means overlay-created: its keys come from its authored
+    // attributes, with queued attribute edits applied.
+    const created = row === undefined ? mutationView.getNewEntity(expressId) : null;
     let key: string;
     switch (strategy.type) {
       case 'globalId':
-        key = strings?.get(entities.globalId[i]) || '';
+        key = created
+          ? createdEntityStringAttribute(mutationView, created, 'GlobalId')
+          : strings?.get(entities.globalId[row!]) || '';
         break;
       case 'expressId':
         key = String(expressId);
         break;
       case 'name':
-        key = (strings?.get(entities.name[i]) || '').toLowerCase();
+        key = (created
+          ? createdEntityStringAttribute(mutationView, created, 'Name')
+          : strings?.get(entities.name[row!]) || '').toLowerCase();
         break;
       case 'tag':
-        key = resolveTag(entities, mutationView, expressId);
+        key = created
+          ? createdEntityStringAttribute(mutationView, created, 'Tag')
+          : resolveTag(entities, mutationView, expressId);
         break;
     }
     if (key) addToIndex(index, key, expressId);
@@ -176,8 +214,9 @@ function buildPropertyIndex(
   const index = new Map<string, number[]>();
   const valueTypes = new Set<PropertyValueType>();
 
-  for (let i = 0; i < entities.count; i++) {
-    const expressId = entities.expressId[i];
+  // See `effectiveCandidates` (#5198). `getForEntity` answers an
+  // overlay-created entity's psets as well as a source entity's.
+  for (const expressId of effectiveCandidates(entities, mutationView).ids) {
     const psets = mutationView.getForEntity(expressId);
     // An entity may carry several same-named sets (a type pset and an
     // occurrence pset), which is exactly why every one of them is scanned.

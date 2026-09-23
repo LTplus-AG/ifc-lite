@@ -635,7 +635,7 @@ export class HeadlessBackend implements BimBackend {
         assertModel, defaultModelId: MODEL_ID,
         dataStore, editor: get,
         mutationView: () => this.getOrCreateMutationView(),
-        ownerHistoryId: () => resolveLiveOwnerHistoryId(dataStore(), get()),
+        ownerHistoryId: () => resolveLiveOwnerHistoryId(dataStore(), get(), this.getOrCreateMutationView()),
         cost: { data: (modelId, options) => this.cost.data(modelId, options) },
       }),
     };

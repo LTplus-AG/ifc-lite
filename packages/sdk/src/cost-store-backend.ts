@@ -44,12 +44,6 @@ export interface CostStoreModelResolution {
 
 export type CostStoreModelResolver = (modelId?: string) => CostStoreModelResolution;
 
-/** First `IfcOwnerHistory` still live in the overlay, skipping ids the caller already tombstoned (else export dangles). */
-export function resolveLiveOwnerHistoryId(store: IfcDataStore, editor: StoreEditor): number | null {
-  const candidates = store.entityIndex.byType.get('IFCOWNERHISTORY') ?? [];
-  return candidates.find((id) => editor.hasEntity(id)) ?? null;
-}
-
 function ref(modelId: string, expressId: number): EntityRef { return { modelId, expressId }; }
 
 const SUPPORTED_COST_SCHEMAS: ReadonlySet<string> = new Set(['IFC2X3', 'IFC4', 'IFC4X3']);

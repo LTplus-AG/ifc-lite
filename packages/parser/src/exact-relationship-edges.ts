@@ -36,6 +36,7 @@ export function extractExactRelationshipEdges(
     const result: ExactRelationshipEdge[] = [];
     const seen = new Set<string>();
     const entityInfo = (id: number): ExactRelationshipEdge['entity'] => {
+        // @raw-entity-enumeration-ok graph edge already chose this target; the source index only supplies its exact STEP class fallback
         const ref = store.entityIndex.byId.get(id);
         const exactType = exactTypeName(store.entities, id);
         const type = (exactType !== 'Unknown' ? exactType : undefined)

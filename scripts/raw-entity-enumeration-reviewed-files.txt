@@ -18,6 +18,14 @@ packages/ifcx/src/index.ts
 packages/mutations/src/source-entity-index.ts
 packages/parser/src/data-store-transport.ts
 packages/parser/src/cost-reader.ts
+packages/parser/src/columnar-parser-root-attributes.ts
+packages/parser/src/exact-relationship-edges.ts
+packages/parser/src/identity-hints.ts
+packages/parser/src/property-unit.ts
+packages/parser/src/property-value-parser.ts
+packages/parser/src/quantity-collect.ts
+packages/parser/src/spatial-hierarchy-attributes.ts
+packages/parser/src/spatial-hierarchy-builder.ts
 packages/parser/src/worker-index-publication.ts
 packages/rules/src/filter/filter-iteration-source.ts
 packages/sdk/src/cost-reference-scan.ts

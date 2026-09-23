@@ -331,6 +331,7 @@ export function resolveComplexPropertyValue(
 
     for (const ref of hasProperties) {
         if (typeof ref !== 'number') continue;
+        // @raw-entity-enumeration-ok complex-property parsing follows this source member reference, not an entity set
         const nestedRef = store.entityIndex.byId.get(ref) ?? store.deferredEntityIndex?.get(ref);
         if (!nestedRef) continue;
         const nestedEntity = extractor.extractEntity(nestedRef);

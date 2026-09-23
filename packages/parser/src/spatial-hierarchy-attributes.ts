@@ -51,6 +51,7 @@ export function extractLongName(
   attrExtractor: EntityExtractor | undefined
 ): string | undefined {
   if (!attrSource || !attrExtractor) return undefined;
+  // @raw-entity-enumeration-ok parse-time LongName reads one spatial node's source byte range
   const ref = attrSource.entityIndex.byId.get(expressId);
   if (!ref) return undefined;
   try {
@@ -81,6 +82,7 @@ export function extractElevation(
   source: Uint8Array | IfcSourceBytes,
   entityIndex: { byId: { get(expressId: number): EntityRef | undefined } }
 ): number | undefined {
+  // @raw-entity-enumeration-ok parse-time elevation reads the selected storey's source record
   const ref = entityIndex.byId.get(expressId);
   if (!ref) return undefined;
 
@@ -138,6 +140,7 @@ export function extractPlacementElevation(
   try {
     const extractor = new EntityExtractor(source);
     const readAttrs = (id: number): unknown[] | undefined => {
+      // @raw-entity-enumeration-ok placement fallback follows one source reference at a time during hierarchy construction
       const ref = entityIndex.byId.get(id);
       if (!ref) return undefined;
       return extractor.extractEntity(ref)?.attributes ?? undefined;

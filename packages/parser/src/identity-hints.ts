@@ -118,6 +118,7 @@ export function authoredKeyValue(
   if (spec.kind === 'tag') {
     const ifcType = store.entities.getTypeName(expressId);
     const index = getAttributeNamesAcrossSchemas(ifcType).indexOf('Tag');
+    // @raw-entity-enumeration-ok authored-key lookup reads the specified entity's source Tag slot, not an entity set
     const ref = store.entityIndex.byId.get(expressId);
     if (index < 0 || !ref) return undefined;
     raw = extractor.extractEntity(ref)?.attributes?.[index];

@@ -21,6 +21,7 @@ import type { IfcEntity, IfcAttributeValue } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 
 export function getEntityRefFromStore(store: IfcDataStore, expressId: number): EntityRef | undefined {
+    // @raw-entity-enumeration-ok point lookup of one source byte range; overlay-created records have no source range
     return store.entityIndex.byId.get(expressId) ?? store.deferredEntityIndex?.get(expressId);
 }
 
@@ -35,6 +36,7 @@ export function extractEntityAttributesOnDemand(
     store: IfcDataStore,
     entityId: number
 ): { globalId: string; name: string; description: string; objectType: string; tag: string } {
+    // @raw-entity-enumeration-ok on-demand extraction needs this entity's source byte range, not a live entity enumeration
     const ref = store.entityIndex.byId.get(entityId);
     if (!ref) {
         return { globalId: '', name: '', description: '', objectType: '', tag: '' };
@@ -58,6 +60,7 @@ export function extractAllEntityAttributes(
     store: IfcDataStore,
     entityId: number
 ): Array<{ name: string; value: string | number | boolean }> {
+    // @raw-entity-enumeration-ok on-demand named attributes are extracted from this one source record
     const ref = store.entityIndex.byId.get(entityId);
     if (!ref) return [];
 

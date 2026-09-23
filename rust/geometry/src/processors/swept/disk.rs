@@ -10,6 +10,10 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use crate::router::GeometryProcessor;
 
+/// Two directrix samples closer than this (model units) are one point for
+/// tangent purposes: their difference has no usable direction (#5191).
+const TUBE_DEDUPE_EPS: f64 = 1e-9;
+
 /// Build a rotation-minimising frame (RMF) for sweeping a circular cross-section
 /// along `curve_points`. Returns `(tangents, perp1s, perp2s)`, each of length
 /// `curve_points.len()`.
@@ -34,23 +38,16 @@ pub(crate) fn build_tube_rmf(
         return (tangents, perp1s, perp2s);
     }
 
-    // A duplicate consecutive directrix point (a composite-curve segment
-    // boundary sharing an endpoint, or a plain authoring artefact) makes the
-    // finite-difference tangent at that sample a zero vector, which has no
-    // direction to `.normalize()` — that's where #5191's all-NaN mesh came
-    // from. A duplicate point is otherwise a legitimate sample, so rather
-    // than reject the solid we skip duplicates when building the point list
-    // the tangent is actually differenced over (`kept`), and every point that
-    // was dropped as a duplicate inherits the tangent computed for the
-    // distinct point it collapsed onto (`owner`). `tangents` below stays
-    // parallel to `curve_points` (length `n`) so nothing downstream needs to
-    // know duplicates existed.
-    const DEDUPE_EPS: f64 = 1e-9;
+    // #5191: a duplicate consecutive directrix point (e.g. two composite-curve
+    // segments sharing an endpoint) makes the finite difference a zero vector,
+    // whose `.normalize()` is NaN. Difference over the distinct points (`kept`)
+    // and give each dropped duplicate its owner's tangent, so `tangents` stays
+    // parallel to `curve_points`.
     let mut kept: Vec<Point3<f64>> = Vec::with_capacity(n);
     let mut owner: Vec<usize> = Vec::with_capacity(n);
     for &p in curve_points {
         if let Some(&last) = kept.last() {
-            if (p - last).norm() < DEDUPE_EPS {
+            if (p - last).norm() < TUBE_DEDUPE_EPS {
                 owner.push(kept.len() - 1);
                 continue;
             }
@@ -61,11 +58,8 @@ pub(crate) fn build_tube_rmf(
 
     let m = kept.len();
     let kept_tangents: Vec<Vector3<f64>> = if m < 2 {
-        // Every sample collapsed onto a single point — a fully degenerate
-        // directrix with no direction to sweep along. There is no principled
-        // tangent here; fall back to a fixed axis so the caller gets a finite
-        // (if geometrically degenerate) frame instead of NaN, matching the
-        // guarded-fallback pattern in `revolved.rs`'s axis-direction handling.
+        // Every sample coincides: no direction exists. `process` never gets
+        // here (it meshes nothing); a fixed axis keeps the frame finite.
         vec![Vector3::new(1.0, 0.0, 0.0); m]
     } else {
         (0..m)
@@ -77,8 +71,7 @@ pub(crate) fn build_tube_rmf(
                 } else {
                     (kept[k + 1] - kept[k - 1]) / 2.0
                 };
-                // `kept` has no consecutive duplicates by construction, so
-                // every difference above is non-zero and this normalize is safe.
+                // `kept` has no consecutive duplicates: the difference is non-zero.
                 t.normalize()
             })
             .collect()
@@ -109,27 +102,10 @@ pub(crate) fn build_tube_rmf(
         // between consecutive samples on a swept-disk directrix is physically
         // implausible; we keep the previous frame and accept the degraded case.
         //
-        // NaN-latching hazard (#5191): every comparison against NaN is `false`
-        // in Rust, so if `axis_norm` or `cos_a` were ever NaN this condition
-        // reads as "nearly parallel" too, and freezes `perp1`/`perp2` exactly
-        // as the legitimate degenerate case does — except forever, since a
-        // poisoned frame can never re-satisfy `cos_a < 1.0 - 1e-12` with a
-        // finite comparison again. This branch is not a general degenerate-
-        // input handler; it only knows how to preserve a frame, not to detect
-        // a poisoned one. `tangents` is guaranteed finite here by the dedupe
-        // above (duplicate directrix points no longer reach `.normalize()`),
-        // so the assert below should never fire; it exists so a future
-        // regression that reintroduces a NaN tangent fails loudly in tests
-        // instead of silently latching across every remaining ring the way
-        // #5191 did. It is a `debug_assert!` (not a hard check) so a NaN that
-        // somehow still reaches this point in a release build degrades the
-        // same way it always has rather than making the processor refuse a
-        // solid it used to render.
-        debug_assert!(
-            axis_norm.is_finite() && cos_a.is_finite(),
-            "build_tube_rmf: non-finite tangent reached the RMF guard at i={i}; \
-             this latches forever because NaN comparisons are always false"
-        );
+        // NaN-latching hazard (#5191): NaN comparisons are false, so a NaN
+        // tangent also reads as "nearly parallel" and freezes a poisoned frame
+        // for every later ring. Finite tangents are a precondition, held by the
+        // dedupe above and by `process` refusing non-finite directrix points.
         if axis_norm > 1e-9 && cos_a < 1.0 - 1e-12 {
             let axis = axis / axis_norm;
             let sin_a = (1.0 - cos_a * cos_a).max(0.0).sqrt();
@@ -353,6 +329,27 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
 
         if curve_points.len() < 2 {
             return Ok(Mesh::new()); // Not enough points
+        }
+        // A non-finite sample would put NaN into every ring the RMF frame
+        // propagates to (#5191: NaN comparisons are always false, so the
+        // frame-refresh guard latches on it). Refuse it as a load error rather
+        // than emit a NaN mesh.
+        if curve_points
+            .iter()
+            .any(|p| !(p.x.is_finite() && p.y.is_finite() && p.z.is_finite()))
+        {
+            return Err(Error::geometry(
+                "SweptDiskSolid directrix has a non-finite coordinate".to_string(),
+            ));
+        }
+        // Every sample coincident (#5191): no direction to sweep along, and
+        // meshing it would fabricate a flat disc from the two end caps. Same
+        // outcome as a directrix with too few points.
+        if curve_points
+            .iter()
+            .all(|p| (p - curve_points[0]).norm() < TUBE_DEDUPE_EPS)
+        {
+            return Ok(Mesh::new());
         }
 
         // Generate tube mesh by sweeping circle along curve

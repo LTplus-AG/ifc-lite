@@ -26,13 +26,14 @@ import { PropertySetCard } from './PropertySetCard';
 import { GeoreferencingPanel } from './GeoreferencingPanel';
 import type { PropertySet } from './encodingUtils';
 import type { FederatedModel } from '@/store/types';
-import { extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, extractClassificationSystemsOnDemand, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
+import { extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { computeModelStats } from './modelMetadataStats';
 import { useTranslation } from '@/i18n';
 import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
 import { EXPRESS_DESCRIPTION_ATTRIBUTE, EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
 import { LandXmlModelSourceNavigation } from './LandXmlModelSourceNavigation';
+import { effectiveClassificationSystems } from './effective-classification-systems';
 
 /** Model metadata panel - displays file info, schema version, entity counts, etc. */
 export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
@@ -43,6 +44,8 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
   // Display-unit converter overrides (issue #1573 proposal 2).
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   const fromGlobalId = useViewerStore((s) => s.fromGlobalId);
+  const mutationView = useViewerStore((s) => s.mutationViews.get(model.id));
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
   // Format file size
   const formatFileSize = (bytes: number): string => {
@@ -128,17 +131,12 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
     return extractProjectUnits(dataStore.source, dataStore.entityIndex);
   }, [dataStore]);
 
-  // Classification systems used in THIS model (e.g. Uniclass, OmniClass, a
-  // national system — a model can carry several at once). Walks only the
-  // handful of IfcClassification entities via the byType index, so it's
-  // cheap even on large models — not a per-element scan. `unresolved` means
-  // the model HAS classification systems but this store (server-parsed, no
-  // source bytes) can't read their names — distinct from "genuinely none"
-  // (#3948); `names` is always `[]` in that case.
+  // Classification systems in this model's current edit session. `unresolved`
+  // preserves the server-parsed no-source signal for names we cannot read.
   const classificationSystems = useMemo(() => {
     if (!dataStore) return { names: [], unresolved: false };
-    return extractClassificationSystemsOnDemand(dataStore as IfcDataStore);
-  }, [dataStore]);
+    return effectiveClassificationSystems(dataStore as IfcDataStore, mutationView);
+  }, [dataStore, mutationView, mutationVersion]);
   const landXmlStats = useMemo(() => {
     const surfaces = model.landXmlDocument?.surfaces ?? [];
     return {
@@ -341,26 +339,26 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
             </h4>
           </div>
           <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
-            {classificationSystems.unresolved ? (
+            {classificationSystems.unresolved && (
               <div className="flex items-center gap-3 px-3 py-2">
                 <BookMarked className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
                 <span className="text-xs text-zinc-500">{t('properties.modelMetadata.classificationUnresolved')}</span>
               </div>
-            ) : classificationSystems.names.length === 0 ? (
+            )}
+            {!classificationSystems.unresolved && classificationSystems.names.length === 0 && (
               <div className="flex items-center gap-3 px-3 py-2">
                 <BookMarked className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
                 <span className="text-xs text-zinc-500">{t('properties.modelMetadata.noClassificationSystems')}</span>
               </div>
-            ) : (
-              classificationSystems.names.map((system) => (
-                <div key={system} className="flex items-center gap-3 px-3 py-2">
-                  <BookMarked className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                  <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100">
-                    {system}
-                  </span>
-                </div>
-              ))
             )}
+            {classificationSystems.names.map((system) => (
+              <div key={system} className="flex items-center gap-3 px-3 py-2">
+                <BookMarked className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100">
+                  {system}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
 

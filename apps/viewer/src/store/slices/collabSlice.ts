@@ -865,12 +865,14 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
         const view = roomMutationViewFor(get(), modelId);
         if (!view) return;
         view.setProperty(entityId, pset, prop, value, type);
+        get().invalidateHistoryForEntity(modelId, entityId); // clear stale history for this entity (#5223)
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       onPropertyDelete: (modelId, entityId, pset, prop) => {
         const view = roomMutationViewFor(get(), modelId);
         if (!view) return;
         view.deleteProperty(entityId, pset, prop);
+        get().invalidateHistoryForEntity(modelId, entityId); // #5223, see onProperty
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       // A peer's whole Pset vanished (its last property was deleted, which
@@ -881,6 +883,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
         const view = roomMutationViewFor(get(), modelId);
         if (!view) return;
         view.deletePropertySet(entityId, pset);
+        get().invalidateHistoryForEntity(modelId, entityId); // #5223, see onProperty
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       onAttribute: (modelId, entityId, attrName, value) => {
@@ -891,6 +894,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
           rejectRemoteAttribute(rejected);
           return;
         }
+        get().invalidateHistoryForEntity(modelId, entityId); // covers UPDATE_ATTRIBUTE/POSITIONAL history (#5223)
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       // A peer moved/rotated an entity: reflect it on the local mesh by
@@ -899,6 +903,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
         const store = roomStoreFor(get(), modelId);
         if (!store) return;
         reconcilePlacementMesh(get, modelId, store, session.doc, entityId, placement);
+        get().invalidateHistoryForEntity(modelId, entityId); // clear stale placement history (#5223)
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       // A peer deleted an entity: hide its mesh (matches the owner's local
@@ -918,6 +923,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
         if (!deleteRemoteOverlayEntity(store, roomMutationViewFor(get(), modelId), entityId)) return;
         const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
         get().hideEntities([globalId]);
+        get().invalidateHistoryForEntity(modelId, entityId); // no local history may write onto this tombstone (#5223)
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
     });

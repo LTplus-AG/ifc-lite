@@ -42,6 +42,13 @@ export interface LandXmlBlobStreamOptions {
   isCurrent?(): boolean;
   /** A federated callback may still decline after the exact first-pass envelope is known. */
   wantsFederatedStreaming: boolean;
+  /**
+   * #5175: forwarded verbatim to every credited cursor pass below. Absent by
+   * default, so a source with no declared `<Units>` refuses exactly as it did
+   * before this option existed — this is the retry value a caller supplies
+   * only after the viewer surfaced that refusal to the user.
+   */
+  assumedLinearUnit?: string;
 }
 
 function streamUnits(header: unknown): NonNullable<LandXmlTinDocument['units']> | null {
@@ -54,6 +61,7 @@ function streamUnits(header: unknown): NonNullable<LandXmlTinDocument['units']> 
     elevation_unit?: unknown;
     linear_scale_to_meters?: unknown;
     elevation_scale_to_meters?: unknown;
+    assumed?: unknown;
   };
   if (typeof raw.linear_unit !== 'string' || typeof raw.elevation_unit !== 'string') {
     throw new Error('LandXML stream header has invalid unit names');
@@ -67,6 +75,11 @@ function streamUnits(header: unknown): NonNullable<LandXmlTinDocument['units']> 
     elevationUnit: raw.elevation_unit,
     linearScaleToMeters: raw.linear_scale_to_meters,
     elevationScaleToMeters: raw.elevation_scale_to_meters,
+    // #5175: read the provenance the header actually carries. Hardcoding
+    // `false` here would silently strip it on the streaming path — the exact
+    // path the viewer loads through — so a surface drawn at an operator-chosen
+    // scale would claim the producer declared it.
+    assumed: raw.assumed === true,
   };
 }
 
@@ -104,6 +117,7 @@ export async function streamLandXmlBlobWithSink(
   const reducer = new LandXmlStreamPreflightReducer();
   await streamLandXmlSourceBlobWithApi(api, file, {
     isCurrent: options.isCurrent,
+    assumedLinearUnit: options.assumedLinearUnit,
     onProgress: (loadedBytes, totalBytes) => sink.onProgress?.(loadedBytes, totalBytes * totalPasses),
     onHeader: (header) => reducer.onHeader(header),
     onSurface: (surface) => reducer.onSurface(surface),
@@ -129,6 +143,7 @@ export async function streamLandXmlBlobWithSink(
     });
     await streamLandXmlSourceBlobWithApi(api, file, {
       isCurrent: options.isCurrent,
+      assumedLinearUnit: options.assumedLinearUnit,
       onProgress: (loadedBytes, totalBytes) => sink.onProgress?.(totalBytes + loadedBytes, totalBytes * 4),
       onHeader: (header) => measurement.onHeader(header),
       onSurface: (surface) => measurement.onSurface(surface),
@@ -146,6 +161,7 @@ export async function streamLandXmlBlobWithSink(
     });
     await streamLandXmlSourceBlobWithApi(api, file, {
       isCurrent: options.isCurrent,
+      assumedLinearUnit: options.assumedLinearUnit,
       onProgress: (loadedBytes, totalBytes) => sink.onProgress?.((totalBytes * 2) + loadedBytes, totalBytes * 4),
       onHeader: (header) => admission.onHeader(header),
       onSurface: (surface) => admission.onSurface(surface),
@@ -163,6 +179,7 @@ export async function streamLandXmlBlobWithSink(
   let droppedPrimaryComponents = 0;
   await streamLandXmlSourceBlobWithApi(api, file, {
     isCurrent: options.isCurrent,
+    assumedLinearUnit: options.assumedLinearUnit,
     onProgress: (loadedBytes, totalBytes) => sink.onProgress?.(
       federatedStreaming ? (totalBytes * 3) + loadedBytes : totalBytes + loadedBytes,
       totalBytes * (federatedStreaming ? 4 : 2),

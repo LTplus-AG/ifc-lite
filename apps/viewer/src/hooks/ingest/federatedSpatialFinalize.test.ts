@@ -40,7 +40,7 @@ function document(): LandXmlTinDocument {
   return {
     format: 'landxml', schema: 'LandXML-1.2', version: '1.2',
     capabilities: { renderableTin: true, preservedOnlySurfaces: 0, unknownExtensions: 0 },
-    units: { linearUnit: 'meter', elevationUnit: 'meter', linearScaleToMeters: 1, elevationScaleToMeters: 1 },
+    units: { linearUnit: 'meter', elevationUnit: 'meter', linearScaleToMeters: 1, elevationScaleToMeters: 1, assumed: false },
     surfaces: [{
       sourceId: 'surface', ordinal: 1, sourcePath: 'LandXML/Surfaces/Surface[1]', properties: {},
       definitionProperties: {}, name: 'survey', kind: 'tin', renderState: 'rendered', points: [],

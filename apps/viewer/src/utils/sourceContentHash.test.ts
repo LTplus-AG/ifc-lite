@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { computeFullSourceHash } from './sourceContentHash.js';
-import { computeSourceFingerprint } from '../hooks/sourceFingerprint.js';
+import { computeSourceFingerprint } from '@ifc-lite/cache';
 import { decideMeshOnlyCacheHit } from '../hooks/cacheTier.js';
 
 /** Deterministic pseudo-random fill (xorshift32) so both files vary "for real". */

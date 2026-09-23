@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import type { MeshData } from '@ifc-lite/geometry';
 import { buildSpatialIndex, buildSpatialIndexAsync } from './spatial-index-builder.js';
 import type { AABB } from './aabb.js';
+import type { Frustum } from './frustum.js';
 
 function box(
   minX: number, minY: number, minZ: number,
@@ -104,6 +105,61 @@ describe('buildSpatialIndex', () => {
 
   it('returns a queryable empty index for no meshes', () => {
     expect(buildSpatialIndex([]).queryAABB(box(-1e9, -1e9, -1e9, 1e9, 1e9, 1e9))).toEqual([]);
+  });
+});
+
+/** Same mesh() shape, but one vertex component is corrupted to NaN. */
+function nanMesh(expressId: number, center: [number, number, number], size = 1): MeshData {
+  const m = mesh(expressId, center, size);
+  m.positions[0] = NaN;
+  return m;
+}
+
+/** Axis-aligned box frustum: six planes, one per face of `b`. */
+function boxFrustum(b: AABB): Frustum {
+  return {
+    planes: [
+      { normal: [1, 0, 0], distance: -b.min[0] },
+      { normal: [-1, 0, 0], distance: b.max[0] },
+      { normal: [0, 1, 0], distance: -b.min[1] },
+      { normal: [0, -1, 0], distance: b.max[1] },
+      { normal: [0, 0, 1], distance: -b.min[2] },
+      { normal: [0, 0, -1], distance: b.max[2] },
+    ],
+  };
+}
+
+describe('buildSpatialIndex — NaN-bounded mesh (#5221)', () => {
+  // Issue repro shape: one mesh with a single NaN vertex component (id 1)
+  // plus one clean mesh (id 2), through the real public API —
+  // buildSpatialIndex -> BVH.queryAABB / BVH.queryFrustum — not the BVH
+  // internals directly.
+  const huge = box(-1e6, -1e6, -1e6, 1e6, 1e6, 1e6);
+
+  it('excludes the NaN mesh from queryAABB (pre-existing, fails closed)', () => {
+    const bvh = buildSpatialIndex([nanMesh(1, [0, 0, 0]), mesh(2, [10, 0, 0])]);
+    expect(bvh.queryAABB(huge)).toEqual([2]);
+  });
+
+  it('excludes the NaN mesh from queryFrustum, matching queryAABB', () => {
+    const bvh = buildSpatialIndex([nanMesh(1, [0, 0, 0]), mesh(2, [10, 0, 0])]);
+    expect(bvh.queryFrustum(boxFrustum(huge))).toEqual([2]);
+  });
+
+  it('queryAABB and queryFrustum agree over the same scene', () => {
+    // The real pin: both query paths must report the identical set for the
+    // same index, not just "queryFrustum excludes the NaN mesh" in isolation
+    // — a fix that broke queryAABB instead would still pass a narrower test.
+    const bvh = buildSpatialIndex([nanMesh(1, [0, 0, 0]), mesh(2, [10, 0, 0])]);
+    const aabbHits = bvh.queryAABB(huge).sort((a, b) => a - b);
+    const frustumHits = bvh.queryFrustum(boxFrustum(huge)).sort((a, b) => a - b);
+    expect(frustumHits).toEqual(aabbHits);
+    expect(frustumHits).toEqual([2]);
+  });
+
+  it('still reports an ordinary mesh visible (no regression)', () => {
+    const bvh = buildSpatialIndex([mesh(1, [0, 0, 0]), mesh(2, [10, 0, 0])]);
+    expect(bvh.queryFrustum(boxFrustum(huge)).sort((a, b) => a - b)).toEqual([1, 2]);
   });
 });
 

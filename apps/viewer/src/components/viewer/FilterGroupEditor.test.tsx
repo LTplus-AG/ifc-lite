@@ -26,7 +26,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useState } from 'react';
 import { render, cleanup, click } from '@/test/render.js';
-import type { FilterGroup } from '@/lib/search/filter-groups';
+import type { FilterGroup } from '@ifc-lite/rules';
 import { FilterGroupEditor, type FilterGroupEditorState } from './FilterGroupEditor.js';
 
 function groupNamed(name: string): FilterGroup {

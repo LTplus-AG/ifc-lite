@@ -1,0 +1,28 @@
+{
+  "flowVersion": 1,
+  "id": "example-quantity-takeoff",
+  "name": "3 · Quantity takeoff table",
+  "description": "One row per element, with the columns you name: a bare word is an attribute (Name, Type), a dotted path is a property (Pset_WallCommon.IsExternal) or a quantity (Qto_WallBaseQuantities.NetVolume). The table is typed — every column records the IFC value type it was read from — and the volume column is summed.",
+  "capabilities": ["model.read"],
+  "inputs": [
+    { "nodeId": "elements", "param": "type", "label": "IFC class", "kind": "scalar" }
+  ],
+  "outputs": [
+    { "nodeId": "sheet", "port": "table", "label": "Takeoff" },
+    { "nodeId": "rows", "port": "count", "label": "Rows" },
+    { "nodeId": "total", "port": "total", "label": "Total NetVolume" }
+  ],
+  "nodes": [
+    { "id": "elements", "type": "model.byType", "params": { "type": "IfcWall" }, "pos": [0, 0] },
+    { "id": "sheet", "type": "table.fromEntities", "params": { "columns": ["Name", "Type", "Pset_WallCommon.IsExternal", "Qto_WallBaseQuantities.NetVolume"] }, "pos": [300, 0] },
+    { "id": "rows", "type": "table.rowCount", "pos": [620, -80] },
+    { "id": "volumes", "type": "table.column", "params": { "column": "Qto_WallBaseQuantities.NetVolume" }, "pos": [620, 60] },
+    { "id": "total", "type": "core.sum", "pos": [900, 60] }
+  ],
+  "edges": [
+    { "from": ["elements", "entities"], "to": ["sheet", "entities"] },
+    { "from": ["sheet", "table"], "to": ["rows", "table"] },
+    { "from": ["sheet", "table"], "to": ["volumes", "table"] },
+    { "from": ["volumes", "values"], "to": ["total", "values"] }
+  ]
+}

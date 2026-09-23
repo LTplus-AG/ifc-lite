@@ -12,7 +12,7 @@
 
 import { Input } from '@/components/ui/input';
 import { useTranslation } from '@/i18n';
-import type { FilterRule, SetOp } from '@/lib/search/filter-rules';
+import type { FilterRule, SetOp } from '@ifc-lite/rules';
 import { OpDropdown, SET_OPS, VALUE_OPS } from './SearchModal.filter.editors.shared';
 
 /** Free-typed GlobalIds, comma-separated — there's no bounded options list to

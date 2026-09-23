@@ -46,9 +46,9 @@
  * another machine. Format 1 files read as format 2 with no tags.
  */
 
-import { computeSourceFingerprint } from '../../hooks/sourceFingerprint.js';
+import { computeSourceFingerprint } from '@ifc-lite/cache';
 import type { FederatedModel } from '../../store/types.js';
-import type { ModelTag } from '../model-tags/types.js';
+import type { ModelTag } from '@ifc-lite/rules';
 import { parseModelTag } from '../model-tags/persistence.js';
 
 /** Current on-disk format version. Bump on any breaking shape change. */

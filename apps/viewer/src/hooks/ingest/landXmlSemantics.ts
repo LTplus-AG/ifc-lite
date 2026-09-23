@@ -43,6 +43,17 @@ export interface LandXmlPolyline {
   renderedPointState?: 'aligned' | 'suppressed';
 }
 
+/**
+ * The only part of a units record that geometry construction needs. Declared
+ * separately so a caller holding nothing but the stream header's scales does
+ * not have to fabricate unit names — or, since #5175, invent an `assumed`
+ * provenance value it has no way to know.
+ */
+export interface LandXmlUnitScales {
+  linearScaleToMeters: number;
+  elevationScaleToMeters: number;
+}
+
 export interface LandXmlTinSurface {
   sourceId: string;
   ordinal: number;
@@ -139,6 +150,13 @@ export interface LandXmlTinDocument {
     elevationUnit: string;
     linearScaleToMeters: number;
     elevationScaleToMeters: number;
+    /**
+     * #5175: the unit was supplied by the caller for a source that declares no
+     * `<Units>`, not read from the file. Never true for a declared unit. Any
+     * surface drawn under an assumed unit is at an operator-chosen scale, so
+     * this must stay visible wherever the scale matters.
+     */
+    assumed: boolean;
   } | null;
   coordinateSystem?: { horizontalDatum?: string; verticalDatum?: string };
   surfaces: LandXmlTinSurface[];

@@ -15,22 +15,13 @@ import type { MutablePropertyView } from './mutable-property-view.js';
 import type { Mutation, PropertyValue } from './types.js';
 import { checkMutationGuard, type MutationGuard } from './mutation-guard.js';
 import { PARSE_INVALID, parseValue } from './csv-parse-value.js';
+import { buildMatchContext, matchRowAgainstContext, type CsvRow, type MatchStrategy, type MatchResult } from './csv-match.js';
 
-/**
- * A parsed CSV row
- */
-export interface CsvRow {
-  [column: string]: string;
-}
-
-/**
- * Match strategy for linking CSV rows to IFC entities
- */
-export type MatchStrategy =
-  | { type: 'globalId'; column: string }
-  | { type: 'expressId'; column: string }
-  | { type: 'name'; column: string }
-  | { type: 'property'; psetName: string; propName: string; column: string };
+// `CsvRow`, `MatchStrategy`, `MatchResult` and the indexed matching engine
+// live in csv-match.ts (#5167 task 3.1) so this file stays within its
+// module-size budget; re-exported here so the public import path
+// (`@ifc-lite/mutations`, via index.ts) is unaffected.
+export type { CsvRow, MatchStrategy, MatchResult } from './csv-match.js';
 
 /**
  * Mapping from CSV column to IFC property
@@ -56,17 +47,6 @@ export interface DataMapping {
   matchStrategy: MatchStrategy;
   /** Property mappings */
   propertyMappings: PropertyMapping[];
-}
-
-/**
- * Result of matching a CSV row to entities
- */
-export interface MatchResult {
-  row: CsvRow;
-  rowIndex: number;
-  matchedEntityIds: number[];
-  confidence: number; // 0-1, how confident the match is
-  warnings?: string[];
 }
 
 /**
@@ -176,78 +156,14 @@ export class CsvConnector {
   }
 
   /**
-   * Match CSV rows to IFC entities
+   * Match CSV rows to IFC entities.
+   *
+   * Builds the strategy's index once (see csv-match.ts) and reuses it across
+   * every row — the fix for #5167 task 3.1's O(rows × entities) linear scan.
    */
   match(rows: CsvRow[], mapping: DataMapping): MatchResult[] {
-    return rows.map((row, rowIndex) => this.matchRow(row, rowIndex, mapping.matchStrategy));
-  }
-
-  /**
-   * Match a single row to entities
-   */
-  private matchRow(row: CsvRow, rowIndex: number, strategy: MatchStrategy): MatchResult {
-    const matchValue = row[strategy.column];
-    const matchedEntityIds: number[] = [];
-    const warnings: string[] = [];
-
-    if (!matchValue || matchValue.trim() === '') {
-      warnings.push(`Empty match value in column "${strategy.column}"`);
-      return { row, rowIndex, matchedEntityIds, confidence: 0, warnings };
-    }
-
-    switch (strategy.type) {
-      case 'globalId':
-        // Match by GlobalId
-        for (let i = 0; i < this.entities.count; i++) {
-          const globalIdIdx = this.entities.globalId[i];
-          const globalId = this.strings?.get(globalIdIdx) || '';
-          if (globalId === matchValue) {
-            matchedEntityIds.push(this.entities.expressId[i]);
-          }
-        }
-        break;
-
-      case 'expressId':
-        // Match by Express ID
-        const expressId = parseInt(matchValue, 10);
-        if (!isNaN(expressId)) {
-          for (let i = 0; i < this.entities.count; i++) {
-            if (this.entities.expressId[i] === expressId) {
-              matchedEntityIds.push(expressId);
-              break;
-            }
-          }
-        } else {
-          warnings.push(`Invalid Express ID: ${matchValue}`);
-        }
-        break;
-
-      case 'name':
-        // Match by name (case-insensitive)
-        const searchName = matchValue.toLowerCase();
-        for (let i = 0; i < this.entities.count; i++) {
-          const nameIdx = this.entities.name[i];
-          const name = (this.strings?.get(nameIdx) || '').toLowerCase();
-          if (name === searchName) {
-            matchedEntityIds.push(this.entities.expressId[i]);
-          }
-        }
-        break;
-
-      case 'property':
-        // Match by existing property value
-        // This would require access to the property table
-        warnings.push('Property matching not yet implemented');
-        break;
-    }
-
-    const confidence = matchedEntityIds.length === 1 ? 1 : matchedEntityIds.length > 1 ? 0.5 : 0;
-
-    if (matchedEntityIds.length > 1) {
-      warnings.push(`Multiple entities (${matchedEntityIds.length}) matched for value "${matchValue}"`);
-    }
-
-    return { row, rowIndex, matchedEntityIds, confidence, warnings };
+    const context = buildMatchContext(this.entities, this.mutationView, this.strings, mapping.matchStrategy, rows);
+    return rows.map((row, rowIndex) => matchRowAgainstContext(row, rowIndex, mapping.matchStrategy, context));
   }
 
   /**
@@ -378,12 +294,15 @@ export class CsvConnector {
       const rows = this.parse(content, options);
       stats.totalRows = rows.length;
 
-      // Phase 2: Match in batches (0–60%)
+      // Phase 2: Match in batches (0–60%). The index is built once, over the
+      // full row set, before batching starts — not per batch — so batching
+      // stays a progress-reporting slice, not an extra O(entities) rebuild.
+      const matchContext = buildMatchContext(this.entities, this.mutationView, this.strings, mapping.matchStrategy, rows);
       const allMatches: MatchResult[] = [];
       for (let i = 0; i < rows.length; i += batchSize) {
         const batch = rows.slice(i, i + batchSize);
         for (let j = 0; j < batch.length; j++) {
-          const match = this.matchRow(batch[j], i + j, mapping.matchStrategy);
+          const match = matchRowAgainstContext(batch[j], i + j, mapping.matchStrategy, matchContext);
           allMatches.push(match);
 
           if (match.matchedEntityIds.length > 0) {

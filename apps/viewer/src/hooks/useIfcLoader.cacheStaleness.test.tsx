@@ -59,7 +59,7 @@ import { BinaryCacheWriter, type CacheDataStore } from '@ifc-lite/cache';
 import { useViewerStore } from '@/store';
 import { CACHE_SIZE_THRESHOLD } from '@/utils/ifcConfig.js';
 import { resolveLoadTessellationTier } from '@/store/constants.js';
-import { computeSourceFingerprint } from './sourceFingerprint.js';
+import { computeSourceFingerprint } from '@ifc-lite/cache';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { getCached, setCached } from '../services/cacheService.js';
 import { useIfcLoader } from './useIfcLoader.js';

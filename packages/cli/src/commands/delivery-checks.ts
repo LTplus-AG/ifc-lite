@@ -9,10 +9,13 @@
  *  - `pass`   — the check ran and found nothing to report.
  *  - `fail`   — the check ran and found a violation.
  *  - `error`  — the check could NOT be run (unreadable model, unreadable or
- *               unparsable IDS file, an IDS document declaring zero
- *               specifications). An unevaluable check must never be folded
- *               into `pass`: a delivery report that silently skips a rule
- *               and still reads as clean is worse than no report.
+ *               unparsable IDS/rules file, an IDS document declaring zero
+ *               specifications, or — for `rules` — a `.rules.json` rule
+ *               the `@ifc-lite/rules` engine itself could not evaluate,
+ *               `SpecificationResult.error` set). An unevaluable check must
+ *               never be folded into `pass`: a delivery report that
+ *               silently skips a rule and still reads as clean is worse
+ *               than no report.
  *
  * `loadModelForDelivery` deliberately does NOT reuse `loader.ts`'s
  * `loadIfcFile`/`loadIfcBytes`: those call `process.exit(1)` directly on an
@@ -27,9 +30,11 @@
 
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { basename } from 'node:path';
 import { IfcParser, unwrapIfcZipView, type IfcDataStore } from '@ifc-lite/parser';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
 import { IDSNamespace } from '@ifc-lite/sdk';
+import { sourceModelIdentity } from '@ifc-lite/cache';
 import { computeValidationIssues, type ValidationIssue } from './validate.js';
 
 export type CheckStatus = 'pass' | 'fail' | 'error';
@@ -38,6 +43,17 @@ export interface LoadedModel {
   path: string;
   /** SHA-256 of the exact bytes read from disk (post ifcZIP unwrap: the STEP text actually checked). */
   sha256: string;
+  /**
+   * The SAME identity the viewer stores as `FederatedModel.sourceFingerprint`
+   * (#5138 PR 7b review) — `sourceModelIdentity(basename, bytes)`,
+   * `@ifc-lite/cache`'s spread-sampled xxhash64 over the post-unwrap bytes,
+   * prefixed with the file's base name exactly as `useIfcLoader.ts` builds
+   * `modelSourceIdentity`. A `.rules.json` rule set's `targets.modelFingerprints`
+   * (saved from `RuleModelPicker`, which persists `model.sourceFingerprint`
+   * verbatim) only resolves against a headless model when this matches
+   * bit-for-bit — a SHA-256 (a different algorithm entirely) never would.
+   */
+  sourceFingerprint: string;
   store: IfcDataStore;
 }
 
@@ -71,6 +87,7 @@ export async function loadModelForDelivery(path: string): Promise<LoadedModel | 
   }
 
   const sha256 = createHash('sha256').update(bytes).digest('hex');
+  const sourceFingerprint = sourceModelIdentity(basename(path), bytes);
 
   const parser = new IfcParser();
   const origLog = console.log;
@@ -81,7 +98,7 @@ export async function loadModelForDelivery(path: string): Promise<LoadedModel | 
     const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
     const store = await parser.parseColumnar(arrayBuffer, {});
     store.fileSize = bytes.byteLength;
-    return { path, sha256, store };
+    return { path, sha256, sourceFingerprint, store };
   } catch (err) {
     return { path, error: `could not be parsed: ${(err as Error).message}` };
   } finally {
@@ -301,3 +318,9 @@ export async function runIdsCheck(modelPath: string, store: IfcDataStore, idsPat
     ...(status === 'error' ? { error: 'every specification was not-applicable — nothing was evaluated' } : {}),
   };
 }
+
+// `RulesCheckResult` / `runRulesCheck` (the `.rules.json` check, #5138 PR
+// 7b) live in `delivery-checks-rules.ts` — split out to stay under the
+// module-size cap; re-exported here so existing `from './delivery-checks.js'`
+// imports keep working.
+export { runRulesCheck, type RulesCheckResult } from './delivery-checks-rules.js';

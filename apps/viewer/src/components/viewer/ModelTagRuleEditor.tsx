@@ -17,8 +17,8 @@
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
-import { Rule, type FilterRule, type ModelTagRule } from '@/lib/search/filter-rules';
-import { MODEL_TAG_OPS, unresolvedModelTagIds, type ModelTag, type ModelTagOp } from '@/lib/model-tags/types';
+import { Rule, type FilterRule, type ModelTagRule } from '@ifc-lite/rules';
+import { MODEL_TAG_OPS, unresolvedModelTagIds, type ModelTag, type ModelTagOp } from '@ifc-lite/rules';
 import { OpDropdown } from './SearchModal.filter.editors.shared';
 import { ModelTagChip } from './hierarchy/ModelTagChip';
 

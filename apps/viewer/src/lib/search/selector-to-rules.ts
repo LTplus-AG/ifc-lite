@@ -30,8 +30,8 @@ import type {
   SelectorText,
   SelectorValue,
 } from '@ifc-lite/query';
-import { Rule, type FilterRule } from './filter-rules.js';
-import { type FilterGroup } from './filter-groups.js';
+import { Rule, type FilterRule } from '@ifc-lite/rules';
+import { type FilterGroup } from '@ifc-lite/rules';
 import {
   VALUE_OPS,
   NUMERIC_OPS,

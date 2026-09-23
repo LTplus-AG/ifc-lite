@@ -20,7 +20,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { clashMemberKey, matchesSelector, rulesFromPresets, type ClashRule } from '@ifc-lite/clash';
-import { Rule } from '../search/filter-rules.js';
+import { Rule } from '@ifc-lite/rules';
 import {
   CLASH_SET_FILTER_SELECTOR,
   parseClashSetFilter,

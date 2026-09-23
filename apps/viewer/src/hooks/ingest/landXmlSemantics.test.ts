@@ -11,7 +11,7 @@ function document(sourceId: string, meshExpressId = 1): LandXmlTinDocument {
   return {
     format: 'landxml', schema: 'LandXML-1.2', version: '1.2',
     capabilities: { renderableTin: true, preservedOnlySurfaces: 0, unknownExtensions: 0 },
-    units: { linearUnit: 'meter', elevationUnit: 'meter', linearScaleToMeters: 1, elevationScaleToMeters: 1 },
+    units: { linearUnit: 'meter', elevationUnit: 'meter', linearScaleToMeters: 1, elevationScaleToMeters: 1, assumed: false },
     surfaces: [{ sourceId: 'landxml:surface:1', ordinal: 1, sourcePath: 'LandXML/Surfaces/Surface[1]', properties: { name: 'EG' }, definitionProperties: { surfType: 'TIN' }, name: 'EG', kind: 'tin', renderState: 'rendered',
       points: [{ sourceId: 'landxml:surface:1:point:1', id: '1', northing: 0, easting: 0, elevation: 0 }],
       canonicalVertices: [{ id: '1', northing: 0, easting: 0, elevation: 0, contributorSourceIds: ['landxml:surface:1:point:1'] }],

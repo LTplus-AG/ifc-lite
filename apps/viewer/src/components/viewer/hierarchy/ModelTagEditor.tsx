@@ -25,7 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { formatLocaleNumber, localeCount, useTranslation } from '@/i18n';
-import { normalizeModelTagName, type ModelTag } from '@/lib/model-tags/types';
+import { normalizeModelTagName, type ModelTag } from '@ifc-lite/rules';
 import { ModelTagChip } from './ModelTagChip';
 
 export interface ModelTagEditorProps {

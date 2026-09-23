@@ -30,12 +30,15 @@ function accessMark(p: PortDef): string {
 function PortRow({ port, side }: { port: PortDef; side: 'in' | 'out' }) {
   const color = KIND_COLOR[port.type.kind];
   return (
-    <div className={`relative flex items-center gap-1 px-2 py-0.5 text-[10px] leading-4 ${side === 'in' ? 'justify-start' : 'justify-end'}`} title={`${port.type.kind} · ${port.type.access}${port.optional ? ' · optional' : ''}`}>
+    // `py-1`, not `py-0.5`: three adjacent ports (the Script node's a/b/c)
+    // were ~15px apart at fit-view zoom, close enough that a dropped
+    // connection snapped to the neighbour of the one aimed at.
+    <div className={`relative flex items-center gap-1 px-2 py-1 text-[10px] leading-4 ${side === 'in' ? 'justify-start' : 'justify-end'}`} title={`${port.type.kind} · ${port.type.access}${port.optional ? ' · optional' : ''}`}>
       <Handle
         type={side === 'in' ? 'target' : 'source'}
         position={side === 'in' ? Position.Left : Position.Right}
         id={port.name}
-        style={{ background: color, width: 8, height: 8, border: '1px solid var(--background, #1a1b26)' }}
+        style={{ background: color, width: 10, height: 10, border: '1px solid var(--background, #1a1b26)' }}
       />
       {side === 'in' && <span className="text-muted-foreground">{accessMark(port)}</span>}
       <span className={port.optional ? 'text-muted-foreground' : ''}>{port.name}</span>

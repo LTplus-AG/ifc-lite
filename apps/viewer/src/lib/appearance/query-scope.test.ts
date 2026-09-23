@@ -9,7 +9,7 @@ import { StepExporter } from '@ifc-lite/export';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { fixtureModel } from '@/test/store-fixture.js';
-import { Rule } from '../search/filter-rules.js';
+import { Rule } from '@ifc-lite/rules';
 import { saveFilter, loadSavedFilters, clearSavedFilters, __internal } from '../search/saved-filters.js';
 import { captureAppearanceSource } from './command.js';
 import { ownAppearanceQuery } from './query-definition.js';

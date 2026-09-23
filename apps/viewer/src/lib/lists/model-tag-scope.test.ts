@@ -11,9 +11,9 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { modelScopedRuleMatches } from '../search/filter-evaluate-model-tag.js';
-import { Rule } from '../search/filter-rules.js';
-import type { ModelTag, ModelTagOp } from '../model-tags/types.js';
+import { modelScopedRuleMatches } from '@ifc-lite/rules';
+import { Rule } from '@ifc-lite/rules';
+import type { ModelTag, ModelTagOp } from '@ifc-lite/rules';
 import { describeListModelTagScope, resolveListModelTagScope, scopeModelPairs, type ListModelTagState } from './model-tag-scope.js';
 
 const S: ModelTag = { id: 'tag-s', name: 'Structure' };

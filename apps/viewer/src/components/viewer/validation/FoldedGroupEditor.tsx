@@ -6,7 +6,7 @@
  * `FoldedGroupEditor` — the same chip editing `FilterGroupEditor` provides,
  * with an adjacent `gte`+`lte` pair on one subject displayed as a single
  * "between" range chip (#5138 plan §6's operator table; fold/unfold lives
- * in `lib/validation/between-chip.ts`, its own pure-function test). Used
+ * in `@ifc-lite/rules's between-chip.ts`, its own pure-function test). Used
  * only by `RuleBlockEditor` for an `element` requirement's block —
  * applicability and `groupBy.universe` blocks render through
  * `FilterGroupEditor` directly, where two independent bounds on the same
@@ -20,14 +20,14 @@ import { useCallback } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { FilterRule } from '@/lib/search/filter-rules';
-import type { FilterGroup } from '@/lib/search/filter-groups';
+import type { FilterRule } from '@ifc-lite/rules';
+import type { FilterGroup } from '@ifc-lite/rules';
 import { useFilterRuleOptions } from '@/hooks/useFilterRuleOptions';
 import { AddRuleMenu, CombinatorToggle, blankRuleOfKind } from '../FilterRuleControls';
 import { RuleRow } from '../SearchModal.filter.editors';
 import { GroupTabs } from '../SearchModal.filter.groupTabs';
 import { clampGroupIndex } from '@/store/slices/searchSlice.filterGroups';
-import { foldBetweenPairs, unfoldBetweenChips, isBetweenChip, type FoldedRule } from '@/lib/validation/between-chip';
+import { foldBetweenPairs, unfoldBetweenChips, isBetweenChip, type FoldedRule } from '@ifc-lite/rules';
 import type { FilterGroupEditorModel, FilterGroupEditorState } from '../FilterGroupEditor';
 import { useTranslation } from '@/i18n';
 

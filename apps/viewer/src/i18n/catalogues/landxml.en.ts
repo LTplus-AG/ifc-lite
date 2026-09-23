@@ -92,4 +92,27 @@ export const landXmlEn = {
   'properties.landXmlAlignment.superelevationEvents': 'Authored Superelevation events: {count}',
   'properties.landXmlAlignment.previousEvents': 'Previous events',
   'properties.landXmlAlignment.nextEvents': 'Next events',
+
+  // #5175: source-document unit provenance, shown in the terrain/plan
+  // detail block of LandXmlSourceInspector alongside capabilities/warnings.
+  'properties.landXmlSource.units': 'Units',
+  'properties.landXmlSource.unitsDeclared': '{linearUnit} linear / {elevationUnit} elevation (declared in the source)',
+  'properties.landXmlSource.unitsAssumed': '{linearUnit} linear / {elevationUnit} elevation (assumed — not declared in the source)',
+
+  // #5175: the retry banner offered when a LandXML load refuses because the
+  // source declares no <Units> (see landXmlUnitsRefusal.ts). No unit is ever
+  // preselected — see LandXmlUnitsRefusalPrompt.tsx.
+  'landXml.unitsPrompt.message': 'LandXML file "{fileName}" has no declared unit. Choose the linear unit it was authored in to load it.',
+  'landXml.unitsPrompt.selectLabel': 'Linear unit',
+  'landXml.unitsPrompt.selectPlaceholder': 'Choose a unit…',
+  'landXml.unitsPrompt.retry': 'Load with this unit',
+  'landXml.unitsPrompt.dismiss': 'Dismiss',
+  'landXml.unitsPrompt.unit.meter': 'Meter',
+  'landXml.unitsPrompt.unit.millimeter': 'Millimeter',
+  'landXml.unitsPrompt.unit.centimeter': 'Centimeter',
+  'landXml.unitsPrompt.unit.kilometer': 'Kilometer',
+  'landXml.unitsPrompt.unit.inch': 'Inch',
+  'landXml.unitsPrompt.unit.foot': 'Foot',
+  'landXml.unitsPrompt.unit.USSurveyFoot': 'US Survey Foot',
+  'landXml.unitsPrompt.unit.mile': 'Mile',
 } as const satisfies Record<string, TranslationValue>;

@@ -681,4 +681,106 @@ END-ISO-10303-21;`;
     assert.notEqual(a.fingerprint, b.fingerprint, 'ids.size alone would have collided {wall} and {beam}');
     assert.equal(applyChartFilter(dataset, new Set([GID(41)])).fingerprint, a.fingerprint, 'the same id set fingerprints the same');
   });
+
+  // #5156 — building a chart from ONE clash run/check instead of every rule
+  // of the current result being counted together.
+  it('applyClashRuleFilter: narrows to one rule\'s rows, composes with applyChartFilter, and leaves an unknown dataset untouched', async () => {
+    // Dynamic (not static) import: reverting this slice's production change
+    // removes the `applyClashRuleFilter` export from source-filter.ts while
+    // `applyChartFilter` / `resolveChartFilter` (imported statically above)
+    // still exist on both sides. A static import of `applyClashRuleFilter`
+    // would fail the whole test FILE to load (does not provide an export
+    // named 'applyClashRuleFilter') instead of letting the assertions below
+    // fail on their own merits — see PropertyEditor.i18n.test.tsx for the
+    // same pattern used against a whole-module revert.
+    const { applyClashRuleFilter } = await import('../source-filter.js');
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run(
+      [
+        box('0Wall00000000000000041', GID(41), 'IfcWall', [0, 0, 0], [1, 1, 1]),
+        box('0Beam00000000000000042', GID(42), 'IfcBeam', [0.5, 0, 0], [1.5, 1, 1]),
+        box('0Door00000000000000043', GID(43), 'IfcDoor', [0.8, 0, 0], [1.8, 1, 1]),
+      ],
+      [{ id: 'str', name: 'STR', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }, { id: 'arc', name: 'ARC', a: 'IfcWall', b: 'IfcDoor', mode: 'hard' }],
+    );
+    assert.equal(result.clashes.length, 2, 'two rules, one clash each');
+    useViewerStore.setState({ clashResult: result, clashGroups: null, clashReviews: new Map(), clashRunSeq: 9 });
+    const ds = buildClashDataset(useViewerStore.getState());
+    assert.equal(ds.rows.length, 2, 'unfiltered: both rules counted together — the bug #5156 reports');
+
+    const strOnly = applyClashRuleFilter(ds, 'str');
+    assert.equal(strOnly.rows.length, 1, 'narrowed to the STR rule alone');
+    assert.deepEqual(Array.from(strOnly.rows[0].ids).sort(), [GID(41), GID(42)]);
+    assert.notEqual(strOnly.fingerprint, ds.fingerprint, 'a rule-filtered dataset never reuses the unfiltered fingerprint');
+
+    const arcOnly = applyClashRuleFilter(ds, 'arc');
+    assert.equal(arcOnly.rows.length, 1, 'narrowed to the ARC rule alone');
+    assert.deepEqual(Array.from(arcOnly.rows[0].ids).sort(), [GID(41), GID(43)]);
+    assert.notEqual(arcOnly.fingerprint, strOnly.fingerprint, 'different rules fingerprint differently');
+
+    const unknownRule = applyClashRuleFilter(ds, 'not-a-real-rule-id');
+    assert.equal(unknownRule.rows.length, 0, 'an id naming no rule matches nothing — never falls back to "all"');
+
+    // Composes with the selector filter (#4946): AND, not OR. GID(41) (the
+    // wall) is on both rows, so selecting it alone would pass this
+    // assertion pair even if `applyChartFilter` were a no-op — the rule
+    // filter narrows to 1 row on its own. GID(42) (the beam) is only on the
+    // `str` row, so selecting it distinguishes the two: `str` still has a
+    // row to narrow, `arc` has none left once the selector has run.
+    const beamIds = new Set([GID(42)]);
+    const strAndBeam = applyClashRuleFilter(applyChartFilter(ds, beamIds), 'str');
+    assert.equal(strAndBeam.rows.length, 1);
+    const arcAndBeam = applyClashRuleFilter(applyChartFilter(ds, beamIds), 'arc');
+    assert.equal(arcAndBeam.rows.length, 0, 'the beam-only selector removes the arc row before the rule filter ever runs');
+
+    // A source with no `Rule` column (e.g. `elements`) is a silent no-op,
+    // not a thrown error — the caller (`validate.ts`) is what stops a
+    // `clashRule` from ever reaching a non-clash dataset.
+    const elementsDs = buildElementsDataset({ kind: 'all' }, useViewerStore.getState());
+    assert.deepEqual(applyClashRuleFilter(elementsDs, 'str'), elementsDs);
+  });
+
+  it('validateDashboardSpec: clashRule is only valid on a clash chart, must be non-empty, and a filter needs a selector or a clashRule (#5156)', () => {
+    const base = { version: 2 as const, id: 'd', name: 'D', scope: { kind: 'all' as const }, layout: [] };
+    const chart = (filter: unknown, source: 'clash' | 'elements' = 'clash') => ({
+      id: 'c1', title: 'C', source, type: 'bar', dimension: CLASH_COLUMNS.rule, measure: { agg: 'count' }, filter,
+    });
+
+    assert.deepEqual(validateDashboardSpec({ ...base, charts: [chart({ selector: '', clashRule: 'str' })] }), [], 'clashRule alone, no selector text, is valid');
+    assert.deepEqual(validateDashboardSpec({ ...base, charts: [chart({ selector: 'IfcWall', clashRule: 'str' })] }), [], 'both together are valid');
+
+    const emptyFilter = validateDashboardSpec({ ...base, charts: [chart({ selector: '' })] });
+    assert.equal(emptyFilter.length, 1, 'neither a selector nor a clashRule: rejected, not silently "no filter"');
+    assert.match(emptyFilter[0].message, /selector.*clashRule|clashRule.*selector/);
+
+    const emptyClashRule = validateDashboardSpec({ ...base, charts: [chart({ selector: '', clashRule: '' })] });
+    assert.ok(emptyClashRule.some((e) => e.path === '.charts[0].filter.clashRule'), 'an empty-string clashRule is rejected outright, never read as "no filter"');
+
+    const wrongSource = validateDashboardSpec({ ...base, charts: [chart({ selector: '', clashRule: 'str' }, 'elements')] });
+    assert.ok(wrongSource.some((e) => e.path === '.charts[0].filter.clashRule' && e.message.includes('only valid for the clash source')));
+  });
+
+  it('validateDashboardSpec: a whitespace-only selector is rejected even alongside a clashRule (#5176)', () => {
+    const base = { version: 2 as const, id: 'd', name: 'D', scope: { kind: 'all' as const }, layout: [] };
+    const chart = (filter: unknown, source: 'clash' | 'elements' = 'clash') => ({
+      id: 'c1', title: 'C', source, type: 'bar', dimension: CLASH_COLUMNS.rule, measure: { agg: 'count' }, filter,
+    });
+
+    // `''` is the editor's unset sentinel: accepted when a real `clashRule`
+    // narrows the chart instead.
+    assert.deepEqual(validateDashboardSpec({ ...base, charts: [chart({ selector: '', clashRule: 'str' })] }), [], "the editor's empty-string sentinel is accepted alongside clashRule");
+
+    // `'   '` is never the sentinel — a human or an import wrote it — and it
+    // trims to "no filter" at every consumer, so it is rejected regardless
+    // of `clashRule`.
+    const whitespaceWithRule = validateDashboardSpec({ ...base, charts: [chart({ selector: '   ', clashRule: 'str' })] });
+    assert.equal(whitespaceWithRule.length, 1, 'a whitespace-only selector is rejected even with a clashRule present');
+    assert.equal(whitespaceWithRule[0].path, '.charts[0].filter.selector');
+
+    const whitespaceNoRule = validateDashboardSpec({ ...base, charts: [chart({ selector: '   ' })] });
+    assert.equal(whitespaceNoRule.length, 1, 'a whitespace-only selector is rejected with no clashRule too');
+    assert.equal(whitespaceNoRule[0].path, '.charts[0].filter.selector');
+
+    assert.deepEqual(validateDashboardSpec({ ...base, charts: [chart({ selector: 'real', clashRule: 'str' })] }), [], 'a real selector alongside clashRule is accepted');
+  });
 });

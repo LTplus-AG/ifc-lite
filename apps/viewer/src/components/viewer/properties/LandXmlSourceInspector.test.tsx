@@ -15,7 +15,7 @@ function document(pointCount = 1): LandXmlTinDocument {
   return {
     format: 'landxml', schema: 'LandXML-1.2', version: '1.2',
     capabilities: { renderableTin: true, preservedOnlySurfaces: 1, unknownExtensions: 2 },
-    units: { linearUnit: 'meter', elevationUnit: 'meter', linearScaleToMeters: 1, elevationScaleToMeters: 1 },
+    units: { linearUnit: 'meter', elevationUnit: 'meter', linearScaleToMeters: 1, elevationScaleToMeters: 1, assumed: false },
     surfaces: [{
       sourceId: 'surface', ordinal: 1, sourcePath: 'LandXML/Surfaces/Surface[1]', properties: { name: 'Existing ground', desc: 'surveyed' }, definitionProperties: { surfType: 'TIN', source: 'field' }, name: 'Existing ground', kind: 'tin', renderState: 'rendered',
       points: Array.from({ length: pointCount }, (_, index) => ({ sourceId: `point-${index + 1}`, id: `P${index + 1}`, northing: 1, easting: 2, elevation: 3 })),
@@ -88,6 +88,30 @@ describe('LandXmlSourceInspector (#5042)', () => {
     assert.ok(face);
     click(face);
     assert.deepEqual(selected, ['terrain:face']);
+    assert.match(ui.textContent ?? '', /meter linear \/ meter elevation \(declared in the source\)/);
+    assert.doesNotMatch(ui.textContent ?? '', /assumed/i);
+    cleanup();
+  });
+
+  it('marks a source-document unit as assumed only when units.assumed is true (#5175)', () => {
+    const declared = document();
+    const declaredUi = render(<LandXmlSourceInspector
+      models={new Map([['terrain', { landXmlDocument: declared }]])}
+      selected={{ modelId: 'terrain', sourceId: 'surface' }}
+      onSelect={() => {}}
+    />);
+    assert.match(declaredUi.textContent ?? '', /\(declared in the source\)/);
+    assert.doesNotMatch(declaredUi.textContent ?? '', /assumed/i);
+    cleanup();
+
+    const assumed = document();
+    assumed.units = { ...assumed.units!, linearUnit: 'foot', elevationUnit: 'foot', assumed: true };
+    const assumedUi = render(<LandXmlSourceInspector
+      models={new Map([['terrain', { landXmlDocument: assumed }]])}
+      selected={{ modelId: 'terrain', sourceId: 'surface' }}
+      onSelect={() => {}}
+    />);
+    assert.match(assumedUi.textContent ?? '', /foot linear \/ foot elevation \(assumed — not declared in the source\)/);
     cleanup();
   });
 

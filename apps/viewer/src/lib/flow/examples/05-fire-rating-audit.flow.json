@@ -1,0 +1,36 @@
+{
+  "flowVersion": 1,
+  "id": "example-fire-rating-audit",
+  "name": "5 · Fire rating audit (writes)",
+  "description": "Reads a property, splits the elements on whether it is missing, paints the gaps, and writes a default rating into them. The write is capability-gated on the exact pset, and the whole run is one undo step in the viewer. The table is built after the write, so it reads back what the run just did.",
+  "capabilities": ["model.read", "viewer.colorize", "model.mutate:Pset_WallCommon"],
+  "inputs": [
+    { "nodeId": "rating", "param": "value", "label": "Default fire rating", "kind": "scalar" }
+  ],
+  "outputs": [
+    { "nodeId": "missingCount", "port": "count", "label": "Walls without FireRating" },
+    { "nodeId": "table", "port": "table", "label": "Wall table" }
+  ],
+  "nodes": [
+    { "id": "walls", "type": "model.select", "params": { "selector": "IfcWall" }, "pos": [0, 0] },
+    { "id": "fr", "type": "model.property", "params": { "pset": "Pset_WallCommon", "property": "FireRating" }, "pos": [260, 0] },
+    { "id": "isNull", "type": "core.compare", "params": { "op": "=" }, "pos": [520, 0] },
+    { "id": "split", "type": "core.filter", "pos": [780, 0] },
+    { "id": "missingCount", "type": "core.count", "pos": [1040, -80] },
+    { "id": "color", "type": "viewer.colorize", "params": { "color": "#ff3b30" }, "pos": [1040, 40] },
+    { "id": "rating", "type": "core.string", "params": { "value": "REI60" }, "pos": [1040, 180] },
+    { "id": "set", "type": "model.setProperty", "params": { "pset": "Pset_WallCommon", "property": "FireRating" }, "pos": [1300, 100] },
+    { "id": "table", "type": "table.fromEntities", "params": { "columns": ["Name", "Pset_WallCommon.FireRating"] }, "pos": [1560, 0] }
+  ],
+  "edges": [
+    { "from": ["walls", "entities"], "to": ["fr", "entity"] },
+    { "from": ["fr", "value"], "to": ["isNull", "a"] },
+    { "from": ["walls", "entities"], "to": ["split", "items"] },
+    { "from": ["isNull", "result"], "to": ["split", "mask"] },
+    { "from": ["split", "kept"], "to": ["missingCount", "items"] },
+    { "from": ["split", "kept"], "to": ["color", "entities"] },
+    { "from": ["color", "entities"], "to": ["set", "entity"] },
+    { "from": ["rating", "value"], "to": ["set", "value"] },
+    { "from": ["set", "entity"], "to": ["table", "entities"] }
+  ]
+}

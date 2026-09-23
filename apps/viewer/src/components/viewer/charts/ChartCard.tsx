@@ -15,7 +15,7 @@ import { aggregate, buildEChartsOption, type Aggregation, type ChartDataset, typ
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
-import { applyChartFilter } from '@/lib/charts/source-filter';
+import { applyChartFilter, applyClashRuleFilter } from '@/lib/charts/source-filter';
 import { readChartTheme, useEChart, type ChartRenderer, type ChartSelectEvent } from './useEChart';
 import { GRID_DRAG_HANDLE_CLASS } from './DashboardGrid';
 import { chartBucketIdentity, chartSelectionIsLive, sameChartBucketIdentity, type Chart3DLink } from './useChart3DLink';
@@ -53,16 +53,19 @@ export function describeAggregation(aggregation: Aggregation): string {
  * count underneath is of the empty placeholder dataset, not a real answer,
  * so showing it next to "Resolving filter…" would read as a contradiction.
  * An applied filter only APPENDS its selector text, since the summary above
- * it already reflects the narrowed rows.
+ * it already reflects the narrowed rows. A `clashRule` filter (#5156)
+ * appends the same way, by the rule's name when it is still known (the
+ * clash result that named it may since have been cleared or re-run).
  */
-function subtitleFor(spec: ChartSpec, aggregation: Aggregation | null, filterSelector: string | undefined, filterState: ChartSourceFilterState | undefined): string {
+function subtitleFor(spec: ChartSpec, aggregation: Aggregation | null, filterSelector: string | undefined, filterState: ChartSourceFilterState | undefined, clashRuleLabel: string | undefined): string {
   if (filterSelector) {
     if (filterState?.status === 'error') return filterState.message;
     if (filterState === undefined || filterState.status === 'resolving') return 'Resolving filter…';
   }
   if (!aggregation) return 'Cannot aggregate — edit the chart';
   const summary = describeAggregation(aggregation);
-  return filterSelector ? `${summary} · filter: ${filterSelector}` : summary;
+  const parts = [filterSelector ? `filter: ${filterSelector}` : null, clashRuleLabel ? `rule: ${clashRuleLabel}` : null].filter((p): p is string => p !== null);
+  return parts.length > 0 ? `${summary} · ${parts.join(' · ')}` : summary;
 }
 
 /** What fills an empty chart, per source — where the data comes from, in the app's own words. */
@@ -89,14 +92,23 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
   // now also refuses it outright) — a malformed saved/imported dashboard
   // must not strand the card on "Resolving filter…" forever (review finding).
   const filterSelector = spec.filter && trimSelectorWhitespace(spec.filter.selector).length > 0 ? spec.filter.selector : undefined;
+  // Only meaningful on `clash` — `validate.ts` refuses it on every other
+  // source (#5156). A rule id is a value already on the dataset, so it needs
+  // no async resolution the way a selector does.
+  const clashRule = spec.source === 'clash' ? spec.filter?.clashRule : undefined;
+  const clashRuleLabel = useViewerStore((s) => (clashRule ? s.clashResult?.rulesRun.find((r) => r.id === clashRule)?.name : undefined));
   // Resolving or erred: an EMPTY dataset, never the unfiltered rows under a
   // filter (#4946) — a card must not flash the whole model's numbers while
   // its filter is still running, or keep showing them after it fails.
   const filteredDataset = useMemo<ChartDataset>(() => {
-    if (!filterSelector) return dataset;
-    if (filterState?.status === 'ok') return applyChartFilter(dataset, filterState.ids);
-    return { ...dataset, rows: [] };
-  }, [dataset, filterSelector, filterState]);
+    let result = dataset;
+    if (filterSelector) {
+      if (filterState?.status !== 'ok') return { ...dataset, rows: [] };
+      result = applyChartFilter(result, filterState.ids);
+    }
+    if (clashRule) result = applyClashRuleFilter(result, clashRule);
+    return result;
+  }, [dataset, filterSelector, filterState, clashRule]);
 
   const aggregation = useMemo<Aggregation | null>(() => {
     try {
@@ -158,7 +170,7 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
     link.frameItems(aggregation, items);
   }, [aggregation, selection.full, link]);
 
-  const subtitle = subtitleFor(spec, aggregation, filterSelector, filterState);
+  const subtitle = subtitleFor(spec, aggregation, filterSelector, filterState, clashRuleLabel || clashRule);
 
   return (
     <div className="flex h-full flex-col min-h-0 rounded-md border border-border bg-card" data-chart-id={spec.id}>
@@ -184,7 +196,7 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
             {filterSelector && filterState?.status !== 'ok'
               ? subtitle
               : filteredDataset.rows.length === 0
-                ? filterSelector
+                ? filterSelector || clashRule
                   ? t('chartCard.noSourceFilterMatches')
                   : EMPTY_HINTS[spec.source]
                 : t('chartCard.nothingToBucket')}

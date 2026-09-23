@@ -21,7 +21,7 @@ import { useViewerStore } from '@/store';
 import type { ChartFocusMode } from '@/store/slices/chartSlice';
 import { DASHBOARD_PRESETS, modelOverviewDashboard, newChartSpec } from '@/lib/charts/presets';
 import { ChartCard } from './ChartCard';
-import { ChartEditor } from './ChartEditor';
+import { ChartEditor, type ClashRuleOption } from './ChartEditor';
 import { DashboardGrid } from './DashboardGrid';
 import { DashboardMenu } from './DashboardMenu';
 import { ReportExportDialog } from './ReportExportDialog';
@@ -34,6 +34,7 @@ import { useElementFieldCatalog } from './useElementFieldCatalog';
 
 const FOCUS_LABEL: Record<ChartFocusMode, string> = { highlight: 'Highlight', isolate: 'Isolate', ghost: 'Ghost others' };
 const SCOPE_LABEL: Record<ChartScope['kind'], string> = { all: 'All models', visible: 'Visible elements', basket: 'Basket' };
+const EMPTY_CLASH_RULES: readonly ClashRuleOption[] = [];
 
 export interface ChartsPanelProps {
   onClose?: () => void;
@@ -98,6 +99,15 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
   const fieldCatalog = useElementFieldCatalog(editing !== null);
   const link = useChart3DLink();
   const sourceFilters = useChartSourceFilters(dashboard?.charts ?? []);
+  // The current clash run's rules, for the editor's "Clash rule" picker
+  // (#5156) — the same `rulesRun` id/name pairs `ClashPanel.tsx` reads for
+  // its "By rule" labels, so the two never drift apart on what a rule is
+  // called. Read the raw array off the store (stable across renders that
+  // don't touch it) and derive the picker's shape in a memo, rather than
+  // mapping inside the selector — that would hand `ChartEditor` a fresh
+  // array identity every render.
+  const rulesRun = useViewerStore((s) => s.clashResult?.rulesRun);
+  const clashRuleOptions = useMemo(() => rulesRun?.map((r) => ({ id: r.id, name: r.name })) ?? EMPTY_CLASH_RULES, [rulesRun]);
 
   const [aggregations, setAggregations] = useState<Map<string, Aggregation | null>>(new Map());
   const chartIds = useMemo(() => dashboard?.charts.map((c) => c.id) ?? [], [dashboard]);
@@ -249,6 +259,7 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
             datasets={datasets}
             elementFieldCatalog={fieldCatalog.catalog}
             elementFieldCatalogLoading={fieldCatalog.loading}
+            clashRuleOptions={clashRuleOptions}
             onSave={saveChart}
             onCancel={() => setEditing(null)}
           />

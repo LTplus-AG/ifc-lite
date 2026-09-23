@@ -87,6 +87,19 @@ export type {
 export { xxhash64, xxhash64Hex } from './utils/hash.js';
 export { BufferWriter, BufferReader } from './utils/buffer-utils.js';
 
+// Source fingerprinting (#5138 PR 7b: moved from the viewer so headless
+// callers — the CLI, the MCP server — can compute the SAME
+// `filterIdentity` the viewer stores as `FederatedModel.sourceFingerprint`)
+export {
+  computeSourceFingerprint,
+  computeSourceFingerprintFromBlob,
+  HEAD_TAIL_BYTES,
+  INTERIOR_WINDOW_BYTES,
+  INTERIOR_WINDOWS,
+  sourceModelIdentity,
+} from './source-fingerprint.js';
+export type { SourceFingerprint } from './source-fingerprint.js';
+
 // GLB parser
 export {
   parseGLB,

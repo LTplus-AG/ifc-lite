@@ -71,7 +71,7 @@ Columns:
 | IfcBooleanResult | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBoundaryEdgeCondition | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBoundaryFaceCondition | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcBoundaryNodeCondition | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcBoundaryNodeCondition | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcBoundaryNodeConditionWarping | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBoundedSurface | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBoundingBox | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -202,7 +202,7 @@ Columns:
 | IfcDuctSegmentType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDuctSilencerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcDynamicViscosityMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcEdge | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | — |
+| IfcEdge | ✅ | ✅ | — | ✅ | ✅ | ❌ | IFC4:✅ | — |
 | IfcEdgeCurve | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | — |
 | IfcEdgeLoop | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcElectricalBaseProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
@@ -481,7 +481,7 @@ Columns:
 | IfcRelAssignsTasks | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelAssignsToActor | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssignsToControl | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
-| IfcRelAssignsToGroup | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelAssignsToGroup | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcRelAssignsToProcess | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcRelAssignsToProduct | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssignsToProjectOrder | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:❌ | — |
@@ -500,9 +500,9 @@ Columns:
 | IfcRelConnectsPathElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsPorts | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsPortToElement | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelConnectsStructuralActivity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelConnectsStructuralActivity | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsStructuralElement | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcRelConnectsStructuralMember | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelConnectsStructuralMember | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsWithEccentricity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsWithRealizingElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelContainedInSpatialStructure | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
@@ -574,24 +574,24 @@ Columns:
 | IfcStair | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcStairFlight | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStairFlightType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcStructuralAnalysisModel | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcStructuralAnalysisModel | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcStructuralCurveConnection | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcStructuralCurveMember | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcStructuralCurveMember | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcStructuralCurveMemberVarying | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcStructuralLinearAction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcStructuralLinearAction | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcStructuralLinearActionVarying | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcStructuralLoadGroup | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcStructuralLoadLinearForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcStructuralLoadLinearForce | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadPlanarForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadSingleDisplacement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadSingleDisplacementDistortion | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcStructuralLoadSingleForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcStructuralLoadSingleForce | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadSingleForceWarping | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadTemperature | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralPlanarAction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralPlanarActionVarying | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcStructuralPointAction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcStructuralPointConnection | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcStructuralPointAction | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
+| IfcStructuralPointConnection | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcStructuralPointReaction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralProfileProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcStructuralResultGroup | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -654,7 +654,7 @@ Columns:
 | IfcTimeSeriesSchedule | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcTimeSeriesValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTimeStamp | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcTopologyRepresentation | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcTopologyRepresentation | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcTorqueMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTransformerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTransportElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -675,7 +675,7 @@ Columns:
 | IfcVertex | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcVertexBasedTextureMap | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcVertexLoop | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcVertexPoint | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcVertexPoint | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcVibrationIsolatorType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcVirtualElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcVirtualGridIntersection | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -765,7 +765,7 @@ Columns:
 | IfcBoundaryCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcBoundaryEdgeCondition | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcBoundaryFaceCondition | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcBoundaryNodeCondition | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcBoundaryNodeCondition | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcBoundaryNodeConditionWarping | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcBoundingBox | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcBoxAlignment | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
@@ -920,7 +920,7 @@ Columns:
 | IfcDuctSilencerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcDuration | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcDynamicViscosityMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcEdge | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcEdge | ✅ | ✅ | — | ✅ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcEdgeCurve | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcEdgeLoop | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcElectricAppliance | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
@@ -1252,7 +1252,7 @@ Columns:
 | IfcRelAggregates | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcRelAssignsToActor | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelAssignsToControl | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcRelAssignsToGroup | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
+| IfcRelAssignsToGroup | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
 | IfcRelAssignsToGroupByFactor | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcRelAssignsToProcess | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelAssignsToProduct | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
@@ -1267,8 +1267,8 @@ Columns:
 | IfcRelConnectsPathElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelConnectsPorts | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelConnectsPortToElement | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcRelConnectsStructuralActivity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcRelConnectsStructuralMember | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcRelConnectsStructuralActivity | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcRelConnectsStructuralMember | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelConnectsWithEccentricity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelConnectsWithRealizingElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelContainedInSpatialStructure | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
@@ -1355,26 +1355,26 @@ Columns:
 | IfcStairFlight | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStairFlightType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStairType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
-| IfcStructuralAnalysisModel | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcStructuralAnalysisModel | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralCurveAction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralCurveConnection | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcStructuralCurveMember | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcStructuralCurveMember | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralCurveMemberVarying | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralCurveReaction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
-| IfcStructuralLinearAction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcStructuralLinearAction | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralLoadCase | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralLoadConfiguration | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcStructuralLoadGroup | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcStructuralLoadLinearForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcStructuralLoadLinearForce | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralLoadPlanarForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralLoadSingleDisplacement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralLoadSingleDisplacementDistortion | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcStructuralLoadSingleForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcStructuralLoadSingleForce | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralLoadSingleForceWarping | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralLoadTemperature | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralPlanarAction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcStructuralPointAction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcStructuralPointConnection | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcStructuralPointAction | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcStructuralPointConnection | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralPointReaction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralResultGroup | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralSurfaceAction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
@@ -1448,7 +1448,7 @@ Columns:
 | IfcTimePeriod | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcTimeSeriesValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcTimeStamp | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcTopologyRepresentation | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcTopologyRepresentation | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcToroidalSurface | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcTorqueMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcTransformer | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
@@ -1478,7 +1478,7 @@ Columns:
 | IfcVector | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcVertex | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcVertexLoop | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcVertexPoint | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcVertexPoint | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcVibrationIsolator | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcVibrationIsolatorType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcVirtualElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
@@ -1577,7 +1577,7 @@ Columns:
 | IfcBoundaryCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBoundaryEdgeCondition | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBoundaryFaceCondition | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcBoundaryNodeCondition | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcBoundaryNodeCondition | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcBoundaryNodeConditionWarping | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBoundingBox | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
 | IfcBoxAlignment | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -1749,7 +1749,7 @@ Columns:
 | IfcEarthworksCut | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcEarthworksElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcEarthworksFill | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcEdge | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | — |
+| IfcEdge | ✅ | ✅ | — | ✅ | ✅ | ❌ | IFC4:✅ | — |
 | IfcEdgeCurve | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | — |
 | IfcEdgeLoop | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcElectricAppliance | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -2112,7 +2112,7 @@ Columns:
 | IfcRelAggregates | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
 | IfcRelAssignsToActor | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssignsToControl | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
-| IfcRelAssignsToGroup | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelAssignsToGroup | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcRelAssignsToGroupByFactor | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssignsToProcess | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcRelAssignsToProduct | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -2128,8 +2128,8 @@ Columns:
 | IfcRelConnectsPathElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsPorts | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsPortToElement | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelConnectsStructuralActivity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelConnectsStructuralMember | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelConnectsStructuralActivity | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
+| IfcRelConnectsStructuralMember | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsWithEccentricity | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsWithRealizingElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelContainedInSpatialStructure | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
@@ -2228,26 +2228,26 @@ Columns:
 | IfcStairFlightType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStairType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStrippedOptional | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcStructuralAnalysisModel | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcStructuralAnalysisModel | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcStructuralCurveAction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralCurveConnection | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcStructuralCurveMember | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcStructuralCurveMember | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcStructuralCurveMemberVarying | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralCurveReaction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcStructuralLinearAction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcStructuralLinearAction | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadCase | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadConfiguration | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadGroup | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcStructuralLoadLinearForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcStructuralLoadLinearForce | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadPlanarForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadSingleDisplacement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadSingleDisplacementDistortion | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcStructuralLoadSingleForce | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcStructuralLoadSingleForce | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadSingleForceWarping | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralLoadTemperature | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralPlanarAction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcStructuralPointAction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcStructuralPointConnection | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcStructuralPointAction | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
+| IfcStructuralPointConnection | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcStructuralPointReaction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralResultGroup | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralSurfaceAction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -2326,7 +2326,7 @@ Columns:
 | IfcTimePeriod | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTimeSeriesValue | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTimeStamp | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcTopologyRepresentation | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcTopologyRepresentation | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcToroidalSurface | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTorqueMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcTrackElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -2359,7 +2359,7 @@ Columns:
 | IfcVehicleType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcVertex | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcVertexLoop | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcVertexPoint | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcVertexPoint | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcVibrationDamper | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcVibrationDamperType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcVibrationIsolator | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |

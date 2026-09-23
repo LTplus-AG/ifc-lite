@@ -7,8 +7,10 @@
  *
  * Run a repeatable, reviewable model-delivery check from a saved recipe
  * (see `delivery-recipe.ts`): structural validation (the same rules
- * `ifc-lite validate` runs) and/or IDS validation (the same validator
- * `ifc-lite ids` runs), against one or more model files, in one invocation.
+ * `ifc-lite validate` runs), IDS validation (the same validator `ifc-lite
+ * ids` runs), and/or `.rules.json` information-validation rule sets (the
+ * same engine `ifc-lite check` runs, #5138 PR 7b) — any combination,
+ * against one or more model files, in one invocation.
  *
  * Every check reports one of `pass` / `fail` / `error` — never folded
  * together (see `delivery-checks.ts`). The overall verdict is `pass` only
@@ -33,7 +35,7 @@ import { readCliVersion } from '../version.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 import { loadDeliveryRecipe } from './delivery-recipe.js';
-import { loadModelForDelivery, runStructuralCheck, runIdsCheck, type IdsCheckResult, type StructuralCheckResult } from './delivery-checks.js';
+import { loadModelForDelivery, runStructuralCheck, runIdsCheck, runRulesCheck, type IdsCheckResult, type RulesCheckResult, type StructuralCheckResult } from './delivery-checks.js';
 import { buildDeliveryReport, renderDeliveryHtml, type DeliveryModelEntry, type DeliveryCheckResult } from './delivery-report.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -82,6 +84,12 @@ export async function deliveryCommand(args: string[]): Promise<void> {
           error: `model ${loaded.error}`,
         } satisfies IdsCheckResult);
       }
+      for (const rulesDeclared of recipe.rules) {
+        checks.push({
+          type: 'rules', model: declaredPath, source: rulesDeclared, status: 'error',
+          error: `model ${loaded.error}`,
+        } satisfies RulesCheckResult);
+      }
       continue;
     }
 
@@ -93,6 +101,10 @@ export async function deliveryCommand(args: string[]): Promise<void> {
     for (let j = 0; j < recipe.resolvedIds.length; j++) {
       const result = await runIdsCheck(declaredPath, loaded.store, recipe.resolvedIds[j]);
       checks.push({ ...result, source: recipe.ids[j] });
+    }
+    for (let j = 0; j < recipe.resolvedRules.length; j++) {
+      const result = await runRulesCheck(declaredPath, loaded.store, recipe.resolvedRules[j], loaded.sourceFingerprint);
+      checks.push({ ...result, source: recipe.rules[j] });
     }
   }
 

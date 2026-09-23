@@ -25,7 +25,7 @@ import { useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { ListModelTagScope } from '@ifc-lite/lists';
 import { useViewerStore } from '@/store';
-import { MODEL_TAG_OPS, unresolvedModelTagIds, type ModelTagOp } from '@/lib/model-tags/types';
+import { MODEL_TAG_OPS, unresolvedModelTagIds, type ModelTagOp } from '@ifc-lite/rules';
 import { ModelTagChip } from '@/components/viewer/hierarchy/ModelTagChip';
 import { Chip } from './ListBuilder.parts';
 import { useTranslation } from '@/i18n/useTranslation';

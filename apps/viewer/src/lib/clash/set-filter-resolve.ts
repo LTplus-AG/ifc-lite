@@ -16,8 +16,8 @@
  */
 
 import { clashMemberKey, type ClashRule } from '@ifc-lite/clash';
-import { evaluateFilterRulesFederated, type EvaluatorModel } from '../search/filter-evaluate.js';
-import { unresolvedModelTagIds } from '../model-tags/types.js';
+import { evaluateFilterRulesFederated, type EvaluatorModel } from '@ifc-lite/rules';
+import { unresolvedModelTagIds } from '@ifc-lite/rules';
 import {
   CLASH_SET_FILTER_LIMIT,
   activeClashSetFilter,

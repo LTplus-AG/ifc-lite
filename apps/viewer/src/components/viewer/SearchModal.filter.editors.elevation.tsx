@@ -6,7 +6,7 @@
 
 import { Input } from '@/components/ui/input';
 import { useTranslation } from '@/i18n';
-import type { NumericOp } from '@/lib/search/filter-rules';
+import type { NumericOp } from '@ifc-lite/rules';
 import { NUMERIC_OPS, OpDropdown } from './SearchModal.filter.editors.shared';
 
 export function ElevationEditor({

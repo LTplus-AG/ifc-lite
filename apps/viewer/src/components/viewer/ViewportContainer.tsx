@@ -21,6 +21,7 @@ import { ViewportWelcomeCard } from './ViewportWelcomeCard';
 import { useTranslation } from '@/i18n';
 import { MergeLayersBanner } from './MergeLayersBanner';
 import { GeometryModeBanner } from './GeometryModeBanner';
+import { LandXmlUnitsRefusalPrompt } from './LandXmlUnitsRefusalPrompt';
 import { LevelDisplayIndicator } from './LevelDisplayIndicator';
 import { ToolOverlays } from './ToolOverlays';
 import { ZoneOverlay, ZoneAssignmentSyncMount } from './tools/ZoneOverlay';
@@ -1175,6 +1176,9 @@ export function ViewportContainer() {
           model in place (full page reload would drop it — no boot auto-restore). */}
       <MergeLayersBanner onReload={handleMergeLayersReload} />
       <GeometryModeBanner onReload={handleGeometryModeReload} />
+      {/* #5175: offers a retry with a user-chosen linear unit when a LandXML
+          load refuses because the source declares no <Units>. */}
+      <LandXmlUnitsRefusalPrompt />
       <LevelDisplayIndicator />
       <ToolOverlays />
       <ZoneOverlay />

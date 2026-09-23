@@ -24,7 +24,7 @@ import {
   extractQuantitiesOnDemand,
   type IfcDataStore,
 } from '@ifc-lite/parser';
-import { lensMaterialNames } from '../lens-material-names.js';
+import { lensMaterialNames } from '@ifc-lite/rules';
 import type { FederatedModel } from '../../store/types.js';
 import type { CompareRef } from './buildFingerprints.js';
 import { isGeometricDataName } from './geometricData.js';

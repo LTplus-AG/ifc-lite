@@ -1,5 +1,19 @@
 # @ifc-lite/server-bin
 
+## 1.20.0
+
+### Minor Changes
+
+- [#5134](https://github.com/LTplus-AG/ifc-lite/pull/5134) [`1293438`](https://github.com/LTplus-AG/ifc-lite/commit/12934388254845925044b5130fcf8552eaf3ba2f) Thanks [@louistrue](https://github.com/louistrue)! - `POST /api/v1/parse/parquet/optimized` now extracts and caches the data model the same way `/parse/parquet` does, written before the response goes out, and reports `data_model_stats` in its `X-IFC-Metadata` header. Previously only `/parse/parquet` and `/parse/parquet-stream` produced a data model, so a client using only the optimized route never got one.
+  
+  `GET /api/v1/parse/data-model/{key}` now answers 404 when nothing is cached and no fill is in flight for that key, instead of an unconditional 202. 202 is now reserved for the one case where a background fill is genuinely running (the streaming route's post-`complete` data-model task).
+
+### Patch Changes
+
+- [#5135](https://github.com/LTplus-AG/ifc-lite/pull/5135) [`fa0929d`](https://github.com/LTplus-AG/ifc-lite/commit/fa0929d77be11c74040f423a01e2898555c75c87) Thanks [@louistrue](https://github.com/louistrue)! - Fix `POST /api/v1/parse/parquet/optimized` being unreachable by hash: it now accepts a `?sha256=` hash-only replay probe (same contract as `parquet-stream`), and `GET /api/v1/cache/:key` answers 404 instead of 500 for a cached entry that is not a JSON `ParseResponse` (e.g. a binary Parquet body).
+
+- [#5136](https://github.com/LTplus-AG/ifc-lite/pull/5136) [`e520a36`](https://github.com/LTplus-AG/ifc-lite/commit/e520a3654788ffc0bf2ff8d91e698184f679e669) Thanks [@louistrue](https://github.com/louistrue)! - Fix `?parquet_layout=shared-shapes` collating far less than `/optimized` on models with no `IfcMappedItem`/`IfcRepresentationMap` instancing metadata: `ShapePlan::shared_shapes` now runs the same content-hash fallback `/optimized` has always used for occurrences the rotation-aware collator did not place, so bit-identical repeats collapse onto one shape on both routes. Bumps the shared-shapes cache namespace from `-parquet-v6` to `-parquet-v7` so a warm cache cannot keep serving the pre-fix, uncollated bytes.
+
 ## 1.19.0
 
 ### Minor Changes

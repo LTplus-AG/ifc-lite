@@ -17,6 +17,7 @@
 import { readFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { IfcParser, unwrapIfcZipView, type IfcDataStore } from '@ifc-lite/parser';
+import { sourceModelIdentity } from '@ifc-lite/cache';
 import { createBimContext, type BimContext } from '@ifc-lite/sdk';
 import type { LoadedModel } from './context.js';
 import { HeadlessLikeBackend } from './headless-backend.js';
@@ -83,6 +84,9 @@ export async function loadIfcModel(filePath: string, opts: LoadIfcOptions = {}):
     store,
     backend,
     filePath: absolute,
+    // Computed from the POST-unwrap bytes, so an .ifcZIP is fingerprinted by
+    // the STEP it contains — the viewer's rule (#5138).
+    sourceFingerprint: sourceModelIdentity(basename(absolute), buffer),
     loadedAt: Date.now(),
   };
 }

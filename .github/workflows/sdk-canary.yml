@@ -28,6 +28,7 @@ on:
     branches: [main]
     paths:
       - 'packages/bcf/**'
+      - 'packages/cache/**'
       - 'packages/clash/**'
       - 'packages/cli/**'
       - 'packages/codegen/**'
@@ -52,6 +53,7 @@ on:
       - 'packages/parser/**'
       - 'packages/pointcloud/**'
       - 'packages/query/**'
+      - 'packages/rules/**'
       - 'packages/regex-guard/**'
       - 'packages/sandbox/**'
       - 'packages/sdk/**'

@@ -21,10 +21,10 @@
  * iteration order).
  */
 
-import type { StructuralCheckResult, IdsCheckResult, CheckStatus } from './delivery-checks.js';
+import type { StructuralCheckResult, IdsCheckResult, RulesCheckResult, CheckStatus } from './delivery-checks.js';
 import type { ResolvedDeliveryRecipe } from './delivery-recipe.js';
 
-export type DeliveryCheckResult = StructuralCheckResult | IdsCheckResult;
+export type DeliveryCheckResult = StructuralCheckResult | IdsCheckResult | RulesCheckResult;
 
 export interface DeliveryModelEntry {
   /** Path exactly as declared in the recipe (relative, for a readable report). */
@@ -91,11 +91,20 @@ function describeCheck(check: DeliveryCheckResult): string {
     return `${check.errorCount} error(s), ${check.warningCount} warning(s), ${check.infoCount} info`;
   }
   const parts: string[] = [];
-  if (check.totalSpecifications !== undefined) {
-    parts.push(`${check.passedSpecifications ?? 0}/${check.totalSpecifications} specification(s) passed`);
-  }
-  if (check.failedEntities !== undefined && check.totalEntities !== undefined) {
-    parts.push(`${check.failedEntities}/${check.totalEntities} entities failed`);
+  if (check.type === 'ids') {
+    if (check.totalSpecifications !== undefined) {
+      parts.push(`${check.passedSpecifications ?? 0}/${check.totalSpecifications} specification(s) passed`);
+    }
+    if (check.failedEntities !== undefined && check.totalEntities !== undefined) {
+      parts.push(`${check.failedEntities}/${check.totalEntities} entities failed`);
+    }
+  } else {
+    if (check.totalRules !== undefined) {
+      parts.push(`${check.passedRules ?? 0}/${check.totalRules} rule(s) passed`);
+    }
+    if (check.erroredRules) {
+      parts.push(`${check.erroredRules} rule(s) unevaluable`);
+    }
   }
   if (check.error) parts.push(check.error);
   return parts.join(' — ') || (check.error ?? '');

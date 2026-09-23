@@ -21,7 +21,7 @@ import { render, cleanup, click } from '@/test/render.js';
 import { Toaster } from '@/components/ui/toast';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
-import { Rule } from '@/lib/search/filter-rules';
+import { Rule } from '@ifc-lite/rules';
 import { emptyFilterState } from '@/store/slices/searchSlice';
 import { SearchModalFilterBuilder } from './SearchModal.filter.builder.js';
 

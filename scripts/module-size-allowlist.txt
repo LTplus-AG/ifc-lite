@@ -59,7 +59,7 @@
    665 apps/viewer/src/components/mcp/data.ts
   1317 apps/viewer/src/components/mcp/McpLanding.tsx
    525 apps/viewer/src/components/mcp/McpPlayground.tsx
-  2090 apps/viewer/src/components/mcp/playground-dispatcher.ts
+  2051 apps/viewer/src/components/mcp/playground-dispatcher.ts
   1187 apps/viewer/src/components/mcp/PlaygroundChat.tsx
    758 apps/viewer/src/components/viewer/AddElementPanel.tsx
    508 apps/viewer/src/components/viewer/BasketPresentationDock.tsx
@@ -80,6 +80,7 @@
   1381 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
    406 apps/viewer/src/components/viewer/hierarchy/useHierarchyTree.ts
   1147 apps/viewer/src/components/viewer/HierarchyPanel.tsx
+   432 apps/viewer/src/components/viewer/IDSCorrectionDialog.tsx
    568 apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx
    533 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
   1692 apps/viewer/src/components/viewer/LensPanel.tsx
@@ -103,8 +104,8 @@
    488 apps/viewer/src/components/viewer/schedule/schedule-animator.ts
    670 apps/viewer/src/components/viewer/ScriptPanel.tsx
    734 apps/viewer/src/components/viewer/SearchInline.tsx
-   509 apps/viewer/src/components/viewer/SearchModal.filter.editors.tsx
-   859 apps/viewer/src/components/viewer/SearchModal.filter.tsx
+   508 apps/viewer/src/components/viewer/SearchModal.filter.editors.tsx
+   835 apps/viewer/src/components/viewer/SearchModal.filter.tsx
    404 apps/viewer/src/components/viewer/SearchModal.text.tsx
   1348 apps/viewer/src/components/viewer/Section2DPanel.tsx
   1134 apps/viewer/src/components/viewer/selectionHandlers.ts
@@ -121,7 +122,7 @@
    916 apps/viewer/src/components/viewer/useMouseControls.ts
    683 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1815 apps/viewer/src/components/viewer/Viewport.tsx
-  1190 apps/viewer/src/components/viewer/ViewportContainer.tsx
+  1194 apps/viewer/src/components/viewer/ViewportContainer.tsx
    508 apps/viewer/src/components/viewer/ZonesPanel.tsx
    847 apps/viewer/src/hooks/ids/idsExportService.ts
    598 apps/viewer/src/hooks/ingest/federationAlign.ts
@@ -134,7 +135,7 @@
   1041 apps/viewer/src/hooks/useDrawingGeneration.ts
    586 apps/viewer/src/hooks/useIfcCache.ts
    667 apps/viewer/src/hooks/useIfcFederation.ts
-  2219 apps/viewer/src/hooks/useIfcLoader.ts
+  2234 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
    445 apps/viewer/src/hooks/useKeyboardShortcuts.ts
    467 apps/viewer/src/hooks/useSymbolicAnnotations.ts
@@ -155,7 +156,6 @@
    410 apps/viewer/src/lib/llm/stream-client.ts
    809 apps/viewer/src/lib/llm/system-prompt.ts
    491 apps/viewer/src/lib/scripts/templates/create-building.ts
-   583 apps/viewer/src/lib/search/filter-evaluate.ts
    450 apps/viewer/src/lib/search/tier1-index.ts
    452 apps/viewer/src/lib/slab-edit.ts
    412 apps/viewer/src/lib/sources/persistence.ts
@@ -169,7 +169,7 @@
    404 apps/viewer/src/store/slices/addElementMeshes.ts
    452 apps/viewer/src/store/slices/chatSlice.ts
    992 apps/viewer/src/store/slices/clashSlice.ts
-  1306 apps/viewer/src/store/slices/collabSlice.ts
+  1312 apps/viewer/src/store/slices/collabSlice.ts
    482 apps/viewer/src/store/slices/dataSlice.ts
    874 apps/viewer/src/store/slices/drawing2DSlice.ts
    489 apps/viewer/src/store/slices/idsSlice.ts
@@ -259,7 +259,7 @@
    597 packages/ids/src/parser/xml-parser.ts
    624 packages/ids/src/translation/service.ts
    629 packages/ids/src/types.ts
-   742 packages/ids/src/validation/validator.ts
+   770 packages/ids/src/validation/validator.ts
    468 packages/ifcx/src/federated-composition.ts
    704 packages/ifcx/src/index.ts
    415 packages/ifcx/src/writer.ts
@@ -315,6 +315,7 @@
    454 packages/renderer/src/shadow-pass.ts
    768 packages/renderer/src/snap-detector.ts
    765 packages/renderer/src/symbolic-overlay-pipelines.ts
+   583 packages/rules/src/filter/filter-evaluate.ts
    587 packages/sandbox/src/bridge-create.ts
    421 packages/sandbox/src/bridge-query.ts
    498 packages/sandbox/src/bridge-schema.ts

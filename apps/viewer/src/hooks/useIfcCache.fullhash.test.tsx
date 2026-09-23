@@ -8,7 +8,7 @@
  * `persistSource` was false (the mesh-only tier), so a source-persisting entry
  * could never be background-revalidated — an mtime-preserved,
  * byte-length-preserving in-place edit (invisible to the spread-sampled cache
- * key by design, see `sourceFingerprint.ts`) was served stale forever.
+ * key by design, see `@ifc-lite/cache`'s `source-fingerprint.ts`) was served stale forever.
  *
  * Drives the REAL hook (`saveToCache`) against fake-indexeddb and reads the
  * persisted record back through the real `getCached`, asserting the stored

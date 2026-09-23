@@ -27,7 +27,7 @@ function document(): LandXmlTinDocument {
   return {
     format: 'landxml', schema: 'LandXML-1.2', version: '1.2',
     capabilities: { renderableTin: true, preservedOnlySurfaces: 0, unknownExtensions: 0 },
-    units: { linearUnit: 'meter', elevationUnit: 'meter', linearScaleToMeters: 1, elevationScaleToMeters: 1 },
+    units: { linearUnit: 'meter', elevationUnit: 'meter', linearScaleToMeters: 1, elevationScaleToMeters: 1, assumed: false },
     surfaces: [{
       sourceId: 'surface', ordinal: 1, sourcePath: 'LandXML/Surfaces/Surface[1]', properties: {},
       definitionProperties: {}, name: 'survey', kind: 'tin', renderState: 'rendered', points: [],
@@ -114,7 +114,7 @@ describe('LandXML federated overlay coordinates (#5048)', () => {
     const parsed = document();
     parsed.units = {
       linearUnit: 'US survey foot', elevationUnit: 'US survey foot',
-      linearScaleToMeters: 1200 / 3937, elevationScaleToMeters: 1200 / 3937,
+      linearScaleToMeters: 1200 / 3937, elevationScaleToMeters: 1200 / 3937, assumed: false,
     };
     parsed.surfaces[0].breaklines[0].points = [[0, 200_000, 0]];
     // EPSG:2236 (US survey foot) false-origin → EPSG:32632 in metres.

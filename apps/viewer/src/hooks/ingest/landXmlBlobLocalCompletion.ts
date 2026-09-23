@@ -70,6 +70,8 @@ export async function parseLandXmlBlobInCurrentRealm(
   file: Blob,
   isCurrent: () => boolean,
   callbacks: LandXmlBlobLocalCallbacks,
+  /** #5175: retry value the viewer supplies after a units refusal. */
+  assumedLinearUnit?: string,
 ): Promise<LandXmlGeometryPayload> {
   ensureCurrent(isCurrent);
   await initLandXmlWasm();
@@ -121,7 +123,7 @@ export async function parseLandXmlBlobInCurrentRealm(
         if (streamedSource !== null) throw new Error('LandXML cursor emitted multiple completed source documents');
         streamedSource = completed;
       },
-    }, { isCurrent, wantsFederatedStreaming: callbacks.onFederatedPreflight !== undefined });
+    }, { isCurrent, wantsFederatedStreaming: callbacks.onFederatedPreflight !== undefined, assumedLinearUnit });
     ensureCurrent(isCurrent);
     if (streamedSource === null) throw new Error('LandXML cursor ended without a credited source document');
     const parsed = readLandXmlSourceDocument(streamedSource);

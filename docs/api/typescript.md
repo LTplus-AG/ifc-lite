@@ -53,6 +53,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/oauth-pkce`](https://www.npmjs.com/package/@ifc-lite/oauth-pkce) | Browser OAuth 2.0 Authorization Code + PKCE flow, shared by ifc-lite's file-source providers |
 | [`@ifc-lite/plugin-api`](https://www.npmjs.com/package/@ifc-lite/plugin-api) | Dependency-free type surface for ifc-lite file-source plugins |
 | [`@ifc-lite/regex-guard`](https://www.npmjs.com/package/@ifc-lite/regex-guard) | A shared, dependency-free guard against catastrophic-backtracking (ReDoS) regex patterns compiled from untrusted input |
+| [`@ifc-lite/rules`](https://www.npmjs.com/package/@ifc-lite/rules) | Filter-rule vocabulary, evaluator and .rules.json information-validation engine for IFC-Lite |
 | [`@ifc-lite/source-dalux`](https://www.npmjs.com/package/@ifc-lite/source-dalux) | Dalux Build (Box) file-source provider for ifc-lite |
 | [`@ifc-lite/source-dropbox`](https://www.npmjs.com/package/@ifc-lite/source-dropbox) | Dropbox file-source provider for ifc-lite |
 | [`@ifc-lite/source-msgraph`](https://www.npmjs.com/package/@ifc-lite/source-msgraph) | Microsoft Graph (OneDrive/SharePoint) file-source provider for ifc-lite |

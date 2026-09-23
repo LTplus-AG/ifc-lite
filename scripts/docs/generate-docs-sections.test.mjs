@@ -50,6 +50,8 @@ function makeTree(readme) {
   }
   for (const rel of [
     'packages/cli/src/index.ts',
+    // The help text the CLI table is generated from lives here since #5138 PR 7b.
+    'packages/cli/src/help.ts',
     'tests/benchmark/baseline.json',
     'apps/landing/bench-data.json',
     'apps/landing/app.jsx',

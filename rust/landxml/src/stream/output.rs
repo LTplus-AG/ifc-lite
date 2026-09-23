@@ -26,14 +26,11 @@ impl LandXmlTinStreamSession {
             }
         }
         for surface in self.parser().take_surfaces() {
-            if surface.render_state == crate::LandXmlRenderState::Rendered
-                && self.header().and_then(|header| header.units).is_none()
-            {
-                return Err(error(
-                    Code::InvalidSemantic,
-                    "LandXML units are required for renderable numeric surfaces",
-                ));
-            }
+            let units = self.header().and_then(|header| header.units);
+            crate::parser::require_units_for_renderable_tin(
+                crate::parser::surface_draws_to_scale(&surface),
+                units.as_ref(),
+            )?;
             self.enqueue_surface(surface)?;
         }
         self.flush_pending_surface()

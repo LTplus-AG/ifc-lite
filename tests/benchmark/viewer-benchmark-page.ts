@@ -55,7 +55,14 @@ export class ViewerBenchmarkPage {
   private loadEndTime: number = 0;
   private cacheMode: string;
 
-  constructor(page: Page, private readonly origin = 'http://localhost:3000') {
+  /**
+   * Defaults to the same port `playwright.config.ts` serves on. It used to be a
+   * hardcoded `:3000`, which silently ignored `PLAYWRIGHT_PORT` — the very knob
+   * the config documents for "a host with several checkouts". A run in one
+   * checkout would then drive whatever dev/preview server another checkout
+   * happened to be holding on :3000, and report its results as its own.
+   */
+  constructor(page: Page, private readonly origin = `http://localhost:${process.env.PLAYWRIGHT_PORT ?? '3000'}`) {
     this.page = page;
     this.cacheMode = process.env.VIEWER_BENCHMARK_CACHE_MODE ?? 'default';
   }

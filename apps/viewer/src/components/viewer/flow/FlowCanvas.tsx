@@ -6,25 +6,45 @@
  * The React Flow canvas over a `FlowDocument`. Every edit goes through
  * `lib/flow/editor-ops` and lands as a new document in the store; React
  * Flow is a view, not the source of truth.
+ *
+ * Because the canvas is fully controlled, *selection is part of the view
+ * model too*: an edge whose `selected` flag is not fed back on the next
+ * render is deselected by the very re-render its click caused, which is
+ * why clicking an edge and pressing Delete used to do nothing at all. The
+ * selected edge is held here (it is view state, not document state) and
+ * written back into `toCanvas`.
  */
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Background,
   Controls,
   ReactFlow,
   useReactFlow,
   type Connection,
+  type Edge,
   type EdgeChange,
+  type FinalConnectionState,
+  type HandleType,
+  type IsValidConnection,
   type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import type { FlowDocument, NodeRegistry, NodeReport } from '@ifc-lite/flow';
-import { connect, disconnect, moveNode, removeNode } from '@/lib/flow/editor-ops';
+import { isAssignable, type FlowDocument, type NodeRegistry, type NodeReport } from '@ifc-lite/flow';
+import { connect, disconnect, moveNode, portTypes, removeNode } from '@/lib/flow/editor-ops';
 import { toCanvas, type CanvasEdge, type CanvasNode } from '@/lib/flow/view-model';
 import { FlowNodeView } from './FlowNodeView';
 
 const NODE_TYPES = { flow: FlowNodeView };
+
+/**
+ * Said when a reconnect is dropped on a port that will not take it. Not in
+ * the i18n catalogue with the rest of the panel's strings because the other
+ * connection refusals it shares a line with come from `editor-ops`, which is
+ * pure and has no translator; one half-translated line would read worse than
+ * a consistent English one.
+ */
+const RECONNECT_REFUSED = 'that port will not take this connection; the wire was left where it was';
 
 export interface FlowCanvasProps {
   readonly doc: FlowDocument;
@@ -39,7 +59,13 @@ export interface FlowCanvasProps {
 /** Must render inside a `ReactFlowProvider` (the panel owns it so the palette can share it). */
 export function FlowCanvas(props: FlowCanvasProps) {
   const { doc, registry, reports, selectedNodeId, onDocChange, onSelect, onConnectError } = props;
-  const { nodes, edges } = useMemo(() => toCanvas(doc, registry, reports, selectedNodeId), [doc, registry, reports, selectedNodeId]);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const { nodes, edges } = useMemo(
+    () => toCanvas(doc, registry, reports, selectedNodeId, selectedEdgeId),
+    [doc, registry, reports, selectedNodeId, selectedEdgeId],
+  );
+  /** Set while an edge endpoint is being dragged, so a drop on empty canvas can delete it. */
+  const reconnected = useRef(false);
 
   const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
     let next = doc;
@@ -51,15 +77,25 @@ export function FlowCanvas(props: FlowCanvasProps) {
       else if (c.type === 'select') selection = c.selected ? c.id : selection === undefined ? null : selection;
     }
     if (next !== doc) onDocChange(next);
-    if (selection !== undefined) onSelect(selection);
+    if (selection !== undefined) {
+      onSelect(selection);
+      // Selecting a node clears the edge selection, so Delete cannot remove
+      // an edge the user stopped pointing at two clicks ago.
+      if (selection !== null) setSelectedEdgeId(null);
+    }
   }, [doc, onDocChange, onSelect]);
 
   const onEdgesChange = useCallback((changes: EdgeChange<CanvasEdge>[]) => {
     let next = doc;
     for (const c of changes) {
+      if (c.type === 'select') {
+        setSelectedEdgeId((current) => (c.selected ? c.id : current === c.id ? null : current));
+        continue;
+      }
       if (c.type !== 'remove') continue;
       const edge = edges.find((e) => e.id === c.id);
       if (edge?.targetHandle) next = disconnect(next, edge.target, edge.targetHandle);
+      setSelectedEdgeId((current) => (current === c.id ? null : current));
     }
     if (next !== doc) onDocChange(next);
   }, [doc, edges, onDocChange]);
@@ -71,6 +107,62 @@ export function FlowCanvas(props: FlowCanvasProps) {
     else onDocChange(result.doc);
   }, [doc, registry, onDocChange, onConnectError]);
 
+  /**
+   * Dragging either end of an existing edge onto another port. The old edge
+   * is dropped first so re-pointing an edge at a *different* input does not
+   * leave the original behind, and the new one is validated exactly like a
+   * fresh connection — a rejected reconnect restores the document untouched.
+   */
+  const onReconnect = useCallback((oldEdge: Edge, c: Connection) => {
+    reconnected.current = true;
+    if (!c.source || !c.target || !c.sourceHandle || !c.targetHandle) return;
+    const without = oldEdge.targetHandle ? disconnect(doc, oldEdge.target, oldEdge.targetHandle) : doc;
+    const result = connect(without, registry, { from: [c.source, c.sourceHandle], to: [c.target, c.targetHandle] });
+    if (result.error) onConnectError(result.error);
+    else onDocChange(result.doc);
+  }, [doc, registry, onDocChange, onConnectError]);
+
+  const onReconnectStart = useCallback(() => { reconnected.current = false; }, []);
+
+  /**
+   * Where an unfinished reconnect leaves the wire.
+   *
+   * Dropped on empty canvas it is unplugged — that is how a graph editor
+   * unplugs a wire, and it is the only gesture that removes one end without
+   * first selecting the edge.
+   *
+   * Dropped on a port that was REFUSED it is KEPT. `onReconnect` never fires
+   * for an invalid drop, so reading "not reconnected" as "dropped on
+   * nothing" deleted the wire the user was still holding because they aimed
+   * at an incompatible port — the worst possible reading of "that did not
+   * work", and unrecoverable in one gesture. `toHandle` is set whenever a
+   * handle was under the pointer, independently of whether the connection
+   * was valid, which is exactly the distinction needed. Why the port was
+   * refused is not re-derived here: the drag already greys out every port
+   * that will not take the wire, and reconstructing the attempted edge from
+   * the callback's arguments reported the wrong end of it.
+   */
+  const onReconnectEnd = useCallback((_e: MouseEvent | TouchEvent, edge: Edge, _handleType: HandleType, state: FinalConnectionState) => {
+    if (reconnected.current) return;
+    if (state.toHandle) {
+      onConnectError(RECONNECT_REFUSED);
+      return;
+    }
+    if (!edge.targetHandle) return;
+    onDocChange(disconnect(doc, edge.target, edge.targetHandle));
+  }, [doc, onDocChange, onConnectError]);
+
+  /**
+   * Live feedback while dragging: React Flow greys out the handles this
+   * returns false for, so an incompatible port is visible before the drop
+   * rather than as an error message after it.
+   */
+  const isValidConnection = useCallback<IsValidConnection<CanvasEdge>>((c) => {
+    if (!c.source || !c.target || !c.sourceHandle || !c.targetHandle || c.source === c.target) return false;
+    const { out, inp } = portTypes(doc, registry, c.source, c.sourceHandle, c.target, c.targetHandle);
+    return out !== undefined && inp !== undefined && isAssignable(out, inp);
+  }, [doc, registry]);
+
   return (
     <div className="h-full min-h-0 w-full min-w-0" data-flow-canvas>
     <ReactFlow<CanvasNode, CanvasEdge>
@@ -80,7 +172,17 @@ export function FlowCanvas(props: FlowCanvasProps) {
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
-      onPaneClick={() => onSelect(null)}
+      onReconnect={onReconnect}
+      onReconnectStart={onReconnectStart}
+      onReconnectEnd={onReconnectEnd}
+      isValidConnection={isValidConnection}
+      // The reconnect grab-handle is a circle of this radius, centred that
+      // far in from the edge's end — so the default 10 puts its centre a
+      // couple of screen pixels from the port handle at fit-view zoom, and
+      // the handle (a DOM node, drawn above the edge SVG) swallows the
+      // press. 18 puts it clearly on the wire and is a bigger target.
+      reconnectRadius={18}
+      onPaneClick={() => { onSelect(null); setSelectedEdgeId(null); }}
       fitView
       minZoom={0.2}
       maxZoom={2}

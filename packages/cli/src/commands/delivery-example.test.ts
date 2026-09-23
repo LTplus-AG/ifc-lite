@@ -4,13 +4,14 @@
 
 /**
  * Acceptance evidence for issue #3931: the COMMITTED example recipe under
- * `examples/delivery/` runs against real, catalogued IFC/IDS fixtures
+ * `examples/delivery/` runs against real, catalogued IFC/IDS/rules fixtures
  * (checked into the repo, no `pnpm fixtures` fetch needed) and exercises all
  * three outcomes the issue's acceptance criteria call for in one recipe:
  * a passing model, a structurally-failing model, and an unreadable model —
- * plus an IDS specification that fails against the clean model, proving
- * "consolidated ... output" actually asserts against the underlying
- * structural/IDS results rather than just echoing them.
+ * plus an IDS specification that fails and a `.rules.json` rule set that
+ * PASSES against the clean model (#5138 PR 7b), proving "consolidated ...
+ * output" actually asserts against the underlying structural/IDS/rules
+ * results rather than just echoing them.
  */
 
 import { describe, expect, it, vi, afterEach } from 'vitest';
@@ -44,9 +45,13 @@ describe('committed example recipe (examples/delivery/recipe.json)', () => {
 
     const byModel = (m: string) => report.checks.filter(c => c.model === m);
 
-    // clean-model.ifc: structural passes, but it lacks a Tag so the IDS check fails.
+    // clean-model.ifc: structural passes; it lacks a Tag so the IDS check
+    // fails, but it IS named, so the rules check (#5138 PR 7b) passes —
+    // proving the three check types are genuinely independent, not one
+    // engine's verdict echoed three ways.
     expect(byModel('clean-model.ifc').find(c => c.type === 'structural')?.status).toBe('pass');
     expect(byModel('clean-model.ifc').find(c => c.type === 'ids')?.status).toBe('fail');
+    expect(byModel('clean-model.ifc').find(c => c.type === 'rules')?.status).toBe('pass');
 
     // incomplete-model.ifc: missing IfcSite/IfcBuilding -> structural fail.
     expect(byModel('incomplete-model.ifc').find(c => c.type === 'structural')?.status).toBe('fail');
@@ -56,7 +61,7 @@ describe('committed example recipe (examples/delivery/recipe.json)', () => {
     const missingModel = report.models.find(m => m.path === 'missing-model.ifc');
     expect(missingModel?.loadError).toBeTruthy();
     expect(missingModel?.sha256).toBeUndefined();
-    expect(byModel('missing-model.ifc')).toHaveLength(2); // structural + ids, both `error`
+    expect(byModel('missing-model.ifc')).toHaveLength(3); // structural + ids + rules, all `error`
     expect(byModel('missing-model.ifc').every(c => c.status === 'error')).toBe(true);
   });
 });

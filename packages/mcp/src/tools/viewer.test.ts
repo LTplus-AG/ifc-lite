@@ -40,6 +40,7 @@ import type { ToolContext } from '../context.js';
 import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER } from '../context.js';
 import { fullScope } from '../auth/scope.js';
 import { loadIfcModel } from '../loader.js';
+import { mutationTools } from './mutate.js';
 import { viewerTools } from './viewer.js';
 
 /** A 22-character IFC GlobalId from a short mnemonic. */
@@ -82,6 +83,7 @@ const MODEL = step(`
 const ASM_GID = guid('ASM');
 const WALL1_GID = guid('WALL1');
 const WALL3_GID = guid('WALL3');
+const WALL4_GID = guid('WALL4');
 
 let tmp: string;
 const ctx: ToolContext = {
@@ -139,6 +141,12 @@ function tool(name: string) {
   return t;
 }
 
+function mutationTool(name: string) {
+  const t = mutationTools.find((x) => x.name === name);
+  if (!t) throw new Error(`${name} not registered`);
+  return t;
+}
+
 function expressIdsOf(calls: EntityRef[][]): number[] {
   expect(calls.length).toBe(1);
   return [...calls[0]].map((r) => r.expressId).sort((a, b) => a - b);
@@ -154,6 +162,40 @@ afterAll(async () => {
 
 afterEach(() => {
   ctx.registry.remove('m');
+  ctx.registry.remove('n');
+});
+
+describe('viewer GlobalId selectors over live mutations (#5236)', () => {
+  it('does not pass a tombstoned source entity to the viewer', async () => {
+    await load();
+    const deleted = await mutationTool('entity_delete').handler({ global_id: WALL3_GID }, ctx);
+    expect(deleted.isError).toBeUndefined();
+
+    const result = await tool('viewer_hide').handler({ global_id: WALL3_GID }, ctx);
+    expect(result.structuredContent?.count).toBe(0);
+    expect(expressIdsOf(hideCalls)).toEqual([]);
+
+    // An unrelated source entity remains addressable.
+    await tool('viewer_hide').handler({ global_id: WALL1_GID }, ctx);
+    expect(hideCalls[1].map((ref) => ref.expressId)).toEqual([101]);
+  });
+
+  it('resolves an overlay-created entity through the same selector in a federated registry', async () => {
+    await load();
+    const second = await loadIfcModel(join(tmp, 'm.ifc'), { modelId: 'n' });
+    ctx.registry.add(second);
+
+    const created = await mutationTool('entity_create').handler({
+      model_id: 'm', type: 'IfcWall', attributes: [`'${WALL4_GID}'`],
+    }, ctx);
+    expect(created.isError).toBeUndefined();
+    const expressId = created.structuredContent?.expressId;
+    expect(typeof expressId).toBe('number');
+
+    const result = await tool('viewer_hide').handler({ model_id: 'm', global_id: WALL4_GID }, ctx);
+    expect(result.structuredContent?.count).toBe(1);
+    expect(hideCalls[0]).toEqual([{ modelId: 'm', expressId }]);
+  });
 });
 
 describe('viewer_isolate — assembly expansion (#3338)', () => {

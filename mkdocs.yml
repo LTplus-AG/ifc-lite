@@ -155,6 +155,7 @@ nav:
     - Images and PDF Appearance: guide/appearance.md
     - Exporting Data: guide/exporting.md
     - Multi-Model Federation: guide/federation.md
+    - LandXML: guide/landxml.md
     - BCF Collaboration: guide/bcf.md
     - IDS Validation: guide/ids.md
     - 2D Drawings: guide/drawing-2d.md
@@ -188,6 +189,7 @@ nav:
     - Geometry Pipeline: architecture/geometry-pipeline.md
     - Coverage Ledger: architecture/coverage-ledger.md
     - LandXML Interoperability: architecture/landxml-coverage-ledger.md
+    - LandXML → IFC Mapping: architecture/landxml-to-ifc-mapping.md
     - Rendering Pipeline: architecture/rendering-pipeline.md
     - Relative-to-Eye Rendering: architecture/renderer-relative-to-eye.md
     - Coordinate Handling: architecture/coordinate-handling.md

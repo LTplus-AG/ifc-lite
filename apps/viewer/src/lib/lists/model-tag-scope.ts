@@ -5,7 +5,7 @@
 /**
  * A list's MODEL TAG scope (#4215): which of the federation's models a list
  * runs over, decided by the models' user-facing tags with the same four
- * predicates search and clash use (`lib/model-tags/types.ts`), so "Structure"
+ * predicates search and clash use (`@ifc-lite/rules's model-tag.ts`), so "Structure"
  * means the same set of models in a quantity list as in a clash rule.
  *
  * Lists have their own data-provider integration — one provider per model
@@ -19,7 +19,7 @@
  */
 
 import type { ListDefinition, ListModelTagScope } from '@ifc-lite/lists';
-import { modelTagRuleMatches, unresolvedModelTagIds, type ModelTag, type ModelTagOp } from '../model-tags/types.js';
+import { modelTagRuleMatches, unresolvedModelTagIds, type ModelTag, type ModelTagOp } from '@ifc-lite/rules';
 
 // The package type and the viewer's operator set are the same four words;
 // this fails to compile if either side ever changes alone.

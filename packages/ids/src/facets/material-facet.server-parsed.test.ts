@@ -60,10 +60,17 @@ const valueFacet: IDSMaterialFacet = {
 };
 
 describe('checkMaterialFacet on a server-parsed (source-empty) store (#5227)', () => {
-  it('a required "any material" facet now PASSES for a genuinely materially-associated entity (was a false FAIL)', () => {
+  it('a required "any material" facet reports MATERIAL_UNRESOLVED, never MATERIAL_MISSING, for a genuinely materially-associated entity', () => {
     const accessor = createDataAccessor(serverStore());
     const result = checkMaterialFacet(presenceFacet, 100, accessor);
-    expect(result.passed).toBe(true);
+    // The honest answer: we cannot determine presence via this pathway on
+    // this data source (no source bytes to read from). Before the fix this
+    // silently returned `[]`, which read identically to a genuinely
+    // unmaterialed entity (MATERIAL_MISSING). Mirrors the classification
+    // resolver's fix (#3954): fail closed, never fabricate a pass.
+    expect(result.passed).toBe(false);
+    expect(result.failure?.type).toBe('MATERIAL_UNRESOLVED');
+    expect(result.failure?.type).not.toBe('MATERIAL_MISSING');
   });
 
   it('control: the same "any material" facet still FAILS (MATERIAL_MISSING) for a genuinely unmaterialed entity', () => {

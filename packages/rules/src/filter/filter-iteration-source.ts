@@ -156,6 +156,9 @@ const RULE_COST: Record<FilterRule['kind'], number> = {
   // scan for `parent=`, the same trade-off `location=` already accepted,
   // and narrow only if a real perf number asks for it).
   parent:         10,
+  // One reverse-relationship lookup (IfcRelAssignsToGroup) + a columnar
+  // Name/class read per group, like `type`; no source-buffer parse.
+  group:          1,
 };
 
 export function orderRulesByCost(rules: readonly FilterRule[]): FilterRule[] {

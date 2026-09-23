@@ -32,11 +32,11 @@ import { useTranslation } from '@/i18n';
  *  `modelTag`/`elevation` are applicability-only concerns, never a
  *  checkable fact about one element, so they have no `Subject` form. */
 const SUBJECT_KINDS = [
-  'attribute', 'property', 'quantity', 'classification',
+  'attribute', 'property', 'quantity', 'classification', 'group',
   'name', 'material', 'storey', 'parent', 'type', 'ifcType', 'predefinedType', 'globalId',
 ] as const;
 
-const MULTI_VALUED: ReadonlySet<string> = new Set(['material', 'classification', 'parent']);
+const MULTI_VALUED: ReadonlySet<string> = new Set(['material', 'classification', 'parent', 'group']);
 
 /** `validationEditor.subjectKind.<kind>` — every label goes through `t()`
  *  at its call site (a bot review on this PR caught an earlier version
@@ -51,6 +51,7 @@ function blankSubjectOfKind(kind: (typeof SUBJECT_KINDS)[number]): Subject {
     case 'property': return { kind: 'property', setName: '', propertyName: '' };
     case 'quantity': return { kind: 'quantity', setName: '', quantityName: '' };
     case 'classification': return { kind: 'classification' };
+    case 'group': return { kind: 'group' };
     default: return { kind };
   }
 }
@@ -161,6 +162,15 @@ export function SubjectPicker({ subject, onChange, singleValuedOnly, 'aria-label
             onChange={(next) => onChange({ ...subject, quantityName: next, quantityNameKind: undefined })}
           />
         </>
+      )}
+
+      {subject.kind === 'group' && (
+        <Input
+          placeholder={t('validationEditor.subjectPicker.groupClassPlaceholder')}
+          value={subject.groupClass ?? ''}
+          onChange={(e) => onChange({ ...subject, groupClass: e.target.value || undefined })}
+          className="h-7 w-44 text-xs font-mono"
+        />
       )}
 
       {subject.kind === 'classification' && (

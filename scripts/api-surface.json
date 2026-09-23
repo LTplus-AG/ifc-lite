@@ -8238,6 +8238,7 @@
     "FilteredElement: interface",
     "FoldedRule: type",
     "GlobalIdRule: interface",
+    "GroupRule: interface",
     "IfcTypeRule: interface",
     "InformationRule: interface",
     "MODEL_TAG_OPS: const",

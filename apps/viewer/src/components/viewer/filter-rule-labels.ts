@@ -20,4 +20,5 @@ export const RULE_KIND_LABEL: Record<FilterRule['kind'], string> = {
   elevation: 'Elevation',
   type: 'Type Name',
   parent: 'Parent',
+  group: 'Group',
 };

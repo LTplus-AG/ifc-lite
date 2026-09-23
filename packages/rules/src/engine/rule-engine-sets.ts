@@ -31,6 +31,7 @@ export function describeSubject(subject: Subject): string {
     case 'quantity': return `${subject.setName}.${subject.quantityName}`;
     case 'attribute': return subject.name;
     case 'classification': return subject.system ? `Classification[${subject.system}]` : 'Classification';
+    case 'group': return subject.groupClass ? `Group[${subject.groupClass}]` : 'Group';
     default: return subject.kind;
   }
 }

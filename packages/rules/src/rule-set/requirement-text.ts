@@ -30,6 +30,8 @@ function subjectToText(s: Subject): string {
   // System-scoped classification has no text spelling (kept out of this
   // ~20-line grammar per plan §6); `system` is dropped, never guessed back.
   if (s.kind === 'classification') return 'classification';
+  // Likewise a class-scoped group (#5226): `group` is any group.
+  if (s.kind === 'group') return 'group';
   return Object.entries(BARE_KINDS).find(([, kind]) => kind === s.kind)?.[0] ?? s.kind;
 }
 export function requirementToText(req: TextRequirement): string {
@@ -75,6 +77,7 @@ function parseSubject(s: string, i: number): [Subject, number] {
   }
   if (seg in BARE_KINDS) return [{ kind: BARE_KINDS[seg] }, j];
   if (seg === 'classification') return [{ kind: 'classification' }, j];
+  if (seg === 'group') return [{ kind: 'group' }, j];
   return [{ kind: 'attribute', name: seg }, j];
 }
 function parseOp(s: string, i: number): [NumericOp, number] {

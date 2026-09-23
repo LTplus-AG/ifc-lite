@@ -27,6 +27,7 @@ import {
   type AttributeRule,
   type ClassificationRule,
   type FilterRule,
+  type GroupRule,
   type IfcTypeRule,
   type MaterialRule,
   type NumericOp,
@@ -91,6 +92,7 @@ function subjectLabel(rule: FilterRule): string {
     case 'parent': return 'Parent';
     case 'material': return 'Material';
     case 'classification': return rule.system ? `Classification[${rule.system}]` : 'Classification';
+    case 'group': return rule.groupClass ? `Group[${rule.groupClass}]` : 'Group';
     case 'ifcType': return 'IfcType';
     case 'predefinedType': return 'PredefinedType';
     default: return rule.kind;
@@ -115,7 +117,9 @@ function checkKindOf(kind: FilterRule['kind']): CheckKind {
       return 'attribute';
     case 'material': return 'material';
     case 'classification': return 'classification';
-    case 'parent': return 'partOf';
+    case 'parent':
+    case 'group':
+      return 'partOf';
     case 'ifcType':
     case 'predefinedType':
       return 'entity';
@@ -135,6 +139,7 @@ function renderExpected(rule: FilterRule): string {
     case 'parent':
     case 'material':
     case 'classification':
+    case 'group':
       return `${OP_LABEL[rule.op] ?? rule.op} ${'value' in rule ? rule.value : ''}`;
     case 'ifcType':
     case 'predefinedType':
@@ -151,12 +156,13 @@ function renderExpected(rule: FilterRule): string {
  *  and reported as `SpecificationResult.error`). */
 type ElementRule =
   | PropertyRule | QuantityRule | AttributeRule | NameRule | TypeNameRule
-  | ParentRule | MaterialRule | ClassificationRule | IfcTypeRule | PredefinedTypeRule;
+  | ParentRule | MaterialRule | ClassificationRule | IfcTypeRule | PredefinedTypeRule | GroupRule;
 
 function isElementRule(rule: FilterRule): rule is ElementRule {
   switch (rule.kind) {
     case 'property': case 'quantity': case 'attribute': case 'name': case 'type':
     case 'parent': case 'material': case 'classification': case 'ifcType': case 'predefinedType':
+    case 'group':
       return true;
     default:
       return false;
@@ -198,7 +204,7 @@ function checkFilterRule(rule: ElementRule, ctx: ReadSubjectContext, opts: Valid
       return { passed, reason: passed ? undefined : 'mismatch', actual, expected, facetType, checkedDescription };
     }
     default: {
-      // name | type | parent | material | classification — StringOp (or the
+      // name | type | parent | material | classification | group — StringOp (or the
       // StringOp-compatible subset of ClassificationOp); multi-valued
       // subjects (parent/material) match ANY for a positive op, NONE for a
       // negative one, via the same convention search already uses.

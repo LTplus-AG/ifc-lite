@@ -16,6 +16,12 @@ test('#5236 raw-access gate finds a new enumerator, including a duplicate in the
   assert.equal(excessRawAccess(old, added).length, 1);
 });
 
+test('#5236 moving a raw read between callbacks cannot reuse its old budget slot', () => {
+  const old = scan('function query(items, store) { return items.map(() => store.entityIndex.byType); }');
+  const moved = scan('function query(items, store) { return items.filter(() => store.entityIndex.byType); }');
+  assert.equal(excessRawAccess(old, moved).length, 1);
+});
+
 test('#5236 raw-access gate catches table-count loops and byId point reads', () => {
   const hits = scan('function select(entities, store) { for (let i = 0; i < entities.count; i++) use(i); store.entityIndex.byId.get(7); }');
   assert.deepEqual(hits.map((hit) => hit.key.split('|')[2]), ['entities.count', 'entityIndex.byId']);

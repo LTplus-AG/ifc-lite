@@ -5,19 +5,23 @@
 import ts from 'typescript';
 
 function ownerOf(node) {
+  const owners = [];
   for (let parent = node.parent; parent; parent = parent.parent) {
     if (ts.isMethodDeclaration(parent) || ts.isFunctionDeclaration(parent)) {
-      return parent.name?.getText() ?? '<anonymous>';
+      owners.push(parent.name?.getText() ?? '<anonymous>');
     }
     if (ts.isArrowFunction(parent) || ts.isFunctionExpression(parent)) {
       const holder = parent.parent;
       if (ts.isVariableDeclaration(holder) || ts.isPropertyAssignment(holder)) {
-        return holder.name.getText();
+        owners.push(holder.name.getText());
+      } else if (ts.isCallExpression(holder)) {
+        owners.push(holder.expression.getText());
+      } else {
+        owners.push('<anonymous>');
       }
-      return '<anonymous>';
     }
   }
-  return '<module>';
+  return owners.length > 0 ? owners.reverse().join('>') : '<module>';
 }
 
 function enclosingStatement(node) {

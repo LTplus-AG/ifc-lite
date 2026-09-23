@@ -102,6 +102,13 @@ describe('countDecimalDigits — exponential literals are counted exactly', () =
     expect(countDecimalDigits('1e999999')).toEqual({ total: 1000000, fraction: 0 });
   });
 
+  it('does not round an exponent past 2^53 onto a passing count (review on #5280)', () => {
+    // 1e9007199254740993 has 9007199254740994 digits; Number() would round
+    // the exponent down to ...992 and let this facet pass.
+    expect(matchDigitFacets({ totalDigits: 9007199254740992 }, '1e9007199254740993')).toBe(false);
+    expect(matchDigitFacets({ fractionDigits: 3 }, '1e-9007199254740993')).toBe(false);
+  });
+
   it('counts a number from its exponential String() form like its fixed-point spelling', () => {
     expect(countDecimalDigits(String(1e-7))).toEqual(countDecimalDigits('0.0000001'));
     expect(countDecimalDigits(String(1.5e21))).toEqual(countDecimalDigits('1500000000000000000000'));

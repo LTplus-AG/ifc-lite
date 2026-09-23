@@ -28,8 +28,9 @@ import { isStrictNumericLiteral } from './comparators.js';
  *
  * The exponent is applied arithmetically on the lexical digits (#5186), so
  * `"1.5e3"` counts as 1500 (4, 0) without going through a double or
- * materialising the expanded string: the count is exact at any precision
- * and a literal like `"1e999999"` costs nothing. A `number` is counted from
+ * materialising the expanded string. The count is exact for any number of
+ * significant digits and any exponent (BigInt), and a literal like
+ * `"1e999999"` costs nothing. A `number` is counted from
  * `String(num)`, which may itself be exponential (`1e-7`).
  */
 export function countDecimalDigits(literal: string): {
@@ -38,7 +39,8 @@ export function countDecimalDigits(literal: string): {
 } {
   const [mantissaRaw, expRaw] = literal.split(/[eE]/);
   const mantissa = mantissaRaw.replace(/^[+-]/, '');
-  const exp = expRaw === undefined ? 0 : Number(expRaw);
+  // BigInt: an exponent past 2^53 would otherwise round (review on #5280).
+  const exp = expRaw === undefined ? 0n : BigInt(expRaw);
   const [intPart, fracPart = ''] = mantissa.split('.');
   const digits = intPart + fracPart;
 
@@ -47,9 +49,19 @@ export function countDecimalDigits(literal: string): {
   // Zero in any spelling (`0`, `0.000`, `0e5`): one digit, no fraction.
   if (significant.length === 0) return { total: 1, fraction: 0 };
 
-  const L = significant.length;
-  const p = intPart.length + exp - lead;
-  return { total: Math.max(L, p), fraction: Math.max(0, L - p) };
+  const L = BigInt(significant.length);
+  const p = BigInt(intPart.length - lead) + exp;
+  return {
+    total: toCount(L > p ? L : p),
+    fraction: toCount(L - p > 0n ? L - p : 0n),
+  };
+}
+
+/** A count past `Number.MAX_SAFE_INTEGER` cannot be compared exactly with a
+ *  facet value (itself a JS number), and exceeds any facet a document can
+ *  state exactly, so it reads as `Infinity`: over every bound. */
+function toCount(n: bigint): number {
+  return n > BigInt(Number.MAX_SAFE_INTEGER) ? Infinity : Number(n);
 }
 
 /**

@@ -1,9 +1,11 @@
 ---
-'@ifc-lite/ids': minor
+'@ifc-lite/ids': major
 '@ifc-lite/parser': minor
 '@ifc-lite/data': minor
 '@ifc-lite/server-client': minor
 ---
+
+**Breaking (`@ifc-lite/ids`):** `PropertyValueResult.dataType` and `PropertySetInfo` properties' `dataType` are now `string | undefined`, where `undefined` means the type is unknown. Code that assumed a `string` must handle `undefined`.
 
 An IDS property facet that requires a `dataType` now **fails** when the property's dataType is unknown, instead of skipping the check (#5224). A spec that demanded `IFCBOOLEAN` used to pass `"not-a-boolean-at-all"` whenever the stored property carried no dataType.
 

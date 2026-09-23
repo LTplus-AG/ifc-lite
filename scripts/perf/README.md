@@ -1970,3 +1970,31 @@ interrupted for the same contention. Smaller serialized output is not a load
 win. Preserve the rejected source, observer failures, completed functional checks
 and every timing cohort in [the experiment record](evidence/multipart-5328/README.md).
 No runtime change from this prototype ships.
+
+## Edge-grazing half-space cap repair (#5314)
+
+The cap builder now ignores triangles that collapse after its section-vertex
+weld. This reaches edge-grazing `IfcHalfSpaceSolid` cuts; the inline #30 and
+Holter #148571 regression tests show a closed section with the analytic prism
+volume. Five alternating fresh-process base (`7ccb00630`) and branch
+(`0c1ef347a`) native `perf_probe --iters 5 --json --fingerprint` pairs per
+fixture gave median parse/geometry/total times in milliseconds:
+
+- AC20-FZK-Haus: 7/23/32 base, 7/25/32 branch. Both emitted 285 meshes,
+  35,940 vertices, 19,456 triangles and ordered FNV `25ac885b6ff4ad00`.
+- ISSUE_129: 24/1059/1080 base, 24/1042/1063 branch. Both emitted 1,402
+  meshes; vertices rose 219,862 to 220,047 and triangles 135,755 to 135,894.
+  Ordered FNV changed `4c5c1bcd6022379a` to `d24e2574e7743fd2`.
+- Holter/ISSUE_053: 341/513/907 base, 348/395/744 branch. Both emitted
+  109,514 meshes; vertices rose 4,502,946 to 4,513,602 and triangles
+  2,882,383 to 2,889,487. Ordered FNV changed `5467f8cc1462c86d` to
+  `8905d165c6f0ee56`.
+
+All five fingerprints per revision and fixture were internally identical.
+Holter total times spanned 703–1043 ms on base and 713–1141 ms on branch;
+the paired samples crossed in both directions on a shared WSL host. No speed
+gain or regression is established by those medians. The output increases are
+the intended caps, while AC20 is byte-identical. The lesson is that a small
+boundary-accounting guard can repair many reused Boolean items; full-load
+counts and ordered fingerprints reveal its reach where a single-element test
+cannot, and variable host timing should not be sold as a speed verdict.

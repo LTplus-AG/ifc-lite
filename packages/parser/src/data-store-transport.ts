@@ -244,9 +244,13 @@ export function collectTransferables(payload: DataStoreTransport): Transferable[
     if (buf && buf instanceof ArrayBuffer) list.push(buf);
   };
 
+  // @raw-entity-enumeration-ok Transport collects the four serialized source-index buffers, not live entities.
   push(payload.entityIndex.byId.expressIds.buffer);
+  // @raw-entity-enumeration-ok Transport collects the serialized source-index byte offsets buffer.
   push(payload.entityIndex.byId.byteOffsets.buffer);
+  // @raw-entity-enumeration-ok Transport collects the serialized source-index byte lengths buffer.
   push(payload.entityIndex.byId.byteLengths.buffer);
+  // @raw-entity-enumeration-ok Transport collects the serialized source-index type indices buffer.
   push(payload.entityIndex.byId.typeIndices.buffer);
 
   if (payload.deferredEntityIndex) {
@@ -337,10 +341,12 @@ export function toTransport(
   indexOverride?: DataStoreTransport['entityIndex'],
 ): DataStoreTransportEnvelope {
   const byTypeEntries: Array<[string, number[]]> = [];
+  // @raw-entity-enumeration-ok Worker transport copies the parsed source index before live edits exist.
   for (const [key, value] of indexOverride ? [] : store.entityIndex.byType) {
     byTypeEntries.push([key, [...value]]);
   }
 
+  // @raw-entity-enumeration-ok Worker transport requires parsed compact source-index columns.
   const compactById = store.entityIndex.byId as unknown;
   if (!(compactById instanceof CompactEntityIndex)) {
     throw new Error('toTransport requires CompactEntityIndex (the lite parser path always provides one)');
@@ -408,7 +414,9 @@ export function fromTransport(
   const quantities = quantityTableFromColumns(payload.quantities, strings);
   const relationships = relationshipGraphFromColumns(payload.relationships);
 
+  // @raw-entity-enumeration-ok Transport reconstruction restores the parsed source index from its wire columns.
   const byIdIndex = compactEntityIndexFromColumns(payload.entityIndex.byId);
+  // @raw-entity-enumeration-ok Transport reconstruction restores source type buckets from the wire payload.
   const byType = byTypeOverride ?? new Map<string, number[]>(
     payload.entityIndex.byType.map(([k, v]) => [k, [...v]]),
   );

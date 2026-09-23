@@ -39,6 +39,7 @@ import { FORMAT_VERSION } from '../types.js';
  * handed a v14 section simply stops where the old section ended.
  */
 export function writeEntities(writer: BufferWriter, entities: EntityTable): void {
+  // @raw-entity-enumeration-ok Cache section writes the source table columns as a parsed snapshot.
   const count = entities.count;
 
   // Write count

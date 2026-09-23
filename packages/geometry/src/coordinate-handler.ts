@@ -80,18 +80,39 @@ export class CoordinateHandler {
     }
 
     /**
+     * Check if accumulated bounds are poisoned by corrupted vertices.
+     * A bound is poisoned if any component exceeds the normal coordinate threshold,
+     * indicating a single large vertex has contaminated the accumulated bounds.
+     * Once poisoned, bounds never recover within the fast path.
+     */
+    private isBoundsPoisoned(bounds: AABB): boolean {
+        return Math.abs(bounds.min.x) > NORMAL_COORD_THRESHOLD_M ||
+               Math.abs(bounds.min.y) > NORMAL_COORD_THRESHOLD_M ||
+               Math.abs(bounds.min.z) > NORMAL_COORD_THRESHOLD_M ||
+               Math.abs(bounds.max.x) > NORMAL_COORD_THRESHOLD_M ||
+               Math.abs(bounds.max.y) > NORMAL_COORD_THRESHOLD_M ||
+               Math.abs(bounds.max.z) > NORMAL_COORD_THRESHOLD_M;
+    }
+
+    /**
      * Calculate bounding box from all meshes (filtering out corrupted values)
      * @param meshes - Meshes to calculate bounds from
      * @param maxCoord - Optional max coordinate threshold (default: MAX_REASONABLE_COORD).
-     *   NOTE: Ignored after this handler has established sampling eligibility.
+     *   Used in the slow path to validate per-vertex coordinates.
      */
     calculateBounds(meshes: MeshData[], maxCoord?: number): AABB {
         // PERF: Once the initial frame/bounds decision validates a producer,
-        // Skip per-vertex Number.isFinite + Math.abs checks (saves ~6 calls per vertex
-        // across 63.5M vertices = ~380M function calls avoided).
-        // maxCoord is intentionally unused on this established sampling path.
+        // Try fast-path sampling. However, if a single corrupted vertex poisons
+        // the bounds, fall back to the filtered slow path for this batch to restore
+        // recoverability. This is six comparisons per batch instead of per vertex,
+        // preserving the ~380M-call saving while preventing permanent corruption.
         if (this.fastBoundsEligible && this.shiftCalculated) {
-            return this.calculateBoundsFast(meshes);
+            const bounds = this.calculateBoundsFast(meshes);
+            // Check if bounds are poisoned by a large corrupted vertex
+            if (!this.isBoundsPoisoned(bounds)) {
+                return bounds;
+            }
+            // Bounds poisoned: recompute via slow path with per-vertex filter for recovery
         }
 
         const bounds: AABB = {

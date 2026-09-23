@@ -439,7 +439,7 @@ fn a_genuine_crossing_is_labelled_mesh_measured() {
         box_hxyz(5.0, 5.0, 0.1, 5.0, 5.0, 0.1),
         box_hxyz(4.5, 4.5, 0.5625, 0.5, 0.5, 0.4375),
     ]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Hard);
     assert_eq!(result.records[0].distance_kind, DistanceKind::Mesh);
@@ -460,7 +460,7 @@ fn a_box_member_piercing_clean_through_another_box_is_labelled_an_estimate() {
         box_hxyz(0.0, 0.0, 0.0, 2.5, 0.1, 1.5),
         box_hxyz(0.0, 0.0, 0.0, 0.2, 1.0, 0.2),
     ]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Hard);
     assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
@@ -481,7 +481,7 @@ fn a_box_member_piercing_clean_through_rotated_15_degrees_is_labelled_an_estimat
         box_hxyz(0.0, 0.0, 0.0, 2.5, 0.1, 1.5),
         rotated_box_hxyz(0.0, 0.0, 0.0, 0.2, 1.0, 0.2, angle),
     ]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Hard);
     assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
@@ -504,7 +504,7 @@ fn two_walls_crossing_at_an_x_junction_are_labelled_an_estimate_not_the_full_wal
         box_hxyz(0.0, 0.0, 1.5, 5.0, 0.1, 1.5),
         box_hxyz(0.0, 0.0, 1.5, 0.1, 5.0, 1.5),
     ]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Hard);
     assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
@@ -522,7 +522,7 @@ fn an_x_junction_of_walls_of_different_heights_is_labelled_an_estimate_too() {
         box_hxyz(0.0, 0.0, 1.5, 5.0, 0.1, 1.5),
         box_hxyz(0.0, 0.0, 1.25, 0.1, 5.0, 1.25),
     ]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Hard);
     assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
@@ -540,7 +540,7 @@ fn an_x_junction_at_a_generic_mutual_rotation_is_labelled_an_estimate() {
         rotated_box_xyz([0.0, 0.0, 0.0], [5.0, 0.1, 1.5], 0.7, 0.4, 1.1),
         rotated_box_xyz([0.0, 0.0, 0.0], [0.1, 5.0, 1.5], 0.76, 0.48, 1.2),
     ]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Hard);
     assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
@@ -558,7 +558,7 @@ fn a_plain_corner_overlap_at_a_generic_mutual_rotation_keeps_the_mesh_label() {
         rotated_box_xyz([0.0, 0.0, 0.0], [1.0, 1.0, 1.0], 0.3, 0.2, 0.9),
         rotated_box_xyz([1.2, 1.2, 1.2], [1.0, 1.0, 1.0], 1.7, 0.8, 2.3),
     ]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Hard);
     assert_eq!(result.records[0].distance_kind, DistanceKind::Mesh);
@@ -583,7 +583,7 @@ fn a_through_penetration_below_the_precision_floor_reports_touch_not_a_labelled_
         box_hxyz(off, 0.0, 0.0, 2.5, 0.1, 1.5),
         box_hxyz(off, 0.0, 0.0, 0.2, 1.0, 0.2),
     ]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, true);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Touch);
     assert_eq!(result.records[0].distance, 0.0);
@@ -606,7 +606,7 @@ fn a_contained_non_box_pair_flush_at_f32_noise_scale_reports_touch_not_hard() {
     // 10 * 2^-22 ~ 2.4e-6, three orders above the ~6e-8 evidence. Mirrors
     // the TS fixture in `engine-ts/depth-provenance.test.ts`.
     let session = session_of_parts(&[tub(), banded_plate(0.875 - 6e-8, 0.875 + 1.2e-7)]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, true);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Touch);
     assert_eq!(result.records[0].distance, 0.0);
@@ -620,7 +620,7 @@ fn a_contained_non_box_pair_with_a_real_above_floor_crossing_stays_hard() {
     // NOT suppress it — the pair stays `Hard`, reported at the AABB estimate
     // with the honest `Estimate` label (non-box pair, no certified depth).
     let session = session_of_parts(&[tub(), banded_plate(0.865, 0.885)]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Hard);
     assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
@@ -638,7 +638,7 @@ fn a_member_piercing_clean_through_is_labelled_an_estimate() {
         box_hxyz(5.0, 5.0, 0.1, 5.0, 5.0, 0.1),
         tri_prism([[4.0, 4.0], [4.3, 4.0], [4.15, 4.3]], -5.0, 5.0),
     ]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Hard);
     assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
@@ -654,7 +654,7 @@ fn coincident_footprint_layers_are_labelled_mesh_measured() {
         box_hxyz(5.0, 5.0, 0.1, 5.0, 5.0, 0.1),
         box_hxyz(5.0, 5.0, 0.285, 5.0, 5.0, 0.125),
     ]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Hard);
     assert_eq!(result.records[0].distance_kind, DistanceKind::Mesh);
@@ -671,7 +671,7 @@ fn an_enclosed_layer_is_labelled_mesh_measured() {
         box_hxyz(5.0, 5.0, 0.02, 5.0, 5.0, 0.02),
         box_hxyz(5.0, 5.0, 0.125, 5.0, 5.0, 0.125),
     ]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Hard);
     assert_eq!(result.records[0].distance_kind, DistanceKind::Mesh);
@@ -694,7 +694,7 @@ fn a_coincident_footprint_pair_below_the_precision_floor_reports_touch_not_a_lab
         box_hxyz(off + 5.0, 5.0, 0.1, 5.0, 5.0, 0.1),
         box_hxyz(off + 5.0, 5.0, 0.285, 5.0, 5.0, 0.125),
     ]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, true);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Touch);
     assert_eq!(result.records[0].distance, 0.0);
@@ -714,7 +714,7 @@ fn an_enclosed_pair_below_the_precision_floor_reports_touch_not_a_labelled_hard_
         box_hxyz(off + 5.0, 5.0, 0.02, 5.0, 5.0, 0.02),
         box_hxyz(off + 5.0, 5.0, 0.125, 5.0, 5.0, 0.125),
     ]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, true);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Touch);
     assert_eq!(result.records[0].distance, 0.0);
@@ -724,7 +724,7 @@ fn an_enclosed_pair_below_the_precision_floor_reports_touch_not_a_labelled_hard_
 fn a_clearance_gap_is_labelled_mesh_measured() {
     // `min_dist` is an exact triangle-to-triangle distance, not a box reading.
     let session = session_of_cubes(&[(0.0, 0.0, 0.0), (2.0, 0.0, 0.0)]);
-    let result = session.run_rule(&[0, 1], &[], CLEARANCE, 0.001, 1.5, false);
+    let result = session.run_rule(&[0, 1], None, CLEARANCE, 0.001, 1.5, false);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Clearance);
     assert_eq!(result.records[0].distance_kind, DistanceKind::Mesh);
@@ -733,7 +733,7 @@ fn a_clearance_gap_is_labelled_mesh_measured() {
 #[test]
 fn a_reported_touch_is_labelled_mesh_measured() {
     let session = session_of_cubes(&[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, true);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Touch);
     assert_eq!(result.records[0].distance_kind, DistanceKind::Mesh);
@@ -742,7 +742,7 @@ fn a_reported_touch_is_labelled_mesh_measured() {
 #[test]
 fn overlapping_cubes_hard() {
     let session = session_of_cubes(&[(0.0, 0.0, 0.0), (0.5, 0.0, 0.0)]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1, "expected exactly one hard clash");
     let rec = &result.records[0];
     assert_eq!(rec.status, ClashStatus::Hard);
@@ -762,7 +762,7 @@ fn overlapping_cubes_hard() {
 #[test]
 fn separated_cubes_hard_none() {
     let session = session_of_cubes(&[(0.0, 0.0, 0.0), (2.0, 0.0, 0.0)]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 0, "separated cubes are not a hard clash");
 }
 
@@ -770,7 +770,7 @@ fn separated_cubes_hard_none() {
 fn separated_cubes_clearance_hit() {
     // Cubes at x=0 and x=2: faces at x=0.5 and x=1.5 -> gap 1.0.
     let session = session_of_cubes(&[(0.0, 0.0, 0.0), (2.0, 0.0, 0.0)]);
-    let result = session.run_rule(&[0, 1], &[], CLEARANCE, 0.001, 1.5, false);
+    let result = session.run_rule(&[0, 1], None, CLEARANCE, 0.001, 1.5, false);
     assert_eq!(result.records.len(), 1, "clearance 1.5 should report the gap");
     let rec = &result.records[0];
     assert_eq!(rec.status, ClashStatus::Clearance);
@@ -780,7 +780,7 @@ fn separated_cubes_clearance_hit() {
 #[test]
 fn separated_cubes_clearance_miss() {
     let session = session_of_cubes(&[(0.0, 0.0, 0.0), (2.0, 0.0, 0.0)]);
-    let result = session.run_rule(&[0, 1], &[], CLEARANCE, 0.001, 0.5, false);
+    let result = session.run_rule(&[0, 1], None, CLEARANCE, 0.001, 0.5, false);
     assert_eq!(result.records.len(), 0, "clearance 0.5 < gap 1.0 -> no record");
 }
 
@@ -788,23 +788,23 @@ fn separated_cubes_clearance_miss() {
 fn touching_faces_no_touch_report() {
     // Cubes at x=0 and x=1: faces coincide at x=0.5 -> contact, not penetration.
     let session = session_of_cubes(&[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 0, "touch with report_touch=false -> none");
 }
 
 #[test]
 fn touching_faces_with_touch_report() {
     let session = session_of_cubes(&[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, true);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
     assert_eq!(result.records.len(), 1, "touch with report_touch=true -> one record");
     assert_eq!(result.records[0].status, ClashStatus::Touch);
 }
 
 #[test]
 fn self_clash_group() {
-    // Three cubes: two overlap, one is far away. group_b empty -> self-clash.
+    // Three cubes: two overlap, one is far away. `group_b` = `None` -> self-clash.
     let session = session_of_cubes(&[(0.0, 0.0, 0.0), (0.5, 0.0, 0.0), (10.0, 0.0, 0.0)]);
-    let result = session.run_rule(&[0, 1, 2], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1, 2], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1, "only the overlapping pair clashes");
     let rec = &result.records[0];
     assert_eq!(rec.status, ClashStatus::Hard);
@@ -813,10 +813,44 @@ fn self_clash_group() {
 }
 
 #[test]
+fn two_sided_rule_whose_b_side_matched_nothing_is_not_a_self_clash_5354() {
+    // #5354: a rule that NAMES a B side which resolves to zero elements must
+    // report nothing. Before the fix self-clash was encoded as an empty
+    // `group_b`, so "B matched nothing" and "there is no B" were the same
+    // call and this ran as A-vs-A -- on a real MEP-only model that turned a
+    // "pipes vs building elements" rule into 1,892 pipe-vs-pipe false hits.
+    //
+    // The two cubes here DO overlap, so a self-clash would find them: the
+    // assertion is only meaningful because the same pair is non-empty under
+    // `None`, which the companion assert pins.
+    // Kills: `Some(&[])` taking the self-clash branch.
+    let session = session_of_cubes(&[(0.0, 0.0, 0.0), (0.5, 0.0, 0.0)]);
+
+    let declared_but_empty = session.run_rule(&[0, 1], Some(&[]), HARD, 0.001, 0.0, false);
+    assert!(
+        declared_but_empty.records.is_empty(),
+        "a two-sided rule with an empty B side has no candidate pairs, got {:?}",
+        declared_but_empty
+            .records
+            .iter()
+            .map(|r| (r.a, r.b))
+            .collect::<Vec<_>>()
+    );
+
+    let genuine_self_clash = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
+    assert_eq!(
+        genuine_self_clash.records.len(),
+        1,
+        "the same two elements still self-clash under `None`, so the assertion \
+         above is about the B side and not about the geometry"
+    );
+}
+
+#[test]
 fn cross_group_dedup_and_same_element_skip() {
-    // Cross-group clash (group_b non-empty): exercises the BVH-over-group_a
+    // Cross-group clash (`group_b` = `Some`): exercises the BVH-over-group_a
     // query-per-group_b-element branch of `candidate_pairs`, distinct from the
-    // self-clash (`group_b` empty) path every other test above uses.
+    // self-clash (`group_b` = `None`) path every other test above uses.
     //
     // Cube 0 = a "wall", cube 1 = an overlapping "pipe", cube 2 = a distant pipe.
     let session = session_of_cubes(&[(0.0, 0.0, 0.0), (0.5, 0.0, 0.0), (10.0, 0.0, 0.0)]);
@@ -833,7 +867,7 @@ fn cross_group_dedup_and_same_element_skip() {
     // itself, and the far pipe (2) must not clash at all.
     let group_b = &[0u32, 1u32, 2u32];
 
-    let result = session.run_rule(group_a, group_b, HARD, 0.001, 0.0, false);
+    let result = session.run_rule(group_a, Some(group_b), HARD, 0.001, 0.0, false);
 
     assert_eq!(
         result.records.len(),
@@ -856,7 +890,7 @@ fn enclosed_solid_hard() {
     // are ~4.5 apart so no triangle pair is within margin — only full enclosure
     // signals the clash, via the point-in-solid ray cast.
     let session = session_of_sized(&[(0.0, 0.0, 0.0, 10.0), (0.0, 0.0, 0.0, 1.0)]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1, "fully-enclosed solid must be a hard clash");
     assert_eq!(result.records[0].status, ClashStatus::Hard);
     assert!(result.records[0].distance < 0.0, "penetration distance must be negative");
@@ -867,7 +901,7 @@ fn separated_not_enclosed_none() {
     // Two side-1 cubes far apart: neither AABB contains the other, so the
     // enclosure path must stay quiet (no false positive).
     let session = session_of_sized(&[(0.0, 0.0, 0.0, 1.0), (20.0, 0.0, 0.0, 1.0)]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 0, "disjoint cubes are not a clash");
 }
 
@@ -882,7 +916,7 @@ fn contained_pair_with_a_non_box_element_falls_back_to_the_aabb_estimate() {
     // mislabelled `Mesh` the way the old probe was. A non-box depth metric is
     // future work (PR #2536 hold comment, "landing conditions").
     let session = session_of_parts(&[l_part(), box_hxyz(1.2, 1.4, 0.5, 0.25, 0.2, 0.2)]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1, "expected one hard clash");
     let rec = &result.records[0];
     assert_eq!(rec.status, ClashStatus::Hard);
@@ -901,7 +935,7 @@ fn penetrating_pair_reports_mesh_depth_not_bar_thickness() {
         box_hxyz(0.0, 0.0, 0.0, 1.0, 1.0, 1.0),
         box_hxyz(1.75, 0.0, 0.0, 1.25, 0.1, 0.1),
     ]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1, "expected one hard clash");
     let rec = &result.records[0];
     assert_eq!(rec.status, ClashStatus::Hard);
@@ -948,7 +982,7 @@ fn skewed_face_touch_no_false_hard() {
     assert!(overlaps, "fixture invalid: AABBs must overlap to reach the narrow phase");
 
     let session = session_of_parts(&[a, b]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(
         result.records.len(),
         0,
@@ -964,7 +998,7 @@ fn skewed_genuine_overlap_still_hard() {
     let a = tri_prism([[0.0, 0.0], [2.0, 0.0], [0.0, 2.0]], 0.0, 1.0);
     let b = box_hxyz(1.0, 1.0, 0.5, 0.5, 0.5, 0.5); // [0.5,1.5]^2 x [0,1], straddles x+y=2
     let session = session_of_parts(&[a, b]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1, "a genuine straddling overlap is a hard clash");
     assert_eq!(result.records[0].status, ClashStatus::Hard);
 }
@@ -978,7 +1012,7 @@ fn aligned_unequal_overlap_still_hard() {
     let a = box_hxyz(0.0, 0.0, 0.0, 5.0, 0.5, 0.5); // x[-5,5]
     let b = box_hxyz(5.4, 0.0, 0.0, 0.5, 0.5, 0.5); // x[4.9,5.9], overlaps x[4.9,5]
     let session = session_of_parts(&[a, b]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1, "a genuine aligned overlap is a hard clash");
     assert_eq!(result.records[0].status, ClashStatus::Hard);
 }
@@ -993,7 +1027,7 @@ fn crossing_hard_bounds_are_tight() {
     let a_aabb = a.2.clone();
     let b_aabb = b.2.clone();
     let session = session_of_parts(&[a, b]);
-    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1, "crossing bars are a hard clash");
     let rec = &result.records[0];
     assert_eq!(rec.status, ClashStatus::Hard);
@@ -1088,7 +1122,7 @@ fn separated_cubes_clearance_exact_boundary_hits() {
     // against a 1.0 gap — far past the line, where `<=` and `<` agree — so
     // only a fixture AT the threshold can discriminate the operator.
     let session = session_of_cubes(&[(0.0, 0.0, 0.0), (2.0, 0.0, 0.0)]);
-    let result = session.run_rule(&[0, 1], &[], CLEARANCE, 0.001, 1.0, false);
+    let result = session.run_rule(&[0, 1], None, CLEARANCE, 0.001, 1.0, false);
     assert_eq!(
         result.records.len(),
         1,

@@ -243,6 +243,35 @@ describe('differential: WASM kernel === TS kernel', () => {
     expect(await bothAgree(els, [{ id: 'self', name: 'self', a: 'IfcBeam', mode: 'hard' }])).toBe(1);
   });
 
+  // #5354: a rule that NAMES a B side which resolves to zero elements must
+  // report nothing on BOTH backends. The WASM kernel used to marshal a
+  // declared-but-empty group B into the same zero-length Uint32Array it used
+  // for "no B side", and Rust read an empty `group_b` as a request for a
+  // self-clash — so the rule silently ran as A-vs-A. On a real MEP-only model
+  // a "pipes vs building elements" rule returned 1,892 pipe-vs-pipe pairs.
+  //
+  // The two beams here DO overlap, so a self-clash finds them: that is what
+  // makes `toBe(0)` load-bearing rather than vacuous, and the self-clash test
+  // directly above is the companion that pins the same pair at 1.
+  it('agrees that a rule whose B side matched nothing yields no clashes (#5354)', async () => {
+    const els = [box('A', 'IfcBeam', [0, 0, 0]), box('B', 'IfcBeam', [0.5, 0, 0])];
+
+    // B declared by selector, matching nothing.
+    expect(
+      await bothAgree(els, [
+        { id: 'r', name: 'unmatched b selector', a: 'IfcBeam', b: 'IfcNoSuchThing', mode: 'hard' },
+      ]),
+    ).toBe(0);
+
+    // B declared by explicit membership, empty. `membersB: []` is documented
+    // as "matched nothing", never "everything" — and never "no B side".
+    expect(
+      await bothAgree(els, [
+        { id: 'r', name: 'empty membersB', a: 'IfcBeam', membersB: [], mode: 'hard' },
+      ]),
+    ).toBe(0);
+  });
+
   it('agrees on same-key exclusion (WASM has no key concept in its broad phase)', async () => {
     // The Rust/WASM broad phase ingests only positions/indices/AABBs — it has no
     // notion of durable `key`/`model`, so same-entity exclusion for the WASM

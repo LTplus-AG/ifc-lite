@@ -85,6 +85,27 @@ test('query.entities() with no type filter still folds overlay creations and tom
   assert.deepEqual(results.map((e) => e.name).sort(), ['Project', 'Wall A', 'Wall C']);
 });
 
+test('query.entities() lists a retyped entity under its new class only (#5249)', async () => {
+  const { adapter, view } = await harness();
+
+  view.setEntityType(4, 'IfcColumn', null, 'IfcWall');
+  assert.deepEqual(adapter.entities({ types: ['IfcWall'] }).map((e) => e.name), ['Wall A'],
+    'a wall retyped to a column is no longer a wall');
+  const columns = adapter.entities({ types: ['IfcColumn'] });
+  assert.deepEqual(columns.map((e) => [e.name, e.type]), [['Wall B', 'IfcColumn']],
+    'it is listed as a column, with its effective class');
+});
+
+test('query.entities() applies deletion, creation and retype in one enumeration (#5249)', async () => {
+  const { adapter, view } = await harness();
+
+  view.deleteEntity(3);
+  view.setEntityType(4, 'IfcColumn', null, 'IfcWall');
+  view.createEntity('IfcWall', [`'${guid('WALC')}'`, null, `'Wall C'`]);
+  assert.deepEqual(adapter.entities({ types: ['IfcWall'] }).map((e) => e.name), ['Wall C']);
+  assert.deepEqual(adapter.entities({ types: ['IfcColumn'] }).map((e) => e.name), ['Wall B']);
+});
+
 test('entitiesMatchingActiveFilter() omits an entity deleted this session (#5185)', async () => {
   const dataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(MODEL).buffer as ArrayBuffer);
   const view = new MutablePropertyView(dataStore.properties, 'm');

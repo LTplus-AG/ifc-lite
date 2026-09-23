@@ -40,9 +40,9 @@ describe('selectMedian', () => {
 
   it('keeps the worst-case fallback resumable and exact when the work cap is reached', () => {
     const n = 20_001;
-    const values = Array.from({ length: n }, (_, i) => i);
+    const values = Array.from({ length: n }, (_, i) => n - 1 - i);
     let comparisons = 0, checkpoints = 0;
-    // A zero cap forces the fallback after the first partition. This verifies
+    // A zero cap forces the fallback before any partition. This verifies
     // the bounded path directly, without relying on a machine-speed threshold.
     for (const _ of selectMedian(values, 0, n, Math.floor(n / 2), (a, b) => {
       comparisons++;

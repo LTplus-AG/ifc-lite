@@ -13,15 +13,24 @@
 #[path = "fast_parse_comments.rs"]
 mod comments;
 
-use crate::parser::is_step_numeric_delimiter;
+#[path = "fast_parse_coordinates.rs"]
+mod coordinates;
+
+pub use coordinates::{parse_coordinates_direct, parse_coordinates_direct_f64};
 
 /// Check if byte is a digit, minus sign, or decimal point (start of number)
+///
+/// Shared with the comment-aware twins in `comments` and the split-out
+/// `coordinates` module below (#5266) — both are descendants of this module.
 #[inline(always)]
 fn is_number_start(b: u8) -> bool {
     b.is_ascii_digit() || b == b'-' || b == b'.'
 }
 
 /// Estimate number of floats in coordinate data
+///
+/// Shared with `coordinates` and `comments` for the same reason as
+/// [`is_number_start`].
 #[inline]
 fn estimate_float_count(bytes: &[u8]) -> usize {
     // Rough estimate: ~8 bytes per float on average (including delimiters)
@@ -33,84 +42,6 @@ fn estimate_float_count(bytes: &[u8]) -> usize {
 fn estimate_int_count(bytes: &[u8]) -> usize {
     // Rough estimate: ~4 bytes per integer on average
     bytes.len() / 4
-}
-
-/// Parse coordinate list directly from raw bytes to `Vec<f32>`
-///
-/// This parses IFC coordinate data like:
-/// `((0.,0.,150.),(0.,40.,140.),...)`
-///
-/// Returns flattened f32 array: [x0, y0, z0, x1, y1, z1, ...]
-///
-/// # Performance
-/// - Zero intermediate allocations (no Token, no AttributeValue)
-/// - Uses fast-float for SIMD-accelerated parsing
-/// - Pre-allocates result vector
-#[inline]
-pub fn parse_coordinates_direct(bytes: &[u8]) -> Vec<f32> {
-    if comments::may_contain_step_comment(bytes) {
-        return comments::parse_coordinates(bytes);
-    }
-    let mut result = Vec::with_capacity(estimate_float_count(bytes));
-    let (mut pos, len) = (0, bytes.len());
-    while pos < len {
-        while pos < len && !is_number_start(bytes[pos]) {
-            pos += 1;
-        }
-        if pos >= len {
-            break;
-        }
-        match fast_float2::parse_partial::<f32, _>(&bytes[pos..]) {
-            Ok((value, consumed)) if consumed > 0 => {
-                // `parse_partial` reads only the longest valid prefix, so a
-                // corrupted literal like `1.52.3` (a dropped comma) parses
-                // as `1.52` with `.3` left dangling to be misread as the
-                // next coordinate. Require a STEP delimiter right after what
-                // was consumed, or refuse the whole list rather than
-                // fabricate a shifted point (#5266).
-                if bytes.get(pos + consumed).is_some_and(|&b| !is_step_numeric_delimiter(b)) {
-                    return Vec::new();
-                }
-                result.push(value);
-                pos += consumed;
-            }
-            _ => pos += 1,
-        }
-    }
-    result
-}
-
-/// Parse coordinate list directly from raw bytes to `Vec<f64>`
-///
-/// Same as parse_coordinates_direct but with f64 precision.
-#[inline]
-pub fn parse_coordinates_direct_f64(bytes: &[u8]) -> Vec<f64> {
-    if comments::may_contain_step_comment(bytes) {
-        return comments::parse_coordinates_f64(bytes);
-    }
-    let mut result = Vec::with_capacity(estimate_float_count(bytes));
-    let (mut pos, len) = (0, bytes.len());
-    while pos < len {
-        while pos < len && !is_number_start(bytes[pos]) {
-            pos += 1;
-        }
-        if pos >= len {
-            break;
-        }
-        match fast_float2::parse_partial::<f64, _>(&bytes[pos..]) {
-            Ok((value, consumed)) if consumed > 0 => {
-                // See the matching comment in `parse_coordinates_direct`
-                // above for why this delimiter check is required (#5266).
-                if bytes.get(pos + consumed).is_some_and(|&b| !is_step_numeric_delimiter(b)) {
-                    return Vec::new();
-                }
-                result.push(value);
-                pos += consumed;
-            }
-            _ => pos += 1,
-        }
-    }
-    result
 }
 
 /// Parse index list directly from raw bytes to `Vec<u32>`

@@ -8,6 +8,7 @@ import { StringTable, EntityTableBuilder } from '@ifc-lite/data';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { evaluateFilterRules, evaluateFilterRulesFederated, __internal } from './filter-evaluate.js';
+import { evaluateFilterGroupsFederated } from './filter-evaluate-groups.js';
 import { Rule } from './filter-rules.js';
 
 interface Row {
@@ -1126,6 +1127,13 @@ describe('#5249 live filter enumeration', () => {
     const doors = await evaluateFilterRulesFederated(models, [Rule.ifcType(['IfcDoor'])], 'AND');
     assert.deepStrictEqual(doors.map(({ expressId, ifcType }) => [expressId, ifcType]),
       [[WALL_IN_OTHER_STOREY, 'IfcDoor']]);
+
+    const grouped = await evaluateFilterGroupsFederated(models, [
+      { rules: [Rule.ifcType(['IfcWall'])], combinator: 'AND' },
+      { rules: [Rule.ifcType(['IfcDoor'])], combinator: 'AND' },
+    ]);
+    assert.deepStrictEqual(grouped.map(({ expressId, ifcType }) => [expressId, ifcType]),
+      [[created.expressId, 'IfcWall'], [WALL_IN_OTHER_STOREY, 'IfcDoor']]);
 
     const byGlobalId = await evaluateFilterRulesFederated(models, [Rule.globalId([globalId])], 'AND');
     assert.deepStrictEqual(byGlobalId.map(({ expressId }) => expressId), [created.expressId]);

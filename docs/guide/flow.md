@@ -126,6 +126,11 @@ param names, or its own `binding` when the table came from `table.fromEntities`.
 cell that does not parse as its column's declared type is reported per row in
 `problems` and **not written** — never coerced to `0`/`''`/`false`.
 
+`model.applyTable` never deletes a property. An empty cell, including a cell a reader could
+not parse or a short row's missing field, leaves the property as it is. Those cells are
+already reported in the reader's `problems` output, so a typo in a spreadsheet can never
+quietly erase a value.
+
 ```json
 {
   "id": "csv", "type": "core.string", "params": { "value": "Tag,FireRating\nT-100,REI90\n" }

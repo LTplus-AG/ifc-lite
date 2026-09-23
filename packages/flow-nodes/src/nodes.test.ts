@@ -408,4 +408,24 @@ describe('model.applyTable', () => {
       [11, 'FireRating', 'REI30'],
     ]);
   });
+  it('never deletes: an empty or unparseable cell leaves the existing property untouched', async () => {
+    // `GlobalId,Width\nW1,abc` read through table.readCsv yields Width: null
+    // (reported by the reader). Treating null as "delete" removed W1's
+    // existing Width — a typo in a spreadsheet became silent data loss.
+    const fake = createFakeBim();
+    const readOut = (await registry.get('table.readCsv')!.run(testCtx(), { text: 'GlobalId,Width\nW1,abc\n' }, {
+      columns: [{ name: 'GlobalId', type: 'identifier' }, { name: 'Width', type: 'real' }], delimiter: ',',
+    })) as { table: Table; problems: string[] };
+    expect(readOut.table.rows).toEqual([{ GlobalId: 'W1', Width: null }]);
+    const table: Table = {
+      ...readOut.table,
+      columns: readOut.table.columns.map((c) => (c.name === 'Width' ? { ...c, binding: { pset: 'Pset_WallCommon', prop: 'Width' } } : c)),
+    };
+    const handle: FlowNodeDef = { type: 'test.t5', title: 't', category: 'test', inputs: [], outputs: [{ name: 'table', type: { kind: 'table', access: 'item' } }], params: [], capabilities: [], run: () => ({ table }) };
+    const reg = new NodeRegistry<FlowHost>().registerAll([...registry.list(), handle]);
+    const d = doc([{ id: 't', type: 'test.t5' }, { id: 'a', type: 'model.applyTable' }], [edge('t', 'table', 'a', 'table')]);
+    const r = await runFlow(d, { host: { bim: fake.bim }, registry: reg, features: headlessFeatures() });
+    expect(r.ok).toBe(true);
+    expect(fake.mutations, 'no delete, no write — the property is left as it was').toEqual([]);
+  });
 });

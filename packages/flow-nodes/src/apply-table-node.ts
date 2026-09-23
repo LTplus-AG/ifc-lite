@@ -97,10 +97,12 @@ export const applyTableNode: FlowNodeDef = {
       for (const { column, pset, prop } of mappings) {
         requireCapability(ctx, `model.mutate:${pset}`);
         const raw = row[column.name];
-        if (raw === null || raw === undefined) {
-          ctx.host.bim.mutate.deleteProperty(ref, pset, prop);
-          continue;
-        }
+        // An empty cell leaves the property as it is. ApplyTable NEVER deletes:
+        // the readers encode an unparseable cell and a short row's missing
+        // field as null too, so "null means delete" turned a typo in a
+        // spreadsheet into silent data loss (#5377 review). Those cells were
+        // already reported by the reader that produced them.
+        if (raw === null || raw === undefined) continue;
         const valueType = VALUE_TYPE_BY_COLUMN_TYPE[column.type];
         const parsed = parseValue(String(raw), valueType);
         // A cell that fails to parse as its column's declared type is

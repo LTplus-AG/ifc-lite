@@ -36,4 +36,6 @@ test('#5236 deliberate raw read needs an adjacent reason', () => {
   assert.deepEqual(excessRawAccess([], intentional), []);
   const unmarked = scan('function watermark(store) { for (const id of store.entityIndex.byId.keys()) use(id); }');
   assert.equal(excessRawAccess([], unmarked).length, 1);
+  assert.equal(excessRawAccess(intentional, unmarked).length, 1,
+    'an annotated base site cannot lend its slot to a new unmarked read');
 });

@@ -107,24 +107,20 @@ export async function exportChangedModelToIfcx(
     author: 'ifc-lite',
   });
 
-  // `result.stats.skippedCount` (#5201): a property set with zero properties
-  // has no IFCX wire representation, so the exporter reports it here instead
-  // of silently dropping it — mirroring `publish.ts`'s `skippedCount` under
-  // #2277. `ChangesExportArtifact` has no field for this yet, and this is
-  // the "so a round-trip export of my edits should not silently drop
-  // properties" path (see the `onlyKnownProperties: false` comment above),
-  // so an unqualified success here would be exactly the bug this fixes one
-  // layer up. A `console.warn` is the minimum that is not silent; surfacing
-  // this to the user (toast wording, whether it should block the export)
-  // is a product decision this change does not make — see #5201.
-  if (result.stats.skippedCount > 0) {
-    console.warn(
-      `[ifcx export] ${result.stats.skippedCount} empty property set(s) on model "${modelId}" have no IFCX representation and were omitted: ` +
-        result.stats.unrepresentedPropertySets.map((s) => `entity ${s.entityId} / ${s.psetName}`).join(', '),
-    );
-  }
+  // An empty pset has no IFCX wire representation (#5201); the exporter
+  // counts it instead of dropping it silently, and the count travels with
+  // the artifact so the success toast can say so.
+  return { content: result.content, ext: 'ifcx', mime: 'application/json', skippedCount: result.stats.skippedCount };
+}
 
-  return { content: result.content, ext: 'ifcx', mime: 'application/json' };
+/**
+ * Toast suffix for property sets an IFCX export left out because the format
+ * has no spelling for "this set exists with zero members" (#5201). Mirrors
+ * the layer-publish report (`publish.ts`, #2277): counted, never silent.
+ */
+export function unrepresentedPsetsNote(count: number): string {
+  if (count <= 0) return '';
+  return ` — ${count} empty property set${count === 1 ? '' : 's'} left out (IFCX cannot represent an empty set)`;
 }
 
 /** Production dependency set for `buildChangedArtifacts`. */

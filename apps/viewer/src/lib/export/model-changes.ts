@@ -236,6 +236,8 @@ export interface ChangesExportArtifact {
   content: string | Uint8Array;
   ext: 'ifc' | 'ifczip' | 'ifcx';
   mime: string;
+  /** Edits the format could not represent and left out, e.g. an empty pset in IFCX (#5201). */
+  skippedCount?: number;
 }
 
 /** STEP export request handed to the injected `exportStep` dep. */
@@ -289,6 +291,8 @@ export interface ArtifactFile {
   content: string | Uint8Array;
   modelId: string;
   changeCount: number;
+  /** See {@link ChangesExportArtifact.skippedCount}. */
+  skippedCount: number;
 }
 
 export interface SkippedModel {
@@ -383,6 +387,7 @@ export async function buildChangedArtifacts(
         content: artifact.content,
         modelId: entry.id,
         changeCount: entry.changeCount,
+        skippedCount: artifact.skippedCount ?? 0,
       });
     } catch (err) {
       skipped.push({ name: entry.name, reason: err instanceof Error ? err.message : 'Export failed' });

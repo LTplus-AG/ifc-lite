@@ -144,3 +144,12 @@ export { createLogger, logger, type LogLevel, type LogContext } from './logger.j
 export { safeUtf8Decode, textDecoderAcceptsSab } from './utf8-decode.js';
 
 export { spatialLookups } from './spatial-lookups.js';
+
+// Effective entity enumeration for a live session: source index minus
+// tombstones plus overlay-created entities (#5249).
+export {
+  effectiveEntityIds,
+  effectiveEntityIdsOfType,
+  type EffectiveEntityOverlay,
+  type EffectiveEntitySource,
+} from './effective-entities.js';

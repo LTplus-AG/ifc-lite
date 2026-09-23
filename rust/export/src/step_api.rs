@@ -145,4 +145,13 @@ pub struct StepStats {
     /// several. Slots whose IFC2X3 declaration DOES offer such a default take
     /// `.NOTDEFINED.` or `.F.` and are not counted.
     pub required_slots_unfilled: usize,
+    /// SLOTS written to an IFC4X3/IFC5 -> IFC4 downgrade with `$` where IFC4
+    /// requires a value and the schema offers no default that claims nothing
+    /// (#5307, the Rust twin of #5202): measures, labels, identifiers, entity
+    /// references, and every enum (an invented enum member would be
+    /// indistinguishable from #5202's separate, unaddressed
+    /// enum-reconciliation gap). Non-zero means the file is not valid IFC4.
+    /// Counted per slot, not per record. Zero for every OTHER conversion
+    /// direction, including IFC2X3 -> IFC4, which this fill does not apply to.
+    pub ifc4_required_slots_unfilled: usize,
 }

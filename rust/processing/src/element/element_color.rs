@@ -146,6 +146,45 @@ pub(crate) fn find_indexed_colour_for_element<'a>(
     None
 }
 
+/// Whether any body item of `entity`, directly or through `IfcMappedItem`s,
+/// is a face set carrying a multi-colour `IfcIndexedColourMap` (a single-colour
+/// map is never split, #1807). Such an element's
+/// triangles are later mapped back to source faces by index (#858), so the
+/// router must keep their order (#5313).
+///
+/// Walks items iteratively with a visited set (mapped representations are
+/// file-supplied and may be cyclic or shared).
+pub(crate) fn element_reaches_indexed_colour(
+    entity: &DecodedEntity,
+    indexed_colour_full: &FxHashMap<u32, FullIndexedColourMap>,
+    decoder: &mut EntityDecoder,
+) -> bool {
+    let Some(pds_id) = entity.get_ref(6) else { return false };
+    let Ok(pds) = decoder.decode_by_id(pds_id) else { return false };
+    let mut reps: Vec<u32> = pds.get_refs(2).unwrap_or_default();
+    let mut visited = rustc_hash::FxHashSet::default();
+    while let Some(rep_id) = reps.pop() {
+        if !visited.insert(rep_id) {
+            continue;
+        }
+        let Ok(rep) = decoder.decode_by_id(rep_id) else { continue };
+        for item_id in rep.get_refs(3).unwrap_or_default() {
+            if indexed_colour_full.get(&item_id).is_some_and(FullIndexedColourMap::has_multiple_colours) {
+                return true;
+            }
+            let Ok(item) = decoder.decode_by_id(item_id) else { continue };
+            if item.ifc_type != IfcType::IfcMappedItem {
+                continue;
+            }
+            // IfcMappedItem.MappingSource -> IfcRepresentationMap.MappedRepresentation.
+            if let Some(map) = item.get_ref(0).and_then(|id| decoder.decode_by_id(id).ok()) {
+                reps.extend(map.get_ref(1));
+            }
+        }
+    }
+    false
+}
+
 fn is_opening_with_subparts(ifc_type: &IfcType) -> bool {
     matches!(ifc_type, IfcType::IfcWindow | IfcType::IfcDoor)
 }

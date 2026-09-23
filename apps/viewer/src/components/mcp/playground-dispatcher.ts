@@ -37,7 +37,6 @@ import {
   type BimContext,
   type EntityRef,
 } from '@ifc-lite/sdk';
-import { EntityNode } from '@ifc-lite/query';
 import {
   HeadlessLikeBackend,
   ToolErrorCode,
@@ -89,6 +88,7 @@ import { playgroundUploads } from './playground-uploads';
 import { sanitizeFilename } from '../../lib/export/download';
 import { playgroundCostTools } from './playground-cost';
 import { effectiveEntities, effectiveEntityCount, effectiveGlobalIdLookup, effectiveTypeCounts } from './playground-effective';
+import { playgroundContainmentChain, playgroundSpatialHierarchy } from './playground-spatial';
 
 // ── loaded-model handle ────────────────────────────────────────────────────
 
@@ -610,8 +610,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
       }
     } else if (groupBy === 'storey') {
       for (const e of universe()) {
-        const node = new EntityNode(m.store, e.ref.expressId);
-        const storey = node.storey();
+        const storey = m.bim.storey(e.ref);
         const key = firstNonBlank(storey?.name) ?? '(no storey)';
         counts.set(key, (counts.get(key) ?? 0) + 1);
       }
@@ -661,37 +660,17 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
   },
 
   async spatial_hierarchy(m) {
-    // Lightweight tree walk using EntityNode. The IFC spatial graph uses
-    // IfcRelAggregates for "decomposes" + IfcRelContainedInSpatialStructure
-    // for "contains" — EntityNode exposes both.
-    interface Node { expressId: number; type?: string; name?: string; children: Node[] }
-    const projects = m.store.entityIndex.byType.get('IFCPROJECT') ?? [];
-    function build(expressId: number, depth: number): Node {
-      const node = new EntityNode(m.store, expressId);
-      const out: Node = { expressId, type: node.type, name: node.name, children: [] };
-      if (depth > 6) return out; // bound the recursion for the chat budget
-      for (const child of node.decomposes()) out.children.push(build(child.expressId, depth + 1));
-      for (const child of node.contains()) out.children.push(build(child.expressId, depth + 1));
-      return out;
-    }
-    const root = projects.map((id) => build(id, 0));
-    return { text: `Spatial hierarchy for '${m.name}'.`, structured: { tree: root } };
+    const hierarchy = playgroundSpatialHierarchy(m);
+    return {
+      text: `Spatial hierarchy for '${m.name}'${hierarchy.truncated ? ' (truncated)' : ''}.`,
+      structured: hierarchy,
+    };
   },
 
   async containment_chain(m, args) {
     const ref = resolveRef(m, args);
-    const path: Array<{ expressId: number; type?: string; name?: string; globalId?: string }> = [];
-    let current: EntityNode | null = new EntityNode(m.store, ref.expressId);
-    let safety = 32;
-    while (current && safety-- > 0) {
-      const step: EntityNode = current;
-      path.push({ expressId: step.expressId, type: step.type, name: step.name, globalId: step.globalId });
-      // Walk up via spatial containment first, then aggregate parent.
-      const next: EntityNode | null = step.containedIn() ?? step.decomposedBy();
-      if (!next || path.some((p) => p.expressId === next.expressId)) break;
-      current = next;
-    }
-    return { text: `${path.length}-step containment path.`, structured: { path } };
+    const chain = playgroundContainmentChain(m, ref);
+    return { text: `${chain.path.length}-step containment path${chain.truncated ? ' (truncated)' : ''}.`, structured: chain };
   },
 
   async relationships(m, args) {
@@ -1832,19 +1811,7 @@ function resolveDiffModels(
   return { left, right };
 }
 
-/** Surface IDS-accessor lookup failures at debug level instead of dropping
- *  them silently. A regression in EntityNode would otherwise turn into
- *  changed IDS results without any signal in devtools — debug-level logging
- *  gives an opt-in trail without polluting normal browser sessions. */
-function logIdsAccessorMiss(fn: string, id: number, err: unknown): void {
-  // eslint-disable-next-line no-console
-  console.debug(`[playground-dispatcher] IDS accessor ${fn} miss`, { expressId: id, err });
-}
-
-/** Build the IDS validator's data accessor from a loaded model. Implements
- *  the full IFCDataAccessor surface @ifc-lite/ids expects (see
- *  packages/ids/src/types.ts:384). Each method bridges to the SDK's bim
- *  namespaces or directly to EntityNode. */
+/** Build the IDS validator's data accessor from the mutation-aware SDK model. */
 function makeIdsAccessor(m: LoadedPlaygroundModel): import('@ifc-lite/ids').IFCDataAccessor {
   const ref = (id: number): EntityRef => ({ modelId: m.id, expressId: id });
   return {
@@ -1900,11 +1867,8 @@ function makeIdsAccessor(m: LoadedPlaygroundModel): import('@ifc-lite/ids').IFCD
       return lensMaterialNames(m.bim.materials(ref(id))).map((name) => ({ name }));
     },
     getParent(id) {
-      try {
-        const parent = new EntityNode(m.store, id).containedIn() ?? new EntityNode(m.store, id).decomposedBy();
-        if (!parent) return undefined;
-        return { expressId: parent.expressId, entityType: parent.type ?? '' };
-      } catch (err) { logIdsAccessorMiss('getParent', id, err); return undefined; }
+      const parent = m.bim.containedIn(ref(id)) ?? m.bim.decomposedBy(ref(id));
+      return parent ? { expressId: parent.ref.expressId, entityType: parent.type } : undefined;
     },
     getAttribute(id, attributeName) {
       const attrs = m.bim.attributes(ref(id));

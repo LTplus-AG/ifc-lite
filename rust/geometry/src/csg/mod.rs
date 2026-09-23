@@ -331,7 +331,7 @@ impl ClippingProcessor {
         // merges (the pinned `csg_quality_regression` spike bar). A
         // seam-preserving consolidation is the remaining follow-up.
         crate::kernel::budget::begin();
-        let (raw, changed) =
+        let (raw, changed, conforming) =
             crate::kernel::mesh_bridge::subtract_with_change(host_mesh, opening_mesh);
         // Deterministic escalation guardrail (#1109): if the exact predicate
         // cascade escalated past the per-boolean budget, the cut bailed mid-
@@ -360,6 +360,14 @@ impl ClippingProcessor {
         self.record_topology_tear(BoolOp::Difference, &result);
         if changed {
             GroupCut::Cut(result)
+        } else if !conforming && result.triangle_count() == host_mesh.triangle_count() {
+            // A non-conforming "no change" is not proof the cutter misses the
+            // host (straddling sub-triangles can be misclassified), so it is
+            // not reported as a `Retessellated` miss, which callers read as
+            // disjoint (#5362). A same-count re-tessellation would be
+            // discarded anyway (`mesh_to_keep`), so this only keeps the #635
+            // fallback armed for it, as before #5362.
+            GroupCut::Rejected(GroupReject::Nonconforming)
         } else {
             GroupCut::Retessellated(result)
         }

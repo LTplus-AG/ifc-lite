@@ -1091,3 +1091,21 @@ fn union_with_an_empty_operand_records_no_failure() {
         "a union that never ran must not be blamed for its operand's topology"
     );
 }
+
+/// #5362: `found_no_overlap` is the kernel's "nothing to cut" verdict, the
+/// only case in which the void router may skip its #635 fallback. A cutter
+/// that misses the host (disjoint bounds, or touching a face without entering)
+/// reads as no-overlap; one that enters the host does not.
+#[test]
+fn found_no_overlap_separates_a_miss_from_a_cut_5362() {
+    use crate::kernel::arrangement::box_mesh;
+    use crate::kernel::mesh_bridge::tris_to_mesh;
+    let host = tris_to_mesh(&box_mesh([0.0, 0.0, 0.0], [4.0, 0.3, 3.0]));
+    let clipper = ClippingProcessor::new();
+    let verdict = |lo: [f64; 3], hi: [f64; 3]| {
+        clipper.subtract_mesh(&host, &tris_to_mesh(&box_mesh(lo, hi))).found_no_overlap()
+    };
+    assert!(verdict([10.0, 0.0, 0.0], [11.0, 1.0, 1.0]), "disjoint bounds");
+    assert!(verdict([1.0, -2.0, 1.0], [1.2, 0.0, 2.0]), "touching the face, not entering");
+    assert!(!verdict([1.0, -1.0, 1.0], [1.2, 1.0, 2.0]), "a through opening is a cut");
+}

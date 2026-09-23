@@ -70,8 +70,9 @@ pub enum GroupReject {
     /// The #1109 escalation budget tripped inside one chunk's arrangement.
     BudgetTripped,
     /// A chunk's arrangement left an unrecovered constraint and its lenient
-    /// batch failed the kernel's volume oracle. Group only: the single cutter
-    /// does not gate on conformity.
+    /// batch failed the kernel's volume oracle. The single cutter returns it
+    /// only for a non-conforming arrangement that changed nothing, which is
+    /// not proof the cutter misses the host (#5362).
     Nonconforming,
     /// Every chunk's arrangement conformed, but no cutter reaches the host
     /// solid: the kernel kept every host face and no cutter face. Group only:

@@ -14,7 +14,7 @@
 import type { CellValue, ElementFieldBinding, NormalizedElementFieldValue } from '@ifc-lite/charts';
 import { normalizeElementFieldValue } from '@ifc-lite/charts';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { getRawNamedAttributes } from '@ifc-lite/parser';
+import { getAttributeNamesForSchema, getRawNamedAttributes, normalizeIfcTypeName, resolveEffectiveEntityRecord } from '@ifc-lite/parser';
 import { PropertyValueType, RelationshipType, type Property, type PropertySet } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { findPropertyInSets } from '@ifc-lite/query';
@@ -71,6 +71,11 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
   const isScalar = (typeName: string, attributeName: string): boolean =>
     (TABLE_ATTRIBUTES as readonly string[]).includes(attributeName) || schema.isScalarAttribute(typeName, attributeName);
 
+  const typeFor = (id: number): string => {
+    const edited = mutationView?.getEntityTypeMutation(id)?.newType ?? mutationView?.getNewEntity(id)?.type;
+    return edited ? normalizeIfcTypeName(edited) : store.entities.getTypeName(id);
+  };
+
   const definingTypeId = (id: number): number => {
     const cached = typeIds.get(id);
     if (cached !== undefined) return cached;
@@ -83,13 +88,28 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
     let cached = attributes.get(id);
     if (cached) return cached;
     cached = new Map<string, unknown>();
-    const entity = store.getEntity(id);
-    if (entity) for (const { name, raw } of getRawNamedAttributes(entity, registeredVersion)) cached.set(name, raw);
-    for (const name of TABLE_ATTRIBUTES) {
-      const value = tableAttributeValue(store, id, name);
-      if (value !== undefined && value !== '') cached.set(name, value);
+    const created = mutationView?.getNewEntity(id);
+    if (created) {
+      const record = resolveEffectiveEntityRecord(created, {
+        retype: mutationView?.getEntityTypeMutation(id)?.newType,
+        named: (mutationView?.getAttributeMutationsForEntity(id) ?? []).map(({ name, value }) => [name, value] as const),
+        positional: mutationView?.getPositionalMutationsForEntity(id) ?? [],
+      }, store.schemaVersion);
+      for (let index = 0; index < record.names.length; index++) cached.set(record.names[index], record.attributes[index]);
+    } else {
+      const entity = store.getEntity(id);
+      if (entity) for (const { name, raw } of getRawNamedAttributes(entity, registeredVersion)) cached.set(name, raw);
+      for (const name of TABLE_ATTRIBUTES) {
+        const value = tableAttributeValue(store, id, name);
+        if (value !== undefined && value !== '') cached.set(name, value);
+      }
+      for (const { name, value } of mutationView?.getAttributeMutationsForEntity(id) ?? []) cached.set(name, value);
+      const names = getAttributeNamesForSchema(typeFor(id), store.schemaVersion);
+      for (const [index, value] of mutationView?.getPositionalMutationsForEntity(id) ?? []) {
+        const name = names[index];
+        if (name) cached.set(name, value);
+      }
     }
-    for (const { name, value } of mutationView?.getAttributeMutationsForEntity(id) ?? []) cached.set(name, value);
     attributes.set(id, cached);
     return cached;
   };
@@ -141,7 +161,7 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
 
   const readResolved = (id: number, binding: ElementFieldBinding): ResolvedElementFieldValue => {
     if (binding.kind === 'attribute') {
-      const typeName = store.entities.getTypeName(id);
+      const typeName = typeFor(id);
       const raw = attrsFor(id).get(binding.attributeName);
       // A reference or collection attribute is never a value, whatever its slot holds (#4833).
       if (raw !== undefined && !isScalar(typeName, binding.attributeName)) return UNSUPPORTED;
@@ -182,7 +202,7 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
       }
     };
     for (const id of expressIds) {
-      const typeName = store.entities.getTypeName(id);
+      const typeName = typeFor(id);
       if (!seenTypes.has(typeName)) {
         seenTypes.add(typeName);
         for (const name of schema.attributeNames(typeName)) {

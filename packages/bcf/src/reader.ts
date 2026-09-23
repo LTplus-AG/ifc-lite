@@ -342,7 +342,7 @@ async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudge
   const topicAttrs = topicMatch[1];
   const guid = extractAttr(topicAttrs, 'Guid');
   if (!guid) {
-    console.warn(`Invalid markup.bcf in ${topicFolder}: Topic element missing Guid`);
+    console.warn(`Invalid markup.bcf in ${topicFolder}: could not read Topic Guid attribute`);
     return null;
   }
   const topicContent = topicMatch[2];

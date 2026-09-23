@@ -35,6 +35,7 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { ELEMENT_OPTIONS, SPACE_PREDEFINED_TYPES } from './add-element-options';
 import { formatWallSkipReasons } from './add-element-wall-skip-i18n';
+import { effectiveStoreyIds } from './add-element-storeys';
 
 interface StoreyOption {
   expressId: number;
@@ -85,6 +86,8 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
   const clearPending = useViewerStore((s) => s.clearAddElementPending);
 
   const activeModelId = useViewerStore((s) => s.activeModelId);
+  const mutationViews = useViewerStore((s) => s.mutationViews);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
   // Resolve the effective model + its storeys for the selects. When
   // the user hasn't pinned a model the panel auto-tracks the active
@@ -105,17 +108,23 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
       ? models.get(effectiveModelId)?.ifcDataStore ?? null
       : ifcDataStore;
     if (!dataStore) return [];
-    const ids = dataStore.entityIndex.byType.get('IFCBUILDINGSTOREY') ?? [];
+    const view = effectiveModelId ? mutationViews.get(effectiveModelId) : null;
+    const ids = effectiveStoreyIds(dataStore, view);
     const opts: StoreyOption[] = [];
     for (const expressId of ids) {
-      const node = new EntityNode(dataStore, expressId);
-      const name = node.name || t('addElement.storeyFallback', {
+      const created = view?.getNewEntity(expressId);
+      const positional = view?.getPositionalMutationsForEntity(expressId);
+      const named = view?.getAttributeMutationsForEntity(expressId).find(({ name }) => name === 'Name')?.value;
+      const rawName = positional?.has(2)
+        ? positional.get(2)
+        : named ?? (created ? created.attributes[2] : new EntityNode(dataStore, expressId).name);
+      const name = (typeof rawName === 'string' && rawName !== '$' ? rawName : '') || t('addElement.storeyFallback', {
         id: formatLocaleNumber(locale, expressId),
       });
       opts.push({ expressId, label: name });
     }
     return opts;
-  }, [effectiveModelId, models, ifcDataStore, t, locale, revision]);
+  }, [effectiveModelId, models, ifcDataStore, mutationViews, mutationVersion, t, locale, revision]);
 
   // Auto-pick the first storey when the user hasn't chosen one or
   // the previous choice no longer exists in the active model. Also
@@ -123,7 +132,6 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
   // colliding numeric id from a different federated model would
   // otherwise be silently reused as the placement target.
   useEffect(() => {
-    if (storeyOptions.length === 0) return;
     if (addElementStoreyId === null) return;
     const stillValid = storeyOptions.some((s) => s.expressId === addElementStoreyId);
     if (!stillValid) setAddElementStoreyId(null);

@@ -21,12 +21,11 @@
  *     `notifications/resources/updated` push every time the user picks.
  */
 
-import { EntityNode } from '@ifc-lite/query';
 import type { EntityRef } from '@ifc-lite/sdk';
 import type { Tool } from './types.js';
 import type { ToolContext } from '../context.js';
 import type { ViewerManager } from '../viewer-manager.js';
-import { okResult, resolveModel } from './util.js';
+import { findByGlobalId, okResult, resolveGlobalIds, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { expandAssemblyRefs } from './viewer-assembly-expansion.js';
 import { formatMaterialsBlock } from './material-summary.js';
@@ -37,14 +36,18 @@ function requireViewer(ctx: ToolContext): ViewerManager {
 }
 
 function refsForGlobalIds(m: ReturnType<typeof resolveModel>, gids: string[]): EntityRef[] {
-  const wanted = new Set(gids);
+  // Use the same queued-create-first, tombstone-aware resolution as the other
+  // MCP tools. The raw store scan here previously named deleted entities and
+  // could not find an entity created in this session (#5236).
+  if (gids.length === 1) {
+    const expressId = findByGlobalId(m, gids[0]); // early return on a single selector
+    return expressId === null ? [] : [{ modelId: m.id, expressId }];
+  }
+  const carriers = resolveGlobalIds(m, gids);
   const refs: EntityRef[] = [];
-  for (const [, list] of m.store.entityIndex.byType) {
-    for (const id of list) {
-      if (refs.length >= wanted.size) break;
-      const node = new EntityNode(m.store, id);
-      if (wanted.has(node.globalId)) refs.push({ modelId: m.id, expressId: id });
-    }
+  for (const gid of new Set(gids)) {
+    const expressId = carriers.get(gid)?.[0];
+    if (expressId !== undefined) refs.push({ modelId: m.id, expressId });
   }
   return refs;
 }

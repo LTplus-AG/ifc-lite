@@ -86,13 +86,19 @@ export async function idsCommand(args: string[]): Promise<void> {
   if (jsonOutput) {
     // Keep the established machine-readable summary shape.
     const summary = bim.ids.summarize(report);
-    printJson({ summary, report });
+    // A ruleset declaring zero specifications evaluated nothing -- reporting
+    // that as a pass would hide an empty ruleset behind a green check (same
+    // rationale as the `error` status in delivery-checks.ts). Surface it as
+    // an explicit field, not only in prose, so a --json consumer can branch
+    // on it without parsing a message string.
+    const emptyRuleset = summary.totalSpecifications === 0;
+    printJson({ summary, report, ...(emptyRuleset ? { error: 'declares zero specifications' } : {}) });
     // Mirror the human-readable path's exit-code contract: a CI pipeline
     // driving this command with --json (the shape any script would pick)
     // must see a non-zero exit on a genuine IDS failure. Without this the
     // JSON path always exited 0 -- a validation failure printed to stdout
     // but reported as success to the shell.
-    process.exitCode = summary.failedSpecifications > 0 ? 1 : 0;
+    process.exitCode = emptyRuleset || summary.failedSpecifications > 0 ? 1 : 0;
     return;
   }
 
@@ -105,6 +111,15 @@ export async function idsCommand(args: string[]): Promise<void> {
   process.stdout.write(`  Specifications: ${summary.passedSpecifications}/${summary.totalSpecifications} passed\n`);
   process.stdout.write(`  Entities:       ${summary.totalEntitiesPassed}/${summary.totalEntitiesChecked} passed\n`);
   process.stdout.write(`  Failed:         ${summary.totalEntitiesFailed} entities in ${summary.failedSpecifications} specs\n`);
+
+  // Zero specifications means nothing was evaluated -- distinguish that
+  // from a genuine pass/fail so a caller does not have to guess which
+  // problem it is looking at (same guard as delivery-checks.ts).
+  if (summary.totalSpecifications === 0) {
+    process.stdout.write(`\n  Result: ERROR (declares zero specifications)\n\n`);
+    process.exitCode = 1;
+    return;
+  }
 
   const exitCode = summary.failedSpecifications > 0 ? 1 : 0;
   process.stdout.write(`\n  Result: ${exitCode === 0 ? 'PASS' : 'FAIL'}\n\n`);

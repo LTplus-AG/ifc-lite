@@ -260,12 +260,18 @@ function checkResultOf(reportContent: string, label: string): 'pass' | 'fail' {
       `Check report ${label} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
     );
   }
-  const summary = (parsed as { summary?: { failedSpecifications?: unknown } }).summary;
+  const summary = (parsed as { summary?: { failedSpecifications?: unknown; totalSpecifications?: unknown } }).summary;
   const failed = summary?.failedSpecifications;
   if (typeof failed !== 'number') {
     throw new Error(
       `Check report ${label} has no summary.failedSpecifications — expected the JSON written by \`ifc-lite ids <model> <rules.ids> --json\``
     );
+  }
+  // A ruleset declaring zero specifications evaluated nothing (#5190):
+  // recording it as a passing check would satisfy a `requiredChecks` policy
+  // with no evidence behind it. `ifc-lite ids --json` exits 1 for it too.
+  if (summary?.totalSpecifications === 0) {
+    throw new Error(`Check report ${label} declares zero specifications — nothing was evaluated, so it is not evidence of a pass`);
   }
   return failed === 0 ? 'pass' : 'fail';
 }

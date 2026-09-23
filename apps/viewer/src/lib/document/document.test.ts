@@ -243,7 +243,7 @@ describe('compose', () => {
     const lines = layout.pages.flatMap((page) => page.items.filter((item) => item.kind === 'text'));
     assert.ok(lines.some((line) => line.text.includes('2026-01-15T10:00:00.000Z')));
     const detail = lines.find((line) => line.text.startsWith(description.slice(0, 20)))!;
-    const counts = lines.find((line) => line.text.startsWith('Checked 10 · Passed 3'))!;
+    const counts = lines.find((line) => line.size === 8 && line.text.startsWith('Checked 10 · Passed 3'))!;
     assert.ok(counts.y > detail.y, 'counts are printed below the description');
     assert.equal(counts.x, detail.x, 'both lines use the same left edge');
   });

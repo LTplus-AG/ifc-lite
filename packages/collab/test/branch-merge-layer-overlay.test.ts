@@ -18,7 +18,7 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { createCollabSession } from '../src/session.js';
-import { forkSession, mergeBranch } from '../src/branch/branch.js';
+import { forkSession, mergeBranch, type BranchSession } from '../src/branch/branch.js';
 import {
   createEntity,
   deleteEntity,
@@ -27,7 +27,7 @@ import {
   setAttribute,
   setChild,
 } from '../src/doc/entity.js';
-import { ENTITY_KEY, GEOMETRY_KEY, entitiesMap } from '../src/doc/schema.js';
+import { ENTITY_KEY, GEOMETRY_KEY, entitiesMap, metaMap } from '../src/doc/schema.js';
 import { createGeometry, getGeometry, setGeometryBlobHash } from '../src/doc/geometry.js';
 
 function pset(doc: Y.Doc, path: string, name: string): Y.Map<unknown> | undefined {
@@ -450,69 +450,107 @@ describe("mergeBranch('layer') does not resurrect a parent-side post-fork deleti
   });
 });
 
-// Regression coverage for the `droppedDeletions` honesty defect: the
-// fork-time entity snapshot is a `WeakMap<Y.Doc, ReadonlySet<string>>`
-// keyed by object identity, populated only by `forkSession`. A branch
-// session rebuilt around a different `Y.Doc` object with equivalent
-// content — the shape of a reload, a second tab, or a server-side merge
-// job reconstructing a session — has no entry, and `droppedDeletions` must
-// report that it cannot know rather than a confident, possibly wrong `0`.
-describe("mergeBranch('layer') droppedDeletions reports null when the fork snapshot is unavailable", () => {
-  it('reports null when branch.session.doc is a different object than forkSession seeded', async () => {
+// #5216 finding 2, and the reconnect hole in finding 1: the fork-time view
+// used to live in a `WeakMap` keyed by the branch's `Y.Doc` object, so a
+// branch session rebuilt around a new doc with the same content (a reload, a
+// second tab, a merge job restoring from persistence) had no entry. Then
+// `droppedDeletions` read a confident 0 and the resurrection guard could not
+// run. The fork state now travels inside the branch doc.
+async function reloaded(branch: BranchSession, drop?: (doc: Y.Doc) => void): Promise<BranchSession> {
+  const doc = new Y.Doc();
+  Y.applyUpdate(doc, Y.encodeStateAsUpdate(branch.session.doc));
+  drop?.(doc);
+  const session = await createCollabSession({
+    roomId: branch.session.roomId,
+    user: { id: 'louis', name: 'Louis' },
+    provider: 'memory',
+    doc,
+  });
+  return { session, parentRoomId: branch.parentRoomId, branchName: branch.branchName };
+}
+
+describe("mergeBranch('layer') keeps its fork-time view across a reload", () => {
+  it('counts the dropped deletion for a branch session rebuilt around a new Y.Doc', async () => {
     const parent = await createCollabSession({
-      roomId: 'dropped-deletions-reload-repro',
+      roomId: 'dropped-deletions-reload',
       user: { id: 'louis', name: 'Louis' },
       provider: 'memory',
     });
     parent.transact(() => createEntity(parent.doc, 'wall', { ifcClass: 'IfcWall' }));
+    const original = await forkSession(parent, { name: 'reload' });
+    original.session.transact(() => deleteEntity(original.session.doc, 'wall'));
+    const branch = await reloaded(original);
 
-    const originalBranch = await forkSession(parent, { name: 'reload-repro' });
-    originalBranch.session.transact(() => deleteEntity(originalBranch.session.doc, 'wall'));
+    expect(mergeBranch(parent, branch, 'layer').droppedDeletions).toBe(1);
 
-    // Simulate a reload: rebuild an equivalent session around a brand-new
-    // Y.Doc object carrying the same content, the way `session.ts`'s
-    // `opts.doc ?? createCollabDoc()` does on reconnect.
-    const reconstructedDoc = new Y.Doc();
-    Y.applyUpdate(reconstructedDoc, Y.encodeStateAsUpdate(originalBranch.session.doc));
-    const reconstructedSession = await createCollabSession({
-      roomId: originalBranch.session.roomId,
-      user: { id: 'louis', name: 'Louis' },
-      provider: 'memory',
-      doc: reconstructedDoc,
-    });
-    const reloadedBranch = {
-      session: reconstructedSession,
-      parentRoomId: originalBranch.parentRoomId,
-      branchName: originalBranch.branchName,
-    };
-
-    const report = mergeBranch(parent, reloadedBranch, 'layer');
-
-    // Honest "unknown", not a wrong "0" — the actual dropped-deletion
-    // count here is 1 (the branch's deletion of 'wall'), but the fork
-    // snapshot needed to compute that is unavailable for this doc object.
-    expect(report.droppedDeletions).toBeNull();
-
-    originalBranch.session.dispose();
-    reconstructedSession.dispose();
+    original.session.dispose();
+    branch.session.dispose();
     parent.dispose();
   });
 
-  it('still reports a number (not null) for the same-object case', async () => {
+  it('does not resurrect a parent-side deletion after the branch session was reloaded', async () => {
     const parent = await createCollabSession({
-      roomId: 'dropped-deletions-same-object',
+      roomId: 'resurrection-after-reload',
+      user: { id: 'louis', name: 'Louis' },
+      provider: 'memory',
+    });
+    parent.transact(() => createEntity(parent.doc, 'door-1', { ifcClass: 'IfcDoor' }));
+    const original = await forkSession(parent, { name: 'reload-resurrection' });
+    original.session.transact(() =>
+      createEntity(original.session.doc, 'window-1', { ifcClass: 'IfcWindow' }),
+    );
+    parent.transact(() => deleteEntity(parent.doc, 'door-1'));
+    const branch = await reloaded(original);
+
+    mergeBranch(parent, branch, 'layer');
+
+    expect(entitiesMap(parent.doc).has('window-1')).toBe(true);
+    expect(entitiesMap(parent.doc).has('door-1')).toBe(false);
+
+    original.session.dispose();
+    branch.session.dispose();
+    parent.dispose();
+  });
+
+  it('merges an entity the branch deleted and re-created after the fork, even though the parent deleted it', async () => {
+    // The branch's re-created entity is a new item, written after the fork:
+    // a real branch contribution, not a fork-inherited leftover.
+    const parent = await createCollabSession({
+      roomId: 'resurrection-guard-recreated',
+      user: { id: 'louis', name: 'Louis' },
+      provider: 'memory',
+    });
+    parent.transact(() => createEntity(parent.doc, 'door-1', { ifcClass: 'IfcDoor' }));
+    const branch = await forkSession(parent, { name: 'recreate-door' });
+    branch.session.transact(() => deleteEntity(branch.session.doc, 'door-1'));
+    branch.session.transact(() =>
+      createEntity(branch.session.doc, 'door-1', { ifcClass: 'IfcDoor' }),
+    );
+    parent.transact(() => deleteEntity(parent.doc, 'door-1'));
+
+    mergeBranch(parent, branch, 'layer');
+
+    expect(entitiesMap(parent.doc).has('door-1')).toBe(true);
+
+    branch.session.dispose();
+    parent.dispose();
+  });
+
+  it('reports null, never 0, for a branch doc that carries no fork record', async () => {
+    const parent = await createCollabSession({
+      roomId: 'dropped-deletions-legacy-branch',
       user: { id: 'louis', name: 'Louis' },
       provider: 'memory',
     });
     parent.transact(() => createEntity(parent.doc, 'wall', { ifcClass: 'IfcWall' }));
+    const original = await forkSession(parent, { name: 'legacy' });
+    original.session.transact(() => deleteEntity(original.session.doc, 'wall'));
+    // A branch forked before the fork state was persisted has no record.
+    const branch = await reloaded(original, (doc) => metaMap(doc).delete('branch.forkStateVector'));
 
-    const branch = await forkSession(parent, { name: 'same-object' });
-    branch.session.transact(() => deleteEntity(branch.session.doc, 'wall'));
+    expect(mergeBranch(parent, branch, 'layer').droppedDeletions).toBeNull();
 
-    const report = mergeBranch(parent, branch, 'layer');
-
-    expect(report.droppedDeletions).toBe(1);
-
+    original.session.dispose();
     branch.session.dispose();
     parent.dispose();
   });

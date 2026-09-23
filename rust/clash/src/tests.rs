@@ -1156,3 +1156,73 @@ fn tritri_distance_pa_pb_identity_via_b_vertex() {
         "pB must be the point ON TRIANGLE B (z~5), got {p_b:?}"
     );
 }
+
+
+/// #5355, symptom 1 of 2: classification depends on where the model sits.
+///
+/// `detect_obb` grouped face normals into three families and then required
+/// them to be mutually perpendicular to within an ABSOLUTE `OBB_EPS = 1e-6`.
+/// The normals are computed from vertices that arrived as f32, so their
+/// direction error grows with coordinate magnitude and shrinks with feature
+/// size. For this 0.05 m thick rotated panel the worst `|dot|` between two
+/// genuinely perpendicular faces measured 2.25e-7 at the origin, 1.19e-6 at
+/// 7.4 m and 2.67e-4 at 1 km — so a perfect box stopped being recognised as
+/// a box purely because it had been translated, and the pair silently fell
+/// off the measured-OBB path onto the AABB estimate.
+///
+/// Every offset here is a RIGID translation of the same geometry, so every
+/// answer must be the same answer. Kills: reverting the orthogonality
+/// tolerance to a bare `OBB_EPS`.
+#[test]
+fn a_translated_box_is_still_a_box_5355() {
+    let theta = 0.4f32;
+    // Thin panel: the thinness is load-bearing. A chunky box resolves its
+    // normals sharply enough to pass even the absolute tolerance, which is
+    // why the defect went unnoticed.
+    let offsets: [f32; 6] = [0.0, 7.4, -55.6, 123.456, 500.0, 1000.0];
+    for off in offsets {
+        let part = rotated_box_hxyz(off, off * 0.5, -off * 0.25, 0.025, 0.75, 1.5, theta);
+        let mesh = TriMesh::new(part.0.iter().map(|&v| v as f64).collect(), part.1.clone());
+        let obb = crate::obb::detect_obb(&mesh);
+        assert!(
+            obb.is_some(),
+            "a rigid translation to {off} m must not stop a box being a box"
+        );
+        let obb = obb.expect("checked above");
+        // The recovered half-extents must still be the authored ones. A
+        // tolerance loose enough to accept anything would pass the
+        // `is_some()` above while returning nonsense.
+        let mut got = obb.half;
+        got.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
+        let want = [0.025f64, 0.75, 1.5];
+        for (g, w) in got.iter().zip(want.iter()) {
+            assert!(
+                (g - w).abs() < 1e-3,
+                "half-extents at {off} m should be {want:?}, got {got:?}"
+            );
+        }
+    }
+}
+
+/// The other side of the same tolerance: loosening it must not start
+/// accepting shapes that are not boxes. A triangular prism has a 4th
+/// face-normal family and an L-prism has a third offset plane on one axis;
+/// both must still be rejected at every distance from the origin.
+///
+/// Kills: replacing the derived bound with something unconditionally large
+/// (e.g. dropping the orthogonality test, or a tolerance with no `sin`
+/// denominator), which would make `a_translated_box_is_still_a_box_5355`
+/// pass vacuously.
+#[test]
+fn a_non_box_is_still_not_a_box_5355() {
+    assert!(
+        crate::obb::detect_obb(&l_prism()).is_none(),
+        "an L-shaped footprint has a third offset plane and is not a box"
+    );
+    let prism = tri_prism([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]], 0.0, 1.0);
+    let mesh = TriMesh::new(prism.0.iter().map(|&v| v as f64).collect(), prism.1.clone());
+    assert!(
+        crate::obb::detect_obb(&mesh).is_none(),
+        "a triangular prism has a 4th face-normal family and is not a box"
+    );
+}

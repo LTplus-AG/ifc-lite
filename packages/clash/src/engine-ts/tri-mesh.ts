@@ -6,7 +6,8 @@ import { BVH, type AABB, type MeshWithBounds } from '@ifc-lite/spatial';
 import type { Mat4, Vec3 } from '../types.js';
 import { sub, cross, dot, distSq } from '../math/vec3.js';
 import { closestPtPointTriangle } from '../math/triangle-distance.js';
-import { detectObb, type Obb } from './obb.js';
+import { type Obb } from './obb.js';
+import { detectObb } from './obb-detect.js';
 
 /**
  * Fixed ray direction for point-in-solid tests: `normalize([1, √3, √5])`.

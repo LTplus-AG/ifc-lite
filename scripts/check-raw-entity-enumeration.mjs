@@ -58,12 +58,16 @@ function main() {
   }
   let totalBase = 0;
   let totalCurrent = 0;
+  let scannedFiles = 0;
   const newSites = [];
   const exceptions = [];
   for (const root of SCAN_ROOTS) {
     const fullRoot = join(ROOT, root);
     if (!existsSync(fullRoot)) throw new Error(`Missing scan root: ${root}`);
-    for (const fullPath of sourceFiles(fullRoot)) {
+    const files = sourceFiles(fullRoot);
+    if (files.length === 0) throw new Error(`No production TypeScript files under scan root: ${root}`);
+    for (const fullPath of files) {
+      scannedFiles++;
       const path = relative(ROOT, fullPath).replaceAll('\\', '/');
       const text = readFileSync(fullPath, 'utf8');
       const current = scanRawEntityAccess(path, text);
@@ -81,16 +85,13 @@ function main() {
       exceptions.push(...current.filter((hit) => hit.reason).map((hit) => `${path}:${hit.line}: ${hit.reason}`));
     }
   }
-  if (totalBase < 5 || totalCurrent < 1) {
-    throw new Error(`Vacuous raw-access scan: ${totalBase} base, ${totalCurrent} current hits`);
-  }
   for (const exception of exceptions) console.log(`raw-access exception: ${exception}`);
   if (newSites.length > 0) {
     for (const hit of newSites) console.error(`NEW raw entity access: ${hit.key} at line ${hit.line}`);
     console.error('Route live-session queries through an effective-entity accessor, or document an intentional raw read with @raw-entity-enumeration-ok.');
     process.exitCode = 1;
   } else {
-    console.log(`check-raw-entity-enumeration: OK (${totalCurrent} current raw-access sites checked against their file baselines; ${exceptions.length} explicit exceptions)`);
+    console.log(`check-raw-entity-enumeration: OK (${scannedFiles} source files, ${totalCurrent} current raw-access sites checked against their file baselines; ${exceptions.length} explicit exceptions)`);
   }
 }
 

@@ -28,6 +28,19 @@ function siblingOrdinal(node) {
   return ordinal;
 }
 
+function callbackSite(call) {
+  for (let parent = call.parent; parent; parent = parent.parent) {
+    if (ts.isVariableDeclaration(parent) || ts.isPropertyAssignment(parent)) {
+      return `${call.expression.getText()}@${parent.name.getText()}`;
+    }
+    if (ts.isExpressionStatement(parent) || ts.isReturnStatement(parent)) {
+      return `${call.expression.getText()}@${ts.SyntaxKind[parent.kind]}#${siblingOrdinal(parent)}`;
+    }
+    if (ts.isFunctionLike(parent)) break;
+  }
+  return `${call.expression.getText()}#${siblingOrdinal(call)}`;
+}
+
 function ownerOf(node) {
   const owners = [];
   for (let parent = node.parent; parent; parent = parent.parent) {
@@ -42,7 +55,7 @@ function ownerOf(node) {
       if (ts.isVariableDeclaration(holder) || ts.isPropertyAssignment(holder)) {
         owners.push(holder.name.getText());
       } else if (ts.isCallExpression(holder)) {
-        owners.push(holder.expression.getText());
+        owners.push(callbackSite(holder));
       } else {
         owners.push('<anonymous>');
       }

@@ -43,6 +43,13 @@ test('#5236 moving a raw read between callbacks cannot reuse its old budget slot
   assert.equal(excessRawAccess(old, moved).length, 1);
 });
 
+test('#5236 identical call names in separate callbacks keep separate slots', () => {
+  const old = scan('function q(items, store) { const a = items.map(() => store.entityIndex.byType); const b = items.map(() => use()); }');
+  const moved = scan('function q(items, store) { const a = items.map(() => use()); const b = items.map(() => store.entityIndex.byType); }');
+  assert.equal(old.length, 1);
+  assert.equal(excessRawAccess(old, moved).length, 1);
+});
+
 test('#5236 same-named owners have separate budget slots', () => {
   const old = scan('function query() { return store.entityIndex.byType; }');
   const moved = scan('function query() { return []; } function query() { return store.entityIndex.byType; }');
@@ -63,6 +70,7 @@ test('#5236 raw-access gate catches table-count loops and byId point reads', () 
 
 test('#5236 removal shrinks the raw-access census', () => {
   const old = scan('function query(m) { for (const row of m.store.entityIndex.byType) use(row); }');
+  assert.equal(old.length, 1);
   assert.deepEqual(excessRawAccess(old, scan('function query(m) { use(m); }')), []);
 });
 

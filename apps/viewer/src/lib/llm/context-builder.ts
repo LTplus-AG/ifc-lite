@@ -39,7 +39,7 @@ function countEffectiveEntities(
     const type = authoredType
       ? IFC_ENTITY_NAMES[authoredType.toUpperCase()] ?? authoredType
       : store.entities.getTypeName(entity.expressId);
-    if (type && type !== 'Unknown') typeCounts[type] = (typeCounts[type] ?? 0) + 1;
+    if (type) typeCounts[type] = (typeCounts[type] ?? 0) + 1;
   }
   return count;
 }

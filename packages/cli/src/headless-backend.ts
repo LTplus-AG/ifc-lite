@@ -88,7 +88,8 @@ import { createStructuralAdapter } from './headless-backend-structural.js';
 import { createScheduleAdapter } from './headless-backend-schedule.js';
 import { exportHbjson, exportDfjson } from './energy-export.js';
 import { foldQueuedRelated, foldQueuedRelationshipData, supersededRelationshipIds } from './query-overlay-relations.js';
-import { applyParsedEntityOverrides, overlayEntityData, overlayProperties, overlayQuantities, foldNewEntities } from './query-overlay.js';
+import { applyParsedEntityOverrides, overlayEntityData, overlayProperties, overlayQuantities } from './query-overlay.js';
+import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 
 // `expandTypes` used to be defined here; it now comes from `@ifc-lite/parser`,
 // shared with the other query backends (see `query-backend-maps.ts`). Re-exported
@@ -324,38 +325,26 @@ export class HeadlessBackend implements BimBackend {
         const results: EntityData[] = [];
         const view = getMutationView();
 
-        let entityIds: number[];
-        if (descriptor.types && descriptor.types.length > 0) {
-          entityIds = [];
-          for (const type of expandTypes(descriptor.types, store.schemaVersion)) {
-            const typeIds = store.entityIndex.byType.get(type) ?? [];
-            for (const id of typeIds) entityIds.push(id);
+        const types = descriptor.types && descriptor.types.length > 0
+          ? expandTypes(descriptor.types, store.schemaVersion) : undefined;
+        for (const { expressId, type, overlayCreated } of iterateEffectiveEntityIds(store, view, types)) {
+          if (!types && !isProductType(type)) continue;
+          const ref = { modelId: MODEL_ID, expressId };
+          if (overlayCreated) {
+            const created = overlayEntityData(view, ref, store.schemaVersion);
+            if (created) results.push(created);
+            continue;
           }
-        } else {
-          entityIds = [];
-          for (const [typeName, ids] of store.entityIndex.byType) {
-            if (isProductType(typeName)) {
-              for (const id of ids) entityIds.push(id);
-            }
-          }
-        }
-
-        for (const expressId of entityIds) {
-          if (expressId === 0) continue;
-          if (view?.isDeleted(expressId)) continue; // tombstoned this session
           const node = new EntityNode(store, expressId);
           results.push({
-            ref: { modelId: MODEL_ID, expressId },
+            ref,
             globalId: node.globalId,
             name: node.name,
-            type: node.type,
+            type: view?.getEntityTypeMutation(expressId)?.newType ?? node.type,
             description: node.description,
             objectType: node.objectType,
           });
         }
-        if (view) results.push(...foldNewEntities(
-          view, descriptor.types, (t) => expandTypes(t, store.schemaVersion), isProductType, MODEL_ID, store.schemaVersion,
-        ));
         let filtered = results;
         if (descriptor.filters && descriptor.filters.length > 0) {
           const propsCache = new Map<number, PropertySetData[]>();

@@ -115,27 +115,6 @@ export function overlayEntityData(
   return createdEntityData(effectiveCreatedEntity(view, created, schemaVersion), ref.modelId);
 }
 
-/** This session's overlay-only entities matching an `entities()` query's type criteria. */
-export function foldNewEntities(
-  view: MutablePropertyView,
-  types: string[] | undefined,
-  expandTypes: (types: string[]) => string[],
-  isProductType: (upperType: string) => boolean,
-  modelId: string,
-  schemaVersion: string,
-): EntityData[] {
-  const wantedTypes = types && types.length > 0 ? new Set(expandTypes(types)) : null;
-  const out: EntityData[] = [];
-  for (const created of view.getNewEntities()) {
-    if (view.isDeleted(created.expressId)) continue;
-    const effective = effectiveCreatedEntity(view, created, schemaVersion);
-    const upperType = effective.type.toUpperCase();
-    const matches = wantedTypes ? wantedTypes.has(upperType) : isProductType(upperType);
-    if (matches) out.push(createdEntityData(effective, modelId));
-  }
-  return out;
-}
-
 /**
  * `getProperties`/`getQuantities`'s overlay half. Unlike {@link overlayEntityData},
  * this has no per-entity "not in the overlay" case to fall through on:

@@ -6,53 +6,35 @@ import { describe, it, expect } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import { convertStepLine } from './schema-converter.js';
 import { StepExporter } from './step-exporter.js';
-import { Ifc4SlotFill } from './schema-converter-ifc4-slots.js';
 
 // #5202 finding 2: cardinality tightening on a downgrade to IFC4 was
 // entirely unguarded (only `toSchema === 'IFC2X3'` had a fill/count
 // mechanism). `IfcProjectedCRS.Name` is optional in IFC4X3 and mandatory in
 // IFC4, at position 0 — a valid IFC4X3 record legitimately carries `$` there.
 
+// Every test enters through a seam that exists without the fix
+// (`convertStepLine`, `StepExporter`), so reverting the production change
+// yields a failed assertion rather than a missing import.
 describe('schema-converter: IFC4-target required slots (#5202)', () => {
-  it('the exact IfcProjectedCRS conversion from the issue: Name stays $ but is now COUNTED', () => {
-    const line = "#10=IFCPROJECTEDCRS($,'A description',$,$,$,$,$);";
-    const slots = new Ifc4SlotFill();
-    const result = convertStepLine(line, 'IFC4X3', 'IFC4', undefined, undefined, undefined, slots);
-    // Name (IfcLabel) has no honest default — this table never invents one —
-    // so the emitted text is byte-identical to the input, exactly like the
-    // issue's own executed OUT. The record is still not valid IFC4; the
-    // caller now has a way to find out.
-    expect(result).toBe("#10=IFCPROJECTEDCRS($,'A description',$,$,$,$,$);");
-    expect(slots.warnings()).toEqual([
-      "1 slot(s) keep $ where IFC4 requires a value and the schema offers no default that claims " +
-      'nothing (measures, labels, identifiers, references, and every enum); the file is not valid IFC4 (#5202).',
-    ]);
-  });
-
   it('fills a BOOLEAN-typed required slot the target left optional-and-$', () => {
-    // IfcAdvancedFace: IFC4 requires SameSense (index 2, BOOLEAN) — see the
-    // generated table. Bounds/FaceSurface are entity references (no honest
-    // default) and stay $; SameSense gets IFC4's own "claims nothing" value.
-    const line = "#20=IFCADVANCEDFACE($,$,$);";
-    const slots = new Ifc4SlotFill();
-    const result = convertStepLine(line, 'IFC4X3', 'IFC4', undefined, undefined, undefined, slots);
-    expect(result).toBe('#20=IFCADVANCEDFACE($,$,.F.);');
-    expect(slots.warnings()[0]).toContain('2 slot(s)');
+    // IfcAdvancedFace: IFC4 requires SameSense (index 2, BOOLEAN). Bounds and
+    // FaceSurface are entity references (no honest default) and stay $.
+    expect(convertStepLine('#20=IFCADVANCEDFACE($,$,$);', 'IFC4X3', 'IFC4')).toBe('#20=IFCADVANCEDFACE($,$,.F.);');
+    expect(convertStepLine('#21=IFCADVANCEDFACE($,$,$);', 'IFC5', 'IFC4')).toBe('#21=IFCADVANCEDFACE($,$,.F.);');
   });
 
-  it('does not touch a record that already carries a valid value in every required slot', () => {
-    const line = "#30=IFCPROJECTEDCRS('EPSG:27700','A description',$,$,$,$,$);";
-    const slots = new Ifc4SlotFill();
-    const result = convertStepLine(line, 'IFC4X3', 'IFC4', undefined, undefined, undefined, slots);
-    expect(result).toBe(line);
-    expect(slots.warnings()).toEqual([]);
+  it('leaves an IfcLabel slot $ (never invents a label); the exporter counts it, below', () => {
+    const line = "#10=IFCPROJECTEDCRS($,'A description',$,$,$,$,$);";
+    expect(convertStepLine(line, 'IFC4X3', 'IFC4')).toBe(line);
   });
 
   it('does not overwrite an already-populated BOOLEAN required slot', () => {
-    const line = "#25=IFCADVANCEDFACE($,$,.T.);";
-    const slots = new Ifc4SlotFill();
-    const result = convertStepLine(line, 'IFC4X3', 'IFC4', undefined, undefined, undefined, slots);
-    expect(result).toBe(line);
+    const line = '#25=IFCADVANCEDFACE($,$,.T.);';
+    expect(convertStepLine(line, 'IFC4X3', 'IFC4')).toBe(line);
+  });
+
+  it('leaves IFC2X3 -> IFC4 alone (the control pin that scoped this fix)', () => {
+    expect(convertStepLine('#26=IFCADVANCEDFACE($,$,$);', 'IFC2X3', 'IFC4')).toBe('#26=IFCADVANCEDFACE($,$,$);');
   });
 
   it('IFC2X3-target conversions are unaffected: still exactly the pre-#5202 behaviour', () => {
@@ -83,8 +65,8 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;`;
 
-  async function exportAs(schema: 'IFC4' | 'IFC4X3') {
-    const bytes = new TextEncoder().encode(IFC4X3_MODEL);
+  async function exportAs(schema: 'IFC4' | 'IFC4X3', model = IFC4X3_MODEL) {
+    const bytes = new TextEncoder().encode(model);
     const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
     const result = new StepExporter(store).export({ schema });
     return { text: new TextDecoder().decode(result.content), warnings: result.stats.warnings };
@@ -93,7 +75,15 @@ END-ISO-10303-21;`;
   it('warns that IfcProjectedCRS.Name stays $ in the IFC4 file', async () => {
     const { text, warnings } = await exportAs('IFC4');
     expect(text).toContain("#10=IFCPROJECTEDCRS($,'A description',$,$,$,$,$);");
-    expect(warnings.some((w) => w.includes('where IFC4 requires a value') && w.includes('#5202'))).toBe(true);
+    expect(warnings).toContain(
+      '1 slot(s) keep $ where IFC4 requires a value and the schema offers no default that claims ' +
+        'nothing (measures, labels, identifiers, references, and every enum); the file is not valid IFC4 (#5202).',
+    );
+  });
+
+  it('stays quiet when the IFC4-mandatory slot is already populated', async () => {
+    const { warnings } = await exportAs('IFC4', IFC4X3_MODEL.replace("IFCPROJECTEDCRS($,", "IFCPROJECTEDCRS('EPSG:27700',"));
+    expect(warnings.some((w) => w.includes('#5202'))).toBe(false);
   });
 
   it('stays quiet when no conversion to IFC4 runs', async () => {

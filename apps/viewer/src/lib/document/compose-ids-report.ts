@@ -14,7 +14,9 @@ import type { LayoutCursor } from './compose-table.js';
 
 export const IDS_REPORT_TITLE_HEIGHT = 18;
 const SUMMARY_HEIGHT = 14;
+const DATE_HEIGHT = 14;
 const CHECK_ROW_HEIGHT = 26;
+const DESCRIBED_CHECK_ROW_HEIGHT = 38;
 
 /** What the composer needs of a resolved IDS report block. */
 export type IdsReportLayoutBlock = IdsReportBlock;
@@ -24,7 +26,8 @@ const pct = (n: number): string => `${n}%`;
 
 export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCursor, contentW: number, blockGap: number): void {
   const title = `IDS report: ${block.sourceName || 'Untitled'}`;
-  const lead = IDS_REPORT_TITLE_HEIGHT + SUMMARY_HEIGHT + (block.checks.length > 0 ? CHECK_ROW_HEIGHT : 0);
+  const firstRowHeight = block.checks[0]?.longDescription ? DESCRIBED_CHECK_ROW_HEIGHT : CHECK_ROW_HEIGHT;
+  const lead = IDS_REPORT_TITLE_HEIGHT + SUMMARY_HEIGHT + DATE_HEIGHT + firstRowHeight;
   cursor.ensure(lead);
   cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 11, size: 11, bold: true, gray: 0, text: cursor.truncate(title, contentW, 11, true) });
   cursor.y += IDS_REPORT_TITLE_HEIGHT;
@@ -35,20 +38,25 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
     text: cursor.truncate(`Checked ${checked} · Passed ${passed} · Failed ${failed} · ${pct(passRate)} passed`, contentW, 9, false),
   });
   cursor.y += SUMMARY_HEIGHT;
+  cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 8, bold: false, gray: 130,
+    text: cursor.truncate(`Validation run: ${block.generatedAt}`, contentW, 8, false) });
+  cursor.y += DATE_HEIGHT;
 
   for (const check of block.checks) {
-    cursor.ensure(CHECK_ROW_HEIGHT);
+    const rowHeight = check.longDescription ? DESCRIBED_CHECK_ROW_HEIGHT : CHECK_ROW_HEIGHT;
+    cursor.ensure(rowHeight);
     const name = check.shortDescription || check.id;
     cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 9.5, bold: true, gray: 0, text: cursor.truncate(name, contentW, 9.5, true) });
     if (check.longDescription) {
       cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 21, size: 8, bold: false, gray: 130, text: cursor.truncate(check.longDescription, contentW, 8, false) });
     }
-    const countsY = check.longDescription ? cursor.y + 21 : cursor.y + 10;
+    // Counts occupy their own line so a long description cannot print over them.
+    const countsY = check.longDescription ? cursor.y + 32 : cursor.y + 21;
     cursor.push({
-      kind: 'text', x: cursor.x + Math.max(0, contentW - 220), y: countsY, size: 8, bold: false, gray: 60,
-      text: `Checked ${check.checked} · Passed ${check.passed} · Failed ${check.failed} · ${pct(check.passRate)}`,
+      kind: 'text', x: cursor.x, y: countsY, size: 8, bold: false, gray: 60,
+      text: cursor.truncate(`Checked ${check.checked} · Passed ${check.passed} · Failed ${check.failed} · ${pct(check.passRate)}`, contentW, 8, false),
     });
-    cursor.y += CHECK_ROW_HEIGHT;
+    cursor.y += rowHeight;
   }
 
   if (block.checks.length === 0) {

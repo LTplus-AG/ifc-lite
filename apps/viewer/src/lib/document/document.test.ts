@@ -230,6 +230,24 @@ describe('document file', () => {
 });
 
 describe('compose', () => {
+  it('prints the IDS run timestamp and keeps long descriptions clear of counts (#5125 review)', () => {
+    const description = 'A long IDS requirement description that previously printed under the check counts';
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'document-time', measure: estimateTextWidth,
+      blocks: [{
+        kind: 'ids-report', id: 'ids', sourceName: 'Rules', generatedAt: '2026-01-15T10:00:00.000Z',
+        summary: { checked: 10, passed: 3, failed: 7, passRate: 30 },
+        checks: [{ id: 'fire', shortDescription: 'Fire rating', longDescription: description, checked: 10, passed: 3, failed: 7, passRate: 30 }],
+      }],
+    });
+    const lines = layout.pages.flatMap((page) => page.items.filter((item) => item.kind === 'text'));
+    assert.ok(lines.some((line) => line.text.includes('2026-01-15T10:00:00.000Z')));
+    const detail = lines.find((line) => line.text.startsWith(description.slice(0, 20)))!;
+    const counts = lines.find((line) => line.text.startsWith('Checked 10 · Passed 3'))!;
+    assert.ok(counts.y > detail.y, 'counts are printed below the description');
+    assert.equal(counts.x, detail.x, 'both lines use the same left edge');
+  });
+
   it('wraps by the measure, breaks pages, and keeps a heading with its next line', () => {
     assert.deepEqual(wrapText('one two three four', 40, 10, false, estimateTextWidth), ['one two', 'three', 'four']);
     assert.deepEqual(wrapText('a\n\nb', 100, 10, false, estimateTextWidth), ['a', '', 'b']);

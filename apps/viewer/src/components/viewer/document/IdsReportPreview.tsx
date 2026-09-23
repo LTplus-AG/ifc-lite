@@ -32,6 +32,9 @@ export function IdsReportPreview({ block }: IdsReportPreviewProps) {
   return (
     <div data-block-ids-report>
       <div className="truncate text-sm font-semibold" title={block.sourceName}>{block.sourceName}</div>
+      <div className={`text-[10px] ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>
+        {t('document.preview.idsReportGeneratedAt', { timestamp: block.generatedAt })}
+      </div>
       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 rounded border border-neutral-200 bg-neutral-50 px-2 py-1.5">
         <Stat label={t('document.preview.idsReportChecked')} value={checked.toLocaleString(locale)} />
         <Stat label={t('document.preview.idsReportPassed')} value={passed.toLocaleString(locale)} />

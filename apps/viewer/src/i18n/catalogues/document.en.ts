@@ -186,6 +186,7 @@ export const documentEn = {
   'document.preview.idsReportPassed': 'Passed',
   'document.preview.idsReportFailed': 'Failed',
   'document.preview.idsReportPassRate': 'Pass rate',
+  'document.preview.idsReportGeneratedAt': 'Validation run: {timestamp}',
   'document.preview.idsReportChecksCount': {
     one: '{countDisplay} check',
     other: '{countDisplay} checks',

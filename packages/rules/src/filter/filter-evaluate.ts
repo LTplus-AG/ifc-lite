@@ -66,6 +66,7 @@ import {
   toNumericIterable,
 } from './filter-iteration.js';
 import { selectIterationSource, orderRulesByCost } from './filter-iteration-source.js';
+import { buildFilterResult, effectiveFilterFields, type EffectiveFilterFields } from './effective-filter-fields.js';
 import { throwAbort, yieldToEventLoop } from './filter-evaluate-yield.js';
 import {
   modelPrunedUnderAnd,
@@ -176,8 +177,9 @@ export function evaluateFilterRules(
     // (the full-table fast-path) include zero-padded slots; bucket
     // sources (byType / byStorey) never do, so this is a no-op there.
     if (!expressId) continue;
-    if (!evaluateOneEntity(ctx, expressId, orderedRules, combinator)) continue;
-    out.push(buildResult(modelId, ctx, expressId));
+    const fields = evaluateOneEntity(ctx, expressId, orderedRules, combinator);
+    if (!fields) continue;
+    out.push(buildFilterResult(modelId, expressId, fields));
   }
   return out;
 }
@@ -251,7 +253,7 @@ export async function evaluateFilterRulesFederated(
     // rules still contributes entities the other rules admit (#4215).
     if (combinator === 'AND' && modelPrunedUnderAnd(orderedRules, scope)) continue;
     const candidates = options.candidateExpressIdsByModel?.get(m.id);
-    const source = candidates ?? selectIterationSource(m.store, rules, combinator, undefined, m.id);
+    const source = candidates ?? selectIterationSource(m.store, rules, combinator, undefined, m.id, m.mutationView);
     const arr = materialiseNumericIterable(source);
     if (arr === null) {
       totalKnown = false;
@@ -299,8 +301,9 @@ export async function evaluateFilterRulesFederated(
         for (let j = i; j < end; j++) {
           const expressId = arr[j];
           if (!expressId) continue;
-          if (!evaluateOneEntity(ctx, expressId, orderedRules, combinator)) continue;
-          out.push(buildResult(plan.modelId, ctx, expressId));
+          const fields = evaluateOneEntity(ctx, expressId, orderedRules, combinator);
+          if (!fields) continue;
+          out.push(buildFilterResult(plan.modelId, expressId, fields));
           if (out.length >= limit) break;
         }
         scanned += end - i;
@@ -312,8 +315,9 @@ export async function evaluateFilterRulesFederated(
       for (const expressId of plan.iter as Iterable<number>) {
         if (out.length >= limit) break;
         if (!expressId) continue;
-        if (evaluateOneEntity(ctx, expressId, orderedRules, combinator)) {
-          out.push(buildResult(plan.modelId, ctx, expressId));
+        const fields = evaluateOneEntity(ctx, expressId, orderedRules, combinator);
+        if (fields) {
+          out.push(buildFilterResult(plan.modelId, expressId, fields));
         }
         buffered++;
         scanned++;
@@ -366,7 +370,9 @@ function evaluateOneEntity(
   expressId: number,
   orderedRules: readonly FilterRule[],
   combinator: Combinator,
-): boolean {
+): EffectiveFilterFields | null {
+  if (ctx.mutationView?.isDeleted(expressId)) return null;
+  const fields = effectiveFilterFields(ctx.store, ctx.mutationView, expressId);
   // Lazy pset/qto reads — only invoked when an ordered rule for that
   // family actually needs the data. Cheap-first ordering means cheap
   // rules check first; AND short-circuit on a cheap miss skips the
@@ -426,12 +432,13 @@ function evaluateOneEntity(
       ctx.hasMaterialRule ? matNamesFor : null,
       ctx.hasClassificationRule ? classFor : null,
       ctx.hasAttributeRule ? attrsFor : null,
+      fields,
     );
     ruleResults.push(result);
-    if (combinator === 'AND' && !result) return false;
-    if (combinator === 'OR' && result) return true;
+    if (combinator === 'AND' && !result) return null;
+    if (combinator === 'OR' && result) return fields;
   }
-  return combineRuleResults(combinator, ruleResults);
+  return combineRuleResults(combinator, ruleResults) ? fields : null;
 }
 
 /**
@@ -479,6 +486,7 @@ function evaluateRule(
   matNamesFor: (() => string[]) | null,
   classFor: (() => readonly ClassificationInfo[]) | null,
   attrsFor: (() => AttrRows) | null,
+  fields: EffectiveFilterFields,
 ): boolean {
   if (isModelScopedRule(rule)) return modelScopedRuleMatches(rule, ctx.scope);
   switch (rule.kind) {
@@ -493,7 +501,7 @@ function evaluateRule(
       return setOpMatches(rule.op, storeyName, rule.values);
     }
     case 'ifcType':
-      return setOpMatches(rule.op, ctx.table.getTypeName(expressId), rule.values);
+      return setOpMatches(rule.op, fields.ifcType, rule.values);
     case 'predefinedType': {
       // No columnar accessor - resolve from the source buffer, per-store (#1462). A live edit (#4946) wins.
       const pt = mutatedAttributeValue(ctx.mutationView, expressId, 'PredefinedType')
@@ -504,11 +512,10 @@ function evaluateRule(
     }
     case 'name': {
       // getNameOrUndefined: absent must reach as undefined, not '' (#4930). A live edit (#4946) wins.
-      const name = mutatedAttributeValue(ctx.mutationView, expressId, 'Name') ?? ctx.table.getNameOrUndefined(expressId);
-      return stringOpMatches(rule.op, name, rule.value, rule.valueKind);
+      return stringOpMatches(rule.op, fields.name, rule.value, rule.valueKind);
     }
     case 'globalId':
-      return globalIdOpMatches(rule.op, ctx.table.getGlobalId(expressId), rule.values);
+      return globalIdOpMatches(rule.op, fields.globalId, rule.values);
     case 'attribute': {
       if (!attrsFor) return false;
       return matchAttributeRule(rule, attrsFor());
@@ -554,16 +561,6 @@ function relatingTypeNameOf(ctx: EvalContext, expressId: number): string | undef
   const typeIds = ctx.store.relationships.getRelated(expressId, RelationshipType.DefinesByType, 'inverse');
   if (typeIds.length === 0) return null;
   return ctx.table.getNameOrUndefined(typeIds[0]);
-}
-
-function buildResult(modelId: string, ctx: EvalContext, expressId: number): FilteredElement {
-  return {
-    modelId,
-    expressId,
-    ifcType: ctx.table.getTypeName(expressId),
-    name: ctx.table.getName(expressId),
-    globalId: ctx.table.getGlobalId(expressId),
-  };
 }
 
 // ── Exposed for tests ────────────────────────────────────────────────────────

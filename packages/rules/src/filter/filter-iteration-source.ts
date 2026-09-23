@@ -12,7 +12,8 @@
  * an `EvalContext`.
  */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { isQueryableObjectType, type IfcDataStore } from '@ifc-lite/parser';
+import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
 
 import type { Combinator, FilterRule } from './filter-rules.js';
 import { unionByStorey } from './filter-match.js';
@@ -27,6 +28,21 @@ export function iterateAllExpressIds(store: IfcDataStore): ArrayLike<number> {
   return store.entities.expressId;
 }
 
+function* effectiveFilterIds(
+  store: IfcDataStore,
+  view: MutablePropertyView,
+  types?: readonly string[],
+): IterableIterator<number> {
+  for (const { expressId, type, overlayCreated } of iterateEffectiveEntityIds(store, view, types)) {
+    // An untyped search historically scanned EntityTable rows, not every STEP
+    // geometry primitive. A typed search already used the source type bucket.
+    if (!types && (overlayCreated
+      ? !isQueryableObjectType(type)
+      : store.entities.getTypeName(expressId) === 'Unknown')) continue;
+    yield expressId;
+  }
+}
+
 /**
  * Decide which expressIds the evaluator walks. Public for testability —
  * consumers should only depend on the results returned, not on the
@@ -39,9 +55,23 @@ export function selectIterationSource(
   combinator: Combinator,
   candidateExpressIds: Iterable<number> | undefined,
   modelId?: string,
+  mutationView?: MutablePropertyView,
 ): ArrayLike<number> | Iterable<number> {
   // Caller-supplied narrowing wins (Tier-1 candidates).
   if (candidateExpressIds !== undefined) return candidateExpressIds;
+
+  if (mutationView?.hasPendingChanges()) {
+    // A source type bucket omits entities retyped into it and newly created
+    // entities. Keep the same AND narrowing when it is safe, but apply it to
+    // the effective ID set rather than the parser's immutable index.
+    if (combinator === 'AND') {
+      const typeRule = rules.find((rule) => rule.kind === 'ifcType' && rule.op === 'in' && rule.values.length > 0);
+      if (typeRule?.kind === 'ifcType') {
+        return effectiveFilterIds(store, mutationView, typeRule.values);
+      }
+    }
+    return effectiveFilterIds(store, mutationView);
+  }
 
   // Prefilter only applies under AND. OR rules are unioned; you can't
   // shrink the candidate set from a single OR clause without losing

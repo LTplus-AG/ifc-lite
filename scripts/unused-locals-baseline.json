@@ -1,5 +1,5 @@
 {
-  "apps/viewer": 235,
+  "apps/viewer": 232,
   "apps/viewer-embed": 237,
   "examples/babylonjs-viewer": 1,
   "examples/collab-demo": 1,
@@ -12,7 +12,7 @@
   "packages/clash": 1,
   "packages/cli": 6,
   "packages/codegen": 5,
-  "packages/collab": 7,
+  "packages/collab": 4,
   "packages/collab-server": 3,
   "packages/create": 0,
   "packages/create-ifc-lite": 0,

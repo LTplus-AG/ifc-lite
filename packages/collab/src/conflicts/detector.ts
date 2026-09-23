@@ -98,6 +98,18 @@ export function createConflictDetector(
   /** key = `${kind}|${path}|${field}` → recent writers. */
   const recentWrites = new Map<string, PendingWrite[]>();
 
+  // Specialise the three top-level maps this detector classifies against
+  // BEFORE any update can decode into them (#5215). Struct decoding resolves
+  // a named top-level parent through `Y.Doc#get`, whose default constructor
+  // is the bare `Y.AbstractType`; only `getMap` turns it into a `Y.Map`.
+  // `createCollabDoc` warms them, but `CollabSessionOptions.doc` accepts a
+  // raw `Y.Doc`, and there the first remote update left `entities` an
+  // `AbstractType` with no `.has()`: the handler threw out of
+  // `Y.applyUpdate`, i.e. inside the websocket provider's message handling.
+  entitiesMap(doc);
+  relationshipsMap(doc);
+  geometryMap(doc);
+
   const flag = (info: PathInfo, writers: PendingWrite[]) => {
     const contributors = Array.from(new Set(writers.map((w) => w.client)));
     if (contributors.length < 2) return;
@@ -124,8 +136,8 @@ export function createConflictDetector(
 
   const onAfterTransaction = (tr: Y.Transaction) => {
     if (tr.changed.size === 0) return;
-    const client = tr.local ? doc.clientID : guessRemoteClient(tr);
-    if (client < 0) return;
+    const writers = writersInTransaction(tr);
+    const fallback = tr.local ? doc.clientID : guessRemoteClient(tr);
 
     for (const [type, keys] of tr.changed.entries()) {
       const top = topLevelKey(type);
@@ -135,11 +147,21 @@ export function createConflictDetector(
       for (const key of keys) {
         // For top-level Y.Map changes the parent map's `has(key)` tells
         // us whether this was a delete (key absent → yes) or an add.
-        // Only deletes count as conflict-inducing at the top level.
-        const isDelete =
-          path.length === 0 && key != null && !(type as unknown as Y.Map<unknown>).has(key);
+        // Only deletes count as conflict-inducing at the top level. The
+        // top-level maps are real `Y.Map`s thanks to the warm-up above.
+        const isDelete = path.length === 0 && key != null && type instanceof Y.Map && !type.has(key);
         const info = classify(top, path, key, isDelete);
-        if (info) record(info, client);
+        if (!info) continue;
+        // Every client that inserted a struct at (type, key) in THIS
+        // transaction, not one guess for the whole transaction: a single
+        // `Y.applyUpdate` routinely batches several remote clients' structs
+        // (relay catch-up, merged diff, coalesced updates), and a guess
+        // attributed the whole batch to one of them, so a conflict delivered
+        // batched went unreported while the same edits delivered one per
+        // transaction were flagged (#5215). A delete inserts no struct, so it
+        // alone falls back to the transaction-level guess.
+        const clients = writers.get(type)?.get(key) ?? [fallback];
+        for (const client of clients) record(info, client);
       }
     }
 
@@ -314,7 +336,42 @@ function classify(
 }
 
 /**
- * Best-effort attribution of a remote transaction to a clientID.
+ * The clients that inserted each (parent type, key) in `tr`, read off the
+ * structs the transaction added: for every client whose clock advanced, the
+ * items from its `beforeState` clock onward are exactly this transaction's
+ * insertions (a struct store is clock-ordered per client, so the scan walks
+ * back from the tail and stops at the first older struct). Cost is the
+ * transaction's size, not the document's or a key's history. A map write is
+ * keyed by its `parentSub`; an array insertion by `null`, matching the `null`
+ * key `Transaction.changed` reports for array-shaped changes.
+ */
+function writersInTransaction(
+  tr: Y.Transaction,
+): Map<object, Map<string | null, number[]>> {
+  const out = new Map<object, Map<string | null, number[]>>();
+  for (const [client, after] of tr.afterState) {
+    const before = tr.beforeState.get(client) ?? 0;
+    if (after <= before) continue;
+    const structs = tr.doc.store.clients.get(client) ?? [];
+    for (let i = structs.length - 1; i >= 0; i--) {
+      const struct = structs[i];
+      if (struct.id.clock + struct.length <= before) break;
+      if (!(struct instanceof Y.Item) || !(struct.parent instanceof Y.AbstractType)) continue;
+      const byKey = out.get(struct.parent) ?? new Map<string | null, number[]>();
+      out.set(struct.parent, byKey);
+      const key = struct.parentSub;
+      const clients = byKey.get(key) ?? [];
+      if (!clients.includes(client)) clients.push(client);
+      byKey.set(key, clients);
+    }
+  }
+  return out;
+}
+
+/**
+ * Best-effort attribution of a remote transaction to a clientID, used only
+ * for a change that inserted no struct (a delete), where
+ * `writersInTransaction` has nothing to read.
  *
  * Yjs doesn't carry "the client that authored this transaction" directly;
  * it carries per-struct clientIDs in the `afterState`/`beforeState`

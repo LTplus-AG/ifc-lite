@@ -6,8 +6,9 @@
  * An IDS report block's content (#5125): a frozen snapshot of a
  * `ValidationReport`, taken from `useViewerStore().idsValidationReport`
  * when the block is added or refreshed. Reuses the report's own numbers —
- * `calculateSummary` for the top summary (it already floors the pass rate
- * and falls back to 100 rather than NaN on zero checked entities, see
+ * `calculateSummary` for the top summary (it already floors the pass rate,
+ * reads 100 rather than NaN on zero checked entities, and reports 0 instead
+ * of 100 whenever a specification failed (#5212), see
  * `packages/ids/src/validation/validator.ts`), `SpecificationResult`'s own
  * `passRate` per check — so nothing here recomputes validation math.
  *

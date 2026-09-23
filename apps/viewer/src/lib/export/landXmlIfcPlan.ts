@@ -57,6 +57,17 @@ export interface LandXmlExportPlan {
   assumedUnit: string | null;
   /** True when no model in scope declares a coordinate reference system (§4.2). */
   missingCrs: boolean;
+  /**
+   * The declared horizontal datum, written as `IfcProjectedCRS.Name`.
+   *
+   * Its presence is also why the transposition check (§2.2, §9.1) cannot run:
+   * that check needs the CRS's easting/northing BOUNDS, and ifc-lite
+   * deliberately does not resolve a datum name to them — §4.2 forbids the
+   * crate from resolving EPSG codes, and guessing bounds from a name is the
+   * producer-sniffing §2.2 rejects. A declared CRS therefore means "written,
+   * but unverified", which the dialog states rather than leaving implied.
+   */
+  crsName: string | null;
 }
 
 function isLandXmlModel(model: { sourceSchema?: string }): boolean {
@@ -112,6 +123,7 @@ export function landXmlExportPlan(
   let surveyPoints = 0;
   let assumedUnit: string | null = null;
   let missingCrs = false;
+  let crsName: string | null = null;
   const refusals: LandXmlRefusal[][] = [];
 
   for (const document of inScope) {
@@ -122,7 +134,9 @@ export function landXmlExportPlan(
       surveyPoints += (document.plan?.cogoPoints ?? []).filter((point) => point.point !== null).length;
       if (document.units.assumed) assumedUnit ??= document.units.linearUnit;
     }
-    if (!document.coordinateSystem?.horizontalDatum) missingCrs = true;
+    const datum = document.coordinateSystem?.horizontalDatum;
+    if (datum) crsName ??= datum;
+    else missingCrs = true;
     refusals.push(collectRefusals(landXmlIfcSource(document)));
   }
 
@@ -144,5 +158,6 @@ export function landXmlExportPlan(
     refusals: mergeRefusals(refusals),
     assumedUnit,
     missingCrs,
+    crsName,
   };
 }

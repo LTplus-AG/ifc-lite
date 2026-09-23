@@ -124,6 +124,10 @@ describe('landXmlExportPlan (#4937)', () => {
     const declaredPlan = landXmlExportPlan(new Map(), landXmlModel(declared) as never, false);
     assert.equal(declaredPlan?.assumedUnit, null);
     assert.equal(declaredPlan?.missingCrs, false);
+    // Carried so the dialog can say the CRS is written but UNVERIFIED: §2.2's
+    // transposition check needs bounds this repo will not resolve from a name.
+    assert.equal(declaredPlan?.crsName, 'SWEREF99 TM');
+    assert.equal(plan?.crsName, null, 'an undeclared datum names nothing');
   });
 
   it('sums one family across the models of a merged export, without double-counting the selection', () => {

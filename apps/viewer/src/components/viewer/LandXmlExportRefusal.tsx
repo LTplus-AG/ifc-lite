@@ -82,6 +82,12 @@ export function LandXmlExportRefusal({ plan, schemaSupported, sourceFile }: Land
             <div className="mt-2">{t('exportDialog.landXml.assumedUnit', { unit: plan.assumedUnit })}</div>
           )}
           {plan.missingCrs && <div className="mt-2">{t('exportDialog.landXml.missingCrs')}</div>}
+          {/* A declared CRS is written but UNVERIFIED: §2.2's transposition
+              check needs bounds this repo deliberately does not resolve, so a
+              mirrored source is not detectable here. Stated, not implied. */}
+          {plan.crsName !== null && (
+            <div className="mt-2">{t('exportDialog.landXml.declaredCrs', { crs: plan.crsName })}</div>
+          )}
         </AlertDescription>
       </Alert>
     );

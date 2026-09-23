@@ -117,8 +117,13 @@ Two things the dialog states because the geometry cannot:
 - **An assumed linear unit.** If the source declares no `<Units>` and you supplied one at load
   time, every coordinate is at that operator-chosen scale. The IFC records the assumption in a
   `LandXML_Conversion` property set on the site.
-- **No declared CRS.** With no coordinate reference system, no georeferencing is written at all
-  (rather than a placeholder), and the coordinate-order plausibility check cannot run.
+- **The coordinate reference system.** With no declared CRS, no georeferencing is written at all
+  (rather than a placeholder). With one, the declared datum is written verbatim as
+  `IfcProjectedCRS.Name` — ifc-lite never resolves it to an EPSG definition — and the
+  coordinate-order plausibility check still cannot run, because it needs that CRS's coordinate
+  bounds. A source whose point text was written easting-first produces a mirrored surface that
+  still renders and still passes every count check, so verify the source before relying on the
+  position.
 
 Also available, and still the recommended route when a downstream tool can read the source:
 

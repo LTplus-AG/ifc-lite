@@ -108,34 +108,34 @@ describe('ExportDialog LandXML source fidelity (#5042)', () => {
  * instead. Before this, no such route existed anywhere in the viewer — the
  * message promised an action the UI could not perform.
  */
+/**
+ * Observes the real save-as path: `downloadBlob` builds an object URL and
+ * clicks an anchor carrying the filename. Patching those two seams records
+ * what was actually offered to the browser rather than asserting on a stub's
+ * return value. `revokeObjectURL` stays installed because `downloadBlob`
+ * defers it behind a timer that outlives the restore.
+ */
+function captureDownload(run: () => void): { filename: string; bytes?: Blob } {
+  const originalCreate = URL.createObjectURL;
+  const originalClick = HTMLAnchorElement.prototype.click;
+  let filename = '';
+  let bytes: Blob | undefined;
+  URL.createObjectURL = ((blob: Blob) => { bytes = blob; return 'blob:landxml-test'; }) as typeof URL.createObjectURL;
+  URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+  HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) { filename = this.download; };
+  try {
+    run();
+  } finally {
+    URL.createObjectURL = originalCreate;
+    HTMLAnchorElement.prototype.click = originalClick;
+  }
+  return { filename, bytes };
+}
+
 describe('ExportDialog LandXML source-format export (#5175)', () => {
   function sourceButton(): HTMLButtonElement | undefined {
     return [...document.querySelectorAll('button')]
       .find((candidate) => candidate.textContent?.trim() === 'Download original LandXML');
-  }
-
-  /**
-   * Observes the real save-as path: `downloadBlob` builds an object URL and
-   * clicks an anchor carrying the filename. Patching those two seams records
-   * what was actually offered to the browser rather than asserting on a stub's
-   * return value. `revokeObjectURL` stays installed because `downloadBlob`
-   * defers it behind a timer that outlives the restore.
-   */
-  function captureDownload(run: () => void): { filename: string; bytes?: Blob } {
-    const originalCreate = URL.createObjectURL;
-    const originalClick = HTMLAnchorElement.prototype.click;
-    let filename = '';
-    let bytes: Blob | undefined;
-    URL.createObjectURL = ((blob: Blob) => { bytes = blob; return 'blob:landxml-test'; }) as typeof URL.createObjectURL;
-    URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
-    HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) { filename = this.download; };
-    try {
-      run();
-    } finally {
-      URL.createObjectURL = originalCreate;
-      HTMLAnchorElement.prototype.click = originalClick;
-    }
-    return { filename, bytes };
   }
 
   it('offers the retained source bytes under the producer filename', () => {
@@ -315,6 +315,44 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
       assert.equal(exportButton().disabled, true, `${target} is not a mapping target`);
     });
   }
+
+  it('actually writes the changes-only JSON for a LandXML model, which has no data store', () => {
+    const terrain = terrainWithDocument('survey.xml');
+    useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
+    render(<ExportDialog />);
+    openDialog();
+
+    const label = [...document.querySelectorAll('label')]
+      .find((candidate) => candidate.textContent?.trim() === 'Changes Only');
+    const toggle = label?.parentElement?.parentElement?.querySelector('button[role="switch"]');
+    assert.ok(toggle, 'changes-only is offered for a LandXML source');
+    click(toggle);
+    assert.equal(exportButton().disabled, false);
+
+    // Enabling the button was never the hard part. Before #5310 the click hit
+    // the data-store guard and reported failure, so the dialog promised an
+    // export it could not perform.
+    const { filename } = captureDownload(() => click(exportButton()));
+    assert.match(filename, /_changes\.json$/, 'the mutation delta is written, not an error');
+    assert.doesNotMatch(document.body.textContent ?? '', /no parsed IFC data store/);
+  });
+
+  it('states that a declared CRS is written but its coordinate order is unverified', () => {
+    const georeferenced = terrainWithDocument('survey.xml', {
+      coordinateSystem: { horizontalDatum: 'SWEREF99 TM' },
+    });
+    useViewerStore.setState({ ...fixtureModels(georeferenced), dirtyModels: new Set() });
+    render(<ExportDialog />);
+    openDialog();
+
+    // §2.2's transposition check needs the CRS's coordinate BOUNDS, which this
+    // repo deliberately does not resolve from a datum name. A mirrored source
+    // is therefore undetectable here — said out loud rather than left implied.
+    const text = document.body.textContent ?? '';
+    assert.match(text, /SWEREF99 TM/);
+    assert.match(text, /coordinate-order check cannot run/);
+    assert.doesNotMatch(text, /No coordinate reference system is declared/);
+  });
 
   it('refuses a merged scope that contains a covered LandXML model, naming the scope as the fix', () => {
     const authored = fixtureModel('building.ifc');

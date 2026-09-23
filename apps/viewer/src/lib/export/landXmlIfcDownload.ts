@@ -39,8 +39,14 @@ export type LandXmlIfcDownloadResult =
  * writing an empty file.
  */
 export function downloadLandXmlAsIfc(input: LandXmlIfcDownloadInput): LandXmlIfcDownloadResult {
+  // The declared datum is passed through verbatim as `IfcProjectedCRS.Name`,
+  // never resolved (§4.2). No `Bounds` accompany it, so the transposition
+  // check does not run — see `crsName` in `landXmlIfcPlan.ts` for why, and the
+  // dialog says so before the user commits.
+  const datum = input.document.coordinateSystem?.horizontalDatum;
   const result: LandXmlIfcResult = landXmlToIfc(landXmlIfcSource(input.document), {
     sourceFileName: input.name,
+    ...(datum ? { crs: { Name: datum, VerticalDatum: input.document.coordinateSystem?.verticalDatum } } : {}),
   });
   if (result.status === 'refused') {
     return { status: 'refused', reason: result.reason };

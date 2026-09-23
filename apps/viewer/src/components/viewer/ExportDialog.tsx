@@ -80,6 +80,7 @@ import { roomMergeInput, roomMergeVisibility } from '@/lib/collab/room-merged-ex
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 import { listExportModels, resolveExportModel } from './export-model-selection';
 import { exportOutputInfo } from './export-output-format.js';
+import { exportChangesJson } from './export-changes-json.js';
 
 type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -424,14 +425,28 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
       }
 
       if (!selectedModel) return;
-      // IFC5 export needs a parsed data store + geometry. Native-metadata
-      // models don't carry these, so bail with a descriptive error rather
-      // than passing nulls through.
+      const mutationView = getMutationView(selectedModelId);
+      const baseName = sanitizeFilename(stripExtension(selectedModel.name), { fallback: 'model' });
+
+      // ── Changes only (pre-IFC5) → JSON ───────────────────────────────
+      // Built from the mutation view alone, which is why it runs BEFORE the
+      // data-store guard: a LandXML model has no data store, and this delta
+      // never needed one (#5310 review).
+      if (changesOnly && !isIfc5) {
+        const jsonMsg = exportChangesJson(
+          selectedModelId, selectedModel.name, baseName, mutationView?.getMutations() || []);
+        setExportResult({ success: true, message: jsonMsg });
+        toast.success(jsonMsg);
+        exportedFormat = 'json';
+        return;
+      }
+
+      // Every remaining branch needs a parsed data store + geometry.
+      // Native-metadata models don't carry these, so bail with a descriptive
+      // error rather than passing nulls through.
       if (!selectedModel.ifcDataStore) {
         throw new Error('Selected model has no parsed IFC data store available for export');
       }
-      const mutationView = getMutationView(selectedModelId);
-      const baseName = sanitizeFilename(stripExtension(selectedModel.name), { fallback: 'model' });
 
       // ── IFC5 → always IFCX ──────────────────────────────────────────
       if (isIfc5) {
@@ -506,24 +521,6 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         if (result.stats.skippedCount > 0) toast.info(ifcxMsg); // #5201: not a plain success
         else toast.success(ifcxMsg);
         exportedFormat = 'ifcx';
-
-      // ── Changes only (pre-IFC5) → JSON ───────────────────────────────
-      } else if (changesOnly) {
-        const mutations = mutationView?.getMutations() || [];
-        const data = {
-          version: 1,
-          modelId: selectedModelId,
-          modelName: selectedModel.name,
-          mutations,
-          exportedAt: new Date().toISOString(),
-        };
-
-        downloadFile(JSON.stringify(data, null, 2), `${baseName}_changes.json`, 'application/json');
-
-        const jsonMsg = `Exported ${mutations.length} changes as JSON`;
-        setExportResult({ success: true, message: jsonMsg });
-        toast.success(jsonMsg);
-        exportedFormat = 'json';
 
       // ── Pre-IFC5 full export → STEP ──────────────────────────────────
       } else {

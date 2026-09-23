@@ -88,6 +88,28 @@ describe('downloadLandXmlAsIfc (#4937)', () => {
     assert.match(text, /IFCCARTESIANPOINTLIST3D\(\(\(157899\.16,6406977\.86,20\.77\)/);
   });
 
+  it('writes georeferencing for a declared datum, passed through and not resolved', async () => {
+    const { text } = await captureDownload(() => {
+      downloadLandXmlAsIfc({
+        document: document({ coordinateSystem: { horizontalDatum: 'SWEREF99 TM', verticalDatum: 'RH2000' } }),
+        name: 'terrain.xml',
+      });
+    });
+    // §4.2: the datum string is the CRS Name verbatim. ifc-lite never resolves
+    // an EPSG code, so nothing here should look like a lookup result.
+    assert.match(text, /IFCPROJECTEDCRS\('SWEREF99 TM'/);
+    assert.match(text, /IFCMAPCONVERSION/);
+  });
+
+  it('writes no georeferencing at all when no datum is declared', async () => {
+    const { text } = await captureDownload(() => {
+      downloadLandXmlAsIfc({ document: document(), name: 'terrain.xml' });
+    });
+    // A placeholder CRS would be worse than none: it reads as a claim.
+    assert.doesNotMatch(text, /IFCPROJECTEDCRS/);
+    assert.doesNotMatch(text, /IFCMAPCONVERSION/);
+  });
+
   it('reports the converter refusal instead of downloading an empty file', async () => {
     let result: ReturnType<typeof downloadLandXmlAsIfc> | undefined;
     const { filename } = await captureDownload(() => {

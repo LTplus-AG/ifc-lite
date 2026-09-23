@@ -1317,8 +1317,11 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
       clashRunSeq: useViewerStore.getState().clashRunSeq + 1,
     });
     const { renderer, charts } = recordingRenderer();
-    render(<ChartsPanel renderer={renderer} />);
+    const ui = render(<ChartsPanel renderer={renderer} />);
     await settle();
+    // #5218: a clash row is a pair, so three clashes touching four elements
+    // read as "3 clashes", never "3 elements".
+    assert.match(ui.querySelector('[data-chart-subtitle]')!.textContent!, /^2 buckets · 3 clashes/);
 
     await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
     await settle();

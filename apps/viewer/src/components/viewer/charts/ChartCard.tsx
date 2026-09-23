@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
 import { applyChartFilter, applyClashRuleFilter } from '@/lib/charts/source-filter';
+import { countRows } from '@/lib/charts/row-noun';
 import { readChartTheme, useEChart, type ChartRenderer, type ChartSelectEvent } from './useEChart';
 import { GRID_DRAG_HANDLE_CLASS } from './DashboardGrid';
 import { chartBucketIdentity, chartSelectionIsLive, sameChartBucketIdentity, type Chart3DLink } from './useChart3DLink';
@@ -37,10 +38,11 @@ export interface ChartCardProps {
 
 const plural = (n: number, word: string): string => `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
 
-/** "6 buckets · 15 elements · 2 without a value" — the card's subtitle. */
+/** "6 buckets · 15 elements · 2 without a value" — the card's subtitle; the
+ *  row noun follows the source ("4 clashes"), see `countRows` (#5218). */
 export function describeAggregation(aggregation: Aggregation): string {
   if (aggregation.categories.length === 0 && aggregation.unbucketed === 0) return 'No data';
-  const total = aggregation.spec.measure.agg === 'count' ? plural(aggregation.total, 'element') : `${aggregation.total.toLocaleString()} ${aggregation.unit ?? ''}`.trim();
+  const total = aggregation.spec.measure.agg === 'count' ? countRows(aggregation.total, aggregation.spec.source) : `${aggregation.total.toLocaleString()} ${aggregation.unit ?? ''}`.trim();
   const rest = aggregation.unbucketed > 0 ? ` · ${aggregation.unbucketed} without a value` : '';
   const unmeasured = (aggregation.unmeasured ?? 0) > 0 ? ` · ${aggregation.unmeasured} without a measure` : '';
   const unsupported = (aggregation.unsupported ?? 0) > 0 ? ` · ${aggregation.unsupported} unsupported` : '';

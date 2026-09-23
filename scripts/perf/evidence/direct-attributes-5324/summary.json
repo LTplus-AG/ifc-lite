@@ -1,0 +1,744 @@
+[
+  {
+    "fixture": "issues/472_2222.ifc",
+    "identity": "ordered mesh FNV, counts and diagnostics identical",
+    "metrics": {
+      "parseMs": {
+        "base": [
+          8,
+          8,
+          8,
+          8,
+          8
+        ],
+        "candidate": [
+          9,
+          7,
+          9,
+          8,
+          7
+        ],
+        "medianBase": 8,
+        "medianCandidate": 8,
+        "deltaPercent": 0.0,
+        "medianPairedRatio": 1.0
+      },
+      "geometryMs": {
+        "base": [
+          47,
+          43,
+          47,
+          45,
+          49
+        ],
+        "candidate": [
+          45,
+          45,
+          46,
+          45,
+          43
+        ],
+        "medianBase": 47,
+        "medianCandidate": 45,
+        "deltaPercent": -4.255319148936165,
+        "medianPairedRatio": 0.9787234042553191
+      },
+      "totalMs": {
+        "base": [
+          56,
+          51,
+          55,
+          53,
+          57
+        ],
+        "candidate": [
+          54,
+          53,
+          55,
+          54,
+          50
+        ],
+        "medianBase": 55,
+        "medianCandidate": 54,
+        "deltaPercent": -1.8181818181818188,
+        "medianPairedRatio": 1.0
+      },
+      "fullLoadWallMs": {
+        "base": [
+          59.054,
+          54.286,
+          58.299,
+          56.266,
+          60.307
+        ],
+        "candidate": [
+          57.37,
+          56.196,
+          58.319,
+          56.604,
+          53.556
+        ],
+        "medianBase": 58.299,
+        "medianCandidate": 56.604,
+        "deltaPercent": -2.90742551330212,
+        "medianPairedRatio": 1.0003430590576168
+      },
+      "maxRssKiB": {
+        "base": [
+          47116,
+          46468,
+          46792,
+          46932,
+          47396
+        ],
+        "candidate": [
+          47148,
+          46348,
+          46672,
+          46560,
+          46768
+        ],
+        "medianBase": 46932,
+        "medianCandidate": 46672,
+        "deltaPercent": -0.5539930111650881,
+        "medianPairedRatio": 0.9974175776878712
+      }
+    }
+  },
+  {
+    "fixture": "ara3d/AC20-FZK-Haus.ifc",
+    "identity": "ordered mesh FNV, counts and diagnostics identical",
+    "metrics": {
+      "parseMs": {
+        "base": [
+          6,
+          6,
+          6,
+          6,
+          6
+        ],
+        "candidate": [
+          7,
+          6,
+          6,
+          6,
+          6
+        ],
+        "medianBase": 6,
+        "medianCandidate": 6,
+        "deltaPercent": 0.0,
+        "medianPairedRatio": 1.0
+      },
+      "geometryMs": {
+        "base": [
+          32,
+          27,
+          27,
+          33,
+          31
+        ],
+        "candidate": [
+          25,
+          32,
+          24,
+          29,
+          30
+        ],
+        "medianBase": 31,
+        "medianCandidate": 29,
+        "deltaPercent": -6.451612903225811,
+        "medianPairedRatio": 0.8888888888888888
+      },
+      "totalMs": {
+        "base": [
+          39,
+          33,
+          33,
+          39,
+          37
+        ],
+        "candidate": [
+          32,
+          38,
+          31,
+          36,
+          37
+        ],
+        "medianBase": 37,
+        "medianCandidate": 36,
+        "deltaPercent": -2.7027027027026973,
+        "medianPairedRatio": 0.9393939393939394
+      },
+      "fullLoadWallMs": {
+        "base": [
+          41.204,
+          35.294,
+          35.549,
+          41.672,
+          39.288
+        ],
+        "candidate": [
+          34.586,
+          41.012,
+          32.968,
+          38.2,
+          38.921
+        ],
+        "medianBase": 39.288,
+        "medianCandidate": 38.2,
+        "deltaPercent": -2.7692934229281096,
+        "medianPairedRatio": 0.9273959886354047
+      },
+      "maxRssKiB": {
+        "base": [
+          21504,
+          22080,
+          20928,
+          21312,
+          20544
+        ],
+        "candidate": [
+          21312,
+          21312,
+          21120,
+          21312,
+          21312
+        ],
+        "medianBase": 21312,
+        "medianCandidate": 21312,
+        "deltaPercent": 0.0,
+        "medianPairedRatio": 1.0
+      }
+    }
+  },
+  {
+    "fixture": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+    "identity": "ordered mesh FNV, counts and diagnostics identical",
+    "metrics": {
+      "parseMs": {
+        "base": [
+          26,
+          21,
+          21,
+          23,
+          23
+        ],
+        "candidate": [
+          25,
+          22,
+          32,
+          23,
+          20
+        ],
+        "medianBase": 23,
+        "medianCandidate": 23,
+        "deltaPercent": 0.0,
+        "medianPairedRatio": 1.0
+      },
+      "geometryMs": {
+        "base": [
+          955,
+          951,
+          941,
+          937,
+          935
+        ],
+        "candidate": [
+          972,
+          943,
+          962,
+          941,
+          990
+        ],
+        "medianBase": 941,
+        "medianCandidate": 962,
+        "deltaPercent": 2.2316684378320906,
+        "medianPairedRatio": 1.0178010471204189
+      },
+      "totalMs": {
+        "base": [
+          981,
+          973,
+          963,
+          961,
+          959
+        ],
+        "candidate": [
+          998,
+          966,
+          994,
+          964,
+          1011
+        ],
+        "medianBase": 963,
+        "medianCandidate": 994,
+        "deltaPercent": 3.219106957424711,
+        "medianPairedRatio": 1.017329255861366
+      },
+      "fullLoadWallMs": {
+        "base": [
+          995.541,
+          985.794,
+          976.523,
+          974.162,
+          971.612
+        ],
+        "candidate": [
+          1011.218,
+          978.674,
+          1009.262,
+          977.146,
+          1024.269
+        ],
+        "medianBase": 976.523,
+        "medianCandidate": 1009.262,
+        "deltaPercent": 3.352609206337176,
+        "medianPairedRatio": 1.015747216839889
+      },
+      "maxRssKiB": {
+        "base": [
+          125544,
+          125148,
+          123376,
+          125928,
+          125816
+        ],
+        "candidate": [
+          124972,
+          124504,
+          124844,
+          124792,
+          123688
+        ],
+        "medianBase": 125544,
+        "medianCandidate": 124792,
+        "deltaPercent": -0.5989931816733574,
+        "medianPairedRatio": 0.994854092754179
+      }
+    }
+  },
+  {
+    "fixture": "ara3d/schependomlaan.ifc",
+    "identity": "ordered mesh FNV, counts and diagnostics identical",
+    "metrics": {
+      "parseMs": {
+        "base": [
+          112,
+          110,
+          109,
+          105,
+          113
+        ],
+        "candidate": [
+          120,
+          110,
+          114,
+          108,
+          107
+        ],
+        "medianBase": 110,
+        "medianCandidate": 110,
+        "deltaPercent": 0.0,
+        "medianPairedRatio": 1.0285714285714285
+      },
+      "geometryMs": {
+        "base": [
+          55,
+          53,
+          52,
+          48,
+          56
+        ],
+        "candidate": [
+          53,
+          47,
+          52,
+          59,
+          54
+        ],
+        "medianBase": 53,
+        "medianCandidate": 53,
+        "deltaPercent": 0.0,
+        "medianPairedRatio": 0.9642857142857143
+      },
+      "totalMs": {
+        "base": [
+          168,
+          164,
+          161,
+          153,
+          170
+        ],
+        "candidate": [
+          173,
+          157,
+          167,
+          167,
+          162
+        ],
+        "medianBase": 164,
+        "medianCandidate": 167,
+        "deltaPercent": 1.8292682926829285,
+        "medianPairedRatio": 1.0297619047619047
+      },
+      "fullLoadWallMs": {
+        "base": [
+          230.427,
+          220.289,
+          217.266,
+          207.491,
+          226.658
+        ],
+        "candidate": [
+          239.431,
+          213.711,
+          220.613,
+          234.535,
+          225.382
+        ],
+        "medianBase": 220.289,
+        "medianCandidate": 225.382,
+        "deltaPercent": 2.311962921435029,
+        "medianPairedRatio": 1.0154050794878169
+      },
+      "maxRssKiB": {
+        "base": [
+          176428,
+          179764,
+          176696,
+          176708,
+          177344
+        ],
+        "candidate": [
+          176208,
+          177080,
+          176880,
+          177840,
+          177760
+        ],
+        "medianBase": 176708,
+        "medianCandidate": 177080,
+        "deltaPercent": 0.2105167847522571,
+        "medianPairedRatio": 1.0010413365328021
+      }
+    }
+  },
+  {
+    "fixture": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+    "identity": "ordered mesh FNV, counts and diagnostics identical",
+    "metrics": {
+      "parseMs": {
+        "base": [
+          370,
+          422,
+          362,
+          392,
+          371
+        ],
+        "candidate": [
+          368,
+          363,
+          365,
+          360,
+          360
+        ],
+        "medianBase": 371,
+        "medianCandidate": 363,
+        "deltaPercent": -2.156334231805934,
+        "medianPairedRatio": 0.9703504043126685
+      },
+      "geometryMs": {
+        "base": [
+          508,
+          669,
+          658,
+          821,
+          471
+        ],
+        "candidate": [
+          731,
+          463,
+          689,
+          813,
+          739
+        ],
+        "medianBase": 658,
+        "medianCandidate": 731,
+        "deltaPercent": 11.094224924012153,
+        "medianPairedRatio": 1.047112462006079
+      },
+      "totalMs": {
+        "base": [
+          879,
+          1092,
+          1020,
+          1214,
+          843
+        ],
+        "candidate": [
+          1099,
+          827,
+          1054,
+          1174,
+          1099
+        ],
+        "medianBase": 1020,
+        "medianCandidate": 1099,
+        "deltaPercent": 7.745098039215681,
+        "medianPairedRatio": 1.0333333333333334
+      },
+      "fullLoadWallMs": {
+        "base": [
+          1217.9,
+          1445.978,
+          1324.919,
+          1568.998,
+          1157.107
+        ],
+        "candidate": [
+          1499.214,
+          1178.319,
+          1406.083,
+          1549.799,
+          1464.268
+        ],
+        "medianBase": 1324.919,
+        "medianCandidate": 1464.268,
+        "deltaPercent": 10.517548619953354,
+        "medianPairedRatio": 1.0612595939827265
+      },
+      "maxRssKiB": {
+        "base": [
+          1040844,
+          912912,
+          909744,
+          913732,
+          1031824
+        ],
+        "candidate": [
+          919608,
+          1038156,
+          918692,
+          922164,
+          918676
+        ],
+        "medianBase": 913732,
+        "medianCandidate": 919608,
+        "deltaPercent": 0.6430769634860223,
+        "medianPairedRatio": 1.0092280887612561
+      }
+    }
+  },
+  {
+    "fixture": "various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc",
+    "identity": "ordered mesh FNV, counts and diagnostics identical",
+    "metrics": {
+      "parseMs": {
+        "base": [
+          525,
+          537,
+          533,
+          536,
+          529
+        ],
+        "candidate": [
+          543,
+          524,
+          542,
+          530,
+          527
+        ],
+        "medianBase": 533,
+        "medianCandidate": 530,
+        "deltaPercent": -0.5628517823639823,
+        "medianPairedRatio": 0.996219281663516
+      },
+      "geometryMs": {
+        "base": [
+          157,
+          190,
+          155,
+          170,
+          174
+        ],
+        "candidate": [
+          185,
+          147,
+          202,
+          147,
+          147
+        ],
+        "medianBase": 170,
+        "medianCandidate": 147,
+        "deltaPercent": -13.529411764705879,
+        "medianPairedRatio": 0.8647058823529412
+      },
+      "totalMs": {
+        "base": [
+          683,
+          728,
+          689,
+          707,
+          703
+        ],
+        "candidate": [
+          728,
+          672,
+          745,
+          678,
+          675
+        ],
+        "medianBase": 703,
+        "medianCandidate": 678,
+        "deltaPercent": -3.5561877667140807,
+        "medianPairedRatio": 0.9601706970128022
+      },
+      "fullLoadWallMs": {
+        "base": [
+          1000.225,
+          1093.484,
+          994.321,
+          1047.486,
+          1021.53
+        ],
+        "candidate": [
+          1109.878,
+          991.714,
+          1134.603,
+          1005.026,
+          1004.55
+        ],
+        "medianBase": 1021.53,
+        "medianCandidate": 1005.026,
+        "deltaPercent": -1.6156157919982816,
+        "medianPairedRatio": 0.9833778743649232
+      },
+      "maxRssKiB": {
+        "base": [
+          792024,
+          789872,
+          792952,
+          789492,
+          787956
+        ],
+        "candidate": [
+          792356,
+          793332,
+          791244,
+          793316,
+          790820
+        ],
+        "medianBase": 789872,
+        "medianCandidate": 792356,
+        "deltaPercent": 0.3144813336844354,
+        "medianPairedRatio": 1.0036347207204463
+      }
+    }
+  },
+  {
+    "fixture": "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc",
+    "identity": "ordered mesh FNV, counts and diagnostics identical",
+    "metrics": {
+      "parseMs": {
+        "base": [
+          154,
+          156,
+          154,
+          156,
+          153
+        ],
+        "candidate": [
+          154,
+          157,
+          150,
+          152,
+          149
+        ],
+        "medianBase": 154,
+        "medianCandidate": 152,
+        "deltaPercent": -1.2987012987012991,
+        "medianPairedRatio": 0.9743589743589743
+      },
+      "geometryMs": {
+        "base": [
+          216,
+          247,
+          230,
+          262,
+          223
+        ],
+        "candidate": [
+          231,
+          219,
+          224,
+          214,
+          227
+        ],
+        "medianBase": 230,
+        "medianCandidate": 224,
+        "deltaPercent": -2.608695652173909,
+        "medianPairedRatio": 0.9739130434782609
+      },
+      "totalMs": {
+        "base": [
+          371,
+          403,
+          384,
+          419,
+          377
+        ],
+        "candidate": [
+          385,
+          376,
+          375,
+          367,
+          376
+        ],
+        "medianBase": 384,
+        "medianCandidate": 376,
+        "deltaPercent": -2.083333333333337,
+        "medianPairedRatio": 0.9765625
+      },
+      "fullLoadWallMs": {
+        "base": [
+          467.229,
+          518.845,
+          492.372,
+          518.182,
+          481.427
+        ],
+        "candidate": [
+          473.764,
+          477.402,
+          466.614,
+          451.792,
+          468.771
+        ],
+        "medianBase": 492.372,
+        "medianCandidate": 468.771,
+        "deltaPercent": -4.7933269966610625,
+        "medianPairedRatio": 0.947685896029831
+      },
+      "maxRssKiB": {
+        "base": [
+          436164,
+          429256,
+          434440,
+          421192,
+          432520
+        ],
+        "candidate": [
+          442484,
+          447668,
+          433652,
+          435188,
+          431344
+        ],
+        "medianBase": 432520,
+        "medianCandidate": 435188,
+        "deltaPercent": 0.6168500878572125,
+        "medianPairedRatio": 1.014489962491173
+      }
+    }
+  }
+]

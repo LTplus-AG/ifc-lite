@@ -1912,6 +1912,21 @@ counts and fingerprint, timing inside noise) rather than a speedup or
 regression claim — don't force a delta narrative onto a lever that has no
 reach into the fixtures the ledger already tracks.
 
+## Direct attribute construction (#5324, rejected)
+
+A shared STEP grammar with separate token and attribute construction sinks
+removed intermediate nested token vectors from full decode. Compaction was
+needed to avoid retaining the parser's geometric vector capacity. The final
+seven-model alternating native cohort preserved ordered geometry fingerprints,
+counts and diagnostics, but did not establish a meaningful complete-load win:
+results were mixed, with slower control medians and substantial Holter variation.
+The candidate was rejected before browser qualification; no WASM speedup or
+memory improvement is established. The lesson is to qualify the whole decode
+consumer, including final vector capacity and existing cache fast paths, rather
+than infer load improvement from removing an intermediate tree.
+
+[Complete rejected source, measurements and limits](evidence/direct-attributes-5324/README.md).
+
 ## Surface spline sample reuse (#5321)
 
 Surface evaluation reuses axis samples and removes only exact-zero coefficients,

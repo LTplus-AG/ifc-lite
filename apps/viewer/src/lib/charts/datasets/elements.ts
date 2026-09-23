@@ -23,6 +23,7 @@ import { resolveFieldCell, resolveFieldColumnUnit } from '@/lib/charts/element-f
 import { extractProjectUnits, type ProjectUnits } from '@ifc-lite/parser';
 import type { ColumnDefinition } from '@ifc-lite/lists';
 import { resolveListColumnUnits } from '@/lib/units/list-column-units';
+import { effectiveChartEntities } from './effective-elements';
 
 type ModelsState = Pick<ViewerState, 'models' | 'activeModelId' | 'pinboardEntities' | 'mutationViews' | 'mutationVersion' | 'unitDisplayOverrides'>;
 
@@ -95,11 +96,15 @@ export function buildElementsDataset(
     // The store's federation id rule, not offset arithmetic of our own.
     const modelId = model.id;
     const reader = resolvedFields.length > 0 ? createElementFieldReader(store, state.mutationViews.get(modelId)) : undefined;
+    const mutationView = state.mutationViews.get(modelId);
     models.push({
-      store,
+      store: mutationView?.hasChanges()
+        ? { entities: effectiveChartEntities(store, mutationView), spatialHierarchy: store.spatialHierarchy }
+        : store,
       toGlobalId: (expressId) => toGlobalIdFromModels(state.models, modelId, expressId),
       name: model.name ?? modelId,
       include,
+      valueRevision: `${model.sourceFingerprint ?? model.sourceContentHash ?? model.loadedAt}:${state.mutationVersion}:${JSON.stringify(state.unitDisplayOverrides)}`,
       ...(reader ? {
         readField: (expressId, field) => {
           const index = fieldIndex.get(elementFieldColumnId(field)) ?? -1;
@@ -107,7 +112,6 @@ export function buildElementsDataset(
           if (index < 0) return cell;
           return resolveFieldCell(cell, { field, index, columnUnit: resolvedFields[index].unit, modelId, projectUnits: modelUnits.get(modelId), resolver });
         },
-        valueRevision: `${model.sourceFingerprint ?? model.sourceContentHash ?? model.loadedAt}:${state.mutationVersion}:${JSON.stringify(state.unitDisplayOverrides)}`,
       } : {}),
     });
   }

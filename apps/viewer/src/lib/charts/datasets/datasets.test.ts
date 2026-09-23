@@ -95,6 +95,45 @@ describe('chart source adapters over real producers (#3944)', () => {
     useViewerStore.setState({ models: new Map([[model.id, model]]), activeModelId: model.id, ifcDataStore: null });
   });
 
+  it('elements: live deletion, class and Name edits, and a created represented wall reach chart rows (#5249)', async () => {
+    const model = [...useViewerStore.getState().models.values()][0];
+    const view = new MutablePropertyView(null, model.id);
+    view.setExpressIdWatermark(120);
+    view.deleteEntity(41);
+    view.setEntityType(42, 'IfcDoor', undefined, 'IfcBeam');
+    view.setAttribute(43, 'Name', 'Renamed door');
+    view.setPositionalAttribute(43, 2, 'Positional door');
+    view.setAttribute(5, 'Name', 'Renamed level');
+    const created = view.createEntity('IfcWall',
+      ['0NewWall000000000000001', '$', 'Created wall', '$', '$', '#24', '#28', '$', '$']);
+    view.createEntity('IfcWall',
+      ['0NewWall000000000000002', '$', 'No representation', '$', '$', '#24', '$', '$', '$']);
+    const state = { ...useViewerStore.getState(), mutationViews: new Map([[model.id, view]]), mutationVersion: 1 };
+
+    const dataset = buildElementsDataset({ kind: 'all' }, state);
+    assert.deepEqual(dataset.rows.map(({ ids, values }) => [ids[0], values[0], values[1], values[3]]), [
+      [GID(42), 'IfcDoor', 'Renamed level', 'Beam B'],
+      [GID(43), 'IfcDoor', 'Renamed level', 'Positional door'],
+      [GID(created.expressId), 'IfcWall', '', 'Created wall'],
+    ]);
+    assert.notEqual(dataset.fingerprint, buildElementsDataset({ kind: 'all' }, {
+      ...state, mutationViews: new Map(), mutationVersion: 0,
+    }).fingerprint);
+
+    view.setAttribute(42, 'Representation', '$');
+    const withoutGeometry = buildElementsDataset({ kind: 'all' }, { ...state, mutationVersion: 2 });
+    assert.deepEqual(withoutGeometry.rows.map(({ ids }) => ids[0]), [GID(43), GID(created.expressId)]);
+
+    // A positional null clears a value even when a named edit exists (#5249).
+    view.setPositionalAttribute(43, 2, null);
+    const withoutName = buildElementsDataset({ kind: 'all' }, { ...state, mutationVersion: 3 });
+    assert.equal(withoutName.rows.find(({ ids }) => ids[0] === GID(43))?.values[3], '');
+    view.setAttribute(43, 'Representation', '#28');
+    view.setPositionalAttribute(43, 6, null);
+    const withoutDoorGeometry = buildElementsDataset({ kind: 'all' }, { ...state, mutationVersion: 4 });
+    assert.deepEqual(withoutDoorGeometry.rows.map(({ ids }) => ids[0]), [GID(created.expressId)]);
+  });
+
   it('clash: one row per engine clash with both renderer ids, type pair, review and the storey resolved through the federation', async () => {
     const engine = createClashEngine({ backend: 'ts' });
     const result = await engine.run(

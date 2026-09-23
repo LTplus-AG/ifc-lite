@@ -261,7 +261,6 @@
    773 packages/ids/src/validation/validator.ts
    468 packages/ifcx/src/federated-composition.ts
    704 packages/ifcx/src/index.ts
-   415 packages/ifcx/src/writer.ts
    464 packages/lens/src/engine.ts
    426 packages/lens/src/matching.ts
    416 packages/lens/src/types.ts

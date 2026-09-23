@@ -139,6 +139,25 @@ describe('IFCX export writes each entity its own IFC class', () => {
     assert.strictEqual(byPath.get('GID-1'), 'IfcAirTerminal');
   });
 
+  it('falls back to a known enum when getTypeName returns Unknown (#5249)', () => {
+    const entities = {
+      count: 1,
+      expressId: Uint32Array.from([1]),
+      typeEnum: Uint16Array.from([IfcTypeEnum.IfcWall]),
+      globalId: Uint32Array.from([1]),
+      name: Uint32Array.from([0]),
+      description: Uint32Array.from([0]),
+      getTypeName: () => 'Unknown',
+    } as unknown as EntityTable;
+    const strings = { get: (idx: number) => (idx === 1 ? 'GID-1' : '') };
+    const file = JSON.parse(exportToIfcx({ entities, strings })) as IfcxFile;
+    const node = (file.data as IfcxNode[]).find((n) => n.path === 'GID-1');
+    assert.strictEqual(
+      (node?.attributes as Record<string, { code?: string }> | undefined)?.['bsi::ifc::class']?.code,
+      'IfcWall',
+    );
+  });
+
   it('writes no class, and no invented one, when the entity has none', () => {
     // Negative control. An entity table row whose type resolves to nothing at
     // all must leave `bsi::ifc::class` off the node rather than emit

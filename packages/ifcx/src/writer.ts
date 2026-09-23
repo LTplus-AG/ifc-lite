@@ -8,21 +8,12 @@
  * Exports IFC data to IFCX JSON format.
  */
 
-import type { IfcxFile, IfcxNode, IfcxHeader, ImportNode } from './types.js';
+import type { IfcxFile, IfcxNode, IfcxHeader } from './types.js';
 import type { EntityTable, PropertyTable, PropertySet, SpatialHierarchy } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { IFCX_VERSION, IfcTypeEnum, IfcTypeEnumToString } from '@ifc-lite/data';
-
-// ============================================================================
-// Standard IFCX schema imports
-// ============================================================================
-
-/** Standard IFC5 schema package URIs, keyed by the attribute prefix they provide. */
-const IFCX_SCHEMA_IMPORTS = {
-  IFC_CORE: 'https://ifcx.dev/@standards.buildingsmart.org/ifc/core/ifc@v5a.ifcx',
-  IFC_PROP: 'https://ifcx.dev/@standards.buildingsmart.org/ifc/core/prop@v5a.ifcx',
-  USD: 'https://ifcx.dev/@openusd.org/usd@v1.ifcx',
-} as const;
+import { IFCX_VERSION } from '@ifc-lite/data';
+import { collectRequiredImports } from './writer-imports.js';
+import { writerEntities } from './writer-entities.js';
 
 /**
  * Options for IFCX export
@@ -137,7 +128,8 @@ export class IfcxWriter {
    */
   private collectNodes(options: IfcxExportOptions): IfcxNode[] {
     const nodes: IfcxNode[] = [];
-    const { entities, spatialHierarchy, mutationView, idToPath } = this.data;
+    const { spatialHierarchy, mutationView, idToPath } = this.data;
+    const rows = writerEntities(this.data, options.applyMutations !== false);
 
     // Single source of truth for expressId -> path, built once up front so that
     // an entity's own path and any *reference* to that entity as a child
@@ -152,36 +144,34 @@ export class IfcxWriter {
     // a node referenced only as someone else's child). Those entries must
     // survive even though the entity loop below never visits that id.
     const resolvedPaths = new Map<number, string>(idToPath ?? []);
-    for (let i = 0; i < entities.count; i++) {
-      const expressId = entities.expressId[i];
-      const typeEnum = entities.typeEnum[i];
+    if (options.applyMutations !== false && mutationView && typeof mutationView.isDeleted === 'function') {
+      for (const id of resolvedPaths.keys()) if (mutationView.isDeleted(id)) resolvedPaths.delete(id);
+    }
+    for (const row of rows) {
+      const { expressId } = row;
       resolvedPaths.set(
         expressId,
         idToPath?.get(expressId)
-          ?? this.generatePath(expressId, typeEnum, this.getString(entities.globalId[i]))
+          ?? this.generatePath(expressId, row.typeName, row.globalId)
       );
     }
 
-    // Process entities from table
-    for (let i = 0; i < entities.count; i++) {
-      const expressId = entities.expressId[i];
-      const typeEnum = entities.typeEnum[i];
+    // Process the effective entity set, including authored nodes.
+    for (const row of rows) {
+      const { expressId } = row;
 
       // Get or generate path
       // The map above has a row for every entity, so the fallback is
       // unreachable — but it must derive the path the same way regardless, or
       // an entity's own path and every reference to it could disagree.
       const path = resolvedPaths.get(expressId)
-        ?? this.generatePath(expressId, typeEnum, this.getString(entities.globalId[i]));
-
-      // Get entity name
-      const name = this.getString(entities.name[i]);
+        ?? this.generatePath(expressId, row.typeName, row.globalId);
 
       // Build attributes
       const attributes: Record<string, unknown> = {};
 
       // Add IFC class (requires both code and uri per official schema)
-      const typeName = this.getTypeName(expressId, typeEnum);
+      const typeName = row.typeName;
       if (typeName) {
         attributes['bsi::ifc::class'] = {
           code: typeName,
@@ -190,13 +180,12 @@ export class IfcxWriter {
       }
 
       // IFC5 uses bsi::ifc::prop:: namespace for name/description (not bsi::ifc::name)
-      if (name) {
-        attributes['bsi::ifc::prop::Name'] = name;
+      if (row.name) {
+        attributes['bsi::ifc::prop::Name'] = row.name;
       }
 
-      const description = this.getString(entities.description[i]);
-      if (description) {
-        attributes['bsi::ifc::prop::Description'] = description;
+      if (row.description) {
+        attributes['bsi::ifc::prop::Description'] = row.description;
       }
 
       // Add properties if requested
@@ -294,42 +283,6 @@ export class IfcxWriter {
   }
 
   /**
-   * Get string from string table
-   */
-  private getString(idx: number): string {
-    if (idx === 0 || !this.data.strings) return '';
-    return this.data.strings.get(idx) || '';
-  }
-
-  /**
-   * The IFC class name to write as `bsi::ifc::class`, or undefined when the
-   * entity has no class to write.
-   *
-   * Derived from the entity table, not enumerated. `EntityTable.getTypeName`
-   * resolves a type override first, then the `IfcTypeEnum` member name, then
-   * the raw class name the parser read — so a class the enum has never heard
-   * of (`IfcAirTerminal`) still exports under its own name. `IfcTypeEnumToString`
-   * is the fallback for the structural table stubs that carry a `typeEnum`
-   * column but no `getTypeName`.
-   *
-   * The hand-written enum->name table this replaced was both incomplete and
-   * SHIFTED against the enum it claimed to decode: it answered for 26 of the
-   * enum's 128 members, and 14 of those 26 rows named a different class than
-   * the id actually holds (17 is `IfcStair`, the table said `IfcRoof`). So a
-   * stair exported as a roof, a member as a pile, a distribution element as an
-   * opening — and every MEP, infrastructure and furniture class fell through
-   * to `undefined` and lost its class attribute entirely.
-   */
-  private getTypeName(expressId: number, typeEnum: number): string | undefined {
-    const table = this.data.entities as Partial<Pick<EntityTable, 'getTypeName'>>;
-    const fromTable = table.getTypeName?.(expressId);
-    // 'Unknown' is the table's own miss sentinel, not an IFC class.
-    if (fromTable && fromTable !== 'Unknown') return fromTable;
-    const fromEnum = IfcTypeEnumToString(typeEnum as IfcTypeEnum);
-    return fromEnum === 'Unknown' ? undefined : fromEnum;
-  }
-
-  /**
    * Generate path for an entity.
    *
    * A node's `path` IS the entity's identity in IFCX: the reader hands it
@@ -347,10 +300,9 @@ export class IfcxWriter {
    * with no GlobalId (and an explicit `idToPath` entry still wins over both,
    * so a round-trip keeps the paths the source file authored).
    */
-  private generatePath(expressId: number, typeEnum: number, globalId?: string): string {
+  private generatePath(expressId: number, typeName: string | undefined, globalId?: string): string {
     if (globalId) return globalId;
-    const typeName = this.getTypeName(expressId, typeEnum) || 'IfcElement';
-    return `ifc:${typeName}.${expressId}`;
+    return `ifc:${typeName ?? 'IfcElement'}.${expressId}`;
   }
 
   /**
@@ -359,47 +311,6 @@ export class IfcxWriter {
   private generateId(): string {
     return `ifcx_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   }
-}
-
-/**
- * Scan data nodes and return the list of standard IFCX import URIs needed
- * for the attribute namespaces actually used.
- */
-function collectRequiredImports(nodes: IfcxNode[]): ImportNode[] {
-  let needsIfcCore = false;
-  let needsIfcProp = false;
-  let needsUsd = false;
-
-  for (const node of nodes) {
-    if (!node.attributes) continue;
-    for (const key of Object.keys(node.attributes)) {
-      // IFC core schemas: class, presentation, material, spaceBoundary
-      if (!needsIfcCore && (
-        key === 'bsi::ifc::class' ||
-        key.startsWith('bsi::ifc::presentation::') ||
-        key === 'bsi::ifc::material' ||
-        key === 'bsi::ifc::spaceBoundary'
-      )) {
-        needsIfcCore = true;
-      }
-      // IFC property schemas: bsi::ifc::prop::*
-      if (!needsIfcProp && key.startsWith('bsi::ifc::prop::')) {
-        needsIfcProp = true;
-      }
-      // USD schemas: usd::*
-      if (!needsUsd && key.startsWith('usd::')) {
-        needsUsd = true;
-      }
-      if (needsIfcCore && needsIfcProp && needsUsd) break;
-    }
-    if (needsIfcCore && needsIfcProp && needsUsd) break;
-  }
-
-  const imports: ImportNode[] = [];
-  if (needsIfcCore) imports.push({ uri: IFCX_SCHEMA_IMPORTS.IFC_CORE });
-  if (needsIfcProp) imports.push({ uri: IFCX_SCHEMA_IMPORTS.IFC_PROP });
-  if (needsUsd) imports.push({ uri: IFCX_SCHEMA_IMPORTS.USD });
-  return imports;
 }
 
 /**

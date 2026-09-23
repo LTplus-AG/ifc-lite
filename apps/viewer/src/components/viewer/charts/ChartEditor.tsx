@@ -162,6 +162,7 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
     // silently. `clashRule` is meaningless off `clash` for the same reason.
     setFilterText('');
     setFilterGroups([{ combinator: 'AND', rules: [] }]);
+    setActiveFilterGroup(0);
     setFilterMode('selector');
     setFilterFeedback(null);
     setClashRuleId('');

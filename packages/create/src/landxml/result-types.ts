@@ -62,8 +62,13 @@ export interface LandXmlIfcCoverage {
   vertices: number;
   /** Triangles across all written surfaces. */
   triangles: number;
-  /** Horizontal alignments written as `IfcAlignment` (§11). */
-  alignments: number;
+  /**
+   * Horizontal alignments written as `IfcAlignment` (§11). `landXmlToIfc`
+   * always sets it; it is optional only so that adding it is not a breaking
+   * change to an interface v1.0 may already have published (#5370 review) —
+   * read it as `coverage.alignments ?? 0`.
+   */
+  alignments?: number;
 }
 
 /** What the produced file records about where it came from (§7). */

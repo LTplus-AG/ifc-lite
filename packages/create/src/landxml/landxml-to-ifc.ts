@@ -187,7 +187,7 @@ export function landXmlToIfc(source: LandXmlIfcSource, options: LandXmlIfcOption
     alignments: alignmentMapping.mapped.length,
   };
 
-  if (coverage.surfaces === 0 && coverage.surveyPoints === 0 && coverage.alignments === 0) {
+  if (coverage.surfaces === 0 && coverage.surveyPoints === 0 && (coverage.alignments ?? 0) === 0) {
     return { status: 'refused', reason: refusalReason(refusals), refusals, warnings };
   }
 
@@ -251,7 +251,7 @@ function writeProvenance(
     { Name: 'RefusedRecordFamilies', Value: provenance.refusedFamilies.join(', ') },
     { Name: 'ExportedSurfaces', Value: String(coverage.surfaces) },
     { Name: 'ExportedSurveyPoints', Value: String(coverage.surveyPoints) },
-    { Name: 'ExportedAlignments', Value: String(coverage.alignments) },
+    { Name: 'ExportedAlignments', Value: String(coverage.alignments ?? 0) },
   ];
   terrain.addPropertySet(terrain.siteId, {
     Name: 'LandXML_Conversion',

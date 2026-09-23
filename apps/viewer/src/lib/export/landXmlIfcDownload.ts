@@ -58,7 +58,7 @@ export function downloadLandXmlAsIfc(input: LandXmlIfcDownloadInput): LandXmlIfc
     filename,
     surfaces: result.coverage.surfaces,
     surveyPoints: result.coverage.surveyPoints,
-    alignments: result.coverage.alignments,
+    alignments: result.coverage.alignments ?? 0,
   };
 }
 

@@ -42,7 +42,6 @@ import {
 } from '@ifc-lite/geometry';
 import { resolveResourceRetryTier } from '../lib/resource-retry.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
-import { buildSpatialIndexGuarded, buildSpatialIndexForModel } from '../utils/loadingUtils.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { forwardEntityIndexTo, createSourceFingerprintCell, type EntityIndexSink } from './entityIndexHandoff.js';
 import { computeSourceFingerprint, computeSourceFingerprintFromBlob, type GeometryData } from '@ifc-lite/cache';
@@ -513,7 +512,7 @@ export function useIfcLoader() {
 
       // The ONE finalizer for every format/platform/role. Primary keeps the
       // historical updateModel-only behaviour; federated runs the georef-align
-      // → id-offset → relabel → spatial-index → addModel sequence lifted
+      // → id-offset → relabel → addModel sequence lifted
       // verbatim from the old useIfcFederation.addModel block (same order).
       const finalizeModel = async (
         dataStore: IfcDataStore | null,
@@ -645,9 +644,6 @@ export function useIfcLoader() {
             console.error('[useIfc] point-cloud anchor realignment failed:', error);
             toast.error('Point-cloud realignment failed; existing scan transforms were restored.');
           }
-          // Spatial index AFTER id offset + alignment (final ids + world positions)
-          // and AFTER addModel so it attaches to THIS model, not the active slot.
-          buildSpatialIndexForModel(geometryResult.meshes, modelId, dataStore);
           // GPU-instancing (#1912): forward this model's shards now — NOT during
           // streaming — because `useGeometryStreaming`'s drain re-homes each
           // occurrence's raw entity id by `idOffset`, which is only known now
@@ -1568,7 +1564,7 @@ export function useIfcLoader() {
       // reader, read in the catch block below if the stream watchdog fires —
       // a measured phase instead of a guess.
       const stallPhaseHandle: StallPhaseHandle = {};
-      // The background finalize (spatial index / cache for primary; align +
+      // The background finalize (cache for primary; align +
       // addModel for federated). Primary leaves it running in the background
       // for a fast first frame; federated MUST await it so the model is
       // registered before loadFile resolves (loadFilesSequentially relies on it).
@@ -1726,11 +1722,11 @@ export function useIfcLoader() {
 
               // #1781: resolve external texture references against the decoded
               // .ifcZIP sibling images BEFORE the meshes fan out to the
-              // renderer / geometryResult / spatial index — all share these
+              // renderer / geometryResult / cache — all share these
               // same objects.
               attachTextureBitmaps(event.meshes, textureBitmaps);
 
-              // Collect meshes for BVH building (use loop to avoid stack overflow with large batches)
+              // Collect meshes for cache persistence (use loop to avoid stack overflow with large batches)
               for (let i = 0; i < event.meshes.length; i++) allMeshes.push(event.meshes[i]);
               // #924: fold instanced-only entity geometry hashes (no flat mesh
               // carries them) into the model map so compare can diff them.
@@ -1950,11 +1946,6 @@ export function useIfcLoader() {
                   // under the current plan (respects the size bands + kill switch).
                   cacheState: cachePlan.shouldCache ? 'writing' : 'none', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
                 }, allInstancedShards);
-                // Build spatial index from meshes in time-sliced chunks (non-blocking).
-                // Previously this was synchronous inside requestIdleCallback, blocking
-                // the main thread for seconds on 200K+ mesh models (190M+ float reads
-                // for bounds computation alone).
-                buildSpatialIndexGuarded(allMeshes, dataStore, setIfcDataStore);
 
                 // Cache the result in the background, reusing the `cachePlan`
                 // decided once above (single source of truth for read + write).
@@ -2005,11 +1996,7 @@ export function useIfcLoader() {
                   });
                 }
 
-                // Release closure references to MeshData objects after a delay.
-                // buildSpatialIndexGuarded starts an async spatial index build that
-                // reads from allMeshes — clearing immediately would corrupt it.
-                // The store's geometryResult.meshes still holds references to the same
-                // objects, so they remain alive for rendering/visibility.
+                // Release closure references; geometryResult owns the rendered meshes.
                 setTimeout(() => {
                   allMeshes.length = 0;
                   cumulativeColorUpdates.clear();
@@ -2023,7 +2010,7 @@ export function useIfcLoader() {
                   console.warn('[useIfc] finalize error ignored - superseded load (stale session):', err);
                   return;
                 }
-                // Data model parsing failed - spatial index and caching skipped
+                // Data model parsing failed; no query index or cache can be built.
                 console.warn('[useIfc] Skipping spatial index/cache - data model unavailable:', err);
                 if (target.kind === 'federated') {
                   // No placeholder model exists for a federated add (it is only
@@ -2087,7 +2074,7 @@ export function useIfcLoader() {
       }
 
       // Federated adds register the model inside finalizePromise (georef align
-      // → id offset → spatial index → addModel). Await it so loadFile resolves
+      // → id offset → addModel). Await it so loadFile resolves
       // only AFTER the model is in the map — loadFilesSequentially loads the
       // next file serially and relies on this ordering for id-offset assignment.
       loadStage = 'finalize';

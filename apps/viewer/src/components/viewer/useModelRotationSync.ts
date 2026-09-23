@@ -7,7 +7,6 @@ import { useViewerStore, type ViewerState, type FederatedModel } from '@/store';
 import { placementFor } from '@/lib/model-placement/state';
 import { equalRotation } from '@/lib/model-placement/rotation';
 import { modelRotationBaker, type RotationTarget } from '@/lib/model-placement/rotation-bake';
-import { buildPlacedSpatialIndex } from '@/lib/model-placement/spatial-index';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { toRenderTranslation } from '@/lib/model-placement/translation';
 import { invalidateSpatialIndex } from '@/utils/loadingUtils';
@@ -94,9 +93,8 @@ function bake(state: ViewerState, previous?: ViewerState): string[] {
   const moved = modelRotationBaker.reconcile(targets);
   // Instanced occurrences never pass through `modelRotationBaker` — they have
   // no vertices to bake — so the renderer's own transforms are pushed
-  // separately, every pass, BEFORE the content-version bump and index rebuild
-  // below: the spatial index this function rebuilds has to describe the SAME
-  // heading the renderer is about to draw (#4890).
+  // separately, every pass, BEFORE the content-version bump. The placement
+  // index sync then sees the renderer's new heading (#4890).
   const renderer = getGlobalRenderer();
   if (renderer) syncModelRotationsToRenderer(renderer, state, modelIndices(state.models), previous);
   if (moved.length === 0) return moved;
@@ -108,7 +106,6 @@ function bake(state: ViewerState, previous?: ViewerState): string[] {
       // Withdraw the old index now: the rebuild is asynchronous, and until it
       // lands a raycast would be answered from the previous heading's boxes.
       invalidateSpatialIndex(model.ifcDataStore);
-      buildPlacedSpatialIndex(next, modelId);
     }
   }
   return moved;

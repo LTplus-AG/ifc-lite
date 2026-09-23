@@ -26,7 +26,6 @@ import {
   type GeometryData,
 } from '@ifc-lite/cache';
 import { SpatialHierarchyBuilder, StepTokenizer, CompactEntityIndex, CompactEntityIndexBuilder, extractLengthUnitScale, attachDataStoreAccessors, type IfcDataStore, type IfcStoreData } from '@ifc-lite/parser';
-import { buildSpatialIndexGuarded } from '../utils/loadingUtils.js';
 import { makeColdGeometryProvider } from '../utils/coldGeometryProvider.js';
 import { getGlobalRenderer } from './useBCF.js';
 import { computeFullSourceHash } from '../utils/sourceContentHash.js';
@@ -254,7 +253,6 @@ export function useIfcCache() {
       }
       const geometrySection = headerInfo.sections.find((s) => s.type === SectionType.Geometry);
       const result = await reader.read(cacheBuffer, { skipGeometry: true });
-      const cacheReadTime = performance.now() - cacheLoadStart;
 
       // Restore the source buffer — required for on-demand property extraction
       // AND the lazy entity accessors (getEntity/getProperties/...). The web
@@ -450,7 +448,6 @@ export function useIfcCache() {
         }
 
         setIfcDataStore(dataStore);
-        buildSpatialIndexGuarded(allMeshes, dataStore, setIfcDataStore);
 
         // Cold-storage provider (issue #1682 phase 3b): with this wired the
         // scene may drop CPU meshData for cold chunks and restore them from

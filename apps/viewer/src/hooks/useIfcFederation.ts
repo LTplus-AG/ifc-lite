@@ -19,7 +19,6 @@ import { detectFormat, parseFederatedIfcx, type IfcDataStore } from '@ifc-lite/p
 import type { MeshData } from '@ifc-lite/geometry';
 import { chooseSharedRtcOffset } from '@ifc-lite/geometry/world-frame';
 import { IfcQuery } from '@ifc-lite/query';
-import { buildSpatialIndexForModel } from '../utils/loadingUtils.js';
 import { calculateMeshBounds, createCoordinateInfo } from '../utils/localParsingUtils.js';
 import { buildIfcxDataStore, convertIfcxMeshes } from './ingest/viewerModelIngest.js';
 import { extractModelSpatialPlacement, findReferenceSpatialModel } from './ingest/federationAlign.js';
@@ -266,19 +265,13 @@ export function useIfcFederation(
       // old vertex positions cached.
       useViewerStore.getState().bumpGeometryContentVersion();
 
-      // Re-index. `IfcDataStore.spatialIndex` is a BVH of WORLD-space mesh
-      // bounds backing queryByBounds/raycast/queryFrustum; the loader builds it
-      // once, after load-time alignment, and re-aligning has never rebuilt it
-      // (#2013). Measured on the real Building-Architecture + Infra-Bridge
-      // federation, one re-align left the index finding 7 of 78 meshes inside
-      // the model's own bounds. Runs after the whole pass so no build races the
-      // geometry it is measuring, and `buildSpatialIndexForModel` drops its
-      // result if the model or its store went away meanwhile.
+      // The placement index sync observes the content revision and rebuilds
+      // from placed flat meshes plus any uploaded instances.
       const models = useViewerStore.getState().models;
       for (const modelId of movedModelIds) {
         const moved = models.get(modelId) as FederatedModel | undefined;
         if (moved?.ifcDataStore && moved.geometryResult) {
-          buildSpatialIndexForModel(moved.geometryResult.meshes, modelId, moved.ifcDataStore);
+          useViewerStore.getState().updateModel(modelId, {});
         }
       }
     }

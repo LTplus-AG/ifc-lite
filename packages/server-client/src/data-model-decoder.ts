@@ -212,6 +212,8 @@ export interface Property {
   /** Raw IFC measure/value type tag (e.g. "IFCLENGTHMEASURE"), when present.
    *  Added with the data-model v3 payload; `undefined` for older servers. */
   data_type?: string;
+  /** IfcPropertyTableValue: no single `data_type` by design (#5224). v7 payload. */
+  data_type_mixed?: true;
   /** Candidate value array for multi-valued properties (enumerated / bounded /
    *  list / table), for IDS any-match checks. v5 payload; absent otherwise. */
   values?: string[];
@@ -496,6 +498,7 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
   const dataTypesArr = propertiesArrow.getChild('data_type')?.toArray() as (string | null)[] | undefined;
   // Additive v5 column: JSON-encoded candidate arrays, sparse (issue #1766).
   const valuesJsonArr = propertiesArrow.getChild('values_json')?.toArray() as (string | null)[] | undefined;
+  const dataTypeMixedCol = propertiesArrow.getChild('data_type_mixed'); // v7 (#5224)
 
   const propertySets = new Map<number, PropertySet>();
   for (let i = 0; i < psetIds.length; i++) {
@@ -514,6 +517,7 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
       property_type: propertyTypesArr[i] ?? '',
       data_type: dataTypesArr?.[i] ?? undefined,
       values: parseValuesJson(valuesJsonArr?.[i]),
+      ...(dataTypeMixedCol?.get(i) === true ? { data_type_mixed: true as const } : {}),
     });
   }
 

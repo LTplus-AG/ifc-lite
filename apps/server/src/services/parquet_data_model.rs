@@ -344,6 +344,7 @@ fn serialize_properties_table(
         String,
         String,
         Option<String>,
+        bool,
         Option<String>,
     );
     let rows: Vec<Row> = property_sets
@@ -369,6 +370,7 @@ fn serialize_properties_table(
                         prop.property_value.clone(),
                         prop.property_type.clone(),
                         prop.data_type.clone(),
+                        prop.data_type_mixed,
                         values_json,
                     ))
                 })
@@ -382,15 +384,17 @@ fn serialize_properties_table(
     let mut property_values = Vec::with_capacity(rows.len());
     let mut property_types = Vec::with_capacity(rows.len());
     let mut data_types = Vec::with_capacity(rows.len());
+    let mut data_types_mixed = Vec::with_capacity(rows.len());
     let mut values_jsons = Vec::with_capacity(rows.len());
 
-    for (pset_id, pset_name, prop_name, prop_value, prop_type, data_type, values_json) in rows {
+    for (pset_id, pset_name, prop_name, prop_value, prop_type, data_type, data_type_mixed, values_json) in rows {
         pset_ids.push(pset_id);
         pset_names.push(pset_name);
         property_names.push(prop_name);
         property_values.push(prop_value);
         property_types.push(prop_type);
         data_types.push(data_type);
+        data_types_mixed.push(data_type_mixed);
         values_jsons.push(values_json);
     }
 
@@ -405,6 +409,9 @@ fn serialize_properties_table(
         Field::new("data_type", DataType::Utf8, true),
         // JSON-encoded candidate array (data-model cache bumped to v5).
         Field::new("values_json", DataType::Utf8, true),
+        // IfcPropertyTableValue: no single data_type by design (#5224,
+        // data-model cache bumped to v7).
+        Field::new("data_type_mixed", DataType::Boolean, false),
     ]);
 
     let batch = RecordBatch::try_new(
@@ -417,6 +424,7 @@ fn serialize_properties_table(
             Arc::new(StringArray::from(property_types)),
             Arc::new(StringArray::from(data_types)),
             Arc::new(StringArray::from(values_jsons)),
+            Arc::new(BooleanArray::from(data_types_mixed)),
         ],
     )?;
 

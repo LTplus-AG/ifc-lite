@@ -42,7 +42,7 @@ pub(crate) fn cache_key_from_parts(
 ///
 /// Lives beside [`cache_key_from_parts`] because that is what it protects. The
 /// hash a client supplies is concatenated into `{hash}-{filter}{quality}` and
-/// the namespace suffix (`-parquet-v5`, `-datamodel-v6`, ...) is appended after
+/// the namespace suffix (`-parquet-v5`, `-datamodel-v7`, ...) is appended after
 /// it, so a caller-shaped string is a caller-shaped cache key. Checking the
 /// shape keeps the value to the one job it has, naming a file.
 ///
@@ -229,7 +229,7 @@ pub(crate) fn parquet_optimized_metadata_cache_key(cache_key: &str) -> String {
 /// the decoder correctly omits it, and the viewer's server path is back to
 /// `RelId = 0` on every exported relationship row with nothing saying so.
 pub(crate) fn data_model_cache_key(cache_key: &str) -> String {
-    format!("{cache_key}-datamodel-v6")
+    format!("{cache_key}-datamodel-v7")
 }
 
 /// Whether a data model at the CURRENT payload version is cached for

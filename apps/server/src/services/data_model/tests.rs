@@ -267,6 +267,9 @@ fn extracts_type_relationship_and_resolves_typed_property_values() {
         ar.values.as_deref(),
         Some(&["R1".to_string(), "R2".to_string()][..])
     );
+    // The type its members share, as the WASM path reports it (#5224).
+    assert_eq!(ar.data_type.as_deref(), Some("IFCLABEL"));
+    assert!(!ar.data_type_mixed);
 
     let c = prop("Layers");
     assert_eq!(c.property_value, "3");
@@ -300,6 +303,9 @@ fn extracts_type_relationship_and_resolves_typed_property_values() {
     // Table: defining-then-defined candidates, display "Table (N rows)".
     let df = iprop("Deflection");
     assert_eq!(df.property_value, "Table (2 rows)");
+    // No single type by design, said explicitly rather than by absence (#5224).
+    assert_eq!(df.data_type, None);
+    assert!(df.data_type_mixed);
     assert_eq!(
         df.values.as_deref(),
         Some(

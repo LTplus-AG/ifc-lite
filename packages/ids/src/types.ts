@@ -358,6 +358,7 @@ export type FailureType =
   | 'PROPERTY_MISSING'
   | 'PROPERTY_VALUE_MISMATCH'
   | 'PROPERTY_DATATYPE_MISMATCH'
+  | 'PROPERTY_DATATYPE_UNKNOWN' // property found, its dataType is not known here (#5224)
   | 'PROPERTY_OUT_OF_BOUNDS'
   // Classification failures
   | 'CLASSIFICATION_MISSING'
@@ -483,15 +484,7 @@ export interface IFCDataAccessor {
 export interface PropertyValueResult {
   /** The value */
   value: string | number | boolean | null;
-  /**
-   * The data type (e.g., "IFCLABEL", "IFCREAL"), or `undefined` when no
-   * dataType is recorded for this property — deliberately, for a
-   * multi-typed `IfcPropertyTableValue`/list/enumeration (see
-   * `PropertySetInfo['properties'][number]['dataType']`'s doc), or because
-   * a caller creating the property via an IDS correction didn't supply
-   * one. Distinct from `''`, which no producer in this codebase emits
-   * for this field as of #5224.
-   */
+  /** The data type (e.g., "IFCLABEL", "IFCREAL"); `undefined` when unknown (#5224) */
   dataType: string | undefined;
   /** The property set name */
   propertySetName: string;
@@ -507,23 +500,10 @@ export interface PropertySetInfo {
   properties: Array<{
     name: string;
     value: string | number | boolean | null;
-    /**
-     * The IDS dataType token (e.g. `"IFCLABEL"`), or `undefined` when
-     * none is recorded. `undefined` here means "the source genuinely
-     * doesn't know the type" — a multi-typed `IfcPropertyTableValue`
-     * (parser leaves it unset on purpose so the IDS dataType gate falls
-     * through to a value-only match, matching upstream ifctester), a
-     * multi-valued list/enumeration, an `IfcDoorPanelProperties`-style
-     * predefined attribute with no per-attribute schema lookup, or an
-     * IDS correction that created a new property without specifying a
-     * dataType. `facets/property-facet.ts`'s dataType gate treats
-     * `undefined` as "skip this constraint" for all of these — it has
-     * no way to tell them apart (see ifc-lite issue #5224). Do not
-     * default this to `''`: that was the #5224 bug (an accidental
-     * producer manufacturing `''`, indistinguishable from a real IFCLABEL
-     * value's absence, instead of leaving the field genuinely unset).
-     */
+    /** IFC dataType (e.g. `"IFCLABEL"`); `undefined` is UNKNOWN and fails a dataType facet (#5224). */
     dataType: string | undefined;
+    /** `IfcPropertyTableValue`: columns differ in type by design; a dataType check defers to the value (#5224). */
+    dataTypeMixed?: true;
     /**
      * Optional list of individual values for multi-valued IFC properties
      * (`IfcPropertyEnumeratedValue`, `IfcPropertyListValue`). When set,

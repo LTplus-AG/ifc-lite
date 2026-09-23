@@ -5,7 +5,7 @@
 //! Property set extraction.
 
 use super::property_value::{
-    fmt_number, infer_data_type, member_list, resolve_complex_property_value, resolve_single_value,
+    fmt_number, infer_data_type, member_list, shared_member_type, resolve_complex_property_value, resolve_single_value,
 };
 use super::types::{EntityJob, Property, PropertySet};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
@@ -107,6 +107,7 @@ pub(super) fn extract_property(
     // `values` mirrors the WASM `parsePropertyValue().values` candidate array
     // (issue #1766): IDS facet checks pass when ANY candidate matches. Emitted
     // only when non-empty — the client treats an empty array as absent.
+    let mut data_type_mixed = false;
     let (property_value, property_type, data_type, values) = match ty.as_str() {
         // [Name, Description, NominalValue, Unit]
         "IFCPROPERTYSINGLEVALUE" => {
@@ -115,17 +116,12 @@ pub(super) fn extract_property(
         }
 
         // [Name, Description, EnumerationValues (list), EnumerationReference]
-        "IFCPROPERTYENUMERATEDVALUE" => {
-            let members = member_list(entity.get(2));
-            let joined = members.as_ref().map(|m| m.join(", ")).unwrap_or_default();
-            (joined, "string".into(), None, members)
-        }
-
         // [Name, Description, ListValues (list), Unit]
-        "IFCPROPERTYLISTVALUE" => {
+        // Both carry the one type their members share (#5224).
+        "IFCPROPERTYENUMERATEDVALUE" | "IFCPROPERTYLISTVALUE" => {
             let members = member_list(entity.get(2));
             let joined = members.as_ref().map(|m| m.join(", ")).unwrap_or_default();
-            (joined, "string".into(), None, members)
+            (joined, "string".into(), shared_member_type(entity.get(2)), members)
         }
 
         // [Name, Description, UpperBoundValue, LowerBoundValue, Unit, SetPointValue]
@@ -201,6 +197,7 @@ pub(super) fn extract_property(
                 } else {
                     Some(members)
                 };
+                data_type_mixed = true;
                 (
                     format!("Table ({} rows)", rows),
                     "string".into(),
@@ -238,6 +235,7 @@ pub(super) fn extract_property(
         property_value,
         property_type,
         data_type,
+        data_type_mixed,
         values,
     })
 }

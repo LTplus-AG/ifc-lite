@@ -255,11 +255,11 @@
    730 packages/geometry/src/native-bridge.ts
    904 packages/ids/src/audit/ifc-schema/index.ts
    566 packages/ids/src/audit/structural/index.ts
-   467 packages/ids/src/facets/property-facet.ts
+   445 packages/ids/src/facets/property-facet.ts
    597 packages/ids/src/parser/xml-parser.ts
-   626 packages/ids/src/translation/service.ts
-   632 packages/ids/src/types.ts
-   770 packages/ids/src/validation/validator.ts
+   628 packages/ids/src/translation/service.ts
+   636 packages/ids/src/types.ts
+   773 packages/ids/src/validation/validator.ts
    468 packages/ifcx/src/federated-composition.ts
    704 packages/ifcx/src/index.ts
    415 packages/ifcx/src/writer.ts
@@ -286,7 +286,7 @@
    467 packages/parser/src/compact-entity-index.ts
    530 packages/parser/src/data-store-transport.ts
    835 packages/parser/src/material-resolver.ts
-   796 packages/parser/src/on-demand-extractors.ts
+   790 packages/parser/src/on-demand-extractors.ts
    494 packages/parser/src/source-bytes.ts
    513 packages/plugin-api/src/types.ts
    678 packages/pointcloud/src/formats/e57-decode.ts
@@ -323,7 +323,7 @@
    458 packages/sdk/src/namespaces/bsdd.ts
    743 packages/sdk/src/types.ts
   1011 packages/server-client/src/client.ts
-   784 packages/server-client/src/data-model-decoder.ts
+   788 packages/server-client/src/data-model-decoder.ts
    444 packages/server-client/src/parquet-tables.ts
    595 packages/server-client/src/types.ts
    411 packages/source-dalux/src/http-client.ts

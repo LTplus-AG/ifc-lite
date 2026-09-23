@@ -174,6 +174,7 @@ export const fr = {
     propertyValueMismatch: 'La propriété "{pset}.{property}" est "{actual}", attendu {expected}',
     propertyPatternMismatch: 'La valeur de la propriété "{pset}.{property}" "{actual}" ne correspond pas à {expected}',
     propertyDatatypeMismatch: 'Le type de données de la propriété "{pset}.{property}" est "{actual}", attendu {expected}',
+    propertyDatatypeUnknown: 'La propriété "{pset}.{property}" n\'a pas de type de données connu et ne peut donc pas être vérifiée par rapport à {expected}',
     propertyOutOfBounds: 'La valeur de la propriété "{pset}.{property}" {actual} est hors de la plage {expected}',
     propertyProhibited: 'La propriété interdite "{pset}.{property}" existe avec la valeur "{actual}"',
 

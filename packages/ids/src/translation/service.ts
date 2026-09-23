@@ -452,6 +452,8 @@ class IDSTranslationServiceImpl implements TranslationService {
           expected: expected || '?',
         });
 
+      case 'PROPERTY_DATATYPE_UNKNOWN':
+        return this.interpolate(t.propertyDatatypeUnknown, { pset: this.extractPsetFromField(field), property: this.extractPropertyFromField(field), expected: expected || '?' });
       case 'PROPERTY_DATATYPE_MISMATCH':
         return this.interpolate(t.propertyDatatypeMismatch, {
           pset: this.extractPsetFromField(field),

@@ -160,6 +160,7 @@ describe('convertServerDataModel', () => {
           { property_name: 'IsExternal', property_value: 'true', property_type: 'boolean', data_type: 'IFCBOOLEAN' },
           { property_name: 'U', property_value: '0.24', property_type: 'real', data_type: 'IFCTHERMALTRANSMITTANCEMEASURE' },
           { property_name: 'Manufacturer', property_value: 'ACME', property_type: 'string', data_type: 'IFCLABEL' },
+          { property_name: 'Deflection', property_value: 'Table (1 rows)', property_type: 'string', data_type_mixed: true, values: ['1', '10'] },
         ] }],
       ]),
       quantitySets: new Map(),
@@ -189,6 +190,10 @@ describe('convertServerDataModel', () => {
     assert.equal(byName('U').value, 0.24);
     assert.equal(byName('U').dataType, 'IFCTHERMALTRANSMITTANCEMEASURE');
     assert.equal(byName('Manufacturer').value, 'ACME');
+    // #5224: a table's explicit "no single dataType" survives; others don't gain it.
+    assert.equal(byName('Deflection').dataTypeMixed, true);
+    assert.equal(byName('Deflection').dataType, undefined);
+    assert.equal(byName('Manufacturer').dataTypeMixed, undefined);
     // TYPEHASPROPERTYSETS must NOT become a graph edge.
     assert.deepEqual(store.relationships.getRelated(20, RelationshipType.DefinesByProperties, 'forward'), []);
   });

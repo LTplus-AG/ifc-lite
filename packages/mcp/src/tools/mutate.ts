@@ -28,7 +28,6 @@
  */
 
 import { writeFile } from 'node:fs/promises';
-import { EntityNode } from '@ifc-lite/query';
 import type { Mutation } from '@ifc-lite/mutations';
 import type { Tool } from './types.js';
 import { entityTargetSchema } from './entity-target-schema.js';

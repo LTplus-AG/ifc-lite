@@ -60,7 +60,7 @@ const TEST_LOCALE: Catalogue = {
   'document.block.tableSummary': '{columns} Spalten · {view}',
   'document.block.tableViewFlat': 'eine Zeile je Element',
   'document.block.kindIdsReport': 'IDS-Bericht',
-  'document.block.idsReportSourceLabel': 'Quelle',
+  'document.block.idsReportSourceLabel': 'IDS-Quelle',
   'document.block.idsReportRefresh': 'Vom aktuellen Prüfbericht aktualisieren',
   'document.block.idsReportRefreshDisabledTitle': 'Zuerst eine IDS-Prüfung ausführen',
 };
@@ -186,7 +186,7 @@ describe('BlockEditor localization (#4918)', () => {
     act(() => setLocale('block-editor-x-ids-report'));
 
     assert.equal(ui.querySelector('[data-block-editor]')?.textContent?.includes('IDS-Bericht'), true);
-    assert.equal(ui.textContent?.includes('Quelle'), true);
+    assert.equal(ui.textContent?.includes('IDS-Quelle'), true);
     assert.equal(ui.textContent?.includes('Vom aktuellen Prüfbericht aktualisieren'), true);
   });
 

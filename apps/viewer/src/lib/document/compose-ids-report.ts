@@ -25,7 +25,7 @@ export type IdsReportLayoutBlock = IdsReportBlock;
 const pct = (n: number): string => `${n}%`;
 
 export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCursor, contentW: number, blockGap: number): void {
-  const title = `IDS report: ${block.sourceName || 'Untitled'}`;
+  const title = `IDS report: ${block.sourceName}`;
   const firstRowHeight = block.checks[0]?.longDescription ? DESCRIBED_CHECK_ROW_HEIGHT : CHECK_ROW_HEIGHT;
   const lead = IDS_REPORT_TITLE_HEIGHT + SUMMARY_HEIGHT + DATE_HEIGHT + firstRowHeight;
   cursor.ensure(lead);

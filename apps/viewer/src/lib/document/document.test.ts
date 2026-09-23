@@ -169,6 +169,7 @@ describe('document file', () => {
   });
 
   it('validates the shape, re-identifies an imported template and keeps its bindings', () => {
+    assert.equal(DOCUMENT_VERSION, 5, 'the persistable IDS report block requires document format v5');
     const doc = coverSheetDocument();
     assert.deepEqual(validateDocumentSpec(doc), []);
     const imported = parseDocumentFile(JSON.stringify(doc));
@@ -243,6 +244,17 @@ describe('document file', () => {
 });
 
 describe('compose', () => {
+  it('preserves an intentionally empty IDS source name in the PDF (#5125 review)', () => {
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [{ kind: 'ids-report', id: 'ids', sourceName: '', generatedAt: '2026-01-15T10:00:00.000Z',
+        summary: { checked: 0, passed: 0, failed: 0, passRate: 100 }, checks: [] }],
+    });
+    const lines = layout.pages.flatMap((page) => page.items.filter((item) => item.kind === 'text').map((item) => item.text));
+    assert.ok(lines.includes('IDS report: '));
+    assert.equal(lines.some((line) => line.includes('Untitled')), false);
+  });
+
   it('prints the IDS run timestamp and keeps long descriptions clear of counts (#5125 review)', () => {
     const description = 'A long IDS requirement description that previously printed under the check counts';
     const layout = composeDocument({

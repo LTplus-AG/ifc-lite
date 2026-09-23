@@ -59,7 +59,8 @@
  * `lib/compare/compareScope.ts`, the sibling `IfcProduct`-level predicate).
  */
 
-import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
+import { getInheritanceChainAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
+import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
 
 /** Ancestor that makes an entity a physical object. */
 const PHYSICAL_ROOT = 'IFCELEMENT';
@@ -115,6 +116,18 @@ export function collectPhysicalEntityIds(byType: EntityIdsByType | null | undefi
   for (const [typeName, entityIds] of byType) {
     if (!isPhysicalObjectType(typeName)) continue;
     for (const id of entityIds) ids.add(id);
+  }
+  return ids;
+}
+
+/** Physical ids in a model's live overlay, including retypes and creations (#5249). */
+export function collectEffectivePhysicalEntityIds(
+  store: IfcDataStore,
+  view: MutablePropertyView | null | undefined,
+): Set<number> {
+  const ids = new Set<number>();
+  for (const { expressId, type } of iterateEffectiveEntityIds(store, view)) {
+    if (isPhysicalObjectType(type)) ids.add(expressId);
   }
   return ids;
 }

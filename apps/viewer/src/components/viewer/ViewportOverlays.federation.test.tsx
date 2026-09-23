@@ -28,6 +28,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser } from '@ifc-lite/parser';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
@@ -50,6 +51,7 @@ DATA;
 #2=IFCSITE('${guid(2)}',$,'Active Site',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);
 #3=IFCBUILDING('${guid(3)}',$,'Active Building',$,$,$,$,$,.ELEMENT.,$,$,$);
 #4=IFCBUILDINGSTOREY('${guid(4)}',$,'Storey One',$,$,$,$,$,$,0.);
+#6=IFCWALL('${guid(6)}',$,'Active Wall',$,$,$,$,$,$);
 #10=IFCRELAGGREGATES('${guid(10)}',$,$,$,#1,(#2));
 #11=IFCRELAGGREGATES('${guid(11)}',$,$,$,#2,(#3));
 #12=IFCRELAGGREGATES('${guid(12)}',$,$,$,#3,(#4));
@@ -119,6 +121,9 @@ beforeEach(async () => {
       ['m2', federatedModel('m2', otherStore, ID_OFFSET)],
     ]),
     selectedStoreys: new Set<number>([FIXTURE_STOREY_2]),
+    hiddenEntities: new Set<number>(),
+    mutationViews: new Map(),
+    mutationVersion: 0,
   });
 });
 
@@ -133,5 +138,28 @@ describe('ViewportOverlays — federation-space storey name lookup', () => {
         `failed lookup against the active model's store, which has no entity at that id. ` +
         `Got: ${JSON.stringify(container.textContent)}`,
     );
+  });
+
+  it('updates the active-model hidden badge for live deletes and creations (#5249)', () => {
+    act(() => useViewerStore.setState({ hiddenEntities: new Set([6]), selectedStoreys: new Set() }));
+    const container = render();
+    assert.match(container.textContent ?? '', /1 hidden/);
+    const active = useViewerStore.getState().models.get('m1')?.ifcDataStore;
+    assert.ok(active);
+    const view = new MutablePropertyView(active.properties, 'm1');
+    view.setExpressIdWatermark(20);
+    const editor = new StoreEditor(active, view);
+
+    editor.removeEntity(6);
+    act(() => useViewerStore.setState({
+      mutationViews: new Map([['m1', view]]), mutationVersion: 1,
+    }));
+    assert.doesNotMatch(container.textContent ?? '', /1 hidden/);
+
+    const created = editor.addEntity('IfcWall', []);
+    act(() => useViewerStore.setState({
+      hiddenEntities: new Set([created.expressId]), mutationVersion: 2,
+    }));
+    assert.match(container.textContent ?? '', /1 hidden/);
   });
 });

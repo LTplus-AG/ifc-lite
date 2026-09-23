@@ -12,12 +12,14 @@ import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
 import { FlavorIndicator } from '@/components/extensions/FlavorIndicator';
 import { FlavorDialog } from '@/components/extensions/FlavorDialog';
-import { collectPhysicalEntityIds } from '@/lib/physical-objects';
-import { collectMeshedIds, countShapedObjects, createObjectPredicate } from '@/lib/object-count';
+import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
+import { collectMeshedIds, countShapedObjects, createShapePredicate } from '@/lib/object-count';
 import type { AggregationRelationships } from '@/utils/aggregation';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { fromGlobalIdFromModels, toGlobalIdFromModels } from '@/store/globalId';
 import type { EntityRef } from '@/store/types';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
 
 /** One loaded model's store paired with the geometry produced from it. */
 interface CountedModel {
@@ -36,6 +38,8 @@ export function StatusBar() {
   const activeStorey = useViewerStore((s) => s.activeStorey);
   const selectedEntities = useViewerStore((s) => s.selectedEntities);
   const activeStreamCanceller = useViewerStore((s) => s.activeStreamCanceller);
+  const mutationViews = useViewerStore((s) => s.mutationViews);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const webgpu = useWebGPU();
 
   const [fps, setFps] = useState(60);
@@ -135,20 +139,35 @@ export function StatusBar() {
   // (`appendGeometryBatch` in dataSlice.ts rebuilds it to swap one model's
   // geometryResult), so nothing memoised on it survives a stream. A model's
   // `ifcDataStore` identity IS stable across those commits, so the expensive
-  // half — the schema walk over the whole entity index — is cached per store
-  // and only the cheap half (a mesh-set lookup per physical id) re-runs as
-  // geometry arrives. Keyed on the store, so it lives exactly as long as the
-  // model does — the same store-identity scope ViewportOverlays' badge uses
-  // for the same walk.
-  const physicalIdsRef = useRef(new WeakMap<IfcDataStore, Set<number>>());
+  // half — the schema walk over the whole effective entity set — is cached
+  // per store, view and mutation version. Streaming only reruns the cheap
+  // mesh-set lookup; an edit invalidates the physical-id set.
+  const physicalIdsRef = useRef(new WeakMap<IfcDataStore, Map<string, {
+    view: MutablePropertyView | null; version: number; ids: Set<number>;
+  }>>());
+  const physicalIdsByModel = useMemo(() => {
+    const result = new Map<string, Set<number>>();
+    for (const { modelId, store } of countedModels) {
+      const view = models.size > 0 ? mutationViews.get(modelId) ?? null
+        : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID) ?? null;
+      let byModel = physicalIdsRef.current.get(store);
+      if (!byModel) {
+        byModel = new Map();
+        physicalIdsRef.current.set(store, byModel);
+      }
+      let cached = byModel.get(modelId);
+      if (!cached || cached.view !== view || cached.version !== mutationVersion) {
+        cached = { view, version: mutationVersion, ids: collectEffectivePhysicalEntityIds(store, view) };
+        byModel.set(modelId, cached);
+      }
+      result.set(modelId, cached.ids);
+    }
+    return result;
+  }, [countedModels, models.size, mutationViews, mutationVersion]);
   const totalObjects = useMemo(() => {
     let total = 0;
-    for (const { store, meshedIds, geometryReady } of countedModels) {
-      let physicalIds = physicalIdsRef.current.get(store);
-      if (!physicalIds) {
-        physicalIds = collectPhysicalEntityIds(store.entityIndex?.byType);
-        physicalIdsRef.current.set(store, physicalIds);
-      }
+    for (const { modelId, store, meshedIds, geometryReady } of countedModels) {
+      const physicalIds = physicalIdsByModel.get(modelId) ?? new Set<number>();
       total += countShapedObjects(physicalIds, {
         relationships: store.relationships as AggregationRelationships | undefined,
         meshedIds,
@@ -156,7 +175,7 @@ export function StatusBar() {
       });
     }
     return total;
-  }, [countedModels]);
+  }, [countedModels, physicalIdsByModel]);
 
   // `selectedStoreys` can contain legacy/local ids from HierarchyPanel or
   // renderer/global ids from other store clients. Resolve global ids through
@@ -203,31 +222,31 @@ export function StatusBar() {
       }
     }
 
-    const predicates = new Map<IfcDataStore, (expressId: number) => boolean>();
+    const predicates = new Map<string, (expressId: number) => boolean>();
     let count = 0;
     for (const { modelId, expressId: storeyId } of selectedRefs.values()) {
       const owner = modelsById.get(modelId);
       const storeyElements = owner?.store.spatialHierarchy?.byStorey.get(storeyId);
       if (!owner || !storeyElements) continue;
-      let isObject = predicates.get(owner.store);
-      if (!isObject) {
-        isObject = createObjectPredicate({
-          getTypeName: (expressId) => owner.store.entities.getTypeName(expressId),
+      let hasShape = predicates.get(modelId);
+      if (!hasShape) {
+        hasShape = createShapePredicate({
           relationships: owner.store.relationships as AggregationRelationships | undefined,
           meshedIds: owner.meshedIds,
           geometryReady: owner.geometryReady,
         });
-        predicates.set(owner.store, isObject);
+        predicates.set(modelId, hasShape);
       }
+      const physicalIds = physicalIdsByModel.get(modelId);
       for (const expressId of storeyElements) {
-        if (isObject(expressId)) count++;
+        if (physicalIds?.has(expressId) && hasShape(expressId)) count++;
       }
     }
     // A selection naming no storey this session can resolve says nothing about
     // the model — fall back to the whole-model total. A storey that resolves
     // and genuinely holds no objects reports 0, which is the answer.
     return selectedRefs.size > 0 ? count : totalObjects;
-  }, [selectedStoreys, activeStorey, selectedEntities, countedModels, models, totalObjects]);
+  }, [selectedStoreys, activeStorey, selectedEntities, countedModels, models, physicalIdsByModel, totalObjects]);
 
   return (
     <div className="h-7 px-3 border-t bg-muted/30 flex items-center justify-between text-xs text-muted-foreground">

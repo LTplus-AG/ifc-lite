@@ -17,7 +17,8 @@ import { useIfc } from '@/hooks/useIfc';
 import { emitCameraInteracted } from '@/lib/tours/events';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { cn } from '@/lib/utils';
-import { collectPhysicalEntityIds, countPhysicalObjects } from '@/lib/physical-objects';
+import { collectEffectivePhysicalEntityIds, countPhysicalObjects } from '@/lib/physical-objects';
+import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
 import { ViewCube, type ViewCubeRef } from './ViewCube';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
 import { BasepointOverlay } from './BasepointOverlay';
@@ -52,12 +53,14 @@ export function ViewportOverlays({
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const classFilter = useViewerStore((s) => s.classFilter);
   const ghostExceptEntities = useViewerStore((s) => s.ghostExceptEntities);
+  const mutationViews = useViewerStore((s) => s.mutationViews);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const basketPresentationVisible = useViewerStore((s) => s.basketPresentationVisible);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const isMobile = useViewerStore((s) => s.isMobile);
   const setOnCameraRotationChange = useViewerStore((s) => s.setOnCameraRotationChange);
   const setOnScaleChange = useViewerStore((s) => s.setOnScaleChange);
-  const { ifcDataStore, models } = useIfc();
+  const { ifcDataStore, models, activeModelId } = useIfc();
   const { t } = useTranslation();
 
   // Cesium state
@@ -119,15 +122,16 @@ export function ViewportOverlays({
       })
     : null;
 
-  // Physical objects in the loaded model — the denominator. Derived from the
-  // entity index, NOT from `geometryResult.meshes`, so an object that never
-  // produced geometry still shows up as "not visible" instead of vanishing
-  // from both sides of the ratio. Memoised on the store identity: the walk is
-  // one schema lookup per distinct type name, but the model can hold millions
-  // of ids and this runs on every camera-driven re-render otherwise.
+  // Physical objects in the active model — include live creates, deletes and
+  // retypes. Keep the scan off camera-driven renders; edits bump the version.
+  const countModelId = Array.from(models.values()).find((model) => model.ifcDataStore === ifcDataStore)?.id
+    ?? activeModelId;
+  const countView = models.size > 0
+    ? (countModelId ? mutationViews.get(countModelId) : null)
+    : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID);
   const physicalIds = useMemo(
-    () => collectPhysicalEntityIds(ifcDataStore?.entityIndex?.byType),
-    [ifcDataStore],
+    () => ifcDataStore ? collectEffectivePhysicalEntityIds(ifcDataStore, countView) : new Set<number>(),
+    [ifcDataStore, countView, mutationVersion],
   );
 
   const objectCounts = useMemo(

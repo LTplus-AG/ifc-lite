@@ -32,6 +32,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { createBimContext } from '@ifc-lite/sdk';
 import { useViewerStore } from '@/store/index.js';
@@ -164,14 +165,16 @@ beforeEach(async () => {
     activeModelId: null,
     models: new Map(),
     selectedStoreys: new Set<number>(),
+    mutationViews: new Map(),
+    mutationVersion: 0,
   });
 });
 
 /** The rendered "… elements" run, e.g. "3 / 4 elements". */
 function elementsText(container: HTMLElement): string {
   const text = container.textContent ?? '';
-  const match = /(\d[\d,.\s/]*)elements/.exec(text);
-  return match ? `${match[1].trim()} elements` : `<no element count in ${JSON.stringify(text)}>`;
+  const match = /(\d[\d,.\s/]*elements?)/.exec(text);
+  return match ? match[1].trim() : `<no element count in ${JSON.stringify(text)}>`;
 }
 
 describe('StatusBar — "N elements" counts physical elements that have a shape (#4655)', () => {
@@ -213,6 +216,32 @@ describe('StatusBar — "N elements" counts physical elements that have a shape 
   it('reports the whole-model object total with no storey selected', () => {
     const container = render();
     assert.equal(elementsText(container), '4 elements', 'no "/ N" fraction without a storey selection');
+  });
+
+  it('updates whole-model and selected-storey counts for live deletes, retypes and creations (#5249)', () => {
+    const view = new MutablePropertyView(store.properties, '__legacy__');
+    view.setExpressIdWatermark(100);
+    const editor = new StoreEditor(store, view);
+    const container = render();
+    assert.equal(elementsText(container), '4 elements');
+
+    editor.removeEntity(50);
+    act(() => useViewerStore.setState({
+      mutationViews: new Map([['__legacy__', view]]), mutationVersion: 1,
+    }));
+    assert.equal(elementsText(container), '3 elements');
+
+    view.setEntityType(51, 'IfcAnnotation');
+    act(() => useViewerStore.setState({ mutationVersion: 2 }));
+    assert.equal(elementsText(container), '2 elements');
+
+    const created = editor.addEntity('IfcWall', []);
+    act(() => useViewerStore.setState({
+      geometryResult: geometry([...MESHED_IDS, created.expressId]),
+      mutationVersion: 3,
+      selectedStoreys: new Set([STOREY_ID]),
+    }));
+    assert.equal(elementsText(container), '1 / 3 element');
   });
 
   it('falls back to the schema test alone before any mesh has arrived', () => {

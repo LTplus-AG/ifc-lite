@@ -64,6 +64,7 @@ import { prepareGlbViewerModel } from './ingest/glbTextureValidation.js';
 import { getMaxExpressId, getViewerSchemaVersion, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
 import { isLandXmlFileName } from './ingest/landXmlSniff.js';
 import { loadLandXmlModel } from './ingest/landXmlLoad.js';
+import { landXmlUnitsRefusalPrompt } from './ingest/landXmlUnitsRefusal.js';
 import { applyFederationOffsetToMesh } from './ingest/federationOffset.js';
 import { boundedIteratorReturn } from './ingest/streamCleanup.js';
 import {
@@ -175,6 +176,7 @@ export function useIfcLoader() {
     setLoading,
     setGeometryStreamingActive,
     setError,
+    setLandXmlUnitsRefusal,
     setProgress,
     setGeometryProgress,
     setMetadataProgress,
@@ -192,6 +194,7 @@ export function useIfcLoader() {
     setLoading: s.setLoading,
     setGeometryStreamingActive: s.setGeometryStreamingActive,
     setError: s.setError,
+    setLandXmlUnitsRefusal: s.setLandXmlUnitsRefusal,
     setProgress: s.setProgress,
     setGeometryProgress: s.setGeometryProgress,
     setMetadataProgress: s.setMetadataProgress,
@@ -224,6 +227,7 @@ export function useIfcLoader() {
           sourceHandle?: FileSystemFileHandle;
           tierOverride?: TessellationQuality;
           isResourceRetry?: boolean;
+          assumedLinearUnit?: string;
         },
       ) => Promise<void>)
     | null
@@ -276,6 +280,10 @@ export function useIfcLoader() {
       // so a second failure surfaces instead of looping.
       tierOverride?: TessellationQuality;
       isResourceRetry?: boolean;
+      // #5175: a LandXML source with no declared `<Units>` refuses by
+      // default. The viewer supplies this only after the user picks a
+      // linear unit from the refusal prompt; never inferred or defaulted.
+      assumedLinearUnit?: string;
     },
   ) => {
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
@@ -447,6 +455,9 @@ export function useIfcLoader() {
 
       setLoading(true);
       setError(null);
+      // #5175: a fresh load attempt (including the retry this very prompt
+      // triggers) always supersedes whatever refusal prompted it.
+      setLandXmlUnitsRefusal(null);
       setProgress({ phase: 'Loading file', percent: 0 });
 
       const fileName = file.name;
@@ -691,13 +702,20 @@ export function useIfcLoader() {
           sourceContentHash: placementIdentity,
         });
         await loadLandXmlModel({ file, fileSizeMB, targetKind: target.kind, totalStartTime, wasHidden: wasHidden(),
+          assumedLinearUnit: options?.assumedLinearUnit,
           isCurrent: () => loadSessionRef.current === currentSession, setProgress, setGeometryStreamingActive, setLoading,
           openProvisional: target.kind === 'primary' ? (preflight) => openPrimaryLandXmlProvisional(modelId, preflight) : undefined,
           openFederatedStreamingPlan: target.kind === 'federated'
             ? (preflight, sourceCoordinateInfo, spatialReference) => openFederatedLandXmlStreamingPlan(modelId, preflight, sourceCoordinateInfo, spatialReference, () => loadSessionRef.current === currentSession)
             : undefined,
           onPrimary: (r) => { setGeometryResult(r.geometryResult); setIfcDataStore(r.dataStore); }, finalize: finalizeModel,
-          onError: (message) => { updateModel(modelId, { loadState: 'error', loadError: message }); setError(`LandXML parsing failed: ${message}`); },
+          onError: (message) => {
+            updateModel(modelId, { loadState: 'error', loadError: message });
+            setError(`LandXML parsing failed: ${message}`);
+            // Returns null for any LandXML failure a unit cannot fix (#5175).
+            setLandXmlUnitsRefusal(landXmlUnitsRefusalPrompt(message, file.name,
+              (assumedLinearUnit) => { void loadFileRef.current?.(file, target, { ...options, assumedLinearUnit }); }));
+          },
         });
         return;
       }

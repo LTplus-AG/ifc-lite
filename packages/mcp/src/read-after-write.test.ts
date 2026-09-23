@@ -30,6 +30,7 @@ import { queryTools } from './tools/query.js';
 import { mutationTools } from './tools/mutate.js';
 import { validationTools } from './tools/validation.js';
 import { findByGlobalId, resolveGlobalIds } from './tools/util.js';
+import { spatialRootId } from './spatial-tree.js';
 import { buildDefaultResourceRegistry } from './resources/index.js';
 import { diffTools } from './tools/diff.js';
 import { geometryTools } from './tools/geometry.js';
@@ -852,6 +853,7 @@ describe('the positional header read is gated on IfcRoot', () => {
     });
     expect(out.entityDiff.added).toEqual([]);
   }, 30_000);
+
 });
 
 describe('spatial tree traversal', () => {
@@ -1125,6 +1127,18 @@ describe('containment over queued relationships', () => {
     await call('entity_delete', { global_id: guid('PROJ') });
     const out = await structured<{ tree: SpatialNode | null }>('spatial_hierarchy', {});
     expect(out.tree).toBeNull();
+  }, 30_000);
+
+  it('finds a source entity reclassified into the live project type (#5249)', async () => {
+    await session();
+    await call('entity_delete', { global_id: guid('PROJ') });
+    const model = ctx.registry.get('m');
+    if (!model) throw new Error('model not loaded');
+    const view = model.backend.getMutationView();
+    if (!view) throw new Error('mutation view not created');
+    view.setEntityType(42, 'IfcProject', null, 'IfcBuilding');
+
+    expect(spatialRootId(model)).toBe(42);
   }, 30_000);
 
   it('stops placing anything in a storey the session deleted', async () => {

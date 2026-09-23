@@ -11,6 +11,7 @@
  */
 
 import { EntityNode } from '@ifc-lite/query';
+import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import type { CallToolResult, ContentBlock } from '../protocol/index.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
@@ -100,11 +101,9 @@ export function findByGlobalId(model: LoadedModel, globalId: string): number | n
   for (const created of overlay?.created ?? []) {
     if (created.globalId === globalId) return created.expressId;
   }
-  for (const [, ids] of model.store.entityIndex.byType) {
-    for (const id of ids) {
-      if (overlay?.deleted.has(id)) continue;
-      if (new EntityNode(model.store, id).globalId === globalId) return id;
-    }
+  for (const { expressId, overlayCreated } of iterateEffectiveEntityIds(model.store, model.backend.getMutationView())) {
+    if (overlayCreated) continue; // Queued carriers already took precedence.
+    if (new EntityNode(model.store, expressId).globalId === globalId) return expressId;
   }
   return null;
 }
@@ -129,15 +128,13 @@ export function resolveGlobalIds(model: LoadedModel, globalIds: Iterable<string>
   for (const created of overlay?.created ?? []) {
     if (wanted.has(created.globalId)) note(created.globalId, created.expressId);
   }
-  for (const [, ids] of model.store.entityIndex.byType) {
-    for (const id of ids) {
-      if (overlay?.deleted.has(id)) continue;
-      // A store entity's GlobalId is the one attribute no MCP write can change —
-      // `entity_set_attribute` accepts Name/Description/ObjectType/Tag — so
-      // reading it off the store is exact, not stale.
-      const globalId = new EntityNode(model.store, id).globalId;
-      if (wanted.has(globalId)) note(globalId, id);
-    }
+  for (const { expressId, overlayCreated } of iterateEffectiveEntityIds(model.store, model.backend.getMutationView())) {
+    if (overlayCreated) continue; // Queued carriers already took precedence.
+    // A store entity's GlobalId is the one attribute no MCP write can change —
+    // `entity_set_attribute` accepts Name/Description/ObjectType/Tag — so
+    // reading it off the store is exact, not stale.
+    const globalId = new EntityNode(model.store, expressId).globalId;
+    if (wanted.has(globalId)) note(globalId, expressId);
   }
   return carriers;
 }

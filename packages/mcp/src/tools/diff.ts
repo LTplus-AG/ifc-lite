@@ -10,6 +10,7 @@
  */
 
 import { EntityNode } from '@ifc-lite/query';
+import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
 import type { Tool } from './types.js';
 import { okResult, assertModelAccess } from './util.js';
@@ -194,12 +195,10 @@ const modelDiff: Tool = {
 /** Every GlobalId the session has, queued creates and deletes applied. */
 function collectGlobalIds(model: LoadedModel, overlay: PendingOverlay | null): Set<string> {
   const gids = new Set<string>();
-  for (const [, ids] of model.store.entityIndex.byType) {
-    for (const id of ids) {
-      if (overlay?.deleted.has(id)) continue;
-      const node = new EntityNode(model.store, id);
-      if (node.globalId) gids.add(node.globalId);
-    }
+  for (const { expressId, overlayCreated } of iterateEffectiveEntityIds(model.store, model.backend.getMutationView())) {
+    if (overlayCreated) continue; // The identified queued set is folded below.
+    const node = new EntityNode(model.store, expressId);
+    if (node.globalId) gids.add(node.globalId);
   }
   for (const entity of overlay?.created ?? []) gids.add(entity.globalId);
   return gids;

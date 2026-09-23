@@ -19,7 +19,7 @@
  */
 
 import type { LoadedModel } from './context.js';
-import { pendingOverlay } from './overlay.js';
+import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 
 /** One node of the spatial tree. `elements` is present only when asked for. */
 export interface SpatialNode {
@@ -41,12 +41,8 @@ export interface SpatialNode {
  * tool succeeded, which is two answers to one question.
  */
 export function spatialRootId(model: LoadedModel): number | null {
-  const overlay = pendingOverlay(model);
-  for (const id of model.store.entityIndex.byType.get('IFCPROJECT') ?? []) {
-    if (!overlay?.deleted.has(id)) return id;
-  }
-  for (const created of overlay?.createdAll ?? []) {
-    if (created.ifcType.toUpperCase() === 'IFCPROJECT') return created.expressId;
+  for (const { expressId } of iterateEffectiveEntityIds(model.store, model.backend.getMutationView(), ['IFCPROJECT'])) {
+    return expressId;
   }
   return null;
 }

@@ -2,55 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** HTTP-level failure from a BCF server (non-2xx response). */
-export class BcfApiError extends Error {
-  /** HTTP status code; 0 when the request never produced a response. */
-  readonly status: number;
-  /** Request URL with any query string, for diagnostics. */
-  readonly url: string;
-  /** Server-provided error detail, when the body carried one. */
-  readonly detail?: string;
-
-  constructor(message: string, options: { status: number; url: string; detail?: string }) {
-    super(message);
-    this.name = 'BcfApiError';
-    this.status = options.status;
-    this.url = options.url;
-    this.detail = options.detail;
-  }
-
-  /** True when the server rejected the credentials (sign in again). */
-  get isAuthError(): boolean {
-    return this.status === 401;
-  }
-}
-
-/** OAuth2 token endpoint failure (RFC 6749 error responses). */
-export class BcfAuthenticationError extends BcfApiError {
-  /** RFC 6749 error code, e.g. 'invalid_grant' or 'invalid_request'. */
-  readonly errorCode?: string;
-
-  constructor(
-    message: string,
-    options: { status: number; url: string; errorCode?: string; detail?: string },
-  ) {
-    super(message, options);
-    this.name = 'BcfAuthenticationError';
-    this.errorCode = options.errorCode;
-  }
-}
-
 /**
- * Extract a human-readable message from a BCF server error body. Servers
- * vary: BCF API prescribes `{message}`, OAuth2 uses `{error, error_description}`,
- * FastAPI emits `{detail}`.
+ * BCF's error types are the generic OpenCDE Foundation API error types
+ * (https://github.com/buildingSMART/foundation-API): an HTTP-level failure
+ * carries the same status/url/detail/isAuthError shape for every OpenCDE
+ * service, and BCF's token endpoint failures follow the same RFC 6749 shape
+ * Documents API auth does. Re-exported under their historical BCF names so
+ * `instanceof BcfApiError` keeps working for existing callers — these ARE
+ * `@ifc-lite/opencde-foundation`'s classes, not copies of them.
  */
-export function extractErrorDetail(body: unknown): string | undefined {
-  if (typeof body !== 'object' || body === null) return undefined;
-  const record = body as Record<string, unknown>;
-  for (const key of ['message', 'error_description', 'detail', 'error']) {
-    const value = record[key];
-    if (typeof value === 'string' && value.length > 0) return value;
-  }
-  return undefined;
-}
+export {
+  FoundationApiError as BcfApiError,
+  FoundationAuthenticationError as BcfAuthenticationError,
+  extractErrorDetail,
+} from '@ifc-lite/opencde-foundation';

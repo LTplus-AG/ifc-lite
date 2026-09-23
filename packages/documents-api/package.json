@@ -1,7 +1,7 @@
 {
-  "name": "@ifc-lite/bcf-api",
-  "version": "0.2.2",
-  "description": "BCF API (OpenCDE) REST client for connecting to BCF servers",
+  "name": "@ifc-lite/documents-api",
+  "version": "0.1.0",
+  "description": "OpenCDE Documents API 1.0 client: select, download, query and upload documents against a buildingSMART Documents API server",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -19,7 +19,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ifc-lite/bcf": "workspace:^",
     "@ifc-lite/opencde-foundation": "workspace:^"
   },
   "devDependencies": {
@@ -31,20 +30,17 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
-    "directory": "packages/bcf-api"
+    "directory": "packages/documents-api"
   },
   "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",
     "bim",
-    "bcf",
-    "bcf-api",
+    "documents-api",
     "opencde",
     "buildingsmart",
-    "collaboration",
-    "issue-tracking",
-    "aec"
+    "cde"
   ],
   "publishConfig": {
     "access": "public"

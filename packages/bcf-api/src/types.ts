@@ -7,28 +7,21 @@
  * Field names are snake_case exactly as they appear in the JSON payloads of
  * BCF API 2.1 (https://github.com/buildingSMART/BCF-API); BCF API 3.0 uses
  * the same shapes for everything this client touches.
+ *
+ * The version/auth/current-user/token/fetch types are the Foundation API's
+ * own (https://github.com/buildingSMART/foundation-API) — every OpenCDE
+ * service shares them — and are re-exported here under their historical BCF
+ * names below rather than duplicated.
  */
 
-/** Entry of `GET {base}/versions`. */
-export interface BcfApiVersion {
-  version_id: string;
-  detailed_version?: string | null;
-}
+/** Entry of `GET {base}/versions`. Foundation API's `FoundationVersion`. */
+export type { FoundationVersion as BcfApiVersion } from '@ifc-lite/opencde-foundation';
 
-/** Response of `GET {base}/{version}/auth`. */
-export interface BcfAuthInfo {
-  oauth2_auth_url?: string;
-  oauth2_token_url?: string;
-  oauth2_dynamic_client_reg_url?: string;
-  http_basic_supported?: boolean | null;
-  supported_oauth2_flows?: string[];
-}
+/** Response of `GET {base}/{version}/auth`. Foundation API's `FoundationAuthInfo`. */
+export type { FoundationAuthInfo as BcfAuthInfo } from '@ifc-lite/opencde-foundation';
 
-/** Response of `GET {base}/{version}/current-user`. */
-export interface BcfCurrentUser {
-  id: string;
-  name?: string | null;
-}
+/** Response of `GET {base}/{version}/current-user`. Foundation API's `FoundationCurrentUser`. */
+export type { FoundationCurrentUser as BcfCurrentUser } from '@ifc-lite/opencde-foundation';
 
 /** Entry of `GET {base}/{version}/projects`. */
 export interface BcfProjectDto {
@@ -214,20 +207,13 @@ export interface BcfVisibilityResponse {
 }
 
 /**
- * OAuth2 token response of `POST {oauth2_token_url}`. Unlike the wire DTOs
- * above, this is what the auth helpers RETURN after field-by-field
- * validation (`postTokenRequest`), so absent fields are always `undefined`,
- * never `null`.
+ * OAuth2 token response of `POST {oauth2_token_url}`. Foundation API's
+ * `FoundationTokenResponse` — token endpoints are not BCF-specific.
  */
-export interface BcfTokenResponse {
-  access_token: string;
-  token_type?: string;
-  expires_in?: number;
-  refresh_token?: string;
-}
+export type { FoundationTokenResponse as BcfTokenResponse } from '@ifc-lite/opencde-foundation';
 
 /** Minimal fetch signature the client depends on (injectable in tests). */
-export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+export type { FetchLike } from '@ifc-lite/opencde-foundation';
 
 /** Supplies the current access token; return undefined for anonymous calls. */
-export type BcfTokenProvider = () => string | undefined | Promise<string | undefined>;
+export type { FoundationTokenProvider as BcfTokenProvider } from '@ifc-lite/opencde-foundation';

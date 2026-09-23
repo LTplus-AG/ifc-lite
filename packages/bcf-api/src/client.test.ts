@@ -2,6 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import {
+  FoundationApiClient,
+  FoundationApiError,
+  normalizeApiBaseUrl,
+} from '@ifc-lite/opencde-foundation';
 import { describe, expect, it } from 'vitest';
 import { BcfApiClient, normalizeBcfBaseUrl } from './client.js';
 import { BcfApiError } from './errors.js';
@@ -29,6 +34,21 @@ function jsonResponse(body: unknown, status = 200): Response {
     headers: { 'Content-Type': 'application/json' },
   });
 }
+
+describe('bcf-api builds on @ifc-lite/opencde-foundation, not a parallel copy of it', () => {
+  it('re-exports the Foundation API error and base-URL classes/functions by identity', () => {
+    // These are the SAME class/function objects, not lookalikes: a fork back
+    // to bcf-api-local implementations would keep every other test in this
+    // file green while failing only these identity checks.
+    expect(BcfApiError).toBe(FoundationApiError);
+    expect(normalizeBcfBaseUrl).toBe(normalizeApiBaseUrl);
+  });
+
+  it('BcfApiClient is a FoundationApiClient carrying BCF resource methods', () => {
+    const client = new BcfApiClient({ baseUrl: 'https://host/bcf', fetchFn: async () => new Response('{}') });
+    expect(client).toBeInstanceOf(FoundationApiClient);
+  });
+});
 
 describe('normalizeBcfBaseUrl', () => {
   it('strips trailing slashes and pasted version segments', () => {

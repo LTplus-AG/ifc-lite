@@ -98,6 +98,18 @@ export function createConflictDetector(
   /** key = `${kind}|${path}|${field}` → recent writers. */
   const recentWrites = new Map<string, PendingWrite[]>();
 
+  // Specialise the three top-level maps this detector classifies against
+  // BEFORE any update can decode into them (#5215). Struct decoding resolves
+  // a named top-level parent through `Y.Doc#get`, whose default constructor
+  // is the bare `Y.AbstractType`; only `getMap` turns it into a `Y.Map`.
+  // `createCollabDoc` warms them, but `CollabSessionOptions.doc` accepts a
+  // raw `Y.Doc`, and there the first remote update left `entities` an
+  // `AbstractType` with no `.has()`: the handler threw out of
+  // `Y.applyUpdate`, i.e. inside the websocket provider's message handling.
+  entitiesMap(doc);
+  relationshipsMap(doc);
+  geometryMap(doc);
+
   const flag = (info: PathInfo, writers: PendingWrite[]) => {
     const contributors = Array.from(new Set(writers.map((w) => w.client)));
     if (contributors.length < 2) return;
@@ -124,49 +136,32 @@ export function createConflictDetector(
 
   const onAfterTransaction = (tr: Y.Transaction) => {
     if (tr.changed.size === 0) return;
+    const writers = writersInTransaction(tr);
+    const fallback = tr.local ? doc.clientID : guessRemoteClient(tr);
 
     for (const [type, keys] of tr.changed.entries()) {
       const top = topLevelKey(type);
       if (top !== TOP.ENTITIES && top !== TOP.RELATIONSHIPS && top !== TOP.GEOMETRY) continue;
       const path = pathFromTop(type);
       if (!path) continue;
-
-      // `type` at path.length === 0 is the top-level shared map itself
-      // (entitiesMap / relationshipsMap / geometryMap) — normally always
-      // a real Y.Map. The one exception: `Y.Doc#get` (which struct
-      // decoding calls to resolve a *named* top-level parent it hasn't
-      // seen before) defaults to a bare `Y.AbstractType`, and only
-      // `Y.Doc#getMap` "specializes" that placeholder into a real Y.Map.
-      // A doc whose caller supplied a raw `new Y.Doc()` (CollabSessionOptions.doc)
-      // and never warmed it can hit this on the very first remote
-      // update. `.has()` doesn't exist on the placeholder — treat it as
-      // "cannot classify this key" rather than crashing the transaction
-      // handler (and, via session.ts wiring the detector onto the
-      // provider's own doc, the provider's message-handling call stack).
-      if (path.length === 0 && !(type instanceof Y.Map)) continue;
-
       for (const key of keys) {
         // For top-level Y.Map changes the parent map's `has(key)` tells
         // us whether this was a delete (key absent → yes) or an add.
-        // Only deletes count as conflict-inducing at the top level.
-        const isDelete = path.length === 0 && key != null && !(type as Y.Map<unknown>).has(key);
+        // Only deletes count as conflict-inducing at the top level. The
+        // top-level maps are real `Y.Map`s thanks to the warm-up above.
+        const isDelete = path.length === 0 && key != null && type instanceof Y.Map && !type.has(key);
         const info = classify(top, path, key, isDelete);
         if (!info) continue;
-
-        // Per-key attribution rather than one guess for the whole
-        // transaction (see `guessRemoteClient`'s docblock): walk the
-        // Y.Map version chain for `key` so that when a single
-        // `Y.applyUpdate` batches structs from several remote clients —
-        // a relay catch-up, a merged diff, coalesced updates — every
-        // client that actually wrote `key` inside this transaction is
-        // recorded, not just the transaction's single most-active one.
-        const writers = key != null ? writersForKey(type, key, tr) : [];
-        const clients =
-          writers.length > 0 ? writers : [tr.local ? doc.clientID : guessRemoteClient(tr)];
-        for (const client of clients) {
-          if (client < 0) continue;
-          record(info, client);
-        }
+        // Every client that inserted a struct at (type, key) in THIS
+        // transaction, not one guess for the whole transaction: a single
+        // `Y.applyUpdate` routinely batches several remote clients' structs
+        // (relay catch-up, merged diff, coalesced updates), and a guess
+        // attributed the whole batch to one of them, so a conflict delivered
+        // batched went unreported while the same edits delivered one per
+        // transaction were flagged (#5215). A delete inserts no struct, so it
+        // alone falls back to the transaction-level guess.
+        const clients = writers.get(type)?.get(key) ?? [fallback];
+        for (const client of clients) record(info, client);
       }
     }
 
@@ -341,64 +336,42 @@ function classify(
 }
 
 /**
- * A single Y struct `Item`, viewed through the fields we need. Yjs has
- * no public API for "which clients wrote this key, including the ones
- * a later write superseded" — walking `.left` over `_map` is the only
- * way to get it. Kept minimal and structural (not `Item` itself) so a
- * future Yjs internal shape change fails typechecking here instead of
- * silently reading garbage.
+ * The clients that inserted each (parent type, key) in `tr`, read off the
+ * structs the transaction added: for every client whose clock advanced, the
+ * items from its `beforeState` clock onward are exactly this transaction's
+ * insertions (a struct store is clock-ordered per client, so the scan walks
+ * back from the tail and stops at the first older struct). Cost is the
+ * transaction's size, not the document's or a key's history. A map write is
+ * keyed by its `parentSub`; an array insertion by `null`, matching the `null`
+ * key `Transaction.changed` reports for array-shaped changes.
  */
-interface VersionedItem {
-  id: { client: number; clock: number };
-  left: VersionedItem | null;
-}
-
-/**
- * Distinct clientIDs that wrote `key` on `type` (a Y.Map) *within* `tr`.
- *
- * `AbstractType.js#typeMapSet` never overwrites in place: each `.set()`
- * creates a new `Item` and chains it to the previous one via `.left`;
- * `_map.get(key)` always points at the current head, but the superseded
- * item (and, for a genuinely concurrent write, the *other* item that
- * lost the tie) stays reachable by walking `.left` — deletion only
- * flips a flag, it doesn't unlink the chain. So when one batched
- * `Y.applyUpdate` carries two different clients' writes to the same
- * key, both their items integrate into this same chain and both show
- * up here, which is exactly the case `guessRemoteClient` (below)
- * cannot see because it only picks one client for the whole
- * transaction.
- *
- * An item counts as "within `tr`" when its clock is at or past the
- * transaction's `beforeState` for its own client — i.e. it didn't
- * exist before this transaction started. Deletes don't create a new
- * item (they flip a flag on the existing one), so a plain delete's
- * head item predates the transaction and this returns `[]`; callers
- * fall back to `guessRemoteClient` for that case, unchanged from
- * before this function existed.
- *
- * Returns `[]` when `type` isn't a Y.Map (nested schema types always
- * are — see the module docblock — so this only matters for the
- * top-level maps, which `onAfterTransaction` already guards separately
- * against the bare-`AbstractType` case).
- */
-function writersForKey(type: Y.AbstractType<any>, key: string, tr: Y.Transaction): number[] {
-  if (!(type instanceof Y.Map)) return [];
-  const map = (type as unknown as { _map: Map<string, VersionedItem> })._map;
-  const seen = new Set<number>();
-  let item: VersionedItem | null = map.get(key) ?? null;
-  while (item) {
-    const before = tr.beforeState.get(item.id.client) ?? 0;
-    if (item.id.clock < before) break; // predates this transaction
-    seen.add(item.id.client);
-    item = item.left;
+function writersInTransaction(
+  tr: Y.Transaction,
+): Map<object, Map<string | null, number[]>> {
+  const out = new Map<object, Map<string | null, number[]>>();
+  for (const [client, after] of tr.afterState) {
+    const before = tr.beforeState.get(client) ?? 0;
+    if (after <= before) continue;
+    const structs = tr.doc.store.clients.get(client) ?? [];
+    for (let i = structs.length - 1; i >= 0; i--) {
+      const struct = structs[i];
+      if (struct.id.clock + struct.length <= before) break;
+      if (!(struct instanceof Y.Item) || !(struct.parent instanceof Y.AbstractType)) continue;
+      const byKey = out.get(struct.parent) ?? new Map<string | null, number[]>();
+      out.set(struct.parent, byKey);
+      const key = struct.parentSub;
+      const clients = byKey.get(key) ?? [];
+      if (!clients.includes(client)) clients.push(client);
+      byKey.set(key, clients);
+    }
   }
-  return Array.from(seen);
+  return out;
 }
 
 /**
- * Best-effort attribution of a remote transaction to a clientID.
- * Fallback used when `writersForKey` can't give a precise answer (an
- * array-shaped change with no `key`, or a delete).
+ * Best-effort attribution of a remote transaction to a clientID, used only
+ * for a change that inserted no struct (a delete), where
+ * `writersInTransaction` has nothing to read.
  *
  * Yjs doesn't carry "the client that authored this transaction" directly;
  * it carries per-struct clientIDs in the `afterState`/`beforeState`

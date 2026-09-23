@@ -7,8 +7,8 @@
  *
  *  1. `createConflictDetector` must never throw out of a doc's
  *     `afterTransaction` handler, even when a top-level shared map
- *     decodes as a bare `Y.AbstractType` (see `writersForKey`'s
- *     docblock in `detector.ts` for why that happens: `Y.Doc#get`
+ *     decodes as a bare `Y.AbstractType` (see the warm-up comment in
+ *     `createConflictDetector` for why that happens: `Y.Doc#get`
  *     defaults to `AbstractType`, and only `Y.Doc#getMap` specializes
  *     it — a raw `new Y.Doc()` handed in via `CollabSessionOptions.doc`
  *     and touched by a remote update before any local `entitiesMap()`
@@ -44,10 +44,25 @@ describe('#5215 finding 2: bare AbstractType top-level parent must not crash', (
     const events: ConflictEvent[] = [];
     detector.onConflict((e) => events.push(e));
 
-    expect(() => Y.applyUpdate(raw, updA)).not.toThrow();
+    // Recorded rather than `.not.toThrow()`: the pass/fail signal is whether
+    // the detector let an exception escape `Y.applyUpdate`, not its text.
+    const escaped: string[] = [];
+    const apply = (update: Uint8Array) => {
+      try {
+        Y.applyUpdate(raw, update);
+      } catch (error) {
+        escaped.push(error instanceof Error ? error.name : 'non-Error');
+      }
+    };
+    apply(updA);
     // The second, conflicting update is the one whose top-level parent
     // resolution hits the bare-AbstractType path on a truly fresh doc.
-    expect(() => Y.applyUpdate(raw, updB)).not.toThrow();
+    apply(updB);
+    expect(escaped).toEqual([]);
+
+    // Not merely "did not throw": the concurrent create is still CLASSIFIED,
+    // which a skip-the-unwarmed-map guard would have silently dropped.
+    expect(events.some((e) => e.kind === 'concurrent-create' && e.path === 'E1')).toBe(true);
 
     // The doc must still be fully usable after the (formerly-crashing)
     // transaction — both a read and a fresh local write.
@@ -77,11 +92,39 @@ describe('#5215 finding 1: batched vs unbatched multi-client attribution', () =>
     return { base, baseUpdate: Y.encodeStateAsUpdate(base) };
   }
 
-  function forkFrom(baseUpdate: Uint8Array): Y.Doc {
+  function forkFrom(baseUpdate: Uint8Array, clientID?: number): Y.Doc {
     const doc = createCollabDoc();
+    if (clientID !== undefined) doc.clientID = clientID;
     Y.applyUpdate(doc, baseUpdate);
     return doc;
   }
+
+  it('attributes every batched writer even when a pre-existing local write sits between them', () => {
+    // Yjs orders concurrent map writes with the same origin by clientID, so
+    // with clients 2 < 4 < 5 the key's item chain reads 2, 4(local), 5. A
+    // walk back from the head that stops at the first pre-transaction item
+    // sees only client 5; reading the transaction's own structs sees 2 too.
+    const { base, baseUpdate } = sharedBaseline();
+    const sv = Y.encodeStateVector(base);
+    const local = forkFrom(baseUpdate, 4);
+    const peerA = forkFrom(baseUpdate, 2);
+    const peerB = forkFrom(baseUpdate, 5);
+    peerA.transact(() => setAttribute(peerA, 'wall', 'Name', 'FromA'));
+    peerB.transact(() => setAttribute(peerB, 'wall', 'Name', 'FromB'));
+
+    const events: ConflictEvent[] = [];
+    createConflictDetector(local, { windowMs: 60_000 }).onConflict((e) => events.push(e));
+    local.transact(() => setAttribute(local, 'wall', 'Name', 'Local'));
+    Y.applyUpdate(local, Y.mergeUpdates([
+      Y.encodeStateAsUpdate(peerA, sv),
+      Y.encodeStateAsUpdate(peerB, sv),
+    ]));
+
+    const contributors = new Set(events
+      .filter((e) => e.kind === 'attribute' && e.path === 'wall' && e.field === 'Name')
+      .flatMap((e) => e.contributors));
+    expect([...contributors].sort()).toEqual([2, 4, 5]);
+  });
 
   it('the same conflict is detected whether delivered batched (one applyUpdate, two clients) or unbatched (two transactions)', () => {
     const { base, baseUpdate } = sharedBaseline();

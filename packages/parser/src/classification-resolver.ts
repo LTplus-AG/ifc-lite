@@ -134,6 +134,18 @@ export function extractClassificationsOnDemand(
                 const path = walkClassificationChain(store, extractor, referencedSourceId);
                 info.system = path.systemName;
                 info.path = path.codes;
+                // A dangling link, an unreadable entity, or an unexpected
+                // type broke the walk before it reached an IfcClassification
+                // root (#5290) — distinct from a `ReferencedSource` that was
+                // never there to begin with, which `path.chainUnresolved`
+                // leaves `false` (see the function doc). `info.system` stays
+                // `undefined` either way, so without this flag
+                // `resolveClassifications` cannot tell "chain could not be
+                // resolved" from "chain resolved to no system", and flattens
+                // both to a confident empty system (`c.system || ''`) — a
+                // definite mismatch, not the unresolved-chain result this
+                // marks it for.
+                if (path.chainUnresolved) info.unresolved = true;
             }
 
             results.push(info);
@@ -214,24 +226,40 @@ export function extractClassificationSystemsOnDemand(store: IfcDataStore): Class
 
 /**
  * Walk up the IfcClassificationReference chain to find the root IfcClassification system.
+ *
+ * `chainUnresolved` (#5290) is `true` when the walk stopped WITHOUT ever
+ * reaching an `IfcClassification` root and WITHOUT the chain legitimately
+ * ending on its own terms — a dangling `ReferencedSource` (the id does not
+ * resolve in `entityIndex`), an entity whose bytes cannot be extracted, an
+ * entity of a type that is neither `IfcClassification` nor
+ * `IfcClassificationReference`, or a cycle back to an id already visited.
+ * Every one of those means "this data cannot say whether a system exists",
+ * not "there is no system" — the caller (`extractClassificationsOnDemand`)
+ * needs to tell that apart from a chain that simply ran out of links
+ * (`ReferencedSource` omitted, `$`, which IS schema-legal and leaves
+ * `chainUnresolved: false`): the two are otherwise byte-identical, both
+ * returning `systemName: undefined`.
  */
 function walkClassificationChain(
     store: IfcDataStore,
     extractor: EntityExtractor,
     startId: number
-): { systemName?: string; codes: string[] } {
+): { systemName?: string; codes: string[]; chainUnresolved: boolean } {
     const codes: string[] = [];
     let currentId: number | undefined = startId;
     const visited = new Set<number>();
 
-    while (currentId !== undefined && !visited.has(currentId)) {
+    while (currentId !== undefined) {
+        if (visited.has(currentId)) {
+            return { codes, chainUnresolved: true };
+        }
         visited.add(currentId);
 
         const ref = store.entityIndex.byId.get(currentId);
-        if (!ref) break;
+        if (!ref) return { codes, chainUnresolved: true };
 
         const entity = extractor.extractEntity(ref);
-        if (!entity) break;
+        if (!entity) return { codes, chainUnresolved: true };
 
         const typeUpper = entity.type.toUpperCase();
         const attrs = entity.attributes || [];
@@ -239,7 +267,7 @@ function walkClassificationChain(
         if (typeUpper === 'IFCCLASSIFICATION') {
             // Root: IfcClassification [Source, Edition, EditionDate, Name, ...]
             const systemName = typeof attrs[3] === 'string' ? attrs[3] : undefined;
-            return { systemName, codes };
+            return { systemName, codes, chainUnresolved: false };
         }
 
         if (typeUpper === 'IFCCLASSIFICATIONREFERENCE') {
@@ -250,9 +278,12 @@ function walkClassificationChain(
 
             currentId = typeof attrs[3] === 'number' ? attrs[3] : undefined;
         } else {
-            break;
+            return { codes, chainUnresolved: true };
         }
     }
 
-    return { codes };
+    // `currentId` became `undefined`: `ReferencedSource` was omitted (`$`).
+    // Schema-legal, not malformed — an `IfcClassificationReference` is
+    // allowed to not name a system.
+    return { codes, chainUnresolved: false };
 }

@@ -83,7 +83,10 @@ describe('Add Element uses live storeys (#5249)', () => {
 
   it('places on the live created storey when a stale deleted selection reaches the click handler', async () => {
     const createdId = await editedStoreys();
+    const store = useViewerStore.getState().models.get(MODEL_ID)?.ifcDataStore;
+    assert.equal(store?.spatialHierarchy?.elementToStorey.get(1222), 42);
     let chosenStorey: number | null = null;
+    let hitExpressId: number | null = null;
     useViewerStore.setState({
       addColumn: (_modelId, storeyId) => {
         chosenStorey = storeyId;
@@ -94,7 +97,7 @@ describe('Add Element uses live storeys (#5249)', () => {
       canvas: document.createElement('canvas'),
       renderer: {
         raycastSceneMagnetic: () => ({
-          intersection: { point: { x: 1, y: 0, z: 2 }, expressId: null },
+          intersection: { point: { x: 1, y: 0, z: 2 }, expressId: hitExpressId },
           snapTarget: null,
         }),
       },
@@ -105,6 +108,12 @@ describe('Add Element uses live storeys (#5249)', () => {
       hiddenEntitiesRef: { current: new Set<number>() },
       isolatedEntitiesRef: { current: null },
     } as unknown as MouseHandlerContext;
+    await handleSelectionClick(ctx, { clientX: 0, clientY: 0 } as MouseEvent);
+    assert.equal(chosenStorey, createdId);
+    // A smart-placement hit still resolves through the parsed hierarchy's
+    // deleted #42. It must land on the live overlay storey too.
+    chosenStorey = null;
+    hitExpressId = 1222;
     await handleSelectionClick(ctx, { clientX: 0, clientY: 0 } as MouseEvent);
     assert.equal(chosenStorey, createdId);
   });

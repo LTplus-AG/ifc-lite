@@ -870,7 +870,14 @@ export function finishRadiusFromDoubleClick(): boolean | null {
 function resolveAddElementContext(
   override?: { modelId: string; storeyId: number },
 ): { modelId: string; storeyId: number } | null {
-  if (override) return override;
+  if (override) {
+    const storeyId = resolveStoreyExpressId(override.modelId, override.storeyId);
+    if (storeyId === null) {
+      toast.error("Couldn't add element: model has no IfcBuildingStorey");
+      return null;
+    }
+    return { modelId: override.modelId, storeyId };
+  }
   const state = useViewerStore.getState();
   const modelId = state.addElementModelId ?? resolveActiveModelId();
   if (!modelId) {

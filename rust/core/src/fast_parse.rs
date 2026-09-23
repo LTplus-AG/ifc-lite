@@ -18,19 +18,9 @@ mod coordinates;
 
 pub use coordinates::{parse_coordinates_direct, parse_coordinates_direct_f64};
 
-/// Check if byte is a digit, minus sign, or decimal point (start of number)
-///
-/// Shared with the comment-aware twins in `comments` and the split-out
-/// `coordinates` module below (#5266) — both are descendants of this module.
-#[inline(always)]
-fn is_number_start(b: u8) -> bool {
-    b.is_ascii_digit() || b == b'-' || b == b'.'
-}
-
 /// Estimate number of floats in coordinate data
 ///
-/// Shared with `coordinates` and `comments` for the same reason as
-/// [`is_number_start`].
+/// Shared with the split-out `coordinates` module.
 #[inline]
 fn estimate_float_count(bytes: &[u8]) -> usize {
     // Rough estimate: ~8 bytes per float on average (including delimiters)

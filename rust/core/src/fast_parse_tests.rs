@@ -387,3 +387,22 @@ fn issue_5266_corrupted_literal_refuses_the_whole_list_not_split_into_two_coordi
         [1.5, 2.0, 3.0]
     );
 }
+
+/// #5266 follow-up: a token the list walk cannot read as one whole STEP
+/// literal refuses the list. Before, the walk skipped any byte that did not
+/// start a number, so `nan` vanished and every later value shifted left.
+#[test]
+fn issue_5266_non_step_tokens_refuse_the_list_instead_of_vanishing() {
+    for list in [&b"((nan,1.,2.))"[..], b"((inf,1.,2.))", b"((1.,2.,3.x))", b"(($,1.,2.))"] {
+        let shown = String::from_utf8_lossy(list);
+        assert_eq!(parse_coordinates_direct_f64(list), Vec::<f64>::new(), "{shown}");
+        assert_eq!(parse_coordinates_direct(list), Vec::<f32>::new(), "{shown}");
+    }
+    // The comment-aware twin applies the same rule.
+    assert_eq!(parse_coordinates_direct_f64(b"((nan,1.,2.) /* c */)"), Vec::<f64>::new());
+    // Legal forms keep reading, including signs, bare-dot and exponents.
+    assert_eq!(
+        parse_coordinates_direct_f64(b"((+1.5,.5,-1.E2),(0.,0.,3./* z */))"),
+        [1.5, 0.5, -100.0, 0.0, 0.0, 3.0]
+    );
+}

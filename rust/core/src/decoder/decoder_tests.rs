@@ -734,3 +734,31 @@ fn issue_5266_polyloop_cached_reader_also_refuses_a_corrupted_literal() {
         "a corrupted literal on one loop point must refuse the whole loop, not fabricate a shifted point"
     );
 }
+
+/// #5266 follow-up: the fast point reader agrees with the full tokenizer on
+/// every edge the first fix left open. `nan`/`inf` are not STEP literals, a
+/// corrupt LAST value must refuse the point rather than default z to 0, a
+/// legal comment after z must keep z, and only a genuine 2D point (list
+/// closes after y) defaults z.
+#[test]
+fn issue_5266_fast_point_reader_matches_the_tokenizer_on_every_edge() {
+    type Point = Option<(f64, f64, f64)>;
+    let cases: &[(&str, Point)] = &[
+        ("(NaN,1.,2.)", None),
+        ("(inf,1.,2.)", None),
+        ("(1.,2.,infinity)", None),
+        ("(1.,2.,3.x)", None),
+        ("(1.,2.,1.52.3)", None),
+        ("(1.,2.,)", None),
+        ("(1.,2.,3.,4.)", None),
+        ("(1.,2.,3./* c */)", Some((1.0, 2.0, 3.0))),
+        ("( 1. /* a */ , 2. ,3. )", Some((1.0, 2.0, 3.0))),
+        ("(1.,2.)", Some((1.0, 2.0, 0.0))),
+        ("(+1.5,.5,-1.E2)", Some((1.5, 0.5, -100.0))),
+    ];
+    for &(coords, expected) in cases {
+        let content = format!("#1=IFCCARTESIANPOINT({coords});\n");
+        let mut decoder = EntityDecoder::new(&content);
+        assert_eq!(decoder.get_cartesian_point_fast(1), expected, "{coords}");
+    }
+}

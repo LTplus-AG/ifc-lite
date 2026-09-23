@@ -29,7 +29,7 @@
  */
 
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
-import type { MutablePropertyView, NewEntity } from '@ifc-lite/mutations';
+import { storeHasSourceEntity, type MutablePropertyView, type NewEntity } from '@ifc-lite/mutations';
 import {
   getInheritanceChainAcrossSchemas,
   effectiveRelationshipEdges,
@@ -296,7 +296,7 @@ export function foldedEntityCount(store: IfcDataStore, overlay: PendingOverlay |
   if (!overlay) return store.entityCount;
   let deletedFromStore = 0;
   for (const id of overlay.deleted) {
-    if (store.entityIndex.byId.has(id) || store.deferredEntityIndex?.has(id)) deletedFromStore++;
+    if (storeHasSourceEntity(store, id)) deletedFromStore++;
   }
   return store.entityCount + overlay.createdAll.length - deletedFromStore;
 }

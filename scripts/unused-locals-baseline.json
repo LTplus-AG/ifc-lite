@@ -1,6 +1,6 @@
 {
-  "apps/viewer": 230,
-  "apps/viewer-embed": 235,
+  "apps/viewer": 229,
+  "apps/viewer-embed": 234,
   "examples/babylonjs-viewer": 1,
   "examples/collab-demo": 1,
   "examples/threejs-collab": 1,
@@ -28,7 +28,7 @@
   "packages/flow-nodes": 0,
   "packages/geometry": 5,
   "packages/ids": 9,
-  "packages/ifcx": 7,
+  "packages/ifcx": 6,
   "packages/lens": 0,
   "packages/lists": 0,
   "packages/mcp": 2,

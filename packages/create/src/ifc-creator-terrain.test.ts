@@ -115,7 +115,7 @@ describe('IfcCreator.terrain()', () => {
     );
 
     expect(fullLine(content, tinId)).toBe(
-      `#${tinId}=IFCTRIANGULATEDIRREGULARNETWORK(#${coordinateListId},$,.F.,((1,2,3),(1,3,4)),$,(0));`,
+      `#${tinId}=IFCTRIANGULATEDIRREGULARNETWORK(#${coordinateListId},.F.,$,((1,2,3),(1,3,4)),$,(0));`,
     );
 
     // Only one surface was added, so there is exactly one of each.
@@ -136,11 +136,14 @@ describe('IfcCreator.terrain()', () => {
     const { tinId } = terrainOf(creator).addSurface(SQUARE_SURFACE);
     const { content } = creator.toIfc();
 
-    // Attribute order: Coordinates, Normals, Closed, CoordIndex, PnIndex, Flags.
-    // The first two attributes ("#ref" and "$") contain no commas of their
-    // own, so a plain split lands exactly on Closed.
-    const [, , closed] = argsOf(content, tinId).split(',');
-    expect(closed).toBe('.F.');
+    // FINAL IFC4X3 attribute order: Coordinates, Closed, Normals, CoordIndex,
+    // PnIndex, Flags. The repo's codegen schema is a DEV draft that lists
+    // `Normals` before `Closed`; following it put `.F.` into `Normals`, which
+    // `ifcopenshell.validate` rejects. Neither leading attribute contains a
+    // comma, so a plain split lands exactly on each.
+    const [, closed, normals] = argsOf(content, tinId).split(',');
+    expect(closed, 'Closed is the second attribute in final IFC4X3').toBe('.F.');
+    expect(normals, 'Normals is optional and absent').toBe('$');
   });
 
   it('Flags is non-empty by default, a supplied Flags is written verbatim, and invalid Flags throw', () => {

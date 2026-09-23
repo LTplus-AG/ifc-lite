@@ -102,10 +102,19 @@ Never infer the order from coordinate magnitude without a declared CRS to bound 
 
 ## 3. Target schema
 
-IFC4X3. Note that the repo's exporter tag is `IFC4X3`; `IFC4X3_ADD2` (what
-IfcOpenShell 0.8.0 writes, and what the bonsai files declare) is not an exporter tag
-here — see `packages/export/src/attribute-real-slots.ts`. All entity and attribute
-definitions below were taken from `packages/codegen/schemas/IFC4X3.exp`.
+IFC4X3 — the final standard, ISO 16739-1:2024. Note that the repo's exporter tag is
+`IFC4X3`; `IFC4X3_ADD2` (what IfcOpenShell 0.8.0 writes, and what the bonsai files declare)
+is not an exporter tag here — see `packages/export/src/attribute-real-slots.ts`.
+
+**Attribute layouts must come from the final schema, not from
+`packages/codegen/schemas/IFC4X3.exp`.** That file is a pre-release draft
+(`IFC4X3_DEV_923b0514`), and its layouts differ from the standard for entities this
+mapping writes: `IfcTessellatedFaceSet` gained `Closed` (so `Closed` now precedes
+`Normals`), and `IfcMapConversion` gained `ScaleY` and `ScaleZ`. v1.0 followed the draft
+and wrote both wrongly; ifc-lite's own parser uses the same draft, so every round-trip test
+agreed with itself. The conformance check against IfcOpenShell
+(`packages/create/src/landxml/ifcopenshell-conformance.test.ts`, in the *Export schema
+conformance* workflow) is what caught it, and is the authority for layouts here.
 
 ## 4. The v1 mapping
 
@@ -128,16 +137,19 @@ ENTITY IfcTriangulatedIrregularNetwork
  SUBTYPE OF (IfcTriangulatedFaceSet);
 	Flags : LIST [1:?] OF IfcInteger;
  WHERE
-	NotClosed : SELF\IfcTriangulatedFaceSet.Closed = FALSE;
+	NotClosed : SELF\IfcTessellatedFaceSet.Closed = FALSE;
 END_ENTITY;
 ```
+
+Positional layout in the final schema: `Coordinates, Closed, Normals, CoordIndex, PnIndex,
+Flags`.
 
 - `Flags` is **mandatory** and must be non-empty. It is not optional the way most
   IFC list attributes are.
 - `Closed` must be written explicitly as `.F.`, not omitted — `NotClosed` tests for
   `= FALSE`, and `$` does not satisfy it.
 - Inherited from `IfcTessellatedFaceSet`: `Coordinates : IfcCartesianPointList3D`
-  (`CoordList : LIST [1:?] OF LIST [3:3] OF IfcLengthMeasure`).
+  (`CoordList : LIST [1:?] OF LIST [3:3] OF IfcLengthMeasure`) and `Closed`.
 - Inherited from `IfcTriangulatedFaceSet`: `CoordIndex : LIST [1:?] OF LIST [3:3] OF
   IfcPositiveInteger` — **1-based**, and `Normals`/`PnIndex` optional.
 
@@ -154,7 +166,7 @@ report (§6).
 IfcProjectedCRS: Name (required in practice — WHERE NameOrWKT), VerticalDatum,
                  MapProjection, MapZone, MapUnit (must be a length unit)
 IfcMapConversion: SourceCRS, TargetCRS, Eastings, Northings, OrthogonalHeight,
-                  XAxisAbscissa?, XAxisOrdinate?, Scale?
+                  XAxisAbscissa?, XAxisOrdinate?, Scale?, ScaleY?, ScaleZ?
 ```
 
 `LandXmlCoordinateSystem` currently keeps `horizontal_datum` / `vertical_datum` as raw

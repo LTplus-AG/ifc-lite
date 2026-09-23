@@ -138,12 +138,16 @@ describe('LandXML→IFC round trip (#4937, mapping §8.1)', () => {
     const { content, store } = await exportAndParse(SOURCE);
     const tin = store.getEntity!(expressIdOf(content, 'IFCTRIANGULATEDIRREGULARNETWORK'))!;
 
-    // Attribute order: Coordinates, Normals, Closed, CoordIndex, PnIndex, Flags.
+    // FINAL IFC4X3 attribute order: Coordinates, Closed, Normals, CoordIndex,
+    // PnIndex, Flags (`Closed` moved up to `IfcTessellatedFaceSet`). The
+    // repo's codegen schema is a DEV draft with the old order, so this reads
+    // raw positions rather than trusting our own attribute-name table.
     expect(tin.attributes[0], 'Coordinates references the point list')
       .toBe(expressIdOf(content, 'IFCCARTESIANPOINTLIST3D'));
     // `NotClosed : Closed = FALSE` — `$` does NOT satisfy it, so this must be
     // the explicit boolean and never absent.
-    expect(tin.attributes[2]).toBe('.F.');
+    expect(tin.attributes[1]).toBe('.F.');
+    expect(tin.attributes[2], 'Normals is absent').toBeNull();
     expect(tin.attributes[3], 'CoordIndex is 1-based and matches the authored faces')
       .toEqual([[1, 2, 3], [2, 4, 3]]);
     // `Flags` is mandatory and LIST [1:?], unlike most IFC list attributes.

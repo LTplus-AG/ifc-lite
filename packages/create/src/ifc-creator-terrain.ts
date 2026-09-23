@@ -158,11 +158,17 @@ export function emitTerrainSurface(params: TerrainSurfaceParams, ctx: TerrainCon
   const coordinateListId = ctx.emit('IFCCARTESIANPOINTLIST3D', `(${coordList}),$`);
 
   const coordIndex = params.Triangles.map(([a, b, c]) => `(${a},${b},${c})`).join(',');
-  // Attribute order: Coordinates, Normals, Closed, CoordIndex, PnIndex, Flags.
+  // Attribute order in FINAL IFC4X3 (ISO 16739-1:2024): Coordinates, Closed,
+  // Normals, CoordIndex, PnIndex, Flags — `Closed` moved up to
+  // `IfcTessellatedFaceSet`. The repo's `packages/codegen/schemas/IFC4X3.exp`
+  // is a pre-release DEV draft (`IFC4X3_DEV_923b0514`) that still lists
+  // `Normals` first; writing that order put `.F.` into `Normals`, which
+  // `ifcopenshell.validate` rejects. `ifcopenshell-conformance.test.ts` pins
+  // this against the external schema, not ours.
   // `Closed` is written `.F.` explicitly — `$` fails the NotClosed rule.
   const tinId = ctx.emit(
     'IFCTRIANGULATEDIRREGULARNETWORK',
-    `#${coordinateListId},$,.F.,(${coordIndex}),$,(${flags.join(',')})`,
+    `#${coordinateListId},.F.,$,(${coordIndex}),$,(${flags.join(',')})`,
   );
 
   const representationId = ctx.emit(
@@ -263,11 +269,14 @@ export function emitGeoreferencing(params: GeoreferencingParams, ctx: TerrainCon
     + `${params.MapUnitRef ?? '$'}`,
   );
   const optNum = (value: number | undefined): string => (value === undefined ? '$' : num(value));
+  // FINAL IFC4X3 adds `ScaleY` and `ScaleZ` after `Scale` (10 attributes; the
+  // DEV draft in `packages/codegen` has 8). Both are optional, and writing
+  // them `$` keeps the single isotropic `Scale` meaning intact.
   const mapConversionId = ctx.emit(
     'IFCMAPCONVERSION',
     `${ctx.modelContextRef},#${crsId},${num(params.Eastings ?? 0)},${num(params.Northings ?? 0)},`
     + `${num(params.OrthogonalHeight ?? 0)},${optNum(params.XAxisAbscissa)},${optNum(params.XAxisOrdinate)},`
-    + `${optNum(params.Scale)}`,
+    + `${optNum(params.Scale)},$,$`,
   );
   return { crsId, mapConversionId };
 }

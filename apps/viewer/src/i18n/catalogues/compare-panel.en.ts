@@ -46,6 +46,7 @@ export const comparePanelEn = {
 
   // ChangeDetailView
   'comparePanel.changeDetail.geometryLabel': 'Geometry',
+  'comparePanel.changeDetail.containerLabel': 'Container',
   'comparePanel.changeDetail.dataLabel': 'Data',
   'comparePanel.changeDetail.dataFingerprintOnly':
     'Data fingerprint differs but no field-level change could be pinpointed.',

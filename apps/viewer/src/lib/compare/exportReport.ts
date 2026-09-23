@@ -155,6 +155,10 @@ function classifyModified(
     }
   }
   if (entry.changeKinds.includes('data')) parts.push('Data changed');
+  // Spatial re-parenting (#5309, following up on #5214/#5311): without this,
+  // an element whose ONLY change is its container fell through to the
+  // generic 'Changed' label below and the CSV never named the move.
+  if (entry.changeKinds.includes('container')) parts.push('Container changed');
 
   return { change: parts.join(', ') || 'Changed', movedDistance };
 }

@@ -188,6 +188,12 @@ export function bcfTextFromChange(
     if (detail.geometry.movedDistance > 0) lines.push(`Moved ${detail.geometry.movedDistance.toFixed(3)} m.`);
     if (detail.geometry.reshaped) lines.push('Bounding box reshaped.');
   }
+  // Spatial re-parenting (#5309, following up on #5214/#5311): named here too,
+  // or a container-only change pre-fills a BCF topic with nothing but the
+  // generic "Detected in model comparison: container." line above.
+  if (detail?.container) {
+    lines.push(`Container: ${detail.container.before} -> ${detail.container.after}`);
+  }
   if (detail?.data?.length) {
     lines.push('', 'Data changes:');
     for (const d of detail.data.slice(0, 20)) {

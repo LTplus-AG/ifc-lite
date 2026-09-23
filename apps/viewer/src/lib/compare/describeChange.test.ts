@@ -377,3 +377,28 @@ describe('describeChange - a geometry-less product that was re-georeferenced', (
     assert.strictEqual(detail!.geometry!.reshaped, true);
   });
 });
+
+// ── Container-only change (issue #5309, follow-up to #5214/#5311) ───────
+// `diffModels` (packages/diff) now reports a `'container'` DiffChangeKind
+// when an element's resolved spatial container path differs between
+// revisions. The detail panel did not know about it yet: an element whose
+// ONLY change is `container` produced an empty `data`/`geometry` detail.
+describe('describeChange - container-only change (#5309)', () => {
+  it('describes the old and new container path for a container-only entry', async () => {
+    const aStore = await storeFromStep(
+      "#1=IFCWALL('1wall_a_guid_aaaaaaaaa',$,'Wall',$,$,$,$,$,$);",
+    );
+    const bStore = await storeFromStep(
+      "#1=IFCWALL('1wall_b_guid_aaaaaaaaa',$,'Wall',$,$,$,$,$,$);",
+    );
+    const entry = modifiedEntry('IfcWall');
+    entry.changeKinds = ['container'];
+    entry.base!.container = 'Building/Storey 1';
+    entry.head!.container = 'Building/Storey 2';
+    const detail = describeChange(entry, modelsFor(aStore, bStore));
+    assert.ok(detail, 'expected a change detail for a container-only modified entry');
+    assert.ok(detail!.container, 'expected a container delta to be described');
+    assert.strictEqual(detail!.container!.before, 'Building/Storey 1');
+    assert.strictEqual(detail!.container!.after, 'Building/Storey 2');
+  });
+});

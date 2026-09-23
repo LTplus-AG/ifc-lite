@@ -51,11 +51,22 @@ export interface FieldDelta {
   kind: 'changed' | 'added' | 'removed';
 }
 
+/** The old and new spatial container path for a `container`-kind change
+ *  (issue #5309, following up on #5214/#5311's `EntityFingerprint.container`
+ *  and `DiffChangeKind`). */
+export interface ContainerDelta {
+  before: string;
+  after: string;
+}
+
 export interface ChangeDetail {
   /** Non-geometric attribute/property changes (the "Data" story). */
   data: FieldDelta[];
   /** Geometry move/reshape summary, or null when geometry didn't change. */
   geometry: GeometrySummary | null;
+  /** Old/new spatial container path, or null when the container didn't
+   *  change (or the engine could not resolve it on both sides). */
+  container: ContainerDelta | null;
   /** True when `data` is empty but the data hash still flagged a change —
    *  i.e. the only data difference was geometric (placement/quantity) and is
    *  intentionally not shown as data. */
@@ -355,7 +366,17 @@ export function describeChange(
     ? geometrySummary(models.get(aRef.modelId), aRef, models.get(bRef.modelId), bRef)
     : null;
 
+  // Spatial re-parenting (#5309, following up on #5214/#5311). Same
+  // truthiness guard the engine itself uses (`diff.ts`): an unresolved
+  // container on either side is not evidence of a move, so it is never
+  // surfaced here even if the entry somehow carried the kind without both
+  // paths resolved.
+  const container: ContainerDelta | null =
+    entry.changeKinds.includes('container') && entry.base.container && entry.head.container
+      ? { before: entry.base.container, after: entry.head.container }
+      : null;
+
   const dataOnlyGeometric = entry.changeKinds.includes('data') && data.length === 0;
 
-  return { data, geometry, dataOnlyGeometric };
+  return { data, geometry, container, dataOnlyGeometric };
 }

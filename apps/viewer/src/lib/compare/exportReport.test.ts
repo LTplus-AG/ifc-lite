@@ -792,3 +792,51 @@ describe('buildCompareReport products vs type objects (headline split)', () => {
     assert.strictEqual(lines[0], 'GlobalId,Name,IfcType,Change,MovedDistance_m,Model,Match,MatchedGlobalId');
   });
 });
+
+describe('buildCompareReport - container-only change (#5309)', () => {
+  const ref = (modelId: string, id: number) => ({ modelId, localId: id, globalId: id });
+  const fingerprint = (modelId: string, key: string, id: number) => ({
+    key,
+    ifcType: 'IfcWall',
+    dataHash: 'd',
+    container: modelId === 'a' ? 'Building/Storey 1' : 'Building/Storey 2',
+    ref: ref(modelId, id),
+  });
+
+  const result = {
+    baseModelId: 'a',
+    headModelId: 'b',
+    baseName: 'A',
+    headName: 'B',
+    scope: 'both',
+    geometryUnavailable: true,
+    excludedHiddenIds: new Set<number>(),
+    diff: {
+      scope: 'both',
+      excludedTypes: [],
+      entries: [
+        {
+          key: 'GUID-WALL-1',
+          state: 'modified',
+          // Diff engine (#5214/#5311): a re-parented element with no other
+          // signal difference reports ONLY 'container'.
+          changeKinds: ['container'],
+          base: fingerprint('a', 'GUID-WALL-1', 1),
+          head: fingerprint('b', 'GUID-WALL-1', 1),
+        },
+      ],
+      byKey: new Map(),
+      counts: { added: 0, modified: 1, deleted: 0, unchanged: 0 },
+    },
+  } as unknown as CompareResult;
+
+  it('names the containment move instead of falling through to the generic "Changed" label', () => {
+    const report = buildCompareReport(result, new Map());
+    assert.strictEqual(report.rows.length, 1);
+    assert.notStrictEqual(report.rows[0].change, 'Changed');
+    assert.ok(
+      /container/i.test(report.rows[0].change),
+      `expected the change label to name the containment move, got ${JSON.stringify(report.rows[0].change)}`,
+    );
+  });
+});

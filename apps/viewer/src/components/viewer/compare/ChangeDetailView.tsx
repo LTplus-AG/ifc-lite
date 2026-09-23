@@ -33,6 +33,20 @@ export function ChangeDetailView({ row, detail }: { row: CompareRow; detail: Cha
             <GeometryDetail summary={detail.geometry} />
           </div>
         )}
+        {detail.container && (
+          <div className="space-y-1">
+            <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+              {t('comparePanel.changeDetail.containerLabel')}
+            </div>
+            <div className="rounded border border-border/60 px-2 py-1.5 space-y-0.5">
+              <div className="flex items-center gap-1.5 text-[11px] tabular-nums min-w-0">
+                <span className="text-muted-foreground line-through truncate max-w-[45%]">{detail.container.before}</span>
+                <span className="text-muted-foreground shrink-0">→</span>
+                <span className="truncate max-w-[45%]">{detail.container.after}</span>
+              </div>
+            </div>
+          </div>
+        )}
         {detail.data.length > 0 ? (
           <div className="space-y-1">
             <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
@@ -46,7 +60,7 @@ export function ChangeDetailView({ row, detail }: { row: CompareRow; detail: Cha
           <div className="text-[11px] text-muted-foreground italic">
             {t('comparePanel.changeDetail.dataFingerprintOnly')}
           </div>
-        ) : !detail.geometry ? (
+        ) : !detail.geometry && !detail.container ? (
           <div className="text-[11px] text-muted-foreground italic">{t('comparePanel.changeDetail.noFieldDetail')}</div>
         ) : null}
       </div>

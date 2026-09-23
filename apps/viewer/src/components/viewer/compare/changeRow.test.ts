@@ -139,7 +139,7 @@ describe('bcfTextFromChange (#1199)', () => {
     // blanked, so no stray empty line sits where it would have been.
     const { description } = bcfTextFromChange(
       row({ key: 'missing:foo', state: 'deleted', changeKinds: [] }),
-      { data: [], geometry: { movedDistance: 1.234, reshaped: false, delta: { x: 0, y: 0, z: 1.234 }, sizeDelta: { x: 0, y: 0, z: 0 } }, dataOnlyGeometric: false },
+      { data: [], geometry: { movedDistance: 1.234, reshaped: false, delta: { x: 0, y: 0, z: 1.234 }, sizeDelta: { x: 0, y: 0, z: 0 } }, container: null, dataOnlyGeometric: false },
     );
     assert.strictEqual(description, 'Detected in model comparison: deleted.\nMoved 1.234 m.');
   });
@@ -147,7 +147,7 @@ describe('bcfTextFromChange (#1199)', () => {
   it('keeps the GlobalId line for a normal key', () => {
     const { description } = bcfTextFromChange(
       row(),
-      { data: [], geometry: { movedDistance: 1.234, reshaped: false, delta: { x: 0, y: 0, z: 1.234 }, sizeDelta: { x: 0, y: 0, z: 0 } }, dataOnlyGeometric: false },
+      { data: [], geometry: { movedDistance: 1.234, reshaped: false, delta: { x: 0, y: 0, z: 1.234 }, sizeDelta: { x: 0, y: 0, z: 0 } }, container: null, dataOnlyGeometric: false },
     );
     assert.strictEqual(
       description,
@@ -161,6 +161,7 @@ describe('bcfTextFromChange (#1199)', () => {
       {
         data: [{ category: 'property', group: 'Pset_WallCommon', name: 'FireRating', before: 'A', after: 'B', kind: 'changed' }],
         geometry: null,
+        container: null,
         dataOnlyGeometric: false,
       },
     );
@@ -179,12 +180,24 @@ describe('bcfTextFromChange (#1199)', () => {
       {
         data: [{ category: 'property', group: 'Pset_WallCommon', name: 'FireRating', before: undefined, after: undefined, kind: 'removed' }],
         geometry: null,
+        container: null,
         dataOnlyGeometric: false,
       },
     );
     assert.strictEqual(
       description,
       'Detected in model comparison: deleted.\n\nData changes:\n- Pset_WallCommon / FireRating: removed',
+    );
+  });
+
+  it('names the old and new container path for a container-only change (#5309)', () => {
+    const { description } = bcfTextFromChange(
+      row({ changeKinds: ['container'] }),
+      { data: [], geometry: null, container: { before: 'Building/Storey 1', after: 'Building/Storey 2' }, dataOnlyGeometric: false },
+    );
+    assert.strictEqual(
+      description,
+      'Detected in model comparison: container.\nGlobalId: 2O2Fr$t4X7Zf8NOew3FLOH\nContainer: Building/Storey 1 -> Building/Storey 2',
     );
   });
 });

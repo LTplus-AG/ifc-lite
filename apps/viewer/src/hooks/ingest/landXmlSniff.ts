@@ -10,9 +10,9 @@
  * This module used to also export a content sniffer (`isLandXmlContent`, with
  * `decodeXmlHead`/`rootStartTag` helpers) built for #4937's "content sniffing
  * for generic .xml" item. The authoritative-parser design superseded it before
- * it ever gained a caller, and it sat dead for long enough to accumulate ten
- * tests that implied coverage of a path nothing took. Removed rather than left
- * as a just-in-case path.
+ * it ever gained a caller, and it sat dead behind four tests that implied
+ * coverage of a path nothing took. Removed rather than left as a just-in-case
+ * path.
  *
  * If content sniffing is wanted again, note what it costs: deciding from the
  * bytes means reading past an arbitrarily long but legal XML prolog, which is

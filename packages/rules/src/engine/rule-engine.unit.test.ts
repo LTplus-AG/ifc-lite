@@ -7,7 +7,8 @@
  *
  * Fixture project length unit is MILLIMETRE, area unit is SQUARE_METRE.
  *   Wall A  Width 300 (no explicit unit → project mm), Height IFCLENGTHMEASURE
- *           2500 (→ mm), Label IFCLABEL, NetSideArea 7.5 (→ m²)
+ *           2500 (→ mm), Label IFCLABEL, NetSideArea 7.5 (→ m²), and an
+ *           empty Pset_Empty.Height ($) read before the real one
  *   Wall B  Width 0.3 with an explicit METRE unit, Height 2.5 with an
  *           explicit METRE unit
  *   Wall C  no quantities or properties at all
@@ -42,6 +43,9 @@ DATA;
 #411= IFCQUANTITYAREA('NetSideArea',$,$,7.5,$);
 #412= IFCELEMENTQUANTITY('0Qto00000000000000412A',$,'Qto_WallBaseQuantities',$,'BaseQuantities',(#410,#411));
 #413= IFCRELDEFINESBYPROPERTIES('0Rel00000000000000413A',$,$,$,(#401),#412);
+#405= IFCPROPERTYSINGLEVALUE('Height',$,$,$);
+#406= IFCPROPERTYSET('0Pset00000000000000406A',$,'Pset_Empty',$,(#405));
+#407= IFCRELDEFINESBYPROPERTIES('0Rel00000000000000407A',$,$,$,(#401),#406);
 #414= IFCPROPERTYSINGLEVALUE('Height',$,IFCLENGTHMEASURE(2500.),$);
 #415= IFCPROPERTYSINGLEVALUE('Label',$,IFCLABEL('A'),$);
 #416= IFCPROPERTYSET('0Pset00000000000000416A',$,'Pset_Dims',$,(#414,#415));
@@ -107,6 +111,16 @@ describe('unit requirement (#5300)', () => {
     const m = await verdicts({ kind: 'unit', subject: height, unit: 'm' });
     assert.equal(m.byName['Wall A'].passed, false);
     assert.equal(m.byName['Wall B'].passed, true);
+  });
+
+  it('an empty value next to a real one does not shift the units (review, #5306)', async () => {
+    // `/Pset_.*/` reaches Pset_Empty.Height ($, no unit) first, then
+    // Pset_Dims.Height (2500, mm): units stay aligned with their values.
+    const { byName } = await verdicts({
+      kind: 'unit', subject: { kind: 'property', setName: '/Pset_.*/', propertyName: 'Height' }, unit: 'mm',
+    });
+    assert.equal(byName['Wall A'].passed, true);
+    assert.equal(byName['Wall A'].requirementResults[0].actualValue, '2500 mm');
   });
 
   it('a value with no unit at all fails and says so', async () => {

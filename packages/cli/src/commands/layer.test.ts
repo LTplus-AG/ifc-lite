@@ -312,6 +312,19 @@ describe('check evidence (--check spec.ids=report.json)', () => {
     expect(() => parseCheckEvidence(['no-equals-sign'])).toThrow(/--check expects/);
   });
 
+  it('refuses a report whose ruleset declares zero specifications (#5190)', () => {
+    const store = tmpStore();
+    const specPath = join(store.dir, 'empty.ids');
+    const reportPath = join(store.dir, 'report.json');
+    writeFileSync(specPath, '<ids/>', 'utf-8');
+    writeFileSync(
+      reportPath,
+      JSON.stringify({ summary: { totalSpecifications: 0, failedSpecifications: 0 }, error: 'declares zero specifications' }),
+      'utf-8'
+    );
+    expect(() => parseCheckEvidence([`${specPath}=${reportPath}`])).toThrow(/zero specifications/);
+  });
+
   it('satisfies a requiredChecks ref policy end to end', () => {
     const store = tmpStore();
     setupMain(store);

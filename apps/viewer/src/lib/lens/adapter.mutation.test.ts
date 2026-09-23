@@ -22,7 +22,7 @@ import { describe, it } from 'node:test';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
-import { evaluateLens } from '@ifc-lite/lens';
+import { evaluateAutoColorLens, evaluateLens } from '@ifc-lite/lens';
 import type { Lens } from '@ifc-lite/lens';
 import type { FederatedModel } from '@/store/types';
 import { configureMutationView } from '@/utils/configureMutationView';
@@ -85,6 +85,64 @@ function valueField(criteria: Lens['rules'][number]['criteria'], value: string) 
 }
 
 describe('lens adapter reads the live mutation overlay (#5207)', () => {
+  it('enumerates live source rows and creations, excluding tombstones and created-then-deleted rows (#5249)', async () => {
+    const store = await parsedStore();
+    const view = liveView(store);
+    const models = new Map([['m1', federatedModel('m1', store)]]);
+    const base = createLensDataProvider(models, null);
+    const sourceIds: number[] = [];
+    base.forEachEntity((id) => sourceIds.push(id));
+
+    view.setExpressIdWatermark(999);
+    const created = view.createEntity('IfcWall', []);
+    const forgotten = view.createEntity('IfcDoor', []);
+    view.deleteEntity(41);
+    view.deleteEntity(forgotten.expressId);
+    const refs = new Map([[created.expressId, { modelId: 'm1', expressId: created.expressId }]]);
+    const provider = createLensDataProvider(models, null, new Map([['m1', view]]),
+      (globalId) => refs.get(globalId) ?? { modelId: 'm1', expressId: globalId });
+    assert.equal(provider.getEntityType(created.expressId), 'IfcWall', 'created id resolves before an enumeration callback');
+    const liveIds: number[] = [];
+    provider.forEachEntity((id) => liveIds.push(id));
+
+    assert.deepEqual(liveIds, [...sourceIds.filter((id) => id !== 41), created.expressId]);
+    assert.equal(provider.getEntityCount(), liveIds.length);
+    assert.equal(liveIds.includes(forgotten.expressId), false);
+    const colorized = evaluateAutoColorLens({ source: 'ifcType' }, provider);
+    assert.equal(colorized.colorMap.has(41), false);
+    assert.equal(colorized.colorMap.has(created.expressId), true);
+  });
+
+  it('keeps each federated model\'s live entity set isolated (#5249)', async () => {
+    const store = await parsedStore();
+    const first = liveView(store);
+    const second = new MutablePropertyView(store.properties ?? null, 'm2');
+    configureMutationView(second, store);
+    first.deleteEntity(41);
+    second.setExpressIdWatermark(999);
+    const created = second.createEntity('IfcWall', []);
+    const models = new Map([
+      ['m1', federatedModel('m1', store)],
+      ['m2', { ...federatedModel('m2', store), idOffset: 1_000_000 }],
+    ]);
+    const createdGlobalId = 1_000_000 + created.expressId;
+    const provider = createLensDataProvider(models, null, new Map([['m1', first], ['m2', second]]),
+      (globalId) => globalId === createdGlobalId ? { modelId: 'm2', expressId: created.expressId } : null);
+    assert.equal(provider.getEntityType(createdGlobalId), 'IfcWall', 'created id resolves to its own model');
+    const byModel = new Map<string, number[]>();
+    provider.forEachEntity((globalId, modelId) => {
+      const ids = byModel.get(modelId) ?? [];
+      ids.push(globalId);
+      byModel.set(modelId, ids);
+    });
+
+    assert.equal(byModel.get('m1')?.includes(41), false);
+    assert.equal(byModel.get('m2')?.includes(1_000_000 + 41), true);
+    assert.equal(byModel.get('m1')?.includes(created.expressId), false);
+    assert.equal(byModel.get('m2')?.includes(createdGlobalId), true);
+    assert.equal(provider.getEntityCount(), [...byModel.values()].reduce((count, ids) => count + ids.length, 0));
+  });
+
   it('a property edit: rule on the new value matches, rule on the old value does not', async () => {
     const store = await parsedStore();
     const view = liveView(store);

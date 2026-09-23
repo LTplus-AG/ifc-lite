@@ -865,12 +865,14 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
         const view = roomMutationViewFor(get(), modelId);
         if (!view) return;
         view.setProperty(entityId, pset, prop, value, type);
+        get().invalidateRedoForEntity(modelId, entityId); // drop a stale queued redo for this entity (#5223)
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       onPropertyDelete: (modelId, entityId, pset, prop) => {
         const view = roomMutationViewFor(get(), modelId);
         if (!view) return;
         view.deleteProperty(entityId, pset, prop);
+        get().invalidateRedoForEntity(modelId, entityId); // #5223, see onProperty
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       // A peer's whole Pset vanished (its last property was deleted, which
@@ -881,6 +883,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
         const view = roomMutationViewFor(get(), modelId);
         if (!view) return;
         view.deletePropertySet(entityId, pset);
+        get().invalidateRedoForEntity(modelId, entityId); // #5223, see onProperty
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       onAttribute: (modelId, entityId, attrName, value) => {
@@ -891,6 +894,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
           rejectRemoteAttribute(rejected);
           return;
         }
+        get().invalidateRedoForEntity(modelId, entityId); // covers UPDATE_ATTRIBUTE/POSITIONAL redo (#5223)
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       // A peer moved/rotated an entity: reflect it on the local mesh by
@@ -899,6 +903,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
         const store = roomStoreFor(get(), modelId);
         if (!store) return;
         reconcilePlacementMesh(get, modelId, store, session.doc, entityId, placement);
+        get().invalidateRedoForEntity(modelId, entityId); // drop a stale queued placement redo (#5223)
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       // A peer deleted an entity: hide its mesh (matches the owner's local
@@ -918,6 +923,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
         if (!deleteRemoteOverlayEntity(store, roomMutationViewFor(get(), modelId), entityId)) return;
         const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
         get().hideEntities([globalId]);
+        get().invalidateRedoForEntity(modelId, entityId); // no redo may write onto this tombstone (#5223)
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
     });

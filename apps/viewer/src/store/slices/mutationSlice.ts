@@ -52,6 +52,7 @@ import { createCostUndoMutations, mirrorCreateEntityRedo, mirrorSourceEntityRest
 import { stashAndPruneEntityMesh, restoreStashedEntityMesh, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
 import { pruneMutationHistory } from './mutation-history-prune.js';
+import { invalidateRedoPatch, isTargetTombstoned } from './mutation-redo-remote-guard.js';
 import type { TypeViewMode } from '../constants.js';
 import {
   resolvePlacementChain,
@@ -683,6 +684,7 @@ export interface MutationSlice extends CostUndoMethods {
   canUndo: (modelId: string) => boolean;
   /** Check if redo is available */
   canRedo: (modelId: string) => boolean;
+  /** Drops `entityId`'s redo entries — see mutation-redo-remote-guard.ts (#5223). */ invalidateRedoForEntity: (modelId: string, entityId: number) => void;
 
   // Actions - Change Sets
   /** Create a new change set */
@@ -2707,8 +2709,8 @@ export const createMutationSlice: StateCreator<
     const view = state.mutationViews.get(modelId);
     if (!view) return;
 
-    // Apply inverse mutation (skipHistory=true to avoid polluting mutation history)
-    if (mutation.type === 'UPDATE_PROPERTY' || mutation.type === 'CREATE_PROPERTY') {
+    // Apply inverse mutation (skipHistory=true); skip onto a peer-deleted entity (#5223, see mutation-redo-remote-guard.ts)
+    if (isTargetTombstoned(view, mutation)) { /* no-op */ } else if (mutation.type === 'UPDATE_PROPERTY' || mutation.type === 'CREATE_PROPERTY') {
       // Decide by mutation TYPE, not by `oldValue === null`: a property can have
       // a null (unset) value yet still have existed before the edit (an unset
       // Boolean). Undoing a CREATE removes the property; undoing an UPDATE
@@ -2916,8 +2918,8 @@ export const createMutationSlice: StateCreator<
     const view = state.mutationViews.get(modelId);
     if (!view) return;
 
-    // Re-apply mutation (skipHistory=true to avoid polluting mutation history)
-    if (mutation.type === 'UPDATE_PROPERTY' || mutation.type === 'CREATE_PROPERTY') {
+    // Re-apply mutation (skipHistory=true); same tombstone guard as undo() (#5223)
+    if (isTargetTombstoned(view, mutation)) { /* no-op */ } else if (mutation.type === 'UPDATE_PROPERTY' || mutation.type === 'CREATE_PROPERTY') {
       if (mutation.psetName && mutation.propName && mutation.newValue !== undefined) {
         view.setProperty(
           mutation.entityId,
@@ -3051,6 +3053,7 @@ export const createMutationSlice: StateCreator<
     return stack ? stack.length > 0 : false;
   },
 
+  invalidateRedoForEntity: (modelId, entityId) => set((s) => invalidateRedoPatch(s.redoStacks, modelId, entityId)),
   // Change Sets
   createChangeSet: (name) => {
     const id = generateChangeSetId();

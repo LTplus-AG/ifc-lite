@@ -33,6 +33,7 @@ import { handleSelectionClick, rendererPointToIfcStoreyLocal } from './selection
 import { toRenderTranslation, type Translation } from '@/lib/model-placement/translation.js';
 import type { PlacementState } from '@/lib/model-placement/state.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 
 const MODEL_ID = 'm-repositioned';
 
@@ -96,6 +97,10 @@ describe('placement-tool click: addWall receives model-frame coordinates on a mo
   beforeEach(() => {
     captured = null;
     useViewerStore.setState({
+      ...fixtureModels(fixtureModel(MODEL_ID, {
+        entities: [{ expressId: 1, type: 'IfcBuildingStorey' }],
+      })),
+      mutationViews: new Map(),
       modelPlacement: PLACEMENT,
       addElementType: 'wall',
       addElementModelId: MODEL_ID,
@@ -113,6 +118,9 @@ describe('placement-tool click: addWall receives model-frame coordinates on a mo
   afterEach(() => {
     useViewerStore.setState({
       modelPlacement: original.modelPlacement,
+      models: original.models,
+      activeModelId: original.activeModelId,
+      mutationViews: original.mutationViews,
       addElementType: original.addElementType,
       addElementModelId: original.addElementModelId,
       addElementStoreyId: original.addElementStoreyId,

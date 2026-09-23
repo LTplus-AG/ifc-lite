@@ -23,6 +23,7 @@ import { displayedTranslation, placementFor } from '@/lib/model-placement/state.
 import { resolve as translate } from '@/i18n/registry';
 import { fromRenderTranslation, toRenderTranslation, type Translation } from '@/lib/model-placement/translation.js';
 import { modelPointToWorkspacePoint, workspacePointToModelFrame } from '@/lib/model-placement/rotation.js';
+import { effectiveStoreyElevation, selectEffectiveStoreyId } from './add-element-storeys.js';
 
 /**
  * Handle click event for selection (single click and double click).
@@ -345,14 +346,13 @@ function inferStoreyForGlobalId(
 }
 
 /**
- * Find the first IfcBuildingStorey entity in the active model. Used as a
- * fallback when the user hasn't picked a target storey in the panel.
+ * Keep an explicit selection only while it is a live storey in this model.
+ * A deleted or retyped selection falls back to the next available storey.
  */
-function firstStoreyExpressId(modelId: string): number | null {
+function resolveStoreyExpressId(modelId: string, preferred: number | null): number | null {
   const state = useViewerStore.getState();
-  const model = state.models.get(modelId);
-  const ids = model?.ifcDataStore?.entityIndex.byType.get('IFCBUILDINGSTOREY');
-  return ids && ids.length > 0 ? ids[0] : null;
+  const store = state.models.get(modelId)?.ifcDataStore;
+  return store ? selectEffectiveStoreyId(store, state.mutationViews.get(modelId), preferred) : null;
 }
 
 /**
@@ -477,9 +477,9 @@ function resolveStoreyFloorY(): number {
   const model = state.models.get(modelId);
   const ds = model?.ifcDataStore;
   if (!ds) return 0;
-  const storeyId = state.addElementStoreyId ?? firstStoreyExpressId(modelId);
+  const storeyId = resolveStoreyExpressId(modelId, state.addElementStoreyId);
   if (storeyId === null) return 0;
-  const elev = ds.spatialHierarchy?.storeyElevations?.get(storeyId) ?? 0;
+  const elev = effectiveStoreyElevation(ds, state.mutationViews.get(modelId), storeyId);
   return elev + displayedTranslation(state.modelPlacement, modelId)[2];
 }
 
@@ -870,14 +870,13 @@ export function finishRadiusFromDoubleClick(): boolean | null {
 function resolveAddElementContext(
   override?: { modelId: string; storeyId: number },
 ): { modelId: string; storeyId: number } | null {
-  if (override) return override;
   const state = useViewerStore.getState();
-  const modelId = state.addElementModelId ?? resolveActiveModelId();
+  const modelId = override?.modelId ?? state.addElementModelId ?? resolveActiveModelId();
   if (!modelId) {
     toast.error("Couldn't add element: no model loaded");
     return null;
   }
-  const storeyId = state.addElementStoreyId ?? firstStoreyExpressId(modelId);
+  const storeyId = resolveStoreyExpressId(modelId, override?.storeyId ?? state.addElementStoreyId);
   if (storeyId === null) {
     toast.error("Couldn't add element: model has no IfcBuildingStorey");
     return null;

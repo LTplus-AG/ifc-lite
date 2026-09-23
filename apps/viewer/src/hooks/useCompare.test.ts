@@ -27,7 +27,10 @@ import { alignGeometryToReference, type ModelSpatialPlacement } from './ingest/f
 import { spatialReferenceFromIfc } from '../lib/geo/ifc-spatial-reference.js';
 
 describe('isCurrentFor — the compare fingerprint cache key (#1891)', () => {
-  const built = { baseModelId: 'a', headModelId: 'b', contentVersion: 3, keyProperty: undefined };
+  const built = {
+    baseModelId: 'a', headModelId: 'b', contentVersion: 3, keyProperty: undefined,
+    mutationVersion: useViewerStore.getState().mutationVersion,
+  };
 
   it('reuses fingerprints for the same pair at the same content version', () => {
     assert.equal(isCurrentFor(built, 'a', 'b', 3, undefined), true);
@@ -55,6 +58,13 @@ describe('isCurrentFor — the compare fingerprint cache key (#1891)', () => {
     const keyed = { ...built, keyProperty: 'Tag' };
     assert.equal(isCurrentFor(keyed, 'a', 'b', 3, 'Tag'), true);
     assert.equal(isCurrentFor(keyed, 'a', 'b', 3, undefined), false);
+  });
+
+  it('refuses to reuse them once any model was edited since extraction (#5312)', () => {
+    const extractedAt = { ...built, mutationVersion: useViewerStore.getState().mutationVersion };
+    assert.equal(isCurrentFor(extractedAt, 'a', 'b', 3, undefined), true);
+    const stale = { ...extractedAt, mutationVersion: extractedAt.mutationVersion - 1 };
+    assert.equal(isCurrentFor(stale, 'a', 'b', 3, undefined), false);
   });
 });
 

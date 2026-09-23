@@ -20,6 +20,7 @@ import { useCompare } from '@/hooks/useCompare';
 import { useCompareOverlay } from '@/hooks/useCompareOverlay';
 import { COMPARE_COLORS } from '@/lib/compare/overlay';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
+import { modelsAsCompared } from '@/lib/compare/comparedModels';
 import { describeChange, type ChangeDetail } from '@/lib/compare/describeChange';
 import { ChangeDetailView } from './compare/ChangeDetailView';
 import { BcfFromChange } from './compare/BcfFromChange';
@@ -48,7 +49,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
   const { t } = useTranslation();
   useCompareOverlay();
 
-  const models = useViewerStore((s) => s.models);
+  const liveModels = useViewerStore((s) => s.models);
   const baseModelId = useViewerStore((s) => s.compareBaseModelId);
   const headModelId = useViewerStore((s) => s.compareHeadModelId);
   const scope = useViewerStore((s) => s.compareScope);
@@ -77,6 +78,8 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
   // THIS wrapper get called, so every clear in this panel must go through it
   // or a stale result can resurrect itself once the run resolves.
   const { running, result, error, runComparison, clearCompare } = useCompare();
+  // Row names and change details read the stores the diff was computed from (#5312).
+  const models = useMemo(() => modelsAsCompared(liveModels, result?.comparedStores), [liveModels, result]);
 
   const modelList = useMemo(() => Array.from(models.values()), [models]);
 

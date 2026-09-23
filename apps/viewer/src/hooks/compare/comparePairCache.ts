@@ -12,6 +12,7 @@
 
 import { useViewerStore } from '@/store';
 import type { EntityFingerprint } from '@ifc-lite/diff';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
 
 /** Read the live mesh-content version. A FUNCTION, not a captured number: the
@@ -59,6 +60,12 @@ export interface BuiltPair {
    * precise "mesh content was mutated under you" signal this cache was missing.
    */
   contentVersion: number;
+  /** Baked stores the fingerprints were read from, per edited model (#5312).
+   *  Absent for a model compared as loaded. See `effectiveCompareStore`. */
+  comparedStores: ReadonlyMap<string, IfcDataStore>;
+  /** Store `mutationVersion` the stores were baked at (#5312). Any edit since
+   *  makes the fingerprints describe a model that no longer exists. */
+  mutationVersion: number;
 }
 
 /** Are these fingerprints the ones for this A/B pair, extracted from the mesh
@@ -69,7 +76,7 @@ export interface BuiltPair {
  *  reused, again after the extraction's awaits, and again before a cheap
  *  re-diff. One definition, so the three cannot drift apart. */
 export function isCurrentFor(
-  built: Pick<BuiltPair, 'baseModelId' | 'headModelId' | 'contentVersion' | 'keyProperty'>,
+  built: Pick<BuiltPair, 'baseModelId' | 'headModelId' | 'contentVersion' | 'keyProperty' | 'mutationVersion'>,
   baseModelId: string,
   headModelId: string,
   contentVersion: number,
@@ -78,5 +85,7 @@ export function isCurrentFor(
   return built.baseModelId === baseModelId
     && built.headModelId === headModelId
     && built.contentVersion === contentVersion
-    && built.keyProperty === keyProperty;
+    && built.keyProperty === keyProperty
+    // Read live: an edit since extraction invalidates the cache (#5312).
+    && built.mutationVersion === useViewerStore.getState().mutationVersion;
 }

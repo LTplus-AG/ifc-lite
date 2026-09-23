@@ -101,6 +101,7 @@ const productByClass = new Map<string, boolean>();
 export function* authoredKeyOwnerIds(store: IfcDataStore): Generator<number> {
   const seen = new Set<number>();
   const extractor = new EntityExtractor(store.source);
+  // @raw-entity-enumeration-ok Compare hands this the EFFECTIVE store (effectiveCompareStore bakes unsaved edits in), so the source index is the edited model
   for (const [typeKey, ids] of store.entityIndex.byType) {
     const upper = typeKey.toUpperCase();
     const chain = getInheritanceChainAcrossSchemas(upper);
@@ -111,6 +112,7 @@ export function* authoredKeyOwnerIds(store: IfcDataStore): Generator<number> {
       if (seen.has(expressId)) continue;
       let globalId = store.entities.getGlobalId(expressId);
       if (!globalId && knownOwner) {
+        // @raw-entity-enumeration-ok point lookup of one record in the effective store Compare passes in
         const ref = store.entityIndex.byId.get(expressId);
         const entity = ref ? extractor.extractEntity(ref) : undefined;
         globalId = entity ? (extractRootAttributesFromEntity(entity).globalId ?? '') : '';
@@ -157,6 +159,7 @@ export function isProductClass(ifcType: string): boolean {
  * is absorbed; a second caller must de-duplicate for itself.
  */
 export function* comparableProductIds(store: IfcDataStore): Generator<number> {
+  // @raw-entity-enumeration-ok Compare hands this the EFFECTIVE store (effectiveCompareStore bakes unsaved edits in), so the source index is the edited model
   for (const [typeKey, ids] of store.entityIndex.byType) {
     if (!isProductClass(typeKey)) continue;
     for (const expressId of ids) {

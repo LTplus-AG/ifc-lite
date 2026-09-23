@@ -22,6 +22,8 @@ import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import type { CompareResult } from '@/store/slices/compareSlice';
 import { buildEntityFingerprints, type CompareRef } from '@/lib/compare/buildFingerprints';
+import { effectiveComparePair } from '@/lib/compare/effectiveCompareStore';
+import { useClearCompareOnEdit } from './compare/useClearCompareOnEdit';
 import { fallbackPairDuplicateAuthoredKeys } from '@/lib/compare/authoredKeys';
 import {
   geometryVolumesSurviveAlignment,
@@ -162,6 +164,8 @@ function publishCompareResult(built: BuiltPair): {
     // holds now — see the doc comment on `BuiltPair.keyProperty`.
     keyProperty: built.keyProperty,
     duplicateAuthoredKeys: built.duplicateAuthoredKeys.size > 0 ? built.duplicateAuthoredKeys : undefined,
+    comparedStores: built.comparedStores.size > 0 ? built.comparedStores : undefined,
+    mutationVersion: built.mutationVersion,
   };
   store.setCompareResult(result);
   // Completed-comparison signal for baseline consumers (compare tour). An
@@ -302,9 +306,13 @@ export function useCompare() {
           // duplicates a value, the pair-level fallback below retires that
           // authored key from both revisions before diffing.
           const duplicateAuthoredKeys = new Map<string, number[]>();
+          // The models as edited, not as loaded (#5312): see effectiveCompareStore.
+          const mutationVersion = useViewerStore.getState().mutationVersion;
+          const { baseEffective, headEffective, comparedStores } = await effectiveComparePair(
+            [baseModel, baseStore], [headModel, headStore], useViewerStore.getState().getMutationView);
           const base = await buildEntityFingerprints({
             modelId: baseId,
-            store: baseStore,
+            store: baseEffective,
             meshes: baseGeometry.meshes,
             instancedGeometryHashes: baseGeometry.instancedGeometryHashes,
             instancedGeometryAabbs: baseGeometry.instancedGeometryAabbs,
@@ -318,7 +326,7 @@ export function useCompare() {
           });
           const head = await buildEntityFingerprints({
             modelId: headId,
-            store: headStore,
+            store: headEffective,
             meshes: headGeometry.meshes,
             instancedGeometryHashes: headGeometry.instancedGeometryHashes,
             instancedGeometryAabbs: headGeometry.instancedGeometryAabbs,
@@ -331,10 +339,12 @@ export function useCompare() {
             duplicateAuthoredKeys,
           });
           fallbackPairDuplicateAuthoredKeys([
-            { fingerprints: base, store: baseStore },
-            { fingerprints: head, store: headStore },
+            { fingerprints: base, store: baseEffective },
+            { fingerprints: head, store: headEffective },
           ], duplicateAuthoredKeys);
           return {
+            comparedStores,
+            mutationVersion,
             baseModelId: baseId,
             headModelId: headId,
             contentVersion,
@@ -421,6 +431,8 @@ export function useCompare() {
     builtRef.current = null;
     clearCompare();
   }, [geometryContentVersion, clearCompare]);
+  // An edit makes a published comparison describe a model that no longer exists.
+  useClearCompareOnEdit(builtRef, clearCompare);
 
   // Scope, blacklist, content-matching OR accepted-identity change with an
   // existing result for the same pair -> re-diff from the cached fingerprints

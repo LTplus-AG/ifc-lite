@@ -16,7 +16,7 @@ import {
   type ClashRuleCoverage,
   type ClashSettings,
 } from '../types.js';
-import type { ClashKernel } from './kernel.js';
+import type { ClashKernel, NarrowRecord } from './kernel.js';
 
 /**
  * Thrown by {@link runClash} when a `tolerance` — either the run-level
@@ -196,35 +196,13 @@ export async function runClash(
           // `analysis.ts` uses to prioritise a finished result: status first
           // (a real clash outranks a mere touch), penetration depth / gap
           // second.
-          if (!mostSevere(rec, clashes[existingIndex])) continue;
-          clashes[existingIndex] = {
-            id,
-            a: toRef(elA),
-            b: toRef(elB),
-            rule: rule.id,
-            status: rec.status,
-            distance: rec.distance,
-            distanceKind: rec.distanceKind,
-            point: rec.point,
-            bounds: rec.bounds,
-            severity: rule.severity ?? inferClashSeverity(elA.tag, elB.tag),
-          };
+          if (mostSevere(rec, clashes[existingIndex])) {
+            clashes[existingIndex] = toClash(id, rec, elA, elB, rule);
+          }
           continue;
         }
         seen.set(id, clashes.length);
-
-        clashes.push({
-          id,
-          a: toRef(elA),
-          b: toRef(elB),
-          rule: rule.id,
-          status: rec.status,
-          distance: rec.distance,
-          distanceKind: rec.distanceKind,
-          point: rec.point,
-          bounds: rec.bounds,
-          severity: rule.severity ?? inferClashSeverity(elA.tag, elB.tag),
-        });
+        clashes.push(toClash(id, rec, elA, elB, rule));
       }
     }
   } finally {
@@ -256,6 +234,27 @@ function withoutMembership(rule: ClashRule): ClashRule {
   if (!rule.membersA && !rule.membersB) return rule;
   const { membersA: _a, membersB: _b, ...config } = rule;
   return config;
+}
+
+function toClash(
+  id: string,
+  rec: NarrowRecord,
+  elA: ClashElement,
+  elB: ClashElement,
+  rule: ClashRule,
+): Clash {
+  return {
+    id,
+    a: toRef(elA),
+    b: toRef(elB),
+    rule: rule.id,
+    status: rec.status,
+    distance: rec.distance,
+    distanceKind: rec.distanceKind,
+    point: rec.point,
+    bounds: rec.bounds,
+    severity: rule.severity ?? inferClashSeverity(elA.tag, elB.tag),
+  };
 }
 
 function toRef(el: ClashElement): ClashElementRef {

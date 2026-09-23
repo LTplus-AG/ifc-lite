@@ -138,6 +138,7 @@ export function createDataAccessor(
       const entityType = store.entities?.getTypeName?.(expressId);
       if (entityType && entityType !== 'Unknown') return entityType;
 
+      // @raw-entity-enumeration-ok point lookup of one source record's parsed class; created and retyped ids were answered from the overlay above
       const byId = store.entityIndex?.byId;
       if (!byId) return undefined;
       const entry = byId.get(expressId);

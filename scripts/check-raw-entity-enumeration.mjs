@@ -13,10 +13,12 @@
  *
  * This is deliberately a conservative AST ratchet, not proof that a guarded
  * call site applies the overlay. It sees dot-property reads of
- * `entityIndex.byType`, `entityIndex.byId`, and `entities.count` across every
+ * `entityIndex.byType`, `entityIndex.byId`, `entities.count`, and
+ * `entities.getByType` across every
  * production package and the viewer. Parser/build-time raw reads remain in
  * the census, but a new one needs an explicit reason. It does not follow
- * aliases, bracket-property access, or calls into another package. The real
+ * aliases other than a direct `entityIndex` / `entities` binding,
+ * bracket-property access, or calls into another package. The real
  * behavior remains pinned by tests.
  */
 

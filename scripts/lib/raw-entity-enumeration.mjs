@@ -118,8 +118,11 @@ function kindOf(node) {
   if (!ts.isPropertyAccessExpression(node)) return null;
   const name = node.name.text;
   if ((name === 'byType' || name === 'byId')
-      && ts.isPropertyAccessExpression(node.expression)
-      && node.expression.name.text === 'entityIndex') return `entityIndex.${name}`;
+      && ((ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'entityIndex')
+        || (ts.isIdentifier(node.expression) && node.expression.text === 'entityIndex'))) return `entityIndex.${name}`;
+  if (name === 'getByType'
+      && ((ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'entities')
+        || (ts.isIdentifier(node.expression) && node.expression.text === 'entities'))) return 'entities.getByType';
   if (name === 'count'
       && ts.isPropertyAccessExpression(node.expression)
       && node.expression.name.text === 'entities') return 'entities.count';

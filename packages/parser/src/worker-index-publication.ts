@@ -21,6 +21,7 @@ export type WorkerStorePayload = Omit<DataStoreTransport, 'entityIndex'> & {
 };
 
 function packIndex(store: IfcDataStore, byId: CompactEntityIndexColumns): PackedIndex {
+  // @raw-entity-enumeration-ok Parser worker packs its source index before any session overlay exists.
   const entries = [...store.entityIndex.byType];
   let count = 0;
   let u32 = true;
@@ -65,12 +66,16 @@ export class WorkerIndexPublisher {
       const envelope = toTransport(store);
       return { ...envelope, transfers: final ? envelope.transfers : [], transportBytes: transportByteSize(envelope.payload) };
     }
+    // @raw-entity-enumeration-ok Worker publication requires the parsed compact source index.
     if (!(store.entityIndex.byId instanceof CompactEntityIndex)) {
       throw new Error('Worker publication requires CompactEntityIndex');
     }
+    // @raw-entity-enumeration-ok Worker publication copies source index columns to the transport payload.
     const byId = compactEntityIndexToColumns(store.entityIndex.byId);
     const previous = this.published;
+    // @raw-entity-enumeration-ok Worker publication compares the immutable source type index with its prior payload.
     const entries = [...store.entityIndex.byType];
+    // @raw-entity-enumeration-ok Reference reuse compares source-index identity and size, not effective rows.
     const reference = final && previous && previous.index === store.entityIndex
       && previous.columns.expressIds === byId.expressIds
       && previous.columns.byteOffsets === byId.byteOffsets
@@ -101,7 +106,9 @@ export class WorkerIndexPublisher {
 
   /** Call only after the partial postMessage succeeds. */
   publishedPartial(store: IfcDataStore): void {
+    // @raw-entity-enumeration-ok Published partial records only parser source-index columns.
     if (!this.enabled || !(store.entityIndex.byId instanceof CompactEntityIndex)) return;
+    // @raw-entity-enumeration-ok Published partial retains the immutable parsed index for final transfer.
     this.published = {
       index: store.entityIndex,
       columns: compactEntityIndexToColumns(store.entityIndex.byId),

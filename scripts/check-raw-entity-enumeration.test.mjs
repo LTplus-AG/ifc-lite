@@ -89,6 +89,19 @@ test('#5236 raw-access gate catches table-count loops and byId point reads', () 
   assert.equal(excessRawAccess([], hits).length, 2);
 });
 
+test('#5236 direct index bindings and getByType calls cannot bypass the raw-access gate', () => {
+  const hits = scan(`function select(entityIndex, entities, store) {
+    for (const ids of entityIndex.byType.values()) use(ids);
+    entityIndex.byId.get(7);
+    entities.getByType(3);
+    store.entities.getByType(4);
+  }`);
+  assert.deepEqual(hits.map((hit) => hit.key.split('|')[2]), [
+    'entityIndex.byType', 'entityIndex.byId', 'entities.getByType', 'entities.getByType',
+  ]);
+  assert.equal(excessRawAccess([], hits).length, 4);
+});
+
 test('#5236 removal shrinks the raw-access census', () => {
   const old = scan('function query(m) { for (const row of m.store.entityIndex.byType) use(row); }');
   assert.equal(old.length, 1);

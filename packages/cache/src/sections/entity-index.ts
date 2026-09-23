@@ -7,11 +7,13 @@ import { BufferReader, BufferWriter } from '../utils/buffer-utils.js';
 import { prepareBorrowedEntityColumns } from './entity-index-columns.js';
 
 export function writeEntityIndex(writer: BufferWriter, entityIndex: CacheEntityIndex): void {
+  // @raw-entity-enumeration-ok Cache section serializes the parsed source index, not a live mutation view.
   const columns = prepareBorrowedEntityColumns(entityIndex.byId);
   if (columns) {
     writeColumns(writer, columns);
     return;
   }
+  // @raw-entity-enumeration-ok Cache fallback serializes the parsed source index for later restoration.
   const refs = Array.from(entityIndex.byId, ([id, ref]) => normalizeRef(id, ref))
     .sort((a, b) => a.expressId - b.expressId);
 

@@ -19,6 +19,7 @@ import { describe, expect, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { applyStylesInStore } from './apply-style.js';
+import { asRef } from './style-entity-reader.js';
 
 const BOILERPLATE = `#1=IFCPROJECT('0proj00000000000000000',$,'P',$,$,$,$,(#7),#9);
 #5=IFCCARTESIANPOINT((0.,0.,0.));
@@ -180,6 +181,22 @@ describe('applyStylesInStore', () => {
     expect(kept.keptExistingItemIds).toEqual([112]);
     expect(kept.styledItemIds).toEqual([]);
     expect(editor.getNewEntity(createdStyle)?.type).toBe('IfcStyledItem');
+  });
+
+  it('recognizes a zero-padded authored style ref without rounding unsafe STEP ids (#5249)', async () => {
+    const store = await parseFixture();
+    const editor = makeEditor(store);
+    expect(editor.removeEntity(150)).toBe(true);
+    editor.addEntity('IfcStyledItem', ['#0112', ['#151'], null]);
+
+    const [result] = applyStylesInStore(editor, store, [
+      { products: [100], color: { red: 1, green: 0, blue: 0 } },
+    ], { replaceExisting: false });
+
+    expect(result.keptExistingItemIds).toEqual([112]);
+    expect(result.styledItemIds).toEqual([]);
+    expect(asRef('#9007199254740993')).toBeNull();
+    expect(asRef('#000')).toBeNull();
   });
 
   it('reads a named Representation edit on a source product (#5249)', async () => {

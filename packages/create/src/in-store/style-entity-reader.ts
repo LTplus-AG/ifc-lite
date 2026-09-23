@@ -13,7 +13,10 @@ export interface StyleEntity {
 /** Source refs are numeric; authored refs use `#123` strings. */
 export function asRef(value: unknown): number | null {
   if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return value;
-  if (typeof value === 'string' && /^#[1-9][0-9]*$/.test(value)) return Number(value.slice(1));
+  if (typeof value === 'string' && /^#0*[1-9][0-9]*$/.test(value)) {
+    const id = Number(value.slice(1));
+    return Number.isSafeInteger(id) ? id : null;
+  }
   return null;
 }
 

@@ -81,17 +81,17 @@ export class CoordinateHandler {
 
     /**
      * Check if accumulated bounds are poisoned by corrupted vertices.
-     * A bound is poisoned if any component exceeds the normal coordinate threshold,
-     * indicating a single large vertex has contaminated the accumulated bounds.
+     * A bound is poisoned if any component exceeds MAX_REASONABLE_COORD,
+     * matching the per-vertex filter threshold used by the slow path.
      * Once poisoned, bounds never recover within the fast path.
      */
     private isBoundsPoisoned(bounds: AABB): boolean {
-        return Math.abs(bounds.min.x) > NORMAL_COORD_THRESHOLD_M ||
-               Math.abs(bounds.min.y) > NORMAL_COORD_THRESHOLD_M ||
-               Math.abs(bounds.min.z) > NORMAL_COORD_THRESHOLD_M ||
-               Math.abs(bounds.max.x) > NORMAL_COORD_THRESHOLD_M ||
-               Math.abs(bounds.max.y) > NORMAL_COORD_THRESHOLD_M ||
-               Math.abs(bounds.max.z) > NORMAL_COORD_THRESHOLD_M;
+        return Math.abs(bounds.min.x) > this.MAX_REASONABLE_COORD ||
+               Math.abs(bounds.min.y) > this.MAX_REASONABLE_COORD ||
+               Math.abs(bounds.min.z) > this.MAX_REASONABLE_COORD ||
+               Math.abs(bounds.max.x) > this.MAX_REASONABLE_COORD ||
+               Math.abs(bounds.max.y) > this.MAX_REASONABLE_COORD ||
+               Math.abs(bounds.max.z) > this.MAX_REASONABLE_COORD;
     }
 
     /**

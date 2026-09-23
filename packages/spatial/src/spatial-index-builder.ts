@@ -19,7 +19,11 @@ function yieldToEventLoop(): Promise<void> {
   }
   return new Promise<void>((resolve) => {
     const channel = new MessageChannel();
-    channel.port1.onmessage = () => resolve();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      channel.port2.close();
+      resolve();
+    };
     channel.port2.postMessage(null);
   });
 }
@@ -71,8 +75,9 @@ export async function buildSpatialIndexAsync(
     }
   }
 
-  // Phase 2: BVH build (O(N log N) on pre-computed bounds — fast enough synchronously)
-  return BVH.build(meshesWithBounds);
+  // Phase 2 also yields: its index partition and tree construction scale with
+  // the number of meshes, even after the bounds pass is complete.
+  return BVH.buildAsync(meshesWithBounds, budgetMs, yieldToEventLoop);
 }
 
 /**

@@ -32,11 +32,9 @@ const origin: [number, number, number] = [0, 5, 10];
 const direction: [number, number, number] = [0, -1, 0];
 
 const hits = index.raycast(origin, direction);
-// → expressIds of meshes the ray intersects, in hit order
+// → expressIds of meshes whose bounds intersect the ray; order is unspecified
 
-if (hits.length > 0) {
-  console.log(`First hit: expressId ${hits[0]}`);
-}
+console.log(`${hits.length} broad-phase candidates`);
 ```
 
 ## AABB query (region select)

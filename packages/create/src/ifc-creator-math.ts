@@ -7,6 +7,7 @@
  * These have zero coupling to class state — they take inputs and return outputs.
  */
 
+import { formatStepReal } from '@ifc-lite/data';
 import type { Point3D, PropertyDef, QuantityDef } from './types.js';
 
 // ============================================================================
@@ -24,31 +25,25 @@ export function stepLine(id: number, type: string, args: string): string {
 }
 
 /**
- * The magnitude at which `Number.prototype.toFixed` itself switches to
- * exponential notation (ECMA-262 `Number.prototype.toFixed`, step 10).
- * `num()` below relies on `toFixed` to strip exponent notation, so a
- * value at or beyond this magnitude cannot be serialized by that
- * strategy and must be refused rather than emitted as an invalid token.
+ * Serialize a number as an ISO 10303-21 REAL literal (always with a decimal
+ * point in the mantissa).
+ *
+ * JavaScript's own exponent form (`1e-7`, `1e+21`) has no decimal point, so
+ * it is not a legal `real_literal`. Small magnitudes are written as fixed
+ * decimal (`toFixed(10)`, which caps precision at ten places, a deliberate
+ * trade kept as is). `toFixed` itself switches to exponent form once
+ * |v| >= 1e21 (ECMA-262), so those values go through `@ifc-lite/data`'s
+ * `formatStepReal`, which writes the STEP exponent form with a mantissa
+ * point (`1.E+21`) — the same rule `@ifc-lite/export` uses (#5195).
+ *
+ * NaN and Infinity have no STEP REAL spelling at all, so they throw rather
+ * than reach the file as a `NaN.`/`Infinity.` token.
  */
-export const MAX_STEP_REAL_MAGNITUDE = 1e21;
-
-/** Serialize a number in STEP format (always with decimal point, no exponent notation) */
 export function num(v: number): string {
-  // Exponent notation (e.g. 1e-7) is not valid STEP — use fixed decimal.
-  // ISO 10303-21 real_literal requires a decimal point in the mantissa,
-  // so neither NaN/Infinity nor exponential notation is a legal token.
   if (!Number.isFinite(v)) {
     throw new Error(`num: ${v} is not a finite number and cannot be written as a STEP REAL`);
   }
-  if (Math.abs(v) >= MAX_STEP_REAL_MAGNITUDE) {
-    // toFixed(10) itself returns exponential notation once |v| >= 1e21
-    // (ECMA-262), so the fixed-decimal fallback below cannot represent
-    // this value as valid STEP. Fail closed instead of emitting the
-    // exponential token the guard exists to prevent.
-    throw new Error(
-      `num: ${v} has magnitude >= ${MAX_STEP_REAL_MAGNITUDE} and cannot be written as a STEP REAL without exponent notation`
-    );
-  }
+  if (Math.abs(v) >= 1e21) return formatStepReal(v);
   const s = v.toString();
   if (s.includes('e') || s.includes('E')) return v.toFixed(10).replace(/0+$/, '0');
   return s.includes('.') ? s : s + '.';
@@ -90,11 +85,6 @@ export function assertPositiveFinite(values: Record<string, number>, context: st
     if (!Number.isFinite(value) || value <= 0) {
       throw new Error(`${context}: ${name} must be a positive finite number`);
     }
-    if (value >= MAX_STEP_REAL_MAGNITUDE) {
-      throw new Error(
-        `${context}: ${name} (${value}) has magnitude >= ${MAX_STEP_REAL_MAGNITUDE} and cannot be written as a STEP REAL`
-      );
-    }
   }
 }
 
@@ -111,11 +101,6 @@ export function assertFinitePoint3(points: Record<string, Point3D>, context: str
   for (const [name, point] of Object.entries(points)) {
     if (!point.every(Number.isFinite)) {
       throw new Error(`${context}: ${name} must have finite coordinates`);
-    }
-    if (!point.every((c) => Math.abs(c) < MAX_STEP_REAL_MAGNITUDE)) {
-      throw new Error(
-        `${context}: ${name} (${point.join(', ')}) has a coordinate with magnitude >= ${MAX_STEP_REAL_MAGNITUDE} and cannot be written as a STEP REAL`
-      );
     }
   }
 }

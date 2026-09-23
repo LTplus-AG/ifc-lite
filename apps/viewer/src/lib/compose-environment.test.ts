@@ -6,13 +6,14 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { resolveEnvironment } from '@ifc-lite/renderer';
 import { composeLightingEnvironment } from './compose-environment.js';
+import { sunLightingForAltitude } from './geo/solar-direction.js';
 import { LIGHTING_PRESETS } from './lighting-presets.js';
 
 const NEUTRAL = { exposure: 1, hardness: 1, softness: 1 } as const;
 const NO_SOLAR = { cesiumActive: false, solar: null } as const;
 
 describe('composeLightingEnvironment — trims', () => {
-  it('neutral trims on the Default preset keep the legacy look (base wrap 0.3)', () => {
+  it('neutral trims on the Default preset keep the renderer defaults (base wrap 0.3)', () => {
     const env = composeLightingEnvironment(
       LIGHTING_PRESETS.default.environment,
       NEUTRAL,
@@ -35,23 +36,40 @@ describe('composeLightingEnvironment — trims', () => {
   });
 
   it('hardness > 1 deepens shadows by dividing ambient and fill', () => {
-    // Day preset: ambient 0.3, no explicit fill (compose falls back to 0.15).
-    const env = composeLightingEnvironment(
-      LIGHTING_PRESETS.daylight.environment,
-      { ...NEUTRAL, hardness: 2 },
-      NO_SOLAR,
-    );
-    assert.ok(Math.abs((env.ambientIntensity ?? 0) - 0.15) < 1e-9);
-    assert.ok(Math.abs((env.fillIntensity ?? 0) - 0.075) < 1e-9);
+    // Day preset: explicit ambient, no explicit fill (falls back to the renderer default).
+    const day = LIGHTING_PRESETS.daylight.environment;
+    const env = composeLightingEnvironment(day, { ...NEUTRAL, hardness: 2 }, NO_SOLAR);
+    assert.ok(Math.abs((env.ambientIntensity ?? 0) - (day.ambientIntensity ?? NaN) / 2) < 1e-9);
+    assert.ok(Math.abs((env.fillIntensity ?? 0) - resolveEnvironment().fillIntensity / 2) < 1e-9);
   });
 
   it('hardness < 1 flattens the light (raises ambient/fill)', () => {
+    const day = LIGHTING_PRESETS.daylight.environment;
+    const env = composeLightingEnvironment(day, { ...NEUTRAL, hardness: 0.5 }, NO_SOLAR);
+    assert.ok((env.ambientIntensity ?? 0) > (day.ambientIntensity ?? Infinity));
+  });
+
+  it('scales the renderer defaults, not a copy of them, when the preset omits a value (#5382)', () => {
+    // The Default preset sets nothing, so every trimmed value comes from the
+    // renderer. A literal fallback here once pinned the pre-#5382 ambient
+    // (0.25) and would have undone the rig re-balance on every hardness trim.
+    const defaults = resolveEnvironment();
     const env = composeLightingEnvironment(
-      LIGHTING_PRESETS.daylight.environment,
-      { ...NEUTRAL, hardness: 0.5 },
-      NO_SOLAR,
+      LIGHTING_PRESETS.default.environment,
+      { ...NEUTRAL, hardness: 2 },
+      { cesiumActive: false, solar: null },
     );
-    assert.ok((env.ambientIntensity ?? 0) > 0.3);
+    assert.ok(Math.abs((env.ambientIntensity ?? 0) - defaults.ambientIntensity / 2) < 1e-9);
+    assert.ok(Math.abs((env.fillIntensity ?? 0) - defaults.fillIntensity / 2) < 1e-9);
+    const solar = composeLightingEnvironment(
+      LIGHTING_PRESETS.default.environment,
+      NEUTRAL,
+      { cesiumActive: false, solar: { sunDirection: [0, 1, 0], altitudeDeg: 60 } },
+    );
+    const sun = sunLightingForAltitude(60);
+    assert.ok(Math.abs((solar.sunIntensity ?? 0) - defaults.sunIntensity * sun.intensityFactor) < 1e-9);
+    assert.ok(Math.abs((solar.ambientIntensity ?? 0) - defaults.ambientIntensity * sun.ambientFactor) < 1e-9);
+    assert.strictEqual(env.exposure, defaults.exposure);
   });
 
   it('composes hardness OVER the solar override (ambient is scaled then divided)', () => {

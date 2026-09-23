@@ -16,20 +16,20 @@ function assertClose(actual: number, expected: number, eps = 1e-6, msg?: string)
 }
 
 describe('resolveEnvironment', () => {
-  it('defaults reproduce the historic hardcoded look', () => {
+  it('defaults are the one-sided rig (#5382)', () => {
     const env = resolveEnvironment();
-    // normalize(0.5, 1.0, 0.3) — the shader's old sunLight constant.
-    const len = Math.hypot(0.5, 1.0, 0.3);
-    assertClose(env.sunDirection[0], 0.5 / len);
+    // normalize(-0.45, 1.0, 0.6): lights +Z, leaves +X (seen on open) in shade.
+    const len = Math.hypot(-0.45, 1.0, 0.6);
+    assertClose(env.sunDirection[0], -0.45 / len);
     assertClose(env.sunDirection[1], 1.0 / len);
-    assertClose(env.sunDirection[2], 0.3 / len);
-    assert.strictEqual(env.sunIntensity, 0.55);
+    assertClose(env.sunDirection[2], 0.6 / len);
+    assert.strictEqual(env.sunIntensity, 0.4);
     assert.deepStrictEqual(env.sunColor, [1, 1, 1]);
-    assert.deepStrictEqual(env.skyColor, [0.3, 0.35, 0.4]);
-    assert.deepStrictEqual(env.groundColor, [0.15, 0.1, 0.08]);
-    assert.strictEqual(env.ambientIntensity, 0.25);
-    assert.strictEqual(env.fillIntensity, 0.15);
-    assert.strictEqual(env.rimIntensity, 0.15);
+    assert.deepStrictEqual(env.skyColor, [0.34, 0.35, 0.36]);
+    assert.deepStrictEqual(env.groundColor, [0.24, 0.2, 0.17]);
+    assert.strictEqual(env.ambientIntensity, 0.775);
+    assert.strictEqual(env.fillIntensity, 0.1);
+    assert.strictEqual(env.rimIntensity, 0.05);
     assert.strictEqual(env.sunSoftness, 0.3);
     assert.strictEqual(env.exposure, 0.85);
     assert.strictEqual(env.skyEnabled, false);

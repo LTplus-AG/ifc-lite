@@ -16,6 +16,8 @@
 
 import { useCallback, useMemo } from 'react';
 import { useIfc } from '@/hooks/useIfc';
+import { useViewerStore } from '@/store';
+import { buildCommandPaletteJsonEntities } from '../commandPaletteJsonExport';
 import { exportCsvFromBytes } from '@/lib/export/csv';
 import { downloadFile, downloadDataUrl } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
@@ -75,17 +77,9 @@ export function useExportCommands() {
   const handleExportJSON = useCallback(() => {
     if (!ifcDataStore) return;
     try {
-      const entities: Record<string, unknown>[] = [];
-      for (let i = 0; i < ifcDataStore.entities.count; i++) {
-        const id = ifcDataStore.entities.expressId[i];
-        entities.push({
-          expressId: id,
-          globalId: ifcDataStore.entities.getGlobalId(id),
-          name: ifcDataStore.entities.getName(id),
-          type: ifcDataStore.entities.getTypeName(id),
-          properties: ifcDataStore.properties.getForEntity(id),
-        });
-      }
+      // One row builder for both JSON exports; the model as edited (#5249).
+      const { activeModelId, getMutationView } = useViewerStore.getState();
+      const entities = buildCommandPaletteJsonEntities(ifcDataStore, activeModelId ? getMutationView(activeModelId) : null);
 
       const json = JSON.stringify({ entities }, null, 2);
       downloadFile(json, 'model-data.json', 'application/json');

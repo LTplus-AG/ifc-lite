@@ -78,6 +78,7 @@
  * composition.
  */
 
+import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
 import { buildHiddenIfcTypes } from './typeVisibilityFilter.js';
 import { computeIsolationFilterSet } from './basketVisibleSet.js';
 import type { useViewerStore } from './index.js';
@@ -110,21 +111,17 @@ function getDataStoreForModel(state: ViewerStateSnapshot, modelId: string) {
 }
 
 /** Expand the IFC class names hidden by `typeVisibility` into this model's
- *  local expressIds, via the data store's byType index. */
+ *  local expressIds, over the model as edited (#5249): an entity created this
+ *  session in a hidden class is hidden too, and a retyped one follows its new
+ *  class. */
 function collectHiddenIdsByType(
   dataStore: ReturnType<typeof getDataStoreForModel>,
+  view: MutablePropertyView | null,
   hiddenTypes: ReadonlySet<string>,
 ): number[] {
-  if (!dataStore || hiddenTypes.size === 0) return [];
-  const byType = dataStore.entityIndex?.byType;
-  if (!byType) return [];
-  const out: number[] = [];
-  for (const typeName of hiddenTypes) {
-    const ids = byType.get(typeName.toUpperCase());
-    if (!ids) continue;
-    for (const id of ids) out.push(id);
-  }
-  return out;
+  if (!dataStore?.entityIndex || hiddenTypes.size === 0) return [];
+  const types = Array.from(hiddenTypes, (typeName) => typeName.toUpperCase());
+  return Array.from(iterateEffectiveEntityIds(dataStore, view, types), ({ expressId }) => expressId);
 }
 
 /**
@@ -167,7 +164,8 @@ export function resolveExportVisibility(
     }
   }
   const hiddenTypes = buildHiddenIfcTypes(state.typeVisibility);
-  for (const localId of collectHiddenIdsByType(dataStore, hiddenTypes)) {
+  const view = state.mutationViews.get(legacy ? (state.activeModelId ?? modelId) : modelId) ?? null;
+  for (const localId of collectHiddenIdsByType(dataStore, view, hiddenTypes)) {
     hiddenGlobal.add(toGlobal(localId));
   }
 

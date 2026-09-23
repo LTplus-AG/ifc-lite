@@ -1005,6 +1005,13 @@ jobs:
         run: node --test scripts/check-refwalk-guards.test.mjs scripts/lib/refwalk-classify.test.mjs
       - name: Check for unguarded entity-reference walks
         run: node scripts/check-refwalk-guards.mjs
+      # #5236: a raw base-store enumeration in a live query/write can return a
+      # tombstoned entity or miss one created in the mutation overlay. The
+      # parser test pins the detector; the gate ratchets the scoped callers.
+      - name: Check raw entity enumeration gate tests
+        run: node --test scripts/check-raw-entity-enumeration.test.mjs
+      - name: Check for new raw entity enumeration
+        run: node scripts/check-raw-entity-enumeration.mjs
       # AGENTS.md has asked for TypeScript modules under ~400 lines since long
       # before this gate existed, and self-policing left 312 files over the
       # line. A convention with no gate ratchets the wrong way: the allowlist

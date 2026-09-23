@@ -40,6 +40,18 @@ export function generatePropertySetEntities(
   const ownerHistoryRef = resolveOwnerHistoryRef(ctx, entityId, willBeEmitted, effective);
 
   for (const pset of psets) {
+    // `HasProperties` is declared `SET [1:?] OF IfcProperty` in every bundled
+    // schema (IFC2X3/IFC4/IFC4X3) — not OPTIONAL, so `$` is as wrong as `()`.
+    // A caller is entitled to create a pset with zero properties as a
+    // placeholder to fill in later (`createPropertySet`/`addPropertySet`
+    // document this explicitly, and `change-set-to-ops.ts` has dedicated
+    // handling for it) — that is a legitimate mutations-layer state, just one
+    // with no valid STEP representation. Writing NEITHER the
+    // `IFCPROPERTYSET` NOR its `IFCRELDEFINESBYPROPERTIES` is the only
+    // schema-valid choice; skipping before allocating any express id also
+    // keeps the id sequence free of gaps for a record that was never emitted
+    // (#5199).
+    if (pset.properties.length === 0) continue;
     const propertyIds: number[] = [];
 
     // Create IfcPropertySingleValue for each property
@@ -106,6 +118,9 @@ export function generateQuantitySetEntities(
   const ownerHistoryRef = resolveOwnerHistoryRef(ctx, entityId, willBeEmitted, effective);
 
   for (const qset of qsets) {
+    // `Quantities` is `SET [1:?] OF IfcPhysicalQuantity` — same rule and same
+    // reasoning as `HasProperties` above; see that comment (#5199).
+    if (qset.quantities.length === 0) continue;
     const quantityIds: number[] = [];
 
     for (const q of qset.quantities) {

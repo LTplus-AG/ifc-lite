@@ -29,6 +29,9 @@ export interface MaterialInfo {
      * either, so callers must propagate both.
      */
     materials?: Array<{ name: string; category?: string }>;
+    /** The graph proves a material association, but this store has no source
+     *  bytes to read it (server-parsed, #5227). Every other field is unset. */
+    unresolved?: boolean;
 }
 
 export interface MaterialLayerInfo {
@@ -131,9 +134,14 @@ export function extractAllMaterialsOnDemand(
     store: IfcDataStore,
     entityId: number
 ): MaterialInfo[] {
-    if (!store.source?.length) return [];
     const defIds = resolveAllMaterialDefIds(store, entityId);
     if (defIds.length === 0) return [];
+    if (!store.source?.length) {
+        // Server-parsed: the graph proved the association, but decoding the
+        // definition needs source bytes. A marker per association, never `[]`,
+        // which would read as "no material" (#5227, as #3948 for classifications).
+        return defIds.map((): MaterialInfo => ({ type: 'Material', unresolved: true }));
+    }
     const extractor = new EntityExtractor(store.source);
     const out: MaterialInfo[] = [];
     for (const defId of defIds) {

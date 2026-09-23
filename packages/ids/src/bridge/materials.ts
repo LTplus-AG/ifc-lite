@@ -24,6 +24,16 @@ export function flattenMaterials(
 
   switch (matInfo.type) {
     case 'Material':
+      if (matInfo.unresolved) {
+        // Confirmed materially-associated (a real relationship-graph edge),
+        // but the material's own name/category are unreadable on this data
+        // source (#5227). `push` above drops entries with no `name`, which
+        // would silently discard this marker and make the entity read as
+        // genuinely unmaterialed — the exact bug this fix closes. Preserve
+        // the marker itself instead.
+        out.push({ name: '', unresolved: true });
+        break;
+      }
       push(matInfo.name, matInfo.category);
       if (matInfo.category) push(matInfo.category, matInfo.category);
       break;

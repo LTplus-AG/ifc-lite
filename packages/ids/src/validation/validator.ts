@@ -564,11 +564,11 @@ function checkRequirement(
 ): IDSRequirementResult {
   const facetResult = checkFacet(requirement.facet, expressId, accessor);
 
-  // Unknown classifications must fail even a prohibition; keep its failure reason (#3996).
+  // Unreadable classifications/materials fail even a prohibition, keeping the reason (#3996, #5227).
   let status: 'pass' | 'fail' | 'not_applicable';
   let failureReason: string | undefined;
-
-  switch (facetResult.failure?.type === 'CLASSIFICATION_UNRESOLVED' ? 'required' : requirement.optionality) {
+  const unresolved = facetResult.failure?.type === 'CLASSIFICATION_UNRESOLVED' || facetResult.failure?.type === 'MATERIAL_UNRESOLVED';
+  switch (unresolved ? 'required' : requirement.optionality) {
     case 'required':
       status = facetResult.passed ? 'pass' : 'fail';
       if (!facetResult.passed) {

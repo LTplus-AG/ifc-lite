@@ -367,6 +367,7 @@ export type FailureType =
   // Material failures
   | 'MATERIAL_MISSING'
   | 'MATERIAL_VALUE_MISMATCH'
+  | 'MATERIAL_UNRESOLVED' // materially associated, but attributes unreadable here (#5227)
   // PartOf failures
   | 'PARTOF_RELATION_MISSING'
   | 'PARTOF_ENTITY_MISMATCH'
@@ -520,10 +521,12 @@ export interface ClassificationInfo {
 
 /** Material information */
 export interface MaterialInfo {
-  /** Material name */
+  /** Material name ('' on an `unresolved` entry, like ClassificationInfo) */
   name: string;
   /** Material category (if available) */
   category?: string;
+  /** A proven material association this data source cannot read (#5227). */
+  unresolved?: boolean;
 }
 
 /** Parent entity information */

@@ -189,6 +189,7 @@ export const fr = {
 
     // Material failures
     materialMissing: 'Aucun matériau attribué',
+    materialUnresolved: 'L\'entité a un matériau, mais ses détails ne peuvent pas être lus depuis cette source de données',
     materialValueMismatch: 'Le matériau "{actual}" ne correspond pas à {expected} attendu',
     materialValueMissingAvailable: 'Le matériau {expected} n\'a pas été trouvé. Disponibles : {available}',
     materialProhibited: 'Le matériau interdit "{actual}" est attribué',

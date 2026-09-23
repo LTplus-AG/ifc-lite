@@ -26,8 +26,8 @@
  * raw argument tokens are preserved byte-for-byte.
  */
 
-import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3 } from '@ifc-lite/data';
-import { getSchemaRegistryForVersion } from '@ifc-lite/parser';
+import { ENTITIES_IFC2X3, ENTITIES_IFC4X3 } from '@ifc-lite/data';
+import { ENTITIES_IFC4_EXPRESS } from '@ifc-lite/parser';
 import { escapeStepString } from './step-serialization.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
@@ -39,29 +39,9 @@ interface RetypeEntityInfo {
 
 function buildSchemaMap(
   list: ReadonlyArray<{ name: string; attributes: readonly string[]; predefinedTypes: readonly string[] }>,
-  expressEntities?: Readonly<Record<string, { attributes: { name: string }[]; allAttributes?: { name: string }[] }>>,
 ): Map<string, RetypeEntityInfo> {
   const map = new Map<string, RetypeEntityInfo>();
   for (const entity of list) {
-    if (expressEntities) {
-      const meta = expressEntities[entity.name];
-      // `ENTITIES_IFC4` (vendored from buildingSMART's C# `SchemaInfo`
-      // source, issue #5204) misfiles 24 draft-alignment-extension entities
-      // as IFC4-valid, and gives `IfcCartesianPointList2D`/`3D` a `TagList`
-      // attribute IFC4 has never had. Retyping INTO one of the 24 with the
-      // uncorrected table wrote a class keyword no real IFC4 STEP file can
-      // contain into a file declaring `FILE_SCHEMA(('IFC4'))`; retyping into
-      // one of the CartesianPointList classes appended a spurious `TagList`
-      // slot (`$`) the target schema does not declare. `getSchemaRegistryForVersion`
-      // (`@ifc-lite/parser`, EXPRESS-derived — the same oracle
-      // `schema-converter.ts`'s `attrNameTable` uses) is ground truth: an
-      // `ENTITIES_IFC4` row only survives if the registry also declares it,
-      // and its positional attribute list always comes from the registry.
-      if (!meta) continue;
-      const attrs = (meta.allAttributes ?? meta.attributes).map((a) => a.name);
-      map.set(entity.name.toUpperCase(), { attributes: attrs, predefinedTypes: entity.predefinedTypes });
-      continue;
-    }
     map.set(entity.name.toUpperCase(), {
       attributes: entity.attributes,
       predefinedTypes: entity.predefinedTypes,
@@ -72,7 +52,10 @@ function buildSchemaMap(
 
 const SCHEMA_MAPS: Record<IfcSchemaVersion, Map<string, RetypeEntityInfo>> = {
   IFC2X3: buildSchemaMap(ENTITIES_IFC2X3),
-  IFC4: buildSchemaMap(ENTITIES_IFC4, getSchemaRegistryForVersion('IFC4').entities),
+  // Not the raw `ENTITIES_IFC4`: retyping into one of its 24 phantom IFC4
+  // entities wrote a class IFC4 lacks, and into `IfcCartesianPointList3D`
+  // appended a `TagList` IFC4 never had (#5204).
+  IFC4: buildSchemaMap(ENTITIES_IFC4_EXPRESS),
   IFC4X3: buildSchemaMap(ENTITIES_IFC4X3),
   // IFC5 isn't STEP; never reached for retype, but keep the lookup total.
   IFC5: buildSchemaMap(ENTITIES_IFC4X3),

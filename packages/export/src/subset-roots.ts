@@ -20,9 +20,9 @@
 
 import {
   ENTITIES_IFC2X3,
-  ENTITIES_IFC4,
   ENTITIES_IFC4X3,
 } from '@ifc-lite/data';
+import { ENTITIES_IFC4_EXPRESS } from '@ifc-lite/parser';
 import type { EffectiveEntityIndex } from './effective-index.js';
 import { INFRASTRUCTURE_TYPES, collectDescendantNames } from './reference-collector.js';
 
@@ -44,7 +44,7 @@ export const IFC_ROOT_TYPES: ReadonlySet<string> = buildRootTypes();
 
 function buildRootTypes(): Set<string> {
   const roots = new Set<string>();
-  for (const table of [ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3]) {
+  for (const table of [ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3]) {
     collectDescendantNames(table, 'IfcRoot', roots);
   }
   return roots;

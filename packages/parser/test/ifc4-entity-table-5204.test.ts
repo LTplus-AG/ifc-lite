@@ -18,6 +18,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { ENTITIES_IFC4 } from '@ifc-lite/data';
+import { ENTITIES_IFC4_EXPRESS } from '../src/ifc4-entity-table.js';
+import { getSchemaRegistryForVersion } from '../src/generated/schema-registry-by-version.js';
 import {
   getAttributeNamesAcrossSchemas,
   getAttributeNamesForSchema,
@@ -66,5 +69,40 @@ describe('ifc-schema.ts union does not admit phantom draft-alignment entities (#
       'GlobalId', 'OwnerHistory', 'Name', 'Description', 'ObjectType',
       'ObjectPlacement', 'Representation', 'Tag', 'PredefinedType',
     ]);
+  });
+});
+
+/**
+ * `ENTITIES_IFC4_EXPRESS` is the one table every schema-specific IFC4 reader
+ * now uses (an oxlint `no-restricted-imports` rule keeps new production code
+ * off the raw `ENTITIES_IFC4`). Its contract, stated against the EXPRESS
+ * registry rather than against a list of known-bad names, so a future bad row
+ * in the C# source is caught by the same assertions.
+ */
+describe('ENTITIES_IFC4_EXPRESS (#5204)', () => {
+  const registry = getSchemaRegistryForVersion('IFC4').entities;
+
+  it('carries no row with attributes that IFC4 EXPRESS does not declare', () => {
+    const undeclared = ENTITIES_IFC4_EXPRESS.filter((e) => e.attributes.length > 0 && !Object.hasOwn(registry, e.name));
+    expect(undeclared.map((e) => e.name)).toEqual([]);
+    for (const phantom of ['IfcLinearPlacement', 'IfcAlignment2DHorizontal', 'IfcOffsetCurve']) {
+      expect(ENTITIES_IFC4_EXPRESS.some((e) => e.name === phantom), phantom).toBe(false);
+    }
+  });
+
+  it('takes every declared row\'s attribute list from the registry', () => {
+    for (const entity of ENTITIES_IFC4_EXPRESS) {
+      const meta = registry[entity.name];
+      if (!meta) continue;
+      expect(entity.attributes, entity.name).toEqual((meta.allAttributes ?? meta.attributes).map((a) => a.name));
+    }
+    expect(ENTITIES_IFC4_EXPRESS.find((e) => e.name === 'IfcCartesianPointList3D')?.attributes).toEqual(['CoordList']);
+  });
+
+  it('keeps the attribute-less defined-type rows the raw table lists', () => {
+    const rawEmpty = ENTITIES_IFC4.filter((e) => e.attributes.length === 0).map((e) => e.name);
+    const kept = new Set(ENTITIES_IFC4_EXPRESS.map((e) => e.name));
+    expect(rawEmpty.length).toBeGreaterThan(100);
+    expect(rawEmpty.filter((n) => !kept.has(n))).toEqual([]);
   });
 });

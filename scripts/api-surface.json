@@ -6667,6 +6667,7 @@
     "DropCensus: interface",
     "DropCensusInput: interface",
     "EMPTY_SOURCE_BYTES: const",
+    "ENTITIES_IFC4_EXPRESS: const",
     "EffectiveEntityRecord: interface",
     "EffectiveRelationship: interface",
     "EffectiveRelationshipOverlay: interface",

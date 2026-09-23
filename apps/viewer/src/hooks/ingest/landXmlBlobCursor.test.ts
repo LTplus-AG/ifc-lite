@@ -73,3 +73,44 @@ describe('LandXML Blob cursor driver (#5050)', () => {
     assert.deepEqual(kinds, ['header', 'metadata', 'metadata']);
   });
 });
+
+/**
+ * #5175 review: both cursor entry points construct their own stream session,
+ * so an `assumedLinearUnit` honoured by only one of them is an override a
+ * caller of the other silently cannot use — they would keep getting LXML009
+ * while having asked for a unit.
+ */
+describe('LandXML cursor forwards the assumed linear unit (#5175)', () => {
+  function recordingApi(seen: Array<unknown>): LandXmlCursorApi {
+    return {
+      createLandXmlTinStreamSession: (_maxBytes: number, options?: unknown) => {
+        seen.push(options);
+        return {
+          advanceChunk: () => {},
+          drain: () => [],
+          finishCursor: () => {},
+          outputPending: () => false,
+          abort: () => {},
+          free: () => {},
+        };
+      },
+    } as unknown as LandXmlCursorApi;
+  }
+
+  for (const [name, run] of [
+    ['streamLandXmlSourceBlobWithApi', streamLandXmlSourceBlobWithApi],
+    ['parseLandXmlSourceBlobWithApi', parseLandXmlSourceBlobWithApi],
+  ] as const) {
+    it(`${name} passes the option through`, async () => {
+      const seen: Array<unknown> = [];
+      await run(recordingApi(seen), new Blob(['<LandXML/>']), { assumedLinearUnit: 'foot' }).catch(() => {});
+      assert.deepEqual(seen, [{ assumedLinearUnit: 'foot' }], `${name} must forward assumedLinearUnit`);
+    });
+
+    it(`${name} passes undefined when no unit was supplied`, async () => {
+      const seen: Array<unknown> = [];
+      await run(recordingApi(seen), new Blob(['<LandXML/>']), {}).catch(() => {});
+      assert.deepEqual(seen, [undefined], `${name} must not fabricate an options object`);
+    });
+  }
+});

@@ -146,7 +146,14 @@ export async function parseLandXmlSourceBlobWithApi(
   if (!Number.isSafeInteger(blob.size) || blob.size <= 0 || blob.size > MAX_WASM_U32) {
     throw new Error('LandXML source size is outside the WASM cursor limit');
   }
-  const session = api.createLandXmlTinStreamSession(blob.size);
+  // Same option forwarding as `streamLandXmlSourceBlobWithApi` above. Both
+  // entry points construct their own session, so an override honoured by only
+  // one of them is an override a caller of the other silently cannot use
+  // (#5175 review).
+  const session = api.createLandXmlTinStreamSession(
+    blob.size,
+    options.assumedLinearUnit === undefined ? undefined : { assumedLinearUnit: options.assumedLinearUnit },
+  );
   const assembler = new LandXmlStreamDocumentAssembler();
   let document: LandXmlTinDocument | null = null;
   const drain = async (): Promise<void> => {

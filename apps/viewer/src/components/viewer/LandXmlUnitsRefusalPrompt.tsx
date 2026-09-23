@@ -17,7 +17,7 @@
  * Mirrors {@link GeometryModeBanner}'s non-modal top-of-canvas placement,
  * mounted alongside it in `ViewportContainer`.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Ruler, X } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,13 @@ export function LandXmlUnitsRefusalPrompt() {
   // Not `''`: an empty-string Select value renders as a real (wrong) choice
   // instead of the placeholder. `undefined` is "nothing chosen yet".
   const [selectedUnit, setSelectedUnit] = useState<string | undefined>(undefined);
+
+  // The prompt stays mounted when `refusal` clears, so without this a unit
+  // chosen for one file would still be selected when the NEXT file refuses —
+  // arming retry before the user has chosen anything for it. That is exactly
+  // the "viewer assumed a unit on your behalf" failure this feature exists to
+  // prevent (#5175 review).
+  useEffect(() => { setSelectedUnit(undefined); }, [refusal]);
 
   if (!refusal) return null;
 

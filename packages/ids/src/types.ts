@@ -521,8 +521,8 @@ export interface ClassificationInfo {
 
 /** Material information */
 export interface MaterialInfo {
-  /** Material name. Absent on an `unresolved` entry (#5227). */
-  name?: string;
+  /** Material name ('' on an `unresolved` entry, like ClassificationInfo) */
+  name: string;
   /** Material category (if available) */
   category?: string;
   /** A proven material association this data source cannot read (#5227). */

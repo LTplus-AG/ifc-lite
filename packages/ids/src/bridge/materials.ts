@@ -31,7 +31,7 @@ export function flattenMaterials(
         // would silently discard this marker and make the entity read as
         // genuinely unmaterialed — the exact bug this fix closes. Preserve
         // the marker itself instead.
-        out.push({ unresolved: true });
+        out.push({ name: '', unresolved: true });
         break;
       }
       push(matInfo.name, matInfo.category);

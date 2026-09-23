@@ -45,7 +45,7 @@ export function checkMaterialFacet(
 
     return {
       passed: true,
-      actualValue: materials.map((m) => m.name ?? '(unresolved)').join(', '),
+      actualValue: materials.map((m) => (m.unresolved ? '(unresolved)' : m.name)).join(', '),
       expectedValue: 'any material',
     };
   }

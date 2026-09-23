@@ -352,3 +352,38 @@ fn extract_entity_refs_from_list_hash_with_no_digits_does_not_panic() {
     let ids = extract_entity_refs_from_list(b"(#,#2)");
     assert_eq!(ids, vec![2]);
 }
+
+/// #5266: a dropped comma corrupts one numeric literal into two, e.g.
+/// `1.52.3` for what was meant to be `1.52,3`. `fast_float2::parse_partial`
+/// parses the `1.52` prefix and reports it consumed, leaving `.3` free to be
+/// misread as the START of the next coordinate -- every later value in the
+/// list shifts by one position instead of the list being refused. Pins both
+/// the non-comment-aware hot loops (`fast_parse.rs`) and their comment-aware
+/// twins (`fast_parse_comments.rs`, reached here via the leading `/` in the
+/// `_with_comment` cases, which routes through `may_contain_step_comment`).
+#[test]
+fn issue_5266_corrupted_literal_refuses_the_whole_list_not_split_into_two_coordinates() {
+    // Unpatched: parse_coordinates_direct(b"((1.52.3,4.0,5.0))") == [1.52, 0.3, 4.0, 5.0].
+    assert_eq!(parse_coordinates_direct(b"((1.52.3,4.0,5.0))"), Vec::<f32>::new());
+    assert_eq!(parse_coordinates_direct_f64(b"((1.52.3,4.0,5.0))"), Vec::<f64>::new());
+
+    // Same corrupted literal, forced through the comment-aware twins by a
+    // `/* ... */` elsewhere in the same list so `may_contain_step_comment`
+    // dispatches to them.
+    assert_eq!(
+        parse_coordinates_direct(b"((1.52.3,4.0,5.0) /* c */,(6.0,7.0,8.0))"),
+        Vec::<f32>::new()
+    );
+    assert_eq!(
+        parse_coordinates_direct_f64(b"((1.52.3,4.0,5.0) /* c */,(6.0,7.0,8.0))"),
+        Vec::<f64>::new()
+    );
+
+    // Control: a legal comment glued directly onto a numeric literal, with no
+    // delimiter before it, must still be accepted -- the fix must not
+    // refuse every number a comment touches, only a corrupted one.
+    assert_eq!(
+        parse_coordinates_direct_f64(b"((1.5/* c */,2.0,3.0))"),
+        [1.5, 2.0, 3.0]
+    );
+}

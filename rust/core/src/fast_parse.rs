@@ -13,6 +13,8 @@
 #[path = "fast_parse_comments.rs"]
 mod comments;
 
+use crate::parser::is_step_numeric_delimiter;
+
 /// Check if byte is a digit, minus sign, or decimal point (start of number)
 #[inline(always)]
 fn is_number_start(b: u8) -> bool {
@@ -60,6 +62,15 @@ pub fn parse_coordinates_direct(bytes: &[u8]) -> Vec<f32> {
         }
         match fast_float2::parse_partial::<f32, _>(&bytes[pos..]) {
             Ok((value, consumed)) if consumed > 0 => {
+                // `parse_partial` reads only the longest valid prefix, so a
+                // corrupted literal like `1.52.3` (a dropped comma) parses
+                // as `1.52` with `.3` left dangling to be misread as the
+                // next coordinate. Require a STEP delimiter right after what
+                // was consumed, or refuse the whole list rather than
+                // fabricate a shifted point (#5266).
+                if bytes.get(pos + consumed).is_some_and(|&b| !is_step_numeric_delimiter(b)) {
+                    return Vec::new();
+                }
                 result.push(value);
                 pos += consumed;
             }
@@ -88,6 +99,11 @@ pub fn parse_coordinates_direct_f64(bytes: &[u8]) -> Vec<f64> {
         }
         match fast_float2::parse_partial::<f64, _>(&bytes[pos..]) {
             Ok((value, consumed)) if consumed > 0 => {
+                // See the matching comment in `parse_coordinates_direct`
+                // above for why this delimiter check is required (#5266).
+                if bytes.get(pos + consumed).is_some_and(|&b| !is_step_numeric_delimiter(b)) {
+                    return Vec::new();
+                }
                 result.push(value);
                 pos += consumed;
             }

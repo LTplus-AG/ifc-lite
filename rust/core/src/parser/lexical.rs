@@ -105,6 +105,26 @@ pub fn is_step_space(b: u8) -> bool {
     matches!(b, b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c)
 }
 
+/// True for the one byte that may legally follow a STEP `REAL`/`INTEGER`
+/// literal inside a list: the next item's comma, the list's closing paren,
+/// or whitespace before either.
+///
+/// The raw-byte fast readers (`decoder.rs`, `fast_parse.rs`,
+/// `fast_parse_comments.rs`) hand each numeric literal to
+/// `fast_float2::parse_partial`, which reads only the longest valid prefix
+/// and reports how much it consumed -- it never checks what comes after. A
+/// dropped comma turns `1.52,3.0` into `1.52.3`: `parse_partial` consumes
+/// `1.52` and stops at the second `.`, and without this check that `.3`
+/// would be read as the START of the next number, shifting every later
+/// coordinate by one position (#5266). The nom tokenizer's `float` combinator
+/// requires the whole token to match the grammar, so it already refuses the
+/// same input; every fast-path caller checks this predicate on the byte
+/// right after `parse_partial`'s consumed span so the two readers agree.
+#[inline]
+pub fn is_step_numeric_delimiter(b: u8) -> bool {
+    b == b',' || b == b')' || is_step_space(b)
+}
+
 /// Where a refused record ends, and whether anything after it can be read.
 ///
 /// The two failures are separate because they call for opposite answers. A

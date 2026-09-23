@@ -8,7 +8,7 @@
 
 use crate::columnar_index::EntityIndexStore;
 use crate::error::{Error, Result};
-use crate::parser::{is_step_space, parse_entity, report_scan_diagnostics, EntityScanner};
+use crate::parser::{is_step_numeric_delimiter, is_step_space, parse_entity, report_scan_diagnostics, EntityScanner};
 use crate::schema_gen::{AttributeValue, DecodedEntity};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -772,10 +772,18 @@ fn parse_float_inline(bytes: &[u8], offset: &mut usize) -> Option<f64> {
         return None;
     }
 
-    // Parse float using fast_float
+    // Parse float using fast_float. `parse_partial` reads only the longest
+    // valid prefix, so a corrupted literal like `1.52.3` (a dropped comma)
+    // parses as `1.52` with `.3` left dangling; require the byte right after
+    // what it consumed to be a STEP delimiter or refuse the whole point
+    // rather than let that leftover become the next coordinate (#5266).
     match fast_float2::parse_partial::<f64, _>(&bytes[i..]) {
         Ok((value, consumed)) if consumed > 0 => {
-            *offset += i + consumed;
+            let next = i + consumed;
+            if bytes.get(next).is_some_and(|&b| !is_step_numeric_delimiter(b)) {
+                return None;
+            }
+            *offset += next;
             Some(value)
         }
         _ => None,
@@ -799,10 +807,16 @@ fn parse_next_float(bytes: &[u8], offset: &mut usize) -> Option<f64> {
         return None;
     }
 
-    // Parse float using fast_float
+    // Parse float using fast_float; see the matching comment in
+    // `parse_float_inline` above for why the delimiter check after
+    // `parse_partial` is required (#5266).
     match fast_float2::parse_partial::<f64, _>(&bytes[i..]) {
         Ok((value, consumed)) if consumed > 0 => {
-            *offset += i + consumed;
+            let next = i + consumed;
+            if bytes.get(next).is_some_and(|&b| !is_step_numeric_delimiter(b)) {
+                return None;
+            }
+            *offset += next;
             Some(value)
         }
         _ => None,

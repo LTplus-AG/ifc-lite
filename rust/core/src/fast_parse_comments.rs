@@ -5,6 +5,23 @@
 //! Cold, comment-aware twins of the point-list hot loops.
 
 use super::{estimate_float_count, estimate_int_count, is_number_start, parse_index_value};
+use crate::parser::is_step_numeric_delimiter;
+
+/// Same check as [`is_step_numeric_delimiter`], plus a `/* ... */` comment
+/// opening right where a real STEP file may legally place one: glued onto a
+/// numeric literal with no separator before it (`1.52/* note */,3.0`). Only
+/// these comment-aware twins need the extra case -- their non-comment-aware
+/// counterparts in `fast_parse.rs` already route here the moment a `/`
+/// appears anywhere in the bytes, so a bare delimiter check is enough there.
+#[inline]
+fn is_step_numeric_delimiter_or_comment(bytes: &[u8], pos: usize) -> bool {
+    match bytes.get(pos) {
+        None => true,
+        Some(&b) if is_step_numeric_delimiter(b) => true,
+        Some(&b'/') => bytes.get(pos + 1) == Some(&b'*'),
+        _ => false,
+    }
+}
 
 /// Real point and index lists almost never contain comments. Pay one SIMD
 /// slash search so their inner delimiter loop stays identical to the
@@ -40,6 +57,12 @@ pub(super) fn parse_coordinates(bytes: &[u8]) -> Vec<f32> {
         pos = start;
         match fast_float2::parse_partial::<f32, _>(&bytes[pos..]) {
             Ok((value, consumed)) if consumed > 0 => {
+                // See `is_step_numeric_delimiter_or_comment` above: refuse
+                // rather than let a dropped comma's leftover digits become
+                // the next coordinate (#5266).
+                if !is_step_numeric_delimiter_or_comment(bytes, pos + consumed) {
+                    return Vec::new();
+                }
                 result.push(value);
                 pos += consumed;
             }
@@ -59,6 +82,10 @@ pub(super) fn parse_coordinates_f64(bytes: &[u8]) -> Vec<f64> {
         pos = start;
         match fast_float2::parse_partial::<f64, _>(&bytes[pos..]) {
             Ok((value, consumed)) if consumed > 0 => {
+                // See `is_step_numeric_delimiter_or_comment` above (#5266).
+                if !is_step_numeric_delimiter_or_comment(bytes, pos + consumed) {
+                    return Vec::new();
+                }
                 result.push(value);
                 pos += consumed;
             }

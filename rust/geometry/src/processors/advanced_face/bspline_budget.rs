@@ -33,12 +33,10 @@
 //!   clamped to a different (wrong) surface.
 //!
 //! [`MAX_BSPLINE_SURFACE_SAMPLE_WORK`] bounds the OTHER unbounded input:
-//! `evaluate_bspline_surface`'s weighted sum is `O(n_u * n_v)` per sample
-//! point (it does not exploit local support — nonzero basis functions are
-//! only ever `degree + 1` wide per axis — because doing so would reorder the
-//! floating-point sum and perturb pinned mesh output; that stays a follow-up,
-//! not #4901's scope), so the real cost driver is `samples * n_u * n_v`, not
-//! `n_u * n_v` alone. A flat control-point-count ceiling was tried first and
+//! the dense upper bound `O(n_u * n_v)` per sample point. #5321 reuses
+//! axis samples and skips exact zero basis entries without reordering the
+//! remaining sum, but keeps this conservative admission bound unchanged.
+//! The bound is `samples * n_u * n_v`, not `n_u * n_v` alone. A flat control-point-count ceiling was tried first and
 //! calibrated against "a few hundred is already dense" — wrong: the in-tree
 //! `tests/models/issues/472_2222.ifc` fixture (issue #472) carries a real
 //! 207x180 (37,260-point) patch, well past any such guess, and a flat cap
@@ -64,7 +62,7 @@
 pub(super) const MAX_BSPLINE_DEGREE: usize = 64;
 
 /// Hard ceiling on `(u_segments+1) * (v_segments+1) * n_u * n_v` — the total
-/// number of weighted-sum terms `tessellate_bspline_surface` will evaluate
+/// conservative number of weighted-sum terms before zero-support pruning
 /// across the whole surface. See the module doc for why this bounds the
 /// actual cost driver where a flat control-point-count cap does not (and, in
 /// an earlier version of this bound, actively regressed a real fixture).

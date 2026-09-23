@@ -125,6 +125,33 @@ describe('#5213: topic folder nested below archive root', () => {
     expect(project.topics.get(guid)?.title).toBe('Wrapped topic');
   });
 
+  // The wrapped root is found by a case-insensitive match, so the metadata
+  // must be read back by the entry that matched, not by a lowercase name
+  // JSZip does not hold (CodeRabbit on c6b9909f0).
+  it('reads uppercase metadata entries in a wrapped project folder', async () => {
+    const guid = 'aaaaaaaa-1111-2222-3333-444444444444';
+    const zip = new JSZip();
+    zip.file('MyProject/BCF.VERSION', versionFile('3.0'));
+    zip.file('MyProject/PROJECT.BCFP', '<ProjectInfo><Project ProjectId="project-a"><Name>Upper project</Name></Project></ProjectInfo>');
+    zip.file(`MyProject/${guid}/markup.bcf`, markupFile(guid, 'Wrapped topic'));
+
+    const project = await readBCF(await zip.generateAsync({ type: 'nodebuffer' }));
+    expect(project.version).toBe('3.0');
+    expect(project.name).toBe('Upper project');
+    expect(project.topics.get(guid)?.title).toBe('Wrapped topic');
+  });
+
+  it('reads an uppercase BCF.VERSION at the archive root', async () => {
+    const guid = 'aaaaaaaa-1111-2222-3333-444444444444';
+    const zip = new JSZip();
+    zip.file('BCF.VERSION', versionFile('3.0'));
+    zip.file(`${guid}/markup.bcf`, markupFile(guid, 'Root topic'));
+
+    const project = await readBCF(await zip.generateAsync({ type: 'nodebuffer' }));
+    expect(project.version).toBe('3.0');
+    expect(project.topics.get(guid)?.title).toBe('Root topic');
+  });
+
   it('reads a topic one level deeper than root (zipped-folder-not-contents shape)', async () => {
     const guid = 'aaaaaaaa-1111-2222-3333-444444444444';
     const zip = new JSZip();

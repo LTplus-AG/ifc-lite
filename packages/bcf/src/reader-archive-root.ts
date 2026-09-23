@@ -9,9 +9,27 @@ export function isMacOsxShadowPath(path: string): boolean {
   return /(?:^|\/)__MACOSX(?:\/|$)/i.test(path);
 }
 
+/**
+ * Look up an archive entry, accepting a case variant when the exact name is
+ * absent. Topic markup is matched case-insensitively, so the archive metadata
+ * (`bcf.version`, `project.bcfp`) must be too: JSZip's `file(name)` is
+ * case-sensitive, and a root accepted by a case-insensitive match would
+ * otherwise be read back under a name that does not exist.
+ */
+export function findArchiveEntry(zip: JSZip, path: string): JSZip.JSZipObject | null {
+  const exact = zip.file(path);
+  if (exact) return exact;
+  const wanted = path.toLowerCase();
+  let match = null as JSZip.JSZipObject | null;
+  zip.forEach((entryPath, entry) => {
+    if (!match && !entry.dir && entryPath.toLowerCase() === wanted) match = entry;
+  });
+  return match;
+}
+
 /** Resolve the common folder added when a project directory is zipped whole. */
 export function resolveArchiveRoot(zip: JSZip): string {
-  if (zip.file('bcf.version')) return '';
+  if (findArchiveEntry(zip, 'bcf.version')) return '';
 
   const candidates: string[] = [];
   zip.forEach((path) => {

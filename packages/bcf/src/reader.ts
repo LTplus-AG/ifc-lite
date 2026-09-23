@@ -22,7 +22,7 @@ import type {
   BCFHeaderFile,
 } from './types.js';
 import { parseViewpointContent } from './reader-viewpoint-content.js';
-import { discoverTopicMarkupPaths, resolveArchiveRoot } from './reader-archive-root.js';
+import { discoverTopicMarkupPaths, findArchiveEntry, resolveArchiveRoot } from './reader-archive-root.js';
 import { createWarningReporter, reportVersionWarning, type ReportWarning } from './reader-warning.js';
 
 /**
@@ -226,7 +226,7 @@ async function readVersionFile(
   root: string,
   onWarning?: (message: string, kind: 'skipped' | 'version') => void,
 ): Promise<BCFVersion> {
-  const versionFile = zip.file(`${root}bcf.version`);
+  const versionFile = findArchiveEntry(zip, `${root}bcf.version`);
   if (!versionFile) {
     throw new Error('Invalid BCF file: missing bcf.version');
   }
@@ -257,7 +257,7 @@ async function readProjectFile(zip: JSZip, budget: ExpansionBudget, root: string
   name?: string;
   extensions?: BCFExtensions;
 }> {
-  const projectFile = zip.file(`${root}project.bcfp`);
+  const projectFile = findArchiveEntry(zip, `${root}project.bcfp`);
   if (!projectFile) {
     return {};
   }

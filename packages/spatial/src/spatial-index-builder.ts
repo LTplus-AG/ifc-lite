@@ -11,21 +11,11 @@ import type { AABB } from './aabb.js';
 import type { MeshData } from '@ifc-lite/geometry';
 
 function yieldToEventLoop(): Promise<void> {
-  const maybeScheduler = (globalThis as typeof globalThis & {
-    scheduler?: { yield?: () => Promise<void> };
-  }).scheduler;
-  if (typeof maybeScheduler?.yield === 'function') {
-    return maybeScheduler.yield();
-  }
-  return new Promise<void>((resolve) => {
-    const channel = new MessageChannel();
-    channel.port1.onmessage = () => {
-      channel.port1.close();
-      channel.port2.close();
-      resolve();
-    };
-    channel.port2.postMessage(null);
-  });
+  // A timer task gives input, timers and the browser's paint step a chance to
+  // run. scheduler.yield() keeps its continuation at high priority and, in a
+  // real Holter load, starved requestAnimationFrame until the BVH was complete.
+  // Timers also keep progressing when a tab is hidden, unlike rAF.
+  return new Promise<void>(resolve => setTimeout(resolve, 0));
 }
 
 /**

@@ -166,8 +166,8 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     if (!editor || !dataStore) {
       throw new Error(`bim.store.${operation}: no model loaded for id "${modelId}"`);
     }
-    const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
     const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
+    const anchor = resolveSpatialAnchor(dataStore, storeyExpressId, store.getState().getMutationView(normalizedModelId));
     const before = new Set(editor.getNewEntities().map((entity) => entity.expressId));
     const expressId = build(editor, anchor);
     if (isSharedRoomModel(modelId)) {
@@ -356,4 +356,3 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     }),
   };
 }
-

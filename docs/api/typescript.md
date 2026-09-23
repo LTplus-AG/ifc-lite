@@ -833,7 +833,7 @@ import { StoreEditor } from '@ifc-lite/mutations';
 import { addColumnToStore, resolveSpatialAnchor } from '@ifc-lite/create';
 
 const editor = new StoreEditor(dataStore, mutationView);
-const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
+const anchor = resolveSpatialAnchor(dataStore, storeyExpressId, mutationView);
 
 const result = addColumnToStore(editor, anchor, {
   Position: [1, 1, 0],
@@ -844,13 +844,14 @@ const result = addColumnToStore(editor, anchor, {
 
 #### resolveSpatialAnchor
 
-Walks a parsed `IfcDataStore` for the references every in-store builder needs. Throws if `IfcOwnerHistory`, the 'Body' representation context, or the storey's `IfcLocalPlacement` cannot be resolved.
+Reads the parsed `IfcDataStore` and, when supplied, a live mutation view for the references every in-store builder needs. Deleted or retyped-away anchors are excluded; created storeys and placements are accepted. `IfcOwnerHistory` is optional in IFC4 and required in IFC2X3. Throws if a required context or the storey's `IfcLocalPlacement` cannot be resolved.
 
 ```typescript
-function resolveSpatialAnchor(store: IfcDataStore, storeyExpressId: number): SpatialAnchor;
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+function resolveSpatialAnchor(store: IfcDataStore, storeyExpressId: number, view?: MutablePropertyView | null): SpatialAnchor;
 
 interface SpatialAnchor {
-  ownerHistoryId: number;    // referenced by every IfcRoot
+  ownerHistoryId: number | null; // optional from IFC4 onward
   bodyContextId: number;     // 'Body' subcontext (or parent context fallback)
   storeyId: number;
   storeyPlacementId: number; // the storey's own IfcLocalPlacement

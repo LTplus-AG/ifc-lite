@@ -968,7 +968,7 @@ function runInStoreElementBuilder(
 
   let entityId: number;
   try {
-    const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
+    const anchor = resolveSpatialAnchor(dataStore, storeyExpressId, view);
     entityId = build(editor, anchor);
   } catch (err) {
     return { error: err instanceof Error ? err.message : `Failed to ${errorContext}` };
@@ -2360,10 +2360,10 @@ export const createMutationSlice: StateCreator<
 
     const editor = getOrCreateStoreEditor(get, set, modelId);
     if (!editor) return { error: 'Failed to create store editor' };
-
     let columnId: number;
     try {
-      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
+      ensureStoreyPlacement(dataStore, editor, storeyExpressId);
+      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId, view);
       const result = addColumnToStore(editor, anchor, params);
       columnId = result.columnId;
     } catch (err) {

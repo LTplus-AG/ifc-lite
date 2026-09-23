@@ -541,6 +541,7 @@ export class HeadlessBackend implements BimBackend {
   private createStoreAdapter(): StoreBackendMethods {
     const get = () => this.getOrCreateStoreEditor();
     const dataStore = () => this.dataStore;
+    const mutationView = () => this.getOrCreateMutationView();
     // Every `add*` mints an `EntityRef` carrying the model id it was called
     // with, and `bim.mutate.*` refuses one this backend does not answer for.
     // Checking here, before the entity exists, is what keeps the two from
@@ -561,70 +562,70 @@ export class HeadlessBackend implements BimBackend {
       addColumn(modelId: string, storeyExpressId: number, params: ColumnInStoreParams): EntityRef {
         assertModel(modelId);
         const editor = get();
-        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
+        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId, mutationView());
         const result = addColumnToStore(editor, anchor, params);
         return { modelId, expressId: result.columnId };
       },
       addWall(modelId: string, storeyExpressId: number, params: WallInStoreParams): EntityRef {
         assertModel(modelId);
         const editor = get();
-        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
+        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId, mutationView());
         const result = addWallToStore(editor, anchor, params);
         return { modelId, expressId: result.wallId };
       },
       addSlab(modelId: string, storeyExpressId: number, params: SlabInStoreParams): EntityRef {
         assertModel(modelId);
         const editor = get();
-        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
+        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId, mutationView());
         const result = addSlabToStore(editor, anchor, params);
         return { modelId, expressId: result.slabId };
       },
       addBeam(modelId: string, storeyExpressId: number, params: BeamInStoreParams): EntityRef {
         assertModel(modelId);
         const editor = get();
-        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
+        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId, mutationView());
         const result = addBeamToStore(editor, anchor, params);
         return { modelId, expressId: result.beamId };
       },
       addDoor(modelId: string, storeyExpressId: number, params: DoorInStoreParams): EntityRef {
         assertModel(modelId);
         const editor = get();
-        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
+        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId, mutationView());
         const result = addDoorToStore(editor, anchor, params);
         return { modelId, expressId: result.doorId };
       },
       addWindow(modelId: string, storeyExpressId: number, params: WindowInStoreParams): EntityRef {
         assertModel(modelId);
         const editor = get();
-        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
+        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId, mutationView());
         const result = addWindowToStore(editor, anchor, params);
         return { modelId, expressId: result.windowId };
       },
       addSpace(modelId: string, storeyExpressId: number, params: SpaceInStoreParams): EntityRef {
         assertModel(modelId);
         const editor = get();
-        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
+        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId, mutationView());
         const result = addSpaceToStore(editor, anchor, params);
         return { modelId, expressId: result.spaceId };
       },
       addRoof(modelId: string, storeyExpressId: number, params: RoofInStoreParams): EntityRef {
         assertModel(modelId);
         const editor = get();
-        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
+        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId, mutationView());
         const result = addRoofToStore(editor, anchor, params);
         return { modelId, expressId: result.roofId };
       },
       addPlate(modelId: string, storeyExpressId: number, params: PlateInStoreParams): EntityRef {
         assertModel(modelId);
         const editor = get();
-        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
+        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId, mutationView());
         const result = addPlateToStore(editor, anchor, params);
         return { modelId, expressId: result.plateId };
       },
       addMember(modelId: string, storeyExpressId: number, params: MemberInStoreParams): EntityRef {
         assertModel(modelId);
         const editor = get();
-        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
+        const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId, mutationView());
         const result = addMemberToStore(editor, anchor, params);
         return { modelId, expressId: result.memberId };
       },

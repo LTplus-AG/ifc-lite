@@ -29,6 +29,10 @@ const { content } = creator.toIfc(); // IFC STEP text
 - Property sets, element quantities, materials, and colors
 - 4D scheduling entities: IfcWorkSchedule, IfcTask, IfcRelSequence
 - In-store builders (`addWallToStore`, `addSlabToStore`, ...) that emit elements into an existing parsed model
+- `resolveSpatialAnchor(store, storeyId, view)` reads the live mutation view when
+  authoring into an edited model. Pass the same view as the `StoreEditor` so a
+  created storey or placement, and deletions or retypes of source anchors, are
+  reflected before an element is emitted. Omitting `view` reads the parsed model.
 - Loaded-model cost builders (`addCostScheduleToStore`, `addCostItemToStore`, `addCostValueToStore`,
   `addCostQuantityToStore`) plus relationship helpers for nesting, schedule/object assignment, value lists,
   and safe removal. They require a `CostAnchor` for schema/owner-history/GUID allocation, accept existing

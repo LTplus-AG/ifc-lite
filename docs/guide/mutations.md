@@ -443,9 +443,9 @@ import { StoreEditor } from '@ifc-lite/mutations';
 import { addColumnToStore, resolveSpatialAnchor } from '@ifc-lite/create';
 
 const editor = new StoreEditor(dataStore, view);
-const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
-//   ↳ walks the parsed store for IfcOwnerHistory, the 'Body' representation
-//     context, and the storey's IfcLocalPlacement.
+const anchor = resolveSpatialAnchor(dataStore, storeyExpressId, view);
+//   ↳ reads live IfcOwnerHistory, representation context and storey placement,
+//     including overlay-created records and excluding tombstones.
 
 const result = addColumnToStore(editor, anchor, {
   Position: [1, 1, 0],     // storey-local metres
@@ -547,4 +547,4 @@ All paths route through the same `mutationSlice` actions that wrap `StoreEditor`
 | `BulkQueryEngine` | Query and update entities in bulk |
 | `CsvConnector` | Import property data from CSV files |
 | `addColumnToStore` | High-level anchored IfcColumn builder (`@ifc-lite/create`) |
-| `resolveSpatialAnchor` | Walks a parsed store for owner history, 'Body' context, and storey placement (`@ifc-lite/create`) |
+| `resolveSpatialAnchor` | Reads owner history, representation context, and storey placement from the parsed store plus an optional live mutation view (`@ifc-lite/create`) |

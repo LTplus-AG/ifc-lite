@@ -107,6 +107,7 @@ Tools are grouped by capability. Everything below is registered in the default t
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff`, `quantity_diff` |
 | Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_usd`, `export_pdf_report` *(planned)* |
+| Flow | `describe_flow`, `run_flow` |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 | Draft layers & review | `create_draft_layer`, `draft_apply_ops`, `publish_layer`, `diff_layer`, `dry_run_merge`, `list_conflicts`, `request_review`, `add_review_feedback`, `get_review_feedback`, `add_review_topic`, `respond_to_review` |
 
@@ -217,6 +218,34 @@ Tools are grouped by capability. Everything below is registered in the default t
     `IFC4_ADD2_TC1` when the pinned registry answered (attributes with their
     EXPRESS types) and `bundled-schema-union` when it did not (attribute names
     in positional order, no types).
+
+!!! tip "Flow graphs: describe_flow / run_flow"
+    A `.flow.json` graph — the same document the viewer's Flow editor authors
+    and `ifc-lite flow run` executes from the CLI — can be discovered and run
+    headlessly by an agent. `describe_flow` takes `flow` (the parsed document
+    inline) or `flow_path` (subject to `--allow`), and returns the graph's
+    declared inputs (name, kind, default) and outputs (node/port, value kind,
+    access) plus registry-aware wiring diagnostics. It never throws on an
+    invalid graph — a declared output naming a port no node has comes back as
+    `ok: false` with `diagnostics`, not an opaque error, because that
+    defect is exactly what an agent calls this tool to find.
+
+    `run_flow` takes the same `flow`/`flow_path`, an optional `model_id`, and
+    `inputs` (Player parameter overrides keyed `"nodeId.param"`). An `inputs`
+    key naming no declared parameter is rejected by name rather than dropped
+    silently — the graph never runs on defaults while reporting success. The
+    result carries `ok`, per-node status counts, a `tracking` summary
+    (created/updated/kept/removed elements for tracked write nodes), and the
+    declared `outputs`' values; a table output's rows are capped with a
+    `truncated` flag. A failed node marks the whole run `ok: false`, and any
+    output downstream of it comes back with no data rather than reporting the
+    half-applied model as a success.
+
+    Element-creation node types (`element.column`, `model.addElement`, …) are
+    not yet runnable through `run_flow`: the MCP server's in-session store
+    adapter does not implement `addColumn`/`addWall`/`addSlab`/`addBeam` (use
+    `entity_create` for those today). A property-writing graph, like the
+    shipped fire-rating-audit example, runs normally.
 
 !!! note "Planned tools return a clean error"
     `geometry_get`, `raycast`, `gherkin_check`, and `export_pdf_report` are

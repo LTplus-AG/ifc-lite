@@ -18,7 +18,17 @@
 
 import { createHash } from 'node:crypto';
 import { readFile, stat, writeFile } from 'node:fs/promises';
-import { checkAvailability, parseFlowDocument, runFlow, validateFlowWiring, type FlowDocument, type RunResult } from '@ifc-lite/flow';
+import {
+  checkAvailability,
+  declaredInputKeys,
+  describeFlowIO,
+  parseFlowDocument,
+  resolveDeclaredParam,
+  runFlow,
+  validateFlowWiring,
+  type FlowDocument,
+  type RunResult,
+} from '@ifc-lite/flow';
 import { createStandardRegistry, headlessFeatures, type FlowHost } from '@ifc-lite/flow-nodes';
 import { createHeadlessContext } from '../loader.js';
 import { fatal, getAllFlags, hasFlag, printJson } from '../output.js';
@@ -71,7 +81,9 @@ function requireFlagValue(args: string[], flag: string): string | undefined {
  * strings. A key that names no declared parameter is refused rather than
  * ignored: the scheduler silently drops unknown keys, so `--input
  * rating=REI90` (missing the node id) would run the graph on its DEFAULTS
- * and report success while writing the wrong value.
+ * and report success while writing the wrong value. The lookup itself is
+ * `resolveDeclaredParam` from `@ifc-lite/flow`, shared with the MCP
+ * `run_flow` tool so the two callers cannot drift on what counts as declared.
  */
 function parseInputs(raws: string[], doc: FlowDocument, registry: ReturnType<typeof createStandardRegistry>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -79,11 +91,8 @@ function parseInputs(raws: string[], doc: FlowDocument, registry: ReturnType<typ
     const eq = raw.indexOf('=');
     if (eq <= 0) fatal(`--input expects nodeId.param=value, got "${raw}"`);
     const key = raw.slice(0, eq);
-    const dot = key.lastIndexOf('.');
-    const node = dot > 0 ? doc.nodes.find((n) => n.id === key.slice(0, dot)) : undefined;
-    const param = node ? registry.get(node.type)?.params.find((p) => p.name === key.slice(dot + 1)) : undefined;
-    if (!param) {
-      const known = doc.inputs.map((i) => `${i.nodeId}.${i.param}`);
+    if (!resolveDeclaredParam(key, doc, registry)) {
+      const known = declaredInputKeys(doc);
       fatal(`--input "${key}" names no parameter${known.length > 0 ? `; this graph declares ${known.join(', ')}` : ''}`);
     }
     const text = raw.slice(eq + 1);
@@ -94,20 +103,6 @@ function parseInputs(raws: string[], doc: FlowDocument, registry: ReturnType<typ
     }
   }
   return out;
-}
-
-function describe(doc: FlowDocument, registry: ReturnType<typeof createStandardRegistry>) {
-  const inputs = doc.inputs.map((i) => {
-    const def = registry.get(doc.nodes.find((n) => n.id === i.nodeId)?.type ?? '');
-    const param = def?.params.find((p) => p.name === i.param);
-    return { key: `${i.nodeId}.${i.param}`, label: i.label, kind: i.kind, options: i.options, default: param?.default, paramKind: param?.kind };
-  });
-  const outputs = doc.outputs.map((o) => {
-    const def = registry.get(doc.nodes.find((n) => n.id === o.nodeId)?.type ?? '');
-    const port = def?.outputs.find((p) => p.name === o.port);
-    return { key: `${o.nodeId}.${o.port}`, label: o.label, kind: port?.type.kind, access: port?.type.access };
-  });
-  return { id: doc.id, name: doc.name, description: doc.description, capabilities: doc.capabilities, inputs, outputs };
 }
 
 function summarize(result: RunResult) {
@@ -131,7 +126,7 @@ export async function flowCommand(args: string[]): Promise<void> {
 
   if (sub === 'describe') {
     const doc = await loadDocument(positional[0]);
-    const info = describe(doc, registry);
+    const info = describeFlowIO(doc, registry);
     if (json) return printJson(info);
     process.stdout.write(`${info.name} (${info.id})\n`);
     if (info.description) process.stdout.write(`  ${info.description}\n`);

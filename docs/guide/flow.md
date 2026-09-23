@@ -89,6 +89,59 @@ Restructuring is a small, complete set of nodes: `core.groupBy`,
 
 The full document is `apps/viewer/src/lib/flow/examples/05-fire-rating-audit.flow.json` — the panel’s example 5, which the CLI test runs end to end.
 
+## Spreadsheet connectors
+
+`table.readCsv` / `table.writeCsv` and `table.readXlsx` / `table.writeXlsx`
+move a `Table` to and from a mapping spreadsheet:
+
+- `table.readCsv` takes CSV text on its `text` input, `columns` (`[{ name, type }]`,
+  defaulting to the header row typed `string`) and `delimiter` params, and returns
+  `table` plus `problems` — a malformed row (wrong field count, a cell that will not
+  parse as its column's type) is **reported, never dropped**.
+- `table.writeCsv` is the reverse, through `@ifc-lite/export`'s `tableToCsv` — the one
+  place in the repo that guards a cell against spreadsheet formula injection
+  (CWE-1236; `scripts/check-csv-escaper-copies.mjs` fails the build on a second copy).
+- `table.readXlsx` / `table.writeXlsx` do the same over a single-sheet `.xlsx`
+  workbook. A `Scalar` carries no bytes, so the workbook travels an edge as base64
+  text (`data` in/out). The underlying `readXlsxTable`/`writeXlsxTable` functions are
+  exported from `@ifc-lite/flow-nodes` as a shared module — both the CLI and the
+  viewer read/write `.xlsx` through the same code.
+
+`table.joinByKey` joins spreadsheet rows to model entities by `globalId`, `tag`,
+`name`, or an indexed `property` (`pset`/`prop` params) and produces three outputs:
+`matched` (one row per uniquely matched entity, with a `GlobalId` column added),
+`unmatched` (no entity claims the row's key), and `ambiguous` (the row matches
+**several** entities, or its uniquely-matched entity is also uniquely claimed by
+**another** row — reported with a `MatchedGlobalIds` column, never silently resolved
+to the first match). `tag`/`property` reuse `@ifc-lite/mutations`' row-matching index
+builder rather than re-scanning the model per row; that needs bulk entity-table
+access most hosts do not provide (`FlowHost.tables()`), so those two strategies are
+only available on hosts that declare it — today, the CLI.
+
+`model.applyTable` writes a table's columns back as property mutations, one entity
+per row (the row key names the target's GlobalId — `table.joinByKey`'s `matched`
+output is the usual source). Each column writes through the pset/prop its `mapping`
+param names, or its own `binding` when the table came from `table.fromEntities`. A
+cell that does not parse as its column's declared type is reported per row in
+`problems` and **not written** — never coerced to `0`/`''`/`false`.
+
+```json
+{
+  "id": "csv", "type": "core.string", "params": { "value": "Tag,FireRating\nT-100,REI90\n" }
+}
+```
+```json
+{ "id": "read", "type": "table.readCsv", "params": { "columns": [{ "name": "Tag", "type": "string" }, { "name": "FireRating", "type": "string" }] } },
+{ "id": "walls", "type": "model.byType", "params": { "type": "IfcWall" } },
+{ "id": "join", "type": "table.joinByKey", "params": { "strategy": "tag", "column": "Tag" } },
+{ "id": "apply", "type": "model.applyTable", "params": { "mapping": [{ "column": "FireRating", "pset": "Pset_WallCommon", "prop": "FireRating" }] } }
+```
+
+`packages/cli/src/commands/flow-table-connectors.test.ts` runs this pilot workflow
+(`ReadCsv → JoinByKey → ApplyTable`) end to end against a real model, including a
+duplicate match value that must land in `ambiguous`, not get resolved to either
+entity.
+
 ## Creating elements, and re-running
 
 `element.wall`, `element.column`, `element.beam` and `element.slab` build

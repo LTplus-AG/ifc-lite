@@ -51,7 +51,7 @@ export const VALUE_TYPE_BY_COLUMN_TYPE: Readonly<Record<ColumnType, PropertyValu
 
 const GLOBAL_ID: Column = { name: 'GlobalId', type: 'identifier' };
 
-function tableOf(v: unknown): Table {
+export function tableOf(v: unknown): Table {
   const problems = validateTable(v);
   if (problems.length > 0) throw new Error(`not a table: ${problems.map((p) => `${p.path} ${p.message}`).join('; ')}`);
   return v as Table;

@@ -17,6 +17,32 @@ import { CapabilityDeniedError, hasCapability, parseCapability, type Capability 
 import type { NodeDef, NodeRunContext } from '@ifc-lite/flow';
 import type { BimContext, EntityData, EntityRef as SdkEntityRef } from '@ifc-lite/sdk';
 import type { EntityRef } from '@ifc-lite/flow';
+import type { EntityTable } from '@ifc-lite/data';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+
+/** A string-interning lookup, the shape `csv-match.ts`'s match-context builder
+ *  needs for `globalId`/`name` strategies (an entity table's `name`/`globalId`
+ *  columns are interned string indices, not inline strings). */
+export type StringLookup = { get(idx: number): string } | null;
+
+/**
+ * Bulk entity access for `table.joinByKey`'s `tag`/`property` strategies,
+ * which reuse `@ifc-lite/mutations`' `csv-match.ts` index builder verbatim
+ * (issue #5230) instead of re-implementing tag/property matching. That
+ * builder scans a whole `EntityTable` once (`O(entities + rows)`) rather than
+ * once per candidate entity, so it needs the raw table, not `BimContext`'s
+ * per-`EntityRef` accessors.
+ *
+ * Optional on `FlowHost`: a host that cannot cheaply provide this (nothing
+ * today besides the CLI's `HeadlessBackend`) simply cannot run those two
+ * match strategies, and `table.joinByKey` reports that plainly rather than
+ * falling back to a slow re-implementation.
+ */
+export interface TableAccess {
+  readonly entities: EntityTable;
+  readonly mutationView: MutablePropertyView;
+  readonly strings: StringLookup;
+}
 
 export interface FlowHost {
   readonly bim: BimContext;
@@ -28,6 +54,8 @@ export interface FlowHost {
   readonly grants?: readonly Capability[];
   /** Model to query when a node does not name one. */
   readonly defaultModelId?: string;
+  /** See {@link TableAccess}. `modelId` defaults to `defaultModelId`. */
+  tables?(modelId?: string): TableAccess | undefined;
 }
 
 export type FlowNodeDef = NodeDef<FlowHost>;

@@ -20,11 +20,14 @@
   },
   "dependencies": {
     "@ifc-lite/data": "workspace:^",
+    "@ifc-lite/export": "workspace:^",
     "@ifc-lite/extensions": "workspace:^",
     "@ifc-lite/flow": "workspace:^",
+    "@ifc-lite/mutations": "workspace:^",
     "@ifc-lite/query": "workspace:^",
     "@ifc-lite/sandbox": "workspace:^",
-    "@ifc-lite/sdk": "workspace:^"
+    "@ifc-lite/sdk": "workspace:^",
+    "exceljs": "^4.4.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.1",

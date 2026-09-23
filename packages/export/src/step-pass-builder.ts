@@ -30,6 +30,7 @@ import { createModificationLedger } from './delta-modification-ledger.js';
 import { createSourceRefReader } from './source-ref-bounds.js';
 import { buildStepHeader } from './step-header.js';
 import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
+import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import { computeWithheldRefIds } from './schema-untranslatable.js';
 
 /**
@@ -317,6 +318,7 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     newGeorefLines: [],
     warnings: [],
     slotFill: new Ifc2x3SlotFill(),
+    ifc4Slots: new Ifc4SlotCheck(),
     withheldRefIds: computeWithheldRefIds(dataStore, schema, effective),
   };
   // The same object, deliberately. See the file header.

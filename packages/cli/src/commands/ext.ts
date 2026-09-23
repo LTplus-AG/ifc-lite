@@ -209,6 +209,14 @@ async function extInitCommand(args: string[]): Promise<void> {
         'ext.starter.hello': 'src/commands/hello.js',
       },
     },
+    tests: [
+      {
+        name: 'returns the starter greeting',
+        command: 'ext.starter.hello',
+        fixture: 'empty-model',
+        expect: { regex: '^hello$' },
+      },
+    ],
   };
 
   await writeFile(join(dir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf-8');
@@ -344,13 +352,16 @@ const STARTER_COMMAND = `/* This Source Code Form is subject to the terms of the
 /**
  * "Hello from starter" command.
  *
- * The \`ctx\` parameter is the OCAP capability bundle the host hands to
- * every entry function. Capabilities are scoped per manifest.capabilities.
+ * \`ctx\` is the capability bundle the host installs before invoking the
+ * entry function: currently \`{ bim }\`, the read-only model handle.
+ * Capabilities are scoped per manifest.capabilities.
+ *
+ * Command entry scripts are evaluated as plain (non-module) sources —
+ * \`export\` is not supported — and the host always invokes a top-level
+ * function literally named \`run\`, regardless of the command id.
  */
-export default async function hello(ctx) {
-  ctx.log.info('Hello from starter');
-  ctx.notify('info', 'Starter extension says hi.');
-  return { message: 'hello' };
+function run(ctx) {
+  return 'hello';
 }
 `;
 
@@ -367,9 +378,9 @@ ifc-lite ext validate .
 
 ## Next steps
 
-- Replace the placeholder \`hello\` command with your real entry point.
+- Replace the placeholder \`ext.starter.hello\` command with your real entry point. Its handler must be a plain (no \`export\`) top-level function named \`run\`.
 - Declare any additional capabilities in \`manifest.json\`.
-- Add tests under \`tests/\` and reference them in the manifest.
+- Update the starter test in \`manifest.json\` (or add more) to cover your real commands.
 
 See https://louistrue.github.io/ifc-lite/ for the full extension model.
 `;

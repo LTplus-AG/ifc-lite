@@ -367,6 +367,7 @@ export type FailureType =
   // Material failures
   | 'MATERIAL_MISSING'
   | 'MATERIAL_VALUE_MISMATCH'
+  | 'MATERIAL_UNRESOLVED' // materially associated, but attributes unreadable here (#5227)
   // PartOf failures
   | 'PARTOF_RELATION_MISSING'
   | 'PARTOF_ENTITY_MISMATCH'

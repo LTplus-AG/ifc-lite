@@ -26,7 +26,13 @@ export interface PortDef {
   readonly nullable?: boolean;
 }
 
-export type ParamKind = 'string' | 'number' | 'boolean' | 'enum' | 'json';
+/**
+ * `code` is a `string` the editor must give a multi-line editor to: a
+ * one-line `<input>` is the only thing a script's source cannot be typed
+ * into. Values are plain strings, so a host that has no code editor can
+ * still fall back to the `string` field.
+ */
+export type ParamKind = 'string' | 'number' | 'boolean' | 'enum' | 'json' | 'code';
 
 export interface ParamDef {
   readonly name: string;
@@ -34,6 +40,8 @@ export interface ParamDef {
   readonly default?: unknown;
   readonly options?: readonly string[];
   readonly doc?: string;
+  /** Syntax for a `code` param, e.g. `javascript`. */
+  readonly language?: string;
 }
 
 export type LogLevel = 'info' | 'warn' | 'error';

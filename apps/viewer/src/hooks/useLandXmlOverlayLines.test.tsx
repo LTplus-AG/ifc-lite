@@ -50,7 +50,7 @@ function document(sourceLine: LandXmlPolyline, lineKind: 'breakline' | 'contour'
     schema: 'LandXML-1.2',
     version: '1.2',
     capabilities: { renderableTin: false, preservedOnlySurfaces: 1, unknownExtensions: 0 },
-    units: { linearUnit: 'meter', elevationUnit: 'meter', linearScaleToMeters: 1, elevationScaleToMeters: 1 },
+    units: { linearUnit: 'meter', elevationUnit: 'meter', linearScaleToMeters: 1, elevationScaleToMeters: 1, assumed: false },
     surfaces: [{
       sourceId: 'landxml:surface:1', ordinal: 1, sourcePath: 'LandXML/Surfaces/Surface[1]',
       properties: {}, definitionProperties: {}, name: 'survey', kind: 'volume', renderState: 'preserved_only',
@@ -236,7 +236,7 @@ describe('LandXML source overlay rendering (#5042)', () => {
     contour.properties = { elev: '100' };
     const model = landXmlModel('two-dimensional-contour', contour, { x: 1, y: 2, z: 3 }, 'contour');
     model.landXmlDocument!.units = {
-      linearUnit: 'foot', elevationUnit: 'foot', linearScaleToMeters: 0.3048, elevationScaleToMeters: 0.3048,
+      linearUnit: 'foot', elevationUnit: 'foot', linearScaleToMeters: 0.3048, elevationScaleToMeters: 0.3048, assumed: false,
     };
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: { modelId: model.id, sourceId: contour.sourceId } });
     let vertices: RendererLineVertices = new Float32Array();
@@ -296,7 +296,7 @@ describe('LandXML source overlay rendering (#5042)', () => {
     extreme.points = [[1e308, 1e308, 1e308], [1e308, 1e308, 1e308]];
     const model = landXmlModel('extreme-overlay', extreme);
     model.landXmlDocument!.units = {
-      linearUnit: 'kilometer', elevationUnit: 'kilometer', linearScaleToMeters: 1000, elevationScaleToMeters: 1000,
+      linearUnit: 'kilometer', elevationUnit: 'kilometer', linearScaleToMeters: 1000, elevationScaleToMeters: 1000, assumed: false,
     };
     useViewerStore.setState({ ...fixtureModels(model), selectedLandXmlSource: null });
     let vertices: RendererLineVertices = new Float32Array();

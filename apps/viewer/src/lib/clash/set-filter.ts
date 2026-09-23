@@ -22,7 +22,7 @@
  * did.
  */
 
-import { isFilterRule, type Combinator, type FilterRule } from '../search/filter-rules.js';
+import { isFilterRule, type Combinator, type FilterRule } from '@ifc-lite/rules';
 
 /** One side of a clash rule, expressed the way the advanced filter is. */
 export interface ClashSetFilter {

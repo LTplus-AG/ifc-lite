@@ -122,6 +122,21 @@ const ZERO_SPEC_IDS = [
   '',
 ].join('\n');
 
+// A rule set requiring the loaded IfcProject to carry a non-empty Name
+// (#5138 PR 7b) — CLEAN_IFC's project IS named ('Project'), so this passes.
+const PROJECT_NAMED_RULES = {
+  version: 1,
+  name: 'project named',
+  rules: [
+    {
+      id: 'project-named',
+      name: 'Project must have a Name',
+      applicability: { groups: [{ rules: [{ kind: 'ifcType', values: ['IfcProject'], op: 'in' }], combinator: 'AND' }], authoredAs: 'chips' },
+      requirement: { kind: 'element', block: { groups: [{ rules: [{ kind: 'name', op: 'ne', value: '' }] , combinator: 'AND' }], authoredAs: 'chips' } },
+    },
+  ],
+};
+
 describe('loadDeliveryRecipe', () => {
   it('fatals on a recipe that declares neither structural nor ids checks', async () => {
     const dir = tmpDir();
@@ -139,6 +154,17 @@ describe('loadDeliveryRecipe', () => {
     vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('__fatal__'); }) as unknown as (code?: string | number | null) => never);
     silenceOutput();
     await expect(loadDeliveryRecipe(recipePath)).rejects.toThrow('__fatal__');
+  });
+
+  it('accepts a recipe declaring only "rules" (no structural, no ids) (#5138)', async () => {
+    const dir = tmpDir();
+    writeFileSync(join(dir, 'model.ifc'), CLEAN_IFC);
+    writeFileSync(join(dir, 'checks.rules.json'), JSON.stringify(PROJECT_NAMED_RULES));
+    const recipePath = writeRecipe(dir, { models: ['model.ifc'], rules: ['checks.rules.json'] });
+    const recipe = await loadDeliveryRecipe(recipePath);
+    expect(recipe.structural).toBe(false);
+    expect(recipe.ids).toEqual([]);
+    expect(recipe.resolvedRules[0]).toBe(join(dir, 'checks.rules.json'));
   });
 
   it('resolves models/ids paths relative to the recipe file, not the cwd', async () => {
@@ -215,6 +241,33 @@ describe('deliveryCommand', () => {
     expect(report.verdict).toBe('fail');
     expect(report.checks[0].type).toBe('ids');
     expect(report.checks[0].status).toBe('error');
+    process.exitCode = 0;
+  });
+
+  it('rules end-to-end: a passing .rules.json reports pass (#5138)', async () => {
+    const dir = tmpDir();
+    writeFileSync(join(dir, 'model.ifc'), CLEAN_IFC);
+    writeFileSync(join(dir, 'checks.rules.json'), JSON.stringify(PROJECT_NAMED_RULES));
+    const recipePath = writeRecipe(dir, { models: ['model.ifc'], rules: ['checks.rules.json'] });
+    const write = silenceOutput();
+    await deliveryCommand([recipePath, '--json']);
+    const report = jsonWritten(write) as { verdict: string; checks: Array<{ type: string; status: string }> };
+    expect(report.checks[0].type).toBe('rules');
+    expect(report.checks[0].status).toBe('pass');
+    expect(report.verdict).toBe('pass');
+    process.exitCode = 0;
+  });
+
+  it('an unreadable rules file reports error, not a silent pass (#5138)', async () => {
+    const dir = tmpDir();
+    writeFileSync(join(dir, 'model.ifc'), CLEAN_IFC);
+    const recipePath = writeRecipe(dir, { models: ['model.ifc'], rules: ['missing.rules.json'] });
+    const write = silenceOutput();
+    await deliveryCommand([recipePath, '--json']);
+    const report = jsonWritten(write) as { verdict: string; checks: Array<{ type: string; status: string }> };
+    expect(report.checks[0].type).toBe('rules');
+    expect(report.checks[0].status).toBe('error');
+    expect(report.verdict).toBe('fail');
     process.exitCode = 0;
   });
 

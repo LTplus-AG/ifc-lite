@@ -19,7 +19,7 @@ import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { useFilterRuleOptions } from '@/hooks/useFilterRuleOptions';
-import type { FilterRule } from '@/lib/search/filter-rules';
+import type { FilterRule } from '@ifc-lite/rules';
 import { unreadableRuleCount, type ClashSetFilter } from '@/lib/clash/set-filter';
 import { AddRuleMenu, CombinatorToggle, blankRuleOfKind } from './FilterRuleControls';
 import { RuleRow } from './SearchModal.filter.editors';

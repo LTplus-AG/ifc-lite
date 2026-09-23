@@ -64,6 +64,17 @@ describe('buildEChartsOption', () => {
     expect((buildEChartsOption({ aggregation: aggregate({ ...bar, type: 'treemap' }, ds) }).series as Array<{ type: string }>)[0].type).toBe('treemap');
   });
 
+  it('renders elementCount as a large numeric display using graphics component', () => {
+    const elementCountAgg = aggregate({ id: 'ec', title: 'Total Elements', source: 'elements', type: 'elementCount', measure: { agg: 'count' } }, ds);
+    const option = buildEChartsOption({ aggregation: elementCountAgg, width: 400, height: 300 });
+    expect(option.graphic).toBeDefined();
+    const graphic = option.graphic as { elements: Array<{ type: string; style: { text: string; font: string } }> };
+    expect(graphic.elements).toHaveLength(1);
+    expect(graphic.elements[0].type).toBe('text');
+    expect(graphic.elements[0].style.text).toBe('3'); // ds has 3 elements
+    expect(graphic.elements[0].style.font).toMatch(/bold \d+px/);
+  });
+
   it('caps a print-mode pie legend to a bounded number of rows, keeps every slice in the data, and shrinks the pie to fit whatever height is left (#4940 review: a fixed radius/center overflowed a short chart with many categories)', () => {
     const many: ChartDataset = { ...ds, rows: Array.from({ length: 20 }, (_, i) => ({ ids: [300 + i], values: [`Type ${i}`, 'L1'] })) };
     const agg = aggregate({ ...bar, type: 'pie' }, many);

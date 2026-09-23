@@ -121,6 +121,12 @@ export function parseLandXmlViewerModelFromBlobAsync(
   onFederatedAdmissionComponent?: (component: LandXmlPreflightComponent) => void | Promise<void>,
   onFederatedAdmissionComplete?: () => void | Promise<void>,
   onSkippedComponent?: (component: LandXmlStreamedSkippedComponent) => void | Promise<void>,
+  /**
+   * #5175: opt-in linear unit for a source with no declared `<Units>`. Kept
+   * last and optional so every existing call site compiles and behaves
+   * identically when it is absent — the refusal stays the default.
+   */
+  assumedLinearUnit?: string,
 ): Promise<LandXmlViewerModel> {
   if (typeof Worker === 'undefined') {
     if (!isCurrent()) return Promise.reject(new Error('LandXML parsing cancelled'));
@@ -134,7 +140,7 @@ export function parseLandXmlViewerModelFromBlobAsync(
       onFederatedAdmissionComponent,
       onFederatedAdmissionComplete,
       onSkippedComponent,
-    }).then((payload) => attachSyntheticStore(payload, file.size));
+    }, assumedLinearUnit).then((payload) => attachSyntheticStore(payload, file.size));
   }
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./landXml.worker.ts', import.meta.url), { type: 'module' });
@@ -357,6 +363,6 @@ export function parseLandXmlViewerModelFromBlobAsync(
     }
     // Blob structured cloning preserves the backing file handle; it does not
     // transfer or duplicate the full LandXML byte payload.
-    worker.postMessage({ file, streamFederatedPreflight: onFederatedPreflight !== undefined });
+    worker.postMessage({ file, streamFederatedPreflight: onFederatedPreflight !== undefined, assumedLinearUnit });
   });
 }

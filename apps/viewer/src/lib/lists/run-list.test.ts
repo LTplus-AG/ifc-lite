@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import type { ListDataProvider, ListDefinition } from '@ifc-lite/lists';
 import { IfcTypeEnum, QuantityType, type QuantitySet } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { ModelTag } from '../model-tags/types.js';
+import type { ModelTag } from '@ifc-lite/rules';
 import { runListFederated, type ModelProviderPair } from './run-list.js';
 
 /** One IfcWall per model, named after the model, with a NetVolume quantity. */

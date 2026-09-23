@@ -18,8 +18,8 @@ installLayout();
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { render, cleanup, click } from '@/test/render.js';
-import { Rule, type FilterRule } from '@/lib/search/filter-rules';
-import type { ModelTag } from '@/lib/model-tags/types';
+import { Rule, type FilterRule } from '@ifc-lite/rules';
+import type { ModelTag } from '@ifc-lite/rules';
 import { RuleRow } from './SearchModal.filter.editors.js';
 
 const TAGS: ReadonlyMap<string, ModelTag> = new Map([

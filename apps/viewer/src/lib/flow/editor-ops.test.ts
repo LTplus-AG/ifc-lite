@@ -106,4 +106,19 @@ describe('flow editor ops', () => {
     assert.equal(edges[0].sourceHandle, 'entities');
     assert.equal(paramSummary(registry.get('core.number'), { value: 0 }), '', 'defaults are not summarised');
   });
+
+  it('toCanvas feeds the selected edge back, which is what makes an edge deletable', () => {
+    // The canvas is fully controlled: React Flow's own `selected` flag is
+    // overwritten by the next render from this mapping, so an edge whose
+    // selection is not round-tripped here can never be selected — and the
+    // Delete key, which only ever deletes what is selected, did nothing.
+    const doc = connect(graph(), registry, { from: ['byType-1', 'entities'], to: ['property-1', 'entity'] }).doc;
+    const id = 'byType-1.entities->property-1.entity';
+    assert.equal(toCanvas(doc, registry, undefined, null).edges[0].selected, false);
+    const picked = toCanvas(doc, registry, undefined, null, id).edges[0];
+    assert.equal(picked.id, id);
+    assert.equal(picked.selected, true);
+    assert.equal(picked.reconnectable, true, 'either end must be draggable onto another port');
+    assert.equal((picked.style as { strokeDasharray?: string }).strokeDasharray, '6 3', 'the selected wire is visibly the one Delete will cut');
+  });
 });

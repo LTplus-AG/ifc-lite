@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
-import { evaluateFilterRulesFederated } from '../search/filter-evaluate.js';
+import { evaluateFilterRulesFederated } from '@ifc-lite/rules';
 import { ownAppearanceQuery } from './query-definition.js';
 import { definedModelTagIdsOf } from '../model-tags/evaluator-models.js';
 import { appearanceScope } from './scope.js';

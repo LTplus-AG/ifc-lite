@@ -8,6 +8,7 @@ import { queryTools } from './query.js';
 import { geometryTools } from './geometry.js';
 import { clashTools } from './clash.js';
 import { validationTools } from './validation.js';
+import { checkRulesTools } from './check-rules.js';
 import { mutationTools } from './mutate.js';
 import { bcfTools } from './bcf.js';
 import { bsddTools } from './bsdd.js';
@@ -31,6 +32,7 @@ export {
   geometryTools,
   clashTools,
   validationTools,
+  checkRulesTools,
   mutationTools,
   bcfTools,
   bsddTools,
@@ -54,6 +56,7 @@ export function buildDefaultToolRegistry(): ToolRegistry {
   registry.registerAll(geometryTools);
   registry.registerAll(clashTools);
   registry.registerAll(validationTools);
+  registry.registerAll(checkRulesTools);
   registry.registerAll(mutationTools);
   registry.registerAll(bcfTools);
   registry.registerAll(bsddTools);

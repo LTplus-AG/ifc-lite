@@ -134,7 +134,7 @@ storey **contains directly**, its aggregated parts, and — one hop through a co
 `IfcSpace`/`IfcSpatialZone` — an element inside a space on that storey. So
 IfcOpenShell's example `IfcPump, location="Level 3"` — a pump in a room on Level 3 —
 now finds the pump in IFClite too. This is measured, not assumed: see `storey rule
-reach` in `apps/viewer/src/lib/search/filter-evaluate.test.ts`.
+reach` in `@ifc-lite/rules`'s `filter-evaluate.test.ts`.
 
 The reach stops at one hop: an element inside a space nested inside *another* space,
 rather than directly under the storey, is not resolved. That deeper case is

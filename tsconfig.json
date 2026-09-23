@@ -109,6 +109,12 @@
       "@ifc-lite/lists/*": [
         "packages/lists/dist/*"
       ],
+      "@ifc-lite/rules": [
+        "packages/rules/dist/index.d.ts"
+      ],
+      "@ifc-lite/rules/*": [
+        "packages/rules/dist/*"
+      ],
       "@ifc-lite/sdk": [
         "packages/sdk/dist/index.d.ts"
       ],

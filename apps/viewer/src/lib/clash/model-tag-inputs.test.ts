@@ -10,7 +10,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { Rule } from '../search/filter-rules.js';
+import { Rule } from '@ifc-lite/rules';
 import {
   captureModelTagInputs,
   clashModelTagInputsChanged,

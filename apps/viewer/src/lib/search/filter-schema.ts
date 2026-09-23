@@ -24,8 +24,8 @@ import {
   extractAllMaterialsOnDemand,
   type IfcDataStore,
 } from '@ifc-lite/parser';
-import { stringifyValue, materialMatchCandidates } from './filter-match.js';
-import { resolveEntityPredefinedType } from '../entity-predefined-type.js';
+import { stringifyValue, materialMatchCandidates } from '@ifc-lite/rules';
+import { resolveEntityPredefinedType } from '@ifc-lite/rules';
 
 export interface FilterSchema {
   /** [storeyName, elevationMeters | null] sorted by name. */

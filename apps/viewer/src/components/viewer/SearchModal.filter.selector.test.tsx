@@ -24,7 +24,7 @@ import assert from 'node:assert/strict';
 import { render, cleanup, click, type, press } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
-import { Rule } from '@/lib/search/filter-rules';
+import { Rule } from '@ifc-lite/rules';
 import { emptyFilterState } from '@/store/slices/searchSlice';
 import { SearchModalFilterSelector } from './SearchModal.filter.selector.js';
 

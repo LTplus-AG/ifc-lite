@@ -23,7 +23,7 @@ import { act } from 'react';
 import { render, cleanup, click } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { validationEditorEn } from '@/i18n/catalogues/validation-editor.en';
-import type { RuleSetFile } from '@/lib/validation/rule-set';
+import type { RuleSetFile } from '@ifc-lite/rules';
 import { RuleSetEditor } from './RuleSetEditor';
 
 type Key = keyof typeof validationEditorEn;

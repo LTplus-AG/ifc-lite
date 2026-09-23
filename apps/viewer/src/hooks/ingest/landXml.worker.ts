@@ -19,6 +19,8 @@ const workerScope = self as unknown as {
 interface LandXmlBlobWorkerRequest {
   file: Blob;
   streamFederatedPreflight?: boolean;
+  /** #5175: retry value the viewer supplies after a units refusal. */
+  assumedLinearUnit?: string;
 }
 
 interface LandXmlWorkerContinue {
@@ -91,7 +93,7 @@ async function streamBlobRequest(api: IfcAPI, input: LandXmlBlobWorkerRequest): 
     onSkippedComponent: (skippedComponent) => awaitComponent({ skippedComponent }),
     onSurfaceDiagnostics: (surfaceDiagnostics) => awaitComponent({ surfaceDiagnostics }),
     onSourceEvent: awaitSourceEvent,
-  }, { wantsFederatedStreaming: input.streamFederatedPreflight === true });
+  }, { wantsFederatedStreaming: input.streamFederatedPreflight === true, assumedLinearUnit: input.assumedLinearUnit });
   return { preflight: result.preflight, droppedPrimaryComponents: result.droppedPrimaryComponents };
 }
 

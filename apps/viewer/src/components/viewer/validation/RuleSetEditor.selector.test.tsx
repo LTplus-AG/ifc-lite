@@ -17,7 +17,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useState } from 'react';
 import { render, cleanup, click, type } from '@/test/render.js';
-import type { RuleBlock } from '@/lib/validation/rule-set';
+import type { RuleBlock } from '@ifc-lite/rules';
 import { RuleBlockEditor } from './RuleBlockEditor.js';
 
 function emptyBlock(): RuleBlock {

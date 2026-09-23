@@ -13,7 +13,7 @@ function profilesOnlyDocument(): LandXmlTinDocument {
   return {
     format: 'landxml', schema: 'LandXML-1.2', version: '1.2',
     capabilities: { renderableTin: false, preservedOnlySurfaces: 0, unknownExtensions: 0 },
-    units: { linearUnit: 'meter', elevationUnit: 'meter', linearScaleToMeters: 1, elevationScaleToMeters: 1 },
+    units: { linearUnit: 'meter', elevationUnit: 'meter', linearScaleToMeters: 1, elevationScaleToMeters: 1, assumed: false },
     surfaces: [], extensions: [], warnings: [], alignments: [{ sourceId: 'alignment', ordinal: 1, name: 'Route', length: 100, staStart: 0, profileSourceIds: ['design', 'ground'], crossSectionSourceIds: [], segments: [], cantStations: [], superelevations: [], unsupportedTransitions: [] }],
     profiles: [
       { sourceId: 'design', parentAlignmentSourceId: 'alignment', ordinal: 1, name: 'design', kind: 'design', pvis: [], verticalCurves: [], gradeLines: [] },

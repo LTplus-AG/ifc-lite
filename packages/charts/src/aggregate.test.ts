@@ -262,4 +262,69 @@ describe('aggregate invariants', () => {
     expect(() => aggregate({ id: 'x', title: 'x', source: 'clash', type: 'bar', dimension: 'Nope', measure: { agg: 'count' } }, ds)).toThrow(/dimension column "Nope"/);
     expect(() => aggregate({ id: 'x', title: 'x', source: 'clash', type: 'bar', dimension: 'T', measure: { agg: 'sum', column: 'Nope' } }, ds)).toThrow(/measure column "Nope"/);
   });
+
+  it('creates a single bucket for elementCount, counting all elements', async () => {
+    const ds = await parsedDataset();
+    const agg = aggregate({ id: 'ec', title: 'All Elements', source: 'elements', type: 'elementCount', measure: { agg: 'count' } }, ds);
+    expect(agg.categories).toHaveLength(1);
+    expect(agg.categories[0].label).toBe('Total');
+    expect(agg.categories[0].count).toBe(5);
+    expect(agg.categories[0].value).toBe(5);
+    expect([...agg.categories[0].ids].sort()).toEqual([41, 42, 43, 44, 45]);
+    expect(agg.total).toBe(5);
+    expect(agg.unbucketed).toBe(0);
+    expect(agg.series).toHaveLength(1);
+    expect(agg.series[0].buckets).toHaveLength(1);
+  });
+
+  it('elementCount respects the slice option to count only selected elements', async () => {
+    const ds = await parsedDataset();
+    const selectedIds = new Set([41, 42, 44]);
+    const agg = aggregate({ id: 'ec', title: 'Selected', source: 'elements', type: 'elementCount', measure: { agg: 'count' } }, ds, { slice: selectedIds });
+    expect(agg.categories[0].count).toBe(3);
+    expect([...agg.categories[0].ids].sort()).toEqual([41, 42, 44]);
+  });
+
+  // Regression (#5151): a chart switched from a sum-measured type (e.g. a
+  // bar chart summing "Area") to elementCount used to keep the stale
+  // `{ agg: 'sum', column }` measure — nothing normalized it away before it
+  // reached `aggregate()`. The elementCount branch read `spec.measure.agg`
+  // and only counted a row when it was literally `'count'`, so every row
+  // added zero and a five-row dataset displayed as a Total of 0 even though
+  // `count`/`ids` still reported 5 correctly. This is the "adds zero"
+  // failure the maintainer review named; `aggregate()` must ignore
+  // `measure` entirely for elementCount, so no caller — editor or library —
+  // can reproduce it by constructing this spec directly.
+  it('elementCount ignores a stale non-count measure instead of adding zero for every row', () => {
+    const ds = dataset([['Type', 'category'], ['Area', 'number']], [
+      [[1], ['Wall', 10]], [[2], ['Wall', 2.5]], [[3], ['Slab', 7]], [[4], ['Slab', 4]], [[5], ['Door', 1]],
+    ]);
+    const staleMeasure: ChartSpec = { id: 'ec', title: 'Total', source: 'elements', type: 'elementCount', measure: { agg: 'sum', column: 'Area' } };
+    const agg = aggregate(staleMeasure, ds);
+    expect(agg.total).toBe(5);
+    expect(agg.categories[0].value).toBe(5);
+    expect(agg.categories[0].count).toBe(5);
+  });
+
+  // Regression (#5151): `Bucket.count` is documented ("Rows in the bucket,
+  // regardless of measure") and every other path keeps `count` as a ROW
+  // count (`acc.count += 1`), independent from `value`/`ids.size`. The
+  // elementCount branch instead set `count: ids.size` — a DEDUPLICATED
+  // element-id count — while `value`/`total` stayed a row count. Two rows
+  // that carry the same element id (e.g. two schedule tasks touching one
+  // element) make row count and unique-id count genuinely diverge: 3 rows,
+  // 2 unique ids.
+  it('elementCount keeps count as a row count, not a unique-id count, when rows share an id', () => {
+    const ds = dataset([['Type', 'category']], [
+      [[1], ['Wall']],
+      [[1], ['Wall']], // same element id as row 1 — a second task/row referencing it
+      [[2], ['Door']],
+    ]);
+    const spec: ChartSpec = { id: 'ec', title: 'Total', source: 'elements', type: 'elementCount', measure: { agg: 'count' } };
+    const agg = aggregate(spec, ds);
+    expect(agg.total).toBe(3);
+    expect(agg.categories[0].value).toBe(3);
+    expect(agg.categories[0].count).toBe(3); // rows, not the 2 unique ids
+    expect([...agg.categories[0].ids].sort()).toEqual([1, 2]);
+  });
 });

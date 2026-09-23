@@ -36,8 +36,8 @@ import { effectiveMutationRelationships, foldMutationRelated } from './query-ove
 import { overlayProperties, overlayQuantities } from './query-adapter-overlay.js';
 import { foldRelationshipData } from './query-relationship-fold.js';
 import { isProductType } from './query-entity-filter.js';
-import { evaluateFilterGroups } from '../../lib/search/filter-evaluate-groups.js';
-import { totalRuleCount } from '../../lib/search/filter-groups.js';
+import { evaluateFilterGroups } from '@ifc-lite/rules';
+import { totalRuleCount } from '@ifc-lite/rules';
 import { definedModelTagIdsOf } from '../../lib/model-tags/evaluator-models.js';
 
 function normalizePropertyValue(value: unknown): string | number | boolean | null {

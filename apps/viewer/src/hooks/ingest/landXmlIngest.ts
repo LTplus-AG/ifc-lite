@@ -6,7 +6,7 @@ import { createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.
 import { placeAndAssignLandXmlComponents, type LandXmlGeometryComponent } from './landXmlComponentPlacement.js';
 import { deriveLandXmlRenderFrameFromMeasurement, type LandXmlRenderFramePlan } from './landXmlRenderFrame.js';
 import { sourceCoordinateInfo } from './landXmlSourceFrame.js';
-import type { LandXmlTinDocument, LandXmlTinSurface } from './landXmlSemantics.js';
+import type { LandXmlTinDocument, LandXmlTinSurface, LandXmlUnitScales } from './landXmlSemantics.js';
 import { buildLandXmlPipeComponents } from './landXmlPipeGeometry.js';
 import { pipeRefusalWarnings } from './landXmlPipeWarnings.js';
 import { fragmentLandXmlGeometryComponent } from './landXmlComponentFragmentation.js';
@@ -247,7 +247,7 @@ export function preflightLandXmlGeometry(parsed: LandXmlTinDocument): LandXmlGeo
 /** Build one surface's exact render components without assigning global ids. */
 export function buildLandXmlSurfaceComponents(
   surface: LandXmlTinSurface,
-  units: NonNullable<LandXmlTinDocument['units']>,
+  units: LandXmlUnitScales,
   firstExpressId: number,
 ): LandXmlSurfaceComponentBuild {
   const components: LandXmlGeometryComponent[] = [];

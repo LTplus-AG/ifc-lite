@@ -13,6 +13,7 @@ import type { LandXmlGeometryPreflight } from './landXmlIngest.js';
 import type { LandXmlSchema, LandXmlTinDocument } from './landXmlSemantics.js';
 import { landXmlRenderFrameWarning, MAX_RENDER_FRAME_LOCAL_EXTENT_METRES, meshFitsRenderFrame, meshRenderFrameBounds } from './landXmlRenderFrame.js';
 import { LandXmlProvisionalTransaction } from './landXmlProvisionalTransaction.js';
+import { LandXmlProvisionalUploadError } from './landXmlGpuTransactions.js';
 import { markLandXmlGpuUploaded } from './landXmlGpuOwnership.js';
 import { type FederatedLandXmlStreamingFinalization, FederatedLandXmlStreamingPlan } from './federatedLandXmlStreaming.js';
 
@@ -22,6 +23,13 @@ interface LandXmlLoadOptions {
   targetKind: 'primary' | 'federated';
   totalStartTime: number;
   wasHidden: boolean;
+  /**
+   * #5175: opt-in linear unit for a source with no declared `<Units>`. Absent
+   * by default, so a unitless source refuses exactly as it did before this
+   * option existed; the viewer supplies it only on a user-chosen retry after
+   * that refusal.
+   */
+  assumedLinearUnit?: string;
   isCurrent(): boolean;
   setProgress(progress: { phase: string; percent: number }): void;
   setGeometryStreamingActive(active: boolean): void;
@@ -223,8 +231,21 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
       (mesh) => {
         if (federatedPlan.value !== null) return federatedPlan.value.publish(mesh);
         if (provisional.value === null) return;
-        provisional.value.publish(mesh);
-        streamedComponents++;
+        try {
+          provisional.value.publish(mesh);
+          streamedComponents++;
+        } catch (error) {
+          // The provisional upload is a progressive-rendering optimisation, not
+          // the load itself (#5175). `publish` has already rolled back its own
+          // partial GPU/registry state, so abandoning it here lands on exactly
+          // the path taken when no renderer was available, and the geometry is
+          // published normally once parsing completes. Only an environmental
+          // upload failure degrades; an invariant violation stays fatal.
+          if (!(error instanceof LandXmlProvisionalUploadError)) throw error;
+          console.warn('[landxml] provisional GPU upload failed; continuing without it:', error.message);
+          provisional.value = null;
+          streamedComponents = 0;
+        }
       },
       hasFederatedStreamingPlan
         ? (preflight, sourceCoordinateInfo, spatialReference) => {
@@ -242,6 +263,7 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
         }
         provisional.value?.skip(component);
       },
+      options.assumedLinearUnit,
     );
     // The browser worker is terminated within the cancellation polling bound;
     // this guard also prevents a racing stale reply from mutating model state.
@@ -251,28 +273,39 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
       return;
     }
     if (provisional.value !== null) {
-      if (streamedComponents === 0) {
-        // Worker-less Blob loads still reserve the exact measured envelope.
-        // Their direct completion may have refused frame slots, so replay the
-        // original source order and consume each gap rather than compacting
-        // surviving mesh identities before committing the reservation.
-        const bySourceId = new Map(result.geometryResult.meshes.map((mesh) => [mesh.expressId, mesh]));
-        for (let expressId = 1; expressId <= provisional.value.reservedMaxExpressId; expressId++) {
-          const mesh = bySourceId.get(expressId);
-          if (mesh === undefined) provisional.value.skip({ expressId });
-          else provisional.value.publish(mesh);
+      try {
+        if (streamedComponents === 0) {
+          // Worker-less Blob loads still reserve the exact measured envelope.
+          // Their direct completion may have refused frame slots, so replay the
+          // original source order and consume each gap rather than compacting
+          // surviving mesh identities before committing the reservation.
+          const bySourceId = new Map(result.geometryResult.meshes.map((mesh) => [mesh.expressId, mesh]));
+          for (let expressId = 1; expressId <= provisional.value.reservedMaxExpressId; expressId++) {
+            const mesh = bySourceId.get(expressId);
+            if (mesh === undefined) provisional.value.skip({ expressId });
+            else provisional.value.publish(mesh);
+          }
+        } else {
+          for (const mesh of result.geometryResult.meshes.slice(streamedComponents)) provisional.value.publish(mesh);
         }
-      } else {
-        for (const mesh of result.geometryResult.meshes.slice(streamedComponents)) provisional.value.publish(mesh);
+        for (const mesh of result.geometryResult.meshes) {
+          mesh.expressId += provisional.value.idOffset;
+          markLandXmlGpuUploaded(mesh);
+        }
+        for (const provenance of result.semanticDocument.rendering.meshProvenance) {
+          provenance.meshExpressId += provisional.value.idOffset;
+        }
+        provisional.value.commit();
+      } catch (error) {
+        // Same degradation as the streaming callback above (#5175): the
+        // transaction has rolled back, and no express id was rewritten because
+        // the offset pass runs only after every publish succeeds, so dropping
+        // the provisional here leaves `result` exactly as the no-renderer path
+        // would have produced it.
+        if (!(error instanceof LandXmlProvisionalUploadError)) throw error;
+        console.warn('[landxml] provisional GPU commit failed; continuing without it:', error.message);
+        provisional.value = null;
       }
-      for (const mesh of result.geometryResult.meshes) {
-        mesh.expressId += provisional.value.idOffset;
-        markLandXmlGpuUploaded(mesh);
-      }
-      for (const provenance of result.semanticDocument.rendering.meshProvenance) {
-        provenance.meshExpressId += provisional.value.idOffset;
-      }
-      provisional.value.commit();
     }
     if (federatedPlan.value !== null) {
       federatedPlan.value.complete(result.geometryResult);

@@ -88,6 +88,15 @@ pub struct LandXmlLimits {
     /// Maximum capability records retained while parsing incomplete source data.
     pub max_capability_diagnostics: usize,
     pub max_work: usize,
+    /// #5175: an explicit, caller-audited linear unit to assume when the
+    /// source declares no `LandXML/Units` element at all. `None` by default,
+    /// which keeps the LXML009 refusal in `parser::finalize` in force. This
+    /// is never inferred from the file; it is supplied by the host and
+    /// carried into the parsed document's units record with `assumed: true`
+    /// so nothing downstream can mistake it for a declared unit. A declared
+    /// `<Units>` element always wins over this field; see
+    /// `parser.rs`'s `Metric`/`Imperial` handler.
+    pub assumed_linear_unit: Option<String>,
 }
 
 impl Default for LandXmlLimits {
@@ -122,6 +131,7 @@ impl Default for LandXmlLimits {
             max_preserved_only_extensions: 1_000_000,
             max_capability_diagnostics: 1_000_000,
             max_work: 100_000_000,
+            assumed_linear_unit: None,
         }
     }
 }

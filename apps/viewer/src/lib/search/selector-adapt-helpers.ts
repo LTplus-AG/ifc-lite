@@ -12,7 +12,7 @@
  */
 
 import type { SelectorOp, SelectorText, SelectorValue } from '@ifc-lite/query';
-import type { NumericOp, SetOp, TextKind, ValueOp } from './filter-rules.js';
+import type { NumericOp, SetOp, TextKind, ValueOp } from '@ifc-lite/rules';
 
 /**
  * The comparison ops every string-ish dimension shares — Name, material and

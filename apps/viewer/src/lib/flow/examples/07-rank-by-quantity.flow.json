@@ -1,0 +1,172 @@
+{
+  "flowVersion": 1,
+  "id": "example-rank-by-quantity",
+  "name": "7 · Rank by quantity (Script list)",
+  "description": "`Script (list)` is the same sandbox with list ports instead of item ports, so the code sees the whole set at once and returns an array. Sorting, ranking and top-N are impossible per element; they are three lines here. The ranked elements are painted and tabulated.",
+  "capabilities": [
+    "model.read",
+    "viewer.colorize"
+  ],
+  "inputs": [
+    {
+      "nodeId": "elements",
+      "param": "type",
+      "label": "IFC class",
+      "kind": "scalar"
+    },
+    {
+      "nodeId": "quantity",
+      "param": "quantity",
+      "label": "Quantity",
+      "kind": "scalar"
+    },
+    {
+      "nodeId": "howMany",
+      "param": "value",
+      "label": "How many",
+      "kind": "scalar"
+    }
+  ],
+  "outputs": [
+    {
+      "nodeId": "table",
+      "port": "table",
+      "label": "Top elements"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "elements",
+      "type": "model.byType",
+      "params": {
+        "type": "IfcWall"
+      },
+      "pos": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": "quantity",
+      "type": "model.quantity",
+      "params": {
+        "quantity": "NetVolume"
+      },
+      "pos": [
+        280,
+        -80
+      ]
+    },
+    {
+      "id": "howMany",
+      "type": "core.number",
+      "params": {
+        "value": 5
+      },
+      "pos": [
+        280,
+        160
+      ]
+    },
+    {
+      "id": "top",
+      "type": "script.list",
+      "params": {
+        "code": "// `script.list` sees WHOLE lists, so it can do what a per-element node\n// cannot: sort, rank, de-duplicate, compare an element against the rest.\n//   inputs.a  the elements      inputs.b  their quantity values\n//   inputs.c  [n]               (an item feeding a list port arrives as [x])\n// The last expression must be an array.\nconst values = inputs.b ?? [];\nconst n = Math.max(1, Number(inputs.c?.[0] ?? 5));\nconst ranked = (inputs.a ?? [])\n  .map((entity, i) => ({ entity, value: typeof values[i] === 'number' ? values[i] : 0 }))\n  .sort((x, y) => y.value - x.value);\nranked.slice(0, n).map((r) => r.entity);\n"
+      },
+      "pos": [
+        600,
+        0
+      ],
+      "label": "Top N by quantity"
+    },
+    {
+      "id": "paint",
+      "type": "viewer.colorize",
+      "params": {
+        "color": "#7aa2f7"
+      },
+      "pos": [
+        900,
+        0
+      ]
+    },
+    {
+      "id": "table",
+      "type": "table.fromEntities",
+      "params": {
+        "columns": [
+          "Name",
+          "Type",
+          "Qto_WallBaseQuantities.NetVolume"
+        ]
+      },
+      "pos": [
+        1180,
+        0
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": [
+        "elements",
+        "entities"
+      ],
+      "to": [
+        "quantity",
+        "entity"
+      ]
+    },
+    {
+      "from": [
+        "elements",
+        "entities"
+      ],
+      "to": [
+        "top",
+        "a"
+      ]
+    },
+    {
+      "from": [
+        "quantity",
+        "value"
+      ],
+      "to": [
+        "top",
+        "b"
+      ]
+    },
+    {
+      "from": [
+        "howMany",
+        "value"
+      ],
+      "to": [
+        "top",
+        "c"
+      ]
+    },
+    {
+      "from": [
+        "top",
+        "items"
+      ],
+      "to": [
+        "paint",
+        "entities"
+      ]
+    },
+    {
+      "from": [
+        "paint",
+        "entities"
+      ],
+      "to": [
+        "table",
+        "entities"
+      ]
+    }
+  ]
+}

@@ -218,6 +218,11 @@ export function readLandXmlTinDocument(value: unknown): LandXmlTinDocument {
       elevationUnit: string(units.elevation_unit, 'elevation unit'),
       linearScaleToMeters: finite(units.linear_scale_to_meters, 'linear scale'),
       elevationScaleToMeters: finite(units.elevation_scale_to_meters, 'elevation scale'),
+      // #5175: true only when the caller supplied `assumedLinearUnit` for a
+      // source that declares no `<Units>`. Never true for a declared unit, so
+      // a consumer can always tell an assumption from the producer's own
+      // statement. Defaults false for documents persisted before the flag.
+      assumed: units.assumed === true,
     },
     ...(coordinateSystem ? {
       coordinateSystem: {

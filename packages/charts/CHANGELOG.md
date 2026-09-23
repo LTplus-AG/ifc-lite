@@ -1,5 +1,13 @@
 # @ifc-lite/charts
 
+## 0.5.0
+
+### Minor Changes
+
+- [#5151](https://github.com/LTplus-AG/ifc-lite/pull/5151) [`b785770`](https://github.com/LTplus-AG/ifc-lite/commit/b7857709a31f958601f1c4c9af09e5a95f81300e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add Element Count chart type. Displays the total count of elements as a numeric KPI-style readout. The chart reuses the existing source-filter mechanism and renders a single aggregated value as text.
+  
+  `ChartSpec` is now a discriminated union on `type`: every chart type but `elementCount` still requires `dimension`, and `elementCount` must omit it entirely (no `dimension: ''` sentinel). `aggregate()` always counts matching rows for `elementCount` regardless of `measure`, and `validateDashboardSpec()` rejects an `elementCount` chart that carries a `dimension` or a non-`count` measure, so a chart switched from a sum-measured type can no longer render a stale total of zero.
+
 ## 0.4.0
 
 ### Minor Changes

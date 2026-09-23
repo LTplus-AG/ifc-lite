@@ -5,7 +5,52 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
+import { computeSourceFingerprint } from '@ifc-lite/cache';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
+
+/**
+ * Reference implementation of the OLD, weak fingerprint the current
+ * `computeSourceFingerprint` (`@ifc-lite/cache`, moved from this hook in
+ * #5138 PR 7b review) replaced: FNV-1a over the first 4KB + last 4KB, 32
+ * bits, ignoring the entire interior of the file. Kept here ONLY to prove
+ * the strengthened fingerprint changes the resulting cache key where the
+ * old one would not have. The fingerprint math itself is covered in
+ * `@ifc-lite/cache`'s `source-fingerprint.test.ts`; this integration test
+ * is scoped to the viewer's own concern: that a distinguishing fingerprint
+ * actually produces a distinguishing `buildGeometryCacheKey`.
+ */
+function oldWeakFingerprint(buffer: ArrayBuffer): string {
+  const CHUNK_SIZE = 4096;
+  const view = new Uint8Array(buffer);
+  const len = view.length;
+  let hash = 2166136261;
+  const firstEnd = Math.min(CHUNK_SIZE, len);
+  for (let i = 0; i < firstEnd; i++) {
+    hash ^= view[i];
+    hash = Math.imul(hash, 16777619);
+  }
+  if (len > CHUNK_SIZE) {
+    const lastStart = Math.max(CHUNK_SIZE, len - CHUNK_SIZE);
+    for (let i = lastStart; i < len; i++) {
+      hash ^= view[i];
+      hash = Math.imul(hash, 16777619);
+    }
+  }
+  return (hash >>> 0).toString(16);
+}
+
+function fill(len: number, seed: number): ArrayBuffer {
+  const buf = new ArrayBuffer(len);
+  const view = new Uint8Array(buf);
+  let x = seed >>> 0;
+  for (let i = 0; i < len; i++) {
+    x ^= x << 13; x >>>= 0;
+    x ^= x >> 17;
+    x ^= x << 5; x >>>= 0;
+    view[i] = x & 0xff;
+  }
+  return buf;
+}
 
 describe('buildGeometryCacheKey', () => {
   it('folds size, fingerprint and format version into the key', () => {
@@ -93,5 +138,32 @@ describe('buildGeometryCacheKey', () => {
     const key = buildGeometryCacheKey(4096, 'feed', true, 5, true, 'lowest');
     assert.strictEqual(key, 'ifc-4096-feed-v5-g2-ml-sc-tlowest');
     assert.match(key, /^[A-Za-z0-9_-]+$/);
+  });
+});
+
+describe('buildGeometryCacheKey + computeSourceFingerprint (integration)', () => {
+  it('a HEAD change the old weak key missed produces a distinct geometry cache key under the strengthened fingerprint', () => {
+    // A 1MB file; flip one byte at 32KB — outside the old first/last-4KB
+    // windows (so the old key collides) but inside the new 64KB head window.
+    const a = fill(1_048_576, 42);
+    const b = a.slice(0);
+    new Uint8Array(b)[32 * 1024] ^= 0xff;
+
+    // Sanity: the two files DO collide on the old weak key.
+    assert.strictEqual(oldWeakFingerprint(a), oldWeakFingerprint(b));
+    assert.strictEqual(
+      buildGeometryCacheKey(a.byteLength, oldWeakFingerprint(a), false),
+      buildGeometryCacheKey(b.byteLength, oldWeakFingerprint(b), false),
+    );
+
+    // The strengthened fingerprint distinguishes them -> different cache key
+    // -> the second file is NOT served the first file's cached geometry.
+    const fpA = computeSourceFingerprint(a);
+    const fpB = computeSourceFingerprint(b);
+    assert.notStrictEqual(fpA.hex, fpB.hex);
+    assert.notStrictEqual(
+      buildGeometryCacheKey(a.byteLength, fpA.hex, false),
+      buildGeometryCacheKey(b.byteLength, fpB.hex, false),
+    );
   });
 });

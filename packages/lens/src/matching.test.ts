@@ -357,7 +357,7 @@ describe('matchesCriteria — quantity', () => {
 // Comparison operators (ne / gt / gte / lt / lte)
 //
 // Semantics are ported from the viewer's search rule model
-// (apps/viewer/src/lib/search/filter-rules.ts, `valueOpMatches`): the four
+// (`@ifc-lite/rules`'s `filter-rules.ts`, `valueOpMatches`): the four
 // numeric ops parse BOTH sides with Number.parseFloat and match only when both
 // parse finite; `ne` is a string comparison, not a numeric one. A missing value
 // never matches any of the five.

@@ -1,5 +1,19 @@
 # @ifc-lite/export
 
+## 4.6.0
+
+### Minor Changes
+
+- [#5090](https://github.com/LTplus-AG/ifc-lite/pull/5090) [`3a2b62f`](https://github.com/LTplus-AG/ifc-lite/commit/3a2b62f2d36bfb740c3551e86e8641d7e8f596b5) Thanks [@louistrue](https://github.com/louistrue)! - Fix silent structural-analysis data loss on IFC4 → IFC2X3 conversion: `IfcStructuralLoadCase`, `IfcStructuralCurveAction` and `IfcStructuralSurfaceAction` now map to their real IFC2X3 targets (`IfcStructuralLoadGroup`, `IfcStructuralLinearAction`, `IfcStructuralPlanarAction`) instead of becoming generic `IFCPROXY` placeholders. Add `analyzeConversionLoss`/`classifyEntityTypeConversion` (`@ifc-lite/export`), a per-type schema-conversion loss report computed without attempting the export, so a type with no representation at all in the target schema is named — with its express ids and the attributes it cannot carry — instead of surfacing as an uncaught exception from the middle of a full export. `ifc-lite convert` now prints this report and refuses cleanly, before writing any file, when the source contains a type the target schema cannot represent at all. Add the missing `structural_data` MCP tool so an MCP client can read the structural analysis model, matching the CLI/SDK/viewer coverage `bim.structural` already had.
+
+### Patch Changes
+
+- [#5118](https://github.com/LTplus-AG/ifc-lite/pull/5118) [`8356b8e`](https://github.com/LTplus-AG/ifc-lite/commit/8356b8ea43968a291cb8117736bf8cb4e9c4cdfa) Thanks [@louistrue](https://github.com/louistrue)! - `exportToStep({ schema: 'IFC2X3' })` no longer throws on `IfcMaterialProfileSet`, `IfcMaterialProfile`, `IfcMaterialProfileSetUsage` (+ `IfcMaterialProfileSetUsageTapering`/`IfcMaterialProfileWithOffsets`) — IFC4-only, non-rooted material-profile types with no IFC2X3 representation. They're now withheld the same way `IfcStructuralLoadConfiguration` is ([#5114](https://github.com/LTplus-AG/ifc-lite/issues/5114)): omitted from the output, with the referencing `IfcRelAssociatesMaterial` redirected to an `IFCPROXY` instead of the export crashing or shipping a dangling reference.
+- Updated dependencies [[`f87bed2`](https://github.com/LTplus-AG/ifc-lite/commit/f87bed29a52610b66b3d0ee510406ce087a66621), [`35e54fc`](https://github.com/LTplus-AG/ifc-lite/commit/35e54fc20bc8a7632b9caec26cdb820e1ee0c0b7)]:
+  - @ifc-lite/mutations@2.6.0
+  - @ifc-lite/geometry@7.5.0
+  - @ifc-lite/ifcx@4.1.3
+
 ## 4.5.0
 
 ### Minor Changes

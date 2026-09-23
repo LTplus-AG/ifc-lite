@@ -1,5 +1,50 @@
 # @ifc-lite/wasm
 
+## 9.3.0
+
+### Minor Changes
+
+- [#5113](https://github.com/LTplus-AG/ifc-lite/pull/5113) [`51c36ec`](https://github.com/LTplus-AG/ifc-lite/commit/51c36ecd9051769be7762d711bff705ef76866aa) Thanks [@louistrue](https://github.com/louistrue)! - Expose constrained LandXML terrain topology origin and preserved-only refusal diagnostics.
+
+- [#5103](https://github.com/LTplus-AG/ifc-lite/pull/5103) [`3b0c496`](https://github.com/LTplus-AG/ifc-lite/commit/3b0c496bc2789c56812bfce40021e2beb2eb830e) Thanks [@louistrue](https://github.com/louistrue)! - Expose COGO, parcel, and plan-feature LandXML semantics through the canonical WASM document.
+
+- [#5099](https://github.com/LTplus-AG/ifc-lite/pull/5099) [`9b910f4`](https://github.com/LTplus-AG/ifc-lite/commit/9b910f4ad0a187addead0f578b81e332287f0ea3) Thanks [@louistrue](https://github.com/louistrue)! - Retain bounded LandXML horizontal-alignment source semantics, canonical Rust-evaluated curve and clothoid overlay samples, exact station probes, and authored cant and superelevation inspection.
+
+- [#5126](https://github.com/LTplus-AG/ifc-lite/pull/5126) [`30984b4`](https://github.com/LTplus-AG/ifc-lite/commit/30984b4abecb838c132e5823ad51455a6ee0c15a) Thanks [@louistrue](https://github.com/louistrue)! - Accept bounded LandXML 1.0 and 1.1 source grammars alongside 1.2, preserving declared-version provenance and reporting known namespace/version mismatches explicitly.
+
+- [#5102](https://github.com/LTplus-AG/ifc-lite/pull/5102) [`bde27c5`](https://github.com/LTplus-AG/ifc-lite/commit/bde27c581e242f8479147e865b17a5ff6a0dc436) Thanks [@louistrue](https://github.com/louistrue)! - Expose validated LandXML PipeNetwork records in the canonical WASM document
+  contract, and render inspectable, model-qualified pipe routes through the
+  viewer’s normal primary and federated load path.
+
+- [#5101](https://github.com/LTplus-AG/ifc-lite/pull/5101) [`b6ac473`](https://github.com/LTplus-AG/ifc-lite/commit/b6ac4730babff9ba78fa06bae8f98c14958c0cea) Thanks [@louistrue](https://github.com/louistrue)! - Retain LandXML 1.2 alignment profiles, vertical curves, cross-sections, and roadway source associations in `parseLandXmlTinBytes` results, including bounded capability diagnostics for missing source data and preserved-only corridor records.
+
+- [#5161](https://github.com/LTplus-AG/ifc-lite/pull/5161) [`b9d0ff6`](https://github.com/LTplus-AG/ifc-lite/commit/b9d0ff6eab8dca015497c6e8e0598b81ee81a43d) Thanks [@louistrue](https://github.com/louistrue)! - Expose a quota-governed resumable LandXML terrain stream through
+  `IfcAPI.createLandXmlTinStreamSession`, with encoding-aware input, bounded
+  typed semantic fragments, and explicit cancellation cleanup.
+
+- [#5084](https://github.com/LTplus-AG/ifc-lite/pull/5084) [`86ffd75`](https://github.com/LTplus-AG/ifc-lite/commit/86ffd751cc783dfc4ee7a9b55508d5c75b844178) Thanks [@louistrue](https://github.com/louistrue)! - Preserve durable LandXML terrain source records alongside render meshes: stable
+  surface/point/face IDs, boundary, breakline and contour overlays, explicit
+  TIN/GRID/volume render states, and bounded vendor-extension metadata.
+  Keep IFC export fail-closed for source-only terrain while retaining JSON mutation deltas.
+
+- [#5229](https://github.com/LTplus-AG/ifc-lite/pull/5229) [`829b566`](https://github.com/LTplus-AG/ifc-lite/commit/829b566988aabe0ed3676b7df6082d3169df8830) Thanks [@louistrue](https://github.com/louistrue)! - LandXML units are required consistently, and an assumed unit is auditable ([#5175](https://github.com/LTplus-AG/ifc-lite/issues/5175)).
+  
+  A numeric, renderable TIN surface must declare `LandXML/Units` with a `linearUnit`. That rule previously lived only in the streaming session, so the same unitless file refused on one parse path and rendered on the other; it is now one shared check both paths call, and the `LXML009` message names the missing element and attribute. A surface that draws nothing — preserved-only, faceless-refused, or a TIN whose faces are all hidden — still parses without units, unchanged.
+  
+  `LandXmlParseOptionsJs.assumedLinearUnit` lets a caller supply a unit for a source that declares none, including on `createLandXmlTinStreamSession`. It is opt-in, refuses an unknown token rather than defaulting to meters, and loses to a declared `<Units>` with a warning. Units carry `assumed: boolean` so a consumer can always tell an operator's assumption from the producer's own declaration.
+
+- [#5071](https://github.com/LTplus-AG/ifc-lite/pull/5071) [`18833c8`](https://github.com/LTplus-AG/ifc-lite/commit/18833c86af7d8ff9699970c4440d90b2235ef2f7) Thanks [@louistrue](https://github.com/louistrue)! - Expose bounded raw-byte LandXML 1.2 TIN ingestion through `IfcAPI.parseLandXmlTinBytes`, including stable `LXML` diagnostics and XML encoding handling in Rust, and route viewer LandXML loading through the canonical WASM-backed path.
+
+### Patch Changes
+
+- [#5150](https://github.com/LTplus-AG/ifc-lite/pull/5150) [`a11c090`](https://github.com/LTplus-AG/ifc-lite/commit/a11c090d0c86a9241bb67ce42822be5b6a631196) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix an `IfcAdvancedBrep`/`IfcAdvancedBrepWithVoids` face that fails to triangulate (e.g. a holed planar face earcut cannot fill without silently closing the authored opening) aborting the whole solid. It is now skipped like `FaceBasedSurfaceModelProcessor` already does, so the rest of the solid's faces still mesh.
+
+- [#5131](https://github.com/LTplus-AG/ifc-lite/pull/5131) [`3eaf48c`](https://github.com/LTplus-AG/ifc-lite/commit/3eaf48cd8cf10ee117be4086f78224a21e4960c8) Thanks [@louistrue](https://github.com/louistrue)! - Keep a cut result's sub-millimetre slivers when the stray-shard sweep reads both sides of their centroid as outside the host: a flush cap grazing the host by a few µm leaves such a strip connected to the closed skin, and dropping it tore ISSUE_068 [#1401204](https://github.com/LTplus-AG/ifc-lite/issues/1401204) open. The centroid verdict now carries the same 1 mm clearance the vertex verdict already had.
+
+- [#5120](https://github.com/LTplus-AG/ifc-lite/pull/5120) [`816114a`](https://github.com/LTplus-AG/ifc-lite/commit/816114ad21120e3bd84394e080c44e6679ae959d) Thanks [@louistrue](https://github.com/louistrue)! - `rust/export/src/schema_convert.rs` (the native/WASM STEP export path) now has a fallback for an IFC4-only entity type with no representation at all in an IFC2X3 target, mirroring the TypeScript exporter's `resolveUnrepresentedEntity`: a rooted type (e.g. `IfcStructuralCurveReaction`, `IfcTriangulatedFaceSet`) becomes an `IFCPROXY` placeholder instead of passing through unchanged under an invalid type name, and a non-rooted type (a representation item or resource type referenced positionally) now returns a clear error from `exportStep`/`exportStepJson` instead of silently shipping an invalid IFC2X3 file. `exportMerged`'s federated path is a documented, separate follow-up (mirrors the TS exporter's own scope boundary on that path).
+
+- [#5114](https://github.com/LTplus-AG/ifc-lite/pull/5114) [`3be90af`](https://github.com/LTplus-AG/ifc-lite/commit/3be90af6fa5b0446f6077ddff92873f68b58a7c0) Thanks [@louistrue](https://github.com/louistrue)! - Port the structural-analysis IFC2X3 rename fixes to the Rust schema converter (`rust/export/src/schema_convert.rs`, used by the native/WASM export path): `IfcStructuralLoadCase`, `IfcStructuralCurveAction` and `IfcStructuralSurfaceAction` now map to `IfcStructuralLoadGroup`/`IfcStructuralLinearAction`/`IfcStructuralPlanarAction` instead of silently passing through under their IFC4-only type names.
+
 ## 9.2.0
 
 ### Minor Changes

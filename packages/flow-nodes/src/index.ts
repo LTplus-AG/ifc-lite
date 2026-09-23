@@ -7,7 +7,7 @@ import { coreNodes } from './core-nodes.js';
 import { elementNodes } from './element-nodes.js';
 import type { FlowHost } from './host.js';
 import { modelNodes } from './model-nodes.js';
-import { scriptNode } from './script-node.js';
+import { scriptListNode, scriptNode } from './script-node.js';
 import { tableNodes } from './table-nodes.js';
 import { viewerNodes } from './viewer-nodes.js';
 import { writeNodes } from './write-nodes.js';
@@ -19,7 +19,7 @@ export type { ElementSpec } from './element-nodes.js';
 
 /** Every standard node, in one registry. */
 export function createStandardRegistry(): NodeRegistry<FlowHost> {
-  return new NodeRegistry<FlowHost>().registerAll([...coreNodes, ...modelNodes, ...tableNodes, ...viewerNodes, ...writeNodes, ...elementNodes, scriptNode]);
+  return new NodeRegistry<FlowHost>().registerAll([...coreNodes, ...modelNodes, ...tableNodes, ...viewerNodes, ...writeNodes, ...elementNodes, scriptNode, scriptListNode]);
 }
 
 /** What a viewer-embedded host offers. Secrets are never available in the browser. */

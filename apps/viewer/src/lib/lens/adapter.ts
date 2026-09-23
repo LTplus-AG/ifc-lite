@@ -25,8 +25,8 @@ import {
   mergeInheritedPropertySets,
   mergeInheritedQuantitySets,
 } from '@ifc-lite/parser';
-import { resolveEntityPredefinedType } from '@/lib/entity-predefined-type';
-import { lensMaterialNames } from '@/lib/lens-material-names';
+import { resolveEntityPredefinedType } from '@ifc-lite/rules';
+import { lensMaterialNames } from '@ifc-lite/rules';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import type { FederatedModel } from '@/store/types';
 

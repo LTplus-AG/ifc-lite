@@ -1,5 +1,11 @@
 # @ifc-lite/server-client
 
+## 3.0.1
+
+### Patch Changes
+
+- [#5110](https://github.com/LTplus-AG/ifc-lite/pull/5110) [`bb17a78`](https://github.com/LTplus-AG/ifc-lite/commit/bb17a78703ee090969136613fd64103dbf30d218) Thanks [@dependabot](https://github.com/apps/dependabot)! - Support `parquet-wasm` 0.8 while retaining compatibility with generated server templates on 0.7.
+
 ## 3.0.0
 
 ### Major Changes

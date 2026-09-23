@@ -29,6 +29,7 @@ mod text;
 mod version;
 
 pub(crate) use document::parse_landxml_document;
+pub(crate) use finalize::{require_units_for_renderable_tin, surface_draws_to_scale};
 pub(crate) use state::Parser;
 use state::{retained_properties, Frame, SurfaceBuilder};
 pub use version::*;
@@ -47,9 +48,13 @@ pub fn parse_landxml_tin_with_cancel(
     if input.len() > limits.max_bytes {
         return Err(error(Code::InputTooLarge, "input exceeds byte limit"));
     }
+    // #5175: validate a caller-supplied assumed-unit override up front, so
+    // an unknown token refuses before any XML is read rather than partway
+    // through a parse.
+    let assumed_units = crate::semantics::resolve_assumed_units(limits)?;
     let input = normalize_encoding(input, limits, cancelled)?;
     preflight_xml_tokens(&input, limits, cancelled)?;
-    let mut parser = Parser::new(limits, cancelled);
+    let mut parser = Parser::new(limits, cancelled, assumed_units);
     let mut reader = Reader::from_reader(input.as_slice());
     reader.config_mut().trim_text(false);
     let mut buffer = Vec::new();
@@ -262,7 +267,19 @@ impl Parser<'_> {
                         "LandXML may declare units only once",
                     ));
                 }
-                self.units = Some(units(&attributes)?)
+                self.units = Some(units(&attributes)?);
+                // #5175: a declared <Units> element always wins over a
+                // caller-supplied assumed-unit override. Silently dropping
+                // the override here would hide that the two might disagree,
+                // so warn once, non-fatally, at the exact point we learn the
+                // declaration exists.
+                if self.assumed_units.is_some() {
+                    self.warnings.push(
+                        "an assumed linear unit override was supplied but LandXML/Units is \
+                         declared; the declared units were used and the override was ignored"
+                            .to_owned(),
+                    );
+                }
             }
             "P" if self.is_path(&["LandXML", "Surfaces", "Surface", "Definition", "Pnts", "P"])
                 && self

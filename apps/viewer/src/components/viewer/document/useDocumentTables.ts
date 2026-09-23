@@ -22,8 +22,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ListDefinition } from '@ifc-lite/lists';
 import { useViewerStore } from '@/store';
-import type { DocumentSpec, TableBlock } from '@/lib/document/types';
+import type { DocumentSpec, ListTableSource, TableBlock, ValidationTableSource } from '@/lib/document/types';
 import type { TableState } from '@/lib/document/resolve-table';
+import { resolveValidationTableState } from '@/lib/document/resolve-validation-table';
 import { runListFederated } from '@/lib/lists/run-list';
 import { buildExportModel } from '@/lib/lists/export/model';
 import { detectNumericColumns } from '../lists/list-table-utils';
@@ -90,8 +91,20 @@ export function useDocumentTables(document: DocumentSpec | null): ReadonlyMap<st
   const zoneSets = useViewerStore((s) => s.zoneSets);
   const zoneAssignments = useViewerStore((s) => s.zoneAssignments);
   const zoneApportionment = useViewerStore((s) => s.zoneApportionment);
+  // A validation table resolves synchronously against the store's own report — no run, no
+  // fingerprint, no frame scheduling; it is recomputed on every render whose inputs changed, the
+  // same way a chart block's aggregation is (#5138).
+  const validationReport = useViewerStore((s) => s.idsValidationReport);
+  const models = useViewerStore((s) => s.models);
 
-  const blocks = useMemo(() => (document?.blocks ?? []).filter((b): b is TableBlock => b.kind === 'table'), [document]);
+  const blocks = useMemo(() => (document?.blocks ?? []).filter((b): b is TableBlock & { source: ListTableSource } => b.kind === 'table' && b.source.kind === 'list'), [document]);
+  const validationBlocks = useMemo(() => (document?.blocks ?? []).filter((b): b is TableBlock & { source: ValidationTableSource } => b.kind === 'table' && b.source.kind === 'validation'), [document]);
+  const validationStates = useMemo(() => {
+    const modelName = (modelId: string): string => models.get(modelId)?.name ?? modelId;
+    const out = new Map<string, TableState>();
+    for (const b of validationBlocks) out.set(b.id, resolveValidationTableState(b.source, validationReport, modelName));
+    return out;
+  }, [validationBlocks, validationReport, models]);
 
   // A fresh identity whenever anything a run reads changes: results are only valid under the key they were computed for.
   // The data stores (not the model objects: a streamed batch replaces those) stand for the federation.
@@ -175,6 +188,7 @@ export function useDocumentTables(document: DocumentSpec | null): ReadonlyMap<st
   return useMemo(() => {
     const out = new Map<string, TableState>();
     for (const [blockId, fp] of fingerprints) out.set(blockId, hasData ? (current.get(fp) ?? RESOLVING) : NO_MODEL);
+    for (const [blockId, state] of validationStates) out.set(blockId, state);
     return out;
-  }, [fingerprints, current, hasData]);
+  }, [fingerprints, current, hasData, validationStates]);
 }

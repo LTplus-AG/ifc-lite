@@ -1,0 +1,206 @@
+{
+  "flowVersion": 1,
+  "id": "example-naming-audit",
+  "name": "6 · Naming audit (Script)",
+  "description": "The Script node runs JavaScript in the QuickJS sandbox, once per element, with `inputs.a`/`b`/`c` and the sandbox `bim` API. Here it applies a regular expression — something no built-in node can express — and the elements that fail it are painted, counted and tabulated. Open the code with the ⤡ button next to the `code` parameter.",
+  "capabilities": [
+    "model.read",
+    "viewer.colorize"
+  ],
+  "inputs": [
+    {
+      "nodeId": "elements",
+      "param": "type",
+      "label": "IFC class",
+      "kind": "scalar"
+    },
+    {
+      "nodeId": "pattern",
+      "param": "value",
+      "label": "Name pattern (regex)",
+      "kind": "scalar"
+    }
+  ],
+  "outputs": [
+    {
+      "nodeId": "badCount",
+      "port": "count",
+      "label": "Names off-convention"
+    },
+    {
+      "nodeId": "table",
+      "port": "table",
+      "label": "Offenders"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "elements",
+      "type": "model.byType",
+      "params": {
+        "type": "IfcWall"
+      },
+      "pos": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": "name",
+      "type": "model.attribute",
+      "params": {
+        "attribute": "Name"
+      },
+      "pos": [
+        280,
+        -60
+      ]
+    },
+    {
+      "id": "pattern",
+      "type": "core.string",
+      "params": {
+        "value": "^[A-Z]{2}-[0-9]{3}"
+      },
+      "pos": [
+        280,
+        120
+      ]
+    },
+    {
+      "id": "matches",
+      "type": "script.run",
+      "params": {
+        "code": "// Runs once per element: `inputs.a` is one Name, `inputs.b` the pattern.\n// The last expression is the node's output.\nconst pattern = String(inputs.b ?? '.*');\nconst name = String(inputs.a ?? '');\nnew RegExp(pattern).test(name);\n"
+      },
+      "pos": [
+        560,
+        0
+      ],
+      "label": "Name matches pattern"
+    },
+    {
+      "id": "split",
+      "type": "core.filter",
+      "pos": [
+        840,
+        0
+      ]
+    },
+    {
+      "id": "badCount",
+      "type": "core.count",
+      "pos": [
+        1120,
+        -80
+      ]
+    },
+    {
+      "id": "paint",
+      "type": "viewer.colorize",
+      "params": {
+        "color": "#f59e0b"
+      },
+      "pos": [
+        1120,
+        60
+      ]
+    },
+    {
+      "id": "table",
+      "type": "table.fromEntities",
+      "params": {
+        "columns": [
+          "Name",
+          "Type"
+        ]
+      },
+      "pos": [
+        1400,
+        60
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": [
+        "elements",
+        "entities"
+      ],
+      "to": [
+        "name",
+        "entity"
+      ]
+    },
+    {
+      "from": [
+        "name",
+        "value"
+      ],
+      "to": [
+        "matches",
+        "a"
+      ]
+    },
+    {
+      "from": [
+        "pattern",
+        "value"
+      ],
+      "to": [
+        "matches",
+        "b"
+      ]
+    },
+    {
+      "from": [
+        "elements",
+        "entities"
+      ],
+      "to": [
+        "split",
+        "items"
+      ]
+    },
+    {
+      "from": [
+        "matches",
+        "result"
+      ],
+      "to": [
+        "split",
+        "mask"
+      ]
+    },
+    {
+      "from": [
+        "split",
+        "dropped"
+      ],
+      "to": [
+        "badCount",
+        "items"
+      ]
+    },
+    {
+      "from": [
+        "split",
+        "dropped"
+      ],
+      "to": [
+        "paint",
+        "entities"
+      ]
+    },
+    {
+      "from": [
+        "paint",
+        "entities"
+      ],
+      "to": [
+        "table",
+        "entities"
+      ]
+    }
+  ]
+}

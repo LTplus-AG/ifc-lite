@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { act, useState } from 'react';
 import { render, click, type, cleanup } from '@/test/render.js';
 import { saveFilter, clearSavedFilters } from '@/lib/search/saved-filters.js';
-import { Rule } from '@/lib/search/filter-rules.js';
+import { Rule } from '@ifc-lite/rules';
 import { AppearancePanelView } from './AppearancePanelView.js';
 import { AppearanceAssignments } from './AppearanceAssignments.js';
 import { useAppearanceAssignments } from './useAppearanceAssignments.js';

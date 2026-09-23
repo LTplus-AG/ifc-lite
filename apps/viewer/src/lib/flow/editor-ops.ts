@@ -13,7 +13,7 @@
  * input/output markers that pointed at it.
  */
 
-import { isAssignable, topologicalOrder, type FlowDocument, type FlowEdge, type FlowNode, type NodeDef, type NodeRegistry, type TrackingMode, type Lacing } from '@ifc-lite/flow';
+import { isAssignable, topologicalOrder, type FlowDocument, type FlowEdge, type FlowNode, type NodeDef, type NodeRegistry, type PortType, type TrackingMode, type Lacing } from '@ifc-lite/flow';
 
 export interface ConnectResult {
   readonly doc: FlowDocument;
@@ -73,17 +73,33 @@ export function setTracking(doc: FlowDocument, nodeId: string, tracking: Trackin
   return updateNode(doc, nodeId, { tracking, trackingKey: trackingKey && trackingKey.length > 0 ? trackingKey : undefined });
 }
 
+/**
+ * The declared types at both ends of a candidate edge, or `undefined` for
+ * an end that names no such port. Shared by `connect` and the canvas's
+ * live drag validation so the two cannot disagree about what fits.
+ */
+export function portTypes(
+  doc: FlowDocument,
+  registry: NodeRegistry<unknown>,
+  fromId: string,
+  fromPort: string,
+  toId: string,
+  toPort: string,
+): { out: PortType | undefined; inp: PortType | undefined } {
+  return {
+    out: nodeDef(doc, registry, fromId)?.outputs.find((p) => p.name === fromPort)?.type,
+    inp: nodeDef(doc, registry, toId)?.inputs.find((p) => p.name === toPort)?.type,
+  };
+}
+
 export function connect(doc: FlowDocument, registry: NodeRegistry<unknown>, edge: FlowEdge): ConnectResult {
   const [fromId, fromPort] = edge.from;
   const [toId, toPort] = edge.to;
   if (fromId === toId) return { doc, error: 'a node cannot feed itself' };
-  const fromDef = nodeDef(doc, registry, fromId);
-  const toDef = nodeDef(doc, registry, toId);
-  const out = fromDef?.outputs.find((p) => p.name === fromPort);
-  const inp = toDef?.inputs.find((p) => p.name === toPort);
+  const { out, inp } = portTypes(doc, registry, fromId, fromPort, toId, toPort);
   if (!out) return { doc, error: `no output "${fromPort}" on ${fromId}` };
   if (!inp) return { doc, error: `no input "${toPort}" on ${toId}` };
-  if (!isAssignable(out.type, inp.type)) return { doc, error: `${out.type.kind} cannot feed ${inp.type.kind}` };
+  if (!isAssignable(out, inp)) return { doc, error: `${out.kind} cannot feed ${inp.kind}` };
   const edges = [...doc.edges.filter((e) => !(e.to[0] === toId && e.to[1] === toPort)), { from: [fromId, fromPort], to: [toId, toPort] } satisfies FlowEdge];
   const next = { ...doc, edges };
   try {

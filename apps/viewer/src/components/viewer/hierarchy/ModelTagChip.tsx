@@ -10,7 +10,7 @@
 
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
-import type { ModelTag } from '@/lib/model-tags/types';
+import type { ModelTag } from '@ifc-lite/rules';
 
 export interface ModelTagChipProps {
   /** Undefined when the id has no definition any more (a deleted tag). */

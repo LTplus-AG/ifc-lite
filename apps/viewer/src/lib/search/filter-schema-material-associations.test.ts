@@ -6,8 +6,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { discoverFilterValues } from './filter-schema.js';
-import { evaluateFilterRules } from './filter-evaluate.js';
-import { Rule } from './filter-rules.js';
+import { evaluateFilterRules } from '@ifc-lite/rules';
+import { Rule } from '@ifc-lite/rules';
 
 /**
  * One level deeper than #4780/#4815 (Name-vs-Category): Wall-D carries two

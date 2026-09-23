@@ -17,6 +17,9 @@ export type ClashDisplayRow =
   | { kind: 'clash'; clash: Clash; manualGroupId?: string }
   | { kind: 'detail'; clash: Clash; manualGroupId?: string };
 
+/** The subset of {@link ClashDisplayRow} rendered as a group header. */
+export type ClashGroupRow = Extract<ClashDisplayRow, { kind: 'group' }>;
+
 export function clashDisplayRows(
   sections: readonly ClashDisplaySection[],
   collapsed: ReadonlySet<string>,

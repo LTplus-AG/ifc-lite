@@ -4,7 +4,7 @@
 
 use crate::{
     xml::{attr, error, required, Attributes, Result},
-    LandXmlDiagnosticCode as Code, LandXmlUnits,
+    LandXmlDiagnosticCode as Code, LandXmlLimits, LandXmlUnits,
 };
 
 pub(crate) fn positive_id(value: &str) -> Result<String> {
@@ -63,6 +63,7 @@ pub(crate) fn units(attributes: &Attributes) -> Result<LandXmlUnits> {
         elevation_scale_to_meters: scale(&elevation)?,
         linear_unit: linear,
         elevation_unit: elevation,
+        assumed: false,
     })
 }
 
@@ -78,4 +79,34 @@ fn scale(unit: &str) -> Result<f64> {
         "mile" | "miles" => Ok(1609.344),
         _ => Err(error(Code::InvalidSemantic, "unsupported LandXML unit")),
     }
+}
+
+/// #5175: resolve a caller-supplied assumed linear unit token into a units
+/// record, reusing the identical [`scale`] table a declared `<Units>`
+/// element uses. An unknown token is the exact same "unsupported LandXML
+/// unit" refusal a bad declared element would get; it never falls back to
+/// meters silently. There is no XML attribute in the override path to carry
+/// a distinct elevation unit, so the assumed linear unit applies to both
+/// axes, matching how a `<Units>` element with no `elevationUnit` behaves.
+fn assumed_units(linear_unit: &str) -> Result<LandXmlUnits> {
+    let linear_scale_to_meters = scale(linear_unit)?;
+    Ok(LandXmlUnits {
+        linear_unit: linear_unit.to_owned(),
+        elevation_unit: linear_unit.to_owned(),
+        linear_scale_to_meters,
+        elevation_scale_to_meters: linear_scale_to_meters,
+        assumed: true,
+    })
+}
+
+/// #5175: validate `limits.assumed_linear_unit` once, up front, so a bad
+/// override token is refused before any XML is read rather than discovered
+/// partway through a parse. Absent by default; every parse entry point that
+/// accepts [`LandXmlLimits`] should call this before constructing its parser.
+pub(crate) fn resolve_assumed_units(limits: &LandXmlLimits) -> Result<Option<LandXmlUnits>> {
+    limits
+        .assumed_linear_unit
+        .as_deref()
+        .map(assumed_units)
+        .transpose()
 }

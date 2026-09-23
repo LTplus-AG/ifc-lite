@@ -73,15 +73,8 @@ afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-// The runner (packages/extensions/src/testing/runner.ts:235) always wraps the
-// tested command's entry with `entryFnName: 'run'`, regardless of the
-// manifest's own command-handler name. The scaffold's own hello.js (`export
-// default async function hello`) both uses `export` — unsupported by
-// wrapEntrySource, see host/source-wrap.ts:17-20 — and is named `hello`, not
-// `run`, so it fails every declared test regardless of pass/fail intent.
-// Replace it with a plain `run` entry so PASSING_TEST/FAILING_TEST below
-// exercise the pass/fail branches themselves, not this pre-existing scaffold
-// mismatch (out of scope for #5209 — reported, not fixed here).
+// The scaffold now supplies a working starter command (#5211). These tests
+// replace its entry only to exercise JSON-shaped pass and fail results.
 const RUN_ENTRY = `function run(ctx) { return { message: 'hello' }; }`;
 
 /** Scaffold a starter bundle (via `ext init`, so it stays in lockstep with the
@@ -116,11 +109,11 @@ const FAILING_TEST = {
 
 describe('ext test — zero declared tests is not a pass (#5209 finding 1)', () => {
   it('exits non-zero for a bundle with no `tests` in its manifest', async () => {
-    // Explicitly forced to an empty `tests` array rather than relying on
-    // whatever `ext init` currently scaffolds: once #5211 lands, the
-    // scaffold declares one real (passing) test, and this case must still
-    // exercise the zero-tests path.
-    const dir = await scaffold([]);
+    const dir = await scaffold();
+    const manifestPath = join(dir, 'manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+    delete manifest.tests;
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf-8');
     const { stderr, code } = await run(['test', dir]);
     // RED before the fix: `summary.failed === 0` is vacuously true for zero
     // results, so this used to be `code === 0`.
@@ -183,5 +176,17 @@ describe('ext test — no-regression pins', () => {
     expect(parsed.passed).toBe(0);
     expect(parsed.failed).toBe(1);
     expect(parsed.ok).toBe(false);
+  });
+});
+
+describe('ext init scaffold (#5211)', () => {
+  it('produces a bundle whose starter test passes under ext test', async () => {
+    const dir = bundleDir();
+    const init = await run(['init', dir, '--id', 'com.example.test', '--name', 'Test Ext']);
+    expect(init.code).toBe(0);
+    const { stderr, code } = await run(['test', dir]);
+    expect(code).toBe(0);
+    expect(stderr).toContain('1 passed, 0 failed');
+    expect(stderr).not.toContain('No tests declared');
   });
 });

@@ -7,30 +7,33 @@
  *
  * A recipe is a plain JSON file naming one or more model files and the
  * checks to run against every one of them — `structural` (the same rules
- * `ifc-lite validate` runs) and/or one or more `ids` rule files (the same
- * validator `ifc-lite ids` runs). It exists so a delivery check is a single,
- * versioned, reviewable artifact a team commits and re-runs, rather than a
- * remembered shell invocation.
+ * `ifc-lite validate` runs), zero or more `ids` rule files (the same
+ * validator `ifc-lite ids` runs), and zero or more `rules` (`.rules.json`)
+ * information-validation rule sets (the same engine `ifc-lite check` runs,
+ * #5138 PR 7b). It exists so a delivery check is a single, versioned,
+ * reviewable artifact a team commits and re-runs, rather than a remembered
+ * shell invocation.
  *
  * ```json
  * {
  *   "models": ["model.ifc"],
  *   "structural": true,
- *   "ids": ["door-rules.ids"]
+ *   "ids": ["door-rules.ids"],
+ *   "rules": ["fire-rating.rules.json"]
  * }
  * ```
  *
- * Every `models`/`ids` path is resolved relative to the DIRECTORY CONTAINING
- * THE RECIPE FILE, not the process's current working directory — a recipe
- * committed alongside its fixtures stays runnable from anywhere.
+ * Every `models`/`ids`/`rules` path is resolved relative to the DIRECTORY
+ * CONTAINING THE RECIPE FILE, not the process's current working directory —
+ * a recipe committed alongside its fixtures stays runnable from anywhere.
  *
  * A malformed recipe is a `fatal(...)`, matching every other saved-definition
  * loader in this CLI (`schedule-spec.ts`): not valid JSON, not a JSON object,
  * an unrecognised field, a field of the wrong type, an empty/missing
- * `models` list, or declaring NEITHER `structural: true` NOR a non-empty
- * `ids` list (a recipe with zero applicable checks can never produce a
- * meaningful delivery verdict, so it is rejected up front rather than
- * silently reporting an empty "pass").
+ * `models` list, or declaring NONE of `structural: true`, a non-empty `ids`
+ * list, or a non-empty `rules` list (a recipe with zero applicable checks
+ * can never produce a meaningful delivery verdict, so it is rejected up
+ * front rather than silently reporting an empty "pass").
  */
 
 import { readFile } from 'node:fs/promises';
@@ -42,19 +45,30 @@ export interface DeliveryRecipe {
   models: string[];
   structural: boolean;
   ids: string[];
+  /**
+   * Optional, and not only because a recipe file may omit it: making it
+   * required would break every existing consumer constructing a
+   * `DeliveryRecipe` literal (review on #5171). The loader defaults it to
+   * `[]`, so `ResolvedDeliveryRecipe` below still carries a total value.
+   */
+  rules?: string[];
 }
 
-/** A recipe with every `models`/`ids` path resolved to an absolute path. */
-export interface ResolvedDeliveryRecipe extends DeliveryRecipe {
+/** A recipe with every `models`/`ids`/`rules` path resolved to an absolute path. */
+export interface ResolvedDeliveryRecipe extends Omit<DeliveryRecipe, 'rules'> {
+  /** Declared `rules`, defaulted to `[]` when the recipe omitted the field. */
+  rules: string[];
   /** Absolute path to the recipe file itself. */
   recipePath: string;
   /** `models`, resolved to absolute paths, in declared order. */
   resolvedModels: string[];
   /** `ids`, resolved to absolute paths, in declared order. */
   resolvedIds: string[];
+  /** `rules`, resolved to absolute paths, in declared order. */
+  resolvedRules: string[];
 }
 
-const RECIPE_FIELDS: (keyof DeliveryRecipe)[] = ['models', 'structural', 'ids'];
+const RECIPE_FIELDS: (keyof DeliveryRecipe)[] = ['models', 'structural', 'ids', 'rules'];
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(v => typeof v === 'string');
@@ -107,11 +121,16 @@ export async function loadDeliveryRecipe(path: string): Promise<ResolvedDelivery
   }
   const ids = (obj.ids as string[] | undefined) ?? [];
 
-  if (!structural && ids.length === 0) {
-    fatal(`Recipe "${path}" declares no applicable checks: set "structural": true and/or a non-empty "ids" list. A zero-check recipe can never produce a delivery verdict.`);
+  if ('rules' in obj && !isStringArray(obj.rules)) {
+    fatal(`Recipe "${path}": "rules" must be an array of file paths.`);
+  }
+  const rules = (obj.rules as string[] | undefined) ?? [];
+
+  if (!structural && ids.length === 0 && rules.length === 0) {
+    fatal(`Recipe "${path}" declares no applicable checks: set "structural": true and/or a non-empty "ids"/"rules" list. A zero-check recipe can never produce a delivery verdict.`);
   }
 
-  // Duplicate model/ids entries are rejected rather than silently
+  // Duplicate model/ids/rules entries are rejected rather than silently
   // deduplicated or run twice under one collapsed key: a repeated path is
   // almost certainly a copy-paste mistake in the recipe, and either
   // response (silent dedup, or a doubled report entry) would misrepresent
@@ -124,11 +143,16 @@ export async function loadDeliveryRecipe(path: string): Promise<ResolvedDelivery
   if (dupIds.length > 0) {
     fatal(`Recipe "${path}": "ids" lists the same path more than once: ${[...new Set(dupIds)].join(', ')}.`);
   }
+  const dupRules = rules.filter((m, i) => rules.indexOf(m) !== i);
+  if (dupRules.length > 0) {
+    fatal(`Recipe "${path}": "rules" lists the same path more than once: ${[...new Set(dupRules)].join(', ')}.`);
+  }
 
   const recipePath = resolve(path);
   const baseDir = dirname(recipePath);
   const resolvedModels = models.map(m => resolve(baseDir, m));
   const resolvedIds = ids.map(i => resolve(baseDir, i));
+  const resolvedRules = rules.map(r => resolve(baseDir, r));
 
-  return { recipePath, models, structural, ids, resolvedModels, resolvedIds };
+  return { recipePath, models, structural, ids, rules, resolvedModels, resolvedIds, resolvedRules };
 }

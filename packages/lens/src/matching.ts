@@ -42,7 +42,7 @@ function isComparisonOperator(op: LensOperator | undefined): op is ComparisonOpe
  *
  * `Number.parseFloat` (not `Number()`) is deliberate: it is what the viewer's
  * search rule model uses in `valueOpMatches`
- * (`apps/viewer/src/lib/search/filter-rules.ts`), so a lens condition and the
+ * (`@ifc-lite/rules`'s `filter-rules.ts`), so a lens condition and the
  * equivalent search rule agree on every input - including the lenient tail
  * ("60 min" parses as 60) and the strict rejections ("" and "REI60" do not
  * parse). Diverging here would be a defect in itself.
@@ -70,7 +70,7 @@ function toFiniteNumber(value: unknown): number | null {
  * `equals` (which is case-sensitive except for the boolean literal tolerance,
  * see {@link valueEquals}), `ne` compares case-insensitively - this
  * deliberately mirrors `valueOpMatches`'s `ne` in the viewer's search rule
- * model (`apps/viewer/src/lib/search/filter-rules.ts`), which is
+ * model (`@ifc-lite/rules`'s `filter-rules.ts`), which is
  * `lower(psetVal) !== lower(ruleVal)`, so a lens condition and the equivalent
  * search rule agree. `equals` and `ne` are therefore NOT exact complements
  * for a case-differing non-boolean value (e.g. `Note: 'REI60'` vs `ne

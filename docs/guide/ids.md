@@ -119,6 +119,49 @@ const auditReport = await auditIDSDocument(idsXml);
 
 Use `auditIDSStructure(idsDocument)` to audit an already-parsed document.
 
+## What `.rules.json` rule sets cover that IDS 1.0 cannot
+
+IDS 1.0 has documented limitations (buildingSMART's own user manual
+`Documentation/UserManual/specifications.md` §Limitations, plus several
+open `buildingSMART/IDS` issues/discussions). IFClite's `.rules.json`
+information-validation rule sets (`@ifc-lite/rules`, run by the viewer's
+Data Validation panel, `ifc-lite check`, and `ifc-lite delivery`'s `rules`
+field) cover a real subset of that gap — the rest is deferred or genuinely
+out of scope, and is called out as such:
+
+| IDS 1.0 limitation | Rule-set coverage |
+|---|---|
+| Geometry: clashes, distance to boundary | Out of scope — use the Clash panel / `ifc-lite clash` instead |
+| Aggregate quantity (`sum(NetFloorArea) > 300`) | Covered: `aggregate` requirement kind (`sum`/`count`/`min`/`max`/`avg`) |
+| Value uniqueness (`Name`, `AssetIdentifier` must be unique) | Covered: `unique` requirement kind, scope `federation` (default) or `perModel` |
+| GUID uniqueness | Covered: `unique` on subject `globalId` |
+| Pumps/AHUs must carry specific properties | Covered via `element` requirements (same as IDS) |
+| System/group membership (`IfcRelAssignsToGroup`) | Deferred — no `FilterRule` kind yet |
+| Schedules, load time, CDE revision, as-built status | Out of scope — not model data |
+| Units per property | Deferred |
+| Georeferencing (`IfcMapConversion`, CRS) | Deferred — model-level, not element-level |
+| Complex properties, `IfcPropertyReferenceValue` | Deferred — reads as `present:false` (absent) |
+| Negation / exceptions in applicability | Covered: `ne`/`notIn`/`notContains`/`notMatches`/`isNotSet`, OR-ed groups |
+| OR logic in requirements | Covered: an `element` requirement is a `RuleBlock` with OR-ed groups |
+| Value-to-value comparison (`WarrantyEnd > WarrantyStart`) | Covered: `compare` requirement kind (number or date) |
+| Conditional / child-side / inverse `partOf` | Partially covered: applicability + `aggregate count groupBy parent`; arbitrary entity-to-entity predicates deferred |
+| Case sensitivity (opt-in insensitive match) | Covered: per-rule `caseSensitive`, default `true` (IDS parity) |
+| Class inheritance (exact-type match, no subclass expansion) | Covered: `exactClass` on an `ifcType` rule, default `false` |
+| Float tolerance | Covered: per-rule `tolerance` (relative, default `1e-6`) |
+| Grouped/aggregated object info inheritance | Deferred |
+| Dates | Covered: `compare` with `valueType: 'date'` (ISO-8601 only) |
+| Cardinality on applicability / counts | Covered: `cardinality.minApplicable`/`maxApplicable`, plus `aggregate count` without `groupBy` |
+
+**Empty string vs. absent.** IDS issues #403/#430 leave this ambiguous; rule
+sets take a single, deliberately stricter position everywhere: a value is
+`present` iff at least one candidate, after `String(v).trim()`, is
+non-empty. An empty `IFCLABEL`, whitespace-only text, `$`,
+`IfcPropertyReferenceValue`, and complex properties are all **absent**, not
+present-with-an-empty-value. Consequence: `exists`/`isSet` fails on `""`,
+and `ne` on an absent property FAILS rather than vacuously passing — a rule
+requiring `FireRating ne '2HR'` does not pass just because `FireRating` was
+never set.
+
 ## Viewer Integration
 
 In the IFClite viewer, IDS validation is integrated through the Data validation panel's IDS validation entry:

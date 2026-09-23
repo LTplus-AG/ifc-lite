@@ -12,7 +12,7 @@
  *   - `mesh-only`: the source-decoupled tier. Persist tables + geometry +
  *     instanced shards WITHOUT the source (too big for IndexedDB at 150-400MB);
  *     on re-open the freshly read file buffer hydrates the accessors. The
- *     spread-sampled cache key (see `sourceFingerprint.ts`) only KEYS the
+ *     spread-sampled cache key (see `@ifc-lite/cache`'s `source-fingerprint.ts`) only KEYS the
  *     lookup; the hit is VALIDATED by the mtime guard plus an off-thread
  *     full-file hash ({@link decideMeshOnlyCacheHit}), so repeat opens still
  *     have no main-thread stall.

@@ -18,10 +18,10 @@
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import type { FilterRule } from '@/lib/search/filter-rules';
-import { ELEMENT_REQUIREMENT_KINDS } from '@/lib/validation/rule-set-io-requirement';
-import type { Requirement, RuleBlock } from '@/lib/validation/rule-set';
-import { requirementToText, parseRequirementText, type TextRequirement } from '@/lib/validation/requirement-text';
+import type { FilterRule } from '@ifc-lite/rules';
+import { ELEMENT_REQUIREMENT_KINDS } from '@ifc-lite/rules';
+import type { Requirement, RuleBlock } from '@ifc-lite/rules';
+import { requirementToText, parseRequirementText, type TextRequirement } from '@ifc-lite/rules';
 import { NUMERIC_OPS, OpDropdown } from '../SearchModal.filter.editors.shared';
 import { RuleBlockEditor } from './RuleBlockEditor';
 import { SubjectPicker } from './SubjectPicker';

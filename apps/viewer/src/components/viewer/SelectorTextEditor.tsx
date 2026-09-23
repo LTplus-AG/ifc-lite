@@ -19,7 +19,7 @@ import { HelpCircle, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { readSelector } from '@/lib/search/selector-to-rules';
-import { groupsToSelectorText, type FilterGroup } from '@/lib/search/filter-groups';
+import { groupsToSelectorText, type FilterGroup } from '@ifc-lite/rules';
 import { useTranslation } from '@/i18n';
 import { describeSelectorParseError, SelectorFeedbackList, type SelectorFeedback } from './SearchModal.filter.feedback';
 

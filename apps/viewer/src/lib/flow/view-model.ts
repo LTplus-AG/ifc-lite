@@ -67,6 +67,7 @@ export function toCanvas(
   registry: NodeRegistry<unknown>,
   reports: ReadonlyMap<string, NodeReport> | undefined,
   selectedNodeId: string | null,
+  selectedEdgeId: string | null = null,
 ): { nodes: CanvasNode[]; edges: CanvasEdge[] } {
   const nodes = doc.nodes.map((n): CanvasNode => {
     const def = registry.get(n.type);
@@ -95,14 +96,26 @@ export function toCanvas(
       },
     };
   });
-  const edges = doc.edges.map((e): CanvasEdge => ({
-    id: edgeId(e.from[0], e.from[1], e.to[0], e.to[1]),
-    source: e.from[0],
-    sourceHandle: e.from[1],
-    target: e.to[0],
-    targetHandle: e.to[1],
-    style: { stroke: KIND_COLOR[registry.get(doc.nodes.find((n) => n.id === e.from[0])?.type ?? '')?.outputs.find((p) => p.name === e.from[1])?.type.kind ?? 'any'] },
-  }));
+  const edges = doc.edges.map((e): CanvasEdge => {
+    const id = edgeId(e.from[0], e.from[1], e.to[0], e.to[1]);
+    const selected = id === selectedEdgeId;
+    const stroke = KIND_COLOR[registry.get(doc.nodes.find((n) => n.id === e.from[0])?.type ?? '')?.outputs.find((p) => p.name === e.from[1])?.type.kind ?? 'any'];
+    return {
+      id,
+      source: e.from[0],
+      sourceHandle: e.from[1],
+      target: e.to[0],
+      targetHandle: e.to[1],
+      selected,
+      // Either end can be dragged onto another port; the canvas validates
+      // the result and deletes the edge when it is dropped on empty canvas.
+      reconnectable: true,
+      // A 1px wire is hard to hit and, once hit, hard to tell from its
+      // neighbours; the selected one is drawn heavier and dashed so the
+      // Delete key has a visible subject.
+      style: selected ? { stroke, strokeWidth: 3, strokeDasharray: '6 3' } : { stroke },
+    };
+  });
   return { nodes, edges };
 }
 

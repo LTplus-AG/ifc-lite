@@ -27,6 +27,15 @@ const TEST_LOCALE: Catalogue = {
   'document.block.kindChart': 'Diagramm',
   'document.block.kindTopic': 'BCF-Thema',
   'document.block.kindSpacer': 'Abstand',
+  'document.block.tableSourceLabel': 'Quelle',
+  'document.block.tableSourceAriaLabel': 'Tabellenquelle',
+  'document.block.tableSourceList': 'Liste',
+  'document.block.tableSourceValidation': 'Validierungsergebnisse',
+  'document.block.tableValidationRowsAriaLabel': 'Welche Zeilen anzeigen',
+  'document.block.tableRuleAriaLabel': 'Auf eine Regel filtern',
+  'document.block.tableRuleAll': 'Jede Regel',
+  'document.table.column.rule': 'Regel',
+  'document.table.column.result': 'Ergebnis',
   'document.block.styleLabel': 'Stil',
   'document.block.textStyleAriaLabel': 'Textstil',
   'document.block.insertFieldLabel': 'Feld einfügen',
@@ -152,6 +161,39 @@ describe('BlockEditor localization (#4918)', () => {
     assert.equal(ui.textContent?.includes('In Listen bearbeiten'), true);
     assert.equal(ui.textContent?.includes('Zeilen'), true);
     assert.equal(ui.textContent?.includes(`${list.columns.length} Spalten · eine Zeile je Element`), true);
+  });
+
+  it('translates the table block\'s validation source (#5138): source label, rows-mode control, rule filter', () => {
+    // Finds the checkbox whose accessible name (its wrapping <label>'s own text, nothing else) is
+    // exactly `text` — isolates the column-toggle label from the RuleFilter <select>'s "Every rule"
+    // / "Jede Regel" option, which contains the substring "Regel" too (review finding: a plain
+    // `textContent.includes('Regel')` check passes on that option alone and never reaches the checkbox).
+    const columnCheckbox = (ui: HTMLElement, text: string): HTMLInputElement | null => {
+      const label = [...ui.querySelectorAll('label')].find((l) => l.querySelector('input[type="checkbox"]') && l.textContent?.trim() === text);
+      return label?.querySelector('input[type="checkbox"]') ?? null;
+    };
+
+    const block: TableBlock = { kind: 'table', id: 'b7', source: { kind: 'validation', rows: 'failed', columns: ['rule', 'result'] } };
+    const ui = render(
+      <BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} onChange={noop} onMove={noop} onRemove={noop} />,
+    );
+    assert.ok(ui.querySelector('select[aria-label="Table source"]'));
+    assert.ok(ui.querySelector('select[aria-label="Which rows to show"]'));
+    assert.ok(ui.querySelector('select[aria-label="Filter to one rule"]'));
+    assert.equal(ui.textContent?.includes('Every rule'), true);
+    // The column-toggle checkboxes (#5138 review): one label per TableColumnId, translated.
+    assert.ok(columnCheckbox(ui, 'Rule'), 'the "rule" column checkbox reads exactly "Rule"');
+    assert.ok(columnCheckbox(ui, 'Result'), 'the "result" column checkbox reads exactly "Result"');
+
+    registerLocale('block-editor-x-table-validation', TEST_LOCALE);
+    act(() => setLocale('block-editor-x-table-validation'));
+
+    assert.ok(ui.querySelector('select[aria-label="Tabellenquelle"]'));
+    assert.ok(ui.querySelector('select[aria-label="Welche Zeilen anzeigen"]'));
+    assert.ok(ui.querySelector('select[aria-label="Auf eine Regel filtern"]'));
+    assert.equal(ui.textContent?.includes('Jede Regel'), true);
+    assert.ok(columnCheckbox(ui, 'Regel'), 'the "rule" column checkbox switches to exactly "Regel", not the rule-filter\'s "Jede Regel" option');
+    assert.ok(columnCheckbox(ui, 'Ergebnis'), 'the "result" column checkbox switches with the locale');
   });
 
   it('translates the spacer block\'s kind badge', () => {

@@ -34,8 +34,8 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { evaluateFilterGroupsFederated } from '@/lib/search/filter-evaluate-groups';
-import { totalRuleCount } from '@/lib/search/filter-groups';
+import { evaluateFilterGroupsFederated } from '@ifc-lite/rules';
+import { totalRuleCount } from '@ifc-lite/rules';
 import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { runTier0Scan, type ScanModel } from '@/lib/search/tier0-scan';
 import { queryTier1Indexes, type Tier1Index } from '@/lib/search/tier1-index';

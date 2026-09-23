@@ -63,7 +63,7 @@ import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { toast } from '@/components/ui/toast';
 import { ensureModelExportReady } from '@/services/desktop-export';
-import { StepExporter, MergedExporter, Ifc5Exporter, IFC5_KNOWN_PROP_NAMES, type MergeModelInput, type ExportProgress } from '@ifc-lite/export';
+import { StepExporter, MergedExporter, Ifc5Exporter, type MergeModelInput, type ExportProgress } from '@ifc-lite/export';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -81,6 +81,7 @@ import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 import { listExportModels, resolveExportModel } from './export-model-selection';
 import { exportOutputInfo } from './export-output-format.js';
 import { exportChangesJson } from './export-changes-json.js';
+import { hasFilterableIfc5Properties } from '@/lib/export/ifc5-filterable-properties.js';
 
 type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -307,24 +308,8 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
 
   const hasFilterableProperties = useMemo(() => {
     if (!isIfc5 || !selectedModel?.ifcDataStore) return false;
-    const mutationView = getMutationView(selectedModelId);
-    const propSource = mutationView || selectedModel.ifcDataStore.properties;
-    if (!propSource) return false;
-
-    // Sample a few entities to check for unknown property names
-    const entities = selectedModel.ifcDataStore.entities;
-    const limit = Math.min(entities.count, 50);
-    for (let i = 0; i < limit; i++) {
-      const id = entities.expressId[i];
-      const psets = propSource.getForEntity(id);
-      for (const pset of psets) {
-        for (const prop of pset.properties) {
-          if (!IFC5_KNOWN_PROP_NAMES.has(prop.name)) return true;
-        }
-      }
-    }
-    return false;
-  }, [isIfc5, selectedModel, selectedModelId, getMutationView]);
+    return hasFilterableIfc5Properties(selectedModel.ifcDataStore, getMutationView(selectedModelId));
+  }, [isIfc5, selectedModel, selectedModelId, getMutationView, mutationVersion]);
 
   const packagesImages = exportScope === 'single' && modelAppearanceAssets.hasResources(selectedModelId);
   const outputInfo = useMemo(() => exportOutputInfo(isIfc5, changesOnly, packagesImages),

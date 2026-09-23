@@ -114,10 +114,10 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
     for (const expressId of ids) {
       const created = view?.getNewEntity(expressId);
       const positional = view?.getPositionalMutationsForEntity(expressId);
-      const named = view?.getAttributeMutationsForEntity(expressId).find(({ name }) => name === 'Name')?.value;
+      const named = view?.getAttributeMutationsForEntity(expressId).find(({ name }) => name === 'Name');
       const rawName = positional?.has(2)
         ? positional.get(2)
-        : named ?? (created ? created.attributes[2] : new EntityNode(dataStore, expressId).name);
+        : named ? named.value : (created ? created.attributes[2] : new EntityNode(dataStore, expressId).name);
       const name = (typeof rawName === 'string' && rawName !== '$' ? rawName : '') || t('addElement.storeyFallback', {
         id: formatLocaleNumber(locale, expressId),
       });

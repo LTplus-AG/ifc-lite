@@ -119,7 +119,11 @@ const FAILING_TEST = {
 
 describe('ext test — zero declared tests is not a pass (#5209 finding 1)', () => {
   it('exits non-zero for a bundle with no `tests` in its manifest', async () => {
-    const dir = await scaffold(); // starter manifest declares no `tests` at all
+    // Explicitly forced to an empty `tests` array rather than relying on
+    // whatever `ext init` currently scaffolds: once #5211 lands, the
+    // scaffold declares one real (passing) test, and this case must still
+    // exercise the zero-tests path.
+    const dir = await scaffold([]);
     const { stderr, code } = await run(['test', dir]);
     // RED before the fix: `summary.failed === 0` is vacuously true for zero
     // results, so this used to be `code === 0`.
@@ -134,7 +138,9 @@ describe('ext test — zero declared tests is not a pass (#5209 finding 1)', () 
   });
 
   it('--json distinguishes zero declared tests from a pass', async () => {
-    const dir = await scaffold();
+    // Same reasoning as above: force zero declared tests explicitly rather
+    // than relying on the as-scaffolded manifest.
+    const dir = await scaffold([]);
     const { stdout, code } = await run(['test', dir, '--json']);
     expect(code).not.toBe(0);
     const parsed = JSON.parse(stdout);

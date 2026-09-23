@@ -50,6 +50,13 @@ test('#5236 identical call names in separate callbacks keep separate slots', () 
   assert.equal(excessRawAccess(old, moved).length, 1);
 });
 
+test('#5236 moving a raw read between ordinary call statements uses a new slot', () => {
+  const old = scan('function q(store, a, b) { if (a) use(store.entityIndex.byType); if (b) use(x); }');
+  const moved = scan('function q(store, a, b) { if (a) use(x); if (b) use(store.entityIndex.byType); }');
+  assert.equal(old.length, 1);
+  assert.equal(excessRawAccess(old, moved).length, 1);
+});
+
 test('#5236 same-named owners have separate budget slots', () => {
   const old = scan('function query() { return store.entityIndex.byType; }');
   const moved = scan('function query() { return []; } function query() { return store.entityIndex.byType; }');

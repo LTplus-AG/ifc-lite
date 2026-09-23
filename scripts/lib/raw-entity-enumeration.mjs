@@ -64,6 +64,18 @@ function ownerOf(node) {
   return owners.length > 0 ? owners.reverse().join('>') : '<module>';
 }
 
+/** A read moved to another statement is a new site even inside one function. */
+function statementPath(node) {
+  const statements = [];
+  for (let parent = node.parent; parent; parent = parent.parent) {
+    if (ts.isFunctionLike(parent)) break;
+    if (ts.isStatement(parent) && !ts.isBlock(parent)) {
+      statements.push(`${ts.SyntaxKind[parent.kind]}#${siblingOrdinal(parent)}`);
+    }
+  }
+  return statements.reverse().join('>');
+}
+
 function enclosingStatement(node) {
   for (let parent = node.parent; parent; parent = parent.parent) {
     if (ts.isStatement(parent) && !ts.isBlock(parent)) return parent;
@@ -115,7 +127,7 @@ export function scanRawEntityAccess(path, text) {
     if (kind) {
       const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
       hits.push({
-        key: `${path}|${ownerOf(node)}|${kind}|${node.getText(source).replace(/\s+/g, '')}`,
+        key: `${path}|${ownerOf(node)}@${statementPath(node)}|${kind}|${node.getText(source).replace(/\s+/g, '')}`,
         line,
         reason: rawReason(source, node),
       });

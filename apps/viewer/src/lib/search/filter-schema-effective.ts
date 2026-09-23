@@ -68,7 +68,8 @@ export function effectiveStoreyOption(
 
 /**
  * Sample the effective domain without letting a large source map starve late
- * overlay creations. Only the selected IDs pay for property/material reads.
+ * overlay creations or edited source entities. The cap bounds the unchanged
+ * source sample; every currently edited live entity remains eligible.
  */
 export function effectiveCandidateIds(
   store: IfcDataStore,
@@ -85,6 +86,16 @@ export function effectiveCandidateIds(
     if (out.length > cap) {
       out = out.filter((_, index) => index % 2 === 0);
       stride *= 2;
+    }
+  }
+  if (view) {
+    const edited = new Set(view.getEffectiveChanges().map((change) => change.entityId));
+    const sampled = new Set(out);
+    for (const { expressId } of iterateEffectiveEntityIds(store, view)) {
+      if (edited.has(expressId) && !sampled.has(expressId)) {
+        out.push(expressId);
+        sampled.add(expressId);
+      }
     }
   }
   return out;

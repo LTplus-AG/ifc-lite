@@ -79,12 +79,12 @@ export function discoverFilterSchema(
   view?: MutablePropertyView | null,
 ): FilterSchema {
   return {
-    storeys: collectStoreys(store, view),
+    storeys: discoverFilterStoreys(store, view),
     ifcTypes: collectIfcTypes(store, view),
   };
 }
 
-function collectStoreys(store: IfcDataStore, view: MutablePropertyView | null | undefined): Array<[string, number | null]> {
+export function discoverFilterStoreys(store: IfcDataStore, view?: MutablePropertyView | null): Array<[string, number | null]> {
   const out: Array<[string, number | null]> = [];
   // Keep one entry per unique storey name, even when several live storeys
   // share it. Source deletions/retypes and overlay creations are all folded.
@@ -102,11 +102,11 @@ function collectStoreys(store: IfcDataStore, view: MutablePropertyView | null | 
 }
 
 function collectIfcTypes(store: IfcDataStore, view: MutablePropertyView | null | undefined): string[] {
-  const types = new Set<string>();
+  const rawTypes = new Set<string>();
   for (const { type } of iterateEffectiveEntityIds(store, view)) {
-    types.add(canonicalEffectiveType(type));
+    rawTypes.add(type);
   }
-  const out = Array.from(types);
+  const out = Array.from(new Set(Array.from(rawTypes, canonicalEffectiveType)));
   out.sort();
   return out;
 }
@@ -186,6 +186,24 @@ export function discoverPropertyAndQuantitySchema(
     }
   }
 
+  // An existing entity can receive a new set without gaining an on-demand
+  // map key. Read current overlay changes rather than append-only history so
+  // undo and delete do not leave stale suggestions behind.
+  if (view) {
+    const propertyIds = new Set<number>();
+    const quantityIds = new Set<number>();
+    for (const change of view.getEffectiveChanges()) {
+      if (change.kind === 'property' || change.kind === 'pset-added' || change.kind === 'pset-deleted') propertyIds.add(change.entityId);
+      if (change.kind === 'quantity' || change.kind === 'qset-added' || change.kind === 'qset-deleted') quantityIds.add(change.entityId);
+    }
+    if (propertyIds.size || quantityIds.size) {
+      for (const { expressId } of iterateEffectiveEntityIds(store, view)) {
+        if (propertyIds.has(expressId)) addPsets(expressId);
+        if (quantityIds.has(expressId)) addQtos(expressId);
+      }
+    }
+  }
+
   return finalizePsetQto(psetMap, qtoMap);
 }
 
@@ -204,6 +222,16 @@ function collectTypeScopedIds(
   for (const { expressId } of iterateEffectiveEntityIds(store, view, typeNames)) {
     out.push(expressId);
     if (out.length >= cap) break;
+  }
+  if (view) {
+    const edited = new Set(view.getEffectiveChanges().map((change) => change.entityId));
+    const seen = new Set(out);
+    for (const { expressId } of iterateEffectiveEntityIds(store, view, typeNames)) {
+      if (edited.has(expressId) && !seen.has(expressId)) {
+        out.push(expressId);
+        seen.add(expressId);
+      }
+    }
   }
   return out;
 }

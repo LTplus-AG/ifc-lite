@@ -47,7 +47,26 @@ test('filter type and storey options follow effective creates, deletes, retypes,
   const after = discoverFilterSchema(store, view);
   assert.deepEqual(after.storeys, [['Authored Level', 3]]);
   assert.ok(after.ifcTypes.includes('IfcBuildingElementProxy'));
+  assert.ok(!after.ifcTypes.includes('IfcWall'));
   assert.ok(!after.storeys.some(([name]) => name === 'Renamed Level'));
+});
+
+test('whole-model schema sees overlay sets on existing entities absent from on-demand maps (#5249)', async () => {
+  const store = await parsedStore();
+  store.onDemandPropertyMap?.delete(1222);
+  store.onDemandQuantityMap?.delete(1222);
+  const view = new MutablePropertyView(store.properties, 'm1');
+  view.setProperty(1222, 'Pset_New', 'Flag', 'yes');
+  view.setQuantity(1222, 'Qto_New', 'Length', 2);
+
+  const schema = discoverPropertyAndQuantitySchema(store, undefined, view);
+  assert.ok(schema.psets.some(([name, properties]) => name === 'Pset_New' && properties.includes('Flag')));
+  assert.ok(schema.qtos.some(([name, quantities]) => name === 'Qto_New' && quantities.some(([quantity]) => quantity === 'Length')));
+
+  view.deleteEntity(1222);
+  const deleted = discoverPropertyAndQuantitySchema(store, undefined, view);
+  assert.ok(!deleted.psets.some(([name]) => name === 'Pset_New'));
+  assert.ok(!deleted.qtos.some(([name]) => name === 'Qto_New'));
 });
 
 test('type-scoped and value suggestions include authored properties on live entities (#5249)', async () => {

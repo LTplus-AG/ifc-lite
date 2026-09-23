@@ -23,7 +23,7 @@ import { IfcTypeEnum } from '@ifc-lite/data';
 import { collectSpatialContainerNames } from '@/utils/spatialHierarchy';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
-  discoverFilterSchema,
+  discoverFilterStoreys,
   propValueKey,
 } from '@/lib/search/filter-schema';
 import type {
@@ -188,7 +188,7 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
     if (stores.length === 0) return [];
     const set = new Set<string>();
     for (const { store, view } of storeViews) {
-      for (const [name] of discoverFilterSchema(store, view).storeys) set.add(name);
+      for (const [name] of discoverFilterStoreys(store, view)) set.add(name);
     }
     return Array.from(set).sort();
   }, [storeViews, mutationVersion]);

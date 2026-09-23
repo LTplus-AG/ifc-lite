@@ -32,7 +32,8 @@ export type LandXmlRefusedFamily =
   | 'surface-boundaries'
   | 'surface-breaklines'
   | 'surface-contours'
-  | 'non-rendered-surfaces';
+  | 'non-rendered-surfaces'
+  | 'unlocated-cgpoints';
 
 export interface LandXmlRefusal {
   family: LandXmlRefusedFamily;

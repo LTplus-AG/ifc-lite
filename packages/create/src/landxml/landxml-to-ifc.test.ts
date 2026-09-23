@@ -174,6 +174,10 @@ describe('landXmlToIfc — units (§2.1)', () => {
   it('refuses a source with units: null, even though it carries a mappable surface', () => {
     const result = landXmlToIfc(minimalSource({ units: null }));
     expectRefused(result);
+    // The reason must name the actual cause. The generic "no triangulated
+    // surface" sentence would be false here: the file has one (#5268 review).
+    expect(result.reason).toContain('LandXML/Units');
+    expect(result.reason).not.toContain('no triangulated surface');
   });
 
   it('units.assumed: true warns LXIFC-ASSUMED-UNIT and records provenance.assumedLinearUnit; assumed: false does neither', () => {
@@ -228,7 +232,58 @@ describe('landXmlToIfc — refusal as an outcome (§6, §9.4)', () => {
     });
     const result = landXmlToIfc(source);
     expectRefused(result);
-    expect(result.reason).toContain('no triangulated surface and no CgPoints');
+    // Named as a refusal, not merely absent (#5268 review).
+    expect(result.refusals).toContainEqual(expect.objectContaining({ family: 'non-rendered-surfaces', count: 1 }));
+    expect(result.reason).toContain('1 non rendered surfaces');
+  });
+
+  // The case the refusal list exists for: a good surface exports, and the
+  // all-hidden sibling is named rather than silently missing from the file.
+  it('exports a good surface and names an all-hidden sibling as refused', () => {
+    const source = minimalSource({
+      surfaces: [
+        mappableSurface(),
+        mappableSurface({ sourceId: 'landxml:surface:2', name: 'Hidden', faceVisibility: [false] }),
+      ],
+    });
+    const result = landXmlToIfc(source);
+    expectExported(result);
+    expect(result.coverage.surfaces).toBe(1);
+    expect(result.refusals).toContainEqual(expect.objectContaining({ family: 'non-rendered-surfaces', count: 1 }));
+  });
+
+  it('names CgPoints that carry no coordinates as refused', () => {
+    const source = minimalSource({
+      plan: { cogoPoints: [{ sourceId: 'landxml:cgpoint:9', name: 'Ref', code: null, description: null, point: null }] },
+    });
+    const result = landXmlToIfc(source);
+    expectExported(result);
+    expect(result.refusals).toContainEqual(expect.objectContaining({ family: 'unlocated-cgpoints', count: 1 }));
+  });
+
+  it('records no Elevation property for a 2D CgPoint, though the placement still needs Z = 0', () => {
+    const source = minimalSource({
+      surfaces: [],
+      plan: { cogoPoints: [{
+        sourceId: 'landxml:cgpoint:2d', name: 'Flat', code: null, description: null,
+        point: { northing: 6406977.86, easting: 157899.16, elevation: null },
+      }] },
+    });
+    const result = landXmlToIfc(source, { timestampMs: 0 });
+    expectExported(result);
+    expect(result.content).toContain('IFCCARTESIANPOINT((157899.16,6406977.86,0.))');
+    expect(result.content).toContain("IFCPROPERTYSINGLEVALUE('Northing'");
+    expect(result.content).not.toContain("IFCPROPERTYSINGLEVALUE('Elevation'");
+  });
+
+  it('seeds file-level GlobalIds from sourceHash, so two unnamed files do not share a site', () => {
+    const siteGuid = (hash: string): string => {
+      const result = landXmlToIfc(minimalSource(), { timestampMs: 0, sourceHash: hash });
+      expectExported(result);
+      return /IFCSITE\('([^']+)'/.exec(result.content)![1];
+    };
+    expect(siteGuid('sha256:aaa')).not.toBe(siteGuid('sha256:bbb'));
+    expect(siteGuid('sha256:aaa')).toBe(siteGuid('sha256:aaa'));
   });
 
   // A partial source — one mappable surface alongside out-of-scope families —

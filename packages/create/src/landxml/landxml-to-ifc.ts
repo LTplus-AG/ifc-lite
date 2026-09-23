@@ -140,8 +140,12 @@ function surveyProperties(point: LandXmlIfcCgPoint, location: readonly [number, 
   entries.push(
     { Name: 'Easting', Value: String(location[0]) },
     { Name: 'Northing', Value: String(location[1]) },
-    { Name: 'Elevation', Value: String(location[2]) },
   );
+  // A 2D CgPoint is placed at Z = 0 because a placement needs a number, but
+  // the property set must not claim an elevation the source never authored.
+  if (point.point?.elevation !== null && point.point?.elevation !== undefined) {
+    entries.push({ Name: 'Elevation', Value: String(location[2]) });
+  }
   return entries;
 }
 
@@ -156,9 +160,8 @@ function writeSurfaces(
     if (!isMappableSurface(surface)) continue;
     const { coordinates, indexById } = surfaceVertices(surface, units, swap);
     const faces = surfaceTriangles(surface, indexById);
-    // A surface whose faces are all hidden draws nothing. It is already counted
-    // as a non-rendered refusal by `collectRefusals`, and CoordIndex is
-    // LIST [1:?], so writing it would be invalid as well as untrue.
+    // Unreachable for an all-hidden surface — `isMappableSurface` refuses it by
+    // name first. Kept as a guard because CoordIndex is LIST [1:?].
     if (faces.length === 0) continue;
     terrain.addSurface({
       Name: surface.name,
@@ -181,7 +184,7 @@ function writeSurveyPoints(
   const samples: Array<[number, number]> = [];
   for (const point of points) {
     // A CgPoint may carry only a `pntRef`, with no coordinates of its own.
-    // There is nothing to place, so there is nothing to write.
+    // `collectRefusals` names those as `unlocated-cgpoints`.
     if (!point.point) continue;
     const location = toIfcVertex(
       point.point.northing, point.point.easting, point.point.elevation ?? 0, units, swap,
@@ -218,7 +221,18 @@ export function landXmlToIfc(source: LandXmlIfcSource, options: LandXmlIfcOption
   const cogoPoints = (source.plan?.cogoPoints ?? []).filter((point) => point.point !== null);
   const units = source.units;
 
-  if (units === null || (mappableSurfaces.length === 0 && cogoPoints.length === 0)) {
+  if (units === null) {
+    // Distinct from an empty source: the file may hold a perfectly good TIN, and
+    // the operator needs to know the fix is units, not content.
+    return {
+      status: 'refused',
+      reason: 'This LandXML file declares no LandXML/Units element, so no coordinate can be scaled to '
+        + 'metres. Load it with an explicit assumed linear unit, or export the original LandXML file instead.',
+      refusals,
+      warnings,
+    };
+  }
+  if (mappableSurfaces.length === 0 && cogoPoints.length === 0) {
     return { status: 'refused', reason: refusalReason(refusals), refusals, warnings };
   }
 
@@ -258,7 +272,9 @@ export function landXmlToIfc(source: LandXmlIfcSource, options: LandXmlIfcOption
     ...(options.timestampMs === undefined ? {} : { Timestamp: options.timestampMs }),
     ...(options.Author === undefined ? {} : { Author: options.Author }),
     ...(options.Organization === undefined ? {} : { Organization: options.Organization }),
-    GuidSource: deterministicGuidSource(options.sourceFileName ?? source.schema),
+    // Content hash first: two different files exported without a name must not
+    // share project/site/relationship GlobalIds, or federating them collides.
+    GuidSource: deterministicGuidSource(options.sourceHash ?? options.sourceFileName ?? source.schema),
   });
   const terrain = creator.terrain();
 

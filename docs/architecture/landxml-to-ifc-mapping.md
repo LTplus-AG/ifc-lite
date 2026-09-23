@@ -328,6 +328,11 @@ Recorded during implementation; they constrain the code but do not change the ma
   RFC-4122-shaped UUID from a seed string, and `uuidToIfcGuid` compresses it to the
   22-character `IfcGloballyUniqueId`. The seed is the source id verbatim
   (`landxml:surface:3`), so the identity scheme is the crate's, not a second one.
+  **Known limitation:** source ids are document-local, so two *different* files
+  with the same surface ordinal produce the same element GlobalId. The file-level
+  entities (project, site, relationships) are seeded from `sourceHash` when the
+  caller supplies it, which keeps two such exports from colliding at the site
+  when federated; callers should always pass it.
 - **Where the converter lives.** `packages/create/src/landxml/`, reached through
   `@ifc-lite/create`. It declares its own minimal structural input type rather than
   importing the viewer's `LandXmlTinDocument`, so the converter is testable without the

@@ -1560,10 +1560,8 @@ export class IfcCreator {
    * The terrain/survey authoring surface: TIN surfaces, survey points, their
    * property sets and the file's georeferencing.
    *
-   * One accessor rather than four methods on this class, because every one of
-   * them needs the same four creator internals and nothing else — see
-   * `ifc-creator-terrain.ts`, which owns both the emitters and the doc comments
-   * for each call.
+   * One accessor rather than four methods: each needs the same creator
+   * internals and nothing else. `ifc-creator-terrain.ts` documents each call.
    */
   terrain(): TerrainWriter {
     return createTerrainWriter(this.terrainContext(), {

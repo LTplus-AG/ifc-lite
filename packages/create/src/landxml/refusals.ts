@@ -32,7 +32,8 @@ const FAMILY_REASONS: Record<LandXmlRefusedFamily, string> = {
   'surface-boundaries': 'surface boundary polylines are not written; only the triangulated surface itself is',
   'surface-breaklines': 'surface breaklines are not written; only the triangulated surface itself is',
   'surface-contours': 'surface contour lines are not written; only the triangulated surface itself is',
-  'non-rendered-surfaces': 'surfaces that carry no numeric, renderable triangulation cannot become an IfcTriangulatedIrregularNetwork',
+  'non-rendered-surfaces': 'surfaces that carry no numeric, renderable triangulation (or whose every face is hidden) cannot become an IfcTriangulatedIrregularNetwork',
+  'unlocated-cgpoints': 'CgPoints that carry only a point reference and no coordinates of their own have nothing to place',
 };
 
 function countAcrossSurfaces(
@@ -42,11 +43,16 @@ function countAcrossSurfaces(
   return surfaces.reduce((total, surface) => total + (pick(surface)?.length ?? 0), 0);
 }
 
-/** A surface v1 can write: a rendered TIN with vertices and at least one face. */
+/**
+ * A surface v1 can write: a rendered TIN with vertices and at least one
+ * VISIBLE face. A surface whose every face is an authored `<F i="true">` draws
+ * nothing, so it is refused by name like any other non-rendered surface rather
+ * than vanishing from an otherwise successful export.
+ */
 export function isMappableSurface(surface: LandXmlIfcSurface): boolean {
   return surface.renderState === 'rendered'
     && surface.points.length > 0
-    && surface.faces.length > 0;
+    && surface.faces.some((_, ordinal) => surface.faceVisibility?.[ordinal] !== false);
 }
 
 /**
@@ -70,6 +76,7 @@ export function collectRefusals(source: LandXmlIfcSource): LandXmlRefusal[] {
     ['surface-breaklines', countAcrossSurfaces(source.surfaces, (s) => s.breaklines)],
     ['surface-contours', countAcrossSurfaces(source.surfaces, (s) => s.contours)],
     ['non-rendered-surfaces', source.surfaces.filter((s) => !isMappableSurface(s)).length],
+    ['unlocated-cgpoints', (source.plan?.cogoPoints ?? []).filter((point) => point.point === null).length],
   ];
 
   return counts

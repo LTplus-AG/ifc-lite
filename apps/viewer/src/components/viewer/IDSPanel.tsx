@@ -113,16 +113,19 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
   // has no `IDSRequirement.facet` to read a pset/property name off), so this
   // is computed here, where `report` is still IDS-typed, rather than inside
   // the now-generalised `SpecificationCard`.
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const getMutationView = useViewerStore((s) => s.getMutationView);
   const correctableSpecIds = useMemo(() => {
     if (!report) return undefined;
+    const mutationView = getMutationView(report.modelInfo[0].modelId);
     const out = new Set<string>();
     for (const specResult of report.specificationResults) {
-      if (specResult.failedCount > 0 && getCorrectableRequirements(specResult).length > 0) {
+      if (specResult.failedCount > 0 && getCorrectableRequirements(specResult, mutationView?.isDeleted.bind(mutationView)).length > 0) {
         out.add(specResult.specification.id);
       }
     }
     return out;
-  }, [report]);
+  }, [report, getMutationView, mutationVersion]);
 
   // Handle file selection
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -297,6 +297,28 @@ describe('compose', () => {
     }
   });
 
+  it('keeps the IDS report header with its first check and child rule near a page end (#5125 review)', () => {
+    // The spacer leaves room for the header and check, but not the first rule.
+    // The whole group must move together instead of leaving the header behind.
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [
+        { kind: 'spacer', id: 'fill', height: 625 },
+        { kind: 'ids-report', id: 'ids', sourceName: 'Design IDS', generatedAt: '2026-01-15T10:00:00.000Z',
+          summary: { checked: 1, passed: 1, failed: 0, passRate: 100 },
+          checks: [{ id: 'walls', shortDescription: 'Walls', checked: 1, passed: 1, failed: 0, passRate: 100,
+            rules: [{ id: 'r1', shortDescription: 'Fire rating', checked: 1, passed: 1, failed: 0, passRate: 100 }] }],
+        },
+      ],
+    });
+    const pagesWithText = layout.pages.map((page) => page.items.filter((item) => item.kind === 'text').map((item) => item.text));
+    assert.equal(layout.pages.length, 2);
+    assert.deepEqual(pagesWithText[0], []);
+    assert.ok(pagesWithText[1].includes('IDS report: Design IDS'));
+    assert.ok(pagesWithText[1].includes('Walls'));
+    assert.ok(pagesWithText[1].includes('Fire rating'));
+  });
+
   it('wraps by the measure, breaks pages, and keeps a heading with its next line', () => {
     assert.deepEqual(wrapText('one two three four', 40, 10, false, estimateTextWidth), ['one two', 'three', 'four']);
     assert.deepEqual(wrapText('a\n\nb', 100, 10, false, estimateTextWidth), ['a', '', 'b']);

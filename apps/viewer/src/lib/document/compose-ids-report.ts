@@ -26,8 +26,13 @@ const pct = (n: number): string => `${n}%`;
 
 export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCursor, contentW: number, blockGap: number): void {
   const title = `IDS report: ${block.sourceName}`;
-  const firstRowHeight = block.checks[0]?.longDescription ? DESCRIBED_CHECK_ROW_HEIGHT : CHECK_ROW_HEIGHT;
-  const lead = IDS_REPORT_TITLE_HEIGHT + SUMMARY_HEIGHT + DATE_HEIGHT + firstRowHeight;
+  const first = block.checks[0];
+  const firstRowHeight = first?.longDescription ? DESCRIBED_CHECK_ROW_HEIGHT : CHECK_ROW_HEIGHT;
+  const firstRule = first?.rules[0];
+  const firstRuleHeight = firstRule
+    ? (firstRule.longDescription ? DESCRIBED_CHECK_ROW_HEIGHT : CHECK_ROW_HEIGHT)
+    : 0;
+  const lead = IDS_REPORT_TITLE_HEIGHT + SUMMARY_HEIGHT + DATE_HEIGHT + firstRowHeight + firstRuleHeight;
   cursor.ensure(lead);
   cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 11, size: 11, bold: true, gray: 0, text: cursor.truncate(title, contentW, 11, true) });
   cursor.y += IDS_REPORT_TITLE_HEIGHT;

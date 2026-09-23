@@ -74,6 +74,7 @@ export function collectGeoreferencingEntities(
   },
   excludeIds?: ReadonlySet<number>,
 ): void {
+  // @raw-entity-enumeration-ok caller supplies effective buckets for live STEP export, or source buckets for fresh merged export
   const mapConversionIds = MAP_CONVERSION_STEP_TYPES.flatMap(
     (typeName) => entityIndex.byType.get(typeName) ?? [],
   );
@@ -81,6 +82,7 @@ export function collectGeoreferencingEntities(
 
   const queue: number[] = [];
   const refsOf = (expressId: number, ref: { byteOffset: number; byteLength: number }): number[] => {
+    // @raw-entity-enumeration-ok caller's effective index supplies authored refs; source index uses the byte fallback below
     const authored = entityIndex.byId.refsOf?.(expressId);
     if (authored) return authored.slice();
     return collectRefsInByteRange(source, ref.byteOffset, ref.byteLength);
@@ -90,6 +92,7 @@ export function collectGeoreferencingEntities(
     if (closure.has(expressId)) continue;
     if (excludeIds?.has(expressId)) continue;
 
+    // @raw-entity-enumeration-ok point lookup in caller-supplied effective or fresh source index after type-bucket selection
     const entityRef = entityIndex.byId.get(expressId);
     if (!entityRef) continue;
 
@@ -114,10 +117,12 @@ export function collectGeoreferencingEntities(
   // IFCPROJECTEDCRS (TargetCRS) and its referenced units.
   while (queue.length > 0) {
     const entityId = queue.pop()!;
+    // @raw-entity-enumeration-ok closure worklist follows a member already selected from the caller's index
     const ref = entityIndex.byId.get(entityId);
     if (!ref) continue;
 
     for (const referencedId of refsOf(entityId, ref)) {
+      // @raw-entity-enumeration-ok existence check uses the caller's effective or fresh source index
       if (
         !closure.has(referencedId)
         && !excludeIds?.has(referencedId)

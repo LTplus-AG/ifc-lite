@@ -192,16 +192,16 @@ export function getEffectiveEntityIndex(
     view && typeof view.getTombstones === 'function' ? view.getTombstones() : EMPTY_IDS;
   const retypes: ReadonlyMap<number, { newType: string }> =
     view && typeof view.getTypeMutations === 'function' ? view.getTypeMutations() : EMPTY_RETYPES;
-
   if (created.size === 0 && tombstones.size === 0 && retypes.size === 0) {
+    // @raw-entity-enumeration-ok canonical effective index uses source buckets only when no create/delete/retype changes exist
     return sourceOnly(base, dataStore.entityIndex.byType, view);
   }
+  // @raw-entity-enumeration-ok canonical overlay index copies these source buckets, then applies creates, tombstones and retypes
   return new OverlayIndex(base, dataStore.entityIndex.byType, view!, created, tombstones, retypes);
 }
 
 const EMPTY_IDS: ReadonlySet<number> = new Set<number>();
 const EMPTY_RETYPES: ReadonlyMap<number, { newType: string }> = new Map();
-
 /** Shared by {@link sourceOnly} and {@link OverlayIndex}'s `hasSourceMutation` —
  *  see that method's doc on `EffectiveEntityIndex` for why this needs to stay
  *  a cheap map-lookup-only check with no decode or parse. */

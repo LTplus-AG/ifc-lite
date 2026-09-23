@@ -34,7 +34,6 @@ export interface Ifc5TreeScope {
 function newEdges(): RelationEdges {
   return { childrenByParent: new Map(), parentsByChild: new Map(), parentSetsByChild: new Map() };
 }
-
 function parsedSingleRef(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
 }
@@ -152,6 +151,7 @@ function addRawEdges(
   for (const [id, relation] of orderedRelations) {
     const rawDecomposition = relation.type === RelationshipType.Aggregates || relation.type === RelationshipType.Nests;
     const rawContainment = relation.type === RelationshipType.ContainsElements;
+    // @raw-entity-enumeration-ok parsed graph edge provides a source-class fallback; effective.typeOf below applies live retypes
     const rawType = relation.type === RelationshipType.Nests ? 'IFCRELNESTS'
       : rawDecomposition ? 'IFCRELAGGREGATES' : rawContainment
         ? 'IFCRELCONTAINEDINSPATIALSTRUCTURE' : dataStore.entityIndex.byId.get(id)?.type ?? '';
@@ -204,12 +204,12 @@ function addRawEdges(
     }
   }
 }
-
 function buildEffectiveTreeGraph(
   dataStore: IfcDataStore,
   effective: EffectiveEntityIndex,
   view: MutablePropertyView | null,
 ): EffectiveTreeGraph {
+  // @raw-entity-enumeration-ok source relationship presence stays authoritative even after tombstones, preventing stale-tree fallback
   const sourceTypes = dataStore.entityIndex.byType;
   const graph: EffectiveTreeGraph = {
     decomposition: newEdges(), containment: newEdges(),
@@ -244,11 +244,11 @@ function buildEffectiveTreeGraph(
     if (decomposition) graph.hasDecompositionRecords = true;
     if (containment) graph.hasContainmentRecords = true;
     const createdEntity = created.get(id);
+    // @raw-entity-enumeration-ok effective iteration chose this surviving id; source bytes supply its pre-edit attributes
     const sourceRef = createdEntity ? undefined : dataStore.entityIndex.byId.get(id);
     const sourceEntity = sourceRef ? extractor.extractEntity(sourceRef) : null;
     const attributes = effectiveAttributes(id, sourceEntity?.attributes, createdEntity, view);
     if (!attributes) continue;
-
     const parentIndex = decomposition ? 4 : 5;
     const childrenIndex = decomposition ? 5 : 4;
     const parentName = decomposition ? 'RelatingObject' : 'RelatingStructure';

@@ -41,6 +41,8 @@ export function useFilterRuleOptions(rules: readonly FilterRule[]): FilterRuleOp
     models,
     modelTags,
     activeModelId,
+    mutationViews,
+    mutationVersion,
     setFilterSchema,
     setFilterPsetQtoSchema,
     setFilterValueSchema,
@@ -50,6 +52,8 @@ export function useFilterRuleOptions(rules: readonly FilterRule[]): FilterRuleOp
       models: s.models,
       modelTags: s.modelTags,
       activeModelId: s.activeModelId,
+      mutationViews: s.mutationViews,
+      mutationVersion: s.mutationVersion,
       setFilterSchema: s.setFilterSchema,
       setFilterPsetQtoSchema: s.setFilterPsetQtoSchema,
       setFilterValueSchema: s.setFilterValueSchema,
@@ -58,30 +62,38 @@ export function useFilterRuleOptions(rules: readonly FilterRule[]): FilterRuleOp
 
   const activeModel = activeModelId ? models.get(activeModelId) : undefined;
   const activeStore = activeModel?.ifcDataStore ?? null;
-  const schemaEntry = activeModelId ? schemaMap.get(activeModelId) : undefined;
+  const activeView = activeModelId ? mutationViews.get(activeModelId) : undefined;
+  const cachedEntry = activeModelId ? schemaMap.get(activeModelId) : undefined;
+  const schemaEntry = cachedEntry?.sourceStore === activeStore
+    && cachedEntry?.mutationVersion === mutationVersion ? cachedEntry : undefined;
 
   // Cheap schema discovery — runs once per active model.
   useEffect(() => {
     if (!activeModelId || !activeStore) return;
-    if (useViewerStore.getState().searchFilterSchema.has(activeModelId)) return;
-    setFilterSchema(activeModelId, discoverFilterSchema(activeStore));
-  }, [activeModelId, activeStore, schemaMap, setFilterSchema]);
+    const cached = useViewerStore.getState().searchFilterSchema.get(activeModelId);
+    if (cached?.sourceStore === activeStore && cached.mutationVersion === mutationVersion) return;
+    setFilterSchema(activeModelId, discoverFilterSchema(activeStore, activeView), {
+      sourceStore: activeStore, mutationVersion,
+    });
+  }, [activeModelId, activeStore, activeView, mutationVersion, schemaMap, setFilterSchema]);
 
   // Lazy pset/qto schema — fired the first time a property/quantity rule appears.
   useEffect(() => {
     if (!activeModelId || !activeStore) return;
-    if (useViewerStore.getState().searchFilterSchema.get(activeModelId)?.psetQto) return;
+    const cached = useViewerStore.getState().searchFilterSchema.get(activeModelId);
+    if (cached?.sourceStore !== activeStore || cached.mutationVersion !== mutationVersion || cached.psetQto) return;
     const needs = rules.some((r) => r.kind === 'property' || r.kind === 'quantity');
     if (!needs) return;
-    setFilterPsetQtoSchema(activeModelId, discoverPropertyAndQuantitySchema(activeStore));
-  }, [activeModelId, activeStore, rules, schemaMap, setFilterPsetQtoSchema]);
+    setFilterPsetQtoSchema(activeModelId, discoverPropertyAndQuantitySchema(activeStore, undefined, activeView));
+  }, [activeModelId, activeStore, activeView, mutationVersion, rules, schemaMap, setFilterPsetQtoSchema]);
 
   // Lazy value discovery - distinct material / classification / property /
   // predefined-type values for the chip value suggestions. Fired the first time
   // a rule that benefits from them appears.
   useEffect(() => {
     if (!activeModelId || !activeStore) return;
-    if (useViewerStore.getState().searchFilterSchema.get(activeModelId)?.values) return;
+    const cached = useViewerStore.getState().searchFilterSchema.get(activeModelId);
+    if (cached?.sourceStore !== activeStore || cached.mutationVersion !== mutationVersion || cached.values) return;
     const needs = rules.some(
       (r) =>
         r.kind === 'property' ||
@@ -90,8 +102,8 @@ export function useFilterRuleOptions(rules: readonly FilterRule[]): FilterRuleOp
         r.kind === 'predefinedType',
     );
     if (!needs) return;
-    setFilterValueSchema(activeModelId, discoverFilterValues(activeStore));
-  }, [activeModelId, activeStore, rules, schemaMap, setFilterValueSchema]);
+    setFilterValueSchema(activeModelId, discoverFilterValues(activeStore, activeView));
+  }, [activeModelId, activeStore, activeView, mutationVersion, rules, schemaMap, setFilterValueSchema]);
 
   const ifcTypeOptions = useMemo<string[]>(() => {
     if (schemaEntry?.basic.ifcTypes && schemaEntry.basic.ifcTypes.length > 0) {
@@ -132,8 +144,8 @@ export function useFilterRuleOptions(rules: readonly FilterRule[]): FilterRuleOp
   const psetQto = useMemo(() => {
     const cached = schemaEntry?.psetQto ?? null;
     if (!activeStore || !hasPropOrQty || selectedTypes.length === 0) return cached;
-    return discoverPropertyAndQuantitySchema(activeStore, selectedTypes);
-  }, [activeStore, hasPropOrQty, selectedTypes, schemaEntry?.psetQto]);
+    return discoverPropertyAndQuantitySchema(activeStore, selectedTypes, activeView);
+  }, [activeStore, activeView, mutationVersion, hasPropOrQty, selectedTypes, schemaEntry?.psetQto]);
 
   return {
     modelOptions,

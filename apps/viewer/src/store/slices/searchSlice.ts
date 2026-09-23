@@ -26,6 +26,7 @@ import type { SearchResult, MatchField } from '@/lib/search/tier0-scan';
 import type { FilterRule } from '@ifc-lite/rules';
 import { emptyFilterGroup, type FilterGroup } from '@ifc-lite/rules';
 import type { FilterSchema, PsetQtoSchema, FilterValueSchema } from '@/lib/search/filter-schema';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import { clampGroupIndex, createFilterGroupActions } from './searchSlice.filterGroups.js';
 
 /** Index lifecycle state for a single model. */
@@ -103,6 +104,9 @@ export function emptyFilterState(): SearchFilterStateValue {
 export interface FilterSchemaCacheEntry {
   /** Cheap pass — storeys + ifcTypes. Always populated when entry exists. */
   basic: FilterSchema;
+  /** Source and edit revision that all three cached passes describe. */
+  sourceStore?: IfcDataStore;
+  mutationVersion?: number;
   /** Expensive pass — pset / qto names. Lazy; null until first request. */
   psetQto: PsetQtoSchema | null;
   /** Expensive pass — distinct material / classification / property values
@@ -224,7 +228,9 @@ export interface SearchSlice {
   setActiveFilterGroup: (index: number) => void;
 
   // ── Schema cache actions ──────────────────────────────────────────
-  setFilterSchema: (modelId: string, basic: FilterSchema) => void;
+  setFilterSchema: (modelId: string, basic: FilterSchema, context?: {
+    sourceStore: IfcDataStore; mutationVersion: number;
+  }) => void;
   setFilterPsetQtoSchema: (modelId: string, psetQto: PsetQtoSchema) => void;
   setFilterValueSchema: (modelId: string, values: FilterValueSchema) => void;
   removeFilterSchema: (modelId: string) => void;
@@ -344,14 +350,17 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
   // Group-aware rule/combinator/group actions — see searchSlice.filterGroups.ts.
   ...createFilterGroupActions(set),
 
-  setFilterSchema: (modelId, basic) =>
+  setFilterSchema: (modelId, basic, context) =>
     set((state) => {
       const next = new Map(state.searchFilterSchema);
       const existing = next.get(modelId);
+      const sameSource = existing?.sourceStore === context?.sourceStore
+        && existing?.mutationVersion === context?.mutationVersion;
       next.set(modelId, {
         basic,
-        psetQto: existing?.psetQto ?? null,
-        values: existing?.values ?? null,
+        ...context,
+        psetQto: sameSource ? existing?.psetQto ?? null : null,
+        values: sameSource ? existing?.values ?? null : null,
       });
       return { searchFilterSchema: next };
     }),

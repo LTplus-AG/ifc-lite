@@ -70,6 +70,7 @@ export function ListPanel({ onClose }: ListPanelProps) {
 
   // Providers + declared units per model, shared with document table blocks (#5142).
   const { pairs: modelProviderPairs, providers: allProviders, stores: allStores, modelUnits, hasData } = useListProviders();
+  const listModelIds = React.useMemo(() => modelProviderPairs.map((pair) => pair.modelId), [modelProviderPairs]);
 
   const handleExecuteList = useCallback((definition: ListDefinition) => {
     if (!hasData) return;
@@ -254,6 +255,7 @@ export function ListPanel({ onClose }: ListPanelProps) {
         <ListBuilder
           providers={allProviders}
           stores={allStores}
+          modelIds={listModelIds}
           initial={editingList}
           onSave={handleSaveList}
           onCancel={() => setView('library')}

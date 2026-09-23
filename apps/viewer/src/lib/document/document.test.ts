@@ -13,7 +13,8 @@ import assert from 'node:assert/strict';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { aggregate, type Aggregation } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
-import { localIsoDate, parsePath, renderTemplate, resolveBinding, templatePaths, type BindingContext } from './bindings.js';
+import { elementPropertyPaths, localIsoDate, parsePath, renderTemplate, resolveBinding, templatePaths, type BindingContext } from './bindings.js';
+import { configureMutationView } from '../../utils/configureMutationView.js';
 import { composeDocument, estimateTextWidth, wrapText } from './compose.js';
 import { largestBucketIds } from '../charts/buckets.js';
 import { generateDocumentPdf, topicLines, type DocumentPdfSeams } from './generate-document-pdf.js';
@@ -23,6 +24,7 @@ import { resolveValidationTableState } from './resolve-validation-table.js';
 import { DOCUMENT_VERSION, validateDocumentSpec, type DocumentSpec, type ListTableSource, type TableBlock, type ValidationTableSource } from './types.js';
 import { elementsDataset } from '@ifc-lite/charts';
 import { IfcTypeEnum } from '@ifc-lite/data';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { ListDefinition } from '@ifc-lite/lists';
 import { createListDataProvider } from '../lists/adapter.js';
 import { runListFederated } from '../lists/run-list.js';
@@ -151,6 +153,59 @@ describe('bindings', () => {
     const template = `{IfcProject.Name}: {Element[${WALL}].Name} is {Element[${WALL}].Pset_WallCommon.FireRating}`;
     assert.equal(renderTemplate(template, ctx).text, 'Tower: Wall A is REI60');
     assert.equal(renderTemplate(template, revised).text, 'Tower rev 2: Wall A (moved) is REI90');
+  });
+
+  it('counts deleted, retyped and created entities in the live document (#5249)', () => {
+    const store = ctx.models[0].store;
+    const view = new MutablePropertyView(store.properties, 'm1');
+    view.setExpressIdWatermark(100);
+    view.deleteEntity(42);
+    view.setEntityType(44, 'IfcWall');
+    const created = view.createEntity('IfcWall',
+      ['0NewWall000000000000041', '$', 'Added wall', '$', '$', '#24', '#28', '$', '$']);
+    const live: BindingContext = { ...ctx, models: [{ ...ctx.models[0], view }] };
+    assert.ok(created.expressId > 100);
+    assert.equal(resolveBinding('Count[IfcWall]', live).value, '3');
+    assert.equal(resolveBinding('Count[IfcDoor]', live).value, '0');
+    assert.equal(resolveBinding('Model.Elements', live).value, '3');
+    assert.equal(renderTemplate('Walls: {Count[IfcWall]}; elements: {Model.Elements}', live).text, 'Walls: 3; elements: 3');
+  });
+
+  it('resolves effective GUIDs, attributes and property picker fields in the document (#5249)', () => {
+    const store = ctx.models[0].store;
+    const view = new MutablePropertyView(store.properties, 'm1');
+    configureMutationView(view, store);
+    view.setExpressIdWatermark(100);
+    view.setAttribute(41, 'Name', 'Edited wall');
+    view.setProperty(41, 'Pset_WallCommon', 'FireRating', 'REI120');
+    view.setProperty(41, 'Pset_Added', 'Comment', 'Reviewed');
+    const added = view.createEntity('IfcWall', ['0NewWall000000000000041', '$', 'Added wall', '$', '$', '#24', '#28', '$', '$']);
+    const live: BindingContext = { ...ctx, models: [{ ...ctx.models[0], view }] };
+    assert.equal(resolveBinding(`Element[${WALL}].Name`, live).value, 'Edited wall');
+    assert.equal(resolveBinding(`Element[${WALL}].Pset_WallCommon.FireRating`, live).value, 'REI120');
+    assert.equal(resolveBinding(`Element[${WALL}].Pset_Added.Comment`, live).value, 'Reviewed');
+    assert.ok(elementPropertyPaths(WALL, live).some(({ path }) => path === `Element[${WALL}].Pset_Added.Comment`));
+    assert.equal(resolveBinding('Element[0NewWall000000000000041].Name', live).value, 'Added wall');
+    assert.ok(added.expressId > 100);
+    view.deleteEntity(41);
+    const afterDelete: BindingContext = { ...ctx, models: [{ ...ctx.models[0], view }] };
+    assert.equal(resolveBinding(`Element[${WALL}].Name`, afterDelete).ok, false);
+  });
+
+  it('uses edited spatial names and excludes deleted descendants from storey bindings (#5249)', () => {
+    const store = ctx.models[0].store;
+    const view = new MutablePropertyView(store.properties, 'm1');
+    view.setAttribute(5, 'Name', 'Level One');
+    view.deleteEntity(42);
+    const live: BindingContext = { ...ctx, models: [{ ...ctx.models[0], view }] };
+    assert.equal(resolveBinding('IfcBuildingStorey["Level One"].Name', live).value, 'Level One');
+    assert.equal(resolveBinding('IfcBuildingStorey["Level One"].Elements', live).value, '1');
+    assert.equal(resolveBinding(`Element[${WALL}].Storey`, live).value, 'Level One');
+    assert.equal(resolveBinding('IfcBuildingStorey["Level 1"].Name', live).ok, false);
+    view.deleteEntity(5);
+    const deleted: BindingContext = { ...ctx, models: [{ ...ctx.models[0], view }] };
+    assert.equal(resolveBinding('IfcBuildingStorey[1].Name', deleted).value, 'Level 2');
+    assert.equal(resolveBinding('IfcBuildingStorey["Level One"].Name', deleted).ok, false);
   });
 });
 

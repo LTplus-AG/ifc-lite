@@ -16,6 +16,7 @@ import { act, useState } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { DEFAULT_THEME, renderChartSvg } from '@ifc-lite/charts';
 import { IfcTypeEnum } from '@ifc-lite/data';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { ListDefinition } from '@ifc-lite/lists';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
@@ -25,9 +26,11 @@ import type { DocumentPdfSeams } from '@/lib/document/generate-document-pdf.js';
 import type { ReportTableArgs } from '@/lib/export/report/generate-report-pdf.js';
 import { DOCUMENT_VERSION, type DocumentSpec, type ListTableSource, type TableBlock } from '@/lib/document/types.js';
 import type { TableState } from '@/lib/document/resolve-table.js';
+import { renderTemplate } from '@/lib/document/bindings.js';
 import { DocumentPanel } from './DocumentPanel.js';
 import { TableBlockEditor } from './TableBlockEditor.js';
 import { useDocumentTables } from './useDocumentTables.js';
+import { useDocumentData } from './useDocumentData.js';
 
 const MINI_IFC = `ISO-10303-21;
 HEADER;
@@ -222,6 +225,28 @@ function TablesProbe({ document: doc }: { document: DocumentSpec }) {
   const tables = useDocumentTables(doc);
   return <div data-probe>{[...tables].map(([id, s]) => <span key={id} data-block={id} data-status={s.status}>{s.status === 'error' ? s.message : ''}</span>)}</div>;
 }
+
+function BindingProbe() {
+  const { bindings } = useDocumentData(null);
+  return <div data-binding>{renderTemplate('Walls {Count[IfcWall]}: {Element[0Wall00000000000000041].Name}', bindings).text}</div>;
+}
+
+describe('useDocumentData bindings (#5249)', () => {
+  afterEach(() => cleanup());
+
+  it('refreshes mounted document text on a mutation revision', async () => {
+    const model = await parsedModel();
+    const view = new MutablePropertyView(model.ifcDataStore!.properties, model.id);
+    useViewerStore.setState({ models: new Map([[model.id, model]]), activeModelId: model.id,
+      mutationViews: new Map([[model.id, view]]), mutationVersion: 0 });
+    const ui = render(<BindingProbe />);
+    assert.equal(ui.querySelector('[data-binding]')?.textContent, 'Walls 2: Wall A');
+    view.deleteEntity(42);
+    view.setAttribute(41, 'Name', 'Edited wall');
+    act(() => useViewerStore.setState({ mutationVersion: 1 }));
+    assert.equal(ui.querySelector('[data-binding]')?.textContent, 'Walls 1: Edited wall');
+  });
+});
 
 describe('useDocumentTables (#5142)', () => {
   beforeEach(async () => {

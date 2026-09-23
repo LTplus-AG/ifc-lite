@@ -22,14 +22,20 @@
  * template never silently prints an empty string for it.
  */
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { IfcTypeEnum, IfcTypeEnumFromString, IfcTypeEnumToString, type SpatialNode } from '@ifc-lite/data';
+import { normalizeIfcTypeName } from '@ifc-lite/parser';
+import { EntityFlags, IfcTypeEnum, IfcTypeEnumFromString, IfcTypeEnumToString, type SpatialNode } from '@ifc-lite/data';
+import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
 import { createListDataProvider } from '../lists/adapter.js';
 import type { ListDataProvider } from '@ifc-lite/lists';
+import { iterateEffectiveChartRows } from '../charts/datasets/effective-elements.js';
+import { effectiveAttribute, effectiveProperty, effectivePropertyPaths, findEffectiveElementId } from './effective-binding-fields.js';
 
 export interface BindingModel {
   id: string;
   name: string;
   store: IfcDataStore;
+  /** Session edits for this model, if any. The caller rebuilds the context on each mutation revision. */
+  view?: MutablePropertyView;
 }
 
 export interface BindingContext {
@@ -136,8 +142,12 @@ export function elementPropertyPaths(globalId: string, ctx: BindingContext, limi
     out.push({ path, label: `${setName} › ${name}` });
   };
   for (const m of ctx.models) {
-    const expressId = m.store.entities.getExpressIdByGlobalId(globalId);
+    const expressId = findEffectiveElementId(m, globalId);
     if (expressId <= 0) continue;
+    if (m.view) {
+      for (const { setName, name } of effectivePropertyPaths(m, expressId)) add(setName, name);
+      return out;
+    }
     const provider = providerFor(m);
     for (const set of [...provider.getPropertySets(expressId), ...(provider.getTypePropertySets?.(expressId) ?? [])]) for (const prop of set.properties) add(set.name, prop.name);
     for (const set of provider.getQuantitySets(expressId)) for (const q of set.quantities) add(set.name, q.name);
@@ -170,7 +180,12 @@ export function resolveBinding(path: string, ctx: BindingContext): ResolvedBindi
       case 'Name': return succeed(path, active.name);
       case 'Schema': return succeed(path, active.store.schemaVersion);
       case 'Count': return succeed(path, String(ctx.models.length));
-      case 'Elements': return succeed(path, String(ctx.models.reduce((n, m) => n + (providerFor(m).getAllEntityIds?.() ?? []).length, 0)));
+      case 'Elements': return succeed(path, String(ctx.models.reduce((n, m) => {
+        if (!m.view) return n + (providerFor(m).getAllEntityIds?.() ?? []).length;
+        let count = n;
+        for (const row of iterateEffectiveChartRows(m.store, m.view)) if (row.flags & EntityFlags.HAS_GEOMETRY) count++;
+        return count;
+      }, 0)));
       default: return fail(path, `unknown Model attribute "${attr ?? ''}"`);
     }
   }
@@ -181,14 +196,21 @@ export function resolveBinding(path: string, ctx: BindingContext): ResolvedBindi
     const typeEnum = IfcTypeEnumFromString(head.selector);
     if (typeEnum === IfcTypeEnum.Unknown) return fail(path, `unknown IFC class "${head.selector}"`);
     let n = 0;
-    for (const m of ctx.models) n += m.store.entities.getByType(typeEnum).length;
+    for (const m of ctx.models) {
+      if (!m.view) {
+        // @raw-entity-enumeration-ok no mutation view exists for this model; the parsed class bucket is the effective set
+        n += m.store.entities.getByType(typeEnum).length;
+        continue;
+      }
+      for (const _row of iterateEffectiveEntityIds(m.store, m.view, [head.selector])) n++;
+    }
     return succeed(path, String(n));
   }
 
   if (head.name === 'Element') {
     if (!head.selector) return fail(path, 'Element needs a GlobalId, e.g. Element[2Ndyd$OSX7s9A04nc41yye]');
     for (const m of ctx.models) {
-      const expressId = m.store.entities.getExpressIdByGlobalId(head.selector);
+      const expressId = findEffectiveElementId(m, head.selector);
       if (expressId > 0) return elementAttribute(path, m, expressId, rest);
     }
     return fail(path, ctx.models.length === 0 ? 'no model loaded' : `no element with GlobalId ${head.selector} in the loaded models`);
@@ -198,7 +220,7 @@ export function resolveBinding(path: string, ctx: BindingContext): ResolvedBindi
     if (!active) return fail(path, 'no model loaded');
     const hierarchy = active.store.spatialHierarchy;
     if (!hierarchy) return fail(path, 'the model has no spatial structure');
-    const node = spatialNode(hierarchy.project, head);
+    const node = spatialNode(active, hierarchy.project, head);
     if (!node) return fail(path, head.selector ? `no ${head.name} "${head.selector}"` : `no ${head.name} in the model`);
     return spatialAttribute(path, active, node, rest[0]?.name, rest.length);
   }
@@ -206,11 +228,13 @@ export function resolveBinding(path: string, ctx: BindingContext): ResolvedBindi
   return fail(path, `unknown root "${head.name}"`);
 }
 
-function spatialNode(project: SpatialNode, head: Segment): SpatialNode | null {
-  if (head.name === 'IfcProject') return project;
+function spatialNode(model: BindingModel, project: SpatialNode, head: Segment): SpatialNode | null {
+  if (head.name === 'IfcProject') return model.view?.isDeleted(project.expressId) ? null : project;
   const matches: SpatialNode[] = [];
   const walk = (node: SpatialNode): void => {
-    if (IfcTypeEnumToString(node.type) === head.name) matches.push(node);
+    const edited = model.view?.getEntityTypeMutation(node.expressId)?.newType;
+    const type = edited ? normalizeIfcTypeName(edited) : IfcTypeEnumToString(node.type);
+    if (!model.view?.isDeleted(node.expressId) && type === head.name) matches.push(node);
     for (const child of node.children) walk(child);
   };
   walk(project);
@@ -218,12 +242,29 @@ function spatialNode(project: SpatialNode, head: Segment): SpatialNode | null {
   if (head.selector === undefined) return matches[0];
   const index = /^\d+$/.test(head.selector) ? Number(head.selector) : NaN;
   if (Number.isInteger(index)) return matches[index - 1] ?? null;
-  return matches.find((n) => n.name === head.selector || n.longName === head.selector) ?? null;
+  return matches.find((n) => {
+    const name = model.view ? effectiveAttribute(model, n.expressId, 'Name') : n.name;
+    const longName = model.view ? effectiveAttribute(model, n.expressId, 'LongName') : n.longName;
+    return name === head.selector || longName === head.selector;
+  }) ?? null;
 }
 
 function spatialAttribute(path: string, model: BindingModel, node: SpatialNode, attr: string | undefined, depth: number): ResolvedBinding {
   if (depth !== 1) return fail(path, 'expected exactly one attribute, e.g. IfcProject.Name');
   const { entities } = model.store;
+  if (model.view) {
+    switch (attr) {
+      case 'Name': case 'LongName': case 'Description': case 'GlobalId':
+        return succeed(path, effectiveAttribute(model, node.expressId, attr));
+      case 'Elevation': {
+        const edited = model.view.getAttributeMutationsForEntity(node.expressId).find((mutation) => mutation.name === 'Elevation')?.value;
+        const source = model.store.spatialHierarchy?.storeyElevations.get(node.expressId) ?? node.elevation;
+        const elevation = edited === undefined ? source : Number(edited);
+        return elevation === undefined || !Number.isFinite(elevation) ? fail(path, 'no elevation') : succeed(path, `${elevation.toFixed(2)} m`);
+      }
+      case 'Elements': return succeed(path, String(countElements(node, model.view)));
+    }
+  }
   switch (attr) {
     case 'Name': return succeed(path, node.name || entities.getName(node.expressId));
     case 'LongName': return succeed(path, node.longName ?? node.name);
@@ -239,25 +280,32 @@ function spatialAttribute(path: string, model: BindingModel, node: SpatialNode, 
   }
 }
 
-function countElements(node: SpatialNode): number {
-  let n = node.elements.length;
-  for (const child of node.children) n += countElements(child);
+function countElements(node: SpatialNode, view?: MutablePropertyView): number {
+  let n = view ? node.elements.filter((id) => !view.isDeleted(id)).length : node.elements.length;
+  for (const child of node.children) n += countElements(child, view);
   return n;
 }
 
 function elementAttribute(path: string, model: BindingModel, expressId: number, rest: Segment[]): ResolvedBinding {
   const provider = providerFor(model);
   if (rest.length === 1) {
+    if (model.view && ['Name', 'Description', 'ObjectType', 'Tag', 'GlobalId'].includes(rest[0].name)) {
+      return succeed(path, effectiveAttribute(model, expressId, rest[0].name));
+    }
     switch (rest[0].name) {
       case 'Name': return succeed(path, provider.getEntityName(expressId));
       case 'Description': return succeed(path, provider.getEntityDescription(expressId));
-      case 'Type': return succeed(path, provider.getEntityTypeName(expressId));
+      case 'Type': {
+        const edited = model.view?.getEntityTypeMutation(expressId)?.newType ?? model.view?.getNewEntity(expressId)?.type;
+        return succeed(path, edited ? normalizeIfcTypeName(edited) : provider.getEntityTypeName(expressId));
+      }
       case 'ObjectType': return succeed(path, provider.getEntityObjectType(expressId));
       case 'Tag': return succeed(path, provider.getEntityTag(expressId));
       case 'GlobalId': return succeed(path, provider.getEntityGlobalId(expressId));
       case 'Storey': {
         const storeyId = model.store.spatialHierarchy?.elementToStorey.get(expressId);
-        return storeyId === undefined ? fail(path, 'not contained in a storey') : succeed(path, model.store.entities.getName(storeyId));
+        if (storeyId === undefined || model.view?.isDeleted(storeyId)) return fail(path, 'not contained in a storey');
+        return succeed(path, model.view ? effectiveAttribute(model, storeyId, 'Name') : model.store.entities.getName(storeyId));
       }
       default: break;
     }
@@ -265,6 +313,10 @@ function elementAttribute(path: string, model: BindingModel, expressId: number, 
   if (rest.length >= 2) {
     const setName = rest[0].name;
     const propName = rest.slice(1).map((s) => s.name).join('.');
+    if (model.view) {
+      const value = effectiveProperty(model, expressId, setName, propName);
+      return value === undefined ? fail(path, `no ${setName}.${propName} on this element`) : succeed(path, value);
+    }
     for (const set of [...provider.getPropertySets(expressId), ...(provider.getTypePropertySets?.(expressId) ?? [])]) {
       if (set.name !== setName) continue;
       const prop = set.properties.find((p) => p.name === propName);

@@ -13,7 +13,7 @@
  * (`setAttribute`) wins over the authored payload.
  */
 
-import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3 } from '@ifc-lite/data';
+import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3 } from '@ifc-lite/data';
 import type { MutablePropertyView } from './mutable-property-view.js';
 import type { NewEntity } from './types.js';
 
@@ -25,7 +25,7 @@ function attributeNames(type: string): readonly string[] {
     attributeNamesByType = new Map();
     // Newest schema first: a class the IFC4X3 table carries is laid out as
     // IFC4X3 declares it. Older schemas only fill classes it dropped.
-    for (const table of [ENTITIES_IFC4X3, ENTITIES_IFC4, ENTITIES_IFC2X3]) {
+    for (const table of [ENTITIES_IFC4X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC2X3]) {
       for (const entity of table) {
         const key = entity.name.toUpperCase();
         if (!attributeNamesByType.has(key)) attributeNamesByType.set(key, entity.attributes);

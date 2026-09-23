@@ -90,21 +90,46 @@ rather than a silent identity transform.
 
 ## Export
 
-**LandXML cannot be exported as IFC.** The viewer refuses it, for a single selected model and for
-a merged scope containing one, because the terrain and source records remain LandXML records and
-no `Ifc*` entities exist to write.
+A LandXML model can be converted to IFC4X3, under the reviewed mapping in
+[LandXML → IFC mapping](../architecture/landxml-to-ifc-mapping.md) (v1.0). The conversion is
+one-way and derived: it is not a round trip, and it does not replace the source records, which
+remain the authoritative model in the viewer.
 
-Instead:
+What v1 writes:
+
+| LandXML record | IFC4X3 |
+|---|---|
+| A renderable TIN `Surface` | `IfcGeographicElement` / `.TERRAIN.` carrying an `IfcTriangulatedIrregularNetwork` |
+| A `CgPoint` | `IfcAnnotation` / `.SURVEY.` with a property set |
+| A declared `CoordinateSystem` | `IfcProjectedCRS` + `IfcMapConversion` |
+
+Everything else — alignments, profiles, cross sections, roadways, parcels, monuments, plan
+features, pipe networks, and a surface's breaklines, boundaries and contours — is **named in the
+export dialog before you commit**, by record family and count. A partial export is allowed; a
+silent partial is not.
+
+The dialog refuses outright when nothing in the file is covered. An alignment-only file therefore
+refuses rather than producing a valid, empty, useless IFC. It also refuses when the target schema
+is not IFC4X3: v1 derives IFC4X3 STEP only, so IFC5/IFCX is not a conversion target.
+
+Two things the dialog states because the geometry cannot:
+
+- **An assumed linear unit.** If the source declares no `<Units>` and you supplied one at load
+  time, every coordinate is at that operator-chosen scale. The IFC records the assumption in a
+  `LandXML_Conversion` property set on the site.
+- **The coordinate reference system.** With no declared CRS, no georeferencing is written at all
+  (rather than a placeholder). With one, the declared datum is written verbatim as
+  `IfcProjectedCRS.Name` — ifc-lite never resolves it to an EPSG definition — and the
+  coordinate-order plausibility check still cannot run, because it needs that CRS's coordinate
+  bounds. A source whose point text was written easting-first produces a mirrored surface that
+  still renders and still passes every count check, so verify the source before relying on the
+  position.
+
+Also available, and still the recommended route when a downstream tool can read the source:
 
 - **Download the original LandXML.** The export dialog offers the source file back, unchanged.
-  This is the recommended route when a downstream tool needs the survey data.
-- **Changes Only** export stays available. Mutation deltas are source-independent JSON, not
-  synthesised IFC, so they are not affected by the refusal.
-
-A reviewed, opt-in LandXML→IFC mapping is specified in
-[LandXML → IFC mapping](../architecture/landxml-to-ifc-mapping.md) but is **not implemented**.
-Until it ships and is accepted, the refusal stands — an export button that produced a plausible
-but unreviewed `Ifc*` projection would be worse than no button.
+- **Changes Only** export. Mutation deltas are source-independent JSON, not synthesised IFC, so
+  the mapping does not apply to them.
 
 ## Diagnostics
 

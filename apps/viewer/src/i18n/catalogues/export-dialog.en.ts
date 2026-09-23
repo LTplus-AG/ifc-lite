@@ -61,4 +61,21 @@ export const exportDialogEn = {
   'exportDialog.landXml.error': 'LandXML is source geometry, not IFC. Export the original LandXML file instead.',
   'exportDialog.landXml.downloadSource': 'Download original LandXML',
   'exportDialog.landXml.sourceUnavailable': 'The original file is no longer held in memory, so it cannot be re-saved from here. Reopen it to export the source.',
+  'exportDialog.landXml.convertTitle': 'LandXML will be converted to IFC4X3',
+  'exportDialog.landXml.convertSurfaces': {
+    one: '{count} terrain surface',
+    other: '{count} terrain surfaces',
+  },
+  'exportDialog.landXml.convertPoints': {
+    one: '{count} survey point',
+    other: '{count} survey points',
+  },
+  'exportDialog.landXml.convertSummary': 'This is a one-way derived conversion, not a round trip. {records} will be written.',
+  'exportDialog.landXml.excludedTitle': 'Not included in the IFC',
+  'exportDialog.landXml.assumedUnit': 'Coordinates are scaled by an assumed linear unit ({unit}), not one the source declares. The geometry is at an operator-chosen scale.',
+  'exportDialog.landXml.missingCrs': 'No coordinate reference system is declared, so no georeferencing is written and the coordinate-order check cannot run.',
+  'exportDialog.landXml.declaredCrs': 'Georeferencing is written for the declared datum ({crs}), but the coordinate-order check cannot run: ifc-lite does not resolve a datum name to its coordinate bounds. A source whose point text was written easting-first produces a mirrored surface that still renders, so verify the source before relying on the position.',
+  'exportDialog.landXml.mergedUnsupported': 'The LandXML mapping converts one file into a standalone IFC4X3 model; it cannot take part in a merged export. Switch the scope to a single model to convert it.',
+  'exportDialog.landXml.schemaUnsupported': 'The LandXML mapping derives IFC4X3 STEP only. Choose IFC4X3 to convert this model, or export the original LandXML file.',
+  'exportDialog.landXml.exported': 'Converted to IFC4X3: {records}.',
 } as const satisfies Record<string, TranslationValue>;

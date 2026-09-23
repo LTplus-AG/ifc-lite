@@ -175,3 +175,126 @@ describe('ExportDialog LandXML source-format export (#5175)', () => {
     assert.equal(sourceButton(), undefined, 'the route belongs to the LandXML refusal, not to every export');
   });
 });
+
+/**
+ * #4937 — LandXML export stops being a blanket refusal.
+ *
+ * The cases above are still refusals, and deliberately so: they use a model
+ * with a LandXML `sourceSchema` but no retained document, which the mapping
+ * cannot prove holds anything writable. These cases attach a real document and
+ * pin the other half of §6 — a covered source exports, and a source covered
+ * only in PART exports while naming what it leaves out, before the user
+ * commits.
+ */
+describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
+  const TIN = {
+    sourceId: 'landxml:surface:1', ordinal: 0, sourcePath: '/LandXML/Surfaces/Surface',
+    properties: {}, definitionProperties: {}, name: 'Existing Ground',
+    kind: 'tin', renderState: 'rendered',
+    // Asymmetric, per §2.2: a square renders identically when transposed.
+    points: [
+      { sourceId: 'p1', id: '1', northing: 6406977.86, easting: 157899.16, elevation: 20.77 },
+      { sourceId: 'p2', id: '2', northing: 6406990.12, easting: 157903.44, elevation: 21.03 },
+      { sourceId: 'p3', id: '3', northing: 6407001.55, easting: 157888.02, elevation: 19.88 },
+    ],
+    sourceDataPoints: [], faces: [['1', '2', '3']], faceSourceIds: ['f1'],
+    faceVisibility: [true], hiddenFaceCount: 0, boundaries: [], breaklines: [], contours: [],
+  };
+
+  function terrainWithDocument(id: string, overrides: Record<string, unknown> = {}) {
+    const model = landXmlModel(id);
+    model.landXmlDocument = {
+      format: 'landxml', schema: 'LandXML-1.2', version: '1.2',
+      capabilities: { renderableTin: true, preservedOnlySurfaces: 0, unknownExtensions: 0 },
+      units: {
+        linearUnit: 'meter', elevationUnit: 'meter',
+        linearScaleToMeters: 1, elevationScaleToMeters: 1, assumed: false,
+      },
+      surfaces: [TIN], extensions: [], warnings: [],
+      alignments: [], profiles: [], crossSections: [], crossSectionSurfaces: [], roadways: [],
+      capabilityDiagnostics: [], preservedOnlyExtensions: [],
+      rendering: { meshProvenance: [], surfaceCounts: [] },
+      ...overrides,
+    } as never;
+    return model;
+  }
+
+  it('offers the conversion, by record count, for a covered source', () => {
+    useViewerStore.setState({
+      ...fixtureModels(terrainWithDocument('survey.xml')), dirtyModels: new Set(),
+    });
+    render(<ExportDialog />);
+    openDialog();
+
+    const text = document.body.textContent ?? '';
+    assert.match(text, /LandXML will be converted to IFC4X3/);
+    assert.match(text, /1 terrain surface/);
+    assert.doesNotMatch(text, /LandXML cannot be exported as IFC/);
+    assert.equal(exportButton().disabled, false, 'a covered source has an IFC export action');
+  });
+
+  it('names what a partially covered source leaves out, before the user commits', () => {
+    useViewerStore.setState({
+      ...fixtureModels(terrainWithDocument('survey.xml', { alignments: [{}, {}] })),
+      dirtyModels: new Set(),
+    });
+    render(<ExportDialog />);
+    openDialog();
+
+    const text = document.body.textContent ?? '';
+    // Exporting AND refusing at once is the case §6 exists for; a silent
+    // partial is the one outcome the mapping rules out.
+    assert.match(text, /Not included in the IFC/);
+    assert.match(text, /2 alignments records will not be included/);
+    assert.equal(exportButton().disabled, false, 'a partial source still exports');
+  });
+
+  it('still refuses an alignment-only source rather than writing an empty IFC', () => {
+    useViewerStore.setState({
+      ...fixtureModels(terrainWithDocument('alignment.xml', { surfaces: [], alignments: [{}, {}, {}] })),
+      dirtyModels: new Set(),
+    });
+    render(<ExportDialog />);
+    openDialog();
+
+    assert.match(document.body.textContent ?? '', /LandXML cannot be exported as IFC/);
+    assert.equal(exportButton().disabled, true, 'nothing the mapping covers means nothing to export');
+  });
+
+  it('surfaces an assumed unit as a standing assumption on the conversion', () => {
+    const assumed = terrainWithDocument('survey.xml', {
+      units: {
+        linearUnit: 'US survey foot', elevationUnit: 'US survey foot',
+        linearScaleToMeters: 0.3048006096, elevationScaleToMeters: 0.3048006096, assumed: true,
+      },
+    });
+    useViewerStore.setState({ ...fixtureModels(assumed), dirtyModels: new Set() });
+    render(<ExportDialog />);
+    openDialog();
+
+    // The scale is an operator's choice, not the file's. Nothing in the
+    // geometry says so, which is exactly why the dialog must.
+    assert.match(document.body.textContent ?? '', /assumed linear unit \(US survey foot\)/);
+  });
+
+  it('refuses IFC5 for a covered source, because v1 derives IFC4X3 STEP only', () => {
+    useViewerStore.setState({
+      ...fixtureModels(terrainWithDocument('survey.xml')), dirtyModels: new Set(),
+    });
+    render(<ExportDialog />);
+    openDialog();
+
+    const schema = [...document.querySelectorAll('[role="combobox"]')].at(-1);
+    assert.ok(schema, 'the dialog offers a schema selector');
+    click(schema);
+    const ifc5 = [...document.querySelectorAll('[role="option"]')]
+      .find((option) => option.textContent?.includes('IFC5'));
+    assert.ok(ifc5, 'IFC5 is offered before the mapping-aware guard evaluates it');
+    click(ifc5);
+
+    // Not the generic "no IFC entities are synthesized" refusal: this source
+    // IS covered, and the fix is the schema, not the file.
+    assert.match(document.body.textContent ?? '', /derives IFC4X3 STEP only/);
+    assert.equal(exportButton().disabled, true, 'IFC5/IFCX is not a mapping target');
+  });
+});

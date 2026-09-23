@@ -23,6 +23,12 @@ type SelectedExportModel = FederatedModel | {
   collapsed: false;
   schemaVersion: FederatedModel['schemaVersion'];
   sourceSchema: undefined;
+  // Stated rather than omitted: the legacy single-model path is reached only
+  // by `loadFile` on an IFC source, so it can never carry LandXML records.
+  // Leaving these off the branch forced every LandXML-aware caller to narrow
+  // the union before it could ask (#4937).
+  landXmlDocument: undefined;
+  sourceFile: undefined;
 };
 
 export function listExportModels(
@@ -67,5 +73,7 @@ export function resolveExportModel(
     collapsed: false,
     schemaVersion: legacyStore.schemaVersion,
     sourceSchema: undefined,
+    landXmlDocument: undefined,
+    sourceFile: undefined,
   };
 }

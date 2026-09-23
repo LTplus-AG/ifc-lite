@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { modelDisplayLabels } from '@/lib/model-labels.js';
-import { isLandXmlSchema } from '@/hooks/ingest/landXmlSemantics.js';
 import { stepExportProgress } from '@/lib/export/step-progress.js';
 import { prepareAppearanceSerialization } from '@/lib/appearance/serialization.js';
 import { packagePortableIfcAsync, assertPortableMergeSupported } from '@/lib/export/portable-ifc';
@@ -71,6 +70,8 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
 import { downloadFile, sanitizeFilename, stripExtension } from '@/lib/export/download';
 import { LandXmlExportRefusal } from './LandXmlExportRefusal.js';
+import { landXmlExportPlan } from '@/lib/export/landXmlIfcPlan.js';
+import { finishLandXmlIfcExport } from '@/lib/export/landXmlIfcDownload.js';
 import { roomExportPathPrefix } from '@/lib/collab/room-export-paths';
 import { ExtensionExportSlot } from '@/components/extensions/ExtensionExportSlot';
 import { preferredExportModelId } from './export-model-default';
@@ -78,6 +79,7 @@ import { canExportRoomAsStep, roomStepExportSource } from '@/lib/collab/room-ste
 import { roomMergeInput, roomMergeVisibility } from '@/lib/collab/room-merged-export';
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 import { listExportModels, resolveExportModel } from './export-model-selection';
+import { exportOutputInfo } from './export-output-format.js';
 
 type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -184,10 +186,12 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     [models, selectedModelId, legacyIfcDataStore, legacyGeometryResult],
   );
   const selectedRoomView = selectedModelId ? getMutationView(selectedModelId) ?? undefined : undefined;
-  const selectedLandXml = selectedModel?.sourceSchema !== undefined && isLandXmlSchema(selectedModel.sourceSchema);
-  const mergedLandXml = exportScope === 'merged'
-    && Array.from(models.values()).some((model) => model.sourceSchema !== undefined && isLandXmlSchema(model.sourceSchema));
-  const canExportIfc = !selectedLandXml && !mergedLandXml;
+  // #4937: not a blanket refusal any more — "are the loaded records covered by
+  // the mapping?", answered without building the file. IFC5/IFCX is not a
+  // mapping target: v1 derives IFC4X3 STEP only.
+  const landXmlPlan = useMemo(() => landXmlExportPlan(models, selectedModel, exportScope === 'merged'),
+    [models, selectedModel, exportScope]);
+  const canExportIfc = landXmlPlan === null || (landXmlPlan.covered && !isIfc5);
   // Mutation deltas are source-independent JSON; only full IFC synthesis is refused.
   const exportAllowed = canExportIfc || (changesOnly && !isIfc5);
   const portableRoomStore = selectedModel?.ifcDataStore
@@ -319,17 +323,8 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   }, [isIfc5, selectedModel, selectedModelId, getMutationView]);
 
   const packagesImages = exportScope === 'single' && modelAppearanceAssets.hasResources(selectedModelId);
-  const outputInfo = useMemo(() => {
-    if (changesOnly) {
-      return isIfc5
-        ? { ext: '.ifcx', label: 'IFCX (JSON)' }
-        : { ext: '.json', label: 'JSON' };
-    }
-    return isIfc5
-      ? { ext: '.ifcx', label: 'IFCX (JSON + USD geometry)' }
-      : packagesImages ? { ext: '.ifczip', label: 'IFC + images' }
-      : { ext: '.ifc', label: 'IFC (STEP)' };
-  }, [isIfc5, changesOnly, packagesImages]);
+  const outputInfo = useMemo(() => exportOutputInfo(isIfc5, changesOnly, packagesImages),
+    [isIfc5, changesOnly, packagesImages]);
 
   const handleExport = useCallback(async () => {
     if (!schema) return;
@@ -348,6 +343,14 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     setIsExporting(true);
     setExportResult(null);
     setExportProgress(null);
+
+    // LandXML has no IfcDataStore to re-serialise: it is DERIVED into IFC4X3
+    // through the mapping, never converted to the selector's schema.
+    if (landXmlPlan?.covered && !changesOnly && !isIfc5 && selectedModel?.landXmlDocument) {
+      finishLandXmlIfcExport({ document: selectedModel.landXmlDocument, name: selectedModel.name },
+        { t, setExportResult, setIsExporting });
+      return;
+    }
 
     // Set per success branch; captured once in `finally` so a thrown export
     // never counts. Format reflects what was actually written (the IFC5 vs
@@ -671,11 +674,11 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           )}
 
           {/* Schema selector — this drives the output format */}
-          {!exportAllowed && (
+          {/* Only where an IFC-family file is synthesised: a changes-only JSON
+              delta is source-independent, so neither branch applies to it. */}
+          {landXmlPlan && (!changesOnly || isIfc5) && (
             <LandXmlExportRefusal
-              isLandXmlSelected={selectedLandXml}
-              sourceFile={selectedLandXml ? selectedModel?.sourceFile : undefined}
-            />
+              plan={landXmlPlan} schemaSupported={!isIfc5} sourceFile={selectedModel?.sourceFile} />
           )}
           <div className="flex items-center gap-4">
             <Label className="w-32">{t('exportDialog.schemaLabel')}</Label>

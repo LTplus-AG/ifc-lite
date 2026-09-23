@@ -6,7 +6,7 @@
 
 # LandXML → IFC mapping specification (v1, proposed)
 
-Status: **accepted — v1 in implementation**. Version 1.0, 2026-09-23.
+Status: **accepted — v1 implemented**. Version 1.0, 2026-09-23.
 (Version 0.1, 2026-09-22, was the proposal; §9 records what changed on acceptance.)
 Issues: [#5175](https://github.com/LTplus-AG/ifc-lite/issues/5175) (export honesty),
 [#4937](https://github.com/LTplus-AG/ifc-lite/issues/4937) (native LandXML).
@@ -19,11 +19,11 @@ It has now been reviewed and accepted with the four resolutions in §9. Implemen
 follows this document; anything not written here is not in v1, and a change to the
 mapping is a change to this document first.
 
-Until the v1 export path ships in the viewer, the current behaviour stands and is
-correct: the viewer refuses IFC export for any model whose `sourceSchema` is LandXML,
-for both the selected and the merged scope
-(`apps/viewer/src/components/viewer/ExportDialog.tsx`, pinned by
-`ExportDialog.landxml.test.tsx`).
+v1 is implemented: `landXmlToIfc` in `@ifc-lite/create` performs the conversion, and
+`apps/viewer/src/lib/export/landXmlIfcPlan.ts` answers §6's coverage question for the
+export dialog. The blanket refusal it replaced is pinned, in its remaining form, by
+`ExportDialog.landxml.test.tsx` — a LandXML model whose document was not retained still
+refuses, as does a source with no covered record.
 
 ## 1. What this mapping is, and is not
 

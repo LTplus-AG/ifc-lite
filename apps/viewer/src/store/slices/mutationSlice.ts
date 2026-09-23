@@ -47,7 +47,11 @@ import { getEntityBounds, getEntityCenter } from '@/utils/viewportUtils';
 import { toGlobalIdFromModels } from '../globalId.js';
 import { meshesForOwningModel } from '../owningModelMeshes.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
-import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
+import { buildElementMesh } from './addElementMeshes.js';
+import { authoredElementMeshPayload, type AuthoredElement } from './authoredElement.js';
+import { syncAuthoredTreeEntry } from './authoredTreeEntry.js';
+
+export type { AuthoredElement };
 import { createCostUndoMutations, mirrorCreateEntityRedo, mirrorSourceEntityRestore, type CostUndoMethods } from './mutation-cost-undo.js';
 import { stashAndPruneEntityMesh, restoreStashedEntityMesh, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
@@ -399,6 +403,19 @@ export interface MutationSlice extends CostUndoMethods {
    * Returns true if the entity was known to the store or overlay.
    */
   removeEntity: (modelId: string, expressId: number, opts?: { mirror?: boolean }) => boolean;
+  /**
+   * Book an element another writer (the SDK `bim.store.add*` adapter) has
+   * already built into the overlay: spatial tree, 3D mesh, undo entry, dirty
+   * flag and `mutationVersion` — everything `addColumn` & co. do after their
+   * builder runs, minus collab mirroring, which that writer owns.
+   */
+  recordAuthoredElement: (modelId: string, storeyExpressId: number, entityId: number, element: AuthoredElement) => void;
+  /**
+   * Book a removal another writer (the SDK `bim.store.removeEntity` adapter)
+   * already applied: prune the mesh, stash the overlay record for undo, push
+   * the undo entry. Collab mirroring stays with that writer.
+   */
+  recordEntityRemoval: (modelId: string, expressId: number, overlayRecord: NewEntity | null | undefined) => void;
   /**
    * Translate an IfcProduct by a storey-local delta (IFC Z-up). Walks
    * the placement chain to the terminal `IfcCartesianPoint` and writes
@@ -940,10 +957,8 @@ function runInStoreElementBuilder(
   set: (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void,
   modelId: string,
   storeyExpressId: number,
-  ifcType: string,
-  errorContext: string,
+  element: AuthoredElement,
   build: (editor: StoreEditor, anchor: ReturnType<typeof resolveSpatialAnchor>) => number,
-  meshPayload?: ElementMeshPayload,
 ): { expressId: number } | { error: string } {
   if (!get().canCollabEdit()) return { error: 'Editing is disabled for your role in this shared session' };
   const state = get();
@@ -971,8 +986,38 @@ function runInStoreElementBuilder(
     const anchor = resolveSpatialAnchor(dataStore, storeyExpressId, view);
     entityId = build(editor, anchor);
   } catch (err) {
-    return { error: err instanceof Error ? err.message : `Failed to ${errorContext}` };
+    return { error: err instanceof Error ? err.message : `Failed to add ${element.kind}` };
   }
+
+  const createdMesh = recordAuthoredElementIn(get, set, modelId, dataStore, view, storeyExpressId, entityId, element);
+
+  // Mirror the new element to peers (entity + mesh blob). No-op outside collab.
+  const newGuid = readNewEntityGuid(editor, entityId);
+  get().mirrorEntityCreate(modelId, entityId, authoredIfcType(element), newGuid, createdMesh);
+
+  return { expressId: entityId };
+}
+
+const authoredIfcType = (element: AuthoredElement): string => `IFC${element.kind.toUpperCase()}`;
+
+/**
+ * Everything after an in-store builder ran, shared by the UI actions and by
+ * the SDK `bim.store.add*` adapter. The adapter used to stop at the builder,
+ * so a script's or flow's elements existed only in the export overlay: no
+ * mesh, no tree entry, no undo, and no `mutationVersion` bump to tell anything
+ * they were there. Returns the mesh it injected, for mirroring.
+ */
+function recordAuthoredElementIn(
+  get: () => ViewerState,
+  set: (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void,
+  modelId: string,
+  dataStore: import('@ifc-lite/parser').IfcDataStore,
+  view: MutablePropertyView,
+  storeyExpressId: number,
+  entityId: number,
+  element: AuthoredElement,
+): MeshData | null {
+  const ifcType = authoredIfcType(element);
 
   // Make the authored element a first-class citizen immediately: register it in
   // the spatial hierarchy so it appears in the spatial tree under its storey and
@@ -985,7 +1030,7 @@ function runInStoreElementBuilder(
     // Name lives on the overlay record (attrs[2] = Name for every IfcRoot
     // subtype), not the columnar parse, so the tree label reads the authored
     // name ("Space 1") rather than falling back to the type.
-    const rawName = editor.getNewEntity(entityId)?.attributes?.[2];
+    const rawName = view.getNewEntity(entityId)?.attributes?.[2];
     const name = typeof rawName === 'string' ? rawName : '';
     registerAuthoredElement(dataStore.spatialHierarchy, storeyExpressId, entityId, ifcType, name);
   }
@@ -993,25 +1038,21 @@ function runInStoreElementBuilder(
   // Build a renderer-frame mesh for the new element so it appears in
   // 3D the moment the action commits — the ImportError-only behaviour
   // before this would only surface the change after an export+reparse.
-  let createdMesh: MeshData | null = null;
-  if (meshPayload) {
-    const storeyElevation =
-      dataStore.spatialHierarchy?.storeyElevations?.get(storeyExpressId) ?? 0;
-    const globalId = toGlobalIdFromModels(state.models, modelId, entityId);
-    const mesh = buildElementMesh({
-      type: meshPayload.type,
-      globalId,
-      storeyElevation,
-      payload: meshPayload,
-    });
-    if (mesh) {
-      createdMesh = mesh;
-      const cross = get() as unknown as {
-        appendGeometryBatch?: (modelId: string, batch: MeshData[]) => void;
-      };
-      cross.appendGeometryBatch?.(modelId, [mesh]);
-      revealAddedGeometryInModelView(get);
-    }
+  const storeyElevation =
+    dataStore.spatialHierarchy?.storeyElevations?.get(storeyExpressId) ?? 0;
+  const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
+  const createdMesh = buildElementMesh({
+    type: element.kind,
+    globalId,
+    storeyElevation,
+    payload: authoredElementMeshPayload(element),
+  });
+  if (createdMesh) {
+    const cross = get() as unknown as {
+      appendGeometryBatch?: (modelId: string, batch: MeshData[]) => void;
+    };
+    cross.appendGeometryBatch?.(modelId, [createdMesh]);
+    revealAddedGeometryInModelView(get);
   }
 
   set((s) => {
@@ -1041,42 +1082,68 @@ function runInStoreElementBuilder(
     };
   });
 
-  // Mirror the new element to peers (entity + mesh blob). No-op outside collab.
-  const newGuid = readNewEntityGuid(editor, entityId);
-  get().mirrorEntityCreate(modelId, entityId, ifcType, newGuid, createdMesh);
+  return createdMesh;
+}
 
-  return { expressId: entityId };
+/**
+ * Everything after an entity left the overlay: shared by `removeEntity` and
+ * the SDK `bim.store.removeEntity` adapter, which removes through its own
+ * editor and would otherwise leave the mesh on screen and nothing to undo.
+ */
+function recordEntityRemovalIn(
+  get: () => ViewerState,
+  set: (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void,
+  modelId: string,
+  expressId: number,
+  overlayRecord: NewEntity | null | undefined,
+): void {
+  syncAuthoredTreeEntry(get().models, modelId, expressId, overlayRecord, false);
+  // Drop the entity's mesh out of `geometryResult` (stashed first so
+  // undo can restore it) rather than only hiding it — #4925: a
+  // hide-only mesh desyncs from a split's separate hard removal.
+  // `hideEntities` is a fallback for entities with no mesh to prune.
+  const globalIdForMesh = toGlobalIdFromModels(get().models, modelId, expressId);
+  if (!stashAndPruneEntityMesh(get, set, modelId, expressId)) {
+    get().hideEntities([globalIdForMesh]);
+  }
+
+  set((state) => {
+    const newRemoved = new Map(state.removedNewEntities);
+    if (overlayRecord) {
+      newRemoved.set(`${modelId}:${expressId}`, overlayRecord);
+    }
+
+    const newUndoStacks = new Map(state.undoStacks);
+    const stack = newUndoStacks.get(modelId) || [];
+    const mutation: Mutation = {
+      id: `mut_del_${expressId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      type: 'DELETE_ENTITY',
+      timestamp: Date.now(),
+      modelId,
+      entityId: expressId,
+    };
+    newUndoStacks.set(modelId, [...stack, mutation]);
+
+    const newRedoStacks = new Map(state.redoStacks);
+    newRedoStacks.set(modelId, []);
+
+    const newDirty = new Set(state.dirtyModels);
+    newDirty.add(modelId);
+
+    return {
+      removedNewEntities: newRemoved,
+      undoStacks: newUndoStacks,
+      redoStacks: newRedoStacks,
+      dirtyModels: newDirty,
+      mutationVersion: state.mutationVersion + 1,
+    };
+  });
 }
 
 /** Read a freshly-created overlay entity's IFC GlobalId (attribute 0 on IfcRoot). */
 function readNewEntityGuid(editor: StoreEditor, expressId: number): string | null {
   const raw = editor.getNewEntity(expressId)?.attributes?.[0];
   return typeof raw === 'string' && raw.length > 0 ? raw : null;
-}
-
-/**
- * Build the polygon corner ring used by slab/roof/plate/space mesh
- * previews from a builder param object that may be in rectangle or
- * polygon mode. Rectangle = 4 corners CCW from `Position` +
- * Width/Depth; polygon = the `OuterCurve` lifted to 3D at z = 0.
- */
-function profileCornersFromParams(
-  params:
-    | { Profile?: 'rectangle'; Position: [number, number, number]; Width: number; Depth: number }
-    | { Profile: 'polygon'; OuterCurve: Array<[number, number]>; Position?: [number, number, number] },
-  /** Plan outline to draw the 3D mirror at INSTEAD of the profile, for a caller
-   *  whose profile is not in the frame `buildElementMesh` renders in — Space
-   *  Sketch is the one, and `useSpaceBake` says why. */
-  previewCorners?: Array<[number, number]>,
-): Array<[number, number, number]> {
-  const z = ('Position' in params ? params.Position?.[2] : 0) ?? 0;
-  const plan = previewCorners
-    ?? ('Profile' in params && params.Profile === 'polygon' ? params.OuterCurve : null);
-  if (plan) return plan.map(([x, y]): [number, number, number] => [x, y, z]);
-  const rect = params as { Position: [number, number, number]; Width: number; Depth: number };
-  const [px, py, pz] = rect.Position;
-  return [[px, py, pz], [px + rect.Width, py, pz],
-    [px + rect.Width, py + rect.Depth, pz], [px, py + rect.Depth, pz]];
 }
 
 /** Decode the `@N` form used to encode positional indices into Mutation.attributeName. */
@@ -2296,46 +2363,7 @@ export const createMutationSlice: StateCreator<
     const removed = editor.removeEntity(expressId);
     if (!removed) return false;
 
-    // Drop the entity's mesh out of `geometryResult` (stashed first so
-    // undo can restore it) rather than only hiding it — #4925: a
-    // hide-only mesh desyncs from a split's separate hard removal.
-    // `hideEntities` is a fallback for entities with no mesh to prune.
-    const globalIdForMesh = toGlobalIdFromModels(get().models, modelId, expressId);
-    if (!stashAndPruneEntityMesh(get, set, modelId, expressId)) {
-      get().hideEntities([globalIdForMesh]);
-    }
-
-    set((state) => {
-      const newRemoved = new Map(state.removedNewEntities);
-      if (overlayRecord) {
-        newRemoved.set(`${modelId}:${expressId}`, overlayRecord);
-      }
-
-      const newUndoStacks = new Map(state.undoStacks);
-      const stack = newUndoStacks.get(modelId) || [];
-      const mutation: Mutation = {
-        id: `mut_del_${expressId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-        type: 'DELETE_ENTITY',
-        timestamp: Date.now(),
-        modelId,
-        entityId: expressId,
-      };
-      newUndoStacks.set(modelId, [...stack, mutation]);
-
-      const newRedoStacks = new Map(state.redoStacks);
-      newRedoStacks.set(modelId, []);
-
-      const newDirty = new Set(state.dirtyModels);
-      newDirty.add(modelId);
-
-      return {
-        removedNewEntities: newRemoved,
-        undoStacks: newUndoStacks,
-        redoStacks: newRedoStacks,
-        dirtyModels: newDirty,
-        mutationVersion: state.mutationVersion + 1,
-      };
-    });
+    recordEntityRemovalIn(get, set, modelId, expressId, overlayRecord);
 
     // Mirror the tombstone to peers (no-op outside a collab session). Callers
     // whose create+delete pair isn't synced yet pass `{ mirror: false }` so
@@ -2345,148 +2373,66 @@ export const createMutationSlice: StateCreator<
     return true;
   },
 
-  addColumn: (modelId, storeyExpressId, params) => {
-    if (!get().canCollabEdit()) return { error: 'Editing is disabled for your role in this shared session' };
-    const state = get();
-    const model = state.models.get(modelId);
-    const dataStore = model?.ifcDataStore;
-    if (!dataStore) return { error: `No model loaded for id "${modelId}"` };
-
-    // The dialog passes the same modelId used by the model store; mutation
-    // views are keyed identically (no legacy normalization needed in the
-    // multi-model path the dialog operates in).
-    const view = state.mutationViews.get(modelId);
-    if (!view) return { error: 'Model has no editable mutation view yet' };
-
-    const editor = getOrCreateStoreEditor(get, set, modelId);
-    if (!editor) return { error: 'Failed to create store editor' };
-    let columnId: number;
-    try {
-      ensureStoreyPlacement(dataStore, editor, storeyExpressId);
-      const anchor = resolveSpatialAnchor(dataStore, storeyExpressId, view);
-      const result = addColumnToStore(editor, anchor, params);
-      columnId = result.columnId;
-    } catch (err) {
-      return { error: err instanceof Error ? err.message : 'Failed to add column' };
-    }
-
-    // Inject a renderer-frame box mesh so the column appears in 3D
-    // immediately. Same coordinate-frame plumbing as
-    // `runInStoreElementBuilder`, kept inline since this action
-    // pre-dates the shared helper.
-    const storeyElevationCol =
-      dataStore.spatialHierarchy?.storeyElevations?.get(storeyExpressId) ?? 0;
-    const columnGlobalId = toGlobalIdFromModels(state.models, modelId, columnId);
-    const columnMesh = buildElementMesh({
-      type: 'column',
-      globalId: columnGlobalId,
-      storeyElevation: storeyElevationCol,
-      payload: {
-        type: 'column',
-        params: { Width: params.Width, Depth: params.Depth, Height: params.Height },
-        position: params.Position,
-      },
-    });
-    if (columnMesh) {
-      const cross = get() as unknown as {
-        appendGeometryBatch?: (modelId: string, batch: MeshData[]) => void;
-      };
-      cross.appendGeometryBatch?.(modelId, [columnMesh]);
-      revealAddedGeometryInModelView(get);
-    }
-
-    set((s) => {
-      const newUndoStacks = new Map(s.undoStacks);
-      const stack = newUndoStacks.get(modelId) || [];
-      const mutation: Mutation = {
-        id: `mut_col_${columnId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-        type: 'CREATE_ENTITY',
-        timestamp: Date.now(),
-        modelId,
-        entityId: columnId,
-        attributeName: 'IFCCOLUMN',
-      };
-      newUndoStacks.set(modelId, [...stack, mutation]);
-
-      const newRedoStacks = new Map(s.redoStacks);
-      newRedoStacks.set(modelId, []);
-
-      const newDirty = new Set(s.dirtyModels);
-      newDirty.add(modelId);
-
-      return {
-        undoStacks: newUndoStacks,
-        redoStacks: newRedoStacks,
-        dirtyModels: newDirty,
-        mutationVersion: s.mutationVersion + 1,
-      };
-    });
-
-    // Mirror the new column to peers (entity + mesh blob). No-op outside collab.
-    get().mirrorEntityCreate(modelId, columnId, 'IFCCOLUMN', readNewEntityGuid(editor, columnId), columnMesh ?? null);
-
-    return { expressId: columnId };
+  recordEntityRemoval: (modelId, expressId, overlayRecord) => {
+    recordEntityRemovalIn(get, set, modelId, expressId, overlayRecord);
   },
 
-  addWall: (modelId, storeyExpressId, params) => {
-    return runInStoreElementBuilder(
-      get, set, modelId, storeyExpressId, 'IFCWALL', 'add wall',
-      (editor, anchor) => addWallToStore(editor, anchor, params).wallId,
-      { type: 'wall', params: { Thickness: params.Thickness, Height: params.Height }, start: params.Start, end: params.End },
-    );
-  },
+  addColumn: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
+    get, set, modelId, storeyExpressId, { kind: 'column', params },
+    (editor, anchor) => addColumnToStore(editor, anchor, params).columnId,
+  ),
 
-  addSlab: (modelId, storeyExpressId, params) => {
-    return runInStoreElementBuilder(
-      get, set, modelId, storeyExpressId, 'IFCSLAB', 'add slab',
-      (editor, anchor) => addSlabToStore(editor, anchor, params).slabId,
-      { type: 'slab', params: { Width: 0, Depth: 0, Thickness: params.Thickness }, corners: profileCornersFromParams(params) },
-    );
-  },
+  addWall: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
+    get, set, modelId, storeyExpressId, { kind: 'wall', params },
+    (editor, anchor) => addWallToStore(editor, anchor, params).wallId,
+  ),
 
-  addBeam: (modelId, storeyExpressId, params) => {
-    return runInStoreElementBuilder(
-      get, set, modelId, storeyExpressId, 'IFCBEAM', 'add beam',
-      (editor, anchor) => addBeamToStore(editor, anchor, params).beamId,
-      { type: 'beam', params: { Width: params.Width, Height: params.Height }, start: params.Start, end: params.End },
-    );
-  },
+  addSlab: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
+    get, set, modelId, storeyExpressId, { kind: 'slab', params },
+    (editor, anchor) => addSlabToStore(editor, anchor, params).slabId,
+  ),
+
+  addBeam: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
+    get, set, modelId, storeyExpressId, { kind: 'beam', params },
+    (editor, anchor) => addBeamToStore(editor, anchor, params).beamId,
+  ),
 
   addDoor: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
-    get, set, modelId, storeyExpressId, 'IFCDOOR', 'add door',
+    get, set, modelId, storeyExpressId, { kind: 'door', params },
     (editor, anchor) => addDoorToStore(editor, anchor, params).doorId,
-    { type: 'door', params: { Width: params.Width, Height: params.Height, FrameThickness: params.FrameThickness ?? 0.05 }, position: params.Position },
   ),
 
   addWindow: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
-    get, set, modelId, storeyExpressId, 'IFCWINDOW', 'add window',
+    get, set, modelId, storeyExpressId, { kind: 'window', params },
     (editor, anchor) => addWindowToStore(editor, anchor, params).windowId,
-    { type: 'window', params: { Width: params.Width, Height: params.Height, FrameThickness: params.FrameThickness ?? 0.05 }, position: params.Position },
   ),
 
   addSpace: (modelId, storeyExpressId, params, previewCorners) => runInStoreElementBuilder(
-    get, set, modelId, storeyExpressId, 'IFCSPACE', 'add space',
+    get, set, modelId, storeyExpressId, { kind: 'space', params, previewCorners },
     (editor, anchor) => addSpaceToStore(editor, anchor, params).spaceId,
-    { type: 'space', params: { Width: 0, Depth: 0, Height: params.Height }, corners: profileCornersFromParams(params, previewCorners) },
   ),
 
   addRoof: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
-    get, set, modelId, storeyExpressId, 'IFCROOF', 'add roof',
+    get, set, modelId, storeyExpressId, { kind: 'roof', params },
     (editor, anchor) => addRoofToStore(editor, anchor, params).roofId,
-    { type: 'roof', params: { Width: 0, Depth: 0, Thickness: params.Thickness }, corners: profileCornersFromParams(params) },
   ),
 
   addPlate: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
-    get, set, modelId, storeyExpressId, 'IFCPLATE', 'add plate',
+    get, set, modelId, storeyExpressId, { kind: 'plate', params },
     (editor, anchor) => addPlateToStore(editor, anchor, params).plateId,
-    { type: 'plate', params: { Width: 0, Depth: 0, Thickness: params.Thickness }, corners: profileCornersFromParams(params) },
   ),
 
   addMember: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
-    get, set, modelId, storeyExpressId, 'IFCMEMBER', 'add member',
+    get, set, modelId, storeyExpressId, { kind: 'member', params },
     (editor, anchor) => addMemberToStore(editor, anchor, params).memberId,
-    { type: 'member', params: { Width: params.Width, Height: params.Height }, start: params.Start, end: params.End },
   ),
+
+  recordAuthoredElement: (modelId, storeyExpressId, entityId, element) => {
+    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    const view = get().mutationViews.get(modelId);
+    if (!dataStore || !view) return;
+    recordAuthoredElementIn(get, set, modelId, dataStore, view, storeyExpressId, entityId, element);
+  },
 
   generateSpacesFromWalls: (modelId, storeyExpressId, options) => {
     const state = get();
@@ -2799,6 +2745,7 @@ export const createMutationSlice: StateCreator<
           return { removedNewEntities: next };
         });
       }
+      syncAuthoredTreeEntry(get().models, modelId, mutation.entityId, overlay, false);
       // The view's `deleteEntity` returns false if it's already gone, which
       // is fine for redo to re-establish.
       view.deleteEntity(mutation.entityId);
@@ -2811,6 +2758,7 @@ export const createMutationSlice: StateCreator<
       const stashed = get().removedNewEntities.get(stashKey);
       if (stashed) {
         view.restoreNewEntity(stashed); mirrorCreateEntityRedo(get(), modelId, stashed, get().removedMeshes.get(stashKey)?.meshes[0] ?? null);
+        syncAuthoredTreeEntry(get().models, modelId, mutation.entityId, stashed, true);
       } else {
         view.restoreFromTombstone(mutation.entityId);
         mirrorSourceEntityRestore(get(), modelId, mutation.entityId, get().removedMeshes.get(stashKey)?.meshes[0] ?? null);
@@ -2971,6 +2919,7 @@ export const createMutationSlice: StateCreator<
       if (stashed) {
         view.restoreNewEntity(stashed);
         mirrorCreateEntityRedo(get(), modelId, stashed, get().removedMeshes.get(stashKey)?.meshes[0] ?? null);
+        syncAuthoredTreeEntry(get().models, modelId, mutation.entityId, stashed, true);
       } else {
         // Source-buffer entities have no stash; the editor's deleteEntity
         // call simply re-tombstoned them — which is exactly what we want
@@ -2992,6 +2941,7 @@ export const createMutationSlice: StateCreator<
           return { removedNewEntities: next };
         });
       }
+      syncAuthoredTreeEntry(get().models, modelId, mutation.entityId, overlay, false);
       view.deleteEntity(mutation.entityId);
       get().mirrorEntityRemove(modelId, mutation.entityId);
       // Drop the mesh back out, inverse of the undo handler's restore (#4925).

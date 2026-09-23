@@ -57,6 +57,7 @@ import { withCostMutationTracking } from './store-adapter-cost.js';
 import { withStructuralMutationTracking } from './store-adapter-structural.js';
 import { getMutationViewForModel, getOrCreateMutationView, isLegacyMutationRef, normalizeMutationModelId } from './mutation-view.js';
 import { attributeNamesForStore, referenceAttributeSlotsForStore } from '@/lib/collab/schema-attribute-names.js';
+import type { AuthoredElement } from '../../store/slices/mutationSlice.js';
 import { encodeRoomAttributeValue, referencedExpressIds } from '@/lib/collab/entity-reference-wire.js';
 import { entityForPath, pathForGuid } from '@/lib/collab/entity-paths.js';
 import { ensureSourceRoomEntities, initialRoomAttributes } from './store-adapter-collab.js';
@@ -158,6 +159,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     operation: string,
     modelId: string,
     storeyExpressId: number,
+    element: AuthoredElement,
     build: (editor: StoreEditor, anchor: SpatialAnchor) => number,
   ): EntityRef {
     assertCanEdit(operation);
@@ -178,6 +180,11 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
         throw new Error(`bim.store.${operation}: the new entities could not be published to the room`);
       }
     }
+    // The builder only wrote the overlay. Book it the way the UI's add actions
+    // do — mesh, spatial tree, undo entry, `mutationVersion` — or the element
+    // is in the export and nowhere else: a flow or script "adds" columns the
+    // user never sees.
+    store.getState().recordAuthoredElement?.(normalizedModelId, storeyExpressId, expressId, element);
     return { modelId: normalizedModelId, expressId };
   }
 
@@ -245,12 +252,17 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       // entityIndex.byId, which is empty for reconstructed IFCX stores.
       // Those base entities are real and deletable through getEntity().
       const view = getMutationViewForModel(store, ref.modelId);
+      // Captured before the removal forgets it, so undo can re-add it.
+      const overlayRecord = view?.getNewEntity(ref.expressId);
       const removed = view !== null
         && !view.isDeleted(ref.expressId)
         && editor.getNewEntity(ref.expressId) === null
         && dataStore.getEntity?.(ref.expressId) != null
         ? view.deleteEntity(ref.expressId)
         : editor.removeEntity(ref.expressId);
+      if (removed) {
+        store.getState().recordEntityRemoval?.(normalizeMutationModelId(store.getState(), ref.modelId), ref.expressId, overlayRecord);
+      }
       if (removed && roomEntityReady) {
         store.getState().mirrorEntityRemove(ref.modelId, ref.expressId);
       }
@@ -300,43 +312,43 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       }
     },
     addColumn(modelId: string, storeyExpressId: number, params: AddColumnInStoreParams): EntityRef {
-      return buildElement('addColumn', modelId, storeyExpressId,
+      return buildElement('addColumn', modelId, storeyExpressId, { kind: 'column', params: params as ColumnInStoreParams },
         (editor, anchor) => addColumnToStore(editor, anchor, params as ColumnInStoreParams).columnId);
     },
     addWall(modelId: string, storeyExpressId: number, params: AddWallInStoreParams): EntityRef {
-      return buildElement('addWall', modelId, storeyExpressId,
+      return buildElement('addWall', modelId, storeyExpressId, { kind: 'wall', params: params as WallInStoreParams },
         (editor, anchor) => addWallToStore(editor, anchor, params as WallInStoreParams).wallId);
     },
     addSlab(modelId: string, storeyExpressId: number, params: AddSlabInStoreParams): EntityRef {
-      return buildElement('addSlab', modelId, storeyExpressId,
+      return buildElement('addSlab', modelId, storeyExpressId, { kind: 'slab', params: params as SlabInStoreParams },
         (editor, anchor) => addSlabToStore(editor, anchor, params as SlabInStoreParams).slabId);
     },
     addBeam(modelId: string, storeyExpressId: number, params: AddBeamInStoreParams): EntityRef {
-      return buildElement('addBeam', modelId, storeyExpressId,
+      return buildElement('addBeam', modelId, storeyExpressId, { kind: 'beam', params: params as BeamInStoreParams },
         (editor, anchor) => addBeamToStore(editor, anchor, params as BeamInStoreParams).beamId);
     },
     addDoor(modelId: string, storeyExpressId: number, params: AddDoorInStoreParams): EntityRef {
-      return buildElement('addDoor', modelId, storeyExpressId,
+      return buildElement('addDoor', modelId, storeyExpressId, { kind: 'door', params: params as DoorInStoreParams },
         (editor, anchor) => addDoorToStore(editor, anchor, params as DoorInStoreParams).doorId);
     },
     addWindow(modelId: string, storeyExpressId: number, params: AddWindowInStoreParams): EntityRef {
-      return buildElement('addWindow', modelId, storeyExpressId,
+      return buildElement('addWindow', modelId, storeyExpressId, { kind: 'window', params: params as WindowInStoreParams },
         (editor, anchor) => addWindowToStore(editor, anchor, params as WindowInStoreParams).windowId);
     },
     addSpace(modelId: string, storeyExpressId: number, params: AddSpaceInStoreParams): EntityRef {
-      return buildElement('addSpace', modelId, storeyExpressId,
+      return buildElement('addSpace', modelId, storeyExpressId, { kind: 'space', params: params as SpaceInStoreParams },
         (editor, anchor) => addSpaceToStore(editor, anchor, params as SpaceInStoreParams).spaceId);
     },
     addRoof(modelId: string, storeyExpressId: number, params: AddRoofInStoreParams): EntityRef {
-      return buildElement('addRoof', modelId, storeyExpressId,
+      return buildElement('addRoof', modelId, storeyExpressId, { kind: 'roof', params: params as RoofInStoreParams },
         (editor, anchor) => addRoofToStore(editor, anchor, params as RoofInStoreParams).roofId);
     },
     addPlate(modelId: string, storeyExpressId: number, params: AddPlateInStoreParams): EntityRef {
-      return buildElement('addPlate', modelId, storeyExpressId,
+      return buildElement('addPlate', modelId, storeyExpressId, { kind: 'plate', params: params as PlateInStoreParams },
         (editor, anchor) => addPlateToStore(editor, anchor, params as PlateInStoreParams).plateId);
     },
     addMember(modelId: string, storeyExpressId: number, params: AddMemberInStoreParams): EntityRef {
-      return buildElement('addMember', modelId, storeyExpressId,
+      return buildElement('addMember', modelId, storeyExpressId, { kind: 'member', params: params as MemberInStoreParams },
         (editor, anchor) => addMemberToStore(editor, anchor, params as MemberInStoreParams).memberId);
     },
     ...withCostMutationTracking(createCostStoreBackend(resolveStoreModel, costAdapter, modelId => store.getState().markCostRelationshipMutation(modelId)), store, (modelId) => {

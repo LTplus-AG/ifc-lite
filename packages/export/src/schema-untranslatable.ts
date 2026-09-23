@@ -17,6 +17,7 @@
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getInheritanceChainAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
 import type { IfcSchemaVersion } from './schema-converter.js';
+import type { EffectiveEntityIndex } from './effective-index.js';
 
 /**
  * Whether `type` is an IfcRoot subtype (has a GlobalId as its first
@@ -155,11 +156,16 @@ export const WITHHOLDABLE_UNROOTED_TYPES: ReadonlySet<string> = new Set([
 export function computeWithheldRefIds(
   dataStore: Pick<IfcDataStore, 'entityIndex'>,
   toSchema: IfcSchemaVersion,
+  effective?: Pick<EffectiveEntityIndex, 'byType'>,
 ): ReadonlySet<number> {
   if (toSchema !== 'IFC2X3') return EMPTY_ID_SET;
   const ids = new Set<number>();
+  // A live STEP pass supplies its effective index; direct callers without one
+  // intentionally describe the source file alone.
+  // @raw-entity-enumeration-ok source-only fallback for direct helper callers; live export passes the effective index
+  const byType = effective?.byType ?? dataStore.entityIndex.byType;
   for (const type of WITHHOLDABLE_UNROOTED_TYPES) {
-    for (const id of dataStore.entityIndex.byType.get(type) ?? []) ids.add(id);
+    for (const id of byType.get(type) ?? []) ids.add(id);
   }
   return ids;
 }

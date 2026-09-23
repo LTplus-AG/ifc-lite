@@ -69,6 +69,8 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     schemaToken,
   } = input;
 
+  const effective = getEffectiveEntityIndex(dataStore, mutationView, applyMutations);
+
   const pass: ExportPass = {
     entities: [],
     newEntityCount: 0,
@@ -91,11 +93,7 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     // The one authority for exists / class / deleted, overlay first and source
     // buffer second. Every pass below asks this instead of `dataStore`,
     // which answers only for the file as parsed (#2012).
-    effective: getEffectiveEntityIndex(
-      dataStore,
-      mutationView,
-      applyMutations,
-    ),
+    effective,
 
     // Does this id belong to an entity the OVERLAY created (`createEntity` /
     // `store.addEntity`) rather than to a record in the source buffer? Such an
@@ -319,7 +317,7 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     newGeorefLines: [],
     warnings: [],
     slotFill: new Ifc2x3SlotFill(),
-    withheldRefIds: computeWithheldRefIds(dataStore, schema),
+    withheldRefIds: computeWithheldRefIds(dataStore, schema, effective),
   };
   // The same object, deliberately. See the file header.
   return pass;

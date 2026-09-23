@@ -4,7 +4,7 @@
 
 /**
  * Boot-time wiring for `placement-edit`. Imported once for its side
- * effect from the app entrypoint (`main.tsx`). Keeps the
+ * effect from the app entrypoint (`bootstrap.tsx`). Keeps the
  * `@ifc-lite/parser` import out of `placement-edit.ts` itself so the
  * pure overlay-path logic stays unit-testable without a parser build.
  */

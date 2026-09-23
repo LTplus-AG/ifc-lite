@@ -64,7 +64,7 @@ function markReloaded(now: number): boolean {
     // allow-same-origin / "block all cookies"). If we cannot RECORD a reload
     // we must not PERFORM one: a permanent failure (CSP-blocked worker, proxy
     // rewriting assets) would otherwise reload on every occurrence with no
-    // debounce at all. Mirrors the vite:preloadError policy in main.tsx.
+    // debounce at all. Mirrors the vite:preloadError policy in bootstrap.tsx.
     return false;
   }
 }

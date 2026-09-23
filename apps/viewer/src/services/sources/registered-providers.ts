@@ -6,14 +6,22 @@ import type { FileSourceProvider } from '@ifc-lite/plugin-api';
 import { DaluxBuildProvider } from '@ifc-lite/source-dalux';
 import { DropboxProvider } from '@ifc-lite/source-dropbox';
 import { MsGraphProvider } from '@ifc-lite/source-msgraph';
+import type { FileSourceProviderFactory } from './source-host';
 
 /**
- * Every file-source provider the viewer actually registers, in one place.
- * Both `SourceHostProvider` (which registers each one at app start) and
- * `source-host.test.ts` (which asserts each one's manifest satisfies
- * `PLUGIN_API_VERSION`, the regression guard for a host/provider version
- * drifting apart) read from this list — so the test can never drift from
- * what the running app actually does.
+ * Every built-in file-source provider the viewer registers, in one place.
+ * Both `SourceHostProvider` (which registers each one at app start, before
+ * any host-supplied provider) and `source-host.test.ts` (which asserts each
+ * one's manifest satisfies `PLUGIN_API_VERSION` through
+ * `createRegisteredProviders()`, the regression guard for a host/provider
+ * version drifting apart) read from this list — so the test can never drift
+ * from what the running app actually does.
+ *
+ * Host-supplied providers are NOT added here: a host application that builds
+ * the viewer from source passes its own factories to `mountViewer` (see
+ * `bootstrap.tsx`). They are outside this test's reach by design, so their
+ * version compatibility is enforced where every provider's is, at
+ * `SourceHost.register()` (#5228).
  *
  * `@ifc-lite/source-dropbox` requires a `clientId` preference (a Dropbox app
  * key), and `@ifc-lite/source-msgraph` requires a `clientId` preference (an
@@ -23,6 +31,13 @@ import { MsGraphProvider } from '@ifc-lite/source-msgraph';
  * with a clear "not configured" message until the deployment sets one, rather
  * than the provider silently not existing.
  */
+export const BUILT_IN_PROVIDER_FACTORIES: readonly FileSourceProviderFactory[] = [
+  () => new DaluxBuildProvider(),
+  () => new DropboxProvider(),
+  () => new MsGraphProvider(),
+];
+
+/** Every built-in provider, constructed. The drift guard's view of the list above. */
 export function createRegisteredProviders(): FileSourceProvider[] {
-  return [new DaluxBuildProvider(), new DropboxProvider(), new MsGraphProvider()];
+  return BUILT_IN_PROVIDER_FACTORIES.map((create) => create());
 }

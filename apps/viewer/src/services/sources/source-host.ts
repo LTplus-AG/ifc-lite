@@ -47,6 +47,18 @@ export interface ProviderRegistrationFailure {
   readonly reason: string;
 }
 
+/**
+ * Builds one provider. The viewer registers its built-ins through these, and a
+ * host application that builds the viewer from source supplies its own at
+ * bootstrap (see `bootstrap.tsx`). Each factory is invoked independently, so
+ * one that throws cannot stop any other provider from registering.
+ */
+export type FileSourceProviderFactory = () => FileSourceProvider;
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export class SourceHost {
   private readonly providers = new Map<string, FileSourceProvider>();
   private readonly failures: ProviderRegistrationFailure[] = [];
@@ -68,18 +80,53 @@ export class SourceHost {
     const name = provider.manifest.name;
     const reason = this.validate(provider);
     if (reason) {
-      this.failures.push({ provider: name, reason });
-      console.error(`[source-host] Failed to register provider "${name}": ${reason}`);
-      try {
-        this.options.onProviderError?.(name, new Error(reason));
-      } catch (callbackError) {
-        console.error(`[source-host] onProviderError callback threw for "${name}"`, callbackError);
-      }
+      this.recordFailure(name, reason);
       return false;
     }
 
     this.providers.set(name, provider);
     return true;
+  }
+
+  /**
+   * Constructs a provider from `factory` and registers it. Never throws: a
+   * factory (i.e. a provider constructor) that throws, or a provider whose
+   * `manifest` getter throws, is recorded as a registration failure under
+   * `label` — the only name available when no manifest could be read — and
+   * every other provider is unaffected. Everything that does get constructed
+   * goes through `register()`, so the version, duplicate-name and relay
+   * checks apply exactly as they do to a provider handed in directly.
+   */
+  registerFactory(factory: FileSourceProviderFactory, label: string): boolean {
+    let provider: FileSourceProvider;
+    let name: string;
+    try {
+      provider = factory();
+      // Read the manifest here, inside the guard: `register()` dereferences
+      // it before any validation runs.
+      name = provider.manifest.name;
+    } catch (error) {
+      this.recordFailure(label, `failed to construct: ${errorMessage(error)}`);
+      return false;
+    }
+    try {
+      return this.register(provider);
+    } catch (error) {
+      // A manifest missing a field `validate()` reads (e.g. `permissions`)
+      // throws there; it is still one bad provider, not a host failure.
+      this.recordFailure(name, `invalid manifest: ${errorMessage(error)}`);
+      return false;
+    }
+  }
+
+  private recordFailure(name: string, reason: string): void {
+    this.failures.push({ provider: name, reason });
+    console.error(`[source-host] Failed to register provider "${name}": ${reason}`);
+    try {
+      this.options.onProviderError?.(name, new Error(reason));
+    } catch (callbackError) {
+      console.error(`[source-host] onProviderError callback threw for "${name}"`, callbackError);
+    }
   }
 
   /** Returns a human-readable failure reason, or `undefined` if `provider` may be registered. */

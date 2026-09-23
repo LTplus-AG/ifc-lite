@@ -26,7 +26,7 @@
  * what the React team recommends (facebook/react#11538). React then proceeds as
  * if the (already-detached) work succeeded.
  *
- * Imported for its side effect from main.tsx BEFORE react-dom initializes, so
+ * Imported for its side effect from bootstrap.tsx BEFORE react-dom initializes, so
  * the reconciler only ever sees the guarded methods. Runs in dev and prod —
  * the crash is observed in production.
  */

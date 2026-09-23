@@ -16,6 +16,7 @@ import { ViewerLayout } from './components/viewer/ViewerLayout';
 import { BimProvider } from './sdk/BimProvider';
 import { ExtensionHostProvider } from './sdk/ExtensionHostProvider';
 import { SourceHostProvider } from './services/sources/SourceHostProvider';
+import type { FileSourceProviderFactory } from './services/sources/source-host';
 import { Toaster } from './components/ui/toast';
 import { ChunkErrorBoundary } from './components/ChunkErrorBoundary';
 import { Suspense, lazy, useEffect, useState } from 'react';
@@ -46,7 +47,12 @@ function RouteFallback() {
   return <div style={{ minHeight: '100vh', background: '#0a0a0c' }} />;
 }
 
-export function App() {
+export interface AppProps {
+  /** Host-supplied file-source providers; see `ViewerBootstrapOptions` in `bootstrap.tsx`. */
+  sourceProviders?: readonly FileSourceProviderFactory[];
+}
+
+export function App({ sourceProviders }: AppProps = {}) {
   const [pathname, setPathname] = useState(() => window.location.pathname);
 
   useEffect(() => {
@@ -111,7 +117,7 @@ export function App() {
   return (
     <BimProvider>
       <ExtensionHostProvider>
-        <SourceHostProvider>
+        <SourceHostProvider additionalProviders={sourceProviders}>
           <ViewerLayout />
           <Toaster />
           <Analytics />

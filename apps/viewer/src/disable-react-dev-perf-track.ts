@@ -18,7 +18,7 @@
  *
  * React gates the entire tracker on `supportsUserTiming`, cached at react-dom init
  * from `typeof performance.measure === 'function'`. Making `performance.measure`
- * unavailable BEFORE react-dom initializes (this is the first import in main.tsx)
+ * unavailable BEFORE react-dom initializes (this is the first import in bootstrap.tsx)
  * disables ONLY this tracking; the viewer times with `performance.now()`, not
  * `measure`. DEV-only — the production build strips the tracker, so this is a no-op.
  */

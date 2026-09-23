@@ -1239,9 +1239,9 @@ export function LensPanel({ onClose }: LensPanelProps) {
   const setLensAppliedHiddenIds = useViewerStore((s) => s.setLensAppliedHiddenIds);
   const lensRuleIsolation = useViewerStore((s) => s.lensRuleIsolation);
   const setLensRuleIsolation = useViewerStore((s) => s.setLensRuleIsolation);
-  // For footer stats — cheap primitive subscriptions
+  // Footer count only: useLens pushes colours via pendingColorUpdates, so no effect keys off this and `.size` is safe (#5206).
   const lensColorMapSize = useViewerStore((s) => s.lensColorMap.size);
-  const lensHiddenIds = useViewerStore((s) => s.lensHiddenIds); // identity, not `.size` (#5206)
+  const lensHiddenIds = useViewerStore((s) => s.lensHiddenIds); // drives the hide-sync effect: identity, not `.size` (#5206)
   const lensRuleCounts = useViewerStore((s) => s.lensRuleCounts);
   const lensAutoColorLegend = useViewerStore((s) => s.lensAutoColorLegend);
   // Discovered data from loaded models (classes = instant, rest = lazy)

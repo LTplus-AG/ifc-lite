@@ -24,6 +24,7 @@ import assert from 'node:assert/strict';
 import { render, cleanup } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import type { Lens } from '@/store/slices/lensSlice';
+import { resolveExportVisibility } from '@/store/exportVisibility';
 import { LensPanel } from './LensPanel.js';
 
 const LENS: Lens = {
@@ -99,6 +100,24 @@ describe('LensPanel: hide-sync effect resyncs on content change, not just size (
       [...useViewerStore.getState().hiddenEntities].sort((a, b) => a - b),
       [4, 5, 6],
       'stale hides (1,2,3) must lift and the newly matched ids (4,5,6) must apply',
+    );
+  });
+
+  it('a Visible Only export after a same-size swap excludes exactly the new matches', () => {
+    // The consequence that leaves the building: the export denylist unions
+    // `hiddenEntities` with `lensHiddenIds`, so a stale hide of 1,2,3 left in
+    // `hiddenEntities` would silently drop those entities from the file.
+    seedLens(new Set([1, 2, 3]));
+    render(<LensPanel onClose={() => {}} />);
+    act(() => {
+      useViewerStore.setState({ lensHiddenIds: new Set([4, 5, 6]) });
+    });
+
+    const visibility = resolveExportVisibility(useViewerStore.getState(), '__legacy__');
+    assert.deepEqual(
+      [...visibility.hiddenLocalIds].sort((a, b) => a - b),
+      [4, 5, 6],
+      'entities 1,2,3 no longer match the lens and must be exported; 4,5,6 must not',
     );
   });
 

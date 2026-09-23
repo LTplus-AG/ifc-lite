@@ -174,8 +174,11 @@ export function diffModels<TRef = unknown>(
     // skipped rather than counted (see `EntityFingerprint.container`).
     if (
       considerData &&
-      baseEntity.container !== undefined &&
-      headEntity.container !== undefined &&
+      // Truthiness, not `!== undefined`: an empty path is no more a resolved
+      // container than a missing one (same `!container` rule as
+      // `successor-match.ts`).
+      baseEntity.container &&
+      headEntity.container &&
       baseEntity.container !== headEntity.container
     ) {
       changeKinds.push('container');

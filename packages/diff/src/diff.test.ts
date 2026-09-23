@@ -117,6 +117,14 @@ describe('diffModels — spatial re-parenting (issue #5214)', () => {
     expect(d?.changeKinds).toEqual([]);
   });
 
+  it('an empty container path is absence, not a containment change', () => {
+    const base = [fp('w', { dataHash: 'abc123', geometryHash: 999n, container: '' })];
+    const head = [fp('w', { dataHash: 'abc123', geometryHash: 999n, container: 'Building/Storey 1' })];
+    const d = diffModels(base, head).byKey.get('w');
+    expect(d?.state).toBe('unchanged');
+    expect(d?.changeKinds).toEqual([]);
+  });
+
   it('a genuine data change alongside an unchanged container still reports only "data"', () => {
     const base = [fp('w', { dataHash: 'd1', geometryHash: 999n, container: 'Building/Storey 1' })];
     const head = [fp('w', { dataHash: 'd2', geometryHash: 999n, container: 'Building/Storey 1' })];

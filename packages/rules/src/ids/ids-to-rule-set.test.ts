@@ -136,6 +136,18 @@ END-ISO-10303-21;
     assert.equal(evaluateFilterRules('m', store, rules, 'AND').length, 1, 'Pset_WallCommon matches the imported Pset_.*Common');
   });
 
+  it('imports a property facet with a dataType without that check, and lists each dropped one (#5225 decision)', () => {
+    const result = idsToRuleSet(parseIDS(ids(spec(
+      '<property cardinality="required" dataType="IFCLABEL"><propertySet><simpleValue>Pset_WallCommon</simpleValue></propertySet><baseName><simpleValue>FireRating</simpleValue></baseName><value><simpleValue>REI60</simpleValue></value></property>' +
+      '<property cardinality="required"><propertySet><simpleValue>Pset_WallCommon</simpleValue></propertySet><baseName><simpleValue>IsExternal</simpleValue></baseName></property>',
+    ))), { newId: () => 'd' });
+    assert.deepEqual(result.refused, []);
+    const rules = result.file!.rules[0].requirement.kind === 'element' ? result.file!.rules[0].requirement.block.groups[0].rules : [];
+    assert.equal(rules.length, 2);
+    assert.deepEqual(rules[0], { kind: 'property', setName: 'Pset_WallCommon', propertyName: 'FireRating', op: 'eq', value: 'REI60', setNameKind: 'literal', propertyNameKind: 'literal' });
+    assert.deepEqual(result.droppedChecks, ['S: Pset_WallCommon.FireRating: data type IFCLABEL not checked']);
+  });
+
   it('notes that imported numeric bounds compare stored values, not SI values', () => {
     const result = idsToRuleSet(parseIDS(ids(spec(
       '<property cardinality="required"><propertySet><simpleValue>Qto_WallBaseQuantities</simpleValue></propertySet><baseName><simpleValue>Width</simpleValue></baseName><value><xs:restriction base="xs:double"><xs:minInclusive value="0.2"/></xs:restriction></value></property>',
@@ -164,7 +176,6 @@ describe('idsToRuleSet — blocks what has no rule equivalent, with the reason (
     ['partOf', spec('<partOf relation="IFCRELAGGREGATES" cardinality="required"><entity><name><simpleValue>IFCBUILDINGSTOREY</simpleValue></name></entity></partOf>'), /partOf facet/],
     ['prohibited facet', spec(property('', 'cardinality="prohibited"')), /prohibited property facet/],
     ['optional facet', spec(property('', 'cardinality="optional"')), /optional property facet/],
-    ['dataType', spec(property('', 'cardinality="required" dataType="IFCLABEL"')), /dataType check/],
     ['entity name pattern', spec('<attribute cardinality="required"><name><simpleValue>Description</simpleValue></name></attribute>',
       '<applicability><entity><name><xs:restriction base="xs:string"><xs:pattern value="IFCWALL.*"/></xs:restriction></name></entity></applicability>'),
     /entity name given as a pattern restriction/],

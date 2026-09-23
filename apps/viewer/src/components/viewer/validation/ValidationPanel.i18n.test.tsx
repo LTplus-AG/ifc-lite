@@ -201,7 +201,7 @@ async function mountAll(): Promise<Set<string>> {
   for (const direction of ['export', 'import'] as const) {
     render(
       <IdsSummary
-        summary={{ direction, converted: 0, total: 1, refused: [{ name: 'r', reasons: ['reason'] }], notes: ['note'] }}
+        summary={{ direction, converted: 0, total: 1, refused: [{ name: 'r', reasons: ['reason'] }], notes: ['note'], dropped: ['dropped'] }}
         onDismiss={() => {}}
       />,
     );

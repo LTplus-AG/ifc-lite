@@ -169,7 +169,7 @@ describe('document file', () => {
   });
 
   it('validates the shape, re-identifies an imported template and keeps its bindings', () => {
-    assert.equal(DOCUMENT_VERSION, 5, 'the persistable IDS report block requires document format v5');
+    assert.ok(DOCUMENT_VERSION >= 5, 'the persistable IDS report block requires document format v5 or newer');
     const doc = coverSheetDocument();
     assert.deepEqual(validateDocumentSpec(doc), []);
     const imported = parseDocumentFile(JSON.stringify(doc));

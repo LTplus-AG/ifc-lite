@@ -126,7 +126,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
       case 'text': {
         const rendered = renderTemplate(block.text, input.bindings);
         for (const b of rendered.bindings) if (!b.ok) result.unresolved.push(b.path);
-        blocks.push({ kind: 'text', id: block.id, style: block.style, text: rendered.text });
+        blocks.push({ kind: 'text', id: block.id, style: block.style, text: rendered.text, font: block.font, fontSize: block.fontSize, width: block.width });
         break;
       }
       case 'image': {
@@ -238,9 +238,9 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
   const blocks = await resolveBlocks(input, seams.imageSize, result);
 
   // jsPDF measures in the font that is current, so the measure sets it first.
-  const measure = (text: string, size: number, bold: boolean): number => {
+  const measure = (text: string, size: number, bold: boolean, font: 'helvetica' | 'times' | 'courier' = 'helvetica'): number => {
     if (!doc.textWidth) return estimateTextWidth(text, size, bold);
-    doc.setFont('helvetica', bold ? 'bold' : 'normal');
+    doc.setFont(font, bold ? 'bold' : 'normal');
     doc.setFontSize(size);
     return doc.textWidth(text);
   };
@@ -254,7 +254,7 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
     for (const item of page.items) {
       switch (item.kind) {
         case 'text':
-          doc.setFont('helvetica', item.bold ? 'bold' : 'normal');
+          doc.setFont(item.font ?? 'helvetica', item.bold ? 'bold' : 'normal');
           doc.setFontSize(item.size);
           doc.setTextColor(item.gray);
           doc.text(item.text, item.x, item.y);

@@ -21,7 +21,7 @@ import { readImageFile } from '@/lib/document/persistence';
 import { FIELD_SUGGESTIONS } from '@/lib/document/presets';
 import { elementPropertyPaths, type BindingContext } from '@/lib/document/bindings';
 import { idsReportBlockFromReport } from '@/lib/document/ids-report';
-import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, type DocumentBlock, type TextBlock } from '@/lib/document/types';
+import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, TEXT_SIZE_MAX, TEXT_SIZE_MIN, type DocumentBlock, type TextBlock, type TextFont } from '@/lib/document/types';
 import { ClampedNumberInput, WidthEditor, field } from './BlockEditor.parts';
 import { TableBlockEditor } from './TableBlockEditor';
 
@@ -93,6 +93,15 @@ function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings:
             <option value="body">{t('document.block.textStyleBody')}</option><option value="small">{t('document.block.textStyleSmall')}</option><option value="caption">{t('document.block.textStyleCaption')}</option>
           </select>
         </label>
+        <label className="inline-flex items-center gap-1 whitespace-nowrap text-muted-foreground">{t('document.block.fontLabel')}
+          <select className={field} value={block.font ?? 'helvetica'} onChange={(e) => onChange({ ...block, font: e.target.value as TextFont })} aria-label={t('document.block.fontAriaLabel')}>
+            <option value="helvetica">{t('document.block.fontHelvetica')}</option><option value="times">{t('document.block.fontTimes')}</option><option value="courier">{t('document.block.fontCourier')}</option>
+          </select>
+        </label>
+        <label className="inline-flex items-center gap-1 whitespace-nowrap text-muted-foreground">{t('document.block.fontSizeLabel')}
+          <ClampedNumberInput value={block.fontSize} min={TEXT_SIZE_MIN} max={TEXT_SIZE_MAX} allowUndefined placeholder={t('document.block.fontSizeDefault')} ariaLabel={t('document.block.fontSizeAriaLabel')} onCommit={(fontSize) => onChange({ ...block, fontSize })} />
+        </label>
+        <WidthEditor width={block.width} onChange={(width) => onChange({ ...block, width })} />
         <label className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-muted-foreground">{t('document.block.insertFieldLabel')}
           <select className={`${field} max-w-[190px]`} value="" onChange={(e) => { if (e.target.value) insert(e.target.value); }} aria-label={t('document.block.insertFieldLabel')} title={t('document.block.insertFieldTitle')}>
             <option value="">…</option>

@@ -160,9 +160,14 @@ for (const sample of ['hello-wall.ifc', 'building-architecture.ifc', 'infra-brid
   checks++;
 }
 
-// The measured case: IfcSlab #52 of building-architecture.ifc carries a straight
-// 2.000 m opening edge at x = 5.600, y = 0.000, z = -5.000 .. -3.000. It used to
-// arrive as 0.200 / 1.800 / 1.600 / 0.200 and no cursor on it ever read 2.000.
+// The measured case: IfcSlab #52 of building-architecture.ifc, the line
+// x = 5.600, y = 0.000, z = -5.000 .. -3.000. Its authored face set is closed.
+// Before #5313 the mesher dropped three sub-grid slivers there and left a
+// T-junction crack, which this cache served as one 2.000 m "edge" (#2199 merged
+// its fragments 0.200 / 1.800 / 1.600 / 0.200). With the crack repaired, the
+// faces either side of the middle 1.6 m are coplanar, so the only creases on
+// the line are the two real 0.200 m notch edges at each end, and a cursor on
+// either must read 0.200 m rather than a fragment or the healed crack.
 if (existsSync(join(SAMPLES, 'building-architecture.ifc'))) {
   const meshes = loadMeshes('building-architecture.ifc');
   const meshIndex = meshes.findIndex((m) => m.expressId === 52);
@@ -170,15 +175,15 @@ if (existsSync(join(SAMPLES, 'building-architecture.ifc'))) {
   const cache = buildGeometryCache(meshes[meshIndex]);
   const onLine = (v) => Math.abs(v.x - 5.6) < 1e-3 && Math.abs(v.y) < 1e-3;
   const run = cache.edges.filter((e) => onLine(e.v0) && onLine(e.v1));
-  assert.equal(run.length, 1, `slab #52 opening edge is ${run.length} cache edges, expected 1`);
-  assert.ok(Math.abs(run[0].length - 2) < 1e-3, `slab #52 opening edge reads ${run[0].length.toFixed(4)} m`);
-  console.log(`  ok slab #52 opening edge: one run of ${run[0].length.toFixed(4)} m`);
+  const lengths = run.map((e) => e.length.toFixed(4)).sort();
+  assert.deepEqual(lengths, ['0.2000', '0.2000'], `slab #52 line x=5.6 carries edges ${lengths.join(' / ')}, expected the two 0.2000 m notch creases`);
+  console.log('  ok slab #52: the x=5.6 line carries only its two 0.2000 m notch creases');
   checks++;
 
   const camera = { position: { x: 5.62, y: 5, z: -4 }, fov: Math.PI / 4 };
   const ray = { origin: camera.position, direction: { x: 0, y: -1, z: 0 } };
   const detector = new SnapDetector();
-  for (const z of [-4.5, -4.0, -3.5]) {
+  for (const z of [-4.9, -3.1]) {
     const point = { x: 5.62, y: 0, z };
     const result = detector.detectMagneticSnap(
       ray, meshes,
@@ -187,9 +192,9 @@ if (existsSync(join(SAMPLES, 'building-architecture.ifc'))) {
     );
     const [a, b] = result.snapTarget?.metadata?.vertices ?? [];
     const reported = a && b ? Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) : NaN;
-    assert.ok(Math.abs(reported - 2) < 1e-3, `cursor z=${z} reported ${reported.toFixed(4)} m, not 2.0000`);
+    assert.ok(Math.abs(reported - 0.2) < 1e-3, `cursor z=${z} reported ${reported.toFixed(4)} m, not 0.2000`);
   }
-  console.log('  ok slab #52: every cursor along the edge reports the full 2.0000 m');
+  console.log('  ok slab #52: a cursor on either notch crease reports the full 0.2000 m');
   checks++;
 
   // Anti-#2388: reversing triangle emission order must not move a single edge.

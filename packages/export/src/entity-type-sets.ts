@@ -15,10 +15,10 @@
 
 import {
   ENTITIES_IFC2X3,
+  ENTITIES_IFC4_EXPRESS,
   ENTITIES_IFC4X3,
   type IfcEntityInfo,
 } from '@ifc-lite/data';
-import { ENTITIES_IFC4_EXPRESS } from '@ifc-lite/parser';
 
 /**
  * Entity types that form the shared file infrastructure and must always be

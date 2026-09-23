@@ -20,9 +20,9 @@
 
 import {
   ENTITIES_IFC2X3,
+  ENTITIES_IFC4_EXPRESS,
   ENTITIES_IFC4X3,
 } from '@ifc-lite/data';
-import { ENTITIES_IFC4_EXPRESS } from '@ifc-lite/parser';
 import type { EffectiveEntityIndex } from './effective-index.js';
 import { INFRASTRUCTURE_TYPES, collectDescendantNames } from './reference-collector.js';
 

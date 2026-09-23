@@ -9,7 +9,7 @@
 
 import {
   ENTITIES_IFC2X3,
-  ENTITIES_IFC4,
+  ENTITIES_IFC4_EXPRESS,
   ENTITIES_IFC4X3,
   IfcTypeEnumToString,
   SPATIAL_STRUCTURE_TYPE_ENUMS,
@@ -347,6 +347,6 @@ function elementUniverse(entities: readonly IfcEntityInfo[], root: string): Set<
  */
 export const BUILDING_ELEMENT_TYPES: Set<string> = new Set([
   ...elementUniverse(ENTITIES_IFC2X3, 'IfcBuildingElement'),
-  ...elementUniverse(ENTITIES_IFC4, 'IfcBuildingElement'),
+  ...elementUniverse(ENTITIES_IFC4_EXPRESS, 'IfcBuildingElement'),
   ...elementUniverse(ENTITIES_IFC4X3, 'IfcBuiltElement'),
 ]);

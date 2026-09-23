@@ -26,8 +26,7 @@
  * raw argument tokens are preserved byte-for-byte.
  */
 
-import { ENTITIES_IFC2X3, ENTITIES_IFC4X3 } from '@ifc-lite/data';
-import { ENTITIES_IFC4_EXPRESS } from '@ifc-lite/parser';
+import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3 } from '@ifc-lite/data';
 import { escapeStepString } from './step-serialization.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
@@ -52,7 +51,7 @@ function buildSchemaMap(
 
 const SCHEMA_MAPS: Record<IfcSchemaVersion, Map<string, RetypeEntityInfo>> = {
   IFC2X3: buildSchemaMap(ENTITIES_IFC2X3),
-  // Not the raw `ENTITIES_IFC4`: retyping into one of its 24 phantom IFC4
+  // Not the raw `ENTITIES_IFC4`: retyping into one of its phantom IFC4
   // entities wrote a class IFC4 lacks, and into `IfcCartesianPointList3D`
   // appended a `TagList` IFC4 never had (#5204).
   IFC4: buildSchemaMap(ENTITIES_IFC4_EXPRESS),

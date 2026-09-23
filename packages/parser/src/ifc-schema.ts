@@ -11,8 +11,7 @@
 
 import { SCHEMA_REGISTRY, getAllAttributesForEntity, isKnownEntity, getInheritanceChainForEntity, getEntityMetadata } from './generated/schema-registry.js';
 import { getSchemaRegistryForVersion } from './generated/schema-registry-by-version.js';
-import { ENTITIES_IFC2X3, ENTITIES_IFC4X3, IFC_DATA_TYPES, type IfcEntityInfo } from '@ifc-lite/data';
-import { ENTITIES_IFC4_EXPRESS } from './ifc4-entity-table.js';
+import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3, IFC_DATA_TYPES, type IfcEntityInfo } from '@ifc-lite/data';
 
 // Union map across every bundled IFC schema (2X3 + 4 + 4X3). The parser
 // has to categorize entities from ANY schema the user loads — so the
@@ -20,10 +19,10 @@ import { ENTITIES_IFC4_EXPRESS } from './ifc4-entity-table.js';
 // codegen pinned. Later schemas win on name collision (a non-issue in
 // practice because the modern schemas are supersets).
 //
-// The IFC4 table is `ENTITIES_IFC4_EXPRESS` (`ifc4-entity-table.ts`), not
-// `@ifc-lite/data`'s raw `ENTITIES_IFC4`: the raw table carries 24 entities
-// IFC4 does not declare (#5204), and folding them in made `isKnownType`
-// answer `true` for names no bundled schema has.
+// The IFC4 table is `ENTITIES_IFC4_EXPRESS`, not the raw `ENTITIES_IFC4`: the
+// raw table carries alignment-extension entities IFC4 does not declare
+// (#5204), and folding them in made `isKnownType` answer `true` for names no
+// bundled schema has.
 const ENTITY_INFO_BY_UPPER: Map<string, IfcEntityInfo> = (() => {
     const map = new Map<string, IfcEntityInfo>();
     for (const list of [ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3]) {

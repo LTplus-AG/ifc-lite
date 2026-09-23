@@ -88,20 +88,18 @@
       "paths": [{
         "name": "@ifc-lite/data",
         "importNames": ["ENTITIES_IFC4"],
-        "message": "Import ENTITIES_IFC4_EXPRESS from @ifc-lite/parser instead: the raw IFC4 table carries entities and attributes IFC4 does not declare (#5204)."
+        "message": "Import ENTITIES_IFC4_EXPRESS instead: the raw IFC4 table carries entities and attributes IFC4 does not declare (#5204)."
       }]
     }]
   },
   "overrides": [
     {
-      // The accessor itself; codegen, which parser is generated from and so
-      // cannot import parser; ifcx, which does not depend on parser and walks
-      // only the IfcBuildingElement family, where no phantom row sits; and
-      // tests, which use the raw table as a fixture or as the thing under test.
+      // codegen, whose IFC4_FAMILY catalog is generated from the raw table as
+      // committed; and tests, which use the raw table as a fixture or as the
+      // thing under test. Inside @ifc-lite/data the table is a relative
+      // import, which this rule does not match.
       "files": [
-        "packages/parser/src/ifc4-entity-table.ts",
         "packages/codegen/src/generator.ts",
-        "packages/ifcx/src/types.ts",
         "**/*.test.ts",
         "**/*.test.tsx",
         "**/test/**"

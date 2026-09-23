@@ -22,8 +22,8 @@
  * Later schemas still win when no schema is named, matching the parser's union.
  */
 
-import { ENTITIES_IFC2X3, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
-import { ENTITIES_IFC4_EXPRESS, getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
+import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
+import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
 
 /** Bundled schemas, oldest first. */
 const SCHEMA_TABLES: ReadonlyArray<readonly [string, readonly IfcEntityInfo[]]> = [

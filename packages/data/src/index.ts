@@ -114,6 +114,9 @@ export { expandTypeNamesToDescendants } from './ifc-schema/descendants.js';
 // as read-only.
 export { ENTITIES_IFC2X3 } from './ifc-schema/generated/entities-ifc2x3.js';
 export { ENTITIES_IFC4 } from './ifc-schema/generated/entities-ifc4.js';
+// ENTITIES_IFC4 checked against the IFC4 EXPRESS schema (#5204): what every
+// schema-specific IFC4 reader should use. The raw table above is lint-gated.
+export { ENTITIES_IFC4_EXPRESS } from './ifc-schema/entities-ifc4-express.js';
 export { ENTITIES_IFC4X3 } from './ifc-schema/generated/entities-ifc4x3.js';
 // The upstream SchemaInfo tables the `ENTITIES_*` lists come from also carry
 // EXPRESS *defined types* (`IfcLengthMeasure`, `IfcBoolean`, `IfcTextAlignment`,

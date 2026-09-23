@@ -26,12 +26,15 @@ describe('narrowSchemaVersion and the descendant resolver agree', () => {
   // (IFCSLABSTANDARDCASE is declared only by the IFC4 table; IFCPROJECT is an
   // IfcObject in IFC2X3 and an IfcContext from IFC4 on). Neither separates
   // IFC4 from IFC4X3, and IFC5 mapping to IFC4 instead of IFC4X3 is the exact
-  // regression this file exists to pin — so IfcPositioningElement is here for
-  // that pair alone: IFC4X3 re-parented IfcGrid under it, IFC4 leaves IfcGrid
-  // under IfcProduct. Sweeping all 1159 bundled entity names, it is the ONLY
-  // name whose expansion differs between IFC4 and IFC4X3, so dropping it
-  // leaves that direction unpinned entirely.
-  const PROBES = ['IfcSlab', 'IfcObject', 'IfcBuildingElement', 'IfcPositioningElement'];
+  // regression this file exists to pin. No expansion can separate that pair
+  // any more: IfcPositioningElement used to, but only because the C# table
+  // filed IFC4X3's alignment entities under IFC4 (#5204). With the IFC4 table
+  // checked against IFC4 EXPRESS, a sweep of every bundled entity name finds
+  // no name whose expansion differs between IFC4 and IFC4X3 (the resolver
+  // folds in the names a schema does not declare from the others, by design).
+  // So that direction is pinned by the direct `narrowSchemaVersion('IFC5')`
+  // assertion below, not by this equality.
+  const PROBES = ['IfcSlab', 'IfcObject', 'IfcBuildingElement'];
 
   it.each(['IFC5', 'IFC4X3_ADD2', 'IFC4X3', 'IFC4', 'IFC2X3', 'nonsense', undefined])(
     'resolves %s the same way through both',
@@ -52,11 +55,5 @@ describe('narrowSchemaVersion and the descendant resolver agree', () => {
     // equality above is a claim and not a tautology.
     expect(expandTypeNamesToDescendants(['IfcObject'], 'IFC2X3')).toContain('IFCPROJECT');
     expect(expandTypeNamesToDescendants(['IfcObject'], 'IFC4X3')).not.toContain('IFCPROJECT');
-    // And specifically for the pair that was wrong: IFC4 is not merely another
-    // name for IFC4X3 here, so the it.each above fails if IFC5 lands on IFC4.
-    expect(expandTypeNamesToDescendants(['IfcPositioningElement'], 'IFC4X3')).toContain('IFCGRID');
-    expect(expandTypeNamesToDescendants(['IfcPositioningElement'], 'IFC4')).not.toContain(
-      'IFCGRID',
-    );
   });
 });

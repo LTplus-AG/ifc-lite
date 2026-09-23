@@ -43,13 +43,12 @@
  */
 
 import {
-  ENTITIES_IFC4_EXPRESS,
   SCHEMA_REGISTRY,
   getAllAttributesForEntity,
   getAttributeNamesAcrossSchemas,
   resolveEntityNameAlias,
 } from '@ifc-lite/parser';
-import { ENTITIES_IFC2X3, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
+import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
 import { escapeStepString, resolveExpressBase } from './step-serialization.js';
 
 /** Union of every bundled schema, later schemas winning — mirrors the fallback

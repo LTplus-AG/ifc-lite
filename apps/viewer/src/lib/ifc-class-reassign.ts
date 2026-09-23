@@ -14,10 +14,10 @@
 
 import {
   ENTITIES_IFC2X3,
+  ENTITIES_IFC4_EXPRESS,
   ENTITIES_IFC4X3,
   type IfcEntityInfo,
 } from '@ifc-lite/data';
-import { ENTITIES_IFC4_EXPRESS } from '@ifc-lite/parser';
 
 export type ReassignSchema = 'IFC2X3' | 'IFC4' | 'IFC4X3';
 

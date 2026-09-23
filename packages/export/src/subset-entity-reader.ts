@@ -19,8 +19,8 @@
  */
 
 import type { IfcSourceBytes } from '@ifc-lite/parser';
-import { ENTITIES_IFC4_EXPRESS, getAttributeNamesAcrossSchemas, resolveEntityNameAlias } from '@ifc-lite/parser';
-import { ENTITIES_IFC2X3, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
+import { getAttributeNamesAcrossSchemas, resolveEntityNameAlias } from '@ifc-lite/parser';
+import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
 import { createSourceRefReader, decodeRange } from './source-ref-bounds.js';
 import { readStepSlots } from './step-argument-parser.js';
 

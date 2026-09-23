@@ -18,8 +18,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { ENTITIES_IFC4 } from '@ifc-lite/data';
-import { ENTITIES_IFC4_EXPRESS } from '../src/ifc4-entity-table.js';
+import { ENTITIES_IFC4, ENTITIES_IFC4_EXPRESS } from '@ifc-lite/data';
 import { getSchemaRegistryForVersion } from '../src/generated/schema-registry-by-version.js';
 import {
   getAttributeNamesAcrossSchemas,
@@ -73,11 +72,12 @@ describe('ifc-schema.ts union does not admit phantom draft-alignment entities (#
 });
 
 /**
- * `ENTITIES_IFC4_EXPRESS` is the one table every schema-specific IFC4 reader
- * now uses (an oxlint `no-restricted-imports` rule keeps new production code
- * off the raw `ENTITIES_IFC4`). Its contract, stated against the EXPRESS
- * registry rather than against a list of known-bad names, so a future bad row
- * in the C# source is caught by the same assertions.
+ * `ENTITIES_IFC4_EXPRESS` (`@ifc-lite/data`) is the one table every
+ * schema-specific IFC4 reader now uses (an oxlint `no-restricted-imports` rule
+ * keeps new production code off the raw `ENTITIES_IFC4`). Its corrections are
+ * generated in `@ifc-lite/data`, which cannot import this package, so the
+ * contract is checked HERE against the live EXPRESS registry: a stale or wrong
+ * correction file fails these assertions, not only the generator's `--check`.
  */
 describe('ENTITIES_IFC4_EXPRESS (#5204)', () => {
   const registry = getSchemaRegistryForVersion('IFC4').entities;
@@ -97,6 +97,18 @@ describe('ENTITIES_IFC4_EXPRESS (#5204)', () => {
       expect(entity.attributes, entity.name).toEqual((meta.allAttributes ?? meta.attributes).map((a) => a.name));
     }
     expect(ENTITIES_IFC4_EXPRESS.find((e) => e.name === 'IfcCartesianPointList3D')?.attributes).toEqual(['CoordList']);
+  });
+
+  it('takes every declared row\'s parent from the registry, so no row hangs off a dropped one', () => {
+    const names = new Set(ENTITIES_IFC4_EXPRESS.map((e) => e.name));
+    for (const entity of ENTITIES_IFC4_EXPRESS) {
+      const meta = registry[entity.name];
+      if (!meta) continue;
+      expect(entity.parent, entity.name).toBe(meta.parent ?? undefined);
+      if (entity.parent !== undefined) expect(names.has(entity.parent), `${entity.name} -> ${entity.parent}`).toBe(true);
+    }
+    // The C# table parents these under the IFC4X3-only IfcOffsetCurve.
+    expect(ENTITIES_IFC4_EXPRESS.find((e) => e.name === 'IfcOffsetCurve2D')?.parent).toBe('IfcCurve');
   });
 
   it('keeps the attribute-less defined-type rows the raw table lists', () => {

@@ -42,8 +42,13 @@ export function landXmlIfcSource(document: LandXmlTinDocument): LandXmlIfcSource
 export interface LandXmlExportPlan {
   /** `selected` — the chosen model is LandXML. `merged` — one of the models in a merged export is. */
   scope: 'selected' | 'merged';
-  /** Every model in scope carries at least one record the mapping writes. */
+  /** Every model in scope carries at least one record the mapping writes, AND the conversion is offered. */
   covered: boolean;
+  /**
+   * The records are covered, but the scope is a merge, which v1 cannot do.
+   * Distinct from "not covered": the fix is the scope, not the file.
+   */
+  mergedUnsupported: boolean;
   surfaces: number;
   surveyPoints: number;
   /** Out-of-scope families across every LandXML model in scope. */
@@ -121,12 +126,19 @@ export function landXmlExportPlan(
     refusals.push(collectRefusals(landXmlIfcSource(document)));
   }
 
+  // A LandXML model whose document has not been retained (a cache-restored
+  // session) has nothing provably writable, and claiming coverage we cannot
+  // deliver is the failure §6 forbids.
+  const hasRecords = inScope.length > 0 && (surfaces > 0 || surveyPoints > 0);
+
   return {
     scope,
-    // A LandXML model whose document has not been retained (a cache-restored
-    // session) is NOT covered: we cannot prove it holds anything writable, and
-    // claiming coverage we cannot deliver is the failure §6 forbids.
-    covered: inScope.length > 0 && (surfaces > 0 || surveyPoints > 0),
+    // v1 converts ONE LandXML document into a standalone IFC4X3 file. It is
+    // not a merge participant: `MergedExporter` consumes `IfcDataStore`s and a
+    // LandXML model has none, so a merged scope containing one still refuses
+    // rather than silently dropping either side of the merge.
+    mergedUnsupported: mergedScope && hasRecords,
+    covered: hasRecords && !mergedScope,
     surfaces,
     surveyPoints,
     refusals: mergeRefusals(refusals),

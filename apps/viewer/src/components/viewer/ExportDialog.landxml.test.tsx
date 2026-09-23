@@ -277,24 +277,66 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     assert.match(document.body.textContent ?? '', /assumed linear unit \(US survey foot\)/);
   });
 
-  it('refuses IFC5 for a covered source, because v1 derives IFC4X3 STEP only', () => {
+  it('defaults a covered source to IFC4X3, the only schema the mapping derives', () => {
     useViewerStore.setState({
       ...fixtureModels(terrainWithDocument('survey.xml')), dirtyModels: new Set(),
     });
     render(<ExportDialog />);
     openDialog();
 
-    const schema = [...document.querySelectorAll('[role="combobox"]')].at(-1);
-    assert.ok(schema, 'the dialog offers a schema selector');
-    click(schema);
-    const ifc5 = [...document.querySelectorAll('[role="option"]')]
-      .find((option) => option.textContent?.includes('IFC5'));
-    assert.ok(ifc5, 'IFC5 is offered before the mapping-aware guard evaluates it');
-    click(ifc5);
+    // The fixture's own schemaVersion is IFC4. Without this the dialog would
+    // show IFC4 while the converter wrote IFC4X3 — the output disagreeing with
+    // the selector is worse than either choice.
+    assert.match(document.body.textContent ?? '', /SchemaIFC4X3/);
+    // And it is not an "upgrade" from IFC4: a LandXML source has no IFC schema
+    // of origin, so that banner would describe a fiction.
+    assert.doesNotMatch(document.body.textContent ?? '', /Schema Upgrade/);
+  });
 
-    // Not the generic "no IFC entities are synthesized" refusal: this source
-    // IS covered, and the fix is the schema, not the file.
-    assert.match(document.body.textContent ?? '', /derives IFC4X3 STEP only/);
-    assert.equal(exportButton().disabled, true, 'IFC5/IFCX is not a mapping target');
+  for (const target of ['IFC2X3', 'IFC4', 'IFC5'] as const) {
+    it(`refuses ${target} for a covered source rather than writing IFC4X3 under another name`, () => {
+      useViewerStore.setState({
+        ...fixtureModels(terrainWithDocument('survey.xml')), dirtyModels: new Set(),
+      });
+      render(<ExportDialog />);
+      openDialog();
+
+      const schema = [...document.querySelectorAll('[role="combobox"]')].at(-1);
+      assert.ok(schema, 'the dialog offers a schema selector');
+      click(schema);
+      const option = [...document.querySelectorAll('[role="option"]')]
+        .find((candidate) => candidate.textContent?.startsWith(target));
+      assert.ok(option, `${target} is offered before the mapping-aware guard evaluates it`);
+      click(option);
+
+      // Not the generic "no IFC entities are synthesized" refusal: this source
+      // IS covered, and the fix is the schema, not the file.
+      assert.match(document.body.textContent ?? '', /derives IFC4X3 STEP only/);
+      assert.equal(exportButton().disabled, true, `${target} is not a mapping target`);
+    });
+  }
+
+  it('refuses a merged scope that contains a covered LandXML model, naming the scope as the fix', () => {
+    const authored = fixtureModel('building.ifc');
+    authored.schemaVersion = 'IFC4';
+    useViewerStore.setState({
+      ...fixtureModels(authored, terrainWithDocument('survey.xml')), dirtyModels: new Set(),
+    });
+    render(<ExportDialog />);
+    openDialog();
+
+    const scope = document.querySelector('[role="combobox"]');
+    assert.ok(scope, 'multiple models expose a scope selector');
+    click(scope);
+    const merged = [...document.querySelectorAll('[role="option"]')]
+      .find((option) => option.textContent?.includes('Merged (All Models)'));
+    assert.ok(merged, 'merged scope is offered before the mapping-aware guard evaluates it');
+    click(merged);
+
+    // v1 converts ONE document into a standalone file. Converting only the
+    // selected model and calling it a merge would silently drop the IFC model;
+    // running the merger would silently drop the terrain.
+    assert.match(document.body.textContent ?? '', /cannot take part in a merged export/);
+    assert.equal(exportButton().disabled, true, 'a merge containing LandXML has no IFC export action');
   });
 });

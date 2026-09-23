@@ -187,11 +187,10 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   );
   const selectedRoomView = selectedModelId ? getMutationView(selectedModelId) ?? undefined : undefined;
   // #4937: not a blanket refusal any more — "are the loaded records covered by
-  // the mapping?", answered without building the file. IFC5/IFCX is not a
-  // mapping target: v1 derives IFC4X3 STEP only.
+  // the mapping?", answered without building the file.
   const landXmlPlan = useMemo(() => landXmlExportPlan(models, selectedModel, exportScope === 'merged'),
     [models, selectedModel, exportScope]);
-  const canExportIfc = landXmlPlan === null || (landXmlPlan.covered && !isIfc5);
+  const canExportIfc = landXmlPlan === null || (landXmlPlan.covered && schema === 'IFC4X3');
   // Mutation deltas are source-independent JSON; only full IFC synthesis is refused.
   const exportAllowed = canExportIfc || (changesOnly && !isIfc5);
   const portableRoomStore = selectedModel?.ifcDataStore
@@ -220,22 +219,26 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   // Default schema to selected model's schema version
   useEffect(() => {
     if (!selectedModel) return;
-    const modelSchema = (portableRoomStore?.schemaVersion ?? selectedModel.schemaVersion) as SchemaVersion;
+    // A covered LandXML model has only one target: the mapping derives IFC4X3.
+    const modelSchema = (landXmlPlan?.covered ? 'IFC4X3'
+      : portableRoomStore?.schemaVersion ?? selectedModel.schemaVersion) as SchemaVersion;
     if (modelSchema) {
       setSchema(modelSchema);
     }
-  }, [selectedModel?.schemaVersion, portableRoomStore?.schemaVersion]);
+  }, [selectedModel?.schemaVersion, portableRoomStore?.schemaVersion, landXmlPlan?.covered]);
 
   // Determine schema conversion direction
   const sourceSchema = ((portableRoomStore?.schemaVersion ?? selectedModel?.schemaVersion) as SchemaVersion) || '';
   const schemaConversion = useMemo(() => {
-    if (!sourceSchema || !schema) return null;
+    // A covered LandXML source has no IFC schema of origin, so an "upgraded
+    // from" banner would describe a fiction.
+    if (!sourceSchema || !schema || landXmlPlan?.covered) return null;
     const order: Record<string, number> = { IFC2X3: 1, IFC4: 2, IFC4X3: 3, IFC5: 4 };
     const src = order[sourceSchema] ?? 0;
     const dst = order[schema] ?? 0;
     if (src === dst) return null;
     return src < dst ? 'upgrade' as const : 'downgrade' as const;
-  }, [sourceSchema, schema]);
+  }, [sourceSchema, schema, landXmlPlan?.covered]);
 
   // Reset scope to single when switching to IFC5 (merged not supported)
   useEffect(() => {
@@ -346,7 +349,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
 
     // LandXML has no IfcDataStore to re-serialise: it is DERIVED into IFC4X3
     // through the mapping, never converted to the selector's schema.
-    if (landXmlPlan?.covered && !changesOnly && !isIfc5 && selectedModel?.landXmlDocument) {
+    if (landXmlPlan?.covered && !changesOnly && schema === 'IFC4X3' && selectedModel?.landXmlDocument) {
       finishLandXmlIfcExport({ document: selectedModel.landXmlDocument, name: selectedModel.name },
         { t, setExportResult, setIsExporting });
       return;
@@ -678,7 +681,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
               delta is source-independent, so neither branch applies to it. */}
           {landXmlPlan && (!changesOnly || isIfc5) && (
             <LandXmlExportRefusal
-              plan={landXmlPlan} schemaSupported={!isIfc5} sourceFile={selectedModel?.sourceFile} />
+              plan={landXmlPlan} schemaSupported={schema === 'IFC4X3'} sourceFile={selectedModel?.sourceFile} />
           )}
           <div className="flex items-center gap-4">
             <Label className="w-32">{t('exportDialog.schemaLabel')}</Label>

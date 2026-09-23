@@ -139,11 +139,25 @@ describe('landXmlExportPlan (#4937)', () => {
     assert.equal(plan.surfaces, 2);
   });
 
-  it('reports merged scope when only an unselected model is LandXML', () => {
+  it('refuses a merged scope that holds covered records, naming the scope as the fix', () => {
     const other = { ...landXmlModel(document()), id: 'm2' };
     const models = new Map([[other.id, other]]) as never;
     const plan = landXmlExportPlan(models, { sourceSchema: 'IFC4' } as never, true);
     assert.equal(plan?.scope, 'merged');
-    assert.equal(plan?.covered, true);
+    // v1 converts ONE document into a standalone file. Converting only the
+    // selected model would silently drop the rest of the merge; running the
+    // merger would silently drop the terrain. Neither is `covered`.
+    assert.equal(plan?.covered, false);
+    assert.equal(plan?.mergedUnsupported, true, 'and it is distinct from "nothing to convert"');
+  });
+
+  it('separates a merge it cannot do from a source it cannot cover', () => {
+    const empty = { ...landXmlModel(document({ surfaces: [] })), id: 'm2' };
+    const models = new Map([[empty.id, empty]]) as never;
+    const plan = landXmlExportPlan(models, { sourceSchema: 'IFC4' } as never, true);
+    // Nothing to convert in the first place: the scope is not the problem, so
+    // telling the user to change it would send them down a dead end.
+    assert.equal(plan?.covered, false);
+    assert.equal(plan?.mergedUnsupported, false);
   });
 });

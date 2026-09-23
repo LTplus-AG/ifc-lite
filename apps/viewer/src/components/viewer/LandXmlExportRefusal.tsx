@@ -92,10 +92,12 @@ export function LandXmlExportRefusal({ plan, schemaSupported, sourceFile }: Land
       <AlertCircle className="h-4 w-4" />
       <AlertTitle>{t('exportDialog.landXml.title')}</AlertTitle>
       <AlertDescription>
-        {/* A covered source refused only for its target schema is a different
-            problem with a different fix, and saying "no IFC entities are
-            synthesized" there would be false. */}
-        {plan.covered ? t('exportDialog.landXml.schemaUnsupported') : t('exportDialog.landXml.description')}
+        {/* A source refused only for its target schema or its scope is a
+            different problem with a different fix, and saying "no IFC entities
+            are synthesized" there would be false. */}
+        {plan.covered ? t('exportDialog.landXml.schemaUnsupported')
+          : plan.mergedUnsupported ? t('exportDialog.landXml.mergedUnsupported')
+          : t('exportDialog.landXml.description')}
         {isLandXmlSelected && (
           sourceFile ? (
             <div className="mt-2">

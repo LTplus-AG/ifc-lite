@@ -74,6 +74,7 @@ export const exportDialogEn = {
   'exportDialog.landXml.excludedTitle': 'Not included in the IFC',
   'exportDialog.landXml.assumedUnit': 'Coordinates are scaled by an assumed linear unit ({unit}), not one the source declares. The geometry is at an operator-chosen scale.',
   'exportDialog.landXml.missingCrs': 'No coordinate reference system is declared, so no georeferencing is written and the coordinate-order check cannot run.',
+  'exportDialog.landXml.mergedUnsupported': 'The LandXML mapping converts one file into a standalone IFC4X3 model; it cannot take part in a merged export. Switch the scope to a single model to convert it.',
   'exportDialog.landXml.schemaUnsupported': 'The LandXML mapping derives IFC4X3 STEP only. Choose IFC4X3 to convert this model, or export the original LandXML file.',
   'exportDialog.landXml.exported': 'Converted to IFC4X3: {records}.',
 } as const satisfies Record<string, TranslationValue>;

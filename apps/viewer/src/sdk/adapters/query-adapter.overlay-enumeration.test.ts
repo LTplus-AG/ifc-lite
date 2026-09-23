@@ -17,7 +17,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { IfcParser } from '@ifc-lite/parser';
 import { createQueryAdapter } from './query-adapter.js';
 import type { StoreApi } from './types.js';
-import { Rule } from '../../lib/search/filter-rules.js';
+import { Rule } from '@ifc-lite/rules';
 
 function guid(mnemonic: string): string {
   return (mnemonic + '0'.repeat(22)).slice(0, 22);
@@ -37,6 +37,7 @@ ENDSEC;END-ISO-10303-21;`;
 async function harness() {
   const dataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(MODEL).buffer as ArrayBuffer);
   const view = new MutablePropertyView(dataStore.properties, 'm');
+  view.setExpressIdWatermark(4);
   const state = {
     models: new Map([['m', { id: 'm', ifcDataStore: dataStore }]]),
     activeModelId: 'm',
@@ -87,6 +88,7 @@ test('query.entities() with no type filter still folds overlay creations and tom
 test('entitiesMatchingActiveFilter() omits an entity deleted this session (#5185)', async () => {
   const dataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(MODEL).buffer as ArrayBuffer);
   const view = new MutablePropertyView(dataStore.properties, 'm');
+  view.setExpressIdWatermark(4);
   const state = {
     models: new Map([['m', { id: 'm', ifcDataStore: dataStore }]]),
     activeModelId: 'm',

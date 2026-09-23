@@ -204,7 +204,8 @@ export class HeadlessLikeBackend implements BimBackend {
    * so a read-only session still pays nothing. Built by `getOrCreateStoreEditor`
    * to keep the extractor wiring in one place.
    */
-  private getOrCreateMutationView(): MutablePropertyView {
+  /** The view `bim.mutate` writes through — public so `run_flow`'s `tables()` reads the same overlay. */
+  getOrCreateMutationView(): MutablePropertyView {
     this.getOrCreateStoreEditor();
     // Non-null immediately after: the two fields are assigned together and
     // never cleared.

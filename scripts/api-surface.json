@@ -4800,6 +4800,7 @@
     "fromStoreyLocal: function",
     "generateSpaces: function",
     "generateSpacesFromWalls: function",
+    "isAlignmentRecord: function",
     "isMappableSurface: function",
     "landXmlGlobalId: function",
     "landXmlToIfc: function",

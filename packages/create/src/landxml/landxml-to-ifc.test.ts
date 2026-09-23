@@ -24,7 +24,7 @@ import {
 } from './landxml-to-ifc.js';
 import type { LandXmlIfcOptions } from './landxml-to-ifc.js';
 import type {
-  LandXmlIfcCgPoint, LandXmlIfcPoint, LandXmlIfcSource, LandXmlIfcSurface, LandXmlIfcUnits,
+  LandXmlIfcAlignment, LandXmlIfcCgPoint, LandXmlIfcPoint, LandXmlIfcSource, LandXmlIfcSurface, LandXmlIfcUnits,
 } from './source-types.js';
 import type { LandXmlIfcResult } from './result-types.js';
 
@@ -492,7 +492,7 @@ describe('landXmlToIfc — face integrity', () => {
  * structure and the accounting.
  */
 describe('landXmlToIfc — horizontal alignments (§11)', () => {
-  function alignmentFixture(): { alignments: NonNullable<LandXmlIfcSource['alignments']> } {
+  function alignmentFixture(): { alignments: LandXmlIfcAlignment[] } {
     return JSON.parse(readFileSync(
       resolvePath(__dirname, '../../../../tools/ifcopenshell_reference/alignment_fixture.json'), 'utf8',
     ));

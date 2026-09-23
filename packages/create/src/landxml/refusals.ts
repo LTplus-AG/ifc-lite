@@ -12,7 +12,7 @@
 
 import type { LandXmlIfcSource, LandXmlIfcSurface } from './source-types.js';
 import type { LandXmlRefusal, LandXmlRefusedFamily } from './result-types.js';
-import { cogoPointResolver, mapAlignments, type AlignmentMapping } from './alignment-mapping.js';
+import { cogoPointResolver, isAlignmentRecord, mapAlignments, type AlignmentMapping } from './alignment-mapping.js';
 
 /**
  * Why each family is out of scope, in the operator's terms.
@@ -78,7 +78,9 @@ export function collectRefusals(
   // refused alignment takes its station equations and cant with it, and
   // counting them twice would misstate what is missing.
   const written = new Set(alignmentMapping.mapped.map((alignment) => alignment.sourceId));
-  const writtenAlignments = (source.alignments ?? []).filter((alignment) => written.has(alignment.sourceId));
+  const writtenAlignments = (source.alignments ?? [])
+    .filter(isAlignmentRecord)
+    .filter((alignment) => written.has(alignment.sourceId));
   const counts: Array<[LandXmlRefusedFamily, number]> = [
     ['alignments', alignmentMapping.refused.length],
     ['station-equations', writtenAlignments.reduce((n, a) => n + (a.stationEquations?.length ?? 0), 0)],

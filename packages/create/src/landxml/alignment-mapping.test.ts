@@ -262,3 +262,15 @@ function readFixture(): {
     resolve(__dirname, '../../../../tools/ifcopenshell_reference/alignment_fixture.json'), 'utf8',
   ));
 }
+
+describe('mapAlignments — records that are not alignments (#5370 review)', () => {
+  it('refuses a record that is not alignment-shaped, by position, instead of reading into it', () => {
+    // The source field stays `unknown[]` (narrowing it would break v1.0
+    // callers), so the shape is checked at run time. A malformed record must
+    // be named and refused, never mapped from whatever fields happen to exist.
+    const { mapped, refused } = mapAlignments([{ legacy: true }, 42], METRES, false, noRefs);
+    expect(mapped).toEqual([]);
+    expect(refused.map((entry) => entry.name)).toEqual(['alignment 1', 'alignment 2']);
+    expect(refused[0].reason).toMatch(/not an alignment record/);
+  });
+});

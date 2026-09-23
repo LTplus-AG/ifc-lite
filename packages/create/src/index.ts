@@ -44,7 +44,7 @@ export {
 } from './landxml/coordinate-plausibility.js';
 export { alignmentMappingOf, collectRefusals, isMappableSurface, refusalReason } from './landxml/refusals.js';
 export {
-  ALIGNMENT_POSITION_TOLERANCE_M, cogoPointResolver, mapAlignments,
+  ALIGNMENT_POSITION_TOLERANCE_M, cogoPointResolver, isAlignmentRecord, mapAlignments,
   type AlignmentMapping, type HorizontalSegment, type HorizontalSegmentType, type MappedAlignment,
   type PointResolver, type RefusedAlignment,
 } from './landxml/alignment-mapping.js';

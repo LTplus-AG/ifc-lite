@@ -138,7 +138,15 @@ export interface LandXmlIfcSource {
   units: LandXmlIfcUnits | null;
   coordinateSystem?: { horizontalDatum?: string; verticalDatum?: string };
   surfaces: readonly LandXmlIfcSurface[];
-  alignments?: readonly LandXmlIfcAlignment[];
+  /**
+   * Horizontal alignments. Typed `unknown[]` on purpose: v1.0 published this
+   * field as opaque, and narrowing an input type is a breaking change (#5370
+   * review). Each record is checked at run time instead — `isAlignmentRecord`
+   * in `alignment-mapping.ts` — and one that is not a `LandXmlIfcAlignment` is
+   * refused by name, never read into. The viewer's parsed document satisfies
+   * `LandXmlIfcAlignment`; that is the shape to produce.
+   */
+  alignments?: readonly unknown[];
   profiles?: readonly unknown[];
   crossSections?: readonly unknown[];
   crossSectionSurfaces?: readonly unknown[];

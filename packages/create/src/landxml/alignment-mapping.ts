@@ -303,25 +303,53 @@ function mapOne(
  * An alignment is refused WHOLE rather than written with a gap: every station
  * after a missing segment would be wrong.
  */
+/**
+ * Is this record shaped like a `LandXmlIfcAlignment`? The source field is
+ * `unknown[]` (see `LandXmlIfcSource.alignments`), so the shape is checked
+ * here rather than trusted: a record that fails is refused by name.
+ */
+export function isAlignmentRecord(value: unknown): value is LandXmlIfcAlignment {
+  if (typeof value !== 'object' || value === null) return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.sourceId === 'string'
+    && (record.name === undefined || typeof record.name === 'string')
+    && typeof record.staStart === 'number' && Number.isFinite(record.staStart)
+    && Array.isArray(record.segments);
+}
+
 export function mapAlignments(
-  alignments: readonly LandXmlIfcAlignment[] | undefined, units: LandXmlIfcUnits | null, swap: boolean,
+  alignments: readonly unknown[] | undefined, units: LandXmlIfcUnits | null, swap: boolean,
   resolve: PointResolver,
 ): AlignmentMapping {
   const result: AlignmentMapping = { mapped: [], refused: [] };
-  for (const alignment of alignments ?? []) {
-    const name = alignment.name || alignment.sourceId;
-    if (units === null) {
-      result.refused.push({ sourceId: alignment.sourceId, name, reason: 'the file declares no units' });
-      continue;
+  (alignments ?? []).forEach((candidate, index) => {
+    if (!isAlignmentRecord(candidate)) {
+      result.refused.push({
+        sourceId: `alignment[${index}]`, name: `alignment ${index + 1}`,
+        reason: 'it is not an alignment record (it needs a sourceId, a numeric staStart and a segments list)',
+      });
+      return;
     }
-    try {
-      result.mapped.push(mapOne(alignment, units, swap, resolve));
-    } catch (error) {
-      if (!(error instanceof Refusal)) throw error;
-      result.refused.push({ sourceId: alignment.sourceId, name, reason: error.message });
-    }
-  }
+    mapOneInto(result, candidate, units, swap, resolve);
+  });
   return result;
+}
+
+function mapOneInto(
+  result: AlignmentMapping, alignment: LandXmlIfcAlignment, units: LandXmlIfcUnits | null, swap: boolean,
+  resolve: PointResolver,
+): void {
+  const name = alignment.name || alignment.sourceId;
+  if (units === null) {
+    result.refused.push({ sourceId: alignment.sourceId, name, reason: 'the file declares no units' });
+    return;
+  }
+  try {
+    result.mapped.push(mapOne(alignment, units, swap, resolve));
+  } catch (error) {
+    if (!(error instanceof Refusal)) throw error;
+    result.refused.push({ sourceId: alignment.sourceId, name, reason: error.message });
+  }
 }
 
 /**

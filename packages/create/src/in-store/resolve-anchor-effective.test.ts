@@ -5,7 +5,7 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
-import { iterateEffectiveEntityIds, MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { addColumnToStore } from './column.js';
 import { addWallToStore } from './wall.js';
@@ -94,11 +94,14 @@ describe('resolveSpatialAnchor over live entities (#5249)', () => {
 
   it('uses live OwnerHistory and representation context after source candidates are removed', async () => {
     const { store, view, editor } = await session();
-    for (const { expressId } of iterateEffectiveEntityIds(store, view, [
+    const sourceTypes = [
       'IFCOWNERHISTORY',
       'IFCGEOMETRICREPRESENTATIONCONTEXT',
       'IFCGEOMETRICREPRESENTATIONSUBCONTEXT',
-    ])) {
+    ];
+    const sourceIds = sourceTypes.flatMap((type) => store.entityIndex.byType.get(type) ?? []);
+    expect(sourceIds.length).toBeGreaterThan(0);
+    for (const expressId of sourceIds) {
       expect(editor.removeEntity(expressId)).toBe(true);
     }
     const ownerHistoryId = editor.addEntity('IfcOwnerHistory', []).expressId;

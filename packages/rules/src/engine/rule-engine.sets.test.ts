@@ -353,6 +353,29 @@ describe('runRuleSet — a failing spec never reports passRate 100 (#5177)', () 
     assert.equal(vacuous.status, 'not_applicable');
     assert.equal(vacuous.passRate, 100);
   });
+
+  it('zero applicable elements but a failing universe group: fail, not not_applicable', async () => {
+    // No IfcPlate at all, one IfcElementAssembly: the universe seeds its
+    // group with count 0, which fails `count gte 1` (review on #5263).
+    const store = await parse(`#600= IFCELEMENTASSEMBLY('0Assembly000000000000600',$,'Assembly-1',$,$,#40,$,$,$);\n`);
+    const rule: InformationRule = {
+      id: 'r1', name: 'plates per assembly',
+      applicability: { groups: [{ rules: [Rule.ifcType(['IfcPlate'])], combinator: 'AND' }], authoredAs: 'chips' },
+      requirement: {
+        kind: 'aggregate', fn: 'count',
+        groupBy: {
+          subject: { kind: 'parent' },
+          universe: { groups: [{ rules: [Rule.ifcType(['IfcElementAssembly'])], combinator: 'AND' }], authoredAs: 'chips' },
+        },
+        op: 'gte', value: 1,
+      },
+    };
+    const spec = (await run({ m1: store }, { version: 1, name: 'test', rules: [rule] })).specificationResults[0];
+    assert.equal(spec.applicableCount, 0);
+    assert.equal(spec.setResults?.[0].passed, false);
+    assert.equal(spec.status, 'fail');
+    assert.equal(spec.passRate, 0);
+  });
 });
 
 // ── compare (plan §4.7) ──────────────────────────────────────────────────────

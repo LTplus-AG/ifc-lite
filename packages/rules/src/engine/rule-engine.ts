@@ -200,8 +200,10 @@ function finalizeSpecification(
   const passedCount = isPerElementKind ? passedEntities : Math.max(0, applicableCount - failedCount);
 
   const anyFail = failedCount > 0 || setsFail || cardinalityResult?.passed === false;
+  // With zero applicable elements a `universe`-seeded aggregate group can
+  // still fail (every assembly has 0 plates), so `setsFail` counts here too.
   const status: SpecificationResult['status'] = applicableCount === 0
-    ? (cardinalityResult?.passed === false ? 'fail' : cardinalityResult?.passed === true ? 'pass' : 'not_applicable')
+    ? (cardinalityResult?.passed === false || setsFail ? 'fail' : cardinalityResult?.passed === true ? 'pass' : 'not_applicable')
     : (anyFail ? 'fail' : 'pass');
   // A failure no applicable element carries — an unmet/exceeded cardinality,
   // or an aggregate group seeded by `universe` with zero members — leaves the

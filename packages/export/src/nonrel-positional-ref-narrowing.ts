@@ -45,8 +45,8 @@
  * not 'no forward reference', it is a second, different kind of invalid
  * file." An earlier revision of this function answered every emptied list
  * with `()` and reproduced exactly that invalid file. The right answer is
- * NOT uniform, because the four types in `NONREL_REF_LIST_TYPES` do not
- * declare their list attribute alike:
+ * NOT uniform, because the types in `NONREL_REF_LIST_TYPES` do not all
+ * declare their list attribute alike — two examples:
  *
  *  - `IfcCostItem.CostValues` / `.CostQuantities`, `IfcAppliedValue`/
  *    `IfcCostValue.Components` are all `OPTIONAL LIST [1:?]`
@@ -64,7 +64,8 @@
  *    which is the pre-existing, already-accepted defect class this file
  *    only narrows the REACH of, not a new invalid shape.
  *
- * `isAggregateSlotOptional` below derives the optional/mandatory answer from
+ * `readAggregateSlot` below derives the optional/mandatory answer (and the
+ * slot's own lower bound) from
  * the generated schema registry (`@ifc-lite/parser`'s
  * `getSchemaRegistryForVersion`, keyed by the SOURCE line's own schema
  * version) rather than a fourth hand-written table — the exact defect shape
@@ -91,48 +92,49 @@
 import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { readStepSlots, splitTopLevelListItems } from './step-argument-parser.js';
 import { BARE_REF_RE } from './reference-collector.js';
+import { NONREL_REF_LIST_REGISTRY_NAMES } from './nonrel-ref-list-types.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
-
-/**
- * `effectiveRelType` (the STEP type token, e.g. `IFCCOSTITEM`) to the exact
- * PascalCase key the generated schema registries use. Fixed to the same four
- * classes `NONREL_REF_LIST_TYPES` names — not a general normalizer — because
- * that is the whole set this function is ever called for.
- */
-const REGISTRY_ENTITY_NAME: Readonly<Record<string, string>> = {
-  IFCCOSTITEM: 'IfcCostItem',
-  IFCAPPLIEDVALUE: 'IfcAppliedValue',
-  IFCCOSTVALUE: 'IfcCostValue',
-  IFCPHYSICALCOMPLEXQUANTITY: 'IfcPhysicalComplexQuantity',
-};
 
 function isRegistryVersion(version: IfcSchemaVersion): version is SchemaVersionWithRegistry {
   return version === 'IFC2X3' || version === 'IFC4' || version === 'IFC4X3';
 }
 
 /**
- * Whether the aggregate attribute at `slotIndex` of `entityType` — as
- * declared in `schemaVersion`'s generated registry — is `OPTIONAL`.
+ * The declaration of the aggregate attribute at `slotIndex` of `entityType`,
+ * as `schemaVersion`'s generated registry declares it: whether it is
+ * `OPTIONAL`, and its lower bound.
  *
  * Returns `undefined` when the metadata cannot be read (an entity/schema
  * version this file does not cover, a slot index the registry has no
- * attribute for, or a slot that is not an aggregate at all) so the caller
- * falls back to the SAFE default — leave the slot untouched — rather than
- * guess. `IFC5` (this export's schema-conversion target enum, never a
- * source-iteration STEP schema) and any future addition to
- * `IfcSchemaVersion` outside {@link SchemaVersionWithRegistry} take this path
- * automatically, by construction, with no version list to keep in sync here.
+ * attribute for, a slot that is not an aggregate at all, or an aggregate
+ * with no declared bound) so the caller falls back to the SAFE default —
+ * leave the slot untouched — rather than guess. `IFC5` (this export's
+ * schema-conversion target enum, never a source-iteration STEP schema) and
+ * any future addition to `IfcSchemaVersion` outside
+ * {@link SchemaVersionWithRegistry} take this path automatically, by
+ * construction, with no version list to keep in sync here.
+ *
+ * Read PER SLOT because a type joins `NONREL_REF_LIST_TYPES` on the strength
+ * of ONE qualifying attribute, while this function rewrites every
+ * parenthesised slot on the line. `IfcTextureMap` qualifies through
+ * `Maps : LIST [1:?]` but also carries `Vertices : LIST [3:?]`;
+ * `IfcFillAreaStyleTiles` qualifies through `Tiles : SET [1:?]` but also
+ * carries `TilingPattern : LIST [2:2]` (#5181). Narrowing those by the
+ * `[1:?]` rule would turn a valid 3-vertex map into an invalid 2-vertex one,
+ * so each slot is held to its OWN declared lower bound.
  */
-function isAggregateSlotOptional(
+function readAggregateSlot(
   entityType: string,
   slotIndex: number,
   schemaVersion: IfcSchemaVersion,
-): boolean | undefined {
-  const registryName = REGISTRY_ENTITY_NAME[entityType];
+): { optional: boolean; lowerBound: number } | undefined {
+  const registryName = NONREL_REF_LIST_REGISTRY_NAMES.get(entityType);
   if (registryName === undefined || !isRegistryVersion(schemaVersion)) return undefined;
   const attr = getSchemaRegistryForVersion(schemaVersion).entities[registryName]?.allAttributes?.[slotIndex];
   if (attr === undefined || !(attr.isList || attr.isSet)) return undefined;
-  return attr.optional;
+  const lowerBound = attr.arrayBounds?.[0];
+  if (lowerBound === undefined || !Number.isFinite(lowerBound)) return undefined;
+  return { optional: attr.optional, lowerBound };
 }
 
 export function narrowNonRelPositionalRefLists(
@@ -164,19 +166,27 @@ export function narrowNonRelPositionalRefLists(
         nextAttrs.push(rawAttr);
         continue;
       }
-      if (survivors.length > 0) {
-        // Still non-empty: narrowing alone cannot violate a [1:?] lower
-        // bound, so this is always safe regardless of optionality.
+      const slot = readAggregateSlot(entityType, index, schemaVersion);
+      if (slot === undefined) {
+        // No declaration to check a narrowed list against — leave it exactly
+        // as the source emitted it rather than guess its cardinality.
+        nextAttrs.push(rawAttr);
+        continue;
+      }
+      if (survivors.length > 0 && survivors.length >= slot.lowerBound) {
+        // Still at or above this slot's own declared lower bound.
         changed = true;
         nextAttrs.push(`${leading}(${survivors.join(',')})${trailing}`);
         continue;
       }
-      // Every member excluded. `()` would violate every one of these
-      // attributes' `[1:?]` lower bound — see the module doc — so the
-      // choice is `$` when the schema allows omitting the attribute
-      // entirely, or leaving this slot exactly as the source emitted it
-      // (dangling ref intact) when the schema requires it present.
-      if (isAggregateSlotOptional(entityType, index, schemaVersion) === true) {
+      // Narrowing would break the slot's lower bound (every member excluded
+      // from a `[1:?]` slot, or fewer than N left in an `[N:?]` one). `()`
+      // or a short list is a different invalid file — see the module doc —
+      // so the choice is `$` when nothing survives and the schema allows
+      // omitting the attribute entirely, or otherwise leaving this slot
+      // exactly as the source emitted it (dangling ref intact): `$` over a
+      // list that still has survivors would drop live references too.
+      if (survivors.length === 0 && slot.optional) {
         changed = true;
         nextAttrs.push(`${leading}$${trailing}`);
         continue;

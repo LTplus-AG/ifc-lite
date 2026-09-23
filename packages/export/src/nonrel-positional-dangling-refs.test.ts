@@ -398,3 +398,141 @@ describe('IFC2X3: IfcCostItem has no CostValues/CostQuantities attributes at all
     expect(content).toContain("#2=IFCCOSTITEM('0cost000000000000000E',#1,'CI',$,$);");
   });
 });
+
+/**
+ * #5181: `IfcPropertySet.HasProperties` and `IfcElementQuantity.Quantities`
+ * are both `SET [1:?] OF <entity>` on non-`IFCREL*` classes — precisely the
+ * shape `NONREL_REF_LIST_TYPES` exists for, but outside the original
+ * hand-kept four-entry set (#5066). Now covered because
+ * `nonrel-ref-list-types.ts` derives the set from the generated schema
+ * registries rather than hand-enumerating it (see that file's doc for how
+ * the derivation is scoped down from every qualifying attribute to a safe
+ * subset).
+ *
+ * Each pair below follows the same two-case shape already established for
+ * `IfcPhysicalComplexQuantity.HasQuantities`: a PARTIAL deletion (so
+ * narrowing is attributable — an all-members-deleted case on a MANDATORY
+ * set is vacuous, because both "reached" and "not reached" leave the slot
+ * dangling), then the EXPLICIT CHOICE that emptying a MANDATORY `[1:?]` set
+ * to `()` is a different invalid file, so it must stay dangling rather than
+ * become `()`.
+ */
+describe('#5181: IfcPropertySet.HasProperties (derived, not hand-kept)', () => {
+  const PROP_A = "#1=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.F.),$);\n";
+  const PROP_B = "#3=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('R60'),$);\n";
+
+  it('drops the deleted member from IfcPropertySet.HasProperties while a survivor keeps the list', () => {
+    const store = buildParsedStore([
+      [1, 'IFCPROPERTYSINGLEVALUE', PROP_A],
+      [2, 'IFCPROPERTYSET', "#2=IFCPROPERTYSET('0pset000000000000000A',$,'Pset_X',$,(#1,#3));\n"],
+      [3, 'IFCPROPERTYSINGLEVALUE', PROP_B],
+    ]);
+
+    const view = new MutablePropertyView(null, 'propertyset-partial-test');
+    view.deleteEntity(1);
+
+    const content = decode(new StepExporter(store, view).export({ schema: 'IFC4' }).content);
+
+    expect(content).not.toContain('#1=IFCPROPERTYSINGLEVALUE');
+    expect(findDanglingRefs(content)).toEqual([]);
+    // Rewritten, not withheld: the surviving #3 keeps the pset's own line.
+    expect(content).toMatch(/#2=IFCPROPERTYSET\('0pset000000000000000A',\$,'Pset_X',\$,\(#3\)\);/);
+  });
+
+  it('EXPLICIT CHOICE: deleting every HasProperties member (MANDATORY SET, not OPTIONAL) ships the dangling ref, does not withhold', () => {
+    const store = buildParsedStore([
+      [1, 'IFCPROPERTYSINGLEVALUE', PROP_A],
+      [2, 'IFCPROPERTYSET', "#2=IFCPROPERTYSET('0pset000000000000000B',$,'Pset_Y',$,(#1));\n"],
+    ]);
+
+    const view = new MutablePropertyView(null, 'propertyset-mandatory-test');
+    view.deleteEntity(1);
+
+    const content = decode(new StepExporter(store, view).export({ schema: 'IFC4' }).content);
+
+    expect(content).not.toContain('#1=IFCPROPERTYSINGLEVALUE');
+    // Left untouched: `(#1)` ships exactly as main emits it, dangling — `()`
+    // would violate the `[1:?]` lower bound, and `$` would claim the
+    // attribute is optional when the schema declares it mandatory.
+    expect(content).toMatch(/#2=IFCPROPERTYSET\('0pset000000000000000B',\$,'Pset_Y',\$,\(#1\)\);/);
+    expect(findDanglingRefs(content)).toEqual([1]);
+    expect(content).not.toContain('()');
+  });
+});
+
+describe('#5181: IfcElementQuantity.Quantities (derived, not hand-kept)', () => {
+  it('drops the deleted member from IfcElementQuantity.Quantities while a survivor keeps the list', () => {
+    const store = buildParsedStore([
+      [1, 'IFCQUANTITYCOUNT', COUNT_QTY],
+      [2, 'IFCELEMENTQUANTITY', "#2=IFCELEMENTQUANTITY('0qset000000000000000A',$,'Qto_X',$,$,(#1,#3));\n"],
+      [3, 'IFCQUANTITYAREA', AREA_QTY],
+    ]);
+
+    const view = new MutablePropertyView(null, 'elementquantity-partial-test');
+    view.deleteEntity(1);
+
+    const content = decode(new StepExporter(store, view).export({ schema: 'IFC4' }).content);
+
+    expect(content).not.toContain('#1=IFCQUANTITYCOUNT');
+    expect(findDanglingRefs(content)).toEqual([]);
+    // Rewritten, not withheld: the surviving #3 keeps the qset's own line.
+    expect(content).toMatch(/#2=IFCELEMENTQUANTITY\('0qset000000000000000A',\$,'Qto_X',\$,\$,\(#3\)\);/);
+  });
+
+  it('EXPLICIT CHOICE: deleting every Quantities member (MANDATORY SET, not OPTIONAL) ships the dangling ref, does not withhold', () => {
+    const store = buildParsedStore([
+      [1, 'IFCQUANTITYCOUNT', COUNT_QTY],
+      [2, 'IFCELEMENTQUANTITY', "#2=IFCELEMENTQUANTITY('0qset000000000000000B',$,'Qto_Y',$,$,(#1));\n"],
+    ]);
+
+    const view = new MutablePropertyView(null, 'elementquantity-mandatory-test');
+    view.deleteEntity(1);
+
+    const content = decode(new StepExporter(store, view).export({ schema: 'IFC4' }).content);
+
+    expect(content).not.toContain('#1=IFCQUANTITYCOUNT');
+    expect(content).toMatch(/#2=IFCELEMENTQUANTITY\('0qset000000000000000B',\$,'Qto_Y',\$,\$,\(#1\)\);/);
+    expect(findDanglingRefs(content)).toEqual([1]);
+    expect(content).not.toContain('()');
+  });
+});
+
+/**
+ * #5181: a type joins `NONREL_REF_LIST_TYPES` on ONE qualifying `[1:?]`
+ * attribute, but narrowing rewrites every parenthesised slot on the line.
+ * `IfcFillAreaStyleTiles` qualifies through `Tiles : SET [1:?] OF
+ * IfcStyledItem` and also carries `TilingPattern : LIST [2:2] OF IfcVector`.
+ * Each slot must be held to its OWN lower bound: narrowing `TilingPattern`
+ * to one vector would swap one dangling ref for a different invalid file.
+ */
+describe("#5181: narrowing honours each slot's own lower bound", () => {
+  const TILES_ENTRIES: Array<[number, string, string]> = [
+    [1, 'IFCDIRECTION', '#1=IFCDIRECTION((1.,0.));\n'],
+    [2, 'IFCDIRECTION', '#2=IFCDIRECTION((0.,1.));\n'],
+    [3, 'IFCVECTOR', '#3=IFCVECTOR(#1,1.);\n'],
+    [4, 'IFCVECTOR', '#4=IFCVECTOR(#2,1.);\n'],
+    [5, 'IFCSTYLEDITEM', "#5=IFCSTYLEDITEM($,(#9),'A');\n"],
+    [6, 'IFCSTYLEDITEM', "#6=IFCSTYLEDITEM($,(#9),'B');\n"],
+    [7, 'IFCFILLAREASTYLETILES', '#7=IFCFILLAREASTYLETILES((#3,#4),(#5,#6),1.);\n'],
+  ];
+
+  it('leaves a LIST [2:2] TilingPattern untouched rather than narrowing it to one member', () => {
+    const view = new MutablePropertyView(null, 'tiles-pattern-test');
+    view.deleteEntity(3);
+
+    const content = decode(new StepExporter(buildParsedStore(TILES_ENTRIES), view).export({ schema: 'IFC4' }).content);
+
+    expect(content).not.toContain('#3=IFCVECTOR');
+    expect(content).toContain('#7=IFCFILLAREASTYLETILES((#3,#4),(#5,#6),1.);');
+  });
+
+  it('still narrows the SET [1:?] Tiles list on the same line', () => {
+    const view = new MutablePropertyView(null, 'tiles-tiles-test');
+    view.deleteEntity(6);
+
+    const content = decode(new StepExporter(buildParsedStore(TILES_ENTRIES), view).export({ schema: 'IFC4' }).content);
+
+    expect(content).not.toContain('#6=IFCSTYLEDITEM');
+    expect(content).toContain('#7=IFCFILLAREASTYLETILES((#3,#4),(#5),1.);');
+  });
+});

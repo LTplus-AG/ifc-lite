@@ -348,15 +348,11 @@ export function parseStepValue(str: string): StepValue {
     return parseStepList(str);
   }
 
-  // Number. Only a token that is ENTIRELY a STEP numeric literal: `parseFloat`
-  // reads a prefix, so `1.52.3` (a dropped comma) used to come back as `1.52`,
-  // a plausible value indistinguishable from a real one (#5193). A malformed
-  // token falls through to the raw string below instead.
+  // Number: only a whole STEP literal. `parseFloat` reads a prefix, so `1.52.3`
+  // (a dropped comma) became `1.52`; a malformed token stays raw (#5193).
   if (isCompleteStepNumericLiteral(str)) {
     const num = parseFloat(str);
-    if (!isNaN(num)) {
-      return num;
-    }
+    if (!isNaN(num)) return num;
   }
 
   // Unknown

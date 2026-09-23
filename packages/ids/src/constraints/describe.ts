@@ -22,7 +22,6 @@ import {
 import {
   matchDigitFacets,
   countDecimalDigits,
-  toFixedDecimalString,
 } from './digit-facets.js';
 import { isStrictNumericLiteral } from './comparators.js';
 
@@ -139,10 +138,7 @@ function getBoundsMismatchReason(
   }
 
   if (matchDigitFacets(constraint, actualValue) === false) {
-    const decimalStr =
-      typeof actualValue === 'number'
-        ? toFixedDecimalString(actualValue)
-        : String(actualValue);
+    const decimalStr = String(actualValue);
     if (!isStrictNumericLiteral(decimalStr)) {
       violations.push('must be a valid decimal literal');
     } else {

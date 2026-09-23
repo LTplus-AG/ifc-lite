@@ -13,64 +13,55 @@ import type { IDSBoundsConstraint } from '../types.js';
 import { isStrictNumericLiteral } from './comparators.js';
 
 /**
- * Canonical fixed-point decimal string for a JS number (no scientific
- * notation) — `xs:totalDigits`/`xs:fractionDigits` are defined over the
- * lexical decimal form, and `String(1e-7)` would otherwise smuggle an
- * `e` into the digit count.
- */
-export function toFixedDecimalString(num: number): string {
-  const str = String(num);
-  if (!/e/i.test(str)) return str;
-  const [mantissa, expStr] = str.split(/e/i);
-  const exp = parseInt(expStr, 10);
-  const neg = mantissa.startsWith('-');
-  const m = neg ? mantissa.slice(1) : mantissa;
-  const [intPart, fracPart = ''] = m.split('.');
-  const digits = intPart + fracPart;
-  const pointPos = intPart.length + exp;
-  let out: string;
-  if (pointPos <= 0) {
-    out = `0.${'0'.repeat(-pointPos)}${digits}`;
-  } else if (pointPos >= digits.length) {
-    out = `${digits}${'0'.repeat(pointPos - digits.length)}`;
-  } else {
-    out = `${digits.slice(0, pointPos)}.${digits.slice(pointPos)}`;
-  }
-  return neg ? `-${out}` : out;
-}
-
-/**
- * Count decimal digits per XSD §4.3.11/§4.3.12 facet semantics. The two
- * facets treat leading fraction zeros DIFFERENTLY:
+ * Count decimal digits per XSD §4.3.11/§4.3.12 facet semantics, over any
+ * strict numeric literal (`isStrictNumericLiteral`), exponent included.
+ * Write the value as `0.D × 10^p`, where `D` has no leading or trailing
+ * zeros and `L` digits:
  *
- *  - `fractionDigits` is `n` in value = i × 10⁻ⁿ: the count of digits
- *    after the decimal point, full stop. Leading zeros in the fraction
- *    DO count (`0.0025` → 4) since they fix the magnitude (`10⁻ⁿ`);
- *    only trailing zeros are insignificant (`1.4500` → 2).
- *  - `totalDigits` is the digit count of `i` in that same value = i ×
- *    10⁻ⁿ. Leading zeros — in the integer part AND in the fraction
- *    before the first non-zero digit — are absorbed into the `10⁻ⁿ`
- *    scale factor and do NOT count (`0.0025 = 25 × 10⁻⁴` → 2, not 4).
- *    Trailing zeros in the fraction are still dropped (`0.250` → `25`
- *    → 2). Trailing zeros in the INTEGER part stay significant per the
- *    digit-count reading (`1000` → 4): only leading zeros are stripped.
+ *  - `fractionDigits` is `n` in value = i × 10⁻ⁿ: the digits after the
+ *    decimal point, `max(0, L - p)`. Leading fraction zeros count
+ *    (`0.0025` → 4); trailing zeros do not (`1.4500` → 2).
+ *  - `totalDigits` is the digit count of `i`. Leading zeros are absorbed
+ *    into the scale and never count (`0.0025 = 25 × 10⁻⁴` → 2), trailing
+ *    fraction zeros are dropped, and trailing INTEGER zeros stay
+ *    significant (`1000` → 4): `max(L, p)`.
+ *
+ * The exponent is applied arithmetically on the lexical digits (#5186), so
+ * `"1.5e3"` counts as 1500 (4, 0) without going through a double or
+ * materialising the expanded string. The count is exact for any number of
+ * significant digits and any exponent (BigInt), and a literal like
+ * `"1e999999"` costs nothing. A `number` is counted from
+ * `String(num)`, which may itself be exponential (`1e-7`).
  */
-export function countDecimalDigits(decimalStr: string): {
+export function countDecimalDigits(literal: string): {
   total: number;
   fraction: number;
 } {
-  const unsigned = decimalStr.replace(/^[+-]/, '');
-  const [intPartRaw, fracPartRaw = ''] = unsigned.split('.');
-  const fracTrimmed = fracPartRaw.replace(/0+$/, '');
-  const fraction = fracTrimmed.length;
+  const [mantissaRaw, expRaw] = literal.split(/[eE]/);
+  const mantissa = mantissaRaw.replace(/^[+-]/, '');
+  // BigInt: an exponent past 2^53 would otherwise round (review on #5280).
+  const exp = expRaw === undefined ? 0n : BigInt(expRaw);
+  const [intPart, fracPart = ''] = mantissa.split('.');
+  const digits = intPart + fracPart;
 
-  // totalDigits: strip every leading zero — integer-part zeros AND any
-  // fraction zeros before the first significant digit — then count
-  // what's left of the (trailing-trimmed) digit string.
-  const totalTrimmed = (intPartRaw + fracTrimmed).replace(/^0+/, '');
-  const total = totalTrimmed.length === 0 ? 1 : totalTrimmed.length;
+  const lead = digits.length - digits.replace(/^0+/, '').length;
+  const significant = digits.slice(lead).replace(/0+$/, '');
+  // Zero in any spelling (`0`, `0.000`, `0e5`): one digit, no fraction.
+  if (significant.length === 0) return { total: 1, fraction: 0 };
 
-  return { total, fraction };
+  const L = BigInt(significant.length);
+  const p = BigInt(intPart.length - lead) + exp;
+  return {
+    total: toCount(L > p ? L : p),
+    fraction: toCount(L - p > 0n ? L - p : 0n),
+  };
+}
+
+/** A count past `Number.MAX_SAFE_INTEGER` cannot be compared exactly with a
+ *  facet value (itself a JS number), and exceeds any facet a document can
+ *  state exactly, so it reads as `Infinity`: over every bound. */
+function toCount(n: bigint): number {
+  return n > BigInt(Number.MAX_SAFE_INTEGER) ? Infinity : Number(n);
 }
 
 /**
@@ -87,10 +78,7 @@ export function matchDigitFacets(
   if (constraint.totalDigits === undefined && constraint.fractionDigits === undefined) {
     return undefined;
   }
-  const decimalStr =
-    typeof actualValue === 'number'
-      ? toFixedDecimalString(actualValue)
-      : String(actualValue);
+  const decimalStr = String(actualValue);
   // The digit facets are only meaningful against a decimal lexical
   // form; a non-numeric string actual can never satisfy them.
   if (!isStrictNumericLiteral(decimalStr)) return false;

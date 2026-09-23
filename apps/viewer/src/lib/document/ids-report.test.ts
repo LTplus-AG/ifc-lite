@@ -31,7 +31,7 @@ function spec(overrides: Partial<SpecificationResult> & { id: string; name: stri
     passedCount: overrides.passedCount ?? 0,
     failedCount: overrides.failedCount ?? 0,
     passRate: overrides.passRate ?? 0,
-    entityResults: [],
+    entityResults: overrides.entityResults ?? [],
   } as SpecificationResult;
 }
 
@@ -57,6 +57,45 @@ function report(specificationResults: SpecificationResult[]): ValidationReport {
 }
 
 describe('idsReportBlockFromReport', () => {
+  it('includes per-rule child rows with source descriptions and distinct pass/fail counts (#5125)', () => {
+    const entityResults: SpecificationResult['entityResults'] = [
+      { expressId: 1, modelId: 'm', entityType: 'IfcWall', passed: true, requirementResults: [
+        { requirement: { id: 'r1', label: 'Fire rating', optionality: 'required' }, status: 'pass', facetType: 'property', checkedDescription: 'Check fire rating' },
+        { requirement: { id: 'r2', label: 'Load bearing', optionality: 'required' }, status: 'pass', facetType: 'property', checkedDescription: 'Check structure' },
+      ] },
+      { expressId: 2, modelId: 'm', entityType: 'IfcWall', passed: false, requirementResults: [
+        { requirement: { id: 'r1', label: 'Fire rating', optionality: 'required' }, status: 'fail', facetType: 'property', checkedDescription: 'Check fire rating' },
+        { requirement: { id: 'r2', label: 'Load bearing', optionality: 'required' }, status: 'pass', facetType: 'property', checkedDescription: 'Check structure' },
+      ] },
+    ];
+    const idsReport = report([spec({ id: 's1', name: 'Walls', applicableCount: 2, passedCount: 1, failedCount: 1, entityResults })]);
+    idsReport.source = { kind: 'ids', document: { info: { title: 'Design IDS' }, specifications: [{
+      id: 's1', name: 'Walls', ifcVersions: ['IFC4'], applicability: { facets: [] },
+      requirements: [
+        { id: 'r1', optionality: 'required', facet: { type: 'property', propertySet: { type: 'simpleValue', value: 'Pset' }, baseName: { type: 'simpleValue', value: 'FireRating' } }, description: 'Must survive 90 minutes' },
+        { id: 'r2', optionality: 'required', facet: { type: 'property', propertySet: { type: 'simpleValue', value: 'Pset' }, baseName: { type: 'simpleValue', value: 'LoadBearing' } }, description: 'Structural support' },
+      ],
+    }] } };
+
+    const rules = idsReportBlockFromReport(idsReport, 'block-rules').checks[0].rules;
+    assert.deepEqual(rules.map((rule) => ({ id: rule.id, checked: rule.checked, passed: rule.passed, failed: rule.failed, passRate: rule.passRate })), [
+      { id: 'r1', checked: 2, passed: 1, failed: 1, passRate: 50 },
+      { id: 'r2', checked: 2, passed: 2, failed: 0, passRate: 100 },
+    ]);
+    assert.equal(rules[0].shortDescription, 'Fire rating');
+    assert.equal(rules[0].longDescription, 'Must survive 90 minutes');
+  });
+
+  it('marks per-rule metrics unavailable when passing entities were omitted from the source report', () => {
+    const entityResults: SpecificationResult['entityResults'] = [
+      { expressId: 2, modelId: 'm', entityType: 'IfcWall', passed: false, requirementResults: [
+        { requirement: { id: 'r1', label: 'Fire rating', optionality: 'required' }, status: 'fail', facetType: 'property', checkedDescription: 'Check fire rating' },
+      ] },
+    ];
+    const rules = idsReportBlockFromReport(report([spec({ id: 's1', name: 'Walls', applicableCount: 2, passedCount: 1, failedCount: 1, entityResults })]), 'partial').checks[0].rules;
+    assert.deepEqual(rules.map((rule) => [rule.checked, rule.passed, rule.failed, rule.passRate]), [[2, null, null, null]]);
+  });
+
   it('maps each check with passed and failed in the right fields (asymmetric counts catch a swap)', () => {
     // 3 passed / 7 failed: swapping the two fields in the mapping changes the
     // output, unlike a fixture where passed === failed would.

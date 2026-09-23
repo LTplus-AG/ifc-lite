@@ -44,7 +44,8 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
 
   for (const check of block.checks) {
     const rowHeight = check.longDescription ? DESCRIBED_CHECK_ROW_HEIGHT : CHECK_ROW_HEIGHT;
-    cursor.ensure(rowHeight);
+    const firstRuleHeight = check.rules[0]?.longDescription ? DESCRIBED_CHECK_ROW_HEIGHT : CHECK_ROW_HEIGHT;
+    cursor.ensure(rowHeight + (check.rules.length > 0 ? firstRuleHeight : 0));
     const name = check.shortDescription || check.id;
     cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 9.5, bold: true, gray: 0, text: cursor.truncate(name, contentW, 9.5, true) });
     if (check.longDescription) {
@@ -57,6 +58,25 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
       text: cursor.truncate(`Checked ${check.checked} · Passed ${check.passed} · Failed ${check.failed} · ${pct(check.passRate)}`, contentW, 8, false),
     });
     cursor.y += rowHeight;
+
+    for (const rule of check.rules) {
+      const ruleHeight = rule.longDescription ? DESCRIBED_CHECK_ROW_HEIGHT : CHECK_ROW_HEIGHT;
+      cursor.ensure(ruleHeight);
+      const ruleX = cursor.x + 10;
+      const ruleW = contentW - 10;
+      cursor.push({ kind: 'text', x: ruleX, y: cursor.y + 10, size: 8.5, bold: true, gray: 45,
+        text: cursor.truncate(rule.shortDescription || rule.id, ruleW, 8.5, true) });
+      if (rule.longDescription) {
+        cursor.push({ kind: 'text', x: ruleX, y: cursor.y + 21, size: 8, bold: false, gray: 130,
+          text: cursor.truncate(rule.longDescription, ruleW, 8, false) });
+      }
+      const counts = rule.passRate === null
+        ? `Checked ${rule.checked} · Passed/failed unavailable (partial report)`
+        : `Checked ${rule.checked} · Passed ${rule.passed} · Failed ${rule.failed} · ${pct(rule.passRate)}`;
+      cursor.push({ kind: 'text', x: ruleX, y: cursor.y + (rule.longDescription ? 32 : 21), size: 8, bold: false, gray: 60,
+        text: cursor.truncate(counts, ruleW, 8, false) });
+      cursor.y += ruleHeight;
+    }
   }
 
   if (block.checks.length === 0) {

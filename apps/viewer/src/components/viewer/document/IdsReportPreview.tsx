@@ -59,6 +59,23 @@ export function IdsReportPreview({ block }: IdsReportPreviewProps) {
                 </span>
               </div>
               {check.longDescription && <div className="truncate text-[10px] text-neutral-500" title={check.longDescription}>{check.longDescription}</div>}
+              {check.rules.length > 0 && (
+                <ul className="mt-1 ml-3 space-y-1 border-l border-neutral-200 pl-2" data-ids-report-rules={check.rules.length}>
+                  {check.rules.map((rule) => (
+                    <li key={rule.id} className="text-[10px]">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="min-w-0 truncate font-medium" title={rule.shortDescription}>{rule.shortDescription}</span>
+                        <span className="shrink-0 text-neutral-600">
+                          {rule.checked.toLocaleString(locale)} · {rule.passRate === null
+                            ? t('document.preview.idsReportCountsUnavailable')
+                            : `${rule.passed?.toLocaleString(locale)} / ${rule.failed?.toLocaleString(locale)} · ${rule.passRate}%`}
+                        </span>
+                      </div>
+                      {rule.longDescription && <div className="truncate text-neutral-500" title={rule.longDescription}>{rule.longDescription}</div>}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </li>
           ))}
         </ul>

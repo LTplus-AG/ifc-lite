@@ -174,7 +174,7 @@ export const documentEn = {
 
   // IDS report block (#5125): BlockEditor.tsx, IdsReportPreview.tsx, DocumentPanel.tsx.
   // A summary of checked/passed/failed and the top-level check list, mirroring
-  // the table block's structure; no nested per-rule breakdown (see `ids-report.ts`).
+  // the table block's structure, with per-rule rows under each check.
   'document.block.kindIdsReport': 'IDS report',
   'document.addBlock.idsReport': 'IDS validation report',
   'document.addBlock.idsReportDisabledTitle': 'Run an IDS validation first',
@@ -192,6 +192,7 @@ export const documentEn = {
     other: '{countDisplay} checks',
   },
   'document.preview.idsReportNoChecks': 'No checks in this report.',
+  'document.preview.idsReportCountsUnavailable': 'Counts unavailable in this partial report',
 
   // Validation-results table source (#5138): ValidationSourceEditor in TableBlockEditor.tsx, and
   // the placeholder states TablePreview.tsx shows in place of rows.

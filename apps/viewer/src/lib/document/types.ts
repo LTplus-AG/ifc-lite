@@ -69,6 +69,19 @@ export interface IdsReportCheckSummary {
   failed: number;
   /** 0-100, floor-rounded; 100 when `checked` is 0 (no applicable entities) — matches `SpecificationResult.passRate`. */
   passRate: number;
+  rules: IdsReportRuleSummary[];
+}
+
+/** A requirement under one IDS specification. Null metrics mean the source
+ * report omitted passing entities, so an exact per-rule count is unavailable. */
+export interface IdsReportRuleSummary {
+  id: string;
+  shortDescription: string;
+  longDescription?: string;
+  checked: number;
+  passed: number | null;
+  failed: number | null;
+  passRate: number | null;
 }
 
 /**
@@ -77,11 +90,7 @@ export interface IdsReportCheckSummary {
  * table block's list copy, it travels with the document instead of reading
  * the store, so a saved document still prints the run that produced it.
  *
- * Scope (#5125): the summary and the top-level check list only. The issue
- * also asks for a nested child list of each check's rules (requirements)
- * with the same fields; that is deliberately left out of this block — see
- * the PR description for why the requirement-level fields cannot all be
- * populated without inventing data.
+ * Each check carries a child row for its IDS requirements (#5125).
  */
 export interface IdsReportBlock {
   kind: 'ids-report';
@@ -359,6 +368,22 @@ function validateIdsReportBlock(block: Record<string, unknown>, at: string, erro
     if (check.longDescription !== undefined && !isString(check.longDescription)) errors.push({ path: `${checkAt}.longDescription`, message: 'expected a string' });
     if (!isCount(check.checked) || !isCount(check.passed) || !isCount(check.failed)) errors.push({ path: `${checkAt}`, message: 'expected checked/passed/failed: non-negative numbers' });
     if (!isRate(check.passRate)) errors.push({ path: `${checkAt}.passRate`, message: 'expected a number between 0 and 100' });
+    if (!Array.isArray(check.rules)) {
+      errors.push({ path: `${checkAt}.rules`, message: 'expected an array' });
+      return;
+    }
+    check.rules.forEach((rule: unknown, j) => {
+      const ruleAt = `${checkAt}.rules[${j}]`;
+      if (!isRecord(rule)) { errors.push({ path: ruleAt, message: 'expected an object' }); return; }
+      if (!isString(rule.id) || rule.id.length === 0) errors.push({ path: `${ruleAt}.id`, message: 'expected a non-empty string' });
+      if (!isString(rule.shortDescription)) errors.push({ path: `${ruleAt}.shortDescription`, message: 'expected a string' });
+      if (rule.longDescription !== undefined && !isString(rule.longDescription)) errors.push({ path: `${ruleAt}.longDescription`, message: 'expected a string' });
+      if (!isCount(rule.checked)) errors.push({ path: `${ruleAt}.checked`, message: 'expected a non-negative number' });
+      const unavailable = rule.passed === null && rule.failed === null && rule.passRate === null;
+      if (!unavailable && (!isCount(rule.passed) || !isCount(rule.failed) || !isRate(rule.passRate))) {
+        errors.push({ path: ruleAt, message: 'expected passed/failed: non-negative numbers and passRate: 0-100, or all null' });
+      }
+    });
   });
 }
 

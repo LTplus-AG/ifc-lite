@@ -155,6 +155,19 @@ describe('bindings', () => {
 });
 
 describe('document file', () => {
+  it('validates nested IDS rule metrics, including explicit unavailable counts (#5125)', () => {
+    const doc = { version: DOCUMENT_VERSION, id: 'd', name: 'IDS', page: { size: 'A4', orientation: 'portrait' }, blocks: [{
+      kind: 'ids-report', id: 'r', sourceName: 'Design IDS', generatedAt: '2026-01-15T10:00:00.000Z',
+      summary: { checked: 2, passed: 1, failed: 1, passRate: 50 },
+      checks: [{ id: 's', shortDescription: 'Walls', checked: 2, passed: 1, failed: 1, passRate: 50,
+        rules: [{ id: 'req', shortDescription: 'Fire rating', checked: 2, passed: null, failed: null, passRate: null }] }],
+    }] };
+    assert.deepEqual(validateDocumentSpec(doc), []);
+    const rule = doc.blocks[0].checks[0].rules[0];
+    assert.deepEqual(validateDocumentSpec({ ...doc, blocks: [{ ...doc.blocks[0], checks: [{ ...doc.blocks[0].checks[0],
+      rules: [{ ...rule, passed: 1 }] }] }] }).map((error) => error.path), ['blocks[0].checks[0].rules[0]']);
+  });
+
   it('validates the shape, re-identifies an imported template and keeps its bindings', () => {
     const doc = coverSheetDocument();
     assert.deepEqual(validateDocumentSpec(doc), []);
@@ -237,7 +250,8 @@ describe('compose', () => {
       blocks: [{
         kind: 'ids-report', id: 'ids', sourceName: 'Rules', generatedAt: '2026-01-15T10:00:00.000Z',
         summary: { checked: 10, passed: 3, failed: 7, passRate: 30 },
-        checks: [{ id: 'fire', shortDescription: 'Fire rating', longDescription: description, checked: 10, passed: 3, failed: 7, passRate: 30 }],
+        checks: [{ id: 'fire', shortDescription: 'Fire rating', longDescription: description, checked: 10, passed: 3, failed: 7, passRate: 30,
+          rules: [{ id: 'r1', shortDescription: 'Required rating', longDescription: 'Must survive 90 minutes', checked: 10, passed: 3, failed: 7, passRate: 30 }] }],
       }],
     });
     const lines = layout.pages.flatMap((page) => page.items.filter((item) => item.kind === 'text'));
@@ -246,6 +260,29 @@ describe('compose', () => {
     const counts = lines.find((line) => line.size === 8 && line.text.startsWith('Checked 10 · Passed 3'))!;
     assert.ok(counts.y > detail.y, 'counts are printed below the description');
     assert.equal(counts.x, detail.x, 'both lines use the same left edge');
+    const rule = lines.find((line) => line.text === 'Required rating')!;
+    assert.ok(rule.y > counts.y, 'the child rule prints below its parent check');
+    assert.ok(rule.x > counts.x, 'the child rule is indented');
+  });
+
+  it('paginates a long child rule list without losing or duplicating rules (#5125)', () => {
+    const rules = Array.from({ length: 60 }, (_, i) => ({
+      id: `r${i}`, shortDescription: `Rule ${i}`, checked: 2, passed: 1, failed: 1, passRate: 50,
+    }));
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [{ kind: 'ids-report', id: 'ids', sourceName: 'Design IDS', generatedAt: '2026-01-15T10:00:00.000Z',
+        summary: { checked: 2, passed: 1, failed: 1, passRate: 50 },
+        checks: [{ id: 'walls', shortDescription: 'Walls', checked: 2, passed: 1, failed: 1, passRate: 50, rules }],
+      }],
+    });
+    assert.ok(layout.pages.length >= 2);
+    const names = layout.pages.flatMap((page) => page.items.filter((item) => item.kind === 'text').map((item) => item.text))
+      .filter((value) => /^Rule \d+$/.test(value));
+    assert.deepEqual(names, rules.map((rule) => rule.shortDescription));
+    for (const page of layout.pages) for (const item of page.items) {
+      assert.ok(item.y <= layout.size.h - 40, `item at y=${item.y} on page ${page.index}`);
+    }
   });
 
   it('wraps by the measure, breaks pages, and keeps a heading with its next line', () => {

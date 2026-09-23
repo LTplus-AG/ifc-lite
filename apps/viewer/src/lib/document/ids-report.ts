@@ -11,20 +11,54 @@
  * `packages/ids/src/validation/validator.ts`), `SpecificationResult`'s own
  * `passRate` per check — so nothing here recomputes validation math.
  *
- * Scope (#5125): summary and top-level check list only, no nested
- * per-requirement ("rule") rollup. `RequirementSummary` (the per-requirement
- * type inside `RequirementResult`) carries only `label`, not a separate
- * short/long description, and the per-entity `requirementResults` this
- * would have to be aggregated from are only guaranteed complete when the
- * report was built with `includePassingEntities: true` (the viewer's own
- * IDS panel run uses that; a BCF export can use a failures-only run) — so a
- * requirement rollup built from `entityResults` here could silently
- * undercount `checked` for a report from a source that filtered it. Left
- * out rather than shipped with that caveat baked in silently.
+ * Rule descriptions come from the IDS source document when available.
+ * Per-rule counts use entity results only when the report includes every
+ * applicable entity; otherwise they are explicitly unavailable.
  */
-import type { ValidationReport } from '@ifc-lite/ids';
+import type { SpecificationResult, ValidationReport } from '@ifc-lite/ids';
 import { calculateSummary } from '@ifc-lite/ids';
-import type { IdsReportBlock, IdsReportCheckSummary } from './types.js';
+import type { IdsReportBlock, IdsReportCheckSummary, IdsReportRuleSummary } from './types.js';
+
+type RuleAccumulator = { shortDescription: string; longDescription?: string; seen: number; passed: number; failed: number };
+
+function rulesForCheck(report: ValidationReport, result: SpecificationResult): IdsReportRuleSummary[] {
+  const sourceSpec = report.source.kind === 'ids'
+    ? report.source.document.specifications.find((spec) => spec.id === result.specification.id)
+    : undefined;
+  const rules = new Map<string, RuleAccumulator>();
+  for (const requirement of sourceSpec?.requirements ?? []) {
+    rules.set(requirement.id, {
+      shortDescription: requirement.id,
+      longDescription: requirement.description,
+      seen: 0, passed: 0, failed: 0,
+    });
+  }
+  for (const entity of result.entityResults) {
+    for (const check of entity.requirementResults) {
+      const id = check.requirement.id;
+      const rule: RuleAccumulator = rules.get(id) ?? { shortDescription: id, seen: 0, passed: 0, failed: 0 };
+      rule.shortDescription = check.requirement.label || id;
+      if (!rule.longDescription) rule.longDescription = check.checkedDescription || undefined;
+      rule.seen++;
+      if (check.status === 'pass') rule.passed++;
+      if (check.status === 'fail') rule.failed++;
+      rules.set(id, rule);
+    }
+  }
+  return [...rules].map(([id, rule]) => {
+    const complete = result.entityResults.length === result.applicableCount && rule.seen === result.applicableCount;
+    const measured = rule.passed + rule.failed;
+    return {
+      id,
+      shortDescription: rule.shortDescription,
+      longDescription: rule.longDescription,
+      checked: result.applicableCount,
+      passed: complete ? rule.passed : null,
+      failed: complete ? rule.failed : null,
+      passRate: complete ? (measured === 0 ? 100 : Math.floor(rule.passed / measured * 100)) : null,
+    };
+  });
+}
 
 /** A frozen snapshot of `report`, as `types.ts`'s `IdsReportBlock` stores it. */
 export function idsReportBlockFromReport(report: ValidationReport, id: string): IdsReportBlock {
@@ -37,6 +71,7 @@ export function idsReportBlockFromReport(report: ValidationReport, id: string): 
     passed: result.passedCount,
     failed: result.failedCount,
     passRate: result.passRate,
+    rules: rulesForCheck(report, result),
   }));
   const sourceName = report.source.kind === 'ids' ? report.source.document.info.title : report.source.ruleSet.name;
   return {

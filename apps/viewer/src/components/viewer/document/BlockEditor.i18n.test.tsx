@@ -171,7 +171,7 @@ describe('BlockEditor localization (#4918)', () => {
     const block: IdsReportBlock = {
       kind: 'ids-report', id: 'b7', sourceName: 'Fire safety IDS', generatedAt: '2026-01-01T00:00:00Z',
       summary: { checked: 4, passed: 3, failed: 1, passRate: 75 },
-      checks: [{ id: 's1', shortDescription: 'Walls have a fire rating', checked: 4, passed: 3, failed: 1, passRate: 75 }],
+      checks: [{ id: 's1', shortDescription: 'Walls have a fire rating', checked: 4, passed: 3, failed: 1, passRate: 75, rules: [] }],
     };
     const ui = render(
       <BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={null} onChange={noop} onMove={noop} onRemove={noop} />,

@@ -1978,3 +1978,22 @@ interrupted for the same contention. Smaller serialized output is not a load
 win. Preserve the rejected source, observer failures, completed functional checks
 and every timing cohort in [the experiment record](evidence/multipart-5328/README.md).
 No runtime change from this prototype ships.
+
+## Edge-grazing half-space cap repair (#5314)
+
+The cap builder now ignores triangles that collapse after its section-vertex
+weld. This reaches edge-grazing `IfcHalfSpaceSolid` cuts; the inline #30 and
+Holter #148571 regression tests show a closed section with the analytic prism
+volume. Five alternating fresh-process base-vs-branch native
+`perf_probe --iters 5 --json --fingerprint` pairs covered AC20-FZK-Haus,
+ISSUE_129 and Holter. AC20's ordered mesh fingerprint and counts stayed
+byte-identical. ISSUE_129 and Holter emitted more vertices and triangles from
+the intended caps, with stable but changed ordered fingerprints on every run.
+Parse, geometry and total times varied widely on the shared WSL host; paired
+samples crossed in both directions. The run establishes neither a speed gain
+nor a regression. The numeric A/B evidence lives in the PR, not this ledger.
+
+The lesson is that a small boundary-accounting guard can repair many reused
+Boolean items. Full-load counts and ordered fingerprints reveal its reach
+where a single-element test cannot, while variable host timing should not be
+sold as a speed verdict.

@@ -73,6 +73,12 @@ export function useLens() {
     return `${ids}|${s.ifcDataStore ? 1 : 0}`;
   });
 
+  // Re-evaluate after a live property/attribute/quantity edit (#5207) — the
+  // provider now reads the mutation overlay, so a rule keyed on an edited
+  // value needs this bump to actually pick it up, same trigger
+  // useAppearanceAssignments.ts already subscribes to for the same reason.
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+
   useEffect(() => {
 
     // Lens deactivated — clear overlay (instant, no batch rebuild)
@@ -94,7 +100,7 @@ export function useLens() {
 
     // Read data sources from getState() — NOT subscribed, so model loading
     // doesn't trigger re-evaluation
-    const { models, ifcDataStore } = useViewerStore.getState();
+    const { models, ifcDataStore, mutationViews } = useViewerStore.getState();
     if (models.size === 0 && !ifcDataStore) {
       // Every model the last evaluation referenced is gone. Its
       // colorMap/hiddenIds/ruleEntityIds are not just dangling — after
@@ -119,7 +125,7 @@ export function useLens() {
     prevLensIdRef.current = activeLensId;
 
     // Create data provider and evaluate lens using @ifc-lite/lens package
-    const provider = createLensDataProvider(models, ifcDataStore);
+    const provider = createLensDataProvider(models, ifcDataStore, mutationViews);
 
     // Dispatch: auto-color mode vs. rule-based mode
     const isAutoColor = !!activeLens.autoColor;
@@ -163,7 +169,7 @@ export function useLens() {
       matched_entity_count: colorMap.size,
       hidden_entity_count: hiddenIds.size,
     });
-  }, [activeLensId, activeLens, modelSetKey]);
+  }, [activeLensId, activeLens, modelSetKey, mutationVersion]);
 
   return {
     activeLensId,

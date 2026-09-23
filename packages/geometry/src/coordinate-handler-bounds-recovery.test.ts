@@ -3,124 +3,110 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Bounds recovery when the fast path is poisoned by a corrupted vertex.
- *
- * Issue #5210: `calculateBoundsFast` dropped the per-vertex validity filter,
- * so once a single finite-but-huge vertex was sampled, bounds accumulated
- * permanently and never recovered. A clean subsequent batch would compare
- * against the poisoned accumulator and lose.
- *
- * Fix: After fast-path sampling, check if bounds exceed NORMAL_COORD_THRESHOLD_M.
- * If poisoned, recompute via slow path with per-vertex filter for that batch
- * to restore recoverability. Six comparisons per batch instead of per vertex,
- * preserving the ~380M-call saving while preventing permanent corruption.
+ * #5210: once a producer is validated, `calculateBounds` samples each mesh's
+ * first and last vertex without the per-vertex validity filter. One garbage
+ * vertex used to widen the accumulated bounds for the rest of the load, and
+ * every later clean batch compared against it and lost. The sampled per-batch
+ * result is now checked once; a poisoned batch is recomputed through the
+ * filtered path and counted in `boundsRecoveryFallbackCount`.
  */
 
-import { describe, it, expect } from 'vitest';
-import { CoordinateHandler, NORMAL_COORD_THRESHOLD_M } from './coordinate-handler.js';
+import { describe, it, expect, vi } from 'vitest';
+import { CoordinateHandler } from './coordinate-handler.js';
 import type { MeshData } from './types.js';
 
-/** One triangle, bounds are the single point. */
-function meshAt(x: number, y: number, z: number): MeshData {
+const GARBAGE = 1.0e30;
+
+/** One triangle with the given vertices (x,y,z triples). */
+function mesh(expressId: number, verts: number[], origin?: [number, number, number]): MeshData {
   return {
-    expressId: 1,
-    positions: new Float32Array([x, y, z, x, y, z, x, y, z]),
-    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    expressId,
+    positions: new Float32Array(verts),
+    normals: new Float32Array(verts.length),
     indices: new Uint32Array([0, 1, 2]),
     color: [1, 1, 1, 1],
+    ...(origin ? { origin } : {}),
   };
 }
 
-describe('CoordinateHandler bounds recovery from poisoned fast path', () => {
-  it('recovers from a poisoned batch in the three-batch scenario (RED test)', () => {
-    // Issue #5210: clean → garbage → clean should recover the bounds.
-    // This test FAILS without the fix.
-    const handler = new CoordinateHandler();
+function meshAt(x: number, y: number, z: number): MeshData {
+  return mesh(1, [x, y, z, x, y, z, x, y, z]);
+}
 
-    // Batch 1: clean vertices inside threshold
-    const cleanCoord = NORMAL_COORD_THRESHOLD_M * 0.5;
-    handler.processMeshesIncremental([meshAt(cleanCoord, 0, 0)]);
+/** A handler past its first-batch decision, on the sampling path (WASM RTC applied). */
+function establishedHandler(): CoordinateHandler {
+  const handler = new CoordinateHandler();
+  handler.setWasmMetadata(1, { x: 2_600_000, y: 1_200_000, z: 0 });
+  handler.processMeshesIncremental([meshAt(100, 0, 0), meshAt(-100, 0, 0)]);
+  return handler;
+}
 
-    // At this point, bounds are [cleanCoord, 0, 0], and fastBoundsEligible
-    // is now true (after first shift decision). Subsequent calls use fast path.
+describe('CoordinateHandler bounds recovery (#5210)', () => {
+  it('one garbage batch does not poison the bounds of the rest of the load', () => {
+    const handler = establishedHandler();
+    handler.processMeshesIncremental([meshAt(GARBAGE, GARBAGE, GARBAGE)]);
+    handler.processMeshesIncremental([meshAt(50, 20, 3)]);
 
-    // Batch 2: poisoned vertex (1e30, which is way beyond threshold)
-    const poisonedCoord = 1.0e30;
-    handler.processMeshesIncremental([meshAt(poisonedCoord, poisonedCoord, poisonedCoord)]);
-
-    // Fast path would accumulate this: bounds now [cleanCoord, 0, 0] → [1e30, 1e30, 1e30]
-    // The corrupted accumulator would stay at 1e30 forever in the buggy path.
-
-    // Batch 3: clean vertices again — should recover
-    handler.processMeshesIncremental([meshAt(cleanCoord * 0.5, 0, 0)]);
-
-    // Get the final bounds. After the fix, this should be approximately
-    // [cleanCoord*0.5, 0, 0] or nearby. The key assertion: NOT 1e30.
-    // In the buggy path, bounds.max.x ≈ 1e30; after fix, it should be close to cleanCoord.
     const info = handler.getFinalCoordinateInfo();
-    const recoveredBounds = info.originalBounds;
-
-    // Assert recovery: the third batch's clean vertex made the bounds recover.
-    // The poisoned batch should be effectively ignored by the recovery filter.
-    expect(recoveredBounds.max.x).toBeLessThan(1e20); // Way less than 1e30
-    expect(recoveredBounds.max.x).toBeLessThan(NORMAL_COORD_THRESHOLD_M * 2); // Reasonable threshold
+    expect(info.originalBounds.max.x).toBe(100);
+    expect(info.originalBounds.max.y).toBe(20);
+    expect(info.originalBounds.max.z).toBe(3);
+    expect(info.originalBounds.min.x).toBe(-100);
+    expect(info.boundsRecoveryFallbackCount).toBe(1);
+    expect(handler.getCurrentCoordinateInfo()?.boundsRecoveryFallbackCount).toBe(1);
   });
 
-  it('still uses the fast path for clean batches (no-regression)', () => {
-    // Verify the fast path is still taken when bounds are clean.
-    // This is a performance regression pin: if we always fall back to slow path,
-    // we've lost the 380M-call saving.
-    const handler = new CoordinateHandler();
-
-    // First batch to establish fastBoundsEligible
-    const cleanCoord = NORMAL_COORD_THRESHOLD_M * 0.5;
-    handler.processMeshesIncremental([meshAt(cleanCoord, 0, 0)]);
-
-    // Subsequent clean batches with larger values
-    handler.processMeshesIncremental([meshAt(cleanCoord * 1.5, 0, 0)]);
-    handler.processMeshesIncremental([meshAt(cleanCoord * 2.0, 0, 0)]);
-
-    const info = handler.getFinalCoordinateInfo();
-    // Bounds should be approximately [cleanCoord*2.0, 0, 0]
-    // (the maximum extent of the three batches)
-    expect(info.originalBounds.max.x).toBeLessThan(cleanCoord * 2.5);
-    expect(info.originalBounds.max.x).toBeGreaterThan(cleanCoord);
+  it('keeps the clean vertices of a batch whose sampled last vertex is garbage', () => {
+    const handler = establishedHandler();
+    handler.processMeshesIncremental([mesh(2, [300, 0, 0, 300, 0, 0, GARBAGE, GARBAGE, GARBAGE])]);
+    expect(handler.getFinalCoordinateInfo().originalBounds.max.x).toBe(300);
   });
 
-  it('rejects corrupted coordinates at the per-vertex level in slow path', () => {
-    // Mutation test: ensure the slow path's per-vertex filter is actually used.
-    // If we remove the filter (Math.abs(x) < threshold), this test should fail.
-    const handler = new CoordinateHandler();
-
-    // First batch to establish the handler state
-    const cleanCoord = NORMAL_COORD_THRESHOLD_M * 0.5;
-    handler.processMeshesIncremental([meshAt(cleanCoord, 0, 0)]);
-
-    // Batch 2: A mesh with mixed vertices — some clean, some poisoned
-    // The fast path would sample the first and last vertex; if first is poisoned,
-    // it triggers fallback. But we need to ensure the slow path filter works.
-    // Create a mesh with first vertex clean and last vertex poisoned.
-    const positions = new Float32Array([
-      cleanCoord, 0, 0,      // First: clean
-      cleanCoord, 0, 0,
-      1.0e30, 1.0e30, 1.0e30 // Last: poisoned (would trigger fallback)
-    ]);
-    const mesh: MeshData = {
-      expressId: 2,
-      positions,
-      normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
-      indices: new Uint32Array([0, 1, 2]),
-      color: [1, 1, 1, 1],
-    };
-
-    handler.processMeshesIncremental([mesh]);
-
-    // Batch 3: clean batch to verify recovery
-    handler.processMeshesIncremental([meshAt(cleanCoord * 0.5, 0, 0)]);
-
+  it('the recompute drops only the garbage, not geometry the sampling path keeps', () => {
+    // A long infrastructure model can legitimately reach past the 10 km
+    // post-RTC threshold. The sampling path keeps such a vertex; a batch
+    // recomputed because of an unrelated garbage vertex must keep it too.
+    const handler = establishedHandler();
+    handler.processMeshesIncremental([meshAt(20_000, 0, 0), meshAt(GARBAGE, 0, 0)]);
     const info = handler.getFinalCoordinateInfo();
-    // The bounds should be dominated by the clean vertices, not the 1e30 vertex
-    expect(info.originalBounds.max.x).toBeLessThan(1e20);
-    expect(info.originalBounds.max.x).toBeLessThan(NORMAL_COORD_THRESHOLD_M * 2);
+    expect(info.originalBounds.max.x).toBe(20_000);
+    expect(info.boundsRecoveryFallbackCount).toBe(1);
+  });
+
+  it('counts once per poisoned batch, never for clean or empty batches, and resets', () => {
+    const handler = establishedHandler();
+    handler.processMeshesIncremental([meshAt(10, 0, 0)]);
+    handler.processMeshesIncremental([]);
+    handler.processMeshesIncremental([mesh(3, [])]);
+    expect(handler.getFinalCoordinateInfo().boundsRecoveryFallbackCount).toBe(0);
+
+    handler.processMeshesIncremental([meshAt(GARBAGE, 0, 0), meshAt(0, GARBAGE, 0)]);
+    handler.processMeshesIncremental([meshAt(Infinity, 0, 0)]);
+    expect(handler.getFinalCoordinateInfo().boundsRecoveryFallbackCount).toBe(2);
+
+    handler.reset();
+    handler.processMeshesIncremental([meshAt(10, 0, 0)]);
+    expect(handler.getFinalCoordinateInfo().boundsRecoveryFallbackCount).toBe(0);
+  });
+
+  it('stays on the sampling path for clean batches at UTM-scale world coordinates', () => {
+    // world = origin + position. A native producer (no setWasmMetadata) with
+    // metre-scale positions is inferred RTC-applied and becomes eligible even
+    // though its world coordinates sit at real eastings/northings. A check
+    // against the 10 km threshold would fall back on every batch here.
+    const handler = new CoordinateHandler();
+    const utm = (id: number, e: number, n: number) =>
+      mesh(id, [0, 0, 0, 1, 1, 0, 2, 0, 0.5], [e, n, 0]);
+    const fastSpy = vi.spyOn(
+      handler as unknown as { calculateBoundsFast: (m: MeshData[]) => unknown },
+      'calculateBoundsFast',
+    );
+    handler.processMeshesIncremental([utm(1, 500_000, 5_000_000)]);
+    fastSpy.mockClear();
+    for (let i = 0; i < 5; i++) {
+      handler.processMeshesIncremental([utm(2 + i, 500_000 + i * 10, 5_000_000 + i * 10)]);
+    }
+    expect(fastSpy).toHaveBeenCalledTimes(5);
+    expect(handler.getFinalCoordinateInfo().boundsRecoveryFallbackCount).toBe(0);
   });
 });

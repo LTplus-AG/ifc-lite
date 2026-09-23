@@ -88,40 +88,37 @@ export class CoordinateHandler {
     }
 
     /**
-     * Check if accumulated bounds are poisoned by corrupted vertices.
-     * A bound is poisoned if any component exceeds MAX_REASONABLE_COORD,
-     * matching the per-vertex filter threshold used by the slow path.
-     * Once poisoned, bounds never recover within the fast path.
+     * #5210: the fast path samples without the per-vertex filter, so its
+     * per-batch result is checked once instead. A bound outside
+     * MAX_REASONABLE_COORD (or non-finite) means a sampled vertex was garbage.
+     * An empty batch (no samples, min > max) is not poisoned.
      */
-    private isBoundsPoisoned(bounds: AABB): boolean {
-        return Math.abs(bounds.min.x) > this.MAX_REASONABLE_COORD ||
-               Math.abs(bounds.min.y) > this.MAX_REASONABLE_COORD ||
-               Math.abs(bounds.min.z) > this.MAX_REASONABLE_COORD ||
-               Math.abs(bounds.max.x) > this.MAX_REASONABLE_COORD ||
-               Math.abs(bounds.max.y) > this.MAX_REASONABLE_COORD ||
-               Math.abs(bounds.max.z) > this.MAX_REASONABLE_COORD;
+    private isBoundsPoisoned(b: AABB): boolean {
+        if (b.min.x > b.max.x) return false;
+        return ![b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z]
+            .every((v) => this.isReasonableValue(v));
     }
 
     /**
      * Calculate bounding box from all meshes (filtering out corrupted values)
      * @param meshes - Meshes to calculate bounds from
      * @param maxCoord - Optional max coordinate threshold (default: MAX_REASONABLE_COORD).
-     *   Used in the slow path to validate per-vertex coordinates.
+     *   NOTE: Not applied on the established sampling path (see below).
      */
     calculateBounds(meshes: MeshData[], maxCoord?: number): AABB {
         // PERF: Once the initial frame/bounds decision validates a producer,
-        // Try fast-path sampling. However, if a single corrupted vertex poisons
-        // the bounds, fall back to the filtered slow path for this batch to restore
-        // recoverability. This is six comparisons per batch instead of per vertex,
-        // preserving the ~380M-call saving while preventing permanent corruption.
+        // sample instead of filtering every vertex (~380M Number.isFinite +
+        // Math.abs calls avoided across 63.5M vertices). The sampled result is
+        // checked once per batch (#5210): a poisoned batch is recomputed through
+        // the filtered path and counted, so one garbage vertex costs one batch
+        // instead of poisoning the accumulator for the rest of the load. The
+        // recompute filters at MAX_REASONABLE_COORD, the criterion that tripped
+        // it, so it drops only the garbage and keeps what the fast path keeps.
         if (this.fastBoundsEligible && this.shiftCalculated) {
-            const bounds = this.calculateBoundsFast(meshes);
-            // Check if bounds are poisoned by a large corrupted vertex
-            if (!this.isBoundsPoisoned(bounds)) {
-                return bounds;
-            }
-            // Bounds poisoned: recompute via slow path with per-vertex filter for recovery
+            const sampled = this.calculateBoundsFast(meshes);
+            if (!this.isBoundsPoisoned(sampled)) return sampled;
             this.boundsRecoveryFallbackCount++;
+            maxCoord = this.MAX_REASONABLE_COORD;
         }
 
         const bounds: AABB = {
@@ -328,13 +325,6 @@ export class CoordinateHandler {
             console.warn('[CoordinateHandler] No valid coordinates found in geometry');
             return emptyResult;
         }
-
-        const size = {
-            x: originalBounds.max.x - originalBounds.min.x,
-            y: originalBounds.max.y - originalBounds.min.y,
-            z: originalBounds.max.z - originalBounds.min.z,
-        };
-        const maxSize = Math.max(size.x, size.y, size.z);
 
         // Check if shift is needed (>10km from origin)
         const needsShift = this.needsShift(originalBounds);

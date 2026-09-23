@@ -14,7 +14,7 @@
 import type { ChartSpec, ReportPageSetup } from '@ifc-lite/charts';
 import type { ListDefinition } from '@ifc-lite/lists';
 
-export const DOCUMENT_VERSION = 4;
+export const DOCUMENT_VERSION = 5;
 
 /** A block that can sit two-up in a row (#4940): `'half'` only takes effect when the block right after it is also a chart/image at `'half'`; unpaired, it prints full width. */
 export type BlockWidth = 'full' | 'half';
@@ -205,19 +205,19 @@ export function isHalfPairable(block: DocumentBlock): block is (ChartBlock | Ima
 }
 
 /**
- * `.ifclite-document.json` version 1 -> 2 (#4940) -> 3 (#5142) -> 4 (#5138, #5125):
+ * `.ifclite-document.json` version 1 -> 2 (#4940) -> 3 (#5142) -> 4 (#5138) -> 5 (#5125):
  * every step is additive for existing blocks/sources (v2 added optional
  * `width`/`height` on chart/image, text styles and the spacer block; v3
- * added the table block over a list; v4 added both the table block's
- * validation source and the separate IDS report block), so an older
- * document is the current one with the version number bumped. The bump is
- * still made, so an older viewer refuses a file with a block/source it
- * cannot print instead of misreporting it as broken (see the comment on
- * `TableBlock`). Anything that is not a recognizable older document passes
- * through unchanged so `validateDocumentSpec` reports the real problem.
+ * added the table block over a list; v4 added the table block's validation
+ * source; v5 added the separate IDS report block), so an older document is
+ * the current one with the version number bumped. The bump is still made,
+ * so an older viewer refuses a file with a block/source it cannot print
+ * instead of misreporting it as broken (see the comment on `TableBlock`).
+ * Anything that is not a recognizable older document passes through
+ * unchanged so `validateDocumentSpec` reports the real problem.
  */
 export function migrateDocumentSpec(raw: unknown): unknown {
-  if (!isRecord(raw) || (raw.version !== 1 && raw.version !== 2 && raw.version !== 3)) return raw;
+  if (!isRecord(raw) || (raw.version !== 1 && raw.version !== 2 && raw.version !== 3 && raw.version !== 4)) return raw;
   return { ...raw, version: DOCUMENT_VERSION };
 }
 

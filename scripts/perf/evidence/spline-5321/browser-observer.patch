@@ -38,7 +38,7 @@
 +          if (memoryBusy) return;
 +          memoryBusy = true;
 +          try {
-+            const {processInfo} = await cdp.send('SystemInfo.getProcessInfo');
++            const {processInfo} = await raceWithTimeout(cdp.send('SystemInfo.getProcessInfo'), 5000, 'SystemInfo.getProcessInfo');
 +            let rssKiB=0, missing=0;
 +            for (const proc of processInfo) {
 +              try {
@@ -133,16 +133,22 @@
          // Separate visual artifact, captured after the observed timing boundary.
          await page.screenshot({ path: join(RESULTS_DIR,
            `${label}-${browserFixtureKey(fixture.name)}-r${iter}.png`) });
-@@ -288,6 +370,8 @@
+@@ -288,6 +370,14 @@
          writeFileSync(`${failBase}.error.txt`, message);
          console.error(`browser-cold-ab: FAILED ${tag}: ${message} (evidence: ${failBase}.*)`);
        } finally {
 +        if (memoryTimer) clearInterval(memoryTimer);
-+        while (memoryBusy) await sleep(10);
++        const memoryDrainDeadline = Date.now() + 5000;
++        while (memoryBusy && Date.now() < memoryDrainDeadline) await sleep(10);
++        if (memoryBusy || memoryErrors.length) {
++          record.memorySamplerErrors = [...memoryErrors];
++          record.error = memoryBusy ? 'Memory sampler did not settle before teardown deadline' : 'Memory sampler failed';
++          record.ok = false;
++        }
          // #4116: `await x.close().catch(...)` only handles a *rejection*; a
          // close() call that never settles (observed on a 1.26 GB fixture, on
          // both arms of two unrelated experiments) is neither resolved nor
-@@ -321,8 +405,4 @@
+@@ -321,8 +411,4 @@
  server.close();
  console.log(`browser-cold-ab: ${ok} sample(s) ok, ${failures} failed. Runs: ${JSONL_OUT}`);
  

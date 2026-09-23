@@ -80,3 +80,17 @@ builds; that failed attempt remains local and is not counted as a product pass.
 Latest main `2e1357209` was merged after the frozen-build comparison. Its changes
 do not touch the optimized Rust/WASM geometry path. Timing evidence remains
 explicitly against the base above, not an unmeasured claim about rebuilt bundles.
+
+Review follow-up: the reproduction observer now bounds each CDP memory request
+and its teardown drain. A stalled sampler marks the sample failed and cannot
+hold browser cleanup indefinitely. Two real-browser fault-injection runs with
+never-settling memory requests terminated with the expected failed samples and
+clean context/browser shutdown; two healthy runs passed. Results are in
+`observer-watchdog-verification.json` (functional checks, not timing evidence).
+
+The fifty timing samples predate this watchdog-only fix. For exact historical
+reproduction, apply `browser-measured-version.patch` after `browser-observer.patch`;
+it restores the measured observer. That archival patch intentionally removes the
+watchdog and should not be used for new qualification. All recorded timing samples
+had zero sampler errors. Applying the historical patch and then the functional
+patch exactly reproduces the successful selection observer; the chain was checked.

@@ -67,6 +67,21 @@ describe('effective entity enumeration (#5249)', () => {
       .toEqual(['IFCDOOR', 'IFCDOOR', 'IFCDOOR']);
   });
 
+  it('finds a retyped source record held in the deferred ID index (#5249)', () => {
+    const store: EntityEnumerationSource = {
+      entityIndex: {
+        byType: new Map([['IFCPROPERTYSINGLEVALUE', [9]]]),
+        byId: new Map(),
+      },
+      deferredEntityIndex: new Map([[9, { type: 'IFCPROPERTYSINGLEVALUE' }]]),
+    };
+    const view = new MutablePropertyView(null, 'm');
+    view.setEntityType(9, 'IfcPropertyListValue', null, 'IfcPropertySingleValue');
+
+    expect(ids(iterateEffectiveEntityIds(store, view, ['IFCPROPERTYLISTVALUE']))).toEqual([9]);
+    expect(ids(iterateEffectiveEntityIds(store, view, ['IFCPROPERTYSINGLEVALUE']))).toEqual([]);
+  });
+
   it('uses the passed model and overlay, without leaking IDs between models', () => {
     const modelA = source();
     const modelB: EntityEnumerationSource = {

@@ -10,6 +10,8 @@ export interface EntityEnumerationSource {
     readonly byType: ReadonlyMap<string, readonly number[]>;
     readonly byId: { get(id: number): { type: string } | undefined };
   };
+  /** Property atoms may live outside the primary ID index after parsing. */
+  readonly deferredEntityIndex?: { get(id: number): { type: string } | undefined };
 }
 
 export interface EffectiveEntityId {
@@ -54,7 +56,8 @@ export function* iterateEffectiveEntityIds(
       if (expressId === 0 || createdIds.has(expressId) || view?.isDeleted(expressId)) continue;
       const type = mutation.newType.toUpperCase();
       if (!wanted.has(type)) continue;
-      const sourceType = source.entityIndex.byId.get(expressId)?.type.toUpperCase();
+      const sourceType = (source.entityIndex.byId.get(expressId)
+        ?? source.deferredEntityIndex?.get(expressId))?.type.toUpperCase();
       if (!sourceType || wanted.has(sourceType) || !(byType.get(sourceType)?.includes(expressId))) continue;
       yield { expressId, type, overlayCreated: false };
     }

@@ -18,12 +18,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { MeshData, GeometryResult } from '@ifc-lite/geometry';
-import {
-  IfcTypeEnumToString,
-  type IfcTypeEnum,
-  PropertyValueType,
-  IFCX_VERSION,
-} from '@ifc-lite/data';
+import { PropertyValueType, IFCX_VERSION } from '@ifc-lite/data';
 import { convertEntityType, type IfcSchemaVersion } from './schema-converter.js';
 import { getEffectiveEntityIndex } from './effective-index.js';
 import { Ifc5AppearanceWriter } from './ifc5-appearance.js';
@@ -32,6 +27,7 @@ import { buildMaterialAttribute } from './ifc5-material.js';
 import { collectRequiredImports, generateUuid, IFC5_KNOWN_PROP_NAMES, recordIfEmptyPset, stepTypeToClassName, stripNodePathPrefix, type UnrepresentedPropertySet } from './ifc5-export-helpers.js';
 import { addClassificationAttribute } from './ifc5-classification.js';
 import { buildIfc5TreeScope, type Ifc5TreeScope } from './ifc5-tree-scope.js';
+import { ifc5EntityRows, type Ifc5EntityRow } from './ifc5-effective-rows.js';
 
 // ============================================================================
 // Types
@@ -186,8 +182,8 @@ export class Ifc5Exporter {
       options.applyMutations !== false,
     );
 
-    // Build visible set
-    const visibleIds = this.buildVisibleSet(options);
+    const rows = ifc5EntityRows(this.dataStore, this.mutationView, options.applyMutations !== false);
+    const visibleIds = this.buildVisibleSet(options, rows);
 
     // One effective graph drives membership and parent selection, including overlay endpoint edits.
     const treeScope = buildIfc5TreeScope(this.dataStore, effective, options.applyMutations !== false ? this.mutationView : null);
@@ -210,7 +206,7 @@ export class Ifc5Exporter {
       || (treeIds !== null && !treeIds.has(id));
 
     // Build UUID paths and child-name maps from spatial hierarchy
-    this.buildEntityMaps(isOmitted, treeScope, options.stripPathPrefix);
+    this.buildEntityMaps(rows, isOmitted, treeScope, options.stripPathPrefix);
 
     // Build mesh lookup by expressId
     const meshByEntity = this.buildMeshLookup(options);
@@ -224,20 +220,17 @@ export class Ifc5Exporter {
     let meshCount = 0;
     const unrepresentedPropertySets: UnrepresentedPropertySet[] = [];
 
-    const { entities, strings } = this.dataStore;
-
     // Find the project entity so we can create a root node pointing to it
     let projectExpressId: number | null = null;
 
-    for (let i = 0; i < entities.count; i++) {
-      const expressId = entities.expressId[i];
+    for (const row of rows) {
+      const expressId = row.expressId;
 
       // Overlay tombstone (an entity `MutablePropertyView.deleteEntity()`
       // removed), visibility filter, or spatial tree filter — see `isOmitted`.
       if (isOmitted(expressId)) continue;
 
-      const typeEnum = entities.typeEnum[i];
-      const typeName = IfcTypeEnumToString(typeEnum as IfcTypeEnum) || 'IfcElement';
+      const typeName = row.type === 'IFCUNCLASSIFIED' ? 'IfcElement' : row.type;
 
       // Convert entity type to IFC5 (aligned with IFC4X3)
       const ifc5Type = convertEntityType(
@@ -265,14 +258,13 @@ export class Ifc5Exporter {
       };
 
       // Name → bsi::ifc::prop::Name (IFC5 uses prop namespace, not bsi::ifc::name)
-      const name = strings.get(entities.name[i])
-        || this.spatialNodeNames.get(expressId);
+      const name = row.name || this.spatialNodeNames.get(expressId);
       if (name) {
         attributes['bsi::ifc::prop::Name'] = name;
       }
 
       // Description → bsi::ifc::prop::Description
-      const description = strings.get(entities.description[i]);
+      const description = row.description;
       if (description) {
         attributes['bsi::ifc::prop::Description'] = description;
       }
@@ -336,9 +328,7 @@ export class Ifc5Exporter {
     if (projectExpressId !== null) {
       const projectUuid = this.entityUuids.get(projectExpressId);
       if (projectUuid) {
-        const projectName = this.childNames.get(projectExpressId)
-          || strings.get(entities.name[this.findEntityIndex(projectExpressId)])
-          || 'Project';
+        const projectName = this.childNames.get(projectExpressId) || 'Project';
         rootChildren[projectName] = projectUuid;
       }
     }
@@ -403,15 +393,6 @@ export class Ifc5Exporter {
     };
   }
 
-  /** Find the entity table index for a given expressId. */
-  private findEntityIndex(expressId: number): number {
-    const { entities } = this.dataStore;
-    for (let i = 0; i < entities.count; i++) {
-      if (entities.expressId[i] === expressId) return i;
-    }
-    return 0;
-  }
-
   // --------------------------------------------------------------------------
   // Path building
   // --------------------------------------------------------------------------
@@ -431,8 +412,7 @@ export class Ifc5Exporter {
    *   check alone, so the maps can never describe a node `export` never wrote.
    * @param stripPathPrefix see {@link Ifc5ExportOptions.stripPathPrefix}.
    */
-  private buildEntityMaps(isOmitted: (id: number) => boolean, treeScope: Ifc5TreeScope, stripPathPrefix?: string): void {
-    const { entities, strings } = this.dataStore;
+  private buildEntityMaps(rows: readonly Ifc5EntityRow[], isOmitted: (id: number) => boolean, treeScope: Ifc5TreeScope, stripPathPrefix?: string): void {
 
     // --- 1. Assign UUID paths ---
     // An omitted entity gets no UUID entry. `getChildrenForEntity`'s `addChild`
@@ -442,11 +422,11 @@ export class Ifc5Exporter {
     // (computed once from the parsed source, not re-derived per export) may
     // still list it as contained (#2046, #2047).
     this.entityUuids.clear();
-    for (let i = 0; i < entities.count; i++) {
-      const id = entities.expressId[i];
+    for (const row of rows) {
+      const id = row.expressId;
       if (isOmitted(id)) continue;
       // Use IFC GlobalId if available, otherwise generate a deterministic UUID
-      const globalId = strings.get(entities.globalId[i]);
+      const globalId = row.globalId;
       this.entityUuids.set(id, globalId ? stripNodePathPrefix(globalId, stripPathPrefix) : generateUuid(id));
     }
 
@@ -460,14 +440,13 @@ export class Ifc5Exporter {
     // --- 3. Compute unique child names ---
     // Build entity name lookup
     const entityNameById = new Map<number, string>();
-    for (let i = 0; i < entities.count; i++) {
-      const id = entities.expressId[i];
+    for (const row of rows) {
+      const id = row.expressId;
       if (isOmitted(id)) continue;
-      let name = strings.get(entities.name[i]) || '';
+      let name = row.name;
       if (!name) name = this.spatialNodeNames.get(id) || '';
       if (!name) {
-        const typeName = IfcTypeEnumToString(entities.typeEnum[i] as IfcTypeEnum);
-        if (typeName !== 'Unknown') name = typeName;
+        if (row.type !== 'IFCUNCLASSIFIED') name = stepTypeToClassName(row.type);
       }
       entityNameById.set(id, name);
     }
@@ -522,8 +501,8 @@ export class Ifc5Exporter {
       if (!this.childrenOf.has(effectiveParent)) this.childrenOf.set(effectiveParent, []);
       this.childrenOf.get(effectiveParent)!.push(childId);
     }
-    for (let i = 0; i < entities.count; i++) {
-      const id = entities.expressId[i];
+    for (const row of rows) {
+      const id = row.expressId;
       if (isOmitted(id)) continue;
       if (!parentOf.has(id)) {
         if (!this.childrenOf.has(undefined)) this.childrenOf.set(undefined, []);
@@ -720,17 +699,15 @@ export class Ifc5Exporter {
   /**
    * Build visible entity set if visibility filtering is requested.
    */
-  private buildVisibleSet(options: Ifc5ExportOptions): Set<number> | null {
+  private buildVisibleSet(options: Ifc5ExportOptions, rows: readonly Ifc5EntityRow[]): Set<number> | null {
     if (!options.visibleOnly) return null;
 
     const hidden = options.hiddenEntityIds ?? new Set<number>();
     const isolated = options.isolatedEntityIds ?? null;
     const visible = new Set<number>();
 
-    const { entities } = this.dataStore;
-
-    for (let i = 0; i < entities.count; i++) {
-      const id = entities.expressId[i];
+    for (const row of rows) {
+      const id = row.expressId;
       if (isolated) {
         // When isolation is active, only isolated entities are visible
         if (isolated.has(id)) visible.add(id);

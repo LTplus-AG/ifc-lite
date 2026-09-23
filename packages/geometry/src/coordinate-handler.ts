@@ -50,6 +50,14 @@ export class CoordinateHandler {
     private accumulatedBounds: AABB | null = null;
     private shiftCalculated: boolean = false;
 
+    // Count of batches where the fast-path result failed `isBoundsPoisoned`
+    // and `calculateBounds` fell back to the filtered slow path (#5210).
+    // Recovery is silent by design — the corrupted vertex is filtered out,
+    // not reported to the caller — so this is the only signal that the
+    // mesher emitted a qualifying vertex at all. Surfaced on `CoordinateInfo`
+    // via `getCurrentCoordinateInfo`/`getFinalCoordinateInfo`.
+    private boundsRecoveryFallbackCount: number = 0;
+
     // Authoritative pre-pass state. Undefined is reserved for native producers
     // that cannot report their coordinate frame and therefore need inference.
     private wasmRtcApplied: boolean | undefined = undefined;
@@ -80,18 +88,37 @@ export class CoordinateHandler {
     }
 
     /**
+     * #5210: the fast path samples without the per-vertex filter, so its
+     * per-batch result is checked once instead. A bound outside
+     * MAX_REASONABLE_COORD (or non-finite) means a sampled vertex was garbage;
+     * only a batch empty on EVERY axis is clean (a one-axis NaN is not empty).
+     */
+    private isBoundsPoisoned(b: AABB): boolean {
+        if (b.min.x > b.max.x && b.min.y > b.max.y && b.min.z > b.max.z) return false;
+        return ![b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z]
+            .every((v) => this.isReasonableValue(v));
+    }
+
+    /**
      * Calculate bounding box from all meshes (filtering out corrupted values)
      * @param meshes - Meshes to calculate bounds from
      * @param maxCoord - Optional max coordinate threshold (default: MAX_REASONABLE_COORD).
-     *   NOTE: Ignored after this handler has established sampling eligibility.
+     *   NOTE: Not applied on the established sampling path (see below).
      */
     calculateBounds(meshes: MeshData[], maxCoord?: number): AABB {
         // PERF: Once the initial frame/bounds decision validates a producer,
-        // Skip per-vertex Number.isFinite + Math.abs checks (saves ~6 calls per vertex
-        // across 63.5M vertices = ~380M function calls avoided).
-        // maxCoord is intentionally unused on this established sampling path.
+        // sample instead of filtering every vertex (~380M Number.isFinite +
+        // Math.abs calls avoided across 63.5M vertices). The sampled result is
+        // checked once per batch (#5210): a poisoned batch is recomputed through
+        // the filtered path and counted, so one garbage vertex costs one batch
+        // instead of poisoning the accumulator for the rest of the load. The
+        // recompute filters at MAX_REASONABLE_COORD, the criterion that tripped
+        // it, so it drops only the garbage and keeps what the fast path keeps.
         if (this.fastBoundsEligible && this.shiftCalculated) {
-            return this.calculateBoundsFast(meshes);
+            const sampled = this.calculateBoundsFast(meshes);
+            if (!this.isBoundsPoisoned(sampled)) return sampled;
+            this.boundsRecoveryFallbackCount++;
+            maxCoord = this.MAX_REASONABLE_COORD;
         }
 
         const bounds: AABB = {
@@ -279,6 +306,7 @@ export class CoordinateHandler {
                 max: { x: 0, y: 0, z: 0 },
             },
             hasLargeCoordinates: false,
+            boundsRecoveryFallbackCount: this.boundsRecoveryFallbackCount,
             ...this.wasmMetadataProps(),
         };
 
@@ -298,13 +326,6 @@ export class CoordinateHandler {
             return emptyResult;
         }
 
-        const size = {
-            x: originalBounds.max.x - originalBounds.min.x,
-            y: originalBounds.max.y - originalBounds.min.y,
-            z: originalBounds.max.z - originalBounds.min.z,
-        };
-        const maxSize = Math.max(size.x, size.y, size.z);
-
         // Check if shift is needed (>10km from origin)
         const needsShift = this.needsShift(originalBounds);
 
@@ -320,6 +341,7 @@ export class CoordinateHandler {
                 originalBounds,
                 shiftedBounds: originalBounds,
                 hasLargeCoordinates: false,
+                boundsRecoveryFallbackCount: this.boundsRecoveryFallbackCount,
                 ...this.wasmMetadataProps(),
             };
         }
@@ -342,6 +364,7 @@ export class CoordinateHandler {
             originalBounds,
             shiftedBounds,
             hasLargeCoordinates: true,
+            boundsRecoveryFallbackCount: this.boundsRecoveryFallbackCount,
             ...this.wasmMetadataProps(),
         };
     }
@@ -539,6 +562,7 @@ export class CoordinateHandler {
             originalBounds: { ...this.accumulatedBounds },
             shiftedBounds,
             hasLargeCoordinates,
+            boundsRecoveryFallbackCount: this.boundsRecoveryFallbackCount,
             ...this.wasmMetadataProps(),
         };
     }
@@ -564,6 +588,7 @@ export class CoordinateHandler {
                 max: { x: 0, y: 0, z: 0 },
             },
             hasLargeCoordinates: false,
+            boundsRecoveryFallbackCount: this.boundsRecoveryFallbackCount,
             ...this.wasmMetadataProps(),
         };
     }
@@ -608,5 +633,6 @@ export class CoordinateHandler {
         this.appliedWasmRtcOffset = null;
         this.wasmRtcFrame = undefined;
         this.lengthUnitScale = undefined;
+        this.boundsRecoveryFallbackCount = 0;
     }
 }

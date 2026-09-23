@@ -28,6 +28,15 @@ export interface CoordinateInfo {
    * shifted?". Use `hasLargeCoordinates || wasmRtcOffset !== undefined`.
    */
   hasLargeCoordinates: boolean;
+  /**
+   * Number of batches (#5210) where the fast bounds path sampled a vertex
+   * beyond `MAX_REASONABLE_COORD` and `calculateBounds` fell back to the
+   * filtered slow path for that batch. Recovery is silent to the caller —
+   * the corrupted vertex is dropped, not reported — so this is the only way
+   * to learn that the mesher emitted a qualifying vertex at all. `0` means
+   * every batch stayed on the fast path.
+   */
+  boundsRecoveryFallbackCount?: number;
   /** RTC offset applied by WASM in IFC coordinates (Z-up). */
   wasmRtcOffset?: Vec3;
   /**

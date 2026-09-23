@@ -170,7 +170,7 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
     link.frameItems(aggregation, items);
   }, [aggregation, selection.full, link]);
 
-  const subtitle = subtitleFor(spec, aggregation, filterSelector, filterState, clashRuleLabel ?? clashRule);
+  const subtitle = subtitleFor(spec, aggregation, filterSelector, filterState, clashRuleLabel || clashRule);
 
   return (
     <div className="flex h-full flex-col min-h-0 rounded-md border border-border bg-card" data-chart-id={spec.id}>

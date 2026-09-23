@@ -1740,6 +1740,52 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.doesNotMatch(subtitle, /Resolving filter/, subtitle);
     assert.deepEqual(barData(charts[0].options.at(-1)!).map(([name, count]) => [name, count]), [['IfcWall', 3]]);
   });
+
+  // #5176 review finding — `ClashRule.name` is a required `string`, so a rule
+  // saved or imported with an empty name is a VALID, present-but-empty label.
+  // `clashRuleLabel ?? clashRule` only guards null/undefined, so it let `''`
+  // through and the subtitle's rule indicator silently vanished even though
+  // the chart was still narrowed to that rule. `||` falls back to the rule id.
+  it('falls back to the clash rule id in the subtitle when the matched rule has an empty name (review finding)', async () => {
+    const dashboard = modelOverviewDashboard();
+    const { type: _topRuleType, dimension: _topRuleDimension, ...topRuleBase } = dashboard.charts[0];
+    dashboard.charts = [newChartSpec({
+      ...topRuleBase,
+      title: 'Clashes for rule',
+      source: 'clash',
+      dimension: 'Rule',
+      filter: { selector: '', clashRule: 'str' },
+    })];
+    dashboard.layout = dashboard.layout.slice(0, 1);
+    const clash = (id: string, rule: string, a: number, b: number): Clash => ({
+      id,
+      a: { key: `${id}-a`, ref: GID(a), model: 'm1', tag: 'IfcWall' },
+      b: { key: `${id}-b`, ref: GID(b), model: 'm1', tag: 'IfcDoor' },
+      rule,
+      status: 'hard',
+      distance: -0.05,
+      point: [0, 0, 0],
+      bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+      severity: 'major',
+    });
+    const clashes = [clash('c1', 'str', 41, 44)];
+    const clashResult: ClashResult = {
+      clashes,
+      summary: { total: clashes.length, byRule: { str: 1 }, byTypePair: {}, bySeverity: { critical: 0, major: 1, minor: 0, info: 0 } },
+      // The rule's name is the empty string, not absent — the exact case
+      // `??` treats as "there" and `||` treats as "not usable".
+      rulesRun: [{ id: 'str', name: '', a: 'IfcWall', b: 'IfcDoor', mode: 'hard' }],
+      settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
+    };
+    useViewerStore.setState({ dashboards: [dashboard], activeDashboardId: dashboard.id, clashResult, clashRunSeq: useViewerStore.getState().clashRunSeq + 1 });
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    const subtitle = ui.querySelector('[data-chart-subtitle]')!.textContent!;
+    // With `??` this reads just the bucket summary, with no "rule: ..." at
+    // all — the user loses any sign that a clash-rule filter is active.
+    assert.match(subtitle, /rule: str/, subtitle);
+  });
 });
 
 describe('overlapping chart bucket paint (#4832)', () => {

@@ -33,6 +33,7 @@ import { IDSPanel } from '@/components/viewer/IDSPanel';
 import { IDSPanelResults } from '@/components/viewer/IDSPanelResults';
 import { RuleSetEditor } from './RuleSetEditor';
 import { ValidationPanelEmpty, InformationValidationEntry } from './ValidationPanel.empty';
+import { IdsSummary } from './ValidationPanel.idsSummary';
 import { useInformationValidation } from '@/hooks/validation/useInformationValidation';
 import { useValidationResults } from '@/hooks/validation/useValidationResults';
 import type { RecentRuleSet } from '@/lib/validation/recent-rule-sets';
@@ -79,6 +80,14 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
     return outcome;
   };
 
+  const handleImportIds = async (file: File) => {
+    const outcome = await info.importIds(file);
+    // Even a fully refused import switches to the rules side, where its
+    // summary (every specification and why) is shown.
+    setActiveSource('rules');
+    return outcome;
+  };
+
   const handleNewRuleSet = () => {
     info.newRuleSet();
     setActiveSource('rules');
@@ -91,6 +100,7 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
         <ValidationPanelEmpty
           onSelectIds={() => setActiveSource('ids')}
           onOpenRuleSetFile={handleOpenRuleSetFile}
+          onImportIds={handleImportIds}
           onNewRuleSet={handleNewRuleSet}
           onLoadRecent={handleLoadRecent}
           recentRuleSets={info.recentRuleSets}
@@ -130,8 +140,10 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
         <AuthoringState info={info} models={modelsForPicker} />
       ) : (
         <div className="flex-1 min-h-0 overflow-auto p-4">
+          {info.idsSummary && <IdsSummary summary={info.idsSummary} onDismiss={info.dismissIdsSummary} />}
           <InformationValidationEntry
             onOpenRuleSetFile={handleOpenRuleSetFile}
+            onImportIds={handleImportIds}
             onNewRuleSet={handleNewRuleSet}
             onLoadRecent={handleLoadRecent}
             recentRuleSets={info.recentRuleSets}
@@ -201,9 +213,20 @@ function AuthoringState({ info, models }: AuthoringStateProps) {
         <RuleSetEditor file={info.file} onChange={info.setFile} models={models} />
       </div>
       {info.error && <p className="px-3 pb-1 text-xs text-red-600">{info.error}</p>}
+      {info.idsSummary && <IdsSummary summary={info.idsSummary} onDismiss={info.dismissIdsSummary} />}
       <div className="flex items-center gap-2 p-3 border-t">
         <Button type="button" size="sm" variant="outline" className="h-8" onClick={info.save}>
           {t('validationPanel.save')}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-8"
+          onClick={info.exportIds}
+          disabled={info.file.rules.length === 0}
+        >
+          {t('validationPanel.exportIds')}
         </Button>
         <div className="flex-1" />
         <Button type="button" size="sm" className="h-8" onClick={() => { void info.run(); }} disabled={info.file.rules.length === 0}>

@@ -224,6 +224,11 @@ as a `quantity` rule. An entity facet enumerating several classes imports as one
 - an entity facet in the requirements
 - a specification with no requirements
 
+In the viewer, the Data validation panel's Information validation side has
+**Import IDS as rules** next to **Open .rules.json**. The rule-set editor has
+**Export as IDS** next to **Save**. Both show what was converted and every
+refused rule or specification with its reasons.
+
 ## Viewer Integration
 
 In the IFClite viewer, IDS validation is integrated through the Data validation panel's IDS validation entry:

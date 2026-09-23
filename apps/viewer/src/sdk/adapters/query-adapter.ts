@@ -35,8 +35,8 @@ import { applyAttributeMutationsToEntityData, getMutationViewForModel, mergeAttr
 import { effectiveMutationRelationships, foldMutationRelated } from './query-overlay-relations.js';
 import { overlayProperties, overlayQuantities } from './query-adapter-overlay.js';
 import { foldRelationshipData } from './query-relationship-fold.js';
-import { foldOverlayCreatedEntities } from './query-overlay-entities.js';
 import { isProductType } from './query-entity-filter.js';
+import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import { normalizePropertyValue } from './query-property-value.js';
 import { evaluateFilterGroups } from '@ifc-lite/rules';
 import { totalRuleCount } from '@ifc-lite/rules';
@@ -198,34 +198,28 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
 
       const view = getMutationViewForModel(store, modelId);
 
-      let entityIds: number[];
-      if (descriptor.types && descriptor.types.length > 0) {
-        // Expand types to every schema-declared descendant (IfcWall →
-        // IfcWallStandardCase, IfcBuildingElement → its concrete leaves).
-        // Resolved against this model's own schema, plus the leaf spellings
-        // that schema does not declare at all, so neither the FILE_SCHEMA
-        // header alone nor a plain union across the bundled tables decides
-        // what its records answer. The version argument is load-bearing:
-        // buildingSMART re-parented entities between versions.
-        entityIds = [];
-        for (const type of expandTypes(descriptor.types, model.ifcDataStore.schemaVersion)) {
-          const typeIds = model.ifcDataStore.entityIndex.byType.get(type) ?? [];
-          for (const id of typeIds) entityIds.push(id);
+      // Expand types to every schema-declared descendant (IfcWall →
+      // IfcWallStandardCase, IfcBuildingElement → its concrete leaves),
+      // resolved against this model's own schema: buildingSMART re-parented
+      // entities between versions, so the version argument is load-bearing.
+      const types = descriptor.types && descriptor.types.length > 0
+        ? expandTypes(descriptor.types, model.ifcDataStore.schemaVersion)
+        : undefined;
+      // A type filter that expands to nothing matches nothing. The iterator
+      // reads an empty list as "no filter", so it must not reach it.
+      if (types && types.length === 0) continue;
+      // The session's effective entities (#5249): tombstones out, overlay
+      // creations in, a retyped entity under its new class — the same shared
+      // iterator the CLI and MCP query backends use.
+      for (const { expressId, type, overlayCreated } of iterateEffectiveEntityIds(model.ifcDataStore, view, types)) {
+        // No type filter — product entities only (skip relationships, property defs).
+        if (!types && !isProductType(type)) continue;
+        if (overlayCreated) {
+          // Effective class and name-relaid attributes, as export writes them.
+          const created = getEntityData({ modelId, expressId });
+          if (created) results.push(created);
+          continue;
         }
-      } else {
-        // No type filter — return product entities only (skip relationships, property defs)
-        entityIds = [];
-        for (const [typeName, ids] of model.ifcDataStore.entityIndex.byType) {
-          if (isProductType(typeName)) {
-            for (const id of ids) entityIds.push(id);
-          }
-        }
-      }
-      for (const expressId of entityIds) {
-        if (expressId === 0) continue;
-        // Tombstoned this session — matches `entityData`/`entities` and the
-        // CLI/MCP siblings' `isDeleted` check.
-        if (view?.isDeleted(expressId)) continue;
         const node = new EntityNode(model.ifcDataStore, expressId);
         results.push(applyAttributeMutationsToEntityData(store, modelId, expressId, {
           ref: { modelId, expressId },
@@ -236,11 +230,6 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
           objectType: node.objectType,
         }));
       }
-      // Overlay-created entities join the same result set under the same type
-      // rules, so a wall created this session shows up in a query for walls
-      // before export.
-      const schemaVersion = model.ifcDataStore.schemaVersion;
-      results.push(...foldOverlayCreatedEntities(view, modelId, descriptor.types, schemaVersion, isProductType, getEntityData));
     }
 
     // Apply property filters

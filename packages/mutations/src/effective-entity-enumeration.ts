@@ -46,6 +46,7 @@ export function* iterateEffectiveEntityIds(
   if (sourceIds) {
     for (const expressId of sourceIds) {
       if (expressId === 0 || createdIds.has(expressId) || view?.isDeleted(expressId)) continue;
+      // @raw-entity-enumeration-ok the canonical accessor reads source class before applying queued retypes
       const sourceType = (source.entityIndex.byId.get(expressId)
         ?? source.deferredEntityIndex?.get(expressId))?.type
         ?? source.entities?.getTypeName(expressId);
@@ -73,6 +74,7 @@ export function* iterateEffectiveEntityIds(
       if (expressId === 0 || createdIds.has(expressId) || view?.isDeleted(expressId)) continue;
       const type = mutation.newType.toUpperCase();
       if (!wanted.has(type)) continue;
+      // @raw-entity-enumeration-ok the canonical accessor checks source bucket membership before adding retypes
       const sourceType = (source.entityIndex.byId.get(expressId)
         ?? source.deferredEntityIndex?.get(expressId))?.type.toUpperCase();
       if (!sourceType || wanted.has(sourceType) || !(byType.get(sourceType)?.includes(expressId))) continue;

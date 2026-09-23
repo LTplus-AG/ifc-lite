@@ -298,6 +298,11 @@ export class StoreEditor {
     return this.view.getNewEntities();
   }
 
+  /** The live overlay this editor writes to, for effective read boundaries. */
+  getMutationView(): MutablePropertyView {
+    return this.view;
+  }
+
   /** The schema declared by the loaded model, if the store exposes it. */
   getSchemaVersion(): string | undefined {
     return this.store.schemaVersion;

@@ -183,7 +183,7 @@ export function generateSpacesFromWalls(
     };
   }
 
-  const anchor = resolveSpatialAnchor(store, storeyExpressId);
+  const anchor = resolveSpatialAnchor(store, storeyExpressId, editor.getMutationView());
   if (!anchor) {
     throw new Error(`generateSpacesFromWalls: no resolvable spatial anchor for storey #${storeyExpressId}`);
   }

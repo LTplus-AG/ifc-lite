@@ -332,6 +332,8 @@ console.log(editor.hasEntity(colour.expressId)); // true after publication
 
 `hasEntity` recognizes live source, deferred-index and newly created entities, and rejects removed entities and invalid IDs. Atomic callbacks must be synchronous: prepare images, network requests and other asynchronous resources beforehand. Source tables and extractors remain shared read-only. Escaped draft editors and nested values cannot modify the published overlay. Reentering the original view is detected and preserves that independent edit rather than overwriting it.
 
+Use `editor.getMutationView()` when an in-store read must include the same live overlay that the editor writes to. For example, space generation passes it to `resolveSpatialAnchor` so deleted or replaced storey placements cannot be reused.
+
 For commands coordinating IFC with another synchronous subsystem, `view.prepareAtomic(callback)` returns `{ result, validate, commit, rollback }`. Preparation runs the callback without publishing. Validate all external resources before calling `commit`; it rejects intervening overlay edits, including edits that skip history. Repeated successful commits are harmless and never replay an old snapshot over newer edits. After a successful commit, `rollback` restores the original overlay, history and allocator only if no subsequent edit occurred; otherwise it throws and preserves those newer edits. Repeated rollback is harmless, and a rolled-back transaction cannot be committed again. Rollback before commit is a no-op.
 
 These transactions publish IFC overlay state only. They do not group application undo stacks or roll back renderer, file or network effects. The caller must coordinate those effects and handle rollback refusal explicitly. Preparation copies the existing overlay and checks it for changes, so batch related edits in one transaction rather than opening a transaction for every entity.
@@ -443,9 +445,9 @@ import { StoreEditor } from '@ifc-lite/mutations';
 import { addColumnToStore, resolveSpatialAnchor } from '@ifc-lite/create';
 
 const editor = new StoreEditor(dataStore, view);
-const anchor = resolveSpatialAnchor(dataStore, storeyExpressId);
-//   ↳ walks the parsed store for IfcOwnerHistory, the 'Body' representation
-//     context, and the storey's IfcLocalPlacement.
+const anchor = resolveSpatialAnchor(dataStore, storeyExpressId, view);
+//   ↳ reads live IfcOwnerHistory, representation context and storey placement,
+//     including overlay-created records and excluding tombstones.
 
 const result = addColumnToStore(editor, anchor, {
   Position: [1, 1, 0],     // storey-local metres
@@ -547,4 +549,4 @@ All paths route through the same `mutationSlice` actions that wrap `StoreEditor`
 | `BulkQueryEngine` | Query and update entities in bulk |
 | `CsvConnector` | Import property data from CSV files |
 | `addColumnToStore` | High-level anchored IfcColumn builder (`@ifc-lite/create`) |
-| `resolveSpatialAnchor` | Walks a parsed store for owner history, 'Body' context, and storey placement (`@ifc-lite/create`) |
+| `resolveSpatialAnchor` | Reads owner history, representation context, and storey placement from the parsed store plus an optional live mutation view (`@ifc-lite/create`) |

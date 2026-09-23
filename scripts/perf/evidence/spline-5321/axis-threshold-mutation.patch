@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/processors/advanced_face/bspline.rs
++++ b/rust/geometry/src/processors/advanced_face/bspline.rs
+@@ -78,7 +78,7 @@
+     bspline_basis_table(degree, t, knots, count)
+         .into_iter()
+         .enumerate()
+-        .filter(|(_, value)| value.abs() > 1e-10)
++        .filter(|(_, value)| *value != 0.0)
+         .collect()
+ }
+ 

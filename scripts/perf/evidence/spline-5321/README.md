@@ -94,3 +94,26 @@ it restores the measured observer. That archival patch intentionally removes the
 watchdog and should not be used for new qualification. All recorded timing samples
 had zero sampler errors. Applying the historical patch and then the functional
 patch exactly reproduces the successful selection observer; the chain was checked.
+
+The CI whole-file revert oracle is inconclusive for this refactor: reverting
+`bspline.rs` also restores its old inline test module, so only two of the eight
+tests execute. Preserving output is intentional; a correct optimization revert
+is not expected to break geometry assertions. Performance is observed by the
+paired runs above.
+
+A separate surgical fault injection checks correctness coverage while preserving
+the test seam. `axis-threshold-mutation.patch` is reverse-applied by the oracle
+and incorrectly drops tiny nonzero axis coefficients. The initial run survived
+(`axis-threshold-before-test-fix.log`): the tiny-coefficient assertion entered
+the evaluator after sparse construction. The strengthened test exercises sparse
+construction too. The final run (`axis-threshold-mutation.log`) observes an
+assertion failure with the same eight tests collected, and verifies restoration.
+This proves sensitivity to that fault, not to every possible defect or a
+performance regression. Reproduce on the final source with:
+
+```sh
+node scripts/check-test-revert-oracle.mjs --base origin/main \
+  --mutation scripts/perf/evidence/spline-5321/axis-threshold-mutation.patch \
+  --only rust/geometry/src/processors/advanced_face/bspline.rs \
+  --test rust/geometry/src/processors/advanced_face/bspline_tests.rs --json
+```

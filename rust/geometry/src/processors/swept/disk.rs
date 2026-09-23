@@ -10,6 +10,21 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use crate::router::GeometryProcessor;
 
+/// Two directrix samples closer than this (model units) are one point for
+/// tangent purposes: their difference has no usable direction (#5191).
+const TUBE_DEDUPE_EPS: f64 = 1e-9;
+
+/// Gate every directrix before `build_tube_rmf` (#5191). A non-finite sample
+/// is a load error: it would put NaN into every frame the RMF propagates to.
+/// Fewer than two distinct samples (including all-coincident, which would
+/// otherwise fabricate a flat disc from the end caps) sweeps nothing.
+pub(crate) fn directrix_is_sweepable(points: &[Point3<f64>]) -> Result<bool> {
+    if points.iter().any(|p| !(p.x.is_finite() && p.y.is_finite() && p.z.is_finite())) {
+        return Err(Error::geometry("swept solid directrix has a non-finite coordinate".to_string()));
+    }
+    Ok(points.iter().any(|p| (p - points[0]).norm() >= TUBE_DEDUPE_EPS))
+}
+
 /// Build a rotation-minimising frame (RMF) for sweeping a circular cross-section
 /// along `curve_points`. Returns `(tangents, perp1s, perp2s)`, each of length
 /// `curve_points.len()`.
@@ -23,6 +38,8 @@ use crate::router::GeometryProcessor;
 /// by rotating it from `tangents[i-1]` onto `tangents[i]` (the minimum rotation
 /// that aligns them). When consecutive tangents are parallel the frame stays
 /// untouched.
+///
+/// Precondition: `curve_points` passed [`directrix_is_sweepable`].
 pub(crate) fn build_tube_rmf(
     curve_points: &[Point3<f64>],
 ) -> (Vec<Vector3<f64>>, Vec<Vector3<f64>>, Vec<Vector3<f64>>) {
@@ -34,15 +51,47 @@ pub(crate) fn build_tube_rmf(
         return (tangents, perp1s, perp2s);
     }
 
-    for i in 0..n {
-        let t = if i == 0 {
-            (curve_points[1] - curve_points[0]).normalize()
-        } else if i == n - 1 {
-            (curve_points[i] - curve_points[i - 1]).normalize()
-        } else {
-            ((curve_points[i + 1] - curve_points[i - 1]) / 2.0).normalize()
-        };
-        tangents.push(t);
+    // #5191: a duplicate consecutive directrix point (e.g. two composite-curve
+    // segments sharing an endpoint) makes the finite difference a zero vector,
+    // whose `.normalize()` is NaN. Difference over the distinct points (`kept`)
+    // and give each dropped duplicate its owner's tangent, so `tangents` stays
+    // parallel to `curve_points`.
+    let mut kept: Vec<Point3<f64>> = Vec::with_capacity(n);
+    let mut owner: Vec<usize> = Vec::with_capacity(n);
+    for &p in curve_points {
+        if let Some(&last) = kept.last() {
+            if (p - last).norm() < TUBE_DEDUPE_EPS {
+                owner.push(kept.len() - 1);
+                continue;
+            }
+        }
+        kept.push(p);
+        owner.push(kept.len() - 1);
+    }
+
+    let m = kept.len();
+    let kept_tangents: Vec<Vector3<f64>> = if m < 2 {
+        // Every sample coincides: no direction exists. `process` never gets
+        // here (it meshes nothing); a fixed axis keeps the frame finite.
+        vec![Vector3::new(1.0, 0.0, 0.0); m]
+    } else {
+        (0..m)
+            .map(|k| {
+                let t = if k == 0 {
+                    kept[1] - kept[0]
+                } else if k == m - 1 {
+                    kept[k] - kept[k - 1]
+                } else {
+                    (kept[k + 1] - kept[k - 1]) / 2.0
+                };
+                // `kept` has no consecutive duplicates: the difference is non-zero.
+                t.normalize()
+            })
+            .collect()
+    };
+
+    for &o in &owner {
+        tangents.push(kept_tangents[o]);
     }
 
     let up0 = if tangents[0].x.abs() < 0.9 {
@@ -65,6 +114,11 @@ pub(crate) fn build_tube_rmf(
         // Anti-parallel (cos_a ≈ -1) leaves axis ill-defined, but a 180° turn
         // between consecutive samples on a swept-disk directrix is physically
         // implausible; we keep the previous frame and accept the degraded case.
+        //
+        // NaN-latching hazard (#5191): NaN comparisons are false, so a NaN
+        // tangent also reads as "nearly parallel" and freezes a poisoned frame
+        // for every later ring. Finite tangents are a precondition, held by the
+        // dedupe above and by `directrix_is_sweepable` refusing non-finite points.
         if axis_norm > 1e-9 && cos_a < 1.0 - 1e-12 {
             let axis = axis / axis_norm;
             let sin_a = (1.0 - cos_a * cos_a).max(0.0).sqrt();
@@ -286,8 +340,8 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
                 .get_curve_points(&directrix, decoder, quality)?
         };
 
-        if curve_points.len() < 2 {
-            return Ok(Mesh::new()); // Not enough points
+        if !directrix_is_sweepable(&curve_points)? {
+            return Ok(Mesh::new());
         }
 
         // Generate tube mesh by sweeping circle along curve

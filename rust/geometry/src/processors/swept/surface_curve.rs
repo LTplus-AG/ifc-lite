@@ -13,7 +13,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 
 use super::super::helpers::parse_axis2_placement_3d;
-use super::disk::build_tube_rmf;
+use super::disk::{build_tube_rmf, directrix_is_sweepable};
 use crate::router::GeometryProcessor;
 
 /// Processor for `IfcSurfaceCurveSweptAreaSolid` and `IfcFixedReferenceSweptAreaSolid`.
@@ -123,6 +123,11 @@ impl GeometryProcessor for SurfaceCurveSweptAreaSolidProcessor {
                     .get_curve_points(&directrix, decoder, quality)?
             };
 
+        // Refuse a non-finite sample before the dedupe below, whose `>`
+        // comparison would silently drop it (#5191).
+        if !directrix_is_sweepable(&curve_points)? {
+            return Ok(Mesh::new());
+        }
         // Drop consecutive coincident samples — a zero-length step yields a NaN
         // tangent in the RMF and shatters the tube.
         let mut points: Vec<Point3<f64>> = Vec::with_capacity(curve_points.len());
@@ -148,6 +153,10 @@ impl GeometryProcessor for SurfaceCurveSweptAreaSolidProcessor {
         };
         for p in &mut points {
             *p = position.transform_point(p);
+        }
+        // The placement is file data too: re-gate the placed samples (#5191).
+        if !directrix_is_sweepable(&points)? {
+            return Ok(Mesh::new());
         }
 
         // --- Sweep the profile along the placed directrix --------------------------

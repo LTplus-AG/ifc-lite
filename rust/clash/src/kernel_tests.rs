@@ -479,7 +479,7 @@ fn overlapping_groups_yield_one_record_per_unordered_pair() {
 /// Two tiny, far-apart triangles that together give a wide AABB — the AABB
 /// overlaps a target while neither triangle does. Same shape as the
 /// TS-side `dumbbellElement` fixture in `packages/clash/src/regression.test.ts`
-/// (unmerged `fix-5194-clash-candidate-dedup` branch) and
+/// and
 /// `packages/clash/src/differential.test.ts`'s #5220 case: one sub-prim of a
 /// split entity that is a broad-phase false positive.
 fn dumbbell_mesh(cx_near: f32, cx_far: f32) -> (Vec<f32>, Vec<u32>, Vec<f32>) {

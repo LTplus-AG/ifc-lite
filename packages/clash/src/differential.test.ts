@@ -70,9 +70,9 @@ function box(key: string, tag: string, center: Vec3, size = 1): ClashElement {
  * A "dumbbell" element: two tiny, far-apart triangles that together give a
  * wide AABB — the AABB overlaps a target while neither triangle does. Models
  * one sub-prim of a split entity that is a broad-phase false positive. Same
- * fixture as `packages/clash/src/regression.test.ts`'s `dumbbellElement`
- * (unmerged `fix-5194-clash-candidate-dedup` branch); reproduced here rather
- * than imported, since the two files must stay independently readable.
+ * fixture as `packages/clash/src/regression.test.ts`'s `dumbbellElement`;
+ * reproduced here rather than imported, since the two files must stay
+ * independently readable.
  */
 function dumbbell(key: string, tag: string, cxNear: number, cxFar: number): ClashElement {
   const eps = 0.01;
@@ -254,31 +254,38 @@ describe('differential: WASM kernel === TS kernel', () => {
     expect(await bothAgree(els, [{ id: 'self', name: 'wall self-clash', a: 'IfcWall', mode: 'hard' }])).toBe(0);
   });
 
-  // SKIPPED, not deleted (#5220 / #5194): this is the shape the same-key test
-  // above does NOT cover — two same-key submeshes where one (a1) is a broad-
-  // phase false positive and the other (a2) genuinely clashes with a third
-  // element (b). On current `main` the TS engine's cross-group broad-phase
-  // dedup collapses candidate pairs by entity KEY before the narrow phase, so
-  // a1's spurious pair drops a2's real one too — CONFIRMED locally: TS
-  // reports 0 clashes for this fixture (expected 1), reproduced against
-  // `createClashEngine({ backend: 'ts' })` directly, independent of WASM/this
-  // file's `beforeAll`. The Rust/WASM engine has no key concept and dedups
-  // candidate pairs by GLOBAL ELEMENT INDEX only (`session.rs`
-  // `candidate_pairs`), so it cannot reproduce this false negative at all —
-  // confirmed by a Rust unit test,
-  // `kernel_tests::candidate_pairs_dedups_by_global_index_not_entity_key_5220`.
-  // The fix lives in the unmerged `fix-5194-clash-candidate-dedup` branch
-  // (`packages/clash/src/engine-ts/orchestrator.ts` +
-  // `engine-ts/broad.ts`), out of scope for this PR. Un-skip this test in the
-  // same change that merges that fix — until then it would just redden CI for
-  // a kernel with no live caller (see file-header SCOPE note and #5220).
-  it.skip('agrees on the #5194 same-key dumbbell shape (broad-phase false positive + a real clash)', async () => {
+  // #5220 / #5194: the shape the same-key test above does NOT cover — two
+  // same-key submeshes where one (a1) is a broad-phase false positive and the
+  // other (a2) genuinely clashes with a third element (b). The TS engine's
+  // old cross-group broad phase deduped candidate pairs by entity KEY before
+  // the narrow phase, so a1's spurious pair hid a2's real one when a1 came
+  // first. The Rust session dedups by GLOBAL ELEMENT INDEX only (`session.rs`
+  // `candidate_pairs`) and never had the defect — do not "align" it to key
+  // identity. Both orders, both backends.
+  it('agrees on the #5194 same-key dumbbell shape (broad-phase false positive + a real clash)', async () => {
     const a1 = dumbbell('A', 'IfcWall', 0.5, 20.5);
     const a2 = box('A', 'IfcWall', [10.5, 0, 0], 2);
     const b = box('B', 'IfcBeam', [10, 0, 0], 2);
     const rules: ClashRule[] = [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }];
     expect(await bothAgree([a1, a2, b], rules)).toBe(1);
     expect(await bothAgree([a2, a1, b], rules)).toBe(1);
+  });
+
+  // #5194: when BOTH same-key sub-prims genuinely clash, the orchestrator
+  // keeps the deeper record. Each kernel hands it both records, so the kept
+  // distance/point must agree across backends in either order. The deeper
+  // sub-prim sits at the HIGHER x, so BVH traversal order cannot fake it.
+  it('agrees on which same-key sub-prim record survives the dedup (#5194)', async () => {
+    const shallow = box('A', 'IfcWall', [9.6, 0, 0]);
+    const deep = box('A', 'IfcWall', [10.05, 0, 0]);
+    const b = box('B', 'IfcBeam', [10, 0, 0]);
+    const rules: ClashRule[] = [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }];
+    const deepAlone = await ts.run([deep, b], rules);
+    for (const order of [[shallow, deep, b], [deep, shallow, b]]) {
+      expect(await bothAgree(order, rules)).toBe(1);
+      const kept = (await wasm.run(order, rules)).clashes[0];
+      expect(Math.abs(kept.distance - deepAlone.clashes[0].distance)).toBeLessThan(EPS);
+    }
   });
 
   it('agrees across the full discipline matrix on a mixed model', async () => {

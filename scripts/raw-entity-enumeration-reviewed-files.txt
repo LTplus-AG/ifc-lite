@@ -34,4 +34,5 @@ apps/viewer/src/components/viewer/bulk-property-editor-options.ts
 apps/viewer/src/components/viewer/properties/effective-classification-systems.ts
 apps/viewer/src/lib/compare/compareScope.ts
 apps/viewer/src/lib/lens/adapter-entities.ts
+apps/viewer/src/lib/lists/scope-types.ts
 apps/viewer/src/lib/search/filter-schema-effective.ts

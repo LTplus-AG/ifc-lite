@@ -245,7 +245,7 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
   // the loaded model(s), with instance counts. Derived from the models rather
   // than a curated allowlist, so a present class the curator never listed —
   // e.g. IfcDuctSegment / IfcPipeSegment — is still selectable (#1662).
-  const scopeTypes = useMemo(() => collectScopeTypes(stores), [stores]);
+  const scopeTypes = useMemo(() => collectScopeTypes(storeViews), [storeViews]);
   const typeCounts = useMemo(() => {
     const counts = new Map<IfcTypeEnum, number>();
     for (const { type, count } of scopeTypes) counts.set(type, count);

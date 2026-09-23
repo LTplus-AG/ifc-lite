@@ -90,11 +90,11 @@ export class CoordinateHandler {
     /**
      * #5210: the fast path samples without the per-vertex filter, so its
      * per-batch result is checked once instead. A bound outside
-     * MAX_REASONABLE_COORD (or non-finite) means a sampled vertex was garbage.
-     * An empty batch (no samples, min > max) is not poisoned.
+     * MAX_REASONABLE_COORD (or non-finite) means a sampled vertex was garbage;
+     * only a batch empty on EVERY axis is clean (a one-axis NaN is not empty).
      */
     private isBoundsPoisoned(b: AABB): boolean {
-        if (b.min.x > b.max.x) return false;
+        if (b.min.x > b.max.x && b.min.y > b.max.y && b.min.z > b.max.z) return false;
         return ![b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z]
             .every((v) => this.isReasonableValue(v));
     }

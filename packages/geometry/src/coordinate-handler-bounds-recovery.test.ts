@@ -84,6 +84,13 @@ describe('CoordinateHandler bounds recovery (#5210)', () => {
     handler.processMeshesIncremental([meshAt(Infinity, 0, 0)]);
     expect(handler.getFinalCoordinateInfo().boundsRecoveryFallbackCount).toBe(2);
 
+    // NaN on one axis leaves that axis looking empty while the others carry
+    // garbage; the batch is still poisoned, and the garbage never lands.
+    handler.processMeshesIncremental([meshAt(Number.NaN, GARBAGE, GARBAGE)]);
+    const info = handler.getFinalCoordinateInfo();
+    expect(info.boundsRecoveryFallbackCount).toBe(3);
+    expect(info.originalBounds.max.y).toBeLessThan(1e7);
+
     handler.reset();
     handler.processMeshesIncremental([meshAt(10, 0, 0)]);
     expect(handler.getFinalCoordinateInfo().boundsRecoveryFallbackCount).toBe(0);

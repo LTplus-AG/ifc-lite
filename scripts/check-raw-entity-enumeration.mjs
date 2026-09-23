@@ -13,9 +13,11 @@
  *
  * This is deliberately a conservative AST ratchet, not proof that a guarded
  * call site applies the overlay. It sees dot-property reads of
- * `entityIndex.byType`, `entityIndex.byId`, and `entities.count` in the four
- * scoped source trees. It does not follow aliases, bracket-property access,
- * or calls into another package. The real behavior remains pinned by tests.
+ * `entityIndex.byType`, `entityIndex.byId`, and `entities.count` across every
+ * production package and the viewer. Parser/build-time raw reads remain in
+ * the census, but a new one needs an explicit reason. It does not follow
+ * aliases, bracket-property access, or calls into another package. The real
+ * behavior remains pinned by tests.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -26,10 +28,10 @@ import { scanRawEntityAccess, excessRawAccess } from './lib/raw-entity-enumerati
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const SCAN_ROOTS = [
-  'packages/mutations/src',
-  'packages/cli/src',
-  'packages/mcp/src',
-  'apps/viewer/src/sdk',
+  ...readdirSync(join(ROOT, 'packages'), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && existsSync(join(ROOT, 'packages', entry.name, 'src')))
+    .map((entry) => `packages/${entry.name}/src`),
+  'apps/viewer/src',
 ];
 
 function sourceFiles(directory) {
@@ -80,7 +82,7 @@ function main() {
     console.error('Route live-session queries through an effective-entity accessor, or document an intentional raw read with @raw-entity-enumeration-ok.');
     process.exitCode = 1;
   } else {
-    console.log(`check-raw-entity-enumeration: OK (${totalCurrent} current / ${totalBase} base raw-access sites; ${exceptions.length} explicit exceptions)`);
+    console.log(`check-raw-entity-enumeration: OK (${totalCurrent} current raw-access sites checked against their file baselines; ${exceptions.length} explicit exceptions)`);
   }
 }
 

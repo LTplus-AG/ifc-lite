@@ -297,8 +297,13 @@ export function writeSourceEntityLines(
         // gap for non-relationship lines), so left alone this would ship the
         // exact #2398 dangling-`#N` shape on a line the rescue itself just
         // introduced into the closure. Same filter, same withhold-vs-narrow
-        // rule, applied to this line for the same reason.
-        const filtered = filterHiddenRefsFromRelationshipLine(nextEntityText, isOmittedFromOutput);
+        // rule, applied to this line for the same reason. `pass.sourceSchema`
+        // is passed (unlike the `IFCREL*` branch above) so a narrowed list is
+        // held to its OWN declared lower bound — `IfcTextureMap.Vertices` is
+        // `LIST [3:?]`, and narrowing it without that check produced a
+        // 2-vertex list, a different invalid file than the dangling ref it
+        // replaced (#5262).
+        const filtered = filterHiddenRefsFromRelationshipLine(nextEntityText, isOmittedFromOutput, pass.sourceSchema);
         if (filtered === null) {
           pass.warnings.push(styleEntityWithheldWarning(expressId, effectiveRelType));
           continue;

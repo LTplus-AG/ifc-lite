@@ -1224,7 +1224,12 @@ export class MergedExporter {
           ? (id) => !includedIds.has(id) || !completeIndex.has(id)
           : null;
       if (isExcluded) {
-        const filtered = filterHiddenRefsFromRelationshipLine(entityText, isExcluded);
+        // `sourceSchema` holds a narrowed STYLE_RESCUE_TYPES list to its OWN
+        // declared lower bound (#5262 — e.g. `IfcTextureMap.Vertices`,
+        // `LIST [3:?]`). Passing it for the `IFCREL*` arm too is a no-op:
+        // no `IfcRel*` entity in any of the three schemas this repo ships
+        // declares a list/set attribute with a lower bound above 1.
+        const filtered = filterHiddenRefsFromRelationshipLine(entityText, isExcluded, sourceSchema);
         if (filtered === null) return null;
         entityText = filtered;
       }

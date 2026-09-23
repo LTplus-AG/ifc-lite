@@ -115,8 +115,9 @@ move a `Table` to and from a mapping spreadsheet:
 **another** row — reported with a `MatchedGlobalIds` column, never silently resolved
 to the first match). `tag`/`property` reuse `@ifc-lite/mutations`' row-matching index
 builder rather than re-scanning the model per row; that needs bulk entity-table
-access most hosts do not provide (`FlowHost.tables()`), so those two strategies are
-only available on hosts that declare it — today, the CLI.
+access (`FlowHost.tables()`), which all three hosts provide — the viewer, `ifc-lite
+flow run`, and MCP `run_flow` — each over the same mutation overlay its writes go
+through, so a join sees properties written earlier in the session or run.
 
 `model.applyTable` writes a table's columns back as property mutations, one entity
 per row (the row key names the target's GlobalId — `table.joinByKey`'s `matched`

@@ -213,6 +213,25 @@ describe('applyStylesInStore', () => {
     expect(editor.getNewEntity(result.styledItemIds[0]!)?.attributes[0]).toBe('#112');
   });
 
+  it('styles a geometry item indexed only in the deferred source index (#5249)', async () => {
+    const store = await parseFixture();
+    const itemRef = store.entityIndex.byId.get(112);
+    expect(itemRef).toBeDefined();
+    const immediate = new Map(store.entityIndex.byId.entries());
+    immediate.delete(112);
+    store.entityIndex.byId = immediate;
+    store.deferredEntityIndex = new Map([[112, itemRef!]]);
+    const editor = makeEditor(store);
+
+    const [result] = applyStylesInStore(editor, store, [
+      { products: [100], color: { red: 1, green: 0, blue: 0 } },
+    ]);
+
+    expect(result.productsWithoutGeometry).toEqual([]);
+    expect(result.styledItemIds).toHaveLength(1);
+    expect(editor.getNewEntity(result.styledItemIds[0]!)?.attributes[0]).toBe('#112');
+  });
+
   it('creates no entities at all for a batch that reaches no geometry', async () => {
     const store = await parseFixture();
     const editor = makeEditor(store);

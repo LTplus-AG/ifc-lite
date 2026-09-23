@@ -82,6 +82,25 @@ view.clear();
 
 > **Note:** Undo/redo is handled by the viewer's store (mutationSlice), not directly on MutablePropertyView. In the viewer, use Ctrl+Z / Ctrl+Shift+Z.
 
+### Enumerating the live entity set
+
+The parsed store's type index describes the file as loaded. After a session
+creates, deletes, or retypes entities, use the effective iterator for queries
+over that session. Pass schema-expanded, uppercase IFC type names when filtering;
+omit the third argument to visit every effective entity.
+
+```typescript
+import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
+
+for (const { expressId, type, overlayCreated } of iterateEffectiveEntityIds(dataStore, view, ['IFCWALL'])) {
+  console.log(expressId, type, overlayCreated);
+}
+```
+
+The iterator yields source entities in parsed order, followed by source entities
+retyped into a requested class, then overlay-created entities. Tombstones are
+excluded in every case.
+
 ### Change Sets
 
 Change sets group related mutations for export and sharing:

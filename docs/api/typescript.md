@@ -605,6 +605,12 @@ The standalone `GltfExporter` and `CsvExporter` classes were removed. glTF/GLB a
 
 Property editing with bidirectional change tracking. Nothing mutates the parsed buffer; edits accumulate in an overlay and materialise during `StepExporter.export({ applyMutations: true })`.
 
+`iterateEffectiveEntityIds(dataStore, view, types?)` enumerates the live entity
+set for a model: parsed entities minus tombstones, plus overlay creations, with
+queued class changes applied. `types` is an optional list of schema-expanded
+UPPERCASE IFC names. Results carry `expressId`, effective `type`, and
+`overlayCreated`; pass each model's own store and view together.
+
 ### MutablePropertyView
 
 Wraps a `PropertyTable` with a mutation overlay for non-destructive property editing.

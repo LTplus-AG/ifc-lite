@@ -20,6 +20,11 @@ export {
   type EntityTypeNormalizer,
 } from './store-editor.js';
 export { ChangeSetManager } from './change-set.js';
+export {
+  iterateEffectiveEntityIds,
+  type EntityEnumerationSource,
+  type EffectiveEntityId,
+} from './effective-entity-enumeration.js';
 export { MutationGuardError, type MutationGuard } from './mutation-guard.js';
 export {
   BulkQueryEngine,

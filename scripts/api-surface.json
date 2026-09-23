@@ -6545,6 +6545,8 @@
     "DerivedIdentityEntry: interface",
     "EffectiveChange: interface",
     "EffectiveChangeKind: type",
+    "EffectiveEntityId: interface",
+    "EntityEnumerationSource: interface",
     "EntityIdentityResolver: interface",
     "EntityOperation: type",
     "EntityOperationEffect: type",
@@ -6582,6 +6584,7 @@
     "deriveEntityIdentity: function",
     "generateChangeSetId: function",
     "generateMutationId: function",
+    "iterateEffectiveEntityIds: function",
     "propertyKey: function",
     "quantityKey: function",
     "setEntityTypeNormalizer: function"

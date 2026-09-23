@@ -101,7 +101,10 @@ pub(crate) fn crossing_vertex_penetration(
 /// larger magnitudes the ULP only grows. Same term/reasoning as
 /// `near_band_from_extent` in `rust/geometry/src/kernel/mesh_bridge.rs` —
 /// kept here rather than shared since the two crates serve different callers.
-const F32_ULP_SCALE: f64 = 1.0 / 4_194_304.0; // 2^-22
+/// Shared WITHIN this crate with `obb_detect`, which scales the very same
+/// quantity (the f32 quantisation of the same vertex buffer) into a normal-
+/// direction error bound.
+pub(crate) const F32_ULP_SCALE: f64 = 1.0 / 4_194_304.0; // 2^-22
 
 /// Penetration-depth floor below which a computed overlap cannot be
 /// distinguished from float32 rounding noise, scaled to the pair's own

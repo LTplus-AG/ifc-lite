@@ -21,7 +21,7 @@
  */
 
 import type { Vec3 } from '../types.js';
-import { sub, cross, dot } from '../math/vec3.js';
+import { cross, dot } from '../math/vec3.js';
 
 /** Tolerance for normal-direction dedup and offset-plane clustering. Same
  * literal in the Rust kernel — see `rust/clash/src/obb.rs`. */
@@ -40,119 +40,6 @@ export interface Obb {
 export interface MeshLike {
   readonly count: number;
   tri(t: number): [Vec3, Vec3, Vec3];
-}
-
-function normalize(v: Vec3): Vec3 | null {
-  const len = Math.sqrt(dot(v, v));
-  if (!(len > OBB_EPS)) return null;
-  return [v[0] / len, v[1] / len, v[2] / len];
-}
-
-/** Flip `n` so its largest-magnitude component is positive, so a face and its
- * antipodal opposite face collapse to the same canonical axis direction. Ties
- * broken in x, y, z order — identical to the Rust `canonical`. */
-function canonical(n: Vec3): Vec3 {
-  const ax = Math.abs(n[0]);
-  const ay = Math.abs(n[1]);
-  const az = Math.abs(n[2]);
-  let idx = 0;
-  if (ay > ax && ay >= az) idx = 1;
-  else if (az > ax && az > ay) idx = 2;
-  return n[idx] < 0 ? [-n[0], -n[1], -n[2]] : n;
-}
-
-/**
- * Detect whether `mesh` is a rectangular box: every (non-degenerate)
- * triangle's normal falls into exactly 3 mutually orthogonal canonical
- * directions, and every vertex of the triangles in a direction group lies on
- * one of exactly two offset planes along that direction. That combination —
- * 3 orthogonal face families, 2 planes each — forces the mesh to be a closed
- * rectangular box (it rejects, for example, an axis-aligned L-shape, whose
- * notch adds a third offset plane on two of the axes). Triangulation-
- * independent: subdividing a box's faces adds triangles but never a new
- * canonical direction or a third offset plane, so the detection (and the
- * resulting `Obb`) is identical at any tessellation.
- *
- * Returns `null` — not a best-effort guess — when the check fails, so a
- * caller that only trusts a non-null result never certifies a shape this
- * function could not confirm.
- */
-export function detectObb(mesh: MeshLike): Obb | null {
-  if (mesh.count === 0) return null;
-  const groups: Vec3[] = [];
-  const groupOfTri: number[] = new Array(mesh.count).fill(-1);
-  for (let t = 0; t < mesh.count; t += 1) {
-    const [a, b, c] = mesh.tri(t);
-    const n = normalize(cross(sub(b, a), sub(c, a)));
-    if (!n) continue; // degenerate triangle: contributes no face-normal evidence
-    const cn = canonical(n);
-    let gi = -1;
-    for (let g = 0; g < groups.length; g += 1) {
-      if (dot(groups[g], cn) > 1 - OBB_EPS) {
-        gi = g;
-        break;
-      }
-    }
-    if (gi === -1) {
-      if (groups.length >= 3) return null; // a 4th face-normal family: not a box
-      groups.push(cn);
-      gi = groups.length - 1;
-    }
-    groupOfTri[t] = gi;
-  }
-  if (groups.length !== 3) return null;
-  for (let i = 0; i < 3; i += 1) {
-    for (let j = i + 1; j < 3; j += 1) {
-      if (Math.abs(dot(groups[i], groups[j])) > OBB_EPS) return null;
-    }
-  }
-
-  const minOff: [number, number, number] = [Infinity, Infinity, Infinity];
-  const maxOff: [number, number, number] = [-Infinity, -Infinity, -Infinity];
-  for (let t = 0; t < mesh.count; t += 1) {
-    const gi = groupOfTri[t];
-    if (gi === -1) continue;
-    const [a, b, c] = mesh.tri(t);
-    for (const v of [a, b, c]) {
-      const o = dot(v, groups[gi]);
-      if (o < minOff[gi]) minOff[gi] = o;
-      if (o > maxOff[gi]) maxOff[gi] = o;
-    }
-  }
-  // Reject a 3rd offset plane on any axis (e.g. an L-shaped footprint).
-  for (let t = 0; t < mesh.count; t += 1) {
-    const gi = groupOfTri[t];
-    if (gi === -1) continue;
-    const [a, b, c] = mesh.tri(t);
-    for (const v of [a, b, c]) {
-      const o = dot(v, groups[gi]);
-      const scale = Math.max(1, Math.abs(minOff[gi]), Math.abs(maxOff[gi]));
-      const nearMin = Math.abs(o - minOff[gi]) <= OBB_EPS * scale;
-      const nearMax = Math.abs(o - maxOff[gi]) <= OBB_EPS * scale;
-      if (!nearMin && !nearMax) return null;
-    }
-  }
-
-  const half: [number, number, number] = [0, 0, 0];
-  const c0: [number, number, number] = [0, 0, 0];
-  for (let i = 0; i < 3; i += 1) {
-    half[i] = (maxOff[i] - minOff[i]) / 2;
-    c0[i] = (maxOff[i] + minOff[i]) / 2;
-    // Reject a zero-thickness "box": a face family whose triangles are all
-    // coplanar passes the 2-plane test above (minOff == maxOff, so both
-    // `nearMin` and `nearMax` hold for every vertex) with no positive
-    // extent along that axis. An open shell (a slab exported without its
-    // top face, or partial `IfcTriangulatedFaceSet` geometry) can produce
-    // exactly this — 3 orthogonal families, but one degenerate — and must
-    // not be certified as a box (review: #2536).
-    if (!(half[i] > OBB_EPS)) return null;
-  }
-  const center: Vec3 = [
-    c0[0] * groups[0][0] + c0[1] * groups[1][0] + c0[2] * groups[2][0],
-    c0[0] * groups[0][1] + c0[1] * groups[1][1] + c0[2] * groups[2][1],
-    c0[0] * groups[0][2] + c0[1] * groups[1][2] + c0[2] * groups[2][2],
-  ];
-  return { center, axes: [groups[0], groups[1], groups[2]], half };
 }
 
 /**
@@ -177,8 +64,9 @@ export const AXIS_NOISE_ULPS = 8;
  * the ~ulp-level absolute error of the cross product into a direction error
  * of up to `AXIS_NOISE_ULPS * EPS / |L|` radians. Each candidate's verdict
  * therefore carries a SCALE-RELATIVE noise bound (see `testAxis`), and a
- * verdict inside its own noise band is skipped — not trusted to separate,
- * not trusted as a depth (review: #2536; the same
+ * verdict inside its own noise band is never trusted to separate, and
+ * contributes a depth candidate of zero rather than being dropped from the
+ * minimum (#5355) (review: #2536; the same
  * tolerance-from-the-wrong-quantity class as #2598/#2600/#2529 — an earlier
  * ABSOLUTE `len > 1e-6` guard here both divided by lengths whose noise
  * dwarfs a thin overlap at large operand scale, and hard-dropped axes that
@@ -237,17 +125,28 @@ export function obbPenetrationDepth(a: Obb, b: Obb): number | null {
     // `AXIS_NOISE_ULPS * EPS / len` radians (cancellation shrinks `|L|` to
     // sin(angle) but leaves the cross product's ~ulp absolute error intact),
     // so `overlap` is uncertain by up to `extentSum` times that. A verdict
-    // inside the band is SKIPPED: in a separating-axis test, dropping a
-    // candidate can only fail to find a separation — it reports the minimum
-    // over the remaining axes, every one of which is a valid upper bound on
-    // the true depth — never invent one, so the result stays conservative
-    // (it may keep a clash a perfect test would separate, but never
-    // separates a genuine overlap). Do not "harden" this into returning
-    // false: that would turn unresolvable noise into a fabricated
+    // inside the band may not SEPARATE: in a separating-axis test, declining
+    // to separate can only fail to find a separation, never invent one, so
+    // the boolean result stays conservative. Do not "harden" this into
+    // returning false: that would turn unresolvable noise into a fabricated
     // separation. Verdicts OUTSIDE the band are kept whatever `len` is —
     // their own magnitude proves the noise did not decide them.
+    //
+    // It DOES still contribute a depth candidate, of zero (#5355). The depth
+    // is a MINIMUM over candidates, so an axis whose overlap is
+    // indistinguishable from zero is the smallest candidate present;
+    // dropping it hands the minimum to the next-smallest axis, which for two
+    // boxes in flush face contact is a FACE DIMENSION of one of them. #2536
+    // fixed WHICH axes fall in the band (an absolute `len > 1e-6` dropped
+    // axes that were fine, over-reporting a 0.02 m edge contact as 0.45 m);
+    // the remaining half was what dropping does to the minimum, which still
+    // reported 0.85 m for a 0.05 m curtain-wall panel lying flush against a
+    // mullion.
     const noise = extentSum * ((AXIS_NOISE_ULPS * Number.EPSILON) / len);
-    if (Math.abs(overlap) <= noise) return true;
+    if (Math.abs(overlap) <= noise) {
+      if (depth > 0) depth = 0;
+      return true;
+    }
     if (overlap <= 0) return false;
     if (overlap < depth) depth = overlap;
     return true;

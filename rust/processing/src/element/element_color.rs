@@ -147,7 +147,8 @@ pub(crate) fn find_indexed_colour_for_element<'a>(
 }
 
 /// Whether any body item of `entity`, directly or through `IfcMappedItem`s,
-/// is a face set carrying an `IfcIndexedColourMap`. Such an element's
+/// is a face set carrying a multi-colour `IfcIndexedColourMap` (a single-colour
+/// map is never split, #1807). Such an element's
 /// triangles are later mapped back to source faces by index (#858), so the
 /// router must keep their order (#5313).
 ///
@@ -168,7 +169,7 @@ pub(crate) fn element_reaches_indexed_colour(
         }
         let Ok(rep) = decoder.decode_by_id(rep_id) else { continue };
         for item_id in rep.get_refs(3).unwrap_or_default() {
-            if indexed_colour_full.contains_key(&item_id) {
+            if indexed_colour_full.get(&item_id).is_some_and(FullIndexedColourMap::has_multiple_colours) {
                 return true;
             }
             let Ok(item) = decoder.decode_by_id(item_id) else { continue };

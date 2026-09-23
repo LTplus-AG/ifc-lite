@@ -57,3 +57,15 @@ fn sliver_repair_keeps_indexed_colours_on_their_triangles() {
          dropped and no palette split, got meshes of {tris:?} triangles"
     );
 }
+
+/// A single-colour map is never palette-split (#1807), so it needs no order
+/// guard: the face set gets the T-junction repair like any other (4 triangles
+/// out: the sliver dropped, the triangle across it split in two).
+#[test]
+fn single_colour_map_still_gets_the_repair() {
+    let one_colour = COLOURED_T_JUNCTION.replace("(1,2,3,4));", "(1,1,1,1));");
+    let result = process_geometry(&one_colour);
+    let tris: usize =
+        result.meshes.iter().filter(|m| m.express_id == 23).map(|m| m.indices.len() / 3).sum();
+    assert_eq!(tris, 4, "single-colour face set should be repaired, got {tris} triangles");
+}

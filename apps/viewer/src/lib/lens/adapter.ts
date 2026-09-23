@@ -34,18 +34,7 @@ import {
 } from '@ifc-lite/rules';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import type { FederatedModel } from '@/store/types';
-
-interface ModelEntry {
-  id: string;
-  name: string;
-  ifcDataStore: IfcDataStore;
-  idOffset: number;
-  maxExpressId: number;
-  /** Live overlay for this model, when one exists (#5207) — same map
-   *  `evaluatorModelsFromState` threads into search. A legacy entry has no
-   *  matching key, so stays `undefined` and reads base-only as before. */
-  mutationView: MutablePropertyView | undefined;
-}
+import { computeMaxExpressId, effectiveRows, resolveGlobalId, type ModelEntry, type ModelRef } from './adapter-entities.js';
 
 /** `expressId`'s type-inherited psets, mutation-aware (#5207); mirrors
  *  `filter-evaluate.ts`'s `getInheritedTypePsets`. */
@@ -64,17 +53,6 @@ function resolveTypePropertySets(
   return typePropertySetsFor(base, typeId, mutationView) as PropertySetInfo[];
 }
 
-/** Scan entity array to find the actual maximum expressId */
-function computeMaxExpressId(dataStore: IfcDataStore): number {
-  const entities = dataStore.entities;
-  if (!entities || entities.count === 0) return 0;
-  let max = 0;
-  for (let i = 0; i < entities.count; i++) {
-    if (entities.expressId[i] > max) max = entities.expressId[i];
-  }
-  return max;
-}
-
 /**
  * Create a LensDataProvider for the viewer's federated models.
  *
@@ -82,11 +60,15 @@ function computeMaxExpressId(dataStore: IfcDataStore): number {
  * @param legacyDataStore - Single-model data store (fallback)
  * @param mutationViews - Live per-model overlay, keyed by model id (#5207);
  *   omitted or missing an entry reads base-only, unchanged from before.
+ * @param resolveRef - The viewer store's `resolveGlobalIdFromModels` callback.
+ *   Live federated callers pass it so overlay-allocated ids above a model's
+ *   parsed range resolve back to that model. Source-only callers may omit it.
  */
 export function createLensDataProvider(
   models: Map<string, FederatedModel>,
   legacyDataStore: IfcDataStore | null,
   mutationViews?: ReadonlyMap<string, MutablePropertyView>,
+  resolveRef?: (globalId: number) => ModelRef | null,
 ): LensDataProvider {
   // Build a flat array for fast iteration
   const entries: ModelEntry[] = [];
@@ -110,15 +92,24 @@ export function createLensDataProvider(
       ifcDataStore: legacyDataStore,
       idOffset: 0,
       maxExpressId: computeMaxExpressId(legacyDataStore),
-      mutationView: undefined,
+      mutationView: mutationViews?.get('legacy'),
     });
   }
+
+  // Lens evaluation reads several fields inside forEachEntity's callback.
+  // Carry that exact model-local ref through the callback so a million-row
+  // lens does not ask modelSlice to sort the federation for every field read.
+  const current = { entry: null as unknown as ModelEntry, expressId: 0 };
+  let currentGlobalId: number | null = null;
+  const resolve = (globalId: number) => currentGlobalId === globalId
+    ? current
+    : resolveGlobalId(globalId, entries, models.size > 0 ? resolveRef : undefined);
 
   return {
     getEntityCount(): number {
       let count = 0;
       for (const entry of entries) {
-        count += entry.ifcDataStore.entities?.count ?? 0;
+        for (const _row of effectiveRows(entry)) count++;
       }
       return count;
     },
@@ -126,19 +117,23 @@ export function createLensDataProvider(
     forEachEntity(callback: (globalId: number, modelId: string) => void): void {
       const models = new Map(entries.map((entry) => [entry.id, { idOffset: entry.idOffset }]));
       for (const entry of entries) {
-        const entities = entry.ifcDataStore.entities;
-        if (!entities) continue;
-        for (let i = 0; i < entities.count; i++) {
-          const expressId = entities.expressId[i];
-          callback(toGlobalIdFromModels(models, entry.id, expressId), entry.id);
+        for (const { expressId } of effectiveRows(entry)) {
+          const globalId = toGlobalIdFromModels(models, entry.id, expressId);
+          currentGlobalId = globalId;
+          current.entry = entry;
+          current.expressId = expressId;
+          callback(globalId, entry.id);
         }
       }
     },
 
     getEntityType(globalId: number): string | undefined {
-      const resolved = resolveGlobalId(globalId, entries);
+      const resolved = resolve(globalId);
       if (!resolved) return undefined;
-      return resolved.entry.ifcDataStore.entities?.getTypeName?.(resolved.expressId);
+      const { mutationView, ifcDataStore } = resolved.entry;
+      return mutationView?.getEntityTypeMutation(resolved.expressId)?.newType
+        ?? mutationView?.getNewEntity(resolved.expressId)?.type
+        ?? ifcDataStore.entities?.getTypeName?.(resolved.expressId);
     },
 
     getPropertyValue(
@@ -146,7 +141,7 @@ export function createLensDataProvider(
       propertySetName: string,
       propertyName: string,
     ): unknown {
-      const resolved = resolveGlobalId(globalId, entries);
+      const resolved = resolve(globalId);
       if (!resolved) return undefined;
       const { ifcDataStore: store, mutationView } = resolved.entry;
       const id = resolved.expressId;
@@ -173,7 +168,7 @@ export function createLensDataProvider(
     },
 
     getPropertySets(globalId: number): PropertySetInfo[] {
-      const resolved = resolveGlobalId(globalId, entries);
+      const resolved = resolve(globalId);
       if (!resolved) return [];
       const { ifcDataStore: store, mutationView } = resolved.entry;
       const id = resolved.expressId;
@@ -193,7 +188,7 @@ export function createLensDataProvider(
     },
 
     getEntityAttribute(globalId: number, attrName: string): string | undefined {
-      const resolved = resolveGlobalId(globalId, entries);
+      const resolved = resolve(globalId);
       if (!resolved) return undefined;
       const { ifcDataStore: store, mutationView } = resolved.entry;
       const id = resolved.expressId;
@@ -246,7 +241,7 @@ export function createLensDataProvider(
       qsetName: string,
       quantName: string,
     ): number | string | undefined {
-      const resolved = resolveGlobalId(globalId, entries);
+      const resolved = resolve(globalId);
       if (!resolved) return undefined;
       const { ifcDataStore: store, mutationView } = resolved.entry;
       const id = resolved.expressId;
@@ -279,7 +274,7 @@ export function createLensDataProvider(
     },
 
     getClassifications(globalId: number): ClassificationInfo[] {
-      const resolved = resolveGlobalId(globalId, entries);
+      const resolved = resolve(globalId);
       if (!resolved) return [];
       const store = resolved.entry.ifcDataStore;
       return extractClassificationsOnDemand(store, resolved.expressId);
@@ -289,7 +284,7 @@ export function createLensDataProvider(
       name: string;
       quantities: ReadonlyArray<{ name: string }>;
     }> {
-      const resolved = resolveGlobalId(globalId, entries);
+      const resolved = resolve(globalId);
       if (!resolved) return [];
       const { ifcDataStore: store, mutationView } = resolved.entry;
       const id = resolved.expressId;
@@ -312,7 +307,7 @@ export function createLensDataProvider(
     },
 
     getMaterialName(globalId: number): string | undefined {
-      const resolved = resolveGlobalId(globalId, entries);
+      const resolved = resolve(globalId);
       if (!resolved) return undefined;
       const store = resolved.entry.ifcDataStore;
       // Primary association only — this accessor is single-valued by contract.
@@ -330,7 +325,7 @@ export function createLensDataProvider(
     },
 
     getMaterialNames(globalId: number): string[] {
-      const resolved = resolveGlobalId(globalId, entries);
+      const resolved = resolve(globalId);
       if (!resolved) return [];
       const store = resolved.entry.ifcDataStore;
       // Union across ALL associations (elements may carry several).
@@ -342,7 +337,7 @@ export function createLensDataProvider(
     },
 
     getModelId(globalId: number): string | undefined {
-      const resolved = resolveGlobalId(globalId, entries);
+      const resolved = resolve(globalId);
       if (!resolved) return undefined;
       return resolved.entry.id;
     },
@@ -353,7 +348,7 @@ export function createLensDataProvider(
     },
 
     getEntityGroups(globalId: number): ReadonlyArray<{ id: number; name?: string; type: string; objectType?: string }> {
-      const resolved = resolveGlobalId(globalId, entries);
+      const resolved = resolve(globalId);
       if (!resolved) return [];
       const store = resolved.entry.ifcDataStore;
       if (!store.relationships) return [];
@@ -374,27 +369,4 @@ export function createLensDataProvider(
       return out;
     },
   };
-}
-
-/**
- * Resolve a global ID to (entry, local expressId).
- * O(m) where m = model count (typically 1–5).
- * Reuses a single result object to avoid per-call allocation during
- * hot-loop lens evaluation (100k+ calls).
- */
-const _resolved = { entry: null as unknown as ModelEntry, expressId: 0 };
-
-function resolveGlobalId(
-  globalId: number,
-  entries: ModelEntry[],
-): typeof _resolved | null {
-  for (const entry of entries) {
-    const localId = globalId - entry.idOffset;
-    if (localId >= 0 && localId <= entry.maxExpressId) {
-      _resolved.entry = entry;
-      _resolved.expressId = localId;
-      return _resolved;
-    }
-  }
-  return null;
 }

@@ -125,7 +125,10 @@ export function useLens() {
     prevLensIdRef.current = activeLensId;
 
     // Create data provider and evaluate lens using @ifc-lite/lens package
-    const provider = createLensDataProvider(models, ifcDataStore, mutationViews);
+    const provider = createLensDataProvider(
+      models, ifcDataStore, mutationViews,
+      (globalId) => useViewerStore.getState().resolveGlobalIdFromModels(globalId),
+    );
 
     // Dispatch: auto-color mode vs. rule-based mode
     const isAutoColor = !!activeLens.autoColor;

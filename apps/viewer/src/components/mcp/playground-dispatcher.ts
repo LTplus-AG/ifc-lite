@@ -160,6 +160,8 @@ export interface ToolDispatchResult {
 
 /** Optional context surfaces the dispatcher can use beyond the model. */
 export interface DispatchContext {
+  /** Refresh local model summaries after a successful entity mutation. */
+  onModelChanged?: () => void;
   /** Inline 3D viewer controller. When absent, viewer_* tools fail with
    *  UNSUPPORTED_OPERATION and ask the user to open the viewer panel. */
   viewer?: ViewerController | null;
@@ -1944,6 +1946,16 @@ export function anthropicToolDefinitions(): AnthropicToolDef[] {
  * the inline 3D panel (viewer_*) require it. When a non-viewer tool is
  * called the context is harmlessly ignored.
  */
+const MODEL_MUTATION_TOOLS = new Set([
+  'entity_set_property',
+  'entity_delete_property',
+  'entity_set_attribute',
+  'entity_create',
+  'entity_delete',
+  'mutation_undo',
+  'mutation_batch',
+]);
+
 export async function dispatch(
   model: LoadedPlaygroundModel,
   toolName: string,
@@ -1975,6 +1987,7 @@ export async function dispatch(
   }
   try {
     const out = await impl(model, args, ctx);
+    if (MODEL_MUTATION_TOOLS.has(toolName)) ctx.onModelChanged?.();
     return { text: out.text, textKey: out.textKey, structured: out.structured, isError: false, download: out.download };
   } catch (err) {
     if (err instanceof ToolExecutionError) {

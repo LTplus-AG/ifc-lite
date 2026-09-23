@@ -10,7 +10,8 @@
 
 import { useViewerStore } from '@/store';
 import type { ModelContext } from './system-prompt.js';
-import { IfcTypeEnum, type SpatialNode, type SpatialHierarchy } from '@ifc-lite/data';
+import { IFC_ENTITY_NAMES, IfcTypeEnum, type SpatialNode, type SpatialHierarchy } from '@ifc-lite/data';
+import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
 import {
   extractClassificationsOnDemand,
   extractMaterialsOnDemand,
@@ -21,51 +22,26 @@ import {
 } from '@ifc-lite/parser';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { materialDisplayName } from './material-name.js';
+import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat.js';
 
-let cachedTypeCountsFingerprint = '';
-let cachedTypeCounts: Record<string, number> = {};
-
-function buildFingerprint(state: ReturnType<typeof useViewerStore.getState>): string {
-  if (state.models.size > 0) {
-    const items: string[] = [];
-    for (const [id, model] of state.models) {
-      const count = model.ifcDataStore?.entities.count ?? 0;
-      items.push(`${id}:${count}`);
-    }
-    items.sort();
-    return `federated|${items.join('|')}`;
+function countEffectiveEntities(
+  store: NonNullable<ReturnType<typeof useViewerStore.getState>['ifcDataStore']>,
+  view: MutablePropertyView | null,
+  typeCounts: Record<string, number>,
+): number {
+  let count = 0;
+  // Match the source EntityTable domain the prompt used before #5249, then
+  // include every authored entity the overlay will write on export.
+  for (const entity of iterateEffectiveEntityIds(store, view, undefined, store.entities.expressId)) {
+    count++;
+    const authoredType = view?.getEntityTypeMutation(entity.expressId)?.newType
+      ?? (entity.overlayCreated ? view?.getNewEntity(entity.expressId)?.type : undefined);
+    const type = authoredType
+      ? IFC_ENTITY_NAMES[authoredType.toUpperCase()] ?? authoredType
+      : store.entities.getTypeName(entity.expressId);
+    if (type) typeCounts[type] = (typeCounts[type] ?? 0) + 1;
   }
-
-  const legacyCount = state.ifcDataStore?.entities.count ?? 0;
-  return `legacy|${legacyCount}`;
-}
-
-function computeTypeCounts(state: ReturnType<typeof useViewerStore.getState>): Record<string, number> {
-  const typeCounts: Record<string, number> = {};
-
-  if (state.models.size > 0) {
-    for (const [, model] of state.models) {
-      const store = model.ifcDataStore;
-      if (!store) continue;
-      for (let i = 0; i < store.entities.count; i++) {
-        const id = store.entities.expressId[i];
-        const type = store.entities.getTypeName(id);
-        if (type) typeCounts[type] = (typeCounts[type] ?? 0) + 1;
-      }
-    }
-    return typeCounts;
-  }
-
-  if (state.ifcDataStore) {
-    const store = state.ifcDataStore;
-    for (let i = 0; i < store.entities.count; i++) {
-      const id = store.entities.expressId[i];
-      const type = store.entities.getTypeName(id);
-      if (type) typeCounts[type] = (typeCounts[type] ?? 0) + 1;
-    }
-  }
-
-  return typeCounts;
+  return count;
 }
 
 function collectStoreys(
@@ -172,12 +148,14 @@ export function getModelContext(): ModelContext {
 
   const models: ModelContext['models'] = [];
   const storeys: NonNullable<ModelContext['storeys']> = [];
-  const fingerprint = buildFingerprint(state);
+  const typeCounts: Record<string, number> = {};
 
   // Federated models
   if (state.models.size > 0) {
     for (const [, model] of state.models) {
-      const entityCount = model.ifcDataStore?.entities.count ?? 0;
+      const entityCount = model.ifcDataStore
+        ? countEffectiveEntities(model.ifcDataStore, state.mutationViews.get(model.id) ?? null, typeCounts)
+        : 0;
       models.push({
         name: model.name ?? 'Unknown',
         entityCount,
@@ -189,16 +167,13 @@ export function getModelContext(): ModelContext {
   // Legacy single-model path
   if (models.length === 0 && state.ifcDataStore) {
     const store = state.ifcDataStore;
+    const view = state.mutationViews.get(LEGACY_MUTATION_MODEL_ID)
+      ?? state.mutationViews.get(LEGACY_MODEL_ID) ?? null;
     models.push({
       name: 'Model',
-      entityCount: store.entities.count,
+      entityCount: countEffectiveEntities(store, view, typeCounts),
     });
     storeys.push(...collectStoreys(store.spatialHierarchy, 'Model'));
-  }
-
-  if (fingerprint !== cachedTypeCountsFingerprint) {
-    cachedTypeCounts = computeTypeCounts(state);
-    cachedTypeCountsFingerprint = fingerprint;
   }
 
   // Selection count
@@ -213,7 +188,7 @@ export function getModelContext(): ModelContext {
           : state.selectedEntityId !== null ? 1 : 0;
   const selectedEntities = collectSelectedEntities(state);
 
-  return { models, typeCounts: cachedTypeCounts, selectedCount, storeys, selectedEntities };
+  return { models, typeCounts, selectedCount, storeys, selectedEntities };
 }
 
 /**

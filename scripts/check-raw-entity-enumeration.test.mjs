@@ -4,7 +4,17 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { scanRawEntityAccess, excessRawAccess } from './lib/raw-entity-enumeration.mjs';
+// The changed-test oracle removes newly added production files. Keep this test
+// loadable in that state so a missing detector fails an assertion, not import.
+const detector = await import('./lib/raw-entity-enumeration.mjs').catch(() => null);
+const scanRawEntityAccess = (...args) => {
+  assert.ok(detector, 'raw entity detector must be available');
+  return detector.scanRawEntityAccess(...args);
+};
+const excessRawAccess = (...args) => {
+  assert.ok(detector, 'raw entity detector must be available');
+  return detector.excessRawAccess(...args);
+};
 
 const path = 'packages/mcp/src/tools/example.ts';
 const scan = (source) => scanRawEntityAccess(path, source);

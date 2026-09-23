@@ -24,7 +24,6 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { configureMutationView } from '@/utils/configureMutationView';
-import { modelsAsCompared } from '@/lib/compare/comparedModels';
 import { useCompare } from './useCompare.js';
 
 const WALLS = [
@@ -132,10 +131,12 @@ describe('useCompare compares the edited model (#5312)', () => {
     assert.equal(added?.state, 'added', 'the created wall is added in B');
     assert.equal(added?.head?.ref.localId, created, 'it keeps its overlay express id');
 
-    // Post-run readers (row names, change detail, report) see the compared store.
-    const models = modelsAsCompared(useViewerStore.getState().models, result.comparedStores);
-    assert.equal(models.get('B')!.ifcDataStore!.entities.getName(1), 'Wall A renamed');
-    assert.equal(models.get('B')!.ifcDataStore!.entities.getName(created), 'Wall D');
+    // Post-run readers (row names, change detail, report) read the compared
+    // store the result carries, not the loaded one.
+    const compared = result.comparedStores?.get('B');
+    assert.equal(compared?.entities.getName(1), 'Wall A renamed');
+    assert.equal(compared?.entities.getName(created), 'Wall D');
+    assert.equal(result.comparedStores?.has('A'), false, 'the unedited side is compared as loaded');
     assert.equal(headStore.entities.getName(1), 'Wall A', 'the loaded store itself is untouched');
   });
 

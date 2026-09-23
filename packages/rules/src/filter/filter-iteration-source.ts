@@ -33,12 +33,11 @@ function* effectiveFilterIds(
   view: MutablePropertyView,
   types?: readonly string[],
 ): IterableIterator<number> {
-  for (const { expressId, type, overlayCreated } of iterateEffectiveEntityIds(store, view, types)) {
+  const sourceIds = types ? undefined : store.entities.expressId;
+  for (const { expressId, type, overlayCreated } of iterateEffectiveEntityIds(store, view, types, sourceIds)) {
     // An untyped search historically scanned EntityTable rows, not every STEP
     // geometry primitive. A typed search already used the source type bucket.
-    if (!types && (overlayCreated
-      ? !isQueryableObjectType(type)
-      : store.entities.getTypeName(expressId) === 'Unknown')) continue;
+    if (!types && overlayCreated && !isQueryableObjectType(type)) continue;
     yield expressId;
   }
 }

@@ -67,6 +67,21 @@ describe('effective entity enumeration (#5249)', () => {
       .toEqual(['IFCDOOR', 'IFCDOOR', 'IFCDOOR']);
   });
 
+  it('restricts source rows to a caller table while retaining creations and retypes', () => {
+    const store = source();
+    const view = new MutablePropertyView(null, 'm');
+    view.setExpressIdWatermark(3);
+    view.setEntityType(1, 'IfcDoor', null, 'IfcWall');
+    const created = view.createEntity('IfcWall', []);
+
+    expect(ids(iterateEffectiveEntityIds(store, view, undefined, [0, 1, 2])))
+      .toEqual([1, 2, created.expressId]);
+    expect(ids(iterateEffectiveEntityIds(store, view, ['IFCDOOR'], [0, 1, 2])))
+      .toEqual([1]);
+    expect(ids(iterateEffectiveEntityIds(store, view, ['IFCWALL'], [0, 1, 2])))
+      .toEqual([2, created.expressId]);
+  });
+
   it('finds a retyped source record held in the deferred ID index (#5249)', () => {
     const store: EntityEnumerationSource = {
       entityIndex: {

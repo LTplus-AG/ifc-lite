@@ -7853,6 +7853,7 @@
     "getAttributeNames: function",
     "getAttributeNamesAcrossSchemas: function",
     "getAttributeNamesForSchema: function",
+    "getAttributeTypeForSchema: function",
     "getClassificationCodeForElement: function",
     "getClassificationPath: function",
     "getClassificationsForElement: function",

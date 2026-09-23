@@ -552,6 +552,9 @@ function validateEntityRequirements(
   };
 }
 
+/** Failures meaning "could not be verified", never a prohibition's pass. */
+const UNVERIFIABLE_FAILURES: ReadonlySet<string> = new Set(['CLASSIFICATION_UNRESOLVED', 'MATERIAL_UNRESOLVED', 'PROPERTY_DATATYPE_UNKNOWN']);
+
 /**
  * Check a single requirement against an entity
  */
@@ -564,11 +567,11 @@ function checkRequirement(
 ): IDSRequirementResult {
   const facetResult = checkFacet(requirement.facet, expressId, accessor);
 
-  // Unreadable classifications/materials fail even a prohibition, keeping the reason (#3996, #5227).
+  // What cannot be verified fails even a prohibition, keeping its reason (#3996, #5224, #5227).
   let status: 'pass' | 'fail' | 'not_applicable';
   let failureReason: string | undefined;
-  const unresolved = facetResult.failure?.type === 'CLASSIFICATION_UNRESOLVED' || facetResult.failure?.type === 'MATERIAL_UNRESOLVED';
-  switch (unresolved ? 'required' : requirement.optionality) {
+  const unverifiable = UNVERIFIABLE_FAILURES.has(facetResult.failure?.type ?? '');
+  switch (unverifiable ? 'required' : requirement.optionality) {
     case 'required':
       status = facetResult.passed ? 'pass' : 'fail';
       if (!facetResult.passed) {

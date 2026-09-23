@@ -88,6 +88,12 @@ pub struct Property {
     /// `None` for untyped values.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data_type: Option<String>,
+    /// `IfcPropertyTableValue`: its columns differ in type by design, so there
+    /// is no single `data_type`. The client carries this as `dataTypeMixed`,
+    /// the one explicit exemption from an IDS dataType check; an absent
+    /// `data_type` anywhere else means "unknown" and fails one (#5224).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub data_type_mixed: bool,
     /// Candidate value list for multi-valued properties (enumerated / bounded /
     /// list / table), mirroring the WASM `parsePropertyValue().values` — IDS
     /// facet checks pass when ANY candidate matches (issue #1766). `None` for

@@ -177,7 +177,14 @@ export function resolveEffectivePropertySets(
       first.properties.push({
         name: override.propName,
         value: toBaseSI(override.value, override.dataType, scales),
-        dataType: override.dataType ?? '',
+        // Carry `undefined` through as-is when the caller didn't supply
+        // a dataType — do NOT default to `''`. `''` is falsy exactly like
+        // `undefined` at every dataType gate, so defaulting to it here
+        // used to silently disable dataType-constrained IDS checks on a
+        // property a user created to fix a PROPERTY_MISSING finding
+        // (ifc-lite #5224). `undefined` is the correct "unrecorded"
+        // representation per `PropertySetInfo`'s dataType doc.
+        dataType: override.dataType,
       });
     } else {
       // No same-named set at all yet — a correction whose pset doesn't
@@ -188,7 +195,8 @@ export function resolveEffectivePropertySets(
         properties: [{
           name: override.propName,
           value: toBaseSI(override.value, override.dataType, scales),
-          dataType: override.dataType ?? '',
+          // See the sibling push() above — carry undefined, never ''.
+          dataType: override.dataType,
         }],
       });
     }

@@ -12,11 +12,9 @@ import type {
   PropertySetInfo,
 } from '../types.js';
 import type { FacetCheckResult } from './index.js';
-import { matchConstraint, formatConstraint, type MatchOptions } from '../constraints/index.js';
+import { matchConstraint, formatConstraint } from '../constraints/index.js';
 import { ifcMeasureToXsdTypes, literalCastsUnderAnyType } from '../constraints/xsd-cast.js';
-
-/** IFC data type names (IFCLABEL, IFCREAL, etc.) are case-insensitive */
-const DATATYPE_OPTS: MatchOptions = { caseInsensitive: true };
+import { dataTypeFailure, dataTypePasses } from './property-datatype.js';
 
 /**
  * Failure-detail string caches. During applicability filtering every
@@ -98,11 +96,7 @@ function singlePropertyPasses(
     return false;
   }
 
-  if (facet.dataType && prop.dataType) {
-    if (!matchConstraint(facet.dataType, prop.dataType, DATATYPE_OPTS)) {
-      return false;
-    }
-  }
+  if (facet.dataType && !dataTypePasses(facet.dataType, prop)) return false;
 
   if (facet.value) {
     if (facet.value.type === 'simpleValue') {
@@ -355,25 +349,9 @@ function checkSingleProperty(
       },
     };
   }
-  // Check data type if specified (IFC type names are case-insensitive).
-  // Skip the gate when the property carries no `dataType` AT ALL — for
-  // multi-typed table values (`IfcPropertyTableValue`) we deliberately
-  // omit a single representative type so the value match against the
-  // expanded `values[]` array can still satisfy the requirement.
-  if (facet.dataType && prop.dataType) {
-    if (!matchConstraint(facet.dataType, prop.dataType, DATATYPE_OPTS)) {
-      return {
-        passed: false,
-        actualValue: `${pset.name}.${prop.name} (${prop.dataType})`,
-        expectedValue: `dataType ${formatConstraint(facet.dataType)}`,
-        failure: {
-          type: 'PROPERTY_DATATYPE_MISMATCH',
-          field: `${pset.name}.${prop.name}`,
-          actual: prop.dataType,
-          expected: formatConstraint(facet.dataType),
-        },
-      };
-    }
+  // Check data type if specified; an unknown type fails (#5224).
+  if (facet.dataType && !dataTypePasses(facet.dataType, prop)) {
+    return dataTypeFailure(facet.dataType, pset.name, prop);
   }
 
   // Check value if specified

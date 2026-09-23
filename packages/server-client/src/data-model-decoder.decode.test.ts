@@ -258,12 +258,14 @@ function buildDataModelBuffer(
     materialsBytes?: Uint8Array;
     /** Emit the relationships table's `rel_id` column (data-model v6). */
     withRelId?: boolean;
+    /** Replace the empty properties table. */
+    propertiesTable?: ReturnType<typeof emptyPropertiesTable>;
   } = {}
 ): ArrayBuffer {
   const entities = toParquetBytes(
     entitiesTable([{ id: 1, type: 'IfcWall', globalId: 'GUID-1', name: 'Wall 1' }])
   );
-  const properties = toParquetBytes(emptyPropertiesTable());
+  const properties = toParquetBytes(opts.propertiesTable ?? emptyPropertiesTable());
   const quantities = toParquetBytes(emptyQuantitiesTable());
   const relationships = toParquetBytes(
     opts.emptyRelationships
@@ -507,5 +509,25 @@ describe('decodeDataModel — nullable numeric columns (RED: null decodes as 0 -
     expect(model.materials[0].thickness).toBeCloseTo(0.2);
     expect(model.materials[1].material_name).toBe('Paint Finish');
     expect(model.materials[1].thickness).toBeUndefined();
+  });
+});
+
+describe('decodeDataModel — data_type_mixed (#5224)', () => {
+  it('carries the table exemption from the v7 column, and nothing when the column is absent', async () => {
+    const withColumn = new arrow.Table({
+      pset_id: arrow.vectorFromArray([1, 1], new arrow.Uint32()),
+      pset_name: arrow.vectorFromArray(['Pset_X', 'Pset_X'], new arrow.Utf8()),
+      property_name: arrow.vectorFromArray(['Deflection', 'FireRating'], new arrow.Utf8()),
+      property_value: arrow.vectorFromArray(['Table (1 rows)', 'REI 60'], new arrow.Utf8()),
+      property_type: arrow.vectorFromArray(['string', 'string'], new arrow.Utf8()),
+      data_type_mixed: arrow.vectorFromArray([true, false], new arrow.Bool()),
+    });
+    const decoded = await decodeDataModel(buildDataModelBuffer({ propertiesTable: withColumn }));
+    const props = decoded.propertySets.get(1)!.properties;
+    expect(props.find((p) => p.property_name === 'Deflection')?.data_type_mixed).toBe(true);
+    expect(props.find((p) => p.property_name === 'FireRating')?.data_type_mixed).toBeUndefined();
+
+    const older = await decodeDataModel(buildDataModelBuffer());
+    expect(older.propertySets.size).toBe(0);
   });
 });

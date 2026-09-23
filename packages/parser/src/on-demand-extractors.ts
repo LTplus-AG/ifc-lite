@@ -53,7 +53,7 @@ import {
 export interface TypePropertyInfo {
     typeName: string;
     typeId: number;
-    properties: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }>;
+    properties: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; dataTypeMixed?: true }> }>;
 }
 
 /**
@@ -91,7 +91,7 @@ export type { GeoreferenceInfo as GeorefInfo };
 export interface MaterialPsetGroup {
     materialId: number;
     materialName: string;
-    psets: Array<{ name: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }>;
+    psets: Array<{ name: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; dataTypeMixed?: true }> }>;
 }
 
 // ============================================================================
@@ -153,13 +153,14 @@ export function extractPsetsFromIds(
                 if (!propName) continue;
 
                 const parsed = parsePropertyValueWithComplex(store, extractor, propEntity);
-                const entry: { name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string; unitSiScale?: number } = {
+                const entry: { name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; dataTypeMixed?: true; unit?: string; unitSiScale?: number } = {
                     name: propName,
                     type: parsed.type,
                     value: parsed.value,
                 };
                 if (parsed.values) entry.values = parsed.values;
                 if (parsed.dataType) entry.dataType = parsed.dataType;
+                if (parsed.dataTypeMixed) entry.dataTypeMixed = true;
                 const unit = resolvePropertyUnit(store, extractor, propEntity.type, propAttrs, parsed.dataType);
                 if (unit) entry.unit = unit.symbol;
                 if (unit?.siScale !== undefined) entry.unitSiScale = unit.siScale;
@@ -257,7 +258,7 @@ export function extractTypePropertiesOnDemand(
 export function extractTypeEntityOwnProperties(
     store: IfcDataStore,
     typeEntityId: number
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> {
+): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; dataTypeMixed?: true }> }> {
     const ref = store.entityIndex.byId.get(typeEntityId);
     if (!ref || !store.source?.length) return [];
 
@@ -265,7 +266,7 @@ export function extractTypeEntityOwnProperties(
     const typeEntity = extractor.extractEntity(ref);
     if (!typeEntity) return [];
 
-    const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> = [];
+    const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; dataTypeMixed?: true }> }> = [];
     const seenPsetKeys = new Set<string>();
     const ownPsetIds = new Set<number>();
 
@@ -723,6 +724,7 @@ function getMaterialPropertyIndex(store: IfcDataStore): Map<number, MaterialPset
                 };
                 if (pv.values) entry.values = pv.values;
                 if (pv.dataType) entry.dataType = pv.dataType;
+                if (pv.dataTypeMixed) entry.dataTypeMixed = true;
                 properties.push(entry);
             }
             if (properties.length === 0) continue;

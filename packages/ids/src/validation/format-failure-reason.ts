@@ -42,6 +42,8 @@ export function formatFailureReason(result: FacetCheckResult): string {
       return `Property "${field}" not found`;
     case 'PROPERTY_VALUE_MISMATCH':
       return `Property "${field}" value "${actual}" does not match expected ${expected}`;
+    case 'PROPERTY_DATATYPE_UNKNOWN':
+      return `Property "${field}" has no known data type, so it cannot be checked against ${expected}`;
     case 'PROPERTY_DATATYPE_MISMATCH':
       return `Property "${field}" type "${actual}" does not match expected ${expected}`;
     case 'PROPERTY_OUT_OF_BOUNDS':

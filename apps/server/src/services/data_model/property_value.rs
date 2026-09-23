@@ -176,6 +176,24 @@ pub(super) fn member_list(attr: Option<&AttributeValue>) -> Option<Vec<String>> 
     }
 }
 
+/// The IFC type every member of a list attribute shares (`IFCLABEL` for
+/// `(IFCLABEL('X'),IFCLABEL('Y'))`), or `None` when a member is untyped or the
+/// types differ. Mirrors the WASM `sharedMemberType` (#5224).
+pub(super) fn shared_member_type(attr: Option<&AttributeValue>) -> Option<String> {
+    let AttributeValue::List(items) = attr? else {
+        return None;
+    };
+    let mut shared: Option<String> = None;
+    for item in items {
+        let t = infer_data_type(Some(item))?;
+        match &shared {
+            Some(s) if *s != t => return None,
+            _ => shared = Some(t),
+        }
+    }
+    shared
+}
+
 /// The IFC type tag of a typed-wrapper attribute (`List([String(type), _])`),
 /// upper-cased — mirrors the WASM `inferDataType`.
 pub(super) fn infer_data_type(attr: Option<&AttributeValue>) -> Option<String> {

@@ -30,6 +30,7 @@ export interface Property {
   unitSiScale?: number;
   /** Raw IFC measure value type (e.g. "IFCVOLUMETRICFLOWRATEMEASURE") that resolves the file's declared display unit (#1573). Absent when the value type has no measure semantics. */
   dataType?: string;
+  /** `IfcPropertyTableValue`: columns differ in type by design, so no single `dataType` (#5224). */ dataTypeMixed?: true;
 }
 
 export type PropertyValue = string | number | boolean | null | PropertyValue[];

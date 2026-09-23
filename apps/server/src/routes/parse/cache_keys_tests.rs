@@ -330,7 +330,7 @@ fn request_cache_key_separates_content_filter_and_quality() {
 fn data_model_cache_key_is_versioned_and_retires_the_previous_payload() {
     let request_key = "0ab20f4e4014-default";
     let key = data_model_cache_key(request_key);
-    assert_eq!(key, format!("{request_key}-datamodel-v6"));
+    assert_eq!(key, format!("{request_key}-datamodel-v7"));
     assert_ne!(
         key,
         format!("{request_key}-datamodel-v5"),

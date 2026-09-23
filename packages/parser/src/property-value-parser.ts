@@ -22,6 +22,31 @@ import type { IfcDataStore } from './columnar-parser.js';
 // Property Value Parsing Helpers
 // ============================================================================
 
+/** One decoded `IfcProperty`. `dataType` is the IFC type of the value (for a
+ *  list or enumeration, the one type all members share). `dataTypeMixed`
+ *  marks an `IfcPropertyTableValue`, whose columns carry different types by
+ *  design, so no single `dataType` exists (#5224). */
+export interface ParsedIfcPropertyValue {
+    type: number;
+    value: PropertyValue;
+    values?: string[];
+    dataType?: string;
+    dataTypeMixed?: true;
+}
+
+/** The IFC type every typed member of a list shares, or `undefined` when a
+ *  member is untyped or the types differ. */
+function sharedMemberType(members: unknown[]): string | undefined {
+    let shared: string | undefined;
+    for (const m of members) {
+        if (!Array.isArray(m) || m.length !== 2) return undefined;
+        const t = String(m[0]).toUpperCase();
+        if (shared !== undefined && shared !== t) return undefined;
+        shared = t;
+    }
+    return shared;
+}
+
 /**
  * Parse a property entity's value based on its IFC type.
  * Handles all 6 IfcProperty subtypes:
@@ -32,7 +57,7 @@ import type { IfcDataStore } from './columnar-parser.js';
  * - IfcPropertyTableValue: defining/defined value pairs → "Table(N rows)"
  * - IfcPropertyReferenceValue: entity reference → "Reference #ID"
  */
-export function parsePropertyValue(propEntity: IfcEntity): { type: number; value: PropertyValue; values?: string[]; dataType?: string } {
+export function parsePropertyValue(propEntity: IfcEntity): ParsedIfcPropertyValue {
     const attrs = propEntity.attributes || [];
     const typeUpper = propEntity.type.toUpperCase();
 
@@ -49,7 +74,8 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
                 // checks can iterate "any matching value passes". The
                 // joined display string remains the primary `value`
                 // for visualisation/property-table consumers.
-                return { type: 0, value: values.join(', ') || null, values };
+                const dataType = sharedMemberType(enumValues);
+                return { type: 0, value: values.join(', ') || null, values, ...(dataType ? { dataType } : {}) };
             }
             return { type: 0, value: null };
         }
@@ -101,7 +127,8 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
                     if (Array.isArray(v) && v.length === 2) return String(v[1]);
                     return String(v);
                 }).filter(v => v !== 'null' && v !== 'undefined');
-                return { type: 0, value: values.join(', ') || null, values };
+                const dataType = sharedMemberType(listValues);
+                return { type: 0, value: values.join(', ') || null, values, ...(dataType ? { dataType } : {}) };
             }
             return { type: 0, value: null };
         }
@@ -123,16 +150,17 @@ export function parsePropertyValue(propEntity: IfcEntity): { type: number; value
                     ...definingValues.map(stringify),
                     ...definedValues.map(stringify),
                 ].filter(v => v !== 'null' && v !== 'undefined');
-                // Tables mix types per column (label / length / …),
-                // so we can't surface a single representative
-                // dataType. Leaving it unset lets the IDS check fall
-                // through to a pure value match against any of the
-                // candidates — which is what upstream ifctester does
-                // for table values.
+                // Tables mix types per column (label / length / …), so
+                // there is no single dataType. Say so explicitly: an IDS
+                // dataType check then falls through to a value match
+                // against the candidates, as upstream ifctester does. An
+                // absent dataType anywhere else means "unknown" and fails
+                // such a check (#5224).
                 return {
                     type: 0,
                     value: `Table (${rowCount} rows)`,
                     values,
+                    dataTypeMixed: true,
                 };
             }
             return { type: 0, value: null };
@@ -278,7 +306,7 @@ export function resolveComplexPropertyValue(
     extractor: EntityExtractor,
     propEntity: IfcEntity,
     depth = 0
-): { type: number; value: PropertyValue; values?: string[]; dataType?: string } {
+): ParsedIfcPropertyValue {
     const attrs = propEntity.attributes || [];
     const usageName = typeof attrs[2] === 'string' ? attrs[2] : '';
     const hasProperties = attrs[3];
@@ -333,7 +361,7 @@ export function parsePropertyValueWithComplex(
     store: IfcDataStore,
     extractor: EntityExtractor,
     propEntity: IfcEntity
-): { type: number; value: PropertyValue; values?: string[]; dataType?: string } {
+): ParsedIfcPropertyValue {
     if (propEntity.type.toUpperCase() === 'IFCCOMPLEXPROPERTY') {
         return resolveComplexPropertyValue(store, extractor, propEntity);
     }

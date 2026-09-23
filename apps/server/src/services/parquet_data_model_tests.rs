@@ -148,6 +148,7 @@ fn serializes_and_reads_back_property_values_json() {
                     property_value: "R1, R2".into(),
                     property_type: "string".into(),
                     data_type: None,
+                    data_type_mixed: true,
                     values: Some(vec!["R1".into(), "R2".into()]),
                 },
                 Property {
@@ -155,6 +156,7 @@ fn serializes_and_reads_back_property_values_json() {
                     property_value: "REI 120".into(),
                     property_type: "string".into(),
                     data_type: Some("IFCLABEL".into()),
+                    data_type_mixed: false,
                     values: None,
                 },
             ],
@@ -190,10 +192,25 @@ fn serializes_and_reads_back_property_values_json() {
         .downcast_ref::<arrow::array::StringArray>()
         .unwrap();
 
+    // #5224: the table exemption from an IDS dataType check rides its own
+    // column, so the client never infers it from an absent data_type.
+    let mixed = properties
+        .column_by_name("data_type_mixed")
+        .expect("data_type_mixed column present")
+        .as_any()
+        .downcast_ref::<arrow::array::BooleanArray>()
+        .unwrap();
+
     for i in 0..properties.num_rows() {
         match names.value(i) {
-            "AcousticRating" => assert_eq!(values_json.value(i), r#"["R1","R2"]"#),
-            "FireRating" => assert!(values_json.is_null(i), "single value → null candidates"),
+            "AcousticRating" => {
+                assert_eq!(values_json.value(i), r#"["R1","R2"]"#);
+                assert!(mixed.value(i));
+            }
+            "FireRating" => {
+                assert!(values_json.is_null(i), "single value → null candidates");
+                assert!(!mixed.value(i));
+            }
             other => panic!("unexpected property {other}"),
         }
     }

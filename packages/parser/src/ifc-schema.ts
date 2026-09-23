@@ -190,6 +190,24 @@ export function getAttributeNamesForSchema(type: string, schema: string | undefi
 }
 
 /**
+ * The declared EXPRESS type of one attribute (`IfcDoorPanelProperties.PanelOperation`
+ * → `IfcDoorPanelOperationEnum`) in one model schema, falling back to the IFC4
+ * pin. `undefined` when the entity or attribute is unknown. IDS reads a
+ * predefined property set's attributes as properties, and this is their dataType.
+ */
+export function getAttributeTypeForSchema(type: string, attribute: string, schema: string | undefined): string | undefined {
+    const normalized = schema?.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    let attributes: ReadonlyArray<{ name: string; type: string }> | undefined;
+    if (normalized === 'IFC2X3' || normalized === 'IFC4' || normalized === 'IFC4X3') {
+        const registry = getSchemaRegistryForVersion(normalized);
+        const canonical = Object.keys(registry.entities).find(name => name.toUpperCase() === type.toUpperCase());
+        attributes = canonical ? registry.entities[canonical]?.allAttributes : undefined;
+    }
+    attributes ??= getAllAttributesForEntity(type);
+    return attributes.find(a => a.name === attribute)?.type;
+}
+
+/**
  * Check if a type is a real IFC entity class in any bundled schema.
  *
  * Answers for the union of every bundled IFC schema (2X3 + 4 + 4X3), falling

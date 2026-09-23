@@ -39,6 +39,8 @@ const ALL_SCOPE = { kind: 'all' as const };
 export function useDocumentData(document: DocumentSpec | null): DocumentData {
   const models = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
+  const mutationViews = useViewerStore((s) => s.mutationViews);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const bcfProject = useViewerStore((s) => s.bcfProject);
   // Same resolution hook the Charts panel uses (#4946), so a document chart
   // block prints the SAME filtered numbers the dashboard card shows — never
@@ -50,9 +52,9 @@ export function useDocumentData(document: DocumentSpec | null): DocumentData {
 
   const bindings = useMemo<BindingContext>(() => {
     const bound: Array<BindingContext['models'][number]> = [];
-    for (const m of models.values()) if (m.ifcDataStore) bound.push({ id: m.id, name: m.name, store: m.ifcDataStore });
+    for (const m of models.values()) if (m.ifcDataStore) bound.push({ id: m.id, name: m.name, store: m.ifcDataStore, view: mutationViews.get(m.id) });
     return { models: bound, activeModelId, today: new Date() };
-  }, [models, activeModelId]);
+  }, [models, activeModelId, mutationViews, mutationVersion]);
 
   const { aggregations, chartMessages } = useMemo(() => {
     const aggs = new Map<string, Aggregation | null>();

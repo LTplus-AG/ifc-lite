@@ -83,10 +83,13 @@ ${FOOTER}`;
     ]);
   });
 
-  it('terminates on a cyclic reference chain without hanging or duplicating', async () => {
+  it('terminates on a cyclic reference chain without hanging or duplicating, and marks it unresolved (#5290)', async () => {
     // #21 references #23, #23 references back to #21 — no IfcClassification
     // is ever reached, so `system` stays undefined, but the cycle guard
-    // must stop the walk after each id is visited once.
+    // must stop the walk after each id is visited once. #5290: a cycle
+    // never legitimately terminates (unlike a `ReferencedSource` that is
+    // genuinely omitted), so the primary record is now marked `unresolved`
+    // rather than silently reading as a confident empty system.
     const ifc = `${HEADER}
 #10=IFCMATERIAL('Cyclic Material',$,$);
 #20=IFCEXTERNALREFERENCERELATIONSHIP($,$,#21,(#10));
@@ -100,8 +103,52 @@ ${FOOTER}`;
     // visits — a broken guard would either hang (infinite loop) or, if the
     // node were re-added to the output list on each revisit, duplicate.
     expect(classifications).toEqual([
-      { system: '', value: 'A', name: 'RefA' },
+      { system: '', value: 'A', name: 'RefA', unresolved: true },
       { system: '', value: 'B', name: 'RefA' },
+    ]);
+  });
+
+  it('marks the record unresolved when the chain\'s ReferencedSource is dangling (#5290)', async () => {
+    // #21's ReferencedSource (#999) does not exist in the file. The walk
+    // could previously only leave `system: undefined` -- flattened by
+    // `resolveClassifications` to a confident empty system, indistinguishable
+    // from a classification that genuinely has none.
+    const ifc = `${HEADER}
+#10=IFCMATERIAL('Broken Chain Material',$,$);
+#20=IFCEXTERNALREFERENCERELATIONSHIP($,$,#21,(#10));
+#21=IFCCLASSIFICATIONREFERENCE($,'A','RefA',#999,$,$);
+${FOOTER}`;
+    const a = await accessorFor(ifc);
+    const classifications = a.getClassifications(10);
+    expect(classifications).toEqual([
+      { system: '', value: 'A', name: 'RefA', unresolved: true },
+    ]);
+  });
+
+  it('marks the record unresolved when ReferencedSource names an entity of an unexpected type (#5290)', async () => {
+    const ifc = `${HEADER}
+#10=IFCMATERIAL('Broken Chain Material',$,$);
+#20=IFCEXTERNALREFERENCERELATIONSHIP($,$,#21,(#10));
+#21=IFCCLASSIFICATIONREFERENCE($,'A','RefA',#22,$,$);
+#22=IFCMATERIAL('Not A Classification',$,$);
+${FOOTER}`;
+    const a = await accessorFor(ifc);
+    const classifications = a.getClassifications(10);
+    expect(classifications).toEqual([
+      { system: '', value: 'A', name: 'RefA', unresolved: true },
+    ]);
+  });
+
+  it('control: a ReferencedSource omitted entirely ($) is a legitimate chain end -- NOT marked unresolved', async () => {
+    const ifc = `${HEADER}
+#10=IFCMATERIAL('Terse Chain Material',$,$);
+#20=IFCEXTERNALREFERENCERELATIONSHIP($,$,#21,(#10));
+#21=IFCCLASSIFICATIONREFERENCE($,'A','RefA',$,$,$);
+${FOOTER}`;
+    const a = await accessorFor(ifc);
+    const classifications = a.getClassifications(10);
+    expect(classifications).toEqual([
+      { system: '', value: 'A', name: 'RefA' },
     ]);
   });
 });

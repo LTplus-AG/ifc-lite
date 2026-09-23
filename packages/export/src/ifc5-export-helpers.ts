@@ -131,3 +131,29 @@ export function stripNodePathPrefix(globalId: string, prefix: string | undefined
   if (!prefix || !globalId.startsWith(`${prefix}/`)) return globalId;
   return globalId.slice(prefix.length);
 }
+
+/** One property set the IFCX wire dialect could not represent (see {@link recordIfEmptyPset}). */
+export interface UnrepresentedPropertySet {
+  entityId: number;
+  psetName: string;
+}
+
+/**
+ * A pset with zero properties (`createPropertySet(id, name, [])`, legitimate
+ * per #2263) has nothing for a property-writing loop to emit and would
+ * otherwise leave no trace in the output — the IFCX dialect has no attribute
+ * meaning "this set exists, empty" (the same constraint
+ * `apps/viewer/src/lib/layers/publish.ts` hit and reported as
+ * `skippedCount`/`unrepresentedOps` under #2277). Records it in `sink`
+ * instead of letting it vanish silently (#5201). Returns true when the
+ * caller should skip the pset (nothing left to write).
+ */
+export function recordIfEmptyPset(
+  pset: { name: string; properties: unknown[] },
+  entityId: number,
+  sink: UnrepresentedPropertySet[],
+): boolean {
+  if (pset.properties.length !== 0) return false;
+  sink.push({ entityId, psetName: pset.name });
+  return true;
+}

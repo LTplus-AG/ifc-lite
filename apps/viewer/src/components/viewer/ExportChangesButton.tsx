@@ -28,7 +28,7 @@ import {
   type ArtifactFile,
   type ChangedModelsResult,
 } from '@/lib/export/model-changes';
-import { defaultBuildArtifactsDeps } from '@/lib/export/changed-model-export';
+import { defaultBuildArtifactsDeps, unrepresentedPsetsNote } from '@/lib/export/changed-model-export';
 import {
   ExportChangesReviewDialog,
   buildReviewGroups,
@@ -269,10 +269,15 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
       setTimeout(() => setExportStatus('idle'), 2000);
 
       const exportedChanges = files.reduce((n, f) => n + f.changeCount, 0);
+      const unrepresented = files.reduce((n, f) => n + f.skippedCount, 0);
       if (skipped.length > 0) {
+        // The empty-pset note rides along: a skipped model must not hide it (#5201).
         toast.info(
-          `Exported ${files.length} of ${files.length + skipped.length} models — ${skipped.length} skipped (${skipped[0].reason})`,
+          `Exported ${files.length} of ${files.length + skipped.length} models — ${skipped.length} skipped (${skipped[0].reason})${unrepresentedPsetsNote(unrepresented)}`,
         );
+      } else if (unrepresented > 0) {
+        // Not a plain success: part of the edits could not be written (#5201).
+        toast.info(`Exported ${files.length === 1 ? `${files[0].base}.${files[0].ext}` : `${files.length} models`} (${exportedChanges} changes)${unrepresentedPsetsNote(unrepresented)}`);
       } else if (files.length === 1) {
         toast.success(`Exported ${files[0].base}.${files[0].ext} (${exportedChanges} changes)`);
       } else {

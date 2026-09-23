@@ -6,6 +6,7 @@ import { isLandXmlSchema } from '@/hooks/ingest/landXmlSemantics.js';
 import { stepExportProgress } from '@/lib/export/step-progress.js';
 import { prepareAppearanceSerialization } from '@/lib/appearance/serialization.js';
 import { packagePortableIfcAsync, assertPortableMergeSupported } from '@/lib/export/portable-ifc';
+import { unrepresentedPsetsNote } from '@/lib/export/changed-model-export';
 import { modelAppearanceAssets } from '@/lib/appearance/model-assets';
 
 /**
@@ -494,9 +495,10 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         const suffix = changesOnly ? '_changes' : (visibleOnly ? '_visible' : '_export');
         downloadFile(result.content, `${baseName}${suffix}.ifcx`, 'application/json');
 
-        const ifcxMsg = `Exported IFCX: ${result.stats.nodeCount} nodes, ${result.stats.meshCount} meshes, ${result.stats.propertyCount} properties`;
+        const ifcxMsg = `Exported IFCX: ${result.stats.nodeCount} nodes, ${result.stats.meshCount} meshes, ${result.stats.propertyCount} properties${unrepresentedPsetsNote(result.stats.skippedCount)}`;
         setExportResult({ success: true, message: ifcxMsg });
-        toast.success(ifcxMsg);
+        if (result.stats.skippedCount > 0) toast.info(ifcxMsg); // #5201: not a plain success
+        else toast.success(ifcxMsg);
         exportedFormat = 'ifcx';
 
       // ── Changes only (pre-IFC5) → JSON ───────────────────────────────

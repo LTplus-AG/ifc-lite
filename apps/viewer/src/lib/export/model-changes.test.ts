@@ -588,4 +588,27 @@ describe('buildChangedArtifacts', () => {
     await buildChangedArtifacts(mkState({ models, mutationViews }), deps);
     assert.strictEqual(prefixes.get(guestId), undefined);
   });
+
+  // #5201: an empty pset has no IFCX spelling, so the exporter counts it as
+  // skipped; that count must reach the file list the success toast reads,
+  // not stop at the exporter.
+  it('carries the IFCX exporter\'s skipped count onto the artifact file', async () => {
+    const models = new Map<string, FederatedModel>([
+      ['x', mkModel('x', 'x.ifcx', 'IFC5')],
+      ['s', mkModel('s', 's.ifc')],
+    ]);
+    const mutationViews = new Map<string, MutablePropertyView>([
+      ['x', mkView(1)],
+      ['s', mkView(1)],
+    ]);
+    const { deps } = fakeDeps({
+      exportIfcx: async (modelId): Promise<ChangesExportArtifact> => (
+        { content: `IFCX:${modelId}`, ext: 'ifcx', mime: 'application/json', skippedCount: 2 }
+      ),
+    });
+    const { files } = await buildChangedArtifacts(mkState({ models, mutationViews }), deps);
+    const byModel = new Map(files.map((f) => [f.modelId, f.skippedCount]));
+    assert.strictEqual(byModel.get('x'), 2);
+    assert.strictEqual(byModel.get('s'), 0);
+  });
 });

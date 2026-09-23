@@ -107,7 +107,20 @@ export async function exportChangedModelToIfcx(
     author: 'ifc-lite',
   });
 
-  return { content: result.content, ext: 'ifcx', mime: 'application/json' };
+  // An empty pset has no IFCX wire representation (#5201); the exporter
+  // counts it instead of dropping it silently, and the count travels with
+  // the artifact so the success toast can say so.
+  return { content: result.content, ext: 'ifcx', mime: 'application/json', skippedCount: result.stats.skippedCount };
+}
+
+/**
+ * Toast suffix for property sets an IFCX export left out because the format
+ * has no spelling for "this set exists with zero members" (#5201). Mirrors
+ * the layer-publish report (`publish.ts`, #2277): counted, never silent.
+ */
+export function unrepresentedPsetsNote(count: number): string {
+  if (count <= 0) return '';
+  return ` — ${count} empty property set${count === 1 ? '' : 's'} left out (IFCX cannot represent an empty set)`;
 }
 
 /** Production dependency set for `buildChangedArtifacts`. */

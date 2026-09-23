@@ -49,6 +49,9 @@ fn open_edges(m: &Mesh) -> usize {
             id[j] = *vid.entry(k).or_insert(n);
         }
         for (x, y) in [(id[0], id[1]), (id[1], id[2]), (id[2], id[0])] {
+            if x == y {
+                continue; // A weld-collapsed edge has no boundary.
+            }
             let (kk, s) = if x < y { ((x, y), 1) } else { ((y, x), -1) };
             *bal.entry(kk).or_insert(0) += s;
         }
@@ -574,4 +577,44 @@ fn cap_verdict_stays_false_but_cap_completeness_is_order_dependent_for_a_cycle_p
         "order B (cycle-first ids): the cycle must still be capped even \
          though the overall verdict is correctly false"
     );
+}
+
+/// #5314: a clipped sliver has two vertices in one weld bucket. Its opposing
+/// half-edges must not hide an actual section edge. Exercise all vertex orders,
+/// either winding, repeated/nearby vertices, and IFC metre/millimetre scales.
+#[test]
+fn issue_5314_weld_collapsed_slivers_do_not_mask_section_edges() {
+    for scale in [0.001f32, 1.0, 1000.0] {
+        for offset in [0.0f32, 1.0e-7] {
+            for reversed in [false, true] {
+                for rotate in 0..3 {
+                    let mut mesh = unit_box();
+                    mesh.indices.drain(..6); // z=0 cap
+                    for p in &mut mesh.positions {
+                        *p *= scale;
+                    }
+                    let mut tri = [[0.0, 0.0, 0.0], [scale, 0.0, 0.0], [0.0, offset * scale, 0.0]];
+                    if reversed {
+                        tri.reverse();
+                    }
+                    tri.rotate_left(rotate);
+                    let base = (mesh.positions.len() / 3) as u32;
+                    for p in tri {
+                        mesh.positions.extend_from_slice(&p);
+                        mesh.normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+                    }
+                    mesh.indices.extend_from_slice(&[base, base + 1, base + 2]);
+                    assert!(cap_half_space_clip(&mut mesh, Point3::origin(), Vector3::z()),
+                        "scale={scale} offset={offset} reversed={reversed} rotate={rotate}");
+                    mesh.clean_degenerate();
+                    // Normalize only the oracle to keep its weld grid consistent.
+                    for p in &mut mesh.positions {
+                        *p /= scale;
+                    }
+                    assert_eq!(open_edges(&mesh), 0, "scale={scale} offset={offset} reversed={reversed} rotate={rotate}");
+                    assert!((signed_volume(&mesh) - 1.0).abs() < 1.0e-5);
+                }
+            }
+        }
+    }
 }

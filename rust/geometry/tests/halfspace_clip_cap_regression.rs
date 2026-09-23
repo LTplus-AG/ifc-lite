@@ -133,3 +133,31 @@ fn roof_clipped_walls_are_watertight_solids() {
         );
     }
 }
+
+/// #5314: the clipping plane passes through a host edge. A collapsed sliver
+/// must not hide a real section edge from the cap builder.
+#[test]
+fn edge_grazing_halfspace_clip_is_watertight() {
+    let inline = include_str!("fixtures/issue_5314_halfspace_edge.ifc");
+    let inline_mesh = process_element_only(inline, 30).expect("inline IfcMember #30 should process");
+    assert_edge_clip_mesh(&inline_mesh, "inline #30");
+
+    let Some(holter) = fixture("tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc") else {
+        eprintln!("Holter fixture absent; run pnpm fixtures");
+        return;
+    };
+    let mesh = process_element_only(&holter, 148571).expect("Holter IfcMember #148571 should process");
+    assert_edge_clip_mesh(&mesh, "Holter #148571");
+}
+
+fn assert_edge_clip_mesh(mesh: &Mesh, label: &str) {
+    assert_eq!(open_boundary_edges(mesh), 0, "{label}: cut section must be closed");
+    // The source prism is 60.00042 x 127.99931 x 300.00067 mm. The plane
+    // removes x mm of height at each x, so integrate (depth - x) over width.
+    let width = 60.0004196167;
+    let height = 38.9995574951 + 88.99974823;
+    let depth = 300.00067435;
+    let expected = height * width * (depth - width / 2.0);
+    let volume = signed_volume(mesh);
+    assert!((volume / expected - 1.0).abs() < 1e-5, "{label}: volume={volume}, expected={expected}");
+}

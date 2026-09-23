@@ -59,8 +59,11 @@ describe('SourcesPanel with host-supplied providers (#5228)', () => {
     const text = ui.textContent ?? '';
 
     assert.ok(text.includes('Acme Document Store'), 'the host-supplied provider is listed');
-    for (const provider of createRegisteredProviders()) {
-      const title = provider.manifest.title;
+    const builtInTitles = createRegisteredProviders().map((provider) => provider.manifest.title);
+    // Pinned count: a built-in dropped from the factory list must fail here
+    // too, not shrink both the expectation and the panel together.
+    assert.equal(builtInTitles.length, 3);
+    for (const title of builtInTitles) {
       assert.ok(text.includes(title), `built-in "${title}" is still listed`);
     }
     assert.ok(

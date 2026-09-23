@@ -85,6 +85,9 @@ function names(providers: readonly FileSourceProvider[]): string[] {
 describe('SourceHostProvider — host-supplied providers (#5228)', () => {
   it('with no host-supplied providers, registers exactly the built-ins', () => {
     const host = hostWith();
+    // Pinned, not derived from the factory list: dropping a built-in from
+    // `BUILT_IN_PROVIDER_FACTORIES` must fail here, not shrink both sides.
+    assert.deepEqual(names(host.list()), ['dalux-build', 'dropbox', 'msgraph-onedrive']);
     assert.deepEqual(names(host.list()), BUILT_IN_NAMES);
     assert.equal(host.getRegistrationFailures().length, 0);
   });

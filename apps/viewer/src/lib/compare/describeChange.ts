@@ -351,6 +351,20 @@ export function describeChange(
     }
   }
 
+  // A spatial re-parenting (#5214) is its own change kind: the element moved to
+  // another storey, space or building with no attribute or geometry change.
+  // Without this row the panel rendered nothing for an entry the list badges
+  // as modified (#5309).
+  if (entry.changeKinds.includes('container')) {
+    data.push({
+      category: 'attribute',
+      name: 'Spatial container',
+      before: entry.base.container,
+      after: entry.head.container,
+      kind: 'changed',
+    });
+  }
+
   const geometry = entry.changeKinds.includes('geometry')
     ? geometrySummary(models.get(aRef.modelId), aRef, models.get(bRef.modelId), bRef)
     : null;

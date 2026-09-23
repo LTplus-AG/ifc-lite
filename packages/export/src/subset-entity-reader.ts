@@ -20,7 +20,7 @@
 
 import type { IfcSourceBytes } from '@ifc-lite/parser';
 import { getAttributeNamesAcrossSchemas, resolveEntityNameAlias } from '@ifc-lite/parser';
-import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
+import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
 import { createSourceRefReader, decodeRange } from './source-ref-bounds.js';
 import { readStepSlots } from './step-argument-parser.js';
 
@@ -87,7 +87,8 @@ export type SourceStepSchema = 'IFC2X3' | 'IFC4' | 'IFC4X3';
 
 const ATTRIBUTE_NAMES_BY_SCHEMA: Readonly<Record<SourceStepSchema, ReadonlyMap<string, readonly string[]>>> = {
   IFC2X3: attributeTableByUpperName(ENTITIES_IFC2X3),
-  IFC4: attributeTableByUpperName(ENTITIES_IFC4),
+  // Checked against the IFC4 EXPRESS registry (#5204): no phantom rows, no `TagList`.
+  IFC4: attributeTableByUpperName(ENTITIES_IFC4_EXPRESS),
   IFC4X3: attributeTableByUpperName(ENTITIES_IFC4X3),
 };
 

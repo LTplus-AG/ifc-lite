@@ -1531,6 +1531,11 @@ jobs:
       # `.NOTDEFINED.`, and a hand-edit to either would leave no other trace.
       - name: Check IFC2X3 required-slot table freshness
         run: node scripts/generate-ifc2x3-required-slots.mjs --check
+      # Where @ifc-lite/data's C#-derived IFC4 entity table disagrees with the
+      # IFC4 EXPRESS schema (#5204). ENTITIES_IFC4_EXPRESS applies it, so a
+      # registry or table refresh must regenerate it or this fails.
+      - name: Check IFC4 EXPRESS corrections freshness
+        run: node scripts/generate-ifc4-express-corrections.mjs --check
       # The server-parse root-attribute table (attr_indices.rs) is generated
       # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
       # parse resolves names against. Guard that the committed file is in sync

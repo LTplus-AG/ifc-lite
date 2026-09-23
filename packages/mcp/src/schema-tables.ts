@@ -22,13 +22,15 @@
  * Later schemas still win when no schema is named, matching the parser's union.
  */
 
-import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
+import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
 import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
 
 /** Bundled schemas, oldest first. */
 const SCHEMA_TABLES: ReadonlyArray<readonly [string, readonly IfcEntityInfo[]]> = [
   ['IFC2X3', ENTITIES_IFC2X3],
-  ['IFC4', ENTITIES_IFC4],
+  // Checked against the IFC4 EXPRESS registry, so an agent asking about IFC4
+  // is not told about entities or attributes IFC4 lacks (#5204).
+  ['IFC4', ENTITIES_IFC4_EXPRESS],
   ['IFC4X3', ENTITIES_IFC4X3],
 ];
 

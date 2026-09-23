@@ -64,7 +64,18 @@ const PINNED: string[] = Object.keys(SCHEMA_REGISTRY.entities);
 const UNION_NAMES: string[] = [
   ...new Map(
     [ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3]
-      .flatMap((list) => list.map((entity) => [entity.name.toUpperCase(), entity.name] as const)),
+      // `ENTITIES_IFC4` (issue #5204) misfiles 15 draft-alignment-extension
+      // entity names into IFC4 that exist under NO name in either the
+      // EXPRESS-derived pin or the finalized `ENTITIES_IFC4X3` (which
+      // renamed them: `IfcAlignment2DHorizontal` → `IfcAlignmentHorizontal`,
+      // …). `ifc-schema.ts`'s production union applies the same filter —
+      // an `ENTITIES_IFC4` row only counts if `SCHEMA_REGISTRY.entities`
+      // (the EXPRESS oracle) also declares it — so this test's independent
+      // reconstruction of the union has to filter the same way, or it pins
+      // the bug as the expected answer instead of measuring production.
+      .flatMap((list) => list
+        .filter((entity) => list !== ENTITIES_IFC4 || entity.name in SCHEMA_REGISTRY.entities)
+        .map((entity) => [entity.name.toUpperCase(), entity.name] as const)),
   ).values(),
 ];
 

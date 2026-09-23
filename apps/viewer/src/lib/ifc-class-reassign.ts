@@ -14,7 +14,7 @@
 
 import {
   ENTITIES_IFC2X3,
-  ENTITIES_IFC4,
+  ENTITIES_IFC4_EXPRESS,
   ENTITIES_IFC4X3,
   type IfcEntityInfo,
 } from '@ifc-lite/data';
@@ -23,7 +23,7 @@ export type ReassignSchema = 'IFC2X3' | 'IFC4' | 'IFC4X3';
 
 const SCHEMA_LISTS: Record<ReassignSchema, readonly IfcEntityInfo[]> = {
   IFC2X3: ENTITIES_IFC2X3,
-  IFC4: ENTITIES_IFC4,
+  IFC4: ENTITIES_IFC4_EXPRESS, // checked against IFC4's EXPRESS schema (#5204)
   IFC4X3: ENTITIES_IFC4X3,
 };
 

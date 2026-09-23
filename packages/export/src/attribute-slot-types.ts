@@ -48,14 +48,14 @@ import {
   getAttributeNamesAcrossSchemas,
   resolveEntityNameAlias,
 } from '@ifc-lite/parser';
-import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
+import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
 import { escapeStepString, resolveExpressBase } from './step-serialization.js';
 
 /** Union of every bundled schema, later schemas winning — mirrors the fallback
  *  inside `getAttributeNamesAcrossSchemas` so the two agree on indices. */
 const UNION_BY_UPPER: Map<string, IfcEntityInfo> = (() => {
   const map = new Map<string, IfcEntityInfo>();
-  for (const list of [ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3]) {
+  for (const list of [ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3]) {
     for (const entity of list) map.set(entity.name.toUpperCase(), entity);
   }
   return map;

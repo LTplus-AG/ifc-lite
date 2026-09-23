@@ -21,8 +21,7 @@
  */
 
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
-import { deterministicGlobalId } from '@ifc-lite/parser';
-import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
+import { deterministicGlobalId, getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import { resolveUnrepresentedEntity } from './schema-untranslatable.js';
 import { BY_NAME_ATTR_REMAP_TYPES, remapRenamedAttributesByName } from './schema-converter-attr-remap.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
@@ -239,20 +238,19 @@ function chainMaps(
 }
 
 // Lazily-built UPPERCASE entity name → ordered positional attribute NAMES, per
-// schema, from the generated buildingSMART tables. `IfcEntityInfo.attributes` is
-// the full inherited+direct positional list (verified to match STEP counts:
-// IfcWall 8→9, IfcDoor 10→13, IfcMaterial 1→3, …).
+// schema, from the EXPRESS-derived registries: present iff the schema declares
+// it. `@ifc-lite/data`'s C# tables put 24 IFC4X3-only entities (and `TagList`)
+// under IFC4, which kept both the `IFCPROXY` route and the trim from firing
+// (#5204). IFC5 has no EXPRESS registry: `null` skips count adjustment.
 const ATTR_NAME_TABLES = new Map<IfcSchemaVersion, Map<string, readonly string[]>>();
 export function attrNameTable(schema: IfcSchemaVersion): Map<string, readonly string[]> | null {
   let table = ATTR_NAME_TABLES.get(schema);
   if (table) return table;
-  let entities: readonly IfcEntityInfo[] | null = null;
-  if (schema === 'IFC2X3') entities = ENTITIES_IFC2X3;
-  else if (schema === 'IFC4') entities = ENTITIES_IFC4;
-  else if (schema === 'IFC4X3') entities = ENTITIES_IFC4X3;
-  else return null; // IFC5 has no generated table — skip count adjustment
+  if (schema !== 'IFC2X3' && schema !== 'IFC4' && schema !== 'IFC4X3') return null;
   table = new Map<string, readonly string[]>();
-  for (const e of entities) table.set(e.name.toUpperCase(), e.attributes);
+  for (const [name, meta] of Object.entries(getSchemaRegistryForVersion(schema).entities)) {
+    table.set(name.toUpperCase(), (meta.allAttributes ?? meta.attributes).map((a) => a.name));
+  }
   ATTR_NAME_TABLES.set(schema, table);
   return table;
 }

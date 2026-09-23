@@ -4804,6 +4804,7 @@
     "ENTITIES_IFC2X3: const",
     "ENTITIES_IFC4: const",
     "ENTITIES_IFC4X3: const",
+    "ENTITIES_IFC4_EXPRESS: const",
     "Edge: interface",
     "EffectiveEntity: interface",
     "EffectiveEntityOverlay: interface",

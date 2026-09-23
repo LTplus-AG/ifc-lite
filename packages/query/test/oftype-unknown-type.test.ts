@@ -33,7 +33,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   ENTITIES_IFC2X3,
-  ENTITIES_IFC4,
+  ENTITIES_IFC4_EXPRESS,
   ENTITIES_IFC4X3,
   IFC_DATA_TYPES,
   type IfcStoreBase,
@@ -278,7 +278,9 @@ describe('ofType() accepts every entity name in every schema this build reads', 
 
   for (const [schema, table] of [
     ['IFC2X3', ENTITIES_IFC2X3],
-    ['IFC4', ENTITIES_IFC4],
+    // Not the raw ENTITIES_IFC4: its alignment-extension rows are entities
+    // IFC4 does not declare, which the guard rightly rejects (#5204).
+    ['IFC4', ENTITIES_IFC4_EXPRESS],
     ['IFC4X3', ENTITIES_IFC4X3],
   ] as const) {
     it(`accepts every ${schema} entity name`, () => {

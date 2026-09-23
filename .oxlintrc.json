@@ -79,8 +79,34 @@
     "eslint/no-unsafe-optional-chaining": "warn",
     "eslint/no-loss-of-precision": "error",
     "oxc/erasing-op": "off",
-    "oxc/only-used-in-recursion": "warn"
+    "oxc/only-used-in-recursion": "warn",
+    // #5204: `@ifc-lite/data`'s raw ENTITIES_IFC4 lists 24 entities IFC4 does
+    // not declare and a `TagList` IFC4 never had. Production code reads the
+    // checked table instead; the overrides below are the files allowed the
+    // raw one, each for a stated reason.
+    "no-restricted-imports": ["error", {
+      "paths": [{
+        "name": "@ifc-lite/data",
+        "importNames": ["ENTITIES_IFC4"],
+        "message": "Import ENTITIES_IFC4_EXPRESS instead: the raw IFC4 table carries entities and attributes IFC4 does not declare (#5204)."
+      }]
+    }]
   },
+  "overrides": [
+    {
+      // codegen, whose IFC4_FAMILY catalog is generated from the raw table as
+      // committed; and tests, which use the raw table as a fixture or as the
+      // thing under test. Inside @ifc-lite/data the table is a relative
+      // import, which this rule does not match.
+      "files": [
+        "packages/codegen/src/generator.ts",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/test/**"
+      ],
+      "rules": { "no-restricted-imports": "off" }
+    }
+  ],
   "ignorePatterns": [
     "**/dist/**",
     "**/pkg/**",

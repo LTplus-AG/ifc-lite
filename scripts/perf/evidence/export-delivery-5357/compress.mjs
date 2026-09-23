@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 // #5357 observation reproducer; fetch the pinned WASM URL with each encoding first.
 // Run in the directory containing identity.wasm, br.wasm and gzip.wasm.
 import { readFileSync, writeFileSync } from 'node:fs';

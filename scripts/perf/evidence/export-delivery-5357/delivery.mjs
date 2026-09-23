@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 import {createRequire} from 'node:module';import{readFileSync,writeFileSync}from'node:fs';
 const require=createRequire('/home/louistrue/.t3/worktrees/ifc-lite/t3code-41de0393/package.json');const{chromium}=require('@playwright/test');
 const browser=await chromium.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox']});

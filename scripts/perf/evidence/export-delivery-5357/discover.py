@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 import re,urllib.request,urllib.parse,json,concurrent.futures
 origin='https://www.ifclite.com'
 html=open('/tmp/ifc-export-spikes/viewer.html').read()

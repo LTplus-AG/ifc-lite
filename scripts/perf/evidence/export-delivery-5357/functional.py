@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 import subprocess,os,json,pathlib,hashlib,time
 p=pathlib.Path('/tmp/ifc-export-spikes');root=pathlib.Path('/home/louistrue/.t3/worktrees/ifc-lite/t3code-41de0393');out=p/'cohort-functional';out.mkdir(exist_ok=False)
 fixtures=['ara3d/AC20-FZK-Haus.ifc','ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc','ara3d/ISSUE_098_R8_F1_MAB_AR_M3_XX_XXX_MO_7000.IFC','ara3d/ISSUE_053_20181220Holter_Tower_10.ifc','issues/472_2222.ifc']

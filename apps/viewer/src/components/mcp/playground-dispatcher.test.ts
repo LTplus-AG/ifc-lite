@@ -165,6 +165,95 @@ describe('count_entities group_by:type universe (#3765)', () => {
   });
 });
 
+describe('playground discovery follows pending entity edits (#5249)', () => {
+  it('updates summaries, GlobalId lookup, and georeferencing after create, delete, and retype', async () => {
+    const model = await schemaOnlyModel('0aBcDeFgHiJkLmNoPqRsT5');
+    const initial = await dispatch(model, 'model_info', {});
+    const initialCount = (initial.structured as { entityCount: number }).entityCount;
+
+    const created = await dispatch(model, 'entity_create', {
+      type: 'IfcMapConversion', attributes: [],
+    });
+    assert.equal(created.isError, false);
+    const createdId = (created.structured as { expressId: number }).expressId;
+    const afterCreate = await dispatch(model, 'model_info', {});
+    assert.equal((afterCreate.structured as { entityCount: number }).entityCount, initialCount + 1);
+    assert.ok((afterCreate.structured as { typeCountsTop20: Array<{ type: string; count: number }> })
+      .typeCountsTop20.some((row) => row.type === 'IfcMapConversion' && row.count === 1));
+    assert.match((await dispatch(model, 'georeferencing', {})).text, /1 IfcMapConversion/);
+
+    const deleted = await dispatch(model, 'entity_delete', { express_id: createdId });
+    assert.equal(deleted.isError, false);
+    const afterDelete = await dispatch(model, 'model_list', {});
+    assert.equal((afterDelete.structured as { models: Array<{ entityCount: number }> }).models[0].entityCount, initialCount);
+    assert.match((await dispatch(model, 'georeferencing', {})).text, /no IfcMapConversion/);
+
+    const wallId = [...model.store.entityIndex.byType.get('IFCWALL') ?? []][0];
+    const view = model.backend.getMutationView();
+    assert.ok(view);
+    view.setEntityType(wallId, 'IfcDoor', null, 'IfcWall');
+    const afterRetype = await dispatch(model, 'model_info', {});
+    assert.ok((afterRetype.structured as { typeCountsTop20: Array<{ type: string; count: number }> })
+      .typeCountsTop20.some((row) => row.type === 'IfcDoor' && row.count === 1));
+    assert.ok(!(afterRetype.structured as { typeCountsTop20: Array<{ type: string; count: number }> })
+      .typeCountsTop20.some((row) => row.type === 'IfcWall'));
+  });
+
+  it('resolves created GlobalIds, excludes deleted source GlobalIds, and isolates model diffs', async () => {
+    const left = await schemaOnlyModel('0aBcDeFgHiJkLmNoPqRsT6');
+    const right = await schemaOnlyModel('0aBcDeFgHiJkLmNoPqRsT7');
+    const created = await dispatch(right, 'entity_create', {
+      type: 'IfcWall', attributes: ['0aBcDeFgHiJkLmNoPqRsT8', null, 'Created wall'],
+    });
+    assert.equal(created.isError, false);
+    const createdId = (created.structured as { expressId: number }).expressId;
+    const fetched = await dispatch(right, 'get_entity', { global_id: '0aBcDeFgHiJkLmNoPqRsT8' });
+    assert.equal(fetched.isError, false);
+    assert.equal((fetched.structured as { ref: { expressId: number } }).ref.expressId, createdId);
+
+    const diff = await dispatch(left, 'model_diff', { a: left.id, b: right.id }, {
+      registry: new Map([[right.id, right]]),
+    });
+    assert.equal(diff.isError, false);
+    assert.deepEqual((diff.structured as { typeDiffs: unknown }).typeDiffs,
+      [{ type: 'IfcWall', left: 1, right: 2, delta: 1 }]);
+
+    const sourceId = [...right.store.entityIndex.byType.get('IFCWALL') ?? []][0];
+    await dispatch(right, 'entity_delete', { express_id: sourceId });
+    const missing = await dispatch(right, 'get_entity', { global_id: '0aBcDeFgHiJkLmNoPqRsT7' });
+    assert.equal(missing.isError, true);
+    assert.equal(missing.errorCode, ToolErrorCode.ENTITY_NOT_FOUND);
+  });
+
+  it('validates the live IDS entity set after a wall is created and another deleted', async () => {
+    const model = await schemaOnlyModel('0aBcDeFgHiJkLmNoPqRsT9');
+    const xml = `<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+      <info><title>Walls</title></info><specifications>
+      <specification name="Named walls" ifcVersion="IFC4">
+        <applicability><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+        <requirements><attribute><name><simpleValue>Name</simpleValue></name></attribute></requirements>
+      </specification></specifications></ids>`;
+    const summary = async () => {
+      const result = await dispatch(model, 'ids_validate', { ids_xml: xml });
+      assert.equal(result.isError, false, result.text);
+      const { totalEntities, passedEntities, failedEntities } =
+        (result.structured as { summary: { totalEntities: number; passedEntities: number; failedEntities: number } }).summary;
+      return { totalEntities, passedEntities, failedEntities };
+    };
+    assert.deepEqual(await summary(), { totalEntities: 1, passedEntities: 1, failedEntities: 0 });
+
+    const created = await dispatch(model, 'entity_create', {
+      type: 'IfcWall', attributes: ['0aBcDeFgHiJkLmNoPqRsTA', null, 'New wall'],
+    });
+    assert.equal(created.isError, false);
+    assert.deepEqual(await summary(), { totalEntities: 2, passedEntities: 2, failedEntities: 0 });
+
+    const sourceId = [...model.store.entityIndex.byType.get('IFCWALL') ?? []][0];
+    await dispatch(model, 'entity_delete', { express_id: sourceId });
+    assert.deepEqual(await summary(), { totalEntities: 1, passedEntities: 1, failedEntities: 0 });
+  });
+});
+
 /**
  * #4738: `export_ifc` here is the playground twin of the stdio MCP tool, and
  * it was the one caller of `bim.export.ifc()` with NO zero-match guard of its

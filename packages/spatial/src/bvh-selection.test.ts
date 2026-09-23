@@ -37,4 +37,20 @@ describe('selectMedian', () => {
     for (const _ of selectMedian(equal, 0, equal.length, 1024, (a, b) => a - b)) { /* drain */ }
     expect(equal).toEqual(Array(2049).fill(7));
   });
+
+  it('keeps the worst-case fallback resumable and exact when the work cap is reached', () => {
+    const n = 20_001;
+    const values = Array.from({ length: n }, (_, i) => i);
+    let comparisons = 0, checkpoints = 0;
+    // A zero cap forces the fallback after the first partition. This verifies
+    // the bounded path directly, without relying on a machine-speed threshold.
+    for (const _ of selectMedian(values, 0, n, Math.floor(n / 2), (a, b) => {
+      comparisons++;
+      return a - b;
+    }, 0)) checkpoints++;
+    expect(values[Math.floor(n / 2)]).toBe(Math.floor(n / 2));
+    expect(values).toEqual(Array.from({ length: n }, (_, i) => i));
+    expect(comparisons).toBeGreaterThan(100_000);
+    expect(checkpoints).toBeGreaterThan(100);
+  });
 });

@@ -549,12 +549,14 @@ describe('BVH property harness — tree query vs. brute-force leaf oracle', () =
     let aabbChecked = 0, rayChecked = 0, frustumChecked = 0;
 
     for (let c = 0; c < configs; c++) {
-      const n = 1 + Math.floor(rng() * 25);
+      // The last configuration crosses the >1024 async partition threshold;
+      // the small cases alone exercise only its synchronous-node fast path.
+      const n = c === configs - 1 ? 2049 : 1 + Math.floor(rng() * 25);
       const mag = [1, 100, 1e5][c % 3];
       const meshes: MeshWithBounds[] = [];
       for (let i = 0; i < n; i++) meshes.push({ expressId: i + 1, bounds: randomBox(rng, mag) });
       // Occasional duplicate expressId (submeshes sharing one element id).
-      if (rng() < 0.3 && meshes.length > 1) {
+      if (meshes.length > 1 && (c === configs - 1 || rng() < 0.3)) {
         meshes.push({ expressId: meshes[0].expressId, bounds: randomBox(rng, mag) });
       }
       const bvh = BVH.build(meshes);

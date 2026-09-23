@@ -10,12 +10,12 @@
 export function* selectMedian(
   indices: number[], start: number, end: number, target: number,
   compare: (a: number, b: number) => number,
+  maxPartitionWork = 8 * (end - start),
 ): Generator<void> {
-  const workLimit = 8 * (end - start);
   let work = 0;
   let checkpoint = 0;
   while (end - start > 1) {
-    if (work > workLimit) {
+    if (work >= maxPartitionWork) {
       yield* heapSort(indices, start, end, compare);
       return;
     }

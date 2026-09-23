@@ -72,18 +72,17 @@ export interface SetCheckOutcome {
   setResults?: SetResult[];
   setResultsTruncated?: boolean;
   /**
-   * `aggregate` only (#5177): the number of groups whose aggregate value
-   * failed the `op`/`value` test, counted BEFORE `setResults` is capped at
-   * `SET_RESULT_CAP` so it stays exact even when `setResultsTruncated` is
-   * true. `checkAggregate` writes an `EntityResult` only for a member whose
-   * OWN subject value is absent/non-numeric — never for a member of a
-   * group whose AGGREGATE fails, and never at all for `fn: 'count'` — so
-   * `entityResults` alone cannot tell `finalizeSpecification` that such a
-   * group failed. `checkUnique` needs no equivalent: every duplicate
-   * member already gets a failing `EntityResult` (`entityResults` above is
-   * complete for that kind).
+   * `aggregate` only (#5177): the number of DISTINCT applicable elements that
+   * fail the rule, i.e. every element excluded for an absent/non-numeric
+   * subject plus every member of a group whose aggregate fails — the same
+   * attribution `checkUnique` makes by giving every duplicate member a
+   * failing row. `checkAggregate` does not emit a row per failing-group
+   * member (a whole federation's worth of rows for no reporting value), so
+   * `entityResults` alone under-counts; this is the count it would have had.
+   * Taken on the full, pre-cap `setResults`, so it stays exact when
+   * `setResultsTruncated` is true.
    */
-  failedGroupCount?: number;
+  failedElementCount?: number;
 }
 
 export async function checkUnique(
@@ -341,11 +340,19 @@ export async function checkAggregate(
       members: acc.members,
     });
   }
-  // Counted on the FULL (pre-cap) list — see `failedGroupCount`'s doc.
-  const failedGroupCount = setResults.filter((s) => !s.passed).length;
+  // Counted on the FULL (pre-cap) list — see `failedElementCount`'s doc. A
+  // key set, because an element can sit in several groups (groupBy material).
+  const failedElements = new Set(entityResults.map((r) => `${r.modelId}:${r.expressId}`));
+  for (const set of setResults) {
+    if (set.passed) continue;
+    for (const m of set.members) failedElements.add(`${m.modelId}:${m.expressId}`);
+  }
   orderSetResultsForCap(setResults);
   const setResultsTruncated = setResults.length > SET_RESULT_CAP;
-  return { setResults: setResults.slice(0, SET_RESULT_CAP), setResultsTruncated, entityResults, failedGroupCount };
+  return {
+    setResults: setResults.slice(0, SET_RESULT_CAP), setResultsTruncated, entityResults,
+    failedElementCount: failedElements.size,
+  };
 }
 
 /** Failing groups first, then largest first. The cap slices from the front,

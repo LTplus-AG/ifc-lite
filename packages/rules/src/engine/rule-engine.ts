@@ -190,41 +190,26 @@ function finalizeSpecification(
   // worth of passing rows would dwarf the report for no reporting value),
   // so their `passedCount` is the complement against `applicableCount`.
   //
-  // #5177: for `unique`, `failedEntities` alone is a complete signal —
-  // `checkUnique` gives every duplicate member a failing `EntityResult`
-  // (`rule-engine-sets.ts`'s `checkUnique`), so the complement is exact.
-  // For `aggregate` it is NOT: `checkAggregate` never writes a row for a
-  // member of a group that fails on its AGGREGATE value (only for a
-  // member whose own subject value is absent/non-numeric), and writes no
-  // rows at all for `fn: 'count'`. Left alone, a failing aggregate group
-  // with no individually-excluded member left `failedEntities === 0` while
-  // `setsFail` made `status` `'fail'` — `passedCount` collapsed to
-  // `applicableCount` and `passRate` read `100` next to a fail icon.
-  // Folding `outcome.failedGroupCount` (exact count of failing groups,
-  // computed pre-cap in `checkAggregate`) into `failedCount` closes that
-  // gap: whenever `setsFail` is true for an aggregate rule, at least one
-  // group failed, so `failedGroupCount >= 1`, `failedCount >= 1`, and
-  // `passRate < 100` follows for any `applicableCount > 0` — `status` and
-  // `passRate` can no longer disagree the way this issue reported.
+  // `aggregate` is the exception to "rows are complete for failures": it
+  // emits no row for a member of a group that fails on its aggregate value
+  // (none at all for `fn: 'count'`), so it reports the distinct failing
+  // element count alongside (#5177). Reading `failedEntities` there left a
+  // failing aggregate rule at `failedCount: 0` / `passRate: 100`.
   const isPerElementKind = rule.requirement.kind === 'element' || rule.requirement.kind === 'compare';
-  const isAggregateKind = rule.requirement.kind === 'aggregate';
-  const failedGroups = isAggregateKind ? (outcome.failedGroupCount ?? 0) : 0;
-  const failedCount = failedEntities + failedGroups;
+  const failedCount = outcome.failedElementCount ?? failedEntities;
   const passedCount = isPerElementKind ? passedEntities : Math.max(0, applicableCount - failedCount);
 
   const anyFail = failedCount > 0 || setsFail || cardinalityResult?.passed === false;
   const status: SpecificationResult['status'] = applicableCount === 0
     ? (cardinalityResult?.passed === false ? 'fail' : cardinalityResult?.passed === true ? 'pass' : 'not_applicable')
     : (anyFail ? 'fail' : 'pass');
-  // `applicableCount === 0` never runs the pass-rate math above (there is
-  // nothing to rate) — but a `'fail'` status is still reachable there via
-  // `cardinalityResult` alone (e.g. `minApplicable` unmet by zero matches),
-  // and a hardcoded `100` there would reopen the exact status/passRate
-  // disagreement this fix closes elsewhere. `0` on that fail path keeps
-  // the same invariant: `status === 'fail'` never reads a `100%` bar.
-  const passRate = applicableCount > 0
-    ? Math.floor((passedCount / applicableCount) * 100)
-    : (status === 'fail' ? 0 : 100);
+  // A failure no applicable element carries — an unmet/exceeded cardinality,
+  // or an aggregate group seeded by `universe` with zero members — leaves the
+  // element arithmetic at 100 (or has nothing to rate). `status` and
+  // `passRate` must never disagree, so a failing spec never reads 100: the
+  // same rule `@ifc-lite/ids`'s `validateSpecification` applies (#5212).
+  const elementRate = applicableCount > 0 ? Math.floor((passedCount / applicableCount) * 100) : 100;
+  const passRate = status === 'fail' && elementRate === 100 ? 0 : elementRate;
 
   return {
     specification, status, applicableCount, passedCount, failedCount, passRate,

@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { IfcParser, extractPropertiesOnDemand } from '@ifc-lite/parser';
-import { MutablePropertyView } from '@ifc-lite/mutations';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
 import { StepExporter } from './step-exporter.js';
 
@@ -82,5 +82,46 @@ describe('StepExporter — shared property atoms (issue #1413)', () => {
     // shared atom carries its original value (not the edit).
     expect(propertyValue(out, 'Pset_B', 'Shared')).toBe('orig');
     expect(propertyValue(out, 'Pset_A', 'Shared')).toBe('orig');
+  });
+
+  it('does not rescue a skipped atom for a tombstoned source pset (#5249)', async () => {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer, { disableWorkerScan: true });
+    const view = new MutablePropertyView(null, 'm');
+    view.setOnDemandExtractor((id: number) => extractPropertiesOnDemand(store, id));
+    view.deletePropertySet(10, 'Pset_A');
+    view.deleteEntity(31);
+
+    const out = decode(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content);
+    expect(out).not.toMatch(/(^|\n)\s*#30\s*=/);
+    expect(out).not.toMatch(/(^|\n)\s*#31\s*=/);
+    // #20 was withheld with Pset_A. Deleted Pset_B cannot keep it alive.
+    expect(out).not.toMatch(/(^|\n)\s*#20\s*=/);
+    expect(danglingRefs(out)).toEqual([]);
+  });
+
+  it('rescues a skipped source atom referenced by a created pset (#5249)', async () => {
+    const source = IFC.replace(/^#31=.*\n/m, '').replace(/^#41=.*\n/m, '');
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer, { disableWorkerScan: true });
+    const view = new MutablePropertyView(null, 'm');
+    view.setOnDemandExtractor((id: number) => extractPropertiesOnDemand(store, id));
+    view.deletePropertySet(10, 'Pset_A');
+    new StoreEditor(store, view).addEntity('IfcPropertySet', ['0newpset00000000000000', null, 'New Pset', null, ['#20']]);
+
+    const out = decode(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content);
+    expect(out).toMatch(/(^|\n)\s*#20\s*=/);
+    expect(danglingRefs(out)).toEqual([]);
+  });
+
+  it('does not rescue a skipped atom for a source pset retyped away (#5249)', async () => {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer, { disableWorkerScan: true });
+    const view = new MutablePropertyView(null, 'm');
+    view.setOnDemandExtractor((id: number) => extractPropertiesOnDemand(store, id));
+    view.deletePropertySet(10, 'Pset_A');
+    expect(new StoreEditor(store, view).setEntityType(31, 'IfcWall')).toBe(true);
+
+    const out = decode(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content);
+    expect(out).toMatch(/(^|\n)\s*#31\s*=IFCWALL\(/);
+    expect(out).not.toMatch(/(^|\n)\s*#20\s*=/);
+    expect(danglingRefs(out)).toEqual([]);
   });
 });

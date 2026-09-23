@@ -32,7 +32,9 @@ import { createDataAccessor } from '@ifc-lite/ids/bridge';
 
 import {
   overlayResolverFromSnapshot,
+  entityVisibilityFromSnapshot,
   type PropertyOverlaySnapshot,
+  type EntityVisibilitySnapshot,
 } from '@/lib/ids/property-overlay-snapshot';
 
 export interface IdsWorkerRequest {
@@ -61,6 +63,16 @@ export interface IdsWorkerRequest {
    * no-overlay path this worker always took.
    */
   propertyOverlay?: PropertyOverlaySnapshot;
+  /**
+   * The model's pending tombstones and surviving overlay-created entity
+   * ids, as plain clonable data (#5184). Same reasoning as
+   * `propertyOverlay` above: the worker re-parses `source`, which still
+   * has a since-deleted entity's bytes and lacks a since-created entity's,
+   * so `getAllEntityIds` needs this to answer the same question the
+   * main-thread accessor does. Absent/empty means "nothing to exclude or
+   * add", the byte-identical no-visibility-view path.
+   */
+  entityVisibility?: EntityVisibilitySnapshot;
 }
 
 export type IdsWorkerResponse =
@@ -103,7 +115,8 @@ self.onmessage = async (event: MessageEvent<IdsWorkerRequest>) => {
     // similar.
     const accessor = createDataAccessor(
       store,
-      overlayResolverFromSnapshot(req.propertyOverlay)
+      overlayResolverFromSnapshot(req.propertyOverlay),
+      entityVisibilityFromSnapshot(req.entityVisibility)
     );
     const translator = createTranslationService(req.locale);
 

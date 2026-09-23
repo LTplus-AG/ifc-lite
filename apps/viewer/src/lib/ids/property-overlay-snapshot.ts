@@ -44,23 +44,27 @@
  * `MutablePropertyView.hasPendingChanges()` is true for eleven kinds of
  * overlay state (quantity edits, attribute edits, positional attribute
  * edits, retypes, pset/qset creates and deletes, overlay-created entities,
- * tombstones, as well as property edits). This snapshot carries only the
- * scalar property overrides.
+ * tombstones, as well as property edits). `PropertyOverlaySnapshot` carries
+ * only the scalar property overrides. `EntityVisibilitySnapshot` (below)
+ * carries the entity-membership half: tombstones, overlay-created entities
+ * (class and authored attributes) and retypes. The worker re-parses
+ * `source`, so without it a deleted entity is still validated and a created
+ * one is never seen (#5184). Quantity edits and attribute edits remain
+ * unreflected, because the bridge's `createDataAccessor(store, overlay,
+ * visibility)` has no parameter that would consult them.
  *
- * That matches what the accessor could ever have reflected. The bridge's
- * `createDataAccessor(store, overlay)` consults the overlay in exactly two
- * methods — `getPropertyValue` and `getPropertySets`; every other read
- * (attributes, classifications, materials, partOf, predefined types,
- * entity type) goes straight to the `IfcDataStore`, which the mutation
- * overlay never writes into. So the pre-#3946 main-thread path did not
- * reflect the other ten kinds either: routing a retype or a tombstone to
- * the main thread bought nothing it could show. Only property edits were
- * ever visible, and property edits are exactly what crosses here.
+ * The bridge consults `propertyOverlay` in `getPropertyValue` and
+ * `getPropertySets`. It consults `entityVisibility` for enumeration
+ * (`getAllEntityIds`, `getEntitiesByType`), for the effective class
+ * (`getEntityType`) and for a created entity's attributes. Every other read
+ * (classifications, materials, partOf, predefined types) goes straight to
+ * the `IfcDataStore`, which the mutation overlay never writes into.
  */
 
 import type {
   PropertyOverride,
   PropertyOverlayResolver,
+  EntityVisibilityView,
 } from '@ifc-lite/ids/bridge';
 import type { Mutation, MutablePropertyView } from '@ifc-lite/mutations';
 
@@ -199,4 +203,70 @@ export function overlayResolverFromSnapshot(
   if (!snapshot || snapshot.length === 0) return undefined;
   const byEntity = new Map<number, PropertyOverride[]>(snapshot);
   return (expressId: number) => byEntity.get(expressId);
+}
+
+/**
+ * Entity-membership half of the overlay, snapshotted the same way property
+ * overrides are above (#5184): the worker re-parses `source`, so its store
+ * still has a tombstoned entity's bytes and lacks an overlay-created one's.
+ * That is exactly the pre-overlay state the main-thread `dataStore` is in
+ * too, which is why the same data closes the gap on both realms.
+ *
+ * Plain arrays (not a `Set` or `Map`) for the same reason
+ * `PropertyOverlaySnapshot` is an array of pairs: structured-clone- and
+ * JSON-safe, and comparable with a deep-equal in a test.
+ */
+export interface EntityVisibilitySnapshot {
+  /** `view.getTombstones()`, as a plain array. */
+  tombstones: number[];
+  /** `view.getNewEntities()`: id, authored class and positional attributes. */
+  newEntities: Array<{ expressId: number; type: string; attributes: unknown[] }>;
+  /** `view.getTypeMutations()`, as `[expressId, newType]` pairs. */
+  retypes: Array<[number, string]>;
+}
+
+/**
+ * Freeze the view's entity membership into clonable data. Main-thread only,
+ * because it needs the live `MutablePropertyView`. Cost is O(tombstones +
+ * created + retyped entities), not O(model size).
+ */
+export function snapshotEntityVisibility(
+  view: MutablePropertyView
+): EntityVisibilitySnapshot {
+  return {
+    tombstones: Array.from(view.getTombstones()),
+    newEntities: view.getNewEntities().map((e) => ({
+      expressId: e.expressId,
+      type: e.type,
+      attributes: structuredClone(e.attributes),
+    })),
+    retypes: Array.from(view.getTypeMutations(), ([id, m]): [number, string] => [id, m.newType]),
+  };
+}
+
+/**
+ * Rebuild the bridge's `EntityVisibilityView` from a snapshot. Realm-
+ * neutral: plain data in, plain object out, no `MutablePropertyView` at
+ * runtime, so the worker can call it.
+ *
+ * Returns `undefined` for an absent snapshot (or one with nothing to
+ * report), so the caller hands the bridge no entity-visibility view at
+ * all. That is the unchanged no-overlay path.
+ */
+export function entityVisibilityFromSnapshot(
+  snapshot: EntityVisibilitySnapshot | undefined
+): EntityVisibilityView | undefined {
+  if (
+    !snapshot
+    || (snapshot.tombstones.length === 0 && snapshot.newEntities.length === 0 && snapshot.retypes.length === 0)
+  ) {
+    return undefined;
+  }
+  const tombstones = new Set(snapshot.tombstones);
+  const retypes = new Map(snapshot.retypes.map(([id, newType]) => [id, { newType }]));
+  return {
+    isDeleted: (expressId) => tombstones.has(expressId),
+    getNewEntities: () => snapshot.newEntities,
+    getTypeMutations: () => retypes,
+  };
 }

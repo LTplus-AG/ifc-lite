@@ -14,15 +14,18 @@
  *    ship a reverted correction to the worker as if it were still active —
  *    the #3929 bug, reintroduced in a realm where it is harder to see.
  *
- * 2. **It carries ONLY property overrides.** That is what makes routing an
- *    edited model to the worker equivalent to validating it on the main
- *    thread rather than merely similar: the bridge accessor consults the
- *    overlay in `getPropertyValue`/`getPropertySets` and nowhere else, so the
- *    other ten kinds of state `hasPendingChanges()` reports (attribute edits,
- *    retypes, quantities, tombstones, ...) were never visible to IDS
- *    validation on EITHER path. If a snapshot silently started carrying them
- *    the two realms would still agree, but the claim in this file's callers
- *    would stop being the reason why.
+ * 2. **`snapshotPropertyOverlay` carries ONLY property overrides.** The
+ *    bridge accessor consults `propertyOverlay` in `getPropertyValue`/
+ *    `getPropertySets` and nowhere else, so nine of the eleven kinds of
+ *    state `hasPendingChanges()` reports (attribute edits, retypes,
+ *    quantities, ...) are still invisible to IDS validation on EITHER
+ *    path via THIS snapshot. Tombstones, overlay-created entities and
+ *    retypes are carried by `snapshotEntityVisibility`, tested below,
+ *    instead (#5184), because `entityVisibility` is a SEPARATE parameter the
+ *    bridge consults for entity membership and class. If either
+ *    snapshot silently started carrying more the two realms would still
+ *    agree, but the claim in this file's callers would stop being the
+ *    reason why.
  *
  * Expectations here are written out literally rather than derived from the
  * functions under test, so a defect in the projection cannot also move the
@@ -37,6 +40,8 @@ import { PropertyValueType } from '@ifc-lite/data';
 import {
   snapshotPropertyOverlay,
   overlayResolverFromSnapshot,
+  snapshotEntityVisibility,
+  entityVisibilityFromSnapshot,
 } from './property-overlay-snapshot.js';
 
 function view(): MutablePropertyView {
@@ -178,5 +183,58 @@ describe('overlayResolverFromSnapshot', () => {
     assert.equal(resolver(7)?.[0].value, 'F90');
     assert.equal(resolver(8)?.[0].value, 'F30');
     assert.equal(resolver(9), undefined);
+  });
+});
+
+describe('snapshotEntityVisibility / entityVisibilityFromSnapshot (#5184)', () => {
+  it('is undefined for a view with nothing tombstoned, created or retyped, so the caller takes the no-visibility-view path', () => {
+    assert.equal(entityVisibilityFromSnapshot(snapshotEntityVisibility(view())), undefined);
+  });
+
+  it('round-trips a tombstone through structuredClone, excluding it via isDeleted', () => {
+    const v = view();
+    v.deleteEntity(7);
+
+    const snapshot = structuredClone(snapshotEntityVisibility(v));
+    assert.deepEqual(snapshot, { tombstones: [7], newEntities: [], retypes: [] });
+
+    const visibility = entityVisibilityFromSnapshot(snapshot)!;
+    assert.equal(visibility.isDeleted(7), true);
+    assert.equal(visibility.isDeleted(8), false);
+    assert.deepEqual(visibility.getNewEntities(), []);
+  });
+
+  it('round-trips an overlay-created entity with its class and authored attributes', () => {
+    const v = view();
+    const created = v.createEntity('IfcWall', ['2Wall00000000000000003', null, 'Wall_C']);
+
+    const snapshot = structuredClone(snapshotEntityVisibility(v));
+    assert.deepEqual(snapshot, {
+      tombstones: [],
+      newEntities: [{ expressId: created.expressId, type: 'IfcWall', attributes: ['2Wall00000000000000003', null, 'Wall_C'] }],
+      retypes: [],
+    });
+
+    const visibility = entityVisibilityFromSnapshot(snapshot)!;
+    assert.deepEqual(visibility.getNewEntities(), snapshot.newEntities);
+    assert.equal(visibility.isDeleted(created.expressId), false);
+  });
+
+  it('carries a retype so the worker lists the entity under its new class', () => {
+    const v = view();
+    v.setEntityType(12, 'IfcWall', undefined, 'IfcDoor');
+
+    const snapshot = structuredClone(snapshotEntityVisibility(v));
+    assert.deepEqual(snapshot.retypes, [[12, 'IfcWall']]);
+    assert.equal(entityVisibilityFromSnapshot(snapshot)!.getTypeMutations!().get(12)?.newType, 'IfcWall');
+  });
+
+  it('a created-then-deleted entity is tombstoned and absent from newEntities (matches MutablePropertyView.deleteEntity)', () => {
+    const v = view();
+    const created = v.createEntity('IFCWALL', []);
+    v.deleteEntity(created.expressId);
+
+    const snapshot = snapshotEntityVisibility(v);
+    assert.deepEqual(snapshot, { tombstones: [created.expressId], newEntities: [], retypes: [] });
   });
 });

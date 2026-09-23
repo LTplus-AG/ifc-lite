@@ -7,7 +7,11 @@ import {
   extractAllEntityAttributes,
   extractAllMaterialsOnDemand,
 } from '@ifc-lite/parser';
-import { RelationshipType, getAttributeXsdTypes } from '@ifc-lite/data';
+import {
+  RelationshipType,
+  getAttributeXsdTypes,
+  iterateEffectiveEntities,
+} from '@ifc-lite/data';
 
 import type {
   IFCDataAccessor,
@@ -32,8 +36,11 @@ import {
   resolveRawPredefinedType,
 } from './predefined-types.js';
 import { narrowSchemaVersion } from './schema-version.js';
+import { overlayEntityLookup, type EntityVisibilityView } from './entity-visibility.js';
 
 export type { PropertyOverride, PropertyOverlayResolver };
+
+export type { EntityVisibilityView };
 
 // `PropertyOverride`/`PropertyOverlayResolver` are re-exported above from
 // ./property-overlay-resolver.js; the PartOf relation map and ancestor BFS
@@ -58,11 +65,25 @@ export type { PropertyOverride, PropertyOverlayResolver };
  * `getPropertyValue`/`getPropertySets` immediately, without re-parsing the
  * store. Every other read (attributes, classifications, materials, partOf)
  * is unaffected — only the two property-reading methods below consult it.
+ *
+ * `entityVisibility` is optional and, when supplied, makes the accessor
+ * answer for the session's EFFECTIVE model (#5184, #5249). `getAllEntityIds`
+ * and `getEntitiesByType` enumerate through the shared effective-entity
+ * accessor: tombstoned entities are excluded, overlay-created entities are
+ * included under their class, and a retyped entity is listed under its new
+ * class. `getEntityType` answers the same effective class, because the
+ * validator confirms every candidate through it. A created entity's
+ * attributes are read from its authored payload (see `./entity-visibility.ts`).
+ * Omitting `entityVisibility` leaves both enumerations reading the parsed
+ * index unchanged.
  */
 export function createDataAccessor(
   store: IfcDataStore,
-  propertyOverlay?: PropertyOverlayResolver
+  propertyOverlay?: PropertyOverlayResolver,
+  entityVisibility?: EntityVisibilityView
 ): IFCDataAccessor {
+  const overlay = entityVisibility ? overlayEntityLookup(entityVisibility) : null;
+
   // Memoize per-entity attribute extraction. extractAllEntityAttributes
   // re-parses the entity from the raw source buffer on every call, and the
   // validator hits Name/GlobalId/Description/getAttribute(Names) for the same
@@ -77,7 +98,7 @@ export function createDataAccessor(
   ): Array<{ name: string; value: string | number | boolean }> {
     let all = attrCache.get(expressId);
     if (!all) {
-      all = extractAllEntityAttributes(store, expressId);
+      all = overlay?.createdAttributes(expressId) ?? extractAllEntityAttributes(store, expressId);
       attrCache.set(expressId, all);
     }
     return all;
@@ -107,6 +128,8 @@ export function createDataAccessor(
 
   const accessor: IFCDataAccessor = {
     getEntityType(expressId: number): string | undefined {
+      const overlaid = overlay?.typeOf(expressId);
+      if (overlaid) return overlaid;
       // The columnar entity table only summarises "interesting"
       // entities (spatial, building elements, etc.); resource-level
       // types resolve to `'Unknown'` there. Fall back to the raw
@@ -115,6 +138,7 @@ export function createDataAccessor(
       const entityType = store.entities?.getTypeName?.(expressId);
       if (entityType && entityType !== 'Unknown') return entityType;
 
+      // @raw-entity-enumeration-ok point lookup of one source record's parsed class; created and retyped ids were answered from the overlay above
       const byId = store.entityIndex?.byId;
       if (!byId) return undefined;
       const entry = byId.get(expressId);
@@ -137,6 +161,8 @@ export function createDataAccessor(
     },
 
     getGlobalId(expressId: number): string | undefined {
+      const created = overlay?.globalIdOf(expressId);
+      if (created) return created;
       const fromAttr = findAttributeValue(expressId, 'GlobalId');
       if (fromAttr !== undefined && typeof fromAttr === 'string') return fromAttr;
       const g = store.entities?.getGlobalId?.(expressId);
@@ -199,13 +225,13 @@ export function createDataAccessor(
     },
 
     getEntitiesByType(typeName: string): number[] {
-      const ids = store.entityIndex?.byType?.get(typeName.toUpperCase());
-      return ids ? Array.from(ids) : [];
+      if (!store.entityIndex) return [];
+      return Array.from(iterateEffectiveEntities(store, entityVisibility, [typeName]), (e) => e.expressId);
     },
 
     getAllEntityIds(): number[] {
-      const byId = store.entityIndex?.byId;
-      return byId ? Array.from(byId.keys()) : [];
+      if (!store.entityIndex) return [];
+      return Array.from(iterateEffectiveEntities(store, entityVisibility), (e) => e.expressId);
     },
 
     getPropertyValue(

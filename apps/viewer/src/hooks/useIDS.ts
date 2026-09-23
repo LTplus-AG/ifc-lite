@@ -34,7 +34,10 @@ import { loadIdsContent } from './ids/loadIdsContent';
 import type { IDSBCFExportSettings, IDSExportProgress } from '@/components/viewer/IDSExportDialog';
 
 import { createDataAccessor } from './ids/idsDataAccessor';
-import { snapshotPropertyOverlay } from '@/lib/ids/property-overlay-snapshot';
+import {
+  snapshotPropertyOverlay,
+  snapshotEntityVisibility,
+} from '@/lib/ids/property-overlay-snapshot';
 import { canUseIdsWorker } from './ids/canUseIdsWorker';
 import { resolveValidationTarget, type IdsErrorState } from './ids/resolveValidationTarget';
 import { runValidationInWorker } from './ids/idsWorkerClient';
@@ -199,16 +202,19 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       // A model with in-memory property edits (e.g. an IDS correction, #3929)
       // must validate against THOSE edits — the worker re-parses raw source
       // bytes, so it is handed a snapshot of the same overlay projection the
-      // main-thread accessor applies (#3946).
+      // main-thread accessor applies (#3946). A deleted or overlay-created
+      // entity needs the same treatment (#5184): the re-parsed store still
+      // has the deleted entity's bytes and lacks the created one's.
       const mutationView = getMutationView(modelId);
       const propertyOverlay = mutationView?.hasPendingChanges() ? snapshotPropertyOverlay(mutationView) : undefined;
+      const entityVisibility = mutationView?.hasPendingChanges() ? snapshotEntityVisibility(mutationView) : undefined;
 
       if (canUseIdsWorker(dataStore)) {
         try {
           validationReport = await runValidationInWorker({
             source: getWholeSourceForWorker(dataStore),
             document, schemaVersion, modelId, locale,
-            includePassingEntities: true, propertyOverlay, onProgress,
+            includePassingEntities: true, propertyOverlay, entityVisibility, onProgress,
           });
         } catch (workerErr) {
           console.warn('[IDS] Worker validation failed; falling back to main thread.', workerErr);

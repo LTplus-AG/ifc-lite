@@ -11,8 +11,19 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
 
-export function buildIdsAccessor(store: IfcDataStore): unknown {
-  return createDataAccessor(store);
+/**
+ * `mutationView`, when supplied, is consulted for entity membership only.
+ * Enumeration excludes tombstones and includes overlay-created entities, and
+ * a retyped entity answers its new class (#5184). It satisfies the bridge's
+ * `EntityVisibilityView` structurally, so no adapter is needed. Omitting it
+ * leaves the accessor answering for the file as parsed.
+ */
+export function buildIdsAccessor(
+  store: IfcDataStore,
+  mutationView?: MutablePropertyView | null
+): unknown {
+  return createDataAccessor(store, undefined, mutationView ?? undefined);
 }

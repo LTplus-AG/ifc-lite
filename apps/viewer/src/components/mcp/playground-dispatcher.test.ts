@@ -236,21 +236,21 @@ describe('playground discovery follows pending entity edits (#5249)', () => {
     const summary = async () => {
       const result = await dispatch(model, 'ids_validate', { ids_xml: xml });
       assert.equal(result.isError, false, result.text);
-      const { totalEntities, passedEntities, failedEntities } =
-        (result.structured as { summary: { totalEntities: number; passedEntities: number; failedEntities: number } }).summary;
-      return { totalEntities, passedEntities, failedEntities };
+      const { totalEntitiesChecked, totalEntitiesPassed, totalEntitiesFailed } =
+        (result.structured as { summary: { totalEntitiesChecked: number; totalEntitiesPassed: number; totalEntitiesFailed: number } }).summary;
+      return { totalEntitiesChecked, totalEntitiesPassed, totalEntitiesFailed };
     };
-    assert.deepEqual(await summary(), { totalEntities: 1, passedEntities: 1, failedEntities: 0 });
+    assert.deepEqual(await summary(), { totalEntitiesChecked: 1, totalEntitiesPassed: 1, totalEntitiesFailed: 0 });
 
     const created = await dispatch(model, 'entity_create', {
       type: 'IfcWall', attributes: ['0aBcDeFgHiJkLmNoPqRsTA', null, 'New wall'],
     });
     assert.equal(created.isError, false);
-    assert.deepEqual(await summary(), { totalEntities: 2, passedEntities: 2, failedEntities: 0 });
+    assert.deepEqual(await summary(), { totalEntitiesChecked: 2, totalEntitiesPassed: 2, totalEntitiesFailed: 0 });
 
     const sourceId = [...model.store.entityIndex.byType.get('IFCWALL') ?? []][0];
     await dispatch(model, 'entity_delete', { express_id: sourceId });
-    assert.deepEqual(await summary(), { totalEntities: 1, passedEntities: 1, failedEntities: 0 });
+    assert.deepEqual(await summary(), { totalEntitiesChecked: 1, totalEntitiesPassed: 1, totalEntitiesFailed: 0 });
   });
 });
 

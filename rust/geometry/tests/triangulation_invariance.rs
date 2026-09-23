@@ -1499,7 +1499,10 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
         (
             "various/rvt01.ifc",
             &[
-                (11477, 33, 33, 159, 18),
+                // #5362: 33 open / 159 tris until the #635 fallback stopped
+                // box-cutting an opening the kernel found disjoint; enclosed
+                // volume moved toward IfcOpenShell (0.0189 -> 0.0202 m3, ref 0.0211).
+                (11477, 9, 9, 152, 18),
                 (11690, 19, 19, 139, 19),
                 (31156, 0, 0, 208, 0),
                 (17553, 0, 2, 214, 0),

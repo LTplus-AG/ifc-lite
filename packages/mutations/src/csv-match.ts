@@ -126,6 +126,13 @@ function buildSimpleIndex(
   const index = new Map<string, number[]>();
   for (let i = 0; i < entities.count; i++) {
     const expressId = entities.expressId[i];
+    // Deletion is overlay-only (a tombstone), never written back to this
+    // base EntityTable, so a deleted entity is otherwise indistinguishable
+    // from a live one here. Filtering at enumeration — rather than in
+    // generateMutations — means a future match strategy can't reintroduce
+    // this (#5198), which is exactly what happened when `tag` was added
+    // without the guard.
+    if (mutationView.isDeleted(expressId)) continue;
     let key: string;
     switch (strategy.type) {
       case 'globalId':
@@ -178,6 +185,10 @@ function buildPropertyIndex(
 
   for (let i = 0; i < entities.count; i++) {
     const expressId = entities.expressId[i];
+    // See the matching comment in `buildSimpleIndex` (#5198). `getForEntity`
+    // only filters an individually-deleted PSET, not a whole tombstoned
+    // entity, so this enumeration has to consult `isDeleted` itself.
+    if (mutationView.isDeleted(expressId)) continue;
     const psets = mutationView.getForEntity(expressId);
     // An entity may carry several same-named sets (a type pset and an
     // occurrence pset), which is exactly why every one of them is scanned.

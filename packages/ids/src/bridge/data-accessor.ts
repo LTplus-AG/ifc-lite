@@ -7,7 +7,12 @@ import {
   extractAllEntityAttributes,
   extractAllMaterialsOnDemand,
 } from '@ifc-lite/parser';
-import { RelationshipType, getAttributeXsdTypes } from '@ifc-lite/data';
+import {
+  RelationshipType,
+  getAttributeXsdTypes,
+  effectiveEntityIds,
+  effectiveEntityIdsOfType,
+} from '@ifc-lite/data';
 
 import type {
   IFCDataAccessor,
@@ -32,41 +37,11 @@ import {
   resolveRawPredefinedType,
 } from './predefined-types.js';
 import { narrowSchemaVersion } from './schema-version.js';
+import { overlayEntityLookup, type EntityVisibilityView } from './entity-visibility.js';
 
 export type { PropertyOverride, PropertyOverlayResolver };
 
-/**
- * Overlay entity-visibility, decoupled from `@ifc-lite/mutations` the same
- * way `PropertyOverlayResolver` is decoupled from it (see that type's own
- * doc) — this package has no dependency on `@ifc-lite/mutations` and this
- * keeps it that way. `MutablePropertyView` already exposes exactly this
- * shape (`getTombstones()`, `getNewEntities()`), so a live view can be
- * passed straight through with no adapter; a caller that only has a
- * structured-clone-safe snapshot (e.g. across a worker boundary) can hand
- * in a plain object built from arrays instead.
- *
- * Mirrors `packages/export/src/effective-index.ts`, the reference
- * overlay-aware index in this repo: a tombstoned id does not exist, and an
- * overlay-created id does.
- */
-export interface EntityVisibilityView {
-  /**
-   * Every express id tombstoned this session — deleted source entities AND
-   * ones created and then deleted in the same session (see
-   * `MutablePropertyView.getTombstones`'s own doc: the two are not
-   * distinguishable from this set alone, which is fine here because both
-   * kinds must be excluded from enumeration either way).
-   */
-  getTombstones(): ReadonlySet<number> | Set<number>;
-  /**
-   * Overlay-created entities still alive this session. A created-then-
-   * deleted entity is tombstoned (above) AND absent from this list —
-   * `MutablePropertyView.deleteEntity` removes it from `newEntities` when
-   * it forgets it — so summing "source minus tombstones" plus "this list"
-   * never double-counts or resurrects one.
-   */
-  getNewEntities(): ReadonlyArray<{ expressId: number }>;
-}
+export type { EntityVisibilityView };
 
 // `PropertyOverride`/`PropertyOverlayResolver` are re-exported above from
 // ./property-overlay-resolver.js; the PartOf relation map and ancestor BFS
@@ -92,30 +67,24 @@ export interface EntityVisibilityView {
  * store. Every other read (attributes, classifications, materials, partOf)
  * is unaffected — only the two property-reading methods below consult it.
  *
- * `entityVisibility` is optional and, when supplied, is consulted by both
- * enumeration methods — `getAllEntityIds` AND `getEntitiesByType` (#5184;
- * the latter is the dominant path in practice, since any IDS spec with a
- * `simpleValue`/`enumeration` entity-name applicability routes through it
- * via `filterByEntityFacet`, not through `getAllEntityIds`): a tombstoned
- * id (deleted this session, via `store.removeEntity()`/
- * `MutablePropertyView.deleteEntity`) is excluded from both. An
- * overlay-created id still alive is appended by `getAllEntityIds` only —
- * `getEntitiesByType` has no way to know a new entity's type, since
- * nothing in this accessor consults the overlay for `getEntityType`
- * either (see the created-entity gap noted below); the IFC2X3
- * mapped-alias path (`filterByEntityFacet` returning `undefined` for an
- * alias name) already falls back to a full scan through
- * `getAllEntityIds`, so it was — and remains — tombstone-safe without
- * any change here. Omitting `entityVisibility` — every existing call
- * site, until wired individually — reproduces the exact pre-existing
- * behaviour: both methods read `store.entityIndex` only, with no
- * filtering.
+ * `entityVisibility` is optional and, when supplied, makes the accessor
+ * answer for the session's EFFECTIVE model (#5184, #5249). `getAllEntityIds`
+ * and `getEntitiesByType` enumerate through the shared effective-entity
+ * accessor: tombstoned entities are excluded, overlay-created entities are
+ * included under their class, and a retyped entity is listed under its new
+ * class. `getEntityType` answers the same effective class, because the
+ * validator confirms every candidate through it. A created entity's
+ * attributes are read from its authored payload (see `./entity-visibility.ts`).
+ * Omitting `entityVisibility` leaves both enumerations reading the parsed
+ * index unchanged.
  */
 export function createDataAccessor(
   store: IfcDataStore,
   propertyOverlay?: PropertyOverlayResolver,
   entityVisibility?: EntityVisibilityView
 ): IFCDataAccessor {
+  const overlay = entityVisibility ? overlayEntityLookup(entityVisibility) : null;
+
   // Memoize per-entity attribute extraction. extractAllEntityAttributes
   // re-parses the entity from the raw source buffer on every call, and the
   // validator hits Name/GlobalId/Description/getAttribute(Names) for the same
@@ -130,7 +99,7 @@ export function createDataAccessor(
   ): Array<{ name: string; value: string | number | boolean }> {
     let all = attrCache.get(expressId);
     if (!all) {
-      all = extractAllEntityAttributes(store, expressId);
+      all = overlay?.createdAttributes(expressId) ?? extractAllEntityAttributes(store, expressId);
       attrCache.set(expressId, all);
     }
     return all;
@@ -160,6 +129,8 @@ export function createDataAccessor(
 
   const accessor: IFCDataAccessor = {
     getEntityType(expressId: number): string | undefined {
+      const overlaid = overlay?.typeOf(expressId);
+      if (overlaid) return overlaid;
       // The columnar entity table only summarises "interesting"
       // entities (spatial, building elements, etc.); resource-level
       // types resolve to `'Unknown'` there. Fall back to the raw
@@ -190,6 +161,8 @@ export function createDataAccessor(
     },
 
     getGlobalId(expressId: number): string | undefined {
+      const created = overlay?.globalIdOf(expressId);
+      if (created) return created;
       const fromAttr = findAttributeValue(expressId, 'GlobalId');
       if (fromAttr !== undefined && typeof fromAttr === 'string') return fromAttr;
       const g = store.entities?.getGlobalId?.(expressId);
@@ -252,28 +225,11 @@ export function createDataAccessor(
     },
 
     getEntitiesByType(typeName: string): number[] {
-      const ids = store.entityIndex?.byType?.get(typeName.toUpperCase());
-      const sourceIds = ids ? Array.from(ids) : [];
-      if (!entityVisibility) return sourceIds;
-
-      const tombstones = entityVisibility.getTombstones();
-      return tombstones.size > 0
-        ? sourceIds.filter((id) => !tombstones.has(id))
-        : sourceIds;
+      return store.entityIndex ? effectiveEntityIdsOfType(store, entityVisibility, typeName) : [];
     },
 
     getAllEntityIds(): number[] {
-      const byId = store.entityIndex?.byId;
-      const sourceIds = byId ? Array.from(byId.keys()) : [];
-      if (!entityVisibility) return sourceIds;
-
-      const tombstones = entityVisibility.getTombstones();
-      const ids = tombstones.size > 0
-        ? sourceIds.filter((id) => !tombstones.has(id))
-        : sourceIds;
-      const created = entityVisibility.getNewEntities();
-      if (created.length === 0) return ids;
-      return ids.concat(created.map((e) => e.expressId));
+      return store.entityIndex ? effectiveEntityIds(store, entityVisibility) : [];
     },
 
     getPropertyValue(

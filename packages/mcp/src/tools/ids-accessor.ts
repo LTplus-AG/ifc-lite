@@ -15,11 +15,11 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
 
 /**
- * `mutationView`, when supplied, is consulted for entity visibility only
- * (`getAllEntityIds` excludes tombstones and includes overlay-created
- * entities, #5184) — it satisfies the bridge's `EntityVisibilityView`
- * structurally, no adapter needed. Omitting it reproduces the exact
- * pre-existing behaviour.
+ * `mutationView`, when supplied, is consulted for entity membership only.
+ * Enumeration excludes tombstones and includes overlay-created entities, and
+ * a retyped entity answers its new class (#5184). It satisfies the bridge's
+ * `EntityVisibilityView` structurally, so no adapter is needed. Omitting it
+ * leaves the accessor answering for the file as parsed.
  */
 export function buildIdsAccessor(
   store: IfcDataStore,

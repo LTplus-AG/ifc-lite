@@ -18,10 +18,11 @@
  * on top of the store's own data — so a re-run of validation against THIS
  * accessor actually sees the correction instead of the pre-edit value.
  * Every other read (attributes, classifications, materials, partOf) is
- * untouched except entity enumeration: `getAllEntityIds` also consults
- * `mutationView` directly (it satisfies `EntityVisibilityView` structurally
- * — no adapter needed, unlike the property overlay) so a tombstoned entity
- * is excluded and an overlay-created one is included (#5184).
+ * untouched except entity membership: enumeration and `getEntityType` also
+ * consult `mutationView` directly (it satisfies `EntityVisibilityView`
+ * structurally, so no adapter is needed, unlike the property overlay). A
+ * tombstoned entity is excluded, and an overlay-created or retyped one is
+ * validated under its effective class (#5184).
  *
  * The view -> `PropertyOverride[]` projection itself lives in
  * `@/lib/ids/property-overlay-snapshot`, not here, because the IDS worker

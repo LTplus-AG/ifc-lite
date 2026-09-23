@@ -46,7 +46,7 @@ function view(tombstones: number[], newIds: number[] = []): EntityVisibilityView
   const t = new Set(tombstones);
   return {
     getTombstones: () => t,
-    getNewEntities: () => newIds.map((expressId) => ({ expressId })),
+    getNewEntities: () => newIds.map((expressId) => ({ expressId, type: 'IfcWall' })),
   };
 }
 

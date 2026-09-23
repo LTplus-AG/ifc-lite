@@ -19,10 +19,10 @@
  *    `getPropertySets` and nowhere else, so nine of the eleven kinds of
  *    state `hasPendingChanges()` reports (attribute edits, retypes,
  *    quantities, ...) are still invisible to IDS validation on EITHER
- *    path via THIS snapshot. Tombstones and overlay-created entities are
- *    the other two — `snapshotEntityVisibility`, tested below, carries
- *    those instead (#5184), because `entityVisibility` is a SEPARATE
- *    parameter the bridge consults in `getAllEntityIds` alone. If either
+ *    path via THIS snapshot. Tombstones, overlay-created entities and
+ *    retypes are carried by `snapshotEntityVisibility`, tested below,
+ *    instead (#5184), because `entityVisibility` is a SEPARATE parameter the
+ *    bridge consults for entity membership and class. If either
  *    snapshot silently started carrying more the two realms would still
  *    agree, but the claim in this file's callers would stop being the
  *    reason why.
@@ -187,7 +187,7 @@ describe('overlayResolverFromSnapshot', () => {
 });
 
 describe('snapshotEntityVisibility / entityVisibilityFromSnapshot (#5184)', () => {
-  it('is undefined for a view with nothing tombstoned or created, so the caller takes the no-visibility-view path', () => {
+  it('is undefined for a view with nothing tombstoned, created or retyped, so the caller takes the no-visibility-view path', () => {
     assert.equal(entityVisibilityFromSnapshot(snapshotEntityVisibility(view())), undefined);
   });
 
@@ -196,7 +196,7 @@ describe('snapshotEntityVisibility / entityVisibilityFromSnapshot (#5184)', () =
     v.deleteEntity(7);
 
     const snapshot = structuredClone(snapshotEntityVisibility(v));
-    assert.deepEqual(snapshot, { tombstones: [7], newEntityIds: [] });
+    assert.deepEqual(snapshot, { tombstones: [7], newEntities: [], retypes: [] });
 
     const visibility = entityVisibilityFromSnapshot(snapshot)!;
     assert.equal(visibility.getTombstones().has(7), true);
@@ -204,24 +204,37 @@ describe('snapshotEntityVisibility / entityVisibilityFromSnapshot (#5184)', () =
     assert.deepEqual(visibility.getNewEntities(), []);
   });
 
-  it('round-trips an overlay-created entity through structuredClone, reduced to its expressId', () => {
+  it('round-trips an overlay-created entity with its class and authored attributes', () => {
     const v = view();
-    const created = v.createEntity('IFCWALL', []);
+    const created = v.createEntity('IfcWall', ['2Wall00000000000000003', null, 'Wall_C']);
 
     const snapshot = structuredClone(snapshotEntityVisibility(v));
-    assert.deepEqual(snapshot, { tombstones: [], newEntityIds: [created.expressId] });
+    assert.deepEqual(snapshot, {
+      tombstones: [],
+      newEntities: [{ expressId: created.expressId, type: 'IfcWall', attributes: ['2Wall00000000000000003', null, 'Wall_C'] }],
+      retypes: [],
+    });
 
     const visibility = entityVisibilityFromSnapshot(snapshot)!;
-    assert.deepEqual(visibility.getNewEntities(), [{ expressId: created.expressId }]);
+    assert.deepEqual(visibility.getNewEntities(), snapshot.newEntities);
     assert.equal(visibility.getTombstones().size, 0);
   });
 
-  it('a created-then-deleted entity is tombstoned and absent from newEntityIds (matches MutablePropertyView.deleteEntity)', () => {
+  it('carries a retype so the worker lists the entity under its new class', () => {
+    const v = view();
+    v.setEntityType(12, 'IfcWall', undefined, 'IfcDoor');
+
+    const snapshot = structuredClone(snapshotEntityVisibility(v));
+    assert.deepEqual(snapshot.retypes, [[12, 'IfcWall']]);
+    assert.equal(entityVisibilityFromSnapshot(snapshot)!.getTypeMutations!().get(12)?.newType, 'IfcWall');
+  });
+
+  it('a created-then-deleted entity is tombstoned and absent from newEntities (matches MutablePropertyView.deleteEntity)', () => {
     const v = view();
     const created = v.createEntity('IFCWALL', []);
     v.deleteEntity(created.expressId);
 
     const snapshot = snapshotEntityVisibility(v);
-    assert.deepEqual(snapshot, { tombstones: [created.expressId], newEntityIds: [] });
+    assert.deepEqual(snapshot, { tombstones: [created.expressId], newEntities: [], retypes: [] });
   });
 });

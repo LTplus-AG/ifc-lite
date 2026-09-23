@@ -1785,6 +1785,13 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     // With `??` this reads just the bucket summary, with no "rule: ..." at
     // all — the user loses any sign that a clash-rule filter is active.
     assert.match(subtitle, /rule: str/, subtitle);
+
+    // A saved rule id may outlive the current clash run. Existing clash
+    // results must not be described as absent when only the filter misses.
+    const missingRule = { ...dashboard, charts: [{ ...dashboard.charts[0], filter: { selector: '', clashRule: 'missing' } }] };
+    useViewerStore.setState({ dashboards: [missingRule] });
+    await settle();
+    assert.match(ui.querySelector('[data-chart-empty]')?.textContent ?? '', /No rows match this source filter/);
   });
 });
 

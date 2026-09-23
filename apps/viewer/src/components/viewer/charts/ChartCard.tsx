@@ -196,7 +196,7 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
             {filterSelector && filterState?.status !== 'ok'
               ? subtitle
               : filteredDataset.rows.length === 0
-                ? filterSelector
+                ? filterSelector || clashRule
                   ? t('chartCard.noSourceFilterMatches')
                   : EMPTY_HINTS[spec.source]
                 : t('chartCard.nothingToBucket')}

@@ -123,11 +123,12 @@ describe('chart IFC field reader (#4833)', () => {
     const category = (propertyName: string): ElementFieldBinding => ({ kind: 'property', psetName: 'Probe', propertyName, valueKind: 'category' });
     const number = (propertyName: string): ElementFieldBinding => ({ kind: 'property', psetName: 'Probe', propertyName, valueKind: 'number', dataType: 'IFCLENGTHMEASURE' });
 
-    assert.deepEqual(reader.readResolved(52, category('Multi')), { value: 'A, B', status: 'value' });
+    // A list/enumeration carries the type its members share (#5224).
+    assert.deepEqual(reader.readResolved(52, category('Multi')), { value: 'A, B', status: 'value', dataType: 'IFCLABEL' });
     // A shaped value keeps its provenance so the dataset can unit-qualify the category (review find).
-    assert.deepEqual(reader.readResolved(52, category('Lengths')), { value: '1, 2', status: 'value', unit: 'm', unitSiScale: 1 });
-    assert.deepEqual(reader.readResolved(52, category('Singleton')), { value: 'Only', status: 'value' });
-    assert.deepEqual(reader.readResolved(52, category('Status')), { value: 'NEW', status: 'value' });
+    assert.deepEqual(reader.readResolved(52, category('Lengths')), { value: '1, 2', status: 'value', unit: 'm', unitSiScale: 1, dataType: 'IFCLENGTHMEASURE' });
+    assert.deepEqual(reader.readResolved(52, category('Singleton')), { value: 'Only', status: 'value', dataType: 'IFCLABEL' });
+    assert.deepEqual(reader.readResolved(52, category('Status')), { value: 'NEW', status: 'value', dataType: 'IFCLABEL' });
     assert.deepEqual(reader.readResolved(52, category('Complex')), { value: 'Inner: A', status: 'value' });
     assert.deepEqual(reader.readResolved(52, number('UpperOnly')), { value: null, status: 'unsupported' }, 'a bound is not a value');
     assert.deepEqual(reader.readResolved(52, number('OneNumber')), { value: null, status: 'unsupported' }, 'a one-member list is not a scalar');

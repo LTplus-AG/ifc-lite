@@ -76,12 +76,12 @@ function serverDataModelForFixture(): DataModel {
         { property_name: 'IsExternal', property_value: 'true', property_type: 'boolean', data_type: 'IFCBOOLEAN' },
         { property_name: 'ThermalTransmittance', property_value: '0.24', property_type: 'real', data_type: 'IFCREAL' },
         { property_name: 'Layers', property_value: '3', property_type: 'integer', data_type: 'IFCINTEGER' },
-        { property_name: 'AcousticRating', property_value: 'R1, R2', property_type: 'string', values: ['R1', 'R2'] },
+        { property_name: 'AcousticRating', property_value: 'R1, R2', property_type: 'string', data_type: 'IFCLABEL', values: ['R1', 'R2'] },
       ] }],
       [250, { pset_id: 250, pset_name: 'Pset_WallCommon', properties: [
         { property_name: 'FireRating', property_value: 'REI 120', property_type: 'string', data_type: 'IFCLABEL' },
         { property_name: 'LoadCapacity', property_value: '5 [2 \u2013 8]', property_type: 'string', data_type: 'IFCFORCEMEASURE', values: ['2', '8', '5'] },
-        { property_name: 'Deflection', property_value: 'Table (2 rows)', property_type: 'string', values: ['1', '2', '10', '20'] },
+        { property_name: 'Deflection', property_value: 'Table (2 rows)', property_type: 'string', data_type_mixed: true, values: ['1', '2', '10', '20'] },
       ] }],
     ]),
     quantitySets: new Map([

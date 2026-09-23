@@ -24,6 +24,7 @@ import type { EvaluatorModel } from '@ifc-lite/rules';
 import type { FilterGroup } from '@ifc-lite/rules';
 import { describeSelectorParseError } from '@/components/viewer/SearchModal.filter.feedback';
 import type { ChartDataset, ChartDatasetRow, ChartSourceFilter } from '@ifc-lite/charts';
+import { CLASH_COLUMNS } from './datasets/clash';
 
 export type ChartFilterReading =
   | { ok: true; groups: FilterGroup[] }
@@ -120,4 +121,22 @@ function fingerprintIds(ids: ReadonlySet<number>): string {
 export function applyChartFilter(dataset: ChartDataset, ids: ReadonlySet<number>): ChartDataset {
   const rows: ChartDatasetRow[] = dataset.rows.filter((row) => rowMatchesAny(row.ids, ids));
   return { ...dataset, rows, fingerprint: `filtered:${fingerprintIds(ids)}:${dataset.fingerprint}` };
+}
+
+/**
+ * Narrow a `clash` dataset to ONE detection rule/run (#5156): keep a row
+ * only when its `Rule` column equals `ruleId` exactly, the same
+ * `ClashRule.id` `buildClashDataset` already writes into that column.
+ *
+ * Unlike the selector filter this needs no federation scan to resolve — the
+ * rule id is already a value on every clash row — so it runs synchronously,
+ * straight in `ChartCard` / `useDocumentData`, rather than through
+ * `useChartSourceFilters`. Called only for `source: 'clash'`; `validate.ts`
+ * refuses `filter.clashRule` on every other source.
+ */
+export function applyClashRuleFilter(dataset: ChartDataset, ruleId: string): ChartDataset {
+  const ruleIndex = dataset.columns.findIndex((c) => c.id === CLASH_COLUMNS.rule);
+  if (ruleIndex === -1) return dataset;
+  const rows: ChartDatasetRow[] = dataset.rows.filter((row) => row.values[ruleIndex] === ruleId);
+  return { ...dataset, rows, fingerprint: `clashRule:${ruleId}:${dataset.fingerprint}` };
 }

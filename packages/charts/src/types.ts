@@ -92,6 +92,15 @@ export type ElementFieldBinding =
  *  rows do not stand for one element the selector can match against. */
 export interface ChartSourceFilter {
   selector: string;
+  /** Restrict a `clash` chart to ONE detection rule/run (#5156) by its
+   *  `ClashRule.id` — the same id a clash row's `Rule` column already
+   *  carries. Absent means every rule of the current clash result is
+   *  counted together, same as before this field existed; never an empty
+   *  string (that reads as "no filter" everywhere else in this file, so it
+   *  would be indistinguishable from absent). Only valid when `source` is
+   *  `clash` — `validate.ts` rejects it on every other source, the same way
+   *  `elementField` is rejected off `elements`. */
+  clashRule?: string;
 }
 
 interface ChartSpecCommon {

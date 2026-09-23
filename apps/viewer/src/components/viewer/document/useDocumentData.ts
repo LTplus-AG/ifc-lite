@@ -15,7 +15,7 @@ import type { BCFTopic } from '@ifc-lite/bcf';
 import { useViewerStore } from '@/store';
 import type { BindingContext } from '@/lib/document/bindings';
 import type { DocumentSpec } from '@/lib/document/types';
-import { applyChartFilter } from '@/lib/charts/source-filter';
+import { applyChartFilter, applyClashRuleFilter } from '@/lib/charts/source-filter';
 import type { TableState } from '@/lib/document/resolve-table';
 import { useChartDatasets } from '../charts/useChartDatasets';
 import { useChartSourceFilters } from '../charts/useChartSourceFilters';
@@ -78,6 +78,11 @@ export function useDocumentData(document: DocumentSpec | null): DocumentData {
             messages.set(block.id, filterState?.status === 'error' ? filterState.message : 'Resolving filter…');
           }
         }
+        // A clash rule filter (#5156) is a plain row-value match, so it
+        // applies on top regardless of whether a selector was also resolving
+        // or erred — an erred selector already emptied `dataset`, so this is
+        // a no-op in that case.
+        if (spec.source === 'clash' && spec.filter?.clashRule) dataset = applyClashRuleFilter(dataset, spec.filter.clashRule);
         aggs.set(block.id, aggregate(spec, dataset));
       } catch (err) {
         console.warn(`[Documents] chart "${block.chart.title}" cannot aggregate`, err);

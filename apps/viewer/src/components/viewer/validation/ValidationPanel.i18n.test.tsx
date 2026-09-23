@@ -27,6 +27,7 @@ import { validationPanelEn } from '@/i18n/catalogues/validation-panel.en';
 import { useViewerStore } from '@/store';
 import { addRecentRuleSet } from '@/lib/validation/recent-rule-sets';
 import { ValidationPanel, RunningState } from './ValidationPanel.js';
+import { IdsSummary } from './ValidationPanel.idsSummary.js';
 
 type Key = keyof typeof validationPanelEn;
 const ALL_KEYS = Object.keys(validationPanelEn) as Key[];
@@ -194,6 +195,19 @@ async function mountAll(): Promise<Set<string>> {
   await waitFor(() => !document.body.contains(input));
   collect();
   cleanup();
+
+  // The IDS export/import summaries (#5225), including the nothing-converted
+  // headlines, which a successful fixture import would not reach.
+  for (const direction of ['export', 'import'] as const) {
+    render(
+      <IdsSummary
+        summary={{ direction, converted: 0, total: 1, refused: [{ name: 'r', reasons: ['reason'] }], notes: ['note'] }}
+        onDismiss={() => {}}
+      />,
+    );
+    collect();
+    cleanup();
+  }
 
   render(<RunningState progress={{ ruleIndex: 0, phase: 'applicability', done: 1, total: 10 }} totalRules={2} onCancel={() => {}} />);
   collect();

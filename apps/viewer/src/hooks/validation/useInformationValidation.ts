@@ -20,11 +20,24 @@ import { runRuleSet, type RuleEngineProgress } from '@ifc-lite/rules';
 import type { RuleSetFile } from '@ifc-lite/rules';
 import { parseRuleSetFile } from '@ifc-lite/rules';
 import { importRuleSetFile, exportRuleSet } from '@/lib/validation/rule-set-io-browser';
+import {
+  exportRuleSetAsIds, idsVersionsForSchemas, importIdsFileAsRuleSet,
+} from '@/lib/validation/rule-set-ids-browser';
 import { evaluatorModelsFromState, definedModelTagIdsOf } from '@/lib/model-tags/evaluator-models';
 import {
   addRecentRuleSet, loadRecentRuleSets, removeRecentRuleSet, type RecentRuleSet,
 } from '@/lib/validation/recent-rule-sets';
 import { useValidationEpoch } from './useValidationEpoch';
+
+/** What the last IDS export or import converted, and what it refused and why (#5225). */
+export interface IdsInterchangeSummary {
+  direction: 'export' | 'import';
+  /** Rules exported / specifications imported. */
+  converted: number;
+  total: number;
+  refused: ReadonlyArray<{ name: string; reasons: readonly string[] }>;
+  notes: readonly string[];
+}
 
 function blankRuleSet(): RuleSetFile {
   return { version: 1, name: '', rules: [] };
@@ -46,6 +59,13 @@ export interface UseInformationValidationResult {
   loadFromRecent: (entry: RecentRuleSet) => void;
   /** Download the current file and cache its content under "Recent". */
   save: () => void;
+  /** Download the current file's IDS-expressible rules as `<name>.ids` (#5225). */
+  exportIds: () => void;
+  /** Convert a picked IDS file's simple specifications into a new rule set (#5225). */
+  importIds: (file: File) => Promise<{ ok: boolean; error?: string }>;
+  /** The last IDS export/import outcome, until dismissed or superseded. */
+  idsSummary: IdsInterchangeSummary | null;
+  dismissIdsSummary: () => void;
   /** True while showing the editor again after a report already landed
    *  (plan §6: "Edit rules" returns to authoring, keeping the report until
    *  the next run). */
@@ -67,6 +87,7 @@ export function useInformationValidation(): UseInformationValidationResult {
   const [progress, setProgress] = useState<RuleEngineProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [recentRuleSets, setRecentRuleSets] = useState<RecentRuleSet[]>(() => loadRecentRuleSets());
+  const [idsSummary, setIdsSummary] = useState<IdsInterchangeSummary | null>(null);
 
   const setIdsValidationReport = useViewerStore((s) => s.setIdsValidationReport);
   const abortRef = useRef<AbortController | null>(null);
@@ -118,6 +139,45 @@ export function useInformationValidation(): UseInformationValidationResult {
     exportRuleSet(file);
     setRecentRuleSets(addRecentRuleSet(file.name, JSON.stringify(file, null, 2)));
   }, [file]);
+
+  const exportIds = useCallback(() => {
+    if (!file) return;
+    const schemas = [...useViewerStore.getState().models.values()].map((m) => m.schemaVersion);
+    const result = exportRuleSetAsIds(file, idsVersionsForSchemas(schemas));
+    setIdsSummary({
+      direction: 'export',
+      converted: result.exportedRuleIds.length,
+      total: file.rules.length,
+      refused: result.refused.map((r) => ({ name: r.ruleName || r.ruleId, reasons: r.reasons })),
+      notes: result.notes,
+    });
+  }, [file]);
+
+  const importIds = useCallback(async (pickedFile: File): Promise<{ ok: boolean; error?: string }> => {
+    const outcome = await importIdsFileAsRuleSet(pickedFile);
+    if (!outcome.ok) {
+      setError(outcome.error);
+      return { ok: false, error: outcome.error };
+    }
+    const { result } = outcome;
+    const imported = result.file?.rules.length ?? 0;
+    setIdsSummary({
+      direction: 'import',
+      converted: imported,
+      total: imported + result.refused.length,
+      refused: result.refused.map((r) => ({ name: r.specificationName, reasons: r.reasons })),
+      notes: result.notes,
+    });
+    if (!result.file) {
+      setError(null);
+      return { ok: false };
+    }
+    setFile(result.file);
+    setEditing(true);
+    return { ok: true };
+  }, [setFile]);
+
+  const dismissIdsSummary = useCallback(() => setIdsSummary(null), []);
 
   const cancel = useCallback(() => {
     bumpEpoch();
@@ -173,6 +233,7 @@ export function useInformationValidation(): UseInformationValidationResult {
 
   return {
     file, setFile, newRuleSet, openFromFile, loadFromRecent, save,
+    exportIds, importIds, idsSummary, dismissIdsSummary,
     editing, setEditing, run, cancel, running, progress, error, recentRuleSets,
   };
 }

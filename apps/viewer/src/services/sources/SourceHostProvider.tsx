@@ -33,7 +33,7 @@ export function useOptionalSourceHost(): SourceHost | null {
  * there. Built-ins go first, so a host-supplied provider reusing a built-in's
  * name is the one refused as a duplicate.
  */
-export function buildSourceHost(
+function buildSourceHost(
   additionalProviders: readonly FileSourceProviderFactory[] = [],
 ): SourceHost {
   const host = new SourceHost();

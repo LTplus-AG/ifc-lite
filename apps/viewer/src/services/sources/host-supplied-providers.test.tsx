@@ -5,12 +5,13 @@
 /**
  * Host-supplied file-source providers registered at bootstrap (#5228).
  *
- * `buildSourceHost` is the function `SourceHostProvider` (and so
- * `mountViewer({ sourceProviders })`) builds the app's host with; these tests
- * drive it directly with the factories a host application would pass.
+ * Driven through `SourceHostProvider`'s `additionalProviders`, the prop
+ * `mountViewer({ sourceProviders })` threads down, and read back through
+ * `useSourceHost()`: the host the running app would hand every consumer.
  */
 
-import { describe, it } from 'node:test';
+import '@/test/setup-dom.js';
+import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   PLUGIN_API_VERSION,
@@ -18,17 +19,30 @@ import {
   type PluginManifest,
   type PluginPermissions,
 } from '@ifc-lite/plugin-api';
-import { buildSourceHost } from './SourceHostProvider';
-import { BUILT_IN_PROVIDER_FACTORIES } from './registered-providers';
-import type { FileSourceProviderFactory } from './source-host';
+import { cleanup, render } from '@/test/render.js';
+import { SourceHostProvider, useSourceHost } from './SourceHostProvider';
+import { createRegisteredProviders } from './registered-providers';
+import type { FileSourceProviderFactory, SourceHost } from './source-host';
 
-Object.defineProperty(globalThis, 'window', {
-  value: { location: { origin: 'https://viewer.example.com' }, dispatchEvent: () => true },
-  configurable: true,
-  writable: true,
-});
+const BUILT_IN_NAMES = createRegisteredProviders().map((p) => p.manifest.name);
 
-const BUILT_IN_NAMES = BUILT_IN_PROVIDER_FACTORIES.map((create) => create().manifest.name);
+afterEach(cleanup);
+
+/** The host `SourceHostProvider` builds for `additionalProviders`. */
+function hostWith(additionalProviders?: readonly FileSourceProviderFactory[]): SourceHost {
+  let captured: SourceHost | undefined;
+  function Probe() {
+    captured = useSourceHost();
+    return null;
+  }
+  render(
+    <SourceHostProvider additionalProviders={additionalProviders}>
+      <Probe />
+    </SourceHostProvider>,
+  );
+  assert.ok(captured, 'SourceHostProvider provides a host');
+  return captured;
+}
 
 function fixtureProvider(
   name: string,
@@ -68,23 +82,23 @@ function names(providers: readonly FileSourceProvider[]): string[] {
   return providers.map((p) => p.manifest.name);
 }
 
-describe('buildSourceHost — host-supplied providers (#5228)', () => {
+describe('SourceHostProvider — host-supplied providers (#5228)', () => {
   it('with no host-supplied providers, registers exactly the built-ins', () => {
-    const host = buildSourceHost();
+    const host = hostWith();
     assert.deepEqual(names(host.list()), BUILT_IN_NAMES);
     assert.equal(host.getRegistrationFailures().length, 0);
   });
 
   it('a fixture provider supplied at bootstrap appears in list(), after the unchanged built-ins', () => {
     const fixture = fixtureProvider('host-fixture');
-    const host = buildSourceHost([() => fixture]);
+    const host = hostWith([() => fixture]);
     assert.deepEqual(names(host.list()), [...BUILT_IN_NAMES, 'host-fixture']);
     assert.equal(host.get('host-fixture'), fixture);
     assert.equal(host.getRegistrationFailures().length, 0);
   });
 
   it('a host-supplied factory that throws does not stop the built-ins or a later host-supplied provider', () => {
-    const host = buildSourceHost([throwingFactory, () => fixtureProvider('after-the-bad-one')]);
+    const host = hostWith([throwingFactory, () => fixtureProvider('after-the-bad-one')]);
     assert.deepEqual(names(host.list()), [...BUILT_IN_NAMES, 'after-the-bad-one']);
     assert.deepEqual(host.getRegistrationFailures(), [
       { provider: 'host-supplied provider #1', reason: 'failed to construct: missing tenant configuration' },
@@ -97,12 +111,9 @@ describe('buildSourceHost — host-supplied providers (#5228)', () => {
         throw new Error('manifest unavailable');
       },
     } as unknown as FileSourceProvider;
-    let host: ReturnType<typeof buildSourceHost> | undefined;
-    assert.doesNotThrow(() => {
-      host = buildSourceHost([() => broken]);
-    });
-    assert.deepEqual(names(host!.list()), BUILT_IN_NAMES);
-    assert.match(host!.getRegistrationFailures()[0].reason, /manifest unavailable/);
+    const host = hostWith([() => broken]);
+    assert.deepEqual(names(host.list()), BUILT_IN_NAMES);
+    assert.match(host.getRegistrationFailures()[0]?.reason ?? '', /manifest unavailable/);
   });
 
   it('a manifest missing its permissions block is recorded as invalid, not raised', () => {
@@ -111,37 +122,38 @@ describe('buildSourceHost — host-supplied providers (#5228)', () => {
       ...noPermissions,
       manifest: { ...noPermissions.manifest, permissions: undefined },
     } as unknown as FileSourceProvider;
-    const host = buildSourceHost([() => malformed]);
+    const host = hostWith([() => malformed]);
     assert.equal(host.get('no-permissions'), undefined);
     const [failure] = host.getRegistrationFailures();
-    assert.equal(failure.provider, 'no-permissions');
-    assert.match(failure.reason, /^invalid manifest:/);
+    assert.equal(failure?.provider, 'no-permissions');
+    assert.match(failure?.reason ?? '', /^invalid manifest:/);
   });
 
   it('a host-supplied provider reusing a built-in name is refused and the built-in is kept', () => {
     const builtInName = BUILT_IN_NAMES[0];
     const impostor = fixtureProvider(builtInName);
-    const host = buildSourceHost([() => impostor]);
+    const host = hostWith([() => impostor]);
+    assert.ok(host.get(builtInName));
     assert.notEqual(host.get(builtInName), impostor);
     assert.deepEqual(names(host.list()), BUILT_IN_NAMES);
-    assert.match(host.getRegistrationFailures()[0].reason, /already registered/);
+    assert.match(host.getRegistrationFailures()[0]?.reason ?? '', /already registered/);
   });
 
   it('two host-supplied providers with the same name: the second is refused', () => {
     const first = fixtureProvider('twin');
-    const host = buildSourceHost([() => first, () => fixtureProvider('twin')]);
+    const host = hostWith([() => first, () => fixtureProvider('twin')]);
     assert.equal(host.get('twin'), first);
     assert.equal(host.getRegistrationFailures().length, 1);
   });
 
   it('an incompatible manifest.api is refused at register() time', () => {
-    const host = buildSourceHost([() => fixtureProvider('too-old', { api: '^0.1.0' })]);
+    const host = hostWith([() => fixtureProvider('too-old', { api: '^0.1.0' })]);
     assert.equal(host.get('too-old'), undefined);
-    assert.match(host.getRegistrationFailures()[0].reason, /requires host api "\^0\.1\.0"/);
+    assert.match(host.getRegistrationFailures()[0]?.reason ?? '', /requires host api "\^0\.1\.0"/);
   });
 
   it('a relay the host has not configured is refused', () => {
-    const host = buildSourceHost([
+    const host = hostWith([
       () =>
         fixtureProvider('relayed', {
           permissions: {
@@ -151,7 +163,7 @@ describe('buildSourceHost — host-supplied providers (#5228)', () => {
         }),
     ]);
     assert.equal(host.get('relayed'), undefined);
-    assert.match(host.getRegistrationFailures()[0].reason, /does not match a route this host actually has configured/);
+    assert.match(host.getRegistrationFailures()[0]?.reason ?? '', /does not match a route this host actually has configured/);
   });
 });
 
@@ -167,9 +179,9 @@ describe('a host-supplied provider gets the same sandboxed context as a built-in
   }
 
   it('fetch refuses non-https and undeclared hosts, and omits credentials and redirects on allowed ones', async () => {
-    const host = buildSourceHost([() => fixtureProvider('host-fixture')]);
+    const host = hostWith([() => fixtureProvider('host-fixture')]);
     const provider = host.get('host-fixture');
-    assert.ok(provider);
+    assert.ok(provider, 'the host-supplied provider is registered');
     const ctx = host.createContext(provider.manifest, {});
 
     const seen: RequestInit[] = [];

@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { PLUGIN_API_VERSION, type FileSourceProvider } from '@ifc-lite/plugin-api';
 import { render, cleanup } from '@/test/render.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider';
-import { BUILT_IN_PROVIDER_FACTORIES } from '@/services/sources/registered-providers';
+import { createRegisteredProviders } from '@/services/sources/registered-providers';
 import type { FileSourceProviderFactory } from '@/services/sources/source-host';
 import { SourcesPanel } from './SourcesPanel.js';
 
@@ -59,8 +59,8 @@ describe('SourcesPanel with host-supplied providers (#5228)', () => {
     const text = ui.textContent ?? '';
 
     assert.ok(text.includes('Acme Document Store'), 'the host-supplied provider is listed');
-    for (const create of BUILT_IN_PROVIDER_FACTORIES) {
-      const title = create().manifest.title;
+    for (const provider of createRegisteredProviders()) {
+      const title = provider.manifest.title;
       assert.ok(text.includes(title), `built-in "${title}" is still listed`);
     }
     assert.ok(

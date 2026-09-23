@@ -13,7 +13,7 @@ import {
 } from '@ifc-lite/plugin-api';
 import { SourceHost } from './source-host';
 import { MAX_FETCH_ATTEMPTS } from './host-fetch';
-import { BUILT_IN_PROVIDER_FACTORIES } from './registered-providers';
+import { createRegisteredProviders } from './registered-providers';
 
 // ----------------------------------------------------------------------------
 // Test doubles for the browser globals this module touches. Following the
@@ -126,11 +126,11 @@ describe('SourceHost.register — version pinning', () => {
 describe('every provider the viewer actually registers satisfies PLUGIN_API_VERSION', () => {
   // Regression guard for the bug that shipped: a host constant drifted from a
   // provider's declared `manifest.api` and the app white-screened instead of
-  // failing loudly in CI. `BUILT_IN_PROVIDER_FACTORIES` is the same list
+  // failing loudly in CI. `createRegisteredProviders()` is the same list
   // `SourceHostProvider` registers at app start — not a hand-maintained
   // duplicate — so this can't drift from what actually ships.
   it('registers cleanly against the real host', () => {
-    const providers = BUILT_IN_PROVIDER_FACTORIES.map((create) => create());
+    const providers = createRegisteredProviders();
 
     // Restored from the deliberate `=== 0` assertion the contract-only PR
     // carried: with no providers registered the per-provider loop below is

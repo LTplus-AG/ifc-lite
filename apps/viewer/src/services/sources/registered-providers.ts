@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { FileSourceProvider } from '@ifc-lite/plugin-api';
 import { DaluxBuildProvider } from '@ifc-lite/source-dalux';
 import { DropboxProvider } from '@ifc-lite/source-dropbox';
 import { MsGraphProvider } from '@ifc-lite/source-msgraph';
@@ -11,9 +12,10 @@ import type { FileSourceProviderFactory } from './source-host';
  * Every built-in file-source provider the viewer registers, in one place.
  * Both `SourceHostProvider` (which registers each one at app start, before
  * any host-supplied provider) and `source-host.test.ts` (which asserts each
- * one's manifest satisfies `PLUGIN_API_VERSION`, the regression guard for a
- * host/provider version drifting apart) read from this list — so the test can
- * never drift from what the running app actually does.
+ * one's manifest satisfies `PLUGIN_API_VERSION` through
+ * `createRegisteredProviders()`, the regression guard for a host/provider
+ * version drifting apart) read from this list — so the test can never drift
+ * from what the running app actually does.
  *
  * Host-supplied providers are NOT added here: a host application that builds
  * the viewer from source passes its own factories to `mountViewer` (see
@@ -34,3 +36,8 @@ export const BUILT_IN_PROVIDER_FACTORIES: readonly FileSourceProviderFactory[] =
   () => new DropboxProvider(),
   () => new MsGraphProvider(),
 ];
+
+/** Every built-in provider, constructed. The drift guard's view of the list above. */
+export function createRegisteredProviders(): FileSourceProvider[] {
+  return BUILT_IN_PROVIDER_FACTORIES.map((create) => create());
+}

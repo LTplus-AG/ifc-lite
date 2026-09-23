@@ -50,6 +50,14 @@ export class CoordinateHandler {
     private accumulatedBounds: AABB | null = null;
     private shiftCalculated: boolean = false;
 
+    // Count of batches where the fast-path result failed `isBoundsPoisoned`
+    // and `calculateBounds` fell back to the filtered slow path (#5210).
+    // Recovery is silent by design — the corrupted vertex is filtered out,
+    // not reported to the caller — so this is the only signal that the
+    // mesher emitted a qualifying vertex at all. Surfaced on `CoordinateInfo`
+    // via `getCurrentCoordinateInfo`/`getFinalCoordinateInfo`.
+    private boundsRecoveryFallbackCount: number = 0;
+
     // Authoritative pre-pass state. Undefined is reserved for native producers
     // that cannot report their coordinate frame and therefore need inference.
     private wasmRtcApplied: boolean | undefined = undefined;
@@ -113,6 +121,7 @@ export class CoordinateHandler {
                 return bounds;
             }
             // Bounds poisoned: recompute via slow path with per-vertex filter for recovery
+            this.boundsRecoveryFallbackCount++;
         }
 
         const bounds: AABB = {
@@ -300,6 +309,7 @@ export class CoordinateHandler {
                 max: { x: 0, y: 0, z: 0 },
             },
             hasLargeCoordinates: false,
+            boundsRecoveryFallbackCount: this.boundsRecoveryFallbackCount,
             ...this.wasmMetadataProps(),
         };
 
@@ -341,6 +351,7 @@ export class CoordinateHandler {
                 originalBounds,
                 shiftedBounds: originalBounds,
                 hasLargeCoordinates: false,
+                boundsRecoveryFallbackCount: this.boundsRecoveryFallbackCount,
                 ...this.wasmMetadataProps(),
             };
         }
@@ -363,6 +374,7 @@ export class CoordinateHandler {
             originalBounds,
             shiftedBounds,
             hasLargeCoordinates: true,
+            boundsRecoveryFallbackCount: this.boundsRecoveryFallbackCount,
             ...this.wasmMetadataProps(),
         };
     }
@@ -560,6 +572,7 @@ export class CoordinateHandler {
             originalBounds: { ...this.accumulatedBounds },
             shiftedBounds,
             hasLargeCoordinates,
+            boundsRecoveryFallbackCount: this.boundsRecoveryFallbackCount,
             ...this.wasmMetadataProps(),
         };
     }
@@ -585,6 +598,7 @@ export class CoordinateHandler {
                 max: { x: 0, y: 0, z: 0 },
             },
             hasLargeCoordinates: false,
+            boundsRecoveryFallbackCount: this.boundsRecoveryFallbackCount,
             ...this.wasmMetadataProps(),
         };
     }
@@ -629,5 +643,6 @@ export class CoordinateHandler {
         this.appliedWasmRtcOffset = null;
         this.wasmRtcFrame = undefined;
         this.lengthUnitScale = undefined;
+        this.boundsRecoveryFallbackCount = 0;
     }
 }

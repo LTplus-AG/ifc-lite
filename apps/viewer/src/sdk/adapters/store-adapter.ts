@@ -196,7 +196,11 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     const normalized = normalizeMutationModelId(store.getState(), requested);
     const mutationView = store.getState().getMutationView(normalized);
     if (!mutationView) throw new Error(`bim.store: no mutation view for model id "${modelId}"`);
-    return { modelId: requested, store: dataStore, editor, mutationView, ownerHistoryId };
+    // #5234: the NORMALIZED id, matching what `addEntity`/`buildElement`
+    // return. `entityRefToString` serializes `modelId` verbatim, so handing
+    // back the caller's raw spelling meant the same entity could serialize
+    // under two different keys depending on which store method minted its ref.
+    return { modelId: normalized, store: dataStore, editor, mutationView, ownerHistoryId };
   };
 
   return {

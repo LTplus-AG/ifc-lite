@@ -28,7 +28,7 @@ import { buildCompareDataset, COMPARE_COLUMNS } from './compare.js';
 import { buildElementsDataset } from './elements.js';
 import { DASHBOARD_PRESETS } from '../presets.js';
 import { createElementFieldReader } from '../element-field-reader.js';
-import { applyChartFilter, resolveChartFilter } from '../source-filter.js';
+import { applyChartFilter, chartElementFilterKey, resolveChartFilter } from '../source-filter.js';
 import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models.js';
 import { toGlobalIdFromModels } from '@/store/globalId.js';
 
@@ -654,6 +654,13 @@ END-ISO-10303-21;`;
     assert.equal(ids.has(2_000_041), false, 'untagged model does not match');
     const dataset = buildElementsDataset({ kind: 'all' }, live);
     assert.equal(applyChartFilter(dataset, ids).rows.length, 3, 'only the tagged model contributes chart rows');
+  });
+
+  it('source filter: selector text cannot collide with a rule-group cache key (#4946 review)', () => {
+    const groups = [{ combinator: 'AND' as const, rules: [Rule.ifcType(['IfcWall'], 'in')] }];
+    const ruleKey = chartElementFilterKey({ selector: '', groups });
+    assert.ok(ruleKey);
+    assert.notEqual(chartElementFilterKey({ selector: ruleKey }), ruleKey);
   });
 
   it('source filter: a refused reading (no rule, unsupported syntax, or a parse error) THROWS instead of narrowing on the readable part', async () => {

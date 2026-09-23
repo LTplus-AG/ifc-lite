@@ -35,7 +35,7 @@ export type ChartFilterReading =
 export function chartElementFilterKey(filter: ChartSourceFilter | undefined): string | undefined {
   if (!filter) return undefined;
   if (filter.groups?.length) return `groups:${JSON.stringify(filter.groups)}`;
-  return trimSelectorWhitespace(filter.selector).length > 0 ? filter.selector : undefined;
+  return trimSelectorWhitespace(filter.selector).length > 0 ? `selector:${JSON.stringify(filter.selector)}` : undefined;
 }
 
 /** Read + adapt selector text with the chart's refuse-don't-narrow rule.

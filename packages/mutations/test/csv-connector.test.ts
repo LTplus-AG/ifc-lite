@@ -1159,6 +1159,11 @@ describe('CsvConnector.match: overlay-created entities are candidates (#5198, #5
     view.setAttribute(created, 'Tag', 'C-8');
     expect(matchOne(connector, { type: 'tag', column: 'T' }, { T: 'C-8' })).toEqual([created]);
     expect(matchOne(connector, { type: 'tag', column: 'T' }, { T: 'C-7' })).toEqual([]);
+    // A second edit of the same attribute replaces the first: the overlay keys
+    // attribute edits by (entity, attribute), so only the latest is current.
+    view.setAttribute(created, 'Tag', 'C-9');
+    expect(matchOne(connector, { type: 'tag', column: 'T' }, { T: 'C-9' })).toEqual([created]);
+    expect(matchOne(connector, { type: 'tag', column: 'T' }, { T: 'C-8' })).toEqual([]);
   });
 
   it('property strategy matches a created entity through its overlay pset', () => {

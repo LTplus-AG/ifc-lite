@@ -34,17 +34,14 @@ async function run(args: string[]): Promise<{ stdout: string; stderr: string; co
   let stdout = '';
   let stderr = '';
   let code: number | undefined;
-  // @ts-expect-error -- test instrumentation
   process.stdout.write = (chunk: unknown) => {
     stdout += String(chunk);
     return true;
   };
-  // @ts-expect-error -- test instrumentation
   process.stderr.write = (chunk: unknown) => {
     stderr += String(chunk);
     return true;
   };
-  // @ts-expect-error -- test instrumentation
   process.exit = ((c?: number) => {
     throw new ProcessExited(c);
   }) as never;

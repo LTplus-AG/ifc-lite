@@ -202,6 +202,10 @@ describe('matchConstraint — pattern', () => {
     expect(() => matchConstraint(pat('[a-z-[aeiou]+'), 'xyz')).toThrow(
       /XSD character-class subtraction is not supported in JS regex/
     );
+    // Even behind an earlier approximated construct (review on #5286).
+    expect(() => matchConstraint(pat('\\p{IsBasicLatin}[a-z-[b]'), 'Ab')).toThrow(
+      /XSD character-class subtraction is not supported in JS regex/
+    );
   });
 
   it('anchors top-level alternation across the whole value', () => {

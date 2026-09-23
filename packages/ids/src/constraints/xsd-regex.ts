@@ -74,8 +74,11 @@ export function translateXsdRegex(pattern: string): TranslateResult {
   let i = 0;
   let inClass = false;
   let reason = '';
+  // The first reason wins, except that an undelimitable subtraction always
+  // does: callers fail closed on exactly that reason, so an earlier
+  // approximated construct must not hide it (review on #5286).
   const flag = (r: string) => {
-    if (!reason) reason = r;
+    if (!reason || r === SUBTRACTION_UNSUPPORTED_REASON) reason = r;
   };
 
   while (i < pattern.length) {

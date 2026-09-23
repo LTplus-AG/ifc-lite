@@ -136,9 +136,11 @@ describe('ruleSetToIds — exportable rules (#5225)', () => {
 
 describe('ruleSetToIds — refuses each unmappable kind with its own reason (#5225)', () => {
   const cases: Array<[string, InformationRule, RegExp]> = [
-    ['unique', rule({ kind: 'unique', subject: { kind: 'name' } }), /"unique" requirement checks a set of elements/],
-    ['aggregate', rule({ kind: 'aggregate', fn: 'count', op: 'gte', value: 1 }), /"aggregate" requirement/],
-    ['compare', rule({ kind: 'compare', left: { kind: 'name' }, right: { kind: 'name' }, op: 'eq' }), /"compare" requirement/],
+    ['unique', rule({ kind: 'unique', subject: { kind: 'name' } }), /"unique" requirement compares values across elements/],
+    ['aggregate', rule({ kind: 'aggregate', fn: 'count', op: 'gte', value: 1 }), /"aggregate" requirement totals values/],
+    ['compare', rule({ kind: 'compare', left: { kind: 'name' }, right: { kind: 'name' }, op: 'eq' }), /"compare" requirement compares two values of one element/],
+    ['unit', rule({ kind: 'unit', subject: { kind: 'quantity', setName: 'Qto_WallBaseQuantities', quantityName: 'Width' }, unit: 'mm' }),
+      /"unit" requirement checks the unit a value is recorded in/],
     ['ne', rule([Rule.property('P', 'X', 'ne', 'a')]), /negated condition \("ne"\)/],
     ['notContains', rule([Rule.name('notContains', 'a')]), /negated condition \("notContains"\)/],
     ['notMatches', rule([Rule.name('notMatches', 'a')]), /negated condition \("notMatches"\)/],

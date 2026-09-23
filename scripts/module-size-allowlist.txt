@@ -212,7 +212,6 @@
    427 packages/create-ifc-lite/src/templates/server-native.ts
    638 packages/create-ifc-lite/src/templates/server.ts
   2835 packages/create/src/ifc-creator.ts
-   448 packages/create/src/in-store/apply-style.ts
    535 packages/create/src/in-store/auto-space-detect.ts
    878 packages/create/src/in-store/extract-walls.ts
    819 packages/create/src/types.ts

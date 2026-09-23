@@ -15,9 +15,10 @@
  * without parser internals, the same arrangement as `resolve-source.ts`.
  */
 
-import { EntityExtractor, getAttributeNamesAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
-import type { IfcAttributeValue, StoreEditor } from '@ifc-lite/mutations';
+import { getAttributeNamesAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
+import type { StoreEditor } from '@ifc-lite/mutations';
 import { emitSurfaceStyle, type SurfaceStyleColor } from './_emit-helpers.js';
+import { asRef, createStyleEntityReader, indexExistingStyles, refList, type StyleEntity } from './style-entity-reader.js';
 
 export type { SurfaceStyleColor };
 
@@ -119,37 +120,6 @@ export interface ApplyStyleResult {
   keptExistingItemIds: number[];
 }
 
-interface RawEntity {
-  type: string;
-  attributes: IfcAttributeValue[];
-}
-
-/**
- * A STEP reference as an expressId.
- *
- * Source-parsed entities carry refs as numbers; overlay-created ones carry the
- * `'#123'` strings `StoreEditor.addEntity` takes. Both reach this module, so
- * both forms have to resolve.
- */
-function asRef(value: IfcAttributeValue | undefined): number | null {
-  if (typeof value === 'number') return value;
-  if (typeof value === 'string' && value.startsWith('#')) {
-    const id = Number(value.slice(1));
-    return Number.isInteger(id) ? id : null;
-  }
-  return null;
-}
-
-function refList(value: IfcAttributeValue | undefined): number[] {
-  if (!Array.isArray(value)) return [];
-  const out: number[] = [];
-  for (const item of value) {
-    const id = asRef(item);
-    if (id !== null) out.push(id);
-  }
-  return out;
-}
-
 /**
  * Depth limit for the representation walk. Real nesting is three levels (shape
  * -> representation -> item, plus one hop through a mapped representation);
@@ -162,7 +132,6 @@ const SHAPE_REPRESENTATIONS_INDEX = 2;    // IfcProductDefinitionShape.Represent
 const REPRESENTATION_ITEMS_INDEX = 3;     // IfcShapeRepresentation.Items
 const MAPPED_ITEM_SOURCE_INDEX = 0;       // IfcMappedItem.MappingSource
 const MAPPED_REPRESENTATION_INDEX = 1;    // IfcRepresentationMap.MappedRepresentation
-const STYLED_ITEM_TARGET_INDEX = 0;       // IfcStyledItem.Item
 
 /**
  * Index of a named attribute on a class, resolved against the bundled schema
@@ -194,7 +163,7 @@ function attributeIndex(typeName: string, attrName: string): number | null {
  * them follows mapped items. This is the complete one.
  */
 export function collectLeafRepresentationItems(
-  read: (id: number) => RawEntity | null,
+  read: (id: number) => StyleEntity | null,
   representationId: number,
   options: { followMappedItems?: boolean } = {},
 ): Set<number> {
@@ -230,58 +199,6 @@ export function collectLeafRepresentationItems(
 }
 
 /**
- * Read an entity by expressId, source buffer first and overlay second.
- *
- * `StoreEditor.addEntity` does not insert into `store.entityIndex`, so a
- * source-only reader cannot see anything created in the same session: styling a
- * wall from `bim.store.addWall` reported it as geometry-less and wrote an
- * orphan style. Mirrors `readEntity` in `extract-walls.ts`.
- */
-function createReader(store: IfcDataStore, editor: StoreEditor): (id: number) => RawEntity | null {
-  const extractor = new EntityExtractor(store.source);
-  return (id: number): RawEntity | null => {
-    const ref = store.entityIndex.byId.get(id) as
-      { byteOffset: number; byteLength: number } | undefined;
-    if (ref && ref.byteLength > 0 && ref.byteOffset >= 0) {
-      const entity = extractor.extractEntity(
-        ref as Parameters<EntityExtractor['extractEntity']>[0],
-      );
-      if (entity) return { type: entity.type, attributes: entity.attributes ?? [] };
-    }
-    const created = editor.getNewEntity(id);
-    return created ? { type: created.type, attributes: created.attributes ?? [] } : null;
-  };
-}
-
-/**
- * Every representation item that already carries an `IfcStyledItem`, keyed by
- * the item it styles.
- *
- * Built once per call and then maintained as styled items are added and
- * removed. Rebuilding it per batch was both the dominant cost of a
- * colour-by-class pass (87 ms per batch on a 92k-styled-item model) and a
- * correctness gap: a second batch could not see the first batch's styled items,
- * so overlapping geometry ended up with two of them.
- */
-function indexExistingStyles(
-  store: IfcDataStore,
-  editor: StoreEditor,
-  read: (id: number) => RawEntity | null,
-): Map<number, number> {
-  const styledBy = new Map<number, number>();
-  for (const id of store.entityIndex.byType.get('IFCSTYLEDITEM') ?? []) {
-    const target = asRef(read(id)?.attributes[STYLED_ITEM_TARGET_INDEX]);
-    if (target !== null) styledBy.set(target, id);
-  }
-  for (const created of editor.getNewEntities()) {
-    if (created.type.toUpperCase() !== 'IFCSTYLEDITEM') continue;
-    const target = asRef(created.attributes?.[STYLED_ITEM_TARGET_INDEX]);
-    if (target !== null) styledBy.set(target, created.expressId);
-  }
-  return styledBy;
-}
-
-/**
  * Give every representation item behind each batch's products one
  * `IfcSurfaceStyle`.
  *
@@ -299,7 +216,7 @@ export function applyStylesInStore(
   const replaceExisting = options.replaceExisting ?? true;
   const followMapped = options.followMappedItems ?? true;
   const schema = options.schema ?? store.schemaVersion;
-  const read = createReader(store, editor);
+  const read = createStyleEntityReader(store, editor);
   const styledBy = indexExistingStyles(store, editor, read);
 
   const results = batches.map(batch => {

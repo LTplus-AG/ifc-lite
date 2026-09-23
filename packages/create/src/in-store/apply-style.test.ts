@@ -160,6 +160,109 @@ describe('applyStylesInStore', () => {
     expect(editor.getNewEntities()).toHaveLength(0);
   });
 
+  it('replaces a tombstoned source style and honours an overlay-created style (#5249)', async () => {
+    const store = await parseFixture();
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+    expect(editor.removeEntity(150)).toBe(true);
+
+    const [replaced] = applyStylesInStore(editor, store, [
+      { products: [100], color: { red: 1, green: 0, blue: 0 } },
+    ], { replaceExisting: false });
+    expect(replaced.keptExistingItemIds).toEqual([]);
+    expect(replaced.styledItemIds).toHaveLength(1);
+    expect(view.isDeleted(150)).toBe(true);
+
+    const createdStyle = replaced.styledItemIds[0]!;
+    const [kept] = applyStylesInStore(editor, store, [
+      { products: [100], color: { red: 0, green: 1, blue: 0 } },
+    ], { replaceExisting: false });
+    expect(kept.keptExistingItemIds).toEqual([112]);
+    expect(kept.styledItemIds).toEqual([]);
+    expect(editor.getNewEntity(createdStyle)?.type).toBe('IfcStyledItem');
+  });
+
+  it('recognizes a zero-padded authored style ref without rounding unsafe STEP ids (#5249)', async () => {
+    const store = await parseFixture();
+    const editor = makeEditor(store);
+    expect(editor.removeEntity(150)).toBe(true);
+    editor.addEntity('IfcStyledItem', ['#0112', ['#151'], null]);
+
+    const [result] = applyStylesInStore(editor, store, [
+      { products: [100], color: { red: 1, green: 0, blue: 0 } },
+    ], { replaceExisting: false });
+
+    expect(result.keptExistingItemIds).toEqual([112]);
+    expect(result.styledItemIds).toEqual([]);
+  });
+
+  it('does not treat an unsafe authored STEP ref as the source geometry item (#5249)', async () => {
+    const store = await parseFixture();
+    const editor = makeEditor(store);
+    expect(editor.removeEntity(150)).toBe(true);
+    editor.addEntity('IfcStyledItem', ['#9007199254740993', ['#151'], null]);
+
+    const [result] = applyStylesInStore(editor, store, [
+      { products: [100], color: { red: 1, green: 0, blue: 0 } },
+    ], { replaceExisting: false });
+
+    expect(result.keptExistingItemIds).toEqual([]);
+    expect(result.styledItemIds).toHaveLength(1);
+  });
+
+  it('reads a named Representation edit on a source product (#5249)', async () => {
+    const store = await parseFixture();
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+    view.setAttribute(101, 'Representation', '#110');
+
+    const [result] = applyStylesInStore(editor, store, [
+      { products: [101], color: { red: 0, green: 0, blue: 1 } },
+    ]);
+    expect(result.productsWithoutGeometry).toEqual([]);
+    expect(result.styledItemIds).toHaveLength(1);
+    expect(editor.getNewEntity(result.styledItemIds[0]!)?.attributes[0]).toBe('#112');
+  });
+
+  it('styles a geometry item indexed only in the deferred source index (#5249)', async () => {
+    const store = await parseFixture();
+    const itemRef = store.entityIndex.byId.get(112);
+    expect(itemRef).toBeDefined();
+    const immediate = new Map(store.entityIndex.byId.entries());
+    immediate.delete(112);
+    store.entityIndex.byId = immediate;
+    store.deferredEntityIndex = new Map([[112, itemRef!]]);
+    const editor = makeEditor(store);
+
+    const [result] = applyStylesInStore(editor, store, [
+      { products: [100], color: { red: 1, green: 0, blue: 0 } },
+    ]);
+
+    expect(result.productsWithoutGeometry).toEqual([]);
+    expect(result.styledItemIds).toHaveLength(1);
+    expect(editor.getNewEntity(result.styledItemIds[0]!)?.attributes[0]).toBe('#112');
+  });
+
+  it('tombstones an existing styled item held only in the deferred index (#5249)', async () => {
+    const store = await parseFixture();
+    const styleRef = store.entityIndex.byId.get(150);
+    expect(styleRef).toBeDefined();
+    const immediate = new Map(store.entityIndex.byId.entries());
+    immediate.delete(150);
+    store.entityIndex.byId = immediate;
+    store.deferredEntityIndex = new Map([[150, styleRef!]]);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+
+    const [result] = applyStylesInStore(editor, store, [
+      { products: [100], color: { red: 1, green: 0, blue: 0 } },
+    ]);
+
+    expect(result.replacedStyledItemIds).toEqual([150]);
+    expect(view.isDeleted(150)).toBe(true);
+    expect(result.styledItemIds).toHaveLength(1);
+  });
+
   it('creates no entities at all for a batch that reaches no geometry', async () => {
     const store = await parseFixture();
     const editor = makeEditor(store);

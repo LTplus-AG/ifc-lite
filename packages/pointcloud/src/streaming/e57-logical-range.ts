@@ -35,6 +35,11 @@ export async function readE57LogicalRange(
   options?: { strict?: boolean },
 ): Promise<Uint8Array> {
   throwIfAborted(signal);
+  // A NaN offset or length compares false against every bound below, so it
+  // would fall through as a "successful" empty read, even in strict mode.
+  if (!Number.isFinite(logStart) || !Number.isFinite(logLength)) {
+    throw new Error(`E57: invalid logical range (offset ${logStart}, length ${logLength})`);
+  }
   if (logLength <= 0) return new Uint8Array(0);
   const payloadPerPage = pageSize - 4;
   const firstPage = Math.floor(logStart / payloadPerPage);

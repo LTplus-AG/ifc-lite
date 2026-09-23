@@ -9,7 +9,7 @@
 //! already world-space, so no transform is applied.
 
 use crate::aabb::Aabb;
-use crate::bvh::Bvh;
+use crate::bvh::{js_max, js_min, Bvh};
 use crate::obb::{detect_obb, MeshLike, Obb};
 use crate::triangle::closest_pt_point_triangle;
 use crate::vec3::{cross, dist_sq, dot, sub, Vec3};
@@ -360,6 +360,13 @@ impl MeshLike for TriMesh {
     }
 }
 
+/// Bounds of one triangle, matching `tri-mesh.ts`'s `triBounds`
+/// (`Math.min`/`Math.max`): a NaN vertex NaNs the bounds, so `Aabb::intersects`
+/// excludes the triangle from every query. `f64::min`/`max` would drop the NaN
+/// and fabricate finite bounds from the other two vertices (#5220). This is
+/// deliberately the opposite of `bvh.rs`'s `compute_bounds`, which SKIPS a NaN
+/// so one corrupt entity cannot blind its siblings; a triangle's bounds come
+/// from its own three vertices only, so there is no sibling to protect.
 fn tri_bounds(positions: &[f64], indices: &[u32], t: usize) -> Aabb {
     let o = t * 3;
     let va = vertex(positions, indices[o]);
@@ -367,14 +374,14 @@ fn tri_bounds(positions: &[f64], indices: &[u32], t: usize) -> Aabb {
     let vc = vertex(positions, indices[o + 2]);
     Aabb::new(
         [
-            va[0].min(vb[0]).min(vc[0]),
-            va[1].min(vb[1]).min(vc[1]),
-            va[2].min(vb[2]).min(vc[2]),
+            js_min(js_min(va[0], vb[0]), vc[0]),
+            js_min(js_min(va[1], vb[1]), vc[1]),
+            js_min(js_min(va[2], vb[2]), vc[2]),
         ],
         [
-            va[0].max(vb[0]).max(vc[0]),
-            va[1].max(vb[1]).max(vc[1]),
-            va[2].max(vb[2]).max(vc[2]),
+            js_max(js_max(va[0], vb[0]), vc[0]),
+            js_max(js_max(va[1], vb[1]), vc[1]),
+            js_max(js_max(va[2], vb[2]), vc[2]),
         ],
     )
 }

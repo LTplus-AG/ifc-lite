@@ -192,10 +192,10 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     const editor = getEditor(requested);
     const dataStore = resolveDataStore(requested);
     if (!editor || !dataStore) throw new Error(`bim.store: no model loaded for id "${modelId}"`);
-    const ownerHistoryId = resolveLiveOwnerHistoryId(dataStore, editor);
     const normalized = normalizeMutationModelId(store.getState(), requested);
     const mutationView = store.getState().getMutationView(normalized);
     if (!mutationView) throw new Error(`bim.store: no mutation view for model id "${modelId}"`);
+    const ownerHistoryId = resolveLiveOwnerHistoryId(dataStore, editor, mutationView);
     // #5234: the NORMALIZED id, matching what `addEntity`/`buildElement`
     // return. `entityRefToString` serializes `modelId` verbatim, so handing
     // back the caller's raw spelling meant the same entity could serialize
@@ -356,4 +356,3 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     }),
   };
 }
-

@@ -17,6 +17,7 @@ function fp(
     ifcType: opts.ifcType ?? 'IfcWall',
     dataHash: opts.dataHash ?? 'd0',
     geometryHash: opts.geometryHash,
+    container: opts.container,
     ref: opts.ref ?? 0,
   };
 }
@@ -79,6 +80,73 @@ describe('diffModels — data vs geometry scope', () => {
 
     expect(diffModels(base, dataChanged).byKey.get('w')?.changeKinds).toEqual(['data']);
     expect(diffModels(base, geomChanged).byKey.get('w')?.changeKinds).toEqual(['geometry']);
+  });
+});
+
+describe('diffModels — spatial re-parenting (issue #5214)', () => {
+  it('a re-parented element with identical ifcType/dataHash/geometryHash classifies as modified with a container change kind', () => {
+    // Exact repro from the issue: only `container` differs.
+    const base = [fp('GUID-WALL-1', { dataHash: 'abc123', geometryHash: 999n, container: 'Building/Storey 1' })];
+    const head = [fp('GUID-WALL-1', { dataHash: 'abc123', geometryHash: 999n, container: 'Building/Storey 2' })];
+    const d = diffModels(base, head).byKey.get('GUID-WALL-1');
+    expect(d?.state).toBe('modified');
+    expect(d?.changeKinds).toEqual(['container']);
+  });
+
+  it('identical containers still classify as unchanged', () => {
+    const base = [fp('w', { dataHash: 'abc123', geometryHash: 999n, container: 'Building/Storey 1' })];
+    const head = [fp('w', { dataHash: 'abc123', geometryHash: 999n, container: 'Building/Storey 1' })];
+    const d = diffModels(base, head).byKey.get('w');
+    expect(d?.state).toBe('unchanged');
+    expect(d?.changeKinds).toEqual([]);
+  });
+
+  it('container undefined -> resolved is not counted as a containment change (absence is not evidence)', () => {
+    const base = [fp('w', { dataHash: 'abc123', geometryHash: 999n, container: undefined })];
+    const head = [fp('w', { dataHash: 'abc123', geometryHash: 999n, container: 'Building/Storey 1' })];
+    const d = diffModels(base, head).byKey.get('w');
+    expect(d?.state).toBe('unchanged');
+    expect(d?.changeKinds).toEqual([]);
+  });
+
+  it('container resolved -> undefined is not counted as a containment change (absence is not evidence)', () => {
+    const base = [fp('w', { dataHash: 'abc123', geometryHash: 999n, container: 'Building/Storey 1' })];
+    const head = [fp('w', { dataHash: 'abc123', geometryHash: 999n, container: undefined })];
+    const d = diffModels(base, head).byKey.get('w');
+    expect(d?.state).toBe('unchanged');
+    expect(d?.changeKinds).toEqual([]);
+  });
+
+  it('an empty container path is absence, not a containment change', () => {
+    const base = [fp('w', { dataHash: 'abc123', geometryHash: 999n, container: '' })];
+    const head = [fp('w', { dataHash: 'abc123', geometryHash: 999n, container: 'Building/Storey 1' })];
+    const d = diffModels(base, head).byKey.get('w');
+    expect(d?.state).toBe('unchanged');
+    expect(d?.changeKinds).toEqual([]);
+  });
+
+  it('a genuine data change alongside an unchanged container still reports only "data"', () => {
+    const base = [fp('w', { dataHash: 'd1', geometryHash: 999n, container: 'Building/Storey 1' })];
+    const head = [fp('w', { dataHash: 'd2', geometryHash: 999n, container: 'Building/Storey 1' })];
+    const d = diffModels(base, head).byKey.get('w');
+    expect(d?.state).toBe('modified');
+    expect(d?.changeKinds).toEqual(['data']);
+  });
+
+  it('a container change alongside a genuine data change reports both kinds', () => {
+    const base = [fp('w', { dataHash: 'd1', geometryHash: 999n, container: 'Building/Storey 1' })];
+    const head = [fp('w', { dataHash: 'd2', geometryHash: 999n, container: 'Building/Storey 2' })];
+    const d = diffModels(base, head).byKey.get('w');
+    expect(d?.state).toBe('modified');
+    expect(d?.changeKinds.sort()).toEqual(['container', 'data']);
+  });
+
+  it('scope "geometry" does not surface a container-only change', () => {
+    const base = [fp('w', { dataHash: 'abc123', geometryHash: 999n, container: 'Building/Storey 1' })];
+    const head = [fp('w', { dataHash: 'abc123', geometryHash: 999n, container: 'Building/Storey 2' })];
+    const d = diffModels(base, head, { scope: 'geometry' }).byKey.get('w');
+    expect(d?.state).toBe('unchanged');
+    expect(d?.changeKinds).toEqual([]);
   });
 });
 

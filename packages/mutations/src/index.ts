@@ -20,6 +20,7 @@ export {
   type EntityTypeNormalizer,
 } from './store-editor.js';
 export { ChangeSetManager } from './change-set.js';
+export { storeHasSourceEntity } from './source-entity-index.js';
 export {
   iterateEffectiveEntityIds,
   type EntityEnumerationSource,

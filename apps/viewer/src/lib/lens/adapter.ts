@@ -12,12 +12,11 @@
 
 import type { LensDataProvider, PropertySetInfo, ClassificationInfo } from '@ifc-lite/lens';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { RelationshipType } from '@ifc-lite/data';
 import {
   extractEntityAttributesOnDemand,
-  extractPropertiesOnDemand,
   extractTypePropertiesOnDemand,
-  extractQuantitiesOnDemand,
   extractTypeQuantitiesOnDemand,
   extractClassificationsOnDemand,
   extractMaterialsOnDemand,
@@ -27,6 +26,12 @@ import {
 } from '@ifc-lite/parser';
 import { resolveEntityPredefinedType } from '@ifc-lite/rules';
 import { lensMaterialNames } from '@ifc-lite/rules';
+import {
+  ownPropertySetsFor,
+  typePropertySetsFor,
+  quantitySetsFor,
+  mutatedAttributeValue,
+} from '@ifc-lite/rules';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import type { FederatedModel } from '@/store/types';
 
@@ -36,6 +41,27 @@ interface ModelEntry {
   ifcDataStore: IfcDataStore;
   idOffset: number;
   maxExpressId: number;
+  /** Live overlay for this model, when one exists (#5207) — same map
+   *  `evaluatorModelsFromState` threads into search. A legacy entry has no
+   *  matching key, so stays `undefined` and reads base-only as before. */
+  mutationView: MutablePropertyView | undefined;
+}
+
+/** `expressId`'s type-inherited psets, mutation-aware (#5207); mirrors
+ *  `filter-evaluate.ts`'s `getInheritedTypePsets`. */
+function resolveTypePropertySets(
+  store: IfcDataStore,
+  expressId: number,
+  mutationView: MutablePropertyView | undefined,
+): PropertySetInfo[] {
+  if (!store.relationships) return [];
+  const typeIds = store.relationships.getRelated(expressId, RelationshipType.DefinesByType, 'inverse');
+  if (typeIds.length === 0) return [];
+  const typeId = typeIds[0];
+  const base = (store.source && store.source.length > 0
+    ? extractTypePropertiesOnDemand(store, expressId)?.properties ?? []
+    : (store.properties?.getForEntity?.(typeId) ?? [])) as Parameters<typeof typePropertySetsFor>[0];
+  return typePropertySetsFor(base, typeId, mutationView) as PropertySetInfo[];
 }
 
 /** Scan entity array to find the actual maximum expressId */
@@ -54,10 +80,13 @@ function computeMaxExpressId(dataStore: IfcDataStore): number {
  *
  * @param models - Loaded federated models (may be empty in legacy mode)
  * @param legacyDataStore - Single-model data store (fallback)
+ * @param mutationViews - Live per-model overlay, keyed by model id (#5207);
+ *   omitted or missing an entry reads base-only, unchanged from before.
  */
 export function createLensDataProvider(
   models: Map<string, FederatedModel>,
   legacyDataStore: IfcDataStore | null,
+  mutationViews?: ReadonlyMap<string, MutablePropertyView>,
 ): LensDataProvider {
   // Build a flat array for fast iteration
   const entries: ModelEntry[] = [];
@@ -70,6 +99,7 @@ export function createLensDataProvider(
           ifcDataStore: model.ifcDataStore,
           idOffset: model.idOffset ?? 0,
           maxExpressId: model.maxExpressId ?? 0,
+          mutationView: mutationViews?.get(model.id),
         });
       }
     }
@@ -80,6 +110,7 @@ export function createLensDataProvider(
       ifcDataStore: legacyDataStore,
       idOffset: 0,
       maxExpressId: computeMaxExpressId(legacyDataStore),
+      mutationView: undefined,
     });
   }
 
@@ -117,31 +148,25 @@ export function createLensDataProvider(
     ): unknown {
       const resolved = resolveGlobalId(globalId, entries);
       if (!resolved) return undefined;
-      const store = resolved.entry.ifcDataStore;
+      const { ifcDataStore: store, mutationView } = resolved.entry;
       const id = resolved.expressId;
-
-      // On-demand extraction path: pre-built table is empty for client-parsed
-      // stores, so iterate the same psets we expose via getPropertySets.
-      if (store.onDemandPropertyMap && store.source?.length > 0) {
-        const instancePsets = extractPropertiesOnDemand(store, id);
-        for (const pset of instancePsets) {
+      const findValue = (psets: PropertySetInfo[]): unknown => {
+        for (const pset of psets) {
           if (pset.name !== propertySetName) continue;
           for (const prop of pset.properties) {
             if (prop.name === propertyName) return prop.value;
           }
         }
-        // Fall through to type-inherited psets (Pset_*Common is typically
-        // attached to IfcSpaceType / IfcWallType, not the instance).
-        const typeProps = extractTypePropertiesOnDemand(store, id);
-        if (typeProps) {
-          for (const pset of typeProps.properties) {
-            if (pset.name !== propertySetName) continue;
-            for (const prop of pset.properties) {
-              if (prop.name === propertyName) return prop.value;
-            }
-          }
-        }
         return undefined;
+      };
+
+      // Mutation-aware (#5207) via filter-evaluate-mutations.ts's
+      // ownPropertySetsFor, which handles both extraction modes internally.
+      if (mutationView || (store.onDemandPropertyMap && store.source?.length > 0)) {
+        const own = findValue(ownPropertySetsFor(store, id, mutationView) as PropertySetInfo[]);
+        if (own !== undefined) return own;
+        // Type-inherited (Pset_*Common is typically on IfcSpaceType/IfcWallType).
+        return findValue(resolveTypePropertySets(store, id, mutationView));
       }
 
       return store.properties?.getPropertyValue?.(id, propertySetName, propertyName);
@@ -150,23 +175,16 @@ export function createLensDataProvider(
     getPropertySets(globalId: number): PropertySetInfo[] {
       const resolved = resolveGlobalId(globalId, entries);
       if (!resolved) return [];
-      const store = resolved.entry.ifcDataStore;
+      const { ifcDataStore: store, mutationView } = resolved.entry;
       const id = resolved.expressId;
 
       // Properties are extracted lazily — the pre-built table is empty unless
-      // server-parsed. Mirror the quantity path and use the on-demand extractor,
-      // which itself falls back to the eager table when no on-demand map exists.
-      if (store.onDemandPropertyMap && store.source?.length > 0) {
-        const instancePsets = extractPropertiesOnDemand(store, id) as PropertySetInfo[];
-        // Merge type-inherited psets (Pset_*Common lives on the type entity for
-        // occurrences). Instance properties win per PROPERTY, not per set: both
-        // sides routinely carry a same-named set holding different properties,
-        // and replacing the whole set hid the type-only ones (#1913).
-        const typeProps = extractTypePropertiesOnDemand(store, id);
-        return mergeInheritedPropertySets(
-          instancePsets,
-          (typeProps?.properties ?? []) as PropertySetInfo[],
-        );
+      // server-parsed, falling back to the eager table when no on-demand map
+      // exists. Mutation-aware (#5207) via ownPropertySetsFor. Instance
+      // properties win per PROPERTY, not per set (#1913).
+      if (mutationView || (store.onDemandPropertyMap && store.source?.length > 0)) {
+        const instancePsets = ownPropertySetsFor(store, id, mutationView) as PropertySetInfo[];
+        return mergeInheritedPropertySets(instancePsets, resolveTypePropertySets(store, id, mutationView));
       }
 
       const psets = store.properties?.getForEntity?.(id);
@@ -177,8 +195,12 @@ export function createLensDataProvider(
     getEntityAttribute(globalId: number, attrName: string): string | undefined {
       const resolved = resolveGlobalId(globalId, entries);
       if (!resolved) return undefined;
-      const store = resolved.entry.ifcDataStore;
+      const { ifcDataStore: store, mutationView } = resolved.entry;
       const id = resolved.expressId;
+
+      // Live edit wins (#5207), same lookup filter-evaluate.ts uses.
+      const edited = mutatedAttributeValue(mutationView, id, attrName);
+      if (edited !== undefined) return edited;
 
       // Fast path: columnar attributes stored during initial parse
       switch (attrName) {
@@ -226,7 +248,7 @@ export function createLensDataProvider(
     ): number | string | undefined {
       const resolved = resolveGlobalId(globalId, entries);
       if (!resolved) return undefined;
-      const store = resolved.entry.ifcDataStore;
+      const { ifcDataStore: store, mutationView } = resolved.entry;
       const id = resolved.expressId;
       const findIn = (qsets: ReadonlyArray<{ name: string; quantities: ReadonlyArray<{ name: string; value: number | string }> }>) => {
         for (const qset of qsets) {
@@ -238,20 +260,18 @@ export function createLensDataProvider(
         return undefined;
       };
 
-      // On-demand quantity extraction
+      // Mutation-aware occurrence read (#5207). Type-inherited quantities
+      // stay base-only below: search's own qtysFor has no type-quantity
+      // overlay to mirror, so this doesn't out-run that model.
+      const own = findIn(quantitySetsFor(store, id, mutationView));
+      if (own !== undefined) return own;
+
+      // Type-inherited qsets (Qto_*BaseQuantities is sometimes attached to
+      // the IfcTypeProduct rather than the occurrence) — base-only.
       if (store.onDemandQuantityMap && store.source?.length > 0) {
-        const own = findIn(extractQuantitiesOnDemand(store, id));
-        if (own !== undefined) return own;
-        // Fall through to type-inherited qsets (Qto_*BaseQuantities is
-        // sometimes attached to the IfcTypeProduct rather than the occurrence,
-        // the same shape Pset_*Common uses above).
         const typeQtys = extractTypeQuantitiesOnDemand(store, id);
         return typeQtys ? findIn(typeQtys.quantities) : undefined;
       }
-
-      // Fallback: pre-built quantity tables
-      const own = findIn(store.quantities?.getForEntity?.(id) ?? []);
-      if (own !== undefined) return own;
       const typeIds = store.relationships?.getRelated(id, RelationshipType.DefinesByType, 'inverse') ?? [];
       const typeId = typeIds[0];
       if (typeId === undefined) return undefined;
@@ -271,30 +291,24 @@ export function createLensDataProvider(
     }> {
       const resolved = resolveGlobalId(globalId, entries);
       if (!resolved) return [];
-      const store = resolved.entry.ifcDataStore;
+      const { ifcDataStore: store, mutationView } = resolved.entry;
       const id = resolved.expressId;
 
-      // On-demand quantity extraction, merged with type-inherited qsets the
-      // same way getPropertySets merges psets: occurrence wins per QUANTITY,
-      // not per set (mirrors mergeInheritedPropertySets — see there for why a
-      // whole-set replacement on a name collision hides type-only quantities).
+      // Occurrence qsets, mutation-aware (#5207); merged with type-inherited
+      // qsets, base-only (see getQuantityValue), occurrence wins per QUANTITY.
+      const instanceQsets = quantitySetsFor(store, id, mutationView) as ReadonlyArray<{ name: string; quantities: ReadonlyArray<{ name: string }> }>;
+      let typeQsets: ReadonlyArray<{ name: string; quantities: ReadonlyArray<{ name: string }> }> = [];
       if (store.onDemandQuantityMap && store.source?.length > 0) {
-        const instanceQsets = extractQuantitiesOnDemand(store, id) as ReadonlyArray<{ name: string; quantities: ReadonlyArray<{ name: string }> }>;
         const typeQtys = extractTypeQuantitiesOnDemand(store, id);
-        return mergeInheritedQuantitySets(
-          instanceQsets,
-          (typeQtys?.quantities ?? []) as ReadonlyArray<{ name: string; quantities: ReadonlyArray<{ name: string }> }>,
-        );
+        typeQsets = (typeQtys?.quantities ?? []) as typeof typeQsets;
+      } else {
+        const typeIds = store.relationships?.getRelated(id, RelationshipType.DefinesByType, 'inverse') ?? [];
+        const typeId = typeIds[0];
+        typeQsets = typeId !== undefined
+          ? (store.quantities?.getForEntity?.(typeId) ?? []) as typeof typeQsets
+          : [];
       }
-
-      // Fallback: pre-built quantity tables
-      const ownQsets = (store.quantities?.getForEntity?.(id) ?? []) as ReadonlyArray<{ name: string; quantities: ReadonlyArray<{ name: string }> }>;
-      const typeIds = store.relationships?.getRelated(id, RelationshipType.DefinesByType, 'inverse') ?? [];
-      const typeId = typeIds[0];
-      const typeQsets = typeId !== undefined
-        ? (store.quantities?.getForEntity?.(typeId) ?? []) as ReadonlyArray<{ name: string; quantities: ReadonlyArray<{ name: string }> }>
-        : [];
-      return mergeInheritedQuantitySets(ownQsets, typeQsets);
+      return mergeInheritedQuantitySets(instanceQsets, typeQsets);
     },
 
     getMaterialName(globalId: number): string | undefined {

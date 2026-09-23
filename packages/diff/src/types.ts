@@ -13,7 +13,7 @@
 export type DiffState = 'added' | 'modified' | 'deleted' | 'unchanged';
 
 /** Which signal caused a `modified` classification. */
-export type DiffChangeKind = 'data' | 'geometry';
+export type DiffChangeKind = 'data' | 'geometry' | 'container';
 
 /**
  * What kinds of difference count toward a `modified` classification.
@@ -148,11 +148,19 @@ export interface EntityFingerprint<TRef = unknown> {
    * names of the spatial structure elements from the project down to the
    * containing storey or space, joined by `/` (`Project/Building/Level 2/
    * Room 204`). Never GlobalIds: a from-scratch re-export re-GUIDs the
-   * storeys too. Used only by the successor stage's `position` profile
-   * ({@link DiffOptions.detectSuccessors}), which pairs two entities only when
-   * both carry a non-empty container and they are equal; absent on either side
-   * is not evidence and the pair is skipped. Both revisions must be resolved by
-   * the same adapter so the paths agree.
+   * storeys too. Both revisions must be resolved by the same adapter so the
+   * paths agree.
+   *
+   * Consumed two ways:
+   *  - the successor stage's `position` profile
+   *    ({@link DiffOptions.detectSuccessors}), which pairs two entities only
+   *    when both carry a non-empty container and they are equal;
+   *  - the key-matched pass in `diffModels`, which reports a `'container'`
+   *    {@link DiffChangeKind} when both sides carry a non-empty container and
+   *    they differ (issue #5214).
+   * Either way, absent on either side is not evidence and is skipped rather
+   * than counted as a change — a container this adapter could not resolve is
+   * not proof the entity moved.
    */
   container?: string;
   /** Adapter handle passed through to the diff entry. */

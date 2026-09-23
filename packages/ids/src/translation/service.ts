@@ -502,6 +502,8 @@ class IDSTranslationServiceImpl implements TranslationService {
       // Material failures
       case 'MATERIAL_MISSING':
         return t.materialMissing;
+      case 'MATERIAL_UNRESOLVED':
+        return t.materialUnresolved;
 
       case 'MATERIAL_VALUE_MISMATCH':
         if (context?.availableMaterials) {

@@ -66,6 +66,31 @@ function box(key: string, tag: string, center: Vec3, size = 1): ClashElement {
   };
 }
 
+/**
+ * A "dumbbell" element: two tiny, far-apart triangles that together give a
+ * wide AABB — the AABB overlaps a target while neither triangle does. Models
+ * one sub-prim of a split entity that is a broad-phase false positive. Same
+ * fixture as `packages/clash/src/regression.test.ts`'s `dumbbellElement`;
+ * reproduced here rather than imported, since the two files must stay
+ * independently readable.
+ */
+function dumbbell(key: string, tag: string, cxNear: number, cxFar: number): ClashElement {
+  const eps = 0.01;
+  const positions = new Float32Array([
+    cxNear, 0, 0, cxNear + eps, 0, 0, cxNear, eps, 0,
+    cxFar, 0, 0, cxFar + eps, 0, 0, cxFar, eps, 0,
+  ]);
+  const indices = new Uint32Array([0, 1, 2, 3, 4, 5]);
+  // Bounds padded by a fixed margin around the two triangle CENTERS, not the
+  // triangles' own eps-sized extent — matching the #5194 issue's own executed
+  // repro exactly ([0.45, 20.55] for cxNear=0.5, cxFar=20.5).
+  const margin = 0.05;
+  return {
+    key, ref: refCounter++, model: 'm', tag, positions, indices,
+    bounds: { min: [cxNear - margin, -margin, -margin], max: [cxFar + margin, margin, margin] },
+  };
+}
+
 const BOX_CORNER_ORDER: ReadonlyArray<readonly [number, number, number]> = [
   [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
   [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1],
@@ -227,6 +252,41 @@ describe('differential: WASM kernel === TS kernel', () => {
     // durable key, the way a split IFC5/USD entity would.
     const els = [box('SAME', 'IfcWall', [0, 0, 0]), box('SAME', 'IfcWall', [0.2, 0, 0])];
     expect(await bothAgree(els, [{ id: 'self', name: 'wall self-clash', a: 'IfcWall', mode: 'hard' }])).toBe(0);
+  });
+
+  // #5220 / #5194: the shape the same-key test above does NOT cover — two
+  // same-key submeshes where one (a1) is a broad-phase false positive and the
+  // other (a2) genuinely clashes with a third element (b). The TS engine's
+  // old cross-group broad phase deduped candidate pairs by entity KEY before
+  // the narrow phase, so a1's spurious pair hid a2's real one when a1 came
+  // first. The Rust session dedups by GLOBAL ELEMENT INDEX only (`session.rs`
+  // `candidate_pairs`), so it never had the defect; keying that dedup on
+  // entity identity would reintroduce it, and this case would go red. Both
+  // orders, both backends.
+  it('agrees on the #5194 same-key dumbbell shape (broad-phase false positive + a real clash)', async () => {
+    const a1 = dumbbell('A', 'IfcWall', 0.5, 20.5);
+    const a2 = box('A', 'IfcWall', [10.5, 0, 0], 2);
+    const b = box('B', 'IfcBeam', [10, 0, 0], 2);
+    const rules: ClashRule[] = [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }];
+    expect(await bothAgree([a1, a2, b], rules)).toBe(1);
+    expect(await bothAgree([a2, a1, b], rules)).toBe(1);
+  });
+
+  // #5194: when BOTH same-key sub-prims genuinely clash, the orchestrator
+  // keeps the deeper record. Each kernel hands it both records, so the kept
+  // distance/point must agree across backends in either order. The deeper
+  // sub-prim sits at the HIGHER x, so BVH traversal order cannot fake it.
+  it('agrees on which same-key sub-prim record survives the dedup (#5194)', async () => {
+    const shallow = box('A', 'IfcWall', [9.6, 0, 0]);
+    const deep = box('A', 'IfcWall', [10.05, 0, 0]);
+    const b = box('B', 'IfcBeam', [10, 0, 0]);
+    const rules: ClashRule[] = [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }];
+    const deepAlone = await ts.run([deep, b], rules);
+    for (const order of [[shallow, deep, b], [deep, shallow, b]]) {
+      expect(await bothAgree(order, rules)).toBe(1);
+      const kept = (await wasm.run(order, rules)).clashes[0];
+      expect(Math.abs(kept.distance - deepAlone.clashes[0].distance)).toBeLessThan(EPS);
+    }
   });
 
   it('agrees across the full discipline matrix on a mixed model', async () => {

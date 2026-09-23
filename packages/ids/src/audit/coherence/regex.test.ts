@@ -27,8 +27,17 @@ describe('translateXsdRegex', () => {
     expect(translateXsdRegex('\\W+').pattern).toBe('[^\\p{L}\\p{Nd}]+');
   });
 
-  it('flags character-class subtraction as unsupported', () => {
+  it('translates character-class subtraction exactly, as a negative lookahead (#5183)', () => {
     const r = translateXsdRegex('[a-z-[aeiou]]');
+    expect(r.supported).toBe(true);
+    expect(r.pattern).toBe('(?:(?![aeiou])[a-z])');
+    // Nested, and with XSD escapes on either side translated in class mode.
+    expect(translateXsdRegex('[a-z-[b-y-[c]]]').pattern).toBe('(?:(?!(?:(?![c])[b-y]))[a-z])');
+    expect(translateXsdRegex('[\\w-[\\d]]').pattern).toBe('(?:(?![\\p{Nd}])[\\p{L}\\p{Nd}])');
+  });
+
+  it('refuses a subtraction it cannot delimit rather than guessing', () => {
+    const r = translateXsdRegex('[a-z-[aeiou]');
     expect(r.supported).toBe(false);
     expect(r.reason).toMatch(/subtraction/i);
   });
@@ -81,10 +90,8 @@ describe('compileXsdRegex', () => {
     if (!r.ok) expect(r.severity).toBe('error');
   });
 
-  it('returns warning for char-class subtraction', () => {
-    const r = compileXsdRegex('[a-z-[aeiou]]');
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.severity).toBe('warning');
+  it('compiles char-class subtraction: the runtime matcher evaluates it exactly (#5183)', () => {
+    expect(compileXsdRegex('[a-z-[aeiou]]').ok).toBe(true);
   });
 
   it('returns error for empty pattern', () => {

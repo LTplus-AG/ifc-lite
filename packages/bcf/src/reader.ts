@@ -22,7 +22,7 @@ import type {
   BCFHeaderFile,
 } from './types.js';
 import { parseViewpointContent } from './reader-viewpoint-content.js';
-import { discoverTopicMarkupPaths, findArchiveEntry, resolveArchiveRoot } from './reader-archive-root.js';
+import { discoverTopicMarkupPaths, findArchiveEntry, normalizeEntrySeparators, resolveArchiveRoot } from './reader-archive-root.js';
 import { createWarningReporter, reportVersionWarning, type ReportWarning } from './reader-warning.js';
 
 /**
@@ -193,11 +193,11 @@ export async function readBCF(
     throw new BCFResourceLimitError(`BCF archive rejected: ${rawRecords} raw records exceeds cap ${maxEntries}`);
   }
 
-  const zip = await JSZip.loadAsync(bytes);
+  const warn = createWarningReporter(limits?.onWarning);
+  const zip = normalizeEntrySeparators(await JSZip.loadAsync(bytes), warn);
   assertArchiveWithinLimits(zip, maxEntries, maxExpandedBytes);
   const budget: ExpansionBudget = { used: 0, limit: maxExpandedBytes };
   const root = resolveArchiveRoot(zip);
-  const warn = createWarningReporter(limits?.onWarning);
 
   // Read version file
   const version = await readVersionFile(zip, budget, root, limits?.onWarning);

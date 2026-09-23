@@ -190,6 +190,7 @@ export const en = {
 
     // Material failures
     materialMissing: 'No material assigned',
+    materialUnresolved: 'Entity has a material, but its details cannot be read from this data source',
     materialValueMismatch: 'Material "{actual}" does not match expected {expected}',
     materialValueMissingAvailable: 'Material {expected} not found. Available: {available}',
     materialProhibited: 'Prohibited material "{actual}" is assigned',

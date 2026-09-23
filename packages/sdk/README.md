@@ -41,6 +41,11 @@ Cost reads describe the loaded IFC source snapshot. Every STEP reference is an
 `EntityRef` (`{ modelId, expressId }`); pending generic mutation overlays are
 not silently folded into the graph.
 
+Cost authoring hosts can call `resolveLiveOwnerHistoryId(store, editor, view)`
+with the editor's `MutablePropertyView` to choose from the effective entity set,
+including overlay-created or retyped `IfcOwnerHistory` records. The older
+two-argument call remains source-only and skips deleted source records.
+
 Also exported: `BimHost` (viewer side), `RemoteBackend`, `MessagePortTransport`, and the full `IfcCreator` API re-exported from `@ifc-lite/create`.
 
 ## Links

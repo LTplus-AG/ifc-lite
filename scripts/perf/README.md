@@ -1924,4 +1924,9 @@ spline fixture in every pair; the four control-model medians remained within
 observed variation. Ordered mesh fingerprints, counts and diagnostics matched in
 all samples. Real WASM prepass/batch comparisons also retained exact geometry
 payloads at three detail levels. This establishes no browser speedup by itself.
+Five alternating fresh-process browser pairs per fixture completed without
+load/GPU errors on the same target and controls. Readiness changes were mixed
+within run variation and target geometry-streaming was flat: no demonstrated
+browser speedup. The adapter was SwiftShader; RSS sampling is a coarse sum of
+owned processes through a fixed post-readiness tail, not cache-settled memory.
 See [evidence and measurement limits](evidence/spline-5321/README.md).

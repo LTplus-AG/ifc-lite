@@ -1,0 +1,154 @@
+--- a/scripts/perf/browser-cold-ab.mts
++++ b/scripts/perf/browser-cold-ab.mts
+@@ -30,7 +30,7 @@
+ import { prepareBrowserOutputs } from './browser-cold-outputs.js';
+ import { closeBrowserWithTimeout, closeContextWithTimeout, raceWithTimeout } from './browser-cold-teardown.js';
+ import { createServer } from 'node:http';
+-import { createReadStream, existsSync, readFileSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
++import { createReadStream, existsSync, readdirSync, readFileSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
+ import { extname, isAbsolute, join, resolve } from 'node:path';
+ import { setTimeout as sleep } from 'node:timers/promises';
+ import { fileURLToPath } from 'node:url';
+@@ -205,7 +205,7 @@
+ 
+ for (let iter = 1; iter <= ITERS; iter++) {
+   for (let slot = 0; slot < sides.length; slot++) {
+-    const side = sides[slot];
++    const side = sides[iter % 2 ? slot : 1 - slot];
+     const label = labelOf(side, slot);
+     currentRoot = rootOf(side);
+     const injectHere = FAULT_MS > 0 && FAULT_SIDE === (DIST_BASE ? side : slot === 0 ? 'base' : 'branch');
+@@ -220,6 +220,10 @@
+       let context: BrowserContext | undefined;
+       let page: Page | undefined;
+       let bp: ViewerBenchmarkPage | undefined;
++      let memoryTimer: ReturnType<typeof setInterval> | undefined;
++      let memoryBusy = false;
++      const memory: {at:number; rssKiB:number; processes:number; missing:number}[] = [];
++      const memoryErrors: string[] = [];
+       let record: Record<string, unknown> = { side: label, fixture: fixture.name, round: iter, ok: false,
+         browserExecutable: browserExecutable ? resolve(browserExecutable) : chromium.executablePath(),
+         browserLaunchOptions,
+@@ -227,6 +231,30 @@
+       try {
+         browser = await chromium.launch(browserLaunchOptions);
+         record.browserVersion = browser.version();
++        const cdp = await browser.newBrowserCDPSession();
++        const sampleMemory = async () => {
++          if (memoryBusy) return;
++          memoryBusy = true;
++          try {
++            const {processInfo} = await cdp.send('SystemInfo.getProcessInfo');
++            let rssKiB=0, missing=0;
++            for (const proc of processInfo) {
++              try {
++                const status = readFileSync(`/proc/${proc.id}/status`, 'utf8');
++                const match = status.match(/^VmRSS:\s+(\d+) kB/m);
++                if (!match) throw new Error('Missing VmRSS');
++                rssKiB += Number(match[1]);
++              } catch (error) {
++                if ((error as NodeJS.ErrnoException).code === 'ENOENT') missing++;
++                else throw error;
++              }
++            }
++            memory.push({at:Date.now(),rssKiB,processes:processInfo.length,missing});
++          } catch (error) { memoryErrors.push(String(error)); }
++          finally { memoryBusy=false; }
++        };
++        await sampleMemory();
++        memoryTimer = setInterval(() => void sampleMemory(), 250);
+         // #4116-class risk: newContext()/newPage() ride the same CDP connection
+         // as close(), but Playwright exposes no `timeout` option for either
+         // (unlike chromium.launch(), which defaults to 30s on its own). Bound
+@@ -256,13 +284,67 @@
+         }
+         const sizeMB = statSync(fixture.path).size / (1024 * 1024);
+         const timeoutMs = Math.max(TIMEOUT_MS, sizeMB > 200 ? 600000 : sizeMB > 50 ? 300000 : TIMEOUT_MS);
++        const started = Date.now();
+         await bp.loadFile(fixture.path, false);
+-        await bp.waitForCompletion(timeoutMs, true);
++        const assets = join(currentRoot, 'assets');
++        const bcfFile = readdirSync(assets).find(n => /^useBCF-.*\.js$/.test(n));
++        if (!bcfFile) throw new Error('Missing frozen BCF module');
++        const bcfSource = readFileSync(join(assets, bcfFile), 'utf8');
++        const storeFile = bcfSource.match(/from "\.\/(store-[^"]+\.js)"/)?.[1];
++        // These bindings are audited against BOTH frozen bundles. Fail closed
++        // if a later bundler changes them; never guess another exported function.
++        if (!storeFile || !bcfSource.includes('H as r') || !bcfSource.includes('n as o'))
++          throw new Error('Frozen module bindings changed');
++        let proof;
++        while (Date.now() - started < timeoutMs) {
++          const logs = bp.getConsoleLogs();
++          if (logs.some(l => /Renderer init failed|finalizeStreamingAsync failed|Data model parsing failed/.test(l)))
++            throw new Error('Load/renderer failure');
++          const metadata = logs.some(l => /Data model parsing complete/.test(l));
++          const geometry = logs.some(l => /Geometry streaming complete/.test(l));
++          if (metadata && geometry) {
++            proof = await page.evaluate(async ({bcfFile, storeFile}) => {
++              const bcf = await import('/assets/' + bcfFile); await bcf.__tla;
++              const store = await import('/assets/' + storeFile); await store.__tla;
++              if (typeof bcf.r !== 'function' || typeof store.n?.getState !== 'function')
++                throw new Error('Frozen exports are not renderer/store accessors');
++              const state = store.n.getState();
++              const renderer = bcf.r();
++              if (!renderer) return null;
++              const scene = renderer.getScene();
++              const diagnostics = renderer.getDiagnostics();
++              if (state.error || diagnostics.errors || diagnostics.gpuErrors)
++                throw new Error('Application or GPU error: ' + JSON.stringify({error:state.error, diagnostics}));
++              if (state.loading || state.geometryStreamingActive || !state.models.size
++                || scene.hasQueuedMeshes() || scene.isFinalizeInProgress()
++                || scene.hasStreamingFragments() || !diagnostics.contextOk) return null;
++              const frame = renderer.getFrameStats();
++              if (!frame || !(frame.drawCalls > 0) || !scene.getBatchedMeshes().length) return null;
++              return {loading: state.loading, streaming: state.geometryStreamingActive,
++                models:state.models.size, meshes:scene.getMeshes().length,
++                batches:scene.getBatchedMeshes().length, frame, diagnostics,
++                adapter:renderer.getAdapterInfo()};
++            }, {bcfFile, storeFile});
++            if (proof) break;
++          }
++          await page.waitForTimeout(20);
++        }
++        if (!proof) throw new Error('Direct store/scene/frame readiness timeout');
++        const directReadyMs = Date.now() - started;
++        // Legacy observer only extracts its phase metrics AFTER the direct timer.
++        await bp.waitForCompletion(5000, false);
+         const metrics = bp.getMetrics();
+-        if (metrics.streamCompleteMs == null || !metrics.totalMeshes) {
+-          throw new Error('load did not reach streamCompleteMs / produced 0 meshes');
+-        }
+-        record = { ...record, ok: true, ...metrics };
++        if (metrics.streamCompleteMs == null || !metrics.totalMeshes)
++          throw new Error('Missing completed geometry');
++        record = {...record, ok:true, ...metrics, directReadyMs, proof,
++          boundary:'metadata+geometry logs, store not loading/streaming, drained scene, no fragments/finalize, completed nonempty draw, no GPU errors; 20ms polling'};
++        // Observe a fixed post-readiness tail separately from the load timer.
++        // This is NOT a claim of cache settlement (that requires its own event).
++        await page.waitForTimeout(2000);
++        await sampleMemory();
++        record.memory = {metric:'sum of owned Chrome-process RSS; shared pages may be double-counted',
++          peakKiB:Math.max(...memory.map(s=>s.rssKiB)), samples:memory, errors:memoryErrors,
++          tail:'2 seconds after observed readiness; cache completion not asserted'};
+         // Separate visual artifact, captured after the observed timing boundary.
+         await page.screenshot({ path: join(RESULTS_DIR,
+           `${label}-${browserFixtureKey(fixture.name)}-r${iter}.png`) });
+@@ -288,6 +370,8 @@
+         writeFileSync(`${failBase}.error.txt`, message);
+         console.error(`browser-cold-ab: FAILED ${tag}: ${message} (evidence: ${failBase}.*)`);
+       } finally {
++        if (memoryTimer) clearInterval(memoryTimer);
++        while (memoryBusy) await sleep(10);
+         // #4116: `await x.close().catch(...)` only handles a *rejection*; a
+         // close() call that never settles (observed on a 1.26 GB fixture, on
+         // both arms of two unrelated experiments) is neither resolved nor
+@@ -321,8 +405,4 @@
+ server.close();
+ console.log(`browser-cold-ab: ${ok} sample(s) ok, ${failures} failed. Runs: ${JSONL_OUT}`);
+ 
+-// Hand off to the reporter.
+-const reportArgs = [join(__dirname, 'browser-ab-report.mjs'), JSONL_OUT, '--base', BASE_LABEL, '--branch', BRANCH_LABEL];
+-if (REPORT_JSON) reportArgs.push('--json', REPORT_JSON);
+-const result = spawnSync(process.execPath, reportArgs, { stdio: 'inherit' });
+-process.exit(failures > 0 ? 1 : (result.status ?? 1));
++process.exit(failures > 0 ? 1 : 0);

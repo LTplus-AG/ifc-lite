@@ -987,3 +987,49 @@ describe('filterHiddenRefsFromRelationshipLine: comment inside the argument list
     expect(filterHiddenRefsFromRelationshipLine(line, (id) => id === 5)).toBeNull();
   });
 });
+
+/**
+ * #5262: `filterHiddenRefsFromRelationshipLine`'s list-narrowing assumed a
+ * `[1:?]` lower bound on every parenthesised slot. `IfcTextureMap.Vertices`
+ * is `LIST [3:?] OF IfcTextureVertex` (IFC4/IFC4X3) -- narrowing it by
+ * dropping ONE excluded vertex out of three produced a 2-vertex list:
+ * syntactically valid STEP, but a DIFFERENT invalid file than the dangling
+ * `#N` it replaced, since the schema requires at least three. `IFCTEXTUREMAP`
+ * reaches this function through `STYLE_RESCUE_TYPES` (`style-closure.ts`),
+ * not the `IFCREL*` branch.
+ *
+ * `#6=IFCTEXTUREMAP((#1,#2),(#3,#4,#5),#7);` is the executed repro from the
+ * issue: `Maps` (inherited from `IfcTextureCoordinate`, `LIST [1:?]`),
+ * `Vertices` (`LIST [3:?]`), `MappedTo` (bare, single-valued).
+ */
+describe('filterHiddenRefsFromRelationshipLine: per-slot lower bound on STYLE_RESCUE_TYPES lines (#5262)', () => {
+  it('leaves IfcTextureMap.Vertices untouched when narrowing would drop it below its LIST [3:?] bound', () => {
+    const line = '#6=IFCTEXTUREMAP((#1,#2),(#3,#4,#5),#7);';
+    const out = filterHiddenRefsFromRelationshipLine(line, (id) => id === 3, 'IFC4');
+    expect(out).toBe('#6=IFCTEXTUREMAP((#1,#2),(#3,#4,#5),#7);');
+  });
+
+  it('still narrows when enough vertices survive to stay at or above the [3:?] bound', () => {
+    const line = '#6=IFCTEXTUREMAP((#1,#2),(#3,#4,#5,#8),#7);';
+    const out = filterHiddenRefsFromRelationshipLine(line, (id) => id === 8, 'IFC4');
+    expect(out).toBe('#6=IFCTEXTUREMAP((#1,#2),(#3,#4,#5),#7);');
+  });
+
+  it('IFC4X3: same LIST [3:?] bound holds', () => {
+    const line = '#6=IFCTEXTUREMAP((#1,#2),(#3,#4,#5),#7);';
+    const out = filterHiddenRefsFromRelationshipLine(line, (id) => id === 3, 'IFC4X3');
+    expect(out).toBe('#6=IFCTEXTUREMAP((#1,#2),(#3,#4,#5),#7);');
+  });
+
+  it("IFC2X3: IfcTextureMap has no Vertices attribute at all -- narrowing its actual [1:?] TextureMaps slot is unaffected", () => {
+    const line = '#6=IFCTEXTUREMAP((#3,#4,#5));';
+    const out = filterHiddenRefsFromRelationshipLine(line, (id) => id === 3, 'IFC2X3');
+    expect(out).toBe('#6=IFCTEXTUREMAP((#4,#5));');
+  });
+
+  it('without a schemaVersion, the caller gets the pre-#5262 unchecked narrowing (documents the opt-in)', () => {
+    const line = '#6=IFCTEXTUREMAP((#1,#2),(#3,#4,#5),#7);';
+    const out = filterHiddenRefsFromRelationshipLine(line, (id) => id === 3);
+    expect(out).toBe('#6=IFCTEXTUREMAP((#1,#2),(#4,#5),#7);');
+  });
+});

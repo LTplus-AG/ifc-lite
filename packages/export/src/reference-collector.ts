@@ -31,6 +31,8 @@ import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
 import { asSourceBytes, STEP_TRIVIA } from '@ifc-lite/parser';
 import type { EffectiveEntityIndex } from './effective-index.js';
 import { readStepSlots, splitTopLevelListItems } from './step-argument-parser.js';
+import { readRelationshipSlotLowerBound } from './relationship-slot-bounds.js';
+import type { IfcSchemaVersion } from './schema-converter.js';
 // Schema-derived type-set machinery (INFRASTRUCTURE_TYPES, PRODUCT_TYPES,
 // collectDescendantNames) lives in `entity-type-sets.ts` — shared with
 // `subset-roots.ts`, which derives IFC_ROOT_TYPES the same way. Re-exported
@@ -537,10 +539,26 @@ export function collectReferencedEntityIds(
  * this exact dangling-ref shape (#2398): a relationship that still names an
  * entity the session deleted ships the same `#N` with no `#N=` line, on a
  * path with no `visibleOnly` involved at all.
+ *
+ * `schemaVersion` is optional and, when given, holds a narrowed list to its
+ * OWN declared lower bound (`relationship-slot-bounds.ts`, reading the line's
+ * own `record.type` against the version-correct schema registry) before
+ * accepting the narrowing — see that file's doc for why: an `IFCREL*` line's
+ * own list attributes are never declared above `[1:?]` in any of the three
+ * schemas this repo ships (checked across all `IfcRel*` entities), so every
+ * EXISTING caller that omits it keeps its exact prior behaviour. A
+ * `STYLE_RESCUE_TYPES` line CAN carry a higher bound —
+ * `IfcTextureMap.Vertices` is `LIST [3:?]` — so callers on that path (#5262)
+ * pass it. When narrowing would still drop a slot below its own bound, the
+ * slot is left exactly as the source wrote it, the excluded ref(s) still
+ * dangling: the same "narrow reach only, never a new invalid shape" choice
+ * `narrowNonRelPositionalRefLists` already makes for the sibling
+ * non-relationship rule (#5181).
  */
 export function filterHiddenRefsFromRelationshipLine(
   line: string,
   isExcluded: (id: number) => boolean,
+  schemaVersion?: IfcSchemaVersion,
 ): string | null {
   const record = readStepSlots(line);
   // This helper is also the output gate for relationship/source-style lines.
@@ -567,6 +585,19 @@ export function filterHiddenRefsFromRelationshipLine(
       });
       if (survivors.length !== items.length) {
         if (survivors.length === 0) return null;
+        if (schemaVersion !== undefined) {
+          const lowerBound = readRelationshipSlotLowerBound(entityType, index, schemaVersion);
+          if (lowerBound !== undefined && survivors.length < lowerBound) {
+            // Narrowing would still leave this slot below its OWN declared
+            // lower bound (#5262) — e.g. `IfcTextureMap.Vertices`,
+            // `LIST [3:?]`: 2 survivors is a DIFFERENT invalid file than the
+            // dangling ref it would replace. Leave it exactly as the source
+            // wrote it; the excluded ref stays dangling, the pre-existing
+            // defect class this whole gate only narrows the REACH of.
+            nextAttrs.push(rawAttr);
+            continue;
+          }
+        }
         changed = true;
         nextAttrs.push(`${leading}(${survivors.join(',')})${trailing}`);
         continue;

@@ -53,7 +53,6 @@ import {
   mirrorPropertyDelete,
   type CollabDocApi,
 } from '@/lib/collab/mutation-bridge';
-import { applyRemoteProperty, applyRemotePropertyDelete, applyRemotePsetDelete } from '@/lib/collab/remote-write-guard';
 import { pathForEntity, pathForGuid, registerEntityPath } from '@/lib/collab/entity-paths';
 import { createRemoteOverlayEntity, deleteRemoteOverlayEntity } from '@/lib/collab/remote-entity-create';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -851,32 +850,33 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // Room paths, never activeModelId, select the model because expressIds are
     // model-local. Resolution fails closed until registration; reconstruct then
     // rebuilds from the CRDT.
-    const reportRemoteWriteRejected = (rejected: string) => {
+    const rejectRemoteWrite = (rejected: string) => {
       console.warn('[collab] rejected remote write:', rejected);
       set({ collabGeometryNotice: `A collaborative edit could not be applied: ${rejected}` });
     };
-    // One outcome path for every guarded write (#5187): a refusal from the
-    // `applyRemote*` helpers is reported, never silent; an applied write clears
-    // that entity's stale local history (#5223) and bumps the version.
-    const settleRemoteWrite = (modelId: string, entityId: number, rejected: string | null) => {
-      if (rejected) return reportRemoteWriteRejected(rejected);
-      get().invalidateHistoryForEntity(modelId, entityId);
-      set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
-    };
     remoteApplyTeardown = attachRemoteApply(docApi!, session, (path) => roomEntityTargetForPath(get(), path), {
+      // Consulted by the bridge's single tombstone guard before any write (#5187).
+      isLocallyDeleted: (modelId, entityId) => roomMutationViewFor(get(), modelId)?.isDeleted(entityId) ?? false,
+      onRejectedWrite: rejectRemoteWrite,
       onEntityCreate: ({ modelId, store }, entityPath, ifcClass, attributes, sourceExpressId) => {
         const view = roomMutationViewFor(get(), modelId);
         if (view && createRemoteOverlayEntity(store, view, entityPath, ifcClass, attributes,
-          reportRemoteWriteRejected, sourceExpressId))
+          rejectRemoteWrite, sourceExpressId))
           set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       onProperty: (modelId, entityId, pset, prop, value, type) => {
         const view = roomMutationViewFor(get(), modelId);
-        if (view) settleRemoteWrite(modelId, entityId, applyRemoteProperty(view, entityId, pset, prop, value, type));
+        if (!view) return;
+        view.setProperty(entityId, pset, prop, value, type);
+        get().invalidateHistoryForEntity(modelId, entityId); // clear stale history for this entity (#5223)
+        set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       onPropertyDelete: (modelId, entityId, pset, prop) => {
         const view = roomMutationViewFor(get(), modelId);
-        if (view) settleRemoteWrite(modelId, entityId, applyRemotePropertyDelete(view, entityId, pset, prop));
+        if (!view) return;
+        view.deleteProperty(entityId, pset, prop);
+        get().invalidateHistoryForEntity(modelId, entityId); // #5223, see onProperty
+        set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       // A peer's whole Pset vanished (its last property was deleted, which
       // cascades). Property names are unavailable at this point (see the
@@ -884,11 +884,18 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       // rather than trying to replay per-property deletes.
       onPsetDelete: (modelId, entityId, pset) => {
         const view = roomMutationViewFor(get(), modelId);
-        if (view) settleRemoteWrite(modelId, entityId, applyRemotePsetDelete(view, entityId, pset));
+        if (!view) return;
+        view.deletePropertySet(entityId, pset);
+        get().invalidateHistoryForEntity(modelId, entityId); // #5223, see onProperty
+        set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       onAttribute: (modelId, entityId, attrName, value) => {
         const view = roomMutationViewFor(get(), modelId), store = roomStoreFor(get(), modelId);
-        if (view && store) settleRemoteWrite(modelId, entityId, applyRemoteAttribute(view, store, entityId, attrName, value));
+        if (!view || !store) return;
+        const rejected = applyRemoteAttribute(view, store, entityId, attrName, value); // #4931
+        if (rejected) return rejectRemoteWrite(rejected);
+        get().invalidateHistoryForEntity(modelId, entityId); // covers UPDATE_ATTRIBUTE/POSITIONAL history (#5223)
+        set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
       // A peer moved/rotated an entity: reflect it on the local mesh by
       // pushing the incremental renderer-frame delta (no undo, no echo).

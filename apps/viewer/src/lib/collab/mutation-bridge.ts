@@ -27,7 +27,7 @@ import { entityForPath, pathForEntity } from './entity-paths';
 import { remoteEntityDefinition } from './remote-entity-definition';
 import { attributeNamesForStore } from './schema-attribute-names';
 import { decodeRoomAttributeValue, encodeRoomAttributeEdit } from './entity-reference-wire';
-import { rejectIfLocallyDeleted } from './remote-write-guard';
+import { guardTombstonedWrites, type TombstoneGuardHandlers } from './remote-write-guard';
 
 /** The slice of the collab runtime this bridge needs (injected, never eager-imported). */
 export interface CollabDocApi {
@@ -210,8 +210,6 @@ export function applyRemoteAttribute(
   attrName: string,
   value: unknown,
 ): string | null {
-  const tombstoned = rejectIfLocallyDeleted(view, entityId); // see remote-write-guard.ts
-  if (tombstoned) return tombstoned;
   const plainName = attrName.startsWith('bsi::ifc::prop::')
     ? attrName.slice('bsi::ifc::prop::'.length)
     : attrName;
@@ -238,7 +236,7 @@ export function applyRemoteAttribute(
  * model. `modelId` is the viewer model whose store the path resolved against;
  * `entityId` is an expressId in that model's id space.
  */
-export interface RemoteApplyHandlers {
+export interface RemoteApplyHandlers extends TombstoneGuardHandlers {
   /** Apply a remote property write to the local view (no undo tracking). */
   onProperty(modelId: string, entityId: number, pset: string, prop: string, value: ScalarValue, type: PropertyValueType): void;
   /** Apply a remote property deletion. */
@@ -289,8 +287,9 @@ export function attachRemoteApply(
   api: CollabDocApi,
   session: CollabSession,
   resolve: RoomEntityResolver,
-  handlers: RemoteApplyHandlers,
+  unguardedHandlers: RemoteApplyHandlers,
 ): () => void {
+  const handlers = guardTombstonedWrites(unguardedHandlers); // #5187: refuse writes to local tombstones
   // `entities` is inferred as Y.Map<unknown>; deriving the observer type from
   // its method signature avoids importing yjs (not a direct viewer dep).
   const entities = session.doc.getMap('entities');

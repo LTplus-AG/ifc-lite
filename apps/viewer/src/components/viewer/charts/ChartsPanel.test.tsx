@@ -1658,6 +1658,24 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.deepEqual(barData(lastOption).map(([name, count]) => [name, count]), [['IfcWall', 3]]);
   });
 
+  it('a chart can convert a selector to editable filter rules and keep the same rows (#4946)', async () => {
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    click(ui.querySelector<HTMLButtonElement>('button[aria-label="Edit Elements by type"]')!);
+    await settle();
+    type(ui.querySelector<HTMLInputElement>('input[aria-label="Source filter"]')!, 'IfcWall');
+    click([...ui.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === 'Add rule')!);
+    await settle();
+    assert.ok(ui.textContent?.includes('IFC Type'), 'the existing rule editor shows the parsed IFC type rule');
+    click([...ui.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === 'Save chart')!);
+    await settle();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle();
+    assert.match(ui.querySelector('[data-chart-subtitle]')!.textContent!, /3 elements/);
+    assert.equal(useViewerStore.getState().dashboards[0].charts[0].filter?.groups?.[0].rules[0].kind, 'ifcType');
+  });
+
   it('a refused selector (no filterable rule) blocks Save and shows the alert instead of narrowing on the readable part (#4946)', async () => {
     const { renderer } = recordingRenderer();
     const ui = render(<ChartsPanel renderer={renderer} />);

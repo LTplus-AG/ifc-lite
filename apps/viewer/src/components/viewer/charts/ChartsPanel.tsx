@@ -13,7 +13,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BarChart3, Plus, X } from 'lucide-react';
-import { trimSelectorWhitespace } from '@ifc-lite/query';
+import { chartElementFilterKey } from '@/lib/charts/source-filter';
 import { elementFieldColumnId, type Aggregation, type ChartScope, type ChartSpec, type DashboardLayoutItem, type DashboardSpec } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -174,12 +174,12 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
     const spec = dashboard?.charts.find((c) => c.id === id);
     if (!spec) return null;
     // Trimmed-empty is no filter, consistent with ChartCard (review finding).
-    const filterText = spec.filter && trimSelectorWhitespace(spec.filter.selector).length > 0 ? spec.filter.selector : undefined;
+    const filterKey = chartElementFilterKey(spec.filter);
     return (
       <ChartCard
         spec={spec}
         dataset={datasets[spec.source]}
-        filterState={filterText ? sourceFilters.get(filterText) : undefined}
+        filterState={filterKey ? sourceFilters.get(filterKey) : undefined}
         link={link}
         renderer={renderer}
         onEdit={() => setEditing(spec)}

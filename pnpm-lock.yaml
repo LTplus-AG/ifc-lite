@@ -758,6 +758,9 @@ importers:
       '@ifc-lite/lens':
         specifier: workspace:^
         version: link:../lens
+      '@ifc-lite/rules':
+        specifier: workspace:^
+        version: link:../rules
       echarts:
         specifier: ^6.1.0
         version: 6.1.0

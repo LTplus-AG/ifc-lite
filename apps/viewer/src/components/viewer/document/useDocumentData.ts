@@ -9,13 +9,12 @@
  * so what is on screen is what prints.
  */
 import { useMemo } from 'react';
-import { trimSelectorWhitespace } from '@ifc-lite/query';
 import { aggregate, type Aggregation, type ChartSpec } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import { useViewerStore } from '@/store';
 import type { BindingContext } from '@/lib/document/bindings';
 import type { DocumentSpec } from '@/lib/document/types';
-import { applyChartFilter, applyClashRuleFilter } from '@/lib/charts/source-filter';
+import { applyChartFilter, applyClashRuleFilter, chartElementFilterKey } from '@/lib/charts/source-filter';
 import type { TableState } from '@/lib/document/resolve-table';
 import { useChartDatasets } from '../charts/useChartDatasets';
 import { useChartSourceFilters } from '../charts/useChartSourceFilters';
@@ -61,8 +60,8 @@ export function useDocumentData(document: DocumentSpec | null): DocumentData {
       const spec = block.chart;
       try {
         // Trimmed-empty is no filter, consistent with ChartCard (review finding).
-        const filterText = spec.filter && trimSelectorWhitespace(spec.filter.selector).length > 0 ? spec.filter.selector : undefined;
-        const filterState = filterText ? sourceFilters.get(filterText) : undefined;
+        const filterKey = chartElementFilterKey(spec.filter);
+        const filterState = filterKey ? sourceFilters.get(filterKey) : undefined;
         const baseDataset = datasets[spec.source];
         // Never the unfiltered rows under a filter (#4946): resolving/erred
         // prints an EMPTY dataset, same as the dashboard card — but unlike
@@ -71,7 +70,7 @@ export function useDocumentData(document: DocumentSpec | null): DocumentData {
         // travel separately or a broken filter prints identically to one
         // that legitimately matched nothing (review finding on PR #4984).
         let dataset = baseDataset;
-        if (filterText) {
+        if (filterKey) {
           if (filterState?.status === 'ok') dataset = applyChartFilter(baseDataset, filterState.ids);
           else {
             dataset = { ...baseDataset, rows: [] };

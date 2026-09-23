@@ -30,6 +30,14 @@ export type ChartFilterReading =
   | { ok: true; groups: FilterGroup[] }
   | { ok: false; message: string };
 
+/** Stable identity for the element portion of a chart filter. Kept separate
+ * from `clashRule`, which narrows rows after the federation scan. */
+export function chartElementFilterKey(filter: ChartSourceFilter | undefined): string | undefined {
+  if (!filter) return undefined;
+  if (filter.groups?.length) return `groups:${JSON.stringify(filter.groups)}`;
+  return trimSelectorWhitespace(filter.selector).length > 0 ? `selector:${JSON.stringify(filter.selector)}` : undefined;
+}
+
 /** Read + adapt selector text with the chart's refuse-don't-narrow rule.
  *  `text` is trimmed; an all-whitespace string is never passed in by a
  *  caller (both the editor and the resolver skip an empty filter). */
@@ -79,10 +87,15 @@ export async function resolveChartFilter(
   toGlobalId: (modelId: string, expressId: number) => number,
   options: ResolveChartFilterOptions = {},
 ): Promise<Set<number> | null> {
-  if (!filter || trimSelectorWhitespace(filter.selector).length === 0) return null;
-  const reading = readChartFilter(filter.selector, { schemaVersion: options.schemaVersion });
-  if (!reading.ok) throw new Error(reading.message);
-  const matched = await evaluateFilterGroupsFederated(models, reading.groups, {
+  if (!filter) return null;
+  const groups = filter.groups?.length ? filter.groups : (() => {
+    if (trimSelectorWhitespace(filter.selector).length === 0) return null;
+    const reading = readChartFilter(filter.selector, { schemaVersion: options.schemaVersion });
+    if (!reading.ok) throw new Error(reading.message);
+    return reading.groups;
+  })();
+  if (!groups) return null;
+  const matched = await evaluateFilterGroupsFederated(models, groups, {
     limit: options.limit,
     signal: options.signal,
     definedModelTagIds: options.definedModelTagIds,

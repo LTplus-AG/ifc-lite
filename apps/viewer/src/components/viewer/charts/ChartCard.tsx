@@ -10,12 +10,11 @@
  */
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Crosshair, Pencil, X } from 'lucide-react';
-import { trimSelectorWhitespace } from '@ifc-lite/query';
 import { aggregate, buildEChartsOption, type Aggregation, type ChartDataset, type ChartSource, type ChartSpec, type PaletteAssignment } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
-import { applyChartFilter, applyClashRuleFilter } from '@/lib/charts/source-filter';
+import { applyChartFilter, applyClashRuleFilter, chartElementFilterKey } from '@/lib/charts/source-filter';
 import { countRows } from '@/lib/charts/row-noun';
 import { readChartTheme, useEChart, type ChartRenderer, type ChartSelectEvent } from './useEChart';
 import { GRID_DRAG_HANDLE_CLASS } from './DashboardGrid';
@@ -93,7 +92,7 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
   // reader of `spec.filter.selector` (`resolveChartFilter`, `validate.ts`
   // now also refuses it outright) — a malformed saved/imported dashboard
   // must not strand the card on "Resolving filter…" forever (review finding).
-  const filterSelector = spec.filter && trimSelectorWhitespace(spec.filter.selector).length > 0 ? spec.filter.selector : undefined;
+  const filterSelector = chartElementFilterKey(spec.filter) ? (spec.filter?.groups?.length ? `${spec.filter.groups.reduce((sum, group) => sum + group.rules.length, 0)} rules` : spec.filter?.selector) : undefined;
   // Only meaningful on `clash` — `validate.ts` refuses it on every other
   // source (#5156). A rule id is a value already on the dataset, so it needs
   // no async resolution the way a selector does.

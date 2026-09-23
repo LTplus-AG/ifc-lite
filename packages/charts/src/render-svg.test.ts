@@ -284,6 +284,10 @@ describe('validateDashboardSpec', () => {
     // trims before lookup, so it would resolve to "no filter" and strand the
     // chart on "Resolving filter…" forever with no entry to find (review finding).
     expect(validateDashboardSpec({ ...good, charts: [{ ...bar, filter: { selector: '   ' } }], layout: [good.layout[0]] }).map(({ path }) => path)).toEqual(['.charts[0].filter.selector']);
+    const groups = [{ combinator: 'AND', rules: [{ kind: 'modelTag', op: 'hasAny', tagIds: ['structure'] }] }];
+    expect(validateDashboardSpec({ ...good, charts: [{ ...bar, filter: { selector: '', groups } }], layout: [good.layout[0]] })).toEqual([]);
+    expect(validateDashboardSpec({ ...good, charts: [{ ...bar, filter: { selector: '', groups: [{ combinator: 'AND', rules: [] }] } }], layout: [good.layout[0]] }).map(({ path }) => path)).toEqual(['.charts[0].filter.groups', '.charts[0].filter.selector']);
+    expect(validateDashboardSpec({ ...good, charts: [{ ...bar, filter: { selector: 'IfcWall', groups } }], layout: [good.layout[0]] }).map(({ path }) => path)).toEqual(['.charts[0].filter.selector']);
   });
 });
 

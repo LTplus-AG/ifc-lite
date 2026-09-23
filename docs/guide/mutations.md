@@ -313,11 +313,6 @@ editor.removeEntity(unwantedExpressId);
 
 Edits accumulate in the same overlay used by `setProperty` / `setAttribute`. They land in the exported file the next time you call `exportToStep(store, { applyMutations: true })` from `@ifc-lite/export`.
 
-`editor.getMutationView()` returns that live overlay for readers that receive
-an editor but also need to enumerate the effective entity set. Use it with
-`iterateEffectiveEntityIds(dataStore, editor.getMutationView(), ['IFCSTYLEDITEM'])`
-so a read includes newly authored entities and excludes tombstones.
-
 ### Atomic overlay edits
 
 Use `StoreEditor.runAtomic` to create or modify a related set of IFC entities together. The callback receives a detached editor; a thrown error leaves the live overlay, mutation history and express-ID allocator unchanged. `MutablePropertyView.runAtomic` provides the same operation with a draft view for property and quantity edits.

@@ -56,11 +56,6 @@ editor.setPositionalAttribute(profile.expressId, 3, 0.7);  // XDim → 0.7
 editor.removeEntity(unwantedExpressId);
 ```
 
-Readers passed only a `StoreEditor` can obtain its live overlay with
-`editor.getMutationView()`. Pass that view to `iterateEffectiveEntityIds` when
-enumerating classes; the source index alone omits created entities and retains
-tombstones.
-
 Edits accumulate in the same overlay used by `setProperty` / `setAttribute`
 and materialise the next time you call
 `StepExporter.export({ applyMutations: true })`.

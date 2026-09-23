@@ -7,7 +7,8 @@
 //! `intersection` here are what the `ClippingProcessor` seam calls.
 
 use super::arrangement::{
-    boolean, boolean_with_conformity, difference_all, difference_all_lenient, BoolOp,
+    boolean, boolean_with_conformity, difference_all, difference_all_lenient,
+    difference_all_lenient_with_conformity, BoolOp,
     Tri,
 };
 use super::signed_volume::{signed_volume6, signed_volume6_about, volume_reference};
@@ -158,16 +159,16 @@ pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
 /// A one-component [`difference_all_lenient`] is the binary
 /// `boolean(.., Difference)`: the same arrangement over the same operands,
 /// classified through the same one-component `BComponents`, and neither gates
-/// on conformity.
-pub(crate) fn subtract_with_change(host: &Mesh, cutter: &Mesh) -> (Mesh, bool) {
+/// on conformity. The third element says whether the arrangement conformed.
+pub(crate) fn subtract_with_change(host: &Mesh, cutter: &Mesh) -> (Mesh, bool, bool) {
     #[cfg(feature = "csg_capture")]
     crate::csg_capture::record_single(host, cutter);
     let h = orient_outward(mesh_to_tris(host));
     let mut c = mesh_to_tris(cutter);
     promote_cutter_verts_onto_host_faces(&mut c, &h);
     let c = orient_outward(c);
-    let (tris, changed) = difference_all_lenient(&h, &[&c]);
-    (tris_to_mesh_without_plane_tags(&tris), changed)
+    let (tris, changed, conforming) = difference_all_lenient_with_conformity(&h, &[&c]);
+    (tris_to_mesh_without_plane_tags(&tris), changed, conforming)
 }
 
 /// What [`subtract_many`] made of a cutter group.

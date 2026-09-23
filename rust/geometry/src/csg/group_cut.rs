@@ -29,13 +29,25 @@ pub enum GroupCut {
     /// arrangement, consolidated, validated and gated like a `Cut`. Same solid
     /// as the host, different triangles. Whether to keep it is the caller's
     /// choice; the void router has kept it when it changed the triangle count,
-    /// and the watertightness census depends on that (#4692).
+    /// and the watertightness census depends on that (#4692). A non-conforming
+    /// same-count miss is `Rejected(Nonconforming)` instead (#5362).
     Retessellated(Mesh),
     /// The host is untouched; the caller cuts the members one by one.
     Rejected(GroupReject),
 }
 
 impl GroupCut {
+    /// Whether the kernel established that no cutter reaches the host solid,
+    /// as opposed to failing to cut one that does: there is nothing to
+    /// approximate, so a fallback cut must not run (#5362).
+    pub fn found_no_overlap(&self) -> bool {
+        matches!(
+            self,
+            Self::Retessellated(_)
+                | Self::Rejected(GroupReject::NoOverlap | GroupReject::EmptyHost | GroupReject::Unchanged)
+        )
+    }
+
     /// The mesh the subtract produced, a cut or a re-tessellated miss; `None`
     /// for a rejection.
     pub fn into_mesh(self) -> Option<Mesh> {
@@ -59,8 +71,9 @@ pub enum GroupReject {
     /// The #1109 escalation budget tripped inside one chunk's arrangement.
     BudgetTripped,
     /// A chunk's arrangement left an unrecovered constraint and its lenient
-    /// batch failed the kernel's volume oracle. Group only: the single cutter
-    /// does not gate on conformity.
+    /// batch failed the kernel's volume oracle. The single cutter returns it
+    /// only for a non-conforming arrangement that changed nothing, which is
+    /// not proof the cutter misses the host (#5362).
     Nonconforming,
     /// Every chunk's arrangement conformed, but no cutter reaches the host
     /// solid: the kernel kept every host face and no cutter face. Group only:

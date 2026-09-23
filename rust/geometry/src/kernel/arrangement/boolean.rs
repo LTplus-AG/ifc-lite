@@ -224,13 +224,23 @@ pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<(Vec<Tri>, bool)> {
 /// volume against a sequential reference before trusting it. The second
 /// element is the same `changed` bit [`difference_all`] returns.
 pub fn difference_all_lenient(a: &[Tri], comps: &[&[Tri]]) -> (Vec<Tri>, bool) {
+    let (tris, changed, _) = difference_all_lenient_with_conformity(a, comps);
+    (tris, changed)
+}
+
+/// [`difference_all_lenient`] plus whether the arrangement CONFORMED
+/// (`unrecovered == 0`). A non-conforming `changed == false` is not proof
+/// that no cutter reaches `a`: straddling sub-triangles can be misclassified
+/// (#5362 review), so a caller must not read it as "disjoint".
+pub fn difference_all_lenient_with_conformity(a: &[Tri], comps: &[&[Tri]]) -> (Vec<Tri>, bool, bool) {
     let arr = match comps {
-        [] => return (a.to_vec(), false),
+        [] => return (a.to_vec(), false, true),
         // One component (the single-cutter subtract) is already the B operand.
         [only] => arrange(a, only),
         _ => arrange(a, &comps.iter().flat_map(|c| c.iter().copied()).collect::<Vec<Tri>>()),
     };
-    classify_difference(&arr, a, comps)
+    let (tris, changed) = classify_difference(&arr, a, comps);
+    (tris, changed, arr.unrecovered == 0)
 }
 
 /// The shared tail of [`difference_all`] and [`difference_all_lenient`]:

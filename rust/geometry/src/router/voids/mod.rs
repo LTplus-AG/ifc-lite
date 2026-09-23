@@ -1449,7 +1449,11 @@ impl GeometryRouter {
                         depth_dir,
                     );
                     let cutter = &extended_opening;
-                    let kept = mesh_to_keep(clipper.subtract_mesh(&result, cutter), &result);
+                    let outcome = clipper.subtract_mesh(&result, cutter);
+                    // Nothing to cut, so the #635 fallback below must not cut a
+                    // box either (#5362).
+                    let kernel_found_no_overlap = outcome.found_no_overlap();
+                    let kept = mesh_to_keep(outcome, &result);
                     // The host is still un-cut: the kernel found no real
                     // intersection, or bailed on a grazing/coplanar cutter.
                     let csg_unchanged = kept.is_none();
@@ -1471,7 +1475,10 @@ impl GeometryRouter {
                     // hole in place of a round one, but a square hole is
                     // dramatically less wrong than a missing void on a wall
                     // that is supposed to host a window or door.
-                    if !csg_succeeded {
+                    // A re-tessellation this router refused on its own
+                    // retention check is not a verdict: fall back as before.
+                    let kernel_verdict_disjoint = kernel_found_no_overlap && csg_unchanged;
+                    if !csg_succeeded && !kernel_verdict_disjoint {
                         let dir = extrusion_dir.or_else(|| {
                             Some(wall_thinnest_axis_dir(&wall_min, &wall_max))
                         });
@@ -1571,9 +1578,9 @@ impl GeometryRouter {
                             // the wall material inside the opening AABB but no
                             // longer emits reveal/recess quads (deleted with
                             // the legacy clip path), so its output has an open
-                            // rim. Acceptable for a safety net that fired 0x
-                            // across the regression corpus — the exact-kernel
-                            // path ahead of it emits the reveals itself.
+                            // rim. It runs only when the kernel FAILED on an
+                            // opening that reaches the host, never on one the
+                            // kernel found disjoint (#5362).
                             let aabb_cut =
                                 self.cut_rectangular_opening(&result, final_min, final_max);
                             if !aabb_cut.is_empty() && aabb_cut.triangle_count() != tri_before {

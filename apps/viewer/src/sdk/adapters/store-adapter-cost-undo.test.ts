@@ -110,7 +110,9 @@ describe('#4857 store-adapter cost authoring pushes CREATE_ENTITY undo', () => {
   it('mirrors cost creation from the legacy public model id (#5018 review)', async () => {
     const { store, mirrorCalls } = await makeStore(() => true, true);
     const item = createStoreAdapter(store).addCostItem('legacy', { Name: 'Legacy item' });
-    assert.equal(item.modelId, 'legacy');
+    // #5234: the ref carries the NORMALIZED id, not the caller's spelling —
+    // the same id `addEntity` has always returned for this model.
+    assert.equal(item.modelId, '__legacy__');
     assert.ok(mirrorCalls.some(call => call.kind === 'create' && call.entityId === item.expressId));
     assert.ok(mirrorCalls.some(call => call.kind === 'attribute'
       && call.entityId === item.expressId && call.detail === 'Name'));
@@ -213,5 +215,46 @@ describe('#5167 store-adapter structural authoring', () => {
     undoCalls.length = 0;
     const rel = adapter.assignToStructuralGroup('m', model.expressId, [model.expressId]);
     assert.deepEqual(undoCalls, [{ modelId: rel.modelId, entityId: rel.expressId, ifcType: 'IFCRELASSIGNSTOGROUP' }]);
+  });
+});
+
+/**
+ * #5234 — every ref `createStoreAdapter` mints must carry the same model id,
+ * whichever method minted it, and that id must be one the adapter can read
+ * back.
+ *
+ * Before this, `addEntity`/`buildElement` normalized (`__legacy__`) while the
+ * shared cost/structural resolver echoed the caller's spelling (`legacy`), so
+ * one entity could serialize under two `entityRefToString` keys. Closing that
+ * gap is only half the fix: `getModelForRef` did not accept the normalized id
+ * either, so feeding a minted ref's `modelId` back into a reader built on it
+ * threw `Unknown modelId '__legacy__'` — for an id the adapter itself issued.
+ *
+ * Legacy mode is the only mode where normalization changes the id at all, so
+ * it is the only mode where either half is observable.
+ */
+describe('#5234 store refs carry the normalized model id', () => {
+  it('the cost and structural resolvers agree with addEntity on the id', async () => {
+    const { store } = await makeStore(() => true, true);
+    const adapter = createStoreAdapter(store);
+    const viaEntity = adapter.addEntity('legacy', { type: 'IFCCOSTITEM', attributes: [] });
+    const viaCost = adapter.addCostItem('legacy', { Name: 'Item' });
+    const viaStructural = adapter.addStructuralAnalysisModel('legacy', { Name: 'Model' });
+    assert.equal(viaCost.modelId, viaEntity.modelId, 'cost ref matches addEntity');
+    assert.equal(viaStructural.modelId, viaEntity.modelId, 'structural ref matches addEntity');
+    assert.equal(viaEntity.modelId, '__legacy__', 'and that shared id is the normalized one');
+  });
+
+  it('accepts a minted ref\'s own modelId back through the cost read path', async () => {
+    const { store, relationshipMutationCalls } = await makeStore(() => true, true);
+    const adapter = createStoreAdapter(store);
+    const parent = adapter.addCostItem('legacy', { Name: 'Parent' });
+    // Hand the ref's OWN id back in. `nestCostItems` reads the cost graph
+    // through `bim.cost`, i.e. through `getModelForRef` — the call that used
+    // to reject `__legacy__`.
+    const child = adapter.addCostItem(parent.modelId, { Name: 'Child' });
+    relationshipMutationCalls.length = 0;
+    adapter.nestCostItems(parent.modelId, parent.expressId, [child.expressId]);
+    assert.deepEqual(relationshipMutationCalls, ['__legacy__']);
   });
 });

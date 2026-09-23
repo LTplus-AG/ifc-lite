@@ -7,10 +7,10 @@ import { extractPropertiesOnDemand, extractQuantitiesOnDemand, getAttributeNames
 import type { EntityAttributeData, EntityData } from '@ifc-lite/sdk';
 import type { ViewerState } from '../../store/index.js';
 import { resolveBaseAttributeValue } from '../../utils/configureMutationView.js';
-import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
+import { getModelForRef, LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from './model-compat.js';
 import type { StoreApi } from './types.js';
 
-export const LEGACY_MUTATION_MODEL_ID = '__legacy__';
+export { LEGACY_MUTATION_MODEL_ID };
 
 export function isLegacyMutationRef(state: ViewerState, modelId: string): boolean {
   return state.models.size === 0 && (modelId === 'legacy' || modelId === LEGACY_MODEL_ID || modelId === LEGACY_MUTATION_MODEL_ID);

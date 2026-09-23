@@ -20,7 +20,8 @@
  *  - `\D`, `\C`, `\I`, `\W` — negations
  *  - `\p{IsBasicLatin}`-style Unicode *block* escapes — .NET supports
  *    these but JS does not, so they are approximated.
- *  - char-class subtraction `[a-z-[aeiou]]` — no JS equivalent.
+ *  - char-class subtraction `[a-z-[aeiou]]` — no JS class syntax under
+ *    `u`, translated exactly to a negative lookahead (`translateSubtraction`).
  *
  * The translation maps to JS Unicode property escapes, so the compiled
  * `RegExp` MUST use the `u` flag. Verbatim `\p{…}` / `\P{…}` *category*
@@ -53,6 +54,17 @@ const ANY_OUTSIDE_CLASS = '[\\s\\S]';
 const ANY_INSIDE_CLASS = '\\s\\S';
 
 /**
+ * `TranslateResult.reason` when the pattern uses XSD character-class
+ * subtraction (`[a-z-[aeiou]]`). Exported so a caller that needs to
+ * distinguish this specific construct — rather than "some construct is
+ * unsupported" in general — doesn't have to duplicate the message
+ * string (see `matchPattern`'s fail-closed check, which refuses only
+ * a subtraction pattern rather than every approximated construct).
+ */
+export const SUBTRACTION_UNSUPPORTED_REASON =
+  'XSD character-class subtraction is not supported in JS regex';
+
+/**
  * Translate the XSD pattern. Returns the JS-compatible pattern plus a
  * `supported` flag — when `false`, callers should warn / treat the
  * result leniently (an untranslatable construct was approximated).
@@ -62,8 +74,11 @@ export function translateXsdRegex(pattern: string): TranslateResult {
   let i = 0;
   let inClass = false;
   let reason = '';
+  // The first reason wins, except that an undelimitable subtraction always
+  // does: callers fail closed on exactly that reason, so an earlier
+  // approximated construct must not hide it (review on #5286).
   const flag = (r: string) => {
-    if (!reason) reason = r;
+    if (!reason || r === SUBTRACTION_UNSUPPORTED_REASON) reason = r;
   };
 
   while (i < pattern.length) {
@@ -106,9 +121,19 @@ export function translateXsdRegex(pattern: string): TranslateResult {
     }
 
     if (ch === '[' && !inClass) {
-      // Char-class subtraction `[a-z-[aeiou]]` has no JS equivalent.
-      if (/^\[[^\]]*-\[/.test(pattern.slice(i))) {
-        flag('XSD character-class subtraction is not supported in JS regex');
+      const span = scanClass(pattern, i);
+      if (span?.subtract) {
+        // XSD char-class subtraction `[base-[excluded]]` (#5183).
+        const sub = translateSubtraction(pattern, span);
+        if (sub.reason) flag(sub.reason);
+        out += sub.pattern;
+        i = span.end;
+        continue;
+      }
+      if (span === undefined && /^\[[^\]]*-\[/.test(pattern.slice(i))) {
+        // A subtraction we cannot delimit (unterminated): refuse it rather
+        // than guess which characters it excludes.
+        flag(SUBTRACTION_UNSUPPORTED_REASON);
       }
       inClass = true;
       out += ch;
@@ -127,6 +152,59 @@ export function translateXsdRegex(pattern: string): TranslateResult {
   }
 
   return { pattern: out, supported: reason === '', reason };
+}
+
+/**
+ * One bracketed class starting at `start` (which holds `[`). `baseEnd` is
+ * the index just past the base members; `subtract` is the nested excluded
+ * class when the base is followed by `-[`, and `end` is just past the
+ * closing `]`. `undefined` when the class is unterminated. XSD allows a
+ * subtraction only as the last item of a class, so after the nested class
+ * the next character must be the outer `]`.
+ */
+interface ClassSpan {
+  start: number;
+  baseEnd: number;
+  subtract?: ClassSpan;
+  end: number;
+}
+
+function scanClass(pattern: string, start: number): ClassSpan | undefined {
+  let j = start + 1;
+  while (j < pattern.length) {
+    const c = pattern.charAt(j);
+    if (c === '\\') {
+      const prop = /^\\[pP]\{[^}]*\}/.exec(pattern.slice(j));
+      j += prop ? prop[0].length : 2;
+      continue;
+    }
+    if (c === '-' && pattern.charAt(j + 1) === '[') {
+      const subtract = scanClass(pattern, j + 1);
+      if (!subtract || pattern.charAt(subtract.end) !== ']') return undefined;
+      return { start, baseEnd: j, subtract, end: subtract.end + 1 };
+    }
+    if (c === ']') return { start, baseEnd: j, end: j + 1 };
+    j++;
+  }
+  return undefined;
+}
+
+/**
+ * `[base-[excluded]]` matches one character that is in `base` and not in
+ * `excluded`. JS under the `u` flag has no class subtraction, but the same
+ * single-character set is `(?:(?!excluded)base)`: the negative lookahead
+ * refuses an excluded character and the base class then consumes one. This
+ * is exact, not an approximation, and it nests for `[a-z-[b-y-[c]]]`.
+ */
+function translateSubtraction(pattern: string, span: ClassSpan): { pattern: string; reason: string } {
+  const base = translateXsdRegex(`${pattern.slice(span.start, span.baseEnd)}]`);
+  const excluded = span.subtract!.subtract
+    ? translateSubtraction(pattern, span.subtract!)
+    : translateXsdRegex(pattern.slice(span.subtract!.start, span.subtract!.end));
+  return {
+    pattern: `(?:(?!${excluded.pattern})${base.pattern})`,
+    reason: base.reason || excluded.reason,
+  };
 }
 
 /** Sentinel: escape has no faithful form inside a `[ … ]` character class. */

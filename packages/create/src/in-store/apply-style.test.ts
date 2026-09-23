@@ -160,6 +160,42 @@ describe('applyStylesInStore', () => {
     expect(editor.getNewEntities()).toHaveLength(0);
   });
 
+  it('replaces a tombstoned source style and honours an overlay-created style (#5249)', async () => {
+    const store = await parseFixture();
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+    expect(editor.removeEntity(150)).toBe(true);
+
+    const [replaced] = applyStylesInStore(editor, store, [
+      { products: [100], color: { red: 1, green: 0, blue: 0 } },
+    ], { replaceExisting: false });
+    expect(replaced.keptExistingItemIds).toEqual([]);
+    expect(replaced.styledItemIds).toHaveLength(1);
+    expect(view.isDeleted(150)).toBe(true);
+
+    const createdStyle = replaced.styledItemIds[0]!;
+    const [kept] = applyStylesInStore(editor, store, [
+      { products: [100], color: { red: 0, green: 1, blue: 0 } },
+    ], { replaceExisting: false });
+    expect(kept.keptExistingItemIds).toEqual([112]);
+    expect(kept.styledItemIds).toEqual([]);
+    expect(editor.getNewEntity(createdStyle)?.type).toBe('IfcStyledItem');
+  });
+
+  it('reads a named Representation edit on a source product (#5249)', async () => {
+    const store = await parseFixture();
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+    view.setAttribute(101, 'Representation', '#110');
+
+    const [result] = applyStylesInStore(editor, store, [
+      { products: [101], color: { red: 0, green: 0, blue: 1 } },
+    ]);
+    expect(result.productsWithoutGeometry).toEqual([]);
+    expect(result.styledItemIds).toHaveLength(1);
+    expect(editor.getNewEntity(result.styledItemIds[0]!)?.attributes[0]).toBe('#112');
+  });
+
   it('creates no entities at all for a batch that reaches no geometry', async () => {
     const store = await parseFixture();
     const editor = makeEditor(store);

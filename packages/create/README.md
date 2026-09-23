@@ -33,6 +33,9 @@ const { content } = creator.toIfc(); // IFC STEP text
   authoring into an edited model. Pass the same view as the `StoreEditor` so a
   created storey or placement, and deletions or retypes of source anchors, are
   reflected before an element is emitted. Omitting `view` reads the parsed model.
+- `applyStylesInStore` reads styled items and representation chains from the
+  editor's live overlay, so a deleted style can be replaced and an authored
+  style is found before adding another one to the same representation item.
 - Loaded-model cost builders (`addCostScheduleToStore`, `addCostItemToStore`, `addCostValueToStore`,
   `addCostQuantityToStore`) plus relationship helpers for nesting, schedule/object assignment, value lists,
   and safe removal. They require a `CostAnchor` for schema/owner-history/GUID allocation, accept existing

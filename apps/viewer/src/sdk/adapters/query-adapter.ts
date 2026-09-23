@@ -37,21 +37,10 @@ import { overlayProperties, overlayQuantities } from './query-adapter-overlay.js
 import { foldRelationshipData } from './query-relationship-fold.js';
 import { foldOverlayCreatedEntities } from './query-overlay-entities.js';
 import { isProductType } from './query-entity-filter.js';
+import { normalizePropertyValue } from './query-property-value.js';
 import { evaluateFilterGroups } from '@ifc-lite/rules';
 import { totalRuleCount } from '@ifc-lite/rules';
 import { definedModelTagIdsOf } from '../../lib/model-tags/evaluator-models.js';
-
-function normalizePropertyValue(value: unknown): string | number | boolean | null {
-  if (value == null) return null;
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return value;
-  }
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
 
 export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
   function getEntityData(ref: EntityRef): EntityData | null {

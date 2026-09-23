@@ -5,38 +5,33 @@
 /**
  * #5192: `entity_set_property`, `entity_delete_property`, `entity_set_attribute`
  * and `entity_delete` each accept `global_id` OR `express_id`, but only
- * `resolveExpressId` (called from inside the handler) ever enforced that —
- * `entity_delete` had no `required` array at all, so
- * `entity_delete({ model_id: 'm1' })` validated cleanly and failed only at
- * runtime.
+ * `resolveExpressId` (inside the handler) enforced that. `entity_delete` had
+ * no `required` array at all, so `entity_delete({ model_id: 'm1' })` validated
+ * cleanly and failed only at runtime.
  *
- * These tests run `validateInput` directly against each tool's
- * `inputSchema`, the same call `server.ts` makes before a handler ever runs
- * (and that `mutation_batch` repeats per sub-op). No model/backend is
- * constructed: the point is that the *schema* now rejects the missing-identity
- * case, not that the handler does.
+ * The first block runs `validateInput` against each tool's real
+ * `inputSchema`, the call `server.ts` makes before a handler runs (and that
+ * `mutation_batch` repeats per sub-op). The second drives the real server
+ * over the in-process transport: the call is refused as `INVALID_INPUT`
+ * before any model is touched, and `tools/list` publishes no root-level
+ * combinator, which the Anthropic Messages API rejects with a 400 for the
+ * whole request.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { validateInput } from '../validate.js';
-
-// `mutate.ts` pulls in `@ifc-lite/query` and `@ifc-lite/sdk` for real entity
-// resolution (`EntityNode`, `propertyValueTypeOf`), which this file never
-// calls — it only inspects `inputSchema`, static data on each `Tool`. Those
-// two packages require the (banned-here) wasm build to compile from a fresh
-// worktree, so they're stubbed purely to let the module load; the objects
-// under test (`inputSchema`) are untouched by the stubs.
-vi.mock('@ifc-lite/query', () => ({ EntityNode: class {} }));
-vi.mock('@ifc-lite/sdk', () => ({ propertyValueTypeOf: () => 'string' }));
-vi.mock('@ifc-lite/parser', () => ({
-  getInheritanceChainAcrossSchemas: () => [],
-  effectiveRelationshipEdges: () => [],
-  resolveEffectiveEntityRecord: () => undefined,
-  resolveEffectiveRelationshipOverlay: () => undefined,
-  normalizeIfcTypeName: (s: string) => s,
-}));
-
-const { mutationTools } = await import('./mutate.js');
+import { mutationTools } from './mutate.js';
+import {
+  MCPServer,
+  PROTOCOL_VERSION,
+  InMemoryModelRegistry,
+  InProcessTransport,
+  PromptRegistry,
+  ResourceRegistry,
+  buildDefaultToolRegistry,
+  fullScope,
+} from '../index.js';
+import type { JsonSchema } from '../protocol/index.js';
 
 function schemaOf(name: string) {
   const found = mutationTools.find((t) => t.name === name);
@@ -44,49 +39,95 @@ function schemaOf(name: string) {
   return found.inputSchema;
 }
 
-describe('mutate tool schemas require global_id or express_id', () => {
-  const cases: Array<{ name: string; validExtra: Record<string, unknown> }> = [
-    { name: 'entity_set_property', validExtra: { pset: 'Pset_WallCommon', name: 'Reference', value: 'W-01' } },
-    { name: 'entity_delete_property', validExtra: { pset: 'Pset_WallCommon', name: 'Reference' } },
-    { name: 'entity_set_attribute', validExtra: { attribute: 'Name', value: 'New name' } },
-    { name: 'entity_delete', validExtra: {} },
-  ];
+const cases: Array<{ name: string; validExtra: Record<string, unknown> }> = [
+  { name: 'entity_set_property', validExtra: { pset: 'Pset_WallCommon', name: 'Reference', value: 'W-01' } },
+  { name: 'entity_delete_property', validExtra: { pset: 'Pset_WallCommon', name: 'Reference' } },
+  { name: 'entity_set_attribute', validExtra: { attribute: 'Name', value: 'New name' } },
+  { name: 'entity_delete', validExtra: {} },
+];
 
+describe('mutate tool schemas require global_id or express_id (#5192)', () => {
   for (const { name, validExtra } of cases) {
     describe(name, () => {
       it('rejects a call with neither global_id nor express_id at validation time', () => {
         const r = validateInput(schemaOf(name), { model_id: 'm1', ...validExtra });
         expect(r.valid).toBe(false);
-        expect(r.errors.some((e) => /anyOf/.test(e.message))).toBe(true);
+        const msg = r.errors.map((e) => e.message).join('\n');
+        expect(msg).toMatch(/anyOf/);
+        // The error names both ways to fix the call.
+        expect(msg).toContain('$.global_id');
+        expect(msg).toContain('$.express_id');
       });
 
       it('accepts global_id alone', () => {
-        const r = validateInput(schemaOf(name), { model_id: 'm1', global_id: 'GLOBAL00000000000000001', ...validExtra });
-        expect(r.valid).toBe(true);
+        expect(validateInput(schemaOf(name), { model_id: 'm1', global_id: 'GLOBAL00000000000000001', ...validExtra }).valid).toBe(true);
       });
 
       it('accepts express_id alone', () => {
-        const r = validateInput(schemaOf(name), { model_id: 'm1', express_id: 70, ...validExtra });
-        expect(r.valid).toBe(true);
+        expect(validateInput(schemaOf(name), { model_id: 'm1', express_id: 70, ...validExtra }).valid).toBe(true);
       });
 
-      // No-regression pin: today's existing valid calls (both identity fields
-      // present, or the tool's own other required fields) must keep validating.
-      // The likely failure mode of adding `anyOf` is an over-strict schema that
-      // now rejects calls that work today.
       it('still accepts a call supplying both global_id and express_id', () => {
-        const r = validateInput(schemaOf(name), {
-          model_id: 'm1', global_id: 'GLOBAL00000000000000001', express_id: 70, ...validExtra,
-        });
+        const r = validateInput(schemaOf(name), { model_id: 'm1', global_id: 'GLOBAL00000000000000001', express_id: 70, ...validExtra });
         expect(r.valid).toBe(true);
       });
 
-      it('still flags the tool\'s own other required fields as missing', () => {
-        if (Object.keys(validExtra).length === 0) return; // entity_delete has none
+      it.runIf(Object.keys(validExtra).length > 0)('still flags the tool\'s own other required fields as missing', () => {
         const r = validateInput(schemaOf(name), { model_id: 'm1', express_id: 70 });
         expect(r.valid).toBe(false);
         expect(r.errors.some((e) => e.message === 'Required property missing')).toBe(true);
       });
     });
   }
+});
+
+async function startServer() {
+  const server = new MCPServer({
+    version: '0.0.0-test',
+    registry: new InMemoryModelRegistry(),
+    scope: fullScope(),
+    config: { readOnly: false, samplingEnabled: false },
+    tools: buildDefaultToolRegistry(),
+    resources: new ResourceRegistry(),
+    prompts: new PromptRegistry(),
+  });
+  const transport = new InProcessTransport();
+  void transport.connect(server);
+  await transport.send({
+    jsonrpc: '2.0', id: 1, method: 'initialize',
+    params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'test', version: '0' } },
+  });
+  return transport;
+}
+
+describe('MCP server: identity rule over the wire (#5192)', () => {
+  for (const { name, validExtra } of cases) {
+    it(`${name} without an identity is INVALID_INPUT before the handler runs`, async () => {
+      const transport = await startServer();
+      const res = await transport.send({
+        jsonrpc: '2.0', id: 2, method: 'tools/call',
+        params: { name, arguments: validExtra },
+      }) as { result: { isError: boolean; structuredContent: { code: string; details?: { errors: Array<{ message: string }> } } } };
+      expect(res.result.isError).toBe(true);
+      expect(res.result.structuredContent.code).toBe('INVALID_INPUT');
+      // Validation, not the handler: with no model loaded the handler would
+      // have answered with a model error instead.
+      expect(res.result.structuredContent.details?.errors.some((e) => /anyOf/.test(e.message))).toBe(true);
+    });
+  }
+
+  it('publishes no root-level anyOf/oneOf/allOf in any tool schema', async () => {
+    const transport = await startServer();
+    const res = await transport.send({ jsonrpc: '2.0', id: 3, method: 'tools/list' }) as {
+      result: { tools: Array<{ name: string; inputSchema: JsonSchema }> };
+    };
+    expect(res.result.tools.length).toBeGreaterThan(0);
+    const offenders = res.result.tools
+      .filter((t) => ['anyOf', 'oneOf', 'allOf'].some((k) => k in t.inputSchema))
+      .map((t) => t.name);
+    expect(offenders).toEqual([]);
+    // The rule still reaches the agent, through the property descriptions.
+    const del = res.result.tools.find((t) => t.name === 'entity_delete');
+    expect(del?.inputSchema.properties?.global_id?.description).toMatch(/global_id.*express_id/);
+  });
 });

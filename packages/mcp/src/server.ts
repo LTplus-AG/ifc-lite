@@ -71,7 +71,7 @@ import { PromptRegistry } from './prompts/types.js';
 import { ResourceRegistry } from './resources/types.js';
 import { disposeLayerWorkspace } from './tools/layer-store.js';
 import { ToolRegistry } from './tools/types.js';
-import { validateInput } from './validate.js';
+import { advertisedInputSchema, validateInput } from './validate.js';
 import { ViewerManager } from './viewer-manager.js';
 import type { ViewerState } from './viewer-manager.js';
 
@@ -522,11 +522,11 @@ export class MCPServer {
   }
 }
 
-function toToolDefinition(tool: { name: string; description: string; inputSchema: unknown; scope?: string }): ToolDefinition {
+function toToolDefinition(tool: { name: string; description: string; inputSchema: ToolDefinition['inputSchema']; scope?: string }): ToolDefinition {
   return {
     name: tool.name,
     description: tool.description,
-    inputSchema: tool.inputSchema as ToolDefinition['inputSchema'],
+    inputSchema: advertisedInputSchema(tool.inputSchema),
     scope: tool.scope as ToolDefinition['scope'],
   };
 }

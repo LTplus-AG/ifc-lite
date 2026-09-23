@@ -18,6 +18,13 @@
  * reject on more than one", and getting that half-implemented is worse than
  * not offering it.
  *
+ * A top-level `anyOf` is enforced here but NOT advertised: the Anthropic
+ * Messages API rejects a tool `input_schema` carrying `oneOf`/`allOf`/`anyOf`
+ * at the root with a 400 that fails the whole request, so every Claude-backed
+ * MCP client would lose the entire tool list over one schema.
+ * `advertisedInputSchema` strips it from what `tools/list` returns; tools state
+ * the constraint in their property descriptions instead (#5192).
+ *
  * That's enough to surface clear `INVALID_INPUT` errors back to the LLM
  * without bringing in `ajv` (and its 200+ KB of metaschema) or zod.
  */
@@ -42,6 +49,17 @@ export function validateInput(schema: JsonSchema, input: unknown): ValidationRes
   return { valid: errors.length === 0, errors, value };
 }
 
+/**
+ * The schema `tools/list` publishes for a tool: its input schema without the
+ * root-level `anyOf` (see the file header). Nested `anyOf` is left alone —
+ * only the root is rejected by the Anthropic API.
+ */
+export function advertisedInputSchema(schema: JsonSchema): JsonSchema {
+  if (schema.anyOf === undefined) return schema;
+  const { anyOf: _enforcedServerSide, ...advertised } = schema;
+  return advertised;
+}
+
 function walk(schema: JsonSchema, input: unknown, path: string, errors: ValidationIssue[]): unknown {
   if (input === undefined && schema.default !== undefined) {
     input = clone(schema.default);
@@ -64,16 +82,16 @@ function walk(schema: JsonSchema, input: unknown, path: string, errors: Validati
   // its own. Any ONE matching branch is enough (unlike `oneOf`, which we do
   // not implement — see the file header).
   if (schema.anyOf && schema.anyOf.length > 0) {
-    const matchesAny = schema.anyOf.some((sub) => {
+    const branchErrors = schema.anyOf.map((sub) => {
       const subErrors: ValidationIssue[] = [];
       walk(sub, input, path, subErrors);
-      return subErrors.length === 0;
+      return subErrors;
     });
-    if (!matchesAny) {
-      errors.push({
-        path,
-        message: `Expected input at '${path}' to satisfy at least one of ${schema.anyOf.length} anyOf branch(es)`,
-      });
+    if (!branchErrors.some((b) => b.length === 0)) {
+      // Name what each branch wanted, so the caller can fix the call without
+      // reading the schema: `$.global_id: Required property missing` or ...
+      const wanted = branchErrors.map((b) => b.map((e) => `${e.path}: ${e.message}`).join('; ')).join(' OR ');
+      errors.push({ path, message: `Expected input at '${path}' to satisfy at least one anyOf branch: ${wanted}` });
     }
   }
 

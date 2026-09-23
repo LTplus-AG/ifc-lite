@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { validateInput } from './validate.js';
+import { advertisedInputSchema, validateInput } from './validate.js';
 
 describe('validateInput', () => {
   it('fills defaults', () => {
@@ -121,7 +121,10 @@ describe('validateInput', () => {
       const r = validateInput(identitySchema, {});
       expect(r.valid).toBe(false);
       expect(r.errors[0].path).toBe('$');
-      expect(r.errors[0].message).toMatch(/at least one of 2 anyOf branch/);
+      expect(r.errors[0].message).toBe(
+        "Expected input at '$' to satisfy at least one anyOf branch: " +
+          '$.global_id: Required property missing OR $.express_id: Required property missing',
+      );
     });
 
     it('accepts input matching exactly one anyOf branch', () => {
@@ -152,6 +155,17 @@ describe('validateInput', () => {
       const r = validateInput(nested, { target: {} });
       expect(r.valid).toBe(false);
       expect(r.errors[0].path).toBe('$.target');
+    });
+
+    // The Anthropic Messages API 400s a tool whose input_schema has a root
+    // anyOf/oneOf/allOf, so tools/list must not publish it (#5192).
+    it('advertisedInputSchema drops only the root anyOf', () => {
+      const advertised = advertisedInputSchema(identitySchema);
+      expect(advertised).not.toHaveProperty('anyOf');
+      expect(advertised.properties).toEqual(identitySchema.properties);
+      expect(identitySchema.anyOf).toHaveLength(2); // the enforced schema is untouched
+      const plain = { type: 'object' as const, properties: {} };
+      expect(advertisedInputSchema(plain)).toBe(plain);
     });
   });
 });

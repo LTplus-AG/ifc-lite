@@ -31,6 +31,7 @@ import { writeFile } from 'node:fs/promises';
 import { EntityNode } from '@ifc-lite/query';
 import type { Mutation } from '@ifc-lite/mutations';
 import type { Tool } from './types.js';
+import { entityTargetSchema } from './entity-target-schema.js';
 import { findByGlobalId, okResult, resolveModel } from './util.js';
 import type { HeadlessLikeBackend } from '../headless-backend.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
@@ -46,16 +47,6 @@ interface MutationContext {
 function getBackend(m: ReturnType<typeof resolveModel>): HeadlessLikeBackend {
   return m.backend;
 }
-
-/**
- * Every write tool below resolves its target entity via `resolveExpressId`,
- * which accepts `global_id` OR `express_id` and throws `INVALID_INPUT` if
- * neither is present. Shared here so all four schemas enforce the same
- * constraint `resolveExpressId` already runs at execution time, instead of
- * only one of them drifting when it changes (#5192).
- */
-const IDENTITY_DESCRIPTION = ' Requires exactly one of `global_id` or `express_id`.';
-const IDENTITY_ANY_OF = [{ required: ['global_id'] }, { required: ['express_id'] }];
 
 function resolveExpressId(m: ReturnType<typeof resolveModel>, input: Record<string, unknown>): number {
   if (typeof input.express_id === 'number') return input.express_id;
@@ -114,20 +105,11 @@ const entitySetProperty: Tool = {
   name: 'entity_set_property',
   description: 'Set or create a property on an entity. Mutations are queued; call `export_ifc` to persist.',
   scope: 'mutate',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      model_id: { type: 'string' },
-      global_id: { type: 'string', description: `Target entity's GlobalId.${IDENTITY_DESCRIPTION}` },
-      express_id: { type: 'integer', description: `Target entity's express id.${IDENTITY_DESCRIPTION}` },
-      pset: { type: 'string', description: 'Property set name, e.g. "Pset_WallCommon".' },
-      name: { type: 'string', description: 'Property name within the pset.' },
-      value: { description: 'Boolean / number / string value.' },
-    },
-    required: ['pset', 'name'],
-    anyOf: IDENTITY_ANY_OF,
-    additionalProperties: false,
-  },
+  inputSchema: entityTargetSchema({
+    pset: { type: 'string', description: 'Property set name, e.g. "Pset_WallCommon".' },
+    name: { type: 'string', description: 'Property name within the pset.' },
+    value: { description: 'Boolean / number / string value.' },
+  }, ['pset', 'name']),
   handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const backend = getBackend(m);
@@ -148,19 +130,10 @@ const entityDeleteProperty: Tool = {
   name: 'entity_delete_property',
   description: 'Delete a property from a Pset. Queued — persist via `export_ifc`.',
   scope: 'mutate',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      model_id: { type: 'string' },
-      global_id: { type: 'string', description: `Target entity's GlobalId.${IDENTITY_DESCRIPTION}` },
-      express_id: { type: 'integer', description: `Target entity's express id.${IDENTITY_DESCRIPTION}` },
-      pset: { type: 'string' },
-      name: { type: 'string' },
-    },
-    required: ['pset', 'name'],
-    anyOf: IDENTITY_ANY_OF,
-    additionalProperties: false,
-  },
+  inputSchema: entityTargetSchema({
+    pset: { type: 'string' },
+    name: { type: 'string' },
+  }, ['pset', 'name']),
   handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const backend = getBackend(m);
@@ -184,19 +157,10 @@ const entitySetAttribute: Tool = {
   name: 'entity_set_attribute',
   description: 'Set a top-level IFC attribute (Name, Description, ObjectType, Tag).',
   scope: 'mutate',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      model_id: { type: 'string' },
-      global_id: { type: 'string', description: `Target entity's GlobalId.${IDENTITY_DESCRIPTION}` },
-      express_id: { type: 'integer', description: `Target entity's express id.${IDENTITY_DESCRIPTION}` },
-      attribute: { type: 'string', enum: ['Name', 'Description', 'ObjectType', 'Tag'] },
-      value: { type: 'string' },
-    },
-    required: ['attribute', 'value'],
-    anyOf: IDENTITY_ANY_OF,
-    additionalProperties: false,
-  },
+  inputSchema: entityTargetSchema({
+    attribute: { type: 'string', enum: ['Name', 'Description', 'ObjectType', 'Tag'] },
+    value: { type: 'string' },
+  }, ['attribute', 'value']),
   handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const backend = getBackend(m);
@@ -252,16 +216,7 @@ const entityDelete: Tool = {
   name: 'entity_delete',
   description: 'Delete an entity. Note: cascades are NOT applied automatically — caller must remove dependent relationships first.',
   scope: 'mutate',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      model_id: { type: 'string' },
-      global_id: { type: 'string', description: `Target entity's GlobalId.${IDENTITY_DESCRIPTION}` },
-      express_id: { type: 'integer', description: `Target entity's express id.${IDENTITY_DESCRIPTION}` },
-    },
-    anyOf: IDENTITY_ANY_OF,
-    additionalProperties: false,
-  },
+  inputSchema: entityTargetSchema({}),
   handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const backend = getBackend(m);

@@ -265,7 +265,7 @@ export function entityVisibilityFromSnapshot(
   const tombstones = new Set(snapshot.tombstones);
   const retypes = new Map(snapshot.retypes.map(([id, newType]) => [id, { newType }]));
   return {
-    getTombstones: () => tombstones,
+    isDeleted: (expressId) => tombstones.has(expressId),
     getNewEntities: () => snapshot.newEntities,
     getTypeMutations: () => retypes,
   };

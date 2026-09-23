@@ -10,8 +10,7 @@ import {
 import {
   RelationshipType,
   getAttributeXsdTypes,
-  effectiveEntityIds,
-  effectiveEntityIdsOfType,
+  iterateEffectiveEntities,
 } from '@ifc-lite/data';
 
 import type {
@@ -225,11 +224,13 @@ export function createDataAccessor(
     },
 
     getEntitiesByType(typeName: string): number[] {
-      return store.entityIndex ? effectiveEntityIdsOfType(store, entityVisibility, typeName) : [];
+      if (!store.entityIndex) return [];
+      return Array.from(iterateEffectiveEntities(store, entityVisibility, [typeName]), (e) => e.expressId);
     },
 
     getAllEntityIds(): number[] {
-      return store.entityIndex ? effectiveEntityIds(store, entityVisibility) : [];
+      if (!store.entityIndex) return [];
+      return Array.from(iterateEffectiveEntities(store, entityVisibility), (e) => e.expressId);
     },
 
     getPropertyValue(

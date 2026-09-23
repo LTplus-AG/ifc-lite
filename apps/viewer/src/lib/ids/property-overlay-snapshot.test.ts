@@ -191,7 +191,7 @@ describe('snapshotEntityVisibility / entityVisibilityFromSnapshot (#5184)', () =
     assert.equal(entityVisibilityFromSnapshot(snapshotEntityVisibility(view())), undefined);
   });
 
-  it('round-trips a tombstone through structuredClone, excluding it via getTombstones', () => {
+  it('round-trips a tombstone through structuredClone, excluding it via isDeleted', () => {
     const v = view();
     v.deleteEntity(7);
 
@@ -199,8 +199,8 @@ describe('snapshotEntityVisibility / entityVisibilityFromSnapshot (#5184)', () =
     assert.deepEqual(snapshot, { tombstones: [7], newEntities: [], retypes: [] });
 
     const visibility = entityVisibilityFromSnapshot(snapshot)!;
-    assert.equal(visibility.getTombstones().has(7), true);
-    assert.equal(visibility.getTombstones().has(8), false);
+    assert.equal(visibility.isDeleted(7), true);
+    assert.equal(visibility.isDeleted(8), false);
     assert.deepEqual(visibility.getNewEntities(), []);
   });
 
@@ -217,7 +217,7 @@ describe('snapshotEntityVisibility / entityVisibilityFromSnapshot (#5184)', () =
 
     const visibility = entityVisibilityFromSnapshot(snapshot)!;
     assert.deepEqual(visibility.getNewEntities(), snapshot.newEntities);
-    assert.equal(visibility.getTombstones().size, 0);
+    assert.equal(visibility.isDeleted(created.expressId), false);
   });
 
   it('carries a retype so the worker lists the entity under its new class', () => {

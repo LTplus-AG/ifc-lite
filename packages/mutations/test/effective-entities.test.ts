@@ -3,27 +3,34 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Contract for the shared effective-entity accessor (#5249, charter #5236),
+ * Contract for the shared effective-entity enumeration (#5249, charter #5236),
  * driven through the real write path: `StoreEditor` over a real
- * `MutablePropertyView`, exactly as a live viewer/CLI/MCP session edits.
- * The accessor lives in `@ifc-lite/data` (so IDS, query and charts can use it
- * without depending on this package); its contract is pinned here because
- * this is the package that produces the overlays it has to read.
+ * `MutablePropertyView`, exactly as a live viewer/CLI/MCP session edits. The
+ * algorithm lives in `@ifc-lite/data` (`iterateEffectiveEntities`, so IDS and
+ * charts can use it without depending on this package). This package's
+ * `iterateEffectiveEntityIds` delegates to it, and this is the package that
+ * produces the overlays it has to read.
  */
 
 import { describe, expect, it } from 'vitest';
-import { effectiveEntityIds, effectiveEntityIdsOfType } from '@ifc-lite/data';
+import { iterateEffectiveEntities, type EffectiveEntitySource } from '@ifc-lite/data';
 import {
   MutablePropertyView,
   StoreEditor,
+  iterateEffectiveEntityIds,
   type MutationEntityRef,
   type MutationStoreShape,
 } from '../src/index.js';
 
+type Source = EffectiveEntitySource & MutationStoreShape & { entityIndex: { byType: Map<string, number[]> } };
+
+const ids = (rows: Iterable<{ expressId: number }>) => Array.from(rows, ({ expressId }) => expressId);
+const effectiveEntityIds = (store: Source, view: MutablePropertyView | null) => ids(iterateEffectiveEntityIds(store, view));
+const effectiveEntityIdsOfType = (store: Source, view: MutablePropertyView | null, types: string | string[]) =>
+  ids(iterateEffectiveEntityIds(store, view, typeof types === 'string' ? [types] : types));
+
 /** A parsed-store stand-in: `byId` and `byType` agree, as the parser builds them. */
-function makeStore(entities: Array<[number, string]>): MutationStoreShape & {
-  entityIndex: { byType: Map<string, number[]> };
-} {
+function makeStore(entities: Array<[number, string]>): Source {
   const byId = new Map<number, MutationEntityRef>();
   const byType = new Map<string, number[]>();
   for (const [id, type] of entities) {
@@ -145,7 +152,7 @@ describe('effective entity accessor (#5249)', () => {
     expect(effectiveEntityIds(b.store, a.view)).toEqual([2, 3, 4, createdInA]);
   });
 
-  it('accepts a structured-clone snapshot of the overlay, not only a live view', () => {
+  it('the shared core accepts a structured-clone snapshot of the overlay, not only a live view', () => {
     const { store, view, editor } = session(BASE);
     editor.removeEntity(4);
     const created = editor.addEntity('IfcSlab', []).expressId;
@@ -155,26 +162,18 @@ describe('effective entity accessor (#5249)', () => {
       created: view.getNewEntities().map(({ expressId, type }) => ({ expressId, type })),
     })) as { tombstones: number[]; created: Array<{ expressId: number; type: string }> };
     const tombstones = new Set(snapshot.tombstones);
-    const overlay = { getTombstones: () => tombstones, getNewEntities: () => snapshot.created };
+    const overlay = { isDeleted: (id: number) => tombstones.has(id), getNewEntities: () => snapshot.created };
 
-    expect(effectiveEntityIdsOfType(store, overlay, 'IfcSlab')).toEqual([created]);
-    expect(effectiveEntityIds(store, overlay)).toEqual(effectiveEntityIds(store, view));
+    expect(ids(iterateEffectiveEntities(store, overlay, ['IfcSlab']))).toEqual([created]);
+    expect(ids(iterateEffectiveEntities(store, overlay))).toEqual(effectiveEntityIds(store, view));
   });
 
-  it('never lists an id twice even when an inconsistent overlay claims a source id as created', () => {
-    const { store } = session(BASE);
-    const overlay = {
-      getTombstones: () => new Set<number>(),
-      getNewEntities: () => [{ expressId: 1, type: 'IfcWall' }],
-    };
-    expect(effectiveEntityIds(store, overlay)).toEqual([1, 2, 3, 4]);
-    expect(effectiveEntityIdsOfType(store, overlay, 'IfcWall')).toEqual([1, 2]);
-  });
-
-  it('returns a fresh array the caller may mutate without touching the index', () => {
-    const { store, view } = session(BASE);
-    effectiveEntityIdsOfType(store, view, 'IfcWall').push(99);
-    effectiveEntityIdsOfType(store, null, 'IfcWall').push(99);
+  it('never mutates the source index', () => {
+    const { store, view, editor } = session(BASE);
+    editor.removeEntity(1);
+    editor.addEntity('IfcWall', []);
+    editor.setEntityType(2, 'IfcColumn');
+    effectiveEntityIdsOfType(store, view, ['IfcWall', 'IfcColumn']);
     expect(store.entityIndex.byType.get('IFCWALL')).toEqual([1, 2]);
   });
 });

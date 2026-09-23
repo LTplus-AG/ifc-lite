@@ -6,7 +6,7 @@
  * The live-session overlay as the IDS bridge sees it (#5184, #5249).
  *
  * Enumeration (`getAllEntityIds`, `getEntitiesByType`) goes through the shared
- * effective-entity accessor in `@ifc-lite/data`, so a tombstoned entity is not
+ * `iterateEffectiveEntities` in `@ifc-lite/data`, so a tombstoned entity is not
  * validated and an overlay-created one is. An enumerated entity is only
  * validated if the point reads agree with the enumeration. The validator
  * confirms every candidate through `getEntityType`, so an overlay-created

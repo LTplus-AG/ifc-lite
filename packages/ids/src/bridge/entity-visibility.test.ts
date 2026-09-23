@@ -45,7 +45,7 @@ function makeStore(): IfcDataStore {
 function view(tombstones: number[], newIds: number[] = []): EntityVisibilityView {
   const t = new Set(tombstones);
   return {
-    getTombstones: () => t,
+    isDeleted: (id: number) => t.has(id),
     getNewEntities: () => newIds.map((expressId) => ({ expressId, type: 'IfcWall' })),
   };
 }

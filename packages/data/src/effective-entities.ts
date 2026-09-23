@@ -3,34 +3,40 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The effective entity set of a live model session (#5249, charter #5236).
+ * The effective entity set of a live model session: the one enumeration
+ * algorithm (#5249, charter #5236).
  *
  * A parsed store's `entityIndex` answers for the file as parsed. The mutation
  * overlay (`MutablePropertyView`) never writes back into it: a deleted entity
  * keeps its index entry, and an entity created this session has none. So every
  * bulk enumeration that walks `entityIndex.byType` / `entityIndex.byId` directly
  * returns tombstoned entities and misses created ones, while the point lookups
- * next to it (`isDeleted`, `getNewEntity`) answer correctly. Eight seed issues
- * were that one defect in eight consumers, several of them wrong in only one
- * direction (#5185 missed creates, #5205 kept tombstones, in the same function).
+ * next to it (`isDeleted`, `getNewEntity`) answer correctly. The seed issues of
+ * the charter were that one defect in eight consumers, several wrong in only
+ * one direction (#5185 missed creates, #5205 kept tombstones, in one function).
  *
- * These two functions are the one rule, answered in both directions at once:
+ * This generator answers both directions at once:
  *
- *   - every source entity except the tombstoned ones;
- *   - every overlay-created entity, exactly once; created-then-deleted is absent;
- *   - a retype moves an entity to its new class for type-filtered enumeration.
+ *   - every source entity except tombstoned ones;
+ *   - every overlay-created entity; created-then-deleted is absent;
+ *   - a retyped entity carries, and is filtered by, its new class.
  *
- * The overlay is passed in explicitly, never looked up from global state, so a
- * federated session cannot read one model's edits through another's store.
- * {@link EffectiveEntityOverlay} is structural: a live `MutablePropertyView`
- * satisfies it as-is, and so does a structured-clone snapshot of one (the IDS
- * worker re-parses the source bytes and gets the overlay as plain data).
+ * It lives here rather than in `@ifc-lite/mutations` because `@ifc-lite/ids`
+ * and `@ifc-lite/charts` depend on `@ifc-lite/data` and deliberately not on
+ * mutations. `@ifc-lite/mutations`' `iterateEffectiveEntityIds` delegates to
+ * it, so there is one algorithm. The overlay is passed in explicitly, never
+ * looked up from global state, so a federated session cannot read one model's
+ * edits through another's store. {@link EffectiveEntityOverlay} is structural:
+ * a live `MutablePropertyView` satisfies it, and so does a structured-clone
+ * snapshot (the IDS worker re-parses the source bytes and receives the
+ * overlay as plain data).
  *
- * Order is deterministic: source ids in the index's own order, followed by the
- * overlay's additions (retyped-in source ids ascending, then created entities
- * in creation order, which is ascending express id).
+ * Order: source records in source-bucket order (the type buckets as indexed,
+ * or `sourceIds` as given); then source records retyped INTO a requested type
+ * they were not indexed under, in the overlay's retype order; then overlay
+ * creations in the overlay's creation order.
  *
- * Point lookups stay on their existing mutation-aware paths; this module is for
+ * Point lookups stay on their existing mutation-aware paths. This is for
  * enumeration only. `packages/export/src/effective-index.ts` answers the same
  * membership question for STEP output, with byte ranges and reference walks a
  * query consumer does not need.
@@ -38,144 +44,98 @@
 
 /** The overlay half of a live session, as enumeration needs it. */
 export interface EffectiveEntityOverlay {
-  /**
-   * Every id deleted this session: source entities AND created-then-deleted
-   * ones. `MutablePropertyView.getTombstones()` returns exactly this.
-   */
-  getTombstones(): ReadonlySet<number>;
-  /**
-   * Overlay-created entities still alive, in creation order. `type` is the
-   * class as authored (any case); a retype is read from
-   * {@link getTypeMutations}, not from here.
-   */
+  /** True for a deleted source entity and for a created-then-deleted one. */
+  isDeleted(expressId: number): boolean;
+  /** Overlay-created entities, in creation order, with their authored class. */
   getNewEntities(): ReadonlyArray<{ readonly expressId: number; readonly type: string }>;
   /** Retype intents by express id. Absent means the overlay carries none. */
   getTypeMutations?(): ReadonlyMap<number, { readonly newType: string }>;
 }
 
-/** The parsed half: any store carrying the parser's entity index. */
+/** The parser's source index shape, without a parser dependency. */
 export interface EffectiveEntitySource {
   readonly entityIndex: {
-    readonly byId: {
-      has(expressId: number): boolean;
-      keys(): Iterable<number>;
-    };
     /** Source ids keyed by UPPERCASE STEP class. */
-    readonly byType: {
-      get(upperType: string): ArrayLike<number> | undefined;
-    };
+    readonly byType: ReadonlyMap<string, readonly number[]>;
+    readonly byId: { get(id: number): { type: string } | undefined };
   };
+  /** Property atoms may live outside the primary ID index after parsing. */
+  readonly deferredEntityIndex?: { get(id: number): { type: string } | undefined };
+  /** Optional type fallback for a caller-supplied columnar source domain. */
+  readonly entities?: { getTypeName(id: number): string };
+}
+
+export interface EffectiveEntity {
+  expressId: number;
+  /** Effective EXPRESS class, in the same uppercase form as STEP type keys. */
+  type: string;
+  overlayCreated: boolean;
 }
 
 /**
- * Every entity id in the model's effective state: source ids minus tombstones,
- * then overlay-created ids. With no overlay (or one that has created and
- * deleted nothing) this is exactly the source index's id list.
- *
- * Always returns a fresh array the caller may mutate.
+ * Iterate the entity set visible in this session. The source index is never
+ * mutated. Callers expand schema subtypes before passing `types` (matched
+ * case-insensitively against the exact class). `sourceIds` restricts source
+ * records to a caller's existing domain (an `EntityTable`'s rows, say) while
+ * still appending overlay creations. It avoids scanning unrelated STEP records.
  */
-export function effectiveEntityIds(
-  store: EffectiveEntitySource,
+export function* iterateEffectiveEntities(
+  source: EffectiveEntitySource,
   overlay: EffectiveEntityOverlay | null | undefined,
-): number[] {
-  // @raw-entity-enumeration-ok the effective-entity accessor itself: the one place the source id list is read, with the overlay folded in below
-  const sourceIds = store.entityIndex.byId;
-  if (!overlay) return Array.from(sourceIds.keys());
+  types?: readonly string[],
+  sourceIds?: Iterable<number>,
+): IterableIterator<EffectiveEntity> {
+  // @raw-entity-enumeration-ok the canonical accessor: the one place source type buckets are read, with the overlay applied below
+  const byType = source.entityIndex.byType;
+  const wanted = types && types.length > 0 ? new Set(types.map((type) => type.toUpperCase())) : null;
+  const retypes = overlay?.getTypeMutations?.();
+  const created = overlay?.getNewEntities() ?? [];
+  const createdIds = new Set(created.map((entity) => entity.expressId));
 
-  const tombstones = overlay.getTombstones();
-  const ids: number[] = [];
-  if (tombstones.size === 0) {
-    for (const id of sourceIds.keys()) ids.push(id);
+  if (sourceIds) {
+    for (const expressId of sourceIds) {
+      if (expressId === 0 || createdIds.has(expressId) || overlay?.isDeleted(expressId)) continue;
+      // @raw-entity-enumeration-ok the canonical accessor reads source class before applying queued retypes
+      const sourceType = (source.entityIndex.byId.get(expressId)
+        ?? source.deferredEntityIndex?.get(expressId))?.type
+        ?? source.entities?.getTypeName(expressId);
+      if (!sourceType || sourceType === 'Unknown') continue;
+      const type = (retypes?.get(expressId)?.newType ?? sourceType).toUpperCase();
+      if (!wanted || wanted.has(type)) yield { expressId, type, overlayCreated: false };
+    }
   } else {
-    for (const id of sourceIds.keys()) if (!tombstones.has(id)) ids.push(id);
-  }
-  appendCreated(store, overlay, tombstones, null, ids);
-  return ids;
-}
-
-/**
- * Entity ids whose EFFECTIVE class is one of `types`, matched case-insensitively
- * against the exact class name (no subtype expansion: a caller that wants
- * `IfcWall` to include `IfcWallStandardCase` passes both, as it would have with
- * `entityIndex.byType`).
- *
- * A retyped entity is listed under its new class only. Duplicate entries in
- * `types` are ignored, so every id appears at most once.
- */
-export function effectiveEntityIdsOfType(
-  store: EffectiveEntitySource,
-  overlay: EffectiveEntityOverlay | null | undefined,
-  types: string | Iterable<string>,
-): number[] {
-  const wanted = new Set<string>();
-  for (const type of typeof types === 'string' ? [types] : types) wanted.add(type.toUpperCase());
-
-  const tombstones: ReadonlySet<number> = overlay ? overlay.getTombstones() : EMPTY_IDS;
-  const retypes: ReadonlyMap<number, { readonly newType: string }> =
-    overlay?.getTypeMutations?.() ?? EMPTY_RETYPES;
-  const filterSource = tombstones.size > 0 || retypes.size > 0;
-
-  const ids: number[] = [];
-  for (const type of wanted) {
-    // @raw-entity-enumeration-ok the effective-entity accessor itself: source buckets are read here and nowhere else, tombstones and retypes filtered below
-    const bucket = store.entityIndex.byType.get(type);
-    if (!bucket) continue;
-    for (let i = 0; i < bucket.length; i++) {
-      const id = bucket[i];
-      if (filterSource && (tombstones.has(id) || retypes.has(id))) continue;
-      ids.push(id);
+    const buckets: Iterable<[string, readonly number[]]> = wanted
+      ? Array.from(wanted, (type): [string, readonly number[]] => [type, byType.get(type) ?? []])
+      : byType;
+    for (const [sourceType, ids] of buckets) {
+      for (const expressId of ids) {
+        if (expressId === 0 || overlay?.isDeleted(expressId)) continue;
+        const type = (retypes?.get(expressId)?.newType ?? sourceType).toUpperCase();
+        if (!wanted || wanted.has(type)) yield { expressId, type, overlayCreated: false };
+      }
     }
   }
-  if (!overlay) return ids;
 
-  // Retyped source entities, under their NEW class only. The bucket pass above
-  // skipped every retyped id, so this is the single place one is admitted.
-  if (retypes.size > 0) {
-    const retypedIn: number[] = [];
-    for (const [id, retype] of retypes) {
-      if (!wanted.has(retype.newType.toUpperCase())) continue;
-      if (tombstones.has(id) || !isSourceEntity(store, id)) continue;
-      retypedIn.push(id);
+  // A source record retyped INTO a requested bucket was absent from that
+  // bucket's parsed list. Only queued retypes need this second pass.
+  if (!sourceIds && wanted && retypes) {
+    for (const [expressId, mutation] of retypes) {
+      if (expressId === 0 || createdIds.has(expressId) || overlay?.isDeleted(expressId)) continue;
+      const type = mutation.newType.toUpperCase();
+      if (!wanted.has(type)) continue;
+      // @raw-entity-enumeration-ok the canonical accessor checks source bucket membership before adding retypes
+      const sourceType = (source.entityIndex.byId.get(expressId)
+        ?? source.deferredEntityIndex?.get(expressId))?.type.toUpperCase();
+      if (!sourceType || wanted.has(sourceType) || !(byType.get(sourceType)?.includes(expressId))) continue;
+      yield { expressId, type, overlayCreated: false };
     }
-    retypedIn.sort((a, b) => a - b);
-    for (const id of retypedIn) ids.push(id);
   }
-  appendCreated(store, overlay, tombstones, { wanted, retypes }, ids);
-  return ids;
-}
 
-const EMPTY_IDS: ReadonlySet<number> = new Set<number>();
-const EMPTY_RETYPES: ReadonlyMap<number, { readonly newType: string }> = new Map();
-
-function isSourceEntity(store: EffectiveEntitySource, id: number): boolean {
-  // @raw-entity-enumeration-ok point membership test inside the effective-entity accessor, used to keep a created or retyped id from being listed twice
-  return store.entityIndex.byId.has(id);
-}
-
-/**
- * Overlay-created entities, in creation order. A created id is skipped when it
- * is tombstoned (created-then-deleted; `MutablePropertyView.deleteEntity`
- * already forgets it, but a snapshot might not) or when the source index
- * already lists it, so "exactly once" does not depend on the caller's overlay
- * being internally consistent.
- */
-function appendCreated(
-  store: EffectiveEntitySource,
-  overlay: EffectiveEntityOverlay,
-  tombstones: ReadonlySet<number>,
-  typeFilter: {
-    wanted: ReadonlySet<string>;
-    retypes: ReadonlyMap<number, { readonly newType: string }>;
-  } | null,
-  out: number[],
-): void {
-  for (const entity of overlay.getNewEntities()) {
-    const id = entity.expressId;
-    if (tombstones.has(id) || isSourceEntity(store, id)) continue;
-    if (typeFilter) {
-      const effectiveType = typeFilter.retypes.get(id)?.newType ?? entity.type;
-      if (!typeFilter.wanted.has(effectiveType.toUpperCase())) continue;
+  for (const entity of created) {
+    if (overlay?.isDeleted(entity.expressId)) continue;
+    const type = (retypes?.get(entity.expressId)?.newType ?? entity.type).toUpperCase();
+    if (!wanted || wanted.has(type)) {
+      yield { expressId: entity.expressId, type, overlayCreated: true };
     }
-    out.push(id);
   }
 }

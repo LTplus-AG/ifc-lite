@@ -863,7 +863,7 @@ function makeThreeWallStore(): IfcDataStore {
 
 function tombstoneView(ids: number[]): EntityVisibilityView {
   const t = new Set(ids);
-  return { getTombstones: () => t, getNewEntities: () => [] };
+  return { isDeleted: (id: number) => t.has(id), getNewEntities: () => [] };
 }
 
 describe('validateIDS — tombstoned entity excluded from enumeration (#5184)', () => {

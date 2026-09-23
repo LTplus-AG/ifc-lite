@@ -146,10 +146,11 @@ export { safeUtf8Decode, textDecoderAcceptsSab } from './utf8-decode.js';
 export { spatialLookups } from './spatial-lookups.js';
 
 // Effective entity enumeration for a live session: source index minus
-// tombstones plus overlay-created entities (#5249).
+// tombstones plus overlay-created entities, retypes applied (#5249). The one
+// algorithm; `@ifc-lite/mutations`' `iterateEffectiveEntityIds` delegates here.
 export {
-  effectiveEntityIds,
-  effectiveEntityIdsOfType,
+  iterateEffectiveEntities,
+  type EffectiveEntity,
   type EffectiveEntityOverlay,
   type EffectiveEntitySource,
 } from './effective-entities.js';

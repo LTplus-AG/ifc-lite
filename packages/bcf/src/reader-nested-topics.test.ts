@@ -68,6 +68,36 @@ afterEach(() => {
 });
 
 describe('#5213: topic folder nested below archive root', () => {
+  it('reports a skipped duplicate topic through the import callback', async () => {
+    const guid = 'aaaaaaaa-1111-2222-3333-444444444444';
+    const zip = new JSZip();
+    zip.file('bcf.version', versionFile());
+    zip.file('first/markup.bcf', markupFile(guid, 'First topic'));
+    zip.file('second/markup.bcf', markupFile(guid, 'Duplicate topic'));
+    const warnings: string[] = [];
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const project = await readBCF(await zip.generateAsync({ type: 'nodebuffer' }), {
+      onWarning: (message) => warnings.push(message),
+    });
+
+    expect(project.topics.size).toBe(1);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/Duplicate topic Guid/);
+  });
+
+  it('reads metadata and topics when the entire project folder is zipped', async () => {
+    const guid = 'aaaaaaaa-1111-2222-3333-444444444444';
+    const zip = new JSZip();
+    zip.file('MyProject/bcf.version', versionFile());
+    zip.file('MyProject/project.bcfp', '<ProjectInfo><Project ProjectId="project-a"><Name>Wrapped project</Name></Project></ProjectInfo>');
+    zip.file(`MyProject/${guid}/markup.bcf`, markupFile(guid, 'Wrapped topic'));
+
+    const project = await readBCF(await zip.generateAsync({ type: 'nodebuffer' }));
+    expect(project.name).toBe('Wrapped project');
+    expect(project.topics.get(guid)?.title).toBe('Wrapped topic');
+  });
+
   it('reads a topic one level deeper than root (zipped-folder-not-contents shape)', async () => {
     const guid = 'aaaaaaaa-1111-2222-3333-444444444444';
     const zip = new JSZip();
@@ -118,6 +148,19 @@ describe('#5213: topic folder nested below archive root', () => {
 });
 
 describe('#5213: uppercase .BCFV viewpoint extension', () => {
+  it('finds the matching snapshot through the fallback naming pattern', async () => {
+    const topicGuid = '33333333-3333-3333-3333-333333333333';
+    const vpGuid = '44444444-4444-4444-4444-444444444444';
+    const zip = new JSZip();
+    zip.file('bcf.version', versionFile());
+    zip.file(`${topicGuid}/markup.bcf`, markupFileWithViewpoint(topicGuid, 'Snapshot fallback', vpGuid, `Viewpoint_${vpGuid}.BCFV`));
+    zip.file(`${topicGuid}/Viewpoint_${vpGuid}.BCFV`, viewpointFile(vpGuid));
+    zip.file(`${topicGuid}/Snapshot_${vpGuid}.png`, new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+
+    const project = await readBCF(await zip.generateAsync({ type: 'nodebuffer' }));
+    expect(project.topics.get(topicGuid)?.viewpoints[0]?.snapshot).toMatch(/^data:image\/png;base64,/);
+  });
+
   it('reads a viewpoint file named with an uppercase .BCFV extension', async () => {
     const topicGuid = '33333333-3333-3333-3333-333333333333';
     const vpGuid = '44444444-4444-4444-4444-444444444444';

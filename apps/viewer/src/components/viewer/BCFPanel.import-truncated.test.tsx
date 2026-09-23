@@ -5,7 +5,7 @@
 /**
  * #5213: `readBCF` never throws for a malformed piece of an otherwise-valid
  * archive -- e.g. two topic folders whose `markup.bcf` declare the same
- * `Topic Guid` (#3960) -- it reports the drop with `console.warn` and keeps
+ * `Topic Guid` (#3960) -- it reports the drop through `onWarning` and keeps
  * going, so the returned project reads as a plain success with fewer topics
  * than the archive held. BCFPanel's import success path used to call
  * `setBcfProject` and stop there: a truncated import and a complete one
@@ -108,8 +108,7 @@ describe('BCFPanel import — truncation guidance (#5213)', () => {
 
   it('surfaces a toast when readBCF silently dropped a topic, instead of a plain success', async () => {
     const errorMock = mock.method(toast, 'error', () => {});
-    const originalWarn = console.warn;
-    console.warn = () => {};
+    const warnMock = mock.method(console, 'warn', () => {});
     try {
       const container = renderPanel();
       const file = await makeTruncatingBcfFile();
@@ -132,7 +131,7 @@ describe('BCFPanel import — truncation guidance (#5213)', () => {
         'the toast must name that something was dropped, not just show a generic error',
       );
     } finally {
-      console.warn = originalWarn;
+      warnMock.mock.restore();
       errorMock.mock.restore();
     }
   });

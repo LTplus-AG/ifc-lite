@@ -30,6 +30,17 @@ for (const [guid, topic] of project.topics) {
 }
 ```
 
+If a topic or viewpoint cannot be read, the reader keeps the other items and
+reports the skipped item through `onWarning`:
+
+```typescript
+import { readBCF } from '@ifc-lite/bcf';
+
+const project = await readBCF(bcfBuffer, {
+  onWarning: (message) => console.warn(`BCF import: ${message}`),
+});
+```
+
 ### Creating BCF Projects
 
 ```typescript

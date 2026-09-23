@@ -22,6 +22,8 @@ import type {
   BCFHeaderFile,
 } from './types.js';
 import { parseViewpointContent } from './reader-viewpoint-content.js';
+import { isMacOsxShadowPath, resolveArchiveRoot } from './reader-archive-root.js';
+import { createWarningReporter, type ReportWarning } from './reader-warning.js';
 
 /**
  * Resource caps guarding against a malicious (zip-bomb) .bcfzip: a tiny
@@ -161,12 +163,12 @@ function assertArchiveWithinLimits(zip: JSZip, maxEntries: number, maxExpandedBy
  * Parse a BCF file (.bcfzip) into a BCFProject
  *
  * @param file - BCF file as File, Blob, or ArrayBuffer
- * @param limits - Optional overrides of the anti-zip-bomb resource caps
+ * @param limits - Optional resource caps and callback for skipped archive items
  * @returns Parsed BCF project
  */
 export async function readBCF(
   file: File | Blob | ArrayBuffer | Uint8Array,
-  limits?: { maxArchiveBytes?: number; maxEntries?: number; maxExpandedBytes?: number },
+  limits?: { maxArchiveBytes?: number; maxEntries?: number; maxExpandedBytes?: number; onWarning?: (message: string) => void },
 ): Promise<BCFProject> {
   const maxArchiveBytes = limits?.maxArchiveBytes ?? MAX_BCF_ARCHIVE_BYTES;
   const maxEntries = limits?.maxEntries ?? MAX_BCF_ENTRIES;
@@ -194,15 +196,17 @@ export async function readBCF(
   const zip = await JSZip.loadAsync(bytes);
   assertArchiveWithinLimits(zip, maxEntries, maxExpandedBytes);
   const budget: ExpansionBudget = { used: 0, limit: maxExpandedBytes };
+  const root = resolveArchiveRoot(zip);
+  const warn = createWarningReporter(limits?.onWarning);
 
   // Read version file
-  const version = await readVersionFile(zip, budget);
+  const version = await readVersionFile(zip, budget, root);
 
   // Read project file (optional)
-  const { projectId, name, extensions } = await readProjectFile(zip, budget);
+  const { projectId, name, extensions } = await readProjectFile(zip, budget, root);
 
   // Read topics
-  const topics = await readTopics(zip, budget, version.versionId);
+  const topics = await readTopics(zip, budget, version.versionId, root, warn);
 
   return {
     version: version.versionId,
@@ -216,8 +220,8 @@ export async function readBCF(
 /**
  * Read bcf.version file
  */
-async function readVersionFile(zip: JSZip, budget: ExpansionBudget): Promise<BCFVersion> {
-  const versionFile = zip.file('bcf.version');
+async function readVersionFile(zip: JSZip, budget: ExpansionBudget, root: string): Promise<BCFVersion> {
+  const versionFile = zip.file(`${root}bcf.version`);
   if (!versionFile) {
     throw new Error('Invalid BCF file: missing bcf.version');
   }
@@ -243,12 +247,12 @@ async function readVersionFile(zip: JSZip, budget: ExpansionBudget): Promise<BCF
 /**
  * Read project.bcfp file (optional)
  */
-async function readProjectFile(zip: JSZip, budget: ExpansionBudget): Promise<{
+async function readProjectFile(zip: JSZip, budget: ExpansionBudget, root: string): Promise<{
   projectId?: string;
   name?: string;
   extensions?: BCFExtensions;
 }> {
-  const projectFile = zip.file('project.bcfp');
+  const projectFile = zip.file(`${root}project.bcfp`);
   if (!projectFile) {
     return {};
   }
@@ -268,15 +272,10 @@ async function readProjectFile(zip: JSZip, budget: ExpansionBudget): Promise<{
   };
 }
 
-// True under a macOS "__MACOSX" shadow dir -- excluded below so any-depth matching can't manufacture a phantom topic from its resource forks.
-function isMacOsxShadowPath(folderPath: string): boolean {
-  return /(?:^|\/)__MACOSX(?:\/|$)/i.test(folderPath);
-}
-
 /**
  * Read all topics from the BCF archive
  */
-async function readTopics(zip: JSZip, budget: ExpansionBudget, versionId: '2.1' | '3.0'): Promise<Map<string, BCFTopic>> {
+async function readTopics(zip: JSZip, budget: ExpansionBudget, versionId: '2.1' | '3.0', root: string, warn: ReportWarning): Promise<Map<string, BCFTopic>> {
   const topics = new Map<string, BCFTopic>();
 
   // Topic folders, matched at ANY depth (a zipped-folder archive nests one level deeper than root, #5213); dedup on parsed Guid below (#3960) handles collisions across depths.
@@ -284,7 +283,7 @@ async function readTopics(zip: JSZip, budget: ExpansionBudget, versionId: '2.1' 
 
   zip.forEach((relativePath: string) => {
     const match = relativePath.match(/^(.+)\/markup\.bcf$/i);
-    if (match && !isMacOsxShadowPath(match[1])) {
+    if (match && match[1].startsWith(root) && !isMacOsxShadowPath(match[1])) {
       topicFolders.add(match[1]);
     }
   });
@@ -292,7 +291,7 @@ async function readTopics(zip: JSZip, budget: ExpansionBudget, versionId: '2.1' 
   // Parse each topic
   for (const topicGuid of topicFolders) {
     try {
-      const topic = await readTopic(zip, topicGuid, budget, versionId);
+      const topic = await readTopic(zip, topicGuid, budget, versionId, warn);
       if (topic) {
         // A second topic folder whose internal Topic/@Guid collides with one
         // already parsed must not silently overwrite it in the map -- that
@@ -302,7 +301,7 @@ async function readTopics(zip: JSZip, budget: ExpansionBudget, versionId: '2.1' 
         // way every other "skip this piece, keep going" decision in this
         // function is already reported.
         if (topics.has(topic.guid)) {
-          console.warn(
+          warn(
             `Duplicate topic Guid ${topic.guid}: folder "${topicGuid}" collides with an ` +
               `already-read topic folder and is being dropped. Keeping the first one read.`,
           );
@@ -312,7 +311,7 @@ async function readTopics(zip: JSZip, budget: ExpansionBudget, versionId: '2.1' 
       }
     } catch (error) {
       if (error instanceof BCFResourceLimitError) throw error;
-      console.warn(`Failed to parse topic ${topicGuid}:`, error);
+      warn(`Failed to parse topic ${topicGuid}:`, error);
     }
   }
 
@@ -322,7 +321,7 @@ async function readTopics(zip: JSZip, budget: ExpansionBudget, versionId: '2.1' 
 /**
  * Read a single topic from the BCF archive
  */
-async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudget, versionId: '2.1' | '3.0'): Promise<BCFTopic | null> {
+async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudget, versionId: '2.1' | '3.0', warn: ReportWarning): Promise<BCFTopic | null> {
   const markupFile = zip.file(`${topicFolder}/markup.bcf`);
   if (!markupFile) {
     return null;
@@ -335,14 +334,14 @@ async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudge
   // that orders attributes differently from our own writer still parses.
   const topicMatch = markupContent.match(/<Topic\b([^>]*)>([\s\S]*?)<\/Topic>/);
   if (!topicMatch) {
-    console.warn(`Invalid markup.bcf in ${topicFolder}: missing Topic element`);
+    warn(`Invalid markup.bcf in ${topicFolder}: missing Topic element`);
     return null;
   }
 
   const topicAttrs = topicMatch[1];
   const guid = extractAttr(topicAttrs, 'Guid');
   if (!guid) {
-    console.warn(`Invalid markup.bcf in ${topicFolder}: could not read Topic Guid attribute`);
+    warn(`Invalid markup.bcf in ${topicFolder}: could not read Topic Guid attribute`);
     return null;
   }
   const topicContent = topicMatch[2];
@@ -390,7 +389,7 @@ async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudge
   const comments = parseComments(markupContent);
 
   // Parse viewpoints
-  const viewpoints = await parseViewpoints(zip, topicFolder, markupContent, budget, versionId);
+  const viewpoints = await parseViewpoints(zip, topicFolder, markupContent, budget, versionId, warn);
 
   return {
     guid,
@@ -619,6 +618,7 @@ async function parseViewpoints(
   markupContent: string,
   budget: ExpansionBudget,
   versionId: '2.1' | '3.0',
+  warn: ReportWarning,
 ): Promise<BCFViewpoint[]> {
   const viewpoints: BCFViewpoint[] = [];
 
@@ -727,7 +727,7 @@ async function parseViewpoints(
 
         // Fallback: try common naming patterns
         if (!snapshotFile) {
-          const viewpointBaseName = viewpointPath.replace('.bcfv', '');
+          const viewpointBaseName = viewpointPath.replace(/\.bcfv$/i, '');
 
           // Handle different naming conventions:
           // 1. Viewpoint_<guid>.bcfv -> Snapshot_<guid>.png (buildingSMART standard)
@@ -773,7 +773,7 @@ async function parseViewpoints(
       }
     } catch (error) {
       if (error instanceof BCFResourceLimitError) throw error;
-      console.warn(`Failed to parse viewpoint ${viewpointPath}:`, error);
+      warn(`Failed to parse viewpoint ${viewpointPath}:`, error);
     }
   }
 

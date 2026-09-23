@@ -158,23 +158,8 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
     try {
       setBcfLoading(true);
       setBcfError(null);
-      // readBCF reports a dropped topic/viewpoint via console.warn rather
-      // than throwing (see warnIfImportTruncated), so the only way to know
-      // an import was truncated is to capture what it warns during this one
-      // call -- restored immediately after, success or failure, so nothing
-      // else's console.warn is ever attributed to the import (#5213).
-      const originalWarn = console.warn;
       let readWarningCount = 0;
-      console.warn = (...args: unknown[]) => {
-        readWarningCount++;
-        originalWarn(...args);
-      };
-      let project;
-      try {
-        project = await readBCF(file);
-      } finally {
-        console.warn = originalWarn;
-      }
+      const project = await readBCF(file, { onWarning: () => { readWarningCount++; } });
       setBcfProject(project);
       warnIfNoModelLoaded(useViewerStore.getState().models.size);
       warnIfImportTruncated(readWarningCount);

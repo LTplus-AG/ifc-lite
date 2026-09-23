@@ -60,16 +60,17 @@ export interface BranchSession {
 const META_PARENT = 'branch.parentRoomId';
 const META_NAME = 'branch.name';
 const META_FORKED_AT = 'branch.forkedAt';
-
 /**
- * Entity ids present at fork time, keyed by the branch's Y.Doc. Used by
- * `mergeBranch(..., 'layer')` to tell "the branch deleted this entity"
- * apart from "the parent created this entity after the fork and the
- * branch never had it" — both look like "missing from the branch doc"
- * with no other signal available. A WeakMap keyed on the doc instance so
- * entries are collected once a branch's doc is no longer referenced.
+ * The parent's Yjs state vector at fork time, stored IN the branch doc
+ * (#5216). The branch doc is a replica of the parent at that point, so an
+ * item whose id this vector covers existed at fork, and one it does not was
+ * written after. Persisting it in the doc, not in process memory, is the
+ * point: the fork-time view must survive a reload, a second tab, or a merge
+ * job rebuilding the session from persistence (a `WeakMap` keyed by the
+ * original `Y.Doc` object missed on every one of those). Written once at
+ * fork and never again, so the single meta key cannot race.
  */
-const forkEntitySnapshots = new WeakMap<Y.Doc, ReadonlySet<string>>();
+const META_FORK_STATE = 'branch.forkStateVector';
 
 export async function forkSession(
   parent: CollabSession,
@@ -95,9 +96,9 @@ export async function forkSession(
 
   // 3. Seed the branch doc with the parent state, then stamp branch metadata.
   Y.applyUpdate(branch.doc, update, { source: 'fork', parentRoomId: parent.roomId });
-  forkEntitySnapshots.set(branch.doc, new Set(entitiesMap(branch.doc).keys()));
   branch.transact(() => {
     const meta = metaMap(branch.doc);
+    meta.set(META_FORK_STATE, Y.encodeStateVectorFromUpdate(update));
     meta.set(META_PARENT, parent.roomId);
     meta.set(META_NAME, opts.name);
     meta.set(META_FORKED_AT, new Date().toISOString());
@@ -127,8 +128,15 @@ export interface MergeReport {
    * that entity untouched. Always `0` for the `'ops'` strategy, which
    * applies the branch's Y update directly and propagates deletions like
    * any other Yjs change.
+   *
+   * `null` when the branch doc carries no fork record: it was forked by a
+   * version that predates the persisted fork state (#5216). Without that
+   * record, `'layer'` can neither count dropped deletions NOR keep the
+   * merge from recreating entities the parent deleted after the fork, so
+   * `null` also means "parent-side deletions were not protected". It never
+   * means zero.
    */
-  droppedDeletions: number;
+  droppedDeletions: number | null;
 }
 
 /**
@@ -170,25 +178,36 @@ export function mergeBranch(
   // snapshot says nothing about untouched. Deletions made on the branch
   // still do not propagate: an IFCX snapshot emits only what an entity
   // has, so a removal is indistinguishable from "no opinion" on the wire.
-  // Diagnostic only (not a fix): count entities the branch deleted that
-  // this merge cannot remove from `parent`, so the caller can at least
-  // detect the drop. An entity counts only if it existed on the branch
-  // at fork time (`forkEntitySnapshots`) — that rules out entities the
-  // parent created *after* the fork, which are also absent from the
-  // branch doc but were never "deleted" by anything.
-  const forkIds = forkEntitySnapshots.get(branch.session.doc);
-  const parentEntitiesBefore = entitiesMap(parent.doc);
-  const branchEntitiesNow = entitiesMap(branch.session.doc);
-  let droppedDeletions = 0;
-  if (forkIds) {
-    for (const id of forkIds) {
-      if (!branchEntitiesNow.has(id) && parentEntitiesBefore.has(id)) {
-        droppedDeletions++;
-      }
+  //
+  // Both directions of deletion are judged against the fork state the
+  // branch doc recorded (`META_FORK_STATE`), per top-level entity item:
+  //   - dropped (branch deleted it, parent still has it): the parent's
+  //     item predates the fork — so the branch had it — and the branch
+  //     no longer does. A parent entity created after the fork is not
+  //     counted, since the branch never had it.
+  //   - resurrection (parent deleted it, branch never re-created it): the
+  //     snapshot carries every entity the branch still has, touched or
+  //     not, and `applyIfcxOverlay` creates whatever the parent lacks. A
+  //     node is dropped when the parent lacks its path and the branch's
+  //     item for it predates the fork, i.e. it is the fork-inherited
+  //     entity, not one the branch created or re-created after. The
+  //     parent's deletion wins even over branch edits INSIDE that entity,
+  //     matching the 'ops' strategy, where a nested edit under a deleted
+  //     map entry is deleted with it.
+  const fork = forkStateOf(branch.session.doc);
+  const parentEntities = entitiesMap(parent.doc);
+  const branchEntities = entitiesMap(branch.session.doc);
+  let droppedDeletions: number | null = null;
+  const ifcx = snapshotToIfcx(branch.session.doc);
+  if (fork) {
+    droppedDeletions = 0;
+    for (const path of parentEntities.keys()) {
+      if (existedAtFork(parentEntities, path, fork) && !branchEntities.has(path)) droppedDeletions++;
     }
+    ifcx.data = ifcx.data.filter((node) =>
+      parentEntities.has(node.path) || !existedAtFork(branchEntities, node.path, fork));
   }
 
-  const ifcx = snapshotToIfcx(branch.session.doc);
   const before = Y.encodeStateAsUpdate(parent.doc);
   applyIfcxOverlay(parent.doc, ifcx);
   const after = Y.encodeStateAsUpdate(parent.doc);
@@ -198,6 +217,18 @@ export function mergeBranch(
     mergedAt: new Date().toISOString(),
     droppedDeletions,
   };
+}
+
+/** The fork-time state vector a branch doc recorded, or `null` if it has none. */
+function forkStateOf(doc: Y.Doc): Map<number, number> | null {
+  const sv = metaMap(doc).get(META_FORK_STATE);
+  return sv instanceof Uint8Array ? Y.decodeStateVector(sv) : null;
+}
+
+/** Whether `map`'s live entry for `key` was written before the fork. */
+function existedAtFork<T>(map: Y.Map<T>, key: string, fork: Map<number, number>): boolean {
+  const item = map._map.get(key);
+  return item !== undefined && !item.deleted && item.id.clock < (fork.get(item.id.client) ?? 0);
 }
 
 /** Read branch metadata back off a session's Y.Doc. */

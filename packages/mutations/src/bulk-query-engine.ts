@@ -167,8 +167,10 @@ export class BulkQueryEngine {
       const typeSet = new Set(criteria.entityTypes);
       candidates = [];
       for (let i = 0; i < this.entities.count; i++) {
-        if (typeSet.has(this.entities.typeEnum[i])) {
-          candidates.push(this.entities.expressId[i]);
+        const expressId = this.entities.expressId[i];
+        // Base EntityTable retains overlay tombstones (#5196).
+        if (typeSet.has(this.entities.typeEnum[i]) && !this.mutationView.isDeleted(expressId)) {
+          candidates.push(expressId);
         }
       }
     } else {
@@ -471,13 +473,12 @@ export class BulkQueryEngine {
     return false;
   }
 
-  /**
-   * Get all entity IDs
-   */
+  /** Get all live entity IDs. */
   private getAllEntityIds(): number[] {
     const ids: number[] = [];
     for (let i = 0; i < this.entities.count; i++) {
-      ids.push(this.entities.expressId[i]);
+      const expressId = this.entities.expressId[i];
+      if (!this.mutationView.isDeleted(expressId)) ids.push(expressId);
     }
     return ids;
   }

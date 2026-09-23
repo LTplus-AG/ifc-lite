@@ -14,10 +14,14 @@
  */
 
 import { isModelTagOp } from './model-tag.js';
-import type { FilterRule, StringOp } from './filter-rules.js';
+import type { ClassificationOp, FilterRule, StringOp } from './filter-rules.js';
 
 const STRING_OPS: ReadonlySet<unknown> = new Set<StringOp>([
   'eq', 'ne', 'contains', 'notContains', 'startsWith', 'matches', 'notMatches',
+]);
+
+const CLASSIFICATION_OPS: ReadonlySet<unknown> = new Set<ClassificationOp>([
+  'eq', 'ne', 'contains', 'notContains', 'matches', 'notMatches', 'isSet', 'isNotSet',
 ]);
 
 export function isFilterRule(value: unknown): value is FilterRule {
@@ -35,6 +39,17 @@ export function isFilterRule(value: unknown): value is FilterRule {
     return (
       STRING_OPS.has(r.op) &&
       typeof r.value === 'string' &&
+      (r.valueKind === undefined || r.valueKind === 'literal' || r.valueKind === 'regex')
+    );
+  }
+  if (kind === 'group') {
+    // Structural, like `parent`: `matchGroupRule` reads `value` as text and
+    // `groupClass` as a class name, so neither may arrive as anything else.
+    const r = value as { op?: unknown; value?: unknown; valueKind?: unknown; groupClass?: unknown };
+    return (
+      CLASSIFICATION_OPS.has(r.op) &&
+      typeof r.value === 'string' &&
+      (r.groupClass === undefined || typeof r.groupClass === 'string') &&
       (r.valueKind === undefined || r.valueKind === 'literal' || r.valueKind === 'regex')
     );
   }

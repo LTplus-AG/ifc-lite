@@ -51,6 +51,7 @@ import { RelationshipType, QuantityType, collectSpatialAncestors } from '@ifc-li
 import type { Subject } from '../rule-set/rule-set.js';
 import { nameMatches, flattenPsets, stringifyValue, defaultStoreyName, materialNamesOf } from './filter-match.js';
 import { resolveEntityPredefinedType } from './entity-predefined-type.js';
+import { assignedGroupNames } from './filter-group-rule.js';
 
 /** What `readSubject` needs about the element it reads. No `mutationView` —
  *  the engine reads the model as loaded, not with live in-session edits
@@ -204,6 +205,12 @@ export function readSubject(subject: Subject, ctx: ReadSubjectContext): SubjectV
     case 'storey': {
       const name = defaultStoreyName(store, expressId);
       return fromStrings([name.length > 0 ? name : undefined]);
+    }
+    case 'group': {
+      // Present = assigned to at least one such group, named or not (#5226):
+      // membership is the fact, a group's Name is only what value ops read.
+      const names = assignedGroupNames(store, expressId, subject.groupClass);
+      return { present: names.length > 0, values: names.filter((n): n is string => n !== undefined) };
     }
     case 'parent': {
       const names = store.relationships

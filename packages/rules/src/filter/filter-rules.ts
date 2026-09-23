@@ -14,6 +14,7 @@
  */
 
 import { type ModelTagOp } from './model-tag.js';
+import { groupRule, type GroupRule } from './filter-group-rule.js';
 
 // ── Operator enums ────────────────────────────────────────────────────────────
 
@@ -86,7 +87,6 @@ export type Combinator = 'AND' | 'OR';
  * only `'regex'` is ever recorded there.
  */
 export type TextKind = 'literal' | 'regex';
-
 
 // ── Rule discriminated union ──────────────────────────────────────────────────
 
@@ -291,7 +291,8 @@ export type FilterRule =
   | ClassificationRule
   | ElevationRule
   | TypeNameRule
-  | ParentRule;
+  | ParentRule
+  | GroupRule;
 
 // ── Combinator helpers ────────────────────────────────────────────────────────
 
@@ -388,13 +389,12 @@ export const Rule = {
     ({ kind: 'type', op, value, ...(valueKind ? { valueKind } : {}) }),
   parent: (op: StringOp, value: string, valueKind?: TextKind): ParentRule =>
     ({ kind: 'parent', op, value, ...(valueKind ? { valueKind } : {}) }),
+  group: groupRule,
 } as const;
 
-// ── JSON guards ──────────────────────────────────────────────────────────────
-// `isFilterRule` / `parseFilterRules`: split into `filter-rule-guards.ts` to
-// stay under the module size cap; re-exported so existing imports of this
-// module keep working.
+// ── JSON guards (`filter-rule-guards.ts`, re-exported for existing imports) ─
 export { isFilterRule, parseFilterRules } from './filter-rule-guards.js';
+export type { GroupRule } from './filter-group-rule.js';
 // Re-exported so existing `from './filter-rules.js'` imports (HierarchyPanel,
 // etc.) can pull in the groups helper too without a second import line (#4904).
 export { activeGroupRules } from './filter-groups.js';

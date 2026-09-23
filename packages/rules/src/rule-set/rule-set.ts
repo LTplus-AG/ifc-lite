@@ -26,6 +26,7 @@ import type {
   PropertyRule,
   QuantityRule,
   ClassificationRule,
+  GroupRule,
   NumericOp,
 } from '../filter/filter-rules.js';
 import type { FilterGroup } from '../filter/filter-groups.js';
@@ -83,6 +84,7 @@ export type Subject =
   | SubjectOf<PropertyRule>           // { kind:'property'; setName; setNameKind?; propertyName; propertyNameKind? }
   | SubjectOf<QuantityRule>           // { kind:'quantity'; setName; …; quantityName; … }
   | SubjectOf<ClassificationRule>     // { kind:'classification'; system? }
+  | SubjectOf<GroupRule>              // { kind:'group'; groupClass? } — IfcRelAssignsToGroup (#5226)
   | { kind: 'name' | 'material' | 'storey' | 'parent' | 'type' | 'ifcType'
           | 'predefinedType' | 'globalId' };
 

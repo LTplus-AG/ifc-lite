@@ -32,6 +32,7 @@ import { propValueKey, type FilterValueSchema } from '@/lib/search/filter-schema
 import { RULE_KIND_LABEL } from './filter-rule-labels';
 import { GlobalIdEditor, AttributeEditor } from './SearchModal.filter.editors.identity';
 import { ElevationEditor } from './SearchModal.filter.editors.elevation';
+import { ClassificationEditor, GroupEditor } from './SearchModal.filter.editors.membership';
 import { ModelTagRuleEditor } from './ModelTagRuleEditor';
 import type { ModelTag } from '@ifc-lite/rules';
 import {
@@ -39,7 +40,6 @@ import {
   STRING_OPS,
   VALUE_OPS,
   NUMERIC_OPS,
-  CLASSIFICATION_OPS,
   OpDropdown,
 } from './SearchModal.filter.editors.shared';
 
@@ -166,6 +166,8 @@ export function RuleRow({ rule, modelOptions, tagOptions, ifcTypeOptions, storey
           onChange={(op, value) => onChange(Rule.typeName(op, value))}
         />
       )}
+
+      {rule.kind === 'group' && <GroupEditor rule={rule} onChange={onChange} />}
 
       {rule.kind === 'parent' && (
         <NameEditor
@@ -464,45 +466,6 @@ function MaterialEditor({
         className="h-7 w-56 text-xs font-mono"
         onChange={(v) => onChange(op, v)}
       />
-    </>
-  );
-}
-
-function ClassificationEditor({
-  rule,
-  valueSchema,
-  onChange,
-}: {
-  rule: Extract<FilterRule, { kind: 'classification' }>;
-  valueSchema: FilterValueSchema | null;
-  onChange: (next: FilterRule) => void;
-}) {
-  const { t } = useTranslation();
-  const valueless = rule.op === 'isSet' || rule.op === 'isNotSet';
-  return (
-    <>
-      <ComboInput
-        placeholder={t('searchModal.filterEditors.classificationSystemPlaceholder')}
-        value={rule.system ?? ''}
-        options={valueSchema?.classificationSystems ?? NO_OPTIONS}
-        className="h-7 w-40 text-xs font-mono"
-        aria-label={t('searchModal.filterEditors.classificationSystemAriaLabel')}
-        onChange={(v) => onChange(Rule.classification(v, rule.op, rule.value))}
-      />
-      <OpDropdown
-        ops={CLASSIFICATION_OPS}
-        value={rule.op}
-        onChange={(next) => onChange(Rule.classification(rule.system ?? '', next, rule.value))}
-      />
-      {!valueless && (
-        <ComboInput
-          placeholder={t('searchModal.filterEditors.classificationValuePlaceholder')}
-          value={rule.value}
-          options={valueSchema?.classifications ?? NO_OPTIONS}
-          className="h-7 w-44 text-xs font-mono"
-          onChange={(v) => onChange(Rule.classification(rule.system ?? '', rule.op, v))}
-        />
-      )}
     </>
   );
 }

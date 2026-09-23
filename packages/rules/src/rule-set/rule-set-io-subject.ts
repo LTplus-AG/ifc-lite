@@ -15,16 +15,16 @@ import { fail, isPlainObject } from './rule-set-io-shared.js';
 const TEXT_KINDS = new Set(['literal', 'regex']);
 
 const SUBJECT_KINDS = new Set([
-  'attribute', 'property', 'quantity', 'classification',
+  'attribute', 'property', 'quantity', 'classification', 'group',
   'name', 'material', 'storey', 'parent', 'type', 'ifcType', 'predefinedType', 'globalId',
 ]);
 
 /** Subject kinds that carry more than one value per element (an element can
- *  have several materials, classification refs, or spatial ancestors).
+ *  have several materials, classification refs, spatial ancestors, or groups).
  *  `sum|min|max|avg`/`compare` need a single number or string to read —
  *  plan §3; multi-valued subjects are only meaningful as a bucketing key
  *  (`unique`, `count`, `groupBy`). */
-const MULTI_VALUED_SUBJECT_KINDS = new Set(['material', 'classification', 'parent']);
+const MULTI_VALUED_SUBJECT_KINDS = new Set(['material', 'classification', 'parent', 'group']);
 
 export function isSingleValuedSubject(subject: Subject): boolean {
   return !MULTI_VALUED_SUBJECT_KINDS.has(subject.kind);
@@ -60,6 +60,10 @@ export function parseSubject(raw: unknown, where: string): Subject {
   if (kind === 'classification') {
     if (s.system !== undefined && typeof s.system !== 'string') fail(`${where}: "system" must be a string`);
     return { kind: 'classification', ...(s.system !== undefined ? { system: s.system as string } : {}) };
+  }
+  if (kind === 'group') {
+    if (s.groupClass !== undefined && typeof s.groupClass !== 'string') fail(`${where}: "groupClass" must be a string`);
+    return { kind: 'group', ...(s.groupClass ? { groupClass: s.groupClass as string } : {}) };
   }
   // Bare-kind subjects: name/material/storey/parent/type/ifcType/predefinedType/globalId.
   return { kind } as Subject;

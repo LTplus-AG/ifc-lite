@@ -32,7 +32,7 @@ if (parsed.ok) {
 
 ## Features
 
-- `FilterRule` / `FilterGroup` vocabulary (`ifcType`, `name`, `property`, `quantity`, `material`, `classification`, `storey`, `model`, `modelTag`, `parent`, `elevation`, `type`, `predefinedType`, `attribute`, `globalId`) plus the `Rule` builder helpers.
+- `FilterRule` / `FilterGroup` vocabulary (`ifcType`, `name`, `property`, `quantity`, `material`, `classification`, `storey`, `model`, `modelTag`, `parent`, `group`, `elevation`, `type`, `predefinedType`, `attribute`, `globalId`) plus the `Rule` builder helpers.
 - `evaluateFilterRules` / `evaluateFilterRulesFederated` (sync + async chunked, cancellable, multi-model) — the same Path-B evaluator the viewer's Advanced Filter and Data Validation panel use, with index prefiltering and cheap-first rule ordering for large models.
 - `parseRuleSetFile` / `serializeRuleSet` — validate and round-trip a `<name>.rules.json` file (never throws; failures come back as `{ ok: false, error }`).
 - `ruleSetToIds` — export the IDS-expressible rules of a rule set as IDS 1.0 XML. Each rule that has no exact IDS equivalent is refused with its reasons (see the [IDS guide](https://ifclite.dev/docs/guide/ids/#exporting-a-rule-set-as-ids)).

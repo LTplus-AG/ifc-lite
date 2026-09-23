@@ -86,14 +86,14 @@ import {
   defaultStoreyName,
   storeyMatchesRefs,
   materialNamesOf, materialMatchCandidates,
-  matchClassificationRule,
-  matchParentRule,
+  matchClassificationRule, matchParentRule,
   elevationOf,
   type AttrRows,
   type PsetRows,
   type QtyRows,
 } from './filter-match.js';
 import { resolveEntityPredefinedType } from './entity-predefined-type.js';
+import { matchGroupRule } from './filter-group-rule.js';
 
 /** A single matched element. Mirrors the Rust `FilteredElement` shape. */
 export interface FilteredElement {
@@ -546,8 +546,8 @@ function evaluateRule(
       if (typeName === null) return false;
       return stringOpMatches(rule.op, typeName, rule.value, rule.valueKind);
     }
-    case 'parent':
-      return matchParentRule(rule, ctx.store, expressId);
+    case 'parent': return matchParentRule(rule, ctx.store, expressId);
+    case 'group': return matchGroupRule(rule, ctx.store, expressId);
   }
 }
 

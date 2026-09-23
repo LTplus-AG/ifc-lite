@@ -136,7 +136,7 @@ out of scope, and is called out as such:
 | Value uniqueness (`Name`, `AssetIdentifier` must be unique) | Covered: `unique` requirement kind, scope `federation` (default) or `perModel` |
 | GUID uniqueness | Covered: `unique` on subject `globalId` |
 | Pumps/AHUs must carry specific properties | Covered via `element` requirements (same as IDS) |
-| System/group membership (`IfcRelAssignsToGroup`) | Deferred — no `FilterRule` kind yet |
+| System/group membership (`IfcRelAssignsToGroup`) | Covered: `group` rule kind (applicability and `element` requirements), optionally scoped to a group class such as `IfcSystem` (subclasses included) |
 | Schedules, load time, CDE revision, as-built status | Out of scope — not model data |
 | Units per property | Deferred |
 | Georeferencing (`IfcMapConversion`, CRS) | Deferred — model-level, not element-level |

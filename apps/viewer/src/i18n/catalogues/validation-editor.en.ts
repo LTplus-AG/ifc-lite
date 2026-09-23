@@ -59,6 +59,7 @@ export const validationEditorEn = {
   'validationEditor.subjectKind.property': 'Property',
   'validationEditor.subjectKind.quantity': 'Quantity',
   'validationEditor.subjectKind.classification': 'Classification',
+  'validationEditor.subjectKind.group': 'Group',
   'validationEditor.subjectKind.name': 'Name',
   'validationEditor.subjectKind.material': 'Material',
   'validationEditor.subjectKind.storey': 'Storey',
@@ -74,6 +75,7 @@ export const validationEditorEn = {
   'validationEditor.subjectPicker.qsetNamePlaceholder': 'Quantity set',
   'validationEditor.subjectPicker.quantityNamePlaceholder': 'Quantity',
   'validationEditor.subjectPicker.classificationSystemPlaceholder': 'Classification system (optional)',
+  'validationEditor.subjectPicker.groupClassPlaceholder': 'Group class (any)',
 
   'validationEditor.unique.subjectAriaLabel': 'Unique value subject',
   'validationEditor.unique.scope.federation': 'Federation',

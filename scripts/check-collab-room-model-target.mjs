@@ -518,7 +518,7 @@ const CALL_SITE_FLOOR = {
   mirrorAttributeEdit: 1,
   mirrorPlacementEdit: 3,
   mirrorEntityRemove: 1,
-  mirrorEntityCreate: 2,
+  mirrorEntityCreate: 1, // runInStoreElementBuilder: every add*, addColumn included
   mirrorEntityGeometry: 1,
   readCollabPlacement: 3,
   collabTranslateEntity: 2,

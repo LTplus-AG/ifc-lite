@@ -52,6 +52,8 @@ async function fixture() {
     hideEntities: (ids: number[]) => { hidden.push(...ids); },
     mirrorEntityCreate: () => {},
     mirrorEntityRemove: () => {},
+    mirrorAttributeEdit: () => {},
+    mirrorEntityGeometry: () => {},
   } as unknown as ViewerState;
   const setState = (partial: unknown) => {
     const updates = typeof partial === 'function' ? (partial as (s: ViewerState) => Partial<ViewerState>)(state) : partial;
@@ -60,7 +62,7 @@ async function fixture() {
   const store: StoreApi = { getState: () => state, subscribe: () => () => {} };
   state = { ...state, ...createMutationSlice(setState as never, () => state, {} as never) };
   assert.ok(getOrCreateMutationView(store, MODEL));
-  return { adapter: createStoreAdapter(store), state: () => state, appended, hidden };
+  return { adapter: createStoreAdapter(store), state: () => state, appended, hidden, dataStore };
 }
 
 describe('bim.store.add* books what it builds', () => {
@@ -96,5 +98,26 @@ describe('bim.store.add* books what it builds', () => {
     const stack = state().undoStacks.get(MODEL) ?? [];
     assert.deepEqual(stack.map((m) => m.type), ['CREATE_ENTITY', 'DELETE_ENTITY']);
     assert.ok(state().removedNewEntities.has(`${MODEL}:${ref.expressId}`), 'undo re-adds the stashed overlay record');
+  });
+
+  it('the spatial-tree row follows the element through remove, undo and redo', async () => {
+    const { adapter, state, dataStore } = await fixture();
+    const hierarchy = dataStore.spatialHierarchy;
+    assert.ok(hierarchy, 'the fixture model has a storey');
+    const listed = (id: number) => (hierarchy.byStorey.get(30) ?? []).includes(id);
+    const ref = adapter.addColumn(MODEL, 30, { Position: [0, 0, 0], Width: 0.3, Depth: 0.3, Height: 3 });
+    assert.ok(listed(ref.expressId), 'added: the tree lists it under its storey');
+
+    adapter.removeEntity(ref);
+    assert.ok(!listed(ref.expressId), 'removed: no stale row for a deleted element');
+
+    state().undo(MODEL);
+    assert.ok(listed(ref.expressId), 'undo of the remove: the row comes back');
+
+    state().undo(MODEL);
+    assert.ok(!listed(ref.expressId), 'undo of the add: gone again');
+
+    state().redo(MODEL);
+    assert.ok(listed(ref.expressId), 'redo of the add: back');
   });
 });

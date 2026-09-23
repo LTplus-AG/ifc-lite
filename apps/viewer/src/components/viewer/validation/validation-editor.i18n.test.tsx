@@ -139,7 +139,7 @@ function fixtureFile(): RuleSetFile {
         },
       },
       {
-        id: 'r5', name: 'One AHU per group',
+        id: 'r6', name: 'One AHU per group',
         applicability: anyBlock,
         requirement: { kind: 'unique', subject: { kind: 'group' } },
       },

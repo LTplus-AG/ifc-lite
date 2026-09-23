@@ -13,6 +13,12 @@
  * straight run; the reported length is the whole run; the answer does not move
  * when triangle emission order does) rather than a magic number, so a
  * legitimate tessellation change does not turn it into a brittle snapshot.
+ *
+ * Coverage limit: since #5313 no committed sample emits a crease as several
+ * collinear triangle edges (the only such runs were a T-junction crack on
+ * slab #52), so the run MERGING itself is exercised by the unit suite, not
+ * here. This gate still catches a crease served in fragments per piece and
+ * pins the real edges' lengths and emission-order invariance.
  */
 
 import { readFileSync, existsSync } from 'node:fs';
@@ -189,10 +195,12 @@ if (existsSync(join(SAMPLES, 'building-architecture.ifc'))) {
       camera, 800, { edge: null, meshExpressId: null, lockStrength: 0 }
     );
     const [a, b] = result.snapTarget?.metadata?.vertices ?? [];
+    const same = (p, q) => p && Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z) < 1e-3;
+    const hit = (same(a, edge.v0) && same(b, edge.v1)) || (same(a, edge.v1) && same(b, edge.v0));
     const reported = a && b ? Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) : NaN;
-    assert.ok(Math.abs(reported - edge.length) < 1e-3, `cursor z=${z} reported ${reported.toFixed(4)} m, not ${edge.length.toFixed(4)}`);
+    assert.ok(hit, `cursor z=${z} snapped to a ${reported.toFixed(4)} m edge that is not the crease under it`);
   }
-  console.log('  ok slab #52: a cursor on either notch crease reports its 0.2000 m');
+  console.log('  ok slab #52: a cursor on either notch crease snaps to that crease');
   checks++;
 
   // Anti-#2388: reversing triangle emission order must not move a single edge.

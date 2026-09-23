@@ -152,9 +152,14 @@ export class E57StreamingSource implements StreamingPointSource {
       : physicalToLogical(this.bytes.size, header.pageSize);
 
     assertE57XmlMetadataBounds(header.xmlLogicalLength, this.fileLogicalSize);
+    // `strict: true` — same hazard, same fix, as `inspectE57SpatialMetadata`:
+    // a truncated blob must not present as "no CRS". See the cross-caller
+    // doc on `readE57LogicalRange`. The point-data reads in `next()` below
+    // stay non-strict — they tolerate a short/empty window deliberately,
+    // the same documented policy as an over-reported `recordCount`.
     const xmlLogical = await readE57LogicalRange(
       this.bytes, header.xmlLogicalOffset, header.xmlLogicalLength, header.pageSize,
-      signal,
+      signal, { strict: true },
     );
     abortIfAborted(signal);
     const xmlText = new TextDecoder().decode(xmlLogical);

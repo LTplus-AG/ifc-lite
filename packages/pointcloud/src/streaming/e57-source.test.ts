@@ -92,6 +92,11 @@ function buildE57(
     emptyData3D?: boolean;
     /** Per-scan pose (rotation + translation), E57 §7.2.2. */
     pose?: { rotation: [number, number, number, number]; translation: [number, number, number] };
+    /** Drop the `coordinateMetadata` element entirely (genuinely non-georeferenced file). */
+    omitCoordinateMetadata?: boolean;
+    /** Override the XML `recordCount` attribute independent of `points.length`,
+     *  to simulate a scan whose binary section under-delivers what it declares. */
+    recordCountOverride?: number;
   } = {},
 ): {
   blob: Blob;
@@ -120,13 +125,16 @@ function buildE57(
       + `<y type="Float">${opts.pose.translation[1]}</y><z type="Float">${opts.pose.translation[2]}</z></translation>`
       + `</pose>`
     : '';
+  const coordinateMetadataXml = opts.omitCoordinateMetadata
+    ? ''
+    : `<coordinateMetadata type="String">PROJCRS["LV95",ID["EPSG",2056]],VERTCRS["LN02",ID["EPSG",5729]]</coordinateMetadata>`;
   const xml = `<?xml version="1.0" encoding="UTF-8"?>`
     + `<e57Root type="Structure">`
-    + `<coordinateMetadata type="String">PROJCRS["LV95",ID["EPSG",2056]],VERTCRS["LN02",ID["EPSG",5729]]</coordinateMetadata>`
+    + coordinateMetadataXml
     + `<data3D type="Vector">`
     + (opts.emptyData3D ? '' : `<vectorChild type="Structure">`
       + `<guid type="String">{scan-1}</guid>`
-      + `<points type="CompressedVector" fileOffset="${logicalToPhysical(sectionLogicalOffset, pageSize)}" recordCount="${points.length}">`
+      + `<points type="CompressedVector" fileOffset="${logicalToPhysical(sectionLogicalOffset, pageSize)}" recordCount="${opts.recordCountOverride ?? points.length}">`
       + `<prototype type="Structure">`
       + `<cartesianX type="Float" precision="single"/>`
       + `<cartesianY type="Float" precision="single"/>`
@@ -302,6 +310,66 @@ describe('E57StreamingSource', () => {
     // Header is inside page 0, and xmlLogicalLength is u64 at byte 32.
     new DataView(bytes.buffer).setBigUint64(32, 1024n * 1024n * 1024n, true);
     await expect(inspectE57SpatialMetadata(new Blob([bytes]))).rejects.toThrow('safety limit');
+  });
+
+  it('a complete file with genuinely no coordinateMetadata returns undefined quietly (#5203 pin ii)', async () => {
+    const { blob } = buildE57(points, { pageSize: 256, pointsPerPacket: 8, omitCoordinateMetadata: true });
+    await expect(inspectE57SpatialMetadata(blob)).resolves.toBeUndefined();
+    const info = await new E57StreamingSource(blob).open();
+    expect(info.spatialMetadata).toBeUndefined();
+  });
+
+  describe('#5203 — truncated E57 must report truncation, not "no CRS"', () => {
+    // A single, large page keeps physical byte offsets identical to
+    // logical ones (no CRC-page interleaving to account for), so the
+    // truncation point can be found by a plain string search on the
+    // decoded physical bytes — mirroring the issue's executed repro.
+    function buildTruncatedBeforeClosingTag(cutBytesBeforeTag: number) {
+      const { physical } = buildE57(points, { pageSize: 8192, pointsPerPacket: 8 });
+      const text = new TextDecoder().decode(physical);
+      const closeIdx = text.indexOf('</coordinateMetadata>');
+      expect(closeIdx).toBeGreaterThan(0);
+      const truncatedLen = closeIdx - cutBytesBeforeTag;
+      expect(truncatedLen).toBeGreaterThan(0);
+      const truncatedPhysical = physical.slice(0, truncatedLen);
+      // Sanity: the header still declares the FULL original logical size —
+      // exactly the "declared 1024, blob.size 203" shape from the issue.
+      expect(truncatedPhysical.length).toBeLessThan(physical.length);
+      return new Blob([truncatedPhysical]);
+    }
+
+    it('inspectE57SpatialMetadata throws, naming expected vs. actual bytes, on a truncated blob', async () => {
+      const blob = buildTruncatedBeforeClosingTag(10);
+      await expect(inspectE57SpatialMetadata(blob)).rejects.toThrow(/truncated/i);
+      await expect(inspectE57SpatialMetadata(blob)).rejects.toThrow(/expects \d+ bytes.*got \d+/is);
+    });
+
+    it('E57StreamingSource.open() throws the same truncation error, not a silent CRS drop', async () => {
+      const blob = buildTruncatedBeforeClosingTag(10);
+      await expect(new E57StreamingSource(blob).open()).rejects.toThrow(/truncated/i);
+    });
+
+    it('a complete file with a CRS still returns it (no false positive from the guard)', async () => {
+      const blob = buildTruncatedBeforeClosingTag(10);
+      // Control: the SAME builder, undamaged, must still resolve the CRS —
+      // proves the truncation guard doesn't fire on a healthy read.
+      const { blob: fullBlob } = buildE57(points, { pageSize: 8192, pointsPerPacket: 8 });
+      expect(blob.size).toBeLessThan(fullBlob.size);
+      await expect(inspectE57SpatialMetadata(fullBlob)).resolves.toMatchObject({
+        horizontalId: 'EPSG:2056',
+        provenance: 'E57 coordinateMetadata',
+      });
+    });
+  });
+
+  it('tolerates a scan whose declared recordCount exceeds what the binary section backs — unchanged by #5203 (point-data reads stay non-strict)', async () => {
+    // Mirrors the documented policy this fix must NOT disturb: an
+    // over-reported recordCount on the point-data path trims output
+    // instead of throwing. Only the XML metadata reads became strict.
+    const { blob } = buildE57(points, { pageSize: 256, pointsPerPacket: 8, recordCountOverride: points.length + 500 });
+    const src = new E57StreamingSource(blob);
+    const chunks = await drain(src, 200_000);
+    expect(totalPoints(chunks)).toBe(points.length);
   });
 
   it('streams positions + colours identical to the whole-file decoder', async () => {

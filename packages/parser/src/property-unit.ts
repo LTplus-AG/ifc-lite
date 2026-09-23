@@ -43,6 +43,7 @@ export function resolvePropertyUnit(
     : undefined;
   if (unitRef === undefined) return undefined;
 
+  // @raw-entity-enumeration-ok unit resolver follows this property's explicit source unit reference
   const entry = resolveUnitByRef(extractor, {
     byId: { get: (id) => store.entityIndex.byId.get(id) ?? store.deferredEntityIndex?.get(id) },
   }, unitRef);

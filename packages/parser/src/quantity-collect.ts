@@ -116,6 +116,7 @@ export function collectQuantitiesFromRefs(
     for (const qtyRef of refs) {
         if (typeof qtyRef !== 'number') continue;
 
+        // @raw-entity-enumeration-ok quantity parsing follows one source member reference in the supplied set
         const qtyEntityRef = store.entityIndex.byId.get(qtyRef) ?? store.deferredEntityIndex?.get(qtyRef);
         if (!qtyEntityRef) continue;
 

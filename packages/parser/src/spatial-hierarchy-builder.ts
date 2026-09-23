@@ -113,6 +113,7 @@ export class SpatialHierarchyBuilder {
       attrExtractor: attrSource ? new EntityExtractor(attrSource.source) : undefined,
     };
 
+    // @raw-entity-enumeration-ok parse-time builder consumes the source entity table before any session overlay exists
     const projectIds = entities.getByType(IfcTypeEnum.IfcProject);
     if (projectIds.length === 0) {
       console.warn('[SpatialHierarchyBuilder] No IfcProject found in IFC file');

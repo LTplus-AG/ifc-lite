@@ -7,6 +7,7 @@
  * Used across material, georef, and classification extractors.
  */
 
+import { isCompleteStepNumericLiteral } from '@ifc-lite/data';
 import { isIndexableExpressId } from './express-id.js';
 
 export function getString(value: unknown): string | undefined {
@@ -44,54 +45,6 @@ export function getNumber(value: unknown): number | undefined {
     return Number.isFinite(num) ? num : undefined;
   }
   return undefined;
-}
-
-/**
- * True when `token`, already trimmed, is exactly one legal STEP REAL or
- * INTEGER literal (ISO 10303-21 §5.3): an optional sign, then digits with an
- * optional decimal point (`1`, `1.`, `1.5`) or a bare-dot decimal (`.5`),
- * then an optional exponent (`e`/`E`, optional sign, digits) — nothing before
- * or after.
- *
- * Shared by `getNumber` here and by `parseAttributeValue`
- * (entity-extractor.ts) so the two `number`-typed numeric decoders in this
- * package apply the same grammar rather than two copies of it.
- *
- * Hand-rolled rather than a regex: `parseAttributeValue` runs this once per
- * attribute of every entity in the file, on tokens almost always under 20
- * characters, and a single forward scan with no backtracking is cheaper at
- * that call volume than compiling or running a regex engine.
- */
-export function isCompleteStepNumericLiteral(token: string): boolean {
-  const n = token.length;
-  let i = 0;
-  if (i < n && (token[i] === '+' || token[i] === '-')) i++;
-  let digits = 0;
-  while (i < n && token[i] >= '0' && token[i] <= '9') {
-    i++;
-    digits++;
-  }
-  if (i < n && token[i] === '.') {
-    i++;
-    while (i < n && token[i] >= '0' && token[i] <= '9') {
-      i++;
-      digits++;
-    }
-  }
-  // A sign, or a lone `.`, with no digit anywhere is not a number attempt at
-  // all — reject before considering an exponent, which cannot rescue it.
-  if (digits === 0) return false;
-  if (i < n && (token[i] === 'e' || token[i] === 'E')) {
-    i++;
-    if (i < n && (token[i] === '+' || token[i] === '-')) i++;
-    let expDigits = 0;
-    while (i < n && token[i] >= '0' && token[i] <= '9') {
-      i++;
-      expDigits++;
-    }
-    if (expDigits === 0) return false;
-  }
-  return i === n;
 }
 
 /**

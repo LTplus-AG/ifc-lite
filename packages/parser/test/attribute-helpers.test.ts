@@ -19,7 +19,6 @@ import {
   getReferences,
   getString,
   getStringList,
-  isCompleteStepNumericLiteral,
   isMalformedNumericLiteral,
   isOverflowingNumericLiteral,
   isUnrepresentableNumericValue,
@@ -87,37 +86,6 @@ describe('getNumber', () => {
 
   it('still refuses an overflowing literal (unchanged behaviour)', () => {
     expect(getNumber('1.0E400')).toBeUndefined();
-  });
-});
-
-describe('isCompleteStepNumericLiteral', () => {
-  it('accepts every legal STEP REAL/INTEGER form the issue pins', () => {
-    expect(isCompleteStepNumericLiteral('1.')).toBe(true);
-    expect(isCompleteStepNumericLiteral('.5')).toBe(true);
-    expect(isCompleteStepNumericLiteral('1.E3')).toBe(true);
-    expect(isCompleteStepNumericLiteral('+1.5')).toBe(true);
-    expect(isCompleteStepNumericLiteral('123')).toBe(true);
-    expect(isCompleteStepNumericLiteral('-3')).toBe(true);
-    // Grammatically complete even though the double range cannot hold it --
-    // overflow is a SEPARATE hazard this predicate is not responsible for.
-    expect(isCompleteStepNumericLiteral('1.0E400')).toBe(true);
-  });
-
-  it('rejects a token whose parseFloat-consumed prefix does not cover it all', () => {
-    expect(isCompleteStepNumericLiteral('1.52.3')).toBe(false);
-    expect(isCompleteStepNumericLiteral('1.5abc')).toBe(false);
-  });
-
-  it('rejects a sign or a bare dot with no digit anywhere', () => {
-    expect(isCompleteStepNumericLiteral('+')).toBe(false);
-    expect(isCompleteStepNumericLiteral('-')).toBe(false);
-    expect(isCompleteStepNumericLiteral('.')).toBe(false);
-    expect(isCompleteStepNumericLiteral('')).toBe(false);
-  });
-
-  it('rejects an exponent marker with no digit after it', () => {
-    expect(isCompleteStepNumericLiteral('1.E')).toBe(false);
-    expect(isCompleteStepNumericLiteral('1.E+')).toBe(false);
   });
 });
 

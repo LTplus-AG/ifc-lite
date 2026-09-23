@@ -15,6 +15,7 @@
  */
 
 import { decodeStepStringLiteral } from '@ifc-lite/encoding';
+import { isCompleteStepNumericLiteral } from './step-numeric-literal.js';
 
 /**
  * STEP value types
@@ -347,10 +348,15 @@ export function parseStepValue(str: string): StepValue {
     return parseStepList(str);
   }
 
-  // Number
-  const num = parseFloat(str);
-  if (!isNaN(num)) {
-    return num;
+  // Number. Only a token that is ENTIRELY a STEP numeric literal: `parseFloat`
+  // reads a prefix, so `1.52.3` (a dropped comma) used to come back as `1.52`,
+  // a plausible value indistinguishable from a real one (#5193). A malformed
+  // token falls through to the raw string below instead.
+  if (isCompleteStepNumericLiteral(str)) {
+    const num = parseFloat(str);
+    if (!isNaN(num)) {
+      return num;
+    }
   }
 
   // Unknown

@@ -6,9 +6,8 @@
  * Entity extractor - parses full entity content from STEP format
  */
 
-import { createLogger } from '@ifc-lite/data';
+import { createLogger, isCompleteStepNumericLiteral } from '@ifc-lite/data';
 import { decodeIfcString } from '@ifc-lite/encoding';
-import { isCompleteStepNumericLiteral } from './attribute-helpers.js';
 import { isIndexableExpressId } from './express-id.js';
 import { entityParameters } from './step-entity-parameters.js';
 import { StepTextScan } from './step-lexing.js';

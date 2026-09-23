@@ -13,9 +13,9 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { extractMapConversion } from '../src/georef-map-conversion.js';
-import type { IfcEntity } from '../src/types.js';
+import type { IfcAttributeValue, IfcEntity } from '../src/types.js';
 
-function mapConversionEntity(eastings: unknown): IfcEntity {
+function mapConversionEntity(eastings: IfcAttributeValue): IfcEntity {
   return {
     expressId: 38,
     type: 'IFCMAPCONVERSION',

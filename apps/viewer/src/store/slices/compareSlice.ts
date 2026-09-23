@@ -74,6 +74,9 @@ export interface CompareResult {
   /** Stores the diff was computed from, for each model compared with unsaved
    *  edits (#5312); read entry data back through `modelsAsCompared`. */
   comparedStores?: ReadonlyMap<string, IfcDataStore>;
+  /** Store `mutationVersion` the comparison was computed at (#5312). A result
+   *  whose version is behind the store's describes a pre-edit model. */
+  mutationVersion?: number;
 }
 
 /** localStorage key for the cross-file compare blacklist (issue #1470). */

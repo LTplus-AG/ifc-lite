@@ -150,4 +150,20 @@ describe('useCompare compares the edited model (#5312)', () => {
     const { byKey } = await run();
     assert.equal(byKey.get('0WallC0000000000000003')?.state, 'modified', 'the re-run sees the new edit');
   });
+
+  it('an edit made while the Compare panel is closed still retires the result when it reopens', async () => {
+    await run();
+    await act(async () => root!.unmount());
+    root = null;
+    useViewerStore.getState().setAttribute('B', 3, 'Name', 'Wall C renamed', 'Wall C');
+    assert.ok(useViewerStore.getState().compareResult, 'nothing is mounted to clear it yet');
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root!.render(<Probe />);
+    });
+    assert.equal(useViewerStore.getState().compareResult, null, 'reopening must not show the pre-edit comparison');
+  });
 });

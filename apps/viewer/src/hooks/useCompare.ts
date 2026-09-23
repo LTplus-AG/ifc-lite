@@ -165,6 +165,7 @@ function publishCompareResult(built: BuiltPair): {
     keyProperty: built.keyProperty,
     duplicateAuthoredKeys: built.duplicateAuthoredKeys.size > 0 ? built.duplicateAuthoredKeys : undefined,
     comparedStores: built.comparedStores.size > 0 ? built.comparedStores : undefined,
+    mutationVersion: built.mutationVersion,
   };
   store.setCompareResult(result);
   // Completed-comparison signal for baseline consumers (compare tour). An
@@ -306,6 +307,7 @@ export function useCompare() {
           // authored key from both revisions before diffing.
           const duplicateAuthoredKeys = new Map<string, number[]>();
           // The models as edited, not as loaded (#5312): see effectiveCompareStore.
+          const mutationVersion = useViewerStore.getState().mutationVersion;
           const { baseEffective, headEffective, comparedStores } = await effectiveComparePair(
             [baseModel, baseStore], [headModel, headStore], useViewerStore.getState().getMutationView);
           const base = await buildEntityFingerprints({
@@ -342,6 +344,7 @@ export function useCompare() {
           ], duplicateAuthoredKeys);
           return {
             comparedStores,
+            mutationVersion,
             baseModelId: baseId,
             headModelId: headId,
             contentVersion,

@@ -13,11 +13,12 @@
  * reported, just delayed. `mutationVersion` is the scalar every edit action
  * bumps, so it is the edit signal. Same treatment as a federation re-alignment
  * (`geometryContentVersion`): clear the result and drop the cache, and the next
- * run re-extracts. Clearing also bumps the run epoch, so a run in flight when
- * the edit lands publishes nothing.
+ * run re-extracts. The fingerprint cache itself is also keyed on the version
+ * (`isCurrentFor`), so a run in flight across an edit re-extracts instead of
+ * publishing the pre-edit answer.
  */
 
-import { useEffect, useRef, type MutableRefObject } from 'react';
+import { useEffect, type MutableRefObject } from 'react';
 import { useViewerStore } from '@/store';
 
 export function useClearCompareOnEdit(
@@ -25,12 +26,13 @@ export function useClearCompareOnEdit(
   clearCompare: () => void,
 ): void {
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
-  // Seeded with the mounted value so a remount is not mistaken for an edit.
-  const lastRef = useRef(mutationVersion);
+  const result = useViewerStore((s) => s.compareResult);
+  // Compared against the version the RESULT was computed at, not a value seen
+  // at mount: an edit made while the Compare panel was closed must still
+  // retire the result it left in the store.
   useEffect(() => {
-    if (lastRef.current === mutationVersion) return;
-    lastRef.current = mutationVersion;
+    if (!result || result.mutationVersion === undefined || result.mutationVersion === mutationVersion) return;
     builtRef.current = null;
     clearCompare();
-  }, [mutationVersion, builtRef, clearCompare]);
+  }, [mutationVersion, result, builtRef, clearCompare]);
 }

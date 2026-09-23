@@ -205,6 +205,9 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
       const types = descriptor.types && descriptor.types.length > 0
         ? expandTypes(descriptor.types, model.ifcDataStore.schemaVersion)
         : undefined;
+      // A type filter that expands to nothing matches nothing. The iterator
+      // reads an empty list as "no filter", so it must not reach it.
+      if (types && types.length === 0) continue;
       // The session's effective entities (#5249): tombstones out, overlay
       // creations in, a retyped entity under its new class — the same shared
       // iterator the CLI and MCP query backends use.

@@ -106,6 +106,11 @@ test('query.entities() applies deletion, creation and retype in one enumeration 
   assert.deepEqual(adapter.entities({ types: ['IfcColumn'] }).map((e) => e.name), ['Wall B']);
 });
 
+test('query.entities() with a type no entity has returns nothing, not every entity (#5249)', async () => {
+  const { adapter } = await harness();
+  assert.deepEqual(adapter.entities({ types: ['IfcNoSuchType'] }), []);
+});
+
 test('entitiesMatchingActiveFilter() omits an entity deleted this session (#5185)', async () => {
   const dataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(MODEL).buffer as ArrayBuffer);
   const view = new MutablePropertyView(dataStore.properties, 'm');

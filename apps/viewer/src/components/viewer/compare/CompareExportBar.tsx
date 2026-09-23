@@ -23,6 +23,7 @@ import { posthog } from '@/lib/analytics';
 import type { CompareResult } from '@/store/slices/compareSlice';
 import { acceptedForPair } from '@/lib/compare/acceptedIdentity';
 import { downloadCompareReport } from '@/lib/compare/exportReport';
+import { modelsAsCompared } from '@/lib/compare/comparedModels';
 import {
   comparedModelIdentities,
   downloadIdentityMapSidecar,
@@ -50,7 +51,7 @@ export function CompareExportBar({ result, reportable }: CompareExportBarProps) 
   const downloadReport = (format: 'csv' | 'json') => {
     // Pass the blacklist in its original IFC casing so the report reads
     // "IfcOpeningElement", not the engine's uppercase-normalized form (#1470).
-    downloadCompareReport(format, result, models, excludedTypes);
+    downloadCompareReport(format, result, modelsAsCompared(models, result.comparedStores), excludedTypes);
     posthog.capture('model_compare_export', compareExportPayload(format, result));
   };
 

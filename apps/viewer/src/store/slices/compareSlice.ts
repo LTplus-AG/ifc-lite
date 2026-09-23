@@ -22,6 +22,7 @@ import {
   type ComparePair,
   type RejectedClaim,
 } from '@/lib/compare/acceptedIdentity';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 /** A completed comparison: the engine result plus the A/B context it ran on. */
@@ -70,6 +71,9 @@ export interface CompareResult {
   excludedHiddenIds: Set<number>;
   /** The engine output — entries keyed by GlobalId, with per-entity refs. */
   diff: ModelDiff<CompareRef>;
+  /** Stores the diff was computed from, for each model compared with unsaved
+   *  edits (#5312); read entry data back through `modelsAsCompared`. */
+  comparedStores?: ReadonlyMap<string, IfcDataStore>;
 }
 
 /** localStorage key for the cross-file compare blacklist (issue #1470). */

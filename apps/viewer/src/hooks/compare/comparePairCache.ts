@@ -12,6 +12,7 @@
 
 import { useViewerStore } from '@/store';
 import type { EntityFingerprint } from '@ifc-lite/diff';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
 
 /** Read the live mesh-content version. A FUNCTION, not a captured number: the
@@ -59,6 +60,9 @@ export interface BuiltPair {
    * precise "mesh content was mutated under you" signal this cache was missing.
    */
   contentVersion: number;
+  /** Baked stores the fingerprints were read from, per edited model (#5312).
+   *  Absent for a model compared as loaded. See `effectiveCompareStore`. */
+  comparedStores: ReadonlyMap<string, IfcDataStore>;
 }
 
 /** Are these fingerprints the ones for this A/B pair, extracted from the mesh

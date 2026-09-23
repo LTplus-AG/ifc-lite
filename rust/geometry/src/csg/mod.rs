@@ -291,7 +291,9 @@ impl ClippingProcessor {
     /// (#4692). A rejection leaves the host untouched. A cutter the kernel
     /// classifies as not reaching the host solid still produces the
     /// consolidated arrangement output, as it always did; it comes back as
-    /// [`GroupCut::Retessellated`], not as a cut.
+    /// [`GroupCut::Retessellated`], not as a cut, unless the arrangement did
+    /// not conform and the output has the host's triangle count, which comes
+    /// back as `Rejected(Nonconforming)` (#5362).
     ///
     /// Unlike the group path, the single cutter records a [`BoolFailure`]
     /// (drainable via [`Self::take_failures`]) for an empty cutter

@@ -1475,7 +1475,10 @@ impl GeometryRouter {
                     // hole in place of a round one, but a square hole is
                     // dramatically less wrong than a missing void on a wall
                     // that is supposed to host a window or door.
-                    if !csg_succeeded && !kernel_found_no_overlap {
+                    // A re-tessellation this router refused on its own
+                    // retention check is not a verdict: fall back as before.
+                    let kernel_verdict_disjoint = kernel_found_no_overlap && csg_unchanged;
+                    if !csg_succeeded && !kernel_verdict_disjoint {
                         let dir = extrusion_dir.or_else(|| {
                             Some(wall_thinnest_axis_dir(&wall_min, &wall_max))
                         });

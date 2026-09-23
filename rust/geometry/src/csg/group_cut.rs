@@ -29,7 +29,8 @@ pub enum GroupCut {
     /// arrangement, consolidated, validated and gated like a `Cut`. Same solid
     /// as the host, different triangles. Whether to keep it is the caller's
     /// choice; the void router has kept it when it changed the triangle count,
-    /// and the watertightness census depends on that (#4692).
+    /// and the watertightness census depends on that (#4692). A non-conforming
+    /// same-count miss is `Rejected(Nonconforming)` instead (#5362).
     Retessellated(Mesh),
     /// The host is untouched; the caller cuts the members one by one.
     Rejected(GroupReject),

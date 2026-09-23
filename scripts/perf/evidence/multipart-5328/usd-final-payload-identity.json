@@ -1,0 +1,72 @@
+[
+  {
+    "fixture": "ara3d/AC20-FZK-Haus.ifc",
+    "side": "base",
+    "outputBytes": 3274388,
+    "outputFnv": "8d100b2b75ab9796",
+    "matchingFinalSamples": 5
+  },
+  {
+    "fixture": "ara3d/AC20-FZK-Haus.ifc",
+    "side": "candidate",
+    "outputBytes": 3203668,
+    "outputFnv": "c9eabc0377a4e7cc",
+    "matchingFinalSamples": 5
+  },
+  {
+    "fixture": "ara3d/schependomlaan.ifc",
+    "side": "base",
+    "outputBytes": 61334835,
+    "outputFnv": "cbaa78f26070dffb",
+    "matchingFinalSamples": 5
+  },
+  {
+    "fixture": "ara3d/schependomlaan.ifc",
+    "side": "candidate",
+    "outputBytes": 58727408,
+    "outputFnv": "4fc75141b6ca773f",
+    "matchingFinalSamples": 5
+  },
+  {
+    "fixture": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+    "side": "base",
+    "outputBytes": 390349725,
+    "outputFnv": "4da64a730a55e016",
+    "matchingFinalSamples": 5
+  },
+  {
+    "fixture": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+    "side": "candidate",
+    "outputBytes": 354354210,
+    "outputFnv": "a1b9d9e420cae272",
+    "matchingFinalSamples": 5
+  },
+  {
+    "fixture": "various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc",
+    "side": "base",
+    "outputBytes": 485802745,
+    "outputFnv": "f7c1d6a1ca3abcd5",
+    "matchingFinalSamples": 5
+  },
+  {
+    "fixture": "various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc",
+    "side": "candidate",
+    "outputBytes": 396834702,
+    "outputFnv": "222ef7694627e53f",
+    "matchingFinalSamples": 5
+  },
+  {
+    "fixture": "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc",
+    "side": "base",
+    "outputBytes": 289509019,
+    "outputFnv": "d091c7a848205f7a",
+    "matchingFinalSamples": 5
+  },
+  {
+    "fixture": "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc",
+    "side": "candidate",
+    "outputBytes": 289509019,
+    "outputFnv": "d091c7a848205f7a",
+    "matchingFinalSamples": 5
+  }
+]

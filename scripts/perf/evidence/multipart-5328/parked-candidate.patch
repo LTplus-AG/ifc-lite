@@ -1,0 +1,1066 @@
+diff --git a/docs/api/rust.md b/docs/api/rust.md
+index ba6ddae9d..e0d4be5c5 100644
+--- a/docs/api/rust.md
++++ b/docs/api/rust.md
+@@ -522,6 +522,16 @@ preflight; a readable header does not certify a complete or valid image stream.
+ 
+ Shared processing pipeline used by the native server, the FFI DLL, the Python bindings, and the WASM bindings. Parallelised with rayon on native targets.
+ 
++For consumers that retain multiple instance records per element,
++`ifc_lite_processing::process_geometry_streaming_with_mapped_parts` accepts the
++same streaming callbacks and options as the existing filtered streaming entry
++point. Set `StreamingOptions::enable_instancing` and retain the emitted meshes.
++Resolve each record's template using **both** `template_express_id` and
++`rep_identity`; an element can have several templates or a mixture of full
++meshes and instance records. The existing entry point keeps its single-part
++contract. The USD exporter consumes the multi-part contract internally.
++
++
+ Key re-exports:
+ 
+ ```rust
+diff --git a/rust/export/examples/multipart_probe.rs b/rust/export/examples/multipart_probe.rs
+new file mode 100644
+index 000000000..387bdc766
+--- /dev/null
++++ b/rust/export/examples/multipart_probe.rs
+@@ -0,0 +1,15 @@
++// SPDX-License-Identifier: MPL-2.0
++// Local cold native consumer probe; output verification is outside the timer.
++use ifc_lite_export::{export_usd, UsdOptions};
++fn main() -> Result<(), Box<dyn std::error::Error>> {
++    let args: Vec<String> = std::env::args().skip(1).collect();
++    let path = args.first().ok_or("fixture required")?;
++    let started = std::time::Instant::now();
++    let content = std::fs::read(path)?;
++    let text = export_usd(&content, &UsdOptions::default());
++    let full_load_ms = started.elapsed().as_secs_f64() * 1000.0;
++    let hash = text.bytes().fold(0xcbf29ce484222325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3));
++    println!("{}", serde_json::json!({"fullLoadMs":full_load_ms,"outputBytes":text.len(),"outputFnv":format!("{hash:016x}")}));
++    if let Some(output) = args.get(1) { std::fs::write(output, text)?; }
++    Ok(())
++}
+diff --git a/rust/export/src/usd.rs b/rust/export/src/usd.rs
+index 32300ef72..f5acaa66f 100644
+--- a/rust/export/src/usd.rs
++++ b/rust/export/src/usd.rs
+@@ -84,26 +84,21 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> String {
+ 
+     // De-baked instance occurrences (empty unless instancing is active + safe).
+     let instances: &[InstanceRecord] = if use_instancing { &result.instances } else { &[] };
+-    let instances_by_id: HashMap<u32, &InstanceRecord> =
+-        instances.iter().map(|r| (r.express_id, r)).collect();
+-
+-    // One prototype per referenced template (sorted); its origin composes each occurrence's
+-    // local→world transform. Same mesh backs the prototype geometry AND its origin.
+-    let mut template_origin: HashMap<u32, [f64; 3]> = HashMap::new();
+-    let mut proto_ids: Vec<u32> = Vec::new();
+-    {
+-        let mut seen: HashSet<u32> = HashSet::new();
+-        for r in instances {
+-            let tid = r.template_express_id;
+-            if seen.insert(tid) {
+-                proto_ids.push(tid);
+-                if let Some(m) = meshes_by_id.get(&tid).and_then(|v| v.first()) {
+-                    template_origin.insert(tid, m.origin);
+-                }
+-            }
+-        }
++    let mut instances_by_id: HashMap<u32, Vec<&InstanceRecord>> = HashMap::new();
++    for rec in instances {
++        instances_by_id.entry(rec.express_id).or_default().push(rec);
+     }
++    // Resolve each reference to its exact part; the safety gate established
++    // uniqueness before selecting the instanced result.
++    let templates: HashMap<instance::TemplateKey, &MeshData> = visible.iter()
++        .filter_map(|m| m.instance.as_ref().filter(|im| im.instanceable)
++            .map(|im| ((m.express_id, im.rep_identity), *m))).collect();
++    let template_origin: HashMap<instance::TemplateKey, [f64; 3]> = templates.iter()
++        .map(|(&key, m)| (key, m.origin)).collect();
++    let mut proto_ids: Vec<instance::TemplateKey> = instances.iter()
++        .map(|rec| (rec.template_express_id, rec.rep_identity)).collect();
+     proto_ids.sort_unstable();
++    proto_ids.dedup();
+ 
+     // Ordered union of every geometry-bearing id (full meshes + instances) for the info
+     // fallback and the leftover/Unassigned join — nothing with geometry is dropped.
+@@ -190,7 +185,7 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> String {
+     if !proto_ids.is_empty() {
+         out.push_str("\n    def Scope \"Prototypes\"\n    {\n");
+         for tid in &proto_ids {
+-            if let Some(m) = meshes_by_id.get(tid).and_then(|v| v.first()) {
++            if let Some(m) = templates.get(tid) {
+                 instance::emit_prototype(&mut out, 2, &instance::proto_name(*tid), m);
+             }
+         }
+diff --git a/rust/export/src/usd/emit.rs b/rust/export/src/usd/emit.rs
+index 33c7539a6..c36da13da 100644
+--- a/rust/export/src/usd/emit.rs
++++ b/rust/export/src/usd/emit.rs
+@@ -23,10 +23,10 @@ pub(super) struct Ctx<'a> {
+     pub(super) meshes_by_id: &'a HashMap<u32, Vec<&'a MeshData>>,
+     /// Instanced occurrences (empty unless instancing is active): each emits a `def Mesh`
+     /// referencing its prototype instead of a full mesh.
+-    pub(super) instances_by_id: &'a HashMap<u32, &'a InstanceRecord>,
+-    /// Template `express_id` → template mesh `origin` (for composing an occurrence's
++    pub(super) instances_by_id: &'a HashMap<u32, Vec<&'a InstanceRecord>>,
++    /// Exact template part → template mesh `origin` (for composing an occurrence's
+     /// local→world transform).
+-    pub(super) template_origin: &'a HashMap<u32, [f64; 3]>,
++    pub(super) template_origin: &'a HashMap<super::instance::TemplateKey, [f64; 3]>,
+ }
+ 
+ /// Emit one prim (`def Xform`) plus its submeshes and spatial children. `indent` is
+@@ -66,19 +66,17 @@ pub(super) fn emit_prim(
+     // share one namer so a mesh name can never collide with a child element prim.
+     let mut child_names = Namer::new();
+ 
+-    // An element is EITHER a de-baked instance occurrence (references a prototype) OR a
+-    // full mesh owner — never both, so the two branches don't double-draw.
+-    if let Some(rec) = ctx.instances_by_id.get(&id) {
+-        let mesh_name = child_names.alloc("geom");
+-        super::instance::emit_instance_occurrence(
+-            out,
+-            indent + 1,
+-            &mesh_name,
+-            rec,
+-            ctx.template_origin,
+-            purpose,
+-        );
+-    } else if let Some(meshes) = ctx.meshes_by_id.get(&id) {
++    // Mixed elements retain every full mesh and every referenced part. One
++    // child-name allocator prevents either group from overwriting the other.
++    if let Some(records) = ctx.instances_by_id.get(&id) {
++        for rec in records {
++            let mesh_name = child_names.alloc("geom");
++            super::instance::emit_instance_occurrence(
++                out, indent + 1, &mesh_name, rec, ctx.template_origin, purpose,
++            );
++        }
++    }
++    if let Some(meshes) = ctx.meshes_by_id.get(&id) {
+         for m in meshes {
+             let mesh_name = child_names.alloc("geom");
+             emit_mesh(out, indent + 1, &mesh_name, m, purpose);
+diff --git a/rust/export/src/usd/instance.rs b/rust/export/src/usd/instance.rs
+index 870fe8672..738e3e2f7 100644
+--- a/rust/export/src/usd/instance.rs
++++ b/rust/export/src/usd/instance.rs
+@@ -1,7 +1,7 @@
+ // SPDX-License-Identifier: MPL-2.0
+ //! USD scenegraph instancing (file-size dedup) for the `.usda` exporter.
+ //!
+-//! Repeated single-solid mapped geometry that the #1623 don't-bake pipeline turns into
++//! Repeated mapped source parts that the don't-bake pipeline turns into
+ //! `InstanceRecord`s is authored ONCE as a referenced `class Mesh` prototype (pure LOCAL
+ //! geometry); each occurrence is a `def Mesh` that `references` the prototype and applies a
+ //! per-occurrence transform + colour. Everything else stays a full mesh, so this can never
+@@ -12,11 +12,11 @@
+ //! the reason `instanceable` is deliberately not used). Georeferenced ("site-local") models
+ //! disable don't-bake upstream, so they fall back to the plain full-mesh path automatically.
+ 
+-use std::collections::{HashMap, HashSet};
++use std::collections::HashMap;
+ use std::fmt::Write;
+ 
+ use ifc_lite_processing::{
+-    process_geometry, process_geometry_streaming_filtered_with_options, InstanceRecord, MeshData,
++    process_geometry, process_geometry_streaming_with_mapped_parts, InstanceRecord, MeshData,
+     OpeningFilterMode, ProcessingResult, StreamingOptions,
+ };
+ 
+@@ -24,15 +24,17 @@ use super::emit::{write_display_material, write_geometry_body};
+ use super::fmt::{fmt_f64, indent_str};
+ use super::mesh_emittable;
+ 
+-/// Prototype prim name for a template `express_id`.
+-pub(super) fn proto_name(template_express_id: u32) -> String {
+-    format!("Proto_{template_express_id}")
++/// A template is one source part of an element, identified by both keys.
++pub(super) type TemplateKey = (u32, u128);
++
++pub(super) fn proto_name((template_express_id, rep): TemplateKey) -> String {
++    format!("Proto_{template_express_id}_{rep:x}")
+ }
+ 
+ /// Run the geometry pipeline with #1623 don't-bake instancing enabled and collect the
+ /// result (unbounded batches, default `retain_emitted_meshes` so templates survive).
+ pub(super) fn run_instanced(content: &[u8]) -> ProcessingResult {
+-    process_geometry_streaming_filtered_with_options(
++    process_geometry_streaming_with_mapped_parts(
+         content,
+         OpeningFilterMode::Default,
+         StreamingOptions {
+@@ -52,10 +54,8 @@ pub(super) fn run_instanced(content: &[u8]) -> ProcessingResult {
+ /// When instancing is requested we run the don't-bake pass; if it produced instances AND
+ /// every instance is safe to author (see [`all_instances_safe`]), we use it. Otherwise —
+ /// instances present but any unsafe — we re-run the plain (all-baked) pass so nothing is
+-/// dropped or misplaced. The extra pass is uncommon (a template failing the USD mesh gate,
+-/// an f32-overflowed transform, or one of the ambiguous multi-record / multi-submesh /
+-/// mixed-geometry shapes the single-prototype-per-id emitter can't represent); the common
+-/// case is a single pass.
++/// dropped or misplaced. Missing or ambiguous part templates and invalid transforms
++/// still require that fallback; multiple valid parts and mixed geometry do not.
+ pub(super) fn gather(content: &[u8], instancing: bool) -> (ProcessingResult, bool) {
+     if !instancing {
+         return (process_geometry(content), false);
+@@ -71,47 +71,27 @@ pub(super) fn gather(content: &[u8], instancing: bool) -> (ProcessingResult, boo
+     }
+ }
+ 
+-/// Gate that decides whether the id-keyed, one-prototype-per-template emitter can author
+-/// this instanced result **without dropping or misplacing any geometry**. Every condition
+-/// below is a shape the current single-occurrence-per-id / `meshes_by_id[tid].first()`
+-/// emitter cannot represent faithfully; any hit sends [`gather`] to the always-correct
+-/// baked path. This is the enforcement of the "can never drop geometry" contract in the
+-/// module docs (the emitter itself assumes these hold).
++/// Every referenced part must have exactly one emittable template. Multiple
++/// records and a mixture of full and instanced parts are preserved by the emitter.
+ fn all_instances_safe(r: &ProcessingResult) -> bool {
+-    // Emittable submeshes grouped by express id — the exact gate the exporter authors with.
+-    let mut submesh_count: HashMap<u32, usize> = HashMap::new();
++    let mut template_count: HashMap<TemplateKey, usize> = HashMap::new();
+     for m in r.meshes.iter().filter(|m| mesh_emittable(m)) {
+-        *submesh_count.entry(m.express_id).or_default() += 1;
++        if let Some(im) = m.instance.as_ref().filter(|im| im.instanceable) {
++            *template_count.entry((m.express_id, im.rep_identity)).or_default() += 1;
++        }
+     }
+     instances_authorable(
+-        r.instances.iter().map(|rec| (rec.express_id, rec.template_express_id, rec.transform)),
+-        &submesh_count,
++        r.instances.iter().map(|rec| ((rec.template_express_id, rec.rep_identity), rec.transform)),
++        &template_count,
+     )
+ }
+ 
+-/// Pure core of [`all_instances_safe`], factored out so the fallback conditions are unit
+-/// testable without synthesizing a whole `ProcessingResult`. Given each occurrence's
+-/// `(express_id, template_express_id, transform)` and the emittable-submesh count per
+-/// express id, decide whether the id-keyed / one-prototype-per-template emitter can author
+-/// them all with no dropped or misplaced geometry.
+ pub(super) fn instances_authorable(
+-    instances: impl IntoIterator<Item = (u32, u32, [f32; 16])>,
+-    submesh_count: &HashMap<u32, usize>,
++    instances: impl IntoIterator<Item = (TemplateKey, [f32; 16])>,
++    template_count: &HashMap<TemplateKey, usize>,
+ ) -> bool {
+-    // `instances_by_id` is keyed by `express_id`, so a repeated id would be overwritten.
+-    let mut seen_occurrence: HashSet<u32> = HashSet::new();
+-    instances.into_iter().all(|(express_id, template_id, transform)| {
+-        // A finite, affine transform (the authored `matrix4d` would otherwise misplace it).
+-        transform_is_affine_finite(&transform)
+-            // Exactly one record per element id.
+-            && seen_occurrence.insert(express_id)
+-            // The occurrence must NOT also own a full mesh: the emitter takes the instance
+-            // branch OR the mesh branch, never both, so a mixed element loses its meshes.
+-            && !submesh_count.contains_key(&express_id)
+-            // The prototype is `meshes_by_id[tid].first()`, so the template must resolve to
+-            // exactly ONE emittable submesh — else `.first()` is an ambiguous prototype for
+-            // a template element that backs several maps.
+-            && submesh_count.get(&template_id).copied() == Some(1)
++    instances.into_iter().all(|(key, transform)| {
++        transform_is_affine_finite(&transform) && template_count.get(&key).copied() == Some(1)
+     })
+ }
+ 
+@@ -167,17 +147,17 @@ pub(super) fn emit_instance_occurrence(
+     indent: usize,
+     name: &str,
+     rec: &InstanceRecord,
+-    template_origin: &HashMap<u32, [f64; 3]>,
++    template_origin: &HashMap<TemplateKey, [f64; 3]>,
+     purpose: Option<&str>,
+ ) {
+-    let origin = template_origin.get(&rec.template_express_id).copied().unwrap_or([0.0; 3]);
++    let origin = template_origin.get(&(rec.template_express_id, rec.rep_identity)).copied().unwrap_or([0.0; 3]);
+     // Gated by `all_instances_safe` before we ever reach the instanced path.
+     let Some(rows) = usd_transform_rows(&rec.transform, origin) else {
+         return;
+     };
+     let pad = indent_str(indent);
+     let inner = indent_str(indent + 1);
+-    let proto = proto_name(rec.template_express_id);
++    let proto = proto_name((rec.template_express_id, rec.rep_identity));
+ 
+     writeln!(out, "\n{pad}def Mesh \"{name}\" (").ok();
+     writeln!(out, "{inner}prepend references = </World/Prototypes/{proto}>").ok();
+diff --git a/rust/export/src/usd/tests.rs b/rust/export/src/usd/tests.rs
+index b646eb322..77ec9065c 100644
+--- a/rust/export/src/usd/tests.rs
++++ b/rust/export/src/usd/tests.rs
+@@ -728,39 +728,25 @@ fn usd_transform_rows_identity_and_translation() {
+     assert!(usd_transform_rows(&proj, [0.0; 3]).is_none());
+ }
+ 
+-/// The fallback guard: the id-keyed / one-prototype-per-template emitter can only author an
+-/// instanced result when every occurrence is unambiguous. Each rejected shape below is a
+-/// case where authoring would drop or misplace geometry, so `gather` must re-bake instead.
+-/// No fixture in the corpus exercises these shapes, so this is the only coverage they get.
+-#[test]
+-fn instances_authorable_rejects_unrepresentable_shapes() {
+-    let id: [f32; 16] =
+-        [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+-    // Template 7 has one emittable submesh; ids 10/11 are pure occurrences.
+-    let counts: std::collections::HashMap<u32, usize> = [(7u32, 1usize)].into_iter().collect();
+-
+-    // Baseline: two distinct occurrences of a clean single-submesh template → authorable.
+-    assert!(instances_authorable([(10, 7, id), (11, 7, id)], &counts));
+-
+-    // Blocker 1: two records for the SAME express id (the id-keyed map would drop one).
+-    assert!(!instances_authorable([(10, 7, id), (10, 7, id)], &counts));
+-
+-    // Blocker 2: template resolves to >1 emittable submesh → `.first()` is ambiguous.
+-    let two_sub: std::collections::HashMap<u32, usize> = [(7u32, 2usize)].into_iter().collect();
+-    assert!(!instances_authorable([(10, 7, id)], &two_sub));
+-    // …and a template with NO emittable submesh (0) is equally unrepresentable.
+-    let no_sub: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
+-    assert!(!instances_authorable([(10, 7, id)], &no_sub));
+-
+-    // Blocker 3: an occurrence id that ALSO owns a full mesh (mixed element) → mesh lost.
+-    let mixed: std::collections::HashMap<u32, usize> =
+-        [(7u32, 1usize), (10u32, 1usize)].into_iter().collect();
+-    assert!(!instances_authorable([(10, 7, id)], &mixed));
+-
+-    // Non-affine / non-finite transform is rejected regardless of the join being clean.
+-    let mut proj = id;
+-    proj[12] = 0.5;
+-    assert!(!instances_authorable([(10, 7, proj)], &counts));
++/// #5328: parts resolve by the full identity, with ambiguity and invalid
++/// transforms still forcing a complete flat fallback.
++#[test]
++fn instances_authorable_requires_exact_unambiguous_parts() {
++    let id = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
++              0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
++    let counts = [((7, 101), 1), ((7, 102), 1)].into_iter().collect();
++    assert!(instances_authorable([((7, 101), id), ((7, 102), id)], &counts));
++    // Repetition is real geometry and must not be deduplicated by element id.
++    assert!(instances_authorable([((7, 101), id), ((7, 101), id)], &counts));
++    assert!(!instances_authorable([((7, 103), id)], &counts));
++    let ambiguous = [((7, 101), 2)].into_iter().collect();
++    assert!(!instances_authorable([((7, 101), id)], &ambiguous));
++    let mut projective = id;
++    projective[12] = 0.5;
++    assert!(!instances_authorable([((7, 101), projective)], &counts));
++    let mut nonfinite = id;
++    nonfinite[3] = f32::NAN;
++    assert!(!instances_authorable([((7, 101), nonfinite)], &counts));
+ }
+ 
+ /// A 90°-about-Z rotation exercises the 3×3 LINEAR block — the whole fixture corpus only
+@@ -853,7 +839,7 @@ fn emitted_matrix4d_roundtrips_usd_transform_rows() {
+         geometry_item_id: None,
+     };
+     let mut origins = std::collections::HashMap::new();
+-    origins.insert(7u32, origin);
++    origins.insert((7u32, 0u128), origin);
+ 
+     let mut out = String::new();
+     emit_instance_occurrence(&mut out, 3, "geom", &rec, &origins, None);
+diff --git a/rust/geometry/src/lib.rs b/rust/geometry/src/lib.rs
+index 4ec533621..302cfe1bb 100644
+--- a/rust/geometry/src/lib.rs
++++ b/rust/geometry/src/lib.rs
+@@ -232,7 +232,7 @@ pub use router::{
+     GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, FACETED_BREP_DEDUP_FACE_LIMIT,
+     ClassificationSummary, GeometryDiagnostics, GeometryProcessor, GeometryRouter,
+     HostOpeningDiagnostic, ItemDedupCache, MappedInstancePlan, OpeningDiagnostic, OpeningKindDiag,
+-    ReasonCount, RectFastSummary, RectParam, SharedMappedItemCache, SharedBrepSignatureCache, WorstHost,
++    ReasonCount, RectFastSummary, RectParam, SharedMappedItemCache, SharedMappedPartCache, SharedBrepSignatureCache, WorstHost,
+ };
+ 
+ /// The large-coordinate threshold and its predicate, defined in
+diff --git a/rust/geometry/src/router/mapped_parts.rs b/rust/geometry/src/router/mapped_parts.rs
+new file mode 100644
+index 000000000..e361e2e21
+--- /dev/null
++++ b/rust/geometry/src/router/mapped_parts.rs
+@@ -0,0 +1,80 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++
++//! Opt-in multi-part source ownership (#5328). Separate from map-id cache keys.
++use super::{GeometryRouter, MappedInstancePlan};
++use crate::{Mesh, InstanceMeta};
++use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
++use rustc_hash::{FxHashMap, FxHashSet};
++use std::sync::{Arc, Mutex};
++
++/// Source-part meshes for one immutable content/quality/scale pass. The opaque
++/// identity keys cannot collide with ids in `SharedMappedItemCache`.
++pub type SharedMappedPartCache = Arc<Mutex<FxHashMap<u128, Arc<Mesh>>>>;
++
++pub(super) fn part_identity(source: u32, item: u32) -> u128 {
++    // Direct-solid hashes have bit 127 set; single-map ids occupy only 32 bits.
++    (1u128 << 64) | ((source as u128) << 32) | item as u128
++}
++
++impl GeometryRouter {
++    /// One per model/worker session, cleared with content, scale or quality.
++    pub fn new_mapped_part_cache() -> SharedMappedPartCache {
++        Arc::new(Mutex::new(FxHashMap::default()))
++    }
++
++    /// Opt in only when the consumer resolves templates by BOTH express id and
++    /// rep_identity. The existing single-part entry point retains its contract.
++    pub fn enable_output_instancing_parts(&mut self, plan: MappedInstancePlan, cache: SharedMappedPartCache) {
++        self.enable_output_instancing(plan);
++        self.shared_mapped_part_cache = Some(cache);
++    }
++
++    pub(super) fn mapped_source_parts(
++        &self, source: u32, repr: &DecodedEntity, decoder: &mut EntityDecoder,
++        textures: Option<&FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>>,
++    ) -> Option<FxHashSet<u32>> {
++        self.shared_mapped_part_cache.as_ref()?;
++        self.output_instancing_plan()?.get(&source).filter(|&&(count, _)| count >= 2)?;
++        let items = decoder.resolve_ref_list(repr.get(3)?).ok()?;
++        if items.len() < 2 { return None; }
++        let mut ids = FxHashSet::default();
++        for item in items {
++            if item.ifc_type == IfcType::IfcMappedItem
++                || self.is_indexed_colour_split_source(item.id)
++                || textures.is_some_and(|t| t.contains_key(&item.id))
++                || !ids.insert(item.id) {
++                return None;
++            }
++        }
++        Some(ids)
++    }
++
++    /// Return a pose-only mesh only AFTER a complete, non-budget-degraded source
++    /// is present. A failed/degraded build is returned/propagated once, never
++    /// re-run under an already spent element budget or cached for other products.
++    pub(super) fn mapped_part_occurrence(
++        &self, source: u32, item: &DecodedEntity, decoder: &mut EntityDecoder,
++    ) -> crate::Result<Mesh> {
++        let Some(cache) = &self.shared_mapped_part_cache else {
++            return self.process_representation_item(item, decoder);
++        };
++        let rep = part_identity(source, item.id);
++        let present = cache.lock().unwrap_or_else(|e| e.into_inner()).contains_key(&rep);
++        if !present {
++            let mut mesh = self.process_representation_item(item, decoder)?;
++            if mesh.is_empty() || crate::kernel::budget::tripped() { return Ok(mesh); }
++            mesh.instance_meta = None;
++            let mesh = Arc::new(mesh);
++            cache.lock().unwrap_or_else(|e| e.into_inner()).entry(rep).or_insert(mesh);
++        }
++        let mut mesh = Mesh::new();
++        mesh.instance_meta = Some(InstanceMeta {
++            transform: super::processing::IDENTITY_ROW_MAJOR,
++            local_transform: None, canonical_transform: None,
++            rep_identity: rep, instanceable: true,
++        });
++        Ok(mesh)
++    }
++}
+diff --git a/rust/geometry/src/router/mod.rs b/rust/geometry/src/router/mod.rs
+index 1abdd2980..8afd9c014 100644
+--- a/rust/geometry/src/router/mod.rs
++++ b/rust/geometry/src/router/mod.rs
+@@ -16,6 +16,8 @@ mod content_hash;
+ mod diagnostics;
+ mod diagnostics_recording;
+ mod instancing;
++mod mapped_parts;
++pub use mapped_parts::SharedMappedPartCache;
+ mod item_dedup_cache;
+ mod layers;
+ mod mapped_item;
+@@ -122,6 +124,7 @@ pub struct GeometryRouter {
+     /// meshing (which nests faceted-brep's rayon `par_iter`) runs OUTSIDE the
+     /// lock, so it is never held across a nested join (#1587). `None` ⇒ fallback.
+     shared_mapped_item_cache: Option<SharedMappedItemCache>,
++    shared_mapped_part_cache: Option<SharedMappedPartCache>,
+     /// Cache for geometry deduplication by content hash (buildings with
+     /// repeated floors have 99% identical geometry). Key: mesh-content hash.
+     geometry_hash_cache: RefCell<FxHashMap<u64, Arc<Mesh>>>,
+@@ -248,6 +251,7 @@ impl GeometryRouter {
+             processors: ProcessorRegistry::new(),
+             mapped_item_cache: RefCell::new(FxHashMap::default()),
+             shared_mapped_item_cache: None, // armed by `enable_shared_mapped_item_cache`
++            shared_mapped_part_cache: None,
+             geometry_hash_cache: RefCell::new(FxHashMap::default()),
+             item_dedup_cache: None, // armed by `with_units` / `enable_content_dedup_shared`
+             content_sig_memo: RefCell::new(FxHashMap::default()),
+@@ -420,6 +424,7 @@ impl GeometryRouter {
+     /// every occurrence materializing (byte-identical flat output).
+     pub fn enable_output_instancing(&mut self, plan: MappedInstancePlan) {
+         self.output_instancing_plan = Some(plan);
++        self.shared_mapped_part_cache = None;
+     }
+ 
+     /// The armed don't-bake plan, if any (see [`Self::enable_output_instancing`]).
+diff --git a/rust/geometry/src/router/processing.rs b/rust/geometry/src/router/processing.rs
+index 8ef74227f..4807eed5f 100644
+--- a/rust/geometry/src/router/processing.rs
++++ b/rust/geometry/src/router/processing.rs
+@@ -433,6 +433,9 @@ impl GeometryRouter {
+             } else {
+                 None
+             };
++            let instance_parts = if instance_solid_id.is_none() && allow_instancing && depth == 0 {
++                self.mapped_source_parts(source_id, &mapped_repr, decoder, texture_index)
++            } else { None };
+             // Which occurrence MATERIALIZES the template. Native (global) mode: the
+             // plan's deterministic min-id occurrence, so all occurrences resolve
+             // against ONE model-wide template across the rayon pool. WASM batch-local
+@@ -440,11 +443,11 @@ impl GeometryRouter {
+             // rest don't-bake), so each per-batch shard is self-contained. Both emit
+             // geometrically identical world triangles.
+             let is_template = match instance_solid_id {
+-                None => true, // not eligible ⇒ materialize flat as usual
+-                Some(_) if self.instancing_batch_local() => {
++                None if instance_parts.is_none() => true,
++                _ if self.instancing_batch_local() => {
+                     self.mark_source_materialized_if_first(source_id)
+                 }
+-                Some(_) => {
++                _ => {
+                     let template_item_id = self
+                         .output_instancing_plan()
+                         .and_then(|plan| plan.get(&source_id))
+@@ -507,15 +510,18 @@ impl GeometryRouter {
+                     // Nested items never independently don't-bake (`allow_instancing =
+                     // false`): they are this occurrence's own shared geometry.
+                     let count_before = sub_meshes.len();
+-                    if let Err(_e) = self.collect_submeshes_from_item_inner(
+-                        &nested_item,
+-                        decoder,
+-                        sub_meshes,
+-                        depth + 1,
+-                        visited,
+-                        false,
+-                        texture_index,
+-                    ) {
++                    let collected = if instance_parts.is_some() && !is_template {
++                        self.mapped_part_occurrence(source_id, &nested_item, decoder).map(|mesh| {
++                            if mesh.is_empty() && mesh.instance_meta.is_some() {
++                                sub_meshes.sub_meshes.push(crate::SubMesh::new(nested_item.id, mesh));
++                            } else { sub_meshes.add(nested_item.id, mesh); }
++                        })
++                    } else {
++                        self.collect_submeshes_from_item_inner(
++                            &nested_item, decoder, sub_meshes, depth + 1, visited, false, texture_index,
++                        )
++                    };
++                    if let Err(_e) = collected {
+                         self.record_unsupported_item(nested_item.ifc_type.clone());
+                         crate::diag::diag_debug!(
+                             { item_id = nested_item.id, ifc_type = ?nested_item.ifc_type,
+@@ -574,15 +580,22 @@ impl GeometryRouter {
+             // `local_transform`, which is consistent (the template's world geometry is
+             // `transform · local_transform · source`, so `m_ref` recovers the same
+             // `source` the placeholders reference). See the finalize in processor/mod.rs.
+-            if instance_solid_id.is_some() && is_template {
++            if (instance_solid_id.is_some() && is_template) || instance_parts.is_some() {
+                 let local_rm = mapping_transform.map(|mut t| {
+                     self.scale_transform(&mut t);
+                     mat4_to_row_major(&t)
+                 });
+                 for sub in &mut sub_meshes.sub_meshes[mapped_items_start..] {
+-                    if let Some(im) = sub.mesh.instance_meta.as_mut() {
+-                        im.rep_identity = source_id as u128;
+-                        im.local_transform = local_rm;
++                    let part = instance_parts.as_ref().filter(|ids| ids.contains(&sub.geometry_id));
++                    let retag_part = part.is_some() && (sub.mesh.is_empty()
++                        || (is_template && !crate::kernel::budget::tripped()));
++                    if instance_solid_id.is_some() || retag_part {
++                        if let Some(im) = sub.mesh.instance_meta.as_mut() {
++                            im.rep_identity = if part.is_some() {
++                                super::mapped_parts::part_identity(source_id, sub.geometry_id)
++                            } else { source_id as u128 };
++                            im.local_transform = local_rm;
++                        }
+                     }
+                 }
+             }
+diff --git a/rust/processing/src/lib.rs b/rust/processing/src/lib.rs
+index 7dac07aad..9abab572c 100644
+--- a/rust/processing/src/lib.rs
++++ b/rust/processing/src/lib.rs
+@@ -72,13 +72,14 @@ pub use ifc_lite_geometry::TessellationQuality;
+ /// The don't-bake occurrence → flat `MeshData` recovery, shared with the browser
+ /// batch (`rust/wasm-bindings/src/api/gpu_meshes/instancing.rs`) so the mapping
+ /// has one home rather than two clones. See its doc comment.
+-pub use processor::instancing::recover_occurrences_flat;
++pub use processor::instancing::{recover_occurrences_flat, recover_occurrences_flat_with_parts};
+ pub use processor::{
+     convert_mesh_to_site_local, is_quick_spatial_type_ci, native_to_baked, process_geometry,
+     process_geometry_filtered,
+     process_geometry_filtered_with_quality, process_geometry_filtered_with_quality_and_ids,
+     process_geometry_with_index,
+     process_geometry_streaming, process_geometry_streaming_filtered,
++    process_geometry_streaming_with_mapped_parts,
+     process_geometry_streaming_filtered_with_options, process_geometry_streaming_with_options,
+     process_geometry_streaming_with_options_and_bootstrap,
+     OpeningFilterMode, ProcessingResult, StreamingOptions,
+diff --git a/rust/processing/src/processor/id_filter.rs b/rust/processing/src/processor/id_filter.rs
+index 26995dac4..ce90d9d03 100644
+--- a/rust/processing/src/processor/id_filter.rs
++++ b/rust/processing/src/processor/id_filter.rs
+@@ -7,7 +7,7 @@
+ use super::{
+     process_geometry_streaming_filtered_with_options,
+     process_geometry_streaming_filtered_with_options_and_ids, OpeningFilterMode,
+-    ProcessingResult, StreamingOptions,
++    ProcessingResult, StreamingOptions, QuickMetadataBootstrap, MeshData,
+ };
+ use ifc_lite_geometry::TessellationQuality;
+ use std::collections::HashSet;
+@@ -55,6 +55,7 @@ where
+         opening_filter,
+         full_pass_options(tessellation_quality),
+         entity_ids,
++        false,
+         |_, _, _| {},
+         |_| {},
+         |_| {},
+@@ -69,3 +70,21 @@ fn full_pass_options(tessellation_quality: TessellationQuality) -> StreamingOpti
+         ..StreamingOptions::default()
+     }
+ }
++
++/// Opt-in multi-part mapped instances. Consumers must resolve a template by
++/// `(template_express_id, rep_identity)` and retain every record for each element.
++/// The existing single-part entry point keeps its original output contract.
++pub fn process_geometry_streaming_with_mapped_parts(
++    content: &[u8],
++    opening_filter: OpeningFilterMode,
++    options: StreamingOptions,
++    on_batch: impl FnMut(&[MeshData], usize, usize),
++    on_color_update: impl FnMut(&[(u32, [f32; 4])]),
++    on_quick_metadata_bootstrap: impl FnMut(&QuickMetadataBootstrap),
++) -> ProcessingResult {
++    process_geometry_streaming_filtered_with_options_and_ids(
++        content, opening_filter, options, None, true,
++        on_batch, on_color_update, on_quick_metadata_bootstrap,
++    )
++}
++
+diff --git a/rust/processing/src/processor/instancing.rs b/rust/processing/src/processor/instancing.rs
+index f1abcc153..f3a6861dd 100644
+--- a/rust/processing/src/processor/instancing.rs
++++ b/rust/processing/src/processor/instancing.rs
+@@ -18,6 +18,7 @@ pub(super) fn finalize_instances(
+     raw: Vec<RawInstanceOccurrence>,
+     meshes: &mut Vec<MeshData>,
+     mapped_item_cache: &ifc_lite_geometry::SharedMappedItemCache,
++    mapped_part_cache: Option<&ifc_lite_geometry::SharedMappedPartCache>,
+     rtc: [f64; 3],
+ ) -> Vec<InstanceRecord> {
+     if raw.is_empty() {
+@@ -90,7 +91,7 @@ pub(super) fn finalize_instances(
+         // from the shared source registry. Effectively unreachable for the eligible
+         // single-solid type-instanced set (their template occurrence always
+         // materializes), but guarantees no geometry is ever dropped.
+-        if !recover_occurrences_flat(rep, &occs, mapped_item_cache, rtc, &mut orphan_flats) {
++        if !recover_occurrences_flat_with_parts(rep, &occs, mapped_item_cache, mapped_part_cache, rtc, &mut orphan_flats) {
+             tracing::warn!(
+                 source_id = rep as u32,
+                 occurrences = occs.len(),
+@@ -129,15 +130,29 @@ pub fn recover_occurrences_flat(
+     mapped_item_cache: &ifc_lite_geometry::SharedMappedItemCache,
+     rtc: [f64; 3],
+     out: &mut Vec<MeshData>,
++) -> bool {
++    recover_occurrences_flat_with_parts(rep, occs, mapped_item_cache, None, rtc, out)
++}
++
++/// Recover either a single-source occurrence or an explicitly opted-in part.
++/// Part identities are opaque and must never be truncated to a map id.
++pub fn recover_occurrences_flat_with_parts(
++    rep: u128,
++    occs: &[RawInstanceOccurrence],
++    mapped_item_cache: &ifc_lite_geometry::SharedMappedItemCache,
++    mapped_part_cache: Option<&ifc_lite_geometry::SharedMappedPartCache>,
++    rtc: [f64; 3],
++    out: &mut Vec<MeshData>,
+ ) -> bool {
+     // Mapped rep_identity is the RepresentationMap source id (always < 2^32); a
+     // direct-solid tag never reaches this don't-bake path.
+-    let source_id = rep as u32;
+-    let source = mapped_item_cache
+-        .lock()
+-        .unwrap_or_else(|e| e.into_inner())
+-        .get(&source_id)
+-        .cloned();
++    let source = if let Ok(source_id) = u32::try_from(rep) {
++        mapped_item_cache.lock().unwrap_or_else(|e| e.into_inner()).get(&source_id).cloned()
++    } else {
++        mapped_part_cache.and_then(|cache| {
++            cache.lock().unwrap_or_else(|e| e.into_inner()).get(&rep).cloned()
++        })
++    };
+     let Some(source) = source else {
+         return false;
+     };
+@@ -223,6 +238,7 @@ mod orphan_recovery_tests {
+             vec![occurrence(7, Some(ITEM_ID))],
+             &mut meshes,
+             &cache_with_source(),
++            None,
+             [0.0, 0.0, 0.0],
+         );
+ 
+@@ -247,10 +263,33 @@ mod orphan_recovery_tests {
+             vec![occurrence(7, None)],
+             &mut meshes,
+             &cache_with_source(),
++            None,
+             [0.0, 0.0, 0.0],
+         );
+         assert_eq!(meshes.len(), 1);
+         assert_eq!(meshes[0].geometry_item_id, None);
+         assert_eq!(meshes[0].material_id, None);
+     }
++    #[test]
++    fn issue_5328_part_orphan_uses_full_identity_without_truncation() {
++        let old_cache = cache_with_source();
++        let part_cache = ifc_lite_geometry::GeometryRouter::new_mapped_part_cache();
++        let rep = (1u128 << 64) | (17u128 << 32) | REP;
++        let mut occ = occurrence(9, Some(ITEM_ID));
++        occ.rep_identity = rep;
++        let mut out = Vec::new();
++        // Its low 32 bits exist in the old registry, but that is a different source.
++        assert!(!recover_occurrences_flat(rep, &[occ.clone()], &old_cache, [0.0; 3], &mut out));
++        assert!(out.is_empty());
++        let mut source = old_cache.lock().unwrap()[&(REP as u32)].as_ref().clone();
++        source.positions[0] = 9.0;
++        part_cache.lock().unwrap().insert(rep, Arc::new(source));
++        assert!(recover_occurrences_flat_with_parts(
++            rep, &[occ], &old_cache, Some(&part_cache), [0.0; 3], &mut out,
++        ));
++        assert_eq!(out.len(), 1);
++        assert_eq!(out[0].positions[0], 9.0);
++        assert_eq!(out[0].geometry_item_id, Some(ITEM_ID));
++    }
++
+ }
+diff --git a/rust/processing/src/processor/jobs.rs b/rust/processing/src/processor/jobs.rs
+index 81dab28be..c4e72c9f8 100644
+--- a/rust/processing/src/processor/jobs.rs
++++ b/rust/processing/src/processor/jobs.rs
+@@ -126,6 +126,7 @@ pub(super) fn process_entity_job(
+     // Model-wide IfcMappedItem source cache so a RepresentationMap source shared
+     // across owning elements is meshed once model-wide, not once per element — #1623.
+     mapped_item_cache: &ifc_lite_geometry::SharedMappedItemCache,
++    mapped_part_cache: Option<&ifc_lite_geometry::SharedMappedPartCache>,
+     // #1623 Phase 2: don't-bake plan (Some only when enabled) armed on this job's
+     // router, + the shared sink for its emitted don't-bake occurrences.
+     instancing_plan: Option<&ifc_lite_geometry::MappedInstancePlan>,
+@@ -190,7 +191,11 @@ pub(super) fn process_entity_job(
+     // #1623 Phase 2: arm the don't-bake plan so single-solid occurrences of a repeated
+     // mapped source emit instance placeholders instead of full meshes.
+     if let Some(plan) = instancing_plan {
+-        local_router.enable_output_instancing(plan.clone());
++        if let Some(cache) = mapped_part_cache {
++            local_router.enable_output_instancing_parts(plan.clone(), cache.clone());
++        } else {
++            local_router.enable_output_instancing(plan.clone());
++        }
+         // #858: exclude indexed-colour sources from don't-bake so their per-triangle
+         // palette survives the flat split (only meaningful with the plan armed).
+         if let Some(ids) = indexed_colour_split_ids {
+diff --git a/rust/processing/src/processor/mod.rs b/rust/processing/src/processor/mod.rs
+index ef9319e43..2c90df490 100644
+--- a/rust/processing/src/processor/mod.rs
++++ b/rust/processing/src/processor/mod.rs
+@@ -32,6 +32,7 @@ mod entity_index;
+ use entity_index::{IndexBuilder, ProcessingIndex};
+ mod id_filter;
+ pub use id_filter::{
++    process_geometry_streaming_with_mapped_parts,
+     process_geometry_filtered_with_quality, process_geometry_filtered_with_quality_and_ids,
+ };
+ pub(crate) mod instancing;
+@@ -454,17 +455,21 @@ pub fn process_geometry_streaming_filtered_with_options(
+         opening_filter,
+         options,
+         None,
++        false,
+         on_batch,
+         on_color_update,
+         on_quick_metadata_bootstrap,
+     )
+ }
+ 
++// Keep both public streaming contracts on one implementation, including their three callbacks.
++#[allow(clippy::too_many_arguments)]
+ fn process_geometry_streaming_filtered_with_options_and_ids(
+     content: &[u8],
+     opening_filter: OpeningFilterMode,
+     options: StreamingOptions,
+     entity_ids: Option<&HashSet<u32>>,
++    mapped_parts: bool,
+     mut on_batch: impl FnMut(&[MeshData], usize, usize),
+     mut on_color_update: impl FnMut(&[(u32, [f32; 4])]),
+     mut on_quick_metadata_bootstrap: impl FnMut(&QuickMetadataBootstrap),
+@@ -1178,6 +1183,8 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
+     // router meshes each RepresentationMap source once against it, instead of once
+     // per owning element. Lock held only for a source-mesh get/insert.
+     let mapped_item_cache = GeometryRouter::new_mapped_item_cache();
++    let mapped_part_cache = (mapped_parts && options.enable_instancing)
++        .then(GeometryRouter::new_mapped_part_cache);
+ 
+     // #1623 Phase 2 don't-bake plan (Some only when enabled): filter to repeated
+     // sources (count >= 2) — singletons materialize normally — and share it with
+@@ -1435,6 +1442,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
+                     &item_dedup_cache,
+                     &brep_signature_cache,
+                     &mapped_item_cache,
++                    mapped_part_cache.as_ref(),
+                     instancing_plan.as_ref(),
+                     indexed_colour_split_ids.as_ref(),
+                     &raw_instance_collector,
+@@ -1569,6 +1577,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
+             .unwrap_or_else(|poisoned| poisoned.into_inner()),
+         &mut meshes,
+         &mapped_item_cache,
++        mapped_part_cache.as_ref(),
+         [rtc_offset.0, rtc_offset.1, rtc_offset.2],
+     );
+ 
+diff --git a/rust/processing/src/types/mesh.rs b/rust/processing/src/types/mesh.rs
+index e027160eb..271595adf 100644
+--- a/rust/processing/src/types/mesh.rs
++++ b/rust/processing/src/types/mesh.rs
+@@ -361,8 +361,9 @@ pub struct RawInstanceOccurrence {
+ /// #1623 Phase 2: one resolved occurrence of a shared template geometry, emitted in
+ /// [`crate::ProcessingResult::instances`] instead of a full materialized mesh when
+ /// `StreamingOptions.enable_instancing` is set. The consumer uploads the template
+-/// MeshData (`template_express_id`, still in `meshes`) once and draws this occurrence
+-/// by applying `transform` to the template's baked world geometry. Purely in-memory,
++/// MeshData (still in `meshes`) once and applies `transform` to its baked world
++/// geometry. The explicit multi-part API resolves that template by both
++/// `(template_express_id, rep_identity)`. Purely in-memory,
+ /// like [`MeshData::instance`] — recomputed fresh each load, never round-trips a cache.
+ #[derive(Debug, Clone)]
+ pub struct InstanceRecord {
+@@ -381,7 +382,7 @@ pub struct InstanceRecord {
+     /// `express_id` of the template `MeshData` this occurrence instantiates — the
+     /// consumer's link from record to the geometry it draws (JS-safe u32).
+     pub template_express_id: u32,
+-    /// Representation-identity of the shared geometry (`IfcRepresentationMap` id).
++    /// Opaque shared-geometry identity: a map id, or a map/part key on the opt-in path.
+     pub rep_identity: u128,
+     /// Row-major, TEMPLATE-RELATIVE mat4: applied to the template's baked world
+     /// geometry (`template.origin + positions`) it yields this occurrence's world
+diff --git a/rust/processing/tests/instancing_multi_item.rs b/rust/processing/tests/instancing_multi_item.rs
+index 34a3b601a..658c6183b 100644
+--- a/rust/processing/tests/instancing_multi_item.rs
++++ b/rust/processing/tests/instancing_multi_item.rs
+@@ -405,3 +405,48 @@ fn instanced_occurrences_carry_their_source_solid_item_id() {
+         );
+     }
+ }
++
++/// #5328: the opt-in path keeps both source solids without baking every occurrence.
++/// Compare expanded world vertices, topology, colours and metadata to the canonical
++/// flat pipeline; checking only instance counts would miss lost/misplaced parts.
++#[test]
++fn multipart_dont_bake_reconstructs_every_part() {
++    let bytes = fixture_bytes("mapped_instances_multi_item.ifc");
++    let flat = run(&bytes);
++    let parts = ifc_lite_processing::process_geometry_streaming_with_mapped_parts(
++        &bytes, OpeningFilterMode::Default,
++        StreamingOptions { enable_instancing: true, ..StreamingOptions::default() },
++        |_, _, _| {}, |_| {}, |_| {},
++    );
++    assert_eq!(flat.meshes.len(), 8);
++    assert_eq!(parts.meshes.len(), 2, "only one template per source part");
++    assert_eq!(parts.instances.len(), 6);
++    for reference in &flat.meshes {
++        let key = (reference.express_id, reference.geometry_item_id);
++        let retained = parts.meshes.iter().find(|m| (m.express_id, m.geometry_item_id) == key);
++        let (vertices, indices, color, global_id, name) = if let Some(m) = retained {
++            (world_vertices(m), &m.indices, m.color, &m.global_id, &m.name)
++        } else {
++            let rec = parts.instances.iter().find(|rec| (rec.express_id, rec.geometry_item_id) == key)
++                .expect("every flat part has an occurrence");
++            let template = parts.meshes.iter().find(|m| m.express_id == rec.template_express_id
++                && m.instance.as_ref().is_some_and(|im| im.rep_identity == rec.rep_identity))
++                .expect("exact part template");
++            (world_vertices(template).into_iter().map(|p| apply(&rec.transform, p)).collect(),
++             &template.indices, rec.color, &rec.global_id, &rec.name)
++        };
++        assert_eq!(indices, &reference.indices);
++        assert_eq!(color, reference.color);
++        assert_eq!(global_id, &reference.global_id);
++        assert_eq!(name, &reference.name);
++        assert!(max_vertex_error(&vertices, &world_vertices(reference)) < 1e-4);
++    }
++    // Existing callers keep the single-solid contract even when instancing is enabled.
++    let old = process_geometry_streaming_filtered_with_options(
++        &bytes, OpeningFilterMode::Default,
++        StreamingOptions { enable_instancing: true, ..StreamingOptions::default() },
++        |_, _, _| {}, |_| {}, |_| {},
++    );
++    assert!(old.instances.is_empty());
++    assert_eq!(old.meshes.len(), 8);
++}
+diff --git a/rust/wasm-bindings/src/api/entity_index.rs b/rust/wasm-bindings/src/api/entity_index.rs
+index 3ac82caba..f51229143 100644
+--- a/rust/wasm-bindings/src/api/entity_index.rs
++++ b/rust/wasm-bindings/src/api/entity_index.rs
+@@ -133,6 +133,10 @@ impl IfcAPI {
+             .lock()
+             .unwrap_or_else(std::sync::PoisonError::into_inner)
+             .take();
++        self.cached_mapped_part
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .take();
+         // A new entity index means a new file — the pipeline diagnostics
+         // describe the previous load, so start fresh.
+         self.reset_pipeline_diagnostics();
+diff --git a/rust/wasm-bindings/src/api/gpu_meshes/batch.rs b/rust/wasm-bindings/src/api/gpu_meshes/batch.rs
+index 2a4080cf3..e1b4c7c49 100644
+--- a/rust/wasm-bindings/src/api/gpu_meshes/batch.rs
++++ b/rust/wasm-bindings/src/api/gpu_meshes/batch.rs
+@@ -230,10 +230,7 @@ impl IfcAPI {
+         } else {
+             None
+         };
+-        if let Some(plan) = instance_plan.as_ref() {
+-            router.enable_output_instancing(plan.clone());
+-            router.set_instancing_batch_local(true);
+-        }
++        let mapped_part_cache = self.arm_mapped_parts(&mut router, instance_plan.as_ref());
+ 
+         // Attach the per-content material-layer index so single-solid walls and
+         // slabs carrying an IfcMaterialLayerSetUsage slice into one coloured
+@@ -585,6 +582,7 @@ impl IfcAPI {
+                 std::mem::take(&mut all_occurrences),
+                 &template_by_rep,
+                 &mapped_item_cache,
++                mapped_part_cache.as_ref(),
+                 rtc,
+                 INSTANCE_MIN_OCCURRENCES as usize,
+                 &mut recovered_flats,
+diff --git a/rust/wasm-bindings/src/api/gpu_meshes/instancing.rs b/rust/wasm-bindings/src/api/gpu_meshes/instancing.rs
+index db8303040..16b0214df 100644
+--- a/rust/wasm-bindings/src/api/gpu_meshes/instancing.rs
++++ b/rust/wasm-bindings/src/api/gpu_meshes/instancing.rs
+@@ -21,7 +21,7 @@
+ //!   the native orphan recovery uses, so the two cannot drift.
+ 
+ use ifc_lite_geometry::SharedMappedItemCache;
+-use ifc_lite_processing::{recover_occurrences_flat, MeshData, RawInstanceOccurrence};
++use ifc_lite_processing::{MeshData, RawInstanceOccurrence};
+ use rustc_hash::FxHashMap;
+ 
+ /// A batch-local template's shard-relevant facts: its PRE-RTC composed world
+@@ -49,6 +49,22 @@ pub(super) struct ShardOccurrence {
+     pub geometry_item_id: Option<u32>,
+ }
+ 
++impl crate::api::IfcAPI {
++    pub(super) fn arm_mapped_parts(
++        &self,
++        router: &mut ifc_lite_geometry::GeometryRouter,
++        plan: Option<&ifc_lite_geometry::MappedInstancePlan>,
++    ) -> Option<ifc_lite_geometry::SharedMappedPartCache> {
++        let plan = plan?;
++        let cache = self.cached_mapped_part.lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .get_or_insert_with(ifc_lite_geometry::GeometryRouter::new_mapped_part_cache).clone();
++        router.enable_output_instancing_parts(plan.clone(), cache.clone());
++        router.set_instancing_batch_local(true);
++        Some(cache)
++    }
++}
++
+ /// Resolve the batch's collected don't-bake occurrences (#1623 Phase 3). For each
+ /// rep group with a SHARD-ELIGIBLE in-batch template whose total occurrence count
+ /// (template + placeholders) clears `min_occurrences`, the occurrences become
+@@ -59,6 +75,7 @@ pub(super) fn resolve_batch_occurrences(
+     raw: Vec<RawInstanceOccurrence>,
+     template_by_rep: &FxHashMap<u128, TemplateInfo>,
+     mapped_item_cache: &SharedMappedItemCache,
++    mapped_part_cache: Option<&ifc_lite_geometry::SharedMappedPartCache>,
+     rtc: [f64; 3],
+     min_occurrences: usize,
+     recovered_flats: &mut Vec<MeshData>,
+@@ -101,7 +118,9 @@ pub(super) fn resolve_batch_occurrences(
+             // here: `ensure_shared_mapped_source` registers it before any
+             // placeholder is emitted on this path, and the wasm build has no
+             // tracing sink. The native mirror logs it.
+-            recover_occurrences_flat(rep, &occs, mapped_item_cache, rtc, recovered_flats);
++            ifc_lite_processing::recover_occurrences_flat_with_parts(
++                rep, &occs, mapped_item_cache, mapped_part_cache, rtc, recovered_flats,
++            );
+         }
+     }
+     // Deterministic shard-instance order (occurrences arrive in job order, already
+@@ -164,6 +183,7 @@ mod resolve_batch_occurrences_tests {
+             raw,
+             &template_by_rep,
+             &empty_cache(),
++            None,
+             [0.0, 0.0, 0.0],
+             MIN_OCCURRENCES,
+             &mut recovered_flats,
+@@ -228,6 +248,7 @@ mod resolve_batch_occurrences_tests {
+             vec![occ],
+             &template_by_rep,
+             &cache,
++            None,
+             [0.0, 0.0, 0.0],
+             MIN_OCCURRENCES,
+             &mut recovered_flats,
+diff --git a/rust/wasm-bindings/src/api/mod.rs b/rust/wasm-bindings/src/api/mod.rs
+index cfef37975..cec4f72b5 100644
+--- a/rust/wasm-bindings/src/api/mod.rs
++++ b/rust/wasm-bindings/src/api/mod.rs
+@@ -109,6 +109,7 @@ pub struct IfcAPI {
+     /// content swap AND on `setTessellationQuality` (a quality change invalidates
+     /// the source-coord tessellation — the key is the source id, not the quality).
+     cached_mapped_item: std::sync::Mutex<Option<ifc_lite_geometry::SharedMappedItemCache>>,
++    cached_mapped_part: std::sync::Mutex<Option<ifc_lite_geometry::SharedMappedPartCache>>,
+ 
+     /// When `true`, `processGeometryBatch` suppresses geometry emission for
+     /// every `IfcBuildingElementPart` whose `IfcRelAggregates` parent (a) has
+@@ -281,6 +282,7 @@ impl IfcAPI {
+             cached_source_bytes: std::sync::Mutex::new(None),
+             cached_item_dedup: std::sync::Mutex::new(None),
+             cached_mapped_item: std::sync::Mutex::new(None),
++            cached_mapped_part: std::sync::Mutex::new(None),
+             merge_layers: std::sync::atomic::AtomicBool::new(false),
+             cached_parts_to_skip: std::sync::Mutex::new(None),
+             cached_material_layer_index: std::sync::Mutex::new(None),
+@@ -399,6 +401,10 @@ impl IfcAPI {
+             .lock()
+             .unwrap_or_else(std::sync::PoisonError::into_inner)
+             .take();
++        self.cached_mapped_part
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .take();
+         // NB: do NOT reset pipeline_diagnostics here. clearPrePassCache runs in
+         // the JS load wrapper's `finally` AFTER the last processGeometryBatch
+         // (packages/geometry/src/index.ts), i.e. end-of-load cleanup; resetting
+@@ -626,6 +632,10 @@ impl IfcAPI {
+             .lock()
+             .unwrap_or_else(std::sync::PoisonError::into_inner)
+             .take();
++        self.cached_mapped_part
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .take();
+         Ok(())
+     }
+ 
+@@ -651,6 +661,10 @@ impl IfcAPI {
+             .lock()
+             .unwrap_or_else(std::sync::PoisonError::into_inner)
+             .take();
++        self.cached_mapped_part
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .take();
+     }
+ }
+ 

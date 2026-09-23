@@ -1,0 +1,229 @@
+{
+  "wasmSha256": "c15ed3a2b0a9d44649a8a3cb2b757af52e7096a381d7d2f25bd284a5f21d970b",
+  "records": [
+    {
+      "name": "eight-occurrences",
+      "batch": 1,
+      "meshes": 16,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "eight-occurrences",
+      "batch": 2,
+      "meshes": 16,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "eight-occurrences",
+      "batch": 4,
+      "meshes": 16,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "eight-occurrences",
+      "batch": 64,
+      "meshes": 16,
+      "instancedOccurrences": 16,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "eight-rotation",
+      "batch": 1,
+      "meshes": 16,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "eight-rotation",
+      "batch": 2,
+      "meshes": 16,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "eight-rotation",
+      "batch": 4,
+      "meshes": 16,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "eight-rotation",
+      "batch": 64,
+      "meshes": 16,
+      "instancedOccurrences": 16,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "eight-nonuniform",
+      "batch": 1,
+      "meshes": 16,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "eight-nonuniform",
+      "batch": 2,
+      "meshes": 16,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "eight-nonuniform",
+      "batch": 4,
+      "meshes": 16,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "eight-nonuniform",
+      "batch": 64,
+      "meshes": 16,
+      "instancedOccurrences": 16,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "translation",
+      "batch": 1,
+      "meshes": 8,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "translation",
+      "batch": 2,
+      "meshes": 8,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "translation",
+      "batch": 4,
+      "meshes": 8,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "translation",
+      "batch": 64,
+      "meshes": 8,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "rotation-scale",
+      "batch": 1,
+      "meshes": 8,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "rotation-scale",
+      "batch": 2,
+      "meshes": 8,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "rotation-scale",
+      "batch": 4,
+      "meshes": 8,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "rotation-scale",
+      "batch": 64,
+      "meshes": 8,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "nonuniform",
+      "batch": 1,
+      "meshes": 8,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "nonuniform",
+      "batch": 2,
+      "meshes": 8,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "nonuniform",
+      "batch": 4,
+      "meshes": 8,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "nonuniform",
+      "batch": 64,
+      "meshes": 8,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "reused-ids-new-source",
+      "batch": 1,
+      "meshes": 8,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "reused-ids-new-source",
+      "batch": 2,
+      "meshes": 8,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "reused-ids-new-source",
+      "batch": 4,
+      "meshes": 8,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    },
+    {
+      "name": "reused-ids-new-source",
+      "batch": 64,
+      "meshes": 8,
+      "instancedOccurrences": 0,
+      "maxCoordinateError": 0,
+      "maxNormalError": 0
+    }
+  ]
+}

@@ -6,7 +6,7 @@
 
 use super::processing::SourceHygiene;
 use super::GeometryRouter;
-use crate::csg::{ClippingProcessor, GroupCut, GroupReject};
+use crate::csg::{ClippingProcessor, GroupCut};
 use crate::mesh::{SubMesh, SubMeshCollection};
 use crate::{Mesh, Point3, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
@@ -1450,16 +1450,9 @@ impl GeometryRouter {
                     );
                     let cutter = &extended_opening;
                     let outcome = clipper.subtract_mesh(&result, cutter);
-                    // The kernel established that the cutter does not reach the
-                    // host solid: its bounds miss the host, or the arrangement
-                    // kept every host face and no cutter face. There is nothing
-                    // to cut, so the #635 fallback below must not cut a box
-                    // either (#5362).
-                    let kernel_found_no_overlap = matches!(
-                        outcome,
-                        GroupCut::Retessellated(_)
-                            | GroupCut::Rejected(GroupReject::NoOverlap | GroupReject::EmptyHost)
-                    );
+                    // Nothing to cut, so the #635 fallback below must not cut a
+                    // box either (#5362).
+                    let kernel_found_no_overlap = outcome.found_no_overlap();
                     let kept = mesh_to_keep(outcome, &result);
                     // The host is still un-cut: the kernel found no real
                     // intersection, or bailed on a grazing/coplanar cutter.
@@ -1482,7 +1475,7 @@ impl GeometryRouter {
                     // hole in place of a round one, but a square hole is
                     // dramatically less wrong than a missing void on a wall
                     // that is supposed to host a window or door.
-                    if !csg_succeeded {
+                    if !csg_succeeded && !kernel_found_no_overlap {
                         let dir = extrusion_dir.or_else(|| {
                             Some(wall_thinnest_axis_dir(&wall_min, &wall_max))
                         });
@@ -1555,9 +1548,8 @@ impl GeometryRouter {
                         });
                         let redundant_void =
                             opening_redundant_with_host(&result, opening_mesh, &probe_axis);
-                        let suppress_fallback = kernel_found_no_overlap
-                            || redundant_void
-                            || (csg_unchanged && engulfs_host);
+                        let suppress_fallback =
+                            redundant_void || (csg_unchanged && engulfs_host);
                         if !suppress_fallback {
                             // Diagnostic for issue #635: log the opening
                             // triangle count when the AABB fallback actually
@@ -1583,11 +1575,9 @@ impl GeometryRouter {
                             // the wall material inside the opening AABB but no
                             // longer emits reveal/recess quads (deleted with
                             // the legacy clip path), so its output has an open
-                            // rim. It now runs only when the kernel FAILED on
-                            // an opening that reaches the host (#5362): across
-                            // the public corpus that is one host (O-S1-BWK-BIM #5801642,
-                            // a cut refused by the retention check). The 46 other
-                            // firings were openings the kernel found disjoint.
+                            // rim. It runs only when the kernel FAILED on an
+                            // opening that reaches the host, never on one the
+                            // kernel found disjoint (#5362).
                             let aabb_cut =
                                 self.cut_rectangular_opening(&result, final_min, final_max);
                             if !aabb_cut.is_empty() && aabb_cut.triangle_count() != tri_before {

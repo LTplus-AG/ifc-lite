@@ -36,6 +36,17 @@ pub enum GroupCut {
 }
 
 impl GroupCut {
+    /// Whether the kernel established that no cutter reaches the host solid,
+    /// as opposed to failing to cut one that does: there is nothing to
+    /// approximate, so a fallback cut must not run (#5362).
+    pub fn found_no_overlap(&self) -> bool {
+        matches!(
+            self,
+            Self::Retessellated(_)
+                | Self::Rejected(GroupReject::NoOverlap | GroupReject::EmptyHost | GroupReject::Unchanged)
+        )
+    }
+
     /// The mesh the subtract produced, a cut or a re-tessellated miss; `None`
     /// for a rejection.
     pub fn into_mesh(self) -> Option<Mesh> {

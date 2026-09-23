@@ -408,12 +408,9 @@ impl ProfileProcessor {
             // segments supplying the vertical (z) profile. The minimum-viable
             // sampler for #859's IfcLinearPlacement use case returns the
             // horizontal track of points by recursing into BaseCurve and
-            // dropping Z to 0 — every signal lands at the correct (x, y)
-            // station, just at the alignment's reference elevation instead
-            // of the true grade-corrected z. Full grade evaluation is a
-            // follow-up; "every signal pinned to its alignment station" is
-            // already a vast improvement over the pre-fix "all signals at
-            // world origin" state.
+            // dropping Z to 0. `IfcLinearPlacement` lifts its sample onto the
+            // vertical profile afterwards (`gradient.rs`); other consumers of
+            // these points still see the horizontal track only.
             IfcType::IfcGradientCurve => {
                 if let Some(base_attr) = curve.get(2) {
                     if !base_attr.is_null() {
@@ -527,6 +524,19 @@ impl ProfileProcessor {
             // segment's authored start..start+length range) is follow-up
             // scope.
             if segment.ifc_type == IfcType::IfcCurveSegment {
+                // Line / circle / clothoid parents: sample the real curve
+                // densely (`curve_segment.rs`), start and end included, so
+                // arcs stay arcs. Other parents keep the sparse
+                // one-point-per-segment fallback below.
+                if let Some(points) = crate::curve_segment::sample_curve_segment(&segment, decoder) {
+                    for p in points {
+                        if result.last().is_none_or(|last: &Point3<f64>| (last - p).norm() > 1e-9) {
+                            result.push(p);
+                        }
+                    }
+                    last_curve_segment_terminal = None;
+                    continue;
+                }
                 if let Some(placement_attr) = segment.get(1) {
                     if !placement_attr.is_null() {
                         if let Some(placement) = decoder.resolve_ref(placement_attr)? {

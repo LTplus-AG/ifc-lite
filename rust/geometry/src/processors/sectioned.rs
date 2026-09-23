@@ -12,8 +12,10 @@
 //!    something other than `IfcAlignmentCurve` we fall back to a
 //!    straight-line sweep along the body's local +Y axis.
 //! 2. Decode every cross-section via `ProfileProcessor` and every
-//!    `IfcDistanceExpression` into a structured position (station +
-//!    lateral / vertical / longitudinal offsets + `AlongHorizontal`).
+//!    position — IFC4x1 `IfcDistanceExpression` or IFC4x3
+//!    `IfcAxis2PlacementLinear` → `IfcPointByDistanceExpression` — into a
+//!    structured position (station + lateral / vertical / longitudinal
+//!    offsets + `AlongHorizontal`).
 //! 3. **Adaptive subdivision** — between each pair of authored stations
 //!    we walk the alignment and add intermediate sample stations
 //!    whenever the cumulative heading change exceeds `MAX_ANGLE_STEP`.
@@ -98,7 +100,52 @@ struct PositionAlongDirectrix {
 }
 
 impl PositionAlongDirectrix {
-    fn parse(entity: &DecodedEntity) -> Result<Self> {
+    /// Accepts both schema generations of `CrossSectionPositions`:
+    ///
+    /// - IFC4x1 `IfcDistanceExpression` (read by [`Self::parse_distance_expression`]).
+    /// - IFC4x3 `IfcAxis2PlacementLinear` whose `Location` is an
+    ///   `IfcPointByDistanceExpression(DistanceAlong, OffsetLateral,
+    ///   OffsetVertical, OffsetLongitudinal, BasisCurve)`. Its
+    ///   `Axis`/`RefDirection` are not applied (the frame comes from the
+    ///   directrix, as for IFC4x1). Two convention differences are mapped
+    ///   onto the IFC4x1 shape this processor works in: `OffsetLateral` is
+    ///   positive to the LEFT in IFC4x3 (local +Y, the same convention
+    ///   `linear.rs` resolves `IfcLinearPlacement` with), so it is negated;
+    ///   and `DistanceAlong` is measured along the basis curve itself, so on
+    ///   a 3D `IfcPolyline` directrix it is 3D arc length
+    ///   (`along_horizontal = false`), while on an alignment curve it is the
+    ///   horizontal station.
+    fn parse(
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        directrix_type: &IfcType,
+    ) -> Result<Self> {
+        if entity.ifc_type != IfcType::IfcAxis2PlacementLinear {
+            return Self::parse_distance_expression(entity);
+        }
+        let location_id = entity.get_ref(0).ok_or_else(|| {
+            Error::geometry("IfcAxis2PlacementLinear missing Location".to_string())
+        })?;
+        let location = decoder.decode_by_id(location_id)?;
+        if location.ifc_type != IfcType::IfcPointByDistanceExpression {
+            return Err(Error::geometry(format!(
+                "IfcAxis2PlacementLinear.Location must be IfcPointByDistanceExpression, got {:?}",
+                location.ifc_type
+            )));
+        }
+        let distance_along = location.get_float(0).ok_or_else(|| {
+            Error::geometry("IfcPointByDistanceExpression.DistanceAlong is required".to_string())
+        })?;
+        Ok(Self {
+            distance_along,
+            offset_lateral: -location.get_float(1).unwrap_or(0.0),
+            offset_vertical: location.get_float(2).unwrap_or(0.0),
+            offset_longitudinal: location.get_float(3).unwrap_or(0.0),
+            along_horizontal: *directrix_type != IfcType::IfcPolyline,
+        })
+    }
+
+    fn parse_distance_expression(entity: &DecodedEntity) -> Result<Self> {
         let distance_along = entity.get_float(0).ok_or_else(|| {
             Error::geometry("IfcDistanceExpression.DistanceAlong is required".to_string())
         })?;
@@ -244,7 +291,8 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
                 Error::geometry("CrossSectionPosition must be an entity reference".to_string())
             })?;
             let pos_entity = decoder.decode_by_id(pos_id)?;
-            let position = PositionAlongDirectrix::parse(&pos_entity)?;
+            let position =
+                PositionAlongDirectrix::parse(&pos_entity, decoder, &directrix_entity.ifc_type)?;
             authored.push((profile, position));
         }
 

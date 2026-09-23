@@ -55,6 +55,7 @@ fn fixture_828_arc_endpoint() {
 fn base_frame_axes_and_cant_stub() {
     // Straight directrix along +X, no slope.
     let curve = AlignmentCurve {
+        gradient: None,
         horizontal: vec![HSeg::Line {
             sx: 0.0,
             sy: 0.0,
@@ -84,6 +85,7 @@ fn polyline_directrix_evaluates_piecewise() {
     // Edge 1: heading 0, length 10, gradient 0.1
     // Edge 2: heading π/2, length 10, gradient 0.1
     let curve = AlignmentCurve {
+        gradient: None,
         horizontal: vec![
             HSeg::Line {
                 sx: 0.0,
@@ -325,6 +327,7 @@ END-ISO-10303-21;
 #[test]
 fn station_in_a_vertical_gap_uses_the_nearer_bracketing_segment() {
     let curve = AlignmentCurve {
+        gradient: None,
         horizontal: vec![HSeg::Line {
             sx: 0.0,
             sy: 0.0,

@@ -6,6 +6,7 @@
 
 use super::super::GeometryRouter;
 use super::walk::PlacementWalk;
+use crate::gradient::GradientProfile;
 use crate::profiles::ProfileProcessor;
 use crate::{Point3, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
@@ -42,12 +43,9 @@ impl GeometryRouter {
         };
 
         // Prefer the authored CartesianPosition (attr 2) when the exporter
-        // supplied one: it is the exact pre-computed placement. Our sampler
-        // reads an `IfcGradientCurve` through its BASE curve only — no
-        // vertical profile — so a computed frame can sit metres below the
-        // authored station (measured on a public IFC4x3 rail model: signal
-        // origins 2.5 m where the authored positions say 4.5 m and 7.4 m).
-        // Sample the curve only when no authored position exists.
+        // supplied one: it is the exact pre-computed placement. Sample the
+        // curve only when no authored position exists (an `IfcGradientCurve`
+        // is then evaluated with its vertical profile, see `gradient.rs`).
         let local = match self.try_resolve_cartesian_position(placement, decoder) {
             Some(m) => m,
             None => self
@@ -113,7 +111,23 @@ impl GeometryRouter {
             .ok()
             .filter(|pts| pts.len() >= 2)?;
 
-        let (origin, tangent) = sample_polyline_at_distance(&samples, distance_along)?;
+        let (mut origin, mut tangent) = sample_polyline_at_distance(&samples, distance_along)?;
+
+        // An `IfcGradientCurve` samples through its 2D BaseCurve (z = 0) and
+        // is parameterised by horizontal station, so lift the sample onto
+        // the vertical profile: elevation at the station, and the grade
+        // folded into the tangent. Without this every product placed along
+        // a gradient sat at z = 0 — ~55 m below the deck on the
+        // buildingSMART "Viadotto Acerno" bridge.
+        if let Some(profile) = GradientProfile::parse(&basis_curve, decoder) {
+            let (height, grade) = profile.evaluate(distance_along);
+            origin.z += height;
+            let horizontal = Vector3::new(tangent.x, tangent.y, 0.0);
+            let run = horizontal.norm();
+            if run > 1e-9 {
+                tangent = (horizontal + Vector3::new(0.0, 0.0, grade * run)).normalize();
+            }
+        }
 
         // Build the curve-aligned frame with world-up. Railway alignments
         // are near-horizontal so this is well-conditioned; in the

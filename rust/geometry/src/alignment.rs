@@ -30,7 +30,10 @@ use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::{Point3, Vector3};
 use std::sync::OnceLock;
 
-use crate::{Error, Result};
+use crate::gradient::GradientProfile;
+use crate::profiles::ProfileProcessor;
+use crate::{Error, Result, TessellationQuality};
+use ifc_lite_core::IfcSchema;
 
 // --- Cached IFC type lookup for IFC4x1 alignment names ---
 
@@ -210,6 +213,9 @@ pub struct AlignmentFrame {
 pub struct AlignmentCurve {
     horizontal: Vec<HSeg>,
     vertical: Vec<VSeg>,
+    /// IFC4x3 `IfcGradientCurve` vertical profile; when present it
+    /// replaces `vertical` (see [`Self::from_gradient_curve`]).
+    gradient: Option<GradientProfile>,
 }
 
 impl AlignmentCurve {
@@ -223,6 +229,8 @@ impl AlignmentCurve {
     ///   covers the relatively rare case of a sectioned-solid authored
     ///   with a polyline directrix, which is spec-allowed but uncommon.
     ///
+    /// - `IfcGradientCurve` (IFC4x3) — see [`Self::from_gradient_curve`].
+    ///
     /// Returns `Ok(None)` for any other directrix so the caller can
     /// fall back to a straight-line sweep. Errors only on malformed
     /// recognised input (e.g. an `IfcAlignmentCurve` missing
@@ -230,6 +238,9 @@ impl AlignmentCurve {
     pub fn parse(directrix: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Option<Self>> {
         if directrix.ifc_type == IfcType::IfcPolyline {
             return Self::from_polyline(directrix, decoder).map(Some);
+        }
+        if directrix.ifc_type == IfcType::IfcGradientCurve {
+            return Self::from_gradient_curve(directrix, decoder);
         }
         if directrix.ifc_type != t_alignment_curve() {
             return Ok(None);
@@ -259,7 +270,7 @@ impl AlignmentCurve {
             _ => Vec::new(),
         };
 
-        Ok(Some(Self { horizontal, vertical }))
+        Ok(Some(Self { horizontal, vertical, gradient: None }))
     }
 
     /// Total length of the horizontal alignment (sum of segment lengths).
@@ -300,7 +311,41 @@ impl AlignmentCurve {
             let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
             pts.push((x, y, z));
         }
+        Self::from_points(&pts)
+    }
 
+    /// IFC4x3 `IfcGradientCurve` directrix: the horizontal layout is its
+    /// 2D `BaseCurve` (attr 2), sampled densely through the shared curve
+    /// sampler (arcs and clothoids included, `curve_segment.rs`) into
+    /// line segments; the elevation is the curve's own vertical profile
+    /// (`gradient.rs`), both indexed by horizontal station. `Ok(None)`
+    /// when either half is missing, so the caller keeps its fallback.
+    fn from_gradient_curve(curve: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Option<Self>> {
+        let Some(profile) = GradientProfile::parse(curve, decoder) else {
+            return Ok(None);
+        };
+        let Some(base_id) = curve.get_ref(2) else {
+            return Ok(None);
+        };
+        let base = decoder.decode_by_id(base_id)?;
+        let samples = ProfileProcessor::new(IfcSchema::new()).get_curve_points(
+            &base,
+            decoder,
+            TessellationQuality::Medium,
+        )?;
+        if samples.len() < 2 {
+            return Ok(None);
+        }
+        let pts: Vec<(f64, f64, f64)> = samples.iter().map(|p| (p.x, p.y, 0.0)).collect();
+        let mut alignment = Self::from_points(&pts)?;
+        alignment.vertical.clear();
+        alignment.gradient = Some(profile);
+        Ok(Some(alignment))
+    }
+
+    /// One horizontal + one vertical Line segment per edge of a 3D point
+    /// chain.
+    fn from_points(pts: &[(f64, f64, f64)]) -> Result<Self> {
         let mut horizontal: Vec<HSeg> = Vec::with_capacity(pts.len() - 1);
         let mut vertical: Vec<VSeg> = Vec::with_capacity(pts.len() - 1);
         let mut cum_xy = 0.0;
@@ -339,7 +384,7 @@ impl AlignmentCurve {
                 "IfcPolyline directrix degenerated to zero horizontal length".to_string(),
             ));
         }
-        Ok(Self { horizontal, vertical })
+        Ok(Self { horizontal, vertical, gradient: None })
     }
 
     /// Evaluate the placement frame at the given station (cumulative
@@ -394,6 +439,9 @@ impl AlignmentCurve {
     /// extrapolated backwards across the whole alignment (z = -15 where
     /// the first segment's start height 10 was right).
     fn evaluate_vertical_frame(&self, station: f64) -> (f64, f64) {
+        if let Some(profile) = &self.gradient {
+            return profile.evaluate(station);
+        }
         let Some(first) = self.vertical.first() else {
             return (0.0, 0.0);
         };

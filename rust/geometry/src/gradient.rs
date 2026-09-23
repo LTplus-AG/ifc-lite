@@ -1,0 +1,240 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Vertical profile of an IFC4x3 `IfcGradientCurve`: elevation and grade
+//! as a function of horizontal station.
+//!
+//! `IfcGradientCurve.Segments` are `IfcCurveSegment`s laid out in the
+//! (distance-along, height) plane. Each segment's `Placement`
+//! (`IfcAxis2Placement2D`) already carries everything needed to evaluate
+//! the profile without walking the parent curve's own parameterisation:
+//!
+//! - `Location` = (start station, start height)
+//! - `RefDirection` = start grade direction (dx, dz) → grade = dz / dx
+//!
+//! A segment's horizontal length and end grade are the next segment's start
+//! station and start grade (IFC4x3 closes the list with a zero-length
+//! marker segment, so the last real segment always has a successor). The
+//! `ParentCurve` then only picks the shape between the two ends:
+//!
+//! - `IfcLine` → constant grade
+//! - `IfcCircle` → circular arc tangent to both grades (exact)
+//! - anything else (`IfcPolynomialCurve` for parabolic vertical curves,
+//!   transition curves) → parabola tangent to both grades, which is the
+//!   exact parabolic case and a sub-millimetre approximation otherwise on
+//!   road/rail grades
+//!
+//! Before a first segment the profile is flat-extrapolated from its start;
+//! past the last segment it continues on its start grade.
+
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Shape {
+    Line,
+    Circular,
+    Parabolic,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Segment {
+    start: f64,
+    height: f64,
+    grade: f64,
+    shape: Shape,
+}
+
+#[derive(Debug, Clone)]
+pub struct GradientProfile {
+    segments: Vec<Segment>,
+}
+
+impl GradientProfile {
+    /// Parse the vertical profile of an `IfcGradientCurve`. `None` when the
+    /// entity is not a gradient curve or carries no usable segment.
+    pub fn parse(curve: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<Self> {
+        if curve.ifc_type != IfcType::IfcGradientCurve {
+            return None;
+        }
+        let mut segments = Vec::new();
+        for seg_id in curve.get_refs(0)? {
+            let Ok(seg) = decoder.decode_by_id(seg_id) else { continue };
+            if let Some(s) = parse_segment(&seg, decoder) {
+                segments.push(s);
+            }
+        }
+        if segments.is_empty() {
+            return None;
+        }
+        segments.sort_by(|a, b| a.start.total_cmp(&b.start));
+        Some(Self { segments })
+    }
+
+    /// (elevation, grade dz/dx) at horizontal `station`.
+    pub fn evaluate(&self, station: f64) -> (f64, f64) {
+        let first = self.segments[0];
+        if station <= first.start {
+            return (first.height + first.grade * (station - first.start), first.grade);
+        }
+        let i = self
+            .segments
+            .iter()
+            .rposition(|s| s.start <= station)
+            .unwrap_or(0);
+        let seg = self.segments[i];
+        let u = station - seg.start;
+        let Some(next) = self.segments.get(i + 1) else {
+            return (seg.height + seg.grade * u, seg.grade);
+        };
+        let length = next.start - seg.start;
+        if length <= 1e-9 {
+            return (seg.height, seg.grade);
+        }
+        match seg.shape {
+            Shape::Line => (seg.height + seg.grade * u, seg.grade),
+            Shape::Parabolic => parabolic(seg.height, seg.grade, next.grade, length, u),
+            Shape::Circular => circular(seg.height, seg.grade, next.grade, length, u),
+        }
+    }
+}
+
+fn parse_segment(seg: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<Segment> {
+    if seg.ifc_type != IfcType::IfcCurveSegment {
+        return None;
+    }
+    // IfcCurveSegment: 0 Transition, 1 Placement, 2 SegmentStart,
+    //                  3 SegmentLength, 4 ParentCurve.
+    let placement = decoder.decode_by_id(seg.get_ref(1)?).ok()?;
+    let location = decoder.decode_by_id(placement.get_ref(0)?).ok()?;
+    let coords = location.get_list(0)?;
+    let start = coords.first()?.as_float()?;
+    let height = coords.get(1)?.as_float()?;
+
+    // RefDirection defaults to +X (level) when omitted.
+    let grade = match placement.get_ref(1).and_then(|id| decoder.decode_by_id(id).ok()) {
+        Some(dir) => {
+            let ratios = dir.get_list(0)?;
+            let dx = ratios.first()?.as_float()?;
+            let dz = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+            if dx.abs() < 1e-12 {
+                return None; // vertical tangent: not a valid grade
+            }
+            dz / dx
+        }
+        None => 0.0,
+    };
+
+    let shape = match seg.get_ref(4).and_then(|id| decoder.decode_by_id(id).ok()) {
+        Some(p) if p.ifc_type == IfcType::IfcLine => Shape::Line,
+        Some(p) if p.ifc_type == IfcType::IfcCircle => Shape::Circular,
+        _ => Shape::Parabolic,
+    };
+    Some(Segment { start, height, grade, shape })
+}
+
+fn parabolic(h0: f64, g0: f64, g1: f64, length: f64, u: f64) -> (f64, f64) {
+    let k = (g1 - g0) / length;
+    (h0 + g0 * u + 0.5 * k * u * u, g0 + k * u)
+}
+
+/// Arc tangent to grade `g0` at the start and `g1` after `length`
+/// horizontal metres. With θ the tangent angle, x(θ) = R(sin θ − sin θ0)
+/// and z(θ) = −R(cos θ − cos θ0), R = length / (sin θ1 − sin θ0) (signed:
+/// positive = sag / concave up).
+fn circular(h0: f64, g0: f64, g1: f64, length: f64, u: f64) -> (f64, f64) {
+    let (s0, c0) = g0.atan().sin_cos();
+    let s1 = g1.atan().sin();
+    if (s1 - s0).abs() < 1e-12 {
+        return (h0 + g0 * u, g0);
+    }
+    let r = length / (s1 - s0);
+    let s = (s0 + u / r).clamp(-1.0, 1.0);
+    let c = (1.0 - s * s).sqrt();
+    (h0 - r * (c - c0), s / c)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn profile(ifc: &str, id: u32) -> GradientProfile {
+        let index = ifc_lite_core::build_entity_index(ifc);
+        let mut decoder = EntityDecoder::with_index(ifc, index);
+        let curve = decoder.decode_by_id(id).unwrap();
+        GradientProfile::parse(&curve, &mut decoder).expect("parse gradient")
+    }
+
+    /// Abridged from the buildingSMART "Viadotto Acerno" bridge: constant
+    /// grade, an R = 8000 crest arc, constant grade, closing marker.
+    const ACERNO: &str = r#"DATA;
+#1=IFCDIRECTION((1.,0.));
+#2=IFCVECTOR(#1,1.);
+#3=IFCCARTESIANPOINT((0.,0.));
+#4=IFCLINE(#3,#2);
+#5=IFCAXIS2PLACEMENT2D(#3,$);
+#6=IFCCIRCLE(#5,8000.);
+#10=IFCCARTESIANPOINT((0.,55.3272130954399));
+#11=IFCDIRECTION((9.99915467899166E-1,-1.30021942760379E-2));
+#12=IFCAXIS2PLACEMENT2D(#10,#11);
+#13=IFCCURVESEGMENT(.CONTINUOUS.,#12,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(134.07),#4);
+#20=IFCCARTESIANPOINT((134.059288865966,53.5840008197099));
+#21=IFCDIRECTION((9.99915467899166E-1,-1.30021942760379E-2));
+#22=IFCAXIS2PLACEMENT2D(#20,#21);
+#23=IFCCURVESEGMENT(.CONTSAMEGRADIENT.,#22,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(38.3),#6);
+#30=IFCCARTESIANPOINT((172.359870103523,53.1776610240199));
+#31=IFCDIRECTION((9.99966254946E-1,-8.21489559836E-3));
+#32=IFCAXIS2PLACEMENT2D(#30,#31);
+#33=IFCCURVESEGMENT(.CONTSAMEGRADIENT.,#32,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(176.48),#4);
+#40=IFCCARTESIANPOINT((348.841611735963,51.7278330195199));
+#41=IFCDIRECTION((9.99966254946E-1,-8.21489559836E-3));
+#42=IFCAXIS2PLACEMENT2D(#40,#41);
+#43=IFCCURVESEGMENT(.DISCONTINUOUS.,#42,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(0.),#4);
+#50=IFCGRADIENTCURVE((#13,#23,#33,#43),.F.,$,$);
+ENDSEC;
+"#;
+
+    #[test]
+    fn hits_authored_heights_at_segment_starts() {
+        let p = profile(ACERNO, 50);
+        for (station, height) in [
+            (0.0, 55.3272130954399),
+            (134.059288865966, 53.5840008197099),
+            (172.359870103523, 53.1776610240199),
+            (348.841611735963, 51.7278330195199),
+        ] {
+            let (h, _) = p.evaluate(station);
+            assert!((h - height).abs() < 1e-3, "station {station}: {h} vs {height}");
+        }
+    }
+
+    #[test]
+    fn arc_ends_on_the_next_segment_tangentially() {
+        let p = profile(ACERNO, 50);
+        // Just before the arc/line junction the arc's height and grade must
+        // agree with the following line's start (continuity the file declares).
+        let (h, g) = p.evaluate(172.359870103523 - 1e-6);
+        assert!((h - 53.1776610240199).abs() < 2e-3, "arc end height {h}");
+        assert!((g - -8.21517280533015E-3).abs() < 1e-5, "arc end grade {g}");
+    }
+
+    #[test]
+    fn constant_grade_is_linear_and_extrapolates() {
+        let p = profile(ACERNO, 50);
+        let (h, g) = p.evaluate(67.0);
+        assert!((h - (55.3272130954399 - 0.0130032934717528 * 67.0)).abs() < 1e-6);
+        assert!((g - -0.0130032934717528).abs() < 1e-9);
+        // Past the closing marker (10 m on) its grade continues.
+        let (h_end, _) = p.evaluate(358.841611735963);
+        assert!((h_end - (51.7278330195199 - 8.21517280533015E-3 * 10.0)).abs() < 1e-4, "{h_end}");
+    }
+
+    #[test]
+    fn non_gradient_curve_is_none() {
+        let ifc = "DATA;\n#1=IFCCARTESIANPOINT((0.,0.));\n#2=IFCPOLYLINE((#1,#1));\nENDSEC;\n";
+        let index = ifc_lite_core::build_entity_index(ifc);
+        let mut decoder = EntityDecoder::with_index(ifc, index);
+        let e = decoder.decode_by_id(2).unwrap();
+        assert!(GradientProfile::parse(&e, &mut decoder).is_none());
+    }
+}

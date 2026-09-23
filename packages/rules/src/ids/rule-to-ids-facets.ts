@@ -27,7 +27,7 @@
 import type { IDSConstraint, IDSFacet } from '@ifc-lite/ids';
 import type { FilterGroup } from '../filter/filter-groups.js';
 import type { FilterRule, NumericOp, TextKind } from '../filter/filter-rules.js';
-import { escapeXsdLiteral, jsRegexOf, jsRegexToIdsPattern } from './ids-regex.js';
+import { escapeXsdLiteral, hasAstralCaveat, jsRegexOf, jsRegexToIdsPattern, type JsRegex } from './ids-regex.js';
 
 export type FacetRole = 'applicability' | 'requirement';
 
@@ -36,6 +36,9 @@ export type GroupFacets =
   | { ok: false; reasons: string[] };
 
 const NEGATED_OPS = new Set(['ne', 'notContains', 'notMatches', 'isNotSet', 'notIn']);
+
+/** A `/body/flags` literal: how a name with no declared kind says "pattern". */
+const REGEX_LITERAL = /^\/(.+)\/([a-z]*)$/;
 
 type Mapped = { facet: IDSFacet; boundsKey?: string; note?: string } | { reason: string };
 
@@ -47,7 +50,7 @@ function simpleOrEnumeration(values: readonly string[]): IDSConstraint {
 
 /** A set/property/quantity NAME as the engine reads it (`nameMatches`). */
 function nameConstraint(name: string, kind: TextKind | undefined): IDSConstraint | string {
-  const isRegex = kind === 'regex' || (kind === undefined && /^\/(.+)\/([a-z]*)$/.test(name));
+  const isRegex = kind === 'regex' || (kind === undefined && REGEX_LITERAL.test(name));
   if (!isRegex) return { type: 'simpleValue', value: name };
   const converted = jsRegexToIdsPattern(jsRegexOf(name, kind));
   return converted.ok ? { type: 'pattern', pattern: converted.pattern } : `name pattern "${name}": ${converted.reason}`;
@@ -96,6 +99,27 @@ function valueConstraint(op: string, value: string, valueKind: TextKind | undefi
 
 const UNITS_NOTE =
   'IDS compares measure values in SI units; the rule engine compares the value as stored in the model';
+
+const ASTRAL_NOTE =
+  'A pattern without the "u" flag reads an emoji or other character outside the Basic Multilingual Plane as two ' +
+  'characters in the rule engine and as one in IDS, so ".", "[^…]" and "\\D" can disagree on such values';
+
+/** The astral-plane caveat, when the rule's value or set/property name is such a regex. */
+function regexNote(rule: FilterRule): string | undefined {
+  const regexes: JsRegex[] = [];
+  if ('op' in rule && rule.op === 'matches' && 'value' in rule && typeof rule.value === 'string') {
+    regexes.push(jsRegexOf(rule.value, 'valueKind' in rule ? rule.valueKind : undefined));
+  }
+  if (rule.kind === 'property' || rule.kind === 'quantity') {
+    const baseName = rule.kind === 'property' ? rule.propertyName : rule.quantityName;
+    const baseKind = rule.kind === 'property' ? rule.propertyNameKind : rule.quantityNameKind;
+    const names: Array<[string, TextKind | undefined]> = [[rule.setName, rule.setNameKind], [baseName, baseKind]];
+    for (const [name, kind] of names) {
+      if (kind === 'regex' || (kind === undefined && REGEX_LITERAL.test(name))) regexes.push(jsRegexOf(name, kind));
+    }
+  }
+  return regexes.some(hasAstralCaveat) ? ASTRAL_NOTE : undefined;
+}
 
 function mapRule(rule: FilterRule): Mapped {
   if ('op' in rule && NEGATED_OPS.has(rule.op)) {
@@ -254,6 +278,8 @@ export function groupToFacets(group: FilterGroup, role: FacetRole): GroupFacets 
     const mapped = mapRule(rule);
     if ('reason' in mapped) { reasons.push(mapped.reason); continue; }
     if (mapped.note) notes.add(mapped.note);
+    const astral = regexNote(rule);
+    if (astral) notes.add(astral);
     const existing = mapped.boundsKey ? byBoundsKey.get(mapped.boundsKey) : undefined;
     const existingValue = existing ? facetValue(existing) : undefined;
     const newValue = facetValue(mapped.facet);

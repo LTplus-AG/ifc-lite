@@ -109,6 +109,16 @@ describe('ruleSetToIds — exportable rules (#5225)', () => {
     assert.ok(result.notes.some((n) => /SI units/.test(n)));
   });
 
+  it('notes where a pattern without the u flag can read astral-plane characters differently (review, #5291)', () => {
+    const plain = ruleSetToIds(file(rule([Rule.name('matches', '^.$', 'regex')])));
+    assert.deepEqual(plain.refused, []);
+    assert.ok(plain.notes.some((n) => /Basic Multilingual Plane/.test(n)), 'a bare "." gets the caveat');
+    const unicode = ruleSetToIds(file(rule([Rule.name('matches', '/^.$/u')])));
+    assert.ok(!unicode.notes.some((n) => /Basic Multilingual Plane/.test(n)), 'the u flag reads whole characters, like IDS');
+    const noDot = ruleSetToIds(file(rule([Rule.name('matches', '^W-[0-9]{3}$', 'regex')])));
+    assert.ok(!noDot.notes.some((n) => /Basic Multilingual Plane/.test(n)), 'no ".", "[^" or "\\D": nothing to note');
+  });
+
   it('uses the requested ifcVersions', () => {
     const result = ruleSetToIds(file(rule([Rule.property('P', 'X', 'isSet', '')])), { ifcVersions: ['IFC2X3', 'IFC4'] });
     assert.deepEqual(parseIDS(result.xml!).specifications[0].ifcVersions, ['IFC2X3', 'IFC4']);

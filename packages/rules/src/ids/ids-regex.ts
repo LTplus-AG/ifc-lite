@@ -49,6 +49,35 @@ export function jsRegexOf(value: string, valueKind: 'regex' | 'literal' | undefi
   return { source: value, flags: '' };
 }
 
+/**
+ * Whether `regex` can read a character outside the Basic Multilingual Plane
+ * (an emoji, rare CJK) differently from its IDS pattern. Without the `u`
+ * flag JavaScript sees such a character as two UTF-16 code units, so `.`,
+ * a negated class `[^…]` or `\D` can match half of it, while an XSD pattern
+ * always works on whole characters. Every other construct the translation
+ * accepts means the same in both dialects.
+ */
+export function hasAstralCaveat(regex: JsRegex): boolean {
+  if (regex.flags.includes('u')) return false;
+  let inClass = false;
+  for (let i = 0; i < regex.source.length; i++) {
+    const ch = regex.source[i];
+    if (ch === '\\') {
+      if (regex.source[i + 1] === 'D') return true;
+      i++;
+      continue;
+    }
+    if (inClass) { if (ch === ']') inClass = false; continue; }
+    if (ch === '[') {
+      inClass = true;
+      if (regex.source[i + 1] === '^') return true;
+      continue;
+    }
+    if (ch === '.') return true;
+  }
+  return false;
+}
+
 /** Index of every `|` at nesting depth 0, outside character classes. */
 function hasTopLevelAlternation(source: string): boolean {
   let depth = 0;

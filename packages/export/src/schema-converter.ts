@@ -18,7 +18,7 @@ import { resolveUnrepresentedEntity } from './schema-untranslatable.js';
 import { BY_NAME_ATTR_REMAP_TYPES, remapRenamedAttributesByName } from './schema-converter-attr-remap.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
-import { Ifc4SlotFill } from './schema-converter-ifc4-slots.js';
+import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 
 export { computeWithheldRefIds } from './schema-untranslatable.js';
@@ -294,7 +294,7 @@ function requireTopLevelAttributes(attrsRaw: string): string[] {
  *   history they reuse (#4686) and collects what they could not settle.
  *   Omitted, a throwaway stands in, so the generated table's own defaults are
  *   still written but the OwnerHistory reuse and both counts are lost.
- * @param ifc4Slots - Its IFC4 twin (#5202), consulted only for IFC4X3/IFC5 →
+ * @param ifc4Slots - Counts IFC4-required slots left `$` (#5202), only for IFC4X3/IFC5 →
  *   IFC4; see `schema-converter-ifc4-slots.ts` for why IFC2X3 → IFC4 is not.
  * @param withheldRefIds - Express ids this export is OMITTING outright
  *   ({@link computeWithheldRefIds}, #4206) — a record whose attributes name
@@ -312,14 +312,14 @@ export function convertStepLine(
   random?: RandomSource,
   slots?: Ifc2x3SlotFill,
   withheldRefIds?: ReadonlySet<number>,
-  ifc4Slots?: Ifc4SlotFill,
+  ifc4Slots?: Ifc4SlotCheck,
 ): string | null {
   if (fromSchema === toSchema) return line;
   const converted = convertRecord(line, fromSchema, toSchema, random, withheldRefIds);
   if (converted === null) return null;
   if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
-  const ifc4Target = toSchema === 'IFC4' && (fromSchema === 'IFC4X3' || fromSchema === 'IFC5');
-  return ifc4Target ? (ifc4Slots ?? new Ifc4SlotFill()).apply(converted) : converted;
+  if (toSchema === 'IFC4' && (fromSchema === 'IFC4X3' || fromSchema === 'IFC5')) ifc4Slots?.apply(converted);
+  return converted;
 }
 
 /** {@link convertStepLine} before the IFC2X3 required-slot fills, between two

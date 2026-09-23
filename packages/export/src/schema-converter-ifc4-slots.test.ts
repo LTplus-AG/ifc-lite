@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { convertStepLine } from './schema-converter.js';
 import { StepExporter } from './step-exporter.js';
 
@@ -16,30 +17,19 @@ import { StepExporter } from './step-exporter.js';
 // (`convertStepLine`, `StepExporter`), so reverting the production change
 // yields a failed assertion rather than a missing import.
 describe('schema-converter: IFC4-target required slots (#5202)', () => {
-  it('fills a BOOLEAN-typed required slot the target left optional-and-$', () => {
-    // IfcAdvancedFace: IFC4 requires SameSense (index 2, BOOLEAN). Bounds and
-    // FaceSurface are entity references (no honest default) and stay $.
-    expect(convertStepLine('#20=IFCADVANCEDFACE($,$,$);', 'IFC4X3', 'IFC4')).toBe('#20=IFCADVANCEDFACE($,$,.F.);');
-    expect(convertStepLine('#21=IFCADVANCEDFACE($,$,$);', 'IFC5', 'IFC4')).toBe('#21=IFCADVANCEDFACE($,$,.F.);');
-  });
-
-  it('leaves an IfcLabel slot $ (never invents a label); the exporter counts it, below', () => {
-    const line = "#10=IFCPROJECTEDCRS($,'A description',$,$,$,$,$);";
-    expect(convertStepLine(line, 'IFC4X3', 'IFC4')).toBe(line);
-  });
-
-  it('does not overwrite an already-populated BOOLEAN required slot', () => {
-    const line = '#25=IFCADVANCEDFACE($,$,.T.);';
-    expect(convertStepLine(line, 'IFC4X3', 'IFC4')).toBe(line);
-  });
-
-  it('leaves IFC2X3 -> IFC4 alone (the control pin that scoped this fix)', () => {
-    expect(convertStepLine('#26=IFCADVANCEDFACE($,$,$);', 'IFC2X3', 'IFC4')).toBe('#26=IFCADVANCEDFACE($,$,$);');
+  it('never writes a value into a required slot: labels, references and flags all stay $', () => {
+    // IfcAdvancedFace.SameSense is a BOOLEAN IFC4 requires, but IFC4X3
+    // requires it too, so `$` there is invalid source; `.F.` would flip the
+    // face. The exporter counts these slots (below) instead.
+    const face = '#20=IFCADVANCEDFACE($,$,$);';
+    expect(convertStepLine(face, 'IFC4X3', 'IFC4')).toBe(face);
+    const crs = "#10=IFCPROJECTEDCRS($,'A description',$,$,$,$,$);";
+    expect(convertStepLine(crs, 'IFC4X3', 'IFC4')).toBe(crs);
   });
 
   it('IFC2X3-target conversions are unaffected: still exactly the pre-#5202 behaviour', () => {
-    // No-regression pin: the IFC4 fill must never fire for a downgrade whose
-    // target is IFC2X3 — the two mechanisms are independent per `toSchema`.
+    // No-regression pin: the IFC4 check never runs for a downgrade whose
+    // target is IFC2X3; the two mechanisms are independent per `toSchema`.
     const line = "#40=IFCWALL('guid',$,'Wall 1',$,$,$,$,'tag',.STANDARD.);";
     const result = convertStepLine(line, 'IFC4', 'IFC2X3');
     expect(result).not.toContain('.STANDARD.');
@@ -64,21 +54,32 @@ DATA;
 #10=IFCPROJECTEDCRS($,'A description',$,$,$,$,$);
 ENDSEC;
 END-ISO-10303-21;`;
+  const EXPECTED_WARNING = (n: number) =>
+    `${n} slot(s) keep $ where IFC4 requires a value and the source offers none ` +
+    '(the converter does not invent measures, labels, identifiers, references, flags or enums); ' +
+    'the file is not valid IFC4 (#5202).';
 
-  async function exportAs(schema: 'IFC4' | 'IFC4X3', model = IFC4X3_MODEL) {
+  async function exportAs(schema: 'IFC4' | 'IFC4X3', model = IFC4X3_MODEL, edit?: (editor: StoreEditor) => void) {
     const bytes = new TextEncoder().encode(model);
     const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
-    const result = new StepExporter(store).export({ schema });
+    const view = new MutablePropertyView(null, 'ifc4-slots');
+    edit?.(new StoreEditor(store, view));
+    const result = new StepExporter(store, view).export({ schema });
     return { text: new TextDecoder().decode(result.content), warnings: result.stats.warnings };
   }
 
   it('warns that IfcProjectedCRS.Name stays $ in the IFC4 file', async () => {
     const { text, warnings } = await exportAs('IFC4');
     expect(text).toContain("#10=IFCPROJECTEDCRS($,'A description',$,$,$,$,$);");
-    expect(warnings).toContain(
-      '1 slot(s) keep $ where IFC4 requires a value and the schema offers no default that claims ' +
-        'nothing (measures, labels, identifiers, references, and every enum); the file is not valid IFC4 (#5202).',
-    );
+    expect(warnings).toContain(EXPECTED_WARNING(1));
+  });
+
+  it('counts a session-created record too, not only source lines', async () => {
+    const { text, warnings } = await exportAs('IFC4', IFC4X3_MODEL, (editor) => {
+      editor.addEntity('IfcProjectedCRS', [null, 'Created', null, null, null, null, null]);
+    });
+    expect(text.match(/IFCPROJECTEDCRS\(\$,/g)).toHaveLength(2);
+    expect(warnings).toContain(EXPECTED_WARNING(2));
   });
 
   it('stays quiet when the IFC4-mandatory slot is already populated', async () => {

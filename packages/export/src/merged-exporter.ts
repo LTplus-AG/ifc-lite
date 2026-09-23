@@ -27,7 +27,7 @@ import { collectStyleEntities, STYLE_RESCUE_TYPES } from './style-closure.js';
 import { collectGeoreferencingEntities } from './georef-closure.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { firstWrittenOwnerHistoryRef, Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
-import { Ifc4SlotFill } from './schema-converter-ifc4-slots.js';
+import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import { assembleStepBytes, assembleStepBlob } from './step-file-assembly.js';
 import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type ExportEntityRef } from './entity-iteration.js';
 import { StepExporter } from './step-exporter.js';
@@ -515,7 +515,7 @@ export class MergedExporter {
     let federatedModelCount = 0;
     let normalizedModelCount = 0;
     const normalizeWarnings = new Set<string>();
-    const [slotFill, ifc4Slots] = [new Ifc2x3SlotFill(), new Ifc4SlotFill()]; // required slots (#4714, #5202)
+    const [slotFill, ifc4Slots] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck()]; // required slots (#4714, #5202)
 
     for (const model of models) {
       const offset = setup.modelOffsets.get(model.id)!;
@@ -644,7 +644,7 @@ export class MergedExporter {
     let normalizedModelCount = 0;
     const normalizeWarnings = new Set<string>();
     const YIELD_INTERVAL = 2000;
-    const [slotFill, ifc4Slots] = [new Ifc2x3SlotFill(), new Ifc4SlotFill()]; // required slots (#4714, #5202)
+    const [slotFill, ifc4Slots] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck()]; // required slots (#4714, #5202)
 
     if (onProgress) onProgress({ phase: 'preparing', percent: 0, entitiesProcessed: 0, entitiesTotal: totalEntities });
 
@@ -1197,7 +1197,7 @@ export class MergedExporter {
     hiddenProductIds: ReadonlySet<number> | null,
     completeIndex: CompleteEntityIndex,
     includedIds: ReadonlySet<number> | null,
-    slotFill: Ifc2x3SlotFill, ifc4Slots: Ifc4SlotFill,
+    slotFill: Ifc2x3SlotFill, ifc4Slots: Ifc4SlotCheck,
   ): string | null {
     let entityText = decodeRange(source, entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength);
 

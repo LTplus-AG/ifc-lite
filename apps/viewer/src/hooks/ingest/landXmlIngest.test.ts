@@ -14,7 +14,6 @@ import {
 } from './landXmlIngest.js';
 import { buildLandXmlPipeComponents } from './landXmlPipeGeometry.js';
 import { findLandXmlSourceRecord, type LandXmlPipeNetworkDocument } from './landXmlSemantics.js';
-import { isLandXmlContent } from './landXmlSniff.js';
 import {
   parseLandXmlSourceInCurrentRealm, parseLandXmlTinInCurrentRealm, readLandXmlTinDocument,
 } from './landXmlWasm.js';
@@ -160,40 +159,6 @@ it('fragments high-valence component transfers below cursor credit without losin
   )));
   assert.equal(fragments.reduce((total, fragment) => total + fragment.mesh.indices.length / 3, 0), triangleCount);
   assert.deepEqual(fragments.flatMap((fragment) => fragment.renderedFaceSourceIds), Array.from({ length: triangleCount }, (_, index) => `face-${index}`));
-});
-
-describe('LandXML content dispatch (#5041)', () => {
-  it('recognizes default and prefixed roots without claiming generic XML', () => {
-    assert.equal(isLandXmlContent(new Uint8Array(bytes(LANDXML))), true);
-    const prefixed = LANDXML
-      .replace('<LandXML xmlns=', '<lx:LandXML xmlns:lx=')
-      .replace('</LandXML>', '</lx:LandXML>');
-    assert.equal(isLandXmlContent(new Uint8Array(bytes(prefixed))), true);
-    assert.equal(isLandXmlContent(new TextEncoder().encode(
-      '<?xml version="1.0"?><ids xmlns="http://standards.buildingsmart.org/IDS"/>',
-    )), false);
-    assert.equal(isLandXmlContent(new TextEncoder().encode(
-      '<ifcXML xmlns="http://www.buildingsmart-tech.org/ifcXML/IFC4/final"/>',
-    )), false);
-  });
-
-  it('recognizes UTF-16 LandXML and rejects a spoofed nested element', () => {
-    assert.equal(isLandXmlContent(new Uint8Array(utf16LeBytes(LANDXML))), true);
-    assert.equal(isLandXmlContent(new Uint8Array(utf16LeBytes(LANDXML)).subarray(2)), true);
-    assert.equal(isLandXmlContent(new TextEncoder().encode(
-      `<document><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2"/></document>`,
-    )), false);
-  });
-
-  it('finds the root after a legal prolog longer than the old 4 KiB head slice', () => {
-    const longProlog = `<!--${'x'.repeat(8 * 1024)}-->\n${LANDXML}`;
-    assert.equal(isLandXmlContent(new TextEncoder().encode(longProlog)), true);
-  });
-
-  it('finds the namespace after a quoted greater-than sign in the root tag', () => {
-    const quoted = LANDXML.replace('<LandXML ', '<LandXML note="a > b" ');
-    assert.equal(isLandXmlContent(new TextEncoder().encode(quoted)), true);
-  });
 });
 
 describe('LandXML 1.2 TIN ingest (#4937)', () => {

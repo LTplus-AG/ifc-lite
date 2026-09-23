@@ -12,6 +12,7 @@ import { useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, X } from 'lucide-react';
 import type { ChartSpec } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
+import type { ValidationReport } from '@ifc-lite/ids';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { useTranslation, type TranslationKey } from '@/i18n';
@@ -19,6 +20,7 @@ import { resolveGlobalId, useViewerStore } from '@/store';
 import { readImageFile } from '@/lib/document/persistence';
 import { FIELD_SUGGESTIONS } from '@/lib/document/presets';
 import { elementPropertyPaths, type BindingContext } from '@/lib/document/bindings';
+import { idsReportBlockFromReport } from '@/lib/document/ids-report';
 import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, type DocumentBlock, type TextBlock } from '@/lib/document/types';
 import { ClampedNumberInput, WidthEditor, field } from './BlockEditor.parts';
 import { TableBlockEditor } from './TableBlockEditor';
@@ -31,6 +33,8 @@ export interface BlockEditorProps {
   topics: Map<string, BCFTopic>;
   /** Every chart of every saved dashboard, to copy into a chart block. */
   charts: Array<{ dashboard: string; chart: ChartSpec }>;
+  /** The live IDS/rule-set report an `ids-report` block can refresh its snapshot from. */
+  idsValidationReport: ValidationReport | null;
   onChange: (block: DocumentBlock) => void;
   onMove: (delta: -1 | 1) => void;
   onRemove: () => void;
@@ -43,6 +47,7 @@ const KIND_LABEL_KEY = {
   topic: 'document.block.kindTopic',
   spacer: 'document.block.kindSpacer',
   table: 'document.block.kindTable',
+  'ids-report': 'document.block.kindIdsReport',
 } as const satisfies Record<DocumentBlock['kind'], TranslationKey>;
 /** The fields offered for insertion: the fixed suggestions, the model's storeys, and the selected element. */
 function useFieldOptions(bindings: BindingContext): Array<{ path: string; label: string }> {
@@ -108,7 +113,7 @@ function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings:
   );
 }
 
-export function BlockEditor({ block, index, count, bindings, topics, charts, onChange, onMove, onRemove }: BlockEditorProps) {
+export function BlockEditor({ block, index, count, bindings, topics, charts, idsValidationReport, onChange, onMove, onRemove }: BlockEditorProps) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const pickImage = async (file: File | undefined): Promise<void> => {
@@ -202,6 +207,28 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, onC
       )}
 
       {block.kind === 'table' && <TableBlockEditor block={block} onChange={onChange} />}
+
+      {block.kind === 'ids-report' && (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1 text-muted-foreground">{t('document.block.idsReportSourceLabel')}
+            <span className="min-w-0 truncate font-medium text-foreground" title={block.sourceName}>{block.sourceName}</span>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-6 w-fit px-2 text-xs"
+            disabled={!idsValidationReport}
+            title={idsValidationReport ? undefined : t('document.block.idsReportRefreshDisabledTitle')}
+            onClick={() => {
+              if (!idsValidationReport) return;
+              onChange(idsReportBlockFromReport(idsValidationReport, block.id));
+              toast.success(t('document.block.idsReportRefreshed'));
+            }}
+          >
+            {t('document.block.idsReportRefresh')}
+          </Button>
+        </div>
+      )}
 
       {block.kind === 'topic' && (
         <div className="flex flex-wrap items-center gap-2">

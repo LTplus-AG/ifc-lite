@@ -21,6 +21,7 @@ import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type DocumentBlock, type Do
 import type { TableState } from '@/lib/document/resolve-table';
 import { DOCUMENT_PREVIEW_MUTED_TEXT_CLASS, DOCUMENT_PREVIEW_PAPER_CLASS } from './preview-theme';
 import { TablePreview } from './TablePreview';
+import { IdsReportPreview } from './IdsReportPreview';
 
 export interface DocumentPreviewProps {
   document: DocumentSpec;
@@ -160,6 +161,8 @@ function Block({ block, bindings, aggregation, chartMessage, topic, table, conte
       return <div style={{ height: block.height * scale, marginBottom: '-0.625rem' }} data-block-spacer />;
     case 'table':
       return <TablePreview block={block} state={table} />;
+    case 'ids-report':
+      return <IdsReportPreview block={block} />;
     case 'topic': {
       if (!topic) return <div className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900" data-unresolved>{t('document.preview.topicNotLoaded', { guid: block.guid })}</div>;
       const snapshot = block.snapshot ? topicSnapshotDataUrl(topic) : null;

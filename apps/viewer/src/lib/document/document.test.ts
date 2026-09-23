@@ -155,7 +155,21 @@ describe('bindings', () => {
 });
 
 describe('document file', () => {
+  it('validates nested IDS rule metrics, including explicit unavailable counts (#5125)', () => {
+    const doc = { version: DOCUMENT_VERSION, id: 'd', name: 'IDS', page: { size: 'A4', orientation: 'portrait' }, blocks: [{
+      kind: 'ids-report', id: 'r', sourceName: 'Design IDS', generatedAt: '2026-01-15T10:00:00.000Z',
+      summary: { checked: 2, passed: 1, failed: 1, passRate: 50 },
+      checks: [{ id: 's', shortDescription: 'Walls', checked: 2, passed: 1, failed: 1, passRate: 50,
+        rules: [{ id: 'req', shortDescription: 'Fire rating', checked: 2, passed: null, failed: null, passRate: null }] }],
+    }] };
+    assert.deepEqual(validateDocumentSpec(doc), []);
+    const rule = doc.blocks[0].checks[0].rules[0];
+    assert.deepEqual(validateDocumentSpec({ ...doc, blocks: [{ ...doc.blocks[0], checks: [{ ...doc.blocks[0].checks[0],
+      rules: [{ ...rule, passed: 1 }] }] }] }).map((error) => error.path), ['blocks[0].checks[0].rules[0]']);
+  });
+
   it('validates the shape, re-identifies an imported template and keeps its bindings', () => {
+    assert.equal(DOCUMENT_VERSION, 5, 'the persistable IDS report block requires document format v5');
     const doc = coverSheetDocument();
     assert.deepEqual(validateDocumentSpec(doc), []);
     const imported = parseDocumentFile(JSON.stringify(doc));
@@ -163,13 +177,17 @@ describe('document file', () => {
     assert.equal(imported.blocks.length, doc.blocks.length);
     imported.blocks.forEach((b, i) => assert.notEqual(b.id, doc.blocks[i].id));
     assert.equal((imported.blocks[0] as { text: string }).text, '{IfcProject.LongName}');
-    assert.throws(() => parseDocumentFile(JSON.stringify({ ...doc, version: 5 })), /Not a document file: version saved by a newer version of ifc-lite \(document version 5\); this viewer knows up to version 4/);
+    const newerVersion = DOCUMENT_VERSION + 1;
+    assert.throws(
+      () => parseDocumentFile(JSON.stringify({ ...doc, version: newerVersion })),
+      new RegExp(`Not a document file: version saved by a newer version of ifc-lite \\(document version ${newerVersion}\\); this viewer knows up to version ${DOCUMENT_VERSION}`),
+    );
     const broken = { ...doc, blocks: [{ kind: 'image', id: 'i', dataUrl: 'http://x/logo.png', height: 0, align: 'middle', caption: {} }] };
     assert.deepEqual(validateDocumentSpec(broken).map((e) => e.path), ['blocks[0].dataUrl', 'blocks[0].height', 'blocks[0].align', 'blocks[0].caption']);
   });
 
   it('a version above what this viewer knows reports "newer version", not a generic mismatch (#5138 review)', () => {
-    const newer = validateDocumentSpec({ ...coverSheetDocument(), version: 5 });
+    const newer = validateDocumentSpec({ ...coverSheetDocument(), version: DOCUMENT_VERSION + 1 });
     assert.deepEqual(newer.map((e) => e.path), ['version']);
     assert.match(newer[0].message, /newer version of ifc-lite/);
     // A too-OLD or malformed version keeps the generic message — it is not "newer", it is wrong.
@@ -190,13 +208,15 @@ describe('document file', () => {
     assert.deepEqual(migrateDocumentSpec!(v1), { ...v1, version: DOCUMENT_VERSION });
     const imported = parseDocumentFile(JSON.stringify(v1));
     assert.equal(imported.version, DOCUMENT_VERSION);
-    // A v2 file (#4940) and a v3 file (#5142) are both the current version with the number bumped
-    // (#5138: the table block's validation source is additive, the same way v2's fields were).
+    // A v2 file (#4940), a v3 file (#5142) and a v4 file (#5138) are all the current version with
+    // the number bumped (v4's table block validation source and v5's IDS report block (#5125) are
+    // both additive, the same way v2's fields were).
     assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 2 }), { ...v1, version: DOCUMENT_VERSION });
     assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 3 }), { ...v1, version: DOCUMENT_VERSION });
+    assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 4 }), { ...v1, version: DOCUMENT_VERSION });
     // Anything not a recognizable older document (already current, a later version, malformed) passes through unchanged.
     assert.deepEqual(migrateDocumentSpec!({ ...v1, version: DOCUMENT_VERSION }), { ...v1, version: DOCUMENT_VERSION });
-    assert.deepEqual(migrateDocumentSpec!({ ...v1, version: 5 }), { ...v1, version: 5 });
+    assert.deepEqual(migrateDocumentSpec!({ ...v1, version: DOCUMENT_VERSION + 1 }), { ...v1, version: DOCUMENT_VERSION + 1 });
     assert.equal(migrateDocumentSpec!(null), null);
 
     const spacer = { kind: 'spacer', id: 's', height: 20 };
@@ -224,6 +244,81 @@ describe('document file', () => {
 });
 
 describe('compose', () => {
+  it('preserves an intentionally empty IDS source name in the PDF (#5125 review)', () => {
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [{ kind: 'ids-report', id: 'ids', sourceName: '', generatedAt: '2026-01-15T10:00:00.000Z',
+        summary: { checked: 0, passed: 0, failed: 0, passRate: 100 }, checks: [] }],
+    });
+    const lines = layout.pages.flatMap((page) => page.items.filter((item) => item.kind === 'text').map((item) => item.text));
+    assert.ok(lines.includes('IDS report: '));
+    assert.equal(lines.some((line) => line.includes('Untitled')), false);
+  });
+
+  it('prints the IDS run timestamp and keeps long descriptions clear of counts (#5125 review)', () => {
+    const description = 'A long IDS requirement description that previously printed under the check counts';
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'document-time', measure: estimateTextWidth,
+      blocks: [{
+        kind: 'ids-report', id: 'ids', sourceName: 'Rules', generatedAt: '2026-01-15T10:00:00.000Z',
+        summary: { checked: 10, passed: 3, failed: 7, passRate: 30 },
+        checks: [{ id: 'fire', shortDescription: 'Fire rating', longDescription: description, checked: 10, passed: 3, failed: 7, passRate: 30,
+          rules: [{ id: 'r1', shortDescription: 'Required rating', longDescription: 'Must survive 90 minutes', checked: 10, passed: 3, failed: 7, passRate: 30 }] }],
+      }],
+    });
+    const lines = layout.pages.flatMap((page) => page.items.filter((item) => item.kind === 'text'));
+    assert.ok(lines.some((line) => line.text.includes('2026-01-15T10:00:00.000Z')));
+    const detail = lines.find((line) => line.text.startsWith(description.slice(0, 20)))!;
+    const counts = lines.find((line) => line.size === 8 && line.text.startsWith('Checked 10 · Passed 3'))!;
+    assert.ok(counts.y > detail.y, 'counts are printed below the description');
+    assert.equal(counts.x, detail.x, 'both lines use the same left edge');
+    const rule = lines.find((line) => line.text === 'Required rating')!;
+    assert.ok(rule.y > counts.y, 'the child rule prints below its parent check');
+    assert.ok(rule.x > counts.x, 'the child rule is indented');
+  });
+
+  it('paginates a long child rule list without losing or duplicating rules (#5125)', () => {
+    const rules = Array.from({ length: 60 }, (_, i) => ({
+      id: `r${i}`, shortDescription: `Rule ${i}`, checked: 2, passed: 1, failed: 1, passRate: 50,
+    }));
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [{ kind: 'ids-report', id: 'ids', sourceName: 'Design IDS', generatedAt: '2026-01-15T10:00:00.000Z',
+        summary: { checked: 2, passed: 1, failed: 1, passRate: 50 },
+        checks: [{ id: 'walls', shortDescription: 'Walls', checked: 2, passed: 1, failed: 1, passRate: 50, rules }],
+      }],
+    });
+    assert.ok(layout.pages.length >= 2);
+    const names = layout.pages.flatMap((page) => page.items.filter((item) => item.kind === 'text').map((item) => item.text))
+      .filter((value) => /^Rule \d+$/.test(value));
+    assert.deepEqual(names, rules.map((rule) => rule.shortDescription));
+    for (const page of layout.pages) for (const item of page.items) {
+      assert.ok(item.y <= layout.size.h - 40, `item at y=${item.y} on page ${page.index}`);
+    }
+  });
+
+  it('keeps the IDS report header with its first check and child rule near a page end (#5125 review)', () => {
+    // The spacer leaves room for the header and check, but not the first rule.
+    // The whole group must move together instead of leaving the header behind.
+    const layout = composeDocument({
+      name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth,
+      blocks: [
+        { kind: 'spacer', id: 'fill', height: 625 },
+        { kind: 'ids-report', id: 'ids', sourceName: 'Design IDS', generatedAt: '2026-01-15T10:00:00.000Z',
+          summary: { checked: 1, passed: 1, failed: 0, passRate: 100 },
+          checks: [{ id: 'walls', shortDescription: 'Walls', checked: 1, passed: 1, failed: 0, passRate: 100,
+            rules: [{ id: 'r1', shortDescription: 'Fire rating', checked: 1, passed: 1, failed: 0, passRate: 100 }] }],
+        },
+      ],
+    });
+    const pagesWithText = layout.pages.map((page) => page.items.filter((item) => item.kind === 'text').map((item) => item.text));
+    assert.equal(layout.pages.length, 2);
+    assert.deepEqual(pagesWithText[0], []);
+    assert.ok(pagesWithText[1].includes('IDS report: Design IDS'));
+    assert.ok(pagesWithText[1].includes('Walls'));
+    assert.ok(pagesWithText[1].includes('Fire rating'));
+  });
+
   it('wraps by the measure, breaks pages, and keeps a heading with its next line', () => {
     assert.deepEqual(wrapText('one two three four', 40, 10, false, estimateTextWidth), ['one two', 'three', 'four']);
     assert.deepEqual(wrapText('a\n\nb', 100, 10, false, estimateTextWidth), ['a', '', 'b']);
@@ -503,7 +598,7 @@ describe('table block (#5142)', () => {
     assert.deepEqual(bad({ ...tableBlock(), source: { kind: 'list', list: { ...listOf(), columns: undefined } } }), ['blocks[0].source.list']);
     assert.deepEqual(bad({ ...tableBlock(), source: { kind: 'list', list: { ...listOf(), expressIdsByModel: { m: [1] } } } }), ['blocks[0].source.list.expressIdsByModel']);
     assert.deepEqual(bad({ kind: 'table', id: 'x' }), ['blocks[0].source']);
-    assert.deepEqual(validateDocumentSpec(docWith([{ kind: 'rows' } as unknown as TableBlock])).map((e) => e.message), ['expected a non-empty string', 'expected text | image | chart | topic | spacer | table']);
+    assert.deepEqual(validateDocumentSpec(docWith([{ kind: 'rows' } as unknown as TableBlock])).map((e) => e.message), ['expected a non-empty string', 'expected text | image | chart | topic | spacer | table | ids-report']);
 
     const imported = parseDocumentFile(JSON.stringify(docWith([tableBlock()])));
     const block = imported.blocks[0] as TableBlock;

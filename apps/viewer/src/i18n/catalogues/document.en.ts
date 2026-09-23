@@ -172,6 +172,28 @@ export const documentEn = {
   'document.table.total': 'Total ({count})',
   'document.panel.exportPreparingTables': 'Running lists…',
 
+  // IDS report block (#5125): BlockEditor.tsx, IdsReportPreview.tsx, DocumentPanel.tsx.
+  // A summary of checked/passed/failed and the top-level check list, mirroring
+  // the table block's structure, with per-rule rows under each check.
+  'document.block.kindIdsReport': 'IDS report',
+  'document.addBlock.idsReport': 'IDS validation report',
+  'document.addBlock.idsReportDisabledTitle': 'Run an IDS validation first',
+  'document.block.idsReportSourceLabel': 'Source',
+  'document.block.idsReportRefresh': 'Refresh from current validation report',
+  'document.block.idsReportRefreshDisabledTitle': 'Run an IDS validation first',
+  'document.block.idsReportRefreshed': 'Refreshed from the current validation report',
+  'document.preview.idsReportChecked': 'Checked',
+  'document.preview.idsReportPassed': 'Passed',
+  'document.preview.idsReportFailed': 'Failed',
+  'document.preview.idsReportPassRate': 'Pass rate',
+  'document.preview.idsReportGeneratedAt': 'Validation run: {timestamp}',
+  'document.preview.idsReportChecksCount': {
+    one: '{countDisplay} check',
+    other: '{countDisplay} checks',
+  },
+  'document.preview.idsReportNoChecks': 'No checks in this report.',
+  'document.preview.idsReportCountsUnavailable': 'Counts unavailable in this partial report',
+
   // Validation-results table source (#5138): ValidationSourceEditor in TableBlockEditor.tsx, and
   // the placeholder states TablePreview.tsx shows in place of rows.
   'document.block.tableValidationRowsLabel': 'Rows',

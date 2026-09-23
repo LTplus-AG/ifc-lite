@@ -170,6 +170,11 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, message: message ?? 'No rows to print.', columns: [], rows: [] });
         break;
       }
+      case 'ids-report': {
+        // A frozen snapshot (`ids-report.ts`), not model-derived — nothing to resolve against bindings.
+        blocks.push({ ...block, kind: 'ids-report' });
+        break;
+      }
       case 'topic': {
         const topic = input.topics.get(block.guid);
         if (!topic) {

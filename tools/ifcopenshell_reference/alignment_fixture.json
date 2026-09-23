@@ -1,0 +1,604 @@
+{
+ "synthetic": true,
+ "generator": "tools/ifcopenshell_reference/make_alignment_fixture.py",
+ "alignments": [
+  {
+   "sourceId": "landxml:alignment:1",
+   "name": "A-Left",
+   "staStart": 1000.0,
+   "segments": [
+    {
+     "sourceId": "landxml:alignment:1:segment:0",
+     "ordinal": 0,
+     "primitive": {
+      "kind": "line",
+      "start": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6406900.0,
+        "easting": 157800.0
+       }
+      },
+      "end": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6406960.0,
+        "easting": 157903.923048
+       }
+      },
+      "declaredLength": 120.0
+     }
+    },
+    {
+     "sourceId": "landxml:alignment:1:segment:1",
+     "ordinal": 1,
+     "primitive": {
+      "kind": "spiral",
+      "spiType": "clothoid",
+      "start": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6406960.0,
+        "easting": 157903.923048
+       }
+      },
+      "pi": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6406986.691541,
+        "easting": 157950.154154
+       }
+      },
+      "end": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407003.004241,
+        "easting": 157971.306492
+       }
+      },
+      "radiusStart": "infinite",
+      "radiusEnd": 300.0,
+      "rotation": "counter_clockwise",
+      "declaredLength": 80.0
+     }
+    },
+    {
+     "sourceId": "landxml:alignment:1:segment:2",
+     "ordinal": 2,
+     "primitive": {
+      "kind": "curve",
+      "start": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407003.004241,
+        "easting": 157971.306492
+       }
+      },
+      "center": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407240.565087,
+        "easting": 157788.099384
+       }
+      },
+      "end": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407119.919998,
+        "easting": 158062.771484
+       }
+      },
+      "rotation": "counter_clockwise",
+      "radius": 300.0,
+      "declaredLength": 150.0
+     }
+    },
+    {
+     "sourceId": "landxml:alignment:1:segment:3",
+     "ordinal": 3,
+     "primitive": {
+      "kind": "spiral",
+      "spiType": "clothoid",
+      "start": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407119.919998,
+        "easting": 158062.771484
+       }
+      },
+      "pi": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407144.376709,
+        "easting": 158073.513682
+       }
+      },
+      "end": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407195.672972,
+        "easting": 158088.293633
+       }
+      },
+      "radiusStart": 300.0,
+      "radiusEnd": "infinite",
+      "rotation": "counter_clockwise",
+      "declaredLength": 80.0
+     }
+    },
+    {
+     "sourceId": "landxml:alignment:1:segment:4",
+     "ordinal": 4,
+     "primitive": {
+      "kind": "line",
+      "start": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407195.672972,
+        "easting": 158088.293633
+       }
+      },
+      "end": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407291.763831,
+        "easting": 158115.980215
+       }
+      },
+      "declaredLength": 100.0
+     }
+    }
+   ]
+  },
+  {
+   "sourceId": "landxml:alignment:2",
+   "name": "A-Right",
+   "staStart": 0.0,
+   "segments": [
+    {
+     "sourceId": "landxml:alignment:2:segment:0",
+     "ordinal": 0,
+     "primitive": {
+      "kind": "line",
+      "start": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407200.0,
+        "easting": 158500.0
+       }
+      },
+      "end": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407259.088465,
+        "easting": 158489.581109
+       }
+      },
+      "declaredLength": 60.0
+     }
+    },
+    {
+     "sourceId": "landxml:alignment:2:segment:1",
+     "ordinal": 1,
+     "primitive": {
+      "kind": "spiral",
+      "spiType": "clothoid",
+      "start": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407259.088465,
+        "easting": 158489.581109
+       }
+      },
+      "pi": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407288.667593,
+        "easting": 158484.365511
+       }
+      },
+      "end": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407303.695287,
+        "easting": 158483.996764
+       }
+      },
+      "radiusStart": "infinite",
+      "radiusEnd": 150.0,
+      "rotation": "clockwise",
+      "declaredLength": 45.0
+     }
+    },
+    {
+     "sourceId": "landxml:alignment:2:segment:2",
+     "ordinal": 2,
+     "primitive": {
+      "kind": "curve",
+      "start": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407303.695287,
+        "easting": 158483.996764
+       }
+      },
+      "center": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407307.374857,
+        "easting": 158633.951626
+       }
+      },
+      "end": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407412.38231,
+        "easting": 158526.837506
+       }
+      },
+      "rotation": "clockwise",
+      "radius": 150.0,
+      "declaredLength": 120.0
+     }
+    },
+    {
+     "sourceId": "landxml:alignment:2:segment:3",
+     "ordinal": 3,
+     "primitive": {
+      "kind": "spiral",
+      "spiType": "clothoid",
+      "start": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407412.38231,
+        "easting": 158526.837506
+       }
+      },
+      "pi": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407430.685929,
+        "easting": 158544.781139
+       }
+      },
+      "end": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407447.954146,
+        "easting": 158574.91769
+       }
+      },
+      "radiusStart": 150.0,
+      "radiusEnd": 400.0,
+      "rotation": "clockwise",
+      "declaredLength": 60.0
+     }
+    },
+    {
+     "sourceId": "landxml:alignment:2:segment:4",
+     "ordinal": 4,
+     "primitive": {
+      "kind": "spiral",
+      "spiType": "clothoid",
+      "start": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407447.954146,
+        "easting": 158574.91769
+       }
+      },
+      "pi": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407456.243327,
+        "easting": 158589.383998
+       }
+      },
+      "end": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407470.979742,
+        "easting": 158619.290587
+       }
+      },
+      "radiusStart": 400.0,
+      "radiusEnd": "infinite",
+      "rotation": "clockwise",
+      "declaredLength": 50.0
+     }
+    },
+    {
+     "sourceId": "landxml:alignment:2:segment:5",
+     "ordinal": 5,
+     "primitive": {
+      "kind": "line",
+      "start": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407470.979742,
+        "easting": 158619.290587
+       }
+      },
+      "end": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6407506.339898,
+        "easting": 158691.051714
+       }
+      },
+      "declaredLength": 80.0
+     }
+    }
+   ]
+  },
+  {
+   "sourceId": "landxml:alignment:3",
+   "name": "A-Compound",
+   "staStart": 250.0,
+   "segments": [
+    {
+     "sourceId": "landxml:alignment:3:segment:0",
+     "ordinal": 0,
+     "primitive": {
+      "kind": "line",
+      "start": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6406500.0,
+        "easting": 159100.0
+       }
+      },
+      "end": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6406450.502525,
+        "easting": 159149.497475
+       }
+      },
+      "declaredLength": 70.0
+     }
+    },
+    {
+     "sourceId": "landxml:alignment:3:segment:1",
+     "ordinal": 1,
+     "primitive": {
+      "kind": "spiral",
+      "spiType": "clothoid",
+      "start": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6406450.502525,
+        "easting": 159149.497475
+       }
+      },
+      "pi": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6406431.645247,
+        "easting": 159168.354753
+       }
+      },
+      "end": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6406422.535641,
+        "easting": 159178.092848
+       }
+      },
+      "radiusStart": "infinite",
+      "radiusEnd": 600.0,
+      "rotation": "counter_clockwise",
+      "declaredLength": 40.0
+     }
+    },
+    {
+     "sourceId": "landxml:alignment:3:segment:2",
+     "ordinal": 2,
+     "primitive": {
+      "kind": "spiral",
+      "spiType": "clothoid",
+      "start": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6406422.535641,
+        "easting": 159178.092848
+       }
+      },
+      "pi": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6406401.132733,
+        "easting": 159200.972385
+       }
+      },
+      "end": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6406387.780734,
+        "easting": 159220.647645
+       }
+      },
+      "radiusStart": 600.0,
+      "radiusEnd": 250.0,
+      "rotation": "counter_clockwise",
+      "declaredLength": 55.0
+     }
+    },
+    {
+     "sourceId": "landxml:alignment:3:segment:3",
+     "ordinal": 3,
+     "primitive": {
+      "kind": "curve",
+      "start": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6406387.780734,
+        "easting": 159220.647645
+       }
+      },
+      "center": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6406594.645135,
+        "easting": 159361.029693
+       }
+      },
+      "end": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6406351.588421,
+        "easting": 159302.519579
+       }
+      },
+      "rotation": "counter_clockwise",
+      "radius": 250.0,
+      "declaredLength": 90.0
+     }
+    },
+    {
+     "sourceId": "landxml:alignment:3:segment:4",
+     "ordinal": 4,
+     "primitive": {
+      "kind": "spiral",
+      "spiType": "clothoid",
+      "start": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6406351.588421,
+        "easting": 159302.519579
+       }
+      },
+      "pi": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6406346.509368,
+        "easting": 159323.618458
+       }
+      },
+      "end": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6406341.910583,
+        "easting": 159366.745715
+       }
+      },
+      "radiusStart": 250.0,
+      "radiusEnd": "infinite",
+      "rotation": "counter_clockwise",
+      "declaredLength": 65.0
+     }
+    },
+    {
+     "sourceId": "landxml:alignment:3:segment:5",
+     "ordinal": 5,
+     "primitive": {
+      "kind": "line",
+      "start": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6406341.910583,
+        "easting": 159366.745715
+       }
+      },
+      "end": {
+       "kind": "coordinates",
+       "point": {
+        "northing": 6406336.608993,
+        "easting": 159416.463852
+       }
+      },
+      "declaredLength": 50.0
+     }
+    }
+   ]
+  }
+ ],
+ "authored": {
+  "A-Left": [
+   [
+    157800.0,
+    6406900.0
+   ],
+   [
+    157903.923048,
+    6406960.0
+   ],
+   [
+    157971.306492,
+    6407003.004241
+   ],
+   [
+    158062.771484,
+    6407119.919998
+   ],
+   [
+    158088.293633,
+    6407195.672972
+   ],
+   [
+    158115.980215,
+    6407291.763831
+   ]
+  ],
+  "A-Right": [
+   [
+    158500.0,
+    6407200.0
+   ],
+   [
+    158489.581109,
+    6407259.088465
+   ],
+   [
+    158483.996764,
+    6407303.695287
+   ],
+   [
+    158526.837506,
+    6407412.38231
+   ],
+   [
+    158574.91769,
+    6407447.954146
+   ],
+   [
+    158619.290587,
+    6407470.979742
+   ],
+   [
+    158691.051714,
+    6407506.339898
+   ]
+  ],
+  "A-Compound": [
+   [
+    159100.0,
+    6406500.0
+   ],
+   [
+    159149.497475,
+    6406450.502525
+   ],
+   [
+    159178.092848,
+    6406422.535641
+   ],
+   [
+    159220.647645,
+    6406387.780734
+   ],
+   [
+    159302.519579,
+    6406351.588421
+   ],
+   [
+    159366.745715,
+    6406341.910583
+   ],
+   [
+    159416.463852,
+    6406336.608993
+   ]
+  ]
+ }
+}

@@ -46,6 +46,7 @@ export function LandXmlExportRefusal({ plan, schemaSupported, sourceFile }: Land
   const records = [
     ...(plan.surfaces > 0 ? [t('exportDialog.landXml.convertSurfaces', { count: plan.surfaces })] : []),
     ...(plan.surveyPoints > 0 ? [t('exportDialog.landXml.convertPoints', { count: plan.surveyPoints })] : []),
+    ...(plan.alignments > 0 ? [t('exportDialog.landXml.convertAlignments', { count: plan.alignments })] : []),
   ].join(', ');
   const handleDownloadSource = useCallback(() => {
     if (!sourceFile) return;

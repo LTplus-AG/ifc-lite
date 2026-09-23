@@ -29,15 +29,15 @@ import { IfcCreator } from '../ifc-creator.js';
 import type { TerrainWriter } from '../ifc-creator-terrain.js';
 import { checkCoordinateOrder, type CrsPlausibilityBounds } from './coordinate-plausibility.js';
 import { collectRefusals, isMappableSurface, refusalReason } from './refusals.js';
-import type {
-  LandXmlIfcCgPoint, LandXmlIfcSource, LandXmlIfcSurface, LandXmlIfcUnits,
-} from './source-types.js';
+import { cogoPointResolver, mapAlignments } from './alignment-mapping.js';
+import { writeAlignments, writeSurfaces, writeSurveyPoints } from './writers.js';
+import type { LandXmlIfcSource } from './source-types.js';
 import type {
   LandXmlIfcCoverage, LandXmlIfcProvenance, LandXmlIfcResult, LandXmlIfcWarning,
 } from './result-types.js';
 
 /** The mapping-document version this converter implements. */
-export const LANDXML_IFC_MAPPING_VERSION = '1.0';
+export const LANDXML_IFC_MAPPING_VERSION = '1.1';
 
 export interface LandXmlIfcOptions {
   /** Recorded as provenance (§7); never used to decide anything. */
@@ -75,138 +75,6 @@ export function landXmlGlobalId(sourceId: string): string {
 }
 
 /**
- * LandXML's authored `(northing, easting, elevation)` → IFC's
- * `(X, Y, Z) = (easting, northing, elevation)`, in metres.
- *
- * The one place the axes are reordered. `swap` is the operator's confirmed
- * override for a producer that wrote its point text easting-first; it reverses
- * this function's own swap, so a swapped source and an unswapped one produce
- * the same IFC.
- */
-function toIfcVertex(
-  northing: number, easting: number, elevation: number, units: LandXmlIfcUnits, swap: boolean,
-): [number, number, number] {
-  const plan = units.linearScaleToMeters;
-  const [x, y] = swap ? [northing, easting] : [easting, northing];
-  return [x * plan, y * plan, elevation * units.elevationScaleToMeters];
-}
-
-function surfaceVertices(
-  surface: LandXmlIfcSurface, units: LandXmlIfcUnits, swap: boolean,
-): { coordinates: Array<[number, number, number]>; indexById: Map<string, number> } {
-  const coordinates: Array<[number, number, number]> = [];
-  const indexById = new Map<string, number>();
-  for (const point of surface.points) {
-    // `CoordIndex` is 1-based, so the index recorded here is `length` *after*
-    // the push — not before.
-    coordinates.push(toIfcVertex(point.northing, point.easting, point.elevation, units, swap));
-    // First writer wins on a duplicate `<P id>`: a later duplicate would
-    // silently repoint every face authored against the earlier one.
-    if (!indexById.has(point.id)) indexById.set(point.id, coordinates.length);
-  }
-  return { coordinates, indexById };
-}
-
-function surfaceTriangles(
-  surface: LandXmlIfcSurface, indexById: ReadonlyMap<string, number>,
-): Array<[number, number, number]> {
-  const visibility = surface.faceVisibility;
-  const triangles: Array<[number, number, number]> = [];
-  surface.faces.forEach((face, ordinal) => {
-    // An authored `<F i="true">` is a hidden face: it is part of the source
-    // record but draws nothing, and writing it would add a triangle the source
-    // says is not there.
-    if (visibility && visibility[ordinal] === false) return;
-    const resolved = face.map((pointId) => indexById.get(pointId));
-    if (resolved.some((index) => index === undefined)) {
-      throw new Error(
-        `landXmlToIfc: surface '${surface.name}' face ${ordinal} references point id `
-        + `'${face.find((id) => !indexById.has(id))}', which the surface does not define`,
-      );
-    }
-    triangles.push(resolved as [number, number, number]);
-  });
-  return triangles;
-}
-
-/** Non-empty text properties of one CgPoint, in a stable order. */
-function surveyProperties(point: LandXmlIfcCgPoint, location: readonly [number, number, number]): Array<{ Name: string; Value: string }> {
-  const entries: Array<{ Name: string; Value: string }> = [
-    { Name: 'SourceId', Value: point.sourceId },
-  ];
-  if (point.name) entries.push({ Name: 'Name', Value: point.name });
-  if (point.code) entries.push({ Name: 'Code', Value: point.code });
-  if (point.description) entries.push({ Name: 'Description', Value: point.description });
-  entries.push(
-    { Name: 'Easting', Value: String(location[0]) },
-    { Name: 'Northing', Value: String(location[1]) },
-  );
-  // A 2D CgPoint is placed at Z = 0 because a placement needs a number, but
-  // the property set must not claim an elevation the source never authored.
-  if (point.point?.elevation !== null && point.point?.elevation !== undefined) {
-    entries.push({ Name: 'Elevation', Value: String(location[2]) });
-  }
-  return entries;
-}
-
-function writeSurfaces(
-  terrain: TerrainWriter, surfaces: readonly LandXmlIfcSurface[], units: LandXmlIfcUnits, swap: boolean,
-): { surfaces: number; vertices: number; triangles: number; samples: Array<[number, number]> } {
-  let written = 0;
-  let vertices = 0;
-  let triangles = 0;
-  const samples: Array<[number, number]> = [];
-  for (const surface of surfaces) {
-    if (!isMappableSurface(surface)) continue;
-    const { coordinates, indexById } = surfaceVertices(surface, units, swap);
-    const faces = surfaceTriangles(surface, indexById);
-    // Unreachable for an all-hidden surface — `isMappableSurface` refuses it by
-    // name first. Kept as a guard because CoordIndex is LIST [1:?].
-    if (faces.length === 0) continue;
-    terrain.addSurface({
-      Name: surface.name,
-      GlobalId: landXmlGlobalId(surface.sourceId),
-      Coordinates: coordinates,
-      Triangles: faces,
-    });
-    written += 1;
-    vertices += coordinates.length;
-    triangles += faces.length;
-    for (const [x, y] of coordinates) samples.push([x, y]);
-  }
-  return { surfaces: written, vertices, triangles, samples };
-}
-
-function writeSurveyPoints(
-  terrain: TerrainWriter, points: readonly LandXmlIfcCgPoint[], units: LandXmlIfcUnits, swap: boolean,
-): { count: number; samples: Array<[number, number]> } {
-  let count = 0;
-  const samples: Array<[number, number]> = [];
-  for (const point of points) {
-    // A CgPoint may carry only a `pntRef`, with no coordinates of its own.
-    // `collectRefusals` names those as `unlocated-cgpoints`.
-    if (!point.point) continue;
-    const location = toIfcVertex(
-      point.point.northing, point.point.easting, point.point.elevation ?? 0, units, swap,
-    );
-    const annotationId = terrain.addSurveyPoint({
-      Name: point.name,
-      Description: point.description,
-      GlobalId: landXmlGlobalId(point.sourceId),
-      Location: location,
-    });
-    terrain.addPropertySet(annotationId, {
-      Name: 'LandXML_CgPoint',
-      GlobalId: landXmlGlobalId(`${point.sourceId}:pset`),
-      Properties: surveyProperties(point, location),
-    });
-    count += 1;
-    samples.push([location[0], location[1]]);
-  }
-  return { count, samples };
-}
-
-/**
  * Convert a parsed LandXML document to an IFC4X3 STEP file.
  *
  * Returns `{ status: 'refused' }` — with the refusal list intact — when the
@@ -214,7 +82,13 @@ function writeSurveyPoints(
  * caught; it is the honest answer for the alignment-only files §9.4 discusses.
  */
 export function landXmlToIfc(source: LandXmlIfcSource, options: LandXmlIfcOptions = {}): LandXmlIfcResult {
-  const refusals = collectRefusals(source);
+  const swap = options.swapNorthingEasting === true;
+  // Mapped once, and the same mapping decides both what is written and what
+  // the refusal list says was not — two passes could disagree.
+  const alignmentMapping = mapAlignments(
+    source.alignments, source.units, swap, cogoPointResolver(source.plan?.cogoPoints),
+  );
+  const refusals = collectRefusals(source, alignmentMapping);
   const warnings: LandXmlIfcWarning[] = [];
 
   const mappableSurfaces = source.surfaces.filter(isMappableSurface);
@@ -232,7 +106,7 @@ export function landXmlToIfc(source: LandXmlIfcSource, options: LandXmlIfcOption
       warnings,
     };
   }
-  if (mappableSurfaces.length === 0 && cogoPoints.length === 0) {
+  if (mappableSurfaces.length === 0 && cogoPoints.length === 0 && alignmentMapping.mapped.length === 0) {
     return { status: 'refused', reason: refusalReason(refusals), refusals, warnings };
   }
 
@@ -266,6 +140,11 @@ export function landXmlToIfc(source: LandXmlIfcSource, options: LandXmlIfcOption
 
   const creator = new IfcCreator({
     Schema: 'IFC4X3',
+    // The ISO identifier for the layouts written here. The bare `IFC4X3` token
+    // is resolved by IfcOpenShell — and the buildingSMART validator built on
+    // it — to a later development schema, under which this standard-conformant
+    // output fails validation (#5351).
+    FileSchemaIdentifier: 'IFC4X3_ADD2',
     Name: options.sourceFileName ?? 'LandXML conversion',
     Description: `Derived from LandXML ${source.schema} by the ifc-lite LandXML→IFC mapping v${LANDXML_IFC_MAPPING_VERSION}`,
     LengthUnit: 'METRE',
@@ -289,13 +168,13 @@ export function landXmlToIfc(source: LandXmlIfcSource, options: LandXmlIfcOption
     });
   }
 
-  const swap = options.swapNorthingEasting === true;
-  const surfaceResult = writeSurfaces(terrain, source.surfaces, units, swap);
-  const pointResult = writeSurveyPoints(terrain, cogoPoints, units, swap);
+  const surfaceResult = writeSurfaces(terrain, source.surfaces, units, swap, landXmlGlobalId);
+  const pointResult = writeSurveyPoints(terrain, cogoPoints, units, swap, landXmlGlobalId);
+  const alignmentSamples = writeAlignments(terrain, alignmentMapping.mapped, landXmlGlobalId);
 
   if (options.crs?.Bounds) {
     const warning = checkCoordinateOrder(
-      [...surfaceResult.samples, ...pointResult.samples], options.crs.Bounds, options.crs.Name,
+      [...surfaceResult.samples, ...pointResult.samples, ...alignmentSamples], options.crs.Bounds, options.crs.Name,
     );
     if (warning) warnings.push(warning);
   }
@@ -305,9 +184,10 @@ export function landXmlToIfc(source: LandXmlIfcSource, options: LandXmlIfcOption
     surveyPoints: pointResult.count,
     vertices: surfaceResult.vertices,
     triangles: surfaceResult.triangles,
+    alignments: alignmentMapping.mapped.length,
   };
 
-  if (coverage.surfaces === 0 && coverage.surveyPoints === 0) {
+  if (coverage.surfaces === 0 && coverage.surveyPoints === 0 && coverage.alignments === 0) {
     return { status: 'refused', reason: refusalReason(refusals), refusals, warnings };
   }
 
@@ -371,6 +251,7 @@ function writeProvenance(
     { Name: 'RefusedRecordFamilies', Value: provenance.refusedFamilies.join(', ') },
     { Name: 'ExportedSurfaces', Value: String(coverage.surfaces) },
     { Name: 'ExportedSurveyPoints', Value: String(coverage.surveyPoints) },
+    { Name: 'ExportedAlignments', Value: String(coverage.alignments) },
   ];
   terrain.addPropertySet(terrain.siteId, {
     Name: 'LandXML_Conversion',

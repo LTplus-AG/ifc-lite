@@ -101,16 +101,24 @@ What v1 writes:
 |---|---|
 | A renderable TIN `Surface` | `IfcGeographicElement` / `.TERRAIN.` carrying an `IfcTriangulatedIrregularNetwork` |
 | A `CgPoint` | `IfcAnnotation` / `.SURVEY.` with a property set |
+| A horizontal `Alignment` (lines, circular arcs, clothoid spirals) | `IfcAlignment` with its horizontal layout, geometry and start station |
 | A declared `CoordinateSystem` | `IfcProjectedCRS` + `IfcMapConversion` |
 
-Everything else — alignments, profiles, cross sections, roadways, parcels, monuments, plan
-features, pipe networks, and a surface's breaklines, boundaries and contours — is **named in the
-export dialog before you commit**, by record family and count. A partial export is allowed; a
-silent partial is not.
+An alignment is written only when **every** segment is a line, circular arc or clothoid, each
+segment reproduces its authored end point, and consecutive segments meet. Anything else (an
+`IrregularLine`, another spiral type, an unresolved point reference, a gap) refuses that alignment
+whole, naming the segment and the reason. A gap would make every later station wrong, so a partial
+alignment is never written.
 
-The dialog refuses outright when nothing in the file is covered. An alignment-only file therefore
-refuses rather than producing a valid, empty, useless IFC. It also refuses when the target schema
-is not IFC4X3: v1 derives IFC4X3 STEP only, so IFC5/IFCX is not a conversion target.
+Everything else — vertical profiles, cant, superelevation, station equations, cross sections,
+roadways, parcels, monuments, plan features, pipe networks, and a surface's breaklines, boundaries
+and contours — is **named in the export dialog before you commit**, by record family and count. A
+partial export is allowed; a silent partial is not.
+
+The dialog refuses outright when nothing in the file is covered, rather than producing a valid,
+empty, useless IFC. It also refuses when the target schema is not IFC4X3: the mapping derives
+IFC4X3 STEP only (declared as `IFC4X3_ADD2`, the ISO 16739-1:2024 identifier), so IFC5/IFCX is not
+a conversion target.
 
 Two things the dialog states because the geometry cannot:
 

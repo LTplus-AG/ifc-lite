@@ -149,7 +149,7 @@ describe('refusalReason', () => {
     const reason = refusalReason([]);
 
     expect(reason).toBe(
-      'This LandXML file carries no triangulated surface and no CgPoints, so there is nothing the IFC mapping can write.',
+      'This LandXML file carries no triangulated surface, no CgPoints and no alignment, so there is nothing the IFC mapping can write.',
     );
     expect(reason).not.toContain('none of which has a v1 mapping');
   });

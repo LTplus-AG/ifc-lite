@@ -10,7 +10,7 @@
  * The viewer's `LandXmlTinDocument` satisfies these shapes structurally, so the
  * adaptation is a type assignment and not a translation layer that could drift.
  *
- * Everything the v1 mapping refuses (§5 of the mapping spec) appears here as an
+ * Everything the mapping refuses (§5, §11.5 of the mapping spec) appears here as an
  * opaque `readonly unknown[]`. That is deliberate: the converter must *count and
  * name* those records to refuse them honestly, and must not be able to read
  * into them, which is what would let a refusal quietly become a partial export.
@@ -80,13 +80,65 @@ export interface LandXmlIfcUnits {
   assumed: boolean;
 }
 
+/** A plan location: authored coordinates, or a reference to a `CgPoint` by name. */
+export type LandXmlIfcLocation =
+  | { kind: 'coordinates'; point: { northing: number; easting: number } }
+  | { kind: 'point_reference'; pntRef: string };
+
+/** `'infinite'` is LandXML's `INF` radius — a straight end of a spiral. */
+export type LandXmlIfcRadius = number | 'infinite';
+
+export type LandXmlIfcRotation = 'clockwise' | 'counter_clockwise';
+
+/**
+ * One `CoordGeom` element, in the authored northing-first plan. Mirrors the
+ * viewer's `LandXmlAlignmentPrimitive` field for field, so the viewer's
+ * document assigns to this without a translation layer.
+ */
+export type LandXmlIfcAlignmentPrimitive =
+  | { kind: 'line'; start: LandXmlIfcLocation; end: LandXmlIfcLocation; declaredLength: number | null }
+  | { kind: 'irregular_line'; start: LandXmlIfcLocation; end: LandXmlIfcLocation; declaredLength: number | null }
+  | {
+    kind: 'curve'; start: LandXmlIfcLocation; center: LandXmlIfcLocation; end: LandXmlIfcLocation;
+    rotation: LandXmlIfcRotation; radius: number | null; declaredLength: number | null;
+  }
+  | {
+    kind: 'spiral' | 'unsupported_spiral'; start: LandXmlIfcLocation; pi: LandXmlIfcLocation;
+    end: LandXmlIfcLocation; spiType: string; radiusStart?: LandXmlIfcRadius; radiusEnd?: LandXmlIfcRadius;
+    rotation?: LandXmlIfcRotation; declaredLength: number;
+  };
+
+export interface LandXmlIfcAlignmentSegment {
+  sourceId: string;
+  ordinal: number;
+  primitive: LandXmlIfcAlignmentPrimitive;
+}
+
+/**
+ * A horizontal alignment (§11). Only the horizontal geometry is read; the
+ * vertical, cant and superelevation records are counted so they can be
+ * refused by name, never read into.
+ */
+export interface LandXmlIfcAlignment {
+  sourceId: string;
+  name: string;
+  /** Station at the start, in the declared linear unit. */
+  staStart: number;
+  segments: readonly LandXmlIfcAlignmentSegment[];
+  profileSourceIds?: readonly string[];
+  stationEquations?: readonly unknown[];
+  cant?: unknown;
+  cantStations?: readonly unknown[];
+  superelevations?: readonly unknown[];
+}
+
 export interface LandXmlIfcSource {
   schema: string;
   version: string;
   units: LandXmlIfcUnits | null;
   coordinateSystem?: { horizontalDatum?: string; verticalDatum?: string };
   surfaces: readonly LandXmlIfcSurface[];
-  alignments?: readonly unknown[];
+  alignments?: readonly LandXmlIfcAlignment[];
   profiles?: readonly unknown[];
   crossSections?: readonly unknown[];
   crossSectionSurfaces?: readonly unknown[];

@@ -21,7 +21,7 @@
  */
 
 import {
-  collectRefusals, isMappableSurface,
+  alignmentMappingOf, collectRefusals, isMappableSurface,
   type LandXmlIfcSource, type LandXmlRefusal,
 } from '@ifc-lite/create';
 import type { FederatedModel } from '@/store';
@@ -51,6 +51,8 @@ export interface LandXmlExportPlan {
   mergedUnsupported: boolean;
   surfaces: number;
   surveyPoints: number;
+  /** Horizontal alignments the mapping will write as `IfcAlignment` (§11). */
+  alignments: number;
   /** Out-of-scope families across every LandXML model in scope. */
   refusals: LandXmlRefusal[];
   /** True when any model in scope was scaled by an operator-supplied unit (§2.1). */
@@ -121,6 +123,7 @@ export function landXmlExportPlan(
 
   let surfaces = 0;
   let surveyPoints = 0;
+  let alignments = 0;
   let assumedUnit: string | null = null;
   let missingCrs = false;
   let crsName: string | null = null;
@@ -129,21 +132,26 @@ export function landXmlExportPlan(
   for (const document of inScope) {
     // A document with no resolved units cannot be scaled to metres at all, so
     // none of its records are writable whatever else it holds (§2.1).
+    const source = landXmlIfcSource(document);
+    // Mapped once, so the count shown and the refusal list agree with each
+    // other — and with the export, which runs the same mapping.
+    const alignmentMapping = alignmentMappingOf(source);
     if (document.units !== null) {
       surfaces += document.surfaces.filter(isMappableSurface).length;
       surveyPoints += (document.plan?.cogoPoints ?? []).filter((point) => point.point !== null).length;
+      alignments += alignmentMapping.mapped.length;
       if (document.units.assumed) assumedUnit ??= document.units.linearUnit;
     }
     const datum = document.coordinateSystem?.horizontalDatum;
     if (datum) crsName ??= datum;
     else missingCrs = true;
-    refusals.push(collectRefusals(landXmlIfcSource(document)));
+    refusals.push(collectRefusals(source, alignmentMapping));
   }
 
   // A LandXML model whose document has not been retained (a cache-restored
   // session) has nothing provably writable, and claiming coverage we cannot
   // deliver is the failure §6 forbids.
-  const hasRecords = inScope.length > 0 && (surfaces > 0 || surveyPoints > 0);
+  const hasRecords = inScope.length > 0 && (surfaces > 0 || surveyPoints > 0 || alignments > 0);
 
   return {
     scope,
@@ -155,6 +163,7 @@ export function landXmlExportPlan(
     covered: hasRecords && !mergedScope,
     surfaces,
     surveyPoints,
+    alignments,
     refusals: mergeRefusals(refusals),
     assumedUnit,
     missingCrs,

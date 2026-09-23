@@ -19,6 +19,7 @@
 import { extractPropertiesOnDemand, extractQuantitiesOnDemand, extractAllEntityAttributes, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { AttrRows } from './filter-match.js';
+import { createdFilterRecord } from './effective-filter-fields.js';
 
 type PsetSets = ReturnType<typeof extractPropertiesOnDemand>;
 
@@ -84,6 +85,14 @@ export function quantitySetsFor(store: IfcDataStore, expressId: number, mutation
  *  by name (order otherwise kept) — same merge `element-field-reader.ts`'s
  *  `attrsFor` does. */
 export function attributesFor(store: IfcDataStore, expressId: number, mutationView: MutablePropertyView | undefined): AttrRows {
+  const created = createdFilterRecord(store, mutationView, expressId);
+  if (created) {
+    return created.names.flatMap((name, index) => {
+      const value = created.attributes[index];
+      return (typeof value === 'string' && value !== '$') || typeof value === 'number' || typeof value === 'boolean'
+        ? [{ name, value }] : [];
+    });
+  }
   const base = extractAllEntityAttributes(store, expressId);
   const edits = mutationView?.getAttributeMutationsForEntity(expressId);
   if (!edits || edits.length === 0) return base;

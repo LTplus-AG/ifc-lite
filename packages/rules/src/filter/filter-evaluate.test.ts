@@ -6,7 +6,9 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert';
 import { StringTable, EntityTableBuilder } from '@ifc-lite/data';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { evaluateFilterRules, evaluateFilterRulesFederated, __internal } from './filter-evaluate.js';
+import { evaluateFilterGroupsFederated } from './filter-evaluate-groups.js';
 import { Rule } from './filter-rules.js';
 
 interface Row {
@@ -1105,6 +1107,62 @@ async function parseSpatialStore(): Promise<IfcDataStore> {
     bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
   );
 }
+
+describe('#5249 live filter enumeration', () => {
+  it('omits a deleted wall, moves a retyped wall to the door bucket, and includes a created wall', async () => {
+    const store = await parseSpatialStore();
+    const mutationView = new MutablePropertyView(null, 'm1');
+    mutationView.setExpressIdWatermark(100);
+    mutationView.deleteEntity(WALL_IN_STOREY);
+    mutationView.setEntityType(WALL_IN_OTHER_STOREY, 'IfcDoor', undefined, 'IfcWall');
+    const globalId = '0CreatedWall0000000001';
+    const created = mutationView.createEntity('IfcWall', [globalId, '$', 'New wall', '$', '$', '#40', '$', 'tag', '$']);
+    const models = [{ id: 'm1', store, mutationView }];
+
+    const walls = await evaluateFilterRulesFederated(models, [Rule.ifcType(['IfcWall'])], 'AND');
+    assert.deepStrictEqual(walls.map(({ expressId }) => expressId), [created.expressId]);
+    assert.deepStrictEqual(walls.map(({ ifcType, name, globalId: id }) => [ifcType, name, id]),
+      [['IfcWall', 'New wall', globalId]]);
+
+    const doors = await evaluateFilterRulesFederated(models, [Rule.ifcType(['IfcDoor'])], 'AND');
+    assert.deepStrictEqual(doors.map(({ expressId, ifcType }) => [expressId, ifcType]),
+      [[WALL_IN_OTHER_STOREY, 'IfcDoor']]);
+
+    const grouped = await evaluateFilterGroupsFederated(models, [
+      { rules: [Rule.ifcType(['IfcWall'])], combinator: 'AND' },
+      { rules: [Rule.ifcType(['IfcDoor'])], combinator: 'AND' },
+    ]);
+    assert.deepStrictEqual(grouped.map(({ expressId, ifcType }) => [expressId, ifcType]),
+      [[created.expressId, 'IfcWall'], [WALL_IN_OTHER_STOREY, 'IfcDoor']]);
+
+    const byGlobalId = await evaluateFilterRulesFederated(models, [Rule.globalId([globalId])], 'AND');
+    assert.deepStrictEqual(byGlobalId.map(({ expressId }) => expressId), [created.expressId]);
+
+    const byNameAndTag = await evaluateFilterRulesFederated(models,
+      [Rule.name('eq', 'New wall'), Rule.attribute('Tag', 'eq', 'tag')], 'AND');
+    assert.deepStrictEqual(byNameAndTag.map(({ expressId }) => expressId), [created.expressId]);
+
+    const all = await evaluateFilterRulesFederated(models, [Rule.model(['m1'])], 'AND');
+    const sourceRows = Array.from(store.entities.expressId).filter((id) => id !== 0 && id !== WALL_IN_STOREY);
+    assert.deepStrictEqual(all.map(({ expressId }) => expressId).sort((a, b) => a - b),
+      [...sourceRows, created.expressId].sort((a, b) => a - b),
+      'the full scan keeps the EntityTable domain without duplicate rows');
+  });
+
+  it('uses the effective class and relaid root attributes of a created, retyped entity', async () => {
+    const store = await parseSpatialStore();
+    const mutationView = new MutablePropertyView(null, 'm1');
+    mutationView.setExpressIdWatermark(100);
+    const created = mutationView.createEntity('IfcDoor',
+      ['0CreatedDoor0000000001', '$', 'Door becoming wall', '$', '$', '#40', '$', 'tag', '$']);
+    mutationView.setEntityType(created.expressId, 'IfcWall');
+
+    const walls = await evaluateFilterRulesFederated([{ id: 'm1', store, mutationView }],
+      [Rule.ifcType(['IfcWall']), Rule.name('eq', 'Door becoming wall')], 'AND');
+    assert.deepStrictEqual(walls.map(({ expressId, ifcType, globalId }) => [expressId, ifcType, globalId]),
+      [[created.expressId, 'IfcWall', '0CreatedDoor0000000001']]);
+  });
+});
 
 describe('storey rule reach — what location="Level 3" resolves to (#4091, #4094)', () => {
   it('the fixture really holds a pump in a space and a wall in the storey, on two storeys', async () => {

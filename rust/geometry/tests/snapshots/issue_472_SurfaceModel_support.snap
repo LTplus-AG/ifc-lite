@@ -6,9 +6,9 @@ parse_ok: true
 products_attempted: 3349
 products_non_empty: 13
 process_errors: 3335
-total_triangles: 53479
-total_vertices: 31000
-spike_triangles: 1417
+total_triangles: 53516
+total_vertices: 31004
+spike_triangles: 1427
 total_surface_area: 76807.613
 bbox_min: [7.803, -55.407, -8.345]
 bbox_max: [210.141, 201.399, 2.900]

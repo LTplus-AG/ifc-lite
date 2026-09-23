@@ -618,3 +618,192 @@ fn rebuilt_like_clears_welded_in_object_frame() {
         "rebuilt_like must clear welded_in_object_frame like it clears instance_meta"
     );
 }
+
+/// Open undirected edges, vertices keyed by exact f32 bits (#5313 tests).
+fn open_edges_exact(mesh: &Mesh) -> usize {
+    let key = |i: u32| {
+        let b = i as usize * 3;
+        [mesh.positions[b].to_bits(), mesh.positions[b + 1].to_bits(), mesh.positions[b + 2].to_bits()]
+    };
+    let mut edges: std::collections::HashMap<_, u32> = std::collections::HashMap::new();
+    for t in mesh.indices.chunks_exact(3) {
+        for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
+            let (ka, kb) = (key(a), key(b));
+            *edges.entry(if ka < kb { (ka, kb) } else { (kb, ka) }).or_insert(0) += 1;
+        }
+    }
+    edges.values().filter(|&&c| c != 2).count()
+}
+
+/// A cap sliver (A, C, M), its cap neighbour across A-C, and a wall that uses
+/// M as a real vertex (A-M, M-C). `cap_shares_indices` picks whether the
+/// neighbour indexes the sliver's own A/C vertices (one face, as an extrusion
+/// cap does) or its own copies with a different normal (the next brep face).
+fn t_vertex_fixture(cap_shares_indices: bool) -> Mesh {
+    let (a, c, m, x) = ([0.0f32, 0.0, 0.0], [1.0f32, 0.0, 0.0], [0.5f32, 5.0e-6, 0.0], [0.5f32, -1.0, 0.0]);
+    let t = [0.5f32, 0.0, 1.0];
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut push = |p: [f32; 3], n: [f32; 3]| {
+        positions.extend_from_slice(&p);
+        normals.extend_from_slice(&n);
+    };
+    let (down, side, up) = ([0.0, 0.0, -1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]);
+    for p in [a, c, m, x] {
+        push(p, down); // 0 A, 1 C, 2 M, 3 X
+    }
+    for p in [a, m, c, t] {
+        push(p, side); // 4 A', 5 M', 6 C', 7 T
+    }
+    for p in [a, c] {
+        push(p, up); // 8 A'', 9 C''
+    }
+    let neighbour = if cap_shares_indices { [1, 0, 3] } else { [9, 8, 3] };
+    let mut indices = vec![0, 1, 2];
+    indices.extend_from_slice(&neighbour);
+    indices.extend_from_slice(&[4, 5, 7, 5, 6, 7]);
+    Mesh {
+        positions,
+        normals,
+        indices,
+        rtc_applied: false,
+        origin: [0.0; 3],
+        welded_in_object_frame: false,
+        plane_tags: None,
+        instance_meta: None,
+        local_bounds: None,
+        local_to_world: None,
+    }
+}
+
+#[test]
+fn drop_thin_splits_the_neighbour_at_a_shared_apex_5313() {
+    let mut mesh = t_vertex_fixture(true);
+    // Open before: A-X, X-C, T-A, C-T (the fixture is a patch, not a solid).
+    assert_eq!(open_edges_exact(&mesh), 4);
+    let vertices_before = mesh.positions.len();
+    mesh.clean_degenerate_watertight();
+    assert_eq!(open_edges_exact(&mesh), 4, "dropping the sliver must not open A-M-C");
+    assert!(!mesh.indices.chunks_exact(3).any(|t| t == [0, 1, 2]), "sliver dropped");
+    assert_eq!(mesh.indices.len(), 3 * 4, "neighbour replaced by two triangles");
+    assert_eq!(mesh.positions.len(), vertices_before, "same face: the apex index is reused");
+}
+
+#[test]
+fn drop_thin_split_copies_the_apex_with_the_neighbours_normal_5313() {
+    let mut mesh = t_vertex_fixture(false);
+    let before = open_edges_exact(&mesh);
+    let vertices_before = mesh.positions.len() / 3;
+    mesh.clean_degenerate_watertight();
+    assert_eq!(open_edges_exact(&mesh), before);
+    assert_eq!(mesh.positions.len() / 3, vertices_before + 1, "one apex copy appended");
+    let b = vertices_before * 3;
+    assert_eq!(&mesh.positions[b..b + 3], &[0.5, 5.0e-6, 0.0], "apex copied bit-exactly");
+    assert_eq!(&mesh.normals[b..b + 3], &[0.0, 0.0, 1.0], "normal taken from the split face");
+}
+
+#[test]
+fn clean_degenerate_still_only_drops_indices_5313() {
+    // The textured channel keeps a parallel UV array outside `Mesh`, so the
+    // plain pass must never append a vertex, even where the watertight one
+    // would split.
+    let mut mesh = t_vertex_fixture(false);
+    let positions = mesh.positions.clone();
+    mesh.clean_degenerate();
+    assert_eq!(mesh.positions, positions);
+    assert!(open_edges_exact(&mesh) > 4, "plain drop leaves the T-junction open");
+}
+
+#[test]
+fn watertight_clean_still_just_drops_a_flap_5313() {
+    // The flap of `drop_thin_does_not_open_a_crack_in_a_closed_solid`: its apex
+    // (index 4) is used by no other triangle, so nothing is split.
+    let pos = vec![
+        0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.5, 5.0e-6, 0.0,
+    ];
+    let mut mesh = Mesh {
+        positions: pos,
+        normals: vec![],
+        indices: vec![0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3, 0, 1, 4],
+        rtc_applied: false,
+        origin: [0.0; 3],
+        welded_in_object_frame: false,
+        plane_tags: None,
+        instance_meta: None,
+        local_bounds: None,
+        local_to_world: None,
+    };
+    mesh.clean_degenerate_watertight();
+    assert_eq!(mesh.indices, vec![0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3]);
+    assert_eq!(mesh.positions.len(), 15);
+}
+
+#[test]
+fn watertight_clean_repairs_a_nested_sliver_fan_5313() {
+    // A run of collinear profile points A, M1, M2, M3, C (each ~1e-7 off the
+    // line, far below the grid). Earcut fans them into NESTED slivers: A-C at
+    // M2, then A-M2 at M1 and M2-C at M3. The walls run A-M1-M2-M3-C, so M2
+    // touches neither A nor C directly; it is only reachable through the inner
+    // slivers' long edges, which must count as joined once they are repaired.
+    let xs = [0.0f32, 1.0, 2.0, 3.0, 4.0];
+    let ys = [0.0f32, 1.0e-7, 2.0e-7, 1.0e-7, 0.0];
+    let mut positions = Vec::new();
+    for (x, y) in xs.iter().zip(ys) {
+        positions.extend_from_slice(&[*x, y, 0.0]); // 0 A, 1 M1, 2 M2, 3 M3, 4 C
+    }
+    positions.extend_from_slice(&[2.0, -1.0, 0.0]); // 5 X, across A-C
+    positions.extend_from_slice(&[2.0, 1.0, 1.0]); // 6 T, wall apex
+    let (a, m1, m2, m3, c, x, t) = (0, 1, 2, 3, 4, 5, 6);
+    let mut indices = vec![a, c, m2, a, m2, m1, m2, c, m3]; // the fan
+    indices.extend_from_slice(&[c, a, x]); // the triangle across A-C
+    for (p, q) in [(a, m1), (m1, m2), (m2, m3), (m3, c)] {
+        indices.extend_from_slice(&[p, q, t]); // walls on the collinear run
+    }
+    let mesh = Mesh {
+        positions,
+        normals: vec![],
+        indices,
+        rtc_applied: false,
+        origin: [0.0; 3],
+        welded_in_object_frame: false,
+        plane_tags: None,
+        instance_meta: None,
+        local_bounds: None,
+        local_to_world: None,
+    };
+    // Patch boundary alone: A-X, X-C, A-T, T-C.
+    let mut plain = mesh.clone();
+    plain.clean_degenerate();
+    assert!(open_edges_exact(&plain) > 4, "plain drop leaves the run open");
+    let mut repaired = mesh;
+    repaired.clean_degenerate_watertight();
+    assert_eq!(open_edges_exact(&repaired), 4, "every wall edge on the run is matched");
+}
+
+#[test]
+fn watertight_clean_leaves_an_apex_only_touched_elsewhere_5313() {
+    // M is used by a kept triangle, but not along A-M or M-C: splitting A-C
+    // at M would only trade the open edge A-C for two open edges A-M, M-C.
+    let positions = vec![
+        0.0, 0.0, 0.0, // 0 A
+        1.0, 0.0, 0.0, // 1 C
+        0.5, 5.0e-6, 0.0, // 2 M
+        0.5, -1.0, 0.0, // 3 X
+        0.5, 1.0, 1.0, // 4 T
+        0.6, 1.0, 1.0, // 5 U
+    ];
+    let mut mesh = Mesh {
+        positions,
+        normals: vec![],
+        indices: vec![0, 1, 2, 1, 0, 3, 2, 4, 5],
+        rtc_applied: false,
+        origin: [0.0; 3],
+        welded_in_object_frame: false,
+        plane_tags: None,
+        instance_meta: None,
+        local_bounds: None,
+        local_to_world: None,
+    };
+    mesh.clean_degenerate_watertight();
+    assert_eq!(mesh.indices, vec![1, 0, 3, 2, 4, 5], "sliver dropped, nothing split");
+}

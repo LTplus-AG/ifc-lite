@@ -96,7 +96,7 @@ impl GeometryRouter {
             // detail stays precise even far from the global origin and the AABB-overlap
             // guard sees the cutter at the host (#1297, refined per #1310 review). The
             // bounds derived below are folded to WORLD so the same relativization applies.
-            let opening_mesh = match self.process_element(&opening_entity, decoder) {
+            let opening_mesh = match self.process_element_as_boolean_operand(&opening_entity, decoder) {
                 Ok(m) if !m.is_empty() => m,
                 _ => continue,
             };

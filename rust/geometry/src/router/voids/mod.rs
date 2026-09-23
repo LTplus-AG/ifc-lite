@@ -336,7 +336,7 @@ impl GeometryRouter {
             }
         };
 
-        let wall_mesh = self.process_element(element, decoder)?;
+        let wall_mesh = self.process_element_as_boolean_operand(element, decoder)?;
 
         let mut voided = self.apply_voids_to_mesh(wall_mesh, element, opening_ids, decoder);
         // Clean slivers the CSG cut can introduce at opening seams — same
@@ -1722,7 +1722,7 @@ impl GeometryRouter {
 
         // Voided occurrences materialize cut geometry (#1623 don't-bake off) with no
         // texture index (#1781: CSG rebuilds vertices, orphaning UVs — colour wins).
-        let sub_meshes = self.process_element_with_submeshes_impl(element, decoder, false, None)?;
+        let sub_meshes = self.process_element_with_submeshes_impl(element, decoder, false, None, false)?;
         if sub_meshes.is_empty() {
             return Ok(SubMeshCollection::new());
         }

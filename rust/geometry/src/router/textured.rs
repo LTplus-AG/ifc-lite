@@ -30,7 +30,7 @@ impl GeometryRouter {
         } else {
             Some(texture_index)
         };
-        self.process_element_with_submeshes_impl(element, decoder, true, textures)
+        self.process_element_with_submeshes_impl(element, decoder, true, textures, true)
     }
 
     /// Tessellate an `IfcRepresentationMap`'s `MappedRepresentation` and bake

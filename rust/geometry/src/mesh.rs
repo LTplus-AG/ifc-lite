@@ -730,9 +730,19 @@ impl Mesh {
     /// triangulated as-is; vertex welding can't merge them (the vertices are
     /// distinct), so this catches them. At `h_eps` ≈ 15 µm — far below any real
     /// architectural feature — the dropped triangles carry no area, so the
-    /// surrounding triangulation still covers the face (visually lossless,
-    /// watertight-preserving). Only `indices` change.
+    /// surrounding triangulation still covers the face (visually lossless).
+    /// Only `indices` change.
+    ///
+    /// NOT watertight-preserving on its own: when the sliver's apex is a vertex
+    /// the neighbours still use (an extrusion's side walls, the next brep face),
+    /// dropping it leaves a T-junction (#5313). Use
+    /// [`clean_degenerate_watertight`](Self::clean_degenerate_watertight) where
+    /// the surface must stay closed.
     pub fn drop_thin_triangles(&mut self, h_eps: f64) {
+        self.drop_thin_triangles_inner(h_eps, false);
+    }
+
+    fn drop_thin_triangles_inner(&mut self, h_eps: f64, keep_closed: bool) {
         if self.indices.len() < 3 {
             return;
         }
@@ -746,6 +756,7 @@ impl Mesh {
             ]
         };
         let mut kept = Vec::with_capacity(self.indices.len());
+        let mut slivers: Vec<[u32; 3]> = Vec::new();
         for tri in self.indices.chunks_exact(3) {
             if (tri[0] as usize) >= vertex_count
                 || (tri[1] as usize) >= vertex_count
@@ -771,9 +782,13 @@ impl Mesh {
             let area = 0.5 * (cr[0] * cr[0] + cr[1] * cr[1] + cr[2] * cr[2]).sqrt();
             let height = 2.0 * area / longest;
             if height < h_eps {
+                slivers.push([tri[0], tri[1], tri[2]]);
                 continue; // collinear / zero-area sliver
             }
             kept.extend_from_slice(tri);
+        }
+        if keep_closed && !slivers.is_empty() {
+            tjunction::split_across_dropped_slivers(self, &mut kept, &slivers, h_eps);
         }
         self.indices = kept;
     }
@@ -815,6 +830,20 @@ impl Mesh {
         // The kernel's canonical reconcile grid (power-of-two for
         // bit-determinism). Sub-grid triangles are below kernel resolution.
         self.drop_thin_triangles(crate::kernel::mesh_bridge::SNAP_GRID);
+    }
+
+    /// [`clean_degenerate`](Self::clean_degenerate) for SOURCE geometry that
+    /// must stay closed: drops the same slivers, then splits the triangle
+    /// across each dropped sliver's long edge at the sliver's apex whenever a
+    /// kept triangle still uses that apex, so the drop cannot open a
+    /// T-junction (#5313). May append vertices (an apex copy carrying the
+    /// split face's normal), so it is only for meshes with no parallel
+    /// per-vertex array outside `Mesh` (the textured channel's UVs rule it out
+    /// there). The router's source-hygiene chokepoints use it; the void/CSG
+    /// paths keep `clean_degenerate`, whose output their own closure gates and
+    /// census judge.
+    pub fn clean_degenerate_watertight(&mut self) {
+        self.drop_thin_triangles_inner(crate::kernel::mesh_bridge::SNAP_GRID, true);
     }
 
     /// Drop triangles with ANY vertex outside `[min - pad, max + pad]`, then
@@ -929,6 +958,9 @@ impl Default for Mesh {
 #[path = "mesh_position_weld.rs"]
 mod mesh_position_weld;
 use mesh_position_weld::weld_impl;
+
+#[path = "mesh_tjunction.rs"]
+mod tjunction;
 
 #[cfg(test)]
 #[path = "mesh_tests.rs"]

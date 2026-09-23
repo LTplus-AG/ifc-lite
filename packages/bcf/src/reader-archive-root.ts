@@ -10,6 +10,32 @@ export function isMacOsxShadowPath(path: string): boolean {
 }
 
 /**
+ * Rewrite backslash-separated entry names to `/`, in place, before anything
+ * reads the archive (#5188). The ZIP spec mandates `/`, but Windows-originated
+ * writers have emitted `\`, and JSZip keeps such a name verbatim (it strips a
+ * leading `./`, not this). Every lookup in the reader (`zip.file()`, the
+ * archive-root and topic-folder matches, the viewpoint and snapshot scans)
+ * then misses the entry, and the archive reads as an empty project. Fixing the
+ * names once fixes every lookup, instead of teaching each call site about both
+ * separators. The writer stays strict: it only ever emits `/`.
+ */
+export function normalizeEntrySeparators(zip: JSZip, warn: ReportWarning): JSZip {
+  for (const name of Object.keys(zip.files)) {
+    if (!name.includes('\\')) continue;
+    const entry = zip.files[name];
+    const normalized = name.replace(/\\/g, '/');
+    delete zip.files[name];
+    if (zip.files[normalized]) {
+      warn(`Archive entry "${name}" duplicates "${normalized}" once its backslashes are read as folder separators; keeping "${normalized}"`);
+      continue;
+    }
+    entry.name = normalized;
+    zip.files[normalized] = entry;
+  }
+  return zip;
+}
+
+/**
  * Look up an archive entry, accepting a case variant when the exact name is
  * absent. Topic markup is matched case-insensitively, so the archive metadata
  * (`bcf.version`, `project.bcfp`) must be too: JSZip's `file(name)` is
@@ -55,6 +81,11 @@ export function discoverTopicMarkupPaths(zip: JSZip, root: string, warn: ReportW
       } else {
         topicFolders.set(match[1], relativePath);
       }
+    } else if (/(?:^|\/)markup\.bcf$/i.test(relativePath) && !isMacOsxShadowPath(relativePath)) {
+      // A markup.bcf no topic folder can claim (at the archive root, or beside
+      // bcf.version rather than in a topic folder under it). Its topic is not
+      // read, and that must be reported, not look like an empty project (#5188).
+      warn(`markup.bcf entry "${relativePath}" is not inside a topic folder under the archive root "${root || '/'}"; its topic was not read`);
     }
   });
   return topicFolders;

@@ -12,13 +12,14 @@
  * from "every topic in this archive was invisible to the reader".
  *
  * The fix has two halves:
- *  1. Normalise `\` to `/` when matching topic-folder and in-folder
- *     (viewpoint/snapshot) paths, so a backslash archive reads correctly.
- *     This package's own writer (writer.ts) is untouched and still only
- *     emits forward slashes -- the usual tolerant-reader/strict-writer split.
- *  2. Warn when the archive contains a `markup.bcf` entry that no topic
- *     folder claimed, so any OTHER malformed layout the normalisation
- *     doesn't cover is reported instead of silently dropped.
+ *  1. Rewrite `\` to `/` in every entry name once, right after the archive
+ *     loads (`normalizeEntrySeparators`), so every later lookup (archive
+ *     root, topic folders, viewpoints, snapshots) sees one separator. The
+ *     writer is untouched and still only emits forward slashes, the usual
+ *     tolerant-reader/strict-writer split.
+ *  2. Warn, through `onWarning` as well as the console, when the archive
+ *     holds a `markup.bcf` that no topic folder claims, so any OTHER layout
+ *     the reader can't place is reported instead of silently dropped.
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -108,8 +109,42 @@ describe('#5188: backslash-separated .bcfzip entries', () => {
     expect(project.topics.size).toBe(0);
     expect(warn).toHaveBeenCalled();
     const warned = warn.mock.calls.some((call) =>
-      call.some((arg) => typeof arg === 'string' && /markup\.bcf/i.test(arg) && /no topic folder|unclaimed|claim/i.test(arg)),
+      call.some((arg) => typeof arg === 'string' && /markup\.bcf/i.test(arg) && /is not inside a topic folder/.test(arg)),
     );
     expect(warned).toBe(true);
+  });
+
+  it('reads a zipped-folder archive whose root folder is also backslash-separated (#5188 on top of #5213)', async () => {
+    const guid = 'cccccccc-1111-2222-3333-444444444444';
+    const zip = new JSZip();
+    zip.file('Project\\bcf.version', versionFile());
+    zip.file(`Project\\${guid}\\markup.bcf`, markupFile(guid, 'Nested behind backslashes', 'viewpoint.bcfv'));
+    zip.file(`Project\\${guid}\\viewpoint.bcfv`, viewpointFile());
+    zip.file(`Project\\${guid}\\snapshot.png`, new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+    const buf = await zip.generateAsync({ type: 'nodebuffer' });
+
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const onWarning = vi.fn();
+    const project = await readBCF(buf, { onWarning });
+
+    const topic = project.topics.get(guid);
+    expect(topic?.title).toBe('Nested behind backslashes');
+    expect(topic?.viewpoints).toHaveLength(1);
+    expect(topic?.viewpoints[0]?.snapshot).toBeTruthy();
+    expect(onWarning).not.toHaveBeenCalled();
+  });
+
+  it('reports the unclaimed markup.bcf through onWarning, not only the console', async () => {
+    const zip = new JSZip();
+    zip.file('bcf.version', versionFile());
+    zip.file('markup.bcf', markupFile('dddddddd-1111-2222-3333-444444444444', 'Orphan topic'));
+    const buf = await zip.generateAsync({ type: 'nodebuffer' });
+
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const onWarning = vi.fn();
+    const project = await readBCF(buf, { onWarning });
+
+    expect(project.topics.size).toBe(0);
+    expect(onWarning).toHaveBeenCalledWith(expect.stringMatching(/markup\.bcf entry "markup\.bcf" is not inside a topic folder/), 'skipped');
   });
 });

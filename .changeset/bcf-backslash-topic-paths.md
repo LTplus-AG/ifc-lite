@@ -2,4 +2,4 @@
 "@ifc-lite/bcf": patch
 ---
 
-Fix `readBCF` silently returning an empty project for a `.bcfzip` whose entries use backslash path separators (a real historical Windows-zip-writer output). Topic-folder, viewpoint, and snapshot matching now tolerate `\` as well as `/`, and reading now warns when a `markup.bcf` entry exists that no topic folder can claim, instead of returning a successful empty result with no signal.
+Fix `readBCF` silently returning an empty project for a `.bcfzip` whose entries use backslash path separators (a real historical Windows-zip-writer output). Entry names are normalised to `/` once when the archive loads, so the archive root, topic folders, viewpoints and snapshots all resolve, including in a zipped-folder archive. A `markup.bcf` that no topic folder can claim is now reported through `onWarning` (and the console) instead of reading as a successful empty result.

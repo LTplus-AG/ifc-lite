@@ -15,6 +15,16 @@ import { emptyPlacementState } from './state';
 import { buildPlacedSpatialIndex } from './spatial-index';
 import { modelIndices } from './model-indices';
 
+/** The production BVH yields between build phases; await publication, not a microtask count. */
+async function waitForPublication<T>(read: () => T | undefined, description: string): Promise<T> {
+  for (let attempt = 0; attempt < 500; attempt++) {
+    const value = read();
+    if (value !== undefined) return value;
+    await new Promise<void>(resolve => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for ${description}`);
+}
+
 it('publishes spatial queries at the moved position and prevents a late source build restoring old coordinates (#4226)', async () => {
   const model = fixtureModel('m'), data = model.ifcDataStore!;
   const mesh: MeshData = { expressId: 1, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
@@ -27,9 +37,10 @@ it('publishes spatial queries at the moved position and prevents a late source b
   await Promise.resolve();
   assert.equal(data.spatialIndex, undefined, 'completion of the old build cannot republish source coordinates');
   buildSpatialIndexForModel([mesh], 'm', data);
-  await Promise.resolve();
-  const index = useViewerStore.getState().models.get('m')!.ifcDataStore!.spatialIndex;
-  assert.ok(index);
+  const index = await waitForPublication(
+    () => useViewerStore.getState().models.get('m')!.ifcDataStore!.spatialIndex,
+    'the replacement placed index',
+  );
   assert.deepEqual(index.queryAABB({ min: [-1, -1, -1], max: [2, 2, 2] }), []);
   assert.deepEqual(index.queryAABB({ min: [9, 29, -21], max: [12, 32, -19] }), [1]);
   assert.deepEqual(Array.from(mesh.positions), [0, 0, 0, 1, 0, 0, 0, 1, 0], 'spatial indexing does not rewrite source vertices');
@@ -42,8 +53,8 @@ it('publishes an IFC index when scan alignment changes during the build (#4226)'
   useViewerStore.setState({ ...fixtureModels(model), modelPlacement: emptyPlacementState(), pointCloudAlignmentEnabled: false });
   buildSpatialIndexForModel([mesh], 'm', data);
   useViewerStore.setState({ pointCloudAlignmentEnabled: true });
-  await Promise.resolve();
-  assert.deepEqual(data.spatialIndex?.queryAABB({ min: [-1, -1, -1], max: [2, 2, 2] }), [1]);
+  const index = await waitForPublication(() => data.spatialIndex, 'the alignment index');
+  assert.deepEqual(index.queryAABB({ min: [-1, -1, -1], max: [2, 2, 2] }), [1]);
 });
 
 for (const remove of [false, true]) it(`publishes the primary index while an unrelated model changes (remove: ${remove}, #4226)`, async () => {
@@ -55,8 +66,8 @@ for (const remove of [false, true]) it(`publishes the primary index while an unr
   const state = useViewerStore.getState();
   if (remove) useViewerStore.setState({ models: new Map([['primary', model]]) });
   else { state.openReposition(['other']); state.previewModelTranslation([100, 0, 0]); }
-  await Promise.resolve();
-  assert.deepEqual(data.spatialIndex?.queryAABB({ min: [-1, -1, -1], max: [2, 2, 2] }), [1]);
+  const index = await waitForPublication(() => data.spatialIndex, 'the primary index');
+  assert.deepEqual(index.queryAABB({ min: [-1, -1, -1], max: [2, 2, 2] }), [1]);
 });
 
 /**
@@ -99,12 +110,14 @@ it('does not leak an occurrence into another model\'s index when the two share a
   try {
     buildPlacedSpatialIndex(useViewerStore.getState(), 'a');
     buildPlacedSpatialIndex(useViewerStore.getState(), 'b');
-    await Promise.resolve(); await Promise.resolve();
-
-    const spatialA = useViewerStore.getState().models.get('a')!.ifcDataStore!.spatialIndex;
-    const spatialB = useViewerStore.getState().models.get('b')!.ifcDataStore!.spatialIndex;
-    assert.ok(spatialA, 'model a\'s index must have built');
-    assert.ok(spatialB, 'model b\'s index must have built');
+    const spatialA = await waitForPublication(
+      () => useViewerStore.getState().models.get('a')!.ifcDataStore!.spatialIndex,
+      "model a's index",
+    );
+    const spatialB = await waitForPublication(
+      () => useViewerStore.getState().models.get('b')!.ifcDataStore!.spatialIndex,
+      "model b's index",
+    );
 
     assert.deepEqual(spatialA!.queryAABB({ min: [0, 0, 0], max: [1, 1, 1] }), [500], 'model a must see its own occurrence');
     assert.deepEqual(spatialA!.queryAABB({ min: [50, 0, 0], max: [51, 1, 1] }), [],

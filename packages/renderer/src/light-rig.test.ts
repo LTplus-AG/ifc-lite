@@ -74,7 +74,30 @@ describe('default light rig (#5382)', () => {
     assert.match(mainShaderSource, /let NdotFill = max\(dot\(N, fillLight\), 0\.0\);/);
     assert.doesNotMatch(mainShaderSource, /abs\(dot\(N, sunLight\)\)/, 'the sun is two-sided again');
     assert.doesNotMatch(mainShaderSource, /abs\(dot\(N, fillLight\)\)/, 'the fill is two-sided again');
-    assert.match(mainShaderSource, /let fillLight = normalize\(vec3<f32>\(-sunLight\.x, 0\.25, -sunLight\.z\)\);/);
+  });
+
+  it('mirrors every fs_main light term that `irradianceRgb` reimplements', () => {
+    // `irradianceRgb` is a TS copy of the shader's light maths, so the rig
+    // tests below only mean something while the copy matches. Pin each term
+    // it mirrors: changing any of them in the shader (dropping the ambient,
+    // moving the fill, re-weighting the rim) fails here until the mirror is
+    // updated with it.
+    const terms = [
+      'let fillLight = normalize(vec3<f32>(-sunLight.x, 0.25, -sunLight.z));',
+      'let rimLight = normalize(vec3<f32>(0.0, 0.2, -1.0));',
+      'let hemisphereFactor = N.y * 0.5 + 0.5;',
+      'let ambient = mix(env.groundColor, env.skyColor, hemisphereFactor) * env.ambientIntensity;',
+      'let wrap = env.sunSoftness;',
+      'let diffuseSun = max((NdotL + wrap) / (1.0 + wrap), 0.0) * env.sunIntensity;',
+      'let diffuseFill = NdotFill * env.fillIntensity;',
+      'let NdotRim = max(dot(N, rimLight), 0.0);',
+      'let rim = pow(NdotRim, 4.0) * env.rimIntensity;',
+      'let lightTerm = ambient + env.sunColor * (diffuseSun * sunShadow) + vec3<f32>(diffuseFill + rim);',
+      'let irradiance = lightTerm * (env.exposure * IRRADIANCE_CALIBRATION);',
+    ];
+    for (const term of terms) {
+      assert.ok(mainShaderSource.includes(term), `fs_main no longer contains \`${term}\`; update irradianceRgb to match`);
+    }
   });
 
   it('calibrates a sun-facing horizontal surface to unit irradiance', () => {
@@ -98,10 +121,15 @@ describe('default light rig (#5382)', () => {
   });
 
   it('puts one of the two walls seen on open in shade, and the other in sun', () => {
+    const key = irradiance(undefined, UP);
     const [a, b] = VISIBLE_WALLS.map((n) => irradiance(undefined, n));
     const lit = Math.max(a, b);
     const shade = Math.min(a, b);
+    // Bound the shaded wall from below first: a black wall would make the
+    // ratio infinite and pass the contrast check for the wrong reason.
+    assert.ok(shade >= 0.3 * key, `the shaded visible wall (${shade.toFixed(3)}) is too dark against the key (${key.toFixed(3)})`);
     assert.ok(lit / shade >= 1.5, `visible walls ${a.toFixed(3)} / ${b.toFixed(3)} are too alike to read as form`);
+    assert.ok(lit / shade <= 3, `visible walls ${a.toFixed(3)} / ${b.toFixed(3)} are too harsh`);
   });
 
   it('keeps faces turned away from the sun readable', () => {

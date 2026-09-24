@@ -5,7 +5,7 @@
 /**
  * Hook for 2D measurement tool logic
  * Extracts pan/measure mouse handling, snapping, orthogonal constraints,
- * and keyboard/global-mouseup effects from Section2DPanel.
+ * and keyboard/global-mouseup effects from the 2D drawing view.
  */
 
 import { useCallback, useEffect, useRef } from 'react';

@@ -6,7 +6,7 @@ import { useMemo, useRef, useState, useEffect } from 'react';
 import { Boxes, Triangle, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { formatNumber, formatBytes } from '@/lib/utils';
-import { useViewerStore } from '@/store';
+import { resolveEntityRef, useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
@@ -16,10 +16,13 @@ import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
 import { collectMeshedIds, countShapedObjects, createShapePredicate } from '@/lib/object-count';
 import type { AggregationRelationships } from '@/utils/aggregation';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { fromGlobalIdFromModels, toGlobalIdFromModels } from '@/store/globalId';
+import { toGlobalIdFromModels } from '@/store/globalId';
 import type { EntityRef } from '@/store/types';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
+import { isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
+import { effectiveContextType } from './EntityContextMenu.effective-selection';
+import { effectiveStoreyMemberIds } from './EntityContextMenu.effective-storey';
 
 /** One loaded model's store paired with the geometry produced from it. */
 interface CountedModel {
@@ -103,11 +106,12 @@ export function StatusBar() {
   const countedModels = useMemo<CountedModel[]>(() => {
     if (models.size > 0) {
       const out: CountedModel[] = [];
+      const resolveInModel = useViewerStore.getState().resolveGlobalIdInModel;
       for (const model of models.values()) {
         if (!model.ifcDataStore) continue;
         const toLocalId = (id: number): number => {
-          const ref = fromGlobalIdFromModels(models, id);
-          return ref?.modelId === model.id ? ref.expressId : id;
+          const ref = resolveInModel(model.id, id);
+          return ref?.expressId ?? id;
         };
         out.push({
           modelId: model.id,
@@ -124,7 +128,7 @@ export function StatusBar() {
       meshedIds: collectMeshedIds(geometryResult),
       geometryReady: geometryResult != null,
     }] : [];
-  }, [models, ifcDataStore, geometryResult]);
+  }, [models, ifcDataStore, geometryResult, mutationViews, mutationVersion]);
 
   const triangleCount = useMemo(() => {
     if (models.size === 0) return geometryResult?.totalTriangles ?? 0;
@@ -194,7 +198,11 @@ export function StatusBar() {
     const selectedRefs = new Map<string, EntityRef>();
     const addStoreyRef = (ref: EntityRef): boolean => {
       const model = modelsById.get(ref.modelId);
-      if (!model?.store.spatialHierarchy?.byStorey.has(ref.expressId)) return false;
+      if (!model?.store.spatialHierarchy) return false;
+      const view = models.size > 0 ? mutationViews.get(ref.modelId) ?? null
+        : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID) ?? null;
+      if (view?.isDeleted(ref.expressId) ||
+        !isStoreyLikeSpatialTypeName(effectiveContextType(model.store, view, ref.expressId))) return false;
       selectedRefs.set(`${ref.modelId}:${ref.expressId}`, ref);
       return true;
     };
@@ -212,8 +220,7 @@ export function StatusBar() {
       if (activeStorey && selectionMatchesRef(storeyId, activeStorey) && addStoreyRef(activeStorey)) {
         continue;
       }
-      const globalRef = fromGlobalIdFromModels(models, storeyId);
-      if (globalRef && addStoreyRef(globalRef)) continue;
+      if (addStoreyRef(resolveEntityRef(storeyId))) continue;
       // Legacy/raw selection with no model-aware companion. Preserve the old
       // fallback, but include every matching model rather than silently taking
       // the first colliding local id.
@@ -226,8 +233,10 @@ export function StatusBar() {
     let count = 0;
     for (const { modelId, expressId: storeyId } of selectedRefs.values()) {
       const owner = modelsById.get(modelId);
-      const storeyElements = owner?.store.spatialHierarchy?.byStorey.get(storeyId);
-      if (!owner || !storeyElements) continue;
+      if (!owner) continue;
+      const view = models.size > 0 ? mutationViews.get(modelId) ?? null
+        : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID) ?? null;
+      const storeyElements = effectiveStoreyMemberIds(owner.store, view, storeyId);
       let hasShape = predicates.get(modelId);
       if (!hasShape) {
         hasShape = createShapePredicate({
@@ -246,7 +255,7 @@ export function StatusBar() {
     // the model — fall back to the whole-model total. A storey that resolves
     // and genuinely holds no objects reports 0, which is the answer.
     return selectedRefs.size > 0 ? count : totalObjects;
-  }, [selectedStoreys, activeStorey, selectedEntities, countedModels, models, physicalIdsByModel, totalObjects]);
+  }, [selectedStoreys, activeStorey, selectedEntities, countedModels, models, mutationViews, mutationVersion, physicalIdsByModel, totalObjects]);
 
   return (
     <div className="h-7 px-3 border-t bg-muted/30 flex items-center justify-between text-xs text-muted-foreground">

@@ -103,6 +103,30 @@ export function judge(parsed, mustMention) {
   return { ok: true, why: `${list.length} finding(s), naming the planted defect` };
 }
 
+/**
+ * The surviving findings, one block each, as the canary's log shows them. The
+ * judge's verdict alone cannot be diagnosed: "none names X" says a finding
+ * existed and not what it said (#5621).
+ *
+ * @param {object} parsed - the validator's findings.json.
+ * @returns {string}
+ */
+export function describeFindings(parsed) {
+  const list = Array.isArray(parsed?.findings) ? parsed.findings : [];
+  if (list.length === 0) return `canary: verdict=${JSON.stringify(parsed?.verdict)}, no surviving findings.`;
+  const clip = (t) => {
+    const s = String(t ?? '').replace(/\s+/g, ' ').trim();
+    return s.length > 400 ? `${s.slice(0, 400)}...` : s;
+  };
+  const rows = list.map(
+    (f, i) =>
+      `  [${i}] ${f.path}:${f.line}${f.source ? ` (from ${f.source})` : ''}\n` +
+      `      quote: ${clip(f.quote)}\n` +
+      `      body:  ${clip(f.body)}`,
+  );
+  return `canary: verdict=${JSON.stringify(parsed.verdict)}, ${list.length} surviving finding(s):\n${rows.join('\n')}`;
+}
+
 function main() {
   const fixture = join(HERE, 'lane-canary-fixture.json');
   const rubric = join(HERE, 'rubric.md');
@@ -115,6 +139,13 @@ function main() {
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
   );
   const log = `${r.stdout || ''}${r.stderr || ''}`;
+  // PRINTED ON EVERY PATH, not only on failure (#5621). The reviewer's log is
+  // where the ensemble names which models answered, which were excluded from
+  // the pool and why; the canary's first red with a live reviewer said only
+  // "1 finding(s), but none names timeoutMs", with no way to tell a reviewer
+  // that missed the defect from a validator that dropped the finding that
+  // named it.
+  if (r.status === 0) console.log(log.trim());
   if (r.status !== 0) {
     // The reviewer's own error classes already name the remedy; do not restate
     // them, forward them. AUTH_FAILED and QUOTA_DRAINED are the two this canary
@@ -141,6 +172,7 @@ function main() {
     [join(HERE, 'validate-findings.mjs'), '--raw', out, '--input', fixture, '--out', findingsPath],
     { encoding: 'utf8' },
   );
+  if (v.status === 0) console.log(`${v.stdout || ''}${v.stderr || ''}`.trim());
   if (v.status !== 0) {
     console.error(`${v.stdout || ''}${v.stderr || ''}`.trim());
     throw new CanaryError(
@@ -161,6 +193,7 @@ function main() {
     );
   }
 
+  console.log(describeFindings(parsed));
   const verdict = judge(parsed, ['session-timeout', 'timeoutMs']);
   if (!verdict.ok) {
     throw new CanaryError(

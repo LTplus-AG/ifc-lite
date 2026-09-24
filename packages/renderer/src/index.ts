@@ -177,6 +177,7 @@ import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { RenderDegradationMonitor, type RenderDegradationInfo } from './render-degradation.js';
 import { PostPassChain } from './post-pass-chain.js';
+import { buildSelectionOutlineFrame } from './selection-outline-frame.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
@@ -2322,6 +2323,12 @@ export class Renderer {
             this.pipeline.setEntityColorTableBuffer(this.scene.getEntityColorTable().getBuffer());
             pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
 
+            // Selected meshes drawn this frame, for the selection-mask pass
+            // (#5390) after `pass.end()` below. Populated inside the batched
+            // branch, where the highlight draw itself happens; empty in the
+            // no-batches fallback, which does not draw selection either.
+            let selectedMeshesForMask: Mesh[] = [];
+
             // Check if we have batched meshes (preferred for performance)
             const allBatchedMeshes = this.scene.getBatchedMeshes();
 
@@ -2910,6 +2917,7 @@ export class Renderer {
                         return true;
                     })
                     : [];
+                selectedMeshesForMask = selectedMeshes;
 
                 // Transparent instanced sub-pass — drawn here (after ALL opaque incl. the
                 // textured sub-pass) so ghosted/x-rayed instanced occurrences blend over
@@ -3119,8 +3127,18 @@ export class Renderer {
 
             pass.end();
 
+            // Selection/hover outline input (#5390): built from the meshes the
+            // highlight-draw loop above already prepared this frame.
+            const selectionOutline = buildSelectionOutlineFrame({
+                device, meshBindGroupLayout: this.pipeline.getBindGroupLayout(),
+                uniformBufferSize: this.pipeline.getUniformBufferSize(),
+                viewProj, relativeToEyeFrame,
+                selectedMeshes: selectedMeshesForMask, allMeshes: this.scene.getMeshes(),
+                hoveredId: options.hoveredId, selectedModelIndex,
+            });
+
             // Created lazily like the sky/shadow passes; each pass inside is too.
-            this.postPasses ??= new PostPassChain(this.device, this.pipeline.getSampleCount());
+            this.postPasses ??= new PostPassChain(this.device, this.pipeline.getSampleCount(), this.pipeline.getBindGroupLayout());
             this.postPasses.encode({
                 encoder,
                 targetView: textureView,
@@ -3135,6 +3153,7 @@ export class Renderer {
                 pixelRatio: this.pixelRatio,
                 // EDL only when point clouds are loaded and the user enabled it.
                 edl: this.edlOptions.enabled && this.pointCloudRenderer?.hasAssets() ? this.edlOptions : null,
+                selectionOutline,
             });
 
             colorReadback = colorCapture && encodeRendererColorFrameCapture(device, encoder, colorCapture);

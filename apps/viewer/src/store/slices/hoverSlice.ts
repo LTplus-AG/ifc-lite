@@ -9,6 +9,7 @@
 import type { StateCreator } from 'zustand';
 import type { HoverState, ContextMenuState } from '../types.js';
 import { defineSliceTeardown } from '../teardown.js';
+import { UI_DEFAULTS } from '../constants.js';
 
 /**
  * "Nothing is hovered", in one place.
@@ -32,10 +33,21 @@ export interface HoverSlice {
   // State
   hoverState: HoverState;
   contextMenu: ContextMenuState;
+  /**
+   * Hover pre-highlight outline (#5390): a persistent workspace preference,
+   * on by default, independent of `hoverTooltipsEnabled` (`uiSlice`). Lives
+   * here rather than in `uiSlice` because that slice sits at its module-size
+   * budget; not part of `hoverTeardown` for the same reason
+   * `hoverTooltipsEnabled` is absent from `uiSlice.teardown.ts` — a
+   * workspace preference no file swap or session reset has ever touched.
+   */
+  hoverHighlightEnabled: boolean;
 
   // Actions
   setHoverState: (state: HoverState) => void;
   clearHover: () => void;
+  setHoverHighlightEnabled: (enabled: boolean) => void;
+  toggleHoverHighlight: () => void;
   openContextMenu: (entityId: number | null, screenX: number, screenY: number) => void;
   closeContextMenu: () => void;
 }
@@ -44,10 +56,13 @@ export const createHoverSlice: StateCreator<HoverSlice, [], [], HoverSlice> = (s
   // Initial state
   hoverState: emptyHoverState(),
   contextMenu: closedContextMenu(),
+  hoverHighlightEnabled: UI_DEFAULTS.HOVER_HIGHLIGHT_ENABLED,
 
   // Actions
   setHoverState: (hoverState) => set({ hoverState }),
   clearHover: () => set({ hoverState: emptyHoverState() }),
+  setHoverHighlightEnabled: (hoverHighlightEnabled) => set({ hoverHighlightEnabled }),
+  toggleHoverHighlight: () => set((state) => ({ hoverHighlightEnabled: !state.hoverHighlightEnabled })),
 
   openContextMenu: (entityId, screenX, screenY) => set({
     contextMenu: { isOpen: true, entityId, screenX, screenY },

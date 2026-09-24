@@ -163,13 +163,19 @@ export function useCameraState() {
  */
 export function useHoverState() {
   const hoverTooltipsEnabled = useViewerStore((state) => state.hoverTooltipsEnabled);
+  const hoverHighlightEnabled = useViewerStore((state) => state.hoverHighlightEnabled);
+  const hoverState = useViewerStore((state) => state.hoverState);
   const setHoverState = useViewerStore((state) => state.setHoverState);
   const clearHover = useViewerStore((state) => state.clearHover);
+  const setHoverHighlightEnabled = useViewerStore((state) => state.setHoverHighlightEnabled);
 
   return {
     hoverTooltipsEnabled,
+    hoverHighlightEnabled,
+    hoverState,
     setHoverState,
     clearHover,
+    setHoverHighlightEnabled,
   };
 }
 

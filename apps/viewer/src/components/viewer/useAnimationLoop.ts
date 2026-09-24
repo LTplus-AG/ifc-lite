@@ -50,6 +50,8 @@ export interface UseAnimationLoopParams {
   /** X-Ray context: ghost every entity NOT in this set (null = no ghosting). */
   ghostExceptEntitiesRef: MutableRefObject<Set<number> | null>;
   selectedEntityIdRef: MutableRefObject<number | null>;
+  /** Hovered entity id for the pre-highlight outline (#5390), or null. */
+  hoveredIdRef: MutableRefObject<number | null>;
   selectedModelIndexRef: MutableRefObject<number | undefined>;
   clearColorRef: MutableRefObject<[number, number, number, number]>;
   visualEnhancementRef: MutableRefObject<VisualEnhancementOptions>;
@@ -97,6 +99,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     isolatedEntitiesRef,
     ghostExceptEntitiesRef,
     selectedEntityIdRef,
+    hoveredIdRef,
     selectedModelIndexRef,
     clearColorRef,
     visualEnhancementRef,
@@ -266,6 +269,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
             ghostExceptIds: ghostExceptEntitiesRef.current,
             selectedId: selection.selectedId,
             selectedIds: selection.selectedIds,
+            hoveredId: hoveredIdRef.current ?? undefined,
             emphasizeOverrides: (clashHighlightColorsRef.current?.size ?? 0) > 0,
             selectedModelIndex: selectedModelIndexRef.current,
             clearColor: clearColorRef.current,

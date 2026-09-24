@@ -97,8 +97,8 @@ export function readModelFact(store: IfcDataStore, fact: ModelFact): Array<strin
   switch (fact) {
     case 'header.fileName': return defined(header.name);
     case 'header.timeStamp': return defined(header.timeStamp);
-    case 'header.author': return defined(...header.author);
-    case 'header.organization': return defined(...header.organization);
+    case 'header.author': return defined(...(header.author ?? []));
+    case 'header.organization': return defined(...(header.organization ?? []));
     case 'header.originatingSystem': return defined(header.originatingSystem);
     case 'header.preprocessorVersion': return defined(header.preprocessorVersion);
     case 'header.authorization': return defined(header.authorization);

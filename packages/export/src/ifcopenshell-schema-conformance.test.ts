@@ -230,6 +230,36 @@ describe.skipIf(!canRunIfc4x3)('StepExporter IFC4X3 output is schema-conformant 
 });
 
 /**
+ * #5470: IfcOpenShell/Bonsai write FILE_NAME's author and organization as `$`,
+ * which is itself invalid for a LIST [1:?], and a re-export used to turn it
+ * into `()`, still invalid. The fixture's header is its ONLY defect, so the
+ * control pins exactly that and the re-export must come back clean.
+ */
+const UNSET_AUTHOR_FIXTURE = 'ifc5/Hello_Wall_hello-wall.ifc';
+const canRunUnsetAuthor = fixturesAvailable([UNSET_AUTHOR_FIXTURE]) && ifcopenshellAvailable();
+
+describe.skipIf(!canRunUnsetAuthor)('StepExporter re-export of a `$` FILE_NAME author/organization (#5470)', () => {
+  it(
+    'writes the (\'\') default, and the re-export validates with 0 issues',
+    async () => {
+      const source = resolve(MODELS_DIR, UNSET_AUTHOR_FIXTURE);
+      expect(readFileSync(source, 'utf8')).toMatch(/FILE_NAME\('[^']*','[^']*',\$,\$,/);
+      const control = spawnSync(PYTHON, [VALIDATE_SCRIPT, source], { encoding: 'utf8' });
+      expect(control.stdout, 'control: the source fails on its header, and only there').toContain(
+        ': 2 schema-conformance issue(s)',
+      );
+      expect(control.stdout).toContain("Attribute 'author' has invalid type");
+      expect(control.stdout).toContain("Attribute 'organization' has invalid type");
+
+      const out = await reExport(UNSET_AUTHOR_FIXTURE, mkdtempSync(join(tmpdir(), 'ifc-lite-export-5470-')));
+      expect(readFileSync(out, 'utf8')).toMatch(/FILE_NAME\('[^']*','[^']*',\(''\),\(''\),/);
+      runValidateOrThrow([out]);
+    },
+    IFCOPENSHELL_TEST_TIMEOUT_MS,
+  );
+});
+
+/**
  * Runs validate_export.py and turns a failure into a vitest assertion that
  * carries the script's own stdout — the offending entity and rule — rather
  * than a bare non-zero exit code.

@@ -23,8 +23,9 @@ import { relativeToEyeWgsl } from './relative-to-eye.wgsl.js';
  * default exposure is 0.85, so this factor puts that surface at irradiance
  * 1.0, where it renders at exactly its authored colour. Every preset and user
  * exposure is scaled by the same factor, so their relative brightness holds.
+ * `color-pipeline.test.ts` re-derives it from the default rig.
  */
-export const IRRADIANCE_CALIBRATION = 1.82;
+const IRRADIANCE_CALIBRATION = 1.82;
 
 export const mainShaderSource = `
         struct Uniforms {

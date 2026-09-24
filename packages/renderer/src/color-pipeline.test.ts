@@ -4,15 +4,14 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { IRRADIANCE_CALIBRATION, mainShaderSource } from './shaders/main.wgsl.js';
+import { mainShaderSource } from './shaders/main.wgsl.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
 import { texturedShaderSource } from './shaders/textured.wgsl.js';
-import { colorTransferWgsl } from './shaders/color-transfer.wgsl.js';
 import { resolveEnvironment } from './environment.js';
 
 /**
  * The colour pipeline lights authored sRGB colours in linear and grades
- * nothing in display space.
+ * nothing in display space (#5381).
  *
  * Before this contract the fragment stage multiplied sRGB values by light as
  * if they were linear, then darkened near-greys, stretched contrast about 0.5,
@@ -21,12 +20,36 @@ import { resolveEnvironment } from './environment.js';
  * brick rgb(114,51,14) rendered crimson, every grey at or below 40/255 rendered
  * pure black on every face, and pure white never exceeded 202/255.
  *
- * WGSL cannot run under `tsx --test`, so these assert the shader source at the
+ * WGSL cannot run under `tsx --test`, so these assert the shader sources at the
  * only level that can see the stages, in the idiom of
  * `sun-softness-wiring.test.ts`: each negative assertion is paired with a
- * positive one so a rename cannot make it pass vacuously.
+ * positive one so a rename cannot make it pass vacuously. Everything is read
+ * from the three shader sources, so the file also loads against a tree that
+ * predates the contract and fails there on assertions.
  */
-describe('linear colour pipeline', () => {
+
+const TRANSFER_FNS = ['srgbToLinear', 'linearToSrgb', 'neutralCompress'] as const;
+
+/** Every definition of WGSL function `name` in `src`, braces matched. */
+function wgslFnDefinitions(src: string, name: string): string[] {
+  const found: string[] = [];
+  let from = 0;
+  for (;;) {
+    const start = src.indexOf(`fn ${name}(`, from);
+    if (start < 0) return found;
+    const open = src.indexOf('{', start);
+    let depth = 0;
+    let end = open;
+    for (; end < src.length; end++) {
+      if (src[end] === '{') depth++;
+      else if (src[end] === '}' && --depth === 0) break;
+    }
+    found.push(src.slice(start, end + 1));
+    from = end + 1;
+  }
+}
+
+describe('linear colour pipeline (#5381)', () => {
   it('decodes the authored colour to linear before it is multiplied by light', () => {
     const read = mainShaderSource.indexOf('var baseColor = input.color.rgb;');
     const decode = mainShaderSource.indexOf('baseColor = srgbToLinear(baseColor);');
@@ -50,18 +73,23 @@ describe('linear colour pipeline', () => {
     }
   });
 
-  it('shares one transfer implementation between geometry, textured geometry and sky', () => {
-    for (const [name, src] of [
-      ['main', mainShaderSource],
-      ['textured', texturedShaderSource],
-      ['sky', skyShaderSource],
-    ] as const) {
-      assert.ok(src.includes(colorTransferWgsl), `${name}: must embed colorTransferWgsl verbatim, not a copy`);
-      assert.equal(src.split('fn srgbToLinear(').length - 1, 1, `${name}: exactly one srgbToLinear definition`);
+  it('gives geometry, textured geometry and sky one identical transfer, defined once each', () => {
+    const sources = { main: mainShaderSource, textured: texturedShaderSource, sky: skyShaderSource };
+    for (const fn of TRANSFER_FNS) {
+      const bodies = Object.entries(sources).map(([name, src]) => {
+        const defs = wgslFnDefinitions(src, fn);
+        assert.equal(defs.length, 1, `${name}: expected exactly one \`fn ${fn}\`, found ${defs.length}`);
+        return defs[0];
+      });
+      assert.ok(bodies.every((b) => b === bodies[0]), `\`fn ${fn}\` differs between shaders; they must share color-transfer.wgsl.ts`);
     }
   });
 
   it('calibrates the default rig so a sun-facing horizontal surface is at unit irradiance', () => {
+    const declared = /const IRRADIANCE_CALIBRATION: f32 = ([\d.]+);/.exec(mainShaderSource);
+    assert.ok(declared, 'expected the shader to declare IRRADIANCE_CALIBRATION');
+    const calibration = Number(declared[1]);
+
     // main.wgsl's light terms evaluated for N = +Y with the default environment.
     const env = resolveEnvironment();
     const norm = (v: readonly number[]) => {
@@ -75,7 +103,7 @@ describe('linear colour pipeline', () => {
     const rim = Math.max(dot(n, norm([0, 0.2, -1])), 0) ** 4 * env.rimIntensity;
     const light = env.skyColor.map((c, i) => c * env.ambientIntensity + env.sunColor[i] * sun + fill + rim);
     const luma = 0.299 * light[0] + 0.587 * light[1] + 0.114 * light[2];
-    const irradiance = luma * env.exposure * IRRADIANCE_CALIBRATION;
+    const irradiance = luma * env.exposure * calibration;
     assert.ok(Math.abs(irradiance - 1) < 0.005, `default key irradiance ${irradiance.toFixed(4)} drifted from 1.0; recalibrate IRRADIANCE_CALIBRATION`);
   });
 });

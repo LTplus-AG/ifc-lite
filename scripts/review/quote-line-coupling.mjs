@@ -32,6 +32,58 @@ import { unifiedDiffLineKind } from '../lib/unified-diff.mjs';
 import { sanitizePath } from './lib/finding-sanitizers.mjs';
 
 /**
+ * Is `path` itself an archived unified diff (#5563)? Evidence PRs commit a
+ * `.patch` or `.diff` file without applying it, so every line of that file's
+ * PR patch carries TWO markers: the outer one from the PR diff and the inner
+ * one from the archived diff (`++    return x;`). A reviewer quoting the source
+ * line it read quotes it without the inner marker, exactly as it would quote
+ * the same line in a `.ts` file without the outer one.
+ *
+ * BY PATH, NOT BY SNIFFING CONTENT. A line of ordinary code may start with `+`
+ * or `-` (a wrapped `+ b` continuation, a `-1` literal); stripping one there
+ * would accept a quote that is a FRAGMENT of the real line, which is exactly
+ * what whole-line equality exists to refuse. Only a file whose documented
+ * format is a unified diff has an inner marker to strip.
+ *
+ * @param {string | undefined} path
+ */
+export function isArchivedDiff(path) {
+  return typeof path === 'string' && /\.(?:patch|diff)$/i.test(path);
+}
+
+/**
+ * The inner diff's content for one line of an archived diff, or `null` when
+ * the line has no inner `+`/`-` marker to remove. Context lines need nothing:
+ * their inner marker is a space, which trimming already removes. The inner
+ * line is classified with the SAME `unifiedDiffLineKind` the outer diff uses,
+ * so a hunk header or a no-newline note inside the archive is never turned
+ * into something quotable that it was not already.
+ *
+ * @param {string} text - the line with its OUTER marker already removed.
+ */
+function innerDiffContent(text) {
+  const kind = unifiedDiffLineKind(text, true);
+  return kind === 'added' || kind === 'removed' ? text.slice(1) : null;
+}
+
+/**
+ * The texts a single line may be quoted as, trimmed: always its own text, plus
+ * its inner-diff content when the file is an archived diff (#5563). Both stay
+ * whole lines, so a fragment of either is still refused.
+ *
+ * @param {string} text - the line with its OUTER marker already removed.
+ * @param {boolean} archivedDiff
+ */
+function quotableForms(text, archivedDiff) {
+  const forms = [text.trim()];
+  if (archivedDiff) {
+    const inner = innerDiffContent(text);
+    if (inner !== null) forms.push(inner.trim());
+  }
+  return forms.filter((f) => f !== '');
+}
+
+/**
  * The lines of a unified diff a quote may legitimately come from, each with its
  * diff marker removed and trimmed.
  *
@@ -42,10 +94,15 @@ import { sanitizePath } from './lib/finding-sanitizers.mjs';
  * more forgiving where it should be (trailing whitespace and the diff marker do
  * not decide whether a quote counts).
  *
+ * Pass the file's `path` so an archived `.patch`/`.diff` also offers each
+ * line's inner-diff content (see `isArchivedDiff`).
+ *
  * @param {string} patch
+ * @param {{ path?: string }} [opts]
  * @returns {string[]}
  */
-export function quotableLines(patch) {
+export function quotableLines(patch, { path } = {}) {
+  const archivedDiff = isArchivedDiff(path);
   const out = [];
   // BY POSITION, NOT BY PREFIX. `---`/`+++` are file headers only BEFORE the
   // first `@@`; after it they are content that happens to start the same way --
@@ -66,8 +123,7 @@ export function quotableLines(patch) {
     if (kind === 'metadata' || kind === 'header') continue;
     const marker = line[0];
     const body = marker === '+' || marker === '-' || marker === ' ' ? line.slice(1) : line;
-    const trimmed = body.trim();
-    if (trimmed !== '') out.push(trimmed);
+    out.push(...quotableForms(body, archivedDiff));
   }
   return out;
 }
@@ -78,11 +134,12 @@ export function quotableLines(patch) {
  * @param {string} patch
  * @param {string} quote
  * @param {number} minChars
+ * @param {{ path?: string }} [opts] - the file's path; see `quotableLines`.
  */
-export function quoteAppearsIn(patch, quote, minChars) {
+export function quoteAppearsIn(patch, quote, minChars, opts = {}) {
   const needle = String(quote).trim();
   if (needle.length < minChars) return false;
-  return quotableLines(patch).includes(needle);
+  return quotableLines(patch, opts).includes(needle);
 }
 
 /** @param {number} line @param {[number, number][]} ranges */
@@ -119,16 +176,23 @@ export function lineIsAdded(line, ranges) {
  *   - THE QUOTE DOES NOT APPEAR AT ALL. Returns `[]`, and the caller drops the
  *     finding with "quote is not the text of any added line".
  *
+ *   - AN ARCHIVED `.patch`/`.diff` (#5563). A line matches on its own text OR
+ *     on its inner-diff content, the same two forms `quotableLines` offers, so
+ *     the per-finding anchor and the proof-of-work quote accept the same
+ *     quotes. Pass the file's `path` to get this.
+ *
  * @param {string} patch
  * @param {string} quote
+ * @param {{ path?: string }} [opts]
  * @returns {number[]}
  */
-export function addedLinesMatching(patch, quote) {
+export function addedLinesMatching(patch, quote, { path } = {}) {
   const needle = String(quote).trim();
   if (needle === '') return [];
+  const archivedDiff = isArchivedDiff(path);
   const out = [];
   for (const row of newFileLines(patch)) {
-    if (row.kind === 'added' && row.text.trim() === needle) out.push(row.line);
+    if (row.kind === 'added' && quotableForms(row.text, archivedDiff).includes(needle)) out.push(row.line);
   }
   return out;
 }
@@ -155,7 +219,7 @@ export function quotedLineFailureMessage(files, claimedPath, quote, minChars) {
   for (const [path, file] of files) {
     if (!longEnough) break;
     if (normalizePathForSelfMatch(path) === claimedKey) continue;
-    if (addedLinesMatching(file.patch, quote).length > 0) elsewhere.push(path);
+    if (addedLinesMatching(file.patch, quote, { path }).length > 0) elsewhere.push(path);
   }
   const base =
     `\`riskiest_change.quoted_line\` is not a line of \`${sanitizePath(claimedPath)}\`'s patch (or is shorter than ` +

@@ -56,6 +56,7 @@ function mount(overrides: Partial<UseMouseControlsParams> = {}): { canvas: HTMLC
     requestRender: noop,
     pick: async () => null,
     pickRect: async () => [],
+    raycastScene: () => null, // wheel zoom surface pick (#5393): empty space
   } as unknown as Renderer;
   const state = useViewerStore.getState();
 

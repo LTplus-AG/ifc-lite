@@ -21,6 +21,15 @@ impl GeometryRouter {
             IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace => {
                 self.face_first_vertex(item, decoder)
             }
+            IfcType::IfcTriangulatedFaceSet
+            | IfcType::IfcTriangulatedIrregularNetwork
+            | IfcType::IfcPolygonalFaceSet => self.tessellated_first_vertex(item, decoder),
+            IfcType::IfcFaceBasedSurfaceModel | IfcType::IfcShellBasedSurfaceModel => {
+                let shells = item.get(0)?.as_list()?;
+                let shell_id = shells.first()?.as_entity_ref()?;
+                let shell = decoder.decode_by_id(shell_id).ok()?;
+                self.shell_first_vertex(&shell, decoder)
+            }
             _ => None,
         }?;
         Some((

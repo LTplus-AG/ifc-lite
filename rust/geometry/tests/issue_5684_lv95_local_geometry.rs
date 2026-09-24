@@ -151,9 +151,14 @@ fn fixture(
 
 /// Exercise the public merged or per-item router entry point with an RTC frame.
 fn process(source: &str, rtc: [f64; 3], framed: bool, submeshes: bool) -> Mesh {
+    process_scaled(source, rtc, framed, submeshes, 1.0)
+}
+
+/// Run the same entry point with an explicit file-unit-to-metre scale.
+fn process_scaled(source: &str, rtc: [f64; 3], framed: bool, submeshes: bool, scale: f64) -> Mesh {
     let mut decoder = EntityDecoder::new(source);
     let element = decoder.decode_by_id(1002).unwrap();
-    let mut router = GeometryRouter::with_scale_and_local_frame(1.0, framed);
+    let mut router = GeometryRouter::with_scale_and_local_frame(scale, framed);
     router.set_rtc_offset((rtc[0], rtc[1], rtc[2]));
     if submeshes {
         let mut meshes = router
@@ -300,6 +305,63 @@ fn issue_5684_true_raw_world_geometry_still_rebases() {
                         (v[axis] as f64 + mesh.origin[axis] - p[axis]).abs() < 1e-6
                     })),
                     "{shape:?}: raw-world vertex {p:?} lost"
+                );
+            }
+        }
+    }
+}
+
+/// Raw millimetre coordinates must be shifted before f32 unit scaling.
+/// Scaling first rounded this 256 mm square to 500 x 375 mm on the branch.
+#[test]
+fn issue_5684_raw_world_millimetres_keep_small_faces() {
+    let points = [
+        [0.0, 0.0, 0.0],
+        [0.256, 0.0, 0.0],
+        [0.256, 0.256, 0.0],
+        [0.0, 0.256, 0.0],
+    ];
+    let raw = points.map(|p| {
+        [
+            (SITE[0] + p[0]) * 1000.0,
+            (SITE[1] + p[1]) * 1000.0,
+            p[2] * 1000.0,
+        ]
+    });
+    for shape in [Shape::Polygonal, Shape::FaceBased, Shape::ShellBased] {
+        let source = fixture(shape, &raw, &[&[1, 2, 3, 4]], [0.0; 3], false);
+        for framed in [false, true] {
+            for submeshes in [false, true] {
+                let mesh = process_scaled(&source, SITE, framed, submeshes, 0.001);
+                assert!(!mesh.indices.is_empty(), "{shape:?}: face disappeared");
+                for p in points {
+                    assert!(
+                        mesh.positions.chunks_exact(3).any(|v| {
+                            (0..3).all(|axis| {
+                                (v[axis] as f64 + mesh.origin[axis] - p[axis]).abs() < 0.0005
+                            })
+                        }),
+                        "{shape:?}: raw millimetre vertex {p:?} lost"
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Guarded RTC subtraction must leave millimetre-scale site-local items local.
+#[test]
+fn issue_5684_local_millimetres_keep_site_placement() {
+    let points = MEMBER_POINTS.map(|p| [p[0] * 1000.0, p[1] * 1000.0, p[2] * 1000.0]);
+    let site = SITE.map(|v| v * 1000.0);
+    for shape in [Shape::Polygonal, Shape::FaceBased, Shape::ShellBased] {
+        let local = fixture(shape, &points, MEMBER_FACES, [0.0; 3], false);
+        let placed = fixture(shape, &points, MEMBER_FACES, site, false);
+        for framed in [false, true] {
+            for submeshes in [false, true] {
+                assert_same_geometry(
+                    &process_scaled(&placed, SITE, framed, submeshes, 0.001),
+                    &process_scaled(&local, [0.0; 3], framed, submeshes, 0.001),
                 );
             }
         }

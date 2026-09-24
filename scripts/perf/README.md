@@ -52,8 +52,10 @@ mesh, vertex and triangle counts and ordered mesh fingerprints. A private bridge
 IFC reproduced the intended geometry change: a site-local thin
 member recovered faces lost when the old path subtracted the national-grid RTC
 offset from already-f32 vertices. The lesson is to rebase early only when doing
-so reduces object-space coordinate magnitude; items processed in different RTC
-frames must receive placement before they are merged.
+so reduces object-space coordinate magnitude. For genuine raw-world coordinates
+in millimetre files, the guarded subtraction must still precede f32 unit
+scaling or a small face can quantize at national-grid magnitude. Items
+processed in different RTC frames must receive placement before they are merged.
 
 ## LandXML credited-stream acceptance (#5050)
 

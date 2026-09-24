@@ -1045,9 +1045,29 @@ impl GeometryRouter {
             // Safety net: strip any out-of-bounds indices before downstream use
             mesh.validate_indices();
 
-            // Once positions are f32, early RTC subtraction cannot recover
-            // precision. Final world placement combines placement and RTC in
-            // f64 before narrowing once, avoiding a large intermediate (#5684).
+            // For genuine raw coordinates, subtract RTC in file units BEFORE
+            // f32 unit scaling. At national-grid millimetre magnitudes, scaling
+            // first can quantize a 256 mm face to 0.5 m (#5684). Decline this
+            // shift for site-local coordinates: subtracting a distant RTC from
+            // those f32 vertices would instead destroy their small features.
+            if self.has_rtc_offset()
+                && !mesh.rtc_applied
+                && !mesh.positions.is_empty()
+                && self.representation_item_benefits_from_rtc(item, decoder, self.rtc_offset)
+            {
+                let rtc_file_units = (
+                    self.rtc_offset.0 / self.unit_scale,
+                    self.rtc_offset.1 / self.unit_scale,
+                    self.rtc_offset.2 / self.unit_scale,
+                );
+                for position in mesh.positions.chunks_exact_mut(3) {
+                    position[0] = (position[0] as f64 - rtc_file_units.0) as f32;
+                    position[1] = (position[1] as f64 - rtc_file_units.1) as f32;
+                    position[2] = (position[2] as f64 - rtc_file_units.2) as f32;
+                }
+                mesh.rtc_applied = true;
+            }
+
             self.scale_mesh(&mut mesh);
 
             // Deduplicate by hash - buildings with repeated floors have identical geometry

@@ -87,3 +87,4 @@ apps/viewer/src/sdk/adapters/schedule-adapter.ts
 apps/viewer/src/components/viewer/schedule/GanttPanel.tsx
 packages/mcp/src/tools/diff-authored-keys.ts
 packages/mcp/src/tools/diff-fingerprints.ts
+packages/mcp/src/tools/diff-entity-scope.ts

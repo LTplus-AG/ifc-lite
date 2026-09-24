@@ -1,0 +1,157 @@
+{
+  "metric": "fullyReadyMs",
+  "base": {
+    "samplesMs": [
+      10916,
+      9231,
+      8229,
+      9641,
+      22030
+    ],
+    "medianMs": 9641,
+    "minMs": 8229,
+    "maxMs": 22030
+  },
+  "candidate": {
+    "samplesMs": [
+      6939,
+      6815,
+      6596,
+      6267,
+      9086
+    ],
+    "medianMs": 6815,
+    "minMs": 6267,
+    "maxMs": 9086
+  },
+  "medianReductionPct": 29.3,
+  "baseSpreadPct": 143.1,
+  "reporterNoiseLimitPct": 20,
+  "passesReporterNoiseGate": false,
+  "performanceVerdict": "inconclusive; repeat under tighter host isolation",
+  "pairedReductionsPct": [
+    36.4,
+    26.2,
+    19.8,
+    35.0,
+    58.8
+  ],
+  "candidateRunsUnder14s": 5,
+  "candidateTotalRuns": 5,
+  "baseRunsOver14s": 1,
+  "readinessWitnessFailures": 1,
+  "outputParity": true,
+  "controls": {
+    "AC20": {
+      "baseSamplesMs": [
+        1130,
+        917,
+        881,
+        900,
+        1114
+      ],
+      "candidateSamplesMs": [
+        862,
+        976,
+        878,
+        919,
+        820
+      ],
+      "baseMedianMs": 917,
+      "candidateMedianMs": 878,
+      "medianChangePct": -4.3,
+      "validRuns": 10,
+      "outputCounts": {
+        "meshes": 317,
+        "triangles": 33356,
+        "elementsWithGeometry": 82,
+        "totalEntities": 44249
+      }
+    },
+    "ISSUE129": {
+      "baseSamplesMs": [
+        2496,
+        2418,
+        2470,
+        2346,
+        2398
+      ],
+      "candidateSamplesMs": [
+        2533,
+        2431,
+        2420,
+        2520,
+        2384
+      ],
+      "baseMedianMs": 2418,
+      "candidateMedianMs": 2431,
+      "medianChangePct": 0.5,
+      "validRuns": 10,
+      "outputCounts": {
+        "meshes": 1402,
+        "triangles": 134675,
+        "elementsWithGeometry": 969,
+        "totalEntities": 202661
+      }
+    }
+  },
+  "unqualifiedW3": {
+    "reason": "base spread above 20% reporter limit; four post-result launcher races omitted method files",
+    "baseSamplesMs": [
+      15301,
+      16385,
+      15739,
+      11811,
+      11442
+    ],
+    "candidateSamplesMs": [
+      9186,
+      10149,
+      7957,
+      7486,
+      7738
+    ],
+    "baseMedianMs": 15301,
+    "candidateMedianMs": 7957,
+    "baseSpreadPct": 32.3,
+    "methodFilesMissing": 4,
+    "performanceVerdict": "inconclusive"
+  },
+  "qualifiedW4": {
+    "metric": "fullyReadyMs",
+    "baseSamplesMs": [
+      10110,
+      8813,
+      9031,
+      9406,
+      9332
+    ],
+    "candidateSamplesMs": [
+      6645,
+      6650,
+      6740,
+      6735,
+      6480
+    ],
+    "baseMedianMs": 9332,
+    "candidateMedianMs": 6650,
+    "baseSpreadPct": 13.9,
+    "candidateSpreadPct": 3.9,
+    "medianReductionPct": 28.7,
+    "pairedReductionsPct": [
+      34.3,
+      24.5,
+      25.4,
+      28.4,
+      30.6
+    ],
+    "candidateRunsUnder14s": 5,
+    "baseRunsUnder14s": 5,
+    "validBrowserResults": 10,
+    "preloadProofs": 10,
+    "postRunMethodFilesMissing": 3,
+    "reporterNoiseLimitPct": 20,
+    "passesReporterNoiseGate": true,
+    "performanceVerdict": "qualified Holter browser readiness improvement; controlled host"
+  }
+}

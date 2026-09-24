@@ -1,0 +1,14 @@
+
+// Temporary, read-only browser A/B witness bridge. Applied identically to
+// both local production builds; never committed or shipped. Its dynamic imports
+// run after mountViewer and preserve bootstrap's required side-effect order.
+void Promise.all([import('./store/index'), import('./hooks/useBCF')])
+  .then(([store, bcf]) => {
+    Object.assign(window, {
+      __ifcLiteWitness: {
+        getState: store.useViewerStore.getState,
+        getRenderer: bcf.getGlobalRenderer,
+      },
+    });
+  })
+  .catch((error) => console.error('[witness] bridge unavailable:', error));

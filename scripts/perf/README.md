@@ -2001,6 +2001,24 @@ win. Preserve the rejected source, observer failures, completed functional check
 and every timing cohort in [the experiment record](evidence/multipart-5328/README.md).
 No runtime change from this prototype ships.
 
+## Physical summary membership scan (#5477)
+
+The viewer now visits candidate source type buckets when collecting physical
+entities, while retaining canonical overlay semantics, and memoizes metadata
+panel membership across geometry-only updates. The first two fresh-browser
+Holter cohorts were too noisy for a verdict and remain in the evidence. A
+third, more isolated alternating cohort cleared the existing base-spread noise
+limit, improved every paired browser-readiness comparison, and met the Holter
+browser gate on every candidate run. Geometry counts, visible metadata, GPU
+picking and selection remained consistent. Three post-result launcher races
+left missing method files; pre-load process/variant proofs and complete browser
+results survive for every sample. The result measures full model/index/canvas
+readiness, not worker geometry alone. AC20 and ISSUE_129 control medians stayed
+close to base, with matching output counts and functional checks. The lesson is to profile React
+publication work on large entity stores: repeated whole-store scans can
+dominate after worker geometry has finished. See the
+[sample-level browser evidence](evidence/physical-summary-5477/README.md).
+
 ## Edge-grazing half-space cap repair (#5314)
 
 The cap builder now ignores triangles that collapse after its section-vertex

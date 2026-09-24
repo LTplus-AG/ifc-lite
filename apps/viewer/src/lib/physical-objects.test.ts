@@ -4,10 +4,13 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { MutablePropertyView, iterateEffectiveEntityIds } from '@ifc-lite/mutations';
+import type { IfcDataStore } from '@ifc-lite/parser';
 
 import {
   isPhysicalObjectType,
   collectPhysicalEntityIds,
+  collectEffectivePhysicalEntityIds,
   countPhysicalObjects,
   type EntityIdsByType,
 } from './physical-objects.js';
@@ -72,6 +75,69 @@ describe('isPhysicalObjectType — what counts as a physical object', () => {
     // same type arrives in two different casings.
     assert.equal(isPhysicalObjectType('IFCWALL'), isPhysicalObjectType('ifcwall'));
     assert.equal(isPhysicalObjectType('IFCOPENINGELEMENT'), isPhysicalObjectType('ifcopeningelement'));
+  });
+});
+
+describe('collectEffectivePhysicalEntityIds #5477', () => {
+  function storeFor(rows: ReadonlyArray<readonly [string, readonly number[]]>, deferredIds: ReadonlySet<number> = new Set()): IfcDataStore {
+    const classes = new Map<string, number[]>(rows.map(([type, ids]) => [type, [...ids]]));
+    const byId = new Map<number, { type: string }>();
+    for (const [type, ids] of classes) for (const id of ids) {
+      if (!deferredIds.has(id)) byId.set(id, { type });
+    }
+    return { entityIndex: { byType: classes, byId } } as unknown as IfcDataStore;
+  }
+
+  it('keeps canonical overlay membership for deletions, retypes in and out, and classes created without a source bucket', () => {
+    const store = storeFor([
+      ['IFCWALL', [1, 2]],
+      ['IFCPROPERTYSET', [3, 4]],
+      ['IFCOPENINGELEMENT', [5]],
+    ]);
+    const view = new MutablePropertyView(null, 'model');
+    view.setExpressIdWatermark(5);
+    view.deleteEntity(1);
+    view.setEntityType(2, 'IfcPropertySet', null, 'IfcWall');
+    view.setEntityType(3, 'IfcColumn', null, 'IfcPropertySet');
+    const beam = view.createEntity('IfcBeam', []);
+    const slab = view.createEntity('IfcSlab', []);
+    view.deleteEntity(slab.expressId);
+    const fromNonPhysical = view.createEntity('IfcPropertySet', []);
+    view.setEntityType(fromNonPhysical.expressId, 'IfcDoor');
+    const outOfPhysical = view.createEntity('IfcWindow', []);
+    view.setEntityType(outOfPhysical.expressId, 'IfcPropertySet');
+
+    const expected = new Set<number>();
+    for (const { expressId, type } of iterateEffectiveEntityIds(store, view)) {
+      if (isPhysicalObjectType(type)) expected.add(expressId);
+    }
+    assert.deepEqual(
+      [...collectEffectivePhysicalEntityIds(store, view)].sort((a, b) => a - b),
+      [...expected].sort((a, b) => a - b),
+    );
+    assert.deepEqual([...expected].sort((a, b) => a - b), [3, beam.expressId, fromNonPhysical.expressId]);
+  });
+
+  it('returns empty for a source with no physical class, without scanning its non-physical rows', () => {
+    const store = storeFor([['IFCPROPERTYSET', Array.from({ length: 8_000 }, (_, i) => i + 1)]]);
+    const view = new MutablePropertyView(null, 'model');
+    let visited = 0;
+    const originalIsDeleted = view.isDeleted.bind(view);
+    view.isDeleted = (id) => { visited++; return originalIsDeleted(id); };
+    assert.equal(collectEffectivePhysicalEntityIds(store, view).size, 0);
+    assert.equal(visited, 0, 'non-physical source rows never enter the effective iterator');
+  });
+
+  it('bounds overlay-aware source visits to physical buckets while retaining a deferred indexed row', () => {
+    const noise = Array.from({ length: 8_000 }, (_, i) => i + 10);
+    const store = storeFor([['IFCPROPERTYSET', noise], ['IFCWALL', [1, 2]]], new Set([2]));
+    // The parsed type bucket can hold a row whose point lookup was deferred.
+    const view = new MutablePropertyView(null, 'model');
+    let visited = 0;
+    const originalIsDeleted = view.isDeleted.bind(view);
+    view.isDeleted = (id) => { visited++; return originalIsDeleted(id); };
+    assert.deepEqual([...collectEffectivePhysicalEntityIds(store, view)], [1, 2]);
+    assert.ok(visited <= 2, `visited ${visited} source rows for two physical entities`);
   });
 });
 

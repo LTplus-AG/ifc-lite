@@ -29,6 +29,7 @@ import type { FederatedModel } from '@/store/types';
 import { extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { computeModelStats } from './modelMetadataStats';
+import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
 import { useTranslation } from '@/i18n';
 import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
 import { EXPRESS_DESCRIPTION_ATTRIBUTE, EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
@@ -85,11 +86,19 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
     return { name, globalId, description, properties };
   }, [dataStore]);
 
+  // Membership changes with source/overlay edits, not with each streamed
+  // geometry batch. Keep it stable while the shaped count catches up.
+  const physicalIds = useMemo(
+    () => dataStore?.spatialHierarchy ? collectEffectivePhysicalEntityIds(dataStore, mutationView) : new Set<number>(),
+    [dataStore, mutationView, mutationVersion],
+  );
+
   // Count storeys and elements — see `modelMetadataStats.ts` for what
   // "Elements with Geometry" means and why raw `byStorey` membership isn't it.
   const stats = useMemo(
     () => computeModelStats(dataStore, model.geometryResult, {
       mutationView,
+      physicalIds,
       // A completed cache hit may validly contain no geometry result. That is
       // a known-empty model, unlike the same null while streaming.
       geometryReady:
@@ -104,7 +113,7 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
         return ref?.modelId === model.id ? ref.expressId : undefined;
       },
     }),
-    [dataStore, fromGlobalId, model.geometryLoadState, model.geometryResult, model.id, model.loadState, mutationView, mutationVersion],
+    [dataStore, fromGlobalId, model.geometryLoadState, model.geometryResult, model.id, model.loadState, mutationView, physicalIds],
   );
 
   // Extract georeferencing info

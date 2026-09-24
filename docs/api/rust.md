@@ -544,8 +544,10 @@ pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryD
 
 // Optional authored swept-disk descriptions and measurements, keyed by product occurrence ID
 pub use analytic_export::{
-    extract_swept_disk_descriptions, DirectrixMetrics, DirectrixSegmentMetrics,
-    SweptDiskDescriptions, SweptDiskOccurrence,
+    check_swept_disk, extract_swept_disk_descriptions,
+    DirectrixMetrics, DirectrixSegmentMetrics, SweptDiskCheckError,
+    SweptDiskCheckFinding, SweptDiskCheckOptions, SweptDiskCheckReport,
+    SweptDiskDescriptions, SweptDiskFindingCode, SweptDiskOccurrence,
 };
 
 pub use georeferencing::{
@@ -579,6 +581,23 @@ explicit status, no partial directrix, and the method returns `None`. For an
 unsupported transform, radii retain their authored values converted to metres;
 no world circular radius is implied. The existing mesh export remains a
 separate operation.
+
+`check_swept_disk(&occurrence, &options)` checks the extracted source geometry
+without decoding or tessellating it again. `SweptDiskCheckOptions::default()`
+uses 1e-9 m for a zero-length segment, 1e-6 m for a disconnected join, and
+1e-6 rad for a tangent discontinuity. The checker also flags a circular arc
+whose centreline radius does not exceed the swept disk radius. A report's
+findings identify the source segment, or both sides of a join, with a stable
+`SweptDiskFindingCode`, measured value, threshold and units. An unsupported
+analytic description produces a report with `skipped_reason` and no partial
+findings. `source_modified` is carried into the report so an authored CSG
+operand is not mistaken for the finished body. All tolerance values must be
+finite and nonnegative; `SweptDiskCheckOptions::validate()` and the checker
+return `SweptDiskCheckError` otherwise. These are geometric diagnostics, not
+fabrication-code checks or bend-allowance calculations. IFC allows non-tangent
+consecutive segments to form a miter, so a tangent discontinuity is an
+inspection cue rather than an automatic schema violation
+([IfcSweptDiskSolid](https://ifc43-docs.standards.buildingsmart.org/IFC/RELEASE/IFC4x3/HTML/lexical/IfcSweptDiskSolid.htm)).
 
 ### Appearance authoring
 

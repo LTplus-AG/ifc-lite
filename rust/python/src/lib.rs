@@ -34,6 +34,7 @@ use pyo3::types::{PyBytes, PyDict, PyList};
 use std::collections::HashSet;
 
 mod swept_disks;
+mod swept_disk_checks;
 
 struct GeometryExportResult {
     meshes: GeometryDataExport,
@@ -392,6 +393,7 @@ fn entity_data(
 fn ifclite_geom(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(geometry_data_buffers, m)?)?;
     m.add_function(wrap_pyfunction!(geometry_data_json, m)?)?;
+    m.add_function(wrap_pyfunction!(swept_disk_checks::check_swept_disks, m)?)?;
     m.add_function(wrap_pyfunction!(entity_data, m)?)?;
     m.add("__doc__", "Native ifc-lite geometry and attribute export for Python.")?;
     Ok(())

@@ -72,6 +72,34 @@ class GeometryBuffersWithDirectrices(GeometryBuffers):
     swept_disks: Dict[int, List[SweptDiskOccurrence]]
     directrix_diagnostics: List[str]
 
+SweptDiskFindingCode = Literal[
+    "zero_length_segment", "consecutive_gap", "tangent_discontinuity",
+    "arc_radius_not_greater_than_disk_radius",
+]
+
+class SweptDiskCheckFinding(TypedDict):
+    code: SweptDiskFindingCode
+    segment_index: int  # index into the source Directrix
+    next_segment_index: Optional[int]  # populated for a join between segments
+    measured: float
+    threshold: float
+    units: str  # "m" or "rad"
+
+class SweptDiskCheckReport(TypedDict):
+    source_modified: bool  # source sweep may differ from the final CSG result
+    skipped_reason: Optional[str]  # unsupported analytic description
+    findings: List[SweptDiskCheckFinding]
+
+class SweptDiskCheckEntry(TypedDict):
+    solid_id: int
+    directrix_id: int
+    mapping_path: List[int]
+    report: SweptDiskCheckReport
+
+class SweptDiskChecks(TypedDict):
+    elements: Dict[int, List[SweptDiskCheckEntry]]  # occurrence STEP ID
+    diagnostics: List[str]  # representation traversal problems
+
 class PropValue(TypedDict):
     name: str
     value: str  # always a string, in the file's OWN units
@@ -184,6 +212,33 @@ def geometry_data_json(
         RuntimeError: the geometry pipeline failed.
         ValueError: ``quality`` is not a recognised label, or JSON
             serialization failed.
+    """
+    ...
+
+def check_swept_disks(
+    ifc_bytes: bytes,
+    ids: Optional[Set[int]] = None,
+    *,
+    zero_length_tolerance_m: float = 1e-9,
+    gap_tolerance_m: float = 1e-6,
+    tangent_tolerance_rad: float = 1e-6,
+) -> SweptDiskChecks:
+    """Check exact authored swept-disk paths without tessellating.
+
+    Returns reports keyed by occurrence STEP id. Multiple sweeps in an
+    occurrence remain separate entries with their source solid, directrix and
+    mapped-item path. ``findings`` describe numerical path continuity in
+    absolute IFC world metres or radians, not fabrication compliance. A sweep
+    whose analytic description is unsupported has ``skipped_reason`` and no
+    partial findings. A CSG operand is checked as authored and carries
+    ``source_modified=True``; its final post-CSG body may differ.
+
+    ``ids`` filters product occurrences, as in ``geometry_data_buffers``. All
+    three tolerances must be finite and nonnegative, including for empty input.
+
+    Raises:
+        ValueError: invalid tolerance.
+        RuntimeError: extraction worker failed.
     """
     ...
 

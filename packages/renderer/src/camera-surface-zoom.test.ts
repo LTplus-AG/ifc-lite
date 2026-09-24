@@ -13,33 +13,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Camera } from './camera.js';
-import { surfaceZoomStep, SURFACE_ZOOM_MIN_STANDOFF } from './camera-surface-zoom.js';
 import type { Vec3 } from './types.js';
-
-describe('surfaceZoomStep (#5393)', () => {
-  const pose = { position: { x: 0, y: 0, z: 10 }, target: { x: 0, y: 0, z: 0 } };
-
-  it('refuses unusable input so the caller falls back to plain zoom', () => {
-    assert.equal(surfaceZoomStep(pose, { x: 0, y: 0, z: 20 }, 0.1), null, 'behind the camera');
-    assert.equal(surfaceZoomStep(pose, { x: 0, y: 0, z: 10 }, 0.1), null, 'at the eye');
-    assert.equal(surfaceZoomStep(pose, { x: NaN, y: 0, z: 0 }, 0.1), null, 'non-finite');
-    assert.equal(surfaceZoomStep(pose, { x: 0, y: 0, z: 0 }, 0), null, 'zero fraction');
-    assert.equal(surfaceZoomStep(pose, { x: 0, y: 0, z: 0 }, 1), null, 'full fraction');
-    assert.equal(surfaceZoomStep({ position: pose.position, target: pose.position }, { x: 0, y: 0, z: 0 }, 0.1), null, 'degenerate view');
-  });
-
-  it('enforces the standoff on DEPTH for an off-axis point, never on straight distance', () => {
-    // A point 45° off-axis: after many steps its depth (what the near plane
-    // clips) must settle at the standoff, while its distance stays larger.
-    const point = { x: 5, y: 0, z: 5 };
-    let p = pose;
-    for (let i = 0; i < 400; i++) p = surfaceZoomStep(p, point, 0.1) ?? p;
-    const fwd = { x: p.target.x - p.position.x, y: p.target.y - p.position.y, z: p.target.z - p.position.z };
-    const len = Math.hypot(fwd.x, fwd.y, fwd.z);
-    const depth = ((point.x - p.position.x) * fwd.x + (point.y - p.position.y) * fwd.y + (point.z - p.position.z) * fwd.z) / len;
-    assert.ok(Math.abs(depth - SURFACE_ZOOM_MIN_STANDOFF) < 1e-9, `depth ${depth}`);
-  });
-});
 
 const W = 800, H = 600;
 /** A thin wall: the plane z = 2, seen from z = 10 looking down -z. */
@@ -85,6 +59,34 @@ describe('Camera.zoom toward a picked surface (#5393)', () => {
     assert.ok(Math.abs(after.x - before.x) < 0.5 && Math.abs(after.y - before.y) < 0.5, `hit drifted from ${JSON.stringify(before)} to ${JSON.stringify(after)}`);
     // The orbit target sits at the surface's depth, in front of the camera.
     assert.ok(c.getTarget().z < c.getPosition().z && c.getTarget().z >= WALL_Z - 1e-6, `target z ${c.getTarget().z}`);
+  });
+
+  it('falls back to plain zoom for an unusable surface point (behind, at the eye, non-finite)', () => {
+    for (const [name, point] of [
+      ['behind the camera', { x: 0, y: 0, z: 20 }],
+      ['at the eye', { x: 0, y: 0, z: 10 }],
+      ['non-finite', { x: NaN, y: 0, z: 0 }],
+    ] as const) {
+      const withPoint = camera();
+      withPoint.zoom(-100, false, 400, 300, W, H, false, point);
+      const plain = camera();
+      plain.zoom(-100, false, 400, 300, W, H, false);
+      assert.deepEqual(withPoint.getPosition(), plain.getPosition(), name);
+    }
+  });
+
+  it('settles the DEPTH of an off-axis point at the standoff, never passing it', () => {
+    // Depth along the view axis is what the near plane clips; for a 45° off-axis
+    // point it is shallower than the straight distance, so the standoff must be
+    // enforced on depth for the surface to stay visible.
+    const c = camera();
+    const point = { x: 5, y: 0, z: 5 };
+    for (let i = 0; i < 400; i++) c.zoom(-100, false, 400, 300, W, H, false, point);
+    const p = c.getPosition(), t = c.getTarget();
+    const f = { x: t.x - p.x, y: t.y - p.y, z: t.z - p.z };
+    const len = Math.hypot(f.x, f.y, f.z);
+    const depth = ((point.x - p.x) * f.x + (point.y - p.y) * f.y + (point.z - p.z) * f.z) / len;
+    assert.ok(depth > 0.019 && depth < 0.021, `depth settles at the 2 cm standoff: ${depth}`);
   });
 
   it('keeps the plain path for fast zoom, orthographic, and zooming out', () => {

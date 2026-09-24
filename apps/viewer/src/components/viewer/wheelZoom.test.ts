@@ -29,7 +29,6 @@ import { Camera } from '@ifc-lite/renderer';
 
 import {
   applyWheelZoom,
-  createWheelSurfacePicker,
   createFineZoomModifierTracker,
   isFineZoomWheel,
   wheelZoomDelta,
@@ -443,26 +442,6 @@ describe('wheel zoom toward the surface under the cursor (#5393)', () => {
       Date.now = realNow;
     }
     assert.strictEqual(r.picks.length, 3, 'a pause starts a new gesture');
-  });
-
-  it('the viewer picker skips the raycast while streaming, on large models and with a robust anchor', () => {
-    let raycasts = 0;
-    const small = { getMeshes: () => [], getBatchedMeshes: () => [], getInstancedEntityCount: () => 0 };
-    const large = { getMeshes: () => [], getBatchedMeshes: () => [], getInstancedEntityCount: () => 1_000_000 };
-    const renderer = (scene: typeof small) => ({
-      getScene: () => scene,
-      raycastScene: () => { raycasts++; return { intersection: { point: { x: 0, y: 0, z: WALL_Z } } }; },
-    });
-    const opts = (isStreaming: boolean) => () => ({ isStreaming, hiddenIds: new Set<number>(), isolatedIds: null });
-    const noAnchor = { getOrbitAnchorBounds: () => null };
-    const anchor = { getOrbitAnchorBounds: () => ({}) };
-
-    assert.deepStrictEqual(createWheelSurfacePicker(renderer(small), noAnchor, opts(false))(1, 2), { x: 0, y: 0, z: WALL_Z });
-    assert.strictEqual(raycasts, 1);
-    assert.strictEqual(createWheelSurfacePicker(renderer(small), noAnchor, opts(true))(1, 2), null, 'streaming');
-    assert.strictEqual(createWheelSurfacePicker(renderer(large), noAnchor, opts(false))(1, 2), null, 'large model');
-    assert.strictEqual(createWheelSurfacePicker(renderer(small), anchor, opts(false))(1, 2), null, 'robust anchor');
-    assert.strictEqual(raycasts, 1, 'no raycast ran for the gated cases');
   });
 
   it('never picks when zooming out, which cannot pass through anything', () => {

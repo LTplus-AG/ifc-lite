@@ -532,10 +532,13 @@ export class ParquetExporter {
     // fflate, not JSZip: JSZip writes "version needed to extract" 1.0 on
     // DEFLATE entries, where the ZIP APPNOTE requires 2.0 (#3612).
     private async createZipArchive(files: Map<string, Uint8Array>): Promise<Uint8Array> {
-        const { zipSync } = await import('fflate');
+        const { zip } = await import('fflate');
         // Entry names are file names with an extension, never integer-like
-        // keys, so the object keeps the Map's insertion order.
-        return zipSync(Object.fromEntries(files));
+        // keys, so the object keeps the Map's insertion order. Async `zip`
+        // deflates large entries in workers instead of blocking the caller.
+        return new Promise((resolve, reject) => {
+            zip(Object.fromEntries(files), { level: 6 }, (err, data) => (err ? reject(err) : resolve(data)));
+        });
     }
 }
 

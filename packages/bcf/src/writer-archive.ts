@@ -17,10 +17,10 @@
  * only files).
  */
 
-import { strToU8, zipSync } from 'fflate';
+import { strToU8, zip } from 'fflate';
 
 export class BcfArchive {
-  // A Map keeps insertion order. zipSync takes a plain object, and every key
+  // A Map keeps insertion order. fflate takes a plain object, and every key
   // here contains '.' or '/', so none is an integer-like key that an object
   // would reorder.
   private readonly entries = new Map<string, Uint8Array>();
@@ -30,9 +30,16 @@ export class BcfArchive {
     this.entries.set(path, typeof content === 'string' ? strToU8(content) : content);
   }
 
-  /** Pack every entry with DEFLATE (level 6) into a .bcfzip Blob. */
-  toBlob(): Blob {
-    const bytes = zipSync(Object.fromEntries(this.entries), { level: 6 });
-    return new Blob([bytes], { type: 'application/zip' });
+  /**
+   * Pack every entry with DEFLATE (level 6) into a .bcfzip Blob. fflate's
+   * async `zip` deflates large entries (snapshots) in workers, so a big
+   * export does not block the caller's thread the way `zipSync` would.
+   */
+  toBlob(): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      zip(Object.fromEntries(this.entries), { level: 6 }, (err, bytes) =>
+        err ? reject(err) : resolve(new Blob([bytes], { type: 'application/zip' })),
+      );
+    });
   }
 }

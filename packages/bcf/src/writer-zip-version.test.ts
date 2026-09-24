@@ -21,6 +21,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import JSZip from 'jszip';
 import { createBCFProject, createBCFTopic, addTopicToProject, writeBCF, readBCF } from './index.js';
 
 const LOCAL_FILE_HEADER_SIG = 0x04034b50;
@@ -124,32 +125,73 @@ describe('writeBCF ZIP "version needed to extract" field (#3612)', () => {
     }
   });
 
-  it('does not touch the data-descriptor bit, DEFLATE method, sizes, or CRCs (no-regression pin)', async () => {
+  it('writes no data descriptors, DEFLATE on every entry, and matching sizes and CRCs in both headers', async () => {
     const blob = await writeBCF(buildSampleProject());
     const buf = new Uint8Array(await blob.arrayBuffer());
     const entries = parseZip(buf);
 
     for (const entry of entries) {
-      // The general-purpose bit flag field must stay untouched at 0x0000:
-      // streamFiles already defaults false (bit 3, data descriptor/streamed,
-      // clear) and this fix must not touch that field at all. Checking the
-      // full field (not just bit 3) is deliberate: a patch that lands on the
-      // wrong 2-byte offset (e.g. flags instead of version-needed) can still
-      // leave bit 3 clear by coincidence while corrupting the rest of the
-      // field, which a bit-3-only check would miss.
+      // The whole general-purpose flag field is 0x0000: no data descriptor
+      // (bit 3), no encryption, and no UTF-8 bit (entry names are ASCII).
       expect(entry.cd.flags, `CD flags for ${entry.name}`).toBe(0x0000);
       expect(entry.lfh.flags, `LFH flags for ${entry.name}`).toBe(0x0000);
 
       expect(entry.cd.method, `CD method for ${entry.name}`).toBe(8);
       expect(entry.lfh.method, `LFH method for ${entry.name}`).toBe(8);
 
-      // CRCs and sizes must match between the two headers and be non-zero
-      // for non-empty entries — a wrong patch offset landing on a
-      // length/CRC field instead of version-needed would corrupt these.
+      // Sizes and CRC are known up front, so both headers carry them.
       expect(entry.lfh.crc32, `CRC mismatch for ${entry.name}`).toBe(entry.cd.crc32);
       expect(entry.lfh.compSize, `compSize mismatch for ${entry.name}`).toBe(entry.cd.compSize);
       expect(entry.lfh.uncompSize, `uncompSize mismatch for ${entry.name}`).toBe(entry.cd.uncompSize);
     }
+  });
+
+  it('negative control: the header parser does see JSZip\'s 1.0 on a DEFLATE entry', async () => {
+    // Proves the assertions above can fail: JSZip, which the writer used
+    // before, still writes 0x000A here.
+    const zip = new JSZip();
+    zip.file('bcf.version', '<Version VersionId="2.1"/>');
+    const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+    const [entry] = parseZip(bytes);
+    expect(entry.cd.method).toBe(8);
+    expect(entry.cd.versionNeeded).toBe(0x000a);
+    expect(entry.lfh.versionNeeded).toBe(0x000a);
+  });
+
+  it('packs a snapshot above fflate\'s 160 kB worker threshold byte-exactly, at version 2.0', async () => {
+    // fflate's async zip deflates entries over 160 kB in a worker; this drives
+    // that path, not only the in-thread one small entries take.
+    const snapshotData = new Uint8Array(400_000);
+    let x = 12345;
+    for (let i = 0; i < snapshotData.length; i++) {
+      x = (x * 1103515245 + 12345) >>> 0;
+      snapshotData[i] = x >>> 24;
+    }
+    const project = createBCFProject({ name: 'Large snapshot', version: '2.1' });
+    const topic = createBCFTopic({ title: 'Large snapshot', author: 'tester@example.com' });
+    topic.viewpoints.push({
+      guid: 'b0646c0b-0000-4000-8000-000000000002',
+      perspectiveCamera: {
+        cameraViewPoint: { x: 0, y: 0, z: 10 },
+        cameraDirection: { x: 0, y: 1, z: 0 },
+        cameraUpVector: { x: 0, y: 0, z: 1 },
+        fieldOfView: 45,
+        aspectRatio: 1,
+      },
+      snapshotData,
+    });
+    addTopicToProject(project, topic);
+
+    const blob = await writeBCF(project);
+    const entries = parseZip(new Uint8Array(await blob.arrayBuffer()));
+    const png = entries.find((e) => e.name.endsWith('.png'));
+    expect(png?.cd.uncompSize).toBe(snapshotData.length);
+    expect(png?.cd.versionNeeded).toBe(0x0014);
+    expect(png?.lfh.versionNeeded).toBe(0x0014);
+
+    const archive = await JSZip.loadAsync(blob);
+    const back = await archive.file(png!.name)!.async('uint8array');
+    expect(back).toEqual(snapshotData);
   });
 
   it.each(['2.1', '3.0'] as const)(

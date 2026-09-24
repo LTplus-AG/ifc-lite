@@ -809,12 +809,13 @@ function ensureStoreyPlacement(
   editor: StoreEditor,
   storeyExpressId: number,
 ): boolean {
-  // Pull the storey's current attributes (overlay overrides + source).
+  if (!editor.hasEntity(storeyExpressId)) return false;
   const overlay = editor.getNewEntity(storeyExpressId);
   let attrs: unknown[];
   if (overlay) {
     attrs = overlay.attributes.slice();
   } else {
+    // @raw-entity-enumeration-ok Source byte span supplies attributes for a live storey; the positional overlay is checked below.
     const ref = dataStore.entityIndex.byId.get(storeyExpressId);
     if (!ref) return false;
     const extractor = new EntityExtractor(dataStore.source);
@@ -824,8 +825,8 @@ function ensureStoreyPlacement(
   }
 
   // IfcProduct.ObjectPlacement is at index 5 across IFC2X3 / IFC4.
-  // Accept both number refs and `#X` strings as "already present".
-  const existing = attrs[5];
+  const positional = editor.getMutationView().getPositionalMutationsForEntity(storeyExpressId);
+  const existing = positional?.has(5) ? positional.get(5) : attrs[5];
   if (typeof existing === 'number' && Number.isFinite(existing)) return false;
   if (typeof existing === 'string' && existing.startsWith('#')) return false;
 

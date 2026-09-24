@@ -23,7 +23,7 @@
  * `it.each` below reproduces that table bit-for-bit against the OLD metric
  * (skipped/kept as a historical record via `oldMaxPenetrationInto`, a local
  * reimplementation — the production method was deleted, see `tri-mesh.ts`)
- * and proves the NEW metric (`obbPenetrationDepth`, see `obb.ts`) reports the
+ * and proves the NEW metric (`obbPenetration`, see `obb.ts`) reports the
  * true 1.5 m at every tessellation, in both the TS and the WASM/Rust kernel.
  */
 
@@ -32,8 +32,13 @@ import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { testPair } from './narrow.js';
 import { TriMesh } from './tri-mesh.js';
-import { isThroughPenetration, obbPenetrationDepth, AXIS_NOISE_ULPS, OBB_EPS, type Obb } from './obb.js';
+import { isThroughPenetration, obbPenetration, AXIS_NOISE_ULPS, OBB_EPS, type Obb } from './obb.js';
 import { detectObb } from './obb-detect.js';
+
+/** The MTD alone; most tests here are about the depth, not its axis. */
+function obbDepth(a: Obb, b: Obb): number | null {
+  return obbPenetration(a, b)?.depth ?? null;
+}
 import { cross, dot } from '../math/vec3.js';
 import { createClashEngine } from '../engine.js';
 import { WasmClashEngine, initClashWasm } from '../engine-wasm/index.js';
@@ -282,7 +287,7 @@ function rotatedCubeAboutZ(key: string, tag: string, center: Vec3, half: number,
   return { key, ref: nextRef++, model: 'm', tag, positions: new Float32Array(positions), indices, bounds: { min, max } };
 }
 
-describe('analytic oracle: detectObb / obbPenetrationDepth unit behaviour', () => {
+describe('analytic oracle: detectObb / obbPenetration unit behaviour', () => {
   it('detects a plain axis-aligned box regardless of tessellation', () => {
     // `detectObb` discovers axes in triangle-traversal order, not fixed x/y/z
     // order, so compare the half-extents/center as sets, not positional
@@ -356,10 +361,10 @@ describe('analytic oracle: detectObb / obbPenetrationDepth unit behaviour', () =
     // SKIPPED rather than treated as a separation.
     const a: Obb = { center: [0, 0, 0], axes: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], half: [1, 2, 3] };
     const b: Obb = { center: [1.5, 0, 0], axes: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], half: [1, 2, 3] };
-    expect(obbPenetrationDepth(a, b)).toBe(0.5);
+    expect(obbDepth(a, b)).toBe(0.5);
   });
 
-  it('obbPenetrationDepth returns null (not a wrong number) for boxes that do not actually overlap', () => {
+  it('obbDepth returns null (not a wrong number) for boxes that do not actually overlap', () => {
     const a = subdividedBox('A', 'X', [0, 0, 0], [1, 1, 1], 1);
     const b = subdividedBox('B', 'Y', [5, 5, 5], [6, 6, 6], 1);
     const meshA = new TriMesh(a.positions!, a.indices!);
@@ -368,7 +373,7 @@ describe('analytic oracle: detectObb / obbPenetrationDepth unit behaviour', () =
     const obbB = detectObb(meshB);
     expect(obbA).not.toBeNull();
     expect(obbB).not.toBeNull();
-    expect(obbPenetrationDepth(obbA!, obbB!)).toBeNull();
+    expect(obbDepth(obbA!, obbB!)).toBeNull();
   });
 });
 
@@ -378,7 +383,7 @@ describe('analytic oracle: detectObb / obbPenetrationDepth unit behaviour', () =
  * below sits EXACTLY on its boundary — a fixture merely near it passes under
  * both operators and pins nothing.
  */
-describe('boundary pinning: exact thresholds in detectObb / obbPenetrationDepth / isThroughPenetration', () => {
+describe('boundary pinning: exact thresholds in detectObb / obbDepth / isThroughPenetration', () => {
   it('declines a box whose thickness is inside the OBB_EPS band (obb.ts:148, half[i] > OBB_EPS)', () => {
     // The existing "open shell" fixture above has EXACTLY zero extent on the
     // degenerate axis, so it survives a mutated `half[i] > 0` just as well
@@ -440,7 +445,7 @@ describe('boundary pinning: exact thresholds in detectObb / obbPenetrationDepth 
     const extentSum = 0 + hy + hz + S + hy + hz;
     const noise = extentSum * K;
     expect(S).toBe(noise);
-    expect(obbPenetrationDepth(a, b)).toBe(0);
+    expect(obbDepth(a, b)).toBe(0);
   });
 
   it('does not report a through-penetration when the far side lands exactly flush (obb.ts:325, p.half[k] > rQk + |offK| + margin(rQk))', () => {
@@ -532,7 +537,7 @@ function skewBeams(separation: number): { a: Obb; b: Obb } {
 describe('axis conditioning: near-parallel cross axes at large operand scale', () => {
   it('measures the true depth of skew near-parallel beams on their common normal', () => {
     const { a, b } = skewBeams(-0.02);
-    const d = obbPenetrationDepth(a, b);
+    const d = obbDepth(a, b);
     expect(d).not.toBeNull();
     // True MTD = 0.02 (the constructed embedding along the common normal;
     // confirmed by exact rational arithmetic over all 15 candidates - the
@@ -549,7 +554,7 @@ describe('axis conditioning: near-parallel cross axes at large operand scale', (
     // reported penetration; a scale-relative guard keeps the axis because
     // its 0.5 m verdict is far above the ~4.5e-3 noise bound.
     const { a, b } = skewBeams(0.5);
-    expect(obbPenetrationDepth(a, b)).toBeNull();
+    expect(obbDepth(a, b)).toBeNull();
   });
 });
 
@@ -634,12 +639,12 @@ describe('#5355: flush contacts and origin-independent box detection', () => {
     // zero-volume contact reported 0.85 m — 17x the panel's own thickness.
     const mullion: Obb = { center: [0, 0, 0], axes: IDENTITY, half: [0.1, 0.1, 1.5] };
     const panel: Obb = { center: [0.125, 0, 0], axes: IDENTITY, half: [0.025, 0.75, 1.5] };
-    expect(obbPenetrationDepth(mullion, panel)).toBe(0);
+    expect(obbDepth(mullion, panel)).toBe(0);
 
     // Companion: a genuine overlap far below the panel thickness must still
     // be measured. Without this, `depth = 0` unconditionally would pass.
     const pressed: Obb = { center: [0.125 - 1e-3, 0, 0], axes: IDENTITY, half: [0.025, 0.75, 1.5] };
-    expect(obbPenetrationDepth(mullion, pressed)).toBeCloseTo(1e-3, 9);
+    expect(obbDepth(mullion, pressed)).toBeCloseTo(1e-3, 9);
   });
 
   /** Thin rotated panel as an f32 triangle soup, centred at `[ox, oy, oz]`. */

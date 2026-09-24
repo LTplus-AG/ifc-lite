@@ -41,7 +41,7 @@ function canonical(n: Vec3): Vec3 {
  * `F32_ULP_SCALE` in `./depth.js`, and unlike the copies in `../contact/` it
  * really is scaling the same quantity — the f32 quantisation of the same
  * vertex buffer. It is still local because `./depth.js` imports THIS module
- * (`obbPenetrationDepth`, `isThroughPenetration`), so importing the constant
+ * (`obbPenetration`, `isThroughPenetration`), so importing the constant
  * back out of it would close an import cycle for a one-line literal.
  */
 const F32_ULP_SCALE = 1 / 4_194_304; // 2^-22

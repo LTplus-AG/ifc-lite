@@ -340,3 +340,21 @@ fn a_gap_beyond_tolerance_reports_nothing_under_every_translation_5406() {
         assert!(got.is_empty(), "{r:?}: {got:?}");
     }
 }
+
+#[test]
+fn a_1mm_overlap_is_hard_at_its_own_depth_under_every_translation_5405() {
+    // 1 mm along a Z contact normal: above the Z noise at every placement in
+    // the corpus (Z translations reach 1 km, ~0.24 mm of noise there), but
+    // BELOW the old max-over-all-axes floor once the pair is 10 km out along
+    // X or Y (10,000 * 2^-22 ~ 2.4 mm), which reported it as a Touch there
+    // and a Hard at the origin (#5405). The floor is now the pair's noise
+    // projected onto the depth's own direction, so the X and Y offsets say
+    // nothing about it.
+    const OVERLAP_1MM: f64 = 0.001;
+    let scene = panel_and_mullion("1 mm overlap, contact normal Z", NORMAL_Z, OVERLAP_1MM);
+    let got = assert_translation_invariant(&scene, HARD, 0.0, false);
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert_eq!(got[0].0.status, ClashStatus::Hard);
+    assert_eq!(got[0].0.kind, DistanceKind::Mesh);
+    assert!((got[0].1 + OVERLAP_1MM).abs() <= 1e-6, "depth {}", got[0].1);
+}

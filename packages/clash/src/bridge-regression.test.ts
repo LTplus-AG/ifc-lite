@@ -16,7 +16,7 @@
  * `-2.384185791015625e-7` (exactly the float32 ULP at magnitude `[2,4)`)
  * across unrelated element-type pairs at different physical locations —
  * the signature of a quantization floor, not independent measurements. The
- * fix (`precisionFloor` in `narrow.ts` / `precision_floor` in `narrow.rs`)
+ * fix (the depth path's precision floor, now `depthFloor` / `estimateFloor`)
  * reclassifies a sub-floor crossing as `touch` (the surfaces genuinely are
  * in contact — that's real information) instead of `hard`; CLI-default
  * rules don't opt into `reportTouch`, so these pairs now report zero

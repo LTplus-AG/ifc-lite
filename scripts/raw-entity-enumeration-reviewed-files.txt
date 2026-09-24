@@ -47,4 +47,5 @@ apps/viewer/src/lib/lens/adapter-entities.ts
 apps/viewer/src/lib/lists/adapter.ts
 apps/viewer/src/lib/lists/scope-types.ts
 apps/viewer/src/lib/search/filter-schema-effective.ts
+apps/viewer/src/sdk/adapters/model-adapter.ts
 apps/viewer/src/utils/spatialHierarchy.ts

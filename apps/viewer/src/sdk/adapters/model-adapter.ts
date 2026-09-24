@@ -3,21 +3,39 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { ModelInfo, ModelBackendMethods } from '@ifc-lite/sdk';
+import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import type { StoreApi } from './types.js';
 import { getAllModelEntries, LEGACY_MODEL_ID } from './model-compat.js';
+import { getMutationViewForModel } from './mutation-view.js';
 
 export function createModelAdapter(store: StoreApi): ModelBackendMethods {
   return {
     list() {
       const state = store.getState();
       const result: ModelInfo[] = [];
-      for (const [, model] of getAllModelEntries(state)) {
+      for (const [modelId, model] of getAllModelEntries(state)) {
+        const dataStore = model.ifcDataStore;
+        const view = getMutationViewForModel(store, modelId);
+        // A name/property/retype edit cannot change the number of entities.
+        // Keep the large-model list() path constant-time until membership
+        // actually changes in this model's overlay.
+        // @raw-entity-enumeration-ok source table count is exact when the overlay has no creations or tombstones
+        let entityCount = dataStore?.entities.count ?? 0;
+        if (dataStore && view && (view.getNewEntities().length > 0 || view.getTombstones().size > 0)) {
+          entityCount = 0;
+          for (const _entity of iterateEffectiveEntityIds(
+            dataStore,
+            view,
+            undefined,
+            dataStore.entities.expressId,
+          )) entityCount++;
+        }
         result.push({
           id: model.id,
           name: model.name,
           schema: model.schemaVersion,
           schemaVersion: model.schemaVersion,
-          entityCount: model.ifcDataStore?.entities?.count ?? 0,
+          entityCount,
           fileSize: model.fileSize,
           loadedAt: model.loadedAt,
         });

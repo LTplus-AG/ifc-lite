@@ -8,10 +8,12 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { IfcParser, buildMaterialUsageIndex, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
+import { federationRegistry } from '@ifc-lite/renderer';
 import { render, advance, cleanup } from '@/test/render';
 import { useViewerStore, type FederatedModel } from '@/store';
-import { buildMaterialTree } from '@/components/viewer/hierarchy/treeDataBuilder';
-import { loadEffectiveMaterialStores, useEffectiveMaterialStores } from './useEffectiveMaterialStores.js';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { useHierarchyTree } from '@/components/viewer/hierarchy/useHierarchyTree.js';
+import { MaterialTotalsPanel } from '@/components/viewer/properties/MaterialTotalsPanel.js';
 
 const EMPTY_MODELS = new Map<string, FederatedModel>();
 const IFC = `ISO-10303-21;
@@ -45,19 +47,24 @@ async function waitForUsage(read: () => string | null | undefined, expected: str
   assert.equal(read(), expected);
 }
 
-function Probe({ source }: { source: IfcDataStore }) {
-  const { stores, ready } = useEffectiveMaterialStores(EMPTY_MODELS, source, true);
-  const usage = ready
-    ? [...buildMaterialUsageIndex(stores.get('legacy')!).values()]
-      .find((material) => material.name === 'Concrete')?.entries.map((entry) => entry.entityId).sort((a, b) => a - b)
-    : undefined;
-  return <span data-testid="usage">{ready ? (usage ?? []).join(',') : 'loading'}</span>;
+function Probe({ source, models = EMPTY_MODELS }: {
+  source: IfcDataStore;
+  models?: Map<string, FederatedModel>;
+}) {
+  const { treeData } = useHierarchyTree({
+    models,
+    ifcDataStore: models.size ? null : source,
+    isMultiModel: models.size > 1,
+  });
+  const usage = treeData.find((node) => node.name === 'Concrete')?.globalIds ?? [];
+  return <span data-testid="usage">{usage.join(',')}</span>;
 }
 
 const originalState = useViewerStore.getState();
 afterEach(() => {
   cleanup();
   useViewerStore.setState(originalState, true);
+  federationRegistry.clear();
 });
 
 it('refreshes material usage after each live revision without showing the stale index (#5249)', async () => {
@@ -68,11 +75,12 @@ it('refreshes material usage after each live revision without showing the stale 
     ['0Wall00000000000000031', null, 'Wall C', null, null, null, null, null, null]);
   view.deleteEntity(10);
   view.setPositionalAttribute(30, 4, ['#11', `#${created.expressId}`]);
-  useViewerStore.setState({ mutationViews: new Map([['__legacy__', view]]), mutationVersion: 1 });
+  useViewerStore.setState({ hierarchyMode: 'material',
+    mutationViews: new Map([['__legacy__', view]]), mutationVersion: 1 });
 
   const ui = render(<Probe source={source} />);
   const shown = () => ui.querySelector('[data-testid="usage"]')?.textContent;
-  assert.equal(shown(), 'loading');
+  assert.equal(shown(), '', 'the source material index is hidden until the edited snapshot is ready');
   await waitForUsage(shown, `11,${created.expressId}`);
 
   act(() => {
@@ -80,7 +88,7 @@ it('refreshes material usage after each live revision without showing the stale 
     view.setPositionalAttribute(30, 4, [`#${created.expressId}`]);
     useViewerStore.setState({ mutationVersion: 2 });
   });
-  assert.equal(shown(), 'loading', 'the previous revision is hidden while the new STEP snapshot loads');
+  assert.equal(shown(), '', 'the previous revision is hidden while the new STEP snapshot loads');
   await waitForUsage(shown, String(created.expressId));
 });
 
@@ -89,12 +97,35 @@ it('reads pending material edits registered under the legacy compatibility key (
   const view = new MutablePropertyView(null, 'default');
   view.deleteEntity(10);
   view.setPositionalAttribute(30, 4, ['#11']);
-  useViewerStore.setState({ mutationViews: new Map([['default', view]]), mutationVersion: 1 });
+  useViewerStore.setState({ hierarchyMode: 'material',
+    mutationViews: new Map([['default', view]]), mutationVersion: 1 });
 
   const ui = render(<Probe source={source} />);
   const shown = () => ui.querySelector('[data-testid="usage"]')?.textContent;
-  assert.equal(shown(), 'loading');
+  assert.equal(shown(), '');
   await waitForUsage(shown, '11');
+});
+
+it('material totals count reflects a deleted user and an overlay-created user (#5249)', async () => {
+  const source = await parse();
+  const view = new MutablePropertyView(null, '__legacy__');
+  view.setExpressIdWatermark(30);
+  view.deleteEntity(10);
+  view.setPositionalAttribute(30, 4, ['#11']);
+  useViewerStore.setState({ ifcDataStore: source, models: new Map(),
+    mutationViews: new Map([['__legacy__', view]]), mutationVersion: 1 });
+
+  const ui = render(<MaterialTotalsPanel materialId={20} modelId="legacy" />);
+  const count = () => [...ui.querySelectorAll('span')]
+    .find((span) => span.textContent === 'Elements')?.parentElement?.lastElementChild?.textContent;
+  await waitForUsage(count, '1');
+
+  const created = view.createEntity('IfcWall',
+    ['0Wall00000000000000031', null, 'Wall C', null, null, null, null, null, null]);
+  view.setPositionalAttribute(30, 4, ['#11', `#${created.expressId}`]);
+  act(() => useViewerStore.setState({ mutationVersion: 2 }));
+  assert.equal(count(), undefined, 'stale totals are hidden while the edited snapshot reloads');
+  await waitForUsage(count, '2');
 });
 
 it('material tree sees live delete/create while a second model stays isolated (#5249)', async () => {
@@ -107,27 +138,25 @@ it('material tree sees live delete/create while a second model stays isolated (#
   view.deleteEntity(10);
   view.setPositionalAttribute(30, 4, ['#11', `#${created.expressId}`]);
 
-  const sources = [
-    { modelId: 'a', store: a, schemaVersion: 'IFC4' as const },
-    { modelId: 'b', store: b, schemaVersion: 'IFC4' as const },
-  ];
-  const views = new Map([['a', view]]);
+  federationRegistry.clear();
+  const offsetA = federationRegistry.registerModel('a', 100);
+  const offsetB = federationRegistry.registerModel('b', 100);
+  const modelA = { ...fixtureModel('a', { idOffset: offsetA }), ifcDataStore: a, schemaVersion: 'IFC4' as const };
+  const modelB = { ...fixtureModel('b', { idOffset: offsetB }), ifcDataStore: b, schemaVersion: 'IFC4' as const };
+  const models = fixtureModels(modelA, modelB).models;
+  useViewerStore.setState({ ...fixtureModels(modelA, modelB),
+    hierarchyMode: 'material', mutationViews: new Map([['a', view]]), mutationVersion: 1 });
   assert.deepEqual(users(a), [10, 11], 'the parsed source still contains the deleted wall');
-
-  const first = await loadEffectiveMaterialStores(sources, views, 1);
-  assert.deepEqual(users(first.get('a')!), [11, created.expressId]);
-  assert.deepEqual(users(first.get('b')!), [10, 11], 'model B does not inherit model A edits');
-  assert.equal(first.get('b'), b, 'an untouched model keeps the fast source path');
-  const materialRow = buildMaterialTree(new Map(), a, new Set(), false,
-    undefined, undefined, new Map([['legacy', first.get('a')!]]))
-    .find((node) => node.name === 'Concrete');
-  assert.deepEqual(materialRow?.expressIds, [11, created.expressId],
-    'the material tree must use the effective snapshot rather than the source store');
+  const global = (modelId: string, id: number) => useViewerStore.getState().toGlobalId(modelId, id);
+  const ui = render(<Probe source={a} models={models} />);
+  const shown = () => ui.querySelector('[data-testid="usage"]')?.textContent;
+  assert.equal(shown(), '');
+  await waitForUsage(shown, [global('a', 11), global('a', created.expressId),
+    global('b', 10), global('b', 11)].join(','));
 
   view.deleteEntity(11);
   view.setPositionalAttribute(30, 4, [`#${created.expressId}`]);
-  const second = await loadEffectiveMaterialStores(sources, views, 2);
-  assert.deepEqual(users(second.get('a')!), [created.expressId],
-    'the next edit revision cannot reuse the previous material index');
-  assert.deepEqual(users(second.get('b')!), [10, 11]);
+  act(() => useViewerStore.setState({ mutationVersion: 2 }));
+  assert.equal(shown(), '', 'the previous federation snapshot is hidden while the next one loads');
+  await waitForUsage(shown, [global('a', created.expressId), global('b', 10), global('b', 11)].join(','));
 });

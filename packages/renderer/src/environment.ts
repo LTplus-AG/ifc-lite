@@ -10,8 +10,9 @@
  * rig (sun at normalize(0.5, 1, 0.3), hemisphere ambient, 0.85 exposure).
  * Intensities stay in the units that rig was tuned in; the geometry shader
  * converts them to linear irradiance (`IRRADIANCE_CALIBRATION` in
- * `shaders/main.wgsl.ts`), so the default rig lights a sun-facing surface at
- * exactly its authored colour.
+ * `shaders/main.wgsl.ts`), so the default rig lights a sun-facing horizontal
+ * surface at unit irradiance (by luma; the sky tint leaves each channel
+ * within about 2% of that).
  *
  * Directions are in viewer/world space (Y-up). `sunDirection` points TOWARD
  * the sun, matching the shader's `dot(N, sunDirection)` convention.

@@ -15,12 +15,14 @@
  *    before they are multiplied by light, because light adds and multiplies
  *    linearly and sRGB values do not.
  *  - `neutralCompress` rolls off highlights only. Anything whose brightest
- *    channel is below 0.76 passes through untouched, so a surface lit at unit
- *    irradiance renders at exactly its authored colour, and hue is preserved
- *    where it does compress. It is the Khronos PBR Neutral operator without
- *    its toe: the toe subtracts up to 0.04 to cancel a specular F0 offset, and
- *    this renderer has no specular term, so keeping it would only crush dark
- *    materials.
+ *    channel is below 0.76 (about 227/255 once encoded) passes through
+ *    untouched, so a colour up to that brightness, lit at unit neutral
+ *    irradiance, renders as authored; brighter colours roll off with their
+ *    hue preserved (pure white lands at 0.88, about 241/255, leaving
+ *    headroom for sunlit highlights). It is the Khronos PBR Neutral operator
+ *    without its toe: the toe subtracts up to 0.04 to cancel a specular F0
+ *    offset, and this renderer has no specular term, so keeping it would only
+ *    crush dark materials.
  *  - `linearToSrgb` is the exact piecewise encode. The canvas is configured
  *    with a non-sRGB format, so the shader must encode.
  */

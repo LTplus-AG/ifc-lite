@@ -20,9 +20,12 @@ import { relativeToEyeWgsl } from './relative-to-eye.wgsl.js';
  * if they were linear and brightened the result with a 2.2 gamma. Lit in
  * linear, the same numbers would render every model far darker. The default
  * rig delivers 0.6464 (luma) to a sun-facing horizontal surface and the
- * default exposure is 0.85, so this factor puts that surface at irradiance
- * 1.0, where it renders at exactly its authored colour. Every preset and user
- * exposure is scaled by the same factor, so their relative brightness holds.
+ * default exposure is 0.85, so this factor puts that surface at unit
+ * irradiance by luma. The default sky tint leaves the channels within about
+ * 2% of that, and colours brighter than the highlight roll-off's 0.76
+ * threshold compress (see color-transfer.wgsl.ts), so mid-tones render as
+ * authored and pure white lands near 241/255. Every preset and user exposure
+ * is scaled by the same factor, so their relative brightness holds.
  * `color-pipeline.test.ts` re-derives it from the default rig.
  */
 const IRRADIANCE_CALIBRATION = 1.82;
@@ -540,7 +543,8 @@ export const mainShaderSource = `
 
           // Hue-preserving highlight roll-off (color-transfer.wgsl.ts). No
           // contrast curve and no saturation boost: an authored colour lit at
-          // unit irradiance leaves here unchanged.
+          // unit irradiance leaves here unchanged unless it is brighter than
+          // the roll-off threshold.
           color = neutralCompress(color);
 
           // Subtle edge enhancement using screen-space derivatives.

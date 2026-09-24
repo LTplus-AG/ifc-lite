@@ -6,4 +6,4 @@ Render authored colours as authored ([#5381](https://github.com/LTplus-AG/ifc-li
 
 Colours, overlay tints, texture texels and the selection blue are now decoded to linear before lighting. Highlights roll off with a hue-preserving operator (Khronos PBR Neutral without its toe), and the result is encoded as exact sRGB. The procedural sky uses the same shared functions.
 
-`LightingEnvironment` values keep their meaning and defaults. A fixed calibration converts them to linear irradiance so the default rig lights a sun-facing surface at exactly its authored colour, and every preset keeps its relative brightness. The rendered look of every model changes.
+`LightingEnvironment` values keep their meaning and defaults. A fixed calibration converts them to linear irradiance, so the default rig lights a sun-facing horizontal surface at unit irradiance by luma, and every preset keeps its relative brightness. Mid-tone colours on that surface render as authored (the default sky tint shifts channels by about 2%). Colours brighter than about 227/255 roll off with their hue preserved, so pure white lands near 241/255. The rendered look of every model changes.

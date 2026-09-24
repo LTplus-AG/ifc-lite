@@ -89,6 +89,13 @@ describe('linear colour pipeline (#5381)', () => {
     const declared = /const IRRADIANCE_CALIBRATION: f32 = ([\d.]+);/.exec(mainShaderSource);
     assert.ok(declared, 'expected the shader to declare IRRADIANCE_CALIBRATION');
     const calibration = Number(declared[1]);
+    // The value is only half the contract: fs_main must actually scale the
+    // light by it, or a correct constant calibrates nothing.
+    assert.match(
+      mainShaderSource,
+      /let irradiance = lightTerm \* \(env\.exposure \* IRRADIANCE_CALIBRATION\);/,
+      'fs_main no longer applies IRRADIANCE_CALIBRATION to the light',
+    );
 
     // main.wgsl's light terms evaluated for N = +Y with the default environment.
     const env = resolveEnvironment();

@@ -542,6 +542,12 @@ export function useKeyboardShortcutsDialog() {
     setTab(next);
     setOpen(true);
   }, []);
+  /** `?` is documented as the shortcuts key (`KEYBOARD_SHORTCUTS`, the welcome
+   *  tour), so it toggles the dialog open on the Shortcuts tab, not About. */
+  const toggleShortcuts = useCallback(() => {
+    setTab('shortcuts');
+    setOpen((o) => !o);
+  }, []);
 
   // Listen for '?' key to toggle
   useEffect(() => {
@@ -557,12 +563,12 @@ export function useKeyboardShortcutsDialog() {
       }
       if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
         e.preventDefault();
-        toggle();
+        toggleShortcuts();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggle]);
+  }, [toggleShortcuts]);
 
   return { open, tab, toggle, close, openTab };
 }

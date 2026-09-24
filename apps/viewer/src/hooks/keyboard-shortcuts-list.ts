@@ -10,6 +10,12 @@
  * mouse ones), and it grows with every feature while the hook does not.
  */
 
+import { ALT_SHORTCUT_PANELS } from '@/lib/panels/registry';
+
+/** Alt+1…0 panel names, taken from the registry so a rename cannot go stale. */
+const altPanelTitles = (bottom: boolean) =>
+  ALT_SHORTCUT_PANELS.filter((p) => (p.region === 'bottom') === bottom).map((p) => p.title).join(', ');
+
 // Export shortcut definitions for UI display
 export const KEYBOARD_SHORTCUTS = [
   { key: 'Ctrl+Z / Cmd+Z', description: 'Undo last model move or active-model authoring change', category: 'Editing' },
@@ -45,10 +51,10 @@ export const KEYBOARD_SHORTCUTS = [
   { key: 'RMB + Wheel', description: 'Change fly speed', category: 'Camera' },
   { key: 'Middle mouse drag', description: 'Pan', category: 'Camera' },
   { key: 'T', description: 'Toggle theme', category: 'UI' },
-  { key: 'Alt+1…0', description: 'Open a panel from the rail (Info, Compare, BCF, IDS, Lens, Clash, Extensions; Script, Schedule, Lists open at the bottom)', category: 'UI' },
+  { key: 'Alt+1…0', description: `Open a panel from the rail (${altPanelTitles(false)}; ${altPanelTitles(true)} open at the bottom)`, category: 'UI' },
   { key: 'Alt+\\', description: 'Toggle sidebar (expand ⇄ collapse to icons)', category: 'UI' },
   { key: 'Esc', description: 'Reset all (clear selection, basket, isolation)', category: 'Selection' },
   { key: 'Esc Esc', description: 'Close all panels (return to starting view)', category: 'UI' },
   { key: 'Ctrl+K', description: 'Command palette', category: 'UI' },
-  { key: '?', description: 'Show info panel', category: 'Help' },
+  { key: '?', description: 'Show keyboard shortcuts', category: 'Help' },
 ] as const;

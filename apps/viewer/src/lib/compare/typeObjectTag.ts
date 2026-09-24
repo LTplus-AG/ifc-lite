@@ -75,6 +75,7 @@ export function typeObjectTag(
 ): string | undefined {
   const index = getAttributeNamesAcrossSchemas(ifcType).indexOf('Tag');
   if (index < 0) return undefined;
+  // @raw-entity-enumeration-ok Compare passes an effectiveCompareStore snapshot with pending edits baked into its STEP bytes and index.
   const ref = store.entityIndex.byId.get(expressId);
   if (!ref) return undefined;
   const raw = new EntityExtractor(store.source).extractEntity(ref)?.attributes?.[index];

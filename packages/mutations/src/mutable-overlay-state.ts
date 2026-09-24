@@ -146,6 +146,8 @@ export class MutableOverlayState {
 
   protected restoreOverlayState(state: ReturnType<MutableOverlayState['copyOverlayState']>): void {
     Object.assign(this, state);
+    // A cloned snapshot carries a plain Map: rebuild the class index (#5413).
+    this.newEntities = NewEntityMap.from(this.newEntities);
   }
 
   protected matchesOverlayState(state: ReturnType<MutableOverlayState['copyOverlayState']>): boolean {

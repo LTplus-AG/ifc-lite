@@ -16,8 +16,10 @@ import type { NewEntity } from './types.js';
  * the end of its new bucket; no writer does that.
  */
 export class NewEntityMap extends Map<number, NewEntity> {
-  // Lazy: `Map`'s constructor calls `set` before subclass fields initialise.
-  private byType?: Map<string, Map<number, NewEntity>>;
+  // Lazy, and `declare`d so no runtime field is emitted: `Map`'s constructor
+  // calls `set` before subclass fields initialise, and an emitted field would
+  // then reset whatever `super(entries)` had indexed.
+  declare private byType?: Map<string, Map<number, NewEntity>>;
 
   override set(expressId: number, entity: NewEntity): this {
     const previous = super.get(expressId);
@@ -40,6 +42,14 @@ export class NewEntityMap extends Map<number, NewEntity> {
   override clear(): void {
     this.byType?.clear();
     super.clear();
+  }
+
+  /**
+   * `structuredClone` and the cooperative clone copy any `Map` as a plain
+   * `Map`, dropping the index. Snapshots restore through this.
+   */
+  static from(entities: ReadonlyMap<number, NewEntity>): NewEntityMap {
+    return entities instanceof NewEntityMap ? entities : new NewEntityMap(entities);
   }
 
   /** Created entities authored as `type` (case-insensitive), in creation order. */

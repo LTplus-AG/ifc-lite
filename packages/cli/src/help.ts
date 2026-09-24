@@ -78,7 +78,6 @@ export function buildHelp(version: string): string {
     --help, -h           Show help
     --version, -v        Show version
     --json               Output as JSON (machine-readable)
-    --out <file>         Write output to file instead of stdout
     --verbose            Show parser + geometry diagnostics (stderr)
     --quiet              Errors only
     --debug              Verbose + stack traces on error

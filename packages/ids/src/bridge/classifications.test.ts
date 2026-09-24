@@ -198,7 +198,7 @@ ${FOOTER}`;
     ]);
   });
 
-  it('a classification reference deleted this session leaves the material unresolved, not classified', async () => {
+  it('a classification reference deleted this session leaves the material unclassified', async () => {
     const a = await withOverlay([21], []);
     expect(a.getClassifications(10)).toEqual([]);
   });
@@ -207,6 +207,42 @@ ${FOOTER}`;
     const a = await withOverlay([22], []);
     expect(a.getClassifications(10)).toEqual([
       { system: '', value: 'Pr_20_93_08', name: 'Concrete', unresolved: true },
+    ]);
+  });
+
+  it('an authored string is the literal value, not a STEP token to un-quote', async () => {
+    const a = await withOverlay([], [
+      { expressId: 30, type: 'IfcClassificationReference', attributes: [null, "'Pr_20_76'", 'Steel', '#22', null, null] },
+      { expressId: 31, type: 'IfcExternalReferenceRelationship', attributes: [null, null, '#30', ['#11']] },
+    ]);
+    // serializeStepValue writes this string as the literal 'Pr_20_76' with its
+    // quotes, so that is the value IDS must see.
+    expect(a.getClassifications(11)).toEqual([
+      { system: 'Uniclass 2015', value: "'Pr_20_76'", name: 'Steel' },
+    ]);
+  });
+
+  it('builds the overlay snapshot once per accessor, not once per classification read', async () => {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer, { disableWorkerScan: true });
+    let copies = 0;
+    const accessor = createDataAccessor(store, undefined, {
+      isDeleted: () => false,
+      getNewEntities: () => { copies++; return []; },
+    });
+    accessor.getClassifications(10);
+    const afterFirst = copies;
+    for (let i = 0; i < 5; i++) accessor.getClassifications(10);
+    accessor.getClassifications(11);
+    expect(copies, 'later reads reuse the snapshot').toBe(afterFirst);
+  });
+
+  it('a typed authored value is data, never re-read as a #ref or $ token', async () => {
+    const a = await withOverlay([], [
+      { expressId: 30, type: 'IfcClassificationReference', attributes: [null, { typed: { type: 'IfcIdentifier', value: '#22' } }, 'Steel', '#22', null, null] },
+      { expressId: 31, type: 'IfcExternalReferenceRelationship', attributes: [null, null, '#30', ['#11']] },
+    ]);
+    expect(a.getClassifications(11)).toEqual([
+      { system: 'Uniclass 2015', value: '#22', name: 'Steel' },
     ]);
   });
 

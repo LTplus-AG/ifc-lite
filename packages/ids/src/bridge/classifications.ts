@@ -283,6 +283,10 @@ export interface ExternalReferenceContext {
   read(id: number): RecordRead | undefined;
 }
 
+/**
+ * Valid for ONE validation run: the relationship list and created records are
+ * snapshotted when built. Callers build a fresh accessor per run.
+ */
 export function createExternalReferenceContext(
   store: IfcDataStore,
   overlay: EntityVisibilityView | undefined
@@ -328,14 +332,17 @@ function authoredValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(authoredValue);
   if (value && typeof value === 'object') {
     if ('real' in value && typeof value.real === 'number') return value.real;
+    // A typed value is data, never a token: unwrap without re-parsing, so a
+    // typed label whose text is '#12' or '$' stays that text.
     if ('typed' in value && value.typed && typeof value.typed === 'object' && 'value' in value.typed) {
-      return authoredValue(value.typed.value);
+      return value.typed.value;
     }
     return value;
   }
   if (typeof value !== 'string') return value;
-  const ref = /^#(\d+)$/.exec(value.trim());
+  const token = value.trim();
+  const ref = /^#(\d+)$/.exec(token);
   if (ref) return Number(ref[1]);
-  if (value === '$' || value === '*') return undefined;
+  if (token === '$' || token === '*') return undefined;
   return value;
 }

@@ -50,9 +50,10 @@ const TIMEOUT_MS = 60_000;
 function ifc4x3Model(): string {
   const creator = new IfcCreator({ Name: 'IFC4X3 conformance', Schema: 'IFC4X3', Timestamp: 0 });
   const storey = creator.addIfcBuildingStorey({ Name: 'Level 0', Elevation: 0 });
-  // No `addIfcWall`: its placement violates AxisAndRefDirProvision in every
-  // schema (#5469), which is not what this file checks.
   creator.addIfcSlab(storey, { Position: [0, 0, 0], Width: 5, Depth: 4, Thickness: 0.25 });
+  // A wall rotates its placement's RefDirection, which used to be written
+  // without an Axis and failed AxisAndRefDirProvision (#5469).
+  creator.addIfcWall(storey, { Start: [0, 0, 0], End: [0, 4, 0], Thickness: 0.2, Height: 3 });
   const terrain = creator.terrain();
   terrain.addSurface({
     Name: 'Existing Ground',

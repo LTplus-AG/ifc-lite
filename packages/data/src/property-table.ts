@@ -22,8 +22,7 @@ export interface Property {
   name: string;
   type: PropertyValueType;
   value: PropertyValue;
-  /** Candidate values of a multi-valued (enumerated / bounded / list / table) property — IDS facet checks pass when ANY matches (#1766). Absent for single values. */
-  values?: string[];
+  /** Candidate values of a multi-valued (enumerated / bounded / list / table) property — IDS facet checks pass when ANY matches (#1766). Absent for single values. */ values?: string[];
   /** Symbol of the property's own explicit `Unit`; an unresolvable unit reference is `#<id>` (#4833). Absent when the value is in the project's unit assignment. */
   unit?: string;
   /** Scale of the explicit `unit` to its SI base (`mm` → `1e-3`), only when it resolved; `unit` without it means "a unit we could not read": neither convertible nor project-unit. */
@@ -31,8 +30,7 @@ export interface Property {
   /** Raw IFC measure value type (e.g. "IFCVOLUMETRICFLOWRATEMEASURE") that resolves the file's declared display unit (#1573). Absent when the value type has no measure semantics. */
   dataType?: string;
   /** `IfcPropertyTableValue`: columns differ in type by design, so no single `dataType` (#5224). */ dataTypeMixed?: true;
-  /** Which `IfcProperty` subtype carried a non-single value; rules read the `values` of a list, enumerated or table value member by member (#5475). */
-  structure?: 'enumerated' | 'bounded' | 'list' | 'table' | 'reference' | 'complex';
+  /** Subtype of a non-single value; rules read a list/enumerated/table `values` member by member (#5475). */ structure?: 'enumerated' | 'bounded' | 'list' | 'table' | 'reference' | 'complex';
 }
 
 export type PropertyValue = string | number | boolean | null | PropertyValue[];

@@ -25,10 +25,10 @@ import type { TranslationValue } from '../types';
  * "Add rule" menu), `geometryAxisRow.*` (`GeometryAxisRow.tsx`, the
  * Geometry edit card's X/Y/Z nudge row), `levelDisplayIndicator.*`
  * (`LevelDisplayIndicator.tsx`, the Exploded/Solo viewport chip),
- * `entityContextMenu.*` (`EntityContextMenu.tsx` — only its default-
- * direction duplicate row's own literal text; the rest of that menu's
- * per-action `label` props are plain JSX attributes the sweep's own gate
- * does not police and remain out of THIS slice's scope), `textAnnotationEditor.*`
+ * `entityContextMenu.*` (`EntityContextMenu.tsx` — its default-direction
+ * duplicate row plus the frame/hide/basket/show-all items that carry a
+ * shortcut hint (#5597); the menu's remaining per-action `label` props are
+ * still plain JSX attributes, out of THIS slice's scope), `textAnnotationEditor.*`
  * (`TextAnnotationEditor.tsx`, the 2D-drawing text annotation inline
  * editor), `peerPresenceLayer.*` (`presence/PeerPresenceLayer.tsx`, the
  * live-cursor DOM overlay), `bottomStrip.*` (`BottomStrip.tsx`'s detach
@@ -233,9 +233,16 @@ export const miscPanelsBEn = {
   'levelDisplayIndicator.soloLabel': 'Solo · {name}',
   'levelDisplayIndicator.storeyFallback': 'storey',
 
-  // ---- EntityContextMenu.tsx (DuplicateRow only, see doc comment) ----------
+  // ---- EntityContextMenu.tsx (shortcut-hinted items + DuplicateRow, see doc comment)
   'entityContextMenu.duplicateDefaultTitle': 'Duplicate one bbox-width along +X (default)',
   'entityContextMenu.duplicateLabel': 'Duplicate',
+  'entityContextMenu.frameSelection': 'Frame selection',
+  'entityContextMenu.hide': 'Hide',
+  'entityContextMenu.setBasket': 'Set Basket',
+  'entityContextMenu.addToBasket': 'Add to Basket',
+  'entityContextMenu.removeFromBasket': 'Remove from Basket',
+  'entityContextMenu.saveBasketView': 'Save Basket View',
+  'entityContextMenu.showAll': 'Show all',
 
   // ---- TextAnnotationEditor.tsx ---------------------------------------------
   'textAnnotationEditor.placeholder': 'Type annotation text...',

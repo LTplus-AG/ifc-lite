@@ -58,7 +58,6 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
   // Measure tool specific actions
   const activeMeasurement = useViewerStore((s) => s.activeMeasurement);
   const cancelMeasurement = useViewerStore((s) => s.cancelMeasurement);
-  const clearMeasurements = useViewerStore((s) => s.clearMeasurements);
   const toggleSnap = useViewerStore((s) => s.toggleSnap);
   // Polyline (multi-click) mode (#2199).
   const activePolyline = useViewerStore((s) => s.activePolyline);
@@ -353,22 +352,13 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
         }
         return;
       }
-      // Clear all measurements with Ctrl+C or Cmd+C
-      if (key === 'c' && ctrl && !shift) {
-        e.preventDefault();
-        clearMeasurements();
-        return;
-      }
+      // No Ctrl+C or Delete/Backspace "clear measurements" here (#5598):
+      // Ctrl+C means copy everywhere else, and measurements are not part of
+      // workspace undo. Clearing is the panel's explicit, confirmed button.
       // Toggle snapping with S
       if (key === 's' && !ctrl && !shift) {
         e.preventDefault();
         toggleSnap();
-        return;
-      }
-      // Delete/Backspace clears measurements (when nothing is selected)
-      if ((key === 'delete' || key === 'backspace') && !ctrl && !shift && !selectedEntityId) {
-        e.preventDefault();
-        clearMeasurements();
         return;
       }
     }
@@ -423,7 +413,6 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     toggleBasketPresentationVisible,
     activeMeasurement,
     cancelMeasurement,
-    clearMeasurements,
     toggleSnap,
     toggleEditEnabled,
     activePolyline, activeAngle, cancelAngle,

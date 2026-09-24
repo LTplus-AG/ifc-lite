@@ -26,7 +26,6 @@ export const KEYBOARD_SHORTCUTS = [
   { key: 'Esc', description: 'Cancel measurement (Measure tool)', category: 'Tools' },
   { key: 'Enter', description: 'Finish polyline as open length (Measure tool, polyline mode)', category: 'Tools' },
   { key: 'Enter', description: 'Finish radius/diameter fit (Measure tool, radius mode)', category: 'Tools' },
-  { key: 'Ctrl+C', description: 'Clear measurements (Measure tool)', category: 'Tools' },
   { key: 'I', description: 'Isolate (set basket from current context)', category: 'Visibility' },
   { key: '=', description: 'Set basket from current context', category: 'Visibility' },
   { key: '+', description: 'Add current context to basket', category: 'Visibility' },

@@ -91,6 +91,7 @@ class SweptDiskCheckReport(TypedDict):
     findings: List[SweptDiskCheckFinding]
 
 class SweptDiskCheckEntry(TypedDict):
+    occurrence_index: int  # index into this product's swept_disks list
     solid_id: int
     directrix_id: int
     mapping_path: List[int]

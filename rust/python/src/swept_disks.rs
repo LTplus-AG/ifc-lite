@@ -52,10 +52,12 @@ pub(super) fn checks_to_python(
     for (id, disks) in &descriptions.elements {
         let entries = disks
             .iter()
-            .map(|disk| {
+            .enumerate()
+            .map(|(occurrence_index, disk)| {
                 let report = check_swept_disk(disk, options)
                     .map_err(|error| PyValueError::new_err(error.to_string()))?;
                 Ok(serde_json::json!({
+                    "occurrence_index": occurrence_index,
                     "solid_id": disk.solid_id,
                     "directrix_id": disk.directrix_id,
                     "mapping_path": disk.mapping_path,

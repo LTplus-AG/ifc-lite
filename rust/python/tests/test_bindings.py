@@ -169,6 +169,7 @@ def test_issue_5758_swept_disk_checks_use_rust_source_geometry():
     assert checks["diagnostics"] == []
     assert set(checks["elements"]) == {125}
     (entry,) = checks["elements"][125]
+    assert entry["occurrence_index"] == 0
     assert (entry["solid_id"], entry["directrix_id"], entry["mapping_path"]) == (
         72, 71, []
     )
@@ -200,6 +201,7 @@ def test_issue_5758_swept_disk_checks_report_unsupported_and_modified_sources():
     assert modified != source
     entries = ifclite_geom.check_swept_disks(modified.encode())["elements"][50]
     assert len(entries) == 2
+    assert [entry["occurrence_index"] for entry in entries] == [0, 1]
     assert all(entry["solid_id"] == 43 for entry in entries)
     assert all(entry["report"]["source_modified"] is True for entry in entries)
     assert all(entry["report"]["skipped_reason"] is None for entry in entries)

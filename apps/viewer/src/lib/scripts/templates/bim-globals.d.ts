@@ -218,6 +218,21 @@ declare namespace BimClash {
      * assignable — absent means "unknown", never "measured".
      */
     distanceKind?: ClashDistanceKind;
+    /**
+     * For a `hard` clash, the float32 noise floor of `distance` along the
+     * direction that depth was measured: the depth at or below which the engine
+     * would have classified the pair as `touch` (#5405). Derived from the
+     * elements' own coordinates on that axis and their sizes, never from their
+     * distance from the origin along other axes, so it does not change under a
+     * translation orthogonal to the depth. `isTouching` uses it for its default
+     * band (#5639).
+     *
+     * Set by the engine on every `hard` clash, absent on every other status.
+     * Optional so that a clash recorded before this field existed (or
+     * rehydrated from BCF/JSON without it) stays assignable; `isTouching` then
+     * falls back to its older coordinate-magnitude band.
+     */
+    depthFloor?: number;
     /** True contact point (hard) or closest-point midpoint (clearance/touch). */
     point: Vec3;
     /** Overlap region (hard) or closest-segment box (clearance/touch). */

@@ -9,7 +9,13 @@ import { axisFlipForSection } from '@/hooks/pdfSectionLayout';
 
 interface UseViewControlsParams {
   drawing: Drawing2D | null;
-  sectionPlane: { axis: 'down' | 'front' | 'side'; position: number; flipped: boolean };
+  sectionPlane: {
+    axis: 'down' | 'front' | 'side';
+    position: number;
+    flipped: boolean;
+    /** A face-picked plane; its identity (normal + pick point) is a new plane. */
+    custom?: { normal: readonly number[]; pickedAt: readonly number[] };
+  };
   containerRef: React.RefObject<HTMLDivElement | null>;
   panelVisible: boolean;
   status: string;
@@ -27,6 +33,30 @@ interface UseViewControlsResult {
   fitToView: () => void;
 }
 
+/** Identity of the cut plane: a change means the previous 2D transform is
+ *  meaningless for the next drawing. The custom-plane distance is left out on
+ *  purpose, since sliding a picked plane keeps its projection frame. */
+function sectionPlaneKey(plane: UseViewControlsParams['sectionPlane']): string {
+  const base = `${plane.axis}|${plane.flipped ? 'flipped' : 'normal'}`;
+  if (!plane.custom) return base;
+  const r = (v: number) => v.toFixed(4);
+  return `${base}|${plane.custom.normal.map(r).join(',')}|${plane.custom.pickedAt.map(r).join(',')}`;
+}
+
+/** Does any part of `bounds` land inside the `rect`-sized canvas under
+ *  `transform`? Mirrors the canvas's per-axis flips (see `fitToView`). */
+function drawingIntersectsView(
+  bounds: Drawing2D['bounds'],
+  transform: { x: number; y: number; scale: number },
+  axis: UseViewControlsParams['sectionPlane']['axis'],
+  rect: { width: number; height: number },
+): boolean {
+  const { flipX, flipY } = axisFlipForSection(axis);
+  const xs = [bounds.min.x, bounds.max.x].map((v) => (flipX ? -v : v) * transform.scale + transform.x);
+  const ys = [bounds.min.y, bounds.max.y].map((v) => (flipY ? -v : v) * transform.scale + transform.y);
+  return Math.max(...xs) > 0 && Math.min(...xs) < rect.width && Math.max(...ys) > 0 && Math.min(...ys) < rect.height;
+}
+
 function useViewControls({
   drawing,
   sectionPlane,
@@ -39,9 +69,13 @@ function useViewControls({
   cachedSheetTransformRef,
 }: UseViewControlsParams): UseViewControlsResult {
   const [viewTransform, setViewTransform] = useState({ x: 0, y: 0, scale: 1 });
-  const [needsFit, setNeedsFit] = useState(true); // Force fit on first open and axis change
-  const prevAxisRef = useRef(sectionPlane.axis); // Track axis changes
-  const prevFlippedRef = useRef(sectionPlane.flipped); // Track flip changes
+  const [needsFit, setNeedsFit] = useState(true); // Force fit on first open and on a new plane
+  const planeKey = sectionPlaneKey(sectionPlane);
+  const prevPlaneKeyRef = useRef(planeKey);
+  // Latest transform for the off-view check, read without re-running the
+  // auto-fit effect on every pan (a deliberate pan must never snap back).
+  const viewTransformRef = useRef(viewTransform);
+  viewTransformRef.current = viewTransform;
 
   // Wheel zoom handler
   useEffect(() => {
@@ -155,21 +189,40 @@ function useViewControls({
   // Track axis changes for forced fit-to-view
   const lastFitAxisRef = useRef(sectionPlane.axis);
 
-  // Set needsFit when axis OR flip changes. Flip mirrors the projection's U
-  // axis (see `projectTo2D` in @ifc-lite/drawing-2d), so the polygon bounds
-  // jump from positive X into negative X (or vice versa). Without re-fitting
-  // the new bounds end up off-screen and the user sees "empty 2D panel after
-  // I pressed Flip" — that was the bug behind the recent screenshot report.
+  // Set needsFit on a NEW PLANE: axis, flip, or a face-picked custom plane.
+  // Flip mirrors the projection's U axis (see `projectTo2D` in
+  // @ifc-lite/drawing-2d), so the polygon bounds jump from positive X into
+  // negative X (or vice versa); a picked face projects onto its own tangent
+  // frame, unrelated to the previous plane's (#5392: cutting along the FZK
+  // roof kept the plan view's transform and showed a cropped corner). Either
+  // way the previous transform means nothing for the new drawing.
   useEffect(() => {
-    const axisChanged = sectionPlane.axis !== prevAxisRef.current;
-    const flipChanged = sectionPlane.flipped !== prevFlippedRef.current;
-    if (axisChanged || flipChanged) {
-      prevAxisRef.current = sectionPlane.axis;
-      prevFlippedRef.current = sectionPlane.flipped;
+    if (planeKey !== prevPlaneKeyRef.current) {
+      prevPlaneKeyRef.current = planeKey;
       setNeedsFit(true);
       cachedSheetTransformRef.current = null;
     }
-  }, [sectionPlane.axis, sectionPlane.flipped]);
+  }, [planeKey]);
+
+  // Panel resize keeps the drawing centred (#5392): the canvas grows or
+  // shrinks around its centre, so shift the pan by half the size change.
+  // Before, only the canvas size updated and the drawing slid toward a corner.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!panelVisible || !container) return;
+    let prev: { width: number; height: number } | null = null;
+    const observer = new ResizeObserver(() => {
+      const { width, height } = container.getBoundingClientRect();
+      if (prev && (width !== prev.width || height !== prev.height)) {
+        const dx = (width - prev.width) / 2;
+        const dy = (height - prev.height) / 2;
+        setViewTransform((t) => ({ ...t, x: t.x + dx, y: t.y + dy }));
+      }
+      prev = { width, height };
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [panelVisible, status]); // Re-run when the container can (re)appear, as the wheel handler does
 
   // Track previous sheet mode to detect toggle
   const prevSheetEnabledRef = useRef(sheetEnabled);
@@ -218,15 +271,21 @@ function useViewControls({
     }
   }, [sheetGeometryKey, cachedSheetTransformRef]);
 
-  // Auto-fit when: (1) needsFit is true (first open or axis change), or (2) not pinned after regenerate
-  // ALWAYS fit when axis changed, regardless of pin state
+  // Auto-fit when: (1) needsFit is true (first open or a new plane), (2) not
+  // pinned after regenerate, or (3) pinned, but the regenerated drawing lies
+  // entirely outside the current view (#5392): pin keeps the user's framing,
+  // and there is no framing left to keep when nothing of the drawing is in it.
+  // Only a drawing change evaluates (3), never a pan, so a deliberate pan off
+  // the drawing stays put. Sheet mode fits the paper, not the drawing bounds.
   // Also re-run when panelVisible changes so we fit when panel opens with existing drawing
   useEffect(() => {
     if (status === 'ready' && drawing && containerRef.current && panelVisible) {
       const axisChanged = lastFitAxisRef.current !== sectionPlane.axis;
+      const rect = containerRef.current.getBoundingClientRect();
+      const offView = !sheetEnabled
+        && !drawingIntersectsView(drawing.bounds, viewTransformRef.current, sectionPlane.axis, rect);
 
-      // Fit if needsFit (first open/axis change) OR if not pinned OR if axis just changed
-      if (needsFit || !isPinned || axisChanged) {
+      if (needsFit || !isPinned || axisChanged || offView) {
         // Small delay to ensure canvas is rendered
         const timeout = setTimeout(() => {
           fitToView();
@@ -238,7 +297,7 @@ function useViewControls({
         return () => clearTimeout(timeout);
       }
     }
-  }, [status, drawing, fitToView, isPinned, needsFit, sectionPlane.axis, panelVisible]);
+  }, [status, drawing, fitToView, isPinned, needsFit, sectionPlane.axis, panelVisible, sheetEnabled]);
 
   return {
     viewTransform,

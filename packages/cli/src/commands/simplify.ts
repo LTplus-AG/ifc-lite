@@ -15,10 +15,13 @@
  */
 
 import { readFile, writeFile } from 'node:fs/promises';
-import { getFlag, hasFlag, fatal, printJson } from '../output.js';
+import { getFlag, hasFlag, fatal, printJson, routeConsoleDiagnosticsToStderr } from '../output.js';
 import { DemeshSession } from '@ifc-lite/export';
 
 export async function simplifyCommand(args: string[]): Promise<void> {
+  // stdout carries this command's payload, so redirect console diagnostics
+  // BEFORE the first parse/geometry init (see the function's own docstring).
+  routeConsoleDiagnosticsToStderr();
   const filePath = args.find((a) => !a.startsWith('-'));
   if (!filePath) {
     fatal('Usage: ifc-lite simplify <file.ifc> --out light.ifc [--level 1..5] [--ids 1,2,3] [--json]');

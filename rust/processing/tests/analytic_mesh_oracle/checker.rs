@@ -184,11 +184,13 @@ fn surface_samples(disk: &SweptDiskOccurrence, include_endpoints: bool) -> Vec<P
     samples
 }
 
-/// The surface residual covers even an eight-sided disk's chord sagitta
-/// (1 - cos(pi/8) = 7.61% of radius), 1 µm export welding, and f32 local
-/// coordinates. The bound limit covers a 90-degree miter's 0.414-radius
-/// extension at segment joins. Both limits
-/// are in world metres and are independent of a large absolute RTC origin.
+/// At High tessellation the tested L/U bars' largest surface residuals are
+/// 3.97%/3.04% of the disk radius. Allow 5% plus 50 µm for tessellation,
+/// export welding, and f32 local coordinates. A single-source arc's sampled
+/// bound differs by at most 7.9% on the catalogued Antea curve, so its bound
+/// allowance is 10%; joined segments need 50% for a 90-degree miter's
+/// 0.414-radius extension. These limits are world metres and independent of
+/// the absolute RTC origin.
 pub(super) fn compare_surface(
     product_id: u32,
     disk: &SweptDiskOccurrence,
@@ -201,7 +203,7 @@ pub(super) fn compare_surface(
     if mesh.faces.is_empty() || mesh.vertices.is_empty() {
         return Err(format!("{identity}: mesh has no triangles"));
     }
-    let surface_tolerance = 0.08 * disk.radius + 0.000_05;
+    let surface_tolerance = 0.05 * disk.radius + 0.000_05;
     for (sample_index, point) in surface_samples(disk, false).into_iter().enumerate() {
         let residual = nearest_mesh_distance(point, mesh);
         if !residual.is_finite() || residual > surface_tolerance {
@@ -210,7 +212,11 @@ pub(super) fn compare_surface(
     }
     let (expected_low, expected_high) = bounds(surface_samples(disk, true).into_iter());
     let (actual_low, actual_high) = bounds(mesh.vertices.iter().copied());
-    let bound_tolerance = 0.5 * disk.radius + 0.000_05;
+    let bound_tolerance = if disk.directrix.len() == 1 {
+        0.1 * disk.radius + 0.000_05
+    } else {
+        0.5 * disk.radius + 0.000_05
+    };
     for axis in 0..3 {
         for (name, expected, actual) in [
             ("minimum", expected_low[axis], actual_low[axis]),
@@ -263,7 +269,7 @@ pub(super) fn compare_model(
     let disk = eligibility(disks)
         .map_err(|reason| format!("product #{expected_id}: skipped: {reason}"))?;
     let result = process_geometry_filtered_with_quality_and_ids(
-        &source,
+        source,
         OpeningFilterMode::Default,
         TessellationQuality::High,
         Some(&ids),

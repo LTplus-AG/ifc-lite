@@ -90,7 +90,7 @@ fn catalogued_antea_hollow_curve_matches_when_fixture_is_available() {
 fn analytic_mutations_fail_with_residual_evidence() {
     let (disk, mesh) = compare_model(&synthetic("swept_disk_trimmed_line"), 50).unwrap();
     let mut wrong_radius = disk.clone();
-    wrong_radius.radius += 0.05;
+    wrong_radius.radius += 0.005;
     let error = compare_surface(50, &wrong_radius, &mesh).unwrap_err();
     assert!(
         error.contains("product #50")
@@ -103,8 +103,8 @@ fn analytic_mutations_fail_with_residual_evidence() {
     let mut wrong_transform = disk;
     for segment in &mut wrong_transform.directrix {
         if let AnalyticCurveSegment::Line { start, end } = segment {
-            start[0] += 0.25;
-            end[0] += 0.25;
+            start[0] += 0.02;
+            end[0] += 0.02;
         }
     }
     let error = compare_surface(50, &wrong_transform, &mesh).unwrap_err();

@@ -31,6 +31,7 @@ import type { SaveResult } from '@/lib/clash/persistence';
 import type { ClashExclusionKind } from '@/lib/clash/exclusions';
 import { formatClashSolidVolumeM3 } from '@/lib/clash/clash-solid-volume-format';
 import { useBCF } from '@/hooks/useBCF';
+import { rerunClashRequest, rerunTooltip, runRequestOf } from '@/lib/clash/run-request';
 import { useViewerStore } from '@/store';
 import { ModelBadge } from './ModelBadge';
 import { ClashExportActions } from '@/components/viewer/clash/ClashExportActions';
@@ -59,8 +60,7 @@ import {
   type ClashSortBy,
 } from '@ifc-lite/clash';
 import { ClashModelTagNotice } from './ClashModelTagNotice';
-import { useTranslation } from '@/i18n';
-import type { TranslationKey } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
 
 interface ClashPanelProps {
   onClose?: () => void;
@@ -771,8 +771,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                 size="sm"
                 className="h-6 px-2 text-xs"
                 disabled={running}
-                onClick={() => void runAll()}
-                title={t('clashPanel.rerunTooltip')}
+                onClick={() => void rerunClashRequest(runRequestOf(result), { runAll, runMatrix, runPreset, runDuplicates })}
+                title={rerunTooltip(t, runRequestOf(result))}
               >
                 {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Crosshair className="h-3.5 w-3.5 mr-1" />}
                 {running ? '' : t('clashPanel.rerun')}

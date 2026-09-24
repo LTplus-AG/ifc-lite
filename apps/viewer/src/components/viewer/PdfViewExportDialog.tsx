@@ -33,7 +33,7 @@
  * view it claims to be is its own defect.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { FileText, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -208,12 +208,6 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
     }
   }, [camera, drawnMeshes, scaleFactor, showScaleStamp]);
 
-  // Reset the transient bits every time the dialog opens so a previous run's
-  // progress text cannot be read as this run's.
-  useEffect(() => {
-    if (open) setPhase(null);
-  }, [open]);
-
   const oversize = preview?.oversize ?? false;
   const canExport =
     !isExporting && camera !== null && drawnMeshes.length > 0 && scaleFactor !== null && !oversize;
@@ -282,7 +276,9 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
     ? t('sheetsPdf.pdfView.displayedScaleOption', { scale: formatScaleFactorLabel(displayedScale) })
     : t('sheetsPdf.pdfView.displayedScaleUnavailable');
 
-  const handleOpenChange = useExportDialogOpenGuard({ busy: isExporting, setOpen });
+  // Reset the transient bits every time the dialog opens so a previous run's
+  // progress text cannot be read as this run's.
+  const handleOpenChange = useExportDialogOpenGuard({ busy: isExporting, setOpen, onOpen: () => setPhase(null) });
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>

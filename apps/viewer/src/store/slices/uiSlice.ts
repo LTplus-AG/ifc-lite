@@ -120,6 +120,8 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   showPerformanceStats: boolean;
   navigationPreset: NavigationPreset;
   visualEnhancementsEnabled: boolean;
+  /** Show exact authored swept-disk directrices for selected IFC products. */
+  centrelineOverlayEnabled: boolean;
   contactShadingQuality: ContactShadingQuality;
   contactShadingIntensity: number;
   contactShadingRadius: number;
@@ -163,6 +165,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   setShowPerformanceStats: (enabled: boolean) => void;
   setNavigationPreset: (preset: NavigationPreset) => void;
   setVisualEnhancementsEnabled: (enabled: boolean) => void;
+  setCentrelineOverlayEnabled: (enabled: boolean) => void;
   setContactShadingQuality: (quality: ContactShadingQuality) => void;
   setContactShadingIntensity: (intensity: number) => void;
   setContactShadingRadius: (radius: number) => void;
@@ -206,6 +209,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   showPerformanceStats: initialShowPerformanceStats(),
   navigationPreset: getInitialNavigationPreset(),
   visualEnhancementsEnabled: UI_DEFAULTS.VISUAL_ENHANCEMENTS_ENABLED,
+  centrelineOverlayEnabled: false,
   contactShadingQuality: UI_DEFAULTS.CONTACT_SHADING_QUALITY,
   contactShadingIntensity: UI_DEFAULTS.CONTACT_SHADING_INTENSITY,
   contactShadingRadius: UI_DEFAULTS.CONTACT_SHADING_RADIUS,
@@ -331,6 +335,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     set({ navigationPreset });
   },
   setVisualEnhancementsEnabled: (visualEnhancementsEnabled) => set({ visualEnhancementsEnabled }),
+  setCentrelineOverlayEnabled: (centrelineOverlayEnabled) => set({ centrelineOverlayEnabled }),
   setContactShadingQuality: (contactShadingQuality) => set({ contactShadingQuality }),
   setContactShadingIntensity: (contactShadingIntensity) => set({ contactShadingIntensity }),
   setContactShadingRadius: (contactShadingRadius) => set({ contactShadingRadius }),

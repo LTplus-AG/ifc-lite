@@ -65,7 +65,7 @@ export class WorldLineBuffer {
 
   /**
    * @param uniformSlot Index of this family's record in the shared uniform
-   *   buffer. Every family needs its own: the six overlay draws are encoded
+   *   buffer. Every family needs its own: the overlay draws are encoded
    *   into one pass and `queue.writeBuffer` lands before the pass runs, so a
    *   shared record means the last family's colour is the one all six get.
    *   See `SECTION_2D_UNIFORM_SLOT_INDEX`.
@@ -140,7 +140,7 @@ export class WorldLineBuffer {
    * ride the section plane.
    *
    * Writes into — and binds — **this family's own** uniform slot. Sharing one
-   * record across the pass's six draws meant the last write before submit was
+   * record across the pass's line draws meant the last write before submit was
    * what every draw read.
    *
    * No-ops when the buffer is empty, so callers do not need their own guard.

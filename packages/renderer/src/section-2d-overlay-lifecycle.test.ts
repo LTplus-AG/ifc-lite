@@ -23,7 +23,7 @@ import {
 };
 
 /**
- * `Section2DOverlayRenderer` is ONE nullable GPU object backing seven buffer
+ * `Section2DOverlayRenderer` is ONE nullable GPU object backing eight buffer
  * families. Nothing pinned its ownership rules until this file: the clash-box
  * family (#1277) was once silently missing from `dispose()`, so its vertex
  * buffer leaked on every renderer teardown while the whole suite stayed green.
@@ -296,6 +296,21 @@ describe('Section2DOverlayRenderer: per-family buffer ownership', () => {
     for (const f of FAMILIES) {
       assert.strictEqual(f.has(renderer), f !== FAMILIES[2], `${f.name} after clearing grid`);
     }
+  });
+});
+
+describe('selected centreline depth (#5778)', () => {
+  it('draws through its swept solid without changing other line channels', () => {
+    const { renderer, pipelineDescs } = newRenderer();
+    renderer.setLineOverlay('grid', SEGMENTS);
+    renderer.setLineOverlay('centreline', SEGMENTS);
+    assert.ok(![...pipelineDescs.values()].some((desc) => desc.depthStencil?.depthCompare === 'always'),
+      'the x-ray pipeline is created only for a selected centreline draw');
+    const { pass, pipelines } = makePass();
+    renderer.drawLineOverlay(pass, OPTIONS.viewProj, 'grid');
+    renderer.drawLineOverlay(pass, OPTIONS.viewProj, 'centreline');
+    assert.strictEqual(pipelineDescs.get(pipelines[0])?.depthStencil?.depthCompare, 'greater-equal');
+    assert.strictEqual(pipelineDescs.get(pipelines[1])?.depthStencil?.depthCompare, 'always');
   });
 });
 

@@ -1,0 +1,76 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { FederatedModel, ViewerState } from '@/store';
+import { findReferenceSpatialModel, extractModelSpatialPlacement } from '@/hooks/ingest/federationAlign';
+import { applyAffineTransform } from '@/hooks/ingest/federationAlignAabb';
+import { buildCrossCrsPointMap, buildSpatialAlignmentTransform } from '@/hooks/ingest/federationSpatialTransform';
+import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
+import { directrixDisplayLines, type FederationPointMap } from './directrix-frame';
+import { directrixLineVertices } from './directrix-lines';
+import type { SelectedSweptDisk } from '@/hooks/useSelectedSweptDisks';
+
+const MAX_DISPLAY_EDGES = 100_000;
+
+/** Source-frame point mapping follows the same alignment chosen for the mesh. */
+async function modelFrameMap(model: FederatedModel, state: ViewerState): Promise<FederationPointMap | undefined> {
+  const status = model.federationAlignmentStatus;
+  if (status !== 'same-crs' && status !== 'reprojected') return undefined;
+  const sourceInfo = model.preAlignment?.coordinateInfo;
+  const anchor = findReferenceSpatialModel();
+  if (!sourceInfo || !anchor || !model.ifcDataStore) {
+    throw new Error(`model ${model.id} has no source or reference frame for ${status} alignment`);
+  }
+  const source = extractModelSpatialPlacement(
+    model.ifcDataStore, sourceInfo, state.georefMutations.get(model.id),
+  );
+  if (!source) throw new Error(`model ${model.id} has no valid source georeference`);
+  if (status === 'same-crs') {
+    const affine = buildSpatialAlignmentTransform(source, anchor.placement);
+    if (!affine) throw new Error(`model ${model.id} cannot map its selected directrix into the anchor frame`);
+    return (x, y, z) => applyAffineTransform(affine, x, y, z);
+  }
+  const reprojection = await buildCrossCrsPointMap(source, anchor.placement);
+  if (!reprojection) throw new Error(`model ${model.id} cannot reproject its selected directrix`);
+  return reprojection.map;
+}
+
+/** Exact source curves remain untouched; only this bounded display copy is tessellated. */
+export async function selectedCentrelineWorldLines(
+  items: readonly SelectedSweptDisk[], state: ViewerState,
+): Promise<{ vertices: number[]; diagnostics: string[] }> {
+  const vertices: number[] = [];
+  const diagnostics: string[] = [];
+  const maps = new Map<string, FederationPointMap | undefined>();
+  let remaining = MAX_DISPLAY_EDGES;
+  for (const item of items) {
+    const { modelId, expressId } = item.ref;
+    const model = state.models.get(modelId);
+    const legacy = modelId === 'legacy' && state.models.size === 0;
+    const geometry = model?.geometryResult ?? (legacy ? state.geometryResult : null);
+    if (!geometry || (model && !model.visible)) continue;
+    diagnostics.push(...item.diagnostics);
+    const sourceFrame = model?.preAlignment?.coordinateInfo ?? geometry.coordinateInfo;
+    const placed = placementFor(state.modelPlacement, modelId);
+    const placement = { ...placed, translation: displayedTranslation(state.modelPlacement, modelId) };
+    try {
+      if (!maps.has(modelId)) maps.set(modelId, model ? await modelFrameMap(model, state) : undefined);
+      const map = maps.get(modelId);
+      for (const occurrence of item.occurrences) {
+        if (occurrence.status.type !== 'complete' || occurrence.source_modified) {
+          diagnostics.push(`${modelId} #${expressId} solid #${occurrence.solid_id}: analytic source does not describe the visible solid`);
+          continue;
+        }
+        const lines = directrixLineVertices(occurrence.Directrix, remaining);
+        remaining -= lines.length / 6;
+        for (const coordinate of directrixDisplayLines(lines, sourceFrame, placement, map)) {
+          vertices.push(coordinate);
+        }
+      }
+    } catch (error) {
+      diagnostics.push(`${modelId} #${expressId}: ${String(error)}`);
+    }
+  }
+  return { vertices, diagnostics };
+}

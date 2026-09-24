@@ -67,6 +67,8 @@ export const ribbonToolbarEn = {
   'ribbon.view.cameraGroup': 'Camera',
   'ribbon.view.viewGroup': 'View',
   'ribbon.view.contextGroup': 'Context',
+  'ribbon.view.centreline': 'Centreline',
+  'ribbon.view.centrelineTooltip': 'Show authored swept-disk centrelines for selected IFC elements',
   'ribbon.view.world': 'World',
   'ribbon.view.worldShowTooltip': 'Show 3D world context (Cesium)',
   'ribbon.view.worldHideTooltip': 'Hide 3D world context (Cesium)',

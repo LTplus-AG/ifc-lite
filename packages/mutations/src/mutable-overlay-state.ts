@@ -6,7 +6,7 @@ import { sameOverlayValue } from './overlay-value-equality.js';
 import { NewEntityMap } from './new-entity-map.js';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import type { IfcAttributeValue, PropertyMutation, QuantityMutation, AttributeMutation,
-  EntityTypeMutation, Mutation, NewEntity } from './types.js';
+  EntityTypeMutation, Mutation } from './types.js';
 
 
 /**

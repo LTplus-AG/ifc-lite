@@ -3,20 +3,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Theme ink for the 3D overlay lines and IfcAnnotation text (#5388).
+ * Theme ink for IfcAnnotation text.
  *
- * The renderer draws every overlay line channel (annotation, alignment, grid,
- * DXF, LandXML) and the section-cut outline in ONE colour, set by
- * `Renderer.setOverlayLineColor` (#1360). It defaults to black and the viewer
- * never set it, so in the dark theme the lines were black on the near-black
- * clear colour. Label text had the same problem one level down: an unstyled
- * label falls back to near-black inside the renderer, and an authored dark
- * colour stays dark whatever the theme.
- *
- * Lines carry no authored colour, so they simply take the theme ink. Text
- * keeps an authored colour where it is legible, and is otherwise pulled toward
- * the theme ink just far enough to reach {@link MIN_TEXT_CONTRAST} against the
+ * An unstyled label falls back to near-black inside the renderer, and an
+ * authored dark colour stays dark whatever the theme, so text keeps an
+ * authored colour where it is legible, and is otherwise pulled toward the
+ * theme ink just far enough to reach {@link MIN_TEXT_CONTRAST} against the
  * backdrop, which keeps the hue for colours that are merely too dark.
+ *
+ * The matching LINE colour (every overlay line channel — annotation,
+ * alignment, grid, DXF, LandXML — and the section-cut outline, #5388) is no
+ * longer computed here: `Renderer.setOverlayTheme`'s `overlayLine` field
+ * (#5484) now sources it straight from the `overlay-ink` design token via
+ * `rendererOverlayTheme` (`lib/viewport-ui/overlay-theme-renderer.ts`).
  */
 
 import type { ThemeMode } from '@/store/slices/uiSlice';
@@ -30,7 +29,6 @@ const MIN_TEXT_CONTRAST = 3;
 
 // Light-theme values are exactly the renderer's own defaults, so the light
 // and colorful themes look the same as before this module existed.
-const DARK_INK_ON_LIGHT_LINE: Rgba = [0, 0, 0, 1];
 const DARK_INK_ON_LIGHT_TEXT: Rgba = [0.05, 0.05, 0.05, 1];
 /** Soft off-white, the viewer's dark-theme foreground family. */
 const LIGHT_INK_ON_DARK: Rgba = [0.86, 0.88, 0.93, 1];
@@ -45,11 +43,6 @@ function annotationBackdrop(theme: ThemeMode): [number, number, number] {
 
 function isDarkBackdrop(theme: ThemeMode): boolean {
   return relativeLuminance(annotationBackdrop(theme)) < 0.18;
-}
-
-/** Colour for every overlay line channel under `theme`. */
-export function annotationLineInk(theme: ThemeMode): Rgba {
-  return isDarkBackdrop(theme) ? LIGHT_INK_ON_DARK : DARK_INK_ON_LIGHT_LINE;
 }
 
 /** Fallback colour for a label the file does not style. */

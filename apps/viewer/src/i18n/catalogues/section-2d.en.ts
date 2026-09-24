@@ -7,7 +7,6 @@ import type { TranslationValue } from '../types';
 /** Floating 2D section workspace chrome, menus, guidance, and error states. */
 export const section2dEn = {
   'section2d.heading': '2D Section',
-  'section2d.dragTitle': 'Drag to move',
   'section2d.overlay.toggleTitle': 'Toggle 3D overlay',
   'section2d.symbolic.planTitle': 'Symbolic representations (Plan)',
   'section2d.symbolic.cutTitle': 'Section cut (Body)',
@@ -74,7 +73,6 @@ export const section2dEn = {
   'section2d.tip.selectionOther': 'Del = delete · Drag to move · Esc = deselect',
   'section2d.empty.title': 'No geometry at this level',
   'section2d.empty.description': 'Move the section plane to cut through geometry',
-  'section2d.resize': 'Resize',
   'section2d.underlay.missingBounds': "Couldn't centre this underlay: its bounds are missing or the georeference produced non-finite coordinates.",
   'section2d.underlay.nonFiniteDrawing': "Couldn't centre this underlay: the drawing bounds are not finite.",
   'section2d.pdf.prompt': 'Export PDF at scale 1:N — enter N, or leave blank for "as displayed" (currently 1:{scale}).\nCommon scales: {presets}',

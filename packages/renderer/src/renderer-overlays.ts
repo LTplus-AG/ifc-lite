@@ -60,6 +60,8 @@ import type { RelativeToEyeFrame } from './relative-to-eye.js';
 import type { RenderOptions } from './types.js';
 import type { DeviceRecoveryOmission } from './device-recovery.js';
 import { lineVertexFloatCount, type LineVertices } from './section-2d-line-buffer.js';
+import type { OverlayTheme } from './overlay-theme.js';
+import { OverlayThemeApplier } from './overlay-theme-uniforms.js';
 
 /**
  * The slice of `Renderer` the overlays need. Deliberately narrow:
@@ -133,9 +135,8 @@ const CHANNEL_EXPANDS_MODEL_BOUNDS: Record<LineOverlayChannel, boolean> = {
 export class RendererOverlays {
     private sectionPlaneRenderer: SectionPlaneRenderer | null = null;
     private section2DOverlayRenderer: Section2DOverlayRenderer | null = null;
-    // Overlay/section-cut line colour, kept here so it survives a
-    // pre-init call and a section2DOverlayRenderer re-creation (re-applied below).
-    private overlayLineColor: readonly [number, number, number, number] = [0, 0, 0, 1];
+    // The overlay theme (#5484) — see overlay-theme-uniforms.ts.
+    private readonly themeApplier = new OverlayThemeApplier();
     private readonly symbolic: SymbolicOverlays;
     private clashSolidPipeline: ClashSolidPipeline | null = null;
 
@@ -162,8 +163,8 @@ export class RendererOverlays {
     init(device: GPUDevice, format: GPUTextureFormat, sampleCount: number): void {
         this.sectionPlaneRenderer = new SectionPlaneRenderer(device, format, sampleCount);
         this.section2DOverlayRenderer = new Section2DOverlayRenderer(device, format, sampleCount);
-        // Re-apply any colour set before this (re)creation so it isn't lost.
-        this.section2DOverlayRenderer.setOverlayLineColor(this.overlayLineColor);
+        // Re-apply any theme set before this (re)creation so it isn't lost.
+        this.themeApplier.reapply(this.sectionPlaneRenderer, this.section2DOverlayRenderer);
         this.symbolic.init(device, format, sampleCount);
         this.clashSolidPipeline = new ClashSolidPipeline(device, format, sampleCount);
     }
@@ -307,12 +308,9 @@ export class RendererOverlays {
         }
     }
 
-    /** See `Renderer.setOverlayLineColor` for the published contract. */
-    setOverlayLineColor(color: readonly [number, number, number, number]): void {
-        // Persist here so a pre-init call (and any later overlay
-        // re-creation) keeps the colour — init() re-applies this.overlayLineColor.
-        this.overlayLineColor = color;
-        this.section2DOverlayRenderer?.setOverlayLineColor(color);
+    /** See `Renderer.setOverlayTheme` for the published contract. */
+    setTheme(theme: OverlayTheme): void {
+        this.themeApplier.set(theme, this.sectionPlaneRenderer, this.section2DOverlayRenderer);
         this.host.requestRender();
     }
 

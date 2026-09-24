@@ -17,6 +17,7 @@ use super::cache_keys::{
     parquet_optimized_metadata_cache_key,
 };
 use super::parquet::DataModelStats;
+use super::replay_header::mark_header_from_cache;
 use super::ParseQuery;
 use crate::error::ApiError;
 use crate::services::OptimizedStats;
@@ -151,7 +152,8 @@ pub(super) async fn try_cached_optimized_parquet(
         "Optimized Parquet cache HIT - returning cached response"
     );
 
-    optimized_parquet_response(metadata_json, cached_body.into()).map(Some)
+    // Stored as the live parse wrote it, `from_cache: false` included (#5542).
+    optimized_parquet_response(mark_header_from_cache(metadata_json), cached_body.into()).map(Some)
 }
 
 /// Cache the data model produced alongside this route's geometry (#5129).

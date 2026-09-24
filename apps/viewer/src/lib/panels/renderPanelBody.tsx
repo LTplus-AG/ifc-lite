@@ -30,6 +30,8 @@ import { ZonesPanel } from '@/components/viewer/ZonesPanel';
 import { LoadReportPanel } from '@/components/viewer/LoadReportPanel';
 import { CostPanel } from '@/components/viewer/CostPanel';
 import { EnvironmentPanel } from '@/components/viewer/EnvironmentPanel';
+import { PointCloudPanel } from '@/components/viewer/PointCloudPanel';
+import { useViewerStore } from '@/store';
 // Lazy: the Layers panel pulls in @ifc-lite/merge (engine + blake3); a
 // dynamic chunk keeps it out of the initial bundle until first opened.
 const LayersPanel = lazy(() =>
@@ -46,6 +48,9 @@ const ChartsPanel = lazy(() => import('@/components/viewer/charts/ChartsPanel').
 const DocumentPanel = lazy(() => import('@/components/viewer/document/DocumentPanel').then((m) => ({ default: m.DocumentPanel })));
 // Lazy: the Flow panel pulls in React Flow; it stays out of the first-paint bundle.
 const FlowPanel = lazy(() => import('@/components/viewer/flow/FlowPanel').then((m) => ({ default: m.FlowPanel })));
+// Lazy: the drawing view pulls in its canvas, export and underlay code; its runtime
+// (generation, persistence) is DrawingRuntimeHost, mounted eagerly in ViewportContainer.
+const DrawingPanel = lazy(() => import('@/components/viewer/Section2DPanel').then((m) => ({ default: m.Section2DPanel })));
 
 const AppearancePanel = lazy(() => import('@/components/viewer/appearance/AppearancePanel').then(m => ({ default: m.AppearancePanel })));
 
@@ -62,6 +67,10 @@ function FlowPanelBody({ onClose }: { onClose: () => void }) {
   return <ChunkErrorBoundary label="Flow panel"><Suspense fallback={null}><FlowPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
 }
 
+function DrawingPanelBody({ onClose }: { onClose: () => void }) {
+  return <ChunkErrorBoundary label="Drawing panel"><Suspense fallback={null}><DrawingPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
+}
+
 function ChartsPanelBody({ onClose }: { onClose: () => void }) {
   return <ChunkErrorBoundary label="Charts panel"><Suspense fallback={null}><ChartsPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
 }
@@ -72,6 +81,31 @@ function LayersPanelBody({ onClose }: { onClose: () => void }) {
 
 function SourcesPanelBody({ onClose }: { onClose: () => void }) {
   return <Suspense fallback={null}><SourcesPanel onClose={onClose} /></Suspense>;
+}
+
+/**
+ * Tiny indirection (formerly `ViewportOverlays`'s `PointCloudPanelMount`,
+ * #5507) so the panel can subscribe to its own slice without pulling extra
+ * state into every other panel body.
+ */
+function PointCloudPanelBody({ onClose }: { onClose: () => void }) {
+  const assetCount = useViewerStore((s) => s.pointCloudAssetCount);
+  // BIM↔scan deviation is a CROSS-MODEL operation: the point cloud is one
+  // federated model, the BIM mesh is another. `renderer.computeDeviations()`
+  // builds its BVH from EVERY mesh in the scene (`collectAllSceneMeshes`),
+  // so the compute button must appear whenever ANY loaded model contributes
+  // triangles — not just the active one. Gating on `s.geometryResult` (the
+  // ACTIVE model's result) hid the button whenever the point cloud was the
+  // active model (its synthetic geometryResult has totalTriangles === 0),
+  // which is exactly the common case — so deviation could never be computed
+  // and the colour mode showed every point at the ramp centre (grey). Sum
+  // across all loaded models to mirror the scene the BVH is actually built from.
+  const triangleCount = useViewerStore((s) => {
+    let total = 0;
+    for (const m of s.models.values()) total += m.geometryResult?.totalTriangles ?? 0;
+    return total;
+  });
+  return <PointCloudPanel assetCount={assetCount} triangleCount={triangleCount} onClose={onClose} />;
 }
 
 /**
@@ -105,5 +139,7 @@ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): Reac
     case 'document': return <DocumentPanelBody onClose={onClose} />;
     case 'cost': return <CostPanel onClose={onClose} />;
     case 'environment': return <EnvironmentPanel onClose={onClose} />;
+    case 'drawing': return <DrawingPanelBody onClose={onClose} />;
+    case 'pointclouds': return <PointCloudPanelBody onClose={onClose} />;
   }
 }

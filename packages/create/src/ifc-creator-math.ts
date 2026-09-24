@@ -189,6 +189,28 @@ export function intList(values: number[] | undefined): string {
 }
 
 /**
+ * Measures whose value is a count, written as an integer literal when the value
+ * is whole. IfcCountMeasure is NUMBER in IFC4 and INTEGER from IFC4X3 on; an
+ * integer literal is valid for both, whereas `12.` is not an INTEGER.
+ */
+const INTEGER_VALUED_MEASURES: ReadonlySet<string> = new Set(['IfcCountMeasure']);
+
+/** Declared types a number has always been written as IFCREAL under, unchanged. */
+const NON_NUMERIC_TYPES: ReadonlySet<string> = new Set(['IfcLabel', 'IfcText', 'IfcIdentifier', 'IfcBoolean', 'IfcLogical']);
+
+/**
+ * The type name is interpolated into STEP as `TYPENAME(value)`, and untyped
+ * callers (the sandbox, JSON input) can pass any string. Anything that is not a
+ * bare IFC identifier would corrupt the line, so it is refused rather than
+ * written.
+ */
+function assertStepTypeName(typeName: string): void {
+  if (!/^Ifc[A-Za-z]+$/.test(typeName)) {
+    throw new Error(`Invalid property value type "${typeName}": expected an IFC type name such as IfcPositiveLengthMeasure`);
+  }
+}
+
+/**
  * Serialize an IfcPropertySingleValue NominalValue as a named SELECT branch.
  *
  * Moved here from `IfcCreator` (it never touched class state) so that file
@@ -202,6 +224,16 @@ export function serializePropertyValue(prop: PropertyDef): string {
   }
   if (typeof val === 'number') {
     const typeName = prop.Type ?? (Number.isInteger(val) ? 'IfcInteger' : 'IfcReal');
+    // A declared measure type is written AS that type. This used to emit every
+    // number as IFCINTEGER or IFCREAL whatever `Type` said, so a
+    // `ThermalTransmittance` declared an IfcThermalTransmittanceMeasure came out
+    // an IFCREAL and failed any IDS data-type check against Pset_WallCommon.
+    if (typeName !== 'IfcInteger' && !NON_NUMERIC_TYPES.has(typeName)) {
+      assertStepTypeName(typeName);
+      return INTEGER_VALUED_MEASURES.has(typeName) && Number.isInteger(val)
+        ? `${typeName.toUpperCase()}(${val})`
+        : `${typeName.toUpperCase()}(${num(val)})`;
+    }
     return typeName === 'IfcInteger' ? `IFCINTEGER(${Math.round(val)})` : `IFCREAL(${num(val)})`;
   }
   if (typeof val === 'boolean') {

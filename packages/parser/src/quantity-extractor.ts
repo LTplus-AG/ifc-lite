@@ -10,6 +10,7 @@
  */
 
 import type { IfcEntity } from './types.js';
+import { createLogger } from '@ifc-lite/data';
 
 export interface QuantitySet {
   expressId: number;
@@ -38,6 +39,8 @@ const QUANTITY_TYPE_MAP: Record<string, QuantityValueType> = {
   'IFCQUANTITYWEIGHT': 'weight',
   'IFCQUANTITYTIME': 'time',
 };
+
+const quantityLog = createLogger('QuantityExtractor');
 
 export class QuantityExtractor {
   private entities: Map<number, IfcEntity>;
@@ -76,8 +79,8 @@ export class QuantityExtractor {
       }
     }
 
-    console.log(`[QuantityExtractor] Found ${elementQuantityCount} IfcElementQuantity entities`);
-    console.log(`[QuantityExtractor] Extracted ${quantitySets.size} quantity sets with ${quantityValueCount} total quantities`);
+    quantityLog.debug(`Found ${elementQuantityCount} IfcElementQuantity entities`);
+    quantityLog.debug(`Extracted ${quantitySets.size} quantity sets with ${quantityValueCount} total quantities`);
 
     return quantitySets;
   }
@@ -101,7 +104,7 @@ export class QuantityExtractor {
           quantityValueCount += qset.quantities.length;
 
           if (this.debug && quantitySets.size <= 3) {
-            console.log(`[QuantityExtractor] Extracted QuantitySet #${id}:`, {
+            quantityLog.debug(`Extracted QuantitySet #${id}:`, {
               name: qset.name,
               quantities: qset.quantities.length,
               first: qset.quantities[0],
@@ -111,8 +114,8 @@ export class QuantityExtractor {
       }
     }
 
-    console.log(`[QuantityExtractor] Found ${elementQuantityCount} IfcElementQuantity entities`);
-    console.log(`[QuantityExtractor] Extracted ${quantitySets.size} quantity sets with ${quantityValueCount} total quantities`);
+    quantityLog.debug(`Found ${elementQuantityCount} IfcElementQuantity entities`);
+    quantityLog.debug(`Extracted ${quantitySets.size} quantity sets with ${quantityValueCount} total quantities`);
 
     return quantitySets;
   }

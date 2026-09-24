@@ -21,7 +21,7 @@
  * all leave a lane that authenticates fine and finds nothing. So the canary
  * demands a FINDING on an input that contains one:
  *
- *   verdict=findings, and the finding must name the added line it is about.
+ *   verdict=findings, and a finding on the planted file must explain the defect.
  *
  * A `clean` verdict here is a FAILURE. That is the whole point -- it is the one
  * assertion that separates "reviewing" from "answering".
@@ -42,14 +42,13 @@
  * different instrument (an eval over many known findings) and it belongs in a
  * different file. Do not let a green canary be read as a recall measurement.
  */
-import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
+import { readFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = join(HERE, '..', '..');
 
 /** Thrown for every fail-closed condition; `reason` is the machine-readable tag. */
 export class CanaryError extends Error {
@@ -61,18 +60,71 @@ export class CanaryError extends Error {
 }
 
 /**
+ * The planted defect: what a finding about it must be ON, and what it must
+ * talk ABOUT (#5621).
+ *
+ * The defect: `Number(raw)` of a missing or non-numeric value is NaN, NaN
+ * loses the one-ended `timeoutMs > 0` comparison, and control falls through
+ * to `return 0`, which closes the session. The same guard also lets
+ * `"Infinity"` through with no upper bound. EVERY added line of the fixture is
+ * part of this defect: it is a six-line change with nothing else in it.
+ *
+ * ON: `path`. `validate-findings.mjs` has already dropped any finding whose
+ * quote is not the text of an added line of the file it names, so a surviving
+ * finding on this path is anchored to the defect's own code.
+ *
+ * ABOUT: `about`. The body has to engage with what the code DOES with a bad
+ * value: the input it mishandles (NaN, non-numeric, unparsable, missing,
+ * undefined, Infinity, the bound or guard) OR what that input turns into (it
+ * returns 0 or falls back, the session closes or expires immediately, the
+ * timeout never expires, the old DEFAULT_TIMEOUT_MS is gone). Either side is
+ * enough. That refuses a style nit on the right line ("rename timeoutMs").
+ *
+ * WHY SO BROAD, AND NOT A STRICTER WORDING RULE. #5621 was a wording rule
+ * misfiring. The first judge demanded the literal symbol `timeoutMs`, and the
+ * destructive line, `return 0;`, does not contain it. The first branch run with
+ * findings printed showed three of four correct findings anchored there, and it
+ * went green only because the fourth happened to quote the `if` line. Every
+ * narrower rule tried since then also rejected a correct finding the lane
+ * really produced. One required "NaN", but a Claude CLI run described the same
+ * fall-through as "any unparsable or missing raw value now silently returns 0".
+ * Another required a return-0 consequence, but the Infinity end's consequence
+ * is "the session timeout never expires". A false alarm on this canary means
+ * "most PRs are unreviewed", which people learn to mute. So the rule asks only
+ * that the finding is on the defect and about the value handling.
+ *
+ * STATED HOLE: this is keyword evidence, not comprehension. A body that is on
+ * the defect's lines and names one of these words passes even if it is wrong
+ * or negates the defect ("no NaN issue here"). The canary measures liveness,
+ * as its file header says, and a reviewer that writes about the value handling
+ * of this diff is reading it. Recall and precision are a different instrument.
+ */
+export const PLANTED_DEFECT = Object.freeze({
+  path: 'src/session-timeout.ts',
+  // One alternation, two halves. The input the one-ended guard mishandles:
+  // NaN, non-numeric, unparsable, invalid, missing, undefined, Infinity, the
+  // bound or guard itself. Then what it turns into: returns 0, falls back or
+  // through, zero, 0ms, closes, expires, terminates, immediately, unbounded,
+  // the lost DEFAULT_TIMEOUT_MS.
+  about:
+    /\bNaN\b|not[- ]a[- ]number|\bnon-?numeric\b|\bunparsa?ble\b|\binvalid\b|\bmissing\b|\bundefined\b|\bInfinity\b|\b(?:upper|lower)[- ]?bound|\bguard|one[- ](?:ended|end\b|sided)|\breturn(?:s|ing|ed)?\s+`?0|\bfall(?:s|ing)?[- ]?(?:back|through)|\bzero\b|\b0\s?ms\b|\bclos(?:e|es|ing|ed)\b|\bexpir|\bterminat|\bimmediately\b|\bunbounded\b|\bDEFAULT_TIMEOUT_MS\b/i,
+});
+
+/**
  * Does this review actually find the planted defect?
  *
  * TWO CONDITIONS, and the second is what stops a lucky pass. A model that
  * answers `findings` with a finding about something else has not found THIS
  * defect, and a canary satisfied by any non-empty list would go green on a
- * reviewer that had started hallucinating.
+ * reviewer that had started hallucinating. So at least one finding must be on
+ * the planted file AND its body must be about the value handling (see
+ * PLANTED_DEFECT for why that bar, and its stated hole).
  *
- * @param {object} parsed - the reviewer's JSON output.
- * @param {string[]} mustMention - substrings the finding has to name.
+ * @param {object} parsed - the validator's findings.json.
+ * @param {{ path: string, about: RegExp }} [planted]
  * @returns {{ ok: boolean, why: string }}
  */
-export function judge(parsed, mustMention) {
+export function judge(parsed, planted = PLANTED_DEFECT) {
   if (parsed === null || typeof parsed !== 'object') {
     return { ok: false, why: 'the reviewer returned something that is not an object' };
   }
@@ -90,17 +142,47 @@ export function judge(parsed, mustMention) {
   if (list.length === 0) {
     return { ok: false, why: 'verdict=findings with an EMPTY findings list, which contradicts itself' };
   }
-  const blob = JSON.stringify(list).toLowerCase();
-  const missing = mustMention.filter((m) => !blob.includes(m.toLowerCase()));
-  if (missing.length > 0) {
+  const found = list.filter(
+    (f) =>
+      f &&
+      f.path === planted.path &&
+      typeof f.body === 'string' &&
+      planted.about.test(f.body),
+  );
+  if (found.length === 0) {
     return {
       ok: false,
       why:
-        `${list.length} finding(s), but none names ${missing.map((m) => JSON.stringify(m)).join(' or ')}. ` +
-        'Findings about something else do not show this defect was found.',
+        `${list.length} finding(s), but none on \`${planted.path}\` explains the defect ` +
+        '(its body must be about how a bad value is handled; see PLANTED_DEFECT). Findings about something ' +
+        'else do not show this defect was found.',
     };
   }
-  return { ok: true, why: `${list.length} finding(s), naming the planted defect` };
+  return { ok: true, why: `${list.length} finding(s), ${found.length} explaining the planted defect` };
+}
+
+/**
+ * The surviving findings, one block each, as the canary's log shows them. The
+ * judge's verdict alone cannot be diagnosed: "none names X" says a finding
+ * existed and not what it said (#5621).
+ *
+ * @param {object} parsed - the validator's findings.json.
+ * @returns {string}
+ */
+export function describeFindings(parsed) {
+  const list = Array.isArray(parsed?.findings) ? parsed.findings : [];
+  if (list.length === 0) return `canary: verdict=${JSON.stringify(parsed?.verdict)}, no surviving findings.`;
+  const clip = (t) => {
+    const s = String(t ?? '').replace(/\s+/g, ' ').trim();
+    return s.length > 400 ? `${s.slice(0, 400)}...` : s;
+  };
+  const rows = list.map(
+    (f, i) =>
+      `  [${i}] ${f.path}:${f.line}${f.source ? ` (from ${f.source})` : ''}\n` +
+      `      quote: ${clip(f.quote)}\n` +
+      `      body:  ${clip(f.body)}`,
+  );
+  return `canary: verdict=${JSON.stringify(parsed.verdict)}, ${list.length} surviving finding(s):\n${rows.join('\n')}`;
 }
 
 function main() {
@@ -115,6 +197,13 @@ function main() {
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
   );
   const log = `${r.stdout || ''}${r.stderr || ''}`;
+  // PRINTED ON EVERY PATH, not only on failure (#5621). The reviewer's log is
+  // where the ensemble names which models answered, which were excluded from
+  // the pool and why; the canary's first red with a live reviewer said only
+  // "1 finding(s), but none names timeoutMs", with no way to tell a reviewer
+  // that missed the defect from a validator that dropped the finding that
+  // named it.
+  if (r.status === 0) console.log(log.trim());
   if (r.status !== 0) {
     // The reviewer's own error classes already name the remedy; do not restate
     // them, forward them. AUTH_FAILED and QUOTA_DRAINED are the two this canary
@@ -141,6 +230,7 @@ function main() {
     [join(HERE, 'validate-findings.mjs'), '--raw', out, '--input', fixture, '--out', findingsPath],
     { encoding: 'utf8' },
   );
+  if (v.status === 0) console.log(`${v.stdout || ''}${v.stderr || ''}`.trim());
   if (v.status !== 0) {
     console.error(`${v.stdout || ''}${v.stderr || ''}`.trim());
     throw new CanaryError(
@@ -161,7 +251,8 @@ function main() {
     );
   }
 
-  const verdict = judge(parsed, ['session-timeout', 'timeoutMs']);
+  console.log(describeFindings(parsed));
+  const verdict = judge(parsed);
   if (!verdict.ok) {
     throw new CanaryError(
       'LANE_NOT_REVIEWING',

@@ -57,8 +57,19 @@ describe('linear colour pipeline (#5381)', () => {
     assert.ok(read < decode && decode < lit, 'the albedo must be decoded after it is read and before it is lit');
   });
 
-  it('decodes the selection albedo too, so the highlight is not a gamma-lifted blue', () => {
-    assert.match(mainShaderSource, /color = srgbToLinear\(vec3<f32>\(0\.3, 0\.6, 1\.0\)\) \* shade;/);
+  it('multiplies the selection uniform directly, with no shader-side sRGB decode (#5484)', () => {
+    // Selection was a hardcoded WGSL sRGB literal, decoded in-shader
+    // (`srgbToLinear(vec3<f32>(0.3, 0.6, 1.0))`). #5484 made it a themeable
+    // uniform (`Renderer.setOverlayTheme`), and moved the decode to the CPU
+    // side (the viewer pushes `tokenToLinearRgba`, already linear) — so the
+    // shader must consume `selectionColor.rgb` AS-IS, not re-decode it (that
+    // would double-decode and darken every themed selection colour).
+    assert.match(mainShaderSource, /color = selectionColor\.rgb \* shade;/);
+    assert.doesNotMatch(
+      mainShaderSource,
+      /color = srgbToLinear\(selectionColor\.rgb\)/,
+      'selectionColor must not be decoded again in-shader — it already arrives linear',
+    );
   });
 
   it('keeps no display-space grading in the geometry or sky shaders', () => {

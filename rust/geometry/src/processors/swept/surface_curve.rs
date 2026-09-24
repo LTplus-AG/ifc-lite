@@ -89,39 +89,16 @@ impl GeometryProcessor for SurfaceCurveSweptAreaSolidProcessor {
 
         let start_param = entity.get_float(3);
         let end_param = entity.get_float(4);
-        let has_trim = start_param.is_some() || end_param.is_some();
-
-        // Mirror IfcSweptDiskSolid's directrix sampling so composite / polyline /
-        // line directrixes honour the solid-level Start/EndParam. A trimmed conic
-        // (the duct-elbow case) carries its own Trim1/Trim2, so get_curve_points
-        // already returns just the swept arc and the redundant solid params are a
-        // no-op.
-        let curve_points =
-            if has_trim && directrix.ifc_type.is_subtype_of(IfcType::IfcCompositeCurve) {
-                self.profile_processor.get_composite_curve_points_trimmed(
-                    &directrix,
-                    decoder,
-                    start_param,
-                    end_param,
-                )?
-            } else if has_trim && directrix.ifc_type == IfcType::IfcPolyline {
-                self.profile_processor.get_polyline_points_trimmed(
-                    &directrix,
-                    decoder,
-                    start_param,
-                    end_param,
-                )?
-            } else if has_trim && directrix.ifc_type == IfcType::IfcLine {
-                self.profile_processor.get_line_points_3d(
-                    &directrix,
-                    decoder,
-                    start_param.unwrap_or(0.0),
-                    end_param.unwrap_or(1.0),
-                )?
-            } else {
-                self.profile_processor
-                    .get_curve_points(&directrix, decoder, quality)?
-            };
+        // Same directrix parametrisation as IfcSweptDiskSolid (one home). A
+        // trimmed conic (the duct-elbow case) carries its own Trim1/Trim2, so
+        // the redundant solid params are a no-op there.
+        let curve_points = self.profile_processor.get_directrix_points(
+            &directrix,
+            decoder,
+            start_param,
+            end_param,
+            quality,
+        )?;
 
         // Refuse a non-finite sample before the dedupe below, whose `>`
         // comparison would silently drop it (#5191).

@@ -79,14 +79,14 @@
    531 apps/viewer/src/components/viewer/GLBExportDialog.tsx
   1381 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
    406 apps/viewer/src/components/viewer/hierarchy/useHierarchyTree.ts
-  1147 apps/viewer/src/components/viewer/HierarchyPanel.tsx
+  1146 apps/viewer/src/components/viewer/HierarchyPanel.tsx
    432 apps/viewer/src/components/viewer/IDSCorrectionDialog.tsx
-   568 apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx
+   565 apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx
    533 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
   1692 apps/viewer/src/components/viewer/LensPanel.tsx
   1411 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
    548 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
-  1139 apps/viewer/src/components/viewer/MainToolbar.tsx
+  1133 apps/viewer/src/components/viewer/MainToolbar.tsx
    715 apps/viewer/src/components/viewer/measureHandlers.ts
    404 apps/viewer/src/components/viewer/PdfViewExportDialog.tsx
    572 apps/viewer/src/components/viewer/properties/BsddCard.tsx
@@ -107,7 +107,7 @@
    508 apps/viewer/src/components/viewer/SearchModal.filter.editors.tsx
    835 apps/viewer/src/components/viewer/SearchModal.filter.tsx
    404 apps/viewer/src/components/viewer/SearchModal.text.tsx
-  1241 apps/viewer/src/components/viewer/Section2DPanel.tsx
+  1096 apps/viewer/src/components/viewer/Section2DPanel.tsx
   1134 apps/viewer/src/components/viewer/selectionHandlers.ts
    493 apps/viewer/src/components/viewer/SheetSetupPanel.tsx
    435 apps/viewer/src/components/viewer/TitleBlockEditor.tsx
@@ -122,7 +122,7 @@
    916 apps/viewer/src/components/viewer/useMouseControls.ts
    683 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1815 apps/viewer/src/components/viewer/Viewport.tsx
-  1192 apps/viewer/src/components/viewer/ViewportContainer.tsx
+  1181 apps/viewer/src/components/viewer/ViewportContainer.tsx
    508 apps/viewer/src/components/viewer/ZonesPanel.tsx
    847 apps/viewer/src/hooks/ids/idsExportService.ts
    598 apps/viewer/src/hooks/ingest/federationAlign.ts
@@ -137,7 +137,7 @@
    667 apps/viewer/src/hooks/useIfcFederation.ts
   2234 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
-   445 apps/viewer/src/hooks/useKeyboardShortcuts.ts
+   443 apps/viewer/src/hooks/useKeyboardShortcuts.ts
    467 apps/viewer/src/hooks/useSymbolicAnnotations.ts
    453 apps/viewer/src/i18n/catalogues/properties.en.ts
    633 apps/viewer/src/lib/analytics-scrub.ts
@@ -211,7 +211,7 @@
    591 packages/create-ifc-lite/src/templates/react.ts
    428 packages/create-ifc-lite/src/templates/server-native.ts
    639 packages/create-ifc-lite/src/templates/server.ts
-  2828 packages/create/src/ifc-creator.ts
+  2827 packages/create/src/ifc-creator.ts
    535 packages/create/src/in-store/auto-space-detect.ts
    878 packages/create/src/in-store/extract-walls.ts
    819 packages/create/src/types.ts

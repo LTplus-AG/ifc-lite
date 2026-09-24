@@ -251,9 +251,11 @@ async fn get_cached_returns_the_stored_response_and_sets_from_cache() {
     let state = test_state("cache-hit").await;
     let key = "hit-key-1";
     let mut stored = minimal_parse_response(key);
-    // Stored with from_cache = false, as a freshly-processed response would be.
+    // Stored with from_cache = false, as a freshly-processed response would be,
+    // under the key the JSON parse route writes for this `cache_key` (#5542).
     stored.stats.from_cache = false;
-    state.cache.set(key, &stored).await.expect("seed the cache");
+    let response_key = crate::routes::parse::cache_keys::json_response_cache_key(key);
+    state.cache.set(&response_key, &stored).await.expect("seed the cache");
 
     let response = get_with_token(&state, &format!("/api/v1/cache/{key}"), None).await;
     assert_eq!(response.status(), StatusCode::OK);

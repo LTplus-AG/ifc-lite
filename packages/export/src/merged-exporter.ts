@@ -42,7 +42,7 @@ import {
   EMPTY_MODEL_VIEW,
   type EmptyContainerModelView,
 } from './merged-empty-containers.js';
-import { skipRedundantRelAggregates, applyRelAggregateStrip, collectRelAggregatePairs } from './merged-rel-aggregates.js';
+import { claimAggregationParents, applyRelAggregateStrip } from './merged-rel-aggregates.js';
 
 /**
  * UTF-8 decode of `[start, end)` of a model's source, accepting either the raw
@@ -104,8 +104,8 @@ interface MergeSetup {
   firstProjectIds: number[];
   /** Spatial lookup built from the primary model. */
   spatialLookup: SpatialLookup;
-  /** Aggregation edges actually declared by the primary model. */
-  primaryAggregatePairs: Set<string>;
+  /** Final ids that already have an IfcRelAggregates parent: primary's, grown per later model (#5471). */
+  aggregatedObjects: Set<number>;
   /** Length unit scale of the primary model — the unit other models merge into. */
   primaryScale: number;
   /** Area unit scale (m² per unit) of the primary model — target for area values. */
@@ -173,11 +173,9 @@ interface ModelMergePlan {
   droppedContainerIds?: ReadonlySet<number>;
   /**
    * Local express id of a kept (not fully redundant) IFCRELAGGREGATES → the
-   * local ids of its RelatedObjects members that must be dropped from the
-   * emitted list because they were unified with an object the first model's
-   * OWN relationship already aggregates the same RelatingObject to (see
-   * {@link MergedExporter.skipRedundantRelAggregates}). Emitting them
-   * unmodified would list that member twice under the same parent.
+   * local ids of its RelatedObjects members to drop from the written list
+   * because they already have an aggregation parent in the output (#5471,
+   * see `claimAggregationParents`).
    */
   relAggregateStrip: Map<number, Set<number>>;
 }
@@ -528,6 +526,7 @@ export class MergedExporter {
       if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings); }
       const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId);
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
+      this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
       const written = (id: number) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id);
       if (schema === 'IFC2X3') {
         // @raw-entity-enumeration-ok sync merge rejects overlays, so this is an unedited source index
@@ -669,6 +668,7 @@ export class MergedExporter {
       if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings); }
       const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId);
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
+      this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
       const written = (id: number) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id);
       if (schema === 'IFC2X3') {
         // @raw-entity-enumeration-ok async merge first bakes and reparses edited models into source snapshots
@@ -824,6 +824,16 @@ export class MergedExporter {
     };
   }
 
+  /** One IfcRelAggregates parent per object (#5471): record the members this model writes, stripping ones already parented. */
+  private claimParents(model: MergeModelInput, plan: ModelMergePlan, visibility: { included: ReadonlySet<number>; hiddenProductIds: ReadonlySet<number> } | null, completeIndex: CompleteEntityIndex, dedupe: boolean, setup: MergeSetup): void {
+    const hidden = visibility?.hiddenProductIds;
+    claimAggregationParents({
+      ...plan, dataStore: model.dataStore, idOffset: setup.modelOffsets.get(model.id)!, dedupe,
+      isIncluded: id => visibility === null || visibility.included.has(id),
+      isEmitted: id => !plan.droppedContainerIds?.has(id) && (hidden === undefined || (!hidden.has(id) && completeIndex.has(id))),
+    }, setup.aggregatedObjects, this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this));
+  }
+
   /** Fold a model's dropped containers into its plan: the container lines are
    *  skipped outright, and {@link renderEntity} narrows every line naming one. */
   private applyContainerDrops(plan: ModelMergePlan, dropped: ReadonlySet<number> | undefined): void {
@@ -883,9 +893,7 @@ export class MergedExporter {
       firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale),
       firstProjectIds: this.findEntitiesByType(firstModel.dataStore, 'IFCPROJECT'),
       spatialLookup: this.buildSpatialLookup(firstModel.dataStore),
-      primaryAggregatePairs: collectRelAggregatePairs(
-        firstModel.dataStore, this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this), firstModelOffset,
-      ),
+      aggregatedObjects: new Set(),
       primaryScale,
       primaryAreaScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'AREAUNIT', primaryScale, 2),
       primaryVolumeScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'VOLUMEUNIT', primaryScale, 3),
@@ -1121,14 +1129,6 @@ export class MergedExporter {
       // Under normalize, this model's raw elevations are in its own unit, so the
       // elevation match is done in the primary unit (rawElevation * lengthFactor).
       this.unifySpatialEntities(model.dataStore, setup.spatialLookup, setup.firstModelOffset, lengthFactor, sharedRemap, skipEntityIds, setup);
-
-      // Skip IfcRelAggregates that become fully redundant after unification,
-      // and strip individually-duplicated members from ones only partially so.
-      skipRedundantRelAggregates(
-        model.dataStore, sharedRemap, skipEntityIds, relAggregateStrip,
-        setup.primaryAggregatePairs,
-        this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this),
-      );
     }
 
     if (!isFirstModel) {
@@ -1230,13 +1230,10 @@ export class MergedExporter {
       entityText = kept;
     }
 
-    // Drop RelatedObjects members a partially redundant IFCRELAGGREGATES
-    // already shares with the first model's OWN relationship to the same
-    // (now-unified) RelatingObject — see skipRedundantRelAggregates /
-    // applyRelAggregateStrip (merged-rel-aggregates.ts). Runs in LOCAL id
-    // space, before the remap below. `null` (the filter would withhold the
-    // whole line) propagates like the two passes above: every edge the line
-    // declared already exists in the primary model.
+    // Drop RelatedObjects members of a partially redundant IFCRELAGGREGATES
+    // that already have an aggregation parent in the output (#5471) — see
+    // claimAggregationParents / applyRelAggregateStrip. Runs in LOCAL id
+    // space, before the remap below. `null` propagates like the passes above.
     const stripped = applyRelAggregateStrip(entityText, localId, plan.relAggregateStrip);
     if (stripped === null) return null;
     entityText = stripped;

@@ -237,8 +237,8 @@ export function MeasureOverlay() {
   }, [activePolyline]);
 
   const handleClear = useCallback(() => {
-    clearMeasurements();
-  }, [clearMeasurements]);
+    if (window.confirm(t('measure.clearAllConfirm'))) clearMeasurements();
+  }, [clearMeasurements, t]);
 
   const handleDeleteMeasurement = useCallback((id: string) => {
     deleteMeasurement(id);

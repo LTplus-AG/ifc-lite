@@ -9,7 +9,9 @@
  * not exist in the DOM yet - the retry loop is what distinguishes "panel is
  * still mounting after prepare()" from real rot. Panels living in another OS
  * window (pop-out) are re-docked first: a main-document overlay cannot
- * spotlight another window.
+ * spotlight another window. A step's panel that is closed (the user skipped
+ * the tour's own "open the panel" step, or closed it mid-tour) is opened in
+ * its home region, so one skip no longer breaks every later step (#5608).
  */
 
 import { anchorSelector } from './anchors';
@@ -39,18 +41,18 @@ export async function resolveAnchor(
 ): Promise<AnchorResolution> {
   if (!step.anchor) return { el: null, reason: 'anchor-missing', redocked: false };
 
+  const selector = anchorSelector(step.anchor);
   let redocked = false;
   if (step.panel) {
     const s = store.getState();
     const detached = s.floatingPanels.some((p) => p.id === step.panel)
       || s.poppedOutIds.includes(step.panel);
-    if (detached) {
+    if (detached || !document.querySelector(selector)) {
       s.showWorkspacePanel(step.panel);
-      redocked = true;
+      redocked = detached;
     }
   }
 
-  const selector = anchorSelector(step.anchor);
   const deadline = performance.now() + RESOLVE_TIMEOUT_MS;
   while (performance.now() < deadline) {
     if (!isCurrent()) return { el: null, redocked };

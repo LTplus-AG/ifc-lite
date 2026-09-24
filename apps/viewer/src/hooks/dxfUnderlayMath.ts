@@ -364,9 +364,10 @@ export function dxfUnderlayDrawingBounds(
  * this first iteration; fills (hatches) and text labels are not (tracked as
  * follow-up, not silently dropped — see the PR description). Per-DXF-layer
  * color is also not carried through: the renderer's 3D reference-line
- * pipeline (`setLineOverlay('dxf', …)` / `Renderer.setOverlayLineColor`) shares one
- * color across the grid/alignment/annotation/DXF overlay family, the same
- * way grid and alignment already do — see `section-2d-overlay.ts`.
+ * pipeline (`setLineOverlay('dxf', …)` / `Renderer.setOverlayTheme`'s
+ * `overlayLine` field) shares one color across the grid/alignment/annotation/DXF
+ * overlay family, the same way grid and alignment already do — see
+ * `section-2d-overlay.ts`.
  */
 export function dxfUnderlayToWorldLines3D(
   entry: DxfUnderlayState,

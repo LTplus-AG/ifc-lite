@@ -24,7 +24,7 @@ import {
 } from '@ifc-lite/parser';
 import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
 import {
-  stringifyValue, materialMatchCandidates, ownPropertySetsFor, quantitySetsFor,
+  propertyCandidates, materialMatchCandidates, ownPropertySetsFor, quantitySetsFor,
   attributesFor, mutatedAttributeValue,
 } from '@ifc-lite/rules';
 import { resolveEntityPredefinedType } from '@ifc-lite/rules';
@@ -42,7 +42,7 @@ export interface FilterSchema {
  * (material / classification / property value), so the chip editors can
  * suggest real values instead of blind free-text. Sampled + capped so the
  * pass stays bounded on huge models. Strings are produced with the SAME
- * `stringifyValue` the evaluator matches against, so picking a suggestion
+ * `propertyCandidates` the evaluator matches against, so picking a suggestion
  * always matches.
  */
 export interface FilterValueSchema {
@@ -320,12 +320,15 @@ export function discoverFilterValues(
   for (const id of cappedKeys(store.onDemandPropertyMap, store, view, VALUE_SAMPLE_CAP)) {
     for (const set of ownPropertySetsFor(store, id, view ?? undefined)) {
       for (const p of set.properties) {
-        const v = stringifyValue(p.value).trim();
-        if (!v) continue;
-        const key = propValueKey(set.name, p.name);
-        let bucket = propertyValues.get(key);
-        if (!bucket) { bucket = new Set(); propertyValues.set(key, bucket); }
-        if (bucket.size < MAX_VALUES_PER_KEY) bucket.add(v);
+        // Suggest what a rule compares: each list / table member (#5475).
+        for (const candidate of propertyCandidates(p)) {
+          const v = candidate.trim();
+          if (!v) continue;
+          const key = propValueKey(set.name, p.name);
+          let bucket = propertyValues.get(key);
+          if (!bucket) { bucket = new Set(); propertyValues.set(key, bucket); }
+          if (bucket.size < MAX_VALUES_PER_KEY) bucket.add(v);
+        }
       }
     }
   }

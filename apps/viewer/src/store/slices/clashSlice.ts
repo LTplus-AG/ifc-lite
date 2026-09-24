@@ -183,9 +183,7 @@ export interface ClashSlice {
    * The focused clash's CONTACT geometry as a flat world-frame line-list (the
    * real shared-face polygon outlines / intersection lines). Preferred over the
    * AABB `clashOverlapBox` when present. `null` when no clash is focused or the
-   * contact could not be computed (then the box is used). (#1402) Drawn in
-   * the renderer's overlay-theme `clashOverlap`, never a colour of its own
-   * (#5490).
+   * contact could not be computed (then the box is used). (#1402) Drawn in `clashOverlap` (#5490).
    */
   clashContactLines: { vertices: number[] } | null;
   /**

@@ -113,6 +113,7 @@ describe('resolveSpatialAnchor over live entities (#5249)', () => {
     expect(anchor.ownerHistoryId).toBe(ownerHistoryId);
     expect(anchor.bodyContextId).toBe(contextId);
     expect(anchor.axisContextId).toBe(contextId);
+    expect(anchor.rootContextId).toBe(contextId);
     const column = addColumnToStore(editor, anchor, {
       Position: [1, 2, 0], Width: 0.3, Depth: 0.4, Height: 3,
     });

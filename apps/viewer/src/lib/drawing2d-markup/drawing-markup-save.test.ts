@@ -137,6 +137,24 @@ describe('saveDrawingMarkupToModel: what reaches the overlay', () => {
     assert.ok(replacement.expressId > STOREY_ID);
   });
 
+  it('parents markup under the live root context after replacing the parsed context (#5249)', () => {
+    const context = getDrawingMarkupModelContext('m1');
+    assert.ok(context);
+    assert.equal(context.editor.removeEntity(5), true);
+    const replacement = context.editor.addEntity('IfcGeometricRepresentationContext', [
+      null, 'Model', 3, 1e-5, '#8', null,
+    ]);
+
+    const outcome = saveDrawingMarkupToModel('m1', ONE_MEASURE);
+    assert.equal(outcome.refusal, null);
+    const annotationContext = overlay().find((entity) => entity.type === 'IfcGeometricRepresentationSubContext');
+    assert.ok(annotationContext);
+    assert.equal(annotationContext.attributes[6], `#${replacement.expressId}`);
+    const step = exportStep(store);
+    assert.doesNotMatch(step, /#5=IFCGEOMETRICREPRESENTATIONCONTEXT/);
+    assert.match(step, new RegExp(`IFCGEOMETRICREPRESENTATIONSUBCONTEXT\\([^;]*#${replacement.expressId},`));
+  });
+
   it('writes one tagged IfcAnnotation per markup item, and marks the model dirty', () => {
     const before = useViewerStore.getState().mutationVersion;
     const outcome = saveDrawingMarkupToModel('m1', ONE_MEASURE);

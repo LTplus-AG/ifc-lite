@@ -27,12 +27,13 @@ export function resolveSpatialAnchor(
   // ifc-lite's own exports) legitimately omit it. Builders emit `$` then.
   const ownerHistoryId = reader.firstId('IFCOWNERHISTORY');
 
-  const bodyContextId = reader.contextId('body');
+  const rootContextId = reader.rootContextId();
+  const bodyContextId = reader.contextId('body', rootContextId);
   if (bodyContextId === null) {
     throw new Error('resolveSpatialAnchor: no IfcGeometricRepresentationContext (or Body subcontext) found in store');
   }
 
-  const axisContextId = reader.contextId('axis');
+  const axisContextId = reader.contextId('axis', rootContextId);
   if (axisContextId === null) {
     throw new Error('resolveSpatialAnchor: no IfcGeometricRepresentationContext (or Axis subcontext) found in store');
   }
@@ -68,7 +69,7 @@ export function resolveSpatialAnchor(
     ? safeLengthUnitScale(store.source, store.entityIndex, 'resolveSpatialAnchor') ?? 1.0
     : 1.0;
 
-  return { ownerHistoryId, bodyContextId, axisContextId, storeyId: storeyExpressId, storeyPlacementId, schema, lengthUnitScale };
+  return { ownerHistoryId, bodyContextId, axisContextId, rootContextId, storeyId: storeyExpressId, storeyPlacementId, schema, lengthUnitScale };
 }
 
 /** Read source and overlay entities through the same effective ID boundary. */
@@ -92,13 +93,18 @@ class AnchorEntityReader {
     return this.ids(type).next().value ?? null;
   }
 
-  /** Prefer the named subcontext, then a 3D context, then the first context. */
-  contextId(identifier: 'body' | 'axis'): number | null {
+  /** Prefer the named subcontext, then the root 3D context. */
+  contextId(identifier: 'body' | 'axis', rootContextId: number | null): number | null {
     for (const id of this.ids('IFCGEOMETRICREPRESENTATIONSUBCONTEXT')) {
       const value = this.entity(id)?.attributes[1];
       if (typeof value === 'string' && value.toLowerCase() === identifier) return id;
     }
 
+    return rootContextId;
+  }
+
+  /** The model's root 3D context, never a subcontext. */
+  rootContextId(): number | null {
     let fallback: number | null = null;
     for (const id of this.ids('IFCGEOMETRICREPRESENTATIONCONTEXT')) {
       const entity = this.entity(id);

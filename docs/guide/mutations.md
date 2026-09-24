@@ -549,4 +549,4 @@ All paths route through the same `mutationSlice` actions that wrap `StoreEditor`
 | `BulkQueryEngine` | Query and update entities in bulk |
 | `CsvConnector` | Import property data from CSV files |
 | `addColumnToStore` | High-level anchored IfcColumn builder (`@ifc-lite/create`) |
-| `resolveSpatialAnchor` | Reads owner history, representation context, and storey placement from the parsed store plus an optional live mutation view (`@ifc-lite/create`) |
+| `resolveSpatialAnchor` | Reads owner history, root/body/axis representation contexts, and storey placement from the parsed store plus an optional live mutation view (`@ifc-lite/create`); `rootContextId` is null when no root context exists |

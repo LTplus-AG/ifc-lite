@@ -30,6 +30,7 @@ reads attributes and property sets instead, without tessellating.
 `extrusion_definitions` returns exact source profiles and placed extrusion occurrences.
 `authored_quantity_analysis` reads IFC-authored quantity observations, while
 `quantity_analysis` joins them with nominal analytic source estimates.
+`rebar_schedule` combines authored bar metadata with derived source geometry.
 
 ```python
 import ifclite_geom
@@ -322,6 +323,25 @@ retain explicit status; extraction failures appear in `diagnostics`.
 When a complete swept-disk occurrence has no defensible nominal section or
 volume estimate, `status_reason` explains the omission even if its centreline
 length remains available. Joined diagnostics have one bounded output budget.
+
+### Reinforcing-bar schedule inputs
+
+`rebar_schedule(ifc_bytes, ids=None)` returns one row per selected
+`IfcReinforcingBar`, including bars with no supported swept-disk geometry.
+Authored attributes use exact EXPRESS names and record whether they came from
+the occurrence or its `IfcReinforcingBarType`. Numeric attributes retain their
+raw IFC value and an SI conversion. Each source sweep separately carries
+world-space radius, centreline length and bend angles, geometric checks, and
+source identity. Mapped repetitions remain separate. An authored `BarLength`
+can differ from the derived centreline length; neither value is a certified
+cutting length. IFC bar entities and represented sweeps do not imply a physical
+bar count.
+
+```python
+schedule = ifclite_geom.rebar_schedule(ifc_bytes)
+for step_id, row in schedule["rows"].items():
+    print(step_id, row["authored"].get("BarLength"), row["sweeps"])
+```
 
 ### Tessellation quality
 

@@ -269,6 +269,52 @@ class QuantityAnalysis(TypedDict):
     unique_source_count: int
     products: Dict[int, ProductQuantityAnalysis]
     diagnostics: List[str]
+
+class AuthoredRebarText(TypedDict):
+    kind: Literal["text"]
+    value: str
+
+class AuthoredRebarMeasure(TypedDict):
+    kind: Literal["measure"]
+    value_file_units: float
+    value_si: float
+    si_unit: Literal["m", "m2"]
+
+class AuthoredRebarAttribute(TypedDict):
+    source: Literal["occurrence", "type"]
+    source_id: int
+    value: Union[AuthoredRebarText, AuthoredRebarMeasure]
+
+class RebarSweep(TypedDict):
+    occurrence_index: int
+    solid_id: int
+    directrix_id: int
+    mapping_path: List[int]
+    source_modified: bool
+    status: DirectrixStatus
+    radius_m: float
+    inner_radius_m: Optional[float]
+    directrix_metrics: Optional[DirectrixMetrics]
+    checks: SweptDiskCheckReport
+
+class RebarScheduleRow(TypedDict):
+    global_id: Optional[str]
+    name: Optional[str]
+    type_id: Optional[int]
+    authored: Dict[str, AuthoredRebarAttribute]  # exact EXPRESS names
+    sweeps: List[RebarSweep]
+    geometry_unavailable_reason: Optional[str]
+    diagnostics: List[str]
+
+class RebarSchedule(TypedDict):
+    units: Literal["m"]
+    coordinate_space: Literal["absolute_ifc_world"]
+    length_unit_scale: float
+    bar_entity_count: int
+    represented_sweep_count: int
+    rows: Dict[int, RebarScheduleRow]
+    diagnostics: List[str]
+
 class PropValue(TypedDict):
     name: str
     value: str  # always a string, in the file's OWN units

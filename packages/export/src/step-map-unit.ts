@@ -265,12 +265,15 @@ export function findLengthUnitReference(preferredUnitName: string, effective: Ef
 
   // Only source records carry the bytes `extractEntity` reads, so an
   // overlay-created project is skipped rather than shadowing the file's own.
+  // @raw-entity-enumeration-ok the effective project set is filtered to source records because this fallback must decode source STEP bytes
   const projectId = (effective.byType.get('IFCPROJECT') ?? []).find((id) => ctx.dataStore.entityIndex.byId.has(id));
+  // @raw-entity-enumeration-ok point lookup for the chosen source project's byte span
   const projectRef = projectId !== undefined ? ctx.dataStore.entityIndex.byId.get(projectId) : undefined;
   const project = projectRef ? ctx.entityExtractor.extractEntity(projectRef) : null;
   const unitAssignmentId = project?.attributes?.[8];
   if (typeof unitAssignmentId !== 'number' || effective.isDeleted(unitAssignmentId)) return null;
 
+  // @raw-entity-enumeration-ok point lookup for the source UnitAssignment referenced by that project
   const unitAssignmentRef = ctx.dataStore.entityIndex.byId.get(unitAssignmentId);
   const unitAssignment = unitAssignmentRef ? ctx.entityExtractor.extractEntity(unitAssignmentRef) : null;
   const units = unitAssignment?.attributes?.[0];
@@ -278,6 +281,7 @@ export function findLengthUnitReference(preferredUnitName: string, effective: Ef
 
   for (const unitId of units) {
     if (typeof unitId !== 'number' || effective.isDeleted(unitId)) continue;
+    // @raw-entity-enumeration-ok point lookup for each referenced source unit after effective deletion filtering
     const unitRef = ctx.dataStore.entityIndex.byId.get(unitId);
     const unit = unitRef ? ctx.entityExtractor.extractEntity(unitRef) : null;
     if (!unit) continue;

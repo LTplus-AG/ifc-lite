@@ -22,8 +22,11 @@ packages/export/src/effective-index.ts
 packages/export/src/entity-iteration.ts
 packages/export/src/georef-closure.ts
 packages/export/src/ifc5-tree-scope.ts
+packages/export/src/merged-context.ts
 packages/export/src/schema-conversion-loss-report.ts
 packages/export/src/schema-untranslatable.ts
+packages/export/src/step-map-unit.ts
+packages/export/src/step-property-set-readers.ts
 packages/export/src/step-georeferencing.ts
 packages/export/src/style-closure.ts
 packages/ids/src/bridge/data-accessor.ts

@@ -65,6 +65,7 @@ const SUBCONTEXT_PARENT_CONTEXT_ATTR = 6;
 function decodeEntity(dataStore: IfcDataStore, expressId: number): string | null {
   const source = dataStore.source;
   if (!source) return null;
+  // @raw-entity-enumeration-ok point lookup for source bytes; MergeExporter bakes each edited input through STEP export and reparses it before this reader runs
   const ref = dataStore.entityIndex.byId.get(expressId);
   if (!ref) return null;
   return asSourceBytes(source).decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);
@@ -140,6 +141,7 @@ export function resolveContextWcsMetres(
 ): WcsSignature | null {
   const wcsRef = refId(getStepAttr(dataStore, contextId, 4));
   if (wcsRef === null) return null;
+  // @raw-entity-enumeration-ok point lookup for a source WCS atom in the baked merge input
   const wcsType = (dataStore.entityIndex.byId.get(wcsRef)?.type ?? '').toUpperCase();
   const pointId = wcsType.includes('CARTESIANPOINT') ? wcsRef : refId(getStepAttr(dataStore, wcsRef, 0));
   if (pointId === null) return null;
@@ -173,6 +175,7 @@ export function resolveContextWcsMetres(
 
 /** `resolveContextWcsMetres` for a model's first `IfcGeometricRepresentationContext`, or null if it has none. */
 export function resolveModelContextWcs(dataStore: IfcDataStore, lengthUnitScale: number): WcsSignature | null {
+  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so this first source context is the merged input's current context
   const contextId = (dataStore.entityIndex.byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [])[0];
   return contextId === undefined ? null : resolveContextWcsMetres(dataStore, contextId, lengthUnitScale);
 }

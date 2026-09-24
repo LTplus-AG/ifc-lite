@@ -10,12 +10,13 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore, type FederatedModel } from '@/store';
 import type { SchemaVersion } from '@/store/types';
 import { materializeEffectiveIfcStore } from '@/lib/effective-ifc-store';
-import { LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
+import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
 
 export interface MaterialStoreSource {
   modelId: string;
   store: IfcDataStore;
   schemaVersion: SchemaVersion;
+  legacy?: boolean;
 }
 
 interface SnapshotCacheEntry {
@@ -27,13 +28,22 @@ interface SnapshotCacheEntry {
 // for each model and edit revision, rather than doing the expensive work twice.
 const snapshots = new WeakMap<IfcDataStore, WeakMap<MutablePropertyView, SnapshotCacheEntry>>();
 
+function viewForSource(
+  source: MaterialStoreSource,
+  views: ReadonlyMap<string, MutablePropertyView>,
+): MutablePropertyView | undefined {
+  if (!source.legacy) return views.get(source.modelId);
+  return views.get(LEGACY_MUTATION_MODEL_ID) ?? views.get(LEGACY_MODEL_ID);
+}
+
 export async function loadEffectiveMaterialStores(
   sources: readonly MaterialStoreSource[],
   views: ReadonlyMap<string, MutablePropertyView>,
   revision: number,
 ): Promise<Map<string, IfcDataStore>> {
-  const resolved = await Promise.all(sources.map(async ({ modelId, store, schemaVersion }) => {
-    const view = views.get(modelId === 'legacy' ? LEGACY_MUTATION_MODEL_ID : modelId);
+  const resolved = await Promise.all(sources.map(async (source) => {
+    const { modelId, store, schemaVersion } = source;
+    const view = viewForSource(source, views);
     if (!view?.hasPendingChanges()) return [modelId, store] as const;
     let byView = snapshots.get(store);
     if (!byView) {
@@ -67,12 +77,11 @@ export function useEffectiveMaterialStores(
         : []);
     }
     return legacyStore
-      ? [{ modelId: 'legacy', store: legacyStore, schemaVersion: legacyStore.schemaVersion as SchemaVersion }]
+      ? [{ modelId: 'legacy', store: legacyStore, schemaVersion: legacyStore.schemaVersion as SchemaVersion, legacy: true }]
       : [];
   }, [models, legacyStore]);
   const sourceStores = useMemo(() => new Map(sources.map(({ modelId, store }) => [modelId, store])), [sources]);
-  const hasPending = enabled && sources.some(({ modelId }) =>
-    views.get(modelId === 'legacy' ? LEGACY_MUTATION_MODEL_ID : modelId)?.hasPendingChanges());
+  const hasPending = enabled && sources.some((source) => viewForSource(source, views)?.hasPendingChanges());
   const token = useMemo(() => ({ sources, views, revision }), [sources, views, revision]);
   const [resolved, setResolved] = useState<{
     token: typeof token;

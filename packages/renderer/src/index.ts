@@ -903,11 +903,13 @@ export class Renderer {
         // regions really do have such a source on a HEALTHY device: the outer
         // one runs `scene.restoreAllEvicted()` for capture frames, the encode
         // one builds visibility sub-batches through
-        // `scene.getOrCreatePartialBatch()`, and both allocate via
-        // `createBuffer({ mappedAtCreation: true })`, which throws a plain
-        // `RangeError` under host memory pressure — the failure
-        // `gpu-upload-guard` documents verbatim. Latching there would kill the
-        // viewport for a failure whose blast radius should be one frame, and
+        // `scene.getOrCreatePartialBatch()`, and both merge geometry into
+        // fresh typed arrays, whose allocation throws a plain `RangeError`
+        // ("Array buffer allocation failed") under host memory pressure.
+        // (Before #5429 the GPU upload itself added a second source, the
+        // mapped-at-creation `createBuffer` RangeError; uploads now go through
+        // `createStaticGpuBuffer`, which cannot raise it.) Latching there
+        // would kill the viewport for a failure whose blast radius should be one frame, and
         // would raise a false "graphics device was lost" toast plus false
         // `device_lost` telemetry on top.
         //
@@ -3206,7 +3208,9 @@ export class Renderer {
             // typed-array views — plus one 5-argument call in
             // `point-cloud-uniforms.ts` whose offset and size are compile-time
             // constants matching its scratch array — so the spec's
-            // `OperationError` preconditions are unreachable; the one
+            // `OperationError` preconditions are unreachable (the partial-batch
+            // upload's `createStaticGpuBuffer` also pads its whole-view payload
+            // to the 4-byte multiple the spec demands, #5429); the one
             // `copyExternalImageToTexture` copies the glyph atlas's own
             // never-externally-drawn canvas at its full fixed size, so neither
             // `SecurityError` nor a zero-size `OperationError` can arise; and
@@ -3215,8 +3219,8 @@ export class Renderer {
             // draws, `finish`, `submit`, `createBindGroup`) reports failure as
             // an asynchronous `GPUValidationError` through the error scope, not
             // as a throw. The region's real healthy-device failure is
-            // `getOrCreatePartialBatch`'s `createBuffer({ mappedAtCreation:
-            // true })`, and that throws a `RangeError` — which is exactly why
+            // `getOrCreatePartialBatch`'s CPU-side geometry merge running out of
+            // host memory, and that throws a `RangeError` — which is exactly why
             // the discriminator keys on the TYPE and not on "a frame threw".
             this.containFrameThrow(error, 'encode');
             cancelRendererColorFrame(this);

@@ -7,6 +7,7 @@ import type { RenderPipeline } from './pipeline.js';
 import { mergeGeometry } from './scene-geometry.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import { quantizeInterleaved } from './quantize.js';
+import { createStaticGpuBuffer } from './gpu-static-upload.js';
 import type { BatchQuantization } from './scene-derived-batches.js';
 import {
   simplifyIndicesByClustering,
@@ -45,26 +46,25 @@ export function createSceneBatch(
   // co-batched (see BatchedMesh.modelIndices doc).
   const modelIndices = meshDataArray.map((m) => m.modelIndex);
 
-  // Create vertex buffer (interleaved positions + normals)
-  // Use mappedAtCreation to avoid a separate writeBuffer IPC round-trip
-  // (significant win on Chrome/Dawn where each writeBuffer is a Mojo IPC call)
+  // Create vertex buffer (interleaved positions + normals) through
+  // `createStaticGpuBuffer` — never `mappedAtCreation`, which on Chromium pins
+  // a hidden shared-memory copy of the whole buffer for its lifetime (#5429).
   // Quantized path (issue #1682 phase 6): 12-byte lattice records instead
   // of the 28-byte f32 layout. Falls back to f32 when the batch exceeds
   // the u16 lattice range. Order note: the LOD build further down reads
   // merged.vertexData (the CPU f32 copy) and produces INDICES only, which
   // are valid for either vertex format.
   // This function allocates a RUN of GPU buffers (vertex, index, uniform,
-  // and — when LOD1 qualifies — a second index buffer). `device.createBuffer`
-  // genuinely throws in production (scene.ts:2057 / index.ts:168 document a
-  // real "createBuffer failed, size (...) is too large" RangeError), so every
+  // and — when LOD1 qualifies — a second index buffer). A GPU call in the run
+  // can still throw synchronously (Safari throws `InvalidStateError` on a
+  // lost device; a test or host shim may throw anything), so every
   // buffer created earlier in the run must be destroyed before a later throw
   // propagates — otherwise it is orphaned: allocated, never referenced again,
   // never freed. Same paired-allocation idiom as `appendChunkToNode` /
   // `DeviationPipeline.uploadBvh` (see paired-buffer-leak.test.ts), generalised
   // to a run of N instead of a pair.
   const allocated: GPUBuffer[] = [];
-  const createTracked = (desc: GPUBufferDescriptor): GPUBuffer => {
-    const buffer = device.createBuffer(desc);
+  const track = (buffer: GPUBuffer): GPUBuffer => {
     allocated.push(buffer);
     return buffer;
   };
@@ -88,40 +88,20 @@ export function createSceneBatch(
       );
     }
     if (quantizedData) {
-      vertexBuffer = createTracked({
-        size: Math.max(4, quantizedData.vertexData.byteLength),
-        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-        mappedAtCreation: true,
-      });
-      new Uint8Array(vertexBuffer.getMappedRange()).set(
-        new Uint8Array(quantizedData.vertexData),
-      );
-      vertexBuffer.unmap();
+      vertexBuffer = track(createStaticGpuBuffer(device, quantizedData.vertexData, GPUBufferUsage.VERTEX));
       quantized = { min: quantizedData.quantMin, step: quantizedData.step };
     } else {
-      vertexBuffer = createTracked({
-        size: merged.vertexData.byteLength,
-        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-        mappedAtCreation: true,
-      });
-      new Float32Array(vertexBuffer.getMappedRange()).set(merged.vertexData);
-      vertexBuffer.unmap();
+      vertexBuffer = track(createStaticGpuBuffer(device, merged.vertexData, GPUBufferUsage.VERTEX));
     }
 
     // Create index buffer
-    const indexBuffer = createTracked({
-      size: merged.indices.byteLength,
-      usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
-      mappedAtCreation: true,
-    });
-    new Uint32Array(indexBuffer.getMappedRange()).set(merged.indices);
-    indexBuffer.unmap();
+    const indexBuffer = track(createStaticGpuBuffer(device, merged.indices, GPUBufferUsage.INDEX));
 
     // Create uniform buffer for this batch
-    const uniformBuffer = createTracked({
+    const uniformBuffer = track(device.createBuffer({
       size: pipeline.getUniformBufferSize(),
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
+    }));
 
     // Create bind group
     const bindGroup = device.createBindGroup({
@@ -159,13 +139,7 @@ export function createSceneBatch(
         cellSize,
       );
       if (lodIndices) {
-        lod1IndexBuffer = createTracked({
-          size: lodIndices.byteLength,
-          usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
-          mappedAtCreation: true,
-        });
-        new Uint32Array(lod1IndexBuffer.getMappedRange()).set(lodIndices);
-        lod1IndexBuffer.unmap();
+        lod1IndexBuffer = track(createStaticGpuBuffer(device, lodIndices, GPUBufferUsage.INDEX));
         lod1IndexCount = lodIndices.length;
       }
     }

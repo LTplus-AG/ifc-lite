@@ -16,14 +16,11 @@ import type { BatchedMesh, Mesh } from './types.js';
 interface FakeBuffer {
   size: number;
   destroyed: number;
-  getMappedRange(): ArrayBuffer;
-  unmap(): void;
   destroy(): void;
 }
 
 function buffer(size = 16): FakeBuffer {
-  const backing = new ArrayBuffer(size);
-  return { size, destroyed: 0, getMappedRange: () => backing, unmap() {}, destroy() { this.destroyed++; } };
+  return { size, destroyed: 0, destroy() { this.destroyed++; } };
 }
 
 function device() {
@@ -454,6 +451,7 @@ describe('Scene device recovery (#4885)', () => {
         created.push(value);
         return value;
       },
+      queue: { writeBuffer() {} },
     } as unknown as GPUDevice;
 
     assert.throws(

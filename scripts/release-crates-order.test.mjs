@@ -130,8 +130,9 @@ test('every published crate comes after the crates it pins by version, and those
     `\nrelease-crates.mjs would publish a crate before something it pins by version.\n` +
       `cargo publish resolves versioned dependencies — INCLUDING dev-dependencies —\n` +
       `against crates.io, so this fails the real publish on main, after npm has already\n` +
-      `gone out. Add or reorder CRATES, or drop the version from the dependency (a bare\n` +
-      `{ path = "..." } dev-dep is stripped at publish time, as rust/core does).\n\n` +
+      `gone out. Add or reorder CRATES. For a dev-dependency only, dropping the version\n` +
+      `also works (a bare { path = "..." } dev-dep is stripped at publish time, as\n` +
+      `rust/core does); a normal or build dependency without a version cannot publish.\n\n` +
       violations.join('\n')
   );
 });

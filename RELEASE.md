@@ -60,7 +60,7 @@ PR with changeset → Merge to main → "Version Packages" PR created
                                             ↓
                                     Review & Merge
                                             ↓
-                    Build → Publish npm (46 packages) → Publish Rust (7 crates)
+                    Build → Publish npm (46 packages) → Publish Rust (8 crates)
                                             ↓
                     Create GitHub Release → Build server binaries (6 platforms)
 ```

@@ -19,7 +19,8 @@
  * base STEP data, not overlay data, and `drawing-markup-read.test.ts`'s own
  * fixtures are all overlay-authored. Hand-written base fixture below is
  * deliberate for that reason (same convention drawing-markup-read.test.ts's
- * own comment describes for its "hand-written-fixture" case).
+ * own comment describes for its "hand-written-fixture" case). A live-edit
+ * case checks that source annotation tags do not override later edits.
  */
 
 import { describe, it } from 'node:test';
@@ -76,7 +77,7 @@ async function seedStore(modelId: string): Promise<IfcDataStore> {
   return store;
 }
 
-describe('buildDrawingMarkupMetaLookup: reading BASE (not overlay) file data', () => {
+describe('buildDrawingMarkupMetaLookup: source data and live edits', () => {
   it('surfaces a tagged IfcAnnotation\'s ObjectType and Qto_IfcLiteMarkup Distance', async () => {
     await seedStore('meta-1');
     const context = getDrawingMarkupModelContext('meta-1');
@@ -97,6 +98,22 @@ describe('buildDrawingMarkupMetaLookup: reading BASE (not overlay) file data', (
     const entry = meta(UNTAGGED_ANNOTATION_ID);
     assert.equal(entry?.objectType, null);
     assert.equal(entry?.quantities?.size ?? 0, 0);
+  });
+
+  it('respects edited ObjectType and deleted annotations before restoring markup (#5249)', async () => {
+    await seedStore('meta-overlay');
+    const context = getDrawingMarkupModelContext('meta-overlay');
+    assert.ok(context);
+    const meta = buildDrawingMarkupMetaLookup(context.view, context.dataStore);
+
+    context.view.setAttribute(TAGGED_ANNOTATION_ID, 'ObjectType', 'OrdinaryAnnotation');
+    assert.equal(meta(TAGGED_ANNOTATION_ID)?.objectType, 'OrdinaryAnnotation');
+
+    context.view.setAttribute(TAGGED_ANNOTATION_ID, 'ObjectType', 'IfcLite:Markup:Measure');
+    assert.equal(meta(TAGGED_ANNOTATION_ID)?.objectType, 'IfcLite:Markup:Measure');
+
+    context.view.deleteEntity(TAGGED_ANNOTATION_ID);
+    assert.equal(meta(TAGGED_ANNOTATION_ID), undefined);
   });
 });
 

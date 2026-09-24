@@ -46,6 +46,7 @@
     "@ifc-lite/create": "workspace:^",
     "@ifc-lite/data": "workspace:^",
     "@ifc-lite/diff": "workspace:^",
+    "@ifc-lite/encoding": "workspace:^",
     "@ifc-lite/export": "workspace:^",
     "@ifc-lite/extensions": "workspace:^",
     "@ifc-lite/flow": "workspace:^",

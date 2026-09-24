@@ -59,3 +59,63 @@ export function subscribeHudRegions(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
+
+/**
+ * Item ordering (#5485 review, PR #5631 comment 4093922242).
+ *
+ * A CSS `order` on each item's wrapper only controls PAINT order, not real
+ * DOM order — a test (or, in a real browser, any code that stops applying
+ * that style) can observe stale DOM order and nothing catches it. So DOM
+ * order is made to genuinely match `order`: each `HudItem` owns one stable
+ * DOM node (created once via `useState`, portaled into for the item's whole
+ * lifetime — see `HudItem.tsx`) and registers it here; this module is the
+ * ONLY thing that ever calls `appendChild` on a region's container, always
+ * in ascending `order`, so the container's actual child list is always the
+ * sorted list. Moving an already-attached node with `appendChild` repositions
+ * it in place — it is not recreated, so it never loses focus, input state or
+ * an open popover.
+ */
+interface HudItemRecord {
+  order: number;
+  node: HTMLDivElement;
+}
+
+const regionItems = new Map<HudRegionName, Map<string, HudItemRecord>>();
+
+/** Re-append every registered item of `region`, ascending by `order`, so the
+ *  container's DOM child order matches the sort exactly. Array.prototype.sort
+ *  is stable, so ties keep registration order. No-op if the region's
+ *  container isn't mounted yet — items reconcile once it is (`HudItem`
+ *  re-registers when `getHudRegionNode` transitions from `null`). */
+function reorderRegion(region: HudRegionName): void {
+  const container = nodes.get(region);
+  const items = regionItems.get(region);
+  if (!container || !items || items.size === 0) return;
+  const sorted = Array.from(items.values()).sort((a, b) => a.order - b.order);
+  for (const item of sorted) container.appendChild(item.node);
+}
+
+/** Register `node` (already carrying its rendered content via a portal) as
+ *  region `region`'s item `id` at `order`, and reconcile that region's DOM
+ *  order immediately. Upserts: re-registering an existing `id` updates its
+ *  `order` and re-sorts. */
+export function registerHudItem(region: HudRegionName, id: string, order: number, node: HTMLDivElement): void {
+  let items = regionItems.get(region);
+  if (!items) {
+    items = new Map();
+    regionItems.set(region, items);
+  }
+  items.set(id, { order, node });
+  reorderRegion(region);
+}
+
+/** Unregister item `id` from `region` and detach its node from the DOM
+ *  (`Node.remove()` is a no-op if it was never attached, e.g. the region's
+ *  container never mounted). */
+export function unregisterHudItem(region: HudRegionName, id: string): void {
+  const items = regionItems.get(region);
+  const record = items?.get(id);
+  if (!items || !record) return;
+  items.delete(id);
+  record.node.remove();
+}

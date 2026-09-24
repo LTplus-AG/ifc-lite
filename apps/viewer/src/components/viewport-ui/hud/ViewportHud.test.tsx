@@ -42,17 +42,18 @@ describe('ViewportHud region ordering (#5485)', () => {
 
     const region = document.querySelector('[data-hud-region="top-left"]');
     assert.ok(region, 'top-left region node exists once ViewportHud is mounted');
+    // `querySelectorAll` returns nodes in DOCUMENT order — this reads the
+    // REAL DOM order the browser would lay out and a real layout engine
+    // would paint, not a value read off the nodes' own `style` (a test
+    // reading a CSS `order` property back off the same nodes it's checking
+    // would still "pass" even if that property stopped being applied at
+    // all — PR #5631 review). `hud-regions.ts`'s `registerHudItem` is the
+    // only code that ever reorders a region's children, always ascending
+    // by `order`, so this list is the sort under test, not a re-derivation
+    // of it.
     const items = Array.from(region!.querySelectorAll('[data-hud-item]'));
-    assert.equal(items.length, 3);
-
-    // The visual order a flex `order` CSS property would render, computed
-    // from the SAME inline style HudItem set — the mechanism under test,
-    // not the DOM insertion order (which is deliberately scrambled above).
-    const byVisualOrder = [...items].sort(
-      (a, b) => Number((a as HTMLElement).style.order) - Number((b as HTMLElement).style.order),
-    );
     assert.deepEqual(
-      byVisualOrder.map((el) => el.textContent),
+      items.map((el) => el.textContent),
       ['A', 'B', 'C'],
     );
   });

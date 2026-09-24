@@ -8,7 +8,7 @@
 //! files are ratchet-exempt.
 
 use super::*;
-use crate::profile::Profile2D;
+use crate::profile::{Profile2D, Profile2DWithVoids, VoidInfo};
 use crate::test_support::open_edges;
 
 /// Total area of the triangles lying on the plane `z ≈ z0` (a cap), summed
@@ -195,6 +195,28 @@ fn hole_walls_wind_with_the_solid_for_every_ring_winding_5410() {
                 assert!(
                     (volume - expected).abs() < 1e-3,
                     "{path} ({case}): outward volume {volume} != (outer - hole) * depth = {expected}"
+                );
+            }
+
+            // #5410 also covers the partial-depth voids of
+            // `extrude_profile_with_voids`: a cavity, and pockets entering from
+            // either face. Same shared outward rule, same closed-solid volume.
+            for (start, end) in [(0.5, 1.5), (0.0, 1.0), (1.0, 2.0), (0.0, 2.0)] {
+                let through = start == 0.0 && end == depth;
+                let mut voided = Profile2DWithVoids::from_profile(Profile2D::new(profile.outer.clone()));
+                voided.add_void(VoidInfo::new(hole.clone(), start, end, through));
+                let mesh = extrude_profile_with_voids(&voided, depth, None).unwrap();
+                let expected = (signed_area(&profile.outer).abs() * depth)
+                    - signed_area(&hole).abs() * (end - start);
+                assert_eq!(
+                    unpaired_directed_edges(&mesh),
+                    0,
+                    "void [{start}, {end}] ({case}): must be closed and consistently wound"
+                );
+                let volume = signed_volume(&mesh);
+                assert!(
+                    (volume - expected).abs() < 1e-3,
+                    "void [{start}, {end}] ({case}): outward volume {volume} != {expected}"
                 );
             }
 

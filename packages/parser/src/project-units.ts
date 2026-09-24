@@ -123,6 +123,7 @@ function resolveDeclaredUnit(
   entityIndex: EntityByIdIndexLike,
   ref: number,
 ): DeclaredUnit | null {
+  // @raw-entity-enumeration-ok resolve a declared unit from the parsed source index
   const entRef = entityIndex.byId.get(ref);
   if (!entRef) return null;
   const entity = extractor.extractEntity(entRef);
@@ -194,6 +195,7 @@ function resolveDerivedElement(
   entityIndex: EntityByIdIndexLike,
   elemRef: number,
 ): { symbol: string; unitScale: number; exponent: number } | null {
+  // @raw-entity-enumeration-ok resolve an element of a parsed derived unit
   const ref = entityIndex.byId.get(elemRef);
   if (!ref) return null;
   const elem = extractor.extractEntity(ref);
@@ -212,6 +214,7 @@ function conversionFactorScale(
   entityIndex: EntityByIdIndexLike,
   measureRef: number,
 ): number | null {
+  // @raw-entity-enumeration-ok read the source measure in a conversion-based unit
   const ref = entityIndex.byId.get(measureRef);
   if (!ref) return null;
   const measure = extractor.extractEntity(ref);
@@ -228,6 +231,7 @@ function conversionFactorScale(
   // (#4690). A component that is not an IfcSIUnit is taken at 1.0, as before:
   // the Rust resolver follows it, this reader does not.
   const compRef = attrs[1];
+  // @raw-entity-enumeration-ok follow the source unit component reference
   const cRef = typeof compRef === 'number' ? entityIndex.byId.get(compRef) : undefined;
   const comp = cRef ? extractor.extractEntity(cRef) : null;
   if (!comp) return null;
@@ -254,8 +258,10 @@ export function extractProjectUnits(
   const byType = new Map<string, ResolvedUnit | null>();
   let monetary: ResolvedUnit | null = null;
 
+  // @raw-entity-enumeration-ok project units come from the parsed IfcProject, not a live session overlay
   const resolvedId = projectId ?? entityIndex.byType.get('IFCPROJECT')?.[0];
   if (resolvedId === undefined) return new ProjectUnits(byType, monetary);
+  // @raw-entity-enumeration-ok dereference the parsed project whose unit assignment is being read
   const projectRef = entityIndex.byId.get(resolvedId);
   if (!projectRef) return new ProjectUnits(byType, monetary);
 
@@ -266,6 +272,7 @@ export function extractProjectUnits(
   // IFCPROJECT[8] = UnitsInContext (IFCUNITASSIGNMENT)
   const unitsRef = (project.attributes ?? [])[8];
   if (typeof unitsRef !== 'number') return new ProjectUnits(byType, monetary);
+  // @raw-entity-enumeration-ok dereference the parsed IfcUnitAssignment from IfcProject
   const assignmentRef = entityIndex.byId.get(unitsRef);
   if (!assignmentRef) return new ProjectUnits(byType, monetary);
   const assignment = extractor.extractEntity(assignmentRef);

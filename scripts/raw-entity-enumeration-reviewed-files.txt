@@ -37,9 +37,11 @@ packages/parser/src/exact-relationship-edges.ts
 packages/parser/src/identity-hints.ts
 packages/parser/src/property-unit.ts
 packages/parser/src/property-value-parser.ts
+packages/parser/src/project-units.ts
 packages/parser/src/quantity-collect.ts
 packages/parser/src/spatial-hierarchy-attributes.ts
 packages/parser/src/spatial-hierarchy-builder.ts
+packages/parser/src/unit-extractor.ts
 packages/parser/src/worker-index-publication.ts
 packages/rules/src/filter/filter-iteration-source.ts
 packages/sdk/src/cost-reference-scan.ts

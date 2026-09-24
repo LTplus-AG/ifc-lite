@@ -27,9 +27,16 @@
  */
 import { depthTextureWgsl } from './depth-reconstruct.wgsl.js';
 
+/**
+ * Bind-group index of the scene depth texture in the mask pipeline layout:
+ * group 0 is the mesh uniform that `vs_main` reads, so depth is group 1.
+ * `selection-mask-pass.ts` builds its layout from this same constant.
+ */
+export const SELECTION_MASK_DEPTH_GROUP = 1;
+
 export function selectionMaskFragmentSource(multisampled: boolean): string {
   return `
-        ${depthTextureWgsl(0, multisampled)}
+        ${depthTextureWgsl(0, multisampled, SELECTION_MASK_DEPTH_GROUP)}
 
         fn isVisible(fragPos: vec4<f32>) -> bool {
           let ip = vec2<i32>(fragPos.xy);

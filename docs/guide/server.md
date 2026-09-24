@@ -661,6 +661,9 @@ reordered batch.
 - **Client memory.** The client keeps the distinct shapes the stream sent,
   which is the size of the shared payload, not of the model.
 
+`@ifc-lite/server-client`'s `parseParquetStream` sends the opt-in and decodes
+both kinds of batch.
+
 ### Optimized Format
 
 ```text

@@ -153,6 +153,7 @@ export function* comparableEntities(store: IfcDataStore): Generator<ComparableEn
   // EntityTable declines to hold.
   const extractor = new EntityExtractor(store.source);
 
+  // @raw-entity-enumeration-ok CLI file diff compares parsed source snapshots, with no mutation overlay
   for (const [typeKey, ids] of store.entityIndex.byType) {
     const type = classifyType(typeKey);
     if (type.role === 'dependent') continue;
@@ -199,6 +200,7 @@ function readRootAttributes(
   store: IfcDataStore,
   expressId: number,
 ): RootAttributes | undefined {
+  // @raw-entity-enumeration-ok read the source STEP record for a file-diff candidate
   const ref = store.entityIndex.byId.get(expressId);
   if (!ref) return undefined;
   const entity = extractor.extractEntity(ref);

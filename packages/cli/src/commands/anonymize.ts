@@ -64,6 +64,7 @@ function normalizeTypeName(typeStr: string): string {
  */
 function buildGlobalIdIndex(store: IfcDataStore): Map<string, number> {
   const index = new Map<string, number>();
+  // @raw-entity-enumeration-ok anonymizeCommand loads one source file and has no mutation view
   for (const [, ids] of store.entityIndex.byType) {
     for (const id of ids) index.set(new EntityNode(store, id).globalId, id);
   }

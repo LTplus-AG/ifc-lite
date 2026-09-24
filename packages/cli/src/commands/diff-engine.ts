@@ -310,6 +310,7 @@ function attributeAcrossSchemas(
 ): string | undefined {
   const index = getAttributeNamesAcrossSchemas(ifcType).indexOf(attributeName);
   if (index < 0) return undefined;
+  // @raw-entity-enumeration-ok the CLI fingerprint hashes a source STEP slot from a freshly loaded file
   const ref = store.entityIndex.byId.get(expressId);
   if (!ref) return undefined;
   const raw = new EntityExtractor(store.source).extractEntity(ref)?.attributes?.[index];

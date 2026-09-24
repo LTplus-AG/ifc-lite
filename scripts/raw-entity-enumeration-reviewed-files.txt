@@ -6,6 +6,12 @@ packages/cache/src/adapt.ts
 packages/cache/src/sections/entities.ts
 packages/cache/src/sections/entity-index.ts
 packages/charts/src/elements-dataset.ts
+packages/cli/src/commands/anonymize.ts
+packages/cli/src/commands/diff-engine.ts
+packages/cli/src/commands/diff-scope.ts
+packages/cli/src/commands/diff.ts
+packages/cli/src/commands/info.ts
+packages/cli/src/commands/validate.ts
 packages/clash/src/adapters/step.ts
 packages/create/src/in-store/resolve-anchor.ts
 packages/create/src/in-store/style-entity-reader.ts

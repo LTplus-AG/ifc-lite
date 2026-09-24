@@ -24,6 +24,7 @@ export async function infoCommand(args: string[]): Promise<void> {
 
   // Collect type counts
   const typeCounts: Record<string, number> = {};
+  // @raw-entity-enumeration-ok infoCommand reports a freshly loaded file, not a live session
   for (const [typeName, ids] of store.entityIndex.byType) {
     if (ids.length > 0) {
       // Convert UPPERCASE STEP type name to PascalCase for display
@@ -33,6 +34,7 @@ export async function infoCommand(args: string[]): Promise<void> {
   }
 
   // Collect storeys
+  // @raw-entity-enumeration-ok the same file-only info command has no mutation view
   const storeyIds = store.entityIndex.byType.get('IFCBUILDINGSTOREY') ?? [];
   const storeys = storeyIds.map(id => {
     const node = new EntityNode(store, id);

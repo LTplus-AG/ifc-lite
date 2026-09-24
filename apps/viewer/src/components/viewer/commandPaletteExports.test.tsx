@@ -11,6 +11,11 @@
  */
 
 import '@/test/setup-dom.js';
+// A real (fake) IndexedDB, as in CommandPalette.locale.i18n.test.tsx: without
+// it the palette's recent-files lookup warns with "ReferenceError: indexedDB is
+// not defined", which the revert oracle reads as a load failure and so misses
+// this file's real assertion failures.
+import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, StrictMode } from 'react';

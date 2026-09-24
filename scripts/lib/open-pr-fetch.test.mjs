@@ -170,3 +170,40 @@ test('#5729: zero open PRs is an empty list after a SUCCESSFUL list call', async
   const gh = fakeGh({ open: [] });
   assert.deepEqual(await fetchOpenPrs({ repo: 'o/r', limit: 100, fail, ghOptions: { ...quiet, run: gh.run } }), []);
 });
+
+test('#5729 review: a row without a known state is UNREADABLE and fails, never silently dropped', async () => {
+  for (const bad of [{ number: 1 }, null, [], { number: 2, state: 'OPEN' }]) {
+    const run = async (args) =>
+      args[1] === 'list'
+        ? { status: 0, stdout: '[{"number":1}]', stderr: '' }
+        : { status: 0, stdout: JSON.stringify(bad), stderr: '' };
+    await assert.rejects(
+      fetchOpenPrs({ repo: 'o/r', limit: 100, fail, ghOptions: { ...quiet, run } }),
+      (e) => e.reason === 'GH_BAD_JSON',
+      JSON.stringify(bad),
+    );
+  }
+});
+
+test("#5729 review: GraphQL's own query-timeout message is retried like a 504", async () => {
+  const open = [pr(1)];
+  const gh = fakeGh({
+    open,
+    viewFailures: {
+      1: { times: 1, stderr: 'GraphQL: Something went wrong while executing your query. This may be the result of a timeout.' },
+    },
+  });
+  const prs = await fetchOpenPrs({ repo: 'o/r', limit: 100, fail, ghOptions: { ...quiet, run: gh.run } });
+  assert.deepEqual(prs.map((p) => p.number), [1]);
+});
+
+test('#5729 review: after one PR fails for good, the other workers stop taking new PRs', async () => {
+  const open = Array.from({ length: 20 }, (_, i) => pr(i + 1));
+  const gh = fakeGh({ open, viewFailures: { 1: { times: 99, stderr: 'HTTP 401: Bad credentials' } } });
+  await assert.rejects(
+    fetchOpenPrs({ repo: 'o/r', limit: 100, fail, concurrency: 2, ghOptions: { ...quiet, run: gh.run } }),
+    (e) => e.reason === 'GH_ERROR',
+  );
+  const views = gh.calls.filter((a) => a[1] === 'view').length;
+  assert.ok(views < 20, `only ${views} of 20 PRs were fetched after the failure`);
+});

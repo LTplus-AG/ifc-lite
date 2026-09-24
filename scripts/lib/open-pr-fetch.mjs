@@ -31,11 +31,26 @@ import { spawn } from 'node:child_process';
 /** Heavy fields, fetched per PR. `baseRefName` is load-bearing: see `classifyPr`. */
 export const PR_FIELDS = 'number,title,url,baseRefName,mergeable,mergeStateStatus,isDraft,statusCheckRollup';
 
-/** A transient server-side failure worth another try: 5xx and gateway timeouts, nothing else. */
-const TRANSIENT_RE = /\bHTTP 5\d\d\b|Gateway Time-?out|Bad Gateway|Service Unavailable/i;
+/**
+ * A transient server-side failure worth another try: a 5xx, a gateway timeout,
+ * or GraphQL's own query-timeout message (which GitHub can return with a 200
+ * status). Nothing else: an auth error or a rate limit does not improve in 10s.
+ */
+const TRANSIENT_RE =
+  /\bHTTP 5\d\d\b|Gateway Time-?out|Bad Gateway|Service Unavailable|Something went wrong while executing your query/i;
+
+/** The states `gh pr view` reports. Anything else is an unreadable answer, not a closed PR. */
+const PR_STATES = new Set(['OPEN', 'CLOSED', 'MERGED']);
 
 /** A PR that closed (or was deleted) between the number list and its own fetch. */
 const GONE_RE = /Could not resolve to a PullRequest/i;
+
+/**
+ * What `ghJsonWithRetry` returns for tolerated stderr. A symbol, not `null`:
+ * `gh` printing a JSON `null` is an unreadable answer and must not be read as
+ * "this PR no longer exists".
+ */
+export const TOLERATED = Symbol('tolerated');
 
 /**
  * Run `gh` once, asynchronously, so several per-PR fetches can overlap.
@@ -72,7 +87,7 @@ export function spawnGh(args) {
  * @param {number[]} [o.backoffMs] - one entry per retry.
  * @param {(ms: number) => Promise<void>} [o.sleep]
  * @param {(line: string) => void} [o.log]
- * @param {RegExp} [o.tolerate] - stderr that means "answer null" instead of failing.
+ * @param {RegExp} [o.tolerate] - stderr that means "answer TOLERATED" instead of failing.
  */
 export async function ghJsonWithRetry({
   args,
@@ -97,7 +112,7 @@ export async function ghJsonWithRetry({
       }
     }
     const stderr = (r.stderr || '').trim();
-    if (tolerate && tolerate.test(stderr)) return null;
+    if (tolerate && tolerate.test(stderr)) return TOLERATED;
     if (TRANSIENT_RE.test(stderr) && attempt < backoffMs.length) {
       log(`dirty-pr-scan: ${what}: transient failure (${stderr.split('\n')[0]}); retry ${attempt + 1}/${backoffMs.length} in ${backoffMs[attempt]}ms.`);
       await sleep(backoffMs[attempt]);
@@ -139,19 +154,38 @@ export async function fetchOpenPrs({ repo, limit, fail, concurrency = 6, ghOptio
 
   const out = new Array(numbers.length);
   let next = 0;
+  // One failure fails the fetch, so the other workers stop taking new PRs
+  // instead of spawning `gh` for an answer nobody will read.
+  let aborted = false;
   const worker = async () => {
     for (;;) {
       const i = next;
       next += 1;
-      if (i >= numbers.length) return;
-      out[i] = await ghJsonWithRetry({
-        ...ghOptions,
-        args: ['pr', 'view', String(numbers[i]), '--json', `${PR_FIELDS},state`, '--repo', repo],
-        what: `PR #${numbers[i]}`,
-        fail,
-        tolerate: GONE_RE,
-      });
+      if (aborted || i >= numbers.length) return;
+      try {
+        out[i] = await fetchOne(numbers[i]);
+      } catch (err) {
+        aborted = true;
+        throw err;
+      }
     }
+  };
+  const fetchOne = async (number) => {
+    const row = await ghJsonWithRetry({
+      ...ghOptions,
+      args: ['pr', 'view', String(number), '--json', `${PR_FIELDS},state`, '--repo', repo],
+      what: `PR #${number}`,
+      fail,
+      tolerate: GONE_RE,
+    });
+    // TOLERATED is "no longer exists". Anything else must be this PR's object
+    // with a known state, or the answer is unreadable and fails the scan:
+    // dropping it would be a partial list read as a complete one.
+    if (row === TOLERATED) return null;
+    if (row === null || typeof row !== 'object' || Array.isArray(row) || row.number !== number || !PR_STATES.has(row.state)) {
+      throw fail('GH_BAD_JSON', `PR #${number} came back unreadable: ${JSON.stringify(row).slice(0, 200)}.`);
+    }
+    return row;
   };
   await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, numbers.length)) }, worker));
   // Same order `gh pr list` returned, and the same row shape: `state` was only

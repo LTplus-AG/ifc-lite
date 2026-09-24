@@ -115,3 +115,67 @@ describe('effective entity enumeration (#5249)', () => {
     expect(ids(iterateEffectiveEntityIds(modelB, viewB, ['IFCWALL']))).toEqual([7, newB.expressId]);
   });
 });
+
+describe('single-class enumeration reads the created-entity class index (#5413)', () => {
+  /** The view, with the full created list made unreadable: the indexed path must not need it. */
+  function indexedOnly(view: MutablePropertyView): MutablePropertyView {
+    return new Proxy(view, {
+      get(target, key, receiver) {
+        if (key === 'getNewEntities') return () => { throw new Error('scanned every created entity'); };
+        const value: unknown = Reflect.get(target, key, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+  }
+
+  it('answers one class from its bucket, in creation order, without the full created list', () => {
+    const view = new MutablePropertyView(null, 'm');
+    view.setExpressIdWatermark(3);
+    const a = view.createEntity('IfcColumn', []);
+    view.createEntity('IfcCartesianPoint', []);
+    const b = view.createEntity('IFCCOLUMN', []);
+    for (let i = 0; i < 50; i++) view.createEntity('IfcLocalPlacement', []);
+
+    expect(ids(iterateEffectiveEntityIds(source(), indexedOnly(view), ['IfcColumn']))).toEqual([a.expressId, b.expressId]);
+    expect(ids(iterateEffectiveEntityIds(source(), indexedOnly(view), ['IFCWALL']))).toEqual([1, 2]);
+  });
+
+  it('keeps the bucket in step with delete, restore and clear', () => {
+    const view = new MutablePropertyView(null, 'm');
+    view.setExpressIdWatermark(3);
+    const a = view.createEntity('IfcColumn', []);
+    const b = view.createEntity('IfcColumn', []);
+    const column = () => ids(iterateEffectiveEntityIds(source(), indexedOnly(view), ['IFCCOLUMN']));
+
+    view.deleteEntity(a.expressId);
+    expect(column()).toEqual([b.expressId]);
+    view.restoreNewEntity(a);
+    expect(column()).toEqual([b.expressId, a.expressId]);
+    expect(ids(iterateEffectiveEntityIds(source(), view, ['IFCCOLUMN']))).toEqual(column());
+    view.clear();
+    expect(column()).toEqual([]);
+  });
+
+  it('does not see, or loop over, entities created while the caller iterates', () => {
+    const view = new MutablePropertyView(null, 'm');
+    view.setExpressIdWatermark(3);
+    const first = view.createEntity('IfcColumn', []);
+    const seen: number[] = [];
+    for (const { expressId } of iterateEffectiveEntityIds(source(), view, ['IFCCOLUMN'])) {
+      seen.push(expressId);
+      view.createEntity('IfcColumn', []);
+    }
+    expect(seen).toEqual([first.expressId]);
+  });
+
+  it('falls back to the full list when a created entity is retyped, so its effective class still wins', () => {
+    const view = new MutablePropertyView(null, 'm');
+    view.setExpressIdWatermark(3);
+    const moved = view.createEntity('IfcColumn', []);
+    const kept = view.createEntity('IfcColumn', []);
+    view.setEntityType(moved.expressId, 'IfcBeam');
+
+    expect(ids(iterateEffectiveEntityIds(source(), view, ['IFCCOLUMN']))).toEqual([kept.expressId]);
+    expect(ids(iterateEffectiveEntityIds(source(), view, ['IFCBEAM']))).toEqual([moved.expressId]);
+  });
+});

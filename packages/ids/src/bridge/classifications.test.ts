@@ -20,6 +20,7 @@
 import { describe, it, expect } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import { createDataAccessor } from './data-accessor.js';
+import { typedAuthoredValue } from './entity-visibility.js';
 
 async function accessorFor(ifc: string) {
   const store = await new IfcParser().parseColumnar(
@@ -254,17 +255,17 @@ ${FOOTER}`;
     expect(a.getDescription(40)).toBe('.T.');
   });
 
-  it('a typed boolean or numeric authored value is converted by its base type, as the writer does', async () => {
-    const a = await withOverlay([], [
-      { expressId: 41, type: 'IfcBuildingElementProxy', attributes: ['2Prox00000000000000041', null, 'P', null, null, null, null, null, null] },
-    ]);
-    // Base conversion is shared by both authored readers; check it directly.
-    const { typedAuthoredValue } = await import('./entity-visibility.js');
+  it('a typed authored value is converted by its EXPRESS base, as the writer does', () => {
     expect(typedAuthoredValue({ type: 'IfcBoolean', value: '.T.' })).toBe(true);
+    expect(typedAuthoredValue({ type: 'IfcBoolean', value: 'true' })).toBe(true);
+    expect(typedAuthoredValue({ type: 'IfcBoolean', value: '.U.' })).toBe(false);
     expect(typedAuthoredValue({ type: 'IfcLogical', value: '.U.' })).toBeUndefined();
     expect(typedAuthoredValue({ type: 'IfcLengthMeasure', value: '2.5' })).toBe(2.5);
+    expect(typedAuthoredValue({ type: 'IfcInteger', value: '2.7' })).toBe(2);
+    // STRING-based despite the name; the writer quotes it.
+    expect(typedAuthoredValue({ type: 'IfcDescriptiveMeasure', value: '12' })).toBe('12');
+    expect(typedAuthoredValue({ type: 'IfcLabel', value: 5 })).toBe('5');
     expect(typedAuthoredValue({ type: 'IfcLabel', value: '.T.' })).toBe('.T.');
-    expect(a.getEntityName(41)).toBe('P');
   });
 
   it('an authored typed-label value is unwrapped', async () => {

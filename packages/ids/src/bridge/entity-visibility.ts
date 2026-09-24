@@ -24,7 +24,7 @@
  */
 
 import type { EffectiveEntityOverlay } from '@ifc-lite/data';
-import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
+import { getAttributeNamesAcrossSchemas, SCHEMA_REGISTRY } from '@ifc-lite/parser';
 
 /**
  * Overlay entity visibility, decoupled from `@ifc-lite/mutations` in the same
@@ -133,26 +133,70 @@ function scalarAttributeValue(raw: unknown): AttributeValue | undefined {
   return undefined;
 }
 
+/** EXPRESS base primitives a defined type ultimately resolves to. */
+const EXPRESS_PRIMITIVES = new Set(['BOOLEAN', 'LOGICAL', 'INTEGER', 'REAL', 'NUMBER', 'STRING', 'BINARY']);
+
+/**
+ * The EXPRESS primitive an IFC defined type resolves to, by walking the schema
+ * registry's `types` alias chain: the same lookup the STEP writer uses
+ * (`resolveExpressBase` in `@ifc-lite/export`, which this package cannot
+ * depend on). `null` for an unknown type.
+ */
+function expressBase(typeName: string): string | null {
+  let cursor: string | undefined = typeName;
+  const seen = new Set<string>();
+  while (cursor && !seen.has(cursor)) {
+    seen.add(cursor);
+    const underlying: string | undefined = Object.prototype.hasOwnProperty.call(SCHEMA_REGISTRY.types, cursor)
+      ? SCHEMA_REGISTRY.types[cursor]
+      : undefined;
+    if (!underlying) return null;
+    const head = underlying.replace(/\(.*$/, '').trim().toUpperCase();
+    if (EXPRESS_PRIMITIVES.has(head)) return head;
+    cursor = underlying;
+  }
+  return null;
+}
+
+/** The writer's tri-state reading of a boolean/logical inner value. */
+function coerceLogical(value: string | number | boolean): boolean | null {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  const t = value.trim().toUpperCase();
+  if (t === 'TRUE' || t === '.T.' || t === 'T' || t === '1') return true;
+  if (t === 'FALSE' || t === '.F.' || t === 'F' || t === '0') return false;
+  return null;
+}
+
 /**
  * The value of an authored `{ typed: { type, value } }` marker as the STEP
- * writer emits it (#5249): the writer converts by the type's base
- * (`serializeInnerByBase` in `@ifc-lite/export`), so a BOOLEAN/LOGICAL type's
- * `.T.`/`.F.` is a boolean (`.U.`/`.X.` absent), a numeric type's text is a
- * number, and anything else, a label or identifier, is literal text: a typed
- * label reading `#22` is that text, never a reference.
+ * writer emits it (#5249), converted by the type's EXPRESS base exactly as
+ * `serializeInnerByBase` does: REAL/NUMBER as a number, INTEGER truncated,
+ * BOOLEAN as a boolean (unrecognised reads `false`), LOGICAL tri-state (unknown
+ * is absent), STRING/BINARY as literal text, so a typed label reading `#22` is
+ * that text, never a reference. An unknown type infers from the JS value.
  */
 export function typedAuthoredValue(typed: { type?: unknown; value: unknown }): AttributeValue | undefined {
   const { value } = typed;
-  if (typeof value === 'number' || typeof value === 'boolean') return value;
-  if (typeof value !== 'string') return undefined;
-  const type = typeof typed.type === 'string' ? typed.type.toUpperCase() : '';
-  if (type.includes('BOOLEAN') || type.includes('LOGICAL')) {
-    if (value === '.T.') return true;
-    if (value === '.F.') return false;
-    if (value === '.U.' || value === '.X.') return undefined;
+  if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') return undefined;
+  switch (typeof typed.type === 'string' ? expressBase(typed.type) : null) {
+    case 'REAL':
+    case 'NUMBER': {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : undefined;
+    }
+    case 'INTEGER': {
+      const n = Math.trunc(Number(value));
+      return Number.isFinite(n) ? n : undefined;
+    }
+    case 'BOOLEAN':
+      return coerceLogical(value) === true;
+    case 'LOGICAL':
+      return coerceLogical(value) ?? undefined;
+    case 'STRING':
+    case 'BINARY':
+      return String(value);
+    default:
+      return value;
   }
-  if (/(MEASURE|REAL|INTEGER|NUMBER|COUNT|RATIO)$/.test(type) && value.trim() !== '' && Number.isFinite(Number(value))) {
-    return Number(value);
-  }
-  return value;
 }

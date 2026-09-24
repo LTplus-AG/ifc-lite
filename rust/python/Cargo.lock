@@ -363,6 +363,7 @@ dependencies = [
  "ifc-lite-export",
  "ifc-lite-processing",
  "pyo3",
+ "serde_json",
 ]
 
 [[package]]

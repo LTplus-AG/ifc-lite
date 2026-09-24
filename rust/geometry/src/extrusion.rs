@@ -8,7 +8,8 @@ use crate::error::{Error, Result};
 use crate::mesh::Mesh;
 use crate::profile::{Profile2D, Profile2DWithVoids, Triangulation, VoidInfo};
 use crate::extrusion_generic::{
-    apply_transform_generic, create_cap_mesh, create_side_walls, extrude_rings_into, Ring,
+    apply_transform_generic, create_cap_mesh, create_side_walls, extrude_rings_into,
+    outward_is_right_hand, Ring,
 };
 use nalgebra::{Matrix4, Point2, Point3, Vector3};
 
@@ -82,9 +83,9 @@ pub fn extrude_profile_watertight(
     let mut mesh = Mesh::new();
     create_cap_mesh(&tri, 0.0, Vector3::new(0.0, 0.0, -1.0), &mut mesh);
     create_cap_mesh(&tri, depth, Vector3::new(0.0, 0.0, 1.0), &mut mesh);
-    create_side_walls(&profile.outer, depth, Ring::Outer, &mut mesh);
+    create_side_walls(&profile.outer, 0.0, depth, Ring::Outer, &mut mesh);
     for hole in &profile.holes {
-        create_side_walls(hole, depth, Ring::Hole, &mut mesh);
+        create_side_walls(hole, 0.0, depth, Ring::Hole, &mut mesh);
     }
     // The CDT emits cap triangles in arbitrary orientation, so the assembled
     // solid closes as a 2-manifold but with INCONSISTENT winding — harmless for
@@ -128,8 +129,25 @@ pub fn extrude_profile_with_voids(
     // Create profile with through-voids as holes
     let profile_with_holes = profile_with_voids.profile_with_through_holes();
 
-    // Triangulate the combined profile
-    let triangulation = profile_with_holes.triangulate()?;
+    // Each outer cap is also opened by the partial voids that reach it: a
+    // pocket entering from the bottom face is a hole in the bottom cap (#5410;
+    // a full cap there left the pocket's walls hanging off a closed lid).
+    let cap_profile = |at_bottom: bool| {
+        let mut p = profile_with_holes.clone();
+        for v in profile_with_voids.partial_voids() {
+            let reaches = if at_bottom {
+                v.depth_start <= PARTIAL_VOID_EPSILON
+            } else {
+                v.depth_end >= depth - PARTIAL_VOID_EPSILON
+            };
+            if reaches && v.contour.len() >= 3 {
+                p.add_hole(v.contour.clone());
+            }
+        }
+        p
+    };
+    let bottom_triangulation = cap_profile(true).triangulate()?;
+    let triangulation = cap_profile(false).triangulate()?;
 
     // Estimate capacity
     let partial_void_count = profile_with_voids.partial_voids().count();
@@ -150,7 +168,7 @@ pub fn extrude_profile_with_voids(
     );
 
     // Create top and bottom caps (with through-void holes included)
-    create_cap_mesh(&triangulation, 0.0, Vector3::new(0.0, 0.0, -1.0), &mut mesh);
+    create_cap_mesh(&bottom_triangulation, 0.0, Vector3::new(0.0, 0.0, -1.0), &mut mesh);
     create_cap_mesh(
         &triangulation,
         depth,
@@ -159,11 +177,11 @@ pub fn extrude_profile_with_voids(
     );
 
     // Create side walls for outer boundary
-    create_side_walls(&profile_with_holes.outer, depth, Ring::Outer, &mut mesh);
+    create_side_walls(&profile_with_holes.outer, 0.0, depth, Ring::Outer, &mut mesh);
 
     // Create side walls for holes (including through-voids)
     for hole in &profile_with_holes.holes {
-        create_side_walls(hole, depth, Ring::Hole, &mut mesh);
+        create_side_walls(hole, 0.0, depth, Ring::Hole, &mut mesh);
     }
 
     // Handle partial-depth voids
@@ -179,96 +197,38 @@ pub fn extrude_profile_with_voids(
     Ok(mesh)
 }
 
-/// Create geometry for a partial-depth void
-///
-/// Generates:
-/// - Internal cap at void start depth (if not at bottom)
-/// - Internal cap at void end depth (if not at top)
-/// - Side walls for the void opening
+/// Tolerance for a partial void reaching an outer cap.
+const PARTIAL_VOID_EPSILON: f64 = 0.001;
+
+/// Create geometry for a partial-depth void: its side walls between its two
+/// depths, and an internal cap at each depth that is inside the solid. Every
+/// face is wound out of the solid, i.e. into the void: the walls as a
+/// [`Ring::Hole`], the floor at `depth_start` facing +Z and the ceiling at
+/// `depth_end` facing -Z (#5410; they faced the other way).
 fn create_partial_void_geometry(void: &VoidInfo, total_depth: f64, mesh: &mut Mesh) -> Result<()> {
     if void.contour.len() < 3 {
         return Ok(());
     }
-
-    let epsilon = 0.001;
-
-    // Create triangulation for void contour
-    let void_profile = Profile2D::new(void.contour.clone());
-    let void_triangulation = match void_profile.triangulate() {
+    let void_triangulation = match Profile2D::new(void.contour.clone()).triangulate() {
         Ok(t) => t,
         Err(_) => return Ok(()), // Skip if triangulation fails
     };
-
-    // Create internal cap at void start (if not at bottom)
-    if void.depth_start > epsilon {
-        create_cap_mesh(
-            &void_triangulation,
-            void.depth_start,
-            Vector3::new(0.0, 0.0, -1.0), // Facing down into the void
-            mesh,
-        );
+    // Floor: the triangulation's own (CCW, +Z) winding at a non-zero depth.
+    if void.depth_start > PARTIAL_VOID_EPSILON {
+        create_cap_mesh(&void_triangulation, void.depth_start, Vector3::new(0.0, 0.0, 1.0), mesh);
     }
-
-    // Create internal cap at void end (if not at top)
-    if void.depth_end < total_depth - epsilon {
-        create_cap_mesh(
-            &void_triangulation,
-            void.depth_end,
-            Vector3::new(0.0, 0.0, 1.0), // Facing up into the void
-            mesh,
-        );
+    // Ceiling: the same cap, mirrored to face -Z.
+    if void.depth_end < total_depth - PARTIAL_VOID_EPSILON {
+        let first = mesh.indices.len();
+        create_cap_mesh(&void_triangulation, void.depth_end, Vector3::new(0.0, 0.0, -1.0), mesh);
+        for tri in mesh.indices[first..].chunks_exact_mut(3) {
+            tri.swap(1, 2);
+        }
     }
-
-    // Create side walls for the void (from depth_start to depth_end)
-    let void_depth = void.depth_end - void.depth_start;
-    if void_depth > epsilon {
-        create_void_side_walls(&void.contour, void.depth_start, void.depth_end, mesh);
+    if void.depth_end - void.depth_start > PARTIAL_VOID_EPSILON {
+        create_side_walls(&void.contour, void.depth_start, void.depth_end, Ring::Hole, mesh);
     }
-
     Ok(())
-}
-
-/// Create side walls for a void opening between two depths
-fn create_void_side_walls(contour: &[Point2<f64>], z_start: f64, z_end: f64, mesh: &mut Mesh) {
-    let base_index = mesh.vertex_count() as u32;
-    let mut quad_count = 0u32;
-
-    for i in 0..contour.len() {
-        let j = (i + 1) % contour.len();
-
-        let p0 = &contour[i];
-        let p1 = &contour[j];
-
-        // Calculate normal for this edge (pointing inward for voids)
-        // Use try_normalize to handle degenerate edges (duplicate consecutive points)
-        let edge = Vector3::new(p1.x - p0.x, p1.y - p0.y, 0.0);
-        // Reverse normal direction for holes (pointing inward)
-        let normal = match Vector3::new(edge.y, -edge.x, 0.0).try_normalize(1e-10) {
-            Some(n) => n,
-            None => continue, // Skip degenerate edge (duplicate points in contour)
-        };
-
-        // Bottom vertices (at z_start)
-        let v0_bottom = Point3::new(p0.x, p0.y, z_start);
-        let v1_bottom = Point3::new(p1.x, p1.y, z_start);
-
-        // Top vertices (at z_end)
-        let v0_top = Point3::new(p0.x, p0.y, z_end);
-        let v1_top = Point3::new(p1.x, p1.y, z_end);
-
-        // Add 4 vertices for this quad
-        let idx = base_index + (quad_count * 4);
-        mesh.add_vertex(v0_bottom, normal);
-        mesh.add_vertex(v1_bottom, normal);
-        mesh.add_vertex(v1_top, normal);
-        mesh.add_vertex(v0_top, normal);
-
-        // Add 2 triangles for the quad (reversed winding for inward-facing)
-        mesh.add_triangle(idx, idx + 2, idx + 1);
-        mesh.add_triangle(idx, idx + 3, idx + 2);
-
-        quad_count += 1;
-    }
 }
 
 /// Extrude with a different cross section at the top (lofted/tapered extrusion).
@@ -421,23 +381,9 @@ fn create_lofted_side_walls(
     if n < 2 || top.len() != n {
         return;
     }
-    let signed_area2: f64 = (0..n)
-        .map(|i| {
-            let a = &bottom[i];
-            let b = &bottom[(i + 1) % n];
-            a.x * b.y - b.x * a.y
-        })
-        .sum();
-    let ccw = signed_area2 >= 0.0;
-    // `edge_a × edge_b` and the unmirrored quad face out of a CCW outer loop
-    // and out of a CW hole (into its void); the other two are mirrored. This
-    // used to key triangles off `is_hole` alone and normals off the winding
-    // alone, so a CW hole got inward walls (the #5410 defect) and a CW outer
-    // loop got walls wound against its own normals.
-    let outward_is_right_hand = match ring {
-        Ring::Outer => ccw,
-        Ring::Hole => !ccw,
-    };
+    // The shared rule, on the bottom loop: `edge_a × edge_b` and the
+    // unmirrored quad face out of a CCW outer loop and a CW hole.
+    let outward_is_right_hand = outward_is_right_hand(bottom, ring);
     let winding_sign = if outward_is_right_hand { 1.0 } else { -1.0 };
     let base_index = mesh.vertex_count() as u32;
     let mut quad_count = 0u32;

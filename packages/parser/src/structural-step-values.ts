@@ -125,6 +125,7 @@ export function readEntities(
 ): RawEntity[] {
   const out: RawEntity[] = [];
   for (const expressId of expressIds) {
+    // @raw-entity-enumeration-ok the caller supplies source ids; this lookup locates each STEP byte span for decoding
     const ref = store.entityIndex.byId.get(expressId);
     if (!ref) continue;
     const entity = extractor.extractEntity(ref);

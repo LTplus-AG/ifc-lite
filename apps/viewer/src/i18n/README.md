@@ -763,9 +763,9 @@ welcome/empty state, its WebGPU-unavailable banner, and the loaded-model
 "Add Model" drop overlay), `ViewportOverlays.tsx` (the mobile touch-nav
 cluster, the selected-storey count, and the per-model basepoint toggle),
 `Viewport.tsx`'s own renderer-init failure fallback, `FlySpeedIndicator.tsx`'s
-fly-mode HUD, and the Sun & Sky panel's own chrome plus its two sub-panels
-(`SunSkyPanel.tsx`, `ShadowControls.tsx`, `SunTimeControls.tsx`).
-`SunSkyPanel.tsx`'s `CONTEXT_SOURCES`/`SWEEP_MODES` select-option tables
+fly-mode HUD, and the Environment panel's own chrome plus its two sub-panels
+(`EnvironmentPanel.tsx`, `ShadowControls.tsx`, `SunTimeControls.tsx`).
+`EnvironmentPanel.tsx`'s `CONTEXT_SOURCES`/`SWEEP_MODES` select-option tables
 moved their `label`/`hint` fields to `labelKey`/`hintKey`, the same
 data-table-plus-`labelKey` pattern `sectionConstants.ts`'s `AXIS_INFO` and
 this sweep's other select tables use — component `label` props are not

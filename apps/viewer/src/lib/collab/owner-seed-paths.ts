@@ -17,6 +17,7 @@ export function registerLiveSeedStore(
   registerStoreSlot(liveStore, slot);
   const idToPath = new Map<number, string>();
   const pathToId = new Map<string, number>();
+  // @raw-entity-enumeration-ok seedStore is the mutation-materialized, reparsed share snapshot; these ids bind it to the original live store.
   for (const [expressId] of seedStore.entityIndex.byId) {
     const path = pathForEntity(seedStore, expressId);
     if (!path) continue;

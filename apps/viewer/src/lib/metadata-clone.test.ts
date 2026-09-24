@@ -4,6 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { cloneElementMetadata } from './metadata-clone.js';
 
 import { StubStoreEditor, StubView, makeStubDataStore, type OverlayEntity } from './__test__/stubs.js';
@@ -13,6 +14,26 @@ function makeStore(byType: Map<string, number[]>) {
 }
 
 describe('metadata-clone', () => {
+  it('uses live relationship membership after create, delete and retype (#5249)', () => {
+    const view = new MutablePropertyView(null, 'm');
+    view.setExpressIdWatermark(200);
+    view.deleteEntity(50);
+    view.setEntityType(51, 'IfcRelFillsElement', null, 'IfcRelDefinesByProperties');
+    const created = view.createEntity('IfcRelDefinesByProperties', ['new', null, null, null, [100], 200]);
+    const editor = new StubStoreEditor([
+      { expressId: 50, type: 'IFCRELDEFINESBYPROPERTIES', attributes: ['deleted', null, null, null, [100], 200] },
+      { expressId: 51, type: 'IFCRELDEFINESBYPROPERTIES', attributes: ['retyped', null, null, null, [100], 200] },
+      { expressId: created.expressId, type: created.type, attributes: created.attributes },
+    ]);
+    const store = makeStore(new Map([['IFCRELDEFINESBYPROPERTIES', [50, 51]]]));
+
+    const result = cloneElementMetadata(store, view, editor as unknown as Parameters<typeof cloneElementMetadata>[2], 100, [101]);
+
+    assert.strictEqual(result.relationshipsTouched, 1);
+    assert.deepStrictEqual(editor.getNewEntity(created.expressId)?.attributes[4], [100, 101]);
+    assert.deepStrictEqual(editor.getNewEntity(50)?.attributes[4], [100]);
+    assert.deepStrictEqual(editor.getNewEntity(51)?.attributes[4], [100]);
+  });
   it('appends targets to IfcRelDefinesByProperties RelatedObjects', () => {
     const rel: OverlayEntity = {
       expressId: 50,

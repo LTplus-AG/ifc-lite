@@ -8802,6 +8802,7 @@
     "createCostBackend: function",
     "createCostStoreBackend: function",
     "createEffectiveEntityCheck: function",
+    "createEffectiveRecordOverlay: function",
     "createHeadlessMutateAdapter: function",
     "createStructuralStoreBackend: function",
     "dispatchToBackend: function",

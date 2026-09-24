@@ -5,10 +5,10 @@
 import {
   evaluateCostItem, evaluateCostValue, extractCostOnDemand,
   type CostAppliedValue, type CostDiagnostic, type CostEvaluationResult,
-  type CostGraphExtraction, type CostMutationOverlay, type CostRelationshipInfo, type IfcDataStore,
+  type CostGraphExtraction, type CostRelationshipInfo, type IfcDataStore,
 } from '@ifc-lite/parser';
-import { effectiveCreatedRecord, effectiveSourceRecord } from '@ifc-lite/export';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { createEffectiveRecordOverlay } from './effective-record-overlay.js';
 import type { EntityRef } from './types.js';
 import type {
   CostAppliedValueData, CostBackendMethods, CostDiagnosticData, CostEvaluationData,
@@ -28,31 +28,6 @@ export interface ResolvedCostModel {
   mutationView?: MutablePropertyView;
 }
 
-/**
- * The cost read model's view of `view`: tombstones and retypes straight off the
- * view, and every record as `effectiveSourceRecord` — the exporter's own
- * pipeline — writes it. No edit kind is re-serialized here.
- */
-function costOverlay(view: MutablePropertyView, store: IfcDataStore): CostMutationOverlay {
-  return {
-    isDeleted: id => view.isDeleted(id),
-    retypes: () => new Map([...view.getTypeMutations()].map(([id, mutation]) => [id, mutation.newType])),
-    effectiveRecord: (id, text, type) => effectiveSourceRecord(view, id, text, type, store.schemaVersion),
-    created: () => view.getNewEntities().map(entity => {
-      try {
-        const effective = effectiveCreatedRecord(view, entity.expressId, store.schemaVersion);
-        return effective
-          ? { expressId: entity.expressId, ...effective }
-          : { expressId: entity.expressId, error: `Created entity #${entity.expressId} disappeared from the mutation overlay` };
-      } catch (error) {
-        return {
-          expressId: entity.expressId,
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
-    }),
-  };
-}
 export type CostModelResolver = (modelId?: string) => ResolvedCostModel;
 
 function ref(modelId: string, expressId: number): EntityRef { return { modelId, expressId }; }
@@ -212,7 +187,7 @@ export function createCostBackend(resolveModel: CostModelResolver): CostBackendM
     if (view) {
       // Pending edits are live state: extract fresh, and never write the
       // result into the unmutated-graph cache above.
-      return { ...resolved, graph: extractCostOnDemand(resolved.store, { overlay: costOverlay(view, resolved.store) }) };
+      return { ...resolved, graph: extractCostOnDemand(resolved.store, { overlay: createEffectiveRecordOverlay(view, resolved.store) }) };
     }
     let cached = cache.get(resolved.store);
     if (!cached || cached.source !== resolved.store.source

@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { KEYBOARD_SHORTCUTS } from '@/hooks/keyboard-shortcuts-list';
 import { LearnTab } from '@/components/tours/LearnTab';
-import { SpaceMousePanel } from './SpaceMousePanel';
+import { PreferencesTab } from './PreferencesTab';
 import { navigateToPath } from '@/services/app-navigation';
 import { useTranslation } from '@/i18n';
 
@@ -432,25 +432,6 @@ function ShortcutsTab() {
   );
 }
 
-/** Navigation → SpaceMouse (#5509). Grows as more settings leave floating
- *  panels for here; each gets its own labelled section like this one. */
-function PreferencesTab() {
-  const { t } = useTranslation();
-  return (
-    <div className="space-y-2">
-      <h3 className="text-sm font-medium text-muted-foreground">
-        {t('keyboardShortcuts.preferences.navigationSectionTitle')}
-      </h3>
-      <div className="rounded-md border p-3">
-        <h4 className="mb-2 text-xs font-semibold">
-          {t('keyboardShortcuts.preferences.spaceMouseSectionTitle')}
-        </h4>
-        <SpaceMousePanel />
-      </div>
-    </div>
-  );
-}
-
 export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialogProps) {
   const { t } = useTranslation(); // Close on escape
   useEffect(() => {
@@ -519,25 +500,13 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
             </TabsList>
           </div>
 
-          <TabsContent value="about" className="p-4 max-h-80 overflow-y-auto">
-            <AboutTab />
-          </TabsContent>
-
-          <TabsContent value="whatsnew" className="p-4 max-h-96 overflow-y-auto">
-            <WhatsNewTab />
-          </TabsContent>
-
-          <TabsContent value="shortcuts" className="p-4 max-h-80 overflow-y-auto">
-            <ShortcutsTab />
-          </TabsContent>
-
-          <TabsContent value="preferences" className="p-4 max-h-80 overflow-y-auto">
-            <PreferencesTab />
-          </TabsContent>
-
-          <TabsContent value="learn" className="p-4 max-h-80 overflow-y-auto">
-            <LearnTab onClose={onClose} />
-          </TabsContent>
+          {/* Each wraps exactly one child — single-line, so a fifth tab
+              (Preferences, #5509) didn't need a module-size budget raise. */}
+          <TabsContent value="about" className="p-4 max-h-80 overflow-y-auto"><AboutTab /></TabsContent>
+          <TabsContent value="whatsnew" className="p-4 max-h-96 overflow-y-auto"><WhatsNewTab /></TabsContent>
+          <TabsContent value="shortcuts" className="p-4 max-h-80 overflow-y-auto"><ShortcutsTab /></TabsContent>
+          <TabsContent value="preferences" className="p-4 max-h-80 overflow-y-auto"><PreferencesTab /></TabsContent>
+          <TabsContent value="learn" className="p-4 max-h-80 overflow-y-auto"><LearnTab onClose={onClose} /></TabsContent>
         </Tabs>
 
         {/* Footer */}

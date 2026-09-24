@@ -195,10 +195,10 @@ export function __resetDrawingMarkupRestoreForTests(): void {
 }
 
 /**
- * Mount once, unconditionally, near the top of `Section2DPanel.tsx` — same
+ * Mounted once, unconditionally, in `DrawingRuntimeHost` (#5492) — same
  * placement convention #4159's `useDrawing2DPersistence` documents for
- * itself, so restore runs as soon as a model loads even if the 2D panel is
- * closed.
+ * itself, so restore runs as soon as a model loads even with no drawing view
+ * on screen.
  */
 export function useDrawingMarkupRestoreOnLoad(): void {
   const activeModelId = useViewerStore((s) => s.activeModelId);

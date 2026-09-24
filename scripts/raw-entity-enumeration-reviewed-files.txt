@@ -27,6 +27,7 @@ packages/export/src/entity-iteration.ts
 packages/export/src/georef-closure.ts
 packages/export/src/ifc5-tree-scope.ts
 packages/export/src/merged-context.ts
+packages/export/src/merged-exporter.ts
 packages/export/src/schema-conversion-loss-report.ts
 packages/export/src/schema-untranslatable.ts
 packages/export/src/step-map-unit.ts

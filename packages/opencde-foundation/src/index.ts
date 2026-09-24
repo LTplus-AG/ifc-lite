@@ -59,5 +59,6 @@ export type {
   FoundationCurrentUser,
   FoundationTokenProvider,
   FoundationTokenResponse,
+  ApiVersion,
   FoundationVersion,
 } from './types.js';

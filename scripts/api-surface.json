@@ -6708,6 +6708,7 @@
     "waitForOAuthCallback: function"
   ],
   "@ifc-lite/opencde-foundation": [
+    "ApiVersion: interface",
     "AuthorizationCodeGrantOptions: interface",
     "ClientCredentialsGrantOptions: interface",
     "FetchLike: type",

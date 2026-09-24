@@ -9,11 +9,18 @@
  * version discovery, OAuth2 auth discovery, and the current-user lookup.
  */
 
-/** Entry of `GET /foundation/versions`. */
-export interface FoundationVersion {
-  api_id: string;
+/**
+ * Entry of one API's own `GET {base}/versions` listing (BCF's `/bcf/versions`,
+ * ...). It names versions of THAT api, so it carries no `api_id` (#5438 review).
+ */
+export interface ApiVersion {
   version_id: string;
   detailed_version?: string | null;
+}
+
+/** Entry of `GET /foundation/versions`, which lists every API the server hosts. */
+export interface FoundationVersion extends ApiVersion {
+  api_id: string;
   /** Fully-qualified base URL for this API/version; relocates it off the default path when present. */
   api_base_url?: string | null;
 }

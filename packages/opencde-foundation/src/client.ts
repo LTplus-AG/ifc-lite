@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { FoundationHttpClient, type FoundationHttpClientOptions } from './http-client.js';
-import type { FoundationAuthInfo, FoundationCurrentUser, FoundationVersion } from './types.js';
+import type { ApiVersion, FoundationAuthInfo, FoundationCurrentUser } from './types.js';
 
 /**
  * Strip whitespace, any query or fragment, trailing slashes, and an
@@ -98,8 +98,9 @@ export class FoundationApiClient extends FoundationHttpClient {
 
   // -- Discovery & identity (Foundation API §2, §3) --------------------------
 
-  async getVersions(): Promise<FoundationVersion[]> {
-    const result = await this.requestJsonAt<{ versions?: FoundationVersion[] }>('/versions');
+  /** This API's own `{base}/versions` listing; see `getFoundationVersions` for the server-wide one. */
+  async getVersions(): Promise<ApiVersion[]> {
+    const result = await this.requestJsonAt<{ versions?: ApiVersion[] }>('/versions');
     return result.versions ?? [];
   }
 

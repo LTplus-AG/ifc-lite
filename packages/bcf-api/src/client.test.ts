@@ -10,7 +10,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import { BcfApiClient, normalizeBcfBaseUrl } from './client.js';
 import { BcfApiError } from './errors.js';
-import type { FetchLike } from './types.js';
+import type { BcfApiVersion, FetchLike } from './types.js';
 
 interface RecordedRequest {
   url: string;
@@ -82,8 +82,18 @@ describe('BcfApiClient URL construction', () => {
         : jsonResponse([]),
     );
     const client = new BcfApiClient({ baseUrl: 'https://host/bcf/', fetchFn });
-    const versions = await client.getVersions();
+    // Typed as BcfApiVersion[], as before the Foundation extraction: an entry
+    // with no `api_id` is a valid BCF /versions entry (#5438 review).
+    const versions: BcfApiVersion[] = await client.getVersions();
     expect(versions).toEqual([{ version_id: '2.1' }]);
+    // A caller's override (or mock) returning plain BCF entries must still
+    // type-check; with the inherited FoundationVersion[] it did not.
+    class FixedVersions extends BcfApiClient {
+      override async getVersions(): Promise<BcfApiVersion[]> {
+        return [{ version_id: '3.0' }];
+      }
+    }
+    expect(await new FixedVersions({ baseUrl: 'https://host/bcf', fetchFn }).getVersions()).toEqual([{ version_id: '3.0' }]);
     await client.getProjects();
     expect(requests[0].url).toBe('https://host/bcf/versions');
     expect(requests[1].url).toBe('https://host/bcf/2.1/projects');

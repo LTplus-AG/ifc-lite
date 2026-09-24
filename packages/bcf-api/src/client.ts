@@ -7,6 +7,7 @@ import {
   type FoundationApiClientOptions,
 } from '@ifc-lite/opencde-foundation';
 import type {
+  BcfApiVersion,
   BcfColoringResponse,
   BcfCommentDto,
   BcfCommentWriteDto,
@@ -53,6 +54,14 @@ export interface TopicQueryOptions {
 export class BcfApiClient extends FoundationApiClient {
   constructor(options: BcfApiClientOptions) {
     super({ ...options, version: options.version ?? '2.1', errorLabel: 'BCF', errorNamespace: 'Bcf' });
+  }
+
+  /**
+   * BCF's `/versions` listing, typed as it always was. Its entries carry no
+   * `api_id`; that field belongs to `/foundation/versions` (#5438 review).
+   */
+  override getVersions(): Promise<BcfApiVersion[]> {
+    return super.getVersions();
   }
 
   // -- Projects --------------------------------------------------------------

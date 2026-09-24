@@ -165,7 +165,7 @@ impl ProfileProcessor {
     /// `IfcAxis2Placement2D` (Location + RefDirection(X) in the XY plane, Y the
     /// 90° CCW perpendicular). Used by both the full-circle sampler and the
     /// trimmed-arc sampler so a 3D-placed arc is never flattened to z=0.
-    fn read_conic_placement_3d(
+    pub(super) fn read_conic_placement_3d(
         &self,
         curve: &DecodedEntity,
         decoder: &mut EntityDecoder,
@@ -396,52 +396,13 @@ impl ProfileProcessor {
             end_angle -= 2.0 * PI;
         }
 
-        // Segment count: same angular floor + chord-deviation budget as the 2D
-        // conic sampler so density matches across the codebase.
-        let arc_angle = (end_angle - start_angle).abs();
-        let by_angle = (arc_angle / std::f64::consts::FRAC_PI_2 * 8.0).ceil() as usize;
-        let by_chord = {
-            const CHORD_TOL_M: f64 = 5.0e-4; // 0.5 mm absolute deviation budget
-            let r_eff = radius.abs().max(radius2.abs());
-            let radius_m = r_eff * decoder.length_unit_scale();
-            if radius_m > CHORD_TOL_M {
-                let rel = (CHORD_TOL_M / radius_m).clamp(1e-9, 0.5);
-                let max_step = 2.0 * (1.0 - rel).acos();
-                if max_step > 1e-9 {
-                    (arc_angle / max_step).ceil() as usize
-                } else {
-                    0
-                }
-            } else {
-                0
-            }
-        };
-        let num_segments = self
-            .quality()
-            .profile_arc_segments(by_angle.max(by_chord), 2)
-            .min(128);
-
-        let angle_range = if sense {
-            end_angle - start_angle
-        } else {
-            start_angle - end_angle
-        };
-
-        let mut points = Vec::with_capacity(num_segments + 1);
-        for i in 0..=num_segments {
-            let t = i as f64 / num_segments as f64;
-            let angle = if sense {
-                start_angle + t * angle_range
-            } else {
-                start_angle - t * angle_range.abs()
-            };
-            let p = center
-                + x_axis * (radius * angle.cos())
-                + y_axis * (radius2 * angle.sin());
-            points.push(p);
-        }
-
-        Ok(points)
+        Ok(self.sample_conic_arc_3d(
+            (center, x_axis, y_axis),
+            (radius, radius2),
+            start_angle,
+            end_angle,
+            decoder,
+        ))
     }
 
     /// Resolve one bound of an `IfcTrimmingSelect` on a 3D-placed conic to an

@@ -34,8 +34,14 @@ export type PointerCaptureTarget = Pick<
 /** DOM exception names the capture methods use to refuse a benign state; anything else is a bug. */
 const REFUSALS = new Set(['InvalidStateError', 'NotFoundError']);
 
+/**
+ * Matched by `name`, not `instanceof`: a panel detached into its own window
+ * (`services/panel-windows.ts`) raises the DOMException from THAT window's
+ * realm, which is not an instance of this realm's `Error` or `DOMException`.
+ */
 function isRefusal(error: unknown): boolean {
-  return error instanceof Error && REFUSALS.has(error.name);
+  if (typeof error !== 'object' || error === null || !('name' in error)) return false;
+  return typeof error.name === 'string' && REFUSALS.has(error.name);
 }
 
 /**

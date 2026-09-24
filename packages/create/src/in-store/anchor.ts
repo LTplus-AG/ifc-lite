@@ -27,6 +27,8 @@ export interface SpatialAnchor {
   bodyContextId: number;
   /** IfcGeometricRepresentationSubContext for 'Axis' (or its IfcGeometricRepresentationContext fallback). */
   axisContextId: number;
+  /** Root 3D IfcGeometricRepresentationContext, when resolved; optional for anchors constructed by callers. */
+  rootContextId?: number | null;
   /** The target IfcBuildingStorey expressId. */
   storeyId: number;
   /** The IfcLocalPlacement that the storey itself sits on. New element placements are chained from this. */

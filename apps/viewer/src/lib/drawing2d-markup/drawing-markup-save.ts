@@ -53,8 +53,6 @@
  * supersedes the whole previous batch.
  */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
-import { EntityExtractor } from '@ifc-lite/parser';
 import type { StoreEditor, NewEntity } from '@ifc-lite/mutations';
 import {
   addDrawingMarkupToStore,
@@ -155,31 +153,6 @@ export function removeDrawingMarkupFromStore(editor: StoreEditor): number {
 
   for (const id of doomed) editor.removeEntity(id);
   return annotationCount;
-}
-
-/**
- * The model's root 3D `IfcGeometricRepresentationContext` — what
- * `emitMarkupSubContext` needs as `ParentContext`. Deliberately NOT
- * `resolveSpatialAnchor`'s `bodyContextId`: that prefers a 'Body'
- * SUBcontext when one exists, and a sub-context chained under another
- * sub-context is not what `drawing-markup-geometry.ts`'s doc comment
- * documents this parameter as ("the model's root 3D
- * IfcGeometricRepresentationContext"). Same fallback shape as
- * `resolve-anchor.ts`'s own context lookups, minus the subcontext
- * preference.
- */
-function findRootGeometricContextId(store: IfcDataStore): number | null {
-  if (store.source.byteLength <= 0) return null;
-  const extractor = new EntityExtractor(store.source);
-  const ctxIds = store.entityIndex.byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [];
-  for (const id of ctxIds) {
-    const ref = store.entityIndex.byId.get(id);
-    if (!ref) continue;
-    const entity = extractor.extractEntity(ref);
-    const dimension = entity?.attributes?.[2];
-    if (typeof dimension === 'number' && dimension === 3) return id;
-  }
-  return ctxIds[0] ?? null;
 }
 
 /** `p.x`/`p.y` finite — mirrors `@ifc-lite/create`'s `drawing-markup.ts`
@@ -301,8 +274,8 @@ export function saveDrawingMarkupToModel(
     return { ...EMPTY_COUNTS, refusal: 'no-anchor' };
   }
 
-  const rootContextId = findRootGeometricContextId(dataStore);
-  if (rootContextId === null) return { ...EMPTY_COUNTS, refusal: 'no-root-context' };
+  const rootContextId = anchor.rootContextId;
+  if (rootContextId == null) return { ...EMPTY_COUNTS, refusal: 'no-root-context' };
 
   // Sweep BEFORE checking `total === 0`: an empty batch with a previous save
   // present is a legitimate "clear the saved markup" — not a no-op refusal.

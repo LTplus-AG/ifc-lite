@@ -234,5 +234,5 @@ describe('the package boundary (#5446 review)', () => {
     const entry = await import('./index.js');
     expect('coreNetworkRequest' in entry).toBe(true);
     expect('executeUngatedRequest' in entry).toBe(false);
-  });
+  }, 60_000); // the entry loads the whole bridge (QuickJS, esbuild-wasm)
 });

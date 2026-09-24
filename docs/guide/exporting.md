@@ -213,11 +213,10 @@ const quantsParquet = await exporter.exportTable('quantities');
 await saveFile('quantities.parquet', quantsParquet);
 ```
 
-Pass a `MutablePropertyView` as the third constructor argument to exclude
-deleted entities and include newly created ones in `Entities.parquet`. Created
-relationship, property, quantity, and geometry rows are not yet written to
-their respective Parquet tables; use STEP or IFC5 export for the full live edit
-surface.
+Pass a `MutablePropertyView` as the third constructor argument to export live
+entity, relationship, property, and quantity rows, including sets on created
+entities. Geometry rows still come from the supplied geometry result; use STEP
+or IFC5 export when geometry payload edits must be included.
 
 ### Parquet Schema
 

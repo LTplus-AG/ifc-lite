@@ -764,6 +764,45 @@ describe('ParquetExporter on-demand properties/quantities (independent-reader pa
     expect(scalar?.ValueReal).toBeCloseTo(0.25);
   });
 
+  it('exports live property and quantity edits plus sets on a created entity (#5249)', async () => {
+    const store = buildOnDemandDataStore();
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setOnDemandExtractor(id => store.getProperties(id));
+    view.setQuantityExtractor(id => store.getQuantities(id));
+    view.setExpressIdWatermark(1);
+    view.setProperty(1, 'Pset_WallCommon', 'Reference', 'Edited wall');
+    view.deleteProperty(1, 'Pset_WallCommon', 'IsExternal');
+    view.setQuantity(1, 'Qto_WallBaseQuantities', 'Length', 9.5, QuantityType.Length);
+    const created = view.createEntity('IfcWall', ['new-guid', null, 'New wall']);
+    view.createPropertySet(created.expressId, 'Pset_New', [{ name: 'Code', value: 'N-1' }]);
+    view.createQuantitySet(created.expressId, 'Qto_New', [{ name: 'Height', value: 2.4, quantityType: QuantityType.Length }]);
+
+    const exporter = new ParquetExporter(store, undefined, view);
+    const properties = decodeParquet(await exporter.exportTable('properties'));
+    const quantities = decodeParquet(await exporter.exportTable('quantities'));
+    expect(properties.find(r => r.PropName === 'Reference')?.ValueString).toBe('Edited wall');
+    expect(properties.some(r => r.PropName === 'IsExternal')).toBe(false);
+    expect(properties.find(r => r.EntityId === created.expressId)?.ValueString).toBe('N-1');
+    expect(quantities.find(r => r.QuantityName === 'Length')?.Value).toBeCloseTo(9.5);
+    expect(quantities.find(r => r.EntityId === created.expressId)?.Value).toBeCloseTo(2.4);
+
+    const JSZip = (await import('jszip')).default;
+    const archive = await JSZip.loadAsync(await exporter.exportBOS({ includeGeometry: false }));
+    const metadata = JSON.parse(await archive.file('Metadata.json')!.async('string'));
+    expect(metadata.statistics.propertyCount).toBe(properties.length);
+  });
+
+  it('applies property edits when the source uses bulk tables (#5249)', async () => {
+    const store = buildDataStore();
+    const view = new LiveMutablePropertyView(store.properties, 'm1');
+    view.setProperty(1, 'Pset_WallCommon', 'IsExternal', false, PropertyValueType.Boolean);
+    view.deleteEntity(2);
+    const rows = decodeParquet(await new ParquetExporter(store, undefined, view).exportTable('properties'));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].EntityId).toBe(1);
+    expect(rows[0].ValueBool).toBe(false);
+  });
+
   it('reads Quantities.parquet through onDemandQuantityMap when the bulk table is empty', async () => {
     const dataStore = buildOnDemandDataStore();
     const exporter = new ParquetExporter(dataStore);

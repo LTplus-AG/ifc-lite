@@ -41,6 +41,7 @@ import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
 import { describeRunCommandError } from '@/services/extensions/runtime-errors';
 import { useTranslation } from '@/i18n';
 import { effectiveContextType, sameEffectiveTypeIds } from './EntityContextMenu.effective-selection';
+import { sameEffectiveStoreyIds } from './EntityContextMenu.effective-storey';
 
 export function EntityContextMenu() {
   const { t } = useTranslation();
@@ -203,25 +204,15 @@ export function EntityContextMenu() {
   }, [resolvedExpressId, activeDataStore, contextEntityRef, mutationViewFor, models, setSelectedEntityIds, closeContextMenu]);
 
   const handleSelectSameStorey = useCallback(() => {
-    // Use resolvedExpressId (original ID) for IfcDataStore lookups
-    if (!resolvedExpressId || !activeDataStore?.spatialHierarchy) {
+    if (!resolvedExpressId || !activeDataStore || !contextEntityRef) {
       closeContextMenu();
       return;
     }
-
-    const storeyId = activeDataStore.spatialHierarchy.elementToStorey.get(resolvedExpressId);
-    if (storeyId && contextEntityRef) {
-      const storeyElements = activeDataStore.spatialHierarchy.byStorey.get(storeyId);
-      if (storeyElements) {
-        // Same model-space -> renderer-space resolution as above.
-        setSelectedEntityIds(
-          Array.from(storeyElements, (id) => toGlobalIdFromModels(models, contextEntityRef.modelId, id)),
-        );
-      }
-    }
-
+    const view = mutationViewFor(contextEntityRef.modelId);
+    const ids = sameEffectiveStoreyIds(activeDataStore, view, resolvedExpressId);
+    setSelectedEntityIds(ids.map((id) => toGlobalIdFromModels(models, contextEntityRef.modelId, id)));
     closeContextMenu();
-  }, [resolvedExpressId, activeDataStore, contextEntityRef, models, setSelectedEntityIds, closeContextMenu]);
+  }, [resolvedExpressId, activeDataStore, contextEntityRef, mutationViewFor, models, setSelectedEntityIds, closeContextMenu]);
 
   // "Export anonymized…" (#2934): seed `AnonymizedExportDialog` — whose
   // `useAnonymizedExportSet` reads `selectedEntityIds`, the multi-select

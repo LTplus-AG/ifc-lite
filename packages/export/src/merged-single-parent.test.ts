@@ -191,6 +191,78 @@ describe('MergedExporter keeps one IfcRelAggregates parent per object (#5471)', 
 });
 
 /**
+ * `dropEmptyContainers` has to see the rels the one-parent pass skips (#5725).
+ * The drop plan is made before the per-model claim pass runs. It counted B's
+ * `Site_B -> Building` edge, but that edge is never written because A's
+ * Building already has a parent. Site_B then held nothing and was still
+ * written.
+ */
+describe('MergedExporter dropEmptyContainers after the one-parent pass (#5725)', () => {
+  const siteA = [
+    `#1=IFCPROJECT('${guid('pa')}',$,'A',$,$,$,$,$,$);`,
+    `#2=IFCSITE('${guid('sa')}',$,'Site A',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);`,
+    `#3=IFCBUILDING('${guid('ba')}',$,'House',$,$,$,$,$,.ELEMENT.,$,$,$);`,
+    `#4=IFCRELAGGREGATES('${guid('ra1')}',$,$,$,#1,(#2));`,
+    `#5=IFCRELAGGREGATES('${guid('ra2')}',$,$,$,#2,(#3));`,
+    `#6=IFCBUILDINGELEMENTPROXY('${guid('px')}',$,'P',$,$,$,$,$,$);`,
+    `#7=IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('rc')}',$,$,$,(#6),#3);`,
+  ];
+  /** B: its own Site (by-name, so it does not unify), over a Building that unifies with A's. */
+  const siteB = (extra: string[] = []) => [
+    `#1=IFCPROJECT('${guid('pb')}',$,'B',$,$,$,$,$,$);`,
+    `#2=IFCSITE('${guid('sb')}',$,'Site B',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);`,
+    `#3=IFCBUILDING('${guid('bb')}',$,'House',$,$,$,$,$,.ELEMENT.,$,$,$);`,
+    `#4=IFCRELAGGREGATES('${guid('rb1')}',$,$,$,#1,(#2));`,
+    `#5=IFCRELAGGREGATES('${guid('rb2')}',$,$,$,#2,(#3${extra.length > 0 ? ',#6' : ''}));`,
+    ...extra,
+  ];
+  const options: Partial<MergeExportOptions> = { mergeSites: 'by-name', dropEmptyContainers: true };
+
+  it('drops a later Site left empty because its only child already has a parent', async () => {
+    const content = await merge([await model('a', siteA), await model('b', siteB())], options);
+    expect(content).toContain(guid('sa'));
+    expect(content).not.toContain(guid('sb'));
+    // Nothing still names it: its Project aggregation went with it.
+    expect(content).not.toContain(guid('rb1'));
+    expect(parentsOf(content, 'IFCBUILDING', guid('ba'))).toEqual([2]);
+    expectSingleParents(content);
+  });
+
+  it('keeps that Site when the same rel still carries a child of its own', async () => {
+    // B's Site also aggregates a Building A does not have, so the rel is
+    // narrowed (the unified Building is stripped) rather than skipped, and
+    // Site B is not empty.
+    const own = [
+      `#6=IFCBUILDING('${guid('bo')}',$,'Annex',$,$,$,$,$,.ELEMENT.,$,$,$);`,
+      `#7=IFCBUILDINGELEMENTPROXY('${guid('po')}',$,'Q',$,$,$,$,$,$);`,
+      `#8=IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('rco')}',$,$,$,(#7),#6);`,
+    ];
+    const content = await merge([await model('a', siteA), await model('b', siteB(own))], {
+      ...options, mergeBuildings: 'by-name',
+    });
+    expect(content).toContain(guid('sb'));
+    expect(parentsOf(content, 'IFCBUILDING', guid('ba'))).toEqual([2]);
+    const siteBId = Number(content.split('\n').find(l => l.includes(`('${guid('sb')}'`))!.match(/^#(\d+)=/)![1]);
+    expect(parentsOf(content, 'IFCBUILDING', guid('bo'))).toEqual([siteBId]);
+    expectSingleParents(content);
+  });
+
+  it('drops it too when the narrowed rel keeps only an empty sibling', async () => {
+    // Same rel, but the Annex holds nothing. With the unified Building
+    // stripped, Site B's only written child is the empty Annex, so both go.
+    const emptyAnnex = [`#6=IFCBUILDING('${guid('bo')}',$,'Annex',$,$,$,$,$,.ELEMENT.,$,$,$);`];
+    const content = await merge([await model('a', siteA), await model('b', siteB(emptyAnnex))], {
+      ...options, mergeBuildings: 'by-name',
+    });
+    expect(content).not.toContain(guid('bo'));
+    expect(content).not.toContain(guid('sb'));
+    expect(content).not.toContain(guid('rb2'));
+    expect(parentsOf(content, 'IFCBUILDING', guid('ba'))).toEqual([2]);
+    expectSingleParents(content);
+  });
+});
+
+/**
  * IfcRelNests shares the one-parent rule (#5726). In IFC2X3 it is an
  * IfcRelDecomposes like IfcRelAggregates, so the two fill one
  * `Decomposes : SET [0:1]` together; IFC4 moves it to its own

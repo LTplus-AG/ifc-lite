@@ -155,6 +155,24 @@ def test_issue_5754_rebar_directrix_metrics_use_world_metres_and_radians():
     )
 
 
+def test_issue_5787_nominal_quantities_use_world_metres_and_match_json():
+    ifc = read(REBAR)
+    (sweep,) = ifclite_geom.geometry_data_buffers(
+        ifc, include_directrices=True
+    )["swept_disks"][125]
+    quantities = sweep["nominal_quantities"]
+    assert quantities is not None
+    radius = sweep["Radius"]
+    length = sweep["directrix_metrics"]["total_length"]
+    assert quantities["cross_section_area"] == pytest.approx(math.pi * radius**2)
+    assert quantities["nominal_volume"] == pytest.approx(math.pi * radius**2 * length)
+    assert quantities["outer_lateral_area"] == pytest.approx(2 * math.pi * radius * length)
+    assert quantities["inner_lateral_area"] is None
+
+    document = json.loads(ifclite_geom.geometry_data_json(ifc, include_directrices=True))
+    assert document["swept_disks"]["125"][0]["nominal_quantities"] == quantities
+
+
 def test_swept_disk_directrix_respects_id_filter():
     ifc = read(REBAR)
     empty = ifclite_geom.geometry_data_buffers(ifc, ids=set(), include_directrices=True)

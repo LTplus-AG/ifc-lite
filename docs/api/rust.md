@@ -567,12 +567,13 @@ pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryD
 // Optional authored swept-disk descriptions, checks and reusable sources
 pub use analytic_export::{
     check_swept_disk, extract_swept_disk_definitions,
-    extract_swept_disk_descriptions,
-    DirectrixMetrics, DirectrixSegmentMetrics, SweptDiskCheckError,
-    SweptDiskCheckFinding, SweptDiskCheckOptions, SweptDiskCheckReport,
-    SweptDiskDescriptions, SweptDiskFindingCode, SweptDiskOccurrence,
-    SweptDiskDefinition, SweptDiskDefinitions, SweptDiskInstance,
-    SweptDiskSourceKey, SweptDiskSourceContext,
+    extract_swept_disk_descriptions, extrusion_nominal_quantities,
+    DirectrixMetrics, DirectrixSegmentMetrics, ExtrusionNominalQuantities,
+    SweptDiskCheckError, SweptDiskCheckFinding, SweptDiskCheckOptions,
+    SweptDiskCheckReport, SweptDiskDescriptions, SweptDiskFindingCode,
+    SweptDiskOccurrence, SweptDiskDefinition, SweptDiskDefinitions,
+    SweptDiskInstance, SweptDiskSourceKey, SweptDiskSourceContext,
+    SweptDiskNominalQuantities,
 };
 
 pub use georeferencing::{
@@ -596,6 +597,24 @@ absolute IFC world metres, Z-up. An arc's
 `Directrix::Arc::sweep_angle` retains travel direction. Line segments have no
 bend angle. These geometric measurements do not include fabrication bend
 allowances or deductions. `ids` optionally filters product STEP IDs.
+
+`disk.nominal_quantities()` derives circular material cross-section area,
+cross-section area × centreline length (nominal volume), and outer/optional
+inner lateral areas. Areas are in m² and volume in m³. These are estimates of
+the uncut source sweep: self-overlap and mitred joins can change the physical
+body, so they are not IFC-authored `IfcElementQuantity` values or certified net
+quantities. The method returns `None` for an unsupported description or CSG
+operand. JSON and Python directrix exports include the same values under
+`nominal_quantities`.
+
+`extrusion_nominal_quantities(&source_extrusion)` derives exact net profile
+area (outer boundary less holes), perpendicular height, and nominal volume
+for a complete `AnalyticExtrusion`. For an oblique extrusion, perpendicular
+height is `Depth × |unit ExtrudedDirection.z|` in the solid's local frame.
+These values use **raw IFC file-length units** (squared and cubed as
+appropriate), because the source extrusion has no product occurrence
+transform. The function returns `None` for unsupported or invalid source
+profiles; it does not claim a product's post-boolean net quantity.
 
 Each record identifies its source solid and mapped-item path.
 `source_modified` identifies an authored CSG operand whose sweep may differ

@@ -15,6 +15,8 @@ pub use metrics::{DirectrixMetrics, DirectrixSegmentMetrics};
 mod checks;
 pub use checks::{check_swept_disk, SweptDiskCheckError, SweptDiskCheckFinding,
     SweptDiskCheckOptions, SweptDiskCheckReport, SweptDiskFindingCode};
+mod quantities;
+pub use quantities::{extrusion_nominal_quantities, ExtrusionNominalQuantities, SweptDiskNominalQuantities};
 mod occurrence;
 mod operands;
 mod placement;

@@ -107,7 +107,7 @@ Pass `include_directrices=True` to either geometry function. The result adds
 occurrence can have multiple source `IfcSweptDiskSolid` items. A description
 preserves `solid_id`, `directrix_id`, `Radius`, `InnerRadius`, `mapping_path`,
 `source_modified`, `status`, an ordered `Directrix` of typed line and
-circular-arc segments, and `directrix_metrics`. Coordinates are in absolute IFC
+circular-arc segments, `directrix_metrics`, and `nominal_quantities`. Coordinates are in absolute IFC
 Z-up world metres, matching mesh vertices.
 For a complete description, `Radius` and `InnerRadius` are the effective world
 radii in metres. For an unsupported transform, they retain the authored radii
@@ -119,6 +119,13 @@ metres. Arc entries have a positive `bend_angle` in radians; line entries have
 travel direction. These are geometric bend angles, without bend allowances or
 fabrication deductions. The buffer path uses integer keys; the JSON path uses
 string object keys.
+
+For complete, unmodified source sweeps, `nominal_quantities` contains
+`cross_section_area`, `nominal_volume`, `outer_lateral_area`, and optional
+`inner_lateral_area` in m²/m³. They are calculated from the world-space radii
+and directrix length; they are estimates, not authored `IfcElementQuantity`
+values or net quantities. Self-overlap and mitred joins can change the physical
+body. The field is `None` for unsupported paths and CSG operands.
 
 ```python
 data = ifclite_geom.geometry_data_buffers(ifc_bytes, include_directrices=True)

@@ -478,13 +478,27 @@ export interface ProxyParams extends ElementAttributes {
 // ============================================================================
 
 /** IFC property value types */
-export type PropertyType = 'IfcLabel' | 'IfcText' | 'IfcIdentifier' | 'IfcReal' | 'IfcInteger' | 'IfcBoolean' | 'IfcLogical';
+/**
+ * A numeric measure type -- `IfcThermalTransmittanceMeasure`,
+ * `IfcPositiveLengthMeasure`, `IfcCountMeasure`, `IfcPlaneAngleMeasure`, ...
+ * Standard property sets declare their values in these (Pset_WallCommon's
+ * ThermalTransmittance is an IfcThermalTransmittanceMeasure, not an IfcReal),
+ * and an IDS check on the data type fails a value written as the wrong one.
+ */
+export type PropertyMeasureType = `Ifc${string}Measure`;
+
+export type PropertyType =
+  | 'IfcLabel' | 'IfcText' | 'IfcIdentifier' | 'IfcReal' | 'IfcInteger' | 'IfcBoolean' | 'IfcLogical'
+  | PropertyMeasureType;
 
 /** Single property definition */
 export interface PropertyDef {
   Name: string;
   NominalValue: string | number | boolean;
-  /** Defaults to IfcLabel for strings, IfcReal for numbers, IfcBoolean for booleans */
+  /**
+   * Defaults to IfcLabel for strings, IfcInteger/IfcReal for numbers, IfcBoolean
+   * for booleans. A numeric value may declare any measure type and is written as it.
+   */
   Type?: PropertyType;
 }
 

@@ -121,6 +121,29 @@ pub(crate) fn resolve_color_for_representation_map(
     None
 }
 
+/// Resolve a type's `IfcRepresentationMap` metallic/roughness (#5582), the
+/// specular analogue of [`resolve_color_for_representation_map`]: direct
+/// style on the mapped item only, no `IfcMappedItem` chase (the same scope
+/// cut [`find_geometry_item_color`]'s specular callers document elsewhere).
+pub(crate) fn resolve_specular_for_representation_map(
+    rep_map_id: u32,
+    geometry_style_index: &FxHashMap<u32, GeometryStyleInfo>,
+    decoder: &mut EntityDecoder,
+) -> Option<crate::style::SpecularMaterial> {
+    let rep_map = decoder.decode_by_id(rep_map_id).ok()?;
+    let mapped_rep_id = rep_map.get_ref(1)?;
+    let mapped_rep = decoder.decode_by_id(mapped_rep_id).ok()?;
+    let item_ids = mapped_rep.get_refs(3)?;
+    for item_id in item_ids {
+        if let Some(style) = geometry_style_index.get(&item_id) {
+            if let Some(material) = style.metallic_roughness {
+                return Some(material);
+            }
+        }
+    }
+    None
+}
+
 /// Find the first representation item of `entity` that carries a full
 /// `IfcIndexedColourMap` (#858). Drives the element-level palette split on
 /// the single-mesh fallback path.

@@ -54,7 +54,10 @@ use element_color::{find_indexed_colour_for_element, infer_opening_subpart_mater
 // Re-exported because these two have callers outside this module:
 // `find_geometry_item_color` from processor/color_layer.rs, and
 // `resolve_color_for_representation_map` from processor/jobs.rs.
-pub(crate) use element_color::{find_geometry_item_color, resolve_color_for_representation_map};
+pub(crate) use element_color::{
+    find_geometry_item_color, resolve_color_for_representation_map,
+    resolve_specular_for_representation_map,
+};
 
 /// Element-level metadata stamped on every produced [`MeshData`]. The native
 /// pipeline resolves these during its metadata phase; the browser passes
@@ -485,6 +488,11 @@ fn produce_inner(
                         None,
                         Some(geometry_id),
                         false,
+                        // Palette colours supersede the resolved style colour
+                        // for these split parts (see the `#858` comment
+                        // above); specular is left unresolved for the same
+                        // reason `material_name` is `None` here.
+                        None,
                         0,
                         ctx,
                         None,
@@ -504,7 +512,7 @@ fn produce_inner(
         h.add_oriented_mesh(&mesh.positions, &mesh.indices, mesh.origin, verdict);
     }
     (
-        vec![build_mesh_data(job, mesh, element_color, None, None, false, 0, ctx, None)],
+        vec![build_mesh_data(job, mesh, element_color, None, None, false, None, 0, ctx, None)],
         Vec::new(),
     )
 }
@@ -599,6 +607,11 @@ fn emit_sub_meshes(
             .and_then(|s| s.material_name.as_ref())
             .map(ToString::to_string)
             .or_else(|| infer_opening_subpart_material_name(&job.ifc_type, color, sub.geometry_id));
+        // #5582: direct style only — unlike colour, a mapped sub-geometry's
+        // specular finish is not chased through `IfcMappedItem` (a scope cut
+        // documented in the PR, not a silent gap: `material_name` above has
+        // the same "direct style, no mapped-item chase for the name" shape).
+        let specular = style.and_then(|s| s.metallic_roughness);
 
         if let Some(h) = hasher.as_mut() {
             h.add_oriented_mesh(&sub_mesh.positions, &sub_mesh.indices, sub_mesh.origin, verdict);
@@ -618,6 +631,7 @@ fn emit_sub_meshes(
                     material_name,
                     Some(sub.geometry_id),
                     ids_are_materials,
+                    specular,
                     slice_class,
                     ctx,
                     Some(uvs),
@@ -645,6 +659,10 @@ fn emit_sub_meshes(
                         None,
                         Some(sub.geometry_id),
                         ids_are_materials,
+                        // Palette colours supersede the resolved style colour
+                        // for these split parts; specular follows the same
+                        // `None` precedent as `material_name` just above.
+                        None,
                         slice_class,
                         ctx,
                         None,
@@ -661,6 +679,7 @@ fn emit_sub_meshes(
             material_name,
             Some(sub.geometry_id),
             ids_are_materials,
+            specular,
             slice_class,
             ctx,
             None,
@@ -706,6 +725,8 @@ fn produce_type_geometry(
         let color =
             resolve_color_for_representation_map(rep_map_id, ctx.geometry_style_index, decoder)
                 .unwrap_or(element_color);
+        let specular =
+            resolve_specular_for_representation_map(rep_map_id, ctx.geometry_style_index, decoder);
 
         for (mut mesh, uvs, texture) in parts {
             if mesh.is_empty() {
@@ -719,8 +740,18 @@ fn produce_type_geometry(
             // seams split). Only textured parts carry UVs; untextured parts pass
             // `None` and get the full position+normal weld.
             let part_uvs = if texture.is_some() { Some(uvs) } else { None };
-            let mut mesh_data =
-                build_mesh_data(job, mesh, color, None, None, false, geometry_class, ctx, part_uvs);
+            let mut mesh_data = build_mesh_data(
+                job,
+                mesh,
+                color,
+                None,
+                None,
+                false,
+                specular,
+                geometry_class,
+                ctx,
+                part_uvs,
+            );
             if let Some(tex) = texture {
                 // UVs were already welded onto `mesh_data`; attach only the
                 // texture (decoded image or #1781 external reference) here.

@@ -703,10 +703,16 @@ fn extract_surface_style_info(
     let style = decoder.decode_by_id(style_id).ok()?;
     let material_name = normalize_style_name(style.get_string(0));
     let (color, shading_color) = crate::style::extract_surface_style_colors(style_id, decoder)?;
+    // #5582: a second, cheap decode of the same rendering entity (cache-hit,
+    // an Arc clone — see `EntityDecoder::decode_by_id`) rather than folding
+    // into `extract_surface_style_colors`, which stays the colour-only
+    // canonical home its name and its callers' doc comments promise.
+    let metallic_roughness = crate::style::extract_surface_style_specular(style_id, decoder);
     Some(GeometryStyleInfo {
         color,
         shading_color,
         material_name,
+        metallic_roughness,
     })
 }
 

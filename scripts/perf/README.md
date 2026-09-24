@@ -333,7 +333,7 @@ Two lessons, both found by measuring rather than by design:
 - **The stream needs the baked basis before its first batch.** Without it,
   site-rotated models (skolebygg, advanced_model, DigitalHub) matched only the
   buffered route run with no basis, 2-5x worse. The frame is chosen before
-  meshing, so `StreamingOptions::baked_basis_out` publishes it then.
+  meshing, so `process_geometry_streaming_filtered_with_baked_basis` publishes it then.
 
 ## The native probe (`perf_probe`)
 

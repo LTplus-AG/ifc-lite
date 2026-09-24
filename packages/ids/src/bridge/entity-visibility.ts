@@ -182,8 +182,9 @@ export function typedAuthoredValue(typed: { type?: unknown; value: unknown }): A
   switch (typeof typed.type === 'string' ? expressBase(typed.type) : null) {
     case 'REAL':
     case 'NUMBER': {
+      // The writer's toStepReal emits a non-finite number as `0.`.
       const n = Number(value);
-      return Number.isFinite(n) ? n : undefined;
+      return Number.isFinite(n) ? n : 0;
     }
     case 'INTEGER': {
       const n = Math.trunc(Number(value));

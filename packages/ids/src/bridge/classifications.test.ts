@@ -236,9 +236,10 @@ ${FOOTER}`;
       isDeleted: () => false,
       getNewEntities: () => { copies++; return []; },
     });
+    const beforeReads = copies;
     accessor.getClassifications(10);
     const afterFirst = copies;
-    expect(afterFirst, 'the first read builds the overlay snapshot').toBeGreaterThan(0);
+    expect(afterFirst, 'the first classification read builds its overlay snapshot').toBeGreaterThan(beforeReads);
     for (let i = 0; i < 5; i++) accessor.getClassifications(10);
     accessor.getClassifications(11);
     expect(copies, 'later reads reuse the snapshot').toBe(afterFirst);
@@ -270,6 +271,8 @@ ${FOOTER}`;
     expect(typedAuthoredValue({ type: 'IfcBoolean', value: '.U.' })).toBe(false);
     expect(typedAuthoredValue({ type: 'IfcLogical', value: '.U.' })).toBeUndefined();
     expect(typedAuthoredValue({ type: 'IfcLengthMeasure', value: '2.5' })).toBe(2.5);
+    // The writer's toStepReal emits a non-finite real as `0.`.
+    expect(typedAuthoredValue({ type: 'IfcLengthMeasure', value: 'abc' })).toBe(0);
     expect(typedAuthoredValue({ type: 'IfcInteger', value: '2.7' })).toBe(2);
     // STRING-based despite the name; the writer quotes it.
     expect(typedAuthoredValue({ type: 'IfcDescriptiveMeasure', value: '12' })).toBe('12');

@@ -29,29 +29,17 @@
  * an answer that cannot miss an overlay read.
  */
 
-import { StepExporter } from '@ifc-lite/export';
-import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { FederatedModel, SchemaVersion } from '@/store/types';
-import { resolveEnergyExportMutationSource } from '@/components/viewer/energy-export-source';
+import { materializeEffectiveIfcStore } from '@/lib/effective-ifc-store';
 
 export async function effectiveCompareStore(
   store: IfcDataStore,
   mutationView: MutablePropertyView | null,
   schemaVersion: SchemaVersion,
 ): Promise<IfcDataStore> {
-  // Same "does this view carry real edits" rule every other bake in the
-  // viewer uses. A registered-but-untouched view is the common case.
-  const source = resolveEnergyExportMutationSource({ mutationView, dataStore: store, schemaVersion });
-  if (!source) return store;
-  const exported = new StepExporter(source.dataStore, source.mutationView).export({
-    schema: source.dataStore.schemaVersion,
-    applyMutations: true,
-    includeGeometry: true,
-    includeQuantities: true,
-  });
-  // slice() yields an exact-length ArrayBuffer-backed copy for the parser.
-  return new IfcParser().parseColumnar(exported.content.slice().buffer, { disableWorkerScan: true });
+  return materializeEffectiveIfcStore(store, mutationView, schemaVersion);
 }
 
 /**

@@ -823,7 +823,6 @@ function ensureStoreyPlacement(
     if (!entity) return false;
     attrs = entity.attributes.slice();
   }
-
   // IfcProduct.ObjectPlacement is at index 5 across IFC2X3 / IFC4.
   const positional = editor.getMutationView().getPositionalMutationsForEntity(storeyExpressId);
   const existing = positional?.has(5) ? positional.get(5) : attrs[5];

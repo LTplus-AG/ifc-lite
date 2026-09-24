@@ -121,7 +121,7 @@ export function HierarchyPanel() {
     setSortMode,
     groupFilter,
     setGroupFilter,
-    unifiedStoreys,
+    unifiedStoreys, materialReady,
     filteredNodes: rawFilteredNodes,
     storeysNodes: rawStoreysNodes,
     modelsNodes: rawModelsNodes,
@@ -1079,7 +1079,7 @@ export function HierarchyPanel() {
       {groupingMode === 'spatial' && <StoreyDisplayControls />}
 
       {/* Tree */}
-      <div ref={parentRef} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+      <div ref={parentRef} aria-busy={groupingMode === 'material' && !materialReady} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,

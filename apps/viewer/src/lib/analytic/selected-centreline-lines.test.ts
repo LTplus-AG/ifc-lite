@@ -8,6 +8,7 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store/index.js';
 import type { SelectedSweptDisk } from '@/hooks/useSelectedSweptDisks.js';
 import { selectedCentrelineWorldLines } from './selected-centreline-lines.js';
+import { selectedCentrelineSnapCurves } from './selected-centreline-snaps.js';
 
 function selected(modelId: string, startX: number, sourceModified = false): SelectedSweptDisk {
   return {
@@ -133,6 +134,40 @@ describe('selected centreline overlay (#5778)', () => {
       assert.match(result.diagnostics[0], /modified by boolean operation/);
       assert.match(result.diagnostics[1], /does not describe the visible solid/);
       assert.match(result.diagnostics[2], /unsupported source \(unsupported directrix\)/);
+    } finally {
+      useViewerStore.setState(prior);
+    }
+  });
+
+  it('feeds exact source snapping from the same federated RTC records (#5780)', async () => {
+    const first = fixtureModel('first', { idOffset: 1_000_000 });
+    const second = fixtureModel('second', { idOffset: 2_000_000 });
+    const zero = { x: 0, y: 0, z: 0 };
+    const box = { min: zero, max: zero };
+    first.geometryResult = { meshes: [], totalVertices: 0, totalTriangles: 0,
+      coordinateInfo: { originShift: zero, wasmRtcOffset: { x: 5_000_000, y: 0, z: 0 },
+        hasLargeCoordinates: true, originalBounds: box, shiftedBounds: box } };
+    second.geometryResult = { meshes: [], totalVertices: 0, totalTriangles: 0,
+      coordinateInfo: { originShift: zero, wasmRtcOffset: { x: 100, y: 0, z: 0 },
+        hasLargeCoordinates: true, originalBounds: box, shiftedBounds: box } };
+    const prior = useViewerStore.getState();
+    try {
+      useViewerStore.setState(fixtureModels(first, second));
+      const curves = await selectedCentrelineSnapCurves([
+        selected('first', 5_000_000.001), selected('second', 101), selected('second', 101, true),
+      ], useViewerStore.getState());
+      const drawn = await selectedCentrelineWorldLines([
+        selected('first', 5_000_000.001), selected('second', 101),
+      ], useViewerStore.getState());
+      assert.equal(curves.length, 2);
+      assert.deepEqual(curves.map((curve) => curve.globalId), [1_000_042, 2_000_042]);
+      assert.deepEqual(curves.map((curve) => curve.identity.modelId), ['first', 'second']);
+      assert.ok(Math.abs(curves[0].pointAt(0.5)!.x - 0.002) < 1e-9);
+      assert.ok(Math.abs(curves[1].pointAt(0.5)!.x - 1.001) < 1e-9);
+      assert.deepEqual([curves[0].pointAt(0)!.x, curves[0].pointAt(0)!.y, curves[0].pointAt(0)!.z], drawn.vertices.slice(0, 3));
+      assert.deepEqual([curves[1].pointAt(1)!.x, curves[1].pointAt(1)!.y, curves[1].pointAt(1)!.z], drawn.vertices.slice(9, 12));
+      assert.equal((await selectedCentrelineSnapCurves([selected('first', 5_000_000.001)],
+        useViewerStore.getState(), { modelId: 'second', expressId: 42, occurrenceIndex: 0, segmentIndex: 0 })).length, 0);
     } finally {
       useViewerStore.setState(prior);
     }

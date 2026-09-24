@@ -15,7 +15,7 @@ import type { SelectedDirectrixSegment } from './segment-selection';
 const MAX_DISPLAY_EDGES = 100_000;
 
 /** Source-frame point mapping follows the same alignment chosen for the mesh. */
-async function modelFrameMap(model: FederatedModel, state: ViewerState): Promise<FederationPointMap | undefined> {
+export async function modelFrameMap(model: FederatedModel, state: ViewerState): Promise<FederationPointMap | undefined> {
   const status = model.federationAlignmentStatus;
   if (status !== 'same-crs' && status !== 'reprojected') return undefined;
   const sourceInfo = model.preAlignment?.coordinateInfo;

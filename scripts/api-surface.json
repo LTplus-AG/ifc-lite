@@ -8377,6 +8377,8 @@
     "SnapOptions: interface",
     "SnapTarget: interface",
     "SnapType: enum",
+    "SourceCurveIdentity: interface",
+    "SourceSnapCurve: interface",
     "SpatialChunkingConfig: interface",
     "SymbolicFillInput: interface",
     "SymbolicFillPipeline: class",

@@ -85,6 +85,16 @@ export function pointCloudSnapToleranceAt(t: number, camera: PointCloudSnapCamer
   return screenToWorldRadius(POINT_CLOUD_SNAP_TOLERANCE_PX, t, camera.fov, camera.canvasHeightPx);
 }
 
+/** A scan point steals an exact source snap only when clearly in front. */
+export function pointCloudWinsOverSourceSnap(
+  pointHit: PointCloudRayResult, source: SnapTarget, ray: Ray, camera: PointCloudSnapCamera,
+): boolean {
+  const p = source.position;
+  const sourceDepth = (p.x - ray.origin.x) * ray.direction.x
+    + (p.y - ray.origin.y) * ray.direction.y + (p.z - ray.origin.z) * ray.direction.z;
+  return pointHit.distance + pointCloudSnapToleranceAt(pointHit.distance, camera) < sourceDepth;
+}
+
 /**
  * Whether the caller's snap configuration allows point-cloud snapping at
  * all. Mirrors `SnapDetector`'s defaulting (absent fields mean ON): with

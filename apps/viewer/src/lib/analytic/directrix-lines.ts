@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { SweptDiskDescriptions } from '@ifc-lite/geometry';
+import { directrixPointEvaluator } from './directrix-point';
 
 type Segment = SweptDiskDescriptions['elements'][string][number]['Directrix'][number];
 
@@ -23,15 +24,10 @@ export function directrixLineVertices(
       append(segment.start, segment.end);
       continue;
     }
-    const { center, normal, x_axis, radius, start_angle: start, sweep_angle: sweep } = segment;
+    const { radius, start_angle: start, sweep_angle: sweep } = segment;
     if (!Number.isFinite(radius) || radius <= 0 || !Number.isFinite(start) || !Number.isFinite(sweep)) {
       throw new RangeError('selected arc has invalid radius or parameter');
     }
-    const yAxis = [
-      normal[1] * x_axis[2] - normal[2] * x_axis[1],
-      normal[2] * x_axis[0] - normal[0] * x_axis[2],
-      normal[0] * x_axis[1] - normal[1] * x_axis[0],
-    ];
     // Bound the chord error to 0.5 mm where practical, with a 15-degree
     // ceiling for small circles and an explicit limit for hostile files.
     const sagitta = Math.min(0.0005 / radius, 1);
@@ -41,14 +37,10 @@ export function directrixLineVertices(
       throw new RangeError('selected arc exceeds display precision budget');
     }
     if (edges + count > maxEdges) throw new RangeError('selected directrix exceeds display edge budget');
-    const point = (t: number) => {
-      const angle = start + sweep * t;
-      const c = Math.cos(angle), s = Math.sin(angle);
-      return [0, 1, 2].map((axis) => center[axis] + radius * (x_axis[axis] * c + yAxis[axis] * s));
-    };
-    let previous = point(0);
+    const pointAt = directrixPointEvaluator(segment);
+    let previous = pointAt(0);
     for (let index = 1; index <= count; index++) {
-      const next = point(index / count);
+      const next = pointAt(index / count);
       append(previous, next);
       previous = next;
     }

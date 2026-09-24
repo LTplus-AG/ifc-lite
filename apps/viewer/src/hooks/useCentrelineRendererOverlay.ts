@@ -10,6 +10,8 @@ import { useViewerStore } from '@/store';
 import { runGpuUpload } from '@/components/viewer/gpu-upload-guard';
 import { anchorWorldLineVertices } from '@/lib/renderer/line-overlay-rte';
 import { selectedCentrelineWorldLines } from '@/lib/analytic/selected-centreline-lines';
+import { selectedCentrelineSnapCurves } from '@/lib/analytic/selected-centreline-snaps';
+import { setSourceSegmentScreenProbe } from '@/lib/viewport-debug-hooks';
 import { useSelectedSweptDisks } from './useSelectedSweptDisks';
 
 /** Keep the optional selected-source overlay in its own renderer channel. */
@@ -40,7 +42,11 @@ export function useCentrelineRendererOverlay(
   // owns this channel. Clear it before paint and reject that source's late upload.
   useLayoutEffect(() => {
     sourceEpoch.current++;
-    if (isInitialized) rendererRef.current?.setLineOverlay('centreline', null);
+    setSourceSegmentScreenProbe(null);
+    if (isInitialized) {
+      rendererRef.current?.setLineOverlay('centreline', null);
+      rendererRef.current?.setSourceSnapCurves([]);
+    }
   }, [enabled, isInitialized, recoveryEpoch, rendererRef, models, placement, georefMutations,
     selectedIds, primaryId, selectedRefs, primaryRef, hidden, isolated, classFilter, lensHidden,
     highlightedSegment]);
@@ -48,9 +54,11 @@ export function useCentrelineRendererOverlay(
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
+    setSourceSegmentScreenProbe(null);
     let active = true;
     const epoch = sourceEpoch.current;
     renderer.setLineOverlay('centreline', null);
+    renderer.setSourceSnapCurves([]);
     if (!enabled) lastNotice.current = null;
     const report = (messages: readonly string[]) => {
       if (messages.length === 0) return;
@@ -62,7 +70,11 @@ export function useCentrelineRendererOverlay(
       toast.error(t('ribbon.view.centrelineOmitted', { reason: messages[0]?.slice(0, 240) ?? '' }));
     };
     if (enabled && !selected.loading && selected.items.length > 0) {
-      void lineBuilder(selected.items, useViewerStore.getState(), highlightedSegment).then(({ vertices, diagnostics }) => {
+      const state = useViewerStore.getState();
+      void Promise.all([
+        lineBuilder(selected.items, state, highlightedSegment),
+        selectedCentrelineSnapCurves(selected.items, state, highlightedSegment),
+      ]).then(([{ vertices, diagnostics }, curves]) => {
         if (!active || epoch !== sourceEpoch.current) return;
         report(selected.error ? [selected.error, ...diagnostics] : diagnostics);
         if (vertices.length === 0) return;
@@ -70,7 +82,19 @@ export function useCentrelineRendererOverlay(
           renderer.setLineOverlay('centreline', anchorWorldLineVertices(vertices));
           return true;
         });
-        if (!uploaded) renderer.setLineOverlay('centreline', null);
+        if (uploaded) {
+          renderer.setSourceSnapCurves(curves);
+          setSourceSegmentScreenProbe((modelId, expressId, segmentIndex, t) => {
+            const curve = curves.find((entry) => entry.identity.modelId === modelId
+              && entry.identity.expressId === expressId && entry.identity.segmentIndex === segmentIndex);
+            const point = curve?.pointAt(t);
+            if (!point) return null;
+            const rect = renderer.getCanvas().getBoundingClientRect();
+            const screen = renderer.getCamera().projectToScreen(point, rect.width, rect.height);
+            return screen ? { x: rect.left + screen.x, y: rect.top + screen.y, world: point } : null;
+          });
+        }
+        else renderer.setLineOverlay('centreline', null);
       }).catch((error: unknown) => {
         if (active && epoch === sourceEpoch.current) report([`Could not draw selected centreline: ${String(error)}`]);
       });
@@ -80,6 +104,8 @@ export function useCentrelineRendererOverlay(
     return () => {
       active = false;
       renderer.setLineOverlay('centreline', null);
+      renderer.setSourceSnapCurves([]);
+      setSourceSegmentScreenProbe(null);
     };
   }, [enabled, selected, highlightedSegment, isInitialized, recoveryEpoch,
     rendererRef, models, placement, georefMutations, t, lineBuilder]);

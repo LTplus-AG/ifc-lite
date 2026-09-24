@@ -40,6 +40,27 @@ export const GLYPH_HALO_PX = 6;
 // into this gap from BOTH neighbours, plus 1 px each so linear filtering at the
 // widened quad edge never picks up the next glyph.
 const DEFAULT_PADDING = GLYPH_HALO_PX * 2 + 2;
+
+/**
+ * A glyph's quad widened by {@link GLYPH_HALO_PX} on every side, in atlas px
+ * relative to the text anchor, with its atlas UVs widened to match. The shift
+ * is symmetric, so the glyph itself lands exactly where the unwidened quad
+ * put it; only the transparent margin the halo is drawn into is added.
+ */
+export function haloGlyphQuad(glyph: GlyphInfo, px0: number, pyBottom: number, atlasSize: number): {
+  qx0: number; qyBottom: number; widthAtlas: number; heightGlyphAtlas: number;
+  uvBounds: [number, number, number, number];
+} {
+  const halo = GLYPH_HALO_PX;
+  const uv = halo / atlasSize;
+  return {
+    qx0: px0 - halo,
+    qyBottom: pyBottom - halo,
+    widthAtlas: glyph.widthPx + 2 * halo,
+    heightGlyphAtlas: glyph.heightPx + 2 * halo,
+    uvBounds: [glyph.u0 - uv, glyph.v0 - uv, glyph.u1 + uv, glyph.v1 + uv],
+  };
+}
 const DEFAULT_FONT_FAMILY =
   '"Inter", "Helvetica Neue", "Segoe UI", system-ui, -apple-system, sans-serif';
 

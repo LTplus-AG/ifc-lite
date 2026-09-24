@@ -14,7 +14,7 @@
  * the result is ear-clipped.
  */
 
-import { GLYPH_HALO_PX, SymbolicTextAtlas } from './symbolic-text-atlas.js';
+import { haloGlyphQuad, SymbolicTextAtlas } from './symbolic-text-atlas.js';
 import {
   SYMBOLIC_FILL_WGSL,
   SYMBOLIC_TEXT_WGSL,
@@ -575,14 +575,8 @@ export class SymbolicTextPipeline {
         const pyBottom = isCenterV
           ? -glyph.heightPx * 0.5
           : -baselineOffset - (glyph.heightPx - glyph.baselinePx);
-        // Widen the quad by the halo margin on every side (#5388). The shift
-        // is symmetric, so the glyph itself lands exactly where it did.
-        const halo = GLYPH_HALO_PX;
-        const qx0 = px0 - halo;
-        const qyBottom = pyBottom - halo;
-        const widthAtlas = glyph.widthPx + 2 * halo;
-        const heightGlyphAtlas = glyph.heightPx + 2 * halo;
-        const haloUv = halo / this.atlas.atlasSize;
+        // Quad widened by the halo margin on every side (#5388).
+        const { qx0, qyBottom, widthAtlas, heightGlyphAtlas, uvBounds } = haloGlyphQuad(glyph, px0, pyBottom, this.atlas.atlasSize);
 
         // Convert atlas-pixel local coords to world-space offsets:
         //   right axis in world = (ux, 0, uz) * (widthAtlas * heightWorld / heightAtlas)
@@ -603,7 +597,7 @@ export class SymbolicTextPipeline {
           origin: [ox, oy, oz],
           rightAxis: [ux * widthWorld, 0, uz * widthWorld],
           upAxis: [0, heightGlyphWorld, 0],
-          uvBounds: [glyph.u0 - haloUv, glyph.v0 - haloUv, glyph.u1 + haloUv, glyph.v1 + haloUv],
+          uvBounds,
           color: tint,
           // Shared per-label anchor (text.worldPos) lets the shader compute
           // one screen-space scale and apply it uniformly across all glyphs.

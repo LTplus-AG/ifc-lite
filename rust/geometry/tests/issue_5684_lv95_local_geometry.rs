@@ -40,10 +40,12 @@ enum Shape {
     Structural,
 }
 
+/// Format a synthetic point without changing its intended small dimensions.
 fn triple(point: [f64; 3]) -> String {
     format!("({:.9},{:.9},{:.9})", point[0], point[1], point[2])
 }
 
+/// Assemble one representation around the same placement and point set.
 fn fixture(
     shape: Shape,
     points: &[[f64; 3]],
@@ -147,6 +149,7 @@ fn fixture(
     source
 }
 
+/// Exercise the public merged or per-item router entry point with an RTC frame.
 fn process(source: &str, rtc: [f64; 3], framed: bool, submeshes: bool) -> Mesh {
     let mut decoder = EntityDecoder::new(source);
     let element = decoder.decode_by_id(1002).unwrap();
@@ -163,6 +166,7 @@ fn process(source: &str, rtc: [f64; 3], framed: bool, submeshes: bool) -> Mesh {
     }
 }
 
+/// Compare topology, recovered vertices and object-space bounds across frames.
 fn assert_same_geometry(actual: &Mesh, expected: &Mesh) {
     assert!(!expected.indices.is_empty());
     assert_eq!(
@@ -190,6 +194,7 @@ fn assert_same_geometry(actual: &Mesh, expected: &Mesh) {
     }
 }
 
+/// A national-grid placement preserves the synthetic member's small faces.
 #[test]
 fn issue_5684_lv95_placement_preserves_synthetic_thin_member() {
     for shape in [
@@ -226,6 +231,7 @@ fn issue_5684_lv95_placement_preserves_synthetic_thin_member() {
     }
 }
 
+/// A local structural face stays local even with a rotated site placement.
 #[test]
 fn issue_5684_local_structural_face_does_not_rebase_into_national_grid_magnitude() {
     let points = [
@@ -256,16 +262,25 @@ fn issue_5684_local_structural_face_does_not_rebase_into_national_grid_magnitude
     }
 }
 
+/// Existing raw-world placement remains correct for every covered item family.
 #[test]
 fn issue_5684_true_raw_world_geometry_still_rebases() {
     // Pre-f32 paths must retain detail smaller than the f32 ULP at LV95.
     // The generic polygonal processor already stores f32, so use exactly
     // representable points there to assert final RTC placement independently.
-    for shape in [Shape::Polygonal, Shape::Brep, Shape::Structural] {
-        let width = if matches!(shape, Shape::Polygonal) {
-            0.5
-        } else {
+    // f32 processors can preserve values at this magnitude only when they are
+    // representable; improving sub-ULP raw-world detail is tracked by #5698.
+    for shape in [
+        Shape::Polygonal,
+        Shape::FaceBased,
+        Shape::ShellBased,
+        Shape::Brep,
+        Shape::Structural,
+    ] {
+        let width = if matches!(shape, Shape::Brep | Shape::Structural) {
             0.03125
+        } else {
+            0.5
         };
         let height = 0.5;
         let points = [
@@ -291,6 +306,7 @@ fn issue_5684_true_raw_world_geometry_still_rebases() {
     }
 }
 
+/// Mixed item frames meet only after each has received world placement.
 #[test]
 fn issue_5684_mixed_item_rtc_frames_merge_after_placement() {
     let raw_points = [

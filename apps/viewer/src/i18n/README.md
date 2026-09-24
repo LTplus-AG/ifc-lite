@@ -114,10 +114,11 @@ The saved-list builder catalogue (#4918 slice 6, lists) covers
 `lists.scheduleTable.*`, `lists.groupingBar.*`, `lists.modelTagScope.*`,
 `lists.columnMenu.*`, `lists.errorBox.*`).
 
-The 2D-section workspace catalogue (#4918 viewer-panels slice) covers
-`Section2DPanel.tsx`: header controls and overflow menus, drawing modes,
-annotation tools and guidance, export/print prompts, generation/error states,
-empty-state and resize accessibility text (`section-2d.en.ts`). Runtime drawing
+The Drawing panel catalogue (#4918 viewer-panels slice, reshaped by #5494)
+covers `components/viewer/drawing/`: the header, toolbar row (markup tools,
+display chips, settings drawers, zoom), Export menu, status-line hints and
+facts, export/print prompts, generation/error and empty states
+(`section-2d.en.ts`). Runtime drawing
 phase text and IFC/DXF data remain supplied by their owning systems.
 
 The hierarchy catalogue (#4918 slice 4) covers the spatial tree's own

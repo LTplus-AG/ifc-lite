@@ -47,7 +47,7 @@ const DocumentPanel = lazy(() => import('@/components/viewer/document/DocumentPa
 const FlowPanel = lazy(() => import('@/components/viewer/flow/FlowPanel').then((m) => ({ default: m.FlowPanel })));
 // Lazy: the drawing view pulls in its canvas, export and underlay code; its runtime
 // (generation, persistence) is DrawingRuntimeHost, mounted eagerly in ViewportContainer.
-const DrawingPanel = lazy(() => import('@/components/viewer/Section2DPanel').then((m) => ({ default: m.Section2DPanel })));
+const DrawingPanel = lazy(() => import('@/components/viewer/drawing/DrawingPanel').then((m) => ({ default: m.DrawingPanel })));
 
 const AppearancePanel = lazy(() => import('@/components/viewer/appearance/AppearancePanel').then(m => ({ default: m.AppearancePanel })));
 

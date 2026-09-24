@@ -148,6 +148,9 @@ Tools are grouped by capability. Everything below is registered in the default t
     parsed graph, so an `IfcRelVoidsElement` this session created or deleted
     shows up there only after a save and reload.
 
+    `model_audit` scores identity and naming from effective classes, GlobalIds
+    and Names, including queued retypes and edits.
+
     **One GlobalId, one entity, whichever tool asks.** A GlobalId is supposed to
     be unique and in practice is not — a session can create an entity under an id
     the file already uses. `get_entity`, `get_entities_bulk`, `entity_set_*`,

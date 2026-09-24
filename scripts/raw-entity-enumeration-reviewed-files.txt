@@ -37,7 +37,7 @@ packages/ids/src/bridge/classifications.ts
 packages/ids/src/bridge/data-accessor.ts
 packages/ifcx/src/writer-entities.ts
 packages/ifcx/src/index.ts
-packages/mcp/src/overlay.ts
+packages/mcp/src/effective-entity-membership.ts
 packages/mutations/src/express-id-watermark.ts
 packages/mutations/src/source-entity-index.ts
 packages/parser/src/data-store-transport.ts

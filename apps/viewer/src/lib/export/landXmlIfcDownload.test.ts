@@ -81,7 +81,9 @@ describe('downloadLandXmlAsIfc (#4937)', () => {
 
     assert.equal(result?.status, 'exported');
     assert.match(filename, /^Example_Terrain.*\.ifc$/, 'the source name seeds the download, with an .ifc extension');
-    assert.match(text, /FILE_SCHEMA\(\('IFC4X3'\)\)/);
+    // The ISO identifier for the layouts written: the bare `IFC4X3` token is
+    // resolved by IfcOpenShell to a later development schema (#5351).
+    assert.match(text, /FILE_SCHEMA\(\('IFC4X3_ADD2'\)\)/);
     assert.match(text, /IFCGEOGRAPHICELEMENT/);
     // The one assertion that would survive a transposed writer only by luck:
     // X is the authored easting, Y the northing.

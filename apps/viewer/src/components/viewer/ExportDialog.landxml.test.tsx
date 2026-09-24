@@ -5,6 +5,9 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { useViewerStore } from '@/store';
 import { render, cleanup, click } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
@@ -245,11 +248,32 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     // Exporting AND refusing at once is the case §6 exists for; a silent
     // partial is the one outcome the mapping rules out.
     assert.match(text, /Not included in the IFC/);
-    assert.match(text, /2 alignments records will not be included/);
+    assert.match(text, /2 alignment records will not be included/);
     assert.equal(exportButton().disabled, false, 'a partial source still exports');
   });
 
-  it('still refuses an alignment-only source rather than writing an empty IFC', () => {
+  it('converts an alignment-only source now that alignments have a mapping (§11)', () => {
+    // v1 refused this file shape outright; v1.1 writes each alignment as
+    // IfcAlignment. The fixture is authored independently of the mapping by
+    // tools/ifcopenshell_reference/make_alignment_fixture.py.
+    const fixture = JSON.parse(readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../tools/ifcopenshell_reference/alignment_fixture.json'),
+      'utf8',
+    )) as { alignments: unknown[] };
+    useViewerStore.setState({
+      ...fixtureModels(terrainWithDocument('alignments.xml', { surfaces: [], alignments: fixture.alignments })),
+      dirtyModels: new Set(),
+    });
+    render(<ExportDialog />);
+    openDialog();
+
+    const text = document.body.textContent ?? '';
+    assert.match(text, /LandXML will be converted to IFC4X3/);
+    assert.match(text, /3 alignments will be written/);
+    assert.equal(exportButton().disabled, false, 'an alignment-only file with mappable alignments exports');
+  });
+
+  it('still refuses a source whose alignments carry no geometry, rather than writing an empty IFC', () => {
     useViewerStore.setState({
       ...fixtureModels(terrainWithDocument('alignment.xml', { surfaces: [], alignments: [{}, {}, {}] })),
       dirtyModels: new Set(),

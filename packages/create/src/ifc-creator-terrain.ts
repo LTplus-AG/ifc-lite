@@ -22,6 +22,7 @@
  */
 
 import { esc, num } from './ifc-creator-math.js';
+import { emitAlignment, type AlignmentParams, type AlignmentResult } from './ifc-creator-alignment.js';
 
 /** The creator hooks these emitters need. */
 export interface TerrainContext {
@@ -34,6 +35,8 @@ export interface TerrainContext {
   modelContextRef: string;
   /** `#<id>` of the 'Body' subcontext. */
   bodyContextRef: string;
+  /** `#<id>` of the 'Axis' subcontext — an alignment's representation lives there. */
+  axisContextRef: string;
   /** `#<id>` of the placement products of the site hang from. */
   sitePlacementRef: string;
   /** Reject anything this schema cannot express. */
@@ -282,6 +285,8 @@ export interface TerrainWriterHost {
   claimGeoreferencing: () => void;
   /** The `IfcSite` every terrain product is contained in. */
   siteId: () => number;
+  /** Record a product the PROJECT aggregates directly (an `IfcAlignment`). */
+  trackProjectProduct: (expressId: number, type: string, name: string | undefined) => void;
 }
 
 /**
@@ -315,6 +320,11 @@ export interface TerrainWriter {
    * engineering coordinates. At most once per file.
    */
   setGeoreferencing(params: GeoreferencingParams): { crsId: number; mapConversionId: number };
+  /**
+   * Add a horizontal alignment — `IfcAlignment` with its semantic layout and
+   * its composite-curve geometry, aggregated by the project (mapping spec §11).
+   */
+  addAlignment(params: AlignmentParams): AlignmentResult;
 }
 
 export function createTerrainWriter(ctx: TerrainContext, host: TerrainWriterHost): TerrainWriter {
@@ -336,6 +346,15 @@ export function createTerrainWriter(ctx: TerrainContext, host: TerrainWriterHost
     setGeoreferencing(params) {
       host.claimGeoreferencing();
       return emitGeoreferencing({ ...params, MapUnitRef: params.MapUnitRef ?? host.lengthUnitRef() }, ctx);
+    },
+    addAlignment(params) {
+      ctx.assertSchema('addAlignment');
+      const result = emitAlignment(params, {
+        emit: ctx.emit, newGlobalId: ctx.newGlobalId, ownerRef: ctx.ownerRef,
+        axisContextRef: ctx.axisContextRef, placementRef: ctx.sitePlacementRef,
+      });
+      host.trackProjectProduct(result.alignmentId, 'IfcAlignment', params.Name);
+      return result;
     },
   };
 }

@@ -1396,3 +1396,42 @@ describe('IfcCreator — computeRefDirection vertical-axis branch', () => {
     expect(railingRefDirection(result.content, railingId)).toEqual(HORIZONTAL_REF);
   });
 });
+
+/**
+ * #5351 — `FileSchemaIdentifier`. The layouts `IfcCreator` writes for IFC4X3
+ * are IFC4X3_ADD2's (ISO 16739-1:2024), but IfcOpenShell — and the
+ * buildingSMART validator built on it — resolves the bare `IFC4X3` token to a
+ * later development schema and rejects them. Declaring ADD2 is the fix; it
+ * must change the header and nothing else.
+ */
+describe('IfcCreator FileSchemaIdentifier (#5351)', () => {
+  it('declares IFC4X3_ADD2 in FILE_SCHEMA and changes nothing else', () => {
+    const plain = new IfcCreator({ Schema: 'IFC4X3', Timestamp: 0, GuidSource: counterGuids() }).toIfc().content;
+    const add2 = new IfcCreator({
+      Schema: 'IFC4X3', FileSchemaIdentifier: 'IFC4X3_ADD2', Timestamp: 0, GuidSource: counterGuids(),
+    }).toIfc().content;
+    expect(add2).toContain("FILE_SCHEMA(('IFC4X3_ADD2'));");
+    expect(plain).toContain("FILE_SCHEMA(('IFC4X3'));");
+    expect(add2.replace("'IFC4X3_ADD2'", "'IFC4X3'")).toBe(plain);
+  });
+
+  it('refuses the ADD2 identifier on content of another schema', () => {
+    // An IFC4 body under an IFC4X3 identifier would be a file that lies about
+    // its own schema.
+    expect(() => new IfcCreator({ Schema: 'IFC4', FileSchemaIdentifier: 'IFC4X3_ADD2' }))
+      .toThrow(/requires Schema 'IFC4X3', not 'IFC4'/);
+  });
+});
+
+/** A deterministic, valid GuidSource so two creators emit comparable bytes. */
+function counterGuids(): () => string {
+  const alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$';
+  let n = 0;
+  return () => {
+    n += 1;
+    let value = n;
+    let out = '';
+    for (let i = 0; i < 21; i += 1) { out = alphabet[value % 64] + out; value = Math.floor(value / 64); }
+    return `0${out}`;
+  };
+}

@@ -62,6 +62,20 @@ on:
       - "packages/mutations/**"
       - "packages/pointcloud/**"
       - "packages/regex-guard/**"
+      # The LandXML→IFC4X3 converter writes STEP of its own (#4937); the step
+      # below grades it with the same validator plus the alignment checker.
+      - "packages/create/**"
+      # The rest of create's build closure (`turbo --filter='@ifc-lite/create^...'`,
+      # measured with --dry-run) — the step below builds these, so a change to
+      # any of them can break this job and must be able to trigger it.
+      - "packages/codegen/**"
+      - "packages/geometry/**"
+      - "packages/timing-ladder/**"
+      - "packages/wasm/**"
+      - "packages/wasm-lifecycle/**"
+      - "tools/ifcopenshell_reference/check_alignment.py"
+      - "tools/ifcopenshell_reference/alignment_fixture.json"
+      - "tools/ifcopenshell_reference/make_alignment_fixture.py"
       - "tools/ifcopenshell_reference/validate_export.py"
       - "tools/ifcopenshell_reference/test_validate_export.py"
       - "tools/ifcopenshell_reference/requirements.lock"
@@ -111,6 +125,20 @@ jobs:
 
       - name: Re-export both fixtures and validate against IfcOpenShell
         run: pnpm --filter @ifc-lite/export exec vitest run src/ifcopenshell-schema-conformance.test.ts
+
+      # The LandXML→IFC4X3 converter's output. ifc-lite's own parser cannot
+      # evaluate an IFC4X3 IfcAlignment, so IfcOpenShell is the only thing in CI
+      # that can say whether a written alignment lands on its authored points.
+      # `@ifc-lite/create` resolves its workspace dependencies from `dist/`
+      # (unlike `@ifc-lite/export`, whose vitest config aliases them to
+      # `src/`). This job installs with --ignore-scripts and builds nothing,
+      # so build exactly create's declared dependency closure — ~20 s — rather
+      # than alias a subset to src and risk two instances of one package.
+      - name: Build @ifc-lite/create's workspace dependencies
+        run: pnpm exec turbo run build --filter='@ifc-lite/create^...'
+
+      - name: Grade LandXML→IFC4X3 output (schema + alignment geometry) with IfcOpenShell
+        run: pnpm --filter @ifc-lite/create exec vitest run src/landxml/ifcopenshell-conformance.test.ts
 
   report-scheduled-failure:
     needs: validate

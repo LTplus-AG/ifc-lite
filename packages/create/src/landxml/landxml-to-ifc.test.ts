@@ -15,14 +15,17 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
 import { isValidIfcGuid } from '@ifc-lite/encoding';
+import { IfcCreator } from '../ifc-creator.js';
 import { num } from '../ifc-creator-math.js';
 import {
   landXmlToIfc, landXmlGlobalId, LANDXML_IFC_MAPPING_VERSION,
 } from './landxml-to-ifc.js';
 import type { LandXmlIfcOptions } from './landxml-to-ifc.js';
 import type {
-  LandXmlIfcCgPoint, LandXmlIfcPoint, LandXmlIfcSource, LandXmlIfcSurface, LandXmlIfcUnits,
+  LandXmlIfcAlignment, LandXmlIfcCgPoint, LandXmlIfcPoint, LandXmlIfcSource, LandXmlIfcSurface, LandXmlIfcUnits,
 } from './source-types.js';
 import type { LandXmlIfcResult } from './result-types.js';
 
@@ -77,6 +80,17 @@ function minimalSource(overrides: Partial<LandXmlIfcSource> = {}): LandXmlIfcSou
     surfaces: [mappableSurface()],
     ...overrides,
   };
+}
+
+/**
+ * Alignments that carry no horizontal geometry. Since v1.1 an alignment is
+ * written when it maps, so a record that must be REFUSED has to be one the
+ * mapping cannot write — an empty `segments` list is the plainest such case.
+ */
+function geometrylessAlignments(count: number): NonNullable<LandXmlIfcSource['alignments']> {
+  return Array.from({ length: count }, (_, index) => ({
+    sourceId: `landxml:alignment:${index}`, name: `Empty ${index}`, staStart: 0, segments: [],
+  }));
 }
 
 /** Narrows a result to the `exported` branch, asserting the branch as a side effect. */
@@ -202,7 +216,7 @@ describe('landXmlToIfc — refusal as an outcome (§6, §9.4)', () => {
   // §9.4: an alignment-only file must refuse outright, naming what it holds,
   // rather than silently producing a valid, empty, useless IFC.
   it('refuses an alignment-only source, naming the alignments and their count, and returns no content', () => {
-    const source = minimalSource({ surfaces: [], alignments: [{}, {}, {}] });
+    const source = minimalSource({ surfaces: [], alignments: geometrylessAlignments(3) });
     const result = landXmlToIfc(source);
     expectRefused(result);
 
@@ -291,7 +305,7 @@ describe('landXmlToIfc — refusal as an outcome (§6, §9.4)', () => {
   // silent partial" rule.
   it('exports a partial source, listing both out-of-scope families it also carries', () => {
     const source = minimalSource({
-      alignments: [{}, {}],
+      alignments: geometrylessAlignments(2),
       plan: { parcels: [{}, {}, {}] },
     });
     const result = landXmlToIfc(source);
@@ -352,7 +366,7 @@ describe('landXmlGlobalId (§4.3)', () => {
 
 describe('landXmlToIfc — provenance (§7)', () => {
   it('records the LandXML_Conversion property set on IfcSite with mapping version, source, units, assumption, swap and refused families', () => {
-    const source = minimalSource({ alignments: [{}, {}] });
+    const source = minimalSource({ alignments: geometrylessAlignments(2) });
     const options: LandXmlIfcOptions = { sourceFileName: 'sample.xml', crs: { Name: 'Test CRS' } };
     const result = landXmlToIfc(source, options);
     expectExported(result);
@@ -468,5 +482,145 @@ describe('landXmlToIfc — face integrity', () => {
     const source = minimalSource({ surfaces: [brokenSurface] });
 
     expect(() => landXmlToIfc(source)).toThrow(/surface 'Broken Surface' face 0 references point id 'p99'/);
+  });
+});
+
+/**
+ * §11 — horizontal alignments. `alignment_fixture.json` is authored by
+ * `tools/ifcopenshell_reference/make_alignment_fixture.py`, independently of
+ * the mapping; the geometric truth of what is written here is graded by
+ * IfcOpenShell in `ifcopenshell-conformance.test.ts`. These cases pin the
+ * structure and the accounting.
+ */
+describe('landXmlToIfc — horizontal alignments (§11)', () => {
+  function alignmentFixture(): { alignments: LandXmlIfcAlignment[] } {
+    return JSON.parse(readFileSync(
+      resolvePath(__dirname, '../../../../tools/ifcopenshell_reference/alignment_fixture.json'), 'utf8',
+    ));
+  }
+
+  function alignmentOnly(alignments: NonNullable<LandXmlIfcSource['alignments']>): LandXmlIfcSource {
+    return minimalSource({ surfaces: [], alignments });
+  }
+
+  it('exports an alignment-only file instead of refusing it', () => {
+    // v1 refused this file shape outright (§9.4); v1.1 writes it.
+    const result = landXmlToIfc(alignmentOnly(alignmentFixture().alignments), { timestampMs: 0 });
+    expectExported(result);
+    expect(result.coverage.alignments).toBe(3);
+    expect(result.refusals.filter((r) => r.family === 'alignments')).toEqual([]);
+    expect(result.content.match(/=IFCALIGNMENT\(/g)).toHaveLength(3);
+  });
+
+  it('aggregates every IfcAlignment under the IfcProject, not the site', () => {
+    const result = landXmlToIfc(alignmentOnly(alignmentFixture().alignments), { timestampMs: 0 });
+    expectExported(result);
+    const projectId = /#(\d+)=IFCPROJECT\(/.exec(result.content)![1];
+    const alignmentIds = [...result.content.matchAll(/#(\d+)=IFCALIGNMENT\(/g)].map((m) => `#${m[1]}`);
+    const aggregation = result.content.split('\n')
+      .find((line) => line.includes('=IFCRELAGGREGATES(') && line.includes(`,#${projectId},(`));
+    expect(aggregation, 'the project aggregates its children in one row').toBeDefined();
+    for (const id of alignmentIds) expect(aggregation).toContain(id);
+    const containment = result.content.split('\n').filter((line) => line.includes('IFCRELCONTAINEDINSPATIALSTRUCTURE'));
+    for (const id of alignmentIds) {
+      expect(containment.join('\n'), 'IFC 4.3 does not contain an alignment in a spatial element').not.toContain(id);
+    }
+  });
+
+  it('ends each horizontal layout with a zero-length LINE and a DISCONTINUOUS curve segment', () => {
+    const result = landXmlToIfc(alignmentOnly(alignmentFixture().alignments.slice(0, 1)), { timestampMs: 0 });
+    expectExported(result);
+    const layout = result.content.split('\n').filter((line) => line.includes('=IFCALIGNMENTHORIZONTALSEGMENT('));
+    // A-Left: 5 authored segments + the terminator.
+    expect(layout).toHaveLength(6);
+    expect(layout[5]).toMatch(/,0\.,0\.,0\.,\$,\.LINE\.\);$/);
+    const curve = result.content.split('\n').filter((line) => line.includes('=IFCCURVESEGMENT('));
+    expect(curve).toHaveLength(6);
+    expect(curve[5]).toContain('IFCCURVESEGMENT(.DISCONTINUOUS.,');
+    expect(curve.slice(0, 5).some((line) => line.includes('.DISCONTINUOUS.')), 'only the last may be').toBe(false);
+  });
+
+  it('writes a join within the mapping tolerance as continuous, never a mid-curve DISCONTINUOUS', () => {
+    // Authored joins reproduce only to a few millimetres. At IfcOpenShell's
+    // 1 mm position tolerance this 5 mm join was written .DISCONTINUOUS. in
+    // mid-curve, which IfcCompositeCurve.CurveContinuous forbids (#5370 review).
+    const at = (northing: number, easting: number) => ({ kind: 'coordinates' as const, point: { northing, easting } });
+    const line = (sourceId: string, ordinal: number, from: [number, number], to: [number, number]) => ({
+      sourceId, ordinal, primitive: { kind: 'line' as const, start: at(...from), end: at(...to), declaredLength: null },
+    });
+    const result = landXmlToIfc(alignmentOnly([{
+      sourceId: 'landxml:alignment:join', name: 'Join', staStart: 0,
+      segments: [line('s1', 0, [0, 0], [100, 0]), line('s2', 1, [100.005, 0], [200, 0])],
+    }]), { timestampMs: 0 });
+    expectExported(result);
+    const curve = result.content.split('\n').filter((row) => row.includes('=IFCCURVESEGMENT('));
+    expect(curve).toHaveLength(3);
+    for (const row of curve.slice(0, -1)) expect(row).not.toContain('.DISCONTINUOUS.');
+    expect(curve[2]).toContain('IFCCURVESEGMENT(.DISCONTINUOUS.,');
+  });
+
+  it('refuses to write a mid-curve gap beyond the tolerance through the creator API', () => {
+    const creator = new IfcCreator({ Schema: 'IFC4X3', Name: 'gap', LengthUnit: 'METRE' });
+    const straight = (start: [number, number], end: [number, number]) => ({
+      sourceId: 's', type: 'LINE' as const, start, direction: 0, startRadius: 0, endRadius: 0,
+      length: Math.hypot(end[0] - start[0], end[1] - start[1]), end, endDirection: 0, startCurvature: 0, endCurvature: 0,
+    });
+    expect(() => creator.terrain().addAlignment({
+      Name: 'Gap', StartStation: 0, Segments: [straight([0, 0], [100, 0]), straight([100.5, 0], [200, 0])],
+    })).toThrow(/segment 2 starts 0\.500 m from where segment 1 ends/);
+  });
+
+  it('writes the start station on an IfcReferent in Pset_Stationing', () => {
+    const result = landXmlToIfc(alignmentOnly(alignmentFixture().alignments.slice(0, 1)), { timestampMs: 0 });
+    expectExported(result);
+    expect(result.content).toMatch(/=IFCREFERENT\('[^']+',#\d+,'1\+000\.000',\$,\$,#\d+,\$,\.STATION\.\);/);
+    expect(result.content).toContain("'Station',$,IFCLENGTHMEASURE(1000.),$");
+  });
+
+  it('declares IFC4X3_ADD2, the identifier its layouts conform to (#5351)', () => {
+    const result = landXmlToIfc(alignmentOnly(alignmentFixture().alignments), { timestampMs: 0 });
+    expectExported(result);
+    expect(result.content).toContain("FILE_SCHEMA(('IFC4X3_ADD2'));");
+  });
+
+  it('names a refused alignment and why, and still writes the others', () => {
+    const [good] = alignmentFixture().alignments;
+    const bad = {
+      sourceId: 'landxml:alignment:bad', name: 'Ramp', staStart: 0,
+      segments: [{ sourceId: 's', ordinal: 0, primitive: {
+        kind: 'irregular_line' as const,
+        start: { kind: 'coordinates' as const, point: { northing: 0, easting: 0 } },
+        end: { kind: 'coordinates' as const, point: { northing: 1, easting: 1 } },
+        declaredLength: null,
+      } }],
+    };
+    const result = landXmlToIfc(alignmentOnly([good, bad]), { timestampMs: 0 });
+    expectExported(result);
+    expect(result.coverage.alignments).toBe(1);
+    const row = result.refusals.find((r) => r.family === 'alignments');
+    expect(row?.count).toBe(1);
+    expect(row?.message).toContain("'Ramp': segment 1 is an IrregularLine");
+  });
+
+  it('names station equations, cant and superelevation on an alignment it DOES write', () => {
+    const [good] = alignmentFixture().alignments;
+    const result = landXmlToIfc(alignmentOnly([{
+      ...good, stationEquations: [{}, {}], cantStations: [{}], superelevations: [{}, {}, {}],
+    }]), { timestampMs: 0 });
+    expectExported(result);
+    const count = (family: string) => result.refusals.find((r) => r.family === family)?.count;
+    expect(count('station-equations')).toBe(2);
+    expect(count('cant')).toBe(1);
+    expect(count('superelevation')).toBe(3);
+  });
+
+  it('derives every alignment GlobalId from its source id, so a re-export is byte-identical', () => {
+    const source = alignmentOnly(alignmentFixture().alignments);
+    const first = landXmlToIfc(source, { timestampMs: 0 });
+    const second = landXmlToIfc(source, { timestampMs: 0 });
+    expectExported(first);
+    expectExported(second);
+    expect(first.content).toBe(second.content);
+    expect(first.content).toContain(`IFCALIGNMENT('${landXmlGlobalId('landxml:alignment:1')}'`);
   });
 });

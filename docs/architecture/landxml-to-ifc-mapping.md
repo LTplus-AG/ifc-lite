@@ -6,7 +6,8 @@
 
 # LandXML → IFC mapping specification (v1, proposed)
 
-Status: **accepted — v1 implemented**. Version 1.0, 2026-09-23.
+Status: **accepted — v1 implemented; v1.1 (horizontal alignments, §11) implemented**.
+Version 1.1, 2026-09-24.
 (Version 0.1, 2026-09-22, was the proposal; §9 records what changed on acceptance.)
 Issues: [#5175](https://github.com/LTplus-AG/ifc-lite/issues/5175) (export honesty),
 [#4937](https://github.com/LTplus-AG/ifc-lite/issues/4937) (native LandXML).
@@ -102,10 +103,13 @@ Never infer the order from coordinate magnitude without a declared CRS to bound 
 
 ## 3. Target schema
 
-IFC4X3. Note that the repo's exporter tag is `IFC4X3`; `IFC4X3_ADD2` (what
-IfcOpenShell 0.8.0 writes, and what the bonsai files declare) is not an exporter tag
-here — see `packages/export/src/attribute-real-slots.ts`. All entity and attribute
-definitions below were taken from `packages/codegen/schemas/IFC4X3.exp`.
+IFC4X3, written with IFC4X3_ADD2's entity layouts. `IfcCreator` is configured with the
+`IFC4X3` schema tag, which selects those layouts. Since v1.1 the converted file *declares*
+`FILE_SCHEMA(('IFC4X3_ADD2'))` through `ProjectParams.FileSchemaIdentifier` (§11). The
+bare `IFC4X3` token is resolved by IfcOpenShell, and by the buildingSMART validator built
+on it, to a later development schema whose layouts differ, so the same bytes declared as
+`IFC4X3` fail validation (#5351). All entity and attribute definitions below were taken
+from `packages/codegen/schemas/IFC4X3.exp`.
 
 ## 4. The v1 mapping
 
@@ -338,4 +342,98 @@ Recorded during implementation; they constrain the code but do not change the ma
   importing the viewer's `LandXmlTinDocument`, so the converter is testable without the
   viewer and the viewer's document type structurally satisfies it. A package that needs
   the viewer to be unit-tested is not a package.
-- **Target schema tag.** `IFC4X3`, per §3. `IfcCreator` already accepts that tag.
+- **Target schema tag.** `IfcCreator` is configured with `IFC4X3`, and since v1.1 the file declares `IFC4X3_ADD2` (§3, §11).
+
+## 11. v1.1 — horizontal alignments
+
+§5 refused alignments with a note that `IfcAlignment` "is a substantial independent piece
+of work with its own correctness surface". v1.1 is that work, bounded to what can be
+written correctly and *proven* correct against an engine this repo does not control.
+
+### 11.1 What is written
+
+| LandXML | IFC4X3 |
+|---|---|
+| `Alignment` | `IfcAlignment`, **aggregated by `IfcProject`** (`IfcRelAggregates`), not contained in the site |
+| its horizontal geometry | `IfcAlignmentHorizontal`, nested under the alignment (`IfcRelNests`) |
+| each `CoordGeom` element | `IfcAlignmentSegment` → `IfcAlignmentHorizontalSegment`, nested in order under the horizontal layout |
+| — | a **zero-length terminating** `LINE` segment at the end, as IFC 4.3 requires |
+| `staStart` | an `IfcReferent` / `.STATION.` at distance 0, with `Pset_Stationing.Station` |
+| the geometry | `IfcCompositeCurve` of `IfcCurveSegment` as the alignment's `'Axis'` / `'Curve2D'` representation |
+
+The structure — which relationship owns what, the terminating segment, the station
+referent's `IfcLinearPlacement` — mirrors what IfcOpenShell 0.8.5's `alignment` API
+produces for the same input, which is maintained alongside the IFC 4.3 alignment work.
+
+### 11.2 Segment types
+
+| LandXML | `PredefinedType` | Geometry (`IfcCurveSegment.ParentCurve`) |
+|---|---|---|
+| `Line` | `LINE` | `IfcLine` |
+| `Curve` | `CIRCULARARC` | `IfcCircle` |
+| `Spiral spiType="clothoid"` | `CLOTHOID` | `IfcClothoid` |
+
+Everything else is refused **for the whole alignment**, by name: `IrregularLine`, any
+`Spiral` whose `spiType` is not `clothoid`, and any location given only as an unresolved
+point reference. An alignment is refused whole rather than written with a gap, because an
+alignment with a missing segment is not a shorter alignment — it is a wrong one, and every
+station after the gap would be wrong with it.
+
+### 11.3 Conventions — where a sign error hides
+
+- **Axes.** `StartPoint` is `(easting, northing)`, exactly as §2.2; direction angles are
+  measured in that plane, counter-clockwise from +X (east), in radians.
+- **Radius sign.** `StartRadiusOfCurvature` / `EndRadiusOfCurvature` are **positive for a
+  counter-clockwise (left) turn and negative for clockwise**. `0` means infinite (a
+  straight end of a spiral), matching LandXML's `INF`.
+- **Geometry mapping.** Each `IfcCurveSegment` follows IfcOpenShell's
+  `_map_alignment_horizontal_segment` exactly: placement at `StartPoint` along
+  `StartDirection`; circle `SegmentLength` signed by the turn; clothoid constant
+  `A = L / sqrt(|f|) · sign(f)` with `f = L/R_end − L/R_start`, and its `SegmentStart`
+  offset for a spiral that does not start at infinite radius.
+- **Transition codes** follow position / tangent / curvature continuity with the next
+  segment; the terminating segment is `DISCONTINUOUS`, as `IfcCompositeCurve`'s
+  `CurveContinuous` rule requires of exactly one segment.
+
+### 11.4 Self-check before writing
+
+Each segment's parameters are integrated to its end point and compared with the
+**authored** end point, and each authored end with the next segment's authored start. A
+mismatch beyond tolerance refuses the alignment, naming the segment and the distance.
+This is the check that catches a sign error in a spiral or a line: one turning the wrong way
+lands somewhere else, and the comparison says where.
+
+Each segment's **evaluated** end is also compared with the next segment's start, because
+that is the join the written curve has. Both points are within tolerance of the authored
+one, so they can still be up to twice the tolerance apart. The writer labels a join within
+the tolerance continuous, so it may never see a larger gap: `IfcCompositeCurve.CurveContinuous`
+allows an open curve exactly one `.DISCONTINUOUS.` segment, the last. The writer uses this
+tolerance for the transition code instead of IfcOpenShell's 1 mm, because authored joins
+reproduce only to a few millimetres, and it throws on a larger mid-curve gap rather than
+writing one.
+
+It **cannot** catch a flipped `rot` on a circular arc. Start, centre and end describe one
+circle, and the other rotation is simply the other arc of it (270° instead of 90°), which
+ends at the same point. The authored arc `length` is what distinguishes them, so when a
+curve declares one it must agree with the computed length, or the alignment is refused.
+Without a declared length the authored `rot` is taken at its word; the test suite records
+that limit rather than hiding it.
+
+The converted file declares `FILE_SCHEMA(('IFC4X3_ADD2'))`, not the bare `IFC4X3` (§3,
+#5351). The layouts written are unchanged; only the declared identifier changed.
+
+### 11.5 Still refused
+
+Vertical profiles (`IfcAlignmentVertical`), cant, superelevation, station equations,
+cross sections and roadways. Each is named with its count, as in §5. `IfcReferent` for
+`CgPoint` (§9.3) stays deferred: v1.1 writes a station referent for the alignment start
+only.
+
+### 11.6 Acceptance
+
+1. **Independent geometry parity.** IfcOpenShell regenerates each `IfcCurveSegment` from our
+   `IfcAlignmentHorizontalSegment` through its own mapping, and the result must equal ours.
+2. **Independent evaluation.** IfcOpenShell evaluates our composite curve; every segment
+   boundary must land on the LandXML-authored point.
+3. **Schema conformance.** `ifcopenshell.validate(express_rules=True)`, as §3 requires.
+4. **Refusals.** One test per refusal reason in §11.2 and §11.4.

@@ -53,6 +53,7 @@ import { emitElementQuantity, emitPropertySet, type DefinitionContext } from './
 import { createTerrainWriter, type TerrainContext, type TerrainWriter } from './ifc-creator-terrain.js';
 import { emitRelFillsElement, emitSpatialRelationships } from './ifc-creator-relationships.js';
 import { emitDefaultStyle, emitStyledItems } from './ifc-creator-styles.js';
+import { buildStepHeader } from './ifc-creator-header.js';
 import { generateIfcGuid, isValidIfcGuid } from '@ifc-lite/encoding';
 
 // ============================================================================
@@ -107,6 +108,8 @@ export class IfcCreator {
   // survey annotations have no storey, and inventing one would put them on a
   // datum the source never declared.
   private siteElements: number[] = [];
+  /** Products aggregated by the project itself — `IfcAlignment` (§11 of the LandXML mapping). */
+  private projectElements: number[] = [];
   private georeferenced = false;
   /** The length `IfcNamedUnit` `IfcProjectedCRS.MapUnit` points at. */
   private lengthUnitId = 0;
@@ -147,6 +150,9 @@ export class IfcCreator {
   constructor(params: ProjectParams = {}) {
     this.projectParams = params;
     this.schema = params.Schema ?? 'IFC4';
+    if (params.FileSchemaIdentifier !== undefined && this.schema !== 'IFC4X3') {
+      throw new Error(`IfcCreator: FileSchemaIdentifier '${params.FileSchemaIdentifier}' requires Schema 'IFC4X3', not '${this.schema}'`);
+    }
     this.fixedTimestampMs = params.Timestamp === undefined
       ? null
       : typeof params.Timestamp === 'number' ? params.Timestamp : params.Timestamp.getTime();
@@ -1571,6 +1577,10 @@ export class IfcCreator {
       },
       lengthUnitRef: () => `#${this.lengthUnitId}`,
       siteId: () => this.siteId,
+      trackProjectProduct: (expressId, type, name) => {
+        this.projectElements.push(expressId);
+        this.entities.push({ expressId, type, Name: name });
+      },
       claimGeoreferencing: () => {
         if (this.georeferenced) {
           throw new Error('setGeoreferencing: already called — a file has at most one IfcMapConversion for its model context');
@@ -1588,6 +1598,7 @@ export class IfcCreator {
       ownerRef: `#${this.ownerHistoryId}`,
       modelContextRef: `#${this.contextId}`,
       bodyContextRef: `#${this.subContextBody}`,
+      axisContextRef: `#${this.subContextAxis}`,
       sitePlacementRef: `#${this.worldPlacementId}`,
       assertSchema: (feature: string) => {
         if (this.schema !== 'IFC4X3') {
@@ -2016,20 +2027,8 @@ export class IfcCreator {
   }
 
   private buildHeader(): string {
-    const now = new Date(this.nowMs()).toISOString().replace(/\.\d{3}Z$/, ''); // ISO 8601 time_stamp: keep '-'/':', drop only ms+'Z'
-    const desc = 'Created by ifc-lite';
-    const author = this.projectParams.Author ?? '';
-    const org = this.projectParams.Organization ?? '';
-    const app = 'ifc-lite';
-    const filename = 'created.ifc';
-
-    return `ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION(('${esc(desc)}'),'2;1');
-FILE_NAME('${filename}','${now}',('${esc(author)}'),('${esc(org)}'),'${app}','${app}','');
-FILE_SCHEMA(('${this.schema}'));
-ENDSEC;
-`;
+    return buildStepHeader(this.nowMs(), this.projectParams.Author ?? '', this.projectParams.Organization ?? '',
+      this.projectParams.FileSchemaIdentifier ?? this.schema);
   }
 
   // ============================================================================
@@ -2766,6 +2765,7 @@ ENDSEC;
       storeyIds: this.storeyIds,
       storeyElements: this.storeyElements,
       siteElements: this.siteElements,
+      projectElements: this.projectElements,
     });
   }
 

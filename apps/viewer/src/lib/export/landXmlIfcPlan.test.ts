@@ -14,6 +14,9 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { landXmlExportPlan } from './landXmlIfcPlan.js';
 import type { LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics.js';
 
@@ -93,6 +96,36 @@ describe('landXmlExportPlan (#4937)', () => {
     assert.equal(plan.refusals.find((refusal) => refusal.family === 'alignments')?.count, 3);
   });
 
+  it('counts mappable alignments as covered records, and names the ones it refuses', () => {
+    const fixture = JSON.parse(readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../tools/ifcopenshell_reference/alignment_fixture.json'),
+      'utf8',
+    )) as { alignments: LandXmlTinDocument['alignments'] };
+    const irregular = {
+      ...fixture.alignments[0], sourceId: 'landxml:alignment:ramp', name: 'Ramp',
+      segments: [{
+        sourceId: 's', ordinal: 0,
+        primitive: {
+          kind: 'irregular_line' as const,
+          start: { kind: 'coordinates' as const, point: { northing: 0, easting: 0, elevation: null } },
+          end: { kind: 'coordinates' as const, point: { northing: 1, easting: 1, elevation: null } },
+          points: [], declaredLength: null,
+        },
+      }],
+    };
+    const plan = landXmlExportPlan(
+      new Map(),
+      landXmlModel(document({ surfaces: [], alignments: [...fixture.alignments, irregular] })) as never,
+      false,
+    );
+    assert.ok(plan);
+    assert.equal(plan.covered, true, 'an alignment-only file with mappable alignments is covered');
+    assert.equal(plan.alignments, 3);
+    const refused = plan.refusals.find((refusal) => refusal.family === 'alignments');
+    assert.equal(refused?.count, 1);
+    assert.match(refused?.message ?? '', /'Ramp': segment 1 is an IrregularLine/);
+  });
+
   it('refuses a LandXML model whose document was not retained', () => {
     // A cache-restored session has the source schema but no parsed records.
     // Claiming coverage we cannot deliver is worse than refusing.
@@ -141,6 +174,22 @@ describe('landXmlExportPlan (#4937)', () => {
     assert.equal(plan.refusals.filter((refusal) => refusal.family === 'alignments').length, 1);
     assert.equal(plan.refusals.find((refusal) => refusal.family === 'alignments')?.count, 3);
     assert.equal(plan.surfaces, 2);
+  });
+
+  it('names every refused alignment across merged documents, not only the first document\'s', () => {
+    // Summing the counts under the first document's sentence said "2" while
+    // naming one alignment and hiding the other's reason (#5370 review).
+    const alignment = (name: string) => ({ sourceId: `landxml:alignment:${name}`, name, staStart: 0, segments: [] });
+    const selected = landXmlModel(document({ alignments: [alignment('North')] as never }));
+    const other = { ...landXmlModel(document({ alignments: [alignment('South')] as never })), id: 'm2' };
+    const models = new Map([[selected.id, selected], [other.id, other]]) as never;
+    const plan = landXmlExportPlan(models, selected as never, true);
+    assert.ok(plan);
+    const refused = plan.refusals.find((refusal) => refusal.family === 'alignments');
+    assert.equal(refused?.count, 2);
+    assert.match(refused?.message ?? '', /^2 alignment records will not be included/);
+    assert.match(refused?.message ?? '', /'North': it has no horizontal geometry/);
+    assert.match(refused?.message ?? '', /'South': it has no horizontal geometry/);
   });
 
   it('refuses a merged scope that holds covered records, naming the scope as the fix', () => {

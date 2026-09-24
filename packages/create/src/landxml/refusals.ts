@@ -12,6 +12,9 @@
 
 import type { LandXmlIfcSource, LandXmlIfcSurface } from './source-types.js';
 import type { LandXmlRefusal, LandXmlRefusedFamily } from './result-types.js';
+import {
+  cogoPointResolver, isAlignmentRecord, mapAlignments, type AlignmentMapping, type RefusedAlignment,
+} from './alignment-mapping.js';
 
 /**
  * Why each family is out of scope, in the operator's terms.
@@ -21,7 +24,7 @@ import type { LandXmlRefusal, LandXmlRefusedFamily } from './result-types.js';
  * the same family is called.
  */
 const FAMILY_REASONS: Record<LandXmlRefusedFamily, string> = {
-  alignments: 'horizontal alignment geometry (stationing, curves, spirals, cant) has no v1 mapping; IfcAlignment is a separate piece of work with its own review',
+  alignments: 'an alignment is written only when every horizontal segment is a line, circular arc or clothoid that reproduces its authored end point; one that does not is refused whole, because a gap would make every later station wrong',
   profiles: 'vertical profiles and their grade lines and vertical curves have no v1 mapping — they describe geometry along an alignment, which v1 does not carry',
   'cross-sections': 'cross sections have no v1 mapping — they are sampled along an alignment, which v1 does not carry',
   roadways: 'roadways have no v1 mapping — they compose alignments and surfaces, and v1 carries only the surfaces',
@@ -34,6 +37,9 @@ const FAMILY_REASONS: Record<LandXmlRefusedFamily, string> = {
   'surface-contours': 'surface contour lines are not written; only the triangulated surface itself is',
   'non-rendered-surfaces': 'surfaces that carry no numeric, renderable triangulation (or whose every face is hidden) cannot become an IfcTriangulatedIrregularNetwork',
   'unlocated-cgpoints': 'CgPoints that carry only a point reference and no coordinates of their own have nothing to place',
+  'station-equations': 'station equations are not written; the alignment carries its start station only',
+  cant: 'cant (rail superelevation) has no mapping; the alignment is written with its horizontal layout only',
+  superelevation: 'road superelevation has no mapping; the alignment is written with its horizontal layout only',
 };
 
 function countAcrossSurfaces(
@@ -62,9 +68,26 @@ export function isMappableSurface(surface: LandXmlIfcSurface): boolean {
  * `count: 0` — a refusal the user cannot act on is noise, and "0 parcels were
  * not exported" is exactly that.
  */
-export function collectRefusals(source: LandXmlIfcSource): LandXmlRefusal[] {
+/** The alignment mapping for a source, computed the one way both the plan and the export use. */
+export function alignmentMappingOf(source: LandXmlIfcSource): AlignmentMapping {
+  return mapAlignments(source.alignments, source.units, false, cogoPointResolver(source.plan?.cogoPoints));
+}
+
+export function collectRefusals(
+  source: LandXmlIfcSource, alignmentMapping: AlignmentMapping = alignmentMappingOf(source),
+): LandXmlRefusal[] {
+  // Only the alignments that are WRITTEN carry these on into the IFC; a
+  // refused alignment takes its station equations and cant with it, and
+  // counting them twice would misstate what is missing.
+  const written = new Set(alignmentMapping.mapped.map((alignment) => alignment.sourceId));
+  const writtenAlignments = (source.alignments ?? [])
+    .filter(isAlignmentRecord)
+    .filter((alignment) => written.has(alignment.sourceId));
   const counts: Array<[LandXmlRefusedFamily, number]> = [
-    ['alignments', source.alignments?.length ?? 0],
+    ['alignments', alignmentMapping.refused.length],
+    ['station-equations', writtenAlignments.reduce((n, a) => n + (a.stationEquations?.length ?? 0), 0)],
+    ['cant', writtenAlignments.filter((a) => a.cant || (a.cantStations?.length ?? 0) > 0).length],
+    ['superelevation', writtenAlignments.reduce((n, a) => n + (a.superelevations?.length ?? 0), 0)],
     ['profiles', source.profiles?.length ?? 0],
     ['cross-sections', (source.crossSections?.length ?? 0) + (source.crossSectionSurfaces?.length ?? 0)],
     ['roadways', source.roadways?.length ?? 0],
@@ -84,8 +107,23 @@ export function collectRefusals(source: LandXmlIfcSource): LandXmlRefusal[] {
     .map(([family, count]) => ({
       family,
       count,
-      message: `${count} ${family.replace(/-/g, ' ')} record${count === 1 ? '' : 's'} will not be included: ${FAMILY_REASONS[family]}.`,
+      message: family === 'alignments'
+        ? alignmentRefusalMessage(alignmentMapping.refused)
+        : `${count} ${family.replace(/-/g, ' ')} record${count === 1 ? '' : 's'} will not be included: ${FAMILY_REASONS[family]}.`,
     }));
+}
+
+/**
+ * Name each refused alignment and why. A count alone ("2 alignments") leaves
+ * the operator unable to tell a spiral type from a gap from a sign problem.
+ */
+export function alignmentRefusalMessage(refused: readonly RefusedAlignment[]): string {
+  // Every one is named: an alignment left out as "and N more" is one the
+  // operator cannot find or fix (#5370 review).
+  const count = refused.length;
+  const named = refused.map((entry) => `'${entry.name}': ${entry.reason}`);
+  return `${count} alignment record${count === 1 ? '' : 's'} will not be included (${named.join('; ')}). `
+    + `${FAMILY_REASONS.alignments}.`;
 }
 
 /**
@@ -97,7 +135,7 @@ export function collectRefusals(source: LandXmlIfcSource): LandXmlRefusal[] {
  */
 export function refusalReason(refusals: readonly LandXmlRefusal[]): string {
   if (refusals.length === 0) {
-    return 'This LandXML file carries no triangulated surface and no CgPoints, so there is nothing the IFC mapping can write.';
+    return 'This LandXML file carries no triangulated surface, no CgPoints and no alignment, so there is nothing the IFC mapping can write.';
   }
   const families = refusals.map((refusal) => `${refusal.count} ${refusal.family.replace(/-/g, ' ')}`).join(', ');
   return `This LandXML file carries no record the IFC mapping covers. It contains ${families}, `

@@ -65,11 +65,21 @@ export class CanaryError extends Error {
  *
  * `path` is the one file the fixture sends. The defect: `Number(raw)` of a
  * missing value is NaN, NaN loses the one-ended `timeoutMs > 0` comparison, and
- * control falls through to `return 0`, which closes the session. A finding
- * explains it only if its body names BOTH halves:
- *   - `mechanism`: NaN (or "not a number"), the input the guard misses;
- *   - `consequence`: what that NaN turns into, returning 0 / zero or closing
- *     the session.
+ * control falls through to `return 0`, which closes the session. The class is
+ * a numeric bound guarded at ONE end (rubric.md names it), so either end is a
+ * real finding of it: NaN slips past the lower guard, and `"Infinity"` passes
+ * it with no upper bound. A finding explains the defect only if its body names
+ * BOTH halves:
+ *   - `mechanism`: the value the one-ended guard mishandles, NaN / "not a
+ *     number" / Infinity, or the missing bound itself ("upper bound",
+ *     "one-ended");
+ *   - `consequence`: what that turns into, returning 0 / zero or closing the
+ *     session.
+ * Both ends count because the second one was OBSERVED: with the ensemble's
+ * OpenRouter key over its weekly limit, the canary fell through to the Claude
+ * CLI, which reported the Infinity end ("returns Infinity instead of falling
+ * through to the 0/closed-immediately branch"). That is a correct finding of
+ * this defect class on this line, and a NaN-only judge called it a dead lane.
  * Requiring both refuses a rubric parrot ("NaN loses every comparison" with
  * nothing about this code) and a finding about 0 as a magic number.
  *
@@ -94,7 +104,7 @@ export class CanaryError extends Error {
  */
 export const PLANTED_DEFECT = Object.freeze({
   path: 'src/session-timeout.ts',
-  mechanism: /\bNaN\b|not[- ]a[- ]number/i,
+  mechanism: /\bNaN\b|not[- ]a[- ]number|\bInfinity\b|\b(?:upper|lower)[- ]bound|one[- ](?:ended|end\b|sided)/i,
   consequence: /\breturn(?:s|ing|ed)?\s+`?0\b|\bzero\b|\bclos(?:e|es|ing|ed)\b[^.]*\bsession|\bsession\b[^.]*\bclos(?:e|es|ing|ed)\b/i,
 });
 

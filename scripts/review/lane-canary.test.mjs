@@ -130,6 +130,23 @@ test('#5621: "not a number" spelled out, with the session closing, counts', () =
   assert.equal(v.ok, true, v.why);
 });
 
+test('#5621: the OTHER end of the one-ended bound (Infinity) is a real finding of this defect', () => {
+  // Verbatim from the canary run that fell through to the Claude CLI when the
+  // ensemble's key hit its weekly limit.
+  const v = judge({
+    verdict: 'findings',
+    findings: [
+      finding({
+        body:
+          'The check only guards the lower bound, so Number("Infinity") passes it: resolveTimeout("Infinity") ' +
+          'returns Infinity instead of falling through to the 0/closed-immediately branch, giving the session ' +
+          'an unbounded timeout.',
+      }),
+    ],
+  });
+  assert.equal(v.ok, true, v.why);
+});
+
 test('#5621: describeFindings prints every surviving finding with its source model', () => {
   const text = canary.describeFindings({ verdict: 'findings', findings: [finding({ source: 'model/a' })] });
   assert.match(text, /src\/session-timeout\.ts:3 \(from model\/a\)/);

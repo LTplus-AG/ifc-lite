@@ -354,6 +354,8 @@ jobs:
               # widening that exclusion.
               - 'apps/landing/samples/**'
               - 'docs/architecture/coverage-ledger.md'
+              # scripts/generate-enum-reconciliation.mjs checks this generated ledger (#5365).
+              - 'docs/architecture/schema-enum-reconciliation.md'
             geometry:
               - 'rust/geometry/**'
               - 'rust/core/**'

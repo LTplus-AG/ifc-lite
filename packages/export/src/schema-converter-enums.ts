@@ -112,9 +112,9 @@ export class EnumReconciliation {
   warnings(): string[] {
     const out: string[] = [];
     for (const [loss, where] of this.losses) {
+      // Every site is named: distinct sites are bounded by the ledger, so none is elided.
       const total = [...where.values()].reduce((a, b) => a + b, 0);
-      const names = [...where.keys()].slice(0, 10).join(', ') + (where.size > 10 ? ', …' : '');
-      out.push(`${total} enum value(s) the target schema does not define were ${LOSS_TEXT[loss]}: ${names} (#5365).`);
+      out.push(`${total} enum value(s) the target schema does not define were ${LOSS_TEXT[loss]}: ${[...where.keys()].join(', ')} (#5365).`);
     }
     return out;
   }

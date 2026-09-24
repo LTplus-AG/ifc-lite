@@ -5,9 +5,16 @@
 // #5388: #1360 added `Renderer.setOverlayLineColor` but the viewer never
 // called it, so every overlay line channel (annotation, alignment, grid, DXF,
 // LandXML) and the section-cut outline stayed black on the dark theme's
-// near-black clear colour. The invariant: once the renderer is up, the line
-// colour it holds clears 3:1 against the theme's backdrop, follows a theme
-// switch, and the light theme keeps the renderer's black.
+// near-black clear colour.
+//
+// #5484 supersedes `setOverlayLineColor` with `Renderer.setOverlayTheme`,
+// whose `overlayLine` field is sourced from the `overlay-ink` design token
+// (#5483) via `rendererOverlayTheme`. The invariant carries over: once the
+// renderer is up, the overlay-line colour it holds clears 3:1 against the
+// theme's backdrop and follows a theme switch — and now it also has to be
+// the EXACT `overlay-ink` token value for the theme, not just "some colour
+// that happens to contrast", which is the part a broken token lookup could
+// slip past a contrast-only check.
 //
 // Contrast is computed here rather than imported, so this file only enters
 // production through the pre-existing `useRenderUpdates` seam.
@@ -16,9 +23,10 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { Renderer, VisualEnhancementOptions } from '@ifc-lite/renderer';
+import type { OverlayTheme, Renderer, VisualEnhancementOptions } from '@ifc-lite/renderer';
 import type { SectionPlane } from '@/store';
 import { cleanup, render } from '@/test/render.js';
+import { OVERLAY_PALETTES, tokenToRgba } from '@/lib/viewport-ui/overlay-theme';
 import { useRenderUpdates } from './useRenderUpdates.js';
 
 afterEach(cleanup);
@@ -35,13 +43,13 @@ function contrast(a: readonly number[], b: readonly number[]): number {
 
 /** Every renderer call the hook can make on this path, recorded or ignored. */
 function recordingRenderer() {
-  const lineColors: number[][] = [];
+  const overlayThemes: OverlayTheme[] = [];
   const renderer = new Proxy({}, {
-    get: (_t, key) => key === 'setOverlayLineColor'
-      ? (c: readonly number[]) => { lineColors.push([...c]); }
+    get: (_t, key) => key === 'setOverlayTheme'
+      ? (t: OverlayTheme) => { overlayThemes.push(t); }
       : () => {},
   });
-  return { lineColors, renderer: renderer as Renderer };
+  return { overlayThemes, renderer: renderer as Renderer };
 }
 
 const SECTION: SectionPlane = { axis: 'down', position: 50, enabled: false, flipped: false } as SectionPlane;
@@ -64,24 +72,27 @@ function Probe({ renderer, theme }: { renderer: Renderer; theme: string }) {
   return null;
 }
 
-describe('useRenderUpdates overlay line ink (#5388)', () => {
-  it('dark: the overlay line colour clears 3:1 against the dark clear colour', () => {
-    const { lineColors, renderer } = recordingRenderer();
+describe('useRenderUpdates overlay theme line colour (#5388, #5484)', () => {
+  it('dark: the overlay line colour is the dark overlay-ink token and clears 3:1', () => {
+    const { overlayThemes, renderer } = recordingRenderer();
     render(<Probe renderer={renderer} theme="dark" />);
-    const color = lineColors.at(-1);
-    assert.ok(color, 'setOverlayLineColor was called');
-    assert.ok(contrast(color, BACKDROP.dark) >= 3, `line ${JSON.stringify(color)} on dark`);
+    const theme = overlayThemes.at(-1);
+    assert.ok(theme, 'setOverlayTheme was called');
+    assert.deepEqual(theme!.overlayLine, tokenToRgba(OVERLAY_PALETTES.dark['overlay-ink']));
+    assert.ok(contrast(theme!.overlayLine, BACKDROP.dark) >= 3, `line ${JSON.stringify(theme!.overlayLine)} on dark`);
   });
 
-  it('light keeps black, and a theme switch recolours the lines', () => {
-    const { lineColors, renderer } = recordingRenderer();
+  it('light keeps the light overlay-ink token, and a theme switch recolours the lines', () => {
+    const { overlayThemes, renderer } = recordingRenderer();
     const container = document.createElement('div');
     document.body.appendChild(container);
     const root = createRoot(container);
     act(() => root.render(<Probe renderer={renderer} theme="light" />));
-    assert.deepEqual(lineColors.at(-1), [0, 0, 0, 1]);
+    assert.deepEqual(overlayThemes.at(-1)!.overlayLine, tokenToRgba(OVERLAY_PALETTES.light['overlay-ink']));
     act(() => root.render(<Probe renderer={renderer} theme="dark" />));
-    assert.ok(contrast(lineColors.at(-1)!, BACKDROP.dark) >= 3, 'switching to dark recolours the lines');
+    const darkLine = overlayThemes.at(-1)!.overlayLine;
+    assert.deepEqual(darkLine, tokenToRgba(OVERLAY_PALETTES.dark['overlay-ink']));
+    assert.ok(contrast(darkLine, BACKDROP.dark) >= 3, 'switching to dark recolours the lines');
     act(() => root.unmount());
     container.remove();
   });

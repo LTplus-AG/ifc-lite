@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { pythonTestOwner, pythonRunner, parsePython, PYTEST_MISSING_PATTERN } from './revert-oracle-python.mjs';
+import { planRuns } from './revert-oracle-plan-runs.mjs';
 
 // ---------------------------------------------------------------------------
 // pythonTestOwner: mirrors revert-oracle-cargo.test.mjs's Cargo.toml walk,
@@ -63,6 +64,27 @@ test('#5800: PyO3 project ownership requires a source-state wheel', () => {
   }
 });
 
+test('#5800: a Python test in a Cargo workspace member plans a wheel run', () => {
+  const root = mkdtempSync(join(tmpdir(), 'oracle-python-cargo-plan-'));
+  try {
+    const project = join(root, 'rust', 'python');
+    mkdirSync(join(project, 'tests'), { recursive: true });
+    writeFileSync(join(root, 'Cargo.toml'), '[workspace]\nmembers = ["rust/python"]\n');
+    writeFileSync(join(project, 'Cargo.toml'), '[package]\nname = "extension"\nversion = "0.1.0"\n');
+    writeFileSync(join(project, 'pyproject.toml'), '[build-system]\nrequires = ["maturin"]\n');
+    writeFileSync(join(project, 'tests', 'test_bindings.py'), 'def test_binding():\n    assert True\n');
+    const { plans, unassigned } = planRuns(['rust/python/tests/test_bindings.py'], root);
+    assert.deepEqual(unassigned, []);
+    assert.equal(plans.length, 1);
+    assert.equal(plans[0].runner?.family, 'python');
+    assert.equal(plans[0].wheelProject, true);
+    assert.equal(plans[0].dir, project);
+    assert.deepEqual(plans[0].relFiles, ['tests/test_bindings.py']);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // pythonRunner
 // ---------------------------------------------------------------------------
@@ -74,6 +96,8 @@ test('pythonRunner: runs python3 -B -m pytest over the explicit file list, quiet
     args: ['-B', '-m', 'pytest', '-q', '--color=no', 'test_harness.py', 'test_validate_export.py'],
   });
   assert.equal(pythonRunner([]), null);
+  assert.deepEqual(pythonRunner(['/tmp/test_harness.py'], { importMode: 'importlib' }).args,
+    ['-B', '-m', 'pytest', '-q', '--color=no', '--import-mode=importlib', '/tmp/test_harness.py']);
 });
 
 // ---------------------------------------------------------------------------

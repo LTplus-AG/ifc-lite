@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { parseRunnerOutput } from './revert-oracle.mjs';
 import { runTypecheckPlan } from './revert-oracle-type-only.mjs';
 import { preparePythonWheel } from './revert-oracle-python-wheel.mjs';
+import { pythonRunner } from './revert-oracle-python.mjs';
 
 const toolchainVersions = new Map();
 const RUN_TIMEOUT_MS = 10 * 60 * 1000;
@@ -123,7 +124,11 @@ export function runPlan(plan, root, label, log = console.log) {
     try {
       wheel = preparePythonWheel(plan.dir, command, spawnOptions);
       spawnOptions.env = wheel.env;
-      runnerArgs = plan.runner.args;
+      spawnOptions.cwd = wheel.cwd;
+      runnerArgs = pythonRunner(
+        plan.relFiles.map((file) => resolve(plan.dir, file)),
+        { importMode: 'importlib' },
+      ).args;
     } catch (error) {
       const parsed = {
         kind: 'load-failure', passed: null, failed: null, total: null,

@@ -26,12 +26,18 @@ export function preparePythonWheel(projectDir, interpreter, options) {
     }
   };
   try {
-    run(interpreter.bin, [...interpreter.prefix, '-m', 'venv', '--system-site-packages', venv], 'Python virtual environment');
+    run(interpreter.bin, [...interpreter.prefix, '-m', 'venv', venv], 'Python virtual environment');
     run(python, ['-m', 'pip', 'wheel', '--no-cache-dir', '--no-deps', '--wheel-dir', wheels, projectDir], 'Python wheel build');
     const built = readdirSync(wheels).filter((name) => name.endsWith('.whl'));
     if (built.length !== 1) throw new Error(`Python wheel build produced ${built.length} wheels; expected exactly one`);
     run(python, ['-m', 'pip', 'install', '--no-index', '--no-deps', '--force-reinstall', join(wheels, built[0])], 'Python wheel install');
-    return { bin: python, env, cleanup };
+    // The only Cargo-backed Python project in this repo uses pytest and has no
+    // runtime Python dependencies. Install the runner inside this private venv
+    // so neither a global pytest nor a stale global extension can satisfy it.
+    run(python, ['-m', 'pip', 'install', 'pytest'], 'Python test runner install');
+    // Run pytest outside the project tree: otherwise Python can import a
+    // same-named source package instead of the wheel we just installed.
+    return { bin: python, cwd: scratch, env, cleanup };
   } catch (error) {
     cleanup();
     throw error;

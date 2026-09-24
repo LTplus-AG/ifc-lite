@@ -58,9 +58,13 @@ export function pythonTestOwner(file, root) {
  * revert. `.pytest_cache/` needs no such flag — pytest writes its own
  * `.gitignore` inside it, so git already ignores it.
  */
-export function pythonRunner(files) {
+export function pythonRunner(files, { importMode } = {}) {
   if (!Array.isArray(files) || files.length === 0) return null;
-  return { family: 'python', bin: 'python3', args: ['-B', '-m', 'pytest', '-q', '--color=no', ...files] };
+  return { family: 'python', bin: 'python3', args: [
+    '-B', '-m', 'pytest', '-q', '--color=no',
+    ...(importMode ? [`--import-mode=${importMode}`] : []),
+    ...files,
+  ] };
 }
 
 /**

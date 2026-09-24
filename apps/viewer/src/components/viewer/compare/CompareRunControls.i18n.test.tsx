@@ -120,7 +120,6 @@ const BASE_PROPS = {
   error: null,
   geometryUnavailable: false,
   placementOnlyGeometry: false,
-  unsavedEditsWarning: false,
   excludedTypes: ['IfcOpeningElement'],
   changedTypeCounts: [{ type: 'IfcWall', count: 3 }],
   onAddExcludedType: () => {},
@@ -202,17 +201,6 @@ describe('CompareRunControls localization (#4918)', () => {
     const afterDom = domAfterPseudo(container);
     assertAllTranslate(
       [{ key: 'comparePanel.runControls.geometryUnavailableFull' }],
-      englishDom,
-      afterDom,
-    );
-  });
-
-  it('translates the unsaved-edits warning as one complete message (#5312)', () => {
-    const container = render(<CompareRunControls {...BASE_PROPS} unsavedEditsWarning />);
-    const englishDom = readableStrings(container);
-    const afterDom = domAfterPseudo(container);
-    assertAllTranslate(
-      [{ key: 'comparePanel.runControls.unsavedEditsWarning' }],
       englishDom,
       afterDom,
     );

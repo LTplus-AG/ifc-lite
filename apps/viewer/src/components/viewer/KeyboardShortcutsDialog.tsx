@@ -540,7 +540,6 @@ export function useKeyboardShortcutsDialog() {
     setOpen(true);
   }, []);
 
-  // Listen for '?' key to toggle
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore if typing in an input or textarea
@@ -554,12 +553,13 @@ export function useKeyboardShortcutsDialog() {
       }
       if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
         e.preventDefault();
-        toggle();
+        setTab('shortcuts'); // `?` is the documented shortcuts key: open there, not on About
+        setOpen((o) => !o);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggle]);
+  }, []);
 
   return { open, tab, toggle, close, openTab };
 }

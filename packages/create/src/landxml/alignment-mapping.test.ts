@@ -268,9 +268,12 @@ describe('mapAlignments — records that are not alignments (#5370 review)', () 
     // The source field stays `unknown[]` (narrowing it would break v1.0
     // callers), so the shape is checked at run time. A malformed record must
     // be named and refused, never mapped from whatever fields happen to exist.
-    const { mapped, refused } = mapAlignments([{ legacy: true }, 42], METRES, false, noRefs);
+    // The third record is otherwise valid but has no `name`, which the type
+    // requires; it must be refused, not written under its sourceId.
+    const nameless = { sourceId: 'landxml:alignment:x', staStart: 0, segments: [] };
+    const { mapped, refused } = mapAlignments([{ legacy: true }, 42, nameless], METRES, false, noRefs);
     expect(mapped).toEqual([]);
-    expect(refused.map((entry) => entry.name)).toEqual(['alignment 1', 'alignment 2']);
+    expect(refused.map((entry) => entry.name)).toEqual(['alignment 1', 'alignment 2', 'alignment 3']);
     expect(refused[0].reason).toMatch(/not an alignment record/);
   });
 });

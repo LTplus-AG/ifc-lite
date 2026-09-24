@@ -312,7 +312,7 @@ export function isAlignmentRecord(value: unknown): value is LandXmlIfcAlignment 
   if (typeof value !== 'object' || value === null) return false;
   const record = value as Record<string, unknown>;
   return typeof record.sourceId === 'string'
-    && (record.name === undefined || typeof record.name === 'string')
+    && typeof record.name === 'string'
     && typeof record.staStart === 'number' && Number.isFinite(record.staStart)
     && Array.isArray(record.segments);
 }
@@ -326,7 +326,7 @@ export function mapAlignments(
     if (!isAlignmentRecord(candidate)) {
       result.refused.push({
         sourceId: `alignment[${index}]`, name: `alignment ${index + 1}`,
-        reason: 'it is not an alignment record (it needs a sourceId, a numeric staStart and a segments list)',
+        reason: 'it is not an alignment record (it needs a sourceId, a name, a numeric staStart and a segments list)',
       });
       return;
     }

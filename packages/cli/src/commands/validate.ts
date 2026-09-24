@@ -182,13 +182,8 @@ function scanRecordForDanglingRefs(
   }
 }
 
-/**
- * Walk every indexed entity record and collect `#N` references whose target
- * does not exist in the file (rule `reference-integrity`). Uses the parsed
- * entity index for both iteration and existence checks; entities held in the
- * deferred index (lazily-parsed property entities) count as existing and are
- * scanned too.
- */
+/** Check source `#N` references against the parsed and deferred file indexes
+ * (rule `reference-integrity`), scanning records in both indexes. */
 export function collectDanglingReferences(store: IfcDataStore): DanglingReference[] {
   const source = store.source;
   // @raw-entity-enumeration-ok reference-integrity checks the source bytes against their parsed source index
@@ -211,13 +206,9 @@ export function collectDanglingReferences(store: IfcDataStore): DanglingReferenc
   return out;
 }
 
-/**
- * Run the structural validation checks (required entities, storeys, GlobalId
- * uniqueness, naming, schema version, quantity completeness, reference
- * integrity) against an already-parsed store. Pulled out of
- * {@link validateCommand} so other consumers (tests, harnesses) reuse the
- * exact same rules instead of re-implementing them.
- */
+/** Shared structural checks for a parsed store: required entities, storeys,
+ * GlobalId uniqueness, naming, schema, quantities and reference integrity.
+ * {@link validateCommand}, tests and harnesses all use these rules. */
 export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 

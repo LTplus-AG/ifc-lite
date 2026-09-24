@@ -1376,8 +1376,7 @@ export class GeometryProcessor {
       const trisAfter: Uint32Array = out.trisAfter;
       const cavitiesDropped: Uint32Array = out.cavitiesDropped;
 
-      let rvo = 0;
-      let rio = 0;
+      let rvo = 0, rio = 0;
       for (let i = 0; i < outIds.length; i++) {
         const vCount = outVertexCounts[i] * 3;
         const iCount = outIndexCounts[i];
@@ -1392,6 +1391,7 @@ export class GeometryProcessor {
           origin: [renderOrigins[i * 3], renderOrigins[i * 3 + 1], renderOrigins[i * 3 + 2]],
           geometryClass: 0,
           ...(src?.localToWorld ? { localToWorld: src.localToWorld } : {}),
+          ...(src?.material ? { material: src.material } : {}), // #5582
         };
         result.elements.push({
           expressId: outIds[i],

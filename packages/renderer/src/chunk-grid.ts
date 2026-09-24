@@ -81,6 +81,38 @@ export function chunkCellKey(mesh: ChunkAnchorSource, cellSize: number): string 
  * ("~" cannot collide: colour keys are `r|g|b|a` integers, cell keys are
  * `cx,cy,cz` integers, and the overflow suffix uses "#".)
  */
+/** Metallic/roughness slice of `Material` a colour key can fold in. */
+export interface MaterialKeySource {
+  metallic?: number;
+  roughness?: number;
+}
+
+/**
+ * Colour key for grouping meshes into batches: RGBA quantized to 1000
+ * levels, packed as `r|g|b|a`, with an IFC-authored metallic/roughness
+ * suffix (#5582) so two pieces sharing a colour but authoring DIFFERENT
+ * finishes never land in the same batch — `createSceneBatch` patches one
+ * material row per batch (`scene-batch-upload.ts`), so a mixed bucket would
+ * paint every piece with whichever finish happened to be its first piece's.
+ * The suffix is omitted (not "0|0") when neither field is authored, so an
+ * unauthored piece keeps its pre-#5582 key exactly — no batch churn for the
+ * overwhelmingly common case.
+ */
+export function colorKey(
+  color: readonly [number, number, number, number],
+  material?: MaterialKeySource,
+): string {
+  const r = Math.round(color[0] * 1000);
+  const g = Math.round(color[1] * 1000);
+  const b = Math.round(color[2] * 1000);
+  const a = Math.round(color[3] * 1000);
+  const base = `${r}|${g}|${b}|${a}`;
+  if (material?.metallic === undefined && material?.roughness === undefined) return base;
+  const m = material.metallic !== undefined ? Math.round(material.metallic * 1000) : '';
+  const rg = material.roughness !== undefined ? Math.round(material.roughness * 1000) : '';
+  return `${base}|${m}|${rg}`;
+}
+
 export function bucketBaseKeyFor(
   mesh: ChunkAnchorSource,
   colorKey: string,

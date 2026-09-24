@@ -45,7 +45,12 @@ export interface Mesh {
    * reintroduce national-grid rounding after their source batch was rebased. */
   rteOrigin?: [number, number, number];
   color: [number, number, number, number];
-  material?: Material;
+  /** IFC-authored finish. `metallic`/`roughness` (#5582) feed
+   *  `packMeshMaterial`; `transparency` feeds `shouldRouteMeshTransparent`'s
+   *  opaque/transparent routing. `baseColor` is not read off a per-mesh
+   *  material anywhere — `color` above is the mesh's colour — so every field
+   *  is optional here rather than the full `Material` shape. */
+  material?: Partial<Material>;
   // Per-mesh GPU resources for unique colors
   uniformBuffer?: GPUBuffer;
   bindGroup?: GPUBindGroup;
@@ -79,6 +84,11 @@ export interface BatchedMesh {
   indexBuffer: GPUBuffer;
   indexCount: number;
   color: [number, number, number, number];
+  /** IFC-authored metallic/roughness shared by every piece in this batch
+   *  (#5582) — the colour key folds material in, so a batch can never mix
+   *  pieces with different finishes. Absent means none of them authored one;
+   *  `packMeshMaterial` then keeps its own default. */
+  material?: Partial<Material>;
   expressIds: number[];  // For picking - all expressIds in this batch
   /** Per-entry modelIndex, parallel to `expressIds` (same index = same source
    *  piece): batches group by colour (see Scene.bucketBaseKey), NOT by model,

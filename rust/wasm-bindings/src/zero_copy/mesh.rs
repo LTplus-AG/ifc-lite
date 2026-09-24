@@ -43,6 +43,9 @@ pub struct MeshDataJs {
     /// DiffuseColour (so the two would differ). Consumed by the GLB
     /// exporter's "Shading" colour-source option; renderers ignore it.
     shading_color: Option<[f32; 4]>,
+    /// IFC-authored metallic/roughness (#5582, see the getters below).
+    metallic: Option<f32>,
+    roughness: Option<f32>,
     /// Per-vertex texture coordinates (u, v pairs, 1:1 with positions),
     /// present only for textured meshes (#961). Empty otherwise.
     uvs: Vec<f32>,
@@ -106,6 +109,8 @@ impl Default for MeshDataJs {
             indices: Vec::new(),
             color: [0.0; 4],
             shading_color: None,
+            metallic: None,
+            roughness: None,
             uvs: Vec::new(),
             texture_rgba: Vec::new(),
             texture_width: 0,
@@ -169,6 +174,12 @@ impl MeshDataJs {
     pub fn shading_color(&self) -> Option<Vec<f32>> {
         self.shading_color.map(|c| c.to_vec())
     }
+
+    /// IFC-authored metallic/roughness (#5582). `undefined` when unauthored.
+    #[wasm_bindgen(getter)]
+    pub fn metallic(&self) -> Option<f32> { self.metallic }
+    #[wasm_bindgen(getter)]
+    pub fn roughness(&self) -> Option<f32> { self.roughness }
 
     /// Get vertex count
     #[wasm_bindgen(getter, js_name = vertexCount)]
@@ -331,6 +342,8 @@ impl MeshDataJs {
             indices: mesh.indices,
             color,
             shading_color: None,
+            metallic: None,
+            roughness: None,
             uvs: Vec::new(),
             texture_rgba: Vec::new(),
             texture_width: 0,
@@ -370,6 +383,12 @@ impl MeshDataJs {
     /// for the mesh's source geometry id should invoke this after `new`.
     pub fn set_shading_color(&mut self, shading: Option<[f32; 4]>) {
         self.shading_color = shading;
+    }
+
+    /// Attach the metallic/roughness pair (#5582). Call after `new`.
+    pub fn set_material(&mut self, metallic: Option<f32>, roughness: Option<f32>) {
+        self.metallic = metallic;
+        self.roughness = roughness;
     }
 
     /// Attach per-vertex UVs + a decoded RGBA8 texture (#961). UVs are 1:1 with
@@ -445,6 +464,7 @@ impl MeshDataJs {
         let mut js = Self::new(m.express_id, m.ifc_type, mesh, m.color);
         js.set_geometry_class(m.geometry_class);
         js.set_source_ids(m.geometry_item_id, m.material_id);
+        js.set_material(m.metallic, m.roughness);
         if let (Some(uvs), Some(tex)) = (m.uvs, m.texture) {
             if let Some(rgba) = tex.rgba {
                 // Rust-decoded blob/pixel texture (#961): the Arc is shared

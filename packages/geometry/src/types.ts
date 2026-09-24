@@ -82,6 +82,17 @@ export interface MeshData {
    *  in `apps/viewer/src/hooks/useIfcLoader.ts`), so a value read off this
    *  field is always safe to resolve the same way as `expressId` (#3525). */
   materialId?: number;
+  /** IFC-authored metallic/roughness (#5582): `IfcSurfaceStyleRendering`'s
+   *  `SpecularColour` / `SpecularHighlight` / `ReflectanceMethod`, mapped in
+   *  Rust (`ifc_lite_processing::style::extract_surface_style_specular`).
+   *  Either field, or the whole object, is absent when the file authored no
+   *  evidence for it — the renderer's `packMeshMaterial` then keeps its own
+   *  default (a matte dielectric, or glass roughness when the authored colour
+   *  is translucent). */
+  material?: {
+    metallic?: number;
+    roughness?: number;
+  };
   /** Per-vertex texture coordinates (u, v pairs, 1:1 with positions), present
    *  only for textured meshes (issue #961). */
   uvs?: Float32Array;

@@ -1448,6 +1448,7 @@ export class Renderer {
             })(),
             rteOrigin: so ? [so[0], so[1], so[2]] : [ox, oy, oz],
             color: meshData.color,
+            ...(meshData.material ? { material: meshData.material } : {}), // #5582
             hydrated: true,
         });
     }
@@ -2552,7 +2553,7 @@ export class Renderer {
                     tpl[33] = batch.color[1];
                     tpl[34] = batch.color[2];
                     tpl[35] = alphaForBatch(batch, batch.color[3]);
-                    packMeshMaterial(tpl, batch.color[3]);
+                    packMeshMaterial(tpl, batch.color[3], batch.material);
 
                     // Per-batch local frame: the batch's vertices are stored
                     // RELATIVE to batch.origin (f32-small), so set the model

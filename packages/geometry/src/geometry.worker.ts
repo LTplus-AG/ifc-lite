@@ -4,6 +4,7 @@
 
 import { attachCanonicalMeshMetadata } from './canonical-mesh-metadata.js';
 import { ownedWasmBuffer } from './wasm-owned-buffer.js';
+import { readSpecularMaterial } from './mesh-specular.js';
 import { publishPrepassFingerprint, runPrepassWithFingerprint } from './prepass-source-fingerprint.js';
 import { canReuseWorkerSource, type SourcePrepassApi, type FinalizeStyleArgs } from './worker-prepass-source.js';
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
@@ -972,9 +973,7 @@ function collectMeshes(
         // would copy a fresh Float32Array out of WASM per access.
         const color = mesh.color;
         // Optional SurfaceColour for the GLB exporter's "Shading" mode —
-        // parity with the single-thread converter in geometry-coordinate.ts
-        // (the worker path silently dropped it, degrading "Shading" export
-        // on the DEFAULT load path — alignment audit).
+        // parity with the single-thread converter in geometry-coordinate.ts.
         const shadingArray = mesh.shadingColor;
         const shadingColor: [number, number, number, number] | undefined =
           shadingArray && shadingArray.length === 4
@@ -989,8 +988,7 @@ function collectMeshes(
           originArr && originArr.length === 3 && (originArr[0] || originArr[1] || originArr[2])
             ? [originArr[0], originArr[1], originArr[2]]
             : undefined;
-        // Local (pre-placement) AABB + placement transform (issue #1474);
-        // absent on older wasm bundles (no getter) or when not captured.
+        // Local (pre-placement) AABB + placement transform (#1474); absent w/o a getter or when not captured.
         const localBoundsArr = mesh.localBounds;
         const localBounds =
           localBoundsArr && localBoundsArr.length === 6
@@ -1002,6 +1000,7 @@ function collectMeshes(
         const localToWorldArr = mesh.localToWorld;
         const localToWorld =
           localToWorldArr && localToWorldArr.length === 16 ? Array.from(localToWorldArr) : undefined;
+        const specularMaterial = readSpecularMaterial(mesh); // #5582
         const meshData: MeshData = {
           expressId: mesh.expressId,
           ifcType: mesh.ifcType,
@@ -1014,6 +1013,7 @@ function collectMeshes(
           geometryClass: mesh.geometryClass ?? 0, // 0=occurrence 1=orphan type 2=instanced type; older wasm lacks all three getters here
           ...(mesh.geometryItemId !== undefined ? { geometryItemId: mesh.geometryItemId } : {}), // #3199: two DISJOINT ids, TWO
           ...(mesh.materialId !== undefined ? { materialId: mesh.materialId } : {}), // spreads as in convertMeshCollectionToBatch
+          ...(specularMaterial ? { material: specularMaterial } : {}), // #5582
         };
         session.pendingTransfers.push(ownedWasmBuffer(positions), ownedWasmBuffer(normals), ownedWasmBuffer(indices));
         session.cumulativeMeshBytes += positions.byteLength + normals.byteLength + indices.byteLength;

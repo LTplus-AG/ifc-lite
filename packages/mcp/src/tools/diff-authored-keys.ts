@@ -19,7 +19,8 @@ import {
   type IfcDataStore,
 } from '@ifc-lite/parser';
 import type { EntityFingerprint } from '@ifc-lite/diff';
-import type { PendingOverlay } from '../overlay.js';
+import type { EffectiveEntity } from '@ifc-lite/data';
+import { stepText, type PendingOverlay } from '../overlay.js';
 
 /** Adapter options (issue #4955); the CLI's `FingerprintAdapterOptions` restated. */
 export interface FingerprintAdapterOptions {
@@ -40,21 +41,33 @@ export function fallbackPairDuplicateAuthoredKeys(
   sides: readonly {
     fingerprints: EntityFingerprint<number>[];
     store: IfcDataStore;
+    overlay?: PendingOverlay | null;
   }[],
   duplicates: ReadonlyMap<string, number[]>,
 ): void {
   if (duplicates.size === 0) return;
-  for (const { fingerprints, store } of sides) {
+  for (const { fingerprints, store, overlay } of sides) {
     const extractor = new EntityExtractor(store.source);
     for (const fingerprint of fingerprints) {
       if (!fingerprint.key.startsWith(AUTHORED_KEY_PREFIX)) continue;
       const value = fingerprint.key.slice(AUTHORED_KEY_PREFIX.length);
       if (!duplicates.has(value)) continue;
+      const named = overlay?.attributes(fingerprint.ref);
+      const positional = overlay?.positionalAttributes?.(fingerprint.ref);
+      const editedGlobalId = named?.has('GlobalId') ? named.get('GlobalId')
+        : positional?.has(0) ? stepText(positional.get(0)) ?? '' : undefined;
+      const createdGlobalId = overlay?.createdEntity(fingerprint.ref)?.globalId;
       const tableGlobalId = store.entities.getGlobalId(fingerprint.ref);
+      // @raw-entity-enumeration-ok collision fallback uses this point source record only after checking effective and created GlobalIds
       const ref = store.entityIndex.byId.get(fingerprint.ref);
       const entity = ref ? extractor.extractEntity(ref) : undefined;
       const sourceGlobalId = entity ? extractRootAttributesFromEntity(entity).globalId : undefined;
-      const globalId = tableGlobalId || sourceGlobalId;
+      // An explicit empty edit clears GlobalId. Falling back to the source
+      // here would resurrect an identity the session no longer has; the
+      // fingerprint builder omits that source entity before this repair pass.
+      const globalId = editedGlobalId !== undefined ? editedGlobalId
+        : createdGlobalId !== undefined ? createdGlobalId
+        : (tableGlobalId || sourceGlobalId);
       if (!globalId) {
         throw new Error(`Cannot restore GlobalId for authored-key collision on #${fingerprint.ref}`);
       }
@@ -75,7 +88,7 @@ export function authoredKeyResolver(
   overlay: PendingOverlay | null | undefined,
   options: FingerprintAdapterOptions,
   extractor: EntityExtractor,
-  isDependentType: (typeKey: string) => boolean,
+  entities: readonly EffectiveEntity[],
 ): (expressId: number, globalId: string) => string {
   const keySpec = options.keyProperty ? parseAuthoredKeySpec(options.keyProperty) : undefined;
   if (!keySpec) return (_expressId, globalId) => globalId;
@@ -84,6 +97,16 @@ export function authoredKeyResolver(
     if (keySpec.kind === 'tag') {
       const edited = overlay?.attributes(expressId).get('Tag');
       if (edited !== undefined) return edited.trim().length > 0 ? edited.trim() : undefined;
+      const created = overlay?.createdEntity(expressId);
+      // @raw-entity-enumeration-ok Tag slot discovery needs the source class for this one entity when no queued retype or creation supplies it
+      const effectiveType = overlay?.effectiveType?.(expressId)
+        ?? created?.ifcType ?? store.entityIndex.byId.get(expressId)?.type;
+      const tagIndex = effectiveType ? getAttributeNamesAcrossSchemas(effectiveType).indexOf('Tag') : -1;
+      const positional = overlay?.positionalAttributes?.(expressId);
+      if (tagIndex >= 0 && positional?.has(tagIndex)) return stepText(positional.get(tagIndex));
+      if (created) {
+        return tagIndex < 0 ? undefined : stepText(created.attributes[tagIndex]);
+      }
     } else if (overlay) {
       const set = overlay.propertySets(expressId).find((pset) => pset.name === keySpec.pset);
       const property = set?.properties.find((p) => p.name === keySpec.property);
@@ -100,16 +123,15 @@ export function authoredKeyResolver(
   // A first pass so a value two entities share can be refused for both,
   // instead of the diff's first-wins index quietly keeping one.
   const owners = new Map<string, number[]>();
-  for (const [typeKey, ids] of store.entityIndex.byType) {
-    if (isDependentType(typeKey)) continue;
-    for (const expressId of ids) {
-      if (overlay?.deleted.has(expressId)) continue;
-      const value = authoredKeyOf(expressId);
-      if (value === undefined) continue;
-      const list = owners.get(value);
-      if (list) list.push(expressId);
-      else owners.set(value, [expressId]);
-    }
+  const seen = new Set<number>();
+  for (const { expressId } of entities) {
+    if (seen.has(expressId)) continue;
+    seen.add(expressId);
+    const value = authoredKeyOf(expressId);
+    if (value === undefined) continue;
+    const list = owners.get(value);
+    if (list) list.push(expressId);
+    else owners.set(value, [expressId]);
   }
   for (const [value, ids] of owners) {
     if (ids.length > 1) options.duplicateAuthoredKeys?.set(value, ids);
@@ -152,6 +174,7 @@ export function attributeAcrossSchemas(
 ): string | undefined {
   const index = getAttributeNamesAcrossSchemas(ifcType).indexOf(attributeName);
   if (index < 0) return undefined;
+  // @raw-entity-enumeration-ok this point source slot is the base value; buildDataInput applies pending named and positional Tag edits
   const ref = store.entityIndex.byId.get(expressId);
   if (!ref) return undefined;
   const raw = new EntityExtractor(store.source).extractEntity(ref)?.attributes?.[index];

@@ -103,7 +103,7 @@ import {
   extractQuantitiesOnDemand,
   extractRootAttributesFromEntity,
   spatialContainerPath,
-  getInheritanceChainAcrossSchemas,
+  getAttributeNamesAcrossSchemas,
   quantitySiScale,
   roundToScale,
   scaledPropertyValue,
@@ -111,8 +111,9 @@ import {
 } from '@ifc-lite/parser';
 import { attributeAcrossSchemas, authoredKeyResolver, override, type FingerprintAdapterOptions } from './diff-authored-keys.js';
 import { classificationLabel } from './diff-classification-label.js';
+import { classifyType, comparableEntities } from './diff-entity-scope.js';
 export { AUTHORED_KEY_PREFIX, type FingerprintAdapterOptions } from './diff-authored-keys.js';
-import type { CreatedEntity, PendingOverlay } from '../overlay.js';
+import { stepText, type CreatedEntity, type PendingOverlay } from '../overlay.js';
 
 /** Adapter handle threaded through the diff: the entity's express id. */
 export type DiffRef = number;
@@ -120,72 +121,6 @@ export type DiffRef = number;
 /** The IfcRoot-family attributes a fingerprint needs when the columnar
  *  `EntityTable` does not hold the entity. */
 type RootAttributes = ReturnType<typeof extractRootAttributesFromEntity>;
-
-/** How an uppercase STEP type participates in the comparison. `name` is the
- *  registry's PascalCase spelling, used instead of the `EntityTable`'s
- *  `'Unknown'` for entities the table never took in. */
-interface TypeRole {
-  role: 'independent' | 'dependent' | 'unknown';
-  name: string;
-  /** Whether the class is an `IfcTypeObject` — the gate on hashing `Tag`
-   *  (issue #2021). A class no bundled schema declares is `false` rather than
-   *  guessed; the fingerprint then carries no `Tag`, which is the same answer
-   *  as a type object that has none. */
-  typeObject: boolean;
-}
-
-/**
- * Classify one STEP type against the three `IfcRoot` branches.
- *
- * The chain has to come from **every bundled schema**, not from the parser's
- * IFC4 codegen pin. `getInheritanceChainForEntity` answers an empty chain for
- * any class the pin does not carry, and that is not a rare corner: IFC2X3 alone
- * puts 23 `IfcObjectDefinition` classes there (`IfcMove`, `IfcOrderAction`,
- * `IfcScheduleTimeControl`, `IfcSpaceProgram`, `IfcServiceLife`, …) and IFC4X3
- * another 77. Judging those as `unknown` dropped the ones the `EntityTable`
- * does not hold — real objects with real GlobalIds — and let through the
- * IFC2X3-only *resource* classes it does hold under a `…STYLE` name, keyed on
- * the Name in slot 0. Both are wrong answers about an IFC2X3 file, which is
- * still most of what is in the wild.
- *
- * `unknown` is still not `dependent`: a vendor extension no schema declares has
- * no chain to judge, so it keeps exactly the reach the `EntityTable` already
- * gave it — which for a `…TYPE` class is a genuine GlobalId, since the parser's
- * type-object branch is name-based and takes those in. Guessing that an
- * unrecognised class is an `IfcObject` and reading its source record instead
- * would cost one STEP extraction per row of every unrecognised bucket in the
- * model, on every call, to reach entities almost no file has. The price of that
- * choice is that a vendor `IfcRoot` subtype whose name does not end in `TYPE`
- * stays uncompared.
- *
- * The one name the chain is not needed for is `IFCREL…`: that prefix is the
- * parser's own rule for taking an unrecognised relationship into the table, and
- * a relationship is excluded here whether any schema can confirm it or not.
- * Without this, an unrecognised `IfcRelXxx` would be the single class of entity
- * that got in through the relationship branch the comparison deliberately shuts.
- */
-function classifyType(typeKey: string): TypeRole {
-  const upper = typeKey.toUpperCase();
-  const chain = getInheritanceChainAcrossSchemas(upper);
-  if (chain.length === 0) {
-    return {
-      role: upper.startsWith('IFCREL') ? 'dependent' : 'unknown',
-      name: typeKey,
-      typeObject: false,
-    };
-  }
-  // The chain holds the class itself plus its supertypes; which end the leaf
-  // sits at is the schema source's business — the union walk answers leaf→root
-  // and the IFC4 pin it falls back to answers root→leaf — so find it by name.
-  const name = chain.find((ancestor) => ancestor.toUpperCase() === upper) ?? typeKey;
-  const typeObject = chain.includes('IfcTypeObject');
-  if (!chain.includes('IfcRoot')) return { role: 'dependent', name, typeObject };
-  return {
-    role: chain.includes('IfcObjectDefinition') ? 'independent' : 'dependent',
-    name,
-    typeObject,
-  };
-}
 
 /**
  * Build one {@link EntityFingerprint} per `IfcObjectDefinition` in a store.
@@ -213,56 +148,50 @@ export function buildModelFingerprints(
   // the (small) set of object types the EntityTable declines to hold.
   const extractor = new EntityExtractor(store.source);
   const units = extractProjectUnits(store.source, store.entityIndex); // for quantitySiScale/scaledPropertyValue
-  const keyOf = authoredKeyResolver(store, overlay, options, extractor, (typeKey) => classifyType(typeKey).role === 'dependent');
-  for (const [typeKey, ids] of store.entityIndex.byType) {
-    // Classified once per type rather than once per entity — the geometry
-    // buckets (IfcCartesianPoint, IfcPolyLoop, …) are the bulk of a real model
-    // and are dismissed here without touching a single row.
-    const type = classifyType(typeKey);
-    if (type.role === 'dependent') continue;
-
-    for (const expressId of ids) {
-      if (seen.has(expressId)) continue;
-      seen.add(expressId);
-      // Queued for deletion: the session no longer has this entity, so the
-      // comparison must not keep reporting it as present and unchanged.
-      if (overlay?.deleted.has(expressId)) continue;
-
-      let globalId = store.entities.getGlobalId(expressId);
-      let source: RootAttributes | undefined;
-      if (!globalId && type.role === 'independent') {
-        // In the model but not in the table: a schedule task, an actor, a work
-        // plan. Its GlobalId is in the STEP record, so read it there.
-        source = readRootAttributes(extractor, store, expressId);
-        globalId = source?.globalId ?? '';
+  const entities = comparableEntities(store, overlay);
+  const keyOf = authoredKeyResolver(store, overlay, options, extractor, entities);
+  for (const { expressId, type: typeKey, overlayCreated } of entities) {
+    if (overlayCreated) {
+      const created = overlay?.createdEntity(expressId);
+      if (created && overlay) {
+        const fingerprint = createdFingerprint(created, overlay, units, keyOf(expressId, created.globalId));
+        if (fingerprint) fingerprints.push(fingerprint);
       }
-      // Still nothing: the entity is not an IfcRoot at all (a placement, a
-      // profile, a representation item), so it has no cross-model identity.
-      if (!globalId) continue;
-
-      const tableType = store.entities.getTypeName(expressId);
-      // `getTypeName` answers 'Unknown' for a row the table never took in. The
-      // registry's own spelling is the honest answer, and it has to be a real
-      // type name: `ifcType` is hashed into the fingerprint and cross-checked
-      // on every content match, so 'Unknown' would pair a task with an actor.
-      const ifcType = source && (!tableType || tableType === 'Unknown') ? type.name : tableType;
-      const input = buildDataInput(store, expressId, ifcType, source, type.typeObject, overlay, units);
-      const fingerprint: EntityFingerprint<DiffRef> = {
-        key: keyOf(expressId, globalId),
-        ifcType,
-        dataHash: buildDataFingerprint(input),
-        components: buildComponentFingerprints(input),
-        ref: expressId,
-      };
-      const container = spatialContainerPath(store, expressId);
-      if (container !== undefined) fingerprint.container = container;
-      fingerprints.push(fingerprint);
+      continue;
     }
-  }
+    const type = classifyType(typeKey);
+    if (seen.has(expressId)) continue;
+    seen.add(expressId);
 
-  for (const entity of overlay?.created ?? []) {
-    const fingerprint = createdFingerprint(entity, overlay as PendingOverlay, units);
-    if (fingerprint) fingerprints.push(fingerprint);
+    const named = overlay?.attributes(expressId);
+    const positional = overlay?.positionalAttributes?.(expressId);
+    const editedGlobalId = named?.has('GlobalId') ? named.get('GlobalId')
+      : positional?.has(0) ? stepText(positional.get(0)) ?? '' : undefined;
+    let globalId = editedGlobalId ?? store.entities.getGlobalId(expressId);
+    let source: RootAttributes | undefined;
+    if (!globalId && editedGlobalId === undefined && type.role === 'independent') {
+      // In the model but not in the table: a schedule task, an actor, a work
+      // plan. Its GlobalId is in the STEP record, so read it there.
+      source = readRootAttributes(extractor, store, expressId);
+      globalId = source?.globalId ?? '';
+    }
+    // Still nothing: the entity is not an IfcRoot at all (a placement, a
+    // profile, a representation item), so it has no cross-model identity.
+    if (!globalId) continue;
+
+    // The effective class wins over the immutable table's source class.
+    const ifcType = type.name;
+    const input = buildDataInput(store, expressId, ifcType, source, type.typeObject, overlay, units);
+    const fingerprint: EntityFingerprint<DiffRef> = {
+      key: keyOf(expressId, globalId),
+      ifcType,
+      dataHash: buildDataFingerprint(input),
+      components: buildComponentFingerprints(input),
+      ref: expressId,
+    };
+    const container = spatialContainerPath(store, expressId);
+    if (container !== undefined) fingerprint.container = container;
+    fingerprints.push(fingerprint);
   }
 
   return fingerprints;
@@ -287,15 +216,12 @@ export function buildModelFingerprints(
  * hashed IfcRoot attributes: `Name` and `Description` have a payload behind them
  * (STEP slots 0/2/3 are fixed across `IfcRoot` subtypes), `ObjectType` has none
  * (slot 4 is `ApplicableOccurrence` on an `IfcTypeObject`) and so exists only as
- * an override, and `Tag` is the same — an override only, and hashed only when
- * the created class is an `IfcTypeObject` (issue #2021), matching the stored
- * path exactly. Property sets and quantities never had the asymmetry — both
- * were already read through the overlay.
+ * an override. `Tag` is read from its class-specific authored slot or override,
+ * and hashed only for `IfcTypeObject` (issue #2021). Property sets and
+ * quantities are read through the overlay.
  *
- * An authored key (`key_from`) is not resolved for a created entity either: it
- * has no store row for `authoredKeyValue` to read, so it is keyed on the
- * GlobalId the caller gave it. A created entity that duplicates a stored
- * entity's authored value therefore reads as added rather than as a collision.
+ * An authored key is resolved from its effective attributes or property sets,
+ * alongside source entities, so a duplicate is treated as a collision.
  *
  * `predefinedType` and `typeAssignments` are necessarily absent: both are read
  * through the store, which has no row for an entity that exists only in the
@@ -307,16 +233,18 @@ function createdFingerprint(
   entity: CreatedEntity,
   overlay: PendingOverlay,
   units: ProjectUnits, // scales Qto_ quantities and measure-typed Pset properties to base SI
+  key: string,
 ): EntityFingerprint<DiffRef> | null {
   const type = classifyType(entity.ifcType);
   if (type.role === 'dependent') return null;
   const edited = overlay.attributes(entity.expressId);
+  const tagIndex = getAttributeNamesAcrossSchemas(entity.ifcType).indexOf('Tag');
   const input: DataFingerprintInput = {
     ifcType: type.name,
     name: override(edited.get('Name'), entity.name),
     description: override(edited.get('Description'), entity.description),
     objectType: override(edited.get('ObjectType'), undefined),
-    tag: type.typeObject ? override(edited.get('Tag'), undefined) : undefined,
+    tag: type.typeObject ? override(edited.get('Tag'), tagIndex < 0 ? undefined : stepText(entity.attributes[tagIndex])) : undefined,
     propertySets: overlay.propertySets(entity.expressId).map((set) => ({
       name: set.name,
       properties: set.properties.map((property) => ({ name: property.name, value: scaledPropertyValue(property.value, property.dataType, units) })),
@@ -331,7 +259,7 @@ function createdFingerprint(
     typeAssignments: [],
   };
   return {
-    key: entity.globalId,
+    key,
     ifcType: type.name,
     dataHash: buildDataFingerprint(input),
     components: buildComponentFingerprints(input),
@@ -346,6 +274,7 @@ function readRootAttributes(
   store: IfcDataStore,
   expressId: number,
 ): RootAttributes | undefined {
+  // @raw-entity-enumeration-ok one source record supplies missing table GlobalId; caller applies overlay identity and membership
   const ref = store.entityIndex.byId.get(expressId);
   if (!ref) return undefined;
   const entity = extractor.extractEntity(ref);
@@ -388,6 +317,11 @@ function buildDataInput(
     ? attributeAcrossSchemas(store, expressId, ifcType, 'Tag')
     : undefined;
   const edited = overlay?.attributes(expressId);
+  const tagIndex = isTypeObject ? getAttributeNamesAcrossSchemas(ifcType).indexOf('Tag') : -1;
+  const positional = tagIndex >= 0 ? overlay?.positionalAttributes?.(expressId) : undefined;
+  const effectiveTag = tagIndex >= 0 && positional?.has(tagIndex)
+    ? stepText(positional.get(tagIndex))
+    : override(edited?.get('Tag'), storedTag != null ? String(storedTag) : undefined);
 
   const propertySets = (overlay
     ? overlay.propertySets(expressId)
@@ -429,9 +363,7 @@ function buildDataInput(
     description: override(edited?.get('Description'), store.entities.getDescription(expressId) || source?.description),
     objectType: override(edited?.get('ObjectType'), store.entities.getObjectType(expressId) || source?.objectType),
     predefinedType: predefinedType != null ? String(predefinedType) : undefined,
-    tag: isTypeObject
-      ? override(edited?.get('Tag'), storedTag != null ? String(storedTag) : undefined)
-      : undefined,
+    tag: isTypeObject ? effectiveTag : undefined,
     propertySets,
     quantitySets,
     typeAssignments,

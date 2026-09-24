@@ -46,9 +46,13 @@ import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER } f
 import { fullScope } from '../auth/scope.js';
 import { loadIfcModel } from '../loader.js';
 import { diffTools } from './diff.js';
+import { mutationTools } from './mutate.js';
 import { buildModelFingerprints } from './diff-fingerprints.js';
+import { fallbackPairDuplicateAuthoredKeys } from './diff-authored-keys.js';
 import type { PendingOverlay } from '../overlay.js';
 import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { overlayFromView } from '../overlay.js';
 
 interface DiffShape {
   entityDiff: { added: string[]; removed: string[]; common: number } | null;
@@ -206,6 +210,69 @@ describe('buildModelFingerprints on an IFC2X3 file', () => {
     expect(after.get(70)).toBe('prop:AST-1');
     expect(after.has(71)).toBe(false);
     expect(duplicateAuthoredKeys.size).toBe(0);
+  });
+
+  it('counts an authored wall in Tag collisions and follows source retypes (#5249)', () => {
+    const dataStore = store('walls');
+    const view = new MutablePropertyView(dataStore.properties, 'walls');
+    const editor = new StoreEditor(dataStore, view);
+    const added = editor.addEntity('IfcWall', [
+      guid('NEWC'), null, 'New wall', null, null, null, null, 'tagA', null,
+    ]);
+    const overlay = overlayFromView(view, dataStore);
+    const duplicates = new Map<string, number[]>();
+    const fingerprints = buildModelFingerprints(dataStore, overlay, {
+      keyProperty: 'Tag', duplicateAuthoredKeys: duplicates,
+    });
+    const keys = new Map(fingerprints.map(f => [f.ref, f.key]));
+    expect(keys.get(70)).toBe(guid('OLDA'));
+    expect(keys.get(added.expressId)).toBe(guid('NEWC'));
+    expect(duplicates.get('tagA')).toEqual([70, added.expressId]);
+    const base = buildModelFingerprints(dataStore, null, { keyProperty: 'Tag' });
+    fallbackPairDuplicateAuthoredKeys([
+      { fingerprints: base, store: dataStore },
+      { fingerprints, store: dataStore, overlay },
+    ], duplicates);
+    expect(base.find(f => f.ref === 70)?.key).toBe(guid('OLDA'));
+    expect(fingerprints.find(f => f.ref === added.expressId)?.key).toBe(guid('NEWC'));
+
+    view.setEntityType(70, 'IfcRelAggregates');
+    view.setEntityType(80, 'IfcWall');
+    view.setAttribute(80, 'GlobalId', guid('REID'));
+    const changed = new Map(buildModelFingerprints(dataStore, overlayFromView(view, dataStore), {
+      keyProperty: 'Tag', duplicateAuthoredKeys: new Map(),
+    }).map(f => [f.ref, f]));
+    expect(changed.has(70)).toBe(false);
+    expect(changed.get(80)?.ifcType).toBe('IfcWall');
+    expect(changed.get(80)?.key).toBe(guid('REID'));
+    expect(changed.get(added.expressId)?.key).toBe('prop:tagA');
+  });
+
+  it('does not restore a parsed GlobalId after an explicit empty edit (#5249 review)', () => {
+    const dataStore = store('walls');
+    const view = new MutablePropertyView(dataStore.properties, 'walls');
+    expect(dataStore.entities.getGlobalId(70)).toBe(guid('OLDA'));
+    view.setAttribute(70, 'GlobalId', '');
+    const fingerprints = buildModelFingerprints(dataStore, overlayFromView(view, dataStore), {
+      keyProperty: 'Tag', duplicateAuthoredKeys: new Map(),
+    });
+    expect(fingerprints.some(fingerprint => fingerprint.ref === 70)).toBe(false);
+    expect(fingerprints.some(fingerprint => fingerprint.ref === 71)).toBe(true);
+  });
+
+  it('reports a created Tag collision through model_diff (#5249)', async () => {
+    await load('walls-created-tag', model(guid('OLDA'), guid('OLDB')));
+    const create = mutationTools.find(tool => tool.name === 'entity_create');
+    if (!create) throw new Error('entity_create not registered');
+    const result = await create.handler({
+      model_id: 'walls-created-tag', type: 'IfcWall',
+      attributes: [guid('NEWC'), null, 'New wall', null, null, null, null, 'tagA', null],
+    }, ctx);
+    expect(result.isError).toBeUndefined();
+
+    const out = await diff({ a: 'walls', b: 'walls-created-tag', by_content: true, key_from: 'Tag' });
+    expect((out.contentDiff as Record<string, unknown>).duplicateAuthoredKeys).toEqual(['tagA']);
+    expect(out.contentDiff?.counts).toMatchObject({ added: 1, deleted: 0 });
   });
 
   it('refuses a malformed key_from', async () => {

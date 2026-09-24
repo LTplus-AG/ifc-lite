@@ -148,7 +148,8 @@ pub struct StepStats {
 }
 
 /// What a schema conversion could not settle, beyond [`StepStats`]
-/// (#5307, #5365). Returned by [`crate::export_step_with_report`].
+/// (#5307, #5365). Returned by [`crate::export_step_with_report`] and
+/// [`crate::export_step_to_writer_with_report`].
 ///
 /// A separate type rather than new [`StepStats`] fields: `StepStats` is
 /// publicly constructible and not `#[non_exhaustive]`, so a field added to it
@@ -171,7 +172,10 @@ pub struct ConversionReport {
     /// replacement for, so they were kept as written (#5365). Non-zero means
     /// the file is not valid against its header.
     pub enum_values_refused: usize,
-    /// One line per non-zero count above, naming what it happened to; the
-    /// same texts the merged exporter puts in `MergedStats::warnings`.
+    /// The warning lines naming what the counts above happened to: one for
+    /// unfilled IFC4 slots, and one per kind of enum loss (label occupied,
+    /// `.NOTDEFINED.`, `$`, refused), so `enum_values_lost` can span up to
+    /// three lines. The same texts the merged exporter puts in
+    /// `MergedStats::warnings`.
     pub warnings: Vec<String>,
 }

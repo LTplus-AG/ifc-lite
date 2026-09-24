@@ -619,7 +619,8 @@ pub use kmz::{ifc_angle_to_kml_heading, try_export_kmz_collada_from_meshes, KmzO
 pub use merged::{export_merged, export_merged_with_stats, MergedOptions, MergedStats};
 pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 pub use step::{export_step, export_step_json, export_step_with_stats,
-               AttrMutation, PropMutation, StepOptions, StepStats};
+               export_step_with_report, export_step_to_writer_with_report,
+               AttrMutation, ConversionReport, PropMutation, StepOptions, StepStats};
 pub use model::{build_export_model, stream_export_model, ExportModel /* ... */};
 // `ExportModel` and both streaming entry points carry the model's UnitScales.
 // Attribute values are in the FILE's units, unlike the geometry exporters'
@@ -648,6 +649,17 @@ measure, a label, an entity reference, or an enum with no `NOTDEFINED`
 member); slots whose declaration does offer one take `.NOTDEFINED.` or `.F.`
 and are not counted. When either is non-zero, the emitted file is not valid
 IFC2X3.
+
+`export_step_with_report` (and its streaming twin
+`export_step_to_writer_with_report`) also returns a `ConversionReport` for
+what a schema conversion could not settle in other directions:
+`ifc4_required_slots_unfilled` counts slots IFC4 requires that an IFC4X3/IFC5
+→ IFC4 downgrade left `$` (#5307), `enum_values_lost` and
+`enum_values_refused` count enum members the target schema does not define
+that were written as `.NOTDEFINED.`/`$`/`.USERDEFINED.` without room for the
+name, or kept as written (#5365), and `warnings` names each case. It is a
+separate, `#[non_exhaustive]` type so it can grow without breaking callers
+that build `StepStats` by hand.
 
 `ModelOptions::default().with_placements(true)` resolves each product's
 `ObjectPlacement` into

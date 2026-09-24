@@ -5,8 +5,8 @@
 //! `schema-converter-enums.test.ts`, through the public exports.
 
 use ifc_lite_export::{
-    export_merged_models, export_step_with_report, export_step_with_stats, MergedModel,
-    MergedOptions, StepOptions,
+    export_merged_models, export_step_to_writer_with_report, export_step_with_report,
+    export_step_with_stats, MergedModel, MergedOptions, StepOptions,
 };
 
 fn model(schema: &str, record: &str) -> String {
@@ -97,4 +97,14 @@ fn single_model_export_reports_a_lost_value_in_the_conversion_report() {
     assert_eq!(report.enum_values_refused, 0, "{report:?}");
     assert_eq!(report.ifc4_required_slots_unfilled, 1, "{report:?}");
     assert_eq!(report.warnings.len(), 2, "{report:?}");
+}
+
+#[test]
+fn the_streaming_writer_returns_the_same_report() {
+    let content = model("IFC4X3_ADD2", "#10=IFCPROJECTEDCRS($,'A description',$,$,$,$,$);");
+    let opts = StepOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let mut out = Vec::new();
+    let (_, report) = export_step_to_writer_with_report(content.as_bytes(), &opts, &mut out).unwrap();
+    assert_eq!(report.ifc4_required_slots_unfilled, 1, "{report:?}");
+    assert_eq!(report.warnings.len(), 1, "{report:?}");
 }

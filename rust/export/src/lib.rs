@@ -119,8 +119,9 @@ pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 #[cfg(feature = "parquet-bos")]
 pub use parquet_bos::{export_bos, ParquetBosOptions};
 pub use step::{
-    export_step, export_step_to_writer, export_step_with_report, export_step_with_stats, AttrMutation,
-    ConversionReport, CopyOnWriteMutation, PropMutation, StepOptions, StepStats,
+    export_step, export_step_to_writer, export_step_to_writer_with_report, export_step_with_report,
+    export_step_with_stats, AttrMutation, ConversionReport, CopyOnWriteMutation, PropMutation,
+    StepOptions, StepStats,
 };
 pub use step_json::export_step_json;
 pub use usd::{export_usd, UsdOptions};

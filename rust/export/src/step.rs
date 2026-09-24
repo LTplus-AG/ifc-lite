@@ -82,13 +82,23 @@ pub fn export_step_to_writer<W: std::io::Write>(
     opts: &StepOptions,
     w: &mut W,
 ) -> std::io::Result<StepStats> {
+    export_step_to_writer_with_report(content, opts, w).map(|(stats, _)| stats)
+}
+
+/// [`export_step_to_writer`] that also returns the [`ConversionReport`], the
+/// streaming twin of [`export_step_with_report`].
+pub fn export_step_to_writer_with_report<W: std::io::Write>(
+    content: &[u8],
+    opts: &StepOptions,
+    w: &mut W,
+) -> std::io::Result<(StepStats, ConversionReport)> {
     use std::io::Write as _;
     let mut buffered = std::io::BufWriter::with_capacity(1 << 20, w);
-    let (stats, _) = emit(content, opts, &mut buffered)?;
+    let result = emit(content, opts, &mut buffered)?;
     // Flushed here for the error, not for the bytes: `BufWriter::drop` does
     // flush, it just has nowhere to report a failure and swallows it.
     buffered.flush()?;
-    Ok(stats)
+    Ok(result)
 }
 
 /// Write one record this exporter SYNTHESIZES (a property set, its properties,
@@ -294,7 +304,7 @@ fn emit<W: std::io::Write>(
         // duplicate real records.
         let Some(mut next) = next_id else {
             out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
-            return Ok((StepStats {
+            let stats = StepStats {
                 total: order.len(),
                 written,
                 copies_refused,
@@ -302,7 +312,8 @@ fn emit<W: std::io::Write>(
                 attribute_edits_refused,
                 owner_history_unfilled: slot_fill.owner_history_unfilled(),
                 required_slots_unfilled: slot_fill.required_slots_unfilled(),
-            }, checks.report()));
+            };
+            return Ok((stats, checks.report()));
         };
         for ((express_id, pset_name), props) in &groups {
             // One property set costs one id per property plus one for the set
@@ -352,7 +363,7 @@ fn emit<W: std::io::Write>(
 
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
-    Ok((StepStats {
+    let stats = StepStats {
         total: order.len(),
         written,
         copies_refused,
@@ -360,7 +371,8 @@ fn emit<W: std::io::Write>(
         attribute_edits_refused,
         owner_history_unfilled: slot_fill.owner_history_unfilled(),
         required_slots_unfilled: slot_fill.required_slots_unfilled(),
-    }, checks.report()))
+    };
+    Ok((stats, checks.report()))
 }
 
 #[cfg(test)]

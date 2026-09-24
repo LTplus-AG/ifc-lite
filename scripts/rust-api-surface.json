@@ -521,6 +521,7 @@
     "export_step": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "export_step_json": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "export_step_to_writer": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "export_step_to_writer_with_report": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "export_step_with_report": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "export_step_with_stats": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "export_usd": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",

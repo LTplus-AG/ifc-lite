@@ -65,7 +65,6 @@ import { symbolicLineVertexData } from '../../hooks/symbolic-line-channels.js';
 import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
 import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
 import { useLandXmlRendererOverlay } from '../../hooks/useLandXmlOverlayLines.js';
-import { useAnnotationInk } from '../../hooks/useAnnotationInk.js';
 import { selectLandXmlViewportPick } from './landXmlViewportSelection.js';
 import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
 import { subscribeViewportHealth } from './device-loss-report.js';
@@ -1530,8 +1529,11 @@ export function Viewport({
     renderer.uploadAnnotationFills3D(annotationFills3D);
   }, [annotationFills3D, isInitialized]);
 
-  // Overlay line colour + label colours follow the theme (#5388).
-  useAnnotationInk(rendererRef, isInitialized, theme, annotationTexts3D);
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !isInitialized) return;
+    renderer.uploadAnnotationTexts3D(annotationTexts3D);
+  }, [annotationTexts3D, isInitialized]);
 
   // ===== Streaming progress =====
   const isStreaming = useViewerStore((state) => state.geometryStreamingActive);

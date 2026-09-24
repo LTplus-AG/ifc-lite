@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
 import { SymbolicTextPipeline } from './symbolic-overlay-pipelines.js';
-import { GLYPH_HALO_PX, type SymbolicTextAtlas } from './symbolic-text-atlas.js';
+import type { SymbolicTextAtlas } from './symbolic-text-atlas.js';
 import { SYMBOLIC_TEXT_WGSL } from './shaders/symbolic-overlay.wgsl.js';
 
 // Node has no WebGPU globals. The production pipeline only consumes these
@@ -87,9 +87,11 @@ describe('SymbolicTextPipeline anchored instance ABI (#5049)', () => {
     assert.equal(legacyDelta[7], 1, 'the legacy route knows this static origin is anchor-local');
     // This emulates the live selected shader expression at scale=0.5. The
     // former `origin - anchor` branch produced about 50m instead of 100.065m.
-    // The quad's left edge sits one halo margin (#5388) left of the glyph:
-    // GLYPH_HALO_PX atlas px at 0.01 m per atlas px (0.48 m / 48 px).
-    const expectedQuadX = 100.065 - GLYPH_HALO_PX * 0.01 * 0.5;
+    // The quad's left edge sits one halo margin (#5388) left of the glyph. The
+    // margin is read back from the uploaded UVs (atlas px = -u0 * atlasSize),
+    // at 0.01 m per atlas px (0.48 m / 48 px).
+    const haloAtlasPx = -staticInstance[9] * 64;
+    const expectedQuadX = 100.065 - haloAtlasPx * 0.01 * 0.5;
     const actualWorldX = Math.fround(staticInstance[17] + Math.fround(staticInstance[0] * 0.5));
     const oldWorldX = Math.fround(staticInstance[17] + Math.fround((staticInstance[0] - staticInstance[17]) * 0.5));
     assert.ok(Math.abs(actualWorldX - expectedQuadX) < 1e-5, `anchored legacy glyph moved to ${actualWorldX}`);
@@ -193,8 +195,12 @@ describe('SymbolicTextPipeline glyph halo margin (#5388)', () => {
     assert.ok(inst, 'the text instance was uploaded');
 
     const wScale = 0.48 / 48; // world metres per atlas px
-    const margin = GLYPH_HALO_PX * wScale;
-    const uvMargin = GLYPH_HALO_PX / 64; // makeAtlas().atlasSize
+    // The glyph's own atlas rect starts at u0 = 0, so the uploaded u0 is minus
+    // the halo margin in UV units (makeAtlas().atlasSize is 64).
+    const uvMargin = -inst[9];
+    const haloAtlasPx = uvMargin * 64;
+    assert.ok(haloAtlasPx >= 2, `the quad carries a halo margin (got ${haloAtlasPx} atlas px)`);
+    const margin = haloAtlasPx * wScale;
     // The quad is the glyph rect grown by the margin on every side...
     assert.ok(Math.abs(inst[3] - (12 * wScale + 2 * margin)) < 1e-6, `quad width ${inst[3]}`);
     assert.ok(Math.abs(inst[7] - (24 * wScale + 2 * margin)) < 1e-6, `quad height ${inst[7]}`);

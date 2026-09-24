@@ -22,11 +22,11 @@
 import type { ThemeMode } from '@/store/slices/uiSlice';
 import { getThemeClearColor } from '@/utils/viewportUtils';
 
-export type Rgba = [number, number, number, number];
+type Rgba = [number, number, number, number];
 
 /** WCAG 2 minimum for large text and graphics (SC 1.4.11). Labels are drawn
  *  at a fixed screen size well above body text, so this is the right floor. */
-export const MIN_TEXT_CONTRAST = 3;
+const MIN_TEXT_CONTRAST = 3;
 
 // Light-theme values are exactly the renderer's own defaults, so the light
 // and colorful themes look the same as before this module existed.
@@ -37,7 +37,7 @@ const LIGHT_INK_ON_DARK: Rgba = [0.86, 0.88, 0.93, 1];
 
 /** The colour actually behind the overlay. The colorful theme clears to
  *  transparent and shows the page's CSS backdrop (#dde3f0, index.css). */
-export function annotationBackdrop(theme: ThemeMode): [number, number, number] {
+function annotationBackdrop(theme: ThemeMode): [number, number, number] {
   if (theme === 'colorful') return [0xdd / 255, 0xe3 / 255, 0xf0 / 255];
   const [r, g, b] = getThemeClearColor(theme);
   return [r, g, b];
@@ -53,18 +53,18 @@ export function annotationLineInk(theme: ThemeMode): Rgba {
 }
 
 /** Fallback colour for a label the file does not style. */
-export function annotationTextInk(theme: ThemeMode): Rgba {
+function annotationTextInk(theme: ThemeMode): Rgba {
   return isDarkBackdrop(theme) ? LIGHT_INK_ON_DARK : DARK_INK_ON_LIGHT_TEXT;
 }
 
 /** WCAG 2 relative luminance of an sRGB colour with 0..1 channels. */
-export function relativeLuminance([r, g, b]: readonly number[]): number {
+function relativeLuminance([r, g, b]: readonly number[]): number {
   const lin = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 }
 
 /** WCAG 2 contrast ratio between two sRGB colours (1..21). */
-export function contrastRatio(a: readonly number[], b: readonly number[]): number {
+function contrastRatio(a: readonly number[], b: readonly number[]): number {
   const la = relativeLuminance(a);
   const lb = relativeLuminance(b);
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);

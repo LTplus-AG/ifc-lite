@@ -52,34 +52,54 @@ export function isArchivedDiff(path) {
 }
 
 /**
- * The inner diff's content for one line of an archived diff, or `null` when
- * the line has no inner `+`/`-` marker to remove. Context lines need nothing:
- * their inner marker is a space, which trimming already removes. The inner
- * line is classified with the SAME `unifiedDiffLineKind` the outer diff uses,
- * so a hunk header or a no-newline note inside the archive is never turned
- * into something quotable that it was not already.
+ * A walker over an archived diff's lines, in order, that answers each line's
+ * inner-diff content, or `null` when there is no inner marker to remove.
  *
- * @param {string} text - the line with its OUTER marker already removed.
+ * STATEFUL, BY POSITION, for the same reason `quotableLines` is (#3802): inside
+ * the archive, `--- a/f.ts`, `+++ b/f.ts` and a `git format-patch` preamble
+ * (`- bullet` in a commit message) start with a marker character but are NOT
+ * inner added or removed lines. Only a line inside an inner hunk has an inner
+ * marker. The inner state opens at an inner `@@` and closes at an inner
+ * `diff --git` (the next file of the archive). It also closes at each OUTER hunk
+ * boundary: the lines between two outer hunks were never sent, so whether the
+ * next one is inside an inner hunk is unknown, and unknown keeps the pre-#5563
+ * behaviour of no second form. Context lines need nothing, because their inner
+ * marker is a space, which trimming already removes.
+ *
+ * @returns {{ outerHunk(): void, next(text: string): string | null }}
  */
-function innerDiffContent(text) {
-  const kind = unifiedDiffLineKind(text, true);
-  return kind === 'added' || kind === 'removed' ? text.slice(1) : null;
+function innerDiffWalker() {
+  let insideInnerHunk = false;
+  return {
+    outerHunk() {
+      insideInnerHunk = false;
+    },
+    next(text) {
+      if (text.startsWith('diff --git ')) {
+        insideInnerHunk = false;
+        return null;
+      }
+      const kind = unifiedDiffLineKind(text, insideInnerHunk);
+      if (kind === 'hunk') {
+        insideInnerHunk = true;
+        return null;
+      }
+      return insideInnerHunk && (kind === 'added' || kind === 'removed') ? text.slice(1) : null;
+    },
+  };
 }
 
 /**
  * The texts a single line may be quoted as, trimmed: always its own text, plus
- * its inner-diff content when the file is an archived diff (#5563). Both stay
- * whole lines, so a fragment of either is still refused.
+ * its inner-diff content when it has one (#5563). Both stay whole lines, so a
+ * fragment of either is still refused.
  *
  * @param {string} text - the line with its OUTER marker already removed.
- * @param {boolean} archivedDiff
+ * @param {string | null} inner - from `innerDiffWalker().next`, or null.
  */
-function quotableForms(text, archivedDiff) {
+function quotableForms(text, inner) {
   const forms = [text.trim()];
-  if (archivedDiff) {
-    const inner = innerDiffContent(text);
-    if (inner !== null) forms.push(inner.trim());
-  }
+  if (inner !== null) forms.push(inner.trim());
   return forms.filter((f) => f !== '');
 }
 
@@ -102,7 +122,7 @@ function quotableForms(text, archivedDiff) {
  * @returns {string[]}
  */
 export function quotableLines(patch, { path } = {}) {
-  const archivedDiff = isArchivedDiff(path);
+  const inner = isArchivedDiff(path) ? innerDiffWalker() : null;
   const out = [];
   // BY POSITION, NOT BY PREFIX. `---`/`+++` are file headers only BEFORE the
   // first `@@`; after it they are content that happens to start the same way --
@@ -118,12 +138,13 @@ export function quotableLines(patch, { path } = {}) {
     const kind = unifiedDiffLineKind(line, insideHunk);
     if (kind === 'hunk') {
       insideHunk = true;
+      inner?.outerHunk();
       continue;
     }
     if (kind === 'metadata' || kind === 'header') continue;
     const marker = line[0];
     const body = marker === '+' || marker === '-' || marker === ' ' ? line.slice(1) : line;
-    out.push(...quotableForms(body, archivedDiff));
+    out.push(...quotableForms(body, inner ? inner.next(body) : null));
   }
   return out;
 }
@@ -179,7 +200,10 @@ export function lineIsAdded(line, ranges) {
  *   - AN ARCHIVED `.patch`/`.diff` (#5563). A line matches on its own text OR
  *     on its inner-diff content, the same two forms `quotableLines` offers, so
  *     the per-finding anchor and the proof-of-work quote accept the same
- *     quotes. Pass the file's `path` to get this.
+ *     quotes. Pass the file's `path` to get this. One consequence: a quote
+ *     can now match two added lines (a `+x` and an `x` in the same archive),
+ *     and a finding whose `line` names neither is then dropped rather than
+ *     re-anchored, as for any repeated line.
  *
  * @param {string} patch
  * @param {string} quote
@@ -189,10 +213,17 @@ export function lineIsAdded(line, ranges) {
 export function addedLinesMatching(patch, quote, { path } = {}) {
   const needle = String(quote).trim();
   if (needle === '') return [];
-  const archivedDiff = isArchivedDiff(path);
+  const inner = isArchivedDiff(path) ? innerDiffWalker() : null;
   const out = [];
+  // Every row goes through the walker, context and removed included, because
+  // the inner hunk state depends on all of them; only ADDED rows can match.
   for (const row of newFileLines(patch)) {
-    if (row.kind === 'added' && quotableForms(row.text, archivedDiff).includes(needle)) out.push(row.line);
+    if (row.kind === 'hunk') {
+      inner?.outerHunk();
+      continue;
+    }
+    const innerText = inner ? inner.next(row.text) : null;
+    if (row.kind === 'added' && quotableForms(row.text, innerText).includes(needle)) out.push(row.line);
   }
   return out;
 }

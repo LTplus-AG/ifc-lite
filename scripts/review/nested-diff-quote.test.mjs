@@ -21,7 +21,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SENTINEL, addedLinesMatching, quoteAppearsIn } from './validate-findings.mjs';
+import { SENTINEL, addedLinesMatching, quoteAppearsIn, quotedLineFailureMessage } from './validate-findings.mjs';
 import { addedLineRanges } from './build-review-input.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -138,4 +138,45 @@ test('#5563: the per-finding anchor accepts the same quote the proof of work doe
   assert.equal(quoteAppearsIn(PATCH, REMOVED_LINE, 8, { path: PATH }), true);
   // Its own hunk header is never turned into anything but itself.
   assert.equal(quoteAppearsIn(PATCH, '-40,3 +40,4 @@', 8, { path: PATH }), false);
+});
+
+test('#5563 CONTROL: the archive\'s own headers and a format-patch preamble are not inner diff lines', () => {
+  // Only a line inside an inner hunk has an inner marker. `--- a/f.ts` is a
+  // header, and `- bullet` in a commit message is prose: stripping their first
+  // character would offer a fragment of each as a quotable line.
+  const archive = [
+    'From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001',
+    'Subject: [PATCH] probe',
+    '',
+    '- bullet in commit message body',
+    '---',
+    'diff --git a/f.ts b/f.ts',
+    '--- a/f.ts',
+    '+++ b/f.ts',
+    '@@ -1,1 +1,2 @@',
+    ' const a = 1;',
+    '+const inner = computeInnerValue();',
+  ];
+  const patch = [`@@ -0,0 +1,${archive.length} @@`, ...archive.map((l) => `+${l}`)].join('\n');
+  const at = (q) => addedLinesMatching(patch, q, { path: 'evidence/probe.patch' });
+  assert.deepEqual(at('bullet in commit message body'), [], 'preamble prose keeps its dash');
+  assert.deepEqual(at('- bullet in commit message body'), [4], 'and is quotable as itself');
+  assert.deepEqual(at('-- a/f.ts'), [], 'an inner file header is not an inner removed line');
+  assert.deepEqual(at('++ b/f.ts'), [], 'nor an inner added one');
+  assert.deepEqual(at('const inner = computeInnerValue();'), [11], 'inside the inner hunk it is stripped');
+  assert.equal(quoteAppearsIn(patch, '-- a/f.ts', 8, { path: 'evidence/probe.patch' }), false);
+});
+
+test('#5563: an outer hunk that starts mid-archive offers no second form (unknown inner state)', () => {
+  // The archive was MODIFIED: this hunk shows lines deep inside it, and the
+  // inner `@@` above them was never sent. Unknown keeps the old behaviour.
+  const patch = ['@@ -20,1 +20,2 @@', '     unchanged();', `++${SOURCE_LINE}`].join('\n');
+  assert.deepEqual(addedLinesMatching(patch, SOURCE_LINE, { path: PATH }), []);
+  assert.deepEqual(addedLinesMatching(patch, `+${SOURCE_LINE}`, { path: PATH }), [21]);
+});
+
+test('#5563: the wrong-file diagnostic finds an archived line quoted without its inner marker', () => {
+  const msg = quotedLineFailureMessage(new Map(INPUT.files.map((f) => [f.path, f])), TS_PATH, SOURCE_LINE, 8);
+  assert.match(msg, /the file attribution is wrong/);
+  assert.ok(msg.includes('renderer-ablation.patch'), msg);
 });

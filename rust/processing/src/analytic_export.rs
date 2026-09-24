@@ -18,6 +18,8 @@ mod operands;
 use operands::{is_boolean_operand, is_csg_select};
 mod placement;
 use placement::validate_placement_chain;
+mod mapped;
+use mapped::resolve_mapped_item;
 use serde::Serialize;
 
 const MAX_VISITED_ITEMS: usize = 100_000;
@@ -281,52 +283,25 @@ pub fn extract_swept_disk_descriptions(
                         failed = true;
                         break;
                     }
-                    let Some(target_id) = node.item.get_ref(1) else {
-                        result.diagnostics.push(format!("product #{id}: mapped item #{item_id} has missing or invalid MappingTarget"));
-                        failed = true;
-                        break;
-                    };
-                    match decoder.decode_by_id(target_id) {
-                        Ok(target) if target.ifc_type.is_subtype_of(IfcType::IfcCartesianTransformationOperator) => {}
-                        Ok(target) => {
-                            result.diagnostics.push(format!("product #{id}: mapped item #{item_id} MappingTarget #{target_id} has wrong type {}", target.ifc_type.name()));
+                    match resolve_mapped_item(&node.item, &router, &mut decoder) {
+                        Ok((items, local)) => {
+                            let transform = local.map_or(node.transform, |m| node.transform * Matrix4::from_column_slice(&m));
+                            let mut path = node.path;
+                            path.push(item_id);
+                            if stack.len().saturating_add(items.len()) > MAX_VISITED_ITEMS {
+                                result.diagnostics.push(format!("product #{id}: mapped item #{item_id} exceeds work budget"));
+                                failed = true;
+                                break;
+                            }
+                            stack.extend(items.into_iter().rev().map(|item| WalkItem {
+                                item, transform, path: path.clone(), ancestors: ancestors.clone(), source_modified: node.source_modified,
+                            }));
+                        }
+                        Err(reason) => {
+                            result.diagnostics.push(format!("product #{id}: mapped item #{item_id}: {reason}"));
                             failed = true;
                             break;
                         }
-                        Err(error) => {
-                            result.diagnostics.push(format!("product #{id}: mapped item #{item_id} MappingTarget #{target_id}: {error}"));
-                            failed = true;
-                            break;
-                        }
-                    }
-                    let mapped = (|| {
-                        let map = decoder.decode_by_id(node.item.get_ref(0)?) .ok()?;
-                        if map.ifc_type != IfcType::IfcRepresentationMap { return None; }
-                        let rep = decoder.decode_by_id(map.get_ref(1)?) .ok()?;
-                        let items_attr = rep.get(3)?;
-                        if items_attr.as_list().is_none_or(|items| items.is_empty() || items.len() > MAX_VISITED_ITEMS || items.iter().any(|item| item.as_entity_ref().is_none())) {
-                            return None;
-                        }
-                        let items = decoder.resolve_ref_list(items_attr).ok()?;
-                        let local = router.resolve_scaled_mapped_item_transform(&node.item, &map, &mut decoder).ok()?;
-                        Some((items, local))
-                    })();
-                    if let Some((items, local)) = mapped {
-                        let transform = local.map_or(node.transform, |m| node.transform * Matrix4::from_column_slice(&m));
-                        let mut path = node.path;
-                        path.push(item_id);
-                        if stack.len().saturating_add(items.len()) > MAX_VISITED_ITEMS {
-                            result.diagnostics.push(format!("product #{id}: mapped item #{item_id} exceeds work budget"));
-                            failed = true;
-                            break;
-                        }
-                        stack.extend(items.into_iter().rev().map(|item| WalkItem {
-                            item, transform, path: path.clone(), ancestors: ancestors.clone(), source_modified: node.source_modified,
-                        }));
-                    } else {
-                        result.diagnostics.push(format!("product #{id}: cannot resolve mapped item #{item_id}"));
-                        failed = true;
-                        break;
                     }
                 }
                 IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {

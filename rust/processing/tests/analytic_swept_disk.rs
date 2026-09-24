@@ -185,6 +185,45 @@ fn invalid_mapping_target_omits_mapped_product_atomically() {
 }
 
 #[test]
+fn mapped_origin_and_operator_axes_must_resolve_before_claiming_world_coordinates() {
+    let source = String::from_utf8(fixture("swept_disk_trimmed_line")).unwrap();
+    let map = "#45=IFCREPRESENTATIONMAP(#13,#44);";
+    let operator = "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#10,$,$);";
+    let cases = [
+        (source.replace(map, "#45=IFCREPRESENTATIONMAP($,#44);"), "MappingOrigin"),
+        (source.replace(map, "#45=IFCREPRESENTATIONMAP(#12,#44);"), "MappingOrigin"),
+        (source.replace(map, "#1000=IFCAXIS2PLACEMENT3D(#10,42.,#12);\n#45=IFCREPRESENTATIONMAP(#1000,#44);"), "Axis"),
+        (source.replace(map, "#1000=IFCAXIS2PLACEMENT3D(#10,#11,#10);\n#45=IFCREPRESENTATIONMAP(#1000,#44);"), "RefDirection"),
+        (source.replace(operator, "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);"), "LocalOrigin"),
+        (source.replace(operator, "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#12,$,$);"), "LocalOrigin"),
+        (source.replace(operator, "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D(42.,$,#10,$,$);"), "Axis1"),
+        (source.replace(operator, "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,#10,#10,$,$);"), "Axis2"),
+        (source.replace(operator, "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#10,$,42.);"), "Axis3"),
+    ];
+    for (model, reason) in cases {
+        let result = extract_swept_disk_descriptions(model.as_bytes(), None);
+        assert!(!result.elements.contains_key(&50), "{reason}: false world description");
+        assert!(
+            result.diagnostics.iter().any(|d| {
+                d.contains("product #50") && d.contains("mapped item #47") && d.contains(reason)
+            }),
+            "{reason}: {:?}",
+            result.diagnostics
+        );
+    }
+
+    // The mapped source can use a valid 2D origin even though this path cannot
+    // claim a 2D *product* LocalPlacement until the router supports that case.
+    let valid_2d_origin = source.replace(
+        map,
+        "#1000=IFCAXIS2PLACEMENT2D(#10,#14);\n#45=IFCREPRESENTATIONMAP(#1000,#44);",
+    );
+    let result = extract_swept_disk_descriptions(valid_2d_origin.as_bytes(), None);
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    assert_eq!(result.elements[&50][0].solid_id, 43);
+}
+
+#[test]
 fn composite_bar_keeps_ordered_lines_and_xz_arcs() {
     let result = extract_swept_disk_descriptions(&fixture("swept_disk_composite_arc_ubar"), None);
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
@@ -265,11 +304,15 @@ fn malformed_placement_chain_never_claims_world_directrix() {
     let source = String::from_utf8(fixture("swept_disk_trimmed_line")).unwrap();
     let product = "#50=IFCREINFORCINGBAR('0000000000000000000002',$,'Bar',$,$,#30,#49,'BAR-1',$,29.,0.,$,.NOTDEFINED.,$);";
     let placement = "#30=IFCLOCALPLACEMENT($,#13);";
+    let axes = "#13=IFCAXIS2PLACEMENT3D(#10,#11,#12);";
     let cases = [
         source.replace(product, &product.replace("#30,#49,", "#10,#49,")),
         source.replace(placement, "#30=IFCLOCALPLACEMENT($,#10);"),
         source.replace(placement, "#30=IFCLOCALPLACEMENT($,$);"),
         source.replace(placement, "#30=IFCLOCALPLACEMENT(#10,#13);"),
+        source.replace(placement, "#1000=IFCAXIS2PLACEMENT2D(#10,#14);\n#30=IFCLOCALPLACEMENT($,#1000);"),
+        source.replace(axes, "#13=IFCAXIS2PLACEMENT3D(#10,42.,#12);"),
+        source.replace(axes, "#13=IFCAXIS2PLACEMENT3D(#10,#11,42.);"),
     ];
     for (index, model) in cases.iter().enumerate() {
         let result = extract_swept_disk_descriptions(model.as_bytes(), None);

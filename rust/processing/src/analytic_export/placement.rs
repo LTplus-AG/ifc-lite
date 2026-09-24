@@ -29,9 +29,10 @@ pub(super) fn validate_placement_chain(
         match node.ifc_type {
             IfcType::IfcLocalPlacement => {
                 let relative = resolve_required(&node, 1, "RelativePlacement", decoder)?;
-                if !matches!(relative.ifc_type, IfcType::IfcAxis2Placement2D | IfcType::IfcAxis2Placement3D) {
-                    return Err(format!("IfcLocalPlacement #{current} has invalid RelativePlacement #{}", relative.id));
+                if relative.ifc_type != IfcType::IfcAxis2Placement3D {
+                    return Err(format!("IfcLocalPlacement #{current} has unsupported RelativePlacement #{} of type {}", relative.id, relative.ifc_type.name()));
                 }
+                validate_axis2_placement_3d(&relative, decoder)?;
             }
             IfcType::IfcGridPlacement => {
                 let location = resolve_required(&node, 1, "PlacementLocation", decoder)?;
@@ -56,6 +57,7 @@ pub(super) fn validate_placement_chain(
                     if value.ifc_type != IfcType::IfcAxis2Placement3D {
                         return Err(format!("IfcLinearPlacement #{current} has invalid CartesianPosition #{}", value.id));
                     }
+                    validate_axis2_placement_3d(&value, decoder)?;
                 }
             }
             _ => return Err(format!("ObjectPlacement #{current} has invalid type {}", node.ifc_type.name())),
@@ -66,14 +68,53 @@ pub(super) fn validate_placement_chain(
     }
 }
 
-fn resolve_required(
+pub(super) fn resolve_required(
     node: &DecodedEntity,
     index: usize,
     name: &str,
     decoder: &mut EntityDecoder,
 ) -> Result<DecodedEntity, String> {
     let id = node.get_ref(index)
-        .ok_or_else(|| format!("placement #{} has missing or invalid {name}", node.id))?;
+        .ok_or_else(|| format!("entity #{} has missing or invalid {name}", node.id))?;
     decoder.decode_by_id(id)
-        .map_err(|error| format!("placement #{} {name} #{id}: {error}", node.id))
+        .map_err(|error| format!("entity #{} {name} #{id}: {error}", node.id))
+}
+
+pub(super) fn validate_axis2_placement_3d(
+    placement: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> Result<(), String> {
+    let location = resolve_required(placement, 0, "Location", decoder)?;
+    if location.ifc_type != IfcType::IfcCartesianPoint {
+        return Err(format!("IfcAxis2Placement3D #{} has invalid Location #{}", placement.id, location.id));
+    }
+    validate_optional_direction(placement, 1, "Axis", decoder)?;
+    validate_optional_direction(placement, 2, "RefDirection", decoder)
+}
+
+pub(super) fn validate_axis2_placement_2d(
+    placement: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> Result<(), String> {
+    let location = resolve_required(placement, 0, "Location", decoder)?;
+    if location.ifc_type != IfcType::IfcCartesianPoint {
+        return Err(format!("IfcAxis2Placement2D #{} has invalid Location #{}", placement.id, location.id));
+    }
+    validate_optional_direction(placement, 1, "RefDirection", decoder)
+}
+
+pub(super) fn validate_optional_direction(
+    entity: &DecodedEntity,
+    index: usize,
+    name: &str,
+    decoder: &mut EntityDecoder,
+) -> Result<(), String> {
+    if entity.get(index).is_none_or(|attr| attr.is_null()) {
+        return Ok(());
+    }
+    let direction = resolve_required(entity, index, name, decoder)?;
+    if direction.ifc_type != IfcType::IfcDirection {
+        return Err(format!("entity #{} has invalid {name} #{} of type {}", entity.id, direction.id, direction.ifc_type.name()));
+    }
+    Ok(())
 }

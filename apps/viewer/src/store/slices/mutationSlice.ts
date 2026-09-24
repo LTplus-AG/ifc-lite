@@ -49,7 +49,7 @@ import { meshesForOwningModel } from '../owningModelMeshes.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import { buildElementMesh } from './addElementMeshes.js';
 import { authoredElementMeshPayload, type AuthoredElement } from './authoredElement.js';
-import { syncAuthoredTreeEntry } from './authoredTreeEntry.js';
+import { appendAuthoredMesh, authoredDataStore, syncAuthoredTreeEntry } from './authoredTreeEntry.js';
 
 export type { AuthoredElement };
 import { createCostUndoMutations, mirrorCreateEntityRedo, mirrorSourceEntityRestore, type CostUndoMethods } from './mutation-cost-undo.js';
@@ -1048,10 +1048,7 @@ function recordAuthoredElementIn(
     payload: authoredElementMeshPayload(element),
   });
   if (createdMesh) {
-    const cross = get() as unknown as {
-      appendGeometryBatch?: (modelId: string, batch: MeshData[]) => void;
-    };
-    cross.appendGeometryBatch?.(modelId, [createdMesh]);
+    appendAuthoredMesh(get(), modelId, createdMesh);
     revealAddedGeometryInModelView(get);
   }
 
@@ -1097,7 +1094,7 @@ function recordEntityRemovalIn(
   expressId: number,
   overlayRecord: NewEntity | null | undefined,
 ): void {
-  syncAuthoredTreeEntry(get().models, modelId, expressId, overlayRecord, false);
+  syncAuthoredTreeEntry(get(), modelId, expressId, overlayRecord, false);
   // Drop the entity's mesh out of `geometryResult` (stashed first so
   // undo can restore it) rather than only hiding it — #4925: a
   // hide-only mesh desyncs from a split's separate hard removal.
@@ -2428,7 +2425,7 @@ export const createMutationSlice: StateCreator<
   ),
 
   recordAuthoredElement: (modelId, storeyExpressId, entityId, element) => {
-    const dataStore = get().models.get(modelId)?.ifcDataStore;
+    const dataStore = authoredDataStore(get(), modelId);
     const view = get().mutationViews.get(modelId);
     if (!dataStore || !view) return;
     recordAuthoredElementIn(get, set, modelId, dataStore, view, storeyExpressId, entityId, element);
@@ -2745,7 +2742,7 @@ export const createMutationSlice: StateCreator<
           return { removedNewEntities: next };
         });
       }
-      syncAuthoredTreeEntry(get().models, modelId, mutation.entityId, overlay, false);
+      syncAuthoredTreeEntry(get(), modelId, mutation.entityId, overlay, false);
       // The view's `deleteEntity` returns false if it's already gone, which
       // is fine for redo to re-establish.
       view.deleteEntity(mutation.entityId);
@@ -2758,7 +2755,7 @@ export const createMutationSlice: StateCreator<
       const stashed = get().removedNewEntities.get(stashKey);
       if (stashed) {
         view.restoreNewEntity(stashed); mirrorCreateEntityRedo(get(), modelId, stashed, get().removedMeshes.get(stashKey)?.meshes[0] ?? null);
-        syncAuthoredTreeEntry(get().models, modelId, mutation.entityId, stashed, true);
+        syncAuthoredTreeEntry(get(), modelId, mutation.entityId, stashed, true);
       } else {
         view.restoreFromTombstone(mutation.entityId);
         mirrorSourceEntityRestore(get(), modelId, mutation.entityId, get().removedMeshes.get(stashKey)?.meshes[0] ?? null);
@@ -2919,7 +2916,7 @@ export const createMutationSlice: StateCreator<
       if (stashed) {
         view.restoreNewEntity(stashed);
         mirrorCreateEntityRedo(get(), modelId, stashed, get().removedMeshes.get(stashKey)?.meshes[0] ?? null);
-        syncAuthoredTreeEntry(get().models, modelId, mutation.entityId, stashed, true);
+        syncAuthoredTreeEntry(get(), modelId, mutation.entityId, stashed, true);
       } else {
         // Source-buffer entities have no stash; the editor's deleteEntity
         // call simply re-tombstoned them — which is exactly what we want
@@ -2941,7 +2938,7 @@ export const createMutationSlice: StateCreator<
           return { removedNewEntities: next };
         });
       }
-      syncAuthoredTreeEntry(get().models, modelId, mutation.entityId, overlay, false);
+      syncAuthoredTreeEntry(get(), modelId, mutation.entityId, overlay, false);
       view.deleteEntity(mutation.entityId);
       get().mirrorEntityRemove(modelId, mutation.entityId);
       // Drop the mesh back out, inverse of the undo handler's restore (#4925).

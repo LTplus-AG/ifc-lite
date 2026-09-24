@@ -7,51 +7,27 @@
  * Regression harness for scripts/check-jsx-a11y.mjs (#5607) and the
  * comparison under it, scripts/lib/count-ratchet.mjs.
  *
- * Same two layers as check-i18n-literals.test.mjs: the comparison is
- * unit-tested directly, and the CLI (real oxlint, the per-file baseline,
- * the rise-fails / fall-tightens ratchet) is black-box tested with
- * `spawnSync` against a synthetic tree in a temp dir, so nothing here reads
- * the checker's own source.
+ * Black-box only: the CLI (real oxlint, the per-file baseline, the
+ * rise-fails / fall-tightens ratchet) runs with `spawnSync` against a
+ * synthetic tree in a temp dir, the same method check-i18n-literals.test.mjs
+ * uses, so nothing here reads the checker's own source. The comparison is
+ * covered through it (a raised row, a key new to the baseline, a lowered
+ * row, a row gone to zero) rather than imported: this file must still LOAD
+ * with the gate reverted, so that the revert oracle sees its assertions go
+ * red instead of a module that never loaded.
  */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { compareToBaseline } from './lib/count-ratchet.mjs';
 import { TARGETS } from './check-lint-ran.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CHECKER = join(ROOT, 'scripts', 'check-jsx-a11y.mjs');
-
-// ── compareToBaseline ─────────────────────────────────────────────────
-
-test('compareToBaseline: a count above its row is a regression', () => {
-  const { regressions, improvements } = compareToBaseline({ a: 3 }, { a: 2 });
-  assert.deepEqual(regressions, [{ key: 'a', count: 3, allowed: 2 }]);
-  assert.deepEqual(improvements, []);
-});
-
-test('compareToBaseline: a key missing from the baseline is allowed zero', () => {
-  const { regressions } = compareToBaseline({ fresh: 1 }, {});
-  assert.deepEqual(regressions, [{ key: 'fresh', count: 1, allowed: 0 }]);
-});
-
-test('compareToBaseline: a count below its row, or gone entirely, is an improvement', () => {
-  const { regressions, improvements } = compareToBaseline({ a: 1 }, { a: 2, gone: 4 });
-  assert.deepEqual(regressions, []);
-  assert.deepEqual(improvements, [
-    { key: 'a', count: 1, allowed: 2 },
-    { key: 'gone', count: 0, allowed: 4 },
-  ]);
-});
-
-test('compareToBaseline: equal counts, and explicit zero rows, are neither', () => {
-  assert.deepEqual(compareToBaseline({ a: 2, z: 0 }, { a: 2 }), { regressions: [], improvements: [] });
-});
 
 // ── CLI, against a synthetic tree ─────────────────────────────────────
 
@@ -79,12 +55,15 @@ function makeTree(divs) {
   return root;
 }
 
-function writeComponent(root, divs) {
+function writeComponent(root, divs, name = 'Widget') {
   mkdirSync(join(root, 'apps', 'ui'), { recursive: true });
-  writeFileSync(join(root, 'apps', 'ui', 'Widget.tsx'), component(divs));
+  writeFileSync(join(root, 'apps', 'ui', `${name}.tsx`), component(divs));
 }
 
 function run(root, ...flags) {
+  // No gate at all must fail as an assertion here, never as the loader's own
+  // module-not-found text echoed into an assertion message below.
+  assert.ok(existsSync(CHECKER), 'scripts/check-jsx-a11y.mjs does not exist, so nothing ratchets jsx-a11y warnings');
   return spawnSync(process.execPath, [CHECKER, '--root', root, ...flags], { encoding: 'utf8' });
 }
 
@@ -132,6 +111,16 @@ test('an INCREASE in a file fails and names the file', () => {
     const r = run(root);
     assert.equal(r.status, 1);
     assert.match(r.stderr, new RegExp(`apps/ui/Widget\\.tsx: ${2 * WARNINGS_PER_DIV} \\(baseline ${WARNINGS_PER_DIV}, \\+${WARNINGS_PER_DIV}\\)`));
+  });
+});
+
+test('a file NEW to the baseline is allowed zero warnings', () => {
+  withTree(1, (root) => {
+    assert.equal(run(root, '--update', '--allow-raise').status, 0);
+    writeComponent(root, 1, 'Fresh');
+    const r = run(root);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, new RegExp(`apps/ui/Fresh\\.tsx: ${WARNINGS_PER_DIV} \\(baseline 0, \\+${WARNINGS_PER_DIV}\\)`));
   });
 });
 

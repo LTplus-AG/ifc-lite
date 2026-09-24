@@ -5,35 +5,50 @@
 //! Cache retrieval and deletion endpoints.
 
 use crate::error::ApiError;
-use crate::routes::parse::cache_keys::{is_file_digest, not_a_file_digest};
-use crate::types::ParseResponse;
+use crate::routes::parse::cache_keys::{is_file_digest, json_response_cache_key, not_a_file_digest};
+use crate::types::SymbolicParseResponse;
 use crate::AppState;
 use axum::{
+    body::Body,
     extract::{Path, State},
+    http::header,
+    response::{IntoResponse, Response},
     Json,
 };
 use serde::Serialize;
 
-/// GET /api/v1/cache/:key - Retrieve cached result.
+/// GET /api/v1/cache/:key - Retrieve a cached `POST /api/v1/parse` result.
 ///
-/// Every parse route's response entry is JSON, EXCEPT the binary Parquet
-/// routes' bodies (`-parquet-v5`, `-parquet-v7`, `-parquet-optimized-v2`),
-/// which this route was never meant to serve. Before #5128 it deserialized
-/// whatever it read as `ParseResponse` unconditionally: a client that found
-/// one of those keys some other way (e.g. from an `X-IFC-Metadata`
-/// `cache_key`, guessed at a suffix) got a `500` from `serde_json` refusing
-/// non-JSON bytes, on a key that genuinely exists. Reading the bytes directly
-/// (rather than through `DiskCache::get`, whose `?` cannot tell that failure
-/// apart from a real I/O error) keeps a decode failure a `404` -- the answer
-/// this route already gives for a key that was never written -- while an
-/// actual cache-store error still surfaces as `500`.
+/// `key` is the `cache_key` that route returned, which is the value the
+/// client's `getCached(result.cache_key)` passes. The response itself is
+/// stored under [`json_response_cache_key`] (`{cache_key}-json-v5`), versioned
+/// separately so the JSON wire format can move without retiring the Parquet
+/// entries that share the same seed. Before #5542 this route looked `key` up
+/// unchanged, so the documented call could never hit: it answered `404` for
+/// every file the JSON route had cached. It resolves the key the writer used
+/// now, from the one definition of that suffix.
+///
+/// Only JSON response entries are reachable here. Before #5128 a binary
+/// Parquet key passed in (e.g. from an `X-IFC-Metadata` `cache_key` with a
+/// suffix guessed onto it) was decoded as JSON and answered `500`; it now
+/// names no JSON entry and answers `404`, and an entry that exists but does
+/// not decode still answers `404` rather than `500`. Reading the bytes
+/// directly (rather than through `DiskCache::get`, whose `?` cannot tell that
+/// failure apart from a real I/O error) keeps an actual cache-store error a
+/// `500`.
+///
+/// Decoded as [`SymbolicParseResponse`], the type the writer stored, so the
+/// symbol stream keeps its fill provenance; the entry is the whole model, so
+/// the decode and re-encode run on the blocking pool as the parse route's own
+/// hit does (#4696).
 pub async fn get_cached(
     State(state): State<AppState>,
     Path(key): Path<String>,
-) -> Result<Json<ParseResponse>, ApiError> {
-    tracing::debug!(key = %key, "Cache lookup");
+) -> Result<Response, ApiError> {
+    let response_key = json_response_cache_key(&key);
+    tracing::debug!(key = %key, response_key = %response_key, "Cache lookup");
 
-    let bytes = match state.cache.get_bytes(&key).await? {
+    let bytes = match state.cache.get_bytes(&response_key).await? {
         Some(bytes) => bytes,
         None => {
             tracing::debug!(key = %key, "Cache MISS");
@@ -41,11 +56,18 @@ pub async fn get_cached(
         }
     };
 
-    match serde_json::from_slice::<ParseResponse>(&bytes) {
-        Ok(mut response) => {
-            response.stats.from_cache = true;
+    let encoded = tokio::task::spawn_blocking(move || {
+        let mut response = serde_json::from_slice::<SymbolicParseResponse>(&bytes)?;
+        response.mark_from_cache();
+        serde_json::to_vec(&response)
+    })
+    .await
+    .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    match encoded {
+        Ok(body) => {
             tracing::info!(key = %key, "Cache HIT");
-            Ok(Json(response))
+            Ok(([(header::CONTENT_TYPE, "application/json")], Body::from(body)).into_response())
         }
         Err(e) => {
             tracing::warn!(error = %e, key = %key, "Cache entry is not a ParseResponse; answering 404");

@@ -165,9 +165,19 @@ async fn a_second_identical_optimized_request_replays_without_parsing() {
         second_body, SENTINEL_BODY,
         "the second request re-parsed instead of replaying the cached body"
     );
+    // The replay reports the header the live parse wrote, optimization_stats
+    // included, with the one field that describes THIS response rather than
+    // the parse flipped: it came from cache (#5542). Before that fix the
+    // header was replayed verbatim, `from_cache: false` on a hit.
+    let first: serde_json::Value = serde_json::from_str(&first_metadata).unwrap();
+    let second: serde_json::Value = serde_json::from_str(&second_metadata).unwrap();
+    assert_eq!(first["stats"]["from_cache"], false, "the live parse is not from cache");
+    assert_eq!(second["stats"]["from_cache"], true, "a replay must report from_cache: true");
+    let mut expected = first;
+    expected["stats"]["from_cache"] = serde_json::Value::Bool(true);
     assert_eq!(
-        second_metadata, first_metadata,
-        "a replay must report the same metadata header (optimization_stats included)"
+        second, expected,
+        "a replay must otherwise report the same metadata header (optimization_stats included)"
     );
 }
 

@@ -8,6 +8,7 @@ use super::cache_keys::{
     data_model_cache_key, has_current_data_model, has_cached_symbolic, parquet_geometry_key,
     parquet_metadata_key, request_cache_key,
 };
+use super::replay_header::mark_header_from_cache;
 use super::{cache_symbolic_data_off_runtime, extract_file, ParseQuery};
 use crate::error::ApiError;
 use crate::services::baked_basis_zup;
@@ -101,14 +102,17 @@ pub async fn parse_parquet(
             "Parquet cache HIT - returning cached response"
         );
 
-        // Build response from cached data
+        // Build response from cached data. The stored header is the one the
+        // live parse wrote, `from_cache: false` included (#5542).
         let response = Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, "application/x-parquet-geometry")
             .header(
                 "X-IFC-Metadata",
-                String::from_utf8(cached_metadata_json)
-                    .map_err(|error| ApiError::Internal(error.to_string()))?,
+                mark_header_from_cache(
+                    String::from_utf8(cached_metadata_json)
+                        .map_err(|error| ApiError::Internal(error.to_string()))?,
+                ),
             )
             .header(header::CONTENT_LENGTH, cached_parquet.len())
             .body(Body::from(cached_parquet))

@@ -126,6 +126,7 @@ export function extractLengthUnitScale(
   projectId?: number
 ): number {
   // Find IFCPROJECT
+  // @raw-entity-enumeration-ok source parser selects the file's IfcProject to establish its declared units
   const projectIds = entityIndex.byType.get('IFCPROJECT') || [];
   const resolvedProjectId = projectId ?? projectIds[0];
   if (resolvedProjectId === undefined) {
@@ -151,6 +152,7 @@ function extractLengthUnitScaleForProjectId(
 ): number {
   const extractor = new EntityExtractor(source);
 
+  // @raw-entity-enumeration-ok dereference the parsed IfcProject before reading UnitsInContext
   const projectRef = entityIndex.byId.get(projectId);
   if (!projectRef) {
     warnUnknownUnit(entityIndex, 'IFCPROJECT reference could not be resolved');
@@ -175,6 +177,7 @@ function extractLengthUnitScaleForProjectId(
   }
 
   // Resolve IFCUNITASSIGNMENT
+  // @raw-entity-enumeration-ok follow the source IfcUnitAssignment reference
   const unitAssignmentRef = entityIndex.byId.get(unitsRef);
   if (!unitAssignmentRef) {
     warnUnknownUnit(entityIndex, 'UnitsInContext reference could not be resolved');
@@ -204,6 +207,7 @@ function extractLengthUnitScaleForProjectId(
   for (const unitRef of unitsList) {
     if (typeof unitRef !== 'number') continue;
 
+    // @raw-entity-enumeration-ok resolve each parsed unit declared by the assignment
     const unitEntityRef = entityIndex.byId.get(unitRef);
     if (!unitEntityRef) continue;
 
@@ -269,6 +273,7 @@ function extractLengthUnitScaleForProjectId(
       // Try to extract from ConversionFactor (IFCMEASUREWITHUNIT reference)
       const conversionRef = unitAttrs[3];
       if (typeof conversionRef === 'number') {
+        // @raw-entity-enumeration-ok read the parsed conversion measure for this source unit
         const measureRef = entityIndex.byId.get(conversionRef);
         if (measureRef) {
           const measureEntity = extractor.extractEntity(measureRef);
@@ -300,6 +305,7 @@ function extractLengthUnitScaleForProjectId(
               let unitComponentScale = 1.0;
 
               if (typeof unitComponentRef === 'number') {
+                // @raw-entity-enumeration-ok resolve the parsed component of a derived source unit
                 const unitCompEntityRef = entityIndex.byId.get(unitComponentRef);
                 if (unitCompEntityRef) {
                   const unitCompEntity = extractor.extractEntity(unitCompEntityRef);

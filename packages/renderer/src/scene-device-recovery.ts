@@ -13,6 +13,7 @@ import { foldOccurrenceWorldBox, INSTANCE_STRIDE_BYTES } from './instanced-rende
 import { composeInstancedOverrideColor } from './instanced-override-color.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import { createSceneBatchShell } from './scene-batch-upload.js';
+import { createStaticGpuBuffer } from './gpu-static-upload.js';
 
 export interface RecoveryBucket {
   key: string;
@@ -293,12 +294,9 @@ function restoreInstancedTemplates(host: SceneRecoveryHost, device: GPUDevice): 
         floats[offset] = cpu.positions[i * 3]; floats[offset + 1] = cpu.positions[i * 3 + 1]; floats[offset + 2] = cpu.positions[i * 3 + 2];
         floats[offset + 3] = cpu.normals[i * 3] ?? 0; floats[offset + 4] = cpu.normals[i * 3 + 1] ?? 0; floats[offset + 5] = cpu.normals[i * 3 + 2] ?? 0;
       }
-      vertexBuffer = device.createBuffer({ size: vertexData.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST, mappedAtCreation: true });
-      new Uint8Array(vertexBuffer.getMappedRange()).set(new Uint8Array(vertexData)); vertexBuffer.unmap();
-      indexBuffer = device.createBuffer({ size: cpu.indices.byteLength, usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST, mappedAtCreation: true });
-      new Uint32Array(indexBuffer.getMappedRange()).set(cpu.indices); indexBuffer.unmap();
-      instanceBuffer = device.createBuffer({ size: cpu.instanceData.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST, mappedAtCreation: true });
-      new Uint8Array(instanceBuffer.getMappedRange()).set(new Uint8Array(cpu.instanceData)); instanceBuffer.unmap();
+      vertexBuffer = createStaticGpuBuffer(device, vertexData, GPUBufferUsage.VERTEX);
+      indexBuffer = createStaticGpuBuffer(device, cpu.indices, GPUBufferUsage.INDEX);
+      instanceBuffer = createStaticGpuBuffer(device, cpu.instanceData, GPUBufferUsage.VERTEX);
       host.instancedTemplates[slot] = {
         modelIndex: cpu.modelIndex, vertexBuffer, indexBuffer, indexCount: cpu.indices.length,
         instanceBuffer, instanceCount: cpu.instanceData.byteLength / INSTANCE_STRIDE_BYTES,

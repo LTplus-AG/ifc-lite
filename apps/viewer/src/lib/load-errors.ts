@@ -52,6 +52,9 @@ export type LoadErrorKind =
    * memory. `device_lost_at_time` on the captured event (set by whichever
    * guarded upload call classified this, see `@ifc-lite/renderer`'s
    * `gpu-upload-guard.ts`) tells the two apart; the message alone cannot.
+   * Since #5429 the renderer no longer creates buffers mapped at creation, so
+   * this kind should not occur from ifc-lite's own uploads; a new report of
+   * it means a regression reintroduced one.
    */
   | 'gpu_alloc_failed'
   /**

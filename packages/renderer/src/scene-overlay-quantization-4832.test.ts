@@ -36,19 +36,24 @@ import { MAX_QUANT_EXTENT } from './quantize.js';
   VERTEX: 32, UNIFORM: 64, STORAGE: 128, INDIRECT: 256, QUERY_RESOLVE: 512,
 };
 
-/** Fake device that keeps the mapped-at-creation bytes so batches can be read back. */
+/** Fake device that keeps every uploaded byte so batches can be read back. */
 function fakeDevice(maxBufferSize = 1 << 30): { device: GPUDevice; bytes: WeakMap<GPUBuffer, ArrayBuffer> } {
   const bytes = new WeakMap<GPUBuffer, ArrayBuffer>();
   const device = {
     limits: { maxBufferSize, maxStorageBufferBindingSize: 1 << 30 },
     createBuffer: (desc: GPUBufferDescriptor) => {
-      const backing = new ArrayBuffer(desc.size);
-      const buffer = { size: desc.size, getMappedRange: () => backing, unmap() {}, destroy() {} } as unknown as GPUBuffer;
-      bytes.set(buffer, backing);
+      const buffer = { size: desc.size, destroy() {} } as unknown as GPUBuffer;
+      bytes.set(buffer, new ArrayBuffer(desc.size));
       return buffer;
     },
     createBindGroup: () => ({}),
-    queue: { writeBuffer: () => {} },
+    queue: {
+      writeBuffer: (buffer: GPUBuffer, offset: number, data: ArrayBufferView) => {
+        const backing = bytes.get(buffer);
+        if (!backing) throw new Error('writeBuffer into a buffer this device never created');
+        new Uint8Array(backing, offset).set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+      },
+    },
   };
   return { device: device as unknown as GPUDevice, bytes };
 }

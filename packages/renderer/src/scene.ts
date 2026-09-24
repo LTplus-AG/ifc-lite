@@ -10,6 +10,7 @@ import type { InstancedTemplateGPU, InstancedOccurrence, InstancedTemplateCpu } 
 import { materializeInstances } from './scene-instance-materialization.js';
 import { InstanceSuppression } from './scene-instance-suppression.js';
 import { createSceneBatch } from './scene-batch-upload.js';
+import { createStaticGpuBuffer } from './gpu-static-upload.js';
 import { createSceneAppearancePreview, rebindSceneAppearanceAccess, type SceneAppearanceAccess } from './scene-appearance-preview.js';
 import { AppearanceBuckets } from './scene-appearance-buckets.js';
 import { AuthoredPreparationRegistry, prepareSceneAuthoredOwner } from './scene-authored-owner.js';
@@ -1891,7 +1892,7 @@ export class Scene {
     // yielding the frame back at the TOP of the loop. The mesh-count-only chunker
     // could merge a 512-mesh chunk of high-poly meshes (e.g. 899 Velux roof
     // windows at 7624 tris each → ~3.9M tris) in ONE indivisible mergeGeometry +
-    // mappedAtCreation buffer copy — hundreds of ms that parked the main thread
+    // GPU buffer upload copy — hundreds of ms that parked the main thread
     // past the 16s stream watchdog. Capping each appendToBatches by index volume
     // keeps every synchronous slice ≈ one bounded fragment merge (~12-15ms).
     const MAX_MESHES_PER_FLUSH = 4096;
@@ -3039,21 +3040,8 @@ export class Scene {
         // vf[o + 6] (entityId lane) stays 0.
       }
 
-      const vertexBuffer = device.createBuffer({
-        size: vtx.byteLength,
-        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-        mappedAtCreation: true,
-      });
-      new Uint8Array(vertexBuffer.getMappedRange()).set(new Uint8Array(vtx));
-      vertexBuffer.unmap();
-
-      const indexBuffer = device.createBuffer({
-        size: t.indices.byteLength,
-        usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
-        mappedAtCreation: true,
-      });
-      new Uint32Array(indexBuffer.getMappedRange()).set(t.indices);
-      indexBuffer.unmap();
+      const vertexBuffer = createStaticGpuBuffer(device, vtx, GPUBufferUsage.VERTEX);
+      const indexBuffer = createStaticGpuBuffer(device, t.indices, GPUBufferUsage.INDEX);
 
       // instanceBuffer is already the interleaved mat4 + entityId + rgba block
       // (INSTANCE_STRIDE_BYTES per occurrence) from prepareInstancedRender.
@@ -3065,15 +3053,11 @@ export class Scene {
         t.canonicalMatrixTranslations,
       );
       const instSize = t.instanceCount * INSTANCE_STRIDE_BYTES;
-      const instanceBuffer = device.createBuffer({
-        size: instSize,
-        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-        mappedAtCreation: true,
-      });
-      new Uint8Array(instanceBuffer.getMappedRange()).set(
+      const instanceBuffer = createStaticGpuBuffer(
+        device,
         new Uint8Array(t.instanceBuffer, 0, instSize),
+        GPUBufferUsage.VERTEX,
       );
-      instanceBuffer.unmap();
 
       // Always append: slots are stable identities, never recycled.
       const templateIndex = this.instancedTemplates.length;

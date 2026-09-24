@@ -816,7 +816,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     if (pendingInstancedShards.length > 0) {
       for (const { modelId, bytes } of pendingInstancedShards) {
         // CRITICAL: never let a shard decode/upload throw OUT of this effect.
-        // addInstancedShard creates GPU buffers (mappedAtCreation); on a degraded
+        // addInstancedShard creates GPU buffers; on a degraded
         // backend whose device is being lost (e.g. CI's SwiftShader), createBuffer
         // throws — and an uncaught throw in a React effect tears down the Viewport
         // subtree via the error boundary, unmounting the <canvas> entirely. Instanced

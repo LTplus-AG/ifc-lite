@@ -10,14 +10,17 @@ import { classifyLoadError, errorCaptureProps } from '@/lib/load-errors';
  *
  * Uploading a batch can throw for reasons entirely outside the app's control:
  * the GPU device was lost (Windows TDR, GPU-process crash, driver reset), or
- * the browser could not map host memory for a new buffer. Chromium reports the
- * latter as
+ * the host ran out of memory for the CPU side of the upload. Before #5429 the
+ * renderer's mapped-at-creation uploads added a third, reported by Chromium as
  *
  *   RangeError: Failed to execute 'createBuffer' on 'GPUDevice': createBuffer
  *   failed, size (193836) is too large for the implementation when
  *   mappedAtCreation == true
  *
- * — misleading wording, since 193 KB is nowhere near any device limit.
+ * — misleading wording, since 193 KB is nowhere near any device limit. The
+ * renderer now uploads static geometry via `queue.writeBuffer`, which cannot
+ * raise it; the classifier still recognises the wording (`gpu_alloc_failed`)
+ * so a regression is triaged as what it is.
  *
  * Where such a throw lands decides how bad it is, and both landing sites are
  * fatal to the viewport:

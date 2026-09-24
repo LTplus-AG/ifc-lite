@@ -22,6 +22,7 @@ import { useCallback } from 'react';
 import { Layers2, RefreshCw, X } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 
@@ -94,15 +95,14 @@ export function MergeLayersBanner({ onReload }: MergeLayersBannerProps) {
             <RefreshCw className="h-3.5 w-3.5" />
             {t('mergeLayersBanner.reloadButton')}
           </Button>
-          <Button
+          <IconButton
+            label={t('mergeLayersBanner.dismissAriaLabel')}
             size="icon-sm"
-            variant="ghost"
             className="h-7 w-7"
             onClick={dismiss}
-            aria-label={t('mergeLayersBanner.dismissAriaLabel')}
           >
             <X className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         </div>
       </div>
     </div>

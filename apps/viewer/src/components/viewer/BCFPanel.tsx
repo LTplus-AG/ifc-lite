@@ -23,6 +23,7 @@ import {
   MapPin,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -408,51 +409,44 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
             onChange={handleImport}
             className="hidden"
           />
-          <Button
-            variant="ghost"
-            size="icon"
+          <IconButton
+            label={t('bcf.panel.importTitle')}
             className="h-7 w-7"
             onClick={() => { void handleImportClick(); }}
-            title={t('bcf.panel.importTitle')}
           >
             <Download className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
+          </IconButton>
+          <IconButton
+            label={t('bcf.panel.exportTitle')}
             className="h-7 w-7"
             onClick={handleExport}
             disabled={!bcfProject || topics.length === 0}
-            title={t('bcf.panel.exportTitle')}
             {...tourAnchor(TOUR_ANCHORS.bcfExport)}
           >
             <Upload className="h-4 w-4" />
-          </Button>
+          </IconButton>
           <BCFServerControl />
-          <Button
+          <IconButton
+            label={bcfOverlayVisible ? t('bcf.panel.hideMarkers') : t('bcf.panel.showMarkers')}
             variant={bcfOverlayVisible ? 'secondary' : 'ghost'}
-            size="icon"
             className="h-7 w-7"
             onClick={toggleBcfOverlay}
-            title={bcfOverlayVisible ? t('bcf.panel.hideMarkers') : t('bcf.panel.showMarkers')}
           >
             <MapPin className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
+          </IconButton>
+          <IconButton
+            label={t('bcf.panel.setAuthorTitle')}
             className="h-7 w-7"
             onClick={() => {
               setTempAuthor(bcfAuthor);
               setShowAuthorDialog(true);
             }}
-            title={t('bcf.panel.setAuthorTitle')}
           >
             <User className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={t('bcf.shared.close')} onClick={onClose}>
+          </IconButton>
+          <IconButton label={t('bcf.shared.close')} className="h-7 w-7" onClick={onClose}>
             <X className="h-4 w-4" />
-          </Button>
+          </IconButton>
         </div>
       </div>
       <BCFPanelStatus />

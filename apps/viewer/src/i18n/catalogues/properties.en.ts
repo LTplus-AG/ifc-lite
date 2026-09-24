@@ -450,4 +450,6 @@ export const propertiesEn = {
   'properties.panel.multiEntity.propertySetsCount': '{count} sets',
   'properties.panel.multiEntity.quantitiesHeading': 'Quantities',
   'properties.panel.multiEntity.quantitySetsCount': '{count} sets',
+  'properties.panel.copyGlobalIdLabel': 'Copy GlobalId',
+  'properties.panel.saveAttributeLabel': 'Save {attrName}',
 } as const satisfies Record<string, TranslationValue>;

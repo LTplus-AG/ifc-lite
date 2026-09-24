@@ -21,6 +21,7 @@ import { useEffect, useState } from 'react';
 import { Ruler, X } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
@@ -88,15 +89,14 @@ export function LandXmlUnitsRefusalPrompt() {
           >
             {t('landXml.unitsPrompt.retry')}
           </Button>
-          <Button
+          <IconButton
+            label={t('landXml.unitsPrompt.dismiss')}
             size="icon-sm"
-            variant="ghost"
             className="h-7 w-7"
             onClick={() => setRefusal(null)}
-            aria-label={t('landXml.unitsPrompt.dismiss')}
           >
             <X className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         </div>
       </div>
     </div>

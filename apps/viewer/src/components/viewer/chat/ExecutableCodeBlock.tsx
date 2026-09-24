@@ -27,6 +27,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
@@ -202,22 +203,20 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
           {block.language || t('chat.codeBlock.languageFallback')}
         </span>
         <div className="flex-1" />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon-xs" onClick={handleCopy}>
-              {copied ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('chat.codeBlock.copyCode')}</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon-xs" onClick={handleApplyToEditor}>
-              <FileCode2 className="h-3 w-3" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('chat.codeBlock.applyToSelection')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={t('chat.codeBlock.copyCode')}
+          size="icon-xs"
+          onClick={handleCopy}
+        >
+          {copied ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+        </IconButton>
+        <IconButton
+          label={t('chat.codeBlock.applyToSelection')}
+          size="icon-xs"
+          onClick={handleApplyToEditor}
+        >
+          <FileCode2 className="h-3 w-3" />
+        </IconButton>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="icon-xs" onClick={handleReplaceAllInEditor}>

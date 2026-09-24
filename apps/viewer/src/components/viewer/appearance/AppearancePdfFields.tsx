@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { appearanceSelectClass } from './AppearanceSourceFields.js';
 import { AppearancePdfCrop } from './AppearancePdfCrop.js';
@@ -30,8 +31,14 @@ export function AppearancePdfFields({ pdf, disabled, onInvalid }: {
     <p className="truncate text-[11px] text-muted-foreground" title={pdf.documentName}>{pdf.documentName}</p>
     <fieldset disabled={disabled} className="space-y-3">
       <div className="flex items-center gap-2">
-        <Button type="button" variant="outline" size="icon-sm" aria-label={t('appearance.pdfFields.previousPageAriaLabel')} disabled={disabled || pdf.pageNumber <= 1}
-          onClick={() => pdf.onPageChange(pdf.pageNumber - 1)}><ChevronLeft aria-hidden="true" /></Button>
+        <IconButton
+          label={t('appearance.pdfFields.previousPageAriaLabel')}
+          type="button"
+          variant="outline"
+          size="icon-sm"
+          disabled={disabled || pdf.pageNumber <= 1}
+          onClick={() => pdf.onPageChange(pdf.pageNumber - 1)}
+        ><ChevronLeft aria-hidden="true" /></IconButton>
         <label className="flex min-w-0 flex-1 items-center justify-center gap-2 text-[11px] text-muted-foreground">
           <span>{t('appearance.pdfFields.pageLabel')}</span><Input aria-label={t('appearance.pdfFields.pageNumberAriaLabel')} type="number" min="1" max={pdf.pageCount} step="1" value={pageText}
             aria-invalid={!pageValid} className="h-8 min-w-0 max-w-20 text-center text-xs aria-[invalid=true]:border-destructive"
@@ -41,8 +48,14 @@ export function AppearancePdfFields({ pdf, disabled, onInvalid }: {
             }} onBlur={commitPage} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); commitPage(); } }} />
           <span className="whitespace-nowrap">{t('appearance.pdfFields.ofPageCount', { count: formatLocaleNumber(locale, pdf.pageCount) })}</span>
         </label>
-        <Button type="button" variant="outline" size="icon-sm" aria-label={t('appearance.pdfFields.nextPageAriaLabel')} disabled={disabled || pdf.pageNumber >= pdf.pageCount}
-          onClick={() => pdf.onPageChange(pdf.pageNumber + 1)}><ChevronRight aria-hidden="true" /></Button>
+        <IconButton
+          label={t('appearance.pdfFields.nextPageAriaLabel')}
+          type="button"
+          variant="outline"
+          size="icon-sm"
+          disabled={disabled || pdf.pageNumber >= pdf.pageCount}
+          onClick={() => pdf.onPageChange(pdf.pageNumber + 1)}
+        ><ChevronRight aria-hidden="true" /></IconButton>
       </div>
       {!pageValid && <p role="alert" className="text-[10px] text-destructive">{t('appearance.pdfFields.pageRangeError', { count: pdf.pageCount })}</p>}
       <div className="grid grid-cols-2 gap-2">

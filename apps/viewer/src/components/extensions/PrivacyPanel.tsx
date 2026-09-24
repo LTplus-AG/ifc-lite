@@ -31,6 +31,7 @@ import {
 import { useViewerStore } from '@/store';
 import { downloadFile } from '@/lib/export/download';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { toast } from '@/components/ui/toast';
@@ -181,9 +182,9 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
           </HelpHint>
         </div>
         {onClose && (
-          <Button size="icon" variant="ghost" onClick={onClose} aria-label={t('extensionsPanels.privacyPanel.closeAriaLabel')}>
+          <IconButton label={t('extensionsPanels.privacyPanel.closeAriaLabel')} onClick={onClose}>
             <X className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         )}
       </div>
 

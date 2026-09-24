@@ -4,6 +4,7 @@
 
 import { Calendar, CalendarClock, CalendarPlus, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey, TranslationParameters } from '@/i18n';
 
@@ -53,15 +54,14 @@ export function GanttEmptyState({
   return (
     <div className="relative h-full w-full flex flex-col items-center justify-center text-center p-8 gap-3 text-muted-foreground">
       {onClose && (
-        <Button
+        <IconButton
+          label={t('schedule.emptyState.closeAriaLabel')}
           size="icon-sm"
-          variant="ghost"
           className="absolute top-2 right-2"
           onClick={onClose}
-          aria-label={t('schedule.emptyState.closeAriaLabel')}
         >
           <X className="h-4 w-4" />
-        </Button>
+        </IconButton>
       )}
       <div className="relative">
         <Calendar className="h-12 w-12" strokeWidth={1} />

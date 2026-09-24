@@ -19,6 +19,7 @@ import { useCallback } from 'react';
 import { Zap, RefreshCw, X } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 
@@ -88,15 +89,14 @@ export function GeometryModeBanner({ onReload }: GeometryModeBannerProps) {
             <RefreshCw className="h-3.5 w-3.5" />
             {t('geometryModeBanner.reloadButton')}
           </Button>
-          <Button
+          <IconButton
+            label={t('geometryModeBanner.dismissAriaLabel')}
             size="icon-sm"
-            variant="ghost"
             className="h-7 w-7"
             onClick={dismiss}
-            aria-label={t('geometryModeBanner.dismissAriaLabel')}
           >
             <X className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         </div>
       </div>
     </div>

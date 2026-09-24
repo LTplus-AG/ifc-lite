@@ -16,8 +16,7 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowUp, ArrowDown, Search, Eye, EyeOff, Download, ChevronRight, ChevronDown, FileText, FileSpreadsheet, FileType } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { IconButton } from '@/components/ui/icon-button';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { useViewerStore } from '@/store';
 import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
@@ -340,25 +339,21 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
         <span className="text-xs text-muted-foreground whitespace-nowrap">
           {(searchQuery || filterByVisibility) ? t('lists.resultsTable.rowCountOfTotal', { count: sortedRows.length, countDisplay: formatLocaleCount(sortedRows.length, locale), total: formatLocaleCount(result.rows.length, locale) }) : t('lists.resultsTable.rowCount', { count: sortedRows.length, countDisplay: formatLocaleCount(sortedRows.length, locale) })}
         </span>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon-sm" className={cn('h-6 w-6 shrink-0', filterByVisibility && 'text-primary')} aria-label={filterByVisibility ? t('lists.resultsTable.showingVisibleOnly') : t('lists.resultsTable.showingAllObjects')} aria-pressed={filterByVisibility} onClick={() => setFilterByVisibility((p) => !p)}>
-              {filterByVisibility ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{filterByVisibility ? t('lists.resultsTable.showingVisibleOnly') : t('lists.resultsTable.showingAllObjects')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={filterByVisibility ? t('lists.resultsTable.showingVisibleOnly') : t('lists.resultsTable.showingAllObjects')}
+          size="icon-sm"
+          className={cn('h-6 w-6 shrink-0', filterByVisibility && 'text-primary')}
+          aria-pressed={filterByVisibility}
+          onClick={() => setFilterByVisibility((p) => !p)}
+        >
+          {filterByVisibility ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+        </IconButton>
         <DropdownMenu>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm" className="h-6 w-6 shrink-0" aria-label={t('lists.resultsTable.exportAriaLabel')}>
-                  <Download className="h-3.5 w-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            <TooltipContent>{t('lists.resultsTable.exportEllipsis')}</TooltipContent>
-          </Tooltip>
+          <DropdownMenuTrigger asChild>
+            <IconButton label={t('lists.resultsTable.exportAriaLabel')} tooltip={t('lists.resultsTable.exportEllipsis')} size="icon-sm" className="h-6 w-6 shrink-0">
+              <Download className="h-3.5 w-3.5" />
+            </IconButton>
+          </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
             <DropdownMenuItem className="gap-2 text-xs" onClick={() => handleExport('csv')}>
               <FileText className="h-3.5 w-3.5" /> {EXPORT_LABELS.csv}

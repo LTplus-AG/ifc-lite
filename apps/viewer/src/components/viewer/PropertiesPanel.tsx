@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { EditToolbar } from './PropertyEditor';
 import { GeometryEditCard } from './GeometryEditCard';
 import { ModelBadge } from './ModelBadge';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -1347,8 +1347,8 @@ export function PropertiesPanel() {
             <code className="flex-1 text-[10px] bg-white dark:bg-zinc-950 px-2 py-1 truncate font-mono select-all text-zinc-900 dark:text-zinc-100">
               {entityGlobalId}
             </code>
-            <Button
-              variant="ghost"
+            <IconButton
+              label={t('properties.panel.copyGlobalIdLabel')}
               size="icon-xs"
               className={`h-6 w-6 rounded-none border-l transition-all duration-200 ${
                 copied
@@ -1362,7 +1362,7 @@ export function PropertiesPanel() {
               ) : (
                 <Copy className="h-3 w-3 text-zinc-600 dark:text-zinc-400" />
               )}
-            </Button>
+            </IconButton>
           </div>
         )}
 
@@ -1884,14 +1884,13 @@ function AttributeEditorField({ modelId, entityId, attrName, currentValue }: { m
           onBlur={save}
           className="flex-1 min-w-0 h-6 px-1.5 text-sm font-mono bg-white dark:bg-zinc-900 border border-purple-300 dark:border-purple-700 outline-none focus:ring-1 focus:ring-purple-400"
         />
-        <Button
-          variant="ghost"
-          size="icon"
+        <IconButton
+          label={t('properties.panel.saveAttributeLabel', { attrName })}
           className="h-5 w-5 p-0 shrink-0 hover:bg-emerald-100 dark:hover:bg-emerald-900/30"
           onClick={save}
         >
           <Check className="h-3 w-3 text-emerald-500" />
-        </Button>
+        </IconButton>
       </div>
     );
   }
@@ -1905,19 +1904,14 @@ function AttributeEditorField({ modelId, entityId, attrName, currentValue }: { m
       >
         {currentValue || <span className="text-zinc-400 italic">{t('properties.panel.attributeEditor.emptyValue')}</span>}
       </span>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-5 w-5 p-0 shrink-0 opacity-0 group-hover/attr:opacity-100 hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-opacity"
-            onClick={() => setEditing(true)}
-          >
-            <PenLine className="h-3 w-3 text-purple-500" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="left">{t('properties.panel.attributeEditor.editTooltip')}</TooltipContent>
-      </Tooltip>
+      <IconButton
+        label={t('properties.panel.attributeEditor.editTooltip')}
+        tooltipSide="left"
+        className="h-5 w-5 p-0 shrink-0 opacity-0 group-hover/attr:opacity-100 hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-opacity"
+        onClick={() => setEditing(true)}
+      >
+        <PenLine className="h-3 w-3 text-purple-500" />
+      </IconButton>
     </div>
   );
 }

@@ -34,7 +34,7 @@
 
 import { Coins, X } from 'lucide-react';
 import { useCallback, useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
 import type { EntityRefLike } from '@/lib/cost/cost-tree';
@@ -98,9 +98,9 @@ export function CostPanel({ onClose }: CostPanelProps) {
         <Coins className="h-4 w-4 text-amber-600" />
         <span className="flex-1 text-sm font-medium">{t('costPanel.title')}</span>
         {onClose && (
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose} title={t('costPanel.close')}>
+          <IconButton label={t('costPanel.close')} className="h-6 w-6" onClick={onClose}>
             <X className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         )}
       </div>
       <div className="flex flex-1 overflow-hidden">

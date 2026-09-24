@@ -188,6 +188,11 @@ export class Camera {
    * @param mouseY - Mouse Y position in canvas coordinates
    * @param canvasWidth - Canvas width
    * @param canvasHeight - Canvas height
+   * @param fastZoom - Pure dolly (Shift / Cesium): the full step translates the rig
+   * @param surfacePoint - World point on the visible surface under the cursor
+   *   (#5393). Zooming IN approaches it and stops short of it; it is ignored
+   *   for zoom-out, fast zoom and orthographic. The surface step applies no
+   *   inertia, so `addVelocity` has no effect on it.
    */
   zoom(delta: number, addVelocity = false, mouseX?: number, mouseY?: number, canvasWidth?: number, canvasHeight?: number, fastZoom?: boolean, surfacePoint?: Vec3): void {
     // Zooming IN over geometry approaches the picked surface instead of the
@@ -209,6 +214,8 @@ export class Camera {
     const fraction = Math.min(Math.abs(delta) * CAMERA_CONSTANTS.ZOOM_SENSITIVITY, CAMERA_CONSTANTS.MAX_ZOOM_DELTA);
     const next = surfaceZoomStep(this.state.camera, point, fraction);
     if (!next) return false;
+    // The orbit centre is left where it is on purpose: the mouse path re-seats
+    // it on every orbit start, and the new target already sits at the surface.
     // In place, like every other pose writer: callers may hold these objects.
     Object.assign(this.state.camera.position, next.position);
     Object.assign(this.state.camera.target, next.target);

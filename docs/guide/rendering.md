@@ -169,6 +169,8 @@ await camera.animateTo(
 camera.orbit(deltaX, deltaY);   // Rotate around target
 camera.pan(deltaX, deltaY);     // Move camera sideways
 camera.zoom(delta);             // Zoom in/out
+// Zoom in toward the surface under the cursor, stopping short of it (#5393):
+// camera.zoom(delta, false, x, y, w, h, false, renderer.raycastScene(x, y)?.intersection.point);
 ```
 
 ## Section Planes

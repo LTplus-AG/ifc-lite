@@ -52,7 +52,7 @@ function mount(overrides: Partial<UseMouseControlsParams> = {}): { canvas: HTMLC
   const menus: number[] = [];
   const renderer = {
     getCamera: () => camera,
-    getScene: () => ({}),
+    getScene: () => ({ getMeshes: () => [], getBatchedMeshes: () => [], getInstancedEntityCount: () => 0 }),
     requestRender: noop,
     pick: async () => null,
     pickRect: async () => [],

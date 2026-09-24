@@ -203,6 +203,7 @@ function setupCameraControls(canvas: HTMLCanvasElement, renderer: Renderer) {
 | `camera.orbit(dx, dy)` | Rotate around target (left-drag) |
 | `camera.pan(dx, dy)` | Pan the view (shift+drag or middle-click) |
 | `camera.zoom(delta, false, x, y, w, h)` | Zoom towards mouse position (scroll wheel) |
+| `camera.zoom(delta, false, x, y, w, h, false, point)` | Zoom in toward a picked surface point (e.g. `renderer.raycastScene(x, y)?.intersection.point`): approaches it and stops short instead of passing through |
 | `camera.fitToBounds(min, max)` | Fit camera to bounding box |
 | `camera.setPresetView('top')` | Set preset view: 'top', 'front', 'left', etc. |
 | `camera.frameBounds(min, max, 500)` | Animated zoom to fit (with duration in ms) |

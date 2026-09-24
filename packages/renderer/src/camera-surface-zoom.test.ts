@@ -13,7 +13,33 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Camera } from './camera.js';
+import { surfaceZoomStep, SURFACE_ZOOM_MIN_STANDOFF } from './camera-surface-zoom.js';
 import type { Vec3 } from './types.js';
+
+describe('surfaceZoomStep (#5393)', () => {
+  const pose = { position: { x: 0, y: 0, z: 10 }, target: { x: 0, y: 0, z: 0 } };
+
+  it('refuses unusable input so the caller falls back to plain zoom', () => {
+    assert.equal(surfaceZoomStep(pose, { x: 0, y: 0, z: 20 }, 0.1), null, 'behind the camera');
+    assert.equal(surfaceZoomStep(pose, { x: 0, y: 0, z: 10 }, 0.1), null, 'at the eye');
+    assert.equal(surfaceZoomStep(pose, { x: NaN, y: 0, z: 0 }, 0.1), null, 'non-finite');
+    assert.equal(surfaceZoomStep(pose, { x: 0, y: 0, z: 0 }, 0), null, 'zero fraction');
+    assert.equal(surfaceZoomStep(pose, { x: 0, y: 0, z: 0 }, 1), null, 'full fraction');
+    assert.equal(surfaceZoomStep({ position: pose.position, target: pose.position }, { x: 0, y: 0, z: 0 }, 0.1), null, 'degenerate view');
+  });
+
+  it('enforces the standoff on DEPTH for an off-axis point, never on straight distance', () => {
+    // A point 45° off-axis: after many steps its depth (what the near plane
+    // clips) must settle at the standoff, while its distance stays larger.
+    const point = { x: 5, y: 0, z: 5 };
+    let p = pose;
+    for (let i = 0; i < 400; i++) p = surfaceZoomStep(p, point, 0.1) ?? p;
+    const fwd = { x: p.target.x - p.position.x, y: p.target.y - p.position.y, z: p.target.z - p.position.z };
+    const len = Math.hypot(fwd.x, fwd.y, fwd.z);
+    const depth = ((point.x - p.position.x) * fwd.x + (point.y - p.position.y) * fwd.y + (point.z - p.position.z) * fwd.z) / len;
+    assert.ok(Math.abs(depth - SURFACE_ZOOM_MIN_STANDOFF) < 1e-9, `depth ${depth}`);
+  });
+});
 
 const W = 800, H = 600;
 /** A thin wall: the plane z = 2, seen from z = 10 looking down -z. */
@@ -59,6 +85,24 @@ describe('Camera.zoom toward a picked surface (#5393)', () => {
     assert.ok(Math.abs(after.x - before.x) < 0.5 && Math.abs(after.y - before.y) < 0.5, `hit drifted from ${JSON.stringify(before)} to ${JSON.stringify(after)}`);
     // The orbit target sits at the surface's depth, in front of the camera.
     assert.ok(c.getTarget().z < c.getPosition().z && c.getTarget().z >= WALL_Z - 1e-6, `target z ${c.getTarget().z}`);
+  });
+
+  it('keeps the plain path for fast zoom, orthographic, and zooming out', () => {
+    const cases = [
+      { name: 'fast zoom', delta: -100, fast: true, ortho: false },
+      { name: 'orthographic', delta: -100, fast: false, ortho: true },
+      { name: 'zoom out', delta: 100, fast: false, ortho: false },
+    ];
+    for (const c of cases) {
+      // The same call with and without the surface point must give the same pose.
+      const run = (surface?: Vec3) => {
+        const cam = camera();
+        if (c.ortho) cam.setProjectionMode('orthographic');
+        cam.zoom(c.delta, false, 400, 300, W, H, c.fast, surface);
+        return cam.getPosition();
+      };
+      assert.deepEqual(run(HIT), run(), c.name);
+    }
   });
 
   it('respects the interaction gate: an orbit-only viewer does not dolly', () => {

@@ -29,6 +29,7 @@ import { Camera } from '@ifc-lite/renderer';
 
 import {
   applyWheelZoom,
+  createWheelSurfacePicker,
   createFineZoomModifierTracker,
   isFineZoomWheel,
   wheelZoomDelta,
@@ -415,6 +416,44 @@ describe('wheel zoom toward the surface under the cursor (#5393)', () => {
     });
     zoomIn(r, 1, true);
     assert.strictEqual(r.picks.length, 2, 'a stale point was reused after the camera moved');
+  });
+
+  it('re-picks when the cursor moves beyond the gesture slop, or after a pause', () => {
+    const r = rig();
+    zoomIn(r, 2, true);
+    const moved = wheelEvent({ deltaY: -NOTCH_DELTA_Y });
+    Object.defineProperty(moved, 'clientX', { value: 410, configurable: true });
+    applyWheelZoom(moved, { camera: r.camera, canvas: r.canvas, fastZoom: false, fineModifierHeld: false, pickSurface: r.pickSurface });
+    assert.strictEqual(r.picks.length, 2, 'a 10 px cursor move starts a new gesture');
+    const realNow = Date.now;
+    try {
+      const t = realNow();
+      Date.now = () => t + 1000; // past the 400 ms idle window
+      applyWheelZoom(moved, { camera: r.camera, canvas: r.canvas, fastZoom: false, fineModifierHeld: false, pickSurface: r.pickSurface });
+    } finally {
+      Date.now = realNow;
+    }
+    assert.strictEqual(r.picks.length, 3, 'a pause starts a new gesture');
+  });
+
+  it('the viewer picker skips the raycast while streaming, on large models and with a robust anchor', () => {
+    let raycasts = 0;
+    const small = { getMeshes: () => [], getBatchedMeshes: () => [], getInstancedEntityCount: () => 0 };
+    const large = { getMeshes: () => [], getBatchedMeshes: () => [], getInstancedEntityCount: () => 1_000_000 };
+    const renderer = (scene: typeof small) => ({
+      getScene: () => scene,
+      raycastScene: () => { raycasts++; return { intersection: { point: { x: 0, y: 0, z: WALL_Z } } }; },
+    });
+    const opts = (isStreaming: boolean) => () => ({ isStreaming, hiddenIds: new Set<number>(), isolatedIds: null });
+    const noAnchor = { getOrbitAnchorBounds: () => null };
+    const anchor = { getOrbitAnchorBounds: () => ({}) };
+
+    assert.deepStrictEqual(createWheelSurfacePicker(renderer(small), noAnchor, opts(false))(1, 2), { x: 0, y: 0, z: WALL_Z });
+    assert.strictEqual(raycasts, 1);
+    assert.strictEqual(createWheelSurfacePicker(renderer(small), noAnchor, opts(true))(1, 2), null, 'streaming');
+    assert.strictEqual(createWheelSurfacePicker(renderer(large), noAnchor, opts(false))(1, 2), null, 'large model');
+    assert.strictEqual(createWheelSurfacePicker(renderer(small), anchor, opts(false))(1, 2), null, 'robust anchor');
+    assert.strictEqual(raycasts, 1, 'no raycast ran for the gated cases');
   });
 
   it('never picks when zooming out, which cannot pass through anything', () => {

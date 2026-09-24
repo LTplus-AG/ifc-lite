@@ -24,6 +24,8 @@
  * The unmodified wheel is untouched, so existing muscle memory is unchanged.
  */
 
+import { isPivotRaycastTooExpensive, type PivotCensusScene } from './orbitPivotCensus.js';
+
 /** Fraction of the normal wheel step applied while the fine modifier is held. */
 export const FINE_ZOOM_STEP_FACTOR = 0.2;
 
@@ -161,6 +163,34 @@ export interface WheelZoomOptions {
    * thin objects; null (empty space) keeps the plain zoom.
    */
   pickSurface?: (mouseX: number, mouseY: number) => SurfacePoint | null;
+}
+
+/** What {@link createWheelSurfacePicker} needs from the renderer. */
+export interface WheelSurfaceRenderer {
+  getScene(): PivotCensusScene;
+  raycastScene(x: number, y: number, options: WheelSurfacePickOptions): { intersection: { point: SurfacePoint } } | null;
+}
+export interface WheelSurfacePickOptions { isStreaming: boolean; hiddenIds: Set<number>; isolatedIds: Set<number> | null }
+
+/**
+ * The viewer's `pickSurface` (#5393), under the same gate the orbit pivot
+ * raycast uses (useMouseControls, orbitPivotCensus.ts): the first CPU raycast
+ * builds a BVH over every entity, which stalls large models for seconds, and
+ * while streaming the mesh set changes under it. So no pick (plain zoom) while
+ * streaming, above the census limit, or on a model with a robust orbit anchor
+ * (#1394), whose sparse far tail makes the raycast both slow and unneeded.
+ */
+export function createWheelSurfacePicker(
+  renderer: WheelSurfaceRenderer,
+  camera: { getOrbitAnchorBounds(): unknown },
+  getPickOptions: () => WheelSurfacePickOptions,
+): (x: number, y: number) => SurfacePoint | null {
+  return (x, y) => {
+    const options = getPickOptions();
+    if (options.isStreaming || camera.getOrbitAnchorBounds() !== null) return null;
+    if (isPivotRaycastTooExpensive(renderer.getScene())) return null;
+    return renderer.raycastScene(x, y, options)?.intersection.point ?? null;
+  };
 }
 
 /**

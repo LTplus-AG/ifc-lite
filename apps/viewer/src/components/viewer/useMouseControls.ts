@@ -36,7 +36,7 @@ import {
 } from './measureHandlers.js';
 import { invalidateSelectionPick } from './referenceSelection.js';
 import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, handleAddElementHover, handleSplitHover, finishPolylineFromDoubleClick, finishRadiusFromDoubleClick } from './selectionHandlers.js';
-import { applyWheelZoom, createFineZoomModifierTracker } from './wheelZoom.js';
+import { applyWheelZoom, createFineZoomModifierTracker, createWheelSurfacePicker } from './wheelZoom.js';
 import { createFlyController } from './flyControls.js';
 import { MIN_RADIUS_POINTS } from './tools/measure-modes/radius.js';
 
@@ -803,7 +803,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         canvas,
         fastZoom: e.shiftKey || params.fastZoomRef.current,
         fineModifierHeld: fineZoomModifier.isHeld(),
-        pickSurface: (x, y) => renderer.raycastScene(x, y, getPickOptions())?.intersection.point ?? null, // #5393
+        pickSurface: createWheelSurfacePicker(renderer, camera, getPickOptions), // #5393
       });
 
       if (wheelIdleTimer) clearTimeout(wheelIdleTimer);

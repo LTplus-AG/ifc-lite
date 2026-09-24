@@ -4,7 +4,7 @@
 
 import { existsSync, readFileSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 
 /** Cache of npm-resolved versions to avoid redundant registry queries. */
 const versionCache = new Map<string, string>();
@@ -12,6 +12,8 @@ const publishedVersionsCache = new Map<string, Set<string>>();
 const VALID_PACKAGE_NAME = /^(?:@[\w.-]+\/)?[\w.-]+$/;
 const NPM_TIMEOUT_MS = 30000;
 const MAX_VERSION_CANDIDATES = 10;
+/** npm's own codes for "the registry does not have that artifact". */
+const MISSING_ARTIFACT_CODE = /\bE(404|410)\b/;
 
 function readJsonFromNpm(args: string[]): unknown {
   const command = process.platform === 'win32' ? process.env.ComSpec ?? 'cmd.exe' : 'npm';
@@ -52,6 +54,31 @@ function getVersionDependencies(packageName: string, version: string): Record<st
   return json as Record<string, string>;
 }
 
+/**
+ * Is the version's own tarball actually downloadable?
+ *
+ * A version can be `dist-tags.latest`, be listed in the packument, and
+ * advertise a `dist.tarball` that 404s -- a publish that registered the
+ * version without storing the artifact. `@ifc-lite/server-client@3.1.0` was
+ * exactly that, so every `--template server` scaffold died at `npm install`
+ * with a 404 on a URL npm itself had handed it (#5570).
+ *
+ * `npm pack --dry-run` is the probe rather than a raw HTTP request because it
+ * resolves through npm's own registry, proxy and auth config, and writes
+ * nothing. Only an explicit "not there" answer rejects a candidate: a network
+ * failure or an auth wall must not silently push the scaffold back onto an
+ * older version, so anything else is treated as "cannot tell, assume fine".
+ */
+function isTarballFetchable(packageName: string, version: string): boolean {
+  const args = ['pack', `${packageName}@${version}`, '--dry-run', '--json'];
+  const command = process.platform === 'win32' ? process.env.ComSpec ?? 'cmd.exe' : 'npm';
+  const commandArgs = process.platform === 'win32' ? ['/d', '/s', '/c', 'npm', ...args] : args;
+  const result = spawnSync(command, commandArgs, { encoding: 'utf-8', timeout: NPM_TIMEOUT_MS });
+  if (result.status === 0) return true;
+  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+  return !MISSING_ARTIFACT_CODE.test(output);
+}
+
 function isInstallablePublishedVersion(packageName: string, version: string): boolean {
   const dependencies = getVersionDependencies(packageName, version);
 
@@ -64,7 +91,7 @@ function isInstallablePublishedVersion(packageName: string, version: string): bo
     }
   }
 
-  return true;
+  return isTarballFetchable(packageName, version);
 }
 
 /**

@@ -188,16 +188,17 @@ it('removes a deleted wall mesh from the real architecture sample (#5249)', asyn
     onMeshes: (meshes) => { original = meshes; },
   });
 
-  const wall = original.find((mesh) => model.store.entityIndex.byId.get(mesh.expressId)?.type === 'IFCWALL');
-  assert.ok(wall, 'the bundled building model must produce a wall mesh before the edit');
+  // #262 is an IFCWALL with its own representation in the bundled IFC file.
+  const wall = original.find((mesh) => mesh.expressId === 262);
+  assert.ok(wall, 'the bundled building model must produce wall #262 before the edit');
 
-  const deleted = await dispatch(model, 'entity_delete', { express_id: wall.expressId });
-  assert.equal(deleted.isError, false, deleted.text);
   const created = await dispatch(model, 'entity_create', {
     type: 'IfcDoor', attributes: ['0aBcDeFgHiJkLmNoPqRsTA', null, 'New door'],
   });
   assert.equal(created.isError, false, created.text);
   const newId = (created.structured as { expressId: number }).expressId;
+  const deleted = await dispatch(model, 'entity_delete', { express_id: wall.expressId });
+  assert.equal(deleted.isError, false, deleted.text);
 
   let live: MeshData[] = [];
   await loadPlaygroundGeometry(model, {

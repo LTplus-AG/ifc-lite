@@ -1503,7 +1503,10 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 // box-cutting an opening the kernel found disjoint; enclosed
                 // volume moved toward IfcOpenShell (0.0189 -> 0.0202 m3, ref 0.0211).
                 (11477, 9, 9, 152, 18),
-                (11690, 19, 19, 139, 19),
+                // #5410: 19 open / 139 tris until a plan-rotated host whose
+                // cutters author no depth took the wall-local frame; now closed
+                // (enclosed volume 0.01972 -> 0.01967 m3, IfcOpenShell 0.01752).
+                (11690, 0, 0, 144, 0),
                 (31156, 0, 0, 208, 0),
                 (17553, 0, 2, 214, 0),
                 (17615, 0, 0, 252, 0),

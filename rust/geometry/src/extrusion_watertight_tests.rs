@@ -107,3 +107,109 @@ fn near_collinear_profile_vertex_survives_hygiene_closed() {
         "hygiene must not open a T-junction at the near-collinear profile vertex"
     );
 }
+
+/// Directed edges (by exact position) left without their reverse: 0 iff the
+/// surface is closed AND consistently wound.
+fn unpaired_directed_edges(m: &Mesh) -> usize {
+    let key = |i: u32| {
+        let b = i as usize * 3;
+        [m.positions[b].to_bits(), m.positions[b + 1].to_bits(), m.positions[b + 2].to_bits()]
+    };
+    let mut edges: std::collections::HashMap<_, i64> = std::collections::HashMap::new();
+    for t in m.indices.chunks_exact(3) {
+        for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
+            *edges.entry((key(a), key(b))).or_insert(0) += 1;
+            *edges.entry((key(b), key(a))).or_insert(0) -= 1;
+        }
+    }
+    edges.values().filter(|&&c| c != 0).count()
+}
+
+fn signed_volume(m: &Mesh) -> f64 {
+    let p = |i: u32| {
+        let b = i as usize * 3;
+        nalgebra::Vector3::new(m.positions[b] as f64, m.positions[b + 1] as f64, m.positions[b + 2] as f64)
+    };
+    m.indices
+        .chunks_exact(3)
+        .map(|t| p(t[0]).dot(&p(t[1]).cross(&p(t[2]))) / 6.0)
+        .sum()
+}
+
+/// #5410: a profile hole's side walls must be wound OUT of the solid (into the
+/// void), like the caps and the outer walls, whichever way either ring is
+/// authored. They used to be wound as if the hole were an outer boundary, so
+/// the extruded body was closed but winding-inconsistent: the exact kernel
+/// then read the walls of a void that an opening also cuts as solid-facing and
+/// corrupted the host. The consistent solid's divergence volume is exactly
+/// `(outer - hole) * depth`; the inverted one reported `outer + hole`.
+#[test]
+fn hole_walls_wind_with_the_solid_for_every_ring_winding_5410() {
+    use nalgebra::Point2;
+    let square = |lo: f64, hi: f64| {
+        vec![Point2::new(lo, lo), Point2::new(hi, lo), Point2::new(hi, hi), Point2::new(lo, hi)]
+    };
+    // 24 vertices takes the smooth radial-normal path in `create_side_walls`.
+    let circle = |r: f64| {
+        (0..24)
+            .map(|i| {
+                let a = std::f64::consts::TAU * i as f64 / 24.0;
+                Point2::new(5.0 + r * a.cos(), 5.0 + r * a.sin())
+            })
+            .collect::<Vec<_>>()
+    };
+    let signed_area = |ring: &[Point2<f64>]| {
+        (0..ring.len())
+            .map(|i| {
+                let (a, b) = (ring[i], ring[(i + 1) % ring.len()]);
+                a.x * b.y - b.x * a.y
+            })
+            .sum::<f64>()
+            * 0.5
+    };
+    let depth = 2.0;
+    for hole_shape in [square(3.5, 6.5), circle(2.0)] {
+        for (outer_ccw, hole_ccw) in [(true, false), (true, true), (false, false), (false, true)] {
+            let mut outer = square(0.0, 10.0);
+            if !outer_ccw {
+                outer.reverse();
+            }
+            let mut hole = hole_shape.clone();
+            if (signed_area(&hole) > 0.0) != hole_ccw {
+                hole.reverse();
+            }
+            let expected = (signed_area(&outer).abs() - signed_area(&hole).abs()) * depth;
+            let mut profile = Profile2D::new(outer);
+            profile.add_hole(hole.clone());
+            let case = format!("outer ccw={outer_ccw} hole ccw={hole_ccw} hole verts={}", hole.len());
+
+            let uniform = extrude_profile(&profile, depth, None).unwrap();
+            let lofted = extrude_profile_lofted(&profile, &profile, depth, None).unwrap();
+            for (path, mesh) in [("uniform", &uniform), ("lofted", &lofted)] {
+                assert_eq!(
+                    unpaired_directed_edges(mesh),
+                    0,
+                    "{path} ({case}): the extruded solid must be closed and consistently wound"
+                );
+                let volume = signed_volume(mesh);
+                assert!(
+                    (volume - expected).abs() < 1e-3,
+                    "{path} ({case}): outward volume {volume} != (outer - hole) * depth = {expected}"
+                );
+            }
+
+            // The hole-wall normals face into the void: toward the hole's centre.
+            let (cx, cy) = (5.0f32, 5.0f32);
+            let mut hole_wall_vertices = 0;
+            for (p, n) in uniform.positions.chunks_exact(3).zip(uniform.normals.chunks_exact(3)) {
+                let r = ((p[0] - cx).powi(2) + (p[1] - cy).powi(2)).sqrt();
+                if n[2].abs() < 0.5 && r < 3.0 {
+                    hole_wall_vertices += 1;
+                    let toward_centre = (cx - p[0]) * n[0] + (cy - p[1]) * n[1];
+                    assert!(toward_centre > 0.0, "uniform ({case}): hole-wall normal {n:?} at {p:?} faces the solid");
+                }
+            }
+            assert!(hole_wall_vertices > 0, "uniform ({case}): no hole-wall vertices sampled");
+        }
+    }
+}

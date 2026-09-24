@@ -2,55 +2,51 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** HTTP-level failure from a BCF server (non-2xx response). */
-export class BcfApiError extends Error {
-  /** HTTP status code; 0 when the request never produced a response. */
-  readonly status: number;
-  /** Request URL with any query string, for diagnostics. */
-  readonly url: string;
-  /** Server-provided error detail, when the body carried one. */
-  readonly detail?: string;
+/**
+ * BCF's error types, built on the generic OpenCDE Foundation API error types
+ * (https://github.com/buildingSMART/foundation-API): an HTTP-level failure
+ * carries the same status/url/detail/isAuthError shape for every OpenCDE
+ * service, and BCF's token endpoint failures follow the same RFC 6749 shape
+ * Documents API auth does.
+ *
+ * They are thin subclasses rather than aliases so that BOTH ways a BCF error
+ * comes to exist keep their historical `name` (#5438 review):
+ * - thrown by this package's client/auth code, which is Foundation code
+ *   called with `errorNamespace: 'Bcf'`, so named `BcfApiError` /
+ *   `BcfAuthenticationError`;
+ * - constructed directly, `new BcfApiError(...)`, which goes through the
+ *   constructors below.
+ * `instanceof` matches on that name, so `error instanceof BcfApiError` holds
+ * for both, and a `BcfAuthenticationError` is a `BcfApiError`, as before.
+ */
 
+import { FoundationApiError, FoundationAuthenticationError } from '@ifc-lite/opencde-foundation';
+
+const BCF_ERROR_NAMES = new Set(['BcfApiError', 'BcfAuthenticationError']);
+
+/** HTTP-level failure from a BCF server (non-2xx response). */
+export class BcfApiError extends FoundationApiError {
   constructor(message: string, options: { status: number; url: string; detail?: string }) {
-    super(message);
-    this.name = 'BcfApiError';
-    this.status = options.status;
-    this.url = options.url;
-    this.detail = options.detail;
+    super(message, { ...options, namespace: 'Bcf' });
   }
 
-  /** True when the server rejected the credentials (sign in again). */
-  get isAuthError(): boolean {
-    return this.status === 401;
+  static override [Symbol.hasInstance](value: unknown): boolean {
+    return value instanceof FoundationApiError && BCF_ERROR_NAMES.has(value.name);
   }
 }
 
 /** OAuth2 token endpoint failure (RFC 6749 error responses). */
-export class BcfAuthenticationError extends BcfApiError {
-  /** RFC 6749 error code, e.g. 'invalid_grant' or 'invalid_request'. */
-  readonly errorCode?: string;
-
+export class BcfAuthenticationError extends FoundationAuthenticationError {
   constructor(
     message: string,
     options: { status: number; url: string; errorCode?: string; detail?: string },
   ) {
-    super(message, options);
-    this.name = 'BcfAuthenticationError';
-    this.errorCode = options.errorCode;
+    super(message, { ...options, namespace: 'Bcf' });
+  }
+
+  static override [Symbol.hasInstance](value: unknown): boolean {
+    return value instanceof FoundationAuthenticationError && value.name === 'BcfAuthenticationError';
   }
 }
 
-/**
- * Extract a human-readable message from a BCF server error body. Servers
- * vary: BCF API prescribes `{message}`, OAuth2 uses `{error, error_description}`,
- * FastAPI emits `{detail}`.
- */
-export function extractErrorDetail(body: unknown): string | undefined {
-  if (typeof body !== 'object' || body === null) return undefined;
-  const record = body as Record<string, unknown>;
-  for (const key of ['message', 'error_description', 'detail', 'error']) {
-    const value = record[key];
-    if (typeof value === 'string' && value.length > 0) return value;
-  }
-  return undefined;
-}
+export { extractErrorDetail } from '@ifc-lite/opencde-foundation';

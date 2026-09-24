@@ -4,8 +4,8 @@
 
 /** Resolving what a user typed into the base URL of a BCF API service. */
 
+import { resolveApiBaseUrl } from '@ifc-lite/opencde-foundation';
 import { BcfApiClient, normalizeBcfBaseUrl } from './client.js';
-import { BcfApiError } from './errors.js';
 import type { BcfAuthInfo, FetchLike } from './types.js';
 
 /** The one path worth guessing: what vendors mount the BCF API at. */
@@ -65,32 +65,21 @@ export interface BcfServiceDiscovery {
  * so it must not commit anything (persist a session, register a client)
  * before the request that proves the address is right has succeeded.
  *
- * When every candidate fails, the error thrown is the most actionable one
- * available, in this order: a rejected-credentials error (the user's
- * likelier mistake, and it proves the address was right), then any error
- * naming a status and URL, then the first candidate's — so the message
- * describes what the user entered rather than a guess they never made. The
- * middle rung matters because a cross-origin probe that CORS blocks rejects
- * with a bare TypeError carrying neither status nor URL.
+ * BCF-specific only in the way it turns the user's raw input into candidates
+ * ({@link bcfBaseUrlCandidates}, the `/bcf` suffix guess); the try-each,
+ * prefer-the-most-actionable-error retry itself is
+ * `@ifc-lite/opencde-foundation`'s generic `resolveApiBaseUrl` (a
+ * rejected-credentials error — the user's likelier mistake, and it proves
+ * the address was right — beats any error naming a status and URL, which
+ * beats the first candidate's; the middle rung matters because a
+ * cross-origin probe that CORS blocks rejects with a bare TypeError carrying
+ * neither status nor URL).
  */
-export async function resolveBcfBaseUrl<T>(
+export function resolveBcfBaseUrl<T>(
   input: string,
   probe: (baseUrl: string) => Promise<T>,
 ): Promise<T> {
-  const errors: unknown[] = [];
-  for (const baseUrl of bcfBaseUrlCandidates(input)) {
-    try {
-      return await probe(baseUrl);
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-  const isApiError = (error: unknown): error is BcfApiError => error instanceof BcfApiError;
-  throw (
-    errors.find((error) => isApiError(error) && error.isAuthError) ??
-    errors.find(isApiError) ??
-    errors[0]
-  );
+  return resolveApiBaseUrl(bcfBaseUrlCandidates(input), probe);
 }
 
 /**

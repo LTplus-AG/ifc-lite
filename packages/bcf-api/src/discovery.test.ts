@@ -209,6 +209,7 @@ describe('discoverBcfService', () => {
     }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(BcfApiError);
     expect((error as BcfApiError).url).toBe('https://project.example.com/2.1/auth');
+    expect((error as BcfApiError).name).toBe('BcfApiError');
     expect((error as BcfApiError).message).toBe(
       'BCF request failed (HTTP 404) at https://project.example.com/2.1/auth',
     );

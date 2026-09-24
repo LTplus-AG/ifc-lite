@@ -1,7 +1,7 @@
 {
-  "name": "@ifc-lite/bcf-api",
-  "version": "0.2.2",
-  "description": "BCF API (OpenCDE) REST client for connecting to BCF servers",
+  "name": "@ifc-lite/opencde-foundation",
+  "version": "0.1.0",
+  "description": "buildingSMART OpenCDE Foundation API client: version discovery, auth discovery, OAuth2 flows and the shared HTTP client used by every OpenCDE service client",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -18,10 +18,6 @@
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run"
   },
-  "dependencies": {
-    "@ifc-lite/bcf": "workspace:^",
-    "@ifc-lite/opencde-foundation": "workspace:^"
-  },
   "devDependencies": {
     "typescript": "^6.0.3",
     "vitest": "^5.0.1"
@@ -31,20 +27,18 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
-    "directory": "packages/bcf-api"
+    "directory": "packages/opencde-foundation"
   },
   "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",
     "bim",
-    "bcf",
-    "bcf-api",
     "opencde",
+    "foundation-api",
     "buildingsmart",
-    "collaboration",
-    "issue-tracking",
-    "aec"
+    "oauth2",
+    "cde"
   ],
   "publishConfig": {
     "access": "public"

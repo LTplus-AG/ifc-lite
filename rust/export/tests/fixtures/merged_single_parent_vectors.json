@@ -1,0 +1,66 @@
+{
+ "about": [
+  "Shared cross-language pin for the merged exporters' one-IfcRelAggregates-parent rule (#5471 TypeScript, #5727 Rust).",
+  "Each case merges `models` (DATA lines of IFC4 files, merged in order, schema IFC4) with both MergedExporter (packages/export/src/merged-single-parent.parity.test.ts) and export_merged_models (rust/export/tests/merged_single_parent_parity.rs).",
+  "`parents` maps an entity's GlobalId to the GlobalIds of its IfcRelAggregates parents in the output, sorted. Written from IFC's Decomposes SET [0:1] and each case's source, not copied from either exporter's output.",
+  "Both exporters must also write no object as a RelatedObjects member of two IfcRelAggregates."
+ ],
+ "cases": [
+  {
+   "name": "issue_5471_pair_shape",
+   "why": "B's Building unifies with A's; A aggregates it under a Site, B under its Project. B's rel is fully redundant.",
+   "models": [
+    [
+     "#1=IFCPROJECT('pa00000000000000000000',$,'A',$,$,$,$,$,$);",
+     "#2=IFCSITE('sa00000000000000000000',$,'Site',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);",
+     "#3=IFCBUILDING('ba00000000000000000000',$,'House',$,$,$,$,$,.ELEMENT.,$,$,$);",
+     "#4=IFCRELAGGREGATES('ra10000000000000000000',$,$,$,#1,(#2));",
+     "#5=IFCRELAGGREGATES('ra20000000000000000000',$,$,$,#2,(#3));"
+    ],
+    [
+     "#1=IFCPROJECT('pb00000000000000000000',$,'B',$,$,$,$,$,$);",
+     "#2=IFCBUILDING('bb00000000000000000000',$,'Test Building',$,$,$,$,$,.ELEMENT.,$,$,$);",
+     "#3=IFCRELAGGREGATES('rb00000000000000000000',$,$,$,#1,(#2));"
+    ]
+   ],
+   "parents": {
+    "ba00000000000000000000": [
+     "sa00000000000000000000"
+    ],
+    "sa00000000000000000000": [
+     "pa00000000000000000000"
+    ]
+   }
+  },
+  {
+   "name": "partial_rel_variant_5727",
+   "why": "B's rel names the unifying Building AND a proxy that does not unify. The Building must keep only its Site parent; the proxy keeps the (unified) Project as its parent.",
+   "models": [
+    [
+     "#1=IFCPROJECT('pa00000000000000000000',$,'A',$,$,$,$,$,$);",
+     "#2=IFCSITE('sa00000000000000000000',$,'Site',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);",
+     "#3=IFCBUILDING('ba00000000000000000000',$,'House',$,$,$,$,$,.ELEMENT.,$,$,$);",
+     "#4=IFCRELAGGREGATES('ra10000000000000000000',$,$,$,#1,(#2));",
+     "#5=IFCRELAGGREGATES('ra20000000000000000000',$,$,$,#2,(#3));"
+    ],
+    [
+     "#1=IFCPROJECT('pb00000000000000000000',$,'B',$,$,$,$,$,$);",
+     "#2=IFCBUILDING('bb00000000000000000000',$,'Test Building',$,$,$,$,$,.ELEMENT.,$,$,$);",
+     "#4=IFCBUILDINGELEMENTPROXY('xb00000000000000000000',$,'P-1',$,$,$,$,$,$);",
+     "#3=IFCRELAGGREGATES('rb00000000000000000000',$,$,$,#1,(#2,#4));"
+    ]
+   ],
+   "parents": {
+    "ba00000000000000000000": [
+     "sa00000000000000000000"
+    ],
+    "sa00000000000000000000": [
+     "pa00000000000000000000"
+    ],
+    "xb00000000000000000000": [
+     "pa00000000000000000000"
+    ]
+   }
+  }
+ ]
+}

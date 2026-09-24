@@ -1,0 +1,32 @@
+{
+  "issue": 5477,
+  "ac20ProductionCandidate": {
+    "meshes": 317,
+    "triangles": 33356,
+    "elements": 82,
+    "countsMatchBase": true,
+    "gpuPickExpressId": 59753,
+    "clickPropertiesVisible": true,
+    "deletedExpressId": 59290,
+    "metadataAndStatusElementsBefore": 82,
+    "metadataAndStatusElementsAfter": 81,
+    "genericShowRestorationVerified": false
+  },
+  "federationAndReplacement": {
+    "modelCounts": [1, 2, 1],
+    "elementCounts": [82, 164, 82],
+    "finalIndicesReady": true,
+    "finalGpuPickExpressId": 59753,
+    "pageErrors": 0
+  },
+  "verification": {
+    "rootTypecheckTurboTasks": 102,
+    "rootLintExitCode": 0,
+    "selectedViewerTestsPassed": 44,
+    "selectedViewerTestsFailed": 0,
+    "selectedViewerTurboTasks": 48,
+    "moduleSizeGatePassed": true,
+    "rawEntityEnumerationGatePassed": true,
+    "diffCheckPassed": true
+  }
+}

@@ -17,6 +17,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { MutablePropertyView } from '@ifc-lite/mutations';
+import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store/types.js';
 import type { LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics.js';
@@ -65,6 +66,24 @@ function model(overrides: Partial<FederatedModel> = {}): FederatedModel {
     maxExpressId: 100,
     ...overrides,
   } as FederatedModel;
+}
+
+function geometryFor(ids: readonly number[]): GeometryResult {
+  const meshes: MeshData[] = ids.map((expressId) => ({
+    expressId,
+    positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    indices: new Uint32Array([0, 1, 2]),
+    color: [1, 1, 1, 1],
+  }));
+  const zero = { x: 0, y: 0, z: 0 };
+  const bounds = { min: zero, max: { x: 1, y: 1, z: 0 } };
+  return {
+    meshes,
+    totalTriangles: meshes.length,
+    totalVertices: meshes.length * 3,
+    coordinateInfo: { originShift: zero, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false },
+  };
 }
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
@@ -174,6 +193,36 @@ describe('ModelMetadataPanel — Elements with Geometry', () => {
     view.deleteEntity(2);
     act(() => useViewerStore.setState({ mutationVersion: 2 }));
     assert.equal(statistic(container, 'Elements with Geometry'), '6');
+  });
+
+  it('#5477 reuses physical membership across geometry-only updates and refreshes it after an overlay edit', () => {
+    const store = dataStore();
+    const view = new MutablePropertyView(null, 'stats-model');
+    const originalIsDeleted = view.isDeleted.bind(view);
+    let membershipVisits = 0;
+    view.isDeleted = (id) => { membershipVisits++; return originalIsDeleted(id); };
+    useViewerStore.setState({ mutationViews: new Map([['stats-model', view]]), mutationVersion: 1 });
+    const offset = federationRegistry.getOffset('stats-model') ?? 0;
+    const first = model({ ifcDataStore: store, geometryResult: geometryFor([1 + offset]), loadState: 'complete' });
+    const container = render(first);
+    assert.equal(statistic(container, 'Elements with Geometry'), '1');
+    const firstVisits = membershipVisits;
+    assert.ok(firstVisits > 0);
+
+    const root = mounted.at(-1)?.root;
+    assert.ok(root);
+    act(() => root.render(<ModelMetadataPanel model={{
+      ...first, geometryResult: geometryFor([1 + offset, 2 + offset]),
+    }} />));
+    assert.equal(statistic(container, 'Elements with Geometry'), '2');
+    assert.equal(membershipVisits, firstVisits, 'a new geometry batch must not rescan source membership');
+
+    act(() => {
+      view.deleteEntity(2);
+      useViewerStore.setState({ mutationVersion: 2 });
+    });
+    assert.equal(statistic(container, 'Elements with Geometry'), '1');
+    assert.ok(membershipVisits > firstVisits, 'an overlay edit recomputes membership');
   });
 
   it('resolves the single-model mutation view under its canonical legacy key (#5249)', () => {

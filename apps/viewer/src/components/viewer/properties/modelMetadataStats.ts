@@ -32,6 +32,8 @@ export interface ModelStats {
 export interface ModelStatsGeometryContext {
   /** The displayed model's live mutation view, when it has one. */
   mutationView?: MutablePropertyView | null;
+  /** Stable membership prepared by the panel across geometry-only renders. */
+  physicalIds?: ReadonlySet<number>;
   /** Whether an empty geometry result is authoritative rather than provisional. */
   geometryReady: boolean;
   /** Resolve a renderer/global id only when it belongs to the displayed model. */
@@ -58,7 +60,7 @@ export function computeModelStats(
     const localId = geometry.toLocalId(globalId);
     if (localId !== undefined) meshedIds.add(localId);
   }
-  const physicalIds = collectEffectivePhysicalEntityIds(dataStore, geometry.mutationView);
+  const physicalIds = geometry.physicalIds ?? collectEffectivePhysicalEntityIds(dataStore, geometry.mutationView);
   const elementsWithGeometry = countShapedObjects(physicalIds, {
     relationships: dataStore.relationships as AggregationRelationships | undefined,
     meshedIds,

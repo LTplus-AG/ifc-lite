@@ -1,0 +1,127 @@
+{
+  "issue": 5477,
+  "baseCommit": "83284a947d9adb9e1ece28f9d5ee7166722be1e5",
+  "candidateCommitAtBuild": "uncommitted five-file patch on base; source SHA-256 below",
+  "sourceSha256": {
+    "base": {
+      "apps/viewer/src/lib/physical-objects.ts": "2a10895f3228bcaa1ba894848ce1442fee164097b6885cf38de89aff003f5089",
+      "apps/viewer/src/components/viewer/properties/ModelMetadataPanel.tsx": "a9326c9247da77b4d7002ef24b10fc44adf4e354cf30f6a10a199970f09cac02",
+      "apps/viewer/src/components/viewer/properties/modelMetadataStats.ts": "c06a96ee13b7434892a837af62e4e3b781b233952d2a55db7444687ec3ea7475"
+    },
+    "candidate": {
+      "apps/viewer/src/lib/physical-objects.ts": "09819f9d7b46787fa0de2ab948e1ee53a9a33001b6146691f28bfa083469423c",
+      "apps/viewer/src/components/viewer/properties/ModelMetadataPanel.tsx": "04ffaaa9a99379fff2beefbb8567c034bd701fd1c0a9f03fdb81a33f39a02855",
+      "apps/viewer/src/components/viewer/properties/modelMetadataStats.ts": "366f61d37a350a5e7c1ead511d4b3f5661b4301483a1d1a1936be9910fd8ddcd"
+    }
+  },
+  "frozenBuild": {
+    "base": {
+      "manifestSha256": "20301dcbc8a603c683214649af6b6fa74b76e9916d6ad6c2d69ae4535ce33716",
+      "entryJsSha256": "096fce7d293152701a672bb7b695869047b16065fe960e20b89f23e549f25a24",
+      "servedWasmSha256": "dfc3350a8deabeb3f28d7b7a8af25a760069a2a8c5bae3ec6a8175331a7b03d5"
+    },
+    "candidate": {
+      "manifestSha256": "8b94f70978d17c078714b6f4f4c20205aae49ff76106bbb3b3770a2fbf6f817e",
+      "entryJsSha256": "02d8d172b304536de26be88af9b7c7e3f359eb670dde363b1fcb727d24b5a5a1",
+      "servedWasmSha256": "dfc3350a8deabeb3f28d7b7a8af25a760069a2a8c5bae3ec6a8175331a7b03d5"
+    }
+  },
+  "fixture": {
+    "manifestId": "ISSUE_053_20181220Holter_Tower_10.ifc",
+    "sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8"
+  },
+  "browser": {
+    "version": "148.0.7778.96",
+    "platform": "Windows 10",
+    "headless": true,
+    "webGpuEnabled": true,
+    "adapter": "not recorded by witness",
+    "freshProcessPerRun": true,
+    "firstModelLoadPerRun": true,
+    "crossOriginIsolated": true,
+    "sharedArrayBuffer": true
+  },
+  "hostControl": {
+    "wslCompetingProcessesLimitedToLogicalCpus": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "windowStartUtc": "2026-09-24T08:01:25.397099+00:00",
+    "windowEndUtc": "2026-09-24T08:11:25.397099+00:00",
+    "automaticRestore": true,
+    "windowsWitnessPriority": "High",
+    "windowsStaticServerPriority": "High",
+    "osFileCache": "not purged",
+    "hostBusyPctRangeObserved": [
+      24.2,
+      43.7
+    ],
+    "actualRestoredUtc": "2026-09-24T08:08:29.858994+00:00",
+    "restoreAudit": {
+      "threads": 1175,
+      "alive": 1105,
+      "affinityMismatches": 0
+    },
+    "windowEndMeaning": "planned watchdog maximum; actual restore recorded separately"
+  },
+  "method": {
+    "samplingIntervalMs": 100,
+    "readiness": "time from file input selection until model complete, spatial index ready, nonzero canvas and Holter GeomSync finalize log; post-readiness pick/click excluded",
+    "gateMs": 14000,
+    "staticServerScriptSha256": "c2313d3590b6cb391851242a931c3caffad8638f66a2c294b6d78635ef491bb0",
+    "rawSwitchSha256": "8a7eec9c86bd3bf1b852a32f4116525637c6020749ff28349295284ab6737539",
+    "productionObserverPostCohortSha256": "1b74d8a05657549442e6b4968b985c786657112d579db1be998964e95dc0515d",
+    "productionRunnerPostCohortSha256": "b00630758e78e73dd4665e0dde0490504fffdd282e1613bed03df5f4b3181bbd",
+    "productionObserverSourceNote": "Saved source added optional start/load gates after w2; readiness predicate and browser checks unchanged. Portable witness and launcher parameterize paths and configure gates.",
+    "bridge": {
+      "baseMainSha256": "545d707a1c19c32d022914b3ceb032d218d96416ddc492cd54c1b08719307fd1",
+      "tailSha256": "da287a142dbd6b515b5cd0915553a126263f64f52bcf5bd7e811209915b91741",
+      "probedMainSha256": "a97d83ddeb3cb4893f73e32e3af04597a52623b90f0251e090d43a4308f7fa9a",
+      "sameTailBothBundles": true,
+      "temporaryOnly": true
+    },
+    "holterOrder": [
+      "base",
+      "candidate",
+      "candidate",
+      "base",
+      "base",
+      "candidate",
+      "candidate",
+      "base",
+      "base",
+      "candidate"
+    ]
+  },
+  "controlFixtures": {
+    "AC20": {
+      "manifestId": "AC20-FZK-Haus.ifc",
+      "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d"
+    },
+    "ISSUE129": {
+      "manifestId": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "sha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131"
+    }
+  },
+  "qualifiedW4": {
+    "windowStartUtc": "2026-09-24T08:18:22.007312+00:00",
+    "windowRestoredUtc": "2026-09-24T08:21:27.364860+00:00",
+    "wslCompetingProcessesLimitedToLogicalCpus": [
+      0
+    ],
+    "windowsAffinityMask": "0xFFF000",
+    "windowsPriority": "High",
+    "preloadWitnessSha256": "1b74d8a05657549442e6b4968b985c786657112d579db1be998964e95dc0515d",
+    "preloadRunnerSha256": "b00630758e78e73dd4665e0dde0490504fffdd282e1613bed03df5f4b3181bbd",
+    "serverSwitchManifestMatches": true,
+    "preloadProcessAffinitiesMatch": true,
+    "restoredThreadsReported": 1391,
+    "restoreMismatchAudit": {
+      "aliveSavedThreadChecksAcrossFourWindows": 4166,
+      "affinityMismatches": 0,
+      "survivingOriginalSubsetEntries": 0
+    }
+  }
+}

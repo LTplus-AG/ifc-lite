@@ -126,8 +126,22 @@ export function collectEffectivePhysicalEntityIds(
   view: MutablePropertyView | null | undefined,
 ): Set<number> {
   const ids = new Set<number>();
-  for (const { expressId, type } of iterateEffectiveEntityIds(store, view)) {
-    if (isPhysicalObjectType(type)) ids.add(expressId);
+  // #5477: the source index is dominated by property and geometry records.
+  // Ask the canonical overlay-aware iterator for physical exact classes only;
+  // include overlay-only classes so a retype or creation can enter the set even
+  // when its new class had no source bucket.
+  const types = new Set<string>();
+  const includePhysical = (type: string) => {
+    if (isPhysicalObjectType(type)) types.add(type.toUpperCase());
+  };
+  // @raw-entity-enumeration-ok inspect class keys only; the shared iterator below decides effective IDs and applies overlay edits
+  for (const type of store.entityIndex.byType.keys()) includePhysical(type);
+  for (const mutation of view?.getTypeMutations().values() ?? []) includePhysical(mutation.newType);
+  for (const entity of view?.getNewEntities() ?? []) includePhysical(entity.type);
+  // An empty type list means "unfiltered" to iterateEffectiveEntityIds.
+  if (types.size === 0) return ids;
+  for (const { expressId } of iterateEffectiveEntityIds(store, view, [...types])) {
+    ids.add(expressId);
   }
   return ids;
 }

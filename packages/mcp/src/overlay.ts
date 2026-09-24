@@ -40,6 +40,7 @@ import {
   normalizeIfcTypeName,
 } from '@ifc-lite/parser';
 import type { LoadedModel } from './context.js';
+import { effectiveSourceIds, pendingEntityMembership } from './effective-entity-membership.js';
 /** An entity that exists only in the overlay (`entity_create`). */
 export interface CreatedEntity {
   expressId: number;
@@ -66,6 +67,7 @@ export interface CreatedEntity {
  * the enum grows, the readback carries.
  */
 export type AttributeOverrides = ReadonlyMap<string, string>;
+const NO_POSITIONAL_ATTRIBUTES: ReadonlyMap<number, unknown> = new Map();
 /** The overlay's read surface, as every folding tool consumes it. */
 export interface PendingOverlay {
   /** Express ids tombstoned by `entity_delete`. Empty is the common case.
@@ -231,7 +233,7 @@ class ViewOverlay implements PendingOverlay {
   }
 
   positionalAttributes(expressId: number): ReadonlyMap<number, unknown> {
-    return this.view.getPositionalMutationsForEntity(expressId) ?? new Map();
+    return this.view.getPositionalMutationsForEntity(expressId) ?? NO_POSITIONAL_ATTRIBUTES;
   }
 
   attributesByEntity(): ReadonlyMap<number, AttributeOverrides> {
@@ -273,19 +275,7 @@ class ViewOverlay implements PendingOverlay {
  * its effective uppercase class, matching the parsed type buckets.
  */
 export function foldedTypeCounts(store: IfcDataStore, overlay: PendingOverlay | null): Map<string, number> {
-  const effectiveOverlay = overlay ? {
-    isDeleted: (id: number) => overlay.deleted.has(id),
-    getTombstones: () => overlay.deleted,
-    getTypeMutations: () => overlay.getTypeMutations?.() ?? new Map<number, { newType: string }>(),
-    getNewEntities: () => overlay.createdAll.map(entity => ({ expressId: entity.expressId, type: entity.ifcType })),
-  } : null;
-  // IFCX has columnar entities but no STEP type buckets. Supply those source
-  // rows to the canonical accessor; STEP keeps the sparse-delta count path.
-  // @raw-entity-enumeration-ok detect an indexless IFCX source; its columnar IDs are passed through the canonical accessor
-  const sourceIds = store.entityIndex.byType.size === 0
-    ? store.entities.expressId
-    : undefined;
-  return countEffectiveEntityTypes(store, effectiveOverlay, sourceIds);
+  return countEffectiveEntityTypes(store, pendingEntityMembership(overlay), effectiveSourceIds(store));
 }
 
 /**

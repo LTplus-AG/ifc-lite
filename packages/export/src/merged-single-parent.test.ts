@@ -17,7 +17,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
-import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
+import { MergedExporter, type MergeExportOptions, type MergeModelInput } from './merged-exporter.js';
 
 const guid = (label: string): string => (label + '0'.repeat(22)).slice(0, 22);
 
@@ -32,8 +32,8 @@ async function model(id: string, lines: string[]): Promise<MergeModelInput> {
   return { id, name: id, dataStore };
 }
 
-async function merge(models: MergeModelInput[]): Promise<string> {
-  return new TextDecoder().decode(new MergedExporter(models).export({ schema: 'IFC4' }).content);
+async function merge(models: MergeModelInput[], options: Partial<MergeExportOptions> = {}): Promise<string> {
+  return new TextDecoder().decode(new MergedExporter(models).export({ schema: 'IFC4', ...options }).content);
 }
 
 /** Every IFCRELAGGREGATES line as `{ relating, related[] }`. */
@@ -123,6 +123,68 @@ describe('MergedExporter keeps one IfcRelAggregates parent per object (#5471)', 
     const content = await merge([await model('a', roofA), await model('b', roofB)]);
     expect(parentsOf(content, 'IFCSLAB', guid('s1'))).toEqual([6]);
     expect(parentsOf(content, 'IFCSLAB', guid('s2'))).toEqual([6]);
+    expectSingleParents(content);
+  });
+
+  it('counts only parents that are written: a hidden primary parent leaves the later one in place', async () => {
+    // visibleOnly with A's roof hidden: A's roof -> slab rel is withheld, so
+    // B's rel is the slab's only written parent and must not be dropped as
+    // redundant, or the slab is left with none.
+    const roofA = [
+      ...SITE_BUILDING,
+      `#6=IFCROOF('${guid('roof')}',$,'Roof A',$,$,$,$,$,.GABLE_ROOF.);`,
+      `#7=IFCSLAB('${guid('s1')}',$,'S1',$,$,$,$,$,.ROOF.);`,
+      `#8=IFCRELAGGREGATES('${guid('ra3')}',$,$,$,#6,(#7));`,
+    ];
+    const roofB = [
+      `#1=IFCPROJECT('${guid('pb')}',$,'B',$,$,$,$,$,$);`,
+      `#2=IFCROOF('${guid('roofb')}',$,'Roof B',$,$,$,$,$,.GABLE_ROOF.);`,
+      `#3=IFCSLAB('${guid('s1')}',$,'S1',$,$,$,$,$,.ROOF.);`,
+      `#4=IFCRELAGGREGATES('${guid('rb3')}',$,$,$,#2,(#3));`,
+    ];
+    const content = await merge([await model('a', roofA), await model('b', roofB)], {
+      visibleOnly: true,
+      hiddenEntityIdsByModel: new Map([['a', new Set([6])]]),
+    });
+    expect(content).not.toContain(guid('roof'));
+    expect(content).toContain(guid('rb3'));
+    expect(parentsOf(content, 'IFCSLAB', guid('s1'))).toHaveLength(1);
+    expectSingleParents(content);
+  });
+
+  it('with the primary parent visible, the same merge still drops the later duplicate', async () => {
+    // Control for the case above: without the hidden roof the slab already
+    // has A's roof as its written parent, so B's rel adds nothing.
+    const roofA = [
+      ...SITE_BUILDING,
+      `#6=IFCROOF('${guid('roof')}',$,'Roof A',$,$,$,$,$,.GABLE_ROOF.);`,
+      `#7=IFCSLAB('${guid('s1')}',$,'S1',$,$,$,$,$,.ROOF.);`,
+      `#8=IFCRELAGGREGATES('${guid('ra3')}',$,$,$,#6,(#7));`,
+    ];
+    const roofB = [
+      `#1=IFCPROJECT('${guid('pb')}',$,'B',$,$,$,$,$,$);`,
+      `#2=IFCROOF('${guid('roofb')}',$,'Roof B',$,$,$,$,$,.GABLE_ROOF.);`,
+      `#3=IFCSLAB('${guid('s1')}',$,'S1',$,$,$,$,$,.ROOF.);`,
+      `#4=IFCRELAGGREGATES('${guid('rb3')}',$,$,$,#2,(#3));`,
+    ];
+    const content = await merge([await model('a', roofA), await model('b', roofB)], { visibleOnly: true });
+    expect(parentsOf(content, 'IFCSLAB', guid('s1'))).toEqual([6]);
+    expect(content).not.toContain(guid('rb3'));
+    expectSingleParents(content);
+  });
+
+  it('keeps one parent with dropEmptyContainers on', async () => {
+    // The Building has content, so the empty-container pass keeps it.
+    const withContent = [
+      ...SITE_BUILDING,
+      `#6=IFCBUILDINGELEMENTPROXY('${guid('px')}',$,'P',$,$,$,$,$,$);`,
+      `#7=IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('rc')}',$,$,$,(#6),#3);`,
+    ];
+    const content = await merge(
+      [await model('a', withContent), await model('b', PROJECT_BUILDING('b'))],
+      { dropEmptyContainers: true },
+    );
+    expect(parentsOf(content, 'IFCBUILDING', guid('ba'))).toEqual([2]);
     expectSingleParents(content);
   });
 });

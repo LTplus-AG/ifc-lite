@@ -42,7 +42,7 @@ import {
   EMPTY_MODEL_VIEW,
   type EmptyContainerModelView,
 } from './merged-empty-containers.js';
-import { skipRedundantRelAggregates, applyRelAggregateStrip, collectAggregatedObjects } from './merged-rel-aggregates.js';
+import { claimAggregationParents, applyRelAggregateStrip } from './merged-rel-aggregates.js';
 
 /**
  * UTF-8 decode of `[start, end)` of a model's source, accepting either the raw
@@ -173,11 +173,9 @@ interface ModelMergePlan {
   droppedContainerIds?: ReadonlySet<number>;
   /**
    * Local express id of a kept (not fully redundant) IFCRELAGGREGATES → the
-   * local ids of its RelatedObjects members that must be dropped from the
-   * emitted list because they were unified with an object the first model's
-   * OWN relationship already aggregates the same RelatingObject to (see
-   * {@link MergedExporter.skipRedundantRelAggregates}). Emitting them
-   * unmodified would list that member twice under the same parent.
+   * local ids of its RelatedObjects members to drop from the written list
+   * because they already have an aggregation parent in the output (#5471,
+   * see `claimAggregationParents`).
    */
   relAggregateStrip: Map<number, Set<number>>;
 }
@@ -529,6 +527,7 @@ export class MergedExporter {
       if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings); }
       const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId);
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
+      this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
       const written = (id: number) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id);
       if (schema === 'IFC2X3') slotFill.prefer(firstWrittenOwnerHistoryRef(model.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), written, offset));
 
@@ -668,6 +667,7 @@ export class MergedExporter {
       if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings); }
       const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId);
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
+      this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
       const written = (id: number) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id);
       if (schema === 'IFC2X3') slotFill.prefer(firstWrittenOwnerHistoryRef(model.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), written, offset));
       const sourceSchema = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
@@ -820,6 +820,16 @@ export class MergedExporter {
     };
   }
 
+  /** One IfcRelAggregates parent per object (#5471): record the members this model writes, stripping ones already parented. */
+  private claimParents(model: MergeModelInput, plan: ModelMergePlan, visibility: { included: ReadonlySet<number>; hiddenProductIds: ReadonlySet<number> } | null, completeIndex: CompleteEntityIndex, dedupe: boolean, setup: MergeSetup): void {
+    const hidden = visibility?.hiddenProductIds;
+    claimAggregationParents({
+      ...plan, dataStore: model.dataStore, idOffset: setup.modelOffsets.get(model.id)!, dedupe,
+      isIncluded: id => visibility === null || visibility.included.has(id),
+      isEmitted: id => !plan.droppedContainerIds?.has(id) && (hidden === undefined || (!hidden.has(id) && completeIndex.has(id))),
+    }, setup.aggregatedObjects, this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this));
+  }
+
   /** Fold a model's dropped containers into its plan: the container lines are
    *  skipped outright, and {@link renderEntity} narrows every line naming one. */
   private applyContainerDrops(plan: ModelMergePlan, dropped: ReadonlySet<number> | undefined): void {
@@ -879,9 +889,7 @@ export class MergedExporter {
       firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale),
       firstProjectIds: this.findEntitiesByType(firstModel.dataStore, 'IFCPROJECT'),
       spatialLookup: this.buildSpatialLookup(firstModel.dataStore),
-      aggregatedObjects: collectAggregatedObjects(
-        firstModel.dataStore, this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this), firstModelOffset,
-      ),
+      aggregatedObjects: new Set(),
       primaryScale,
       primaryAreaScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'AREAUNIT', primaryScale, 2),
       primaryVolumeScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'VOLUMEUNIT', primaryScale, 3),
@@ -1147,14 +1155,6 @@ export class MergedExporter {
       }
     }
 
-    if (!isFirstModel && compatible) {
-      // After EVERY unification above (GlobalId too): drop aggregation members that already have a parent (#5471).
-      skipRedundantRelAggregates(
-        model.dataStore, sharedRemap, setup.modelOffsets.get(model.id)!, skipEntityIds, relAggregateStrip,
-        setup.aggregatedObjects, this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this),
-      );
-    }
-
     return { sharedRemap, skipEntityIds, guidRewrite, localGuids, relAggregateStrip };
   }
 
@@ -1225,13 +1225,10 @@ export class MergedExporter {
       entityText = kept;
     }
 
-    // Drop RelatedObjects members a partially redundant IFCRELAGGREGATES
-    // already shares with the first model's OWN relationship to the same
-    // (now-unified) RelatingObject — see skipRedundantRelAggregates /
-    // applyRelAggregateStrip (merged-rel-aggregates.ts). Runs in LOCAL id
-    // space, before the remap below. `null` (the filter would withhold the
-    // whole line) propagates like the two passes above: every edge the line
-    // declared already exists in the primary model.
+    // Drop RelatedObjects members of a partially redundant IFCRELAGGREGATES
+    // that already have an aggregation parent in the output (#5471) — see
+    // claimAggregationParents / applyRelAggregateStrip. Runs in LOCAL id
+    // space, before the remap below. `null` propagates like the passes above.
     const stripped = applyRelAggregateStrip(entityText, localId, plan.relAggregateStrip);
     if (stripped === null) return null;
     entityText = stripped;

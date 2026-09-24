@@ -14,64 +14,79 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
 
+/** What {@link claimAggregationParents} needs to know about one model's plan. */
+export interface AggregationClaimInput {
+  dataStore: IfcDataStore;
+  /** Local id → final id for every unified entity (spatial, infrastructure, GlobalId). */
+  sharedRemap: ReadonlyMap<number, number>;
+  /** This model's id offset: an unremapped local id's final id is `id + idOffset`. */
+  idOffset: number;
+  /** Local ids not written; a skipped rel claims nothing, and a rel skipped here is added. */
+  skipEntityIds: Set<number>;
+  /** Local rel id → member ids to drop from its written RelatedObjects list. */
+  relAggregateStrip: Map<number, Set<number>>;
+  /**
+   * Whether a local id survives into the output as a reference: false for a
+   * hidden product under `visibleOnly` or a dropped empty container, which
+   * `renderEntity` narrows out of (or, as a RelatingObject, withholds) the rel.
+   */
+  isEmitted: (localId: number) => boolean;
+  /** Whether the rel line itself is in the written set at all (visibility closure). */
+  isIncluded: (localId: number) => boolean;
+  /** Strip already-parented members (a later, unified model); false just records claims. */
+  dedupe: boolean;
+}
+
 /**
- * Skip IfcRelAggregates that become fully redundant after unification, and
- * mark the individually-redundant members of ones only PARTIALLY so for
- * stripping.
+ * Keep one IfcRelAggregates parent per object across a merge (#5471).
  *
- * An object has at most one aggregation parent: `IfcObjectDefinition.Decomposes`
- * is `SET [0:1]`, and `IfcSpatialStructureElement.WR41` requires exactly one
- * for a building or storey. Once a later model's Building unifies with the
- * primary's, the primary's own `IfcRelAggregates` already gives it a parent,
- * so a later model's rel naming the same (remapped) Building gives it a second
- * one. That holds whether the later rel's RelatingObject remaps to the same
- * parent (the duplicate-edge case, e.g. `(Project, (Site))` twice) or to a
- * different one (#5471: model B aggregates its Building directly under its
- * Project, model A under a Site, so A's Building ends up under both).
+ * `IfcObjectDefinition.Decomposes` is `SET [0:1]`, and
+ * `IfcSpatialStructureElement.WR41` requires exactly one for a building or
+ * storey. Once a later model's Building unifies with the primary's, the
+ * primary's own rel already gives it a parent, so a later rel naming the same
+ * (remapped) Building gives it a second one, whether that rel's RelatingObject
+ * remaps to the same parent (a duplicate edge, e.g. `(Project, (Site))` twice)
+ * or a different one (model B aggregates its Building under its Project, model
+ * A under a Site).
  *
- * So a RelatedObjects member is redundant when its final id is already in
- * `aggregatedObjects`, the set of final ids that already have a parent in the
- * output. A rel whose members are ALL redundant is skipped outright; one with
- * SOME redundant members is kept for its new member(s), and the redundant ids
- * are recorded in `relAggregateStrip` so {@link applyRelAggregateStrip} drops
- * them from the emitted list. A unified member with no parent yet is kept: that
- * rel is then the only statement of its parentage (#3550).
+ * `aggregatedObjects` holds the final ids that already have a parent WRITTEN to
+ * the output. Called once per model in merge order, after all of that model's
+ * unification and container drops: every rel the model will write adds its
+ * written members. A rel that will not be written (skipped, outside the
+ * visibility closure, or with a hidden or dropped RelatingObject) claims
+ * nothing, and neither does a member narrowed out of it, so a later model's rel
+ * stays the parent of an object whose primary parent is not in the output.
  *
- * `aggregatedObjects` is seeded from the primary model by
- * {@link collectAggregatedObjects} and extended here with every member a kept
- * rel emits, so a third model cannot give an object a parent the second already
- * did. `sharedRemap` must already hold every unification of this model
- * (spatial, infrastructure AND GlobalId), because a member remapped only
- * later would be missed. `idOffset` places this model's unremapped ids in
- * final id space.
+ * With `dedupe`, a written member already in the set is redundant: a rel whose
+ * written members are ALL redundant is skipped, one with SOME is kept for its
+ * new members and the redundant ids go to `relAggregateStrip` for
+ * {@link applyRelAggregateStrip}. A unified member with no parent yet is kept,
+ * since that rel is then its only parentage statement (#3550).
  */
-export function skipRedundantRelAggregates(
-  dataStore: IfcDataStore,
-  sharedRemap: ReadonlyMap<number, number>,
-  idOffset: number,
-  skipEntityIds: Set<number>,
-  relAggregateStrip: Map<number, Set<number>>,
+export function claimAggregationParents(
+  input: AggregationClaimInput,
   aggregatedObjects: Set<number>,
   findEntitiesByType: (dataStore: IfcDataStore, typeUpper: string) => number[],
   extractStepAttribute: (expressId: number, dataStore: IfcDataStore, attrIndex: number) => string | null,
 ): void {
+  const { dataStore, sharedRemap, idOffset, skipEntityIds, relAggregateStrip, isEmitted, isIncluded, dedupe } = input;
+  const finalId = (ref: number) => sharedRemap.get(ref) ?? ref + idOffset;
   for (const relId of findEntitiesByType(dataStore, 'IFCRELAGGREGATES')) {
-    // RelatedObjects is attr 5 — list of #refs like (#2,#3)
-    const refs = listRefs(extractStepAttribute(relId, dataStore, 5));
+    if (skipEntityIds.has(relId) || !isIncluded(relId)) continue;
+    // RelatingObject is attr 4 — a single #ref; a hidden or dropped one withholds the line.
+    const relating = extractStepAttribute(relId, dataStore, 4)?.match(/^#(\d+)$/);
+    if (relating && !isEmitted(parseInt(relating[1], 10))) continue;
+    // RelatedObjects is attr 5 — list of #refs like (#2,#3); hidden members are narrowed out.
+    const refs = listRefs(extractStepAttribute(relId, dataStore, 5)).filter(isEmitted);
     if (refs.length === 0) continue;
 
-    const finalId = (ref: number) => sharedRemap.get(ref) ?? ref + idOffset;
-    const redundantRefs = refs.filter(ref => aggregatedObjects.has(finalId(ref)));
+    const redundantRefs = dedupe ? refs.filter(ref => aggregatedObjects.has(finalId(ref))) : [];
     if (redundantRefs.length === refs.length) {
-      // Every member already has a parent in the output — fully redundant.
+      // Every written member already has a parent in the output — fully redundant.
       skipEntityIds.add(relId);
       continue;
     }
-    if (redundantRefs.length > 0) {
-      // Some, not all — keep the rel for its new member(s), but drop the
-      // ones that already have a parent.
-      relAggregateStrip.set(relId, new Set(redundantRefs));
-    }
+    if (redundantRefs.length > 0) relAggregateStrip.set(relId, new Set(redundantRefs));
     for (const ref of refs) aggregatedObjects.add(finalId(ref));
   }
 }
@@ -87,35 +102,16 @@ function listRefs(attr: string | null): number[] {
 }
 
 /**
- * The final ids of every object the primary model aggregates under a parent,
- * i.e. every IfcRelAggregates RelatedObjects member, offset into final id
- * space. Seeds {@link skipRedundantRelAggregates}'s `aggregatedObjects`.
- */
-export function collectAggregatedObjects(
-  dataStore: IfcDataStore,
-  findEntitiesByType: (dataStore: IfcDataStore, typeUpper: string) => number[],
-  extractStepAttribute: (expressId: number, dataStore: IfcDataStore, attrIndex: number) => string | null,
-  idOffset: number,
-): Set<number> {
-  const aggregated = new Set<number>();
-  for (const relId of findEntitiesByType(dataStore, 'IFCRELAGGREGATES')) {
-    for (const ref of listRefs(extractStepAttribute(relId, dataStore, 5))) aggregated.add(ref + idOffset);
-  }
-  return aggregated;
-}
-
-/**
- * Render-time counterpart of {@link skipRedundantRelAggregates}: drop
- * RelatedObjects members a partially redundant IFCRELAGGREGATES already
- * shares with the first model's OWN relationship to the same (now-unified)
- * RelatingObject. Reuses the same list/scalar-aware ref filter the
+ * Render-time counterpart of {@link claimAggregationParents}: drop the
+ * RelatedObjects members of a partially redundant IFCRELAGGREGATES that
+ * already have an aggregation parent in the output. Reuses the same list/scalar-aware ref filter the
  * `visibleOnly`/deletion dangling-ref path uses. Must run in LOCAL id
  * space, before any id offset/remap — `localId` and the ids inside
  * `relAggregateStrip` are both local to the model being rendered.
  *
  * Returns `entityText` unchanged when `localId` has no strip entry, and
  * `null` when the filter would withhold the whole line — a strip set built
- * by {@link skipRedundantRelAggregates} is a strict subset of the
+ * by {@link claimAggregationParents} is a strict subset of the
  * RelatedObjects list, so for well-formed input the filter only narrows,
  * but a degenerate file (a stripped member id that also appears as a
  * single-valued ref, e.g. self-aggregation) can null the line. The caller

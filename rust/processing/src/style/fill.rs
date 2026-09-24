@@ -80,5 +80,6 @@ fn fill_info(
             .get_string(0)
             .filter(|s| !s.trim().is_empty())
             .map(str::to_owned),
+        metallic_roughness: None,
     })
 }

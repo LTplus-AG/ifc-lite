@@ -144,6 +144,18 @@ pub struct MeshData {
     /// and local meshes serialize byte-identically.
     #[serde(default, skip_serializing_if = "origin_is_zero")]
     pub origin: [f64; 3],
+    /// IFC-authored metallic/roughness (#5582), from
+    /// `IfcSurfaceStyleRendering.SpecularColour` / `.SpecularHighlight` /
+    /// `.ReflectanceMethod` (`ifc_lite_processing::style::extract_surface_style_specular`).
+    /// `None` when the file authored no evidence for the field; the renderer
+    /// then keeps its own default (matte dielectric, or glass roughness when
+    /// the authored colour is translucent). Serde-default + skip-when-none so
+    /// existing payloads/caches stay readable and byte-identical for files
+    /// with no specular authoring.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metallic: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub roughness: Option<f32>,
     /// GPU-instancing metadata (rep-identity + per-occurrence world transform),
     /// attached only when `IFC_LITE_INSTANCING` is on and the element is a clean
     /// single-item mapped instance. Purely in-memory for the native streaming
@@ -202,6 +214,8 @@ impl MeshData {
             instance: None,
             local_bounds: None,
             local_to_world: None,
+            metallic: None,
+            roughness: None,
         }
     }
 
@@ -303,6 +317,17 @@ impl MeshData {
     /// Attach optional IFC property set values.
     pub fn with_properties(mut self, properties: Option<BTreeMap<String, String>>) -> Self {
         self.properties = properties;
+        self
+    }
+
+    /// Attach the IFC-authored metallic/roughness pair (#5582), from
+    /// `crate::style::SpecularMaterial`. A no-op (leaves both `None`) when
+    /// `specular` itself is `None` or carries no evidence for either field.
+    pub fn with_specular_material(mut self, specular: Option<crate::style::SpecularMaterial>) -> Self {
+        if let Some(specular) = specular {
+            self.metallic = specular.metallic;
+            self.roughness = specular.roughness;
+        }
         self
     }
 

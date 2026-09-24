@@ -42,8 +42,10 @@ export interface WheelZoomCamera {
     surfacePoint?: SurfacePoint,
   ): void;
   /** Read back after each notch so a cached surface point is only reused
-   *  while nothing but the surface zoom has moved the camera (#5393). */
+   *  while nothing but the surface zoom has moved the camera (#5393). Both
+   *  ends of the view ray: a look-around keeps the position but turns it. */
   getPosition(): SurfacePoint;
+  getTarget(): SurfacePoint;
 }
 
 /** World-space point on the visible surface under the cursor. */
@@ -199,22 +201,26 @@ export function createWheelSurfacePicker(
  * and no pause over {@link SURFACE_GESTURE_IDLE_MS}. The surface zoom moves
  * the camera along the cursor ray, so the picked point stays under the cursor
  * and stays valid for the rest of the gesture. It is valid ONLY while the
- * surface zoom is the sole thing moving the camera: the pose after each notch
- * is recorded, and any other move in between (a fast-zoom dolly, an orbit, a
- * pan, a key) takes the point off the cursor ray, so the next notch re-picks.
+ * surface zoom is the sole thing moving the camera: the pose (position AND
+ * target) after each notch is recorded, and any other move in between (a
+ * fast-zoom dolly, an orbit, a pan, a look-around, a key) takes the point off
+ * the cursor ray, so the next notch re-picks.
  */
 const SURFACE_GESTURE_IDLE_MS = 400;
 const SURFACE_GESTURE_SLOP_PX = 4;
 interface SurfaceGesture { x: number; y: number; at: number; point: SurfacePoint | null; pose: string }
 const surfaceGestures = new WeakMap<object, SurfaceGesture>();
-const poseKey = (p: SurfacePoint) => `${p.x},${p.y},${p.z}`;
+const poseKey = (c: WheelZoomCamera) => {
+  const p = c.getPosition(), t = c.getTarget();
+  return `${p.x},${p.y},${p.z}|${t.x},${t.y},${t.z}`;
+};
 
 function gestureSurface(opts: WheelZoomOptions, mouseX: number, mouseY: number): SurfaceGesture | null {
   const pick = opts.pickSurface;
   if (!pick) return null;
   const now = Date.now();
   const g = surfaceGestures.get(opts.canvas);
-  if (g && now - g.at < SURFACE_GESTURE_IDLE_MS && g.pose === poseKey(opts.camera.getPosition())
+  if (g && now - g.at < SURFACE_GESTURE_IDLE_MS && g.pose === poseKey(opts.camera)
     && Math.abs(g.x - mouseX) <= SURFACE_GESTURE_SLOP_PX && Math.abs(g.y - mouseY) <= SURFACE_GESTURE_SLOP_PX) {
     g.at = now;
     return g;
@@ -258,5 +264,5 @@ export function applyWheelZoom(e: WheelZoomEvent, opts: WheelZoomOptions): void 
     opts.fastZoom,
     surface,
   );
-  if (gesture) gesture.pose = poseKey(opts.camera.getPosition());
+  if (gesture) gesture.pose = poseKey(opts.camera);
 }

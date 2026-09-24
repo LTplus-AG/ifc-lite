@@ -418,6 +418,15 @@ describe('wheel zoom toward the surface under the cursor (#5393)', () => {
     assert.strictEqual(r.picks.length, 2, 'a stale point was reused after the camera moved');
   });
 
+  it('re-picks after a look-around that turned the view without moving the camera (PR #5461 review)', () => {
+    const r = rig();
+    zoomIn(r, 2, true);
+    const p = r.camera.getPosition();
+    r.camera.setTarget(p.x + 1, p.y, p.z - 1); // same position, new view direction
+    zoomIn(r, 1, true);
+    assert.strictEqual(r.picks.length, 2, 'a point picked on the old view ray was reused');
+  });
+
   it('re-picks when the cursor moves beyond the gesture slop, or after a pause', () => {
     const r = rig();
     zoomIn(r, 2, true);

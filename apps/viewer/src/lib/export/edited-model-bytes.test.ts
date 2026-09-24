@@ -65,3 +65,19 @@ describe('editedModelBytes (#5397)', () => {
     assert.equal(edited.entities.getGlobalId(created), '2Wall00000000000000012');
   });
 });
+
+describe('editedModelBytes on an IFC2X3 model (#5397 review)', () => {
+  it('re-serializes an edited IFC2X3 model too: only IFC5 has no STEP to regenerate', async () => {
+    assert.ok(mod, 'edited-model-bytes must exist');
+    const store = await parse(new TextEncoder().encode(FIXTURE.replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC2X3'))")));
+    assert.equal(store.schemaVersion, 'IFC2X3');
+    const view = new MutablePropertyView(store.properties ?? null, 'm');
+    configureMutationView(view, store);
+    view.deleteEntity(11);
+
+    const edited = await parse(mod!.editedModelBytes(store, view));
+    assert.equal(edited.schemaVersion, 'IFC2X3');
+    assert.equal(edited.entityIndex.byId.has(11), false, 'the IFC2X3 deletion reaches the bytes');
+    assert.equal(edited.entityIndex.byId.has(10), true);
+  });
+});

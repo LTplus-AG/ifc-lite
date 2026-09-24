@@ -707,6 +707,9 @@ importers:
       '@ifc-lite/encoding':
         specifier: workspace:^
         version: link:../encoding
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       jszip:
         specifier: ^3.10.2
         version: 3.10.2
@@ -1165,13 +1168,16 @@ importers:
       apache-arrow:
         specifier: ^21.2.0
         version: 21.2.0
-      jszip:
-        specifier: ^3.10.2
-        version: 3.10.2
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       parquet-wasm:
         specifier: ^0.8.0
         version: 0.8.0
     devDependencies:
+      jszip:
+        specifier: ^3.10.2
+        version: 3.10.2
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

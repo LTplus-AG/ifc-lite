@@ -28,6 +28,10 @@ const NODE_TYPE_ICONS: Record<string, React.ElementType> = {
   'model-header': FileBox,
 };
 
+/** Indent per tree level. 12 px (was 16) still reads as a hierarchy and gives
+ *  a storey row 12 px more for its name (#5394). */
+const HIERARCHY_INDENT_STEP_PX = 12;
+
 export interface HierarchyNodeProps {
   node: TreeNode;
   virtualRow: { size: number; start: number };
@@ -106,9 +110,21 @@ export function HierarchyNode({
     );
   }
 
+  // The visibility toggle shares the type icon's slot (#5394); spatial
+  // containers in multi-model mode have none.
+  const hasToggle = !(isMultiModel && isSpatialContainer(node.type));
+  const iconClass = cn(
+    'text-zinc-500 dark:text-zinc-400 transition-opacity',
+    hasToggle && 'group-hover:opacity-0',
+    hasToggle && nodeHidden && 'opacity-0',
+  );
+
   // Regular node rendering (spatial hierarchy nodes and elements)
   return (
     <div
+      // Query container for the badges below (#5394): its width is the tree
+      // panel's, whatever the row's depth.
+      className="@container"
       style={{
         position: 'absolute',
         top: 0,
@@ -131,7 +147,7 @@ export function HierarchyNode({
           (nodeHidden || noGeometry) && 'opacity-50 grayscale'
         )}
         style={{
-          paddingLeft: `${node.depth * 16 + 8}px`,
+          paddingLeft: `${node.depth * HIERARCHY_INDENT_STEP_PX + 8}px`,
           // No selection highlighting for spatial containers in multi-model mode
           backgroundColor: isSelected && !(isMultiModel && isSpatialContainer(node.type))
             ? 'var(--hierarchy-selected-bg)' : undefined,
@@ -175,59 +191,63 @@ export function HierarchyNode({
           <div className="w-5" />
         )}
 
-        {/* Visibility Toggle - hide for spatial containers (Project/Site/Building) in multi-model mode */}
-        {!(isMultiModel && isSpatialContainer(node.type)) && (
+        {/* Type icon, with the visibility toggle overlaid in the same 14 px slot
+            (#5394). The toggle used to reserve its own slot while invisible;
+            now it replaces the icon on row hover, and stays shown while the node
+            is hidden. Spatial containers in multi-model mode have no toggle. */}
+        <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onVisibilityToggle(node);
-                }}
-                aria-label={
-                  node.isVisible
-                    ? t('hierarchy.node.hideAriaLabel', { name: node.name })
-                    : t('hierarchy.node.showAriaLabel', { name: node.name })
-                }
-                className={cn(
-                  'p-0.5 opacity-0 group-hover:opacity-100 transition-opacity mr-1',
-                  nodeHidden && 'opacity-100'
-                )}
-              >
-                {node.isVisible ? (
-                  <Eye className="h-3 w-3 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100" />
-                ) : (
-                  <EyeOff className="h-3 w-3 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100" />
-                )}
-              </button>
+              {LucideIcon ? (
+                <LucideIcon data-hierarchy-type-icon className={cn('h-3.5 w-3.5 shrink-0', iconClass)} />
+              ) : (
+                <span
+                  data-hierarchy-type-icon
+                  className={cn('material-symbols-outlined shrink-0 leading-none', iconClass)}
+                  style={{ fontSize: '14px' }}
+                  aria-hidden="true"
+                >
+                  {iconCodepoint}
+                </span>
+              )}
             </TooltipTrigger>
             <TooltipContent>
-              <p className="text-xs">
-                {node.isVisible ? t('hierarchy.node.hide') : t('hierarchy.node.show')}
-              </p>
+              <p className="text-xs">{resolvedType}</p>
             </TooltipContent>
           </Tooltip>
-        )}
-
-        {/* Type Icon */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            {LucideIcon ? (
-              <LucideIcon className="h-3.5 w-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" />
-            ) : (
-              <span
-                className="material-symbols-outlined shrink-0 leading-none text-zinc-500 dark:text-zinc-400"
-                style={{ fontSize: '14px' }}
-                aria-hidden="true"
-              >
-                {iconCodepoint}
-              </span>
-            )}
-          </TooltipTrigger>
-          <TooltipContent>
-            <p className="text-xs">{resolvedType}</p>
-          </TooltipContent>
-        </Tooltip>
+          {hasToggle && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onVisibilityToggle(node);
+                  }}
+                  aria-label={
+                    node.isVisible
+                      ? t('hierarchy.node.hideAriaLabel', { name: node.name })
+                      : t('hierarchy.node.showAriaLabel', { name: node.name })
+                  }
+                  className={cn(
+                    'absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity',
+                    nodeHidden && 'opacity-100'
+                  )}
+                >
+                  {node.isVisible ? (
+                    <Eye className="h-3 w-3 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100" />
+                  ) : (
+                    <EyeOff className="h-3 w-3 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100" />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="text-xs">
+                  {node.isVisible ? t('hierarchy.node.hide') : t('hierarchy.node.show')}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </span>
 
         {/* Name (+ optional muted LongName for spatial nodes carrying an ISO
             19650 code in Name and the descriptive label in LongName, #1634) */}
@@ -236,7 +256,11 @@ export function HierarchyNode({
             className="flex-1 min-w-0 flex items-baseline text-sm ml-1.5"
             title={t('hierarchy.node.nameAndSecondaryTitle', { name: node.name, secondaryName: node.secondaryName ?? '' })}
           >
-            <span className={cn('shrink-0 max-w-[55%] truncate', primaryNameClass, strikeWhenHidden)}>
+            {/* The Name takes its full width first and the LongName gets the
+                rest (#5394). A 55% cap truncated a descriptive Name to make
+                room for a LongName that was often an id; the #1634 case, a
+                short ISO code, still leaves the LongName its room. */}
+            <span className={cn('shrink-0 max-w-full truncate', primaryNameClass, strikeWhenHidden)}>
               {node.name}
             </span>
             <span className={cn('truncate min-w-0 ml-1.5 font-normal text-zinc-400 dark:text-zinc-500', strikeWhenHidden)}>
@@ -281,7 +305,9 @@ export function HierarchyNode({
         {node.elementCount !== undefined && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="text-[10px] font-mono bg-zinc-100 dark:bg-zinc-950 px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 rounded-none">
+              {/* Yields first when the tree is narrow (#5394): below 18rem the
+                  name needs the room more than the count does. */}
+              <span data-hierarchy-count-badge className="hidden @2xs:inline text-[10px] font-mono bg-zinc-100 dark:bg-zinc-950 px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 rounded-none">
                 {formatLocaleNumber(locale, node.elementCount)}
               </span>
             </TooltipTrigger>

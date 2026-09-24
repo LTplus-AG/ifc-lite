@@ -5,6 +5,7 @@
 //! Auto-generated tables. See each submodule's own header for its generator
 //! and the EXPRESS-derived source it reads.
 
+pub mod enum_reconciliation;
 pub mod ifc2x3_entity_names;
 pub mod ifc2x3_required_slots;
 pub mod ifc4_required_slots;

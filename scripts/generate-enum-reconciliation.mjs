@@ -4,9 +4,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Generate `docs/architecture/schema-enum-reconciliation.md`: the reviewed
- * ledger of every enum member a schema conversion can meet that the TARGET
- * schema does not define, and what the converter writes for it (#5365).
+ * Generate, from one pass (#5365):
+ *  - `docs/architecture/schema-enum-reconciliation.md`: the reviewed ledger of
+ *    every enum member a schema conversion can meet that the TARGET schema
+ *    does not define, and what the converter writes for it;
+ *  - `rust/export/src/generated/enum_reconciliation.rs`: the same decisions as
+ *    a table for the Rust converter, which has no schema registry at runtime.
+ *    The TypeScript converter applies the policy against the registry
+ *    directly, so the two agree by construction.
  *
  * WHY THIS EXISTS. The #5365 charter's stopping condition: every enum type
  * whose members differ between two bundled schemas is either mapped or
@@ -53,6 +58,7 @@ if (!process.env.ENUM_RECONCILIATION_TSX) {
 }
 
 const OUT_REL = 'docs/architecture/schema-enum-reconciliation.md';
+const RS_REL = 'rust/export/src/generated/enum_reconciliation.rs';
 const load = async (rel) => (await import(pathToFileURL(join(ROOT, rel)).href)).SCHEMA_REGISTRY;
 const REGISTRIES = {
   IFC2X3: await load('packages/parser/src/generated/ifc2x3/schema-registry.ts'),
@@ -79,6 +85,8 @@ function describe(resolution, attributes) {
 
 const sections = [];
 const totals = [];
+/** target schema -> UPPERCASE entity -> { arity, slots: Map<index, {attribute, members, resolution}> } */
+const rustRows = { IFC2X3: new Map(), IFC4: new Map(), IFC4X3: new Map() };
 for (const [from, to] of DIRECTIONS) {
   const source = REGISTRIES[from];
   const target = REGISTRIES[to];
@@ -94,6 +102,10 @@ for (const [from, to] of DIRECTIONS) {
       if (missing.length === 0) return;
       const resolution = resolveMissingEnumMember(attributes, index, members);
       rows.push({ entity: entityName, attribute: attribute.name, enumName: attribute.type, missing, resolution, attributes });
+      const upper = entityName.toUpperCase();
+      const row = rustRows[to].get(upper) ?? { arity: attributes.length, slots: new Map() };
+      row.slots.set(index, { attribute: attribute.name, members, resolution });
+      rustRows[to].set(upper, row);
     });
   }
   const refused = rows.filter((r) => r.resolution.kind === 'refuse');
@@ -137,22 +149,81 @@ const text = [
   ...sections,
 ].join('\n');
 
-if (process.argv.includes('--check')) {
-  let committed = '';
-  try {
-    committed = readFileSync(join(ROOT, OUT_REL), 'utf8');
-  } catch {
-    console.error(`generate-enum-reconciliation --check: ${OUT_REL} is missing.`);
-    process.exit(1);
+function rustOutcome(resolution) {
+  switch (resolution.kind) {
+    case 'userdefined': return `EnumOutcome::UserDefined(${resolution.labelIndex})`;
+    case 'notdefined': return 'EnumOutcome::NotDefined';
+    case 'omit': return 'EnumOutcome::Omit';
+    default: return 'EnumOutcome::Refuse';
   }
-  if (committed !== text) {
-    console.error(`generate-enum-reconciliation --check: ${OUT_REL} is out of date.`);
-    console.error('A schema regeneration changed which enum members a conversion can meet. Run');
-    console.error('`node scripts/generate-enum-reconciliation.mjs`, review the new rows, and commit them.');
-    process.exit(1);
+}
+
+function renderRs() {
+  const lines = [
+    '// This Source Code Form is subject to the terms of the Mozilla Public',
+    '// License, v. 2.0. If a copy of the MPL was not distributed with this',
+    '// file, You can obtain one at https://mozilla.org/MPL/2.0/.',
+    '',
+    '//! Enum-typed slots whose enum lacks members some other bundled schema has,',
+    '//! per TARGET schema, with what `schema_enum` writes for a missing member',
+    '//! (#5365). Same decisions as `docs/architecture/schema-enum-reconciliation.md`',
+    '//! and the TypeScript `schema-enum-policy.ts`.',
+    '//!',
+    '//! DO NOT EDIT - regenerate with',
+    '//!   node scripts/generate-enum-reconciliation.mjs',
+    '',
+    '/// What a member the target enum lacks becomes.',
+    '#[derive(Clone, Copy, Debug, PartialEq, Eq)]',
+    'pub enum EnumOutcome {',
+    '    /// `.USERDEFINED.`, member name into the label slot at this index.',
+    '    UserDefined(u8),',
+    '    /// `.NOTDEFINED.`.',
+    '    NotDefined,',
+    '    /// `$` (the attribute is optional in the target).',
+    '    Omit,',
+    '    /// Kept as written: the target offers no valid value.',
+    '    Refuse,',
+    '}',
+    '',
+    '/// `(slot index, attribute name, target enum members, outcome)`.',
+    'pub type EnumSlot = (u8, &\'static str, &\'static [&\'static str], EnumOutcome);',
+    '',
+    '/// `(UPPERCASE entity name, total attribute count, enum slots)`, sorted by name.',
+    'pub type EnumEntityRow = (&\'static str, u8, &\'static [EnumSlot]);',
+    '',
+  ];
+  for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3']) {
+    lines.push(`/// Target ${schema}.`, `pub static ${schema}_ENUM_SLOTS: &[EnumEntityRow] = &[`);
+    for (const type of [...rustRows[schema].keys()].sort()) {
+      const row = rustRows[schema].get(type);
+      const slots = [...row.slots.entries()].sort(([a], [b]) => a - b).map(([index, slot]) =>
+        `(${index}, "${slot.attribute}", &[${slot.members.map((m) => `"${m}"`).join(', ')}], ${rustOutcome(slot.resolution)})`);
+      lines.push(`    ("${type}", ${row.arity}, &[${slots.join(', ')}]),`);
+    }
+    lines.push('];', '');
+  }
+  return lines.join('\n');
+}
+
+const outputs = [[OUT_REL, text], [RS_REL, renderRs()]];
+if (process.argv.includes('--check')) {
+  for (const [rel, content] of outputs) {
+    let committed = '';
+    try {
+      committed = readFileSync(join(ROOT, rel), 'utf8');
+    } catch {
+      console.error(`generate-enum-reconciliation --check: ${rel} is missing.`);
+      process.exit(1);
+    }
+    if (committed !== content) {
+      console.error(`generate-enum-reconciliation --check: ${rel} is out of date.`);
+      console.error('A schema regeneration changed which enum members a conversion can meet. Run');
+      console.error('`node scripts/generate-enum-reconciliation.mjs`, review the new rows, and commit them.');
+      process.exit(1);
+    }
   }
   console.log(`generate-enum-reconciliation --check: OK\n${totals.join('\n')}`);
 } else {
-  writeFileSync(join(ROOT, OUT_REL), text);
-  console.log(`generate-enum-reconciliation: wrote ${OUT_REL}\n${totals.join('\n')}`);
+  for (const [rel, content] of outputs) writeFileSync(join(ROOT, rel), content);
+  console.log(`generate-enum-reconciliation: wrote ${OUT_REL} and ${RS_REL}\n${totals.join('\n')}`);
 }

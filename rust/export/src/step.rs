@@ -164,9 +164,8 @@ fn emit<W: std::io::Write>(
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(
         owner_histories.into_iter().find(|id| included.contains(id)),
     );
-    // Counts the slots IFC4 requires that a downgrade from IFC4X3/IFC5 leaves
-    // `$` (#5307, the Rust twin of #5202). Never fills one.
-    let mut ifc4_slots = crate::schema_ifc4_slots::Ifc4SlotCheck::new();
+    // IFC4-required `$` slots (#5307) and enum members the target lacks (#5365).
+    let mut checks = crate::schema_enum::ConversionChecks::new();
     // The synthesized property sets below are filled whenever the OUTPUT is
     // IFC2X3, not only when a conversion runs: an IFC2X3 source needs no
     // conversion, and the records this exporter writes for it still have to be
@@ -220,7 +219,7 @@ fn emit<W: std::io::Write>(
                         &schema,
                         *id,
                         &mut slot_fill,
-                        Some(&mut ifc4_slots),
+                        Some(&mut checks),
                     )?;
                     out.write_all(converted.as_bytes())?;
                 } else {
@@ -252,7 +251,7 @@ fn emit<W: std::io::Write>(
                     &schema,
                     *copy_id,
                     &mut slot_fill,
-                    Some(&mut ifc4_slots),
+                    Some(&mut checks),
                 )?;
                 out.write_all(converted.as_bytes())?;
             } else {
@@ -293,7 +292,9 @@ fn emit<W: std::io::Write>(
                 attribute_edits_refused,
                 owner_history_unfilled: slot_fill.owner_history_unfilled(),
                 required_slots_unfilled: slot_fill.required_slots_unfilled(),
-                ifc4_required_slots_unfilled: ifc4_slots.required_slots_unfilled(),
+                ifc4_required_slots_unfilled: checks.ifc4_slots.required_slots_unfilled(),
+                enum_values_lost: checks.enums.lost(),
+                enum_values_refused: checks.enums.refused(),
             });
         };
         for ((express_id, pset_name), props) in &groups {
@@ -352,7 +353,9 @@ fn emit<W: std::io::Write>(
         attribute_edits_refused,
         owner_history_unfilled: slot_fill.owner_history_unfilled(),
         required_slots_unfilled: slot_fill.required_slots_unfilled(),
-        ifc4_required_slots_unfilled: ifc4_slots.required_slots_unfilled(),
+        ifc4_required_slots_unfilled: checks.ifc4_slots.required_slots_unfilled(),
+                enum_values_lost: checks.enums.lost(),
+                enum_values_refused: checks.enums.refused(),
     })
 }
 

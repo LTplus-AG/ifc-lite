@@ -168,6 +168,19 @@ describe('in-store authoring review follow-up (#5249)', () => {
     expect(listStoreys(store, view)).toEqual([]);
   });
 
+  it('listStoreys: a created storey is listed with its name and a metre elevation, on a millimetre model', async () => {
+    const mm = IFC.replace("IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)", "IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)");
+    const store: IfcDataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(mm).buffer);
+    const view = new MutablePropertyView(store.properties ?? null, 'm');
+    const editor = new StoreEditor(store, view);
+    const created = editor.addEntity('IfcBuildingStorey', [
+      '2STOREY00000000000000', null, { typed: { type: 'IfcLabel', value: 'Level 2' } }, null, null, null, null, null, '.ELEMENT.', { real: 3000 },
+    ]).expressId;
+    const storeys = listStoreys(store, view);
+    expect(storeys.map((s) => s.id)).toEqual([4, created]);
+    expect(storeys[1]).toMatchObject({ name: 'Level 2', elevation: 3 });
+  });
+
   it('Space Sketch dedup on a millimetre model: parsed spaces are scaled to metres, baked ones are not', async () => {
     const mm = IFC.replace("IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)", "IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)");
     const store: IfcDataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(mm).buffer);

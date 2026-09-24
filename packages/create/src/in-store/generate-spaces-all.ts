@@ -25,7 +25,8 @@ import {
   type BoundaryMode,
 } from './generate-spaces.js';
 import { existingSpaceFootprintsByStorey, type OverlayWallReader } from './extract-walls.js';
-import { createOverlayLookup, effectiveStoreyIds } from './spatial-children.js';
+import { authoredScalar, createOverlayLookup, effectiveStoreyIds } from './spatial-children.js';
+import { safeLengthUnitScale } from './length-unit-scale.js';
 
 /** Snap tolerances tried, in order, when `snap: 'auto'`. First that encloses
  *  rooms wins (least over-merging); else the largest is used. */
@@ -101,12 +102,21 @@ export interface GenerateSpacesAllResult {
 export function listStoreys(store: IfcDataStore, overlay?: OverlayWallReader): StoreyInfo[] {
   const elevs = store.spatialHierarchy?.storeyElevations;
   const lookup = createOverlayLookup(overlay);
-  const created = new Map(Array.from(overlay?.getNewEntities() ?? [], (e) => [e.expressId, e.attributes]));
+  // A created storey is raw STEP (no in-store storey builder exists), so its
+  // Elevation is in the file's native unit; parsed elevations are metres.
+  const scale = store.source
+    ? safeLengthUnitScale(store.source, store.entityIndex, 'listStoreys') ?? 1
+    : 1;
   const list = effectiveStoreyIds(store, lookup).map((id) => {
-    const authored = created.get(id);
+    const authored = lookup.createdAttributes(id);
     if (authored) {
-      const name = typeof authored[2] === 'string' && authored[2] ? authored[2] : `Storey #${id}`;
-      return { id, name, elevation: typeof authored[9] === 'number' ? authored[9] : 0 };
+      const name = authoredScalar(authored[2]);
+      const elevation = authoredScalar(authored[9]);
+      return {
+        id,
+        name: typeof name === 'string' && name ? name : `Storey #${id}`,
+        elevation: typeof elevation === 'number' ? elevation * scale : 0,
+      };
     }
     return {
       id,

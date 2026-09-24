@@ -37,6 +37,8 @@ export interface OverlayLookup {
   createdType(id: number): string | undefined;
   /** Queued retype, else `undefined`. */
   retypeOf(id: number): string | undefined;
+  /** Authored attributes of an overlay-created entity, else `undefined`. */
+  createdAttributes(id: number): readonly IfcAttributeValue[] | undefined;
 }
 
 export function createOverlayLookup(overlay: OverlayWallReader | undefined): OverlayLookup {
@@ -47,10 +49,12 @@ export function createOverlayLookup(overlay: OverlayWallReader | undefined): Ove
       isDeleted: () => false,
       createdType: () => undefined,
       retypeOf: () => undefined,
+      createdAttributes: () => undefined,
     };
   }
   const created = Array.from(overlay.getNewEntities());
   const createdTypes = new Map(created.map((e) => [e.expressId, e.type]));
+  const createdAttrs = new Map(created.map((e) => [e.expressId, e.attributes]));
   const retypes = overlay.getTypeMutations?.() ?? new Map<number, { readonly newType: string }>();
   const isDeleted = (id: number) => overlay.isDeleted?.(id) ?? false;
   return {
@@ -59,7 +63,18 @@ export function createOverlayLookup(overlay: OverlayWallReader | undefined): Ove
     isDeleted,
     createdType: (id) => createdTypes.get(id),
     retypeOf: (id) => retypes.get(id)?.newType,
+    createdAttributes: (id) => createdAttrs.get(id),
   };
+}
+
+/** The scalar an authored attribute holds: `{ real }` and `{ typed }` unwrapped. */
+export function authoredScalar(value: IfcAttributeValue | undefined): string | number | boolean | undefined {
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value;
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    if ('real' in value) return value.real;
+    if ('typed' in value) return value.typed.value;
+  }
+  return undefined;
 }
 
 /** One relationship attribute with a queued positional edit applied. */

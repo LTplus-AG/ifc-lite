@@ -126,13 +126,33 @@ function scalarAttributeValue(raw: unknown): AttributeValue | undefined {
   }
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
     if ('real' in raw && typeof raw.real === 'number') return raw.real;
-    // A typed value is data, not a STEP token (#5249): the writer
-    // (`serializeTypedMarker`) emits it as-is inside its type wrapper, so a
-    // typed label reading `#22` or `.T.` is that text, never a ref or boolean.
     if ('typed' in raw && raw.typed && typeof raw.typed === 'object' && 'value' in raw.typed) {
-      const value: unknown = raw.typed.value;
-      return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? value : undefined;
+      return typedAuthoredValue(raw.typed as { type?: unknown; value: unknown });
     }
   }
   return undefined;
+}
+
+/**
+ * The value of an authored `{ typed: { type, value } }` marker as the STEP
+ * writer emits it (#5249): the writer converts by the type's base
+ * (`serializeInnerByBase` in `@ifc-lite/export`), so a BOOLEAN/LOGICAL type's
+ * `.T.`/`.F.` is a boolean (`.U.`/`.X.` absent), a numeric type's text is a
+ * number, and anything else, a label or identifier, is literal text: a typed
+ * label reading `#22` is that text, never a reference.
+ */
+export function typedAuthoredValue(typed: { type?: unknown; value: unknown }): AttributeValue | undefined {
+  const { value } = typed;
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (typeof value !== 'string') return undefined;
+  const type = typeof typed.type === 'string' ? typed.type.toUpperCase() : '';
+  if (type.includes('BOOLEAN') || type.includes('LOGICAL')) {
+    if (value === '.T.') return true;
+    if (value === '.F.') return false;
+    if (value === '.U.' || value === '.X.') return undefined;
+  }
+  if (/(MEASURE|REAL|INTEGER|NUMBER|COUNT|RATIO)$/.test(type) && value.trim() !== '' && Number.isFinite(Number(value))) {
+    return Number(value);
+  }
+  return value;
 }

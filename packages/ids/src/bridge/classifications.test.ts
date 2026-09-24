@@ -254,6 +254,19 @@ ${FOOTER}`;
     expect(a.getDescription(40)).toBe('.T.');
   });
 
+  it('a typed boolean or numeric authored value is converted by its base type, as the writer does', async () => {
+    const a = await withOverlay([], [
+      { expressId: 41, type: 'IfcBuildingElementProxy', attributes: ['2Prox00000000000000041', null, 'P', null, null, null, null, null, null] },
+    ]);
+    // Base conversion is shared by both authored readers; check it directly.
+    const { typedAuthoredValue } = await import('./entity-visibility.js');
+    expect(typedAuthoredValue({ type: 'IfcBoolean', value: '.T.' })).toBe(true);
+    expect(typedAuthoredValue({ type: 'IfcLogical', value: '.U.' })).toBeUndefined();
+    expect(typedAuthoredValue({ type: 'IfcLengthMeasure', value: '2.5' })).toBe(2.5);
+    expect(typedAuthoredValue({ type: 'IfcLabel', value: '.T.' })).toBe('.T.');
+    expect(a.getEntityName(41)).toBe('P');
+  });
+
   it('an authored typed-label value is unwrapped', async () => {
     const a = await withOverlay([], [
       { expressId: 30, type: 'IfcClassificationReference', attributes: [null, { typed: { type: 'IfcIdentifier', value: 'Pr_20_76' } }, 'Steel', '#22', null, null] },

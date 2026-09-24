@@ -12,7 +12,7 @@ import * as IFC4_SCHEMA from '@ifc-lite/codegen/ifc4';
 import * as IFC4X3_SCHEMA from '@ifc-lite/codegen/ifc4x3';
 import { iterateEffectiveEntities } from '@ifc-lite/data';
 import type { ClassificationInfo } from '../types.js';
-import type { EntityVisibilityView } from './entity-visibility.js';
+import { typedAuthoredValue, type EntityVisibilityView } from './entity-visibility.js';
 
 interface ClassRecord {
   system?: string;
@@ -332,10 +332,10 @@ function authoredValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(authoredValue);
   if (value && typeof value === 'object') {
     if ('real' in value && typeof value.real === 'number') return value.real;
-    // A typed value is data, never a token: unwrap without re-parsing, so a
+    // A typed value is converted by its base type, as the writer does; a
     // typed label whose text is '#12' or '$' stays that text.
     if ('typed' in value && value.typed && typeof value.typed === 'object' && 'value' in value.typed) {
-      return value.typed.value;
+      return typedAuthoredValue(value.typed as { type?: unknown; value: unknown });
     }
     return value;
   }

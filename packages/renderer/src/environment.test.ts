@@ -203,4 +203,28 @@ describe('deriveSkyGradient', () => {
       assert.ok(Math.abs(a.zenith[i] - b.zenith[i]) < 0.02);
     }
   });
+
+  it('lifts the day/golden ground tone without warming it toward the horizon hue (#5583)', () => {
+    // The below-horizon fill is what a downward-pitched BIM camera actually
+    // sees; it used to read as a flat, dreary mid-grey. The fix lifts its
+    // brightness while keeping the channel RATIOS the same (so it stays a
+    // neutral-ish grey, not a mud-brown blend toward the warm horizon).
+    // 0.35 and 0.17 are where the day/golden bands are fully saturated
+    // (see the `band(...)` stops in deriveSkyGradient) — anything nearer
+    // twilight is a blend and would understate the lift.
+    const day = deriveSkyGradient(0.35);
+    const golden = deriveSkyGradient(0.17);
+    // Brighter than the pre-fix values (day [0.14, 0.145, 0.15], golden
+    // [0.11, 0.105, 0.105]) by a comfortable margin, not just a rounding blip.
+    assert.ok(day.ground[0] > 0.2, `day ground should be lifted, got ${day.ground.join(',')}`);
+    assert.ok(golden.ground[0] > 0.15, `golden ground should be lifted, got ${golden.ground.join(',')}`);
+    // Still near-neutral: no channel more than ~10% off the mean, i.e. not
+    // blended toward golden hour's strongly red-dominant horizon.
+    for (const ground of [day.ground, golden.ground]) {
+      const mean = (ground[0] + ground[1] + ground[2]) / 3;
+      for (const c of ground) {
+        assert.ok(Math.abs(c - mean) / mean < 0.12, `ground channel ${c} strays too far from neutral mean ${mean}`);
+      }
+    }
+  });
 });

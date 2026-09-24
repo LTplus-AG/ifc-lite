@@ -50,6 +50,7 @@ import { ensureModelExportReady } from '@/services/desktop-export';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { resolveEnergyExportMutationSource } from './energy-export-source';
 import { useTranslation } from '@/i18n';
+import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import type { TranslationKey } from '@/i18n';
 
 type EnergyFormat = 'hbjson' | 'dfjson';
@@ -257,24 +258,16 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
     }
   }, [selectedModel, format, getMutationView, t]);
 
+  const handleOpenChange = useExportDialogOpenGuard({
+    busy: isExporting,
+    setOpen,
+    onOpen: () => setExportResult(null),
+  });
+
   const spec = FORMATS[format];
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        // Radix calls onOpenChange(false) for Escape AND for an outside
-        // pointer press, neither of which routes through the footer buttons
-        // that `isExporting` already disables. Passing `setOpen` straight in
-        // therefore let either gesture unmount the dialog mid-export while
-        // `handleExport` kept running — taking the progress spinner and the
-        // success/failure `exportResult` with it, so a failed export looked
-        // like one that never happened. Refuse to close while exporting;
-        // opening is never gated.
-        if (!next && isExporting) return;
-        setOpen(next);
-      }}
-    >
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger || (
           <Button variant="outline" size="sm">
@@ -372,7 +365,7 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
         </div>
 
         <DialogFooter>
-          <Button variant="outline" disabled={isExporting} onClick={() => setOpen(false)}>
+          <Button variant="outline" disabled={isExporting} onClick={() => handleOpenChange(false)}>
             {t('geometryExport.energy.cancelButton')}
           </Button>
           <Button onClick={handleExport} disabled={isExporting || !selectedModel}>

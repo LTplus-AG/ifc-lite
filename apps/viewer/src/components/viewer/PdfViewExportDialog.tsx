@@ -56,6 +56,7 @@ import {
 } from '@/components/ui/dialog';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
+import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { formatScaleFactorLabel, formatSheetScaleLabel } from '@ifc-lite/drawing-2d';
@@ -281,8 +282,10 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
     ? t('sheetsPdf.pdfView.displayedScaleOption', { scale: formatScaleFactorLabel(displayedScale) })
     : t('sheetsPdf.pdfView.displayedScaleUnavailable');
 
+  const handleOpenChange = useExportDialogOpenGuard({ busy: isExporting, setOpen });
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger || (
           <Button variant="outline" size="sm">
@@ -381,7 +384,7 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="outline" disabled={isExporting} onClick={() => handleOpenChange(false)}>
             {t('sheetsPdf.pdfView.cancelButton')}
           </Button>
           <Button onClick={() => { void handleExport(); }} disabled={!canExport}>

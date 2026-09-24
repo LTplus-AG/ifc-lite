@@ -23,6 +23,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { useTranslation } from '@/i18n';
+import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -114,11 +115,7 @@ export function IDSExportDialog({
     // Don't close — let the progress indicator finish, then user closes
   }, [onExport, settings]);
 
-  const handleOpenChange = useCallback((value: boolean) => {
-    // Don't allow closing during export
-    if (isExporting) return;
-    setOpen(value);
-  }, [isExporting, setOpen]);
+  const handleOpenChange = useExportDialogOpenGuard({ busy: isExporting, setOpen });
 
   const progressPercent = progress && progress.total > 0
     ? Math.round((progress.current / progress.total) * 100)
@@ -255,7 +252,7 @@ export function IDSExportDialog({
         <DialogFooter>
           <Button
             variant="outline"
-            onClick={() => setOpen(false)}
+            onClick={() => handleOpenChange(false)}
             disabled={isExporting}
           >
             {progress?.phase === 'done' ? t('idsPanel.export.close') : t('idsPanel.export.cancel')}

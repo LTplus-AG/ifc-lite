@@ -57,6 +57,7 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { useViewerStore, countGeneratedTasks } from '@/store';
 import { useTranslation } from '@/i18n';
+import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { resolveExportVisibility } from '@/store/exportVisibility';
 import { posthog } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
@@ -178,10 +179,14 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     }
   }, [modelList, selectedModelId]);
 
-  const handleOpenChange = useCallback((next: boolean) => {
-    if (next) setSelectedModelId(preferredExportModelId(modelList.map(model => model.id), activeModelId));
-    setOpen(next);
-  }, [modelList, activeModelId]);
+  const handleOpenChange = useExportDialogOpenGuard({
+    busy: isExporting,
+    setOpen,
+    onOpen: () => {
+      setSelectedModelId(preferredExportModelId(modelList.map(model => model.id), activeModelId));
+      setExportResult(null);
+    },
+  });
 
   const selectedModel = useMemo(
     () => resolveExportModel(models, selectedModelId, legacyIfcDataStore, legacyGeometryResult),
@@ -808,7 +813,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="outline" disabled={isExporting} onClick={() => handleOpenChange(false)}>
             {t('exportDialog.cancelButton')}
           </Button>
           <Button onClick={handleExport} disabled={isExporting || !selectedModel || !schema || !exportAllowed}>

@@ -57,6 +57,7 @@ export function resolveOwningIfcProjectId(
   relationships: RelatedLookup | undefined,
   expressId: number
 ): number | undefined {
+  // @raw-entity-enumeration-ok select the parsed file's project identities for source unit resolution, not live session membership
   const projectIds = entityIndex.byType.get('IFCPROJECT') || [];
   if (projectIds.length <= 1) return undefined;
   if (!relationships) return undefined;

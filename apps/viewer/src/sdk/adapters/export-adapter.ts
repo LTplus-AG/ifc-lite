@@ -7,6 +7,7 @@ import { packagePortableIfc, portableIfcDownload } from '../../lib/export/portab
 import type { StoreApi } from './types.js';
 import type { EntityRef, EntityData, PropertySetData, QuantitySetData, ExportBackendMethods } from '@ifc-lite/sdk';
 import { EntityNode, findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
+import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import { escapeCsvCell, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { getDefaultModelId, getModelForRef } from './model-compat.js';
 import { applyAttributeMutationsToEntityData, getMutationViewForModel } from './mutation-view.js';
@@ -110,6 +111,17 @@ export function resolveVisibilityFilterSets(
     hiddenEntityIds: visibility.hiddenLocalIds,
     isolatedEntityIds: visibility.isolatedLocalIds,
   };
+}
+
+/** Source ID domain for full-model coverage, including deferred property atoms. */
+function* sourceEntityIds(store: IfcDataStore): IterableIterator<number> {
+  // @raw-entity-enumeration-ok source IDs are passed through the effective accessor below, never used as live membership
+  yield* store.entityIndex.byId.keys();
+  if (store.deferredEntityIndex) yield* store.deferredEntityIndex.keys();
+  // @raw-entity-enumeration-ok IFCX source rows provide the domain when there is no STEP byte index; the effective accessor applies the overlay
+  if (store.entityIndex.byId.size === 0 && !store.deferredEntityIndex) {
+    yield* store.entities.expressId;
+  }
 }
 
 /**
@@ -343,9 +355,20 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
 
       const options = candidateOptions;
       const selectedExpressIds = refs ? new Set(refs.map(ref => ref.expressId)) : null;
+      const mutationView = options.includeMutations === false ? null : getMutationViewForModel(store, modelId);
+      const effectiveIds = selectedExpressIds && mutationView ? new Set<number>() : null;
+      if (effectiveIds) {
+        for (const entity of iterateEffectiveEntityIds(dataStore, mutationView, undefined, sourceEntityIds(dataStore))) {
+          effectiveIds.add(entity.expressId);
+        }
+      }
+      // @raw-entity-enumeration-ok with no mutation view (or includeMutations:false), parsed membership is the exported membership
+      const hasEntity = effectiveIds
+        ? (expressId: number) => effectiveIds.has(expressId)
+        : (expressId: number) => dataStore.entityIndex.byId.has(expressId);
       const visibilityFilters = resolveVisibilityFilterSets(
-        state, modelId, selectedExpressIds, dataStore.entityCount,
-        (expressId) => dataStore.entityIndex.byId.has(expressId),
+        state, modelId, selectedExpressIds, effectiveIds?.size ?? dataStore.entityCount,
+        hasEntity,
       );
       const visibleOnly = options.visibleOnly === true || visibilityFilters.visibleOnly;
       const hiddenEntityIds = visibleOnly ? visibilityFilters.hiddenEntityIds : new Set<number>();
@@ -353,7 +376,7 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
 
       const serialized = prepareAppearanceSerialization(
         modelId, model.ifcDataStore,
-        options.includeMutations === false ? undefined : getMutationViewForModel(store, modelId) ?? undefined,
+        mutationView ?? undefined,
       );
       const exporter = new StepExporter(model.ifcDataStore, serialized.view);
       // Include georeferencing mutations if present

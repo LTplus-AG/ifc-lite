@@ -23,6 +23,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildSnapshot, diffCrate, CRATE_FLOOR } from './check-rust-api-surface.mjs';
+import { CRATES } from './lib/crates-io.mjs';
 
 /** A scratch `rust/` root with one crate per `{ crateName: libRsText }` entry. */
 function withRustRoot(crateFiles, fn) {
@@ -64,6 +65,11 @@ test('VACUITY: an empty crate list refuses rather than reporting zero crates as 
 
 test(`VACUITY: fewer than CRATE_FLOOR (${CRATE_FLOOR}) crates refuses — a shrunk list must not read as a smaller-but-complete one`, () => {
   assert.throws(() => buildSnapshot({ crates: ['only-one'], rustRoot: '/nonexistent' }), /CRATE_FLOOR/);
+});
+
+test('CRATE_FLOOR catches the real crate list with one crate dropped', () => {
+  // The fixtures above scale with CRATE_FLOOR, so only the real list pins its value.
+  assert.throws(() => buildSnapshot({ crates: CRATES.slice(0, -1) }), /CRATE_FLOOR/);
 });
 
 test('VACUITY: a published crate with no matching rust/*/Cargo.toml directory refuses by name', () => {

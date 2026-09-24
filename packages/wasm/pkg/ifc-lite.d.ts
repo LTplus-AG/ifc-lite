@@ -221,6 +221,7 @@ export class ClashRunResult {
     readonly a: Uint32Array;
     readonly b: Uint32Array;
     readonly bounds: Float64Array;
+    readonly depthFloor: Float64Array;
     readonly distance: Float64Array;
     readonly distanceKind: Uint8Array;
     readonly points: Float64Array;
@@ -2330,6 +2331,7 @@ export interface InitOutput {
     readonly clashrunresult_a: (a: number, b: number) => void;
     readonly clashrunresult_b: (a: number, b: number) => void;
     readonly clashrunresult_bounds: (a: number, b: number) => void;
+    readonly clashrunresult_depthFloor: (a: number, b: number) => void;
     readonly clashrunresult_distance: (a: number, b: number) => void;
     readonly clashrunresult_distanceKind: (a: number, b: number) => void;
     readonly clashrunresult_points: (a: number, b: number) => void;

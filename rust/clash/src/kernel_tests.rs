@@ -935,3 +935,29 @@ fn crossing_vertex_evidence_carries_the_direction_it_was_measured_along_5405() {
     assert!(e.axis[0].abs() < 1e-9 && e.axis[1].abs() < 1e-9, "{:?}", e.axis);
     assert!((e.axis[2].abs() - 1.0).abs() < 1e-9, "{:?}", e.axis);
 }
+
+#[test]
+fn a_hard_result_reports_the_floor_of_the_depth_it_reports_5639() {
+    // The pair sits 10,000 out along X, so the X floor is ~150x the Z floor.
+    // A certified box MTD measured along X is reported with the X floor; the
+    // AABB estimate (smallest overlap: Z here) with the Z floor — whichever
+    // depth `distance` carries, `depth_floor` is that depth's own floor.
+    let a = Aabb::new([9_999.0, -1.0, 63.0], [10_001.0, 1.0, 64.0]);
+    let b = Aabb::new([9_999.5, -0.5, 63.5], [10_000.5, 0.5, 64.0]);
+    let x: Vec3 = [1.0, 0.0, 0.0];
+    let hard = |box_pen, estimate| {
+        let r = crate::depth::depth_clash_result(box_pen, estimate, None, &a, &b, true, [0.0; 3], a)
+            .expect("a result");
+        assert_eq!(r.status, ClashStatus::Hard);
+        (r.distance, r.depth_floor.expect("a Hard result carries its floor"))
+    };
+    let x_floor = crate::aabb::depth_floor(x, &a, &b);
+    let est_floor = crate::aabb::estimate_floor(&a, &b);
+    assert!(x_floor > 100.0 * est_floor, "fixture premise: {x_floor} vs {est_floor}");
+
+    let measured = Some(crate::depth::BoxPenetration { mtd: 0.1, axis: x, through: false });
+    assert_eq!(hard(measured, 0.5), (-0.1, x_floor), "certified MTD: its own axis's floor");
+    let through = Some(crate::depth::BoxPenetration { mtd: 0.1, axis: x, through: true });
+    assert_eq!(hard(through, 0.5), (-0.5, est_floor), "through-penetration reports the estimate");
+    assert_eq!(hard(None, 0.5), (-0.5, est_floor), "no box: the estimate");
+}

@@ -105,6 +105,14 @@ test('viewer exact relationship queries fold authored records and endpoint overr
   assert.equal(query.relationships(building).relations?.some((edge) =>
     edge.relationshipId === relationship.expressId && edge.entity.id === 4), true);
 
+  // An edit that bypasses undo history must still replace the parsed edge.
+  view.setPositionalAttribute(5, 5, ['#4'], true);
+  assert.deepEqual(query.relationships(building).relations
+    ?.filter(edge => edge.relationshipId === 5).map(edge => edge.entity.id), [4]);
+  view.removePositionalMutation(5, 5);
+  assert.deepEqual(query.relationships(building).relations
+    ?.filter(edge => edge.relationshipId === 5).map(edge => edge.entity.id), [3]);
+
   // Endpoint edits on parsed relationships replace, rather than augment, the immutable graph.
   view.setAttribute(5, 'RelatedObjects', '#4');
   assert.deepEqual(query.related(building, 'IfcRelAggregates', 'forward'), [
@@ -112,14 +120,6 @@ test('viewer exact relationship queries fold authored records and endpoint overr
   ]);
   const sourceRows = query.relationships(building).relations?.filter(edge => edge.relationshipId === 5) ?? [];
   assert.deepEqual(sourceRows.map(edge => edge.entity.id), [4]);
-
-  // Edits that bypass undo history still belong to the effective relationship view.
-  view.setPositionalAttribute(5, 5, ['#3'], true);
-  assert.deepEqual(query.relationships(building).relations
-    ?.filter(edge => edge.relationshipId === 5).map(edge => edge.entity.id), [3]);
-  view.removePositionalMutation(5, 5);
-  assert.deepEqual(query.relationships(building).relations
-    ?.filter(edge => edge.relationshipId === 5).map(edge => edge.entity.id), [4]);
 
   const createdWall = writes.addEntity('default', {
     type: 'IfcWall',

@@ -70,11 +70,9 @@ impl EnumReconciliation {
         self.losses
             .iter()
             .map(|(loss, where_)| {
+                // Every site is named: distinct sites are bounded by the ledger.
                 let total: usize = where_.values().sum();
-                let mut names: Vec<&str> = where_.keys().map(String::as_str).take(10).collect();
-                if where_.len() > 10 {
-                    names.push("…");
-                }
+                let names: Vec<&str> = where_.keys().map(String::as_str).collect();
                 format!(
                     "{total} enum value(s) the target schema does not define were {}: {} (#5365).",
                     loss.text(),

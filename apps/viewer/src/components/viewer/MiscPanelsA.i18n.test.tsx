@@ -348,16 +348,14 @@ describe('ExportChangesReviewDialog localization (#4918)', () => {
 });
 
 describe('ScanSectionPanel localization (#4918)', () => {
-  it('translates the header, toggle labels, and the no-point-cloud message', () => {
+  it('translates the toggle labels and the no-point-cloud message', () => {
     const container = render(
-      <ScanSectionPanel onClose={() => {}} hasPointCloud={false} totalInBand={0} renderedCount={0} />,
+      <ScanSectionPanel hasPointCloud={false} totalInBand={0} renderedCount={0} />,
     );
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);
     assertAllTranslate(
       [
-        { key: 'scanSectionPanel.title' },
-        { key: 'scanSectionPanel.closeAriaLabel' },
         { key: 'scanSectionPanel.showScanPointsLabel' },
         { key: 'scanSectionPanel.noPointCloudMessage' },
         { key: 'scanSectionPanel.includeInExportLabel' },
@@ -369,7 +367,7 @@ describe('ScanSectionPanel localization (#4918)', () => {
 
   it('translates the band-thickness/opacity labels and the partial-decimation footnote with a point cloud loaded', () => {
     const container = render(
-      <ScanSectionPanel onClose={() => {}} hasPointCloud totalInBand={5000} renderedCount={1200} />,
+      <ScanSectionPanel hasPointCloud totalInBand={5000} renderedCount={1200} />,
     );
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);

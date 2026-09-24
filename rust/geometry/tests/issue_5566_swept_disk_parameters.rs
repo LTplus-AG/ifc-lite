@@ -174,6 +174,37 @@ fn raw_circle_parameters_are_in_the_plane_angle_unit() {
 }
 
 #[test]
+fn explicit_full_circle_keeps_the_omitted_range_mesh() {
+    // A conversion-based degree unit is deliberately inexact in binary; its
+    // 360-degree range still represents the same full circle as omitted bounds.
+    let implicit = raw_circle_bar("#21=IFCSWEPTDISKSOLID(#20,10.,$,$,$);", "#5");
+    let explicit = raw_circle_bar("#21=IFCSWEPTDISKSOLID(#20,10.,$,0.,360.);", "#5");
+    let implicit_mesh = mesh_element(&implicit, 24);
+    let explicit_mesh = mesh_element(&explicit, 24);
+    assert_eq!(explicit_mesh.positions, implicit_mesh.positions);
+    assert_eq!(explicit_mesh.indices, implicit_mesh.indices);
+}
+
+#[test]
+fn omitted_circle_end_param_uses_the_directrix_domain_end() {
+    // Omitted EndParam means the circle's end parameter, not one turn past
+    // StartParam. These two solids must therefore sweep the same 270° arc.
+    let implicit = raw_circle_bar(
+        "#21=IFCSWEPTDISKSOLID(#20,10.,$,1.5707963267948966,$);",
+        "#2",
+    );
+    let explicit = raw_circle_bar(
+        "#21=IFCSWEPTDISKSOLID(#20,10.,$,1.5707963267948966,6.283185307179586);",
+        "#2",
+    );
+    let implicit_mesh = mesh_element(&implicit, 24);
+    let explicit_mesh = mesh_element(&explicit, 24);
+    assert!(!implicit_mesh.indices.is_empty());
+    assert_eq!(implicit_mesh.positions, explicit_mesh.positions);
+    assert_eq!(implicit_mesh.indices, explicit_mesh.indices);
+}
+
+#[test]
 fn surface_curve_swept_area_reads_composite_spans_too() {
     // The sibling solid shares the directrix sampler: the same [0, 322]
     // window on the U-bar directrix sweeps only the first leg.

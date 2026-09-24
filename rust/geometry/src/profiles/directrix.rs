@@ -65,8 +65,9 @@ impl ProfileProcessor {
 
     /// Sample a bare `IfcCircle` / `IfcEllipse` directrix over the angular
     /// range `[start, end]` (plane-angle units; `start` defaults to 0, `end`
-    /// to one full turn). A range whose end precedes its start wraps forward
-    /// through the 0/360° seam; a range longer than one turn is one turn.
+    /// to the conic's domain end at one full turn). A range whose end precedes
+    /// its start wraps forward through the 0/360° seam; a range longer than
+    /// one turn is one turn.
     fn get_conic_points_trimmed(
         &self,
         conic: &DecodedEntity,
@@ -74,6 +75,24 @@ impl ProfileProcessor {
         start_param: Option<f64>,
         end_param: Option<f64>,
     ) -> Result<Vec<Point3<f64>>> {
+        let scale = decoder.plane_angle_to_radians();
+        let start = start_param.map_or(0.0, |s| s * scale);
+        let mut end = end_param.map_or(TAU, |e| e * scale);
+        if end < start {
+            end += TAU;
+        }
+        end = end.min(start + TAU);
+        if !(start.is_finite() && end.is_finite()) || end <= start {
+            return Ok(Vec::new());
+        }
+        // An explicit full parameter range denotes the same circle as omitted
+        // bounds. Keep its established tessellation (and mesh payload) stable.
+        if conic.ifc_type == IfcType::IfcCircle
+            && start.abs() <= PARAM_EPS
+            && (end - TAU).abs() <= PARAM_EPS
+        {
+            return self.process_circle_3d(conic, decoder);
+        }
         let radius = conic
             .get_float(1)
             .ok_or_else(|| Error::geometry("Conic missing radius".to_string()))?;
@@ -83,16 +102,6 @@ impl ProfileProcessor {
             radius
         };
         let frame = self.read_conic_placement_3d(conic, decoder)?;
-        let scale = decoder.plane_angle_to_radians();
-        let start = start_param.map_or(0.0, |s| s * scale);
-        let mut end = end_param.map_or(start + TAU, |e| e * scale);
-        if end < start {
-            end += TAU;
-        }
-        end = end.min(start + TAU);
-        if !(start.is_finite() && end.is_finite()) || end <= start {
-            return Ok(Vec::new());
-        }
         Ok(self.sample_conic_arc_3d(frame, (radius, radius2), start, end, decoder))
     }
 

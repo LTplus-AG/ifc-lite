@@ -61,7 +61,7 @@ export const sheetsPdfEn = {
   'sheetsPdf.titleBlock.done': 'Done',
 
   // SheetSetupPanel
-  'sheetsPdf.sheetSetup.header': 'Drawing Sheet',
+  'sheetsPdf.sheetSetup.enabledToggleLabel': 'Sheet enabled',
   'sheetsPdf.sheetSetup.enablePrompt': 'Enable drawing sheet to configure paper size, frame, and title block.',
   'sheetsPdf.sheetSetup.enableButton': 'Enable Sheet',
   'sheetsPdf.sheetSetup.paperSizeHeading': 'Paper Size',

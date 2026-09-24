@@ -23,7 +23,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildHelp } from './help.js';
-import { COMMANDS_WITH_OUT } from './index.js';
+import { COMMANDS_WITH_OUT } from './out-flag-commands.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COMMAND_DIR = resolve(__dirname, 'commands');

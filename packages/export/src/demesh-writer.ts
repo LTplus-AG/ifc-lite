@@ -104,6 +104,7 @@ export function applySimplifiedGeometry(
     throw new Error('applySimplifiedGeometry: store has no source buffer');
   }
   const source = store.source;
+  // @raw-entity-enumeration-ok the writer selects original source geometry before authoring its replacement into the editor overlay
   const byId = store.entityIndex.byId;
   const extractor = new EntityExtractor(source);
   const decimals = options.coordinateDecimals ?? 6;

@@ -126,6 +126,7 @@ export async function generateLod0(input: LodInput): Promise<Lod0Json> {
 
   const getEntity = (id: number): any | null => {
     if (entityCache.has(id)) return entityCache.get(id) ?? null;
+    // @raw-entity-enumeration-ok LOD0 receives only input bytes and scans its own immutable source index
     const ref = entityIndex.byId.get(id);
     const ent = ref ? extractor.extractEntity(ref) : null;
     entityCache.set(id, ent);
@@ -285,6 +286,7 @@ export async function generateLod0(input: LodInput): Promise<Lod0Json> {
 
   const elements: Lod0Element[] = [];
 
+  // @raw-entity-enumeration-ok this index was built from the input bytes above; no live mutation view is accepted by generateLod0
   for (const [id, ref] of entityIndex.byId) {
     const typeUpper = ref.type;
     if (!isCandidateElementType(typeUpper)) continue;

@@ -18,6 +18,9 @@ packages/create/src/in-store/resolve-anchor.ts
 packages/create/src/in-store/style-entity-reader.ts
 packages/data/src/effective-entities.ts
 packages/export/src/appearance-dependencies.ts
+packages/export/src/demesh-prune.ts
+packages/export/src/demesh-writer.ts
+packages/export/src/lod0-generator.ts
 packages/export/src/ifc5-effective-rows.ts
 packages/export/src/effective-index.ts
 packages/export/src/entity-iteration.ts

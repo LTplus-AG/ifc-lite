@@ -24,6 +24,7 @@ import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getContributionCullConfig } from '../../utils/renderCullConfig.js';
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { runGpuUpload } from './gpu-upload-guard';
+import { buildSectionPlaneOption } from './renderSectionPlaneOption.js';
 /** Sun cast-shadow render options, driven by the Environment panel (#2670). */
 export interface SunShadowSettings {
   enabled: boolean;
@@ -46,6 +47,8 @@ export interface UseAnimationLoopParams {
   /** X-Ray context: ghost every entity NOT in this set (null = no ghosting). */
   ghostExceptEntitiesRef: MutableRefObject<Set<number> | null>;
   selectedEntityIdRef: MutableRefObject<number | null>;
+  /** Hovered entity id for the pre-highlight outline (#5390), or null. */
+  hoveredIdRef: MutableRefObject<number | null>;
   selectedModelIndexRef: MutableRefObject<number | undefined>;
   clearColorRef: MutableRefObject<[number, number, number, number]>;
   visualEnhancementRef: MutableRefObject<VisualEnhancementOptions>;
@@ -93,6 +96,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     isolatedEntitiesRef,
     ghostExceptEntitiesRef,
     selectedEntityIdRef,
+    hoveredIdRef,
     selectedModelIndexRef,
     clearColorRef,
     visualEnhancementRef,
@@ -261,6 +265,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
             ghostExceptIds: ghostExceptEntitiesRef.current,
             selectedId: selection.selectedId,
             selectedIds: selection.selectedIds,
+            hoveredId: hoveredIdRef.current ?? undefined,
             emphasizeOverrides: (clashHighlightColorsRef.current?.size ?? 0) > 0,
             selectedModelIndex: selectedModelIndexRef.current,
             clearColor: clearColorRef.current,
@@ -274,26 +279,8 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
             contributionCull,
             lod,
             buildingRotation: coordinateInfoRef.current?.buildingRotation,
-            sectionPlane: activeToolRef.current === 'section' ? {
-              axis: sectionPlaneRef.current.axis,
-              position: sectionPlaneRef.current.position,
-              enabled: sectionPlaneRef.current.enabled,
-              flipped: sectionPlaneRef.current.flipped,
-              // Cap rendering settings — the renderer reads these to draw the
-              // filled, hatched cut surfaces.
-              showCap: sectionPlaneRef.current.showCap,
-              showOutlines: sectionPlaneRef.current.showOutlines,
-              capStyle: sectionPlaneRef.current.capStyle,
-              min: sectionRangeRef.current?.min,
-              max: sectionRangeRef.current?.max,
-              // Custom (face-picked) plane override (issue #243). When set
-              // the renderer uses these verbatim and ignores axis/position/
-              // min/max for the clip math; cap polygons are still emitted
-              // through the same Section2DOverlayRenderer with a custom
-              // basis so the silhouette lands on the tilted plane.
-              normal:   sectionPlaneRef.current.custom?.normal,
-              distance: sectionPlaneRef.current.custom?.distance,
-            } : undefined,
+            sectionPlane: buildSectionPlaneOption(
+              activeToolRef.current === 'section', sectionPlaneRef.current, sectionRangeRef.current),
             terrainClipY: terrainClipYRef.current ?? undefined,
           });
         } catch (err) {

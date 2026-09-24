@@ -118,6 +118,7 @@ function baseParams(renderer: Renderer): UseAnimationLoopParams {
     isolatedEntitiesRef: ref<Set<number> | null>(null),
     ghostExceptEntitiesRef: ref<Set<number> | null>(null),
     selectedEntityIdRef: ref<number | null>(null),
+    hoveredIdRef: ref<number | null>(null),
     selectedModelIndexRef: ref<number | undefined>(undefined),
     clearColorRef: ref<[number, number, number, number]>([1, 1, 1, 1]),
     visualEnhancementRef: ref({ enabled: false }),

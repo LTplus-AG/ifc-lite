@@ -22,6 +22,7 @@
  * this generalises it to all three cues and both new tests).
  */
 import { EDGE_CREASE_COS, EDGE_MAX_DARKEN, EDGE_SILHOUETTE_REL_THRESHOLD } from '../edge-params.js';
+import { SELECTION_HIDDEN_ALPHA } from '../outline-params.js';
 import { depthReconstructWgsl, depthTextureWgsl } from './depth-reconstruct.wgsl.js';
 
 export function edgeShaderSource(multisampled: boolean): string {
@@ -155,6 +156,95 @@ export function edgeShaderSource(multisampled: boolean): string {
           let coverage = votes / directions;
           let darken = clamp(coverage * params.edge.y, 0.0, EDGE_MAX_DARKEN);
           return vec4<f32>(0.0, 0.0, 0.0, darken);
+        }
+`;
+}
+
+/**
+ * Selection/hover outline composite (#5390): outlines the mask the
+ * selection-mask pass wrote (`selection-mask-pass.ts`), sharing this
+ * module's fullscreen-triangle vertex stage with the geometry edge pass
+ * above (DRY, per the #5385/#5390 design note) even though the two run as
+ * separate draws with different blend states (this one is a normal
+ * alpha-over composite; the geometry pass above is darken-only).
+ *
+ * Coverage at each of 4 neighbour taps, same idea as `fs_edges`'s id test:
+ * `abs(neighbour - center)` summed and averaged is 1 exactly on the mask's
+ * boundary and fades over the tap radius, so the line antialiases instead
+ * of being a hard 1px stairstep. No depth/normal reconstruction needed —
+ * unlike geometry edges, a mask boundary is unambiguous on its own.
+ */
+export function outlineFragmentSource(): string {
+  return `
+        struct OutlineParams {
+          viewport: vec4<f32>,       // width, height, unused, unused
+          selectionColor: vec4<f32>, // rgb, visible alpha
+          hoverColor: vec4<f32>,     // rgb, visible alpha
+        }
+
+        @group(0) @binding(0) var maskVisible: texture_2d<f32>;
+        @group(0) @binding(1) var maskAll: texture_2d<f32>;
+        @group(0) @binding(2) var<uniform> params: OutlineParams;
+
+        const SELECTION_HIDDEN_ALPHA: f32 = ${SELECTION_HIDDEN_ALPHA.toFixed(3)};
+
+        struct VsOut {
+          @builtin(position) pos: vec4<f32>,
+        }
+
+        @vertex
+        fn vs_fullscreen(@builtin(vertex_index) v: u32) -> VsOut {
+          var p = array<vec2<f32>, 3>(
+            vec2<f32>(-1.0, -3.0),
+            vec2<f32>(-1.0,  1.0),
+            vec2<f32>( 3.0,  1.0)
+          );
+          var o: VsOut;
+          o.pos = vec4<f32>(p[v], 0.0, 1.0);
+          return o;
+        }
+
+        fn loadClamped(tex: texture_2d<f32>, ip: vec2<i32>, dims: vec2<i32>) -> vec4<f32> {
+          return textureLoad(tex, clamp(ip, vec2<i32>(0), dims - 1), 0);
+        }
+
+        // Fraction of the 4 cardinal neighbours whose channel differs from
+        // the centre: 0 inside/outside the region, ~1 exactly astride its
+        // boundary — a coverage estimate, not a hard edge test.
+        fn boundaryCoverage(tex: texture_2d<f32>, channel: u32, p: vec2<i32>, dims: vec2<i32>) -> f32 {
+          let center = loadClamped(tex, p, dims)[channel];
+          let n1 = loadClamped(tex, p + vec2<i32>(1, 0), dims)[channel];
+          let n2 = loadClamped(tex, p + vec2<i32>(-1, 0), dims)[channel];
+          let n3 = loadClamped(tex, p + vec2<i32>(0, 1), dims)[channel];
+          let n4 = loadClamped(tex, p + vec2<i32>(0, -1), dims)[channel];
+          return (abs(n1 - center) + abs(n2 - center) + abs(n3 - center) + abs(n4 - center)) * 0.25;
+        }
+
+        @fragment
+        fn fs_outline(@builtin(position) fragPos: vec4<f32>) -> @location(0) vec4<f32> {
+          let dims = vec2<i32>(params.viewport.xy);
+          let p = vec2<i32>(fragPos.xy);
+
+          let visibleCoverage = boundaryCoverage(maskVisible, 0u, p, dims);
+          let allCoverage = boundaryCoverage(maskAll, 0u, p, dims);
+          let hoverCoverage = boundaryCoverage(maskVisible, 1u, p, dims);
+
+          // The "hidden" ring is the silhouette of the unoccluded shape
+          // (maskAll) wherever this pixel is not itself part of the visible
+          // selection — so it does not double up with the solid ring.
+          let centerVisible = loadClamped(maskVisible, p, dims).r;
+          let hiddenCoverage = allCoverage * (1.0 - centerVisible);
+
+          let selectionAlpha = clamp(
+            max(visibleCoverage * params.selectionColor.a, hiddenCoverage * SELECTION_HIDDEN_ALPHA),
+            0.0, 1.0,
+          );
+          if (selectionAlpha > 0.001) {
+            return vec4<f32>(params.selectionColor.rgb * selectionAlpha, selectionAlpha);
+          }
+
+          let hoverAlpha = clamp(hoverCoverage * params.hoverColor.a, 0.0, 1.0);
+          return vec4<f32>(params.hoverColor.rgb * hoverAlpha, hoverAlpha);
         }
 `;
 }

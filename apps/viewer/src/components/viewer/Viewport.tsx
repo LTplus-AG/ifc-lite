@@ -293,7 +293,7 @@ export function Viewport({
   } = useThemeState();
 
   // Hover state
-  const { hoverTooltipsEnabled, setHoverState, clearHover } = useHoverState();
+  const { hoverTooltipsEnabled, hoverHighlightEnabled, hoverState, setHoverState, clearHover } = useHoverState();
 
   // Context menu state
   const { openContextMenu } = useContextMenuState();
@@ -657,7 +657,11 @@ export function Viewport({
   // Hover throttling
   const lastHoverCheckRef = useRef<number>(0);
   const hoverThrottleMs = 50; // Check hover every 50ms
-  const hoverTooltipsEnabledRef = useLatestRef(hoverTooltipsEnabled);
+  // The pick itself runs whenever EITHER tooltips or the highlight outline
+  // (#5390) want it; each consumer below reads its own enabled flag to
+  // decide what to DO with the pick result.
+  const hoverTooltipsEnabledRef = useLatestRef(hoverTooltipsEnabled || hoverHighlightEnabled);
+  const hoveredIdRef = useLatestRef(hoverHighlightEnabled ? hoverState.entityId : null);
 
   // Measure tool throttling (adaptive based on raycast performance)
   const measureRaycastPendingRef = useRef(false);
@@ -704,10 +708,12 @@ export function Viewport({
     }
   }, [activeTool, isInitialized]);
   useEffect(() => {
-    if (!hoverTooltipsEnabled) {
+    // Only clear when NEITHER consumer wants hover state (#5390): the
+    // highlight outline keeps it live even with tooltips off.
+    if (!hoverTooltipsEnabled && !hoverHighlightEnabled) {
       clearHover();
     }
-  }, [hoverTooltipsEnabled, clearHover]);
+  }, [hoverTooltipsEnabled, hoverHighlightEnabled, clearHover]);
 
   // Cleanup measurement state when tool changes + set cursor
   useEffect(() => {
@@ -1658,6 +1664,7 @@ export function Viewport({
     isolatedEntitiesRef,
     ghostExceptEntitiesRef,
     selectedEntityIdRef,
+    hoveredIdRef,
     selectedModelIndexRef,
     clearColorRef,
     sectionPlaneRef,

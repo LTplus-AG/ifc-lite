@@ -803,6 +803,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         canvas,
         fastZoom: e.shiftKey || params.fastZoomRef.current,
         fineModifierHeld: fineZoomModifier.isHeld(),
+        pickSurface: (x, y) => renderer.raycastScene(x, y, getPickOptions())?.intersection.point ?? null, // #5393
       });
 
       if (wheelIdleTimer) clearTimeout(wheelIdleTimer);

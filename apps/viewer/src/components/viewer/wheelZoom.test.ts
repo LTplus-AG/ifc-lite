@@ -345,3 +345,62 @@ describe('fine-zoom modifier tracker - real key presses only (#2683)', () => {
     assert.strictEqual(tracker.isHeld(), false);
   });
 });
+
+describe('wheel zoom toward the surface under the cursor (#5393)', () => {
+  // A thin wall, the plane z = 2, straight under the canvas-centre cursor of a
+  // camera at z = 10 looking at the origin: the surface the user zooms at.
+  const WALL_Z = 2;
+
+  function rig() {
+    const canvas = makeCanvas();
+    const camera = new Camera();
+    camera.setAspect(800 / 600);
+    camera.setPosition(0, 0, 10);
+    camera.setTarget(0, 0, 0);
+    const picks: Array<[number, number]> = [];
+    const pickSurface = (x: number, y: number) => { picks.push([x, y]); return { x: 0, y: 0, z: WALL_Z }; };
+    return { canvas, camera, picks, pickSurface };
+  }
+
+  /** `n` wheel-in notches at the canvas centre; the camera's z after each. */
+  function zoomIn(r: ReturnType<typeof rig>, n: number, withSurface: boolean): number[] {
+    const zs: number[] = [];
+    for (let i = 0; i < n; i++) {
+      applyWheelZoom(wheelEvent({ deltaY: -NOTCH_DELTA_Y }), {
+        camera: r.camera, canvas: r.canvas, fastZoom: false, fineModifierHeld: false,
+        ...(withSurface ? { pickSurface: r.pickSurface } : {}),
+      });
+      zs.push(r.camera.getPosition().z);
+    }
+    return zs;
+  }
+
+  it('without a surface pick, repeated notches pass through the wall (the defect)', () => {
+    const zs = zoomIn(rig(), 60, false);
+    assert.ok(Math.min(...zs) < WALL_Z, `plain zoom never passed the wall: min z ${Math.min(...zs)}`);
+  });
+
+  it('with a surface pick, repeated notches approach the wall and never pass it', () => {
+    const r = rig();
+    const zs = zoomIn(r, 60, true);
+    zs.forEach((z, i) => assert.ok(z > WALL_Z, `notch ${i}: camera at z ${z} is at or behind the wall`));
+    assert.ok(zs[zs.length - 1] - WALL_Z < 0.1, `60 notches got close to the wall: z ${zs[zs.length - 1]}`);
+  });
+
+  it('picks once per gesture, not once per notch', () => {
+    const r = rig();
+    zoomIn(r, 20, true);
+    assert.strictEqual(r.picks.length, 1, `picks: ${JSON.stringify(r.picks)}`);
+    assert.deepStrictEqual(r.picks[0], [400, 300], 'picked at the cursor, in CSS px');
+  });
+
+  it('never picks when zooming out, which cannot pass through anything', () => {
+    const r = rig();
+    for (let i = 0; i < 5; i++) {
+      applyWheelZoom(wheelEvent({ deltaY: NOTCH_DELTA_Y }), {
+        camera: r.camera, canvas: r.canvas, fastZoom: false, fineModifierHeld: false, pickSurface: r.pickSurface,
+      });
+    }
+    assert.strictEqual(r.picks.length, 0);
+  });
+});

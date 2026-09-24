@@ -37,8 +37,12 @@ export interface WheelZoomCamera {
     canvasWidth?: number,
     canvasHeight?: number,
     fastZoom?: boolean,
+    surfacePoint?: SurfacePoint,
   ): void;
 }
+
+/** World-space point on the visible surface under the cursor. */
+export interface SurfacePoint { x: number; y: number; z: number }
 
 /** The part of a wheel event this module reads. */
 export interface WheelZoomEvent {
@@ -147,6 +151,40 @@ export interface WheelZoomOptions {
   fastZoom: boolean;
   /** {@link FineZoomModifierTracker.isHeld} at the time of the event. */
   fineModifierHeld: boolean;
+  /**
+   * The visible surface under a canvas point, in CSS px (#5393), e.g. the
+   * renderer's `raycastScene(...).intersection.point`. When given, zooming IN
+   * approaches that surface and stops short of it instead of passing through
+   * thin objects; null (empty space) keeps the plain zoom.
+   */
+  pickSurface?: (mouseX: number, mouseY: number) => SurfacePoint | null;
+}
+
+/**
+ * One pick per wheel GESTURE, not per notch (#5393). A gesture is a run of
+ * wheel events with the cursor held within {@link SURFACE_GESTURE_SLOP_PX}
+ * and no pause over {@link SURFACE_GESTURE_IDLE_MS}. The surface zoom moves
+ * the camera along the cursor ray, so the picked point stays under the cursor
+ * and stays valid for the rest of the gesture.
+ */
+const SURFACE_GESTURE_IDLE_MS = 400;
+const SURFACE_GESTURE_SLOP_PX = 4;
+interface SurfaceGesture { x: number; y: number; at: number; point: SurfacePoint | null }
+const surfaceGestures = new WeakMap<object, SurfaceGesture>();
+
+function gestureSurface(opts: WheelZoomOptions, mouseX: number, mouseY: number): SurfacePoint | undefined {
+  const pick = opts.pickSurface;
+  if (!pick) return undefined;
+  const now = Date.now();
+  const g = surfaceGestures.get(opts.canvas);
+  if (g && now - g.at < SURFACE_GESTURE_IDLE_MS
+    && Math.abs(g.x - mouseX) <= SURFACE_GESTURE_SLOP_PX && Math.abs(g.y - mouseY) <= SURFACE_GESTURE_SLOP_PX) {
+    g.at = now;
+    return g.point ?? undefined;
+  }
+  const point = pick(mouseX, mouseY);
+  surfaceGestures.set(opts.canvas, { x: mouseX, y: mouseY, at: now, point });
+  return point ?? undefined;
 }
 
 /**
@@ -166,8 +204,11 @@ export function applyWheelZoom(e: WheelZoomEvent, opts: WheelZoomOptions): void 
   const mouseX = e.clientX - rect.left;
   const mouseY = e.clientY - rect.top;
 
+  const delta = wheelZoomDelta(e, opts.fineModifierHeld);
+  // Only zooming in can pass through a surface; zooming out keeps plain zoom.
+  const surface = delta < 0 ? gestureSurface(opts, mouseX, mouseY) : undefined;
   opts.camera.zoom(
-    wheelZoomDelta(e, opts.fineModifierHeld),
+    delta,
     false,
     mouseX,
     mouseY,
@@ -176,5 +217,6 @@ export function applyWheelZoom(e: WheelZoomEvent, opts: WheelZoomOptions): void 
     rect.width,
     rect.height,
     opts.fastZoom,
+    surface,
   );
 }

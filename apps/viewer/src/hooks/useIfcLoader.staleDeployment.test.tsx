@@ -16,9 +16,25 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
-import { StaleDeploymentNotice } from '@/components/StaleDeploymentNotice';
-import { __resetStaleDeploymentForTests } from '@/lib/stale-deployment';
 import { useIfcLoader } from './useIfcLoader.js';
+
+// Guarded dynamic imports (revert-oracle, same pattern as
+// ViewerLayout.i18n.test.tsx): a static import of a module this change adds
+// would fail the whole FILE's load once production is reverted (no subtest
+// runs, INCONCLUSIVE). A missing module instead becomes a no-op notice, so the
+// assertions below run and fail on their own merits.
+type StaleDeploymentModule = typeof import('@/lib/stale-deployment');
+type NoticeModule = typeof import('@/components/StaleDeploymentNotice');
+let resetStaleDeployment: StaleDeploymentModule['__resetStaleDeploymentForTests'] = () => {};
+let StaleDeploymentNotice: NoticeModule['StaleDeploymentNotice'] = () => null;
+try {
+  ({ __resetStaleDeploymentForTests: resetStaleDeployment } = await import('@/lib/stale-deployment'));
+  ({ StaleDeploymentNotice } = await import('@/components/StaleDeploymentNotice'));
+} catch {
+  // Not re-printed: the loader's error text is exactly what the oracle reads
+  // as "never loaded", which would hide the red assertions below.
+  console.warn('[test] stale-deployment modules unavailable; the notice assertions will fail');
+}
 
 const NOTICE = 'A new version of the viewer is available — reload to continue.';
 
@@ -44,7 +60,7 @@ let container: HTMLDivElement | null = null;
 
 beforeEach(async () => {
   hookApi = null;
-  __resetStaleDeploymentForTests();
+  resetStaleDeployment();
   useViewerStore.getState().resetViewerState();
   useViewerStore.getState().clearAllModels();
   container = document.createElement('div');

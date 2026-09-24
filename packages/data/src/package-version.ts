@@ -10,21 +10,6 @@
  * the MCP server -- cannot drift apart on how they answer `--version`.
  */
 
-import type * as NodeFs from 'node:fs';
-
-/**
- * `node:fs`, loaded when first needed instead of imported at the top.
- *
- * `@ifc-lite/data` is a browser package: its index is bundled into web apps,
- * and a static `node:fs` import there is resolved to Vite's empty browser
- * shim, which fails the whole app build on `readFileSync` (#5586 shipped
- * exactly that in 5.3.0). Only the CLI and the MCP server call this, both on
- * Node >= 22.13, where `process.getBuiltinModule` exists (22.3+).
- */
-function nodeFs(): typeof NodeFs {
-  return process.getBuiltinModule('node:fs');
-}
-
 /** Reported when `package.json` can't be read — deliberately not a plausible
  * version number, so a bug report never carries a fabricated one. */
 export const UNKNOWN_VERSION = '0.0.0-unknown';
@@ -45,7 +30,11 @@ export const UNKNOWN_VERSION = '0.0.0-unknown';
  */
 export function readPackageVersion(pkgPath: string): string {
   try {
-    const pkg = JSON.parse(nodeFs().readFileSync(pkgPath, 'utf-8')) as { version?: string };
+    const pkg = JSON.parse(
+      // Not a top-level import: this package is bundled into browser apps,
+      // where `node:fs` is an empty shim (#5586). Node >= 22.3 has it.
+      process.getBuiltinModule('node:fs').readFileSync(pkgPath, 'utf-8'),
+    ) as { version?: string };
     if (typeof pkg.version === 'string' && pkg.version.length > 0) return pkg.version;
     process.stderr.write(
       `Warning: ${pkgPath} declares no "version"; reporting ${UNKNOWN_VERSION}.\n`,

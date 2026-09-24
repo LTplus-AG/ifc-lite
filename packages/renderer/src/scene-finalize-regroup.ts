@@ -78,30 +78,51 @@ export function regroupStreamedBuckets<Bucket extends RegroupBucket>(host: Regro
   }
   host.streamedBucketKeys.clear();
 
-  // What the re-group adds to buckets that survive, so a rollback can take it
-  // back out. Buckets that did not exist before are simply deleted.
-  // Byte counters are snapshotted up front because the router bumps them
-  // while it routes, before this loop can see which bucket it chose.
+  // Every bucket the re-group routes into, so a rollback can take exactly the
+  // moved meshes (and their bytes) back out. Byte counters are snapshotted up
+  // front because the router bumps them while it routes.
   const preexisting = new Map<string, number>();
   for (const [key, bucket] of host.buckets) preexisting.set(key, bucket.vertexBytes);
-  const appended = new Map<Bucket, { meshCount: number; vertexBytes: number }>();
-  const created = new Set<string>();
+  const touched = new Map<string, { bucket: Bucket; bytesBefore: number; bytesAfter: number; created: boolean }>();
+  const addedPending = new Set<string>();
+  const activeChanges = new Map<string, { before?: string; after: string }>();
 
+  // The async finalize can fail a whole chunk later, after more meshes have
+  // streamed in. The rollback therefore undoes only what the re-group itself
+  // did: it strips the moved meshes rather than truncating, keeps keys and
+  // active split keys set since, and unions (never replaces) the key sets.
   const rollback = (): void => {
-    for (const key of created) host.buckets.delete(key);
-    for (const [bucket, before] of appended) {
-      bucket.meshData.length = before.meshCount;
-      bucket.vertexBytes = before.vertexBytes;
+    const movedSet = new Set(moved);
+    const restoredKeys = new Map(dissolved);
+    for (const [key, entry] of touched) {
+      const { bucket } = entry;
+      const kept = bucket.meshData.filter((md) => !movedSet.has(md));
+      bucket.meshData.splice(0, bucket.meshData.length, ...kept);
+      bucket.vertexBytes = entry.bytesBefore + Math.max(0, bucket.vertexBytes - entry.bytesAfter);
+      if (!entry.created || host.buckets.get(key) !== bucket) continue;
+      const original = restoredKeys.get(key);
+      if (kept.length === 0 || original) host.buckets.delete(key);
+      if (original && kept.length > 0) {
+        // Meshes streamed into the re-created key since: fold them back into
+        // the bucket that owned the key before the re-group.
+        for (const md of kept) {
+          original.meshData.push(md);
+          host.meshDataBucket.set(md, original);
+        }
+        original.vertexBytes += bucket.vertexBytes - entry.bytesBefore;
+      }
     }
     for (const [key, bucket] of dissolved) {
       host.buckets.set(key, bucket);
       for (const md of bucket.meshData) host.meshDataBucket.set(md, bucket);
     }
-    host.activeBucketKey.clear();
-    for (const [base, key] of activeSnapshot) host.activeBucketKey.set(base, key);
-    host.pendingBatchKeys.clear();
+    for (const [base, change] of activeChanges) {
+      if (host.activeBucketKey.get(base) !== change.after) continue;
+      if (change.before === undefined) host.activeBucketKey.delete(base);
+      else host.activeBucketKey.set(base, change.before);
+    }
+    for (const key of addedPending) host.pendingBatchKeys.delete(key);
     for (const key of pendingSnapshot) host.pendingBatchKeys.add(key);
-    host.streamedBucketKeys.clear();
     for (const key of streamedSnapshot) host.streamedBucketKeys.add(key);
   };
 
@@ -109,26 +130,33 @@ export function regroupStreamedBuckets<Bucket extends RegroupBucket>(host: Regro
     for (const meshData of moved) {
       const key = host.resolveActiveBucket(host.bucketBaseKey(meshData), meshData);
       let bucket = host.buckets.get(key);
-      const bytesBefore = preexisting.get(key);
-      if (bytesBefore !== undefined) {
-        if (bucket && !appended.has(bucket)) {
-          appended.set(bucket, { meshCount: bucket.meshData.length, vertexBytes: bytesBefore });
-        }
-      } else {
-        created.add(key);
-      }
       if (!bucket) {
         bucket = host.createBucket(key);
         host.buckets.set(key, bucket);
       }
+      if (!touched.has(key)) {
+        touched.set(key, { bucket, bytesBefore: preexisting.get(key) ?? 0, bytesAfter: 0, created: !preexisting.has(key) });
+      }
       bucket.meshData.push(meshData);
       host.meshDataBucket.set(meshData, bucket);
+      if (!host.pendingBatchKeys.has(key)) addedPending.add(key);
       host.pendingBatchKeys.add(key);
     }
   } catch (error) {
+    recordRegroupEffects();
     rollback();
     throw error;
   }
-
+  recordRegroupEffects();
   return { retired, rollback };
+
+  // What the routing left behind, so a later rollback can tell it apart from
+  // anything that streams in afterwards.
+  function recordRegroupEffects(): void {
+    for (const entry of touched.values()) entry.bytesAfter = entry.bucket.vertexBytes;
+    for (const [base, key] of host.activeBucketKey) {
+      const before = activeSnapshot.get(base);
+      if (before !== key) activeChanges.set(base, { before, after: key });
+    }
+  }
 }

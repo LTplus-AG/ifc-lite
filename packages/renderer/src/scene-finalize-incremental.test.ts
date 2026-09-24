@@ -142,6 +142,39 @@ describe('Scene streaming finalize is incremental (#5358)', () => {
     assert.strictEqual(first.destroyed > 0, true, 'the replaced batch is freed');
   });
 
+  it('keeps a mesh streamed in while a failing async finalize was mid-way', async () => {
+    // Review finding on #5453: the rollback used to REPLACE the streamed-key
+    // set and the fragment list with their pre-finalize snapshots, dropping
+    // anything that streamed in between two time-sliced chunks.
+    const { scene, built, stream } = harness();
+    stream([triangle(1, 0, RED), triangle(2, 0, GREEN, 5)]);
+    const create = scene['createBatchedMesh'];
+    let failSecondBucketBuild = true;
+    let bucketBuilds = 0;
+    scene['createBatchedMesh'] = (meshes: MeshData[], color: [number, number, number, number], d: GPUDevice, p: RenderPipeline, key?: string) => {
+      if (key !== undefined && failSecondBucketBuild && ++bucketBuilds === 2) throw new RangeError('createBuffer failed');
+      return create(meshes, color, d, p, key);
+    };
+
+    // budgetMs 0: the first bucket builds now, the second in a later task.
+    const finalizing = scene.finalizeStreamingAsync(device, pipeline, 0);
+    stream([triangle(3, 1, RED)]);
+    await assert.rejects(finalizing, /createBuffer failed/);
+
+    const streamed = [...scene['streamedBucketKeys']];
+    assert.ok(streamed.some((key) => key.startsWith('model1~')), `model 1's key was lost: ${streamed}`);
+    assert.strictEqual(streamed.length, 3, 'both model-0 keys and the model-1 key are pending a finalize');
+    const fragments = scene['streamingFragments'] as FakeBatch[];
+    assert.strictEqual(fragments.length, built.filter((b) => b.key === undefined).length, 'every fragment is still tracked');
+
+    failSecondBucketBuild = false;
+    await scene.finalizeStreamingAsync(device, pipeline);
+    const keys = scene.getBatchedMeshes().map((b) => b.colorKey).sort();
+    assert.strictEqual(keys.length, 3);
+    assert.ok(keys.some((key) => key.startsWith('model1~')), `model 1 was never built: ${keys}`);
+    for (const fragment of fragments) assert.ok(fragment.destroyed > 0, 'fragment freed once replaced');
+  });
+
   it('restores the bucket map when the rebuild fails, so a retry rebuilds the same set', () => {
     const { scene, built, stream } = harness();
     stream([triangle(1, 0, RED)]);

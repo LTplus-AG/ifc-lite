@@ -2163,7 +2163,7 @@ export class Scene {
           }
         }
         regroup?.rollback();
-        scene.streamingFragments = oldFragments;
+        scene.streamingFragments = [...oldFragments, ...scene.streamingFragments]; // + any streamed in meanwhile
         scene.batchedMeshes = oldBatches;
         scene.finalizeInProgress = false;
       }

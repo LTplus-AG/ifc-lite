@@ -4880,6 +4880,7 @@
     "collectAggregatedDescendants: function",
     "collectSpatialAncestors: function",
     "comparePropertyValues: function",
+    "countEffectiveEntityTypes: function",
     "createLogger: function",
     "edgeSurvives: function",
     "entityTableFromColumns: function",

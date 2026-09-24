@@ -28,7 +28,7 @@
  * for a read-only caller.
  */
 
-import type { PropertySet, QuantitySet } from '@ifc-lite/data';
+import { countEffectiveEntityTypes, type PropertySet, type QuantitySet } from '@ifc-lite/data';
 import { storeHasSourceEntity, type MutablePropertyView, type NewEntity } from '@ifc-lite/mutations';
 import {
   getInheritanceChainAcrossSchemas,
@@ -98,6 +98,8 @@ export interface PendingOverlay {
    *  entity's type must go through this, or it disagrees with what export
    *  writes (#5009 review). */
   effectiveType(expressId: number): string | null;
+  /** Sparse retype intents for aggregate class counts; absent in older read shims. */
+  getTypeMutations?(): ReadonlyMap<number, { readonly newType: string }>;
   attributes(expressId: number): AttributeOverrides;
   positionalAttributes(expressId: number): ReadonlyMap<number, unknown>;
   /** Every entity with a queued attribute write, keyed by expressId. For loops
@@ -208,6 +210,10 @@ class ViewOverlay implements PendingOverlay {
     return retype ? normalizeIfcTypeName(retype) : null;
   }
 
+  getTypeMutations(): ReadonlyMap<number, { readonly newType: string }> {
+    return this.view.getTypeMutations();
+  }
+
   attributes(expressId: number): AttributeOverrides {
     // Every queued write, not a chosen few. Last write wins, which is what
     // `getAttributeMutationsForEntity` already orders for us.
@@ -256,27 +262,24 @@ class ViewOverlay implements PendingOverlay {
 }
 
 /**
- * Entity count per STEP type key, with the session's queued creates and deletes
- * applied. Created entities are counted under the uppercase key the store uses,
- * so `entity_create('IfcWall')` lands on the same row as the walls already in
- * the file rather than opening a second `IfcWall` row.
+ * Entity count per STEP type key, with queued creates, deletes and retypes
+ * applied by the shared aggregate accessor. A created entity is counted under
+ * its effective uppercase class, matching the parsed type buckets.
  */
 export function foldedTypeCounts(store: IfcDataStore, overlay: PendingOverlay | null): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const [type, ids] of store.entityIndex.byType) {
-    let live = ids.length;
-    // Only walk the ids when something is actually tombstoned — the type pass is
-    // otherwise O(number of types), and a model has millions of entities.
-    if (overlay && overlay.deleted.size > 0) {
-      for (const id of ids) if (overlay.deleted.has(id)) live--;
-    }
-    counts.set(type, live);
-  }
-  for (const entity of overlay?.createdAll ?? []) {
-    const key = entity.ifcType.toUpperCase();
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return counts;
+  const effectiveOverlay = overlay ? {
+    isDeleted: (id: number) => overlay.deleted.has(id),
+    getTombstones: () => overlay.deleted,
+    getTypeMutations: () => overlay.getTypeMutations?.() ?? new Map<number, { newType: string }>(),
+    getNewEntities: () => overlay.createdAll.map(entity => ({ expressId: entity.expressId, type: entity.ifcType })),
+  } : null;
+  // IFCX has columnar entities but no STEP type buckets. Supply those source
+  // rows to the canonical accessor; STEP keeps the sparse-delta count path.
+  // @raw-entity-enumeration-ok detect an indexless IFCX source; its columnar IDs are passed through the canonical accessor
+  const sourceIds = store.entityIndex.byType.size === 0
+    ? store.entities.expressId
+    : undefined;
+  return countEffectiveEntityTypes(store, effectiveOverlay, sourceIds);
 }
 
 /**

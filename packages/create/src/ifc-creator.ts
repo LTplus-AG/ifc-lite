@@ -41,7 +41,7 @@ import type {
 import {
   esc, stepLine, num, vecLen, vecNorm, vecCross,
   optStr, optEnum,
-  NON_ELEMENT_TYPES, assertPositiveFinite, assertFinitePoint3,
+  NON_ELEMENT_TYPES, assertPositiveFinite, assertFinitePoint3, completePlacementAxes,
 } from './ifc-creator-math.js';
 import { emitWorkCalendar, emitTaskTime } from './ifc-creator-scheduling.js';
 import {
@@ -2233,8 +2233,10 @@ export class IfcCreator {
    */
   addLocalPlacement(relativeTo: number, placement: Placement3D): number {
     const originId = this.addCartesianPoint(placement.Location);
-    const axisId = placement.Axis ? this.addDirection(placement.Axis) : undefined;
-    const refDirId = placement.RefDirection ? this.addDirection(placement.RefDirection) : undefined;
+    // Axis and RefDirection are written both or neither (#5469).
+    const axes = completePlacementAxes(placement.Axis, placement.RefDirection);
+    const axisId = axes ? this.addDirection(axes.Axis) : undefined;
+    const refDirId = axes ? this.addDirection(axes.RefDirection) : undefined;
     const axis2Id = this.addAxis2Placement3D(originId, axisId, refDirId);
 
     const id = this.id();

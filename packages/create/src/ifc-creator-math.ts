@@ -114,6 +114,33 @@ export function vecCross(a: Point3D, b: Point3D): Point3D {
   ];
 }
 
+/**
+ * Complete an `IfcAxis2Placement3D` `Axis`/`RefDirection` pair (#5469).
+ *
+ * The schema rule `IfcAxis2Placement3D.AxisAndRefDirProvision` requires the two
+ * to be both present or both absent, so a placement that only rotates about Z
+ * (a `RefDirection` with no `Axis`) is invalid as written. Returns `undefined`
+ * when neither is given (the `$,$` form stays), otherwise both, with the
+ * missing one set to the value the schema implies for it when absent, so the
+ * placement's geometry is unchanged:
+ *   - no `Axis`: `(0,0,1)`, the `IfcAxis2Placement3D.P` default;
+ *   - no `RefDirection`: `IfcFirstProjAxis(Axis, $)`, the projection of world X
+ *     onto the plane normal to `Axis` (world Y when `Axis` is along X, where
+ *     that projection vanishes).
+ */
+export function completePlacementAxes(
+  axis: Point3D | undefined,
+  refDirection: Point3D | undefined,
+): { Axis: Point3D; RefDirection: Point3D } | undefined {
+  if (axis && refDirection) return { Axis: axis, RefDirection: refDirection };
+  if (refDirection) return { Axis: [0, 0, 1], RefDirection: refDirection };
+  if (!axis) return undefined;
+  const z = vecNorm(axis);
+  const v: Point3D = Math.abs(z[0]) > 1 - 1e-9 ? [0, 1, 0] : [1, 0, 0];
+  const d = v[0] * z[0] + v[1] * z[1] + v[2] * z[2];
+  return { Axis: axis, RefDirection: vecNorm([v[0] - d * z[0], v[1] - d * z[1], v[2] - d * z[2]]) };
+}
+
 // ============================================================================
 // STEP attribute helpers (optional strings / enums / booleans / reals)
 // ============================================================================

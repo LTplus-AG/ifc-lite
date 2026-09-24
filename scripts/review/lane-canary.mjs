@@ -60,52 +60,54 @@ export class CanaryError extends Error {
 }
 
 /**
- * The planted defect, stated as what a finding about it must SAY rather than
- * which token it must contain (#5621).
+ * The planted defect: what a finding about it must be ON, and what it must
+ * talk ABOUT (#5621).
  *
- * `path` is the one file the fixture sends. The defect: `Number(raw)` of a
- * missing value is NaN, NaN loses the one-ended `timeoutMs > 0` comparison, and
- * control falls through to `return 0`, which closes the session. The class is
- * a numeric bound guarded at ONE end (rubric.md names it), so either end is a
- * real finding of it: NaN slips past the lower guard, and `"Infinity"` passes
- * it with no upper bound. A finding explains the defect only if its body names
- * BOTH halves:
- *   - `mechanism`: the value the one-ended guard mishandles, NaN / "not a
- *     number" / Infinity, or the missing bound itself ("upper bound",
- *     "one-ended");
- *   - `consequence`: what that turns into, returning 0 / zero or closing the
- *     session.
- * Both ends count because the second one was OBSERVED: with the ensemble's
- * OpenRouter key over its weekly limit, the canary fell through to the Claude
- * CLI, which reported the Infinity end ("returns Infinity instead of falling
- * through to the 0/closed-immediately branch"). That is a correct finding of
- * this defect class on this line, and a NaN-only judge called it a dead lane.
- * Requiring both refuses a rubric parrot ("NaN loses every comparison" with
- * nothing about this code) and a finding about 0 as a magic number.
+ * The defect: `Number(raw)` of a missing or non-numeric value is NaN, NaN
+ * loses the one-ended `timeoutMs > 0` comparison, and control falls through
+ * to `return 0`, which closes the session. The same guard also lets
+ * `"Infinity"` through with no upper bound. EVERY added line of the fixture is
+ * part of this defect: it is a six-line change with nothing else in it.
  *
- * The first judge demanded the literal symbol `timeoutMs` instead, and that
- * refused a correct review. The destructive half of this defect is the
- * `return 0;` line, which does not contain `timeoutMs`. The 2026-09-24
- * scheduled run did not log its finding, but the message ("none names
- * timeoutMs", while the path matched) means it was on this file and quoted a
- * line without the symbol: most likely `return 0;`. The first branch run with
- * findings printed showed three of four correct findings in exactly that
- * shape, and it went green only because the fourth happened to quote
- * `if (timeoutMs > 0) {`. The verdict turned on which line got quoted, not on
- * what the finding said.
+ * ON: `path`. `validate-findings.mjs` has already dropped any finding whose
+ * quote is not the text of an added line of the file it names, so a surviving
+ * finding on this path is anchored to the defect's own code.
  *
- * STATED HOLE: this is keyword evidence, not comprehension. A body that
- * negates the defect while using both words ("no NaN issue; returning 0 is
- * fine") passes. The canary measures liveness, as its file header says, and a
- * reviewer that writes that sentence about this diff is still reading it.
+ * ABOUT: `about`. The body has to engage with what the code DOES with a bad
+ * value: the input it mishandles (NaN, non-numeric, unparsable, missing,
+ * undefined, Infinity, the bound or guard) OR what that input turns into (it
+ * returns 0 or falls back, the session closes or expires immediately, the
+ * timeout never expires, the old DEFAULT_TIMEOUT_MS is gone). Either side is
+ * enough. That refuses a style nit on the right line ("rename timeoutMs").
  *
- * The anchor needs no check here: `validate-findings.mjs` has already dropped
- * any finding whose quote is not the text of an added line of this file.
+ * WHY SO BROAD, AND NOT A STRICTER WORDING RULE. #5621 was a wording rule
+ * misfiring. The first judge demanded the literal symbol `timeoutMs`, and the
+ * destructive line, `return 0;`, does not contain it. The first branch run with
+ * findings printed showed three of four correct findings anchored there, and it
+ * went green only because the fourth happened to quote the `if` line. Every
+ * narrower rule tried since then also rejected a correct finding the lane
+ * really produced. One required "NaN", but a Claude CLI run described the same
+ * fall-through as "any unparsable or missing raw value now silently returns 0".
+ * Another required a return-0 consequence, but the Infinity end's consequence
+ * is "the session timeout never expires". A false alarm on this canary means
+ * "most PRs are unreviewed", which people learn to mute. So the rule asks only
+ * that the finding is on the defect and about the value handling.
+ *
+ * STATED HOLE: this is keyword evidence, not comprehension. A body that is on
+ * the defect's lines and names one of these words passes even if it is wrong
+ * or negates the defect ("no NaN issue here"). The canary measures liveness,
+ * as its file header says, and a reviewer that writes about the value handling
+ * of this diff is reading it. Recall and precision are a different instrument.
  */
 export const PLANTED_DEFECT = Object.freeze({
   path: 'src/session-timeout.ts',
-  mechanism: /\bNaN\b|not[- ]a[- ]number|\bInfinity\b|\b(?:upper|lower)[- ]bound|one[- ](?:ended|end\b|sided)/i,
-  consequence: /\breturn(?:s|ing|ed)?\s+`?0\b|\bzero\b|\bclos(?:e|es|ing|ed)\b[^.]*\bsession|\bsession\b[^.]*\bclos(?:e|es|ing|ed)\b/i,
+  // One alternation, two halves. The input the one-ended guard mishandles:
+  // NaN, non-numeric, unparsable, invalid, missing, undefined, Infinity, the
+  // bound or guard itself. Then what it turns into: returns 0, falls back or
+  // through, zero, 0ms, closes, expires, terminates, immediately, unbounded,
+  // the lost DEFAULT_TIMEOUT_MS.
+  about:
+    /\bNaN\b|not[- ]a[- ]number|\bnon-?numeric\b|\bunparsa?ble\b|\binvalid\b|\bmissing\b|\bundefined\b|\bInfinity\b|\b(?:upper|lower)[- ]?bound|\bguard|one[- ](?:ended|end\b|sided)|\breturn(?:s|ing|ed)?\s+`?0|\bfall(?:s|ing)?[- ]?(?:back|through)|\bzero\b|\b0\s?ms\b|\bclos(?:e|es|ing|ed)\b|\bexpir|\bterminat|\bimmediately\b|\bunbounded\b|\bDEFAULT_TIMEOUT_MS\b/i,
 });
 
 /**
@@ -115,10 +117,11 @@ export const PLANTED_DEFECT = Object.freeze({
  * answers `findings` with a finding about something else has not found THIS
  * defect, and a canary satisfied by any non-empty list would go green on a
  * reviewer that had started hallucinating. So at least one finding must be on
- * the planted file AND its body must name the mechanism and its consequence.
+ * the planted file AND its body must be about the value handling (see
+ * PLANTED_DEFECT for why that bar, and its stated hole).
  *
  * @param {object} parsed - the validator's findings.json.
- * @param {{ path: string, mechanism: RegExp, consequence: RegExp }} [planted]
+ * @param {{ path: string, about: RegExp }} [planted]
  * @returns {{ ok: boolean, why: string }}
  */
 export function judge(parsed, planted = PLANTED_DEFECT) {
@@ -144,15 +147,15 @@ export function judge(parsed, planted = PLANTED_DEFECT) {
       f &&
       f.path === planted.path &&
       typeof f.body === 'string' &&
-      planted.mechanism.test(f.body) &&
-      planted.consequence.test(f.body),
+      planted.about.test(f.body),
   );
   if (found.length === 0) {
     return {
       ok: false,
       why:
         `${list.length} finding(s), but none on \`${planted.path}\` explains the defect ` +
-        `(its body must name ${planted.mechanism} and ${planted.consequence}). Findings about something else do not show this defect was found.`,
+        '(its body must be about how a bad value is handled; see PLANTED_DEFECT). Findings about something ' +
+        'else do not show this defect was found.',
     };
   }
   return { ok: true, why: `${list.length} finding(s), ${found.length} explaining the planted defect` };

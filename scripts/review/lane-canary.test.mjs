@@ -88,63 +88,53 @@ test('#5621 RED->GREEN: a correct finding anchored on `return 0;` finds the defe
   assert.equal(v.ok, true, v.why);
 });
 
-test('#5621: a finding on the planted file that does not explain the mechanism still fails', () => {
-  // Anchored on the defect line, but about something else: it names the symbol
-  // the old judge wanted and is still not this defect.
-  const v = judge({
-    verdict: 'findings',
-    findings: [finding({ body: 'Rename timeoutMs to timeoutMillis for consistency.' })],
-  });
-  assert.equal(v.ok, false, v.why);
+test('#5621: style nits on the defect lines, about nothing the code does with a value, still fail', () => {
+  // Anchored on the defect, but not about it. The first names the symbol the
+  // old judge wanted and is still not this defect.
+  for (const body of [
+    'Rename timeoutMs to timeoutMillis for consistency.',
+    'Prefer an arrow function export to match the rest of the module.',
+    'This comment restates the code; delete it.',
+  ]) {
+    const v = judge({ verdict: 'findings', findings: [finding({ body })] });
+    assert.equal(v.ok, false, `${body} -> ${v.why}`);
+  }
 });
 
-test('#5621: a rubric parrot -- NaN named, but nothing about what this code does with it -- fails', () => {
-  // The rubric itself tells every model "NaN loses every comparison", so the
-  // word alone is not evidence the diff was read.
-  const v = judge({
-    verdict: 'findings',
-    findings: [finding({ line: 4, quote: 'return timeoutMs;', body: 'NaN loses every comparison.' })],
-  });
-  assert.equal(v.ok, false, v.why);
+/**
+ * Every correct finding body the LIVE lane has produced on this fixture, from
+ * the canary runs on this PR's branch (36005982244, 36008600565, 36036737292,
+ * 36040944785), verbatim. Each narrower judge tried here refused at least one
+ * of them, and that false alarm is what #5621 is.
+ */
+const LIVE_CORRECT_BODIES = [
+  'When `raw` is `undefined`, `Number(raw)` is `NaN`, so the condition is false and this surviving export now returns 0 instead of the previous `DEFAULT_TIMEOUT_MS`; callers that omit the argument will close the session immediately.',
+  'When raw is undefined, Number(undefined) is NaN, NaN > 0 is false, so this returns 0 instead of the previous DEFAULT_TIMEOUT_MS; existing callers that pass undefined now close the session immediately.',
+  'When raw is undefined, Number(undefined) produces NaN, which fails the one-ended bound (NaN > 0 is false) and falls through to return 0, immediately closing sessions when no timeout is configured.',
+  'An undefined raw config evaluates to NaN, falling through the numeric check to return 0, making the absence of a timeout indistinguishable from an explicit zero-duration timeout.',
+  'When raw is undefined, Number(raw) is NaN, so the guard is skipped and resolveTimeout(undefined) returns 0 instead of the previous DEFAULT_TIMEOUT_MS. Callers that omit the timeout will therefore close the session immediately.',
+  'The check only guards the lower bound, so Number("Infinity") passes it: resolveTimeout("Infinity") returns Infinity instead of falling through to the 0/closed-immediately branch, giving the session an unbounded timeout.',
+  'The bound is only checked at the lower end: `Number("Infinity")` and other overflow strings are `> 0` and get returned as-is, so a value like raw = "Infinity" makes the session timeout never expire, defeating the feature this function exists to implement.',
+  'Any unparsable or missing raw value (e.g. raw = undefined or a mistyped env var) now silently returns 0 with no way for the caller to distinguish that from someone explicitly configuring a 0ms timeout, whereas previously an invalid/absent value fell back to a safe DEFAULT_TIMEOUT_MS; a config typo now closes every session immediately instead of using the old default.',
+];
+
+test('#5621: every correct finding the live lane produced on this fixture passes', () => {
+  for (const body of LIVE_CORRECT_BODIES) {
+    const v = judge({ verdict: 'findings', findings: [finding({ line: 7, quote: 'return 0;', body })] });
+    assert.equal(v.ok, true, `${body.slice(0, 80)}... -> ${v.why}`);
+  }
 });
 
-test('#5621: a finding about 0 as a magic number, with no NaN, fails', () => {
-  const v = judge({
-    verdict: 'findings',
-    findings: [finding({ line: 7, quote: 'return 0;', body: 'Returning 0 here is a magic number; use a named constant.' })],
-  });
-  assert.equal(v.ok, false, v.why);
-});
-
-test('#5621: "not a number" spelled out, with the session closing, counts', () => {
-  const v = judge({
-    verdict: 'findings',
-    findings: [
-      finding({
-        line: 7,
-        quote: 'return 0;',
-        body: 'Number(undefined) is not a number, so the guard fails and the session is closed at once.',
-      }),
-    ],
-  });
-  assert.equal(v.ok, true, v.why);
-});
-
-test('#5621: the OTHER end of the one-ended bound (Infinity) is a real finding of this defect', () => {
-  // Verbatim from the canary run that fell through to the Claude CLI when the
-  // ensemble's key hit its weekly limit.
-  const v = judge({
-    verdict: 'findings',
-    findings: [
-      finding({
-        body:
-          'The check only guards the lower bound, so Number("Infinity") passes it: resolveTimeout("Infinity") ' +
-          'returns Infinity instead of falling through to the 0/closed-immediately branch, giving the session ' +
-          'an unbounded timeout.',
-      }),
-    ],
-  });
-  assert.equal(v.ok, true, v.why);
+test('#5621: correct rewordings a model could equally write pass too', () => {
+  for (const body of [
+    'When raw is undefined the guard fails and this returns 0 instead of DEFAULT_TIMEOUT_MS, so callers close the session immediately.',
+    "A non-numeric value such as 'abc' falls back to 0, terminating the session.",
+    'NaN yields a 0ms timeout and sessions expire instantly.',
+    'Only a lower bound is checked: resolveTimeout("Infinity") returns Infinity, so the session never times out.',
+  ]) {
+    const v = judge({ verdict: 'findings', findings: [finding({ body })] });
+    assert.equal(v.ok, true, `${body} -> ${v.why}`);
+  }
 });
 
 test('#5621: describeFindings prints every surviving finding with its source model', () => {

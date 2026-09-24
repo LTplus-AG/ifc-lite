@@ -19,6 +19,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
 import { buildCommandPaletteJsonEntities } from '../commandPaletteJsonExport';
 import { exportCsvFromBytes } from '@/lib/export/csv';
+import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { downloadFile, downloadDataUrl } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { EXPORT_COMMANDS, type CsvExportType, type RegisteredExportCommand } from './export-commands';
@@ -64,7 +65,10 @@ export function useExportCommands() {
   const handleExportCSV = useCallback(async (type: CsvExportType) => {
     if (!ifcDataStore || ifcDataStore.source.byteLength <= 0) return;
     try {
-      const csv = await exportCsvFromBytes(ifcDataStore.source.materialize(), type, { includeProperties: type === 'entities' });
+      // The model as edited, not the file as loaded (#5397).
+      const { activeModelId, getMutationView } = useViewerStore.getState();
+      const bytes = editedModelBytes(ifcDataStore, activeModelId ? getMutationView(activeModelId) : null);
+      const csv = await exportCsvFromBytes(bytes, type, { includeProperties: type === 'entities' });
       const filename = type === 'spatial' ? 'spatial-hierarchy.csv' : `${type}.csv`;
       downloadFile(csv, filename, 'text/csv');
       toast.success(`Exported ${type} CSV${activeModelOnlyNote}`);

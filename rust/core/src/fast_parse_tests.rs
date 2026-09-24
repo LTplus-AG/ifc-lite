@@ -400,6 +400,13 @@ fn issue_5266_non_step_tokens_refuse_the_list_instead_of_vanishing() {
     }
     // The comment-aware twin applies the same rule.
     assert_eq!(parse_coordinates_direct_f64(b"((nan,1.,2.) /* c */)"), Vec::<f64>::new());
+    // A dropped comma with trivia in the gap is still a dropped comma.
+    assert_eq!(parse_coordinates_direct_f64(b"((1.52 .3,4.,5.))"), Vec::<f64>::new());
+    assert_eq!(parse_coordinates_direct_f64(b"((1.52/*c*/.3,4.,5.))"), Vec::<f64>::new());
+    assert_eq!(
+        parse_coordinates_direct_f64(b"((1. , 2. /* y */ ,3. ))"),
+        [1.0, 2.0, 3.0]
+    );
     // Legal forms keep reading, including signs, bare-dot and exponents.
     assert_eq!(
         parse_coordinates_direct_f64(b"((+1.5,.5,-1.E2),(0.,0.,3./* z */))"),

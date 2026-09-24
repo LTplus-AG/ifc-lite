@@ -50,6 +50,21 @@ pub(super) fn read_coordinate_list<T: fast_float2::FastFloat, const COMMENTS: bo
             }
             None => return Vec::new(),
         }
+        // A value ends at `,` or `)` once trivia is skipped; two values with
+        // only whitespace or a comment between them (`1.52 .3`) are a dropped
+        // comma, not two coordinates.
+        while pos < len && is_step_space(bytes[pos]) {
+            pos += 1;
+        }
+        if COMMENTS && bytes.get(pos) == Some(&b'/') {
+            match crate::parser::skip_step_trivia(bytes, pos) {
+                Some(end) => pos = end,
+                None => return Vec::new(),
+            }
+        }
+        if !matches!(bytes.get(pos), None | Some(b',' | b')')) {
+            return Vec::new();
+        }
     }
     result
 }

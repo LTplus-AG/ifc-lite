@@ -72,6 +72,21 @@ export function resolveTargetModels(models: ReadonlyArray<EvaluatorModel>, targe
   });
 }
 
+/** Complete parsed ID domain, including deferred property atoms and IFCX stores. */
+function* sourceEntityIds(store: IfcDataStore): IterableIterator<number> {
+  let indexed = false;
+  // @raw-entity-enumeration-ok source ID domain is passed to the effective iterator, which filters tombstones and appends creations
+  for (const id of store.entityIndex.byId.keys()) {
+    indexed = true;
+    yield id;
+  }
+  for (const id of store.deferredEntityIndex?.keys() ?? []) {
+    indexed = true;
+    yield id;
+  }
+  if (!indexed) yield* store.entities.expressId;
+}
+
 function buildModelInfo(models: readonly EvaluatorModel[]): ValidationModelInfo[] {
   const out: ValidationModelInfo[] = [];
   for (const m of models) {
@@ -79,12 +94,10 @@ function buildModelInfo(models: readonly EvaluatorModel[]): ValidationModelInfo[
     // @raw-entity-enumeration-ok parsed count is used only for an unedited model; the pending-edit branch replaces it with effective enumeration
     let entityCount = m.store.entityCount || m.store.entities.count;
     if (m.mutationView?.hasPendingChanges()) {
-      // The parsed count predates deletes and authored entities. IFCX stores
-      // can lack type buckets, so use their EntityTable as the source domain.
-      // @raw-entity-enumeration-ok source index emptiness only selects the IFCX EntityTable fallback; effective iterator below applies edits
-      const sourceIds = m.store.entityIndex.byType.size === 0 ? m.store.entities.expressId : undefined;
+      // The parsed count predates deletes and authored entities. The complete
+      // source domain includes deferred property atoms, absent from byType.
       entityCount = 0;
-      for (const _entity of iterateEffectiveEntityIds(m.store, m.mutationView, undefined, sourceIds)) entityCount++;
+      for (const _entity of iterateEffectiveEntityIds(m.store, m.mutationView, undefined, sourceEntityIds(m.store))) entityCount++;
     }
     out.push({
       modelId: m.id,

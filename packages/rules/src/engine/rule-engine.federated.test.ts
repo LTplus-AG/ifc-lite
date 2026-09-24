@@ -16,7 +16,7 @@ import type { InformationRule, RuleSetFile } from '../rule-set/rule-set.js';
 import { Rule } from '../filter/filter-rules.js';
 import type { EvaluatorModel } from '../filter/filter-evaluate.js';
 
-function wallStep(globalId: string, name: string): string {
+function wallStep(globalId: string, name: string, withPropertyAtom = false): string {
   return `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION((''),'2;1');
@@ -32,14 +32,18 @@ DATA;
 #31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
 #40= IFCLOCALPLACEMENT($,#21);
 #100= IFCWALL('${globalId}',$,'${name}',$,$,#40,$,'tag',$);
+${withPropertyAtom ? "#201= IFCPROPERTYSINGLEVALUE('Code',$,IFCTEXT('A'),$);" : ''}
 ENDSEC;
 END-ISO-10303-21;
 `;
 }
 
-async function parseWall(globalId: string, name: string): Promise<IfcDataStore> {
-  const bytes = new TextEncoder().encode(wallStep(globalId, name));
-  return new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+async function parseWall(globalId: string, name: string, deferPropertyAtomIndex = false): Promise<IfcDataStore> {
+  const bytes = new TextEncoder().encode(wallStep(globalId, name, deferPropertyAtomIndex));
+  return new IfcParser().parseColumnar(
+    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    { deferPropertyAtomIndex },
+  );
 }
 
 function stateFor(models: { id: string; fingerprint?: string; store: IfcDataStore }[]): EvaluatorModel[] {
@@ -57,8 +61,10 @@ function allWallsRuleSet(targets?: RuleSetFile['targets']): RuleSetFile {
 
 describe('runRuleSet — federated targeting by sourceFingerprint (#5138)', () => {
   it('uses effective classes and entity counts independently for two edited models (#5249)', async () => {
-    const storeA = await parseWall('0WallA0000000000000000A', 'Wall in A');
+    const storeA = await parseWall('0WallA0000000000000000A', 'Wall in A', true);
     const storeB = await parseWall('0WallB0000000000000000B', 'Wall in B');
+    assert.ok(storeA.deferredEntityIndex?.has(201));
+    assert.equal(storeA.entityIndex.byType.has('IFCPROPERTYSINGLEVALUE'), false);
     const viewA = new MutablePropertyView(null, 'm1');
     const viewB = new MutablePropertyView(null, 'm2');
     viewA.setExpressIdWatermark(100);

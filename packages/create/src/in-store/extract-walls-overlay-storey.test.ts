@@ -48,37 +48,69 @@ function addStorey(editor: StoreEditor): number {
 }
 
 /** Four walls closing a 5 x 5 m room at `origin`, authored on `storeyId`. */
-function addRoom(editor: StoreEditor, store: Awaited<ReturnType<typeof session>>['store'], view: MutablePropertyView, storeyId: number, origin: number): number[] {
+function addRoom(editor: StoreEditor, store: Awaited<ReturnType<typeof session>>['store'], view: MutablePropertyView, storeyId: number, origin: number): { wallIds: number[]; relIds: number[] } {
   const anchor = resolveSpatialAnchor(store, storeyId, view);
   const corners = [[origin, origin], [origin + 5, origin], [origin + 5, origin + 5], [origin, origin + 5]] as const;
-  const ids: number[] = [];
+  const wallIds: number[] = [];
+  const relIds: number[] = [];
   for (let i = 0; i < corners.length; i++) {
     const start = corners[i]!;
     const end = corners[(i + 1) % corners.length]!;
-    ids.push(addWallToStore(editor, anchor, {
+    const wall = addWallToStore(editor, anchor, {
       Start: [start[0], start[1], 0], End: [end[0], end[1], 0], Thickness: 0.2, Height: 3,
-    }).wallId);
+    });
+    wallIds.push(wall.wallId);
+    relIds.push(wall.relContainedId);
   }
-  return ids;
+  return { wallIds, relIds };
 }
 
 describe('extractWallSegmentsForStorey: created walls stay on their storey (#5642)', () => {
   it('does not bound storey 42 with walls authored on another storey', async () => {
     const { store, view, editor } = await session();
     const level1 = addStorey(editor);
-    const upstairs = addRoom(editor, store, view, level1, 100);
+    const upstairs = addRoom(editor, store, view, level1, 100).wallIds;
 
-    const onGround = extractWallSegmentsForStorey(store, 42, editor);
+    const onGround = extractWallSegmentsForStorey(store, 42, view);
     for (const id of upstairs) expect(onGround.contributingWallIds).not.toContain(id);
 
-    const onLevel1 = extractWallSegmentsForStorey(store, level1, editor);
+    const onLevel1 = extractWallSegmentsForStorey(store, level1, view);
     expect([...onLevel1.contributingWallIds].sort()).toEqual([...upstairs].sort());
   });
 
   it('still bounds a storey with the walls authored on it', async () => {
     const { store, view, editor } = await session();
-    const ground = addRoom(editor, store, view, 42, 100);
-    const onGround = extractWallSegmentsForStorey(store, 42, editor);
+    const before = extractWallSegmentsForStorey(store, 42, view).considered;
+    const ground = addRoom(editor, store, view, 42, 100).wallIds;
+    const onGround = extractWallSegmentsForStorey(store, 42, view);
     for (const id of ground) expect(onGround.contributingWallIds).toContain(id);
+    // Each created wall is counted once, not once by the walk and again by
+    // the overlay loop (the panel shows this as "walls considered").
+    expect(onGround.considered).toBe(before + ground.length);
+  });
+
+  it('follows a created wall moved to another storey by an edit of its containment', async () => {
+    const { store, view, editor } = await session();
+    const level1 = addStorey(editor);
+    const { wallIds, relIds } = addRoom(editor, store, view, 42, 100);
+    // Re-point every containment relationship at Level 1 (RelatingStructure).
+    for (const rel of relIds) editor.setPositionalAttribute(rel, 5, `#${level1}`);
+    const onGround = extractWallSegmentsForStorey(store, 42, view);
+    for (const id of wallIds) expect(onGround.contributingWallIds).not.toContain(id);
+    const onLevel1 = extractWallSegmentsForStorey(store, level1, view);
+    expect([...onLevel1.contributingWallIds].sort()).toEqual([...wallIds].sort());
+  });
+
+  it('includes a created wall contained in a created space aggregated under the storey', async () => {
+    const { store, view, editor } = await session();
+    const { wallIds, relIds } = addRoom(editor, store, view, 42, 100);
+    const space = editor.addEntity('IfcSpace', [
+      '0Space00000000000000009', null, 'Room', null, null, null, null, null, '.ELEMENT.', null, null,
+    ]).expressId;
+    editor.addEntity('IfcRelAggregates', ['0Aggr00000000000000009', null, null, null, '#42', [`#${space}`]]);
+    // The walls now sit in the space, which sits in the storey.
+    for (const rel of relIds) editor.setPositionalAttribute(rel, 5, `#${space}`);
+    const onGround = extractWallSegmentsForStorey(store, 42, view);
+    for (const id of wallIds) expect(onGround.contributingWallIds).toContain(id);
   });
 });

@@ -237,7 +237,8 @@ export function extractWallSegmentsForStorey(
     contributingWallIds: contributing,
     wallThicknesses,
     skipped,
-    considered: dividerIds.length + overlayCount,
+    // dividerIds already holds the created dividers on this storey (#5642).
+    considered: dividerIds.length,
     lengthUnitScale,
   };
 }

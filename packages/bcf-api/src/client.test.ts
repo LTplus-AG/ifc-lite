@@ -9,7 +9,7 @@ import {
 } from '@ifc-lite/opencde-foundation';
 import { describe, expect, it } from 'vitest';
 import { BcfApiClient, normalizeBcfBaseUrl } from './client.js';
-import { BcfApiError } from './errors.js';
+import { BcfApiError, BcfAuthenticationError } from './errors.js';
 import type { BcfApiVersion, FetchLike } from './types.js';
 
 interface RecordedRequest {
@@ -40,8 +40,21 @@ describe('bcf-api builds on @ifc-lite/opencde-foundation, not a parallel copy of
     // These are the SAME class/function objects, not lookalikes: a fork back
     // to bcf-api-local implementations would keep every other test in this
     // file green while failing only these identity checks.
-    expect(BcfApiError).toBe(FoundationApiError);
     expect(normalizeBcfBaseUrl).toBe(normalizeApiBaseUrl);
+    // The error classes are Foundation subclasses, so every BCF error is a
+    // Foundation error too.
+    expect(new BcfApiError('x', { status: 500, url: 'https://host' })).toBeInstanceOf(FoundationApiError);
+  });
+
+  it('keeps the historical error names for directly constructed BCF errors too (#5438 review)', () => {
+    const apiError = new BcfApiError('x', { status: 500, url: 'https://host' });
+    expect(apiError.name).toBe('BcfApiError');
+    const authError = new BcfAuthenticationError('y', { status: 400, url: 'https://host/token', errorCode: 'invalid_grant' });
+    expect(authError.name).toBe('BcfAuthenticationError');
+    expect(authError.errorCode).toBe('invalid_grant');
+    // As before the Foundation extraction, an authentication error is a BcfApiError.
+    expect(authError).toBeInstanceOf(BcfApiError);
+    expect(new FoundationApiError('z', { status: 500, url: 'https://host' })).not.toBeInstanceOf(BcfApiError);
   });
 
   it('BcfApiClient is a FoundationApiClient carrying BCF resource methods', () => {

@@ -5028,6 +5028,7 @@
     "DocumentVersion: interface",
     "DocumentVersionLinks: interface",
     "DocumentVersions: interface",
+    "DocumentVersionsPoll: interface",
     "DocumentsApiClient: class",
     "DocumentsApiClientOptions: interface",
     "DocumentsApiError: class",

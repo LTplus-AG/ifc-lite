@@ -34,6 +34,12 @@ export interface DocumentsApiClientOptions extends FoundationHttpClientOptions {
   baseUrl: string;
 }
 
+/** A `queryDocumentVersions` answer, with the ETag to send next time (`null` when the server sent none). */
+export interface DocumentVersionsPoll {
+  readonly result: DocumentQueryResult;
+  readonly etag: string | null;
+}
+
 /**
  * Client for the buildingSMART OpenCDE Documents API 1.0
  * (https://github.com/buildingSMART/documents-API). Unlike BCF, most of this
@@ -101,12 +107,14 @@ export class DocumentsApiClient extends FoundationHttpClient {
    * `POST /document-versions`: the latest version of each of `documentIds`,
    * in one call — meant for periodic polling of a tracked collection.
    * `ifNoneMatch`, when given the ETag from a previous call, lets the server
-   * answer 304 (returned here as `null`) when nothing changed.
+   * answer 304 (returned here as `null`) when nothing changed. The response's
+   * own ETag is returned with the result: it is what the NEXT call passes, so
+   * dropping it made the polling flow impossible to start (#5438 review).
    */
   async queryDocumentVersions(
     documentIds: string[],
     ifNoneMatch?: string,
-  ): Promise<DocumentQueryResult | null> {
+  ): Promise<DocumentVersionsPoll | null> {
     const url = `${this.baseUrl}/document-versions`;
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (ifNoneMatch) headers['If-None-Match'] = ifNoneMatch;
@@ -125,7 +133,7 @@ export class DocumentsApiClient extends FoundationHttpClient {
         url,
       });
     }
-    return (await response.json()) as DocumentQueryResult;
+    return { result: (await response.json()) as DocumentQueryResult, etag: response.headers.get('ETag') };
   }
 
   // -- Upload flow (swagger `Upload` tag) --------------------------------------

@@ -10,7 +10,7 @@
  * `@ifc-lite/opencde-foundation`'s.
  */
 
-export { DocumentsApiClient, type DocumentsApiClientOptions } from './client.js';
+export { DocumentsApiClient, type DocumentsApiClientOptions, type DocumentVersionsPoll } from './client.js';
 
 export {
   discoverDocumentsService,

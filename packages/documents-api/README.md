@@ -48,8 +48,10 @@ import { DocumentsApiClient } from '@ifc-lite/documents-api';
 declare const client: DocumentsApiClient;
 declare const previousEtag: string | undefined;
 
-const result = await client.queryDocumentVersions(['doc-1', 'doc-2'], previousEtag);
-// null when nothing changed since previousEtag (the server answered 304)
+const poll = await client.queryDocumentVersions(['doc-1', 'doc-2'], previousEtag);
+// null when nothing changed since previousEtag (the server answered 304);
+// otherwise poll.result holds the versions and poll.etag is what to send next time
+const nextEtag = poll?.etag ?? previousEtag;
 ```
 
 ## Upload a file

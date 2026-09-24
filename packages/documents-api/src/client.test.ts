@@ -114,8 +114,10 @@ describe('DocumentsApiClient query/polling flow', () => {
       jsonResponse({ versions: [DOCUMENT_VERSION] }, 200, { ETag: 'v1' }),
     );
     const client = new DocumentsApiClient({ baseUrl: 'https://cde.example/documents/1.0', fetchFn });
-    const result = await client.queryDocumentVersions(['d1', 'd2'], 'prev-etag');
-    expect(result?.versions).toHaveLength(1);
+    const poll = await client.queryDocumentVersions(['d1', 'd2'], 'prev-etag');
+    expect(poll?.result.versions).toHaveLength(1);
+    // The response's ETag comes back, so the next poll can send it.
+    expect(poll?.etag).toBe('v1');
     expect(requests[0].url).toBe('https://cde.example/documents/1.0/document-versions');
     expect(JSON.parse(String(requests[0].init?.body))).toEqual({ document_ids: ['d1', 'd2'] });
     expect(new Headers(requests[0].init?.headers).get('If-None-Match')).toBe('prev-etag');

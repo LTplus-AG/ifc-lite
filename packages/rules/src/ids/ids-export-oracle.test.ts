@@ -97,6 +97,15 @@ function rule(id: string, requirement: FilterRule[]): InformationRule {
   };
 }
 
+/** The millimetre model with Wall B's width recorded with an explicit METRE unit. */
+async function parseMixedUnits(): Promise<IfcDataStore> {
+  const text = IFC(1000)
+    .replace("#440= IFCQUANTITYLENGTH('Width',$,$,200,$);", "#440= IFCQUANTITYLENGTH('Width',$,#32,0.2,$);\n#32= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);");
+  assert.notEqual(text, IFC(1000), 'fixture edit applied');
+  const bytes = new TextEncoder().encode(text);
+  return new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+}
+
 /** The oracle rule set, its numeric operands in the model's own units (`k` per metre). */
 const ruleSetFor = (k: 1 | 1000): RuleSetFile => ({
   version: 1,
@@ -178,6 +187,10 @@ describe('exported IDS gives the rule engine\'s verdicts (#5225)', () => {
     assert.ok(noModels.refused.some((r) => r.ruleId === 'width-gt' && r.reasons.some((x) => /needs a loaded model/.test(x))));
     const mixed = ruleSetToIds(ruleSet, { models: [{ id: 'm', store: await parse(1) }, { id: 'mm', store: await parse(1000) }] });
     assert.ok(mixed.refused.some((r) => r.ruleId === 'width-gt' && r.reasons.some((x) => /different units/.test(x))));
+    // Within ONE model too (review, #5432): an explicit METRE unit on one
+    // element next to the project millimetre on another is refused.
+    const oneModel = ruleSetToIds(ruleSet, { models: [{ id: 'mixed', store: await parseMixedUnits() }] });
+    assert.ok(oneModel.refused.some((r) => r.ruleId === 'width-gt' && r.reasons.some((x) => /different units/.test(x))));
     // Unit-free checks are unaffected.
     assert.ok(mixed.exportedRuleIds.includes('fire-eq'));
   });

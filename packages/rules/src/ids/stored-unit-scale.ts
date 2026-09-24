@@ -6,10 +6,11 @@
  * What unit a property or quantity is stored in, across the loaded models,
  * so the IDS export can state a model-unit bound in SI (#5225 decision).
  *
- * For each model, the first element carrying the subject is found with the
- * search evaluator (limit 1) and read with `readSubject`, the same reader
- * the rule engine compares with. Every model that has the value must agree
- * on its SI factor; a disagreement, or no model having the value at all, is
+ * Every element carrying the subject, in every model, is found with the
+ * search evaluator and read with `readSubject`, the same reader the rule
+ * engine compares with. Every value must be recorded with the same SI factor
+ * (an explicit `Unit` on one element can differ from the project unit on
+ * another); mixed factors, or no element having the value at all, is
  * `unknown` with the reason, and the export refuses that rule.
  */
 
@@ -39,16 +40,19 @@ export function storedUnitScaleOf(models: ReadonlyArray<EvaluatorModel>): Stored
     const scales = new Set<number | 'unitless'>();
     for (const model of models) {
       if (!model.store) continue;
-      const [first] = evaluateFilterRules(model.id, model.store, [presenceProbe(rule)], 'AND', { limit: 1 });
-      if (!first) continue;
-      const subject = readSubject(rule, { store: model.store, expressId: first.expressId });
-      for (const scale of subject.valueSiScales ?? []) scales.add(scale ?? 'unitless');
+      const carriers = evaluateFilterRules(model.id, model.store, [presenceProbe(rule)], 'AND', { limit: Number.MAX_SAFE_INTEGER });
+      for (const element of carriers) {
+        const subject = readSubject(rule, { store: model.store, expressId: element.expressId });
+        for (const scale of subject.valueSiScales ?? []) scales.add(scale ?? 'unitless');
+        if (scales.size > 1) break;
+      }
+      if (scales.size > 1) break;
     }
     let result: StoredUnitScale;
     if (scales.size === 0) {
       result = { kind: 'unknown', reason: `no loaded model has ${label(rule)}, so its unit (and the SI value IDS needs) is unknown` };
     } else if (scales.size > 1) {
-      result = { kind: 'unknown', reason: `the loaded models record ${label(rule)} in different units, so no single SI value matches all of them` };
+      result = { kind: 'unknown', reason: `${label(rule)} is recorded in different units across the loaded elements, so no single SI value matches all of them` };
     } else {
       const [only] = scales;
       result = only === 'unitless' ? { kind: 'unitless' } : { kind: 'scale', scale: only };

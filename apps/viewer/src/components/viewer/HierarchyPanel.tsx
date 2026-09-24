@@ -24,6 +24,7 @@ import { useHierarchyTree } from './hierarchy/useHierarchyTree';
 import { effectiveGroupAssignments, effectiveGroupMembers } from './hierarchy/effectiveGroupEntities';
 import { computeTypeIsolationLabel } from './hierarchy/typeIsolationLabel';
 import { HierarchyNode } from './hierarchy/HierarchyNode';
+import { useConfirmRemoveModel } from './hierarchy/useConfirmRemoveModel';
 import { SectionHeader } from './hierarchy/SectionHeader';
 import { useModelRowSize } from './hierarchy/ModelRowTags';
 import { ModelsSectionHeader, useModelTagView } from './hierarchy/ModelsSectionHeader';
@@ -276,11 +277,7 @@ export function HierarchyPanel() {
     }
   }, [models, setModelVisibility]);
 
-  // Remove model
-  const handleRemoveModel = useCallback((modelId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    removeModel(modelId);
-  }, [removeModel]);
+  const { handleRemoveModel, removeModelDialog } = useConfirmRemoveModel(removeModel);
 
   const handleSyncSourceModel = useCallback(async (modelId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -928,6 +925,7 @@ export function HierarchyPanel() {
   if (isMultiModel && groupingMode === 'spatial') {
     return (
       <div ref={containerRef} {...tourAnchor(TOUR_ANCHORS.hierarchyPanel)} className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
+        {removeModelDialog}
         {/* Search Header */}
         <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
           <Input
@@ -1051,6 +1049,7 @@ export function HierarchyPanel() {
   // Single model layout
   return (
     <div {...tourAnchor(TOUR_ANCHORS.hierarchyPanel)} className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
+      {removeModelDialog}
       {/* Header */}
       <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
         <Input

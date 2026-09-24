@@ -2,12 +2,17 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Axis-conditioning tests for `obb_penetration_depth` — mirrors the
+//! Axis-conditioning tests for `obb_penetration` — mirrors the
 //! `axis conditioning` describe block in
 //! `packages/clash/src/engine-ts/obb.test.ts` (review: #2536). Same fixtures,
 //! same tolerances, so the two kernels are pinned to the same behaviour.
 
-use super::{is_through_penetration, obb_penetration_depth, Obb, AXIS_NOISE_ULPS, OBB_EPS};
+use super::{is_through_penetration, obb_penetration, Obb, AXIS_NOISE_ULPS, OBB_EPS};
+
+/// The MTD alone; most tests here are about the depth, not its axis.
+fn obb_penetration_depth(a: &Obb, b: &Obb) -> Option<f64> {
+    obb_penetration(a, b).map(|p| p.depth)
+}
 use crate::vec3::{cross, dot, Vec3};
 
 /// Rodrigues rotation of `v` by `angle` radians about the unit axis `w`.

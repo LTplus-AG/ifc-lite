@@ -9,9 +9,11 @@
 //! - JSON: ~30KB per mesh with ~500 vertices
 //! - Parquet: ~2KB per mesh (15x smaller)
 
-use crate::services::parquet_layout::ParquetLayout;
-use crate::services::parquet_mesh_tables::{build_mesh_tables, ShapePlan};
+use crate::services::parquet_layout::{ParquetLayout, StreamShapes};
+use crate::services::parquet_mesh_tables::build_mesh_tables;
 use crate::services::parquet_schema::{index_schema, mesh_schema, vertex_schema};
+use crate::services::parquet_shape_plan::ShapePlan;
+use crate::services::parquet_stream_shapes::{PlannedBatch, StreamShapePlanner};
 use crate::types::MeshData;
 use arrow::datatypes::{DataType, Schema};
 use arrow::record_batch::RecordBatch;
@@ -58,9 +60,10 @@ pub fn serialize_to_parquet(meshes: &[MeshData]) -> Result<Bytes, ParquetError> 
 
 /// Serialize one batch under the layout the client asked for, sharing nothing.
 ///
-/// The streaming route's per-batch blobs: `SharedShapes` here means only that
-/// the mesh table carries identity `rot0..rot8`, since sharing across a batch
-/// boundary is not something a per-batch writer can see.
+/// The batch-local streaming route's per-batch blobs: `SharedShapes` here
+/// means only that the mesh table carries identity `rot0..rot8`, since each
+/// blob must decode on its own. Sharing across batches is the cross-batch
+/// stream's, planned by `parquet_stream_shapes::StreamShapePlanner` (#5407).
 pub fn serialize_batch_with_layout(
     meshes: &[MeshData],
     layout: ParquetLayout,
@@ -194,12 +197,13 @@ fn frame_combined_sections(mesh: &[u8], vertex: &[u8], index: &[u8]) -> Result<B
 /// columns carry GLOBAL offsets (whole-model), matching what the one-shot
 /// `serialize_to_parquet` emits for the cached fast-path replay.
 pub struct StreamingParquetCacheWriter {
-    layout: ParquetLayout,
+    /// Whole-stream offsets for [`Self::append`]'s unshared batches. A
+    /// cross-batch stream plans with its own planner and hands the result to
+    /// [`Self::append_planned`], so this one is then never advanced.
+    planner: StreamShapePlanner,
     mesh_w: ArrowWriter<Vec<u8>>,
     vert_w: ArrowWriter<Vec<u8>>,
     idx_w: ArrowWriter<Vec<u8>>,
-    vertex_offset: u32,
-    index_offset: u32,
     mesh_count: usize,
 }
 
@@ -218,58 +222,40 @@ impl StreamingParquetCacheWriter {
             Ok(ArrowWriter::try_new(Vec::new(), schema, Some(props))?)
         }
         Ok(Self {
-            layout,
+            planner: StreamShapePlanner::new(layout, StreamShapes::BatchLocal),
             mesh_w: writer(mesh_schema(layout.has_rotation()))?,
             vert_w: writer(vertex_schema())?,
             idx_w: writer(index_schema())?,
-            vertex_offset: 0,
-            index_offset: 0,
             mesh_count: 0,
         })
     }
 
-    /// Append one batch as one row group per table, advancing the global
-    /// offsets. The meshes can be dropped by the caller afterwards.
+    /// Append one batch, every mesh with its own geometry, as one row group
+    /// per table at whole-stream offsets. The meshes can be dropped by the
+    /// caller afterwards.
     pub fn append(&mut self, meshes: &[MeshData]) -> Result<(), ParquetError> {
         if meshes.is_empty() {
             return Ok(());
         }
-        let (mesh_batch, vertex_batch, index_batch) = build_mesh_tables(
-            meshes,
-            &ShapePlan::Identity,
-            self.layout,
-            self.vertex_offset,
-            self.index_offset,
-        )?;
-        self.mesh_w.write(&mesh_batch)?;
-        self.mesh_w.flush()?;
-        self.vert_w.write(&vertex_batch)?;
-        self.vert_w.flush()?;
-        self.idx_w.write(&index_batch)?;
-        self.idx_w.flush()?;
-        for mesh in meshes {
-            // The mesh-table start columns are u32; a model that overflows
-            // them must fail the cache fill loudly, not wrap into offsets
-            // that decode as garbage.
-            let verts = u32::try_from(mesh.positions.len() / 3)
-                .ok()
-                .and_then(|v| self.vertex_offset.checked_add(v));
-            let idxs = u32::try_from(mesh.indices.len())
-                .ok()
-                .and_then(|v| self.index_offset.checked_add(v));
-            match (verts, idxs) {
-                (Some(v), Some(i)) => {
-                    self.vertex_offset = v;
-                    self.index_offset = i;
-                }
-                _ => {
-                    return Err(ParquetError::Overflow(
-                        "global vertex/index offsets exceed u32".to_string(),
-                    ));
-                }
-            }
+        let batch = self.planner.plan(meshes, None)?;
+        self.append_planned(&batch)
+    }
+
+    /// Append a batch some other [`StreamShapePlanner`] already planned (the
+    /// cross-batch stream, #5407), as one row group per table. The caller's
+    /// planner owns the offsets; the tables are written exactly as planned, so
+    /// the cached blob and the client's batch agree on every range.
+    pub fn append_planned(&mut self, batch: &PlannedBatch) -> Result<(), ParquetError> {
+        if batch.mesh_count() == 0 {
+            return Ok(());
         }
-        self.mesh_count += meshes.len();
+        self.mesh_w.write(&batch.mesh)?;
+        self.mesh_w.flush()?;
+        self.vert_w.write(&batch.vertex)?;
+        self.vert_w.flush()?;
+        self.idx_w.write(&batch.index)?;
+        self.idx_w.flush()?;
+        self.mesh_count += batch.mesh_count();
         Ok(())
     }
 

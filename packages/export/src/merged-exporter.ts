@@ -42,7 +42,7 @@ import {
   EMPTY_MODEL_VIEW,
   type EmptyContainerModelView,
 } from './merged-empty-containers.js';
-import { skipRedundantRelAggregates, applyRelAggregateStrip, collectRelAggregatePairs } from './merged-rel-aggregates.js';
+import { claimAggregationParents, applyRelAggregateStrip } from './merged-rel-aggregates.js';
 
 /**
  * UTF-8 decode of `[start, end)` of a model's source, accepting either the raw
@@ -104,8 +104,8 @@ interface MergeSetup {
   firstProjectIds: number[];
   /** Spatial lookup built from the primary model. */
   spatialLookup: SpatialLookup;
-  /** Aggregation edges actually declared by the primary model. */
-  primaryAggregatePairs: Set<string>;
+  /** Final ids that already have an IfcRelAggregates parent: primary's, grown per later model (#5471). */
+  aggregatedObjects: Set<number>;
   /** Length unit scale of the primary model — the unit other models merge into. */
   primaryScale: number;
   /** Area unit scale (m² per unit) of the primary model — target for area values. */
@@ -173,11 +173,9 @@ interface ModelMergePlan {
   droppedContainerIds?: ReadonlySet<number>;
   /**
    * Local express id of a kept (not fully redundant) IFCRELAGGREGATES → the
-   * local ids of its RelatedObjects members that must be dropped from the
-   * emitted list because they were unified with an object the first model's
-   * OWN relationship already aggregates the same RelatingObject to (see
-   * {@link MergedExporter.skipRedundantRelAggregates}). Emitting them
-   * unmodified would list that member twice under the same parent.
+   * local ids of its RelatedObjects members to drop from the written list
+   * because they already have an aggregation parent in the output (#5471,
+   * see `claimAggregationParents`).
    */
   relAggregateStrip: Map<number, Set<number>>;
 }
@@ -519,8 +517,7 @@ export class MergedExporter {
       const source = model.dataStore.source;
       if (!source || source.length === 0) continue;
 
-      // Complete view over byId + any deferred property atoms, so the closure
-      // walk and the emit loop both reach every entity the source defines.
+      // Include deferred property atoms in both closure and emission.
       const completeIndex = getCompleteEntityIndex(model.dataStore);
       const visibility = this.computeIncludedEntityIds(model, options, completeIndex, source);
 
@@ -529,9 +526,12 @@ export class MergedExporter {
       if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings); }
       const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId);
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
+      this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
       const written = (id: number) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id);
-      if (schema === 'IFC2X3') slotFill.prefer(firstWrittenOwnerHistoryRef(model.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), written, offset));
-
+      if (schema === 'IFC2X3') {
+        // @raw-entity-enumeration-ok sync merge rejects overlays, so this is an unedited source index
+        slotFill.prefer(firstWrittenOwnerHistoryRef(model.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), written, offset));
+      }
       const sourceSchema = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
       for (const [expressId, entityRef] of completeIndex) {
         if (!written(expressId)) continue;
@@ -668,8 +668,12 @@ export class MergedExporter {
       if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings); }
       const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId);
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
+      this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
       const written = (id: number) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id);
-      if (schema === 'IFC2X3') slotFill.prefer(firstWrittenOwnerHistoryRef(model.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), written, offset));
+      if (schema === 'IFC2X3') {
+        // @raw-entity-enumeration-ok async merge first bakes and reparses edited models into source snapshots
+        slotFill.prefer(firstWrittenOwnerHistoryRef(model.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), written, offset));
+      }
       const sourceSchema = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
 
       let entityCount = 0;
@@ -820,6 +824,16 @@ export class MergedExporter {
     };
   }
 
+  /** One IfcRelAggregates parent per object (#5471): record the members this model writes, stripping ones already parented. */
+  private claimParents(model: MergeModelInput, plan: ModelMergePlan, visibility: { included: ReadonlySet<number>; hiddenProductIds: ReadonlySet<number> } | null, completeIndex: CompleteEntityIndex, dedupe: boolean, setup: MergeSetup): void {
+    const hidden = visibility?.hiddenProductIds;
+    claimAggregationParents({
+      ...plan, dataStore: model.dataStore, idOffset: setup.modelOffsets.get(model.id)!, dedupe,
+      isIncluded: id => visibility === null || visibility.included.has(id),
+      isEmitted: id => !plan.droppedContainerIds?.has(id) && (hidden === undefined || (!hidden.has(id) && completeIndex.has(id))),
+    }, setup.aggregatedObjects, this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this));
+  }
+
   /** Fold a model's dropped containers into its plan: the container lines are
    *  skipped outright, and {@link renderEntity} narrows every line naming one. */
   private applyContainerDrops(plan: ModelMergePlan, dropped: ReadonlySet<number> | undefined): void {
@@ -879,9 +893,7 @@ export class MergedExporter {
       firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale),
       firstProjectIds: this.findEntitiesByType(firstModel.dataStore, 'IFCPROJECT'),
       spatialLookup: this.buildSpatialLookup(firstModel.dataStore),
-      primaryAggregatePairs: collectRelAggregatePairs(
-        firstModel.dataStore, this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this), firstModelOffset,
-      ),
+      aggregatedObjects: new Set(),
       primaryScale,
       primaryAreaScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'AREAUNIT', primaryScale, 2),
       primaryVolumeScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'VOLUMEUNIT', primaryScale, 3),
@@ -962,6 +974,7 @@ export class MergedExporter {
 
     for (const m of listAttr.matchAll(/#(\d+)/g)) {
       const uid = parseInt(m[1], 10);
+      // @raw-entity-enumeration-ok unit resolution reads the merged input after overlay baking
       const uref = dataStore.entityIndex.byId.get(uid);
       const utype = (uref?.type ?? '').toUpperCase();
 
@@ -1048,12 +1061,12 @@ export class MergedExporter {
     const isolatedIds = options.isolatedEntityIdsByModel?.get(model.id) ?? null;
     const { roots, hiddenProductIds } = getVisibleEntityIds(model.dataStore, hiddenIds, isolatedIds);
     const included = collectReferencedEntityIds(roots, source, completeIndex, hiddenProductIds);
-    // Second pass: style entities referencing included geometry (see style-closure.ts).
+    // @raw-entity-enumeration-ok style rescue for included geometry reads the materialized merge input after overlay baking
     collectStyleEntities(included, source, {
       byId: completeIndex,
       byType: model.dataStore.entityIndex.byType,
     }, hiddenProductIds);
-    // Third pass: rescue IFCMAPCONVERSION/IFCPROJECTEDCRS — see georef-closure.ts.
+    // @raw-entity-enumeration-ok IFCMAPCONVERSION/IFCPROJECTEDCRS rescue reads the materialized merge input after overlay baking
     collectGeoreferencingEntities(
       included, source,
       { byId: completeIndex, byType: model.dataStore.entityIndex.byType },
@@ -1116,14 +1129,6 @@ export class MergedExporter {
       // Under normalize, this model's raw elevations are in its own unit, so the
       // elevation match is done in the primary unit (rawElevation * lengthFactor).
       this.unifySpatialEntities(model.dataStore, setup.spatialLookup, setup.firstModelOffset, lengthFactor, sharedRemap, skipEntityIds, setup);
-
-      // Skip IfcRelAggregates that become fully redundant after unification,
-      // and strip individually-duplicated members from ones only partially so.
-      skipRedundantRelAggregates(
-        model.dataStore, sharedRemap, skipEntityIds, relAggregateStrip,
-        setup.primaryAggregatePairs,
-        this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this),
-      );
     }
 
     if (!isFirstModel) {
@@ -1225,13 +1230,10 @@ export class MergedExporter {
       entityText = kept;
     }
 
-    // Drop RelatedObjects members a partially redundant IFCRELAGGREGATES
-    // already shares with the first model's OWN relationship to the same
-    // (now-unified) RelatingObject — see skipRedundantRelAggregates /
-    // applyRelAggregateStrip (merged-rel-aggregates.ts). Runs in LOCAL id
-    // space, before the remap below. `null` (the filter would withhold the
-    // whole line) propagates like the two passes above: every edge the line
-    // declared already exists in the primary model.
+    // Drop RelatedObjects members of a partially redundant IFCRELAGGREGATES
+    // that already have an aggregation parent in the output (#5471) — see
+    // claimAggregationParents / applyRelAggregateStrip. Runs in LOCAL id
+    // space, before the remap below. `null` propagates like the passes above.
     const stripped = applyRelAggregateStrip(entityText, localId, plan.relAggregateStrip);
     if (stripped === null) return null;
     entityText = stripped;
@@ -1290,16 +1292,14 @@ export class MergedExporter {
     return finalText;
   }
 
-  /**
-   * Find entity IDs of shared infrastructure types in a data store.
-   * Returns a map of uppercase type name → array of expressIds.
-   */
+  /** Shared infrastructure ids by uppercase type. */
   private findInfrastructureEntities(
     dataStore: IfcDataStore,
   ): Map<string, number[]> {
     const result = new Map<string, number[]>();
 
     for (const type of SHARED_INFRASTRUCTURE_TYPES) {
+      // @raw-entity-enumeration-ok infrastructure lookup receives a baked/reparsed merge input
       const ids = dataStore.entityIndex.byType.get(type) ?? [];
       if (ids.length > 0) {
         result.set(type, [...ids]);
@@ -1309,10 +1309,9 @@ export class MergedExporter {
     return result;
   }
 
-  /**
-   * Find entity IDs of a specific type in a data store.
-   */
+  /** IDs of one source type in the materialized merge input. */
   private findEntitiesByType(dataStore: IfcDataStore, typeUpper: string): number[] {
+    // @raw-entity-enumeration-ok every caller supplies a merge input after overlay baking
     return dataStore.entityIndex.byType.get(typeUpper) ?? [];
   }
 
@@ -1523,10 +1522,7 @@ export class MergedExporter {
     return isNaN(num) ? undefined : num;
   }
 
-  /**
-   * Extract a specific attribute (by 0-based index) from a STEP entity's
-   * raw text. Returns the raw string value (e.g., "'Name'", "$", "#123").
-   */
+  /** Raw STEP attribute token at a 0-based index (e.g. "'Name'", "$", "#123"). */
   private extractStepAttribute(
     expressId: number,
     dataStore: IfcDataStore,
@@ -1534,6 +1530,7 @@ export class MergedExporter {
   ): string | null {
     const source = dataStore.source;
     if (!source) return null;
+    // @raw-entity-enumeration-ok source-byte attribute read on the baked/reparsed merge input
     const ref = dataStore.entityIndex.byId.get(expressId);
     if (!ref) return null;
 

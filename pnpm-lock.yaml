@@ -251,6 +251,9 @@ importers:
       '@radix-ui/react-label':
         specifier: ^2.1.15
         version: 2.1.15(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@radix-ui/react-popover':
+        specifier: ^1.1.23
+        version: 1.1.23(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@radix-ui/react-progress':
         specifier: ^1.1.16
         version: 1.1.16(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -608,14 +611,14 @@ importers:
         specifier: ^9.27.0
         version: 9.27.0
       '@ifc-lite/data':
-        specifier: ^2.0.0
-        version: 2.0.0
+        specifier: ^5.3.0
+        version: 5.3.0
       '@ifc-lite/geometry':
-        specifier: ^2.1.0
-        version: 2.1.0
+        specifier: ^7.5.0
+        version: 7.5.0
       '@ifc-lite/parser':
-        specifier: ^3.0.0
-        version: 3.0.0
+        specifier: ^8.0.0
+        version: 8.0.0
     devDependencies:
       typescript:
         specifier: ^6.0.3
@@ -677,14 +680,14 @@ importers:
   examples/threejs-viewer:
     dependencies:
       '@ifc-lite/data':
-        specifier: ^2.0.0
-        version: 2.0.0
+        specifier: ^5.3.0
+        version: 5.3.0
       '@ifc-lite/geometry':
-        specifier: ^2.1.0
-        version: 2.1.0
+        specifier: ^7.5.0
+        version: 7.5.0
       '@ifc-lite/parser':
-        specifier: ^3.0.0
-        version: 3.0.0
+        specifier: ^8.0.0
+        version: 8.0.0
       three:
         specifier: ^0.186.0
         version: 0.186.0
@@ -1042,6 +1045,9 @@ importers:
       '@types/node':
         specifier: ^26.6.1
         version: 26.6.2
+      esbuild:
+        specifier: ^0.28.1
+        version: 0.28.2
       proj4:
         specifier: ^2.22.0
         version: 2.22.0(geotiff@3.0.5)
@@ -1662,6 +1668,9 @@ importers:
 
   packages/sandbox:
     dependencies:
+      '@ifc-lite/extensions':
+        specifier: workspace:^
+        version: link:../extensions
       '@ifc-lite/sdk':
         specifier: workspace:^
         version: link:../sdk
@@ -2338,29 +2347,35 @@ packages:
   '@iconify/utils@3.1.7':
     resolution: {integrity: sha512-JZHlwdID+dy+lTgbYC8NEC4zeugqeYsc6jewvzb4c58kHauJn+X7rNwQjxz5p2qSjqaEeQoLkCIQ9v/H4PK0/w==}
 
-  '@ifc-lite/data@2.0.0':
-    resolution: {integrity: sha512-ZgCnit07avFUd1xxJZGq9eyQC2zlqbynZNhIw2Glm0/zmG0xcVS3SoAa2LbAoLOgH6E7RUAfyMirNFvt1mvfYw==}
+  '@ifc-lite/data@5.3.0':
+    resolution: {integrity: sha512-Vfy718RAz7lmqdKV7sOHwaFdPyzsdQ02xgTf1nioqoBhXfb+8tGj/Uj4m+h9shxLyhlwlWBJJIEIIPCgZCVJfA==}
 
-  '@ifc-lite/encoding@1.14.6':
-    resolution: {integrity: sha512-B3zTnUm8mQBa6kXNy7g2ad+WSvIChk8VVj87oFtmuMnipj6Kd9iwUGNVL3R/WEYhWgKSUkkXYTUvaDehI+eFqQ==}
+  '@ifc-lite/encoding@2.2.0':
+    resolution: {integrity: sha512-YfnM5G4zS93y8Dh0rKUfayBPczOwIBEjvmSXL2Nx5AOmLTh9/+mfyPlWIOxkP6I95uxtk6QXsUSMHFMgVY4IEg==}
 
-  '@ifc-lite/geometry@2.1.0':
-    resolution: {integrity: sha512-HWA1RW5kvZYReqYCn3ouDlrolHQgjpNnuCgdU/sKzVVPZupIiasQYZMhgkZy7T4A27jJPsbJeRJAvtta7xa8bA==}
+  '@ifc-lite/geometry@7.5.0':
+    resolution: {integrity: sha512-3j5IxCypsiylmMAlbJJGrOOCSi24EbSFBwlmYvN4AkbCDx5iVTvl3Kt3c41YrxG4KplevxhcCOpiH8m4zvRm0Q==}
 
-  '@ifc-lite/ifcx@2.1.2':
-    resolution: {integrity: sha512-7yxMY0jW7OIQdo7doKbHeKJqHD0U7ie164h+fjwYYuNmvhU8shnFf137Kp22waeLkNzkJc7pTfKLDBEyLQVsKQ==}
+  '@ifc-lite/ifcx@4.1.3':
+    resolution: {integrity: sha512-ycvNbkI3y8f2xviNoNtDalkyXc5udu1+cG9UgnDYC6bbePklrNM3K3OHSGoz1MARrYh9tLj3mKS69QI36Bv7Aw==}
 
-  '@ifc-lite/mutations@1.15.1':
-    resolution: {integrity: sha512-vz1FssQ9j7HOd3nekL8h4LEe+n1I/PAfPsyQM5z2IpodaqO8E9Nz36/St74h9S1qItKB1dqsMapThmcF6dzWhQ==}
+  '@ifc-lite/mutations@2.6.0':
+    resolution: {integrity: sha512-qOpghyDimYsBzURixtbgmtLl4/UNbKZpoeuUGHyIUOjsRoNRW5SjENCrztActJv5GaEQGI8hec8MGCfxtehmBw==}
 
-  '@ifc-lite/parser@3.0.0':
-    resolution: {integrity: sha512-aaQBILuc1EEHjo2jgpTJX69ZYpIUFbUX1EdniFF6Bvo9dR/U5ZO/3t03XtKyzyfEz8d3a3dykJpX+xtyZJLS/Q==}
+  '@ifc-lite/parser@8.0.0':
+    resolution: {integrity: sha512-4skyDV1S0wdfeIe9lc0GMXvbtYcDNZQ/11Qb24OHEzhC6IwK0z2bllWfU67rng95B+yNvNsBn06Z/ohthyCvFQ==}
 
-  '@ifc-lite/pointcloud@0.3.1':
-    resolution: {integrity: sha512-wMLXmJFUfZPT5SrDDHsw0r3w2vk2+owKDDD28+WTaOecimpmOTcYW6G7HfRnLEdp99/UeFLIQz0gSM42VLURgA==}
+  '@ifc-lite/pointcloud@0.10.0':
+    resolution: {integrity: sha512-jQIrYd2JmEtLtL62bhwMhPjcMj0T1kOjRHFsi2dIu66fRx521mIeB2v+4G+FbamO/HU0dGrJCt0fMhTH3MFn7w==}
 
-  '@ifc-lite/wasm@2.1.4':
-    resolution: {integrity: sha512-mQD1ViRt07oStJqbfLbjewDMOdUNqHsGQ6d076mPUFRbleNXXYQEHbjnmuJ9iRMdsEKiwpNHZ+Kpr1Yw1I2XLg==}
+  '@ifc-lite/regex-guard@0.2.0':
+    resolution: {integrity: sha512-s9QLHRLNWWW6l+bdlpgGSZCttyY549qZohMJg6rCKNqmUYv7nruyz6oTNhx1WwsYihNHMZM4nT1+Fxcpz7s3rw==}
+
+  '@ifc-lite/wasm-lifecycle@0.2.0':
+    resolution: {integrity: sha512-PEmr5+DfXMnjZLzeupQtiW2b7RcxjmpgLvE73lqnzeq+DUQg9dOrfkyatOQOoLW+1r3gMD3CaOFJBIB7N6L5Kg==}
+
+  '@ifc-lite/wasm@9.3.0':
+    resolution: {integrity: sha512-ICY3Jb7BU62FPIxFOF+nh8gIi+I10kWPWQgUrPG4Ab+2bXcIzjfizNczInwf8c/KN7XoKLOYD14F8DUwPp/IzA==}
 
   '@isaacs/fs-minipass@4.0.1':
     resolution: {integrity: sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w==}
@@ -3053,6 +3068,19 @@ packages:
 
   '@radix-ui/react-menu@2.1.24':
     resolution: {integrity: sha512-uW7RVuU6Lp/ZtfeY4b3kL32zccgEWvPv1+cf17ubYzHa9cL8AHokmk36cG/XEiH/smbQvumnieXX9j/e9RqJWA==}
+    peerDependencies:
+      '@types/react': '*'
+      '@types/react-dom': '*'
+      react: ^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc
+      react-dom: ^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      '@types/react-dom':
+        optional: true
+
+  '@radix-ui/react-popover@1.1.23':
+    resolution: {integrity: sha512-mw58MrBlyHWFisTOYignD0vf/3gdcgAR+9of1s9G/38CbFiUwH1nCDkc0AUM9IrXFgN5Ue8n45j9WCgyM1sbiQ==}
     peerDependencies:
       '@types/react': '*'
       '@types/react-dom': '*'
@@ -3799,9 +3827,6 @@ packages:
 
   '@tanstack/virtual-core@3.17.11':
     resolution: {integrity: sha512-+ILjvtHup6Y2hzQ6YzwMgX1Q+oQpxEGOXCEsCNaPoIP0VxMbizIBTmYTDtkerkIQS8/CbP1BRuyt8V/8BCsy1g==}
-
-  '@tauri-apps/api@2.11.0':
-    resolution: {integrity: sha512-7CinYODhky9lmO23xHnUFv0Xt43fbtWMyxZcLcRBlFkcgXKuEirBvHpmtJ89YMhyeGcq20Wuc47Fa4XjyniywA==}
 
   '@tauri-apps/api@2.11.1':
     resolution: {integrity: sha512-M2FPuYND2m+wh5hfW9ZpSdxMPdEJovPBWwoHJmwUpysTYNHaOkVFN419m/K0LIgjb/7KU2vBgsUepJWugQCvAA==}
@@ -4897,9 +4922,6 @@ packages:
 
   launch-editor@2.14.1:
     resolution: {integrity: sha512-QWBrQsMpH7gPr965dsKD/3cKWiNoTjpATQf++Xq63N6sKRGMwlVXz41O1IZTMfZQgBctD/K5Zt06+/I6pP6+HA==}
-
-  laz-perf@0.0.6:
-    resolution: {integrity: sha512-ZBqC+BBlofznDIY3SfjXDBVdIhYfz7bq8HAHztlw4XOnu++nHiWtCGPgzpdeAhPkByc68DaKNy3E3rY4XrdRtQ==}
 
   laz-perf@0.0.7:
     resolution: {integrity: sha512-2xRqm/f/2UqDS5qqkjOyDb6uVIjkVw6SGmQlMoTQliVWkZhPfIbUJTubUl3mTloaWqKcjlS/urmP1CYoxelsEg==}
@@ -6853,39 +6875,53 @@ snapshots:
       '@iconify/types': 2.0.0
       import-meta-resolve: 4.2.0
 
-  '@ifc-lite/data@2.0.0': {}
-
-  '@ifc-lite/encoding@1.14.6': {}
-
-  '@ifc-lite/geometry@2.1.0':
+  '@ifc-lite/data@5.3.0':
     dependencies:
-      '@ifc-lite/data': 2.0.0
-      '@ifc-lite/wasm': 2.1.4
+      '@ifc-lite/encoding': 2.2.0
+
+  '@ifc-lite/encoding@2.2.0': {}
+
+  '@ifc-lite/geometry@7.5.0':
+    dependencies:
+      '@ifc-lite/data': 5.3.0
+      '@ifc-lite/wasm': 9.3.0
+      '@ifc-lite/wasm-lifecycle': 0.2.0
     optionalDependencies:
-      '@tauri-apps/api': 2.11.0
+      '@tauri-apps/api': 2.11.1
 
-  '@ifc-lite/ifcx@2.1.2':
+  '@ifc-lite/ifcx@4.1.3':
     dependencies:
-      '@ifc-lite/data': 2.0.0
-      '@ifc-lite/mutations': 1.15.1
-      '@ifc-lite/pointcloud': 0.3.1
+      '@ifc-lite/data': 5.3.0
+      '@ifc-lite/mutations': 2.6.0
+      '@ifc-lite/pointcloud': 0.10.0
+      '@noble/hashes': 2.4.0
 
-  '@ifc-lite/mutations@1.15.1':
+  '@ifc-lite/mutations@2.6.0':
     dependencies:
-      '@ifc-lite/data': 2.0.0
+      '@ifc-lite/data': 5.3.0
+      '@ifc-lite/regex-guard': 0.2.0
+      '@noble/hashes': 2.4.0
 
-  '@ifc-lite/parser@3.0.0':
+  '@ifc-lite/parser@8.0.0':
     dependencies:
-      '@ifc-lite/data': 2.0.0
-      '@ifc-lite/encoding': 1.14.6
-      '@ifc-lite/ifcx': 2.1.2
-      '@ifc-lite/wasm': 2.1.4
+      '@ifc-lite/data': 5.3.0
+      '@ifc-lite/encoding': 2.2.0
+      '@ifc-lite/ifcx': 4.1.3
+      '@ifc-lite/wasm': 9.3.0
+      '@ifc-lite/wasm-lifecycle': 0.2.0
+      decimal.js: 10.6.0
+      fflate: 0.8.3
+      jszip: 3.10.2
 
-  '@ifc-lite/pointcloud@0.3.1':
+  '@ifc-lite/pointcloud@0.10.0':
     dependencies:
-      laz-perf: 0.0.6
+      laz-perf: 0.0.7
 
-  '@ifc-lite/wasm@2.1.4': {}
+  '@ifc-lite/regex-guard@0.2.0': {}
+
+  '@ifc-lite/wasm-lifecycle@0.2.0': {}
+
+  '@ifc-lite/wasm@9.3.0': {}
 
   '@isaacs/fs-minipass@4.0.1':
     dependencies:
@@ -7422,6 +7458,29 @@ snapshots:
       '@radix-ui/react-roving-focus': 1.1.19(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@radix-ui/react-slot': 1.3.3(@types/react@19.3.0)(react@19.3.0)
       '@radix-ui/react-use-callback-ref': 1.1.4(@types/react@19.3.0)(react@19.3.0)
+      aria-hidden: 1.2.6
+      react: 19.3.0
+      react-dom: 19.3.0(react@19.3.0)
+      react-remove-scroll: 2.7.2(@types/react@19.3.0)(react@19.3.0)
+    optionalDependencies:
+      '@types/react': 19.3.0
+      '@types/react-dom': 19.3.0(@types/react@19.3.0)
+
+  '@radix-ui/react-popover@1.1.23(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+    dependencies:
+      '@radix-ui/primitive': 1.1.7
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.0)
+      '@radix-ui/react-context': 1.2.2(@types/react@19.3.0)(react@19.3.0)
+      '@radix-ui/react-dismissable-layer': 1.1.19(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@radix-ui/react-focus-guards': 1.1.6(@types/react@19.3.0)(react@19.3.0)
+      '@radix-ui/react-focus-scope': 1.1.16(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@radix-ui/react-id': 1.1.4(@types/react@19.3.0)(react@19.3.0)
+      '@radix-ui/react-popper': 1.3.7(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@radix-ui/react-portal': 1.1.17(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@radix-ui/react-presence': 1.1.10(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@radix-ui/react-primitive': 2.1.10(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@radix-ui/react-slot': 1.3.3(@types/react@19.3.0)(react@19.3.0)
+      '@radix-ui/react-use-controllable-state': 1.2.6(@types/react@19.3.0)(react@19.3.0)
       aria-hidden: 1.2.6
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
@@ -8022,9 +8081,6 @@ snapshots:
       react-dom: 19.3.0(react@19.3.0)
 
   '@tanstack/virtual-core@3.17.11': {}
-
-  '@tauri-apps/api@2.11.0':
-    optional: true
 
   '@tauri-apps/api@2.11.1':
     optional: true
@@ -9133,8 +9189,6 @@ snapshots:
     dependencies:
       picocolors: 1.1.1
       shell-quote: 1.10.0
-
-  laz-perf@0.0.6: {}
 
   laz-perf@0.0.7: {}
 

@@ -169,6 +169,8 @@ await camera.animateTo(
 camera.orbit(deltaX, deltaY);   // Rotate around target
 camera.pan(deltaX, deltaY);     // Move camera sideways
 camera.zoom(delta);             // Zoom in/out
+// Zoom in toward the surface under the cursor, stopping short of it (#5393):
+// camera.zoom(delta, false, x, y, w, h, false, renderer.raycastScene(x, y)?.intersection.point);
 ```
 
 ## Section Planes
@@ -641,7 +643,6 @@ The viewer app provides a **basket** — an incremental isolation set that lets 
 | **Set** | `I` | `=` button | Set as Basket (=) | Replace basket with current selection |
 | **Add** | `+` | `+` button | Add to Basket (+) | Add current selection to basket |
 | **Remove** | `-` | `-` button | Remove from Basket (-) | Remove current selection from basket |
-| **Clear** | `Esc` | — | — | Clear basket and all filters |
 | **Show All** | `A` | Eye icon | Show All | Clear hidden/isolated state |
 
 **Workflow example:**
@@ -659,8 +660,8 @@ The toolbar `=` button shows a badge with the current basket count when active. 
 |----------|--------|
 | `Del` / `Backspace` | Hide selected entity |
 | `Space` | Hide selected entity (viewport-focused only) |
-| `A` | Show all (reset hidden + isolation) |
-| `Esc` | Reset all (clear selection, basket, isolation, tools) |
+| `A` | Show all (reset hidden, isolation and basket) |
+| `Esc` | One step per press: cancel the gesture in progress, else leave the tool, else clear the selection. Never changes visibility |
 
 ## Render Options
 

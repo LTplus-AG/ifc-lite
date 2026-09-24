@@ -144,6 +144,9 @@ interface Clash {
   rule: string;
   status: 'hard' | 'clearance' | 'touch';
   distance: number;           // signed: <0 penetration depth, >0 gap
+  distanceKind?: 'mesh' | 'estimate';  // measured on the meshes, or read off the AABBs
+  depthFloor?: number;        // hard only: f32 noise floor of `distance` along the direction it was
+                              // measured (the Hard/Touch floor); `isTouching`'s default band (#5639)
   point: [number, number, number];  // TRUE contact/closest point (world Y-up)
   bounds: AABB;               // overlap (hard) or closest-region (clearance) bounds — for framing
   severity: ClashSeverity;

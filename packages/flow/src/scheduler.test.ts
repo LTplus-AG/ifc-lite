@@ -296,3 +296,24 @@ describe('topologicalOrder / documents', () => {
     expect(checkAvailability(d, reg, { ...browser, secrets: new Set(['CDE_TOKEN']) }).map((a) => a.status)).toEqual(['ok', 'ok', 'unknown']);
   });
 });
+
+describe('volatile nodes are never memoised (#5446 review)', () => {
+  it('runs a volatile node again on a rerun with identical params, where a pure node is served from the memo', async () => {
+    let calls = 0;
+    const reg = new NodeRegistry<Host>().registerAll([{
+      type: 'test.fetch', title: 'fetch', category: 't', inputs: [], params: [], capabilities: [],
+      outputs: [{ name: 'value', type: { kind: 'scalar', access: 'item' } }],
+      volatile: true,
+      run: () => { calls += 1; return { value: calls }; },
+    }]);
+    const graph: FlowDocument = {
+      flowVersion: 1, id: 'v', name: 'v', capabilities: [], inputs: [],
+      outputs: [{ nodeId: 'f', port: 'value', label: 'v' }], nodes: [{ id: 'f', type: 'test.fetch' }], edges: [],
+    };
+    const cache = new MemoCache();
+    await runFlow(graph, { host: host(), registry: reg, cache });
+    const second = await runFlow(graph, { host: host(), registry: reg, cache });
+    expect(calls).toBe(2);
+    expect(second.reports[0].status).toBe('ok');
+  });
+});

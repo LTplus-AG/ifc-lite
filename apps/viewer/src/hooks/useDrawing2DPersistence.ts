@@ -19,9 +19,9 @@
  * and why it derives its scoping hash synchronously rather than from a
  * variable this hook owns.
  *
- * Mount once, unconditionally (`useDrawing2DPersistence()` near the top of
- * `Section2DPanel.tsx`, before its `if (!panelVisible) return null`) so
- * restore runs as soon as a model loads even if the 2D panel is closed.
+ * Mounted once, unconditionally, in `DrawingRuntimeHost` (#5492), which has
+ * no view of its own, so restore runs as soon as a model loads even with no
+ * drawing view on screen.
  *
  * `dxfUnderlays` (issue #4153, reopened) rides the same resolved hash but is
  * NOT one of `drawingMarkupSave.ts`'s five committed fields — it is

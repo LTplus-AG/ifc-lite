@@ -29,8 +29,6 @@ export interface SpaceMouseSlice {
   spaceMouseError: string | null;
   /** User sensitivity multiplier (persisted). */
   spaceMouseSensitivity: number;
-  /** Whether the SpaceMouse panel is open (session only). */
-  spaceMousePanelOpen: boolean;
   /**
    * Connect action registered by `useSpaceMouseControls` (which owns the
    * renderer). The panel calls this inside a click handler so WebHID's
@@ -50,8 +48,6 @@ export interface SpaceMouseSlice {
   setSpaceMouseConnected: (connected: boolean, deviceName?: string | null) => void;
   setSpaceMouseError: (error: string | null) => void;
   setSpaceMouseSensitivity: (value: number) => void;
-  setSpaceMousePanelOpen: (open: boolean) => void;
-  toggleSpaceMousePanel: () => void;
   setSpaceMouseConnect: (connect: (() => void) | null) => void;
   setSpaceMouseDisconnect: (disconnect: (() => void) | null) => void;
   setSpaceMouseGetDiagnostics: (getDiagnostics: (() => SpaceMouseDiagnostics) | null) => void;
@@ -90,7 +86,6 @@ export const createSpaceMouseSlice: StateCreator<SpaceMouseSlice, [], [], SpaceM
   spaceMouseDeviceName: null,
   spaceMouseError: null,
   spaceMouseSensitivity: loadSensitivity(),
-  spaceMousePanelOpen: false,
   spaceMouseConnect: null,
   spaceMouseDisconnect: null,
   spaceMouseGetDiagnostics: null,
@@ -109,8 +104,6 @@ export const createSpaceMouseSlice: StateCreator<SpaceMouseSlice, [], [], SpaceM
     persistSensitivity(spaceMouseSensitivity);
     set({ spaceMouseSensitivity });
   },
-  setSpaceMousePanelOpen: (spaceMousePanelOpen) => set({ spaceMousePanelOpen }),
-  toggleSpaceMousePanel: () => set((s) => ({ spaceMousePanelOpen: !s.spaceMousePanelOpen })),
   setSpaceMouseConnect: (spaceMouseConnect) => set({ spaceMouseConnect }),
   setSpaceMouseDisconnect: (spaceMouseDisconnect) => set({ spaceMouseDisconnect }),
   setSpaceMouseGetDiagnostics: (spaceMouseGetDiagnostics) => set({ spaceMouseGetDiagnostics }),

@@ -40,3 +40,29 @@ describe('sky shader smoothstep edges (WGSL low < high)', () => {
     assert.ok(seen.length >= 2, 'expected the sky shader to keep its literal-edge smoothstep calls');
   });
 });
+
+/**
+ * Regression (#5583): the below-horizon `groundColor` fill used to reach
+ * full strength by elevation -0.1 (`smoothstep(-0.1, 0.0, elevation)`), so
+ * the ordinary downward-pitched BIM camera saw an abrupt flat-colour wall
+ * a few degrees below the horizon instead of a gradient. The falloff was
+ * widened to span -0.5..0.0 so most downward views land inside the
+ * transition rather than past its end.
+ */
+describe('sky shader ground falloff (#5583)', () => {
+  it('spans a wide elevation range, not the old near-instant -0.1', () => {
+    const m = skyShaderSource.match(/let groundMix = 1\.0 - smoothstep\((-?\d+(?:\.\d+)?), (-?\d+(?:\.\d+)?), elevation\);/);
+    assert.ok(m, 'expected a literal-edge groundMix smoothstep to match against');
+    const low = Number(m![1]);
+    const high = Number(m![2]);
+    assert.equal(high, 0.0, 'the transition should still end exactly at the horizon');
+    assert.ok(low <= -0.4, `expected a gradual falloff (low <= -0.4), got low=${low} (the old, flatter value was -0.1)`);
+  });
+
+  it('does not regress to the old -0.1 cutoff', () => {
+    assert.ok(
+      !skyShaderSource.includes('smoothstep(-0.1, 0.0, elevation)'),
+      'the ground falloff should no longer use the narrow -0.1..0.0 range',
+    );
+  });
+});

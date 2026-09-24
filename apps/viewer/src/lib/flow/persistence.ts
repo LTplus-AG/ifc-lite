@@ -118,6 +118,16 @@ export class BrowserTrackingStore implements TrackingStore {
     localStorage.removeItem(TRACKING_PREFIX + graphId);
   }
 
+  /** Clear every graph's sidecar whose id starts with `idPrefix`. */
+  static clearByIdPrefix(idPrefix: string): void {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(TRACKING_PREFIX + idPrefix)) keys.push(key);
+    }
+    for (const key of keys) localStorage.removeItem(key);
+  }
+
   load(trackingKey: string): TrackedSet | undefined {
     return this.sets[trackingKey];
   }

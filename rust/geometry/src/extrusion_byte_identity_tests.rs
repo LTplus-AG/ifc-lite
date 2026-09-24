@@ -17,6 +17,11 @@ use crate::profile::Profile2D;
 
 mod reference {
     //! Verbatim pre-refactor implementations. Do not "clean up".
+    //!
+    //! One deliberate amendment: #5410 fixed hole side walls, which were wound
+    //! as if each hole were an outer boundary (into the solid). The reference
+    //! `create_side_walls` takes the same `is_hole` flag as production; every
+    //! outer-loop byte is still the pre-refactor code.
     #![allow(clippy::needless_range_loop)]
 
     use crate::error::{Error, Result};
@@ -62,10 +67,10 @@ mod reference {
             create_cap_mesh(tri, depth, Vector3::new(0.0, 0.0, 1.0), &mut mesh);
         }
 
-        create_side_walls(&profile.outer, depth, &mut mesh);
+        create_side_walls(&profile.outer, depth, false, &mut mesh);
 
         for hole in &profile.holes {
-            create_side_walls(hole, depth, &mut mesh);
+            create_side_walls(hole, depth, true, &mut mesh);
         }
 
         if let Some(mat) = transform {
@@ -176,7 +181,7 @@ mod reference {
         }
     }
 
-    fn create_side_walls(boundary: &[Point2<f64>], depth: f64, mesh: &mut Mesh) {
+    fn create_side_walls(boundary: &[Point2<f64>], depth: f64, is_hole: bool, mesh: &mut Mesh) {
         let n = boundary.len();
         if n < 2 {
             return;
@@ -196,7 +201,8 @@ mod reference {
             boundary
                 .iter()
                 .map(|p| {
-                    Vector3::new(p.x - cx, p.y - cy, 0.0)
+                    let radial = if is_hole { -1.0 } else { 1.0 };
+                    Vector3::new((p.x - cx) * radial, (p.y - cy) * radial, 0.0)
                         .try_normalize(1e-10)
                         .unwrap_or(Vector3::new(0.0, 0.0, 1.0))
                 })
@@ -212,7 +218,8 @@ mod reference {
                 a.x * b.y - b.x * a.y
             })
             .sum();
-        let winding_sign = if signed_area2 < 0.0 { -1.0 } else { 1.0 };
+        let ccw = signed_area2 >= 0.0;
+        let winding_sign = if ccw != is_hole { 1.0 } else { -1.0 };
 
         let base_index = mesh.vertex_count() as u32;
         let mut quad_count = 0u32;

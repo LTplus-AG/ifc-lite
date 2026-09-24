@@ -15,7 +15,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ToolContext } from '../context.js';
 import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER } from '../context.js';
 import { fullScope } from '../auth/scope.js';
@@ -266,5 +266,76 @@ describe('run_flow — table.joinByKey over MCP (#5167)', () => {
     // "some row matched".
     expect(matched).toEqual([{ Mark: 'T-200', GlobalId: '0wall000000000000000w2' }]);
     expect(unmatched.map((row) => row.Mark)).toEqual(['T-999']);
+  });
+});
+
+
+describe('run_flow — secrets (#5167 phase 3.5)', () => {
+  it('redacts a secret a granted server echoes back, in the complete result (#5446 review)', async () => {
+    if (!runFlow) throw new Error('run_flow not registered');
+    const ctx = await contextWithModel();
+    process.env.IFC_LITE_TEST_ECHO_5446 = 'echoed-secret-value-5446';
+      const echo = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) =>
+        new Response(JSON.stringify({ receivedAuthorization: new Headers(init?.headers).get('authorization') }), { status: 200 }));
+    try {
+      const result = await runFlow.handler({ flow: {
+        flowVersion: 1, id: 's', name: 's',
+        capabilities: ['secret.read:IFC_LITE_TEST_ECHO_5446', 'network.fetch:api.example.com'], inputs: [],
+        outputs: [{ nodeId: 'req', port: 'body', label: 'body' }],
+        nodes: [{ id: 'req', type: 'http.request', params: { url: 'https://api.example.com/echo', headers: { Authorization: 'Bearer {{secret:IFC_LITE_TEST_ECHO_5446}}' } } }],
+        edges: [],
+      }, model_id: 'sample' }, ctx);
+      expect(echo).toHaveBeenCalledOnce();
+      const everything = JSON.stringify(result);
+      expect(everything).toContain('<secret:IFC_LITE_TEST_ECHO_5446>');
+      expect(everything).not.toContain('echoed-secret-value-5446');
+    } finally {
+      echo.mockRestore();
+      delete process.env.IFC_LITE_TEST_ECHO_5446;
+    }
+  });
+
+  it('rejects a {{secret:NAME}} reference the graph does not declare, before the run starts', async () => {
+    if (!runFlow) throw new Error('run_flow not registered');
+    const ctx = await contextWithModel();
+    const doc = {
+      flowVersion: 1, id: 's', name: 's', capabilities: [], inputs: [], outputs: [],
+      nodes: [{ id: 'req', type: 'http.request', params: { url: 'https://api.example.invalid/', headers: { Authorization: 'Bearer {{secret:API_TOKEN}}' } } }],
+      edges: [],
+    };
+    await expect(runFlow.handler({ flow: doc, model_id: 'sample' }, ctx)).rejects.toThrow(/does not declare "secret\.read:API_TOKEN"/);
+  });
+
+  it('rejects a declared-but-unset secret reference, before the run starts', async () => {
+    if (!runFlow) throw new Error('run_flow not registered');
+    const ctx = await contextWithModel();
+    const doc = {
+      flowVersion: 1, id: 's', name: 's', capabilities: ['secret.read:DEFINITELY_NOT_SET_5167_MCP'], inputs: [], outputs: [],
+      nodes: [{ id: 'req', type: 'http.request', params: { url: 'https://api.example.invalid/{{secret:DEFINITELY_NOT_SET_5167_MCP}}' } }],
+      edges: [],
+    };
+    expect(process.env.DEFINITELY_NOT_SET_5167_MCP).toBeUndefined();
+    await expect(runFlow.handler({ flow: doc, model_id: 'sample' }, ctx)).rejects.toThrow(/declared but not set/);
+  });
+
+  it('a declared+set secret is interpolated, but the request is still refused for reaching an ungranted host — and the secret never appears in the result', async () => {
+    if (!runFlow) throw new Error('run_flow not registered');
+    const ctx = await contextWithModel();
+    const doc = {
+      flowVersion: 1, id: 's', name: 's', capabilities: ['secret.read:IFC_LITE_TEST_TOKEN_5167_MCP'], inputs: [],
+      outputs: [{ nodeId: 'req', port: 'status', label: 'status' }],
+      nodes: [{ id: 'req', type: 'http.request', params: { url: 'https://api.example.invalid/', headers: { Authorization: 'Bearer {{secret:IFC_LITE_TEST_TOKEN_5167_MCP}}' } } }],
+      edges: [],
+    };
+    process.env.IFC_LITE_TEST_TOKEN_5167_MCP = 'super-secret-mcp-token-value-xyz789';
+    try {
+      const result = await runFlow.handler({ flow: doc, model_id: 'sample' }, ctx);
+      const summary = structured(result) as { ok: boolean; errors: Array<{ message: string }> };
+      expect(summary.ok).toBe(false);
+      expect(summary.errors[0].message).toMatch(/network\.fetch refused/);
+      expect(JSON.stringify(summary)).not.toContain('super-secret-mcp-token-value-xyz789');
+    } finally {
+      delete process.env.IFC_LITE_TEST_TOKEN_5167_MCP;
+    }
   });
 });

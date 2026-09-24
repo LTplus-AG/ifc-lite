@@ -77,11 +77,21 @@ export class SectionPlaneRenderer {
   private format: GPUTextureFormat;
   private sampleCount: number;
   private initialized = false;
+  // One accent tint for every axis and for face-picked planes (#5484):
+  // set by `Renderer.setOverlayTheme`. Reproduces the historic "down"-axis
+  // colour (#03A9F4) until a theme is pushed, so a caller that never calls
+  // `setOverlayTheme` sees no visual change.
+  private planeColor: readonly [number, number, number, number] = [0.012, 0.663, 0.957, 1];
 
   constructor(device: GPUDevice, format: GPUTextureFormat, sampleCount: number = 4) {
     this.device = device;
     this.format = format;
     this.sampleCount = sampleCount;
+  }
+
+  /** Set the accent tint used for the preview plane, every axis alike (#5484). RGBA 0..1. */
+  setPlaneColor(color: readonly [number, number, number, number]): void {
+    this.planeColor = color;
   }
 
   private init(): void {
@@ -343,27 +353,12 @@ export class SectionPlaneRenderer {
       uniforms.set(viewProj!, SECTION_PLANE_UNIFORM_SLOTS.rteViewProj);
     }
 
-    // Axis-specific colors for better identification.
-    // down (Y) = light blue, front (Z) = green, side (X) = orange.
-    // Custom (face-picked) planes pick up a violet that won't be confused
-    // with any cardinal preset.
-    if (hasExplicitPlane) {
-      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor] = 0.612; // R - #9C6BDE (violet)
-      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor + 1] = 0.420;
-      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor + 2] = 0.871;
-    } else if (axis === 'down') {
-      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor] = 0.012; // R - #03A9F4
-      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor + 1] = 0.663; // G
-      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor + 2] = 0.957; // B
-    } else if (axis === 'front') {
-      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor] = 0.298; // R - #4CAF50
-      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor + 1] = 0.686; // G
-      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor + 2] = 0.314; // B
-    } else {
-      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor] = 1.0;   // R - #FF9800
-      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor + 1] = 0.596; // G
-      uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor + 2] = 0.0;   // B
-    }
+    // One accent tint for every axis, and for face-picked (custom) planes
+    // alike (#5484) — set by `Renderer.setOverlayTheme`, no more per-axis
+    // Material colours or the custom violet.
+    uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor] = this.planeColor[0];
+    uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor + 1] = this.planeColor[1];
+    uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor + 2] = this.planeColor[2];
     // Preview mode opacity
     uniforms[SECTION_PLANE_UNIFORM_SLOTS.planeColor + 3] = 0.25;
     this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);

@@ -476,7 +476,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
       setImportStats(stats);
       setImportProgress(null);
       setImportDirty(false);
-
+      useViewerStore.getState().bumpMutationVersion(); // writes bypass the store: refresh the change count (#5604)
       if (stats.errors.length > 0) {
         setError(stats.errors.join('\n'));
       }

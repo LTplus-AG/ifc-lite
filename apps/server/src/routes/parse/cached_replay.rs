@@ -23,12 +23,12 @@ use super::cache_keys::{
 };
 use super::ParseQuery;
 use ifc_lite_processing::TessellationQuality;
-use crate::services::ParquetLayout;
+use crate::services::{ParquetLayout, StreamShapes};
 use super::parquet::ParquetMetadataHeader;
 use super::stream_event::ParquetStreamEvent;
 use super::stream_progress::load_stream_progress;
 use crate::error::ApiError;
-use crate::services::parquet_replay_batches::split_into_batches;
+use crate::services::parquet_replay_batches::{split_into_batches, split_into_stream_batches};
 use crate::AppState;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::IntoResponse;
@@ -73,6 +73,7 @@ pub(super) async fn replay_by_client_hash(
     state: &AppState,
     query: &ParseQuery,
     quality: TessellationQuality,
+    stream_shapes: StreamShapes,
     sha256: &str,
 ) -> Result<axum::response::Response, ApiError> {
     if !is_file_digest(sha256) {
@@ -88,7 +89,7 @@ pub(super) async fn replay_by_client_hash(
             .admission
             .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
             .await?;
-        let replay = try_cached_replay(state, &cache_key, query.parquet_layout).await;
+        let replay = try_cached_replay(state, &cache_key, query.parquet_layout, stream_shapes).await;
         drop(admission_guard);
         replay?
     } else {
@@ -132,6 +133,7 @@ pub(super) async fn try_cached_replay(
     state: &AppState,
     cache_key: &str,
     layout: ParquetLayout,
+    stream_shapes: StreamShapes,
 ) -> Result<Option<axum::response::Response>, ApiError> {
     let parquet_cache_key = parquet_geometry_key(cache_key, layout);
     let metadata_cache_key = parquet_metadata_key(cache_key);
@@ -162,8 +164,10 @@ pub(super) async fn try_cached_replay(
     );
 
     // Parse cached metadata
-    let metadata_header: ParquetMetadataHeader = serde_json::from_slice(&cached_metadata_json)
+    let mut metadata_header: ParquetMetadataHeader = serde_json::from_slice(&cached_metadata_json)
         .map_err(|e| ApiError::Internal(format!("Failed to parse cached metadata: {}", e)))?;
+    // Stored as the live parse wrote it, `from_cache: false` included (#5542).
+    metadata_header.stats.from_cache = true;
 
     // Load the cached symbolic stream so the Complete event reaches parity
     // even on the cache fast-path (issue #900).
@@ -175,14 +179,20 @@ pub(super) async fn try_cached_replay(
     // Extract the geometry blob (framed `[geometry_len: u32-LE][geometry_data]
     // ...`, sliced WITHOUT `.unwrap()` panicking on a short/corrupt cached
     // blob) and split it back into its original stream batches, each
-    // base64-encoded. Runs off the async worker via `block_in_place` (matching
-    // the live path in `parse_parquet_stream`) so a large replay doesn't stall
-    // other polls. (Guarded by runtime flavor: `block_in_place` panics on
-    // current_thread, which the `#[tokio::test]` harness uses.)
+    // base64-encoded. Runs off the async worker (the same helper as the live
+    // path in `parse_parquet_stream`) so a large replay doesn't stall other
+    // polls.
     let total_meshes = metadata_header.stats.total_meshes;
-    let build_batches = || -> Option<Vec<(String, usize)>> {
+    // A cross-batch client gets each batch as written, whole-stream offsets
+    // and all (#5407); a batch-local one gets each re-based to zero,
+    // which a blob a cross-batch stream wrote cannot be, so it falls back to
+    // one batch below.
+    let cross_batch = stream_shapes == StreamShapes::CrossBatch;
+    let split = if cross_batch { split_into_stream_batches } else { split_into_batches };
+    type Replayed = (String, usize, Option<(u32, u32)>);
+    let build_batches = || -> Option<Vec<Replayed>> {
         let geometry = cached_geometry_slice(&cached_parquet)?;
-        let Some(batches) = split_into_batches(geometry) else {
+        let Some(batches) = split(geometry) else {
             // Not a multi-row-group blob: one batch's worth of geometry, a
             // pre-streaming cache entry, or a layout we can't align. Log it —
             // otherwise a replay that has silently stopped being progressive
@@ -191,22 +201,19 @@ pub(super) async fn try_cached_replay(
                 geometry_bytes = geometry.len(),
                 "Cached geometry has no recoverable batch boundaries; replaying as one batch"
             );
-            return Some(vec![(STANDARD.encode(geometry), total_meshes)]);
+            // Whole-stream offsets starting at zero ARE this one batch's
+            // offsets, so a cross-batch client is told bases of zero.
+            let bases = cross_batch.then_some((0, 0));
+            return Some(vec![(STANDARD.encode(geometry), total_meshes, bases)]);
         };
         Some(
             batches
                 .into_iter()
-                .map(|b| (STANDARD.encode(&b.data), b.mesh_count))
+                .map(|b| (STANDARD.encode(&b.data), b.mesh_count, b.bases))
                 .collect(),
         )
     };
-    let batches = if tokio::runtime::Handle::current().runtime_flavor()
-        == tokio::runtime::RuntimeFlavor::MultiThread
-    {
-        tokio::task::block_in_place(build_batches)
-    } else {
-        build_batches()
-    };
+    let batches = super::stream_batch::off_the_async_worker(build_batches);
 
     let Some(batches) = batches else {
         // Short/corrupt cached blob: don't panic, don't serve garbage.
@@ -248,7 +255,7 @@ pub(super) async fn try_cached_replay(
     events.push(sse(&ParquetStreamEvent::Progress { processed: 0, total }));
 
     let mut processed = 0usize;
-    for (batch_number, (data, mesh_count)) in batches.into_iter().enumerate() {
+    for (batch_number, (data, mesh_count, bases)) in batches.into_iter().enumerate() {
         processed = match &per_batch_processed {
             Some(checkpoints) => checkpoints[batch_number],
             None => processed + mesh_count,
@@ -257,6 +264,8 @@ pub(super) async fn try_cached_replay(
             data,
             mesh_count,
             batch_number: batch_number + 1,
+            vertex_base: bases.map(|(v, _)| v),
+            index_base: bases.map(|(_, i)| i),
         }));
         events.push(sse(&ParquetStreamEvent::Progress { processed, total }));
     }

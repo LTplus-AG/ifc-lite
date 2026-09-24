@@ -16,11 +16,12 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { PropertyValueType, findAttribute, type IfcSchemaVersion } from '@ifc-lite/data';
-import { ATTRIBUTE_INDEX, applyAttributeMutations } from './mutate-step-record.js';
+import { ATTRIBUTE_INDEX, applyAttributeMutations, type SkippedAttributeMutation } from './mutate-step-record.js';
 
 // Re-exported so `mutate.test.ts` keeps importing these straight from
 // `./mutate.js`; the implementation lives in the sibling module above.
 export { ATTRIBUTE_INDEX, applyAttributeMutations };
+export type { SkippedAttributeMutation };
 
 /**
  * Parse a --where filter string.
@@ -111,6 +112,16 @@ export function matchesFilter(actual: any, operator: string, expected?: string):
     case 'contains': return String(actual).toLowerCase().includes(expected.toLowerCase());
     default: return false;
   }
+}
+
+/** How many attribute mutations were requested per entity. */
+function countBy(mutations: { entity: { ref: { expressId: number } } }[]): Map<number, number> {
+  const counts = new Map<number, number>();
+  for (const m of mutations) {
+    const id = m.entity.ref.expressId;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return counts;
 }
 
 export async function mutateCommand(args: string[]): Promise<void> {
@@ -235,14 +246,27 @@ export async function mutateCommand(args: string[]): Promise<void> {
   });
 
   // Apply attribute mutations via STEP text post-processing
+  let skippedAttributes: SkippedAttributeMutation[] = [];
   if (attributeMutations.length > 0) {
     const textContent = new TextDecoder().decode(result.content);
-    const outputContent = applyAttributeMutations(
+    const attributeResult = applyAttributeMutations(
       textContent,
       attributeMutations,
       await entitiesWithObjectType(schema),
     );
-    await writeFile(outPath, outputContent, 'utf-8');
+    skippedAttributes = attributeResult.skipped;
+    // An entity whose every requested attribute was refused was not mutated,
+    // whatever the loop above counted. Reporting it as mutated is what let
+    // `--json` answer `mutated: 1, warnings: []` for an unchanged record.
+    const fullySkipped = new Set<number>();
+    for (const [expressId, requested] of countBy(attributeMutations)) {
+      const refused = skippedAttributes.filter((s) => s.expressId === expressId).length;
+      if (refused >= requested) fullySkipped.add(expressId);
+    }
+    for (const entity of targets) {
+      if (fullySkipped.has(entity.ref.expressId)) mutatedCount--;
+    }
+    await writeFile(outPath, attributeResult.content, 'utf-8');
   } else {
     await writeFile(outPath, result.content);
   }
@@ -253,6 +277,7 @@ export async function mutateCommand(args: string[]): Promise<void> {
   if (jsonOutput) {
     printJson({
       mutated: mutatedCount,
+      skipped: skippedAttributes,
       properties: mutationDescs.map((desc, i) => ({
         property: desc,
         value: mutations[i].coerced,

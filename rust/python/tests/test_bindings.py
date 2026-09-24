@@ -101,6 +101,43 @@ def test_quality_applies_to_the_json_path_too():
     assert indices(low) < indices(high)
 
 
+def test_swept_disk_directrix_is_opt_in_and_analytic():
+    ifc = read(REBAR)
+    plain = ifclite_geom.geometry_data_buffers(ifc)
+    assert "swept_disks" not in plain
+    assert "directrix_diagnostics" not in plain
+
+    with_curves = ifclite_geom.geometry_data_buffers(ifc, include_directrices=True)
+    assert with_curves["elements"] == plain["elements"]
+    assert set(with_curves["swept_disks"]) == {125}
+    (sweep,) = with_curves["swept_disks"][125]
+    assert sweep["solid_id"] == 72
+    assert sweep["directrix_id"] == 71
+    assert sweep["Radius"] == pytest.approx(0.0145)
+    assert sweep["InnerRadius"] is None
+    assert sweep["status"] == {"type": "complete"}
+    assert sweep["source_modified"] is False
+    assert [piece["type"] for piece in sweep["Directrix"]] == [
+        "line", "arc", "line", "arc", "line"
+    ]
+    arc_radii = [piece["radius"] for piece in sweep["Directrix"] if piece["type"] == "arc"]
+    assert arc_radii == pytest.approx([0.1015, 0.1015])
+    assert with_curves["directrix_diagnostics"] == []
+
+    document = json.loads(ifclite_geom.geometry_data_json(ifc, include_directrices=True))
+    assert document["swept_disks"]["125"] == with_curves["swept_disks"][125]
+    assert document["directrix_diagnostics"] == with_curves["directrix_diagnostics"]
+
+
+def test_swept_disk_directrix_respects_id_filter():
+    ifc = read(REBAR)
+    empty = ifclite_geom.geometry_data_buffers(ifc, ids=set(), include_directrices=True)
+    assert empty["swept_disks"] == {}
+    assert empty["elements"] == {}
+    unknown = ifclite_geom.geometry_data_buffers(ifc, ids={999_999}, include_directrices=True)
+    assert unknown["swept_disks"] == {}
+
+
 def test_issue_4803_id_filter_none_empty_subset_and_unknown():
     ifc = read(WALLS)
     full = ifclite_geom.geometry_data_buffers(ifc)

@@ -250,6 +250,7 @@ export type {
 
   // Properties & quantities
   PropertyType,
+  PropertyMeasureType,
   PropertyDef,
   PropertySetDef,
   QuantityKind,

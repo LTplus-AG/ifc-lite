@@ -114,6 +114,36 @@ export function vecCross(a: Point3D, b: Point3D): Point3D {
   ];
 }
 
+/**
+ * Complete an `IfcAxis2Placement3D` `Axis`/`RefDirection` pair (#5469).
+ *
+ * The schema rule `IfcAxis2Placement3D.AxisAndRefDirProvision` requires the two
+ * to be both present or both absent, so a placement that only rotates about Z
+ * (a `RefDirection` with no `Axis`) is invalid as written. Returns `undefined`
+ * when neither is given (the `$,$` form stays), otherwise both, with the
+ * missing one set to the value the schema implies for it when absent, so the
+ * placement's geometry is unchanged:
+ *   - no `Axis`: `(0,0,1)`, the `IfcAxis2Placement3D.P` default;
+ *   - no `RefDirection`: `IfcFirstProjAxis(Axis, $)`, the projection of world X
+ *     onto the plane normal to `Axis`. The schema switches to world Y only when
+ *     the normalised `Axis` is exactly `(1,0,0)`, so this tests for an Axis
+ *     with no Y or Z component rather than using a tolerance: a near-X Axis
+ *     must still project X, or the result flips 180 degrees. `-X` takes Y too,
+ *     since the projection of X vanishes there and the schema has no answer.
+ */
+export function completePlacementAxes(
+  axis: Point3D | undefined,
+  refDirection: Point3D | undefined,
+): { Axis: Point3D; RefDirection: Point3D } | undefined {
+  if (axis && refDirection) return { Axis: axis, RefDirection: refDirection };
+  if (refDirection) return { Axis: [0, 0, 1], RefDirection: refDirection };
+  if (!axis) return undefined;
+  const z = vecNorm(axis);
+  const v: Point3D = z[1] === 0 && z[2] === 0 ? [0, 1, 0] : [1, 0, 0];
+  const d = v[0] * z[0] + v[1] * z[1] + v[2] * z[2];
+  return { Axis: axis, RefDirection: vecNorm([v[0] - d * z[0], v[1] - d * z[1], v[2] - d * z[2]]) };
+}
+
 // ============================================================================
 // STEP attribute helpers (optional strings / enums / booleans / reals)
 // ============================================================================
@@ -159,6 +189,28 @@ export function intList(values: number[] | undefined): string {
 }
 
 /**
+ * Measures whose value is a count, written as an integer literal when the value
+ * is whole. IfcCountMeasure is NUMBER in IFC4 and INTEGER from IFC4X3 on; an
+ * integer literal is valid for both, whereas `12.` is not an INTEGER.
+ */
+const INTEGER_VALUED_MEASURES: ReadonlySet<string> = new Set(['IfcCountMeasure']);
+
+/** Declared types a number has always been written as IFCREAL under, unchanged. */
+const NON_NUMERIC_TYPES: ReadonlySet<string> = new Set(['IfcLabel', 'IfcText', 'IfcIdentifier', 'IfcBoolean', 'IfcLogical']);
+
+/**
+ * The type name is interpolated into STEP as `TYPENAME(value)`, and untyped
+ * callers (the sandbox, JSON input) can pass any string. Anything that is not a
+ * bare IFC identifier would corrupt the line, so it is refused rather than
+ * written.
+ */
+function assertStepTypeName(typeName: string): void {
+  if (!/^Ifc[A-Za-z]+$/.test(typeName)) {
+    throw new Error(`Invalid property value type "${typeName}": expected an IFC type name such as IfcPositiveLengthMeasure`);
+  }
+}
+
+/**
  * Serialize an IfcPropertySingleValue NominalValue as a named SELECT branch.
  *
  * Moved here from `IfcCreator` (it never touched class state) so that file
@@ -172,6 +224,16 @@ export function serializePropertyValue(prop: PropertyDef): string {
   }
   if (typeof val === 'number') {
     const typeName = prop.Type ?? (Number.isInteger(val) ? 'IfcInteger' : 'IfcReal');
+    // A declared measure type is written AS that type. This used to emit every
+    // number as IFCINTEGER or IFCREAL whatever `Type` said, so a
+    // `ThermalTransmittance` declared an IfcThermalTransmittanceMeasure came out
+    // an IFCREAL and failed any IDS data-type check against Pset_WallCommon.
+    if (typeName !== 'IfcInteger' && !NON_NUMERIC_TYPES.has(typeName)) {
+      assertStepTypeName(typeName);
+      return INTEGER_VALUED_MEASURES.has(typeName) && Number.isInteger(val)
+        ? `${typeName.toUpperCase()}(${val})`
+        : `${typeName.toUpperCase()}(${num(val)})`;
+    }
     return typeName === 'IfcInteger' ? `IFCINTEGER(${Math.round(val)})` : `IFCREAL(${num(val)})`;
   }
   if (typeof val === 'boolean') {

@@ -4,7 +4,7 @@
 
 /**
  * Scan section layer (issue #1805) — wires the pure band-selection math in
- * `scanSectionMath.ts` to the viewer store, so `Section2DPanel` can overlay
+ * `scanSectionMath.ts` to the viewer store, so the Drawing panel can overlay
  * the loaded point cloud(s) on the 2D section/plan view.
  *
  * Point positions live in two different places depending on how the cloud

@@ -317,12 +317,12 @@ export const UI_DEFAULTS = {
   EDGE_CONTRAST_ENABLED: true,
   /** Edge contrast intensity */
   EDGE_CONTRAST_INTENSITY: 1.2,
-  /** Contact shading quality preset */
+  /** Ambient occlusion ("contact shading") quality: 'low' = half resolution, 'high' = full */
   CONTACT_SHADING_QUALITY: 'low' as const,
-  /** Contact shading intensity */
-  CONTACT_SHADING_INTENSITY: 0.35,
-  /** Contact shading radius in pixels */
-  CONTACT_SHADING_RADIUS: 1.5,
+  /** Ambient occlusion strength, 0-1 */
+  CONTACT_SHADING_INTENSITY: 0.8,
+  /** Ambient occlusion radius in metres (world units, 0.05-10) */
+  CONTACT_SHADING_RADIUS: 1.0,
   /** Separation-line overlay default */
   SEPARATION_LINES_ENABLED: true,
   /** Separation-line quality preset */

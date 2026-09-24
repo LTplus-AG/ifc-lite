@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use super::outline::trim_polyline;
 
     #[test]
     fn test_rectangle_profile() {
@@ -878,6 +879,62 @@ use super::*;
         assert_eq!(pts.len(), 2);
         assert!(approx_eq_p3(pts[0], Point3::new(0.0, 10.0, 0.0), 1e-9));
         assert!(approx_eq_p3(pts[1], Point3::new(0.0, 7.0, 0.0), 1e-9));
+    }
+
+    #[test]
+    fn composite_curve_trim_uses_polyline_parent_span_5566() {
+        // #5566: a composite's parameter is the running sum of its parents'
+        // spans. A 3-point polyline parent spans [0, 2], so the composite
+        // spans [0, 3] and [1, 2.5] is the second polyline edge plus half of
+        // the second segment. Unit-per-segment read [1, 2.5] as "all of seg 1
+        // and half of seg 2".
+        let content = r#"
+#1=IFCCARTESIANPOINT((0.0,0.0,0.0));
+#2=IFCCARTESIANPOINT((0.0,2.0,0.0));
+#3=IFCCARTESIANPOINT((0.0,4.0,0.0));
+#4=IFCCARTESIANPOINT((0.0,6.0,0.0));
+#5=IFCPOLYLINE((#1,#2,#3));
+#6=IFCPOLYLINE((#3,#4));
+#7=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#5);
+#8=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#6);
+#9=IFCCOMPOSITECURVE((#7,#8),.F.);
+"#;
+        let mut decoder = EntityDecoder::new(content);
+        let processor = ProfileProcessor::new(IfcSchema::new());
+        let curve = decoder.decode_by_id(9).unwrap();
+        let pts = processor
+            .get_composite_curve_points_trimmed(&curve, &mut decoder, Some(1.0), Some(2.5))
+            .unwrap();
+        let ys: Vec<f64> = pts.iter().map(|p| p.y).collect();
+        assert_eq!(ys.len(), 3, "got points: {pts:?}");
+        assert!((ys[0] - 2.0).abs() < 1e-9);
+        assert!((ys[1] - 4.0).abs() < 1e-9);
+        assert!((ys[2] - 5.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn composite_curve_trim_with_unsupported_parent_span_sweeps_whole_curve_5566() {
+        // An IfcIndexedPolyCurve parent has no span the analytic reader
+        // supports, so the composite has no well-defined parameter: the
+        // whole directrix is swept instead of guessing a unit span.
+        let content = r#"
+#1=IFCCARTESIANPOINTLIST3D(((0.0,0.0,0.0),(0.0,2.0,0.0),(0.0,4.0,0.0)));
+#2=IFCINDEXEDPOLYCURVE(#1,$,.F.);
+#3=IFCCARTESIANPOINT((0.0,4.0,0.0));
+#4=IFCCARTESIANPOINT((0.0,6.0,0.0));
+#5=IFCPOLYLINE((#3,#4));
+#6=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#2);
+#7=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#5);
+#8=IFCCOMPOSITECURVE((#6,#7),.F.);
+"#;
+        let mut decoder = EntityDecoder::new(content);
+        let processor = ProfileProcessor::new(IfcSchema::new());
+        let curve = decoder.decode_by_id(8).unwrap();
+        let pts = processor
+            .get_composite_curve_points_trimmed(&curve, &mut decoder, Some(0.0), Some(0.5))
+            .unwrap();
+        assert!(approx_eq_p3(pts[0], Point3::new(0.0, 0.0, 0.0), 1e-9), "{pts:?}");
+        assert!(approx_eq_p3(*pts.last().unwrap(), Point3::new(0.0, 6.0, 0.0), 1e-9), "{pts:?}");
     }
 
     // A negative Thickness / WebThickness on a parametric L/U/T/C/Z profile is

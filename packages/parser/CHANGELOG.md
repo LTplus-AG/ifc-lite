@@ -1,5 +1,17 @@
 # @ifc-lite/parser
 
+## 8.2.0
+
+### Minor Changes
+
+- [#5568](https://github.com/LTplus-AG/ifc-lite/pull/5568) [`579b759`](https://github.com/LTplus-AG/ifc-lite/commit/579b7590bfe79cad5689cc89ab8082f95b5d6ea3) Thanks [@louistrue](https://github.com/louistrue)! - Parsing no longer prints to the host console by default. Every `parseColumnar` call emitted ~16 unconditional `console.log` lines (`[parseLite] categorize …`, `[IfcParser] Fast scan …`), so the three-line snippet in the README produced fourteen lines of internal phase timings, and any CLI command writing JSON to stdout got them interleaved into its payload. These are telemetry, and the package already had two channels for them: the structured `onDiagnostic` callback, which is unchanged, and `@ifc-lite/data`'s `createLogger`, whose `debug` level is gated on `IFC_DEBUG` (`IFC_DEBUG=true` in Node, `localStorage.setItem('IFC_DEBUG', 'true')` in a browser). The timings are now routed through the latter, so `IFC_DEBUG=true` still prints exactly what it printed before.
+
+### Patch Changes
+
+- Updated dependencies [[`223f4d7`](https://github.com/LTplus-AG/ifc-lite/commit/223f4d71f26d074ba949f77031dc24f559da34ca), [`0576221`](https://github.com/LTplus-AG/ifc-lite/commit/0576221cbd57276bce8da8d709045e2ae398a0df), [`0f5d174`](https://github.com/LTplus-AG/ifc-lite/commit/0f5d174d2fb726536d1a3a30c7e5415603db72c0), [`69dceea`](https://github.com/LTplus-AG/ifc-lite/commit/69dceeac3743944ad476e4338d38712f5cd1f12d)]:
+  - @ifc-lite/wasm@10.0.1
+  - @ifc-lite/data@5.2.0
+
 ## 8.1.0
 
 ### Minor Changes

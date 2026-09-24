@@ -95,6 +95,13 @@ export function validateContributions(
       requireStringInObj(ctx, item, p, 'handler');
     });
   }
+  if ('flows' in obj && obj.flows !== undefined) {
+    validateArray(ctx, obj.flows, `${path}.flows`, (item, p) => {
+      requireStringInObj(ctx, item, p, 'id');
+      requireStringInObj(ctx, item, p, 'name');
+      requireStringInObj(ctx, item, p, 'path');
+    });
+  }
   if ('statusBar' in obj && obj.statusBar !== undefined) {
     validateArray(ctx, obj.statusBar, `${path}.statusBar`, (item, p) => {
       requireStringInObj(ctx, item, p, 'id');

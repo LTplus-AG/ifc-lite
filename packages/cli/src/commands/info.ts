@@ -14,6 +14,17 @@ import { EntityNode } from '@ifc-lite/query';
 import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
 import type { ClassCensusEntry } from '@ifc-lite/parser';
 
+/**
+ * Render a census entry's class for display. The census carries the raw STEP
+ * spelling; `typeCounts` above already maps through `IFC_ENTITY_NAMES`, so
+ * without this the same class appeared twice in one report --
+ * `IfcIndexedPolygonalFace` under "Other types" and `IFCINDEXEDPOLYGONALFACE`
+ * under "Skipped classes" (#5533).
+ */
+function displayClass(type: string): string {
+  return IFC_ENTITY_NAMES[type] ?? type;
+}
+
 export async function infoCommand(args: string[]): Promise<void> {
   const filePath = args.find(a => !a.startsWith('-'));
   if (!filePath) fatal('Usage: ifc-lite info <file.ifc> [--format json|table]');
@@ -51,16 +62,19 @@ export async function infoCommand(args: string[]): Promise<void> {
         totalScanned: dropCensus.totalScanned,
         totalRetained: dropCensus.totalRetained,
         totalSkipped: dropCensus.totalSkipped,
-        skippedClasses: dropCensus.skippedClasses.map((c: ClassCensusEntry) => ({ type: c.type, scanned: c.scanned, knownInSchema: c.knownInSchema })),
+        skippedClasses: dropCensus.skippedClasses.map((c: ClassCensusEntry) => ({ type: displayClass(c.type), scanned: c.scanned, knownInSchema: c.knownInSchema })),
         // Split so a JSON consumer doesn't have to re-derive "is this a real
         // regression or universal geometry noise" itself — see
         // ClassCensusEntry.isRootDescendant in @ifc-lite/parser's drop-census.ts.
-        expectedSkippedClasses: dropCensus.expectedSkippedClasses.map((c: ClassCensusEntry) => ({ type: c.type, scanned: c.scanned, knownInSchema: c.knownInSchema })),
-        unexpectedSkippedClasses: dropCensus.unexpectedSkippedClasses.map((c: ClassCensusEntry) => ({ type: c.type, scanned: c.scanned, knownInSchema: c.knownInSchema })),
-        unknownClasses: dropCensus.unknownClasses.map((c: ClassCensusEntry) => ({ type: c.type, scanned: c.scanned })),
+        expectedSkippedClasses: dropCensus.expectedSkippedClasses.map((c: ClassCensusEntry) => ({ type: displayClass(c.type), scanned: c.scanned, knownInSchema: c.knownInSchema })),
+        unexpectedSkippedClasses: dropCensus.unexpectedSkippedClasses.map((c: ClassCensusEntry) => ({ type: displayClass(c.type), scanned: c.scanned, knownInSchema: c.knownInSchema })),
+        // Unknown classes are by definition absent from the schema table, so
+        // `displayClass` returns them unchanged; mapped anyway so a class that
+        // later becomes known is rendered like every other one.
+        unknownClasses: dropCensus.unknownClasses.map((c: ClassCensusEntry) => ({ type: displayClass(c.type), scanned: c.scanned })),
         relClassesSeen: dropCensus.relClassesSeen,
         relClassesIndexed: dropCensus.relClassesIndexed,
-        unindexedRelClasses: dropCensus.unindexedRelClasses.map((c: ClassCensusEntry) => ({ type: c.type, scanned: c.scanned })),
+        unindexedRelClasses: dropCensus.unindexedRelClasses.map((c: ClassCensusEntry) => ({ type: displayClass(c.type), scanned: c.scanned })),
       }
     : { ran: false as const };
 

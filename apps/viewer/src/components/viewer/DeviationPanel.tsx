@@ -21,6 +21,7 @@ import { useTranslation } from '@/i18n';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { placementSnapshot, placementSnapshotIsCurrent } from '@/lib/model-placement/placement-snapshot';
 import { noteDeviationWrite } from '@/lib/model-placement/preview-analysis';
+import { DEVIATION_RAMP_CSS_GRADIENT } from '@/lib/point-cloud/deviation-ramp';
 import { cn } from '@/lib/utils';
 
 export interface DeviationPanelProps {
@@ -179,9 +180,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
           {/* Legend: blue → white → red gradient with labelled endpoints. */}
           <div
             className="h-2 rounded-sm border border-foreground/10 mt-0.5"
-            style={{
-              background: 'linear-gradient(to right, rgb(26,77,217), rgb(242,242,242), rgb(217,51,26))',
-            }}
+            style={{ background: DEVIATION_RAMP_CSS_GRADIENT }}
             aria-label={t('deviationPanel.rampAriaLabel')}
           />
           <div className="flex justify-between text-[9px] text-muted-foreground">

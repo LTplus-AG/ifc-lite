@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/data",
-  "version": "5.1.0",
+  "version": "5.3.0",
   "description": "Columnar data structures for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.1",
+    "esbuild": "^0.28.1",
     "proj4": "^2.22.0",
     "typescript": "^6.0.3",
     "vitest": "^5.0.1"

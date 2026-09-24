@@ -17,6 +17,7 @@
  * Spec: docs/architecture/ai-customization/01-extension-model.md §2.
  */
 
+import { normaliseBundlePath as normalise } from './path.js';
 import type {
   Bundle,
   BundleFile,
@@ -119,6 +120,9 @@ function checkReferencedFiles(
   for (const l of manifest.contributes?.lenses ?? []) {
     expect(l.evaluator, `contributes.lenses[].evaluator`);
   }
+  for (const f of manifest.contributes?.flows ?? []) {
+    expect(f.path, `contributes.flows[].path`);
+  }
   return errors;
 }
 
@@ -126,9 +130,6 @@ function decodeText(file: BundleFile): string {
   return new TextDecoder('utf-8', { fatal: false }).decode(file.bytes);
 }
 
-function normalise(p: string): string {
-  return p.replace(/\\/g, '/').replace(/^\.\//, '');
-}
 
 function isPlainRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);

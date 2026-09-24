@@ -10,7 +10,11 @@
  */
 
 import type { MeshData } from './types.js';
-import { buildMeshesFromTables, buildMeshesFromOptimizedTables } from './parquet-tables.js';
+import {
+  buildMeshesFromTables,
+  buildMeshesFromOptimizedTables,
+  type ArrowTableLike,
+} from './parquet-tables.js';
 
 // Ambient types in vendor-types.d.ts cover the apache-arrow APIs used here.
 // parquet-wasm ships its own types, one set per build.
@@ -96,6 +100,27 @@ interface MeshMetadata {
  * @returns Decoded MeshData array
  */
 export async function decodeParquetGeometry(data: ArrayBuffer): Promise<MeshData[]> {
+  const { meshArrow, vertexArrow, indexArrow } = await readFlatTables(data);
+  // Column semantics (including the additive origin / geometry_class columns of
+  // issue #1841) live in `parquet-tables.ts` so they are unit-testable without
+  // booting parquet-wasm. Everything above is wire framing.
+  return buildMeshesFromTables(meshArrow, vertexArrow, indexArrow);
+}
+
+/** The three tables of one flat geometry blob, as Arrow tables. */
+export interface FlatTables {
+  meshArrow: ArrowTableLike;
+  vertexArrow: ArrowTableLike;
+  indexArrow: ArrowTableLike;
+}
+
+/**
+ * Read the `[len][mesh][len][vertex][len][index]` framing into its three
+ * tables, WITHOUT deciding what they mean. Split out of `decodeParquetGeometry`
+ * so the cross-batch stream reader (#5407) can put a batch's vertex and index
+ * tables behind the ones earlier batches sent before building meshes.
+ */
+export async function readFlatTables(data: ArrayBuffer): Promise<FlatTables> {
   // Initialize WASM module (only runs once)
   const parquet = await ensureParquetInit();
 
@@ -133,11 +158,7 @@ export async function decodeParquetGeometry(data: ArrayBuffer): Promise<MeshData
   const meshArrow = arrow.tableFromIPC(meshTable.intoIPCStream());
   const vertexArrow = arrow.tableFromIPC(vertexTable.intoIPCStream());
   const indexArrow = arrow.tableFromIPC(indexTable.intoIPCStream());
-
-  // Column semantics (including the additive origin / geometry_class columns of
-  // issue #1841) live in `parquet-tables.ts` so they are unit-testable without
-  // booting parquet-wasm. Everything above is wire framing.
-  return buildMeshesFromTables(meshArrow, vertexArrow, indexArrow);
+  return { meshArrow, vertexArrow, indexArrow };
 }
 
 /**

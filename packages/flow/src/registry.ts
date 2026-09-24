@@ -80,6 +80,11 @@ export interface NodeDef<H = unknown, P = Readonly<Record<string, unknown>>> {
   /** Memo key includes model revisions when set; write nodes are never memoised. */
   readonly reads?: 'model';
   readonly writes?: 'model';
+  /**
+   * Outputs depend on the world outside the graph (a network response), so
+   * the node is never memoised: a rerun must send the request again.
+   */
+  readonly volatile?: boolean;
   /** Headless behaviour when a required backend feature is absent: `noop` runs as no-op. */
   readonly headless?: 'run' | 'noop';
   /** Host prerequisites the availability check tests for. */

@@ -47,9 +47,17 @@ export interface MeshLike {
  * product of two UNIT vectors (each component is a product-difference of
  * magnitude-<=1 terms: ~2 ulps), with headroom for the normalisation and the
  * per-projection dot rounding it feeds. Shared by the axis noise bound in
- * {@link obbPenetrationDepth}; same literal in the Rust kernel.
+ * {@link obbPenetration}; same literal in the Rust kernel.
  */
 export const AXIS_NOISE_ULPS = 8;
+
+/** An OBB-OBB minimum translation depth and the UNIT axis it was measured
+ *  along: the depth's precision floor is the pair's f32 noise projected onto
+ *  that axis (#5405). Mirrors the Rust `ObbPenetration`. */
+export interface ObbPenetration {
+  depth: number;
+  axis: Vec3;
+}
 
 /**
  * Exact penetration depth between two oriented boxes: the minimum overlap
@@ -81,7 +89,7 @@ export const AXIS_NOISE_ULPS = 8;
  * `null` (caller falls back to the AABB estimate) rather than reporting a
  * wrong depth.
  */
-export function obbPenetrationDepth(a: Obb, b: Obb): number | null {
+export function obbPenetration(a: Obb, b: Obb): ObbPenetration | null {
   const T: Vec3 = [b.center[0] - a.center[0], b.center[1] - a.center[1], b.center[2] - a.center[2]];
   // Operand scale for the per-axis noise bound: the sum of BOTH boxes' three
   // half-extents plus the center offset's components. A direction error of
@@ -101,6 +109,7 @@ export function obbPenetrationDepth(a: Obb, b: Obb): number | null {
     b.half[0] + b.half[1] + b.half[2] +
     Math.abs(T[0]) + Math.abs(T[1]) + Math.abs(T[2]);
   let depth = Infinity;
+  let depthAxis: Vec3 = [0, 0, 0];
 
   function testAxis(L: Vec3): boolean {
     const len = Math.sqrt(dot(L, L));
@@ -144,11 +153,17 @@ export function obbPenetrationDepth(a: Obb, b: Obb): number | null {
     // mullion.
     const noise = extentSum * ((AXIS_NOISE_ULPS * Number.EPSILON) / len);
     if (Math.abs(overlap) <= noise) {
-      if (depth > 0) depth = 0;
+      if (depth > 0) {
+        depth = 0;
+        depthAxis = u;
+      }
       return true;
     }
     if (overlap <= 0) return false;
-    if (overlap < depth) depth = overlap;
+    if (overlap < depth) {
+      depth = overlap;
+      depthAxis = u;
+    }
     return true;
   }
 
@@ -159,12 +174,12 @@ export function obbPenetrationDepth(a: Obb, b: Obb): number | null {
       if (!testAxis(cross(a.axes[i], b.axes[j]))) return null;
     }
   }
-  return depth === Infinity ? null : depth;
+  return depth === Infinity ? null : { depth, axis: depthAxis };
 }
 
 /**
  * Projected radius of `o` onto unit axis `u`: half the length of `o`'s
- * shadow on `u`. The same per-axis projection {@link obbPenetrationDepth}'s
+ * shadow on `u`. The same per-axis projection {@link obbPenetration}'s
  * `testAxis` computes for the 15-candidate SAT — factored out here so the
  * through-penetration containment test below can reuse it for ANY axis, not
  * only one drawn from a shared a/b frame.
@@ -235,7 +250,7 @@ function piercesAlong(p: Obb, q: Obb, centerDelta: Vec3): boolean {
  * ways, so it also holds for the MUTUAL case: two walls crossing at an
  * X-junction, each piercing the other clean through in thickness.
  *
- * This matters because {@link obbPenetrationDepth} reports the minimum
+ * This matters because {@link obbPenetration} reports the minimum
  * TRANSLATION distance to separate the pair, which for this shape is
  * dominated by the piercing member's own extent along the piercing axis, not
  * by how much material it actually crossed (review: #2536 — a 2 m duct
@@ -244,7 +259,7 @@ function piercesAlong(p: Obb, q: Obb, centerDelta: Vec3): boolean {
  *
  * Tests containment against EACH box's own axes independently (via
  * {@link piercesAlong}'s general per-axis projection, the same projection
- * {@link obbPenetrationDepth} already computes for its 15 SAT candidates) —
+ * {@link obbPenetration} already computes for its 15 SAT candidates) —
  * unlike an earlier version restricted to a frame shared by both boxes'
  * axes up to sign, this also catches a member piercing through at a generic
  * relative rotation (e.g. a duct crossing a wall at 15 degrees, review:

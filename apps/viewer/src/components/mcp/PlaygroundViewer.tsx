@@ -34,6 +34,8 @@ import { useThreeScene } from './useThreeScene';
 import { createScene } from './playground-scene';
 import type { SceneHandle, ViewerController } from './playground-viewer-types';
 import type { LoadedPlaygroundModel } from './playground-dispatcher';
+import { playgroundGeometrySource } from './playground-geometry-source';
+import type { IfcDataStore } from '@ifc-lite/parser';
 
 const ACCENT = 0xd6ff3f;
 const BG_COLOR = '#0e0e12';
@@ -50,7 +52,9 @@ interface GeometryLoadCallbacks {
   setPhase: (phase: 'processing' | 'ready' | 'error') => void;
   setPhaseMsg: (msg: LiveTranslationMessage) => void;
   /** Fired once with the non-empty mesh list on the success path. */
-  onMeshes: (meshes: MeshData[]) => void;
+  onMeshes: (meshes: MeshData[], store: IfcDataStore) => void;
+  /** Clear meshes from a previous revision when the current one cannot be shown. */
+  onEmpty?: () => void;
   onReady?: () => void;
 }
 
@@ -77,11 +81,12 @@ export async function loadPlaygroundGeometry(
     try {
       await processor.init();
       cb.setPhaseMsg({ key: 'mcp.playgroundViewer.extractingGeometry' });
-      // Use our owning byte snapshot — store.source can be a sub-view that
-      // the parser detached internally on big files.
+      const source = await playgroundGeometrySource(model);
+      if (cb.isCancelled()) return;
+      // @raw-entity-enumeration-ok the mesher requires the index parsed from source.bytes, which already includes pending edits.
       const result = await processor.process(
-        model.bytes,
-        model.store.entityIndex.byId as unknown as Map<number, unknown>,
+        source.bytes,
+        source.store.entityIndex.byId as unknown as Map<number, unknown>,
       );
       if (cb.isCancelled()) return;
       const meshes = result.meshes ?? [];
@@ -92,11 +97,12 @@ export async function loadPlaygroundGeometry(
         coordinateInfo: result.coordinateInfo,
       });
       if (meshes.length === 0) {
+        cb.onEmpty?.();
         cb.setPhase('error');
         cb.setPhaseMsg({ key: 'mcp.playgroundViewer.noDrawableGeometry' });
         return;
       }
-      cb.onMeshes(meshes);
+      cb.onMeshes(meshes, source.store);
       cb.setPhase('ready');
       cb.onReady?.();
     } finally {
@@ -104,6 +110,7 @@ export async function loadPlaygroundGeometry(
     }
   } catch (err) {
     if (cb.isCancelled()) return;
+    cb.onEmpty?.();
     // eslint-disable-next-line no-console
     console.error('[playground-viewer] geometry processing failed', err);
     cb.setPhase('error');
@@ -116,6 +123,8 @@ export async function loadPlaygroundGeometry(
 export interface PlaygroundViewerProps {
   /** Currently loaded model (or null). When this changes, the viewer reloads. */
   model: LoadedPlaygroundModel | null;
+  /** Increments after a live model edit so geometry is materialized again. */
+  revision?: number;
   /** Notified once geometry has been processed. */
   onReady?: () => void;
   /** Optional className to control sizing. */
@@ -129,7 +138,7 @@ export interface PlaygroundViewerProps {
  * panel collapses (saves GPU memory on long sessions).
  */
 export const PlaygroundViewer = forwardRef<ViewerController, PlaygroundViewerProps>(function PlaygroundViewer(
-  { model, onReady, className },
+  { model, revision, onReady, className },
   ref,
 ) {
   const { t } = useTranslation();
@@ -206,18 +215,24 @@ export const PlaygroundViewer = forwardRef<ViewerController, PlaygroundViewerPro
       setMeshCount(0);
       return;
     }
+    sceneHandleRef.current.unloadModel();
+    setMeshCount(0);
     void loadPlaygroundGeometry(model, {
       isCancelled: () => cancelled,
       setPhase,
       setPhaseMsg,
-      onMeshes: (meshes) => {
-        sceneHandleRef.current?.loadMeshes(meshes, model);
+      onMeshes: (meshes, store) => {
+        sceneHandleRef.current?.loadMeshes(meshes, store === model.store ? model : { ...model, store });
         setMeshCount(meshes.length);
+      },
+      onEmpty: () => {
+        sceneHandleRef.current?.unloadModel();
+        setMeshCount(0);
       },
       onReady,
     });
     return () => { cancelled = true; };
-  }, [model, onReady, sceneHandleRef]);
+  }, [model, revision, onReady, sceneHandleRef]);
 
   return (
     // The outer wrapper must be a positioning context for the absolute

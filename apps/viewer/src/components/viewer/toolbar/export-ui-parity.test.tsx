@@ -497,6 +497,7 @@ describe('export UI parity (ifc-lite#2511)', () => {
     // both action ids landing on the same handler — fail here.
     loadFakeModel();
     const canvas = document.createElement('canvas');
+    canvas.dataset.viewport = 'main';
     canvas.toDataURL = () => 'data:image/png;base64,iVBORw0KGgo=';
     document.body.appendChild(canvas);
 

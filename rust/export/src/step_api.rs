@@ -145,11 +145,23 @@ pub struct StepStats {
     /// several. Slots whose IFC2X3 declaration DOES offer such a default take
     /// `.NOTDEFINED.` or `.F.` and are not counted.
     pub required_slots_unfilled: usize,
+}
+
+/// What a schema conversion could not settle, beyond [`StepStats`]
+/// (#5307, #5365). Returned by [`crate::export_step_with_report`].
+///
+/// A separate type rather than new [`StepStats`] fields: `StepStats` is
+/// publicly constructible and not `#[non_exhaustive]`, so a field added to it
+/// breaks any struct literal downstream (a Rust-only major, see
+/// `rust-major-offset.json`). This type is `#[non_exhaustive]` from its first
+/// release, so it can grow without that.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ConversionReport {
     /// SLOTS written to an IFC4X3/IFC5 -> IFC4 downgrade with `$` where IFC4
     /// requires a value (#5307, the Rust twin of #5202). The converter never
-    /// invents one: no measure, label, identifier, reference, flag or enum.
-    /// Non-zero means the file is not valid IFC4. Counted per slot, not per
-    /// record. Zero for every other direction, including IFC2X3 -> IFC4.
+    /// invents one. Non-zero means the file is not valid IFC4. Zero for every
+    /// other direction, including IFC2X3 -> IFC4.
     pub ifc4_required_slots_unfilled: usize,
     /// Enum values the target schema does not define that a conversion wrote
     /// as `.NOTDEFINED.` or `$`, or as `.USERDEFINED.` without room for the
@@ -159,4 +171,7 @@ pub struct StepStats {
     /// replacement for, so they were kept as written (#5365). Non-zero means
     /// the file is not valid against its header.
     pub enum_values_refused: usize,
+    /// One line per non-zero count above, naming what it happened to; the
+    /// same texts the merged exporter puts in `MergedStats::warnings`.
+    pub warnings: Vec<String>,
 }

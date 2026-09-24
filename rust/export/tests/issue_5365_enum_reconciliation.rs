@@ -5,7 +5,8 @@
 //! `schema-converter-enums.test.ts`, through the public exports.
 
 use ifc_lite_export::{
-    export_merged_models, export_step_with_stats, MergedModel, MergedOptions, StepOptions,
+    export_merged_models, export_step_with_report, export_step_with_stats, MergedModel,
+    MergedOptions, StepOptions,
 };
 
 fn model(schema: &str, record: &str) -> String {
@@ -81,4 +82,19 @@ fn a_member_the_target_defines_is_left_alone() {
     let (out, warnings) = merged("IFC4X3_ADD2", "IFC4", record);
     assert_eq!(line_for(&out, "#50"), record);
     assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[test]
+fn single_model_export_reports_a_lost_value_in_the_conversion_report() {
+    let content = model(
+        "IFC4X3_ADD2",
+        "#41=IFCDOOR('1a2B3c4D5e6F7g8H9i0J1k',$,'D',$,'Gate',$,$,$,$,$,.TURNSTILE.,$,$);\n\
+         #10=IFCPROJECTEDCRS($,'A description',$,$,$,$,$);",
+    );
+    let opts = StepOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let (_, _, report) = export_step_with_report(content.as_bytes(), &opts).unwrap();
+    assert_eq!(report.enum_values_lost, 1, "{report:?}");
+    assert_eq!(report.enum_values_refused, 0, "{report:?}");
+    assert_eq!(report.ifc4_required_slots_unfilled, 1, "{report:?}");
+    assert_eq!(report.warnings.len(), 2, "{report:?}");
 }

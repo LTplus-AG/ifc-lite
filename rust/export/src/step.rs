@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use ifc_lite_core::EntityScanner;
 
 pub use crate::step_api::{
-    AttrMutation, CopyOnWriteMutation, PropMutation, StepOptions, StepStats,
+    AttrMutation, ConversionReport, CopyOnWriteMutation, PropMutation, StepOptions, StepStats,
 };
 
 use crate::schema_detect::detect_schema;
@@ -32,6 +32,16 @@ pub fn export_step(content: &[u8], opts: &StepOptions) -> std::io::Result<String
 
 /// Like [`export_step`] but also returns coverage stats.
 pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> std::io::Result<(String, StepStats)> {
+    export_step_with_report(content, opts).map(|(s, stats, _)| (s, stats))
+}
+
+/// Like [`export_step_with_stats`] but also returns the [`ConversionReport`]:
+/// IFC4-required `$` slots (#5307) and enum members the target schema lacks
+/// (#5365) that a schema conversion could not settle.
+pub fn export_step_with_report(
+    content: &[u8],
+    opts: &StepOptions,
+) -> std::io::Result<(String, StepStats, ConversionReport)> {
     // Presized for a full re-export, where the output is within a small factor
     // of the source. Not for a subset: 200 MB filtered to a few records would
     // reserve 200 MB, and on wasm that linear memory never comes back.
@@ -45,11 +55,11 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> std::io::Re
     // always a schema-conversion failure (`emit` also propagates those through
     // this same `io::Result`, see `schema_unrepresented::UnrepresentedEntityError`'s
     // `From` impl) — genuinely fallible now, unlike the `.expect` this replaced.
-    let stats = emit(content, opts, &mut buf)?;
+    let (stats, report) = emit(content, opts, &mut buf)?;
     // Every byte came from the source by way of `from_utf8_lossy`, or from a
     // `format!`, so this validates rather than converts.
     let out = String::from_utf8(buf).expect("the writer emits UTF-8");
-    Ok((out, stats))
+    Ok((out, stats, report))
 }
 
 /// [`export_step_with_stats`], writing as it goes instead of returning the file.
@@ -74,7 +84,7 @@ pub fn export_step_to_writer<W: std::io::Write>(
 ) -> std::io::Result<StepStats> {
     use std::io::Write as _;
     let mut buffered = std::io::BufWriter::with_capacity(1 << 20, w);
-    let stats = emit(content, opts, &mut buffered)?;
+    let (stats, _) = emit(content, opts, &mut buffered)?;
     // Flushed here for the error, not for the bytes: `BufWriter::drop` does
     // flush, it just has nowhere to report a failure and swallows it.
     buffered.flush()?;
@@ -106,7 +116,7 @@ fn emit<W: std::io::Write>(
     content: &[u8],
     opts: &StepOptions,
     out: &mut W,
-) -> std::io::Result<StepStats> {
+) -> std::io::Result<(StepStats, ConversionReport)> {
     // 1. Index every entity line (preserve source order).
     let mut order: Vec<u32> = Vec::new();
     let mut line_of: HashMap<u32, (usize, usize)> = HashMap::new();
@@ -284,7 +294,7 @@ fn emit<W: std::io::Write>(
         // duplicate real records.
         let Some(mut next) = next_id else {
             out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
-            return Ok(StepStats {
+            return Ok((StepStats {
                 total: order.len(),
                 written,
                 copies_refused,
@@ -292,10 +302,7 @@ fn emit<W: std::io::Write>(
                 attribute_edits_refused,
                 owner_history_unfilled: slot_fill.owner_history_unfilled(),
                 required_slots_unfilled: slot_fill.required_slots_unfilled(),
-                ifc4_required_slots_unfilled: checks.ifc4_slots.required_slots_unfilled(),
-                enum_values_lost: checks.enums.lost(),
-                enum_values_refused: checks.enums.refused(),
-            });
+            }, checks.report()));
         };
         for ((express_id, pset_name), props) in &groups {
             // One property set costs one id per property plus one for the set
@@ -345,7 +352,7 @@ fn emit<W: std::io::Write>(
 
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
-    Ok(StepStats {
+    Ok((StepStats {
         total: order.len(),
         written,
         copies_refused,
@@ -353,10 +360,7 @@ fn emit<W: std::io::Write>(
         attribute_edits_refused,
         owner_history_unfilled: slot_fill.owner_history_unfilled(),
         required_slots_unfilled: slot_fill.required_slots_unfilled(),
-        ifc4_required_slots_unfilled: checks.ifc4_slots.required_slots_unfilled(),
-                enum_values_lost: checks.enums.lost(),
-                enum_values_refused: checks.enums.refused(),
-    })
+    }, checks.report()))
 }
 
 #[cfg(test)]

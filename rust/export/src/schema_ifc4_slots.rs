@@ -11,7 +11,7 @@
 //! every BOOLEAN slot IFC4 requires is required in IFC4X3 as well (`SameSense`,
 //! `Orientation`, …), where `.F.` would flip geometry rather than claim
 //! nothing. Enums stay unfilled because enum reconciliation is its own problem
-//! (#5365). The count surfaces in `StepStats::ifc4_required_slots_unfilled`
+//! (#5365). The count surfaces in `ConversionReport::ifc4_required_slots_unfilled`
 //! and the merged exporter's warnings, so the caller learns the file is not
 //! valid IFC4 instead of receiving an invented value.
 //!

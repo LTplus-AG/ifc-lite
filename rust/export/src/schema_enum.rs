@@ -170,6 +170,16 @@ impl ConversionChecks {
         out.extend(self.enums.warnings());
         out
     }
+
+    /// The public report for a single-model export.
+    pub(crate) fn report(&self) -> crate::step_api::ConversionReport {
+        crate::step_api::ConversionReport {
+            ifc4_required_slots_unfilled: self.ifc4_slots.required_slots_unfilled(),
+            enum_values_lost: self.enums.lost(),
+            enum_values_refused: self.enums.refused(),
+            warnings: self.warnings(),
+        }
+    }
 }
 
 #[cfg(test)]

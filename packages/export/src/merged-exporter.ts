@@ -42,7 +42,7 @@ import {
   EMPTY_MODEL_VIEW,
   type EmptyContainerModelView,
 } from './merged-empty-containers.js';
-import { skipRedundantRelAggregates, applyRelAggregateStrip, collectRelAggregatePairs } from './merged-rel-aggregates.js';
+import { skipRedundantRelAggregates, applyRelAggregateStrip, collectAggregatedObjects } from './merged-rel-aggregates.js';
 
 /**
  * UTF-8 decode of `[start, end)` of a model's source, accepting either the raw
@@ -104,8 +104,8 @@ interface MergeSetup {
   firstProjectIds: number[];
   /** Spatial lookup built from the primary model. */
   spatialLookup: SpatialLookup;
-  /** Aggregation edges actually declared by the primary model. */
-  primaryAggregatePairs: Set<string>;
+  /** Final ids that already have an IfcRelAggregates parent: primary's, grown per later model (#5471). */
+  aggregatedObjects: Set<number>;
   /** Length unit scale of the primary model — the unit other models merge into. */
   primaryScale: number;
   /** Area unit scale (m² per unit) of the primary model — target for area values. */
@@ -879,7 +879,7 @@ export class MergedExporter {
       firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale),
       firstProjectIds: this.findEntitiesByType(firstModel.dataStore, 'IFCPROJECT'),
       spatialLookup: this.buildSpatialLookup(firstModel.dataStore),
-      primaryAggregatePairs: collectRelAggregatePairs(
+      aggregatedObjects: collectAggregatedObjects(
         firstModel.dataStore, this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this), firstModelOffset,
       ),
       primaryScale,
@@ -1116,14 +1116,6 @@ export class MergedExporter {
       // Under normalize, this model's raw elevations are in its own unit, so the
       // elevation match is done in the primary unit (rawElevation * lengthFactor).
       this.unifySpatialEntities(model.dataStore, setup.spatialLookup, setup.firstModelOffset, lengthFactor, sharedRemap, skipEntityIds, setup);
-
-      // Skip IfcRelAggregates that become fully redundant after unification,
-      // and strip individually-duplicated members from ones only partially so.
-      skipRedundantRelAggregates(
-        model.dataStore, sharedRemap, skipEntityIds, relAggregateStrip,
-        setup.primaryAggregatePairs,
-        this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this),
-      );
     }
 
     if (!isFirstModel) {
@@ -1153,6 +1145,14 @@ export class MergedExporter {
           guidRewrite.set(id, mintUniqueGuid(guid, model.id, guidToFinalId, pendingMinted));
         }
       }
+    }
+
+    if (!isFirstModel && compatible) {
+      // After EVERY unification above (GlobalId too): drop aggregation members that already have a parent (#5471).
+      skipRedundantRelAggregates(
+        model.dataStore, sharedRemap, setup.modelOffsets.get(model.id)!, skipEntityIds, relAggregateStrip,
+        setup.aggregatedObjects, this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this),
+      );
     }
 
     return { sharedRemap, skipEntityIds, guidRewrite, localGuids, relAggregateStrip };

@@ -15,105 +15,93 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
 
 /**
- * Skip IfcRelAggregates that become fully redundant after spatial
- * unification, and mark the individually-redundant members of ones only
- * PARTIALLY so for stripping.
+ * Skip IfcRelAggregates that become fully redundant after unification, and
+ * mark the individually-redundant members of ones only PARTIALLY so for
+ * stripping.
  *
- * When Model2's `IfcRelAggregates(Project, (Site))` gets remapped to
- * `IfcRelAggregates(FirstProject, (FirstSite))`, it duplicates Model1's
- * existing relationship, causing viewers to show Site multiple times.
+ * An object has at most one aggregation parent: `IfcObjectDefinition.Decomposes`
+ * is `SET [0:1]`, and `IfcSpatialStructureElement.WR41` requires exactly one
+ * for a building or storey. Once a later model's Building unifies with the
+ * primary's, the primary's own `IfcRelAggregates` already gives it a parent,
+ * so a later model's rel naming the same (remapped) Building gives it a second
+ * one. That holds whether the later rel's RelatingObject remaps to the same
+ * parent (the duplicate-edge case, e.g. `(Project, (Site))` twice) or to a
+ * different one (#5471: model B aggregates its Building directly under its
+ * Project, model A under a Site, so A's Building ends up under both).
  *
- * An IfcRelAggregates is fully redundant (skipped entirely) when its
- * RelatingObject (attr 4) AND ALL its RelatedObjects (attr 5) remap to an
- * edge the primary model already declares. When only the RelatingObject and
- * SOME (not all) of its RelatedObjects have such a primary edge — e.g. Model2's Building
- * unifies with Model1's, and one of its two Storeys matches Model1's by
- * name while the other is new — the rel is genuinely needed for its new
- * member(s), but Model1's own relationship already lists the remapped
- * one(s) under the same (now-shared) RelatingObject: emitting them again
- * here would duplicate that membership. Those specific ids are recorded in
- * `relAggregateStrip` so {@link applyRelAggregateStrip} drops them from the
- * emitted RelatedObjects list, keeping only the genuinely new members.
+ * So a RelatedObjects member is redundant when its final id is already in
+ * `aggregatedObjects`, the set of final ids that already have a parent in the
+ * output. A rel whose members are ALL redundant is skipped outright; one with
+ * SOME redundant members is kept for its new member(s), and the redundant ids
+ * are recorded in `relAggregateStrip` so {@link applyRelAggregateStrip} drops
+ * them from the emitted list. A unified member with no parent yet is kept: that
+ * rel is then the only statement of its parentage (#3550).
+ *
+ * `aggregatedObjects` is seeded from the primary model by
+ * {@link collectAggregatedObjects} and extended here with every member a kept
+ * rel emits, so a third model cannot give an object a parent the second already
+ * did. `sharedRemap` must already hold every unification of this model
+ * (spatial, infrastructure AND GlobalId), because a member remapped only
+ * later would be missed. `idOffset` places this model's unremapped ids in
+ * final id space.
  */
 export function skipRedundantRelAggregates(
   dataStore: IfcDataStore,
-  sharedRemap: Map<number, number>,
+  sharedRemap: ReadonlyMap<number, number>,
+  idOffset: number,
   skipEntityIds: Set<number>,
   relAggregateStrip: Map<number, Set<number>>,
-  primaryAggregatePairs: ReadonlySet<string>,
+  aggregatedObjects: Set<number>,
   findEntitiesByType: (dataStore: IfcDataStore, typeUpper: string) => number[],
   extractStepAttribute: (expressId: number, dataStore: IfcDataStore, attrIndex: number) => string | null,
 ): void {
   for (const relId of findEntitiesByType(dataStore, 'IFCRELAGGREGATES')) {
-    // RelatingObject is attr 4 — single #ref
-    const relatingAttr = extractStepAttribute(relId, dataStore, 4);
-    if (!relatingAttr) continue;
-    const relatingRef = relatingAttr.match(/^#(\d+)$/);
-    if (!relatingRef || !sharedRemap.has(parseInt(relatingRef[1], 10))) continue;
-
     // RelatedObjects is attr 5 — list of #refs like (#2,#3)
-    const relatedAttr = extractStepAttribute(relId, dataStore, 5);
-    if (!relatedAttr) continue;
-    const refs: number[] = [];
-    const refRegex = /#(\d+)/g;
-    let m;
-    while ((m = refRegex.exec(relatedAttr)) !== null) {
-      refs.push(parseInt(m[1], 10));
-    }
+    const refs = listRefs(extractStepAttribute(relId, dataStore, 5));
     if (refs.length === 0) continue;
 
-    const remappedRelatingObject = sharedRemap.get(parseInt(relatingRef[1], 10))!;
-    // An object identity match alone does not prove that the primary model
-    // already owns this aggregation edge. Preserve a matched member when this
-    // is the only relationship that establishes its parentage (#3550).
-    const redundantRefs = refs.filter(ref => {
-      const remappedRef = sharedRemap.get(ref);
-      return remappedRef !== undefined && primaryAggregatePairs.has(aggregatePairKey(remappedRelatingObject, remappedRef));
-    });
+    const finalId = (ref: number) => sharedRemap.get(ref) ?? ref + idOffset;
+    const redundantRefs = refs.filter(ref => aggregatedObjects.has(finalId(ref)));
     if (redundantRefs.length === refs.length) {
-      // Every edge already exists in the primary model — this rel is fully redundant.
+      // Every member already has a parent in the output — fully redundant.
       skipEntityIds.add(relId);
-    } else if (redundantRefs.length > 0) {
+      continue;
+    }
+    if (redundantRefs.length > 0) {
       // Some, not all — keep the rel for its new member(s), but drop the
-      // ones Model1's own relationship already aggregates.
+      // ones that already have a parent.
       relAggregateStrip.set(relId, new Set(redundantRefs));
     }
+    for (const ref of refs) aggregatedObjects.add(finalId(ref));
   }
 }
 
-/** Encode one `RelatingObject → RelatedObject` aggregation edge for set lookup. */
-export function aggregatePairKey(relatingObjectId: number, relatedObjectId: number): string {
-  return `${relatingObjectId}:${relatedObjectId}`;
+/** The `#id`s in one STEP list attribute, in order; `[]` for a missing one. */
+function listRefs(attr: string | null): number[] {
+  if (!attr) return [];
+  const refs: number[] = [];
+  const refRegex = /#(\d+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = refRegex.exec(attr)) !== null) refs.push(parseInt(match[1], 10));
+  return refs;
 }
 
 /**
- * Collect the aggregation edges actually declared by the primary model.
- *
- * A later model may unify both endpoint entities without the primary model
- * declaring their relationship. Callers use this set to distinguish a truly
- * duplicate edge from the only surviving statement of parentage.
+ * The final ids of every object the primary model aggregates under a parent,
+ * i.e. every IfcRelAggregates RelatedObjects member, offset into final id
+ * space. Seeds {@link skipRedundantRelAggregates}'s `aggregatedObjects`.
  */
-export function collectRelAggregatePairs(
+export function collectAggregatedObjects(
   dataStore: IfcDataStore,
   findEntitiesByType: (dataStore: IfcDataStore, typeUpper: string) => number[],
   extractStepAttribute: (expressId: number, dataStore: IfcDataStore, attrIndex: number) => string | null,
   idOffset: number,
-): Set<string> {
-  const pairs = new Set<string>();
+): Set<number> {
+  const aggregated = new Set<number>();
   for (const relId of findEntitiesByType(dataStore, 'IFCRELAGGREGATES')) {
-    const relatingAttr = extractStepAttribute(relId, dataStore, 4);
-    const relatingRef = relatingAttr?.match(/^#(\d+)$/);
-    if (!relatingRef) continue;
-    const relatedAttr = extractStepAttribute(relId, dataStore, 5);
-    if (!relatedAttr) continue;
-    const relatingId = parseInt(relatingRef[1], 10) + idOffset;
-    const refRegex = /#(\d+)/g;
-    let match: RegExpExecArray | null;
-    while ((match = refRegex.exec(relatedAttr)) !== null) {
-      pairs.add(aggregatePairKey(relatingId, parseInt(match[1], 10) + idOffset));
-    }
+    for (const ref of listRefs(extractStepAttribute(relId, dataStore, 5))) aggregated.add(ref + idOffset);
   }
-  return pairs;
+  return aggregated;
 }
 
 /**

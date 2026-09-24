@@ -21,6 +21,14 @@ export interface NarrowResult {
   distanceKind: ClashDistanceKind;
   point: Vec3;
   bounds: AABB;
+  /**
+   * For a `hard` result, the f32 noise floor of `distance` along the
+   * direction it was measured (`depthFloor` / `estimateFloor`): the depth at
+   * or below which this pair would have been `touch`. Absent otherwise.
+   * Carried out so the reported touching band is decided by the same rule as
+   * the verdict (#5639). Mirrors the Rust `NarrowResult::depth_floor`.
+   */
+  depthFloor?: number;
 }
 
 

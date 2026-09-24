@@ -238,9 +238,11 @@ export function depthClashResult(
 ): NarrowResult | null {
   // `||` in the same order as the Rust kernel, each comparison `<=` so a NaN
   // candidate never counts as below its floor, on either side.
+  const estFloor = estimateFloor(elA.bounds, elB.bounds);
+  const boxFloor = box != null ? depthFloor(box.axis, elA.bounds, elB.bounds) : null;
   const belowFloor =
-    estimate <= estimateFloor(elA.bounds, elB.bounds) ||
-    (box != null && box.mtd <= depthFloor(box.axis, elA.bounds, elB.bounds)) ||
+    estimate <= estFloor ||
+    (box != null && boxFloor != null && box.mtd <= boxFloor) ||
     (meshEvidence != null && meshEvidence.depth <= depthFloor(meshEvidence.axis, elA.bounds, elB.bounds));
   if (belowFloor) {
     if (!rule.reportTouch) return null;
@@ -252,6 +254,8 @@ export function depthClashResult(
   // Estimate-vs-mesh selection, reachable only above the floor: the box MTD
   // is certified (`mesh`) unless the pair is a through-penetration, where
   // the AABB estimate is the honest number (see `boxPenetration`).
+  // The reported depth carries ITS OWN floor out with it (#5639), so the
+  // reported touching band is decided by the same rule as this verdict.
   const measured = box != null && !box.through;
   return {
     status: 'hard',
@@ -259,5 +263,6 @@ export function depthClashResult(
     distanceKind: measured ? 'mesh' : 'estimate',
     point,
     bounds,
+    depthFloor: measured && boxFloor != null ? boxFloor : estFloor,
   };
 }

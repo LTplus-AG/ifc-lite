@@ -18,10 +18,16 @@ import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { judge, describeFindings, PLANTED_DEFECT } from './lane-canary.mjs';
+// A NAMESPACE import, not named ones: the revert oracle reverts
+// lane-canary.mjs to main, where `describeFindings`/`PLANTED_DEFECT` do not
+// exist, and a named import of a missing export fails the whole FILE at load
+// time, so no assertion runs. Through the namespace a missing export is
+// `undefined` and only the tests that need it fail.
+import * as canary from './lane-canary.mjs';
 import { readInput, quotableLines } from './validate-findings.mjs';
 import { addedLineRanges, newFileLines } from './build-review-input.mjs';
 
+const { judge } = canary;
 const HERE = dirname(fileURLToPath(import.meta.url));
 // One path, read fresh per test: a second literal is a second thing to drift.
 const FIXTURE = join(HERE, 'lane-canary-fixture.json');
@@ -92,19 +98,51 @@ test('#5621: a finding on the planted file that does not explain the mechanism s
   assert.equal(v.ok, false, v.why);
 });
 
+test('#5621: a rubric parrot -- NaN named, but nothing about what this code does with it -- fails', () => {
+  // The rubric itself tells every model "NaN loses every comparison", so the
+  // word alone is not evidence the diff was read.
+  const v = judge({
+    verdict: 'findings',
+    findings: [finding({ line: 4, quote: 'return timeoutMs;', body: 'NaN loses every comparison.' })],
+  });
+  assert.equal(v.ok, false, v.why);
+});
+
+test('#5621: a finding about 0 as a magic number, with no NaN, fails', () => {
+  const v = judge({
+    verdict: 'findings',
+    findings: [finding({ line: 7, quote: 'return 0;', body: 'Returning 0 here is a magic number; use a named constant.' })],
+  });
+  assert.equal(v.ok, false, v.why);
+});
+
+test('#5621: "not a number" spelled out, with the session closing, counts', () => {
+  const v = judge({
+    verdict: 'findings',
+    findings: [
+      finding({
+        line: 7,
+        quote: 'return 0;',
+        body: 'Number(undefined) is not a number, so the guard fails and the session is closed at once.',
+      }),
+    ],
+  });
+  assert.equal(v.ok, true, v.why);
+});
+
 test('#5621: describeFindings prints every surviving finding with its source model', () => {
-  const text = describeFindings({ verdict: 'findings', findings: [finding({ source: 'model/a' })] });
+  const text = canary.describeFindings({ verdict: 'findings', findings: [finding({ source: 'model/a' })] });
   assert.match(text, /src\/session-timeout\.ts:3 \(from model\/a\)/);
   assert.match(text, /quote: if \(timeoutMs > 0\) \{/);
   assert.match(text, /body: {2}Number\(undefined\) is NaN/);
-  assert.match(describeFindings({ verdict: 'clean', findings: [] }), /no surviving findings/);
+  assert.match(canary.describeFindings({ verdict: 'clean', findings: [] }), /no surviving findings/);
 });
 
 test('a PARTIAL match still fails: naming the file is not naming the defect', () => {
   const v = judge(
     { verdict: 'findings', findings: [{ path: 'src/session-timeout.ts', body: 'looks fine to me' }] }
   );
-  assert.equal(v.ok, false, 'mentions the file but never the symbol the defect is in');
+  assert.equal(v.ok, false, 'on the planted file, but the body explains nothing');
 });
 
 test('a non-object response fails rather than throwing', () => {
@@ -127,7 +165,7 @@ test('THE FIXTURE ACTUALLY CONTAINS THE DEFECT the canary demands be found', () 
   assert.equal(f.files[0].path, 'src/session-timeout.ts');
   // And the judge must be asking about the file the fixture actually sends, or
   // the canary demands a finding the validator would drop as never sent.
-  assert.equal(f.files[0].path, PLANTED_DEFECT.path);
+  assert.equal(f.files[0].path, canary.PLANTED_DEFECT?.path);
 });
 
 test('the fixture\'s ranges are what the BUILDER emits, and the quote is where it says', () => {
@@ -186,11 +224,11 @@ test('THE CANARY RUNS THE LANE\'S REAL PIPELINE, not a shortcut past it', () => 
   // A check satisfied by prose about the thing, rather than the thing, is the
   // defect this repository has now paid for four times in one day.
   const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*(\/\/|#).*$/gm, '');
-  const canary = strip(readFileSync(join(HERE, 'lane-canary.mjs'), 'utf8'));
+  const canarySrc = strip(readFileSync(join(HERE, 'lane-canary.mjs'), 'utf8'));
   const lane = strip(readFileSync(join(HERE, '..', '..', '.github/workflows/claude-review.yml'), 'utf8'));
   for (const stage of ['run-reviewer.mjs', 'validate-findings.mjs']) {
     assert.ok(lane.includes(stage), `the lane must still use ${stage}`);
-    assert.ok(canary.includes(stage), `the canary must RUN ${stage}, not merely mention it`);
+    assert.ok(canarySrc.includes(stage), `the canary must RUN ${stage}, not merely mention it`);
   }
 });
 

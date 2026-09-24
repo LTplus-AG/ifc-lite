@@ -21,7 +21,7 @@
  * all leave a lane that authenticates fine and finds nothing. So the canary
  * demands a FINDING on an input that contains one:
  *
- *   verdict=findings, and the finding must name the added line it is about.
+ *   verdict=findings, and a finding on the planted file must explain the defect.
  *
  * A `clean` verdict here is a FAILURE. That is the whole point -- it is the one
  * assertion that separates "reviewing" from "answering".
@@ -63,26 +63,39 @@ export class CanaryError extends Error {
  * The planted defect, stated as what a finding about it must SAY rather than
  * which token it must contain (#5621).
  *
- * `path` is the one file the fixture sends. `mechanism` is the defect itself:
- * `Number(raw)` of a missing value is NaN, and NaN loses the one-ended
- * `timeoutMs > 0` comparison and falls through to `return 0`. A finding that
- * does not name NaN has not explained this defect, whatever line it sits on.
+ * `path` is the one file the fixture sends. The defect: `Number(raw)` of a
+ * missing value is NaN, NaN loses the one-ended `timeoutMs > 0` comparison, and
+ * control falls through to `return 0`, which closes the session. A finding
+ * explains it only if its body names BOTH halves:
+ *   - `mechanism`: NaN (or "not a number"), the input the guard misses;
+ *   - `consequence`: what that NaN turns into, returning 0 / zero or closing
+ *     the session.
+ * Requiring both refuses a rubric parrot ("NaN loses every comparison" with
+ * nothing about this code) and a finding about 0 as a magic number.
  *
  * The first judge demanded the literal symbol `timeoutMs` instead, and that
  * refused a correct review. The destructive half of this defect is the
- * `return 0;` line, which does not contain `timeoutMs`. On the 2026-09-24
- * scheduled run the pool's one surviving finding was anchored there, so the
- * canary reported LANE_NOT_REVIEWING. The first branch run with findings
- * printed showed three of four correct findings in that shape, and the run
- * went green only because the fourth happened to quote `if (timeoutMs > 0) {`.
- * Only the line anchor decided the verdict, not the substance of the finding.
+ * `return 0;` line, which does not contain `timeoutMs`. The 2026-09-24
+ * scheduled run did not log its finding, but the message ("none names
+ * timeoutMs", while the path matched) means it was on this file and quoted a
+ * line without the symbol: most likely `return 0;`. The first branch run with
+ * findings printed showed three of four correct findings in exactly that
+ * shape, and it went green only because the fourth happened to quote
+ * `if (timeoutMs > 0) {`. The verdict turned on which line got quoted, not on
+ * what the finding said.
+ *
+ * STATED HOLE: this is keyword evidence, not comprehension. A body that
+ * negates the defect while using both words ("no NaN issue; returning 0 is
+ * fine") passes. The canary measures liveness, as its file header says, and a
+ * reviewer that writes that sentence about this diff is still reading it.
  *
  * The anchor needs no check here: `validate-findings.mjs` has already dropped
  * any finding whose quote is not the text of an added line of this file.
  */
 export const PLANTED_DEFECT = Object.freeze({
   path: 'src/session-timeout.ts',
-  mechanism: /\bNaN\b/i,
+  mechanism: /\bNaN\b|not[- ]a[- ]number/i,
+  consequence: /\breturn(?:s|ing|ed)?\s+`?0\b|\bzero\b|\bclos(?:e|es|ing|ed)\b[^.]*\bsession|\bsession\b[^.]*\bclos(?:e|es|ing|ed)\b/i,
 });
 
 /**
@@ -92,10 +105,10 @@ export const PLANTED_DEFECT = Object.freeze({
  * answers `findings` with a finding about something else has not found THIS
  * defect, and a canary satisfied by any non-empty list would go green on a
  * reviewer that had started hallucinating. So at least one finding must be on
- * the planted file AND its body must name the mechanism.
+ * the planted file AND its body must name the mechanism and its consequence.
  *
  * @param {object} parsed - the validator's findings.json.
- * @param {{ path: string, mechanism: RegExp }} [planted]
+ * @param {{ path: string, mechanism: RegExp, consequence: RegExp }} [planted]
  * @returns {{ ok: boolean, why: string }}
  */
 export function judge(parsed, planted = PLANTED_DEFECT) {
@@ -117,14 +130,19 @@ export function judge(parsed, planted = PLANTED_DEFECT) {
     return { ok: false, why: 'verdict=findings with an EMPTY findings list, which contradicts itself' };
   }
   const found = list.filter(
-    (f) => f && f.path === planted.path && typeof f.body === 'string' && planted.mechanism.test(f.body),
+    (f) =>
+      f &&
+      f.path === planted.path &&
+      typeof f.body === 'string' &&
+      planted.mechanism.test(f.body) &&
+      planted.consequence.test(f.body),
   );
   if (found.length === 0) {
     return {
       ok: false,
       why:
         `${list.length} finding(s), but none on \`${planted.path}\` explains the defect ` +
-        `(its body must name ${planted.mechanism}). Findings about something else do not show this defect was found.`,
+        `(its body must name ${planted.mechanism} and ${planted.consequence}). Findings about something else do not show this defect was found.`,
     };
   }
   return { ok: true, why: `${list.length} finding(s), ${found.length} explaining the planted defect` };

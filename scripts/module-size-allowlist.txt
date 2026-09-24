@@ -280,7 +280,7 @@
    558 packages/mutations/src/csv-connector.ts
   1914 packages/mutations/src/mutable-property-view.ts
    422 packages/oauth-pkce/src/token-manager.ts
-   920 packages/parser/src/columnar-parser.ts
+   858 packages/parser/src/columnar-parser.ts
    467 packages/parser/src/compact-entity-index.ts
    530 packages/parser/src/data-store-transport.ts
    835 packages/parser/src/material-resolver.ts

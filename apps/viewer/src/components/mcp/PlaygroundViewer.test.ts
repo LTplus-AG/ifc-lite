@@ -25,7 +25,7 @@ import assert from 'node:assert/strict';
 
 import { GeometryProcessor, type GeometryResult, type MeshData } from '@ifc-lite/geometry';
 import { loadPlaygroundGeometry } from './PlaygroundViewer.js';
-import { parsePlaygroundModel, type LoadedPlaygroundModel } from './playground-dispatcher.js';
+import { dispatch, parsePlaygroundModel, type LoadedPlaygroundModel } from './playground-dispatcher.js';
 
 function ifc4(body: string): string {
   return [
@@ -133,6 +133,44 @@ describe('loadPlaygroundGeometry WASM disposal (#1959 P0 leak)', () => {
       disposeMock.mock.restore();
     }
   });
+});
+
+it('meshes the effective playground entity set after create and delete (#5249)', async () => {
+  const model = await schemaOnlyModel('0aBcDeFgHiJkLmNoPqRsT8');
+  const created = await dispatch(model, 'entity_create', {
+    type: 'IfcDoor', attributes: ['0aBcDeFgHiJkLmNoPqRsT9', null, 'New door'],
+  });
+  assert.equal(created.isError, false, created.text);
+  const newId = (created.structured as { expressId: number }).expressId;
+  const deleted = await dispatch(model, 'entity_delete', { express_id: 1 });
+  assert.equal(deleted.isError, false, deleted.text);
+
+  const observed: Array<{ source: boolean; created: boolean }> = [];
+  const initMock = mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
+  const processMock = mock.method(GeometryProcessor.prototype, 'process', async (_bytes: Uint8Array, index?: Map<number, unknown>) => {
+    assert.ok(index);
+    observed.push({ source: index.has(1), created: index.has(newId) });
+    return { meshes: [] } as unknown as GeometryResult;
+  });
+  const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
+  let cleared = false;
+  try {
+    await loadPlaygroundGeometry(model, {
+      isCancelled: () => false,
+      setPhase: () => undefined,
+      setPhaseMsg: () => undefined,
+      onMeshes: () => undefined,
+      onEmpty: () => { cleared = true; },
+    });
+    assert.equal(processMock.mock.callCount(), 1);
+    assert.deepEqual(observed, [{ source: false, created: true }],
+      'meshing must receive created entities and exclude deleted source entities');
+    assert.equal(cleared, true, 'an empty remesh must clear geometry from the previous revision');
+  } finally {
+    initMock.mock.restore();
+    processMock.mock.restore();
+    disposeMock.mock.restore();
+  }
 });
 
 describe('loadPlaygroundGeometry phase messages stay reactive to locale (#4918 slice 5b review)', () => {

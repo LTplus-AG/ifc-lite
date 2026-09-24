@@ -90,6 +90,7 @@ import { sanitizeFilename } from '../../lib/export/download';
 import { playgroundCostTools } from './playground-cost';
 import { effectiveEntities, effectiveEntityCount, effectiveGlobalIdLookup, effectiveTypeCounts } from './playground-effective';
 import { playgroundContainmentChain, playgroundSpatialHierarchy } from './playground-spatial';
+import { playgroundGeometrySource } from './playground-geometry-source';
 
 // ── loaded-model handle ────────────────────────────────────────────────────
 
@@ -397,6 +398,7 @@ const CLASH_MESH_CACHE_MAX = 3;
 interface ClashMeshes {
   meshes: MeshData[];
   coordinateInfo: CoordinateInfo | undefined;
+  store: IfcDataStore;
 }
 const clashMeshCache = new Map<string, ClashMeshes>();
 
@@ -429,7 +431,8 @@ function setCachedMeshes(key: string, meshed: ClashMeshes): void {
  *  geometry — clash needs tessellated solids, not quantity sets. */
 async function meshForClash(m: LoadedPlaygroundModel): Promise<ClashMeshes> {
   const key = meshCacheKey(m);
-  const cached = getCachedMeshes(key);
+  const pending = m.backend.getMutationView()?.hasPendingChanges() ?? false;
+  const cached = pending ? undefined : getCachedMeshes(key);
   if (cached) return cached;
 
   // Construction can't throw synchronously here (no wasm work happens until
@@ -439,10 +442,11 @@ async function meshForClash(m: LoadedPlaygroundModel): Promise<ClashMeshes> {
   const processor = new GeometryProcessor({ preferNative: false });
   try {
     await processor.init();
-    // Use our owning byte snapshot — store.source can be a detached sub-view.
+    const source = await playgroundGeometrySource(m);
+    // @raw-entity-enumeration-ok the mesher takes the index parsed from source.bytes, which already includes pending edits.
     const result = await processor.process(
-      m.bytes,
-      m.store.entityIndex.byId as unknown as Map<number, unknown>,
+      source.bytes,
+      source.store.entityIndex.byId as unknown as Map<number, unknown>,
     );
     const meshes = result.meshes ?? [];
     if (meshes.length === 0) {
@@ -452,8 +456,8 @@ async function meshForClash(m: LoadedPlaygroundModel): Promise<ClashMeshes> {
         hint: 'Confirm the model carries explicit geometry (not schema/quantity-only data).',
       });
     }
-    const meshed = { meshes, coordinateInfo: result.coordinateInfo };
-    setCachedMeshes(key, meshed);
+    const meshed = { meshes, coordinateInfo: result.coordinateInfo, store: source.store };
+    if (!source.materialized) setCachedMeshes(key, meshed);
     return meshed;
   } finally {
     // `result.meshes` is already copied out into plain JS MeshData — nothing
@@ -475,8 +479,8 @@ const lastClashResult = new Map<string, { result: ClashResult; coordinateInfo: C
 
 /** Run a rule set against a model's meshes, returning (and caching) the result. */
 async function runClashRules(m: LoadedPlaygroundModel, rules: ClashRule[]): Promise<ClashResult> {
-  const { meshes, coordinateInfo } = await meshForClash(m);
-  const { elements, exclusions } = elementsFromStep({ store: m.store, meshes, modelId: m.id });
+  const { meshes, coordinateInfo, store } = await meshForClash(m);
+  const { elements, exclusions } = elementsFromStep({ store, meshes, modelId: m.id });
   const engine = createClashEngine({ backend: 'ts' });
   const result = await engine.run(elements, rules, { exclusions, maxCandidatePairs: CLASH_MAX_CANDIDATE_PAIRS });
   lastClashResult.set(meshCacheKey(m), { result, coordinateInfo });
@@ -1932,7 +1936,10 @@ export async function dispatch(
   }
   try {
     const out = await impl(model, args, ctx);
-    if (MODEL_MUTATION_TOOLS.has(toolName)) ctx.onModelChanged?.();
+    if (MODEL_MUTATION_TOOLS.has(toolName)) {
+      lastClashResult.delete(meshCacheKey(model));
+      ctx.onModelChanged?.();
+    }
     return { text: out.text, textKey: out.textKey, structured: out.structured, isError: false, download: out.download };
   } catch (err) {
     if (err instanceof ToolExecutionError) {

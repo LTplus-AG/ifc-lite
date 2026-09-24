@@ -394,6 +394,29 @@ describe('wheel zoom toward the surface under the cursor (#5393)', () => {
     assert.deepStrictEqual(r.picks[0], [400, 300], 'picked at the cursor, in CSS px');
   });
 
+  it('never picks under fast zoom, which ignores the surface (PR #5461 review)', () => {
+    const r = rig();
+    for (let i = 0; i < 5; i++) {
+      applyWheelZoom(wheelEvent({ deltaY: -NOTCH_DELTA_Y }), {
+        camera: r.camera, canvas: r.canvas, fastZoom: true, fineModifierHeld: false, pickSurface: r.pickSurface,
+      });
+    }
+    assert.strictEqual(r.picks.length, 0);
+  });
+
+  it('re-picks when anything else moved the camera between notches (PR #5461 review)', () => {
+    const r = rig();
+    zoomIn(r, 3, true);
+    assert.strictEqual(r.picks.length, 1);
+    // A fast-zoom dolly (or orbit/pan) within the same gesture window moves the
+    // camera off the cached point's ray: the next surface notch must re-pick.
+    applyWheelZoom(wheelEvent({ deltaY: -NOTCH_DELTA_Y }), {
+      camera: r.camera, canvas: r.canvas, fastZoom: true, fineModifierHeld: false, pickSurface: r.pickSurface,
+    });
+    zoomIn(r, 1, true);
+    assert.strictEqual(r.picks.length, 2, 'a stale point was reused after the camera moved');
+  });
+
   it('never picks when zooming out, which cannot pass through anything', () => {
     const r = rig();
     for (let i = 0; i < 5; i++) {

@@ -39,6 +39,9 @@ export interface WheelZoomCamera {
     fastZoom?: boolean,
     surfacePoint?: SurfacePoint,
   ): void;
+  /** Read back after each notch so a cached surface point is only reused
+   *  while nothing but the surface zoom has moved the camera (#5393). */
+  getPosition(): SurfacePoint;
 }
 
 /** World-space point on the visible surface under the cursor. */
@@ -165,26 +168,30 @@ export interface WheelZoomOptions {
  * wheel events with the cursor held within {@link SURFACE_GESTURE_SLOP_PX}
  * and no pause over {@link SURFACE_GESTURE_IDLE_MS}. The surface zoom moves
  * the camera along the cursor ray, so the picked point stays under the cursor
- * and stays valid for the rest of the gesture.
+ * and stays valid for the rest of the gesture. It is valid ONLY while the
+ * surface zoom is the sole thing moving the camera: the pose after each notch
+ * is recorded, and any other move in between (a fast-zoom dolly, an orbit, a
+ * pan, a key) takes the point off the cursor ray, so the next notch re-picks.
  */
 const SURFACE_GESTURE_IDLE_MS = 400;
 const SURFACE_GESTURE_SLOP_PX = 4;
-interface SurfaceGesture { x: number; y: number; at: number; point: SurfacePoint | null }
+interface SurfaceGesture { x: number; y: number; at: number; point: SurfacePoint | null; pose: string }
 const surfaceGestures = new WeakMap<object, SurfaceGesture>();
+const poseKey = (p: SurfacePoint) => `${p.x},${p.y},${p.z}`;
 
-function gestureSurface(opts: WheelZoomOptions, mouseX: number, mouseY: number): SurfacePoint | undefined {
+function gestureSurface(opts: WheelZoomOptions, mouseX: number, mouseY: number): SurfaceGesture | null {
   const pick = opts.pickSurface;
-  if (!pick) return undefined;
+  if (!pick) return null;
   const now = Date.now();
   const g = surfaceGestures.get(opts.canvas);
-  if (g && now - g.at < SURFACE_GESTURE_IDLE_MS
+  if (g && now - g.at < SURFACE_GESTURE_IDLE_MS && g.pose === poseKey(opts.camera.getPosition())
     && Math.abs(g.x - mouseX) <= SURFACE_GESTURE_SLOP_PX && Math.abs(g.y - mouseY) <= SURFACE_GESTURE_SLOP_PX) {
     g.at = now;
-    return g.point ?? undefined;
+    return g;
   }
-  const point = pick(mouseX, mouseY);
-  surfaceGestures.set(opts.canvas, { x: mouseX, y: mouseY, at: now, point });
-  return point ?? undefined;
+  const fresh: SurfaceGesture = { x: mouseX, y: mouseY, at: now, point: pick(mouseX, mouseY), pose: '' };
+  surfaceGestures.set(opts.canvas, fresh);
+  return fresh;
 }
 
 /**
@@ -205,8 +212,10 @@ export function applyWheelZoom(e: WheelZoomEvent, opts: WheelZoomOptions): void 
   const mouseY = e.clientY - rect.top;
 
   const delta = wheelZoomDelta(e, opts.fineModifierHeld);
-  // Only zooming in can pass through a surface; zooming out keeps plain zoom.
-  const surface = delta < 0 ? gestureSurface(opts, mouseX, mouseY) : undefined;
+  // Only zooming in can pass through a surface; zooming out and the fast
+  // (pure dolly) zoom keep the plain path and never pick.
+  const gesture = delta < 0 && !opts.fastZoom ? gestureSurface(opts, mouseX, mouseY) : null;
+  const surface = gesture?.point ?? undefined;
   opts.camera.zoom(
     delta,
     false,
@@ -219,4 +228,5 @@ export function applyWheelZoom(e: WheelZoomEvent, opts: WheelZoomOptions): void 
     opts.fastZoom,
     surface,
   );
+  if (gesture) gesture.pose = poseKey(opts.camera.getPosition());
 }

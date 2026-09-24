@@ -207,7 +207,11 @@ function withRuntimeQueryShape(schemas: any[]): any[] {
       doc: 'Query builder chain — start it with bim.query()',
       methods: prototypeMethods(QueryBuilder.prototype).map(describe('query')),
     },
-    ...schemas.filter((ns) => ns?.name !== 'query'),
+    // `network` exists only inside a sandboxed flow Script node, gated by its
+    // graph's `network.fetch:<host>` grants; a `run`/`eval` script's
+    // `BimContext` has no `bim.network`, so documenting it here would hand
+    // agents a call that throws.
+    ...schemas.filter((ns) => ns?.name !== 'query' && ns?.name !== 'network'),
   ];
 }
 

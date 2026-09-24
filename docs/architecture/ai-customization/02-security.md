@@ -92,11 +92,18 @@ API call.
 
 ```
 capability  := scope "." action [ ":" target ]
-scope       := "model" | "viewer" | "export" | "storage" | "network" | "command" | "ui"
+scope       := "model" | "viewer" | "export" | "storage" | "network" | "secret" | "command" | "ui"
 action      := identifier
 target      := pattern | "*"
 pattern     := identifier | identifier "." pattern | identifier "*"
 ```
+
+`secret.read:<NAME>` is the one exception to the pattern grammar above: its
+target must be an EXACT env-var-shaped name (`[A-Z][A-Z0-9_]*`) — no glob,
+no universal wildcard, no dotted multi-segment target. Secrets are read
+from the host environment only by headless callers (`ifc-lite flow run`,
+MCP's `run_flow`); the browser never grants this scope any authority (see
+`docs/guide/flow.md`'s "Network requests and secrets").
 
 ### 3.1 Catalogue (v1)
 
@@ -114,6 +121,7 @@ pattern     := identifier | identifier "." pattern | identifier "*"
 | `export.create:<format>` | Produce a downloadable file in `<format>`. |
 | `storage.local` | Read/write extension-scoped storage. |
 | `network.fetch:<host-pattern>` | Fetch from URLs matching pattern. **Always reviewed.** |
+| `secret.read:<NAME>` | Read the named env var, headless callers only. Exact target, no glob. **Always reviewed.** |
 | `command.invoke:<id-pattern>` | Invoke another extension's commands by id pattern. |
 | `ui.dock` `ui.toolbar` `ui.contextMenu` `ui.statusBar` | UI slot occupancy. Implicit when contributing; never grants logic capability. |
 

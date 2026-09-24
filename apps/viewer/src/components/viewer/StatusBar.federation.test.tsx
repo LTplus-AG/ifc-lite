@@ -22,6 +22,7 @@
  */
 
 import '@/test/setup-dom.js';
+import 'fake-indexeddb/auto';
 // `__APP_VERSION__` is a vite `define` (see vite.config.ts) baked in at
 // build time; under plain Node it doesn't exist, so StatusBar's footer
 // version string needs a stand-in before it renders.
@@ -33,6 +34,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser } from '@ifc-lite/parser';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { createBimContext } from '@ifc-lite/sdk';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
@@ -160,6 +162,8 @@ beforeEach(async () => {
     selectedStoreys: new Set<number>([FIXTURE_STOREY_2]),
     activeStorey: null,
     selectedEntities: [],
+    mutationViews: new Map(),
+    mutationVersion: 0,
   });
 });
 
@@ -212,6 +216,61 @@ describe('StatusBar — federation-space storey element count', () => {
       container.textContent?.includes('2 / 3 elements'),
       'the offset selection belongs to m2; its two storey walls exclude the shaped wall elsewhere',
     );
+  });
+
+  it('counts an overlay-created wall with an offset mesh in a federated storey (#5249 review)', async () => {
+    const firstStore = await parseModel(MINIMAL_ACTIVE_MODEL);
+    const secondStore = await parseModel(FIXTURE_MODEL);
+    const m1 = federatedModel('m1', firstStore, 0);
+    const m2 = federatedModel('m2', secondStore, ID_OFFSET);
+    const view = new MutablePropertyView(secondStore.properties, 'm2');
+    view.setExpressIdWatermark(m2.maxExpressId);
+    const wall = view.createEntity('IfcWall', [guid(100_001), null, 'Created wall', null, null, null, null, null]);
+    view.createEntity('IfcRelContainedInSpatialStructure', [
+      guid(100_002), null, null, null, [`#${wall.expressId}`], `#${FIXTURE_STOREY_2}`,
+    ]);
+    m2.geometryResult = geometry(ID_OFFSET + wall.expressId, ID_OFFSET + FIXTURE_WALL_A);
+    useViewerStore.setState({
+      ifcDataStore: firstStore,
+      models: new Map([['m1', m1], ['m2', m2]]),
+      mutationViews: new Map([['m2', view]]),
+      mutationVersion: 1,
+      selectedStoreys: new Set([ID_OFFSET + FIXTURE_STOREY_2]),
+      activeStorey: null,
+      selectedEntities: [],
+    });
+
+    const container = render();
+    assert.ok(container.textContent?.includes('1 / 2 element'),
+      'the authored wall mesh belongs to m2 and its source storey, not the raw global id');
+  });
+
+  it('resolves a selected overlay-created storey beyond the parsed range (#5249 review)', async () => {
+    const firstStore = await parseModel(MINIMAL_ACTIVE_MODEL);
+    const secondStore = await parseModel(FIXTURE_MODEL);
+    const m1 = federatedModel('m1', firstStore, 0);
+    const m2 = federatedModel('m2', secondStore, ID_OFFSET);
+    const view = new MutablePropertyView(secondStore.properties, 'm2');
+    view.setExpressIdWatermark(m2.maxExpressId);
+    const storey = view.createEntity('IfcBuildingStorey', [guid(100_001), null, 'Created storey']);
+    const wall = view.createEntity('IfcWall', [guid(100_002), null, 'Created wall', null, null, null, null, null]);
+    view.createEntity('IfcRelContainedInSpatialStructure', [
+      guid(100_003), null, null, null, [`#${wall.expressId}`], `#${storey.expressId}`,
+    ]);
+    m2.geometryResult = geometry(ID_OFFSET + wall.expressId, ID_OFFSET + FIXTURE_WALL_A);
+    useViewerStore.setState({
+      ifcDataStore: firstStore,
+      models: new Map([['m1', m1], ['m2', m2]]),
+      mutationViews: new Map([['m2', view]]),
+      mutationVersion: 1,
+      selectedStoreys: new Set([ID_OFFSET + storey.expressId]),
+      activeStorey: null,
+      selectedEntities: [],
+    });
+
+    const container = render();
+    assert.ok(container.textContent?.includes('1 / 2 element'),
+      'the store-backed resolver must assign the global storey id to m2 before counting members');
   });
 
   it('counts every constituent when a unified storey collapses colliding local ids', async () => {

@@ -23,6 +23,7 @@
  */
 
 import '@/test/setup-dom.js';
+import 'fake-indexeddb/auto';
 // `__APP_VERSION__` is a vite `define` (see vite.config.ts) baked in at build
 // time; under plain Node it doesn't exist, so StatusBar's footer version
 // string needs a stand-in before it renders.
@@ -242,6 +243,45 @@ describe('StatusBar — "N elements" counts physical elements that have a shape 
       selectedStoreys: new Set([STOREY_ID]),
     }));
     assert.equal(elementsText(container), '1 / 3 element');
+  });
+
+  it('counts a newly contained wall in the selected storey (#5249)', () => {
+    const view = new MutablePropertyView(store.properties, '__legacy__');
+    view.setExpressIdWatermark(100);
+    const created = view.createEntity('IfcWall', [guid(101), null, 'New wall', null, null, null, null, null]);
+    view.createEntity('IfcRelContainedInSpatialStructure', [
+      guid(102), null, null, null, [`#${created.expressId}`], `#${STOREY_ID}`,
+    ]);
+    useViewerStore.setState({
+      mutationViews: new Map([['__legacy__', view]]),
+      geometryResult: geometry([...MESHED_IDS, created.expressId]),
+      selectedStoreys: new Set([STOREY_ID]),
+    });
+    const container = render();
+    assert.equal(elementsText(container), '4 / 5 elements');
+  });
+
+  it('drops source members when their containment relationship moves to a building (#5249)', () => {
+    const view = new MutablePropertyView(store.properties, '__legacy__');
+    view.setAttribute(80, 'RelatingStructure', '#3');
+    useViewerStore.setState({
+      mutationViews: new Map([['__legacy__', view]]),
+      selectedStoreys: new Set([STOREY_ID]),
+    });
+    const container = render();
+    assert.equal(elementsText(container), '0 / 4 elements');
+  });
+
+  it('counts the children of a source building retyped into a storey (#5249 review)', () => {
+    const view = new MutablePropertyView(store.properties, '__legacy__');
+    view.setEntityType(3, 'IfcBuildingStorey');
+    useViewerStore.setState({
+      mutationViews: new Map([['__legacy__', view]]),
+      geometryResult: geometry([...MESHED_IDS, 57]),
+      selectedStoreys: new Set([3]),
+    });
+    const container = render();
+    assert.equal(elementsText(container), '1 / 5 element');
   });
 
   it('falls back to the schema test alone before any mesh has arrived', () => {

@@ -27,11 +27,8 @@ export function sameEffectiveStoreyIds(
   const overlay = effectiveMutationRelationships(store, view);
   const superseded = (id: number) => view.isDeleted(id) || overlay.supersededSourceIds.has(id);
   const isStorey = (id: number) => !view.isDeleted(id)
-    && isStoreyLikeSpatialTypeName(effectiveContextType(store, view, id))
-    && (spatial.byStorey.has(id) || Boolean(view.getNewEntity(id)));
-  const isSpatial = (id: number) => isSpatialStructureTypeName(effectiveContextType(store, view, id));
+    && isStoreyLikeSpatialTypeName(effectiveContextType(store, view, id));
   const containmentParents = new Map<number, number[]>();
-  const containmentChildren = new Map<number, number[]>();
   const aggregateParents = new Map<number, number[]>();
   const append = (map: Map<number, number[]>, key: number, values: readonly number[]) => {
     const row = map.get(key) ?? [];
@@ -42,7 +39,6 @@ export function sameEffectiveStoreyIds(
     const type = relation.relationshipType.toUpperCase();
     if (type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE') {
       for (const id of relation.related) append(containmentParents, id, relation.relating);
-      for (const id of relation.relating) append(containmentChildren, id, relation.related);
     } else if (type === 'IFCRELAGGREGATES' || type === 'IFCRELNESTS') {
       for (const id of relation.related) append(aggregateParents, id, relation.relating);
     }
@@ -79,9 +75,27 @@ export function sameEffectiveStoreyIds(
   }
   if (storeyId === undefined) return [];
 
+  return effectiveStoreyMemberIds(store, view, storeyId);
+}
+
+/** Direct members of a storey after relationship edits, tombstones and creates. */
+export function effectiveStoreyMemberIds(
+  store: IfcDataStore,
+  view: MutablePropertyView | null,
+  storeyId: number,
+): number[] {
+  const spatial = store.spatialHierarchy;
+  if (!spatial || view?.isDeleted(storeyId)) return [];
+  if (!view?.hasPendingChanges()) return spatial.byStorey.get(storeyId) ?? [];
+  const overlay = effectiveMutationRelationships(store, view);
+  const superseded = (id: number) => view.isDeleted(id) || overlay.supersededSourceIds.has(id);
   const sourceMembers = store.relationships.forward.getEdges(storeyId, RelationshipType.ContainsElements)
     .filter((edge) => edgeSurvives(edge, superseded)).map((edge) => edge.target);
-  const editedMembers = containmentChildren.get(storeyId) ?? [];
+  const editedMembers = overlay.relationships
+    .filter((relation) => relation.relationshipType.toUpperCase() === 'IFCRELCONTAINEDINSPATIALSTRUCTURE'
+      && relation.relating.includes(storeyId))
+    .flatMap((relation) => relation.related);
+  const isSpatial = (id: number) => isSpatialStructureTypeName(effectiveContextType(store, view, id));
   return [...new Set([...sourceMembers, ...editedMembers])]
     .filter((id) => !view.isDeleted(id) && !isSpatial(id));
 }

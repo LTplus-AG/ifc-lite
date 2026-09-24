@@ -278,6 +278,7 @@ export class HeadlessBackend implements BimBackend {
     function getEntityData(ref: EntityRef): EntityData | null {
       const overlay = overlayEntityData(getMutationView(), ref, store.schemaVersion);
       if (overlay !== undefined) return overlay;
+      // @raw-entity-enumeration-ok overlayEntityData already handles deleted and created ids; this is source membership for one remaining ref
       if (!store.entityIndex.byId.has(ref.expressId)) return null; // not parsed either
       const node = new EntityNode(store, ref.expressId);
       const type = node.type;

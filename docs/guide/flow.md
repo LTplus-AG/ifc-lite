@@ -551,6 +551,60 @@ model through the `IfcGUID` that Revit's IFC exporter writes:
     { "from": ["tok", "token"], "to": ["props", "token"] },
     { "from": ["props", "table"], "to": ["join", "table"] },
     { "from": ["walls", "entities"], "to": ["join", "entities"] }
+
+## OpenCDE documents
+
+Three nodes connect a graph to a CDE that speaks the buildingSMART
+[OpenCDE Documents API](https://github.com/buildingSMART/documents-API)
+(`@ifc-lite/documents-api`):
+
+| Node | Does | Outputs |
+|---|---|---|
+| `documents.queryVersions` | `POST /document-versions` for a list of document ids, sending the previous poll's ETag as `If-None-Match` | `versions` (a table: `document_id`, `version_number`, `version_index`, `title`, `creation_date`, `file_name`, `size_in_bytes`, `download_url`), `etag`, `changed` |
+| `documents.download` | downloads one version from its `download_url` | `data` (the file, base64), `name`, `size`, `contentType` |
+| `model.openFromSource` | opens downloaded bytes as a model on the host | `modelId` |
+
+When the server answers 304 Not Modified, `changed` is `false`, `versions`
+is empty and `etag` echoes the one sent, so a scheduled run can stop early
+when nothing moved. Both `documents.*` nodes go through the same gated
+request as `http.request`: the graph must declare `network.fetch:<host>` for
+the CDE's API host and for its file host when downloads come from another
+one. A body over the node's `maxBytes` fails the node rather than yielding a
+truncated file. The `token` param carries the bearer token as
+`{{secret:NAME}}`, so these nodes run in the CLI and MCP, where secrets
+resolve; in the viewer, only an anonymous CDE works. Both nodes are never
+memoised: a rerun always asks the server again.
+
+`model.openFromSource` loads through the host's own loader. In the viewer
+that is the same path a dropped file takes, and the model joins the
+federation. The CLI and MCP hold one model per run, so the opened model
+replaces the command-line one for the rest of the run, `--out` included;
+when a run opens several files, reads see the last one opened. MCP also
+registers each opened model, so later tool calls can address it by the
+returned id. Wire `modelId` into the `modelId` input of `model.select` or
+`model.byType`: the edge makes the read run after the model is open and
+aim at it. The node needs the `model.create` capability.
+
+```json
+{
+  "capabilities": ["network.fetch:cde.example.com", "secret.read:CDE_TOKEN", "model.create", "model.read"],
+  "nodes": [
+    { "id": "poll", "type": "documents.queryVersions",
+      "params": { "baseUrl": "https://cde.example.com/documents/1.0", "documentIds": ["d1"], "token": "{{secret:CDE_TOKEN}}" } },
+    { "id": "url", "type": "table.column", "params": { "column": "download_url" } },
+    { "id": "name", "type": "table.column", "params": { "column": "file_name" } },
+    { "id": "get", "type": "documents.download", "params": { "token": "{{secret:CDE_TOKEN}}" } },
+    { "id": "open", "type": "model.openFromSource" },
+    { "id": "walls", "type": "model.byType", "params": { "type": "IfcWall" } }
+  ],
+  "edges": [
+    { "from": ["poll", "versions"], "to": ["url", "table"] },
+    { "from": ["poll", "versions"], "to": ["name", "table"] },
+    { "from": ["url", "values"], "to": ["get", "url"] },
+    { "from": ["name", "values"], "to": ["get", "name"] },
+    { "from": ["get", "data"], "to": ["open", "data"] },
+    { "from": ["get", "name"], "to": ["open", "name"] },
+    { "from": ["open", "modelId"], "to": ["walls", "modelId"] }
   ]
 }
 ```

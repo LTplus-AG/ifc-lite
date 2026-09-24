@@ -21,6 +21,7 @@
   "dependencies": {
     "@ifc-lite/bcf-api": "workspace:^",
     "@ifc-lite/data": "workspace:^",
+    "@ifc-lite/documents-api": "workspace:^",
     "@ifc-lite/export": "workspace:^",
     "@ifc-lite/extensions": "workspace:^",
     "@ifc-lite/flow": "workspace:^",

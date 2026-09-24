@@ -1243,6 +1243,9 @@ importers:
       '@ifc-lite/data':
         specifier: workspace:^
         version: link:../data
+      '@ifc-lite/documents-api':
+        specifier: workspace:^
+        version: link:../documents-api
       '@ifc-lite/export':
         specifier: workspace:^
         version: link:../export

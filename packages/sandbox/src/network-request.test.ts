@@ -111,6 +111,16 @@ describe('network-request — mechanics against a real local http server', () =>
         req.on('close', () => clearInterval(timer));
         return;
       }
+      if (req.url === '/binary') {
+        res.writeHead(200, { 'content-type': 'application/octet-stream' });
+        res.end(Buffer.from(Array.from({ length: 512 }, (_, i) => i % 256)));
+        return;
+      }
+      if (req.url === '/not-modified') {
+        res.writeHead(304, { etag: '"v1"' });
+        res.end();
+        return;
+      }
       if (req.url === '/slow') {
         // Never responds inside the test's timeout budget.
         return;
@@ -147,6 +157,30 @@ describe('network-request — mechanics against a real local http server', () =>
     // Exactly the cap: `<= 4096` also passed for a body that dropped every chunk.
     expect(res.body.length).toBe(4096);
   }, 10_000);
+
+  it('returns a binary body byte-for-byte with responseType "bytes" (#5634)', async () => {
+    const url = new URL(`${baseUrl}/binary`);
+    const res = await executeUngatedRequest(url, { method: 'GET', timeoutMs: 2000, maxBytes: 4096, responseType: 'bytes' });
+    // Bytes 0x80-0xFF are not valid UTF-8 on their own: a text decode would
+    // have replaced each with U+FFFD and lost them.
+    expect(Array.from(res.bytes ?? [])).toEqual(Array.from({ length: 512 }, (_, i) => i % 256));
+    expect(res.body).toBe('');
+    expect(res.truncated).toBe(false);
+  });
+
+  it('caps a binary body at maxBytes exactly, like a text one (#5634)', async () => {
+    const url = new URL(`${baseUrl}/binary`);
+    const res = await executeUngatedRequest(url, { method: 'GET', timeoutMs: 2000, maxBytes: 100, responseType: 'bytes' });
+    expect(res.truncated).toBe(true);
+    expect(Array.from(res.bytes ?? [])).toEqual(Array.from({ length: 100 }, (_, i) => i));
+  });
+
+  it('answers 304 Not Modified as a response, not as a refused redirect (#5634)', async () => {
+    const url = new URL(`${baseUrl}/not-modified`);
+    const res = await executeUngatedRequest(url, { method: 'GET', timeoutMs: 2000, maxBytes: 1024, headers: { 'If-None-Match': '"v1"' } });
+    expect(res.status).toBe(304);
+    expect(res.headers.etag).toBe('"v1"');
+  });
 
   it('times out a request that never responds', async () => {
     const url = new URL(`${baseUrl}/slow`);

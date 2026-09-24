@@ -75,6 +75,10 @@ const PREFIX_ALLOWLIST = [
     prefix: '--radix-',
     reason: 'Radix UI publishes layout vars (content-available-height, trigger width/height, ...) on the DOM node it manages at runtime; never declared in any stylesheet. See apps/viewer/src/components/ui/dropdown-menu.tsx and select.tsx.',
   },
+  {
+    prefix: '--overlay-',
+    reason: 'The viewport overlay palette (#5483) is written onto <html> at runtime by applyOverlayTheme in apps/viewer/src/lib/viewport-ui/useOverlayThemeSync.ts, one value set per theme, from lib/viewport-ui/overlay-theme.ts; index.css only aliases these to Tailwind names.',
+  },
 ];
 
 function git(args) {

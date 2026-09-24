@@ -11,6 +11,7 @@ import { replayWorkspaceHistory } from '@/lib/model-placement/history';
 import { useViewerStore } from '@/store';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
 import { workspacePanelForShortcutCode } from '@/lib/panels/registry';
+import { bottomPanelFlags } from '@/lib/panels/bottom-panels';
 import { closeAllPanelWindows } from '@/services/panel-windows';
 import { eventKey, isTextEntryTarget, WALK_MOVEMENT_KEYS } from '@/lib/keyboard-event';
 import {
@@ -383,18 +384,15 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
         // Double-escape: close all panels, return to starting view.
         const state = useViewerStore.getState();
         // Clears every sidebar panel through the choke point (bcf/ids/lens/
-        // clash/compare/extensions → Information). Bottom panels + overlays
-        // are closed explicitly.
+        // clash/compare/extensions → Information). Every bottom-strip panel
+        // closes from the table (#5493); the remaining overlays explicitly.
         state.showWorkspacePanel('properties');
         // Floats + popped-out OS windows are their own channel; the choke point
         // above only re-docks `properties`, so drop every float and close every
         // torn-off window so "close all" truly closes all (#1208).
         state.resetDockLayout();
         closeAllPanelWindows();
-        state.setScriptPanelVisible(false);
-        state.setListPanelVisible(false);
-        state.setGanttPanelVisible(false);
-        state.setDrawing2DPanelVisible(false);
+        useViewerStore.setState(bottomPanelFlags(null));
         state.setOverridesPanelVisible(false);
         state.setChatPanelVisible(false);
         state.setSheetPanelVisible(false);

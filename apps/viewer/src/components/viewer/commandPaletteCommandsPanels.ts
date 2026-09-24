@@ -21,7 +21,7 @@ import {
   Play, Box, Cloud, Layout, TreeDeciduous, MessageSquare, ClipboardCheck, FileWarning,
   FileSpreadsheet, Palette, Puzzle, Camera, Download, FileJson, ShieldQuestion, Sun, Info,
   CalendarPlus, Sparkles, Eraser, GraduationCap, Layers, Users, PanelRight,
-  SlidersHorizontal, ChevronsRight, RotateCcw, GitCompareArrows, Crosshair,
+  SlidersHorizontal, ChevronsRight, RotateCcw, GitCompareArrows, Crosshair, Scan,
 } from 'lucide-react';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { useViewerStore } from '@/store';
@@ -71,6 +71,8 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
       action: () => { p.activateRightPanel('zones'); } },
     { id: 'panel:loadReport', label: 'Load Report', ...withKey('commandPalette.panel.loadReport.label'), keywords: 'geometry diagnostics warnings dropped items csg openings unsupported load report', category: 'Panels', icon: FileWarning,
       action: () => { p.activateRightPanel('loadReport'); } },
+    { id: 'panel:pointclouds', label: 'Point Clouds', ...withKey('commandPalette.panel.pointClouds.label'), keywords: 'point cloud scan las laz e57 splat classification deviation registration alignment', category: 'Panels', icon: Scan,
+      action: () => { p.activateRightPanel('pointclouds'); } },
     { id: 'panel:appearance', label: 'Appearance', ...withKey('commandPalette.panel.appearance.label'), keywords: 'image texture upload UV planar box projection surfaces', category: 'Panels', icon: Palette,
       action: () => { p.activateRightPanel('appearance'); } },
     ...(isCollabEnabled()

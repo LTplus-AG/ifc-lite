@@ -1,5 +1,36 @@
 # @ifc-lite/viewer
 
+## 3.1.2
+
+### Patch Changes
+
+- [#5630](https://github.com/LTplus-AG/ifc-lite/pull/5630) [`0c0be3f`](https://github.com/LTplus-AG/ifc-lite/commit/0c0be3fe7838649c4b9480d083223b67f7a1e2ea) Thanks [@louistrue](https://github.com/louistrue)! - Honor live annotation ObjectType edits and deletions when restoring embedded drawing markup.
+
+- [#5593](https://github.com/LTplus-AG/ifc-lite/pull/5593) [`77ace0a`](https://github.com/LTplus-AG/ifc-lite/commit/77ace0aa6d48d08d68630fb3a1ba146ffe7c4a62) Thanks [@louistrue](https://github.com/louistrue)! - Show overlay-created and retyped material definitions in the correct Properties panel view.
+
+- [#5679](https://github.com/LTplus-AG/ifc-lite/pull/5679) [`6409580`](https://github.com/LTplus-AG/ifc-lite/commit/6409580009516e40de3f9c4fb5ee10c8c3dd896d) Thanks [@louistrue](https://github.com/louistrue)! - Mesh the playground's current IFC after entity edits so the inline viewer and clash tools include created entities and exclude deletions.
+
+- [#5670](https://github.com/LTplus-AG/ifc-lite/pull/5670) [`069c413`](https://github.com/LTplus-AG/ifc-lite/commit/069c413308efcadcb505ba95713ab6ad866c8203) Thanks [@louistrue](https://github.com/louistrue)! - Use the live IFC class when resolving slab and linear-element split chains, including a slab's profile class after an in-session retype.
+
+- [#5661](https://github.com/LTplus-AG/ifc-lite/pull/5661) [`4c52695`](https://github.com/LTplus-AG/ifc-lite/commit/4c52695034e2314be7e4f579c4a1554fb068023f) Thanks [@louistrue](https://github.com/louistrue)! - Reuse a storey's live placement when adding another element, so repeated additions do not replace its placement or orphan the previous one.
+
+- [#5461](https://github.com/LTplus-AG/ifc-lite/pull/5461) [`262cb2e`](https://github.com/LTplus-AG/ifc-lite/commit/262cb2ea8049f5e64912624996f665eb5fce2ba3) Thanks [@louistrue](https://github.com/louistrue)! - Wheel zoom toward the cursor now approaches the surface under it instead of passing straight through thin objects ([#5393](https://github.com/LTplus-AG/ifc-lite/issues/5393)). `Camera.zoom` takes an optional trailing `surfacePoint`: when zooming in toward one, each notch covers a fraction of the remaining distance along the cursor ray and stops short of the surface, keeping it under the cursor. The viewer picks that point once per wheel gesture with `raycastScene`; empty space, zooming out, fast zoom and orthographic keep the previous behaviour.
+- Updated dependencies [[`90221d2`](https://github.com/LTplus-AG/ifc-lite/commit/90221d2f2928e8580050ddf9c26b5165f26af183), [`e682e6d`](https://github.com/LTplus-AG/ifc-lite/commit/e682e6da5f939aeca5940a65dd1cd338955e9c0f), [`5cfc6ff`](https://github.com/LTplus-AG/ifc-lite/commit/5cfc6ffd905db7fb512bddf1ddfa392c2156bd09), [`e48f59b`](https://github.com/LTplus-AG/ifc-lite/commit/e48f59b0cadf092335a84ce85b4d970e653b7d2c), [`aad1cbc`](https://github.com/LTplus-AG/ifc-lite/commit/aad1cbc6d88c020063f6483be6335bde6339568e), [`1909a6a`](https://github.com/LTplus-AG/ifc-lite/commit/1909a6ac6b9934c8793b6e6be8f80dfece3fd44e), [`df36858`](https://github.com/LTplus-AG/ifc-lite/commit/df368584163d44e0a76d54c4b50836091b07a2d2), [`0d25941`](https://github.com/LTplus-AG/ifc-lite/commit/0d25941ceadd2d5842bcd8a3d15fc21793ecfc63), [`00d6837`](https://github.com/LTplus-AG/ifc-lite/commit/00d68371ac6ab87fafa4bc5f0add2468a7e8a398), [`0200994`](https://github.com/LTplus-AG/ifc-lite/commit/02009943de1ca623b8f0f5bdc590ab6440689b98), [`262cb2e`](https://github.com/LTplus-AG/ifc-lite/commit/262cb2ea8049f5e64912624996f665eb5fce2ba3)]:
+  - @ifc-lite/export@4.7.2
+  - @ifc-lite/clash@2.4.0
+  - @ifc-lite/wasm@10.1.0
+  - @ifc-lite/create@2.9.2
+  - @ifc-lite/renderer@4.2.0
+  - @ifc-lite/extensions@0.9.0
+  - @ifc-lite/sdk@7.1.1
+  - @ifc-lite/mcp@0.20.2
+  - @ifc-lite/data@5.3.0
+  - @ifc-lite/server-client@3.2.0
+  - @ifc-lite/flow-nodes@0.3.1
+  - @ifc-lite/ids@3.0.2
+  - @ifc-lite/lists@2.3.2
+  - @ifc-lite/rules@0.3.2
+
 ## 3.1.1
 
 ### Patch Changes

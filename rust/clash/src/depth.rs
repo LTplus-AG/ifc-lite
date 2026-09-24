@@ -214,7 +214,8 @@ pub(crate) const F32_ULP_SCALE: f64 = 1.0 / 4_194_304.0; // 2^-22
 /// - the box MTD, when both elements are certified boxes (`box_pen`);
 /// - the crossing-vertex penetration, for a CONTAINED pair with a crossing
 ///   vertex inside the other solid (`mesh_evidence`) — evidence for this
-///   gate only, never a reported depth (see `crossing_vertex_penetration`).
+///   gate only, never a reported depth (see `crossing_vertex_penetration`),
+///   and only where the reported depth would be the ESTIMATE (#5717).
 ///
 /// Each candidate is tested against the floor OF ITS OWN DIRECTION — the
 /// pair's per-axis f32 noise projected onto the direction that candidate was
@@ -224,7 +225,10 @@ pub(crate) const F32_ULP_SCALE: f64 = 1.0 / 4_194_304.0; // 2^-22
 /// there and Hard at the origin, and near the origin the X extent pinned
 /// the threshold for contacts that have no X component at all.
 ///
-/// The pair is `Hard` only when EVERY available candidate clears its floor.
+/// The pair is `Hard` only when every candidate that BEARS ON THE REPORTED
+/// NUMBER clears its floor — all three when the report is the estimate, and
+/// the estimate and the MTD when the box path certified a depth, since a
+/// sampling probe may not overrule an exact one (#5717).
 /// That is what makes the floor unreachable by depth-source selection: a sub-floor box MTD cannot be promoted by the through-
 /// penetration guard swapping in a larger AABB estimate; a sub-floor
 /// crossing-vertex penetration on a contained pair (surfaces authored
@@ -253,9 +257,26 @@ pub(crate) fn depth_clash_result(
     // NaN candidate never counts as below its floor, on either side.
     let est_floor = estimate_floor(aabb_a, aabb_b);
     let box_floor = box_pen.map(|b| depth_floor(b.axis, aabb_a, aabb_b));
+    // Whether the pair has a CERTIFIED depth, i.e. whether the number this
+    // function would report is the exact box MTD or the AABB estimate. Bound
+    // here rather than below because the mesh-evidence term needs it too.
+    let measured = box_pen.filter(|b| !b.through);
     let below_floor = estimate <= est_floor
         || box_pen.zip(box_floor).is_some_and(|(b, f)| b.mtd <= f)
-        || mesh_evidence.is_some_and(|e| e.depth <= depth_floor(e.axis, aabb_a, aabb_b));
+        // Mesh evidence guards the ESTIMATE, and only the estimate (#5717).
+        // `crossing_vertex_penetration` is not a depth metric — its own doc
+        // comment says so, and it underestimates by an amount that depends
+        // on tessellation. That is harmless when it is the only thing
+        // standing between a flush contained pair and a fabricated AABB
+        // estimate, which is the case it was added for. It is not harmless
+        // against a certified box MTD: a vertex lying ON a face the two
+        // boxes share reads as a sub-floor "penetration" once rotation
+        // pushes it a noise-width inside, and vetoed a 20 mm overlap that
+        // the exact box depth had measured correctly. Two boxes that are
+        // genuinely flush already report 0 through the MTD term above
+        // (#5355), so nothing here needs the probe's second opinion.
+        || (measured.is_none()
+            && mesh_evidence.is_some_and(|e| e.depth <= depth_floor(e.axis, aabb_a, aabb_b)));
     if below_floor {
         if !report_touch {
             return None;
@@ -274,7 +295,6 @@ pub(crate) fn depth_clash_result(
     // where the AABB estimate is the honest number (see `box_penetration`).
     // The reported depth carries ITS OWN floor out with it (#5639), so the
     // reported touching band is decided by the same rule as this verdict.
-    let measured = box_pen.filter(|b| !b.through);
     Some(NarrowResult {
         status: ClashStatus::Hard,
         distance: -measured.map_or(estimate, |b| b.mtd),

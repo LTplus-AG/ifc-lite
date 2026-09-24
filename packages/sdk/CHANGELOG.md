@@ -1,5 +1,20 @@
 # @ifc-lite/sdk
 
+## 7.1.1
+
+### Patch Changes
+
+- [#5702](https://github.com/LTplus-AG/ifc-lite/pull/5702) [`0d25941`](https://github.com/LTplus-AG/ifc-lite/commit/0d25941ceadd2d5842bcd8a3d15fc21793ecfc63) Thanks [@louistrue](https://github.com/louistrue)! - `bim.export` is documented as what it is. The README and the scripting guide advertised "CSV, glTF, STEP, HBJSON": there is no glTF or GLB method at all, and STEP is spelled `ifc()`. The real set is `csv`, `json`, `ifc` (STEP), `hbjson`, `dfjson`, `download`, and `json`/`dfjson` were not mentioned at all.
+  
+  The README's only usage snippet was also unrunnable: `createBimContext({ backend: myLocalBackend })` never said where `myLocalBackend` comes from, and `BimBackend` is a 16-namespace interface nobody writes by hand. It now names `HeadlessLikeBackend` from `@ifc-lite/mcp`, the one exported headless backend, with its real arity.
+- Updated dependencies [[`90221d2`](https://github.com/LTplus-AG/ifc-lite/commit/90221d2f2928e8580050ddf9c26b5165f26af183), [`e682e6d`](https://github.com/LTplus-AG/ifc-lite/commit/e682e6da5f939aeca5940a65dd1cd338955e9c0f), [`e48f59b`](https://github.com/LTplus-AG/ifc-lite/commit/e48f59b0cadf092335a84ce85b4d970e653b7d2c), [`00d6837`](https://github.com/LTplus-AG/ifc-lite/commit/00d68371ac6ab87fafa4bc5f0add2468a7e8a398)]:
+  - @ifc-lite/export@4.7.2
+  - @ifc-lite/clash@2.4.0
+  - @ifc-lite/create@2.9.2
+  - @ifc-lite/data@5.3.0
+  - @ifc-lite/ids@3.0.2
+  - @ifc-lite/lists@2.3.2
+
 ## 7.1.0
 
 ### Minor Changes

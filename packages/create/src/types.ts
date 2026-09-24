@@ -23,7 +23,7 @@ export type Point2D = [number, number];
 export interface Placement3D {
   Location: Point3D;
   Axis?: Point3D;        // Z direction, default [0,0,1]
-  RefDirection?: Point3D; // X direction, default [1,0,0]
+  RefDirection?: Point3D; // X direction, default world X projected normal to Axis (IfcFirstProjAxis)
 }
 
 /** 2D rectangle profile (width along X, depth along Y, centered at origin) */
@@ -545,14 +545,6 @@ export interface ProjectParams {
   Name?: string;
   Description?: string;
   Schema?: 'IFC2X3' | 'IFC4' | 'IFC4X3';
-  /**
-   * @deprecated IFC4X3 output is now always declared as `IFC4X3_ADD2`, the
-   * ISO 16739-1:2024 identifier for the layouts `IfcCreator` writes (#5351),
-   * so this option changes nothing. It still refuses a `Schema` other than
-   * `'IFC4X3'`. Omit it.
-   */
-  // TODO(remove-by: next @ifc-lite/create major, #5562)
-  FileSchemaIdentifier?: 'IFC4X3_ADD2';
   /** Length unit: 'METRE' (default), 'MILLIMETRE', 'FOOT' */
   LengthUnit?: string;
   /**

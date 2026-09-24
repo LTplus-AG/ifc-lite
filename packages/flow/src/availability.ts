@@ -10,6 +10,7 @@
 
 import type { FlowDocument } from './document.js';
 import type { NodeDef, NodeRegistry } from './registry.js';
+import { referencedSecrets } from './secret-refs.js';
 
 export interface HostFeatures {
   /** Backend feature names the host implements: `viewer`, `selection`, `visibility`, `files`, `store`, ... */
@@ -53,8 +54,30 @@ export function nodeAvailability(def: NodeDef<unknown> | undefined, type: string
 }
 
 export function checkAvailability(doc: FlowDocument, registry: NodeRegistry<unknown>, features: HostFeatures): NodeAvailability[] {
+  // A `{{secret:NAME}}` in a node's params is a requirement of THAT node
+  // instance, not of its type, so it is checked here rather than through
+  // `def.requires`. Missing, it is a real inability, never a no-op.
+  //
+  // A reference must also be DECLARED (`secret.read:<NAME>`, always a literal
+  // name) to be usable: the run refuses an undeclared one, so validation must
+  // too, even when the host happens to have the variable set (#5446 review).
+  const missingSecrets = new Map<string, Set<string>>();
+  const declared = new Set(doc.capabilities);
+  for (const ref of referencedSecrets(doc)) {
+    const reason = !declared.has(`secret.read:${ref.name}`)
+      ? `secret "${ref.name}" is referenced but the graph does not declare secret.read:${ref.name}`
+      : !features.secrets.has(ref.name)
+        ? `secret "${ref.name}" is not available on this host`
+        : null;
+    if (reason === null) continue;
+    const reasons = missingSecrets.get(ref.nodeId) ?? new Set<string>();
+    reasons.add(reason);
+    missingSecrets.set(ref.nodeId, reasons);
+  }
   return doc.nodes.map((n) => {
     const { status, reasons } = nodeAvailability(registry.get(n.type), n.type, features);
-    return { nodeId: n.id, type: n.type, status, reasons };
+    const secretReasons = [...(missingSecrets.get(n.id) ?? [])];
+    if (secretReasons.length === 0 || status === 'unknown') return { nodeId: n.id, type: n.type, status, reasons };
+    return { nodeId: n.id, type: n.type, status: 'unavailable', reasons: [...reasons, ...secretReasons] };
   });
 }

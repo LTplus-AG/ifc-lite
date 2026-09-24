@@ -393,9 +393,6 @@ fn ifclite_geom(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(geometry_data_buffers, m)?)?;
     m.add_function(wrap_pyfunction!(geometry_data_json, m)?)?;
     m.add_function(wrap_pyfunction!(entity_data, m)?)?;
-    m.add(
-        "__doc__",
-        "Native ifc-lite geometry and attribute export for Python.",
-    )?;
+    m.add("__doc__", "Native ifc-lite geometry and attribute export for Python.")?;
     Ok(())
 }

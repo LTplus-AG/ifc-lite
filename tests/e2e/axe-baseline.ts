@@ -46,8 +46,9 @@ export interface AxeBaselineResult {
   counts: Counts;
 }
 
-function readBaseline(): Record<string, Counts> {
-  if (!existsSync(BASELINE_PATH)) return {};
+/** `null` when the file is absent: only a re-record may start from nothing. */
+function readBaseline(): Record<string, Counts> | null {
+  if (!existsSync(BASELINE_PATH)) return null;
   return JSON.parse(readFileSync(BASELINE_PATH, 'utf8')) as Record<string, Counts>;
 }
 
@@ -64,14 +65,24 @@ export async function checkAxeBaseline(page: Page, state: string): Promise<AxeBa
 
   const baseline = readBaseline();
   if (process.env.AXE_BASELINE_UPDATE === '1') {
-    baseline[state] = counts;
-    const sorted = Object.fromEntries(Object.entries(baseline).sort(([a], [b]) => a.localeCompare(b)));
+    const next = { ...baseline, [state]: counts };
+    const sorted = Object.fromEntries(Object.entries(next).sort(([a], [b]) => a.localeCompare(b)));
     writeFileSync(BASELINE_PATH, `${JSON.stringify(sorted, null, 2)}\n`);
     console.log(`[e2e] axe baseline for "${state}" re-recorded: ${JSON.stringify(counts)}`);
     return { failure: null, counts };
   }
 
-  const { regressions, improvements } = compareToBaseline(counts, baseline[state] ?? {});
+  // A missing file or row is not an empty allowance: it would read a scan
+  // nobody recorded as clean, so it fails like any other mismatch.
+  const row = baseline?.[state];
+  if (row === undefined) {
+    return {
+      failure: `no axe baseline row for "${state}" in tests/e2e/viewer-smoke.axe-baseline.json. ` +
+        'Record one with AXE_BASELINE_UPDATE=1.',
+      counts,
+    };
+  }
+  const { regressions, improvements } = compareToBaseline(counts, row);
   const lines: string[] = [];
   for (const { key, count, allowed } of regressions) {
     lines.push(`  NEW  ${key}: ${count} node(s), baseline ${allowed} - ${detail.get(key) ?? ''}`);

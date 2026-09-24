@@ -116,7 +116,7 @@ export function MobileToolbar() {
   }, []);
 
   const handleShowAll = useCallback(() => {
-    resetVisibilityForHomeFromStore();
+    resetVisibilityForHomeFromStore('show_all');
   }, []);
 
   const handleHide = useCallback(() => {

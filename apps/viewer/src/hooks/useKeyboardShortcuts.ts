@@ -121,7 +121,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       const shortcutPanel = workspacePanelForShortcutCode(e.code);
       if (shortcutPanel) {
         e.preventDefault();
-        useViewerStore.getState().openPanelInHome(shortcutPanel);
+        useViewerStore.getState().openPanelInHome(shortcutPanel, 'shortcut');
         return;
       }
       // Alt+\\ — toggle the sidebar (expand ⇄ collapse to icons; the rail stays).
@@ -244,7 +244,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     }
     if (key === 'a' && !ctrl && !shift) {
       e.preventDefault();
-      resetVisibilityForHomeFromStore();
+      resetVisibilityForHomeFromStore('a');
     }
 
     // Split tool — Esc exits Split and returns to Select. We catch
@@ -255,7 +255,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       e.preventDefault();
       const state = useViewerStore.getState();
       state.clearSplitHover();
-      state.setActiveTool('select');
+      state.setActiveTool('select', 'esc');
       return;
     }
 
@@ -403,8 +403,8 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       }
 
       setSelectedEntityId(null);
-      resetVisibilityForHomeFromStore();
-      setActiveTool('select');
+      resetVisibilityForHomeFromStore('esc');
+      setActiveTool('select', 'esc');
     }
 
     // Theme toggle

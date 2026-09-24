@@ -7,6 +7,7 @@
  */
 
 import type { StateCreator } from 'zustand';
+import { trackToolChange, type ToolExitVia } from '../uiTelemetry.js';
 import {
   HIERARCHY_MODE_STORAGE_KEY,
   TOOLBAR_STYLE_STORAGE_KEY,
@@ -156,7 +157,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   // Actions
   setLeftPanelCollapsed: (collapsed: boolean) => void;
   setRightPanelCollapsed: (collapsed: boolean) => void;
-  setActiveTool: (tool: string) => void;
+  setActiveTool: (tool: string, via?: ToolExitVia) => void; // via: how the previous tool was left (#5618)
   /** Collapse the Space Sketch panel to a reopen pill (or restore it). */
   setSpaceSketchMinimized: (minimized: boolean) => void;
   setEditEnabled: (enabled: boolean) => void;
@@ -252,7 +253,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   // Actions
   setLeftPanelCollapsed: (leftPanelCollapsed) => set({ leftPanelCollapsed }),
   setRightPanelCollapsed: (rightPanelCollapsed) => set({ rightPanelCollapsed }),
-  setActiveTool: (activeTool) => {
+  setActiveTool: (activeTool, via) => {
     // Authoring tools require edit mode; entering one flips the global
     // toggle on so the rest of the UI (Properties panel, future
     // manipulators) stays in sync — read-only tools leave it alone. Any
@@ -267,18 +268,17 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     // duplicating the clear here, keeping one place that knows what
     // "in-progress gesture" means (see measurementSlice.ts's measureMode doc).
     const leavingMeasure = get().activeTool === 'measure' && activeTool !== 'measure';
-    if (AUTHORING_TOOLS.has(activeTool)) {
+    const authoring = AUTHORING_TOOLS.has(activeTool);
+    if (authoring) {
       // Collab role gate: in a shared session only editor/admin may
       // unlock authoring. Viewers/commenters can still pick read-only
       // tools, so we only block the authoring branch.
       const canEdit = (get() as unknown as { canCollabEdit?: () => boolean }).canCollabEdit;
       if (canEdit && !canEdit()) return;
-      if (leavingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
-      set({ activeTool, editEnabled: true, spaceSketchMinimized: false });
-      return;
     }
     if (leavingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
-    set({ activeTool, spaceSketchMinimized: false });
+    trackToolChange(get().activeTool, activeTool, via);
+    set({ activeTool, spaceSketchMinimized: false, ...(authoring ? { editEnabled: true } : {}) });
   },
   setSpaceSketchMinimized: (spaceSketchMinimized) => set({ spaceSketchMinimized }),
   setEditEnabled: (editEnabled) => {

@@ -81,7 +81,7 @@ import { finalizeFederatedSpatialPlacement } from './ingest/federatedSpatialFina
 import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment, type PointCloudSourceUnit } from './ingest/pointCloudAlignment.js';
 import { realignPointCloudsToAnchor } from './ingest/pointCloudAlignmentRealign.js';
 import { toast } from '../components/ui/toast.js';
-import { posthog } from '../lib/analytics.js';
+import { posthog, trackUiEvent } from '../lib/analytics.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
 import { nextFrameOrTimeout } from '../utils/frameWait.js';
 import { visibilityWitness } from '../utils/visibilityWitness.js';
@@ -2050,6 +2050,7 @@ export function useIfcLoader() {
         // catch — retry once at lower detail before surfacing a dead end.
         if (await tryResourceRetry(err, kind, 'geometry_processing')) return;
         setError(formatLoadError(err, file.name, 'geometry_processing'));
+        trackUiEvent('error_shown', { code: kind, surface: 'load_error' });
         // Flat properties: posthog-js spreads this object onto the event, so a
         // wrapper key would bury `error_kind` in an unfilterable nested blob.
         posthog.captureException(err, {
@@ -2185,6 +2186,7 @@ export function useIfcLoader() {
         loadError: friendly,
       });
       setError(friendly);
+      trackUiEvent('error_shown', { code: kind, surface: 'load_error' });
       // Flat, and enough to identify the failure WITHOUT a stack: a fetch
       // rejection ("Load failed" / "Failed to fetch") carries no frames of
       // ours, so `load_stage` + `error_type` + `online` are all the triage

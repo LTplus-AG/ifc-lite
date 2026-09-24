@@ -40,6 +40,7 @@ import { createDockSlice, type DockSlice } from './slices/dockSlice.js';
 import { createSidebarSlice, type SidebarSlice } from './slices/sidebarSlice.js';
 import { type WorkspacePanelId } from '@/lib/panels/registry';
 import { bottomPanelFlags, isBottomPanel, isBottomPanelOpen, type BottomPanelId } from '@/lib/panels/bottom-panels';
+import { trackPanelOpened, type UiSurface } from './uiTelemetry.js';
 import { createScriptSlice, type ScriptSlice } from './slices/scriptSlice.js';
 import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
 import { createCesiumSlice, type CesiumSlice } from './slices/cesiumSlice.js';
@@ -192,7 +193,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
      * the right panel. Routed through by the toolbar, command palette, and the
      * BCF overlay so every entry point behaves identically.
      */
-    openWorkspacePanel: (panel: Exclude<WorkspacePanelId, 'properties'>) => void;
+    openWorkspacePanel: (panel: Exclude<WorkspacePanelId, 'properties'>, surface?: UiSurface) => void;
     /**
      * Show a workspace panel docked in the sidebar, un-floating / re-docking it
      * first if it was popped out (#1200/#1201/#1208). Accepts `properties` (the
@@ -201,26 +202,26 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
      * activity bar, the Alt+N shortcuts, the command palette and the
      * floating / window hosts' re-dock action.
      */
-    showWorkspacePanel: (panel: WorkspacePanelId) => void;
+    showWorkspacePanel: (panel: WorkspacePanelId, surface?: UiSurface) => void;
     /**
      * Toggle a sidebar panel: if it is the active docked panel, close it back
      * to Information; otherwise open it. The single entry point the activity
      * bar, toolbar and command palette use so a second click always closes.
      */
-    toggleWorkspacePanel: (panel: WorkspacePanelId) => void;
+    toggleWorkspacePanel: (panel: WorkspacePanelId, surface?: UiSurface) => void;
     /**
      * Toggle a bottom-strip panel (Script / Schedule / Lists). These are
      * launched from the same sidebar rail but open in the BOTTOM panel —
      * mutually exclusive among themselves, independent of the single-tenant
      * right pane (so a side panel + a bottom panel can be open at once).
      */
-    toggleBottomPanel: (panel: BottomPanelId) => void;
+    toggleBottomPanel: (panel: BottomPanelId, surface?: UiSurface) => void;
     /**
      * Open a panel in its home region: side panels dock in the right pane,
      * Script / Schedule / Lists open in the bottom strip. The rail and Alt+N
      * route through here so each panel lands where it belongs.
      */
-    openPanelInHome: (panel: WorkspacePanelId) => void;
+    openPanelInHome: (panel: WorkspacePanelId, surface?: UiSurface) => void;
   };
 
 /**
@@ -353,8 +354,9 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
     endClashScenePresentation(() => get() as unknown as ClashSceneTeardown, 'federation-cleared');
   },
 
-  openWorkspacePanel: (panel) => {
+  openWorkspacePanel: (panel, surface) => {
     const [set, get] = args;
+    trackPanelOpened(panel, surface, isBottomPanel(panel) ? undefined : get().sidebarActivePanel);
     // Docking into the sidebar: if the panel was floating or popped out, re-dock
     // it so the toolbar / command-palette / activity-bar entry points stay in
     // sync with the float + window channels (#1200/#1201/#1208) instead of
@@ -393,7 +395,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
     if (get().sidebarMode !== 'expanded') get().setSidebarMode('expanded');
   },
 
-  showWorkspacePanel: (panel) => {
+  showWorkspacePanel: (panel, surface) => {
     const [set, get] = args;
     // If the panel was floating / popped out, bring it back to the docked slot.
     get().closeFloatingPanel(panel);
@@ -404,6 +406,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
     // region instead of flipping side-panel flags it doesn't own (#1208).
     if (isBottomPanel(panel)) {
       set({ ...bottomPanelFlags(panel), rightPanelCollapsed: false });
+      trackPanelOpened(panel, surface);
       return;
     }
     if (panel === 'properties') {
@@ -424,11 +427,11 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
       get().setSidebarActivePanel('properties');
       if (get().sidebarMode !== 'expanded') get().setSidebarMode('expanded');
     } else {
-      get().openWorkspacePanel(panel);
+      get().openWorkspacePanel(panel, surface);
     }
   },
 
-  toggleWorkspacePanel: (panel) => {
+  toggleWorkspacePanel: (panel, surface) => {
     const [, get] = args;
     // "Active" means it owns the docked slot right now. A floating / popped-out
     // panel reads as open too, so toggling it re-docks rather than no-ops.
@@ -437,10 +440,10 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
       && !s.floatingPanels.some((p) => p.id === panel)
       && !s.poppedOutIds.includes(panel);
     if (isActive) get().showWorkspacePanel('properties');
-    else get().showWorkspacePanel(panel);
+    else get().showWorkspacePanel(panel, surface);
   },
 
-  toggleBottomPanel: (panel) => {
+  toggleBottomPanel: (panel, surface) => {
     const [set, get] = args;
     const s = get();
     const flagActive = isBottomPanelOpen(s, panel);
@@ -453,18 +456,14 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
       set(bottomPanelFlags(null));
     } else {
       set({ ...bottomPanelFlags(panel), rightPanelCollapsed: false });
+      trackPanelOpened(panel, surface);
     }
   },
 
-  openPanelInHome: (panel) => {
-    const [set, get] = args;
-    if (isBottomPanel(panel)) {
-      get().closeFloatingPanel(panel);
-      get().setPanelPoppedOut(panel, false);
-      set({ ...bottomPanelFlags(panel), rightPanelCollapsed: false });
-    } else {
-      get().showWorkspacePanel(panel);
-    }
+  openPanelInHome: (panel, surface) => {
+    const [, get] = args;
+    // showWorkspacePanel already routes each panel to its home region; one path, one tracked open.
+    get().showWorkspacePanel(panel, surface);
   },
 }))));
 

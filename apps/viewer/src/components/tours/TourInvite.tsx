@@ -16,6 +16,7 @@ import { useTranslation } from '@/i18n';
 import { startTour } from '@/lib/tours/controller';
 import { getTour } from '@/lib/tours/registry';
 import { dismissInvite, isInviteDismissed, isTourCompleted } from '@/lib/tours/storage';
+import { trackUiEvent } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 
 export function TourInvite() {
@@ -41,6 +42,7 @@ export function TourInvite() {
         aria-label={t('tours.tourInvite.dismissAriaLabel')}
         className="ml-0.5 rounded p-0.5 text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground"
         onClick={() => {
+          trackUiEvent('onboarding_surface', { surface: 'tour_invite', action: 'dismiss' });
           dismissInvite();
           setHidden(true);
         }}

@@ -64,6 +64,8 @@ export const searchFiltersEn = {
   'searchModal.filterEditors.groupClassPlaceholder': 'Group class (any)',
   'searchModal.filterEditors.groupClassAriaLabel': 'Group class, e.g. IfcSystem — leave blank for any group',
   'searchModal.filterEditors.groupNamePlaceholder': 'Group name',
+  'searchModal.filterEditors.siUnits': 'SI',
+  'searchModal.filterEditors.siUnitsTitle': 'The number is in SI units (m, m², m³), as in IDS; each value is converted with its own unit before comparing',
   'searchModal.filterEditors.classificationValuePlaceholder': 'code or name',
   'searchModal.filterEditors.elevationPlaceholder': 'metres',
   'searchModal.filterEditors.elevationUnitHint': 'm (storey elevation)',

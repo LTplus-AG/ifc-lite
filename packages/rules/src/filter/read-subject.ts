@@ -43,7 +43,6 @@ import {
   extractAllMaterialsOnDemand,
   extractClassificationsOnDemand,
   extractTypePropertiesOnDemand,
-  extractProjectUnits,
   mergeInheritedPropertySets,
   type IfcDataStore,
 } from '@ifc-lite/parser';
@@ -51,6 +50,7 @@ import { RelationshipType, QuantityType, collectSpatialAncestors } from '@ifc-li
 import type { Subject } from '../rule-set/rule-set.js';
 import { nameMatches, stringifyValue, defaultStoreyName, materialNamesOf } from './filter-match.js';
 import { resolveEntityPredefinedType } from './entity-predefined-type.js';
+import { projectSiScale, projectUnitSymbol, quantityValueSiScale, QUANTITY_MEASURE_TYPE } from './measure-units.js';
 import { assignedGroupNames } from './filter-group-rule.js';
 
 /** What `readSubject` needs about the element it reads. No `mutationView` —
@@ -76,44 +76,17 @@ export interface SubjectValue {
    * untyped property).
    */
   valueUnits?: ReadonlyArray<string | undefined>;
+  /**
+   * Property and quantity subjects only, aligned with `values`: the factor
+   * that turns each value into SI base units, from the same unit as
+   * `valueUnits`; `undefined` for a value with no unit (#5225).
+   */
+  valueSiScales?: ReadonlyArray<number | undefined>;
 }
 
 function fromStrings(values: ReadonlyArray<string | undefined>): SubjectValue {
   const defined = values.filter((v): v is string => v !== undefined);
   return { present: defined.some((v) => v.trim().length > 0), values: defined };
-}
-
-/** Display unit SYMBOL for a `Quantity.type` (length/area/volume/mass/time),
- *  from the file's declared `IfcUnitAssignment` (falling back to the IFC SI
- *  default, e.g. `m²`) — the same resolver `packages/ids/src/bridge/units.ts`
- *  uses for property/quantity SCALING, here read only for its display
- *  SYMBOL. The raw `Quantity.value` is shown as-is (unscaled): quantity
- *  comparisons already read raw author-unit values with no conversion,
- *  matching `filter-match.ts`'s existing `matchQuantityRule` (search never
- *  scaled quantities either) — see `rule-engine-requirements.ts`'s quantity
- *  branch, which compares this same raw value. `Count`/`Number` quantities
- *  have no unit and return `undefined`. Memoised per store (module-level
- *  `WeakMap`) so repeated quantity reads on one model don't re-walk
- *  `IfcUnitAssignment` per element. */
-const projectUnitsCache = new WeakMap<object, ReturnType<typeof extractProjectUnits>>();
-
-const QUANTITY_MEASURE_TYPE: Partial<Record<QuantityType, string>> = {
-  [QuantityType.Length]: 'IfcLengthMeasure',
-  [QuantityType.Area]: 'IfcAreaMeasure',
-  [QuantityType.Volume]: 'IfcVolumeMeasure',
-  [QuantityType.Weight]: 'IfcMassMeasure',
-  [QuantityType.Time]: 'IfcTimeMeasure',
-};
-
-/** The project's display unit for IFC measure type `measureType`, if any. */
-function projectUnitSymbol(store: IfcDataStore, measureType: string | undefined): string | undefined {
-  if (!measureType || !store.source?.length || !store.entityIndex) return undefined;
-  let units = projectUnitsCache.get(store);
-  if (!units) {
-    units = extractProjectUnits(store.source, store.entityIndex);
-    projectUnitsCache.set(store, units);
-  }
-  return units.unitForMeasure(measureType)?.symbol;
 }
 
 function quantityUnitSymbol(store: IfcDataStore, quantityType: number): string | undefined {
@@ -162,21 +135,24 @@ export function readSubject(subject: Subject, ctx: ReadSubjectContext): SubjectV
       const merged = mergeInheritedPropertySets(own, inheritedTypePsets(store, expressId));
       const values: string[] = [];
       const valueUnits: Array<string | undefined> = [];
+      const valueSiScales: Array<number | undefined> = [];
       for (const set of merged) {
         if (!nameMatches(subject.setName, set.name, subject.setNameKind)) continue;
         for (const p of set.properties) {
           if (!nameMatches(subject.propertyName, p.name, subject.propertyNameKind)) continue;
           values.push(stringifyValue(p.value));
-          // Type-inherited rows are typed without `unit`; own rows carry it.
-          const explicit = 'unit' in p && typeof p.unit === 'string' ? p.unit : undefined;
-          valueUnits.push(explicit ?? projectUnitSymbol(store, p.dataType));
+          // Own and type-level rows alike carry the property's explicit
+          // `Unit` when it has one (both come from `extractPsetsFromIds`).
+          valueUnits.push(p.unit ?? projectUnitSymbol(store, p.dataType));
+          valueSiScales.push(p.unit !== undefined ? p.unitSiScale : projectSiScale(store, p.dataType));
         }
       }
-      return { ...fromStrings(values), valueUnits };
+      return { ...fromStrings(values), valueUnits, valueSiScales };
     }
     case 'quantity': {
       const values: number[] = [];
       const valueUnits: Array<string | undefined> = [];
+      const valueSiScales: Array<number | undefined> = [];
       for (const qset of extractQuantitiesOnDemand(store, expressId)) {
         if (!nameMatches(subject.setName, qset.name, subject.setNameKind)) continue;
         for (const q of qset.quantities) {
@@ -185,9 +161,10 @@ export function readSubject(subject: Subject, ctx: ReadSubjectContext): SubjectV
           // An explicit `IfcPhysicalSimpleQuantity.Unit` overrides the
           // project assignment, for display as much as for the check.
           valueUnits.push(q.explicitUnit ?? quantityUnitSymbol(store, q.type));
+          valueSiScales.push(quantityValueSiScale(store, q));
         }
       }
-      return { present: values.length > 0, values, unit: valueUnits.find((u) => u !== undefined), valueUnits };
+      return { present: values.length > 0, values, unit: valueUnits.find((u) => u !== undefined), valueUnits, valueSiScales };
     }
     case 'classification': {
       const sys = subject.system?.trim().toLowerCase();

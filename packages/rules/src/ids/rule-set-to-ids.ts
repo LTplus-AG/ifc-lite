@@ -18,7 +18,9 @@
 
 import type { IDSDocument, IDSRequirement, IDSSpecification, IFCVersion } from '@ifc-lite/ids';
 import type { InformationRule, RuleSetFile } from '../rule-set/rule-set.js';
-import { groupToFacets } from './rule-to-ids-facets.js';
+import { groupToFacets, type StoredUnitScaleOf } from './rule-to-ids-facets.js';
+import { storedUnitScaleOf } from './stored-unit-scale.js';
+import type { EvaluatorModel } from '../filter/filter-evaluate.js';
 import { writeIdsXml } from './ids-xml-writer.js';
 
 /** The engine's default relative tolerance, which IDS 1.0 also fixes (bSI #418). */
@@ -27,6 +29,14 @@ const IDS_TOLERANCE = 1e-6;
 export interface RuleSetToIdsOptions {
   /** `ifcVersion` of every specification. Default: `['IFC4']`. */
   ifcVersions?: IFCVersion[];
+  /**
+   * The models the rule set runs on. A numeric property or quantity check
+   * compared in model units is exported in SI, converted with the unit
+   * these models store that value in (#5225). Without models, or when they
+   * disagree, such a rule is refused with the reason; a rule already
+   * compared in SI (`valueUnit: 'si'`) exports without them.
+   */
+  models?: ReadonlyArray<EvaluatorModel>;
 }
 
 export interface RefusedRule {
@@ -74,7 +84,7 @@ const NON_ELEMENT_REASON: Record<Exclude<InformationRule['requirement']['kind'],
   unit: 'a "unit" requirement checks the unit a value is recorded in, which IDS 1.0 cannot state',
 };
 
-function ruleToSpecification(rule: InformationRule, ifcVersions: IFCVersion[]): SpecOutcome {
+function ruleToSpecification(rule: InformationRule, ifcVersions: IFCVersion[], scaleOf: StoredUnitScaleOf | undefined): SpecOutcome {
   const reasons: string[] = [];
   const notes: string[] = [];
 
@@ -99,7 +109,7 @@ function ruleToSpecification(rule: InformationRule, ifcVersions: IFCVersion[]): 
       ? 'the applicability is empty'
       : 'applicability groups combined with OR cannot be expressed in one IDS specification');
   } else {
-    const mapped = groupToFacets(applicabilityGroups[0], 'applicability');
+    const mapped = groupToFacets(applicabilityGroups[0], 'applicability', scaleOf);
     if (mapped.ok) { applicabilityFacets = mapped.facets; notes.push(...mapped.notes); }
     else reasons.push(...mapped.reasons.map((r) => `applicability: ${r}`));
   }
@@ -112,7 +122,7 @@ function ruleToSpecification(rule: InformationRule, ifcVersions: IFCVersion[]): 
         ? 'the requirement has no conditions'
         : 'requirement groups combined with OR cannot be expressed in IDS 1.0');
     } else {
-      const mapped = groupToFacets(groups[0], 'requirement');
+      const mapped = groupToFacets(groups[0], 'requirement', scaleOf);
       if (mapped.ok) {
         notes.push(...mapped.notes);
         mapped.facets.forEach((facet, i) => {
@@ -148,9 +158,10 @@ export function ruleSetToIds(file: RuleSetFile, options: RuleSetToIdsOptions = {
   const exportedRuleIds: string[] = [];
   const refused: RefusedRule[] = [];
   const notes = new Set<string>();
+  const scaleOf = options.models ? storedUnitScaleOf(options.models) : undefined;
 
   for (const rule of file.rules) {
-    const outcome = ruleToSpecification(rule, ifcVersions);
+    const outcome = ruleToSpecification(rule, ifcVersions, scaleOf);
     if (outcome.ok) {
       specifications.push(outcome.spec);
       exportedRuleIds.push(rule.id);

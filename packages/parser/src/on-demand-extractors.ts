@@ -53,7 +53,7 @@ import {
 export interface TypePropertyInfo {
     typeName: string;
     typeId: number;
-    properties: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; dataTypeMixed?: true }> }>;
+    properties: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; dataTypeMixed?: true; unit?: string; unitSiScale?: number }> }>;
 }
 
 /**

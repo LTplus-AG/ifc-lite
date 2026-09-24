@@ -400,6 +400,22 @@ fn issue_5266_non_step_tokens_refuse_the_list_instead_of_vanishing() {
     }
     // The comment-aware twin applies the same rule.
     assert_eq!(parse_coordinates_direct_f64(b"((nan,1.,2.) /* c */)"), Vec::<f64>::new());
+    // A missing value, a trailing comma or a missing comma between points
+    // would shorten or shift the list, so the tokenizer refuses them and so
+    // does the walk.
+    for list in [&b"((1.,,2.,3.),(4.,5.,6.))"[..], b"((1.,2.,))", b"((1.,2.,3.)(4.,5.,6.))", b"((,1.))"] {
+        assert_eq!(parse_coordinates_direct_f64(list), Vec::<f64>::new(), "{}", String::from_utf8_lossy(list));
+    }
+    // A refused CoordList is `None` from the entity reader, not an empty
+    // success (Claude review on 4b0e3564d).
+    assert_eq!(
+        extract_coordinate_list_from_entity(b"#1=IFCCARTESIANPOINTLIST3D(((nan,1.,2.)),$);"),
+        None
+    );
+    assert_eq!(
+        extract_coordinate_list_from_entity(b"#1=IFCCARTESIANPOINTLIST3D(((0.,1.,2.)),$);"),
+        Some(vec![0.0, 1.0, 2.0])
+    );
     // A dropped comma with trivia in the gap is still a dropped comma.
     assert_eq!(parse_coordinates_direct_f64(b"((1.52 .3,4.,5.))"), Vec::<f64>::new());
     assert_eq!(parse_coordinates_direct_f64(b"((1.52/*c*/.3,4.,5.))"), Vec::<f64>::new());

@@ -31,14 +31,14 @@ fn next_value_start(bytes: &[u8], mut pos: usize, starts_value: fn(u8) -> bool) 
 }
 
 #[cold]
-pub(super) fn parse_coordinates(bytes: &[u8]) -> Vec<f32> {
+pub(super) fn parse_coordinates(bytes: &[u8]) -> Option<Vec<f32>> {
     #[cfg(test)]
     super::tests::mark_comment_aware_call();
     super::coordinates::read_coordinate_list::<f32, true>(bytes)
 }
 
 #[cold]
-pub(super) fn parse_coordinates_f64(bytes: &[u8]) -> Vec<f64> {
+pub(super) fn parse_coordinates_f64(bytes: &[u8]) -> Option<Vec<f64>> {
     #[cfg(test)]
     super::tests::mark_comment_aware_call();
     super::coordinates::read_coordinate_list::<f64, true>(bytes)

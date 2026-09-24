@@ -91,7 +91,8 @@ fn parse_index_value(bytes: &[u8], pos: &mut usize, result: &mut Vec<u32>) {
 
 /// Parse a whole point-list record's `CoordList` (attribute 0), found by depth, not by the
 /// last `))`: an IFC4X3 `TagList` after it ends in `))` and its digits became phantom
-/// vertices (core review behind #4577, finding 6). `None` when attribute 0 is not a list.
+/// vertices (core review behind #4577, finding 6). `None` when attribute 0 is not a list
+/// or the list is refused as corrupt (#5266).
 #[inline]
 pub fn extract_coordinate_list_from_entity(bytes: &[u8]) -> Option<Vec<f32>> {
     let head = crate::parser::argument_list_start(bytes)?;
@@ -108,7 +109,7 @@ pub fn extract_coordinate_list_from_entity(bytes: &[u8]) -> Option<Vec<f32>> {
                 continue;
             }
             b'(' => depth += 1,
-            b')' if depth == 1 => return Some(parse_coordinates_direct(&bytes[open..=i])),
+            b')' if depth == 1 => return coordinates::try_parse_coordinates_direct(&bytes[open..=i]),
             b')' => depth -= 1,
             _ => {}
         }

@@ -8,16 +8,17 @@
 //! budget.
 
 use super::{comments, estimate_float_count};
-use crate::parser::{is_step_space, parse_step_numeric, skip_step_comment};
+use crate::parser::{is_step_space, parse_step_numeric, skip_step_trivia};
 
-/// Walk a `((x,y,z),(…))` coordinate list. Structure bytes (`(`, `)`, `,`,
-/// STEP whitespace, and `/* … */` comments when `COMMENTS`) are stepped over;
-/// every other byte must start one whole STEP numeric literal, read through
-/// the shared grammar ([`parse_step_numeric`]). Anything else refuses the
-/// whole list (empty), the same as the full tokenizer refusing the record: a
-/// corrupted token (`1.52.3`) is never read as its prefix, and a non-numeric
-/// one (`nan`, `$`) never silently vanishes, so no later coordinate shifts
-/// (#5266).
+/// Walk a `((x,y,z),(…))` coordinate list the way the tokenizer reads it:
+/// items separated by exactly one `,`, lists opened by `(` and closed by `)`,
+/// STEP whitespace (and `/* … */` comments when `COMMENTS`) as trivia, and
+/// every value one whole STEP numeric literal read through the shared grammar
+/// ([`parse_step_numeric`]). Anything else is `None`, the same as the
+/// tokenizer refusing the record: a corrupted token (`1.52.3`), a non-STEP
+/// one (`nan`, `$`), a dropped comma (`1.52 .3`), a missing value (`1.,,2.`)
+/// or a trailing comma (`(1.,2.,)`). A refused list is never read as a
+/// shorter or shifted one (#5266).
 ///
 /// `COMMENTS` is a const so the hot, comment-free instantiation carries no
 /// comment check at all (#4720 / #4735): callers dispatch to the `true`
@@ -25,48 +26,56 @@ use crate::parser::{is_step_space, parse_step_numeric, skip_step_comment};
 #[inline(always)]
 pub(super) fn read_coordinate_list<T: fast_float2::FastFloat, const COMMENTS: bool>(
     bytes: &[u8],
-) -> Vec<T> {
+) -> Option<Vec<T>> {
     let mut result = Vec::with_capacity(estimate_float_count(bytes));
     let (mut pos, len) = (0, bytes.len());
-    while pos < len {
-        let b = bytes[pos];
-        if b == b'(' || b == b')' || b == b',' || is_step_space(b) {
-            pos += 1;
-            continue;
-        }
-        if COMMENTS && b == b'/' {
-            match skip_step_comment(bytes, pos) {
-                Some(end) => {
-                    pos = end;
-                    continue;
-                }
-                None => return Vec::new(),
+    // `after_item`: a value or a closed list was just read, so `,` or `)`
+    // must come next. `after_comma`: a `,` was just read, so an item must.
+    let (mut after_item, mut after_comma) = (false, false);
+    loop {
+        if COMMENTS {
+            pos = skip_step_trivia(bytes, pos)?;
+        } else {
+            while pos < len && is_step_space(bytes[pos]) {
+                pos += 1;
             }
         }
-        match parse_step_numeric::<T>(&bytes[pos..]) {
-            Some((value, consumed)) => {
+        let Some(&b) = bytes.get(pos) else { break };
+        match b {
+            b',' if after_item => {
+                (after_item, after_comma) = (false, true);
+                pos += 1;
+            }
+            b')' if !after_comma => {
+                after_item = true;
+                pos += 1;
+            }
+            b'(' if !after_item => {
+                after_comma = false;
+                pos += 1;
+            }
+            _ if !after_item => {
+                let (value, consumed) = parse_step_numeric::<T>(&bytes[pos..])?;
                 result.push(value);
+                (after_item, after_comma) = (true, false);
                 pos += consumed;
             }
-            None => return Vec::new(),
-        }
-        // A value ends at `,` or `)` once trivia is skipped; two values with
-        // only whitespace or a comment between them (`1.52 .3`) are a dropped
-        // comma, not two coordinates.
-        while pos < len && is_step_space(bytes[pos]) {
-            pos += 1;
-        }
-        if COMMENTS && bytes.get(pos) == Some(&b'/') {
-            match crate::parser::skip_step_trivia(bytes, pos) {
-                Some(end) => pos = end,
-                None => return Vec::new(),
-            }
-        }
-        if !matches!(bytes.get(pos), None | Some(b',' | b')')) {
-            return Vec::new();
+            _ => return None,
         }
     }
-    result
+    (!after_comma).then_some(result)
+}
+
+/// [`parse_coordinates_direct`] that says when it refused the list (`None`)
+/// rather than answering with an empty one. [`super::extract_coordinate_list_from_entity`]
+/// uses this so a corrupt coordinate record is refused, not read as a
+/// successful record with no positions.
+#[inline]
+pub(super) fn try_parse_coordinates_direct(bytes: &[u8]) -> Option<Vec<f32>> {
+    if comments::may_contain_step_comment(bytes) {
+        return comments::parse_coordinates(bytes);
+    }
+    read_coordinate_list::<f32, false>(bytes)
 }
 
 /// Parse coordinate list directly from raw bytes to `Vec<f32>`
@@ -74,7 +83,8 @@ pub(super) fn read_coordinate_list<T: fast_float2::FastFloat, const COMMENTS: bo
 /// This parses IFC coordinate data like:
 /// `((0.,0.,150.),(0.,40.,140.),...)`
 ///
-/// Returns flattened f32 array: [x0, y0, z0, x1, y1, z1, ...]
+/// Returns flattened f32 array: [x0, y0, z0, x1, y1, z1, ...], or an empty
+/// one when the list is refused (see [`read_coordinate_list`]).
 ///
 /// # Performance
 /// - Zero intermediate allocations (no Token, no AttributeValue)
@@ -82,10 +92,7 @@ pub(super) fn read_coordinate_list<T: fast_float2::FastFloat, const COMMENTS: bo
 /// - Pre-allocates result vector
 #[inline]
 pub fn parse_coordinates_direct(bytes: &[u8]) -> Vec<f32> {
-    if comments::may_contain_step_comment(bytes) {
-        return comments::parse_coordinates(bytes);
-    }
-    read_coordinate_list::<f32, false>(bytes)
+    try_parse_coordinates_direct(bytes).unwrap_or_default()
 }
 
 /// Parse coordinate list directly from raw bytes to `Vec<f64>`
@@ -93,8 +100,10 @@ pub fn parse_coordinates_direct(bytes: &[u8]) -> Vec<f32> {
 /// Same as parse_coordinates_direct but with f64 precision.
 #[inline]
 pub fn parse_coordinates_direct_f64(bytes: &[u8]) -> Vec<f64> {
-    if comments::may_contain_step_comment(bytes) {
-        return comments::parse_coordinates_f64(bytes);
-    }
-    read_coordinate_list::<f64, false>(bytes)
+    let parsed = if comments::may_contain_step_comment(bytes) {
+        comments::parse_coordinates_f64(bytes)
+    } else {
+        read_coordinate_list::<f64, false>(bytes)
+    };
+    parsed.unwrap_or_default()
 }

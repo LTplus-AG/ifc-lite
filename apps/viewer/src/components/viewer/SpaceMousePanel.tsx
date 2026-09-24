@@ -98,7 +98,7 @@ export function SpaceMousePanel() {
       ) : connected ? (
         <div className="flex items-center justify-between gap-2">
           <span className="min-w-0 truncate text-xs text-foreground" title={deviceName ?? undefined}>
-            <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 align-middle" />
+            <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-status-ok align-middle" />
             {deviceName ?? t('spaceMousePanel.deviceNameFallback')}
           </span>
           <Button

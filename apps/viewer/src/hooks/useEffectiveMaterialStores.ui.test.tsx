@@ -84,6 +84,19 @@ it('refreshes material usage after each live revision without showing the stale 
   await waitForUsage(shown, String(created.expressId));
 });
 
+it('reads pending material edits registered under the legacy compatibility key (#5249)', async () => {
+  const source = await parse();
+  const view = new MutablePropertyView(null, 'default');
+  view.deleteEntity(10);
+  view.setPositionalAttribute(30, 4, ['#11']);
+  useViewerStore.setState({ mutationViews: new Map([['default', view]]), mutationVersion: 1 });
+
+  const ui = render(<Probe source={source} />);
+  const shown = () => ui.querySelector('[data-testid="usage"]')?.textContent;
+  assert.equal(shown(), 'loading');
+  await waitForUsage(shown, '11');
+});
+
 it('material tree sees live delete/create while a second model stays isolated (#5249)', async () => {
   const a = await parse();
   const b = await parse();

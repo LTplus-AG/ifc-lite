@@ -62,7 +62,7 @@ function AutoOpenTrigger({ ref, ...props }: React.ComponentProps<'button'>) {
 
 export function usePaletteExportRunner() {
   const { t } = useTranslation();
-  const { commands, handleExportCSV, runExportAction } = useExportCommands();
+  const { ifcDataStore, commands, handleExportCSV, runExportAction } = useExportCommands();
   // `nonce` remounts the dialog so a repeat request opens it again.
   const [requested, setRequested] = useState<{ Dialog: ExportDialogComponent; nonce: number } | null>(null);
 
@@ -70,7 +70,9 @@ export function usePaletteExportRunner() {
     const resolved = commands.find(({ command }) => command.id === request.id);
     if (!resolved) throw new Error(`Unregistered export command: ${request.id}`);
     // The toolbars disable these rows; the palette cannot, so it says why instead.
-    if (resolved.disabled) {
+    // CSV also needs source bytes: `handleExportCSV` returns silently without them.
+    const noCsvSource = request.id === 'csv' && !(ifcDataStore && ifcDataStore.source.byteLength > 0);
+    if (resolved.disabled || noCsvSource) {
       toast.info(t('commandPalette.export.unavailable'));
       return;
     }
@@ -83,7 +85,7 @@ export function usePaletteExportRunner() {
     } else {
       runExportAction(command.action);
     }
-  }, [commands, handleExportCSV, runExportAction, t]);
+  }, [ifcDataStore, commands, handleExportCSV, runExportAction, t]);
 
   const dialog = requested
     ? <requested.Dialog key={requested.nonce} trigger={<AutoOpenTrigger />} />

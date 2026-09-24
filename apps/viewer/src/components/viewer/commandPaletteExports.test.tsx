@@ -138,6 +138,23 @@ describe('command palette exports (#5601)', () => {
     );
   });
 
+  it('says so instead of doing nothing when a CSV export has no source bytes', async () => {
+    // A store with no source bytes (e.g. server-backed) passes the registry's
+    // `dataStore` gate, but the CSV handler has nothing to serialize.
+    useViewerStore.setState({
+      ifcDataStore: { source: { byteLength: 0 } } as unknown as IfcDataStore,
+    });
+    const infos: string[] = [];
+    const spy = mock.method(toast, 'info', (message: string) => { infos.push(message); });
+    try {
+      renderPalette();
+      await runRow(/^Export CSV: Entities/);
+    } finally {
+      spy.mock.restore();
+    }
+    assert.deepEqual(infos, [resolveEnglish('commandPalette.export.unavailable')]);
+  });
+
   it('says so instead of doing nothing when there is nothing to export', async () => {
     const infos: string[] = [];
     const spy = mock.method(toast, 'info', (message: string) => { infos.push(message); });

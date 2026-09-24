@@ -152,7 +152,11 @@ if (takeoffs.length === 0) {
     const countStr = ('     ' + t.count).slice(-5)
     const areaStr = t.area.count > 0 ? t.area.sum.toFixed(1) : '-'
     const volStr = t.volume.count > 0 ? t.volume.sum.toFixed(2) : '-'
-    console.log(typeStr + '| ' + countStr + ' | ' + ('          ' + areaStr).slice(-10) + ' | ' + ('         ' + volStr).slice(-9))
+    const mark = t.sampled < t.count ? '  *' : ''
+    console.log(typeStr + '| ' + countStr + ' | ' + ('          ' + areaStr).slice(-10) + ' | ' + ('         ' + volStr).slice(-9) + mark)
+  }
+  if (takeoffs.some(t => t.sampled < t.count)) {
+    console.log('* extrapolated from the first ' + SAMPLE_CAP + ' elements of the class')
   }
 }
 

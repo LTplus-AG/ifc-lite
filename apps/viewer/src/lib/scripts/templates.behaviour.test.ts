@@ -38,7 +38,9 @@ import { SCRIPT_TEMPLATES } from './templates.js';
 
 /** GrossVolume of the one wall, and a localised duplicate the old sum added in. */
 const WALL_GROSS_VOLUME = 5;
-const WALL_LOCALISED_VOLUME = 5;
+// Distinct from GrossVolume, so picking the wrong quantity (7) and summing both
+// (12) each fail differently from the right answer.
+const WALL_LOCALISED_VOLUME = 7;
 
 function buildModel(): ArrayBuffer {
   const creator = new IfcCreator({ Name: 'Template behaviour' });

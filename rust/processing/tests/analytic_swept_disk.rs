@@ -200,6 +200,51 @@ fn repeated_solid_in_boolean_keeps_both_source_contributions() {
 }
 
 #[test]
+fn malformed_boolean_operands_and_csg_root_omit_product_atomically() {
+    let source = String::from_utf8(fixture("swept_disk_trimmed_line")).unwrap();
+    let shape = "#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#43));";
+    let cases = [
+        (
+            "#1001=IFCBOOLEANRESULT(.UNION.,$,#43);",
+            "FirstOperand",
+        ),
+        (
+            "#1001=IFCBOOLEANRESULT(.UNION.,#43,$);",
+            "SecondOperand",
+        ),
+        (
+            "#1001=IFCBOOLEANRESULT(.UNION.,'invalid',#43);",
+            "FirstOperand",
+        ),
+        ("#1001=IFCCSGSOLID($);", "TreeRootExpression"),
+        ("#1001=IFCCSGSOLID('invalid');", "TreeRootExpression"),
+    ];
+    for (item, missing) in cases {
+        let broken = source.replace(
+            shape,
+            &format!("{item}\n#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#1001));"),
+        );
+        let result = extract_swept_disk_descriptions(broken.as_bytes(), None);
+        assert!(!result.elements.contains_key(&50), "{missing}: partial description escaped");
+        assert!(
+            result.diagnostics.iter().any(|d| {
+                d.contains("product #50") && d.contains("#1001") && d.contains(missing)
+            }),
+            "{missing}: {:?}",
+            result.diagnostics
+        );
+    }
+
+    let valid = source.replace(
+        shape,
+        "#1001=IFCCSGSOLID(#43);\n#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#1001));",
+    );
+    let result = extract_swept_disk_descriptions(valid.as_bytes(), None);
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    assert_eq!(result.elements[&50][0].solid_id, 43);
+}
+
+#[test]
 fn independent_exporter_circle_trim_and_hollow_radius() {
     // #5559: IFC.JAVA's checked-in IFC2X3 export uses an IfcCircle directrix
     // with solid-level angle bounds; a full circle would overstate its path.

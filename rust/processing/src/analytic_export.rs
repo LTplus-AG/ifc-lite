@@ -278,31 +278,43 @@ pub fn extract_swept_disk_descriptions(
                 }
                 IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
                     for index in [2, 1] {
-                        if let Some(operand_id) = node.item.get_ref(index) {
-                            match decoder.decode_by_id(operand_id) {
-                                Ok(operand) => stack.push(WalkItem {
-                                    item: operand, transform: node.transform, path: node.path.clone(),
-                                    ancestors: ancestors.clone(), source_modified: true,
-                                }),
-                                Err(error) => {
-                                    result.diagnostics.push(format!("product #{id}: boolean operand #{operand_id}: {error}"));
-                                    failed = true;
-                                }
+                        let Some(operand_id) = node.item.get_ref(index) else {
+                            let name = if index == 1 { "FirstOperand" } else { "SecondOperand" };
+                            result.diagnostics.push(format!(
+                                "product #{id}: boolean item #{item_id} has missing or invalid {name}"
+                            ));
+                            failed = true;
+                            break;
+                        };
+                        match decoder.decode_by_id(operand_id) {
+                            Ok(operand) => stack.push(WalkItem {
+                                item: operand, transform: node.transform, path: node.path.clone(),
+                                ancestors: ancestors.clone(), source_modified: true,
+                            }),
+                            Err(error) => {
+                                result.diagnostics.push(format!("product #{id}: boolean operand #{operand_id}: {error}"));
+                                failed = true;
+                                break;
                             }
                         }
                     }
                 }
                 IfcType::IfcCsgSolid => {
-                    if let Some(root_id) = node.item.get_ref(0) {
-                        match decoder.decode_by_id(root_id) {
-                            Ok(root) => stack.push(WalkItem {
-                                item: root, transform: node.transform, path: node.path,
-                                ancestors, source_modified: true,
-                            }),
-                            Err(error) => {
-                                result.diagnostics.push(format!("product #{id}: CSG root #{root_id}: {error}"));
-                                failed = true;
-                            }
+                    let Some(root_id) = node.item.get_ref(0) else {
+                        result.diagnostics.push(format!(
+                            "product #{id}: CSG solid #{item_id} has missing or invalid TreeRootExpression"
+                        ));
+                        failed = true;
+                        break;
+                    };
+                    match decoder.decode_by_id(root_id) {
+                        Ok(root) => stack.push(WalkItem {
+                            item: root, transform: node.transform, path: node.path,
+                            ancestors, source_modified: true,
+                        }),
+                        Err(error) => {
+                            result.diagnostics.push(format!("product #{id}: CSG root #{root_id}: {error}"));
+                            failed = true;
                         }
                     }
                 }

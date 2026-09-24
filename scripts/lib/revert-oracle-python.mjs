@@ -14,16 +14,17 @@
  * WHY A PROJECT-OWNER WALK, LIKE CARGO. A Python test file carries no manifest
  * of its own the way a JS test's nearest `package.json` does. `pythonTestOwner`
  * walks up from the test file looking for the nearest recognised project
- * marker — this repo's real instance is
- * `tools/ifcopenshell_reference/requirements.lock` — and runs pytest from
- * there. A test file with no such marker above it is left `unassigned` by the
+ * marker — e.g. `tools/ifcopenshell_reference/requirements.lock` or
+ * `rust/python/pyproject.toml` — and runs pytest from there. A Cargo-backed
+ * Python project is marked for a fresh wheel build in each source state.
+ * A test file with no such marker above it is left `unassigned` by the
  * caller rather than guessed at, the same refusal `cargoTestOwner`'s caller
  * applies to a `.rs` file with no owning crate.
  *
  * WHY `python3 -m pytest`, NOT A BARE `pytest` ON PATH. `-m` fails
  * predictably and legibly when pytest is not installed for that interpreter
  * (see `parsePython` and `PYTEST_MISSING_PATTERN` below), and runs under
- * whichever interpreter `python3` resolves to. This mirrors `cargoRunner`
+ * whichever interpreter `python3` resolves to (or its wheel venv). This mirrors `cargoRunner`
  * always shelling out to a bare `cargo` and letting `spawnSync`'s ENOENT speak
  * for a missing toolchain — an absent `python3` itself is caught the same
  * generic way, via `run.spawnError` in `parseRunnerOutput`.
@@ -39,7 +40,9 @@ const PROJECT_MARKERS = ['requirements.lock', 'requirements.txt', 'pyproject.tom
 export function pythonTestOwner(file, root) {
   let dir = dirname(file);
   while (!isAbsolute(relative(root, dir)) && relative(root, dir).split(sep)[0] !== '..') {
-    if (PROJECT_MARKERS.some((m) => existsSync(join(dir, m)))) return { dir };
+    if (PROJECT_MARKERS.some((m) => existsSync(join(dir, m)))) {
+      return { dir, wheelProject: existsSync(join(dir, 'Cargo.toml')) && existsSync(join(dir, 'pyproject.toml')) };
+    }
     if (dir === root || dirname(dir) === dir) break;
     dir = dirname(dir);
   }

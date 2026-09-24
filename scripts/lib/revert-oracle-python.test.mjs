@@ -23,8 +23,8 @@ test('#4050: a Python test walks up to the nearest project marker; outside the r
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'requirements.lock'), 'ifcopenshell==0.8.0\n');
     writeFileSync(join(dir, 'test_harness.py'), 'def test_ok():\n    assert True\n');
-    assert.deepEqual(pythonTestOwner(join(dir, 'test_harness.py'), root), { dir });
-    assert.deepEqual(pythonTestOwner(join(dir, 'test_validate_export.py'), root), { dir });
+    assert.deepEqual(pythonTestOwner(join(dir, 'test_harness.py'), root), { dir, wheelProject: false });
+    assert.deepEqual(pythonTestOwner(join(dir, 'test_validate_export.py'), root), { dir, wheelProject: false });
     // No marker anywhere above this file: refuse rather than guess an owner,
     // the same refusal cargoTestOwner applies to a crate-less `.rs` file.
     assert.equal(pythonTestOwner(join(root, 'loose', 'test_x.py'), root), null);
@@ -43,8 +43,21 @@ test('pythonTestOwner: pyproject.toml and setup.py are also recognised markers',
     mkdirSync(b, { recursive: true });
     writeFileSync(join(a, 'pyproject.toml'), '[project]\nname = "a"\n');
     writeFileSync(join(b, 'setup.py'), '');
-    assert.deepEqual(pythonTestOwner(join(a, 'sub', 'test_a.py'), root), { dir: a });
-    assert.deepEqual(pythonTestOwner(join(b, 'test_b.py'), root), { dir: b });
+    assert.deepEqual(pythonTestOwner(join(a, 'sub', 'test_a.py'), root), { dir: a, wheelProject: false });
+    assert.deepEqual(pythonTestOwner(join(b, 'test_b.py'), root), { dir: b, wheelProject: false });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('#5800: PyO3 project ownership requires a source-state wheel', () => {
+  const root = mkdtempSync(join(tmpdir(), 'oracle-python-wheel-owner-'));
+  try {
+    const dir = join(root, 'rust', 'python');
+    mkdirSync(join(dir, 'tests'), { recursive: true });
+    writeFileSync(join(dir, 'Cargo.toml'), '[package]\nname = "extension"\n');
+    writeFileSync(join(dir, 'pyproject.toml'), '[build-system]\nrequires = ["maturin"]\n');
+    assert.deepEqual(pythonTestOwner(join(dir, 'tests', 'test_bindings.py'), root), { dir, wheelProject: true });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

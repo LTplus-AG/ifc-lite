@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 import { parseRunnerOutput } from './revert-oracle.mjs';
 import { runTypecheckPlan } from './revert-oracle-type-only.mjs';
+import { preparePythonWheel } from './revert-oracle-python-wheel.mjs';
 
 const toolchainVersions = new Map();
 const RUN_TIMEOUT_MS = 10 * 60 * 1000;
@@ -101,7 +102,7 @@ export function runPlan(plan, root, label, log = console.log) {
   // for captured output. Select TAP on this invocation instead of through
   // NODE_OPTIONS: the selected test may itself spawn the oracle, and inherited
   // NODE_OPTIONS would otherwise add the reporter twice in that nested run.
-  const runnerArgs = recordsExecution
+  let runnerArgs = recordsExecution
     ? [...command.prefix, '--test-reporter=tap', ...plan.runner.args]
     : [...command.prefix, ...plan.runner.args];
   const spawnOptions = {
@@ -117,6 +118,24 @@ export function runPlan(plan, root, label, log = console.log) {
       ...(coverageDir ? { NODE_V8_COVERAGE: coverageDir } : {}),
     },
   };
+  let wheel;
+  if (plan.wheelProject) {
+    try {
+      wheel = preparePythonWheel(plan.dir, command, spawnOptions);
+      spawnOptions.env = wheel.env;
+      runnerArgs = plan.runner.args;
+    } catch (error) {
+      const parsed = {
+        kind: 'load-failure', passed: null, failed: null, total: null,
+        evidence: [error instanceof Error ? error.message : String(error)],
+        rawExitCode: null, signal: null, toolchain: toolchainIdentity(command.bin, 'python'),
+        executionFiles: [], attributed: false, durationMs: Date.now() - started,
+      };
+      parsed.tail = parsed.evidence[0];
+      logRun(plan, root, label, parsed, '?', log);
+      return parsed;
+    }
+  }
   let run;
   let executionFiles = [];
   let executionEvidenceError = null;
@@ -134,12 +153,13 @@ export function runPlan(plan, root, label, log = console.log) {
     }
     run = plan.moduleFilter
       ? runExactCargoModule(command.bin, runnerArgs, plan.moduleFilter, spawnOptions)
-      : spawnSync(command.bin, runnerArgs, spawnOptions);
+      : spawnSync(wheel?.bin ?? command.bin, runnerArgs, spawnOptions);
     if (coverageDir) executionFiles = readCoveredFiles(coverageDir);
   } catch (error) {
     executionEvidenceError = error instanceof Error ? error.message : String(error);
   } finally {
     if (coverageDir) rmSync(coverageDir, { recursive: true, force: true });
+    wheel?.cleanup();
   }
   if (!run) throw new Error(`runner did not produce a process result: ${executionEvidenceError ?? 'unknown error'}`);
   const parsed = parseRunnerOutput({

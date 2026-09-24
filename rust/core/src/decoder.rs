@@ -8,7 +8,10 @@
 
 use crate::columnar_index::EntityIndexStore;
 use crate::error::{Error, Result};
-use crate::parser::{is_step_space, parse_entity, report_scan_diagnostics, EntityScanner};
+use crate::parser::{
+    is_step_space, parse_entity, parse_step_numeric, report_scan_diagnostics, skip_step_trivia,
+    EntityScanner,
+};
 use crate::schema_gen::{AttributeValue, DecodedEntity};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -590,40 +593,7 @@ impl<'a> EntityDecoder<'a> {
     /// Returns (x, y, z) as f64 tuple
     #[inline]
     pub fn get_cartesian_point_fast(&mut self, entity_id: u32) -> Option<(f64, f64, f64)> {
-        let bytes = self.get_raw_bytes(entity_id)?;
-
-        // Find opening paren for coordinates: IFCCARTESIANPOINT((x,y,z));
-        let mut i = 0;
-        let len = bytes.len();
-
-        // Skip to first '(' after '='
-        while i < len && bytes[i] != b'(' {
-            i += 1;
-        }
-        if i >= len {
-            return None;
-        }
-        i += 1; // Skip first '('
-
-        // Skip to second '(' for the coordinate list
-        while i < len && bytes[i] != b'(' {
-            i += 1;
-        }
-        if i >= len {
-            return None;
-        }
-        i += 1; // Skip second '('
-
-        // Parse x coordinate
-        let x = parse_next_float(&bytes[i..], &mut i)?;
-
-        // Parse y coordinate
-        let y = parse_next_float(&bytes[i..], &mut i)?;
-
-        // Parse z coordinate (optional for 2D points, default to 0)
-        let z = parse_next_float(&bytes[i..], &mut i).unwrap_or(0.0);
-
-        Some((x, y, z))
+        parse_cartesian_point_inline(self.get_raw_bytes(entity_id)?)
     }
 
     /// Fast extraction of FaceBound info directly from raw bytes
@@ -743,70 +713,36 @@ fn parse_cartesian_point_inline(bytes: &[u8]) -> Option<(f64, f64, f64)> {
     }
     i += 1; // Skip second '('
 
-    // Parse x coordinate
-    let x = parse_float_inline(&bytes[i..], &mut i)?;
-
-    // Parse y coordinate
-    let y = parse_float_inline(&bytes[i..], &mut i)?;
-
-    // Parse z coordinate (optional for 2D points, default to 0)
-    let z = parse_float_inline(&bytes[i..], &mut i).unwrap_or(0.0);
-
-    Some((x, y, z))
+    parse_point_coordinates(&bytes[i..])
 }
 
-/// Parse float inline - simpler version for batch coordinate extraction
+/// `x,y)` or `x,y,z)`, starting just inside the coordinate list's `(`. Every
+/// value goes through the shared STEP literal grammar and every separator is
+/// checked, so a corrupted literal (`1.52.3`), a non-STEP spelling (`nan`) or a
+/// corrupt last value (`3.x`) refuses the whole point instead of splitting it,
+/// reading it as its prefix, or defaulting it to 0, which is what the full
+/// tokenizer does with the same record (#5266). Comments are trivia here as
+/// everywhere else (`3./* c */)` is a legal z). z defaults to 0 only for a
+/// genuine 2D point, whose list closes right after y.
 #[inline]
-fn parse_float_inline(bytes: &[u8], offset: &mut usize) -> Option<f64> {
-    let len = bytes.len();
-    let mut i = 0;
-
-    // Skip whitespace and commas
-    while i < len
-        && (bytes[i] == b',' || is_step_space(bytes[i]))
-    {
-        i += 1;
-    }
-
-    if i >= len || bytes[i] == b')' {
+fn parse_point_coordinates(bytes: &[u8]) -> Option<(f64, f64, f64)> {
+    let value_at = |i: usize| -> Option<(f64, usize)> {
+        let start = skip_step_trivia(bytes, i)?;
+        let (value, len) = parse_step_numeric::<f64>(&bytes[start..])?;
+        Some((value, skip_step_trivia(bytes, start + len)?))
+    };
+    let (x, i) = value_at(0)?;
+    if bytes.get(i) != Some(&b',') {
         return None;
     }
-
-    // Parse float using fast_float
-    match fast_float2::parse_partial::<f64, _>(&bytes[i..]) {
-        Ok((value, consumed)) if consumed > 0 => {
-            *offset += i + consumed;
-            Some(value)
-        }
-        _ => None,
+    let (y, i) = value_at(i + 1)?;
+    match bytes.get(i)? {
+        b')' => return Some((x, y, 0.0)),
+        b',' => {}
+        _ => return None,
     }
-}
-
-/// Parse next float from bytes, advancing position past it
-#[inline]
-fn parse_next_float(bytes: &[u8], offset: &mut usize) -> Option<f64> {
-    let len = bytes.len();
-    let mut i = 0;
-
-    // Skip whitespace and commas
-    while i < len
-        && (bytes[i] == b',' || is_step_space(bytes[i]))
-    {
-        i += 1;
-    }
-
-    if i >= len || bytes[i] == b')' {
-        return None;
-    }
-
-    // Parse float using fast_float
-    match fast_float2::parse_partial::<f64, _>(&bytes[i..]) {
-        Ok((value, consumed)) if consumed > 0 => {
-            *offset += i + consumed;
-            Some(value)
-        }
-        _ => None,
-    }
+    let (z, i) = value_at(i + 1)?;
+    (bytes.get(i) == Some(&b')')).then_some((x, y, z))
 }
 
 #[cfg(test)]

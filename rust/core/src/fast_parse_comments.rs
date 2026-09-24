@@ -4,7 +4,7 @@
 
 //! Cold, comment-aware twins of the point-list hot loops.
 
-use super::{estimate_float_count, estimate_int_count, is_number_start, parse_index_value};
+use super::{estimate_int_count, parse_index_value};
 
 /// Real point and index lists almost never contain comments. Pay one SIMD
 /// slash search so their inner delimiter loop stays identical to the
@@ -31,41 +31,17 @@ fn next_value_start(bytes: &[u8], mut pos: usize, starts_value: fn(u8) -> bool) 
 }
 
 #[cold]
-pub(super) fn parse_coordinates(bytes: &[u8]) -> Vec<f32> {
+pub(super) fn parse_coordinates(bytes: &[u8]) -> Option<Vec<f32>> {
     #[cfg(test)]
     super::tests::mark_comment_aware_call();
-    let mut result = Vec::with_capacity(estimate_float_count(bytes));
-    let mut pos = 0;
-    while let Some(start) = next_value_start(bytes, pos, is_number_start) {
-        pos = start;
-        match fast_float2::parse_partial::<f32, _>(&bytes[pos..]) {
-            Ok((value, consumed)) if consumed > 0 => {
-                result.push(value);
-                pos += consumed;
-            }
-            _ => pos += 1,
-        }
-    }
-    result
+    super::coordinates::read_coordinate_list::<f32, true>(bytes)
 }
 
 #[cold]
-pub(super) fn parse_coordinates_f64(bytes: &[u8]) -> Vec<f64> {
+pub(super) fn parse_coordinates_f64(bytes: &[u8]) -> Option<Vec<f64>> {
     #[cfg(test)]
     super::tests::mark_comment_aware_call();
-    let mut result = Vec::with_capacity(estimate_float_count(bytes));
-    let mut pos = 0;
-    while let Some(start) = next_value_start(bytes, pos, is_number_start) {
-        pos = start;
-        match fast_float2::parse_partial::<f64, _>(&bytes[pos..]) {
-            Ok((value, consumed)) if consumed > 0 => {
-                result.push(value);
-                pos += consumed;
-            }
-            _ => pos += 1,
-        }
-    }
-    result
+    super::coordinates::read_coordinate_list::<f64, true>(bytes)
 }
 
 #[cold]

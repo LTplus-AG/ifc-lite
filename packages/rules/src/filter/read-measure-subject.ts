@@ -72,13 +72,24 @@ function readProperty(subject: Extract<MeasureSubject, { kind: 'property' }>, st
   return { present: values.some((v) => v.trim().length > 0), values, valueUnits, valueSiScales };
 }
 
+/**
+ * `expressId`'s type-level quantity sets: parsed from the source, or for a
+ * table-backed (server-parsed) store with no source, the type's rows in
+ * `store.quantities`, the same branch `inheritedTypePsets` takes (review, #5440).
+ */
+function inheritedTypeQsets(store: IfcDataStore, expressId: number) {
+  if (store.source && store.source.length > 0) return extractTypeQuantitiesOnDemand(store, expressId)?.quantities ?? [];
+  const typeIds = store.relationships?.getRelated(expressId, RelationshipType.DefinesByType, 'inverse') ?? [];
+  return typeIds.length > 0 ? (store.quantities?.getForEntity?.(typeIds[0]) ?? []) : [];
+}
+
 function readQuantity(subject: Extract<MeasureSubject, { kind: 'quantity' }>, store: IfcDataStore, expressId: number): MeasureValue {
   const own = extractQuantitiesOnDemand(store, expressId);
   // Both options read the type's quantities: 'aggregation' falls back to
   // the aggregate parent only when neither the element nor its type has
   // the value, the same "own (type included) first" rule as properties.
   const sets = subject.inherit === 'type' || subject.inherit === 'aggregation'
-    ? mergeInheritedQuantitySets(own, extractTypeQuantitiesOnDemand(store, expressId)?.quantities ?? [])
+    ? mergeInheritedQuantitySets(own, inheritedTypeQsets(store, expressId))
     : own;
   const values: number[] = [];
   const valueUnits: Array<string | undefined> = [];

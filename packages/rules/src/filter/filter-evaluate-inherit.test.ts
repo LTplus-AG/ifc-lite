@@ -20,6 +20,8 @@ import { evaluateFilterRules } from './filter-evaluate.js';
 import { isFilterRule, type FilterRule } from './filter-rules.js';
 import { runRuleSet } from '../engine/rule-engine.js';
 import type { RuleSetFile } from '../rule-set/rule-set.js';
+import { readSubject } from './read-subject.js';
+import { RelationshipType } from '@ifc-lite/data';
 
 const IFC = `ISO-10303-21;
 HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('t','',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;
@@ -100,5 +102,23 @@ describe('inherit in validation (#5433)', () => {
     const report = await runRuleSet({ ruleSet, models: [{ id: 'm', store: await parse() }] });
     const verdicts = Object.fromEntries(report.specificationResults[0].entityResults.map((e) => [e.entityName, e.passed]));
     assert.deepEqual(verdicts, { P1: true, P2: true });
+  });
+});
+
+describe('inherit on a table-backed store (review, #5440)', () => {
+  it("'type' reads the type's quantity rows when there is no source to parse", () => {
+    // A server-parsed store: no source bytes, quantities in the table only.
+    const qset = { name: 'Qto_BeamBaseQuantities', quantities: [{ name: 'Length', type: 0, value: 6 }] };
+    const store = {
+      source: new Uint8Array(0),
+      relationships: {
+        getRelated: (id: number, rel: RelationshipType, dir: string) =>
+          id === 30 && rel === RelationshipType.DefinesByType && dir === 'inverse' ? [33] : [],
+      },
+      quantities: { getForEntity: (id: number) => (id === 33 ? [qset] : []) },
+    } as unknown as IfcDataStore;
+    const subject = { kind: 'quantity', setName: 'Qto_BeamBaseQuantities', quantityName: 'Length' } as const;
+    assert.equal(readSubject(subject, { store, expressId: 30 }).present, false);
+    assert.deepEqual(readSubject({ ...subject, inherit: 'type' }, { store, expressId: 30 }).values, [6]);
   });
 });

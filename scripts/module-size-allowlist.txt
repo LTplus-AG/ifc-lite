@@ -83,7 +83,7 @@
    432 apps/viewer/src/components/viewer/IDSCorrectionDialog.tsx
    565 apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx
    533 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
-  1692 apps/viewer/src/components/viewer/LensPanel.tsx
+  1667 apps/viewer/src/components/viewer/LensPanel.tsx
   1411 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
    548 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
   1133 apps/viewer/src/components/viewer/MainToolbar.tsx
@@ -119,7 +119,7 @@
    406 apps/viewer/src/components/viewer/useAnimationLoop.ts
    970 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    916 apps/viewer/src/components/viewer/useMouseControls.ts
-   683 apps/viewer/src/components/viewer/ViewerLayout.tsx
+   682 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1815 apps/viewer/src/components/viewer/Viewport.tsx
   1181 apps/viewer/src/components/viewer/ViewportContainer.tsx
    508 apps/viewer/src/components/viewer/ZonesPanel.tsx

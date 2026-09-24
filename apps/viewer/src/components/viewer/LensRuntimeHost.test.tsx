@@ -3,6 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
+ * The lens runtime (`LensRuntimeHost`): evaluation + hide sync, mounted once
+ * for the viewer's lifetime rather than by the Lens panel (#5877).
+ *
  * #5206: the hide-sync effect used to depend on `lensHiddenIds.size`, a
  * subscription meant for the footer's "N hidden" count. `useLens.ts` replaces
  * `lensHiddenIds` with a FRESH `Set` on every recompute (a rule edit via
@@ -12,7 +15,7 @@
  * re-render, the effect never re-runs, and the sync goes stale: old hides
  * never lift, new hides never apply.
  *
- * These tests mount the real `LensPanel` against the real Zustand store and
+ * These tests mount the real `LensRuntimeHost` against the real Zustand store and
  * drive the resync the way `useLens.ts` actually does it: replacing the
  * `lensHiddenIds` Set object via `setState`, never mutating the existing one.
  */
@@ -25,7 +28,7 @@ import { render, cleanup } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import type { Lens } from '@/store/slices/lensSlice';
 import { resolveExportVisibility } from '@/store/exportVisibility';
-import { LensPanel } from './LensPanel.js';
+import { LensRuntimeHost } from './LensRuntimeHost.js';
 
 const LENS: Lens = {
   id: 'lens-under-test',
@@ -35,7 +38,7 @@ const LENS: Lens = {
 
 let initialState: ReturnType<typeof useViewerStore.getState>;
 
-/** Seeds the minimal store shape `useLens` and `LensPanel` need, with no
+/** Seeds the minimal store shape `useLens` and the host need, with no
  *  models loaded so `useLens`'s own recompute effect never fires and the
  *  seeded `lensHiddenIds` is the only thing driving the sync under test. */
 function seedLens(lensHiddenIds: Set<number>, hiddenEntities: Set<number> = new Set()) {
@@ -57,7 +60,7 @@ function seedLens(lensHiddenIds: Set<number>, hiddenEntities: Set<number> = new 
   });
 }
 
-describe('LensPanel: hide-sync effect resyncs on content change, not just size (#5206)', () => {
+describe('LensRuntimeHost: hide-sync effect resyncs on content change, not just size (#5206)', () => {
   before(() => {
     initialState = useViewerStore.getState();
   });
@@ -73,7 +76,7 @@ describe('LensPanel: hide-sync effect resyncs on content change, not just size (
 
   it('applies the initial lensHiddenIds on mount', () => {
     seedLens(new Set([1, 2, 3]));
-    render(<LensPanel onClose={() => {}} />);
+    render(<LensRuntimeHost />);
 
     assert.deepEqual(
       [...useViewerStore.getState().hiddenEntities].sort((a, b) => a - b),
@@ -83,7 +86,7 @@ describe('LensPanel: hide-sync effect resyncs on content change, not just size (
 
   it('resyncs on a SAME-SIZE content swap: old ids lift, new ids apply', () => {
     seedLens(new Set([1, 2, 3]));
-    render(<LensPanel onClose={() => {}} />);
+    render(<LensRuntimeHost />);
     assert.deepEqual(
       [...useViewerStore.getState().hiddenEntities].sort((a, b) => a - b),
       [1, 2, 3],
@@ -108,7 +111,7 @@ describe('LensPanel: hide-sync effect resyncs on content change, not just size (
     // `hiddenEntities` with `lensHiddenIds`, so a stale hide of 1,2,3 left in
     // `hiddenEntities` would silently drop those entities from the file.
     seedLens(new Set([1, 2, 3]));
-    render(<LensPanel onClose={() => {}} />);
+    render(<LensRuntimeHost />);
     act(() => {
       useViewerStore.setState({ lensHiddenIds: new Set([4, 5, 6]) });
     });
@@ -124,7 +127,7 @@ describe('LensPanel: hide-sync effect resyncs on content change, not just size (
   it('never claims or shows a manually-hidden id outside the lens\'s applied set', () => {
     // A user hid 999 by hand before the lens ever touched it.
     seedLens(new Set([1, 2, 3]), new Set([999]));
-    render(<LensPanel onClose={() => {}} />);
+    render(<LensRuntimeHost />);
     assert.deepEqual(
       [...useViewerStore.getState().hiddenEntities].sort((a, b) => a - b),
       [1, 2, 3, 999],

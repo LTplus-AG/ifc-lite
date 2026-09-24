@@ -5,7 +5,7 @@
 /**
  * Lens visibility ownership bookkeeping (pure helpers).
  *
- * The lens panel mirrors the active lens's computed `lensHiddenIds` into the
+ * `LensRuntimeHost` mirrors the active lens's computed `lensHiddenIds` into the
  * GLOBAL `hiddenEntities` channel (the renderer's hide set). That channel is
  * shared with the user's manual hides, so the lens must track exactly which
  * ids it NEWLY hid ("owned" ids) and restore only those on lens switch /
@@ -19,9 +19,8 @@
  * basket) has since isolated something else, the lens just drops its claim.
  *
  * These are pure functions so the ownership rules are unit-testable without
- * React or the store; the panel applies the returned deltas via the store
- * actions and persists `nextApplied` in the lens slice (component-local state
- * would lose ownership on panel unmount/remount).
+ * React or the store; `LensRuntimeHost` applies the returned deltas via the
+ * store actions and persists `nextApplied` in the lens slice.
  */
 
 /** Deltas to reconcile the global hidden channel with the active lens. */

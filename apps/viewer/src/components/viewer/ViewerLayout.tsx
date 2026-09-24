@@ -39,6 +39,7 @@ import { useOverlayCompositor } from './schedule/useOverlayCompositor';
 import { CommandPalette } from './CommandPalette';
 import { SearchModal } from './SearchModal';
 import { TourHost } from '@/components/tours/TourHost';
+import { LensRuntimeHost } from './LensRuntimeHost';
 import { SidebarDock } from './sidebar/SidebarDock';
 import { FloatingPanelHost } from './dock/FloatingPanelHost';
 import { PanelWindowHost } from './dock/PanelWindowHost';
@@ -317,6 +318,7 @@ export function ViewerLayout() {
         <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
         <SearchModal />
         <TourHost />
+        <LensRuntimeHost />
         {/* Trigger-less: this instance exists so the entity context menu's
             "Export anonymized…" (which only sets `anonymizedExportRequested`,
             no trigger of its own) has a mounted dialog regardless of whether the export toolbar

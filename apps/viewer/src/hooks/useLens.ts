@@ -10,7 +10,8 @@
  * Unmatched entities with geometry are ghosted (semi-transparent).
  *
  * The pure evaluation logic lives in @ifc-lite/lens — this hook handles
- * React lifecycle and Zustand integration.
+ * React lifecycle and Zustand integration. It is mounted once, by
+ * `LensRuntimeHost`, so an active lens keeps applying while its panel is closed.
  *
  * Performance notes:
  * - Does NOT subscribe to `models` or `ifcDataStore` directly — reads them
@@ -35,9 +36,8 @@ import type { AutoColorEvaluationResult } from '@ifc-lite/lens';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { createLensDataProvider } from '@/lib/lens';
-import { useLensDiscovery } from './useLensDiscovery';
 
-export function useLens() {
+export function useLens(): void {
   const activeLensId = useViewerStore((s) => s.activeLensId);
   const savedLenses = useViewerStore((s) => s.savedLenses);
 
@@ -47,9 +47,6 @@ export function useLens() {
     () => savedLenses.find(l => l.id === activeLensId) ?? null,
     [activeLensId, savedLenses],
   );
-
-  // Run data discovery when models change (populates discoveredLensData in store)
-  useLensDiscovery();
 
   // Track the previously active lens to detect deactivation
   const prevLensIdRef = useRef<string | null>(null);
@@ -173,9 +170,4 @@ export function useLens() {
       hidden_entity_count: hiddenIds.size,
     });
   }, [activeLensId, activeLens, modelSetKey, mutationVersion]);
-
-  return {
-    activeLensId,
-    savedLenses,
-  };
 }

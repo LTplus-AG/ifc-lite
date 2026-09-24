@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useViewerStore } from './index.js';
+import { hiddenChannelAfterReset } from '@/lib/visibility/lens-reset';
 
 export function resetVisibilityForHomeFromStore(): void {
   const state = useViewerStore.getState();
@@ -23,8 +24,14 @@ export function resetVisibilityForHomeFromStore(): void {
   // (#2574 review). Called rather than re-listing the fields so this path
   // cannot drift out of sync with the others (#2654 review).
   state.clearClashFocus();
+  // The lens stays active through a reset — its colours are re-sent above —
+  // so its hides stay too, re-owned by the lens (#5877).
+  const { lensHiddenIds, activeLensId } = useViewerStore.getState();
   state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
-  useViewerStore.setState({ activeBasketViewId: null });
+  useViewerStore.setState({
+    activeBasketViewId: null,
+    ...hiddenChannelAfterReset(activeLensId, lensHiddenIds),
+  });
 }
 
 export function goHomeFromStore(): void {

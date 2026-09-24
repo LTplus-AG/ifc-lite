@@ -6,7 +6,7 @@
 
 import { drawingAnnotationFrame } from '@/lib/model-placement/drawing-annotation-frame';
 import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react';
-import { X, Download, FileDown, Eye, EyeOff, Maximize2, ZoomIn, ZoomOut, Loader2, Printer, GripVertical, MoreHorizontal, RefreshCw, Pin, PinOff, Palette, Ruler, Trash2, FileText, Shapes, Box, BoxSelect, PenTool, Hexagon, Type, Cloud, MousePointer2, Tag, Layers, ScanLine } from 'lucide-react';
+import { X, Download, FileDown, Eye, EyeOff, Maximize2, ZoomIn, ZoomOut, Loader2, Printer, MoreHorizontal, RefreshCw, Pin, PinOff, Palette, Ruler, Trash2, FileText, Shapes, Box, BoxSelect, PenTool, Hexagon, Type, Cloud, MousePointer2, Tag, Layers, ScanLine } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -18,7 +18,6 @@ import {
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { useIfc } from '@/hooks/useIfc';
-import { useDraggablePanel } from '@/hooks/useDraggablePanel';
 import { GraphicOverrideEngine, COMMON_SCALES } from '@ifc-lite/drawing-2d';
 import { DrawingSettingsPanel } from './DrawingSettingsPanel';
 import { DxfUnderlayPanel } from './DxfUnderlayPanel';
@@ -40,17 +39,17 @@ import { SaveMarkupToModelButton, SaveMarkupToModelMenuItem } from './SaveMarkup
 import { useTranslation } from '@/i18n';
 import { useDrawingRuntime } from '@/lib/drawing/drawing-runtime';
 
-/** The drawing's view. Its runtime (generation, persistence, the Section-tool
- *  auto-open) lives in `DrawingRuntimeHost` and runs whether or not this is
- *  mounted (#5492). */
-export function Section2DPanel(): React.ReactElement | null {
+/** The drawing's view: the `drawing` workspace panel (#5493), docked in the
+ *  bottom strip, floating, or popped out; it fills whatever region hosts it.
+ *  Its runtime (generation, persistence, the Section-tool auto-open) lives in
+ *  `DrawingRuntimeHost` and runs whether or not this is mounted (#5492). */
+export function Section2DPanel({ onClose }: { onClose?: () => void } = {}): React.ReactElement {
   const { t } = useTranslation();
   const { geometryResult, sourceCoordinateInfo, generateDrawing, isRegenerating } = useDrawingRuntime();
 
   // ═══════════════════════════════════════════════════════════════════════════
   // STORE SELECTORS
   // ═══════════════════════════════════════════════════════════════════════════
-  const panelVisible = useViewerStore((s) => s.drawing2DPanelVisible);
   const setDrawingPanelVisible = useViewerStore((s) => s.setDrawing2DPanelVisible);
   const sourceDrawing = useViewerStore((s) => s.drawing2D);
   const { drawing, hasReferences } = useDrawingWithReferences(sourceDrawing);
@@ -148,26 +147,22 @@ export function Section2DPanel(): React.ReactElement | null {
   // ═══════════════════════════════════════════════════════════════════════════
   // LOCAL STATE
   // ═══════════════════════════════════════════════════════════════════════════
-  const [isExpanded] = useState(false);
-  const [panelSize, setPanelSize] = useState({ width: 400, height: 300 });
-  const [isNarrow, setIsNarrow] = useState(false);  // Track if panel is too narrow for all buttons
+  const [isNarrow, setIsNarrow] = useState(false);  // Too narrow for every header button
   const [isPinned, setIsPinned] = useState(true);  // Default ON: keep position on regenerate
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  // Drag-to-move by the header grip (issue #1107). Disabled while expanded —
-  // that mode is full-screen (inset-4), so a free position makes no sense.
-  const drag = useDraggablePanel(panelRef, { disabled: isExpanded });
-  const isResizing = useRef<'right' | 'top' | 'bottom' | 'corner-top' | 'corner-bottom' | null>(null);
-  const resizeStartPos = useRef({ x: 0, y: 0, width: 0, height: 0 });
-  // Track resize event handlers for cleanup
-  const resizeHandlersRef = useRef<{ move: ((e: MouseEvent) => void) | null; up: (() => void) | null }>({ move: null, up: null });
   // Cache sheet drawing transform when pinned (to keep model fixed in place)
   const cachedSheetTransformRef = useRef<CachedSheetTransform | null>(null);
 
-  // Track panel width for responsive header
+  // The host (bottom strip, floating window, pop-out, mobile sheet) owns the
+  // size, so the header collapses on the width it actually gets.
   useEffect(() => {
-    setIsNarrow(panelSize.width < 480);
-  }, [panelSize.width]);
+    const panel = panelRef.current;
+    if (!panel) return;
+    const observer = new ResizeObserver(([entry]) => setIsNarrow(entry.contentRect.width < 480));
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, []);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // ═══════════════════════════════════════════════════════════════════════════
@@ -193,7 +188,8 @@ export function Section2DPanel(): React.ReactElement | null {
 
   const { viewTransform, setViewTransform, zoomIn, zoomOut, fitToView } = useViewControls({
     drawing, sectionPlane, containerRef,
-    panelVisible, status, sheetEnabled, activeSheet,
+    // Mounted means on screen: the host only renders this view while it shows.
+    panelVisible: true, status, sheetEnabled, activeSheet,
     isPinned, cachedSheetTransformRef,
   });
 
@@ -406,10 +402,11 @@ export function Section2DPanel(): React.ReactElement | null {
   // CALLBACKS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // Close panel
+  // The host's close also drops a floating / popped-out drawing, not just the dock flag.
   const handleClose = useCallback(() => {
-    setDrawingPanelVisible(false);
-  }, [setDrawingPanelVisible]);
+    if (onClose) onClose();
+    else setDrawingPanelVisible(false);
+  }, [onClose, setDrawingPanelVisible]);
 
   // Toggle options
   const toggle3DOverlay = useCallback(() => {
@@ -464,91 +461,8 @@ export function Section2DPanel(): React.ReactElement | null {
   }, [annotation2DActiveTool, selectedAnnotation2D]);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // RESIZE HANDLING
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  const handleResizeStart = useCallback((edge: 'right' | 'top' | 'bottom' | 'corner-top' | 'corner-bottom') => (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    isResizing.current = edge;
-    resizeStartPos.current = {
-      x: e.clientX,
-      y: e.clientY,
-      width: panelSize.width,
-      height: panelSize.height,
-    };
-
-    // Remove any existing listeners first
-    if (resizeHandlersRef.current.move) {
-      window.removeEventListener('mousemove', resizeHandlersRef.current.move);
-    }
-    if (resizeHandlersRef.current.up) {
-      window.removeEventListener('mouseup', resizeHandlersRef.current.up);
-    }
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing.current) return;
-
-      const dx = e.clientX - resizeStartPos.current.x;
-      const dy = e.clientY - resizeStartPos.current.y;
-
-      setPanelSize((prev) => {
-        let newWidth = prev.width;
-        let newHeight = prev.height;
-
-        if (isResizing.current === 'right' || isResizing.current === 'corner-top' || isResizing.current === 'corner-bottom') {
-          newWidth = Math.max(300, Math.min(1200, resizeStartPos.current.width + dx));
-        }
-        // While docked (bottom-anchored) the panel grows upward, so dragging the
-        // TOP edge up (negative dy) adds height. Once moved (top-anchored) it
-        // grows downward, so the BOTTOM edge does the resizing (positive dy).
-        if (isResizing.current === 'top' || isResizing.current === 'corner-top') {
-          newHeight = Math.max(200, Math.min(800, resizeStartPos.current.height - dy));
-        }
-        if (isResizing.current === 'bottom' || isResizing.current === 'corner-bottom') {
-          newHeight = Math.max(200, Math.min(800, resizeStartPos.current.height + dy));
-        }
-
-        return { width: newWidth, height: newHeight };
-      });
-    };
-
-    const handleMouseUp = () => {
-      isResizing.current = null;
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      resizeHandlersRef.current = { move: null, up: null };
-    };
-
-    // Store refs for cleanup
-    resizeHandlersRef.current = { move: handleMouseMove, up: handleMouseUp };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  }, [panelSize]);
-
-  // Cleanup resize listeners on unmount
-  useEffect(() => {
-    return () => {
-      if (resizeHandlersRef.current.move) {
-        window.removeEventListener('mousemove', resizeHandlersRef.current.move);
-      }
-      if (resizeHandlersRef.current.up) {
-        window.removeEventListener('mouseup', resizeHandlersRef.current.up);
-      }
-    };
-  }, []);
-
-  // ═══════════════════════════════════════════════════════════════════════════
   // MEMOIZED STYLES
   // ═══════════════════════════════════════════════════════════════════════════
-
-  // Memoize panel style to avoid creating new object on every render
-  const panelStyle = useMemo(() => {
-    return isExpanded
-      ? {}  // Expanded uses CSS classes for full sizing
-      : { width: panelSize.width, height: panelSize.height };
-  }, [isExpanded, panelSize.width, panelSize.height]);
 
   // Memoize progress bar style
   const progressBarStyle = useMemo(() => ({ width: `${progress}%` }), [progress]);
@@ -557,30 +471,11 @@ export function Section2DPanel(): React.ReactElement | null {
   // RENDER
   // ═══════════════════════════════════════════════════════════════════════════
 
-  if (!panelVisible) return null;
-
-  const panelClasses = isExpanded
-    ? 'absolute inset-4 z-40'
-    : 'absolute bottom-4 left-4 z-40';
-
   return (
-    <div
-      ref={panelRef}
-      className={`${panelClasses} bg-background rounded-lg border shadow-xl flex flex-col overflow-hidden`}
-      style={{ ...panelStyle, ...(isExpanded ? {} : drag.style) }}
-    >
+    <div ref={panelRef} className="relative h-full w-full bg-background flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b bg-muted/50 rounded-t-lg min-w-0">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b bg-muted/50 min-w-0">
         <div className="flex items-center gap-1.5 min-w-0">
-          {!isExpanded && (
-            <span
-              onMouseDown={drag.onDragStart}
-              title={t('section2d.dragTitle')}
-              className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground"
-            >
-              <GripVertical className="h-3.5 w-3.5" />
-            </span>
-          )}
           <h2 className="font-semibold text-xs shrink-0">{t('section2d.heading')}</h2>
         </div>
 
@@ -988,7 +883,7 @@ export function Section2DPanel(): React.ReactElement | null {
       {/* Drawing Canvas */}
       <div
         ref={containerRef}
-        className={`relative flex-1 overflow-hidden bg-white dark:bg-zinc-950 rounded-b-lg ${cursorClass}`}
+        className={`relative flex-1 overflow-hidden bg-white dark:bg-zinc-950 ${cursorClass}`}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -1149,46 +1044,6 @@ export function Section2DPanel(): React.ReactElement | null {
 
         {/* Empty state - just show blank canvas, no message */}
       </div>
-
-      {/* Resize handles - only show when not expanded */}
-      {!isExpanded && (
-        <>
-          {/* Right edge (width) — works in either anchor. */}
-          <div
-            className="absolute top-0 right-0 w-2 h-full cursor-ew-resize hover:bg-primary/20 transition-colors"
-            onMouseDown={handleResizeStart('right')}
-          />
-          {/* Height handle follows the anchor: docked → top edge (grows up),
-              moved → bottom edge (grows down). The move grip now lives next to
-              the title; the corner icon that read as a drag handle is gone
-              (issue #1107). */}
-          {drag.position === null ? (
-            <>
-              <div
-                className="absolute top-0 left-0 w-full h-2 cursor-ns-resize hover:bg-primary/20 transition-colors"
-                onMouseDown={handleResizeStart('top')}
-              />
-              <div
-                className="absolute top-0 right-0 w-4 h-4 cursor-nesw-resize hover:bg-primary/20 transition-colors"
-                onMouseDown={handleResizeStart('corner-top')}
-                title={t('section2d.resize')}
-              />
-            </>
-          ) : (
-            <>
-              <div
-                className="absolute bottom-0 left-0 w-full h-2 cursor-ns-resize hover:bg-primary/20 transition-colors"
-                onMouseDown={handleResizeStart('bottom')}
-              />
-              <div
-                className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize hover:bg-primary/20 transition-colors"
-                onMouseDown={handleResizeStart('corner-bottom')}
-                title={t('section2d.resize')}
-              />
-            </>
-          )}
-        </>
-      )}
 
       {/* Settings Panel - slides in from right */}
       {settingsPanelOpen && (

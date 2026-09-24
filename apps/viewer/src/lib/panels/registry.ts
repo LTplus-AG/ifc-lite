@@ -17,7 +17,7 @@
  * which keeps this module free of heavy imports.
  */
 
-import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, FileText, FileWarning, GitCompareArrows, Info, Layers as LayersIcon, ListTree, MessageSquare, Palette, Puzzle, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
+import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, FileText, FileWarning, GitCompareArrows, Info, Layers as LayersIcon, ListTree, MessageSquare, Palette, PencilRuler, Puzzle, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
 
 /** Every panel reachable from the unified sidebar rail. `properties` is the
  *  Information panel (the right pane's default fallback). Each panel opens in
@@ -46,7 +46,8 @@ export type WorkspacePanelId =
   | 'flow'
   | 'document'
   | 'cost'
-  | 'environment';
+  | 'environment'
+  | 'drawing';
 
 /** Activity-bar clustering — a divider is drawn whenever the group changes. */
 export type PanelGroup = 'navigate' | 'inspect' | 'review' | 'author' | 'work';
@@ -128,6 +129,10 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // Flag-free like 'zones'/'loadReport'/'cost' above (#1869 precedent) —
   // docks in the right pane, no dedicated envPanelOpen visibility flag.
   { id: 'environment', title: 'Environment', short: 'Environment', Icon: Sun, group: 'author', region: 'side' },
+  // The 2D drawing of the current section (#5493): docks in the bottom strip
+  // instead of floating over the 3D view, so it can float or pop out like any
+  // other panel. APPENDED (no Alt shortcut); its runtime is DrawingRuntimeHost.
+  { id: 'drawing', title: 'Drawing', short: '2D', Icon: PencilRuler, group: 'work', region: 'bottom', prefersWide: true },
 ];
 
 // The bottom strip (Script / Schedule / Lists) is table-driven; the id union and

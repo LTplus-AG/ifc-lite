@@ -100,6 +100,7 @@ export const commandPaletteEn = {
   'commandPalette.panel.sources.label': 'Cloud Sources',
   'commandPalette.panel.zones.label': 'Location Zones',
   'commandPalette.panel.loadReport.label': 'Load Report',
+  'commandPalette.panel.pointClouds.label': 'Point Clouds',
   'commandPalette.panel.appearance.label': 'Appearance',
   'commandPalette.panel.collab.label': 'Collaboration Room',
   'commandPalette.panel.extensions.label': 'Extensions',

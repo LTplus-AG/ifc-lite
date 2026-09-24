@@ -82,6 +82,11 @@ pub(super) fn resolve_batch_occurrences(
         let (occs, toggled): (Vec<_>, Vec<_>) =
             occs.into_iter().partition(|occ| !is_class_toggled(&occ.ifc_type));
         if !toggled.is_empty() {
+            // Its `false` (source absent) is dropped for the reason given at the
+            // other call below: the router registers the source before emitting any
+            // placeholder, and skips the insert only for a source that meshed EMPTY,
+            // which has no geometry to draw on the shard or flat either. So an
+            // absent source is not a toggled occurrence this split loses.
             recover_occurrences_flat(rep, &toggled, mapped_item_cache, rtc, recovered_flats);
         }
         if occs.is_empty() {

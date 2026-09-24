@@ -242,7 +242,7 @@ export function ViewportOverlays({
                 <ZoomIn className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="left">{t('viewportLighting.overlays.mobileNav.zoomInTooltip')}</TooltipContent>
+            <TooltipContent side="left">{t('viewportLighting.overlays.mobileNav.zoomInAria')}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -251,7 +251,7 @@ export function ViewportOverlays({
                 <ZoomOut className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="left">{t('viewportLighting.overlays.mobileNav.zoomOutTooltip')}</TooltipContent>
+            <TooltipContent side="left">{t('viewportLighting.overlays.mobileNav.zoomOutAria')}</TooltipContent>
           </Tooltip>
         </div>
       )}

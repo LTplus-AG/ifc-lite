@@ -73,9 +73,7 @@ export const viewportLightingEn = {
   'viewportLighting.overlays.mobileNav.homeAria': 'Home view',
   'viewportLighting.overlays.mobileNav.homeTooltip': 'Home (H)',
   'viewportLighting.overlays.mobileNav.zoomInAria': 'Zoom in',
-  'viewportLighting.overlays.mobileNav.zoomInTooltip': 'Zoom In (+)',
   'viewportLighting.overlays.mobileNav.zoomOutAria': 'Zoom out',
-  'viewportLighting.overlays.mobileNav.zoomOutTooltip': 'Zoom Out (-)',
   // ── ViewportOverlays.tsx — selected-storey count (the storeys' own
   // NAMEs are model content and are never routed through this key) ────
   'viewportLighting.overlays.storeyCount': { one: '{count} storey', other: '{count} storeys' },

@@ -48,6 +48,8 @@ apps/viewer/src/components/viewer/bulk-property-editor-options.ts
 apps/viewer/src/components/viewer/properties/modelMetadataStats.ts
 apps/viewer/src/components/viewer/properties/effective-classification-systems.ts
 apps/viewer/src/hooks/has-entity-type.ts
+apps/viewer/src/hooks/ingest/viewerModelIngest.ts
+apps/viewer/src/hooks/useIfcCache.ts
 apps/viewer/src/lib/collab/share-scope.ts
 apps/viewer/src/lib/compare/compareScope.ts
 apps/viewer/src/lib/lens/adapter-entities.ts
@@ -55,4 +57,7 @@ apps/viewer/src/lib/lists/adapter.ts
 apps/viewer/src/lib/lists/scope-types.ts
 apps/viewer/src/lib/search/filter-schema-effective.ts
 apps/viewer/src/sdk/adapters/model-adapter.ts
+apps/viewer/src/sdk/local-backend.ts
+apps/viewer/src/test/appearance-controller.harness.tsx
+apps/viewer/src/utils/serverDataModel.ts
 apps/viewer/src/utils/spatialHierarchy.ts

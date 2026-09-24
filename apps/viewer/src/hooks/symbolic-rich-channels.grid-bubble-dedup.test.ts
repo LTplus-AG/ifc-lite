@@ -11,10 +11,12 @@
  * circle-and-label per floor down every column — dozens of overlapping
  * bubbles burying `Snowdon_Towers_Sample_Structural` at the opening view.
  *
- * The fix (`pickPrimaryGridBubbleStorey` in symbolic-rich-channels.ts) keeps
- * only the lowest-elevation storey's grid bubbles (text + fill). Grid LINES
- * are untouched — a floor's grid lines are genuine per-floor content, so
- * `buildSymbolicLineChannels` still lifts every storey's grid lines.
+ * The fix lifts the grid buckets lowest-first and skips any bubble (text +
+ * fill) already lifted at the same plan position, so each duplicate draws
+ * once from the lowest storey in view, while a label that only an upper
+ * storey carries still draws. Grid LINES are untouched — a floor's grid
+ * lines are genuine per-floor content, so `buildSymbolicLineChannels` still
+ * lifts every storey's grid lines.
  *
  * This runs against the pure #3381 seam (as `symbolic-grid-section-clip.test.ts`
  * does), with a fixture built through the real `buildParseResult` so the
@@ -25,52 +27,53 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildSymbolicLineChannels, type SymbolicLineVertices } from './symbolic-line-channels.js';
-import { buildSymbolicRichChannels, pickPrimaryGridBubbleStorey } from './symbolic-rich-channels.js';
+import { buildSymbolicRichChannels } from './symbolic-rich-channels.js';
 import {
   buildParseResult,
   createEmptyFlatSymbolic,
-  type AnnotationsForStorey,
   type FlatSymbolic,
   type ParseResult,
 } from '../lib/overlay-parse/symbolic-parse.js';
-
-/** A minimal `AnnotationsForStorey` bucket, only `storeyElevation` matters
- *  to `pickPrimaryGridBubbleStorey`. */
-function bucketAt(storeyElevation: number | null): AnnotationsForStorey {
-  return { storeyId: 0, storeyElevation, lines: [], texts: [], fills: [] };
-}
 
 /** Elevations of three storeys, all carrying "the same" grid axis. */
 const ELEVATIONS = [6000, 0, 3000] as const; // deliberately out of order
 /** X of the (duplicated) axis, identifiable by coordinate. */
 const AXIS_X = 500;
 
+/** One grid axis on one storey: its elevation, bubble label and X. */
+interface AxisOnStorey { elevation: number; label: string; x: number }
+
+/** The same axis "1" at `AXIS_X` on every storey in `ELEVATIONS`. */
+const DUPLICATED: readonly AxisOnStorey[] = ELEVATIONS.map((elevation) => ({ elevation, label: '1', x: AXIS_X }));
+
 /**
- * One IfcGridAxis line + bubble text + bubble fill per storey in
- * `ELEVATIONS`, all sharing the same X and the same label — the pattern a
- * grid duplicated per floor produces.
+ * One IfcGridAxis line + bubble text + bubble fill per `axes` entry. With
+ * the default `DUPLICATED` every storey shares the same X and label — the
+ * pattern a grid duplicated per floor produces.
  */
-function duplicatedGridBubbleFlat(): FlatSymbolic {
+function gridBubbleFlat(axes: readonly AxisOnStorey[] = DUPLICATED): FlatSymbolic {
   const f = createEmptyFlatSymbolic();
   f.typeNames = ['IfcGridAxis'];
-  const n = ELEVATIONS.length;
+  const n = axes.length;
+  const xs = axes.map((a) => a.x);
+  const elevations = axes.map((a) => a.elevation);
 
   const polyPoints: number[] = [];
   const polyStart: number[] = [0];
   for (let i = 0; i < n; i++) {
-    polyPoints.push(AXIS_X, 0, AXIS_X, 1);
+    polyPoints.push(xs[i]!, 0, xs[i]!, 1);
     polyStart.push(polyStart[i]! + 2);
   }
   f.polyPoints = Float32Array.from(polyPoints);
   f.polyStart = Uint32Array.from(polyStart);
   f.polyOwner = Uint32Array.from({ length: n }, (_, i) => 100 + i);
-  f.polyWorldY = Float32Array.from(ELEVATIONS);
+  f.polyWorldY = Float32Array.from(elevations);
   f.polyFlags = Uint8Array.from({ length: n }, () => 0);
   f.polyType = Uint16Array.from({ length: n }, () => 0);
 
-  f.textContent = Array.from({ length: n }, () => '1');
+  f.textContent = axes.map((a) => a.label);
   f.textAlignment = Array.from({ length: n }, () => 'center');
-  f.textX = Float32Array.from({ length: n }, () => AXIS_X);
+  f.textX = Float32Array.from(xs);
   f.textY = Float32Array.from({ length: n }, () => 0);
   f.textDirX = Float32Array.from({ length: n }, () => 1);
   f.textDirY = Float32Array.from({ length: n }, () => 0);
@@ -78,13 +81,13 @@ function duplicatedGridBubbleFlat(): FlatSymbolic {
   f.textTargetPx = Float32Array.from({ length: n }, () => 0);
   f.textColor = new Float32Array(4 * n);
   f.textOwner = Uint32Array.from({ length: n }, (_, i) => 200 + i);
-  f.textWorldY = Float32Array.from(ELEVATIONS);
+  f.textWorldY = Float32Array.from(elevations);
   f.textType = Uint16Array.from({ length: n }, () => 0);
 
   const fillPoints: number[] = [];
   const fillPointStart: number[] = [0];
   for (let i = 0; i < n; i++) {
-    fillPoints.push(AXIS_X, 0, AXIS_X, 1, AXIS_X + 1, 1);
+    fillPoints.push(xs[i]!, 0, xs[i]!, 1, xs[i]! + 1, 1);
     fillPointStart.push(fillPointStart[i]! + 6);
   }
   f.fillPoints = Float32Array.from(fillPoints);
@@ -94,15 +97,15 @@ function duplicatedGridBubbleFlat(): FlatSymbolic {
   f.fillColor = new Float32Array(4 * n);
   f.fillHatch = new Float32Array(4 * n);
   f.fillOwner = Uint32Array.from({ length: n }, (_, i) => 300 + i);
-  f.fillWorldY = Float32Array.from(ELEVATIONS);
+  f.fillWorldY = Float32Array.from(elevations);
   f.fillFlags = Uint8Array.from({ length: n }, () => 0);
   f.fillType = Uint16Array.from({ length: n }, () => 0);
 
   return f;
 }
 
-function duplicatedGridBubbleParse(): ParseResult {
-  return buildParseResult(duplicatedGridBubbleFlat(), {});
+function gridBubbleParse(axes?: readonly AxisOnStorey[]): ParseResult {
+  return buildParseResult(gridBubbleFlat(axes), {});
 }
 
 /** Total vertex-float count in a flat `[x, y, z, …]` line list, across
@@ -128,12 +131,12 @@ const GRID_ONLY = {
 
 describe('grid bubbles draw once, not once per storey (#5583)', () => {
   it('the fixture really does bucket the axis into three separate storeys', () => {
-    const parsed = duplicatedGridBubbleParse();
+    const parsed = gridBubbleParse();
     assert.equal(parsed.gridByStorey.size, 3, 'one bucket per distinct elevation');
   });
 
   it('rich channel: only the lowest-elevation storey contributes a bubble text + fill', () => {
-    const { texts, fills } = buildSymbolicRichChannels([{ cached: duplicatedGridBubbleParse() }], GRID_ONLY);
+    const { texts, fills } = buildSymbolicRichChannels([{ cached: gridBubbleParse() }], GRID_ONLY);
 
     assert.equal(texts.length, 1, `expected exactly one bubble text, got ${texts.length}`);
     assert.equal(texts[0]!.content, '1');
@@ -144,54 +147,50 @@ describe('grid bubbles draw once, not once per storey (#5583)', () => {
   });
 
   it('line channel: every storey still contributes its grid line (lines are per-floor content)', () => {
-    const { grid } = buildSymbolicLineChannels([{ cached: duplicatedGridBubbleParse() }], GRID_ONLY);
+    const { grid } = buildSymbolicLineChannels([{ cached: gridBubbleParse() }], GRID_ONLY);
     // Each of the 3 storeys' axis line is one 2-point segment == 6 floats
     // (x, y, z per point). Deduping bubbles must not touch this.
     assert.equal(vertexFloatCount(grid), 3 * 2 * 3, 'all three storeys’ grid lines are still present');
   });
 });
 
-describe('pickPrimaryGridBubbleStorey does not get poisoned by a non-finite elevation', () => {
-  // Regression: `x < NaN` and `NaN < x` are both always `false`, so a naive
-  // "replace if lower" comparison that accepted NaN as the running best would
-  // never be displaced by a later, genuinely-elevated bucket — permanently
-  // pinning whichever bucket the Map happens to iterate first.
-  it('a NaN-elevation bucket seen FIRST does not block a finite one seen later', () => {
-    const map = new Map<number, AnnotationsForStorey>([
-      [1, bucketAt(NaN)],
-      [2, bucketAt(500)],
-    ]);
-    assert.equal(pickPrimaryGridBubbleStorey(map), 2, 'the only finite elevation must win over a NaN pinned first');
+describe('grid bubble dedup keeps what is not a duplicate (#5583)', () => {
+  it('a section clip around an upper storey still shows that storey\'s copy', () => {
+    const { texts, fills } = buildSymbolicRichChannels([{ cached: gridBubbleParse() }], {
+      ...GRID_ONLY,
+      clipEnabled: true,
+      clipPos: 3000,
+      clipDepth: 100,
+    });
+    assert.equal(texts.length, 1, 'the clipped-out lower copies must not hide the visible one');
+    assert.equal(texts[0]!.origin[1], 3000);
+    assert.equal(fills.length, 1);
+    assert.equal(fills[0]!.worldY, 3000);
   });
 
-  it('a NaN-elevation bucket seen LAST does not overwrite a finite one seen earlier', () => {
-    const map = new Map<number, AnnotationsForStorey>([
-      [1, bucketAt(500)],
-      [2, bucketAt(NaN)],
-    ]);
-    assert.equal(pickPrimaryGridBubbleStorey(map), 1);
+  it('a label only an upper storey carries still draws', () => {
+    const axes = [...DUPLICATED, { elevation: 6000, label: 'T1', x: 900 }];
+    const { texts, fills } = buildSymbolicRichChannels([{ cached: gridBubbleParse(axes) }], GRID_ONLY);
+    assert.deepEqual(texts.map((t) => [t.content, t.origin[1]]).sort(), [['1', 0], ['T1', 6000]]);
+    assert.equal(fills.length, 2);
   });
 
-  it('still picks the lowest of several finite elevations mixed with non-finite ones', () => {
-    const map = new Map<number, AnnotationsForStorey>([
-      [1, bucketAt(Infinity)],
-      [2, bucketAt(300)],
-      [3, bucketAt(NaN)],
-      [4, bucketAt(100)],
-      [5, bucketAt(null)],
-    ]);
-    assert.equal(pickPrimaryGridBubbleStorey(map), 4);
+  it('a hidden lowest copy hands the bubble to the next storey up', () => {
+    // Text owners follow fixture order: ELEVATIONS[1] (0 mm) is owner 201.
+    const { texts } = buildSymbolicRichChannels(
+      [{ cached: gridBubbleParse(), isHidden: (id: number) => id === 201 }],
+      GRID_ONLY,
+    );
+    assert.equal(texts.length, 1);
+    assert.equal(texts[0]!.origin[1], 3000);
   });
 
-  it('falls back to the first bucket in iteration order when nothing is finite', () => {
-    const map = new Map<number, AnnotationsForStorey>([
-      [7, bucketAt(NaN)],
-      [8, bucketAt(null)],
-    ]);
-    assert.equal(pickPrimaryGridBubbleStorey(map), 7);
-  });
-
-  it('returns undefined for an empty map', () => {
-    assert.equal(pickPrimaryGridBubbleStorey(new Map()), undefined);
+  it('an unresolved-elevation (loose) copy does not stack on the storey copy', () => {
+    // A NaN worldY never reaches a storey bucket; the parser sends it to the
+    // loose list, lifted at fallbackY (0 here), where storey 0 already drew it.
+    const axes = [NaN, 6000, 0, 3000].map((elevation) => ({ elevation, label: '1', x: AXIS_X }));
+    const { texts } = buildSymbolicRichChannels([{ cached: gridBubbleParse(axes) }], GRID_ONLY);
+    assert.equal(texts.length, 1);
+    assert.equal(texts[0]!.origin[1], 0);
   });
 });

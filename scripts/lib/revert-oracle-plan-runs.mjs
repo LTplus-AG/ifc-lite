@@ -289,7 +289,7 @@ export function planRuns(testPaths, root) {
       if (!/(^test_.+|.+_test)\.py$/.test(basename(rel))) { support.push(rel); continue; }
       const relFile = relative(p.dir, abs);
       const claimed = claimRuntimeAdapter({ kind: 'python', relFile });
-      plans.push({ key: `python:${rel}`, file: rel, dir: p.dir, files: [rel], relFiles: [relFile], script: undefined, crate: null, adapter: claimed?.adapter ?? null, runner: claimed?.runner ?? null });
+      plans.push({ key: `python:${rel}`, file: rel, dir: p.dir, files: [rel], relFiles: [relFile], script: undefined, crate: null, wheelProject: p.wheelProject, adapter: claimed?.adapter ?? null, runner: claimed?.runner ?? null });
       continue;
     }
     const pkgDir = findUp(dirname(abs), 'package.json', root);

@@ -145,4 +145,10 @@ pub struct StepStats {
     /// several. Slots whose IFC2X3 declaration DOES offer such a default take
     /// `.NOTDEFINED.` or `.F.` and are not counted.
     pub required_slots_unfilled: usize,
+    /// SLOTS written to an IFC4X3/IFC5 -> IFC4 downgrade with `$` where IFC4
+    /// requires a value (#5307, the Rust twin of #5202). The converter never
+    /// invents one: no measure, label, identifier, reference, flag or enum.
+    /// Non-zero means the file is not valid IFC4. Counted per slot, not per
+    /// record. Zero for every other direction, including IFC2X3 -> IFC4.
+    pub ifc4_required_slots_unfilled: usize,
 }

@@ -40,6 +40,7 @@ pub use guid::{deterministic_global_id, leading_rooted_global_id};
 use line_edit::{rewrite_refs, LineDecision};
 use plan::{build_plan, model_salt, ModelIndex, PlanCtx};
 use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
+use crate::schema_ifc4_slots::Ifc4SlotCheck;
 use units::{resolve_length_scale, resolve_model_modes};
 pub use units::UnitReconciliation;
 
@@ -235,6 +236,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let mut minter = GuidMinter::new();
     let mut offset: u32 = 0;
     let mut slot_fill = Ifc2x3SlotFill::new(None);
+    let mut ifc4_slots = Ifc4SlotCheck::new(); // IFC4-required `$` slots (#5307)
 
     for (i, model) in models.iter().enumerate() {
         let is_first = i == 0;
@@ -358,6 +360,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                     &schema,
                     id.saturating_add(offset),
                     &mut slot_fill,
+                    Some(&mut ifc4_slots),
                 ) {
                     Ok(text) => text,
                     Err(e) => {
@@ -438,6 +441,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     }
 
     stats.warnings.extend(slot_fill.warnings());
+    stats.warnings.extend(ifc4_slots.warnings());
 
     out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
     (out, stats)

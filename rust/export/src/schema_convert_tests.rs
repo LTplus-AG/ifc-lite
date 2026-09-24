@@ -83,7 +83,7 @@ fn ifc4x3_and_ifc5_types_are_renamed_down_to_ifc4() {
 fn downgrade_trims_attributes() {
     // IfcWall in IFC4 has 9 attrs (trailing PredefinedType); IFC2X3 keeps 8.
     let line = "#5=IFCWALL('guid',$,'W1',$,$,#6,#7,'tag',.STANDARD.);";
-    let out = convert_step_line(line, "IFC4", "IFC2X3", 5, &mut none()).unwrap();
+    let out = convert_step_line(line, "IFC4", "IFC2X3", 5, &mut none(), None).unwrap();
     assert!(out.starts_with("#5=IFCWALL("), "type kept");
     assert!(!out.contains(".STANDARD."), "9th attr (PredefinedType) trimmed");
     // 8 top-level attrs remain → 7 commas.
@@ -95,7 +95,7 @@ fn downgrade_trims_attributes() {
 fn nested_attrs_not_split_when_trimming() {
     // Commas inside a nested list must not count as top-level separators.
     let line = "#9=IFCWALL('g',$,$,$,$,(#1,#2,#3),#7,'t',.STANDARD.);";
-    let out = convert_step_line(line, "IFC4", "IFC2X3", 9, &mut none()).unwrap();
+    let out = convert_step_line(line, "IFC4", "IFC2X3", 9, &mut none(), None).unwrap();
     assert!(out.contains("(#1,#2,#3)"), "nested list preserved intact");
     assert!(!out.contains(".STANDARD."), "trailing attr trimmed");
 }
@@ -103,7 +103,7 @@ fn nested_attrs_not_split_when_trimming() {
 #[test]
 fn alignment_becomes_proxy_on_downgrade() {
     let line = "#3=IFCALIGNMENTHORIZONTAL('g',$,$,$,$,#4);";
-    let out = convert_step_line(line, "IFC4X3", "IFC4", 3, &mut none()).unwrap();
+    let out = convert_step_line(line, "IFC4X3", "IFC4", 3, &mut none(), None).unwrap();
     assert!(out.starts_with("#3=IFCPROXY("), "alignment → proxy");
     assert!(out.contains("'IFCALIGNMENTHORIZONTAL'"), "original type recorded as name");
 }
@@ -130,7 +130,7 @@ fn alignment_becomes_proxy_on_downgrade() {
 #[test]
 fn placeholder_guid_diverges_from_the_typescript_mint_pinned_not_fixed() {
     let line = "#42=IFCALIGNMENTSEGMENT('2K5H1$Zs9CQuKQFQKQFQKQ',#1,'A',$,$,#7,#9,$);";
-    let out = convert_step_line(line, "IFC4X3", "IFC4", 42, &mut none()).unwrap();
+    let out = convert_step_line(line, "IFC4X3", "IFC4", 42, &mut none(), None).unwrap();
     let guid = out.split('\'').nth(1).expect("IFCPROXY line has a quoted GlobalId");
     assert_eq!(
         guid, "00000000000000000G000g",
@@ -148,7 +148,7 @@ fn placeholder_guid_diverges_from_the_typescript_mint_pinned_not_fixed() {
 #[test]
 fn no_conversion_is_identity() {
     let line = "#1=IFCWALL('g',$,$);";
-    assert_eq!(convert_step_line(line, "IFC4", "IFC4", 1, &mut none()).unwrap(), line);
+    assert_eq!(convert_step_line(line, "IFC4", "IFC4", 1, &mut none(), None).unwrap(), line);
     assert!(!needs_conversion("IFC4", "IFC4"));
     assert!(needs_conversion("IFC2X3", "IFC4"));
 }
@@ -163,7 +163,7 @@ fn ifcdoortype_maps_to_ifcdoorstyle_preserving_globalid_and_name() {
     // record, and #4200's splitter mojibaked it (`Ã¶` for `ö`).
     let line = "#1=IFCDOORTYPE('1mW6gHB0W7lxCAqIKVEzia',#2,'Türtyp Größe',$,$,(#3),(#4),'tag',\
                 $,.DOOR.,.SINGLE_SWING_LEFT.,.T.,$);";
-    let out = convert_step_line(line, "IFC4", "IFC2X3", 1, &mut none()).unwrap();
+    let out = convert_step_line(line, "IFC4", "IFC2X3", 1, &mut none(), None).unwrap();
 
     assert!(!out.contains("IFCPROXY"), "must not fall back to a proxy: {out}");
     assert!(out.starts_with("#1=IFCDOORSTYLE("), "renamed to IfcDoorStyle: {out}");
@@ -198,7 +198,7 @@ fn door_and_window_downgrade_fill_mandatory_ifc2x3_slots_instead_of_dollar() {
     let door = "#1=IFCDOORTYPE('0DOORTYPE00000000000A',$,'DT',$,$,$,$,'tag',$,.DOOR.,\
                 .SINGLE_SWING_LEFT.,$,$);";
     assert_eq!(
-        convert_step_line(door, "IFC4", "IFC2X3", 1, &mut none()).unwrap(),
+        convert_step_line(door, "IFC4", "IFC2X3", 1, &mut none(), None).unwrap(),
         "#1=IFCDOORSTYLE('0DOORTYPE00000000000A',$,'DT',$,$,$,$,'tag',\
          .SINGLE_SWING_LEFT.,.NOTDEFINED.,.F.,.F.);"
     );
@@ -208,20 +208,20 @@ fn door_and_window_downgrade_fill_mandatory_ifc2x3_slots_instead_of_dollar() {
     let window = "#2=IFCWINDOWTYPE('0WINDOWTYPE000000000A',$,'WT',$,$,$,$,'tag',$,.WINDOW.,\
                   .SINGLE_PANEL.,.T.,$);";
     assert_eq!(
-        convert_step_line(window, "IFC4", "IFC2X3", 2, &mut none()).unwrap(),
+        convert_step_line(window, "IFC4", "IFC2X3", 2, &mut none(), None).unwrap(),
         "#2=IFCWINDOWSTYLE('0WINDOWTYPE000000000A',$,'WT',$,$,$,$,'tag',\
          .NOTDEFINED.,.NOTDEFINED.,.T.,.F.);"
     );
     // Control: the optional slots (Description, ApplicableOccurrence, ...)
     // are still `$`, so this is a mandatory-slot rule and not a blanket fill.
-    let out = convert_step_line(door, "IFC4", "IFC2X3", 1, &mut none()).unwrap();
+    let out = convert_step_line(door, "IFC4", "IFC2X3", 1, &mut none(), None).unwrap();
     assert!(out.contains("'DT',$,$,$,$,'tag'"), "optional slots stay `$`: {out}");
     // A writer that puts a space after each comma: the splitter keeps the
     // padding, so the empty slot reads ` $`, and it is still the placeholder
     // (the TypeScript twin's splitter trims, and fills it).
     let spaced = "#3=IFCDOORTYPE('0DOORTYPE00000000000B',$,'DT',$,$,$,$,'tag',$,.DOOR.,\
                   .SINGLE_SWING_LEFT., $, $);";
-    let out = convert_step_line(spaced, "IFC4", "IFC2X3", 3, &mut none()).unwrap();
+    let out = convert_step_line(spaced, "IFC4", "IFC2X3", 3, &mut none(), None).unwrap();
     assert!(out.ends_with(",.F.,.F.);"), "a padded `$` in a mandatory slot is filled: {out}");
 }
 
@@ -231,7 +231,7 @@ fn ifcwindowtype_maps_to_ifcwindowstyle_preserving_globalid_and_name() {
     // PartitioningType,ParameterTakesPrecedence,UserDefinedPartitioningType
     let line = "#1=IFCWINDOWTYPE('3Vnz8SzMO$_GklsTTZo$zj',#2,'Window Type',$,$,$,$,'tag',\
                 $,.WINDOW.,.SINGLE_PANEL.,.T.,$);";
-    let out = convert_step_line(line, "IFC4", "IFC2X3", 1, &mut none()).unwrap();
+    let out = convert_step_line(line, "IFC4", "IFC2X3", 1, &mut none(), None).unwrap();
 
     assert!(!out.contains("IFCPROXY"), "must not fall back to a proxy: {out}");
     assert!(out.starts_with("#1=IFCWINDOWSTYLE("), "renamed to IfcWindowStyle: {out}");
@@ -245,7 +245,7 @@ fn ifcdoorstyle_upgrade_leg_is_a_pure_pass_through() {
     // never the buggy direction: no rename entry, no attribute remap.
     let line = "#1=IFCDOORSTYLE('1mW6gHB0W7lxCAqIKVEzia',#2,'Door Style',$,$,$,$,$,\
                 .SINGLE_SWING_LEFT.,$,.T.,$);";
-    let out = convert_step_line(line, "IFC2X3", "IFC4", 1, &mut none()).unwrap();
+    let out = convert_step_line(line, "IFC2X3", "IFC4", 1, &mut none(), None).unwrap();
     assert_eq!(out, line, "upgrade leg is untouched: {out}");
 }
 
@@ -254,7 +254,7 @@ fn other_ifc2x3_downgrade_renames_still_use_positional_trim() {
     // Control: the by-name remap is scoped to exactly IFCDOORTYPE/
     // IFCWINDOWTYPE, not applied to every IFC4->IFC2X3 rename.
     let line = "#5=IFCCHIMNEY('g',$,'C1',$,$,#6,#7,'tag',.USERDEFINED.);";
-    let out = convert_step_line(line, "IFC4", "IFC2X3", 5, &mut none()).unwrap();
+    let out = convert_step_line(line, "IFC4", "IFC2X3", 5, &mut none(), None).unwrap();
     assert!(out.starts_with("#5=IFCBUILDINGELEMENTPROXY("), "renamed via positional path: {out}");
     // IfcBuildingElementProxy caps at 9 IFC2X3 attrs; this line has exactly 9, so nothing trims.
     assert!(out.contains(".USERDEFINED."), "positional trim/pass-through unaffected: {out}");
@@ -263,23 +263,23 @@ fn other_ifc2x3_downgrade_renames_still_use_positional_trim() {
 #[test]
 fn schema_conversion_preserves_utf8_through_the_shared_slot_parser() {
     let line = "#5=IFCCHIMNEY('g',$,'Größe',$,$,#6,#7,'tag',.USERDEFINED.,$);";
-    let out = convert_step_line(line, "IFC4", "IFC2X3", 5, &mut none()).unwrap();
+    let out = convert_step_line(line, "IFC4", "IFC2X3", 5, &mut none(), None).unwrap();
     assert!(out.contains("'Größe'"), "UTF-8 text must remain byte-correct: {out}");
 }
 
 #[test]
 fn schema_conversion_refuses_a_malformed_positional_split() {
     let line = "#1=IFCDOORTYPE('g',\"01,23\",$,$,$,$,$,$,$,$,$,$,$);";
-    assert_eq!(convert_step_line(line, "IFC4", "IFC2X3", 1, &mut none()).unwrap(), line);
+    assert_eq!(convert_step_line(line, "IFC4", "IFC2X3", 1, &mut none(), None).unwrap(), line);
 }
 
 #[test]
 fn schema_conversion_refuses_before_type_rename_or_proxy_replacement() {
     let rename = "#10=IFCBRIDGE('g',\"01,23\",$);";
-    assert_eq!(convert_step_line(rename, "IFC4X3", "IFC4", 10, &mut none()).unwrap(), rename);
+    assert_eq!(convert_step_line(rename, "IFC4X3", "IFC4", 10, &mut none(), None).unwrap(), rename);
 
     let proxy = "#99=IFCALIGNMENTCANT('g',\"01,23\",$);";
-    assert_eq!(convert_step_line(proxy, "IFC4X3", "IFC4", 99, &mut none()).unwrap(), proxy);
+    assert_eq!(convert_step_line(proxy, "IFC4X3", "IFC4", 99, &mut none(), None).unwrap(), proxy);
 }
 
 /// LTplus-AG/ifc-lite#4200: the deleted `split_top_level` rebuilt each
@@ -291,7 +291,7 @@ fn schema_conversion_refuses_before_type_rename_or_proxy_replacement() {
 #[test]
 fn ifc2x3_downgrade_keeps_an_untrimmed_non_ascii_line_byte_for_byte() {
     let untrimmed = "#1=IFCWALL('0abc',$,'Größe Wand',$,$,$,$,$);";
-    assert_eq!(convert_step_line(untrimmed, "IFC4", "IFC2X3", 1, &mut none()).unwrap(), untrimmed);
+    assert_eq!(convert_step_line(untrimmed, "IFC4", "IFC2X3", 1, &mut none(), None).unwrap(), untrimmed);
 }
 
 /// The same defect measured where a user meets it: `export_step` with an
@@ -409,9 +409,9 @@ fn ifc2x3_subset_downgrade_never_points_at_an_owner_history_it_does_not_write() 
 fn owner_history_fill_only_applies_to_an_ifc2x3_target() {
     let mut fill = Ifc2x3SlotFill::new(Some(9));
     let wall = "#2=IFCWALL('2abcdefghijklmnopqrstu',$,'W',$,$,$,$,$);";
-    assert_eq!(slot(&convert_step_line(wall, "IFC2X3", "IFC4", 2, &mut fill).unwrap(), 1), "$");
+    assert_eq!(slot(&convert_step_line(wall, "IFC2X3", "IFC4", 2, &mut fill, None).unwrap(), 1), "$");
     let bridge = "#3=IFCBRIDGE('3abcdefghijklmnopqrstu',$,'B',$,$,$,$,$,$,$,$);";
-    assert_eq!(slot(&convert_step_line(bridge, "IFC4X3", "IFC4", 3, &mut fill).unwrap(), 1), "$");
+    assert_eq!(slot(&convert_step_line(bridge, "IFC4X3", "IFC4", 3, &mut fill, None).unwrap(), 1), "$");
     assert_eq!(fill.owner_history_unfilled(), 0);
 }
 
@@ -505,7 +505,7 @@ fn ifc2x3_required_slot_fill_refuses_a_record_of_the_wrong_arity() {
 fn required_slot_fill_only_applies_to_an_ifc2x3_target() {
     let mut fill = Ifc2x3SlotFill::new(None);
     let footing = "#10=IFCFOOTING('2O2Fr$t4X7Zf8NOew3FLOH',$,'F',$,$,$,$,$,$);";
-    let out = convert_step_line(footing, "IFC2X3", "IFC4", 10, &mut fill).unwrap();
+    let out = convert_step_line(footing, "IFC2X3", "IFC4", 10, &mut fill, None).unwrap();
     assert_eq!(slot(&out, 8), "$", "{out}");
     assert_eq!(fill.required_slots_unfilled(), 0);
 }
@@ -602,7 +602,7 @@ fn merged_ifc2x3_downgrade_keeps_an_unrepresented_type_instead_of_panicking() {
 fn ifcstructuralloadcase_trims_to_ifcstructuralloadgroup() {
     let line = "#312=IFCSTRUCTURALLOADCASE('2fv4DZfY55exwX8QDy8dmw',#209,'Structural Load Case #1',$,$,\
                 .LOAD_CASE.,.NOTDEFINED.,.NOTDEFINED.,1.,$,(0.,0.,0.));";
-    let out = convert_step_line(line, "IFC4", "IFC2X3", 312, &mut none()).unwrap();
+    let out = convert_step_line(line, "IFC4", "IFC2X3", 312, &mut none(), None).unwrap();
     assert!(!out.contains("IFCPROXY"), "must not fall back to a proxy: {out}");
     assert_eq!(
         out,
@@ -615,7 +615,7 @@ fn ifcstructuralloadcase_trims_to_ifcstructuralloadgroup() {
 fn ifcstructuralcurveaction_maps_to_ifcstructurallinearaction() {
     let line = "#317=IFCSTRUCTURALCURVEACTION('2WSwGyLsrFNA9TLOq_ifyd',#209,'Structural Curve Action #1',\
                 $,$,$,$,#326,.GLOBAL_COORDS.,.F.,$,.LINEAR.);";
-    let out = convert_step_line(line, "IFC4", "IFC2X3", 317, &mut none()).unwrap();
+    let out = convert_step_line(line, "IFC4", "IFC2X3", 317, &mut none(), None).unwrap();
     assert!(!out.contains("IFCPROXY"), "must not fall back to a proxy: {out}");
     // AppliedLoad (#326) and GlobalOrLocal/DestabilizingLoad survive by
     // name; PredefinedType (.LINEAR., IFC4-only) has no IFC2X3 slot and is
@@ -641,7 +641,7 @@ fn ifcstructuralcurveaction_maps_to_ifcstructurallinearaction() {
 fn ifcstructuralcurvereaction_becomes_a_proxy_no_representation_in_ifc2x3() {
     let line = "#2773=IFCSTRUCTURALCURVEREACTION('0SH7YcIWrB8Q4VcWjfXpnn',#209,$,$,$,$,$,#2772,\
                 .GLOBAL_COORDS.,.DISCRETE.);";
-    let out = convert_step_line(line, "IFC4", "IFC2X3", 2773, &mut none()).unwrap();
+    let out = convert_step_line(line, "IFC4", "IFC2X3", 2773, &mut none(), None).unwrap();
     assert!(out.starts_with("#2773=IFCPROXY("), "no IFC2X3 representation -> proxy: {out}");
     assert!(out.contains("'IFCSTRUCTURALCURVEREACTION'"), "original type recorded as name: {out}");
     assert!(!out.contains("#2772"), "the dropped AppliedLoad reference must not survive: {out}");
@@ -656,7 +656,7 @@ fn ifcstructuralcurvereaction_becomes_a_proxy_no_representation_in_ifc2x3() {
 #[test]
 fn non_rooted_type_with_no_ifc2x3_representation_errors_instead_of_passing_through() {
     let line = "#101=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.)));";
-    let err = convert_step_line(line, "IFC4", "IFC2X3", 101, &mut none()).unwrap_err();
+    let err = convert_step_line(line, "IFC4", "IFC2X3", 101, &mut none(), None).unwrap_err();
     assert_eq!(err.express_id, 101);
     assert!(err.to_string().contains("IFCCARTESIANPOINTLIST3D"));
 }
@@ -669,7 +669,53 @@ fn non_rooted_type_with_no_ifc2x3_representation_errors_instead_of_passing_throu
 #[test]
 fn a_renamed_type_is_not_treated_as_unrepresented() {
     let line = "#1=IFCBURNERTYPE('g',$,$);";
-    let out = convert_step_line(line, "IFC4", "IFC2X3", 1, &mut none()).unwrap();
+    let out = convert_step_line(line, "IFC4", "IFC2X3", 1, &mut none(), None).unwrap();
     assert!(!out.contains("IFCPROXY"), "renamed to IFCGASTERMINALTYPE, not unrepresented: {out}");
     assert!(out.starts_with("#1=IFCGASTERMINALTYPE("), "{out}");
+}
+
+/// #5307 (Rust twin of #5202's finding 2). `IfcProjectedCRS.Name` is optional
+/// in IFC4X3/IFC5 but mandatory in IFC4. The `$` stays (a label is never
+/// invented) and is counted.
+#[test]
+fn ifc4x3_to_ifc4_downgrade_counts_an_unfillable_mandatory_slot() {
+    let line = "#10=IFCPROJECTEDCRS($,'A description',$,$,$,$,$);";
+    let mut check = crate::schema_ifc4_slots::Ifc4SlotCheck::new();
+    let out = convert_step_line(line, "IFC4X3", "IFC4", 10, &mut none(), Some(&mut check)).unwrap();
+    assert_eq!(out, line, "no value is fabricated: {out}");
+    assert_eq!(check.required_slots_unfilled(), 1);
+    assert!(check.warnings()[0].contains("not valid IFC4"), "{:?}", check.warnings());
+}
+
+/// #5307: a BOOLEAN flag is counted, never filled. `SameSense` is required in
+/// IFC4X3 as well, and `.F.` would reverse the segment (review of #5341, the
+/// same finding that removed the fill from the TypeScript twin in #5347).
+#[test]
+fn ifc4x3_to_ifc4_downgrade_never_fills_a_boolean_flag() {
+    let line = "#5=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,$,#6);";
+    let mut check = crate::schema_ifc4_slots::Ifc4SlotCheck::new();
+    let out = convert_step_line(line, "IFC5", "IFC4", 5, &mut none(), Some(&mut check)).unwrap();
+    assert_eq!(out, line, "SameSense keeps its $: {out}");
+    assert_eq!(check.required_slots_unfilled(), 1);
+}
+
+/// #5307 control: `IFC2X3 -> IFC4` is excluded, the scope line #5202 drew.
+#[test]
+fn ifc2x3_to_ifc4_upgrade_is_not_counted() {
+    let line = "#5=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,$,#6);";
+    let mut check = crate::schema_ifc4_slots::Ifc4SlotCheck::new();
+    let out = convert_step_line(line, "IFC2X3", "IFC4", 5, &mut none(), Some(&mut check)).unwrap();
+    assert_eq!(out, line, "{out}");
+    assert_eq!(check.required_slots_unfilled(), 0);
+}
+
+/// #5307: a record whose arity is not IFC4's is not counted: position `i` need
+/// not be attribute `i`.
+#[test]
+fn ifc4x3_to_ifc4_downgrade_skips_a_record_whose_arity_disagrees_with_the_table() {
+    let line = "#5=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,$);"; // 2 attrs, table expects 3
+    let mut check = crate::schema_ifc4_slots::Ifc4SlotCheck::new();
+    let out = convert_step_line(line, "IFC4X3", "IFC4", 5, &mut none(), Some(&mut check)).unwrap();
+    assert_eq!(out, line, "{out}");
+    assert_eq!(check.required_slots_unfilled(), 0);
 }

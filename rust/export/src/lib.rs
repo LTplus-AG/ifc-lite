@@ -46,6 +46,7 @@ pub mod rooted_type;
 mod schema_convert;
 mod schema_detect;
 mod schema_ifc2x3_slots;
+mod schema_ifc4_slots;
 mod schema_owner_history;
 mod schema_pad;
 mod schema_unrepresented;

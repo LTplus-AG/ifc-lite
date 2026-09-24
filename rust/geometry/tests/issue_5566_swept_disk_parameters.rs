@@ -193,3 +193,31 @@ fn surface_curve_swept_area_reads_composite_spans_too() {
     assert_close("min z", min[2], -0.322);
     assert!(max[0] < 0.05, "swept past the first leg: max x {} m (#5566)", max[0]);
 }
+
+#[test]
+fn composite_bend_spans_are_in_the_plane_angle_unit() {
+    // The same U-bar authored in degrees: each bend spans 90, so [322, 412]
+    // is exactly the first bend (the Revit rebar history on #631/#641 reads
+    // EndParam as this running sum in degrees).
+    let content = std::fs::read_to_string(UBAR).expect("read U-bar fixture");
+    let radian = "#11=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);";
+    let bend = "IFCPARAMETERVALUE(1.5707963267949)";
+    assert!(content.contains(radian) && content.matches(bend).count() == 2);
+    let content = content
+        .replace(
+            radian,
+            "#11=IFCCONVERSIONBASEDUNIT(#12,.PLANEANGLEUNIT.,'DEGREE',#13);\n\
+#12=IFCDIMENSIONALEXPONENTS(0,0,0,0,0,0,0);\n\
+#13=IFCMEASUREWITHUNIT(IFCPLANEANGLEMEASURE(0.0174532925199433),#14);\n\
+#14=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);",
+        )
+        .replace(bend, "IFCPARAMETERVALUE(90.)")
+        .replace(UBAR_SOLID, &format!("#72=IFCSWEPTDISKSOLID(#71,14.5,$,{LEG:?},{:?});", LEG + 90.0));
+    let mesh = mesh_element(&content, UBAR_BAR_ID);
+    assert!(!mesh.indices.is_empty(), "the bend swept nothing (#5566)");
+    let (min, max) = bounds(&mesh);
+    assert_close("min x", min[0], -TUBE_R_M);
+    assert_close("max z", max[2], -0.322);
+    assert_close("min z", min[2], -0.4235 - TUBE_R_M);
+    assert!(max[0] < 0.1015 + 2.0 * TUBE_R_M, "bend overran: max x {} m", max[0]);
+}

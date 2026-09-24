@@ -117,4 +117,28 @@ describe('Drawing inspector column (#5495)', () => {
     assert.ok(raw, 'expected the inspector tab to be persisted');
     assert.equal(JSON.parse(raw!).tab, 'underlays');
   });
+
+  it('session reset closes Sheet while preserving the inspector width (#5772)', () => {
+    const ui = render(<DrawingPanel />);
+    useViewerStore.getState().setDrawingInspectorWidth(360);
+    click(byLabel(ui, 'Sheet'));
+
+    useViewerStore.getState().resetViewerState();
+
+    assert.equal(useViewerStore.getState().sheetPanelVisible, false);
+    assert.equal(useViewerStore.getState().drawingInspectorTab, null);
+    assert.equal(useViewerStore.getState().drawingInspectorWidth, 360);
+  });
+
+  for (const tab of ['overrides', 'underlays', 'scan'] as const) {
+    it(`session reset preserves the ${tab} workspace preference (#5772)`, () => {
+      useViewerStore.getState().toggleDrawingInspectorTab(tab);
+      useViewerStore.getState().setDrawingInspectorWidth(360);
+
+      useViewerStore.getState().resetViewerState();
+
+      assert.equal(useViewerStore.getState().drawingInspectorTab, tab);
+      assert.equal(useViewerStore.getState().drawingInspectorWidth, 360);
+    });
+  }
 });

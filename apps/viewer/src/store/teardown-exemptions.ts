@@ -59,6 +59,13 @@ export const TEARDOWN_EXEMPTIONS: Readonly<Record<string, string>> = {
     'preference persisted to localStorage, mirroring dockSlice — deliberately outlives a ' +
     'file load. It names no modelId or expressId.',
 
+  drawingInspectorSlice:
+    'Inspector tab and width are cross-file workspace preferences persisted to localStorage ' +
+    'and name no modelId or expressId. The Sheet tab follows sheetPanelVisible through ' +
+    'registerDrawingInspectorSheetSync (store/store-sync.ts): sheetSlice session teardown, or ' +
+    'the drawing persistence bridge clearing the sheet on a model transition, closes that ' +
+    'tab. Other tabs and the column width deliberately survive those transitions (#5772).',
+
   solarSlice:
     'Solar-study intent (studied instant, display toggles) and the resolved sun readout are ' +
     'continuously recomputed from the live active model\'s georeference while the study is ' +

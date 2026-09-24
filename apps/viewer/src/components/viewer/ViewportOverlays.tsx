@@ -26,6 +26,9 @@ import { PointCloudPanel } from './PointCloudPanel';
 import { FlySpeedIndicator } from './FlySpeedIndicator';
 import { Crosshair } from 'lucide-react';
 import { useTranslation } from '@/i18n';
+// Mounted here, not in `ViewportContainer.tsx` (at its module budget): a
+// zero-net addition since this already lives inside the same viewport panel.
+import { ViewportHud } from '../viewport-ui/hud/ViewportHud';
 
 /**
  * Overlay chrome drawn on top of the 3D viewport.
@@ -195,6 +198,9 @@ export function ViewportOverlays({
 
   return (
     <>
+      {/* HUD kernel (#5485), no consumers migrated onto it yet; mounted
+          first so its regions exist before anything below portals in. */}
+      <ViewportHud />
       <PointCloudPanelMount />
       <FlySpeedIndicator />
       {/* Touch navigation stays available on mobile. On desktop BOTH toolbar

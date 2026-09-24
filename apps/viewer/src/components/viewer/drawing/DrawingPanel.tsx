@@ -18,10 +18,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { AXIS_INFO } from '../tools/sectionConstants';
-import { DrawingSettingsPanel } from '../DrawingSettingsPanel';
-import { DxfUnderlayPanel } from '../DxfUnderlayPanel';
-import { ScanSectionPanel } from '../ScanSectionPanel';
-import { SheetSetupPanel } from '../SheetSetupPanel';
 import { TitleBlockEditor } from '../TitleBlockEditor';
 import { useDrawingViewModel } from './useDrawingViewModel';
 import { useDrawingLayers } from './useDrawingLayers';
@@ -29,6 +25,7 @@ import { DrawingToolbar, type DrawingWidthTier } from './DrawingToolbar';
 import { DrawingExportMenu } from './DrawingExportMenu';
 import { DrawingCanvasView } from './DrawingCanvasView';
 import { DrawingStatusLine } from './DrawingStatusLine';
+import { DrawingInspector } from './DrawingInspector';
 
 /** Labels need ~1180px for one row; icons alone fit from ~640px; below that
  *  the rarest items overflow (see DrawingToolbar). */
@@ -37,17 +34,22 @@ function tierFor(width: number): DrawingWidthTier {
 }
 
 /** The host (bottom strip, floating window, pop-out, mobile sheet) owns the
- *  size, so the chrome adapts to the width it actually gets. */
-function useWidthTier(ref: React.RefObject<HTMLDivElement | null>): DrawingWidthTier {
+ *  size, so the chrome adapts to the width it actually gets; the inspector
+ *  column also needs the raw pixel width to decide its overlay fallback. */
+function usePanelMetrics(ref: React.RefObject<HTMLDivElement | null>): { tier: DrawingWidthTier; width: number } {
   const [tier, setTier] = useState<DrawingWidthTier>('wide');
+  const [width, setWidth] = useState(0);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const observer = new ResizeObserver(([entry]) => setTier(tierFor(entry.contentRect.width)));
+    const observer = new ResizeObserver(([entry]) => {
+      setTier(tierFor(entry.contentRect.width));
+      setWidth(entry.contentRect.width);
+    });
     observer.observe(el);
     return () => observer.disconnect();
   }, [ref]);
-  return tier;
+  return { tier, width };
 }
 
 function HeaderAction({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
@@ -67,7 +69,7 @@ export function DrawingPanel({ onClose }: { onClose?: () => void } = {}): React.
   const vm = useDrawingViewModel();
   const layers = useDrawingLayers(vm);
   const panelRef = useRef<HTMLDivElement>(null);
-  const tier = useWidthTier(panelRef);
+  const { tier, width: panelWidth } = usePanelMetrics(panelRef);
   const { sectionPlane, status, displayOptions } = vm;
 
   // The same wording the Section tool's header uses for the cut.
@@ -130,31 +132,7 @@ export function DrawingPanel({ onClose }: { onClose?: () => void } = {}): React.
 
       <div className="relative flex min-h-0 flex-1">
         <DrawingCanvasView vm={vm} layers={layers} />
-        {/* The settings drawers keep their slot beside the canvas; the inspector column is #5495. */}
-        {vm.openDrawer && (
-          <div className="w-72 shrink-0 border-l">
-            {vm.openDrawer === 'overrides' && <DrawingSettingsPanel onClose={vm.closeDrawer} />}
-            {vm.openDrawer === 'underlays' && (
-              <DxfUnderlayPanel
-                onClose={vm.closeDrawer}
-                onCenterOnModel={layers.handleCenterDxfUnderlay}
-                planViewActive={sectionPlane.axis === 'down' && sectionPlane.custom === undefined}
-                georeferenceAvailable={layers.dxfGeoreferenceAvailable}
-              />
-            )}
-            {vm.openDrawer === 'scan' && (
-              <ScanSectionPanel
-                onClose={vm.closeDrawer}
-                hasPointCloud={layers.scanSectionLayer.hasPointCloud}
-                totalInBand={layers.scanSectionLayer.totalInBand}
-                renderedCount={layers.scanSectionLayer.renderedCount}
-              />
-            )}
-            {vm.openDrawer === 'sheet' && (
-              <SheetSetupPanel onClose={vm.closeDrawer} onOpenTitleBlockEditor={() => vm.setTitleBlockEditorVisible(true)} />
-            )}
-          </div>
-        )}
+        <DrawingInspector vm={vm} layers={layers} panelWidth={panelWidth} />
       </div>
 
       <DrawingStatusLine

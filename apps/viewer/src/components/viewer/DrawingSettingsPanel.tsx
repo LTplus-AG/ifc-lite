@@ -12,7 +12,7 @@
  */
 
 import React, { useCallback, useState, useMemo } from 'react';
-import { X, Palette, Plus, Trash2, ChevronDown, ChevronRight, GripVertical, Eye, EyeOff, Check, Copy, PenTool, Flame, Building2, Wrench, Printer, type LucideIcon } from 'lucide-react';
+import { Palette, Plus, Trash2, ChevronDown, ChevronRight, GripVertical, Eye, EyeOff, Check, Copy, PenTool, Flame, Building2, Wrench, Printer, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -74,11 +74,7 @@ function PresetIcon({ iconName, className }: { iconName?: string; className?: st
   return <Icon className={className} />;
 }
 
-interface DrawingSettingsPanelProps {
-  onClose: () => void;
-}
-
-export function DrawingSettingsPanel({ onClose }: DrawingSettingsPanelProps) {
+export function DrawingSettingsPanel() {
   const { t } = useTranslation(); const graphicOverridePresets = useViewerStore((s) => s.graphicOverridePresets);
   const activePresetId = useViewerStore((s) => s.activePresetId);
   const setActivePreset = useViewerStore((s) => s.setActivePreset);
@@ -141,26 +137,18 @@ export function DrawingSettingsPanel({ onClose }: DrawingSettingsPanelProps) {
   }, [activePreset, customOverrideRules.length, addCustomRule, setActivePreset]);
 
   return (
-    <div className="flex flex-col h-full bg-background border-l">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/50">
-        <div className="flex items-center gap-2">
-          <Palette className="h-5 w-5 text-primary" />
-          <h2 className="font-semibold text-sm">{t('drawingUnderlay.settings.title')}</h2>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant={overridesEnabled ? 'default' : 'outline'}
-            size="sm"
-            onClick={toggleOverridesEnabled}
-            className="h-7 text-xs"
-          >
-            {t(overridesEnabled ? 'drawingUnderlay.settings.overridesEnabled' : 'drawingUnderlay.settings.overridesDisabled')}
-          </Button>
-          <Button variant="ghost" size="icon-sm" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+    <div className="flex flex-col h-full bg-background">
+      {/* The inspector tab (#5495) carries the title; this row keeps only the
+          functional enable/disable toggle, not a redundant close button. */}
+      <div className="flex items-center justify-end px-4 py-2 border-b bg-muted/50">
+        <Button
+          variant={overridesEnabled ? 'default' : 'outline'}
+          size="sm"
+          onClick={toggleOverridesEnabled}
+          className="h-7 text-xs"
+        >
+          {t(overridesEnabled ? 'drawingUnderlay.settings.overridesEnabled' : 'drawingUnderlay.settings.overridesDisabled')}
+        </Button>
       </div>
 
       {/* Content */}

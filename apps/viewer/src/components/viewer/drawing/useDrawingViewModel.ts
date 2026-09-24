@@ -14,6 +14,7 @@ import type React from 'react';
 import { GraphicOverrideEngine } from '@ifc-lite/drawing-2d';
 import { useViewerStore } from '@/store';
 import type { Annotation2DTool } from '@/store/slices/drawing2DSlice';
+import type { DrawingInspectorTab } from '@/store/slices/drawingInspectorSlice';
 import { useMeasure2D } from '@/hooks/useMeasure2D';
 import { useAnnotation2D } from '@/hooks/useAnnotation2D';
 import { useDrawingWithReferences } from '@/hooks/useReferenceImagesForDrawing';
@@ -21,8 +22,9 @@ import { useViewControls } from '@/hooks/useViewControls';
 import { useDrawingRuntime } from '@/lib/drawing/drawing-runtime';
 import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 
-/** The settings drawers beside the canvas; they share one slot. */
-export type DrawingDrawer = 'overrides' | 'sheet' | 'underlays' | 'scan';
+/** The settings panels beside the canvas, as inspector tabs (#5495); they
+ *  share one slot. Re-exported for the drawing/ subtree's existing imports. */
+export type DrawingDrawer = DrawingInspectorTab;
 
 export function useDrawingViewModel() {
   const runtime = useDrawingRuntime();
@@ -52,8 +54,6 @@ export function useDrawingViewModel() {
   const pointCloudClassMask = useViewerStore((s) => s.pointCloudClassMask);
   const activeSheet = useViewerStore((s) => s.activeSheet);
   const sheetEnabled = useViewerStore((s) => s.sheetEnabled);
-  const sheetPanelVisible = useViewerStore((s) => s.sheetPanelVisible);
-  const setSheetPanelVisible = useViewerStore((s) => s.setSheetPanelVisible);
   const titleBlockEditorVisible = useViewerStore((s) => s.titleBlockEditorVisible);
   const setTitleBlockEditorVisible = useViewerStore((s) => s.setTitleBlockEditorVisible);
 
@@ -105,24 +105,19 @@ export function useDrawingViewModel() {
   // Cache sheet drawing transform when pinned (to keep model fixed in place)
   const cachedSheetTransformRef = useRef<CachedSheetTransform | null>(null);
 
-  // The settings drawers share one slot. The sheet drawer's flag lives in the
-  // store (keyboard shortcuts close it); the other three are view-local.
-  const [localDrawer, setLocalDrawer] = useState<Exclude<DrawingDrawer, 'sheet'> | null>(null);
-  const openDrawer: DrawingDrawer | null = sheetPanelVisible ? 'sheet' : localDrawer;
+  // The inspector column's tabs share one slot (#5495): a single persisted
+  // store field, not a per-drawer `useState`. `sheetPanelVisible` (keyboard
+  // shortcuts, teardown) stays in step with it via `registerDrawingInspectorSheetSync`
+  // in `store/index.ts`.
+  const openDrawer = useViewerStore((s) => s.drawingInspectorTab);
+  const toggleDrawingInspectorTab = useViewerStore((s) => s.toggleDrawingInspectorTab);
+  const closeDrawingInspector = useViewerStore((s) => s.closeDrawingInspector);
   const toggleDrawer = useCallback((drawer: DrawingDrawer) => {
-    const closing = drawer === (sheetPanelVisible ? 'sheet' : localDrawer);
-    if (drawer === 'sheet') {
-      setLocalDrawer(null);
-      setSheetPanelVisible(!closing);
-      return;
-    }
-    setSheetPanelVisible(false);
-    setLocalDrawer(closing ? null : drawer);
-  }, [localDrawer, sheetPanelVisible, setSheetPanelVisible]);
+    toggleDrawingInspectorTab(drawer);
+  }, [toggleDrawingInspectorTab]);
   const closeDrawer = useCallback(() => {
-    setLocalDrawer(null);
-    setSheetPanelVisible(false);
-  }, [setSheetPanelVisible]);
+    closeDrawingInspector();
+  }, [closeDrawingInspector]);
 
   // Create graphic override engine with active rules
   const overrideEngine = useMemo(() => {

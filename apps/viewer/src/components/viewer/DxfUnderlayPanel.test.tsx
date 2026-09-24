@@ -62,7 +62,6 @@ function renderPanel(georeferenceAvailable: boolean): HTMLElement {
   act(() => {
     root.render(
       <DxfUnderlayPanel
-        onClose={() => {}}
         onCenterOnModel={() => {}}
         planViewActive={true}
         georeferenceAvailable={georeferenceAvailable}

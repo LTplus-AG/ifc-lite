@@ -38,6 +38,7 @@ import { createClashSlice, type ClashSlice } from './slices/clashSlice.js';
 import { createCompareSlice, type CompareSlice } from './slices/compareSlice.js';
 import { createDockSlice, type DockSlice } from './slices/dockSlice.js';
 import { createSidebarSlice, type SidebarSlice } from './slices/sidebarSlice.js';
+import { createDrawingInspectorSlice, type DrawingInspectorSlice } from './slices/drawingInspectorSlice.js';
 import { type WorkspacePanelId } from '@/lib/panels/registry';
 import { bottomPanelFlags, isBottomPanel, isBottomPanelOpen, type BottomPanelId } from '@/lib/panels/bottom-panels';
 import { createScriptSlice, type ScriptSlice } from './slices/scriptSlice.js';
@@ -114,6 +115,7 @@ export type { CompareSlice, CompareResult } from './slices/compareSlice.js';
 export type { LayerStackSlice, LayerStackEntry, LayerStackDiffResult, LayerAuthorKind } from './slices/layerStackSlice.js';
 export type { DockSlice, FloatingPanelState, SnapZone } from './slices/dockSlice.js';
 export type { SidebarSlice, SidebarMode, SidebarLayoutSnapshot } from './slices/sidebarSlice.js';
+export type { DrawingInspectorSlice, DrawingInspectorTab } from './slices/drawingInspectorSlice.js';
 
 // Re-export Script types
 export type { ScriptSlice } from './slices/scriptSlice.js';
@@ -165,6 +167,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   LayerStackSlice &
   DockSlice &
   SidebarSlice &
+  DrawingInspectorSlice &
   ScriptSlice &
   ChatSlice &
   CesiumSlice &
@@ -261,6 +264,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createLayerStackSlice(...args),
   ...createDockSlice(...args),
   ...createSidebarSlice(...args),
+  ...createDrawingInspectorSlice(...args),
   ...createScriptSlice(...args),
   ...createChatSlice(...args),
   ...createCesiumSlice(...args),
@@ -549,6 +553,29 @@ function registerHierarchyLeftSync(store: ReturnType<typeof createViewerStore>):
   });
 }
 
+/**
+ * Keep `sheetPanelVisible` in step with the Drawing inspector's single tab
+ * source (#5495). `sheetPanelVisible` predates the inspector column and has
+ * its own readers — the Esc double-press "close everything" handler
+ * (`useKeyboardShortcuts.ts`) and `sheetSlice.teardown.ts`'s new-file reset —
+ * so rather than migrate those call sites, this keeps the flag correct:
+ * selecting the Sheet tab turns it on, leaving the tab turns it off, and an
+ * external `false` (Esc, teardown) closes the tab in turn. `drawingInspectorTab`
+ * stays the only place that DECIDES which tab is open; this only mirrors it.
+ */
+function registerDrawingInspectorSheetSync(store: ReturnType<typeof createViewerStore>): void {
+  store.subscribe((state, prev) => {
+    if (state.drawingInspectorTab !== prev.drawingInspectorTab) {
+      const shouldBeVisible = state.drawingInspectorTab === 'sheet';
+      if (state.sheetPanelVisible !== shouldBeVisible) store.setState({ sheetPanelVisible: shouldBeVisible });
+      return;
+    }
+    if (prev.sheetPanelVisible && !state.sheetPanelVisible && state.drawingInspectorTab === 'sheet') {
+      store.setState({ drawingInspectorTab: null });
+    }
+  });
+}
+
 export function getViewerStoreApi() {
   const existing = globalStoreRegistry[STORE_SINGLETON_KEY];
   if (existing) return existing;
@@ -556,6 +583,7 @@ export function getViewerStoreApi() {
   globalStoreRegistry[STORE_SINGLETON_KEY] = store;
   registerSidebarExclusivity(store);
   registerHierarchyLeftSync(store);
+  registerDrawingInspectorSheetSync(store);
   registerSectionVisibility(store); // `sectionPlane.enabled` === the cut is on screen (#4910)
   // Initial reconcile: a persisted panel flag (e.g. scriptPanelVisible) can be
   // true at load before any change fires the subscription, so seed the docked
@@ -566,6 +594,9 @@ export function getViewerStoreApi() {
   // A persisted "Hierarchy hidden" never fired the subscription above, so seed
   // the collapsed left slot from it on load (#1267).
   if (init.sidebarHiddenIds.includes('hierarchy')) init.setLeftPanelCollapsed(true);
+  // A persisted Sheet inspector tab never fired the sync above either — seed
+  // `sheetPanelVisible` from it on load (#5495).
+  if (init.drawingInspectorTab === 'sheet' && !init.sheetPanelVisible) store.setState({ sheetPanelVisible: true });
   return store;
 }
 

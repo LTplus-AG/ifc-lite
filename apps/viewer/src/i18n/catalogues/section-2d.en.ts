@@ -33,6 +33,7 @@ export const section2dEn = {
   'section2d.drawers.sheet': 'Sheet',
   'section2d.drawers.underlays': 'Underlays',
   'section2d.drawers.scan': 'Scan',
+  'section2d.inspector.resizeLabel': 'Resize inspector column',
   'section2d.zoom.out': 'Zoom out',
   'section2d.zoom.in': 'Zoom in',
   'section2d.zoom.fit': 'Fit to view',

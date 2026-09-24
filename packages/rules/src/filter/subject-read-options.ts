@@ -27,7 +27,8 @@ export interface SubjectReadOptions {
    * Where a missing value may come from (#5433). `'type'`: a quantity also
    * reads its type's quantity sets (properties always read their type's
    * property sets). `'aggregation'`: an element with no value of its own
-   * takes the nearest `IfcRelAggregates` ancestor's. Never implicit: absent
+   * (its type's included, for quantities too) takes the nearest
+   * `IfcRelAggregates` ancestor's. Never implicit: absent
    * means the element's own (and, for properties, its type's) values only.
    */
   inherit?: 'type' | 'aggregation';

@@ -72,6 +72,8 @@ describe('inherit in search (#5433)', () => {
     const length: FilterRule = { kind: 'quantity', setName: 'Qto_BeamBaseQuantities', quantityName: 'Length', op: 'gte', value: 5 };
     assert.deepEqual(await names([length]), []);
     assert.deepEqual(await names([{ ...length, inherit: 'type' }]), ['B']);
+    // 'aggregation' reads the type first too, before any aggregate parent (review, #5440).
+    assert.deepEqual(await names([{ ...length, inherit: 'aggregation' }]), ['B']);
   });
 
   it('a cyclic aggregation ends', async () => {

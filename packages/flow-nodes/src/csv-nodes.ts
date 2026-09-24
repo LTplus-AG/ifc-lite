@@ -16,12 +16,12 @@
  */
 
 import { tableToCsv } from '@ifc-lite/export';
-import { PARSE_INVALID, parseValue } from '@ifc-lite/mutations';
-import { isStrictlyTyped } from './strict-cell.js';
+import { PARSE_INVALID } from '@ifc-lite/mutations';
+import { parseStrictCell } from './strict-cell.js';
 import type { Cell, Column, ColumnType, Table } from '@ifc-lite/flow';
 import { COLUMN_TYPES } from '@ifc-lite/flow';
 import { SCALAR_ITEM, SCALAR_LIST, TABLE_ITEM, type FlowNodeDef } from './host.js';
-import { VALUE_TYPE_BY_COLUMN_TYPE, tableOf } from './table-nodes.js';
+import { tableOf } from './table-nodes.js';
 import { parseCsvText } from './csv-parse.js';
 
 interface ColumnSpec {
@@ -87,7 +87,7 @@ export const csvNodes: FlowNodeDef[] = [
             row[col.name] = raw;
             return;
           }
-          const parsedCell = isStrictlyTyped(raw, col.type) ? parseValue(raw, VALUE_TYPE_BY_COLUMN_TYPE[col.type]) : PARSE_INVALID;
+          const parsedCell = parseStrictCell(raw, col.type);
           if (parsedCell === PARSE_INVALID) {
             problems.push(`row ${rowIdx + 2}: column "${col.name}": cannot parse "${raw}" as ${col.type}`);
             row[col.name] = null;

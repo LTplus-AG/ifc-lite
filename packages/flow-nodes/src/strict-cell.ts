@@ -15,6 +15,8 @@
  */
 
 import type { ColumnType } from '@ifc-lite/flow';
+import { PARSE_INVALID, parseValue, type PropertyValue } from '@ifc-lite/mutations';
+import { VALUE_TYPE_BY_COLUMN_TYPE } from './table-nodes.js';
 
 const REAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 const INTEGER = /^[+-]?\d+$/;
@@ -24,13 +26,24 @@ const INTEGER = /^[+-]?\d+$/;
  */
 const BOOLEAN = /^(true|false|yes|no|1|0)$/i;
 
-export function isStrictlyTyped(raw: string, type: ColumnType): boolean {
-  const text = raw.trim();
+function isStrictlyTyped(text: string, type: ColumnType): boolean {
   switch (type) {
-    case 'real': return REAL.test(text);
-    case 'integer': return INTEGER.test(text);
+    // The syntax alone admits `1e309` (Infinity) and integers past 2^53
+    // (silently rounded), so the value itself is checked too.
+    case 'real': return REAL.test(text) && Number.isFinite(Number(text));
+    case 'integer': return INTEGER.test(text) && Number.isSafeInteger(Number(text));
     case 'boolean':
     case 'logical': return BOOLEAN.test(text);
     default: return true;
   }
+}
+
+/**
+ * Parse a cell as its column's type, or {@link PARSE_INVALID}. The text is
+ * trimmed ONCE and the same text is both checked and parsed: checking the
+ * trimmed text but parsing the raw one accepted `" true "` and wrote `false`.
+ */
+export function parseStrictCell(raw: string, type: ColumnType): PropertyValue | typeof PARSE_INVALID {
+  const text = raw.trim();
+  return isStrictlyTyped(text, type) ? parseValue(text, VALUE_TYPE_BY_COLUMN_TYPE[type]) : PARSE_INVALID;
 }

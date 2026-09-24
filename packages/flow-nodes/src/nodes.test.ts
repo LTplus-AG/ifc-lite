@@ -455,6 +455,28 @@ describe('typed cells are read exactly or reported (#5377 review)', () => {
     ]);
   });
 
+  it('parses the same trimmed text it checks, and refuses overflowing or imprecise numbers', async () => {
+    // A padded " true " passed the (trimmed) check but the raw text reached
+    // the parser, which wrote `false`. `1e309` parses to Infinity and
+    // 9007199254740993 rounds to ...992: both wrote a value the sheet did not hold.
+    const text = 'GlobalId,Width,Count,Flag\nW1, 2.5 , 7 , true \nW2,1e309,9007199254740993,no\n';
+    const out = (await registry.get('table.readCsv')!.run(testCtx(), { text }, {
+      columns: [
+        { name: 'GlobalId', type: 'identifier' }, { name: 'Width', type: 'real' },
+        { name: 'Count', type: 'integer' }, { name: 'Flag', type: 'boolean' },
+      ],
+      delimiter: ',',
+    })) as { table: Table; problems: string[] };
+    expect(out.table.rows).toEqual([
+      { GlobalId: 'W1', Width: 2.5, Count: 7, Flag: true },
+      { GlobalId: 'W2', Width: null, Count: null, Flag: false },
+    ]);
+    expect(out.problems).toEqual([
+      'row 3: column "Width": cannot parse "1e309" as real',
+      'row 3: column "Count": cannot parse "9007199254740993" as integer',
+    ]);
+  });
+
   it('strips a UTF-8 byte-order mark so the first header is found', async () => {
     const out = (await registry.get('table.readCsv')!.run(testCtx(), { text: '﻿"GlobalId",Width\nW1,1\n' }, {
       delimiter: ',',
